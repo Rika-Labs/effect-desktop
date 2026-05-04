@@ -18,6 +18,7 @@ fn startup_event() -> StartupEvent {
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt()
+        .with_ansi(false)
         .try_init()
         .map_err(|error| anyhow::anyhow!("failed to initialize tracing subscriber: {error}"))?;
 
