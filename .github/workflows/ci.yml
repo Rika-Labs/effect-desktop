@@ -55,6 +55,9 @@ jobs:
       - name: bun run lint
         run: bun run lint
 
+      - name: bun run lint:types
+        run: bun run lint:types
+
       - name: bun run format:check
         run: bun run format:check
 

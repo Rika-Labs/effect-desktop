@@ -24,15 +24,24 @@ const PHASE_0_STUB_INDEX = "export {}\n"
 const PHASE_0_TS_TEST_MARKER = "phase 0 stub compiles and runs"
 const PHASE_0_RUST_TEST_MARKER = "fn it_compiles"
 
-const readJson = (path: string): Record<string, unknown> =>
-  JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>
+interface PackageJson {
+  scripts?: Record<string, string>
+  workspaces?: ReadonlyArray<string>
+  [key: string]: unknown
+}
+
+interface TsConfig {
+  extends?: string
+  [key: string]: unknown
+}
+
+const readJson = <T>(path: string): T => JSON.parse(readFileSync(path, "utf8")) as T
 
 describe("workspaces", () => {
-  const root = readJson(join(REPO_ROOT, "package.json"))
-  const workspaces = root.workspaces as Array<string>
+  const root = readJson<PackageJson>(join(REPO_ROOT, "package.json"))
 
   test("root package.json declares the spec §5.4 globs", () => {
-    expect(workspaces).toEqual(["apps/*", "apps/examples/*", "packages/*", "templates/*"])
+    expect(root.workspaces).toEqual(["apps/*", "apps/examples/*", "packages/*", "templates/*"])
   })
 })
 
@@ -45,15 +54,15 @@ describe("packages/*", () => {
     })
 
     test(`${name}/package.json declares all required scripts`, () => {
-      const pkg = readJson(join(dir, "package.json"))
-      const scripts = (pkg.scripts ?? {}) as Record<string, string>
+      const pkg = readJson<PackageJson>(join(dir, "package.json"))
+      const scripts = pkg.scripts ?? {}
       for (const required of REQUIRED_PACKAGE_SCRIPTS) {
         expect(scripts[required]).toBeDefined()
       }
     })
 
     test(`${name}/tsconfig.json extends the workspace base`, () => {
-      const tsc = readJson(join(dir, "tsconfig.json"))
+      const tsc = readJson<TsConfig>(join(dir, "tsconfig.json"))
       expect(tsc.extends).toBe("../../tsconfig.base.json")
     })
 

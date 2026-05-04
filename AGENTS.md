@@ -54,6 +54,7 @@ bun install --frozen-lockfile
 bun run check
 bun run typecheck
 bun run lint
+bun run lint:types
 bun run format:check
 bun test
 cargo fmt --check
@@ -63,6 +64,16 @@ cargo test --workspace
 ```
 
 CI runs the same gate on `ubuntu-latest`, `macos-latest`, and `windows-latest`.
+
+## Code-generation policy
+
+Because most code is authored by agents, both the TypeScript compiler and oxlint are configured strictly so that the LLM's most common mistakes fail loudly at the gate, not silently at runtime.
+
+`tsconfig.base.json` extends `strict: true` with the `@tsconfig/strictest` flag set: `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noPropertyAccessFromIndexSignature`, `noImplicitReturns`, `noUnusedLocals`, `noUnusedParameters`, `allowUnreachableCode: false`, `allowUnusedLabels: false`, `noUncheckedSideEffectImports`, `useUnknownInCatchVariables`. Together they kill the canonical `users[0].name`, "absent vs undefined", dot-access on dynamic objects, and dead-branch failure modes.
+
+`oxlint.json` enables type-aware mode (`oxlint-tsgolint` plugin) so promise-related rules — `no-floating-promises`, `no-misused-promises`, `await-thenable`, `switch-exhaustiveness-check`, the `no-unsafe-*` family, `no-unnecessary-type-assertion` — fire on real semantic violations, not just syntax. Categories `correctness`, `suspicious`, and `perf` are all `error` (never `warn`); per `@nkzw/oxlint-config` philosophy, warnings get ignored by agents and the only useful state is "fail at the gate or pass clean". `no-explicit-any` is `error` (test files override to `off` for fixture flexibility); `no-console` is `error` outside `bin.ts` and `scripts/**`.
+
+If a rule produces a false positive, prefer fixing the code over disabling the rule. If the rule must be disabled, do it at the smallest scope possible — line-level or file-level — with a comment that says why. Disabling at the config level requires a real reason and an entry in this section.
 
 ## Forbidden behavior
 
