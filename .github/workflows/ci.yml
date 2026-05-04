@@ -77,5 +77,8 @@ jobs:
       - name: cargo check --workspace
         run: cargo check --workspace
 
+      - name: cargo run -p host
+        run: cargo run -p host
+
       - name: cargo test --workspace
         run: cargo test --workspace
