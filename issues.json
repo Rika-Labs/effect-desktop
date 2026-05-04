@@ -1,0 +1,1276 @@
+{
+  "generated_at": "2026-05-04T19:49:19.368Z",
+  "spec": "docs/SPEC.md §24 (Implementation Milestones)",
+  "repo": "https://github.com/Rika-Labs/effect-desktop",
+  "ordering": "Phases follow the §24.0.1 dependency graph. Sub-issues within each phase are ordered by GitHub issue number, which preserves the slicing-plan order in which they were created.",
+  "legend": {
+    "phase": "Spec phase number (or 0 for the bootstrap milestone)",
+    "completed": "true when every issue in the phase (including the Epic) is closed; or, for Phase 0, when the milestone shipped",
+    "epic": "GitHub Epic issue (one per phase, labelled `epic`)",
+    "issues": "Sub-issues for the phase, ordered by execution"
+  },
+  "summary": {
+    "total_phases": 26,
+    "completed_phases": 1,
+    "total_issues": 142,
+    "completed_issues": 0,
+    "remaining_issues": 142
+  },
+  "phases": [
+    {
+      "phase": "0",
+      "title": "Repository bootstrap",
+      "spec_section": "§24.0",
+      "milestone": null,
+      "depends_on": [],
+      "completed": true,
+      "epic": null,
+      "issues": [],
+      "notes": "Shipped before issues were created. Tracked via docs/milestones/phase-0-bootstrap.md and learning at docs/learnings/2026-05-04-phase-0-repository-bootstrap.md."
+    },
+    {
+      "phase": "1",
+      "title": "Native host spike",
+      "spec_section": "§24.1",
+      "milestone": "M1: Bring up the runtime",
+      "depends_on": ["0"],
+      "completed": false,
+      "epic": {
+        "number": 3,
+        "title": "Phase 1: Native host spike",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/3",
+        "completed": false,
+        "labels": ["area:rust"]
+      },
+      "issues": [
+        {
+          "number": 7,
+          "title": "Wire wry, tao, tracing, anyhow into crates/host; add [bin] that initializes tracing and exits 0",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/7",
+          "completed": false,
+          "labels": ["area:rust"]
+        },
+        {
+          "number": 8,
+          "title": "Open a tao native window (no WebView yet) on the platform main thread; close cleanly on close-event",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/8",
+          "completed": false,
+          "labels": ["area:rust"]
+        },
+        {
+          "number": 9,
+          "title": "Embed a wry WebView pointing at a data:text/html,<h1>hello</h1> URL inside the window",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/9",
+          "completed": false,
+          "labels": ["area:rust"]
+        },
+        {
+          "number": 10,
+          "title": "Register the app:// URL scheme handler in WRY returning a hard-coded HTML string",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/10",
+          "completed": false,
+          "labels": ["area:rust"]
+        },
+        {
+          "number": 11,
+          "title": "Serve apps/playground/dist/index.html as an embedded asset through app://localhost/",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/11",
+          "completed": false,
+          "labels": ["area:rust"]
+        }
+      ]
+    },
+    {
+      "phase": "2",
+      "title": "Runtime supervision",
+      "spec_section": "§24.2",
+      "milestone": "M1: Bring up the runtime",
+      "depends_on": ["1"],
+      "completed": false,
+      "epic": {
+        "number": 28,
+        "title": "Phase 2: Runtime supervision",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/28",
+        "completed": false,
+        "labels": ["area:rust", "area:bun"]
+      },
+      "issues": [
+        {
+          "number": 29,
+          "title": "Add a Bun runtime entry binary packages/core/src/runtime/main.ts that prints a JSON ready event and exits",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/29",
+          "completed": false,
+          "labels": ["area:bun"]
+        },
+        {
+          "number": 30,
+          "title": "Define crates/host runtime-supervision module: spawn child process, capture stdout/stderr, expose lifecycle channel",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/30",
+          "completed": false,
+          "labels": ["area:rust"]
+        },
+        {
+          "number": 31,
+          "title": "Host launches the runtime on startup and waits for the runtime.ready line before showing the window",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/31",
+          "completed": false,
+          "labels": ["area:rust"]
+        },
+        {
+          "number": 33,
+          "title": "Detect runtime crash (non-zero exit / SIGCHLD) and restart in dev profile only; surface to log in prod",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/33",
+          "completed": false,
+          "labels": ["area:rust"]
+        }
+      ]
+    },
+    {
+      "phase": "3",
+      "title": "Host protocol MVP",
+      "spec_section": "§24.3",
+      "milestone": "M1: Bring up the runtime",
+      "depends_on": ["2"],
+      "completed": false,
+      "epic": {
+        "number": 34,
+        "title": "Phase 3: Host protocol MVP",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/34",
+        "completed": false,
+        "labels": ["area:rust", "area:bridge"]
+      },
+      "issues": [
+        {
+          "number": 57,
+          "title": "Define the crates/host-protocol request/response/event envelope (serde) and mirror via Effect Schema in packages/bridge",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/57",
+          "completed": false,
+          "labels": ["area:rust", "area:bridge"]
+        },
+        {
+          "number": 58,
+          "title": "Implement initial transport over child stdin/stdout with length-prefixed framing (§9.2)",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/58",
+          "completed": false,
+          "labels": ["area:rust", "area:bridge"]
+        },
+        {
+          "number": 59,
+          "title": "Required host method host.ping and host.version for handshake and version negotiation",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/59",
+          "completed": false,
+          "labels": ["area:rust", "area:bridge"]
+        },
+        {
+          "number": 60,
+          "title": "Required host methods Window.create and Window.destroy plumbed end-to-end",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/60",
+          "completed": false,
+          "labels": ["area:rust", "area:bridge"]
+        },
+        {
+          "number": 61,
+          "title": "Closed HostProtocolError enum (Appendix L tags) with serde + Schema parity; error envelope round-trip test",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/61",
+          "completed": false,
+          "labels": ["area:rust", "area:bridge"]
+        },
+        {
+          "number": 62,
+          "title": "Renderer reconnect on runtime restart per §9.7",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/62",
+          "completed": false,
+          "labels": ["area:rust", "area:bridge"]
+        }
+      ]
+    },
+    {
+      "phase": "3.5",
+      "title": "Resource model + headless harness",
+      "spec_section": "§24.3.5",
+      "milestone": "M1: Bring up the runtime",
+      "depends_on": ["3"],
+      "completed": false,
+      "epic": {
+        "number": 71,
+        "title": "Phase 3.5: Resource model + headless harness",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/71",
+        "completed": false,
+        "labels": ["area:bun", "area:testing"]
+      },
+      "issues": [
+        {
+          "number": 80,
+          "title": "ResourceRegistry Effect service: register / get / list / dispose",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/80",
+          "completed": false,
+          "labels": ["area:bun"]
+        },
+        {
+          "number": 81,
+          "title": "Generation-stamped Handle<R> shape with StaleHandle failure mode on use after dispose",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/81",
+          "completed": false,
+          "labels": ["area:bun"]
+        },
+        {
+          "number": 82,
+          "title": "Scope graph: parent-child ownership; cascade dispose when a parent scope closes",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/82",
+          "completed": false,
+          "labels": ["area:bun"]
+        },
+        {
+          "number": 83,
+          "title": "Leak detection: bun-test custom matcher that fails when non-app handles outlive scope close, with leaked-handle report",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/83",
+          "completed": false,
+          "labels": ["area:bun", "area:testing"]
+        },
+        {
+          "number": 84,
+          "title": "Headless harness in @effect-desktop/test: drive the runtime in CI without a window or WebView",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/84",
+          "completed": false,
+          "labels": ["area:testing"]
+        }
+      ]
+    },
+    {
+      "phase": "4",
+      "title": "Typed bridge MVP",
+      "spec_section": "§24.4",
+      "milestone": "M1: Bring up the runtime",
+      "depends_on": ["3.5"],
+      "completed": false,
+      "epic": {
+        "number": 94,
+        "title": "Phase 4: Typed bridge MVP",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/94",
+        "completed": false,
+        "labels": ["area:bridge"]
+      },
+      "issues": [
+        {
+          "number": 108,
+          "title": "Desktop.Api.Tag contract registry — Effect Schema-based, deduplicated by tag, frozen after registration",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/108",
+          "completed": false,
+          "labels": ["area:bridge"]
+        },
+        {
+          "number": 110,
+          "title": "Renderer client codegen: generate Desktop.Client typed surface from the contract registry",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/110",
+          "completed": false,
+          "labels": ["area:bridge"]
+        },
+        {
+          "number": 112,
+          "title": "Runtime handler codegen: wire Effect services to the bridge transport from the same contract",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/112",
+          "completed": false,
+          "labels": ["area:bridge"]
+        },
+        {
+          "number": 114,
+          "title": "Request/response lifecycle: serialize → send → receive → decode → fulfill Effect; failure path returns typed error",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/114",
+          "completed": false,
+          "labels": ["area:bridge"]
+        },
+        {
+          "number": 115,
+          "title": "Events: bridge → renderer push channel with deterministic delivery semantics",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/115",
+          "completed": false,
+          "labels": ["area:bridge"]
+        },
+        {
+          "number": 116,
+          "title": "Streams: Stream.Stream<A, E, R> over bridge with backpressure and chunking",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/116",
+          "completed": false,
+          "labels": ["area:bridge"]
+        },
+        {
+          "number": 117,
+          "title": "Resource handles + cancellation propagation across the bridge",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/117",
+          "completed": false,
+          "labels": ["area:bridge"]
+        }
+      ]
+    },
+    {
+      "phase": "5",
+      "title": "Window service",
+      "spec_section": "§24.5",
+      "milestone": "M1: Bring up the runtime",
+      "depends_on": ["4"],
+      "completed": false,
+      "epic": {
+        "number": 119,
+        "title": "Phase 5: Window service",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/119",
+        "completed": false,
+        "labels": ["area:native-svc"]
+      },
+      "issues": [
+        {
+          "number": 130,
+          "title": "Window service definition in @effect-desktop/native + matching contract in packages/bridge",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/130",
+          "completed": false,
+          "labels": ["area:native-svc"]
+        },
+        {
+          "number": 131,
+          "title": "Typed Window.create and Window.close going through the bridge to the host",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/131",
+          "completed": false,
+          "labels": ["area:native-svc"]
+        },
+        {
+          "number": 132,
+          "title": "WindowState runtime primitive (@effect-desktop/core): persist size/position/zoom per window id",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/132",
+          "completed": false,
+          "labels": ["area:native-svc"]
+        },
+        {
+          "number": 133,
+          "title": "Multi-window event routing per §8.8: per-window scopes; events scoped to the originating window",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/133",
+          "completed": false,
+          "labels": ["area:native-svc"]
+        }
+      ]
+    },
+    {
+      "phase": "6",
+      "title": "Renderer template",
+      "spec_section": "§24.6",
+      "milestone": "M1: Bring up the runtime",
+      "depends_on": ["5"],
+      "completed": false,
+      "epic": {
+        "number": 134,
+        "title": "Phase 6: Renderer template",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/134",
+        "completed": false,
+        "labels": ["area:renderer"]
+      },
+      "issues": [
+        {
+          "number": 139,
+          "title": "Vite-compatible build pipeline producing apps/playground/dist; HMR in dev",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/139",
+          "completed": false,
+          "labels": ["area:renderer"]
+        },
+        {
+          "number": 141,
+          "title": "templates/basic-react-tailwind populated: Tailwind, React 19, ESM, App.tsx with one useDesktop call",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/141",
+          "completed": false,
+          "labels": ["area:renderer"]
+        },
+        {
+          "number": 143,
+          "title": "DesktopProvider, useDesktop, useDesktopStream, useResource, useWindow in @effect-desktop/react",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/143",
+          "completed": false,
+          "labels": ["area:renderer"]
+        },
+        {
+          "number": 144,
+          "title": "Production CSP + asset baseUrl per §14.7 wired through the renderer build manifest",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/144",
+          "completed": false,
+          "labels": ["area:renderer"]
+        }
+      ]
+    },
+    {
+      "phase": "7",
+      "title": "Native service set A",
+      "spec_section": "§24.7",
+      "milestone": "M2: Native + runtime services",
+      "depends_on": ["6"],
+      "completed": false,
+      "epic": {
+        "number": 4,
+        "title": "Phase 7: Native service set A",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/4",
+        "completed": false,
+        "labels": ["area:native-svc"]
+      },
+      "issues": [
+        {
+          "number": 15,
+          "title": "App service — getInfo, quit, focus, registerProtocol",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/15",
+          "completed": false,
+          "labels": ["area:native-svc"]
+        },
+        {
+          "number": 16,
+          "title": "WebView service deepening — load, navigate, devtools toggle",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/16",
+          "completed": false,
+          "labels": ["area:native-svc"]
+        },
+        {
+          "number": 17,
+          "title": "Menu service — application menu definition + native binding",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/17",
+          "completed": false,
+          "labels": ["area:native-svc"]
+        },
+        {
+          "number": 19,
+          "title": "Dialog service — open/save/message dialogs through host",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/19",
+          "completed": false,
+          "labels": ["area:native-svc"]
+        },
+        {
+          "number": 21,
+          "title": "Clipboard service — read/write text + image with mime guards",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/21",
+          "completed": false,
+          "labels": ["area:native-svc"]
+        },
+        {
+          "number": 23,
+          "title": "Notification service — permission-checked, scheduled, action buttons",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/23",
+          "completed": false,
+          "labels": ["area:native-svc"]
+        },
+        {
+          "number": 25,
+          "title": "Path service — userData / cache / logs / appSupport per platform",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/25",
+          "completed": false,
+          "labels": ["area:native-svc"]
+        }
+      ]
+    },
+    {
+      "phase": "8",
+      "title": "Native service set B",
+      "spec_section": "§24.8",
+      "milestone": "M2: Native + runtime services",
+      "depends_on": ["6"],
+      "completed": false,
+      "epic": {
+        "number": 40,
+        "title": "Phase 8: Native service set B",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/40",
+        "completed": false,
+        "labels": ["area:native-svc"]
+      },
+      "issues": [
+        {
+          "number": 47,
+          "title": "Tray and ContextMenu services + per-window context-menu binding",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/47",
+          "completed": false,
+          "labels": ["area:native-svc"]
+        },
+        {
+          "number": 50,
+          "title": "Shell service — openExternal, openPath, trashItem with permission gates",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/50",
+          "completed": false,
+          "labels": ["area:native-svc"]
+        },
+        {
+          "number": 51,
+          "title": "Screen + SystemAppearance + PowerMonitor + Dock services (read-only OS state surfaces)",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/51",
+          "completed": false,
+          "labels": ["area:native-svc"]
+        },
+        {
+          "number": 52,
+          "title": "GlobalShortcut service — register/unregister with conflict detection",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/52",
+          "completed": false,
+          "labels": ["area:native-svc"]
+        },
+        {
+          "number": 53,
+          "title": "Protocol service for arbitrary custom URL schemes beyond app://",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/53",
+          "completed": false,
+          "labels": ["area:native-svc"]
+        },
+        {
+          "number": 54,
+          "title": "SafeStorage service with §14.10 redaction policy applied to logs",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/54",
+          "completed": false,
+          "labels": ["area:native-svc"]
+        },
+        {
+          "number": 55,
+          "title": "Updater + CrashReporter services (consume only; install logic is Phase 22)",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/55",
+          "completed": false,
+          "labels": ["area:native-svc"]
+        }
+      ]
+    },
+    {
+      "phase": "9",
+      "title": "Streams + cancellation hardening",
+      "spec_section": "§24.9",
+      "milestone": "M2: Native + runtime services",
+      "depends_on": ["7", "8"],
+      "completed": false,
+      "epic": {
+        "number": 72,
+        "title": "Phase 9: Streams + cancellation hardening",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/72",
+        "completed": false,
+        "labels": ["area:bun", "area:bridge"]
+      },
+      "issues": [
+        {
+          "number": 74,
+          "title": "End-to-end Effect Stream lifecycle on bridge: subscribe, deliver, close",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/74",
+          "completed": false,
+          "labels": ["area:bun", "area:bridge"]
+        },
+        {
+          "number": 75,
+          "title": "Cancellation propagation: renderer interrupts a stream → host stops emitting; resource scope closes",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/75",
+          "completed": false,
+          "labels": ["area:bun", "area:bridge"]
+        },
+        {
+          "number": 76,
+          "title": "Backpressure: bounded buffer on the renderer side; drop-or-block policy is contract-declared",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/76",
+          "completed": false,
+          "labels": ["area:bun", "area:bridge"]
+        },
+        {
+          "number": 77,
+          "title": "Bridge failure modes per §10.8: typed errors for transport disconnect, malformed frame, version mismatch",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/77",
+          "completed": false,
+          "labels": ["area:bun", "area:bridge"]
+        }
+      ]
+    },
+    {
+      "phase": "10",
+      "title": "Streams and cancellation (legacy anchor)",
+      "spec_section": "§24.10",
+      "milestone": "M2: Native + runtime services",
+      "depends_on": ["9"],
+      "completed": false,
+      "epic": {
+        "number": 79,
+        "title": "Phase 10: Streams and cancellation (legacy anchor)",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/79",
+        "completed": false,
+        "labels": ["area:bridge"]
+      },
+      "issues": [],
+      "notes": "Legacy anchor only. Per §24.0.1 the substantive content moved into Phase 9. Close as superseded once Phase 9 ships."
+    },
+    {
+      "phase": "11",
+      "title": "Filesystem",
+      "spec_section": "§24.11",
+      "milestone": "M2: Native + runtime services",
+      "depends_on": ["9"],
+      "completed": false,
+      "epic": {
+        "number": 95,
+        "title": "Phase 11: Filesystem",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/95",
+        "completed": false,
+        "labels": ["area:runtime-svc"]
+      },
+      "issues": [
+        {
+          "number": 97,
+          "title": "Filesystem service: read, write, stat, mkdir, remove with typed errors",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/97",
+          "completed": false,
+          "labels": ["area:runtime-svc"]
+        },
+        {
+          "number": 98,
+          "title": "Watcher subresource: stream of FS events; scope-bound; cleanup on scope close",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/98",
+          "completed": false,
+          "labels": ["area:runtime-svc"]
+        },
+        {
+          "number": 99,
+          "title": "Permission gating: every dangerous op (write outside allow-list, recursive remove) requires capability",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/99",
+          "completed": false,
+          "labels": ["area:runtime-svc"]
+        },
+        {
+          "number": 100,
+          "title": "Atomic write helper using temp file + rename, with platform fallbacks",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/100",
+          "completed": false,
+          "labels": ["area:runtime-svc"]
+        },
+        {
+          "number": 101,
+          "title": "Path normalization + symlink policy (refuse symlink traversal outside allow-list)",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/101",
+          "completed": false,
+          "labels": ["area:runtime-svc"]
+        }
+      ]
+    },
+    {
+      "phase": "12",
+      "title": "Process",
+      "spec_section": "§24.12",
+      "milestone": "M2: Native + runtime services",
+      "depends_on": ["9"],
+      "completed": false,
+      "epic": {
+        "number": 106,
+        "title": "Phase 12: Process",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/106",
+        "completed": false,
+        "labels": ["area:runtime-svc"]
+      },
+      "issues": [
+        {
+          "number": 107,
+          "title": "Process service: spawn, stdin/stdout/stderr streams, exit code, kill",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/107",
+          "completed": false,
+          "labels": ["area:runtime-svc"]
+        },
+        {
+          "number": 109,
+          "title": "Process tree cleanup on scope close (kill children)",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/109",
+          "completed": false,
+          "labels": ["area:runtime-svc"]
+        },
+        {
+          "number": 111,
+          "title": "Permission-gated argv allow-list per §14",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/111",
+          "completed": false,
+          "labels": ["area:runtime-svc"]
+        },
+        {
+          "number": 113,
+          "title": "Resource budgets (max processes per scope, max stdout/stderr buffer)",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/113",
+          "completed": false,
+          "labels": ["area:runtime-svc"]
+        }
+      ]
+    },
+    {
+      "phase": "13",
+      "title": "PTY",
+      "spec_section": "§24.13",
+      "milestone": "M2: Native + runtime services",
+      "depends_on": ["12"],
+      "completed": false,
+      "epic": {
+        "number": 121,
+        "title": "Phase 13: PTY",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/121",
+        "completed": false,
+        "labels": ["area:rust", "area:runtime-svc"]
+      },
+      "issues": [
+        {
+          "number": 123,
+          "title": "crates/native-pty cross-platform PTY primitive (winpty/conpty + portable-pty)",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/123",
+          "completed": false,
+          "labels": ["area:rust", "area:runtime-svc"]
+        },
+        {
+          "number": 125,
+          "title": "PTY Effect service in @effect-desktop/core — open, write, resize, output stream, kill",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/125",
+          "completed": false,
+          "labels": ["area:rust", "area:runtime-svc"]
+        },
+        {
+          "number": 127,
+          "title": "Process-tree kill on PTY close; verify no orphaned processes via integration test",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/127",
+          "completed": false,
+          "labels": ["area:rust", "area:runtime-svc"]
+        },
+        {
+          "number": 129,
+          "title": "Backpressure on PTY output stream + chunk-coalescing buffer",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/129",
+          "completed": false,
+          "labels": ["area:rust", "area:runtime-svc"]
+        }
+      ]
+    },
+    {
+      "phase": "14",
+      "title": "Storage",
+      "spec_section": "§24.14",
+      "milestone": "M2: Native + runtime services",
+      "depends_on": ["12"],
+      "completed": false,
+      "epic": {
+        "number": 135,
+        "title": "Phase 14: Storage",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/135",
+        "completed": false,
+        "labels": ["area:runtime-svc"]
+      },
+      "issues": [
+        {
+          "number": 136,
+          "title": "SQLite service via bun:sqlite — query, exec, prepared, transaction, scope-bound connection",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/136",
+          "completed": false,
+          "labels": ["area:runtime-svc"]
+        },
+        {
+          "number": 137,
+          "title": "Settings service — typed schema-validated key/value store on top of SQLite",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/137",
+          "completed": false,
+          "labels": ["area:runtime-svc"]
+        },
+        {
+          "number": 138,
+          "title": "EventLog service — append-only ring with retention policy",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/138",
+          "completed": false,
+          "labels": ["area:runtime-svc"]
+        },
+        {
+          "number": 140,
+          "title": "Transport runtime service — abstract over host protocol transport for tests",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/140",
+          "completed": false,
+          "labels": ["area:runtime-svc"]
+        },
+        {
+          "number": 142,
+          "title": "WindowState deepening — persist + restore across launches; multi-window aware",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/142",
+          "completed": false,
+          "labels": ["area:runtime-svc"]
+        }
+      ]
+    },
+    {
+      "phase": "15",
+      "title": "Secrets",
+      "spec_section": "§24.15",
+      "milestone": "M3: Permissions + DX",
+      "depends_on": ["14"],
+      "completed": false,
+      "epic": {
+        "number": 5,
+        "title": "Phase 15: Secrets",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/5",
+        "completed": false,
+        "labels": ["area:runtime-svc", "area:permissions"]
+      },
+      "issues": [
+        {
+          "number": 12,
+          "title": "Secrets service: set/get/delete keyed by app+namespace",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/12",
+          "completed": false,
+          "labels": ["area:runtime-svc", "area:permissions"]
+        },
+        {
+          "number": 13,
+          "title": "Redaction in logs so secrets never appear in stdout/log/devtools/trace",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/13",
+          "completed": false,
+          "labels": ["area:runtime-svc", "area:permissions"]
+        },
+        {
+          "number": 14,
+          "title": "Migrate legacy plaintext settings into Secrets on first launch",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/14",
+          "completed": false,
+          "labels": ["area:runtime-svc", "area:permissions"]
+        }
+      ]
+    },
+    {
+      "phase": "16",
+      "title": "Permissions",
+      "spec_section": "§24.16",
+      "milestone": "M3: Permissions + DX",
+      "depends_on": ["15"],
+      "completed": false,
+      "epic": {
+        "number": 27,
+        "title": "Phase 16: Permissions",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/27",
+        "completed": false,
+        "labels": ["area:permissions"]
+      },
+      "issues": [
+        {
+          "number": 41,
+          "title": "PermissionRegistry Effect service: declare capability, query, deny by default",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/41",
+          "completed": false,
+          "labels": ["area:permissions"]
+        },
+        {
+          "number": 42,
+          "title": "Capability lifecycle: request, prompt, grant, expire, revoke",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/42",
+          "completed": false,
+          "labels": ["area:permissions"]
+        },
+        {
+          "number": 43,
+          "title": "ApprovalBroker UI for runtime approvals with dev mode bypass flag",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/43",
+          "completed": false,
+          "labels": ["area:permissions"]
+        },
+        {
+          "number": 44,
+          "title": "Audit events for every denial, grant, revocation logged structurally",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/44",
+          "completed": false,
+          "labels": ["area:permissions"]
+        },
+        {
+          "number": 45,
+          "title": "Production security checker that fails on weakened defaults",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/45",
+          "completed": false,
+          "labels": ["area:permissions"]
+        },
+        {
+          "number": 46,
+          "title": "CSP defaults wired to renderer header pipeline with weakening acknowledgement",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/46",
+          "completed": false,
+          "labels": ["area:permissions"]
+        },
+        {
+          "number": 48,
+          "title": "IPC origin authentication: bridge requests carry windowId+originToken",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/48",
+          "completed": false,
+          "labels": ["area:permissions"]
+        }
+      ]
+    },
+    {
+      "phase": "17",
+      "title": "Commands and shortcuts",
+      "spec_section": "§24.17",
+      "milestone": "M3: Permissions + DX",
+      "depends_on": ["16"],
+      "completed": false,
+      "epic": {
+        "number": 56,
+        "title": "Phase 17: Commands and shortcuts",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/56",
+        "completed": false,
+        "labels": ["area:native-svc", "area:runtime-svc"]
+      },
+      "issues": [
+        {
+          "number": 67,
+          "title": "CommandRegistry Effect service: register command with id, schema, handler, capability",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/67",
+          "completed": false,
+          "labels": ["area:runtime-svc"]
+        },
+        {
+          "number": 68,
+          "title": "Wire GlobalShortcut to invoke CommandRegistry with the registered command id",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/68",
+          "completed": false,
+          "labels": ["area:native-svc", "area:runtime-svc"]
+        },
+        {
+          "number": 69,
+          "title": "ContextMenu invokes CommandRegistry so menu and shortcut share a handler",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/69",
+          "completed": false,
+          "labels": ["area:native-svc", "area:runtime-svc"]
+        },
+        {
+          "number": 70,
+          "title": "Devtools surface listing every registered command with capability and last invocation",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/70",
+          "completed": false,
+          "labels": ["area:runtime-svc"]
+        }
+      ]
+    },
+    {
+      "phase": "18",
+      "title": "Workers and jobs",
+      "spec_section": "§24.18",
+      "milestone": "M3: Permissions + DX",
+      "depends_on": ["17"],
+      "completed": false,
+      "epic": {
+        "number": 78,
+        "title": "Phase 18: Workers and jobs",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/78",
+        "completed": false,
+        "labels": ["area:runtime-svc"]
+      },
+      "issues": [
+        {
+          "number": 90,
+          "title": "Worker service: Bun worker spawn with typed message channel and scope-bound lifecycle",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/90",
+          "completed": false,
+          "labels": ["area:runtime-svc"]
+        },
+        {
+          "number": 91,
+          "title": "Job service: enqueue, run, observe long-running unit of work with cancellation",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/91",
+          "completed": false,
+          "labels": ["area:runtime-svc"]
+        },
+        {
+          "number": 92,
+          "title": "Crash and retry policy via Effect Schedule for jobs",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/92",
+          "completed": false,
+          "labels": ["area:runtime-svc"]
+        },
+        {
+          "number": 93,
+          "title": "Devtools surface for live workers and jobs",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/93",
+          "completed": false,
+          "labels": ["area:runtime-svc"]
+        }
+      ]
+    },
+    {
+      "phase": "19",
+      "title": "Devtools",
+      "spec_section": "§24.19",
+      "milestone": "M4: Ship readiness",
+      "depends_on": ["18"],
+      "completed": false,
+      "epic": {
+        "number": 6,
+        "title": "Phase 19: Devtools",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/6",
+        "completed": false,
+        "labels": ["area:devtools"]
+      },
+      "issues": [
+        {
+          "number": 18,
+          "title": "Devtools shell window and dev-only loopback transport",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/18",
+          "completed": false,
+          "labels": ["area:devtools"]
+        },
+        {
+          "number": 20,
+          "title": "Live panels for bridge, streams, resources, permissions, processes",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/20",
+          "completed": false,
+          "labels": ["area:devtools"]
+        },
+        {
+          "number": 22,
+          "title": "Logs, traces, and metrics panels with redaction applied",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/22",
+          "completed": false,
+          "labels": ["area:devtools"]
+        },
+        {
+          "number": 24,
+          "title": "Performance overlay for startup, bridge p99, render frame",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/24",
+          "completed": false,
+          "labels": ["area:devtools"]
+        },
+        {
+          "number": 26,
+          "title": "Trace identity and propagation wired through the bridge",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/26",
+          "completed": false,
+          "labels": ["area:devtools"]
+        }
+      ]
+    },
+    {
+      "phase": "20",
+      "title": "Testing harness",
+      "spec_section": "§24.20",
+      "milestone": "M4: Ship readiness",
+      "depends_on": ["19"],
+      "completed": false,
+      "epic": {
+        "number": 32,
+        "title": "Phase 20: Testing harness",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/32",
+        "completed": false,
+        "labels": ["area:testing"]
+      },
+      "issues": [
+        {
+          "number": 35,
+          "title": "Mock host: in-process host protocol implementation for renderer tests",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/35",
+          "completed": false,
+          "labels": ["area:testing"]
+        },
+        {
+          "number": 36,
+          "title": "Mock bridge: contract-aware fake that records calls",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/36",
+          "completed": false,
+          "labels": ["area:testing"]
+        },
+        {
+          "number": 37,
+          "title": "Memory filesystem: in-memory Filesystem substitute",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/37",
+          "completed": false,
+          "labels": ["area:testing"]
+        },
+        {
+          "number": 38,
+          "title": "Mock Process and Mock PTY for command-running tests",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/38",
+          "completed": false,
+          "labels": ["area:testing"]
+        },
+        {
+          "number": 39,
+          "title": "Headless runtime Effect Layer composing the mocks for CI",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/39",
+          "completed": false,
+          "labels": ["area:testing"]
+        }
+      ]
+    },
+    {
+      "phase": "21",
+      "title": "Build and package",
+      "spec_section": "§24.21",
+      "milestone": "M4: Ship readiness",
+      "depends_on": ["20"],
+      "completed": false,
+      "epic": {
+        "number": 49,
+        "title": "Phase 21: Build and package",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/49",
+        "completed": false,
+        "labels": ["area:cli", "area:packaging"]
+      },
+      "issues": [
+        {
+          "number": 63,
+          "title": "bun desktop build — build renderer, runtime, host into per-platform layout",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/63",
+          "completed": false,
+          "labels": ["area:cli", "area:packaging"]
+        },
+        {
+          "number": 64,
+          "title": "bun desktop package — produce dmg/msi/AppImage/deb/rpm artifacts",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/64",
+          "completed": false,
+          "labels": ["area:cli", "area:packaging"]
+        },
+        {
+          "number": 65,
+          "title": "Reproducible-build check — run twice on a clean runner and diff bytes",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/65",
+          "completed": false,
+          "labels": ["area:cli", "area:packaging"]
+        },
+        {
+          "number": 66,
+          "title": "bun desktop doctor — environment validator with typed DoctorMissing errors",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/66",
+          "completed": false,
+          "labels": ["area:cli", "area:packaging"]
+        }
+      ]
+    },
+    {
+      "phase": "22",
+      "title": "Signing and update",
+      "spec_section": "§24.22",
+      "milestone": "M4: Ship readiness",
+      "depends_on": ["21"],
+      "completed": false,
+      "epic": {
+        "number": 73,
+        "title": "Phase 22: Signing and update",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/73",
+        "completed": false,
+        "labels": ["area:packaging"]
+      },
+      "issues": [
+        {
+          "number": 85,
+          "title": "Code signing: macOS Developer ID, Windows Authenticode, Linux GPG",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/85",
+          "completed": false,
+          "labels": ["area:packaging"]
+        },
+        {
+          "number": 86,
+          "title": "macOS notarization via xcrun notarytool and stapling",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/86",
+          "completed": false,
+          "labels": ["area:packaging"]
+        },
+        {
+          "number": 87,
+          "title": "Updater manifest format and signature verification",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/87",
+          "completed": false,
+          "labels": ["area:packaging"]
+        },
+        {
+          "number": 88,
+          "title": "Channel routing (stable / beta / canary) and minVersion floor",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/88",
+          "completed": false,
+          "labels": ["area:packaging"]
+        },
+        {
+          "number": 89,
+          "title": "Rollback metadata and restart integration after install staging",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/89",
+          "completed": false,
+          "labels": ["area:packaging"]
+        }
+      ]
+    },
+    {
+      "phase": "23",
+      "title": "Cross-platform hardening",
+      "spec_section": "§24.23",
+      "milestone": "M4: Ship readiness",
+      "depends_on": ["22"],
+      "completed": false,
+      "epic": {
+        "number": 96,
+        "title": "Phase 23: Cross-platform hardening",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/96",
+        "completed": false,
+        "labels": ["area:rust", "area:packaging"]
+      },
+      "issues": [
+        {
+          "number": 102,
+          "title": "Windows-specific polish — high-DPI, dark mode, taskbar grouping, shortcuts",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/102",
+          "completed": false,
+          "labels": ["area:rust", "area:packaging"]
+        },
+        {
+          "number": 103,
+          "title": "macOS-specific polish — vibrancy, traffic lights, dock badge, menu bar",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/103",
+          "completed": false,
+          "labels": ["area:rust", "area:packaging"]
+        },
+        {
+          "number": 104,
+          "title": "Linux-specific polish — Wayland fallback, Snap/Flatpak hints, secret service",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/104",
+          "completed": false,
+          "labels": ["area:rust", "area:packaging"]
+        },
+        {
+          "number": 105,
+          "title": "Cross-platform verification matrix wired into CI as required cells",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/105",
+          "completed": false,
+          "labels": ["area:rust", "area:packaging"]
+        }
+      ]
+    },
+    {
+      "phase": "24",
+      "title": "v1.0.0 release candidate",
+      "spec_section": "§24.24",
+      "milestone": "M4: Ship readiness",
+      "depends_on": ["23"],
+      "completed": false,
+      "epic": {
+        "number": 118,
+        "title": "Phase 24: v1.0.0 release candidate",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/118",
+        "completed": false,
+        "labels": ["area:packaging", "area:ci-meta"]
+      },
+      "issues": [
+        {
+          "number": 120,
+          "title": "Public API freeze checklist — snapshot every public symbol; semver guard test",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/120",
+          "completed": false,
+          "labels": ["area:packaging", "area:ci-meta"]
+        },
+        {
+          "number": 122,
+          "title": "Documentation release checklist — every primitive has a doc page; example tested",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/122",
+          "completed": false,
+          "labels": ["area:packaging", "area:ci-meta"]
+        },
+        {
+          "number": 124,
+          "title": "CI release checklist — SBOM, CVSS scan, SLSA provenance, HSM signing, secret scanning",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/124",
+          "completed": false,
+          "labels": ["area:packaging", "area:ci-meta"]
+        },
+        {
+          "number": 126,
+          "title": "Accessibility and localization gates — axe-core, manual keyboard pass, RTL example",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/126",
+          "completed": false,
+          "labels": ["area:packaging", "area:ci-meta"]
+        },
+        {
+          "number": 128,
+          "title": "Versioning policy compliance test — non-additive change blocks release",
+          "url": "https://github.com/Rika-Labs/effect-desktop/issues/128",
+          "completed": false,
+          "labels": ["area:packaging", "area:ci-meta"]
+        }
+      ]
+    }
+  ]
+}
