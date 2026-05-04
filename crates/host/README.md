@@ -10,8 +10,9 @@
 ## Linux native prerequisites
 
 Linux builds that compile the WRY/TAO WebView stack require GTK 3 and
-WebKitGTK 4.1 development packages:
+WebKitGTK 4.1 development packages. Headless smoke validation also requires
+Xvfb and `xauth`:
 
 ```bash
-sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev xvfb xauth
 ```

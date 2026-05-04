@@ -1,7 +1,11 @@
-use anyhow::Result;
+mod window;
+
+use anyhow::{bail, Result};
 use tracing::info;
+use window::RunMode;
 
 const HOST_STARTED_EVENT: &str = "host.started";
+const WINDOW_SMOKE_TEST_ARG: &str = "--window-smoke-test";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct StartupEvent {
@@ -17,6 +21,8 @@ fn startup_event() -> StartupEvent {
 }
 
 fn main() -> Result<()> {
+    let run_mode = parse_run_mode(std::env::args())?;
+
     tracing_subscriber::fmt()
         .with_ansi(false)
         .try_init()
@@ -30,12 +36,26 @@ fn main() -> Result<()> {
         "host started"
     );
 
-    Ok(())
+    window::run_main_window(run_mode)
+}
+
+fn parse_run_mode(args: impl IntoIterator<Item = String>) -> Result<RunMode> {
+    let mut run_mode = RunMode::Interactive;
+
+    for arg in args.into_iter().skip(1) {
+        match arg.as_str() {
+            WINDOW_SMOKE_TEST_ARG => run_mode = RunMode::WindowSmokeTest,
+            unknown => bail!("unknown host argument: {unknown}"),
+        }
+    }
+
+    Ok(run_mode)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{startup_event, HOST_STARTED_EVENT};
+    use super::{parse_run_mode, startup_event, HOST_STARTED_EVENT, WINDOW_SMOKE_TEST_ARG};
+    use crate::window::RunMode;
 
     #[test]
     fn startup_event_identifies_host_binary() {
@@ -44,5 +64,30 @@ mod tests {
         assert_eq!(HOST_STARTED_EVENT, "host.started");
         assert_eq!(event.crate_name, "host");
         assert_eq!(event.version, "0.0.0");
+    }
+
+    #[test]
+    fn default_run_mode_is_interactive() {
+        assert_eq!(
+            parse_run_mode(["host".to_string()]).expect("run mode should parse"),
+            RunMode::Interactive
+        );
+    }
+
+    #[test]
+    fn window_smoke_test_arg_selects_smoke_mode() {
+        assert_eq!(
+            parse_run_mode(["host".to_string(), WINDOW_SMOKE_TEST_ARG.to_string()])
+                .expect("run mode should parse"),
+            RunMode::WindowSmokeTest
+        );
+    }
+
+    #[test]
+    fn unknown_arg_is_an_error() {
+        let error = parse_run_mode(["host".to_string(), "--unknown".to_string()])
+            .expect_err("unknown arg should fail");
+
+        assert_eq!(error.to_string(), "unknown host argument: --unknown");
     }
 }

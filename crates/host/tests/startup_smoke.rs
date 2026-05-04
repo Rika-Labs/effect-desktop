@@ -3,6 +3,7 @@ use std::process::Command;
 #[test]
 fn host_binary_emits_startup_event_and_exits_zero() {
     let output = Command::new(env!("CARGO_BIN_EXE_host"))
+        .arg("--window-smoke-test")
         .output()
         .expect("host binary should execute");
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -26,6 +27,14 @@ fn host_binary_emits_startup_event_and_exits_zero() {
     assert!(
         process_output.contains("crate=\"host\""),
         "process output did not contain crate field\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        process_output.contains("event=\"host.window.opened\""),
+        "process output did not contain window opened event\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        process_output.contains("event=\"host.window.exit_requested\""),
+        "process output did not contain window exit event\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
 
     let version_field = format!("version=\"{}\"", env!("CARGO_PKG_VERSION"));
