@@ -1,11 +1,29 @@
-//! Phase 0 stub. The crate exists so the Cargo workspace resolves and `cargo
-//! check --workspace` / `cargo test --workspace` have something to compile.
-//! Real implementation lands in later phases per `docs/SPEC.md` §24.
+pub const HOST_STARTED_EVENT: &str = "host.started";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct StartupEvent {
+    pub crate_name: &'static str,
+    pub version: &'static str,
+}
+
+#[must_use]
+pub fn startup_event() -> StartupEvent {
+    StartupEvent {
+        crate_name: env!("CARGO_PKG_NAME"),
+        version: env!("CARGO_PKG_VERSION"),
+    }
+}
 
 #[cfg(test)]
 mod tests {
+    use super::{startup_event, HOST_STARTED_EVENT};
+
     #[test]
-    fn it_compiles() {
-        assert_eq!(2 + 2, 4);
+    fn startup_event_identifies_host_binary() {
+        let event = startup_event();
+
+        assert_eq!(HOST_STARTED_EVENT, "host.started");
+        assert_eq!(event.crate_name, "host");
+        assert_eq!(event.version, "0.0.0");
     }
 }

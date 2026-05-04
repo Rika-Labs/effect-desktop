@@ -7,3 +7,14 @@ repository.workspace = true
 publish = false
 
 [lib]
+
+[[bin]]
+name = "host"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+tao.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+wry.workspace = true
