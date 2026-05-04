@@ -1,0 +1,18 @@
+[workspace]
+members = [
+  "crates/host",
+  "crates/host-protocol",
+  "crates/native-pty",
+  "crates/native-updater"
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Rika-Labs/effect-desktop"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"

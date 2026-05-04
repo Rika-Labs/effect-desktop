@@ -1,0 +1,114 @@
+import { describe, expect, test } from "bun:test"
+import { readFileSync, readdirSync, statSync } from "node:fs"
+import { join } from "node:path"
+
+const REPO_ROOT = join(import.meta.dir, "..")
+
+const REQUIRED_TS_PACKAGES = [
+  "core",
+  "bridge",
+  "native",
+  "react",
+  "cli",
+  "devtools",
+  "test",
+  "config",
+  "create-effect-desktop"
+] as const
+
+const REQUIRED_RUST_CRATES = ["host", "host-protocol", "native-pty", "native-updater"] as const
+
+const REQUIRED_PACKAGE_SCRIPTS = ["check", "typecheck", "test", "lint"] as const
+
+const PHASE_0_STUB_INDEX = "export {}\n"
+const PHASE_0_TS_TEST_MARKER = "phase 0 stub compiles and runs"
+const PHASE_0_RUST_TEST_MARKER = "fn it_compiles"
+
+const readJson = (path: string): Record<string, unknown> =>
+  JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>
+
+describe("workspaces", () => {
+  const root = readJson(join(REPO_ROOT, "package.json"))
+  const workspaces = root.workspaces as Array<string>
+
+  test("root package.json declares the spec §5.4 globs", () => {
+    expect(workspaces).toEqual(["apps/*", "apps/examples/*", "packages/*", "templates/*"])
+  })
+})
+
+describe("packages/*", () => {
+  for (const name of REQUIRED_TS_PACKAGES) {
+    const dir = join(REPO_ROOT, "packages", name)
+
+    test(`${name} directory exists`, () => {
+      expect(statSync(dir).isDirectory()).toBe(true)
+    })
+
+    test(`${name}/package.json declares all required scripts`, () => {
+      const pkg = readJson(join(dir, "package.json"))
+      const scripts = (pkg.scripts ?? {}) as Record<string, string>
+      for (const required of REQUIRED_PACKAGE_SCRIPTS) {
+        expect(scripts[required]).toBeDefined()
+      }
+    })
+
+    test(`${name}/tsconfig.json extends the workspace base`, () => {
+      const tsc = readJson(join(dir, "tsconfig.json"))
+      expect(tsc.extends).toBe("../../tsconfig.base.json")
+    })
+
+    test(`${name} stub markers are aligned (real src means real test)`, () => {
+      const indexPath = join(dir, "src/index.ts")
+      const testPath = join(dir, "src/index.test.ts")
+      const indexBody = readFileSync(indexPath, "utf8")
+      const testBody = readFileSync(testPath, "utf8")
+
+      const isStubIndex = indexBody === PHASE_0_STUB_INDEX
+      const isStubTest = testBody.includes(PHASE_0_TS_TEST_MARKER)
+
+      // Allowed: stub index + stub test (Phase 0 baseline) OR real index + real test.
+      // Forbidden: real index alongside the Phase 0 tautology test.
+      if (!isStubIndex && isStubTest) {
+        throw new Error(
+          `${name}/src/index.ts has real exports but src/index.test.ts still contains the Phase 0 tautology marker — write a real test for the new code.`
+        )
+      }
+    })
+  }
+})
+
+describe("crates/*", () => {
+  const cargoToml = readFileSync(join(REPO_ROOT, "Cargo.toml"), "utf8")
+
+  for (const name of REQUIRED_RUST_CRATES) {
+    test(`${name} is listed in Cargo.toml workspace members`, () => {
+      expect(cargoToml).toContain(`"crates/${name}"`)
+    })
+
+    test(`${name} stub markers are aligned (real lib means real test)`, () => {
+      const libPath = join(REPO_ROOT, "crates", name, "src/lib.rs")
+      const lib = readFileSync(libPath, "utf8")
+      // Marker contract: a Phase 0 stub crate carries a `//! Phase 0 stub.` doc
+      // comment. When implementation lands, the contributor removes the comment
+      // first. After that, the placeholder `fn it_compiles` must also go.
+      const carriesStubMarker = lib.includes("Phase 0 stub.")
+      const hasStubTest = lib.includes(PHASE_0_RUST_TEST_MARKER)
+
+      if (!carriesStubMarker && hasStubTest) {
+        throw new Error(
+          `crates/${name}/src/lib.rs has dropped the \`Phase 0 stub.\` marker but still contains \`fn it_compiles\` — replace the placeholder with a real test.`
+        )
+      }
+    })
+  }
+
+  test("no extra crate directory is missing from Cargo.toml workspace members", () => {
+    const cratesDir = join(REPO_ROOT, "crates")
+    const present = readdirSync(cratesDir).filter((entry) =>
+      statSync(join(cratesDir, entry)).isDirectory()
+    )
+    for (const crate of present) {
+      expect(cargoToml).toContain(`"crates/${crate}"`)
+    }
+  })
+})

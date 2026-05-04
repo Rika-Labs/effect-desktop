@@ -1,0 +1,9 @@
+node_modules/
+dist/
+build/
+target/
+.turbo/
+coverage/
+docs/SPEC.md
+bun.lock
+*.lockb
