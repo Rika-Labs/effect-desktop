@@ -14,7 +14,7 @@ export interface ApiMethodSpec {
 export interface BackpressureSpec {
   readonly strategy: "buffer" | "drop" | "block"
   readonly size?: number
-  readonly overflow?: "error" | "drop-oldest" | "drop-newest"
+  readonly overflow?: "error" | "dropOldest" | "dropNewest" | "block"
 }
 
 export type ApiContractSpec = Readonly<Record<string, ApiMethodSpec>>
@@ -32,7 +32,13 @@ export interface ApiContractClass<
 }
 
 export type ApiHandlers<Spec extends ApiContractSpec> = {
-  readonly [Method in keyof Spec]: unknown
+  readonly [Method in keyof Spec]: (
+    input: Schema.Schema.Type<Spec[Method]["input"]>
+  ) => Effect.Effect<
+    Schema.Schema.Type<Spec[Method]["output"]>,
+    Schema.Schema.Type<Spec[Method]["error"]>,
+    never
+  >
 }
 
 export interface ApiLayer<
@@ -122,9 +128,11 @@ const registerApiContract = <Tag extends string, Spec extends ApiContractSpec>(
       static layer<Handlers extends ApiHandlers<Spec>>(
         handlers: Handlers
       ): ApiLayer<Tag, Spec, Handlers> {
+        const frozenHandlers = Object.freeze({ ...handlers }) as Handlers
+
         return Object.freeze({
           contract: this as ApiContractClass<Tag, Spec>,
-          handlers
+          handlers: frozenHandlers
         })
       }
     } as ApiContractClass<Tag, Spec>

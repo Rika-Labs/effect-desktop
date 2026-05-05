@@ -19,7 +19,8 @@ test("Api.Tag registers a frozen contract and exposes a stable snapshot", async 
         permission: "project:open",
         timeoutMs: 30_000,
         idempotent: true,
-        cancellable: true
+        cancellable: true,
+        backpressure: { strategy: "buffer", size: 128, overflow: "dropOldest" }
       }
     })
   )
@@ -89,12 +90,13 @@ test("contract classes expose frozen layer descriptors", async () => {
   )
 
   const layer = LayeredApi.layer({
-    call: "handler"
+    call: (input) => Effect.succeed(input.toUpperCase())
   })
 
   expect(layer.contract).toBe(LayeredApi)
-  expect(layer.handlers.call).toBe("handler")
+  expect(await Effect.runPromise(layer.handlers.call("request"))).toBe("REQUEST")
   expect(Object.isFrozen(layer)).toBe(true)
+  expect(Object.isFrozen(layer.handlers)).toBe(true)
 })
 
 test("zz Api.freeze rejects later registrations as a typed Effect failure", async () => {
