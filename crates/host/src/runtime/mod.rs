@@ -409,7 +409,7 @@ fn monitor_runtime(
             }
             MonitorNext::Event(RuntimeEvent::StdioError { stream, error }) => {
                 warn!(?stream, error, "runtime stdio error");
-                finish_runtime_child(child);
+                terminate_runtime_child(child);
                 break;
             }
             MonitorNext::Event(RuntimeEvent::LifecycleError { error }) => {
@@ -701,8 +701,9 @@ fn join_thread(thread: Option<JoinHandle<()>>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        await_ready, await_ready_events, parse_runtime_ready_line, RestartPolicy, RuntimeConfig,
-        RuntimeEvent, RuntimeProfile, RuntimeReady, RuntimeStream, Supervisor,
+        await_ready, await_ready_events, monitor_runtime, parse_runtime_ready_line, RestartPolicy,
+        RuntimeChild, RuntimeConfig, RuntimeEvent, RuntimeProfile, RuntimeReady, RuntimeStream,
+        Supervisor, Termination,
     };
     use std::{
         fs,
@@ -813,6 +814,35 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn monitor_terminates_child_on_stdio_error() {
+        let (events_tx, events_rx) = mpsc::channel();
+        let (child, terminated_rx) = child_that_reports_termination(events_rx);
+        let (_shutdown_tx, shutdown_rx) = mpsc::channel();
+
+        events_tx
+            .send(RuntimeEvent::StdioError {
+                stream: RuntimeStream::Stdout,
+                error: "decode failed".to_string(),
+            })
+            .expect("stdio error should send");
+        drop(events_tx);
+
+        monitor_runtime(
+            RuntimeConfig::new("unused"),
+            test_policy(RuntimeProfile::Prod, 0, EVENT_TIMEOUT),
+            child,
+            shutdown_rx,
+        );
+
+        assert!(
+            terminated_rx
+                .recv_timeout(EVENT_TIMEOUT)
+                .expect("termination observation should send"),
+            "monitor must terminate a child after stdio failure"
+        );
     }
 
     #[test]
@@ -1023,6 +1053,31 @@ mod tests {
             ),
             "runtime emitted or retained events after Exited: {after_exit:?}"
         );
+    }
+
+    fn child_that_reports_termination(
+        events: Receiver<RuntimeEvent>,
+    ) -> (RuntimeChild, Receiver<bool>) {
+        let (terminate_tx, terminate_rx) = mpsc::channel();
+        let (terminated_tx, terminated_rx) = mpsc::channel();
+        let lifecycle_thread = thread::spawn(move || {
+            let terminated = matches!(
+                terminate_rx.recv_timeout(Duration::from_millis(100)),
+                Ok(Termination::Terminate)
+            );
+            terminated_tx
+                .send(terminated)
+                .expect("termination observation should send");
+        });
+
+        (
+            RuntimeChild {
+                events,
+                terminate: terminate_tx,
+                lifecycle_thread,
+            },
+            terminated_rx,
+        )
     }
 
     fn test_policy(
