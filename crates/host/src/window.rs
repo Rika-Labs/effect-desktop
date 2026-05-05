@@ -496,6 +496,28 @@ pub(crate) fn run_main_window(mode: RunMode, window_methods: WindowMethodPort) -
         WindowLifecycleEvent::CloseRequested | WindowLifecycleEvent::Other => {}
     }
 
+    if matches!(mode, RunMode::WindowSmokeTest) {
+        let smoke_lifecycle = registry.handle_window_commands(
+            &event_loop,
+            mode,
+            command_source.take_startup_commands(),
+        );
+        match smoke_lifecycle {
+            WindowLifecycleEvent::SmokeExitRequested => {
+                info!(
+                    event = WINDOW_EXIT_REQUESTED_EVENT,
+                    source = "window-smoke-test",
+                    "host window exit requested"
+                );
+                return Ok(());
+            }
+            WindowLifecycleEvent::WindowCreateFailed => bail!("smoke window create failed"),
+            WindowLifecycleEvent::CloseRequested | WindowLifecycleEvent::Other => {
+                bail!("window smoke test did not destroy the startup window")
+            }
+        }
+    }
+
     event_loop.run(move |event, target, control_flow| {
         let lifecycle_event = match event {
             Event::NewEvents(_) => {
