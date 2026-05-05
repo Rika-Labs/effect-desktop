@@ -142,6 +142,19 @@ test("Api.Tag rejects invalid boolean flags as a typed Effect failure", async ()
   expectFailure(exit, InvalidApiContractSpec)
 })
 
+test("Api.Tag rejects idempotent methods without cached result metadata", async () => {
+  const exit = await Effect.runPromiseExit(
+    Api.Tag("Test.MissingCachedResult")<unknown>()({
+      call: {
+        ...validMethodSpec(),
+        idempotent: true
+      }
+    })
+  )
+
+  expectFailure(exit, InvalidApiContractSpec)
+})
+
 test("Api.Tag rejects invalid backpressure values as a typed Effect failure", async () => {
   const exit = await Effect.runPromiseExit(
     Api.Tag("Test.InvalidBackpressure")<unknown>()({

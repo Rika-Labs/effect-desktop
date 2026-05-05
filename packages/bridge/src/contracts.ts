@@ -196,6 +196,11 @@ const validateMethodSpec = (
     if (spec.idempotent !== undefined && typeof spec.idempotent !== "boolean") {
       return yield* Effect.fail(invalidSpec(tag, method, "idempotent must be a boolean"))
     }
+    if (spec.idempotent === true && spec.cachedResultMs === undefined) {
+      return yield* Effect.fail(
+        invalidSpec(tag, method, "idempotent methods must declare cachedResultMs")
+      )
+    }
     if (spec.cancellable !== undefined && typeof spec.cancellable !== "boolean") {
       return yield* Effect.fail(invalidSpec(tag, method, "cancellable must be a boolean"))
     }
