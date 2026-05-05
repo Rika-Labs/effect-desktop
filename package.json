@@ -15,7 +15,7 @@
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "lint": "turbo lint",
-    "lint:types": "oxlint --type-aware",
+    "lint:types": "oxlint --type-aware --ignore-pattern '**/dist/**'",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "cargo:check": "cargo check --workspace",
