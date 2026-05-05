@@ -3,6 +3,28 @@
 use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
+pub const HOST_PING_METHOD: &str = "host.ping";
+pub const HOST_VERSION_METHOD: &str = "host.version";
+pub const PROTOCOL_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HostVersionPayload {
+    protocol_version: String,
+}
+
+impl HostVersionPayload {
+    pub fn current() -> Self {
+        Self {
+            protocol_version: PROTOCOL_VERSION.to_string(),
+        }
+    }
+
+    pub fn protocol_version(&self) -> &str {
+        &self.protocol_version
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum HostProtocolEnvelope {
     Request {
@@ -494,7 +516,7 @@ pub enum HostProtocolError {
 
 #[cfg(test)]
 mod tests {
-    use super::{HostProtocolEnvelope, HostProtocolError};
+    use super::{HostProtocolEnvelope, HostProtocolError, HostVersionPayload, PROTOCOL_VERSION};
     use std::{fs, path::PathBuf};
 
     const FIXTURE_NAMES: &[&str] = &[
@@ -634,6 +656,17 @@ mod tests {
                 .to_string()
                 .contains("unknown variant `NotARealError`"),
             "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn host_version_payload_serializes_canonically() {
+        let payload = HostVersionPayload::current();
+
+        assert_eq!(payload.protocol_version(), PROTOCOL_VERSION);
+        assert_eq!(
+            serde_json::to_string(&payload).expect("version payload should encode"),
+            format!(r#"{{"protocolVersion":"{PROTOCOL_VERSION}"}}"#)
         );
     }
 

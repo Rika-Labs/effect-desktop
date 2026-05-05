@@ -34,6 +34,10 @@
     "packages/core": {
       "name": "@effect-desktop/core",
       "version": "0.0.0",
+      "dependencies": {
+        "@effect-desktop/bridge": "workspace:*",
+        "effect": "4.0.0-beta.60",
+      },
     },
     "packages/create-effect-desktop": {
       "name": "create-effect-desktop",
