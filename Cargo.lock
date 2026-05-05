@@ -845,9 +845,11 @@ name = "host"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "libc",
  "tao",
  "tracing",
  "tracing-subscriber",
+ "windows-sys 0.61.2",
  "wry",
 ]
 
