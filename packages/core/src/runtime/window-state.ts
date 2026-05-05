@@ -114,25 +114,29 @@ const readStore = (
       return new WindowStateStore({ windows: {} })
     }
 
+    return yield* decodeStore(content, path).pipe(
+      Effect.catchTag("WindowStateReadFailed", (error) =>
+        renameCorruptFile(path, now, error.reason)
+      )
+    )
+  })
+
+const decodeStore = (
+  content: string,
+  path: string
+): Effect.Effect<WindowStateStore, WindowStateReadFailed, never> =>
+  Effect.gen(function* () {
     const parsed = yield* Effect.try({
       try: () => JSON.parse(content) as unknown,
-      catch: (error) => error
-    }).pipe(
+      catch: (error) => new WindowStateReadFailed({ path, reason: formatUnknownError(error) })
+    })
+
+    return yield* Schema.decodeUnknownEffect(WindowStateStore)(parsed).pipe(
       Effect.mapError(
         (error) => new WindowStateReadFailed({ path, reason: formatUnknownError(error) })
       )
     )
-
-    const decoded = yield* Schema.decodeUnknownEffect(WindowStateStore)(parsed).pipe(
-      Effect.mapError(
-        (error) => new WindowStateReadFailed({ path, reason: formatUnknownError(error) })
-      )
-    )
-
-    return decoded
-  }).pipe(
-    Effect.catchTag("WindowStateReadFailed", (error) => renameCorruptFile(path, now, error.reason))
-  )
+  })
 
 const writeStore = (
   path: string,
@@ -165,10 +169,12 @@ const renameCorruptFile = (
   return Effect.tryPromise({
     try: () => rename(path, corruptPath),
     catch: (error) =>
-      new WindowStateCorruptRenamed({ path, corruptPath, reason: formatUnknownError(error) })
-  }).pipe(
-    Effect.flatMap(() => Effect.fail(new WindowStateCorruptRenamed({ path, corruptPath, reason })))
-  )
+      new WindowStateCorruptRenamed({
+        path,
+        corruptPath,
+        reason: `${reason}; corrupt-file rename failed: ${formatUnknownError(error)}`
+      })
+  }).pipe(Effect.as(new WindowStateStore({ windows: {} })))
 }
 
 export const defaultWindowStatePath = (bundleId: string): string => {

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { expect, test } from "bun:test"
 import { Effect, Exit, Option } from "effect"
 
-import { WindowStateCorruptRenamed, WindowStateRecord, makeWindowState } from "./window-state.js"
+import { WindowStateReadFailed, WindowStateRecord, makeWindowState } from "./window-state.js"
 
 const state = makeWindowStateRecord()
 
@@ -29,20 +29,31 @@ test("WindowState restore returns none for a missing window id", async () => {
   expect(Option.isNone(restored)).toBe(true)
 })
 
-test("WindowState renames corrupt state files and fails typed", async () => {
+test("WindowState renames corrupt state files and continues with defaults", async () => {
   const path = await tempWindowStatePath()
   await writeFile(path, "{", "utf8")
   const service = await Effect.runPromise(makeWindowState({ path, now: () => 1710000000000 }))
+
+  const restored = await Effect.runPromise(service.restore("main"))
+
+  expect(Option.isNone(restored)).toBe(true)
+  const files = await readdir(join(path, ".."))
+  expect(files).toContain("window-state.corrupt.1710000000000.json")
+})
+
+test("WindowState returns read failures without rotating healthy files", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-window-state-"))
+  const service = await Effect.runPromise(makeWindowState({ path: directory }))
 
   const exit = await Effect.runPromiseExit(service.restore("main"))
 
   expect(Exit.isFailure(exit)).toBe(true)
   if (Exit.isFailure(exit)) {
     const fail = exit.cause.reasons.find((reason) => reason._tag === "Fail")
-    expect(fail?.error).toBeInstanceOf(WindowStateCorruptRenamed)
+    expect(fail?.error).toBeInstanceOf(WindowStateReadFailed)
   }
-  const files = await readdir(join(path, ".."))
-  expect(files).toContain("window-state.corrupt.1710000000000.json")
+  const files = await readdir(directory)
+  expect(files.some((file) => file.startsWith("window-state.corrupt."))).toBe(false)
 })
 
 test("WindowState applies injected bounds validation on restore", async () => {
