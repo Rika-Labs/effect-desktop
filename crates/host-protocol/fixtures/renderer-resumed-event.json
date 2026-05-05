@@ -1,0 +1,1 @@
+{"kind":"event","method":"renderer.resumed","timestamp":1710000000012,"traceId":"trace-reconnect-3","windowId":"window-1","payload":{"replayedStreamIds":["stream-1"],"windowId":"window-1"}}

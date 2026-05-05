@@ -6,6 +6,8 @@ pub use error::{
     HostProtocolError, HostProtocolErrorSpec, HostProtocolPlatform, HOST_PROTOCOL_ERROR_SPECS,
 };
 
+use std::collections::BTreeMap;
+
 use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
@@ -14,6 +16,12 @@ pub const HOST_VERSION_METHOD: &str = "host.version";
 pub const PROTOCOL_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const WINDOW_CREATE_METHOD: &str = "Window.create";
 pub const WINDOW_DESTROY_METHOD: &str = "Window.destroy";
+pub const RENDERER_DISCONNECTED_EVENT: &str = "renderer.disconnected";
+pub const RENDERER_RESUME_METHOD: &str = "renderer.resume";
+pub const RENDERER_RESUMED_EVENT: &str = "renderer.resumed";
+pub const RENDERER_RESUME_DENIED_EVENT: &str = "renderer.resume.denied";
+pub const DEFAULT_RECONNECT_WINDOW_MS: u64 = 30_000;
+pub const DEFAULT_MAX_BACKFILL_EVENTS: u64 = 1_024;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -99,6 +107,179 @@ impl WindowDestroyPayload {
 
     pub fn window_id(&self) -> &str {
         &self.window_id
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResumeTicket {
+    window_id: String,
+    origin_token_hash: String,
+    resume_nonce: String,
+    expires_at: u64,
+    last_stream_cursors: BTreeMap<String, String>,
+}
+
+impl ResumeTicket {
+    pub fn new(
+        window_id: impl Into<String>,
+        origin_token_hash: impl Into<String>,
+        resume_nonce: impl Into<String>,
+        expires_at: u64,
+        last_stream_cursors: BTreeMap<String, String>,
+    ) -> Self {
+        Self {
+            window_id: window_id.into(),
+            origin_token_hash: origin_token_hash.into(),
+            resume_nonce: resume_nonce.into(),
+            expires_at,
+            last_stream_cursors,
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn origin_token_hash(&self) -> &str {
+        &self.origin_token_hash
+    }
+
+    pub fn resume_nonce(&self) -> &str {
+        &self.resume_nonce
+    }
+
+    pub fn expires_at(&self) -> u64 {
+        self.expires_at
+    }
+
+    pub fn last_stream_cursors(&self) -> &BTreeMap<String, String> {
+        &self.last_stream_cursors
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RendererDisconnectedPayload {
+    window_id: String,
+    resume_ticket: ResumeTicket,
+}
+
+impl RendererDisconnectedPayload {
+    pub fn new(window_id: impl Into<String>, resume_ticket: ResumeTicket) -> Self {
+        Self {
+            window_id: window_id.into(),
+            resume_ticket,
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn resume_ticket(&self) -> &ResumeTicket {
+        &self.resume_ticket
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RendererResumePayload {
+    window_id: String,
+    resume_nonce: String,
+    cursors: BTreeMap<String, String>,
+}
+
+impl RendererResumePayload {
+    pub fn new(
+        window_id: impl Into<String>,
+        resume_nonce: impl Into<String>,
+        cursors: BTreeMap<String, String>,
+    ) -> Self {
+        Self {
+            window_id: window_id.into(),
+            resume_nonce: resume_nonce.into(),
+            cursors,
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn resume_nonce(&self) -> &str {
+        &self.resume_nonce
+    }
+
+    pub fn cursors(&self) -> &BTreeMap<String, String> {
+        &self.cursors
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RendererResumedPayload {
+    window_id: String,
+    replayed_stream_ids: Vec<String>,
+}
+
+impl RendererResumedPayload {
+    pub fn new(window_id: impl Into<String>, replayed_stream_ids: Vec<String>) -> Self {
+        Self {
+            window_id: window_id.into(),
+            replayed_stream_ids,
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn replayed_stream_ids(&self) -> &[String] {
+        &self.replayed_stream_ids
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RendererResumeDeniedReason {
+    Expired,
+    WindowMismatch,
+    OriginInvalid,
+    BackfillExhausted,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RendererResumeDeniedPayload {
+    window_id: String,
+    reason: RendererResumeDeniedReason,
+    message: String,
+}
+
+impl RendererResumeDeniedPayload {
+    pub fn new(
+        window_id: impl Into<String>,
+        reason: RendererResumeDeniedReason,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            window_id: window_id.into(),
+            reason,
+            message: message.into(),
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn reason(&self) -> &RendererResumeDeniedReason {
+        &self.reason
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
     }
 }
 
@@ -453,15 +634,26 @@ impl TryFrom<RawHostProtocolEnvelope> for HostProtocolEnvelope {
 #[cfg(test)]
 mod tests {
     use super::{
-        HostProtocolEnvelope, HostProtocolError, HostVersionPayload, WindowCreatePayload,
-        WindowCreateResponse, WindowDestroyPayload, HOST_PROTOCOL_ERROR_SPECS, PROTOCOL_VERSION,
+        HostProtocolEnvelope, HostProtocolError, HostVersionPayload, RendererResumeDeniedPayload,
+        RendererResumeDeniedReason, RendererResumePayload, RendererResumedPayload, ResumeTicket,
+        WindowCreatePayload, WindowCreateResponse, WindowDestroyPayload,
+        DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS, HOST_PROTOCOL_ERROR_SPECS,
+        PROTOCOL_VERSION,
     };
-    use std::{collections::BTreeSet, fs, path::PathBuf};
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        fs,
+        path::PathBuf,
+    };
 
     const FIXTURE_NAMES: &[&str] = &[
         "request.json",
         "response.json",
         "event.json",
+        "renderer-disconnected-event.json",
+        "renderer-resume-denied-event.json",
+        "renderer-resume-request.json",
+        "renderer-resumed-event.json",
         "stream.json",
         "cancel.json",
         "error-response.json",
@@ -704,6 +896,85 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&payload).expect("window destroy payload should encode"),
             r#"{"windowId":"window-1"}"#
+        );
+    }
+
+    #[test]
+    fn reconnect_defaults_match_spec_values() {
+        assert_eq!(DEFAULT_RECONNECT_WINDOW_MS, 30_000);
+        assert_eq!(DEFAULT_MAX_BACKFILL_EVENTS, 1_024);
+    }
+
+    #[test]
+    fn resume_ticket_serializes_canonically() {
+        let ticket = ResumeTicket::new(
+            "window-1",
+            "sha256:origin",
+            "resume-1",
+            1710000030000,
+            BTreeMap::from([("stream-1".to_string(), "42".to_string())]),
+        );
+
+        assert_eq!(ticket.window_id(), "window-1");
+        assert_eq!(ticket.origin_token_hash(), "sha256:origin");
+        assert_eq!(ticket.resume_nonce(), "resume-1");
+        assert_eq!(ticket.expires_at(), 1710000030000);
+        assert_eq!(
+            ticket.last_stream_cursors().get("stream-1"),
+            Some(&"42".to_string())
+        );
+        assert_eq!(
+            serde_json::to_string(&ticket).expect("resume ticket should encode"),
+            r#"{"windowId":"window-1","originTokenHash":"sha256:origin","resumeNonce":"resume-1","expiresAt":1710000030000,"lastStreamCursors":{"stream-1":"42"}}"#
+        );
+    }
+
+    #[test]
+    fn renderer_resume_payload_serializes_canonically() {
+        let payload = RendererResumePayload::new(
+            "window-1",
+            "resume-1",
+            BTreeMap::from([("stream-1".to_string(), "42".to_string())]),
+        );
+
+        assert_eq!(payload.window_id(), "window-1");
+        assert_eq!(payload.resume_nonce(), "resume-1");
+        assert_eq!(payload.cursors().get("stream-1"), Some(&"42".to_string()));
+        assert_eq!(
+            serde_json::to_string(&payload).expect("renderer resume payload should encode"),
+            r#"{"windowId":"window-1","resumeNonce":"resume-1","cursors":{"stream-1":"42"}}"#
+        );
+    }
+
+    #[test]
+    fn renderer_resumed_payload_serializes_canonically() {
+        let payload = RendererResumedPayload::new("window-1", vec!["stream-1".to_string()]);
+
+        assert_eq!(payload.window_id(), "window-1");
+        assert_eq!(payload.replayed_stream_ids(), ["stream-1".to_string()]);
+        assert_eq!(
+            serde_json::to_string(&payload).expect("renderer resumed payload should encode"),
+            r#"{"windowId":"window-1","replayedStreamIds":["stream-1"]}"#
+        );
+    }
+
+    #[test]
+    fn renderer_resume_denied_payload_serializes_canonically() {
+        let payload = RendererResumeDeniedPayload::new(
+            "window-1",
+            RendererResumeDeniedReason::BackfillExhausted,
+            "reconnect backfill exhausted",
+        );
+
+        assert_eq!(payload.window_id(), "window-1");
+        assert_eq!(
+            payload.reason(),
+            &RendererResumeDeniedReason::BackfillExhausted
+        );
+        assert_eq!(payload.message(), "reconnect backfill exhausted");
+        assert_eq!(
+            serde_json::to_string(&payload).expect("renderer resume denied payload should encode"),
+            r#"{"windowId":"window-1","reason":"backfillExhausted","message":"reconnect backfill exhausted"}"#
         );
     }
 

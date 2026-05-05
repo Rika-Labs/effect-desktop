@@ -1,0 +1,1 @@
+{"kind":"event","method":"renderer.resume.denied","timestamp":1710000000013,"traceId":"trace-reconnect-4","windowId":"window-1","payload":{"message":"reconnect backfill exhausted","reason":"backfillExhausted","windowId":"window-1"}}

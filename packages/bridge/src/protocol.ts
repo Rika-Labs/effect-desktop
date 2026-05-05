@@ -7,11 +7,18 @@ export const HOST_VERSION_METHOD = "host.version"
 export const HOST_PROTOCOL_VERSION = packageJson.version
 export const WINDOW_CREATE_METHOD = "Window.create"
 export const WINDOW_DESTROY_METHOD = "Window.destroy"
+export const RENDERER_DISCONNECTED_EVENT = "renderer.disconnected"
+export const RENDERER_RESUME_METHOD = "renderer.resume"
+export const RENDERER_RESUMED_EVENT = "renderer.resumed"
+export const RENDERER_RESUME_DENIED_EVENT = "renderer.resume.denied"
+export const DEFAULT_RECONNECT_WINDOW_MS = 30_000
+export const DEFAULT_MAX_BACKFILL_EVENTS = 1_024
 
 const UInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const UInt32 = UInt.check(Schema.isLessThanOrEqualTo(4_294_967_295))
 const OptionalString = Schema.optionalKey(Schema.String)
 const OptionalUnknown = Schema.optionalKey(Schema.Unknown)
+const StringRecord = Schema.Record(Schema.String, Schema.String)
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export const HOST_PROTOCOL_ERROR_SPECS = [
@@ -695,6 +702,53 @@ export const makeHostProtocolNotFoundError = (
     resource,
     ...makeHostProtocolErrorCommonInput("NotFound", `resource not found: ${resource}`, operation)
   })
+
+export class ResumeTicket extends Schema.Class<ResumeTicket>("ResumeTicket")({
+  windowId: Schema.String,
+  originTokenHash: Schema.String,
+  resumeNonce: Schema.String,
+  expiresAt: UInt,
+  lastStreamCursors: StringRecord
+}) {}
+
+export class RendererDisconnectedPayload extends Schema.Class<RendererDisconnectedPayload>(
+  "RendererDisconnectedPayload"
+)({
+  windowId: Schema.String,
+  resumeTicket: ResumeTicket
+}) {}
+
+export class RendererResumePayload extends Schema.Class<RendererResumePayload>(
+  "RendererResumePayload"
+)({
+  windowId: Schema.String,
+  resumeNonce: Schema.String,
+  cursors: StringRecord
+}) {}
+
+export class RendererResumedPayload extends Schema.Class<RendererResumedPayload>(
+  "RendererResumedPayload"
+)({
+  windowId: Schema.String,
+  replayedStreamIds: Schema.Array(Schema.String)
+}) {}
+
+export const RendererResumeDeniedReason = Schema.Literals([
+  "expired",
+  "windowMismatch",
+  "originInvalid",
+  "backfillExhausted"
+])
+
+export type RendererResumeDeniedReason = typeof RendererResumeDeniedReason.Type
+
+export class RendererResumeDeniedPayload extends Schema.Class<RendererResumeDeniedPayload>(
+  "RendererResumeDeniedPayload"
+)({
+  windowId: Schema.String,
+  reason: RendererResumeDeniedReason,
+  message: Schema.String
+}) {}
 
 export class HostProtocolRequestEnvelope extends Schema.Class<HostProtocolRequestEnvelope>(
   "HostProtocolRequestEnvelope"
