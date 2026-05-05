@@ -1,8 +1,7 @@
 mod assets;
+mod methods;
 mod runtime;
 mod scheme;
-// Issue #58 lands the framing primitive before #59 wires it into Supervisor.
-#[allow(dead_code)]
 mod transport;
 mod webview;
 mod window;

@@ -845,6 +845,7 @@ name = "host"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "host-protocol",
  "libc",
  "serde_json",
  "tao",

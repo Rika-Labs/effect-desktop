@@ -2,12 +2,17 @@
 
 mod platform;
 
+use crate::{
+    methods,
+    transport::framed::{FrameReader, FrameWriter},
+};
 use anyhow::{bail, Context, Result};
+use host_protocol::HostProtocolEnvelope;
 use serde_json::Value;
 use std::{
     env::VarError,
     ffi::OsString,
-    io::{self, BufRead, BufReader, Read},
+    io::{self, BufRead, BufReader, Read, Write},
     path::PathBuf,
     process::{Child, Command, ExitStatus, Stdio},
     sync::mpsc::{self, Receiver, RecvTimeoutError, Sender},
@@ -58,7 +63,7 @@ impl RuntimeConfig {
         let mut command = Command::new(&self.executable);
         command
             .args(&self.args)
-            .stdin(Stdio::null())
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
@@ -338,6 +343,10 @@ fn spawn_runtime_child(config: &RuntimeConfig) -> Result<RuntimeChild> {
         .spawn()
         .with_context(|| format!("failed to spawn runtime executable {:?}", config.executable))?;
     let pid = child.id();
+    let stdin = child
+        .stdin
+        .take()
+        .context("failed to capture runtime stdin")?;
     let stdout = child
         .stdout
         .take()
@@ -361,7 +370,7 @@ fn spawn_runtime_child(config: &RuntimeConfig) -> Result<RuntimeChild> {
         .send(RuntimeEvent::Started { pid })
         .context("failed to emit runtime started event")?;
 
-    let stdout_thread = spawn_reader(RuntimeStream::Stdout, stdout, event_tx.clone());
+    let stdout_thread = spawn_stdout_driver(stdout, stdin, event_tx.clone());
     let stderr_thread = spawn_reader(RuntimeStream::Stderr, stderr, event_tx.clone());
     let lifecycle_thread = spawn_lifecycle(
         child,
@@ -588,6 +597,79 @@ fn finish_runtime_child(child: RuntimeChild) {
     join_thread(Some(child.lifecycle_thread));
 }
 
+fn spawn_stdout_driver<R, W>(stdout: R, stdin: W, events: Sender<RuntimeEvent>) -> JoinHandle<()>
+where
+    R: Read + Send + 'static,
+    W: Write + Send + 'static,
+{
+    thread::spawn(move || {
+        let mut reader = BufReader::new(stdout);
+
+        loop {
+            let mut line = String::new();
+            match reader.read_line(&mut line) {
+                Ok(0) => return,
+                Ok(_) => {
+                    trim_line_end(&mut line);
+                    let is_ready = matches!(parse_runtime_ready_line(&line), Ok(Some(_)));
+                    if events
+                        .send(RuntimeEvent::Stdout { line: line.clone() })
+                        .is_err()
+                    {
+                        return;
+                    }
+
+                    if is_ready {
+                        break;
+                    }
+                }
+                Err(error) => {
+                    let _ = events.send(RuntimeEvent::StdioError {
+                        stream: RuntimeStream::Stdout,
+                        error: error.to_string(),
+                    });
+                    return;
+                }
+            }
+        }
+
+        if let Err(error) = serve_framed_host_requests(reader, stdin) {
+            let _ = events.send(RuntimeEvent::StdioError {
+                stream: RuntimeStream::Stdout,
+                error: error.to_string(),
+            });
+        }
+    })
+}
+
+fn serve_framed_host_requests<R, W>(reader: R, writer: W) -> Result<()>
+where
+    R: Read,
+    W: Write,
+{
+    let mut reader = FrameReader::new(reader);
+    let mut writer = FrameWriter::new(writer);
+
+    while let Some(frame) = reader.recv()? {
+        let envelope: HostProtocolEnvelope =
+            serde_json::from_slice(&frame).context("failed to decode host protocol frame")?;
+
+        if let Some(response) = methods::dispatch(envelope) {
+            let response =
+                serde_json::to_vec(&response).context("failed to encode host protocol response")?;
+            writer.send(&response)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn trim_line_end(line: &mut String) {
+    while line.ends_with('\n') || line.ends_with('\r') {
+        line.pop();
+    }
+}
+
 fn spawn_reader<R>(stream: RuntimeStream, reader: R, events: Sender<RuntimeEvent>) -> JoinHandle<()>
 where
     R: Read + Send + 'static,
@@ -707,13 +789,87 @@ mod tests {
     };
     use std::{
         fs,
+        io::Cursor,
         path::{Path, PathBuf},
         sync::mpsc::{self, Receiver},
         thread,
         time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     };
 
+    use crate::transport::framed::{FrameReader, FrameWriter};
+    use host_protocol::{HostProtocolEnvelope, PROTOCOL_VERSION};
+
     const EVENT_TIMEOUT: Duration = Duration::from_secs(5);
+    const RUNTIME_HANDSHAKE_SCRIPT: &str = r#"
+const fs = require("node:fs");
+const { Buffer } = require("node:buffer");
+const expectedProtocolVersion = "__PROTOCOL_VERSION__";
+
+function writeFrame(value) {
+  const body = Buffer.from(JSON.stringify(value), "utf8");
+  const prefix = Buffer.alloc(4);
+  prefix.writeUInt32BE(body.length, 0);
+  fs.writeSync(1, prefix);
+  fs.writeSync(1, body);
+}
+
+function readExactly(byteLength) {
+  const buffer = Buffer.alloc(byteLength);
+  let offset = 0;
+  while (offset < byteLength) {
+    const read = fs.readSync(0, buffer, offset, byteLength - offset, null);
+    if (read === 0) {
+      throw new Error(`stdin closed after ${offset} of ${byteLength} bytes`);
+    }
+    offset += read;
+  }
+  return buffer;
+}
+
+function readFrame() {
+  const prefix = readExactly(4);
+  const byteLength = prefix.readUInt32BE(0);
+  return JSON.parse(readExactly(byteLength).toString("utf8"));
+}
+
+console.log(JSON.stringify({ event: "runtime.ready", version: "test" }));
+
+writeFrame({
+  kind: "request",
+  id: "request-version",
+  method: "host.version",
+  timestamp: 1710000000000,
+  traceId: "trace-version"
+});
+const version = readFrame();
+if (
+  version.kind !== "response" ||
+  version.id !== "request-version" ||
+  version.traceId !== "trace-version" ||
+  version.error !== undefined ||
+  version.payload?.protocolVersion !== expectedProtocolVersion
+) {
+  throw new Error(`unexpected host.version response: ${JSON.stringify(version)}`);
+}
+
+writeFrame({
+  kind: "request",
+  id: "request-ping",
+  method: "host.ping",
+  timestamp: 1710000000001,
+  traceId: "trace-ping"
+});
+const ping = readFrame();
+if (
+  ping.kind !== "response" ||
+  ping.id !== "request-ping" ||
+  ping.traceId !== "trace-ping" ||
+  ping.error !== undefined ||
+  ping.payload !== undefined
+) {
+  throw new Error(`unexpected host.ping response: ${JSON.stringify(ping)}`);
+}
+"#;
 
     #[test]
     fn supervisor_emits_started_stdio_and_exit_events() {
@@ -814,6 +970,79 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn framed_runtime_requests_receive_host_responses() {
+        let request = HostProtocolEnvelope::Request {
+            id: "request-version".to_string(),
+            method: "host.version".to_string(),
+            timestamp: 1710000000000,
+            trace_id: "trace-version".to_string(),
+            window_id: None,
+            origin_token: None,
+            payload: None,
+        };
+        let request_bytes = serde_json::to_vec(&request).expect("request should encode");
+        let mut input = Vec::new();
+        FrameWriter::new(&mut input)
+            .send(&request_bytes)
+            .expect("request frame should encode");
+        let mut output = Vec::new();
+
+        super::serve_framed_host_requests(Cursor::new(input), &mut output)
+            .expect("host request should dispatch");
+
+        let mut reader = FrameReader::new(Cursor::new(output));
+        let response_frame = reader
+            .recv()
+            .expect("response should decode")
+            .expect("response frame should exist");
+        let response: HostProtocolEnvelope =
+            serde_json::from_slice(&response_frame).expect("response should decode");
+        let timestamp = match &response {
+            HostProtocolEnvelope::Response { timestamp, .. } => *timestamp,
+            _ => unreachable!("response frame must be a response envelope"),
+        };
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-version".to_string(),
+                timestamp,
+                trace_id: "trace-version".to_string(),
+                payload: Some(serde_json::json!({
+                    "protocolVersion": PROTOCOL_VERSION
+                })),
+                error: None,
+            }
+        );
+    }
+
+    #[test]
+    fn child_runtime_round_trips_ping_and_version_after_ready() {
+        let script = RUNTIME_HANDSHAKE_SCRIPT.replace("__PROTOCOL_VERSION__", PROTOCOL_VERSION);
+        let supervisor = Supervisor::spawn(
+            RuntimeConfig::new("bun").args(["-e".to_string(), script]),
+            test_policy(RuntimeProfile::Prod, 0, EVENT_TIMEOUT),
+        )
+        .expect("runtime child should spawn");
+
+        let events = collect_until_exit(supervisor.events());
+
+        assert!(
+            events.iter().any(
+                |event| matches!(event, RuntimeEvent::Stdout { line } if line == r#"{"event":"runtime.ready","version":"test"}"#)
+            ),
+            "events did not include ready stdout line: {events:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, RuntimeEvent::Exited { status } if status.success())),
+            "events did not include successful exit: {events:?}"
+        );
+        assert_terminal_event_closes_channel(&supervisor);
     }
 
     #[test]
