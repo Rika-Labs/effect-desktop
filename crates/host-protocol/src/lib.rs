@@ -1,65 +1,58 @@
 //! Host-runtime protocol wire types.
 
-use serde::{de, Deserialize, Deserializer, Serialize};
+use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[serde(
-    tag = "kind",
-    rename_all = "camelCase",
-    rename_all_fields = "camelCase"
-)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum HostProtocolEnvelope {
     Request {
         id: String,
         method: String,
         timestamp: u64,
         trace_id: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
         window_id: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
         origin_token: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
         payload: Option<Value>,
     },
     Response {
         id: String,
         timestamp: u64,
         trace_id: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
         payload: Option<Value>,
-        #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<HostProtocolError>,
     },
     Event {
         method: String,
         timestamp: u64,
         trace_id: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
         window_id: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
         payload: Option<Value>,
     },
     Stream {
-        #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
         resource_id: Option<String>,
         timestamp: u64,
         trace_id: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
         payload: Option<Value>,
-        #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<HostProtocolError>,
     },
     Cancel {
-        #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
         resource_id: Option<String>,
         timestamp: u64,
         trace_id: String,
     },
+}
+
+impl Serialize for HostProtocolEnvelope {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableHostProtocolEnvelope::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
 }
 
 impl<'de> Deserialize<'de> for HostProtocolEnvelope {
@@ -69,6 +62,155 @@ impl<'de> Deserialize<'de> for HostProtocolEnvelope {
     {
         let raw = RawHostProtocolEnvelope::deserialize(deserializer)?;
         HostProtocolEnvelope::try_from(raw).map_err(de::Error::custom)
+    }
+}
+
+#[derive(Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+enum SerializableHostProtocolEnvelope<'a> {
+    Request {
+        id: &'a str,
+        method: &'a str,
+        timestamp: u64,
+        trace_id: &'a str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        window_id: Option<&'a str>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        origin_token: Option<&'a str>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        payload: Option<&'a Value>,
+    },
+    Response {
+        id: &'a str,
+        timestamp: u64,
+        trace_id: &'a str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        payload: Option<&'a Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<&'a HostProtocolError>,
+    },
+    Event {
+        method: &'a str,
+        timestamp: u64,
+        trace_id: &'a str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        window_id: Option<&'a str>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        payload: Option<&'a Value>,
+    },
+    Stream {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<&'a str>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        resource_id: Option<&'a str>,
+        timestamp: u64,
+        trace_id: &'a str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        payload: Option<&'a Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<&'a HostProtocolError>,
+    },
+    Cancel {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<&'a str>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        resource_id: Option<&'a str>,
+        timestamp: u64,
+        trace_id: &'a str,
+    },
+}
+
+impl<'a> TryFrom<&'a HostProtocolEnvelope> for SerializableHostProtocolEnvelope<'a> {
+    type Error = &'static str;
+
+    fn try_from(envelope: &'a HostProtocolEnvelope) -> Result<Self, Self::Error> {
+        match envelope {
+            HostProtocolEnvelope::Request {
+                id,
+                method,
+                timestamp,
+                trace_id,
+                window_id,
+                origin_token,
+                payload,
+            } => Ok(Self::Request {
+                id,
+                method,
+                timestamp: *timestamp,
+                trace_id,
+                window_id: window_id.as_deref(),
+                origin_token: origin_token.as_deref(),
+                payload: payload.as_ref(),
+            }),
+            HostProtocolEnvelope::Response {
+                id,
+                timestamp,
+                trace_id,
+                payload,
+                error,
+            } => Ok(Self::Response {
+                id,
+                timestamp: *timestamp,
+                trace_id,
+                payload: payload.as_ref(),
+                error: error.as_ref(),
+            }),
+            HostProtocolEnvelope::Event {
+                method,
+                timestamp,
+                trace_id,
+                window_id,
+                payload,
+            } => Ok(Self::Event {
+                method,
+                timestamp: *timestamp,
+                trace_id,
+                window_id: window_id.as_deref(),
+                payload: payload.as_ref(),
+            }),
+            HostProtocolEnvelope::Stream {
+                id,
+                resource_id,
+                timestamp,
+                trace_id,
+                payload,
+                error,
+            } => {
+                if id.is_none() && resource_id.is_none() {
+                    return Err("stream envelope requires id or resourceId");
+                }
+
+                Ok(Self::Stream {
+                    id: id.as_deref(),
+                    resource_id: resource_id.as_deref(),
+                    timestamp: *timestamp,
+                    trace_id,
+                    payload: payload.as_ref(),
+                    error: error.as_ref(),
+                })
+            }
+            HostProtocolEnvelope::Cancel {
+                id,
+                resource_id,
+                timestamp,
+                trace_id,
+            } => {
+                if id.is_none() && resource_id.is_none() {
+                    return Err("cancel envelope requires id or resourceId");
+                }
+
+                Ok(Self::Cancel {
+                    id: id.as_deref(),
+                    resource_id: resource_id.as_deref(),
+                    timestamp: *timestamp,
+                    trace_id,
+                })
+            }
+        }
     }
 }
 
@@ -410,6 +552,42 @@ mod tests {
             r#"{"kind":"cancel","timestamp":1710000000000,"traceId":"trace-missing"}"#,
         )
         .expect_err("cancel target is required");
+
+        assert_eq!(
+            error.to_string(),
+            "cancel envelope requires id or resourceId"
+        );
+    }
+
+    #[test]
+    fn stream_requires_request_or_resource_target_before_serializing() {
+        let envelope = HostProtocolEnvelope::Stream {
+            id: None,
+            resource_id: None,
+            timestamp: 1710000000000,
+            trace_id: "trace-missing".to_string(),
+            payload: None,
+            error: None,
+        };
+
+        let error = serde_json::to_string(&envelope).expect_err("stream target is required");
+
+        assert_eq!(
+            error.to_string(),
+            "stream envelope requires id or resourceId"
+        );
+    }
+
+    #[test]
+    fn cancel_requires_request_or_resource_target_before_serializing() {
+        let envelope = HostProtocolEnvelope::Cancel {
+            id: None,
+            resource_id: None,
+            timestamp: 1710000000000,
+            trace_id: "trace-missing".to_string(),
+        };
+
+        let error = serde_json::to_string(&envelope).expect_err("cancel target is required");
 
         assert_eq!(
             error.to_string(),
