@@ -1,6 +1,6 @@
 # @effect-desktop/core
 
-> **Status:** Phase 0 stub. The package directory exists so the workspace resolves and validation gates run; the public API is populated in Phase 4+. See `docs/SPEC.md`.
+> **Status:** Phase 2 runtime entry exists; the public API remains reserved for Phase 4+. See `docs/SPEC.md`.
 
 ## Purpose
 
@@ -9,6 +9,18 @@ Public framework API and runtime contracts (`Desktop.run`, `Desktop.window`, `De
 ## Public API
 
 Not yet defined. Phase 0 ships an empty barrel export only.
+
+## Runtime entry
+
+```bash
+bun src/runtime/main.ts
+```
+
+The runtime entry emits exactly one newline-terminated JSON ready event to stdout:
+
+```json
+{ "event": "runtime.ready", "version": "0.0.0" }
+```
 
 ## Non-goals
 
