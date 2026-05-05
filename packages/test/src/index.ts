@@ -6,11 +6,13 @@ import {
   type RegistrySnapshot,
   type ResourceEntry,
   type ResourceRegistryApi,
-  type ScopeId
+  type ResourceId,
+  type ResourceKind
 } from "@effect-desktop/core"
 
 export interface LeakDetectionOptions {
-  readonly allowedOwnerScopes?: readonly ScopeId[]
+  readonly allowedResourceIds?: readonly ResourceId[]
+  readonly allowedResourceKinds?: readonly ResourceKind[]
   readonly testName?: string
 }
 
@@ -76,10 +78,11 @@ export const leakedHandles = (
   snapshot: RegistrySnapshot,
   options: LeakDetectionOptions = {}
 ): readonly ResourceEntry[] => {
-  const allowedScopes = new Set<ScopeId>(options.allowedOwnerScopes ?? DEFAULT_ALLOWED_OWNER_SCOPES)
+  const allowedIds = new Set<ResourceId>(options.allowedResourceIds ?? [])
+  const allowedKinds = new Set<ResourceKind>(options.allowedResourceKinds ?? DEFAULT_ALLOWED_KINDS)
 
   return snapshot.entries.filter(
-    (entry) => entry.handle.kind !== APP_HANDLE_KIND && !allowedScopes.has(entry.handle.ownerScope)
+    (entry) => !allowedIds.has(entry.handle.id) && !allowedKinds.has(entry.handle.kind)
   )
 }
 
@@ -144,8 +147,7 @@ declare module "bun:test" {
 
 let matchersRegistered = false
 
-const APP_HANDLE_KIND = "app"
-const DEFAULT_ALLOWED_OWNER_SCOPES = ["app"] as const satisfies readonly ScopeId[]
+const DEFAULT_ALLOWED_KINDS = ["app"] as const satisfies readonly ResourceKind[]
 
 const isRegistrySnapshot = (value: unknown): value is RegistrySnapshot => {
   return (

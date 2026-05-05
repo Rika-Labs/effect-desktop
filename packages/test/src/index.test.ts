@@ -55,23 +55,38 @@ test("assertNoOpenResourcesIn fails with a leaked-handle report", async () => {
   }
 })
 
-test("leakedHandles ignores app handles by default", async () => {
+test("leakedHandles ignores app handles by default without exempting app-owned resources", async () => {
+  const ids = [
+    id("018e2f36-5800-7000-8000-000000000102"),
+    id("018e2f36-5800-7000-8000-000000000104")
+  ]
+  let nextIdIndex = 0
   const snapshot = await Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry({
-        nextId: () => id("018e2f36-5800-7000-8000-000000000102")
+        nextId: () => ids[nextIdIndex++] ?? id("018e2f36-5800-7000-8000-000000000105")
       })
       yield* registry.register({
         kind: "app",
         ownerScope: "app",
         state: "open"
       })
+      const window = yield* registry.register({
+        kind: "window",
+        ownerScope: "app",
+        state: "open"
+      })
 
-      return yield* registry.list()
+      return {
+        snapshot: yield* registry.list(),
+        window
+      }
     })
   )
 
-  expect(leakedHandles(snapshot)).toEqual([])
+  expect(leakedHandles(snapshot.snapshot).map((entry) => entry.handle.id)).toEqual([
+    snapshot.window.id
+  ])
 })
 
 test("registered matcher renders the leaked-handle report", () => {
