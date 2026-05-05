@@ -5,3 +5,9 @@ test("public barrel exports the ResourceRegistry factory", async () => {
 
   expect(core.makeResourceRegistry).toBeFunction()
 })
+
+test("public Desktop facade exposes the API contract registry", async () => {
+  const core = await import("./index.js")
+
+  expect(core.Desktop.Api.Tag).toBeFunction()
+})
