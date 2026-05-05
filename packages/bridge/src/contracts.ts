@@ -2,7 +2,7 @@ import { Data, Effect, Option, Schema, Stream } from "effect"
 
 export interface ApiMethodSpec {
   readonly input: Schema.Schema<unknown>
-  readonly output: Schema.Schema<unknown> | ApiStreamSpec
+  readonly output: Schema.Schema<unknown> | ApiStreamSpec | ApiResourceSpec
   readonly error: Schema.Schema<unknown>
   readonly permission?: string
   readonly timeoutMs?: number
@@ -23,6 +23,39 @@ export interface ApiStreamSpec {
   readonly error: Schema.Schema<unknown>
   readonly backpressure?: BackpressureSpec
 }
+
+export interface ApiResourceHandle<Kind extends string = string, State extends string = string> {
+  readonly kind: Kind
+  readonly id: string
+  readonly generation: number
+  readonly ownerScope: string
+  readonly state: State
+}
+
+export class ApiResourceHandleShape extends Schema.Class<ApiResourceHandleShape>(
+  "ApiResourceHandle"
+)({
+  kind: Schema.String,
+  id: Schema.String,
+  generation: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  ownerScope: Schema.String,
+  state: Schema.String
+}) {}
+
+export interface ApiResourceSpec<Kind extends string = string, State extends string = string> {
+  readonly _tag: "ApiResourceSpec"
+  readonly kind: Kind
+  readonly state: State
+  readonly schema: typeof ApiResourceHandleShape
+}
+
+type ApiOutputType<Output> = Output extends ApiStreamSpec
+  ? Stream.Stream<Schema.Schema.Type<Output["chunk"]>, Schema.Schema.Type<Output["error"]>, unknown>
+  : Output extends ApiResourceSpec<infer Kind, infer State>
+    ? ApiResourceHandle<Kind, State>
+    : Output extends Schema.Schema<unknown>
+      ? Schema.Schema.Type<Output>
+      : never
 
 export interface BackpressureSpec {
   readonly strategy: "buffer" | "drop" | "block"
@@ -51,13 +84,9 @@ export type ApiHandlers<Spec extends ApiContractSpec> = {
   readonly [Method in keyof Spec]: (
     input: Schema.Schema.Type<Spec[Method]["input"]>
   ) => Spec[Method]["output"] extends ApiStreamSpec
-    ? Stream.Stream<
-        Schema.Schema.Type<Spec[Method]["output"]["chunk"]>,
-        Schema.Schema.Type<Spec[Method]["output"]["error"]>,
-        unknown
-      >
+    ? ApiOutputType<Spec[Method]["output"]>
     : Effect.Effect<
-        Schema.Schema.Type<Extract<Spec[Method]["output"], Schema.Schema<unknown>>>,
+        ApiOutputType<Spec[Method]["output"]>,
         Schema.Schema.Type<Spec[Method]["error"]>,
         unknown
       >
@@ -96,6 +125,16 @@ export type ApiContractError =
   | InvalidApiContractSpec
 
 export const Api = Object.freeze({
+  Resource: <Kind extends string, State extends string>(
+    kind: Kind,
+    state: State
+  ): ApiResourceSpec<Kind, State> =>
+    Object.freeze({
+      _tag: "ApiResourceSpec",
+      kind,
+      state,
+      schema: ApiResourceHandleShape
+    }),
   Stream: <Chunk extends Schema.Schema<unknown>, Error extends Schema.Schema<unknown>>(
     chunk: Chunk,
     error: Error,
@@ -225,8 +264,10 @@ const validateMethodSpec = (
     if (!isSchema(spec.input)) {
       return yield* Effect.fail(invalidSpec(tag, method, "input schema is required"))
     }
-    if (!isSchema(spec.output) && !isStreamSpec(spec.output)) {
-      return yield* Effect.fail(invalidSpec(tag, method, "output schema or stream is required"))
+    if (!isSchema(spec.output) && !isStreamSpec(spec.output) && !isResourceSpec(spec.output)) {
+      return yield* Effect.fail(
+        invalidSpec(tag, method, "output schema, stream, or resource is required")
+      )
     }
     if (!isSchema(spec.error)) {
       return yield* Effect.fail(invalidSpec(tag, method, "error schema is required"))
@@ -337,6 +378,9 @@ const freezeContractSpec = <Spec extends ApiContractSpec>(spec: Spec): Spec => {
     if (isStreamSpec(methodSpec.output)) {
       Object.freeze(methodSpec.output)
     }
+    if (isResourceSpec(methodSpec.output)) {
+      Object.freeze(methodSpec.output)
+    }
     Object.freeze(methodSpec)
   }
 
@@ -377,6 +421,16 @@ export const isStreamSpec = (value: unknown): value is ApiStreamSpec =>
   "error" in value &&
   isSchema((value as { readonly chunk?: unknown }).chunk) &&
   isSchema((value as { readonly error?: unknown }).error)
+
+export const isResourceSpec = (value: unknown): value is ApiResourceSpec =>
+  typeof value === "object" &&
+  value !== null &&
+  "_tag" in value &&
+  (value as { readonly _tag?: unknown })._tag === "ApiResourceSpec" &&
+  "kind" in value &&
+  "state" in value &&
+  typeof (value as { readonly kind?: unknown }).kind === "string" &&
+  typeof (value as { readonly state?: unknown }).state === "string"
 
 const apiContracts = new Map<string, ApiContractClass>()
 const backpressureStrategies = new Set<BackpressureSpec["strategy"]>(["buffer", "drop", "block"])
