@@ -424,8 +424,14 @@ const entriesInDependencyOrder = (
 const scopeDepth = (scope: ScopeId, scopeParents: ReadonlyMap<ScopeId, ScopeId>): number => {
   let depth = 0
   let current: ScopeId | undefined = scope
+  const visited = new Set<ScopeId>()
 
   while (current !== undefined) {
+    if (visited.has(current)) {
+      return depth
+    }
+    visited.add(current)
+
     const parent = scopeParents.get(current)
     if (parent === undefined) {
       return depth

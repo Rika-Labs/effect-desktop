@@ -366,6 +366,28 @@ test("closeScope removes a resource when its disposer exceeds disposalGraceMs", 
   expect(snapshot.entries).toEqual([])
 })
 
+test("closeScope handles cyclic scope declarations without hanging", async () => {
+  const snapshot = await Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makeResourceRegistry()
+      yield* registry.declareScope("scope-a", "scope-b")
+      yield* registry.declareScope("scope-b", "scope-a")
+      yield* registry.register({
+        kind: "worker",
+        id: id("018e2f36-5800-7000-8000-000000000021"),
+        ownerScope: "scope-b",
+        state: "ready"
+      })
+
+      yield* registry.closeScope("scope-a")
+
+      return yield* registry.list()
+    }).pipe(Effect.timeout("100 millis"))
+  )
+
+  expect(snapshot.entries).toEqual([])
+})
+
 test("handle dispose delegates to the registry", async () => {
   const snapshot = await Effect.runPromise(
     Effect.gen(function* () {
