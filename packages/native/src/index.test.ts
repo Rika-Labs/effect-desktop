@@ -1,5 +1,18 @@
 import { expect, test } from "bun:test"
-import { Effect, Layer, Stream } from "effect"
+import {
+  HostProtocolNotFoundError,
+  HostProtocolResponseEnvelope,
+  HostProtocolStaleHandleError,
+  Handlers,
+  WINDOW_CREATE_METHOD,
+  WINDOW_DESTROY_METHOD,
+  type ApiClientExchange,
+  type HostProtocolRequestEnvelope,
+  type HostWindowClientOptions,
+  type HostWindowExchange
+} from "@effect-desktop/bridge"
+import { ResourceRegistry, makeResourceRegistry } from "@effect-desktop/core"
+import { Cause, Effect, Exit, Layer, Stream } from "effect"
 
 import {
   Window,
@@ -7,6 +20,8 @@ import {
   WindowClient,
   WindowLive,
   WindowMethodNames,
+  makeHostWindowApiLayer,
+  makeWindowBridgeClientLayer,
   makeWindowServiceLayer,
   type WindowClientApi,
   type WindowHandle
@@ -120,6 +135,96 @@ test("Window service can be composed from a separately provided WindowClient", a
   expect(calls).toEqual(["create:0"])
 })
 
+test("host WindowClient adapter opens and closes through host envelopes with registry lifetime", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const apiExchange = makeWindowApiExchange(windowExchange(requests), registry, {
+    nextRequestId: nextId(["create-request", "destroy-request"]),
+    nextTraceId: nextId(["create-trace", "destroy-trace"]),
+    now: nextNumber([1710000000000, 1710000000001])
+  })
+  const program = Effect.gen(function* () {
+    const window = yield* Window
+    const created = yield* window.create({
+      title: "Main",
+      width: 320,
+      height: 240,
+      persistState: true
+    })
+    const duringLifetime = yield* registry.list()
+    yield* window.close(created)
+    const afterClose = yield* registry.list()
+
+    return { created, duringLifetime, afterClose }
+  }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(apiExchange))))
+
+  const result = await Effect.runPromise(program)
+
+  expect(result.created).toMatchObject({
+    kind: "window",
+    id: "host-window-1",
+    generation: 0,
+    ownerScope: "window",
+    state: "open"
+  })
+  expect(result.duringLifetime.entries.map((entry) => String(entry.handle.id))).toEqual([
+    "host-window-1"
+  ])
+  expect(result.afterClose.entries).toEqual([])
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    [
+      WINDOW_CREATE_METHOD,
+      {
+        title: "Main",
+        width: 320,
+        height: 240
+      }
+    ],
+    [
+      WINDOW_DESTROY_METHOD,
+      {
+        windowId: "host-window-1"
+      }
+    ]
+  ])
+})
+
+test("host WindowClient adapter returns typed failures for invalid input and bad handles", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const apiExchange = makeWindowApiExchange(windowExchange([]), registry)
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* WindowClient
+    }).pipe(Effect.provide(makeWindowBridgeClientLayer(apiExchange)))
+  )
+
+  const invalidCreateExit = await Effect.runPromiseExit(client.create({ width: 0 }))
+  const unknownExit = await Effect.runPromiseExit(client.close(windowHandle))
+  const created = await Effect.runPromise(client.create({}))
+  const staleExit = await Effect.runPromiseExit(
+    client.close({
+      ...created,
+      generation: created.generation + 1
+    })
+  )
+  await Effect.runPromise(client.close(created))
+  const repeatedCloseExit = await Effect.runPromiseExit(client.close(created))
+
+  expectExitFailure(invalidCreateExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(
+    unknownExit,
+    (error) => error instanceof HostProtocolNotFoundError && error.operation === "Window.close"
+  )
+  expectExitFailure(
+    staleExit,
+    (error) => error instanceof HostProtocolStaleHandleError && error.operation === "Window.close"
+  )
+  expectExitFailure(
+    repeatedCloseExit,
+    (error) => error instanceof HostProtocolStaleHandleError && error.operation === "Window.close"
+  )
+})
+
 const recordVoid = (calls: string[], call: string): Effect.Effect<void, never, never> =>
   Effect.sync(() => {
     calls.push(call)
@@ -145,3 +250,85 @@ const noopWindowClient: WindowClientApi = {
   onScaleChanged: () => Stream.empty,
   persistState: () => Effect.void
 }
+
+const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExchange => ({
+  request: (request) => {
+    requests.push(request)
+    return Effect.succeed(
+      new HostProtocolResponseEnvelope({
+        kind: "response",
+        id: request.id,
+        timestamp: request.timestamp + 1,
+        traceId: request.traceId,
+        ...(request.method === WINDOW_CREATE_METHOD
+          ? { payload: { windowId: "host-window-1" } }
+          : {})
+      })
+    )
+  }
+})
+
+const makeWindowApiExchange = (
+  hostExchange: HostWindowExchange,
+  registry: ResourceRegistry["Service"],
+  options: HostWindowClientOptions = {}
+): ApiClientExchange => {
+  const runtime = Handlers(makeHostWindowApiLayer(hostExchange, options))
+  const registryLayer = Layer.succeed(ResourceRegistry)(registry)
+  const request: ApiClientExchange["request"] = (request) =>
+    runtime.dispatch(request).pipe(Effect.provide(registryLayer)) as ReturnType<
+      ApiClientExchange["request"]
+    >
+
+  return {
+    request,
+    resource: {
+      dispose: () => Effect.void
+    }
+  }
+}
+
+const nextId = (ids: readonly string[]) => {
+  let index = 0
+  return (): string => {
+    const value = ids[index]
+    if (value === undefined) {
+      throw new Error("test exhausted ids")
+    }
+    index += 1
+    return value
+  }
+}
+
+const nextNumber = (values: readonly number[]) => {
+  let index = 0
+  return (): number => {
+    const value = values[index]
+    if (value === undefined) {
+      throw new Error("test exhausted numbers")
+    }
+    index += 1
+    return value
+  }
+}
+
+const expectExitFailure = <E>(
+  exit: Exit.Exit<unknown, E>,
+  predicate: (error: E) => boolean
+): void => {
+  expect(Exit.isFailure(exit)).toBe(true)
+
+  if (Exit.isFailure(exit)) {
+    const fail = exit.cause.reasons.find(Cause.isFailReason)
+    expect(fail).toBeDefined()
+    if (fail !== undefined) {
+      expect(predicate(fail.error as E)).toBe(true)
+      return
+    }
+  }
+
+  throw new Error("expected typed failure")
+}
+
+const hasErrorTag = (error: unknown, tag: string): boolean =>
+  typeof error === "object" && error !== null && "_tag" in error && error._tag === tag

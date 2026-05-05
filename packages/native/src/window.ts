@@ -1,18 +1,31 @@
 import {
   Api,
+  Client,
   type ApiContractError,
   type ApiContractClass,
   type ApiContractSpec,
   type ApiHandlers,
   type ApiLayer,
+  type ApiClientExchange,
+  type ApiClientOptions,
   type ApiResourceHandle,
+  ApiResourceHandleShape,
+  type HostWindowClientOptions,
+  type HostWindowExchange,
   HostProtocolError as HostProtocolErrorSchema,
+  makeHostProtocolInvalidArgumentError,
+  makeHostProtocolInvalidStateError,
+  makeHostProtocolNotFoundError,
+  makeHostWindowClient,
+  makeStaleHandleError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
+import { ResourceRegistry, type ResourceId } from "@effect-desktop/core"
 import { Context, Effect, Layer, Option, Schema, Stream } from "effect"
 
 const PositiveFiniteNumber = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0))
 const WindowResource = Api.Resource("window", "open")
+const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export type WindowHandle = ApiResourceHandle<"window", "open">
 export type WindowError = HostProtocolError
@@ -266,6 +279,18 @@ export const makeWindowClientLayer = (client: WindowClientApi): Layer.Layer<Wind
 export const makeWindowServiceLayer = (client: WindowClientApi): Layer.Layer<Window> =>
   Layer.provide(WindowLive, makeWindowClientLayer(client))
 
+export const makeWindowBridgeClientLayer = (
+  exchange: ApiClientExchange,
+  options: ApiClientOptions = {}
+): Layer.Layer<WindowClient> =>
+  Layer.succeed(WindowClient)(makeWindowBridgeClient(exchange, options))
+
+export const makeHostWindowApiLayer = (
+  exchange: HostWindowExchange,
+  options: HostWindowClientOptions = {}
+): ApiLayer<"Window", WindowApiSpec, ApiHandlers<WindowApiSpec>> =>
+  WindowApi.layer(makeHostWindowHandlers(exchange, options))
+
 export interface WindowSize {
   readonly width: number
   readonly height: number
@@ -299,6 +324,158 @@ const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
   }
 
   return Object.freeze(service)
+}
+
+const makeWindowBridgeClient = (
+  exchange: ApiClientExchange,
+  options: ApiClientOptions
+): WindowClientApi => {
+  const client = Client({ Window: WindowApi }, exchange, options).Window
+  const unsupported = (method: string) =>
+    Effect.fail(makeHostProtocolInvalidStateError("unimplemented", "call", method))
+
+  const windowClient: WindowClientApi = {
+    create: (input) =>
+      Effect.gen(function* () {
+        const decoded = yield* Schema.decodeUnknownEffect(WindowCreateInput)(
+          input,
+          StrictParseOptions
+        ).pipe(
+          Effect.mapError((error) =>
+            makeHostProtocolInvalidArgumentError(
+              "payload",
+              formatUnknownError(error),
+              "Window.create"
+            )
+          )
+        )
+        return yield* client.create(decoded)
+      }),
+    show: () => unsupported("Window.show"),
+    hide: () => unsupported("Window.hide"),
+    focus: () => unsupported("Window.focus"),
+    close: (window) => client.close(new WindowHandleInput({ window })),
+    setTitle: () => unsupported("Window.setTitle"),
+    setSize: () => unsupported("Window.setSize"),
+    setPosition: () => unsupported("Window.setPosition"),
+    setBackgroundColor: () => unsupported("Window.setBackgroundColor"),
+    setVibrancy: () => unsupported("Window.setVibrancy"),
+    setHasShadow: () => unsupported("Window.setHasShadow"),
+    setFullscreen: () => unsupported("Window.setFullscreen"),
+    enterFullScreen: () => unsupported("Window.enterFullScreen"),
+    exitFullScreen: () => unsupported("Window.exitFullScreen"),
+    onFullScreenChanged: () => Stream.fail(unsupportedError("Window.onFullScreenChanged")),
+    getScaleFactor: () => unsupported("Window.getScaleFactor"),
+    onScaleChanged: () => Stream.fail(unsupportedError("Window.onScaleChanged")),
+    persistState: () => unsupported("Window.persistState")
+  }
+
+  return Object.freeze(windowClient)
+}
+
+const makeHostWindowHandlers = (
+  exchange: HostWindowExchange,
+  options: HostWindowClientOptions
+): ApiHandlers<WindowApiSpec> => {
+  const host = makeHostWindowClient(exchange, options)
+  const knownWindowIds = new Set<string>()
+  const unsupported = (method: string) =>
+    Effect.fail(makeHostProtocolInvalidStateError("unimplemented", "call", method))
+
+  return {
+    create: (input) =>
+      Effect.gen(function* () {
+        const registry = yield* ResourceRegistry
+        const created = yield* host.create(toHostWindowCreateInput(input))
+        knownWindowIds.add(created.windowId)
+        const handle = yield* registry.register({
+          kind: "window",
+          id: created.windowId as ResourceId,
+          ownerScope: "window",
+          state: "open"
+        })
+        return toWindowHandle(handle)
+      }),
+    show: () => unsupported("Window.show"),
+    hide: () => unsupported("Window.hide"),
+    focus: () => unsupported("Window.focus"),
+    close: (input) =>
+      Effect.gen(function* () {
+        const registry = yield* ResourceRegistry
+        const { window } = input
+        const resourceId = window.id as ResourceId
+        if (!knownWindowIds.has(window.id)) {
+          return yield* Effect.fail(
+            makeHostProtocolNotFoundError(`Window:${window.id}`, "Window.close")
+          )
+        }
+
+        const existing = yield* registry.get(resourceId)
+        if (Option.isNone(existing)) {
+          return yield* Effect.fail(
+            makeStaleHandleError("Window.close", window, window.generation + 1)
+          )
+        }
+
+        yield* registry
+          .assertFresh({
+            kind: window.kind,
+            generation: window.generation,
+            ownerScope: window.ownerScope,
+            state: window.state,
+            id: resourceId,
+            dispose: () => registry.dispose(resourceId)
+          })
+          .pipe(
+            Effect.mapError((error) =>
+              makeStaleHandleError("Window.close", window, error.actualGeneration)
+            )
+          )
+        yield* host.destroy(window.id)
+        yield* registry.dispose(resourceId)
+      }),
+    setTitle: () => unsupported("Window.setTitle"),
+    setSize: () => unsupported("Window.setSize"),
+    setPosition: () => unsupported("Window.setPosition"),
+    setBackgroundColor: () => unsupported("Window.setBackgroundColor"),
+    setVibrancy: () => unsupported("Window.setVibrancy"),
+    setHasShadow: () => unsupported("Window.setHasShadow"),
+    setFullscreen: () => unsupported("Window.setFullscreen"),
+    enterFullScreen: () => unsupported("Window.enterFullScreen"),
+    exitFullScreen: () => unsupported("Window.exitFullScreen"),
+    onFullScreenChanged: () => Stream.fail(unsupportedError("Window.onFullScreenChanged")),
+    getScaleFactor: () => unsupported("Window.getScaleFactor"),
+    onScaleChanged: () => Stream.fail(unsupportedError("Window.onScaleChanged")),
+    persistState: () => unsupported("Window.persistState")
+  }
+}
+
+const unsupportedError = (method: string): HostProtocolError =>
+  makeHostProtocolInvalidStateError("unimplemented", "call", method)
+
+const toHostWindowCreateInput = (input: WindowCreateOptions): WindowCreateOptions => {
+  return {
+    ...(input.title === undefined ? {} : { title: input.title }),
+    ...(input.width === undefined ? {} : { width: input.width }),
+    ...(input.height === undefined ? {} : { height: input.height })
+  }
+}
+
+const toWindowHandle = (handle: WindowHandle): WindowHandle =>
+  new ApiResourceHandleShape({
+    kind: handle.kind,
+    id: handle.id,
+    generation: handle.generation,
+    ownerScope: handle.ownerScope,
+    state: handle.state
+  }) as WindowHandle
+
+const formatUnknownError = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  return String(error)
 }
 
 function handleMethodSpec() {
