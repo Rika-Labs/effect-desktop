@@ -1,0 +1,31 @@
+{
+  "name": "@effect-desktop/template-basic-react-tailwind",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5174 --strictPort",
+    "build": "vite build",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test",
+    "lint": "oxlint . --ignore-pattern 'dist/**'"
+  },
+  "dependencies": {
+    "@effect-desktop/bridge": "workspace:*",
+    "@effect-desktop/native": "workspace:*",
+    "@effect-desktop/react": "workspace:*",
+    "@effect-desktop/test": "workspace:*",
+    "effect": "4.0.0-beta.60",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.18",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "tailwindcss": "^4.1.18",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.10"
+  }
+}

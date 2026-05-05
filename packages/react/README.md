@@ -1,6 +1,6 @@
 # @effect-desktop/react
 
-> **Status:** Phase 0 stub. The package directory exists so the workspace resolves and validation gates run; the public API is populated in Phase 6. See `docs/SPEC.md`.
+> **Status:** Phase 6 public surface. The provider and value-returning hooks are intentionally minimal while the renderer template lands; stream/resource hooks are populated by later Phase 6 issues.
 
 ## Purpose
 
@@ -8,7 +8,13 @@ Thin React integration for renderer clients: `DesktopProvider`, `useDesktop`, `u
 
 ## Public API
 
-Not yet defined. Phase 0 ships an empty barrel export only.
+- `DesktopProvider` supplies a public `DesktopClient` to renderer components.
+- `useDesktop` returns `Option.Option<DesktopClient>` instead of throwing when no provider is mounted.
+- `useWindow` returns `Option.Option<DesktopWindowClient>`.
+
+## Dependency note
+
+`react` is a peer dependency because host apps own their renderer runtime. `@effect-desktop/bridge`, `@effect-desktop/native`, and `effect` are package dependencies because the public hook surface exposes typed bridge/window Effect values.
 
 ## Non-goals
 
@@ -17,7 +23,13 @@ See `docs/SPEC.md` for the package's normative non-goals.
 ## Usage
 
 ```ts
-// Reserved for Phase 6.
+import { Option } from "effect"
+import { useDesktop } from "@effect-desktop/react"
+
+const desktop = useDesktop()
+if (Option.isSome(desktop)) {
+  // desktop.value.Window.create(...)
+}
 ```
 
 ## Testing
@@ -29,8 +41,8 @@ bun run typecheck
 
 ## Platform notes
 
-None until the package implements native-touching primitives.
+The package is renderer-only. Native operations stay represented as Effect values supplied by the desktop client.
 
 ## Internal architecture
 
-To be documented as the package is built out.
+React context stores an optional desktop client. Absence is modeled as `Option.none()` so renderer code can branch explicitly instead of catching provider errors.
