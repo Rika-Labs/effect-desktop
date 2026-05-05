@@ -320,15 +320,28 @@ test("share returns a fresh target-scope handle without closing with the source 
       const shared = yield* registry.share(original, "target-scope")
 
       yield* registry.closeScope("source-scope")
-      const snapshot = yield* registry.list()
+      const sourceClosedSnapshot = yield* registry.list()
+      const cleanupAfterSourceClose = cleanupCount
+      yield* registry.closeScope("target-scope")
+      const targetClosedSnapshot = yield* registry.list()
 
-      return { cleanupCount, shared, snapshot }
+      return {
+        cleanupAfterSourceClose,
+        cleanupCount,
+        shared,
+        sourceClosedSnapshot,
+        targetClosedSnapshot
+      }
     })
   )
 
+  expect(result.cleanupAfterSourceClose).toBe(0)
   expect(result.cleanupCount).toBe(1)
   expect(result.shared.ownerScope).toBe("target-scope")
-  expect(result.snapshot.entries.map((entry) => entry.handle.id)).toEqual([result.shared.id])
+  expect(result.sourceClosedSnapshot.entries.map((entry) => entry.handle.id)).toEqual([
+    result.shared.id
+  ])
+  expect(result.targetClosedSnapshot.entries).toEqual([])
 })
 
 test("closeScope removes a resource when its disposer exceeds disposalGraceMs", async () => {

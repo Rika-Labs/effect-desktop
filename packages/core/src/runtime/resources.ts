@@ -95,6 +95,7 @@ export const makeResourceRegistry = (
     const entries = yield* SubscriptionRef.make(new Map<ResourceId, StoredResourceEntry>())
     const disposedGenerations = new Map<ResourceId, DisposedGeneration>()
     const scopeParents = new Map<ScopeId, ScopeId>()
+    const cleanupGroups = new Map<ResourceId, CleanupGroup>()
 
     const snapshot = (): Effect.Effect<RegistrySnapshot, never, never> =>
       Effect.map(SubscriptionRef.get(entries), snapshotFromMap)
@@ -128,7 +129,7 @@ export const makeResourceRegistry = (
 
         if (entry !== undefined) {
           markDisposed(id, entry)
-          yield* entry.dispose
+          yield* releaseCleanup(entry.cleanupGroupId, cleanupGroups)
         }
       })
 
@@ -138,18 +139,36 @@ export const makeResourceRegistry = (
         if (removed !== undefined) {
           markDisposed(entry.handle.id, removed)
           yield* Effect.asVoid(
-            Effect.timeoutOption(removed.dispose, `${removed.disposalGraceMs} millis`)
+            Effect.timeoutOption(
+              releaseCleanup(removed.cleanupGroupId, cleanupGroups),
+              `${removed.disposalGraceMs} millis`
+            )
           )
         }
       })
 
     const register = <Kind extends ResourceKind, State extends ResourceState>(
       input: RegisterResourceInput<Kind, State>
+    ): Effect.Effect<ResourceHandle<Kind, State>, never, never> => {
+      return registerWithCleanupGroup(input, undefined, input.dispose ?? Effect.void)
+    }
+
+    const registerWithCleanupGroup = <Kind extends ResourceKind, State extends ResourceState>(
+      input: RegisterResourceInput<Kind, State>,
+      existingCleanupGroupId: ResourceId | undefined,
+      cleanup: Effect.Effect<void, never, never>
     ): Effect.Effect<ResourceHandle<Kind, State>, never, never> =>
       Effect.gen(function* () {
         const createdAt = now()
         const handle = yield* SubscriptionRef.modify(entries, (current) => {
           const id = availableRegistrationId(input.id, createdAt, nextId, current)
+          const cleanupGroupId = existingCleanupGroupId ?? id
+          if (existingCleanupGroupId === undefined) {
+            cleanupGroups.set(cleanupGroupId, {
+              remaining: 1,
+              dispose: cleanup
+            })
+          }
           const generation = generationForRegistration(
             id,
             input.kind,
@@ -169,7 +188,7 @@ export const makeResourceRegistry = (
             createdAt,
             reusableId: input.reusableId === true,
             disposalGraceMs: input.disposalGraceMs ?? DEFAULT_DISPOSAL_GRACE_MS,
-            dispose: input.dispose ?? Effect.void
+            cleanupGroupId
           }
           const next = new Map(current)
           next.set(id, stored)
@@ -230,14 +249,31 @@ export const makeResourceRegistry = (
     ): Effect.Effect<ResourceHandle<Kind, State>, StaleHandle, never> =>
       Effect.gen(function* () {
         yield* assertFresh(handle)
+        const current = yield* SubscriptionRef.get(entries)
+        const stored = current.get(handle.id)
+        if (stored === undefined) {
+          return yield* Effect.fail(
+            new StaleHandle({
+              tag: "StaleHandle",
+              kind: handle.kind,
+              id: handle.id,
+              expectedGeneration: handle.generation,
+              actualGeneration: -1
+            })
+          )
+        }
+        incrementCleanup(stored.cleanupGroupId, cleanupGroups)
 
-        return yield* register({
-          kind: handle.kind,
-          ownerScope: targetScope,
-          state: handle.state,
-          reusableId: false,
-          dispose: Effect.void
-        })
+        return yield* registerWithCleanupGroup(
+          {
+            kind: handle.kind,
+            ownerScope: targetScope,
+            state: handle.state,
+            reusableId: false
+          },
+          stored.cleanupGroupId,
+          Effect.void
+        )
       })
 
     return {
@@ -263,6 +299,11 @@ export const ResourceRegistryLive = Layer.effect(ResourceRegistry)(makeResourceR
 interface StoredResourceEntry extends ResourceEntry {
   readonly reusableId: boolean
   readonly disposalGraceMs: number
+  readonly cleanupGroupId: ResourceId
+}
+
+interface CleanupGroup {
+  remaining: number
   readonly dispose: Effect.Effect<void, never, never>
 }
 
@@ -292,6 +333,34 @@ const generationForRegistration = (
 
 const nextGenerationAfter = (generation: number): number => {
   return generation < 0 ? 1 : generation + 1
+}
+
+const incrementCleanup = (
+  cleanupGroupId: ResourceId,
+  cleanupGroups: Map<ResourceId, CleanupGroup>
+): void => {
+  const group = cleanupGroups.get(cleanupGroupId)
+  if (group !== undefined) {
+    group.remaining += 1
+  }
+}
+
+const releaseCleanup = (
+  cleanupGroupId: ResourceId,
+  cleanupGroups: Map<ResourceId, CleanupGroup>
+): Effect.Effect<void, never, never> => {
+  const group = cleanupGroups.get(cleanupGroupId)
+  if (group === undefined) {
+    return Effect.void
+  }
+
+  group.remaining -= 1
+  if (group.remaining > 0) {
+    return Effect.void
+  }
+
+  cleanupGroups.delete(cleanupGroupId)
+  return group.dispose
 }
 
 const availableRegistrationId = (
