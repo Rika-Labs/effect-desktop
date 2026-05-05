@@ -1,18 +1,18 @@
 use crate::webview;
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Result};
 use host_protocol::{HostProtocolError, WindowCreatePayload, WindowCreateResponse};
 use std::{
     collections::{HashMap, VecDeque},
     sync::{
         mpsc::{self, Receiver, RecvTimeoutError, Sender},
-        Arc, Condvar, Mutex, MutexGuard,
+        Arc, Condvar, Mutex,
     },
     time::{Duration, Instant},
 };
 use tao::{
     dpi::LogicalSize,
     event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy, EventLoopWindowTarget},
+    event_loop::{ControlFlow, EventLoopBuilder, EventLoopWindowTarget},
     window::{Window, WindowBuilder},
 };
 use tracing::{info, warn};
@@ -25,8 +25,7 @@ const WINDOW_HEIGHT: f64 = 640.0;
 const WINDOW_OPENED_EVENT: &str = "host.window.opened";
 const WINDOW_DESTROYED_EVENT: &str = "host.window.destroyed";
 const WINDOW_EXIT_REQUESTED_EVENT: &str = "host.window.exit_requested";
-const WINDOW_METHOD_READY_TIMEOUT: Duration = Duration::from_secs(5);
-const WINDOW_METHOD_REPLY_TIMEOUT: Duration = Duration::from_secs(5);
+const WINDOW_METHOD_REPLY_TIMEOUT: Duration = Duration::from_secs(30);
 const WINDOW_COMMAND_IDLE_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const WINDOW_STARTUP_COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -39,14 +38,11 @@ pub(crate) enum RunMode {
 #[derive(Clone)]
 pub(crate) struct WindowMethodPort {
     state: Arc<WindowMethodPortState>,
-    ready_timeout: Duration,
     reply_timeout: Duration,
 }
 
 struct WindowMethodPortState {
-    proxy: Mutex<Option<EventLoopProxy<HostEvent>>>,
     commands: Mutex<VecDeque<WindowCommand>>,
-    ready: Condvar,
     commands_ready: Condvar,
 }
 
@@ -105,74 +101,17 @@ struct WindowRegistry {
 
 impl WindowMethodPort {
     pub(crate) fn new() -> Self {
-        Self::with_timeouts(WINDOW_METHOD_READY_TIMEOUT, WINDOW_METHOD_REPLY_TIMEOUT)
+        Self::with_reply_timeout(WINDOW_METHOD_REPLY_TIMEOUT)
     }
 
-    fn with_timeouts(ready_timeout: Duration, reply_timeout: Duration) -> Self {
+    fn with_reply_timeout(reply_timeout: Duration) -> Self {
         Self {
             state: Arc::new(WindowMethodPortState {
-                proxy: Mutex::new(None),
                 commands: Mutex::new(VecDeque::new()),
-                ready: Condvar::new(),
                 commands_ready: Condvar::new(),
             }),
-            ready_timeout,
             reply_timeout,
         }
-    }
-
-    fn install_proxy(&self, proxy: EventLoopProxy<HostEvent>) -> Result<()> {
-        let mut current = self
-            .state
-            .proxy
-            .lock()
-            .map_err(|_| anyhow!("window method port mutex poisoned during proxy install"))?;
-        *current = Some(proxy);
-        self.state.ready.notify_all();
-        Ok(())
-    }
-
-    fn installed_proxy(&self) -> std::result::Result<EventLoopProxy<HostEvent>, HostProtocolError> {
-        let deadline = Instant::now() + self.ready_timeout;
-        let mut current = self.lock_proxy()?;
-
-        loop {
-            if let Some(proxy) = current.as_ref() {
-                return Ok(proxy.clone());
-            }
-
-            let now = Instant::now();
-            if now >= deadline {
-                return Err(HostProtocolError::HostUnavailable);
-            }
-
-            let remaining = deadline.saturating_duration_since(now);
-            let wait_result = self
-                .state
-                .ready
-                .wait_timeout(current, remaining)
-                .map_err(|_| HostProtocolError::Internal {
-                    message: "window method port mutex poisoned while waiting for event loop"
-                        .to_string(),
-                })?;
-            current = wait_result.0;
-
-            if wait_result.1.timed_out() && current.is_none() {
-                return Err(HostProtocolError::HostUnavailable);
-            }
-        }
-    }
-
-    fn lock_proxy(
-        &self,
-    ) -> std::result::Result<MutexGuard<'_, Option<EventLoopProxy<HostEvent>>>, HostProtocolError>
-    {
-        self.state
-            .proxy
-            .lock()
-            .map_err(|_| HostProtocolError::Internal {
-                message: "window method port mutex poisoned".to_string(),
-            })
     }
 
     fn recv_reply(
@@ -192,7 +131,6 @@ impl WindowMethodPort {
         &self,
         command: WindowCommand,
     ) -> std::result::Result<(), HostProtocolError> {
-        let _proxy = self.installed_proxy()?;
         {
             let mut commands =
                 self.state
@@ -482,9 +420,6 @@ fn lifecycle_for_create_result(result: &WindowCommandReply) -> WindowLifecycleEv
 pub(crate) fn run_main_window(mode: RunMode, window_methods: WindowMethodPort) -> Result<()> {
     let mut event_loop_builder = EventLoopBuilder::<HostEvent>::with_user_event();
     let event_loop = event_loop_builder.build();
-    window_methods
-        .install_proxy(event_loop.create_proxy())
-        .context("failed to install window method event-loop proxy")?;
     let command_source = window_methods.clone();
     let mut registry = WindowRegistry::new();
 
