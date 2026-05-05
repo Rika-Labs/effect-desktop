@@ -1,11 +1,11 @@
 use crate::webview;
-use anyhow::{bail, Result};
+use anyhow::Result;
 use host_protocol::{HostProtocolError, WindowCreatePayload, WindowCreateResponse};
 use std::{
     collections::{HashMap, VecDeque},
     sync::{
         mpsc::{self, Receiver, RecvTimeoutError, Sender},
-        Arc, Condvar, Mutex,
+        Arc, Mutex,
     },
     time::{Duration, Instant},
 };
@@ -27,7 +27,6 @@ const WINDOW_DESTROYED_EVENT: &str = "host.window.destroyed";
 const WINDOW_EXIT_REQUESTED_EVENT: &str = "host.window.exit_requested";
 const WINDOW_METHOD_REPLY_TIMEOUT: Duration = Duration::from_secs(30);
 const WINDOW_COMMAND_IDLE_POLL_INTERVAL: Duration = Duration::from_millis(50);
-const WINDOW_STARTUP_COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RunMode {
@@ -43,7 +42,6 @@ pub(crate) struct WindowMethodPort {
 
 struct WindowMethodPortState {
     commands: Mutex<VecDeque<WindowCommand>>,
-    commands_ready: Condvar,
 }
 
 pub(crate) trait WindowMethodHandler: Send + Sync {
@@ -108,7 +106,6 @@ impl WindowMethodPort {
         Self {
             state: Arc::new(WindowMethodPortState {
                 commands: Mutex::new(VecDeque::new()),
-                commands_ready: Condvar::new(),
             }),
             reply_timeout,
         }
@@ -141,54 +138,8 @@ impl WindowMethodPort {
                     })?;
             commands.push_back(command);
         }
-        self.state.commands_ready.notify_all();
 
         Ok(())
-    }
-
-    fn take_startup_commands(&self) -> Vec<WindowCommand> {
-        let deadline = Instant::now() + WINDOW_STARTUP_COMMAND_TIMEOUT;
-        let mut commands = match self.state.commands.lock() {
-            Ok(commands) => commands,
-            Err(_) => {
-                warn!(
-                    event = "host.window.command_queue_poisoned",
-                    "window command queue mutex poisoned"
-                );
-                return Vec::new();
-            }
-        };
-
-        loop {
-            if !commands.is_empty() {
-                return commands.drain(..).collect();
-            }
-
-            let now = Instant::now();
-            if now >= deadline {
-                return Vec::new();
-            }
-
-            let wait_result = self
-                .state
-                .commands_ready
-                .wait_timeout(commands, deadline.saturating_duration_since(now));
-            match wait_result {
-                Ok((next_commands, timeout)) => {
-                    commands = next_commands;
-                    if timeout.timed_out() && commands.is_empty() {
-                        return Vec::new();
-                    }
-                }
-                Err(_) => {
-                    warn!(
-                        event = "host.window.command_queue_poisoned",
-                        "window command queue mutex poisoned while waiting for startup command"
-                    );
-                    return Vec::new();
-                }
-            }
-        }
     }
 
     fn take_pending_commands(&self) -> Vec<WindowCommand> {
@@ -423,36 +374,6 @@ pub(crate) fn run_main_window(mode: RunMode, window_methods: WindowMethodPort) -
     let command_source = window_methods.clone();
     let mut registry = WindowRegistry::new();
 
-    let startup_lifecycle =
-        registry.handle_window_commands(&event_loop, mode, command_source.take_startup_commands());
-    match startup_lifecycle {
-        WindowLifecycleEvent::WindowCreateFailed => bail!("startup window create failed"),
-        WindowLifecycleEvent::SmokeExitRequested => return Ok(()),
-        WindowLifecycleEvent::CloseRequested | WindowLifecycleEvent::Other => {}
-    }
-
-    if matches!(mode, RunMode::WindowSmokeTest) {
-        let smoke_lifecycle = registry.handle_window_commands(
-            &event_loop,
-            mode,
-            command_source.take_startup_commands(),
-        );
-        match smoke_lifecycle {
-            WindowLifecycleEvent::SmokeExitRequested => {
-                info!(
-                    event = WINDOW_EXIT_REQUESTED_EVENT,
-                    source = "window-smoke-test",
-                    "host window exit requested"
-                );
-                return Ok(());
-            }
-            WindowLifecycleEvent::WindowCreateFailed => bail!("smoke window create failed"),
-            WindowLifecycleEvent::CloseRequested | WindowLifecycleEvent::Other => {
-                bail!("window smoke test did not destroy the startup window")
-            }
-        }
-    }
-
     event_loop.run(move |event, target, control_flow| {
         let lifecycle_event = match event {
             Event::NewEvents(_) => {
@@ -535,11 +456,12 @@ fn validate_positive_finite(field: &str, value: f64) -> std::result::Result<(), 
 mod tests {
     use super::{
         control_flow_for_lifecycle_event, control_flow_for_window_state,
-        lifecycle_for_create_result, validate_positive_finite, RunMode, WindowCommandResponse,
-        WindowCreateRequest, WindowLifecycleEvent, WindowRegistry,
-        WINDOW_COMMAND_IDLE_POLL_INTERVAL,
+        lifecycle_for_create_result, validate_positive_finite, RunMode, WindowCommand,
+        WindowCommandResponse, WindowCreateRequest, WindowLifecycleEvent, WindowMethodPort,
+        WindowRegistry, WINDOW_COMMAND_IDLE_POLL_INTERVAL,
     };
     use host_protocol::{HostProtocolError, WindowCreatePayload, WindowCreateResponse};
+    use std::sync::mpsc;
     use std::time::Instant;
     use tao::event_loop::ControlFlow;
 
@@ -592,13 +514,27 @@ mod tests {
     }
 
     #[test]
-    fn empty_registry_uses_bounded_poll_for_startup_commands() {
+    fn empty_registry_uses_bounded_poll_for_pending_commands() {
         let now = Instant::now();
 
         assert_eq!(
             control_flow_for_window_state(WindowLifecycleEvent::Other, now),
             ControlFlow::WaitUntil(now + WINDOW_COMMAND_IDLE_POLL_INTERVAL)
         );
+    }
+
+    #[test]
+    fn window_commands_queue_before_event_loop_starts() {
+        let port = WindowMethodPort::new();
+        let (reply, _rx) = mpsc::channel();
+
+        port.enqueue_command(WindowCommand::Destroy {
+            window_id: "pending".to_string(),
+            reply,
+        })
+        .expect("window command should queue before the native event loop starts");
+
+        assert_eq!(port.take_pending_commands().len(), 1);
     }
 
     #[test]
