@@ -102,6 +102,7 @@ type TerminalStateEntry = {
 
 type PendingCall = {
   readonly fiber: Fiber.Fiber<unknown, unknown>
+  readonly cancellable: boolean
   cancelledBy: "renderer" | "runtime" | "host" | undefined
 }
 
@@ -214,6 +215,7 @@ const dispatch = (
         )
         const pending: PendingCall = {
           fiber,
+          cancellable: bound.spec.cancellable !== false,
           cancelledBy: undefined
         }
         pendingCalls.set(request.id, pending)
@@ -293,6 +295,9 @@ const cancel = (
     const pending = pendingCalls.get(request.id)
     if (pending === undefined) {
       return yield* Effect.fail(makeHostProtocolInvalidStateError("Missing", "cancel", request.id))
+    }
+    if (!pending.cancellable) {
+      return
     }
 
     pending.cancelledBy = "renderer"

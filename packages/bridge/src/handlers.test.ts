@@ -1,11 +1,12 @@
 import { expect, test } from "bun:test"
-import { Cause, Effect, Exit, Schema } from "effect"
+import { Cause, Deferred, Effect, Exit, Schema } from "effect"
 
 import {
   type ApiContractClass,
   type ApiHandlers,
   type ApiLayer,
   Handlers,
+  HostProtocolCancelByRequestEnvelope,
   HostProtocolRequestEnvelope,
   type HostProtocolError
 } from "./index.js"
@@ -247,6 +248,55 @@ test("Handlers times out cancellable handlers and records a terminal state", asy
 
   expectFailureTag(exit, "Timeout")
   expect(states).toEqual(["Pending", "Authorized", "Running", "TimedOut"])
+})
+
+test("Handlers ignore renderer cancel envelopes for non-cancellable methods", async () => {
+  const started = await Effect.runPromise(Deferred.make<void>())
+  const states: string[] = []
+  const ProjectApi = makeProjectApi("ProjectApi.HandlerNonCancellable", {
+    cancellable: false
+  })
+  const requestEnvelope = request("ProjectApi.HandlerNonCancellable.open", {
+    path: "/tmp/project"
+  })
+  const runtime = Handlers.withOptions(
+    {
+      onState: (state) =>
+        Effect.sync(() => {
+          states.push(state.tag)
+        })
+    },
+    ProjectApi.layer({
+      open: () =>
+        Effect.gen(function* () {
+          yield* Deferred.succeed(started, undefined)
+          yield* Effect.sleep(5)
+          return new ProjectOpenOutput({ id: 1 })
+        })
+    })
+  )
+
+  const responsePromise = Effect.runPromise(runtime.dispatch(requestEnvelope))
+  await Effect.runPromise(Deferred.await(started))
+  await Effect.runPromise(
+    runtime.cancel(
+      new HostProtocolCancelByRequestEnvelope({
+        kind: "cancel",
+        id: requestEnvelope.id,
+        timestamp: 42,
+        traceId: requestEnvelope.traceId
+      })
+    )
+  )
+  const response = await responsePromise
+
+  expect(response).toEqual({
+    kind: "success",
+    payload: {
+      id: "1"
+    }
+  })
+  expect(states).toEqual(["Pending", "Authorized", "Running", "Completed"])
 })
 
 test("Handlers does not confuse domain _tag collisions with Effect timeout errors", async () => {
