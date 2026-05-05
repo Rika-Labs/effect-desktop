@@ -381,10 +381,6 @@ impl WindowRegistry {
         lifecycle
     }
 
-    fn has_windows(&self) -> bool {
-        !self.windows.is_empty()
-    }
-
     fn handle_window_command(
         &mut self,
         target: &EventLoopWindowTarget<HostEvent>,
@@ -441,8 +437,7 @@ pub(crate) fn run_main_window(mode: RunMode, window_methods: WindowMethodPort) -
             }
             event => classify_event(&event),
         };
-        *control_flow =
-            control_flow_for_window_state(lifecycle_event, registry.has_windows(), Instant::now());
+        *control_flow = control_flow_for_window_state(lifecycle_event, Instant::now());
     });
 }
 
@@ -486,15 +481,9 @@ fn control_flow_for_lifecycle_event(event: WindowLifecycleEvent) -> ControlFlow 
     }
 }
 
-fn control_flow_for_window_state(
-    event: WindowLifecycleEvent,
-    has_windows: bool,
-    now: Instant,
-) -> ControlFlow {
+fn control_flow_for_window_state(event: WindowLifecycleEvent, now: Instant) -> ControlFlow {
     match control_flow_for_lifecycle_event(event) {
-        ControlFlow::Wait if !has_windows => {
-            ControlFlow::WaitUntil(now + WINDOW_COMMAND_IDLE_POLL_INTERVAL)
-        }
+        ControlFlow::Wait => ControlFlow::WaitUntil(now + WINDOW_COMMAND_IDLE_POLL_INTERVAL),
         control_flow => control_flow,
     }
 }
@@ -584,16 +573,18 @@ mod tests {
         let now = Instant::now();
 
         assert_eq!(
-            control_flow_for_window_state(WindowLifecycleEvent::Other, false, now),
+            control_flow_for_window_state(WindowLifecycleEvent::Other, now),
             ControlFlow::WaitUntil(now + WINDOW_COMMAND_IDLE_POLL_INTERVAL)
         );
     }
 
     #[test]
-    fn open_window_waits_for_native_events() {
+    fn open_window_uses_bounded_poll_for_runtime_commands() {
+        let now = Instant::now();
+
         assert_eq!(
-            control_flow_for_window_state(WindowLifecycleEvent::Other, true, Instant::now()),
-            ControlFlow::Wait
+            control_flow_for_window_state(WindowLifecycleEvent::Other, now),
+            ControlFlow::WaitUntil(now + WINDOW_COMMAND_IDLE_POLL_INTERVAL)
         );
     }
 
