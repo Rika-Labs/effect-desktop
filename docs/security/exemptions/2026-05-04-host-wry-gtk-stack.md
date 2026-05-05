@@ -3,7 +3,8 @@
 ## Status
 
 Accepted for the Phase 1 host dependency skeleton, Tao window runtime, first WRY
-WebView static inline HTML smoke, and first `app://` scheme stub.
+WebView static inline HTML smoke, first `app://` scheme stub, and first embedded
+playground renderer asset.
 
 ## Scope
 
@@ -18,12 +19,16 @@ This exemption covers the Linux dependency path introduced by `crates/host`:
 - Static inline hello HTML loaded through `WebViewBuilder::with_html`
 - WRY custom protocol registration for the `app` scheme
 - Hard-coded `app://localhost/` HTML response with static strict CSP headers
+- Static embedded asset resolution for the committed `apps/playground/dist`
+  Phase 1 artifact
+- Same-origin external JS/CSS execution from that committed artifact
 - Linux X11/Xvfb smoke execution in CI
 
-It does not cover embedded asset resolution, path traversal handling, MIME
-detection beyond the hard-coded HTML response, full nonce-based CSP generation,
-renderer IPC, permissions, navigation policy, remote content, untrusted HTML
-execution, or any long-lived privileged WebView runtime behavior.
+It does not cover runtime filesystem asset lookup, dynamic renderer build
+manifests, path traversal over a real asset tree, MIME detection beyond the
+committed Phase 1 asset extensions, full nonce-based CSP generation, renderer
+IPC, permissions, navigation policy, remote content, untrusted HTML execution,
+or any long-lived privileged WebView runtime behavior.
 
 ## Rationale
 
@@ -35,6 +40,10 @@ content, expose IPC, route permissions, or run application code.
 Issue #10 registers the first `app://` custom protocol handler and loads
 `app://localhost/` through WRY, but the handler still returns a hard-coded HTML
 probe and performs no filesystem or asset lookup.
+Issue #11 replaces that probe with a fixed embedded asset table for the
+committed `apps/playground/dist` artifact. The handler can now return
+`index.html`, `style.css`, and `app.js` from embedded bytes, but still performs
+no runtime filesystem reads and exposes no dynamic asset tree.
 
 The current WRY/TAO Linux default feature set resolves through GTK 3 and
 WebKitGTK crates that pull `glib 0.18.5`. `cargo audit` reports
@@ -46,10 +55,11 @@ Accepting the advisory at this phase is lower risk than replacing the planned
 host substrate before protocol and renderer work can be isolated. The active
 runtime exposure is limited to native window creation, first WebView
 instantiation, static inline HTML loading, first `app://` custom protocol
-registration, and CI smoke execution under Xvfb. The risk must be re-reviewed
-before embedded asset resolution, path traversal handling, full nonce-based CSP
-generation, renderer IPC, remote content, navigation policy, or other privileged
-host behavior lands.
+registration, static embedded playground asset loading, and CI smoke execution
+under Xvfb. The risk must be re-reviewed before runtime filesystem asset lookup,
+dynamic renderer build manifests, path traversal over a real asset tree, full
+nonce-based CSP generation, renderer IPC, remote content, navigation policy, or
+other privileged host behavior lands.
 
 ## Owner
 
@@ -58,15 +68,16 @@ Effect Desktop maintainers.
 ## Re-review
 
 Re-review by 2026-06-04, or earlier before the first milestone that enables
-embedded asset resolution, path traversal handling, full nonce-based CSP
-generation, renderer IPC, remote or untrusted HTML, navigation policy, or
-long-lived privileged host behavior on Linux.
+runtime filesystem asset lookup, dynamic renderer build manifests, path
+traversal over a real asset tree, full nonce-based CSP generation, renderer IPC,
+remote or untrusted HTML, navigation policy, or long-lived privileged host
+behavior on Linux.
 
 ## Validation
 
 Validated on 2026-05-04 for the dependency skeleton and re-reviewed on
 2026-05-05 for the Tao window runtime, first WRY WebView static inline HTML
-smoke, and first `app://` scheme stub:
+smoke, first `app://` scheme stub, and first embedded playground renderer asset:
 
 - `cargo info wry` reports `wry 0.55.1` with default `os-webview` and `x11`
   Linux features.
@@ -76,7 +87,9 @@ smoke, and first `app://` scheme stub:
 - `cargo audit --file Cargo.lock --json` reports `RUSTSEC-2024-0429` for
   `glib 0.18.5` with advisory database updated 2026-05-01.
 - `cargo run -p host -- --window-smoke-test` opens the Tao window path,
-  instantiates the WRY WebView, registers the `app` custom protocol, loads
-  `app://localhost/`, and exits without asset lookup, path traversal handling,
-  IPC, navigation policy, remote content, or permissions.
+  instantiates the WRY WebView, registers the `app` custom protocol, resolves
+  embedded playground assets, loads `app://localhost/`, and exits without
+  runtime filesystem asset lookup, IPC, navigation policy, remote content, or
+  permissions.
 - PR #148 CI runs the app-protocol smoke path on Linux under `xvfb-run -a`.
+- PR #149 CI runs the embedded-asset smoke path on Linux under `xvfb-run -a`.
