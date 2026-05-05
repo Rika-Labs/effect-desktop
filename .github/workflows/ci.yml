@@ -89,9 +89,13 @@ jobs:
         run: xvfb-run -a cargo run -p host -- --window-smoke-test
 
       - name: cargo test --workspace
-        if: runner.os != 'Linux'
+        if: runner.os == 'macOS'
         run: cargo test --workspace
 
       - name: cargo test --workspace (Linux)
         if: runner.os == 'Linux'
         run: xvfb-run -a cargo test --workspace
+
+      - name: cargo test --workspace (Windows headless)
+        if: runner.os == 'Windows'
+        run: cargo test --workspace --exclude host && cargo test -p host --lib
