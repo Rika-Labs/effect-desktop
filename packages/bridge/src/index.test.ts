@@ -83,6 +83,38 @@ test("host protocol error tags are closed", () => {
   ).toThrow()
 })
 
+test("host protocol envelopes reject excess top-level fields", () => {
+  expect(() =>
+    decodeHostProtocolEnvelope({
+      kind: "request",
+      id: "request-1",
+      method: "host.ping",
+      timestamp: 1710000000000,
+      traceId: "trace-extra",
+      error: {
+        tag: "Internal",
+        message: "extra"
+      }
+    })
+  ).toThrow()
+})
+
+test("host protocol errors reject excess detail fields", () => {
+  expect(() =>
+    decodeHostProtocolEnvelope({
+      kind: "response",
+      id: "request-2",
+      timestamp: 1710000000005,
+      traceId: "trace-extra-error",
+      error: {
+        tag: "FileNotFound",
+        path: "/tmp/missing.txt",
+        message: "extra"
+      }
+    })
+  ).toThrow()
+})
+
 test("timestamps reject values Rust unsigned integers reject", () => {
   for (const timestamp of [-1, 1.5, Number.NaN]) {
     expect(() =>

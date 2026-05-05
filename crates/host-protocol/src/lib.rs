@@ -218,7 +218,8 @@ impl<'a> TryFrom<&'a HostProtocolEnvelope> for SerializableHostProtocolEnvelope<
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
-    rename_all_fields = "camelCase"
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
 )]
 enum RawHostProtocolEnvelope {
     Request {
@@ -351,7 +352,7 @@ impl TryFrom<RawHostProtocolEnvelope> for HostProtocolEnvelope {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "tag", rename_all_fields = "camelCase")]
+#[serde(tag = "tag", rename_all_fields = "camelCase", deny_unknown_fields)]
 pub enum HostProtocolError {
     FileNotFound {
         path: String,
@@ -556,6 +557,32 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "cancel envelope requires id or resourceId"
+        );
+    }
+
+    #[test]
+    fn envelope_excess_fields_are_rejected() {
+        let error = serde_json::from_str::<HostProtocolEnvelope>(
+            r#"{"kind":"request","id":"request-1","method":"host.ping","timestamp":1710000000000,"traceId":"trace-1","error":{"tag":"Internal","message":"extra"}}"#,
+        )
+        .expect_err("unknown envelope fields must fail");
+
+        assert!(
+            error.to_string().contains("unknown field `error`"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn host_protocol_error_excess_fields_are_rejected() {
+        let error = serde_json::from_str::<HostProtocolError>(
+            r#"{"tag":"FileNotFound","path":"/tmp/missing.txt","message":"extra"}"#,
+        )
+        .expect_err("unknown error fields must fail");
+
+        assert!(
+            error.to_string().contains("unknown field `message`"),
+            "unexpected error: {error}"
         );
     }
 

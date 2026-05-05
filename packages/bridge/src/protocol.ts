@@ -4,6 +4,7 @@ const UInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const UInt32 = UInt.check(Schema.isLessThanOrEqualTo(4_294_967_295))
 const OptionalString = Schema.optionalKey(Schema.String)
 const OptionalUnknown = Schema.optionalKey(Schema.Unknown)
+const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export class HostProtocolFileNotFoundError extends Schema.Class<HostProtocolFileNotFoundError>(
   "HostProtocolFileNotFoundError"
@@ -432,6 +433,11 @@ export const HostProtocolEnvelope = Schema.Union([
 
 export type HostProtocolEnvelope = typeof HostProtocolEnvelope.Type
 
-export const decodeHostProtocolEnvelope = Schema.decodeUnknownSync(HostProtocolEnvelope)
+const decodeUnknownHostProtocolEnvelope = Schema.decodeUnknownSync(HostProtocolEnvelope)
+const encodeHostProtocolEnvelopeSync = Schema.encodeSync(HostProtocolEnvelope)
 
-export const encodeHostProtocolEnvelope = Schema.encodeSync(HostProtocolEnvelope)
+export const decodeHostProtocolEnvelope = (input: unknown): HostProtocolEnvelope =>
+  decodeUnknownHostProtocolEnvelope(input, StrictParseOptions)
+
+export const encodeHostProtocolEnvelope = (input: HostProtocolEnvelope) =>
+  encodeHostProtocolEnvelopeSync(input, StrictParseOptions)
