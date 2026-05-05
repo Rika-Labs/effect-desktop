@@ -10,17 +10,57 @@ import { type ApiClientResponse } from "./client.js"
 import {
   HostProtocolMethodNotFoundError,
   HostProtocolRequestEnvelope,
+  HostProtocolCancelledError,
+  HostProtocolTimeoutError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
+  makeHostProtocolInvalidStateError,
   type HostProtocolError
 } from "./protocol.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
+const DEFAULT_TIMEOUT_MS = 30_000
 
 export interface ApiHandlerRuntime<Env = never> {
   readonly dispatch: (
     request: HostProtocolRequestEnvelope
   ) => Effect.Effect<ApiClientResponse, HostProtocolError, Env>
+}
+
+export type BridgeCallTerminalState = "Completed" | "Failed" | "Canceled" | "TimedOut"
+
+export type BridgeCallState =
+  | {
+      readonly tag: "Pending"
+      readonly id: string
+      readonly traceId: string
+      readonly startedAt: number
+    }
+  | { readonly tag: "Authorized"; readonly id: string; readonly capability: string }
+  | { readonly tag: "Running"; readonly id: string; readonly handler: string }
+  | { readonly tag: "Completed"; readonly id: string; readonly completedAt: number }
+  | { readonly tag: "Failed"; readonly id: string; readonly error: unknown }
+  | {
+      readonly tag: "Canceled"
+      readonly id: string
+      readonly canceledBy: "renderer" | "runtime" | "host"
+    }
+  | { readonly tag: "TimedOut"; readonly id: string; readonly timeoutMs: number }
+  | {
+      readonly tag: "RejectedLateFrame"
+      readonly id: string
+      readonly method: string
+      readonly terminalState: BridgeCallTerminalState
+    }
+
+export interface ApiHandlerRuntimeOptions {
+  readonly now?: () => number
+  readonly onState?: (state: BridgeCallState) => Effect.Effect<void, never, never>
+}
+
+interface ResolvedApiHandlerRuntimeOptions {
+  readonly now: () => number
+  readonly onState: (state: BridgeCallState) => Effect.Effect<void, never, never>
 }
 
 export type ApiLayerEnvironment<Layer> =
@@ -46,10 +86,17 @@ type BoundHandler = {
   readonly handler: (input: unknown) => Effect.Effect<unknown, unknown, unknown>
 }
 
-export const Handlers = <Layers extends readonly AnyApiLayer[]>(
+const makeHandlers = <Layers extends readonly AnyApiLayer[]>(
+  ...layers: Layers
+): ApiHandlerRuntime<ApiLayerEnvironment<Layers[number]>> => makeHandlersWithOptions({}, ...layers)
+
+const makeHandlersWithOptions = <Layers extends readonly AnyApiLayer[]>(
+  options: ApiHandlerRuntimeOptions,
   ...layers: Layers
 ): ApiHandlerRuntime<ApiLayerEnvironment<Layers[number]>> => {
   const table = new Map<string, BoundHandler>()
+  const terminalStates = new Map<string, BridgeCallTerminalState>()
+  const resolved = resolveOptions(options)
 
   for (const layer of layers) {
     for (const [method, spec] of Object.entries(layer.contract.spec)) {
@@ -68,7 +115,7 @@ export const Handlers = <Layers extends readonly AnyApiLayer[]>(
 
   return Object.freeze({
     dispatch: (request: HostProtocolRequestEnvelope) =>
-      dispatch(table, request) as Effect.Effect<
+      dispatch(table, terminalStates, resolved, request) as Effect.Effect<
         ApiClientResponse,
         HostProtocolError,
         ApiLayerEnvironment<Layers[number]>
@@ -76,34 +123,137 @@ export const Handlers = <Layers extends readonly AnyApiLayer[]>(
   }) as ApiHandlerRuntime<ApiLayerEnvironment<Layers[number]>>
 }
 
+export const Handlers = Object.assign(makeHandlers, {
+  withOptions: makeHandlersWithOptions
+})
+
 const dispatch = (
   table: ReadonlyMap<string, BoundHandler>,
+  terminalStates: Map<string, BridgeCallTerminalState>,
+  options: ResolvedApiHandlerRuntimeOptions,
   request: HostProtocolRequestEnvelope
 ): Effect.Effect<ApiClientResponse, HostProtocolError, unknown> =>
   Effect.gen(function* () {
+    const priorTerminalState = terminalStates.get(request.id)
+    if (priorTerminalState !== undefined) {
+      yield* options.onState({
+        tag: "RejectedLateFrame",
+        id: request.id,
+        method: request.method,
+        terminalState: priorTerminalState
+      })
+      return yield* Effect.fail(
+        makeHostProtocolInvalidStateError(priorTerminalState, "dispatch", request.method)
+      )
+    }
+
+    yield* options.onState({
+      tag: "Pending",
+      id: request.id,
+      traceId: request.traceId,
+      startedAt: options.now()
+    })
+
     const bound = table.get(request.method)
 
     if (bound === undefined) {
-      return yield* Effect.fail(makeMethodNotFoundError(request.method))
+      const error = makeMethodNotFoundError(request.method)
+      yield* failCall(terminalStates, options, request.id, error)
+      return yield* Effect.fail(error)
     }
 
-    const input = yield* decodeInput(request.method, bound.spec, request.payload)
-    const exit = yield* Effect.exit(bound.handler(input))
+    const inputExit = yield* Effect.exit(decodeInput(request.method, bound.spec, request.payload))
+    if (Exit.isFailure(inputExit)) {
+      const error = yield* hostProtocolErrorFromCause(request.method, inputExit.cause)
+      yield* failCall(terminalStates, options, request.id, error)
+      return yield* Effect.fail(error)
+    }
+
+    yield* options.onState({
+      tag: "Authorized",
+      id: request.id,
+      capability: bound.spec.permission ?? "public"
+    })
+    yield* options.onState({
+      tag: "Running",
+      id: request.id,
+      handler: request.method
+    })
+
+    const handlerEffect = runWithTimeout(bound, request.method, inputExit.value)
+    const exit = yield* Effect.exit(handlerEffect)
 
     if (Exit.isFailure(exit)) {
+      const timeout = timeoutFromCause(exit.cause)
+      if (timeout !== undefined) {
+        terminalStates.set(request.id, "TimedOut")
+        yield* options.onState({
+          tag: "TimedOut",
+          id: request.id,
+          timeoutMs: timeout.timeoutMs
+        })
+        return yield* Effect.fail(timeout.error)
+      }
+
+      const canceled = cancelledFromCause(request.method, exit.cause)
+      if (canceled !== undefined) {
+        terminalStates.set(request.id, "Canceled")
+        yield* options.onState({
+          tag: "Canceled",
+          id: request.id,
+          canceledBy: "runtime"
+        })
+        return yield* Effect.fail(canceled)
+      }
+
       const error = yield* encodeContractError(request.method, bound.spec, exit.cause)
+      terminalStates.set(request.id, "Failed")
+      yield* options.onState({
+        tag: "Failed",
+        id: request.id,
+        error
+      })
       return {
         kind: "failure",
         error
       } as const
     }
 
-    const payload = yield* encodeOutput(request.method, bound.spec, exit.value)
+    const outputExit = yield* Effect.exit(encodeOutput(request.method, bound.spec, exit.value))
+    if (Exit.isFailure(outputExit)) {
+      const error = yield* hostProtocolErrorFromCause(request.method, outputExit.cause)
+      yield* failCall(terminalStates, options, request.id, error)
+      return yield* Effect.fail(error)
+    }
+
+    terminalStates.set(request.id, "Completed")
+    yield* options.onState({
+      tag: "Completed",
+      id: request.id,
+      completedAt: options.now()
+    })
     return {
       kind: "success",
-      payload
+      payload: outputExit.value
     } as const
   })
+
+const runWithTimeout = (
+  bound: BoundHandler,
+  operation: string,
+  input: unknown
+): Effect.Effect<unknown, unknown, unknown> => {
+  const effect = bound.handler(input)
+  const timeoutMs = bound.spec.timeoutMs ?? DEFAULT_TIMEOUT_MS
+
+  if (bound.spec.cancellable === false || timeoutMs === 0) {
+    return effect
+  }
+
+  return Effect.mapError(Effect.timeout(effect, timeoutMs), (error) =>
+    isEffectTimeoutError(error) ? makeTimeoutError(operation, timeoutMs) : error
+  )
+}
 
 const decodeInput = <Spec extends ApiMethodSpec>(
   operation: string,
@@ -163,6 +313,80 @@ const makeMethodNotFoundError = (method: string): HostProtocolMethodNotFoundErro
     operation: method,
     recoverable: false
   })
+
+const makeTimeoutError = (operation: string, timeoutMs: number): HostProtocolTimeoutError =>
+  new HostProtocolTimeoutError({
+    tag: "Timeout",
+    timeoutMs,
+    message: `bridge call timed out after ${timeoutMs}ms`,
+    operation,
+    recoverable: true
+  })
+
+const makeCancelledError = (
+  operation: string,
+  source: "renderer" | "runtime" | "host"
+): HostProtocolCancelledError =>
+  new HostProtocolCancelledError({
+    tag: "Cancelled",
+    source,
+    message: `bridge call canceled by ${source}`,
+    operation,
+    recoverable: true
+  })
+
+const failCall = (
+  terminalStates: Map<string, BridgeCallTerminalState>,
+  options: ResolvedApiHandlerRuntimeOptions,
+  id: string,
+  error: HostProtocolError
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    terminalStates.set(id, "Failed")
+    yield* options.onState({
+      tag: "Failed",
+      id,
+      error
+    })
+  })
+
+const hostProtocolErrorFromCause = (
+  operation: string,
+  cause: Cause.Cause<HostProtocolError>
+): Effect.Effect<HostProtocolError, never, never> =>
+  Effect.sync(() => {
+    const fail = cause.reasons.find(Cause.isFailReason)
+    return fail?.error ?? makeHostProtocolInvalidOutputError(operation, String(cause))
+  })
+
+const timeoutFromCause = (
+  cause: Cause.Cause<unknown>
+): { readonly error: HostProtocolTimeoutError; readonly timeoutMs: number } | undefined => {
+  const fail = cause.reasons.find(Cause.isFailReason)
+  return isHostProtocolTimeoutError(fail?.error)
+    ? {
+        error: fail.error,
+        timeoutMs: fail.error.timeoutMs
+      }
+    : undefined
+}
+
+const cancelledFromCause = (
+  operation: string,
+  cause: Cause.Cause<unknown>
+): HostProtocolCancelledError | undefined =>
+  cause.reasons.some(Cause.isInterruptReason) ? makeCancelledError(operation, "runtime") : undefined
+
+const isEffectTimeoutError = (error: unknown): boolean =>
+  typeof error === "object" && error !== null && "_tag" in error && error._tag === "TimeoutError"
+
+const isHostProtocolTimeoutError = (error: unknown): error is HostProtocolTimeoutError =>
+  typeof error === "object" && error !== null && "tag" in error && error.tag === "Timeout"
+
+const resolveOptions = (options: ApiHandlerRuntimeOptions): ResolvedApiHandlerRuntimeOptions => ({
+  now: options.now ?? Date.now,
+  onState: options.onState ?? (() => Effect.void)
+})
 
 const methodName = (tag: string, method: string): string => `${tag}.${method}`
 
