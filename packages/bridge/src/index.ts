@@ -1,5 +1,6 @@
 export * from "./client.js"
 export * from "./contracts.js"
+export * from "./handlers.js"
 export * from "./handshake.js"
 export * from "./protocol.js"
 export * from "./window.js"
