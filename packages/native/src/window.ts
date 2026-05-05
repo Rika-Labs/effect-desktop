@@ -378,6 +378,7 @@ const makeHostWindowHandlers = (
   options: HostWindowClientOptions
 ): ApiHandlers<WindowApiSpec> => {
   const host = makeHostWindowClient(exchange, options)
+  const knownWindowIds = new Set<string>()
   const unsupported = (method: string) =>
     Effect.fail(makeHostProtocolInvalidStateError("unimplemented", "call", method))
 
@@ -385,7 +386,8 @@ const makeHostWindowHandlers = (
     create: (input) =>
       Effect.gen(function* () {
         const registry = yield* ResourceRegistry
-        const created = yield* host.create(input)
+        const created = yield* host.create(toHostWindowCreateInput(input))
+        knownWindowIds.add(created.windowId)
         const handle = yield* registry.register({
           kind: "window",
           id: created.windowId as ResourceId,
@@ -402,10 +404,16 @@ const makeHostWindowHandlers = (
         const registry = yield* ResourceRegistry
         const { window } = input
         const resourceId = window.id as ResourceId
+        if (!knownWindowIds.has(window.id)) {
+          return yield* Effect.fail(
+            makeHostProtocolNotFoundError(`Window:${window.id}`, "Window.close")
+          )
+        }
+
         const existing = yield* registry.get(resourceId)
         if (Option.isNone(existing)) {
           return yield* Effect.fail(
-            makeHostProtocolNotFoundError(`Window:${window.id}`, "Window.close")
+            makeStaleHandleError("Window.close", window, window.generation + 1)
           )
         }
 
@@ -444,6 +452,14 @@ const makeHostWindowHandlers = (
 
 const unsupportedError = (method: string): HostProtocolError =>
   makeHostProtocolInvalidStateError("unimplemented", "call", method)
+
+const toHostWindowCreateInput = (input: WindowCreateOptions): WindowCreateOptions => {
+  return {
+    ...(input.title === undefined ? {} : { title: input.title }),
+    ...(input.width === undefined ? {} : { width: input.width }),
+    ...(input.height === undefined ? {} : { height: input.height })
+  }
+}
 
 const toWindowHandle = (handle: WindowHandle): WindowHandle =>
   new ApiResourceHandleShape({

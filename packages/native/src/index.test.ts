@@ -145,7 +145,12 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
   })
   const program = Effect.gen(function* () {
     const window = yield* Window
-    const created = yield* window.create({ title: "Main", width: 320, height: 240 })
+    const created = yield* window.create({
+      title: "Main",
+      width: 320,
+      height: 240,
+      persistState: true
+    })
     const duringLifetime = yield* registry.list()
     yield* window.close(created)
     const afterClose = yield* registry.list()
@@ -202,6 +207,8 @@ test("host WindowClient adapter returns typed failures for invalid input and bad
       generation: created.generation + 1
     })
   )
+  await Effect.runPromise(client.close(created))
+  const repeatedCloseExit = await Effect.runPromiseExit(client.close(created))
 
   expectExitFailure(invalidCreateExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(
@@ -210,6 +217,10 @@ test("host WindowClient adapter returns typed failures for invalid input and bad
   )
   expectExitFailure(
     staleExit,
+    (error) => error instanceof HostProtocolStaleHandleError && error.operation === "Window.close"
+  )
+  expectExitFailure(
+    repeatedCloseExit,
     (error) => error instanceof HostProtocolStaleHandleError && error.operation === "Window.close"
   )
 })
