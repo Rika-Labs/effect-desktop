@@ -20,10 +20,11 @@ type CallState =
 
 export function App() {
   const desktop = useDesktop()
-  const window = useWindow()
+  const currentWindow = useWindow()
   const [callState, setCallState] = useState<CallState>({ _tag: "Idle" })
-  const canCallDesktop = Option.isSome(desktop) && Option.isSome(window)
+  const canCallDesktop = Option.isSome(desktop)
   const status = useMemo(() => statusText(callState), [callState])
+  const windowStatus = Option.isSome(currentWindow) ? `Current ${currentWindow.value.id}.` : status
 
   const openWindow = () => {
     if (Option.isNone(desktop)) {
@@ -65,7 +66,7 @@ export function App() {
             Open window
           </button>
           <p className="text-sm text-slate-600 dark:text-zinc-400" data-template-status>
-            {status}
+            {windowStatus}
           </p>
         </div>
       </section>
