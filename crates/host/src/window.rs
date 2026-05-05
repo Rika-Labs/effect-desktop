@@ -1,5 +1,5 @@
 use crate::webview;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use host_protocol::{HostProtocolError, WindowCreatePayload, WindowCreateResponse};
 use std::{
     collections::{HashMap, VecDeque},
@@ -28,6 +28,7 @@ const WINDOW_EXIT_REQUESTED_EVENT: &str = "host.window.exit_requested";
 const WINDOW_METHOD_READY_TIMEOUT: Duration = Duration::from_secs(5);
 const WINDOW_METHOD_REPLY_TIMEOUT: Duration = Duration::from_secs(5);
 const WINDOW_COMMAND_IDLE_POLL_INTERVAL: Duration = Duration::from_millis(50);
+const WINDOW_STARTUP_COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RunMode {
@@ -46,6 +47,7 @@ struct WindowMethodPortState {
     proxy: Mutex<Option<EventLoopProxy<HostEvent>>>,
     commands: Mutex<VecDeque<WindowCommand>>,
     ready: Condvar,
+    commands_ready: Condvar,
 }
 
 pub(crate) trait WindowMethodHandler: Send + Sync {
@@ -114,6 +116,7 @@ impl WindowMethodPort {
                 proxy: Mutex::new(None),
                 commands: Mutex::new(VecDeque::new()),
                 ready: Condvar::new(),
+                commands_ready: Condvar::new(),
             }),
             ready_timeout,
             reply_timeout,
@@ -192,16 +195,71 @@ impl WindowMethodPort {
         command: WindowCommand,
     ) -> std::result::Result<(), HostProtocolError> {
         let proxy = self.installed_proxy()?;
-        self.state
-            .commands
-            .lock()
-            .map_err(|_| HostProtocolError::Internal {
-                message: "window command queue mutex poisoned".to_string(),
-            })?
-            .push_back(command);
-        proxy
-            .send_event(HostEvent::Wake)
-            .map_err(|_| HostProtocolError::HostUnavailable)
+        {
+            let mut commands =
+                self.state
+                    .commands
+                    .lock()
+                    .map_err(|_| HostProtocolError::Internal {
+                        message: "window command queue mutex poisoned".to_string(),
+                    })?;
+            commands.push_back(command);
+        }
+        self.state.commands_ready.notify_all();
+
+        if proxy.send_event(HostEvent::Wake).is_err() {
+            warn!(
+                event = "host.window.command_wake_dropped",
+                "window command wake event dropped"
+            );
+        }
+
+        Ok(())
+    }
+
+    fn take_startup_commands(&self) -> Vec<WindowCommand> {
+        let deadline = Instant::now() + WINDOW_STARTUP_COMMAND_TIMEOUT;
+        let mut commands = match self.state.commands.lock() {
+            Ok(commands) => commands,
+            Err(_) => {
+                warn!(
+                    event = "host.window.command_queue_poisoned",
+                    "window command queue mutex poisoned"
+                );
+                return Vec::new();
+            }
+        };
+
+        loop {
+            if !commands.is_empty() {
+                return commands.drain(..).collect();
+            }
+
+            let now = Instant::now();
+            if now >= deadline {
+                return Vec::new();
+            }
+
+            let wait_result = self
+                .state
+                .commands_ready
+                .wait_timeout(commands, deadline.saturating_duration_since(now));
+            match wait_result {
+                Ok((next_commands, timeout)) => {
+                    commands = next_commands;
+                    if timeout.timed_out() && commands.is_empty() {
+                        return Vec::new();
+                    }
+                }
+                Err(_) => {
+                    warn!(
+                        event = "host.window.command_queue_poisoned",
+                        "window command queue mutex poisoned while waiting for startup command"
+                    );
+                    return Vec::new();
+                }
+            }
+        }
     }
 
     fn take_pending_commands(&self) -> Vec<WindowCommand> {
@@ -361,9 +419,18 @@ impl WindowRegistry {
         mode: RunMode,
         window_methods: &WindowMethodPort,
     ) -> WindowLifecycleEvent {
+        self.handle_window_commands(target, mode, window_methods.take_pending_commands())
+    }
+
+    fn handle_window_commands(
+        &mut self,
+        target: &EventLoopWindowTarget<HostEvent>,
+        mode: RunMode,
+        commands: impl IntoIterator<Item = WindowCommand>,
+    ) -> WindowLifecycleEvent {
         let mut lifecycle = WindowLifecycleEvent::Other;
 
-        for command in window_methods.take_pending_commands() {
+        for command in commands {
             match self.handle_window_command(target, mode, command) {
                 WindowLifecycleEvent::WindowCreateFailed => {
                     lifecycle = WindowLifecycleEvent::WindowCreateFailed;
@@ -429,6 +496,14 @@ pub(crate) fn run_main_window(mode: RunMode, window_methods: WindowMethodPort) -
         .context("failed to install window method event-loop proxy")?;
     let command_source = window_methods.clone();
     let mut registry = WindowRegistry::new();
+
+    let startup_lifecycle =
+        registry.handle_window_commands(&event_loop, mode, command_source.take_startup_commands());
+    match startup_lifecycle {
+        WindowLifecycleEvent::WindowCreateFailed => bail!("startup window create failed"),
+        WindowLifecycleEvent::SmokeExitRequested => return Ok(()),
+        WindowLifecycleEvent::CloseRequested | WindowLifecycleEvent::Other => {}
+    }
 
     event_loop.run(move |event, target, control_flow| {
         let lifecycle_event = match event {
