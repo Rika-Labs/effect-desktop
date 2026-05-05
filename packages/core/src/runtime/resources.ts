@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Option, Stream, SubscriptionRef } from "effect"
+import { Context, Effect, Layer, Option, Schema, Stream, SubscriptionRef } from "effect"
 
 export type ResourceId = string & { readonly ResourceId: unique symbol }
 export type ResourceKind = string
@@ -17,6 +17,14 @@ export interface ResourceHandle<
   readonly dispose: () => Effect.Effect<void, never, never>
 }
 
+export class ResourceHandleShape extends Schema.Class<ResourceHandleShape>("ResourceHandle")({
+  kind: Schema.String,
+  id: Schema.String,
+  generation: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  ownerScope: Schema.String,
+  state: Schema.String
+}) {}
+
 export interface ResourceEntry<
   Kind extends ResourceKind = ResourceKind,
   State extends ResourceState = ResourceState
@@ -34,9 +42,23 @@ export interface RegisterResourceInput<
   State extends ResourceState = ResourceState
 > {
   readonly kind: Kind
+  readonly id?: ResourceId
   readonly ownerScope: ScopeId
   readonly state: State
+  readonly reusableId?: boolean
   readonly dispose?: Effect.Effect<void, never, never>
+}
+
+export class StaleHandle extends Schema.Class<StaleHandle>("StaleHandle")({
+  tag: Schema.Literal("StaleHandle"),
+  kind: Schema.String,
+  id: Schema.String,
+  expectedGeneration: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  actualGeneration: Schema.Int
+}) {
+  get _tag(): "StaleHandle" {
+    return this.tag
+  }
 }
 
 export interface ResourceRegistryApi {
@@ -47,6 +69,9 @@ export interface ResourceRegistryApi {
   readonly list: () => Effect.Effect<RegistrySnapshot, never, never>
   readonly dispose: (id: ResourceId) => Effect.Effect<void, never, never>
   readonly observe: () => Stream.Stream<RegistrySnapshot, never, never>
+  readonly assertFresh: <Kind extends ResourceKind, State extends ResourceState>(
+    handle: ResourceHandle<Kind, State>
+  ) => Effect.Effect<ResourceEntry<Kind, State>, StaleHandle, never>
 }
 
 export interface ResourceRegistryOptions {
@@ -61,6 +86,7 @@ export const makeResourceRegistry = (
     const now = options.now ?? Date.now
     const nextId = options.nextId ?? generateUuidV7
     const entries = yield* SubscriptionRef.make(new Map<ResourceId, StoredResourceEntry>())
+    const disposedGenerations = new Map<ResourceId, DisposedGeneration>()
 
     const snapshot = (): Effect.Effect<RegistrySnapshot, never, never> =>
       Effect.map(SubscriptionRef.get(entries), snapshotFromMap)
@@ -80,6 +106,11 @@ export const makeResourceRegistry = (
         })
 
         if (entry !== undefined) {
+          disposedGenerations.set(id, {
+            kind: entry.handle.kind,
+            generation: entry.reusableId ? entry.handle.generation + 1 : -1,
+            reusableId: entry.reusableId
+          })
           yield* entry.dispose
         }
       })
@@ -89,28 +120,59 @@ export const makeResourceRegistry = (
     ): Effect.Effect<ResourceHandle<Kind, State>, never, never> =>
       Effect.gen(function* () {
         const createdAt = now()
-        const id = nextId(createdAt)
-        const handle: ResourceHandle<Kind, State> = {
-          kind: input.kind,
-          id,
-          generation: 0,
-          ownerScope: input.ownerScope,
-          state: input.state,
-          dispose: () => dispose(id)
-        }
-        const stored: StoredResourceEntry = {
-          handle,
-          createdAt,
-          dispose: input.dispose ?? Effect.void
-        }
-
-        yield* SubscriptionRef.update(entries, (current) => {
+        const handle = yield* SubscriptionRef.modify(entries, (current) => {
+          const id = availableRegistrationId(input.id, createdAt, nextId, current)
+          const generation = generationForRegistration(
+            id,
+            input.kind,
+            input.reusableId,
+            disposedGenerations
+          )
+          const handle: ResourceHandle<Kind, State> = {
+            kind: input.kind,
+            id,
+            generation,
+            ownerScope: input.ownerScope,
+            state: input.state,
+            dispose: () => dispose(id)
+          }
+          const stored: StoredResourceEntry = {
+            handle,
+            createdAt,
+            reusableId: input.reusableId === true,
+            dispose: input.dispose ?? Effect.void
+          }
           const next = new Map(current)
           next.set(id, stored)
-          return next
+          return [handle, next] as const
         })
 
         return handle
+      })
+
+    const assertFresh = <Kind extends ResourceKind, State extends ResourceState>(
+      handle: ResourceHandle<Kind, State>
+    ): Effect.Effect<ResourceEntry<Kind, State>, StaleHandle, never> =>
+      Effect.flatMap(SubscriptionRef.get(entries), (current) => {
+        const entry = current.get(handle.id)
+        if (
+          entry !== undefined &&
+          entry.handle.kind === handle.kind &&
+          entry.handle.generation === handle.generation
+        ) {
+          return Effect.succeed(publicEntry(entry) as ResourceEntry<Kind, State>)
+        }
+
+        const disposed = disposedGenerations.get(handle.id)
+        return Effect.fail(
+          new StaleHandle({
+            tag: "StaleHandle",
+            kind: handle.kind,
+            id: handle.id,
+            expectedGeneration: handle.generation,
+            actualGeneration: disposed?.generation ?? entry?.handle.generation ?? -1
+          })
+        )
       })
 
     return {
@@ -119,7 +181,8 @@ export const makeResourceRegistry = (
         Effect.map(SubscriptionRef.get(entries), (current) => publicEntryOption(current.get(id))),
       list: snapshot,
       dispose,
-      observe: () => SubscriptionRef.changes(entries).pipe(Stream.map(snapshotFromMap))
+      observe: () => SubscriptionRef.changes(entries).pipe(Stream.map(snapshotFromMap)),
+      assertFresh
     }
   })
 
@@ -130,7 +193,48 @@ export class ResourceRegistry extends Context.Service<ResourceRegistry, Resource
 export const ResourceRegistryLive = Layer.effect(ResourceRegistry)(makeResourceRegistry())
 
 interface StoredResourceEntry extends ResourceEntry {
+  readonly reusableId: boolean
   readonly dispose: Effect.Effect<void, never, never>
+}
+
+interface DisposedGeneration {
+  readonly kind: ResourceKind
+  readonly generation: number
+  readonly reusableId: boolean
+}
+
+const generationForRegistration = (
+  id: ResourceId,
+  kind: ResourceKind,
+  reusableId: boolean | undefined,
+  disposedGenerations: ReadonlyMap<ResourceId, DisposedGeneration>
+): number => {
+  const disposed = disposedGenerations.get(id)
+  if (disposed === undefined) {
+    return 0
+  }
+
+  return reusableId === true && disposed.reusableId && disposed.kind === kind
+    ? disposed.generation
+    : nextGenerationAfter(disposed.generation)
+}
+
+const nextGenerationAfter = (generation: number): number => {
+  return generation < 0 ? 1 : generation + 1
+}
+
+const availableRegistrationId = (
+  requestedId: ResourceId | undefined,
+  createdAt: number,
+  nextId: (now: number) => ResourceId,
+  current: ReadonlyMap<ResourceId, StoredResourceEntry>
+): ResourceId => {
+  if (requestedId !== undefined && !current.has(requestedId)) {
+    return requestedId
+  }
+
+  const candidate = nextId(createdAt)
+  return current.has(candidate) ? generateUuidV7(createdAt) : candidate
 }
 
 const publicEntry = (entry: StoredResourceEntry): ResourceEntry => ({
