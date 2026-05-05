@@ -61,6 +61,12 @@ test("shared host-protocol error fixtures decode and encode canonically", async 
   }
 })
 
+test("host protocol error recoverable defaults come from specs", () => {
+  for (const spec of HOST_PROTOCOL_ERROR_SPECS) {
+    expect(hostProtocolErrorRecoverableDefault(spec.tag), spec.tag).toBe(spec.recoverable)
+  }
+})
+
 test("host protocol error type supports Effect catchTag", async () => {
   const error = decodeUnknownHostProtocolError(
     {

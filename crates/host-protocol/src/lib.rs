@@ -561,6 +561,18 @@ mod tests {
     }
 
     #[test]
+    fn host_protocol_error_recoverable_defaults_come_from_specs() {
+        for spec in HOST_PROTOCOL_ERROR_SPECS {
+            assert_eq!(
+                HostProtocolError::recoverable_default(spec.tag),
+                Some(spec.recoverable),
+                "{} recoverable default should come from the spec manifest",
+                spec.tag
+            );
+        }
+    }
+
+    #[test]
     fn host_protocol_error_fixtures_match_closed_registry() {
         let source = read_fixture("errors.json");
         let errors =

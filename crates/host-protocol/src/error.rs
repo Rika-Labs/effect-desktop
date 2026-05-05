@@ -910,48 +910,10 @@ impl HostProtocolError {
     }
 
     pub fn recoverable_default(tag: &str) -> Option<bool> {
-        match tag {
-            "FileNotFound" => Some(false),
-            "PermissionDenied" => Some(false),
-            "Timeout" => Some(true),
-            "Cancelled" => Some(true),
-            "Unsupported" => Some(false),
-            "InvalidArgument" => Some(false),
-            "ResourceBusy" => Some(true),
-            "DiskFull" => Some(true),
-            "RateLimited" => Some(true),
-            "FrameTooLarge" => Some(false),
-            "OriginInvalid" => Some(false),
-            "StaleHandle" => Some(false),
-            "CrossScopeHandle" => Some(false),
-            "BackpressureOverflow" => Some(true),
-            "RendererDisconnected" => Some(true),
-            "RuntimeRestarted" => Some(true),
-            "RuntimeUnavailable" => Some(true),
-            "HostUnavailable" => Some(true),
-            "MethodNotFound" => Some(false),
-            "InvalidOutput" => Some(false),
-            "PermissionRevoked" => Some(false),
-            "StreamClosed" => Some(false),
-            "BinaryDecodeError" => Some(false),
-            "ReconnectBackfillExhausted" => Some(false),
-            "PanicInNativeCode" => Some(false),
-            "NetworkError" => Some(true),
-            "NotFound" => Some(false),
-            "AlreadyExists" => Some(false),
-            "InvalidState" => Some(false),
-            "SymlinkEscapesRoot" => Some(false),
-            "EventLogFull" => Some(true),
-            "UpdateDowngradeRefused" => Some(false),
-            "UpdateDownloadTruncated" => Some(true),
-            "UpdateStaleNotarization" => Some(false),
-            "SettingsMigrationFailed" => Some(false),
-            "SettingsRecoveredFromBackup" => Some(true),
-            "EventLogSegmentCorrupt" => Some(false),
-            "PtyForceKillTimeout" => Some(false),
-            "Internal" => Some(false),
-            _ => None,
-        }
+        HOST_PROTOCOL_ERROR_SPECS
+            .iter()
+            .find(|spec| spec.tag == tag)
+            .map(|spec| spec.recoverable)
     }
 
     pub fn invalid_argument(

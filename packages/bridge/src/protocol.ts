@@ -58,6 +58,9 @@ export const HOST_PROTOCOL_ERROR_SPECS = [
 
 export type HostProtocolErrorSpec = (typeof HOST_PROTOCOL_ERROR_SPECS)[number]
 export type HostProtocolErrorTag = HostProtocolErrorSpec["tag"]
+const HOST_PROTOCOL_ERROR_RECOVERABLE_BY_TAG = Object.fromEntries(
+  HOST_PROTOCOL_ERROR_SPECS.map((spec) => [spec.tag, spec.recoverable])
+) as Readonly<Record<HostProtocolErrorTag, boolean>>
 
 const HostProtocolErrorCommonFieldsWithoutCause = {
   message: Schema.String,
@@ -81,86 +84,7 @@ const HostProtocolErrorCommonFields = {
 } as const
 
 export const hostProtocolErrorRecoverableDefault = (tag: HostProtocolErrorTag): boolean => {
-  switch (tag) {
-    case "FileNotFound":
-      return false
-    case "PermissionDenied":
-      return false
-    case "Timeout":
-      return true
-    case "Cancelled":
-      return true
-    case "Unsupported":
-      return false
-    case "InvalidArgument":
-      return false
-    case "ResourceBusy":
-      return true
-    case "DiskFull":
-      return true
-    case "RateLimited":
-      return true
-    case "FrameTooLarge":
-      return false
-    case "OriginInvalid":
-      return false
-    case "StaleHandle":
-      return false
-    case "CrossScopeHandle":
-      return false
-    case "BackpressureOverflow":
-      return true
-    case "RendererDisconnected":
-      return true
-    case "RuntimeRestarted":
-      return true
-    case "RuntimeUnavailable":
-      return true
-    case "HostUnavailable":
-      return true
-    case "MethodNotFound":
-      return false
-    case "InvalidOutput":
-      return false
-    case "PermissionRevoked":
-      return false
-    case "StreamClosed":
-      return false
-    case "BinaryDecodeError":
-      return false
-    case "ReconnectBackfillExhausted":
-      return false
-    case "PanicInNativeCode":
-      return false
-    case "NetworkError":
-      return true
-    case "NotFound":
-      return false
-    case "AlreadyExists":
-      return false
-    case "InvalidState":
-      return false
-    case "SymlinkEscapesRoot":
-      return false
-    case "EventLogFull":
-      return true
-    case "UpdateDowngradeRefused":
-      return false
-    case "UpdateDownloadTruncated":
-      return true
-    case "UpdateStaleNotarization":
-      return false
-    case "SettingsMigrationFailed":
-      return false
-    case "SettingsRecoveredFromBackup":
-      return true
-    case "EventLogSegmentCorrupt":
-      return false
-    case "PtyForceKillTimeout":
-      return false
-    case "Internal":
-      return false
-  }
+  return HOST_PROTOCOL_ERROR_RECOVERABLE_BY_TAG[tag]
 }
 
 interface HostProtocolErrorCommonInput {
