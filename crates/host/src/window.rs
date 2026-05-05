@@ -57,7 +57,7 @@ pub(crate) fn run_main_window(mode: RunMode) -> Result<()> {
         "host window opened"
     );
 
-    let webview = webview::attach_hello_webview(&window)?;
+    let webview = webview::attach_app_webview(&window)?;
     let native_resources = NativeWindowResources {
         _window: window,
         _webview: webview,

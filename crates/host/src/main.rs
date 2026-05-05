@@ -1,3 +1,4 @@
+mod scheme;
 mod webview;
 mod window;
 
