@@ -8,7 +8,7 @@ TypeScript-facing native services backed by the Rust host: `App`, `Window`, `Web
 
 ## Public API
 
-`Window` is exposed as an Effect service. `WindowApi` declares the matching bridge contract and `WindowClient` is the substitutable port used by tests and future host-backed adapters.
+`Window` is exposed as an Effect service. `WindowApi` declares the matching bridge contract, `registerWindowApi()` registers it during bootstrap before the bridge registry is frozen, and `WindowClient` is the substitutable port used by tests and future host-backed adapters.
 
 ## Non-goals
 

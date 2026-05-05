@@ -99,9 +99,14 @@ test("Window service delegates through a substitutable WindowClient port", async
 })
 
 test("Window service can be composed from a separately provided WindowClient", async () => {
+  const calls: string[] = []
   const client: WindowClientApi = {
     ...noopWindowClient,
-    create: () => Effect.succeed(windowHandle)
+    create: (input) =>
+      Effect.sync(() => {
+        calls.push(`create:${Object.keys(input).length}`)
+        return windowHandle
+      })
   }
 
   const created = await Effect.runPromise(
@@ -112,6 +117,7 @@ test("Window service can be composed from a separately provided WindowClient", a
   )
 
   expect(created.id).toBe("window-1")
+  expect(calls).toEqual(["create:0"])
 })
 
 const recordVoid = (calls: string[], call: string): Effect.Effect<void, never, never> =>

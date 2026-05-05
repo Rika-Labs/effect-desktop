@@ -1,7 +1,10 @@
 import {
   Api,
+  type ApiContractError,
   type ApiContractClass,
   type ApiContractSpec,
+  type ApiHandlers,
+  type ApiLayer,
   type ApiResourceHandle,
   HostProtocolError as HostProtocolErrorSchema,
   type HostProtocolError
@@ -12,6 +15,7 @@ const PositiveFiniteNumber = Schema.Number.check(Schema.isFinite(), Schema.isGre
 const WindowResource = Api.Resource("window", "open")
 
 export type WindowHandle = ApiResourceHandle<"window", "open">
+export type WindowError = HostProtocolError
 
 export class WindowCreateInput extends Schema.Class<WindowCreateInput>("WindowCreateInput")({
   title: Schema.optionalKey(Schema.String),
@@ -152,7 +156,30 @@ export const WindowApiSpec = Object.freeze({
 
 export type WindowApiSpec = typeof WindowApiSpec
 
-export const WindowApi: ApiContractClass<"Window", WindowApiSpec> = Effect.runSync(
+export const WindowApi: ApiContractClass<"Window", WindowApiSpec> = (() => {
+  const contract = class {
+    static readonly tag = "Window"
+    static readonly spec = WindowApiSpec
+    static readonly events = Object.freeze({})
+
+    static layer<Handlers extends ApiHandlers<WindowApiSpec>>(
+      handlers: Handlers
+    ): ApiLayer<"Window", WindowApiSpec, Handlers> {
+      return Object.freeze({
+        contract,
+        handlers: Object.freeze(handlers)
+      })
+    }
+  } as ApiContractClass<"Window", WindowApiSpec>
+
+  return Object.freeze(contract)
+})()
+
+export const registerWindowApi = (): Effect.Effect<
+  ApiContractClass<"Window", WindowApiSpec>,
+  ApiContractError,
+  never
+> =>
   Effect.gen(function* () {
     const existing = yield* Api.get("Window")
     if (Option.isSome(existing)) {
@@ -161,67 +188,66 @@ export const WindowApi: ApiContractClass<"Window", WindowApiSpec> = Effect.runSy
 
     return yield* Api.Tag("Window")<unknown>()(WindowApiSpec)
   })
-)
 
 export const WindowMethodNames = Object.freeze(
   Object.keys(WindowApiSpec) as ReadonlyArray<keyof WindowApiSpec>
 )
 
 export interface WindowClientApi {
-  readonly create: (
-    input?: WindowCreateOptions
-  ) => Effect.Effect<WindowHandle, HostProtocolError, never>
-  readonly show: (window: WindowHandle) => Effect.Effect<void, HostProtocolError, never>
-  readonly hide: (window: WindowHandle) => Effect.Effect<void, HostProtocolError, never>
-  readonly focus: (window: WindowHandle) => Effect.Effect<void, HostProtocolError, never>
-  readonly close: (window: WindowHandle) => Effect.Effect<void, HostProtocolError, never>
+  readonly create: (input: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never>
+  readonly show: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly hide: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly focus: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly close: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
   readonly setTitle: (
     window: WindowHandle,
     title: string
-  ) => Effect.Effect<void, HostProtocolError, never>
+  ) => Effect.Effect<void, WindowError, never>
   readonly setSize: (
     window: WindowHandle,
     size: WindowSize
-  ) => Effect.Effect<void, HostProtocolError, never>
+  ) => Effect.Effect<void, WindowError, never>
   readonly setPosition: (
     window: WindowHandle,
     position: WindowPosition
-  ) => Effect.Effect<void, HostProtocolError, never>
+  ) => Effect.Effect<void, WindowError, never>
   readonly setBackgroundColor: (
     window: WindowHandle,
     color: string
-  ) => Effect.Effect<void, HostProtocolError, never>
+  ) => Effect.Effect<void, WindowError, never>
   readonly setVibrancy: (
     window: WindowHandle,
     material: string
-  ) => Effect.Effect<void, HostProtocolError, never>
+  ) => Effect.Effect<void, WindowError, never>
   readonly setHasShadow: (
     window: WindowHandle,
     hasShadow: boolean
-  ) => Effect.Effect<void, HostProtocolError, never>
+  ) => Effect.Effect<void, WindowError, never>
   readonly setFullscreen: (
     window: WindowHandle,
     fullscreen: boolean
-  ) => Effect.Effect<void, HostProtocolError, never>
-  readonly enterFullScreen: (window: WindowHandle) => Effect.Effect<void, HostProtocolError, never>
-  readonly exitFullScreen: (window: WindowHandle) => Effect.Effect<void, HostProtocolError, never>
+  ) => Effect.Effect<void, WindowError, never>
+  readonly enterFullScreen: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly exitFullScreen: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
   readonly onFullScreenChanged: (
     window: WindowHandle
-  ) => Stream.Stream<WindowFullScreenChanged, HostProtocolError, never>
+  ) => Stream.Stream<WindowFullScreenChanged, WindowError, never>
   readonly getScaleFactor: (
     window: WindowHandle
-  ) => Effect.Effect<WindowScaleFactorOutput, HostProtocolError, never>
+  ) => Effect.Effect<WindowScaleFactorOutput, WindowError, never>
   readonly onScaleChanged: (
     window: WindowHandle
-  ) => Stream.Stream<WindowScaleChanged, HostProtocolError, never>
-  readonly persistState: (window: WindowHandle) => Effect.Effect<void, HostProtocolError, never>
+  ) => Stream.Stream<WindowScaleChanged, WindowError, never>
+  readonly persistState: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
 }
 
 export class WindowClient extends Context.Service<WindowClient, WindowClientApi>()(
   "@effect-desktop/native/WindowClient"
 ) {}
 
-export interface WindowServiceApi extends WindowClientApi {}
+export interface WindowServiceApi extends Omit<WindowClientApi, "create"> {
+  readonly create: (input?: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never>
+}
 
 export class Window extends Context.Service<Window, WindowServiceApi>()(
   "@effect-desktop/native/Window"
@@ -252,7 +278,7 @@ export interface WindowPosition {
 
 const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
   const service: WindowServiceApi = {
-    create: (input) => client.create(input),
+    create: (input) => client.create(input ?? {}),
     show: (window) => client.show(window),
     hide: (window) => client.hide(window),
     focus: (window) => client.focus(window),
