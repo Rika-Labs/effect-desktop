@@ -28,6 +28,12 @@ import {
   AppOpenFileEvent,
   AppOpenUrlEvent,
   AppSecondInstanceEvent,
+  WebView,
+  WebViewApi,
+  WebViewLive,
+  WebViewMethodNames,
+  WebViewNavigationBlockedEvent,
+  WebViewScreenshot,
   Window,
   WindowApi,
   WindowClient,
@@ -38,6 +44,9 @@ import {
   makeAppBridgeClientLayer,
   makeAppServiceLayer,
   makeUnsupportedAppClient,
+  makeUnsupportedWebViewClient,
+  makeWebViewBridgeClientLayer,
+  makeWebViewServiceLayer,
   makeWindowBridgeClientLayer,
   makeWindowServiceLayer,
   firstResponderRoute,
@@ -45,6 +54,8 @@ import {
   targetedRoute,
   windowScope,
   type AppClientApi,
+  type WebViewClientApi,
+  type WebViewHandle,
   type WindowClientApi,
   type WindowHandle
 } from "./index.js"
@@ -81,11 +92,32 @@ const expectedAppMethods: Array<(typeof AppMethodNames)[number]> = [
   "registerProtocol"
 ]
 
+const expectedWebViewMethods: Array<(typeof WebViewMethodNames)[number]> = [
+  "create",
+  "loadRoute",
+  "loadUrl",
+  "reload",
+  "goBack",
+  "goForward",
+  "captureScreenshot",
+  "setNavigationPolicy",
+  "capability",
+  "destroy"
+]
+
 const windowHandle: WindowHandle = {
   kind: "window",
   id: "window-1",
   generation: 0,
   ownerScope: "scope-1",
+  state: "open"
+}
+
+const webviewHandle: WebViewHandle = {
+  kind: "webview",
+  id: "webview-1",
+  generation: 0,
+  ownerScope: "window:window-1",
   state: "open"
 }
 
@@ -207,6 +239,178 @@ test("unsupported App client reports typed failures as Effect values", async () 
       error !== null &&
       "operation" in error &&
       error.operation === "App.getInfo"
+  )
+})
+
+test("WebViewApi declares the Phase 7 WebView method and event surface", () => {
+  expect(WebViewApi.tag).toBe("WebView")
+  expect([...WebViewMethodNames]).toEqual(expectedWebViewMethods)
+  expect(Object.keys(WebViewApi.spec)).toEqual(expectedWebViewMethods)
+  expect(Object.keys(WebViewApi.events)).toEqual(["NavigationBlocked"])
+})
+
+test("WebView service delegates through a substitutable WebViewClient port", async () => {
+  const calls: string[] = []
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      const created = yield* webview.create()
+      yield* webview.loadRoute(created, "/settings")
+      yield* webview.loadUrl(created, "https://example.com")
+      yield* webview.reload(created)
+      yield* webview.goBack(created)
+      yield* webview.goForward(created)
+      const screenshot = yield* webview.captureScreenshot(created)
+      yield* webview.setNavigationPolicy(created, {
+        allowedOrigins: ["app://localhost"],
+        onDisallowed: "block"
+      })
+      const linuxAutofill = yield* webview.capability("autofill", { platform: "linux" })
+      const blocked = yield* webview.onNavigationBlocked().pipe(Stream.take(1), Stream.runCollect)
+      yield* webview.destroy(created)
+
+      return { blocked, created, linuxAutofill, screenshot }
+    }).pipe(Effect.provide(makeWebViewServiceLayer(webViewClient(calls))))
+  )
+
+  expect(result.created).toMatchObject(webviewHandle)
+  expect(result.screenshot.bytes).toEqual(new Uint8Array([1, 2, 3]))
+  expect(result.linuxAutofill).toBe(false)
+  expect(Array.from(result.blocked)).toEqual([
+    new WebViewNavigationBlockedEvent({
+      webview: webviewHandle,
+      url: "https://blocked.example",
+      reason: "origin not allowed"
+    })
+  ])
+  expect(calls).toEqual([
+    "create:app://localhost/",
+    "loadRoute:/settings",
+    "loadUrl:https://example.com",
+    "reload",
+    "goBack",
+    "goForward",
+    "captureScreenshot",
+    "setNavigationPolicy:app://localhost:block",
+    "destroy"
+  ])
+})
+
+test("WebView bridge client sends typed host envelopes and decodes event streams", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = webViewExchange(requests, (request) => ({
+    kind: "success",
+    payload:
+      request.method === "WebView.create"
+        ? webviewHandle
+        : request.method === "WebView.captureScreenshot"
+          ? { mime: "image/png", bytes: new Uint8Array([4, 5, 6]) }
+          : request.method === "WebView.capability"
+            ? { supported: true }
+            : undefined
+  }))
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      const created = yield* webview.create({
+        url: "app://localhost/settings",
+        originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" }
+      })
+      yield* webview.loadRoute(created, "/settings")
+      yield* webview.setNavigationPolicy(created, {
+        allowedOrigins: ["app://localhost", "https://example.com"],
+        onDisallowed: "openExternal"
+      })
+      const screenshot = yield* webview.captureScreenshot(created)
+      const canOpenDevtools = yield* webview.capability("devtools open", { platform: "windows" })
+      const blocked = yield* webview.onNavigationBlocked().pipe(Stream.take(1), Stream.runCollect)
+
+      return { blocked, canOpenDevtools, created, screenshot }
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          WebViewLive,
+          makeWebViewBridgeClientLayer(exchange, {
+            nextRequestId: nextId([
+              "create-request",
+              "route-request",
+              "policy-request",
+              "screenshot-request",
+              "capability-request"
+            ]),
+            nextTraceId: nextId([
+              "create-trace",
+              "route-trace",
+              "policy-trace",
+              "screenshot-trace",
+              "capability-trace"
+            ]),
+            now: nextNumber([
+              1710000000000, 1710000000001, 1710000000002, 1710000000003, 1710000000004
+            ])
+          })
+        )
+      )
+    )
+  )
+
+  expect(result.created).toMatchObject(webviewHandle)
+  expect(result.screenshot).toEqual(
+    new WebViewScreenshot({ mime: "image/png", bytes: new Uint8Array([4, 5, 6]) })
+  )
+  expect(result.canOpenDevtools).toBe(true)
+  expect(Array.from(result.blocked)).toEqual([
+    new WebViewNavigationBlockedEvent({
+      webview: webviewHandle,
+      url: "https://blocked.example",
+      reason: "origin not allowed"
+    })
+  ])
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    [
+      "WebView.create",
+      {
+        url: "app://localhost/settings",
+        originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" }
+      }
+    ],
+    ["WebView.loadRoute", { webview: webviewHandle, route: "/settings" }],
+    [
+      "WebView.setNavigationPolicy",
+      {
+        webview: webviewHandle,
+        policy: {
+          allowedOrigins: ["app://localhost", "https://example.com"],
+          onDisallowed: "openExternal"
+        }
+      }
+    ],
+    ["WebView.captureScreenshot", { webview: webviewHandle }],
+    ["WebView.capability", { name: "devtools open", platform: "windows" }]
+  ])
+})
+
+test("unsupported WebView client reports deferred host methods as Effect values", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      const linuxPdf = yield* webview.capability("PDF embedded viewer", { platform: "linux" })
+      const createExit = yield* Effect.exit(webview.create())
+
+      return { createExit, linuxPdf }
+    }).pipe(Effect.provide(makeWebViewServiceLayer(makeUnsupportedWebViewClient())))
+  )
+
+  expect(result.linuxPdf).toBe(false)
+  expectExitFailure(
+    result.createExit,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "operation" in error &&
+      error.operation === "WebView.create"
   )
 })
 
@@ -575,6 +779,39 @@ const appClient = (calls: string[]): AppClientApi => ({
   onBeforeQuit: () => Stream.make(new AppBeforeQuitEvent({ traceId: "trace" }))
 })
 
+const webViewClient = (calls: string[]): WebViewClientApi => ({
+  create: (input) =>
+    Effect.sync(() => {
+      calls.push(`create:${input.url}`)
+      return webviewHandle
+    }),
+  loadRoute: (_webview, route) => recordVoid(calls, `loadRoute:${route}`),
+  loadUrl: (_webview, url) => recordVoid(calls, `loadUrl:${url}`),
+  reload: () => recordVoid(calls, "reload"),
+  goBack: () => recordVoid(calls, "goBack"),
+  goForward: () => recordVoid(calls, "goForward"),
+  captureScreenshot: () =>
+    Effect.sync(() => {
+      calls.push("captureScreenshot")
+      return new WebViewScreenshot({ mime: "image/png", bytes: new Uint8Array([1, 2, 3]) })
+    }),
+  setNavigationPolicy: (_webview, policy) =>
+    recordVoid(
+      calls,
+      `setNavigationPolicy:${policy.allowedOrigins.join(",")}:${policy.onDisallowed}`
+    ),
+  capability: (input) => Effect.succeed({ supported: input.platform !== "linux" }),
+  destroy: () => recordVoid(calls, "destroy"),
+  onNavigationBlocked: () =>
+    Stream.make(
+      new WebViewNavigationBlockedEvent({
+        webview: webviewHandle,
+        url: "https://blocked.example",
+        reason: "origin not allowed"
+      })
+    )
+})
+
 const noopWindowClient: WindowClientApi = {
   create: () => Effect.succeed(windowHandle),
   show: () => Effect.void,
@@ -641,6 +878,35 @@ const appExchange = (
           })
         )
       : Stream.empty
+})
+
+const webViewExchange = (
+  requests: HostProtocolRequestEnvelope[],
+  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
+): ApiClientExchange => ({
+  request: (request) => {
+    requests.push(request)
+    return Effect.succeed(respond(request))
+  },
+  subscribe: (method) =>
+    method === "WebView.NavigationBlocked"
+      ? Stream.make(
+          new HostProtocolEventEnvelope({
+            kind: "event",
+            timestamp: 1710000000200,
+            traceId: "event-trace",
+            method,
+            payload: {
+              webview: webviewHandle,
+              url: "https://blocked.example",
+              reason: "origin not allowed"
+            }
+          })
+        )
+      : Stream.empty,
+  resource: {
+    dispose: () => Effect.void
+  }
 })
 
 const makeWindowApiExchange = (
