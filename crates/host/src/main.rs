@@ -1,3 +1,4 @@
+mod webview;
 mod window;
 
 use anyhow::{bail, Result};
