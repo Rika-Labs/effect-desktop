@@ -249,6 +249,71 @@ test("Handlers times out cancellable handlers and records a terminal state", asy
   expect(states).toEqual(["Pending", "Authorized", "Running", "TimedOut"])
 })
 
+test("Handlers does not confuse domain _tag collisions with Effect timeout errors", async () => {
+  class ProjectTimeoutError extends Schema.Class<ProjectTimeoutError>("HandlerProjectTimeoutError")(
+    {
+      _tag: Schema.Literal("TimeoutError"),
+      code: Schema.NumberFromString
+    }
+  ) {}
+  type TimeoutCollisionApiSpec = {
+    readonly open: {
+      readonly input: typeof ProjectOpenInput
+      readonly output: typeof ProjectOpenOutput
+      readonly error: typeof ProjectTimeoutError
+    }
+  }
+  const contract = class {
+    static readonly tag = "ProjectApi.HandlerTimeoutCollision"
+    static readonly spec = Object.freeze({
+      open: Object.freeze({
+        input: ProjectOpenInput,
+        output: ProjectOpenOutput,
+        error: ProjectTimeoutError,
+        timeoutMs: 50
+      })
+    })
+
+    static layer<HandlersShape extends ApiHandlers<TimeoutCollisionApiSpec>>(
+      handlers: HandlersShape
+    ): ApiLayer<string, TimeoutCollisionApiSpec, HandlersShape> {
+      return Object.freeze({
+        contract,
+        handlers: Object.freeze(handlers)
+      })
+    }
+  } as ApiContractClass<string, TimeoutCollisionApiSpec>
+  const states: string[] = []
+  const runtime = Handlers.withOptions(
+    {
+      onState: (state) =>
+        Effect.sync(() => {
+          states.push(state.tag)
+        })
+    },
+    contract.layer({
+      open: () => Effect.fail(new ProjectTimeoutError({ _tag: "TimeoutError", code: 408 }))
+    })
+  )
+
+  const response = await Effect.runPromise(
+    runtime.dispatch(
+      request("ProjectApi.HandlerTimeoutCollision.open", {
+        path: "/tmp/project"
+      })
+    )
+  )
+
+  expect(response).toEqual({
+    kind: "failure",
+    error: {
+      _tag: "TimeoutError",
+      code: "408"
+    }
+  })
+  expect(states).toEqual(["Pending", "Authorized", "Running", "Failed"])
+})
+
 test("Handlers rejects duplicate request ids after a terminal state", async () => {
   const states: string[] = []
   const ProjectApi = makeProjectApi("ProjectApi.HandlerDuplicate")

@@ -418,8 +418,7 @@ const cancelledFromCause = (
 ): HostProtocolCancelledError | undefined =>
   cause.reasons.some(Cause.isInterruptReason) ? makeCancelledError(operation, "runtime") : undefined
 
-const isEffectTimeoutError = (error: unknown): boolean =>
-  typeof error === "object" && error !== null && "_tag" in error && error._tag === "TimeoutError"
+const isEffectTimeoutError = (error: unknown): boolean => Cause.isTimeoutError(error)
 
 const isHostProtocolTimeoutError = (error: unknown): error is HostProtocolTimeoutError =>
   typeof error === "object" && error !== null && "tag" in error && error.tag === "Timeout"
