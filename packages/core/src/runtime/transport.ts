@@ -70,8 +70,11 @@ export const encodeFrame = (
 
 export class FrameDecoder {
   readonly #maxFrameBytes: number
-  #buffer: Uint8Array = new Uint8Array(0)
+  readonly #chunks: Uint8Array[] = []
+  #bufferedBytes = 0
   #expectedBodyBytes: number | null = null
+  #headChunkIndex = 0
+  #headChunkOffset = 0
 
   constructor(options: FramedTransportOptions = {}) {
     this.#maxFrameBytes = resolveMaxFrameBytes(options)
@@ -79,23 +82,24 @@ export class FrameDecoder {
 
   push(chunk: Uint8Array): Uint8Array[] {
     if (chunk.byteLength > 0) {
-      this.#buffer = concatBytes(this.#buffer, chunk)
+      this.#chunks.push(chunk)
+      this.#bufferedBytes += chunk.byteLength
     }
 
     const frames: Uint8Array[] = []
 
     while (true) {
       if (this.#expectedBodyBytes === null) {
-        if (this.#buffer.byteLength < LENGTH_PREFIX_BYTES) {
+        if (this.#bufferedBytes < LENGTH_PREFIX_BYTES) {
           return frames
         }
 
+        const prefix = this.#readBytes(LENGTH_PREFIX_BYTES)
         const length = new DataView(
-          this.#buffer.buffer,
-          this.#buffer.byteOffset,
+          prefix.buffer,
+          prefix.byteOffset,
           LENGTH_PREFIX_BYTES
         ).getUint32(0, false)
-        this.#buffer = this.#buffer.slice(LENGTH_PREFIX_BYTES)
 
         if (length > this.#maxFrameBytes) {
           throw new FrameTooLargeError(length, this.#maxFrameBytes)
@@ -104,26 +108,72 @@ export class FrameDecoder {
         this.#expectedBodyBytes = length
       }
 
-      if (this.#buffer.byteLength < this.#expectedBodyBytes) {
+      if (this.#bufferedBytes < this.#expectedBodyBytes) {
         return frames
       }
 
-      frames.push(this.#buffer.slice(0, this.#expectedBodyBytes))
-      this.#buffer = this.#buffer.slice(this.#expectedBodyBytes)
+      frames.push(this.#readBytes(this.#expectedBodyBytes))
       this.#expectedBodyBytes = null
     }
   }
 
   finish(): void {
     if (this.#expectedBodyBytes === null) {
-      if (this.#buffer.byteLength === 0) {
+      if (this.#bufferedBytes === 0) {
         return
       }
 
-      throw new FrameTruncatedError("length", LENGTH_PREFIX_BYTES, this.#buffer.byteLength)
+      throw new FrameTruncatedError("length", LENGTH_PREFIX_BYTES, this.#bufferedBytes)
     }
 
-    throw new FrameTruncatedError("body", this.#expectedBodyBytes, this.#buffer.byteLength)
+    throw new FrameTruncatedError("body", this.#expectedBodyBytes, this.#bufferedBytes)
+  }
+
+  #readBytes(byteLength: number): Uint8Array {
+    const bytes = new Uint8Array(byteLength)
+    let copied = 0
+
+    while (copied < byteLength) {
+      const chunk = this.#chunks[this.#headChunkIndex]
+      if (chunk === undefined) {
+        throw new Error("frame decoder buffer underflow")
+      }
+
+      const available = chunk.byteLength - this.#headChunkOffset
+      const take = Math.min(byteLength - copied, available)
+      bytes.set(chunk.subarray(this.#headChunkOffset, this.#headChunkOffset + take), copied)
+
+      copied += take
+      this.#bufferedBytes -= take
+      this.#headChunkOffset += take
+
+      if (this.#headChunkOffset === chunk.byteLength) {
+        this.#headChunkIndex += 1
+        this.#headChunkOffset = 0
+        this.#compactConsumedChunks()
+      }
+    }
+
+    return bytes
+  }
+
+  #compactConsumedChunks(): void {
+    if (this.#headChunkIndex === 0) {
+      return
+    }
+
+    if (this.#headChunkIndex === this.#chunks.length) {
+      this.#chunks.length = 0
+      this.#headChunkIndex = 0
+      return
+    }
+
+    if (this.#headChunkIndex < 32 && this.#headChunkIndex * 2 < this.#chunks.length) {
+      return
+    }
+
+    this.#chunks.splice(0, this.#headChunkIndex)
+    this.#headChunkIndex = 0
   }
 }
 
@@ -201,11 +251,4 @@ const resolveMaxFrameBytes = (options: FramedTransportOptions): number => {
   }
 
   return maxFrameBytes
-}
-
-const concatBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
-  const bytes = new Uint8Array(left.byteLength + right.byteLength)
-  bytes.set(left, 0)
-  bytes.set(right, left.byteLength)
-  return bytes
 }

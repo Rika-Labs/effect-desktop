@@ -39,6 +39,19 @@ test("FrameDecoder decodes partial chunks", () => {
   expect(frames.map((frame) => Array.from(frame))).toEqual([[0x68, 0x65, 0x6c, 0x6c, 0x6f]])
 })
 
+test("FrameDecoder decodes byte-fragmented frames", () => {
+  const decoder = new FrameDecoder()
+  const frame = encodeFrame(new Uint8Array([0x66, 0x72, 0x61, 0x6d, 0x65]))
+  const frames: Uint8Array[] = []
+
+  for (const byte of frame) {
+    frames.push(...decoder.push(new Uint8Array([byte])))
+  }
+
+  expect(frames.map((decoded) => Array.from(decoded))).toEqual([[0x66, 0x72, 0x61, 0x6d, 0x65]])
+  expect(decoder.finish()).toBeUndefined()
+})
+
 test("FrameDecoder rejects oversized frames before body bytes", () => {
   const decoder = new FrameDecoder()
   const prefix = new Uint8Array(4)
