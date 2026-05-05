@@ -14,7 +14,7 @@ The goal was a single registry for API contracts declared through `Desktop.Api.T
 
 ## What actually ended up working
 
-The shipped shape keeps the registry invariant but moves the registration boundary into Effect. `Api.Tag(name)<Self>()(spec)` returns an `Effect` that validates plain schemas and `Schema.Class` declarations, validates replay/backpressure metadata, fails with typed registry errors, freezes the contract class/spec, and records it in the module-local map. `entries()`, `get()`, and `freeze()` are also Effect programs, and layer descriptors close over the contract class instead of depending on `this`, so callers do not need a throwing or receiver-sensitive path to interact with the registry.
+The shipped shape keeps the registry invariant but moves the registration boundary into Effect. `Api.Tag(name)<Self>()(spec)` returns an `Effect` that validates plain schemas and `Schema.Class` declarations, validates permission/replay/backpressure metadata, fails with typed registry errors, freezes the contract class/spec, and records it in the module-local map. `entries()`, `get()`, and `freeze()` are also Effect programs, and layer descriptors close over the contract class instead of depending on `this`, so callers do not need a throwing or receiver-sensitive path to interact with the registry.
 
 ```mermaid
 flowchart TD
@@ -28,7 +28,7 @@ flowchart TD
 
 ## What surfaced in review
 
-Nine comments were addressed: backpressure overflow literals now match `docs/SPEC.md`, layer handlers are typed as schema-derived functions returning `Effect`, handler maps are frozen when descriptors are built, invalid backpressure values fail as `InvalidApiContractSpec`, `cachedResultMs` is part of method metadata, JavaScript/casted boolean flags are validated before registration, destructured `layer` calls preserve the contract reference, optional backpressure is guarded before freezing, and schema validation accepts Effect `Schema.Class` constructor functions. Two comments remained unresolved by design: restoring the constructible `class extends` form would reintroduce a synchronous boundary that cannot return duplicate/frozen/invalid failures as values, and returning a real Effect `Layer` is handler runtime wiring rather than the registry primitive in this issue.
+Eleven comments were addressed: backpressure overflow literals now match `docs/SPEC.md`, layer handlers are typed as schema-derived functions returning `Effect`, handler maps are frozen when descriptors are built, invalid backpressure values fail as `InvalidApiContractSpec`, `cachedResultMs` is part of method metadata, JavaScript/casted boolean flags are validated before registration, destructured `layer` calls preserve the contract reference, optional backpressure is guarded before freezing, schema validation accepts Effect `Schema.Class` constructor functions, handler Effects can depend on an environment, and malformed permission metadata is rejected. Two comments remained unresolved by design: restoring the constructible `class extends` form would reintroduce a synchronous boundary that cannot return duplicate/frozen/invalid failures as values, and returning a real Effect `Layer` is handler runtime wiring rather than the registry primitive in this issue.
 
 ## First-principles postmortem
 
