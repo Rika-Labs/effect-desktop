@@ -52,6 +52,30 @@ test("Handlers binds contract layers into a request dispatcher", async () => {
   })
 })
 
+test("Handlers emits the request lifecycle in order for successful calls", async () => {
+  const states: string[] = []
+  const ProjectApi = makeProjectApi("ProjectApi.HandlerLifecycle")
+  const runtime = Handlers.withOptions(
+    {
+      now: () => 42,
+      onState: (state) =>
+        Effect.sync(() => {
+          states.push(state.tag)
+        })
+    },
+    ProjectApi.layer({
+      open: () => Effect.succeed(new ProjectOpenOutput({ id: 1 }))
+    })
+  )
+
+  const response = await Effect.runPromise(
+    runtime.dispatch(request("ProjectApi.HandlerLifecycle.open", { path: "/tmp/project" }))
+  )
+
+  expect(response.kind).toBe("success")
+  expect(states).toEqual(["Pending", "Authorized", "Running", "Completed"])
+})
+
 test("Handlers preserves prototype handler receivers", async () => {
   const ProjectApi = makeProjectApi("ProjectApi.PrototypeReceiver")
 
@@ -135,8 +159,15 @@ test("Handlers encodes contract failures into failure responses", async () => {
 
 test("Handlers rejects malformed input before calling handlers", async () => {
   const calls: string[] = []
+  const states: string[] = []
   const ProjectApi = makeProjectApi("ProjectApi.HandlerInvalidInput")
-  const runtime = Handlers(
+  const runtime = Handlers.withOptions(
+    {
+      onState: (state) =>
+        Effect.sync(() => {
+          states.push(state.tag)
+        })
+    },
     ProjectApi.layer({
       open: (input) => {
         calls.push(input.path)
@@ -151,6 +182,7 @@ test("Handlers rejects malformed input before calling handlers", async () => {
 
   expectFailureTag(exit, "InvalidArgument")
   expect(calls).toEqual([])
+  expect(states).toEqual(["Pending", "Failed"])
 })
 
 test("Handlers reports malformed handler output as InvalidOutput", async () => {
@@ -190,6 +222,171 @@ test("Handlers reports malformed contract errors as InvalidOutput", async () => 
   expectFailureTag(exit, "InvalidOutput")
 })
 
+test("Handlers times out cancellable handlers and records a terminal state", async () => {
+  const states: string[] = []
+  const ProjectApi = makeProjectApi("ProjectApi.HandlerTimeout", { timeoutMs: 5 })
+  const runtime = Handlers.withOptions(
+    {
+      onState: (state) =>
+        Effect.sync(() => {
+          states.push(state.tag)
+        })
+    },
+    ProjectApi.layer({
+      open: () =>
+        Effect.gen(function* () {
+          yield* Effect.sleep(50)
+          return new ProjectOpenOutput({ id: 1 })
+        })
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(
+    runtime.dispatch(request("ProjectApi.HandlerTimeout.open", { path: "/tmp/project" }))
+  )
+
+  expectFailureTag(exit, "Timeout")
+  expect(states).toEqual(["Pending", "Authorized", "Running", "TimedOut"])
+})
+
+test("Handlers does not confuse domain _tag collisions with Effect timeout errors", async () => {
+  class ProjectTimeoutError extends Schema.Class<ProjectTimeoutError>("HandlerProjectTimeoutError")(
+    {
+      _tag: Schema.Literal("TimeoutError"),
+      code: Schema.NumberFromString
+    }
+  ) {}
+  type TimeoutCollisionApiSpec = {
+    readonly open: {
+      readonly input: typeof ProjectOpenInput
+      readonly output: typeof ProjectOpenOutput
+      readonly error: typeof ProjectTimeoutError
+    }
+  }
+  const contract = class {
+    static readonly tag = "ProjectApi.HandlerTimeoutCollision"
+    static readonly spec = Object.freeze({
+      open: Object.freeze({
+        input: ProjectOpenInput,
+        output: ProjectOpenOutput,
+        error: ProjectTimeoutError,
+        timeoutMs: 50
+      })
+    })
+
+    static layer<HandlersShape extends ApiHandlers<TimeoutCollisionApiSpec>>(
+      handlers: HandlersShape
+    ): ApiLayer<string, TimeoutCollisionApiSpec, HandlersShape> {
+      return Object.freeze({
+        contract,
+        handlers: Object.freeze(handlers)
+      })
+    }
+  } as ApiContractClass<string, TimeoutCollisionApiSpec>
+  const states: string[] = []
+  const runtime = Handlers.withOptions(
+    {
+      onState: (state) =>
+        Effect.sync(() => {
+          states.push(state.tag)
+        })
+    },
+    contract.layer({
+      open: () => Effect.fail(new ProjectTimeoutError({ _tag: "TimeoutError", code: 408 }))
+    })
+  )
+
+  const response = await Effect.runPromise(
+    runtime.dispatch(
+      request("ProjectApi.HandlerTimeoutCollision.open", {
+        path: "/tmp/project"
+      })
+    )
+  )
+
+  expect(response).toEqual({
+    kind: "failure",
+    error: {
+      _tag: "TimeoutError",
+      code: "408"
+    }
+  })
+  expect(states).toEqual(["Pending", "Authorized", "Running", "Failed"])
+})
+
+test("Handlers rejects duplicate request ids after a terminal state", async () => {
+  const states: string[] = []
+  const ProjectApi = makeProjectApi("ProjectApi.HandlerDuplicate")
+  const runtime = Handlers.withOptions(
+    {
+      onState: (state) =>
+        Effect.sync(() => {
+          states.push(state.tag)
+        })
+    },
+    ProjectApi.layer({
+      open: () => Effect.succeed(new ProjectOpenOutput({ id: 1 }))
+    })
+  )
+  const duplicate = new HostProtocolRequestEnvelope({
+    kind: "request",
+    id: "request-duplicate",
+    method: "ProjectApi.HandlerDuplicate.open",
+    timestamp: 42,
+    traceId: "trace-duplicate",
+    payload: { path: "/tmp/project" }
+  })
+
+  await Effect.runPromise(runtime.dispatch(duplicate))
+  const exit = await Effect.runPromiseExit(runtime.dispatch(duplicate))
+
+  expectFailureTag(exit, "InvalidState")
+  expect(states).toEqual(["Pending", "Authorized", "Running", "Completed", "RejectedLateFrame"])
+})
+
+test("Handlers expires terminal request ids after the replay window", async () => {
+  let now = 1_000
+  const states: string[] = []
+  const ProjectApi = makeProjectApi("ProjectApi.HandlerDuplicateExpiry")
+  const runtime = Handlers.withOptions(
+    {
+      now: () => now,
+      terminalStateTtlMs: 10,
+      onState: (state) =>
+        Effect.sync(() => {
+          states.push(state.tag)
+        })
+    },
+    ProjectApi.layer({
+      open: () => Effect.succeed(new ProjectOpenOutput({ id: 1 }))
+    })
+  )
+  const duplicate = new HostProtocolRequestEnvelope({
+    kind: "request",
+    id: "request-duplicate-expiry",
+    method: "ProjectApi.HandlerDuplicateExpiry.open",
+    timestamp: 42,
+    traceId: "trace-duplicate-expiry",
+    payload: { path: "/tmp/project" }
+  })
+
+  await Effect.runPromise(runtime.dispatch(duplicate))
+  now = 1_011
+  const response = await Effect.runPromise(runtime.dispatch(duplicate))
+
+  expect(response.kind).toBe("success")
+  expect(states).toEqual([
+    "Pending",
+    "Authorized",
+    "Running",
+    "Completed",
+    "Pending",
+    "Authorized",
+    "Running",
+    "Completed"
+  ])
+})
+
 test("Handlers reports unknown methods as MethodNotFound", async () => {
   const ProjectApi = makeProjectApi("ProjectApi.HandlerUnknownMethod")
   const runtime = Handlers(
@@ -213,26 +410,34 @@ type ProjectApiSpec = {
   }
 }
 
-const makeProjectApi = <Tag extends string>(tag: Tag): ApiContractClass<Tag, ProjectApiSpec> => {
+const makeProjectApi = (
+  tag: string,
+  metadata: {
+    readonly timeoutMs?: number
+    readonly cancellable?: boolean
+    readonly permission?: string
+  } = {}
+): ApiContractClass<string, ProjectApiSpec> => {
   const contract = class {
     static readonly tag = tag
     static readonly spec = Object.freeze({
       open: Object.freeze({
         input: ProjectOpenInput,
         output: ProjectOpenOutput,
-        error: ProjectOpenError
+        error: ProjectOpenError,
+        ...metadata
       })
     })
 
     static layer<HandlersShape extends ApiHandlers<ProjectApiSpec>>(
       handlers: HandlersShape
-    ): ApiLayer<Tag, ProjectApiSpec, HandlersShape> {
+    ): ApiLayer<string, ProjectApiSpec, HandlersShape> {
       return Object.freeze({
         contract,
         handlers: Object.freeze(handlers)
       })
     }
-  } as ApiContractClass<Tag, ProjectApiSpec>
+  } as ApiContractClass<string, ProjectApiSpec>
 
   return Object.freeze(contract)
 }
