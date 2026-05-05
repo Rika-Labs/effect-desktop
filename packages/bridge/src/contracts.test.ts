@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Cause, Effect, Exit, Option, Schema } from "effect"
+import { Cause, Context, Effect, Exit, Option, Schema } from "effect"
 
 import {
   Api,
@@ -102,6 +102,19 @@ test("Api.Tag rejects invalid timeout values as a typed Effect failure", async (
   expectFailure(exit, InvalidApiContractSpec)
 })
 
+test("Api.Tag rejects invalid permissions as a typed Effect failure", async () => {
+  const exit = await Effect.runPromiseExit(
+    Api.Tag("Test.InvalidPermission")<unknown>()({
+      call: {
+        ...validMethodSpec(),
+        permission: { capability: "project:open" }
+      }
+    } as unknown as ApiContractSpec)
+  )
+
+  expectFailure(exit, InvalidApiContractSpec)
+})
+
 test("Api.Tag rejects invalid cached result values as a typed Effect failure", async () => {
   const exit = await Effect.runPromiseExit(
     Api.Tag("Test.InvalidCachedResult")<unknown>()({
@@ -176,6 +189,21 @@ test("contract layer builder remains bound when destructured", async () => {
   })
 
   expect(descriptor.contract).toBe(DestructuredLayerApi)
+})
+
+test("contract layer handlers can depend on an Effect environment", async () => {
+  const Dependency = Context.Service<"Dependency", string>("Dependency")
+  const DependentApi = await Effect.runPromise(
+    Api.Tag("Test.DependentLayer")<unknown>()({
+      call: validMethodSpec()
+    })
+  )
+
+  const descriptor = DependentApi.layer({
+    call: () => Effect.service(Dependency)
+  })
+
+  expect(descriptor.contract).toBe(DependentApi)
 })
 
 test("zz Api.freeze rejects later registrations as a typed Effect failure", async () => {

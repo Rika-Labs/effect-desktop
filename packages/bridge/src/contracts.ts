@@ -38,7 +38,7 @@ export type ApiHandlers<Spec extends ApiContractSpec> = {
   ) => Effect.Effect<
     Schema.Schema.Type<Spec[Method]["output"]>,
     Schema.Schema.Type<Spec[Method]["error"]>,
-    never
+    unknown
   >
 }
 
@@ -176,6 +176,9 @@ const validateMethodSpec = (
     }
     if (!isSchema(spec.error)) {
       return yield* Effect.fail(invalidSpec(tag, method, "error schema is required"))
+    }
+    if (spec.permission !== undefined && typeof spec.permission !== "string") {
+      return yield* Effect.fail(invalidSpec(tag, method, "permission must be a string"))
     }
     if (spec.timeoutMs !== undefined && (!Number.isFinite(spec.timeoutMs) || spec.timeoutMs < 0)) {
       return yield* Effect.fail(
