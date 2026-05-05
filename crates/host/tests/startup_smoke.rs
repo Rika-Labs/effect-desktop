@@ -36,6 +36,10 @@ fn host_binary_emits_startup_event_and_exits_zero() {
         process_output.contains("event=\"host.window.exit_requested\""),
         "process output did not contain window exit event\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
+    assert!(
+        process_output.contains("source=\"window-smoke-test\""),
+        "process output did not contain smoke exit source\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
 
     let version_field = format!("version=\"{}\"", env!("CARGO_PKG_VERSION"));
     assert!(
