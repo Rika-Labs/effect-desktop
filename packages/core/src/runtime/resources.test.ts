@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Effect, Option, Stream } from "effect"
+import { Effect, Fiber, Option, Stream } from "effect"
 
 import {
   generateUuidV7,
@@ -128,6 +128,29 @@ test("observe emits the current snapshot", async () => {
   )
 
   expect(Array.from(snapshots)[0]?.entries.map((entry) => entry.handle.kind)).toEqual(["runtime"])
+})
+
+test("observe emits subsequent registry changes", async () => {
+  const snapshots = await Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makeResourceRegistry({
+        nextId: () => id("018e2f36-5800-7000-8000-000000000006")
+      })
+      const fiber = yield* registry
+        .observe()
+        .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+
+      yield* registry.register({
+        kind: "worker",
+        ownerScope: "scope-worker",
+        state: "ready"
+      })
+
+      return yield* Fiber.join(fiber)
+    })
+  )
+
+  expect(Array.from(snapshots).map((snapshot) => snapshot.entries.length)).toEqual([0, 1])
 })
 
 test("live layer provides the resource registry service", async () => {

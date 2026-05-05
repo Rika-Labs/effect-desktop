@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Option, PubSub, Ref, Stream } from "effect"
+import { Context, Effect, Layer, Option, Stream, SubscriptionRef } from "effect"
 
 export type ResourceId = string & { readonly ResourceId: unique symbol }
 export type ResourceKind = string
@@ -60,32 +60,27 @@ export const makeResourceRegistry = (
   Effect.gen(function* () {
     const now = options.now ?? Date.now
     const nextId = options.nextId ?? generateUuidV7
-    const entries = yield* Ref.make(new Map<ResourceId, StoredResourceEntry>())
-    const snapshots = yield* PubSub.unbounded<RegistrySnapshot>()
+    const entries = yield* SubscriptionRef.make(new Map<ResourceId, StoredResourceEntry>())
 
     const snapshot = (): Effect.Effect<RegistrySnapshot, never, never> =>
-      Effect.map(Ref.get(entries), snapshotFromMap)
-
-    const publishSnapshot = (): Effect.Effect<void, never, never> =>
-      Effect.flatMap(snapshot(), (current) => Effect.asVoid(PubSub.publish(snapshots, current)))
+      Effect.map(SubscriptionRef.get(entries), snapshotFromMap)
 
     const dispose = (id: ResourceId): Effect.Effect<void, never, never> =>
       Effect.gen(function* () {
-        const stored = yield* Ref.modify(entries, (current) => {
+        const entry = yield* SubscriptionRef.modify(entries, (current) => {
           const entry = current.get(id)
           if (entry === undefined) {
-            return [Option.none<StoredResourceEntry>(), current] as const
+            return [undefined, current] as const
           }
 
           const next = new Map(current)
           next.delete(id)
 
-          return [Option.some(entry), next] as const
+          return [entry, next] as const
         })
 
-        if (Option.isSome(stored)) {
-          yield* stored.value.dispose
-          yield* publishSnapshot()
+        if (entry !== undefined) {
+          yield* entry.dispose
         }
       })
 
@@ -109,22 +104,22 @@ export const makeResourceRegistry = (
           dispose: input.dispose ?? Effect.void
         }
 
-        yield* Ref.update(entries, (current) => {
+        yield* SubscriptionRef.update(entries, (current) => {
           const next = new Map(current)
           next.set(id, stored)
           return next
         })
-        yield* publishSnapshot()
 
         return handle
       })
 
     return {
       register,
-      get: (id) => Effect.map(Ref.get(entries), (current) => publicEntryOption(current.get(id))),
+      get: (id) =>
+        Effect.map(SubscriptionRef.get(entries), (current) => publicEntryOption(current.get(id))),
       list: snapshot,
       dispose,
-      observe: () => Stream.fromEffect(snapshot()).pipe(Stream.concat(Stream.fromPubSub(snapshots)))
+      observe: () => SubscriptionRef.changes(entries).pipe(Stream.map(snapshotFromMap))
     }
   })
 
