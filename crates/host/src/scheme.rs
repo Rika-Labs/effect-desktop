@@ -13,6 +13,7 @@ pub(crate) const APP_URL: &str = "app://localhost/";
 pub(crate) const APP_PROTOCOL_SOURCE_KIND: &str = "app-protocol";
 
 const APP_SCHEME: &str = "app";
+const APP_HOST: &str = "localhost";
 const APP_CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' app:; img-src 'self' app: data: https:; font-src 'self' app: data:; media-src 'self' app:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; worker-src 'self'";
 const NOT_FOUND_BODY: &str = "app asset not found";
 const TEXT_CONTENT_TYPE: &str = "text/plain; charset=utf-8";
@@ -24,18 +25,26 @@ pub(crate) fn register_app_scheme<'a>(builder: WebViewBuilder<'a>) -> WebViewBui
 }
 
 fn app_scheme_response(request: &Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
+    if request.uri().host() != Some(APP_HOST) {
+        return app_not_found_response();
+    }
+
     match assets::resolve(request.uri().path()) {
         Some(asset) => app_response(
             StatusCode::OK,
             asset.content_type,
             Cow::Borrowed(asset.bytes),
         ),
-        None => app_response(
-            StatusCode::NOT_FOUND,
-            TEXT_CONTENT_TYPE,
-            Cow::Borrowed(NOT_FOUND_BODY.as_bytes()),
-        ),
+        None => app_not_found_response(),
     }
+}
+
+fn app_not_found_response() -> Response<Cow<'static, [u8]>> {
+    app_response(
+        StatusCode::NOT_FOUND,
+        TEXT_CONTENT_TYPE,
+        Cow::Borrowed(NOT_FOUND_BODY.as_bytes()),
+    )
 }
 
 fn app_response(
@@ -97,6 +106,26 @@ mod tests {
     fn app_scheme_response_returns_not_found_for_missing_assets() {
         let request = Request::builder()
             .uri("app://localhost/missing.js")
+            .body(Vec::new())
+            .expect("test request should build");
+        let response = app_scheme_response(&request);
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            response.headers().get(CONTENT_TYPE),
+            Some(&HeaderValue::from_static(TEXT_CONTENT_TYPE))
+        );
+        assert_eq!(
+            response.headers().get(CONTENT_SECURITY_POLICY),
+            Some(&HeaderValue::from_static(APP_CSP))
+        );
+        assert_eq!(response.body().as_ref(), b"app asset not found");
+    }
+
+    #[test]
+    fn app_scheme_response_returns_not_found_for_non_canonical_hosts() {
+        let request = Request::builder()
+            .uri("app://other-host/index.html")
             .body(Vec::new())
             .expect("test request should build");
         let response = app_scheme_response(&request);
