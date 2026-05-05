@@ -6,10 +6,14 @@ import {
   type ApiContractSpec,
   type ApiEventSpec,
   type ApiMethodSpec,
+  type ApiResourceHandle,
+  type ApiResourceSpec,
   type ApiStreamSpec,
+  isResourceSpec,
   isStreamSpec
 } from "./contracts.js"
 import {
+  HostProtocolCancelByRequestEnvelope,
   HostProtocolEventEnvelope,
   HostProtocolRequestEnvelope,
   HostProtocolStreamClosedError,
@@ -17,6 +21,7 @@ import {
   makeHostProtocolInvalidOutputError,
   type HostProtocolError
 } from "./protocol.js"
+import { type ApiResourceExchange, type ApiResourceProxy, makeResourceProxy } from "./resources.js"
 import {
   ApiStreamCompleteFrame,
   ApiStreamDataFrame,
@@ -37,6 +42,10 @@ export interface ApiClientExchange {
   readonly stream?: (
     request: HostProtocolRequestEnvelope
   ) => Stream.Stream<HostProtocolStreamEnvelope, HostProtocolError, never>
+  readonly cancel?: (
+    request: HostProtocolCancelByRequestEnvelope
+  ) => Effect.Effect<void, HostProtocolError, never>
+  readonly resource?: ApiResourceExchange
 }
 
 export type ApiClientResponse = ApiClientSuccessResponse | ApiClientErrorResponse
@@ -59,6 +68,10 @@ export interface ApiClientOptions {
   readonly originToken?: string
 }
 
+export interface ApiClientCallOptions {
+  readonly signal?: AbortSignal
+}
+
 interface ResolvedApiClientOptions {
   readonly nextRequestId: () => string
   readonly nextTraceId: () => string
@@ -70,34 +83,56 @@ interface ResolvedApiClientOptions {
 export type ApiClientMethod<Spec extends ApiMethodSpec> = Spec["output"] extends ApiStreamSpec
   ? undefined extends Schema.Schema.Type<Spec["input"]>
     ? (
-        input?: Schema.Schema.Type<Spec["input"]>
+        input?: Schema.Schema.Type<Spec["input"]>,
+        options?: ApiClientCallOptions
       ) => Stream.Stream<
         Schema.Schema.Type<Spec["output"]["chunk"]>,
         Schema.Schema.Type<Spec["output"]["error"]> | HostProtocolError,
         never
       >
     : (
-        input: Schema.Schema.Type<Spec["input"]>
+        input: Schema.Schema.Type<Spec["input"]>,
+        options?: ApiClientCallOptions
       ) => Stream.Stream<
         Schema.Schema.Type<Spec["output"]["chunk"]>,
         Schema.Schema.Type<Spec["output"]["error"]> | HostProtocolError,
         never
       >
-  : undefined extends Schema.Schema.Type<Spec["input"]>
-    ? (
-        input?: Schema.Schema.Type<Spec["input"]>
-      ) => Effect.Effect<
-        Schema.Schema.Type<Extract<Spec["output"], Schema.Schema<unknown>>>,
-        Schema.Schema.Type<Spec["error"]> | HostProtocolError,
-        never
-      >
-    : (
-        input: Schema.Schema.Type<Spec["input"]>
-      ) => Effect.Effect<
-        Schema.Schema.Type<Extract<Spec["output"], Schema.Schema<unknown>>>,
-        Schema.Schema.Type<Spec["error"]> | HostProtocolError,
-        never
-      >
+  : Spec["output"] extends ApiResourceSpec
+    ? undefined extends Schema.Schema.Type<Spec["input"]>
+      ? (
+          input?: Schema.Schema.Type<Spec["input"]>,
+          options?: ApiClientCallOptions
+        ) => Effect.Effect<
+          ApiResourceProxy<Spec["output"]["kind"], Spec["output"]["state"]>,
+          Schema.Schema.Type<Spec["error"]> | HostProtocolError,
+          never
+        >
+      : (
+          input: Schema.Schema.Type<Spec["input"]>,
+          options?: ApiClientCallOptions
+        ) => Effect.Effect<
+          ApiResourceProxy<Spec["output"]["kind"], Spec["output"]["state"]>,
+          Schema.Schema.Type<Spec["error"]> | HostProtocolError,
+          never
+        >
+    : undefined extends Schema.Schema.Type<Spec["input"]>
+      ? (
+          input?: Schema.Schema.Type<Spec["input"]>,
+          options?: ApiClientCallOptions
+        ) => Effect.Effect<
+          Schema.Schema.Type<Extract<Spec["output"], Schema.Schema<unknown>>>,
+          Schema.Schema.Type<Spec["error"]> | HostProtocolError,
+          never
+        >
+      : (
+          input: Schema.Schema.Type<Spec["input"]>,
+          options?: ApiClientCallOptions
+        ) => Effect.Effect<
+          Schema.Schema.Type<Extract<Spec["output"], Schema.Schema<unknown>>>,
+          Schema.Schema.Type<Spec["error"]> | HostProtocolError,
+          never
+        >
 
 export type ApiClientEvent<Spec extends ApiEventSpec> = Stream.Stream<
   Schema.Schema.Type<Spec["payload"]>,
@@ -143,7 +178,8 @@ const makeContractClient = <Tag extends string, Spec extends ApiContractSpec>(
     [Extract<keyof Spec, string>, Spec[Extract<keyof Spec, string>]]
   >) {
     methods[method] = ((
-      input: Schema.Schema.Type<Spec[typeof method]["input"]>
+      input: Schema.Schema.Type<Spec[typeof method]["input"]>,
+      callOptions?: ApiClientCallOptions
     ): Effect.Effect<unknown, unknown, never> | Stream.Stream<unknown, unknown, never> =>
       isStreamSpec(methodSpec.output)
         ? streamContractMethod(
@@ -152,11 +188,18 @@ const makeContractClient = <Tag extends string, Spec extends ApiContractSpec>(
             methodSpec as Spec[typeof method] & { readonly output: ApiStreamSpec },
             input,
             exchange,
-            options
+            options,
+            callOptions
           )
-        : requestContractMethod(contract.tag, method, methodSpec, input, exchange, options)) as
-      | ApiClientMethod<Spec[typeof method]>
-      | undefined
+        : requestContractMethod(
+            contract.tag,
+            method,
+            methodSpec,
+            input,
+            exchange,
+            options,
+            callOptions
+          )) as ApiClientMethod<Spec[typeof method]> | undefined
   }
 
   for (const [event, eventSpec] of Object.entries(contractEvents) as Array<
@@ -180,19 +223,21 @@ const requestContractMethod = <Spec extends ApiMethodSpec>(
   spec: Spec,
   input: Schema.Schema.Type<Spec["input"]>,
   exchange: ApiClientExchange,
-  options: ResolvedApiClientOptions
-): Effect.Effect<
-  Schema.Schema.Type<Extract<Spec["output"], Schema.Schema<unknown>>>,
-  Schema.Schema.Type<Spec["error"]> | HostProtocolError,
-  never
-> =>
+  options: ResolvedApiClientOptions,
+  callOptions: ApiClientCallOptions = {}
+): Effect.Effect<unknown, Schema.Schema.Type<Spec["error"]> | HostProtocolError, never> =>
   Effect.gen(function* () {
     const operation = methodName(tag, method)
     const payload = yield* encodeInput(operation, spec, input)
-    const response = yield* exchange.request(makeRequest(operation, payload, options))
+    const request = makeRequest(operation, payload, options)
+    const response = yield* runRequestWithCancellation(exchange, request, callOptions, options.now)
 
     if (response.kind === "failure") {
       return yield* decodeContractError(operation, spec, response.error)
+    }
+
+    if (isResourceSpec(spec.output)) {
+      return yield* decodeResourceOutput(operation, spec.output, response.payload, exchange)
     }
 
     return yield* decodeOutput(operation, spec, response.payload)
@@ -232,6 +277,44 @@ const decodeOutput = <Spec extends ApiMethodSpec>(
     >,
     (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
   )
+
+const decodeResourceOutput = <Spec extends ApiResourceSpec>(
+  operation: string,
+  spec: Spec,
+  payload: unknown,
+  exchange: ApiClientExchange
+): Effect.Effect<ApiResourceProxy<Spec["kind"], Spec["state"]>, HostProtocolError, never> =>
+  Effect.gen(function* () {
+    if (exchange.resource === undefined) {
+      return yield* Effect.fail(
+        makeHostProtocolInvalidOutputError(operation, "resource exchange does not support handles")
+      )
+    }
+
+    const handle = yield* Effect.mapError(
+      Schema.decodeUnknownEffect(spec.schema)(payload, StrictParseOptions) as Effect.Effect<
+        ApiResourceHandle,
+        unknown,
+        never
+      >,
+      (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+    )
+
+    if (handle.kind !== spec.kind || handle.state !== spec.state) {
+      return yield* Effect.fail(
+        makeHostProtocolInvalidOutputError(
+          operation,
+          `resource handle kind/state mismatch: expected ${spec.kind}:${spec.state}, received ${handle.kind}:${handle.state}`
+        )
+      )
+    }
+
+    return makeResourceProxy(
+      spec,
+      handle as ApiResourceHandle<Spec["kind"], Spec["state"]>,
+      exchange.resource
+    )
+  })
 
 const decodeContractError = <Spec extends ApiMethodSpec>(
   operation: string,
@@ -276,7 +359,8 @@ const streamContractMethod = <Spec extends ApiMethodSpec & { readonly output: Ap
   spec: Spec,
   input: Schema.Schema.Type<Spec["input"]>,
   exchange: ApiClientExchange,
-  options: ResolvedApiClientOptions
+  options: ResolvedApiClientOptions,
+  callOptions: ApiClientCallOptions = {}
 ): Stream.Stream<
   Schema.Schema.Type<Spec["output"]["chunk"]>,
   Schema.Schema.Type<Spec["output"]["error"]> | HostProtocolError,
@@ -294,9 +378,17 @@ const streamContractMethod = <Spec extends ApiMethodSpec & { readonly output: Ap
   return Stream.unwrap(
     Effect.gen(function* () {
       const payload = yield* encodeInput(operation, spec, input)
+      const request = makeRequest(operation, payload, options)
+      const removeAbortListener = yield* installAbortCancellation(
+        exchange,
+        request,
+        callOptions,
+        options.now
+      )
 
-      return stream(makeRequest(operation, payload, options)).pipe(
-        Stream.flatMap((envelope) => decodeStreamEnvelope(operation, spec.output, envelope))
+      return stream(request).pipe(
+        Stream.flatMap((envelope) => decodeStreamEnvelope(operation, spec.output, envelope)),
+        Stream.ensuring(Effect.sync(removeAbortListener))
       )
     })
   ) as Stream.Stream<
@@ -402,6 +494,60 @@ const decodeStreamError = <Spec extends ApiStreamSpec>(
     ),
     (decoded) => Effect.fail(decoded)
   )
+
+const runRequestWithCancellation = (
+  exchange: ApiClientExchange,
+  request: HostProtocolRequestEnvelope,
+  options: ApiClientCallOptions,
+  now: () => number
+): Effect.Effect<ApiClientResponse, HostProtocolError, never> =>
+  Effect.gen(function* () {
+    const removeAbortListener = yield* installAbortCancellation(exchange, request, options, now)
+    return yield* exchange.request(request).pipe(Effect.ensuring(Effect.sync(removeAbortListener)))
+  })
+
+const installAbortCancellation = (
+  exchange: ApiClientExchange,
+  request: HostProtocolRequestEnvelope,
+  options: ApiClientCallOptions,
+  now: () => number
+): Effect.Effect<() => void, HostProtocolError, never> =>
+  Effect.sync(() => {
+    if (options.signal === undefined || exchange.cancel === undefined) {
+      return () => {
+        return
+      }
+    }
+
+    const signal = options.signal
+    const cancelRequest = exchange.cancel
+    const cancel = (): void => {
+      Effect.runFork(cancelRequest(makeCancelRequest(request, now)))
+    }
+
+    if (signal.aborted) {
+      cancel()
+      return () => {
+        return
+      }
+    }
+
+    signal.addEventListener("abort", cancel, { once: true })
+    return () => {
+      signal.removeEventListener("abort", cancel)
+    }
+  })
+
+const makeCancelRequest = (
+  request: HostProtocolRequestEnvelope,
+  now: () => number
+): HostProtocolCancelByRequestEnvelope =>
+  new HostProtocolCancelByRequestEnvelope({
+    kind: "cancel",
+    id: request.id,
+    timestamp: now(),
+    traceId: request.traceId
+  })
 
 const makeRequest = (
   method: string,

@@ -1,15 +1,17 @@
-import { Cause, Effect, Exit, Schema } from "effect"
+import { Cause, Effect, Exit, Fiber, Schema } from "effect"
 
 import {
   type ApiContractClass,
   type ApiContractSpec,
   type ApiLayer,
   type ApiMethodSpec,
+  isResourceSpec,
   isStreamSpec
 } from "./contracts.js"
 import { type ApiClientResponse } from "./client.js"
 import {
   HostProtocolMethodNotFoundError,
+  HostProtocolCancelByRequestEnvelope,
   HostProtocolRequestEnvelope,
   HostProtocolCancelledError,
   HostProtocolTimeoutError,
@@ -27,6 +29,9 @@ export interface ApiHandlerRuntime<Env = never> {
   readonly dispatch: (
     request: HostProtocolRequestEnvelope
   ) => Effect.Effect<ApiClientResponse, HostProtocolError, Env>
+  readonly cancel: (
+    request: HostProtocolCancelByRequestEnvelope
+  ) => Effect.Effect<void, HostProtocolError, never>
 }
 
 export type BridgeCallTerminalState = "Completed" | "Failed" | "Canceled" | "TimedOut"
@@ -95,6 +100,11 @@ type TerminalStateEntry = {
   readonly recordedAt: number
 }
 
+type PendingCall = {
+  readonly fiber: Fiber.Fiber<unknown, unknown>
+  cancelledBy: "renderer" | "runtime" | "host" | undefined
+}
+
 const makeHandlers = <Layers extends readonly AnyApiLayer[]>(
   ...layers: Layers
 ): ApiHandlerRuntime<ApiLayerEnvironment<Layers[number]>> => makeHandlersWithOptions({}, ...layers)
@@ -105,6 +115,7 @@ const makeHandlersWithOptions = <Layers extends readonly AnyApiLayer[]>(
 ): ApiHandlerRuntime<ApiLayerEnvironment<Layers[number]>> => {
   const table = new Map<string, BoundHandler>()
   const terminalStates = new Map<string, TerminalStateEntry>()
+  const pendingCalls = new Map<string, PendingCall>()
   const resolved = resolveOptions(options)
 
   for (const layer of layers) {
@@ -124,11 +135,13 @@ const makeHandlersWithOptions = <Layers extends readonly AnyApiLayer[]>(
 
   return Object.freeze({
     dispatch: (request: HostProtocolRequestEnvelope) =>
-      dispatch(table, terminalStates, resolved, request) as Effect.Effect<
+      dispatch(table, terminalStates, pendingCalls, resolved, request) as Effect.Effect<
         ApiClientResponse,
         HostProtocolError,
         ApiLayerEnvironment<Layers[number]>
-      >
+      >,
+    cancel: (request: HostProtocolCancelByRequestEnvelope) =>
+      cancel(pendingCalls, resolved, request)
   }) as ApiHandlerRuntime<ApiLayerEnvironment<Layers[number]>>
 }
 
@@ -139,6 +152,7 @@ export const Handlers = Object.assign(makeHandlers, {
 const dispatch = (
   table: ReadonlyMap<string, BoundHandler>,
   terminalStates: Map<string, TerminalStateEntry>,
+  pendingCalls: Map<string, PendingCall>,
   options: ResolvedApiHandlerRuntimeOptions,
   request: HostProtocolRequestEnvelope
 ): Effect.Effect<ApiClientResponse, HostProtocolError, unknown> =>
@@ -192,8 +206,28 @@ const dispatch = (
       handler: request.method
     })
 
-    const handlerEffect = runWithTimeout(bound, request.method, inputExit.value)
-    const exit = yield* Effect.exit(handlerEffect)
+    let canceledBy: "renderer" | "runtime" | "host" = "runtime"
+    const exit = yield* Effect.scoped(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.forkScoped(
+          runWithTimeout(bound, request.method, inputExit.value)
+        )
+        const pending: PendingCall = {
+          fiber,
+          cancelledBy: undefined
+        }
+        pendingCalls.set(request.id, pending)
+
+        return yield* Effect.exit(Fiber.join(fiber)).pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              canceledBy = pending.cancelledBy ?? "runtime"
+              pendingCalls.delete(request.id)
+            })
+          )
+        )
+      })
+    )
 
     if (Exit.isFailure(exit)) {
       const timeout = timeoutFromCause(exit.cause)
@@ -207,13 +241,13 @@ const dispatch = (
         return yield* Effect.fail(timeout.error)
       }
 
-      const canceled = cancelledFromCause(request.method, exit.cause)
+      const canceled = cancelledFromCause(request.method, exit.cause, canceledBy)
       if (canceled !== undefined) {
         recordTerminalState(terminalStates, request.id, "Canceled", options)
         yield* options.onState({
           tag: "Canceled",
           id: request.id,
-          canceledBy: "runtime"
+          canceledBy
         })
         return yield* Effect.fail(canceled)
       }
@@ -248,6 +282,21 @@ const dispatch = (
       kind: "success",
       payload: outputExit.value
     } as const
+  })
+
+const cancel = (
+  pendingCalls: Map<string, PendingCall>,
+  _options: ResolvedApiHandlerRuntimeOptions,
+  request: HostProtocolCancelByRequestEnvelope
+): Effect.Effect<void, HostProtocolError, never> =>
+  Effect.gen(function* () {
+    const pending = pendingCalls.get(request.id)
+    if (pending === undefined) {
+      return yield* Effect.fail(makeHostProtocolInvalidStateError("Missing", "cancel", request.id))
+    }
+
+    pending.cancelledBy = "renderer"
+    yield* Fiber.interrupt(pending.fiber)
   })
 
 const runWithTimeout = (
@@ -285,20 +334,27 @@ const encodeOutput = <Spec extends ApiMethodSpec>(
   operation: string,
   spec: Spec,
   output: unknown
-): Effect.Effect<
-  Schema.Codec.Encoded<Extract<Spec["output"], Schema.Schema<unknown>>>,
-  HostProtocolError,
-  never
-> => {
+): Effect.Effect<unknown, HostProtocolError, never> => {
   if (isStreamSpec(spec.output)) {
     return Effect.fail(
       makeHostProtocolInvalidOutputError(operation, "stream output is not a response")
     )
   }
 
+  if (isResourceSpec(spec.output)) {
+    return Effect.mapError(
+      Schema.encodeUnknownEffect(spec.output.schema)(output, StrictParseOptions) as Effect.Effect<
+        unknown,
+        unknown,
+        never
+      >,
+      (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+    )
+  }
+
   return Effect.mapError(
     Schema.encodeUnknownEffect(spec.output)(output, StrictParseOptions) as Effect.Effect<
-      Schema.Codec.Encoded<Extract<Spec["output"], Schema.Schema<unknown>>>,
+      unknown,
       unknown,
       never
     >,
@@ -426,9 +482,10 @@ const timeoutFromCause = (
 
 const cancelledFromCause = (
   operation: string,
-  cause: Cause.Cause<unknown>
+  cause: Cause.Cause<unknown>,
+  source: "renderer" | "runtime" | "host"
 ): HostProtocolCancelledError | undefined =>
-  cause.reasons.some(Cause.isInterruptReason) ? makeCancelledError(operation, "runtime") : undefined
+  cause.reasons.some(Cause.isInterruptReason) ? makeCancelledError(operation, source) : undefined
 
 const isEffectTimeoutError = (error: unknown): boolean => Cause.isTimeoutError(error)
 

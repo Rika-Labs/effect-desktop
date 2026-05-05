@@ -1,14 +1,20 @@
 import { expect, test } from "bun:test"
-import { Cause, Effect, Exit, Schema } from "effect"
+import { Cause, Deferred, Effect, Exit, Schema } from "effect"
 
 import {
+  Api,
   type ApiContractClass,
   type ApiHandlers,
   type ApiLayer,
   type ApiClientResponse,
+  type ApiResourceHandle,
+  type ApiResourceSpec,
   Client,
+  Handlers,
+  HostProtocolCancelByRequestEnvelope,
   HostProtocolRequestEnvelope,
   makeHostProtocolInvalidOutputError,
+  makeStaleHandleError,
   type HostProtocolError,
   type ApiClientExchange
 } from "./index.js"
@@ -186,12 +192,163 @@ test("Client propagates exchange failures", async () => {
   expectFailureTag(exit, "InvalidOutput")
 })
 
+test("Client decodes resource outputs into disposable renderer proxies", async () => {
+  const ProcessApi = makeProcessApi("ProjectApi.ResourceProxy")
+  const disposed: ApiResourceHandle[] = []
+  const handle = {
+    kind: "process",
+    id: "process-1",
+    generation: 0,
+    ownerScope: "window-1",
+    state: "running"
+  } as const
+  const client = Client(
+    { process: ProcessApi },
+    {
+      ...responseExchange([], handle),
+      resource: {
+        dispose: (resource) =>
+          Effect.sync(() => {
+            disposed.push(resource)
+          })
+      }
+    }
+  )
+
+  const proxy = await Effect.runPromise(client.process.spawn())
+  await Effect.runPromise(proxy.dispose())
+
+  expect(proxy.kind).toBe("process")
+  expect(proxy.state).toBe("running")
+  expect(disposed).toEqual([handle])
+})
+
+test("Client resource proxies return stale-handle disposal failures as values", async () => {
+  const ProcessApi = makeProcessApi("ProjectApi.ResourceProxyStale")
+  const handle = {
+    kind: "process",
+    id: "process-stale",
+    generation: 0,
+    ownerScope: "window-1",
+    state: "running"
+  } as const
+  const client = Client(
+    { process: ProcessApi },
+    {
+      ...responseExchange([], handle),
+      resource: {
+        dispose: (resource) => Effect.fail(makeStaleHandleError("Resource.dispose", resource, 1))
+      }
+    }
+  )
+
+  const proxy = await Effect.runPromise(client.process.spawn())
+  const exit = await Effect.runPromiseExit(proxy.dispose())
+
+  expectFailureTag(exit, "StaleHandle")
+})
+
+test("Client abort signals propagate as typed bridge cancellation", async () => {
+  const ProcessApi = makeProjectApi("ProjectApi.ClientCancel")
+  const started = await Effect.runPromise(Deferred.make<void>())
+  const states: string[] = []
+  const runtime = Handlers.withOptions(
+    {
+      onState: (state) =>
+        Effect.sync(() => {
+          states.push(state.tag)
+        })
+    },
+    ProcessApi.layer({
+      open: () =>
+        Effect.gen(function* () {
+          yield* Deferred.succeed(started, undefined)
+          yield* Effect.sleep(10_000)
+          return new ProjectOpenOutput({ id: "project-1" })
+        })
+    })
+  )
+  const cancelRequests: HostProtocolCancelByRequestEnvelope[] = []
+  const controller = new AbortController()
+  const client = Client(
+    { project: ProcessApi },
+    {
+      request: runtime.dispatch,
+      cancel: (request) =>
+        Effect.gen(function* () {
+          cancelRequests.push(request)
+          yield* runtime.cancel(request)
+        })
+    },
+    {
+      nextRequestId: () => "request-client-cancel",
+      nextTraceId: () => "trace-client-cancel",
+      now: () => 42
+    }
+  )
+
+  const exitPromise = Effect.runPromiseExit(
+    client.project.open(new ProjectOpenInput({ path: "/tmp/project" }), {
+      signal: controller.signal
+    })
+  )
+
+  await Effect.runPromise(Deferred.await(started))
+  controller.abort()
+  const exit = await exitPromise
+
+  expectFailureTag(exit, "Cancelled")
+  expectFailureField(exit, "source", "renderer")
+  expect(cancelRequests).toEqual([
+    new HostProtocolCancelByRequestEnvelope({
+      kind: "cancel",
+      id: "request-client-cancel",
+      timestamp: 42,
+      traceId: "trace-client-cancel"
+    })
+  ])
+  expect(states).toEqual(["Pending", "Authorized", "Running", "Canceled"])
+})
+
 type ProjectApiSpec = {
   readonly open: {
     readonly input: typeof ProjectOpenInput
     readonly output: typeof ProjectOpenOutput
     readonly error: typeof ProjectOpenError
   }
+}
+
+type ProcessApiSpec = {
+  readonly spawn: {
+    readonly input: typeof Schema.Void
+    readonly output: ApiResourceSpec<"process", "running">
+    readonly error: typeof ProjectOpenError
+  }
+}
+
+const makeProcessApi = <Tag extends string>(tag: Tag): ApiContractClass<Tag, ProcessApiSpec> => {
+  const contract = class {
+    static readonly tag = tag
+    static readonly spec = Object.freeze({
+      spawn: Object.freeze({
+        input: Schema.Void,
+        output: Api.Resource("process", "running"),
+        error: ProjectOpenError
+      })
+    })
+    static readonly events = Object.freeze({})
+
+    static layer<Handlers extends ApiHandlers<ProcessApiSpec>>(
+      handlers: Handlers
+    ): ApiLayer<Tag, ProcessApiSpec, Handlers> {
+      return Object.freeze({
+        contract,
+        handlers: Object.freeze(handlers)
+      })
+    }
+  } as ApiContractClass<Tag, ProcessApiSpec>
+
+  return Object.freeze(contract)
 }
 
 const makeProjectApi = <Tag extends string>(tag: Tag): ApiContractClass<Tag, ProjectApiSpec> => {
@@ -326,6 +483,23 @@ const expectFailureTag = (exit: Exit.Exit<unknown, unknown>, tag: string): void 
     expect(fail).toBeDefined()
     if (fail !== undefined) {
       expect((fail.error as { readonly tag?: unknown }).tag).toBe(tag)
+    }
+  }
+}
+
+const expectFailureField = (
+  exit: Exit.Exit<unknown, unknown>,
+  field: string,
+  value: unknown
+): void => {
+  expect(Exit.isFailure(exit)).toBe(true)
+
+  if (Exit.isFailure(exit)) {
+    const fail = exit.cause.reasons.find(Cause.isFailReason)
+
+    expect(fail).toBeDefined()
+    if (fail !== undefined) {
+      expect((fail.error as Record<string, unknown>)[field]).toBe(value)
     }
   }
 }
