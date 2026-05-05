@@ -27,6 +27,7 @@ const WINDOW_DESTROYED_EVENT: &str = "host.window.destroyed";
 const WINDOW_EXIT_REQUESTED_EVENT: &str = "host.window.exit_requested";
 const WINDOW_METHOD_REPLY_TIMEOUT: Duration = Duration::from_secs(120);
 const WINDOW_COMMAND_IDLE_POLL_INTERVAL: Duration = Duration::from_millis(50);
+const WINDOW_SMOKE_TEST_TIMEOUT: Duration = Duration::from_secs(150);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RunMode {
@@ -84,6 +85,7 @@ enum WindowCommandResponse {
 enum WindowLifecycleEvent {
     CloseRequested,
     WindowCreateFailed,
+    SmokeTimedOut,
     SmokeExitRequested,
     Other,
 }
@@ -315,8 +317,15 @@ impl WindowRegistry {
                 WindowLifecycleEvent::WindowCreateFailed => {
                     lifecycle = WindowLifecycleEvent::WindowCreateFailed;
                 }
+                WindowLifecycleEvent::SmokeTimedOut => {
+                    lifecycle = WindowLifecycleEvent::SmokeTimedOut
+                }
                 WindowLifecycleEvent::SmokeExitRequested
-                    if lifecycle != WindowLifecycleEvent::WindowCreateFailed =>
+                    if !matches!(
+                        lifecycle,
+                        WindowLifecycleEvent::WindowCreateFailed
+                            | WindowLifecycleEvent::SmokeTimedOut
+                    ) =>
                 {
                     lifecycle = WindowLifecycleEvent::SmokeExitRequested;
                 }
@@ -373,6 +382,7 @@ pub(crate) fn run_main_window(mode: RunMode, window_methods: WindowMethodPort) -
     let event_loop = event_loop_builder.build();
     let command_source = window_methods.clone();
     let mut registry = WindowRegistry::new();
+    let smoke_deadline = smoke_deadline_for_mode(mode, Instant::now());
 
     event_loop.run(move |event, target, control_flow| {
         let lifecycle_event = match event {
@@ -381,7 +391,11 @@ pub(crate) fn run_main_window(mode: RunMode, window_methods: WindowMethodPort) -
             }
             event => classify_event(&event),
         };
-        *control_flow = control_flow_for_window_state(lifecycle_event, Instant::now());
+        let now = Instant::now();
+        *control_flow = control_flow_for_window_state(
+            lifecycle_event_with_smoke_timeout(lifecycle_event, mode, smoke_deadline, now),
+            now,
+        );
     });
 }
 
@@ -413,6 +427,14 @@ fn control_flow_for_lifecycle_event(event: WindowLifecycleEvent) -> ControlFlow 
             );
             ControlFlow::ExitWithCode(1)
         }
+        WindowLifecycleEvent::SmokeTimedOut => {
+            warn!(
+                event = WINDOW_EXIT_REQUESTED_EVENT,
+                source = "window-smoke-timeout",
+                "host window exit requested"
+            );
+            ControlFlow::ExitWithCode(1)
+        }
         WindowLifecycleEvent::SmokeExitRequested => {
             info!(
                 event = WINDOW_EXIT_REQUESTED_EVENT,
@@ -422,6 +444,30 @@ fn control_flow_for_lifecycle_event(event: WindowLifecycleEvent) -> ControlFlow 
             ControlFlow::Exit
         }
         WindowLifecycleEvent::Other => ControlFlow::Wait,
+    }
+}
+
+fn smoke_deadline_for_mode(mode: RunMode, now: Instant) -> Option<Instant> {
+    if matches!(mode, RunMode::WindowSmokeTest) {
+        Some(now + WINDOW_SMOKE_TEST_TIMEOUT)
+    } else {
+        None
+    }
+}
+
+fn lifecycle_event_with_smoke_timeout(
+    event: WindowLifecycleEvent,
+    mode: RunMode,
+    deadline: Option<Instant>,
+    now: Instant,
+) -> WindowLifecycleEvent {
+    if !matches!(event, WindowLifecycleEvent::Other) || !matches!(mode, RunMode::WindowSmokeTest) {
+        return event;
+    }
+
+    match deadline {
+        Some(deadline) if now >= deadline => WindowLifecycleEvent::SmokeTimedOut,
+        Some(_) | None => event,
     }
 }
 
@@ -456,9 +502,10 @@ fn validate_positive_finite(field: &str, value: f64) -> std::result::Result<(), 
 mod tests {
     use super::{
         control_flow_for_lifecycle_event, control_flow_for_window_state,
-        lifecycle_for_create_result, validate_positive_finite, RunMode, WindowCommand,
-        WindowCommandResponse, WindowCreateRequest, WindowLifecycleEvent, WindowMethodPort,
-        WindowRegistry, WINDOW_COMMAND_IDLE_POLL_INTERVAL,
+        lifecycle_event_with_smoke_timeout, lifecycle_for_create_result, smoke_deadline_for_mode,
+        validate_positive_finite, RunMode, WindowCommand, WindowCommandResponse,
+        WindowCreateRequest, WindowLifecycleEvent, WindowMethodPort, WindowRegistry,
+        WINDOW_COMMAND_IDLE_POLL_INTERVAL, WINDOW_SMOKE_TEST_TIMEOUT,
     };
     use host_protocol::{HostProtocolError, WindowCreatePayload, WindowCreateResponse};
     use std::sync::mpsc;
@@ -478,6 +525,14 @@ mod tests {
         assert_eq!(
             control_flow_for_lifecycle_event(WindowLifecycleEvent::SmokeExitRequested),
             ControlFlow::Exit
+        );
+    }
+
+    #[test]
+    fn smoke_timeout_exits_with_error_status() {
+        assert_eq!(
+            control_flow_for_lifecycle_event(WindowLifecycleEvent::SmokeTimedOut),
+            ControlFlow::ExitWithCode(1)
         );
     }
 
@@ -544,6 +599,40 @@ mod tests {
         assert_eq!(
             control_flow_for_window_state(WindowLifecycleEvent::Other, now),
             ControlFlow::WaitUntil(now + WINDOW_COMMAND_IDLE_POLL_INTERVAL)
+        );
+    }
+
+    #[test]
+    fn smoke_mode_times_out_when_destroy_never_arrives() {
+        let now = Instant::now();
+        let deadline = smoke_deadline_for_mode(RunMode::WindowSmokeTest, now)
+            .expect("smoke mode should have a deadline");
+
+        assert_eq!(deadline, now + WINDOW_SMOKE_TEST_TIMEOUT);
+        assert_eq!(
+            lifecycle_event_with_smoke_timeout(
+                WindowLifecycleEvent::Other,
+                RunMode::WindowSmokeTest,
+                Some(deadline),
+                deadline,
+            ),
+            WindowLifecycleEvent::SmokeTimedOut
+        );
+    }
+
+    #[test]
+    fn interactive_mode_does_not_use_smoke_timeout() {
+        let now = Instant::now();
+
+        assert_eq!(smoke_deadline_for_mode(RunMode::Interactive, now), None);
+        assert_eq!(
+            lifecycle_event_with_smoke_timeout(
+                WindowLifecycleEvent::Other,
+                RunMode::Interactive,
+                Some(now),
+                now,
+            ),
+            WindowLifecycleEvent::Other
         );
     }
 
