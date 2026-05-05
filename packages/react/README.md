@@ -26,9 +26,14 @@ See `docs/SPEC.md` for the package's normative non-goals.
 import { Option } from "effect"
 import { useDesktop } from "@effect-desktop/react"
 
-const desktop = useDesktop()
-if (Option.isSome(desktop)) {
-  // desktop.value.Window.create(...)
+export function Toolbar() {
+  const desktop = useDesktop()
+
+  if (Option.isSome(desktop)) {
+    // desktop.value.Window.create(...)
+  }
+
+  return null
 }
 ```
 
