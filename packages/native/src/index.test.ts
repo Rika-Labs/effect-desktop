@@ -12,17 +12,23 @@ import {
   type HostWindowExchange
 } from "@effect-desktop/bridge"
 import { ResourceRegistry, makeResourceRegistry } from "@effect-desktop/core"
-import { Cause, Effect, Exit, Layer, Stream } from "effect"
+import { Cause, Effect, Exit, Fiber, Layer, Stream } from "effect"
 
 import {
+  AppEventRouter,
   Window,
   WindowApi,
   WindowClient,
   WindowLive,
   WindowMethodNames,
   makeHostWindowApiLayer,
+  makeAppEventRouter,
   makeWindowBridgeClientLayer,
   makeWindowServiceLayer,
+  firstResponderRoute,
+  broadcastRoute,
+  targetedRoute,
+  windowScope,
   type WindowClientApi,
   type WindowHandle
 } from "./index.js"
@@ -164,7 +170,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
     kind: "window",
     id: "host-window-1",
     generation: 0,
-    ownerScope: "window",
+    ownerScope: "window:host-window-1",
     state: "open"
   })
   expect(result.duringLifetime.entries.map((entry) => String(entry.handle.id))).toEqual([
@@ -187,6 +193,163 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       }
     ]
   ])
+})
+
+test("AppEventRouter sends firstResponder events to the focused window only", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const router = yield* makeAppEventRouter()
+      yield* router.windowOpened(handleFor("window-1"))
+      yield* router.windowOpened(handleFor("window-2"))
+      yield* router.windowFocused("window-2")
+      const first = yield* router
+        .subscribe<{ readonly path: string }>("window-1", "onOpenFile")
+        .pipe(Stream.take(1), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+      const second = yield* router
+        .subscribe<{ readonly path: string }>("window-2", "onOpenFile")
+        .pipe(Stream.take(1), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+
+      yield* router.publish({
+        event: "onOpenFile",
+        payload: { path: "README.md" },
+        route: firstResponderRoute
+      })
+      yield* Effect.sleep("10 millis")
+      yield* Fiber.interrupt(first)
+
+      return yield* Fiber.join(second)
+    })
+  )
+
+  expect(Array.from(result)).toEqual([
+    {
+      event: "onOpenFile",
+      payload: { path: "README.md" },
+      windowId: "window-2",
+      ownerScope: "window:window-2"
+    }
+  ])
+})
+
+test("AppEventRouter buffers one firstResponder event per kind until a window opens", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const router = yield* makeAppEventRouter()
+      yield* router.publish({
+        event: "onOpenFile",
+        payload: { path: "older.txt" },
+        route: firstResponderRoute
+      })
+      yield* router.publish({
+        event: "onOpenFile",
+        payload: { path: "newer.txt" },
+        route: firstResponderRoute
+      })
+      const audit = yield* router
+        .audit()
+        .pipe(Stream.take(1), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+      yield* router.windowOpened(handleFor("window-1"))
+      const events = yield* router
+        .subscribe<{ readonly path: string }>("window-1", "onOpenFile")
+        .pipe(Stream.take(1), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+      yield* router.publish({
+        event: "onOpenFile",
+        payload: { path: "after-open.txt" },
+        route: firstResponderRoute
+      })
+
+      return {
+        events: yield* Fiber.join(events),
+        audit: yield* Fiber.join(audit)
+      }
+    })
+  )
+
+  expect(Array.from(result.events).map((event) => event.payload.path)).toEqual(["newer.txt"])
+  expect(Array.from(result.audit).map((event) => event._tag)).toEqual(["EventBufferEvicted"])
+})
+
+test("AppEventRouter broadcasts in creation order and short-circuits on refusal", async () => {
+  const seen: string[] = []
+  const decision = await Effect.runPromise(
+    Effect.gen(function* () {
+      const router = yield* makeAppEventRouter()
+      yield* router.windowOpened(handleFor("window-1"))
+      yield* router.windowOpened(handleFor("window-2"))
+      yield* router.windowOpened(handleFor("window-3"))
+
+      return yield* router.dispatch(
+        {
+          event: "onWillQuit",
+          payload: { reason: "test" },
+          route: broadcastRoute
+        },
+        (event) =>
+          Effect.sync(() => {
+            seen.push(event.windowId)
+            return event.windowId === "window-2" ? "refuse" : "continue"
+          })
+      )
+    })
+  )
+
+  expect(decision).toBe("refuse")
+  expect(seen).toEqual(["window-1", "window-2"])
+})
+
+test("AppEventRouter drops targeted events for closed targets with an audit row", async () => {
+  const audit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const router = yield* makeAppEventRouter()
+      const fiber = yield* router
+        .audit()
+        .pipe(Stream.take(1), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+
+      yield* router.publish({
+        event: "Tray.activation",
+        payload: { button: "left" },
+        route: targetedRoute("closed-window")
+      })
+
+      return yield* Fiber.join(fiber)
+    })
+  )
+
+  expect(Array.from(audit)).toEqual([
+    {
+      _tag: "EventDroppedTargetClosed",
+      event: "Tray.activation",
+      windowId: "closed-window",
+      dropped: {
+        event: "Tray.activation",
+        payload: { button: "left" }
+      }
+    }
+  ])
+})
+
+test("host WindowClient adapter declares per-window scopes and closes scoped resources", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const router = await Effect.runPromise(makeAppEventRouter())
+  const apiExchange = makeWindowApiExchange(windowExchange([]), registry, {}, router)
+  const program = Effect.gen(function* () {
+    const window = yield* Window
+    const created = yield* window.create({})
+    const child = yield* registry.register({
+      kind: "stream",
+      ownerScope: created.ownerScope,
+      state: "open"
+    })
+    yield* window.close(created)
+    const afterClose = yield* registry.list()
+
+    return { child, afterClose }
+  }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(apiExchange))))
+
+  const result = await Effect.runPromise(program)
+
+  expect(result.child.ownerScope).toBe("window:host-window-1")
+  expect(result.afterClose.entries).toEqual([])
 })
 
 test("host WindowClient adapter returns typed failures for invalid input and bad handles", async () => {
@@ -251,6 +414,14 @@ const noopWindowClient: WindowClientApi = {
   persistState: () => Effect.void
 }
 
+const handleFor = (id: string): WindowHandle => ({
+  kind: "window",
+  id,
+  generation: 0,
+  ownerScope: windowScope(id),
+  state: "open"
+})
+
 const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExchange => ({
   request: (request) => {
     requests.push(request)
@@ -271,9 +442,15 @@ const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExch
 const makeWindowApiExchange = (
   hostExchange: HostWindowExchange,
   registry: ResourceRegistry["Service"],
-  options: HostWindowClientOptions = {}
+  options: HostWindowClientOptions = {},
+  appEventRouter?: AppEventRouter["Service"]
 ): ApiClientExchange => {
-  const runtime = Handlers(makeHostWindowApiLayer(hostExchange, options))
+  const runtime = Handlers(
+    makeHostWindowApiLayer(hostExchange, {
+      ...options,
+      ...(appEventRouter === undefined ? {} : { appEventRouter })
+    })
+  )
   const registryLayer = Layer.succeed(ResourceRegistry)(registry)
   const request: ApiClientExchange["request"] = (request) =>
     runtime.dispatch(request).pipe(Effect.provide(registryLayer)) as ReturnType<

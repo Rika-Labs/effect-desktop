@@ -23,6 +23,8 @@ import {
 import { ResourceRegistry, type ResourceId } from "@effect-desktop/core"
 import { Context, Effect, Layer, Option, Schema, Stream } from "effect"
 
+import { type AppEventRouterApi, windowScope } from "./app-events.js"
+
 const PositiveFiniteNumber = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0))
 const WindowResource = Api.Resource("window", "open")
 const StrictParseOptions = { onExcessProperty: "error" } as const
@@ -287,9 +289,13 @@ export const makeWindowBridgeClientLayer = (
 
 export const makeHostWindowApiLayer = (
   exchange: HostWindowExchange,
-  options: HostWindowClientOptions = {}
+  options: HostWindowApiOptions = {}
 ): ApiLayer<"Window", WindowApiSpec, ApiHandlers<WindowApiSpec>> =>
   WindowApi.layer(makeHostWindowHandlers(exchange, options))
+
+export interface HostWindowApiOptions extends HostWindowClientOptions {
+  readonly appEventRouter?: AppEventRouterApi
+}
 
 export interface WindowSize {
   readonly width: number
@@ -375,7 +381,7 @@ const makeWindowBridgeClient = (
 
 const makeHostWindowHandlers = (
   exchange: HostWindowExchange,
-  options: HostWindowClientOptions
+  options: HostWindowApiOptions
 ): ApiHandlers<WindowApiSpec> => {
   const host = makeHostWindowClient(exchange, options)
   const knownWindowIds = new Set<string>()
@@ -388,13 +394,19 @@ const makeHostWindowHandlers = (
         const registry = yield* ResourceRegistry
         const created = yield* host.create(toHostWindowCreateInput(input))
         knownWindowIds.add(created.windowId)
+        const ownerScope = windowScope(created.windowId)
+        yield* registry.declareScope(ownerScope, "app")
         const handle = yield* registry.register({
           kind: "window",
           id: created.windowId as ResourceId,
-          ownerScope: "window",
+          ownerScope,
           state: "open"
         })
-        return toWindowHandle(handle)
+        const window = toWindowHandle(handle)
+        if (options.appEventRouter !== undefined) {
+          yield* options.appEventRouter.windowOpened(window)
+        }
+        return window
       }),
     show: () => unsupported("Window.show"),
     hide: () => unsupported("Window.hide"),
@@ -432,7 +444,10 @@ const makeHostWindowHandlers = (
             )
           )
         yield* host.destroy(window.id)
-        yield* registry.dispose(resourceId)
+        if (options.appEventRouter !== undefined) {
+          yield* options.appEventRouter.windowClosed(window.id)
+        }
+        yield* registry.closeScope(window.ownerScope)
       }),
     setTitle: () => unsupported("Window.setTitle"),
     setSize: () => unsupported("Window.setSize"),
