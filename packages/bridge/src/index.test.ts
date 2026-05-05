@@ -9,6 +9,10 @@ import {
   HOST_PROTOCOL_ERROR_SPECS,
   HostProtocolEnvelope,
   HostProtocolError,
+  RendererResumeDeniedPayload,
+  RendererResumePayload,
+  RendererResumedPayload,
+  ResumeTicket,
   decodeHostProtocolEnvelope,
   encodeHostProtocolEnvelope,
   hostProtocolErrorRecoverableDefault
@@ -30,6 +34,10 @@ test("shared host-protocol fixtures decode and encode canonically", async () => 
     "cancel.json",
     "error-response.json",
     "event.json",
+    "renderer-disconnected-event.json",
+    "renderer-resume-denied-event.json",
+    "renderer-resume-request.json",
+    "renderer-resumed-event.json",
     "request.json",
     "response.json",
     "stream.json"
@@ -65,6 +73,59 @@ test("host protocol error recoverable defaults come from specs", () => {
   for (const spec of HOST_PROTOCOL_ERROR_SPECS) {
     expect(hostProtocolErrorRecoverableDefault(spec.tag), spec.tag).toBe(spec.recoverable)
   }
+})
+
+test("renderer reconnect payload schemas decode canonical shapes", () => {
+  const decodeResumeTicket = Schema.decodeUnknownSync(ResumeTicket)
+  const decodeResume = Schema.decodeUnknownSync(RendererResumePayload)
+  const decodeResumed = Schema.decodeUnknownSync(RendererResumedPayload)
+  const decodeDenied = Schema.decodeUnknownSync(RendererResumeDeniedPayload)
+
+  expect(
+    decodeResumeTicket(
+      {
+        windowId: "window-1",
+        originTokenHash: "sha256:origin",
+        resumeNonce: "resume-1",
+        expiresAt: 1710000030000,
+        lastStreamCursors: {
+          "stream-1": "42"
+        }
+      },
+      StrictParseOptions
+    ).lastStreamCursors
+  ).toEqual({ "stream-1": "42" })
+  expect(
+    decodeResume(
+      {
+        windowId: "window-1",
+        resumeNonce: "resume-1",
+        cursors: {
+          "stream-1": "42"
+        }
+      },
+      StrictParseOptions
+    ).cursors
+  ).toEqual({ "stream-1": "42" })
+  expect(
+    decodeResumed(
+      {
+        windowId: "window-1",
+        replayedStreamIds: ["stream-1"]
+      },
+      StrictParseOptions
+    ).replayedStreamIds
+  ).toEqual(["stream-1"])
+  expect(
+    decodeDenied(
+      {
+        windowId: "window-1",
+        reason: "backfillExhausted",
+        message: "reconnect backfill exhausted"
+      },
+      StrictParseOptions
+    ).reason
+  ).toBe("backfillExhausted")
 })
 
 test("host protocol error type supports Effect catchTag", async () => {
