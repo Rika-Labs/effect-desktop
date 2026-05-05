@@ -1,7 +1,14 @@
-import { Effect, Schema } from "effect"
+import { Effect, Schema, Stream } from "effect"
 
-import { type ApiContractClass, type ApiContractSpec, type ApiMethodSpec } from "./contracts.js"
 import {
+  type ApiContractClass,
+  type ApiContractEvents,
+  type ApiContractSpec,
+  type ApiEventSpec,
+  type ApiMethodSpec
+} from "./contracts.js"
+import {
+  HostProtocolEventEnvelope,
   HostProtocolRequestEnvelope,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -14,6 +21,9 @@ export interface ApiClientExchange {
   readonly request: (
     request: HostProtocolRequestEnvelope
   ) => Effect.Effect<ApiClientResponse, HostProtocolError, never>
+  readonly subscribe?: (
+    method: string
+  ) => Stream.Stream<HostProtocolEventEnvelope, HostProtocolError, never>
 }
 
 export type ApiClientResponse = ApiClientSuccessResponse | ApiClientErrorResponse
@@ -61,9 +71,17 @@ export type ApiClientMethod<Spec extends ApiMethodSpec> =
         never
       >
 
+export type ApiClientEvent<Spec extends ApiEventSpec> = Stream.Stream<
+  Schema.Schema.Type<Spec["payload"]>,
+  HostProtocolError,
+  never
+>
+
 export type ApiClientFor<Contract extends ApiContractClass> =
-  Contract extends ApiContractClass<string, infer Spec>
-    ? { readonly [Method in keyof Spec]: ApiClientMethod<Spec[Method]> }
+  Contract extends ApiContractClass<string, infer Spec, infer Events>
+    ? { readonly [Method in keyof Spec]: ApiClientMethod<Spec[Method]> } & {
+        readonly events: { readonly [Event in keyof Events]: ApiClientEvent<Events[Event]> }
+      }
     : never
 
 export type ApiClient<Contracts extends Readonly<Record<string, ApiContractClass>>> = {
@@ -90,6 +108,8 @@ const makeContractClient = <Tag extends string, Spec extends ApiContractSpec>(
   options: ResolvedApiClientOptions
 ): ApiClientFor<ApiContractClass<Tag, Spec>> => {
   const methods = {} as { [Method in keyof Spec]?: ApiClientMethod<Spec[Method]> }
+  const contractEvents = (contract.events ?? {}) as ApiContractEvents
+  const events = {} as Record<string, ApiClientEvent<ApiEventSpec>>
 
   for (const [method, methodSpec] of Object.entries(contract.spec) as Array<
     [Extract<keyof Spec, string>, Spec[Extract<keyof Spec, string>]]
@@ -100,7 +120,19 @@ const makeContractClient = <Tag extends string, Spec extends ApiContractSpec>(
       | undefined
   }
 
-  return Object.freeze(methods) as ApiClientFor<ApiContractClass<Tag, Spec>>
+  for (const [event, eventSpec] of Object.entries(contractEvents) as Array<
+    [
+      Extract<keyof typeof contractEvents, string>,
+      (typeof contractEvents)[Extract<keyof typeof contractEvents, string>]
+    ]
+  >) {
+    events[event] = subscribeContractEvent(contract.tag, event, eventSpec, exchange)
+  }
+
+  return Object.freeze({
+    ...methods,
+    events: Object.freeze(events)
+  }) as ApiClientFor<ApiContractClass<Tag, Spec, typeof contractEvents>>
 }
 
 const requestContractMethod = <Spec extends ApiMethodSpec>(
@@ -173,6 +205,39 @@ const decodeContractError = <Spec extends ApiMethodSpec>(
     (decoded) => Effect.fail(decoded)
   )
 
+const subscribeContractEvent = <Spec extends ApiEventSpec>(
+  tag: string,
+  event: string,
+  spec: Spec,
+  exchange: ApiClientExchange
+): ApiClientEvent<Spec> => {
+  const operation = eventName(tag, event)
+
+  if (exchange.subscribe === undefined) {
+    return Stream.fail(
+      makeHostProtocolInvalidOutputError(operation, "event exchange does not support subscriptions")
+    )
+  }
+
+  return exchange
+    .subscribe(operation)
+    .pipe(Stream.mapEffect((envelope) => decodeEventPayload(operation, spec, envelope.payload)))
+}
+
+const decodeEventPayload = <Spec extends ApiEventSpec>(
+  operation: string,
+  spec: Spec,
+  payload: unknown
+): Effect.Effect<Schema.Schema.Type<Spec["payload"]>, HostProtocolError, never> =>
+  Effect.mapError(
+    Schema.decodeUnknownEffect(spec.payload)(payload, StrictParseOptions) as Effect.Effect<
+      Schema.Schema.Type<Spec["payload"]>,
+      unknown,
+      never
+    >,
+    (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+  )
+
 const makeRequest = (
   method: string,
   payload: unknown,
@@ -203,6 +268,7 @@ const resolveOptions = (options: ApiClientOptions): ResolvedApiClientOptions => 
 })
 
 const methodName = (tag: string, method: string): string => `${tag}.${method}`
+const eventName = (tag: string, event: string): string => `${tag}.${event}`
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {

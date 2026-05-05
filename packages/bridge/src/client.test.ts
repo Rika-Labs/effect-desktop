@@ -204,6 +204,7 @@ const makeProjectApi = <Tag extends string>(tag: Tag): ApiContractClass<Tag, Pro
         error: ProjectOpenError
       })
     })
+    static readonly events = Object.freeze({})
 
     static layer<Handlers extends ApiHandlers<ProjectApiSpec>>(
       handlers: Handlers
@@ -236,6 +237,7 @@ const makeVoidApi = <Tag extends string>(tag: Tag): ApiContractClass<Tag, VoidAp
         error: ProjectOpenError
       })
     })
+    static readonly events = Object.freeze({})
 
     static layer<Handlers extends ApiHandlers<VoidApiSpec>>(
       handlers: Handlers
@@ -270,6 +272,7 @@ const makeEncodedInputApi = <Tag extends string>(
         error: ProjectOpenError
       })
     })
+    static readonly events = Object.freeze({})
 
     static layer<Handlers extends ApiHandlers<EncodedInputApiSpec>>(
       handlers: Handlers

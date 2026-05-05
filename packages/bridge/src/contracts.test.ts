@@ -58,6 +58,26 @@ test("Api.Tag accepts Effect schema classes", async () => {
   expect(ClassSchemaApi.spec.call.output).toBe(Project)
 })
 
+test("Api.Tag registers frozen event specs", async () => {
+  const EventsApi = await Effect.runPromise(
+    Api.Tag("Test.EventsApi")<unknown>()(
+      {
+        call: validMethodSpec()
+      },
+      {
+        changed: {
+          payload: Schema.Struct({ id: Schema.String }),
+          backpressure: { strategy: "drop", size: 16 }
+        }
+      }
+    )
+  )
+
+  expect(Object.isFrozen(EventsApi.events)).toBe(true)
+  expect(Object.isFrozen(EventsApi.events["changed"])).toBe(true)
+  expect(Object.isFrozen(EventsApi.events["changed"]?.backpressure)).toBe(true)
+})
+
 test("Api.Tag rejects duplicate tags as a typed Effect failure", async () => {
   const exit = await Effect.runPromiseExit(
     Effect.gen(function* () {
@@ -167,6 +187,23 @@ test("Api.Tag rejects invalid backpressure values as a typed Effect failure", as
         }
       }
     } as unknown as ApiContractSpec)
+  )
+
+  expectFailure(exit, InvalidApiContractSpec)
+})
+
+test("Api.Tag rejects invalid event specs as a typed Effect failure", async () => {
+  const exit = await Effect.runPromiseExit(
+    Api.Tag("Test.InvalidEvent")<unknown>()(
+      {
+        call: validMethodSpec()
+      },
+      {
+        changed: {
+          backpressure: { strategy: "drop", size: 16 }
+        }
+      } as unknown as Record<string, { readonly payload: typeof Schema.String }>
+    )
   )
 
   expectFailure(exit, InvalidApiContractSpec)

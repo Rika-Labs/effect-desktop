@@ -273,6 +273,7 @@ test("Handlers does not confuse domain _tag collisions with Effect timeout error
         timeoutMs: 50
       })
     })
+    static readonly events = Object.freeze({})
 
     static layer<HandlersShape extends ApiHandlers<TimeoutCollisionApiSpec>>(
       handlers: HandlersShape
@@ -428,6 +429,7 @@ const makeProjectApi = (
         ...metadata
       })
     })
+    static readonly events = Object.freeze({})
 
     static layer<HandlersShape extends ApiHandlers<ProjectApiSpec>>(
       handlers: HandlersShape
@@ -462,6 +464,7 @@ const makeEncodedInputApi = <Tag extends string>(
         error: ProjectOpenError
       })
     })
+    static readonly events = Object.freeze({})
 
     static layer<HandlersShape extends ApiHandlers<EncodedInputApiSpec>>(
       handlers: HandlersShape

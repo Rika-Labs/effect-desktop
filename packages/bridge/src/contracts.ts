@@ -12,6 +12,11 @@ export interface ApiMethodSpec {
   readonly backpressure?: BackpressureSpec
 }
 
+export interface ApiEventSpec {
+  readonly payload: Schema.Schema<unknown>
+  readonly backpressure?: BackpressureSpec
+}
+
 export interface BackpressureSpec {
   readonly strategy: "buffer" | "drop" | "block"
   readonly size?: number
@@ -19,17 +24,20 @@ export interface BackpressureSpec {
 }
 
 export type ApiContractSpec = Readonly<Record<string, ApiMethodSpec>>
+export type ApiContractEvents = Readonly<Record<string, ApiEventSpec>>
 
 export interface ApiContractClass<
   Tag extends string = string,
-  Spec extends ApiContractSpec = ApiContractSpec
+  Spec extends ApiContractSpec = ApiContractSpec,
+  Events extends ApiContractEvents = ApiContractEvents
 > {
   new (): object
   readonly tag: Tag
   readonly spec: Spec
+  readonly events: Events
   readonly layer: <Handlers extends ApiHandlers<Spec>>(
     handlers: Handlers
-  ) => ApiLayer<Tag, Spec, Handlers>
+  ) => ApiLayer<Tag, Spec, Handlers, Events>
 }
 
 export type ApiHandlers<Spec extends ApiContractSpec> = {
@@ -45,9 +53,10 @@ export type ApiHandlers<Spec extends ApiContractSpec> = {
 export interface ApiLayer<
   Tag extends string,
   Spec extends ApiContractSpec,
-  Handlers extends ApiHandlers<Spec>
+  Handlers extends ApiHandlers<Spec>,
+  Events extends ApiContractEvents = ApiContractEvents
 > {
-  readonly contract: ApiContractClass<Tag, Spec>
+  readonly contract: ApiContractClass<Tag, Spec, Events>
   readonly handlers: Handlers
 }
 
@@ -79,9 +88,10 @@ export const Api = Object.freeze({
       void (undefined as Self | undefined)
 
       return <Spec extends ApiContractSpec>(
-        spec: Spec
-      ): Effect.Effect<ApiContractClass<Tag, Spec>, ApiContractError, never> =>
-        registerApiContract(tag, spec)
+        spec: Spec,
+        events: ApiContractEvents = {}
+      ): Effect.Effect<ApiContractClass<Tag, Spec, typeof events>, ApiContractError, never> =>
+        registerApiContract(tag, spec, events)
     },
   entries: (): Effect.Effect<readonly ApiContractClass[], never, never> =>
     Effect.sync(apiContractEntries),
@@ -101,8 +111,9 @@ export const apiContractEntries = (): readonly ApiContractClass[] =>
 
 const registerApiContract = <Tag extends string, Spec extends ApiContractSpec>(
   tag: Tag,
-  spec: Spec
-): Effect.Effect<ApiContractClass<Tag, Spec>, ApiContractError, never> =>
+  spec: Spec,
+  events: ApiContractEvents
+): Effect.Effect<ApiContractClass<Tag, Spec, typeof events>, ApiContractError, never> =>
   Effect.gen(function* () {
     if (registryFrozen) {
       return yield* Effect.fail(
@@ -123,15 +134,18 @@ const registerApiContract = <Tag extends string, Spec extends ApiContractSpec>(
     }
 
     yield* validateContractSpec(tag, spec)
+    yield* validateContractEvents(tag, events)
 
     const frozenSpec = freezeContractSpec(spec)
+    const frozenEvents = freezeContractEvents(events)
     const contract = class {
       static readonly tag = tag
       static readonly spec = frozenSpec
+      static readonly events = frozenEvents
 
       static layer<Handlers extends ApiHandlers<Spec>>(
         handlers: Handlers
-      ): ApiLayer<Tag, Spec, Handlers> {
+      ): ApiLayer<Tag, Spec, Handlers, typeof events> {
         const frozenHandlers = Object.freeze(handlers)
 
         return Object.freeze({
@@ -139,7 +153,7 @@ const registerApiContract = <Tag extends string, Spec extends ApiContractSpec>(
           handlers: frozenHandlers
         })
       }
-    } as ApiContractClass<Tag, Spec>
+    } as ApiContractClass<Tag, Spec, typeof events>
 
     Object.freeze(contract)
     apiContracts.set(tag, contract)
@@ -212,6 +226,38 @@ const validateMethodSpec = (
     }
   })
 
+const validateContractEvents = (
+  tag: string,
+  events: ApiContractEvents
+): Effect.Effect<void, InvalidApiContractSpec, never> =>
+  Effect.gen(function* () {
+    if (typeof events !== "object" || events === null || Array.isArray(events)) {
+      return yield* Effect.fail(invalidSpec(tag, "<events>", "events spec must be an object"))
+    }
+
+    for (const [event, eventSpec] of Object.entries(events)) {
+      yield* validateEventSpec(tag, event, eventSpec)
+    }
+  })
+
+const validateEventSpec = (
+  tag: string,
+  event: string,
+  spec: ApiEventSpec
+): Effect.Effect<void, InvalidApiContractSpec, never> =>
+  Effect.gen(function* () {
+    if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
+      return yield* Effect.fail(invalidSpec(tag, event, "event spec must be an object"))
+    }
+
+    if (!isSchema(spec.payload)) {
+      return yield* Effect.fail(invalidSpec(tag, event, "event payload schema is required"))
+    }
+    if (spec.backpressure !== undefined) {
+      yield* validateBackpressureSpec(tag, event, spec.backpressure)
+    }
+  })
+
 const validateBackpressureSpec = (
   tag: string,
   method: string,
@@ -252,6 +298,17 @@ const freezeContractSpec = <Spec extends ApiContractSpec>(spec: Spec): Spec => {
   }
 
   return Object.freeze(spec)
+}
+
+const freezeContractEvents = <Events extends ApiContractEvents>(events: Events): Events => {
+  for (const eventSpec of Object.values(events)) {
+    if (eventSpec.backpressure !== undefined) {
+      Object.freeze(eventSpec.backpressure)
+    }
+    Object.freeze(eventSpec)
+  }
+
+  return Object.freeze(events)
 }
 
 const invalidSpec = (tag: string, method: string, reason: string): InvalidApiContractSpec =>
