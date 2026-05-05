@@ -53,6 +53,13 @@ pub(super) struct ChildGuard {
     job: windows_sys::Win32::Foundation::HANDLE,
 }
 
+// SAFETY: `ChildGuard` owns one Job Object handle returned by
+// CreateJobObjectW. The handle is assigned before the guard moves to the
+// lifecycle thread, and Drop closes it exactly once. Windows handles may be
+// closed from a different thread than the one that created them.
+#[cfg(windows)]
+unsafe impl Send for ChildGuard {}
+
 #[cfg(windows)]
 impl ChildGuard {
     pub(super) fn attach(child: &Child) -> io::Result<Self> {
