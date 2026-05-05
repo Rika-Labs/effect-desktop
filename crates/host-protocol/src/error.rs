@@ -742,7 +742,7 @@ pub enum HostProtocolError {
     },
     SettingsMigrationFailed {
         schema_version: u32,
-        cause: Value,
+        cause: String,
         message: String,
         operation: String,
         #[serde(skip_serializing_if = "Option::is_none")]
