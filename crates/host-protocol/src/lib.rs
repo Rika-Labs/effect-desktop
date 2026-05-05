@@ -1,5 +1,11 @@
 //! Host-runtime protocol wire types.
 
+mod error;
+
+pub use error::{
+    HostProtocolError, HostProtocolErrorSpec, HostProtocolPlatform, HOST_PROTOCOL_ERROR_SPECS,
+};
+
 use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
@@ -444,154 +450,13 @@ impl TryFrom<RawHostProtocolEnvelope> for HostProtocolEnvelope {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "tag", rename_all_fields = "camelCase", deny_unknown_fields)]
-pub enum HostProtocolError {
-    FileNotFound {
-        path: String,
-    },
-    PermissionDenied {
-        capability: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        resource: Option<String>,
-    },
-    Timeout {
-        timeout_ms: u64,
-    },
-    Cancelled {
-        source: String,
-    },
-    Unsupported {
-        reason: String,
-    },
-    InvalidArgument {
-        field: String,
-        reason: String,
-    },
-    ResourceBusy {
-        resource: String,
-    },
-    DiskFull {
-        path: String,
-        free_bytes: u64,
-    },
-    RateLimited {
-        retry_after_ms: u64,
-    },
-    FrameTooLarge {
-        size_bytes: u64,
-        limit_bytes: u64,
-    },
-    OriginInvalid,
-    StaleHandle {
-        kind: String,
-        id: String,
-        expected_generation: u32,
-        actual_generation: u32,
-    },
-    CrossScopeHandle {
-        kind: String,
-        id: String,
-        owner_scope: String,
-        attempted_scope: String,
-    },
-    BackpressureOverflow {
-        policy: String,
-        lost_frames: u64,
-    },
-    RendererDisconnected {
-        duration_ms: u64,
-    },
-    RuntimeRestarted,
-    RuntimeUnavailable {
-        retry_after_ms: u64,
-    },
-    HostUnavailable,
-    MethodNotFound {
-        method: String,
-    },
-    InvalidOutput {
-        method: String,
-        reason: String,
-    },
-    PermissionRevoked {
-        capability: String,
-        revoked_at: u64,
-    },
-    StreamClosed {
-        stream_id: String,
-    },
-    BinaryDecodeError {
-        reason: String,
-    },
-    ReconnectBackfillExhausted {
-        stream_id: String,
-    },
-    PanicInNativeCode {
-        message: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        backtrace: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        location: Option<String>,
-    },
-    NetworkError {
-        kind: String,
-        message: String,
-    },
-    NotFound {
-        resource: String,
-    },
-    AlreadyExists {
-        resource: String,
-    },
-    InvalidState {
-        current: String,
-        attempted: String,
-    },
-    SymlinkEscapesRoot {
-        requested: String,
-        resolved: String,
-        capability_roots: Vec<String>,
-    },
-    EventLogFull {
-        free_bytes: u64,
-    },
-    UpdateDowngradeRefused {
-        installed_version: String,
-        manifest_version: String,
-    },
-    UpdateDownloadTruncated {
-        downloaded_bytes: u64,
-        expected_bytes: u64,
-    },
-    UpdateStaleNotarization {
-        notarized_at: String,
-    },
-    SettingsMigrationFailed {
-        schema_version: u32,
-        cause: String,
-    },
-    SettingsRecoveredFromBackup {
-        backup_path: String,
-    },
-    EventLogSegmentCorrupt {
-        segment_path: String,
-    },
-    PtyForceKillTimeout {
-        pty_id: String,
-    },
-    Internal {
-        message: String,
-    },
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         HostProtocolEnvelope, HostProtocolError, HostVersionPayload, WindowCreatePayload,
-        WindowCreateResponse, WindowDestroyPayload, PROTOCOL_VERSION,
+        WindowCreateResponse, WindowDestroyPayload, HOST_PROTOCOL_ERROR_SPECS, PROTOCOL_VERSION,
     };
-    use std::{fs, path::PathBuf};
+    use std::{collections::BTreeSet, fs, path::PathBuf};
 
     const FIXTURE_NAMES: &[&str] = &[
         "request.json",
@@ -672,14 +537,77 @@ mod tests {
     #[test]
     fn host_protocol_error_excess_fields_are_rejected() {
         let error = serde_json::from_str::<HostProtocolError>(
-            r#"{"tag":"FileNotFound","path":"/tmp/missing.txt","message":"extra"}"#,
+            r#"{"tag":"FileNotFound","path":"/tmp/missing.txt","message":"FileNotFound sample","operation":"fixture.operation","recoverable":false,"unexpected":true}"#,
         )
         .expect_err("unknown error fields must fail");
 
         assert!(
-            error.to_string().contains("unknown field `message`"),
+            error.to_string().contains("unknown field `unexpected`"),
             "unexpected error: {error}"
         );
+    }
+
+    #[test]
+    fn host_protocol_error_platform_is_closed() {
+        let error = serde_json::from_str::<HostProtocolError>(
+            r#"{"tag":"FileNotFound","path":"/tmp/missing.txt","message":"FileNotFound sample","operation":"fixture.operation","platform":"solaris","recoverable":false}"#,
+        )
+        .expect_err("unknown platforms must fail");
+
+        assert!(
+            error.to_string().contains("unknown variant `solaris`"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn host_protocol_error_recoverable_defaults_come_from_specs() {
+        for spec in HOST_PROTOCOL_ERROR_SPECS {
+            assert_eq!(
+                HostProtocolError::recoverable_default(spec.tag),
+                Some(spec.recoverable),
+                "{} recoverable default should come from the spec manifest",
+                spec.tag
+            );
+        }
+    }
+
+    #[test]
+    fn host_protocol_error_fixtures_match_closed_registry() {
+        let source = read_fixture("errors.json");
+        let errors =
+            serde_json::from_str::<Vec<HostProtocolError>>(&source).expect("errors should decode");
+
+        assert_eq!(
+            serde_json::to_string(&errors).expect("errors should encode"),
+            source,
+            "errors.json should be canonical"
+        );
+
+        let fixture_tags = errors
+            .iter()
+            .map(HostProtocolError::tag)
+            .collect::<Vec<_>>();
+        let spec_tags = HOST_PROTOCOL_ERROR_SPECS
+            .iter()
+            .map(|spec| spec.tag)
+            .collect::<Vec<_>>();
+
+        assert_eq!(fixture_tags, spec_tags);
+        assert_eq!(
+            fixture_tags.iter().copied().collect::<BTreeSet<_>>().len(),
+            fixture_tags.len(),
+            "error fixtures should not contain duplicate tags"
+        );
+
+        for error in errors {
+            assert_eq!(
+                error.recoverable(),
+                HostProtocolError::recoverable_default(error.tag()).expect("fixture tag is known"),
+                "{} recoverable field should match registry default",
+                error.tag()
+            );
+        }
     }
 
     #[test]

@@ -132,7 +132,10 @@ const errorExchange = (): HostHandshakeExchange => ({
         traceId: request.traceId,
         error: new HostProtocolUnsupportedError({
           tag: "Unsupported",
-          reason: "not available"
+          reason: "not available",
+          message: "Unsupported sample",
+          operation: HOST_VERSION_METHOD,
+          recoverable: false
         })
       })
     )

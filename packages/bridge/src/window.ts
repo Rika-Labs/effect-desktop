@@ -1,12 +1,12 @@
 import { Effect, Schema } from "effect"
 
 import {
-  HostProtocolInvalidArgumentError,
-  HostProtocolInvalidOutputError,
   HostProtocolRequestEnvelope,
   HostProtocolResponseEnvelope,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
+  makeHostProtocolInvalidArgumentError,
+  makeHostProtocolInvalidOutputError,
   type HostProtocolError
 } from "./protocol.js"
 
@@ -107,7 +107,7 @@ const encodeCreatePayload = (
 ): Effect.Effect<WindowCreatePayload, HostProtocolError, never> =>
   Effect.try({
     try: () => decodeUnknownWindowCreatePayload(input, StrictParseOptions),
-    catch: (error) => invalidArgument("payload", error)
+    catch: (error) => invalidArgument("payload", error, WINDOW_CREATE_METHOD)
   })
 
 const encodeDestroyPayload = (
@@ -115,7 +115,7 @@ const encodeDestroyPayload = (
 ): Effect.Effect<WindowDestroyPayload, HostProtocolError, never> =>
   Effect.try({
     try: () => decodeUnknownWindowDestroyPayload({ windowId }, StrictParseOptions),
-    catch: (error) => invalidArgument("windowId", error)
+    catch: (error) => invalidArgument("windowId", error, WINDOW_DESTROY_METHOD)
   })
 
 const decodeCreateResponse = (
@@ -124,11 +124,7 @@ const decodeCreateResponse = (
   Effect.try({
     try: () => decodeUnknownWindowCreateResponse(payload, StrictParseOptions),
     catch: (error) =>
-      new HostProtocolInvalidOutputError({
-        tag: "InvalidOutput",
-        method: WINDOW_CREATE_METHOD,
-        reason: formatUnknownError(error)
-      })
+      makeHostProtocolInvalidOutputError(WINDOW_CREATE_METHOD, formatUnknownError(error))
   })
 
 const makeRequest = (
@@ -151,12 +147,8 @@ const resolveOptions = (options: HostWindowClientOptions): ResolvedHostWindowCli
   now: options.now ?? Date.now
 })
 
-const invalidArgument = (field: string, error: unknown): HostProtocolInvalidArgumentError =>
-  new HostProtocolInvalidArgumentError({
-    tag: "InvalidArgument",
-    field,
-    reason: formatUnknownError(error)
-  })
+const invalidArgument = (field: string, error: unknown, operation: string) =>
+  makeHostProtocolInvalidArgumentError(field, formatUnknownError(error), operation)
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {

@@ -1,3 +1,7 @@
+#![allow(clippy::result_large_err)]
+// Host method boundaries return the canonical HostProtocolError enum from the
+// wire contract. Boxing that error here would obscure the protocol surface.
+
 use crate::webview;
 use anyhow::Result;
 use host_protocol::{HostProtocolError, WindowCreatePayload, WindowCreateResponse};
@@ -119,10 +123,13 @@ impl WindowMethodPort {
     ) -> std::result::Result<WindowCommandResponse, HostProtocolError> {
         match reply.recv_timeout(self.reply_timeout) {
             Ok(result) => result,
-            Err(RecvTimeoutError::Timeout) => Err(HostProtocolError::HostUnavailable),
-            Err(RecvTimeoutError::Disconnected) => Err(HostProtocolError::Internal {
-                message: "window command reply channel closed".to_string(),
-            }),
+            Err(RecvTimeoutError::Timeout) => Err(HostProtocolError::host_unavailable(
+                "WindowMethodPort.recvReply",
+            )),
+            Err(RecvTimeoutError::Disconnected) => Err(HostProtocolError::internal(
+                "window command reply channel closed",
+                "WindowMethodPort.recvReply",
+            )),
         }
     }
 
@@ -131,13 +138,12 @@ impl WindowMethodPort {
         command: WindowCommand,
     ) -> std::result::Result<(), HostProtocolError> {
         {
-            let mut commands =
-                self.state
-                    .commands
-                    .lock()
-                    .map_err(|_| HostProtocolError::Internal {
-                        message: "window command queue mutex poisoned".to_string(),
-                    })?;
+            let mut commands = self.state.commands.lock().map_err(|_| {
+                HostProtocolError::internal(
+                    "window command queue mutex poisoned",
+                    "WindowMethodPort.enqueueCommand",
+                )
+            })?;
             commands.push_back(command);
         }
 
@@ -171,9 +177,10 @@ impl WindowMethodHandler for WindowMethodPort {
 
         match self.recv_reply(reply_rx)? {
             WindowCommandResponse::Created(response) => Ok(response),
-            WindowCommandResponse::Destroyed => Err(HostProtocolError::Internal {
-                message: "window create received destroy response".to_string(),
-            }),
+            WindowCommandResponse::Destroyed => Err(HostProtocolError::internal(
+                "window create received destroy response",
+                host_protocol::WINDOW_CREATE_METHOD,
+            )),
         }
     }
 
@@ -186,9 +193,10 @@ impl WindowMethodHandler for WindowMethodPort {
 
         match self.recv_reply(reply_rx)? {
             WindowCommandResponse::Destroyed => Ok(()),
-            WindowCommandResponse::Created(_) => Err(HostProtocolError::Internal {
-                message: "window destroy received create response".to_string(),
-            }),
+            WindowCommandResponse::Created(_) => Err(HostProtocolError::internal(
+                "window destroy received create response",
+                host_protocol::WINDOW_DESTROY_METHOD,
+            )),
         }
     }
 }
@@ -252,8 +260,11 @@ impl WindowRegistry {
             .with_title(request.title())
             .with_inner_size(LogicalSize::new(request.width(), request.height()))
             .build(target)
-            .map_err(|error| HostProtocolError::Internal {
-                message: format!("failed to build host window: {error}"),
+            .map_err(|error| {
+                HostProtocolError::internal(
+                    format!("failed to build host window: {error}"),
+                    host_protocol::WINDOW_CREATE_METHOD,
+                )
             })?;
 
         info!(
@@ -266,10 +277,12 @@ impl WindowRegistry {
             "host window opened"
         );
 
-        let webview =
-            webview::attach_app_webview(&window).map_err(|error| HostProtocolError::Internal {
-                message: format!("failed to attach host webview: {error}"),
-            })?;
+        let webview = webview::attach_app_webview(&window).map_err(|error| {
+            HostProtocolError::internal(
+                format!("failed to attach host webview: {error}"),
+                host_protocol::WINDOW_CREATE_METHOD,
+            )
+        })?;
         self.windows.insert(
             window_id.clone(),
             NativeWindowResources {
@@ -283,9 +296,10 @@ impl WindowRegistry {
 
     fn destroy(&mut self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
         if self.windows.remove(window_id).is_none() {
-            return Err(HostProtocolError::NotFound {
-                resource: format!("Window:{window_id}"),
-            });
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_DESTROY_METHOD,
+            ));
         }
 
         info!(
@@ -492,10 +506,11 @@ fn validate_positive_finite(field: &str, value: f64) -> std::result::Result<(), 
         return Ok(());
     }
 
-    Err(HostProtocolError::InvalidArgument {
-        field: field.to_string(),
-        reason: "must be a finite positive number".to_string(),
-    })
+    Err(HostProtocolError::invalid_argument(
+        field,
+        "must be a finite positive number",
+        host_protocol::WINDOW_CREATE_METHOD,
+    ))
 }
 
 #[cfg(test)]
@@ -539,9 +554,10 @@ mod tests {
     #[test]
     fn window_create_failure_exits_with_error_status() {
         assert_eq!(
-            lifecycle_for_create_result(&Err(HostProtocolError::Internal {
-                message: "failed to build host window".to_string(),
-            })),
+            lifecycle_for_create_result(&Err(HostProtocolError::internal(
+                "failed to build host window",
+                host_protocol::WINDOW_CREATE_METHOD,
+            ))),
             WindowLifecycleEvent::WindowCreateFailed
         );
         assert_eq!(
@@ -657,17 +673,19 @@ mod tests {
     fn non_positive_window_size_is_invalid() {
         assert_eq!(
             validate_positive_finite("width", 0.0),
-            Err(HostProtocolError::InvalidArgument {
-                field: "width".to_string(),
-                reason: "must be a finite positive number".to_string(),
-            })
+            Err(HostProtocolError::invalid_argument(
+                "width",
+                "must be a finite positive number",
+                host_protocol::WINDOW_CREATE_METHOD,
+            ))
         );
         assert_eq!(
             validate_positive_finite("height", f64::INFINITY),
-            Err(HostProtocolError::InvalidArgument {
-                field: "height".to_string(),
-                reason: "must be a finite positive number".to_string(),
-            })
+            Err(HostProtocolError::invalid_argument(
+                "height",
+                "must be a finite positive number",
+                host_protocol::WINDOW_CREATE_METHOD,
+            ))
         );
     }
 
@@ -677,9 +695,10 @@ mod tests {
 
         assert_eq!(
             registry.destroy("missing"),
-            Err(HostProtocolError::NotFound {
-                resource: "Window:missing".to_string(),
-            })
+            Err(HostProtocolError::not_found(
+                "Window:missing",
+                host_protocol::WINDOW_DESTROY_METHOD,
+            ))
         );
     }
 }

@@ -4,10 +4,10 @@ import {
   HOST_PING_METHOD,
   HOST_PROTOCOL_VERSION,
   HOST_VERSION_METHOD,
-  HostProtocolInvalidOutputError,
-  HostProtocolInvalidStateError,
   HostProtocolRequestEnvelope,
   HostProtocolResponseEnvelope,
+  makeHostProtocolInvalidOutputError,
+  makeHostProtocolInvalidStateError,
   type HostProtocolError
 } from "./protocol.js"
 
@@ -70,11 +70,11 @@ export const negotiateHostVersion = (
     const version = yield* client.version()
     if (version.protocolVersion !== expectedProtocolVersion) {
       return yield* Effect.fail(
-        new HostProtocolInvalidStateError({
-          tag: "InvalidState",
-          current: version.protocolVersion,
-          attempted: expectedProtocolVersion
-        })
+        makeHostProtocolInvalidStateError(
+          version.protocolVersion,
+          expectedProtocolVersion,
+          HOST_VERSION_METHOD
+        )
       )
     }
 
@@ -99,11 +99,7 @@ const decodeVersionPayload = (
   Effect.try({
     try: () => decodeUnknownHostVersionPayload(payload, StrictParseOptions),
     catch: (error) =>
-      new HostProtocolInvalidOutputError({
-        tag: "InvalidOutput",
-        method: HOST_VERSION_METHOD,
-        reason: formatUnknownError(error)
-      })
+      makeHostProtocolInvalidOutputError(HOST_VERSION_METHOD, formatUnknownError(error))
   })
 
 const makeRequest = (

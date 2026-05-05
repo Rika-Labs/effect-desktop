@@ -41,9 +41,7 @@ impl HostMethodRouter {
             host_protocol::HOST_VERSION_METHOD => Ok(Some(handshake::version_payload())),
             host_protocol::WINDOW_CREATE_METHOD => window::create(&*self.window, payload),
             host_protocol::WINDOW_DESTROY_METHOD => window::destroy(&*self.window, payload),
-            _ => Err(HostProtocolError::MethodNotFound {
-                method: method.clone(),
-            }),
+            _ => Err(HostProtocolError::method_not_found(method.clone())),
         };
 
         let (payload, error) = match result {
@@ -130,9 +128,7 @@ mod tests {
                 timestamp: 1710000000102,
                 trace_id: "trace-request-missing".to_string(),
                 payload: None,
-                error: Some(HostProtocolError::MethodNotFound {
-                    method: "host.missing".to_string(),
-                }),
+                error: Some(HostProtocolError::method_not_found("host.missing")),
             }
         );
     }
@@ -217,10 +213,11 @@ mod tests {
                 timestamp: 1710000000106,
                 trace_id: "trace-request-window-create-invalid".to_string(),
                 payload: None,
-                error: Some(HostProtocolError::InvalidArgument {
-                    field: "width".to_string(),
-                    reason: "must be a finite positive number".to_string(),
-                }),
+                error: Some(HostProtocolError::invalid_argument(
+                    "width",
+                    "must be a finite positive number",
+                    host_protocol::WINDOW_CREATE_METHOD,
+                )),
             }
         );
     }
@@ -229,9 +226,10 @@ mod tests {
     fn window_destroy_unknown_id_returns_not_found() {
         let fake = Arc::new(FakeWindowHandler::new(
             Ok(WindowCreateResponse::new("window-unused")),
-            Err(HostProtocolError::NotFound {
-                resource: "Window:missing".to_string(),
-            }),
+            Err(HostProtocolError::not_found(
+                "Window:missing",
+                host_protocol::WINDOW_DESTROY_METHOD,
+            )),
         ));
         let router = HostMethodRouter::new(fake);
         let response = router
@@ -254,9 +252,10 @@ mod tests {
                 timestamp: 1710000000107,
                 trace_id: "trace-request-window-destroy".to_string(),
                 payload: None,
-                error: Some(HostProtocolError::NotFound {
-                    resource: "Window:missing".to_string(),
-                }),
+                error: Some(HostProtocolError::not_found(
+                    "Window:missing",
+                    host_protocol::WINDOW_DESTROY_METHOD,
+                )),
             }
         );
     }

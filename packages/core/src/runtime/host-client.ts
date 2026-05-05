@@ -1,8 +1,8 @@
 import {
-  HostProtocolHostUnavailableError,
-  HostProtocolInvalidOutputError,
   decodeHostProtocolEnvelope,
-  encodeHostProtocolEnvelope
+  encodeHostProtocolEnvelope,
+  makeHostProtocolHostUnavailableError,
+  makeHostProtocolInvalidOutputError
 } from "@effect-desktop/bridge"
 import type {
   HostHandshakeExchange,
@@ -36,10 +36,7 @@ const sendRequest = (
       const encoded = encodeHostProtocolEnvelope(request)
       await transport.send(new TextEncoderCtor().encode(JSON.stringify(encoded)))
     },
-    catch: () =>
-      new HostProtocolHostUnavailableError({
-        tag: "HostUnavailable"
-      })
+    catch: () => makeHostProtocolHostUnavailableError("FramedTransport.send")
   })
 
 const receiveResponseFrame = (
@@ -54,10 +51,7 @@ const receiveResponseFrame = (
 
       return frame
     },
-    catch: () =>
-      new HostProtocolHostUnavailableError({
-        tag: "HostUnavailable"
-      })
+    catch: () => makeHostProtocolHostUnavailableError("FramedTransport.recv")
   })
 
 const decodeResponseFrame = (
@@ -80,12 +74,7 @@ const decodeResponseFrame = (
 
       return envelope
     },
-    catch: (error) =>
-      new HostProtocolInvalidOutputError({
-        tag: "InvalidOutput",
-        method: request.method,
-        reason: formatUnknownError(error)
-      })
+    catch: (error) => makeHostProtocolInvalidOutputError(request.method, formatUnknownError(error))
   })
 
 const formatUnknownError = (error: unknown): string => {
