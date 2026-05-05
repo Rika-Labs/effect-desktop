@@ -88,6 +88,7 @@ enum WindowCommandResponse {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum WindowLifecycleEvent {
     CloseRequested,
+    WindowCreateFailed,
     SmokeExitRequested,
     Other,
 }
@@ -362,10 +363,17 @@ impl WindowRegistry {
         let mut lifecycle = WindowLifecycleEvent::Other;
 
         for command in window_methods.take_pending_commands() {
-            if self.handle_window_command(target, mode, command)
-                == WindowLifecycleEvent::SmokeExitRequested
-            {
-                lifecycle = WindowLifecycleEvent::SmokeExitRequested;
+            match self.handle_window_command(target, mode, command) {
+                WindowLifecycleEvent::WindowCreateFailed => {
+                    lifecycle = WindowLifecycleEvent::WindowCreateFailed;
+                }
+                WindowLifecycleEvent::SmokeExitRequested
+                    if lifecycle != WindowLifecycleEvent::WindowCreateFailed =>
+                {
+                    lifecycle = WindowLifecycleEvent::SmokeExitRequested;
+                }
+                WindowLifecycleEvent::CloseRequested | WindowLifecycleEvent::Other => {}
+                WindowLifecycleEvent::SmokeExitRequested => {}
             }
         }
 
@@ -383,8 +391,9 @@ impl WindowRegistry {
                 let result = self
                     .create(target, request, mode)
                     .map(WindowCommandResponse::Created);
+                let lifecycle = lifecycle_for_create_result(&result);
                 send_window_command_reply(reply, result);
-                WindowLifecycleEvent::Other
+                lifecycle
             }
             WindowCommand::Destroy { window_id, reply } => {
                 let result = self.destroy(&window_id);
@@ -400,6 +409,14 @@ impl WindowRegistry {
                 }
             }
         }
+    }
+}
+
+fn lifecycle_for_create_result(result: &WindowCommandReply) -> WindowLifecycleEvent {
+    if result.is_err() {
+        WindowLifecycleEvent::WindowCreateFailed
+    } else {
+        WindowLifecycleEvent::Other
     }
 }
 
@@ -443,6 +460,14 @@ fn control_flow_for_lifecycle_event(event: WindowLifecycleEvent) -> ControlFlow 
             );
             ControlFlow::Exit
         }
+        WindowLifecycleEvent::WindowCreateFailed => {
+            warn!(
+                event = WINDOW_EXIT_REQUESTED_EVENT,
+                source = "window-create-failed",
+                "host window exit requested"
+            );
+            ControlFlow::ExitWithCode(1)
+        }
         WindowLifecycleEvent::SmokeExitRequested => {
             info!(
                 event = WINDOW_EXIT_REQUESTED_EVENT,
@@ -478,10 +503,10 @@ fn validate_positive_finite(field: &str, value: f64) -> std::result::Result<(), 
 #[cfg(test)]
 mod tests {
     use super::{
-        control_flow_for_lifecycle_event, validate_positive_finite, RunMode, WindowCreateRequest,
-        WindowLifecycleEvent, WindowRegistry,
+        control_flow_for_lifecycle_event, lifecycle_for_create_result, validate_positive_finite,
+        RunMode, WindowCommandResponse, WindowCreateRequest, WindowLifecycleEvent, WindowRegistry,
     };
-    use host_protocol::{HostProtocolError, WindowCreatePayload};
+    use host_protocol::{HostProtocolError, WindowCreatePayload, WindowCreateResponse};
     use tao::event_loop::ControlFlow;
 
     #[test]
@@ -497,6 +522,30 @@ mod tests {
         assert_eq!(
             control_flow_for_lifecycle_event(WindowLifecycleEvent::SmokeExitRequested),
             ControlFlow::Exit
+        );
+    }
+
+    #[test]
+    fn window_create_failure_exits_with_error_status() {
+        assert_eq!(
+            lifecycle_for_create_result(&Err(HostProtocolError::Internal {
+                message: "failed to build host window".to_string(),
+            })),
+            WindowLifecycleEvent::WindowCreateFailed
+        );
+        assert_eq!(
+            control_flow_for_lifecycle_event(WindowLifecycleEvent::WindowCreateFailed),
+            ControlFlow::ExitWithCode(1)
+        );
+    }
+
+    #[test]
+    fn window_create_success_keeps_event_loop_waiting() {
+        assert_eq!(
+            lifecycle_for_create_result(&Ok(WindowCommandResponse::Created(
+                WindowCreateResponse::new("018f48cc-7d5a-7d52-9a70-86d8d41c5bd5".to_string())
+            ))),
+            WindowLifecycleEvent::Other
         );
     }
 
