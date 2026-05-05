@@ -38,9 +38,7 @@ type HandlerEnvironment<Handler> = Handler extends (
 
 type AnyApiLayer = {
   readonly contract: ApiContractClass<string, ApiContractSpec>
-  readonly handlers: Readonly<
-    Record<string, (input: never) => Effect.Effect<unknown, unknown, unknown>>
-  >
+  readonly handlers: object
 }
 
 type BoundHandler = {
@@ -56,11 +54,14 @@ export const Handlers = <Layers extends readonly AnyApiLayer[]>(
   for (const layer of layers) {
     for (const [method, spec] of Object.entries(layer.contract.spec)) {
       const operation = methodName(layer.contract.tag, method)
-      const handler = layer.handlers[method]
+      const handler = Reflect.get(layer.handlers, method) as (
+        this: object,
+        input: unknown
+      ) => Effect.Effect<unknown, unknown, unknown>
 
       table.set(operation, {
         spec,
-        handler: handler as (input: unknown) => Effect.Effect<unknown, unknown, unknown>
+        handler: (input) => handler.call(layer.handlers, input)
       })
     }
   }

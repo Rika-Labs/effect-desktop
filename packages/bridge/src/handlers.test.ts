@@ -52,6 +52,35 @@ test("Handlers binds contract layers into a request dispatcher", async () => {
   })
 })
 
+test("Handlers preserves prototype handler receivers", async () => {
+  const ProjectApi = makeProjectApi("ProjectApi.PrototypeReceiver")
+
+  class ProjectHandlers {
+    readonly prefix = "project"
+
+    open(input: ProjectOpenInput): Effect.Effect<ProjectOpenOutput, never, never> {
+      return Effect.succeed(
+        new ProjectOpenOutput({
+          id: `${this.prefix}:${input.path}`.length
+        })
+      )
+    }
+  }
+
+  const runtime = Handlers(ProjectApi.layer(new ProjectHandlers()))
+
+  const response = await Effect.runPromise(
+    runtime.dispatch(request("ProjectApi.PrototypeReceiver.open", { path: "/tmp/project" }))
+  )
+
+  expect(response).toEqual({
+    kind: "success",
+    payload: {
+      id: "20"
+    }
+  })
+})
+
 test("Handlers decodes transformed input payloads before calling handlers", async () => {
   const EncodedInputApi = makeEncodedInputApi("ProjectApi.HandlerEncodedInput")
   const runtime = Handlers(
