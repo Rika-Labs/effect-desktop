@@ -255,6 +255,104 @@ test("register does not overwrite a live entry with a duplicate explicit id", as
   expect(result.snapshot.entries.map((entry) => entry.handle.id)).toEqual([result.second.id])
 })
 
+test("closeScope disposes transitively owned resources child scopes first", async () => {
+  const disposalOrder = await Effect.runPromise(
+    Effect.gen(function* () {
+      const order: string[] = []
+      const registry = yield* makeResourceRegistry()
+      yield* registry.declareScope("process-scope", "window-scope")
+      yield* registry.declareScope("stream-scope", "process-scope")
+      yield* registry.register({
+        kind: "window",
+        id: id("018e2f36-5800-7000-8000-000000000015"),
+        ownerScope: "window-scope",
+        state: "open",
+        dispose: Effect.sync(() => {
+          order.push("window")
+        })
+      })
+      yield* registry.register({
+        kind: "process",
+        id: id("018e2f36-5800-7000-8000-000000000016"),
+        ownerScope: "process-scope",
+        state: "running",
+        dispose: Effect.sync(() => {
+          order.push("process")
+        })
+      })
+      yield* registry.register({
+        kind: "stream",
+        id: id("018e2f36-5800-7000-8000-000000000017"),
+        ownerScope: "stream-scope",
+        state: "open",
+        dispose: Effect.sync(() => {
+          order.push("stream")
+        })
+      })
+
+      yield* registry.closeScope("window-scope")
+      const snapshot = yield* registry.list()
+
+      return { order, snapshot }
+    })
+  )
+
+  expect(disposalOrder.order).toEqual(["stream", "process", "window"])
+  expect(disposalOrder.snapshot.entries).toEqual([])
+})
+
+test("share returns a fresh target-scope handle without closing with the source scope", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      let cleanupCount = 0
+      const registry = yield* makeResourceRegistry({
+        nextId: () => id("018e2f36-5800-7000-8000-000000000019")
+      })
+      const original = yield* registry.register({
+        kind: "window",
+        id: id("018e2f36-5800-7000-8000-000000000018"),
+        ownerScope: "source-scope",
+        state: "open",
+        dispose: Effect.sync(() => {
+          cleanupCount += 1
+        })
+      })
+      const shared = yield* registry.share(original, "target-scope")
+
+      yield* registry.closeScope("source-scope")
+      const snapshot = yield* registry.list()
+
+      return { cleanupCount, shared, snapshot }
+    })
+  )
+
+  expect(result.cleanupCount).toBe(1)
+  expect(result.shared.ownerScope).toBe("target-scope")
+  expect(result.snapshot.entries.map((entry) => entry.handle.id)).toEqual([result.shared.id])
+})
+
+test("closeScope removes a resource when its disposer exceeds disposalGraceMs", async () => {
+  const snapshot = await Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makeResourceRegistry()
+      yield* registry.register({
+        kind: "stream",
+        id: id("018e2f36-5800-7000-8000-000000000020"),
+        ownerScope: "scope-timeout",
+        state: "open",
+        disposalGraceMs: 5,
+        dispose: Effect.never
+      })
+
+      yield* registry.closeScope("scope-timeout")
+
+      return yield* registry.list()
+    })
+  )
+
+  expect(snapshot.entries).toEqual([])
+})
+
 test("handle dispose delegates to the registry", async () => {
   const snapshot = await Effect.runPromise(
     Effect.gen(function* () {

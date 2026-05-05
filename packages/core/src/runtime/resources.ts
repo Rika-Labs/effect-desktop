@@ -46,6 +46,7 @@ export interface RegisterResourceInput<
   readonly ownerScope: ScopeId
   readonly state: State
   readonly reusableId?: boolean
+  readonly disposalGraceMs?: number
   readonly dispose?: Effect.Effect<void, never, never>
 }
 
@@ -69,6 +70,12 @@ export interface ResourceRegistryApi {
   readonly list: () => Effect.Effect<RegistrySnapshot, never, never>
   readonly dispose: (id: ResourceId) => Effect.Effect<void, never, never>
   readonly observe: () => Stream.Stream<RegistrySnapshot, never, never>
+  readonly declareScope: (scope: ScopeId, parent?: ScopeId) => Effect.Effect<void, never, never>
+  readonly closeScope: (scope: ScopeId) => Effect.Effect<void, never, never>
+  readonly share: <Kind extends ResourceKind, State extends ResourceState>(
+    handle: ResourceHandle<Kind, State>,
+    targetScope: ScopeId
+  ) => Effect.Effect<ResourceHandle<Kind, State>, StaleHandle, never>
   readonly assertFresh: <Kind extends ResourceKind, State extends ResourceState>(
     handle: ResourceHandle<Kind, State>
   ) => Effect.Effect<ResourceEntry<Kind, State>, StaleHandle, never>
@@ -87,31 +94,52 @@ export const makeResourceRegistry = (
     const nextId = options.nextId ?? generateUuidV7
     const entries = yield* SubscriptionRef.make(new Map<ResourceId, StoredResourceEntry>())
     const disposedGenerations = new Map<ResourceId, DisposedGeneration>()
+    const scopeParents = new Map<ScopeId, ScopeId>()
 
     const snapshot = (): Effect.Effect<RegistrySnapshot, never, never> =>
       Effect.map(SubscriptionRef.get(entries), snapshotFromMap)
 
+    const takeEntry = (
+      id: ResourceId
+    ): Effect.Effect<StoredResourceEntry | undefined, never, never> =>
+      SubscriptionRef.modify(entries, (current) => {
+        const entry = current.get(id)
+        if (entry === undefined) {
+          return [undefined, current] as const
+        }
+
+        const next = new Map(current)
+        next.delete(id)
+
+        return [entry, next] as const
+      })
+
+    const markDisposed = (id: ResourceId, entry: StoredResourceEntry): void => {
+      disposedGenerations.set(id, {
+        kind: entry.handle.kind,
+        generation: entry.reusableId ? entry.handle.generation + 1 : -1,
+        reusableId: entry.reusableId
+      })
+    }
+
     const dispose = (id: ResourceId): Effect.Effect<void, never, never> =>
       Effect.gen(function* () {
-        const entry = yield* SubscriptionRef.modify(entries, (current) => {
-          const entry = current.get(id)
-          if (entry === undefined) {
-            return [undefined, current] as const
-          }
-
-          const next = new Map(current)
-          next.delete(id)
-
-          return [entry, next] as const
-        })
+        const entry = yield* takeEntry(id)
 
         if (entry !== undefined) {
-          disposedGenerations.set(id, {
-            kind: entry.handle.kind,
-            generation: entry.reusableId ? entry.handle.generation + 1 : -1,
-            reusableId: entry.reusableId
-          })
+          markDisposed(id, entry)
           yield* entry.dispose
+        }
+      })
+
+    const disposeForScopeClose = (entry: StoredResourceEntry): Effect.Effect<void, never, never> =>
+      Effect.gen(function* () {
+        const removed = yield* takeEntry(entry.handle.id)
+        if (removed !== undefined) {
+          markDisposed(entry.handle.id, removed)
+          yield* Effect.asVoid(
+            Effect.timeoutOption(removed.dispose, `${removed.disposalGraceMs} millis`)
+          )
         }
       })
 
@@ -140,6 +168,7 @@ export const makeResourceRegistry = (
             handle,
             createdAt,
             reusableId: input.reusableId === true,
+            disposalGraceMs: input.disposalGraceMs ?? DEFAULT_DISPOSAL_GRACE_MS,
             dispose: input.dispose ?? Effect.void
           }
           const next = new Map(current)
@@ -175,6 +204,42 @@ export const makeResourceRegistry = (
         )
       })
 
+    const declareScope = (scope: ScopeId, parent?: ScopeId): Effect.Effect<void, never, never> =>
+      Effect.sync(() => {
+        if (parent === undefined) {
+          scopeParents.delete(scope)
+        } else {
+          scopeParents.set(scope, parent)
+        }
+      })
+
+    const closeScope = (scope: ScopeId): Effect.Effect<void, never, never> =>
+      Effect.gen(function* () {
+        const current = yield* SubscriptionRef.get(entries)
+        const scopes = descendantScopes(scope, scopeParents)
+        const entriesToDispose = entriesInDependencyOrder(current, scopes, scopeParents)
+
+        for (const entry of entriesToDispose) {
+          yield* disposeForScopeClose(entry)
+        }
+      })
+
+    const share = <Kind extends ResourceKind, State extends ResourceState>(
+      handle: ResourceHandle<Kind, State>,
+      targetScope: ScopeId
+    ): Effect.Effect<ResourceHandle<Kind, State>, StaleHandle, never> =>
+      Effect.gen(function* () {
+        yield* assertFresh(handle)
+
+        return yield* register({
+          kind: handle.kind,
+          ownerScope: targetScope,
+          state: handle.state,
+          reusableId: false,
+          dispose: Effect.void
+        })
+      })
+
     return {
       register,
       get: (id) =>
@@ -182,6 +247,9 @@ export const makeResourceRegistry = (
       list: snapshot,
       dispose,
       observe: () => SubscriptionRef.changes(entries).pipe(Stream.map(snapshotFromMap)),
+      declareScope,
+      closeScope,
+      share,
       assertFresh
     }
   })
@@ -194,8 +262,11 @@ export const ResourceRegistryLive = Layer.effect(ResourceRegistry)(makeResourceR
 
 interface StoredResourceEntry extends ResourceEntry {
   readonly reusableId: boolean
+  readonly disposalGraceMs: number
   readonly dispose: Effect.Effect<void, never, never>
 }
+
+const DEFAULT_DISPOSAL_GRACE_MS = 5_000
 
 interface DisposedGeneration {
   readonly kind: ResourceKind
@@ -244,6 +315,58 @@ const publicEntry = (entry: StoredResourceEntry): ResourceEntry => ({
 
 const publicEntryOption = (entry: StoredResourceEntry | undefined): Option.Option<ResourceEntry> =>
   entry === undefined ? Option.none() : Option.some(publicEntry(entry))
+
+const descendantScopes = (
+  root: ScopeId,
+  scopeParents: ReadonlyMap<ScopeId, ScopeId>
+): ReadonlySet<ScopeId> => {
+  const result = new Set<ScopeId>([root])
+  let changed = true
+
+  while (changed) {
+    changed = false
+    for (const [scope, parent] of scopeParents) {
+      if (!result.has(scope) && result.has(parent)) {
+        result.add(scope)
+        changed = true
+      }
+    }
+  }
+
+  return result
+}
+
+const entriesInDependencyOrder = (
+  entries: ReadonlyMap<ResourceId, StoredResourceEntry>,
+  scopes: ReadonlySet<ScopeId>,
+  scopeParents: ReadonlyMap<ScopeId, ScopeId>
+): readonly StoredResourceEntry[] => {
+  return Array.from(entries.values())
+    .filter((entry) => scopes.has(entry.handle.ownerScope))
+    .sort((left, right) => {
+      const depthDifference =
+        scopeDepth(right.handle.ownerScope, scopeParents) -
+        scopeDepth(left.handle.ownerScope, scopeParents)
+
+      return depthDifference === 0 ? right.createdAt - left.createdAt : depthDifference
+    })
+}
+
+const scopeDepth = (scope: ScopeId, scopeParents: ReadonlyMap<ScopeId, ScopeId>): number => {
+  let depth = 0
+  let current: ScopeId | undefined = scope
+
+  while (current !== undefined) {
+    const parent = scopeParents.get(current)
+    if (parent === undefined) {
+      return depth
+    }
+    depth += 1
+    current = parent
+  }
+
+  return depth
+}
 
 const snapshotFromMap = (
   entries: ReadonlyMap<ResourceId, StoredResourceEntry>
