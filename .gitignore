@@ -1,5 +1,7 @@
 node_modules/
 dist/
+!apps/playground/dist/
+!apps/playground/dist/**
 build/
 target/
 .turbo/
