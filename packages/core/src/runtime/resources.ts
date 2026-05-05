@@ -217,7 +217,11 @@ const generationForRegistration = (
 
   return reusableId === true && disposed.reusableId && disposed.kind === kind
     ? disposed.generation
-    : 0
+    : nextGenerationAfter(disposed.generation)
+}
+
+const nextGenerationAfter = (generation: number): number => {
+  return generation < 0 ? 1 : generation + 1
 }
 
 const publicEntry = (entry: StoredResourceEntry): ResourceEntry => ({

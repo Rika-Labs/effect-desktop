@@ -174,6 +174,49 @@ test("assertFresh accepts reusable id only at the current generation", async () 
   })
 })
 
+test("non-reusable explicit id reuse cannot refresh a disposed handle", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makeResourceRegistry()
+      const reusedId = id("018e2f36-5800-7000-8000-000000000012")
+      const first = yield* registry.register({
+        kind: "process",
+        id: reusedId,
+        ownerScope: "scope-process",
+        state: "running"
+      })
+
+      yield* registry.dispose(first.id)
+
+      const second = yield* registry.register({
+        kind: "process",
+        id: reusedId,
+        ownerScope: "scope-process",
+        state: "running"
+      })
+      const stale = yield* registry.assertFresh(first).pipe(
+        Effect.match({
+          onFailure: (error) => error,
+          onSuccess: () => {
+            throw new Error("expected stale handle")
+          }
+        })
+      )
+
+      return { second, stale }
+    })
+  )
+
+  expect(result.second.generation).toBe(1)
+  expect(result.stale).toMatchObject({
+    tag: "StaleHandle",
+    kind: "process",
+    id: "018e2f36-5800-7000-8000-000000000012",
+    expectedGeneration: 0,
+    actualGeneration: -1
+  })
+})
+
 test("handle dispose delegates to the registry", async () => {
   const snapshot = await Effect.runPromise(
     Effect.gen(function* () {
