@@ -111,9 +111,10 @@ enum Termination {
 }
 
 pub(crate) struct Supervisor {
-    events: Receiver<RuntimeEvent>,
+    events: Option<Receiver<RuntimeEvent>>,
     terminate: Sender<Termination>,
     lifecycle_thread: Option<JoinHandle<()>>,
+    event_drain_thread: Option<JoinHandle<()>>,
 }
 
 impl Supervisor {
@@ -160,14 +161,26 @@ impl Supervisor {
         );
 
         Ok(Self {
-            events,
+            events: Some(events),
             terminate,
             lifecycle_thread: Some(lifecycle_thread),
+            event_drain_thread: None,
         })
     }
 
     pub(crate) fn events(&self) -> &Receiver<RuntimeEvent> {
-        &self.events
+        self.events
+            .as_ref()
+            .expect("runtime event receiver moved into post-ready drain")
+    }
+
+    fn start_post_ready_drain(&mut self) -> Result<()> {
+        let events = self
+            .events
+            .take()
+            .context("runtime event receiver already moved into post-ready drain")?;
+        self.event_drain_thread = Some(spawn_event_drain(events));
+        Ok(())
     }
 }
 
@@ -175,11 +188,14 @@ impl Drop for Supervisor {
     fn drop(&mut self) {
         let _ = self.terminate.send(Termination::Terminate);
         join_thread(self.lifecycle_thread.take());
+        join_thread(self.event_drain_thread.take());
     }
 }
 
-pub(crate) fn await_ready(supervisor: &Supervisor, timeout: Duration) -> Result<RuntimeReady> {
-    await_ready_events(supervisor.events(), timeout)
+pub(crate) fn await_ready(supervisor: &mut Supervisor, timeout: Duration) -> Result<RuntimeReady> {
+    let ready = await_ready_events(supervisor.events(), timeout)?;
+    supervisor.start_post_ready_drain()?;
+    Ok(ready)
 }
 
 fn await_ready_events(events: &Receiver<RuntimeEvent>, timeout: Duration) -> Result<RuntimeReady> {
@@ -253,6 +269,37 @@ fn timeout_error(timeout: Duration, last_stdout_line: Option<&str>) -> Result<Ru
             "timed out waiting for {RUNTIME_READY_EVENT} after {timeout:?}; last runtime stdout line: {line}"
         ),
         None => bail!("timed out waiting for {RUNTIME_READY_EVENT} after {timeout:?}"),
+    }
+}
+
+fn spawn_event_drain(events: Receiver<RuntimeEvent>) -> JoinHandle<()> {
+    thread::spawn(move || {
+        while let Ok(event) = events.recv() {
+            trace_runtime_event(event);
+        }
+    })
+}
+
+fn trace_runtime_event(event: RuntimeEvent) {
+    match event {
+        RuntimeEvent::Started { pid } => {
+            debug!(pid, "runtime child started");
+        }
+        RuntimeEvent::Stdout { line } => {
+            debug!(line, "runtime stdout");
+        }
+        RuntimeEvent::Stderr { line } => {
+            warn!(line, "runtime stderr");
+        }
+        RuntimeEvent::StdioError { stream, error } => {
+            warn!(?stream, error, "runtime stdio error");
+        }
+        RuntimeEvent::LifecycleError { error } => {
+            warn!(error, "runtime lifecycle error");
+        }
+        RuntimeEvent::Exited { status } => {
+            debug!(%status, success = status.success(), "runtime exited");
+        }
     }
 }
 
@@ -369,8 +416,8 @@ fn join_thread(thread: Option<JoinHandle<()>>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        await_ready_events, parse_runtime_ready_line, RuntimeConfig, RuntimeEvent, RuntimeReady,
-        RuntimeStream, Supervisor,
+        await_ready_events, parse_runtime_ready_line, spawn_event_drain, RuntimeConfig,
+        RuntimeEvent, RuntimeReady, RuntimeStream, Supervisor,
     };
     use std::{
         sync::mpsc::{self, Receiver},
@@ -564,6 +611,29 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "timed out waiting for runtime.ready after 1ms"
+        );
+    }
+
+    #[test]
+    fn event_drain_consumes_post_ready_events_until_channel_closes() {
+        let (events_tx, events_rx) = mpsc::channel();
+        let drain_thread = spawn_event_drain(events_rx);
+
+        events_tx
+            .send(RuntimeEvent::Stdout {
+                line: "after ready".to_string(),
+            })
+            .expect("post-ready stdout event should send");
+        events_tx
+            .send(RuntimeEvent::Stderr {
+                line: "after ready stderr".to_string(),
+            })
+            .expect("post-ready stderr event should send");
+        drop(events_tx);
+
+        assert!(
+            drain_thread.join().is_ok(),
+            "event drain should exit when the event channel closes"
         );
     }
 
