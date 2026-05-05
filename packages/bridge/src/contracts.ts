@@ -132,7 +132,7 @@ const registerApiContract = <Tag extends string, Spec extends ApiContractSpec>(
         const frozenHandlers = Object.freeze({ ...handlers }) as Handlers
 
         return Object.freeze({
-          contract: this as ApiContractClass<Tag, Spec>,
+          contract,
           handlers: frozenHandlers
         })
       }
@@ -234,7 +234,9 @@ const validateBackpressureSpec = (
 
 const freezeContractSpec = <Spec extends ApiContractSpec>(spec: Spec): Spec => {
   for (const methodSpec of Object.values(spec)) {
-    Object.freeze(methodSpec.backpressure)
+    if (methodSpec.backpressure !== undefined) {
+      Object.freeze(methodSpec.backpressure)
+    }
     Object.freeze(methodSpec)
   }
 

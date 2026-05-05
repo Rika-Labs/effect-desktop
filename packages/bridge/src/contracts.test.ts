@@ -144,6 +144,21 @@ test("contract classes expose frozen layer descriptors", async () => {
   expect(Object.isFrozen(layer.handlers)).toBe(true)
 })
 
+test("contract layer builder remains bound when destructured", async () => {
+  const DestructuredLayerApi = await Effect.runPromise(
+    Api.Tag("Test.DestructuredLayer")<unknown>()({
+      call: validMethodSpec()
+    })
+  )
+  const { layer } = DestructuredLayerApi
+
+  const descriptor = layer({
+    call: (input) => Effect.succeed(input)
+  })
+
+  expect(descriptor.contract).toBe(DestructuredLayerApi)
+})
+
 test("zz Api.freeze rejects later registrations as a typed Effect failure", async () => {
   await Effect.runPromise(Api.freeze())
 
