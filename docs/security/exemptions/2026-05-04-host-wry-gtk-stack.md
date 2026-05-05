@@ -69,4 +69,4 @@ smoke:
 - `cargo run -p host -- --window-smoke-test` opens the Tao window path,
   instantiates the WRY WebView, loads static inline hello HTML, and exits
   without IPC, URL scheme, navigation policy, remote content, or permissions.
-- PR #146 CI runs the window smoke path on Linux under `xvfb-run -a`.
+- PR #147 CI runs the WebView smoke path on Linux under `xvfb-run -a`.
