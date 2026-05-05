@@ -279,6 +279,49 @@ test("Handlers rejects duplicate request ids after a terminal state", async () =
   expect(states).toEqual(["Pending", "Authorized", "Running", "Completed", "RejectedLateFrame"])
 })
 
+test("Handlers expires terminal request ids after the replay window", async () => {
+  let now = 1_000
+  const states: string[] = []
+  const ProjectApi = makeProjectApi("ProjectApi.HandlerDuplicateExpiry")
+  const runtime = Handlers.withOptions(
+    {
+      now: () => now,
+      terminalStateTtlMs: 10,
+      onState: (state) =>
+        Effect.sync(() => {
+          states.push(state.tag)
+        })
+    },
+    ProjectApi.layer({
+      open: () => Effect.succeed(new ProjectOpenOutput({ id: 1 }))
+    })
+  )
+  const duplicate = new HostProtocolRequestEnvelope({
+    kind: "request",
+    id: "request-duplicate-expiry",
+    method: "ProjectApi.HandlerDuplicateExpiry.open",
+    timestamp: 42,
+    traceId: "trace-duplicate-expiry",
+    payload: { path: "/tmp/project" }
+  })
+
+  await Effect.runPromise(runtime.dispatch(duplicate))
+  now = 1_011
+  const response = await Effect.runPromise(runtime.dispatch(duplicate))
+
+  expect(response.kind).toBe("success")
+  expect(states).toEqual([
+    "Pending",
+    "Authorized",
+    "Running",
+    "Completed",
+    "Pending",
+    "Authorized",
+    "Running",
+    "Completed"
+  ])
+})
+
 test("Handlers reports unknown methods as MethodNotFound", async () => {
   const ProjectApi = makeProjectApi("ProjectApi.HandlerUnknownMethod")
   const runtime = Handlers(

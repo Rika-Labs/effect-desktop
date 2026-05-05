@@ -20,6 +20,7 @@ import {
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 const DEFAULT_TIMEOUT_MS = 30_000
+const DEFAULT_TERMINAL_STATE_TTL_MS = 30_000
 
 export interface ApiHandlerRuntime<Env = never> {
   readonly dispatch: (
@@ -56,11 +57,13 @@ export type BridgeCallState =
 export interface ApiHandlerRuntimeOptions {
   readonly now?: () => number
   readonly onState?: (state: BridgeCallState) => Effect.Effect<void, never, never>
+  readonly terminalStateTtlMs?: number
 }
 
 interface ResolvedApiHandlerRuntimeOptions {
   readonly now: () => number
   readonly onState: (state: BridgeCallState) => Effect.Effect<void, never, never>
+  readonly terminalStateTtlMs: number
 }
 
 export type ApiLayerEnvironment<Layer> =
@@ -86,6 +89,11 @@ type BoundHandler = {
   readonly handler: (input: unknown) => Effect.Effect<unknown, unknown, unknown>
 }
 
+type TerminalStateEntry = {
+  readonly state: BridgeCallTerminalState
+  readonly recordedAt: number
+}
+
 const makeHandlers = <Layers extends readonly AnyApiLayer[]>(
   ...layers: Layers
 ): ApiHandlerRuntime<ApiLayerEnvironment<Layers[number]>> => makeHandlersWithOptions({}, ...layers)
@@ -95,7 +103,7 @@ const makeHandlersWithOptions = <Layers extends readonly AnyApiLayer[]>(
   ...layers: Layers
 ): ApiHandlerRuntime<ApiLayerEnvironment<Layers[number]>> => {
   const table = new Map<string, BoundHandler>()
-  const terminalStates = new Map<string, BridgeCallTerminalState>()
+  const terminalStates = new Map<string, TerminalStateEntry>()
   const resolved = resolveOptions(options)
 
   for (const layer of layers) {
@@ -129,12 +137,15 @@ export const Handlers = Object.assign(makeHandlers, {
 
 const dispatch = (
   table: ReadonlyMap<string, BoundHandler>,
-  terminalStates: Map<string, BridgeCallTerminalState>,
+  terminalStates: Map<string, TerminalStateEntry>,
   options: ResolvedApiHandlerRuntimeOptions,
   request: HostProtocolRequestEnvelope
 ): Effect.Effect<ApiClientResponse, HostProtocolError, unknown> =>
   Effect.gen(function* () {
-    const priorTerminalState = terminalStates.get(request.id)
+    const now = options.now()
+    purgeExpiredTerminalStates(terminalStates, now, options.terminalStateTtlMs)
+
+    const priorTerminalState = terminalStates.get(request.id)?.state
     if (priorTerminalState !== undefined) {
       yield* options.onState({
         tag: "RejectedLateFrame",
@@ -151,7 +162,7 @@ const dispatch = (
       tag: "Pending",
       id: request.id,
       traceId: request.traceId,
-      startedAt: options.now()
+      startedAt: now
     })
 
     const bound = table.get(request.method)
@@ -186,7 +197,7 @@ const dispatch = (
     if (Exit.isFailure(exit)) {
       const timeout = timeoutFromCause(exit.cause)
       if (timeout !== undefined) {
-        terminalStates.set(request.id, "TimedOut")
+        recordTerminalState(terminalStates, request.id, "TimedOut", options)
         yield* options.onState({
           tag: "TimedOut",
           id: request.id,
@@ -197,7 +208,7 @@ const dispatch = (
 
       const canceled = cancelledFromCause(request.method, exit.cause)
       if (canceled !== undefined) {
-        terminalStates.set(request.id, "Canceled")
+        recordTerminalState(terminalStates, request.id, "Canceled", options)
         yield* options.onState({
           tag: "Canceled",
           id: request.id,
@@ -207,7 +218,7 @@ const dispatch = (
       }
 
       const error = yield* encodeContractError(request.method, bound.spec, exit.cause)
-      terminalStates.set(request.id, "Failed")
+      recordTerminalState(terminalStates, request.id, "Failed", options)
       yield* options.onState({
         tag: "Failed",
         id: request.id,
@@ -226,7 +237,7 @@ const dispatch = (
       return yield* Effect.fail(error)
     }
 
-    terminalStates.set(request.id, "Completed")
+    recordTerminalState(terminalStates, request.id, "Completed", options)
     yield* options.onState({
       tag: "Completed",
       id: request.id,
@@ -336,19 +347,49 @@ const makeCancelledError = (
   })
 
 const failCall = (
-  terminalStates: Map<string, BridgeCallTerminalState>,
+  terminalStates: Map<string, TerminalStateEntry>,
   options: ResolvedApiHandlerRuntimeOptions,
   id: string,
   error: HostProtocolError
 ): Effect.Effect<void, never, never> =>
   Effect.gen(function* () {
-    terminalStates.set(id, "Failed")
+    recordTerminalState(terminalStates, id, "Failed", options)
     yield* options.onState({
       tag: "Failed",
       id,
       error
     })
   })
+
+const recordTerminalState = (
+  terminalStates: Map<string, TerminalStateEntry>,
+  id: string,
+  state: BridgeCallTerminalState,
+  options: ResolvedApiHandlerRuntimeOptions
+): void => {
+  terminalStates.set(id, {
+    state,
+    recordedAt: options.now()
+  })
+}
+
+const purgeExpiredTerminalStates = (
+  terminalStates: Map<string, TerminalStateEntry>,
+  now: number,
+  ttlMs: number
+): void => {
+  if (ttlMs === 0) {
+    terminalStates.clear()
+    return
+  }
+
+  const cutoff = now - ttlMs
+  for (const [id, entry] of terminalStates) {
+    if (entry.recordedAt < cutoff) {
+      terminalStates.delete(id)
+    }
+  }
+}
 
 const hostProtocolErrorFromCause = (
   operation: string,
@@ -385,7 +426,8 @@ const isHostProtocolTimeoutError = (error: unknown): error is HostProtocolTimeou
 
 const resolveOptions = (options: ApiHandlerRuntimeOptions): ResolvedApiHandlerRuntimeOptions => ({
   now: options.now ?? Date.now,
-  onState: options.onState ?? (() => Effect.void)
+  onState: options.onState ?? (() => Effect.void),
+  terminalStateTtlMs: options.terminalStateTtlMs ?? DEFAULT_TERMINAL_STATE_TTL_MS
 })
 
 const methodName = (tag: string, method: string): string => `${tag}.${method}`
