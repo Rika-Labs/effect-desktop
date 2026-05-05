@@ -25,7 +25,7 @@ const WINDOW_HEIGHT: f64 = 640.0;
 const WINDOW_OPENED_EVENT: &str = "host.window.opened";
 const WINDOW_DESTROYED_EVENT: &str = "host.window.destroyed";
 const WINDOW_EXIT_REQUESTED_EVENT: &str = "host.window.exit_requested";
-const WINDOW_METHOD_REPLY_TIMEOUT: Duration = Duration::from_secs(30);
+const WINDOW_METHOD_REPLY_TIMEOUT: Duration = Duration::from_secs(120);
 const WINDOW_COMMAND_IDLE_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
