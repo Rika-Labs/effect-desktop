@@ -107,10 +107,7 @@ enum Termination {
 pub(crate) struct Supervisor {
     events: Receiver<RuntimeEvent>,
     terminate: Sender<Termination>,
-    wait_thread: Option<JoinHandle<()>>,
-    stdout_thread: Option<JoinHandle<()>>,
-    stderr_thread: Option<JoinHandle<()>>,
-    _platform_guard: platform::ChildGuard,
+    lifecycle_thread: Option<JoinHandle<()>>,
 }
 
 impl Supervisor {
@@ -147,15 +144,19 @@ impl Supervisor {
 
         let stdout_thread = spawn_reader(RuntimeStream::Stdout, stdout, event_tx.clone());
         let stderr_thread = spawn_reader(RuntimeStream::Stderr, stderr, event_tx.clone());
-        let wait_thread = spawn_waiter(child, terminate_rx, event_tx);
+        let lifecycle_thread = spawn_lifecycle(
+            child,
+            platform_guard,
+            terminate_rx,
+            event_tx,
+            stdout_thread,
+            stderr_thread,
+        );
 
         Ok(Self {
             events,
             terminate,
-            wait_thread: Some(wait_thread),
-            stdout_thread: Some(stdout_thread),
-            stderr_thread: Some(stderr_thread),
-            _platform_guard: platform_guard,
+            lifecycle_thread: Some(lifecycle_thread),
         })
     }
 
@@ -167,9 +168,7 @@ impl Supervisor {
 impl Drop for Supervisor {
     fn drop(&mut self) {
         let _ = self.terminate.send(Termination::Terminate);
-        join_thread(self.wait_thread.take());
-        join_thread(self.stdout_thread.take());
-        join_thread(self.stderr_thread.take());
+        join_thread(self.lifecycle_thread.take());
     }
 }
 
@@ -199,16 +198,34 @@ where
     })
 }
 
-fn spawn_waiter(
+fn spawn_lifecycle(
     mut child: Child,
+    platform_guard: platform::ChildGuard,
     termination: Receiver<Termination>,
     events: Sender<RuntimeEvent>,
+    stdout_thread: JoinHandle<()>,
+    stderr_thread: JoinHandle<()>,
 ) -> JoinHandle<()> {
     thread::spawn(move || {
-        let event = match wait_for_exit_or_termination(&mut child, &termination) {
-            Ok(status) => RuntimeEvent::Exited { status },
-            Err(error) => RuntimeEvent::LifecycleError {
+        let wait_result = wait_for_exit_or_termination(&mut child, &termination);
+        let cleanup_result = platform::cleanup_process_tree_after_exit(&child);
+        platform::release_child_guard(platform_guard);
+        let stdout_joined = join_thread(Some(stdout_thread));
+        let stderr_joined = join_thread(Some(stderr_thread));
+
+        let event = match (wait_result, cleanup_result, stdout_joined, stderr_joined) {
+            (Ok(status), Ok(()), true, true) => RuntimeEvent::Exited { status },
+            (Err(error), _, _, _) => RuntimeEvent::LifecycleError {
                 error: error.to_string(),
+            },
+            (_, Err(error), _, _) => RuntimeEvent::LifecycleError {
+                error: format!("failed to clean runtime process tree: {error}"),
+            },
+            (_, _, false, _) => RuntimeEvent::LifecycleError {
+                error: "runtime stdout reader thread panicked".to_string(),
+            },
+            (_, _, _, false) => RuntimeEvent::LifecycleError {
+                error: "runtime stderr reader thread panicked".to_string(),
             },
         };
 
@@ -257,10 +274,12 @@ fn terminate_after_failed_platform_setup(child: &mut Child) {
     let _ = child.wait();
 }
 
-fn join_thread(thread: Option<JoinHandle<()>>) {
+fn join_thread(thread: Option<JoinHandle<()>>) -> bool {
     if let Some(thread) = thread {
-        let _ = thread.join();
+        return thread.join().is_ok();
     }
+
+    true
 }
 
 #[cfg(test)]
@@ -307,6 +326,32 @@ mod tests {
                 .any(|event| matches!(event, RuntimeEvent::Exited { status } if status.success())),
             "events did not include successful exit: {events:?}"
         );
+        assert_terminal_event_closes_channel(&supervisor);
+    }
+
+    #[test]
+    fn supervisor_closes_inherited_stdio_before_exited() {
+        let supervisor = Supervisor::spawn(RuntimeConfig::new("bun").args([
+            "-e",
+            "Bun.spawn(['bun', '-e', 'setInterval(() => {}, 1000)'], { stdout: 'inherit', stderr: 'inherit' }); console.log('parent done'); process.exit(0);",
+        ]))
+        .expect("runtime child should spawn");
+
+        let events = collect_until_exit(supervisor.events());
+
+        assert!(
+            events.iter().any(
+                |event| matches!(event, RuntimeEvent::Stdout { line } if line == "parent done")
+            ),
+            "events did not include parent stdout line: {events:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, RuntimeEvent::Exited { status } if status.success())),
+            "events did not include successful exit: {events:?}"
+        );
+        assert_terminal_event_closes_channel(&supervisor);
     }
 
     #[test]
@@ -370,5 +415,17 @@ mod tests {
                 return collected;
             }
         }
+    }
+
+    fn assert_terminal_event_closes_channel(supervisor: &Supervisor) {
+        let after_exit = supervisor.events().recv_timeout(Duration::from_millis(50));
+
+        assert!(
+            matches!(
+                after_exit,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected)
+            ),
+            "runtime emitted or retained events after Exited: {after_exit:?}"
+        );
     }
 }

@@ -45,6 +45,9 @@ impl ChildGuard {
     }
 }
 
+#[cfg(unix)]
+pub(super) fn release_child_guard(_guard: ChildGuard) {}
+
 #[cfg(windows)]
 pub(super) struct ChildGuard {
     job: windows_sys::Win32::Foundation::HANDLE,
@@ -114,6 +117,11 @@ impl Drop for ChildGuard {
     }
 }
 
+#[cfg(windows)]
+pub(super) fn release_child_guard(guard: ChildGuard) {
+    drop(guard);
+}
+
 #[cfg(not(any(unix, windows)))]
 pub(super) struct ChildGuard;
 
@@ -124,6 +132,9 @@ impl ChildGuard {
     }
 }
 
+#[cfg(not(any(unix, windows)))]
+pub(super) fn release_child_guard(_guard: ChildGuard) {}
+
 #[cfg(unix)]
 pub(super) fn request_termination(child: &mut Child) -> io::Result<()> {
     send_signal_to_process_group(child, libc::SIGTERM)
@@ -131,6 +142,11 @@ pub(super) fn request_termination(child: &mut Child) -> io::Result<()> {
 
 #[cfg(unix)]
 pub(super) fn force_termination(child: &mut Child) -> io::Result<()> {
+    send_signal_to_process_group(child, libc::SIGKILL)
+}
+
+#[cfg(unix)]
+pub(super) fn cleanup_process_tree_after_exit(child: &Child) -> io::Result<()> {
     send_signal_to_process_group(child, libc::SIGKILL)
 }
 
@@ -167,4 +183,9 @@ pub(super) fn request_termination(child: &mut Child) -> io::Result<()> {
 #[cfg(not(unix))]
 pub(super) fn force_termination(child: &mut Child) -> io::Result<()> {
     child.kill()
+}
+
+#[cfg(not(unix))]
+pub(super) fn cleanup_process_tree_after_exit(_child: &Child) -> io::Result<()> {
+    Ok(())
 }
