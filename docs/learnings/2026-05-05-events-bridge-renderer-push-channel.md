@@ -29,7 +29,7 @@ flowchart TD
 
 ## What surfaced in review
 
-Two review threads were addressed and resolved. First, the initial subscriber implementation used dropping queues by default, which meant slow consumers could lose events silently even when the contract intended buffering or blocking. The fix makes bounded blocking delivery the default and returns a typed `BackpressureOverflow` when a configured `dropNewest` queue refuses a frame. Second, `Api.Tag` initially accepted `events` as `ApiContractEvents`, which widened concrete keys to a string-indexed map and erased `client.<api>.events.<name>` precision. The fix makes event metadata generic and adds a type-preservation assertion through `Client`.
+Four review threads were addressed and resolved. First, the initial subscriber implementation used dropping queues by default, which meant slow consumers could lose events silently even when the contract intended buffering or blocking. The fix makes bounded blocking delivery the default and honors explicit lossy overflow policies. Second, `Api.Tag` initially accepted `events` as `ApiContractEvents`, which widened concrete keys to a string-indexed map and erased `client.<api>.events.<name>` precision. The fix makes event metadata generic and adds a type-preservation assertion through `Client`. Third, `dropNewest` was briefly modeled as a hard producer failure; that contradicted the explicit lossy policy, so publisher success now reflects accepted loss. Fourth, generated clients always reserve `events` for event streams, so contract validation now rejects a method named `events` instead of allowing the runtime object to overwrite it.
 
 ## First-principles postmortem
 
@@ -46,9 +46,9 @@ Contract metadata is policy, not decoration. Once an API lets authors declare ba
 ## Reproducible pattern (if any)
 
 Keep contract declaration generics concrete until the generated/client surface has consumed them.
-Make default queue behavior lossless; require explicit typed policy for loss.
+Make default queue behavior lossless; require explicit policy for loss.
 Add a type-level assertion when a feature depends on preserving literal keys through registration.
-Treat silent event loss as a typed backpressure failure unless a later spec explicitly models audited dropping.
+Reject reserved generated-client property names at contract registration time, where the failure is typed and close to the author.
 
 ## AGENTS.md amendment candidate (if any)
 

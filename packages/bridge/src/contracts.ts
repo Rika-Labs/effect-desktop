@@ -178,6 +178,9 @@ const validateContractSpec = (
     }
 
     for (const [method, methodSpec] of Object.entries(spec)) {
+      if (method === "events") {
+        return yield* Effect.fail(invalidSpec(tag, method, "events is a reserved method name"))
+      }
       yield* validateMethodSpec(tag, method, methodSpec)
     }
   })

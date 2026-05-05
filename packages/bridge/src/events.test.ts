@@ -131,6 +131,27 @@ test("client event streams reject malformed event envelopes as typed failures", 
   expectFailureTag(exit, "InvalidOutput")
 })
 
+test("EventHub honors dropNewest event overflow without failing publishers", async () => {
+  const ProjectApi = makeProjectApi("ProjectApi.EventsDropNewest")
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const hub = yield* EventHub([ProjectApi])
+      const fiber = yield* hub.exchange.subscribe("ProjectApi.EventsDropNewest.changed").pipe(
+        Stream.tap(() => Effect.sleep("1 second")),
+        Stream.runDrain,
+        Effect.forkChild({ startImmediately: true })
+      )
+
+      yield* hub.publish(ProjectApi, "changed", new ProjectChangedEvent({ sequence: 1, path: "a" }))
+      yield* hub.publish(ProjectApi, "changed", new ProjectChangedEvent({ sequence: 2, path: "b" }))
+      yield* hub.publish(ProjectApi, "changed", new ProjectChangedEvent({ sequence: 3, path: "c" }))
+      yield* Fiber.interrupt(fiber)
+    })
+  )
+
+  expect(Exit.isSuccess(exit)).toBe(true)
+})
+
 type ProjectApiSpec = {
   readonly open: {
     readonly input: typeof ProjectOpenInput
@@ -161,7 +182,11 @@ const makeProjectApi = <Tag extends string>(
     static readonly events = Object.freeze({
       changed: Object.freeze({
         payload: ProjectChangedEvent,
-        backpressure: Object.freeze({ strategy: "drop", size: 16 } as const)
+        backpressure: Object.freeze({
+          strategy: "drop",
+          size: tag === "ProjectApi.EventsDropNewest" ? 1 : 16,
+          overflow: "dropNewest"
+        } as const)
       })
     })
 

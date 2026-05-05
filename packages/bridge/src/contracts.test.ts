@@ -226,6 +226,16 @@ test("Api.Tag rejects invalid event specs as a typed Effect failure", async () =
   expectFailure(exit, InvalidApiContractSpec)
 })
 
+test("Api.Tag rejects events as a reserved method name", async () => {
+  const exit = await Effect.runPromiseExit(
+    Api.Tag("Test.ReservedEventsMethod")<unknown>()({
+      events: validMethodSpec()
+    })
+  )
+
+  expectFailure(exit, InvalidApiContractSpec)
+})
+
 test("contract classes expose frozen layer descriptors", async () => {
   const LayeredApi = await Effect.runPromise(
     Api.Tag("Test.Layered")<unknown>()({

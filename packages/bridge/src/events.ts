@@ -7,7 +7,6 @@ import {
   type ApiEventSpec
 } from "./contracts.js"
 import {
-  HostProtocolBackpressureOverflowError,
   HostProtocolEventEnvelope,
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError
@@ -52,7 +51,6 @@ type EventChannel = {
 
 type EventQueue = {
   readonly queue: Queue.Queue<HostProtocolEventEnvelope>
-  readonly overflow: "error" | "dropOldest" | "dropNewest" | "block"
 }
 
 export const EventHub = (
@@ -147,11 +145,9 @@ const publish = <Events extends ApiContractEvents, Event extends keyof Events>(
       ...(encodedPayload === undefined ? {} : { payload: encodedPayload })
     })
 
-    yield* Effect.forEach(
-      channel.queues,
-      (eventQueue) => offerEvent(method, eventQueue, envelope),
-      { discard: true }
-    )
+    yield* Effect.forEach(channel.queues, (eventQueue) => offerEvent(eventQueue, envelope), {
+      discard: true
+    })
   })
 
 const makeEventQueue = (spec: ApiEventSpec): Effect.Effect<EventQueue, never, never> =>
@@ -166,30 +162,16 @@ const makeEventQueue = (spec: ApiEventSpec): Effect.Effect<EventQueue, never, ne
           : yield* Queue.bounded<HostProtocolEventEnvelope>(capacity)
 
     return {
-      queue,
-      overflow
+      queue
     } as const
   })
 
 const offerEvent = (
-  operation: string,
   eventQueue: EventQueue,
   envelope: HostProtocolEventEnvelope
 ): Effect.Effect<void, HostProtocolError, never> =>
   Effect.gen(function* () {
-    const offered = yield* Queue.offer(eventQueue.queue, envelope)
-    if (!offered && eventQueue.overflow === "dropNewest") {
-      return yield* Effect.fail(
-        new HostProtocolBackpressureOverflowError({
-          tag: "BackpressureOverflow",
-          policy: "dropNewest",
-          lostFrames: 1,
-          message: "event subscriber queue rejected a frame",
-          operation,
-          recoverable: true
-        })
-      )
-    }
+    yield* Queue.offer(eventQueue.queue, envelope)
   })
 
 const encodeEventPayload = <Spec extends ApiEventSpec>(
