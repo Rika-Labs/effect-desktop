@@ -7,7 +7,9 @@ import {
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
   type ApiClientExchange,
+  type ApiClientResponse,
   type HostProtocolRequestEnvelope,
+  HostProtocolEventEnvelope,
   type HostWindowClientOptions,
   type HostWindowExchange
 } from "@effect-desktop/bridge"
@@ -16,6 +18,16 @@ import { Cause, Effect, Exit, Fiber, Layer, Stream } from "effect"
 
 import {
   AppEventRouter,
+  App,
+  AppApi,
+  AppBeforeQuitEvent,
+  AppCommandLine,
+  AppInfo,
+  AppLive,
+  AppMethodNames,
+  AppOpenFileEvent,
+  AppOpenUrlEvent,
+  AppSecondInstanceEvent,
   Window,
   WindowApi,
   WindowClient,
@@ -23,12 +35,16 @@ import {
   WindowMethodNames,
   makeHostWindowApiLayer,
   makeAppEventRouter,
+  makeAppBridgeClientLayer,
+  makeAppServiceLayer,
+  makeUnsupportedAppClient,
   makeWindowBridgeClientLayer,
   makeWindowServiceLayer,
   firstResponderRoute,
   broadcastRoute,
   targetedRoute,
   windowScope,
+  type AppClientApi,
   type WindowClientApi,
   type WindowHandle
 } from "./index.js"
@@ -54,6 +70,17 @@ const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = [
   "persistState"
 ]
 
+const expectedAppMethods: Array<(typeof AppMethodNames)[number]> = [
+  "getInfo",
+  "getCommandLine",
+  "quit",
+  "restart",
+  "focus",
+  "requestSingleInstanceLock",
+  "setOpenAtLogin",
+  "registerProtocol"
+]
+
 const windowHandle: WindowHandle = {
   kind: "window",
   id: "window-1",
@@ -61,6 +88,127 @@ const windowHandle: WindowHandle = {
   ownerScope: "scope-1",
   state: "open"
 }
+
+test("AppApi declares the Phase 7 App method and event surface", () => {
+  expect(AppApi.tag).toBe("App")
+  expect([...AppMethodNames]).toEqual(expectedAppMethods)
+  expect(Object.keys(AppApi.spec)).toEqual(expectedAppMethods)
+  expect(Object.keys(AppApi.events)).toEqual([
+    "onSecondInstance",
+    "onOpenFile",
+    "onOpenUrl",
+    "onBeforeQuit"
+  ])
+})
+
+test("App service delegates through a substitutable AppClient port", async () => {
+  const calls: string[] = []
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const app = yield* App
+      const info = yield* app.getInfo()
+      const commandLine = yield* app.getCommandLine()
+      yield* app.focus()
+      yield* app.quit()
+      yield* app.restart({ args: ["--restarted"] })
+      yield* app.setOpenAtLogin({ enabled: true, args: ["--hidden"] })
+      yield* app.registerProtocol({ scheme: "effect-desktop" })
+      const protocolEvents = yield* app.onProtocolUrl().pipe(Stream.take(1), Stream.runCollect)
+
+      return { commandLine, info, protocolEvents }
+    }).pipe(Effect.provide(makeAppServiceLayer(appClient(calls))))
+  )
+
+  expect(result.info).toEqual(
+    new AppInfo({
+      id: "dev.effect-desktop.test",
+      name: "Effect Desktop Test",
+      version: "0.0.0"
+    })
+  )
+  expect(result.commandLine).toEqual(new AppCommandLine({ argv: ["app"], cwd: "/repo" }))
+  expect(Array.from(result.protocolEvents)).toEqual([
+    new AppOpenUrlEvent({ url: "effect-desktop://open" })
+  ])
+  expect(calls).toEqual([
+    "getInfo",
+    "getCommandLine",
+    "focus",
+    "quit:-1",
+    "restart:--restarted",
+    "setOpenAtLogin:true:--hidden",
+    "registerProtocol:effect-desktop"
+  ])
+})
+
+test("App bridge client sends typed host envelopes and decodes event streams", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = appExchange(requests, (request) => ({
+    kind: "success",
+    payload:
+      request.method === "App.getInfo"
+        ? {
+            id: "dev.effect-desktop.test",
+            name: "Effect Desktop Test",
+            version: "0.0.0"
+          }
+        : undefined
+  }))
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const app = yield* App
+      const info = yield* app.getInfo()
+      yield* app.registerProtocol({ scheme: "effect-desktop" })
+      const openFiles = yield* app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
+
+      return { info, openFiles }
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          AppLive,
+          makeAppBridgeClientLayer(exchange, {
+            nextRequestId: nextId(["info-request", "protocol-request"]),
+            nextTraceId: nextId(["info-trace", "protocol-trace"]),
+            now: nextNumber([1710000000000, 1710000000001])
+          })
+        )
+      )
+    )
+  )
+
+  expect(result.info).toEqual(
+    new AppInfo({
+      id: "dev.effect-desktop.test",
+      name: "Effect Desktop Test",
+      version: "0.0.0"
+    })
+  )
+  expect(Array.from(result.openFiles)).toEqual([new AppOpenFileEvent({ path: "README.md" })])
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["App.getInfo", undefined],
+    ["App.registerProtocol", { scheme: "effect-desktop" }]
+  ])
+})
+
+test("unsupported App client reports typed failures as Effect values", async () => {
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const app = yield* App
+      return yield* app.getInfo()
+    }).pipe(Effect.provide(makeAppServiceLayer(makeUnsupportedAppClient())))
+  )
+
+  expectExitFailure(
+    exit,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "operation" in error &&
+      error.operation === "App.getInfo"
+  )
+})
 
 test("WindowApi declares the Phase 5 Window method surface", () => {
   expect(WindowApi.tag).toBe("Window")
@@ -393,6 +541,40 @@ const recordVoid = (calls: string[], call: string): Effect.Effect<void, never, n
     calls.push(call)
   })
 
+const appClient = (calls: string[]): AppClientApi => ({
+  getInfo: () =>
+    Effect.sync(() => {
+      calls.push("getInfo")
+      return new AppInfo({
+        id: "dev.effect-desktop.test",
+        name: "Effect Desktop Test",
+        version: "0.0.0"
+      })
+    }),
+  getCommandLine: () =>
+    Effect.sync(() => {
+      calls.push("getCommandLine")
+      return new AppCommandLine({ argv: ["app"], cwd: "/repo" })
+    }),
+  quit: (input: { readonly exitCode?: number }) =>
+    recordVoid(calls, `quit:${input.exitCode ?? -1}`),
+  restart: (input: { readonly args?: readonly string[] }) =>
+    recordVoid(calls, `restart:${input.args?.join(" ") ?? ""}`),
+  focus: () => recordVoid(calls, "focus"),
+  requestSingleInstanceLock: () => Effect.succeed({ acquired: true }),
+  setOpenAtLogin: (input: { readonly enabled: boolean; readonly args?: readonly string[] }) =>
+    recordVoid(calls, `setOpenAtLogin:${input.enabled}:${input.args?.join(" ") ?? ""}`),
+  registerProtocol: (input: { readonly scheme: string }) =>
+    recordVoid(calls, `registerProtocol:${input.scheme}`),
+  onSecondInstance: () =>
+    Stream.make(
+      new AppSecondInstanceEvent({ argv: ["app", "--second"], cwd: "/repo", traceId: "trace" })
+    ),
+  onOpenFile: () => Stream.make(new AppOpenFileEvent({ path: "README.md" })),
+  onOpenUrl: () => Stream.make(new AppOpenUrlEvent({ url: "effect-desktop://open" })),
+  onBeforeQuit: () => Stream.make(new AppBeforeQuitEvent({ traceId: "trace" }))
+})
+
 const noopWindowClient: WindowClientApi = {
   create: () => Effect.succeed(windowHandle),
   show: () => Effect.void,
@@ -437,6 +619,28 @@ const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExch
       })
     )
   }
+})
+
+const appExchange = (
+  requests: HostProtocolRequestEnvelope[],
+  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
+): ApiClientExchange => ({
+  request: (request) => {
+    requests.push(request)
+    return Effect.succeed(respond(request))
+  },
+  subscribe: (method) =>
+    method === "App.onOpenFile"
+      ? Stream.make(
+          new HostProtocolEventEnvelope({
+            kind: "event",
+            timestamp: 1710000000100,
+            traceId: "event-trace",
+            method,
+            payload: { path: "README.md" }
+          })
+        )
+      : Stream.empty
 })
 
 const makeWindowApiExchange = (
