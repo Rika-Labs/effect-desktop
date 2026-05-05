@@ -217,6 +217,44 @@ test("non-reusable explicit id reuse cannot refresh a disposed handle", async ()
   })
 })
 
+test("register does not overwrite a live entry with a duplicate explicit id", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      let cleanupCount = 0
+      const duplicateId = id("018e2f36-5800-7000-8000-000000000013")
+      const fallbackId = id("018e2f36-5800-7000-8000-000000000014")
+      const registry = yield* makeResourceRegistry({
+        nextId: () => fallbackId
+      })
+      const first = yield* registry.register({
+        kind: "process",
+        id: duplicateId,
+        ownerScope: "scope-process",
+        state: "running",
+        dispose: Effect.sync(() => {
+          cleanupCount += 1
+        })
+      })
+      const second = yield* registry.register({
+        kind: "process",
+        id: duplicateId,
+        ownerScope: "scope-process",
+        state: "running"
+      })
+
+      yield* registry.dispose(first.id)
+      const snapshot = yield* registry.list()
+
+      return { cleanupCount, first, second, snapshot }
+    })
+  )
+
+  expect(result.first.id).toBe(id("018e2f36-5800-7000-8000-000000000013"))
+  expect(result.second.id).toBe(id("018e2f36-5800-7000-8000-000000000014"))
+  expect(result.cleanupCount).toBe(1)
+  expect(result.snapshot.entries.map((entry) => entry.handle.id)).toEqual([result.second.id])
+})
+
 test("handle dispose delegates to the registry", async () => {
   const snapshot = await Effect.runPromise(
     Effect.gen(function* () {

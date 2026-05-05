@@ -120,32 +120,31 @@ export const makeResourceRegistry = (
     ): Effect.Effect<ResourceHandle<Kind, State>, never, never> =>
       Effect.gen(function* () {
         const createdAt = now()
-        const id = input.id ?? nextId(createdAt)
-        const generation = generationForRegistration(
-          id,
-          input.kind,
-          input.reusableId,
-          disposedGenerations
-        )
-        const handle: ResourceHandle<Kind, State> = {
-          kind: input.kind,
-          id,
-          generation,
-          ownerScope: input.ownerScope,
-          state: input.state,
-          dispose: () => dispose(id)
-        }
-        const stored: StoredResourceEntry = {
-          handle,
-          createdAt,
-          reusableId: input.reusableId === true,
-          dispose: input.dispose ?? Effect.void
-        }
-
-        yield* SubscriptionRef.update(entries, (current) => {
+        const handle = yield* SubscriptionRef.modify(entries, (current) => {
+          const id = availableRegistrationId(input.id, createdAt, nextId, current)
+          const generation = generationForRegistration(
+            id,
+            input.kind,
+            input.reusableId,
+            disposedGenerations
+          )
+          const handle: ResourceHandle<Kind, State> = {
+            kind: input.kind,
+            id,
+            generation,
+            ownerScope: input.ownerScope,
+            state: input.state,
+            dispose: () => dispose(id)
+          }
+          const stored: StoredResourceEntry = {
+            handle,
+            createdAt,
+            reusableId: input.reusableId === true,
+            dispose: input.dispose ?? Effect.void
+          }
           const next = new Map(current)
           next.set(id, stored)
-          return next
+          return [handle, next] as const
         })
 
         return handle
@@ -222,6 +221,20 @@ const generationForRegistration = (
 
 const nextGenerationAfter = (generation: number): number => {
   return generation < 0 ? 1 : generation + 1
+}
+
+const availableRegistrationId = (
+  requestedId: ResourceId | undefined,
+  createdAt: number,
+  nextId: (now: number) => ResourceId,
+  current: ReadonlyMap<ResourceId, StoredResourceEntry>
+): ResourceId => {
+  if (requestedId !== undefined && !current.has(requestedId)) {
+    return requestedId
+  }
+
+  const candidate = nextId(createdAt)
+  return current.has(candidate) ? generateUuidV7(createdAt) : candidate
 }
 
 const publicEntry = (entry: StoredResourceEntry): ResourceEntry => ({
