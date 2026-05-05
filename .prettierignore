@@ -5,5 +5,6 @@ target/
 .turbo/
 coverage/
 docs/SPEC.md
+crates/host-protocol/fixtures/*.json
 bun.lock
 *.lockb
