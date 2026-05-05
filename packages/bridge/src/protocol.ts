@@ -1,5 +1,7 @@
 import { Schema } from "effect"
 
+const UInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+const UInt32 = UInt.check(Schema.isLessThanOrEqualTo(4_294_967_295))
 const OptionalString = Schema.optionalKey(Schema.String)
 const OptionalUnknown = Schema.optionalKey(Schema.Unknown)
 
@@ -22,7 +24,7 @@ export class HostProtocolTimeoutError extends Schema.Class<HostProtocolTimeoutEr
   "HostProtocolTimeoutError"
 )({
   tag: Schema.Literal("Timeout"),
-  timeoutMs: Schema.Number
+  timeoutMs: UInt
 }) {}
 
 export class HostProtocolCancelledError extends Schema.Class<HostProtocolCancelledError>(
@@ -59,22 +61,22 @@ export class HostProtocolDiskFullError extends Schema.Class<HostProtocolDiskFull
 )({
   tag: Schema.Literal("DiskFull"),
   path: Schema.String,
-  freeBytes: Schema.Number
+  freeBytes: UInt
 }) {}
 
 export class HostProtocolRateLimitedError extends Schema.Class<HostProtocolRateLimitedError>(
   "HostProtocolRateLimitedError"
 )({
   tag: Schema.Literal("RateLimited"),
-  retryAfterMs: Schema.Number
+  retryAfterMs: UInt
 }) {}
 
 export class HostProtocolFrameTooLargeError extends Schema.Class<HostProtocolFrameTooLargeError>(
   "HostProtocolFrameTooLargeError"
 )({
   tag: Schema.Literal("FrameTooLarge"),
-  sizeBytes: Schema.Number,
-  limitBytes: Schema.Number
+  sizeBytes: UInt,
+  limitBytes: UInt
 }) {}
 
 export class HostProtocolOriginInvalidError extends Schema.Class<HostProtocolOriginInvalidError>(
@@ -89,8 +91,8 @@ export class HostProtocolStaleHandleError extends Schema.Class<HostProtocolStale
   tag: Schema.Literal("StaleHandle"),
   kind: Schema.String,
   id: Schema.String,
-  expectedGeneration: Schema.Number,
-  actualGeneration: Schema.Number
+  expectedGeneration: UInt32,
+  actualGeneration: UInt32
 }) {}
 
 export class HostProtocolCrossScopeHandleError extends Schema.Class<HostProtocolCrossScopeHandleError>(
@@ -108,14 +110,14 @@ export class HostProtocolBackpressureOverflowError extends Schema.Class<HostProt
 )({
   tag: Schema.Literal("BackpressureOverflow"),
   policy: Schema.String,
-  lostFrames: Schema.Number
+  lostFrames: UInt
 }) {}
 
 export class HostProtocolRendererDisconnectedError extends Schema.Class<HostProtocolRendererDisconnectedError>(
   "HostProtocolRendererDisconnectedError"
 )({
   tag: Schema.Literal("RendererDisconnected"),
-  durationMs: Schema.Number
+  durationMs: UInt
 }) {}
 
 export class HostProtocolRuntimeRestartedError extends Schema.Class<HostProtocolRuntimeRestartedError>(
@@ -128,7 +130,7 @@ export class HostProtocolRuntimeUnavailableError extends Schema.Class<HostProtoc
   "HostProtocolRuntimeUnavailableError"
 )({
   tag: Schema.Literal("RuntimeUnavailable"),
-  retryAfterMs: Schema.Number
+  retryAfterMs: UInt
 }) {}
 
 export class HostProtocolHostUnavailableError extends Schema.Class<HostProtocolHostUnavailableError>(
@@ -157,7 +159,7 @@ export class HostProtocolPermissionRevokedError extends Schema.Class<HostProtoco
 )({
   tag: Schema.Literal("PermissionRevoked"),
   capability: Schema.String,
-  revokedAt: Schema.Number
+  revokedAt: UInt
 }) {}
 
 export class HostProtocolStreamClosedError extends Schema.Class<HostProtocolStreamClosedError>(
@@ -233,7 +235,7 @@ export class HostProtocolEventLogFullError extends Schema.Class<HostProtocolEven
   "HostProtocolEventLogFullError"
 )({
   tag: Schema.Literal("EventLogFull"),
-  freeBytes: Schema.Number
+  freeBytes: UInt
 }) {}
 
 export class HostProtocolUpdateDowngradeRefusedError extends Schema.Class<HostProtocolUpdateDowngradeRefusedError>(
@@ -248,8 +250,8 @@ export class HostProtocolUpdateDownloadTruncatedError extends Schema.Class<HostP
   "HostProtocolUpdateDownloadTruncatedError"
 )({
   tag: Schema.Literal("UpdateDownloadTruncated"),
-  downloadedBytes: Schema.Number,
-  expectedBytes: Schema.Number
+  downloadedBytes: UInt,
+  expectedBytes: UInt
 }) {}
 
 export class HostProtocolUpdateStaleNotarizationError extends Schema.Class<HostProtocolUpdateStaleNotarizationError>(
@@ -263,7 +265,7 @@ export class HostProtocolSettingsMigrationFailedError extends Schema.Class<HostP
   "HostProtocolSettingsMigrationFailedError"
 )({
   tag: Schema.Literal("SettingsMigrationFailed"),
-  schemaVersion: Schema.Number,
+  schemaVersion: UInt32,
   cause: Schema.String
 }) {}
 
@@ -345,7 +347,7 @@ export class HostProtocolRequestEnvelope extends Schema.Class<HostProtocolReques
   kind: Schema.Literal("request"),
   id: Schema.String,
   method: Schema.String,
-  timestamp: Schema.Number,
+  timestamp: UInt,
   traceId: Schema.String,
   windowId: OptionalString,
   originToken: OptionalString,
@@ -357,7 +359,7 @@ export class HostProtocolResponseEnvelope extends Schema.Class<HostProtocolRespo
 )({
   kind: Schema.Literal("response"),
   id: Schema.String,
-  timestamp: Schema.Number,
+  timestamp: UInt,
   traceId: Schema.String,
   payload: OptionalUnknown,
   error: Schema.optionalKey(HostProtocolError)
@@ -368,7 +370,7 @@ export class HostProtocolEventEnvelope extends Schema.Class<HostProtocolEventEnv
 )({
   kind: Schema.Literal("event"),
   method: Schema.String,
-  timestamp: Schema.Number,
+  timestamp: UInt,
   traceId: Schema.String,
   windowId: OptionalString,
   payload: OptionalUnknown
@@ -380,7 +382,7 @@ export class HostProtocolStreamByRequestEnvelope extends Schema.Class<HostProtoc
   kind: Schema.Literal("stream"),
   id: Schema.String,
   resourceId: OptionalString,
-  timestamp: Schema.Number,
+  timestamp: UInt,
   traceId: Schema.String,
   payload: OptionalUnknown,
   error: Schema.optionalKey(HostProtocolError)
@@ -392,7 +394,7 @@ export class HostProtocolStreamByResourceEnvelope extends Schema.Class<HostProto
   kind: Schema.Literal("stream"),
   id: OptionalString,
   resourceId: Schema.String,
-  timestamp: Schema.Number,
+  timestamp: UInt,
   traceId: Schema.String,
   payload: OptionalUnknown,
   error: Schema.optionalKey(HostProtocolError)
@@ -404,7 +406,7 @@ export class HostProtocolCancelByRequestEnvelope extends Schema.Class<HostProtoc
   kind: Schema.Literal("cancel"),
   id: Schema.String,
   resourceId: OptionalString,
-  timestamp: Schema.Number,
+  timestamp: UInt,
   traceId: Schema.String
 }) {}
 
@@ -414,7 +416,7 @@ export class HostProtocolCancelByResourceEnvelope extends Schema.Class<HostProto
   kind: Schema.Literal("cancel"),
   id: OptionalString,
   resourceId: Schema.String,
-  timestamp: Schema.Number,
+  timestamp: UInt,
   traceId: Schema.String
 }) {}
 

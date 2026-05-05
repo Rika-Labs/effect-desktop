@@ -83,6 +83,36 @@ test("host protocol error tags are closed", () => {
   ).toThrow()
 })
 
+test("timestamps reject values Rust unsigned integers reject", () => {
+  for (const timestamp of [-1, 1.5, Number.NaN]) {
+    expect(() =>
+      decodeHostProtocolEnvelope({
+        kind: "request",
+        id: "request-1",
+        method: "host.ping",
+        timestamp,
+        traceId: "trace-invalid-timestamp"
+      })
+    ).toThrow()
+  }
+})
+
+test("u32 error fields reject values above Rust u32 max", () => {
+  expect(() =>
+    decodeHostProtocolEnvelope({
+      kind: "response",
+      id: "request-2",
+      timestamp: 1710000000005,
+      traceId: "trace-invalid-schema",
+      error: {
+        tag: "SettingsMigrationFailed",
+        schemaVersion: 4_294_967_296,
+        cause: "version overflow"
+      }
+    })
+  ).toThrow()
+})
+
 test("host protocol envelope type accepts decoded fixture values", async () => {
   const source = await readFile(join(FIXTURE_DIR, "request.json"), "utf8")
   const envelope: HostProtocolEnvelope = decodeHostProtocolEnvelope(JSON.parse(source))
