@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@effect-desktop/bridge": "workspace:*",
+    "@effect-desktop/core": "workspace:*",
     "effect": "4.0.0-beta.60"
   }
 }

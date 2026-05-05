@@ -8,7 +8,7 @@ TypeScript-facing native services backed by the Rust host: `App`, `Window`, `Web
 
 ## Public API
 
-`Window` is exposed as an Effect service. `WindowApi` declares the matching bridge contract, `registerWindowApi()` registers it during bootstrap before the bridge registry is frozen, and `WindowClient` is the substitutable port used by tests and future host-backed adapters.
+`Window` is exposed as an Effect service. `WindowApi` declares the matching bridge contract, `registerWindowApi()` registers it during bootstrap before the bridge registry is frozen, `makeHostWindowApiLayer()` binds the runtime handler side to the existing host window envelopes, and `makeWindowBridgeClientLayer()` supplies the service through the typed bridge client. `WindowClient` remains the substitutable port used by tests and adapters.
 
 ## Non-goals
 
@@ -35,7 +35,7 @@ bun run typecheck
 
 ## Dependency notes
 
-This package depends on `effect` for services/layers and on `@effect-desktop/bridge` for the shared `Api` contract and host protocol error schemas. These are framework-internal dependencies required by the Phase 5 Window service boundary.
+This package depends on `effect` for services/layers, on `@effect-desktop/bridge` for the shared `Api` contract and host protocol error schemas, and on `@effect-desktop/core` for the runtime resource registry used by the live Window adapter. These are framework-internal dependencies required by the Phase 5 Window service boundary.
 
 ## Platform notes
 
