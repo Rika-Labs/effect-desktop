@@ -30,12 +30,7 @@ pub(super) fn configure_command(command: &mut Command) {
 }
 
 #[cfg(windows)]
-pub(super) fn configure_command(command: &mut Command) {
-    use std::os::windows::process::CommandExt;
-    use windows_sys::Win32::System::Threading::CREATE_BREAKAWAY_FROM_JOB;
-
-    command.creation_flags(CREATE_BREAKAWAY_FROM_JOB);
-}
+pub(super) fn configure_command(_command: &mut Command) {}
 
 #[cfg(not(any(unix, windows)))]
 pub(super) fn configure_command(_command: &mut Command) {}
