@@ -82,6 +82,23 @@ test("Api.Tag rejects invalid timeout values as a typed Effect failure", async (
   expectFailure(exit, InvalidApiContractSpec)
 })
 
+test("Api.Tag rejects invalid backpressure values as a typed Effect failure", async () => {
+  const exit = await Effect.runPromiseExit(
+    Api.Tag("Test.InvalidBackpressure")<unknown>()({
+      call: {
+        ...validMethodSpec(),
+        backpressure: {
+          strategy: "buffer",
+          size: 1.5,
+          overflow: "drop-oldest"
+        }
+      }
+    } as unknown as ApiContractSpec)
+  )
+
+  expectFailure(exit, InvalidApiContractSpec)
+})
+
 test("contract classes expose frozen layer descriptors", async () => {
   const LayeredApi = await Effect.runPromise(
     Api.Tag("Test.Layered")<unknown>()({

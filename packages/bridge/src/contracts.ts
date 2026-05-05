@@ -181,6 +181,40 @@ const validateMethodSpec = (
         invalidSpec(tag, method, "timeoutMs must be a non-negative finite number")
       )
     }
+    if (spec.backpressure !== undefined) {
+      yield* validateBackpressureSpec(tag, method, spec.backpressure)
+    }
+  })
+
+const validateBackpressureSpec = (
+  tag: string,
+  method: string,
+  spec: BackpressureSpec
+): Effect.Effect<void, InvalidApiContractSpec, never> =>
+  Effect.gen(function* () {
+    if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
+      return yield* Effect.fail(invalidSpec(tag, method, "backpressure must be an object"))
+    }
+
+    if (!backpressureStrategies.has(spec.strategy)) {
+      return yield* Effect.fail(
+        invalidSpec(tag, method, "backpressure.strategy must be buffer, drop, or block")
+      )
+    }
+    if (spec.size !== undefined && (!Number.isInteger(spec.size) || spec.size < 0)) {
+      return yield* Effect.fail(
+        invalidSpec(tag, method, "backpressure.size must be a non-negative integer")
+      )
+    }
+    if (spec.overflow !== undefined && !backpressureOverflows.has(spec.overflow)) {
+      return yield* Effect.fail(
+        invalidSpec(
+          tag,
+          method,
+          "backpressure.overflow must be error, dropOldest, dropNewest, or block"
+        )
+      )
+    }
   })
 
 const freezeContractSpec = <Spec extends ApiContractSpec>(spec: Spec): Spec => {
@@ -205,4 +239,11 @@ const isSchema = (value: unknown): value is Schema.Schema<unknown> => {
 }
 
 const apiContracts = new Map<string, ApiContractClass>()
+const backpressureStrategies = new Set<BackpressureSpec["strategy"]>(["buffer", "drop", "block"])
+const backpressureOverflows = new Set<NonNullable<BackpressureSpec["overflow"]>>([
+  "error",
+  "dropOldest",
+  "dropNewest",
+  "block"
+])
 let registryFrozen = false
