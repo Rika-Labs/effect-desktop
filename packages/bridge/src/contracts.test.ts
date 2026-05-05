@@ -1,12 +1,16 @@
 import { expect, test } from "bun:test"
-import { Cause, Context, Effect, Exit, Option, Schema } from "effect"
+import { Cause, Context, Effect, Exit, Option, Schema, Stream } from "effect"
 
 import {
   Api,
   ApiContractRegistryFrozen,
+  Client,
   DuplicateApiContractTag,
+  HostProtocolRequestEnvelope,
   InvalidApiContractSpec,
-  type ApiContractSpec
+  makeHostProtocolInvalidOutputError,
+  type ApiContractSpec,
+  type HostProtocolError
 } from "./index.js"
 
 test("Api.Tag registers a frozen contract and exposes a stable snapshot", async () => {
@@ -59,6 +63,7 @@ test("Api.Tag accepts Effect schema classes", async () => {
 })
 
 test("Api.Tag registers frozen event specs", async () => {
+  const EventPayload = Schema.Struct({ id: Schema.String })
   const EventsApi = await Effect.runPromise(
     Api.Tag("Test.EventsApi")<unknown>()(
       {
@@ -66,7 +71,7 @@ test("Api.Tag registers frozen event specs", async () => {
       },
       {
         changed: {
-          payload: Schema.Struct({ id: Schema.String }),
+          payload: EventPayload,
           backpressure: { strategy: "drop", size: 16 }
         }
       }
@@ -76,6 +81,18 @@ test("Api.Tag registers frozen event specs", async () => {
   expect(Object.isFrozen(EventsApi.events)).toBe(true)
   expect(Object.isFrozen(EventsApi.events["changed"])).toBe(true)
   expect(Object.isFrozen(EventsApi.events["changed"]?.backpressure)).toBe(true)
+
+  const client = Client(
+    { events: EventsApi },
+    {
+      request: (_request: HostProtocolRequestEnvelope) =>
+        Effect.fail(makeHostProtocolInvalidOutputError("Test.EventsApi.call", "unused"))
+    }
+  )
+  const stream: Stream.Stream<typeof EventPayload.Type, HostProtocolError, never> =
+    client.events.events.changed
+
+  expect(stream).toBeDefined()
 })
 
 test("Api.Tag rejects duplicate tags as a typed Effect failure", async () => {

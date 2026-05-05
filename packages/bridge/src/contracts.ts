@@ -87,10 +87,13 @@ export const Api = Object.freeze({
     function ApiTagSelf<Self>() {
       void (undefined as Self | undefined)
 
-      return <Spec extends ApiContractSpec>(
+      return <
+        Spec extends ApiContractSpec,
+        Events extends ApiContractEvents = Record<never, never>
+      >(
         spec: Spec,
-        events: ApiContractEvents = {}
-      ): Effect.Effect<ApiContractClass<Tag, Spec, typeof events>, ApiContractError, never> =>
+        events: Events = {} as Events
+      ): Effect.Effect<ApiContractClass<Tag, Spec, Events>, ApiContractError, never> =>
         registerApiContract(tag, spec, events)
     },
   entries: (): Effect.Effect<readonly ApiContractClass[], never, never> =>
@@ -109,11 +112,15 @@ export const Api = Object.freeze({
 export const apiContractEntries = (): readonly ApiContractClass[] =>
   Object.freeze(Array.from(apiContracts.values()))
 
-const registerApiContract = <Tag extends string, Spec extends ApiContractSpec>(
+const registerApiContract = <
+  Tag extends string,
+  Spec extends ApiContractSpec,
+  Events extends ApiContractEvents
+>(
   tag: Tag,
   spec: Spec,
-  events: ApiContractEvents
-): Effect.Effect<ApiContractClass<Tag, Spec, typeof events>, ApiContractError, never> =>
+  events: Events
+): Effect.Effect<ApiContractClass<Tag, Spec, Events>, ApiContractError, never> =>
   Effect.gen(function* () {
     if (registryFrozen) {
       return yield* Effect.fail(
@@ -145,7 +152,7 @@ const registerApiContract = <Tag extends string, Spec extends ApiContractSpec>(
 
       static layer<Handlers extends ApiHandlers<Spec>>(
         handlers: Handlers
-      ): ApiLayer<Tag, Spec, Handlers, typeof events> {
+      ): ApiLayer<Tag, Spec, Handlers, Events> {
         const frozenHandlers = Object.freeze(handlers)
 
         return Object.freeze({
@@ -153,7 +160,7 @@ const registerApiContract = <Tag extends string, Spec extends ApiContractSpec>(
           handlers: frozenHandlers
         })
       }
-    } as ApiContractClass<Tag, Spec, typeof events>
+    } as ApiContractClass<Tag, Spec, Events>
 
     Object.freeze(contract)
     apiContracts.set(tag, contract)
