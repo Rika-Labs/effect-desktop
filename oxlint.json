@@ -59,6 +59,8 @@
   "ignorePatterns": [
     "node_modules",
     "dist",
+    "**/dist",
+    "**/dist/**",
     "build",
     "target",
     ".turbo",

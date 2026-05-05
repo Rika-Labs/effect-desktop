@@ -4,36 +4,22 @@ pub(crate) struct EmbeddedAsset {
     pub(crate) content_type: &'static str,
 }
 
-#[derive(Clone, Copy)]
-struct AssetEntry {
-    path: &'static str,
-    bytes: &'static [u8],
+mod generated {
+    include!(concat!(env!("OUT_DIR"), "/embedded_assets.rs"));
 }
 
 const INDEX_PATH: &str = "/index.html";
 const HTML_CONTENT_TYPE: &str = "text/html; charset=utf-8";
 const CSS_CONTENT_TYPE: &str = "text/css; charset=utf-8";
 const JAVASCRIPT_CONTENT_TYPE: &str = "text/javascript; charset=utf-8";
+const JSON_CONTENT_TYPE: &str = "application/json; charset=utf-8";
 const OCTET_STREAM_CONTENT_TYPE: &str = "application/octet-stream";
-
-const ASSETS: &[AssetEntry] = &[
-    AssetEntry {
-        path: INDEX_PATH,
-        bytes: include_bytes!("../../../apps/playground/dist/index.html"),
-    },
-    AssetEntry {
-        path: "/style.css",
-        bytes: include_bytes!("../../../apps/playground/dist/style.css"),
-    },
-    AssetEntry {
-        path: "/app.js",
-        bytes: include_bytes!("../../../apps/playground/dist/app.js"),
-    },
-];
 
 pub(crate) fn resolve(path: &str) -> Option<EmbeddedAsset> {
     let normalized_path = normalize_path(path)?;
-    let entry = ASSETS.iter().find(|asset| asset.path == normalized_path)?;
+    let entry = generated::GENERATED_ASSETS
+        .iter()
+        .find(|asset| asset.path == normalized_path)?;
 
     Some(EmbeddedAsset {
         bytes: entry.bytes,
@@ -60,6 +46,8 @@ fn content_type_for_path(path: &str) -> &'static str {
         CSS_CONTENT_TYPE
     } else if path.ends_with(".js") {
         JAVASCRIPT_CONTENT_TYPE
+    } else if path.ends_with(".json") {
+        JSON_CONTENT_TYPE
     } else {
         OCTET_STREAM_CONTENT_TYPE
     }
@@ -77,12 +65,12 @@ mod tests {
         assert!(asset.bytes.starts_with(b"<!doctype html>"));
         assert!(asset
             .bytes
-            .windows(b"/style.css".len())
-            .any(|window| window == b"/style.css"));
+            .windows(b"/assets/".len())
+            .any(|window| window == b"/assets/"));
         assert!(asset
             .bytes
-            .windows(b"/app.js".len())
-            .any(|window| window == b"/app.js"));
+            .windows(b"__APP_NONCE__".len())
+            .any(|window| window == b"__APP_NONCE__"));
     }
 
     #[test]
@@ -95,19 +83,25 @@ mod tests {
 
     #[test]
     fn sibling_assets_resolve_with_mime_types() {
-        let css = resolve("/style.css").expect("style asset should resolve");
-        let js = resolve("/app.js").expect("script asset should resolve");
+        let index = resolve("/").expect("root should resolve");
+        let index_text = std::str::from_utf8(index.bytes).expect("index should be utf8");
+        let css_path = first_between(index_text, "href=\"", "\"")
+            .expect("index should contain a stylesheet link");
+        let js_path =
+            first_between(index_text, "src=\"", "\"").expect("index should contain a script");
+        let css = resolve(css_path).expect("style asset should resolve");
+        let js = resolve(js_path).expect("script asset should resolve");
 
         assert_eq!(css.content_type, CSS_CONTENT_TYPE);
         assert!(css
             .bytes
-            .windows(b".shell".len())
-            .any(|window| window == b".shell"));
+            .windows(b"min-height".len())
+            .any(|window| window == b"min-height"));
         assert_eq!(js.content_type, JAVASCRIPT_CONTENT_TYPE);
         assert!(js
             .bytes
-            .windows(b"Playground renderer hydrated".len())
-            .any(|window| window == b"Playground renderer hydrated"));
+            .windows(b"Effect Desktop playground renderer".len())
+            .any(|window| window == b"Effect Desktop playground renderer"));
     }
 
     #[test]
@@ -122,5 +116,12 @@ mod tests {
         assert_eq!(resolve("/../index.html"), None);
         assert_eq!(resolve("/assets/../index.html"), None);
         assert_eq!(resolve("\\index.html"), None);
+    }
+
+    fn first_between<'a>(value: &'a str, start: &str, end: &str) -> Option<&'a str> {
+        let (_, after_start) = value.split_once(start)?;
+        let (inner, _) = after_start.split_once(end)?;
+
+        Some(inner)
     }
 }

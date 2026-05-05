@@ -98,8 +98,16 @@ mod tests {
         );
         assert!(response
             .body()
-            .windows(b"Effect Desktop playground renderer".len())
-            .any(|window| window == b"Effect Desktop playground renderer"));
+            .windows(b"id=\"root\"".len())
+            .any(|window| window == b"id=\"root\""));
+        assert!(response
+            .body()
+            .windows(b"/assets/".len())
+            .any(|window| window == b"/assets/"));
+        assert!(response
+            .body()
+            .windows(b"__APP_NONCE__".len())
+            .any(|window| window == b"__APP_NONCE__"));
     }
 
     #[test]

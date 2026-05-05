@@ -1,23 +1,33 @@
 use crate::scheme;
 use anyhow::{Context, Result};
+use std::borrow::Cow;
 use tao::window::Window;
 use tracing::info;
 use wry::{WebView, WebViewBuilder};
 
 const WEBVIEW_OPENED_EVENT: &str = "host.webview.opened";
+const DEV_URL_ENV: &str = "EFFECT_DESKTOP_DEV_URL";
 
 pub(crate) fn attach_app_webview(window: &Window) -> Result<WebView> {
-    let builder = scheme::register_app_scheme(WebViewBuilder::new()).with_url(scheme::APP_URL);
+    let url = renderer_url(std::env::var(DEV_URL_ENV).ok());
+    let builder = scheme::register_app_scheme(WebViewBuilder::new()).with_url(url.to_string());
     let webview = build_webview(builder, window)?;
 
     info!(
         event = WEBVIEW_OPENED_EVENT,
         source = scheme::APP_PROTOCOL_SOURCE_KIND,
-        url = scheme::APP_URL,
+        url = url.as_ref(),
         "host webview opened"
     );
 
     Ok(webview)
+}
+
+fn renderer_url(dev_url: Option<String>) -> Cow<'static, str> {
+    match dev_url {
+        Some(url) if !url.trim().is_empty() => Cow::Owned(url),
+        _ => Cow::Borrowed(scheme::APP_URL),
+    }
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -43,11 +53,22 @@ fn build_webview(builder: WebViewBuilder<'_>, window: &Window) -> Result<WebView
 
 #[cfg(test)]
 mod tests {
+    use super::renderer_url;
     use crate::scheme::{APP_PROTOCOL_SOURCE_KIND, APP_URL};
 
     #[test]
     fn webview_source_identifies_the_app_protocol_path() {
         assert_eq!(APP_PROTOCOL_SOURCE_KIND, "app-protocol");
         assert_eq!(APP_URL, "app://localhost/");
+    }
+
+    #[test]
+    fn renderer_url_uses_dev_url_when_present() {
+        assert_eq!(
+            renderer_url(Some("http://127.0.0.1:5173/".to_string())).as_ref(),
+            "http://127.0.0.1:5173/"
+        );
+        assert_eq!(renderer_url(Some("".to_string())).as_ref(), APP_URL);
+        assert_eq!(renderer_url(None).as_ref(), APP_URL);
     }
 }
