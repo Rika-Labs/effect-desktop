@@ -10,7 +10,10 @@ Thin React integration for renderer clients: `DesktopProvider`, `useDesktop`, `u
 
 - `DesktopProvider` supplies a public `DesktopClient` to renderer components.
 - `useDesktop` returns `Option.Option<DesktopClient>` instead of throwing when no provider is mounted.
-- `useWindow` returns `Option.Option<DesktopWindowClient>`.
+- `useWindow` returns `Option.Option<WindowHandle>` for the current renderer window.
+- `useDesktopStream` subscribes to an Effect stream and interrupts it from React cleanup.
+- `useResource` disposes a handle from React cleanup.
+- `usePermission` exposes the Phase 16 placeholder state.
 
 ## Dependency note
 
@@ -50,4 +53,4 @@ The package is renderer-only. Native operations stay represented as Effect value
 
 ## Internal architecture
 
-React context stores an optional desktop client. Absence is modeled as `Option.none()` so renderer code can branch explicitly instead of catching provider errors.
+React context stores an optional desktop client and current window handle. Absence is modeled as `Option.none()` so renderer code can branch explicitly instead of catching provider errors.
