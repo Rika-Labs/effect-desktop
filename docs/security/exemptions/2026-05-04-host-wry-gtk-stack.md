@@ -92,5 +92,4 @@ smoke, first `app://` scheme stub, and first embedded playground renderer asset:
   runtime filesystem asset lookup, IPC, navigation policy, remote content, or
   permissions.
 - PR #148 CI runs the app-protocol smoke path on Linux under `xvfb-run -a`.
-- The issue #11 PR CI runs the embedded-asset smoke path on Linux under
-  `xvfb-run -a`.
+- PR #149 CI runs the embedded-asset smoke path on Linux under `xvfb-run -a`.
