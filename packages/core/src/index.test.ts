@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 
-test("public barrel remains empty until the public API phase", async () => {
+test("public barrel exports the ResourceRegistry factory", async () => {
   const core = await import("./index.js")
 
-  expect(core).toEqual({})
+  expect(core.makeResourceRegistry).toBeFunction()
 })
