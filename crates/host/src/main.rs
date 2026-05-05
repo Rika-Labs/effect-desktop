@@ -42,7 +42,9 @@ fn main() -> Result<()> {
         "host started"
     );
 
-    let mut runtime_supervisor = runtime::Supervisor::spawn(runtime_config())?;
+    let runtime_profile = runtime::RuntimeProfile::from_env()?;
+    let runtime_policy = runtime::RestartPolicy::for_profile(runtime_profile);
+    let mut runtime_supervisor = runtime::Supervisor::spawn(runtime_config(), runtime_policy)?;
     let runtime_ready = runtime::await_ready(&mut runtime_supervisor, RUNTIME_READY_TIMEOUT)?;
     info!(
         event = "runtime.ready",

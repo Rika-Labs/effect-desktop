@@ -5,6 +5,7 @@ mod platform;
 use anyhow::{bail, Context, Result};
 use serde_json::Value;
 use std::{
+    env::VarError,
     ffi::OsString,
     io::{self, BufRead, BufReader, Read},
     path::PathBuf,
@@ -13,11 +14,15 @@ use std::{
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 
 const RUNTIME_READY_EVENT: &str = "runtime.ready";
+const RUNTIME_PROFILE_ENV: &str = "EFFECT_DESKTOP_PROFILE";
+const DEFAULT_RESTART_READY_TIMEOUT: Duration = Duration::from_secs(10);
+const DEFAULT_DEV_RESTARTS: usize = 3;
 const TERMINATION_GRACE: Duration = Duration::from_secs(5);
 const TERMINATION_POLL_INTERVAL: Duration = Duration::from_millis(10);
+const MONITOR_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RuntimeConfig {
@@ -77,6 +82,71 @@ impl RuntimeReady {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RuntimeProfile {
+    Dev,
+    Prod,
+}
+
+impl RuntimeProfile {
+    pub(crate) fn from_env() -> Result<Self> {
+        match std::env::var(RUNTIME_PROFILE_ENV) {
+            Ok(value) => Self::from_env_value(Some(&value)),
+            Err(VarError::NotPresent) => Self::from_env_value(None),
+            Err(VarError::NotUnicode(value)) => {
+                bail!("invalid {RUNTIME_PROFILE_ENV} non-Unicode value {value:?}")
+            }
+        }
+    }
+
+    fn from_env_value(value: Option<&str>) -> Result<Self> {
+        match value {
+            Some("dev") => Ok(Self::Dev),
+            Some("prod") => Ok(Self::Prod),
+            Some(value) => {
+                bail!("invalid {RUNTIME_PROFILE_ENV} value {value:?}; expected \"dev\" or \"prod\"")
+            }
+            None => Ok(Self::default_for_build()),
+        }
+    }
+
+    fn default_for_build() -> Self {
+        if cfg!(debug_assertions) {
+            Self::Dev
+        } else {
+            Self::Prod
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Dev => "dev",
+            Self::Prod => "prod",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct RestartPolicy {
+    profile: RuntimeProfile,
+    max_dev_restarts: usize,
+    ready_timeout: Duration,
+}
+
+impl RestartPolicy {
+    pub(crate) fn for_profile(profile: RuntimeProfile) -> Self {
+        Self {
+            profile,
+            max_dev_restarts: DEFAULT_DEV_RESTARTS,
+            ready_timeout: DEFAULT_RESTART_READY_TIMEOUT,
+        }
+    }
+
+    fn should_restart(self, completed_restarts: usize) -> bool {
+        self.profile == RuntimeProfile::Dev && completed_restarts < self.max_dev_restarts
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RuntimeStream {
     Stdout,
     Stderr,
@@ -110,91 +180,79 @@ enum Termination {
     Terminate,
 }
 
-pub(crate) struct Supervisor {
-    events: Option<Receiver<RuntimeEvent>>,
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MonitorCommand {
+    Shutdown,
+}
+
+struct RuntimeChild {
+    events: Receiver<RuntimeEvent>,
     terminate: Sender<Termination>,
-    lifecycle_thread: Option<JoinHandle<()>>,
-    event_drain_thread: Option<JoinHandle<()>>,
+    lifecycle_thread: JoinHandle<()>,
+}
+
+pub(crate) struct Supervisor {
+    config: RuntimeConfig,
+    policy: RestartPolicy,
+    child: Option<RuntimeChild>,
+    monitor_shutdown: Option<Sender<MonitorCommand>>,
+    monitor_thread: Option<JoinHandle<()>>,
 }
 
 impl Supervisor {
-    pub(crate) fn spawn(config: RuntimeConfig) -> Result<Self> {
-        let mut command = config.command();
-        platform::configure_command(&mut command);
-
-        let mut child = command.spawn().with_context(|| {
-            format!("failed to spawn runtime executable {:?}", config.executable)
-        })?;
-        let pid = child.id();
-        let stdout = child
-            .stdout
-            .take()
-            .context("failed to capture runtime stdout")?;
-        let stderr = child
-            .stderr
-            .take()
-            .context("failed to capture runtime stderr")?;
-        let platform_guard = match platform::ChildGuard::attach(&child) {
-            Ok(guard) => guard,
-            Err(error) => {
-                terminate_after_failed_platform_setup(&mut child);
-                return Err(error).context("failed to attach runtime child cleanup guard");
-            }
-        };
-
-        let (event_tx, events) = mpsc::channel();
-        let (terminate, terminate_rx) = mpsc::channel();
-
-        event_tx
-            .send(RuntimeEvent::Started { pid })
-            .context("failed to emit runtime started event")?;
-
-        let stdout_thread = spawn_reader(RuntimeStream::Stdout, stdout, event_tx.clone());
-        let stderr_thread = spawn_reader(RuntimeStream::Stderr, stderr, event_tx.clone());
-        let lifecycle_thread = spawn_lifecycle(
-            child,
-            platform_guard,
-            terminate_rx,
-            event_tx,
-            stdout_thread,
-            stderr_thread,
-        );
+    pub(crate) fn spawn(config: RuntimeConfig, policy: RestartPolicy) -> Result<Self> {
+        let child = spawn_runtime_child(&config)?;
 
         Ok(Self {
-            events: Some(events),
-            terminate,
-            lifecycle_thread: Some(lifecycle_thread),
-            event_drain_thread: None,
+            config,
+            policy,
+            child: Some(child),
+            monitor_shutdown: None,
+            monitor_thread: None,
         })
     }
 
     pub(crate) fn events(&self) -> &Receiver<RuntimeEvent> {
-        self.events
+        &self
+            .child
             .as_ref()
-            .expect("runtime event receiver moved into post-ready drain")
+            .expect("runtime child moved into post-ready monitor")
+            .events
     }
 
-    fn start_post_ready_drain(&mut self) -> Result<()> {
-        let events = self
-            .events
+    fn start_post_ready_monitor(&mut self) -> Result<()> {
+        let child = self
+            .child
             .take()
-            .context("runtime event receiver already moved into post-ready drain")?;
-        self.event_drain_thread = Some(spawn_event_drain(events));
+            .context("runtime child already moved into post-ready monitor")?;
+        let (shutdown_tx, shutdown_rx) = mpsc::channel();
+        self.monitor_shutdown = Some(shutdown_tx);
+        self.monitor_thread = Some(spawn_runtime_monitor(
+            self.config.clone(),
+            self.policy,
+            child,
+            shutdown_rx,
+        ));
         Ok(())
     }
 }
 
 impl Drop for Supervisor {
     fn drop(&mut self) {
-        let _ = self.terminate.send(Termination::Terminate);
-        join_thread(self.lifecycle_thread.take());
-        join_thread(self.event_drain_thread.take());
+        if let Some(shutdown) = self.monitor_shutdown.take() {
+            let _ = shutdown.send(MonitorCommand::Shutdown);
+        }
+        join_thread(self.monitor_thread.take());
+
+        if let Some(child) = self.child.take() {
+            terminate_runtime_child(child);
+        }
     }
 }
 
 pub(crate) fn await_ready(supervisor: &mut Supervisor, timeout: Duration) -> Result<RuntimeReady> {
     let ready = await_ready_events(supervisor.events(), timeout)?;
-    supervisor.start_post_ready_drain()?;
+    supervisor.start_post_ready_monitor()?;
     Ok(ready)
 }
 
@@ -272,35 +330,262 @@ fn timeout_error(timeout: Duration, last_stdout_line: Option<&str>) -> Result<Ru
     }
 }
 
-fn spawn_event_drain(events: Receiver<RuntimeEvent>) -> JoinHandle<()> {
-    thread::spawn(move || {
-        while let Ok(event) = events.recv() {
-            trace_runtime_event(event);
+fn spawn_runtime_child(config: &RuntimeConfig) -> Result<RuntimeChild> {
+    let mut command = config.command();
+    platform::configure_command(&mut command);
+
+    let mut child = command
+        .spawn()
+        .with_context(|| format!("failed to spawn runtime executable {:?}", config.executable))?;
+    let pid = child.id();
+    let stdout = child
+        .stdout
+        .take()
+        .context("failed to capture runtime stdout")?;
+    let stderr = child
+        .stderr
+        .take()
+        .context("failed to capture runtime stderr")?;
+    let platform_guard = match platform::ChildGuard::attach(&child) {
+        Ok(guard) => guard,
+        Err(error) => {
+            terminate_after_failed_platform_setup(&mut child);
+            return Err(error).context("failed to attach runtime child cleanup guard");
         }
+    };
+
+    let (event_tx, events) = mpsc::channel();
+    let (terminate, terminate_rx) = mpsc::channel();
+
+    event_tx
+        .send(RuntimeEvent::Started { pid })
+        .context("failed to emit runtime started event")?;
+
+    let stdout_thread = spawn_reader(RuntimeStream::Stdout, stdout, event_tx.clone());
+    let stderr_thread = spawn_reader(RuntimeStream::Stderr, stderr, event_tx.clone());
+    let lifecycle_thread = spawn_lifecycle(
+        child,
+        platform_guard,
+        terminate_rx,
+        event_tx,
+        stdout_thread,
+        stderr_thread,
+    );
+
+    Ok(RuntimeChild {
+        events,
+        terminate,
+        lifecycle_thread,
     })
 }
 
-fn trace_runtime_event(event: RuntimeEvent) {
-    match event {
-        RuntimeEvent::Started { pid } => {
-            debug!(pid, "runtime child started");
-        }
-        RuntimeEvent::Stdout { line } => {
-            debug!(line, "runtime stdout");
-        }
-        RuntimeEvent::Stderr { line } => {
-            warn!(line, "runtime stderr");
-        }
-        RuntimeEvent::StdioError { stream, error } => {
-            warn!(?stream, error, "runtime stdio error");
-        }
-        RuntimeEvent::LifecycleError { error } => {
-            warn!(error, "runtime lifecycle error");
-        }
-        RuntimeEvent::Exited { status } => {
-            debug!(%status, success = status.success(), "runtime exited");
+fn spawn_runtime_monitor(
+    config: RuntimeConfig,
+    policy: RestartPolicy,
+    child: RuntimeChild,
+    shutdown: Receiver<MonitorCommand>,
+) -> JoinHandle<()> {
+    thread::spawn(move || monitor_runtime(config, policy, child, shutdown))
+}
+
+fn monitor_runtime(
+    config: RuntimeConfig,
+    policy: RestartPolicy,
+    mut child: RuntimeChild,
+    shutdown: Receiver<MonitorCommand>,
+) {
+    let mut completed_restarts = 0;
+
+    loop {
+        match next_monitor_event(&child.events, &shutdown) {
+            MonitorNext::Event(RuntimeEvent::Started { pid }) => {
+                debug!(pid, "runtime child started");
+            }
+            MonitorNext::Event(RuntimeEvent::Stdout { line }) => {
+                debug!(line, "runtime stdout");
+            }
+            MonitorNext::Event(RuntimeEvent::Stderr { line }) => {
+                warn!(line, "runtime stderr");
+            }
+            MonitorNext::Event(RuntimeEvent::StdioError { stream, error }) => {
+                warn!(?stream, error, "runtime stdio error");
+                finish_runtime_child(child);
+                break;
+            }
+            MonitorNext::Event(RuntimeEvent::LifecycleError { error }) => {
+                error!(error, "runtime lifecycle failed");
+                finish_runtime_child(child);
+                break;
+            }
+            MonitorNext::Event(RuntimeEvent::Exited { status }) => {
+                finish_runtime_child(child);
+
+                if status.success() {
+                    debug!(%status, "runtime exited cleanly");
+                    break;
+                }
+
+                if !policy.should_restart(completed_restarts) {
+                    error!(
+                        %status,
+                        profile = policy.profile.as_str(),
+                        completed_restarts,
+                        max_restarts = policy.max_dev_restarts,
+                        "runtime crashed; not restarting"
+                    );
+                    break;
+                }
+
+                completed_restarts += 1;
+                warn!(
+                    %status,
+                    completed_restarts,
+                    max_restarts = policy.max_dev_restarts,
+                    "runtime crashed; restarting in dev profile"
+                );
+
+                child = match spawn_runtime_child(&config) {
+                    Ok(child) => child,
+                    Err(error) => {
+                        error!(%error, "failed to restart runtime after crash");
+                        break;
+                    }
+                };
+
+                match await_ready_events_or_shutdown(&child.events, policy.ready_timeout, &shutdown)
+                {
+                    ReadyWait::Ready(Ok(ready)) => {
+                        warn!(
+                            version = ready.version(),
+                            completed_restarts, "runtime restarted and became ready"
+                        );
+                    }
+                    ReadyWait::Ready(Err(error)) => {
+                        error!(%error, "restarted runtime failed before ready");
+                        finish_runtime_child(child);
+                        break;
+                    }
+                    ReadyWait::Shutdown => {
+                        terminate_runtime_child(child);
+                        break;
+                    }
+                }
+            }
+            MonitorNext::Shutdown => {
+                terminate_runtime_child(child);
+                break;
+            }
+            MonitorNext::Disconnected => {
+                finish_runtime_child(child);
+                break;
+            }
         }
     }
+}
+
+enum MonitorNext {
+    Event(RuntimeEvent),
+    Shutdown,
+    Disconnected,
+}
+
+fn next_monitor_event(
+    events: &Receiver<RuntimeEvent>,
+    shutdown: &Receiver<MonitorCommand>,
+) -> MonitorNext {
+    loop {
+        if matches!(shutdown.try_recv(), Ok(MonitorCommand::Shutdown)) {
+            return MonitorNext::Shutdown;
+        }
+
+        match events.recv_timeout(MONITOR_POLL_INTERVAL) {
+            Ok(event) => return MonitorNext::Event(event),
+            Err(RecvTimeoutError::Timeout) => {
+                if matches!(shutdown.try_recv(), Ok(MonitorCommand::Shutdown)) {
+                    return MonitorNext::Shutdown;
+                }
+            }
+            Err(RecvTimeoutError::Disconnected) => return MonitorNext::Disconnected,
+        }
+    }
+}
+
+enum ReadyWait {
+    Ready(Result<RuntimeReady>),
+    Shutdown,
+}
+
+fn await_ready_events_or_shutdown(
+    events: &Receiver<RuntimeEvent>,
+    timeout: Duration,
+    shutdown: &Receiver<MonitorCommand>,
+) -> ReadyWait {
+    let deadline = Instant::now() + timeout;
+    let mut last_stdout_line = None;
+
+    loop {
+        if matches!(shutdown.try_recv(), Ok(MonitorCommand::Shutdown)) {
+            return ReadyWait::Shutdown;
+        }
+
+        let now = Instant::now();
+        if now >= deadline {
+            return ReadyWait::Ready(timeout_error(timeout, last_stdout_line.as_deref()));
+        }
+
+        match events.recv_timeout(
+            deadline
+                .saturating_duration_since(now)
+                .min(MONITOR_POLL_INTERVAL),
+        ) {
+            Ok(RuntimeEvent::Started { pid }) => {
+                debug!(pid, "runtime child started");
+            }
+            Ok(RuntimeEvent::Stdout { line }) => {
+                last_stdout_line = Some(line.clone());
+
+                match parse_runtime_ready_line(&line) {
+                    Ok(Some(ready)) => return ReadyWait::Ready(Ok(ready)),
+                    Ok(None) => debug!(line, "runtime stdout before ready"),
+                    Err(error) => return ReadyWait::Ready(Err(error)),
+                }
+            }
+            Ok(RuntimeEvent::Stderr { line }) => {
+                warn!(line, "runtime stderr before ready");
+            }
+            Ok(RuntimeEvent::StdioError { stream, error }) => {
+                return ReadyWait::Ready(Err(anyhow::anyhow!(
+                    "failed to read runtime {stream:?} before {RUNTIME_READY_EVENT}: {error}"
+                )));
+            }
+            Ok(RuntimeEvent::LifecycleError { error }) => {
+                return ReadyWait::Ready(Err(anyhow::anyhow!(
+                    "runtime lifecycle failed before {RUNTIME_READY_EVENT}: {error}"
+                )));
+            }
+            Ok(RuntimeEvent::Exited { status }) => {
+                return ReadyWait::Ready(Err(anyhow::anyhow!(
+                    "runtime exited before {RUNTIME_READY_EVENT}: {status}"
+                )));
+            }
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => {
+                return ReadyWait::Ready(Err(anyhow::anyhow!(
+                    "runtime event channel closed before {RUNTIME_READY_EVENT}"
+                )));
+            }
+        }
+    }
+}
+
+fn terminate_runtime_child(child: RuntimeChild) {
+    let _ = child.terminate.send(Termination::Terminate);
+    finish_runtime_child(child);
+}
+
+fn finish_runtime_child(child: RuntimeChild) {
+    let _events = child.events;
+    join_thread(Some(child.lifecycle_thread));
 }
 
 fn spawn_reader<R>(stream: RuntimeStream, reader: R, events: Sender<RuntimeEvent>) -> JoinHandle<()>
@@ -416,22 +701,28 @@ fn join_thread(thread: Option<JoinHandle<()>>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        await_ready_events, parse_runtime_ready_line, spawn_event_drain, RuntimeConfig,
-        RuntimeEvent, RuntimeReady, RuntimeStream, Supervisor,
+        await_ready, await_ready_events, parse_runtime_ready_line, RestartPolicy, RuntimeConfig,
+        RuntimeEvent, RuntimeProfile, RuntimeReady, RuntimeStream, Supervisor,
     };
     use std::{
+        fs,
+        path::{Path, PathBuf},
         sync::mpsc::{self, Receiver},
-        time::{Duration, Instant},
+        thread,
+        time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     };
 
     const EVENT_TIMEOUT: Duration = Duration::from_secs(5);
 
     #[test]
     fn supervisor_emits_started_stdio_and_exit_events() {
-        let supervisor = Supervisor::spawn(RuntimeConfig::new("bun").args([
-            "-e",
-            "console.log('runtime stdout'); console.error('runtime stderr');",
-        ]))
+        let supervisor = Supervisor::spawn(
+            RuntimeConfig::new("bun").args([
+                "-e",
+                "console.log('runtime stdout'); console.error('runtime stderr');",
+            ]),
+            test_policy(RuntimeProfile::Prod, 0, EVENT_TIMEOUT),
+        )
         .expect("runtime child should spawn");
 
         let events = collect_until_exit(supervisor.events());
@@ -468,7 +759,7 @@ mod tests {
         let supervisor = Supervisor::spawn(RuntimeConfig::new("bun").args([
             "-e",
             "Bun.spawn(['bun', '-e', 'setInterval(() => {}, 1000)'], { stdout: 'inherit', stderr: 'inherit' }); console.log('parent done'); process.exit(0);",
-        ]))
+        ]), test_policy(RuntimeProfile::Prod, 0, EVENT_TIMEOUT))
         .expect("runtime child should spawn");
 
         let events = collect_until_exit(supervisor.events());
@@ -492,6 +783,7 @@ mod tests {
     fn dropping_supervisor_terminates_long_running_child() {
         let supervisor = Supervisor::spawn(
             RuntimeConfig::new("bun").args(["-e", "setInterval(() => {}, 1000);"]),
+            test_policy(RuntimeProfile::Prod, 0, EVENT_TIMEOUT),
         )
         .expect("runtime child should spawn");
 
@@ -521,6 +813,44 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn runtime_profile_accepts_only_dev_or_prod() {
+        assert_eq!(
+            RuntimeProfile::from_env_value(Some("dev")).expect("dev profile should parse"),
+            RuntimeProfile::Dev
+        );
+        assert_eq!(
+            RuntimeProfile::from_env_value(Some("prod")).expect("prod profile should parse"),
+            RuntimeProfile::Prod
+        );
+
+        let error = RuntimeProfile::from_env_value(Some("staging"))
+            .expect_err("unknown profile should fail");
+
+        assert_eq!(
+            error.to_string(),
+            r#"invalid EFFECT_DESKTOP_PROFILE value "staging"; expected "dev" or "prod""#
+        );
+    }
+
+    #[test]
+    fn runtime_profile_defaults_to_build_profile() {
+        assert_eq!(
+            RuntimeProfile::from_env_value(None).expect("default profile should resolve"),
+            RuntimeProfile::default_for_build()
+        );
+    }
+
+    #[test]
+    fn restart_policy_restarts_dev_only_until_cap() {
+        let dev_policy = test_policy(RuntimeProfile::Dev, 1, EVENT_TIMEOUT);
+        let prod_policy = test_policy(RuntimeProfile::Prod, 1, EVENT_TIMEOUT);
+
+        assert!(dev_policy.should_restart(0));
+        assert!(!dev_policy.should_restart(1));
+        assert!(!prod_policy.should_restart(0));
     }
 
     #[test]
@@ -615,26 +945,44 @@ mod tests {
     }
 
     #[test]
-    fn event_drain_consumes_post_ready_events_until_channel_closes() {
-        let (events_tx, events_rx) = mpsc::channel();
-        let drain_thread = spawn_event_drain(events_rx);
+    fn dev_policy_restarts_nonzero_exit_after_ready() {
+        let restart_count_path = temp_count_path("dev-restart");
+        let _ = fs::remove_file(&restart_count_path);
+        let mut supervisor = Supervisor::spawn(
+            crash_once_runtime_config(&restart_count_path),
+            test_policy(RuntimeProfile::Dev, 1, EVENT_TIMEOUT),
+        )
+        .expect("runtime child should spawn");
 
-        events_tx
-            .send(RuntimeEvent::Stdout {
-                line: "after ready".to_string(),
-            })
-            .expect("post-ready stdout event should send");
-        events_tx
-            .send(RuntimeEvent::Stderr {
-                line: "after ready stderr".to_string(),
-            })
-            .expect("post-ready stderr event should send");
-        drop(events_tx);
+        await_ready(&mut supervisor, EVENT_TIMEOUT).expect("initial runtime should become ready");
 
-        assert!(
-            drain_thread.join().is_ok(),
-            "event drain should exit when the event channel closes"
+        wait_for_count(&restart_count_path, 2);
+
+        drop(supervisor);
+        let _ = fs::remove_file(restart_count_path);
+    }
+
+    #[test]
+    fn prod_policy_does_not_restart_nonzero_exit_after_ready() {
+        let restart_count_path = temp_count_path("prod-no-restart");
+        let _ = fs::remove_file(&restart_count_path);
+        let mut supervisor = Supervisor::spawn(
+            crash_once_runtime_config(&restart_count_path),
+            test_policy(RuntimeProfile::Prod, 1, EVENT_TIMEOUT),
+        )
+        .expect("runtime child should spawn");
+
+        await_ready(&mut supervisor, EVENT_TIMEOUT).expect("runtime should become ready");
+        thread::sleep(Duration::from_millis(500));
+
+        assert_eq!(
+            read_count(&restart_count_path),
+            1,
+            "prod profile must not restart a crashed runtime"
         );
+
+        drop(supervisor);
+        let _ = fs::remove_file(restart_count_path);
     }
 
     fn collect_until_exit(events: &Receiver<RuntimeEvent>) -> Vec<RuntimeEvent> {
@@ -675,5 +1023,75 @@ mod tests {
             ),
             "runtime emitted or retained events after Exited: {after_exit:?}"
         );
+    }
+
+    fn test_policy(
+        profile: RuntimeProfile,
+        max_dev_restarts: usize,
+        ready_timeout: Duration,
+    ) -> RestartPolicy {
+        RestartPolicy {
+            profile,
+            max_dev_restarts,
+            ready_timeout,
+        }
+    }
+
+    fn crash_once_runtime_config(count_path: &Path) -> RuntimeConfig {
+        let count_path_json =
+            serde_json::to_string(count_path.to_str().expect("temp path should be UTF-8"))
+                .expect("temp path should encode as JSON");
+        let script = format!(
+            r#"
+const path = {count_path_json};
+let count = 0;
+try {{
+  count = Number(await Bun.file(path).text()) || 0;
+}} catch {{
+}}
+await Bun.write(path, String(count + 1));
+console.log(JSON.stringify({{ event: "runtime.ready", version: "test" }}));
+if (count === 0) process.exit(1);
+setInterval(() => {{}}, 1000);
+"#
+        );
+
+        RuntimeConfig::new("bun").args(["-e".to_string(), script])
+    }
+
+    fn temp_count_path(name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after Unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "effect-desktop-{name}-{}-{unique}.txt",
+            std::process::id()
+        ))
+    }
+
+    fn wait_for_count(path: &Path, expected: usize) {
+        let deadline = Instant::now() + EVENT_TIMEOUT;
+
+        loop {
+            let count = read_count(path);
+            if count >= expected {
+                return;
+            }
+
+            assert!(
+                Instant::now() < deadline,
+                "timed out waiting for runtime restart count {expected}; last count was {count}"
+            );
+
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    fn read_count(path: &Path) -> usize {
+        fs::read_to_string(path)
+            .ok()
+            .and_then(|count| count.parse::<usize>().ok())
+            .unwrap_or(0)
     }
 }
