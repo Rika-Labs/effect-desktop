@@ -7,13 +7,14 @@ mod webview;
 mod window;
 
 use anyhow::{bail, Result};
-use std::{path::PathBuf, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 use tracing::info;
 use window::RunMode;
 
 const HOST_STARTED_EVENT: &str = "host.started";
 const RUNTIME_READY_TIMEOUT: Duration = Duration::from_secs(10);
 const WINDOW_SMOKE_TEST_ARG: &str = "--window-smoke-test";
+const WINDOW_SMOKE_TEST_ENV: &str = "EFFECT_DESKTOP_WINDOW_SMOKE_TEST";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct StartupEvent {
@@ -46,7 +47,10 @@ fn main() -> Result<()> {
 
     let runtime_profile = runtime::RuntimeProfile::from_env()?;
     let runtime_policy = runtime::RestartPolicy::for_profile(runtime_profile);
-    let mut runtime_supervisor = runtime::Supervisor::spawn(runtime_config(), runtime_policy)?;
+    let window_methods = window::WindowMethodPort::new();
+    let method_router = methods::HostMethodRouter::new(Arc::new(window_methods.clone()));
+    let mut runtime_supervisor =
+        runtime::Supervisor::spawn(runtime_config(run_mode), runtime_policy, method_router)?;
     let runtime_ready = runtime::await_ready(&mut runtime_supervisor, RUNTIME_READY_TIMEOUT)?;
     info!(
         event = "runtime.ready",
@@ -54,18 +58,24 @@ fn main() -> Result<()> {
         "runtime ready"
     );
 
-    window::run_main_window(run_mode)
+    window::run_main_window(run_mode, window_methods)
 }
 
-fn runtime_config() -> runtime::RuntimeConfig {
+fn runtime_config(run_mode: RunMode) -> runtime::RuntimeConfig {
     let core_package_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join("packages")
         .join("core");
 
-    runtime::RuntimeConfig::new("bun")
+    let config = runtime::RuntimeConfig::new("bun")
         .args(["src/runtime/main.ts"])
-        .cwd(core_package_dir)
+        .cwd(core_package_dir);
+
+    if matches!(run_mode, RunMode::WindowSmokeTest) {
+        config.env(WINDOW_SMOKE_TEST_ENV, "1")
+    } else {
+        config
+    }
 }
 
 fn parse_run_mode(args: impl IntoIterator<Item = String>) -> Result<RunMode> {
@@ -85,6 +95,7 @@ fn parse_run_mode(args: impl IntoIterator<Item = String>) -> Result<RunMode> {
 mod tests {
     use super::{
         parse_run_mode, runtime_config, startup_event, HOST_STARTED_EVENT, WINDOW_SMOKE_TEST_ARG,
+        WINDOW_SMOKE_TEST_ENV,
     };
     use crate::window::RunMode;
 
@@ -124,7 +135,7 @@ mod tests {
 
     #[test]
     fn runtime_config_points_at_core_runtime_entry() {
-        let config = runtime_config();
+        let config = runtime_config(RunMode::Interactive);
         let config_debug = format!("{config:?}");
 
         assert!(
@@ -132,6 +143,16 @@ mod tests {
                 && config_debug.contains("core")
                 && config_debug.contains("src/runtime/main.ts"),
             "runtime config should target the core runtime entry: {config_debug}"
+        );
+    }
+
+    #[test]
+    fn window_smoke_mode_marks_runtime_environment() {
+        let config_debug = format!("{:?}", runtime_config(RunMode::WindowSmokeTest));
+
+        assert!(
+            config_debug.contains(WINDOW_SMOKE_TEST_ENV) && config_debug.contains("\"1\""),
+            "window smoke runtime config should set {WINDOW_SMOKE_TEST_ENV}: {config_debug}"
         );
     }
 }

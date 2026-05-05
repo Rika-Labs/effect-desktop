@@ -7,16 +7,18 @@
 
 Typed renderer-runtime bridge: contract registry, client and handler generation, request/response, events, streams, resource handles, cancellation.
 
-Phase 3 starts the package with the host protocol envelope Schema mirror and the
-required `host.version` / `host.ping` handshake wrappers so the runtime can
-decode the same JSON fixtures as `crates/host-protocol` and exercise the first
+Phase 3 starts the package with the host protocol envelope Schema mirror,
+required `host.version` / `host.ping` handshake wrappers, and the initial
+`Window.create` / `Window.destroy` wrappers so the runtime can decode the same
+JSON fixtures as `crates/host-protocol` and exercise the first native-touching
 host method calls.
 
 ## Public API
 
 The current public surface is limited to host protocol Schema exports from
-`src/protocol.ts` plus the Phase 3 handshake client in `src/handshake.ts`.
-Renderer-facing bridge clients are still out of scope until Phase 4.
+`src/protocol.ts`, the Phase 3 handshake client in `src/handshake.ts`, and the
+Phase 3 window host-method client in `src/window.ts`. Renderer-facing bridge
+clients are still out of scope until Phase 4.
 
 ## Non-goals
 

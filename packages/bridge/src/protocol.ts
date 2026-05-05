@@ -5,6 +5,8 @@ import packageJson from "../package.json" with { type: "json" }
 export const HOST_PING_METHOD = "host.ping"
 export const HOST_VERSION_METHOD = "host.version"
 export const HOST_PROTOCOL_VERSION = packageJson.version
+export const WINDOW_CREATE_METHOD = "Window.create"
+export const WINDOW_DESTROY_METHOD = "Window.destroy"
 
 const UInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const UInt32 = UInt.check(Schema.isLessThanOrEqualTo(4_294_967_295))

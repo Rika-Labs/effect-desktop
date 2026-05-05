@@ -33,6 +33,7 @@ const MONITOR_POLL_INTERVAL: Duration = Duration::from_millis(100);
 pub(crate) struct RuntimeConfig {
     executable: PathBuf,
     args: Vec<OsString>,
+    envs: Vec<(OsString, OsString)>,
     cwd: Option<PathBuf>,
 }
 
@@ -41,6 +42,7 @@ impl RuntimeConfig {
         Self {
             executable: executable.into(),
             args: Vec::new(),
+            envs: Vec::new(),
             cwd: None,
         }
     }
@@ -51,6 +53,11 @@ impl RuntimeConfig {
         S: Into<OsString>,
     {
         self.args.extend(args.into_iter().map(Into::into));
+        self
+    }
+
+    pub(crate) fn env(mut self, key: impl Into<OsString>, value: impl Into<OsString>) -> Self {
+        self.envs.push((key.into(), value.into()));
         self
     }
 
@@ -66,6 +73,10 @@ impl RuntimeConfig {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+
+        for (key, value) in &self.envs {
+            command.env(key, value);
+        }
 
         if let Some(cwd) = &self.cwd {
             command.current_dir(cwd);
@@ -199,18 +210,24 @@ struct RuntimeChild {
 pub(crate) struct Supervisor {
     config: RuntimeConfig,
     policy: RestartPolicy,
+    method_router: methods::HostMethodRouter,
     child: Option<RuntimeChild>,
     monitor_shutdown: Option<Sender<MonitorCommand>>,
     monitor_thread: Option<JoinHandle<()>>,
 }
 
 impl Supervisor {
-    pub(crate) fn spawn(config: RuntimeConfig, policy: RestartPolicy) -> Result<Self> {
-        let child = spawn_runtime_child(&config)?;
+    pub(crate) fn spawn(
+        config: RuntimeConfig,
+        policy: RestartPolicy,
+        method_router: methods::HostMethodRouter,
+    ) -> Result<Self> {
+        let child = spawn_runtime_child(&config, method_router.clone())?;
 
         Ok(Self {
             config,
             policy,
+            method_router,
             child: Some(child),
             monitor_shutdown: None,
             monitor_thread: None,
@@ -235,6 +252,7 @@ impl Supervisor {
         self.monitor_thread = Some(spawn_runtime_monitor(
             self.config.clone(),
             self.policy,
+            self.method_router.clone(),
             child,
             shutdown_rx,
         ));
@@ -335,7 +353,10 @@ fn timeout_error(timeout: Duration, last_stdout_line: Option<&str>) -> Result<Ru
     }
 }
 
-fn spawn_runtime_child(config: &RuntimeConfig) -> Result<RuntimeChild> {
+fn spawn_runtime_child(
+    config: &RuntimeConfig,
+    method_router: methods::HostMethodRouter,
+) -> Result<RuntimeChild> {
     let mut command = config.command();
     platform::configure_command(&mut command);
 
@@ -370,7 +391,7 @@ fn spawn_runtime_child(config: &RuntimeConfig) -> Result<RuntimeChild> {
         .send(RuntimeEvent::Started { pid })
         .context("failed to emit runtime started event")?;
 
-    let stdout_thread = spawn_stdout_driver(stdout, stdin, event_tx.clone());
+    let stdout_thread = spawn_stdout_driver(stdout, stdin, event_tx.clone(), method_router);
     let stderr_thread = spawn_reader(RuntimeStream::Stderr, stderr, event_tx.clone());
     let lifecycle_thread = spawn_lifecycle(
         child,
@@ -391,15 +412,17 @@ fn spawn_runtime_child(config: &RuntimeConfig) -> Result<RuntimeChild> {
 fn spawn_runtime_monitor(
     config: RuntimeConfig,
     policy: RestartPolicy,
+    method_router: methods::HostMethodRouter,
     child: RuntimeChild,
     shutdown: Receiver<MonitorCommand>,
 ) -> JoinHandle<()> {
-    thread::spawn(move || monitor_runtime(config, policy, child, shutdown))
+    thread::spawn(move || monitor_runtime(config, policy, method_router, child, shutdown))
 }
 
 fn monitor_runtime(
     config: RuntimeConfig,
     policy: RestartPolicy,
+    method_router: methods::HostMethodRouter,
     mut child: RuntimeChild,
     shutdown: Receiver<MonitorCommand>,
 ) {
@@ -453,7 +476,7 @@ fn monitor_runtime(
                     "runtime crashed; restarting in dev profile"
                 );
 
-                child = match spawn_runtime_child(&config) {
+                child = match spawn_runtime_child(&config, method_router.clone()) {
                     Ok(child) => child,
                     Err(error) => {
                         error!(%error, "failed to restart runtime after crash");
@@ -597,7 +620,12 @@ fn finish_runtime_child(child: RuntimeChild) {
     join_thread(Some(child.lifecycle_thread));
 }
 
-fn spawn_stdout_driver<R, W>(stdout: R, stdin: W, events: Sender<RuntimeEvent>) -> JoinHandle<()>
+fn spawn_stdout_driver<R, W>(
+    stdout: R,
+    stdin: W,
+    events: Sender<RuntimeEvent>,
+    method_router: methods::HostMethodRouter,
+) -> JoinHandle<()>
 where
     R: Read + Send + 'static,
     W: Write + Send + 'static,
@@ -633,7 +661,7 @@ where
             }
         }
 
-        if let Err(error) = serve_framed_host_requests(reader, stdin) {
+        if let Err(error) = serve_framed_host_requests(reader, stdin, &method_router) {
             let _ = events.send(RuntimeEvent::StdioError {
                 stream: RuntimeStream::Stdout,
                 error: error.to_string(),
@@ -642,7 +670,11 @@ where
     })
 }
 
-fn serve_framed_host_requests<R, W>(reader: R, writer: W) -> Result<()>
+fn serve_framed_host_requests<R, W>(
+    reader: R,
+    writer: W,
+    method_router: &methods::HostMethodRouter,
+) -> Result<()>
 where
     R: Read,
     W: Write,
@@ -654,7 +686,7 @@ where
         let envelope: HostProtocolEnvelope =
             serde_json::from_slice(&frame).context("failed to decode host protocol frame")?;
 
-        if let Some(response) = methods::dispatch(envelope) {
+        if let Some(response) = method_router.dispatch(envelope) {
             let response =
                 serde_json::to_vec(&response).context("failed to encode host protocol response")?;
             writer.send(&response)?;
@@ -791,12 +823,19 @@ mod tests {
         fs,
         io::Cursor,
         path::{Path, PathBuf},
-        sync::mpsc::{self, Receiver},
+        sync::{
+            mpsc::{self, Receiver},
+            Arc,
+        },
         thread,
         time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     };
 
-    use crate::transport::framed::{FrameReader, FrameWriter};
+    use crate::{
+        methods::HostMethodRouter,
+        transport::framed::{FrameReader, FrameWriter},
+        window::WindowMethodPort,
+    };
     use host_protocol::{HostProtocolEnvelope, PROTOCOL_VERSION};
 
     const EVENT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -879,6 +918,7 @@ if (
                 "console.log('runtime stdout'); console.error('runtime stderr');",
             ]),
             test_policy(RuntimeProfile::Prod, 0, EVENT_TIMEOUT),
+            test_router(),
         )
         .expect("runtime child should spawn");
 
@@ -913,10 +953,14 @@ if (
 
     #[test]
     fn supervisor_closes_inherited_stdio_before_exited() {
-        let supervisor = Supervisor::spawn(RuntimeConfig::new("bun").args([
-            "-e",
-            "Bun.spawn(['bun', '-e', 'setInterval(() => {}, 1000)'], { stdout: 'inherit', stderr: 'inherit' }); console.log('parent done'); process.exit(0);",
-        ]), test_policy(RuntimeProfile::Prod, 0, EVENT_TIMEOUT))
+        let supervisor = Supervisor::spawn(
+            RuntimeConfig::new("bun").args([
+                "-e",
+                "Bun.spawn(['bun', '-e', 'setInterval(() => {}, 1000)'], { stdout: 'inherit', stderr: 'inherit' }); console.log('parent done'); process.exit(0);",
+            ]),
+            test_policy(RuntimeProfile::Prod, 0, EVENT_TIMEOUT),
+            test_router(),
+        )
         .expect("runtime child should spawn");
 
         let events = collect_until_exit(supervisor.events());
@@ -941,6 +985,7 @@ if (
         let supervisor = Supervisor::spawn(
             RuntimeConfig::new("bun").args(["-e", "setInterval(() => {}, 1000);"]),
             test_policy(RuntimeProfile::Prod, 0, EVENT_TIMEOUT),
+            test_router(),
         )
         .expect("runtime child should spawn");
 
@@ -990,7 +1035,7 @@ if (
             .expect("request frame should encode");
         let mut output = Vec::new();
 
-        super::serve_framed_host_requests(Cursor::new(input), &mut output)
+        super::serve_framed_host_requests(Cursor::new(input), &mut output, &test_router())
             .expect("host request should dispatch");
 
         let mut reader = FrameReader::new(Cursor::new(output));
@@ -1025,6 +1070,7 @@ if (
         let supervisor = Supervisor::spawn(
             RuntimeConfig::new("bun").args(["-e".to_string(), script]),
             test_policy(RuntimeProfile::Prod, 0, EVENT_TIMEOUT),
+            test_router(),
         )
         .expect("runtime child should spawn");
 
@@ -1062,6 +1108,7 @@ if (
         monitor_runtime(
             RuntimeConfig::new("unused"),
             test_policy(RuntimeProfile::Prod, 0, EVENT_TIMEOUT),
+            test_router(),
             child,
             shutdown_rx,
         );
@@ -1210,6 +1257,7 @@ if (
         let mut supervisor = Supervisor::spawn(
             crash_once_runtime_config(&restart_count_path),
             test_policy(RuntimeProfile::Dev, 1, EVENT_TIMEOUT),
+            test_router(),
         )
         .expect("runtime child should spawn");
 
@@ -1228,6 +1276,7 @@ if (
         let mut supervisor = Supervisor::spawn(
             restart_without_ready_runtime_config(&restart_count_path),
             test_policy(RuntimeProfile::Dev, 1, Duration::from_secs(1)),
+            test_router(),
         )
         .expect("runtime child should spawn");
 
@@ -1253,6 +1302,7 @@ if (
         let mut supervisor = Supervisor::spawn(
             crash_once_runtime_config(&restart_count_path),
             test_policy(RuntimeProfile::Prod, 1, EVENT_TIMEOUT),
+            test_router(),
         )
         .expect("runtime child should spawn");
 
@@ -1344,6 +1394,10 @@ if (
             max_dev_restarts,
             ready_timeout,
         }
+    }
+
+    fn test_router() -> HostMethodRouter {
+        HostMethodRouter::new(Arc::new(WindowMethodPort::new()))
     }
 
     fn crash_once_runtime_config(count_path: &Path) -> RuntimeConfig {

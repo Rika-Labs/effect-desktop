@@ -6,6 +6,8 @@ use serde_json::Value;
 pub const HOST_PING_METHOD: &str = "host.ping";
 pub const HOST_VERSION_METHOD: &str = "host.version";
 pub const PROTOCOL_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const WINDOW_CREATE_METHOD: &str = "Window.create";
+pub const WINDOW_DESTROY_METHOD: &str = "Window.destroy";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -22,6 +24,75 @@ impl HostVersionPayload {
 
     pub fn protocol_version(&self) -> &str {
         &self.protocol_version
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowCreatePayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    width: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    height: Option<f64>,
+}
+
+impl WindowCreatePayload {
+    pub fn new(title: Option<String>, width: Option<f64>, height: Option<f64>) -> Self {
+        Self {
+            title,
+            width,
+            height,
+        }
+    }
+
+    pub fn title(&self) -> Option<&str> {
+        self.title.as_deref()
+    }
+
+    pub fn width(&self) -> Option<f64> {
+        self.width
+    }
+
+    pub fn height(&self) -> Option<f64> {
+        self.height
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowCreateResponse {
+    window_id: String,
+}
+
+impl WindowCreateResponse {
+    pub fn new(window_id: impl Into<String>) -> Self {
+        Self {
+            window_id: window_id.into(),
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowDestroyPayload {
+    window_id: String,
+}
+
+impl WindowDestroyPayload {
+    pub fn new(window_id: impl Into<String>) -> Self {
+        Self {
+            window_id: window_id.into(),
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
     }
 }
 
@@ -516,7 +587,10 @@ pub enum HostProtocolError {
 
 #[cfg(test)]
 mod tests {
-    use super::{HostProtocolEnvelope, HostProtocolError, HostVersionPayload, PROTOCOL_VERSION};
+    use super::{
+        HostProtocolEnvelope, HostProtocolError, HostVersionPayload, WindowCreatePayload,
+        WindowCreateResponse, WindowDestroyPayload, PROTOCOL_VERSION,
+    };
     use std::{fs, path::PathBuf};
 
     const FIXTURE_NAMES: &[&str] = &[
@@ -667,6 +741,41 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&payload).expect("version payload should encode"),
             format!(r#"{{"protocolVersion":"{PROTOCOL_VERSION}"}}"#)
+        );
+    }
+
+    #[test]
+    fn window_create_payload_rejects_unknown_fields() {
+        let error = serde_json::from_str::<WindowCreatePayload>(
+            r#"{"width":320,"height":240,"unknown":true}"#,
+        )
+        .expect_err("unknown window create fields must fail");
+
+        assert!(
+            error.to_string().contains("unknown field `unknown`"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn window_create_response_serializes_canonically() {
+        let payload = WindowCreateResponse::new("window-1");
+
+        assert_eq!(payload.window_id(), "window-1");
+        assert_eq!(
+            serde_json::to_string(&payload).expect("window create response should encode"),
+            r#"{"windowId":"window-1"}"#
+        );
+    }
+
+    #[test]
+    fn window_destroy_payload_serializes_canonically() {
+        let payload = WindowDestroyPayload::new("window-1");
+
+        assert_eq!(payload.window_id(), "window-1");
+        assert_eq!(
+            serde_json::to_string(&payload).expect("window destroy payload should encode"),
+            r#"{"windowId":"window-1"}"#
         );
     }
 
