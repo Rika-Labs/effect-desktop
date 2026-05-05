@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test"
 import { Effect } from "effect"
 
+import {
+  WINDOW_CREATE_METHOD,
+  WINDOW_DESTROY_METHOD,
+  makeHostProtocolNotFoundError
+} from "@effect-desktop/bridge"
 import { makeResourceRegistry, type ResourceId } from "@effect-desktop/core"
 
 import {
@@ -8,6 +13,7 @@ import {
   formatLeakedHandleReport,
   leakedHandles,
   registerLeakMatchers,
+  runHeadless,
   ResourceLeakError
 } from "./index.js"
 
@@ -111,3 +117,98 @@ test("registered matcher renders the leaked-handle report", () => {
     report
   )
 })
+
+test("runHeadless records host calls and exits without leaked windows", async () => {
+  const result = await Effect.runPromise(
+    runHeadless(
+      (runtime) =>
+        Effect.gen(function* () {
+          yield* runtime.handshake.ping()
+          const version = yield* runtime.handshake.version()
+          const window = yield* runtime.window.create({ title: "Headless" })
+          yield* runtime.window.destroy(window.windowId)
+
+          return {
+            calls: runtime.calls().map((call) => call.method),
+            protocolVersion: version.protocolVersion
+          }
+        }),
+      {
+        nextRequestId: nextSequence("request"),
+        nextTraceId: nextSequence("trace"),
+        now: () => 1710000000100
+      }
+    )
+  )
+
+  expect(result.calls).toEqual([
+    "host.ping",
+    "host.version",
+    WINDOW_CREATE_METHOD,
+    WINDOW_DESTROY_METHOD
+  ])
+  expect(result.protocolVersion).toBe("0.0.0")
+})
+
+test("runHeadless fails when a headless window is left open", async () => {
+  let error: unknown
+
+  try {
+    await Effect.runPromise(
+      runHeadless(
+        (runtime) =>
+          Effect.gen(function* () {
+            yield* runtime.window.create({ title: "Leaked" })
+          }),
+        {
+          nextRequestId: nextSequence("request"),
+          nextTraceId: nextSequence("trace"),
+          now: () => 1710000000200
+        }
+      )
+    )
+  } catch (caught) {
+    error = caught
+  }
+
+  expect(error).toBeInstanceOf(ResourceLeakError)
+  if (error instanceof ResourceLeakError) {
+    expect(error.message).toContain("kind: window")
+    expect(error.message).toContain("ownerScope: headless")
+  }
+})
+
+test("runHeadless preserves typed destroy errors from the mock host", async () => {
+  const result = await Effect.runPromise(
+    runHeadless(
+      (runtime) =>
+        Effect.gen(function* () {
+          const window = yield* runtime.window.create({ title: "Destroy failure" })
+          const destroyExit = yield* Effect.exit(runtime.window.destroy(window.windowId))
+          yield* runtime.registry.closeScope("headless")
+
+          return destroyExit
+        }),
+      {
+        fixtures: {
+          [WINDOW_DESTROY_METHOD]: () =>
+            Effect.fail(makeHostProtocolNotFoundError("headless-window", WINDOW_DESTROY_METHOD))
+        },
+        nextRequestId: nextSequence("request"),
+        nextTraceId: nextSequence("trace"),
+        now: () => 1710000000300
+      }
+    )
+  )
+
+  expect(result._tag).toBe("Failure")
+  if (result._tag === "Failure") {
+    expect(JSON.stringify(result.cause.toJSON())).toContain("NotFound")
+  }
+})
+
+const nextSequence = (prefix: string): (() => string) => {
+  let next = 0
+
+  return () => `${prefix}-${next++}`
+}
