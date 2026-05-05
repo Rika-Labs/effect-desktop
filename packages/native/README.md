@@ -1,6 +1,6 @@
 # @effect-desktop/native
 
-> **Status:** Phase 0 stub. The package directory exists so the workspace resolves and validation gates run; the public API is populated in Phases 5, 7, 8. See `docs/SPEC.md`.
+> **Status:** Phase 5 started. The Window service definition is available; host-backed live behavior lands in the later native-service issues. See `docs/SPEC.md`.
 
 ## Purpose
 
@@ -8,7 +8,7 @@ TypeScript-facing native services backed by the Rust host: `App`, `Window`, `Web
 
 ## Public API
 
-Not yet defined. Phase 0 ships an empty barrel export only.
+`Window` is exposed as an Effect service. `WindowApi` declares the matching bridge contract and `WindowClient` is the substitutable port used by tests and future host-backed adapters.
 
 ## Non-goals
 
@@ -17,7 +17,13 @@ See `docs/SPEC.md` for the package's normative non-goals.
 ## Usage
 
 ```ts
-// Reserved for Phases 5, 7, 8.
+import { Effect } from "effect"
+import { Window } from "@effect-desktop/native"
+
+const program = Effect.gen(function* () {
+  const window = yield* Window
+  return yield* window.create({ title: "Effect Desktop" })
+})
 ```
 
 ## Testing
@@ -26,6 +32,10 @@ See `docs/SPEC.md` for the package's normative non-goals.
 bun test
 bun run typecheck
 ```
+
+## Dependency notes
+
+This package depends on `effect` for services/layers and on `@effect-desktop/bridge` for the shared `Api` contract and host protocol error schemas. These are framework-internal dependencies required by the Phase 5 Window service boundary.
 
 ## Platform notes
 
