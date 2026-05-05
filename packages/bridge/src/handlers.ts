@@ -4,7 +4,8 @@ import {
   type ApiContractClass,
   type ApiContractSpec,
   type ApiLayer,
-  type ApiMethodSpec
+  type ApiMethodSpec,
+  isStreamSpec
 } from "./contracts.js"
 import { type ApiClientResponse } from "./client.js"
 import {
@@ -284,15 +285,26 @@ const encodeOutput = <Spec extends ApiMethodSpec>(
   operation: string,
   spec: Spec,
   output: unknown
-): Effect.Effect<Schema.Codec.Encoded<Spec["output"]>, HostProtocolError, never> =>
-  Effect.mapError(
+): Effect.Effect<
+  Schema.Codec.Encoded<Extract<Spec["output"], Schema.Schema<unknown>>>,
+  HostProtocolError,
+  never
+> => {
+  if (isStreamSpec(spec.output)) {
+    return Effect.fail(
+      makeHostProtocolInvalidOutputError(operation, "stream output is not a response")
+    )
+  }
+
+  return Effect.mapError(
     Schema.encodeUnknownEffect(spec.output)(output, StrictParseOptions) as Effect.Effect<
-      Schema.Codec.Encoded<Spec["output"]>,
+      Schema.Codec.Encoded<Extract<Spec["output"], Schema.Schema<unknown>>>,
       unknown,
       never
     >,
     (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
   )
+}
 
 const encodeContractError = <Spec extends ApiMethodSpec>(
   operation: string,

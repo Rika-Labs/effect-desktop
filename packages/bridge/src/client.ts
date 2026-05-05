@@ -5,15 +5,25 @@ import {
   type ApiContractEvents,
   type ApiContractSpec,
   type ApiEventSpec,
-  type ApiMethodSpec
+  type ApiMethodSpec,
+  type ApiStreamSpec,
+  isStreamSpec
 } from "./contracts.js"
 import {
   HostProtocolEventEnvelope,
   HostProtocolRequestEnvelope,
+  HostProtocolStreamClosedError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   type HostProtocolError
 } from "./protocol.js"
+import {
+  ApiStreamCompleteFrame,
+  ApiStreamDataFrame,
+  ApiStreamErrorFrame,
+  ApiStreamFrame,
+  type HostProtocolStreamEnvelope
+} from "./streams.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
@@ -24,6 +34,9 @@ export interface ApiClientExchange {
   readonly subscribe?: (
     method: string
   ) => Stream.Stream<HostProtocolEventEnvelope, HostProtocolError, never>
+  readonly stream?: (
+    request: HostProtocolRequestEnvelope
+  ) => Stream.Stream<HostProtocolStreamEnvelope, HostProtocolError, never>
 }
 
 export type ApiClientResponse = ApiClientSuccessResponse | ApiClientErrorResponse
@@ -54,19 +67,34 @@ interface ResolvedApiClientOptions {
   readonly originToken: string | undefined
 }
 
-export type ApiClientMethod<Spec extends ApiMethodSpec> =
-  undefined extends Schema.Schema.Type<Spec["input"]>
+export type ApiClientMethod<Spec extends ApiMethodSpec> = Spec["output"] extends ApiStreamSpec
+  ? undefined extends Schema.Schema.Type<Spec["input"]>
+    ? (
+        input?: Schema.Schema.Type<Spec["input"]>
+      ) => Stream.Stream<
+        Schema.Schema.Type<Spec["output"]["chunk"]>,
+        Schema.Schema.Type<Spec["output"]["error"]> | HostProtocolError,
+        never
+      >
+    : (
+        input: Schema.Schema.Type<Spec["input"]>
+      ) => Stream.Stream<
+        Schema.Schema.Type<Spec["output"]["chunk"]>,
+        Schema.Schema.Type<Spec["output"]["error"]> | HostProtocolError,
+        never
+      >
+  : undefined extends Schema.Schema.Type<Spec["input"]>
     ? (
         input?: Schema.Schema.Type<Spec["input"]>
       ) => Effect.Effect<
-        Schema.Schema.Type<Spec["output"]>,
+        Schema.Schema.Type<Extract<Spec["output"], Schema.Schema<unknown>>>,
         Schema.Schema.Type<Spec["error"]> | HostProtocolError,
         never
       >
     : (
         input: Schema.Schema.Type<Spec["input"]>
       ) => Effect.Effect<
-        Schema.Schema.Type<Spec["output"]>,
+        Schema.Schema.Type<Extract<Spec["output"], Schema.Schema<unknown>>>,
         Schema.Schema.Type<Spec["error"]> | HostProtocolError,
         never
       >
@@ -114,8 +142,19 @@ const makeContractClient = <Tag extends string, Spec extends ApiContractSpec>(
   for (const [method, methodSpec] of Object.entries(contract.spec) as Array<
     [Extract<keyof Spec, string>, Spec[Extract<keyof Spec, string>]]
   >) {
-    methods[method] = ((input: Schema.Schema.Type<Spec[typeof method]["input"]>) =>
-      requestContractMethod(contract.tag, method, methodSpec, input, exchange, options)) as
+    methods[method] = ((
+      input: Schema.Schema.Type<Spec[typeof method]["input"]>
+    ): Effect.Effect<unknown, unknown, never> | Stream.Stream<unknown, unknown, never> =>
+      isStreamSpec(methodSpec.output)
+        ? streamContractMethod(
+            contract.tag,
+            method,
+            methodSpec as Spec[typeof method] & { readonly output: ApiStreamSpec },
+            input,
+            exchange,
+            options
+          )
+        : requestContractMethod(contract.tag, method, methodSpec, input, exchange, options)) as
       | ApiClientMethod<Spec[typeof method]>
       | undefined
   }
@@ -143,7 +182,7 @@ const requestContractMethod = <Spec extends ApiMethodSpec>(
   exchange: ApiClientExchange,
   options: ResolvedApiClientOptions
 ): Effect.Effect<
-  Schema.Schema.Type<Spec["output"]>,
+  Schema.Schema.Type<Extract<Spec["output"], Schema.Schema<unknown>>>,
   Schema.Schema.Type<Spec["error"]> | HostProtocolError,
   never
 > =>
@@ -177,10 +216,17 @@ const decodeOutput = <Spec extends ApiMethodSpec>(
   operation: string,
   spec: Spec,
   payload: unknown
-): Effect.Effect<Schema.Schema.Type<Spec["output"]>, HostProtocolError, never> =>
+): Effect.Effect<
+  Schema.Schema.Type<Extract<Spec["output"], Schema.Schema<unknown>>>,
+  HostProtocolError,
+  never
+> =>
   Effect.mapError(
-    Schema.decodeUnknownEffect(spec.output)(payload, StrictParseOptions) as Effect.Effect<
-      Schema.Schema.Type<Spec["output"]>,
+    Schema.decodeUnknownEffect(spec.output as Schema.Schema<unknown>)(
+      payload,
+      StrictParseOptions
+    ) as Effect.Effect<
+      Schema.Schema.Type<Extract<Spec["output"], Schema.Schema<unknown>>>,
       unknown,
       never
     >,
@@ -224,6 +270,80 @@ const subscribeContractEvent = <Spec extends ApiEventSpec>(
     .pipe(Stream.mapEffect((envelope) => decodeEventPayload(operation, spec, envelope.payload)))
 }
 
+const streamContractMethod = <Spec extends ApiMethodSpec & { readonly output: ApiStreamSpec }>(
+  tag: string,
+  method: string,
+  spec: Spec,
+  input: Schema.Schema.Type<Spec["input"]>,
+  exchange: ApiClientExchange,
+  options: ResolvedApiClientOptions
+): Stream.Stream<
+  Schema.Schema.Type<Spec["output"]["chunk"]>,
+  Schema.Schema.Type<Spec["output"]["error"]> | HostProtocolError,
+  never
+> => {
+  const operation = methodName(tag, method)
+
+  const stream = exchange.stream
+  if (stream === undefined) {
+    return Stream.fail(
+      makeHostProtocolInvalidOutputError(operation, "stream exchange does not support streams")
+    )
+  }
+
+  return Stream.unwrap(
+    Effect.gen(function* () {
+      const payload = yield* encodeInput(operation, spec, input)
+
+      return stream(makeRequest(operation, payload, options)).pipe(
+        Stream.flatMap((envelope) => decodeStreamEnvelope(operation, spec.output, envelope))
+      )
+    })
+  ) as Stream.Stream<
+    Schema.Schema.Type<Spec["output"]["chunk"]>,
+    Schema.Schema.Type<Spec["output"]["error"]> | HostProtocolError,
+    never
+  >
+}
+
+const decodeStreamEnvelope = <Spec extends ApiStreamSpec>(
+  operation: string,
+  spec: Spec,
+  envelope: HostProtocolStreamEnvelope
+): Stream.Stream<
+  Schema.Schema.Type<Spec["chunk"]>,
+  Schema.Schema.Type<Spec["error"]> | HostProtocolError,
+  never
+> => {
+  if (envelope.error !== undefined) {
+    return Stream.fail(envelope.error)
+  }
+
+  return Stream.fromEffect(decodeStreamFrame(operation, envelope.payload)).pipe(
+    Stream.flatMap((frame) => {
+      if (frame instanceof ApiStreamDataFrame) {
+        return Stream.fromEffect(decodeStreamChunk(operation, spec, frame.chunk))
+      }
+      if (frame instanceof ApiStreamErrorFrame) {
+        return Stream.fromEffect(decodeStreamError(operation, spec, frame.error))
+      }
+      if (frame instanceof ApiStreamCompleteFrame) {
+        return Stream.empty
+      }
+
+      return Stream.fail(
+        new HostProtocolStreamClosedError({
+          tag: "StreamClosed",
+          streamId: envelope.resourceId ?? envelope.id,
+          message: "stream was closed",
+          operation,
+          recoverable: false
+        })
+      )
+    })
+  )
+}
+
 const decodeEventPayload = <Spec extends ApiEventSpec>(
   operation: string,
   spec: Spec,
@@ -236,6 +356,51 @@ const decodeEventPayload = <Spec extends ApiEventSpec>(
       never
     >,
     (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+  )
+
+const decodeStreamFrame = (
+  operation: string,
+  payload: unknown
+): Effect.Effect<ApiStreamFrame, HostProtocolError, never> =>
+  Effect.mapError(
+    Schema.decodeUnknownEffect(ApiStreamFrame)(payload, StrictParseOptions) as Effect.Effect<
+      ApiStreamFrame,
+      unknown,
+      never
+    >,
+    (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+  )
+
+const decodeStreamChunk = <Spec extends ApiStreamSpec>(
+  operation: string,
+  spec: Spec,
+  chunk: unknown
+): Effect.Effect<Schema.Schema.Type<Spec["chunk"]>, HostProtocolError, never> =>
+  Effect.mapError(
+    Schema.decodeUnknownEffect(spec.chunk)(chunk, StrictParseOptions) as Effect.Effect<
+      Schema.Schema.Type<Spec["chunk"]>,
+      unknown,
+      never
+    >,
+    (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+  )
+
+const decodeStreamError = <Spec extends ApiStreamSpec>(
+  operation: string,
+  spec: Spec,
+  error: unknown
+): Effect.Effect<never, Schema.Schema.Type<Spec["error"]> | HostProtocolError, never> =>
+  Effect.flatMap(
+    Effect.mapError(
+      Schema.decodeUnknownEffect(spec.error)(error, StrictParseOptions) as Effect.Effect<
+        Schema.Schema.Type<Spec["error"]>,
+        unknown,
+        never
+      >,
+      (schemaError) =>
+        makeHostProtocolInvalidOutputError(operation, formatUnknownError(schemaError))
+    ),
+    (decoded) => Effect.fail(decoded)
   )
 
 const makeRequest = (
