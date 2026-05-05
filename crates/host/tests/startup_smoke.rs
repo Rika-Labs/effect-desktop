@@ -33,6 +33,14 @@ fn host_binary_emits_startup_event_and_exits_zero() {
         "process output did not contain window opened event\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
     assert!(
+        process_output.contains("event=\"host.webview.opened\""),
+        "process output did not contain webview opened event\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        process_output.contains("source=\"inline-html\""),
+        "process output did not contain webview source field\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
         process_output.contains("event=\"host.window.exit_requested\""),
         "process output did not contain window exit event\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );

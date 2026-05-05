@@ -1,11 +1,13 @@
+use crate::webview;
 use anyhow::{Context, Result};
 use tao::{
     dpi::LogicalSize,
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoopBuilder},
-    window::WindowBuilder,
+    window::{Window, WindowBuilder},
 };
 use tracing::info;
+use wry::WebView;
 
 const WINDOW_TITLE: &str = "Effect Desktop";
 const WINDOW_WIDTH: f64 = 960.0;
@@ -31,11 +33,16 @@ enum WindowLifecycleEvent {
     Other,
 }
 
+struct NativeWindowResources {
+    _window: Window,
+    _webview: WebView,
+}
+
 pub(crate) fn run_main_window(mode: RunMode) -> Result<()> {
     let mut event_loop_builder = EventLoopBuilder::<HostEvent>::with_user_event();
     let event_loop = event_loop_builder.build();
     let proxy = event_loop.create_proxy();
-    let _window = WindowBuilder::new()
+    let window = WindowBuilder::new()
         .with_title(WINDOW_TITLE)
         .with_inner_size(LogicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT))
         .build(&event_loop)
@@ -50,6 +57,12 @@ pub(crate) fn run_main_window(mode: RunMode) -> Result<()> {
         "host window opened"
     );
 
+    let webview = webview::attach_hello_webview(&window)?;
+    let native_resources = NativeWindowResources {
+        _window: window,
+        _webview: webview,
+    };
+
     if matches!(mode, RunMode::WindowSmokeTest) {
         proxy
             .send_event(HostEvent::SmokeExitRequested)
@@ -57,6 +70,7 @@ pub(crate) fn run_main_window(mode: RunMode) -> Result<()> {
     }
 
     event_loop.run(move |event, _, control_flow| {
+        let _keep_native_resources_alive = &native_resources;
         *control_flow = control_flow_for_lifecycle_event(classify_event(&event));
     });
 }
