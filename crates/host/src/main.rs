@@ -5,10 +5,12 @@ mod webview;
 mod window;
 
 use anyhow::{bail, Result};
+use std::{path::PathBuf, time::Duration};
 use tracing::info;
 use window::RunMode;
 
 const HOST_STARTED_EVENT: &str = "host.started";
+const RUNTIME_READY_TIMEOUT: Duration = Duration::from_secs(10);
 const WINDOW_SMOKE_TEST_ARG: &str = "--window-smoke-test";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -40,7 +42,26 @@ fn main() -> Result<()> {
         "host started"
     );
 
+    let runtime_supervisor = runtime::Supervisor::spawn(runtime_config())?;
+    let runtime_ready = runtime::await_ready(&runtime_supervisor, RUNTIME_READY_TIMEOUT)?;
+    info!(
+        event = "runtime.ready",
+        version = runtime_ready.version(),
+        "runtime ready"
+    );
+
     window::run_main_window(run_mode)
+}
+
+fn runtime_config() -> runtime::RuntimeConfig {
+    let core_package_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("packages")
+        .join("core");
+
+    runtime::RuntimeConfig::new("bun")
+        .args(["src/runtime/main.ts"])
+        .cwd(core_package_dir)
 }
 
 fn parse_run_mode(args: impl IntoIterator<Item = String>) -> Result<RunMode> {
@@ -58,7 +79,9 @@ fn parse_run_mode(args: impl IntoIterator<Item = String>) -> Result<RunMode> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_run_mode, startup_event, HOST_STARTED_EVENT, WINDOW_SMOKE_TEST_ARG};
+    use super::{
+        parse_run_mode, runtime_config, startup_event, HOST_STARTED_EVENT, WINDOW_SMOKE_TEST_ARG,
+    };
     use crate::window::RunMode;
 
     #[test]
@@ -93,5 +116,18 @@ mod tests {
             .expect_err("unknown arg should fail");
 
         assert_eq!(error.to_string(), "unknown host argument: --unknown");
+    }
+
+    #[test]
+    fn runtime_config_points_at_core_runtime_entry() {
+        let config = runtime_config();
+        let config_debug = format!("{config:?}");
+
+        assert!(
+            config_debug.contains("packages")
+                && config_debug.contains("core")
+                && config_debug.contains("src/runtime/main.ts"),
+            "runtime config should target the core runtime entry: {config_debug}"
+        );
     }
 }

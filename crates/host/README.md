@@ -6,6 +6,7 @@
 - `tao` owns native window/event-loop integration.
 - `tracing` and `tracing-subscriber` own structured host startup logs.
 - `anyhow` is the temporary binary error boundary until later protocol-specific errors exist.
+- `serde_json` parses the staged `runtime.ready` startup line emitted by the Bun runtime.
 - `libc` owns POSIX process-group termination and Linux parent-death signal setup for runtime supervision.
 - `windows-sys` owns Windows Job Object calls for runtime process-tree cleanup.
 

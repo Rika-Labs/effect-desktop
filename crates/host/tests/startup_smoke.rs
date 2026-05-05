@@ -29,6 +29,10 @@ fn host_binary_emits_startup_event_and_exits_zero() {
         "process output did not contain crate field\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
     assert!(
+        process_output.contains("event=\"runtime.ready\""),
+        "process output did not contain runtime ready event\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
         process_output.contains("event=\"host.window.opened\""),
         "process output did not contain window opened event\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
@@ -57,5 +61,16 @@ fn host_binary_emits_startup_event_and_exits_zero() {
     assert!(
         process_output.contains(&version_field),
         "process output did not contain version field {version_field}\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+
+    let ready_index = process_output
+        .find("event=\"runtime.ready\"")
+        .expect("runtime ready event should be present");
+    let window_index = process_output
+        .find("event=\"host.window.opened\"")
+        .expect("window opened event should be present");
+    assert!(
+        ready_index < window_index,
+        "window opened before runtime ready\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
 }
