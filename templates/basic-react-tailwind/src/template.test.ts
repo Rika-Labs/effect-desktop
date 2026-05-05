@@ -28,16 +28,37 @@ test("template smoke exercises one typed window call", async () => {
 test("template source imports only public package surfaces", () => {
   const violations = sourceFiles(join(templateRoot, "src")).flatMap((file) => {
     const text = readFileSync(file, "utf8")
-    const imports = [...text.matchAll(/from\s+["']([^"']+)["']/g)].map((match) => match[1])
 
-    return imports
-      .filter((specifier): specifier is string => specifier !== undefined)
-      .filter((specifier) => specifier.includes("/src/") || specifier.includes("/_internal"))
-      .map((specifier) => `${relative(templateRoot, file)} imports ${specifier}`)
+    return privateImportViolations(text, relative(templateRoot, file))
   })
 
   expect(violations).toEqual([])
 })
+
+test("template import guard catches side-effect private imports", () => {
+  const privateSpecifier = "@effect-desktop/native" + "/src/internal.js"
+
+  expect(privateImportViolations(`import "${privateSpecifier}"`, "src/example.ts")).toEqual([
+    `src/example.ts imports ${privateSpecifier}`
+  ])
+})
+
+function privateImportViolations(text: string, file: string): readonly string[] {
+  return importSpecifiers(text)
+    .filter((specifier) => specifier.includes("/src/") || specifier.includes("/_internal"))
+    .map((specifier) => `${file} imports ${specifier}`)
+}
+
+function importSpecifiers(text: string): readonly string[] {
+  const fromImports = [...text.matchAll(/from\s+["']([^"']+)["']/g)].map((match) => match[1])
+  const sideEffectImports = [...text.matchAll(/import\s+["']([^"']+)["']/g)].map(
+    (match) => match[1]
+  )
+
+  return [...fromImports, ...sideEffectImports].filter(
+    (specifier): specifier is string => specifier !== undefined
+  )
+}
 
 function sourceFiles(directory: string): readonly string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
