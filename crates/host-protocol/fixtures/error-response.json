@@ -1,1 +1,1 @@
-{"kind":"response","id":"request-2","timestamp":1710000000005,"traceId":"trace-5","error":{"tag":"FileNotFound","path":"/tmp/missing.txt"}}
+{"kind":"response","id":"request-2","timestamp":1710000000005,"traceId":"trace-5","error":{"tag":"FileNotFound","path":"/tmp/missing.txt","message":"FileNotFound sample","operation":"fixture.operation","recoverable":false}}

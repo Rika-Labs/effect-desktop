@@ -1,3 +1,7 @@
+#![allow(clippy::result_large_err)]
+// Host method adapters return the canonical HostProtocolError enum from the
+// wire contract. Boxing that error here would obscure the protocol surface.
+
 use crate::window::{WindowCreateRequest, WindowMethodHandler};
 use host_protocol::{
     HostProtocolError, WindowCreatePayload, WindowCreateResponse, WindowDestroyPayload,
@@ -38,32 +42,42 @@ fn decode_required_destroy_payload(
 ) -> Result<WindowDestroyPayload, HostProtocolError> {
     match payload {
         Some(payload) => decode_destroy_payload(payload),
-        None => Err(HostProtocolError::InvalidArgument {
-            field: "payload".to_string(),
-            reason: format!("{} requires payload", host_protocol::WINDOW_DESTROY_METHOD),
-        }),
+        None => Err(HostProtocolError::invalid_argument(
+            "payload",
+            format!("{} requires payload", host_protocol::WINDOW_DESTROY_METHOD),
+            host_protocol::WINDOW_DESTROY_METHOD,
+        )),
     }
 }
 
 fn decode_create_payload(payload: Value) -> Result<WindowCreatePayload, HostProtocolError> {
-    serde_json::from_value(payload).map_err(|error| HostProtocolError::InvalidArgument {
-        field: "payload".to_string(),
-        reason: error.to_string(),
+    serde_json::from_value(payload).map_err(|error| {
+        HostProtocolError::invalid_argument(
+            "payload",
+            error.to_string(),
+            host_protocol::WINDOW_CREATE_METHOD,
+        )
     })
 }
 
 fn decode_destroy_payload(payload: Value) -> Result<WindowDestroyPayload, HostProtocolError> {
-    serde_json::from_value(payload).map_err(|error| HostProtocolError::InvalidArgument {
-        field: "payload".to_string(),
-        reason: error.to_string(),
+    serde_json::from_value(payload).map_err(|error| {
+        HostProtocolError::invalid_argument(
+            "payload",
+            error.to_string(),
+            host_protocol::WINDOW_DESTROY_METHOD,
+        )
     })
 }
 
 fn encode_create_response(payload: WindowCreateResponse) -> Result<Value, HostProtocolError> {
-    serde_json::to_value(payload).map_err(|error| HostProtocolError::Internal {
-        message: format!(
-            "failed to encode {} response payload: {error}",
-            host_protocol::WINDOW_CREATE_METHOD
-        ),
+    serde_json::to_value(payload).map_err(|error| {
+        HostProtocolError::internal(
+            format!(
+                "failed to encode {} response payload: {error}",
+                host_protocol::WINDOW_CREATE_METHOD
+            ),
+            host_protocol::WINDOW_CREATE_METHOD,
+        )
     })
 }

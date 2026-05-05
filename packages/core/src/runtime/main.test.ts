@@ -214,7 +214,10 @@ const responseFor = (request: HostProtocolRequest): unknown => {
     ...base,
     error: {
       tag: "MethodNotFound",
-      method: request.method
+      method: request.method,
+      message: `host method not found: ${request.method}`,
+      operation: request.method,
+      recoverable: false
     }
   }
 }

@@ -8,6 +8,7 @@ import {
   HostProtocolResponseEnvelope,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
+  makeHostProtocolNotFoundError,
   makeHostWindowClient,
   type HostProtocolRequestEnvelope,
   type HostWindowExchange
@@ -136,10 +137,7 @@ const notFoundExchange = (): HostWindowExchange => ({
         id: request.id,
         timestamp: request.timestamp + 1,
         traceId: request.traceId,
-        error: new HostProtocolNotFoundError({
-          tag: "NotFound",
-          resource: "Window:missing"
-        })
+        error: makeHostProtocolNotFoundError("Window:missing", WINDOW_DESTROY_METHOD)
       })
     )
 })
