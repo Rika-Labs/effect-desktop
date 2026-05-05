@@ -462,7 +462,7 @@ fn monitor_runtime(
                     }
                     ReadyWait::Ready(Err(error)) => {
                         error!(%error, "restarted runtime failed before ready");
-                        finish_runtime_child(child);
+                        terminate_runtime_child(child);
                         break;
                     }
                     ReadyWait::Shutdown => {
@@ -993,6 +993,31 @@ mod tests {
     }
 
     #[test]
+    fn dev_policy_terminates_restart_that_never_becomes_ready() {
+        let restart_count_path = temp_count_path("dev-restart-no-ready");
+        let _ = fs::remove_file(&restart_count_path);
+        let mut supervisor = Supervisor::spawn(
+            restart_without_ready_runtime_config(&restart_count_path),
+            test_policy(RuntimeProfile::Dev, 1, Duration::from_secs(1)),
+        )
+        .expect("runtime child should spawn");
+
+        await_ready(&mut supervisor, EVENT_TIMEOUT).expect("initial runtime should become ready");
+        wait_for_count(&restart_count_path, 2);
+        thread::sleep(Duration::from_millis(1_800));
+        drop(supervisor);
+
+        let final_count =
+            fs::read_to_string(&restart_count_path).expect("restart count should be written");
+        assert_ne!(
+            final_count, "survived",
+            "failed restart generation must be terminated after ready timeout"
+        );
+
+        let _ = fs::remove_file(restart_count_path);
+    }
+
+    #[test]
     fn prod_policy_does_not_restart_nonzero_exit_after_ready() {
         let restart_count_path = temp_count_path("prod-no-restart");
         let _ = fs::remove_file(&restart_count_path);
@@ -1107,6 +1132,34 @@ try {{
 await Bun.write(path, String(count + 1));
 console.log(JSON.stringify({{ event: "runtime.ready", version: "test" }}));
 if (count === 0) process.exit(1);
+setInterval(() => {{}}, 1000);
+"#
+        );
+
+        RuntimeConfig::new("bun").args(["-e".to_string(), script])
+    }
+
+    fn restart_without_ready_runtime_config(count_path: &Path) -> RuntimeConfig {
+        let count_path_json =
+            serde_json::to_string(count_path.to_str().expect("temp path should be UTF-8"))
+                .expect("temp path should encode as JSON");
+        let script = format!(
+            r#"
+const path = {count_path_json};
+let count = 0;
+try {{
+  count = Number(await Bun.file(path).text()) || 0;
+}} catch {{
+}}
+await Bun.write(path, String(count + 1));
+if (count === 0) {{
+  console.log(JSON.stringify({{ event: "runtime.ready", version: "test" }}));
+  process.exit(1);
+}}
+setTimeout(async () => {{
+  await Bun.write(path, "survived");
+  process.exit(0);
+}}, 1600);
 setInterval(() => {{}}, 1000);
 "#
         );
