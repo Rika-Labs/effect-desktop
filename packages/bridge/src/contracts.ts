@@ -90,7 +90,10 @@ export const Api = Object.freeze({
       registryFrozen = true
     }),
   get: (tag: string): Effect.Effect<Option.Option<ApiContractClass>, never, never> =>
-    Effect.sync(() => Option.fromUndefinedOr(apiContracts.get(tag)))
+    Effect.sync(() => {
+      const contract = apiContracts.get(tag)
+      return contract === undefined ? Option.none() : Option.some(contract)
+    })
 })
 
 export const apiContractEntries = (): readonly ApiContractClass[] =>
@@ -129,7 +132,7 @@ const registerApiContract = <Tag extends string, Spec extends ApiContractSpec>(
       static layer<Handlers extends ApiHandlers<Spec>>(
         handlers: Handlers
       ): ApiLayer<Tag, Spec, Handlers> {
-        const frozenHandlers = Object.freeze({ ...handlers }) as Handlers
+        const frozenHandlers = Object.freeze(handlers)
 
         return Object.freeze({
           contract,

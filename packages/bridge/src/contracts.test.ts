@@ -189,6 +189,26 @@ test("contract classes expose frozen layer descriptors", async () => {
   expect(Object.isFrozen(layer.handlers)).toBe(true)
 })
 
+test("contract layer builder preserves prototype handler methods", async () => {
+  const PrototypeLayerApi = await Effect.runPromise(
+    Api.Tag("Test.PrototypeLayer")<unknown>()({
+      call: validMethodSpec()
+    })
+  )
+  class PrototypeHandlers {
+    call(input: string): Effect.Effect<string, never, never> {
+      return Effect.succeed(input.toUpperCase())
+    }
+  }
+
+  const handlers = new PrototypeHandlers()
+  const layer = PrototypeLayerApi.layer(handlers)
+
+  expect(layer.handlers).toBe(handlers)
+  expect(await Effect.runPromise(layer.handlers.call("request"))).toBe("REQUEST")
+  expect(Object.isFrozen(layer.handlers)).toBe(true)
+})
+
 test("contract layer builder remains bound when destructured", async () => {
   const DestructuredLayerApi = await Effect.runPromise(
     Api.Tag("Test.DestructuredLayer")<unknown>()({
