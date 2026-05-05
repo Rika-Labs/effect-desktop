@@ -6,6 +6,7 @@ export interface ApiMethodSpec {
   readonly error: Schema.Schema<unknown>
   readonly permission?: string
   readonly timeoutMs?: number
+  readonly cachedResultMs?: number
   readonly idempotent?: boolean
   readonly cancellable?: boolean
   readonly backpressure?: BackpressureSpec
@@ -180,6 +181,20 @@ const validateMethodSpec = (
       return yield* Effect.fail(
         invalidSpec(tag, method, "timeoutMs must be a non-negative finite number")
       )
+    }
+    if (
+      spec.cachedResultMs !== undefined &&
+      (!Number.isFinite(spec.cachedResultMs) || spec.cachedResultMs < 0)
+    ) {
+      return yield* Effect.fail(
+        invalidSpec(tag, method, "cachedResultMs must be a non-negative finite number")
+      )
+    }
+    if (spec.idempotent !== undefined && typeof spec.idempotent !== "boolean") {
+      return yield* Effect.fail(invalidSpec(tag, method, "idempotent must be a boolean"))
+    }
+    if (spec.cancellable !== undefined && typeof spec.cancellable !== "boolean") {
+      return yield* Effect.fail(invalidSpec(tag, method, "cancellable must be a boolean"))
     }
     if (spec.backpressure !== undefined) {
       yield* validateBackpressureSpec(tag, method, spec.backpressure)

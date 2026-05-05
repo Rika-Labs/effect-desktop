@@ -18,6 +18,7 @@ test("Api.Tag registers a frozen contract and exposes a stable snapshot", async 
         error: Schema.Never,
         permission: "project:open",
         timeoutMs: 30_000,
+        cachedResultMs: 60_000,
         idempotent: true,
         cancellable: true,
         backpressure: { strategy: "buffer", size: 128, overflow: "dropOldest" }
@@ -77,6 +78,33 @@ test("Api.Tag rejects invalid timeout values as a typed Effect failure", async (
         timeoutMs: -1
       }
     })
+  )
+
+  expectFailure(exit, InvalidApiContractSpec)
+})
+
+test("Api.Tag rejects invalid cached result values as a typed Effect failure", async () => {
+  const exit = await Effect.runPromiseExit(
+    Api.Tag("Test.InvalidCachedResult")<unknown>()({
+      call: {
+        ...validMethodSpec(),
+        cachedResultMs: Number.NaN
+      }
+    })
+  )
+
+  expectFailure(exit, InvalidApiContractSpec)
+})
+
+test("Api.Tag rejects invalid boolean flags as a typed Effect failure", async () => {
+  const exit = await Effect.runPromiseExit(
+    Api.Tag("Test.InvalidBooleanFlags")<unknown>()({
+      call: {
+        ...validMethodSpec(),
+        idempotent: "false",
+        cancellable: "true"
+      }
+    } as unknown as ApiContractSpec)
   )
 
   expectFailure(exit, InvalidApiContractSpec)
