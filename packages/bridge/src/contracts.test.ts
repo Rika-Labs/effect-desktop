@@ -39,6 +39,25 @@ test("Api.Tag registers a frozen contract and exposes a stable snapshot", async 
   )
 })
 
+test("Api.Tag accepts Effect schema classes", async () => {
+  class Project extends Schema.Class<Project>("Project")({
+    id: Schema.String
+  }) {}
+
+  const ClassSchemaApi = await Effect.runPromise(
+    Api.Tag("Test.ClassSchemaApi")<unknown>()({
+      call: {
+        input: Project,
+        output: Project,
+        error: Schema.Never
+      }
+    })
+  )
+
+  expect(ClassSchemaApi.spec.call.input).toBe(Project)
+  expect(ClassSchemaApi.spec.call.output).toBe(Project)
+})
+
 test("Api.Tag rejects duplicate tags as a typed Effect failure", async () => {
   const exit = await Effect.runPromiseExit(
     Effect.gen(function* () {

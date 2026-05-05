@@ -252,7 +252,9 @@ const invalidSpec = (tag: string, method: string, reason: string): InvalidApiCon
   })
 
 const isSchema = (value: unknown): value is Schema.Schema<unknown> => {
-  return typeof value === "object" && value !== null && "ast" in value
+  return (
+    (typeof value === "object" || typeof value === "function") && value !== null && "ast" in value
+  )
 }
 
 const apiContracts = new Map<string, ApiContractClass>()
