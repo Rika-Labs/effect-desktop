@@ -106,7 +106,7 @@ export const runHeadless = <A, E, R>(
               kind: "window",
               ownerScope: options.ownerScope ?? DEFAULT_HEADLESS_SCOPE,
               state: "open",
-              dispose: Effect.orDie(rawWindow.destroy(response.windowId))
+              dispose: Effect.void
             })
             windowResources.set(response.windowId, handle)
 
@@ -122,6 +122,7 @@ export const runHeadless = <A, E, R>(
             }
 
             windowResources.delete(windowId)
+            yield* rawWindow.destroy(windowId)
             yield* handle.dispose()
           })
       }

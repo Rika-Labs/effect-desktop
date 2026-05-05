@@ -1,7 +1,11 @@
 import { expect, test } from "bun:test"
 import { Effect } from "effect"
 
-import { WINDOW_CREATE_METHOD, WINDOW_DESTROY_METHOD } from "@effect-desktop/bridge"
+import {
+  WINDOW_CREATE_METHOD,
+  WINDOW_DESTROY_METHOD,
+  makeHostProtocolNotFoundError
+} from "@effect-desktop/bridge"
 import { makeResourceRegistry, type ResourceId } from "@effect-desktop/core"
 
 import {
@@ -171,6 +175,35 @@ test("runHeadless fails when a headless window is left open", async () => {
   if (error instanceof ResourceLeakError) {
     expect(error.message).toContain("kind: window")
     expect(error.message).toContain("ownerScope: headless")
+  }
+})
+
+test("runHeadless preserves typed destroy errors from the mock host", async () => {
+  const result = await Effect.runPromise(
+    runHeadless(
+      (runtime) =>
+        Effect.gen(function* () {
+          const window = yield* runtime.window.create({ title: "Destroy failure" })
+          const destroyExit = yield* Effect.exit(runtime.window.destroy(window.windowId))
+          yield* runtime.registry.closeScope("headless")
+
+          return destroyExit
+        }),
+      {
+        fixtures: {
+          [WINDOW_DESTROY_METHOD]: () =>
+            Effect.fail(makeHostProtocolNotFoundError("headless-window", WINDOW_DESTROY_METHOD))
+        },
+        nextRequestId: nextSequence("request"),
+        nextTraceId: nextSequence("trace"),
+        now: () => 1710000000300
+      }
+    )
+  )
+
+  expect(result._tag).toBe("Failure")
+  if (result._tag === "Failure") {
+    expect(JSON.stringify(result.cause.toJSON())).toContain("NotFound")
   }
 })
 
