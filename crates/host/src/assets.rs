@@ -89,8 +89,8 @@ mod tests {
             .expect("index should contain a stylesheet link");
         let js_path =
             first_between(index_text, "src=\"", "\"").expect("index should contain a script");
-        let css = resolve(css_path).expect("style asset should resolve");
-        let js = resolve(js_path).expect("script asset should resolve");
+        let css = resolve(app_asset_path(css_path)).expect("style asset should resolve");
+        let js = resolve(app_asset_path(js_path)).expect("script asset should resolve");
 
         assert_eq!(css.content_type, CSS_CONTENT_TYPE);
         assert!(css
@@ -123,5 +123,9 @@ mod tests {
         let (inner, _) = after_start.split_once(end)?;
 
         Some(inner)
+    }
+
+    fn app_asset_path(value: &str) -> &str {
+        value.strip_prefix("app://localhost").unwrap_or(value)
     }
 }
