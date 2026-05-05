@@ -66,9 +66,7 @@ pub(crate) struct WindowCreateRequest {
     height: f64,
 }
 
-enum HostEvent {
-    Wake,
-}
+enum HostEvent {}
 
 enum WindowCommand {
     Create {
@@ -194,7 +192,7 @@ impl WindowMethodPort {
         &self,
         command: WindowCommand,
     ) -> std::result::Result<(), HostProtocolError> {
-        let proxy = self.installed_proxy()?;
+        let _proxy = self.installed_proxy()?;
         {
             let mut commands =
                 self.state
@@ -206,13 +204,6 @@ impl WindowMethodPort {
             commands.push_back(command);
         }
         self.state.commands_ready.notify_all();
-
-        if proxy.send_event(HostEvent::Wake).is_err() {
-            warn!(
-                event = "host.window.command_wake_dropped",
-                "window command wake event dropped"
-            );
-        }
 
         Ok(())
     }
@@ -507,7 +498,7 @@ pub(crate) fn run_main_window(mode: RunMode, window_methods: WindowMethodPort) -
 
     event_loop.run(move |event, target, control_flow| {
         let lifecycle_event = match event {
-            Event::NewEvents(_) | Event::UserEvent(HostEvent::Wake) => {
+            Event::NewEvents(_) => {
                 registry.handle_pending_window_commands(target, mode, &command_source)
             }
             event => classify_event(&event),
