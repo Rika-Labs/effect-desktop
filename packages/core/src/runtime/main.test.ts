@@ -7,7 +7,9 @@ import { fileURLToPath } from "node:url"
 import {
   HOST_PING_METHOD,
   HOST_PROTOCOL_VERSION,
-  HOST_VERSION_METHOD
+  HOST_VERSION_METHOD,
+  WINDOW_CREATE_METHOD,
+  WINDOW_DESTROY_METHOD
 } from "@effect-desktop/bridge"
 import packageJson from "../../package.json" with { type: "json" }
 
@@ -24,6 +26,7 @@ interface HostProtocolRequest {
   readonly method: string
   readonly timestamp: number
   readonly traceId: string
+  readonly payload?: unknown
 }
 
 interface RuntimeHostResult {
@@ -60,7 +63,7 @@ const isHostProtocolRequest = (value: unknown): value is HostProtocolRequest => 
   )
 }
 
-test("runtime entry emits ready and completes the host handshake", async () => {
+test("runtime entry emits ready and completes the host handshake plus window smoke calls", async () => {
   const result = await runRuntimeWithFakeHost()
 
   expect(result.exitCode).toBe(0)
@@ -72,13 +75,22 @@ test("runtime entry emits ready and completes the host handshake", async () => {
       version: packageJson.version
     }
   ])
-  expect(result.methods).toEqual([HOST_VERSION_METHOD, HOST_PING_METHOD])
+  expect(result.methods).toEqual([
+    HOST_VERSION_METHOD,
+    HOST_PING_METHOD,
+    WINDOW_CREATE_METHOD,
+    WINDOW_DESTROY_METHOD
+  ])
 })
 
 const runRuntimeWithFakeHost = (): Promise<RuntimeHostResult> =>
   new Promise((resolvePromise, rejectPromise) => {
     const child = spawn("bun", ["src/runtime/main.ts"], {
       cwd: PACKAGE_ROOT,
+      env: {
+        ...process.env,
+        EFFECT_DESKTOP_WINDOW_SMOKE_TEST: "1"
+      },
       stdio: ["pipe", "pipe", "pipe"]
     })
     const readyEvents: RuntimeReadyEvent[] = []
@@ -182,6 +194,19 @@ const responseFor = (request: HostProtocolRequest): unknown => {
   }
 
   if (request.method === HOST_PING_METHOD) {
+    return base
+  }
+
+  if (request.method === WINDOW_CREATE_METHOD) {
+    return {
+      ...base,
+      payload: {
+        windowId: "window-1"
+      }
+    }
+  }
+
+  if (request.method === WINDOW_DESTROY_METHOD) {
     return base
   }
 

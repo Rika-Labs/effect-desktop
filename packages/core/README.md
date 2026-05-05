@@ -23,7 +23,9 @@ The runtime entry emits exactly one newline-terminated JSON ready event to stdou
 ```
 
 After the ready line, the runtime uses the framed stdio transport to call the
-required `host.version` and `host.ping` handshake methods before exiting.
+required `host.version` and `host.ping` handshake methods, then calls
+`Window.create`. When `EFFECT_DESKTOP_WINDOW_SMOKE_TEST=1`, it also calls
+`Window.destroy` for the returned `WindowId` before exiting.
 
 ## Non-goals
 
@@ -48,8 +50,8 @@ None until the package implements native-touching primitives.
 
 ## Dependency notes
 
-- `@effect-desktop/bridge` owns the shared host-protocol schemas and handshake
-  client wrappers used by the runtime entry.
+- `@effect-desktop/bridge` owns the shared host-protocol schemas plus the
+  handshake and window client wrappers used by the runtime entry.
 - `effect@4.0.0-beta.60` owns the Effect v4 runtime used to execute those
   handshake wrappers. The version matches the bridge package and the repo's
   Effect v4 baseline.

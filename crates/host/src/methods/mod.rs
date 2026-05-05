@@ -1,41 +1,64 @@
 pub(crate) mod handshake;
+mod window;
 
+use crate::window::WindowMethodHandler;
 use host_protocol::{HostProtocolEnvelope, HostProtocolError};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub(crate) fn dispatch(envelope: HostProtocolEnvelope) -> Option<HostProtocolEnvelope> {
-    dispatch_at(envelope, timestamp_millis())
+#[derive(Clone)]
+pub(crate) struct HostMethodRouter {
+    window: Arc<dyn WindowMethodHandler>,
 }
 
-fn dispatch_at(envelope: HostProtocolEnvelope, timestamp: u64) -> Option<HostProtocolEnvelope> {
-    let HostProtocolEnvelope::Request {
-        id,
-        method,
-        trace_id,
-        ..
-    } = envelope
-    else {
-        return None;
-    };
+impl HostMethodRouter {
+    pub(crate) fn new(window: Arc<dyn WindowMethodHandler>) -> Self {
+        Self { window }
+    }
 
-    let (payload, error) = match method.as_str() {
-        host_protocol::HOST_PING_METHOD => (None, None),
-        host_protocol::HOST_VERSION_METHOD => (Some(handshake::version_payload()), None),
-        _ => (
-            None,
-            Some(HostProtocolError::MethodNotFound {
+    pub(crate) fn dispatch(&self, envelope: HostProtocolEnvelope) -> Option<HostProtocolEnvelope> {
+        self.dispatch_at(envelope, timestamp_millis())
+    }
+
+    fn dispatch_at(
+        &self,
+        envelope: HostProtocolEnvelope,
+        timestamp: u64,
+    ) -> Option<HostProtocolEnvelope> {
+        let HostProtocolEnvelope::Request {
+            id,
+            method,
+            trace_id,
+            payload,
+            ..
+        } = envelope
+        else {
+            return None;
+        };
+
+        let result = match method.as_str() {
+            host_protocol::HOST_PING_METHOD => Ok(None),
+            host_protocol::HOST_VERSION_METHOD => Ok(Some(handshake::version_payload())),
+            host_protocol::WINDOW_CREATE_METHOD => window::create(&*self.window, payload),
+            host_protocol::WINDOW_DESTROY_METHOD => window::destroy(&*self.window, payload),
+            _ => Err(HostProtocolError::MethodNotFound {
                 method: method.clone(),
             }),
-        ),
-    };
+        };
 
-    Some(HostProtocolEnvelope::Response {
-        id,
-        timestamp,
-        trace_id,
-        payload,
-        error,
-    })
+        let (payload, error) = match result {
+            Ok(payload) => (payload, None),
+            Err(error) => (None, Some(error)),
+        };
+
+        Some(HostProtocolEnvelope::Response {
+            id,
+            timestamp,
+            trace_id,
+            payload,
+            error,
+        })
+    }
 }
 
 fn timestamp_millis() -> u64 {
@@ -49,12 +72,17 @@ fn timestamp_millis() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::dispatch_at;
-    use host_protocol::{HostProtocolEnvelope, HostProtocolError, PROTOCOL_VERSION};
+    use super::HostMethodRouter;
+    use crate::window::{WindowCreateRequest, WindowMethodHandler};
+    use host_protocol::{
+        HostProtocolEnvelope, HostProtocolError, WindowCreateResponse, PROTOCOL_VERSION,
+    };
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn ping_returns_response_with_matching_id_and_trace() {
-        let response = dispatch_at(request("request-ping", "host.ping"), 1710000000100)
+        let response = test_router()
+            .dispatch_at(request("request-ping", "host.ping"), 1710000000100)
             .expect("ping should return response");
 
         assert_eq!(
@@ -71,7 +99,8 @@ mod tests {
 
     #[test]
     fn version_returns_protocol_version_payload() {
-        let response = dispatch_at(request("request-version", "host.version"), 1710000000101)
+        let response = test_router()
+            .dispatch_at(request("request-version", "host.version"), 1710000000101)
             .expect("version should return response");
 
         assert_eq!(
@@ -90,7 +119,8 @@ mod tests {
 
     #[test]
     fn unknown_method_returns_method_not_found() {
-        let response = dispatch_at(request("request-missing", "host.missing"), 1710000000102)
+        let response = test_router()
+            .dispatch_at(request("request-missing", "host.missing"), 1710000000102)
             .expect("unknown request should return response");
 
         assert_eq!(
@@ -109,7 +139,7 @@ mod tests {
 
     #[test]
     fn non_request_envelopes_do_not_dispatch() {
-        let response = dispatch_at(
+        let response = test_router().dispatch_at(
             HostProtocolEnvelope::Event {
                 method: "runtime.ready".to_string(),
                 timestamp: 1710000000103,
@@ -123,7 +153,123 @@ mod tests {
         assert_eq!(response, None);
     }
 
+    #[test]
+    fn window_create_validates_payload_and_returns_window_id() {
+        let fake = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-1")),
+            Ok(()),
+        ));
+        let router = HostMethodRouter::new(fake.clone());
+        let response = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-window-create",
+                    host_protocol::WINDOW_CREATE_METHOD,
+                    serde_json::json!({
+                        "title": "Test",
+                        "width": 320.0,
+                        "height": 240.0
+                    }),
+                ),
+                1710000000105,
+            )
+            .expect("window create should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-window-create".to_string(),
+                timestamp: 1710000000105,
+                trace_id: "trace-request-window-create".to_string(),
+                payload: Some(serde_json::json!({
+                    "windowId": "window-1"
+                })),
+                error: None,
+            }
+        );
+        assert_eq!(
+            fake.created(),
+            vec![WindowCreateRequest::new("Test".to_string(), 320.0, 240.0)
+                .expect("test request should validate")]
+        );
+    }
+
+    #[test]
+    fn window_create_invalid_bounds_returns_invalid_argument() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-window-create-invalid",
+                    host_protocol::WINDOW_CREATE_METHOD,
+                    serde_json::json!({
+                        "width": 0.0,
+                        "height": 240.0
+                    }),
+                ),
+                1710000000106,
+            )
+            .expect("window create should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-window-create-invalid".to_string(),
+                timestamp: 1710000000106,
+                trace_id: "trace-request-window-create-invalid".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::InvalidArgument {
+                    field: "width".to_string(),
+                    reason: "must be a finite positive number".to_string(),
+                }),
+            }
+        );
+    }
+
+    #[test]
+    fn window_destroy_unknown_id_returns_not_found() {
+        let fake = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-unused")),
+            Err(HostProtocolError::NotFound {
+                resource: "Window:missing".to_string(),
+            }),
+        ));
+        let router = HostMethodRouter::new(fake);
+        let response = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-window-destroy",
+                    host_protocol::WINDOW_DESTROY_METHOD,
+                    serde_json::json!({
+                        "windowId": "missing"
+                    }),
+                ),
+                1710000000107,
+            )
+            .expect("window destroy should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-window-destroy".to_string(),
+                timestamp: 1710000000107,
+                trace_id: "trace-request-window-destroy".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::NotFound {
+                    resource: "Window:missing".to_string(),
+                }),
+            }
+        );
+    }
+
     fn request(id: &str, method: &str) -> HostProtocolEnvelope {
+        request_with_payload(id, method, serde_json::Value::Null)
+    }
+
+    fn request_with_payload(
+        id: &str,
+        method: &str,
+        payload: serde_json::Value,
+    ) -> HostProtocolEnvelope {
         HostProtocolEnvelope::Request {
             id: id.to_string(),
             method: method.to_string(),
@@ -131,7 +277,61 @@ mod tests {
             trace_id: format!("trace-{id}"),
             window_id: None,
             origin_token: None,
-            payload: None,
+            payload: if payload.is_null() {
+                None
+            } else {
+                Some(payload)
+            },
+        }
+    }
+
+    fn test_router() -> HostMethodRouter {
+        HostMethodRouter::new(Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-test")),
+            Ok(()),
+        )))
+    }
+
+    struct FakeWindowHandler {
+        create_result: Result<WindowCreateResponse, HostProtocolError>,
+        destroy_result: Result<(), HostProtocolError>,
+        created: Mutex<Vec<WindowCreateRequest>>,
+    }
+
+    impl FakeWindowHandler {
+        fn new(
+            create_result: Result<WindowCreateResponse, HostProtocolError>,
+            destroy_result: Result<(), HostProtocolError>,
+        ) -> Self {
+            Self {
+                create_result,
+                destroy_result,
+                created: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn created(&self) -> Vec<WindowCreateRequest> {
+            self.created
+                .lock()
+                .expect("fake created requests should lock")
+                .clone()
+        }
+    }
+
+    impl WindowMethodHandler for FakeWindowHandler {
+        fn create(
+            &self,
+            request: WindowCreateRequest,
+        ) -> Result<WindowCreateResponse, HostProtocolError> {
+            self.created
+                .lock()
+                .expect("fake created requests should lock")
+                .push(request);
+            self.create_result.clone()
+        }
+
+        fn destroy(&self, _window_id: &str) -> Result<(), HostProtocolError> {
+            self.destroy_result.clone()
         }
     }
 }

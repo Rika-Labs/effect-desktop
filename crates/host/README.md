@@ -8,6 +8,7 @@
 - `anyhow` is the temporary binary error boundary until later protocol-specific errors exist.
 - `host-protocol` owns the shared envelope, handshake method names, and typed protocol errors used by host dispatch.
 - `serde_json` parses the staged `runtime.ready` startup line emitted by the Bun runtime.
+- `uuid` mints UUIDv7 `WindowId` values for native windows created through the host protocol.
 - `libc` owns POSIX process-group termination and Linux parent-death signal setup for runtime supervision.
 - `windows-sys` owns Windows Job Object calls for runtime process-tree cleanup.
 
