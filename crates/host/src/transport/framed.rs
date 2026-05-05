@@ -286,7 +286,7 @@ mod tests {
         let mut child = Command::new("bun")
             .args([
                 "-e",
-                "const chunks=[]; for await (const chunk of Bun.stdin.stream()) chunks.push(chunk); await Bun.write(Bun.stdout, Buffer.concat(chunks));",
+                "const fs = require('node:fs'); const input = fs.readFileSync(0); fs.writeFileSync(1, input);",
             ])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
