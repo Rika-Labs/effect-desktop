@@ -1,4 +1,4 @@
-import { Data, Schema } from "effect"
+import { Data, Effect, Option, Schema } from "effect"
 
 export interface ApiMethodSpec {
   readonly input: Schema.Schema<unknown>
@@ -61,19 +61,29 @@ export class InvalidApiContractSpec extends Data.TaggedError("InvalidApiContract
   readonly message: string
 }> {}
 
+export type ApiContractError =
+  | DuplicateApiContractTag
+  | ApiContractRegistryFrozen
+  | InvalidApiContractSpec
+
 export const Api = Object.freeze({
   Tag: <Tag extends string>(tag: Tag) =>
     function ApiTagSelf<Self>() {
       void (undefined as Self | undefined)
 
-      return <Spec extends ApiContractSpec>(spec: Spec): ApiContractClass<Tag, Spec> =>
+      return <Spec extends ApiContractSpec>(
+        spec: Spec
+      ): Effect.Effect<ApiContractClass<Tag, Spec>, ApiContractError, never> =>
         registerApiContract(tag, spec)
     },
-  entries: (): readonly ApiContractClass[] => apiContractEntries(),
-  freeze: (): void => {
-    registryFrozen = true
-  },
-  get: (tag: string): ApiContractClass | undefined => apiContracts.get(tag)
+  entries: (): Effect.Effect<readonly ApiContractClass[], never, never> =>
+    Effect.sync(apiContractEntries),
+  freeze: (): Effect.Effect<void, never, never> =>
+    Effect.sync(() => {
+      registryFrozen = true
+    }),
+  get: (tag: string): Effect.Effect<Option.Option<ApiContractClass>, never, never> =>
+    Effect.sync(() => Option.fromUndefinedOr(apiContracts.get(tag)))
 })
 
 export const apiContractEntries = (): readonly ApiContractClass[] =>
@@ -82,72 +92,88 @@ export const apiContractEntries = (): readonly ApiContractClass[] =>
 const registerApiContract = <Tag extends string, Spec extends ApiContractSpec>(
   tag: Tag,
   spec: Spec
-): ApiContractClass<Tag, Spec> => {
-  if (registryFrozen) {
-    throw new ApiContractRegistryFrozen({
-      tag,
-      message: `API contract registry is frozen; cannot register ${tag}`
-    })
-  }
-
-  if (apiContracts.has(tag)) {
-    throw new DuplicateApiContractTag({
-      tag,
-      message: `API contract tag already registered: ${tag}`
-    })
-  }
-
-  validateContractSpec(tag, spec)
-
-  const frozenSpec = freezeContractSpec(spec)
-  const contract = class {
-    static readonly tag = tag
-    static readonly spec = frozenSpec
-
-    static layer<Handlers extends ApiHandlers<Spec>>(
-      handlers: Handlers
-    ): ApiLayer<Tag, Spec, Handlers> {
-      return Object.freeze({
-        contract: this as ApiContractClass<Tag, Spec>,
-        handlers
-      })
+): Effect.Effect<ApiContractClass<Tag, Spec>, ApiContractError, never> =>
+  Effect.gen(function* () {
+    if (registryFrozen) {
+      return yield* Effect.fail(
+        new ApiContractRegistryFrozen({
+          tag,
+          message: `API contract registry is frozen; cannot register ${tag}`
+        })
+      )
     }
-  } as ApiContractClass<Tag, Spec>
 
-  Object.freeze(contract)
-  apiContracts.set(tag, contract)
+    if (apiContracts.has(tag)) {
+      return yield* Effect.fail(
+        new DuplicateApiContractTag({
+          tag,
+          message: `API contract tag already registered: ${tag}`
+        })
+      )
+    }
 
-  return contract
-}
+    yield* validateContractSpec(tag, spec)
 
-const validateContractSpec = (tag: string, spec: ApiContractSpec): void => {
-  if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
-    throw invalidSpec(tag, "<contract>", "contract spec must be an object")
-  }
+    const frozenSpec = freezeContractSpec(spec)
+    const contract = class {
+      static readonly tag = tag
+      static readonly spec = frozenSpec
 
-  for (const [method, methodSpec] of Object.entries(spec)) {
-    validateMethodSpec(tag, method, methodSpec)
-  }
-}
+      static layer<Handlers extends ApiHandlers<Spec>>(
+        handlers: Handlers
+      ): ApiLayer<Tag, Spec, Handlers> {
+        return Object.freeze({
+          contract: this as ApiContractClass<Tag, Spec>,
+          handlers
+        })
+      }
+    } as ApiContractClass<Tag, Spec>
 
-const validateMethodSpec = (tag: string, method: string, spec: ApiMethodSpec): void => {
-  if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
-    throw invalidSpec(tag, method, "method spec must be an object")
-  }
+    Object.freeze(contract)
+    apiContracts.set(tag, contract)
 
-  if (!isSchema(spec.input)) {
-    throw invalidSpec(tag, method, "input schema is required")
-  }
-  if (!isSchema(spec.output)) {
-    throw invalidSpec(tag, method, "output schema is required")
-  }
-  if (!isSchema(spec.error)) {
-    throw invalidSpec(tag, method, "error schema is required")
-  }
-  if (spec.timeoutMs !== undefined && (!Number.isFinite(spec.timeoutMs) || spec.timeoutMs < 0)) {
-    throw invalidSpec(tag, method, "timeoutMs must be a non-negative finite number")
-  }
-}
+    return contract
+  })
+
+const validateContractSpec = (
+  tag: string,
+  spec: ApiContractSpec
+): Effect.Effect<void, InvalidApiContractSpec, never> =>
+  Effect.gen(function* () {
+    if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
+      return yield* Effect.fail(invalidSpec(tag, "<contract>", "contract spec must be an object"))
+    }
+
+    for (const [method, methodSpec] of Object.entries(spec)) {
+      yield* validateMethodSpec(tag, method, methodSpec)
+    }
+  })
+
+const validateMethodSpec = (
+  tag: string,
+  method: string,
+  spec: ApiMethodSpec
+): Effect.Effect<void, InvalidApiContractSpec, never> =>
+  Effect.gen(function* () {
+    if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
+      return yield* Effect.fail(invalidSpec(tag, method, "method spec must be an object"))
+    }
+
+    if (!isSchema(spec.input)) {
+      return yield* Effect.fail(invalidSpec(tag, method, "input schema is required"))
+    }
+    if (!isSchema(spec.output)) {
+      return yield* Effect.fail(invalidSpec(tag, method, "output schema is required"))
+    }
+    if (!isSchema(spec.error)) {
+      return yield* Effect.fail(invalidSpec(tag, method, "error schema is required"))
+    }
+    if (spec.timeoutMs !== undefined && (!Number.isFinite(spec.timeoutMs) || spec.timeoutMs < 0)) {
+      return yield* Effect.fail(
+        invalidSpec(tag, method, "timeoutMs must be a non-negative finite number")
+      )
+    }
+  })
 
 const freezeContractSpec = <Spec extends ApiContractSpec>(spec: Spec): Spec => {
   for (const methodSpec of Object.values(spec)) {
