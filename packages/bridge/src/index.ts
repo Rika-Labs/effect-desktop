@@ -1,3 +1,4 @@
+export * from "./client.js"
 export * from "./contracts.js"
 export * from "./handshake.js"
 export * from "./protocol.js"
