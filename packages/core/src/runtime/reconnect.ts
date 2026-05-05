@@ -53,6 +53,10 @@ export const evaluateRendererResume = (
 
   const replayedStreamIds = Object.keys(input.resume.cursors)
   for (const streamId of replayedStreamIds) {
+    if (input.ticket.lastStreamCursors[streamId] !== input.resume.cursors[streamId]) {
+      return deny(input.resume.windowId, "backfillExhausted", "reconnect cursor was not resumable")
+    }
+
     const availableBackfillEvents = input.availableBackfillEventsByStream[streamId]
     if (
       availableBackfillEvents === undefined ||

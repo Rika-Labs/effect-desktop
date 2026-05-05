@@ -147,6 +147,56 @@ test("denies a resume when stream backfill is exhausted", () => {
   })
 })
 
+test("denies a resume when a cursor does not match the ticket snapshot", () => {
+  expect(
+    evaluateRendererResume({
+      ticket,
+      resume: {
+        ...resume,
+        cursors: {
+          "stream-1": "41"
+        }
+      },
+      now: 999,
+      originTokenHash: "sha256:origin",
+      availableBackfillEventsByStream: {
+        "stream-1": 1
+      }
+    })
+  ).toEqual({
+    _tag: "Denied",
+    windowId: "window-1",
+    reason: "backfillExhausted",
+    errorTag: "ReconnectBackfillExhausted",
+    message: "reconnect cursor was not resumable"
+  })
+})
+
+test("denies a resume when a requested stream was not in the ticket snapshot", () => {
+  expect(
+    evaluateRendererResume({
+      ticket,
+      resume: {
+        ...resume,
+        cursors: {
+          "stream-2": "1"
+        }
+      },
+      now: 999,
+      originTokenHash: "sha256:origin",
+      availableBackfillEventsByStream: {
+        "stream-2": 1
+      }
+    })
+  ).toEqual({
+    _tag: "Denied",
+    windowId: "window-1",
+    reason: "backfillExhausted",
+    errorTag: "ReconnectBackfillExhausted",
+    message: "reconnect cursor was not resumable"
+  })
+})
+
 test("denies a resume when a requested stream cursor is no longer buffered", () => {
   expect(
     evaluateRendererResume({
