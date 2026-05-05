@@ -1,8 +1,8 @@
-import { Data, Effect, Option, Schema } from "effect"
+import { Data, Effect, Option, Schema, Stream } from "effect"
 
 export interface ApiMethodSpec {
   readonly input: Schema.Schema<unknown>
-  readonly output: Schema.Schema<unknown>
+  readonly output: Schema.Schema<unknown> | ApiStreamSpec
   readonly error: Schema.Schema<unknown>
   readonly permission?: string
   readonly timeoutMs?: number
@@ -14,6 +14,13 @@ export interface ApiMethodSpec {
 
 export interface ApiEventSpec {
   readonly payload: Schema.Schema<unknown>
+  readonly backpressure?: BackpressureSpec
+}
+
+export interface ApiStreamSpec {
+  readonly _tag: "ApiStreamSpec"
+  readonly chunk: Schema.Schema<unknown>
+  readonly error: Schema.Schema<unknown>
   readonly backpressure?: BackpressureSpec
 }
 
@@ -43,11 +50,17 @@ export interface ApiContractClass<
 export type ApiHandlers<Spec extends ApiContractSpec> = {
   readonly [Method in keyof Spec]: (
     input: Schema.Schema.Type<Spec[Method]["input"]>
-  ) => Effect.Effect<
-    Schema.Schema.Type<Spec[Method]["output"]>,
-    Schema.Schema.Type<Spec[Method]["error"]>,
-    unknown
-  >
+  ) => Spec[Method]["output"] extends ApiStreamSpec
+    ? Stream.Stream<
+        Schema.Schema.Type<Spec[Method]["output"]["chunk"]>,
+        Schema.Schema.Type<Spec[Method]["output"]["error"]>,
+        unknown
+      >
+    : Effect.Effect<
+        Schema.Schema.Type<Extract<Spec[Method]["output"], Schema.Schema<unknown>>>,
+        Schema.Schema.Type<Spec[Method]["error"]>,
+        unknown
+      >
 }
 
 export interface ApiLayer<
@@ -83,6 +96,20 @@ export type ApiContractError =
   | InvalidApiContractSpec
 
 export const Api = Object.freeze({
+  Stream: <Chunk extends Schema.Schema<unknown>, Error extends Schema.Schema<unknown>>(
+    chunk: Chunk,
+    error: Error,
+    backpressure?: BackpressureSpec
+  ): ApiStreamSpec & {
+    readonly chunk: Chunk
+    readonly error: Error
+  } =>
+    Object.freeze({
+      _tag: "ApiStreamSpec",
+      chunk,
+      error,
+      ...(backpressure === undefined ? {} : { backpressure: Object.freeze(backpressure) })
+    }),
   Tag: <Tag extends string>(tag: Tag) =>
     function ApiTagSelf<Self>() {
       void (undefined as Self | undefined)
@@ -198,8 +225,8 @@ const validateMethodSpec = (
     if (!isSchema(spec.input)) {
       return yield* Effect.fail(invalidSpec(tag, method, "input schema is required"))
     }
-    if (!isSchema(spec.output)) {
-      return yield* Effect.fail(invalidSpec(tag, method, "output schema is required"))
+    if (!isSchema(spec.output) && !isStreamSpec(spec.output)) {
+      return yield* Effect.fail(invalidSpec(tag, method, "output schema or stream is required"))
     }
     if (!isSchema(spec.error)) {
       return yield* Effect.fail(invalidSpec(tag, method, "error schema is required"))
@@ -304,6 +331,12 @@ const freezeContractSpec = <Spec extends ApiContractSpec>(spec: Spec): Spec => {
     if (methodSpec.backpressure !== undefined) {
       Object.freeze(methodSpec.backpressure)
     }
+    if (isStreamSpec(methodSpec.output) && methodSpec.output.backpressure !== undefined) {
+      Object.freeze(methodSpec.output.backpressure)
+    }
+    if (isStreamSpec(methodSpec.output)) {
+      Object.freeze(methodSpec.output)
+    }
     Object.freeze(methodSpec)
   }
 
@@ -334,6 +367,16 @@ const isSchema = (value: unknown): value is Schema.Schema<unknown> => {
     (typeof value === "object" || typeof value === "function") && value !== null && "ast" in value
   )
 }
+
+export const isStreamSpec = (value: unknown): value is ApiStreamSpec =>
+  typeof value === "object" &&
+  value !== null &&
+  "_tag" in value &&
+  (value as { readonly _tag?: unknown })._tag === "ApiStreamSpec" &&
+  "chunk" in value &&
+  "error" in value &&
+  isSchema((value as { readonly chunk?: unknown }).chunk) &&
+  isSchema((value as { readonly error?: unknown }).error)
 
 const apiContracts = new Map<string, ApiContractClass>()
 const backpressureStrategies = new Set<BackpressureSpec["strategy"]>(["buffer", "drop", "block"])

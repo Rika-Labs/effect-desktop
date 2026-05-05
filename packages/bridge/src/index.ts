@@ -1,6 +1,7 @@
 export * from "./client.js"
 export * from "./contracts.js"
 export * from "./events.js"
+export * from "./streams.js"
 export * from "./handlers.js"
 export * from "./handshake.js"
 export * from "./protocol.js"
