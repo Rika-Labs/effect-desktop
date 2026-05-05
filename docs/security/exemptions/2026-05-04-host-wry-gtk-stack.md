@@ -79,5 +79,4 @@ smoke, and first `app://` scheme stub:
   instantiates the WRY WebView, registers the `app` custom protocol, loads
   `app://localhost/`, and exits without asset lookup, path traversal handling,
   IPC, navigation policy, remote content, or permissions.
-- The issue #10 PR CI runs the app-protocol smoke path on Linux under
-  `xvfb-run -a`.
+- PR #148 CI runs the app-protocol smoke path on Linux under `xvfb-run -a`.
