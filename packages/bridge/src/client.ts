@@ -14,6 +14,7 @@ import {
 } from "./contracts.js"
 import {
   HostProtocolCancelByRequestEnvelope,
+  HostProtocolCancelledError,
   HostProtocolEventEnvelope,
   HostProtocolRequestEnvelope,
   HostProtocolStreamClosedError,
@@ -379,6 +380,7 @@ const streamContractMethod = <Spec extends ApiMethodSpec & { readonly output: Ap
     Effect.gen(function* () {
       const payload = yield* encodeInput(operation, spec, input)
       const request = makeRequest(operation, payload, options)
+      yield* failIfAlreadyAborted(request, callOptions)
       const removeAbortListener = yield* installAbortCancellation(
         exchange,
         request,
@@ -502,9 +504,16 @@ const runRequestWithCancellation = (
   now: () => number
 ): Effect.Effect<ApiClientResponse, HostProtocolError, never> =>
   Effect.gen(function* () {
+    yield* failIfAlreadyAborted(request, options)
     const removeAbortListener = yield* installAbortCancellation(exchange, request, options, now)
     return yield* exchange.request(request).pipe(Effect.ensuring(Effect.sync(removeAbortListener)))
   })
+
+const failIfAlreadyAborted = (
+  request: HostProtocolRequestEnvelope,
+  options: ApiClientCallOptions
+): Effect.Effect<void, HostProtocolError, never> =>
+  options.signal?.aborted === true ? Effect.fail(makeCancelledError(request.method)) : Effect.void
 
 const installAbortCancellation = (
   exchange: ApiClientExchange,
@@ -547,6 +556,15 @@ const makeCancelRequest = (
     id: request.id,
     timestamp: now(),
     traceId: request.traceId
+  })
+
+const makeCancelledError = (operation: string): HostProtocolCancelledError =>
+  new HostProtocolCancelledError({
+    tag: "Cancelled",
+    source: "renderer",
+    message: "bridge call canceled by renderer",
+    operation,
+    recoverable: true
   })
 
 const makeRequest = (

@@ -310,6 +310,46 @@ test("Client abort signals propagate as typed bridge cancellation", async () => 
   expect(states).toEqual(["Pending", "Authorized", "Running", "Canceled"])
 })
 
+test("Client pre-aborted signals fail typed without dispatching requests", async () => {
+  const ProjectApi = makeProjectApi("ProjectApi.ClientPreCancel")
+  const requests: HostProtocolRequestEnvelope[] = []
+  const cancelRequests: HostProtocolCancelByRequestEnvelope[] = []
+  const controller = new AbortController()
+  controller.abort()
+  const client = Client(
+    { project: ProjectApi },
+    {
+      request: (request) => {
+        requests.push(request)
+        return Effect.succeed({
+          kind: "success",
+          payload: { id: "project-1" }
+        })
+      },
+      cancel: (request) =>
+        Effect.sync(() => {
+          cancelRequests.push(request)
+        })
+    },
+    {
+      nextRequestId: () => "request-client-pre-cancel",
+      nextTraceId: () => "trace-client-pre-cancel",
+      now: () => 42
+    }
+  )
+
+  const exit = await Effect.runPromiseExit(
+    client.project.open(new ProjectOpenInput({ path: "/tmp/project" }), {
+      signal: controller.signal
+    })
+  )
+
+  expectFailureTag(exit, "Cancelled")
+  expectFailureField(exit, "source", "renderer")
+  expect(requests).toEqual([])
+  expect(cancelRequests).toEqual([])
+})
+
 type ProjectApiSpec = {
   readonly open: {
     readonly input: typeof ProjectOpenInput
