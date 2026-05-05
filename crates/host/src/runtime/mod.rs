@@ -1,11 +1,9 @@
 //! Runtime child-process supervision.
 
-// Issue #30 defines the supervisor before issue #31 wires it into host startup.
-#![allow(dead_code)]
-
 mod platform;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
+use serde_json::Value;
 use std::{
     ffi::OsString,
     io::{self, BufRead, BufReader, Read},
@@ -15,7 +13,9 @@ use std::{
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
+use tracing::{debug, warn};
 
+const RUNTIME_READY_EVENT: &str = "runtime.ready";
 const TERMINATION_GRACE: Duration = Duration::from_secs(5);
 const TERMINATION_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
@@ -33,11 +33,6 @@ impl RuntimeConfig {
             args: Vec::new(),
             cwd: None,
         }
-    }
-
-    pub(crate) fn arg(mut self, arg: impl Into<OsString>) -> Self {
-        self.args.push(arg.into());
-        self
     }
 
     pub(crate) fn args<I, S>(mut self, args: I) -> Self
@@ -67,6 +62,17 @@ impl RuntimeConfig {
         }
 
         command
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RuntimeReady {
+    version: String,
+}
+
+impl RuntimeReady {
+    pub(crate) fn version(&self) -> &str {
+        &self.version
     }
 }
 
@@ -105,9 +111,10 @@ enum Termination {
 }
 
 pub(crate) struct Supervisor {
-    events: Receiver<RuntimeEvent>,
+    events: Option<Receiver<RuntimeEvent>>,
     terminate: Sender<Termination>,
     lifecycle_thread: Option<JoinHandle<()>>,
+    event_drain_thread: Option<JoinHandle<()>>,
 }
 
 impl Supervisor {
@@ -154,14 +161,26 @@ impl Supervisor {
         );
 
         Ok(Self {
-            events,
+            events: Some(events),
             terminate,
             lifecycle_thread: Some(lifecycle_thread),
+            event_drain_thread: None,
         })
     }
 
     pub(crate) fn events(&self) -> &Receiver<RuntimeEvent> {
-        &self.events
+        self.events
+            .as_ref()
+            .expect("runtime event receiver moved into post-ready drain")
+    }
+
+    fn start_post_ready_drain(&mut self) -> Result<()> {
+        let events = self
+            .events
+            .take()
+            .context("runtime event receiver already moved into post-ready drain")?;
+        self.event_drain_thread = Some(spawn_event_drain(events));
+        Ok(())
     }
 }
 
@@ -169,6 +188,118 @@ impl Drop for Supervisor {
     fn drop(&mut self) {
         let _ = self.terminate.send(Termination::Terminate);
         join_thread(self.lifecycle_thread.take());
+        join_thread(self.event_drain_thread.take());
+    }
+}
+
+pub(crate) fn await_ready(supervisor: &mut Supervisor, timeout: Duration) -> Result<RuntimeReady> {
+    let ready = await_ready_events(supervisor.events(), timeout)?;
+    supervisor.start_post_ready_drain()?;
+    Ok(ready)
+}
+
+fn await_ready_events(events: &Receiver<RuntimeEvent>, timeout: Duration) -> Result<RuntimeReady> {
+    let deadline = Instant::now() + timeout;
+    let mut last_stdout_line = None;
+
+    loop {
+        let now = Instant::now();
+        if now >= deadline {
+            return timeout_error(timeout, last_stdout_line.as_deref());
+        }
+
+        match events.recv_timeout(deadline.saturating_duration_since(now)) {
+            Ok(RuntimeEvent::Started { pid }) => {
+                debug!(pid, "runtime child started");
+            }
+            Ok(RuntimeEvent::Stdout { line }) => {
+                last_stdout_line = Some(line.clone());
+
+                if let Some(ready) = parse_runtime_ready_line(&line)? {
+                    return Ok(ready);
+                }
+
+                debug!(line, "runtime stdout before ready");
+            }
+            Ok(RuntimeEvent::Stderr { line }) => {
+                warn!(line, "runtime stderr before ready");
+            }
+            Ok(RuntimeEvent::StdioError { stream, error }) => {
+                bail!("failed to read runtime {stream:?} before {RUNTIME_READY_EVENT}: {error}");
+            }
+            Ok(RuntimeEvent::LifecycleError { error }) => {
+                bail!("runtime lifecycle failed before {RUNTIME_READY_EVENT}: {error}");
+            }
+            Ok(RuntimeEvent::Exited { status }) => {
+                bail!("runtime exited before {RUNTIME_READY_EVENT}: {status}");
+            }
+            Err(RecvTimeoutError::Timeout) => {
+                return timeout_error(timeout, last_stdout_line.as_deref());
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                bail!("runtime event channel closed before {RUNTIME_READY_EVENT}");
+            }
+        }
+    }
+}
+
+fn parse_runtime_ready_line(line: &str) -> Result<Option<RuntimeReady>> {
+    let value = match serde_json::from_str::<Value>(line) {
+        Ok(value) => value,
+        Err(_) => return Ok(None),
+    };
+
+    if value.get("event").and_then(Value::as_str) != Some(RUNTIME_READY_EVENT) {
+        return Ok(None);
+    }
+
+    let version = value
+        .get("version")
+        .and_then(Value::as_str)
+        .with_context(|| format!("{RUNTIME_READY_EVENT} line missing string version: {line}"))?;
+
+    Ok(Some(RuntimeReady {
+        version: version.to_string(),
+    }))
+}
+
+fn timeout_error(timeout: Duration, last_stdout_line: Option<&str>) -> Result<RuntimeReady> {
+    match last_stdout_line {
+        Some(line) => bail!(
+            "timed out waiting for {RUNTIME_READY_EVENT} after {timeout:?}; last runtime stdout line: {line}"
+        ),
+        None => bail!("timed out waiting for {RUNTIME_READY_EVENT} after {timeout:?}"),
+    }
+}
+
+fn spawn_event_drain(events: Receiver<RuntimeEvent>) -> JoinHandle<()> {
+    thread::spawn(move || {
+        while let Ok(event) = events.recv() {
+            trace_runtime_event(event);
+        }
+    })
+}
+
+fn trace_runtime_event(event: RuntimeEvent) {
+    match event {
+        RuntimeEvent::Started { pid } => {
+            debug!(pid, "runtime child started");
+        }
+        RuntimeEvent::Stdout { line } => {
+            debug!(line, "runtime stdout");
+        }
+        RuntimeEvent::Stderr { line } => {
+            warn!(line, "runtime stderr");
+        }
+        RuntimeEvent::StdioError { stream, error } => {
+            warn!(?stream, error, "runtime stdio error");
+        }
+        RuntimeEvent::LifecycleError { error } => {
+            warn!(error, "runtime lifecycle error");
+        }
+        RuntimeEvent::Exited { status } => {
+            debug!(%status, success = status.success(), "runtime exited");
+        }
     }
 }
 
@@ -284,9 +415,12 @@ fn join_thread(thread: Option<JoinHandle<()>>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{RuntimeConfig, RuntimeEvent, RuntimeStream, Supervisor};
+    use super::{
+        await_ready_events, parse_runtime_ready_line, spawn_event_drain, RuntimeConfig,
+        RuntimeEvent, RuntimeReady, RuntimeStream, Supervisor,
+    };
     use std::{
-        sync::mpsc::Receiver,
+        sync::mpsc::{self, Receiver},
         time::{Duration, Instant},
     };
 
@@ -387,6 +521,120 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn runtime_ready_line_returns_version() {
+        let ready = parse_runtime_ready_line(r#"{"event":"runtime.ready","version":"0.0.0"}"#)
+            .expect("ready line should parse");
+
+        assert_eq!(
+            ready,
+            Some(RuntimeReady {
+                version: "0.0.0".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn runtime_ready_line_ignores_non_ready_output() {
+        assert_eq!(
+            parse_runtime_ready_line("runtime log line").expect("plain log line should not fail"),
+            None
+        );
+        assert_eq!(
+            parse_runtime_ready_line(r#"{"event":"runtime.other","version":"0.0.0"}"#)
+                .expect("non-ready JSON should not fail"),
+            None
+        );
+    }
+
+    #[test]
+    fn runtime_ready_line_requires_string_version() {
+        let error = parse_runtime_ready_line(r#"{"event":"runtime.ready"}"#)
+            .expect_err("ready line without version should fail");
+
+        assert_eq!(
+            error.to_string(),
+            r#"runtime.ready line missing string version: {"event":"runtime.ready"}"#
+        );
+    }
+
+    #[test]
+    fn await_ready_events_resolves_after_started_and_noise() {
+        let (events_tx, events_rx) = mpsc::channel();
+        events_tx
+            .send(RuntimeEvent::Started { pid: 1 })
+            .expect("started event should send");
+        events_tx
+            .send(RuntimeEvent::Stdout {
+                line: "booting".to_string(),
+            })
+            .expect("stdout event should send");
+        events_tx
+            .send(RuntimeEvent::Stdout {
+                line: r#"{"event":"runtime.ready","version":"0.0.0"}"#.to_string(),
+            })
+            .expect("ready event should send");
+
+        let ready =
+            await_ready_events(&events_rx, EVENT_TIMEOUT).expect("ready event should resolve");
+
+        assert_eq!(ready.version(), "0.0.0");
+    }
+
+    #[test]
+    fn await_ready_events_fails_on_lifecycle_error_before_ready() {
+        let (events_tx, events_rx) = mpsc::channel();
+        events_tx
+            .send(RuntimeEvent::LifecycleError {
+                error: "spawn failed".to_string(),
+            })
+            .expect("lifecycle error event should send");
+
+        let error = await_ready_events(&events_rx, EVENT_TIMEOUT)
+            .expect_err("lifecycle error should fail readiness");
+
+        assert_eq!(
+            error.to_string(),
+            "runtime lifecycle failed before runtime.ready: spawn failed"
+        );
+    }
+
+    #[test]
+    fn await_ready_events_times_out_without_ready() {
+        let (_events_tx, events_rx) = mpsc::channel();
+
+        let error = await_ready_events(&events_rx, Duration::from_millis(1))
+            .expect_err("missing ready event should time out");
+
+        assert_eq!(
+            error.to_string(),
+            "timed out waiting for runtime.ready after 1ms"
+        );
+    }
+
+    #[test]
+    fn event_drain_consumes_post_ready_events_until_channel_closes() {
+        let (events_tx, events_rx) = mpsc::channel();
+        let drain_thread = spawn_event_drain(events_rx);
+
+        events_tx
+            .send(RuntimeEvent::Stdout {
+                line: "after ready".to_string(),
+            })
+            .expect("post-ready stdout event should send");
+        events_tx
+            .send(RuntimeEvent::Stderr {
+                line: "after ready stderr".to_string(),
+            })
+            .expect("post-ready stderr event should send");
+        drop(events_tx);
+
+        assert!(
+            drain_thread.join().is_ok(),
+            "event drain should exit when the event channel closes"
+        );
     }
 
     fn collect_until_exit(events: &Receiver<RuntimeEvent>) -> Vec<RuntimeEvent> {
