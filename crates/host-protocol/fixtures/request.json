@@ -1,0 +1,1 @@
+{"kind":"request","id":"request-1","method":"host.ping","timestamp":1710000000000,"traceId":"trace-1","windowId":"window-main","originToken":"origin-token-1","payload":{"message":"ping"}}
