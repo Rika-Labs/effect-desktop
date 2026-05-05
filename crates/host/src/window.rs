@@ -27,6 +27,7 @@ const WINDOW_DESTROYED_EVENT: &str = "host.window.destroyed";
 const WINDOW_EXIT_REQUESTED_EVENT: &str = "host.window.exit_requested";
 const WINDOW_METHOD_READY_TIMEOUT: Duration = Duration::from_secs(5);
 const WINDOW_METHOD_REPLY_TIMEOUT: Duration = Duration::from_secs(5);
+const WINDOW_COMMAND_IDLE_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RunMode {
@@ -380,6 +381,10 @@ impl WindowRegistry {
         lifecycle
     }
 
+    fn has_windows(&self) -> bool {
+        !self.windows.is_empty()
+    }
+
     fn handle_window_command(
         &mut self,
         target: &EventLoopWindowTarget<HostEvent>,
@@ -436,7 +441,8 @@ pub(crate) fn run_main_window(mode: RunMode, window_methods: WindowMethodPort) -
             }
             event => classify_event(&event),
         };
-        *control_flow = control_flow_for_lifecycle_event(lifecycle_event);
+        *control_flow =
+            control_flow_for_window_state(lifecycle_event, registry.has_windows(), Instant::now());
     });
 }
 
@@ -480,6 +486,19 @@ fn control_flow_for_lifecycle_event(event: WindowLifecycleEvent) -> ControlFlow 
     }
 }
 
+fn control_flow_for_window_state(
+    event: WindowLifecycleEvent,
+    has_windows: bool,
+    now: Instant,
+) -> ControlFlow {
+    match control_flow_for_lifecycle_event(event) {
+        ControlFlow::Wait if !has_windows => {
+            ControlFlow::WaitUntil(now + WINDOW_COMMAND_IDLE_POLL_INTERVAL)
+        }
+        control_flow => control_flow,
+    }
+}
+
 fn send_window_command_reply(reply: Sender<WindowCommandReply>, result: WindowCommandReply) {
     if reply.send(result).is_err() {
         warn!(
@@ -503,10 +522,13 @@ fn validate_positive_finite(field: &str, value: f64) -> std::result::Result<(), 
 #[cfg(test)]
 mod tests {
     use super::{
-        control_flow_for_lifecycle_event, lifecycle_for_create_result, validate_positive_finite,
-        RunMode, WindowCommandResponse, WindowCreateRequest, WindowLifecycleEvent, WindowRegistry,
+        control_flow_for_lifecycle_event, control_flow_for_window_state,
+        lifecycle_for_create_result, validate_positive_finite, RunMode, WindowCommandResponse,
+        WindowCreateRequest, WindowLifecycleEvent, WindowRegistry,
+        WINDOW_COMMAND_IDLE_POLL_INTERVAL,
     };
     use host_protocol::{HostProtocolError, WindowCreatePayload, WindowCreateResponse};
+    use std::time::Instant;
     use tao::event_loop::ControlFlow;
 
     #[test]
@@ -553,6 +575,24 @@ mod tests {
     fn unrelated_events_wait_without_spinning() {
         assert_eq!(
             control_flow_for_lifecycle_event(WindowLifecycleEvent::Other),
+            ControlFlow::Wait
+        );
+    }
+
+    #[test]
+    fn empty_registry_uses_bounded_poll_for_startup_commands() {
+        let now = Instant::now();
+
+        assert_eq!(
+            control_flow_for_window_state(WindowLifecycleEvent::Other, false, now),
+            ControlFlow::WaitUntil(now + WINDOW_COMMAND_IDLE_POLL_INTERVAL)
+        );
+    }
+
+    #[test]
+    fn open_window_waits_for_native_events() {
+        assert_eq!(
+            control_flow_for_window_state(WindowLifecycleEvent::Other, true, Instant::now()),
             ControlFlow::Wait
         );
     }
