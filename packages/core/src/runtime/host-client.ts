@@ -1,19 +1,20 @@
 import {
   decodeHostProtocolEnvelope,
   encodeHostProtocolEnvelope,
+  makeHostProtocolBinaryDecodeError,
+  makeHostProtocolFrameTooLargeError,
   makeHostProtocolHostUnavailableError,
   makeHostProtocolInvalidOutputError
 } from "@effect-desktop/bridge"
 import type {
   HostHandshakeExchange,
-  HostProtocolEnvelope,
   HostProtocolError,
   HostProtocolRequestEnvelope,
   HostProtocolResponseEnvelope
 } from "@effect-desktop/bridge"
 import { Effect } from "effect"
 
-import type { FramedTransport } from "./transport.js"
+import { FrameTooLargeError, FrameTruncatedError, type FramedTransport } from "./transport.js"
 
 const TextEncoderCtor = globalThis.TextEncoder
 const TextDecoderCtor = globalThis.TextDecoder
@@ -36,7 +37,7 @@ const sendRequest = (
       const encoded = encodeHostProtocolEnvelope(request)
       await transport.send(new TextEncoderCtor().encode(JSON.stringify(encoded)))
     },
-    catch: () => makeHostProtocolHostUnavailableError("FramedTransport.send")
+    catch: (error) => classifyTransportError(error, "FramedTransport.send")
   })
 
 const receiveResponseFrame = (
@@ -51,31 +52,59 @@ const receiveResponseFrame = (
 
       return frame
     },
-    catch: () => makeHostProtocolHostUnavailableError("FramedTransport.recv")
+    catch: (error) => classifyTransportError(error, "FramedTransport.recv")
   })
 
 const decodeResponseFrame = (
   request: HostProtocolRequestEnvelope,
   frame: Uint8Array
 ): Effect.Effect<HostProtocolResponseEnvelope, HostProtocolError, never> =>
-  Effect.try({
-    try: () => {
-      const parsed: unknown = JSON.parse(new TextDecoderCtor().decode(frame))
-      const envelope: HostProtocolEnvelope = decodeHostProtocolEnvelope(parsed)
-      if (envelope.kind !== "response") {
-        throw new Error(`expected response envelope for ${request.method}; got ${envelope.kind}`)
-      }
+  Effect.gen(function* () {
+    const parsed = yield* Effect.try({
+      try: () => {
+        return JSON.parse(new TextDecoderCtor().decode(frame)) as unknown
+      },
+      catch: (error) => makeHostProtocolBinaryDecodeError(formatUnknownError(error), request.method)
+    })
 
-      if (envelope.id !== request.id) {
-        throw new Error(
+    const envelope = yield* Effect.try({
+      try: () => decodeHostProtocolEnvelope(parsed),
+      catch: (error) =>
+        makeHostProtocolInvalidOutputError(request.method, formatUnknownError(error))
+    })
+
+    if (envelope.kind !== "response") {
+      return yield* Effect.fail(
+        makeHostProtocolInvalidOutputError(
+          request.method,
+          `expected response envelope for ${request.method}; got ${envelope.kind}`
+        )
+      )
+    }
+
+    if (envelope.id !== request.id) {
+      return yield* Effect.fail(
+        makeHostProtocolInvalidOutputError(
+          request.method,
           `expected response id ${request.id} for ${request.method}; got ${envelope.id}`
         )
-      }
+      )
+    }
 
-      return envelope
-    },
-    catch: (error) => makeHostProtocolInvalidOutputError(request.method, formatUnknownError(error))
+    return envelope
   })
+
+const classifyTransportError = (error: unknown, operation: string): HostProtocolError => {
+  if (error instanceof FrameTooLargeError) {
+    return makeHostProtocolFrameTooLargeError(error.size, error.max, operation)
+  }
+
+  if (error instanceof FrameTruncatedError) {
+    return makeHostProtocolBinaryDecodeError(error.message, operation)
+  }
+
+  return makeHostProtocolHostUnavailableError(operation)
+}
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {

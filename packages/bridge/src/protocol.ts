@@ -677,6 +677,36 @@ export const makeHostProtocolHostUnavailableError = (
     ...makeHostProtocolErrorCommonInput("HostUnavailable", "host is unavailable", operation)
   })
 
+export const makeHostProtocolFrameTooLargeError = (
+  sizeBytes: number,
+  limitBytes: number,
+  operation: string
+): HostProtocolFrameTooLargeError =>
+  new HostProtocolFrameTooLargeError({
+    tag: "FrameTooLarge",
+    sizeBytes,
+    limitBytes,
+    ...makeHostProtocolErrorCommonInput(
+      "FrameTooLarge",
+      `frame size ${sizeBytes} exceeds limit ${limitBytes}`,
+      operation
+    )
+  })
+
+export const makeHostProtocolBinaryDecodeError = (
+  reason: string,
+  operation: string
+): HostProtocolBinaryDecodeError =>
+  new HostProtocolBinaryDecodeError({
+    tag: "BinaryDecodeError",
+    reason,
+    ...makeHostProtocolErrorCommonInput(
+      "BinaryDecodeError",
+      `binary frame decode failed: ${reason}`,
+      operation
+    )
+  })
+
 export const makeHostProtocolInvalidStateError = (
   current: string,
   attempted: string,
