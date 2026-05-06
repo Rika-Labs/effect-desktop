@@ -10,9 +10,13 @@ permissions, mock process, mock PTY, headless runtime, and memory secrets.
 
 ## Public API
 
-`runHeadless(body, options)` runs host-protocol clients against an in-process
-host fixture and fails with a typed `ResourceLeakError` if non-app resources
-remain open.
+`MockHostLive(options)` provides `MockHost`, an in-process host-protocol
+substitute that accepts real host-protocol request envelopes, preserves trace
+IDs on responses, records calls, and maintains an in-memory window registry for
+`Window.create` / `Window.destroy`.
+
+`runHeadless(body, options)` runs host-protocol clients against `MockHost` and
+fails with a typed `ResourceLeakError` if non-app resources remain open.
 
 `assertNoOpenResourcesIn(registry, options)` and
 `installResourceLeakDetection(registry, options)` provide leak checks for tests

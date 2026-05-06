@@ -1,5 +1,5 @@
 import { afterEach, expect } from "bun:test"
-import { Data, Effect, Exit } from "effect"
+import { Context, Data, Effect, Exit, Layer } from "effect"
 
 import {
   HOST_PING_METHOD,
@@ -55,6 +55,8 @@ export interface HeadlessHarnessOptions {
   readonly ownerScope?: string
 }
 
+export type MockHostOptions = Omit<HeadlessHarnessOptions, "leakDetection" | "ownerScope">
+
 export type HeadlessFixture = (
   request: HostProtocolRequestEnvelope,
   state: HeadlessHostState
@@ -78,6 +80,66 @@ export interface HeadlessHostCall {
 export interface HeadlessHostState {
   readonly windows: ReadonlyMap<string, WindowCreateInput>
 }
+
+export interface MockHostApi {
+  readonly calls: () => readonly HeadlessHostCall[]
+  readonly request: (
+    request: HostProtocolRequestEnvelope
+  ) => Effect.Effect<HostProtocolResponseEnvelope, HostProtocolError, never>
+  readonly windows: () => ReadonlyMap<string, WindowCreateInput>
+}
+
+export class MockHost extends Context.Service<MockHost, MockHostApi>()(
+  "@effect-desktop/test/MockHost"
+) {}
+
+export const makeMockHost = (options: MockHostOptions = {}): MockHostApi => {
+  const calls: HeadlessHostCall[] = []
+  const windows = new Map<string, WindowCreateInput>()
+  let nextWindowId = 1
+
+  const state: HeadlessHostState = {
+    windows
+  }
+
+  return Object.freeze({
+    calls: () => calls.slice(),
+    windows: () => new Map(windows),
+    request: (request) =>
+      Effect.gen(function* () {
+        calls.push({
+          method: request.method,
+          request
+        })
+
+        const fixture = options.fixtures?.[request.method] ?? defaultFixture(request.method)
+        const payload = yield* resolveFixture(fixture, request, state)
+        const responsePayload =
+          payload === DEFAULT_WINDOW_CREATE_PAYLOAD
+            ? { windowId: `headless-window-${nextWindowId}` }
+            : payload
+
+        if (request.method === WINDOW_CREATE_METHOD) {
+          const windowId = yield* readWindowId(responsePayload, request.method)
+          windows.set(windowId, readWindowCreateInput(request.payload))
+          nextWindowId += 1
+        } else if (request.method === WINDOW_DESTROY_METHOD) {
+          windows.delete(yield* readWindowId(request.payload, request.method))
+        }
+
+        return new HostProtocolResponseEnvelope({
+          kind: "response",
+          id: request.id,
+          timestamp: options.now?.() ?? Date.now(),
+          traceId: request.traceId,
+          payload: responsePayload
+        })
+      })
+  } satisfies MockHostApi)
+}
+
+export const MockHostLive = (options: MockHostOptions = {}): Layer.Layer<MockHost> =>
+  Layer.succeed(MockHost)(makeMockHost(options))
 
 export interface HeadlessRuntime {
   readonly calls: () => readonly HeadlessHostCall[]
@@ -145,7 +207,7 @@ export const runHeadless = <A, E, R>(
 ): Effect.Effect<A, E | HostProtocolError | ResourceLeakError, R> =>
   Effect.gen(function* () {
     const registry = yield* makeResourceRegistry()
-    const host = makeHeadlessHost(options)
+    const host = makeMockHost(options)
     const windowResources = new Map<string, ResourceHandle<"window", "open">>()
     const rawWindow = makeHostWindowClient(host, hostClientOptions(options))
     const runtime: HeadlessRuntime = {
@@ -254,66 +316,22 @@ export const installResourceLeakDetection = (
   })
 }
 
-const makeHeadlessHost = (options: HeadlessHarnessOptions): HeadlessHost => {
-  const calls: HeadlessHostCall[] = []
-  const windows = new Map<string, WindowCreateInput>()
-  let nextWindowId = 1
-
-  const state: HeadlessHostState = {
-    windows
-  }
-
-  return {
-    calls: () => calls,
-    request: (request) =>
-      Effect.gen(function* () {
-        calls.push({
-          method: request.method,
-          request
-        })
-
-        const fixture = options.fixtures?.[request.method] ?? defaultFixture(request.method)
-        const payload = yield* resolveFixture(fixture, request, state)
-        const responsePayload =
-          payload === DEFAULT_WINDOW_CREATE_PAYLOAD
-            ? { windowId: `headless-window-${nextWindowId}` }
-            : payload
-
-        if (request.method === WINDOW_CREATE_METHOD) {
-          const windowId = yield* readWindowId(responsePayload, request.method)
-          windows.set(windowId, readWindowCreateInput(request.payload))
-          nextWindowId += 1
-        } else if (request.method === WINDOW_DESTROY_METHOD) {
-          windows.delete(yield* readWindowId(request.payload, request.method))
-        }
-
-        return new HostProtocolResponseEnvelope({
-          kind: "response",
-          id: request.id,
-          timestamp: options.now?.() ?? Date.now(),
-          traceId: request.traceId,
-          payload: responsePayload
-        })
-      })
-  }
-}
-
-interface HeadlessHost {
-  readonly calls: () => readonly HeadlessHostCall[]
-  readonly request: (
-    request: HostProtocolRequestEnvelope
-  ) => Effect.Effect<HostProtocolResponseEnvelope, HostProtocolError, never>
-}
-
 const defaultFixture = (method: string): HeadlessFixture => {
   switch (method) {
     case HOST_PING_METHOD:
-    case WINDOW_DESTROY_METHOD:
       return () => undefined
     case HOST_VERSION_METHOD:
       return () => ({ protocolVersion: HOST_PROTOCOL_VERSION })
     case WINDOW_CREATE_METHOD:
       return () => DEFAULT_WINDOW_CREATE_PAYLOAD
+    case WINDOW_DESTROY_METHOD:
+      return (request, state) =>
+        Effect.gen(function* () {
+          const windowId = yield* readWindowId(request.payload, request.method)
+          if (!state.windows.has(windowId)) {
+            return yield* Effect.fail(makeHostProtocolNotFoundError(windowId, request.method))
+          }
+        })
     default:
       return () => Effect.fail(makeHostProtocolNotFoundError(method, method))
   }
