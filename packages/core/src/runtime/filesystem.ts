@@ -12,7 +12,7 @@ import {
   writeFile
 } from "node:fs/promises"
 import { watch as nodeWatch } from "node:fs"
-import { dirname, join } from "node:path"
+import { dirname, join, resolve } from "node:path"
 import { randomUUID } from "node:crypto"
 
 import {
@@ -563,8 +563,12 @@ const authorizeFilesystemPath = (
         : allowedByRoot
 
     if (!allowedByRoot) {
-      const requestedPath = yield* canonicalizeRequestedPath(adapter, path, operation)
-      if (roots.some((root) => pathWithinRoot(requestedPath, root))) {
+      const requestedPathWithinRoots = yield* requestedPathWithinPermissionRoots(
+        adapter,
+        path,
+        roots
+      )
+      if (requestedPathWithinRoots) {
         return yield* Effect.fail(
           makeSymlinkEscapesRootError(path, canonicalPath, roots, operation)
         )
@@ -662,20 +666,37 @@ const canonicalizePossiblyMissingPath = (
     })
   )
 
-const canonicalizeRequestedPath = (
+const requestedPathWithinPermissionRoots = (
   adapter: FilesystemAdapter,
   path: string,
-  operation: string
-): Effect.Effect<string, FilesystemError, never> =>
+  roots: readonly string[]
+): Effect.Effect<boolean, never, never> =>
+  requestedAncestorWithinPermissionRoots(adapter, dirname(resolve(path)), roots)
+
+const requestedAncestorWithinPermissionRoots = (
+  adapter: FilesystemAdapter,
+  path: string,
+  roots: readonly string[]
+): Effect.Effect<boolean, never, never> =>
   Effect.tryPromise({
-    try: async () => join(await adapter.realpath(dirname(path)), pathSegment(path)),
+    try: () => adapter.realpath(path),
     catch: (error) => error
   }).pipe(
+    Effect.map((canonicalPath) => roots.some((root) => pathWithinRoot(canonicalPath, root))),
     Effect.catch((error) => {
-      if (isNodeError(error) && error.code === "ENOENT") {
-        return canonicalizePossiblyMissingPath(adapter, path, operation)
+      if (isNodeError(error) && (error.code === "ENOENT" || error.code === "EACCES")) {
+        return Effect.succeed(false)
       }
-      return Effect.fail(mapFilesystemError(error, path, operation))
+      return Effect.succeed(false)
+    }),
+    Effect.flatMap((withinRoots) => {
+      if (withinRoots) {
+        return Effect.succeed(true)
+      }
+      const parent = dirname(path)
+      return parent === path
+        ? Effect.succeed(false)
+        : requestedAncestorWithinPermissionRoots(adapter, parent, roots)
     })
   )
 

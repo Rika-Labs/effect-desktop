@@ -311,6 +311,28 @@ test("Filesystem canonicalizes symlink targets before permission checks", async 
   })
 })
 
+test("Filesystem reports SymlinkEscapesRoot for intermediate symlink escapes", async () => {
+  const allowed = await tempDirectory()
+  const denied = await tempDirectory()
+  const targetDirectory = join(denied, "target")
+  const target = join(targetDirectory, "secret.txt")
+  const linkDirectory = join(allowed, "linkdir")
+  const linkPath = join(linkDirectory, "secret.txt")
+  const service = await makeTestFilesystem({ permissions: { readRoots: [allowed] } })
+  await mkdirOnDisk(targetDirectory)
+  await Bun.write(target, "secret")
+  await symlink(targetDirectory, linkDirectory)
+
+  const exit = await Effect.runPromiseExit(service.read(linkPath))
+
+  expectFailureTag(exit, "SymlinkEscapesRoot")
+  expectSymlinkEscapesRoot(exit, {
+    requested: linkPath,
+    resolved: await realpath(target),
+    capabilityRoots: [await realpath(allowed)]
+  })
+})
+
 test("Filesystem realpath returns the authorized canonical path", async () => {
   const directory = await tempDirectory()
   const target = join(directory, "target.txt")
