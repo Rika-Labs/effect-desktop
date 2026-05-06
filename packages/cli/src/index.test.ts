@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { expect, test } from "bun:test"
 import { Effect } from "effect"
 
-import { runCli, type CommandRunner } from "./index.js"
+import { DoctorMissing, runCli, type CommandRunner, type DoctorCommandRunner } from "./index.js"
 import type { PackageCommandRunner } from "./package-pipeline.js"
 
 test("desktop check --production exits non-zero for unacknowledged CSP weakening", async () => {
@@ -117,6 +117,120 @@ test("desktop check --production treats missing renderer path as a usage error",
 
   expect(exitCode).toBe(1)
   expect(stderr.join("")).toContain("--renderer requires a path")
+})
+
+test("desktop doctor reports typed missing Rust toolchain failures", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
+  try {
+    await writePlaygroundFixture(directory)
+    await writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
+    await writeFile(join(directory, "bun.lock"), "")
+    const runner = doctorRunner({
+      cargo: false,
+      rustc: true,
+      "pkg-config": true,
+      "dpkg-deb": true
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["doctor", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        platform: "linux",
+        arch: "x64",
+        bunVersion: "1.3.13",
+        doctorCommandRunner: runner,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const report = JSON.parse(stderr.join("")) as {
+      readonly passed: boolean
+      readonly probes: readonly [{ readonly name: string; readonly status: string }]
+    }
+    expect(exitCode).toBe(1)
+    expect(report.passed).toBe(false)
+    expect(report.probes.find((probe) => probe.name === "rust-toolchain")?.status).toBe("missing")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop doctor exits zero with warnings for optional signing and host cache probes", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
+  try {
+    await writePlaygroundFixture(directory)
+    await writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
+    await writeFile(join(directory, "bun.lock"), "")
+    const runner = doctorRunner({
+      cargo: true,
+      rustc: true,
+      "xcode-select": true,
+      hdiutil: true
+    })
+    const stdout: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["doctor", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        platform: "darwin",
+        arch: "arm64",
+        bunVersion: "1.3.13",
+        doctorCommandRunner: runner,
+        writeStdout: (text) => {
+          stdout.push(text)
+        },
+        writeStderr: () => {}
+      })
+    )
+
+    const output = stdout.join("")
+    expect(exitCode).toBe(0)
+    expect(output).toContain("WARN")
+    expect(output).toContain("signing credentials are not configured")
+    expect(output).toContain("native host build cache is empty")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop doctor fails when package manager state is not Bun-pinned", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
+  try {
+    await writePlaygroundFixture(directory)
+    await writeFile(join(directory, "package.json"), '{"packageManager":"npm@10.0.0"}\n')
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["doctor", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        platform: "darwin",
+        arch: "arm64",
+        bunVersion: "1.3.13",
+        doctorCommandRunner: doctorRunner({
+          cargo: true,
+          rustc: true,
+          "xcode-select": true,
+          hdiutil: true
+        }),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("package.json#packageManager must be pinned to bun")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
 })
 
 test("desktop check --repro exits zero for byte-identical staged and packaged outputs", async () => {
@@ -723,6 +837,23 @@ const deterministicPackageRunner =
         }
       }
     })
+
+const doctorRunner =
+  (available: Readonly<Record<string, boolean>>): DoctorCommandRunner =>
+  (invocation) =>
+    available[invocation.command] === true
+      ? Effect.succeed({ stdout: `${invocation.command} ok`, stderr: "" })
+      : Effect.fail(
+          new DoctorMissing({
+            probe: invocation.probe,
+            component: invocation.command,
+            platform: "test",
+            message: `${invocation.command} missing`,
+            remediation: `install ${invocation.command}`,
+            installHint: `install ${invocation.command}`,
+            docsUrl: "https://example.invalid"
+          })
+        )
 
 const fixedClock = (values: readonly number[]): (() => number) => {
   let index = 0
