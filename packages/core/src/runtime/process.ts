@@ -1,13 +1,15 @@
 import {
+  HostProtocolBackpressureOverflowError,
   HostProtocolFileNotFoundError,
   HostProtocolInvalidArgumentError,
   HostProtocolPermissionDeniedError,
+  HostProtocolResourceBusyError,
   hostProtocolErrorRecoverableDefault,
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError,
   type HostProtocolErrorTag
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Schema, Sink, Stream } from "effect"
+import { Context, Effect, Layer, Option, Ref, Schema, Sink, Stream } from "effect"
 
 import { ResourceRegistry, type ResourceHandle, type ResourceRegistryApi } from "./resources.js"
 
@@ -79,8 +81,15 @@ export interface ProcessChild {
 
 export interface ProcessOptions {
   readonly adapter?: ProcessAdapter
+  readonly budgets?: ProcessBudgetPolicy
   readonly gracefulShutdownMs?: number
   readonly permissions?: ProcessPermissionPolicy
+}
+
+export interface ProcessBudgetPolicy {
+  readonly maxConcurrent?: number
+  readonly stderrBufferBytes?: number
+  readonly stdoutBufferBytes?: number
 }
 
 export interface ProcessPermissionPolicy {
@@ -88,6 +97,11 @@ export interface ProcessPermissionPolicy {
   readonly shell?: boolean
 }
 
+const DEFAULT_PROCESS_BUDGETS: Required<ProcessBudgetPolicy> = Object.freeze({
+  maxConcurrent: 16,
+  stderrBufferBytes: 262_144,
+  stdoutBufferBytes: 1_048_576
+})
 const DEFAULT_GRACEFUL_SHUTDOWN_MS = 5_000
 const EMPTY_PROCESS_PERMISSIONS: ProcessPermissionPolicy = Object.freeze({})
 
@@ -95,10 +109,12 @@ export const makeProcess = (
   registry: ResourceRegistryApi,
   options: ProcessOptions = {}
 ): Effect.Effect<ProcessApi, never, never> =>
-  Effect.sync(() => {
+  Effect.gen(function* () {
     const adapter = options.adapter ?? BunProcessAdapter
+    const budgets = { ...DEFAULT_PROCESS_BUDGETS, ...options.budgets }
     const gracefulShutdownMs = options.gracefulShutdownMs ?? DEFAULT_GRACEFUL_SHUTDOWN_MS
     const permissions = options.permissions ?? EMPTY_PROCESS_PERMISSIONS
+    const processBudgets = yield* Ref.make(new Map<string, number>())
 
     return Object.freeze({
       spawn: (command: string, args: readonly string[] = [], options?: ProcessSpawnOptions) =>
@@ -115,18 +131,27 @@ export const makeProcess = (
             "Process.spawn"
           )
           yield* authorizeProcessSpawn(permissions, input)
-          const child = yield* Effect.try({
-            try: () => adapter.spawn(input),
-            catch: (error) => mapProcessError(error, input.command, "Process.spawn")
-          })
-          const resource = yield* registry.register({
-            kind: "process",
-            ownerScope: input.ownerScope,
-            state: "running",
-            dispose: disposeChild(child, input.command, gracefulShutdownMs)
-          })
+          const { child, resource } = yield* Effect.uninterruptible(
+            Effect.gen(function* () {
+              yield* reserveProcessBudget(processBudgets, input.ownerScope, budgets.maxConcurrent)
+              const child = yield* Effect.try({
+                try: () => adapter.spawn(input),
+                catch: (error) => mapProcessError(error, input.command, "Process.spawn")
+              }).pipe(Effect.tapError(() => releaseProcessBudget(processBudgets, input.ownerScope)))
+              const resource = yield* registry.register({
+                kind: "process",
+                ownerScope: input.ownerScope,
+                state: "running",
+                dispose: disposeChild(child, input.command, gracefulShutdownMs).pipe(
+                  Effect.andThen(releaseProcessBudget(processBudgets, input.ownerScope))
+                )
+              })
 
-          return makeHandle(child, resource, input.command)
+              return { child, resource }
+            })
+          )
+
+          return makeHandle(child, resource, input.command, budgets)
         }).pipe(
           Effect.withSpan("Process.spawn", {
             attributes: { command, argc: args.length, ownerScope: options?.ownerScope ?? "" }
@@ -159,18 +184,29 @@ export const ProcessLayer = (
 const makeHandle = (
   child: ProcessChild,
   resource: ResourceHandle<"process", "running">,
-  command: string
+  command: string,
+  budgets: Required<ProcessBudgetPolicy>
 ): ProcessHandle => {
-  const stdout = Stream.fromReadableStream({
-    evaluate: () => child.stdout,
-    onError: (error) => mapProcessError(error, command, "Process.stdout"),
-    releaseLockOnEnd: true
-  })
-  const stderr = Stream.fromReadableStream({
-    evaluate: () => child.stderr,
-    onError: (error) => mapProcessError(error, command, "Process.stderr"),
-    releaseLockOnEnd: true
-  })
+  const stdout = boundedOutputStream(
+    Stream.fromReadableStream({
+      evaluate: () => child.stdout,
+      onError: (error) => mapProcessError(error, command, "Process.stdout"),
+      releaseLockOnEnd: true
+    }),
+    "stdout",
+    command,
+    budgets.stdoutBufferBytes
+  )
+  const stderr = boundedOutputStream(
+    Stream.fromReadableStream({
+      evaluate: () => child.stderr,
+      onError: (error) => mapProcessError(error, command, "Process.stderr"),
+      releaseLockOnEnd: true
+    }),
+    "stderr",
+    command,
+    budgets.stderrBufferBytes
+  )
   const closeStdin = Effect.tryPromise({
     try: () => child.closeStdin(),
     catch: (error) => mapProcessError(error, command, "Process.stdin.close")
@@ -206,6 +242,45 @@ const makeHandle = (
       }).pipe(Effect.withSpan("Process.kill", { attributes: { command, pid: child.pid } }))
   })
 }
+
+const boundedOutputStream = (
+  stream: Stream.Stream<Uint8Array, ProcessError, never>,
+  streamName: "stdout" | "stderr",
+  command: string,
+  limitBytes: number
+): Stream.Stream<Uint8Array, ProcessError, never> => {
+  let bufferedBytes = 0
+  return stream.pipe(
+    Stream.mapEffect((chunk) =>
+      Effect.gen(function* () {
+        const nextBytes = bufferedBytes + chunk.byteLength
+        if (nextBytes > limitBytes) {
+          return yield* Effect.fail(makeBackpressureOverflow(streamName, command, limitBytes, 1))
+        }
+
+        bufferedBytes = nextBytes
+        return chunk
+      })
+    )
+  )
+}
+
+const makeBackpressureOverflow = (
+  streamName: "stdout" | "stderr",
+  command: string,
+  limitBytes: number,
+  lostFrames: number
+): HostProtocolBackpressureOverflowError =>
+  new HostProtocolBackpressureOverflowError({
+    tag: "BackpressureOverflow",
+    policy: "error",
+    lostFrames,
+    ...makeProcessErrorCommon(
+      "BackpressureOverflow",
+      `${streamName} exceeded process buffer budget (${limitBytes} bytes): ${command}`,
+      `Process.${streamName}`
+    )
+  })
 
 const observeChildExit = (
   exitStatus: Effect.Effect<ProcessExitStatus, ProcessError, never>,
@@ -365,6 +440,61 @@ const authorizeProcessSpawn = (
 
     return yield* Effect.fail(
       makeProcessPermissionDenied("process.spawn", input.command, "Process.spawn")
+    )
+  })
+
+const reserveProcessBudget = (
+  processBudgets: Ref.Ref<Map<string, number>>,
+  ownerScope: string,
+  maxConcurrent: number
+): Effect.Effect<void, HostProtocolResourceBusyError, never> =>
+  Effect.gen(function* () {
+    const reserved = yield* Ref.modify(processBudgets, (current) => {
+      const runningProcesses = current.get(ownerScope) ?? 0
+      if (runningProcesses >= maxConcurrent) {
+        return [false, current] as const
+      }
+      const next = new Map(current)
+      next.set(ownerScope, runningProcesses + 1)
+      return [true, next] as const
+    })
+
+    if (reserved) {
+      return
+    }
+
+    return yield* Effect.fail(makeProcessResourceBusy(ownerScope, maxConcurrent, "Process.spawn"))
+  })
+
+const releaseProcessBudget = (
+  processBudgets: Ref.Ref<Map<string, number>>,
+  ownerScope: string
+): Effect.Effect<void, never, never> =>
+  Ref.update(processBudgets, (current) => {
+    const runningProcesses = current.get(ownerScope) ?? 0
+    if (runningProcesses <= 1) {
+      const next = new Map(current)
+      next.delete(ownerScope)
+      return next
+    }
+
+    const next = new Map(current)
+    next.set(ownerScope, runningProcesses - 1)
+    return next
+  })
+
+const makeProcessResourceBusy = (
+  ownerScope: string,
+  maxConcurrent: number,
+  operation: string
+): HostProtocolResourceBusyError =>
+  new HostProtocolResourceBusyError({
+    tag: "ResourceBusy",
+    resource: `process:${ownerScope}`,
+    ...makeProcessErrorCommon(
+      "ResourceBusy",
+      `process budget exceeded for scope ${ownerScope}: limit ${maxConcurrent}`,
+      operation
     )
   })
 
