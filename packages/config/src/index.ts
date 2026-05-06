@@ -633,7 +633,7 @@ const defaultCspDirectiveValues = (directive: string): ReadonlySet<string> | und
 }
 
 const normalizeCspValue = (value: string): string =>
-  value.replace(/'nonce-[^']+'|'nonce-\{N\}'/u, "'nonce-{N}'")
+  value === "'nonce-{N}'" ? "'nonce-{N}'" : value
 
 const isAdditionalCspTightening = (directive: string, values: readonly string[]): boolean =>
   (values.length === 0 && NO_VALUE_HARDENING_CSP_DIRECTIVES.has(directive)) ||

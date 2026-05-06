@@ -72,6 +72,15 @@ test("CSP config flags duplicate directives", () => {
   ])
 })
 
+test("CSP config flags static nonces as weaker than request nonces", () => {
+  expect(cspWeakenings({ policy: "script-src 'self' 'nonce-fixed'" })).toEqual([
+    {
+      directive: "script-src",
+      reason: "script-src adds source 'nonce-fixed'"
+    }
+  ])
+})
+
 test("ProductionChecker fails unsafe CSP without acknowledgement", async () => {
   const report = await Effect.runPromise(
     runProductionCheck({
