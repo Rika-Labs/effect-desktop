@@ -51,11 +51,11 @@ test("ApprovalBroker coalesces identical concurrent requests into one host promp
   expect(fourth.outcome).toBe("denied-for-scope")
   expect(fourth.source).toBe("scope-cache")
   expect(rows.map((row) => eventType(row))).toEqual([
-    "approval requested",
-    "approval requested",
-    "approval requested",
-    "approval denied",
-    "approval requested"
+    "audit/approval-requested",
+    "audit/approval-requested",
+    "audit/approval-requested",
+    "audit/approval-denied",
+    "audit/approval-requested"
   ])
 })
 
@@ -126,7 +126,10 @@ test("ApprovalBroker dev bypass grants without touching the host prompt", async 
   expect(result.source).toBe("dev-bypass")
   expect(result.traceId).toBe("trace-1")
   expect(promptCount).toBe(0)
-  expect(rows.map((row) => eventType(row))).toEqual(["approval requested", "approval granted"])
+  expect(rows.map((row) => eventType(row))).toEqual([
+    "audit/approval-requested",
+    "audit/approval-granted"
+  ])
 })
 
 test("ApprovalBroker returns typed failures for invalid input and audit failure", async () => {

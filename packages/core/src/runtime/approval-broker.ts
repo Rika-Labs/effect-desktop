@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 
 import { Cause, Context, Data, Deferred, Effect, Option, Ref, Schema } from "effect"
 
+import { approvalAuditEvent, emitAuditEvent } from "./audit-events.js"
 import type { EventLogError, EventLogStore } from "./event-log.js"
 
 const NonEmptyString = Schema.NonEmptyString
@@ -345,41 +346,51 @@ const auditApproval = (
   request: ApprovalRequest,
   outcome: Option.Option<ApprovalOutcome>
 ): Effect.Effect<void, ApprovalBrokerAuditFailedError, never> =>
-  audit === undefined
-    ? Effect.void
-    : audit
-        .append(
-          {
-            type,
-            payload: {
-              request: {
-                id: request.id,
-                operation: request.operation,
-                actor: request.actor,
-                ...(request.resource === undefined ? {} : { resource: request.resource }),
-                risk: request.risk,
-                summary: request.summary,
-                details: request.details,
-                ...(request.expiresAt === undefined ? {} : { expiresAt: request.expiresAt }),
-                traceId: request.traceId
-              },
-              ...(Option.isNone(outcome) ? {} : { outcome: outcome.value })
-            }
-          },
-          { source: "ApprovalBroker" }
-        )
-        .pipe(
-          Effect.asVoid,
-          Effect.mapError(
-            (cause) =>
-              new ApprovalBrokerAuditFailedError({
-                operation: "ApprovalBroker.audit",
-                request,
-                outcome,
-                cause
-              })
-          )
-        )
+  emitAuditEvent(
+    audit,
+    approvalAuditEvent({
+      kind: approvalAuditKind(type),
+      source: "ApprovalBroker",
+      traceId: request.traceId ?? request.id,
+      outcome: Option.isNone(outcome) ? "requested" : outcome.value.outcome,
+      actor: request.actor,
+      ...(request.resource === undefined ? {} : { resource: request.resource }),
+      details: {
+        request: {
+          id: request.id,
+          operation: request.operation,
+          risk: request.risk,
+          summary: request.summary,
+          details: request.details,
+          ...(request.expiresAt === undefined ? {} : { expiresAt: request.expiresAt })
+        },
+        ...(Option.isNone(outcome) ? {} : { outcome: outcome.value })
+      }
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new ApprovalBrokerAuditFailedError({
+          operation: "ApprovalBroker.audit",
+          request,
+          outcome,
+          cause
+        })
+    )
+  )
+
+const approvalAuditKind = (
+  type: "approval requested" | "approval granted" | "approval denied"
+): "approval-requested" | "approval-granted" | "approval-denied" => {
+  switch (type) {
+    case "approval requested":
+      return "approval-requested"
+    case "approval granted":
+      return "approval-granted"
+    case "approval denied":
+      return "approval-denied"
+  }
+}
 
 const approvalAuditType = (outcome: ApprovalOutcome): "approval granted" | "approval denied" =>
   outcome.outcome === "approved-once" || outcome.outcome === "approved-for-scope"
