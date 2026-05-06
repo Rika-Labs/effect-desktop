@@ -671,6 +671,20 @@ const appImageArch = (target: PackageTarget): string =>
 const packageArch = (target: PackageTarget): string =>
   target.endsWith("-arm64") ? "arm64" : "amd64"
 
+const appUpgradeCode = (appId: string): string => {
+  const bytes = createHash("sha256").update(`effect-desktop:msi-upgrade:${appId}`).digest()
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x50
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80
+  const hex = bytes.subarray(0, 16).toString("hex")
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20, 32)
+  ].join("-")
+}
+
 const macosInfoPlist = (plan: PackagePlan): string => `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -694,7 +708,7 @@ const macosInfoPlist = (plan: PackagePlan): string => `<?xml version="1.0" encod
 const windowsWxs = (
   plan: PackagePlan
 ): string => `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <Package Name="${escapeXml(plan.appName)}" Manufacturer="Effect Desktop" Version="${escapeXml(plan.appVersion)}" UpgradeCode="00000000-0000-0000-0000-000000000064" Scope="perUser">
+  <Package Name="${escapeXml(plan.appName)}" Manufacturer="Effect Desktop" Version="${escapeXml(plan.appVersion)}" UpgradeCode="${appUpgradeCode(plan.appId)}" Scope="perUser">
     <MajorUpgrade DowngradeErrorMessage="A newer version is already installed." />
     <Feature Id="Main">
       <ComponentGroupRef Id="ApplicationFiles" />

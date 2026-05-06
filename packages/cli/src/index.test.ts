@@ -386,6 +386,49 @@ test("desktop package emits Linux AppImage deb rpm artifacts with metadata", asy
   }
 })
 
+test("desktop package emits Windows per-user MSI with app-specific UpgradeCode", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-"))
+  try {
+    await writePlaygroundFixture(directory)
+    await writeBuildLayoutFixture(directory, "windows-x64")
+    const outputRoot = join(directory, "apps", "playground", "dist", "desktop", "windows")
+    const msiPath = join(
+      outputRoot,
+      "Effect-Desktop-Playground-0.0.0-windows-x64.msi",
+      "Effect-Desktop-Playground-0.0.0-windows-x64.msi"
+    )
+    let wxs = ""
+    const runner: PackageCommandRunner = (invocation) =>
+      Effect.gen(function* () {
+        const wxsPath = invocation.args[1]
+        if (typeof wxsPath === "string") {
+          wxs = yield* Effect.promise(() => readFile(wxsPath, "utf8"))
+        }
+        yield* Effect.promise(() => writeFile(msiPath, "msi"))
+      })
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["package", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "windows-x64",
+        packageCommandRunner: runner,
+        writeStdout: () => {},
+        writeStderr: () => {}
+      })
+    )
+
+    expect(exitCode).toBe(0)
+    expect(wxs).toContain('Scope="perUser"')
+    expect(wxs).not.toContain("00000000-0000-0000-0000-000000000064")
+    expect(wxs).toMatch(
+      /UpgradeCode="[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"/
+    )
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop package rejects Windows system-mode MSI as deferred scope", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-"))
   try {
