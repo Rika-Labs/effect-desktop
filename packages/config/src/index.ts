@@ -13,6 +13,7 @@ export const ProductionRuleId = Schema.Literals([
   "app-protocol-path-traversal",
   "weakened-csp",
   "unsafe-external-navigation",
+  "devtools-in-prod",
   "unscoped-resource",
   "unsupported-capability-without-guard",
   "secret-pattern-not-redacted"
@@ -122,6 +123,7 @@ export interface ProductionSecurityConfig {
     readonly rendererNativeAccess?: boolean
     readonly requirePermissions?: boolean
     readonly externalNavigation?: "deny" | "ask" | "allow"
+    readonly devtoolsInProd?: boolean
     readonly csp?: CspPolicy
     readonly redaction?: RedactionPolicy
   }
@@ -509,6 +511,22 @@ const externalNavigationRule: Rule = ({ config, configPath }) =>
       ]
     : []
 
+const devtoolsInProdRule: Rule = ({ config, configPath }) =>
+  config.security?.devtoolsInProd === true
+    ? [
+        violation({
+          rule: "devtools-in-prod",
+          severity: "acknowledged",
+          location: configLocation(configPath, "security.devtoolsInProd"),
+          message:
+            "production devtools is enabled in config and still requires an explicit --devtools launch flag",
+          fix: "Keep security.devtoolsInProd false unless a production diagnostic session is explicitly approved.",
+          justification:
+            "Devtools listener remains disabled unless the process is also launched with --devtools."
+        })
+      ]
+    : []
+
 const unscopedResourceRule: Rule = ({ config, configPath }) =>
   config.resources?.allowUnscoped === true
     ? [
@@ -661,6 +679,7 @@ const PRODUCTION_RULES: readonly Rule[] = [
   appProtocolTraversalRule,
   weakenedCspRule,
   externalNavigationRule,
+  devtoolsInProdRule,
   unscopedResourceRule,
   unsupportedCapabilityRule,
   redactionDefaultRule

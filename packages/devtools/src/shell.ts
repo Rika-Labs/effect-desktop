@@ -1,0 +1,233 @@
+import { randomBytes } from "node:crypto"
+import { mkdir, rm, chmod, writeFile } from "node:fs/promises"
+import { dirname, join } from "node:path"
+
+import { Context, Data, Effect, Layer, Option, Schema } from "effect"
+
+const NonEmptyString = Schema.NonEmptyString
+const LoopbackHost = "127.0.0.1"
+const TokenBytes = 32
+const TokenFileMode = 0o600
+
+export class DevtoolsStartInput extends Schema.Class<DevtoolsStartInput>("DevtoolsStartInput")({
+  profile: Schema.Literals(["dev", "prod"]),
+  stateDir: NonEmptyString,
+  devtoolsFlag: Schema.optionalKey(Schema.Boolean),
+  securityDevtoolsInProd: Schema.optionalKey(Schema.Boolean),
+  openShell: Schema.optionalKey(Schema.Boolean)
+}) {}
+
+export class DevtoolsInvalidInputError extends Data.TaggedError("InvalidInput")<{
+  readonly operation: string
+  readonly cause: unknown
+}> {}
+
+export class DevtoolsTokenError extends Data.TaggedError("TokenError")<{
+  readonly operation: string
+  readonly path: string
+  readonly cause: unknown
+}> {}
+
+export class DevtoolsBindError extends Data.TaggedError("BindError")<{
+  readonly operation: string
+  readonly host: string
+  readonly cause: unknown
+}> {}
+
+export class DevtoolsShellOpenError extends Data.TaggedError("ShellOpenError")<{
+  readonly operation: string
+  readonly url: string
+  readonly cause: unknown
+}> {}
+
+export type DevtoolsError =
+  | DevtoolsInvalidInputError
+  | DevtoolsTokenError
+  | DevtoolsBindError
+  | DevtoolsShellOpenError
+
+export interface DevtoolsHandle {
+  readonly status: "disabled" | "enabled"
+  readonly url: Option.Option<string>
+  readonly tokenPath: Option.Option<string>
+  readonly disable: Effect.Effect<void, never, never>
+}
+
+export interface DevtoolsShellApi {
+  readonly start: (
+    input: typeof DevtoolsStartInput.Encoded
+  ) => Effect.Effect<DevtoolsHandle, DevtoolsError, never>
+}
+
+export interface DevtoolsListener {
+  readonly url: string
+  readonly close: Effect.Effect<void, never, never>
+}
+
+export interface DevtoolsLoopbackTransport {
+  readonly listen: (input: {
+    readonly host: string
+    readonly token: string
+  }) => Effect.Effect<DevtoolsListener, DevtoolsBindError, never>
+}
+
+export interface DevtoolsShellWindow {
+  readonly open: (input: {
+    readonly url: string
+    readonly tokenPath: string
+  }) => Effect.Effect<void, DevtoolsShellOpenError, never>
+}
+
+export interface DevtoolsShellOptions {
+  readonly transport?: DevtoolsLoopbackTransport
+  readonly shellWindow?: DevtoolsShellWindow
+  readonly tokenName?: string
+}
+
+export class DevtoolsShell extends Context.Service<DevtoolsShell, DevtoolsShellApi>()(
+  "@effect-desktop/devtools/DevtoolsShell"
+) {}
+
+export const DevtoolsShellLive = (options: DevtoolsShellOptions = {}): Layer.Layer<DevtoolsShell> =>
+  Layer.effect(DevtoolsShell)(makeDevtoolsShell(options))
+
+export const makeDevtoolsShell = (
+  options: DevtoolsShellOptions = {}
+): Effect.Effect<DevtoolsShellApi, never, never> =>
+  Effect.sync(() => {
+    const transport = options.transport ?? BunLoopbackDevtoolsTransport
+    const shellWindow = options.shellWindow ?? UnavailableDevtoolsShellWindow
+    const tokenName = options.tokenName ?? "devtools-token"
+
+    return Object.freeze({
+      start: (rawInput) =>
+        Effect.gen(function* () {
+          const input = yield* decodeStartInput(rawInput)
+          if (!shouldStartDevtools(input)) {
+            return disabledHandle
+          }
+
+          const token = mintToken()
+          const tokenPath = join(input.stateDir, tokenName)
+          yield* writeToken(tokenPath, token)
+          const listener = yield* transport
+            .listen({ host: LoopbackHost, token })
+            .pipe(Effect.tapError(() => removeToken(tokenPath)))
+          const cleanup = listener.close.pipe(Effect.andThen(removeToken(tokenPath)))
+          if (input.openShell !== false) {
+            yield* shellWindow
+              .open({ url: listener.url, tokenPath })
+              .pipe(Effect.tapError(() => cleanup))
+          }
+
+          return enabledHandle(listener.url, tokenPath, cleanup)
+        })
+    } satisfies DevtoolsShellApi)
+  })
+
+export const shouldStartDevtools = (input: typeof DevtoolsStartInput.Type): boolean =>
+  input.profile === "dev" ||
+  (input.profile === "prod" && input.devtoolsFlag === true && input.securityDevtoolsInProd === true)
+
+export const BunLoopbackDevtoolsTransport: DevtoolsLoopbackTransport = Object.freeze({
+  listen: (input: { readonly host: string; readonly token: string }) =>
+    Effect.try({
+      try: () => {
+        const server = Bun.serve({
+          hostname: input.host,
+          port: 0,
+          fetch: (request) => {
+            const header = request.headers.get("x-effect-devtools-token")
+            if (header !== input.token) {
+              return new Response("unauthorized", { status: 401 })
+            }
+            return Response.json({ status: "ok" })
+          }
+        })
+
+        return {
+          url: `http://${input.host}:${server.port}`,
+          close: Effect.sync(() => {
+            void server.stop(true)
+          })
+        } satisfies DevtoolsListener
+      },
+      catch: (cause) =>
+        new DevtoolsBindError({
+          operation: "Devtools.listen",
+          host: input.host,
+          cause
+        })
+    })
+})
+
+export const UnavailableDevtoolsShellWindow: DevtoolsShellWindow = Object.freeze({
+  open: (input: { readonly url: string; readonly tokenPath: string }) =>
+    Effect.fail(
+      new DevtoolsShellOpenError({
+        operation: "Devtools.shell.open",
+        url: input.url,
+        cause: "No devtools shell window port is configured."
+      })
+    )
+})
+
+const disabledHandle: DevtoolsHandle = Object.freeze({
+  status: "disabled",
+  url: Option.none(),
+  tokenPath: Option.none(),
+  disable: Effect.void
+})
+
+const enabledHandle = (
+  url: string,
+  tokenPath: string,
+  cleanup: Effect.Effect<void, never, never>
+): DevtoolsHandle =>
+  Object.freeze({
+    status: "enabled",
+    url: Option.some(url),
+    tokenPath: Option.some(tokenPath),
+    disable: cleanup
+  })
+
+const decodeStartInput = (
+  input: unknown
+): Effect.Effect<DevtoolsStartInput, DevtoolsInvalidInputError, never> =>
+  Schema.decodeUnknownEffect(DevtoolsStartInput)(input, {
+    onExcessProperty: "error"
+  }).pipe(
+    Effect.mapError(
+      (cause) =>
+        new DevtoolsInvalidInputError({
+          operation: "Devtools.start",
+          cause
+        })
+    )
+  )
+
+const mintToken = (): string => randomBytes(TokenBytes).toString("hex")
+
+const writeToken = (path: string, token: string): Effect.Effect<void, DevtoolsTokenError, never> =>
+  Effect.tryPromise({
+    try: async () => {
+      await mkdir(dirname(path), { recursive: true })
+      await writeFile(path, token, { mode: TokenFileMode })
+      await chmod(path, TokenFileMode)
+    },
+    catch: (cause) =>
+      new DevtoolsTokenError({
+        operation: "Devtools.token.write",
+        path,
+        cause
+      })
+  })
+
+const removeToken = (path: string): Effect.Effect<void, never, never> =>
+  Effect.tryPromise({
+    try: () => rm(path, { force: true }),
+    catch: () => undefined
+  }).pipe(
+    Effect.catchCause(() => Effect.void),
+    Effect.asVoid
+  )
