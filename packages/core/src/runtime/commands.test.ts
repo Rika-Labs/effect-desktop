@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Cause, Effect, Exit, Schema, Stream } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Schema, Stream } from "effect"
 
 import { EventLogEntry, type EventLogStore } from "./event-log.js"
 import {
@@ -163,6 +163,38 @@ test("CommandRegistry unregisters commands when the owner scope closes", async (
   )
 
   expectFailure(exit, CommandRegistryCommandNotFoundError)
+})
+
+test("CommandRegistry rolls back a reserved command when registration is interrupted", async () => {
+  const started = await Effect.runPromise(Deferred.make<void>())
+  const resources = await Effect.runPromise(makeResourceRegistry())
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  const registry = await Effect.runPromise(
+    makeCommandRegistry(
+      {
+        ...resources,
+        register: () =>
+          Effect.gen(function* () {
+            yield* Deferred.succeed(started, undefined)
+            return yield* Effect.never
+          })
+      },
+      permissions
+    )
+  )
+
+  const snapshots = await Effect.runPromise(
+    Effect.gen(function* () {
+      const fiber = yield* registry
+        .register(registration("openProject"))
+        .pipe(Effect.forkChild({ startImmediately: true }))
+      yield* Deferred.await(started)
+      yield* Fiber.interrupt(fiber)
+      return yield* registry.list()
+    })
+  )
+
+  expect(snapshots).toEqual([])
 })
 
 const registration = (id: string) => ({

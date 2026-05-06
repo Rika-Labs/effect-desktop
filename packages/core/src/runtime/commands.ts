@@ -134,67 +134,9 @@ export const makeCommandRegistry = (
 
     return Object.freeze({
       register: (registration) =>
-        Effect.gen(function* () {
-          const decodedId = yield* decodeCommandId(registration.id, "CommandRegistry.register")
-          const resourceId = commandResourceId(decodedId)
-          const stored: StoredCommand = {
-            id: decodedId,
-            inputSchema: registration.inputSchema as Schema.Schema<unknown>,
-            outputSchema: registration.outputSchema as Schema.Schema<unknown>,
-            capability: registration.capability,
-            ownerScope: registration.ownerScope,
-            resourceId,
-            handler: registration.handler as (
-              input: unknown
-            ) => Effect.Effect<unknown, unknown, never>
-          }
-
-          const reserved = yield* Ref.modify(commands, (current) => {
-            if (current.has(decodedId)) {
-              return [false, current] as const
-            }
-
-            const next = new Map(current)
-            next.set(decodedId, stored)
-            return [true, next] as const
-          })
-
-          if (!reserved) {
-            return yield* Effect.fail(
-              new CommandRegistryCommandAlreadyRegisteredError({
-                operation: "CommandRegistry.register",
-                commandId: decodedId
-              })
-            )
-          }
-
-          const handle = yield* resources.register({
-            kind: "command",
-            id: resourceId,
-            ownerScope: registration.ownerScope,
-            state: "registered",
-            dispose: remove(decodedId).pipe(Effect.asVoid)
-          })
-          yield* Ref.update(commands, (current) => {
-            const command = current.get(decodedId)
-            if (command === undefined || command.resourceId === handle.id) {
-              return current
-            }
-
-            const next = new Map(current)
-            next.set(decodedId, { ...command, resourceId: handle.id })
-            return next
-          })
-
-          yield* auditCommand(
-            options.audit,
-            "command-registered",
-            decodedId,
-            "registered",
-            now
-          ).pipe(Effect.tapError(() => resources.dispose(handle.id)))
-          return handle
-        }).pipe(Effect.withSpan("CommandRegistry.register")),
+        registerCommand(commands, resources, remove, options.audit, now, registration).pipe(
+          Effect.withSpan("CommandRegistry.register")
+        ),
       unregister: (id) =>
         Effect.gen(function* () {
           const decodedId = yield* decodeCommandId(id, "CommandRegistry.unregister")
@@ -264,6 +206,87 @@ export class CommandRegistry extends Context.Service<CommandRegistry, CommandReg
     })
   }
 ) {}
+
+const registerCommand = <I, O>(
+  commands: Ref.Ref<ReadonlyMap<string, StoredCommand>>,
+  resources: ResourceRegistryApi,
+  remove: (id: string) => Effect.Effect<StoredCommand | undefined, never, never>,
+  audit: EventLogStore | undefined,
+  now: () => number,
+  registration: CommandRegistration<I, O>
+): Effect.Effect<ResourceHandle<"command", "registered">, CommandRegistryError, never> => {
+  let reservedId: string | undefined
+  let handle: ResourceHandle<"command", "registered"> | undefined
+  let completed = false
+
+  const rollback = Effect.suspend(() => {
+    if (completed || reservedId === undefined) {
+      return Effect.void
+    }
+
+    return handle === undefined
+      ? remove(reservedId).pipe(Effect.asVoid)
+      : resources.dispose(handle.id)
+  })
+
+  return Effect.gen(function* () {
+    const decodedId = yield* decodeCommandId(registration.id, "CommandRegistry.register")
+    reservedId = decodedId
+    const resourceId = commandResourceId(decodedId)
+    const stored: StoredCommand = {
+      id: decodedId,
+      inputSchema: registration.inputSchema as Schema.Schema<unknown>,
+      outputSchema: registration.outputSchema as Schema.Schema<unknown>,
+      capability: registration.capability,
+      ownerScope: registration.ownerScope,
+      resourceId,
+      handler: registration.handler as (input: unknown) => Effect.Effect<unknown, unknown, never>
+    }
+
+    const reserved = yield* Ref.modify(commands, (current) => {
+      if (current.has(decodedId)) {
+        return [false, current] as const
+      }
+
+      const next = new Map(current)
+      next.set(decodedId, stored)
+      return [true, next] as const
+    })
+
+    if (!reserved) {
+      completed = true
+      return yield* Effect.fail(
+        new CommandRegistryCommandAlreadyRegisteredError({
+          operation: "CommandRegistry.register",
+          commandId: decodedId
+        })
+      )
+    }
+
+    const registeredHandle = yield* resources.register({
+      kind: "command",
+      id: resourceId,
+      ownerScope: registration.ownerScope,
+      state: "registered",
+      dispose: remove(decodedId).pipe(Effect.asVoid)
+    })
+    handle = registeredHandle
+    yield* Ref.update(commands, (current) => {
+      const command = current.get(decodedId)
+      if (command === undefined || command.resourceId === registeredHandle.id) {
+        return current
+      }
+
+      const next = new Map(current)
+      next.set(decodedId, { ...command, resourceId: registeredHandle.id })
+      return next
+    })
+
+    yield* auditCommand(audit, "command-registered", decodedId, "registered", now)
+    completed = true
+    return registeredHandle
+  }).pipe(Effect.ensuring(rollback))
+}
 
 const getCommand = (
   commands: Ref.Ref<ReadonlyMap<string, StoredCommand>>,
