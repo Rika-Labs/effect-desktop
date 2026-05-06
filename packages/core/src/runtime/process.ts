@@ -17,6 +17,7 @@ export class ProcessSpawnInput extends Schema.Class<ProcessSpawnInput>("ProcessS
   command: NonEmptyString,
   args: Schema.Array(Schema.String),
   ownerScope: NonEmptyString,
+  shell: Schema.optionalKey(Schema.Boolean),
   cwd: Schema.optionalKey(NonEmptyString),
   env: Schema.optionalKey(Schema.Record(Schema.String, Schema.String))
 }) {}
@@ -36,6 +37,7 @@ export type ProcessError = HostProtocolError
 
 export interface ProcessSpawnOptions {
   readonly ownerScope: string
+  readonly shell?: boolean
   readonly cwd?: string
   readonly env?: Readonly<Record<string, string>>
 }
@@ -78,9 +80,16 @@ export interface ProcessChild {
 export interface ProcessOptions {
   readonly adapter?: ProcessAdapter
   readonly gracefulShutdownMs?: number
+  readonly permissions?: ProcessPermissionPolicy
+}
+
+export interface ProcessPermissionPolicy {
+  readonly spawn?: readonly string[]
+  readonly shell?: boolean
 }
 
 const DEFAULT_GRACEFUL_SHUTDOWN_MS = 5_000
+const EMPTY_PROCESS_PERMISSIONS: ProcessPermissionPolicy = Object.freeze({})
 
 export const makeProcess = (
   registry: ResourceRegistryApi,
@@ -89,6 +98,7 @@ export const makeProcess = (
   Effect.sync(() => {
     const adapter = options.adapter ?? BunProcessAdapter
     const gracefulShutdownMs = options.gracefulShutdownMs ?? DEFAULT_GRACEFUL_SHUTDOWN_MS
+    const permissions = options.permissions ?? EMPTY_PROCESS_PERMISSIONS
 
     return Object.freeze({
       spawn: (command: string, args: readonly string[] = [], options?: ProcessSpawnOptions) =>
@@ -98,11 +108,13 @@ export const makeProcess = (
               command,
               args: Array.from(args),
               ownerScope: options?.ownerScope,
+              ...(options?.shell === undefined ? {} : { shell: options.shell }),
               ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
               ...(options?.env === undefined ? {} : { env: options.env })
             },
             "Process.spawn"
           )
+          yield* authorizeProcessSpawn(permissions, input)
           const child = yield* Effect.try({
             try: () => adapter.spawn(input),
             catch: (error) => mapProcessError(error, input.command, "Process.spawn")
@@ -321,6 +333,56 @@ const decodeSignalInput = (
       makeHostProtocolInvalidArgumentError("signal", formatUnknownError(error), operation)
     )
   )
+
+const authorizeProcessSpawn = (
+  permissions: ProcessPermissionPolicy,
+  input: ProcessSpawnInput
+): Effect.Effect<
+  void,
+  HostProtocolInvalidArgumentError | HostProtocolPermissionDeniedError,
+  never
+> =>
+  Effect.gen(function* () {
+    if (containsShellMetacharacter(input.command)) {
+      return yield* Effect.fail(
+        makeHostProtocolInvalidArgumentError(
+          "command",
+          "contains shell metacharacters",
+          "Process.spawn"
+        )
+      )
+    }
+
+    if (input.shell === true && permissions.shell !== true) {
+      return yield* Effect.fail(
+        makeProcessPermissionDenied("process.shell", input.command, "Process.spawn")
+      )
+    }
+
+    if ((permissions.spawn ?? []).includes(input.command)) {
+      return
+    }
+
+    return yield* Effect.fail(
+      makeProcessPermissionDenied("process.spawn", input.command, "Process.spawn")
+    )
+  })
+
+const containsShellMetacharacter = (command: string): boolean => SHELL_METACHARACTER.test(command)
+
+const SHELL_METACHARACTER = /[;|&><`\n]|\$\(/
+
+const makeProcessPermissionDenied = (
+  capability: "process.spawn" | "process.shell",
+  resource: string,
+  operation: string
+): HostProtocolPermissionDeniedError =>
+  new HostProtocolPermissionDeniedError({
+    tag: "PermissionDenied",
+    capability,
+    resource,
+    ...makeProcessErrorCommon("PermissionDenied", `permission denied: ${resource}`, operation)
+  })
 
 const BunProcessAdapter: ProcessAdapter = {
   spawn: (input) => {
