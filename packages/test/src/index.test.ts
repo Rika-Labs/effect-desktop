@@ -17,10 +17,12 @@ import {
 } from "@effect-desktop/bridge"
 import {
   Filesystem,
+  PermissionRegistry,
   Process,
   PTY,
   ResourceRegistryLive,
   SecretValue,
+  Telemetry,
   makeSecrets,
   makeResourceRegistry,
   type ResourceId
@@ -29,6 +31,7 @@ import {
 import {
   assertNoOpenResourcesIn,
   formatLeakedHandleReport,
+  HeadlessRuntime,
   leakedHandles,
   makeMemorySecretsSafeStorage,
   makeMemoryFilesystem,
@@ -40,6 +43,7 @@ import {
   MockPtyLive,
   MockHost,
   MockHostLive,
+  MockBridge,
   registerLeakMatchers,
   runHeadless,
   ResourceLeakError
@@ -794,6 +798,131 @@ test("MockPTY fails loudly when a command has no fixture", async () => {
   expect(Exit.isFailure(exit)).toBe(true)
   if (Exit.isFailure(exit)) {
     expect(JSON.stringify(exit.cause.toJSON())).toContain("InvalidArgument")
+  }
+})
+
+test("HeadlessRuntime layer composes mocks with real registry telemetry and permissions", async () => {
+  const ProjectApi = testContract("Test.HeadlessRuntime.Project", {
+    open: {
+      input: Schema.Struct({ path: Schema.String }),
+      output: Schema.Struct({ id: Schema.String }),
+      error: Schema.Never
+    }
+  })
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const filesystem = yield* Filesystem
+      const process = yield* Process
+      const pty = yield* PTY
+      const telemetry = yield* Telemetry
+      const permissions = yield* PermissionRegistry
+      const host = yield* MockHost
+      const bridge = yield* MockBridge
+
+      yield* bridge.succeed("Test.HeadlessRuntime.Project.open", { id: "project-1" })
+      const client = bridge.client({ project: ProjectApi })
+      const opened = yield* client.project.open({ path: "/workspace/project" })
+
+      yield* filesystem.write("/workspace/out.txt", bytes("file"))
+      const file = yield* filesystem.read("/workspace/out.txt")
+
+      const child = yield* process.spawn("echo", ["ok"], { ownerScope: "headless-test" })
+      const stdout = yield* Stream.runCollect(child.stdout)
+      const processExit = yield* child.exit
+
+      const terminal = yield* pty.open({
+        argv: ["bash"],
+        ownerScope: "headless-test",
+        rows: 24,
+        cols: 80
+      })
+      yield* terminal.write(bytes("pwd\n"))
+      const terminalOutput = yield* Stream.runCollect(terminal.output)
+      const ptyExit = yield* terminal.onExit
+
+      yield* telemetry.log({
+        level: "info",
+        subsystem: "test",
+        operation: "HeadlessRuntime",
+        traceId: "trace-headless",
+        message: "ran"
+      })
+      const logs = yield* telemetry.listLogs()
+      const decisions = yield* permissions.listDecisions()
+
+      return {
+        opened,
+        file: text(file),
+        stdout: Array.from(stdout).map(text),
+        processExit,
+        terminalOutput: Array.from(terminalOutput).map(text),
+        ptyExit,
+        hostCalls: host.calls().map((call) => call.method),
+        bridgeCalls: bridge.calls().map((call) => call.method),
+        logs: logs.map((log) => log.message),
+        decisions
+      }
+    }).pipe(
+      Effect.provide(
+        HeadlessRuntime.layer({
+          filesystem: {
+            directories: ["/workspace"],
+            permissions: {
+              readRoots: ["/workspace"],
+              writeRoots: ["/workspace"]
+            }
+          },
+          process: {
+            processes: [{ command: "echo", args: ["ok"], stdout: [bytes("ok\n")] }],
+            permissions: { spawn: ["echo"] }
+          },
+          pty: {
+            ptys: [{ command: "bash", output: [bytes("prompt")] }],
+            permissions: { spawn: ["bash"] },
+            budgets: { outputCoalesceBytes: 1024, outputCoalesceMs: 1 }
+          },
+          telemetry: { now: () => 1710000000800 },
+          permissions: { traceId: () => "trace-permission" }
+        })
+      )
+    )
+  )
+
+  expect(result).toEqual({
+    opened: { id: "project-1" },
+    file: "file",
+    stdout: ["ok\n"],
+    processExit: { code: 0 },
+    terminalOutput: ["prompt"],
+    ptyExit: { code: 0 },
+    hostCalls: [],
+    bridgeCalls: ["Test.HeadlessRuntime.Project.open"],
+    logs: ["ran"],
+    decisions: []
+  })
+})
+
+test("HeadlessRuntime run fails when scoped resources leak", async () => {
+  const exit = await Effect.runPromiseExit(
+    HeadlessRuntime.run(
+      Effect.gen(function* () {
+        const process = yield* Process
+        yield* process.spawn("sleep", ["10"], { ownerScope: "leaky-process" })
+      }),
+      {
+        process: {
+          processes: [{ command: "sleep", args: ["10"], exit: false }],
+          permissions: { spawn: ["sleep"] },
+          gracefulShutdownMs: 1
+        }
+      }
+    )
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    expect(JSON.stringify(exit.cause.toJSON())).toContain("ResourceLeakError")
   }
 })
 
