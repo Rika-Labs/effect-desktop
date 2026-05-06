@@ -2,27 +2,39 @@ import { expect, test } from "bun:test"
 import {
   CommandRegistry,
   Job,
+  makeBridgeCallRegistry,
+  makeBridgeStreamRegistry,
   makeJob,
   makeCommandRegistry,
   makePermissionRegistry,
+  makeProcess,
   makeResourceRegistry,
   makeWorker,
+  PermissionRegistry,
   PermissionActor,
   PermissionContext,
+  Process,
+  ProcessExitStatus,
+  ResourceRegistry,
   Worker,
   type JobApi,
   type NormalizedCapability,
+  type ProcessAdapter,
+  type ProcessApi,
+  type ProcessChild,
   type ResourceRegistryApi,
   type WorkerApi,
   type WorkerAdapter,
   type WorkerError,
   type WorkerRuntime
 } from "@effect-desktop/core"
-import { Cause, Deferred, Effect, Fiber, Layer, Queue, Schema, Stream } from "effect"
+import { Cause, Deferred, Effect, Fiber, Layer, Option, Queue, Schema, Stream } from "effect"
 
 import {
   CommandsDevtools,
   CommandsDevtoolsLive,
+  LiveRuntimePanels,
+  LiveRuntimePanelsLive,
   WorkersJobsDevtools,
   WorkersJobsDevtoolsLive,
   type WorkersJobsSnapshot
@@ -131,11 +143,161 @@ test("WorkersJobsDevtools lists live workers and jobs with redacted progress", a
   await Effect.runPromise(jobHandle.cancel)
 })
 
+test("LiveRuntimePanels projects bridge, stream, resource, permission, and process tables", async () => {
+  let timestamp = 1_000
+  const bridgeCalls = await Effect.runPromise(makeBridgeCallRegistry())
+  const streams = makeBridgeStreamRegistry()
+  const resources = await Effect.runPromise(
+    makeResourceRegistry({
+      now: () => timestamp++,
+      nextId: (now) => `resource-${now}` as never
+    })
+  )
+  const permissions = await Effect.runPromise(
+    makePermissionRegistry({ traceId: () => "trace-panel", nextToken: () => "grant-panel" })
+  )
+  const processes = await makeProcessService(resources)
+
+  await Effect.runPromise(
+    bridgeCalls.record({
+      tag: "Pending",
+      id: "request-complete",
+      traceId: "trace-panel",
+      startedAt: 100
+    })
+  )
+  await Effect.runPromise(
+    bridgeCalls.record({
+      tag: "Running",
+      id: "request-complete",
+      handler: "Project.open"
+    })
+  )
+  await Effect.runPromise(
+    bridgeCalls.record({
+      tag: "Completed",
+      id: "request-complete",
+      completedAt: 145
+    })
+  )
+  await Effect.runPromise(
+    bridgeCalls.record({
+      tag: "Failed",
+      id: "request-secret",
+      error: { _tag: "BridgeFailure", token: "secret-token" }
+    })
+  )
+  await Effect.runPromise(streams.register("stream-panel"))
+  await Effect.runPromise(
+    streams.updateBackpressure("stream-panel", {
+      evictedFrames: 1,
+      overflow: "dropNewest",
+      queueCapacity: 8,
+      queueDepth: 3
+    })
+  )
+  await Effect.runPromise(
+    resources.register({
+      id: "resource-panel" as never,
+      kind: "window",
+      ownerScope: "scope-main",
+      state: "open"
+    })
+  )
+  await Effect.runPromiseExit(
+    permissions.check(commandCapability, {
+      actor: new PermissionActor({ kind: "window", id: "window-main" }),
+      traceId: "trace-panel"
+    })
+  )
+  const handle = await Effect.runPromise(
+    processes.spawn("echo", ["hi"], { ownerScope: "scope-main" })
+  )
+  await Effect.runPromise(handle.exit)
+
+  const snapshot = await Effect.runPromise(
+    Effect.gen(function* () {
+      const panels = yield* LiveRuntimePanels
+      return yield* panels.list()
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          LiveRuntimePanelsLive({ bridgeCalls, streams }, { now: () => 1_100 }),
+          Layer.mergeAll(
+            Layer.succeed(ResourceRegistry)(resources),
+            Layer.succeed(PermissionRegistry)(permissions),
+            Layer.succeed(Process)(processes)
+          )
+        )
+      )
+    )
+  )
+
+  expect(snapshot.bridgeCalls.find((row) => row.id === "request-complete")).toMatchObject({
+    contractTag: Option.some("Project"),
+    latencyMs: Option.some(45)
+  })
+  expect(snapshot.bridgeCalls.find((row) => row.id === "request-secret")?.errorTag).toEqual(
+    Option.some("BridgeFailure")
+  )
+  expect(JSON.stringify(snapshot.bridgeCalls)).not.toContain("secret-token")
+  expect(snapshot.streams[0]).toMatchObject({ id: "stream-panel", state: "open" })
+  expect(snapshot.resources[0]).toMatchObject({
+    id: "resource-panel",
+    kind: "window",
+    scope: "scope-main"
+  })
+  expect(snapshot.permissions[0]?.decision).toBe("denied")
+  expect(snapshot.permissions[0]?.remediation).toEqual(
+    Option.some("Declare or approve native.invoke for window:window-main.")
+  )
+  expect(snapshot.processes[0]).toMatchObject({
+    pid: 55,
+    command: "echo",
+    childPids: [56],
+    state: "exited"
+  })
+})
+
 interface WorkersJobsFixture {
   readonly registry: ResourceRegistryApi
   readonly worker: WorkerApi
   readonly job: JobApi
 }
+
+const makeProcessService = (registry: ResourceRegistryApi): Promise<ProcessApi> =>
+  Effect.runPromise(
+    makeProcess(registry, {
+      adapter: fakeProcessAdapter,
+      permissions: { spawn: ["echo"] }
+    })
+  )
+
+const fakeProcessAdapter: ProcessAdapter = {
+  spawn: () => fakeProcessChild()
+}
+
+const fakeProcessChild = (): ProcessChild => ({
+  pid: 55,
+  childPids: [56],
+  stdout: new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.close()
+    }
+  }),
+  stderr: new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.close()
+    }
+  }),
+  exited: Promise.resolve(new ProcessExitStatus({ code: 0 })),
+  writeStdin: () => Promise.resolve(),
+  closeStdin: () => Promise.resolve(),
+  isRunning: () => false,
+  terminateTree: () => Promise.resolve(),
+  forceKillTree: () => Promise.resolve(),
+  kill: () => undefined
+})
 
 const makeWorkersJobsFixture = async (): Promise<WorkersJobsFixture> => {
   let timestamp = 1_000

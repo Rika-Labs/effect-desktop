@@ -65,6 +65,30 @@ test("PermissionRegistry allows filesystem writes inside declared roots and deni
   })
 })
 
+test("PermissionRegistry exposes decision history and live decision events for devtools", async () => {
+  const registry = await Effect.runPromise(
+    makePermissionRegistry({ traceId: () => "trace-devtools", nextToken: () => "grant-1" })
+  )
+  const observed = Effect.runFork(
+    registry.observeDecisions().pipe(Stream.take(2), Stream.runCollect)
+  )
+
+  await Effect.runPromise(registry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" }))
+  await Effect.runPromise(
+    registry.check(filesystemWrite(["/tmp/app/config.json"]), context("window-main"))
+  )
+  await Effect.runPromiseExit(
+    registry.check(filesystemWrite(["/tmp/blocked/config.json"]), context("window-main"))
+  )
+
+  const history = await Effect.runPromise(registry.listDecisions())
+  const events = Array.from(await Effect.runPromise(Fiber.join(observed)))
+
+  expect(history.map((decision) => decision.outcome)).toEqual(["granted", "denied"])
+  expect(events.map((decision) => decision.traceId)).toEqual(["trace-devtools", "trace-devtools"])
+  expect(events[1]?.reason).toBe("default-deny")
+})
+
 test("PermissionRegistry explicit deny overrides a matching allow", async () => {
   const registry = await Effect.runPromise(makePermissionRegistry())
 

@@ -9,9 +9,14 @@ import {
   type HostProtocolError,
   type HostProtocolErrorTag
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Ref, Schema, Sink, Stream } from "effect"
+import { Context, Effect, Layer, Option, Ref, Schema, Sink, Stream, SubscriptionRef } from "effect"
 
-import { ResourceRegistry, type ResourceHandle, type ResourceRegistryApi } from "./resources.js"
+import {
+  ResourceRegistry,
+  type ResourceHandle,
+  type ResourceId,
+  type ResourceRegistryApi
+} from "./resources.js"
 
 const NonEmptyString = Schema.NonEmptyString
 
@@ -54,12 +59,27 @@ export interface ProcessHandle {
   readonly kill: (signal?: ProcessSignalInput) => Effect.Effect<void, ProcessError, never>
 }
 
+export interface ProcessSnapshot {
+  readonly resourceId: string
+  readonly pid: number
+  readonly command: string
+  readonly args: readonly string[]
+  readonly ownerScope: string
+  readonly childPids: readonly number[]
+  readonly state: "running" | "exited"
+  readonly startedAt: number
+  readonly updatedAt: number
+  readonly lastExit: Option.Option<ProcessExitStatus>
+}
+
 export interface ProcessApi {
   readonly spawn: (
     command: string,
     args?: readonly string[],
     options?: ProcessSpawnOptions
   ) => Effect.Effect<ProcessHandle, ProcessError, never>
+  readonly list: () => Effect.Effect<readonly ProcessSnapshot[], never, never>
+  readonly observe: () => Stream.Stream<readonly ProcessSnapshot[], never, never>
 }
 
 export interface ProcessAdapter {
@@ -77,13 +97,16 @@ export interface ProcessChild {
   readonly terminateTree: () => Promise<void>
   readonly forceKillTree: () => Promise<void>
   readonly kill: (signal?: ProcessSignalInput) => void
+  readonly childPids?: readonly number[]
 }
 
 export interface ProcessOptions {
   readonly adapter?: ProcessAdapter
   readonly budgets?: ProcessBudgetPolicy
   readonly gracefulShutdownMs?: number
+  readonly maxSnapshots?: number
   readonly permissions?: ProcessPermissionPolicy
+  readonly now?: () => number
 }
 
 export interface ProcessBudgetPolicy {
@@ -103,6 +126,7 @@ const DEFAULT_PROCESS_BUDGETS: Required<ProcessBudgetPolicy> = Object.freeze({
   stdoutBufferBytes: 1_048_576
 })
 const DEFAULT_GRACEFUL_SHUTDOWN_MS = 5_000
+const DEFAULT_MAX_PROCESS_SNAPSHOTS = 1_024
 const EMPTY_PROCESS_PERMISSIONS: ProcessPermissionPolicy = Object.freeze({})
 
 export const makeProcess = (
@@ -113,8 +137,11 @@ export const makeProcess = (
     const adapter = options.adapter ?? BunProcessAdapter
     const budgets = { ...DEFAULT_PROCESS_BUDGETS, ...options.budgets }
     const gracefulShutdownMs = options.gracefulShutdownMs ?? DEFAULT_GRACEFUL_SHUTDOWN_MS
+    const maxSnapshots = options.maxSnapshots ?? DEFAULT_MAX_PROCESS_SNAPSHOTS
     const permissions = options.permissions ?? EMPTY_PROCESS_PERMISSIONS
+    const now = options.now ?? Date.now
     const processBudgets = yield* Ref.make(new Map<string, number>())
+    const snapshots = yield* SubscriptionRef.make(new Map<ResourceId, ProcessSnapshot>())
 
     return Object.freeze({
       spawn: (command: string, args: readonly string[] = [], options?: ProcessSpawnOptions) =>
@@ -146,17 +173,37 @@ export const makeProcess = (
                   Effect.andThen(releaseProcessBudget(processBudgets, input.ownerScope))
                 )
               })
+              const startedAt = now()
+              yield* upsertProcessSnapshot(
+                snapshots,
+                resource.id,
+                {
+                  resourceId: resource.id,
+                  pid: child.pid,
+                  command: input.command,
+                  args: input.args,
+                  ownerScope: input.ownerScope,
+                  childPids: child.childPids ?? [],
+                  state: "running",
+                  startedAt,
+                  updatedAt: startedAt,
+                  lastExit: Option.none()
+                },
+                maxSnapshots
+              )
 
               return { child, resource }
             })
           )
 
-          return makeHandle(child, resource, input.command, budgets)
+          return makeHandle(child, resource, input.command, budgets, snapshots, now)
         }).pipe(
           Effect.withSpan("Process.spawn", {
             attributes: { command, argc: args.length, ownerScope: options?.ownerScope ?? "" }
           })
-        )
+        ),
+      list: () => SubscriptionRef.get(snapshots).pipe(Effect.map(processSnapshotList)),
+      observe: () => SubscriptionRef.changes(snapshots).pipe(Stream.map(processSnapshotList))
     })
   })
 
@@ -185,7 +232,9 @@ const makeHandle = (
   child: ProcessChild,
   resource: ResourceHandle<"process", "running">,
   command: string,
-  budgets: Required<ProcessBudgetPolicy>
+  budgets: Required<ProcessBudgetPolicy>,
+  snapshots: SubscriptionRef.SubscriptionRef<Map<ResourceId, ProcessSnapshot>>,
+  now: () => number
 ): ProcessHandle => {
   const stdout = boundedOutputStream(
     Stream.fromReadableStream({
@@ -221,8 +270,13 @@ const makeHandle = (
     try: () => child.exited,
     catch: (error) => mapProcessError(error, command, "Process.exit")
   })
-  observeChildExit(exitStatus, resource, command)
-  const exit = exitStatus.pipe(Effect.tap(() => resource.dispose()))
+  const recordExit = (status: ProcessExitStatus): Effect.Effect<void, never, never> =>
+    markProcessExited(snapshots, resource.id, status, now())
+  observeChildExit(exitStatus, resource, command, recordExit)
+  const exit = exitStatus.pipe(
+    Effect.tap((status) => recordExit(status)),
+    Effect.tap(() => resource.dispose())
+  )
 
   return Object.freeze({
     resource,
@@ -285,10 +339,12 @@ const makeBackpressureOverflow = (
 const observeChildExit = (
   exitStatus: Effect.Effect<ProcessExitStatus, ProcessError, never>,
   resource: ResourceHandle<"process", "running">,
-  command: string
+  command: string,
+  recordExit: (status: ProcessExitStatus) => Effect.Effect<void, never, never>
 ): void => {
   Effect.runFork(
     exitStatus.pipe(
+      Effect.tap((status) => recordExit(status)),
       Effect.flatMap(() => resource.dispose()),
       Effect.catch((error: HostProtocolError) =>
         Effect.logWarning("Process.exit observer failed", {
@@ -480,6 +536,65 @@ const releaseProcessBudget = (
 
     const next = new Map(current)
     next.set(ownerScope, runningProcesses - 1)
+    return next
+  })
+
+const processSnapshotList = (
+  snapshots: ReadonlyMap<ResourceId, ProcessSnapshot>
+): readonly ProcessSnapshot[] =>
+  Array.from(snapshots.values()).sort((left, right) => left.startedAt - right.startedAt)
+
+const upsertProcessSnapshot = (
+  snapshots: SubscriptionRef.SubscriptionRef<Map<ResourceId, ProcessSnapshot>>,
+  id: ResourceId,
+  snapshot: ProcessSnapshot,
+  maxSnapshots: number
+): Effect.Effect<void, never, never> =>
+  SubscriptionRef.update(snapshots, (current) => {
+    const next = new Map(current)
+    next.set(id, snapshot)
+    while (next.size > maxSnapshots) {
+      const oldest = oldestProcessSnapshotId(next)
+      if (oldest === undefined) {
+        break
+      }
+      next.delete(oldest)
+    }
+    return next
+  })
+
+const oldestProcessSnapshotId = (
+  snapshots: ReadonlyMap<ResourceId, ProcessSnapshot>
+): ResourceId | undefined => {
+  let oldestId: ResourceId | undefined
+  let oldestStartedAt = Number.POSITIVE_INFINITY
+  for (const [id, snapshot] of snapshots) {
+    if (snapshot.startedAt < oldestStartedAt) {
+      oldestId = id
+      oldestStartedAt = snapshot.startedAt
+    }
+  }
+  return oldestId
+}
+
+const markProcessExited = (
+  snapshots: SubscriptionRef.SubscriptionRef<Map<ResourceId, ProcessSnapshot>>,
+  id: ResourceId,
+  status: ProcessExitStatus,
+  updatedAt: number
+): Effect.Effect<void, never, never> =>
+  SubscriptionRef.update(snapshots, (current) => {
+    const existing = current.get(id)
+    if (existing === undefined) {
+      return current
+    }
+    const next = new Map(current)
+    next.set(id, {
+      ...existing,
+      state: "exited",
+      updatedAt,
+      lastExit: Option.some(status)
+    })
     return next
   })
 

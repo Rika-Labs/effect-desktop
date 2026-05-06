@@ -103,6 +103,22 @@ transitions write typed audit rows for grant, use, revoke, expire, and one-time
 consumption. Revoked, expired, and consumed grants fail as typed Effect values
 instead of thrown exceptions.
 
+`listDecisions()` and `observeDecisions()` expose the registry-owned permission
+decision history for devtools. This keeps denial reasons and remediation hints
+anchored to the permission source of truth instead of a panel-side cache.
+
+### Process
+
+`Process` is the runtime primitive for spawned child processes. It validates
+spawn inputs, enforces the process permission policy before adapter activity,
+registers each child as a scoped `ResourceRegistry` handle, bounds stdout and
+stderr streams, and terminates process trees during resource cleanup.
+
+`list()` and `observe()` expose devtools snapshots with pid, command, args,
+owner scope, child pids, state, and last exit. Spawn, kill, stdout, stderr,
+stdin, and exit failures remain typed `HostProtocolError` values on the
+operation that produced them; the snapshot stream is read-only runtime state.
+
 ### Worker
 
 `Worker` is the runtime primitive for isolated background TypeScript work. It

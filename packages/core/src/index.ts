@@ -1,6 +1,13 @@
 import { Api, Client, Handlers, RedactionFilter } from "@effect-desktop/bridge"
 
 export { Api, Client, Handlers, RedactionFilter, redact } from "@effect-desktop/bridge"
+export { makeBridgeCallRegistry, makeBridgeStreamRegistry } from "@effect-desktop/bridge"
+export type {
+  BridgeCallRegistry,
+  BridgeCallState,
+  BridgeStreamRegistry,
+  BridgeStreamRegistryEntry
+} from "@effect-desktop/bridge"
 export * from "./runtime/resources.js"
 export * from "./runtime/filesystem.js"
 export * from "./runtime/event-log.js"

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 
-import { Context, Data, Deferred, Effect, Option, Ref, Schema } from "effect"
+import { Context, Data, Deferred, Effect, Option, PubSub, Ref, Schema, Stream } from "effect"
 
 import { emitAuditEvent, permissionAuditEvent } from "./audit-events.js"
 import type { EventLogError, EventLogStore } from "./event-log.js"
@@ -252,6 +252,8 @@ export interface PermissionRegistryApi {
     grant: GrantedCapability,
     effect: Effect.Effect<A, E, R>
   ) => Effect.Effect<A, E | PermissionRegistryError, R>
+  readonly listDecisions: () => Effect.Effect<readonly PermissionDecision[], never, never>
+  readonly observeDecisions: () => Stream.Stream<PermissionDecision, never, never>
 }
 
 export const makePermissionRegistry = (
@@ -260,6 +262,8 @@ export const makePermissionRegistry = (
   Effect.gen(function* () {
     const rules = yield* Ref.make<readonly PermissionRule[]>([])
     const grants = yield* Ref.make<ReadonlyMap<string, TrackedGrant>>(new Map())
+    const decisionRows = yield* Ref.make<readonly PermissionDecision[]>([])
+    const decisions = yield* PubSub.sliding<PermissionDecision>({ capacity: 1024, replay: 0 })
     const traceId = options.traceId ?? randomUUID
     const nextToken = options.nextToken ?? randomUUID
     const now = options.now ?? Date.now
@@ -322,6 +326,7 @@ export const makePermissionRegistry = (
               traceId: id
             })
             yield* auditDecision(options.audit, decision)
+            yield* recordPermissionDecision(decisionRows, decisions, decision)
             return yield* Effect.fail(
               new PermissionDeniedError({
                 operation: "PermissionRegistry.check",
@@ -347,19 +352,16 @@ export const makePermissionRegistry = (
             id,
             { ...grantOptions, source: grantOptions.source ?? resolved.source }
           )
-          yield* auditDecision(
-            options.audit,
-            new PermissionDecision({
-              outcome: "granted",
-              source: resolved.source,
-              capability: decodedCapability,
-              actor: decodedContext.actor,
-              ...(decodedContext.resource === undefined
-                ? {}
-                : { resource: decodedContext.resource }),
-              traceId: id
-            })
-          )
+          const decision = new PermissionDecision({
+            outcome: "granted",
+            source: resolved.source,
+            capability: decodedCapability,
+            actor: decodedContext.actor,
+            ...(decodedContext.resource === undefined ? {} : { resource: decodedContext.resource }),
+            traceId: id
+          })
+          yield* auditDecision(options.audit, decision)
+          yield* recordPermissionDecision(decisionRows, decisions, decision)
           return granted
         }).pipe(
           Effect.withSpan("PermissionRegistry.check", {
@@ -415,7 +417,9 @@ export const makePermissionRegistry = (
           Effect.withSpan("PermissionRegistry.use", {
             attributes: { token: grant.token, kind: grant.capability.kind }
           })
-        )
+        ),
+      listDecisions: () => Ref.get(decisionRows),
+      observeDecisions: () => Stream.fromPubSub(decisions)
     } satisfies PermissionRegistryApi)
   })
 
@@ -650,6 +654,16 @@ const expireIfNeeded = (
     }
     return expired
   })
+
+const recordPermissionDecision = (
+  rows: Ref.Ref<readonly PermissionDecision[]>,
+  decisions: PubSub.PubSub<PermissionDecision>,
+  decision: PermissionDecision
+): Effect.Effect<void, never, never> =>
+  Ref.update(rows, (current) => [...current, decision].slice(-1_024)).pipe(
+    Effect.andThen(PubSub.publish(decisions, decision)),
+    Effect.asVoid
+  )
 
 const transitionGrant = (
   grants: Ref.Ref<ReadonlyMap<string, TrackedGrant>>,

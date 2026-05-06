@@ -150,11 +150,20 @@ export interface BridgeStreamRegistry {
     metrics: BridgeStreamBackpressureMetrics
   ) => Effect.Effect<void, never, never>
   readonly snapshot: () => Effect.Effect<ReadonlyArray<BridgeStreamRegistryEntry>, never, never>
+  readonly observe: () => Stream.Stream<ReadonlyArray<BridgeStreamRegistryEntry>, never, never>
 }
 
 export const makeBridgeStreamRegistry = (cleanupGraceMs = 30_000): BridgeStreamRegistry => {
   const entries = new Map<string, BridgeStreamRegistryEntry>()
   const generations = new Map<string, number>()
+  const observers = new Set<Queue.Enqueue<ReadonlyArray<BridgeStreamRegistryEntry>, never>>()
+  const snapshot = (): ReadonlyArray<BridgeStreamRegistryEntry> => Array.from(entries.values())
+  const publish = (): void => {
+    const current = snapshot()
+    for (const observer of observers) {
+      Queue.offerUnsafe(observer, current)
+    }
+  }
 
   const registry: BridgeStreamRegistry = {
     register: (streamId) =>
@@ -164,6 +173,7 @@ export const makeBridgeStreamRegistry = (cleanupGraceMs = 30_000): BridgeStreamR
         const entry = { streamId, generation, state: "open" } satisfies BridgeStreamRegistryEntry
         entries.set(streamId, entry)
         generations.set(streamId, generation)
+        publish()
         return entry
       }),
     terminate: (streamId, terminal, now) =>
@@ -180,6 +190,7 @@ export const makeBridgeStreamRegistry = (cleanupGraceMs = 30_000): BridgeStreamR
           terminalAt: now
         })
         generations.set(streamId, current?.generation ?? 0)
+        publish()
         return true
       }),
     isTerminal: (streamId) => Effect.sync(() => entries.get(streamId)?.state === "terminal"),
@@ -193,6 +204,7 @@ export const makeBridgeStreamRegistry = (cleanupGraceMs = 30_000): BridgeStreamR
           ...current,
           backpressure: metrics
         })
+        publish()
       }),
     gcExpired: (now) =>
       Effect.sync(() => {
@@ -207,9 +219,27 @@ export const makeBridgeStreamRegistry = (cleanupGraceMs = 30_000): BridgeStreamR
             removed += 1
           }
         }
+        if (removed > 0) {
+          publish()
+        }
         return removed
       }),
-    snapshot: () => Effect.sync(() => Array.from(entries.values()))
+    snapshot: () => Effect.sync(snapshot),
+    observe: () =>
+      Stream.callback((queue) =>
+        Effect.sync(() => {
+          observers.add(queue)
+          Queue.offerUnsafe(queue, snapshot())
+        }).pipe(
+          Effect.andThen(
+            Effect.addFinalizer(() =>
+              Effect.sync(() => {
+                observers.delete(queue)
+              })
+            )
+          )
+        )
+      )
   }
 
   return Object.freeze(registry)
