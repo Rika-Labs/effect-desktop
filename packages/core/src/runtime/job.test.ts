@@ -1,9 +1,13 @@
 import { expect, test } from "bun:test"
-import { Cause, Deferred, Effect, Exit, Schema, Stream } from "effect"
+import { Cause, Data, Deferred, Duration, Effect, Exit, Schema, Schedule, Stream } from "effect"
 
+import { EventLogEntry, type EventLogStore } from "./event-log.js"
 import {
+  CrashRetryPolicy,
   JobCanceledError,
   JobInvalidArgumentError,
+  JobFailedError,
+  JobRetrying,
   JobTimedOutError,
   makeJob,
   type JobApi
@@ -14,6 +18,14 @@ const Progress = Schema.Struct({
   step: Schema.Number,
   token: Schema.optionalKey(Schema.String)
 })
+
+class PermissionDenied extends Data.TaggedError("PermissionDenied")<{
+  readonly operation: string
+}> {}
+
+class TransientFailure extends Data.TaggedError("TransientFailure")<{
+  readonly attempt: number
+}> {}
 
 test("Job run emits typed progress and resolves result", async () => {
   const fixture = await makeFixture()
@@ -153,6 +165,148 @@ test("Job progress replay keeps a bounded history", async () => {
   expect(Array.from(progress)).toEqual([{ step: 2 }, { step: 3 }])
 })
 
+test("Job retry policy retries recoverable failures and emits progress plus audit", async () => {
+  const auditRows: EventLogEntry[] = []
+  const fixture = await makeFixture({ auditRows })
+  let attempts = 0
+  const handle = await Effect.runPromise(
+    fixture.service.run({
+      id: "job-retry-success",
+      ownerScope: "scope-main",
+      effect: Effect.sync(() => {
+        attempts += 1
+        return attempts
+      }).pipe(
+        Effect.flatMap((attempt) =>
+          attempt < 3
+            ? Effect.fail(new TransientFailure({ attempt }))
+            : Effect.succeed(`success-${attempt}`)
+        )
+      ),
+      progressSchema: Progress,
+      retry: CrashRetryPolicy.fixed({ maxRetries: 3, delay: "0 millis" })
+    })
+  )
+
+  const result = await Effect.runPromise(handle.result)
+  const progress = await Effect.runPromise(handle.progress.pipe(Stream.take(2), Stream.runCollect))
+
+  expect(result).toBe("success-3")
+  expect(attempts).toBe(3)
+  expect(
+    Array.from(progress).map((event) =>
+      event instanceof JobRetrying
+        ? {
+            tag: event._tag,
+            jobId: event.jobId,
+            attempt: event.attempt,
+            error: event.error,
+            nextDelayMs: event.nextDelayMs
+          }
+        : event
+    )
+  ).toEqual([
+    {
+      tag: "JobRetrying",
+      jobId: "job-retry-success",
+      attempt: 1,
+      error: new TransientFailure({ attempt: 1 }),
+      nextDelayMs: 0
+    },
+    {
+      tag: "JobRetrying",
+      jobId: "job-retry-success",
+      attempt: 2,
+      error: new TransientFailure({ attempt: 2 }),
+      nextDelayMs: 0
+    }
+  ])
+  expect(auditRows.map((row) => row.type)).toEqual(["audit/job-retrying", "audit/job-retrying"])
+})
+
+test("Job retry policy does not retry non-recoverable failures", async () => {
+  const fixture = await makeFixture()
+  let attempts = 0
+  const handle = await Effect.runPromise(
+    fixture.service.run({
+      id: "job-no-retry-permission",
+      ownerScope: "scope-main",
+      effect: Effect.sync(() => {
+        attempts += 1
+      }).pipe(Effect.andThen(Effect.fail(new PermissionDenied({ operation: "Job.test" })))),
+      progressSchema: Progress,
+      retry: CrashRetryPolicy.fixed({ maxRetries: 3, delay: "0 millis" })
+    })
+  )
+  const exit = await Effect.runPromiseExit(handle.result)
+
+  expect(attempts).toBe(1)
+  expectFailure(exit, JobFailedError)
+})
+
+test("Job retry policy exhaustion reports attempts and last error", async () => {
+  const fixture = await makeFixture()
+  let attempts = 0
+  const handle = await Effect.runPromise(
+    fixture.service.run({
+      id: "job-retry-exhausted",
+      ownerScope: "scope-main",
+      effect: Effect.sync(() => {
+        attempts += 1
+        return attempts
+      }).pipe(Effect.flatMap((attempt) => Effect.fail(new TransientFailure({ attempt })))),
+      progressSchema: Progress,
+      retry: CrashRetryPolicy.fixed({ maxRetries: 2, delay: "0 millis" })
+    })
+  )
+  const exit = await Effect.runPromiseExit(handle.result)
+
+  expect(attempts).toBe(3)
+  expectJobFailed(exit, 3, new TransientFailure({ attempt: 3 }))
+})
+
+test("Job retry policy exhaustion respects max total duration", async () => {
+  const fixture = await makeFixture()
+  let attempts = 0
+  const handle = await Effect.runPromise(
+    fixture.service.run({
+      id: "job-retry-duration-exhausted",
+      ownerScope: "scope-main",
+      effect: Effect.sync(() => {
+        attempts += 1
+        return attempts
+      }).pipe(Effect.flatMap((attempt) => Effect.fail(new TransientFailure({ attempt })))),
+      progressSchema: Progress,
+      retry: CrashRetryPolicy.fixed({
+        maxRetries: 3,
+        delay: "10 millis",
+        maxTotalDuration: "5 millis"
+      })
+    })
+  )
+  const exit = await Effect.runPromiseExit(handle.result)
+
+  expect(attempts).toBe(1)
+  expectJobFailed(exit, 1, new TransientFailure({ attempt: 1 }))
+})
+
+test("CrashRetryPolicy exponentialJittered produces jittered delays", async () => {
+  const firstStep = await Effect.runPromise(
+    Schedule.toStep(
+      CrashRetryPolicy.exponentialJittered({ maxRetries: 1, baseDelay: "100 millis" }).schedule
+    )
+  )
+  const secondStep = await Effect.runPromise(
+    Schedule.toStep(
+      CrashRetryPolicy.exponentialJittered({ maxRetries: 1, baseDelay: "100 millis" }).schedule
+    )
+  )
+  const first = await Effect.runPromise(firstStep(1_000, new TransientFailure({ attempt: 1 })))
+  const second = await Effect.runPromise(secondStep(1_000, new TransientFailure({ attempt: 1 })))
+
+  expect(Duration.toMillis(first[1])).not.toBe(Duration.toMillis(second[1]))
+})
+
 test("Job scope close cancels the running job and releases scoped resources", async () => {
   const fixture = await makeFixture()
   const handle = await Effect.runPromise(
@@ -178,7 +332,10 @@ interface Fixture {
 }
 
 const makeFixture = async (
-  options: { readonly progressBufferSize?: number } = {}
+  options: {
+    readonly progressBufferSize?: number
+    readonly auditRows?: EventLogEntry[]
+  } = {}
 ): Promise<Fixture> => {
   let id = 0
   const registry = await Effect.runPromise(
@@ -187,7 +344,15 @@ const makeFixture = async (
       nextId: (timestamp) => `resource-${timestamp}` as never
     })
   )
-  const service = await Effect.runPromise(makeJob(registry, { now: () => id++, ...options }))
+  const service = await Effect.runPromise(
+    makeJob(registry, {
+      now: () => id++,
+      ...(options.progressBufferSize === undefined
+        ? {}
+        : { progressBufferSize: options.progressBufferSize }),
+      ...(options.auditRows === undefined ? {} : { audit: memoryAudit(options.auditRows) })
+    })
+  )
   return { registry, service }
 }
 
@@ -211,3 +376,38 @@ const expectFailure = <E>(
     expect(failure?.error).toBeInstanceOf(expected)
   }
 }
+
+const expectJobFailed = (
+  exit: Exit.Exit<unknown, unknown>,
+  attempts: number,
+  lastError: unknown
+): void => {
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(JobFailedError)
+    if (failure?.error instanceof JobFailedError) {
+      expect(failure.error.attempts).toBe(attempts)
+      expect(failure.error.lastError.valueOrUndefined).toEqual(lastError)
+    }
+  }
+}
+
+const memoryAudit = (rows: EventLogEntry[]): EventLogStore => ({
+  append: (event, options) =>
+    Effect.sync(() => {
+      rows.push(
+        new EventLogEntry({
+          id: rows.length,
+          type: event.type,
+          ...(event.payload === undefined ? {} : { payload: event.payload }),
+          timestampMs: 1_000 + rows.length,
+          ...(options?.source === undefined ? {} : { source: options.source })
+        })
+      )
+      return rows.length - 1
+    }),
+  query: () => Effect.succeed(rows),
+  subscribe: () => Stream.die("unused"),
+  close: () => Effect.void
+})
