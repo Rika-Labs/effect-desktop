@@ -8,6 +8,7 @@ import {
   unlink,
   writeFile
 } from "node:fs/promises"
+import { watch as nodeWatch } from "node:fs"
 
 import {
   HostProtocolDiskFullError,
@@ -17,7 +18,9 @@ import {
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Schema } from "effect"
+import { Cause, Context, Effect, Layer, Queue, Schema, Stream } from "effect"
+
+import { ResourceRegistry, type ResourceRegistryApi } from "./resources.js"
 
 const NonEmptyPath = Schema.NonEmptyString
 
@@ -46,8 +49,21 @@ export class FilesystemRemoveInput extends Schema.Class<FilesystemRemoveInput>(
   recursive: Schema.optionalKey(Schema.Boolean)
 }) {}
 
+export class FilesystemWatchInput extends Schema.Class<FilesystemWatchInput>(
+  "FilesystemWatchInput"
+)({
+  path: NonEmptyPath,
+  ownerScope: NonEmptyPath,
+  bufferSize: Schema.optionalKey(
+    Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(65_536))
+  )
+}) {}
+
 export const FilesystemEntryKind = Schema.Literals(["file", "directory", "symlink", "other"])
 export type FilesystemEntryKind = typeof FilesystemEntryKind.Type
+
+export const FilesystemEventKind = Schema.Literals(["created", "modified", "deleted", "renamed"])
+export type FilesystemEventKind = typeof FilesystemEventKind.Type
 
 export class FilesystemStatResult extends Schema.Class<FilesystemStatResult>(
   "FilesystemStatResult"
@@ -56,6 +72,13 @@ export class FilesystemStatResult extends Schema.Class<FilesystemStatResult>(
   kind: FilesystemEntryKind,
   sizeBytes: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
   modifiedAtMs: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0))
+}) {}
+
+export class FilesystemEvent extends Schema.Class<FilesystemEvent>("FilesystemEvent")({
+  kind: FilesystemEventKind,
+  path: Schema.String,
+  directory: Schema.String,
+  filename: Schema.optionalKey(Schema.String)
 }) {}
 
 export type FilesystemError = HostProtocolError
@@ -72,6 +95,10 @@ export interface FilesystemApi {
     path: string,
     options?: { readonly recursive?: boolean }
   ) => Effect.Effect<void, FilesystemError, never>
+  readonly watch: (
+    path: string,
+    options?: { readonly ownerScope: string; readonly bufferSize?: number }
+  ) => Stream.Stream<FilesystemEvent, FilesystemError, never>
 }
 
 export interface FilesystemAdapter {
@@ -80,6 +107,11 @@ export interface FilesystemAdapter {
   readonly stat: typeof nodeStat
   readonly mkdir: (path: string, options?: { readonly recursive: true }) => Promise<void>
   readonly remove: (path: string, options?: { readonly recursive: true }) => Promise<void>
+  readonly watch: (
+    path: string,
+    listener: (event: RawFilesystemEvent) => void,
+    onError: (error: FilesystemError) => void
+  ) => Effect.Effect<FilesystemWatcher, FilesystemError, never>
 }
 
 export interface FilesystemOptions {
@@ -87,6 +119,7 @@ export interface FilesystemOptions {
 }
 
 export const makeFilesystem = (
+  registry: ResourceRegistryApi,
   options: FilesystemOptions = {}
 ): Effect.Effect<FilesystemApi, never, never> =>
   Effect.sync(() => {
@@ -151,13 +184,71 @@ export const makeFilesystem = (
                 : adapter.remove(input.path),
             catch: (error) => mapFilesystemError(error, input.path, "Filesystem.remove")
           })
-        }).pipe(Effect.withSpan("Filesystem.remove", { attributes: { path } }))
+        }).pipe(Effect.withSpan("Filesystem.remove", { attributes: { path } })),
+      watch: (
+        path: string,
+        options?: { readonly ownerScope: string; readonly bufferSize?: number }
+      ) =>
+        Stream.unwrap(
+          Effect.acquireRelease(
+            Effect.gen(function* () {
+              const input = yield* decodeWatchInput(
+                {
+                  path,
+                  ...(options === undefined ? {} : options)
+                },
+                "Filesystem.watch"
+              )
+              const queue = yield* Queue.sliding<FilesystemEvent, FilesystemError | Cause.Done>(
+                input.bufferSize ?? DEFAULT_WATCH_BUFFER_SIZE
+              )
+              const watcher = yield* adapter.watch(
+                input.path,
+                (event) => {
+                  Effect.runFork(handleWatchEvent(queue, adapter, input.path, event))
+                },
+                (error) => {
+                  Effect.runFork(Queue.fail(queue, error))
+                }
+              )
+              const handle = yield* registry.register({
+                kind: "filesystem-watch",
+                ownerScope: input.ownerScope,
+                state: "open",
+                dispose: Effect.gen(function* () {
+                  yield* Effect.sync(() => watcher.close())
+                  yield* Queue.end(queue)
+                })
+              })
+
+              return { queue, handle }
+            }),
+            ({ handle }) => registry.dispose(handle.id)
+          ).pipe(
+            Effect.map(({ queue }) => Stream.fromQueue(queue)),
+            Effect.withSpan("Filesystem.watch", { attributes: { path } })
+          )
+        )
     })
   })
 
 export class Filesystem extends Context.Service<Filesystem, FilesystemApi>()("Filesystem") {}
 
-export const FilesystemLive = Layer.effect(Filesystem)(makeFilesystem())
+export const FilesystemLive = Layer.effect(Filesystem)(
+  Effect.gen(function* () {
+    const registry = yield* ResourceRegistry
+    return yield* makeFilesystem(registry)
+  })
+)
+
+export interface RawFilesystemEvent {
+  readonly type: "rename" | "change"
+  readonly filename?: string
+}
+
+export interface FilesystemWatcher {
+  readonly close: () => void
+}
 
 const NodeFilesystemAdapter: FilesystemAdapter = {
   readFile,
@@ -167,8 +258,32 @@ const NodeFilesystemAdapter: FilesystemAdapter = {
   remove: (path, options) =>
     options?.recursive === true
       ? rm(path, { recursive: true }).then(() => undefined)
-      : removeSinglePath(path)
+      : removeSinglePath(path),
+  watch: (path, listener, onError) =>
+    Effect.try({
+      try: () => {
+        const watcher = nodeWatch(
+          path,
+          { persistent: false },
+          (eventType: string, filename: string | Buffer | null) => {
+            if (eventType === "rename" || eventType === "change") {
+              listener({
+                type: eventType,
+                ...(filename === null ? {} : { filename: filename.toString() })
+              })
+            }
+          }
+        )
+        watcher.on("error", (error) => {
+          onError(mapFilesystemError(error, path, "Filesystem.watch"))
+        })
+        return { close: () => watcher.close() }
+      },
+      catch: (error) => mapFilesystemError(error, path, "Filesystem.watch")
+    })
 }
+
+const DEFAULT_WATCH_BUFFER_SIZE = 1_024
 
 const removeSinglePath = async (path: string): Promise<void> => {
   const stats = await lstat(path)
@@ -218,6 +333,75 @@ const decodeRemoveInput = (
       makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
     )
   )
+
+const decodeWatchInput = (
+  input: unknown,
+  operation: string
+): Effect.Effect<FilesystemWatchInput, HostProtocolInvalidArgumentError, never> =>
+  Schema.decodeUnknownEffect(FilesystemWatchInput)(input).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const handleWatchEvent = (
+  queue: Queue.Queue<FilesystemEvent, FilesystemError | Cause.Done>,
+  adapter: FilesystemAdapter,
+  directory: string,
+  event: RawFilesystemEvent
+): Effect.Effect<void, never, never> => {
+  const filename = event.filename
+  const path = filename === undefined ? directory : appendWatchPathSegment(directory, filename)
+
+  return Effect.gen(function* () {
+    const kind = yield* classifyWatchEvent(adapter, path, event)
+    yield* Queue.offer(
+      queue,
+      new FilesystemEvent({
+        kind,
+        path,
+        directory,
+        ...(filename === undefined ? {} : { filename })
+      })
+    )
+  }).pipe(
+    Effect.catch((error: FilesystemError) => Queue.fail(queue, error)),
+    Effect.asVoid
+  )
+}
+
+const classifyWatchEvent = (
+  adapter: FilesystemAdapter,
+  path: string,
+  event: RawFilesystemEvent
+): Effect.Effect<FilesystemEventKind, FilesystemError, never> => {
+  if (event.type === "change") {
+    return Effect.succeed("modified")
+  }
+  if (event.filename === undefined) {
+    return Effect.succeed("renamed")
+  }
+
+  return Effect.tryPromise({
+    try: () => adapter.stat(path),
+    catch: (error) => error
+  }).pipe(
+    Effect.as("created" as const),
+    Effect.catch((error) => {
+      if (isNodeError(error) && error.code === "ENOENT") {
+        return Effect.succeed("deleted" as const)
+      }
+      return Effect.fail(mapFilesystemError(error, path, "Filesystem.watch"))
+    })
+  )
+}
+
+const appendWatchPathSegment = (directory: string, filename: string): string => {
+  if (directory.endsWith("/") || directory.endsWith("\\")) {
+    return `${directory}${filename}`
+  }
+  return `${directory}${directory.includes("\\") && !directory.includes("/") ? "\\" : "/"}${filename}`
+}
 
 const statKind = (stats: Awaited<ReturnType<typeof nodeStat>>): FilesystemEntryKind => {
   if (stats.isFile()) {
