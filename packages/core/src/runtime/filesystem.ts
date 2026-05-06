@@ -2,6 +2,7 @@ import {
   lstat,
   mkdir,
   readFile,
+  realpath,
   rm,
   rmdir,
   stat as nodeStat,
@@ -9,6 +10,7 @@ import {
   writeFile
 } from "node:fs/promises"
 import { watch as nodeWatch } from "node:fs"
+import { dirname, join } from "node:path"
 
 import {
   HostProtocolDiskFullError,
@@ -103,6 +105,7 @@ export interface FilesystemApi {
 
 export interface FilesystemAdapter {
   readonly readFile: typeof readFile
+  readonly realpath: typeof realpath
   readonly writeFile: typeof writeFile
   readonly stat: typeof nodeStat
   readonly mkdir: (path: string, options?: { readonly recursive: true }) => Promise<void>
@@ -114,8 +117,16 @@ export interface FilesystemAdapter {
   ) => Effect.Effect<FilesystemWatcher, FilesystemError, never>
 }
 
+export interface FilesystemPermissionPolicy {
+  readonly readRoots?: readonly string[]
+  readonly writeRoots?: readonly string[]
+  readonly deleteRoots?: readonly string[]
+  readonly allowRecursiveRemove?: boolean
+}
+
 export interface FilesystemOptions {
   readonly adapter?: FilesystemAdapter
+  readonly permissions?: FilesystemPermissionPolicy
 }
 
 export const makeFilesystem = (
@@ -124,11 +135,20 @@ export const makeFilesystem = (
 ): Effect.Effect<FilesystemApi, never, never> =>
   Effect.sync(() => {
     const adapter = options.adapter ?? NodeFilesystemAdapter
+    const permissions = options.permissions ?? EMPTY_FILESYSTEM_PERMISSIONS
 
     return Object.freeze({
       read: (path: string) =>
         Effect.gen(function* () {
           const input = yield* decodePathInput({ path }, "Filesystem.read")
+          yield* authorizeFilesystemPath(
+            adapter,
+            permissions,
+            input.path,
+            "filesystem.read",
+            "Filesystem.read",
+            "existing"
+          )
           return yield* Effect.tryPromise({
             try: () => adapter.readFile(input.path),
             catch: (error) => mapFilesystemError(error, input.path, "Filesystem.read")
@@ -137,6 +157,14 @@ export const makeFilesystem = (
       write: (path: string, bytes: Uint8Array) =>
         Effect.gen(function* () {
           const input = yield* decodeWriteInput({ path, bytes }, "Filesystem.write")
+          yield* authorizeFilesystemPath(
+            adapter,
+            permissions,
+            input.path,
+            "filesystem.write",
+            "Filesystem.write",
+            "leaf-may-be-missing"
+          )
           yield* Effect.tryPromise({
             try: () => adapter.writeFile(input.path, input.bytes),
             catch: (error) => mapFilesystemError(error, input.path, "Filesystem.write")
@@ -145,6 +173,14 @@ export const makeFilesystem = (
       stat: (path: string) =>
         Effect.gen(function* () {
           const input = yield* decodePathInput({ path }, "Filesystem.stat")
+          yield* authorizeFilesystemPath(
+            adapter,
+            permissions,
+            input.path,
+            "filesystem.read",
+            "Filesystem.stat",
+            "existing"
+          )
           const result = yield* Effect.tryPromise({
             try: () => adapter.stat(input.path),
             catch: (error) => mapFilesystemError(error, input.path, "Filesystem.stat")
@@ -163,6 +199,14 @@ export const makeFilesystem = (
             { path, ...(options?.recursive === undefined ? {} : { recursive: options.recursive }) },
             "Filesystem.mkdir"
           )
+          yield* authorizeFilesystemPath(
+            adapter,
+            permissions,
+            input.path,
+            "filesystem.write",
+            "Filesystem.mkdir",
+            "leaf-may-be-missing"
+          )
           yield* Effect.tryPromise({
             try: () =>
               input.recursive === true
@@ -176,6 +220,16 @@ export const makeFilesystem = (
           const input = yield* decodeRemoveInput(
             { path, ...(options?.recursive === undefined ? {} : { recursive: options.recursive }) },
             "Filesystem.remove"
+          )
+          const capability =
+            input.recursive === true ? "filesystem.delete.recursive" : "filesystem.delete"
+          yield* authorizeFilesystemPath(
+            adapter,
+            permissions,
+            input.path,
+            capability,
+            "Filesystem.remove",
+            "directory-entry"
           )
           yield* Effect.tryPromise({
             try: () =>
@@ -198,6 +252,14 @@ export const makeFilesystem = (
                   ...(options === undefined ? {} : options)
                 },
                 "Filesystem.watch"
+              )
+              yield* authorizeFilesystemPath(
+                adapter,
+                permissions,
+                input.path,
+                "filesystem.read",
+                "Filesystem.watch",
+                "existing"
               )
               const queue = yield* Queue.sliding<FilesystemEvent, FilesystemError | Cause.Done>(
                 input.bufferSize ?? DEFAULT_WATCH_BUFFER_SIZE
@@ -252,6 +314,7 @@ export interface FilesystemWatcher {
 
 const NodeFilesystemAdapter: FilesystemAdapter = {
   readFile,
+  realpath,
   writeFile,
   stat: lstat,
   mkdir: (path, options) => mkdir(path, options).then(() => undefined),
@@ -284,6 +347,7 @@ const NodeFilesystemAdapter: FilesystemAdapter = {
 }
 
 const DEFAULT_WATCH_BUFFER_SIZE = 1_024
+const EMPTY_FILESYSTEM_PERMISSIONS: FilesystemPermissionPolicy = Object.freeze({})
 
 const removeSinglePath = async (path: string): Promise<void> => {
   const stats = await lstat(path)
@@ -343,6 +407,146 @@ const decodeWatchInput = (
       makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
     )
   )
+
+type FilesystemCapability =
+  | "filesystem.read"
+  | "filesystem.write"
+  | "filesystem.delete"
+  | "filesystem.delete.recursive"
+
+type CanonicalizationMode = "existing" | "leaf-may-be-missing" | "directory-entry"
+
+const authorizeFilesystemPath = (
+  adapter: FilesystemAdapter,
+  permissions: FilesystemPermissionPolicy,
+  path: string,
+  capability: FilesystemCapability,
+  operation: string,
+  mode: CanonicalizationMode
+): Effect.Effect<string, FilesystemError, never> =>
+  Effect.gen(function* () {
+    const canonicalPath = yield* canonicalizePath(adapter, path, operation, mode)
+    const roots = yield* canonicalizePermissionRoots(
+      adapter,
+      permissionRoots(permissions, capability),
+      operation
+    )
+    const allowedByRoot = roots.some((root) => pathWithinRoot(canonicalPath, root))
+    const allowed =
+      capability === "filesystem.delete.recursive"
+        ? allowedByRoot && permissions.allowRecursiveRemove === true
+        : allowedByRoot
+
+    if (!allowed) {
+      return yield* Effect.fail(
+        makeFilesystemPermissionDenied(capability, canonicalPath, operation)
+      )
+    }
+
+    return canonicalPath
+  })
+
+const canonicalizePath = (
+  adapter: FilesystemAdapter,
+  path: string,
+  operation: string,
+  mode: CanonicalizationMode
+): Effect.Effect<string, FilesystemError, never> =>
+  mode === "directory-entry"
+    ? canonicalizeDirectoryEntry(adapter, path, operation)
+    : Effect.tryPromise({
+        try: () => adapter.realpath(path),
+        catch: (error) => error
+      }).pipe(
+        Effect.catch((error) => {
+          if (mode === "leaf-may-be-missing" && isNodeError(error) && error.code === "ENOENT") {
+            return canonicalizePossiblyMissingPath(adapter, path, operation)
+          }
+          return Effect.fail(mapFilesystemError(error, path, operation))
+        })
+      )
+
+const canonicalizeDirectoryEntry = (
+  adapter: FilesystemAdapter,
+  path: string,
+  operation: string
+): Effect.Effect<string, FilesystemError, never> =>
+  Effect.tryPromise({
+    try: async () => join(await adapter.realpath(dirname(path)), pathSegment(path)),
+    catch: (error) => mapFilesystemError(error, path, operation)
+  })
+
+const canonicalizePossiblyMissingPath = (
+  adapter: FilesystemAdapter,
+  path: string,
+  operation: string
+): Effect.Effect<string, FilesystemError, never> =>
+  Effect.tryPromise({
+    try: () => adapter.realpath(path),
+    catch: (error) => error
+  }).pipe(
+    Effect.catch((error) => {
+      if (isNodeError(error) && error.code === "ENOENT") {
+        const parent = dirname(path)
+        if (parent === path) {
+          return Effect.fail(mapFilesystemError(error, path, operation))
+        }
+        return canonicalizePossiblyMissingPath(adapter, parent, operation).pipe(
+          Effect.map((canonicalParent) => join(canonicalParent, pathSegment(path)))
+        )
+      }
+      return Effect.fail(mapFilesystemError(error, path, operation))
+    })
+  )
+
+const canonicalizePermissionRoots = (
+  adapter: FilesystemAdapter,
+  roots: readonly string[],
+  operation: string
+): Effect.Effect<readonly string[], FilesystemError, never> =>
+  Effect.forEach(roots, (root) =>
+    Effect.tryPromise({
+      try: () => adapter.realpath(root),
+      catch: (error) => mapFilesystemError(error, root, operation)
+    })
+  )
+
+const permissionRoots = (
+  permissions: FilesystemPermissionPolicy,
+  capability: FilesystemCapability
+): readonly string[] => {
+  switch (capability) {
+    case "filesystem.read":
+      return permissions.readRoots ?? []
+    case "filesystem.write":
+      return permissions.writeRoots ?? []
+    case "filesystem.delete":
+    case "filesystem.delete.recursive":
+      return permissions.deleteRoots ?? []
+  }
+}
+
+const pathWithinRoot = (path: string, root: string): boolean =>
+  path === root ||
+  path.startsWith(root.endsWith("/") || root.endsWith("\\") ? root : `${root}/`) ||
+  path.startsWith(root.endsWith("/") || root.endsWith("\\") ? root : `${root}\\`)
+
+const pathSegment = (path: string): string => {
+  const normalized = path.replaceAll("\\", "/")
+  return normalized.slice(normalized.lastIndexOf("/") + 1)
+}
+
+const makeFilesystemPermissionDenied = (
+  capability: FilesystemCapability,
+  resource: string,
+  operation: string
+): HostProtocolPermissionDeniedError =>
+  new HostProtocolPermissionDeniedError({
+    tag: "PermissionDenied",
+    capability,
+    resource,
+    ...common("PermissionDenied", `permission denied: ${resource}`, operation)
+  })
 
 const handleWatchEvent = (
   queue: Queue.Queue<FilesystemEvent, FilesystemError | Cause.Done>,
