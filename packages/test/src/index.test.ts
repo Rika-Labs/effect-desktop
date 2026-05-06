@@ -2,9 +2,13 @@ import { expect, test } from "bun:test"
 import { Effect, Exit } from "effect"
 
 import {
+  HOST_PING_METHOD,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
-  makeHostProtocolNotFoundError
+  HostProtocolNotFoundError,
+  makeHostHandshakeClient,
+  makeHostProtocolNotFoundError,
+  makeHostWindowClient
 } from "@effect-desktop/bridge"
 import {
   SecretValue,
@@ -18,6 +22,8 @@ import {
   formatLeakedHandleReport,
   leakedHandles,
   makeMemorySecretsSafeStorage,
+  MockHost,
+  MockHostLive,
   registerLeakMatchers,
   runHeadless,
   ResourceLeakError
@@ -154,6 +160,66 @@ test("runHeadless records host calls and exits without leaked windows", async ()
     WINDOW_DESTROY_METHOD
   ])
   expect(result.protocolVersion).toBe("0.0.0")
+})
+
+test("MockHost layer speaks host protocol in-process and preserves trace IDs", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const host = yield* MockHost
+      const options = {
+        nextRequestId: nextSequence("request"),
+        nextTraceId: nextSequence("trace"),
+        now: () => 1710000000150
+      }
+      const handshake = makeHostHandshakeClient(host, options)
+      const window = makeHostWindowClient(host, options)
+
+      yield* handshake.ping()
+      const version = yield* handshake.version()
+      const created = yield* window.create({ title: "Mock Host" })
+      yield* window.destroy(created.windowId)
+
+      return {
+        calls: host.calls().map((call) => ({
+          method: call.method,
+          traceId: call.request.traceId
+        })),
+        protocolVersion: version.protocolVersion,
+        windows: host.windows().size
+      }
+    }).pipe(Effect.provide(MockHostLive()))
+  )
+
+  expect(result).toEqual({
+    calls: [
+      { method: HOST_PING_METHOD, traceId: "trace-0" },
+      { method: "host.version", traceId: "trace-1" },
+      { method: WINDOW_CREATE_METHOD, traceId: "trace-2" },
+      { method: WINDOW_DESTROY_METHOD, traceId: "trace-3" }
+    ],
+    protocolVersion: "0.0.0",
+    windows: 0
+  })
+})
+
+test("MockHost reports unknown window destroy as a typed host error", async () => {
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const host = yield* MockHost
+      const window = makeHostWindowClient(host, {
+        nextRequestId: nextSequence("request"),
+        nextTraceId: nextSequence("trace")
+      })
+
+      return yield* Effect.exit(window.destroy("missing-window"))
+    }).pipe(Effect.provide(MockHostLive()))
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const fail = exit.cause.reasons.find((reason) => reason._tag === "Fail")
+    expect(fail?.error).toBeInstanceOf(HostProtocolNotFoundError)
+  }
 })
 
 test("runHeadless fails when a headless window is left open", async () => {
