@@ -31,6 +31,13 @@ record stdin, writes, resizes, kills, tree cleanup calls, output chunks, and
 exit statuses while keeping validation, permissions, budgets, typed errors, and
 resource cleanup in the production core service path.
 
+`HeadlessRuntime.layer(options)` composes `MockHost`, `MockBridge`,
+`MemoryFilesystem`, `MockProcess`, `MockPTY`, and the real `ResourceRegistry`,
+`Telemetry`, and `PermissionRegistry` services into one CI-safe layer.
+`HeadlessRuntime.run(effect, options)` provides the same layer and runs leak
+detection as a typed failure by default; pass `leakDetection: false` to disable
+that final check.
+
 `runHeadless(body, options)` runs host-protocol clients against `MockHost` and
 fails with a typed `ResourceLeakError` if non-app resources remain open.
 

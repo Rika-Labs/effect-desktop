@@ -41,19 +41,24 @@ import {
   ResourceRegistry,
   SecretValue,
   Filesystem,
+  PermissionRegistry,
   Process,
   ProcessExitStatus,
   PTY,
   PtyExitStatus,
+  Telemetry,
   makeResourceRegistry,
   makeFilesystem,
+  makePermissionRegistry,
   makeProcess,
   makePty,
+  makeTelemetry,
   type FilesystemAdapter,
   type FilesystemApi,
   type FilesystemOptions,
   type FilesystemPermissionPolicy,
   type FilesystemWatcher,
+  type PermissionRegistryOptions,
   type ProcessAdapter,
   type ProcessApi,
   type ProcessBudgetPolicy,
@@ -76,7 +81,9 @@ import {
   type ResourceRegistryApi,
   type ResourceId,
   type ResourceKind,
-  type SecretsSafeStorageApi
+  type SecretsSafeStorageApi,
+  type TelemetryInvalidArgumentError,
+  type TelemetryOptions
 } from "@effect-desktop/core"
 
 export interface LeakDetectionOptions {
@@ -497,6 +504,108 @@ export const MockPtyLive = (
 
 export const MockPTY = Object.freeze({
   layer: MockPtyLive
+})
+
+export interface HeadlessRuntimeLayerOptions {
+  readonly bridge?: Omit<MockBridgeOptions, "registry">
+  readonly filesystem?: MemoryFilesystemOptions
+  readonly host?: MockHostOptions
+  readonly leakDetection?: false | LeakDetectionOptions
+  readonly permissions?: PermissionRegistryOptions
+  readonly process?: MockProcessOptions
+  readonly pty?: MockPtyOptions
+  readonly registry?: Parameters<typeof makeResourceRegistry>[0]
+  readonly telemetry?: TelemetryOptions
+}
+
+type HeadlessRuntimeServices =
+  | MockHost
+  | MockBridge
+  | Filesystem
+  | Process
+  | PTY
+  | ResourceRegistry
+  | Telemetry
+  | PermissionRegistry
+
+export const HeadlessRuntimeLive = (
+  options: HeadlessRuntimeLayerOptions = {}
+): Layer.Layer<HeadlessRuntimeServices, TelemetryInvalidArgumentError> =>
+  Layer.effectContext(
+    Effect.gen(function* () {
+      const registry = yield* makeResourceRegistry(options.registry)
+      return yield* makeHeadlessRuntimeContext(options, registry)
+    })
+  )
+
+export const runHeadlessRuntime = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  options: HeadlessRuntimeLayerOptions = {}
+) =>
+  Effect.gen(function* () {
+    const registry = yield* makeResourceRegistry(options.registry)
+    const layer = Layer.effectContext(makeHeadlessRuntimeContext(options, registry))
+    const result = yield* Effect.exit(effect.pipe(Effect.provide(layer)))
+    if (options.leakDetection !== false) {
+      yield* assertNoOpenResourcesIn(registry, {
+        testName: "HeadlessRuntime.run",
+        ...options.leakDetection
+      })
+    }
+    if (Exit.isFailure(result)) {
+      return yield* Effect.failCause(result.cause)
+    }
+
+    return result.value
+  })
+
+const makeHeadlessRuntimeContext = (
+  options: HeadlessRuntimeLayerOptions,
+  registry: ResourceRegistryApi
+): Effect.Effect<Context.Context<HeadlessRuntimeServices>, TelemetryInvalidArgumentError, never> =>
+  Effect.gen(function* () {
+    const telemetry = yield* makeTelemetry(options.telemetry)
+    const permissions = yield* makePermissionRegistry(options.permissions)
+    const host = makeMockHost(options.host)
+    const bridge = makeMockBridge({ ...options.bridge, registry })
+    const filesystem = yield* makeMemoryFilesystem(registry, options.filesystem)
+    const process = yield* makeMockProcess(registry, options.process)
+    const pty = yield* makeMockPty(registry, options.pty)
+
+    return Context.add(
+      PermissionRegistry,
+      permissions
+    )(
+      Context.add(
+        Telemetry,
+        telemetry
+      )(
+        Context.add(
+          ResourceRegistry,
+          registry
+        )(
+          Context.add(
+            PTY,
+            pty
+          )(
+            Context.add(
+              Process,
+              process
+            )(
+              Context.add(
+                Filesystem,
+                filesystem
+              )(Context.add(MockBridge, bridge)(Context.make(MockHost, host)))
+            )
+          )
+        )
+      )
+    )
+  })
+
+export const HeadlessRuntime = Object.freeze({
+  layer: HeadlessRuntimeLive,
+  run: runHeadlessRuntime
 })
 
 export interface HeadlessRuntime {
