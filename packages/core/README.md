@@ -117,6 +117,20 @@ outputs return `ChannelError`; worker close/crash signals surface as
 `WorkerCrashed` on the message stream. Closing the owning scope shuts down the
 worker and releases the per-scope concurrency budget.
 
+### Job
+
+`Job` is the runtime primitive for long-running cancelable Effect work. It
+starts the supplied Effect in a managed fiber, registers a running `job`
+resource, exposes a replayable typed progress stream, and returns a handle with
+`result`, `status`, and `cancel` effects.
+
+`run({ effect, ownerScope, progress, progressSchema, timeoutMs })` validates
+inputs before registration. Cancellation interrupts the job fiber and returns
+`Canceled` through the result channel; timeout interrupts the effect and returns
+`JobTimedOut`; ordinary failures are wrapped as `JobFailed` with the job and
+resource ids. Progress payloads are decoded through Effect Schema and redacted
+before replay or devtools-facing snapshots.
+
 ### ApprovalBroker
 
 `ApprovalBroker` owns runtime approval coalescing and prompt-fatigue controls.
