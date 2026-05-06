@@ -727,6 +727,72 @@ test("desktop notarize ignores zip sidecars that stapler cannot staple", async (
   }
 })
 
+test("desktop notarize redacts Apple ID password credentials in the persisted report", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
+  const passwordEnv = "EFFECT_DESKTOP_TEST_NOTARY_PASSWORD"
+  const previousPassword = process.env[passwordEnv]
+  process.env[passwordEnv] = "real-app-specific-password"
+  try {
+    await writePlaygroundFixture(directory, {
+      signing: {
+        macos: {
+          teamId: "ABCD1234",
+          appleId: "release@example.com",
+          passwordEnv
+        }
+      }
+    })
+    await writePackagedArtifactFixture(directory, "macos-arm64", "app")
+    const calls: string[] = []
+    const runner: NotarizeCommandRunner = (invocation) => {
+      calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+      if (invocation.step === "stapler-validate") {
+        return Effect.succeed({ stdout: "", stderr: "ticket not found", exitCode: 65 })
+      }
+      if (invocation.step === "notarytool-submit") {
+        return Effect.succeed({
+          stdout: JSON.stringify({ id: "submission-1", status: "Accepted" }),
+          stderr: "",
+          exitCode: 0
+        })
+      }
+      return Effect.succeed({ stdout: `${invocation.step} ok`, stderr: "", exitCode: 0 })
+    }
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["notarize", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "macos-arm64",
+        notarizeCommandRunner: runner,
+        writeStdout: () => {},
+        writeStderr: () => {}
+      })
+    )
+
+    const report = JSON.parse(
+      await readFile(
+        join(directory, "apps", "playground", "dist", "desktop", "macos", "notarize-report.json"),
+        "utf8"
+      )
+    ) as { readonly steps: readonly [{ readonly command?: readonly string[] }] }
+    const submitStep = report.steps.find((step) => step.command?.includes("notarytool") === true)
+
+    expect(exitCode).toBe(0)
+    expect(calls.join("\n")).toContain("--password real-app-specific-password")
+    expect(submitStep?.command).toContain("--password")
+    expect(submitStep?.command).toContain("<redacted>")
+    expect(submitStep?.command).not.toContain("real-app-specific-password")
+  } finally {
+    if (previousPassword === undefined) {
+      delete process.env[passwordEnv]
+    } else {
+      process.env[passwordEnv] = previousPassword
+    }
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop notarize surfaces rejected notarytool output", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
   try {

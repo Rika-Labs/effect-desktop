@@ -163,8 +163,8 @@ export const runDesktopNotarize = (
       configPath: absoluteConfigPath,
       target
     })
-    const credentials = yield* resolveCredentials(plan.config)
     const artifacts = yield* readPackagedArtifacts(plan)
+    const credentials = yield* resolveCredentials(plan.config)
     const steps: NotarizeStepReport[] = []
     const reports: NotarizeArtifactReport[] = []
 
