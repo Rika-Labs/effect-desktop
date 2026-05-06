@@ -9,7 +9,7 @@
 
 ## Commits Made
 
-- Pending commit: address updater routing review comments.
+- `1ccd071` — `Address updater routing review comments (#88)`.
 
 ## Escalations
 
@@ -30,11 +30,15 @@ Focused local verification before push:
 - `cargo test -p native-updater` — passed, 13 tests.
 - `cargo clippy -p native-updater --all-targets -- -D warnings` — passed.
 
-Final CI status will be updated after push and `gh pr checks --watch --fail-fast`.
+- `validate (blacksmith-2vcpu-ubuntu-2404)` — pass, 1m55s.
+- `validate (blacksmith-6vcpu-macos-latest)` — pass, 56s.
+- `validate (blacksmith-2vcpu-windows-2025)` — pass, 1m40s.
+
+Final status: all-green after address push.
 
 ## Open Threads
 
-The addressed threads will be resolved silently after the fix commit is pushed.
+None. Both addressed review threads were resolved silently.
 
 ## Handoff
 
