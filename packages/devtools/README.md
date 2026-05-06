@@ -13,6 +13,11 @@ Runtime inspector projections for framework primitives: windows, bridge calls, s
 - `list()` returns registered commands with capability, owner scope, invocation count, last invocation, and last error.
 - `observeInvocations()` streams command invocation telemetry as it happens.
 
+`WorkersJobsDevtools` is a read-only Effect service over `Worker` and `Job`:
+
+- `list()` returns one redacted snapshot containing live worker rows and live job rows.
+- `observe()` emits an initial redacted snapshot and refreshes at the devtools frame interval.
+
 The package depends on `@effect-desktop/core` because `CommandRegistry` is the source of truth for command state and invocation telemetry. Keeping the projection in devtools thin avoids a second command read model.
 
 ## Non-goals

@@ -117,6 +117,11 @@ outputs return `ChannelError`; worker close/crash signals surface as
 `WorkerCrashed` on the message stream. Closing the owning scope shuts down the
 worker and releases the per-scope concurrency budget.
 
+`list()` returns read-only live worker snapshots for devtools with worker id,
+script, owner scope, resource id, status, uptime, declared capabilities, and
+last error when available. The worker service remains the source of truth;
+devtools only projects these snapshots.
+
 ### Job
 
 `Job` is the runtime primitive for long-running cancelable Effect work. It

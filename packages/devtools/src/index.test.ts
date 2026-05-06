@@ -1,16 +1,32 @@
 import { expect, test } from "bun:test"
 import {
   CommandRegistry,
+  Job,
+  makeJob,
   makeCommandRegistry,
   makePermissionRegistry,
   makeResourceRegistry,
+  makeWorker,
   PermissionActor,
   PermissionContext,
-  type NormalizedCapability
+  Worker,
+  type JobApi,
+  type NormalizedCapability,
+  type ResourceRegistryApi,
+  type WorkerApi,
+  type WorkerAdapter,
+  type WorkerError,
+  type WorkerRuntime
 } from "@effect-desktop/core"
-import { Effect, Fiber, Layer, Schema, Stream } from "effect"
+import { Cause, Deferred, Effect, Fiber, Layer, Queue, Schema, Stream } from "effect"
 
-import { CommandsDevtools, CommandsDevtoolsLive } from "./index.js"
+import {
+  CommandsDevtools,
+  CommandsDevtoolsLive,
+  WorkersJobsDevtools,
+  WorkersJobsDevtoolsLive,
+  type WorkersJobsSnapshot
+} from "./index.js"
 
 const commandCapability: NormalizedCapability = {
   kind: "native.invoke",
@@ -71,3 +87,122 @@ test("CommandsDevtools lists registered commands and observes invocation telemet
   expect(result.finalList[0]?.invocationCount).toBe(1)
   expect(result.finalList[0]?.lastInvocation?.outcome).toBe("success")
 })
+
+test("WorkersJobsDevtools lists live workers and jobs with redacted progress", async () => {
+  const fixture = await makeWorkersJobsFixture()
+  const workerHandle = await Effect.runPromise(
+    fixture.worker.spawn({
+      script: "./secret-worker.ts",
+      ownerScope: "scope-main",
+      inputSchema: Schema.Struct({ text: Schema.String }),
+      outputSchema: Schema.Struct({ echoed: Schema.String }),
+      context: new PermissionContext({
+        actor: new PermissionActor({ kind: "app", id: "app-main" }),
+        traceId: "trace-devtools"
+      })
+    })
+  )
+  const jobHandle = await Effect.runPromise(
+    fixture.job.run({
+      id: "job-devtools",
+      ownerScope: "scope-main",
+      effect: Effect.never,
+      progress: Stream.fromIterable([{ step: 1, token: "runtime-secret" }]),
+      progressSchema: Schema.Struct({
+        step: Schema.Number,
+        token: Schema.String
+      })
+    })
+  )
+
+  const snapshot = await waitForDevtoolsSnapshot(fixture, (snapshot) => {
+    const job = snapshot.jobs.find((row) => row.id === "job-devtools")
+    return (
+      snapshot.workers.some((row) => row.resourceId === workerHandle.resource.id) &&
+      job?.lastProgress !== undefined
+    )
+  })
+  const job = snapshot.jobs.find((row) => row.id === "job-devtools")
+
+  expect(snapshot.workers.map((worker) => worker.script)).toEqual(["./secret-worker.ts"])
+  expect(job?.lastProgress?.value).toEqual({ step: 1, token: "[REDACTED]" })
+
+  await Effect.runPromise(workerHandle.close)
+  await Effect.runPromise(jobHandle.cancel)
+})
+
+interface WorkersJobsFixture {
+  readonly registry: ResourceRegistryApi
+  readonly worker: WorkerApi
+  readonly job: JobApi
+}
+
+const makeWorkersJobsFixture = async (): Promise<WorkersJobsFixture> => {
+  let timestamp = 1_000
+  const registry = await Effect.runPromise(
+    makeResourceRegistry({
+      now: () => timestamp++,
+      nextId: (now) => `resource-${now}` as never
+    })
+  )
+  const permissions = await Effect.runPromise(makePermissionRegistry({ traceId: () => "trace" }))
+  const runtime = await makeFakeRuntime()
+  const worker = await Effect.runPromise(
+    makeWorker(registry, permissions, {
+      adapter: makeFakeAdapter(runtime),
+      now: () => timestamp++
+    })
+  )
+  const job = await Effect.runPromise(
+    makeJob(registry, {
+      now: () => timestamp++,
+      nextId: () => `job-${timestamp++}`
+    })
+  )
+  return { registry, worker, job }
+}
+
+const waitForDevtoolsSnapshot = async (
+  fixture: WorkersJobsFixture,
+  predicate: (snapshot: WorkersJobsSnapshot) => boolean
+): Promise<WorkersJobsSnapshot> => {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const snapshot = await Effect.runPromise(
+      Effect.gen(function* () {
+        const devtools = yield* WorkersJobsDevtools
+        return yield* devtools.list()
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            WorkersJobsDevtoolsLive,
+            Layer.merge(Layer.succeed(Worker)(fixture.worker), Layer.succeed(Job)(fixture.job))
+          )
+        )
+      )
+    )
+    if (predicate(snapshot)) {
+      return snapshot
+    }
+    await Bun.sleep(10)
+  }
+
+  throw new Error("devtools snapshot did not match")
+}
+
+const makeFakeAdapter = (runtime: WorkerRuntime): WorkerAdapter => ({
+  spawn: () => Effect.succeed(runtime)
+})
+
+const makeFakeRuntime = async (): Promise<WorkerRuntime> => {
+  const queue = await Effect.runPromise(Queue.unbounded<unknown, WorkerError | Cause.Done>())
+  const exit = await Effect.runPromise(Deferred.make<void, WorkerError>())
+  return {
+    send: () => Effect.void,
+    messages: Stream.fromQueue(queue),
+    exit: Deferred.await(exit),
+    shutdown: Queue.shutdown(queue).pipe(
+      Effect.andThen(Deferred.succeed(exit, undefined)),
+      Effect.asVoid
+    )
+  }
+}

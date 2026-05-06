@@ -71,6 +71,52 @@ test("Worker closes with the owning resource scope", async () => {
   expect(runtime.shutdowns).toBe(1)
 })
 
+test("Worker list returns live snapshots and removes closed workers", async () => {
+  const runtime = await makeFakeRuntime()
+  const fixture = await makeFixture(makeFakeAdapter(runtime), [filesystemReadCapability], {
+    nowStart: 10
+  })
+  const handle = await Effect.runPromise(
+    fixture.service.spawn({
+      script: "./listed-worker.ts",
+      ownerScope: "scope-main",
+      inputSchema: EchoIn,
+      outputSchema: EchoOut,
+      context,
+      capabilities: [filesystemReadCapability]
+    })
+  )
+
+  const listed = await Effect.runPromise(fixture.service.list())
+  await Effect.runPromise(handle.close)
+  const afterClose = await Effect.runPromise(fixture.service.list())
+
+  expect(listed.map((worker) => worker.script)).toEqual(["./listed-worker.ts"])
+  expect(listed[0]?.resourceId).toBe(handle.resource.id)
+  expect(listed[0]?.capabilities).toEqual([filesystemReadCapability])
+  expect(afterClose).toEqual([])
+})
+
+test("Worker list normalizes fractional uptime before snapshot construction", async () => {
+  const runtime = await makeFakeRuntime()
+  const fixture = await makeFixture(makeFakeAdapter(runtime), [], {
+    nowStart: 10.25
+  })
+  await Effect.runPromise(
+    fixture.service.spawn({
+      script: "./fractional-clock-worker.ts",
+      ownerScope: "scope-main",
+      inputSchema: EchoIn,
+      outputSchema: EchoOut,
+      context
+    })
+  )
+
+  const listed = await Effect.runPromise(fixture.service.list())
+
+  expect(listed[0]?.uptimeMs).toBe(1)
+})
+
 test("Worker rejects missing capabilities as CapabilityNotHeld before adapter spawn", async () => {
   let spawnCalls = 0
   const runtime = await makeFakeRuntime()
@@ -338,6 +384,7 @@ const makeFixture = async (
   }
   const service = await Effect.runPromise(
     makeWorker(registry, permissions, {
+      now: () => now++,
       ...(adapter === undefined ? {} : { adapter }),
       ...(options.maxConcurrent === undefined
         ? {}
