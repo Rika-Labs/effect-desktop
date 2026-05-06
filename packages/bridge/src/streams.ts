@@ -466,11 +466,17 @@ const offerTerminalFrame = (
         : yield* options.registry.terminate(streamId, terminal, options.now())
 
     if (shouldOffer) {
-      yield* Effect.sync(() => {
+      const terminalEvictions = yield* Effect.sync(() => {
+        let evictions = 0
         while (!Queue.offerUnsafe(streamQueue.queue, frame)) {
           Queue.takeUnsafe(streamQueue.queue)
+          evictions += 1
         }
+        return evictions
       })
+      if (terminalEvictions > 0) {
+        yield* Ref.update(streamQueue.evictedFrames, (count) => count + terminalEvictions)
+      }
       yield* syncBackpressureMetrics(options.registry, streamId, streamQueue)
     }
   })

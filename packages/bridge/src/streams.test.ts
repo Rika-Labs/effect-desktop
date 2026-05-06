@@ -157,7 +157,7 @@ test("Streams applies error overflow as a BackpressureOverflow terminal frame", 
   expect(await Effect.runPromise(registry.snapshot())).toEqual([
     {
       backpressure: {
-        evictedFrames: 1,
+        evictedFrames: 2,
         overflow: "error",
         queueCapacity: 1,
         queueDepth: 0
@@ -205,7 +205,7 @@ test("Streams records dropNewest overflow metrics without failing publishers", a
   expect(await Effect.runPromise(registry.snapshot())).toEqual([
     {
       backpressure: {
-        evictedFrames: 3,
+        evictedFrames: 4,
         overflow: "dropNewest",
         queueCapacity: 2,
         queueDepth: 0
