@@ -33,8 +33,8 @@ SQLite error codes are mapped to typed tags: `Constraint`, `Busy`, `Locked`,
 
 `Settings` is a typed key/value store built on `SQLite`. `open` validates the
 database path, owner scope, namespace, and schema version before opening the
-database. `get`, `set`, and `update` validate values through Effect Schema and
-return typed `SettingsError` values instead of throwing.
+database. `get`, `set`, `delete`, `keys`, and `update` validate values through
+Effect Schema and return typed `SettingsError` values instead of throwing.
 
 `set` is last-writer-wins. `update` runs inside a SQLite transaction, so
 read-modify-write calls for the same database connection serialize. Versioned
@@ -107,6 +107,14 @@ When an `EventLogStore` is supplied, each successful operation writes a
 `secret accessed` audit event with namespace, key, outcome, and trace id, never
 the secret value. There are no long-lived handles; cleanup is the caller's
 explicit disposal of returned `SecretValue` copies.
+
+`runSecretsMigration({ settings, secrets, audit })` moves legacy plaintext
+Settings entries whose keys match the §14.10 secret pattern into the `legacy`
+Secrets namespace. It verifies read-back, writes a `secret-migrated` audit event
+without the value, deletes the plaintext row, and writes
+`migration.secrets.v1.complete` only after the full pass succeeds. Failures
+return `SecretsMigrationFailed` with the key and phase so startup can retry
+idempotently on the next launch.
 
 ### RedactionFilter
 
