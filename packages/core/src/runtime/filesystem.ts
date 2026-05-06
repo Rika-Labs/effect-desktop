@@ -12,7 +12,7 @@ import {
   writeFile
 } from "node:fs/promises"
 import { watch as nodeWatch } from "node:fs"
-import { dirname, join } from "node:path"
+import { dirname, join, resolve } from "node:path"
 import { randomUUID } from "node:crypto"
 
 import {
@@ -20,6 +20,7 @@ import {
   HostProtocolFileNotFoundError,
   HostProtocolInvalidArgumentError,
   HostProtocolPermissionDeniedError,
+  HostProtocolSymlinkEscapesRootError,
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
@@ -31,6 +32,16 @@ const NonEmptyPath = Schema.NonEmptyString
 
 export class FilesystemPathInput extends Schema.Class<FilesystemPathInput>("FilesystemPathInput")({
   path: NonEmptyPath
+}) {}
+
+export const FilesystemPathCapability = Schema.Literals(["filesystem.read", "filesystem.write"])
+export type FilesystemPathCapability = typeof FilesystemPathCapability.Type
+
+export class FilesystemRealpathInput extends Schema.Class<FilesystemRealpathInput>(
+  "FilesystemRealpathInput"
+)({
+  path: NonEmptyPath,
+  capability: Schema.optionalKey(FilesystemPathCapability)
 }) {}
 
 export class FilesystemWriteInput extends Schema.Class<FilesystemWriteInput>(
@@ -90,6 +101,10 @@ export type FilesystemError = HostProtocolError
 
 export interface FilesystemApi {
   readonly read: (path: string) => Effect.Effect<Uint8Array, FilesystemError, never>
+  readonly realpath: (
+    path: string,
+    capability?: FilesystemPathCapability
+  ) => Effect.Effect<string, FilesystemError, never>
   readonly write: (path: string, bytes: Uint8Array) => Effect.Effect<void, FilesystemError, never>
   readonly writeAtomic: (
     path: string,
@@ -150,7 +165,7 @@ export const makeFilesystem = (
       read: (path: string) =>
         Effect.gen(function* () {
           const input = yield* decodePathInput({ path }, "Filesystem.read")
-          yield* authorizeFilesystemPath(
+          const authorizedPath = yield* authorizeFilesystemPath(
             adapter,
             permissions,
             input.path,
@@ -159,14 +174,33 @@ export const makeFilesystem = (
             "existing"
           )
           return yield* Effect.tryPromise({
-            try: () => adapter.readFile(input.path),
-            catch: (error) => mapFilesystemError(error, input.path, "Filesystem.read")
+            try: () => adapter.readFile(authorizedPath),
+            catch: (error) => mapFilesystemError(error, authorizedPath, "Filesystem.read")
           }).pipe(Effect.map((bytes) => new Uint8Array(bytes)))
         }).pipe(Effect.withSpan("Filesystem.read", { attributes: { path } })),
+      realpath: (path: string, capability?: FilesystemPathCapability) =>
+        Effect.gen(function* () {
+          const input = yield* decodeRealpathInput(
+            { path, ...(capability === undefined ? {} : { capability }) },
+            "Filesystem.realpath"
+          )
+          return yield* authorizeFilesystemPath(
+            adapter,
+            permissions,
+            input.path,
+            input.capability ?? "filesystem.read",
+            "Filesystem.realpath",
+            "existing"
+          )
+        }).pipe(
+          Effect.withSpan("Filesystem.realpath", {
+            attributes: { path, capability: capability ?? "filesystem.read" }
+          })
+        ),
       write: (path: string, bytes: Uint8Array) =>
         Effect.gen(function* () {
           const input = yield* decodeWriteInput({ path, bytes }, "Filesystem.write")
-          yield* authorizeFilesystemPath(
+          const authorizedPath = yield* authorizeFilesystemPath(
             adapter,
             permissions,
             input.path,
@@ -175,14 +209,14 @@ export const makeFilesystem = (
             "leaf-may-be-missing"
           )
           yield* Effect.tryPromise({
-            try: () => adapter.writeFile(input.path, input.bytes),
-            catch: (error) => mapFilesystemError(error, input.path, "Filesystem.write")
+            try: () => adapter.writeFile(authorizedPath, input.bytes),
+            catch: (error) => mapFilesystemError(error, authorizedPath, "Filesystem.write")
           })
         }).pipe(Effect.withSpan("Filesystem.write", { attributes: { path } })),
       writeAtomic: (path: string, bytes: Uint8Array) =>
         Effect.gen(function* () {
           const input = yield* decodeWriteInput({ path, bytes }, "Filesystem.writeAtomic")
-          yield* authorizeFilesystemPath(
+          const authorizedPath = yield* authorizeFilesystemPath(
             adapter,
             permissions,
             input.path,
@@ -190,12 +224,12 @@ export const makeFilesystem = (
             "Filesystem.writeAtomic",
             "leaf-may-be-missing"
           )
-          yield* writeAtomicFile(adapter, input.path, input.bytes)
+          yield* writeAtomicFile(adapter, authorizedPath, input.bytes)
         }).pipe(Effect.withSpan("Filesystem.writeAtomic", { attributes: { path } })),
       stat: (path: string) =>
         Effect.gen(function* () {
           const input = yield* decodePathInput({ path }, "Filesystem.stat")
-          yield* authorizeFilesystemPath(
+          const authorizedPath = yield* authorizeFilesystemPath(
             adapter,
             permissions,
             input.path,
@@ -204,12 +238,12 @@ export const makeFilesystem = (
             "existing"
           )
           const result = yield* Effect.tryPromise({
-            try: () => adapter.stat(input.path),
-            catch: (error) => mapFilesystemError(error, input.path, "Filesystem.stat")
+            try: () => adapter.stat(authorizedPath),
+            catch: (error) => mapFilesystemError(error, authorizedPath, "Filesystem.stat")
           })
 
           return new FilesystemStatResult({
-            path: input.path,
+            path: authorizedPath,
             kind: statKind(result),
             sizeBytes: result.size,
             modifiedAtMs: result.mtimeMs
@@ -221,7 +255,7 @@ export const makeFilesystem = (
             { path, ...(options?.recursive === undefined ? {} : { recursive: options.recursive }) },
             "Filesystem.mkdir"
           )
-          yield* authorizeFilesystemPath(
+          const authorizedPath = yield* authorizeFilesystemPath(
             adapter,
             permissions,
             input.path,
@@ -232,9 +266,9 @@ export const makeFilesystem = (
           yield* Effect.tryPromise({
             try: () =>
               input.recursive === true
-                ? adapter.mkdir(input.path, { recursive: true })
-                : adapter.mkdir(input.path),
-            catch: (error) => mapFilesystemError(error, input.path, "Filesystem.mkdir")
+                ? adapter.mkdir(authorizedPath, { recursive: true })
+                : adapter.mkdir(authorizedPath),
+            catch: (error) => mapFilesystemError(error, authorizedPath, "Filesystem.mkdir")
           })
         }).pipe(Effect.withSpan("Filesystem.mkdir", { attributes: { path } })),
       remove: (path: string, options?: { readonly recursive?: boolean }) =>
@@ -245,7 +279,7 @@ export const makeFilesystem = (
           )
           const capability =
             input.recursive === true ? "filesystem.delete.recursive" : "filesystem.delete"
-          yield* authorizeFilesystemPath(
+          const authorizedPath = yield* authorizeFilesystemPath(
             adapter,
             permissions,
             input.path,
@@ -256,9 +290,9 @@ export const makeFilesystem = (
           yield* Effect.tryPromise({
             try: () =>
               input.recursive === true
-                ? adapter.remove(input.path, { recursive: true })
-                : adapter.remove(input.path),
-            catch: (error) => mapFilesystemError(error, input.path, "Filesystem.remove")
+                ? adapter.remove(authorizedPath, { recursive: true })
+                : adapter.remove(authorizedPath),
+            catch: (error) => mapFilesystemError(error, authorizedPath, "Filesystem.remove")
           })
         }).pipe(Effect.withSpan("Filesystem.remove", { attributes: { path } })),
       watch: (
@@ -275,7 +309,7 @@ export const makeFilesystem = (
                 },
                 "Filesystem.watch"
               )
-              yield* authorizeFilesystemPath(
+              const authorizedPath = yield* authorizeFilesystemPath(
                 adapter,
                 permissions,
                 input.path,
@@ -287,9 +321,9 @@ export const makeFilesystem = (
                 input.bufferSize ?? DEFAULT_WATCH_BUFFER_SIZE
               )
               const watcher = yield* adapter.watch(
-                input.path,
+                authorizedPath,
                 (event) => {
-                  Effect.runFork(handleWatchEvent(queue, adapter, input.path, event))
+                  Effect.runFork(handleWatchEvent(queue, adapter, authorizedPath, event))
                 },
                 (error) => {
                   Effect.runFork(Queue.fail(queue, error))
@@ -459,6 +493,16 @@ const decodeWriteInput = (
     )
   )
 
+const decodeRealpathInput = (
+  input: unknown,
+  operation: string
+): Effect.Effect<FilesystemRealpathInput, HostProtocolInvalidArgumentError, never> =>
+  Schema.decodeUnknownEffect(FilesystemRealpathInput)(input).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
 const decodeMkdirInput = (
   input: unknown,
   operation: string
@@ -518,13 +562,55 @@ const authorizeFilesystemPath = (
         ? allowedByRoot && permissions.allowRecursiveRemove === true
         : allowedByRoot
 
+    if (!allowedByRoot) {
+      const requestedPathWithinRoots = yield* requestedPathWithinPermissionRoots(
+        adapter,
+        path,
+        roots
+      )
+      if (requestedPathWithinRoots) {
+        return yield* Effect.fail(
+          makeSymlinkEscapesRootError(path, canonicalPath, roots, operation)
+        )
+      }
+    }
+
     if (!allowed) {
       return yield* Effect.fail(
         makeFilesystemPermissionDenied(capability, canonicalPath, operation)
       )
     }
 
+    yield* denyEscapingHardLink(adapter, path, canonicalPath, roots, operation)
+
     return canonicalPath
+  })
+
+const denyEscapingHardLink = (
+  adapter: FilesystemAdapter,
+  requestedPath: string,
+  canonicalPath: string,
+  capabilityRoots: readonly string[],
+  operation: string
+): Effect.Effect<void, FilesystemError, never> =>
+  Effect.gen(function* () {
+    const stats = yield* Effect.tryPromise({
+      try: () => adapter.stat(canonicalPath),
+      catch: (error) => error
+    }).pipe(
+      Effect.catch((error) => {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          return Effect.succeed(undefined)
+        }
+        return Effect.fail(mapFilesystemError(error, canonicalPath, operation))
+      })
+    )
+
+    if (stats !== undefined && stats.isFile() && stats.nlink > 1) {
+      yield* Effect.fail(
+        makeSymlinkEscapesRootError(requestedPath, canonicalPath, capabilityRoots, operation)
+      )
+    }
   })
 
 const canonicalizePath = (
@@ -580,6 +666,40 @@ const canonicalizePossiblyMissingPath = (
     })
   )
 
+const requestedPathWithinPermissionRoots = (
+  adapter: FilesystemAdapter,
+  path: string,
+  roots: readonly string[]
+): Effect.Effect<boolean, never, never> =>
+  requestedAncestorWithinPermissionRoots(adapter, dirname(resolve(path)), roots)
+
+const requestedAncestorWithinPermissionRoots = (
+  adapter: FilesystemAdapter,
+  path: string,
+  roots: readonly string[]
+): Effect.Effect<boolean, never, never> =>
+  Effect.tryPromise({
+    try: () => adapter.realpath(path),
+    catch: (error) => error
+  }).pipe(
+    Effect.map((canonicalPath) => roots.some((root) => pathWithinRoot(canonicalPath, root))),
+    Effect.catch((error) => {
+      if (isNodeError(error) && (error.code === "ENOENT" || error.code === "EACCES")) {
+        return Effect.succeed(false)
+      }
+      return Effect.succeed(false)
+    }),
+    Effect.flatMap((withinRoots) => {
+      if (withinRoots) {
+        return Effect.succeed(true)
+      }
+      const parent = dirname(path)
+      return parent === path
+        ? Effect.succeed(false)
+        : requestedAncestorWithinPermissionRoots(adapter, parent, roots)
+    })
+  )
+
 const canonicalizePermissionRoots = (
   adapter: FilesystemAdapter,
   roots: readonly string[],
@@ -627,6 +747,24 @@ const makeFilesystemPermissionDenied = (
     capability,
     resource,
     ...common("PermissionDenied", `permission denied: ${resource}`, operation)
+  })
+
+const makeSymlinkEscapesRootError = (
+  requestedPath: string,
+  resolvedPath: string,
+  capabilityRoots: readonly string[],
+  operation: string
+): HostProtocolSymlinkEscapesRootError =>
+  new HostProtocolSymlinkEscapesRootError({
+    tag: "SymlinkEscapesRoot",
+    requested: requestedPath,
+    resolved: resolvedPath,
+    capabilityRoots: [...capabilityRoots],
+    ...common(
+      "SymlinkEscapesRoot",
+      `symlink escapes capability root: ${requestedPath} -> ${resolvedPath}`,
+      operation
+    )
   })
 
 const handleWatchEvent = (
@@ -744,7 +882,7 @@ const mapFilesystemError = (error: unknown, path: string, operation: string): Ho
 }
 
 const common = (
-  tag: "FileNotFound" | "PermissionDenied" | "DiskFull",
+  tag: "FileNotFound" | "PermissionDenied" | "DiskFull" | "SymlinkEscapesRoot",
   message: string,
   operation: string
 ) => ({
