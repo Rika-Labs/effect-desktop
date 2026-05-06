@@ -51,6 +51,7 @@ Detached Effect fibers need a deliberate error policy at the event boundary. Ret
 ## Reproducible pattern (if any)
 
 For long-lived streams:
+
 1. Separate resource lifecycle failures from per-event handler failures.
 2. Catch typed per-event failures inside `Stream.runForEach` when the stream must continue.
 3. Log or audit the typed value so the failure is not swallowed.
