@@ -278,20 +278,26 @@ fn open_inner(size: PtySize, command: PtyCommand) -> PtyResult<NativePty> {
         builder.cwd(cwd);
     }
 
-    let child = pair
+    let mut child = pair
         .slave
         .spawn_command(builder)
         .map_err(|error| map_anyhow_error(error, "Pty.open"))?;
     drop(pair.slave);
 
-    let reader = pair
-        .master
-        .try_clone_reader()
-        .map_err(|error| map_anyhow_error(error, "Pty.open"))?;
-    let writer = pair
-        .master
-        .take_writer()
-        .map_err(|error| map_anyhow_error(error, "Pty.open"))?;
+    let reader = match pair.master.try_clone_reader() {
+        Ok(reader) => reader,
+        Err(error) => {
+            cleanup_spawned_child(child.as_mut());
+            return Err(map_anyhow_error(error, "Pty.open"));
+        }
+    };
+    let writer = match pair.master.take_writer() {
+        Ok(writer) => writer,
+        Err(error) => {
+            cleanup_spawned_child(child.as_mut());
+            return Err(map_anyhow_error(error, "Pty.open"));
+        }
+    };
 
     Ok(NativePty {
         master: pair.master,
@@ -299,6 +305,11 @@ fn open_inner(size: PtySize, command: PtyCommand) -> PtyResult<NativePty> {
         reader,
         writer: Some(writer),
     })
+}
+
+fn cleanup_spawned_child(child: &mut dyn Child) {
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 fn validate_size(size: &PtySize, operation: &'static str) -> PtyResult<()> {
