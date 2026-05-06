@@ -89,6 +89,11 @@ import {
   PowerMonitorShutdownEvent,
   PowerMonitorSourceChangedEvent,
   PowerMonitorSuspendEvent,
+  SafeStorage,
+  SafeStorageApi,
+  SafeStorageLive,
+  SafeStorageMethodNames,
+  SecretValue,
   Screen,
   ScreenApi,
   ScreenBounds,
@@ -157,6 +162,8 @@ import {
   makePathServiceLayer,
   makeProtocolBridgeClientLayer,
   makeProtocolServiceLayer,
+  makeSafeStorageBridgeClientLayer,
+  makeSafeStorageServiceLayer,
   makeShellBridgeClientLayer,
   makeShellServiceLayer,
   makeUnsupportedDialogClient,
@@ -165,6 +172,7 @@ import {
   makeUnsupportedNotificationClient,
   makeUnsupportedPathClient,
   makeUnsupportedProtocolClient,
+  makeUnsupportedSafeStorageClient,
   makeUnsupportedDockClient,
   makeUnsupportedPowerMonitorClient,
   makeUnsupportedScreenClient,
@@ -194,6 +202,7 @@ import {
   type NotificationHandle,
   type PathClientApi,
   type ProtocolClientApi,
+  type SafeStorageClientApi,
   type ScreenClientApi,
   type ShellClientApi,
   type SystemAppearanceClientApi,
@@ -320,6 +329,14 @@ const expectedProtocolMethods: Array<(typeof ProtocolMethodNames)[number]> = [
   "serveAsset",
   "serveRoute",
   "deny"
+]
+
+const expectedSafeStorageMethods: Array<(typeof SafeStorageMethodNames)[number]> = [
+  "set",
+  "get",
+  "delete",
+  "list",
+  "isAvailable"
 ]
 
 const expectedPowerMonitorMethods: Array<(typeof PowerMonitorMethodNames)[number]> = []
@@ -1779,6 +1796,111 @@ test("unsupported Protocol client reports deferred host methods as Effect values
   )
 })
 
+test("SafeStorageApi declares the Phase 8 SafeStorage method surface", () => {
+  expect(SafeStorageApi.tag).toBe("SafeStorage")
+  expect([...SafeStorageMethodNames]).toEqual(expectedSafeStorageMethods)
+  expect(Object.keys(SafeStorageApi.spec)).toEqual(expectedSafeStorageMethods)
+  expect(Object.keys(SafeStorageApi.events)).toEqual([])
+})
+
+test("SecretValue redacts string and JSON formatting while exposing explicit byte copies", async () => {
+  const secret = SecretValue.fromUtf8("refresh-token")
+  const bytes = secret.unsafeBytes()
+  bytes.fill(0)
+
+  expect(String(secret)).toBe("[REDACTED]")
+  expect(JSON.stringify({ token: secret })).toBe('{"token":"[REDACTED]"}')
+  expect(new TextDecoder().decode(secret.unsafeBytes())).toBe("refresh-token")
+  await Effect.runPromise(secret.dispose())
+  expect(Array.from(secret.unsafeBytes())).toEqual(
+    Array.from({ length: "refresh-token".length }, () => 0)
+  )
+})
+
+test("SafeStorage service delegates through a substitutable SafeStorageClient port", async () => {
+  const calls: string[] = []
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const storage = yield* SafeStorage
+      yield* storage.set("token", SecretValue.fromUtf8("refresh-token"))
+      const secret = yield* storage.get("token")
+      const keys = yield* storage.list()
+      const available = yield* storage.isAvailable()
+      yield* storage.delete("token")
+      return { available, keys, secret }
+    }).pipe(Effect.provide(makeSafeStorageServiceLayer(safeStorageClient(calls))))
+  )
+
+  expect(result.available).toBe(true)
+  expect(result.keys).toEqual(["token"])
+  expect(String(result.secret)).toBe("[REDACTED]")
+  expect(new TextDecoder().decode(result.secret.unsafeBytes())).toBe("refresh-token")
+  expect(calls).toEqual(["set:token:13", "get:token", "list", "isAvailable", "delete:token"])
+})
+
+test("SafeStorage bridge client validates keys and redacts decoded values", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = safeStorageExchange(requests, (request) => ({
+    kind: "success",
+    payload:
+      request.method === "SafeStorage.get"
+        ? { value: new TextEncoder().encode("refresh-token") }
+        : request.method === "SafeStorage.list"
+          ? { keys: ["token"] }
+          : request.method === "SafeStorage.isAvailable"
+            ? { available: true }
+            : undefined
+  }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* SafeStorage
+    }).pipe(
+      Effect.provide(Layer.provide(SafeStorageLive, makeSafeStorageBridgeClientLayer(exchange)))
+    )
+  )
+
+  await Effect.runPromise(client.set("token", SecretValue.fromUtf8("refresh-token")))
+  const secret = await Effect.runPromise(client.get("token"))
+  const keys = await Effect.runPromise(client.list())
+  const available = await Effect.runPromise(client.isAvailable())
+  await Effect.runPromise(client.delete("token"))
+  const emptyKeyExit = await Effect.runPromiseExit(
+    client.set("", SecretValue.fromUtf8("refresh-token"))
+  )
+
+  expect(String(secret)).toBe("[REDACTED]")
+  expect(JSON.stringify({ token: secret })).not.toContain("refresh-token")
+  expect(new TextDecoder().decode(secret.unsafeBytes())).toBe("refresh-token")
+  expect(keys).toEqual(["token"])
+  expect(available).toBe(true)
+  expectExitFailure(emptyKeyExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["SafeStorage.set", { key: "token", value: new TextEncoder().encode("refresh-token") }],
+    ["SafeStorage.get", { key: "token" }],
+    ["SafeStorage.list", undefined],
+    ["SafeStorage.isAvailable", undefined],
+    ["SafeStorage.delete", { key: "token" }]
+  ])
+})
+
+test("unsupported SafeStorage client reports availability and typed command failures", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const storage = yield* SafeStorage
+      const available = yield* storage.isAvailable()
+      const keys = yield* storage.list()
+      const setExit = yield* Effect.exit(storage.set("token", SecretValue.fromUtf8("secret")))
+      const getExit = yield* Effect.exit(storage.get("token"))
+      return { available, getExit, keys, setExit }
+    }).pipe(Effect.provide(makeSafeStorageServiceLayer(makeUnsupportedSafeStorageClient())))
+  )
+
+  expect(result.available).toBe(false)
+  expect(result.keys).toEqual([])
+  expectExitFailure(result.setExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(result.getExit, (error) => hasErrorTag(error, "Unsupported"))
+})
+
 test("ShellApi declares the Phase 8 Shell method surface", () => {
   expect(ShellApi.tag).toBe("Shell")
   expect([...ShellMethodNames]).toEqual(expectedShellMethods)
@@ -2890,6 +3012,26 @@ const protocolClient = (calls: string[]): ProtocolClientApi => ({
   deny: (input) => recordVoid(calls, `deny:${input.scheme}:${input.path}`)
 })
 
+const safeStorageClient = (calls: string[]): SafeStorageClientApi => ({
+  set: (key, value) => recordVoid(calls, `set:${key}:${value.unsafeBytes().byteLength}`),
+  get: (key) =>
+    Effect.sync(() => {
+      calls.push(`get:${key}`)
+      return SecretValue.fromUtf8("refresh-token")
+    }),
+  delete: (key) => recordVoid(calls, `delete:${key}`),
+  list: () =>
+    Effect.sync(() => {
+      calls.push("list")
+      return ["token"]
+    }),
+  isAvailable: () =>
+    Effect.sync(() => {
+      calls.push("isAvailable")
+      return true
+    })
+})
+
 const shellClient = (calls: string[]): ShellClientApi => ({
   openExternal: (url, options) =>
     recordVoid(calls, `openExternal:${url}:${options?.allowedSchemes?.join(",") ?? ""}`),
@@ -3209,6 +3351,16 @@ const pathExchange = (
 })
 
 const protocolExchange = (
+  requests: HostProtocolRequestEnvelope[],
+  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
+): ApiClientExchange => ({
+  request: (request) => {
+    requests.push(request)
+    return Effect.succeed(respond(request))
+  }
+})
+
+const safeStorageExchange = (
   requests: HostProtocolRequestEnvelope[],
   respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
 ): ApiClientExchange => ({
