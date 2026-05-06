@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { tmpdir } from "node:os"
 
-import { Context, Data, Effect, Layer, Option, Schema } from "effect"
+import { Context, Data, Effect, Layer, Option, PubSub, Schema, Stream } from "effect"
 
 export class WindowStateRecord extends Schema.Class<WindowStateRecord>("WindowStateRecord")({
   x: Schema.Number.check(Schema.isFinite()),
@@ -18,6 +18,25 @@ export class WindowStateRecord extends Schema.Class<WindowStateRecord>("WindowSt
 
 export class WindowStateStore extends Schema.Class<WindowStateStore>("WindowStateStore")({
   windows: Schema.Record(Schema.String, WindowStateRecord)
+}) {}
+
+export class WindowDisplayBounds extends Schema.Class<WindowDisplayBounds>("WindowDisplayBounds")({
+  x: Schema.Number.check(Schema.isFinite()),
+  y: Schema.Number.check(Schema.isFinite()),
+  width: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)),
+  height: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)),
+  primary: Schema.optionalKey(Schema.Boolean)
+}) {}
+
+export const WindowStateEventKind = Schema.Literals(["persisted", "cleared", "corrupt-renamed"])
+export type WindowStateEventKind = typeof WindowStateEventKind.Type
+
+export class WindowStateEvent extends Schema.Class<WindowStateEvent>("WindowStateEvent")({
+  kind: WindowStateEventKind,
+  path: Schema.String,
+  windowId: Schema.optionalKey(Schema.String),
+  corruptPath: Schema.optionalKey(Schema.String),
+  reason: Schema.optionalKey(Schema.String)
 }) {}
 
 export class WindowStateReadFailed extends Data.TaggedError("WindowStateReadFailed")<{
@@ -45,10 +64,17 @@ export interface WindowStateApi {
   readonly restore: (
     windowId: string
   ) => Effect.Effect<Option.Option<WindowStateRecord>, WindowStateError, never>
+  readonly restoreAll: () => Effect.Effect<
+    Readonly<Record<string, WindowStateRecord>>,
+    WindowStateError,
+    never
+  >
   readonly persist: (
     windowId: string,
     state: WindowStateRecord
   ) => Effect.Effect<void, WindowStateError, never>
+  readonly clear: (windowId?: string) => Effect.Effect<void, WindowStateError, never>
+  readonly observe: () => Stream.Stream<WindowStateEvent, never, never>
 }
 
 export interface WindowStateOptions {
@@ -56,26 +82,49 @@ export interface WindowStateOptions {
   readonly bundleId?: string
   readonly now?: () => number
   readonly validateBounds?: (state: WindowStateRecord) => WindowStateRecord
+  readonly displays?: readonly WindowDisplayBounds[]
 }
 
 export const makeWindowState = (
   options: WindowStateOptions = {}
 ): Effect.Effect<WindowStateApi, never, never> =>
-  Effect.sync(() => {
+  Effect.gen(function* () {
     const path = options.path ?? defaultWindowStatePath(options.bundleId ?? "effect-desktop")
     const now = options.now ?? Date.now
-    const validateBounds = options.validateBounds ?? ((state: WindowStateRecord) => state)
+    const validateBounds = (state: WindowStateRecord) =>
+      snapToVisibleDisplay(options.validateBounds?.(state) ?? state, options.displays)
+    const events = yield* PubSub.sliding<WindowStateEvent>({ capacity: 128, replay: 0 })
+    const read = readStore(path, now)
+    const publishReadEvent = (result: WindowStateReadResult): Effect.Effect<void, never, never> =>
+      result.event === undefined
+        ? Effect.void
+        : PubSub.publish(events, result.event).pipe(Effect.asVoid)
 
     return Object.freeze({
       restore: (windowId: string) =>
         Effect.gen(function* () {
-          const store = yield* readStore(path, now)
+          const result = yield* read
+          yield* publishReadEvent(result)
+          const store = result.store
           const record = store.windows[windowId]
           return record === undefined ? Option.none() : Option.some(validateBounds(record))
         }),
+      restoreAll: () =>
+        Effect.gen(function* () {
+          const result = yield* read
+          yield* publishReadEvent(result)
+          return Object.fromEntries(
+            Object.entries(result.store.windows).map(([windowId, record]) => [
+              windowId,
+              validateBounds(record)
+            ])
+          )
+        }),
       persist: (windowId: string, state: WindowStateRecord) =>
         Effect.gen(function* () {
-          const current = yield* readStore(path, now)
+          const result = yield* read
+          yield* publishReadEvent(result)
+          const current = result.store
           const next = new WindowStateStore({
             windows: {
               ...current.windows,
@@ -84,7 +133,32 @@ export const makeWindowState = (
           })
 
           yield* writeStore(path, next)
-        })
+          yield* PubSub.publish(events, new WindowStateEvent({ kind: "persisted", path, windowId }))
+        }),
+      clear: (windowId?: string) =>
+        Effect.gen(function* () {
+          const result = yield* read
+          yield* publishReadEvent(result)
+          const next =
+            windowId === undefined
+              ? new WindowStateStore({ windows: {} })
+              : new WindowStateStore({
+                  windows: Object.fromEntries(
+                    Object.entries(result.store.windows).filter(([id]) => id !== windowId)
+                  )
+                })
+
+          yield* writeStore(path, next)
+          yield* PubSub.publish(
+            events,
+            new WindowStateEvent({
+              kind: "cleared",
+              path,
+              ...(windowId === undefined ? {} : { windowId })
+            })
+          )
+        }),
+      observe: () => Stream.fromPubSub(events)
     })
   })
 
@@ -95,7 +169,7 @@ export const WindowStateLive = Layer.effect(WindowState)(makeWindowState())
 const readStore = (
   path: string,
   now: () => number
-): Effect.Effect<WindowStateStore, WindowStateError, never> =>
+): Effect.Effect<WindowStateReadResult, WindowStateError, never> =>
   Effect.gen(function* () {
     const content = yield* Effect.tryPromise({
       try: () => readFile(path, "utf8"),
@@ -111,15 +185,21 @@ const readStore = (
     )
 
     if (content === undefined) {
-      return new WindowStateStore({ windows: {} })
+      return { store: new WindowStateStore({ windows: {} }) }
     }
 
     return yield* decodeStore(content, path).pipe(
+      Effect.map((store) => ({ store })),
       Effect.catchTag("WindowStateReadFailed", (error) =>
         renameCorruptFile(path, now, error.reason)
       )
     )
   })
+
+interface WindowStateReadResult {
+  readonly store: WindowStateStore
+  readonly event?: WindowStateEvent
+}
 
 const decodeStore = (
   content: string,
@@ -163,7 +243,7 @@ const renameCorruptFile = (
   path: string,
   now: () => number,
   reason: string
-): Effect.Effect<WindowStateStore, WindowStateCorruptRenamed, never> => {
+): Effect.Effect<WindowStateReadResult, WindowStateCorruptRenamed, never> => {
   const corruptPath = corruptWindowStatePath(path, now())
 
   return Effect.tryPromise({
@@ -174,8 +254,56 @@ const renameCorruptFile = (
         corruptPath,
         reason: `${reason}; corrupt-file rename failed: ${formatUnknownError(error)}`
       })
-  }).pipe(Effect.as(new WindowStateStore({ windows: {} })))
+  }).pipe(
+    Effect.as({
+      store: new WindowStateStore({ windows: {} }),
+      event: new WindowStateEvent({
+        kind: "corrupt-renamed",
+        path,
+        corruptPath,
+        reason
+      })
+    })
+  )
 }
+
+const snapToVisibleDisplay = (
+  state: WindowStateRecord,
+  displays: readonly WindowDisplayBounds[] | undefined
+): WindowStateRecord => {
+  if (displays === undefined || displays.length === 0 || intersectsAnyDisplay(state, displays)) {
+    return state
+  }
+
+  const target = displays.find((display) => display.primary === true) ?? displays[0]
+  if (target === undefined) {
+    return state
+  }
+
+  return new WindowStateRecord({
+    x: target.x,
+    y: target.y,
+    width: Math.min(state.width, target.width),
+    height: Math.min(state.height, target.height),
+    isFullScreen: state.isFullScreen,
+    scaleFactor: state.scaleFactor,
+    zoom: state.zoom,
+    ...(state.devtoolsPanel === undefined ? {} : { devtoolsPanel: state.devtoolsPanel }),
+    ...(state.scrollPositions === undefined ? {} : { scrollPositions: state.scrollPositions })
+  })
+}
+
+const intersectsAnyDisplay = (
+  state: WindowStateRecord,
+  displays: readonly WindowDisplayBounds[]
+): boolean =>
+  displays.some(
+    (display) =>
+      state.x < display.x + display.width &&
+      state.x + state.width > display.x &&
+      state.y < display.y + display.height &&
+      state.y + state.height > display.y
+  )
 
 export const defaultWindowStatePath = (bundleId: string): string => {
   switch (process.platform) {

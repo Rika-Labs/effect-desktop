@@ -3,9 +3,14 @@ import { join } from "node:path"
 import { tmpdir } from "node:os"
 
 import { expect, test } from "bun:test"
-import { Effect, Exit, Option } from "effect"
+import { Effect, Exit, Fiber, Option, Stream } from "effect"
 
-import { WindowStateReadFailed, WindowStateRecord, makeWindowState } from "./window-state.js"
+import {
+  WindowDisplayBounds,
+  WindowStateReadFailed,
+  WindowStateRecord,
+  makeWindowState
+} from "./window-state.js"
 
 const state = makeWindowStateRecord()
 
@@ -82,6 +87,67 @@ test("WindowState applies injected bounds validation on restore", async () => {
 
   expect(Option.getOrThrow(restored).x).toBe(0)
   expect(Option.getOrThrow(restored).y).toBe(0)
+})
+
+test("WindowState restores all windows independently", async () => {
+  const path = await tempWindowStatePath()
+  const service = await Effect.runPromise(makeWindowState({ path }))
+
+  await Effect.runPromise(service.persist("main", makeWindowStateRecord({ x: 10 })))
+  await Effect.runPromise(service.persist("palette", makeWindowStateRecord({ x: 900 })))
+  const restored = await Effect.runPromise(service.restoreAll())
+
+  expect(restored["main"]?.x).toBe(10)
+  expect(restored["palette"]?.x).toBe(900)
+})
+
+test("WindowState snaps off-screen windows to the primary display", async () => {
+  const path = await tempWindowStatePath()
+  const service = await Effect.runPromise(
+    makeWindowState({
+      path,
+      displays: [
+        new WindowDisplayBounds({ x: 0, y: 0, width: 1024, height: 768, primary: true }),
+        new WindowDisplayBounds({ x: 1024, y: 0, width: 1024, height: 768 })
+      ]
+    })
+  )
+
+  await Effect.runPromise(service.persist("main", makeWindowStateRecord({ x: 5000, y: 5000 })))
+  const restored = await Effect.runPromise(service.restore("main"))
+
+  expect(Option.getOrThrow(restored).x).toBe(0)
+  expect(Option.getOrThrow(restored).y).toBe(0)
+})
+
+test("WindowState clear removes one window or the full store", async () => {
+  const path = await tempWindowStatePath()
+  const service = await Effect.runPromise(makeWindowState({ path }))
+
+  await Effect.runPromise(service.persist("main", makeWindowStateRecord({ x: 10 })))
+  await Effect.runPromise(service.persist("palette", makeWindowStateRecord({ x: 900 })))
+  await Effect.runPromise(service.clear("main"))
+  expect(Object.keys(await Effect.runPromise(service.restoreAll()))).toEqual(["palette"])
+
+  await Effect.runPromise(service.clear())
+  expect(await Effect.runPromise(service.restoreAll())).toEqual({})
+})
+
+test("WindowState observe emits persist, clear, and corrupt recovery events", async () => {
+  const path = await tempWindowStatePath()
+  const service = await Effect.runPromise(makeWindowState({ path, now: () => 1710000000000 }))
+  const fiber = Effect.runFork(service.observe().pipe(Stream.take(3), Stream.runCollect))
+
+  await Effect.runPromise(service.persist("main", state))
+  await Effect.runPromise(service.clear("main"))
+  await writeFile(path, "{", "utf8")
+  await Effect.runPromise(service.restore("main"))
+  const events = Array.from(await Effect.runPromise(Fiber.join(fiber)))
+
+  expect(events.map((event) => event.kind)).toEqual(["persisted", "cleared", "corrupt-renamed"])
+  expect(events[0]?.windowId).toBe("main")
+  expect(events[1]?.windowId).toBe("main")
+  expect(events[2]?.corruptPath).toContain("window-state.corrupt.1710000000000.json")
 })
 
 const tempWindowStatePath = async (): Promise<string> => {

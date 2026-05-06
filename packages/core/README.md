@@ -9,8 +9,8 @@ Public framework API and runtime contracts (`Desktop.run`, `Desktop.window`, `De
 ## Public API
 
 The package exports runtime primitives as they land by phase. Phase 14 includes
-the `SQLite`, `Settings`, `EventLog`, and `Transport` services for scope-bound
-local storage and app-owned protocol transport.
+the `SQLite`, `Settings`, `EventLog`, `Transport`, and `WindowState` services
+for scope-bound local storage and app-owned protocol transport.
 
 ### SQLite
 
@@ -75,6 +75,20 @@ and write failures are returned as typed `TransportError` values.
 `makeInMemoryTransportPair()` to substitute a pair of Effect-native connections
 without reaching into raw host transport internals. `send`, `receive`, and
 `close` are Effect values/streams, so cancellation and cleanup stay explicit.
+
+### WindowState
+
+`WindowState` persists per-window geometry and UI state across launches.
+`persist(windowId, state)` writes the window record atomically, `restore(windowId)`
+returns that one window when present, and `restoreAll()` restores every persisted
+window independently. `clear(windowId)` removes one window; `clear()` removes the
+full store.
+
+Restore applies caller-provided bounds validation and display snapping. When the
+stored rectangle is off every configured display, it snaps to the primary
+display before returning. Corrupt state files are renamed to
+`window-state.corrupt.<timestamp>.json`; the runtime continues with defaults and
+emits a `corrupt-renamed` event through `observe()`.
 
 ## Runtime entry
 
