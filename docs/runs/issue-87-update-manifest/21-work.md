@@ -24,10 +24,12 @@
 - `desktop publish canonical bytes ignore object insertion order`
 - `desktop publish rejects tampered manifest signatures through canonical bytes`
 - `desktop publish rejects stale package metadata before signing the manifest`
+- `desktop publish signs macOS app directory artifacts with deterministic directory digests`
 - `native-updater::verifies_manifest_signed_by_current_key`
 - `native-updater::canonical_bytes_are_stable_for_reordered_fields`
 - `native-updater::rejects_tampered_manifest_field`
 - `native-updater::rejects_key_outside_rotation_window`
+- `native-updater::rejects_unknown_schema_version`
 
 ## Deviations from design
 
@@ -40,8 +42,8 @@ None.
 ## Verification commands run during work
 
 - `bun run typecheck` — passed.
-- `bun test packages/cli/src/index.test.ts -t 'desktop publish'` — passed, 4 tests, 12 assertions.
-- `cargo test -p native-updater` — passed, 4 tests.
+- `bun test packages/cli/src/index.test.ts -t 'desktop publish'` — passed, 5 tests, 16 assertions.
+- `cargo test -p native-updater` — passed, 5 tests.
 - `bun run lint` — passed.
 - `bun run lint:types` — passed.
 - `cargo fmt --check` — passed.

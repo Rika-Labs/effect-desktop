@@ -1094,6 +1094,65 @@ test("desktop publish rejects stale package metadata before signing the manifest
   }
 })
 
+test("desktop publish signs macOS app directory artifacts with deterministic directory digests", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-"))
+  const key = testEd25519Key()
+  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+  const previousPrivateKey = process.env[privateKeyEnv]
+  process.env[privateKeyEnv] = key.privateKeyPem
+  try {
+    await writePlaygroundFixture(directory, {
+      update: {
+        channel: "stable",
+        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+        publicKey: key.publicKey,
+        privateKeyEnv,
+        keyVersion: 5
+      }
+    })
+    await writePackagedArtifactFixture(directory, "macos-arm64", "app")
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: [
+          "publish",
+          "--config",
+          "apps/playground/desktop.config.ts",
+          "--platform",
+          "macos-arm64"
+        ],
+        cwd: directory,
+        now: () => 1_772_923_200_000,
+        writeStdout: () => {},
+        writeStderr: () => {}
+      })
+    )
+
+    const manifest = JSON.parse(
+      await readFile(
+        join(directory, "apps", "playground", "dist", "desktop", "update-manifest.json"),
+        "utf8"
+      )
+    ) as UpdateManifest
+
+    expect(exitCode).toBe(0)
+    expect(manifest.artifacts).toHaveLength(1)
+    expect(verifyUpdateManifest(manifest, key.publicKey)).toBe(true)
+    expect(manifest.artifacts[0]).toMatchObject({
+      platform: "macos-arm64",
+      kind: "app",
+      signature: expect.stringContaining("ed25519:")
+    })
+  } finally {
+    if (previousPrivateKey === undefined) {
+      delete process.env[privateKeyEnv]
+    } else {
+      process.env[privateKeyEnv] = previousPrivateKey
+    }
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop build stages renderer runtime host bridge manifests and report", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-"))
   try {

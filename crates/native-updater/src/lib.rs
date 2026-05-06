@@ -97,6 +97,14 @@ pub fn verify_manifest(
             message: error.to_string(),
         }
     })?;
+    if manifest.schema_version != 1 {
+        return Err(UpdateManifestError::ManifestShapeInvalid {
+            message: format!(
+                "unsupported update manifest schemaVersion {}",
+                manifest.schema_version
+            ),
+        });
+    }
     let signature = decode_prefixed_base64(&manifest.signature, "ed25519:")
         .map_err(|_| UpdateManifestError::SignatureInvalid)?;
     let signature_bytes: [u8; 64] = signature
@@ -303,6 +311,27 @@ mod tests {
         assert_eq!(error, UpdateManifestError::NoTrustedKey { key_version: 5 });
     }
 
+    #[test]
+    fn rejects_unknown_schema_version() {
+        let signed = signed_manifest_with_schema(2, 5, "1.2.3");
+
+        let error = verify_manifest(
+            &signed.json,
+            &[TrustAnchor {
+                key_version: 5,
+                public_key: signed.public_key,
+            }],
+        )
+        .expect_err("unknown schema must fail closed");
+
+        assert_eq!(
+            error,
+            UpdateManifestError::ManifestShapeInvalid {
+                message: "unsupported update manifest schemaVersion 2".to_string()
+            }
+        );
+    }
+
     struct SignedManifest {
         json: String,
         signature: String,
@@ -310,6 +339,14 @@ mod tests {
     }
 
     fn signed_manifest(key_version: u32, version: &str) -> SignedManifest {
+        signed_manifest_with_schema(1, key_version, version)
+    }
+
+    fn signed_manifest_with_schema(
+        schema_version: u32,
+        key_version: u32,
+        version: &str,
+    ) -> SignedManifest {
         let seed = [7_u8; 32];
         let signing_key = SigningKey::from_bytes(&seed);
         let public_key = format!(
@@ -317,7 +354,7 @@ mod tests {
             STANDARD.encode(signing_key.verifying_key().as_bytes())
         );
         let unsigned = json!({
-            "schemaVersion": 1,
+            "schemaVersion": schema_version,
             "appId": "dev.effect-desktop.playground",
             "version": version,
             "channel": "stable",

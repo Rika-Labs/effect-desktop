@@ -2,9 +2,11 @@
 
 ## Triage table
 
-| #   | Comment                                      | Verdict | Reason / fix                                                                                                                                                            |
-| --- | -------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Publish trusts artifact metadata digest/size | Address | Recomputed size/SHA-256 from the same artifact payload used for signing, rejected mismatches as typed `PublishConfigError`, and added a stale-metadata regression test. |
+| #   | Comment                                         | Verdict | Reason / fix                                                                                                                                                            |
+| --- | ----------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Publish trusts artifact metadata digest/size    | Address | Recomputed size/SHA-256 from the same artifact payload used for signing, rejected mismatches as typed `PublishConfigError`, and added a stale-metadata regression test. |
+| 2   | Publish must handle `.app` directory artifacts  | Address | Added deterministic directory payload hashing in the publish path and a macOS app bundle regression test.                                                               |
+| 3   | Native verifier accepts unknown schema versions | Address | Added an explicit `schemaVersion === 1` guard and a verifier failure test.                                                                                              |
 
 ## Commits made
 
@@ -26,8 +28,8 @@ None.
 
 - Local address loop passed:
   - `bun run typecheck`
-  - `bun test packages/cli/src/index.test.ts -t 'desktop publish'` — 4 tests passed, 12 assertions.
-  - `cargo test -p native-updater`
+  - `bun test packages/cli/src/index.test.ts -t 'desktop publish'` — 5 tests passed, 16 assertions.
+  - `cargo test -p native-updater` — 5 tests passed.
   - `bun run lint`
   - `bun run lint:types`
   - `bun run format:check`
@@ -36,7 +38,7 @@ None.
 
 ## Open threads
 
-Review thread pending silent GraphQL resolution after the address commit is pushed.
+Review threads pending silent GraphQL resolution after the address commits are pushed.
 
 ## Handoff
 
