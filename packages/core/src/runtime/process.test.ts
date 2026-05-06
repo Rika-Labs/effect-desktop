@@ -9,7 +9,7 @@ import {
   HostProtocolPermissionDeniedError,
   HostProtocolResourceBusyError
 } from "@effect-desktop/bridge"
-import { Cause, Effect, Exit, Stream } from "effect"
+import { Cause, Effect, Exit, Fiber, Option, Stream } from "effect"
 
 import {
   makeProcess,
@@ -56,6 +56,42 @@ processTest("Process spawn registers a scoped running resource", async () => {
   expect(handle.resource.ownerScope).toBe("scope-main")
   expect(snapshot.entries.map((entry) => entry.handle)).toContainEqual(handle.resource)
 })
+
+processTest(
+  "Process exposes live devtools snapshots with pid, command, children, and exit",
+  async () => {
+    const fixture = await makeFixture(
+      makeFakeAdapter(() =>
+        makeFakeChild({ stdout: [], exit: { code: 7 }, childPids: [1001, 1002] })
+      )
+    )
+    const observed = Effect.runFork(
+      fixture.service.observe().pipe(Stream.take(3), Stream.runCollect)
+    )
+
+    const handle = await Effect.runPromise(
+      fixture.service.spawn("echo", ["hi"], { ownerScope: "scope-main" })
+    )
+    await Effect.runPromise(handle.exit)
+
+    const listed = await Effect.runPromise(fixture.service.list())
+    const snapshots = Array.from(await Effect.runPromise(Fiber.join(observed)))
+    const terminal = listed[0]
+
+    expect(snapshots[0]).toEqual([])
+    expect(snapshots[1]?.[0]).toMatchObject({
+      pid: 42,
+      command: "echo",
+      args: ["hi"],
+      ownerScope: "scope-main",
+      childPids: [1001, 1002],
+      state: "running"
+    })
+    expect(terminal?.state).toBe("exited")
+    expect(Option.isSome(terminal?.lastExit ?? Option.none())).toBe(true)
+    expect(snapshots[2]?.[0]?.state).toBe("exited")
+  }
+)
 
 processTest(
   "Process removes the resource when a child exits without awaiting handle.exit",
@@ -523,6 +559,7 @@ const makeFakeChild = (options: {
   readonly stdout: readonly string[]
   readonly stderr?: readonly string[]
   readonly exit: { readonly code: number; readonly signal?: string }
+  readonly childPids?: readonly number[]
   readonly naturalExitDelayMs?: number
   readonly ignoreTerminate?: boolean
 }): FakeChild => {
@@ -560,6 +597,7 @@ const makeFakeChild = (options: {
 
   const child: FakeChild = {
     pid: 42,
+    childPids: options.childPids ?? [],
     stdout: readableFromStrings(options.stdout),
     stderr: readableFromStrings(options.stderr ?? []),
     exited,

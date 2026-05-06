@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit, Fiber, Schema } from "effect"
+import { Cause, Effect, Exit, Fiber, Schema, Stream, SubscriptionRef } from "effect"
 
 import {
   type ApiContractClass,
@@ -61,6 +61,26 @@ export type BridgeCallState =
       readonly method: string
       readonly terminalState: BridgeCallTerminalState
     }
+
+export interface BridgeCallRegistry {
+  readonly record: (state: BridgeCallState) => Effect.Effect<void, never, never>
+  readonly list: () => Effect.Effect<readonly BridgeCallState[], never, never>
+  readonly observe: () => Stream.Stream<readonly BridgeCallState[], never, never>
+}
+
+export const makeBridgeCallRegistry = (
+  maxEntries = 1_024
+): Effect.Effect<BridgeCallRegistry, never, never> =>
+  Effect.gen(function* () {
+    const states = yield* SubscriptionRef.make<readonly BridgeCallState[]>([])
+
+    return Object.freeze({
+      record: (state) =>
+        SubscriptionRef.update(states, (current) => [...current, state].slice(-maxEntries)),
+      list: () => SubscriptionRef.get(states),
+      observe: () => SubscriptionRef.changes(states)
+    } satisfies BridgeCallRegistry)
+  })
 
 export interface ApiHandlerRuntimeOptions {
   readonly now?: () => number

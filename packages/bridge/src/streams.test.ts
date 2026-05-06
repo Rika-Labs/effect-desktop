@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Cause, Effect, Exit, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Fiber, Schema, Stream } from "effect"
 
 import {
   Api,
@@ -338,6 +338,38 @@ test("BridgeStreamRegistry refuses duplicate terminal transitions", async () => 
       terminalAt: 10
     }
   ])
+})
+
+test("BridgeStreamRegistry observe emits current and updated snapshots", async () => {
+  const registry = makeBridgeStreamRegistry()
+  const observed = Effect.runFork(registry.observe().pipe(Stream.take(3), Stream.runCollect))
+  await Bun.sleep(0)
+
+  await Effect.runPromise(registry.register("stream-observed"))
+  await Effect.runPromise(
+    registry.updateBackpressure("stream-observed", {
+      evictedFrames: 1,
+      overflow: "dropOldest",
+      queueCapacity: 4,
+      queueDepth: 2
+    })
+  )
+
+  const snapshots = Array.from(await Effect.runPromise(Fiber.join(observed)))
+  expect(snapshots[0]).toEqual([])
+  expect(snapshots[1]).toEqual([
+    {
+      generation: 0,
+      state: "open",
+      streamId: "stream-observed"
+    }
+  ])
+  expect(snapshots[2]?.[0]?.backpressure).toEqual({
+    evictedFrames: 1,
+    overflow: "dropOldest",
+    queueCapacity: 4,
+    queueDepth: 2
+  })
 })
 
 test("Streams cancellation interrupts the producer and emits a closed terminal", async () => {
