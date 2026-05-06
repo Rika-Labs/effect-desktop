@@ -1,4 +1,5 @@
 import {
+  createHash,
   createPrivateKey,
   createPublicKey,
   sign as cryptoSign,
@@ -137,14 +138,24 @@ export const runDesktopPublish = (
     const privateKey = yield* resolvePrivateKey(plan.privateKeyEnv)
     const manifestArtifacts: UpdateArtifactManifest[] = []
     for (const artifact of artifacts) {
-      const bytes = yield* readBytes(artifact.artifactPath)
+      const payload = yield* readArtifactPayload(artifact.artifactPath)
+      const digest = payload.digest
+      if (digest.sizeBytes !== artifact.sizeBytes || digest.sha256 !== artifact.sha256) {
+        return yield* Effect.fail(
+          new PublishConfigError({
+            field: `${relative(plan.outputPath, artifact.artifactPath)}#sha256`,
+            message: "package artifact metadata does not match artifact bytes",
+            remediation: "Regenerate package metadata with `bun desktop package` before publishing."
+          })
+        )
+      }
       manifestArtifacts.push({
         platform: artifact.platform,
         kind: artifact.kind,
         url: artifactUrl(plan.feedUrl, artifact.platform, plan.channel, artifact.fileName),
-        sizeBytes: artifact.sizeBytes,
-        sha256: artifact.sha256,
-        signature: signEd25519(bytes, privateKey)
+        sizeBytes: digest.sizeBytes,
+        sha256: digest.sha256,
+        signature: signEd25519(payload.signingBytes, privateKey)
       })
     }
     const unsigned: Omit<UpdateManifest, "signature"> = {
@@ -385,6 +396,44 @@ const verifyManifestSignature = (
 
 const signEd25519 = (bytes: Buffer, privateKey: ReturnType<typeof createPrivateKey>): string =>
   `ed25519:${cryptoSign(null, bytes, privateKey).toString("base64")}`
+
+const readArtifactPayload = (
+  path: string
+): Effect.Effect<
+  {
+    readonly digest: { readonly sizeBytes: number; readonly sha256: string }
+    readonly signingBytes: Buffer
+  },
+  PublishFileError,
+  never
+> =>
+  Effect.gen(function* () {
+    const pathStat = yield* statPath(path)
+    if (!pathStat.isDirectory()) {
+      const bytes = yield* readBytes(path)
+      return { digest: digestBytes(bytes), signingBytes: bytes }
+    }
+
+    const files = yield* listFiles(path)
+    const hash = createHash("sha256")
+    let sizeBytes = 0
+    for (const file of files) {
+      const rel = relative(path, file)
+      const content = yield* readBytes(file)
+      sizeBytes += content.byteLength
+      hash.update(rel)
+      hash.update("\0")
+      hash.update(content)
+      hash.update("\0")
+    }
+    const sha256 = hash.digest("hex")
+    return { digest: { sizeBytes, sha256 }, signingBytes: Buffer.from(sha256) }
+  })
+
+const digestBytes = (bytes: Buffer): { readonly sizeBytes: number; readonly sha256: string } => ({
+  sizeBytes: bytes.byteLength,
+  sha256: createHash("sha256").update(bytes).digest("hex")
+})
 
 const validateEd25519PublicKey = (
   value: string,
@@ -720,6 +769,22 @@ const readDirectory = (path: string): Effect.Effect<readonly string[], PublishFi
         message: `failed to read ${path}`,
         cause
       })
+  })
+
+const listFiles = (path: string): Effect.Effect<readonly string[], PublishFileError, never> =>
+  Effect.gen(function* () {
+    const entries = yield* readDirectory(path)
+    const files: string[] = []
+    for (const entry of entries.toSorted()) {
+      const child = join(path, entry)
+      const childStat = yield* statPath(child)
+      if (childStat.isDirectory()) {
+        files.push(...(yield* listFiles(child)))
+      } else {
+        files.push(child)
+      }
+    }
+    return files
   })
 
 const statPath = (

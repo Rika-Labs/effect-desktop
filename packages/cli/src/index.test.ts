@@ -1,6 +1,11 @@
-import { createPublicKey, generateKeyPairSync, verify as cryptoVerify } from "node:crypto"
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
-import { dirname, join } from "node:path"
+import {
+  createHash,
+  createPublicKey,
+  generateKeyPairSync,
+  verify as cryptoVerify
+} from "node:crypto"
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises"
+import { dirname, join, relative } from "node:path"
 import { tmpdir } from "node:os"
 
 import { expect, test } from "bun:test"
@@ -1031,6 +1036,64 @@ test("desktop publish rejects tampered manifest signatures through canonical byt
   }
 })
 
+test("desktop publish rejects stale package metadata before signing the manifest", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-"))
+  const key = testEd25519Key()
+  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+  const previousPrivateKey = process.env[privateKeyEnv]
+  process.env[privateKeyEnv] = key.privateKeyPem
+  try {
+    await writePlaygroundFixture(directory, {
+      update: {
+        channel: "stable",
+        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+        publicKey: key.publicKey,
+        privateKeyEnv,
+        keyVersion: 5
+      }
+    })
+    const artifactPath = await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+    await writeFile(
+      join(dirname(artifactPath), "artifact.json"),
+      `${JSON.stringify(
+        {
+          kind: "dmg",
+          target: "macos-arm64",
+          fileName: "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg",
+          sizeBytes: 1,
+          sha256: "0".repeat(64)
+        },
+        null,
+        2
+      )}\n`
+    )
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["publish", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        now: () => 1_772_923_200_000,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("PublishConfigError")
+    expect(stderr.join("")).toContain("package artifact metadata does not match artifact bytes")
+  } finally {
+    if (previousPrivateKey === undefined) {
+      delete process.env[privateKeyEnv]
+    } else {
+      process.env[privateKeyEnv] = previousPrivateKey
+    }
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop build stages renderer runtime host bridge manifests and report", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-"))
   try {
@@ -1517,11 +1580,53 @@ const writePackagedArtifactFixture = async (
     await mkdir(root, { recursive: true })
     await writeFile(artifactPath, kind)
   }
+  const digest = await digestArtifactFixture(artifactPath)
   await writeFile(
     join(root, "artifact.json"),
-    `${JSON.stringify({ kind, target, fileName, sizeBytes: 1, sha256: "0".repeat(64) }, null, 2)}\n`
+    `${JSON.stringify({ kind, target, fileName, ...digest }, null, 2)}\n`
   )
   return artifactPath
+}
+
+const digestArtifactFixture = async (
+  path: string
+): Promise<{ readonly sizeBytes: number; readonly sha256: string }> => {
+  const pathStat = await stat(path)
+  if (!pathStat.isDirectory()) {
+    const bytes = await readFile(path)
+    return {
+      sizeBytes: bytes.byteLength,
+      sha256: createHash("sha256").update(bytes).digest("hex")
+    }
+  }
+  const files = await listFixtureFiles(path)
+  const hash = createHash("sha256")
+  let sizeBytes = 0
+  for (const file of files) {
+    const rel = relative(path, file)
+    const content = await readFile(file)
+    sizeBytes += content.byteLength
+    hash.update(rel)
+    hash.update("\0")
+    hash.update(content)
+    hash.update("\0")
+  }
+  return { sizeBytes, sha256: hash.digest("hex") }
+}
+
+const listFixtureFiles = async (path: string): Promise<readonly string[]> => {
+  const entries = await readdir(path)
+  const files: string[] = []
+  for (const entry of entries.toSorted()) {
+    const child = join(path, entry)
+    const childStat = await stat(child)
+    if (childStat.isDirectory()) {
+      files.push(...(await listFixtureFiles(child)))
+    } else {
+      files.push(child)
+    }
+  }
+  return files
 }
 
 const testEd25519Key = (): { readonly privateKeyPem: string; readonly publicKey: string } => {

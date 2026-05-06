@@ -23,6 +23,7 @@
 - `desktop publish writes a byte-stable Ed25519-signed update manifest`
 - `desktop publish canonical bytes ignore object insertion order`
 - `desktop publish rejects tampered manifest signatures through canonical bytes`
+- `desktop publish rejects stale package metadata before signing the manifest`
 - `native-updater::verifies_manifest_signed_by_current_key`
 - `native-updater::canonical_bytes_are_stable_for_reordered_fields`
 - `native-updater::rejects_tampered_manifest_field`
@@ -39,7 +40,7 @@ None.
 ## Verification commands run during work
 
 - `bun run typecheck` — passed.
-- `bun test packages/cli/src/index.test.ts -t 'desktop publish'` — passed, 3 tests, 9 assertions.
+- `bun test packages/cli/src/index.test.ts -t 'desktop publish'` — passed, 4 tests, 12 assertions.
 - `cargo test -p native-updater` — passed, 4 tests.
 - `bun run lint` — passed.
 - `bun run lint:types` — passed.
