@@ -1,6 +1,6 @@
 import { afterEach, expect } from "bun:test"
 import { posix, sep } from "node:path"
-import { Context, Data, Effect, Exit, Layer, Stream } from "effect"
+import { Context, Data, Effect, Exit, Layer, Option, Stream } from "effect"
 
 import {
   ApiStreamCompleteFrame,
@@ -41,13 +41,34 @@ import {
   ResourceRegistry,
   SecretValue,
   Filesystem,
+  Process,
+  ProcessExitStatus,
+  PTY,
+  PtyExitStatus,
   makeResourceRegistry,
   makeFilesystem,
+  makeProcess,
+  makePty,
   type FilesystemAdapter,
   type FilesystemApi,
   type FilesystemOptions,
   type FilesystemPermissionPolicy,
   type FilesystemWatcher,
+  type ProcessAdapter,
+  type ProcessApi,
+  type ProcessBudgetPolicy,
+  type ProcessChild,
+  type ProcessPermissionPolicy,
+  type ProcessSignalInput,
+  type ProcessSpawnInput,
+  type PtyAdapter,
+  type PtyApi,
+  type PtyBudgetPolicy,
+  type PtyChild,
+  type PtyOpenInput,
+  type PtyPermissionPolicy,
+  type PtyResizeInput,
+  type PtySignalInput,
   type RawFilesystemEvent,
   type RegistrySnapshot,
   type ResourceEntry,
@@ -356,6 +377,128 @@ export const MemoryFilesystem = Object.freeze({
   layer: MemoryFilesystemLive
 })
 
+export interface MockProcessFixture {
+  readonly command?: string
+  readonly args?: readonly string[]
+  readonly pid?: number
+  readonly childPids?: readonly number[]
+  readonly stdout?: readonly Uint8Array[]
+  readonly stderr?: readonly Uint8Array[]
+  readonly exit?: ProcessExitStatus | { readonly code: number; readonly signal?: string } | false
+}
+
+export interface MockProcessSpawnRecord {
+  readonly input: ProcessSpawnInput
+  readonly pid: number
+  readonly stdin: readonly Uint8Array[]
+  readonly stdinClosed: boolean
+  readonly killedWith: ProcessSignalInput | undefined
+  readonly terminateTreeCalls: number
+  readonly forceKillTreeCalls: number
+}
+
+export interface MockProcessOptions {
+  readonly processes?: readonly MockProcessFixture[]
+  readonly budgets?: ProcessBudgetPolicy
+  readonly gracefulShutdownMs?: number
+  readonly permissions?: ProcessPermissionPolicy
+  readonly now?: () => number
+}
+
+export interface MockProcessApi extends ProcessApi {
+  readonly calls: () => readonly MockProcessSpawnRecord[]
+}
+
+export const makeMockProcess = (
+  registry: ResourceRegistryApi,
+  options: MockProcessOptions = {}
+): Effect.Effect<MockProcessApi, never, never> => {
+  const calls: MutableMockProcessSpawnRecord[] = []
+  return makeProcess(registry, {
+    adapter: makeMockProcessAdapter(options, calls),
+    ...(options.budgets === undefined ? {} : { budgets: options.budgets }),
+    ...(options.gracefulShutdownMs === undefined
+      ? {}
+      : { gracefulShutdownMs: options.gracefulShutdownMs }),
+    ...(options.permissions === undefined ? {} : { permissions: options.permissions }),
+    ...(options.now === undefined ? {} : { now: options.now })
+  }).pipe(Effect.map((api) => Object.freeze({ ...api, calls: () => cloneProcessCalls(calls) })))
+}
+
+export const MockProcessLive = (
+  options: MockProcessOptions = {}
+): Layer.Layer<Process, never, ResourceRegistry> =>
+  Layer.effect(
+    Process,
+    Effect.gen(function* () {
+      const registry = yield* ResourceRegistry
+      return yield* makeMockProcess(registry, options)
+    })
+  )
+
+export const MockProcess = Object.freeze({
+  layer: MockProcessLive
+})
+
+export interface MockPtyFixture {
+  readonly command?: string
+  readonly args?: readonly string[]
+  readonly pid?: number | null
+  readonly output?: readonly Uint8Array[]
+  readonly exit?: PtyExitStatus | { readonly code: number; readonly signal?: string } | false
+}
+
+export interface MockPtyOpenRecord {
+  readonly input: PtyOpenInput
+  readonly pid: number | undefined
+  readonly writes: readonly Uint8Array[]
+  readonly resizes: readonly PtyResizeInput[]
+  readonly killedWith: PtySignalInput | undefined
+  readonly terminateTreeCalls: number
+  readonly forceKillTreeCalls: number
+}
+
+export interface MockPtyOptions {
+  readonly ptys?: readonly MockPtyFixture[]
+  readonly budgets?: PtyBudgetPolicy
+  readonly gracefulShutdownMs?: number
+  readonly permissions?: PtyPermissionPolicy
+}
+
+export interface MockPtyApi extends PtyApi {
+  readonly calls: () => readonly MockPtyOpenRecord[]
+}
+
+export const makeMockPty = (
+  registry: ResourceRegistryApi,
+  options: MockPtyOptions = {}
+): Effect.Effect<MockPtyApi, never, never> => {
+  const calls: MutableMockPtyOpenRecord[] = []
+  return makePty(registry, {
+    adapter: makeMockPtyAdapter(options, calls),
+    ...(options.budgets === undefined ? {} : { budgets: options.budgets }),
+    ...(options.gracefulShutdownMs === undefined
+      ? {}
+      : { gracefulShutdownMs: options.gracefulShutdownMs }),
+    ...(options.permissions === undefined ? {} : { permissions: options.permissions })
+  }).pipe(Effect.map((api) => Object.freeze({ ...api, calls: () => clonePtyCalls(calls) })))
+}
+
+export const MockPtyLive = (
+  options: MockPtyOptions = {}
+): Layer.Layer<PTY, never, ResourceRegistry> =>
+  Layer.effect(
+    PTY,
+    Effect.gen(function* () {
+      const registry = yield* ResourceRegistry
+      return yield* makeMockPty(registry, options)
+    })
+  )
+
+export const MockPTY = Object.freeze({
+  layer: MockPtyLive
+})
+
 export interface HeadlessRuntime {
   readonly calls: () => readonly HeadlessHostCall[]
   readonly handshake: HostHandshakeClient
@@ -601,6 +744,301 @@ const coreHandleToBridgeHandle = (handle: ResourceHandle): ApiResourceHandle =>
     ownerScope: handle.ownerScope,
     state: handle.state
   })
+
+interface MutableMockProcessSpawnRecord {
+  readonly input: ProcessSpawnInput
+  readonly pid: number
+  readonly stdin: Uint8Array[]
+  stdinClosed: boolean
+  killedWith: ProcessSignalInput | undefined
+  terminateTreeCalls: number
+  forceKillTreeCalls: number
+}
+
+interface MutableMockPtyOpenRecord {
+  readonly input: PtyOpenInput
+  readonly pid: number | undefined
+  readonly writes: Uint8Array[]
+  readonly resizes: PtyResizeInput[]
+  killedWith: PtySignalInput | undefined
+  terminateTreeCalls: number
+  forceKillTreeCalls: number
+}
+
+const makeMockProcessAdapter = (
+  options: MockProcessOptions,
+  calls: MutableMockProcessSpawnRecord[]
+): ProcessAdapter => {
+  let nextPid = 10_000
+  const fixtures = [...(options.processes ?? [])]
+
+  return {
+    spawn: (input) => {
+      const fixture = takeProcessFixture(fixtures, input)
+      if (fixture === undefined) {
+        throw mockNodeError("EINVAL", `missing MockProcess fixture for ${input.command}`)
+      }
+      const pid = fixture.pid ?? nextPid++
+      const record: MutableMockProcessSpawnRecord = {
+        input,
+        pid,
+        stdin: [],
+        stdinClosed: false,
+        killedWith: undefined,
+        terminateTreeCalls: 0,
+        forceKillTreeCalls: 0
+      }
+      calls.push(record)
+
+      return makeMockProcessChild(fixture, record)
+    }
+  }
+}
+
+const makeMockProcessChild = (
+  fixture: MockProcessFixture,
+  record: MutableMockProcessSpawnRecord
+): ProcessChild => {
+  let running = true
+  let resolveExit: (status: ProcessExitStatus) => void
+  const exited = new Promise<ProcessExitStatus>((resolve) => {
+    resolveExit = resolve
+  })
+  const finish = (status: ProcessExitStatus): void => {
+    if (!running) {
+      return
+    }
+    running = false
+    resolveExit(status)
+  }
+
+  if (fixture.exit !== false) {
+    queueMicrotask(() => {
+      finish(processExitStatus(fixture.exit))
+    })
+  }
+
+  return Object.freeze({
+    pid: record.pid,
+    stdout: readableBytes(fixture.stdout ?? []),
+    stderr: readableBytes(fixture.stderr ?? []),
+    exited,
+    writeStdin: (chunk: Uint8Array) =>
+      Promise.resolve().then(() => {
+        record.stdin.push(copyBytes(chunk))
+      }),
+    closeStdin: () =>
+      Promise.resolve().then(() => {
+        record.stdinClosed = true
+      }),
+    isRunning: () => running,
+    terminateTree: () =>
+      Promise.resolve().then(() => {
+        record.terminateTreeCalls += 1
+        record.killedWith = "SIGTERM"
+        finish(processExitStatus(undefined, "SIGTERM"))
+      }),
+    forceKillTree: () =>
+      Promise.resolve().then(() => {
+        record.forceKillTreeCalls += 1
+        record.killedWith = "SIGKILL"
+        finish(processExitStatus(undefined, "SIGKILL"))
+      }),
+    kill: (signal?: ProcessSignalInput) => {
+      record.killedWith = signal
+      finish(processExitStatus(undefined, signalNameForMock(signal)))
+    },
+    childPids: fixture.childPids ?? []
+  })
+}
+
+const takeProcessFixture = (
+  fixtures: MockProcessFixture[],
+  input: ProcessSpawnInput
+): MockProcessFixture | undefined => {
+  const index = fixtures.findIndex(
+    (fixture) =>
+      (fixture.command === undefined || fixture.command === input.command) &&
+      (fixture.args === undefined || stringArraysEqual(fixture.args, input.args))
+  )
+  if (index < 0) {
+    return undefined
+  }
+
+  return fixtures.splice(index, 1)[0]
+}
+
+const cloneProcessCalls = (
+  calls: readonly MutableMockProcessSpawnRecord[]
+): readonly MockProcessSpawnRecord[] =>
+  calls.map((call) => ({
+    input: call.input,
+    pid: call.pid,
+    stdin: call.stdin.map(copyBytes),
+    stdinClosed: call.stdinClosed,
+    killedWith: call.killedWith,
+    terminateTreeCalls: call.terminateTreeCalls,
+    forceKillTreeCalls: call.forceKillTreeCalls
+  }))
+
+const processExitStatus = (
+  exit: MockProcessFixture["exit"] | undefined,
+  fallbackSignal?: string
+): ProcessExitStatus =>
+  exit instanceof ProcessExitStatus
+    ? exit
+    : new ProcessExitStatus({
+        code: exit === false || exit === undefined ? 0 : exit.code,
+        ...(fallbackSignal === undefined
+          ? exit !== false && exit !== undefined && exit.signal !== undefined
+            ? { signal: exit.signal }
+            : {}
+          : { signal: fallbackSignal })
+      })
+
+const makeMockPtyAdapter = (
+  options: MockPtyOptions,
+  calls: MutableMockPtyOpenRecord[]
+): PtyAdapter => {
+  let nextPid = 20_000
+  const fixtures = [...(options.ptys ?? [])]
+
+  return {
+    open: (input) => {
+      const fixture = takePtyFixture(fixtures, input)
+      if (fixture === undefined) {
+        throw mockNodeError("EINVAL", `missing MockPTY fixture for ${input.command}`)
+      }
+      const pid = fixture.pid === null ? undefined : (fixture.pid ?? nextPid++)
+      const record: MutableMockPtyOpenRecord = {
+        input,
+        pid,
+        writes: [],
+        resizes: [],
+        killedWith: undefined,
+        terminateTreeCalls: 0,
+        forceKillTreeCalls: 0
+      }
+      calls.push(record)
+
+      return makeMockPtyChild(fixture, record)
+    }
+  }
+}
+
+const makeMockPtyChild = (fixture: MockPtyFixture, record: MutableMockPtyOpenRecord): PtyChild => {
+  let running = true
+  let resolveExit: (status: PtyExitStatus) => void
+  const exited = new Promise<PtyExitStatus>((resolve) => {
+    resolveExit = resolve
+  })
+  const finish = (status: PtyExitStatus): void => {
+    if (!running) {
+      return
+    }
+    running = false
+    resolveExit(status)
+  }
+
+  if (fixture.exit !== false) {
+    queueMicrotask(() => {
+      finish(ptyExitStatus(fixture.exit))
+    })
+  }
+
+  return Object.freeze({
+    pid: record.pid === undefined ? Option.none() : Option.some(record.pid),
+    output: readableBytes(fixture.output ?? []),
+    exited,
+    write: (chunk: Uint8Array) =>
+      Promise.resolve().then(() => {
+        record.writes.push(copyBytes(chunk))
+      }),
+    resize: (size: PtyResizeInput) =>
+      Promise.resolve().then(() => {
+        record.resizes.push(size)
+      }),
+    isRunning: () => running,
+    terminateTree: () =>
+      Promise.resolve().then(() => {
+        record.terminateTreeCalls += 1
+        record.killedWith = "SIGTERM"
+        finish(ptyExitStatus(undefined, "SIGTERM"))
+      }),
+    forceKillTree: () =>
+      Promise.resolve().then(() => {
+        record.forceKillTreeCalls += 1
+        record.killedWith = "SIGKILL"
+        finish(ptyExitStatus(undefined, "SIGKILL"))
+      }),
+    kill: (signal?: PtySignalInput) =>
+      Promise.resolve().then(() => {
+        record.killedWith = signal
+        finish(ptyExitStatus(undefined, signalNameForMock(signal)))
+      })
+  })
+}
+
+const takePtyFixture = (
+  fixtures: MockPtyFixture[],
+  input: PtyOpenInput
+): MockPtyFixture | undefined => {
+  const index = fixtures.findIndex(
+    (fixture) =>
+      (fixture.command === undefined || fixture.command === input.command) &&
+      (fixture.args === undefined || stringArraysEqual(fixture.args, input.args))
+  )
+  if (index < 0) {
+    return undefined
+  }
+
+  return fixtures.splice(index, 1)[0]
+}
+
+const clonePtyCalls = (calls: readonly MutableMockPtyOpenRecord[]): readonly MockPtyOpenRecord[] =>
+  calls.map((call) => ({
+    input: call.input,
+    pid: call.pid,
+    writes: call.writes.map(copyBytes),
+    resizes: call.resizes.slice(),
+    killedWith: call.killedWith,
+    terminateTreeCalls: call.terminateTreeCalls,
+    forceKillTreeCalls: call.forceKillTreeCalls
+  }))
+
+const ptyExitStatus = (
+  exit: MockPtyFixture["exit"] | undefined,
+  fallbackSignal?: string
+): PtyExitStatus =>
+  exit instanceof PtyExitStatus
+    ? exit
+    : new PtyExitStatus({
+        code: exit === false || exit === undefined ? 0 : exit.code,
+        ...(fallbackSignal === undefined
+          ? exit !== false && exit !== undefined && exit.signal !== undefined
+            ? { signal: exit.signal }
+            : {}
+          : { signal: fallbackSignal })
+      })
+
+const readableBytes = (chunks: readonly Uint8Array[]): ReadableStream<Uint8Array> =>
+  new ReadableStream<Uint8Array>({
+    start: (controller) => {
+      for (const chunk of chunks) {
+        controller.enqueue(copyBytes(chunk))
+      }
+      controller.close()
+    }
+  })
+
+const stringArraysEqual = (left: readonly string[], right: readonly string[]): boolean =>
+  left.length === right.length && left.every((value, index) => value === right[index])
+
+const signalNameForMock = (signal: ProcessSignalInput | undefined): string =>
+  typeof signal === "string" ? signal : signal === undefined ? "SIGTERM" : String(signal)
+
+const mockNodeError = (code: string, message: string): NodeJS.ErrnoException =>
+  Object.assign(new Error(message), { code })
 
 type MemoryNode = MemoryDirectory | MemoryFile | MemorySymlink
 

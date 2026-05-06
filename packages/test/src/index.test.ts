@@ -17,6 +17,8 @@ import {
 } from "@effect-desktop/bridge"
 import {
   Filesystem,
+  Process,
+  PTY,
   ResourceRegistryLive,
   SecretValue,
   makeSecrets,
@@ -31,7 +33,11 @@ import {
   makeMemorySecretsSafeStorage,
   makeMemoryFilesystem,
   makeMockBridge,
+  makeMockProcess,
+  makeMockPty,
   MemoryFilesystemLive,
+  MockProcessLive,
+  MockPtyLive,
   MockHost,
   MockHostLive,
   registerLeakMatchers,
@@ -574,6 +580,220 @@ test("MemoryFilesystem mkdir preserves existing nodes instead of clobbering them
   }
   if (Exit.isFailure(recursiveThroughFileExit)) {
     expect(JSON.stringify(recursiveThroughFileExit.cause.toJSON())).toContain("InvalidArgument")
+  }
+})
+
+test("MockProcess layer emits stdout, stderr, exit, and records stdin", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const process = yield* Process
+      const handle = yield* process.spawn("git", ["status"], { ownerScope: "test-process" })
+      yield* Stream.make(bytes("input")).pipe(Stream.run(handle.stdin))
+      const stdout = yield* Stream.runCollect(handle.stdout)
+      const stderr = yield* Stream.runCollect(handle.stderr)
+      const exit = yield* handle.exit
+      const list = yield* process.list()
+
+      return {
+        pid: handle.pid,
+        stdout: Array.from(stdout).map(text),
+        stderr: Array.from(stderr).map(text),
+        exit,
+        list
+      }
+    }).pipe(
+      Effect.provide(
+        MockProcessLive({
+          processes: [
+            {
+              command: "git",
+              args: ["status"],
+              pid: 1234,
+              stdout: [bytes("ok\n")],
+              stderr: [bytes("warn\n")],
+              exit: { code: 7 }
+            }
+          ],
+          permissions: {
+            spawn: ["git"]
+          },
+          now: () => 1710000000700
+        }).pipe(Layer.provide(ResourceRegistryLive))
+      )
+    )
+  )
+
+  expect(result.pid).toBe(1234)
+  expect(result.stdout).toEqual(["ok\n"])
+  expect(result.stderr).toEqual(["warn\n"])
+  expect(result.exit.code).toBe(7)
+  expect(result.list).toMatchObject([
+    {
+      pid: 1234,
+      command: "git",
+      args: ["status"],
+      ownerScope: "test-process",
+      state: "exited"
+    }
+  ])
+})
+
+test("makeMockProcess records kill and scope cleanup through the real registry", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makeResourceRegistry({ nextId: () => id("process-1") })
+      const process = yield* makeMockProcess(registry, {
+        processes: [{ command: "sleep", pid: 4321, exit: false }],
+        permissions: { spawn: ["sleep"] },
+        gracefulShutdownMs: 1
+      })
+      const handle = yield* process.spawn("sleep", ["10"], { ownerScope: "scope-1" })
+      yield* handle.kill("SIGTERM")
+      const exit = yield* handle.exit
+      const afterExit = yield* registry.list()
+
+      const cleanup = yield* makeMockProcess(registry, {
+        processes: [{ command: "tail", pid: 4322, exit: false }],
+        permissions: { spawn: ["tail"] },
+        gracefulShutdownMs: 1
+      })
+      yield* cleanup.spawn("tail", ["-f"], { ownerScope: "scope-2" })
+      yield* registry.closeScope("scope-2")
+
+      return {
+        exit,
+        afterExit: afterExit.entries,
+        killed: process.calls()[0]?.killedWith,
+        cleanup: cleanup.calls()[0]
+      }
+    })
+  )
+
+  expect(result.exit).toMatchObject({ code: 0, signal: "SIGTERM" })
+  expect(result.afterExit).toEqual([])
+  expect(result.killed).toBe("SIGTERM")
+  expect(result.cleanup?.terminateTreeCalls).toBe(1)
+})
+
+test("MockProcess fails loudly when a command has no fixture", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const process = await Effect.runPromise(
+    makeMockProcess(registry, {
+      permissions: { spawn: ["missing"] }
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(
+    process.spawn("missing", [], { ownerScope: "missing-scope" })
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    expect(JSON.stringify(exit.cause.toJSON())).toContain("InvalidArgument")
+  }
+})
+
+test("MockPTY layer emits output, records writes and resizes, and exits", async () => {
+  const layerResult = await Effect.runPromise(
+    Effect.gen(function* () {
+      const pty = yield* PTY
+      const handle = yield* pty.open({
+        argv: ["bash", "-l"],
+        ownerScope: "layer-pty",
+        rows: 24,
+        cols: 80
+      })
+      const output = yield* Stream.runCollect(handle.output)
+      const exit = yield* handle.onExit
+
+      return {
+        output: Array.from(output).map(text),
+        exit
+      }
+    }).pipe(
+      Effect.provide(
+        MockPtyLive({
+          ptys: [{ command: "bash", args: ["-l"], output: [bytes("layer")], exit: { code: 0 } }],
+          permissions: { spawn: ["bash"] },
+          budgets: { outputCoalesceBytes: 1024, outputCoalesceMs: 1 }
+        }).pipe(Layer.provide(ResourceRegistryLive))
+      )
+    )
+  )
+
+  expect(layerResult.output).toEqual(["layer"])
+  expect(layerResult.exit.code).toBe(0)
+
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const pty = await Effect.runPromise(
+    makeMockPty(registry, {
+      ptys: [
+        {
+          command: "bash",
+          args: ["-l"],
+          pid: null,
+          output: [bytes("prompt")],
+          exit: { code: 0 }
+        }
+      ],
+      permissions: { spawn: ["bash"] },
+      budgets: {
+        outputCoalesceBytes: 1024,
+        outputCoalesceMs: 1
+      }
+    })
+  )
+
+  const handle = await Effect.runPromise(
+    pty.open({ argv: ["bash", "-l"], ownerScope: "pty-scope", rows: 24, cols: 80 })
+  )
+  await Effect.runPromise(handle.write(bytes("echo hi\n")))
+  await Effect.runPromise(handle.resize({ rows: 40, cols: 120 }))
+  const output = await Effect.runPromise(Stream.runCollect(handle.output))
+  const exit = await Effect.runPromise(handle.onExit)
+  const calls = pty.calls()
+  const afterExit = await Effect.runPromise(registry.list())
+
+  expect(handle.pid._tag).toBe("None")
+  expect(Array.from(output).map(text)).toEqual(["prompt"])
+  expect(exit.code).toBe(0)
+  expect(calls[0]?.pid).toBeUndefined()
+  expect(calls[0]?.writes.map(text)).toEqual(["echo hi\n"])
+  expect(calls[0]?.resizes).toEqual([{ rows: 40, cols: 120 }])
+  expect(afterExit.entries).toEqual([])
+})
+
+test("MockPTY closes through scope cleanup with the real PTY disposer", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry({ nextId: () => id("pty-1") }))
+  const pty = await Effect.runPromise(
+    makeMockPty(registry, {
+      ptys: [{ command: "bash", exit: false }],
+      permissions: { spawn: ["bash"] },
+      gracefulShutdownMs: 1
+    })
+  )
+
+  await Effect.runPromise(pty.open({ argv: ["bash"], ownerScope: "pty-scope", rows: 24, cols: 80 }))
+  await Effect.runPromise(registry.closeScope("pty-scope"))
+
+  expect(pty.calls()[0]?.terminateTreeCalls).toBe(1)
+})
+
+test("MockPTY fails loudly when a command has no fixture", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const pty = await Effect.runPromise(
+    makeMockPty(registry, {
+      permissions: { spawn: ["missing"] }
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(
+    pty.open({ argv: ["missing"], ownerScope: "missing-pty", rows: 24, cols: 80 })
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    expect(JSON.stringify(exit.cause.toJSON())).toContain("InvalidArgument")
   }
 })
 
