@@ -34,6 +34,11 @@ import {
   ClipboardLive,
   ClipboardMethodNames,
   ClipboardText,
+  ContextMenu,
+  ContextMenuActivatedEvent,
+  ContextMenuApi,
+  ContextMenuLive,
+  ContextMenuMethodNames,
   Dialog,
   DialogApi,
   DialogConfirmResult,
@@ -60,6 +65,11 @@ import {
   PathLive,
   PathMethodNames,
   CanonicalPath,
+  Tray,
+  TrayActivatedEvent,
+  TrayApi,
+  TrayLive,
+  TrayMethodNames,
   WebView,
   WebViewApi,
   WebViewLive,
@@ -77,9 +87,12 @@ import {
   makeAppServiceLayer,
   makeClipboardBridgeClientLayer,
   makeClipboardServiceLayer,
+  makeContextMenuBridgeClientLayer,
+  makeContextMenuServiceLayer,
   makeDialogBridgeClientLayer,
   makeDialogServiceLayer,
   makeUnsupportedClipboardClient,
+  makeUnsupportedContextMenuClient,
   makeMenuBridgeClientLayer,
   makeMenuServiceLayer,
   makeNotificationBridgeClientLayer,
@@ -90,6 +103,9 @@ import {
   makeUnsupportedMenuClient,
   makeUnsupportedNotificationClient,
   makeUnsupportedPathClient,
+  makeTrayBridgeClientLayer,
+  makeTrayServiceLayer,
+  makeUnsupportedTrayClient,
   makeUnsupportedAppClient,
   makeUnsupportedWebViewClient,
   makeWebViewBridgeClientLayer,
@@ -102,11 +118,14 @@ import {
   windowScope,
   type AppClientApi,
   type ClipboardClientApi,
+  type ContextMenuClientApi,
   type DialogClientApi,
   type MenuClientApi,
   type NotificationClientApi,
   type NotificationHandle,
   type PathClientApi,
+  type TrayClientApi,
+  type TrayHandle,
   type WebViewClientApi,
   type WebViewHandle,
   type WindowClientApi,
@@ -166,6 +185,12 @@ const expectedMenuMethods: Array<(typeof MenuMethodNames)[number]> = [
   "capability"
 ]
 
+const expectedContextMenuMethods: Array<(typeof ContextMenuMethodNames)[number]> = [
+  "show",
+  "buildFromTemplate",
+  "bindCommand"
+]
+
 const expectedDialogMethods: Array<(typeof DialogMethodNames)[number]> = [
   "openFile",
   "openDirectory",
@@ -197,6 +222,14 @@ const expectedPathMethods: Array<(typeof PathMethodNames)[number]> = [
   "temp",
   "home",
   "downloads"
+]
+
+const expectedTrayMethods: Array<(typeof TrayMethodNames)[number]> = [
+  "create",
+  "setIcon",
+  "setTooltip",
+  "setMenu",
+  "destroy"
 ]
 
 const windowHandle: WindowHandle = {
@@ -236,6 +269,14 @@ const notificationHandle: NotificationHandle = {
   id: "notification-1",
   generation: 0,
   ownerScope: "window:window-1",
+  state: "open"
+}
+
+const trayHandle: TrayHandle = {
+  kind: "tray",
+  id: "tray-1",
+  generation: 0,
+  ownerScope: "app",
   state: "open"
 }
 
@@ -682,6 +723,237 @@ test("unsupported Menu client reports deferred host methods as Effect values", a
       error !== null &&
       "operation" in error &&
       error.operation === "Menu.setApplicationMenu"
+  )
+})
+
+test("ContextMenuApi declares the Phase 8 ContextMenu method and event surface", () => {
+  expect(ContextMenuApi.tag).toBe("ContextMenu")
+  expect([...ContextMenuMethodNames]).toEqual(expectedContextMenuMethods)
+  expect(Object.keys(ContextMenuApi.spec)).toEqual(expectedContextMenuMethods)
+  expect(Object.keys(ContextMenuApi.events)).toEqual(["Activated"])
+})
+
+test("ContextMenu service delegates through a substitutable ContextMenuClient port", async () => {
+  const calls: string[] = []
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const contextMenu = yield* ContextMenu
+      yield* contextMenu.buildFromTemplate({ template: menuTemplate })
+      yield* contextMenu.show({
+        window: windowHandle,
+        template: menuTemplate,
+        position: { x: 12, y: 34 }
+      })
+      yield* contextMenu.bindCommand("file.open", "app.file.open")
+      const activated = yield* contextMenu.onActivated().pipe(Stream.take(1), Stream.runCollect)
+
+      return { activated }
+    }).pipe(Effect.provide(makeContextMenuServiceLayer(contextMenuClient(calls))))
+  )
+
+  expect(Array.from(result.activated)).toEqual([
+    new ContextMenuActivatedEvent({
+      itemId: "file.open",
+      commandId: "app.file.open",
+      windowId: "window-1"
+    })
+  ])
+  expect(calls).toEqual([
+    "buildFromTemplate:3",
+    "show:window-1:12:34:3",
+    "bindCommand:file.open:app.file.open"
+  ])
+})
+
+test("ContextMenu bridge client validates window menu inputs and decodes activation events", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = contextMenuExchange(requests, () => ({ kind: "success", payload: undefined }))
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const contextMenu = yield* ContextMenu
+      yield* contextMenu.show({
+        window: windowHandle,
+        template: menuTemplate,
+        position: { x: 12, y: 34 }
+      })
+      yield* contextMenu.bindCommand("file.open", "app.file.open")
+      const activated = yield* contextMenu.onActivated().pipe(Stream.take(1), Stream.runCollect)
+
+      return { activated }
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          ContextMenuLive,
+          makeContextMenuBridgeClientLayer(exchange, {
+            nextRequestId: nextId(["show-request", "bind-request"]),
+            nextTraceId: nextId(["show-trace", "bind-trace"]),
+            now: nextNumber([1710000000000, 1710000000001])
+          })
+        )
+      )
+    )
+  )
+
+  expect(Array.from(result.activated)).toEqual([
+    new ContextMenuActivatedEvent({
+      itemId: "file.open",
+      commandId: "app.file.open",
+      windowId: "window-1"
+    })
+  ])
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    [
+      "ContextMenu.show",
+      { window: windowHandle, template: menuTemplate, position: { x: 12, y: 34 } }
+    ],
+    ["ContextMenu.bindCommand", { itemId: "file.open", commandId: "app.file.open" }]
+  ])
+})
+
+test("unsupported ContextMenu client reports deferred host methods as Effect values", async () => {
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const contextMenu = yield* ContextMenu
+      return yield* Effect.exit(
+        contextMenu.show({ window: windowHandle, template: menuTemplate, position: { x: 0, y: 0 } })
+      )
+    }).pipe(Effect.provide(makeContextMenuServiceLayer(makeUnsupportedContextMenuClient())))
+  )
+
+  expectExitFailure(
+    exit,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "operation" in error &&
+      error.operation === "ContextMenu.show"
+  )
+})
+
+test("TrayApi declares the Phase 8 Tray method and event surface", () => {
+  expect(TrayApi.tag).toBe("Tray")
+  expect([...TrayMethodNames]).toEqual(expectedTrayMethods)
+  expect(Object.keys(TrayApi.spec)).toEqual(expectedTrayMethods)
+  expect(Object.keys(TrayApi.events)).toEqual(["Activated"])
+})
+
+test("Tray service delegates through a substitutable TrayClient port", async () => {
+  const calls: string[] = []
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const tray = yield* Tray
+      const created = yield* tray.create({
+        icon: "app://assets/tray.png",
+        tooltip: "Effect Desktop",
+        menu: menuTemplate
+      })
+      yield* tray.setIcon(created, "app://assets/tray-active.png")
+      yield* tray.setTooltip(created, "Running")
+      yield* tray.setMenu(created, menuTemplate)
+      const activated = yield* tray.onActivated().pipe(Stream.take(1), Stream.runCollect)
+      yield* tray.destroy(created)
+
+      return { activated, created }
+    }).pipe(Effect.provide(makeTrayServiceLayer(trayClient(calls))))
+  )
+
+  expect(result.created).toEqual(trayHandle)
+  expect(Array.from(result.activated)).toEqual([
+    new TrayActivatedEvent({ tray: trayHandle, ownerWindowId: "window-1" })
+  ])
+  expect(calls).toEqual([
+    "create:app://assets/tray.png:Effect Desktop:3",
+    "setIcon:tray-1:app://assets/tray-active.png",
+    "setTooltip:tray-1:Running",
+    "setMenu:tray-1:3",
+    "destroy:tray-1"
+  ])
+})
+
+test("Tray bridge client sends typed host envelopes and decodes activation events", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = trayExchange(requests, (request) => ({
+    kind: "success",
+    payload: request.method === "Tray.create" ? trayHandle : undefined
+  }))
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const tray = yield* Tray
+      const created = yield* tray.create({
+        icon: "app://assets/tray.png",
+        tooltip: "Effect Desktop",
+        menu: menuTemplate
+      })
+      yield* tray.setIcon(created, "app://assets/tray-active.png")
+      yield* tray.setTooltip(created, "Running")
+      yield* tray.setMenu(created, menuTemplate)
+      const activated = yield* tray.onActivated().pipe(Stream.take(1), Stream.runCollect)
+      yield* tray.destroy(created)
+
+      return { activated, created }
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          TrayLive,
+          makeTrayBridgeClientLayer(exchange, {
+            nextRequestId: nextId([
+              "create-request",
+              "set-icon-request",
+              "set-tooltip-request",
+              "set-menu-request",
+              "destroy-request"
+            ]),
+            nextTraceId: nextId([
+              "create-trace",
+              "set-icon-trace",
+              "set-tooltip-trace",
+              "set-menu-trace",
+              "destroy-trace"
+            ]),
+            now: nextNumber([
+              1710000000000, 1710000000001, 1710000000002, 1710000000003, 1710000000004
+            ])
+          })
+        )
+      )
+    )
+  )
+
+  expect(result.created).toMatchObject(trayHandle)
+  expect(Array.from(result.activated)).toEqual([
+    new TrayActivatedEvent({ tray: trayHandle, ownerWindowId: "window-1" })
+  ])
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    [
+      "Tray.create",
+      { icon: "app://assets/tray.png", tooltip: "Effect Desktop", menu: menuTemplate }
+    ],
+    ["Tray.setIcon", { tray: trayHandle, icon: "app://assets/tray-active.png" }],
+    ["Tray.setTooltip", { tray: trayHandle, tooltip: "Running" }],
+    ["Tray.setMenu", { tray: trayHandle, menu: menuTemplate }],
+    ["Tray.destroy", { tray: trayHandle }]
+  ])
+})
+
+test("unsupported Tray client reports deferred host methods as Effect values", async () => {
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const tray = yield* Tray
+      return yield* Effect.exit(tray.create({ icon: "app://assets/tray.png" }))
+    }).pipe(Effect.provide(makeTrayServiceLayer(makeUnsupportedTrayClient())))
+  )
+
+  expectExitFailure(
+    exit,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "operation" in error &&
+      error.operation === "Tray.create"
   )
 })
 
@@ -1701,6 +1973,39 @@ const menuClient = (calls: string[]): MenuClientApi => ({
     )
 })
 
+const contextMenuClient = (calls: string[]): ContextMenuClientApi => ({
+  show: (input) =>
+    recordVoid(
+      calls,
+      `show:${input.window.id}:${input.position.x}:${input.position.y}:${input.template.items.length}`
+    ),
+  buildFromTemplate: (input) =>
+    recordVoid(calls, `buildFromTemplate:${input.template.items.length}`),
+  bindCommand: (itemId, commandId) => recordVoid(calls, `bindCommand:${itemId}:${commandId}`),
+  onActivated: () =>
+    Stream.make(
+      new ContextMenuActivatedEvent({
+        itemId: "file.open",
+        commandId: "app.file.open",
+        windowId: "window-1"
+      })
+    )
+})
+
+const trayClient = (calls: string[]): TrayClientApi => ({
+  create: (input) =>
+    Effect.sync(() => {
+      calls.push(`create:${input.icon}:${input.tooltip ?? ""}:${input.menu?.items.length ?? 0}`)
+      return trayHandle
+    }),
+  setIcon: (tray, icon) => recordVoid(calls, `setIcon:${tray.id}:${icon}`),
+  setTooltip: (tray, tooltip) => recordVoid(calls, `setTooltip:${tray.id}:${tooltip}`),
+  setMenu: (tray, menu) => recordVoid(calls, `setMenu:${tray.id}:${menu.items.length}`),
+  destroy: (tray) => recordVoid(calls, `destroy:${tray.id}`),
+  onActivated: () =>
+    Stream.make(new TrayActivatedEvent({ tray: trayHandle, ownerWindowId: "window-1" }))
+})
+
 const dialogClient = (calls: string[]): DialogClientApi => ({
   openFile: (input) =>
     Effect.sync(() => {
@@ -1921,6 +2226,60 @@ const menuExchange = (
           })
         )
       : Stream.empty
+})
+
+const contextMenuExchange = (
+  requests: HostProtocolRequestEnvelope[],
+  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
+): ApiClientExchange => ({
+  request: (request) => {
+    requests.push(request)
+    return Effect.succeed(respond(request))
+  },
+  subscribe: (method) =>
+    method === "ContextMenu.Activated"
+      ? Stream.make(
+          new HostProtocolEventEnvelope({
+            kind: "event",
+            timestamp: 1710000000350,
+            traceId: "event-trace",
+            method,
+            payload: {
+              itemId: "file.open",
+              commandId: "app.file.open",
+              windowId: "window-1"
+            }
+          })
+        )
+      : Stream.empty
+})
+
+const trayExchange = (
+  requests: HostProtocolRequestEnvelope[],
+  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
+): ApiClientExchange => ({
+  request: (request) => {
+    requests.push(request)
+    return Effect.succeed(respond(request))
+  },
+  subscribe: (method) =>
+    method === "Tray.Activated"
+      ? Stream.make(
+          new HostProtocolEventEnvelope({
+            kind: "event",
+            timestamp: 1710000000360,
+            traceId: "event-trace",
+            method,
+            payload: {
+              tray: trayHandle,
+              ownerWindowId: "window-1"
+            }
+          })
+        )
+      : Stream.empty,
+  resource: {
+    dispose: () => Effect.void
+  }
 })
 
 const dialogExchange = (
