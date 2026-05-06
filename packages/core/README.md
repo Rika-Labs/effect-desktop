@@ -128,7 +128,8 @@ message, and safe structured fields. Trace spans are stored in a bounded ring
 with `traceRingSize` defaulting to 10,000 and can be explicitly disabled, which
 leaves the trace panel empty without pretending tracing succeeded. Counters and
 histograms are aggregated by name and tags, with `maxMetrics` bounding the
-snapshot map for high-cardinality callers.
+snapshot map for high-cardinality callers. Histograms retain bounded samples and
+publish p50, p95, and p99 for performance overlays.
 
 `snapshot()`, `listLogs()`, `listTraces()`, `listMetrics()`, and the matching
 `observe*()` streams keep devtools and tests attached to the telemetry owner

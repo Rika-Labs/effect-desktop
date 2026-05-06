@@ -39,6 +39,8 @@ import {
   DiagnosticsPanelsLive,
   LiveRuntimePanels,
   LiveRuntimePanelsLive,
+  PerformanceOverlay,
+  PerformanceOverlayLive,
   WorkersJobsDevtools,
   WorkersJobsDevtoolsLive,
   type WorkersJobsSnapshot
@@ -358,6 +360,67 @@ test("DiagnosticsPanels projects redacted logs, grouped traces, and metrics", as
     )
   )
   expect(disabledSnapshot.traces).toEqual([])
+})
+
+test("PerformanceOverlay compares startup, bridge p99, and render frame metrics to budgets", async () => {
+  const telemetry = await Effect.runPromise(makeTelemetry({ now: () => 1_000 }))
+  await Effect.runPromise(telemetry.recordHistogram({ name: "startup.cli.config_load", value: 80 }))
+  await Effect.runPromise(telemetry.recordHistogram({ name: "startup.runtime_boot", value: 300 }))
+  await Effect.runPromise(
+    telemetry.recordHistogram({
+      name: "bridge.latency",
+      value: 42,
+      tags: { contractTag: "Project", token: "secret-token" }
+    })
+  )
+  await Effect.runPromise(
+    telemetry.recordHistogram({
+      name: "bridge.latency",
+      value: 55,
+      tags: { contractTag: "Project", windowId: "window-main" }
+    })
+  )
+  await Effect.runPromise(telemetry.recordHistogram({ name: "bridge.latency", value: 60 }))
+  await Effect.runPromise(telemetry.recordHistogram({ name: "renderer.frame", value: 12 }))
+
+  const snapshot = await Effect.runPromise(
+    Effect.gen(function* () {
+      const overlay = yield* PerformanceOverlay
+      return yield* overlay.list()
+    }).pipe(
+      Effect.provide(Layer.provide(PerformanceOverlayLive(), Layer.succeed(Telemetry)(telemetry)))
+    )
+  )
+
+  expect(snapshot.startup.find((row) => row.id === "cli.config-load")).toMatchObject({
+    valueMs: Option.some(80),
+    budgetMs: 100,
+    status: "within-budget"
+  })
+  expect(snapshot.startup.find((row) => row.id === "runtime.boot")).toMatchObject({
+    valueMs: Option.some(300),
+    budgetMs: 250,
+    status: "over-budget"
+  })
+  expect(snapshot.startup.find((row) => row.id === "native.host-boot")).toMatchObject({
+    valueMs: Option.none(),
+    status: "missing"
+  })
+  expect(snapshot.bridgeP99.find((row) => row.contractTag === "Project")).toMatchObject({
+    valueMs: Option.some(55),
+    budgetMs: 50,
+    status: "over-budget"
+  })
+  expect(snapshot.bridgeP99.filter((row) => row.contractTag === "Project")).toHaveLength(1)
+  expect(snapshot.bridgeP99.find((row) => row.contractTag === "unknown")).toMatchObject({
+    valueMs: Option.some(60),
+    status: "over-budget"
+  })
+  expect(snapshot.renderFrame).toMatchObject({
+    valueMs: Option.some(12),
+    status: "within-budget"
+  })
+  expect(JSON.stringify(snapshot)).not.toContain("secret-token")
 })
 
 interface WorkersJobsFixture {

@@ -13,6 +13,7 @@ import { Context, Effect, Layer, Stream } from "effect"
 export * from "./shell.js"
 export * from "./live-panels.js"
 export * from "./diagnostics-panels.js"
+export * from "./performance-overlay.js"
 
 export interface CommandsDevtoolsApi {
   readonly list: () => Effect.Effect<readonly CommandSnapshot[], never, never>
