@@ -1,5 +1,6 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
 use ed25519_dalek::{Signature, VerifyingKey};
+use semver::Version;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -17,6 +18,90 @@ pub struct VerifiedManifest {
     pub version: String,
     pub channel: UpdateChannel,
     pub key_version: u32,
+    pub rollback: bool,
+    pub min_version: Option<String>,
+    pub max_version: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpdatePolicy {
+    pub app_id: String,
+    pub channel: UpdateChannel,
+    pub platform: UpdatePlatform,
+    pub installed_version: String,
+    pub min_version: Option<String>,
+    pub feed_url: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpdateDecision {
+    pub feed_url: String,
+    pub version: String,
+    pub channel: UpdateChannel,
+    pub rollback: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpdatePolicyRejection {
+    pub error: UpdateCheckError,
+    pub audit: UpdateAuditRow,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpdateAuditRow {
+    pub event: UpdateAuditEvent,
+    pub configured_channel: UpdateChannel,
+    pub manifest_channel: Option<UpdateChannel>,
+    pub installed_version: String,
+    pub manifest_version: Option<String>,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UpdateAuditEvent {
+    AppIdMismatch,
+    WrongChannel,
+    BelowMinVersion,
+    DowngradeRefused,
+    InvalidVersion,
+    FeedUrlTemplateInvalid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UpdateCheckError {
+    FeedUrlTemplateInvalid {
+        template: String,
+        missing_placeholder: &'static str,
+    },
+    VersionInvalid {
+        value: String,
+        source: VersionSource,
+        message: String,
+    },
+    AppIdMismatch {
+        expected: String,
+        actual: String,
+    },
+    WrongChannel {
+        expected: UpdateChannel,
+        actual: UpdateChannel,
+    },
+    BelowMinVersion {
+        min_version: String,
+        manifest_version: String,
+    },
+    DowngradeRefused {
+        installed_version: String,
+        manifest_version: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VersionSource {
+    Installed,
+    Manifest,
+    MinVersion,
+    MaxVersion,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -87,6 +172,101 @@ pub enum UpdateManifestError {
     NoTrustedKey { key_version: u32 },
 }
 
+pub fn resolve_feed_url(
+    template: &str,
+    platform: &UpdatePlatform,
+    channel: &UpdateChannel,
+) -> Result<String, UpdateCheckError> {
+    if !template.contains("{platform}") {
+        return Err(UpdateCheckError::FeedUrlTemplateInvalid {
+            template: template.to_string(),
+            missing_placeholder: "{platform}",
+        });
+    }
+    if !template.contains("{channel}") {
+        return Err(UpdateCheckError::FeedUrlTemplateInvalid {
+            template: template.to_string(),
+            missing_placeholder: "{channel}",
+        });
+    }
+    Ok(template
+        .replace("{platform}", platform.as_str())
+        .replace("{channel}", channel.as_str()))
+}
+
+pub fn evaluate_update(
+    policy: &UpdatePolicy,
+    manifest: &VerifiedManifest,
+) -> Result<UpdateDecision, Box<UpdatePolicyRejection>> {
+    let feed_url = resolve_feed_url(&policy.feed_url, &policy.platform, &policy.channel)
+        .map_err(|error| rejection(policy, manifest, error))?;
+
+    if manifest.app_id != policy.app_id {
+        return Err(rejection(
+            policy,
+            manifest,
+            UpdateCheckError::AppIdMismatch {
+                expected: policy.app_id.clone(),
+                actual: manifest.app_id.clone(),
+            },
+        ));
+    }
+
+    if manifest.channel != policy.channel {
+        return Err(rejection(
+            policy,
+            manifest,
+            UpdateCheckError::WrongChannel {
+                expected: policy.channel.clone(),
+                actual: manifest.channel.clone(),
+            },
+        ));
+    }
+
+    let installed_version = parse_version(&policy.installed_version, VersionSource::Installed)
+        .map_err(|error| rejection(policy, manifest, error))?;
+    let manifest_version = parse_version(&manifest.version, VersionSource::Manifest)
+        .map_err(|error| rejection(policy, manifest, error))?;
+
+    for min_version in [policy.min_version.as_ref(), manifest.min_version.as_ref()]
+        .into_iter()
+        .flatten()
+    {
+        let parsed_min_version = parse_version(min_version, VersionSource::MinVersion)
+            .map_err(|error| rejection(policy, manifest, error))?;
+        if manifest_version < parsed_min_version {
+            return Err(rejection(
+                policy,
+                manifest,
+                UpdateCheckError::BelowMinVersion {
+                    min_version: min_version.clone(),
+                    manifest_version: manifest.version.clone(),
+                },
+            ));
+        }
+    }
+
+    if manifest_version <= installed_version
+        && !rollback_allowed(policy, manifest, &installed_version)?
+    {
+        return Err(rejection(
+            policy,
+            manifest,
+            UpdateCheckError::DowngradeRefused {
+                installed_version: policy.installed_version.clone(),
+                manifest_version: manifest.version.clone(),
+            },
+        ));
+    }
+
+    Ok(UpdateDecision {
+        feed_url,
+        version: manifest.version.clone(),
+        channel: manifest.channel.clone(),
+        rollback: manifest.rollback,
+    })
+}
+
 pub fn verify_manifest(
     manifest_json: &str,
     trust_anchors: &[TrustAnchor],
@@ -148,6 +328,9 @@ pub fn verify_manifest(
                 version: manifest.version,
                 channel: manifest.channel,
                 key_version: manifest.key_version,
+                rollback: manifest.rollback.unwrap_or(false),
+                min_version: manifest.min_version,
+                max_version: manifest.max_version,
             });
         }
     }
@@ -221,6 +404,114 @@ fn decode_prefixed_base64(value: &str, prefix: &str) -> Result<Vec<u8>, String> 
         .strip_prefix(prefix)
         .ok_or_else(|| format!("value must start with {prefix}"))?;
     STANDARD.decode(encoded).map_err(|error| error.to_string())
+}
+
+fn rollback_allowed(
+    policy: &UpdatePolicy,
+    manifest: &VerifiedManifest,
+    installed_version: &Version,
+) -> Result<bool, Box<UpdatePolicyRejection>> {
+    if !manifest.rollback {
+        return Ok(false);
+    }
+    let Some(max_version) = &manifest.max_version else {
+        return Ok(false);
+    };
+    let max_version = parse_version(max_version, VersionSource::MaxVersion)
+        .map_err(|error| rejection(policy, manifest, error))?;
+    Ok(installed_version > &max_version)
+}
+
+fn parse_version(value: &str, source: VersionSource) -> Result<Version, UpdateCheckError> {
+    Version::parse(value).map_err(|error| UpdateCheckError::VersionInvalid {
+        value: value.to_string(),
+        source,
+        message: error.to_string(),
+    })
+}
+
+fn rejection(
+    policy: &UpdatePolicy,
+    manifest: &VerifiedManifest,
+    error: UpdateCheckError,
+) -> Box<UpdatePolicyRejection> {
+    Box::new(UpdatePolicyRejection {
+        audit: UpdateAuditRow {
+            event: audit_event(&error),
+            configured_channel: policy.channel.clone(),
+            manifest_channel: Some(manifest.channel.clone()),
+            installed_version: policy.installed_version.clone(),
+            manifest_version: Some(manifest.version.clone()),
+            reason: audit_reason(&error),
+        },
+        error,
+    })
+}
+
+fn audit_event(error: &UpdateCheckError) -> UpdateAuditEvent {
+    match error {
+        UpdateCheckError::FeedUrlTemplateInvalid { .. } => UpdateAuditEvent::FeedUrlTemplateInvalid,
+        UpdateCheckError::VersionInvalid { .. } => UpdateAuditEvent::InvalidVersion,
+        UpdateCheckError::AppIdMismatch { .. } => UpdateAuditEvent::AppIdMismatch,
+        UpdateCheckError::WrongChannel { .. } => UpdateAuditEvent::WrongChannel,
+        UpdateCheckError::BelowMinVersion { .. } => UpdateAuditEvent::BelowMinVersion,
+        UpdateCheckError::DowngradeRefused { .. } => UpdateAuditEvent::DowngradeRefused,
+    }
+}
+
+fn audit_reason(error: &UpdateCheckError) -> String {
+    match error {
+        UpdateCheckError::FeedUrlTemplateInvalid {
+            missing_placeholder,
+            ..
+        } => format!("feed URL template is missing {missing_placeholder}"),
+        UpdateCheckError::VersionInvalid { value, source, .. } => {
+            format!("{source:?} version {value} is not valid semver")
+        }
+        UpdateCheckError::AppIdMismatch { expected, actual } => {
+            format!("manifest appId {actual} does not match configured appId {expected}")
+        }
+        UpdateCheckError::WrongChannel { expected, actual } => {
+            format!(
+                "manifest channel {} does not match configured channel {}",
+                actual.as_str(),
+                expected.as_str()
+            )
+        }
+        UpdateCheckError::BelowMinVersion {
+            min_version,
+            manifest_version,
+        } => format!("manifest version {manifest_version} is below minVersion {min_version}"),
+        UpdateCheckError::DowngradeRefused {
+            installed_version,
+            manifest_version,
+        } => {
+            format!("manifest version {manifest_version} is not newer than installed version {installed_version}")
+        }
+    }
+}
+
+impl UpdateChannel {
+    fn as_str(&self) -> &'static str {
+        match self {
+            UpdateChannel::Stable => "stable",
+            UpdateChannel::Beta => "beta",
+            UpdateChannel::Canary => "canary",
+        }
+    }
+}
+
+impl UpdatePlatform {
+    fn as_str(&self) -> &'static str {
+        match self {
+            UpdatePlatform::MacosArm64 => "macos-arm64",
+            UpdatePlatform::MacosX64 => "macos-x64",
+            UpdatePlatform::WindowsX64 => "windows-x64",
+            UpdatePlatform::LinuxX64 => "linux-x64",
+            UpdatePlatform::WindowsArm64 => "windows-arm64",
+            UpdatePlatform::LinuxArm64 => "linux-arm64",
+        }
+    }
 }
 
 #[cfg(test)]
@@ -332,6 +623,143 @@ mod tests {
         );
     }
 
+    #[test]
+    fn stable_policy_rejects_beta_manifest_with_wrong_channel() {
+        let manifest = verified_manifest("1.2.3", UpdateChannel::Beta, false, None);
+        let policy = update_policy(UpdateChannel::Stable, "1.0.0", None);
+
+        let rejection = evaluate_update(&policy, &manifest)
+            .expect_err("stable clients must reject beta manifests");
+
+        assert_eq!(
+            rejection.error,
+            UpdateCheckError::WrongChannel {
+                expected: UpdateChannel::Stable,
+                actual: UpdateChannel::Beta
+            }
+        );
+        assert_eq!(rejection.audit.event, UpdateAuditEvent::WrongChannel);
+    }
+
+    #[test]
+    fn policy_rejects_manifest_for_a_different_app_id() {
+        let mut manifest = verified_manifest("1.2.3", UpdateChannel::Stable, false, None);
+        manifest.app_id = "dev.effect-desktop.other".to_string();
+        let policy = update_policy(UpdateChannel::Stable, "1.0.0", None);
+
+        let rejection =
+            evaluate_update(&policy, &manifest).expect_err("wrong appId must fail closed");
+
+        assert_eq!(
+            rejection.error,
+            UpdateCheckError::AppIdMismatch {
+                expected: "dev.effect-desktop.playground".to_string(),
+                actual: "dev.effect-desktop.other".to_string()
+            }
+        );
+        assert_eq!(rejection.audit.event, UpdateAuditEvent::AppIdMismatch);
+    }
+
+    #[test]
+    fn canary_policy_accepts_canary_manifest_and_resolves_feed_url() {
+        let manifest = verified_manifest("1.2.3", UpdateChannel::Canary, false, None);
+        let policy = update_policy(UpdateChannel::Canary, "1.0.0", None);
+
+        let decision = evaluate_update(&policy, &manifest)
+            .expect("canary clients should accept canary manifests");
+
+        assert_eq!(decision.version, "1.2.3");
+        assert_eq!(decision.channel, UpdateChannel::Canary);
+        assert_eq!(
+            decision.feed_url,
+            "https://updates.example.invalid/macos-arm64/canary.json"
+        );
+    }
+
+    #[test]
+    fn min_version_floor_rejects_old_manifest_version() {
+        let manifest = verified_manifest("1.1.9", UpdateChannel::Stable, false, None);
+        let policy = update_policy(UpdateChannel::Stable, "1.0.0", Some("1.2.0"));
+
+        let rejection = evaluate_update(&policy, &manifest)
+            .expect_err("manifest below minVersion must fail closed");
+
+        assert_eq!(
+            rejection.error,
+            UpdateCheckError::BelowMinVersion {
+                min_version: "1.2.0".to_string(),
+                manifest_version: "1.1.9".to_string()
+            }
+        );
+        assert_eq!(rejection.audit.event, UpdateAuditEvent::BelowMinVersion);
+    }
+
+    #[test]
+    fn manifest_min_version_is_also_enforced() {
+        let mut manifest = verified_manifest("1.1.9", UpdateChannel::Stable, false, None);
+        manifest.min_version = Some("1.2.0".to_string());
+        let policy = update_policy(UpdateChannel::Stable, "1.0.0", None);
+
+        let rejection = evaluate_update(&policy, &manifest)
+            .expect_err("manifest minVersion must also be a floor");
+
+        assert_eq!(
+            rejection.error,
+            UpdateCheckError::BelowMinVersion {
+                min_version: "1.2.0".to_string(),
+                manifest_version: "1.1.9".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn installed_or_equal_version_is_rejected_without_rollback_window() {
+        let manifest = verified_manifest("1.2.0", UpdateChannel::Stable, false, None);
+        let policy = update_policy(UpdateChannel::Stable, "1.2.0", None);
+
+        let rejection =
+            evaluate_update(&policy, &manifest).expect_err("same-version update must fail closed");
+
+        assert_eq!(
+            rejection.error,
+            UpdateCheckError::DowngradeRefused {
+                installed_version: "1.2.0".to_string(),
+                manifest_version: "1.2.0".to_string()
+            }
+        );
+        assert_eq!(rejection.audit.event, UpdateAuditEvent::DowngradeRefused);
+    }
+
+    #[test]
+    fn rollback_pack_is_accepted_when_installed_version_exceeds_max_version() {
+        let manifest = verified_manifest("1.2.0", UpdateChannel::Stable, true, Some("1.3.0"));
+        let policy = update_policy(UpdateChannel::Stable, "1.3.1", None);
+
+        let decision = evaluate_update(&policy, &manifest)
+            .expect("rollback packs apply only above their maxVersion window");
+
+        assert_eq!(decision.version, "1.2.0");
+        assert!(decision.rollback);
+    }
+
+    #[test]
+    fn feed_url_template_must_include_platform_and_channel_placeholders() {
+        let error = resolve_feed_url(
+            "https://updates.example.invalid/{platform}/stable.json",
+            &UpdatePlatform::MacosArm64,
+            &UpdateChannel::Stable,
+        )
+        .expect_err("template without channel placeholder must fail");
+
+        assert_eq!(
+            error,
+            UpdateCheckError::FeedUrlTemplateInvalid {
+                template: "https://updates.example.invalid/{platform}/stable.json".to_string(),
+                missing_placeholder: "{channel}"
+            }
+        );
+    }
+
     struct SignedManifest {
         json: String,
         signature: String,
@@ -380,6 +808,38 @@ mod tests {
             json: Value::Object(signed).to_string(),
             signature,
             public_key,
+        }
+    }
+
+    fn update_policy(
+        channel: UpdateChannel,
+        installed_version: &str,
+        min_version: Option<&str>,
+    ) -> UpdatePolicy {
+        UpdatePolicy {
+            app_id: "dev.effect-desktop.playground".to_string(),
+            channel,
+            platform: UpdatePlatform::MacosArm64,
+            installed_version: installed_version.to_string(),
+            min_version: min_version.map(str::to_string),
+            feed_url: "https://updates.example.invalid/{platform}/{channel}.json".to_string(),
+        }
+    }
+
+    fn verified_manifest(
+        version: &str,
+        channel: UpdateChannel,
+        rollback: bool,
+        max_version: Option<&str>,
+    ) -> VerifiedManifest {
+        VerifiedManifest {
+            app_id: "dev.effect-desktop.playground".to_string(),
+            version: version.to_string(),
+            channel,
+            key_version: 5,
+            rollback,
+            min_version: None,
+            max_version: max_version.map(str::to_string),
         }
     }
 }

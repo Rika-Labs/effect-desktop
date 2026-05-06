@@ -1325,6 +1325,7 @@ version = "0.0.0"
 dependencies = [
  "base64",
  "ed25519-dalek",
+ "semver",
  "serde",
  "serde_json",
 ]
