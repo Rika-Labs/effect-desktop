@@ -103,6 +103,20 @@ transitions write typed audit rows for grant, use, revoke, expire, and one-time
 consumption. Revoked, expired, and consumed grants fail as typed Effect values
 instead of thrown exceptions.
 
+### Worker
+
+`Worker` is the runtime primitive for isolated background TypeScript work. It
+spawns Bun workers through a substitutable adapter, validates every outbound and
+inbound channel message with Effect Schema, and registers each worker as a
+scope-bound `ResourceRegistry` handle.
+
+`spawn({ script, ownerScope, inputSchema, outputSchema, context, capabilities })`
+checks every declared capability against `PermissionRegistry` before touching
+the adapter. Missing authority returns `CapabilityNotHeld`; malformed sends and
+outputs return `ChannelError`; worker close/crash signals surface as
+`WorkerCrashed` on the message stream. Closing the owning scope shuts down the
+worker and releases the per-scope concurrency budget.
+
 ### ApprovalBroker
 
 `ApprovalBroker` owns runtime approval coalescing and prompt-fatigue controls.
