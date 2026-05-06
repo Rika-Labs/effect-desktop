@@ -1,4 +1,5 @@
 import {
+  link as hardLink,
   lstat as nodeLstat,
   mkdir as mkdirOnDisk,
   mkdtemp,
@@ -14,7 +15,10 @@ import {
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 
-import { HostProtocolPermissionDeniedError } from "@effect-desktop/bridge"
+import {
+  HostProtocolPermissionDeniedError,
+  type HostProtocolSymlinkEscapesRootError
+} from "@effect-desktop/bridge"
 import { expect, test } from "bun:test"
 import { Effect, Exit, Fiber, Stream } from "effect"
 
@@ -126,17 +130,18 @@ test("Filesystem stat returns kind, size, and modified time", async () => {
   expect(result.modifiedAtMs).toBeGreaterThan(0)
 })
 
-test("Filesystem stat reports symlink paths without following them", async () => {
+test("Filesystem stat follows authorized symlink targets", async () => {
   const directory = await tempDirectory()
-  const target = join(directory, "target")
+  const target = join(directory, "target.txt")
   const link = join(directory, "link")
   const service = await makeTestFilesystem({ permissions: allowFilesystemRoot(directory) })
 
-  await Effect.runPromise(service.mkdir(target))
+  await Bun.write(target, "target")
   await symlink(target, link)
   const result = await Effect.runPromise(service.stat(link))
 
-  expect(result.kind).toBe("symlink")
+  expect(result.path).toBe(await realpath(target))
+  expect(result.kind).toBe("file")
 })
 
 test("Filesystem mkdir and remove perform basic directory operations", async () => {
@@ -298,7 +303,53 @@ test("Filesystem canonicalizes symlink targets before permission checks", async 
 
   const exit = await Effect.runPromiseExit(service.read(link))
 
-  expectFailureTag(exit, "PermissionDenied")
+  expectFailureTag(exit, "SymlinkEscapesRoot")
+  expectSymlinkEscapesRoot(exit, {
+    requested: link,
+    resolved: await realpath(target),
+    capabilityRoots: [await realpath(allowed)]
+  })
+})
+
+test("Filesystem realpath returns the authorized canonical path", async () => {
+  const directory = await tempDirectory()
+  const target = join(directory, "target.txt")
+  const link = join(directory, "link.txt")
+  const service = await makeTestFilesystem({ permissions: { readRoots: [directory] } })
+  await Bun.write(target, "target")
+  await symlink(target, link)
+
+  const resolved = await Effect.runPromise(service.realpath(link))
+
+  expect(resolved).toBe(await realpath(target))
+})
+
+test("Filesystem realpath returns SymlinkEscapesRoot for symlink escapes", async () => {
+  const allowed = await tempDirectory()
+  const denied = await tempDirectory()
+  const target = join(denied, "target.txt")
+  const link = join(allowed, "link.txt")
+  const service = await makeTestFilesystem({ permissions: { readRoots: [allowed] } })
+  await Bun.write(target, "secret")
+  await symlink(target, link)
+
+  const exit = await Effect.runPromiseExit(service.realpath(link))
+
+  expectFailureTag(exit, "SymlinkEscapesRoot")
+})
+
+test("Filesystem denies hard-linked files with SymlinkEscapesRoot", async () => {
+  const allowed = await tempDirectory()
+  const denied = await tempDirectory()
+  const target = join(denied, "target.txt")
+  const linked = join(allowed, "linked.txt")
+  const service = await makeTestFilesystem({ permissions: { readRoots: [allowed] } })
+  await Bun.write(target, "secret")
+  await hardLink(target, linked)
+
+  const exit = await Effect.runPromiseExit(service.read(linked))
+
+  expectFailureTag(exit, "SymlinkEscapesRoot")
 })
 
 test("Filesystem watch emits typed events from the adapter", async () => {
@@ -548,5 +599,23 @@ function expectFailureTag(exit: Exit.Exit<unknown, unknown>, tag: string): void 
   if (Exit.isFailure(exit)) {
     const fail = exit.cause.reasons.find((reason) => reason._tag === "Fail")
     expect((fail?.error as { readonly _tag?: string } | undefined)?._tag).toBe(tag)
+  }
+}
+
+function expectSymlinkEscapesRoot(
+  exit: Exit.Exit<unknown, unknown>,
+  expected: {
+    readonly requested: string
+    readonly resolved: string
+    readonly capabilityRoots: readonly string[]
+  }
+): void {
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const fail = exit.cause.reasons.find((reason) => reason._tag === "Fail")
+    const error = fail?.error as HostProtocolSymlinkEscapesRootError | undefined
+    expect(error?.requested).toBe(expected.requested)
+    expect(error?.resolved).toBe(expected.resolved)
+    expect(error?.capabilityRoots).toEqual(expected.capabilityRoots)
   }
 }
