@@ -10,7 +10,8 @@
 
 ## Commits made
 
-- Pending at artifact creation time.
+- `f394051` — `Address update manifest digest review (#87)`
+- `ca488d1` — `Address update manifest verifier review (#87)`
 
 ## Escalations
 
@@ -35,11 +36,15 @@ None.
   - `bun run format:check`
   - `cargo fmt --check`
 - PR CI pending after push.
+- PR CI passed after the second address commit:
+  - `validate (blacksmith-2vcpu-ubuntu-2404)` — passed in 2m13s.
+  - `validate (blacksmith-2vcpu-windows-2025)` — passed in 1m34s.
+  - `validate (blacksmith-6vcpu-macos-latest)` — passed in 57s.
 
 ## Open threads
 
-Review threads pending silent GraphQL resolution after the address commits are pushed.
+None. All three review threads were resolved silently via GraphQL.
 
 ## Handoff
 
-Address fixes are implemented locally. Push, resolve threads, watch CI, then continue to `/learn`.
+Address fixes are pushed and CI is green. Continue to `/learn`.
