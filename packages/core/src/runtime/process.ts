@@ -7,7 +7,7 @@ import {
   type HostProtocolError,
   type HostProtocolErrorTag
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Schema, Sink, Stream } from "effect"
+import { Context, Effect, Layer, Option, Schema, Sink, Stream } from "effect"
 
 import { ResourceRegistry, type ResourceHandle, type ResourceRegistryApi } from "./resources.js"
 
@@ -70,12 +70,17 @@ export interface ProcessChild {
   readonly writeStdin: (chunk: Uint8Array) => Promise<void>
   readonly closeStdin: () => Promise<void>
   readonly isRunning: () => boolean
+  readonly terminateTree: () => Promise<void>
+  readonly forceKillTree: () => Promise<void>
   readonly kill: (signal?: ProcessSignalInput) => void
 }
 
 export interface ProcessOptions {
   readonly adapter?: ProcessAdapter
+  readonly gracefulShutdownMs?: number
 }
+
+const DEFAULT_GRACEFUL_SHUTDOWN_MS = 5_000
 
 export const makeProcess = (
   registry: ResourceRegistryApi,
@@ -83,6 +88,7 @@ export const makeProcess = (
 ): Effect.Effect<ProcessApi, never, never> =>
   Effect.sync(() => {
     const adapter = options.adapter ?? BunProcessAdapter
+    const gracefulShutdownMs = options.gracefulShutdownMs ?? DEFAULT_GRACEFUL_SHUTDOWN_MS
 
     return Object.freeze({
       spawn: (command: string, args: readonly string[] = [], options?: ProcessSpawnOptions) =>
@@ -105,7 +111,7 @@ export const makeProcess = (
             kind: "process",
             ownerScope: input.ownerScope,
             state: "running",
-            dispose: disposeChild(child, input.command)
+            dispose: disposeChild(child, input.command, gracefulShutdownMs)
           })
 
           return makeHandle(child, resource, input.command)
@@ -207,20 +213,26 @@ const observeChildExit = (
   )
 }
 
-const disposeChild = (child: ProcessChild, command: string): Effect.Effect<void, never, never> =>
+const disposeChild = (
+  child: ProcessChild,
+  command: string,
+  gracefulShutdownMs: number
+): Effect.Effect<void, never, never> =>
   Effect.gen(function* () {
     if (child.isRunning()) {
-      yield* Effect.try({
-        try: () => child.kill("SIGTERM"),
-        catch: (error) => mapProcessError(error, command, "Process.dispose.kill")
-      }).pipe(
-        Effect.catch((error: HostProtocolError) =>
-          Effect.logWarning("Process.dispose.kill failed", {
+      yield* requestTreeShutdown(child, command)
+      const gracefulExit = yield* waitForChildExit(child, command, gracefulShutdownMs)
+
+      if (Option.isNone(gracefulExit) && child.isRunning()) {
+        yield* forceTreeShutdown(child, command)
+        const forcedExit = yield* waitForChildExit(child, command, gracefulShutdownMs)
+        if (Option.isNone(forcedExit) && child.isRunning()) {
+          yield* Effect.logWarning("Process.dispose.forceKill timed out", {
             command,
-            reason: error.message
+            gracefulShutdownMs
           })
-        )
-      )
+        }
+      }
     }
 
     yield* Effect.tryPromise({
@@ -235,6 +247,60 @@ const disposeChild = (child: ProcessChild, command: string): Effect.Effect<void,
       )
     )
   })
+
+const requestTreeShutdown = (
+  child: ProcessChild,
+  command: string
+): Effect.Effect<void, never, never> =>
+  Effect.tryPromise({
+    try: () => child.terminateTree(),
+    catch: (error) => mapProcessError(error, command, "Process.dispose.terminateTree")
+  }).pipe(
+    Effect.catch((error: HostProtocolError) =>
+      Effect.logWarning("Process.dispose.terminateTree failed", {
+        command,
+        reason: error.message
+      })
+    )
+  )
+
+const forceTreeShutdown = (
+  child: ProcessChild,
+  command: string
+): Effect.Effect<void, never, never> =>
+  Effect.tryPromise({
+    try: () => child.forceKillTree(),
+    catch: (error) => mapProcessError(error, command, "Process.dispose.forceKillTree")
+  }).pipe(
+    Effect.catch((error: HostProtocolError) =>
+      Effect.logWarning("Process.dispose.forceKillTree failed", {
+        command,
+        reason: error.message
+      })
+    )
+  )
+
+const waitForChildExit = (
+  child: ProcessChild,
+  command: string,
+  gracefulShutdownMs: number
+): Effect.Effect<Option.Option<ProcessExitStatus>, never, never> =>
+  Effect.gen(function* () {
+    return yield* Effect.tryPromise({
+      try: () => child.exited,
+      catch: (error) => mapProcessError(error, command, "Process.dispose.wait")
+    }).pipe(Effect.timeoutOption(`${gracefulShutdownMs} millis`))
+  }).pipe(
+    Effect.catch((error: HostProtocolError) =>
+      Effect.gen(function* () {
+        yield* Effect.logWarning("Process.dispose.wait failed", {
+          command,
+          reason: error.message
+        })
+        return Option.none<ProcessExitStatus>()
+      })
+    )
+  )
 
 const decodeSpawnInput = (
   input: unknown,
@@ -267,6 +333,9 @@ const BunProcessAdapter: ProcessAdapter = {
 
     const subprocess = Bun.spawn({
       cmd: [input.command, ...input.args],
+      // POSIX detached children get their own process group. Windows tree
+      // cleanup uses taskkill /T at the adapter boundary.
+      detached: process.platform !== "win32",
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
@@ -299,6 +368,12 @@ const BunProcessAdapter: ProcessAdapter = {
         await subprocess.stdin.end()
       },
       isRunning: () => subprocess.exitCode === null && !subprocess.killed,
+      terminateTree: async () => {
+        terminateProcessTree(subprocess.pid, "SIGTERM")
+      },
+      forceKillTree: async () => {
+        await forceKillProcessTree(subprocess.pid)
+      },
       kill: (signal?: ProcessSignalInput) => {
         subprocess.kill(signal as number | NodeJS.Signals | undefined)
       }
@@ -315,6 +390,37 @@ const SIGNAL_NAMES: Readonly<Record<number, string>> = {
   6: "SIGABRT",
   9: "SIGKILL",
   15: "SIGTERM"
+}
+
+const terminateProcessTree = (pid: number, signal: NodeJS.Signals): void => {
+  if (process.platform === "win32") {
+    process.kill(pid, signal)
+    return
+  }
+
+  process.kill(-pid, signal)
+}
+
+const forceKillProcessTree = async (pid: number): Promise<void> => {
+  if (process.platform === "win32") {
+    await runTaskkill(pid)
+    return
+  }
+
+  process.kill(-pid, "SIGKILL")
+}
+
+const runTaskkill = async (pid: number): Promise<void> => {
+  const subprocess = Bun.spawn({
+    cmd: ["taskkill", "/PID", String(pid), "/T", "/F"],
+    stdin: "ignore",
+    stdout: "ignore",
+    stderr: "ignore"
+  })
+  const code = await subprocess.exited
+  if (code !== 0) {
+    throw new Error(`taskkill exited with code ${code}`)
+  }
 }
 
 const mapProcessError = (error: unknown, command: string, operation: string): HostProtocolError => {
