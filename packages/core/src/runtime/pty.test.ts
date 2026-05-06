@@ -84,6 +84,42 @@ ptyTest("PTY removes the resource when a child exits without awaiting onExit", a
   })
 })
 
+ptyTest("PTY removes the resource and releases budget when child exit fails", async () => {
+  let openCalls = 0
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => {
+      openCalls += 1
+      return openCalls === 1
+        ? makeFakeChild({ output: [], exit: { code: 1 }, exitError: new Error("pty failed") })
+        : makeFakeChild({ output: [], exit: { code: 0 } })
+    }),
+    { budgets: { maxConcurrent: 1 } }
+  )
+
+  await Effect.runPromise(
+    fixture.service.open({
+      argv: ["bash"],
+      ownerScope: "scope-main",
+      rows: 24,
+      cols: 80
+    })
+  )
+  await waitUntil(async () => {
+    const snapshot = await Effect.runPromise(fixture.registry.list())
+    return snapshot.entries.length === 0
+  })
+  await Effect.runPromise(
+    fixture.service.open({
+      argv: ["bash"],
+      ownerScope: "scope-main",
+      rows: 24,
+      cols: 80
+    })
+  )
+
+  expect(openCalls).toBe(2)
+})
+
 ptyTest("PTY open validates owner scope before adapter activity", async () => {
   let openCalls = 0
   const fixture = await makeFixture(
@@ -318,10 +354,49 @@ ptyTest("PTY scope close kills the child", async () => {
   expect(child.killedWith).toBe("SIGTERM")
 })
 
+ptyTest("PTY scope close waits for child exit before releasing budget", async () => {
+  let openCalls = 0
+  const firstChild = makeFakeChild({
+    output: [],
+    exit: { code: 0 },
+    naturalExitDelayMs: 60_000,
+    killExitDelayMs: 20
+  })
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => {
+      openCalls += 1
+      return openCalls === 1 ? firstChild : makeFakeChild({ output: [], exit: { code: 0 } })
+    }),
+    { budgets: { maxConcurrent: 1 } }
+  )
+
+  await Effect.runPromise(
+    fixture.service.open({
+      argv: ["bash"],
+      ownerScope: "scope-main",
+      rows: 24,
+      cols: 80
+    })
+  )
+  await Effect.runPromise(fixture.registry.closeScope("scope-main"))
+  await Effect.runPromise(
+    fixture.service.open({
+      argv: ["bash"],
+      ownerScope: "scope-main",
+      rows: 24,
+      cols: 80
+    })
+  )
+
+  expect(firstChild.isRunning()).toBe(false)
+  expect(openCalls).toBe(2)
+})
+
 const makeFixture = async (
   adapter?: PtyAdapter,
   options: {
     readonly budgets?: PtyBudgetPolicy
+    readonly gracefulShutdownMs?: number
     readonly permissions?: PtyPermissionPolicy
   } = {}
 ): Promise<{ readonly registry: ResourceRegistryApi; readonly service: PtyApi }> => {
@@ -335,6 +410,7 @@ const makeService = (
   adapter?: PtyAdapter,
   options: {
     readonly budgets?: PtyBudgetPolicy
+    readonly gracefulShutdownMs?: number
     readonly permissions?: PtyPermissionPolicy
   } = {}
 ) =>
@@ -342,6 +418,9 @@ const makeService = (
     makePty(registry, {
       ...(adapter === undefined ? {} : { adapter }),
       ...(options.budgets === undefined ? {} : { budgets: options.budgets }),
+      ...(options.gracefulShutdownMs === undefined
+        ? {}
+        : { gracefulShutdownMs: options.gracefulShutdownMs }),
       permissions: options.permissions ?? ALLOW_TEST_PTY_PERMISSIONS
     })
   )
@@ -363,6 +442,8 @@ interface FakeChild extends PtyChild {
 const makeFakeChild = (options: {
   readonly output: readonly string[]
   readonly exit: { readonly code: number; readonly signal?: string }
+  readonly exitError?: unknown
+  readonly killExitDelayMs?: number
   readonly naturalExitDelayMs?: number
   readonly ignoreKill?: boolean
 }): FakeChild => {
@@ -372,8 +453,10 @@ const makeFakeChild = (options: {
   let running = true
   let settled = false
   let resolveExit: (status: PtyExitStatus) => void
-  const exited = new Promise<PtyExitStatus>((resolve) => {
+  let rejectExit: (error: unknown) => void
+  const exited = new Promise<PtyExitStatus>((resolve, reject) => {
     resolveExit = resolve
+    rejectExit = reject
   })
   const finish = (signal?: string): void => {
     if (settled) {
@@ -393,7 +476,22 @@ const makeFakeChild = (options: {
       })
     )
   }
-  const naturalExitTimer = setTimeout(() => finish(), options.naturalExitDelayMs ?? 0)
+  const fail = (error: unknown): void => {
+    if (settled) {
+      return
+    }
+    settled = true
+    clearTimeout(naturalExitTimer)
+    running = false
+    rejectExit(error)
+  }
+  const naturalExitTimer = setTimeout(() => {
+    if (options.exitError === undefined) {
+      finish()
+    } else {
+      fail(options.exitError)
+    }
+  }, options.naturalExitDelayMs ?? 0)
   naturalExitTimer.unref()
 
   return {
@@ -415,7 +513,11 @@ const makeFakeChild = (options: {
     kill: async (signal) => {
       killedWith = signal ?? "SIGTERM"
       if (options.ignoreKill !== true) {
-        finish(String(killedWith))
+        if (options.killExitDelayMs === undefined) {
+          finish(String(killedWith))
+        } else {
+          setTimeout(() => finish(String(killedWith)), options.killExitDelayMs)
+        }
       }
     }
   }

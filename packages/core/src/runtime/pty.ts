@@ -10,7 +10,7 @@ import {
   type HostProtocolError,
   type HostProtocolErrorTag
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Ref, Schema, Stream } from "effect"
+import { Cause, Context, Effect, Exit, Layer, Option, Ref, Schema, Stream } from "effect"
 
 import { ResourceRegistry, type ResourceHandle, type ResourceRegistryApi } from "./resources.js"
 
@@ -85,6 +85,7 @@ export interface PtyChild {
 export interface PtyOptions {
   readonly adapter?: PtyAdapter
   readonly budgets?: PtyBudgetPolicy
+  readonly gracefulShutdownMs?: number
   readonly permissions?: PtyPermissionPolicy
 }
 
@@ -101,6 +102,7 @@ const DEFAULT_PTY_BUDGETS: Required<PtyBudgetPolicy> = Object.freeze({
   maxConcurrent: 16,
   outputBufferBytes: 1_048_576
 })
+const DEFAULT_GRACEFUL_SHUTDOWN_MS = 5_000
 const EMPTY_PTY_PERMISSIONS: PtyPermissionPolicy = Object.freeze({})
 
 export const makePty = (
@@ -110,6 +112,7 @@ export const makePty = (
   Effect.gen(function* () {
     const adapter = options.adapter ?? UnsupportedPtyAdapter
     const budgets = { ...DEFAULT_PTY_BUDGETS, ...options.budgets }
+    const gracefulShutdownMs = options.gracefulShutdownMs ?? DEFAULT_GRACEFUL_SHUTDOWN_MS
     const permissions = options.permissions ?? EMPTY_PTY_PERMISSIONS
     const ptyBudgets = yield* Ref.make(new Map<string, number>())
 
@@ -140,7 +143,7 @@ export const makePty = (
                 kind: "pty",
                 ownerScope: input.ownerScope,
                 state: "running",
-                dispose: disposeChild(child, input.command).pipe(
+                dispose: disposeChild(child, input.command, gracefulShutdownMs).pipe(
                   Effect.andThen(releasePtyBudget(ptyBudgets, input.ownerScope))
                 )
               })
@@ -264,18 +267,28 @@ const observeChildExit = (
 ): void => {
   Effect.runFork(
     exitStatus.pipe(
-      Effect.flatMap(() => resource.dispose()),
-      Effect.catch((error: HostProtocolError) =>
-        Effect.logWarning("PTY.exit observer failed", {
-          command,
-          reason: error.message
-        })
+      Effect.exit,
+      Effect.flatMap((exit) =>
+        resource.dispose().pipe(
+          Effect.andThen(
+            Exit.isFailure(exit)
+              ? Effect.logWarning("PTY.exit observer failed", {
+                  command,
+                  reason: formatExitFailure(exit)
+                })
+              : Effect.void
+          )
+        )
       )
     )
   )
 }
 
-const disposeChild = (child: PtyChild, command: string): Effect.Effect<void, never, never> =>
+const disposeChild = (
+  child: PtyChild,
+  command: string,
+  gracefulShutdownMs: number
+): Effect.Effect<void, never, never> =>
   Effect.gen(function* () {
     if (child.isRunning()) {
       yield* Effect.tryPromise({
@@ -289,8 +302,37 @@ const disposeChild = (child: PtyChild, command: string): Effect.Effect<void, nev
           })
         )
       )
+      const gracefulExit = yield* waitForChildExit(child, command, gracefulShutdownMs)
+      if (Option.isNone(gracefulExit) && child.isRunning()) {
+        yield* Effect.logWarning("PTY.dispose.wait timed out", {
+          command,
+          gracefulShutdownMs
+        })
+      }
     }
   })
+
+const waitForChildExit = (
+  child: PtyChild,
+  command: string,
+  gracefulShutdownMs: number
+): Effect.Effect<Option.Option<PtyExitStatus>, never, never> =>
+  Effect.gen(function* () {
+    return yield* Effect.tryPromise({
+      try: () => child.exited,
+      catch: (error) => mapPtyError(error, command, "PTY.dispose.wait")
+    }).pipe(Effect.timeoutOption(`${gracefulShutdownMs} millis`))
+  }).pipe(
+    Effect.catch((error: HostProtocolError) =>
+      Effect.gen(function* () {
+        yield* Effect.logWarning("PTY.dispose.wait failed", {
+          command,
+          reason: error.message
+        })
+        return Option.none<PtyExitStatus>()
+      })
+    )
+  )
 
 const decodeOpenInput = (
   input: unknown,
@@ -504,4 +546,13 @@ const formatUnknownError = (error: unknown): string => {
   }
 
   return String(error)
+}
+
+const formatExitFailure = (exit: Exit.Exit<unknown, HostProtocolError>): string => {
+  if (Exit.isFailure(exit)) {
+    const fail = exit.cause.reasons.find(Cause.isFailReason)
+    return fail?.error.message ?? "unknown PTY exit failure"
+  }
+
+  return "unknown PTY exit failure"
 }
