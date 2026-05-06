@@ -49,6 +49,18 @@ import {
   type SignCommandRunner,
   type SignPipelineError
 } from "./signing-pipeline.js"
+import {
+  runDesktopNotarize,
+  runNotarizeCommand,
+  NotarizeCommandFailedError,
+  NotarizeConfigError,
+  NotarizeFileError,
+  NotarizeUnsupportedHostError,
+  NotarizeUnsupportedTargetError,
+  type DesktopNotarizeReport,
+  type NotarizeCommandRunner,
+  type NotarizePipelineError
+} from "./notarization-pipeline.js"
 
 export {
   runDesktopPackage,
@@ -93,6 +105,20 @@ export {
   type SignStepReport,
   type SignTarget
 } from "./signing-pipeline.js"
+export {
+  runDesktopNotarize,
+  type DesktopNotarizeOptions,
+  type DesktopNotarizeReport,
+  type NotarizeArtifactKind,
+  type NotarizeArtifactReport,
+  type NotarizeCommandInvocation,
+  type NotarizeCommandOutput,
+  type NotarizeCommandRunner,
+  type NotarizePipelineError,
+  type NotarizeStepName,
+  type NotarizeStepReport,
+  type NotarizeTarget
+} from "./notarization-pipeline.js"
 
 export class CliUsageError extends Error {
   public override readonly name = "CliUsageError"
@@ -153,6 +179,7 @@ export interface CliRunOptions {
   readonly packageCommandRunner?: PackageCommandRunner
   readonly doctorCommandRunner?: DoctorCommandRunner
   readonly signCommandRunner?: SignCommandRunner
+  readonly notarizeCommandRunner?: NotarizeCommandRunner
   readonly now?: () => number
   readonly hostTarget?: BuildTarget
   readonly platform?: NodeJS.Platform
@@ -243,13 +270,17 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
       return yield* runSignCli(options)
     }
 
+    if (options.argv[0] === "notarize") {
+      return yield* runNotarizeCli(options)
+    }
+
     if (options.argv[0] === "check" && options.argv.includes("--repro")) {
       return yield* runReproCheckCli(options)
     }
 
     if (options.argv[0] !== "check" || !options.argv.includes("--production")) {
       options.writeStderr(
-        "Usage: desktop build --config <path>\nUsage: desktop package --config <path>\nUsage: desktop sign --config <path>\nUsage: desktop doctor [--config <path>] [--ci] [--json]\nUsage: desktop check --production --config <path>\nUsage: desktop check --repro --config <path>\n"
+        "Usage: desktop build --config <path>\nUsage: desktop package --config <path>\nUsage: desktop sign --config <path>\nUsage: desktop notarize --config <path>\nUsage: desktop doctor [--config <path>] [--ci] [--json]\nUsage: desktop check --production --config <path>\nUsage: desktop check --repro --config <path>\n"
       )
       return 1
     }
@@ -528,6 +559,58 @@ const runSignCli = (options: CliRunOptions): Effect.Effect<number, never, never>
       options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
     } else {
       options.writeStdout(formatSignReport(report))
+    }
+
+    return 0
+  })
+
+const runNotarizeCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
+  Effect.gen(function* () {
+    if (options.argv.includes("--help")) {
+      options.writeStdout(NOTARIZE_HELP)
+      return 0
+    }
+
+    const configPath = yield* readOptionalPathArg(options.argv, "--config", options.writeStderr)
+    if (configPath === undefined && options.argv.includes("--config")) {
+      return 1
+    }
+    const platform = yield* readOptionalPathArg(options.argv, "--platform", options.writeStderr)
+    if (platform === undefined && options.argv.includes("--platform")) {
+      return 1
+    }
+
+    const report = yield* runDesktopNotarize({
+      cwd: options.cwd,
+      configPath: configPath ?? "desktop.config.ts",
+      platform,
+      commandRunner: options.notarizeCommandRunner ?? runNotarizeCommand,
+      now: options.now ?? Date.now,
+      hostTarget:
+        options.hostTarget === "macos-arm64" || options.hostTarget === "macos-x64"
+          ? options.hostTarget
+          : undefined
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          if (options.argv.includes("--json")) {
+            options.writeStderr(`${JSON.stringify(formatNotarizeError(error), null, 2)}\n`)
+          } else {
+            options.writeStderr(`${formatNotarizeErrorText(error)}\n`)
+          }
+          return undefined
+        })
+      )
+    )
+
+    if (report === undefined) {
+      return 1
+    }
+
+    if (options.argv.includes("--json")) {
+      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+    } else {
+      options.writeStdout(formatNotarizeReport(report))
     }
 
     return 0
@@ -932,6 +1015,13 @@ const SIGN_HELP = [
   ""
 ].join("\n")
 
+const NOTARIZE_HELP = [
+  "Usage: desktop notarize --config <path> [--platform macos-arm64|macos-x64] [--json]",
+  "",
+  "Submits signed macOS artifacts to Apple notarization, staples tickets, assesses Gatekeeper, and writes notarize-report.json.",
+  ""
+].join("\n")
+
 const DOCTOR_HELP = [
   "Usage: desktop doctor [--config <path>] [--ci] [--json]",
   "",
@@ -1064,6 +1154,54 @@ const formatSignError = (
 
 const formatSignErrorText = (error: SignPipelineError): string => {
   const formatted = formatSignError(error)
+  return formatted.remediation === undefined
+    ? `${formatted.tag}: ${formatted.message}`
+    : `${formatted.tag}: ${formatted.message}\nNext: ${formatted.remediation}`
+}
+
+const formatNotarizeReport = (report: DesktopNotarizeReport): string =>
+  [
+    "Effect Desktop notarize",
+    `app               ${report.appId}`,
+    `target            ${report.target}`,
+    `output            ${report.outputPath}`,
+    ...report.artifacts.map(
+      (artifact) =>
+        `${artifact.kind.padEnd(17)} ${artifact.alreadyStapled ? "already-stapled" : (artifact.status ?? "submitted")} ${artifact.artifactPath}`
+    ),
+    ""
+  ].join("\n")
+
+const formatNotarizeError = (
+  error: NotarizePipelineError
+): { readonly tag: string; readonly message: string; readonly remediation?: string } => {
+  if (error instanceof NotarizeUnsupportedTargetError) {
+    return { tag: error._tag, message: error.message, remediation: error.remediation }
+  }
+  if (error instanceof NotarizeUnsupportedHostError) {
+    return { tag: error._tag, message: error.message, remediation: error.remediation }
+  }
+  if (error instanceof NotarizeCommandFailedError) {
+    const output = [error.stdout, error.stderr].filter(
+      (value): value is string => value !== undefined && value.length > 0
+    )
+    return {
+      tag: error._tag,
+      message: output.length === 0 ? error.message : `${error.message}\n${output.join("\n")}`
+    }
+  }
+  if (error instanceof NotarizeFileError) {
+    return { tag: error._tag, message: error.message }
+  }
+  if (error instanceof NotarizeConfigError) {
+    return { tag: error._tag, message: error.message, remediation: error.remediation }
+  }
+
+  return { tag: "UnknownNotarizeError", message: "unknown notarize error" }
+}
+
+const formatNotarizeErrorText = (error: NotarizePipelineError): string => {
+  const formatted = formatNotarizeError(error)
   return formatted.remediation === undefined
     ? `${formatted.tag}: ${formatted.message}`
     : `${formatted.tag}: ${formatted.message}\nNext: ${formatted.remediation}`

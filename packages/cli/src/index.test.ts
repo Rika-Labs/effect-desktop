@@ -10,6 +10,7 @@ import {
   runCli,
   type CommandRunner,
   type DoctorCommandRunner,
+  type NotarizeCommandRunner,
   type SignCommandRunner
 } from "./index.js"
 import type { PackageCommandRunner } from "./package-pipeline.js"
@@ -596,6 +597,217 @@ test("desktop sign GPG-signs Linux AppImage and writes Linux metadata", async ()
   }
 })
 
+test("desktop notarize submits staples and assesses unstapled macOS artifacts", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+    })
+    const appPath = await writePackagedArtifactFixture(directory, "macos-arm64", "app")
+    const calls: string[] = []
+    const runner: NotarizeCommandRunner = (invocation) => {
+      calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+      if (invocation.step === "stapler-validate") {
+        return Effect.succeed({ stdout: "", stderr: "ticket not found", exitCode: 65 })
+      }
+      if (invocation.step === "notarytool-submit") {
+        return Effect.succeed({
+          stdout: JSON.stringify({ id: "submission-1", status: "Accepted" }),
+          stderr: "",
+          exitCode: 0
+        })
+      }
+      return Effect.succeed({ stdout: `${invocation.step} ok`, stderr: "", exitCode: 0 })
+    }
+
+    const stdout: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["notarize", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "macos-arm64",
+        now: fixedClock([100, 110, 200, 220, 300, 330, 400, 440]),
+        notarizeCommandRunner: runner,
+        writeStdout: (text) => {
+          stdout.push(text)
+        },
+        writeStderr: () => {}
+      })
+    )
+
+    const report = JSON.parse(
+      await readFile(
+        join(directory, "apps", "playground", "dist", "desktop", "macos", "notarize-report.json"),
+        "utf8"
+      )
+    ) as { readonly artifacts: readonly [{ readonly submissionId: string }] }
+
+    expect(exitCode).toBe(0)
+    expect(stdout.join("")).toContain("Effect Desktop notarize")
+    expect(calls).toEqual([
+      `stapler-validate:xcrun stapler validate ${appPath}`,
+      `notarytool-submit:xcrun notarytool submit ${appPath} --wait --output-format json --keychain-profile release-profile`,
+      `stapler-staple:xcrun stapler staple ${appPath}`,
+      `spctl-assess:spctl --assess --type execute --verbose=4 ${appPath}`
+    ])
+    expect(report.artifacts[0]?.submissionId).toBe("submission-1")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop notarize is a no-op submit when staple validation already passes", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+    })
+    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+    const calls: string[] = []
+    const runner: NotarizeCommandRunner = (invocation) => {
+      calls.push(invocation.step)
+      return Effect.succeed({ stdout: `${invocation.step} ok`, stderr: "", exitCode: 0 })
+    }
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["notarize", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "macos-arm64",
+        notarizeCommandRunner: runner,
+        writeStdout: () => {},
+        writeStderr: () => {}
+      })
+    )
+
+    expect(exitCode).toBe(0)
+    expect(calls).toEqual(["stapler-validate", "spctl-assess"])
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop notarize ignores zip sidecars that stapler cannot staple", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+    })
+    await writePackagedArtifactFixture(directory, "macos-arm64", "app")
+    await writePackagedArtifactFixture(directory, "macos-arm64", "zip")
+    const calls: string[] = []
+    const runner: NotarizeCommandRunner = (invocation) => {
+      calls.push(invocation.step)
+      return Effect.succeed({ stdout: `${invocation.step} ok`, stderr: "", exitCode: 0 })
+    }
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["notarize", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "macos-arm64",
+        notarizeCommandRunner: runner,
+        writeStdout: () => {},
+        writeStderr: () => {}
+      })
+    )
+
+    const report = JSON.parse(
+      await readFile(
+        join(directory, "apps", "playground", "dist", "desktop", "macos", "notarize-report.json"),
+        "utf8"
+      )
+    ) as { readonly artifacts: readonly unknown[] }
+
+    expect(exitCode).toBe(0)
+    expect(calls).toEqual(["stapler-validate", "spctl-assess"])
+    expect(report.artifacts).toHaveLength(1)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop notarize surfaces rejected notarytool output", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+    })
+    await writePackagedArtifactFixture(directory, "macos-arm64", "app")
+    const stderr: string[] = []
+    const runner: NotarizeCommandRunner = (invocation) => {
+      if (invocation.step === "stapler-validate") {
+        return Effect.succeed({ stdout: "", stderr: "ticket not found", exitCode: 65 })
+      }
+      if (invocation.step === "notarytool-submit") {
+        return Effect.succeed({
+          stdout: JSON.stringify({ id: "submission-1", status: "Rejected" }),
+          stderr: "LogFileURL: https://example.invalid/notary-log.json",
+          exitCode: 0
+        })
+      }
+      return Effect.die("staple and assess should not run after rejection")
+    }
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["notarize", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "macos-arm64",
+        notarizeCommandRunner: runner,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("notarytool returned Rejected")
+    expect(stderr.join("")).toContain("https://example.invalid/notary-log.json")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop notarize returns malformed notarytool JSON as a typed failure", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+    })
+    await writePackagedArtifactFixture(directory, "macos-arm64", "app")
+    const stderr: string[] = []
+    const runner: NotarizeCommandRunner = (invocation) => {
+      if (invocation.step === "stapler-validate") {
+        return Effect.succeed({ stdout: "", stderr: "ticket not found", exitCode: 65 })
+      }
+      if (invocation.step === "notarytool-submit") {
+        return Effect.succeed({ stdout: "not json", stderr: "", exitCode: 0 })
+      }
+      return Effect.die("staple and assess should not run after malformed notarytool JSON")
+    }
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["notarize", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "macos-arm64",
+        notarizeCommandRunner: runner,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("failed to parse notarytool JSON output")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop build stages renderer runtime host bridge manifests and report", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-"))
   try {
@@ -1039,7 +1251,7 @@ const writeBuildLayoutFixture = async (
 const writePackagedArtifactFixture = async (
   directory: string,
   target: "linux-x64" | "macos-arm64" | "windows-x64",
-  kind: "app" | "appimage" | "msi"
+  kind: "app" | "appimage" | "dmg" | "msi" | "zip"
 ): Promise<string> => {
   const platform = target.startsWith("macos-")
     ? "macos"
