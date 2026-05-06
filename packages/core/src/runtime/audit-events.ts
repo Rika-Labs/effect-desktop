@@ -24,7 +24,8 @@ export const AuditEventKind = Schema.Literals([
   "approval-denied",
   "command-registered",
   "command-unregistered",
-  "command-invoked"
+  "command-invoked",
+  "job-retrying"
 ])
 export type AuditEventKind = typeof AuditEventKind.Type
 

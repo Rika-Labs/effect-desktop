@@ -3,6 +3,7 @@ import {
   Context,
   Data,
   Deferred,
+  Duration,
   Effect,
   Exit,
   Fiber,
@@ -10,12 +11,15 @@ import {
   Option,
   PubSub,
   Ref,
+  Schedule,
   Schema,
   Stream
 } from "effect"
 
 import { redact } from "@effect-desktop/bridge"
 
+import { AuditEvent, emitAuditEvent } from "./audit-events.js"
+import type { EventLogError, EventLogStore } from "./event-log.js"
 import { ResourceRegistry, type ResourceHandle, type ResourceRegistryApi } from "./resources.js"
 
 const NonEmptyString = Schema.NonEmptyString
@@ -33,6 +37,15 @@ export class JobRunInput extends Schema.Class<JobRunInput>("JobRunInput")({
 export class JobProgressRecord extends Schema.Class<JobProgressRecord>("JobProgressRecord")({
   jobId: NonEmptyString,
   value: Schema.Unknown,
+  emittedAt: NonNegativeInt
+}) {}
+
+export class JobRetrying extends Schema.Class<JobRetrying>("JobRetrying")({
+  _tag: Schema.Literal("JobRetrying"),
+  jobId: NonEmptyString,
+  attempt: PositiveInt,
+  error: Schema.Unknown,
+  nextDelayMs: NonNegativeInt,
   emittedAt: NonNegativeInt
 }) {}
 
@@ -58,6 +71,8 @@ export class JobFailedError extends Data.TaggedError("JobFailed")<{
   readonly jobId: string
   readonly resourceId: Option.Option<string>
   readonly cause: unknown
+  readonly attempts: number
+  readonly lastError: Option.Option<unknown>
 }> {}
 
 export class JobCanceledError extends Data.TaggedError("Canceled")<{
@@ -73,11 +88,18 @@ export class JobTimedOutError extends Data.TaggedError("JobTimedOut")<{
   readonly timeoutMs: number
 }> {}
 
+export class JobAuditFailedError extends Data.TaggedError("AuditFailed")<{
+  readonly operation: string
+  readonly jobId: string
+  readonly cause: EventLogError
+}> {}
+
 export type JobError =
   | JobInvalidArgumentError
   | JobFailedError
   | JobCanceledError
   | JobTimedOutError
+  | JobAuditFailedError
 
 export type JobStatus = "running" | "completed" | "failed" | "canceled" | "timed-out"
 
@@ -88,14 +110,17 @@ export interface JobRunOptions<A, P> {
   readonly effect: Effect.Effect<A, unknown, never>
   readonly progress?: Stream.Stream<P, unknown, never>
   readonly progressSchema: Schema.Schema<P>
+  readonly retry?: CrashRetryPolicy
   readonly timeoutMs?: number
 }
+
+export type JobProgress<P> = P | JobRetrying
 
 export interface JobHandle<A, P> {
   readonly id: string
   readonly resource: ResourceHandle<"job", "running">
   readonly status: Effect.Effect<JobStatus, never, never>
-  readonly progress: Stream.Stream<P, JobError, never>
+  readonly progress: Stream.Stream<JobProgress<P>, JobError, never>
   readonly result: Effect.Effect<A, JobError, never>
   readonly cancel: Effect.Effect<void, never, never>
 }
@@ -111,7 +136,63 @@ export interface JobOptions {
   readonly now?: () => number
   readonly nextId?: () => string
   readonly progressBufferSize?: number
+  readonly audit?: EventLogStore
 }
+
+export interface CrashRetryPolicy {
+  readonly schedule: Schedule.Schedule<unknown, unknown, never, never>
+  readonly maxTotalDuration: Option.Option<Duration.Duration>
+  readonly isRecoverable: (error: unknown) => boolean
+}
+
+export interface CrashRetryPolicyOptions {
+  readonly maxRetries: number
+  readonly baseDelay?: Duration.Input
+  readonly factor?: number
+  readonly jittered?: boolean
+  readonly maxTotalDuration?: Duration.Input
+  readonly isRecoverable?: (error: unknown) => boolean
+}
+
+export const CrashRetryPolicy = Object.freeze({
+  exponentialJittered: (options: CrashRetryPolicyOptions): CrashRetryPolicy =>
+    makeRetryPolicy({
+      ...options,
+      baseDelay: options.baseDelay ?? "100 millis",
+      factor: options.factor ?? 2,
+      jittered: options.jittered ?? true,
+      isRecoverable: options.isRecoverable ?? defaultIsRecoverable
+    }),
+  fixed: (
+    options: Pick<CrashRetryPolicyOptions, "maxRetries" | "isRecoverable"> & {
+      readonly delay: Duration.Input
+      readonly maxTotalDuration?: Duration.Input
+    }
+  ): CrashRetryPolicy =>
+    makeRetryPolicy({
+      maxRetries: options.maxRetries,
+      baseDelay: options.delay,
+      factor: 1,
+      jittered: false,
+      ...(options.maxTotalDuration === undefined
+        ? {}
+        : { maxTotalDuration: options.maxTotalDuration }),
+      isRecoverable: options.isRecoverable ?? defaultIsRecoverable
+    }),
+  oncePerMinute: (
+    options: Pick<CrashRetryPolicyOptions, "maxRetries" | "maxTotalDuration" | "isRecoverable">
+  ): CrashRetryPolicy =>
+    makeRetryPolicy({
+      maxRetries: options.maxRetries,
+      baseDelay: "1 minute",
+      factor: 1,
+      jittered: false,
+      ...(options.maxTotalDuration === undefined
+        ? {}
+        : { maxTotalDuration: options.maxTotalDuration }),
+      isRecoverable: options.isRecoverable ?? defaultIsRecoverable
+    })
+})
 
 interface StoredJob {
   readonly id: string
@@ -131,6 +212,7 @@ export const makeJob = (
     const now = options.now ?? Date.now
     const nextId = options.nextId ?? randomJobId
     const progressBufferSize = options.progressBufferSize ?? 1_024
+    const audit = options.audit
     const jobs = yield* Ref.make<ReadonlyMap<string, StoredJob>>(new Map())
 
     return Object.freeze({
@@ -149,8 +231,8 @@ export const makeJob = (
           const label = input.label ?? id
           const startedAt = now()
           const status = yield* Ref.make<JobStatus>("running")
-          const progressLog = yield* Ref.make<readonly P[]>([])
-          const progressBus = yield* PubSub.sliding<Exit.Exit<P, JobError>>({
+          const progressLog = yield* Ref.make<readonly JobProgress<P>[]>([])
+          const progressBus = yield* PubSub.sliding<Exit.Exit<JobProgress<P>, JobError>>({
             capacity: progressBufferSize,
             replay: 0
           })
@@ -186,9 +268,20 @@ export const makeJob = (
           )
 
           const fiber = Effect.runFork(
-            runJobEffect(options.effect, input.timeoutMs, id, resource.id, result, status).pipe(
-              Effect.ensuring(removeJob(jobs, id, resource))
-            )
+            runJobEffect(
+              options.effect,
+              input.timeoutMs,
+              options.retry,
+              audit,
+              id,
+              resource.id,
+              result,
+              status,
+              progressBus,
+              progressLog,
+              now,
+              progressBufferSize
+            ).pipe(Effect.ensuring(removeJob(jobs, id, resource)))
           )
           const progressFiber =
             options.progress === undefined
@@ -274,8 +367,8 @@ const makeHandle = <A, P>(
   id: string,
   resource: ResourceHandle<"job", "running">,
   status: Ref.Ref<JobStatus>,
-  progressLog: Ref.Ref<readonly P[]>,
-  progressBus: PubSub.PubSub<Exit.Exit<P, JobError>>,
+  progressLog: Ref.Ref<readonly JobProgress<P>[]>,
+  progressBus: PubSub.PubSub<Exit.Exit<JobProgress<P>, JobError>>,
   result: Deferred.Deferred<A, JobError>,
   fiber: Fiber.Fiber<A, JobError>,
   progressFiber: Fiber.Fiber<void, JobError> | undefined
@@ -309,34 +402,33 @@ const makeHandle = <A, P>(
     )
   })
 
-const runJobEffect = <A>(
+const runJobEffect = <A, P>(
   effect: Effect.Effect<A, unknown, never>,
   timeoutMs: number | undefined,
+  retry: CrashRetryPolicy | undefined,
+  audit: EventLogStore | undefined,
   jobId: string,
   resourceId: string,
   result: Deferred.Deferred<A, JobError>,
-  status: Ref.Ref<JobStatus>
+  status: Ref.Ref<JobStatus>,
+  progressBus: PubSub.PubSub<Exit.Exit<JobProgress<P>, JobError>>,
+  progressLog: Ref.Ref<readonly JobProgress<P>[]>,
+  now: () => number,
+  progressBufferSize: number
 ): Effect.Effect<A, JobError, never> =>
   Effect.gen(function* () {
-    const exit = yield* Effect.exit(
-      timeoutMs === undefined
-        ? effect
-        : Effect.timeoutOption(effect, `${timeoutMs} millis`).pipe(
-            Effect.flatMap((option) =>
-              Option.match(option, {
-                onNone: () =>
-                  Effect.fail(
-                    new JobTimedOutError({
-                      operation: "Job.result",
-                      jobId,
-                      resourceId: Option.some(resourceId),
-                      timeoutMs
-                    })
-                  ),
-                onSome: Effect.succeed
-              })
-            )
-          )
+    const exit = yield* retryJobEffect(
+      effect,
+      timeoutMs,
+      retry,
+      audit,
+      jobId,
+      resourceId,
+      status,
+      progressBus,
+      progressLog,
+      now,
+      progressBufferSize
     )
 
     if (Exit.isSuccess(exit)) {
@@ -353,7 +445,7 @@ const runJobEffect = <A>(
             jobId,
             resourceId: Option.some(resourceId)
           })
-        : jobErrorFromCause(exit.cause, jobId, resourceId)
+        : jobErrorFromCause(exit.cause, jobId, resourceId, 1)
     yield* Ref.set(status, statusFromError(error))
     yield* Deferred.fail(result, error)
     return yield* Effect.fail(error)
@@ -364,8 +456,8 @@ const runProgressProducer = <P>(
   schema: Schema.Schema<P>,
   jobId: string,
   resourceId: string,
-  progressBus: PubSub.PubSub<Exit.Exit<P, JobError>>,
-  progressLog: Ref.Ref<readonly P[]>,
+  progressBus: PubSub.PubSub<Exit.Exit<JobProgress<P>, JobError>>,
+  progressLog: Ref.Ref<readonly JobProgress<P>[]>,
   jobs: Ref.Ref<ReadonlyMap<string, StoredJob>>,
   resource: ResourceHandle<"job", "running">,
   now: () => number,
@@ -400,7 +492,7 @@ const runProgressProducer = <P>(
     .pipe(
       Effect.asVoid,
       Effect.catchCause((cause): Effect.Effect<void, JobError, never> => {
-        const error = jobErrorFromCause(cause, jobId, resourceId)
+        const error = jobErrorFromCause(cause, jobId, resourceId, 1)
         return PubSub.publish(progressBus, Exit.fail(error)).pipe(
           Effect.andThen(Effect.fail(error))
         )
@@ -488,7 +580,8 @@ const decodeProgress = <P>(
 const jobErrorFromCause = (
   cause: Cause.Cause<unknown>,
   jobId: string,
-  resourceId: string
+  resourceId: string,
+  attempts: number
 ): JobError => {
   const failure = cause.reasons.find(Cause.isFailReason)
   const error = failure?.error
@@ -508,7 +601,9 @@ const jobErrorFromCause = (
     operation: "Job.result",
     jobId,
     resourceId: Option.some(resourceId),
-    cause
+    cause,
+    attempts,
+    lastError: failure === undefined ? Option.none() : Option.some(failure.error)
   })
 }
 
@@ -520,8 +615,194 @@ const statusFromError = (error: JobError): JobStatus => {
       return "timed-out"
     case "InvalidArgument":
     case "JobFailed":
+    case "AuditFailed":
       return "failed"
   }
+}
+
+const retryJobEffect = <A, P>(
+  effect: Effect.Effect<A, unknown, never>,
+  timeoutMs: number | undefined,
+  retry: CrashRetryPolicy | undefined,
+  audit: EventLogStore | undefined,
+  jobId: string,
+  resourceId: string,
+  status: Ref.Ref<JobStatus>,
+  progressBus: PubSub.PubSub<Exit.Exit<JobProgress<P>, JobError>>,
+  progressLog: Ref.Ref<readonly JobProgress<P>[]>,
+  now: () => number,
+  progressBufferSize: number
+): Effect.Effect<Exit.Exit<A, JobError>, never, never> =>
+  Effect.gen(function* () {
+    if (retry === undefined) {
+      const exit = yield* Effect.exit(runJobAttempt(effect, timeoutMs, jobId, resourceId))
+      return Exit.isSuccess(exit)
+        ? Exit.succeed(exit.value)
+        : Exit.failCause(jobErrorCause(exit.cause, jobId, resourceId, 1))
+    }
+
+    const step = yield* Schedule.toStep(retry.schedule)
+    const startedAt = now()
+    let attempts = 0
+    let currentExit: Exit.Exit<A, unknown>
+    while (true) {
+      attempts += 1
+      currentExit = yield* Effect.exit(runJobAttempt(effect, timeoutMs, jobId, resourceId))
+      if (Exit.isSuccess(currentExit)) {
+        return Exit.succeed(currentExit.value)
+      }
+
+      const currentStatus = yield* Ref.get(status)
+      if (currentStatus === "canceled") {
+        return Exit.fail(
+          new JobCanceledError({
+            operation: "Job.cancel",
+            jobId,
+            resourceId: Option.some(resourceId)
+          })
+        )
+      }
+
+      const failure = currentExit.cause.reasons.find(Cause.isFailReason)
+      if (failure === undefined || !retry.isRecoverable(failure.error)) {
+        return Exit.failCause(jobErrorCause(currentExit.cause, jobId, resourceId, attempts))
+      }
+
+      const decision = yield* Effect.exit(step(now(), failure.error))
+      if (Exit.isFailure(decision)) {
+        return Exit.failCause(jobErrorCause(currentExit.cause, jobId, resourceId, attempts))
+      }
+
+      const nextDelayMs = Duration.toMillis(Duration.fromInputUnsafe(decision.value[1]))
+      if (
+        Option.isSome(retry.maxTotalDuration) &&
+        now() - startedAt + nextDelayMs > Duration.toMillis(retry.maxTotalDuration.value)
+      ) {
+        return Exit.failCause(jobErrorCause(currentExit.cause, jobId, resourceId, attempts))
+      }
+      const retryingExit = yield* Effect.exit(
+        emitRetrying(
+          audit,
+          progressBus,
+          progressLog,
+          {
+            _tag: "JobRetrying",
+            jobId,
+            attempt: attempts,
+            error: failure.error,
+            nextDelayMs,
+            emittedAt: now()
+          },
+          progressBufferSize
+        )
+      )
+      if (Exit.isFailure(retryingExit)) {
+        return Exit.failCause(retryingExit.cause)
+      }
+      yield* Effect.sleep(decision.value[1])
+    }
+  })
+
+const runJobAttempt = <A>(
+  effect: Effect.Effect<A, unknown, never>,
+  timeoutMs: number | undefined,
+  jobId: string,
+  resourceId: string
+): Effect.Effect<A, unknown, never> =>
+  timeoutMs === undefined
+    ? effect
+    : Effect.timeoutOption(effect, `${timeoutMs} millis`).pipe(
+        Effect.flatMap((option) =>
+          Option.match(option, {
+            onNone: () =>
+              Effect.fail(
+                new JobTimedOutError({
+                  operation: "Job.result",
+                  jobId,
+                  resourceId: Option.some(resourceId),
+                  timeoutMs
+                })
+              ),
+            onSome: Effect.succeed
+          })
+        )
+      )
+
+const emitRetrying = <P>(
+  audit: EventLogStore | undefined,
+  progressBus: PubSub.PubSub<Exit.Exit<JobProgress<P>, JobError>>,
+  progressLog: Ref.Ref<readonly JobProgress<P>[]>,
+  input: typeof JobRetrying.Type,
+  progressBufferSize: number
+): Effect.Effect<void, JobError, never> =>
+  Effect.gen(function* () {
+    const event = new JobRetrying(redact(input) as typeof JobRetrying.Type)
+    yield* Ref.update(progressLog, (current) => [...current, event].slice(-progressBufferSize))
+    yield* PubSub.publish(progressBus, Exit.succeed(event))
+    yield* emitAuditEvent(
+      audit,
+      new AuditEvent({
+        kind: "job-retrying",
+        source: "Job",
+        traceId: input.jobId,
+        outcome: "retrying",
+        resource: input.jobId,
+        timestamp: input.emittedAt,
+        details: event
+      })
+    ).pipe(
+      Effect.mapError(
+        (error) =>
+          new JobAuditFailedError({
+            operation: "Job.retry.audit",
+            jobId: input.jobId,
+            cause: error
+          })
+      )
+    )
+  })
+
+const jobErrorCause = (
+  cause: Cause.Cause<unknown>,
+  jobId: string,
+  resourceId: string,
+  attempts: number
+): Cause.Cause<JobError> => Cause.fail(jobErrorFromCause(cause, jobId, resourceId, attempts))
+
+const makeRetryPolicy = (options: {
+  readonly maxRetries: number
+  readonly baseDelay: Duration.Input
+  readonly factor: number
+  readonly jittered: boolean
+  readonly maxTotalDuration?: Duration.Input
+  readonly isRecoverable: (error: unknown) => boolean
+}): CrashRetryPolicy => {
+  const base = Schedule.exponential(options.baseDelay, options.factor).pipe(
+    options.jittered ? Schedule.jittered : (schedule) => schedule,
+    Schedule.take(options.maxRetries)
+  )
+  return Object.freeze({
+    schedule: base,
+    maxTotalDuration:
+      options.maxTotalDuration === undefined
+        ? Option.none()
+        : Option.some(Duration.fromInputUnsafe(options.maxTotalDuration)),
+    isRecoverable: options.isRecoverable
+  })
+}
+
+const defaultIsRecoverable = (error: unknown): boolean => {
+  if (error instanceof JobInvalidArgumentError || error instanceof JobCanceledError) {
+    return false
+  }
+  if (error instanceof JobTimedOutError || error instanceof JobAuditFailedError) {
+    return false
+  }
+  if (typeof error === "object" && error !== null && "_tag" in error) {
+    const tag = String(error._tag)
+    return tag !== "PermissionDenied" && tag !== "CapabilityNotHeld"
+  }
+  return true
 }
 
 const randomJobId = (): string => `job-${crypto.randomUUID()}`

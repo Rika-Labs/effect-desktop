@@ -124,12 +124,22 @@ starts the supplied Effect in a managed fiber, registers a running `job`
 resource, exposes a replayable typed progress stream, and returns a handle with
 `result`, `status`, and `cancel` effects.
 
-`run({ effect, ownerScope, progress, progressSchema, timeoutMs })` validates
-inputs before registration. Cancellation interrupts the job fiber and returns
-`Canceled` through the result channel; timeout interrupts the effect and returns
-`JobTimedOut`; ordinary failures are wrapped as `JobFailed` with the job and
-resource ids. Progress payloads are decoded through Effect Schema and redacted
-before replay or devtools-facing snapshots.
+`run({ effect, ownerScope, progress, progressSchema, timeoutMs, retry })`
+validates inputs before registration. Cancellation interrupts the job fiber and
+returns `Canceled` through the result channel; timeout interrupts the effect and
+returns `JobTimedOut`; ordinary failures are wrapped as `JobFailed` with the job
+and resource ids, attempt count, and last typed failure when available. Progress
+payloads are decoded through Effect Schema and redacted before replay or
+devtools-facing snapshots.
+
+Retry is explicit per job through `CrashRetryPolicy`. The exported
+`exponentialJittered`, `fixed`, and `oncePerMinute` constructors wrap Effect
+`Schedule` values with a max retry ceiling, optional max total duration, and a
+recoverability predicate.
+Recoverable failures emit redacted `JobRetrying` progress events and
+`audit/job-retrying` rows before sleeping for the scheduled delay and rerunning
+the effect. Non-recoverable failures such as `PermissionDenied` and
+`CapabilityNotHeld` bypass retry.
 
 ### ApprovalBroker
 
