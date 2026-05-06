@@ -60,12 +60,17 @@ const decodeResponseFrame = (
   frame: Uint8Array
 ): Effect.Effect<HostProtocolResponseEnvelope, HostProtocolError, never> =>
   Effect.gen(function* () {
-    const envelope = yield* Effect.try({
+    const parsed = yield* Effect.try({
       try: () => {
-        const parsed: unknown = JSON.parse(new TextDecoderCtor().decode(frame))
-        return decodeHostProtocolEnvelope(parsed)
+        return JSON.parse(new TextDecoderCtor().decode(frame)) as unknown
       },
       catch: (error) => makeHostProtocolBinaryDecodeError(formatUnknownError(error), request.method)
+    })
+
+    const envelope = yield* Effect.try({
+      try: () => decodeHostProtocolEnvelope(parsed),
+      catch: (error) =>
+        makeHostProtocolInvalidOutputError(request.method, formatUnknownError(error))
     })
 
     if (envelope.kind !== "response") {

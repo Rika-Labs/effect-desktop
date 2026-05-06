@@ -83,6 +83,22 @@ test("host protocol exchange maps malformed JSON frames to BinaryDecodeError", a
   })
 })
 
+test("host protocol exchange preserves decoded envelope shape failures as InvalidOutput", async () => {
+  const exchange = createHostProtocolExchange(
+    transport({
+      recv: async () => new TextEncoder().encode(JSON.stringify({ kind: "response" }))
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(exchange.request(request()))
+
+  expectFailure(exit, HostProtocolInvalidOutputError)
+  expect(getFailure(exit)).toMatchObject({
+    method: "host.ping",
+    tag: "InvalidOutput"
+  })
+})
+
 test("host protocol exchange preserves semantic response mismatches as InvalidOutput", async () => {
   const exchange = createHostProtocolExchange(
     transport({
