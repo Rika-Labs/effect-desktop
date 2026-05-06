@@ -228,9 +228,11 @@ const makeCrashReporterBridgeClient = (
   const client = Client({ CrashReporter: CrashReporterApi }, exchange, options).CrashReporter
   return Object.freeze({
     start: (input = {}) =>
-      input.enabled === undefined
-        ? client.start(new CrashReporterStartInput({}))
-        : client.start(new CrashReporterStartInput({ enabled: input.enabled })),
+      input.uploadHandler !== undefined
+        ? Effect.fail(unsupportedError("CrashReporter.start", "phase-22"))
+        : input.enabled === undefined
+          ? client.start(new CrashReporterStartInput({}))
+          : client.start(new CrashReporterStartInput({ enabled: input.enabled })),
     recordBreadcrumb: (input) => client.recordBreadcrumb(makeBreadcrumbInput(input)),
     flush: () => client.flush(),
     setUploadHandler: () =>

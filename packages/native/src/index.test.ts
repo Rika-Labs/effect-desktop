@@ -2094,9 +2094,13 @@ test("CrashReporter bridge client records breadcrumbs and defers upload handlers
   await Effect.runPromise(reporter.start())
   await Effect.runPromise(reporter.recordBreadcrumb({ category: "user", message: "clicked save" }))
   const flush = await Effect.runPromise(reporter.flush())
+  const startHandlerExit = await Effect.runPromiseExit(
+    reporter.start({ uploadHandler: () => Effect.void })
+  )
   const handlerExit = await Effect.runPromiseExit(reporter.setUploadHandler(() => Effect.void))
 
   expect(flush.flushed).toBe(1)
+  expectExitFailure(startHandlerExit, (error) => hasErrorTag(error, "Unsupported"))
   expectExitFailure(handlerExit, (error) => hasErrorTag(error, "Unsupported"))
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     ["CrashReporter.start", {}],
