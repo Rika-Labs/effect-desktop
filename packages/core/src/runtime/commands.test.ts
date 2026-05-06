@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Cause, Deferred, Effect, Exit, Fiber, Schema, Stream } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Option, Schema, Stream } from "effect"
 
 import { EventLogEntry, type EventLogStore } from "./event-log.js"
 import {
@@ -20,7 +20,7 @@ import {
   type PermissionRegistryApi
 } from "./permission-registry.js"
 import { makePermissionRegistry } from "./permission-registry.js"
-import { makeResourceRegistry, type ResourceRegistryApi } from "./resources.js"
+import { makeResourceRegistry, type ResourceId, type ResourceRegistryApi } from "./resources.js"
 
 class OpenInput extends Schema.Class<OpenInput>("CommandOpenInput")({
   path: Schema.String
@@ -239,6 +239,30 @@ test("CommandRegistry rolls back a reserved command when registration is interru
   expect(snapshots).toEqual([])
 })
 
+test("CommandRegistry resource cleanup does not remove a newer registration", async () => {
+  const disposeStarted = await Effect.runPromise(Deferred.make<void>())
+  const allowDispose = await Effect.runPromise(Deferred.make<void>())
+  const resources = delayedCleanupResourceRegistry(disposeStarted, allowDispose)
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  const registry = await Effect.runPromise(makeCommandRegistry(resources, permissions))
+
+  await Effect.runPromise(registry.register(registration("openProject")))
+  const snapshots = await Effect.runPromise(
+    Effect.gen(function* () {
+      const unregisterFiber = yield* registry
+        .unregister("openProject")
+        .pipe(Effect.forkChild({ startImmediately: true }))
+      yield* Deferred.await(disposeStarted)
+      yield* registry.register(registration("openProject"))
+      yield* Deferred.succeed(allowDispose, undefined)
+      yield* Fiber.join(unregisterFiber)
+      return yield* registry.list()
+    })
+  )
+
+  expect(snapshots.map((snapshot) => snapshot.id)).toEqual(["openProject"])
+})
+
 const registration = (id: string) => ({
   id,
   inputSchema: OpenInput,
@@ -282,6 +306,51 @@ const memoryAudit = (rows: EventLogEntry[]): EventLogStore => ({
   subscribe: () => Stream.empty,
   close: () => Effect.void
 })
+
+const delayedCleanupResourceRegistry = (
+  disposeStarted: Deferred.Deferred<void>,
+  allowDispose: Deferred.Deferred<void>
+): ResourceRegistryApi => {
+  const cleanupById = new Map<ResourceId, Effect.Effect<void, never, never>>()
+  let generated = 0
+
+  return {
+    register: (input) =>
+      Effect.sync(() => {
+        const id =
+          input.id !== undefined && !cleanupById.has(input.id)
+            ? input.id
+            : (`generated-${++generated}` as ResourceId)
+        cleanupById.set(id, input.dispose ?? Effect.void)
+
+        return {
+          kind: input.kind,
+          id,
+          generation: 0,
+          ownerScope: input.ownerScope,
+          state: input.state,
+          dispose: () => Effect.void
+        }
+      }),
+    get: () => Effect.succeed(Option.none()),
+    list: () => Effect.succeed({ entries: [] }),
+    dispose: (id) =>
+      Effect.gen(function* () {
+        const cleanup = cleanupById.get(id)
+        yield* Deferred.succeed(disposeStarted, undefined)
+        yield* Deferred.await(allowDispose)
+        cleanupById.delete(id)
+        if (cleanup !== undefined) {
+          yield* cleanup
+        }
+      }),
+    observe: () => Stream.empty,
+    declareScope: () => Effect.void,
+    closeScope: () => Effect.void,
+    share: () => Effect.die("unused"),
+    assertFresh: () => Effect.die("unused")
+  }
+}
 
 const auditTraceIds = (rows: readonly EventLogEntry[], type: string): readonly string[] =>
   rows.flatMap((row) => {

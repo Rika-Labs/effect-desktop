@@ -120,10 +120,16 @@ export const makeCommandRegistry = (
     const commands = yield* Ref.make<ReadonlyMap<string, StoredCommand>>(new Map())
     const now = options.now ?? Date.now
 
-    const remove = (id: string): Effect.Effect<StoredCommand | undefined, never, never> =>
+    const remove = (
+      id: string,
+      resourceId?: ResourceId
+    ): Effect.Effect<StoredCommand | undefined, never, never> =>
       Ref.modify(commands, (current) => {
         const command = current.get(id)
         if (command === undefined) {
+          return [undefined, current] as const
+        }
+        if (resourceId !== undefined && command.resourceId !== resourceId) {
           return [undefined, current] as const
         }
 
@@ -205,7 +211,10 @@ export class CommandRegistry extends Context.Service<CommandRegistry, CommandReg
 const registerCommand = <I, O>(
   commands: Ref.Ref<ReadonlyMap<string, StoredCommand>>,
   resources: ResourceRegistryApi,
-  remove: (id: string) => Effect.Effect<StoredCommand | undefined, never, never>,
+  remove: (
+    id: string,
+    resourceId?: ResourceId
+  ) => Effect.Effect<StoredCommand | undefined, never, never>,
   audit: EventLogStore | undefined,
   now: () => number,
   registration: CommandRegistration<I, O>
@@ -228,6 +237,7 @@ const registerCommand = <I, O>(
     const decodedId = yield* decodeCommandId(registration.id, "CommandRegistry.register")
     reservedId = decodedId
     const resourceId = commandResourceId(decodedId)
+    let registeredResourceId = resourceId
     const stored: StoredCommand = {
       id: decodedId,
       inputSchema: registration.inputSchema as Schema.Schema<unknown>,
@@ -263,9 +273,10 @@ const registerCommand = <I, O>(
       id: resourceId,
       ownerScope: registration.ownerScope,
       state: "registered",
-      dispose: remove(decodedId).pipe(Effect.asVoid)
+      dispose: Effect.suspend(() => remove(decodedId, registeredResourceId).pipe(Effect.asVoid))
     })
     handle = registeredHandle
+    registeredResourceId = registeredHandle.id
     yield* Ref.update(commands, (current) => {
       const command = current.get(decodedId)
       if (command === undefined || command.resourceId === registeredHandle.id) {
