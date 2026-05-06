@@ -1,5 +1,7 @@
 export * from "./app.js"
 export * from "./app-events.js"
+export * from "./clipboard.js"
+export * from "./contracts/clipboard.js"
 export * from "./dialog.js"
 export * from "./contracts/dialog.js"
 export * from "./menu.js"
