@@ -1,4 +1,5 @@
 mod assets;
+mod csp;
 mod methods;
 mod runtime;
 mod scheme;

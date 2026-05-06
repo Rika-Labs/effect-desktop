@@ -1,4 +1,4 @@
-use crate::assets;
+use crate::{assets, csp};
 use std::borrow::Cow;
 
 use wry::{
@@ -15,7 +15,6 @@ pub(crate) const APP_PROTOCOL_SOURCE_KIND: &str = "app-protocol";
 const APP_SCHEME: &str = "app";
 const APP_HOST: &str = "localhost";
 const APP_NONCE_PLACEHOLDER: &str = "__APP_NONCE__";
-const APP_CSP_TEMPLATE: &str = "default-src 'self'; script-src 'self' 'nonce-{N}'; style-src 'self' 'nonce-{N}'; connect-src 'self' app:; img-src 'self' app: data: https:; font-src 'self' app: data:; media-src 'self' app:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; worker-src 'self'";
 const NOT_FOUND_BODY: &str = "app asset not found";
 const TEXT_CONTENT_TYPE: &str = "text/plain; charset=utf-8";
 
@@ -26,7 +25,7 @@ pub(crate) fn register_app_scheme<'a>(builder: WebViewBuilder<'a>) -> WebViewBui
 }
 
 fn app_scheme_response(request: &Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
-    let nonce = CspNonce::mint();
+    let nonce = csp::CspNonce::mint();
 
     if request.uri().host() != Some(APP_HOST) {
         return app_not_found_response(&nonce);
@@ -43,7 +42,7 @@ fn app_scheme_response(request: &Request<Vec<u8>>) -> Response<Cow<'static, [u8]
     }
 }
 
-fn app_not_found_response(nonce: &CspNonce) -> Response<Cow<'static, [u8]>> {
+fn app_not_found_response(nonce: &csp::CspNonce) -> Response<Cow<'static, [u8]>> {
     app_response(
         StatusCode::NOT_FOUND,
         TEXT_CONTENT_TYPE,
@@ -56,8 +55,9 @@ fn app_response(
     status: StatusCode,
     content_type: &'static str,
     body: Cow<'static, [u8]>,
-    nonce: &CspNonce,
+    nonce: &csp::CspNonce,
 ) -> Response<Cow<'static, [u8]>> {
+    let policy = csp::CspPolicy::default_for_nonce(nonce);
     let mut response = Response::new(body);
     *response.status_mut() = status;
     response
@@ -65,7 +65,7 @@ fn app_response(
         .insert(CONTENT_TYPE, HeaderValue::from_static(content_type));
     response.headers_mut().insert(
         CONTENT_SECURITY_POLICY,
-        HeaderValue::from_str(&nonce.policy()).expect("generated CSP should be a valid header"),
+        HeaderValue::from_str(policy.as_str()).expect("generated CSP should be a valid header"),
     );
     response
 }
@@ -73,7 +73,7 @@ fn app_response(
 fn csp_body(
     content_type: &'static str,
     body: &'static [u8],
-    nonce: &CspNonce,
+    nonce: &csp::CspNonce,
 ) -> Cow<'static, [u8]> {
     if !content_type.starts_with("text/html") {
         return Cow::Borrowed(body);
@@ -89,34 +89,13 @@ fn csp_body(
     )
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct CspNonce(String);
-
-impl CspNonce {
-    fn mint() -> Self {
-        Self(uuid::Uuid::new_v4().simple().to_string())
-    }
-
-    #[cfg(test)]
-    fn fixed(value: &str) -> Self {
-        Self(value.to_owned())
-    }
-
-    fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    fn policy(&self) -> String {
-        APP_CSP_TEMPLATE.replace("{N}", self.as_str())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
-        app_scheme_response, csp_body, CspNonce, APP_CSP_TEMPLATE, APP_NONCE_PLACEHOLDER,
-        APP_PROTOCOL_SOURCE_KIND, APP_URL, TEXT_CONTENT_TYPE,
+        app_scheme_response, csp_body, APP_NONCE_PLACEHOLDER, APP_PROTOCOL_SOURCE_KIND, APP_URL,
+        TEXT_CONTENT_TYPE,
     };
+    use crate::csp::{CspNonce, CspPolicy};
     use wry::http::{
         header::{CONTENT_SECURITY_POLICY, CONTENT_TYPE},
         HeaderValue, Request, StatusCode,
@@ -211,7 +190,10 @@ mod tests {
             response.headers().get(CONTENT_SECURITY_POLICY),
             Some(
                 &HeaderValue::from_str(
-                    &APP_CSP_TEMPLATE.replace("{N}", csp_nonce_from_header(&response).as_str())
+                    CspPolicy::default_for_nonce(&CspNonce::fixed(
+                        csp_nonce_from_header(&response).as_str()
+                    ))
+                    .as_str()
                 )
                 .expect("expected CSP should be a valid header")
             )
@@ -236,7 +218,10 @@ mod tests {
             response.headers().get(CONTENT_SECURITY_POLICY),
             Some(
                 &HeaderValue::from_str(
-                    &APP_CSP_TEMPLATE.replace("{N}", csp_nonce_from_header(&response).as_str())
+                    CspPolicy::default_for_nonce(&CspNonce::fixed(
+                        csp_nonce_from_header(&response).as_str()
+                    ))
+                    .as_str()
                 )
                 .expect("expected CSP should be a valid header")
             )
@@ -269,7 +254,9 @@ mod tests {
     }
 
     fn expected_csp(body: &[u8]) -> String {
-        APP_CSP_TEMPLATE.replace("{N}", html_nonce(body))
+        CspPolicy::default_for_nonce(&CspNonce::fixed(html_nonce(body)))
+            .as_str()
+            .to_owned()
     }
 
     fn html_nonce(body: &[u8]) -> &str {
