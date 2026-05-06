@@ -1,4 +1,13 @@
-import { mkdir, readFile, rm, rmdir, stat as nodeStat, unlink, writeFile } from "node:fs/promises"
+import {
+  lstat,
+  mkdir,
+  readFile,
+  rm,
+  rmdir,
+  stat as nodeStat,
+  unlink,
+  writeFile
+} from "node:fs/promises"
 
 import {
   HostProtocolDiskFullError,
@@ -153,7 +162,7 @@ export const FilesystemLive = Layer.effect(Filesystem)(makeFilesystem())
 const NodeFilesystemAdapter: FilesystemAdapter = {
   readFile,
   writeFile,
-  stat: nodeStat,
+  stat: lstat,
   mkdir: (path, options) => mkdir(path, options).then(() => undefined),
   remove: (path, options) =>
     options?.recursive === true
@@ -162,7 +171,7 @@ const NodeFilesystemAdapter: FilesystemAdapter = {
 }
 
 const removeSinglePath = async (path: string): Promise<void> => {
-  const stats = await nodeStat(path)
+  const stats = await lstat(path)
   if (stats.isDirectory()) {
     await rmdir(path)
     return

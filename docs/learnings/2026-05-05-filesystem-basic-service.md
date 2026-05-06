@@ -28,7 +28,7 @@ flowchart LR
 
 ## What surfaced in review
 
-No PR review threads or comments were present. The local review found one implementation gap before commit: trace spans were specified but not present in the first draft, so each public operation was wrapped with `Effect.withSpan` before the final validation run.
+Two PR review threads were addressed. Both pointed at the same boundary mistake: `Filesystem.stat` and non-recursive `Filesystem.remove` originally used following `stat`, which hid symlink identity. The fix switched the default adapter's stat path and remove classification to `lstat`, then added regression tests for symlink stat results and directory-symlink removal.
 
 ## First-principles postmortem
 
@@ -40,7 +40,7 @@ The app author's local incentive is to import `node:fs/promises` directly becaus
 
 ## Non-obvious lesson
 
-Bun's Node compatibility can diverge at option edges that look harmless. On this platform, forcing a non-recursive remove option produced an `EFAULT` from `fs.rm`, while expressing the primitive directly as `stat` plus `rmdir` or `unlink` avoided the failure and made the operation's intent clearer. The deeper lesson is to model the operation the framework owns, not blindly mirror the host API's option surface.
+Bun's Node compatibility and filesystem link semantics can both diverge at edges that look harmless. On this platform, forcing a non-recursive remove option produced an `EFAULT` from `fs.rm`, while expressing the primitive directly as `lstat` plus `rmdir` or `unlink` avoided the failure and preserved symlink identity. The deeper lesson is to model the operation the framework owns, not blindly mirror the host API's option surface or default to following path resolution.
 
 ## Reproducible pattern (if any)
 
@@ -49,7 +49,8 @@ When introducing runtime services over throwing platform APIs:
 1. Keep the public Effect service narrow.
 2. Validate before touching the adapter.
 3. Convert platform failures immediately into the closed bridge error registry.
-4. Make the adapter substitutable so hard-to-trigger OS failures can be tested as values.
+4. Use non-following metadata calls when the public result includes symlink identity.
+5. Make the adapter substitutable so hard-to-trigger OS failures can be tested as values.
 
 ## AGENTS.md amendment candidate (if any)
 

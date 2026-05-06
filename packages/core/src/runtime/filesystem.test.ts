@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, stat as nodeStat } from "node:fs/promises"
+import { mkdtemp, readFile, stat as nodeStat, symlink } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 
@@ -33,6 +33,19 @@ test("Filesystem stat returns kind, size, and modified time", async () => {
   expect(result.modifiedAtMs).toBeGreaterThan(0)
 })
 
+test("Filesystem stat reports symlink paths without following them", async () => {
+  const directory = await tempDirectory()
+  const target = join(directory, "target")
+  const link = join(directory, "link")
+  const service = await Effect.runPromise(makeFilesystem())
+
+  await Effect.runPromise(service.mkdir(target))
+  await symlink(target, link)
+  const result = await Effect.runPromise(service.stat(link))
+
+  expect(result.kind).toBe("symlink")
+})
+
 test("Filesystem mkdir and remove perform basic directory operations", async () => {
   const directory = await tempDirectory()
   const path = join(directory, "nested")
@@ -44,6 +57,22 @@ test("Filesystem mkdir and remove perform basic directory operations", async () 
   await Effect.runPromise(service.remove(path))
   const exit = await Effect.runPromiseExit(service.stat(path))
   expectFailureTag(exit, "FileNotFound")
+})
+
+test("Filesystem remove deletes directory symlinks without following them", async () => {
+  const directory = await tempDirectory()
+  const target = join(directory, "target")
+  const link = join(directory, "link")
+  const service = await Effect.runPromise(makeFilesystem())
+
+  await Effect.runPromise(service.mkdir(target))
+  await symlink(target, link)
+
+  await Effect.runPromise(service.remove(link))
+
+  const linkExit = await Effect.runPromiseExit(service.stat(link))
+  expectFailureTag(linkExit, "FileNotFound")
+  expect((await nodeStat(target)).isDirectory()).toBe(true)
 })
 
 test("Filesystem returns FileNotFound for missing paths", async () => {
