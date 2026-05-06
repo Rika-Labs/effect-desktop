@@ -30,6 +30,12 @@ Runtime inspector projections for framework primitives: windows, bridge calls, s
 - `observe()` emits an initial redacted snapshot and refreshes at the devtools frame interval.
 - Trace rows are grouped by `traceId`; when tracing is disabled the traces array is empty.
 
+`PerformanceOverlay` is a read-only Effect service over telemetry histograms:
+
+- `list()` returns startup phase rows, bridge p99 rows by contract tag, and the renderer frame row.
+- Each row includes the current p99 value, budget, ratio, status, and bounded samples for a sparkline.
+- Budgets follow `docs/SPEC.md` §21.2/§21.6; the overlay only projects metrics and does not record its own measurements.
+
 `DevtoolsShell` owns the devtools listener lifecycle:
 
 - `start({ profile, stateDir, devtoolsFlag, securityDevtoolsInProd })` starts only in dev or when both production gates are present.

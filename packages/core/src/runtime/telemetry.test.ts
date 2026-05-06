@@ -87,7 +87,7 @@ test("Telemetry records trace spans in a bounded ring and can disable tracing ex
 test("Telemetry aggregates counters and histograms by metric name and tags", async () => {
   let timestamp = 1_000
   const telemetry = await Effect.runPromise(
-    makeTelemetry({ maxMetrics: 2, now: () => timestamp++ })
+    makeTelemetry({ maxHistogramSamples: 2, maxMetrics: 2, now: () => timestamp++ })
   )
   await Effect.runPromise(
     telemetry.incrementCounter({
@@ -104,6 +104,7 @@ test("Telemetry aggregates counters and histograms by metric name and tags", asy
   )
   await Effect.runPromise(telemetry.recordHistogram({ name: "bridge.latency", value: 10 }))
   await Effect.runPromise(telemetry.recordHistogram({ name: "bridge.latency", value: 30 }))
+  await Effect.runPromise(telemetry.recordHistogram({ name: "bridge.latency", value: 20 }))
   await Effect.runPromise(telemetry.incrementCounter({ name: "process.spawn" }))
 
   const metrics = await Effect.runPromise(telemetry.listMetrics())
@@ -111,10 +112,16 @@ test("Telemetry aggregates counters and histograms by metric name and tags", asy
   expect(metrics.map((metric) => metric.name).sort()).toEqual(["bridge.latency", "process.spawn"])
   expect(metrics.find((metric) => metric.name === "bridge.latency")).toMatchObject({
     kind: "histogram",
-    count: 2,
-    sum: 40,
+    count: 3,
+    sum: 60,
     min: 10,
     max: 30
+  })
+  expect(metrics.find((metric) => metric.name === "bridge.latency")).toMatchObject({
+    p50: 30,
+    p95: 30,
+    p99: 30,
+    samples: [30, 20]
   })
 })
 

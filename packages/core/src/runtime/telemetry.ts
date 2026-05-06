@@ -84,6 +84,10 @@ export interface TelemetryHistogramSnapshot extends TelemetryMetricBase {
   readonly sum: number
   readonly min: number
   readonly max: number
+  readonly p50: number
+  readonly p95: number
+  readonly p99: number
+  readonly samples: readonly number[]
 }
 
 export type TelemetryMetricSnapshot = TelemetryCounterSnapshot | TelemetryHistogramSnapshot
@@ -117,6 +121,7 @@ export class TelemetryInvalidArgumentError extends Data.TaggedError("InvalidArgu
 export interface TelemetryOptions {
   readonly maxLogs?: number
   readonly maxMetrics?: number
+  readonly maxHistogramSamples?: number
   readonly traceRingSize?: number
   readonly tracingEnabled?: boolean
   readonly now?: () => number
@@ -125,6 +130,7 @@ export interface TelemetryOptions {
 
 const DEFAULT_MAX_LOGS = 1_024
 const DEFAULT_MAX_METRICS = 1_024
+const DEFAULT_MAX_HISTOGRAM_SAMPLES = 1_024
 const DEFAULT_TRACE_RING_SIZE = 10_000
 
 export const makeTelemetry = (
@@ -136,6 +142,11 @@ export const makeTelemetry = (
       options.maxMetrics,
       DEFAULT_MAX_METRICS,
       "maxMetrics"
+    )
+    const maxHistogramSamples = yield* positiveIntegerOption(
+      options.maxHistogramSamples,
+      DEFAULT_MAX_HISTOGRAM_SAMPLES,
+      "maxHistogramSamples"
     )
     const traceRingSize = yield* positiveIntegerOption(
       options.traceRingSize,
@@ -189,7 +200,12 @@ export const makeTelemetry = (
         ),
       recordHistogram: (input) =>
         SubscriptionRef.update(metrics, (current) =>
-          upsertMetric(current, toHistogramSnapshot(input, now()), maxMetrics)
+          upsertMetric(
+            current,
+            toHistogramSnapshot(input, now(), maxHistogramSamples),
+            maxMetrics,
+            maxHistogramSamples
+          )
         ),
       listMetrics,
       observeMetrics: () =>
@@ -271,7 +287,8 @@ const toCounterSnapshot = (
 
 const toHistogramSnapshot = (
   input: TelemetryHistogramInput,
-  timestamp: number
+  timestamp: number,
+  maxSamples: number
 ): TelemetryHistogramSnapshot => ({
   kind: "histogram",
   name: input.name,
@@ -280,18 +297,23 @@ const toHistogramSnapshot = (
   count: 1,
   sum: input.value,
   min: input.value,
-  max: input.value
+  max: input.value,
+  p50: input.value,
+  p95: input.value,
+  p99: input.value,
+  samples: [input.value].slice(-maxSamples)
 })
 
 const upsertMetric = (
   current: ReadonlyMap<string, TelemetryMetricSnapshot>,
   nextMetric: TelemetryMetricSnapshot,
-  maxMetrics: number
+  maxMetrics: number,
+  maxHistogramSamples = DEFAULT_MAX_HISTOGRAM_SAMPLES
 ): ReadonlyMap<string, TelemetryMetricSnapshot> => {
   const key = metricKey(nextMetric.name, nextMetric.tags)
   const existing = current.get(key)
   const next = new Map(current)
-  next.set(key, mergeMetric(existing, nextMetric))
+  next.set(key, mergeMetric(existing, nextMetric, maxHistogramSamples))
   while (next.size > maxMetrics) {
     const oldest = oldestMetricKey(next)
     if (oldest === undefined) {
@@ -318,7 +340,8 @@ const oldestMetricKey = (
 
 const mergeMetric = (
   existing: TelemetryMetricSnapshot | undefined,
-  next: TelemetryMetricSnapshot
+  next: TelemetryMetricSnapshot,
+  maxHistogramSamples: number
 ): TelemetryMetricSnapshot => {
   if (existing === undefined || existing.kind !== next.kind) {
     return next
@@ -333,15 +356,27 @@ const mergeMetric = (
   }
 
   if (existing.kind === "histogram" && next.kind === "histogram") {
+    const samples = [...existing.samples, ...next.samples].slice(-maxHistogramSamples)
     return {
       ...existing,
       count: existing.count + next.count,
       sum: existing.sum + next.sum,
       min: Math.min(existing.min, next.min),
       max: Math.max(existing.max, next.max),
+      p50: percentile(samples, 0.5),
+      p95: percentile(samples, 0.95),
+      p99: percentile(samples, 0.99),
+      samples,
       updatedAt: next.updatedAt
     }
   }
 
   return next
+}
+
+const percentile = (samples: readonly number[], percentile: number): number => {
+  const sorted = samples.toSorted((left, right) => left - right)
+  const lastIndex = sorted.length - 1
+  const index = Math.min(lastIndex, Math.max(0, Math.ceil(lastIndex * percentile)))
+  return sorted[index] ?? 0
 }
