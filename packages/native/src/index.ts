@@ -1,5 +1,7 @@
 export * from "./app.js"
 export * from "./app-events.js"
+export * from "./dialog.js"
+export * from "./contracts/dialog.js"
 export * from "./menu.js"
 export * from "./webview.js"
 export * from "./window.js"
