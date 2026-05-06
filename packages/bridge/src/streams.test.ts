@@ -121,10 +121,15 @@ test("Streams rejects malformed chunks as typed HostProtocol failures", async ()
 })
 
 test("Streams applies error overflow as a BackpressureOverflow terminal frame", async () => {
+  const registry = makeBridgeStreamRegistry()
   const ProjectApi = makeProjectApi("ProjectApi.StreamOverflow", {
     backpressure: { strategy: "buffer", size: 1, overflow: "error" }
   })
-  const runtime = Streams(
+  const runtime = Streams.withOptions(
+    {
+      nextStreamId: () => "stream-overflow",
+      registry
+    },
     ProjectApi.layer({
       watch: () =>
         Stream.make(
@@ -144,6 +149,122 @@ test("Streams applies error overflow as a BackpressureOverflow terminal frame", 
   )
 
   expectFailureTag(exit, "BackpressureOverflow")
+  expect(getFailureError(exit)).toMatchObject({
+    lostFrames: 1,
+    policy: "error",
+    tag: "BackpressureOverflow"
+  })
+  expect(await Effect.runPromise(registry.snapshot())).toEqual([
+    {
+      backpressure: {
+        evictedFrames: 1,
+        overflow: "error",
+        queueCapacity: 1,
+        queueDepth: 0
+      },
+      generation: 0,
+      state: "terminal",
+      streamId: "stream-overflow",
+      terminal: "error",
+      terminalAt: expect.any(Number)
+    }
+  ])
+})
+
+test("Streams records dropNewest overflow metrics without failing publishers", async () => {
+  const registry = makeBridgeStreamRegistry()
+  const ProjectApi = makeProjectApi("ProjectApi.StreamDropNewest", {
+    backpressure: { strategy: "drop", size: 2, overflow: "dropNewest" }
+  })
+  const runtime = Streams.withOptions(
+    {
+      nextStreamId: () => "stream-drop-newest",
+      registry
+    },
+    ProjectApi.layer({
+      watch: () =>
+        Stream.make(
+          new WatchEvent({ sequence: 1, path: "a" }),
+          new WatchEvent({ sequence: 2, path: "b" }),
+          new WatchEvent({ sequence: 3, path: "c" }),
+          new WatchEvent({ sequence: 4, path: "d" }),
+          new WatchEvent({ sequence: 5, path: "e" })
+        )
+    })
+  )
+  const client = Client({ project: ProjectApi }, streamExchange(runtime, []))
+
+  const exit = await Effect.runPromiseExit(
+    client.project.watch(new WatchInput({ projectId: "project-1" })).pipe(
+      Stream.tap(() => Effect.sleep("1 second")),
+      Stream.runCollect
+    )
+  )
+
+  expect(Exit.isSuccess(exit)).toBe(true)
+  expect(await Effect.runPromise(registry.snapshot())).toEqual([
+    {
+      backpressure: {
+        evictedFrames: 3,
+        overflow: "dropNewest",
+        queueCapacity: 2,
+        queueDepth: 0
+      },
+      generation: 0,
+      state: "terminal",
+      streamId: "stream-drop-newest",
+      terminal: "complete",
+      terminalAt: expect.any(Number)
+    }
+  ])
+})
+
+test("Streams records dropOldest overflow metrics while keeping the stream successful", async () => {
+  const registry = makeBridgeStreamRegistry()
+  const ProjectApi = makeProjectApi("ProjectApi.StreamDropOldest", {
+    backpressure: { strategy: "drop", size: 2, overflow: "dropOldest" }
+  })
+  const runtime = Streams.withOptions(
+    {
+      nextStreamId: () => "stream-drop-oldest",
+      registry
+    },
+    ProjectApi.layer({
+      watch: () =>
+        Stream.make(
+          new WatchEvent({ sequence: 1, path: "a" }),
+          new WatchEvent({ sequence: 2, path: "b" }),
+          new WatchEvent({ sequence: 3, path: "c" }),
+          new WatchEvent({ sequence: 4, path: "d" }),
+          new WatchEvent({ sequence: 5, path: "e" })
+        )
+    })
+  )
+  const client = Client({ project: ProjectApi }, streamExchange(runtime, []))
+
+  const exit = await Effect.runPromiseExit(
+    client.project.watch(new WatchInput({ projectId: "project-1" })).pipe(
+      Stream.tap(() => Effect.sleep("1 second")),
+      Stream.runCollect
+    )
+  )
+
+  expect(Exit.isSuccess(exit)).toBe(true)
+  expect(await Effect.runPromise(registry.snapshot())).toEqual([
+    {
+      backpressure: {
+        evictedFrames: 3,
+        overflow: "dropOldest",
+        queueCapacity: 2,
+        queueDepth: 0
+      },
+      generation: 0,
+      state: "terminal",
+      streamId: "stream-drop-oldest",
+      terminal: "complete",
+      terminalAt: expect.any(Number)
+    }
+  ])
 })
 
 test("Streams records one terminal state and expires it after cleanup grace", async () => {
@@ -170,6 +291,12 @@ test("Streams records one terminal state and expires it after cleanup grace", as
   expect(terminalSnapshot).toEqual([
     {
       generation: 0,
+      backpressure: {
+        evictedFrames: 0,
+        overflow: "error",
+        queueCapacity: 1024,
+        queueDepth: 0
+      },
       state: "terminal",
       streamId: "stream-lifecycle",
       terminal: "complete",
@@ -272,6 +399,12 @@ test("Streams cancellation interrupts the producer and emits a closed terminal",
   expect(await Effect.runPromise(registry.snapshot())).toEqual([
     {
       generation: 0,
+      backpressure: {
+        evictedFrames: 0,
+        overflow: "error",
+        queueCapacity: 1024,
+        queueDepth: 0
+      },
       state: "terminal",
       streamId: "stream-cancel",
       terminal: "closed",
@@ -286,7 +419,7 @@ type ProjectApiSpec = {
     readonly output: ReturnType<typeof makeWatchStream>
     readonly error: typeof WatchError
     readonly backpressure?: {
-      readonly strategy: "buffer"
+      readonly strategy: "buffer" | "drop"
       readonly size: number
       readonly overflow: "error" | "dropOldest" | "dropNewest" | "block"
     }
@@ -358,6 +491,17 @@ const expectFailureTag = (exit: Exit.Exit<unknown, unknown>, tag: string): void 
       expect((fail.error as { readonly tag?: unknown }).tag).toBe(tag)
     }
   }
+}
+
+const getFailureError = (exit: Exit.Exit<unknown, unknown>): unknown => {
+  expect(Exit.isFailure(exit)).toBe(true)
+
+  if (Exit.isFailure(exit)) {
+    const fail = exit.cause.reasons.find(Cause.isFailReason)
+    return fail?.error
+  }
+
+  return undefined
 }
 
 const waitFor = async (predicate: () => boolean): Promise<void> => {
