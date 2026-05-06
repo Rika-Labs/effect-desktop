@@ -21,7 +21,13 @@ import {
   type PermissionRegistryApi
 } from "./permission-registry.js"
 import { makePermissionRegistry } from "./permission-registry.js"
-import { makeResourceRegistry, type ResourceId, type ResourceRegistryApi } from "./resources.js"
+import {
+  makeResourceRegistry,
+  type RegisterResourceInput,
+  type ResourceHandle,
+  type ResourceId,
+  type ResourceRegistryApi
+} from "./resources.js"
 
 class OpenInput extends Schema.Class<OpenInput>("CommandOpenInput")({
   path: Schema.String
@@ -288,6 +294,32 @@ test("CommandRegistry fails registration when the reservation is removed before 
   expect(snapshots).toEqual([])
 })
 
+test("CommandRegistry fails registration when its reservation was replaced before commit", async () => {
+  const firstRegisterStarted = await Effect.runPromise(Deferred.make<void>())
+  const allowFirstRegister = await Effect.runPromise(Deferred.make<void>())
+  const resources = firstRegisterStalledResourceRegistry(firstRegisterStarted, allowFirstRegister)
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  const registry = await Effect.runPromise(makeCommandRegistry(resources, permissions))
+
+  const { firstExit, snapshots } = await Effect.runPromise(
+    Effect.gen(function* () {
+      const firstRegister = yield* registry
+        .register(registration("openProject"))
+        .pipe(Effect.forkChild({ startImmediately: true }))
+      yield* Deferred.await(firstRegisterStarted)
+      yield* registry.unregister("openProject")
+      yield* registry.register(registration("openProject"))
+      yield* Deferred.succeed(allowFirstRegister, undefined)
+      const firstExit = yield* Fiber.await(firstRegister)
+      const snapshots = yield* registry.list()
+      return { firstExit, snapshots }
+    })
+  )
+
+  expectFailure(firstExit, CommandRegistryRegistrationLostError)
+  expect(snapshots.map((snapshot) => snapshot.id)).toEqual(["openProject"])
+})
+
 const registration = (id: string) => ({
   id,
   inputSchema: OpenInput,
@@ -409,6 +441,62 @@ const stalledRegisterResourceRegistry = (
       Effect.gen(function* () {
         const cleanup = cleanupById.get(id)
         cleanupById.delete(id)
+        if (cleanup !== undefined) {
+          yield* cleanup
+        }
+      }),
+    observe: () => Stream.empty,
+    declareScope: () => Effect.void,
+    closeScope: () => Effect.void,
+    share: () => Effect.die("unused"),
+    assertFresh: () => Effect.die("unused")
+  }
+}
+
+const firstRegisterStalledResourceRegistry = (
+  firstRegisterStarted: Deferred.Deferred<void>,
+  allowFirstRegister: Deferred.Deferred<void>
+): ResourceRegistryApi => {
+  const cleanupById = new Map<ResourceId, Effect.Effect<void, never, never>>()
+  const generationById = new Map<ResourceId, number>()
+  let registerCount = 0
+
+  const registerNow = <Kind extends string, State extends string>(
+    input: RegisterResourceInput<Kind, State>
+  ): Effect.Effect<ResourceHandle<Kind, State>, never, never> =>
+    Effect.sync(() => {
+      const id = input.id ?? ("generated-1" as ResourceId)
+      const generation = generationById.get(id) ?? 0
+      cleanupById.set(id, input.dispose ?? Effect.void)
+
+      return {
+        kind: input.kind,
+        id,
+        generation,
+        ownerScope: input.ownerScope,
+        state: input.state,
+        dispose: () => Effect.void
+      }
+    })
+
+  return {
+    register: (input) =>
+      Effect.gen(function* () {
+        registerCount += 1
+        if (registerCount === 1) {
+          yield* Deferred.succeed(firstRegisterStarted, undefined)
+          yield* Deferred.await(allowFirstRegister)
+        }
+
+        return yield* registerNow(input)
+      }),
+    get: () => Effect.succeed(Option.none()),
+    list: () => Effect.succeed({ entries: [] }),
+    dispose: (id) =>
+      Effect.gen(function* () {
+        const cleanup = cleanupById.get(id)
+        cleanupById.delete(id)
+        generationById.set(id, (generationById.get(id) ?? 0) + 1)
         if (cleanup !== undefined) {
           yield* cleanup
         }
