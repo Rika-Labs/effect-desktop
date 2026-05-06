@@ -87,6 +87,11 @@ export interface CspPolicy {
   readonly justification?: string
 }
 
+export interface CspWeakening {
+  readonly directive: string
+  readonly reason: string
+}
+
 export interface RedactionPolicy {
   readonly defaultPatternEnabled?: boolean
 }
@@ -154,6 +159,84 @@ type Rule = (context: RuleContext) => readonly ProductionCheckViolation[]
 export const defineDesktopConfig = <Config extends ProductionSecurityConfig>(
   config: Config
 ): Config => config
+
+export const DEFAULT_CSP_NONCE_PLACEHOLDER = "{N}"
+
+export const DEFAULT_CSP_DIRECTIVES: readonly [directive: string, values: readonly string[]][] = [
+  ["default-src", ["'self'"]],
+  ["script-src", ["'self'", "'nonce-{N}'"]],
+  ["style-src", ["'self'", "'nonce-{N}'"]],
+  ["connect-src", ["'self'", "app:"]],
+  ["img-src", ["'self'", "app:", "data:", "https:"]],
+  ["font-src", ["'self'", "app:", "data:"]],
+  ["media-src", ["'self'", "app:"]],
+  ["object-src", ["'none'"]],
+  ["frame-ancestors", ["'none'"]],
+  ["base-uri", ["'self'"]],
+  ["form-action", ["'self'"]],
+  ["worker-src", ["'self'"]]
+]
+
+export const renderDefaultCsp = (nonce: string = DEFAULT_CSP_NONCE_PLACEHOLDER): string =>
+  renderCspDirectives(DEFAULT_CSP_DIRECTIVES, nonce)
+
+export const renderEffectiveCsp = (
+  csp: CspPolicy | undefined,
+  nonce: string = DEFAULT_CSP_NONCE_PLACEHOLDER
+): string => {
+  const overrides = parseCspPolicy(csp?.policy)
+  const directives = DEFAULT_CSP_DIRECTIVES.map(
+    ([directive, defaultValues]): [string, readonly string[]] => [
+      directive,
+      overrides.get(directive) ?? defaultValues
+    ]
+  )
+
+  return renderCspDirectives(directives, nonce)
+}
+
+export const cspWeakenings = (csp: CspPolicy): readonly CspWeakening[] => {
+  const weakenings: CspWeakening[] = []
+  if (csp.disabled === true) {
+    weakenings.push({
+      directive: "security.csp.disabled",
+      reason: "content security policy is disabled"
+    })
+  }
+
+  const overrides = parseCspPolicy(csp.policy)
+  for (const [directive, overrideValues] of overrides) {
+    const forbidden = overrideValues.find(
+      (value) => value === "'unsafe-inline'" || value === "'unsafe-eval'"
+    )
+    if (forbidden !== undefined) {
+      weakenings.push({
+        directive,
+        reason: `${directive} includes forbidden source ${forbidden}`
+      })
+      continue
+    }
+
+    const defaultValues = defaultCspDirectiveValues(directive)
+    if (defaultValues === undefined) {
+      weakenings.push({
+        directive,
+        reason: `${directive} is not part of the default production CSP`
+      })
+      continue
+    }
+
+    const added = overrideValues.find((value) => !defaultValues.has(normalizeCspValue(value)))
+    if (added !== undefined) {
+      weakenings.push({
+        directive,
+        reason: `${directive} adds source ${added}`
+      })
+    }
+  }
+
+  return weakenings
+}
 
 export const runProductionCheck = (
   input: ProductionCheckInput
@@ -365,9 +448,14 @@ const appProtocolTraversalRule: Rule = ({ config, configPath }) =>
 
 const weakenedCspRule: Rule = ({ config, configPath }) => {
   const csp = config.security?.csp
-  if (csp === undefined || !weakensCsp(csp)) {
+  if (csp === undefined) {
     return []
   }
+  const weakenings = cspWeakenings(csp)
+  if (weakenings.length === 0) {
+    return []
+  }
+  const reasons = weakenings.map((weakening) => weakening.reason).join("; ")
   const location = configLocation(configPath, "security.csp")
   if (csp.acknowledgeWeakening === true && isNonEmpty(csp.justification)) {
     return [
@@ -375,7 +463,7 @@ const weakenedCspRule: Rule = ({ config, configPath }) => {
         rule: "weakened-csp",
         severity: "acknowledged",
         location,
-        message: "content security policy is weakened but explicitly acknowledged",
+        message: `content security policy is weakened but explicitly acknowledged: ${reasons}`,
         fix: "Track this exception in the build report and remove the weakening before release.",
         justification: csp.justification
       })
@@ -385,8 +473,8 @@ const weakenedCspRule: Rule = ({ config, configPath }) => {
     violation({
       rule: "weakened-csp",
       location,
-      message: "content security policy is disabled or contains unsafe-inline/unsafe-eval",
-      fix: "Remove the weakening, or set acknowledgeWeakening with a non-empty justification."
+      message: `content security policy weakens the production default: ${reasons}`,
+      fix: "Tighten the policy, or set acknowledgeWeakening with a non-empty justification."
     })
   ]
 }
@@ -441,12 +529,6 @@ const redactionDefaultRule: Rule = ({ config, configPath }) =>
       ]
     : []
 
-const weakensCsp = (csp: CspPolicy): boolean =>
-  csp.disabled === true ||
-  (csp.policy ?? "")
-    .split(";")
-    .some((directive) => /\bunsafe-inline\b|\bunsafe-eval\b/u.test(directive))
-
 const scanLines = (
   file: ProductionCheckFile,
   pattern: RegExp
@@ -488,6 +570,48 @@ const hasScopedList = (values: readonly string[] | undefined): boolean =>
 
 const isNonEmpty = (value: string | undefined): value is string =>
   value !== undefined && value.trim().length > 0
+
+const renderCspDirectives = (
+  directives: readonly [directive: string, values: readonly string[]][],
+  nonce: string
+): string =>
+  directives
+    .map(([directive, values]) =>
+      [
+        directive,
+        ...values.map((value) => value.replace(DEFAULT_CSP_NONCE_PLACEHOLDER, nonce))
+      ].join(" ")
+    )
+    .join("; ")
+
+const parseCspPolicy = (policy: string | undefined): ReadonlyMap<string, readonly string[]> => {
+  if (policy === undefined) {
+    return new Map()
+  }
+
+  const directives = new Map<string, readonly string[]>()
+  for (const rawDirective of policy.split(";")) {
+    const parts = rawDirective.trim().split(/\s+/u).filter(isNonEmpty)
+    const [directive, ...values] = parts
+    if (directive !== undefined) {
+      directives.set(directive, values)
+    }
+  }
+
+  return directives
+}
+
+const defaultCspDirectiveValues = (directive: string): ReadonlySet<string> | undefined => {
+  const entry = DEFAULT_CSP_DIRECTIVES.find(([defaultDirective]) => defaultDirective === directive)
+  if (entry === undefined) {
+    return undefined
+  }
+
+  return new Set(entry[1].map(normalizeCspValue))
+}
+
+const normalizeCspValue = (value: string): string =>
+  value.replace(/'nonce-[^']+'|'nonce-\{N\}'/u, "'nonce-{N}'")
 
 const formatLocation = (location: ProductionCheckLocation): string => {
   const line = location.line === undefined ? "" : `:${location.line}`
