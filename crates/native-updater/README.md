@@ -14,4 +14,5 @@ Dependencies are intentionally small:
 - `ed25519-dalek` provides strict Ed25519 verification instead of hand-rolled signature math;
 - `semver` compares manifest, installed, floor, and rollback-window versions according to release version semantics;
 - `base64` decodes the `ed25519:<base64>` public key and signature envelope;
-- `serde` and `serde_json` parse the manifest shape and canonical JSON values.
+- `serde` and `serde_json` parse the manifest shape and canonical JSON values;
+- `sha2` verifies staged artifact bytes before the commit rename.

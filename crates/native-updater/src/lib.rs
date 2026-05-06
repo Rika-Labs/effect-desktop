@@ -1,10 +1,17 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
 use ed25519_dalek::{Signature, VerifyingKey};
 use semver::Version;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 pub const TRUST_WINDOW: u32 = 2;
+pub const RESTART_DEADLINE_MS: u64 = 5_000;
+pub const STALE_NOTARIZATION_MS: u64 = 30 * 24 * 60 * 60 * 1_000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrustAnchor {
@@ -102,6 +109,84 @@ pub enum VersionSource {
     Manifest,
     MinVersion,
     MaxVersion,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstallPlan {
+    pub prior_version: String,
+    pub target_version: String,
+    pub expected_bytes: u64,
+    pub expected_sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstallPaths {
+    pub current_bundle: PathBuf,
+    pub temp_dir: PathBuf,
+    pub staged_bundle: PathBuf,
+    pub rollback_metadata: PathBuf,
+    pub recovery_breadcrumb: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreparedInstall {
+    pub plan: InstallPlan,
+    pub paths: InstallPaths,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RollbackMetadata {
+    pub prior_version: String,
+    pub target_version: String,
+    pub staged_at_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RestartBreadcrumb {
+    pub target_version: String,
+    pub deadline_unix_ms: u64,
+    pub observed_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreparingRestart {
+    pub target_version: String,
+    pub deadline_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RestartReadiness {
+    Ready { acknowledged_unix_ms: u64 },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InstallStagingError {
+    UpdateDownloadTruncated {
+        downloaded_bytes: u64,
+        expected_bytes: u64,
+    },
+    ArtifactSizeMismatch {
+        downloaded_bytes: u64,
+        expected_bytes: u64,
+    },
+    ArtifactDigestMismatch {
+        expected_sha256: String,
+        actual_sha256: String,
+    },
+    UpdateStaleNotarization {
+        notarized_at_unix_ms: u64,
+    },
+    RestartDeadlineExceeded {
+        deadline_unix_ms: u64,
+        observed_unix_ms: u64,
+    },
+    Io {
+        operation: &'static str,
+        path: PathBuf,
+        message: String,
+    },
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -267,6 +352,158 @@ pub fn evaluate_update(
     })
 }
 
+pub fn stage_install(
+    plan: &InstallPlan,
+    paths: &InstallPaths,
+    downloaded: &[u8],
+    staged_at_unix_ms: u64,
+) -> Result<PreparedInstall, InstallStagingError> {
+    let downloaded_bytes =
+        u64::try_from(downloaded.len()).map_err(|error| InstallStagingError::Io {
+            operation: "measure-download",
+            path: paths.staged_bundle.clone(),
+            message: error.to_string(),
+        })?;
+    if downloaded_bytes < plan.expected_bytes {
+        cleanup_stale_temp_dir(paths)?;
+        return Err(InstallStagingError::UpdateDownloadTruncated {
+            downloaded_bytes,
+            expected_bytes: plan.expected_bytes,
+        });
+    }
+    if downloaded_bytes != plan.expected_bytes {
+        cleanup_stale_temp_dir(paths)?;
+        return Err(InstallStagingError::ArtifactSizeMismatch {
+            downloaded_bytes,
+            expected_bytes: plan.expected_bytes,
+        });
+    }
+
+    let actual_sha256 = sha256_hex(downloaded);
+    if actual_sha256 != plan.expected_sha256 {
+        cleanup_stale_temp_dir(paths)?;
+        return Err(InstallStagingError::ArtifactDigestMismatch {
+            expected_sha256: plan.expected_sha256.clone(),
+            actual_sha256,
+        });
+    }
+
+    cleanup_stale_temp_dir(paths)?;
+    fs::create_dir_all(&paths.temp_dir)
+        .map_err(|error| io_error("create-temp-dir", &paths.temp_dir, error))?;
+    fs::write(&paths.staged_bundle, downloaded)
+        .map_err(|error| io_error("write-staged-bundle", &paths.staged_bundle, error))?;
+    let rollback = RollbackMetadata {
+        prior_version: plan.prior_version.clone(),
+        target_version: plan.target_version.clone(),
+        staged_at_unix_ms,
+    };
+    let rollback_json =
+        serde_json::to_vec_pretty(&rollback).map_err(|error| InstallStagingError::Io {
+            operation: "encode-rollback-metadata",
+            path: paths.rollback_metadata.clone(),
+            message: error.to_string(),
+        })?;
+    fs::write(&paths.rollback_metadata, rollback_json)
+        .map_err(|error| io_error("write-rollback-metadata", &paths.rollback_metadata, error))?;
+
+    Ok(PreparedInstall {
+        plan: plan.clone(),
+        paths: paths.clone(),
+    })
+}
+
+pub fn commit_staged_install(prepared: &PreparedInstall) -> Result<(), InstallStagingError> {
+    if let Some(parent) = prepared.paths.current_bundle.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| io_error("create-current-parent", parent, error))?;
+    }
+    fs::rename(
+        &prepared.paths.staged_bundle,
+        &prepared.paths.current_bundle,
+    )
+    .map_err(|error| {
+        io_error(
+            "commit-staged-bundle",
+            &prepared.paths.current_bundle,
+            error,
+        )
+    })
+}
+
+pub fn cleanup_stale_temp_dir(paths: &InstallPaths) -> Result<(), InstallStagingError> {
+    if !paths.temp_dir.exists() {
+        return Ok(());
+    }
+    fs::remove_dir_all(&paths.temp_dir)
+        .map_err(|error| io_error("cleanup-temp-dir", &paths.temp_dir, error))
+}
+
+pub fn validate_notarization(
+    stapled: bool,
+    notarized_at_unix_ms: u64,
+    now_unix_ms: u64,
+) -> Result<(), InstallStagingError> {
+    if !stapled && now_unix_ms.saturating_sub(notarized_at_unix_ms) > STALE_NOTARIZATION_MS {
+        return Err(InstallStagingError::UpdateStaleNotarization {
+            notarized_at_unix_ms,
+        });
+    }
+    Ok(())
+}
+
+pub fn prepare_restart(target_version: &str, now_unix_ms: u64) -> PreparingRestart {
+    PreparingRestart {
+        target_version: target_version.to_string(),
+        deadline_unix_ms: now_unix_ms + RESTART_DEADLINE_MS,
+    }
+}
+
+pub fn ready_for_restart(
+    preparing: &PreparingRestart,
+    acknowledged_unix_ms: u64,
+) -> Result<RestartReadiness, InstallStagingError> {
+    if acknowledged_unix_ms > preparing.deadline_unix_ms {
+        return Err(InstallStagingError::RestartDeadlineExceeded {
+            deadline_unix_ms: preparing.deadline_unix_ms,
+            observed_unix_ms: acknowledged_unix_ms,
+        });
+    }
+    Ok(RestartReadiness::Ready {
+        acknowledged_unix_ms,
+    })
+}
+
+pub fn record_restart_breadcrumb(
+    paths: &InstallPaths,
+    preparing: &PreparingRestart,
+    observed_unix_ms: u64,
+) -> Result<RestartBreadcrumb, InstallStagingError> {
+    let breadcrumb = RestartBreadcrumb {
+        target_version: preparing.target_version.clone(),
+        deadline_unix_ms: preparing.deadline_unix_ms,
+        observed_unix_ms,
+    };
+    let encoded =
+        serde_json::to_vec_pretty(&breadcrumb).map_err(|error| InstallStagingError::Io {
+            operation: "encode-restart-breadcrumb",
+            path: paths.recovery_breadcrumb.clone(),
+            message: error.to_string(),
+        })?;
+    if let Some(parent) = paths.recovery_breadcrumb.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| io_error("create-breadcrumb-parent", parent, error))?;
+    }
+    fs::write(&paths.recovery_breadcrumb, encoded).map_err(|error| {
+        io_error(
+            "write-restart-breadcrumb",
+            &paths.recovery_breadcrumb,
+            error,
+        )
+    })?;
+    Ok(breadcrumb)
+}
+
 pub fn verify_manifest(
     manifest_json: &str,
     trust_anchors: &[TrustAnchor],
@@ -404,6 +641,22 @@ fn decode_prefixed_base64(value: &str, prefix: &str) -> Result<Vec<u8>, String> 
         .strip_prefix(prefix)
         .ok_or_else(|| format!("value must start with {prefix}"))?;
     STANDARD.decode(encoded).map_err(|error| error.to_string())
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>()
+}
+
+fn io_error(operation: &'static str, path: &Path, error: std::io::Error) -> InstallStagingError {
+    InstallStagingError::Io {
+        operation,
+        path: path.to_path_buf(),
+        message: error.to_string(),
+    }
 }
 
 fn rollback_allowed(
@@ -760,6 +1013,117 @@ mod tests {
         );
     }
 
+    #[test]
+    fn truncated_download_aborts_and_leaves_current_bundle_intact() {
+        let root = test_root("truncated-download");
+        let paths = install_paths(&root);
+        fs::create_dir_all(root.join("current")).expect("current dir");
+        fs::write(&paths.current_bundle, b"prior").expect("prior bundle");
+        let plan = install_plan(b"new-bundle");
+
+        let error = stage_install(&plan, &paths, b"new", 1_000)
+            .expect_err("truncated downloads must abort");
+
+        assert_eq!(
+            error,
+            InstallStagingError::UpdateDownloadTruncated {
+                downloaded_bytes: 3,
+                expected_bytes: 10
+            }
+        );
+        assert_eq!(
+            fs::read(&paths.current_bundle).expect("prior bundle still readable"),
+            b"prior"
+        );
+        assert!(!paths.temp_dir.exists());
+        remove_test_root(root);
+    }
+
+    #[test]
+    fn stage_install_writes_verified_bundle_and_rollback_metadata_before_commit() {
+        let root = test_root("stage-install");
+        let paths = install_paths(&root);
+        fs::create_dir_all(root.join("current")).expect("current dir");
+        fs::write(&paths.current_bundle, b"prior").expect("prior bundle");
+        let plan = install_plan(b"new-bundle");
+
+        let prepared = stage_install(&plan, &paths, b"new-bundle", 1_000)
+            .expect("verified bytes should stage");
+
+        assert_eq!(prepared.plan.target_version, "1.1.0");
+        assert_eq!(
+            fs::read(&paths.current_bundle).expect("prior bundle still readable"),
+            b"prior"
+        );
+        assert_eq!(
+            fs::read(&paths.staged_bundle).expect("staged bundle"),
+            b"new-bundle"
+        );
+        let rollback: RollbackMetadata =
+            serde_json::from_slice(&fs::read(&paths.rollback_metadata).expect("rollback metadata"))
+                .expect("rollback metadata json");
+        assert_eq!(rollback.prior_version, "1.0.0");
+        assert_eq!(rollback.target_version, "1.1.0");
+        remove_test_root(root);
+    }
+
+    #[test]
+    fn commit_staged_install_moves_verified_bundle_to_current_path() {
+        let root = test_root("commit-install");
+        let paths = install_paths(&root);
+        let plan = install_plan(b"new-bundle");
+        let prepared = stage_install(&plan, &paths, b"new-bundle", 1_000)
+            .expect("verified bytes should stage");
+
+        commit_staged_install(&prepared).expect("commit should rename staged bundle");
+
+        assert_eq!(
+            fs::read(&paths.current_bundle).expect("current bundle"),
+            b"new-bundle"
+        );
+        assert!(!paths.staged_bundle.exists());
+        remove_test_root(root);
+    }
+
+    #[test]
+    fn stale_unstapled_notarization_returns_typed_value() {
+        let error = validate_notarization(false, 1_000, 1_000 + STALE_NOTARIZATION_MS + 1)
+            .expect_err("old unstapled bundles require confirmation");
+
+        assert_eq!(
+            error,
+            InstallStagingError::UpdateStaleNotarization {
+                notarized_at_unix_ms: 1_000
+            }
+        );
+        validate_notarization(true, 1_000, 1_000 + STALE_NOTARIZATION_MS + 1)
+            .expect("stapled bundles are not stale warnings");
+    }
+
+    #[test]
+    fn restart_ack_after_deadline_writes_recovery_breadcrumb() {
+        let root = test_root("restart-breadcrumb");
+        let paths = install_paths(&root);
+        let preparing = prepare_restart("1.1.0", 1_000);
+        let late = preparing.deadline_unix_ms + 1;
+
+        let error = ready_for_restart(&preparing, late)
+            .expect_err("late readiness acknowledgement must fail");
+        let breadcrumb = record_restart_breadcrumb(&paths, &preparing, late)
+            .expect("breadcrumb should be written");
+
+        assert_eq!(
+            error,
+            InstallStagingError::RestartDeadlineExceeded {
+                deadline_unix_ms: 6_000,
+                observed_unix_ms: 6_001
+            }
+        );
+        assert_eq!(breadcrumb.target_version, "1.1.0");
+        assert!(paths.recovery_breadcrumb.exists());
+        remove_test_root(root);
+    }
+
     struct SignedManifest {
         json: String,
         signature: String,
@@ -840,6 +1204,42 @@ mod tests {
             rollback,
             min_version: None,
             max_version: max_version.map(str::to_string),
+        }
+    }
+
+    fn install_plan(bytes: &[u8]) -> InstallPlan {
+        InstallPlan {
+            prior_version: "1.0.0".to_string(),
+            target_version: "1.1.0".to_string(),
+            expected_bytes: u64::try_from(bytes.len()).expect("test bytes length fits u64"),
+            expected_sha256: sha256_hex(bytes),
+        }
+    }
+
+    fn install_paths(root: &std::path::Path) -> InstallPaths {
+        InstallPaths {
+            current_bundle: root.join("current").join("bundle.bin"),
+            temp_dir: root.join("staging"),
+            staged_bundle: root.join("staging").join("bundle.bin"),
+            rollback_metadata: root.join("staging").join("rollback.json"),
+            recovery_breadcrumb: root.join("state").join("restart-breadcrumb.json"),
+        }
+    }
+
+    fn test_root(name: &str) -> PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system time should be after epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "effect-desktop-native-updater-{name}-{}-{nanos}",
+            std::process::id()
+        ))
+    }
+
+    fn remove_test_root(root: PathBuf) {
+        if root.exists() {
+            fs::remove_dir_all(root).expect("remove test root");
         }
     }
 }
