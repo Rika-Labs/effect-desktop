@@ -76,9 +76,39 @@ test("CommandRegistry registers, invokes with validated input, checks permission
   expect(output).toEqual(new OpenOutput({ opened: true }))
   expect(calls).toEqual([new OpenInput({ path: "/tmp/project" })])
   expect(snapshots.map((snapshot) => snapshot.id)).toEqual(["openProject"])
+  expect(snapshots[0]?.invocationCount).toBe(1)
+  expect(snapshots[0]?.lastInvocation?.outcome).toBe("success")
+  expect(snapshots[0]?.lastInvocation?.traceId).toBe("trace-1")
+  expect(snapshots[0]?.lastError).toBeUndefined()
   expect(rows.map((row) => row.type)).toContain("audit/permission-granted")
   expect(rows.map((row) => row.type)).toContain("audit/command-invoked")
   expect(auditTraceIds(rows, "audit/command-invoked")).toEqual(["trace-1"])
+})
+
+test("CommandRegistry exposes invocation events and failure state for devtools", async () => {
+  const { registry, permissions } = await makeTestRegistry()
+  await Effect.runPromise(permissions.declare(commandCapability, { source: "test" }))
+  await Effect.runPromise(registry.register(registration("openProject")))
+  const observed = registry.observeInvocations().pipe(Stream.take(2), Stream.runCollect)
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const observedFiber = yield* observed.pipe(Effect.forkChild({ startImmediately: true }))
+      yield* registry.invoke("openProject", { path: "/tmp/project" }, context)
+      const failure = yield* Effect.exit(registry.invoke("openProject", { path: 1 }, context))
+      const events = yield* Fiber.join(observedFiber)
+      const snapshots = yield* registry.list()
+      return { events: Array.from(events), failure, snapshots }
+    })
+  )
+
+  expectFailure(result.failure, CommandRegistryInvalidInputError)
+  expect(result.events.map((event) => event.outcome)).toEqual(["success", "failure"])
+  expect(result.events.map((event) => event.commandId)).toEqual(["openProject", "openProject"])
+  expect(result.events[1]?.errorTag).toBe("InvalidInput")
+  expect(result.snapshots[0]?.invocationCount).toBe(2)
+  expect(result.snapshots[0]?.lastInvocation?.outcome).toBe("failure")
+  expect(result.snapshots[0]?.lastError?.errorTag).toBe("InvalidInput")
 })
 
 test("CommandRegistry rejects duplicate command ids", async () => {
@@ -130,6 +160,10 @@ test("CommandRegistry returns PermissionDenied when capability is not declared",
   )
 
   expectFailure(exit, PermissionDeniedError)
+  const snapshots = await Effect.runPromise(registry.list())
+  expect(snapshots[0]?.invocationCount).toBe(1)
+  expect(snapshots[0]?.lastInvocation?.outcome).toBe("failure")
+  expect(snapshots[0]?.lastError?.errorTag).toBe("PermissionDenied")
 })
 
 test("CommandRegistry wraps handler and output failures as typed values", async () => {

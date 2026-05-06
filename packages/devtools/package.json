@@ -16,5 +16,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test",
     "lint": "oxlint ."
+  },
+  "dependencies": {
+    "@effect-desktop/core": "workspace:*",
+    "effect": "4.0.0-beta.60"
   }
 }
