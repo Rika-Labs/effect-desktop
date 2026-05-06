@@ -398,8 +398,10 @@ test("desktop package maps linux arm64 RPM metadata to aarch64", async () => {
       "Effect-Desktop-Playground-0.0.0-linux-arm64.rpm"
     )
     let spec = ""
+    let args: readonly string[] = []
     const runner: PackageCommandRunner = (invocation) =>
       Effect.gen(function* () {
+        args = invocation.args
         const specPath = invocation.args[1]
         if (typeof specPath === "string") {
           spec = yield* Effect.promise(() => readFile(specPath, "utf8"))
@@ -420,6 +422,7 @@ test("desktop package maps linux arm64 RPM metadata to aarch64", async () => {
 
     expect(exitCode).toBe(0)
     expect(spec).toContain("BuildArch: aarch64")
+    expect(args).toContain("_rpmfilename Effect-Desktop-Playground-0.0.0-linux-arm64.rpm")
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

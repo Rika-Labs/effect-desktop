@@ -463,7 +463,9 @@ const produceLinuxRpm = (
         "--define",
         `_topdir ${rpmRoot}`,
         "--define",
-        `_rpmdir ${dirname(artifact.artifactPath)}`
+        `_rpmdir ${dirname(artifact.artifactPath)}`,
+        "--define",
+        `_rpmfilename ${basename(artifact.artifactPath)}`
       ],
       plan.appRoot,
       artifact.artifactPath
