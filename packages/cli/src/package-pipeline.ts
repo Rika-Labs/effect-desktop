@@ -671,6 +671,9 @@ const appImageArch = (target: PackageTarget): string =>
 const packageArch = (target: PackageTarget): string =>
   target.endsWith("-arm64") ? "arm64" : "amd64"
 
+const rpmArch = (target: PackageTarget): string =>
+  target.endsWith("-arm64") ? "aarch64" : "x86_64"
+
 const appUpgradeCode = (appId: string): string => {
   const bytes = createHash("sha256").update(`effect-desktop:msi-upgrade:${appId}`).digest()
   bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x50
@@ -789,7 +792,7 @@ const rpmSpec = (plan: PackagePlan): string => {
     "Release: 1",
     "Summary: Effect Desktop application",
     "License: Proprietary",
-    "BuildArch: x86_64",
+    `BuildArch: ${rpmArch(plan.target)}`,
     "",
     "%description",
     plan.appName,

@@ -386,6 +386,45 @@ test("desktop package emits Linux AppImage deb rpm artifacts with metadata", asy
   }
 })
 
+test("desktop package maps linux arm64 RPM metadata to aarch64", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-"))
+  try {
+    await writePlaygroundFixture(directory)
+    await writeBuildLayoutFixture(directory, "linux-arm64")
+    const outputRoot = join(directory, "apps", "playground", "dist", "desktop", "linux")
+    const rpmPath = join(
+      outputRoot,
+      "Effect-Desktop-Playground-0.0.0-linux-arm64.rpm",
+      "Effect-Desktop-Playground-0.0.0-linux-arm64.rpm"
+    )
+    let spec = ""
+    const runner: PackageCommandRunner = (invocation) =>
+      Effect.gen(function* () {
+        const specPath = invocation.args[1]
+        if (typeof specPath === "string") {
+          spec = yield* Effect.promise(() => readFile(specPath, "utf8"))
+        }
+        yield* Effect.promise(() => writeFile(rpmPath, "rpm"))
+      })
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["package", "--config", "apps/playground/desktop.config.ts", "--artifact", "rpm"],
+        cwd: directory,
+        hostTarget: "linux-arm64",
+        packageCommandRunner: runner,
+        writeStdout: () => {},
+        writeStderr: () => {}
+      })
+    )
+
+    expect(exitCode).toBe(0)
+    expect(spec).toContain("BuildArch: aarch64")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop package emits Windows per-user MSI with app-specific UpgradeCode", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-"))
   try {
@@ -486,7 +525,7 @@ const writePlaygroundFixture = async (directory: string): Promise<void> => {
 
 const writeBuildLayoutFixture = async (
   directory: string,
-  target: "linux-x64" | "macos-arm64" | "windows-x64"
+  target: "linux-arm64" | "linux-x64" | "macos-arm64" | "windows-x64"
 ): Promise<void> => {
   const layout = join(directory, "apps", "playground", "build", "effect-desktop", target)
   const hostBinary = target.startsWith("windows-") ? "host.exe" : "host"
