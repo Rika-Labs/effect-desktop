@@ -231,6 +231,7 @@ const makeHandle = <In, Out>(
   outputSchema: Schema.Schema<Out>
 ): WorkerHandle<In, Out> => {
   const messages = runtime.messages.pipe(
+    Stream.mapError((error) => attachWorkerResourceId(error, resource.id)),
     Stream.mapEffect((message) => decodeOutput(message, outputSchema, script))
   )
 
@@ -243,6 +244,21 @@ const makeHandle = <In, Out>(
       }).pipe(Effect.withSpan("Worker.send", { attributes: { script, resourceId: resource.id } })),
     messages,
     close: resource.dispose()
+  })
+}
+
+const attachWorkerResourceId = (error: WorkerError, resourceId: string): WorkerError => {
+  if (error._tag !== "WorkerCrashed") {
+    return error
+  }
+
+  return new WorkerCrashedError({
+    operation: error.operation,
+    script: error.script,
+    resourceId: Option.some(resourceId),
+    exitCode: error.exitCode,
+    signal: error.signal,
+    lastError: error.lastError
   })
 }
 

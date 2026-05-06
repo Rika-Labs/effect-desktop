@@ -114,6 +114,13 @@ test("Worker reports crashes on the messages error channel", async () => {
   const exit = await Effect.runPromiseExit(handle.messages.pipe(Stream.runCollect))
 
   expectFailure(exit, WorkerCrashedError)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(WorkerCrashedError)
+    if (failure?.error instanceof WorkerCrashedError) {
+      expect(Option.getOrUndefined(failure.error.resourceId)).toBe(handle.resource.id)
+    }
+  }
 })
 
 test("Worker validates malformed sends before transmission", async () => {
