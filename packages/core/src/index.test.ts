@@ -16,4 +16,5 @@ test("public Desktop facade exposes the API contract registry", async () => {
   expect(core.Desktop.Api.Tag).toBeFunction()
   expect(core.Desktop.Client).toBeFunction()
   expect(core.Desktop.Handlers).toBeFunction()
+  expect(core.Desktop.RedactionFilter.redact({ token: "abc" })).toEqual({ token: "[REDACTED]" })
 })

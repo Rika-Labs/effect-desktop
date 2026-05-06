@@ -2077,6 +2077,43 @@ test("CrashReporter memory client preserves breadcrumbs recorded during flush", 
   expect(result.secondFlush.flushed).toBe(1)
 })
 
+test("CrashReporter redacts structured breadcrumb details", async () => {
+  const client = await Effect.runPromise(makeCrashReporterMemoryClient())
+  const uploaded: unknown[] = []
+
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      yield* client.start({
+        uploadHandler: (breadcrumbs) =>
+          Effect.sync(() => {
+            uploaded.push(...breadcrumbs)
+          })
+      })
+      yield* client.recordBreadcrumb({
+        category: "auth",
+        message: "token refresh",
+        details: {
+          authorization: "Bearer abc",
+          nested: { refresh_token: "refresh-token", safe: "visible" }
+        }
+      })
+      yield* client.flush()
+    })
+  )
+
+  expect(uploaded).toEqual([
+    {
+      category: "auth",
+      message: "token refresh",
+      details: {
+        authorization: "[REDACTED]",
+        nested: { refresh_token: "[REDACTED]", safe: "visible" }
+      },
+      timestamp: expect.any(Number)
+    }
+  ])
+})
+
 test("CrashReporter bridge client records breadcrumbs and defers upload handlers", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const exchange = crashReporterExchange(requests, (request) => ({
@@ -2092,7 +2129,13 @@ test("CrashReporter bridge client records breadcrumbs and defers upload handlers
   )
 
   await Effect.runPromise(reporter.start())
-  await Effect.runPromise(reporter.recordBreadcrumb({ category: "user", message: "clicked save" }))
+  await Effect.runPromise(
+    reporter.recordBreadcrumb({
+      category: "user",
+      message: "clicked save",
+      details: { authorization: "Bearer abc" }
+    })
+  )
   const flush = await Effect.runPromise(reporter.flush())
   const startHandlerExit = await Effect.runPromiseExit(
     reporter.start({ uploadHandler: () => Effect.void })
@@ -2104,7 +2147,14 @@ test("CrashReporter bridge client records breadcrumbs and defers upload handlers
   expectExitFailure(handlerExit, (error) => hasErrorTag(error, "Unsupported"))
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     ["CrashReporter.start", {}],
-    ["CrashReporter.recordBreadcrumb", { category: "user", message: "clicked save" }],
+    [
+      "CrashReporter.recordBreadcrumb",
+      {
+        category: "user",
+        message: "clicked save",
+        details: { authorization: "[REDACTED]" }
+      }
+    ],
     ["CrashReporter.flush", undefined]
   ])
 })

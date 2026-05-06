@@ -20,6 +20,7 @@ import {
   makeHostProtocolInvalidStateError,
   type HostProtocolError
 } from "./protocol.js"
+import { redact } from "./redaction.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 const DEFAULT_TIMEOUT_MS = 30_000
@@ -259,11 +260,11 @@ const dispatch = (
       yield* options.onState({
         tag: "Failed",
         id: request.id,
-        error
+        error: redact(error)
       })
       return {
         kind: "failure",
-        error
+        error: redact(error)
       } as const
     }
 
@@ -379,7 +380,7 @@ const encodeContractError = <Spec extends ApiMethodSpec>(
       return yield* Effect.fail(makeHostProtocolInvalidOutputError(operation, String(cause)))
     }
 
-    return yield* Effect.mapError(
+    const encoded = yield* Effect.mapError(
       Schema.encodeUnknownEffect(spec.error)(failure.error, StrictParseOptions) as Effect.Effect<
         Schema.Codec.Encoded<Spec["error"]>,
         unknown,
@@ -387,6 +388,7 @@ const encodeContractError = <Spec extends ApiMethodSpec>(
       >,
       (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
     )
+    return redact(encoded)
   })
 
 const makeMethodNotFoundError = (method: string): HostProtocolMethodNotFoundError =>
@@ -430,7 +432,7 @@ const failCall = (
     yield* options.onState({
       tag: "Failed",
       id,
-      error
+      error: redact(error)
     })
   })
 
