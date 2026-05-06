@@ -161,21 +161,16 @@ export const makeCommandRegistry = (
           const grant = yield* permissions.check(command.capability, context, {
             source: `command:${decodedId}`
           })
-          const output = yield* permissions.use(
-            grant,
-            command.handler(decodedInput).pipe(
-              Effect.mapError(
-                (cause) =>
-                  new CommandRegistryHandlerFailureError({
-                    operation: "CommandRegistry.invoke",
-                    commandId: decodedId,
-                    cause
-                  })
-              )
-            )
-          )
+          const output = yield* permissions.use(grant, invokeCommandHandler(command, decodedInput))
           const decodedOutput = yield* decodeCommandOutput(command, output)
-          yield* auditCommand(options.audit, "command-invoked", decodedId, "success", now)
+          yield* auditCommand(
+            options.audit,
+            "command-invoked",
+            decodedId,
+            "success",
+            now,
+            grant.traceId
+          )
           return decodedOutput
         }).pipe(Effect.withSpan("CommandRegistry.invoke", { attributes: { commandId: id } })),
       list: () =>
@@ -338,6 +333,29 @@ const decodeCommandOutput = (
     )
   ) as Effect.Effect<unknown, CommandRegistryInvalidOutputError, never>
 
+const invokeCommandHandler = (
+  command: StoredCommand,
+  input: unknown
+): Effect.Effect<unknown, CommandRegistryHandlerFailureError, never> =>
+  Effect.try({
+    try: () => command.handler(input),
+    catch: (cause) => handlerFailure(command.id, cause)
+  }).pipe(
+    Effect.flatMap((effect) =>
+      effect.pipe(
+        Effect.mapError((cause) => handlerFailure(command.id, cause)),
+        Effect.catchDefect((cause) => Effect.fail(handlerFailure(command.id, cause)))
+      )
+    )
+  )
+
+const handlerFailure = (commandId: string, cause: unknown): CommandRegistryHandlerFailureError =>
+  new CommandRegistryHandlerFailureError({
+    operation: "CommandRegistry.invoke",
+    commandId,
+    cause
+  })
+
 const decodeCommandId = (
   id: string,
   operation: string
@@ -362,14 +380,15 @@ const auditCommand = (
   kind: "command-registered" | "command-unregistered" | "command-invoked",
   commandId: string,
   outcome: string,
-  now: () => number
+  now: () => number,
+  traceId: string = `command:${commandId}`
 ): Effect.Effect<void, CommandRegistryAuditFailedError, never> =>
   emitAuditEvent(
     audit,
     new AuditEvent({
       kind,
       source: "CommandRegistry",
-      traceId: `command:${commandId}`,
+      traceId,
       outcome,
       timestamp: now(),
       details: { commandId }

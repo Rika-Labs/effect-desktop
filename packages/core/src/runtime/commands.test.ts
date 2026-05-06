@@ -71,6 +71,7 @@ test("CommandRegistry registers, invokes with validated input, checks permission
   expect(snapshots.map((snapshot) => snapshot.id)).toEqual(["openProject"])
   expect(rows.map((row) => row.type)).toContain("audit/permission-granted")
   expect(rows.map((row) => row.type)).toContain("audit/command-invoked")
+  expect(auditTraceIds(rows, "audit/command-invoked")).toEqual(["trace-1"])
 })
 
 test("CommandRegistry rejects duplicate command ids", async () => {
@@ -149,6 +150,47 @@ test("CommandRegistry wraps handler and output failures as typed values", async 
 
   expectFailure(handlerExit, CommandRegistryHandlerFailureError)
   expectFailure(outputExit, CommandRegistryInvalidOutputError)
+})
+
+test("CommandRegistry catches handler throws and defects as typed values", async () => {
+  const { registry, permissions } = await makeTestRegistry()
+  await Effect.runPromise(permissions.declare(commandCapability, { source: "test" }))
+  await Effect.runPromise(
+    registry.register({
+      ...registration("syncThrow"),
+      handler: () => {
+        throw new Error("sync boom")
+      }
+    })
+  )
+  await Effect.runPromise(
+    registry.register({
+      ...registration("defect"),
+      handler: () => Effect.die("defect boom")
+    })
+  )
+
+  const syncThrowExit = await Effect.runPromiseExit(
+    registry.invoke("syncThrow", { path: "/tmp/project" }, context)
+  )
+  const defectExit = await Effect.runPromiseExit(
+    registry.invoke("defect", { path: "/tmp/project" }, context)
+  )
+
+  expectFailure(syncThrowExit, CommandRegistryHandlerFailureError)
+  expectFailure(defectExit, CommandRegistryHandlerFailureError)
+})
+
+test("CommandRegistry command invocation audit uses the permission grant trace id", async () => {
+  const rows: EventLogEntry[] = []
+  const { registry, permissions } = await makeTestRegistry(rows)
+  await Effect.runPromise(permissions.declare(commandCapability, { source: "test" }))
+  await Effect.runPromise(registry.register(registration("openProject")))
+
+  await Effect.runPromise(registry.invoke("openProject", { path: "/tmp/project" }, context))
+
+  expect(auditTraceIds(rows, "audit/permission-used")).toEqual(["trace-1"])
+  expect(auditTraceIds(rows, "audit/command-invoked")).toEqual(["trace-1"])
 })
 
 test("CommandRegistry unregisters commands when the owner scope closes", async () => {
@@ -240,6 +282,16 @@ const memoryAudit = (rows: EventLogEntry[]): EventLogStore => ({
   subscribe: () => Stream.empty,
   close: () => Effect.void
 })
+
+const auditTraceIds = (rows: readonly EventLogEntry[], type: string): readonly string[] =>
+  rows.flatMap((row) => {
+    if (row.type !== type) {
+      return []
+    }
+
+    const payload = row.payload as { readonly traceId?: unknown }
+    return typeof payload.traceId === "string" ? [payload.traceId] : []
+  })
 
 const expectFailure = (
   exit: Exit.Exit<unknown, CommandRegistryError>,
