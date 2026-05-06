@@ -1,13 +1,20 @@
 import { expect, test } from "bun:test"
 
+import { Cause, Effect, Exit, Fiber, Stream } from "effect"
+
 import {
   FrameDecoder,
   FrameTooLargeError,
   FrameTruncatedError,
   MAX_FRAME_BYTES,
+  TransportFrameTooLargeError,
+  TransportFrameTruncatedError,
+  TransportInvalidArgumentError,
+  TransportClosedError,
   createFramedTransport,
   encodeFrame
 } from "./transport.js"
+import { makeConnection, makeInMemoryTransportPair, makeTransport } from "./transport.js"
 
 test("encodeFrame emits a big-endian length prefix", () => {
   const frame = encodeFrame(new Uint8Array([0x68, 0x69]))
@@ -99,8 +106,134 @@ test("createFramedTransport sends encoded frames and receives decoded frames", a
   expect(await transport.recv()).toBeNull()
 })
 
+test("Transport service frames and unframes length-prefixed payloads", async () => {
+  const transport = await Effect.runPromise(makeTransport())
+  const framed = await Effect.runPromise(
+    transport.frame({ scheme: "length-prefixed", payload: new Uint8Array([0x6f, 0x6b]) })
+  )
+  const decoded = await Effect.runPromise(
+    transport.unframe({ scheme: "length-prefixed", bytes: framed })
+  )
+
+  expect(Array.from(framed)).toEqual([0, 0, 0, 2, 0x6f, 0x6b])
+  expect(decoded.map((frame) => Array.from(frame))).toEqual([[0x6f, 0x6b]])
+})
+
+test("Transport service frames and unframes JSON-RPC Content-Length payloads", async () => {
+  const transport = await Effect.runPromise(makeTransport())
+  const payload = new TextEncoder().encode(
+    JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" })
+  )
+  const framed = await Effect.runPromise(transport.frame({ scheme: "json-rpc", payload }))
+  const decoded = await Effect.runPromise(transport.unframe({ scheme: "json-rpc", bytes: framed }))
+
+  expect(
+    new TextDecoder().decode(framed).startsWith(`Content-Length: ${payload.byteLength}\r\n\r\n`)
+  ).toBe(true)
+  expect(decoded.map((frame) => new TextDecoder().decode(frame))).toEqual([
+    JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" })
+  ])
+})
+
+test("Transport service unframes split stream chunks incrementally", async () => {
+  const transport = await Effect.runPromise(makeTransport())
+  const payload = new TextEncoder().encode(JSON.stringify({ jsonrpc: "2.0", id: 1, result: true }))
+  const framed = await Effect.runPromise(transport.frame({ scheme: "json-rpc", payload }))
+  const frames = await Effect.runPromise(
+    transport
+      .unframeStream({
+        scheme: "json-rpc",
+        chunks: Stream.fromIterable([framed.slice(0, 5), framed.slice(5, 18), framed.slice(18)])
+      })
+      .pipe(Stream.runCollect)
+  )
+
+  expect(Array.from(frames).map((frame) => new TextDecoder().decode(frame))).toEqual([
+    JSON.stringify({ jsonrpc: "2.0", id: 1, result: true })
+  ])
+})
+
+test("Transport service returns typed failures for invalid input and bad frames", async () => {
+  const transport = await Effect.runPromise(makeTransport())
+
+  const invalid = await Effect.runPromiseExit(
+    transport.frame({ scheme: "length-prefixed", payload: new Uint8Array([1]), maxFrameBytes: 0 })
+  )
+  const tooLarge = await Effect.runPromiseExit(
+    transport.frame({
+      scheme: "length-prefixed",
+      payload: new Uint8Array([1, 2]),
+      maxFrameBytes: 1
+    })
+  )
+  const truncated = await Effect.runPromiseExit(
+    transport.unframe({ scheme: "length-prefixed", bytes: new Uint8Array([0, 0]) })
+  )
+  const malformedHeader = await Effect.runPromiseExit(
+    transport.unframe({
+      scheme: "json-rpc",
+      bytes: new TextEncoder().encode("X-Header: nope\r\n\r\n{}")
+    })
+  )
+  const malformedInput = await Effect.runPromiseExit(
+    transport.frame(null as unknown as Parameters<typeof transport.frame>[0])
+  )
+
+  expectFailure(invalid, TransportInvalidArgumentError)
+  expectFailure(tooLarge, TransportFrameTooLargeError)
+  expectFailure(truncated, TransportFrameTruncatedError)
+  expectFailure(malformedHeader, TransportInvalidArgumentError)
+  expectFailure(malformedInput, TransportInvalidArgumentError)
+  expect(getFailure(malformedHeader)).toMatchObject({ field: "header" })
+})
+
+test("in-memory transport pair substitutes a scoped host protocol transport", async () => {
+  const [left, right] = await Effect.runPromise(makeInMemoryTransportPair())
+  const fiber = Effect.runFork(right.receive.pipe(Stream.take(1), Stream.runCollect))
+
+  await Effect.runPromise(left.send(new Uint8Array([0x68, 0x69])))
+  const received = Array.from(await Effect.runPromise(Fiber.join(fiber))).map((chunk) =>
+    Array.from(chunk)
+  )
+
+  expect(received).toEqual([[0x68, 0x69]])
+  await Effect.runPromise(left.close())
+  await Effect.runPromise(right.close())
+})
+
+test("connection close stops receives with a typed closed failure", async () => {
+  const transport = createFramedTransport(chunks(), () => {
+    return
+  })
+  const connection = makeConnection(transport, "test")
+
+  await Effect.runPromise(connection.close())
+  const exit = await Effect.runPromiseExit(
+    connection.receive.pipe(Stream.take(1), Stream.runCollect)
+  )
+
+  expectFailure(exit, TransportClosedError)
+})
+
 async function* chunks(...values: Uint8Array[]): AsyncIterable<Uint8Array> {
   for (const value of values) {
     yield value
   }
+}
+
+function expectFailure<E>(
+  exit: Exit.Exit<unknown, E>,
+  errorClass: abstract new (...args: never[]) => E
+): void {
+  const error = getFailure(exit)
+  expect(error).toBeInstanceOf(errorClass)
+}
+
+function getFailure<E>(exit: Exit.Exit<unknown, E>): E | undefined {
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    return failure?.error
+  }
+  return undefined
 }

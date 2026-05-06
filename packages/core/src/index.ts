@@ -8,6 +8,7 @@ export * from "./runtime/process.js"
 export * from "./runtime/pty.js"
 export * from "./runtime/settings.js"
 export * from "./runtime/sqlite.js"
+export * from "./runtime/transport.js"
 export * from "./runtime/window-state.js"
 
 export const Desktop = Object.freeze({

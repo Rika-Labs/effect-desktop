@@ -173,6 +173,9 @@ const transport = (overrides: Partial<FramedTransport>): FramedTransport => ({
         )
       )
     ),
+  close: async () => {
+    return
+  },
   ...overrides
 })
 

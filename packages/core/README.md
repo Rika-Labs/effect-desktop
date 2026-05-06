@@ -9,7 +9,8 @@ Public framework API and runtime contracts (`Desktop.run`, `Desktop.window`, `De
 ## Public API
 
 The package exports runtime primitives as they land by phase. Phase 14 includes
-the `SQLite`, `Settings`, and `EventLog` services for scope-bound local storage.
+the `SQLite`, `Settings`, `EventLog`, and `Transport` services for scope-bound
+local storage and app-owned protocol transport.
 
 ### SQLite
 
@@ -61,6 +62,19 @@ SQLite is configured with `PRAGMA synchronous = FULL` when the log opens, so
 committed appends use SQLite's durability path. Underlying `SQLITE_FULL` errors
 map to `EventLogFull`; once a log is read-only, appends fail while query and
 subscribe continue.
+
+### Transport
+
+`Transport` owns app-protocol framing helpers and substitutable runtime
+connections. `frame`, `unframe`, and `unframeStream` support the existing
+big-endian length-prefixed framing plus LSP-style JSON-RPC `Content-Length`
+frames. Invalid inputs, oversized frames, truncated frames, closed transports,
+and write failures are returned as typed `TransportError` values.
+
+`connect({ target: "stdio" })` wraps the runtime stdio transport. Tests can use
+`makeInMemoryTransportPair()` to substitute a pair of Effect-native connections
+without reaching into raw host transport internals. `send`, `receive`, and
+`close` are Effect values/streams, so cancellation and cleanup stay explicit.
 
 ## Runtime entry
 
