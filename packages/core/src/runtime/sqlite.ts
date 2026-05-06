@@ -444,7 +444,7 @@ const mapSqliteError = (error: unknown, resource: string, operation: string): Sq
     if (code.startsWith("SQLITE_LOCKED")) {
       return new SqliteLockedError(common)
     }
-    if (code.startsWith("SQLITE_CORRUPT")) {
+    if (code.startsWith("SQLITE_CORRUPT") || code.startsWith("SQLITE_NOTADB")) {
       return new SqliteCorruptError(common)
     }
     if (code.startsWith("SQLITE_IOERR")) {

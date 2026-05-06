@@ -5,6 +5,7 @@ export * from "./runtime/resources.js"
 export * from "./runtime/filesystem.js"
 export * from "./runtime/process.js"
 export * from "./runtime/pty.js"
+export * from "./runtime/settings.js"
 export * from "./runtime/sqlite.js"
 export * from "./runtime/window-state.js"
 

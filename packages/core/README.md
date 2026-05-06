@@ -9,7 +9,7 @@ Public framework API and runtime contracts (`Desktop.run`, `Desktop.window`, `De
 ## Public API
 
 The package exports runtime primitives as they land by phase. Phase 14 includes
-the `SQLite` service for scope-bound local storage.
+the `SQLite` and `Settings` services for scope-bound local storage.
 
 ### SQLite
 
@@ -25,6 +25,25 @@ scope closes.
 
 SQLite error codes are mapped to typed tags: `Constraint`, `Busy`, `Locked`,
 `Corrupt`, `IoError`, `InvalidArgument`, and `InvalidState`.
+
+### Settings
+
+`Settings` is a typed key/value store built on `SQLite`. `open` validates the
+database path, owner scope, namespace, and schema version before opening the
+database. `get`, `set`, and `update` validate values through Effect Schema and
+return typed `SettingsError` values instead of throwing.
+
+`set` is last-writer-wins. `update` runs inside a SQLite transaction, so
+read-modify-write calls for the same database connection serialize. Versioned
+migrations run in the same transaction as the metadata update and emit
+`SettingsMigrated` events. When opening detects a corrupt database and an
+explicit `backupPath` is provided, Settings replaces the corrupt file with the
+backup and reopens it; backup copy failures return
+`SettingsRecoveredFromBackup`.
+
+The `changes()` stream emits `{ key, oldValue, newValue, source }` for writes,
+and `migrated()` replays recent migration events for observers that subscribe
+after open.
 
 ## Runtime entry
 
@@ -59,6 +78,27 @@ const program = Effect.gen(function* () {
   yield* connection.exec("CREATE TABLE users (name TEXT UNIQUE)")
   yield* connection.transaction(connection.exec("INSERT INTO users (name) VALUES (?)", ["Ada"]))
   return yield* connection.query("SELECT name FROM users")
+})
+
+await Effect.runPromise(
+  program.pipe(Effect.provide(SQLiteLive), Effect.provide(ResourceRegistryLive))
+)
+```
+
+```ts
+import { Effect, Schema } from "effect"
+import { ResourceRegistryLive, makeSettings, SQLite, SQLiteLive } from "@effect-desktop/core"
+
+const program = Effect.gen(function* () {
+  const sqlite = yield* SQLite
+  const settings = yield* makeSettings(sqlite)
+  const store = yield* settings.open({
+    path: "settings.sqlite",
+    ownerScope: "window-main",
+    schemaVersion: 1
+  })
+  yield* store.set("user.name", Schema.String, "alice")
+  return yield* store.getOrDefault("user.name", Schema.String, "anonymous")
 })
 
 await Effect.runPromise(
