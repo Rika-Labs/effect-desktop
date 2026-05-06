@@ -7,3 +7,7 @@ repository.workspace = true
 publish = false
 
 [lib]
+
+[dependencies]
+anyhow.workspace = true
+portable-pty.workspace = true
