@@ -51,6 +51,13 @@ import {
   DockLive,
   DockMethodNames,
   DockSupportedResult,
+  GlobalShortcut,
+  GlobalShortcutApi,
+  GlobalShortcutLive,
+  GlobalShortcutMethodNames,
+  GlobalShortcutPressedEvent,
+  GlobalShortcutRegisteredResult,
+  GlobalShortcutSupportedResult,
   Menu,
   MenuActivatedEvent,
   MenuApi,
@@ -127,6 +134,9 @@ import {
   makeDialogServiceLayer,
   makeDockBridgeClientLayer,
   makeDockServiceLayer,
+  makeGlobalShortcutAlreadyRegisteredError,
+  makeGlobalShortcutBridgeClientLayer,
+  makeGlobalShortcutServiceLayer,
   makePowerMonitorBridgeClientLayer,
   makePowerMonitorServiceLayer,
   makeScreenBridgeClientLayer,
@@ -144,6 +154,7 @@ import {
   makeShellBridgeClientLayer,
   makeShellServiceLayer,
   makeUnsupportedDialogClient,
+  makeUnsupportedGlobalShortcutClient,
   makeUnsupportedMenuClient,
   makeUnsupportedNotificationClient,
   makeUnsupportedPathClient,
@@ -170,6 +181,7 @@ import {
   type ContextMenuClientApi,
   type DialogClientApi,
   type DockClientApi,
+  type GlobalShortcutClientApi,
   type MenuClientApi,
   type NotificationClientApi,
   type NotificationHandle,
@@ -259,6 +271,14 @@ const expectedDockMethods: Array<(typeof DockMethodNames)[number]> = [
   "setMenu",
   "setJumpList",
   "requestAttention",
+  "isSupported"
+]
+
+const expectedGlobalShortcutMethods: Array<(typeof GlobalShortcutMethodNames)[number]> = [
+  "register",
+  "unregister",
+  "unregisterAll",
+  "isRegistered",
   "isSupported"
 ]
 
@@ -2053,6 +2073,129 @@ test("unsupported Dock client exposes support checks and typed command failures"
   expectExitFailure(result.exit, (error) => hasErrorTag(error, "Unsupported"))
 })
 
+test("GlobalShortcutApi declares the Phase 8 GlobalShortcut method and event surface", () => {
+  expect(GlobalShortcutApi.tag).toBe("GlobalShortcut")
+  expect([...GlobalShortcutMethodNames]).toEqual(expectedGlobalShortcutMethods)
+  expect(Object.keys(GlobalShortcutApi.spec)).toEqual(expectedGlobalShortcutMethods)
+  expect(Object.keys(GlobalShortcutApi.events)).toEqual(["Pressed"])
+})
+
+test("GlobalShortcut service delegates through a substitutable GlobalShortcutClient port", async () => {
+  const calls: string[] = []
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const shortcuts = yield* GlobalShortcut
+      const supported = yield* shortcuts.isSupported()
+      yield* shortcuts.register("CmdOrCtrl+K", windowHandle)
+      const registered = yield* shortcuts.isRegistered("CmdOrCtrl+K")
+      const pressed = yield* shortcuts.onPressed().pipe(Stream.take(1), Stream.runCollect)
+      yield* shortcuts.unregister("CmdOrCtrl+K")
+      yield* shortcuts.unregisterAll()
+
+      return { pressed, registered, supported }
+    }).pipe(Effect.provide(makeGlobalShortcutServiceLayer(globalShortcutClient(calls))))
+  )
+
+  expect(result.supported).toEqual(new GlobalShortcutSupportedResult({ supported: true }))
+  expect(result.registered).toBe(true)
+  expect(Array.from(result.pressed)).toEqual([
+    new GlobalShortcutPressedEvent({
+      accelerator: "CmdOrCtrl+K",
+      registrarWindowId: "window-1"
+    })
+  ])
+  expect(calls).toEqual([
+    "isSupported",
+    "register:CmdOrCtrl+K:window-1",
+    "isRegistered:CmdOrCtrl+K",
+    "unregister:CmdOrCtrl+K",
+    "unregisterAll"
+  ])
+})
+
+test("GlobalShortcut bridge client sends typed host envelopes and decodes pressed events", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = globalShortcutExchange(requests, (request) => ({
+    kind: "success",
+    payload:
+      request.method === "GlobalShortcut.isSupported"
+        ? { supported: true }
+        : request.method === "GlobalShortcut.isRegistered"
+          ? { registered: true }
+          : undefined
+  }))
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const shortcuts = yield* GlobalShortcut
+      const supported = yield* shortcuts.isSupported()
+      yield* shortcuts.register("CmdOrCtrl+K", windowHandle)
+      const registered = yield* shortcuts.isRegistered("CmdOrCtrl+K")
+      const pressed = yield* shortcuts.onPressed().pipe(Stream.take(1), Stream.runCollect)
+      yield* shortcuts.unregister("CmdOrCtrl+K")
+      yield* shortcuts.unregisterAll()
+
+      return { pressed, registered, supported }
+    }).pipe(
+      Effect.provide(
+        Layer.provide(GlobalShortcutLive, makeGlobalShortcutBridgeClientLayer(exchange))
+      )
+    )
+  )
+
+  expect(result.supported).toEqual(new GlobalShortcutSupportedResult({ supported: true }))
+  expect(result.registered).toBe(true)
+  expect(Array.from(result.pressed)).toEqual([
+    new GlobalShortcutPressedEvent({
+      accelerator: "CmdOrCtrl+K",
+      registrarWindowId: "window-1"
+    })
+  ])
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["GlobalShortcut.isSupported", undefined],
+    ["GlobalShortcut.register", { accelerator: "CmdOrCtrl+K", registrarWindow: windowHandle }],
+    ["GlobalShortcut.isRegistered", { accelerator: "CmdOrCtrl+K" }],
+    ["GlobalShortcut.unregister", { accelerator: "CmdOrCtrl+K" }],
+    ["GlobalShortcut.unregisterAll", undefined]
+  ])
+})
+
+test("GlobalShortcut conflicts and unsupported behavior are typed Effect values", async () => {
+  const conflictExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const shortcuts = yield* GlobalShortcut
+      return yield* Effect.exit(shortcuts.register("CmdOrCtrl+K", windowHandle))
+    }).pipe(
+      Effect.provide(
+        makeGlobalShortcutServiceLayer({
+          ...globalShortcutClient([]),
+          register: (accelerator) =>
+            Effect.fail(makeGlobalShortcutAlreadyRegisteredError(accelerator))
+        })
+      )
+    )
+  )
+  const unsupported = await Effect.runPromise(
+    Effect.gen(function* () {
+      const shortcuts = yield* GlobalShortcut
+      const supported = yield* shortcuts.isSupported()
+      const registerExit = yield* Effect.exit(shortcuts.register("CmdOrCtrl+K", windowHandle))
+      const pressedExit = yield* shortcuts.onPressed().pipe(Stream.runHead, Effect.exit)
+      return { pressedExit, registerExit, supported }
+    }).pipe(Effect.provide(makeGlobalShortcutServiceLayer(makeUnsupportedGlobalShortcutClient())))
+  )
+
+  expectExitFailure(conflictExit, (error) => hasErrorTag(error, "AlreadyExists"))
+  expect(unsupported.supported).toEqual(
+    new GlobalShortcutSupportedResult({
+      supported: false,
+      reason: "host-adapter-unimplemented"
+    })
+  )
+  expectExitFailure(unsupported.registerExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(unsupported.pressedExit, (error) => hasErrorTag(error, "Unsupported"))
+})
+
 test("WindowApi declares the Phase 5 Window method surface", () => {
   expect(WindowApi.tag).toBe("Window")
   expect([...WindowMethodNames]).toEqual(expectedWindowMethods)
@@ -2500,6 +2643,30 @@ const trayClient = (calls: string[]): TrayClientApi => ({
   destroy: (tray) => recordVoid(calls, `destroy:${tray.id}`),
   onActivated: () =>
     Stream.make(new TrayActivatedEvent({ tray: trayHandle, ownerWindowId: "window-1" }))
+})
+
+const globalShortcutClient = (calls: string[]): GlobalShortcutClientApi => ({
+  register: (accelerator, registrarWindow) =>
+    recordVoid(calls, `register:${accelerator}:${registrarWindow.id}`),
+  unregister: (accelerator) => recordVoid(calls, `unregister:${accelerator}`),
+  unregisterAll: () => recordVoid(calls, "unregisterAll"),
+  isRegistered: (accelerator) =>
+    Effect.sync(() => {
+      calls.push(`isRegistered:${accelerator}`)
+      return new GlobalShortcutRegisteredResult({ registered: true })
+    }),
+  isSupported: () =>
+    Effect.sync(() => {
+      calls.push("isSupported")
+      return new GlobalShortcutSupportedResult({ supported: true })
+    }),
+  onPressed: () =>
+    Stream.make(
+      new GlobalShortcutPressedEvent({
+        accelerator: "CmdOrCtrl+K",
+        registrarWindowId: "window-1"
+      })
+    )
 })
 
 const dialogClient = (calls: string[]): DialogClientApi => ({
@@ -3015,6 +3182,31 @@ const dockExchange = (
     requests.push(request)
     return Effect.succeed(respond(request))
   }
+})
+
+const globalShortcutExchange = (
+  requests: HostProtocolRequestEnvelope[],
+  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
+): ApiClientExchange => ({
+  request: (request) => {
+    requests.push(request)
+    return Effect.succeed(respond(request))
+  },
+  subscribe: (method) =>
+    method === "GlobalShortcut.Pressed"
+      ? Stream.make(
+          new HostProtocolEventEnvelope({
+            kind: "event",
+            timestamp: 1710000000720,
+            traceId: "event-trace",
+            method,
+            payload: {
+              accelerator: "CmdOrCtrl+K",
+              registrarWindowId: "window-1"
+            }
+          })
+        )
+      : Stream.empty
 })
 
 const makeWindowApiExchange = (
