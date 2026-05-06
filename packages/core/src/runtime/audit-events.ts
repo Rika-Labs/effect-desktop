@@ -21,7 +21,10 @@ export const AuditEventKind = Schema.Literals([
   "permission-used",
   "approval-requested",
   "approval-granted",
-  "approval-denied"
+  "approval-denied",
+  "command-registered",
+  "command-unregistered",
+  "command-invoked"
 ])
 export type AuditEventKind = typeof AuditEventKind.Type
 

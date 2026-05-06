@@ -1,0 +1,557 @@
+import { expect, test } from "bun:test"
+import { Cause, Deferred, Effect, Exit, Fiber, Option, Schema, Stream } from "effect"
+
+import { EventLogEntry, type EventLogStore } from "./event-log.js"
+import {
+  CommandRegistryCommandAlreadyRegisteredError,
+  CommandRegistryCommandNotFoundError,
+  CommandRegistryHandlerFailureError,
+  CommandRegistryInvalidInputError,
+  CommandRegistryInvalidOutputError,
+  CommandRegistryRegistrationLostError,
+  makeCommandRegistry,
+  type CommandRegistryApi,
+  type CommandRegistryError
+} from "./commands.js"
+import {
+  PermissionActor,
+  PermissionContext,
+  PermissionDeniedError,
+  type NormalizedCapability,
+  type PermissionRegistryApi
+} from "./permission-registry.js"
+import { makePermissionRegistry } from "./permission-registry.js"
+import {
+  makeResourceRegistry,
+  type RegisterResourceInput,
+  type ResourceHandle,
+  type ResourceId,
+  type ResourceRegistryApi
+} from "./resources.js"
+
+class OpenInput extends Schema.Class<OpenInput>("CommandOpenInput")({
+  path: Schema.String
+}) {}
+
+class OpenOutput extends Schema.Class<OpenOutput>("CommandOpenOutput")({
+  opened: Schema.Boolean
+}) {}
+
+const commandCapability: NormalizedCapability = {
+  kind: "native.invoke",
+  primitive: "Command",
+  methods: ["openProject"],
+  audit: "always"
+}
+
+const actor = new PermissionActor({ kind: "window", id: "window-1" })
+const context = new PermissionContext({ actor, traceId: "trace-1" })
+
+test("CommandRegistry registers, invokes with validated input, checks permission, and audits", async () => {
+  const rows: EventLogEntry[] = []
+  const { registry, permissions } = await makeTestRegistry(rows)
+  await Effect.runPromise(permissions.declare(commandCapability, { source: "test" }))
+  const calls: OpenInput[] = []
+
+  const handle = await Effect.runPromise(
+    registry.register({
+      id: "openProject",
+      inputSchema: OpenInput,
+      outputSchema: OpenOutput,
+      capability: commandCapability,
+      ownerScope: "window-1",
+      handler: (input) =>
+        Effect.sync(() => {
+          calls.push(input)
+          return new OpenOutput({ opened: true })
+        })
+    })
+  )
+  const output = await Effect.runPromise(
+    registry.invoke("openProject", { path: "/tmp/project" }, context)
+  )
+  const snapshots = await Effect.runPromise(registry.list())
+
+  expect(handle.kind).toBe("command")
+  expect(output).toEqual(new OpenOutput({ opened: true }))
+  expect(calls).toEqual([new OpenInput({ path: "/tmp/project" })])
+  expect(snapshots.map((snapshot) => snapshot.id)).toEqual(["openProject"])
+  expect(rows.map((row) => row.type)).toContain("audit/permission-granted")
+  expect(rows.map((row) => row.type)).toContain("audit/command-invoked")
+  expect(auditTraceIds(rows, "audit/command-invoked")).toEqual(["trace-1"])
+})
+
+test("CommandRegistry rejects duplicate command ids", async () => {
+  const { registry } = await makeTestRegistry()
+
+  await Effect.runPromise(registry.register(registration("openProject")))
+  const exit = await Effect.runPromiseExit(registry.register(registration("openProject")))
+
+  expectFailure(exit, CommandRegistryCommandAlreadyRegisteredError)
+})
+
+test("CommandRegistry reports missing commands as typed values", async () => {
+  const { registry } = await makeTestRegistry()
+
+  const exit = await Effect.runPromiseExit(registry.invoke("missing", {}, context))
+
+  expectFailure(exit, CommandRegistryCommandNotFoundError)
+})
+
+test("CommandRegistry validates input before permission and handler side effects", async () => {
+  const rows: EventLogEntry[] = []
+  const { registry, permissions } = await makeTestRegistry(rows)
+  await Effect.runPromise(permissions.declare(commandCapability, { source: "test" }))
+  let handled = false
+
+  await Effect.runPromise(
+    registry.register({
+      ...registration("openProject"),
+      handler: () =>
+        Effect.sync(() => {
+          handled = true
+          return new OpenOutput({ opened: true })
+        })
+    })
+  )
+  const exit = await Effect.runPromiseExit(registry.invoke("openProject", { path: 1 }, context))
+
+  expectFailure(exit, CommandRegistryInvalidInputError)
+  expect(handled).toBe(false)
+  expect(rows.map((row) => row.type)).not.toContain("audit/permission-granted")
+})
+
+test("CommandRegistry returns PermissionDenied when capability is not declared", async () => {
+  const { registry } = await makeTestRegistry()
+  await Effect.runPromise(registry.register(registration("openProject")))
+
+  const exit = await Effect.runPromiseExit(
+    registry.invoke("openProject", { path: "/tmp/project" }, context)
+  )
+
+  expectFailure(exit, PermissionDeniedError)
+})
+
+test("CommandRegistry wraps handler and output failures as typed values", async () => {
+  const { registry, permissions } = await makeTestRegistry()
+  await Effect.runPromise(permissions.declare(commandCapability, { source: "test" }))
+  await Effect.runPromise(
+    registry.register({
+      ...registration("throws"),
+      handler: () => Effect.fail("boom")
+    })
+  )
+  await Effect.runPromise(
+    registry.register({
+      ...registration("badOutput"),
+      handler: () => Effect.succeed({ opened: 1 } as unknown as OpenOutput)
+    })
+  )
+
+  const handlerExit = await Effect.runPromiseExit(
+    registry.invoke("throws", { path: "/tmp/project" }, context)
+  )
+  const outputExit = await Effect.runPromiseExit(
+    registry.invoke("badOutput", { path: "/tmp/project" }, context)
+  )
+
+  expectFailure(handlerExit, CommandRegistryHandlerFailureError)
+  expectFailure(outputExit, CommandRegistryInvalidOutputError)
+})
+
+test("CommandRegistry catches handler throws and defects as typed values", async () => {
+  const { registry, permissions } = await makeTestRegistry()
+  await Effect.runPromise(permissions.declare(commandCapability, { source: "test" }))
+  await Effect.runPromise(
+    registry.register({
+      ...registration("syncThrow"),
+      handler: () => {
+        throw new Error("sync boom")
+      }
+    })
+  )
+  await Effect.runPromise(
+    registry.register({
+      ...registration("defect"),
+      handler: () => Effect.die("defect boom")
+    })
+  )
+
+  const syncThrowExit = await Effect.runPromiseExit(
+    registry.invoke("syncThrow", { path: "/tmp/project" }, context)
+  )
+  const defectExit = await Effect.runPromiseExit(
+    registry.invoke("defect", { path: "/tmp/project" }, context)
+  )
+
+  expectFailure(syncThrowExit, CommandRegistryHandlerFailureError)
+  expectFailure(defectExit, CommandRegistryHandlerFailureError)
+})
+
+test("CommandRegistry command invocation audit uses the permission grant trace id", async () => {
+  const rows: EventLogEntry[] = []
+  const { registry, permissions } = await makeTestRegistry(rows)
+  await Effect.runPromise(permissions.declare(commandCapability, { source: "test" }))
+  await Effect.runPromise(registry.register(registration("openProject")))
+
+  await Effect.runPromise(registry.invoke("openProject", { path: "/tmp/project" }, context))
+
+  expect(auditTraceIds(rows, "audit/permission-used")).toEqual(["trace-1"])
+  expect(auditTraceIds(rows, "audit/command-invoked")).toEqual(["trace-1"])
+})
+
+test("CommandRegistry unregisters commands when the owner scope closes", async () => {
+  const { registry, resources } = await makeTestRegistry()
+  await Effect.runPromise(resources.declareScope("app"))
+  await Effect.runPromise(resources.declareScope("window-1", "app"))
+  await Effect.runPromise(registry.register(registration("openProject")))
+
+  await Effect.runPromise(resources.closeScope("window-1"))
+  const exit = await Effect.runPromiseExit(
+    registry.invoke("openProject", { path: "/tmp/project" }, context)
+  )
+
+  expectFailure(exit, CommandRegistryCommandNotFoundError)
+})
+
+test("CommandRegistry rolls back a reserved command when registration is interrupted", async () => {
+  const started = await Effect.runPromise(Deferred.make<void>())
+  const resources = await Effect.runPromise(makeResourceRegistry())
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  const registry = await Effect.runPromise(
+    makeCommandRegistry(
+      {
+        ...resources,
+        register: () =>
+          Effect.gen(function* () {
+            yield* Deferred.succeed(started, undefined)
+            return yield* Effect.never
+          })
+      },
+      permissions
+    )
+  )
+
+  const snapshots = await Effect.runPromise(
+    Effect.gen(function* () {
+      const fiber = yield* registry
+        .register(registration("openProject"))
+        .pipe(Effect.forkChild({ startImmediately: true }))
+      yield* Deferred.await(started)
+      yield* Fiber.interrupt(fiber)
+      return yield* registry.list()
+    })
+  )
+
+  expect(snapshots).toEqual([])
+})
+
+test("CommandRegistry resource cleanup does not remove a newer registration", async () => {
+  const disposeStarted = await Effect.runPromise(Deferred.make<void>())
+  const allowDispose = await Effect.runPromise(Deferred.make<void>())
+  const resources = delayedCleanupResourceRegistry(disposeStarted, allowDispose)
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  const registry = await Effect.runPromise(makeCommandRegistry(resources, permissions))
+
+  await Effect.runPromise(registry.register(registration("openProject")))
+  const snapshots = await Effect.runPromise(
+    Effect.gen(function* () {
+      const unregisterFiber = yield* registry
+        .unregister("openProject")
+        .pipe(Effect.forkChild({ startImmediately: true }))
+      yield* Deferred.await(disposeStarted)
+      yield* registry.register(registration("openProject"))
+      yield* Deferred.succeed(allowDispose, undefined)
+      yield* Fiber.join(unregisterFiber)
+      return yield* registry.list()
+    })
+  )
+
+  expect(snapshots.map((snapshot) => snapshot.id)).toEqual(["openProject"])
+})
+
+test("CommandRegistry fails registration when the reservation is removed before commit", async () => {
+  const registerStarted = await Effect.runPromise(Deferred.make<void>())
+  const allowRegister = await Effect.runPromise(Deferred.make<void>())
+  const resources = stalledRegisterResourceRegistry(registerStarted, allowRegister)
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  const registry = await Effect.runPromise(makeCommandRegistry(resources, permissions))
+
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const registerFiber = yield* registry
+        .register(registration("openProject"))
+        .pipe(Effect.forkChild({ startImmediately: true }))
+      yield* Deferred.await(registerStarted)
+      yield* registry.unregister("openProject")
+      yield* Deferred.succeed(allowRegister, undefined)
+      return yield* Fiber.join(registerFiber)
+    })
+  )
+  const snapshots = await Effect.runPromise(registry.list())
+
+  expectFailure(exit, CommandRegistryRegistrationLostError)
+  expect(snapshots).toEqual([])
+})
+
+test("CommandRegistry fails registration when its reservation was replaced before commit", async () => {
+  const firstRegisterStarted = await Effect.runPromise(Deferred.make<void>())
+  const allowFirstRegister = await Effect.runPromise(Deferred.make<void>())
+  const resources = firstRegisterStalledResourceRegistry(firstRegisterStarted, allowFirstRegister)
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  const registry = await Effect.runPromise(makeCommandRegistry(resources, permissions))
+
+  const { firstExit, snapshots } = await Effect.runPromise(
+    Effect.gen(function* () {
+      const firstRegister = yield* registry
+        .register(registration("openProject"))
+        .pipe(Effect.forkChild({ startImmediately: true }))
+      yield* Deferred.await(firstRegisterStarted)
+      yield* registry.unregister("openProject")
+      yield* registry.register(registration("openProject"))
+      yield* Deferred.succeed(allowFirstRegister, undefined)
+      const firstExit = yield* Fiber.await(firstRegister)
+      const snapshots = yield* registry.list()
+      return { firstExit, snapshots }
+    })
+  )
+
+  expectFailure(firstExit, CommandRegistryRegistrationLostError)
+  expect(snapshots.map((snapshot) => snapshot.id)).toEqual(["openProject"])
+})
+
+test("CommandRegistry interrupted registration rollback does not remove a replacement", async () => {
+  const firstRegisterStarted = await Effect.runPromise(Deferred.make<void>())
+  const allowFirstRegister = await Effect.runPromise(Deferred.make<void>())
+  const resources = firstRegisterStalledResourceRegistry(firstRegisterStarted, allowFirstRegister)
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  const registry = await Effect.runPromise(makeCommandRegistry(resources, permissions))
+
+  const snapshots = await Effect.runPromise(
+    Effect.gen(function* () {
+      const firstRegister = yield* registry
+        .register(registration("openProject"))
+        .pipe(Effect.forkChild({ startImmediately: true }))
+      yield* Deferred.await(firstRegisterStarted)
+      yield* registry.unregister("openProject")
+      yield* registry.register(registration("openProject"))
+      yield* Fiber.interrupt(firstRegister)
+      return yield* registry.list()
+    })
+  )
+
+  await Effect.runPromise(Deferred.succeed(allowFirstRegister, undefined))
+
+  expect(snapshots.map((snapshot) => snapshot.id)).toEqual(["openProject"])
+})
+
+const registration = (id: string) => ({
+  id,
+  inputSchema: OpenInput,
+  outputSchema: OpenOutput,
+  capability: commandCapability,
+  ownerScope: "window-1",
+  handler: () => Effect.succeed(new OpenOutput({ opened: true }))
+})
+
+const makeTestRegistry = async (
+  rows: EventLogEntry[] = []
+): Promise<{
+  readonly registry: CommandRegistryApi
+  readonly permissions: PermissionRegistryApi
+  readonly resources: ResourceRegistryApi
+}> => {
+  const audit = memoryAudit(rows)
+  const resources = await Effect.runPromise(makeResourceRegistry())
+  const permissions = await Effect.runPromise(
+    makePermissionRegistry({ audit, traceId: () => "trace-1", nextToken: () => "grant-1" })
+  )
+  const registry = await Effect.runPromise(makeCommandRegistry(resources, permissions, { audit }))
+  return { registry, permissions, resources }
+}
+
+const memoryAudit = (rows: EventLogEntry[]): EventLogStore => ({
+  append: (event, options) =>
+    Effect.sync(() => {
+      rows.push(
+        new EventLogEntry({
+          id: rows.length + 1,
+          type: event.type,
+          payload: event.payload,
+          source: options?.source ?? "test",
+          timestampMs: rows.length + 1
+        })
+      )
+      return rows.length
+    }),
+  query: () => Effect.succeed(rows),
+  subscribe: () => Stream.empty,
+  close: () => Effect.void
+})
+
+const delayedCleanupResourceRegistry = (
+  disposeStarted: Deferred.Deferred<void>,
+  allowDispose: Deferred.Deferred<void>
+): ResourceRegistryApi => {
+  const cleanupById = new Map<ResourceId, Effect.Effect<void, never, never>>()
+  const generationById = new Map<ResourceId, number>()
+  let generated = 0
+
+  return {
+    register: (input) =>
+      Effect.sync(() => {
+        const id =
+          input.id !== undefined && !cleanupById.has(input.id)
+            ? input.id
+            : (`generated-${++generated}` as ResourceId)
+        cleanupById.set(id, input.dispose ?? Effect.void)
+        const generation = generationById.get(id) ?? 0
+
+        return {
+          kind: input.kind,
+          id,
+          generation,
+          ownerScope: input.ownerScope,
+          state: input.state,
+          dispose: () => Effect.void
+        }
+      }),
+    get: () => Effect.succeed(Option.none()),
+    list: () => Effect.succeed({ entries: [] }),
+    dispose: (id) =>
+      Effect.gen(function* () {
+        const cleanup = cleanupById.get(id)
+        cleanupById.delete(id)
+        generationById.set(id, (generationById.get(id) ?? 0) + 1)
+        yield* Deferred.succeed(disposeStarted, undefined)
+        yield* Deferred.await(allowDispose)
+        if (cleanup !== undefined) {
+          yield* cleanup
+        }
+      }),
+    observe: () => Stream.empty,
+    declareScope: () => Effect.void,
+    closeScope: () => Effect.void,
+    share: () => Effect.die("unused"),
+    assertFresh: () => Effect.die("unused")
+  }
+}
+
+const stalledRegisterResourceRegistry = (
+  registerStarted: Deferred.Deferred<void>,
+  allowRegister: Deferred.Deferred<void>
+): ResourceRegistryApi => {
+  const cleanupById = new Map<ResourceId, Effect.Effect<void, never, never>>()
+
+  return {
+    register: (input) =>
+      Effect.gen(function* () {
+        yield* Deferred.succeed(registerStarted, undefined)
+        yield* Deferred.await(allowRegister)
+        const id = input.id ?? ("generated-1" as ResourceId)
+        cleanupById.set(id, input.dispose ?? Effect.void)
+
+        return {
+          kind: input.kind,
+          id,
+          generation: 0,
+          ownerScope: input.ownerScope,
+          state: input.state,
+          dispose: () => Effect.void
+        }
+      }),
+    get: () => Effect.succeed(Option.none()),
+    list: () => Effect.succeed({ entries: [] }),
+    dispose: (id) =>
+      Effect.gen(function* () {
+        const cleanup = cleanupById.get(id)
+        cleanupById.delete(id)
+        if (cleanup !== undefined) {
+          yield* cleanup
+        }
+      }),
+    observe: () => Stream.empty,
+    declareScope: () => Effect.void,
+    closeScope: () => Effect.void,
+    share: () => Effect.die("unused"),
+    assertFresh: () => Effect.die("unused")
+  }
+}
+
+const firstRegisterStalledResourceRegistry = (
+  firstRegisterStarted: Deferred.Deferred<void>,
+  allowFirstRegister: Deferred.Deferred<void>
+): ResourceRegistryApi => {
+  const cleanupById = new Map<ResourceId, Effect.Effect<void, never, never>>()
+  const generationById = new Map<ResourceId, number>()
+  let registerCount = 0
+
+  const registerNow = <Kind extends string, State extends string>(
+    input: RegisterResourceInput<Kind, State>
+  ): Effect.Effect<ResourceHandle<Kind, State>, never, never> =>
+    Effect.sync(() => {
+      const id = input.id ?? ("generated-1" as ResourceId)
+      const generation = generationById.get(id) ?? 0
+      cleanupById.set(id, input.dispose ?? Effect.void)
+
+      return {
+        kind: input.kind,
+        id,
+        generation,
+        ownerScope: input.ownerScope,
+        state: input.state,
+        dispose: () => Effect.void
+      }
+    })
+
+  return {
+    register: (input) =>
+      Effect.gen(function* () {
+        registerCount += 1
+        if (registerCount === 1) {
+          yield* Deferred.succeed(firstRegisterStarted, undefined)
+          yield* Deferred.await(allowFirstRegister)
+        }
+
+        return yield* registerNow(input)
+      }),
+    get: () => Effect.succeed(Option.none()),
+    list: () => Effect.succeed({ entries: [] }),
+    dispose: (id) =>
+      Effect.gen(function* () {
+        const cleanup = cleanupById.get(id)
+        cleanupById.delete(id)
+        generationById.set(id, (generationById.get(id) ?? 0) + 1)
+        if (cleanup !== undefined) {
+          yield* cleanup
+        }
+      }),
+    observe: () => Stream.empty,
+    declareScope: () => Effect.void,
+    closeScope: () => Effect.void,
+    share: () => Effect.die("unused"),
+    assertFresh: () => Effect.die("unused")
+  }
+}
+
+const auditTraceIds = (rows: readonly EventLogEntry[], type: string): readonly string[] =>
+  rows.flatMap((row) => {
+    if (row.type !== type) {
+      return []
+    }
+
+    const payload = row.payload as { readonly traceId?: unknown }
+    return typeof payload.traceId === "string" ? [payload.traceId] : []
+  })
+
+const expectFailure = (
+  exit: Exit.Exit<unknown, CommandRegistryError>,
+  errorType: abstract new (...args: never[]) => unknown
+): void => {
+  expect(Exit.isFailure(exit)).toBe(true)
+
+  if (Exit.isFailure(exit)) {
+    const fail = exit.cause.reasons.find(Cause.isFailReason)
+    expect(fail?.error).toBeInstanceOf(errorType)
+  }
+}
