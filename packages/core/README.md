@@ -8,11 +8,11 @@ Public framework API and runtime contracts (`Desktop.run`, `Desktop.window`, `De
 
 ## Public API
 
-The package exports runtime primitives as they land by phase. Phase 15 includes
-the `SQLite`, `Settings`, `EventLog`, `Transport`, `WindowState`, `Secrets`, and
-`RedactionFilter` services/utilities for scope-bound local storage, app-owned
-protocol transport, platform-backed credential storage, and human-visible
-emission safety.
+The package exports runtime primitives as they land by phase. Phase 16 adds the
+`PermissionRegistry` service to the Phase 15 `SQLite`, `Settings`, `EventLog`,
+`Transport`, `WindowState`, `Secrets`, and `RedactionFilter` services/utilities
+for scope-bound local storage, app-owned protocol transport, platform-backed
+credential storage, and human-visible emission safety.
 
 ### SQLite
 
@@ -64,6 +64,22 @@ SQLite is configured with `PRAGMA synchronous = FULL` when the log opens, so
 committed appends use SQLite's durability path. Underlying `SQLITE_FULL` errors
 map to `EventLogFull`; once a log is read-only, appends fail while query and
 subscribe continue.
+
+### PermissionRegistry
+
+`PermissionRegistry` is the deny-by-default capability chokepoint for privileged
+runtime operations. `declare(capability, options)` records normalized allow,
+deny, approval, and revocation rules; `query(kind, actor)` returns the global and
+actor-scoped declarations that apply to an actor; and
+`check(capability, context)` returns a `GrantedCapability` token or a typed
+`PermissionDenied` value.
+
+Decision order is fixed: explicit deny, revoked/expired/consumed,
+approval-denied, approval, allow, then default deny. Filesystem roots authorize
+descendant paths, while process commands, network hosts, secret namespaces, and
+native invoke methods match explicit declared entries. When an `EventLogStore`
+is supplied, every check writes a `permission decision` audit event with the
+normalized capability, actor, resource, source, and trace id.
 
 ### Transport
 
