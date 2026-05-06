@@ -320,6 +320,31 @@ test("CommandRegistry fails registration when its reservation was replaced befor
   expect(snapshots.map((snapshot) => snapshot.id)).toEqual(["openProject"])
 })
 
+test("CommandRegistry interrupted registration rollback does not remove a replacement", async () => {
+  const firstRegisterStarted = await Effect.runPromise(Deferred.make<void>())
+  const allowFirstRegister = await Effect.runPromise(Deferred.make<void>())
+  const resources = firstRegisterStalledResourceRegistry(firstRegisterStarted, allowFirstRegister)
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  const registry = await Effect.runPromise(makeCommandRegistry(resources, permissions))
+
+  const snapshots = await Effect.runPromise(
+    Effect.gen(function* () {
+      const firstRegister = yield* registry
+        .register(registration("openProject"))
+        .pipe(Effect.forkChild({ startImmediately: true }))
+      yield* Deferred.await(firstRegisterStarted)
+      yield* registry.unregister("openProject")
+      yield* registry.register(registration("openProject"))
+      yield* Fiber.interrupt(firstRegister)
+      return yield* registry.list()
+    })
+  )
+
+  await Effect.runPromise(Deferred.succeed(allowFirstRegister, undefined))
+
+  expect(snapshots.map((snapshot) => snapshot.id)).toEqual(["openProject"])
+})
+
 const registration = (id: string) => ({
   id,
   inputSchema: OpenInput,

@@ -140,11 +140,12 @@ export const makeCommandRegistry = (
         if (command === undefined) {
           return [undefined, current] as const
         }
+        if (registrationToken !== undefined && command.registrationToken !== registrationToken) {
+          return [undefined, current] as const
+        }
         if (
           resourceId !== undefined &&
-          (command.resourceId !== resourceId ||
-            command.resourceGeneration !== resourceGeneration ||
-            command.registrationToken !== registrationToken)
+          (command.resourceId !== resourceId || command.resourceGeneration !== resourceGeneration)
         ) {
           return [undefined, current] as const
         }
@@ -238,6 +239,7 @@ const registerCommand = <I, O>(
   registration: CommandRegistration<I, O>
 ): Effect.Effect<ResourceHandle<"command", "registered">, CommandRegistryError, never> => {
   let reservedId: string | undefined
+  let reservedToken: symbol | undefined
   let handle: ResourceHandle<"command", "registered"> | undefined
   let completed = false
 
@@ -247,7 +249,7 @@ const registerCommand = <I, O>(
     }
 
     return handle === undefined
-      ? remove(reservedId).pipe(Effect.asVoid)
+      ? remove(reservedId, undefined, undefined, reservedToken).pipe(Effect.asVoid)
       : resources.dispose(handle.id)
   })
 
@@ -258,6 +260,7 @@ const registerCommand = <I, O>(
     let registeredResourceId = resourceId
     let registeredResourceGeneration = 0
     const registrationToken = Symbol(decodedId)
+    reservedToken = registrationToken
     const stored: StoredCommand = {
       id: decodedId,
       inputSchema: registration.inputSchema as Schema.Schema<unknown>,
