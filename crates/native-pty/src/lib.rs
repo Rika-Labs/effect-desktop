@@ -408,10 +408,12 @@ fn map_anyhow_error(error: anyhow::Error, operation: &'static str) -> PtyError {
     }
 
     let message = error.to_string();
-    if message.contains("doesn't exist")
-        || message.contains("does not exist")
-        || message.contains("No viable candidates found")
-        || message.contains("No such file")
+    let lowercase_message = message.to_lowercase();
+    if lowercase_message.contains("doesn't exist")
+        || lowercase_message.contains("does not exist")
+        || lowercase_message.contains("no viable candidates found")
+        || lowercase_message.contains("no such file")
+        || lowercase_message.contains("cannot find the file")
     {
         return PtyError::FileNotFound {
             path: message,
@@ -419,7 +421,9 @@ fn map_anyhow_error(error: anyhow::Error, operation: &'static str) -> PtyError {
         };
     }
 
-    if message.contains("not executable") || message.contains("Permission denied") {
+    if lowercase_message.contains("not executable")
+        || lowercase_message.contains("permission denied")
+    {
         return PtyError::PermissionDenied {
             resource: message,
             operation,
@@ -460,6 +464,7 @@ mod tests {
         assert_eq!(error.tag(), "FileNotFound");
     }
 
+    #[cfg(unix)]
     #[test]
     fn opens_pty_reads_output_and_waits_for_exit() {
         let pty = open(
@@ -476,6 +481,7 @@ mod tests {
         assert_eq!(status.signal, None);
     }
 
+    #[cfg(unix)]
     #[test]
     fn write_sends_bytes_to_child_stdin() {
         let mut pty = open(PtySize { rows: 24, cols: 80 }, stdin_echo_command()).expect("open pty");
