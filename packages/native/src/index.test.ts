@@ -14,8 +14,17 @@ import {
   type HostWindowClientOptions,
   type HostWindowExchange
 } from "@effect-desktop/bridge"
-import { ResourceRegistry, makeResourceRegistry } from "@effect-desktop/core"
-import { Cause, Effect, Exit, Fiber, Layer, Stream } from "effect"
+import {
+  CommandRegistry,
+  EventLogEntry,
+  ResourceRegistry,
+  makeCommandRegistry,
+  makePermissionRegistry,
+  makeResourceRegistry,
+  type EventLogStore,
+  type NormalizedCapability
+} from "@effect-desktop/core"
+import { Cause, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect"
 
 import {
   AppEventRouter,
@@ -409,6 +418,13 @@ const windowHandle: WindowHandle = {
   generation: 0,
   ownerScope: "scope-1",
   state: "open"
+}
+
+const globalShortcutCommandCapability: NormalizedCapability = {
+  kind: "native.invoke",
+  primitive: "Command",
+  methods: ["openProject"],
+  audit: "always"
 }
 
 const webviewHandle: WebViewHandle = {
@@ -2668,7 +2684,229 @@ test("GlobalShortcut bridge client sends typed host envelopes and decodes presse
   ])
 })
 
+test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar events, keeps listening after command failure, and unregisters on scope close", async () => {
+  const calls: string[] = []
+  const rows: EventLogEntry[] = []
+  const pressed = await Effect.runPromise(Queue.unbounded<GlobalShortcutPressedEvent>())
+  const invoked = await Effect.runPromise(Deferred.make<void>())
+  const resources = await Effect.runPromise(makeResourceRegistry())
+  const permissions = await Effect.runPromise(
+    makePermissionRegistry({ audit: memoryAudit(rows), traceId: () => "trace-1" })
+  )
+  const commands = await Effect.runPromise(
+    makeCommandRegistry(resources, permissions, { audit: memoryAudit(rows) })
+  )
+  await Effect.runPromise(permissions.declare(globalShortcutCommandCapability, { source: "test" }))
+  let handlerCalls = 0
+  await Effect.runPromise(
+    commands.register({
+      id: "openProject",
+      inputSchema: Schema.Void,
+      outputSchema: Schema.Void,
+      capability: globalShortcutCommandCapability,
+      ownerScope: windowHandle.ownerScope,
+      handler: () => {
+        handlerCalls += 1
+        if (handlerCalls === 1) {
+          return Effect.fail("transient command failure")
+        }
+
+        return Effect.void.pipe(Effect.tap(() => Deferred.succeed(invoked, undefined)))
+      }
+    })
+  )
+
+  const handle = await Effect.runPromise(
+    Effect.gen(function* () {
+      const shortcuts = yield* GlobalShortcut
+      return yield* shortcuts.bindCommand("CmdOrCtrl+K", "openProject", windowHandle)
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          makeGlobalShortcutServiceLayer({
+            ...globalShortcutClient(calls),
+            onPressed: () => Stream.fromQueue(pressed)
+          }),
+          Layer.succeed(ResourceRegistry)(resources),
+          Layer.succeed(CommandRegistry)(commands)
+        )
+      )
+    )
+  )
+
+  await Effect.runPromise(
+    Queue.offer(
+      pressed,
+      new GlobalShortcutPressedEvent({
+        accelerator: "CmdOrCtrl+P",
+        registrarWindowId: windowHandle.id
+      })
+    )
+  )
+  await Effect.runPromise(
+    Queue.offer(
+      pressed,
+      new GlobalShortcutPressedEvent({
+        accelerator: "CmdOrCtrl+K",
+        registrarWindowId: "window-2"
+      })
+    )
+  )
+  await Effect.runPromise(
+    Queue.offer(
+      pressed,
+      new GlobalShortcutPressedEvent({
+        accelerator: "CmdOrCtrl+K",
+        registrarWindowId: windowHandle.id
+      })
+    )
+  )
+  await Effect.runPromise(
+    Queue.offer(
+      pressed,
+      new GlobalShortcutPressedEvent({
+        accelerator: "CmdOrCtrl+K",
+        registrarWindowId: windowHandle.id
+      })
+    )
+  )
+  await Effect.runPromise(Deferred.await(invoked))
+  await Effect.runPromise(resources.closeScope(windowHandle.ownerScope))
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      yield* Queue.offer(
+        pressed,
+        new GlobalShortcutPressedEvent({
+          accelerator: "CmdOrCtrl+K",
+          registrarWindowId: windowHandle.id
+        })
+      )
+      yield* Effect.sleep("10 millis")
+    })
+  )
+
+  expect(handle).toMatchObject({
+    kind: "global-shortcut-command",
+    id: "global-shortcut-command:window-1:CmdOrCtrl+K",
+    ownerScope: windowHandle.ownerScope,
+    state: "registered"
+  })
+  expect(handlerCalls).toBe(2)
+  expect(calls).toEqual(["register:CmdOrCtrl+K:window-1", "unregister:CmdOrCtrl+K"])
+  expect(rows.map((row) => row.type)).toContain("audit/permission-granted")
+  expect(rows.map((row) => row.type)).toContain("audit/command-invoked")
+})
+
+test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar events and unregisters on scope close", async () => {
+  const calls: string[] = []
+  const rows: EventLogEntry[] = []
+  const pressed = await Effect.runPromise(Queue.unbounded<GlobalShortcutPressedEvent>())
+  const invoked = await Effect.runPromise(Deferred.make<void>())
+  const resources = await Effect.runPromise(makeResourceRegistry())
+  const permissions = await Effect.runPromise(
+    makePermissionRegistry({ audit: memoryAudit(rows), traceId: () => "trace-1" })
+  )
+  const commands = await Effect.runPromise(
+    makeCommandRegistry(resources, permissions, { audit: memoryAudit(rows) })
+  )
+  await Effect.runPromise(permissions.declare(globalShortcutCommandCapability, { source: "test" }))
+  let handlerCalls = 0
+  await Effect.runPromise(
+    commands.register({
+      id: "openProject",
+      inputSchema: Schema.Void,
+      outputSchema: Schema.Void,
+      capability: globalShortcutCommandCapability,
+      ownerScope: windowHandle.ownerScope,
+      handler: () =>
+        Effect.sync(() => {
+          handlerCalls += 1
+        }).pipe(Effect.tap(() => Deferred.succeed(invoked, undefined)))
+    })
+  )
+
+  const handle = await Effect.runPromise(
+    Effect.gen(function* () {
+      const shortcuts = yield* GlobalShortcut
+      return yield* shortcuts.bindCommand("CmdOrCtrl+K", "openProject", windowHandle)
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          makeGlobalShortcutServiceLayer({
+            ...globalShortcutClient(calls),
+            onPressed: () => Stream.fromQueue(pressed)
+          }),
+          Layer.succeed(ResourceRegistry)(resources),
+          Layer.succeed(CommandRegistry)(commands)
+        )
+      )
+    )
+  )
+
+  await Effect.runPromise(
+    Queue.offer(
+      pressed,
+      new GlobalShortcutPressedEvent({
+        accelerator: "CmdOrCtrl+P",
+        registrarWindowId: windowHandle.id
+      })
+    )
+  )
+  await Effect.runPromise(
+    Queue.offer(
+      pressed,
+      new GlobalShortcutPressedEvent({
+        accelerator: "CmdOrCtrl+K",
+        registrarWindowId: "window-2"
+      })
+    )
+  )
+  await Effect.runPromise(
+    Queue.offer(
+      pressed,
+      new GlobalShortcutPressedEvent({
+        accelerator: "CmdOrCtrl+K",
+        registrarWindowId: windowHandle.id
+      })
+    )
+  )
+  await Effect.runPromise(Deferred.await(invoked))
+  await Effect.runPromise(resources.closeScope(windowHandle.ownerScope))
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      yield* Queue.offer(
+        pressed,
+        new GlobalShortcutPressedEvent({
+          accelerator: "CmdOrCtrl+K",
+          registrarWindowId: windowHandle.id
+        })
+      )
+      yield* Effect.sleep("10 millis")
+    })
+  )
+
+  expect(handle).toMatchObject({
+    kind: "global-shortcut-command",
+    id: "global-shortcut-command:window-1:CmdOrCtrl+K",
+    ownerScope: windowHandle.ownerScope,
+    state: "registered"
+  })
+  expect(handlerCalls).toBe(1)
+  expect(calls).toEqual(["register:CmdOrCtrl+K:window-1", "unregister:CmdOrCtrl+K"])
+  expect(rows.map((row) => row.type)).toContain("audit/permission-granted")
+  expect(rows.map((row) => row.type)).toContain("audit/command-invoked")
+})
+
 test("GlobalShortcut conflicts and unsupported behavior are typed Effect values", async () => {
+  const bindingResources = await Effect.runPromise(makeResourceRegistry())
+  const bindingPermissions = await Effect.runPromise(makePermissionRegistry())
+  const bindingCommands = await Effect.runPromise(
+    makeCommandRegistry(bindingResources, bindingPermissions)
+  )
+  const bindingCoreLayer = Layer.mergeAll(
+    Layer.succeed(ResourceRegistry)(bindingResources),
+    Layer.succeed(CommandRegistry)(bindingCommands)
+  )
   const conflictExit = await Effect.runPromise(
     Effect.gen(function* () {
       const shortcuts = yield* GlobalShortcut
@@ -2683,17 +2921,45 @@ test("GlobalShortcut conflicts and unsupported behavior are typed Effect values"
       )
     )
   )
+  const bindConflictExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const shortcuts = yield* GlobalShortcut
+      return yield* Effect.exit(shortcuts.bindCommand("CmdOrCtrl+K", "openProject", windowHandle))
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          makeGlobalShortcutServiceLayer({
+            ...globalShortcutClient([]),
+            register: (accelerator) =>
+              Effect.fail(makeGlobalShortcutAlreadyRegisteredError(accelerator))
+          }),
+          bindingCoreLayer
+        )
+      )
+    )
+  )
   const unsupported = await Effect.runPromise(
     Effect.gen(function* () {
       const shortcuts = yield* GlobalShortcut
       const supported = yield* shortcuts.isSupported()
       const registerExit = yield* Effect.exit(shortcuts.register("CmdOrCtrl+K", windowHandle))
+      const bindExit = yield* Effect.exit(
+        shortcuts.bindCommand("CmdOrCtrl+K", "openProject", windowHandle)
+      )
       const pressedExit = yield* shortcuts.onPressed().pipe(Stream.runHead, Effect.exit)
-      return { pressedExit, registerExit, supported }
-    }).pipe(Effect.provide(makeGlobalShortcutServiceLayer(makeUnsupportedGlobalShortcutClient())))
+      return { bindExit, pressedExit, registerExit, supported }
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          makeGlobalShortcutServiceLayer(makeUnsupportedGlobalShortcutClient()),
+          bindingCoreLayer
+        )
+      )
+    )
   )
 
   expectExitFailure(conflictExit, (error) => hasErrorTag(error, "AlreadyExists"))
+  expectExitFailure(bindConflictExit, (error) => hasErrorTag(error, "AlreadyExists"))
   expect(unsupported.supported).toEqual(
     new GlobalShortcutSupportedResult({
       supported: false,
@@ -2702,6 +2968,15 @@ test("GlobalShortcut conflicts and unsupported behavior are typed Effect values"
   )
   expectExitFailure(
     unsupported.registerExit,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "reason" in error &&
+      error.reason === "host-adapter-unimplemented"
+  )
+  expectExitFailure(
+    unsupported.bindExit,
     (error) =>
       hasErrorTag(error, "Unsupported") &&
       typeof error === "object" &&
@@ -3183,6 +3458,25 @@ const globalShortcutClient = (calls: string[]): GlobalShortcutClientApi => ({
         registrarWindowId: "window-1"
       })
     )
+})
+
+const memoryAudit = (rows: EventLogEntry[]): EventLogStore => ({
+  append: (event, options) =>
+    Effect.sync(() => {
+      rows.push(
+        new EventLogEntry({
+          id: rows.length + 1,
+          type: event.type,
+          payload: event.payload,
+          source: options?.source ?? "test",
+          timestampMs: rows.length + 1
+        })
+      )
+      return rows.length
+    }),
+  query: () => Effect.succeed(rows),
+  subscribe: () => Stream.empty,
+  close: () => Effect.void
 })
 
 const dialogClient = (calls: string[]): DialogClientApi => ({

@@ -1,4 +1,13 @@
 import {
+  CommandRegistry,
+  PermissionActor,
+  PermissionContext,
+  ResourceRegistry,
+  type CommandRegistryError,
+  type ResourceHandle,
+  type ResourceId
+} from "@effect-desktop/core"
+import {
   Api,
   Client,
   type ApiClientExchange,
@@ -15,7 +24,7 @@ import {
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Schema, Stream } from "effect"
+import { Context, Effect, Fiber, Layer, Option, Schema, Stream } from "effect"
 
 import {
   GlobalShortcutAcceleratorInput,
@@ -30,6 +39,7 @@ const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export type GlobalShortcutError = HostProtocolError
 export type GlobalShortcutWindowHandle = WindowHandle
+export type GlobalShortcutCommandBindingError = GlobalShortcutError | CommandRegistryError
 
 export const GlobalShortcutApiSpec = Object.freeze({
   register: shortcutMethodSpec(
@@ -139,6 +149,15 @@ export interface GlobalShortcutServiceApi extends Omit<
   GlobalShortcutClientApi,
   "isRegistered" | "isSupported"
 > {
+  readonly bindCommand: (
+    accelerator: string,
+    commandId: string,
+    registrarWindow: GlobalShortcutWindowHandle
+  ) => Effect.Effect<
+    ResourceHandle<"global-shortcut-command", "registered">,
+    GlobalShortcutCommandBindingError,
+    CommandRegistry | ResourceRegistry
+  >
   readonly isRegistered: (accelerator: string) => Effect.Effect<boolean, GlobalShortcutError, never>
   readonly isSupported: () => Effect.Effect<
     GlobalShortcutSupportedResult,
@@ -155,6 +174,8 @@ export const GlobalShortcutLive = Layer.effect(GlobalShortcut)(
   Effect.gen(function* () {
     const client = yield* GlobalShortcutClient
     return Object.freeze({
+      bindCommand: (accelerator, commandId, registrarWindow) =>
+        bindGlobalShortcutCommand(client, accelerator, commandId, registrarWindow),
       register: (accelerator, registrarWindow) => client.register(accelerator, registrarWindow),
       unregister: (accelerator) => client.unregister(accelerator),
       unregisterAll: () => client.unregisterAll(),
@@ -165,6 +186,117 @@ export const GlobalShortcutLive = Layer.effect(GlobalShortcut)(
     } satisfies GlobalShortcutServiceApi)
   })
 )
+
+const bindGlobalShortcutCommand = (
+  client: GlobalShortcutClientApi,
+  accelerator: string,
+  commandId: string,
+  registrarWindow: GlobalShortcutWindowHandle
+): Effect.Effect<
+  ResourceHandle<"global-shortcut-command", "registered">,
+  GlobalShortcutCommandBindingError,
+  CommandRegistry | ResourceRegistry
+> => {
+  let completed = false
+  let registered = false
+
+  return Effect.gen(function* () {
+    const commands = yield* CommandRegistry
+    const resources = yield* ResourceRegistry
+    const registrar = toWindowHandle(registrarWindow)
+    yield* client.register(accelerator, registrar)
+    registered = true
+
+    const fiber = yield* client.onPressed().pipe(
+      Stream.filter(
+        (event) => event.accelerator === accelerator && event.registrarWindowId === registrar.id
+      ),
+      Stream.runForEach(() =>
+        invokeGlobalShortcutCommand(commands, commandId, registrar.id, accelerator)
+      ),
+      Effect.forkDetach
+    )
+
+    const cleanup = cleanupGlobalShortcutCommandBinding(client, fiber, accelerator)
+
+    const handle = yield* resources.register({
+      kind: "global-shortcut-command",
+      id: globalShortcutCommandResourceId(registrar.id, accelerator),
+      ownerScope: registrar.ownerScope,
+      state: "registered",
+      dispose: cleanup
+    })
+    completed = true
+    return handle
+  }).pipe(
+    Effect.ensuring(
+      Effect.suspend(() =>
+        completed || !registered
+          ? Effect.void
+          : client
+              .unregister(accelerator)
+              .pipe(logGlobalShortcutCleanupFailure(accelerator, "registration-rollback"))
+      )
+    )
+  )
+}
+
+const invokeGlobalShortcutCommand = (
+  commands: CommandRegistry["Service"],
+  commandId: string,
+  windowId: string,
+  accelerator: string
+): Effect.Effect<void, never, never> =>
+  commands
+    .invoke(
+      commandId,
+      undefined,
+      new PermissionContext({
+        actor: new PermissionActor({ kind: "window", id: windowId }),
+        traceId: `global-shortcut:${windowId}:${accelerator}`
+      })
+    )
+    .pipe(
+      Effect.asVoid,
+      Effect.catch((error: CommandRegistryError) =>
+        Effect.logWarning("GlobalShortcut command invocation failed", {
+          accelerator,
+          commandId,
+          error,
+          windowId
+        })
+      )
+    )
+
+const cleanupGlobalShortcutCommandBinding = (
+  client: GlobalShortcutClientApi,
+  fiber: Fiber.Fiber<void, GlobalShortcutError | CommandRegistryError>,
+  accelerator: string
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    yield* Fiber.interrupt(fiber)
+    yield* client
+      .unregister(accelerator)
+      .pipe(logGlobalShortcutCleanupFailure(accelerator, "scope-dispose"))
+  })
+
+const logGlobalShortcutCleanupFailure =
+  (
+    accelerator: string,
+    phase: "registration-rollback" | "scope-dispose"
+  ): (<A>(
+    effect: Effect.Effect<A, GlobalShortcutError, never>
+  ) => Effect.Effect<A | void, never, never>) =>
+  (effect) =>
+    effect.pipe(
+      Effect.catch((error: GlobalShortcutError) =>
+        Effect.logWarning("GlobalShortcut cleanup failed", {
+          accelerator,
+          phase,
+          error
+        })
+      )
+    )
 
 export const makeGlobalShortcutClientLayer = (
   client: GlobalShortcutClientApi
@@ -250,6 +382,9 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
     operation: method,
     recoverable: false
   })
+
+const globalShortcutCommandResourceId = (windowId: string, accelerator: string): ResourceId =>
+  `global-shortcut-command:${windowId}:${accelerator}` as ResourceId
 
 const toWindowHandle = (handle: GlobalShortcutWindowHandle): GlobalShortcutWindowHandle =>
   new ApiResourceHandleShape({
