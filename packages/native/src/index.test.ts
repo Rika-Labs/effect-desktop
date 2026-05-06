@@ -28,6 +28,13 @@ import {
   AppOpenFileEvent,
   AppOpenUrlEvent,
   AppSecondInstanceEvent,
+  Dialog,
+  DialogApi,
+  DialogConfirmResult,
+  DialogLive,
+  DialogMethodNames,
+  DialogOpenResult,
+  DialogSaveResult,
   Menu,
   MenuActivatedEvent,
   MenuApi,
@@ -49,8 +56,11 @@ import {
   makeAppEventRouter,
   makeAppBridgeClientLayer,
   makeAppServiceLayer,
+  makeDialogBridgeClientLayer,
+  makeDialogServiceLayer,
   makeMenuBridgeClientLayer,
   makeMenuServiceLayer,
+  makeUnsupportedDialogClient,
   makeUnsupportedMenuClient,
   makeUnsupportedAppClient,
   makeUnsupportedWebViewClient,
@@ -63,6 +73,7 @@ import {
   targetedRoute,
   windowScope,
   type AppClientApi,
+  type DialogClientApi,
   type MenuClientApi,
   type WebViewClientApi,
   type WebViewHandle,
@@ -121,6 +132,14 @@ const expectedMenuMethods: Array<(typeof MenuMethodNames)[number]> = [
   "clear",
   "bindCommand",
   "capability"
+]
+
+const expectedDialogMethods: Array<(typeof DialogMethodNames)[number]> = [
+  "openFile",
+  "openDirectory",
+  "saveFile",
+  "message",
+  "confirm"
 ]
 
 const windowHandle: WindowHandle = {
@@ -598,6 +617,158 @@ test("unsupported Menu client reports deferred host methods as Effect values", a
   )
 })
 
+test("DialogApi declares the Phase 7 Dialog method surface", () => {
+  expect(DialogApi.tag).toBe("Dialog")
+  expect([...DialogMethodNames]).toEqual(expectedDialogMethods)
+  expect(Object.keys(DialogApi.spec)).toEqual(expectedDialogMethods)
+  expect(Object.keys(DialogApi.events)).toEqual([])
+})
+
+test("Dialog service delegates through a substitutable DialogClient port", async () => {
+  const calls: string[] = []
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const dialog = yield* Dialog
+      const files = yield* dialog.openFile({
+        title: "Open",
+        filters: [{ name: "Text", extensions: ["txt"] }],
+        multiple: true
+      })
+      const directories = yield* dialog.openDirectory({ title: "Directory" })
+      const savePath = yield* dialog.saveFile({ defaultPath: "/tmp/report.txt" })
+      yield* dialog.message({ level: "info", message: "Done" })
+      const confirmed = yield* dialog.confirm({ message: "Continue?" })
+
+      return { confirmed, directories, files, savePath }
+    }).pipe(Effect.provide(makeDialogServiceLayer(dialogClient(calls))))
+  )
+
+  expect(result.files).toEqual(["/canonical/file-a.txt", "/canonical/file-b.txt"])
+  expect(result.directories).toEqual(["/canonical/project"])
+  expect(result.savePath).toBe("/canonical/report.txt")
+  expect(result.confirmed).toBe(true)
+  expect(calls).toEqual([
+    "openFile:Open:Text:true",
+    "openDirectory:Directory",
+    "saveFile:/tmp/report.txt",
+    "message:info:Done",
+    "confirm:Continue?"
+  ])
+})
+
+test("Dialog bridge client sends typed host envelopes and decodes outputs", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = dialogExchange(requests, (request) => ({
+    kind: "success",
+    payload:
+      request.method === "Dialog.openFile"
+        ? { paths: ["/canonical/file.txt"] }
+        : request.method === "Dialog.openDirectory"
+          ? { paths: ["/canonical/project"] }
+          : request.method === "Dialog.saveFile"
+            ? { path: "/canonical/report.txt" }
+            : request.method === "Dialog.confirm"
+              ? { confirmed: false }
+              : undefined
+  }))
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const dialog = yield* Dialog
+      const files = yield* dialog.openFile({ defaultPath: "/tmp/input.txt" })
+      const directories = yield* dialog.openDirectory()
+      const savePath = yield* dialog.saveFile({
+        filters: [{ name: "Markdown", extensions: ["md"] }]
+      })
+      yield* dialog.message({ level: "warning", message: "Check input", detail: "details" })
+      const confirmed = yield* dialog.confirm({ message: "Proceed?", confirmLabel: "Yes" })
+
+      return { confirmed, directories, files, savePath }
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          DialogLive,
+          makeDialogBridgeClientLayer(exchange, {
+            nextRequestId: nextId([
+              "open-file-request",
+              "open-directory-request",
+              "save-file-request",
+              "message-request",
+              "confirm-request"
+            ]),
+            nextTraceId: nextId([
+              "open-file-trace",
+              "open-directory-trace",
+              "save-file-trace",
+              "message-trace",
+              "confirm-trace"
+            ]),
+            now: nextNumber([
+              1710000000000, 1710000000001, 1710000000002, 1710000000003, 1710000000004
+            ])
+          })
+        )
+      )
+    )
+  )
+
+  expect(result.files).toEqual(["/canonical/file.txt"])
+  expect(result.directories).toEqual(["/canonical/project"])
+  expect(result.savePath).toBe("/canonical/report.txt")
+  expect(result.confirmed).toBe(false)
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["Dialog.openFile", { defaultPath: "/tmp/input.txt" }],
+    ["Dialog.openDirectory", {}],
+    ["Dialog.saveFile", { filters: [{ name: "Markdown", extensions: ["md"] }] }],
+    ["Dialog.message", { level: "warning", message: "Check input", detail: "details" }],
+    ["Dialog.confirm", { message: "Proceed?", confirmLabel: "Yes" }]
+  ])
+})
+
+test("Dialog bridge client returns invalid input as typed Effect failures", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Dialog
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          DialogLive,
+          makeDialogBridgeClientLayer(
+            dialogExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const exit = await Effect.runPromiseExit(
+    client.message({ level: "fatal", message: "bad" } as never)
+  )
+
+  expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
+test("unsupported Dialog client reports deferred host methods as Effect values", async () => {
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const dialog = yield* Dialog
+      return yield* Effect.exit(dialog.openFile())
+    }).pipe(Effect.provide(makeDialogServiceLayer(makeUnsupportedDialogClient())))
+  )
+
+  expectExitFailure(
+    exit,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "operation" in error &&
+      error.operation === "Dialog.openFile"
+  )
+})
+
 test("WindowApi declares the Phase 5 Window method surface", () => {
   expect(WindowApi.tag).toBe("Window")
   expect([...WindowMethodNames]).toEqual(expectedWindowMethods)
@@ -1014,6 +1185,32 @@ const menuClient = (calls: string[]): MenuClientApi => ({
     )
 })
 
+const dialogClient = (calls: string[]): DialogClientApi => ({
+  openFile: (input) =>
+    Effect.sync(() => {
+      calls.push(
+        `openFile:${input?.title ?? ""}:${input?.filters?.map((filter) => filter.name).join(",") ?? ""}:${input?.multiple ?? false}`
+      )
+      return new DialogOpenResult({ paths: ["/canonical/file-a.txt", "/canonical/file-b.txt"] })
+    }),
+  openDirectory: (input) =>
+    Effect.sync(() => {
+      calls.push(`openDirectory:${input?.title ?? ""}`)
+      return new DialogOpenResult({ paths: ["/canonical/project"] })
+    }),
+  saveFile: (input) =>
+    Effect.sync(() => {
+      calls.push(`saveFile:${input?.defaultPath ?? ""}`)
+      return new DialogSaveResult({ path: "/canonical/report.txt" })
+    }),
+  message: (input) => recordVoid(calls, `message:${input.level}:${input.message}`),
+  confirm: (input) =>
+    Effect.sync(() => {
+      calls.push(`confirm:${input.message}`)
+      return new DialogConfirmResult({ confirmed: true })
+    })
+})
+
 const noopWindowClient: WindowClientApi = {
   create: () => Effect.succeed(windowHandle),
   show: () => Effect.void,
@@ -1135,6 +1332,16 @@ const menuExchange = (
           })
         )
       : Stream.empty
+})
+
+const dialogExchange = (
+  requests: HostProtocolRequestEnvelope[],
+  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
+): ApiClientExchange => ({
+  request: (request) => {
+    requests.push(request)
+    return Effect.succeed(respond(request))
+  }
 })
 
 const makeWindowApiExchange = (
