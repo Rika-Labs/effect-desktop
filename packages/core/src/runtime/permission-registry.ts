@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 
-import { Context, Data, Effect, Option, Ref, Schema } from "effect"
+import { Context, Data, Deferred, Effect, Option, Ref, Schema } from "effect"
 
 import type { EventLogError, EventLogStore } from "./event-log.js"
 
@@ -119,7 +119,10 @@ export class GrantedCapability extends Schema.Class<GrantedCapability>("GrantedC
   actor: PermissionActor,
   resource: Schema.optionalKey(Schema.String),
   source: Schema.String,
-  traceId: NonEmptyString
+  traceId: NonEmptyString,
+  grantedAt: Schema.Number,
+  expiresAt: Schema.optionalKey(Schema.Number),
+  oneTime: Schema.optionalKey(Schema.Boolean)
 }) {}
 
 export class PermissionDecision extends Schema.Class<PermissionDecision>("PermissionDecision")({
@@ -139,6 +142,17 @@ export class PermissionDecision extends Schema.Class<PermissionDecision>("Permis
   actor: PermissionActor,
   resource: Schema.optionalKey(Schema.String),
   traceId: NonEmptyString
+}) {}
+
+const GrantStatus = Schema.Literals(["active", "revoked", "expired", "consumed"])
+export type GrantStatus = typeof GrantStatus.Type
+
+export class PermissionGrantSnapshot extends Schema.Class<PermissionGrantSnapshot>(
+  "PermissionGrantSnapshot"
+)({
+  grant: GrantedCapability,
+  status: GrantStatus,
+  updatedAt: Schema.Number
 }) {}
 
 export class PermissionInvalidArgumentError extends Data.TaggedError("InvalidArgument")<{
@@ -169,15 +183,39 @@ export class PermissionAuditFailedError extends Data.TaggedError("PermissionAudi
   readonly cause: EventLogError
 }> {}
 
+export class PermissionGrantNotFoundError extends Data.TaggedError("PermissionGrantNotFound")<{
+  readonly operation: string
+  readonly token: string
+}> {}
+
+export class PermissionRevokedError extends Data.TaggedError("PermissionRevoked")<{
+  readonly operation: string
+  readonly reason: "revoked" | "expired" | "consumed"
+  readonly token: string
+  readonly capability: NormalizedCapability
+  readonly actor: PermissionActor
+  readonly traceId: string
+  readonly revokedAt: number
+}> {}
+
 export type PermissionRegistryError =
   | PermissionInvalidArgumentError
   | PermissionDeniedError
   | PermissionAuditFailedError
+  | PermissionGrantNotFoundError
+  | PermissionRevokedError
 
 export interface PermissionRegistryOptions {
   readonly audit?: EventLogStore
   readonly traceId?: () => string
   readonly nextToken?: () => string
+  readonly now?: () => number
+}
+
+export interface PermissionGrantOptions {
+  readonly expiresAt?: number
+  readonly oneTime?: boolean
+  readonly source?: string
 }
 
 export interface PermissionRegistryApi {
@@ -195,8 +233,24 @@ export interface PermissionRegistryApi {
   ) => Effect.Effect<readonly PermissionRule[], PermissionInvalidArgumentError, never>
   readonly check: (
     capability: NormalizedCapability,
-    context: PermissionContext
+    context: PermissionContext,
+    options?: PermissionGrantOptions
   ) => Effect.Effect<GrantedCapability, PermissionRegistryError, never>
+  readonly grant: (
+    capability: NormalizedCapability,
+    context: PermissionContext,
+    options?: PermissionGrantOptions
+  ) => Effect.Effect<GrantedCapability, PermissionRegistryError, never>
+  readonly revoke: (
+    token: string
+  ) => Effect.Effect<PermissionGrantSnapshot, PermissionRegistryError, never>
+  readonly inspect: (
+    token: string
+  ) => Effect.Effect<PermissionGrantSnapshot, PermissionRegistryError, never>
+  readonly use: <A, E, R>(
+    grant: GrantedCapability,
+    effect: Effect.Effect<A, E, R>
+  ) => Effect.Effect<A, E | PermissionRegistryError, R>
 }
 
 export const makePermissionRegistry = (
@@ -204,8 +258,10 @@ export const makePermissionRegistry = (
 ): Effect.Effect<PermissionRegistryApi, never, never> =>
   Effect.gen(function* () {
     const rules = yield* Ref.make<readonly PermissionRule[]>([])
+    const grants = yield* Ref.make<ReadonlyMap<string, TrackedGrant>>(new Map())
     const traceId = options.traceId ?? randomUUID
     const nextToken = options.nextToken ?? randomUUID
+    const now = options.now ?? Date.now
 
     return Object.freeze({
       declare: (capability, declarationOptions = {}) =>
@@ -240,7 +296,7 @@ export const makePermissionRegistry = (
               (rule.actor === undefined || sameActor(rule.actor, decoded.actor))
           )
         }).pipe(Effect.withSpan("PermissionRegistry.query", { attributes: { kind } })),
-      check: (capability, context) =>
+      check: (capability, context, grantOptions = {}) =>
         Effect.gen(function* () {
           const decodedCapability = yield* decodeCapability(
             capability,
@@ -280,14 +336,16 @@ export const makePermissionRegistry = (
             )
           }
 
-          const granted = new GrantedCapability({
-            token: nextToken(),
-            capability: decodedCapability,
-            actor: decodedContext.actor,
-            ...(decodedContext.resource === undefined ? {} : { resource: decodedContext.resource }),
-            source: resolved.source,
-            traceId: id
-          })
+          const granted = yield* issueGrant(
+            grants,
+            options.audit,
+            nextToken,
+            now,
+            decodedCapability,
+            decodedContext,
+            id,
+            { ...grantOptions, source: grantOptions.source ?? resolved.source }
+          )
           yield* auditDecision(
             options.audit,
             new PermissionDecision({
@@ -305,6 +363,56 @@ export const makePermissionRegistry = (
         }).pipe(
           Effect.withSpan("PermissionRegistry.check", {
             attributes: { kind: capability.kind }
+          })
+        ),
+      grant: (capability, context, grantOptions = {}) =>
+        Effect.gen(function* () {
+          const decodedCapability = yield* decodeCapability(
+            capability,
+            "PermissionRegistry.grant",
+            "capability"
+          )
+          const decodedContext = yield* decodeContext(context, "PermissionRegistry.grant")
+          return yield* issueGrant(
+            grants,
+            options.audit,
+            nextToken,
+            now,
+            decodedCapability,
+            decodedContext,
+            decodedContext.traceId ?? traceId(),
+            { ...grantOptions, source: grantOptions.source ?? "grant" }
+          )
+        }).pipe(
+          Effect.withSpan("PermissionRegistry.grant", {
+            attributes: { kind: capability.kind }
+          })
+        ),
+      revoke: (token) =>
+        transitionGrant(grants, options.audit, token, "revoked", now()).pipe(
+          Effect.withSpan("PermissionRegistry.revoke")
+        ),
+      inspect: (token) =>
+        inspectGrant(grants, options.audit, token, now()).pipe(
+          Effect.withSpan("PermissionRegistry.inspect")
+        ),
+      use: (grant, effect) =>
+        Effect.gen(function* () {
+          const prepared = yield* prepareGrantUse(grants, options.audit, grant.token, now())
+          if (!prepared.track) {
+            return yield* effect
+          }
+          const signal = yield* Deferred.make<PermissionRevokedError>()
+          yield* Ref.update(grants, (current) => addWaiter(current, prepared.grant.token, signal))
+          const revoke = Deferred.await(signal).pipe(Effect.flatMap((error) => Effect.fail(error)))
+          return yield* Effect.raceFirst(effect, revoke).pipe(
+            Effect.ensuring(
+              Ref.update(grants, (current) => removeWaiter(current, prepared.grant.token, signal))
+            )
+          )
+        }).pipe(
+          Effect.withSpan("PermissionRegistry.use", {
+            attributes: { token: grant.token, kind: grant.capability.kind }
           })
         )
     } satisfies PermissionRegistryApi)
@@ -324,6 +432,13 @@ type Resolved =
       readonly reason: PermissionDeniedError["reason"]
       readonly source: string
     }
+
+interface TrackedGrant {
+  readonly grant: GrantedCapability
+  readonly status: GrantStatus
+  readonly updatedAt: number
+  readonly waiters: readonly Deferred.Deferred<PermissionRevokedError>[]
+}
 
 const resolve = (
   rules: readonly PermissionRule[],
@@ -428,6 +543,263 @@ const capabilityCovers = (
 const rootCovers = (declaredRoot: string, requestedRoot: string): boolean => {
   const prefix = declaredRoot.endsWith("/") ? declaredRoot : `${declaredRoot}/`
   return requestedRoot === declaredRoot || requestedRoot.startsWith(prefix)
+}
+
+const issueGrant = (
+  grants: Ref.Ref<ReadonlyMap<string, TrackedGrant>>,
+  audit: EventLogStore | undefined,
+  nextToken: () => string,
+  now: () => number,
+  capability: NormalizedCapability,
+  context: PermissionContext,
+  traceId: string,
+  options: PermissionGrantOptions
+): Effect.Effect<GrantedCapability, PermissionRegistryError, never> =>
+  Effect.gen(function* () {
+    const grantedAt = now()
+    const grant = new GrantedCapability({
+      token: nextToken(),
+      capability,
+      actor: context.actor,
+      ...(context.resource === undefined ? {} : { resource: context.resource }),
+      source: options.source ?? "grant",
+      traceId,
+      grantedAt,
+      ...(options.expiresAt === undefined ? {} : { expiresAt: options.expiresAt }),
+      ...(options.oneTime === undefined ? {} : { oneTime: options.oneTime })
+    })
+    const tracked: TrackedGrant = {
+      grant,
+      status: grant.expiresAt !== undefined && grant.expiresAt <= grantedAt ? "expired" : "active",
+      updatedAt: grantedAt,
+      waiters: []
+    }
+
+    yield* auditLifecycle(audit, "grant", tracked)
+    if (tracked.status === "expired") {
+      yield* auditLifecycle(audit, "expire", tracked)
+    }
+    yield* Ref.update(grants, (current) => withTracked(current, tracked))
+    return grant
+  })
+
+const inspectGrant = (
+  grants: Ref.Ref<ReadonlyMap<string, TrackedGrant>>,
+  audit: EventLogStore | undefined,
+  token: string,
+  now: number
+): Effect.Effect<PermissionGrantSnapshot, PermissionRegistryError, never> =>
+  Effect.gen(function* () {
+    const active = yield* expireIfNeeded(grants, audit, token, now)
+    return snapshot(active)
+  })
+
+const prepareGrantUse = (
+  grants: Ref.Ref<ReadonlyMap<string, TrackedGrant>>,
+  audit: EventLogStore | undefined,
+  token: string,
+  now: number
+): Effect.Effect<
+  { readonly grant: GrantedCapability; readonly track: boolean },
+  PermissionRegistryError,
+  never
+> =>
+  Effect.gen(function* () {
+    const active = yield* expireIfNeeded(grants, audit, token, now)
+    if (active.status === "active") {
+      if (active.grant.oneTime === true) {
+        const consumed = yield* transitionGrant(grants, audit, token, "consumed", now)
+        yield* auditLifecycle(audit, "use", active)
+        return { grant: consumed.grant, track: false }
+      }
+      yield* auditLifecycle(audit, "use", active)
+      return { grant: active.grant, track: true }
+    }
+
+    return yield* Effect.fail(revokedError("PermissionRegistry.use", snapshot(active)))
+  })
+
+const expireIfNeeded = (
+  grants: Ref.Ref<ReadonlyMap<string, TrackedGrant>>,
+  audit: EventLogStore | undefined,
+  token: string,
+  now: number
+): Effect.Effect<TrackedGrant, PermissionRegistryError, never> =>
+  Effect.gen(function* () {
+    const current = yield* Ref.get(grants)
+    const tracked = current.get(token)
+    if (tracked === undefined) {
+      return yield* Effect.fail(
+        new PermissionGrantNotFoundError({ operation: "PermissionRegistry.inspect", token })
+      )
+    }
+    if (tracked.status !== "active") {
+      return tracked
+    }
+    if (tracked.grant.expiresAt === undefined || tracked.grant.expiresAt > now) {
+      return tracked
+    }
+    yield* transitionGrant(grants, audit, token, "expired", now)
+    const updated = yield* Ref.get(grants)
+    const expired = updated.get(token)
+    if (expired === undefined) {
+      return yield* Effect.fail(
+        new PermissionGrantNotFoundError({ operation: "PermissionRegistry.inspect", token })
+      )
+    }
+    return expired
+  })
+
+const transitionGrant = (
+  grants: Ref.Ref<ReadonlyMap<string, TrackedGrant>>,
+  audit: EventLogStore | undefined,
+  token: string,
+  status: Exclude<GrantStatus, "active">,
+  updatedAt: number
+): Effect.Effect<PermissionGrantSnapshot, PermissionRegistryError, never> =>
+  Effect.gen(function* () {
+    const current = yield* Ref.get(grants)
+    const found = current.get(token)
+    if (found === undefined) {
+      return yield* Effect.fail(
+        new PermissionGrantNotFoundError({
+          operation: "PermissionRegistry.revoke",
+          token
+        })
+      )
+    }
+    if (found.status !== "active") {
+      return snapshot(found)
+    }
+    const tracked: TrackedGrant = { ...found, status, updatedAt }
+    yield* Ref.set(grants, withTracked(current, tracked))
+    yield* Effect.forEach(tracked.waiters, (waiter) =>
+      Deferred.succeed(waiter, revokedError("PermissionRegistry.revoke", snapshot(tracked)))
+    )
+    yield* auditLifecycle(audit, lifecycleTransition(status), tracked)
+    return snapshot(tracked)
+  })
+
+const withTracked = (
+  current: ReadonlyMap<string, TrackedGrant>,
+  tracked: TrackedGrant
+): ReadonlyMap<string, TrackedGrant> => {
+  const next = new Map(current)
+  next.set(tracked.grant.token, tracked)
+  return next
+}
+
+const addWaiter = (
+  current: ReadonlyMap<string, TrackedGrant>,
+  token: string,
+  waiter: Deferred.Deferred<PermissionRevokedError>
+): ReadonlyMap<string, TrackedGrant> => {
+  const tracked = current.get(token)
+  if (tracked === undefined) {
+    return current
+  }
+  return withTracked(current, { ...tracked, waiters: [...tracked.waiters, waiter] })
+}
+
+const removeWaiter = (
+  current: ReadonlyMap<string, TrackedGrant>,
+  token: string,
+  waiter: Deferred.Deferred<PermissionRevokedError>
+): ReadonlyMap<string, TrackedGrant> => {
+  const tracked = current.get(token)
+  if (tracked === undefined) {
+    return current
+  }
+  return withTracked(current, {
+    ...tracked,
+    waiters: tracked.waiters.filter((currentWaiter) => currentWaiter !== waiter)
+  })
+}
+
+const snapshot = (tracked: TrackedGrant): PermissionGrantSnapshot =>
+  new PermissionGrantSnapshot({
+    grant: tracked.grant,
+    status: tracked.status,
+    updatedAt: tracked.updatedAt
+  })
+
+const revokedError = (
+  operation: string,
+  current: PermissionGrantSnapshot
+): PermissionRevokedError =>
+  new PermissionRevokedError({
+    operation,
+    reason: current.status === "active" ? "revoked" : current.status,
+    token: current.grant.token,
+    capability: current.grant.capability,
+    actor: current.grant.actor,
+    traceId: current.grant.traceId,
+    revokedAt: current.updatedAt
+  })
+
+const auditLifecycle = (
+  audit: EventLogStore | undefined,
+  transition: "grant" | "use" | "revoke" | "expire" | "consumed",
+  tracked: TrackedGrant
+): Effect.Effect<void, PermissionAuditFailedError, never> =>
+  audit === undefined
+    ? Effect.void
+    : audit
+        .append(
+          {
+            type: "permission lifecycle",
+            payload: {
+              transition,
+              token: tracked.grant.token,
+              status: tracked.status,
+              capability: tracked.grant.capability,
+              actor: tracked.grant.actor,
+              ...(tracked.grant.resource === undefined ? {} : { resource: tracked.grant.resource }),
+              source: tracked.grant.source,
+              traceId: tracked.grant.traceId,
+              grantedAt: tracked.grant.grantedAt,
+              updatedAt: tracked.updatedAt,
+              ...(tracked.grant.expiresAt === undefined
+                ? {}
+                : { expiresAt: tracked.grant.expiresAt }),
+              ...(tracked.grant.oneTime === undefined ? {} : { oneTime: tracked.grant.oneTime })
+            }
+          },
+          { source: "PermissionRegistry" }
+        )
+        .pipe(
+          Effect.asVoid,
+          Effect.mapError(
+            (cause) =>
+              new PermissionAuditFailedError({
+                operation: "PermissionRegistry.lifecycle",
+                decision: new PermissionDecision({
+                  outcome: tracked.status === "active" ? "granted" : "denied",
+                  ...(tracked.status === "active" ? {} : { reason: tracked.status }),
+                  source: tracked.grant.source,
+                  capability: tracked.grant.capability,
+                  actor: tracked.grant.actor,
+                  ...(tracked.grant.resource === undefined
+                    ? {}
+                    : { resource: tracked.grant.resource }),
+                  traceId: tracked.grant.traceId
+                }),
+                cause
+              })
+          )
+        )
+
+const lifecycleTransition = (
+  status: Exclude<GrantStatus, "active">
+): "revoke" | "expire" | "consumed" => {
+  switch (status) {
+    case "revoked":
+      return "revoke"
+    case "expired":
+      return "expire"
+    case "consumed":
+      return "consumed"
+  }
 }
 
 const auditDecision = (

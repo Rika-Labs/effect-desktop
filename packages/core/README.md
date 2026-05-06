@@ -71,15 +71,22 @@ subscribe continue.
 runtime operations. `declare(capability, options)` records normalized allow,
 deny, approval, and revocation rules; `query(kind, actor)` returns the global and
 actor-scoped declarations that apply to an actor; and
-`check(capability, context)` returns a `GrantedCapability` token or a typed
-`PermissionDenied` value.
+`check(capability, context)` returns a tracked `GrantedCapability` token or a
+typed `PermissionDenied` value. Approval code can call
+`grant(capability, context, { expiresAt, oneTime })` directly once an external
+broker has approved a request. Callers execute privileged work through
+`use(grant, effect)`, inspect state with `inspect(token)`, and revoke with
+`revoke(token)`.
 
 Decision order is fixed: explicit deny, revoked/expired/consumed,
 approval-denied, approval, allow, then default deny. Filesystem roots authorize
 descendant paths, while process commands, network hosts, secret namespaces, and
 native invoke methods match explicit declared entries. When an `EventLogStore`
 is supplied, every check writes a `permission decision` audit event with the
-normalized capability, actor, resource, source, and trace id.
+normalized capability, actor, resource, source, and trace id. Grant lifecycle
+transitions write `permission lifecycle` events for grant, use, revoke, expire,
+and one-time consumption. Revoked, expired, and consumed grants fail as typed
+Effect values instead of thrown exceptions.
 
 ### Transport
 

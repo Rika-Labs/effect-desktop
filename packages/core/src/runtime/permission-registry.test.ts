@@ -1,13 +1,16 @@
 import { expect, test } from "bun:test"
-import { Cause, Effect, Exit, Stream } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Option, Stream } from "effect"
 
-import { type EventLogStore } from "./event-log.js"
+import { EventLogFullError, type EventLogStore } from "./event-log.js"
 import {
   makePermissionRegistry,
   type NormalizedCapability,
   PermissionActor,
+  PermissionAuditFailedError,
   PermissionDeniedError,
-  PermissionInvalidArgumentError
+  PermissionGrantNotFoundError,
+  PermissionInvalidArgumentError,
+  PermissionRevokedError
 } from "./permission-registry.js"
 
 test("PermissionRegistry denies undeclared capabilities by default and audits the normalized request", async () => {
@@ -140,6 +143,109 @@ test("PermissionRegistry validates inputs before audit side effects", async () =
   expect(rows).toEqual([])
 })
 
+test("PermissionRegistry does not retain a new grant when initial lifecycle audit fails", async () => {
+  const registry = await Effect.runPromise(
+    makePermissionRegistry({
+      audit: failingAudit(),
+      nextToken: () => "grant-1",
+      now: () => 1_000
+    })
+  )
+
+  const grantExit = await Effect.runPromiseExit(
+    registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"))
+  )
+  const inspectExit = await Effect.runPromiseExit(registry.inspect("grant-1"))
+
+  expectFailure(grantExit, PermissionAuditFailedError)
+  expectFailure(inspectExit, PermissionGrantNotFoundError)
+})
+
+test("PermissionRegistry expires grants as typed revocation values and audits the transition", async () => {
+  const rows: unknown[] = []
+  let currentTime = 1_000
+  const registry = await Effect.runPromise(
+    makePermissionRegistry({
+      audit: memoryAudit(rows),
+      traceId: () => "trace-1",
+      nextToken: () => "grant-1",
+      now: () => currentTime
+    })
+  )
+
+  const grant = await Effect.runPromise(
+    registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"), {
+      expiresAt: 1_010,
+      source: "approval"
+    })
+  )
+  currentTime = 1_020
+  const exit = await Effect.runPromiseExit(registry.use(grant, Effect.succeed("allowed")))
+  const snapshot = await Effect.runPromise(registry.inspect(grant.token))
+
+  expectRevoked(exit, (error) => {
+    expect(error.reason).toBe("expired")
+    expect(error.token).toBe("grant-1")
+  })
+  expect(snapshot.status).toBe("expired")
+  expect(rows.map((row) => eventTransition(row))).toEqual(["grant", "expire"])
+})
+
+test("PermissionRegistry consumes one-time grants after the first use", async () => {
+  const registry = await Effect.runPromise(
+    makePermissionRegistry({ nextToken: () => "grant-1", now: () => 1_000 })
+  )
+  const grant = await Effect.runPromise(
+    registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"), { oneTime: true })
+  )
+
+  const first = await Effect.runPromise(registry.use(grant, Effect.succeed("allowed")))
+  const second = await Effect.runPromiseExit(registry.use(grant, Effect.succeed("denied")))
+  const snapshot = await Effect.runPromise(registry.inspect(grant.token))
+
+  expect(first).toBe("allowed")
+  expect(snapshot.status).toBe("consumed")
+  expectRevoked(second, (error) => {
+    expect(error.reason).toBe("consumed")
+  })
+})
+
+test("PermissionRegistry revokes in-flight grant users through the lifecycle bus", async () => {
+  let currentTime = 1_000
+  const registry = await Effect.runPromise(
+    makePermissionRegistry({ nextToken: () => "grant-1", now: () => currentTime })
+  )
+  const grant = await Effect.runPromise(
+    registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"))
+  )
+  const started = await Effect.runPromise(Deferred.make<void>())
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const fiber = yield* registry
+        .use(
+          grant,
+          Effect.gen(function* () {
+            yield* Deferred.succeed(started, undefined)
+            yield* Effect.sleep("1 minute")
+          })
+        )
+        .pipe(Effect.forkChild({ startImmediately: true }))
+      yield* Deferred.await(started)
+      currentTime = 1_250
+      yield* registry.revoke(grant.token)
+      return yield* Fiber.await(fiber)
+    })
+  )
+
+  expect(Exit.isSuccess(exit)).toBe(true)
+  if (Exit.isSuccess(exit)) {
+    expectRevoked(exit.value, (error) => {
+      expect(error.reason).toBe("revoked")
+      expect(error.revokedAt).toBe(1_250)
+    })
+  }
+})
+
 const actor = (id: string): PermissionActor => new PermissionActor({ kind: "window", id })
 
 const context = (id: string) => ({ actor: actor(id) })
@@ -172,6 +278,20 @@ const memoryAudit = (rows: unknown[]): EventLogStore => ({
   close: () => Effect.void
 })
 
+const failingAudit = (): EventLogStore => ({
+  append: () =>
+    Effect.fail(
+      new EventLogFullError({
+        freeBytes: 0,
+        operation: "EventLog.append",
+        cause: Option.none()
+      })
+    ),
+  query: () => Effect.succeed([]),
+  subscribe: () => Stream.die("unused"),
+  close: () => Effect.void
+})
+
 const expectDenied = (
   exit: Exit.Exit<unknown, unknown>,
   inspect?: (error: PermissionDeniedError) => void
@@ -193,3 +313,39 @@ const expectInvalid = (exit: Exit.Exit<unknown, unknown>): void => {
     expect(failure?.error).toBeInstanceOf(PermissionInvalidArgumentError)
   }
 }
+
+const expectFailure = <Error extends new (...args: never[]) => unknown>(
+  exit: Exit.Exit<unknown, unknown>,
+  errorClass: Error
+): void => {
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(errorClass)
+  }
+}
+
+const expectRevoked = (
+  exit: Exit.Exit<unknown, unknown>,
+  inspect?: (error: PermissionRevokedError) => void
+): void => {
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(PermissionRevokedError)
+    if (failure?.error instanceof PermissionRevokedError) {
+      inspect?.(failure.error)
+    }
+  }
+}
+
+const eventTransition = (row: unknown): string | undefined =>
+  typeof row === "object" &&
+  row !== null &&
+  "payload" in row &&
+  typeof row.payload === "object" &&
+  row.payload !== null &&
+  "transition" in row.payload &&
+  typeof row.payload.transition === "string"
+    ? row.payload.transition
+    : undefined
