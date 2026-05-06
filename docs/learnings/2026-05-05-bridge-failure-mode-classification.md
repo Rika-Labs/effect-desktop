@@ -14,7 +14,7 @@ The host protocol exchange needed to preserve wire-level failure causes as typed
 
 ## What actually ended up working
 
-The smallest useful seam was the Bun host-client boundary. The protocol already had closed error classes for `FrameTooLarge` and `BinaryDecodeError`, so the PR added narrow factory helpers and a private classifier in `packages/core/src/runtime/host-client.ts`. Oversized frames now become `FrameTooLarge`, truncated frame reads and malformed JSON/envelopes become `BinaryDecodeError`, closed/unavailable peers remain `HostUnavailable`, and semantic response mismatches stay `InvalidOutput`.
+The smallest useful seam was the Bun host-client boundary. The protocol already had closed error classes for `FrameTooLarge` and `BinaryDecodeError`, so the PR added narrow factory helpers and a private classifier in `packages/core/src/runtime/host-client.ts`. Oversized frames now become `FrameTooLarge`, truncated frame reads and malformed JSON become `BinaryDecodeError`, closed/unavailable peers remain `HostUnavailable`, and decoded envelope shape or semantic response mismatches stay `InvalidOutput`.
 
 ```mermaid
 flowchart TD
@@ -28,7 +28,7 @@ flowchart TD
 
 ## What surfaced in review
 
-`/code-review` found no issues. Blacksmith passed on Ubuntu, macOS, and Windows before this learning commit. The useful review pressure was in the architecture pass: do not build a reconnect state machine in this slice when the concrete missing behavior was classification at the exchange boundary.
+One review finding was addressed. The first version grouped `JSON.parse` and `decodeHostProtocolEnvelope` under the same `BinaryDecodeError` catch. Review correctly pointed out that valid JSON with an invalid protocol shape is a schema-output failure, not byte corruption. The final version splits JSON parsing from envelope schema decoding so malformed bytes are `BinaryDecodeError`, while decoded envelope shape failures remain `InvalidOutput`.
 
 ## First-principles postmortem
 
@@ -40,7 +40,7 @@ The bad local incentive is to write one catch block and call it reliability. Tha
 
 ## Non-obvious lesson
 
-Malformed protocol bytes are not the same failure as a decoded response with the wrong id. The former belongs to `BinaryDecodeError`; the latter is a semantic contract failure and should remain `InvalidOutput`. Keeping that distinction lets recovery policy follow the real boundary: bytes versus decoded envelope semantics.
+Malformed bytes are not the same failure as decoded-but-invalid protocol data. Invalid JSON belongs to `BinaryDecodeError`; valid JSON that fails the envelope schema or response identity checks is a semantic contract failure and should remain `InvalidOutput`. Keeping that distinction lets recovery policy follow the real boundary: bytes versus decoded envelope semantics.
 
 ## Reproducible pattern (if any)
 
