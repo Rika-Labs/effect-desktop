@@ -11,6 +11,7 @@ Developer CLI for creation, development, validation, packaging, and release: `cr
 `runCli(options)` executes the supported CLI commands behind an injectable I/O boundary.
 `runDesktopBuild(options)` drives the Phase 21 build pipeline and returns a typed build report.
 `runDesktopPackage(options)` consumes a staged build layout and returns a typed package report.
+`runDesktopReproCheck(options)` runs build/package twice and returns a typed byte-diff report.
 
 ## Non-goals
 
@@ -43,7 +44,8 @@ bun run typecheck
 
 `desktop build` refuses to produce platform-specific layouts for a non-matching host. Use `bun desktop doctor` on the target host when the command returns a target remediation.
 `desktop package` follows the same host-target rule and emits only the artifact kinds listed in `docs/SPEC.md` §23.2. Windows system-mode MSI output is deferred to v1.1 and returns a typed unsupported-artifact error.
+`desktop check --repro` runs `build` and `package` twice with deterministic CLI clocks, snapshots the staged layout and package output, then byte-diffs sorted files. Differences return a structured `ReproDiffError` report with file paths, hashes, sizes, and first differing offsets.
 
 ## Internal architecture
 
-The build command depends on `@effect-desktop/bridge` for the protocol version embedded in `bridge-manifest.json`, on `@effect-desktop/config` for production-check support, and on `effect` for typed command, file, and configuration failures. The package command owns the platform tool flags for `hdiutil`, `ditto`, WiX, `appimagetool`, `dpkg-deb`, and `rpmbuild` behind an injectable command runner so tests can verify artifact metadata without requiring every platform tool locally.
+The build command depends on `@effect-desktop/bridge` for the protocol version embedded in `bridge-manifest.json`, on `@effect-desktop/config` for production-check support, and on `effect` for typed command, file, and configuration failures. The package command owns the platform tool flags for `hdiutil`, `ditto`, WiX, `appimagetool`, `dpkg-deb`, and `rpmbuild` behind an injectable command runner so tests can verify artifact metadata without requiring every platform tool locally. The reproducibility check composes those existing runners instead of duplicating artifact production.

@@ -25,6 +25,11 @@ import {
   PackageUnsupportedHostError,
   PackageUnsupportedTargetError
 } from "./package-pipeline.js"
+import {
+  formatReproError,
+  formatReproReport,
+  runDesktopReproCheck
+} from "./reproducible-build-check.js"
 
 export {
   runDesktopPackage,
@@ -39,6 +44,12 @@ export {
   type PackageStepReport,
   type PackageTarget
 } from "./package-pipeline.js"
+export {
+  runDesktopReproCheck,
+  type DesktopReproReport,
+  type ReproCheckError,
+  type ReproDifference
+} from "./reproducible-build-check.js"
 
 export class CliUsageError extends Error {
   public override readonly name = "CliUsageError"
@@ -176,9 +187,13 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
       return yield* runPackageCli(options)
     }
 
+    if (options.argv[0] === "check" && options.argv.includes("--repro")) {
+      return yield* runReproCheckCli(options)
+    }
+
     if (options.argv[0] !== "check" || !options.argv.includes("--production")) {
       options.writeStderr(
-        "Usage: desktop build --config <path>\nUsage: desktop package --config <path>\nUsage: desktop check --production --config <path>\n"
+        "Usage: desktop build --config <path>\nUsage: desktop package --config <path>\nUsage: desktop check --production --config <path>\nUsage: desktop check --repro --config <path>\n"
       )
       return 1
     }
@@ -408,6 +423,72 @@ const runPackageCli = (options: CliRunOptions): Effect.Effect<number, never, nev
       options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
     } else {
       options.writeStdout(formatPackageReport(report))
+    }
+
+    return 0
+  })
+
+const runReproCheckCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
+  Effect.gen(function* () {
+    const configPath = yield* readOptionalPathArg(options.argv, "--config", options.writeStderr)
+    if (configPath === undefined && options.argv.includes("--config")) {
+      return 1
+    }
+    const platform = yield* readOptionalPathArg(options.argv, "--platform", options.writeStderr)
+    if (platform === undefined && options.argv.includes("--platform")) {
+      return 1
+    }
+    const artifact = yield* readOptionalPathArg(options.argv, "--artifact", options.writeStderr)
+    if (artifact === undefined && options.argv.includes("--artifact")) {
+      return 1
+    }
+
+    const selectedConfigPath = configPath ?? "desktop.config.ts"
+    const selectedArtifact = artifact ?? "all"
+    const report = yield* runDesktopReproCheck({
+      buildRunner: ({ now }) =>
+        runDesktopBuild({
+          cwd: options.cwd,
+          configPath: selectedConfigPath,
+          platform,
+          commandRunner: options.commandRunner ?? runCommand,
+          now,
+          hostTarget: options.hostTarget
+        }),
+      packageRunner: ({ now }) =>
+        runDesktopPackage({
+          cwd: options.cwd,
+          configPath: selectedConfigPath,
+          platform,
+          artifact: selectedArtifact,
+          commandRunner: options.packageCommandRunner ?? runPackageCommand,
+          now,
+          hostTarget: options.hostTarget
+        })
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          const formatted = formatReproError(error)
+          if (options.argv.includes("--json")) {
+            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+          } else if (formatted.report === undefined) {
+            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+          } else {
+            options.writeStderr(formatReproReport(formatted.report))
+          }
+          return undefined
+        })
+      )
+    )
+
+    if (report === undefined) {
+      return 1
+    }
+
+    if (options.argv.includes("--json")) {
+      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+    } else {
+      options.writeStdout(formatReproReport(report))
     }
 
     return 0
