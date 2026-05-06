@@ -2,9 +2,14 @@ import {
   lstat as nodeLstat,
   mkdir as mkdirOnDisk,
   mkdtemp,
+  readdir,
   readFile,
+  realpath,
+  rename as nodeRename,
+  rm,
   stat as nodeStat,
-  symlink
+  symlink,
+  writeFile
 } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
@@ -36,6 +41,75 @@ test("Filesystem reads and writes bytes through typed Effects", async () => {
 
   expect(new TextDecoder().decode(bytes)).toBe("hello")
   expect(await readFile(path, "utf8")).toBe("hello")
+})
+
+test("Filesystem writeAtomic roundtrips a large payload", async () => {
+  const directory = await tempDirectory()
+  const path = join(directory, "large.bin")
+  const service = await makeTestFilesystem({ permissions: allowFilesystemRoot(directory) })
+  const bytes = new Uint8Array(10 * 1024 * 1024)
+  bytes.fill(7)
+
+  await Effect.runPromise(service.writeAtomic(path, bytes))
+
+  expect(await readFile(path)).toEqual(Buffer.from(bytes))
+})
+
+test("Filesystem writeAtomic preserves destination and removes temp on write failure", async () => {
+  const directory = await tempDirectory()
+  const path = join(directory, "config.json")
+  await Bun.write(path, "old")
+  const service = await makeTestFilesystem({
+    adapter: {
+      ...NodeTestFilesystemAdapter,
+      writeFileSynced: async (tempPath, bytes) => {
+        await Bun.write(tempPath, bytes.slice(0, 1))
+        throw Object.assign(new Error("disk full"), { code: "ENOSPC" })
+      }
+    },
+    permissions: allowFilesystemRoot(directory)
+  })
+
+  const exit = await Effect.runPromiseExit(
+    service.writeAtomic(path, new TextEncoder().encode("new"))
+  )
+
+  expectFailureTag(exit, "DiskFull")
+  expect(await readFile(path, "utf8")).toBe("old")
+  expect((await readdir(directory)).filter((entry) => entry.includes(".tmp."))).toEqual([])
+})
+
+test("Filesystem writeAtomic preserves destination and removes temp on rename failure", async () => {
+  const directory = await tempDirectory()
+  const path = join(directory, "config.json")
+  await Bun.write(path, "old")
+  const service = await makeTestFilesystem({
+    adapter: {
+      ...NodeTestFilesystemAdapter,
+      rename: () => Promise.reject(Object.assign(new Error("denied"), { code: "EACCES" }))
+    },
+    permissions: allowFilesystemRoot(directory)
+  })
+
+  const exit = await Effect.runPromiseExit(
+    service.writeAtomic(path, new TextEncoder().encode("new"))
+  )
+
+  expectFailureTag(exit, "PermissionDenied")
+  expect(await readFile(path, "utf8")).toBe("old")
+  expect((await readdir(directory)).filter((entry) => entry.includes(".tmp."))).toEqual([])
+})
+
+test("Filesystem writeAtomic consumes the write capability", async () => {
+  const allowed = await tempDirectory()
+  const denied = await tempDirectory()
+  const service = await makeTestFilesystem({ permissions: { writeRoots: [allowed] } })
+
+  const exit = await Effect.runPromiseExit(
+    service.writeAtomic(join(denied, "config.json"), new Uint8Array([1]))
+  )
+
+  expectFailureTag(exit, "PermissionDenied")
 })
 
 test("Filesystem stat returns kind, size, and modified time", async () => {
@@ -306,13 +380,30 @@ const tempDirectory = (): Promise<string> => mkdtemp(join(tmpdir(), "effect-desk
 const permissionDeniedAdapter: FilesystemAdapter = makeFailingAdapter("EACCES")
 const diskFullAdapter: FilesystemAdapter = makeFailingAdapter("ENOSPC")
 
+const NodeTestFilesystemAdapter: FilesystemAdapter = {
+  readFile,
+  realpath,
+  rename: nodeRename,
+  writeFile,
+  writeFileSynced: (path, bytes) => Bun.write(path, bytes).then(() => undefined),
+  stat: nodeLstat,
+  mkdir: (path, options) => mkdirOnDisk(path, options).then(() => undefined),
+  remove: (path, options) =>
+    options?.recursive === true
+      ? rm(path, { recursive: true }).then(() => undefined)
+      : rm(path).then(() => undefined),
+  watch: () => Effect.fail(makePermissionDeniedError()) as ReturnType<FilesystemAdapter["watch"]>
+}
+
 function makeFailingAdapter(code: string): FilesystemAdapter {
   const fail = () => Promise.reject(Object.assign(new Error(code), { code }))
 
   return {
     readFile: fail as FilesystemAdapter["readFile"],
     realpath: fail as FilesystemAdapter["realpath"],
+    rename: fail as FilesystemAdapter["rename"],
     writeFile: fail as FilesystemAdapter["writeFile"],
+    writeFileSynced: fail as FilesystemAdapter["writeFileSynced"],
     stat: fail as FilesystemAdapter["stat"],
     mkdir: fail as FilesystemAdapter["mkdir"],
     remove: fail as FilesystemAdapter["remove"],
@@ -379,8 +470,11 @@ async function makeWatchFixture(
       adapter: {
         readFile: (() => Promise.reject(new Error("not used"))) as FilesystemAdapter["readFile"],
         realpath: ((path) => Promise.resolve(path.toString())) as FilesystemAdapter["realpath"],
+        rename: (() => Promise.reject(new Error("not used"))) as FilesystemAdapter["rename"],
         writeFile: () =>
           Promise.reject(new Error("not used")) as ReturnType<FilesystemAdapter["writeFile"]>,
+        writeFileSynced: () =>
+          Promise.reject(new Error("not used")) as ReturnType<FilesystemAdapter["writeFileSynced"]>,
         stat: ((path) =>
           options.existingPaths?.has(path.toString()) === true
             ? Promise.resolve(fakeStats())

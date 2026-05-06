@@ -1,8 +1,10 @@
 import {
   lstat,
   mkdir,
+  open,
   readFile,
   realpath,
+  rename as nodeRename,
   rm,
   rmdir,
   stat as nodeStat,
@@ -11,6 +13,7 @@ import {
 } from "node:fs/promises"
 import { watch as nodeWatch } from "node:fs"
 import { dirname, join } from "node:path"
+import { randomUUID } from "node:crypto"
 
 import {
   HostProtocolDiskFullError,
@@ -88,6 +91,10 @@ export type FilesystemError = HostProtocolError
 export interface FilesystemApi {
   readonly read: (path: string) => Effect.Effect<Uint8Array, FilesystemError, never>
   readonly write: (path: string, bytes: Uint8Array) => Effect.Effect<void, FilesystemError, never>
+  readonly writeAtomic: (
+    path: string,
+    bytes: Uint8Array
+  ) => Effect.Effect<void, FilesystemError, never>
   readonly stat: (path: string) => Effect.Effect<FilesystemStatResult, FilesystemError, never>
   readonly mkdir: (
     path: string,
@@ -106,7 +113,9 @@ export interface FilesystemApi {
 export interface FilesystemAdapter {
   readonly readFile: typeof readFile
   readonly realpath: typeof realpath
+  readonly rename: typeof nodeRename
   readonly writeFile: typeof writeFile
+  readonly writeFileSynced: (path: string, bytes: Uint8Array) => Promise<void>
   readonly stat: typeof nodeStat
   readonly mkdir: (path: string, options?: { readonly recursive: true }) => Promise<void>
   readonly remove: (path: string, options?: { readonly recursive: true }) => Promise<void>
@@ -170,6 +179,19 @@ export const makeFilesystem = (
             catch: (error) => mapFilesystemError(error, input.path, "Filesystem.write")
           })
         }).pipe(Effect.withSpan("Filesystem.write", { attributes: { path } })),
+      writeAtomic: (path: string, bytes: Uint8Array) =>
+        Effect.gen(function* () {
+          const input = yield* decodeWriteInput({ path, bytes }, "Filesystem.writeAtomic")
+          yield* authorizeFilesystemPath(
+            adapter,
+            permissions,
+            input.path,
+            "filesystem.write",
+            "Filesystem.writeAtomic",
+            "leaf-may-be-missing"
+          )
+          yield* writeAtomicFile(adapter, input.path, input.bytes)
+        }).pipe(Effect.withSpan("Filesystem.writeAtomic", { attributes: { path } })),
       stat: (path: string) =>
         Effect.gen(function* () {
           const input = yield* decodePathInput({ path }, "Filesystem.stat")
@@ -315,7 +337,17 @@ export interface FilesystemWatcher {
 const NodeFilesystemAdapter: FilesystemAdapter = {
   readFile,
   realpath,
+  rename: nodeRename,
   writeFile,
+  writeFileSynced: async (path, bytes) => {
+    const file = await open(path, "w")
+    try {
+      await file.writeFile(bytes)
+      await file.sync()
+    } finally {
+      await file.close()
+    }
+  },
   stat: lstat,
   mkdir: (path, options) => mkdir(path, options).then(() => undefined),
   remove: (path, options) =>
@@ -357,6 +389,55 @@ const removeSinglePath = async (path: string): Promise<void> => {
   }
   await unlink(path)
 }
+
+const writeAtomicFile = (
+  adapter: FilesystemAdapter,
+  path: string,
+  bytes: Uint8Array
+): Effect.Effect<void, FilesystemError, never> => {
+  const tempPath = makeAtomicTempPath(path)
+  let committed = false
+
+  return Effect.gen(function* () {
+    yield* Effect.tryPromise({
+      try: () => adapter.writeFileSynced(tempPath, bytes),
+      catch: (error) => mapFilesystemError(error, path, "Filesystem.writeAtomic")
+    })
+    yield* Effect.tryPromise({
+      try: () => adapter.rename(tempPath, path),
+      catch: (error) => mapFilesystemError(error, path, "Filesystem.writeAtomic")
+    })
+    yield* Effect.sync(() => {
+      committed = true
+    })
+  }).pipe(
+    Effect.ensuring(
+      Effect.gen(function* () {
+        if (!committed) {
+          yield* cleanupAtomicTemp(adapter, tempPath)
+        }
+      })
+    )
+  )
+}
+
+const cleanupAtomicTemp = (
+  adapter: FilesystemAdapter,
+  tempPath: string
+): Effect.Effect<void, never, never> =>
+  Effect.tryPromise({
+    try: () => adapter.remove(tempPath),
+    catch: (error) => error
+  }).pipe(
+    Effect.catch((error) => {
+      if (isNodeError(error) && error.code === "ENOENT") {
+        return Effect.void
+      }
+      return Effect.void
+    })
+  )
+
+const makeAtomicTempPath = (path: string): string => `${path}.tmp.${randomUUID()}`
 
 const decodePathInput = (
   input: unknown,
