@@ -46,6 +46,11 @@ import {
   DialogMethodNames,
   DialogOpenResult,
   DialogSaveResult,
+  Dock,
+  DockApi,
+  DockLive,
+  DockMethodNames,
+  DockSupportedResult,
   Menu,
   MenuActivatedEvent,
   MenuApi,
@@ -65,10 +70,35 @@ import {
   PathLive,
   PathMethodNames,
   CanonicalPath,
+  PowerMonitor,
+  PowerMonitorApi,
+  PowerMonitorLive,
+  PowerMonitorMethodNames,
+  PowerMonitorResumeEvent,
+  PowerMonitorShutdownEvent,
+  PowerMonitorSourceChangedEvent,
+  PowerMonitorSuspendEvent,
+  Screen,
+  ScreenApi,
+  ScreenBounds,
+  ScreenDisplay,
+  ScreenDisplaysResult,
+  ScreenLive,
+  ScreenMethodNames,
+  ScreenPoint,
   Shell,
   ShellApi,
   ShellLive,
   ShellMethodNames,
+  SystemAppearance,
+  SystemAppearanceAccentColorResult,
+  SystemAppearanceApi,
+  SystemAppearanceBooleanResult,
+  SystemAppearanceChangedEvent,
+  SystemAppearanceColor,
+  SystemAppearanceLive,
+  SystemAppearanceMethodNames,
+  SystemAppearanceResult,
   Tray,
   TrayActivatedEvent,
   TrayApi,
@@ -95,6 +125,14 @@ import {
   makeContextMenuServiceLayer,
   makeDialogBridgeClientLayer,
   makeDialogServiceLayer,
+  makeDockBridgeClientLayer,
+  makeDockServiceLayer,
+  makePowerMonitorBridgeClientLayer,
+  makePowerMonitorServiceLayer,
+  makeScreenBridgeClientLayer,
+  makeScreenServiceLayer,
+  makeSystemAppearanceBridgeClientLayer,
+  makeSystemAppearanceServiceLayer,
   makeUnsupportedClipboardClient,
   makeUnsupportedContextMenuClient,
   makeMenuBridgeClientLayer,
@@ -109,7 +147,11 @@ import {
   makeUnsupportedMenuClient,
   makeUnsupportedNotificationClient,
   makeUnsupportedPathClient,
+  makeUnsupportedDockClient,
+  makeUnsupportedPowerMonitorClient,
+  makeUnsupportedScreenClient,
   makeUnsupportedShellClient,
+  makeUnsupportedSystemAppearanceClient,
   makeTrayBridgeClientLayer,
   makeTrayServiceLayer,
   makeUnsupportedTrayClient,
@@ -127,11 +169,14 @@ import {
   type ClipboardClientApi,
   type ContextMenuClientApi,
   type DialogClientApi,
+  type DockClientApi,
   type MenuClientApi,
   type NotificationClientApi,
   type NotificationHandle,
   type PathClientApi,
+  type ScreenClientApi,
   type ShellClientApi,
+  type SystemAppearanceClientApi,
   type TrayClientApi,
   type TrayHandle,
   type WebViewClientApi,
@@ -207,6 +252,16 @@ const expectedDialogMethods: Array<(typeof DialogMethodNames)[number]> = [
   "confirm"
 ]
 
+const expectedDockMethods: Array<(typeof DockMethodNames)[number]> = [
+  "setBadgeCount",
+  "setBadgeText",
+  "setProgress",
+  "setMenu",
+  "setJumpList",
+  "requestAttention",
+  "isSupported"
+]
+
 const expectedClipboardMethods: Array<(typeof ClipboardMethodNames)[number]> = [
   "readText",
   "writeText",
@@ -232,11 +287,26 @@ const expectedPathMethods: Array<(typeof PathMethodNames)[number]> = [
   "downloads"
 ]
 
+const expectedPowerMonitorMethods: Array<(typeof PowerMonitorMethodNames)[number]> = []
+
+const expectedScreenMethods: Array<(typeof ScreenMethodNames)[number]> = [
+  "getDisplays",
+  "getPrimaryDisplay",
+  "getPointerPoint"
+]
+
 const expectedShellMethods: Array<(typeof ShellMethodNames)[number]> = [
   "openExternal",
   "showItemInFolder",
   "openPath",
   "trashItem"
+]
+
+const expectedSystemAppearanceMethods: Array<(typeof SystemAppearanceMethodNames)[number]> = [
+  "getAppearance",
+  "getAccentColor",
+  "getReducedMotion",
+  "getReducedTransparency"
 ]
 
 const expectedTrayMethods: Array<(typeof TrayMethodNames)[number]> = [
@@ -294,6 +364,16 @@ const trayHandle: TrayHandle = {
   ownerScope: "app",
   state: "open"
 }
+
+const screenBounds = new ScreenBounds({ x: 0, y: 0, width: 1920, height: 1080 })
+const primaryDisplay = new ScreenDisplay({
+  id: "display-1",
+  bounds: screenBounds,
+  workArea: new ScreenBounds({ x: 0, y: 24, width: 1920, height: 1056 }),
+  scaleFactor: 2,
+  primary: true
+})
+const accentColor = new SystemAppearanceColor({ r: 0.1, g: 0.2, b: 0.3, a: 1 })
 
 test("AppApi declares the Phase 7 App method and event surface", () => {
   expect(AppApi.tag).toBe("App")
@@ -1676,6 +1756,303 @@ test("unsupported Shell client reports deferred host methods as Effect values", 
   )
 })
 
+test("ScreenApi declares the Phase 8 Screen method surface", () => {
+  expect(ScreenApi.tag).toBe("Screen")
+  expect([...ScreenMethodNames]).toEqual(expectedScreenMethods)
+  expect(Object.keys(ScreenApi.spec)).toEqual(expectedScreenMethods)
+  expect(Object.keys(ScreenApi.events)).toEqual([])
+})
+
+test("Screen service delegates through a substitutable ScreenClient port", async () => {
+  const calls: string[] = []
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const screen = yield* Screen
+      return {
+        displays: yield* screen.getDisplays(),
+        primary: yield* screen.getPrimaryDisplay(),
+        pointer: yield* screen.getPointerPoint()
+      }
+    }).pipe(Effect.provide(makeScreenServiceLayer(screenClient(calls))))
+  )
+
+  expect(result.displays).toEqual([primaryDisplay])
+  expect(result.primary).toEqual(primaryDisplay)
+  expect(result.pointer).toEqual(new ScreenPoint({ x: 12, y: 34 }))
+  expect(calls).toEqual(["getDisplays", "getPrimaryDisplay", "getPointerPoint"])
+})
+
+test("Screen bridge client sends typed host envelopes and decodes values", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = screenExchange(requests, (request) => ({
+    kind: "success",
+    payload:
+      request.method === "Screen.getDisplays"
+        ? { displays: [primaryDisplay] }
+        : request.method === "Screen.getPrimaryDisplay"
+          ? primaryDisplay
+          : { x: 12, y: 34 }
+  }))
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const screen = yield* Screen
+      return {
+        displays: yield* screen.getDisplays(),
+        primary: yield* screen.getPrimaryDisplay(),
+        pointer: yield* screen.getPointerPoint()
+      }
+    }).pipe(Effect.provide(Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange))))
+  )
+
+  expect(result.displays).toEqual([primaryDisplay])
+  expect(result.primary).toMatchObject(primaryDisplay)
+  expect(result.pointer).toEqual(new ScreenPoint({ x: 12, y: 34 }))
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["Screen.getDisplays", undefined],
+    ["Screen.getPrimaryDisplay", undefined],
+    ["Screen.getPointerPoint", undefined]
+  ])
+})
+
+test("unsupported Screen client reports deferred host methods as Effect values", async () => {
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const screen = yield* Screen
+      return yield* Effect.exit(screen.getDisplays())
+    }).pipe(Effect.provide(makeScreenServiceLayer(makeUnsupportedScreenClient())))
+  )
+
+  expectExitFailure(exit, (error) => hasErrorTag(error, "Unsupported"))
+})
+
+test("SystemAppearanceApi declares the Phase 8 SystemAppearance method and event surface", () => {
+  expect(SystemAppearanceApi.tag).toBe("SystemAppearance")
+  expect([...SystemAppearanceMethodNames]).toEqual(expectedSystemAppearanceMethods)
+  expect(Object.keys(SystemAppearanceApi.spec)).toEqual(expectedSystemAppearanceMethods)
+  expect(Object.keys(SystemAppearanceApi.events)).toEqual(["AppearanceChanged"])
+})
+
+test("SystemAppearance service maps result wrappers to public values", async () => {
+  const calls: string[] = []
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const appearance = yield* SystemAppearance
+      return {
+        mode: yield* appearance.getAppearance(),
+        accent: yield* appearance.getAccentColor(),
+        motion: yield* appearance.getReducedMotion(),
+        transparency: yield* appearance.getReducedTransparency(),
+        changed: yield* appearance.onAppearanceChanged().pipe(Stream.take(1), Stream.runCollect)
+      }
+    }).pipe(Effect.provide(makeSystemAppearanceServiceLayer(systemAppearanceClient(calls))))
+  )
+
+  expect(result.mode).toBe("dark")
+  expect(result.accent).toEqual(accentColor)
+  expect(result.motion).toBe(true)
+  expect(result.transparency).toBe(false)
+  expect(Array.from(result.changed)).toEqual([
+    new SystemAppearanceChangedEvent({ appearance: "highContrast" })
+  ])
+  expect(calls).toEqual([
+    "getAppearance",
+    "getAccentColor",
+    "getReducedMotion",
+    "getReducedTransparency"
+  ])
+})
+
+test("SystemAppearance bridge client decodes nullable accent color and events", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = systemAppearanceExchange(requests, (request) => ({
+    kind: "success",
+    payload:
+      request.method === "SystemAppearance.getAppearance"
+        ? { appearance: "dark" }
+        : request.method === "SystemAppearance.getAccentColor"
+          ? { color: null }
+          : { enabled: request.method === "SystemAppearance.getReducedMotion" }
+  }))
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const appearance = yield* SystemAppearance
+      return {
+        mode: yield* appearance.getAppearance(),
+        accent: yield* appearance.getAccentColor(),
+        motion: yield* appearance.getReducedMotion(),
+        transparency: yield* appearance.getReducedTransparency(),
+        changed: yield* appearance.onAppearanceChanged().pipe(Stream.take(1), Stream.runCollect)
+      }
+    }).pipe(
+      Effect.provide(
+        Layer.provide(SystemAppearanceLive, makeSystemAppearanceBridgeClientLayer(exchange))
+      )
+    )
+  )
+
+  expect(result.mode).toBe("dark")
+  expect(result.accent).toBeNull()
+  expect(result.motion).toBe(true)
+  expect(result.transparency).toBe(false)
+  expect(Array.from(result.changed)).toEqual([
+    new SystemAppearanceChangedEvent({ appearance: "highContrast" })
+  ])
+  expect(requests.map((request) => request.method)).toEqual([
+    "SystemAppearance.getAppearance",
+    "SystemAppearance.getAccentColor",
+    "SystemAppearance.getReducedMotion",
+    "SystemAppearance.getReducedTransparency"
+  ])
+})
+
+test("unsupported SystemAppearance client returns typed values and failing event stream", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const appearance = yield* SystemAppearance
+      const mode = yield* appearance.getAppearance()
+      const accent = yield* appearance.getAccentColor()
+      const eventExit = yield* appearance.onAppearanceChanged().pipe(Stream.runHead, Effect.exit)
+      return { accent, eventExit, mode }
+    }).pipe(
+      Effect.provide(makeSystemAppearanceServiceLayer(makeUnsupportedSystemAppearanceClient()))
+    )
+  )
+
+  expect(result.mode).toBe("light")
+  expect(result.accent).toBeNull()
+  expectExitFailure(result.eventExit, (error) => hasErrorTag(error, "Unsupported"))
+})
+
+test("PowerMonitorApi declares the Phase 8 event-only surface", () => {
+  expect(PowerMonitorApi.tag).toBe("PowerMonitor")
+  expect([...PowerMonitorMethodNames]).toEqual(expectedPowerMonitorMethods)
+  expect(Object.keys(PowerMonitorApi.spec)).toEqual([])
+  expect(Object.keys(PowerMonitorApi.events)).toEqual([
+    "Suspend",
+    "Resume",
+    "Shutdown",
+    "PowerSourceChanged"
+  ])
+})
+
+test("PowerMonitor bridge client decodes power event streams", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const power = yield* PowerMonitor
+      return {
+        suspend: yield* power.onSuspend().pipe(Stream.take(1), Stream.runCollect),
+        resume: yield* power.onResume().pipe(Stream.take(1), Stream.runCollect),
+        shutdown: yield* power.onShutdown().pipe(Stream.take(1), Stream.runCollect),
+        source: yield* power.onPowerSourceChanged().pipe(Stream.take(1), Stream.runCollect)
+      }
+    }).pipe(
+      Effect.provide(
+        Layer.provide(PowerMonitorLive, makePowerMonitorBridgeClientLayer(powerMonitorExchange()))
+      )
+    )
+  )
+
+  expect(Array.from(result.suspend)).toEqual([new PowerMonitorSuspendEvent({ reason: "sleep" })])
+  expect(Array.from(result.resume)).toEqual([new PowerMonitorResumeEvent({ reason: "wake" })])
+  expect(Array.from(result.shutdown)).toEqual([new PowerMonitorShutdownEvent({ reason: "system" })])
+  expect(Array.from(result.source)).toEqual([
+    new PowerMonitorSourceChangedEvent({ source: "battery" })
+  ])
+})
+
+test("unsupported PowerMonitor client reports deferred event streams as Effect values", async () => {
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const power = yield* PowerMonitor
+      return yield* power.onSuspend().pipe(Stream.runHead, Effect.exit)
+    }).pipe(Effect.provide(makePowerMonitorServiceLayer(makeUnsupportedPowerMonitorClient())))
+  )
+
+  expectExitFailure(exit, (error) => hasErrorTag(error, "Unsupported"))
+})
+
+test("DockApi declares the Phase 8 Dock method surface", () => {
+  expect(DockApi.tag).toBe("Dock")
+  expect([...DockMethodNames]).toEqual(expectedDockMethods)
+  expect(Object.keys(DockApi.spec)).toEqual(expectedDockMethods)
+  expect(Object.keys(DockApi.events)).toEqual([])
+})
+
+test("Dock service delegates through a substitutable DockClient port", async () => {
+  const calls: string[] = []
+  const supported = await Effect.runPromise(
+    Effect.gen(function* () {
+      const dock = yield* Dock
+      yield* dock.setBadgeCount(5)
+      yield* dock.setBadgeText("5")
+      yield* dock.setProgress(0.5, { state: "normal" })
+      yield* dock.setMenu(menuTemplate)
+      yield* dock.setJumpList([{ id: "open", title: "Open", commandId: "app.open" }])
+      yield* dock.requestAttention({ critical: true })
+      return yield* dock.isSupported("setBadgeText")
+    }).pipe(Effect.provide(makeDockServiceLayer(dockClient(calls))))
+  )
+
+  expect(supported).toBe(true)
+  expect(calls).toEqual([
+    "setBadgeCount:5",
+    "setBadgeText:5",
+    "setProgress:0.5:normal",
+    "setMenu:3",
+    "setJumpList:open",
+    "requestAttention:true",
+    "isSupported:setBadgeText"
+  ])
+})
+
+test("Dock bridge client sends typed host envelopes and maps support result", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = dockExchange(requests, (request) => ({
+    kind: "success",
+    payload: request.method === "Dock.isSupported" ? { supported: true } : undefined
+  }))
+
+  const supported = await Effect.runPromise(
+    Effect.gen(function* () {
+      const dock = yield* Dock
+      yield* dock.setBadgeCount(5)
+      yield* dock.setBadgeText(null)
+      yield* dock.setProgress(null)
+      yield* dock.setMenu(null)
+      yield* dock.setJumpList([{ id: "open", title: "Open", commandId: "app.open" }])
+      yield* dock.requestAttention()
+      return yield* dock.isSupported("setJumpList")
+    }).pipe(Effect.provide(Layer.provide(DockLive, makeDockBridgeClientLayer(exchange))))
+  )
+
+  expect(supported).toBe(true)
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["Dock.setBadgeCount", { count: 5 }],
+    ["Dock.setBadgeText", { text: null }],
+    ["Dock.setProgress", { value: null }],
+    ["Dock.setMenu", { menu: null }],
+    ["Dock.setJumpList", { items: [{ id: "open", title: "Open", commandId: "app.open" }] }],
+    ["Dock.requestAttention", {}],
+    ["Dock.isSupported", { method: "setJumpList" }]
+  ])
+})
+
+test("unsupported Dock client exposes support checks and typed command failures", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const dock = yield* Dock
+      const supported = yield* dock.isSupported("setBadgeText")
+      const exit = yield* Effect.exit(dock.setBadgeText("hi"))
+      return { exit, supported }
+    }).pipe(Effect.provide(makeDockServiceLayer(makeUnsupportedDockClient())))
+  )
+
+  expect(result.supported).toBe(false)
+  expectExitFailure(result.exit, (error) => hasErrorTag(error, "Unsupported"))
+})
+
 test("WindowApi declares the Phase 5 Window method surface", () => {
   expect(WindowApi.tag).toBe("Window")
   expect([...WindowMethodNames]).toEqual(expectedWindowMethods)
@@ -2233,6 +2610,66 @@ const shellClient = (calls: string[]): ShellClientApi => ({
   trashItem: (path) => recordVoid(calls, `trashItem:${path}`)
 })
 
+const screenClient = (calls: string[]): ScreenClientApi => ({
+  getDisplays: () =>
+    Effect.sync(() => {
+      calls.push("getDisplays")
+      return new ScreenDisplaysResult({ displays: [primaryDisplay] })
+    }),
+  getPrimaryDisplay: () =>
+    Effect.sync(() => {
+      calls.push("getPrimaryDisplay")
+      return primaryDisplay
+    }),
+  getPointerPoint: () =>
+    Effect.sync(() => {
+      calls.push("getPointerPoint")
+      return new ScreenPoint({ x: 12, y: 34 })
+    })
+})
+
+const systemAppearanceClient = (calls: string[]): SystemAppearanceClientApi => ({
+  getAppearance: () =>
+    Effect.sync(() => {
+      calls.push("getAppearance")
+      return new SystemAppearanceResult({ appearance: "dark" })
+    }),
+  getAccentColor: () =>
+    Effect.sync(() => {
+      calls.push("getAccentColor")
+      return new SystemAppearanceAccentColorResult({ color: accentColor })
+    }),
+  getReducedMotion: () =>
+    Effect.sync(() => {
+      calls.push("getReducedMotion")
+      return new SystemAppearanceBooleanResult({ enabled: true })
+    }),
+  getReducedTransparency: () =>
+    Effect.sync(() => {
+      calls.push("getReducedTransparency")
+      return new SystemAppearanceBooleanResult({ enabled: false })
+    }),
+  onAppearanceChanged: () =>
+    Stream.make(new SystemAppearanceChangedEvent({ appearance: "highContrast" }))
+})
+
+const dockClient = (calls: string[]): DockClientApi => ({
+  setBadgeCount: (count) => recordVoid(calls, `setBadgeCount:${count}`),
+  setBadgeText: (text) => recordVoid(calls, `setBadgeText:${text ?? ""}`),
+  setProgress: (value, options) =>
+    recordVoid(calls, `setProgress:${value ?? ""}:${options?.state ?? ""}`),
+  setMenu: (menu) => recordVoid(calls, `setMenu:${menu?.items.length ?? 0}`),
+  setJumpList: (items) =>
+    recordVoid(calls, `setJumpList:${items.map((item) => item.id).join(",")}`),
+  requestAttention: (options) =>
+    recordVoid(calls, `requestAttention:${options?.critical ?? false}`),
+  isSupported: (method) =>
+    Effect.sync(() => {
+      calls.push(`isSupported:${method}`)
+      return new DockSupportedResult({ supported: true })
+    })
+})
+
 const noopWindowClient: WindowClientApi = {
   create: () => Effect.succeed(windowHandle),
   show: () => Effect.void,
@@ -2483,6 +2920,94 @@ const pathExchange = (
 })
 
 const shellExchange = (
+  requests: HostProtocolRequestEnvelope[],
+  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
+): ApiClientExchange => ({
+  request: (request) => {
+    requests.push(request)
+    return Effect.succeed(respond(request))
+  }
+})
+
+const screenExchange = (
+  requests: HostProtocolRequestEnvelope[],
+  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
+): ApiClientExchange => ({
+  request: (request) => {
+    requests.push(request)
+    return Effect.succeed(respond(request))
+  }
+})
+
+const systemAppearanceExchange = (
+  requests: HostProtocolRequestEnvelope[],
+  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
+): ApiClientExchange => ({
+  request: (request) => {
+    requests.push(request)
+    return Effect.succeed(respond(request))
+  },
+  subscribe: (method) =>
+    method === "SystemAppearance.AppearanceChanged"
+      ? Stream.make(
+          new HostProtocolEventEnvelope({
+            kind: "event",
+            timestamp: 1710000000700,
+            traceId: "event-trace",
+            method,
+            payload: { appearance: "highContrast" }
+          })
+        )
+      : Stream.empty
+})
+
+const powerMonitorExchange = (): ApiClientExchange => ({
+  request: () => Effect.die("PowerMonitor has no request methods"),
+  subscribe: (method) =>
+    method === "PowerMonitor.Suspend"
+      ? Stream.make(
+          new HostProtocolEventEnvelope({
+            kind: "event",
+            timestamp: 1710000000710,
+            traceId: "event-trace",
+            method,
+            payload: { reason: "sleep" }
+          })
+        )
+      : method === "PowerMonitor.Resume"
+        ? Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              timestamp: 1710000000711,
+              traceId: "event-trace",
+              method,
+              payload: { reason: "wake" }
+            })
+          )
+        : method === "PowerMonitor.Shutdown"
+          ? Stream.make(
+              new HostProtocolEventEnvelope({
+                kind: "event",
+                timestamp: 1710000000712,
+                traceId: "event-trace",
+                method,
+                payload: { reason: "system" }
+              })
+            )
+          : method === "PowerMonitor.PowerSourceChanged"
+            ? Stream.make(
+                new HostProtocolEventEnvelope({
+                  kind: "event",
+                  timestamp: 1710000000713,
+                  traceId: "event-trace",
+                  method,
+                  payload: { source: "battery" }
+                })
+              )
+            : Stream.empty
+})
+
+const dockExchange = (
   requests: HostProtocolRequestEnvelope[],
   respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
 ): ApiClientExchange => ({
