@@ -16,8 +16,13 @@ None. The repo rules already require explicit preconditions, no swallowed errors
 
 ## Commit and push
 
-Pending at artifact creation time.
+- `167598e` — `Record notarization credential learning (#86)`
+- Branch `issue-86-macos-notarization` pushed to origin.
+- PR CI after the learning commit:
+  - `validate (blacksmith-2vcpu-ubuntu-2404)` — passed in 2m16s.
+  - `validate (blacksmith-2vcpu-windows-2025)` — passed in 1m42s.
+  - `validate (blacksmith-6vcpu-macos-latest)` — passed in 55s.
 
 ## Handoff
 
-Learning captured locally. Commit and push, wait for CI, then continue to `/merge`.
+Learning committed and pushed. Continue to `/merge`.
