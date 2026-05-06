@@ -9,7 +9,7 @@ Public framework API and runtime contracts (`Desktop.run`, `Desktop.window`, `De
 ## Public API
 
 The package exports runtime primitives as they land by phase. Phase 14 includes
-the `SQLite` and `Settings` services for scope-bound local storage.
+the `SQLite`, `Settings`, and `EventLog` services for scope-bound local storage.
 
 ### SQLite
 
@@ -44,6 +44,23 @@ backup and reopens it; backup copy failures return
 The `changes()` stream emits `{ key, oldValue, newValue, source }` for writes,
 and `migrated()` replays recent migration events for observers that subscribe
 after open.
+
+### EventLog
+
+`EventLog` is a SQLite-backed append-only event stream for audit, replay,
+debugging, and recovery. `append({ type, payload })` validates input, writes the
+event in a SQLite transaction, applies the configured retention ring, publishes
+to the live tail after commit, and returns the assigned monotonic event id.
+
+`query({ from, to, type, limit })` returns events in event-id order. `subscribe`
+first replays from the requested cursor, then follows committed live events
+through a bounded PubSub stream. `maxEvents` bounds the stored ring by deleting
+the oldest committed rows after each append.
+
+SQLite is configured with `PRAGMA synchronous = FULL` when the log opens, so
+committed appends use SQLite's durability path. Underlying `SQLITE_FULL` errors
+map to `EventLogFull`; once a log is read-only, appends fail while query and
+subscribe continue.
 
 ## Runtime entry
 
@@ -99,6 +116,27 @@ const program = Effect.gen(function* () {
   })
   yield* store.set("user.name", Schema.String, "alice")
   return yield* store.getOrDefault("user.name", Schema.String, "anonymous")
+})
+
+await Effect.runPromise(
+  program.pipe(Effect.provide(SQLiteLive), Effect.provide(ResourceRegistryLive))
+)
+```
+
+```ts
+import { Effect } from "effect"
+import { makeEventLog, ResourceRegistryLive, SQLite, SQLiteLive } from "@effect-desktop/core"
+
+const program = Effect.gen(function* () {
+  const sqlite = yield* SQLite
+  const eventLog = yield* makeEventLog(sqlite)
+  const log = yield* eventLog.open({
+    path: "events.sqlite",
+    ownerScope: "window-main",
+    maxEvents: 10_000
+  })
+  const id = yield* log.append({ type: "user.created", payload: { name: "alice" } })
+  return yield* log.query({ from: id })
 })
 
 await Effect.runPromise(
