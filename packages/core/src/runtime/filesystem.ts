@@ -229,7 +229,7 @@ export const makeFilesystem = (
             input.path,
             capability,
             "Filesystem.remove",
-            "existing"
+            "directory-entry"
           )
           yield* Effect.tryPromise({
             try: () =>
@@ -414,7 +414,7 @@ type FilesystemCapability =
   | "filesystem.delete"
   | "filesystem.delete.recursive"
 
-type CanonicalizationMode = "existing" | "leaf-may-be-missing"
+type CanonicalizationMode = "existing" | "leaf-may-be-missing" | "directory-entry"
 
 const authorizeFilesystemPath = (
   adapter: FilesystemAdapter,
@@ -452,16 +452,48 @@ const canonicalizePath = (
   operation: string,
   mode: CanonicalizationMode
 ): Effect.Effect<string, FilesystemError, never> =>
+  mode === "directory-entry"
+    ? canonicalizeDirectoryEntry(adapter, path, operation)
+    : Effect.tryPromise({
+        try: () => adapter.realpath(path),
+        catch: (error) => error
+      }).pipe(
+        Effect.catch((error) => {
+          if (mode === "leaf-may-be-missing" && isNodeError(error) && error.code === "ENOENT") {
+            return canonicalizePossiblyMissingPath(adapter, path, operation)
+          }
+          return Effect.fail(mapFilesystemError(error, path, operation))
+        })
+      )
+
+const canonicalizeDirectoryEntry = (
+  adapter: FilesystemAdapter,
+  path: string,
+  operation: string
+): Effect.Effect<string, FilesystemError, never> =>
+  Effect.tryPromise({
+    try: async () => join(await adapter.realpath(dirname(path)), pathSegment(path)),
+    catch: (error) => mapFilesystemError(error, path, operation)
+  })
+
+const canonicalizePossiblyMissingPath = (
+  adapter: FilesystemAdapter,
+  path: string,
+  operation: string
+): Effect.Effect<string, FilesystemError, never> =>
   Effect.tryPromise({
     try: () => adapter.realpath(path),
     catch: (error) => error
   }).pipe(
     Effect.catch((error) => {
-      if (mode === "leaf-may-be-missing" && isNodeError(error) && error.code === "ENOENT") {
-        return Effect.tryPromise({
-          try: async () => join(await adapter.realpath(dirname(path)), pathSegment(path)),
-          catch: (parentError) => mapFilesystemError(parentError, path, operation)
-        })
+      if (isNodeError(error) && error.code === "ENOENT") {
+        const parent = dirname(path)
+        if (parent === path) {
+          return Effect.fail(mapFilesystemError(error, path, operation))
+        }
+        return canonicalizePossiblyMissingPath(adapter, parent, operation).pipe(
+          Effect.map((canonicalParent) => join(canonicalParent, pathSegment(path)))
+        )
       }
       return Effect.fail(mapFilesystemError(error, path, operation))
     })

@@ -1,4 +1,5 @@
 import {
+  lstat as nodeLstat,
   mkdir as mkdirOnDisk,
   mkdtemp,
   readFile,
@@ -77,6 +78,16 @@ test("Filesystem mkdir and remove perform basic directory operations", async () 
   expectFailureTag(exit, "FileNotFound")
 })
 
+test("Filesystem recursive mkdir authorizes nested missing paths under an allowed root", async () => {
+  const directory = await tempDirectory()
+  const path = join(directory, "a", "b")
+  const service = await makeTestFilesystem({ permissions: { writeRoots: [directory] } })
+
+  await Effect.runPromise(service.mkdir(path, { recursive: true }))
+
+  expect((await nodeStat(path)).isDirectory()).toBe(true)
+})
+
 test("Filesystem remove deletes directory symlinks without following them", async () => {
   const directory = await tempDirectory()
   const target = join(directory, "target")
@@ -91,6 +102,21 @@ test("Filesystem remove deletes directory symlinks without following them", asyn
   const linkExit = await Effect.runPromiseExit(service.stat(link))
   expectFailureTag(linkExit, "FileNotFound")
   expect((await nodeStat(target)).isDirectory()).toBe(true)
+})
+
+test("Filesystem remove authorizes the directory entry being deleted", async () => {
+  const allowed = await tempDirectory()
+  const outside = await tempDirectory()
+  const target = join(allowed, "target.txt")
+  const link = join(outside, "link.txt")
+  const service = await makeTestFilesystem({ permissions: { deleteRoots: [allowed] } })
+  await Bun.write(target, "target")
+  await symlink(target, link)
+
+  const exit = await Effect.runPromiseExit(service.remove(link))
+
+  expectFailureTag(exit, "PermissionDenied")
+  expect((await nodeLstat(link)).isSymbolicLink()).toBe(true)
 })
 
 test("Filesystem returns FileNotFound for missing paths", async () => {
