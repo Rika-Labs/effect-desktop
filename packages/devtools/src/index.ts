@@ -10,6 +10,8 @@ import {
 } from "@effect-desktop/core"
 import { Context, Effect, Layer, Stream } from "effect"
 
+export * from "./shell.js"
+
 export interface CommandsDevtoolsApi {
   readonly list: () => Effect.Effect<readonly CommandSnapshot[], never, never>
   readonly observeInvocations: () => Stream.Stream<CommandInvocationRecord, never, never>

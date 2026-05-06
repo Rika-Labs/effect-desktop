@@ -18,6 +18,12 @@ Runtime inspector projections for framework primitives: windows, bridge calls, s
 - `list()` returns one redacted snapshot containing live worker rows and live job rows.
 - `observe()` emits an initial redacted snapshot and refreshes at the devtools frame interval.
 
+`DevtoolsShell` owns the devtools listener lifecycle:
+
+- `start({ profile, stateDir, devtoolsFlag, securityDevtoolsInProd })` starts only in dev or when both production gates are present.
+- When enabled, it writes a fresh 256-bit token to the state directory with mode `0600`, binds a loopback listener, and opens the shell window through an explicit port.
+- `disable` closes the listener and removes the token; re-enabling requires another `start` call.
+
 The package depends on `@effect-desktop/core` because `CommandRegistry` is the source of truth for command state and invocation telemetry. Keeping the projection in devtools thin avoids a second command read model.
 
 ## Non-goals

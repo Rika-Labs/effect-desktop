@@ -178,6 +178,29 @@ test("ProductionChecker reports acknowledged CSP weakenings without failing", as
   expect(report.acknowledgements.map((violation) => violation.rule)).toEqual(["weakened-csp"])
 })
 
+test("ProductionChecker acknowledges devtools-in-prod because launch flag is still required", async () => {
+  const report = await Effect.runPromise(
+    runProductionCheck({
+      config: {
+        security: {
+          devtoolsInProd: true
+        }
+      }
+    })
+  )
+
+  expect(report.passed).toBe(true)
+  expect(report.failures).toEqual([])
+  expect(report.acknowledgements).toMatchObject([
+    {
+      rule: "devtools-in-prod",
+      location: {
+        path: "desktop.config.ts#security.devtoolsInProd"
+      }
+    }
+  ])
+})
+
 test("ProductionChecker fails renderer raw bridge calls with file and line", async () => {
   const report = await Effect.runPromise(
     runProductionCheck({
