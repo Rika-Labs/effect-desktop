@@ -436,6 +436,7 @@ fn map_anyhow_error(error: anyhow::Error, operation: &'static str) -> PtyError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::time::{Duration, Instant};
 
     #[test]
@@ -547,6 +548,7 @@ mod tests {
         assert_child_exited(pid);
     }
 
+    #[cfg(unix)]
     fn read_until_contains(mut pty: NativePty, needle: &'static str) -> (NativePty, String) {
         let (sender, receiver) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
