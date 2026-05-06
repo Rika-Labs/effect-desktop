@@ -8,9 +8,10 @@ import {
   HostProtocolResponseEnvelope,
   encodeHostProtocolEnvelope
 } from "@effect-desktop/bridge"
-import { Effect, Exit } from "effect"
+import { Effect, Exit, Stream } from "effect"
 
 import { createHostProtocolExchange } from "./host-client.js"
+import type { EventLogAppend, EventLogAppendOptions, EventLogStore } from "./event-log.js"
 import { FrameTooLargeError, FrameTruncatedError, type FramedTransport } from "./transport.js"
 
 test("host protocol exchange maps oversized received frames to FrameTooLarge", async () => {
@@ -127,6 +128,48 @@ test("host protocol exchange preserves semantic response mismatches as InvalidOu
   })
 })
 
+test("host protocol exchange auto-mints missing host response trace IDs and audits", async () => {
+  const rows: EventLogAppend[] = []
+  const exchange = createHostProtocolExchange(
+    transport({
+      recv: async () =>
+        new TextEncoder().encode(
+          JSON.stringify({
+            kind: "response",
+            id: "request-1",
+            timestamp: 1
+          })
+        )
+    }),
+    {
+      audit: memoryAudit(rows),
+      nextTraceId: () => "trace-auto"
+    }
+  )
+
+  const response = await Effect.runPromise(exchange.request(request()))
+
+  expect(response.traceId).toBe("trace-auto")
+  expect(rows).toEqual([
+    {
+      type: "audit/trace-id-missing",
+      payload: {
+        kind: "trace-id-missing",
+        source: "HostProtocol",
+        traceId: "trace-auto",
+        outcome: "auto-minted",
+        timestamp: 1,
+        details: {
+          boundary: "host-runtime",
+          envelopeKind: "response",
+          requestId: "request-1",
+          method: "host.ping"
+        }
+      }
+    }
+  ])
+})
+
 test("host protocol exchange maps oversized outbound frames to FrameTooLarge", async () => {
   const exchange = createHostProtocolExchange(
     transport({
@@ -177,6 +220,17 @@ const transport = (overrides: Partial<FramedTransport>): FramedTransport => ({
     return
   },
   ...overrides
+})
+
+const memoryAudit = (rows: EventLogAppend[]): EventLogStore => ({
+  append: (event: EventLogAppend, _options?: EventLogAppendOptions) =>
+    Effect.sync(() => {
+      rows.push(event)
+      return rows.length
+    }),
+  query: () => Effect.succeed([]),
+  subscribe: () => Stream.empty,
+  close: () => Effect.void
 })
 
 const expectFailure = (

@@ -25,7 +25,8 @@ export const AuditEventKind = Schema.Literals([
   "command-registered",
   "command-unregistered",
   "command-invoked",
-  "job-retrying"
+  "job-retrying",
+  "trace-id-missing"
 ])
 export type AuditEventKind = typeof AuditEventKind.Type
 

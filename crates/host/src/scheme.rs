@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use wry::{
     http::{
         header::{CONTENT_SECURITY_POLICY, CONTENT_TYPE},
-        HeaderValue, Request, Response, StatusCode,
+        HeaderName, HeaderValue, Request, Response, StatusCode,
     },
     WebViewBuilder,
 };
@@ -17,6 +17,7 @@ const APP_HOST: &str = "localhost";
 const APP_NONCE_PLACEHOLDER: &str = "__APP_NONCE__";
 const NOT_FOUND_BODY: &str = "app asset not found";
 const TEXT_CONTENT_TYPE: &str = "text/plain; charset=utf-8";
+const TRACE_ID_HEADER: HeaderName = HeaderName::from_static("x-effect-trace-id");
 
 pub(crate) fn register_app_scheme<'a>(builder: WebViewBuilder<'a>) -> WebViewBuilder<'a> {
     builder.with_custom_protocol(APP_SCHEME.into(), |_webview_id, request| {
@@ -26,9 +27,10 @@ pub(crate) fn register_app_scheme<'a>(builder: WebViewBuilder<'a>) -> WebViewBui
 
 fn app_scheme_response(request: &Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
     let nonce = csp::CspNonce::mint();
+    let trace_id = request_trace_id(request);
 
     if request.uri().host() != Some(APP_HOST) {
-        return app_not_found_response(&nonce);
+        return app_not_found_response(&nonce, &trace_id);
     }
 
     match assets::resolve(request.uri().path()) {
@@ -37,17 +39,22 @@ fn app_scheme_response(request: &Request<Vec<u8>>) -> Response<Cow<'static, [u8]
             asset.content_type,
             csp_body(asset.content_type, asset.bytes, &nonce),
             &nonce,
+            &trace_id,
         ),
-        None => app_not_found_response(&nonce),
+        None => app_not_found_response(&nonce, &trace_id),
     }
 }
 
-fn app_not_found_response(nonce: &csp::CspNonce) -> Response<Cow<'static, [u8]>> {
+fn app_not_found_response(
+    nonce: &csp::CspNonce,
+    trace_id: &HeaderValue,
+) -> Response<Cow<'static, [u8]>> {
     app_response(
         StatusCode::NOT_FOUND,
         TEXT_CONTENT_TYPE,
         Cow::Borrowed(NOT_FOUND_BODY.as_bytes()),
         nonce,
+        trace_id,
     )
 }
 
@@ -56,6 +63,7 @@ fn app_response(
     content_type: &'static str,
     body: Cow<'static, [u8]>,
     nonce: &csp::CspNonce,
+    trace_id: &HeaderValue,
 ) -> Response<Cow<'static, [u8]>> {
     let policy = csp::CspPolicy::default_for_nonce(nonce);
     let mut response = Response::new(body);
@@ -68,6 +76,20 @@ fn app_response(
         HeaderValue::from_str(policy.as_str()).expect("generated CSP should be a valid header"),
     );
     response
+        .headers_mut()
+        .insert(TRACE_ID_HEADER, trace_id.clone());
+    response
+}
+
+fn request_trace_id(request: &Request<Vec<u8>>) -> HeaderValue {
+    request
+        .headers()
+        .get(&TRACE_ID_HEADER)
+        .cloned()
+        .unwrap_or_else(|| {
+            HeaderValue::from_str(format!("trace-{}", uuid::Uuid::now_v7()).as_str())
+                .expect("generated trace id should be a valid header")
+        })
 }
 
 fn csp_body(
@@ -93,7 +115,7 @@ fn csp_body(
 mod tests {
     use super::{
         app_scheme_response, csp_body, APP_NONCE_PLACEHOLDER, APP_PROTOCOL_SOURCE_KIND, APP_URL,
-        TEXT_CONTENT_TYPE,
+        TEXT_CONTENT_TYPE, TRACE_ID_HEADER,
     };
     use crate::csp::{CspNonce, CspPolicy};
     use wry::http::{
@@ -111,6 +133,7 @@ mod tests {
     fn app_scheme_response_returns_embedded_index_html() {
         let request = Request::builder()
             .uri(APP_URL)
+            .header(TRACE_ID_HEADER, "trace-app-request")
             .body(Vec::new())
             .expect("test request should build");
         let response = app_scheme_response(&request);
@@ -126,6 +149,10 @@ mod tests {
                 &HeaderValue::from_str(&expected_csp(response.body()))
                     .expect("expected CSP should be a valid header")
             )
+        );
+        assert_eq!(
+            response.headers().get(TRACE_ID_HEADER),
+            Some(&HeaderValue::from_static("trace-app-request"))
         );
         assert!(response
             .body()
@@ -171,6 +198,23 @@ mod tests {
             second.headers().get(CONTENT_SECURITY_POLICY)
         );
         assert_ne!(first.body(), second.body());
+    }
+
+    #[test]
+    fn app_scheme_response_mints_trace_id_when_request_header_is_missing() {
+        let request = Request::builder()
+            .uri(APP_URL)
+            .body(Vec::new())
+            .expect("test request should build");
+        let response = app_scheme_response(&request);
+
+        let trace_id = response
+            .headers()
+            .get(TRACE_ID_HEADER)
+            .expect("trace id header should be present")
+            .to_str()
+            .expect("trace id should be ASCII");
+        assert!(trace_id.starts_with("trace-"));
     }
 
     #[test]

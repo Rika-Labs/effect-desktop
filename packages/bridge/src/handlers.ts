@@ -325,7 +325,15 @@ const dispatch = (
       kind: "success",
       payload: outputExit.value
     } as const
-  })
+  }).pipe(
+    Effect.withSpan("HostProtocol.dispatch", {
+      attributes: {
+        id: request.id,
+        method: request.method,
+        traceId: request.traceId
+      }
+    })
+  )
 
 const cancel = (
   pendingCalls: Map<string, PendingCall>,
