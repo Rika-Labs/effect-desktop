@@ -482,6 +482,83 @@ test("MemoryFilesystem preserves symlink escape failures through the real servic
   }
 })
 
+test("MemoryFilesystem follows symlinks in intermediate path segments", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const filesystem = await Effect.runPromise(
+    makeMemoryFilesystem(registry, {
+      directories: ["/allowed", "/target"],
+      files: [{ path: "/target/file.txt", bytes: bytes("resolved") }],
+      symlinks: [{ path: "/allowed/linkdir", target: "/target" }],
+      permissions: {
+        readRoots: ["/target"]
+      }
+    })
+  )
+
+  const output = await Effect.runPromise(filesystem.read("/allowed/linkdir/file.txt"))
+
+  expect(text(output)).toBe("resolved")
+})
+
+test("MemoryFilesystem rejects directory targets for writes and atomic renames", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const filesystem = await Effect.runPromise(
+    makeMemoryFilesystem(registry, {
+      directories: ["/workspace/target"],
+      permissions: {
+        readRoots: ["/workspace"],
+        writeRoots: ["/workspace"]
+      }
+    })
+  )
+
+  const writeExit = await Effect.runPromiseExit(filesystem.write("/workspace/target", bytes("x")))
+  const atomicExit = await Effect.runPromiseExit(
+    filesystem.writeAtomic("/workspace/target", bytes("x"))
+  )
+  const stat = await Effect.runPromise(filesystem.stat("/workspace/target"))
+
+  expect(Exit.isFailure(writeExit)).toBe(true)
+  expect(Exit.isFailure(atomicExit)).toBe(true)
+  expect(stat.kind).toBe("directory")
+  if (Exit.isFailure(writeExit)) {
+    expect(JSON.stringify(writeExit.cause.toJSON())).toContain("InvalidArgument")
+  }
+  if (Exit.isFailure(atomicExit)) {
+    expect(JSON.stringify(atomicExit.cause.toJSON())).toContain("InvalidArgument")
+  }
+})
+
+test("MemoryFilesystem mkdir preserves existing nodes instead of clobbering them", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const filesystem = await Effect.runPromise(
+    makeMemoryFilesystem(registry, {
+      directories: ["/workspace"],
+      files: [{ path: "/workspace/file.txt", bytes: bytes("file") }],
+      permissions: {
+        readRoots: ["/workspace"],
+        writeRoots: ["/workspace"]
+      }
+    })
+  )
+
+  const existingDirectoryExit = await Effect.runPromiseExit(filesystem.mkdir("/workspace"))
+  const recursiveThroughFileExit = await Effect.runPromiseExit(
+    filesystem.mkdir("/workspace/file.txt/child", { recursive: true })
+  )
+  const file = await Effect.runPromise(filesystem.read("/workspace/file.txt"))
+
+  expect(Exit.isFailure(existingDirectoryExit)).toBe(true)
+  expect(Exit.isFailure(recursiveThroughFileExit)).toBe(true)
+  expect(text(file)).toBe("file")
+  if (Exit.isFailure(existingDirectoryExit)) {
+    expect(JSON.stringify(existingDirectoryExit.cause.toJSON())).toContain("InvalidArgument")
+  }
+  if (Exit.isFailure(recursiveThroughFileExit)) {
+    expect(JSON.stringify(recursiveThroughFileExit.cause.toJSON())).toContain("InvalidArgument")
+  }
+})
+
 test("runHeadless fails when a headless window is left open", async () => {
   let error: unknown
 
