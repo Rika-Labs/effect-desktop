@@ -223,8 +223,7 @@ test("PTY open enforces the per-scope concurrent budget", async () => {
       return makeFakeChild({
         output: [],
         exit: { code: 0 },
-        naturalExitDelayMs: 60_000,
-        ignoreKill: true
+        naturalExitDelayMs: 60_000
       })
     }),
     { budgets: { maxConcurrent: 1 } }
