@@ -669,6 +669,15 @@ export const makeHostProtocolInvalidOutputError = (
     )
   })
 
+export const makeHostProtocolOriginInvalidError = (
+  operation: string,
+  message: string = "renderer origin is invalid"
+): HostProtocolOriginInvalidError =>
+  new HostProtocolOriginInvalidError({
+    tag: "OriginInvalid",
+    ...makeHostProtocolErrorCommonInput("OriginInvalid", message, operation)
+  })
+
 export const makeHostProtocolHostUnavailableError = (
   operation: string
 ): HostProtocolHostUnavailableError =>

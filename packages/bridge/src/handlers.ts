@@ -17,6 +17,7 @@ import {
   HostProtocolTimeoutError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
+  makeHostProtocolOriginInvalidError,
   makeHostProtocolInvalidStateError,
   type HostProtocolError
 } from "./protocol.js"
@@ -64,14 +65,29 @@ export type BridgeCallState =
 export interface ApiHandlerRuntimeOptions {
   readonly now?: () => number
   readonly onState?: (state: BridgeCallState) => Effect.Effect<void, never, never>
+  readonly originAuth?: RendererOriginAuth
   readonly terminalStateTtlMs?: number
 }
 
 interface ResolvedApiHandlerRuntimeOptions {
   readonly now: () => number
   readonly onState: (state: BridgeCallState) => Effect.Effect<void, never, never>
+  readonly originAuth: RendererOriginAuth | undefined
   readonly terminalStateTtlMs: number
 }
+
+export interface RendererOriginAuth {
+  readonly verify: (
+    request: HostProtocolRequestEnvelope
+  ) => Effect.Effect<void, HostProtocolError, never>
+}
+
+export const RendererOriginAuth = {
+  fromCurrentTokens: (tokens: ReadonlyMap<string, string>): RendererOriginAuth =>
+    Object.freeze({
+      verify: (request: HostProtocolRequestEnvelope) => verifyRendererOrigin(tokens, request)
+    })
+} as const
 
 export type ApiLayerEnvironment<Layer> =
   Layer extends ApiLayer<string, infer Spec, infer Handlers>
@@ -161,6 +177,9 @@ const dispatch = (
   Effect.gen(function* () {
     const now = options.now()
     purgeExpiredTerminalStates(terminalStates, now, options.terminalStateTtlMs)
+    if (options.originAuth !== undefined) {
+      yield* options.originAuth.verify(request)
+    }
 
     const priorTerminalState = terminalStates.get(request.id)?.state
     if (priorTerminalState !== undefined) {
@@ -502,8 +521,31 @@ const isHostProtocolTimeoutError = (error: unknown): error is HostProtocolTimeou
 const resolveOptions = (options: ApiHandlerRuntimeOptions): ResolvedApiHandlerRuntimeOptions => ({
   now: options.now ?? Date.now,
   onState: options.onState ?? (() => Effect.void),
+  originAuth: options.originAuth,
   terminalStateTtlMs: options.terminalStateTtlMs ?? DEFAULT_TERMINAL_STATE_TTL_MS
 })
+
+const verifyRendererOrigin = (
+  tokens: ReadonlyMap<string, string>,
+  request: HostProtocolRequestEnvelope
+): Effect.Effect<void, HostProtocolError, never> =>
+  Effect.gen(function* () {
+    if (request.windowId === undefined || request.originToken === undefined) {
+      return yield* Effect.fail(
+        makeHostProtocolOriginInvalidError(
+          request.method,
+          "renderer request is missing windowId or originToken"
+        )
+      )
+    }
+
+    const expected = tokens.get(request.windowId)
+    if (expected === undefined || expected !== request.originToken) {
+      return yield* Effect.fail(
+        makeHostProtocolOriginInvalidError(request.method, "renderer origin token did not match")
+      )
+    }
+  })
 
 const methodName = (tag: string, method: string): string => `${tag}.${method}`
 

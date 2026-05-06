@@ -8,6 +8,7 @@ import {
   Handlers,
   HostProtocolCancelByRequestEnvelope,
   HostProtocolRequestEnvelope,
+  RendererOriginAuth,
   type HostProtocolError
 } from "./index.js"
 
@@ -75,6 +76,111 @@ test("Handlers emits the request lifecycle in order for successful calls", async
 
   expect(response.kind).toBe("success")
   expect(states).toEqual(["Pending", "Authorized", "Running", "Completed"])
+})
+
+test("Handlers verifies renderer origin before dispatching", async () => {
+  let handled = false
+  const ProjectApi = makeProjectApi("ProjectApi.OriginVerified")
+  const runtime = Handlers.withOptions(
+    {
+      originAuth: RendererOriginAuth.fromCurrentTokens(new Map([["window-1", "origin-1"]]))
+    },
+    ProjectApi.layer({
+      open: () =>
+        Effect.sync(() => {
+          handled = true
+          return new ProjectOpenOutput({ id: 1 })
+        })
+    })
+  )
+
+  const response = await Effect.runPromise(
+    runtime.dispatch(
+      requestWithOrigin(
+        "ProjectApi.OriginVerified.open",
+        { path: "/tmp/project" },
+        "window-1",
+        "origin-1"
+      )
+    )
+  )
+
+  expect(response.kind).toBe("success")
+  expect(handled).toBe(true)
+})
+
+test("Handlers rejects missing renderer origin before handler lookup", async () => {
+  let handled = false
+  const ProjectApi = makeProjectApi("ProjectApi.OriginMissing")
+  const runtime = Handlers.withOptions(
+    {
+      originAuth: RendererOriginAuth.fromCurrentTokens(new Map([["window-1", "origin-1"]]))
+    },
+    ProjectApi.layer({
+      open: () =>
+        Effect.sync(() => {
+          handled = true
+          return new ProjectOpenOutput({ id: 1 })
+        })
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(
+    runtime.dispatch(request("ProjectApi.OriginMissing.open", { path: "/tmp/project" }))
+  )
+
+  expectFailureTag(exit, "OriginInvalid")
+  expect(handled).toBe(false)
+})
+
+test("Handlers rejects forged renderer origin tokens", async () => {
+  const ProjectApi = makeProjectApi("ProjectApi.OriginForged")
+  const runtime = Handlers.withOptions(
+    {
+      originAuth: RendererOriginAuth.fromCurrentTokens(new Map([["window-1", "origin-1"]]))
+    },
+    ProjectApi.layer({
+      open: () => Effect.succeed(new ProjectOpenOutput({ id: 1 }))
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(
+    runtime.dispatch(
+      requestWithOrigin(
+        "ProjectApi.OriginForged.open",
+        { path: "/tmp/project" },
+        "window-1",
+        "origin-2"
+      )
+    )
+  )
+
+  expectFailureTag(exit, "OriginInvalid")
+})
+
+test("Handlers rejects stale origin tokens after rotation", async () => {
+  const ProjectApi = makeProjectApi("ProjectApi.OriginRotated")
+  const runtime = Handlers.withOptions(
+    {
+      originAuth: RendererOriginAuth.fromCurrentTokens(new Map([["window-1", "origin-2"]]))
+    },
+    ProjectApi.layer({
+      open: () => Effect.succeed(new ProjectOpenOutput({ id: 1 }))
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(
+    runtime.dispatch(
+      requestWithOrigin(
+        "ProjectApi.OriginRotated.open",
+        { path: "/tmp/project" },
+        "window-1",
+        "origin-1"
+      )
+    )
+  )
+
+  expectFailureTag(exit, "OriginInvalid")
 })
 
 test("Handlers preserves prototype handler receivers", async () => {
@@ -605,6 +711,23 @@ const request = (method: string, payload: unknown): HostProtocolRequestEnvelope 
     method,
     timestamp: 42,
     traceId: `trace-${method}`,
+    ...(payload === undefined ? {} : { payload })
+  })
+
+const requestWithOrigin = (
+  method: string,
+  payload: unknown,
+  windowId: string,
+  originToken: string
+): HostProtocolRequestEnvelope =>
+  new HostProtocolRequestEnvelope({
+    kind: "request",
+    id: `request-${method}`,
+    method,
+    timestamp: 42,
+    traceId: `trace-${method}`,
+    windowId,
+    originToken,
     ...(payload === undefined ? {} : { payload })
   })
 
