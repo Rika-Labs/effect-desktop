@@ -1,4 +1,10 @@
-import { mkdtemp, readFile, stat as nodeStat, symlink } from "node:fs/promises"
+import {
+  mkdir as mkdirOnDisk,
+  mkdtemp,
+  readFile,
+  stat as nodeStat,
+  symlink
+} from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 
@@ -14,6 +20,7 @@ import {
   type FilesystemAdapter,
   type FilesystemApi,
   type FilesystemOptions,
+  type FilesystemPermissionPolicy,
   type RawFilesystemEvent
 } from "./filesystem.js"
 import { makeResourceRegistry, type ResourceRegistryApi } from "./resources.js"
@@ -21,7 +28,7 @@ import { makeResourceRegistry, type ResourceRegistryApi } from "./resources.js"
 test("Filesystem reads and writes bytes through typed Effects", async () => {
   const directory = await tempDirectory()
   const path = join(directory, "hello.txt")
-  const service = await makeTestFilesystem()
+  const service = await makeTestFilesystem({ permissions: allowFilesystemRoot(directory) })
 
   await Effect.runPromise(service.write(path, new TextEncoder().encode("hello")))
   const bytes = await Effect.runPromise(service.read(path))
@@ -33,7 +40,7 @@ test("Filesystem reads and writes bytes through typed Effects", async () => {
 test("Filesystem stat returns kind, size, and modified time", async () => {
   const directory = await tempDirectory()
   const path = join(directory, "stat.txt")
-  const service = await makeTestFilesystem()
+  const service = await makeTestFilesystem({ permissions: allowFilesystemRoot(directory) })
 
   await Effect.runPromise(service.write(path, new Uint8Array([1, 2, 3])))
   const result = await Effect.runPromise(service.stat(path))
@@ -48,7 +55,7 @@ test("Filesystem stat reports symlink paths without following them", async () =>
   const directory = await tempDirectory()
   const target = join(directory, "target")
   const link = join(directory, "link")
-  const service = await makeTestFilesystem()
+  const service = await makeTestFilesystem({ permissions: allowFilesystemRoot(directory) })
 
   await Effect.runPromise(service.mkdir(target))
   await symlink(target, link)
@@ -60,7 +67,7 @@ test("Filesystem stat reports symlink paths without following them", async () =>
 test("Filesystem mkdir and remove perform basic directory operations", async () => {
   const directory = await tempDirectory()
   const path = join(directory, "nested")
-  const service = await makeTestFilesystem()
+  const service = await makeTestFilesystem({ permissions: allowFilesystemRoot(directory) })
 
   await Effect.runPromise(service.mkdir(path))
   expect((await nodeStat(path)).isDirectory()).toBe(true)
@@ -74,7 +81,7 @@ test("Filesystem remove deletes directory symlinks without following them", asyn
   const directory = await tempDirectory()
   const target = join(directory, "target")
   const link = join(directory, "link")
-  const service = await makeTestFilesystem()
+  const service = await makeTestFilesystem({ permissions: allowFilesystemRoot(directory) })
 
   await Effect.runPromise(service.mkdir(target))
   await symlink(target, link)
@@ -88,7 +95,7 @@ test("Filesystem remove deletes directory symlinks without following them", asyn
 
 test("Filesystem returns FileNotFound for missing paths", async () => {
   const directory = await tempDirectory()
-  const service = await makeTestFilesystem()
+  const service = await makeTestFilesystem({ permissions: allowFilesystemRoot(directory) })
 
   const exit = await Effect.runPromiseExit(service.read(join(directory, "missing.txt")))
 
@@ -117,6 +124,81 @@ test("Filesystem maps adapter disk-full failures to DiskFull", async () => {
   const exit = await Effect.runPromiseExit(service.write("/full.txt", new Uint8Array([1])))
 
   expectFailureTag(exit, "DiskFull")
+})
+
+test("Filesystem denies reads outside the configured read roots", async () => {
+  const directory = await tempDirectory()
+  const path = join(directory, "secret.txt")
+  await Bun.write(path, "secret")
+  const service = await makeTestFilesystem()
+
+  const exit = await Effect.runPromiseExit(service.read(path))
+
+  expectFailureTag(exit, "PermissionDenied")
+})
+
+test("Filesystem allows writes inside configured write roots", async () => {
+  const directory = await tempDirectory()
+  const path = join(directory, "allowed.txt")
+  const service = await makeTestFilesystem({ permissions: { writeRoots: [directory] } })
+
+  await Effect.runPromise(service.write(path, new TextEncoder().encode("allowed")))
+
+  expect(await readFile(path, "utf8")).toBe("allowed")
+})
+
+test("Filesystem denies writes outside configured write roots", async () => {
+  const allowed = await tempDirectory()
+  const denied = await tempDirectory()
+  const service = await makeTestFilesystem({ permissions: { writeRoots: [allowed] } })
+
+  const exit = await Effect.runPromiseExit(
+    service.write(join(denied, "denied.txt"), new Uint8Array([1]))
+  )
+
+  expectFailureTag(exit, "PermissionDenied")
+})
+
+test("Filesystem denies recursive remove without the recursive delete capability", async () => {
+  const directory = await tempDirectory()
+  const path = join(directory, "nested")
+  const service = await makeTestFilesystem({ permissions: { deleteRoots: [directory] } })
+  await mkdirOnDisk(path)
+
+  const exit = await Effect.runPromiseExit(service.remove(path, { recursive: true }))
+
+  expectFailureTag(exit, "PermissionDenied")
+})
+
+test("Filesystem allows recursive remove with delete root and recursive capability", async () => {
+  const directory = await tempDirectory()
+  const path = join(directory, "nested")
+  const service = await makeTestFilesystem({
+    permissions: { deleteRoots: [directory], allowRecursiveRemove: true }
+  })
+  await mkdirOnDisk(path)
+
+  await Effect.runPromise(service.remove(path, { recursive: true }))
+
+  const exists = await nodeStat(path).then(
+    () => true,
+    () => false
+  )
+  expect(exists).toBe(false)
+})
+
+test("Filesystem canonicalizes symlink targets before permission checks", async () => {
+  const allowed = await tempDirectory()
+  const denied = await tempDirectory()
+  const target = join(denied, "target.txt")
+  const link = join(allowed, "link.txt")
+  await Bun.write(target, "secret")
+  await symlink(target, link)
+  const service = await makeTestFilesystem({ permissions: { readRoots: [allowed] } })
+
+  const exit = await Effect.runPromiseExit(service.read(link))
+
+  expectFailureTag(exit, "PermissionDenied")
 })
 
 test("Filesystem watch emits typed events from the adapter", async () => {
@@ -203,6 +285,7 @@ function makeFailingAdapter(code: string): FilesystemAdapter {
 
   return {
     readFile: fail as FilesystemAdapter["readFile"],
+    realpath: fail as FilesystemAdapter["realpath"],
     writeFile: fail as FilesystemAdapter["writeFile"],
     stat: fail as FilesystemAdapter["stat"],
     mkdir: fail as FilesystemAdapter["mkdir"],
@@ -217,6 +300,15 @@ function makeFailingAdapter(code: string): FilesystemAdapter {
 async function makeTestFilesystem(options: FilesystemOptions = {}): Promise<FilesystemApi> {
   const registry = await Effect.runPromise(makeResourceRegistry())
   return await Effect.runPromise(makeFilesystem(registry, options))
+}
+
+function allowFilesystemRoot(root: string): FilesystemPermissionPolicy {
+  return {
+    readRoots: [root],
+    writeRoots: [root],
+    deleteRoots: [root],
+    allowRecursiveRemove: true
+  }
 }
 
 async function collectOneWatchEvent(options: {
@@ -257,8 +349,10 @@ async function makeWatchFixture(
   const registry = await Effect.runPromise(makeResourceRegistry())
   const service = await Effect.runPromise(
     makeFilesystem(registry, {
+      permissions: { readRoots: ["/tmp/project"] },
       adapter: {
         readFile: (() => Promise.reject(new Error("not used"))) as FilesystemAdapter["readFile"],
+        realpath: ((path) => Promise.resolve(path.toString())) as FilesystemAdapter["realpath"],
         writeFile: () =>
           Promise.reject(new Error("not used")) as ReturnType<FilesystemAdapter["writeFile"]>,
         stat: ((path) =>
