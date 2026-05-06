@@ -16,8 +16,13 @@ None. The repo rules already require explicit failure modes and no silent trust 
 
 ## Commit and push
 
-Pending at artifact creation time.
+- `ac5ce9f` — `Record update manifest learning (#87)`
+- Branch `issue-87-update-manifest` pushed to origin.
+- PR CI after the learning commit:
+  - `validate (blacksmith-2vcpu-ubuntu-2404)` — passed in 2m7s.
+  - `validate (blacksmith-2vcpu-windows-2025)` — passed in 1m36s.
+  - `validate (blacksmith-6vcpu-macos-latest)` — passed in 53s.
 
 ## Handoff
 
-Learning captured locally. Commit and push, wait for CI, then continue to `/merge`.
+Learning committed and pushed. Continue to `/merge`.
