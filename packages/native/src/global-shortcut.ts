@@ -212,16 +212,7 @@ const bindGlobalShortcutCommand = (
         (event) => event.accelerator === accelerator && event.registrarWindowId === registrar.id
       ),
       Stream.runForEach(() =>
-        commands
-          .invoke(
-            commandId,
-            undefined,
-            new PermissionContext({
-              actor: new PermissionActor({ kind: "window", id: registrar.id }),
-              traceId: `global-shortcut:${registrar.id}:${accelerator}`
-            })
-          )
-          .pipe(Effect.asVoid)
+        invokeGlobalShortcutCommand(commands, commandId, registrar.id, accelerator)
       ),
       Effect.forkDetach
     )
@@ -249,6 +240,33 @@ const bindGlobalShortcutCommand = (
     )
   )
 }
+
+const invokeGlobalShortcutCommand = (
+  commands: CommandRegistry["Service"],
+  commandId: string,
+  windowId: string,
+  accelerator: string
+): Effect.Effect<void, never, never> =>
+  commands
+    .invoke(
+      commandId,
+      undefined,
+      new PermissionContext({
+        actor: new PermissionActor({ kind: "window", id: windowId }),
+        traceId: `global-shortcut:${windowId}:${accelerator}`
+      })
+    )
+    .pipe(
+      Effect.asVoid,
+      Effect.catch((error: CommandRegistryError) =>
+        Effect.logWarning("GlobalShortcut command invocation failed", {
+          accelerator,
+          commandId,
+          error,
+          windowId
+        })
+      )
+    )
 
 const cleanupGlobalShortcutCommandBinding = (
   client: GlobalShortcutClientApi,
