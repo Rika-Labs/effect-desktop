@@ -25,9 +25,31 @@ class ProjectOpenError extends Schema.Class<ProjectOpenError>("HandlerProjectOpe
   code: Schema.NumberFromString
 }) {}
 
+test("Handlers fails closed when renderer origin verification is not configured", async () => {
+  let handled = false
+  const ProjectApi = makeProjectApi("ProjectApi.HandlerDefaultOrigin")
+  const runtime = Handlers(
+    ProjectApi.layer({
+      open: () =>
+        Effect.sync(() => {
+          handled = true
+          return new ProjectOpenOutput({ id: 1 })
+        })
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(
+    runtime.dispatch(request("ProjectApi.HandlerDefaultOrigin.open", { path: "/tmp/project" }))
+  )
+
+  expectFailureTag(exit, "OriginInvalid")
+  expect(handled).toBe(false)
+})
+
 test("Handlers binds contract layers into a request dispatcher", async () => {
   const ProjectApi = makeProjectApi("ProjectApi.HandlerSuccess")
-  const runtime = Handlers(
+  const runtime = Handlers.withOptions(
+    testOriginAuthDisabled,
     ProjectApi.layer({
       open: (input) =>
         Effect.succeed(
@@ -59,6 +81,7 @@ test("Handlers emits the request lifecycle in order for successful calls", async
   const ProjectApi = makeProjectApi("ProjectApi.HandlerLifecycle")
   const runtime = Handlers.withOptions(
     {
+      ...testOriginAuthDisabled,
       now: () => 42,
       onState: (state) =>
         Effect.sync(() => {
@@ -198,7 +221,10 @@ test("Handlers preserves prototype handler receivers", async () => {
     }
   }
 
-  const runtime = Handlers(ProjectApi.layer(new ProjectHandlers()))
+  const runtime = Handlers.withOptions(
+    testOriginAuthDisabled,
+    ProjectApi.layer(new ProjectHandlers())
+  )
 
   const response = await Effect.runPromise(
     runtime.dispatch(request("ProjectApi.PrototypeReceiver.open", { path: "/tmp/project" }))
@@ -214,7 +240,8 @@ test("Handlers preserves prototype handler receivers", async () => {
 
 test("Handlers decodes transformed input payloads before calling handlers", async () => {
   const EncodedInputApi = makeEncodedInputApi("ProjectApi.HandlerEncodedInput")
-  const runtime = Handlers(
+  const runtime = Handlers.withOptions(
+    testOriginAuthDisabled,
     EncodedInputApi.layer({
       open: (input) =>
         Effect.succeed(
@@ -239,7 +266,8 @@ test("Handlers decodes transformed input payloads before calling handlers", asyn
 
 test("Handlers encodes contract failures into failure responses", async () => {
   const ProjectApi = makeProjectApi("ProjectApi.HandlerFailure")
-  const runtime = Handlers(
+  const runtime = Handlers.withOptions(
+    testOriginAuthDisabled,
     ProjectApi.layer({
       open: () =>
         Effect.fail(
@@ -300,6 +328,7 @@ test("Handlers redacts secret-shaped contract failure fields before renderer emi
   } as ApiContractClass<string, SecretErrorApiSpec>
   const runtime = Handlers.withOptions(
     {
+      ...testOriginAuthDisabled,
       onState: (state) =>
         Effect.sync(() => {
           states.push(state)
@@ -339,6 +368,7 @@ test("Handlers rejects malformed input before calling handlers", async () => {
   const ProjectApi = makeProjectApi("ProjectApi.HandlerInvalidInput")
   const runtime = Handlers.withOptions(
     {
+      ...testOriginAuthDisabled,
       onState: (state) =>
         Effect.sync(() => {
           states.push(state.tag)
@@ -363,7 +393,8 @@ test("Handlers rejects malformed input before calling handlers", async () => {
 
 test("Handlers reports malformed handler output as InvalidOutput", async () => {
   const ProjectApi = makeProjectApi("ProjectApi.HandlerInvalidOutput")
-  const runtime = Handlers(
+  const runtime = Handlers.withOptions(
+    testOriginAuthDisabled,
     ProjectApi.layer({
       open: () =>
         Effect.succeed({
@@ -381,7 +412,8 @@ test("Handlers reports malformed handler output as InvalidOutput", async () => {
 
 test("Handlers reports malformed contract errors as InvalidOutput", async () => {
   const ProjectApi = makeProjectApi("ProjectApi.HandlerInvalidError")
-  const runtime = Handlers(
+  const runtime = Handlers.withOptions(
+    testOriginAuthDisabled,
     ProjectApi.layer({
       open: () =>
         Effect.fail({
@@ -403,6 +435,7 @@ test("Handlers times out cancellable handlers and records a terminal state", asy
   const ProjectApi = makeProjectApi("ProjectApi.HandlerTimeout", { timeoutMs: 5 })
   const runtime = Handlers.withOptions(
     {
+      ...testOriginAuthDisabled,
       onState: (state) =>
         Effect.sync(() => {
           states.push(state.tag)
@@ -436,6 +469,7 @@ test("Handlers ignore renderer cancel envelopes for non-cancellable methods", as
   })
   const runtime = Handlers.withOptions(
     {
+      ...testOriginAuthDisabled,
       onState: (state) =>
         Effect.sync(() => {
           states.push(state.tag)
@@ -512,6 +546,7 @@ test("Handlers does not confuse domain _tag collisions with Effect timeout error
   const states: string[] = []
   const runtime = Handlers.withOptions(
     {
+      ...testOriginAuthDisabled,
       onState: (state) =>
         Effect.sync(() => {
           states.push(state.tag)
@@ -545,6 +580,7 @@ test("Handlers rejects duplicate request ids after a terminal state", async () =
   const ProjectApi = makeProjectApi("ProjectApi.HandlerDuplicate")
   const runtime = Handlers.withOptions(
     {
+      ...testOriginAuthDisabled,
       onState: (state) =>
         Effect.sync(() => {
           states.push(state.tag)
@@ -576,6 +612,7 @@ test("Handlers expires terminal request ids after the replay window", async () =
   const ProjectApi = makeProjectApi("ProjectApi.HandlerDuplicateExpiry")
   const runtime = Handlers.withOptions(
     {
+      ...testOriginAuthDisabled,
       now: () => now,
       terminalStateTtlMs: 10,
       onState: (state) =>
@@ -615,7 +652,8 @@ test("Handlers expires terminal request ids after the replay window", async () =
 
 test("Handlers reports unknown methods as MethodNotFound", async () => {
   const ProjectApi = makeProjectApi("ProjectApi.HandlerUnknownMethod")
-  const runtime = Handlers(
+  const runtime = Handlers.withOptions(
+    testOriginAuthDisabled,
     ProjectApi.layer({
       open: () => Effect.succeed(new ProjectOpenOutput({ id: 1 }))
     })
@@ -713,6 +751,10 @@ const request = (method: string, payload: unknown): HostProtocolRequestEnvelope 
     traceId: `trace-${method}`,
     ...(payload === undefined ? {} : { payload })
   })
+
+const testOriginAuthDisabled = {
+  originAuth: RendererOriginAuth.unsafeDisabledForTests
+} as const
 
 const requestWithOrigin = (
   method: string,

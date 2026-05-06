@@ -72,7 +72,7 @@ export interface ApiHandlerRuntimeOptions {
 interface ResolvedApiHandlerRuntimeOptions {
   readonly now: () => number
   readonly onState: (state: BridgeCallState) => Effect.Effect<void, never, never>
-  readonly originAuth: RendererOriginAuth | undefined
+  readonly originAuth: RendererOriginAuth
   readonly terminalStateTtlMs: number
 }
 
@@ -86,7 +86,10 @@ export const RendererOriginAuth = {
   fromCurrentTokens: (tokens: ReadonlyMap<string, string>): RendererOriginAuth =>
     Object.freeze({
       verify: (request: HostProtocolRequestEnvelope) => verifyRendererOrigin(tokens, request)
-    })
+    }),
+  unsafeDisabledForTests: Object.freeze({
+    verify: () => Effect.void
+  }) satisfies RendererOriginAuth
 } as const
 
 export type ApiLayerEnvironment<Layer> =
@@ -177,9 +180,7 @@ const dispatch = (
   Effect.gen(function* () {
     const now = options.now()
     purgeExpiredTerminalStates(terminalStates, now, options.terminalStateTtlMs)
-    if (options.originAuth !== undefined) {
-      yield* options.originAuth.verify(request)
-    }
+    yield* options.originAuth.verify(request)
 
     const priorTerminalState = terminalStates.get(request.id)?.state
     if (priorTerminalState !== undefined) {
@@ -521,8 +522,18 @@ const isHostProtocolTimeoutError = (error: unknown): error is HostProtocolTimeou
 const resolveOptions = (options: ApiHandlerRuntimeOptions): ResolvedApiHandlerRuntimeOptions => ({
   now: options.now ?? Date.now,
   onState: options.onState ?? (() => Effect.void),
-  originAuth: options.originAuth,
+  originAuth: options.originAuth ?? defaultRendererOriginAuth,
   terminalStateTtlMs: options.terminalStateTtlMs ?? DEFAULT_TERMINAL_STATE_TTL_MS
+})
+
+const defaultRendererOriginAuth: RendererOriginAuth = Object.freeze({
+  verify: (request: HostProtocolRequestEnvelope) =>
+    Effect.fail(
+      makeHostProtocolOriginInvalidError(
+        request.method,
+        "renderer origin verifier is not configured"
+      )
+    )
 })
 
 const verifyRendererOrigin = (

@@ -13,6 +13,7 @@ import {
   Handlers,
   HostProtocolCancelByRequestEnvelope,
   HostProtocolRequestEnvelope,
+  RendererOriginAuth,
   makeHostProtocolInvalidOutputError,
   makeStaleHandleError,
   type HostProtocolError,
@@ -254,6 +255,7 @@ test("Client abort signals propagate as typed bridge cancellation", async () => 
   const states: string[] = []
   const runtime = Handlers.withOptions(
     {
+      originAuth: RendererOriginAuth.unsafeDisabledForTests,
       onState: (state) =>
         Effect.sync(() => {
           states.push(state.tag)

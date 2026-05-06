@@ -4,6 +4,7 @@ import {
   HostProtocolResponseEnvelope,
   HostProtocolStaleHandleError,
   Handlers,
+  RendererOriginAuth,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
   type ApiClientExchange,
@@ -3837,7 +3838,8 @@ const makeWindowApiExchange = (
   options: HostWindowClientOptions = {},
   appEventRouter?: AppEventRouter["Service"]
 ): ApiClientExchange => {
-  const runtime = Handlers(
+  const runtime = Handlers.withOptions(
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests },
     makeHostWindowApiLayer(hostExchange, {
       ...options,
       ...(appEventRouter === undefined ? {} : { appEventRouter })
