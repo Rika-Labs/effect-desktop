@@ -47,6 +47,12 @@ export class CommandRegistryCommandAlreadyRegisteredError extends Data.TaggedErr
   readonly commandId: string
 }> {}
 
+export class CommandRegistryRegistrationLostError extends Data.TaggedError("RegistrationLost")<{
+  readonly operation: string
+  readonly commandId: string
+  readonly resourceId: ResourceId
+}> {}
+
 export class CommandRegistryHandlerFailureError extends Data.TaggedError("HandlerFailure")<{
   readonly operation: string
   readonly commandId: string
@@ -64,6 +70,7 @@ export type CommandRegistryError =
   | CommandRegistryInvalidOutputError
   | CommandRegistryCommandNotFoundError
   | CommandRegistryCommandAlreadyRegisteredError
+  | CommandRegistryRegistrationLostError
   | CommandRegistryHandlerFailureError
   | CommandRegistryAuditFailedError
   | PermissionRegistryError
@@ -277,16 +284,25 @@ const registerCommand = <I, O>(
     })
     handle = registeredHandle
     registeredResourceId = registeredHandle.id
-    yield* Ref.update(commands, (current) => {
+    const committed = yield* Ref.modify(commands, (current) => {
       const command = current.get(decodedId)
       if (command === undefined || command.resourceId === registeredHandle.id) {
-        return current
+        return [command !== undefined, current] as const
       }
 
       const next = new Map(current)
       next.set(decodedId, { ...command, resourceId: registeredHandle.id })
-      return next
+      return [true, next] as const
     })
+    if (!committed) {
+      return yield* Effect.fail(
+        new CommandRegistryRegistrationLostError({
+          operation: "CommandRegistry.register",
+          commandId: decodedId,
+          resourceId: registeredHandle.id
+        })
+      )
+    }
 
     yield* auditCommand(audit, "command-registered", decodedId, "registered", now)
     completed = true

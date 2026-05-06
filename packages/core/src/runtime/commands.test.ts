@@ -8,6 +8,7 @@ import {
   CommandRegistryHandlerFailureError,
   CommandRegistryInvalidInputError,
   CommandRegistryInvalidOutputError,
+  CommandRegistryRegistrationLostError,
   makeCommandRegistry,
   type CommandRegistryApi,
   type CommandRegistryError
@@ -263,6 +264,30 @@ test("CommandRegistry resource cleanup does not remove a newer registration", as
   expect(snapshots.map((snapshot) => snapshot.id)).toEqual(["openProject"])
 })
 
+test("CommandRegistry fails registration when the reservation is removed before commit", async () => {
+  const registerStarted = await Effect.runPromise(Deferred.make<void>())
+  const allowRegister = await Effect.runPromise(Deferred.make<void>())
+  const resources = stalledRegisterResourceRegistry(registerStarted, allowRegister)
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  const registry = await Effect.runPromise(makeCommandRegistry(resources, permissions))
+
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const registerFiber = yield* registry
+        .register(registration("openProject"))
+        .pipe(Effect.forkChild({ startImmediately: true }))
+      yield* Deferred.await(registerStarted)
+      yield* registry.unregister("openProject")
+      yield* Deferred.succeed(allowRegister, undefined)
+      return yield* Fiber.join(registerFiber)
+    })
+  )
+  const snapshots = await Effect.runPromise(registry.list())
+
+  expectFailure(exit, CommandRegistryRegistrationLostError)
+  expect(snapshots).toEqual([])
+})
+
 const registration = (id: string) => ({
   id,
   inputSchema: OpenInput,
@@ -339,6 +364,47 @@ const delayedCleanupResourceRegistry = (
         const cleanup = cleanupById.get(id)
         yield* Deferred.succeed(disposeStarted, undefined)
         yield* Deferred.await(allowDispose)
+        cleanupById.delete(id)
+        if (cleanup !== undefined) {
+          yield* cleanup
+        }
+      }),
+    observe: () => Stream.empty,
+    declareScope: () => Effect.void,
+    closeScope: () => Effect.void,
+    share: () => Effect.die("unused"),
+    assertFresh: () => Effect.die("unused")
+  }
+}
+
+const stalledRegisterResourceRegistry = (
+  registerStarted: Deferred.Deferred<void>,
+  allowRegister: Deferred.Deferred<void>
+): ResourceRegistryApi => {
+  const cleanupById = new Map<ResourceId, Effect.Effect<void, never, never>>()
+
+  return {
+    register: (input) =>
+      Effect.gen(function* () {
+        yield* Deferred.succeed(registerStarted, undefined)
+        yield* Deferred.await(allowRegister)
+        const id = input.id ?? ("generated-1" as ResourceId)
+        cleanupById.set(id, input.dispose ?? Effect.void)
+
+        return {
+          kind: input.kind,
+          id,
+          generation: 0,
+          ownerScope: input.ownerScope,
+          state: input.state,
+          dispose: () => Effect.void
+        }
+      }),
+    get: () => Effect.succeed(Option.none()),
+    list: () => Effect.succeed({ entries: [] }),
+    dispose: (id) =>
+      Effect.gen(function* () {
+        const cleanup = cleanupById.get(id)
         cleanupById.delete(id)
         if (cleanup !== undefined) {
           yield* cleanup
