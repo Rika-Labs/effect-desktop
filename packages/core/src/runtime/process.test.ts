@@ -4,7 +4,8 @@ import { join } from "node:path"
 import { tmpdir } from "node:os"
 import {
   HostProtocolFileNotFoundError,
-  HostProtocolInvalidArgumentError
+  HostProtocolInvalidArgumentError,
+  HostProtocolPermissionDeniedError
 } from "@effect-desktop/bridge"
 import { Cause, Effect, Exit, Stream } from "effect"
 
@@ -14,6 +15,7 @@ import {
   type ProcessAdapter,
   type ProcessApi,
   type ProcessChild,
+  type ProcessPermissionPolicy,
   type ProcessSignalInput
 } from "./process.js"
 import { makeResourceRegistry, type ResourceRegistryApi } from "./resources.js"
@@ -80,6 +82,117 @@ processTest("Process spawn validates required owner scope before adapter activit
 
   expect(spawnCalls).toBe(0)
   expectFailure(exit, HostProtocolInvalidArgumentError)
+})
+
+processTest("Process spawn denies binaries by default before adapter activity", async () => {
+  let spawnCalls = 0
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const service = await Effect.runPromise(
+    makeProcess(registry, {
+      adapter: {
+        spawn: () => {
+          spawnCalls += 1
+          return makeFakeChild({ stdout: [], exit: { code: 0 } })
+        }
+      }
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(
+    service.spawn("git", ["status"], { ownerScope: "scope-main" })
+  )
+
+  expect(spawnCalls).toBe(0)
+  expectFailure(exit, HostProtocolPermissionDeniedError)
+})
+
+processTest("Process spawn allows binaries declared in the process.spawn policy", async () => {
+  let spawnCalls = 0
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => {
+      spawnCalls += 1
+      return makeFakeChild({ stdout: [], exit: { code: 0 } })
+    }),
+    { permissions: { spawn: ["git"] } }
+  )
+
+  await Effect.runPromise(fixture.service.spawn("git", ["status"], { ownerScope: "scope-main" }))
+
+  expect(spawnCalls).toBe(1)
+})
+
+processTest("Process spawn denies binaries outside the process.spawn policy", async () => {
+  let spawnCalls = 0
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => {
+      spawnCalls += 1
+      return makeFakeChild({ stdout: [], exit: { code: 0 } })
+    }),
+    { permissions: { spawn: ["git"] } }
+  )
+
+  const exit = await Effect.runPromiseExit(
+    fixture.service.spawn("rm", ["-rf", "/tmp/project"], { ownerScope: "scope-main" })
+  )
+
+  expect(spawnCalls).toBe(0)
+  expectFailure(exit, HostProtocolPermissionDeniedError)
+})
+
+processTest(
+  "Process spawn rejects argv0 shell metacharacters before permission lookup",
+  async () => {
+    let spawnCalls = 0
+    const fixture = await makeFixture(
+      makeFakeAdapter(() => {
+        spawnCalls += 1
+        return makeFakeChild({ stdout: [], exit: { code: 0 } })
+      }),
+      { permissions: { spawn: ["git;ls"] } }
+    )
+
+    const exit = await Effect.runPromiseExit(
+      fixture.service.spawn("git;ls", [], { ownerScope: "scope-main" })
+    )
+
+    expect(spawnCalls).toBe(0)
+    expectFailure(exit, HostProtocolInvalidArgumentError)
+  }
+)
+
+processTest("Process spawn requires process.shell when shell mode is requested", async () => {
+  let spawnCalls = 0
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => {
+      spawnCalls += 1
+      return makeFakeChild({ stdout: [], exit: { code: 0 } })
+    }),
+    { permissions: { spawn: ["sh"] } }
+  )
+
+  const exit = await Effect.runPromiseExit(
+    fixture.service.spawn("sh", ["-c", "echo hi"], { ownerScope: "scope-main", shell: true })
+  )
+
+  expect(spawnCalls).toBe(0)
+  expectFailure(exit, HostProtocolPermissionDeniedError)
+})
+
+processTest("Process spawn allows shell mode with process.shell permission", async () => {
+  let spawnCalls = 0
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => {
+      spawnCalls += 1
+      return makeFakeChild({ stdout: [], exit: { code: 0 } })
+    }),
+    { permissions: { spawn: ["sh"], shell: true } }
+  )
+
+  await Effect.runPromise(
+    fixture.service.spawn("sh", ["-c", "echo hi"], { ownerScope: "scope-main", shell: true })
+  )
+
+  expect(spawnCalls).toBe(1)
 })
 
 processTest("Process spawn reports missing options as a typed failure", async () => {
@@ -224,7 +337,10 @@ if (process.platform !== "win32") {
 
 const makeFixture = async (
   adapter?: ProcessAdapter,
-  options: { readonly gracefulShutdownMs?: number } = {}
+  options: {
+    readonly gracefulShutdownMs?: number
+    readonly permissions?: ProcessPermissionPolicy
+  } = {}
 ): Promise<{ readonly registry: ResourceRegistryApi; readonly service: ProcessApi }> => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   const service = await makeService(registry, adapter, options)
@@ -234,16 +350,24 @@ const makeFixture = async (
 const makeService = (
   registry: ResourceRegistryApi,
   adapter?: ProcessAdapter,
-  options: { readonly gracefulShutdownMs?: number } = {}
+  options: {
+    readonly gracefulShutdownMs?: number
+    readonly permissions?: ProcessPermissionPolicy
+  } = {}
 ) =>
   Effect.runPromise(
     makeProcess(registry, {
       ...(adapter === undefined ? {} : { adapter }),
+      permissions: options.permissions ?? ALLOW_TEST_PROCESS_PERMISSIONS,
       ...(options.gracefulShutdownMs === undefined
         ? {}
         : { gracefulShutdownMs: options.gracefulShutdownMs })
     })
   )
+
+const ALLOW_TEST_PROCESS_PERMISSIONS: ProcessPermissionPolicy = {
+  spawn: ["echo", "sleep", "cat", "definitely-missing", process.execPath, "/bin/sh"]
+}
 
 const makeFakeAdapter = (makeChild: () => ProcessChild): ProcessAdapter => ({
   spawn: () => makeChild()
