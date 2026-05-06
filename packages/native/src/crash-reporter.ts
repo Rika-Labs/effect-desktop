@@ -190,15 +190,31 @@ export const makeCrashReporterMemoryClient = (): Effect.Effect<
         }),
       flush: () =>
         Effect.gen(function* () {
-          const current = yield* Ref.get(state)
-          if (!current.started) {
+          const drained = yield* Ref.modify(state, (current) => {
+            if (!current.started) {
+              return [Option.none<CrashReporterFlushBatch>(), current]
+            }
+            const batch =
+              current.uploadHandler === undefined
+                ? { breadcrumbs: current.breadcrumbs }
+                : { breadcrumbs: current.breadcrumbs, uploadHandler: current.uploadHandler }
+            return [Option.some(batch), { ...current, breadcrumbs: [] }]
+          })
+          if (Option.isNone(drained)) {
             return yield* Effect.fail(notStartedError("CrashReporter.flush"))
           }
-          if (current.uploadHandler !== undefined && current.breadcrumbs.length > 0) {
-            yield* current.uploadHandler(current.breadcrumbs)
+          const batch = drained.value
+          if (batch.uploadHandler !== undefined && batch.breadcrumbs.length > 0) {
+            yield* batch.uploadHandler(batch.breadcrumbs).pipe(
+              Effect.tapError(() =>
+                Ref.update(state, (latest) => ({
+                  ...latest,
+                  breadcrumbs: [...batch.breadcrumbs, ...latest.breadcrumbs]
+                }))
+              )
+            )
           }
-          yield* Ref.update(state, (latest) => ({ ...latest, breadcrumbs: [] }))
-          return new CrashReporterFlushResult({ flushed: current.breadcrumbs.length })
+          return new CrashReporterFlushResult({ flushed: batch.breadcrumbs.length })
         }),
       setUploadHandler: (handler) =>
         Ref.update(state, (latest) => ({ ...latest, uploadHandler: handler }))
@@ -238,6 +254,11 @@ export const makeUnsupportedCrashReporterClient = (): CrashReporterClientApi => 
 interface CrashReporterState {
   readonly breadcrumbs: ReadonlyArray<CrashReporterBreadcrumb>
   readonly started: boolean
+  readonly uploadHandler?: CrashReportUploadHandler
+}
+
+interface CrashReporterFlushBatch {
+  readonly breadcrumbs: ReadonlyArray<CrashReporterBreadcrumb>
   readonly uploadHandler?: CrashReportUploadHandler
 }
 

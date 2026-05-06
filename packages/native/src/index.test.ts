@@ -2058,6 +2058,25 @@ test("CrashReporter memory client requires start and flushes breadcrumbs to an E
   expect(uploaded).toEqual([[{ category: "user", message: "clicked save" }]])
 })
 
+test("CrashReporter memory client preserves breadcrumbs recorded during flush", async () => {
+  const client = await Effect.runPromise(makeCrashReporterMemoryClient())
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      yield* client.start({
+        uploadHandler: () =>
+          client.recordBreadcrumb({ category: "system", message: "recorded during flush" })
+      })
+      yield* client.recordBreadcrumb({ category: "user", message: "clicked save" })
+      const firstFlush = yield* client.flush()
+      const secondFlush = yield* client.flush()
+      return { firstFlush, secondFlush }
+    })
+  )
+
+  expect(result.firstFlush.flushed).toBe(1)
+  expect(result.secondFlush.flushed).toBe(1)
+})
+
 test("CrashReporter bridge client records breadcrumbs and defers upload handlers", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const exchange = crashReporterExchange(requests, (request) => ({
