@@ -11,6 +11,7 @@ import {
 } from "./contracts.js"
 import {
   HostProtocolBackpressureOverflowError,
+  HostProtocolCancelByRequestEnvelope,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolInternalError,
   HostProtocolRequestEnvelope,
@@ -60,6 +61,9 @@ export interface ApiStreamRuntime<Env = never> {
   readonly stream: (
     request: HostProtocolRequestEnvelope
   ) => Stream.Stream<HostProtocolStreamEnvelope, HostProtocolError, Env>
+  readonly cancel: (
+    request: HostProtocolCancelByRequestEnvelope
+  ) => Effect.Effect<void, never, never>
 }
 
 export interface ApiStreamRuntimeOptions {
@@ -102,6 +106,14 @@ type BoundStream = {
 type StreamQueue = {
   readonly queue: Queue.Queue<HostProtocolStreamEnvelope, Cause.Done>
   readonly overflow: NonNullable<BackpressureSpec["overflow"]>
+}
+
+type ActiveStream = {
+  readonly interrupt: Effect.Effect<void, never, never>
+  readonly options: ResolvedApiStreamRuntimeOptions
+  readonly queue: StreamQueue
+  readonly request: HostProtocolRequestEnvelope
+  readonly streamId: string
 }
 
 export type ApiStreamTerminalType = "complete" | "error" | "closed"
@@ -187,6 +199,7 @@ const makeStreamsWithOptions = <Layers extends readonly AnyApiLayer[]>(
   options: ApiStreamRuntimeOptions,
   ...layers: Layers
 ): ApiStreamRuntime<ApiStreamLayerEnvironment<Layers[number]>> => {
+  const active = new Map<string, ActiveStream>()
   const table = new Map<string, BoundStream>()
   const resolved = resolveOptions(options)
 
@@ -212,14 +225,17 @@ const makeStreamsWithOptions = <Layers extends readonly AnyApiLayer[]>(
     }
   }
 
-  return Object.freeze({
+  const runtime: ApiStreamRuntime<ApiStreamLayerEnvironment<Layers[number]>> = {
     stream: (request: HostProtocolRequestEnvelope) =>
-      streamDispatch(table, resolved, request) as Stream.Stream<
+      streamDispatch(table, active, resolved, request) as Stream.Stream<
         HostProtocolStreamEnvelope,
         HostProtocolError,
         ApiStreamLayerEnvironment<Layers[number]>
-      >
-  }) as ApiStreamRuntime<ApiStreamLayerEnvironment<Layers[number]>>
+      >,
+    cancel: (request) => cancelStream(active, request)
+  }
+
+  return Object.freeze(runtime)
 }
 
 export const Streams = Object.assign(makeStreams, {
@@ -228,6 +244,7 @@ export const Streams = Object.assign(makeStreams, {
 
 const streamDispatch = (
   table: ReadonlyMap<string, BoundStream>,
+  active: Map<string, ActiveStream>,
   options: ResolvedApiStreamRuntimeOptions,
   request: HostProtocolRequestEnvelope
 ): Stream.Stream<HostProtocolStreamEnvelope, HostProtocolError, unknown> => {
@@ -249,11 +266,44 @@ const streamDispatch = (
       const producer = runProducer(request, streamId, bound, queue, options, bound.handler(input))
 
       const fiber = yield* Effect.forkScoped(producer)
+      const interrupt = Effect.gen(function* () {
+        yield* Fiber.interrupt(fiber)
+        yield* Effect.exit(Fiber.join(fiber))
+      })
+      active.set(request.id, { interrupt, options, queue, request, streamId })
 
-      return Stream.fromQueue(queue.queue).pipe(Stream.ensuring(Fiber.interrupt(fiber)))
+      return Stream.fromQueue(queue.queue).pipe(
+        Stream.ensuring(
+          Effect.gen(function* () {
+            yield* interrupt
+            yield* Effect.sync(() => active.delete(request.id))
+          })
+        )
+      )
     })
   )
 }
+
+const cancelStream = (
+  active: Map<string, ActiveStream>,
+  request: HostProtocolCancelByRequestEnvelope
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const stream = active.get(request.id)
+    if (stream === undefined) {
+      return
+    }
+
+    yield* offerTerminalFrame(
+      stream.queue,
+      closedFrame(stream.request, stream.streamId, stream.options),
+      stream.options,
+      "closed"
+    )
+    yield* Queue.end(stream.queue.queue)
+    yield* stream.interrupt
+    active.delete(request.id)
+  })
 
 const runProducer = (
   request: HostProtocolRequestEnvelope,
@@ -440,6 +490,13 @@ const completeFrame = (
   options: ResolvedApiStreamRuntimeOptions
 ): HostProtocolStreamEnvelope =>
   streamFrame(request, streamId, options, new ApiStreamCompleteFrame({ type: "complete" }))
+
+const closedFrame = (
+  request: HostProtocolRequestEnvelope,
+  streamId: string,
+  options: ResolvedApiStreamRuntimeOptions
+): HostProtocolStreamEnvelope =>
+  streamFrame(request, streamId, options, new ApiStreamClosedFrame({ type: "closed" }))
 
 const streamFrame = (
   request: HostProtocolRequestEnvelope,

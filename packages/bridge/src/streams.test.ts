@@ -7,6 +7,7 @@ import {
   type ApiHandlers,
   type ApiLayer,
   Client,
+  HostProtocolCancelByRequestEnvelope,
   HostProtocolRequestEnvelope,
   Streams,
   type HostProtocolError,
@@ -212,6 +213,73 @@ test("BridgeStreamRegistry refuses duplicate terminal transitions", async () => 
   ])
 })
 
+test("Streams cancellation interrupts the producer and emits a closed terminal", async () => {
+  const ProjectApi = makeProjectApi("ProjectApi.StreamCancel")
+  const registry = makeBridgeStreamRegistry()
+  const finalizers: string[] = []
+  const runtime = Streams.withOptions(
+    {
+      nextStreamId: () => "stream-cancel",
+      now: () => 42,
+      registry
+    },
+    ProjectApi.layer({
+      watch: () =>
+        Stream.scoped(
+          Stream.fromEffect(
+            Effect.acquireRelease(
+              Effect.sync(() => finalizers.push("acquired")),
+              (_acquired, _exit) => Effect.sync(() => finalizers.push("interrupted"))
+            ).pipe(Effect.andThen(Effect.never))
+          )
+        )
+    })
+  )
+  const requests: HostProtocolRequestEnvelope[] = []
+  const cancelRequests: HostProtocolCancelByRequestEnvelope[] = []
+  const client = Client(
+    { project: ProjectApi },
+    streamExchange(runtime, requests, cancelRequests),
+    {
+      nextRequestId: () => "request-stream-cancel",
+      nextTraceId: () => "trace-stream-cancel",
+      now: () => 41
+    }
+  )
+  const controller = new AbortController()
+  const exitPromise = Effect.runPromiseExit(
+    client.project
+      .watch(new WatchInput({ projectId: "project-1" }), { signal: controller.signal })
+      .pipe(Stream.runCollect)
+  )
+
+  await waitFor(() => requests.length === 1)
+  await waitFor(() => finalizers.includes("acquired"))
+  controller.abort()
+
+  const exit = await exitPromise
+  await waitFor(() => finalizers.includes("interrupted"))
+  expectFailureTag(exit, "StreamClosed")
+  expect(finalizers).toEqual(["acquired", "interrupted"])
+  expect(cancelRequests).toEqual([
+    new HostProtocolCancelByRequestEnvelope({
+      kind: "cancel",
+      id: "request-stream-cancel",
+      timestamp: 41,
+      traceId: "trace-stream-cancel"
+    })
+  ])
+  expect(await Effect.runPromise(registry.snapshot())).toEqual([
+    {
+      generation: 0,
+      state: "terminal",
+      streamId: "stream-cancel",
+      terminal: "closed",
+      terminalAt: 42
+    }
+  ])
+})
+
 type ProjectApiSpec = {
   readonly watch: {
     readonly input: typeof WatchInput
@@ -261,13 +329,21 @@ const streamExchange = (
     readonly stream: (
       request: HostProtocolRequestEnvelope
     ) => Stream.Stream<HostProtocolStreamEnvelope, HostProtocolError, never>
+    readonly cancel?: (
+      request: HostProtocolCancelByRequestEnvelope
+    ) => Effect.Effect<void, never, never>
   },
-  requests: HostProtocolRequestEnvelope[]
+  requests: HostProtocolRequestEnvelope[],
+  cancelRequests: HostProtocolCancelByRequestEnvelope[] = []
 ) => ({
   request: () => Effect.fail(makeHostProtocolInvalidOutputError("test", "unused")),
   stream: (request: HostProtocolRequestEnvelope) => {
     requests.push(request)
     return runtime.stream(request)
+  },
+  cancel: (request: HostProtocolCancelByRequestEnvelope) => {
+    cancelRequests.push(request)
+    return runtime.cancel?.(request) ?? Effect.void
   }
 })
 
@@ -282,4 +358,14 @@ const expectFailureTag = (exit: Exit.Exit<unknown, unknown>, tag: string): void 
       expect((fail.error as { readonly tag?: unknown }).tag).toBe(tag)
     }
   }
+}
+
+const waitFor = async (predicate: () => boolean): Promise<void> => {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) {
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1))
+  }
+  expect(predicate()).toBe(true)
 }
