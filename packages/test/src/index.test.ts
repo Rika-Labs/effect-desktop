@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Effect, Exit, Schema, Stream } from "effect"
+import { Effect, Exit, Fiber, Layer, Schema, Stream } from "effect"
 
 import {
   Api,
@@ -16,6 +16,8 @@ import {
   type ApiLayer
 } from "@effect-desktop/bridge"
 import {
+  Filesystem,
+  ResourceRegistryLive,
   SecretValue,
   makeSecrets,
   makeResourceRegistry,
@@ -27,7 +29,9 @@ import {
   formatLeakedHandleReport,
   leakedHandles,
   makeMemorySecretsSafeStorage,
+  makeMemoryFilesystem,
   makeMockBridge,
+  MemoryFilesystemLive,
   MockHost,
   MockHostLive,
   registerLeakMatchers,
@@ -363,6 +367,121 @@ test("MockBridge returns disposable resource proxies through the registry", asyn
   ])
 })
 
+test("MemoryFilesystem layer reads, writes, stats, and atomically replaces files", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const filesystem = yield* Filesystem
+      yield* filesystem.mkdir("/workspace/data", { recursive: true })
+      yield* filesystem.write("/workspace/data/file.txt", bytes("first"))
+      const first = yield* filesystem.read("/workspace/data/file.txt")
+      const before = yield* filesystem.stat("/workspace/data/file.txt")
+      yield* filesystem.writeAtomic("/workspace/data/file.txt", bytes("second"))
+      const second = yield* filesystem.read("/workspace/data/file.txt")
+      const realpath = yield* filesystem.realpath("/workspace/data/file.txt")
+
+      return {
+        first: text(first),
+        second: text(second),
+        kind: before.kind,
+        sizeBytes: before.sizeBytes,
+        realpath: realpath.replaceAll("\\", "/")
+      }
+    }).pipe(
+      Effect.provide(
+        MemoryFilesystemLive({
+          directories: ["/workspace"],
+          permissions: {
+            readRoots: ["/workspace"],
+            writeRoots: ["/workspace"],
+            deleteRoots: ["/workspace"],
+            allowRecursiveRemove: true
+          },
+          now: () => 1710000000600
+        }).pipe(Layer.provide(ResourceRegistryLive))
+      )
+    )
+  )
+
+  expect(result).toEqual({
+    first: "first",
+    second: "second",
+    kind: "file",
+    sizeBytes: 5,
+    realpath: "/workspace/data/file.txt"
+  })
+})
+
+test("MemoryFilesystem watcher emits contract events and closes its registry resource", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makeResourceRegistry({ nextId: () => id("watch-1") })
+      const filesystem = yield* makeMemoryFilesystem(registry, {
+        directories: ["/workspace"],
+        permissions: {
+          readRoots: ["/workspace"],
+          writeRoots: ["/workspace"]
+        }
+      })
+      const fiber = yield* filesystem
+        .watch("/workspace", { ownerScope: "test-watch", bufferSize: 8 })
+        .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+
+      yield* Effect.sleep(1)
+      yield* filesystem.write("/workspace/file.txt", bytes("one"))
+      yield* filesystem.write("/workspace/file.txt", bytes("two"))
+      const events = yield* Fiber.join(fiber)
+      const registryAfterWatch = yield* registry.list()
+
+      return {
+        events: Array.from(events).map((event) => ({
+          kind: event.kind,
+          path: event.path.replaceAll("\\", "/"),
+          directory: event.directory.replaceAll("\\", "/"),
+          filename: event.filename
+        })),
+        leaks: registryAfterWatch.entries
+      }
+    })
+  )
+
+  expect(result.events).toEqual([
+    {
+      kind: "created",
+      path: "/workspace/file.txt",
+      directory: "/workspace",
+      filename: "file.txt"
+    },
+    {
+      kind: "modified",
+      path: "/workspace/file.txt",
+      directory: "/workspace",
+      filename: "file.txt"
+    }
+  ])
+  expect(result.leaks).toEqual([])
+})
+
+test("MemoryFilesystem preserves symlink escape failures through the real service policy", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const filesystem = await Effect.runPromise(
+    makeMemoryFilesystem(registry, {
+      directories: ["/allowed", "/outside"],
+      files: [{ path: "/outside/secret.txt", bytes: bytes("secret") }],
+      symlinks: [{ path: "/allowed/link.txt", target: "/outside/secret.txt" }],
+      permissions: {
+        readRoots: ["/allowed"]
+      }
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(filesystem.read("/allowed/link.txt"))
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    expect(JSON.stringify(exit.cause.toJSON())).toContain("SymlinkEscapesRoot")
+  }
+})
+
 test("runHeadless fails when a headless window is left open", async () => {
   let error: unknown
 
@@ -468,6 +587,10 @@ const nextSequence = (prefix: string): (() => string) => {
 
   return () => `${prefix}-${next++}`
 }
+
+const bytes = (value: string): Uint8Array => new TextEncoder().encode(value)
+
+const text = (value: Uint8Array): string => new TextDecoder().decode(value)
 
 const testContract = <Tag extends string, Spec extends ApiContractSpec>(
   tag: Tag,
