@@ -8,7 +8,23 @@ Public framework API and runtime contracts (`Desktop.run`, `Desktop.window`, `De
 
 ## Public API
 
-Not yet defined. Phase 0 ships an empty barrel export only.
+The package exports runtime primitives as they land by phase. Phase 14 includes
+the `SQLite` service for scope-bound local storage.
+
+### SQLite
+
+`SQLite` wraps `bun:sqlite` behind Effect values. `connect({ path, ownerScope })`
+opens a database and registers the connection in `ResourceRegistry` under the
+given scope. `query`, `exec`, `prepare`, and prepared statement methods all
+return typed `Effect` values with `SqliteError` failures instead of throwing.
+
+Transactions are explicit Effect programs: `connection.transaction(effect)` runs
+`BEGIN`, executes the supplied Effect, commits on success, and rolls back when
+the Effect fails. Connections and prepared statements close when their owning
+scope closes.
+
+SQLite error codes are mapped to typed tags: `Constraint`, `Busy`, `Locked`,
+`Corrupt`, `IoError`, `InvalidArgument`, and `InvalidState`.
 
 ## Runtime entry
 
@@ -34,7 +50,20 @@ See `docs/SPEC.md` for the package's normative non-goals.
 ## Usage
 
 ```ts
-// Reserved for Phase 4+.
+import { Effect } from "effect"
+import { ResourceRegistryLive, SQLite, SQLiteLive } from "@effect-desktop/core"
+
+const program = Effect.gen(function* () {
+  const sqlite = yield* SQLite
+  const connection = yield* sqlite.connect({ path: ":memory:", ownerScope: "window-main" })
+  yield* connection.exec("CREATE TABLE users (name TEXT UNIQUE)")
+  yield* connection.transaction(connection.exec("INSERT INTO users (name) VALUES (?)", ["Ada"]))
+  return yield* connection.query("SELECT name FROM users")
+})
+
+await Effect.runPromise(
+  program.pipe(Effect.provide(SQLiteLive), Effect.provide(ResourceRegistryLive))
+)
 ```
 
 ## Testing
@@ -46,7 +75,8 @@ bun run typecheck
 
 ## Platform notes
 
-None until the package implements native-touching primitives.
+SQLite uses Bun's built-in `bun:sqlite` binding and is available when the core
+package runs under Bun.
 
 ## Dependency notes
 
