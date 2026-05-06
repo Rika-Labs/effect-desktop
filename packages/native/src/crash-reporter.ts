@@ -11,6 +11,7 @@ import {
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidStateError,
+  redact,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Option, Ref, Schema } from "effect"
@@ -274,6 +275,7 @@ function crashReporterMethodSpec<Input extends Schema.Schema<unknown>>(
 const normalizeBreadcrumb = (breadcrumb: CrashReporterBreadcrumb): CrashReporterBreadcrumb => ({
   category: breadcrumb.category,
   message: breadcrumb.message,
+  ...(breadcrumb.details === undefined ? {} : { details: redact(breadcrumb.details) }),
   timestamp: breadcrumb.timestamp ?? Date.now()
 })
 
@@ -281,11 +283,13 @@ const makeBreadcrumbInput = (breadcrumb: CrashReporterBreadcrumb): CrashReporter
   breadcrumb.timestamp === undefined
     ? new CrashReporterBreadcrumbInput({
         category: breadcrumb.category,
-        message: breadcrumb.message
+        message: breadcrumb.message,
+        ...(breadcrumb.details === undefined ? {} : { details: redact(breadcrumb.details) })
       })
     : new CrashReporterBreadcrumbInput({
         category: breadcrumb.category,
         message: breadcrumb.message,
+        ...(breadcrumb.details === undefined ? {} : { details: redact(breadcrumb.details) }),
         timestamp: breadcrumb.timestamp
       })
 

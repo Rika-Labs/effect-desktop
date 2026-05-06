@@ -9,9 +9,10 @@ Public framework API and runtime contracts (`Desktop.run`, `Desktop.window`, `De
 ## Public API
 
 The package exports runtime primitives as they land by phase. Phase 15 includes
-the `SQLite`, `Settings`, `EventLog`, `Transport`, `WindowState`, and `Secrets`
-services for scope-bound local storage, app-owned protocol transport, and
-platform-backed credential storage.
+the `SQLite`, `Settings`, `EventLog`, `Transport`, `WindowState`, `Secrets`, and
+`RedactionFilter` services/utilities for scope-bound local storage, app-owned
+protocol transport, platform-backed credential storage, and human-visible
+emission safety.
 
 ### SQLite
 
@@ -106,6 +107,15 @@ When an `EventLogStore` is supplied, each successful operation writes a
 `secret accessed` audit event with namespace, key, outcome, and trace id, never
 the secret value. There are no long-lived handles; cleanup is the caller's
 explicit disposal of returned `SecretValue` copies.
+
+### RedactionFilter
+
+`RedactionFilter.redact(record)` walks structured data and replaces values for
+field names matching the §14.10 secret pattern with `"[REDACTED]"`. The filter
+preserves object shape, supports additional patterns and explicit allowlist
+paths, and returns the original object when no field changes. Bridge error
+emission and CrashReporter breadcrumb details use the same filter before values
+reach renderer-visible or crash-report surfaces.
 
 ## Runtime entry
 

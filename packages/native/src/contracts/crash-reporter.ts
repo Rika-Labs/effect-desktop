@@ -11,6 +11,7 @@ export class CrashReporterBreadcrumbInput extends Schema.Class<CrashReporterBrea
 )({
   category: Schema.String,
   message: Schema.String,
+  details: Schema.optionalKey(Schema.Unknown),
   timestamp: Schema.optionalKey(Schema.Number)
 }) {}
 

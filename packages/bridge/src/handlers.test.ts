@@ -158,6 +158,75 @@ test("Handlers encodes contract failures into failure responses", async () => {
   })
 })
 
+test("Handlers redacts secret-shaped contract failure fields before renderer emission", async () => {
+  class ProjectSecretError extends Schema.Class<ProjectSecretError>("HandlerProjectSecretError")({
+    tag: Schema.Literal("ProjectSecretError"),
+    authorization: Schema.String,
+    details: Schema.Struct({
+      refresh_token: Schema.String,
+      safe: Schema.String
+    })
+  }) {}
+  type SecretErrorApiSpec = {
+    readonly open: {
+      readonly input: typeof ProjectOpenInput
+      readonly output: typeof ProjectOpenOutput
+      readonly error: typeof ProjectSecretError
+    }
+  }
+  const states: unknown[] = []
+  const contract = class {
+    static readonly tag = "ProjectApi.HandlerRedactedFailure"
+    static readonly spec = Object.freeze({
+      open: Object.freeze({
+        input: ProjectOpenInput,
+        output: ProjectOpenOutput,
+        error: ProjectSecretError
+      })
+    })
+    static readonly events = Object.freeze({})
+
+    static layer<HandlersShape extends ApiHandlers<SecretErrorApiSpec>>(
+      handlers: HandlersShape
+    ): ApiLayer<string, SecretErrorApiSpec, HandlersShape> {
+      return Object.freeze({ contract, handlers: Object.freeze(handlers) })
+    }
+  } as ApiContractClass<string, SecretErrorApiSpec>
+  const runtime = Handlers.withOptions(
+    {
+      onState: (state) =>
+        Effect.sync(() => {
+          states.push(state)
+        })
+    },
+    contract.layer({
+      open: () =>
+        Effect.fail(
+          new ProjectSecretError({
+            tag: "ProjectSecretError",
+            authorization: "Bearer abc",
+            details: { refresh_token: "refresh", safe: "visible" }
+          })
+        )
+    })
+  )
+
+  const response = await Effect.runPromise(
+    runtime.dispatch(request("ProjectApi.HandlerRedactedFailure.open", { path: "/tmp/project" }))
+  )
+
+  expect(response).toEqual({
+    kind: "failure",
+    error: {
+      tag: "ProjectSecretError",
+      authorization: "[REDACTED]",
+      details: { refresh_token: "[REDACTED]", safe: "visible" }
+    }
+  })
+  expect(JSON.stringify(states)).not.toContain("Bearer abc")
+  expect(JSON.stringify(states)).not.toContain(':"refresh"')
+})
+
 test("Handlers rejects malformed input before calling handlers", async () => {
   const calls: string[] = []
   const states: string[] = []

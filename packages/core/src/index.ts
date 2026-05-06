@@ -1,6 +1,6 @@
-import { Api, Client, Handlers } from "@effect-desktop/bridge"
+import { Api, Client, Handlers, RedactionFilter } from "@effect-desktop/bridge"
 
-export { Api, Client, Handlers } from "@effect-desktop/bridge"
+export { Api, Client, Handlers, RedactionFilter, redact } from "@effect-desktop/bridge"
 export * from "./runtime/resources.js"
 export * from "./runtime/filesystem.js"
 export * from "./runtime/event-log.js"
@@ -15,5 +15,6 @@ export * from "./runtime/window-state.js"
 export const Desktop = Object.freeze({
   Api,
   Client,
-  Handlers
+  Handlers,
+  RedactionFilter
 })
