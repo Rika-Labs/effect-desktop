@@ -97,7 +97,7 @@ export interface FilesystemApi {
   ) => Effect.Effect<void, FilesystemError, never>
   readonly watch: (
     path: string,
-    options: { readonly ownerScope: string; readonly bufferSize?: number }
+    options?: { readonly ownerScope: string; readonly bufferSize?: number }
   ) => Stream.Stream<FilesystemEvent, FilesystemError, never>
 }
 
@@ -109,7 +109,8 @@ export interface FilesystemAdapter {
   readonly remove: (path: string, options?: { readonly recursive: true }) => Promise<void>
   readonly watch: (
     path: string,
-    listener: (event: RawFilesystemEvent) => void
+    listener: (event: RawFilesystemEvent) => void,
+    onError: (error: FilesystemError) => void
   ) => Effect.Effect<FilesystemWatcher, FilesystemError, never>
 }
 
@@ -186,7 +187,7 @@ export const makeFilesystem = (
         }).pipe(Effect.withSpan("Filesystem.remove", { attributes: { path } })),
       watch: (
         path: string,
-        options: { readonly ownerScope: string; readonly bufferSize?: number }
+        options?: { readonly ownerScope: string; readonly bufferSize?: number }
       ) =>
         Stream.unwrap(
           Effect.acquireRelease(
@@ -194,17 +195,22 @@ export const makeFilesystem = (
               const input = yield* decodeWatchInput(
                 {
                   path,
-                  ownerScope: options.ownerScope,
-                  ...(options.bufferSize === undefined ? {} : { bufferSize: options.bufferSize })
+                  ...(options === undefined ? {} : options)
                 },
                 "Filesystem.watch"
               )
               const queue = yield* Queue.sliding<FilesystemEvent, FilesystemError | Cause.Done>(
                 input.bufferSize ?? DEFAULT_WATCH_BUFFER_SIZE
               )
-              const watcher = yield* adapter.watch(input.path, (event) => {
-                Effect.runFork(handleWatchEvent(queue, adapter, input.path, event))
-              })
+              const watcher = yield* adapter.watch(
+                input.path,
+                (event) => {
+                  Effect.runFork(handleWatchEvent(queue, adapter, input.path, event))
+                },
+                (error) => {
+                  Effect.runFork(Queue.fail(queue, error))
+                }
+              )
               const handle = yield* registry.register({
                 kind: "filesystem-watch",
                 ownerScope: input.ownerScope,
@@ -253,7 +259,7 @@ const NodeFilesystemAdapter: FilesystemAdapter = {
     options?.recursive === true
       ? rm(path, { recursive: true }).then(() => undefined)
       : removeSinglePath(path),
-  watch: (path, listener) =>
+  watch: (path, listener, onError) =>
     Effect.try({
       try: () => {
         const watcher = nodeWatch(
@@ -268,6 +274,9 @@ const NodeFilesystemAdapter: FilesystemAdapter = {
             }
           }
         )
+        watcher.on("error", (error) => {
+          onError(mapFilesystemError(error, path, "Filesystem.watch"))
+        })
         return { close: () => watcher.close() }
       },
       catch: (error) => mapFilesystemError(error, path, "Filesystem.watch")

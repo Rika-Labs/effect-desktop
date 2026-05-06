@@ -2,6 +2,7 @@ import { mkdtemp, readFile, stat as nodeStat, symlink } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 
+import { HostProtocolPermissionDeniedError } from "@effect-desktop/bridge"
 import { expect, test } from "bun:test"
 import { Effect, Exit, Fiber, Stream } from "effect"
 
@@ -9,6 +10,7 @@ import {
   FilesystemStatResult,
   makeFilesystem,
   type FilesystemEvent,
+  type FilesystemError,
   type FilesystemAdapter,
   type FilesystemApi,
   type FilesystemOptions,
@@ -150,6 +152,29 @@ test("Filesystem watch classifies rename events as created or deleted", async ()
   expect(deleted.kind).toBe("deleted")
 })
 
+test("Filesystem watch reports missing options as typed invalid input", async () => {
+  const service = await makeTestFilesystem()
+
+  const exit = await Effect.runPromiseExit(
+    service.watch("/tmp/project").pipe(Stream.take(1), Stream.runCollect)
+  )
+
+  expectFailureTag(exit, "InvalidArgument")
+})
+
+test("Filesystem watch maps asynchronous adapter errors into the stream failure channel", async () => {
+  const fixture = await makeWatchFixture()
+  const fiber = Effect.runFork(
+    fixture.service.watch("/tmp/project", { ownerScope: "scope-main" }).pipe(Stream.runDrain)
+  )
+
+  await waitUntil(() => fixture.fail !== undefined)
+  fixture.fail?.(makePermissionDeniedError())
+  const exit = await Effect.runPromiseExit(Fiber.join(fiber))
+
+  expectFailureTag(exit, "PermissionDenied")
+})
+
 test("Filesystem watch registers a scope-bound resource and closes on scope close", async () => {
   const fixture = await makeWatchFixture()
   const fiber = Effect.runFork(
@@ -223,9 +248,11 @@ async function makeWatchFixture(
   readonly service: FilesystemApi
   readonly registry: ResourceRegistryApi
   readonly listener: ((event: RawFilesystemEvent) => void) | undefined
+  readonly fail: ((error: FilesystemError) => void) | undefined
   readonly closeCount: number
 }> {
   let listener: ((event: RawFilesystemEvent) => void) | undefined
+  let fail: ((error: FilesystemError) => void) | undefined
   let closeCount = 0
   const registry = await Effect.runPromise(makeResourceRegistry())
   const service = await Effect.runPromise(
@@ -242,9 +269,10 @@ async function makeWatchFixture(
               )) as FilesystemAdapter["stat"],
         mkdir: () => Promise.reject(new Error("not used")),
         remove: () => Promise.reject(new Error("not used")),
-        watch: (_path, next) =>
+        watch: (_path, next, onError) =>
           Effect.sync(() => {
             listener = next
+            fail = onError
             return {
               close: () => {
                 closeCount += 1
@@ -261,10 +289,24 @@ async function makeWatchFixture(
     get listener() {
       return listener
     },
+    get fail() {
+      return fail
+    },
     get closeCount() {
       return closeCount
     }
   }
+}
+
+function makePermissionDeniedError(): FilesystemError {
+  return new HostProtocolPermissionDeniedError({
+    tag: "PermissionDenied",
+    capability: "filesystem.watch",
+    resource: "/tmp/project",
+    message: "permission denied: /tmp/project",
+    operation: "Filesystem.watch",
+    recoverable: false
+  })
 }
 
 function fakeStats(): Awaited<ReturnType<FilesystemAdapter["stat"]>> {
