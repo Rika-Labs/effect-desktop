@@ -10,7 +10,7 @@
 ## Commits made
 
 - `95082d1` — `Address notarization review findings (#86)`
-- Pending formatting follow-up commit.
+- `d6ca85c` — `Format notarization review artifacts (#86)`
 
 ## Escalations
 
@@ -31,11 +31,14 @@ None.
   - `bun test packages/cli/src/index.test.ts -t 'desktop notarize'` — 6 tests passed, 19 assertions.
   - `bun run lint`
   - `bun run lint:types`
-- PR CI pending after push.
+- PR CI passed after the formatting follow-up:
+  - `validate (blacksmith-2vcpu-ubuntu-2404)` — passed in 2m7s.
+  - `validate (blacksmith-2vcpu-windows-2025)` — passed in 1m53s.
+  - `validate (blacksmith-6vcpu-macos-latest)` — passed in 56s.
 
 ## Open threads
 
-Review threads pending silent GraphQL resolution after the address commit is pushed.
+None. Both review threads were resolved silently via GraphQL.
 
 ## Handoff
 
