@@ -243,22 +243,14 @@ const boundedOutputStream = (
   stream: Stream.Stream<Uint8Array, PtyError, never>,
   command: string,
   limitBytes: number
-): Stream.Stream<Uint8Array, PtyError, never> => {
-  let bufferedBytes = 0
-  return stream.pipe(
+): Stream.Stream<Uint8Array, PtyError, never> =>
+  stream.pipe(
     Stream.mapEffect((chunk) =>
-      Effect.gen(function* () {
-        const nextBytes = bufferedBytes + chunk.byteLength
-        if (nextBytes > limitBytes) {
-          return yield* Effect.fail(makeBackpressureOverflow(command, limitBytes, 1))
-        }
-
-        bufferedBytes = nextBytes
-        return chunk
-      })
+      chunk.byteLength > limitBytes
+        ? Effect.fail(makeBackpressureOverflow(command, limitBytes, 1))
+        : Effect.succeed(chunk)
     )
   )
-}
 
 const observeChildExit = (
   exitStatus: Effect.Effect<PtyExitStatus, PtyError, never>,
@@ -304,13 +296,30 @@ const disposeChild = (
       )
       const gracefulExit = yield* waitForChildExit(child, command, gracefulShutdownMs)
       if (Option.isNone(gracefulExit) && child.isRunning()) {
-        yield* Effect.logWarning("PTY.dispose.wait timed out", {
-          command,
-          gracefulShutdownMs
-        })
+        yield* forceKillChild(child, command)
+        const forcedExit = yield* waitForChildExit(child, command, gracefulShutdownMs)
+        if (Option.isNone(forcedExit) && child.isRunning()) {
+          yield* Effect.logWarning("PTY.dispose.forceKill timed out", {
+            command,
+            gracefulShutdownMs
+          })
+        }
       }
     }
   })
+
+const forceKillChild = (child: PtyChild, command: string): Effect.Effect<void, never, never> =>
+  Effect.tryPromise({
+    try: () => child.kill("SIGKILL"),
+    catch: (error) => mapPtyError(error, command, "PTY.dispose.forceKill")
+  }).pipe(
+    Effect.catch((error: HostProtocolError) =>
+      Effect.logWarning("PTY.dispose.forceKill failed", {
+        command,
+        reason: error.message
+      })
+    )
+  )
 
 const waitForChildExit = (
   child: PtyChild,

@@ -292,27 +292,43 @@ ptyTest("PTY open enforces the per-scope concurrent budget", async () => {
   }
 })
 
-ptyTest(
-  "PTY output fails with BackpressureOverflow when cumulative chunks exceed budget",
-  async () => {
-    const fixture = await makeFixture(
-      makeFakeAdapter(() => makeFakeChild({ output: ["ab", "cd"], exit: { code: 0 } })),
-      { budgets: { outputBufferBytes: 3 } }
-    )
-    const handle = await Effect.runPromise(
-      fixture.service.open({
-        argv: ["bash"],
-        ownerScope: "scope-main",
-        rows: 24,
-        cols: 80
-      })
-    )
+ptyTest("PTY output allows drained chunks beyond the per-frame budget", async () => {
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => makeFakeChild({ output: ["ab", "cd"], exit: { code: 0 } })),
+    { budgets: { outputBufferBytes: 3 } }
+  )
+  const handle = await Effect.runPromise(
+    fixture.service.open({
+      argv: ["bash"],
+      ownerScope: "scope-main",
+      rows: 24,
+      cols: 80
+    })
+  )
 
-    const exit = await Effect.runPromiseExit(handle.output.pipe(Stream.runCollect))
+  const output = await Effect.runPromise(handle.output.pipe(Stream.runCollect))
 
-    expectFailure(exit, HostProtocolBackpressureOverflowError)
-  }
-)
+  expect(decodeChunks(Array.from(output))).toBe("abcd")
+})
+
+ptyTest("PTY output fails with BackpressureOverflow when a chunk exceeds budget", async () => {
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => makeFakeChild({ output: ["abcd"], exit: { code: 0 } })),
+    { budgets: { outputBufferBytes: 3 } }
+  )
+  const handle = await Effect.runPromise(
+    fixture.service.open({
+      argv: ["bash"],
+      ownerScope: "scope-main",
+      rows: 24,
+      cols: 80
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(handle.output.pipe(Stream.runCollect))
+
+  expectFailure(exit, HostProtocolBackpressureOverflowError)
+})
 
 ptyTest("PTY handle writes, resizes, kills, and preserves exit signal", async () => {
   const child = makeFakeChild({ output: [], exit: { code: 0 }, naturalExitDelayMs: 60_000 })
@@ -392,6 +408,32 @@ ptyTest("PTY scope close waits for child exit before releasing budget", async ()
   expect(openCalls).toBe(2)
 })
 
+ptyTest("PTY scope close escalates to SIGKILL when SIGTERM is ignored", async () => {
+  const child = makeFakeChild({
+    output: [],
+    exit: { code: 0 },
+    naturalExitDelayMs: 60_000,
+    ignoredSignals: ["SIGTERM"]
+  })
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => child),
+    { gracefulShutdownMs: 1 }
+  )
+
+  await Effect.runPromise(
+    fixture.service.open({
+      argv: ["bash"],
+      ownerScope: "scope-main",
+      rows: 24,
+      cols: 80
+    })
+  )
+  await Effect.runPromise(fixture.registry.closeScope("scope-main"))
+
+  expect(child.kills).toEqual(["SIGTERM", "SIGKILL"])
+  expect(child.isRunning()).toBe(false)
+})
+
 const makeFixture = async (
   adapter?: PtyAdapter,
   options: {
@@ -437,6 +479,7 @@ interface FakeChild extends PtyChild {
   readonly writes: Uint8Array[]
   readonly resizes: PtyResizeInput[]
   readonly killedWith: PtySignalInput | undefined
+  readonly kills: PtySignalInput[]
 }
 
 const makeFakeChild = (options: {
@@ -445,10 +488,12 @@ const makeFakeChild = (options: {
   readonly exitError?: unknown
   readonly killExitDelayMs?: number
   readonly naturalExitDelayMs?: number
+  readonly ignoredSignals?: readonly PtySignalInput[]
   readonly ignoreKill?: boolean
 }): FakeChild => {
   const writes: Uint8Array[] = []
   const resizes: PtyResizeInput[] = []
+  const kills: PtySignalInput[] = []
   let killedWith: PtySignalInput | undefined
   let running = true
   let settled = false
@@ -500,6 +545,7 @@ const makeFakeChild = (options: {
     exited,
     writes,
     resizes,
+    kills,
     get killedWith() {
       return killedWith
     },
@@ -512,7 +558,8 @@ const makeFakeChild = (options: {
     isRunning: () => running,
     kill: async (signal) => {
       killedWith = signal ?? "SIGTERM"
-      if (options.ignoreKill !== true) {
+      kills.push(killedWith)
+      if (options.ignoreKill !== true && !options.ignoredSignals?.includes(killedWith)) {
         if (options.killExitDelayMs === undefined) {
           finish(String(killedWith))
         } else {
