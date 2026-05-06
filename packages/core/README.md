@@ -8,9 +8,10 @@ Public framework API and runtime contracts (`Desktop.run`, `Desktop.window`, `De
 
 ## Public API
 
-The package exports runtime primitives as they land by phase. Phase 14 includes
-the `SQLite`, `Settings`, `EventLog`, `Transport`, and `WindowState` services
-for scope-bound local storage and app-owned protocol transport.
+The package exports runtime primitives as they land by phase. Phase 15 includes
+the `SQLite`, `Settings`, `EventLog`, `Transport`, `WindowState`, and `Secrets`
+services for scope-bound local storage, app-owned protocol transport, and
+platform-backed credential storage.
 
 ### SQLite
 
@@ -89,6 +90,22 @@ stored rectangle is off every configured display, it snaps to the primary
 display before returning. Corrupt state files are renamed to
 `window-state.corrupt.<timestamp>.json`; the runtime continues with defaults and
 emits a `corrupt-renamed` event through `observe()`.
+
+### Secrets
+
+`Secrets` is the app-level facade over native `SafeStorage`. It exposes
+`set(namespace, key, value)`, `get(namespace, key)`, `delete(namespace, key)`,
+and `list(namespace)` as Effect values. The service derives storage keys as
+`appId/namespace/key`, validates namespace and key segments before touching
+native storage, checks explicit `secrets.read` / `secrets.write` namespace
+permissions, and maps missing keys or unavailable safe storage into typed
+`SecretsError` values.
+
+Secret bytes stay in `SecretValue`, whose string and JSON forms are redacted.
+When an `EventLogStore` is supplied, each successful operation writes a
+`secret accessed` audit event with namespace, key, outcome, and trace id, never
+the secret value. There are no long-lived handles; cleanup is the caller's
+explicit disposal of returned `SecretValue` copies.
 
 ## Runtime entry
 
