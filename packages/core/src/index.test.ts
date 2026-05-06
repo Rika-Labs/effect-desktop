@@ -7,6 +7,7 @@ test("public barrel exports the ResourceRegistry factory", async () => {
   expect(core.makeProcess).toBeFunction()
   expect(core.ProcessLive).toBeDefined()
   expect(core.makeApprovalBroker).toBeFunction()
+  expect(core.makeAuditEvents).toBeFunction()
 })
 
 test("public Desktop facade exposes the API contract registry", async () => {

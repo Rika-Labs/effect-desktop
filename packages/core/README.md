@@ -9,8 +9,8 @@ Public framework API and runtime contracts (`Desktop.run`, `Desktop.window`, `De
 ## Public API
 
 The package exports runtime primitives as they land by phase. Phase 16 adds the
-`PermissionRegistry` and `ApprovalBroker` services to the Phase 15 `SQLite`,
-`Settings`, `EventLog`, `Transport`, `WindowState`, `Secrets`, and
+`PermissionRegistry`, `ApprovalBroker`, and `AuditEvents` services to the Phase
+15 `SQLite`, `Settings`, `EventLog`, `Transport`, `WindowState`, `Secrets`, and
 `RedactionFilter` services/utilities for scope-bound local storage, app-owned
 protocol transport, platform-backed credential storage, and human-visible
 emission safety.
@@ -66,6 +66,20 @@ committed appends use SQLite's durability path. Underlying `SQLITE_FULL` errors
 map to `EventLogFull`; once a log is read-only, appends fail while query and
 subscribe continue.
 
+### AuditEvents
+
+`AuditEvents` is the typed audit surface for permission-relevant runtime
+transitions. `emit(event)` writes closed `audit/<kind>` rows into `EventLog`
+after running the shared redaction filter, so secret-shaped fields in structured
+details are replaced before persistence. `query(options)` and
+`subscribe(options)` expose the same redacted rows through the underlying
+`EventLog` export and live-tail APIs.
+
+Permission and approval services emit structured audit rows for grants, denials,
+revocations, expiry, one-time consumption, use, approval requests, approval
+grants, and approval denials. Each row carries source, trace id, outcome, and
+the owning actor/resource/capability fields available to the emitting service.
+
 ### PermissionRegistry
 
 `PermissionRegistry` is the deny-by-default capability chokepoint for privileged
@@ -83,11 +97,11 @@ Decision order is fixed: explicit deny, revoked/expired/consumed,
 approval-denied, approval, allow, then default deny. Filesystem roots authorize
 descendant paths, while process commands, network hosts, secret namespaces, and
 native invoke methods match explicit declared entries. When an `EventLogStore`
-is supplied, every check writes a `permission decision` audit event with the
+is supplied, every check writes a structured `AuditEvents` row with the
 normalized capability, actor, resource, source, and trace id. Grant lifecycle
-transitions write `permission lifecycle` events for grant, use, revoke, expire,
-and one-time consumption. Revoked, expired, and consumed grants fail as typed
-Effect values instead of thrown exceptions.
+transitions write typed audit rows for grant, use, revoke, expire, and one-time
+consumption. Revoked, expired, and consumed grants fail as typed Effect values
+instead of thrown exceptions.
 
 ### ApprovalBroker
 

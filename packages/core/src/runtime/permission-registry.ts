@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 
 import { Context, Data, Deferred, Effect, Option, Ref, Schema } from "effect"
 
+import { emitAuditEvent, permissionAuditEvent } from "./audit-events.js"
 import type { EventLogError, EventLogStore } from "./event-log.js"
 
 const NonEmptyString = Schema.NonEmptyString
@@ -742,52 +743,43 @@ const auditLifecycle = (
   transition: "grant" | "use" | "revoke" | "expire" | "consumed",
   tracked: TrackedGrant
 ): Effect.Effect<void, PermissionAuditFailedError, never> =>
-  audit === undefined
-    ? Effect.void
-    : audit
-        .append(
-          {
-            type: "permission lifecycle",
-            payload: {
-              transition,
-              token: tracked.grant.token,
-              status: tracked.status,
-              capability: tracked.grant.capability,
-              actor: tracked.grant.actor,
-              ...(tracked.grant.resource === undefined ? {} : { resource: tracked.grant.resource }),
-              source: tracked.grant.source,
-              traceId: tracked.grant.traceId,
-              grantedAt: tracked.grant.grantedAt,
-              updatedAt: tracked.updatedAt,
-              ...(tracked.grant.expiresAt === undefined
-                ? {}
-                : { expiresAt: tracked.grant.expiresAt }),
-              ...(tracked.grant.oneTime === undefined ? {} : { oneTime: tracked.grant.oneTime })
-            }
-          },
-          { source: "PermissionRegistry" }
-        )
-        .pipe(
-          Effect.asVoid,
-          Effect.mapError(
-            (cause) =>
-              new PermissionAuditFailedError({
-                operation: "PermissionRegistry.lifecycle",
-                decision: new PermissionDecision({
-                  outcome: tracked.status === "active" ? "granted" : "denied",
-                  ...(tracked.status === "active" ? {} : { reason: tracked.status }),
-                  source: tracked.grant.source,
-                  capability: tracked.grant.capability,
-                  actor: tracked.grant.actor,
-                  ...(tracked.grant.resource === undefined
-                    ? {}
-                    : { resource: tracked.grant.resource }),
-                  traceId: tracked.grant.traceId
-                }),
-                cause
-              })
-          )
-        )
+  emitAuditEvent(
+    audit,
+    permissionAuditEvent({
+      kind: permissionLifecycleKind(transition),
+      source: tracked.grant.source,
+      traceId: tracked.grant.traceId,
+      outcome: tracked.status,
+      normalizedCapability: tracked.grant.capability,
+      actor: tracked.grant.actor,
+      ...(tracked.grant.resource === undefined ? {} : { resource: tracked.grant.resource }),
+      timestamp: tracked.updatedAt,
+      details: {
+        transition,
+        token: tracked.grant.token,
+        grantedAt: tracked.grant.grantedAt,
+        ...(tracked.grant.expiresAt === undefined ? {} : { expiresAt: tracked.grant.expiresAt }),
+        ...(tracked.grant.oneTime === undefined ? {} : { oneTime: tracked.grant.oneTime })
+      }
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PermissionAuditFailedError({
+          operation: "PermissionRegistry.lifecycle",
+          decision: new PermissionDecision({
+            outcome: tracked.status === "active" ? "granted" : "denied",
+            ...(tracked.status === "active" ? {} : { reason: tracked.status }),
+            source: tracked.grant.source,
+            capability: tracked.grant.capability,
+            actor: tracked.grant.actor,
+            ...(tracked.grant.resource === undefined ? {} : { resource: tracked.grant.resource }),
+            traceId: tracked.grant.traceId
+          }),
+          cause
+        })
+    )
+  )
 
 const lifecycleTransition = (
   status: Exclude<GrantStatus, "active">
@@ -802,39 +794,54 @@ const lifecycleTransition = (
   }
 }
 
+const permissionLifecycleKind = (
+  transition: "grant" | "use" | "revoke" | "expire" | "consumed"
+):
+  | "permission-granted"
+  | "permission-used"
+  | "permission-revoked"
+  | "permission-expired"
+  | "permission-consumed" => {
+  switch (transition) {
+    case "grant":
+      return "permission-granted"
+    case "use":
+      return "permission-used"
+    case "revoke":
+      return "permission-revoked"
+    case "expire":
+      return "permission-expired"
+    case "consumed":
+      return "permission-consumed"
+  }
+}
+
 const auditDecision = (
   audit: EventLogStore | undefined,
   decision: PermissionDecision
 ): Effect.Effect<void, PermissionAuditFailedError, never> =>
-  audit === undefined
-    ? Effect.void
-    : audit
-        .append(
-          {
-            type: "permission decision",
-            payload: {
-              outcome: decision.outcome,
-              ...(decision.reason === undefined ? {} : { reason: decision.reason }),
-              source: decision.source,
-              capability: decision.capability,
-              actor: decision.actor,
-              ...(decision.resource === undefined ? {} : { resource: decision.resource }),
-              traceId: decision.traceId
-            }
-          },
-          { source: "PermissionRegistry" }
-        )
-        .pipe(
-          Effect.asVoid,
-          Effect.mapError(
-            (cause) =>
-              new PermissionAuditFailedError({
-                operation: "PermissionRegistry.check",
-                decision,
-                cause
-              })
-          )
-        )
+  emitAuditEvent(
+    audit,
+    permissionAuditEvent({
+      kind: decision.outcome === "granted" ? "permission-granted" : "permission-denied",
+      source: decision.source,
+      traceId: decision.traceId,
+      outcome: decision.outcome,
+      normalizedCapability: decision.capability,
+      actor: decision.actor,
+      ...(decision.resource === undefined ? {} : { resource: decision.resource }),
+      ...(decision.reason === undefined ? {} : { details: { reason: decision.reason } })
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PermissionAuditFailedError({
+          operation: "PermissionRegistry.check",
+          decision,
+          cause
+        })
+    )
+  )
 
 const decodeDeclaration = (
   input: unknown,

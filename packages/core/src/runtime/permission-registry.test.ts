@@ -28,16 +28,19 @@ test("PermissionRegistry denies undeclared capabilities by default and audits th
   })
   expect(rows).toEqual([
     {
-      type: "permission decision",
+      type: "audit/permission-denied",
       payload: {
-        outcome: "denied",
-        reason: "default-deny",
+        kind: "permission-denied",
         source: "default-deny",
-        capability: filesystemWrite(["/tmp/app/file.txt"]),
+        traceId: "trace-1",
+        outcome: "denied",
+        normalizedCapability: filesystemWrite(["/tmp/app/file.txt"]),
         actor: actor("window-main"),
-        traceId: "trace-1"
+        details: {
+          reason: "default-deny"
+        }
       },
-      source: "PermissionRegistry"
+      source: "AuditEvents"
     }
   ])
 })
@@ -188,7 +191,10 @@ test("PermissionRegistry expires grants as typed revocation values and audits th
     expect(error.token).toBe("grant-1")
   })
   expect(snapshot.status).toBe("expired")
-  expect(rows.map((row) => eventTransition(row))).toEqual(["grant", "expire"])
+  expect(rows.map((row) => eventType(row))).toEqual([
+    "audit/permission-granted",
+    "audit/permission-expired"
+  ])
 })
 
 test("PermissionRegistry consumes one-time grants after the first use", async () => {
@@ -339,13 +345,7 @@ const expectRevoked = (
   }
 }
 
-const eventTransition = (row: unknown): string | undefined =>
-  typeof row === "object" &&
-  row !== null &&
-  "payload" in row &&
-  typeof row.payload === "object" &&
-  row.payload !== null &&
-  "transition" in row.payload &&
-  typeof row.payload.transition === "string"
-    ? row.payload.transition
+const eventType = (row: unknown): string | undefined =>
+  typeof row === "object" && row !== null && "type" in row && typeof row.type === "string"
+    ? row.type
     : undefined
