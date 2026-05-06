@@ -119,6 +119,22 @@ owner scope, child pids, state, and last exit. Spawn, kill, stdout, stderr,
 stdin, and exit failures remain typed `HostProtocolError` values on the
 operation that produced them; the snapshot stream is read-only runtime state.
 
+### Telemetry
+
+`Telemetry` owns the runtime diagnostic stream for structured logs, trace spans,
+and metric snapshots. Logs are redacted before storage and include the required
+level, timestamp, subsystem, operation, trace id, optional resource/window ids,
+message, and safe structured fields. Trace spans are stored in a bounded ring
+with `traceRingSize` defaulting to 10,000 and can be explicitly disabled, which
+leaves the trace panel empty without pretending tracing succeeded. Counters and
+histograms are aggregated by name and tags, with `maxMetrics` bounding the
+snapshot map for high-cardinality callers.
+
+`snapshot()`, `listLogs()`, `listTraces()`, `listMetrics()`, and the matching
+`observe*()` streams keep devtools and tests attached to the telemetry owner
+instead of a panel-side cache. Invalid buffer sizes fail construction as typed
+`InvalidArgument` values.
+
 ### Worker
 
 `Worker` is the runtime primitive for isolated background TypeScript work. It

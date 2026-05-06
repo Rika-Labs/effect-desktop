@@ -1,0 +1,347 @@
+import { redact } from "@effect-desktop/bridge"
+import { Context, Data, Effect, Option, Ref, Stream, SubscriptionRef } from "effect"
+
+export type TelemetryLogLevel = "debug" | "info" | "warn" | "error"
+
+export interface TelemetryLogInput {
+  readonly level: TelemetryLogLevel
+  readonly subsystem: string
+  readonly operation: string
+  readonly traceId: string
+  readonly message: string
+  readonly timestamp?: number
+  readonly resourceId?: string
+  readonly windowId?: string
+  readonly fields?: unknown
+}
+
+export interface TelemetryLogRecord {
+  readonly id: number
+  readonly level: TelemetryLogLevel
+  readonly timestamp: number
+  readonly subsystem: string
+  readonly operation: string
+  readonly traceId: string
+  readonly resourceId: Option.Option<string>
+  readonly windowId: Option.Option<string>
+  readonly message: string
+  readonly fields: Option.Option<unknown>
+}
+
+export interface TelemetryTraceSpanInput {
+  readonly traceId: string
+  readonly spanId?: string
+  readonly parentSpanId?: string
+  readonly subsystem: string
+  readonly operation: string
+  readonly name: string
+  readonly startedAt: number
+  readonly endedAt?: number
+  readonly attributes?: unknown
+}
+
+export interface TelemetryTraceSpan {
+  readonly traceId: string
+  readonly spanId: string
+  readonly parentSpanId: Option.Option<string>
+  readonly subsystem: string
+  readonly operation: string
+  readonly name: string
+  readonly startedAt: number
+  readonly endedAt: Option.Option<number>
+  readonly durationMs: Option.Option<number>
+  readonly attributes: Option.Option<unknown>
+}
+
+export interface TelemetryCounterInput {
+  readonly name: string
+  readonly by?: number
+  readonly timestamp?: number
+  readonly tags?: Readonly<Record<string, string>>
+}
+
+export interface TelemetryHistogramInput {
+  readonly name: string
+  readonly value: number
+  readonly timestamp?: number
+  readonly tags?: Readonly<Record<string, string>>
+}
+
+export interface TelemetryMetricBase {
+  readonly name: string
+  readonly tags: Readonly<Record<string, string>>
+  readonly updatedAt: number
+}
+
+export interface TelemetryCounterSnapshot extends TelemetryMetricBase {
+  readonly kind: "counter"
+  readonly value: number
+}
+
+export interface TelemetryHistogramSnapshot extends TelemetryMetricBase {
+  readonly kind: "histogram"
+  readonly count: number
+  readonly sum: number
+  readonly min: number
+  readonly max: number
+}
+
+export type TelemetryMetricSnapshot = TelemetryCounterSnapshot | TelemetryHistogramSnapshot
+
+export interface TelemetrySnapshot {
+  readonly logs: readonly TelemetryLogRecord[]
+  readonly traces: readonly TelemetryTraceSpan[]
+  readonly metrics: readonly TelemetryMetricSnapshot[]
+}
+
+export interface TelemetryApi {
+  readonly log: (input: TelemetryLogInput) => Effect.Effect<void, never, never>
+  readonly listLogs: () => Effect.Effect<readonly TelemetryLogRecord[], never, never>
+  readonly observeLogs: () => Stream.Stream<readonly TelemetryLogRecord[], never, never>
+  readonly recordSpan: (input: TelemetryTraceSpanInput) => Effect.Effect<void, never, never>
+  readonly listTraces: () => Effect.Effect<readonly TelemetryTraceSpan[], never, never>
+  readonly observeTraces: () => Stream.Stream<readonly TelemetryTraceSpan[], never, never>
+  readonly incrementCounter: (input: TelemetryCounterInput) => Effect.Effect<void, never, never>
+  readonly recordHistogram: (input: TelemetryHistogramInput) => Effect.Effect<void, never, never>
+  readonly listMetrics: () => Effect.Effect<readonly TelemetryMetricSnapshot[], never, never>
+  readonly observeMetrics: () => Stream.Stream<readonly TelemetryMetricSnapshot[], never, never>
+  readonly snapshot: () => Effect.Effect<TelemetrySnapshot, never, never>
+}
+
+export class TelemetryInvalidArgumentError extends Data.TaggedError("InvalidArgument")<{
+  readonly operation: string
+  readonly field: string
+  readonly message: string
+}> {}
+
+export interface TelemetryOptions {
+  readonly maxLogs?: number
+  readonly maxMetrics?: number
+  readonly traceRingSize?: number
+  readonly tracingEnabled?: boolean
+  readonly now?: () => number
+  readonly nextSpanId?: () => string
+}
+
+const DEFAULT_MAX_LOGS = 1_024
+const DEFAULT_MAX_METRICS = 1_024
+const DEFAULT_TRACE_RING_SIZE = 10_000
+
+export const makeTelemetry = (
+  options: TelemetryOptions = {}
+): Effect.Effect<TelemetryApi, TelemetryInvalidArgumentError, never> =>
+  Effect.gen(function* () {
+    const maxLogs = yield* positiveIntegerOption(options.maxLogs, DEFAULT_MAX_LOGS, "maxLogs")
+    const maxMetrics = yield* positiveIntegerOption(
+      options.maxMetrics,
+      DEFAULT_MAX_METRICS,
+      "maxMetrics"
+    )
+    const traceRingSize = yield* positiveIntegerOption(
+      options.traceRingSize,
+      DEFAULT_TRACE_RING_SIZE,
+      "traceRingSize"
+    )
+    const tracingEnabled = options.tracingEnabled ?? true
+    const now = options.now ?? Date.now
+    const nextSpanId = options.nextSpanId ?? (() => `span-${globalThis.crypto.randomUUID()}`)
+    const nextLogId = yield* Ref.make(0)
+    const logs = yield* SubscriptionRef.make<readonly TelemetryLogRecord[]>([])
+    const traces = yield* SubscriptionRef.make<readonly TelemetryTraceSpan[]>([])
+    const metrics = yield* SubscriptionRef.make<ReadonlyMap<string, TelemetryMetricSnapshot>>(
+      new Map()
+    )
+
+    const listMetrics = (): Effect.Effect<readonly TelemetryMetricSnapshot[], never, never> =>
+      SubscriptionRef.get(metrics).pipe(Effect.map((snapshot) => Array.from(snapshot.values())))
+
+    return Object.freeze({
+      log: (input) =>
+        Effect.gen(function* () {
+          const id = yield* Ref.getAndUpdate(nextLogId, (current) => current + 1)
+          const record = redact({
+            id,
+            level: input.level,
+            timestamp: input.timestamp ?? now(),
+            subsystem: input.subsystem,
+            operation: input.operation,
+            traceId: input.traceId,
+            resourceId: optionFrom(input.resourceId),
+            windowId: optionFrom(input.windowId),
+            message: input.message,
+            fields: optionFrom(input.fields)
+          } satisfies TelemetryLogRecord)
+          yield* SubscriptionRef.update(logs, (current) => appendBounded(current, record, maxLogs))
+        }),
+      listLogs: () => SubscriptionRef.get(logs),
+      observeLogs: () => SubscriptionRef.changes(logs),
+      recordSpan: (input) =>
+        tracingEnabled
+          ? SubscriptionRef.update(traces, (current) =>
+              appendBounded(current, toTraceSpan(input, nextSpanId), traceRingSize)
+            )
+          : Effect.void,
+      listTraces: () => SubscriptionRef.get(traces),
+      observeTraces: () => SubscriptionRef.changes(traces),
+      incrementCounter: (input) =>
+        SubscriptionRef.update(metrics, (current) =>
+          upsertMetric(current, toCounterSnapshot(input, now()), maxMetrics)
+        ),
+      recordHistogram: (input) =>
+        SubscriptionRef.update(metrics, (current) =>
+          upsertMetric(current, toHistogramSnapshot(input, now()), maxMetrics)
+        ),
+      listMetrics,
+      observeMetrics: () =>
+        SubscriptionRef.changes(metrics).pipe(
+          Stream.map((snapshot) => Array.from(snapshot.values()))
+        ),
+      snapshot: () =>
+        Effect.gen(function* () {
+          const logRows = yield* SubscriptionRef.get(logs)
+          const traceRows = yield* SubscriptionRef.get(traces)
+          const metricRows = yield* listMetrics()
+          return { logs: logRows, traces: traceRows, metrics: metricRows }
+        })
+    } satisfies TelemetryApi)
+  })
+
+export class Telemetry extends Context.Service<Telemetry, TelemetryApi>()("Telemetry", {
+  make: makeTelemetry()
+}) {}
+
+const positiveIntegerOption = (
+  value: number | undefined,
+  fallback: number,
+  field: string
+): Effect.Effect<number, TelemetryInvalidArgumentError, never> => {
+  const resolved = value ?? fallback
+  return Number.isInteger(resolved) && resolved > 0
+    ? Effect.succeed(resolved)
+    : Effect.fail(
+        new TelemetryInvalidArgumentError({
+          operation: "Telemetry.make",
+          field,
+          message: "must be a positive integer"
+        })
+      )
+}
+
+const appendBounded = <A>(current: readonly A[], value: A, maxRows: number): readonly A[] =>
+  [...current, value].slice(-maxRows)
+
+const optionFrom = <A>(value: A | undefined): Option.Option<A> =>
+  value === undefined ? Option.none() : Option.some(value)
+
+const toTraceSpan = (
+  input: TelemetryTraceSpanInput,
+  nextSpanId: () => string
+): TelemetryTraceSpan => ({
+  traceId: input.traceId,
+  spanId: input.spanId ?? nextSpanId(),
+  parentSpanId: optionFrom(input.parentSpanId),
+  subsystem: input.subsystem,
+  operation: input.operation,
+  name: input.name,
+  startedAt: input.startedAt,
+  endedAt: optionFrom(input.endedAt),
+  durationMs:
+    input.endedAt === undefined
+      ? Option.none()
+      : Option.some(Math.max(0, input.endedAt - input.startedAt)),
+  attributes: optionFrom(input.attributes)
+})
+
+const metricKey = (name: string, tags: Readonly<Record<string, string>>): string =>
+  `${name}\u0000${Object.entries(tags)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}=${value}`)
+    .join("\u0000")}`
+
+const toCounterSnapshot = (
+  input: TelemetryCounterInput,
+  timestamp: number
+): TelemetryCounterSnapshot => ({
+  kind: "counter",
+  name: input.name,
+  tags: input.tags ?? {},
+  updatedAt: input.timestamp ?? timestamp,
+  value: input.by ?? 1
+})
+
+const toHistogramSnapshot = (
+  input: TelemetryHistogramInput,
+  timestamp: number
+): TelemetryHistogramSnapshot => ({
+  kind: "histogram",
+  name: input.name,
+  tags: input.tags ?? {},
+  updatedAt: input.timestamp ?? timestamp,
+  count: 1,
+  sum: input.value,
+  min: input.value,
+  max: input.value
+})
+
+const upsertMetric = (
+  current: ReadonlyMap<string, TelemetryMetricSnapshot>,
+  nextMetric: TelemetryMetricSnapshot,
+  maxMetrics: number
+): ReadonlyMap<string, TelemetryMetricSnapshot> => {
+  const key = metricKey(nextMetric.name, nextMetric.tags)
+  const existing = current.get(key)
+  const next = new Map(current)
+  next.set(key, mergeMetric(existing, nextMetric))
+  while (next.size > maxMetrics) {
+    const oldest = oldestMetricKey(next)
+    if (oldest === undefined) {
+      break
+    }
+    next.delete(oldest)
+  }
+  return next
+}
+
+const oldestMetricKey = (
+  metrics: ReadonlyMap<string, TelemetryMetricSnapshot>
+): string | undefined => {
+  let oldestKey: string | undefined
+  let oldestUpdatedAt = Number.POSITIVE_INFINITY
+  for (const [key, metric] of metrics) {
+    if (metric.updatedAt < oldestUpdatedAt) {
+      oldestKey = key
+      oldestUpdatedAt = metric.updatedAt
+    }
+  }
+  return oldestKey
+}
+
+const mergeMetric = (
+  existing: TelemetryMetricSnapshot | undefined,
+  next: TelemetryMetricSnapshot
+): TelemetryMetricSnapshot => {
+  if (existing === undefined || existing.kind !== next.kind) {
+    return next
+  }
+
+  if (existing.kind === "counter" && next.kind === "counter") {
+    return {
+      ...existing,
+      value: existing.value + next.value,
+      updatedAt: next.updatedAt
+    }
+  }
+
+  if (existing.kind === "histogram" && next.kind === "histogram") {
+    return {
+      ...existing,
+      count: existing.count + next.count,
+      sum: existing.sum + next.sum,
+      min: Math.min(existing.min, next.min),
+      max: Math.max(existing.max, next.max),
+      updatedAt: next.updatedAt
+    }
+  }
+
+  return next
+}

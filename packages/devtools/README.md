@@ -24,6 +24,12 @@ Runtime inspector projections for framework primitives: windows, bridge calls, s
 - `observe()` emits an initial redacted snapshot and refreshes at the devtools frame interval.
 - Bridge and stream sources are supplied explicitly so missing runtime wiring cannot look like an empty successful panel.
 
+`DiagnosticsPanels` is a read-only Effect service over `Telemetry`:
+
+- `list()` returns redacted structured logs, trace groups, and metric snapshots.
+- `observe()` emits an initial redacted snapshot and refreshes at the devtools frame interval.
+- Trace rows are grouped by `traceId`; when tracing is disabled the traces array is empty.
+
 `DevtoolsShell` owns the devtools listener lifecycle:
 
 - `start({ profile, stateDir, devtoolsFlag, securityDevtoolsInProd })` starts only in dev or when both production gates are present.
