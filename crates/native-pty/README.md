@@ -13,9 +13,26 @@ API for later host/runtime services.
 - `NativePty::try_wait(&mut self) -> Result<Option<PtyExitStatus>, PtyError>`
 - `NativePty::wait(&mut self) -> Result<PtyExitStatus, PtyError>`
 - `NativePty::kill(&mut self) -> Result<(), PtyError>`
+- `NativePty::terminate_tree(&mut self) -> Result<(), PtyError>`
+- `NativePty::force_kill_tree(&mut self) -> Result<(), PtyError>`
+- `NativePty::wait_for_exit(&mut self, Duration) -> Result<Option<PtyExitStatus>, PtyError>`
+- `NativePty::close_tree(&mut self, Duration) -> Result<Option<PtyExitStatus>, PtyError>`
 
 Every fallible operation returns `PtyError`; panics from the native PTY boundary
 are converted to `PtyError::PanicInNativeCode`.
+
+## Cleanup behavior
+
+On Unix, `portable-pty` starts the PTY child as a session leader. `native-pty`
+uses that child pid as the process-group id and sends cleanup signals to the
+whole group: `terminate_tree` sends `SIGTERM`, and `force_kill_tree` sends
+`SIGKILL`. `close_tree` performs the standard sequence: terminate, wait for the
+configured grace period, force kill, then wait again.
+
+On Windows, `native-pty` assigns the PTY child process to a Job Object as soon
+as the child is spawned. `terminate_tree` and `force_kill_tree` terminate that
+Job Object, and closing the job handle provides a final cleanup guard if a
+caller drops the PTY without an explicit close.
 
 ## Dependency note
 
