@@ -9,10 +9,11 @@ Public framework API and runtime contracts (`Desktop.run`, `Desktop.window`, `De
 ## Public API
 
 The package exports runtime primitives as they land by phase. Phase 16 adds the
-`PermissionRegistry` service to the Phase 15 `SQLite`, `Settings`, `EventLog`,
-`Transport`, `WindowState`, `Secrets`, and `RedactionFilter` services/utilities
-for scope-bound local storage, app-owned protocol transport, platform-backed
-credential storage, and human-visible emission safety.
+`PermissionRegistry` and `ApprovalBroker` services to the Phase 15 `SQLite`,
+`Settings`, `EventLog`, `Transport`, `WindowState`, `Secrets`, and
+`RedactionFilter` services/utilities for scope-bound local storage, app-owned
+protocol transport, platform-backed credential storage, and human-visible
+emission safety.
 
 ### SQLite
 
@@ -87,6 +88,22 @@ normalized capability, actor, resource, source, and trace id. Grant lifecycle
 transitions write `permission lifecycle` events for grant, use, revoke, expire,
 and one-time consumption. Revoked, expired, and consumed grants fail as typed
 Effect values instead of thrown exceptions.
+
+### ApprovalBroker
+
+`ApprovalBroker` owns runtime approval coalescing and prompt-fatigue controls.
+`ask(request)` validates an `ApprovalRequest`, emits an `approval requested`
+audit event, coalesces identical `(operation, actor, resource)` requests, and
+routes the visible prompt through an explicit `ApprovalPromptPort`. The port is
+the host-rendered UI seam; renderer code never receives an API for constructing
+authoritative approval prompts.
+
+Each actor has at most one visible prompt. Distinct requests queue behind it up
+to `maxQueueDepthPerActor` (default 8); the ninth distinct queued request fails
+as `QueueOverflow`. `denied-for-scope` outcomes are cached for the same
+operation, actor, and resource, so future identical requests return the denial
+without re-prompting. `devApproveAll` grants once without touching the host port
+and emits the same audit path, making the bypass explicit and reviewable.
 
 ### Transport
 

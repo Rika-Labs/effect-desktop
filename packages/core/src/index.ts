@@ -4,6 +4,7 @@ export { Api, Client, Handlers, RedactionFilter, redact } from "@effect-desktop/
 export * from "./runtime/resources.js"
 export * from "./runtime/filesystem.js"
 export * from "./runtime/event-log.js"
+export * from "./runtime/approval-broker.js"
 export * from "./runtime/process.js"
 export * from "./runtime/pty.js"
 export * from "./runtime/permission-registry.js"
