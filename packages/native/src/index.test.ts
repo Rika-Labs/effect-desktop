@@ -39,6 +39,10 @@ import {
   ContextMenuApi,
   ContextMenuLive,
   ContextMenuMethodNames,
+  CrashReporter,
+  CrashReporterApi,
+  CrashReporterLive,
+  CrashReporterMethodNames,
   Dialog,
   DialogApi,
   DialogConfirmResult,
@@ -120,6 +124,12 @@ import {
   TrayApi,
   TrayLive,
   TrayMethodNames,
+  Updater,
+  UpdaterApi,
+  UpdaterCheckResult,
+  UpdaterLive,
+  UpdaterMethodNames,
+  UpdaterStatusResult,
   WebView,
   WebViewApi,
   WebViewLive,
@@ -139,6 +149,9 @@ import {
   makeClipboardServiceLayer,
   makeContextMenuBridgeClientLayer,
   makeContextMenuServiceLayer,
+  makeCrashReporterBridgeClientLayer,
+  makeCrashReporterMemoryClient,
+  makeCrashReporterServiceLayer,
   makeDialogBridgeClientLayer,
   makeDialogServiceLayer,
   makeDockBridgeClientLayer,
@@ -152,6 +165,8 @@ import {
   makeScreenServiceLayer,
   makeSystemAppearanceBridgeClientLayer,
   makeSystemAppearanceServiceLayer,
+  makeUpdaterBridgeClientLayer,
+  makeUpdaterServiceLayer,
   makeUnsupportedClipboardClient,
   makeUnsupportedContextMenuClient,
   makeMenuBridgeClientLayer,
@@ -173,6 +188,8 @@ import {
   makeUnsupportedPathClient,
   makeUnsupportedProtocolClient,
   makeUnsupportedSafeStorageClient,
+  makeUnsupportedUpdaterClient,
+  makeUnsupportedCrashReporterClient,
   makeUnsupportedDockClient,
   makeUnsupportedPowerMonitorClient,
   makeUnsupportedScreenClient,
@@ -208,6 +225,7 @@ import {
   type SystemAppearanceClientApi,
   type TrayClientApi,
   type TrayHandle,
+  type UpdaterClientApi,
   type WebViewClientApi,
   type WebViewHandle,
   type WindowClientApi,
@@ -337,6 +355,21 @@ const expectedSafeStorageMethods: Array<(typeof SafeStorageMethodNames)[number]>
   "delete",
   "list",
   "isAvailable"
+]
+
+const expectedUpdaterMethods: Array<(typeof UpdaterMethodNames)[number]> = [
+  "check",
+  "download",
+  "install",
+  "installAndRestart",
+  "getStatus"
+]
+
+const expectedCrashReporterMethods: Array<(typeof CrashReporterMethodNames)[number]> = [
+  "start",
+  "recordBreadcrumb",
+  "flush",
+  "setUploadHandler"
 ]
 
 const expectedPowerMonitorMethods: Array<(typeof PowerMonitorMethodNames)[number]> = []
@@ -1901,6 +1934,178 @@ test("unsupported SafeStorage client reports availability and typed command fail
   expectExitFailure(result.getExit, (error) => hasErrorTag(error, "Unsupported"))
 })
 
+test("UpdaterApi declares the Phase 8 Updater method surface", () => {
+  expect(UpdaterApi.tag).toBe("Updater")
+  expect([...UpdaterMethodNames]).toEqual(expectedUpdaterMethods)
+  expect(Object.keys(UpdaterApi.spec)).toEqual(expectedUpdaterMethods)
+  expect(Object.keys(UpdaterApi.events)).toEqual([])
+})
+
+test("Updater service delegates through a substitutable UpdaterClient port", async () => {
+  const calls: string[] = []
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const updater = yield* Updater
+      const check = yield* updater.check({ currentVersion: "1.0.0" })
+      const downloaded = yield* updater.download({ version: "1.1.0" })
+      const installed = yield* updater.install({ version: "1.1.0" })
+      const restarted = yield* updater.installAndRestart({ version: "1.1.0" })
+      const status = yield* updater.getStatus()
+      return { check, downloaded, installed, restarted, status }
+    }).pipe(Effect.provide(makeUpdaterServiceLayer(updaterClient(calls))))
+  )
+
+  expect(result.check.available).toBe(true)
+  expect(result.check.version).toBe("1.1.0")
+  expect(result.downloaded.state).toBe("downloaded")
+  expect(result.installed.state).toBe("installing")
+  expect(result.restarted.state).toBe("installing")
+  expect(result.status.state).toBe("update-available")
+  expect(calls).toEqual([
+    "check:1.0.0",
+    "download:1.1.0",
+    "install:1.1.0",
+    "installAndRestart:1.1.0",
+    "getStatus"
+  ])
+})
+
+test("Updater bridge client sends typed host envelopes and decodes status values", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = updaterExchange(requests, (request) => ({
+    kind: "success",
+    payload:
+      request.method === "Updater.check"
+        ? { available: true, version: "1.1.0", notes: "security update" }
+        : request.method === "Updater.getStatus"
+          ? { state: "update-available", version: "1.1.0" }
+          : { state: "downloaded", version: "1.1.0", progress: 1 }
+  }))
+  const updater = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Updater
+    }).pipe(Effect.provide(Layer.provide(UpdaterLive, makeUpdaterBridgeClientLayer(exchange))))
+  )
+
+  const check = await Effect.runPromise(updater.check({ currentVersion: "1.0.0" }))
+  const downloaded = await Effect.runPromise(updater.download({ version: "1.1.0" }))
+  const status = await Effect.runPromise(updater.getStatus())
+
+  expect(check.available).toBe(true)
+  expect(check.version).toBe("1.1.0")
+  expect(downloaded.state).toBe("downloaded")
+  expect(status.state).toBe("update-available")
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["Updater.check", { currentVersion: "1.0.0" }],
+    ["Updater.download", { version: "1.1.0" }],
+    ["Updater.getStatus", undefined]
+  ])
+})
+
+test("unsupported Updater client keeps consume-only status but defers install flow", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const updater = yield* Updater
+      const check = yield* updater.check()
+      const status = yield* updater.getStatus()
+      const downloadExit = yield* Effect.exit(updater.download())
+      const restartExit = yield* Effect.exit(updater.installAndRestart())
+      return { check, downloadExit, restartExit, status }
+    }).pipe(Effect.provide(makeUpdaterServiceLayer(makeUnsupportedUpdaterClient())))
+  )
+
+  expect(result.check.available).toBe(false)
+  expect(result.status.state).toBe("idle")
+  expectExitFailure(result.downloadExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(result.restartExit, (error) => hasErrorTag(error, "Unsupported"))
+})
+
+test("CrashReporterApi declares the Phase 8 CrashReporter method surface", () => {
+  expect(CrashReporterApi.tag).toBe("CrashReporter")
+  expect([...CrashReporterMethodNames]).toEqual(expectedCrashReporterMethods)
+  expect(Object.keys(CrashReporterApi.spec)).toEqual(expectedCrashReporterMethods)
+  expect(Object.keys(CrashReporterApi.events)).toEqual([])
+})
+
+test("CrashReporter memory client requires start and flushes breadcrumbs to an Effect handler", async () => {
+  const uploaded: Array<ReadonlyArray<{ category: string; message: string }>> = []
+  const client = await Effect.runPromise(makeCrashReporterMemoryClient())
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const reporter = yield* CrashReporter
+      const notStartedExit = yield* Effect.exit(
+        reporter.recordBreadcrumb({ category: "user", message: "clicked save" })
+      )
+      yield* reporter.start({
+        uploadHandler: (breadcrumbs) =>
+          Effect.sync(() => {
+            uploaded.push(
+              breadcrumbs.map((breadcrumb) => ({
+                category: breadcrumb.category,
+                message: breadcrumb.message
+              }))
+            )
+          })
+      })
+      yield* reporter.recordBreadcrumb({ category: "user", message: "clicked save" })
+      const flush = yield* reporter.flush()
+      return { flush, notStartedExit }
+    }).pipe(Effect.provide(makeCrashReporterServiceLayer(client)))
+  )
+
+  expectExitFailure(result.notStartedExit, (error) => hasErrorTag(error, "InvalidState"))
+  expect(result.flush.flushed).toBe(1)
+  expect(uploaded).toEqual([[{ category: "user", message: "clicked save" }]])
+})
+
+test("CrashReporter bridge client records breadcrumbs and defers upload handlers", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = crashReporterExchange(requests, (request) => ({
+    kind: "success",
+    payload: request.method === "CrashReporter.flush" ? { flushed: 1 } : undefined
+  }))
+  const reporter = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* CrashReporter
+    }).pipe(
+      Effect.provide(Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange)))
+    )
+  )
+
+  await Effect.runPromise(reporter.start())
+  await Effect.runPromise(reporter.recordBreadcrumb({ category: "user", message: "clicked save" }))
+  const flush = await Effect.runPromise(reporter.flush())
+  const handlerExit = await Effect.runPromiseExit(reporter.setUploadHandler(() => Effect.void))
+
+  expect(flush.flushed).toBe(1)
+  expectExitFailure(handlerExit, (error) => hasErrorTag(error, "Unsupported"))
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["CrashReporter.start", {}],
+    ["CrashReporter.recordBreadcrumb", { category: "user", message: "clicked save" }],
+    ["CrashReporter.flush", undefined]
+  ])
+})
+
+test("unsupported CrashReporter client reports every command as a typed Effect failure", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const reporter = yield* CrashReporter
+      const startExit = yield* Effect.exit(reporter.start())
+      const breadcrumbExit = yield* Effect.exit(
+        reporter.recordBreadcrumb({ category: "user", message: "clicked save" })
+      )
+      const flushExit = yield* Effect.exit(reporter.flush())
+      const handlerExit = yield* Effect.exit(reporter.setUploadHandler(() => Effect.void))
+      return { breadcrumbExit, flushExit, handlerExit, startExit }
+    }).pipe(Effect.provide(makeCrashReporterServiceLayer(makeUnsupportedCrashReporterClient())))
+  )
+
+  expectExitFailure(result.startExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(result.breadcrumbExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(result.flushExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(result.handlerExit, (error) => hasErrorTag(error, "Unsupported"))
+})
+
 test("ShellApi declares the Phase 8 Shell method surface", () => {
   expect(ShellApi.tag).toBe("Shell")
   expect([...ShellMethodNames]).toEqual(expectedShellMethods)
@@ -3032,6 +3237,46 @@ const safeStorageClient = (calls: string[]): SafeStorageClientApi => ({
     })
 })
 
+const updaterClient = (calls: string[]): UpdaterClientApi => ({
+  check: (options) =>
+    Effect.sync(() => {
+      calls.push(`check:${options?.currentVersion ?? ""}`)
+      return new UpdaterCheckResult({
+        available: true,
+        version: "1.1.0",
+        notes: "security update"
+      })
+    }),
+  download: (options) =>
+    Effect.sync(() => {
+      calls.push(`download:${options?.version ?? ""}`)
+      return updaterStatus("downloaded", options?.version)
+    }),
+  install: (options) =>
+    Effect.sync(() => {
+      calls.push(`install:${options?.version ?? ""}`)
+      return updaterStatus("installing", options?.version)
+    }),
+  installAndRestart: (options) =>
+    Effect.sync(() => {
+      calls.push(`installAndRestart:${options?.version ?? ""}`)
+      return updaterStatus("installing", options?.version)
+    }),
+  getStatus: () =>
+    Effect.sync(() => {
+      calls.push("getStatus")
+      return new UpdaterStatusResult({ state: "update-available", version: "1.1.0" })
+    })
+})
+
+const updaterStatus = (
+  state: "downloaded" | "installing",
+  version: string | undefined
+): UpdaterStatusResult =>
+  version === undefined
+    ? new UpdaterStatusResult({ state })
+    : new UpdaterStatusResult({ state, version })
+
 const shellClient = (calls: string[]): ShellClientApi => ({
   openExternal: (url, options) =>
     recordVoid(calls, `openExternal:${url}:${options?.allowedSchemes?.join(",") ?? ""}`),
@@ -3361,6 +3606,26 @@ const protocolExchange = (
 })
 
 const safeStorageExchange = (
+  requests: HostProtocolRequestEnvelope[],
+  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
+): ApiClientExchange => ({
+  request: (request) => {
+    requests.push(request)
+    return Effect.succeed(respond(request))
+  }
+})
+
+const updaterExchange = (
+  requests: HostProtocolRequestEnvelope[],
+  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
+): ApiClientExchange => ({
+  request: (request) => {
+    requests.push(request)
+    return Effect.succeed(respond(request))
+  }
+})
+
+const crashReporterExchange = (
   requests: HostProtocolRequestEnvelope[],
   respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
 ): ApiClientExchange => ({
