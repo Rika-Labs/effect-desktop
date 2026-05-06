@@ -20,6 +20,7 @@ import { Context, Effect, Layer, Option, Schema, Stream } from "effect"
 const StrictParseOptions = { onExcessProperty: "error" } as const
 const WebViewResource = Api.Resource("webview", "open")
 const WebViewPlatform = Schema.Literals(["macos", "windows", "linux"])
+const WebViewRuntimeMode = Schema.Literals(["dev", "prod"])
 const WebViewCapabilityName = Schema.Literals([
   "print",
   "popup blocking",
@@ -34,6 +35,7 @@ const WebViewNavigationDecision = Schema.Literals(["block", "openExternal"])
 export type WebViewHandle = ApiResourceHandle<"webview", "open">
 export type WebViewError = HostProtocolError
 export type WebViewPlatform = Schema.Schema.Type<typeof WebViewPlatform>
+export type WebViewRuntimeMode = Schema.Schema.Type<typeof WebViewRuntimeMode>
 export type WebViewCapabilityName = Schema.Schema.Type<typeof WebViewCapabilityName>
 
 export class WebViewNavigationPolicy extends Schema.Class<WebViewNavigationPolicy>(
@@ -79,7 +81,8 @@ export class WebViewCapabilityInput extends Schema.Class<WebViewCapabilityInput>
   "WebViewCapabilityInput"
 )({
   name: WebViewCapabilityName,
-  platform: Schema.optionalKey(WebViewPlatform)
+  platform: Schema.optionalKey(WebViewPlatform),
+  mode: Schema.optionalKey(WebViewRuntimeMode)
 }) {}
 
 export type WebViewCapabilityOptions = Schema.Schema.Type<typeof WebViewCapabilityInput>
@@ -222,7 +225,7 @@ export interface WebViewServiceApi extends Omit<WebViewClientApi, "create" | "ca
   ) => Effect.Effect<WebViewHandle, WebViewError, never>
   readonly capability: (
     name: WebViewCapabilityName,
-    options?: { readonly platform?: WebViewPlatform }
+    options?: { readonly mode?: WebViewRuntimeMode; readonly platform?: WebViewPlatform }
   ) => Effect.Effect<boolean, WebViewError, never>
 }
 
@@ -255,8 +258,12 @@ export const makeHostWebViewApiLayer = <Handlers extends ApiHandlers<WebViewApiS
 
 export const webViewCapability = (
   name: WebViewCapabilityName,
-  platform: WebViewPlatform = currentWebViewPlatform()
-): boolean => WEBVIEW_CAPABILITY_MATRIX[platform][name]
+  platform: WebViewPlatform = currentWebViewPlatform(),
+  mode: WebViewRuntimeMode = "prod"
+): boolean => {
+  const support = WEBVIEW_CAPABILITY_MATRIX[platform][name]
+  return support === "dev-only" ? mode === "dev" : support
+}
 
 const makeWebViewService = (client: WebViewClientApi): WebViewServiceApi => {
   const service: WebViewServiceApi = {
@@ -270,7 +277,11 @@ const makeWebViewService = (client: WebViewClientApi): WebViewServiceApi => {
     setNavigationPolicy: (webview, policy) => client.setNavigationPolicy(webview, policy),
     capability: (name, options) =>
       client
-        .capability({ name, ...(options?.platform === undefined ? {} : options) })
+        .capability({
+          name,
+          ...(options?.platform === undefined ? {} : { platform: options.platform }),
+          ...(options?.mode === undefined ? {} : { mode: options.mode })
+        })
         .pipe(Effect.map((result) => result.supported)),
     destroy: (webview) => client.destroy(webview),
     onNavigationBlocked: () => client.onNavigationBlocked()
@@ -335,7 +346,11 @@ export const makeUnsupportedWebViewClient = (): WebViewClientApi => {
     capability: (input) =>
       Effect.succeed(
         new WebViewCapabilityResult({
-          supported: webViewCapability(input.name, input.platform ?? currentWebViewPlatform())
+          supported: webViewCapability(
+            input.name,
+            input.platform ?? currentWebViewPlatform(),
+            input.mode ?? "prod"
+          )
         })
       ),
     destroy: () => unsupportedEffect<void>("WebView.destroy"),
@@ -451,13 +466,13 @@ const currentWebViewPlatform = (): WebViewPlatform => {
 }
 
 const WEBVIEW_CAPABILITY_MATRIX: Readonly<
-  Record<WebViewPlatform, Readonly<Record<WebViewCapabilityName, boolean>>>
+  Record<WebViewPlatform, Readonly<Record<WebViewCapabilityName, boolean | "dev-only">>>
 > = Object.freeze({
   macos: Object.freeze({
     print: true,
     "popup blocking": true,
     autofill: true,
-    "devtools open": true,
+    "devtools open": "dev-only",
     getUserMedia: true,
     "service workers in app:": true,
     "PDF embedded viewer": true
@@ -475,7 +490,7 @@ const WEBVIEW_CAPABILITY_MATRIX: Readonly<
     print: true,
     "popup blocking": true,
     autofill: false,
-    "devtools open": true,
+    "devtools open": "dev-only",
     getUserMedia: true,
     "service workers in app:": true,
     "PDF embedded viewer": false

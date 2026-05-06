@@ -396,13 +396,20 @@ test("unsupported WebView client reports deferred host methods as Effect values"
     Effect.gen(function* () {
       const webview = yield* WebView
       const linuxPdf = yield* webview.capability("PDF embedded viewer", { platform: "linux" })
+      const macosProdDevtools = yield* webview.capability("devtools open", { platform: "macos" })
+      const macosDevDevtools = yield* webview.capability("devtools open", {
+        platform: "macos",
+        mode: "dev"
+      })
       const createExit = yield* Effect.exit(webview.create())
 
-      return { createExit, linuxPdf }
+      return { createExit, linuxPdf, macosDevDevtools, macosProdDevtools }
     }).pipe(Effect.provide(makeWebViewServiceLayer(makeUnsupportedWebViewClient())))
   )
 
   expect(result.linuxPdf).toBe(false)
+  expect(result.macosProdDevtools).toBe(false)
+  expect(result.macosDevDevtools).toBe(true)
   expectExitFailure(
     result.createExit,
     (error) =>
