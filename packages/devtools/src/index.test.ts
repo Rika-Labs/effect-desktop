@@ -9,6 +9,7 @@ import {
   makePermissionRegistry,
   makeProcess,
   makeResourceRegistry,
+  makeTelemetry,
   makeWorker,
   PermissionRegistry,
   PermissionActor,
@@ -16,6 +17,7 @@ import {
   Process,
   ProcessExitStatus,
   ResourceRegistry,
+  Telemetry,
   Worker,
   type JobApi,
   type NormalizedCapability,
@@ -33,6 +35,8 @@ import { Cause, Deferred, Effect, Fiber, Layer, Option, Queue, Schema, Stream } 
 import {
   CommandsDevtools,
   CommandsDevtoolsLive,
+  DiagnosticsPanels,
+  DiagnosticsPanelsLive,
   LiveRuntimePanels,
   LiveRuntimePanelsLive,
   WorkersJobsDevtools,
@@ -257,6 +261,103 @@ test("LiveRuntimePanels projects bridge, stream, resource, permission, and proce
     childPids: [56],
     state: "exited"
   })
+})
+
+test("DiagnosticsPanels projects redacted logs, grouped traces, and metrics", async () => {
+  const telemetry = await Effect.runPromise(
+    makeTelemetry({ now: () => 1_000, nextSpanId: () => "span-generated" })
+  )
+  await Effect.runPromise(
+    telemetry.log({
+      level: "error",
+      subsystem: "bridge",
+      operation: "Bridge.call",
+      traceId: "trace-diagnostics",
+      windowId: "window-main",
+      message: "bridge failed",
+      fields: { token: "secret-token", safe: "value" }
+    })
+  )
+  await Effect.runPromise(
+    telemetry.recordSpan({
+      traceId: "trace-diagnostics",
+      spanId: "root",
+      subsystem: "renderer",
+      operation: "Renderer.click",
+      name: "renderer click",
+      startedAt: 1,
+      endedAt: 3
+    })
+  )
+  await Effect.runPromise(
+    telemetry.recordSpan({
+      traceId: "trace-diagnostics",
+      parentSpanId: "root",
+      subsystem: "runtime",
+      operation: "Command.invoke",
+      name: "runtime command",
+      startedAt: 4,
+      endedAt: 10,
+      attributes: { apiKey: "secret-key" }
+    })
+  )
+  await Effect.runPromise(
+    telemetry.incrementCounter({
+      name: "bridge.calls",
+      tags: { subsystem: "bridge" }
+    })
+  )
+  await Effect.runPromise(telemetry.recordHistogram({ name: "bridge.latency", value: 32 }))
+
+  const snapshot = await Effect.runPromise(
+    Effect.gen(function* () {
+      const panels = yield* DiagnosticsPanels
+      return yield* panels.list()
+    }).pipe(
+      Effect.provide(Layer.provide(DiagnosticsPanelsLive(), Layer.succeed(Telemetry)(telemetry)))
+    )
+  )
+
+  expect(snapshot.logs[0]).toMatchObject({
+    level: "error",
+    subsystem: "bridge",
+    operation: "Bridge.call",
+    traceId: "trace-diagnostics",
+    message: "bridge failed"
+  })
+  expect(snapshot.traces[0]?.traceId).toBe("trace-diagnostics")
+  expect(snapshot.traces[0]?.spans.map((span) => span.name)).toEqual([
+    "renderer click",
+    "runtime command"
+  ])
+  expect(snapshot.metrics.map((metric) => metric.name).sort()).toEqual([
+    "bridge.calls",
+    "bridge.latency"
+  ])
+  expect(JSON.stringify(snapshot)).not.toContain("secret-token")
+  expect(JSON.stringify(snapshot)).not.toContain("secret-key")
+
+  const disabledTelemetry = await Effect.runPromise(makeTelemetry({ tracingEnabled: false }))
+  await Effect.runPromise(
+    disabledTelemetry.recordSpan({
+      traceId: "trace-disabled",
+      subsystem: "runtime",
+      operation: "Runtime.disabled",
+      name: "disabled",
+      startedAt: 1
+    })
+  )
+  const disabledSnapshot = await Effect.runPromise(
+    Effect.gen(function* () {
+      const panels = yield* DiagnosticsPanels
+      return yield* panels.list()
+    }).pipe(
+      Effect.provide(
+        Layer.provide(DiagnosticsPanelsLive(), Layer.succeed(Telemetry)(disabledTelemetry))
+      )
+    )
+  )
+  expect(disabledSnapshot.traces).toEqual([])
 })
 
 interface WorkersJobsFixture {
