@@ -46,6 +46,23 @@ test("CSP config flags directive loosening beyond the default", () => {
   ])
 })
 
+test("CSP config can add hardening-only directives", () => {
+  const csp = { policy: "frame-src 'none'; upgrade-insecure-requests" }
+
+  expect(cspWeakenings(csp)).toEqual([])
+  expect(renderEffectiveCsp(csp, "abc123")).toContain("frame-src 'none'")
+  expect(renderEffectiveCsp(csp, "abc123")).toContain("upgrade-insecure-requests")
+})
+
+test("CSP config flags unknown directives that add sources", () => {
+  expect(cspWeakenings({ policy: "frame-src https:" })).toEqual([
+    {
+      directive: "frame-src",
+      reason: "frame-src is not part of the default production CSP"
+    }
+  ])
+})
+
 test("ProductionChecker fails unsafe CSP without acknowledgement", async () => {
   const report = await Effect.runPromise(
     runProductionCheck({
@@ -104,6 +121,23 @@ test("ProductionChecker fails CSP directive loosening without acknowledgement", 
         "content security policy weakens the production default: connect-src adds source https:"
     }
   ])
+})
+
+test("ProductionChecker accepts hardening-only CSP additions", async () => {
+  const report = await Effect.runPromise(
+    runProductionCheck({
+      config: {
+        security: {
+          csp: {
+            policy: "frame-src 'none'; upgrade-insecure-requests"
+          }
+        }
+      }
+    })
+  )
+
+  expect(report.passed).toBe(true)
+  expect(report.failures).toEqual([])
 })
 
 test("ProductionChecker reports acknowledged CSP weakenings without failing", async () => {

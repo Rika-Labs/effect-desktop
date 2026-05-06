@@ -185,14 +185,18 @@ export const renderEffectiveCsp = (
   nonce: string = DEFAULT_CSP_NONCE_PLACEHOLDER
 ): string => {
   const overrides = parseCspPolicy(csp?.policy)
+  const defaultDirectives = new Set(DEFAULT_CSP_DIRECTIVES.map(([directive]) => directive))
   const directives = DEFAULT_CSP_DIRECTIVES.map(
     ([directive, defaultValues]): [string, readonly string[]] => [
       directive,
       overrides.get(directive) ?? defaultValues
     ]
   )
+  const extraDirectives = [...overrides.entries()].filter(
+    ([directive]) => !defaultDirectives.has(directive)
+  )
 
-  return renderCspDirectives(directives, nonce)
+  return renderCspDirectives([...directives, ...extraDirectives], nonce)
 }
 
 export const cspWeakenings = (csp: CspPolicy): readonly CspWeakening[] => {
@@ -219,6 +223,9 @@ export const cspWeakenings = (csp: CspPolicy): readonly CspWeakening[] => {
 
     const defaultValues = defaultCspDirectiveValues(directive)
     if (defaultValues === undefined) {
+      if (isAdditionalCspTightening(directive, overrideValues)) {
+        continue
+      }
       weakenings.push({
         directive,
         reason: `${directive} is not part of the default production CSP`
@@ -612,6 +619,15 @@ const defaultCspDirectiveValues = (directive: string): ReadonlySet<string> | und
 
 const normalizeCspValue = (value: string): string =>
   value.replace(/'nonce-[^']+'|'nonce-\{N\}'/u, "'nonce-{N}'")
+
+const isAdditionalCspTightening = (directive: string, values: readonly string[]): boolean =>
+  (values.length === 0 && NO_VALUE_HARDENING_CSP_DIRECTIVES.has(directive)) ||
+  (values.length > 0 && values.every((value) => value === "'none'"))
+
+const NO_VALUE_HARDENING_CSP_DIRECTIVES = new Set([
+  "block-all-mixed-content",
+  "upgrade-insecure-requests"
+])
 
 const formatLocation = (location: ProductionCheckLocation): string => {
   const line = location.line === undefined ? "" : `:${location.line}`
