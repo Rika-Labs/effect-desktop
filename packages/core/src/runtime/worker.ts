@@ -24,12 +24,24 @@ import {
 import { ResourceRegistry, type ResourceHandle, type ResourceRegistryApi } from "./resources.js"
 
 const NonEmptyString = Schema.NonEmptyString
+const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export class WorkerSpawnInput extends Schema.Class<WorkerSpawnInput>("WorkerSpawnInput")({
   script: NonEmptyString,
   ownerScope: NonEmptyString,
   capabilities: Schema.Array(Schema.Unknown)
+}) {}
+
+export class WorkerSnapshot extends Schema.Class<WorkerSnapshot>("WorkerSnapshot")({
+  id: NonEmptyString,
+  script: NonEmptyString,
+  ownerScope: NonEmptyString,
+  resourceId: NonEmptyString,
+  status: Schema.Literals(["running"]),
+  uptimeMs: NonNegativeInt,
+  capabilities: Schema.Array(Schema.Unknown),
+  lastError: Schema.optionalKey(Schema.Unknown)
 }) {}
 
 export class WorkerChannelError extends Data.TaggedError("ChannelError")<{
@@ -106,6 +118,7 @@ export interface WorkerApi {
   readonly spawn: <In, Out>(
     options: WorkerSpawnOptions<In, Out>
   ) => Effect.Effect<WorkerHandle<In, Out>, WorkerError, never>
+  readonly list: () => Effect.Effect<readonly WorkerSnapshot[], never, never>
 }
 
 export interface WorkerAdapter {
@@ -133,6 +146,7 @@ export interface WorkerOptions {
   readonly adapter?: WorkerAdapter
   readonly budgets?: WorkerBudgetPolicy
   readonly gracefulShutdownMs?: number
+  readonly now?: () => number
 }
 
 export interface WorkerBudgetPolicy {
@@ -155,7 +169,9 @@ export const makeWorker = (
     const adapter = options.adapter ?? BunWorkerAdapter
     const budgets = { ...DEFAULT_WORKER_BUDGETS, ...options.budgets }
     const gracefulShutdownMs = options.gracefulShutdownMs ?? DEFAULT_GRACEFUL_SHUTDOWN_MS
+    const now = options.now ?? Date.now
     const workerBudgets = yield* Ref.make(new Map<string, number>())
+    const workers = yield* Ref.make<ReadonlyMap<string, StoredWorker>>(new Map())
 
     return Object.freeze({
       spawn: <In, Out>(options: WorkerSpawnOptions<In, Out>) =>
@@ -182,14 +198,27 @@ export const makeWorker = (
                   gracefulShutdownMs
                 })
                 .pipe(Effect.tapError(() => releaseWorkerBudget(workerBudgets, input.ownerScope)))
+              let registeredResourceId: string | undefined
               const resource = yield* registry.register({
                 kind: "worker",
                 ownerScope: input.ownerScope,
                 state: "running",
                 dispose: runtime.shutdown.pipe(
+                  Effect.andThen(removeWorker(workers, () => registeredResourceId)),
                   Effect.andThen(releaseWorkerBudget(workerBudgets, input.ownerScope))
                 )
               })
+              registeredResourceId = resource.id
+              yield* Ref.update(workers, (current) =>
+                new Map(current).set(resource.id, {
+                  id: resource.id,
+                  script: input.script,
+                  ownerScope: input.ownerScope,
+                  resourceId: resource.id,
+                  startedAt: now(),
+                  capabilities: input.capabilities
+                })
+              )
               observeWorkerExit(runtime.exit, resource, input.script)
 
               return { runtime, resource }
@@ -211,6 +240,26 @@ export const makeWorker = (
               capabilityCount: options.capabilities?.length ?? 0
             }
           })
+        ),
+      list: () =>
+        Ref.get(workers).pipe(
+          Effect.map((current) =>
+            [...current.values()]
+              .map(
+                (worker) =>
+                  new WorkerSnapshot({
+                    id: worker.id,
+                    script: worker.script,
+                    ownerScope: worker.ownerScope,
+                    resourceId: worker.resourceId,
+                    status: "running",
+                    uptimeMs: Math.max(0, Math.floor(now() - worker.startedAt)),
+                    capabilities: [...worker.capabilities],
+                    ...(worker.lastError === undefined ? {} : { lastError: worker.lastError })
+                  })
+              )
+              .sort((left, right) => left.id.localeCompare(right.id))
+          )
         )
     } satisfies WorkerApi)
   })
@@ -300,6 +349,31 @@ const observeWorkerExit = (
     )
   )
 }
+
+interface StoredWorker {
+  readonly id: string
+  readonly script: string
+  readonly ownerScope: string
+  readonly resourceId: string
+  readonly startedAt: number
+  readonly capabilities: readonly unknown[]
+  readonly lastError?: unknown
+}
+
+const removeWorker = (
+  workers: Ref.Ref<ReadonlyMap<string, StoredWorker>>,
+  id: () => string | undefined
+): Effect.Effect<void, never, never> =>
+  Ref.update(workers, (current) => {
+    const resourceId = id()
+    if (resourceId === undefined || !current.has(resourceId)) {
+      return current
+    }
+
+    const next = new Map(current)
+    next.delete(resourceId)
+    return next
+  })
 
 const formatWorkerExitFailure = (exit: Exit.Exit<void, WorkerError>): string => {
   if (!Exit.isFailure(exit)) {
