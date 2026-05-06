@@ -292,10 +292,33 @@ ptyTest("PTY open enforces the per-scope concurrent budget", async () => {
   }
 })
 
-ptyTest("PTY output allows drained chunks beyond the per-frame budget", async () => {
+ptyTest("PTY open validates output budget policy before adapter activity", async () => {
+  let openCalls = 0
   const fixture = await makeFixture(
-    makeFakeAdapter(() => makeFakeChild({ output: ["ab", "cd"], exit: { code: 0 } })),
-    { budgets: { outputBufferBytes: 3 } }
+    makeFakeAdapter(() => {
+      openCalls += 1
+      return makeFakeChild({ output: [], exit: { code: 0 } })
+    }),
+    { budgets: { outputCoalesceBytes: 0 } }
+  )
+
+  const exit = await Effect.runPromiseExit(
+    fixture.service.open({
+      argv: ["bash"],
+      ownerScope: "scope-main",
+      rows: 24,
+      cols: 80
+    })
+  )
+
+  expect(openCalls).toBe(0)
+  expectFailure(exit, HostProtocolInvalidArgumentError)
+})
+
+ptyTest("PTY output coalesces small chunks up to the byte window", async () => {
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => makeFakeChild({ output: ["a", "b", "c", "d", "e"], exit: { code: 0 } })),
+    { budgets: { outputBufferBytes: 16, outputCoalesceBytes: 4, outputCoalesceMs: 1_000 } }
   )
   const handle = await Effect.runPromise(
     fixture.service.open({
@@ -306,15 +329,52 @@ ptyTest("PTY output allows drained chunks beyond the per-frame budget", async ()
     })
   )
 
-  const output = await Effect.runPromise(handle.output.pipe(Stream.runCollect))
+  const output = Array.from(await Effect.runPromise(handle.output.pipe(Stream.runCollect)))
+  const metrics = await Effect.runPromise(handle.outputMetrics)
 
-  expect(decodeChunks(Array.from(output))).toBe("abcd")
+  expect(decodeChunks(Array.from(output))).toBe("abcde")
+  expect(output.map((chunk) => chunk.byteLength)).toEqual([4, 1])
+  expect(metrics).toMatchObject({
+    coalescedFrames: 1,
+    emittedFrames: 2,
+    inputFrames: 5,
+    queueDepth: 0
+  })
+})
+
+ptyTest("PTY output flushes a quiet small chunk when the coalescing window expires", async () => {
+  const fixture = await makeFixture(
+    makeFakeAdapter(() =>
+      makeFakeChild({
+        output: ["p"],
+        exit: { code: 0 },
+        keepOutputOpen: true,
+        naturalExitDelayMs: 60_000
+      })
+    ),
+    { budgets: { outputBufferBytes: 16, outputCoalesceBytes: 4, outputCoalesceMs: 5 } }
+  )
+  const handle = await Effect.runPromise(
+    fixture.service.open({
+      argv: ["bash"],
+      ownerScope: "scope-main",
+      rows: 24,
+      cols: 80
+    })
+  )
+
+  const output = await Effect.runPromise(
+    handle.output.pipe(Stream.take(1), Stream.runCollect, Effect.timeout("100 millis"))
+  )
+  await Effect.runPromise(fixture.registry.closeScope("scope-main"))
+
+  expect(decodeChunks(Array.from(output))).toBe("p")
 })
 
 ptyTest("PTY output fails with BackpressureOverflow when a chunk exceeds budget", async () => {
   const fixture = await makeFixture(
     makeFakeAdapter(() => makeFakeChild({ output: ["abcd"], exit: { code: 0 } })),
-    { budgets: { outputBufferBytes: 3 } }
+    { budgets: { outputBufferBytes: 3, outputCoalesceBytes: 4, outputOverflow: "error" } }
   )
   const handle = await Effect.runPromise(
     fixture.service.open({
@@ -328,6 +388,40 @@ ptyTest("PTY output fails with BackpressureOverflow when a chunk exceeds budget"
   const exit = await Effect.runPromiseExit(handle.output.pipe(Stream.runCollect))
 
   expectFailure(exit, HostProtocolBackpressureOverflowError)
+})
+
+ptyTest("PTY output dropOldest keeps the queue bounded and records evictions", async () => {
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => makeFakeChild({ output: ["aa", "bb", "cc"], exit: { code: 0 } })),
+    {
+      budgets: {
+        outputBufferBytes: 4,
+        outputCoalesceBytes: 2,
+        outputCoalesceMs: 1_000,
+        outputOverflow: "dropOldest"
+      }
+    }
+  )
+  const handle = await Effect.runPromise(
+    fixture.service.open({
+      argv: ["bash"],
+      ownerScope: "scope-main",
+      rows: 24,
+      cols: 80
+    })
+  )
+
+  const output = await Effect.runPromise(handle.output.pipe(Stream.runCollect))
+  const metrics = await Effect.runPromise(handle.outputMetrics)
+
+  expect(decodeChunks(Array.from(output))).toBe("bbcc")
+  expect(metrics).toMatchObject({
+    droppedBytes: 2,
+    droppedFrames: 1,
+    emittedFrames: 3,
+    inputFrames: 3,
+    queueDepth: 0
+  })
 })
 
 ptyTest("PTY handle writes, resizes, kills, and preserves exit signal", async () => {
@@ -493,6 +587,7 @@ const makeFakeChild = (options: {
   readonly naturalExitDelayMs?: number
   readonly ignoredSignals?: readonly PtySignalInput[]
   readonly ignoreKill?: boolean
+  readonly keepOutputOpen?: boolean
 }): FakeChild => {
   const writes: Uint8Array[] = []
   const resizes: PtyResizeInput[] = []
@@ -546,7 +641,7 @@ const makeFakeChild = (options: {
 
   return {
     pid: Option.some(42),
-    output: readableFromStrings(options.output),
+    output: readableFromStrings(options.output, options.keepOutputOpen ?? false),
     exited,
     writes,
     resizes,
@@ -593,13 +688,18 @@ const makeFakeChild = (options: {
   }
 }
 
-const readableFromStrings = (chunks: readonly string[]): ReadableStream<Uint8Array> =>
+const readableFromStrings = (
+  chunks: readonly string[],
+  keepOpen = false
+): ReadableStream<Uint8Array> =>
   new ReadableStream<Uint8Array>({
     start(controller) {
       for (const chunk of chunks) {
         controller.enqueue(textEncoder.encode(chunk))
       }
-      controller.close()
+      if (!keepOpen) {
+        controller.close()
+      }
     }
   })
 
