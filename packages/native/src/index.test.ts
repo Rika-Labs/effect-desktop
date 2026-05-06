@@ -77,6 +77,10 @@ import {
   PathLive,
   PathMethodNames,
   CanonicalPath,
+  Protocol,
+  ProtocolApi,
+  ProtocolLive,
+  ProtocolMethodNames,
   PowerMonitor,
   PowerMonitorApi,
   PowerMonitorLive,
@@ -151,6 +155,8 @@ import {
   makeNotificationServiceLayer,
   makePathBridgeClientLayer,
   makePathServiceLayer,
+  makeProtocolBridgeClientLayer,
+  makeProtocolServiceLayer,
   makeShellBridgeClientLayer,
   makeShellServiceLayer,
   makeUnsupportedDialogClient,
@@ -158,6 +164,7 @@ import {
   makeUnsupportedMenuClient,
   makeUnsupportedNotificationClient,
   makeUnsupportedPathClient,
+  makeUnsupportedProtocolClient,
   makeUnsupportedDockClient,
   makeUnsupportedPowerMonitorClient,
   makeUnsupportedScreenClient,
@@ -186,6 +193,7 @@ import {
   type NotificationClientApi,
   type NotificationHandle,
   type PathClientApi,
+  type ProtocolClientApi,
   type ScreenClientApi,
   type ShellClientApi,
   type SystemAppearanceClientApi,
@@ -305,6 +313,13 @@ const expectedPathMethods: Array<(typeof PathMethodNames)[number]> = [
   "temp",
   "home",
   "downloads"
+]
+
+const expectedProtocolMethods: Array<(typeof ProtocolMethodNames)[number]> = [
+  "registerAppProtocol",
+  "serveAsset",
+  "serveRoute",
+  "deny"
 ]
 
 const expectedPowerMonitorMethods: Array<(typeof PowerMonitorMethodNames)[number]> = []
@@ -1672,6 +1687,98 @@ test("unsupported Path client reports deferred host methods as Effect values", a
   )
 })
 
+test("ProtocolApi declares the Phase 8 Protocol method surface", () => {
+  expect(ProtocolApi.tag).toBe("Protocol")
+  expect([...ProtocolMethodNames]).toEqual(expectedProtocolMethods)
+  expect(Object.keys(ProtocolApi.spec)).toEqual(expectedProtocolMethods)
+  expect(Object.keys(ProtocolApi.events)).toEqual([])
+})
+
+test("Protocol service delegates through a substitutable ProtocolClient port", async () => {
+  const calls: string[] = []
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const protocol = yield* Protocol
+      yield* protocol.registerAppProtocol({ scheme: "myapp" })
+      yield* protocol.serveAsset({ scheme: "assets", root: "/app/assets" })
+      yield* protocol.serveRoute({ scheme: "myapp", route: "/settings" })
+      yield* protocol.deny({ scheme: "assets", path: "/private" })
+    }).pipe(Effect.provide(makeProtocolServiceLayer(protocolClient(calls))))
+  )
+
+  expect(calls).toEqual([
+    "registerAppProtocol:myapp",
+    "serveAsset:assets:/app/assets",
+    "serveRoute:myapp:/settings",
+    "deny:assets:/private"
+  ])
+})
+
+test("Protocol bridge client validates custom schemes and path boundaries", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Protocol
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          ProtocolLive,
+          makeProtocolBridgeClientLayer(
+            protocolExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  await Effect.runPromise(client.registerAppProtocol({ scheme: "myapp" }))
+  await Effect.runPromise(client.serveAsset({ scheme: "assets", root: "/app/assets" }))
+  await Effect.runPromise(client.serveRoute({ scheme: "myapp", route: "/settings" }))
+  await Effect.runPromise(client.deny({ scheme: "assets", path: "/private" }))
+  const reservedSchemeExit = await Effect.runPromiseExit(
+    client.registerAppProtocol({ scheme: "app" })
+  )
+  const uppercaseSchemeExit = await Effect.runPromiseExit(
+    client.registerAppProtocol({ scheme: "MyApp" })
+  )
+  const traversalExit = await Effect.runPromiseExit(
+    client.serveRoute({ scheme: "myapp", route: "/../secret" })
+  )
+  const relativeDenyExit = await Effect.runPromiseExit(
+    client.deny({ scheme: "assets", path: "private" })
+  )
+
+  expectExitFailure(reservedSchemeExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(uppercaseSchemeExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(traversalExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(relativeDenyExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["Protocol.registerAppProtocol", { scheme: "myapp" }],
+    ["Protocol.serveAsset", { scheme: "assets", root: "/app/assets" }],
+    ["Protocol.serveRoute", { scheme: "myapp", route: "/settings" }],
+    ["Protocol.deny", { scheme: "assets", path: "/private" }]
+  ])
+})
+
+test("unsupported Protocol client reports deferred host methods as Effect values", async () => {
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const protocol = yield* Protocol
+      return yield* Effect.exit(protocol.registerAppProtocol({ scheme: "myapp" }))
+    }).pipe(Effect.provide(makeProtocolServiceLayer(makeUnsupportedProtocolClient())))
+  )
+
+  expectExitFailure(
+    exit,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "operation" in error &&
+      error.operation === "Protocol.registerAppProtocol"
+  )
+})
+
 test("ShellApi declares the Phase 8 Shell method surface", () => {
   expect(ShellApi.tag).toBe("Shell")
   expect([...ShellMethodNames]).toEqual(expectedShellMethods)
@@ -2776,6 +2883,13 @@ const pathResult = (
     return new CanonicalPath({ path })
   })
 
+const protocolClient = (calls: string[]): ProtocolClientApi => ({
+  registerAppProtocol: (input) => recordVoid(calls, `registerAppProtocol:${input.scheme}`),
+  serveAsset: (input) => recordVoid(calls, `serveAsset:${input.scheme}:${input.root}`),
+  serveRoute: (input) => recordVoid(calls, `serveRoute:${input.scheme}:${input.route}`),
+  deny: (input) => recordVoid(calls, `deny:${input.scheme}:${input.path}`)
+})
+
 const shellClient = (calls: string[]): ShellClientApi => ({
   openExternal: (url, options) =>
     recordVoid(calls, `openExternal:${url}:${options?.allowedSchemes?.join(",") ?? ""}`),
@@ -3085,6 +3199,16 @@ const notificationExchange = (
 })
 
 const pathExchange = (
+  requests: HostProtocolRequestEnvelope[],
+  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
+): ApiClientExchange => ({
+  request: (request) => {
+    requests.push(request)
+    return Effect.succeed(respond(request))
+  }
+})
+
+const protocolExchange = (
   requests: HostProtocolRequestEnvelope[],
   respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
 ): ApiClientExchange => ({
