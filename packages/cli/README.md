@@ -1,6 +1,6 @@
 # @effect-desktop/cli
 
-> **Status:** Incremental implementation. The production check and build commands are active; remaining CLI commands are reserved for later phases. See `docs/SPEC.md`.
+> **Status:** Incremental implementation. The production check, build, package, repro check, and doctor commands are active; remaining CLI commands are reserved for later phases. See `docs/SPEC.md`.
 
 ## Purpose
 
@@ -12,6 +12,7 @@ Developer CLI for creation, development, validation, packaging, and release: `cr
 `runDesktopBuild(options)` drives the Phase 21 build pipeline and returns a typed build report.
 `runDesktopPackage(options)` consumes a staged build layout and returns a typed package report.
 `runDesktopReproCheck(options)` runs build/package twice and returns a typed byte-diff report.
+`runDesktopDoctor(options)` validates the local build environment and returns typed probe results.
 
 ## Non-goals
 
@@ -45,6 +46,7 @@ bun run typecheck
 `desktop build` refuses to produce platform-specific layouts for a non-matching host. Use `bun desktop doctor` on the target host when the command returns a target remediation.
 `desktop package` follows the same host-target rule and emits only the artifact kinds listed in `docs/SPEC.md` §23.2. Windows system-mode MSI output is deferred to v1.1 and returns a typed unsupported-artifact error.
 `desktop check --repro` runs `build` and `package` twice with deterministic CLI clocks, snapshots the staged layout and package output, then byte-diffs sorted files. Differences return a structured `ReproDiffError` report with file paths, hashes, sizes, and first differing offsets.
+`desktop doctor` checks Bun, Rust, platform SDK, WebView runtime, signing credentials, package tools, package manager state, native host cache, and desktop config. Required misses exit non-zero; optional signing/cache gaps report warnings; `--json` emits the CI payload.
 
 ## Internal architecture
 

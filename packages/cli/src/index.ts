@@ -26,6 +26,13 @@ import {
   PackageUnsupportedTargetError
 } from "./package-pipeline.js"
 import {
+  formatDoctorReport,
+  runDesktopDoctor,
+  runDoctorCommand,
+  type DoctorCommandRunner,
+  type DesktopDoctorReport
+} from "./doctor.js"
+import {
   formatReproError,
   formatReproReport,
   runDesktopReproCheck
@@ -44,6 +51,17 @@ export {
   type PackageStepReport,
   type PackageTarget
 } from "./package-pipeline.js"
+export {
+  DoctorMissing,
+  runDesktopDoctor,
+  type DesktopDoctorReport,
+  type DoctorCommandInvocation,
+  type DoctorCommandOutput,
+  type DoctorCommandRunner,
+  type DoctorProbeName,
+  type DoctorProbeResult,
+  type DoctorProbeStatus
+} from "./doctor.js"
 export {
   runDesktopReproCheck,
   type DesktopReproReport,
@@ -108,8 +126,12 @@ export interface CliRunOptions {
   readonly writeStderr: (text: string) => void
   readonly commandRunner?: CommandRunner
   readonly packageCommandRunner?: PackageCommandRunner
+  readonly doctorCommandRunner?: DoctorCommandRunner
   readonly now?: () => number
   readonly hostTarget?: BuildTarget
+  readonly platform?: NodeJS.Platform
+  readonly arch?: string
+  readonly bunVersion?: string
 }
 
 export interface CommandInvocation {
@@ -187,13 +209,17 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
       return yield* runPackageCli(options)
     }
 
+    if (options.argv[0] === "doctor") {
+      return yield* runDoctorCli(options)
+    }
+
     if (options.argv[0] === "check" && options.argv.includes("--repro")) {
       return yield* runReproCheckCli(options)
     }
 
     if (options.argv[0] !== "check" || !options.argv.includes("--production")) {
       options.writeStderr(
-        "Usage: desktop build --config <path>\nUsage: desktop package --config <path>\nUsage: desktop check --production --config <path>\nUsage: desktop check --repro --config <path>\n"
+        "Usage: desktop build --config <path>\nUsage: desktop package --config <path>\nUsage: desktop doctor [--config <path>] [--ci] [--json]\nUsage: desktop check --production --config <path>\nUsage: desktop check --repro --config <path>\n"
       )
       return 1
     }
@@ -426,6 +452,44 @@ const runPackageCli = (options: CliRunOptions): Effect.Effect<number, never, nev
     }
 
     return 0
+  })
+
+const runDoctorCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
+  Effect.gen(function* () {
+    if (options.argv.includes("--help")) {
+      options.writeStdout(DOCTOR_HELP)
+      return 0
+    }
+
+    const configPath = yield* readOptionalPathArg(options.argv, "--config", options.writeStderr)
+    if (configPath === undefined && options.argv.includes("--config")) {
+      return 1
+    }
+
+    const report = yield* runDesktopDoctor({
+      cwd: options.cwd,
+      configPath,
+      ci: options.argv.includes("--ci"),
+      platform: options.platform ?? process.platform,
+      arch: options.arch ?? process.arch,
+      bunVersion: options.bunVersion ?? Bun.version,
+      commandRunner: options.doctorCommandRunner ?? runDoctorCommand
+    })
+
+    if (options.argv.includes("--json")) {
+      const output: DesktopDoctorReport = report
+      if (report.passed) {
+        options.writeStdout(`${JSON.stringify(output, null, 2)}\n`)
+      } else {
+        options.writeStderr(`${JSON.stringify(output, null, 2)}\n`)
+      }
+    } else if (report.passed) {
+      options.writeStdout(formatDoctorReport(report))
+    } else {
+      options.writeStderr(formatDoctorReport(report))
+    }
+
+    return report.passed ? 0 : 1
   })
 
 const runReproCheckCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
@@ -779,6 +843,13 @@ const PACKAGE_HELP = [
   "",
   "Packages an existing build/effect-desktop/<target> layout into the fixed docs/SPEC.md §23.2 artifact set.",
   "Kinds: all, app, dmg, zip, msi, appimage, deb, rpm.",
+  ""
+].join("\n")
+
+const DOCTOR_HELP = [
+  "Usage: desktop doctor [--config <path>] [--ci] [--json]",
+  "",
+  "Validates Bun, Rust, platform SDK, WebView runtime, signing credentials, build tools, package manager state, native host cache, and desktop config before build/package.",
   ""
 ].join("\n")
 
