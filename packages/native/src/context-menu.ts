@@ -1,4 +1,13 @@
 import {
+  CommandRegistry,
+  PermissionActor,
+  PermissionContext,
+  ResourceRegistry,
+  type CommandRegistryError,
+  type ResourceHandle,
+  type ResourceId
+} from "@effect-desktop/core"
+import {
   Api,
   Client,
   type ApiClientExchange,
@@ -15,7 +24,7 @@ import {
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Schema, Stream } from "effect"
+import { Context, Effect, Fiber, Layer, Option, Schema, Stream } from "effect"
 
 import {
   ContextMenuActivatedEvent,
@@ -30,6 +39,7 @@ import type { WindowHandle } from "./window.js"
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export type ContextMenuError = HostProtocolError
+export type ContextMenuCommandBindingError = ContextMenuError | CommandRegistryError
 
 export const ContextMenuApiSpec = Object.freeze({
   show: contextMenuMethodSpec(ContextMenuShowInput, "native.invoke:ContextMenu.show"),
@@ -112,7 +122,16 @@ export class ContextMenuClient extends Context.Service<ContextMenuClient, Contex
   "@effect-desktop/native/ContextMenuClient"
 ) {}
 
-export type ContextMenuServiceApi = ContextMenuClientApi
+export interface ContextMenuServiceApi extends Omit<ContextMenuClientApi, "bindCommand"> {
+  readonly bindCommand: (
+    itemId: string,
+    commandId: string
+  ) => Effect.Effect<
+    ResourceHandle<"context-menu-command", "registered">,
+    ContextMenuCommandBindingError,
+    CommandRegistry | ResourceRegistry
+  >
+}
 
 export class ContextMenu extends Context.Service<ContextMenu, ContextMenuServiceApi>()(
   "@effect-desktop/native/ContextMenu"
@@ -124,11 +143,84 @@ export const ContextMenuLive = Layer.effect(ContextMenu)(
     return Object.freeze({
       show: (input) => client.show(input),
       buildFromTemplate: (input) => client.buildFromTemplate(input),
-      bindCommand: (itemId, commandId) => client.bindCommand(itemId, commandId),
+      bindCommand: (itemId, commandId) => bindContextMenuCommand(client, itemId, commandId),
       onActivated: () => client.onActivated()
     } satisfies ContextMenuServiceApi)
   })
 )
+
+const bindContextMenuCommand = (
+  client: ContextMenuClientApi,
+  itemId: string,
+  commandId: string
+): Effect.Effect<
+  ResourceHandle<"context-menu-command", "registered">,
+  ContextMenuCommandBindingError,
+  CommandRegistry | ResourceRegistry
+> => {
+  let completed = false
+  let listener: Fiber.Fiber<void, ContextMenuError> | undefined
+
+  return Effect.gen(function* () {
+    const commands = yield* CommandRegistry
+    const resources = yield* ResourceRegistry
+    yield* client.bindCommand(itemId, commandId)
+
+    const fiber = yield* client.onActivated().pipe(
+      Stream.filter((event) => event.itemId === itemId && event.commandId === commandId),
+      Stream.runForEach((event) =>
+        invokeContextMenuCommand(commands, commandId, event.itemId, event.windowId)
+      ),
+      Effect.forkDetach
+    )
+    listener = fiber
+
+    const handle = yield* resources.register({
+      kind: "context-menu-command",
+      id: contextMenuCommandResourceId(itemId, commandId),
+      ownerScope: "app",
+      state: "registered",
+      dispose: Fiber.interrupt(fiber).pipe(Effect.asVoid)
+    })
+    completed = true
+    return handle
+  }).pipe(
+    Effect.ensuring(
+      Effect.suspend(() =>
+        completed || listener === undefined
+          ? Effect.void
+          : Fiber.interrupt(listener).pipe(Effect.asVoid)
+      )
+    )
+  )
+}
+
+const invokeContextMenuCommand = (
+  commands: CommandRegistry["Service"],
+  commandId: string,
+  itemId: string,
+  windowId: string
+): Effect.Effect<void, never, never> =>
+  commands
+    .invoke(
+      commandId,
+      { itemId, windowId },
+      new PermissionContext({
+        actor: new PermissionActor({ kind: "window", id: windowId }),
+        traceId: `context-menu:${windowId}:${itemId}:${commandId}`
+      })
+    )
+    .pipe(
+      Effect.asVoid,
+      Effect.catch((error: CommandRegistryError) =>
+        Effect.logWarning("ContextMenu command invocation failed", {
+          commandId,
+          error,
+          itemId,
+          windowId
+        })
+      )
+    )
 
 export const makeContextMenuClientLayer = (
   client: ContextMenuClientApi
@@ -194,6 +286,9 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
     operation: method,
     recoverable: false
   })
+
+const contextMenuCommandResourceId = (itemId: string, commandId: string): ResourceId =>
+  `context-menu-command:${itemId}:${commandId}` as ResourceId
 
 const toContextMenuShowInput = (input: ContextMenuShowOptions): unknown => ({
   window: toWindowHandle(input.window as WindowHandle),
