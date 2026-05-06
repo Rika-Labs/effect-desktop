@@ -1235,7 +1235,9 @@ name = "native-pty"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "libc",
  "portable-pty",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

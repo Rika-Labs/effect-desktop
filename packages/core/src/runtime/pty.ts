@@ -79,6 +79,8 @@ export interface PtyChild {
   readonly write: (chunk: Uint8Array) => Promise<void>
   readonly resize: (size: PtyResizeInput) => Promise<void>
   readonly isRunning: () => boolean
+  readonly terminateTree: () => Promise<void>
+  readonly forceKillTree: () => Promise<void>
   readonly kill: (signal?: PtySignalInput) => Promise<void>
 }
 
@@ -284,11 +286,11 @@ const disposeChild = (
   Effect.gen(function* () {
     if (child.isRunning()) {
       yield* Effect.tryPromise({
-        try: () => child.kill("SIGTERM"),
-        catch: (error) => mapPtyError(error, command, "PTY.dispose.kill")
+        try: () => child.terminateTree(),
+        catch: (error) => mapPtyError(error, command, "PTY.dispose.terminateTree")
       }).pipe(
         Effect.catch((error: HostProtocolError) =>
-          Effect.logWarning("PTY.dispose.kill failed", {
+          Effect.logWarning("PTY.dispose.terminateTree failed", {
             command,
             reason: error.message
           })
@@ -299,7 +301,7 @@ const disposeChild = (
         yield* forceKillChild(child, command)
         const forcedExit = yield* waitForChildExit(child, command, gracefulShutdownMs)
         if (Option.isNone(forcedExit) && child.isRunning()) {
-          yield* Effect.logWarning("PTY.dispose.forceKill timed out", {
+          yield* Effect.logWarning("PtyForceKillTimeout", {
             command,
             gracefulShutdownMs
           })
@@ -310,11 +312,11 @@ const disposeChild = (
 
 const forceKillChild = (child: PtyChild, command: string): Effect.Effect<void, never, never> =>
   Effect.tryPromise({
-    try: () => child.kill("SIGKILL"),
-    catch: (error) => mapPtyError(error, command, "PTY.dispose.forceKill")
+    try: () => child.forceKillTree(),
+    catch: (error) => mapPtyError(error, command, "PTY.dispose.forceKillTree")
   }).pipe(
     Effect.catch((error: HostProtocolError) =>
-      Effect.logWarning("PTY.dispose.forceKill failed", {
+      Effect.logWarning("PTY.dispose.forceKillTree failed", {
         command,
         reason: error.message
       })

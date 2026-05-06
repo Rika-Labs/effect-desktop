@@ -6,6 +6,7 @@ use std::fmt;
 use std::io::{Read, Write};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 pub type PtyResult<T> = Result<T, PtyError>;
 
@@ -67,6 +68,8 @@ pub struct NativePty {
     child: Box<dyn Child + Send + Sync>,
     reader: Box<dyn Read + Send>,
     writer: Option<Box<dyn Write + Send>>,
+    #[cfg(windows)]
+    job: Option<PtyJob>,
 }
 
 pub fn open(size: PtySize, command: PtyCommand) -> PtyResult<NativePty> {
@@ -147,15 +150,202 @@ impl NativePty {
     }
 
     pub fn kill(&mut self) -> PtyResult<()> {
-        catch_pty_panic("Pty.kill", || {
-            self.child
-                .kill()
-                .map_err(|error| map_io_error(error, "Pty.kill"))
+        self.terminate_tree()
+    }
+
+    pub fn terminate_tree(&mut self) -> PtyResult<()> {
+        catch_pty_panic("Pty.terminateTree", || {
+            self.terminate_child_tree(TreeSignal::Terminate)
+        })?
+    }
+
+    pub fn force_kill_tree(&mut self) -> PtyResult<()> {
+        catch_pty_panic("Pty.forceKillTree", || {
+            self.terminate_child_tree(TreeSignal::ForceKill)
+        })?
+    }
+
+    pub fn wait_for_exit(&mut self, timeout: Duration) -> PtyResult<Option<PtyExitStatus>> {
+        catch_pty_panic("Pty.waitForExit", || {
+            let deadline = Instant::now() + timeout;
+            loop {
+                if let Some(status) = self.try_wait()? {
+                    return Ok(Some(status));
+                }
+                if Instant::now() >= deadline {
+                    return Ok(None);
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        })?
+    }
+
+    pub fn close_tree(&mut self, graceful_shutdown: Duration) -> PtyResult<Option<PtyExitStatus>> {
+        catch_pty_panic("Pty.closeTree", || {
+            self.terminate_tree()?;
+            if let Some(status) = self.wait_for_exit(graceful_shutdown)? {
+                return Ok(Some(status));
+            }
+
+            self.force_kill_tree()?;
+            self.wait_for_exit(graceful_shutdown)
         })?
     }
 
     pub fn process_id(&self) -> Option<u32> {
         self.child.process_id()
+    }
+
+    #[cfg(unix)]
+    fn terminate_child_tree(&mut self, signal: TreeSignal) -> PtyResult<()> {
+        terminate_child_tree(self.child.as_mut(), signal)
+    }
+
+    #[cfg(windows)]
+    fn terminate_child_tree(&mut self, signal: TreeSignal) -> PtyResult<()> {
+        match &self.job {
+            Some(job) => job.terminate(signal),
+            None => self
+                .child
+                .kill()
+                .map_err(|error| map_io_error(error, signal.operation())),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum TreeSignal {
+    Terminate,
+    ForceKill,
+}
+
+#[cfg(unix)]
+fn terminate_child_tree(child: &mut dyn Child, signal: TreeSignal) -> PtyResult<()> {
+    let pid = child.process_id().ok_or_else(|| PtyError::InvalidState {
+        current: "missing-process-id",
+        attempted: signal.operation(),
+        operation: signal.operation(),
+    })?;
+    let pgid = i32::try_from(pid).map_err(|_| PtyError::InvalidState {
+        current: "invalid-process-id",
+        attempted: signal.operation(),
+        operation: signal.operation(),
+    })?;
+    let result = unsafe { libc::kill(-pgid, signal.unix_signal()) };
+    if result == 0 {
+        return Ok(());
+    }
+
+    let error = std::io::Error::last_os_error();
+    if error.raw_os_error() == Some(libc::ESRCH) {
+        return Ok(());
+    }
+
+    Err(map_io_error(error, signal.operation()))
+}
+
+#[cfg(unix)]
+impl TreeSignal {
+    fn unix_signal(self) -> libc::c_int {
+        match self {
+            TreeSignal::Terminate => libc::SIGTERM,
+            TreeSignal::ForceKill => libc::SIGKILL,
+        }
+    }
+}
+
+impl TreeSignal {
+    fn operation(self) -> &'static str {
+        match self {
+            TreeSignal::Terminate => "Pty.terminateTree",
+            TreeSignal::ForceKill => "Pty.forceKillTree",
+        }
+    }
+}
+
+#[cfg(windows)]
+struct PtyJob {
+    handle: windows_sys::Win32::Foundation::HANDLE,
+}
+
+#[cfg(windows)]
+unsafe impl Send for PtyJob {}
+
+#[cfg(windows)]
+impl PtyJob {
+    fn attach(child: &dyn Child) -> PtyResult<Self> {
+        use std::{mem::size_of, ptr::null};
+        use windows_sys::Win32::Foundation::HANDLE;
+        use windows_sys::Win32::System::JobObjects::{
+            AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+            SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+            JOB_OBJECT_LIMIT_BREAKAWAY_OK, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        };
+
+        let process = child
+            .as_raw_handle()
+            .ok_or_else(|| PtyError::InvalidState {
+                current: "missing-process-handle",
+                attempted: "attach-job",
+                operation: "Pty.open",
+            })?;
+        let job = unsafe { CreateJobObjectW(null(), null()) };
+        if job.is_null() {
+            return Err(map_io_error(std::io::Error::last_os_error(), "Pty.open"));
+        }
+
+        let guard = Self { handle: job };
+        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        limits.BasicLimitInformation.LimitFlags =
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_BREAKAWAY_OK;
+
+        let configured = unsafe {
+            SetInformationJobObject(
+                guard.handle,
+                JobObjectExtendedLimitInformation,
+                &limits as *const _ as *const _,
+                size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            )
+        };
+        if configured == 0 {
+            return Err(map_io_error(std::io::Error::last_os_error(), "Pty.open"));
+        }
+
+        let assigned = unsafe { AssignProcessToJobObject(guard.handle, process as HANDLE) };
+        if assigned == 0 {
+            return Err(map_io_error(std::io::Error::last_os_error(), "Pty.open"));
+        }
+
+        Ok(guard)
+    }
+
+    fn terminate(&self, signal: TreeSignal) -> PtyResult<()> {
+        use windows_sys::Win32::System::JobObjects::TerminateJobObject;
+
+        let exit_code = match signal {
+            TreeSignal::Terminate => 15,
+            TreeSignal::ForceKill => 9,
+        };
+        let terminated = unsafe { TerminateJobObject(self.handle, exit_code) };
+        if terminated == 0 {
+            return Err(map_io_error(
+                std::io::Error::last_os_error(),
+                signal.operation(),
+            ));
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+impl Drop for PtyJob {
+    fn drop(&mut self) {
+        use windows_sys::Win32::Foundation::CloseHandle;
+
+        unsafe {
+            CloseHandle(self.handle);
+        }
     }
 }
 
@@ -167,7 +357,7 @@ impl Drop for NativePty {
             Ok(None) | Err(_) => {
                 // Drop cannot report typed errors, but the primitive still owns
                 // best-effort child cleanup if callers forget to kill or wait.
-                let _ = self.child.kill();
+                let _ = self.terminate_child_tree(TreeSignal::ForceKill);
                 let _ = self.child.wait();
             }
         }
@@ -282,6 +472,14 @@ fn open_inner(size: PtySize, command: PtyCommand) -> PtyResult<NativePty> {
         .slave
         .spawn_command(builder)
         .map_err(|error| map_anyhow_error(error, "Pty.open"))?;
+    #[cfg(windows)]
+    let job = match PtyJob::attach(child.as_ref()) {
+        Ok(job) => job,
+        Err(error) => {
+            cleanup_spawned_child(child.as_mut());
+            return Err(error);
+        }
+    };
     drop(pair.slave);
 
     let reader = match pair.master.try_clone_reader() {
@@ -304,11 +502,20 @@ fn open_inner(size: PtySize, command: PtyCommand) -> PtyResult<NativePty> {
         child,
         reader,
         writer: Some(writer),
+        #[cfg(windows)]
+        job: Some(job),
     })
 }
 
 fn cleanup_spawned_child(child: &mut dyn Child) {
-    let _ = child.kill();
+    #[cfg(unix)]
+    {
+        let _ = terminate_child_tree(child, TreeSignal::ForceKill);
+    }
+    #[cfg(windows)]
+    {
+        let _ = child.kill();
+    }
     let _ = child.wait();
 }
 
@@ -560,6 +767,63 @@ mod tests {
     }
 
     #[cfg(unix)]
+    #[test]
+    fn terminate_tree_kills_shell_descendants() {
+        let pty = open(
+            PtySize { rows: 24, cols: 80 },
+            PtyCommand::new("/bin/sh")
+                .arg("-c")
+                .arg("sleep 30 & printf '%s\\n' $!; wait"),
+        )
+        .expect("open pty");
+        let child_pid = pty.process_id().expect("child pid");
+        let (mut pty, output) = read_until_contains(pty, "\r\n");
+        let grandchild_pid = parse_first_pid(&output);
+
+        pty.terminate_tree().expect("terminate pty tree");
+        let status = pty
+            .wait_for_exit(Duration::from_secs(5))
+            .expect("wait for child exit");
+
+        assert!(status.is_some(), "direct PTY child did not exit");
+        assert_child_exited(child_pid);
+        assert_child_exited(grandchild_pid);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn force_kill_tree_kills_shell_that_ignores_sigterm() {
+        let pty = open(
+            PtySize { rows: 24, cols: 80 },
+            PtyCommand::new("/bin/sh")
+                .arg("-c")
+                .arg("trap '' TERM; (trap '' TERM; sleep 30) & printf '%s\\n' $!; while :; do sleep 1; done"),
+        )
+        .expect("open pty");
+        let child_pid = pty.process_id().expect("child pid");
+        let (mut pty, output) = read_until_contains(pty, "\r\n");
+        let grandchild_pid = parse_first_pid(&output);
+
+        pty.terminate_tree().expect("terminate pty tree");
+        let graceful_status = pty
+            .wait_for_exit(Duration::from_millis(100))
+            .expect("wait for graceful exit");
+        assert!(
+            graceful_status.is_none(),
+            "TERM-trapping PTY child exited before force kill"
+        );
+
+        pty.force_kill_tree().expect("force kill pty tree");
+        let forced_status = pty
+            .wait_for_exit(Duration::from_secs(5))
+            .expect("wait for forced exit");
+
+        assert!(forced_status.is_some(), "direct PTY child did not exit");
+        assert_child_exited(child_pid);
+        assert_child_exited(grandchild_pid);
+    }
+
+    #[cfg(unix)]
     fn read_until_contains(mut pty: NativePty, needle: &'static str) -> (NativePty, String) {
         let (sender, receiver) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
@@ -591,6 +855,14 @@ mod tests {
             Ok(_) => panic!("expected PTY open to fail"),
             Err(error) => error,
         }
+    }
+
+    #[cfg(unix)]
+    fn parse_first_pid(output: &str) -> u32 {
+        output
+            .split_whitespace()
+            .find_map(|part| part.parse::<u32>().ok())
+            .unwrap_or_else(|| panic!("expected pid in PTY output: {output:?}"))
     }
 
     fn echo_command(message: &str) -> PtyCommand {

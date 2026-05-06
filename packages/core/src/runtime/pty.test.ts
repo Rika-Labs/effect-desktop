@@ -367,7 +367,7 @@ ptyTest("PTY scope close kills the child", async () => {
   )
   await Effect.runPromise(fixture.registry.closeScope("scope-main"))
 
-  expect(child.killedWith).toBe("SIGTERM")
+  expect(child.terminateTreeCalls).toBe(1)
 })
 
 ptyTest("PTY scope close waits for child exit before releasing budget", async () => {
@@ -430,7 +430,8 @@ ptyTest("PTY scope close escalates to SIGKILL when SIGTERM is ignored", async ()
   )
   await Effect.runPromise(fixture.registry.closeScope("scope-main"))
 
-  expect(child.kills).toEqual(["SIGTERM", "SIGKILL"])
+  expect(child.terminateTreeCalls).toBe(1)
+  expect(child.forceKillTreeCalls).toBe(1)
   expect(child.isRunning()).toBe(false)
 })
 
@@ -480,6 +481,8 @@ interface FakeChild extends PtyChild {
   readonly resizes: PtyResizeInput[]
   readonly killedWith: PtySignalInput | undefined
   readonly kills: PtySignalInput[]
+  readonly terminateTreeCalls: number
+  readonly forceKillTreeCalls: number
 }
 
 const makeFakeChild = (options: {
@@ -495,6 +498,8 @@ const makeFakeChild = (options: {
   const resizes: PtyResizeInput[] = []
   const kills: PtySignalInput[] = []
   let killedWith: PtySignalInput | undefined
+  let terminateTreeCalls = 0
+  let forceKillTreeCalls = 0
   let running = true
   let settled = false
   let resolveExit: (status: PtyExitStatus) => void
@@ -546,6 +551,12 @@ const makeFakeChild = (options: {
     writes,
     resizes,
     kills,
+    get terminateTreeCalls() {
+      return terminateTreeCalls
+    },
+    get forceKillTreeCalls() {
+      return forceKillTreeCalls
+    },
     get killedWith() {
       return killedWith
     },
@@ -556,15 +567,27 @@ const makeFakeChild = (options: {
       resizes.push(size)
     },
     isRunning: () => running,
+    terminateTree: async () => {
+      terminateTreeCalls += 1
+      await killFakeChild("SIGTERM")
+    },
+    forceKillTree: async () => {
+      forceKillTreeCalls += 1
+      await killFakeChild("SIGKILL")
+    },
     kill: async (signal) => {
-      killedWith = signal ?? "SIGTERM"
-      kills.push(killedWith)
-      if (options.ignoreKill !== true && !options.ignoredSignals?.includes(killedWith)) {
-        if (options.killExitDelayMs === undefined) {
-          finish(String(killedWith))
-        } else {
-          setTimeout(() => finish(String(killedWith)), options.killExitDelayMs)
-        }
+      await killFakeChild(signal ?? "SIGTERM")
+    }
+  }
+
+  async function killFakeChild(signal: PtySignalInput): Promise<void> {
+    killedWith = signal
+    kills.push(killedWith)
+    if (options.ignoreKill !== true && !options.ignoredSignals?.includes(killedWith)) {
+      if (options.killExitDelayMs === undefined) {
+        finish(String(killedWith))
+      } else {
+        setTimeout(() => finish(String(killedWith)), options.killExitDelayMs)
       }
     }
   }
