@@ -3,9 +3,11 @@ import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import {
+  HostProtocolBackpressureOverflowError,
   HostProtocolFileNotFoundError,
   HostProtocolInvalidArgumentError,
-  HostProtocolPermissionDeniedError
+  HostProtocolPermissionDeniedError,
+  HostProtocolResourceBusyError
 } from "@effect-desktop/bridge"
 import { Cause, Effect, Exit, Stream } from "effect"
 
@@ -14,6 +16,7 @@ import {
   ProcessExitStatus,
   type ProcessAdapter,
   type ProcessApi,
+  type ProcessBudgetPolicy,
   type ProcessChild,
   type ProcessPermissionPolicy,
   type ProcessSignalInput
@@ -195,6 +198,138 @@ processTest("Process spawn allows shell mode with process.shell permission", asy
   expect(spawnCalls).toBe(1)
 })
 
+processTest("Process spawn enforces the per-scope concurrent process budget", async () => {
+  let spawnCalls = 0
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => {
+      spawnCalls += 1
+      return makeFakeChild({
+        stdout: [],
+        exit: { code: 0 },
+        naturalExitDelayMs: 60_000,
+        ignoreTerminate: true
+      })
+    }),
+    { budgets: { maxConcurrent: 2 }, gracefulShutdownMs: 1 }
+  )
+
+  await Effect.runPromise(fixture.service.spawn("sleep", ["30"], { ownerScope: "scope-main" }))
+  await Effect.runPromise(fixture.service.spawn("sleep", ["30"], { ownerScope: "scope-main" }))
+  const exit = await Effect.runPromiseExit(
+    fixture.service.spawn("sleep", ["30"], { ownerScope: "scope-main" })
+  )
+  await Effect.runPromise(fixture.registry.closeScope("scope-main"))
+
+  expect(spawnCalls).toBe(2)
+  expectFailure(exit, HostProtocolResourceBusyError)
+})
+
+processTest("Process spawn reserves budget across parallel spawns", async () => {
+  let spawnCalls = 0
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => {
+      spawnCalls += 1
+      return makeFakeChild({
+        stdout: [],
+        exit: { code: 0 },
+        naturalExitDelayMs: 60_000,
+        ignoreTerminate: true
+      })
+    }),
+    { budgets: { maxConcurrent: 1 }, gracefulShutdownMs: 1 }
+  )
+
+  const exits = await Effect.runPromise(
+    Effect.all(
+      [
+        Effect.exit(fixture.service.spawn("sleep", ["30"], { ownerScope: "scope-main" })),
+        Effect.exit(fixture.service.spawn("sleep", ["30"], { ownerScope: "scope-main" }))
+      ],
+      { concurrency: "unbounded" }
+    )
+  )
+  await Effect.runPromise(fixture.registry.closeScope("scope-main"))
+
+  expect(spawnCalls).toBe(1)
+  expect(exits.filter(Exit.isSuccess)).toHaveLength(1)
+  const failure = exits.find(Exit.isFailure)
+  expect(failure).toBeDefined()
+  if (failure !== undefined) {
+    expectFailure(failure, HostProtocolResourceBusyError)
+  }
+})
+
+processTest("Process spawn releases budget after child exit", async () => {
+  let spawnCalls = 0
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => {
+      spawnCalls += 1
+      return makeFakeChild({ stdout: [], exit: { code: 0 } })
+    }),
+    { budgets: { maxConcurrent: 1 } }
+  )
+
+  await Effect.runPromise(fixture.service.spawn("echo", ["hi"], { ownerScope: "scope-main" }))
+  await waitUntil(async () => {
+    const snapshot = await Effect.runPromise(fixture.registry.list())
+    return snapshot.entries.length === 0
+  })
+  await Effect.runPromise(fixture.service.spawn("echo", ["hi"], { ownerScope: "scope-main" }))
+
+  expect(spawnCalls).toBe(2)
+})
+
+processTest(
+  "Process stdout fails with BackpressureOverflow when a chunk exceeds budget",
+  async () => {
+    const fixture = await makeFixture(
+      makeFakeAdapter(() => makeFakeChild({ stdout: ["abcd"], exit: { code: 0 } })),
+      { budgets: { stdoutBufferBytes: 3 } }
+    )
+    const handle = await Effect.runPromise(
+      fixture.service.spawn("echo", ["abcd"], { ownerScope: "scope-main" })
+    )
+
+    const exit = await Effect.runPromiseExit(handle.stdout.pipe(Stream.runCollect))
+
+    expectFailure(exit, HostProtocolBackpressureOverflowError)
+  }
+)
+
+processTest(
+  "Process stdout fails with BackpressureOverflow when cumulative chunks exceed budget",
+  async () => {
+    const fixture = await makeFixture(
+      makeFakeAdapter(() => makeFakeChild({ stdout: ["ab", "cd"], exit: { code: 0 } })),
+      { budgets: { stdoutBufferBytes: 3 } }
+    )
+    const handle = await Effect.runPromise(
+      fixture.service.spawn("echo", ["abcd"], { ownerScope: "scope-main" })
+    )
+
+    const exit = await Effect.runPromiseExit(handle.stdout.pipe(Stream.runCollect))
+
+    expectFailure(exit, HostProtocolBackpressureOverflowError)
+  }
+)
+
+processTest(
+  "Process stderr fails with BackpressureOverflow when a chunk exceeds budget",
+  async () => {
+    const fixture = await makeFixture(
+      makeFakeAdapter(() => makeFakeChild({ stdout: [], stderr: ["abcd"], exit: { code: 0 } })),
+      { budgets: { stderrBufferBytes: 3 } }
+    )
+    const handle = await Effect.runPromise(
+      fixture.service.spawn("echo", ["abcd"], { ownerScope: "scope-main" })
+    )
+
+    const exit = await Effect.runPromiseExit(handle.stderr.pipe(Stream.runCollect))
+
+    expectFailure(exit, HostProtocolBackpressureOverflowError)
+  }
+)
+
 processTest("Process spawn reports missing options as a typed failure", async () => {
   const fixture = await makeFixture(
     makeFakeAdapter(() => makeFakeChild({ stdout: [], exit: { code: 0 } }))
@@ -338,6 +473,7 @@ if (process.platform !== "win32") {
 const makeFixture = async (
   adapter?: ProcessAdapter,
   options: {
+    readonly budgets?: ProcessBudgetPolicy
     readonly gracefulShutdownMs?: number
     readonly permissions?: ProcessPermissionPolicy
   } = {}
@@ -351,6 +487,7 @@ const makeService = (
   registry: ResourceRegistryApi,
   adapter?: ProcessAdapter,
   options: {
+    readonly budgets?: ProcessBudgetPolicy
     readonly gracefulShutdownMs?: number
     readonly permissions?: ProcessPermissionPolicy
   } = {}
@@ -358,6 +495,7 @@ const makeService = (
   Effect.runPromise(
     makeProcess(registry, {
       ...(adapter === undefined ? {} : { adapter }),
+      ...(options.budgets === undefined ? {} : { budgets: options.budgets }),
       permissions: options.permissions ?? ALLOW_TEST_PROCESS_PERMISSIONS,
       ...(options.gracefulShutdownMs === undefined
         ? {}
