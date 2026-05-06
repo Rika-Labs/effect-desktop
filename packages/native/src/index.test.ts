@@ -28,6 +28,12 @@ import {
   AppOpenFileEvent,
   AppOpenUrlEvent,
   AppSecondInstanceEvent,
+  Menu,
+  MenuActivatedEvent,
+  MenuApi,
+  MenuLive,
+  MenuMethodNames,
+  MenuTemplate,
   WebView,
   WebViewApi,
   WebViewLive,
@@ -43,6 +49,9 @@ import {
   makeAppEventRouter,
   makeAppBridgeClientLayer,
   makeAppServiceLayer,
+  makeMenuBridgeClientLayer,
+  makeMenuServiceLayer,
+  makeUnsupportedMenuClient,
   makeUnsupportedAppClient,
   makeUnsupportedWebViewClient,
   makeWebViewBridgeClientLayer,
@@ -54,6 +63,7 @@ import {
   targetedRoute,
   windowScope,
   type AppClientApi,
+  type MenuClientApi,
   type WebViewClientApi,
   type WebViewHandle,
   type WindowClientApi,
@@ -105,6 +115,14 @@ const expectedWebViewMethods: Array<(typeof WebViewMethodNames)[number]> = [
   "destroy"
 ]
 
+const expectedMenuMethods: Array<(typeof MenuMethodNames)[number]> = [
+  "setApplicationMenu",
+  "setWindowMenu",
+  "clear",
+  "bindCommand",
+  "capability"
+]
+
 const windowHandle: WindowHandle = {
   kind: "window",
   id: "window-1",
@@ -120,6 +138,19 @@ const webviewHandle: WebViewHandle = {
   ownerScope: "window:window-1",
   state: "open"
 }
+
+const menuTemplate = new MenuTemplate({
+  items: [
+    { type: "item", id: "file.open", label: "Open", commandId: "app.file.open" },
+    { type: "separator" },
+    {
+      type: "submenu",
+      id: "view",
+      label: "View",
+      items: [{ type: "item", id: "view.reload", label: "Reload", commandId: "app.view.reload" }]
+    }
+  ]
+})
 
 test("AppApi declares the Phase 7 App method and event surface", () => {
   expect(AppApi.tag).toBe("App")
@@ -418,6 +449,152 @@ test("unsupported WebView client reports deferred host methods as Effect values"
       error !== null &&
       "operation" in error &&
       error.operation === "WebView.create"
+  )
+})
+
+test("MenuApi declares the Phase 7 Menu method and event surface", () => {
+  expect(MenuApi.tag).toBe("Menu")
+  expect([...MenuMethodNames]).toEqual(expectedMenuMethods)
+  expect(Object.keys(MenuApi.spec)).toEqual(expectedMenuMethods)
+  expect(Object.keys(MenuApi.events)).toEqual(["Activated"])
+})
+
+test("Menu service delegates through a substitutable MenuClient port", async () => {
+  const calls: string[] = []
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const menu = yield* Menu
+      yield* menu.setApplicationMenu(menuTemplate)
+      yield* menu.setWindowMenu(windowHandle, menuTemplate)
+      yield* menu.bindCommand("file.open", "app.file.open")
+      const linuxAppMenu = yield* menu.capability("application menu", { platform: "linux" })
+      const activated = yield* menu.onActivated().pipe(Stream.take(1), Stream.runCollect)
+      yield* menu.clear({ window: windowHandle })
+      yield* menu.clear()
+
+      return { activated, linuxAppMenu }
+    }).pipe(Effect.provide(makeMenuServiceLayer(menuClient(calls))))
+  )
+
+  expect(result.linuxAppMenu).toBe(false)
+  expect(Array.from(result.activated)).toEqual([
+    new MenuActivatedEvent({
+      itemId: "file.open",
+      commandId: "app.file.open",
+      windowId: "window-1"
+    })
+  ])
+  expect(calls).toEqual([
+    "setApplicationMenu:3",
+    "setWindowMenu:window-1:3",
+    "bindCommand:file.open:app.file.open",
+    "clear:window-1",
+    "clear:application"
+  ])
+})
+
+test("Menu bridge client validates templates, sends host envelopes, and decodes activation events", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = menuExchange(requests, () => ({ kind: "success", payload: undefined }))
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const menu = yield* Menu
+      yield* menu.setApplicationMenu(menuTemplate)
+      yield* menu.setWindowMenu(windowHandle, menuTemplate)
+      yield* menu.bindCommand("file.open", "app.file.open")
+      const activated = yield* menu.onActivated().pipe(Stream.take(1), Stream.runCollect)
+      yield* menu.clear({ window: windowHandle })
+
+      return { activated }
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          MenuLive,
+          makeMenuBridgeClientLayer(exchange, {
+            nextRequestId: nextId([
+              "app-menu-request",
+              "window-menu-request",
+              "bind-request",
+              "clear-request"
+            ]),
+            nextTraceId: nextId([
+              "app-menu-trace",
+              "window-menu-trace",
+              "bind-trace",
+              "clear-trace"
+            ]),
+            now: nextNumber([1710000000000, 1710000000001, 1710000000002, 1710000000003])
+          })
+        )
+      )
+    )
+  )
+
+  expect(Array.from(result.activated)).toEqual([
+    new MenuActivatedEvent({
+      itemId: "file.open",
+      commandId: "app.file.open",
+      windowId: "window-1"
+    })
+  ])
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["Menu.setApplicationMenu", { template: menuTemplate }],
+    ["Menu.setWindowMenu", { window: windowHandle, template: menuTemplate }],
+    ["Menu.bindCommand", { itemId: "file.open", commandId: "app.file.open" }],
+    ["Menu.clear", { window: windowHandle }]
+  ])
+})
+
+test("Menu bridge client returns invalid templates as typed Effect failures", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Menu
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          MenuLive,
+          makeMenuBridgeClientLayer(
+            menuExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const exit = await Effect.runPromiseExit(
+    client.setApplicationMenu({
+      items: [{ type: "item", id: "file.open", commandId: "app.file.open" }]
+    } as never)
+  )
+
+  expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
+test("unsupported Menu client reports deferred host methods as Effect values", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const menu = yield* Menu
+      const macosAppMenu = yield* menu.capability("application menu", { platform: "macos" })
+      const windowsAppMenu = yield* menu.capability("application menu", { platform: "windows" })
+      const setExit = yield* Effect.exit(menu.setApplicationMenu(menuTemplate))
+
+      return { macosAppMenu, setExit, windowsAppMenu }
+    }).pipe(Effect.provide(makeMenuServiceLayer(makeUnsupportedMenuClient())))
+  )
+
+  expect(result.macosAppMenu).toBe(true)
+  expect(result.windowsAppMenu).toBe(false)
+  expectExitFailure(
+    result.setExit,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "operation" in error &&
+      error.operation === "Menu.setApplicationMenu"
   )
 })
 
@@ -819,6 +996,24 @@ const webViewClient = (calls: string[]): WebViewClientApi => ({
     )
 })
 
+const menuClient = (calls: string[]): MenuClientApi => ({
+  setApplicationMenu: (template) =>
+    recordVoid(calls, `setApplicationMenu:${template.items.length}`),
+  setWindowMenu: (window, template) =>
+    recordVoid(calls, `setWindowMenu:${window.id}:${template.items.length}`),
+  clear: (input) => recordVoid(calls, `clear:${input?.window?.id ?? "application"}`),
+  bindCommand: (itemId, commandId) => recordVoid(calls, `bindCommand:${itemId}:${commandId}`),
+  capability: (input) => Effect.succeed({ supported: input.platform !== "linux" }),
+  onActivated: () =>
+    Stream.make(
+      new MenuActivatedEvent({
+        itemId: "file.open",
+        commandId: "app.file.open",
+        windowId: "window-1"
+      })
+    )
+})
+
 const noopWindowClient: WindowClientApi = {
   create: () => Effect.succeed(windowHandle),
   show: () => Effect.void,
@@ -914,6 +1109,32 @@ const webViewExchange = (
   resource: {
     dispose: () => Effect.void
   }
+})
+
+const menuExchange = (
+  requests: HostProtocolRequestEnvelope[],
+  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
+): ApiClientExchange => ({
+  request: (request) => {
+    requests.push(request)
+    return Effect.succeed(respond(request))
+  },
+  subscribe: (method) =>
+    method === "Menu.Activated"
+      ? Stream.make(
+          new HostProtocolEventEnvelope({
+            kind: "event",
+            timestamp: 1710000000300,
+            traceId: "event-trace",
+            method,
+            payload: {
+              itemId: "file.open",
+              commandId: "app.file.open",
+              windowId: "window-1"
+            }
+          })
+        )
+      : Stream.empty
 })
 
 const makeWindowApiExchange = (
