@@ -23,8 +23,9 @@ import { makeResourceRegistry, type ResourceRegistryApi } from "./resources.js"
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
+const ptyTest = process.platform === "win32" ? test.skip : test
 
-test("PTY open exposes output and exit status", async () => {
+ptyTest("PTY open exposes output and exit status", async () => {
   const fixture = await makeFixture(
     makeFakeAdapter(() => makeFakeChild({ output: ["prompt$ "], exit: { code: 0 } }))
   )
@@ -44,7 +45,7 @@ test("PTY open exposes output and exit status", async () => {
   expect(status).toEqual(new PtyExitStatus({ code: 0 }))
 })
 
-test("PTY open registers a scoped running resource", async () => {
+ptyTest("PTY open registers a scoped running resource", async () => {
   const fixture = await makeFixture(
     makeFakeAdapter(() => makeFakeChild({ output: [], exit: { code: 0 } }))
   )
@@ -64,7 +65,7 @@ test("PTY open registers a scoped running resource", async () => {
   expect(snapshot.entries.map((entry) => entry.handle)).toContainEqual(handle.resource)
 })
 
-test("PTY removes the resource when a child exits without awaiting onExit", async () => {
+ptyTest("PTY removes the resource when a child exits without awaiting onExit", async () => {
   const fixture = await makeFixture(
     makeFakeAdapter(() => makeFakeChild({ output: [], exit: { code: 0 } }))
   )
@@ -83,7 +84,7 @@ test("PTY removes the resource when a child exits without awaiting onExit", asyn
   })
 })
 
-test("PTY open validates owner scope before adapter activity", async () => {
+ptyTest("PTY open validates owner scope before adapter activity", async () => {
   let openCalls = 0
   const fixture = await makeFixture(
     makeFakeAdapter(() => {
@@ -105,7 +106,7 @@ test("PTY open validates owner scope before adapter activity", async () => {
   expectFailure(exit, HostProtocolInvalidArgumentError)
 })
 
-test("PTY open validates size before adapter activity", async () => {
+ptyTest("PTY open validates size before adapter activity", async () => {
   let openCalls = 0
   const fixture = await makeFixture(
     makeFakeAdapter(() => {
@@ -127,7 +128,7 @@ test("PTY open validates size before adapter activity", async () => {
   expectFailure(exit, HostProtocolInvalidArgumentError)
 })
 
-test("PTY open denies commands by default before adapter activity", async () => {
+ptyTest("PTY open denies commands by default before adapter activity", async () => {
   let openCalls = 0
   const registry = await Effect.runPromise(makeResourceRegistry())
   const service = await Effect.runPromise(
@@ -154,7 +155,7 @@ test("PTY open denies commands by default before adapter activity", async () => 
   expectFailure(exit, HostProtocolPermissionDeniedError)
 })
 
-test("PTY open allows commands declared in pty.spawn policy", async () => {
+ptyTest("PTY open allows commands declared in pty.spawn policy", async () => {
   let openCalls = 0
   const fixture = await makeFixture(
     makeFakeAdapter(() => {
@@ -176,7 +177,7 @@ test("PTY open allows commands declared in pty.spawn policy", async () => {
   expect(openCalls).toBe(1)
 })
 
-test("PTY open rejects argv0 shell metacharacters before permission lookup", async () => {
+ptyTest("PTY open rejects argv0 shell metacharacters before permission lookup", async () => {
   let openCalls = 0
   const fixture = await makeFixture(
     makeFakeAdapter(() => {
@@ -199,7 +200,7 @@ test("PTY open rejects argv0 shell metacharacters before permission lookup", asy
   expectFailure(exit, HostProtocolInvalidArgumentError)
 })
 
-test("PTY default adapter fails loudly as Unsupported", async () => {
+ptyTest("PTY default adapter fails loudly as Unsupported", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   const service = await Effect.runPromise(makePty(registry, { permissions: { spawn: ["bash"] } }))
 
@@ -215,7 +216,7 @@ test("PTY default adapter fails loudly as Unsupported", async () => {
   expectFailure(exit, HostProtocolUnsupportedError)
 })
 
-test("PTY open enforces the per-scope concurrent budget", async () => {
+ptyTest("PTY open enforces the per-scope concurrent budget", async () => {
   let openCalls = 0
   const fixture = await makeFixture(
     makeFakeAdapter(() => {
@@ -255,26 +256,29 @@ test("PTY open enforces the per-scope concurrent budget", async () => {
   }
 })
 
-test("PTY output fails with BackpressureOverflow when cumulative chunks exceed budget", async () => {
-  const fixture = await makeFixture(
-    makeFakeAdapter(() => makeFakeChild({ output: ["ab", "cd"], exit: { code: 0 } })),
-    { budgets: { outputBufferBytes: 3 } }
-  )
-  const handle = await Effect.runPromise(
-    fixture.service.open({
-      argv: ["bash"],
-      ownerScope: "scope-main",
-      rows: 24,
-      cols: 80
-    })
-  )
+ptyTest(
+  "PTY output fails with BackpressureOverflow when cumulative chunks exceed budget",
+  async () => {
+    const fixture = await makeFixture(
+      makeFakeAdapter(() => makeFakeChild({ output: ["ab", "cd"], exit: { code: 0 } })),
+      { budgets: { outputBufferBytes: 3 } }
+    )
+    const handle = await Effect.runPromise(
+      fixture.service.open({
+        argv: ["bash"],
+        ownerScope: "scope-main",
+        rows: 24,
+        cols: 80
+      })
+    )
 
-  const exit = await Effect.runPromiseExit(handle.output.pipe(Stream.runCollect))
+    const exit = await Effect.runPromiseExit(handle.output.pipe(Stream.runCollect))
 
-  expectFailure(exit, HostProtocolBackpressureOverflowError)
-})
+    expectFailure(exit, HostProtocolBackpressureOverflowError)
+  }
+)
 
-test("PTY handle writes, resizes, kills, and preserves exit signal", async () => {
+ptyTest("PTY handle writes, resizes, kills, and preserves exit signal", async () => {
   const child = makeFakeChild({ output: [], exit: { code: 0 }, naturalExitDelayMs: 60_000 })
   const fixture = await makeFixture(makeFakeAdapter(() => child))
   const handle = await Effect.runPromise(
@@ -297,7 +301,7 @@ test("PTY handle writes, resizes, kills, and preserves exit signal", async () =>
   expect(status).toEqual(new PtyExitStatus({ code: 0, signal: "SIGTERM" }))
 })
 
-test("PTY scope close kills the child", async () => {
+ptyTest("PTY scope close kills the child", async () => {
   const child = makeFakeChild({ output: [], exit: { code: 0 }, naturalExitDelayMs: 60_000 })
   const fixture = await makeFixture(makeFakeAdapter(() => child))
 
