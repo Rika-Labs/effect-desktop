@@ -1,4 +1,17 @@
-import { Cause, Context, Data, Effect, Layer, Option, Queue, Ref, Schema, Stream } from "effect"
+import {
+  Cause,
+  Context,
+  Data,
+  Deferred,
+  Effect,
+  Exit,
+  Layer,
+  Option,
+  Queue,
+  Ref,
+  Schema,
+  Stream
+} from "effect"
 
 import {
   PermissionRegistry,
@@ -112,6 +125,7 @@ export interface WorkerAdapterSpawnInput {
 export interface WorkerRuntime {
   readonly send: (message: unknown) => Effect.Effect<void, WorkerError, never>
   readonly messages: Stream.Stream<unknown, WorkerError, never>
+  readonly exit: Effect.Effect<void, WorkerError, never>
   readonly shutdown: Effect.Effect<void, never, never>
 }
 
@@ -176,6 +190,7 @@ export const makeWorker = (
                   Effect.andThen(releaseWorkerBudget(workerBudgets, input.ownerScope))
                 )
               })
+              observeWorkerExit(runtime.exit, resource, input.script)
 
               return { runtime, resource }
             })
@@ -260,6 +275,43 @@ const attachWorkerResourceId = (error: WorkerError, resourceId: string): WorkerE
     signal: error.signal,
     lastError: error.lastError
   })
+}
+
+const observeWorkerExit = (
+  exit: Effect.Effect<void, WorkerError, never>,
+  resource: ResourceHandle<"worker", "running">,
+  script: string
+): void => {
+  Effect.runFork(
+    exit.pipe(
+      Effect.exit,
+      Effect.flatMap((result) =>
+        resource.dispose().pipe(
+          Effect.andThen(
+            Exit.isFailure(result)
+              ? Effect.logWarning("Worker.exit observer failed", {
+                  script,
+                  reason: formatWorkerExitFailure(result)
+                })
+              : Effect.void
+          )
+        )
+      )
+    )
+  )
+}
+
+const formatWorkerExitFailure = (exit: Exit.Exit<void, WorkerError>): string => {
+  if (!Exit.isFailure(exit)) {
+    return "success"
+  }
+
+  const failure = exit.cause.reasons.find(Cause.isFailReason)
+  if (failure === undefined) {
+    return String(exit.cause)
+  }
+
+  return `${failure.error._tag}: ${failure.error.operation}`
 }
 
 const decodeSpawnInput = (
@@ -388,6 +440,7 @@ export const BunWorkerAdapter: WorkerAdapter = Object.freeze({
   spawn: (input: WorkerAdapterSpawnInput) =>
     Effect.gen(function* () {
       const queue = yield* Queue.bounded<unknown, WorkerError | Cause.Done>(input.messageBufferSize)
+      const exit = yield* Deferred.make<void, WorkerError>()
       const worker = yield* Effect.try({
         try: () => new globalThis.Worker(input.script),
         catch: (cause) =>
@@ -404,52 +457,46 @@ export const BunWorkerAdapter: WorkerAdapter = Object.freeze({
         Effect.runFork(Queue.offer(queue, event.data))
       }
       const onError = (event: ErrorEvent): void => {
+        const error = new WorkerCrashedError({
+          operation: "Worker.messages",
+          script: input.script,
+          resourceId,
+          exitCode: Option.none(),
+          signal: Option.none(),
+          lastError: Option.some(event.error ?? event.message)
+        })
         Effect.runFork(
-          Queue.fail(
-            queue,
-            new WorkerCrashedError({
-              operation: "Worker.messages",
-              script: input.script,
-              resourceId,
-              exitCode: Option.none(),
-              signal: Option.none(),
-              lastError: Option.some(event.error ?? event.message)
-            })
-          )
+          Queue.fail(queue, error).pipe(Effect.andThen(Deferred.fail(exit, error)), Effect.asVoid)
         )
       }
       const onMessageError = (event: MessageEvent): void => {
+        const error = new WorkerChannelError({
+          operation: "Worker.messages",
+          field: "transport",
+          script: input.script,
+          message: "worker message could not be deserialized",
+          cause: Option.some(event.data)
+        })
         Effect.runFork(
-          Queue.fail(
-            queue,
-            new WorkerChannelError({
-              operation: "Worker.messages",
-              field: "transport",
-              script: input.script,
-              message: "worker message could not be deserialized",
-              cause: Option.some(event.data)
-            })
-          )
+          Queue.fail(queue, error).pipe(Effect.andThen(Deferred.fail(exit, error)), Effect.asVoid)
         )
       }
       const onClose = (event: Event): void => {
         const exitCode = "code" in event && typeof event.code === "number" ? event.code : 0
         if (exitCode === 0) {
-          Effect.runFork(Queue.end(queue))
+          Effect.runFork(Queue.end(queue).pipe(Effect.andThen(Deferred.succeed(exit, undefined))))
           return
         }
+        const error = new WorkerCrashedError({
+          operation: "Worker.messages",
+          script: input.script,
+          resourceId,
+          exitCode: Option.some(exitCode),
+          signal: Option.none(),
+          lastError: Option.none()
+        })
         Effect.runFork(
-          Queue.fail(
-            queue,
-            new WorkerCrashedError({
-              operation: "Worker.messages",
-              script: input.script,
-              resourceId,
-              exitCode: Option.some(exitCode),
-              signal: Option.none(),
-              lastError: Option.none()
-            })
-          )
+          Queue.fail(queue, error).pipe(Effect.andThen(Deferred.fail(exit, error)), Effect.asVoid)
         )
       }
 
@@ -472,22 +519,39 @@ export const BunWorkerAdapter: WorkerAdapter = Object.freeze({
               })
           }),
         messages: Stream.fromQueue(queue),
+        exit: Deferred.await(exit),
         shutdown: Effect.gen(function* () {
-          worker.removeEventListener("message", onMessage)
-          worker.removeEventListener("error", onError)
-          worker.removeEventListener("messageerror", onMessageError)
-          worker.removeEventListener("close", onClose)
           yield* Effect.try({
             try: () => worker.postMessage({ _tag: "Shutdown" }),
             catch: (cause) => cause
           }).pipe(Effect.catchCause(() => Effect.void))
-          yield* Effect.sleep(`${input.gracefulShutdownMs} millis`)
-          yield* Effect.try({
-            try: () => worker.terminate(),
-            catch: (cause) => cause
-          }).pipe(Effect.catchCause(() => Effect.void))
+          const gracefulExit = yield* Effect.timeoutOption(
+            Deferred.await(exit),
+            `${input.gracefulShutdownMs} millis`
+          )
+          if (Option.isNone(gracefulExit)) {
+            yield* Effect.try({
+              try: () => worker.terminate(),
+              catch: (cause) => cause
+            }).pipe(Effect.catchCause(() => Effect.void))
+          }
+          yield* cleanupWorkerListeners(worker, onMessage, onError, onMessageError, onClose)
           yield* Queue.shutdown(queue)
         }).pipe(Effect.catchCause(() => Effect.void))
       } satisfies WorkerRuntime
     })
 })
+
+const cleanupWorkerListeners = (
+  worker: globalThis.Worker,
+  onMessage: (event: MessageEvent) => void,
+  onError: (event: ErrorEvent) => void,
+  onMessageError: (event: MessageEvent) => void,
+  onClose: (event: Event) => void
+): Effect.Effect<void, never, never> =>
+  Effect.sync(() => {
+    worker.removeEventListener("message", onMessage)
+    worker.removeEventListener("error", onError)
+    worker.removeEventListener("messageerror", onMessageError)
+    worker.removeEventListener("close", onClose)
+  })
