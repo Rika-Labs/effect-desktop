@@ -47,6 +47,14 @@ import {
   MenuLive,
   MenuMethodNames,
   MenuTemplate,
+  Notification,
+  NotificationActionEvent,
+  NotificationApi,
+  NotificationClickEvent,
+  NotificationLive,
+  NotificationMethodNames,
+  NotificationPermissionResult,
+  NotificationSupportedResult,
   WebView,
   WebViewApi,
   WebViewLive,
@@ -69,8 +77,11 @@ import {
   makeUnsupportedClipboardClient,
   makeMenuBridgeClientLayer,
   makeMenuServiceLayer,
+  makeNotificationBridgeClientLayer,
+  makeNotificationServiceLayer,
   makeUnsupportedDialogClient,
   makeUnsupportedMenuClient,
+  makeUnsupportedNotificationClient,
   makeUnsupportedAppClient,
   makeUnsupportedWebViewClient,
   makeWebViewBridgeClientLayer,
@@ -85,6 +96,8 @@ import {
   type ClipboardClientApi,
   type DialogClientApi,
   type MenuClientApi,
+  type NotificationClientApi,
+  type NotificationHandle,
   type WebViewClientApi,
   type WebViewHandle,
   type WindowClientApi,
@@ -160,6 +173,14 @@ const expectedClipboardMethods: Array<(typeof ClipboardMethodNames)[number]> = [
   "clear"
 ]
 
+const expectedNotificationMethods: Array<(typeof NotificationMethodNames)[number]> = [
+  "show",
+  "close",
+  "isSupported",
+  "requestPermission",
+  "getPermissionStatus"
+]
+
 const windowHandle: WindowHandle = {
   kind: "window",
   id: "window-1",
@@ -191,6 +212,14 @@ const menuTemplate = new MenuTemplate({
 
 const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1])
 const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 1])
+
+const notificationHandle: NotificationHandle = {
+  kind: "notification",
+  id: "notification-1",
+  generation: 0,
+  ownerScope: "window:window-1",
+  state: "open"
+}
 
 test("AppApi declares the Phase 7 App method and event surface", () => {
   expect(AppApi.tag).toBe("App")
@@ -928,6 +957,196 @@ test("unsupported Clipboard client reports deferred host methods as Effect value
   )
 })
 
+test("NotificationApi declares the Phase 7 Notification method and event surface", () => {
+  expect(NotificationApi.tag).toBe("Notification")
+  expect([...NotificationMethodNames]).toEqual(expectedNotificationMethods)
+  expect(Object.keys(NotificationApi.spec)).toEqual(expectedNotificationMethods)
+  expect(Object.keys(NotificationApi.events)).toEqual(["Click", "Action"])
+})
+
+test("Notification service delegates through a substitutable NotificationClient port", async () => {
+  const calls: string[] = []
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const notification = yield* Notification
+      const supported = yield* notification.isSupported()
+      const permission = yield* notification.getPermissionStatus()
+      const requested = yield* notification.requestPermission()
+      const shown = yield* notification.show({
+        title: "Build finished",
+        body: "Open results",
+        actions: [{ id: "open", label: "Open" }],
+        ownerWindow: windowHandle
+      })
+      const clicks = yield* notification.onClick().pipe(Stream.take(1), Stream.runCollect)
+      const actions = yield* notification.onAction().pipe(Stream.take(1), Stream.runCollect)
+      yield* notification.close(shown)
+
+      return { actions, clicks, permission, requested, shown, supported }
+    }).pipe(Effect.provide(makeNotificationServiceLayer(notificationClient(calls))))
+  )
+
+  expect(result.supported).toBe(true)
+  expect(result.permission).toBe("default")
+  expect(result.requested).toBe("granted")
+  expect(result.shown).toEqual(notificationHandle)
+  expect(Array.from(result.clicks)).toEqual([
+    new NotificationClickEvent({ notification: notificationHandle, ownerWindowId: "window-1" })
+  ])
+  expect(Array.from(result.actions)).toEqual([
+    new NotificationActionEvent({
+      notification: notificationHandle,
+      actionId: "open",
+      ownerWindowId: "window-1"
+    })
+  ])
+  expect(calls).toEqual([
+    "isSupported",
+    "getPermissionStatus",
+    "requestPermission",
+    "show:Build finished:open:window-1",
+    "close:notification-1"
+  ])
+})
+
+test("Notification bridge client sends typed host envelopes and decodes events", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = notificationExchange(requests, (request) => ({
+    kind: "success",
+    payload:
+      request.method === "Notification.show"
+        ? notificationHandle
+        : request.method === "Notification.isSupported"
+          ? { supported: true }
+          : request.method === "Notification.requestPermission"
+            ? { state: "granted" }
+            : request.method === "Notification.getPermissionStatus"
+              ? { state: "default" }
+              : undefined
+  }))
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const notification = yield* Notification
+      const supported = yield* notification.isSupported()
+      const status = yield* notification.getPermissionStatus()
+      const requested = yield* notification.requestPermission()
+      const shown = yield* notification.show({
+        title: "Build finished",
+        body: "Open results",
+        actions: [{ id: "open", label: "Open" }],
+        ownerWindow: windowHandle
+      })
+      const action = yield* notification.onAction().pipe(Stream.take(1), Stream.runCollect)
+      yield* notification.close(shown)
+
+      return { action, requested, shown, status, supported }
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          NotificationLive,
+          makeNotificationBridgeClientLayer(exchange, {
+            nextRequestId: nextId([
+              "supported-request",
+              "status-request",
+              "permission-request",
+              "show-request",
+              "close-request"
+            ]),
+            nextTraceId: nextId([
+              "supported-trace",
+              "status-trace",
+              "permission-trace",
+              "show-trace",
+              "close-trace"
+            ]),
+            now: nextNumber([
+              1710000000000, 1710000000001, 1710000000002, 1710000000003, 1710000000004
+            ])
+          })
+        )
+      )
+    )
+  )
+
+  expect(result.supported).toBe(true)
+  expect(result.status).toBe("default")
+  expect(result.requested).toBe("granted")
+  expect(result.shown).toMatchObject(notificationHandle)
+  expect(Array.from(result.action)).toEqual([
+    new NotificationActionEvent({
+      notification: notificationHandle,
+      actionId: "open",
+      ownerWindowId: "window-1"
+    })
+  ])
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["Notification.isSupported", undefined],
+    ["Notification.getPermissionStatus", undefined],
+    ["Notification.requestPermission", undefined],
+    [
+      "Notification.show",
+      {
+        title: "Build finished",
+        body: "Open results",
+        actions: [{ id: "open", label: "Open" }],
+        ownerWindow: windowHandle
+      }
+    ],
+    ["Notification.close", { notification: notificationHandle }]
+  ])
+})
+
+test("Notification bridge client returns invalid input as typed Effect failures", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Notification
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          NotificationLive,
+          makeNotificationBridgeClientLayer(
+            notificationExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const exit = await Effect.runPromiseExit(client.show({ title: "Missing body" } as never))
+
+  expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
+test("unsupported Notification client reports deferred host methods as Effect values", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const notification = yield* Notification
+      const supported = yield* notification.isSupported()
+      const permission = yield* notification.getPermissionStatus()
+      const showExit = yield* Effect.exit(
+        notification.show({ title: "Build finished", body: "Open results" })
+      )
+
+      return { permission, showExit, supported }
+    }).pipe(Effect.provide(makeNotificationServiceLayer(makeUnsupportedNotificationClient())))
+  )
+
+  expect(result.supported).toBe(false)
+  expect(result.permission).toBe("denied")
+  expectExitFailure(
+    result.showExit,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "operation" in error &&
+      error.operation === "Notification.show"
+  )
+})
+
 test("WindowApi declares the Phase 5 Window method surface", () => {
   expect(WindowApi.tag).toBe("Window")
   expect([...WindowMethodNames]).toEqual(expectedWindowMethods)
@@ -1386,6 +1605,44 @@ const clipboardClient = (calls: string[]): ClipboardClientApi => ({
   clear: () => recordVoid(calls, "clear")
 })
 
+const notificationClient = (calls: string[]): NotificationClientApi => ({
+  show: (input) =>
+    Effect.sync(() => {
+      calls.push(
+        `show:${input.title}:${input.actions?.map((action) => action.id).join(",") ?? ""}:${input.ownerWindow?.id ?? ""}`
+      )
+      return notificationHandle
+    }),
+  close: (notification) => recordVoid(calls, `close:${notification.id}`),
+  isSupported: () =>
+    Effect.sync(() => {
+      calls.push("isSupported")
+      return new NotificationSupportedResult({ supported: true })
+    }),
+  requestPermission: () =>
+    Effect.sync(() => {
+      calls.push("requestPermission")
+      return new NotificationPermissionResult({ state: "granted" })
+    }),
+  getPermissionStatus: () =>
+    Effect.sync(() => {
+      calls.push("getPermissionStatus")
+      return new NotificationPermissionResult({ state: "default" })
+    }),
+  onClick: () =>
+    Stream.make(
+      new NotificationClickEvent({ notification: notificationHandle, ownerWindowId: "window-1" })
+    ),
+  onAction: () =>
+    Stream.make(
+      new NotificationActionEvent({
+        notification: notificationHandle,
+        actionId: "open",
+        ownerWindowId: "window-1"
+      })
+    )
+})
+
 const noopWindowClient: WindowClientApi = {
   create: () => Effect.succeed(windowHandle),
   show: () => Effect.void,
@@ -1526,6 +1783,48 @@ const clipboardExchange = (
   request: (request) => {
     requests.push(request)
     return Effect.succeed(respond(request))
+  }
+})
+
+const notificationExchange = (
+  requests: HostProtocolRequestEnvelope[],
+  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
+): ApiClientExchange => ({
+  request: (request) => {
+    requests.push(request)
+    return Effect.succeed(respond(request))
+  },
+  subscribe: (method) =>
+    method === "Notification.Action"
+      ? Stream.make(
+          new HostProtocolEventEnvelope({
+            kind: "event",
+            timestamp: 1710000000400,
+            traceId: "event-trace",
+            method,
+            payload: {
+              notification: notificationHandle,
+              actionId: "open",
+              ownerWindowId: "window-1"
+            }
+          })
+        )
+      : method === "Notification.Click"
+        ? Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              timestamp: 1710000000401,
+              traceId: "event-trace",
+              method,
+              payload: {
+                notification: notificationHandle,
+                ownerWindowId: "window-1"
+              }
+            })
+          )
+        : Stream.empty,
+  resource: {
+    dispose: () => Effect.void
   }
 })
 
