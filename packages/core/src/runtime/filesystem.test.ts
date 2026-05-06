@@ -338,6 +338,16 @@ test("Filesystem realpath returns SymlinkEscapesRoot for symlink escapes", async
   expectFailureTag(exit, "SymlinkEscapesRoot")
 })
 
+test("Filesystem realpath validates capability input", async () => {
+  const service = await makeTestFilesystem()
+
+  const exit = await Effect.runPromiseExit(
+    service.realpath("/tmp/project", "filesystem.delete" as never)
+  )
+
+  expectFailureTag(exit, "InvalidArgument")
+})
+
 test("Filesystem denies hard-linked files with SymlinkEscapesRoot", async () => {
   const allowed = await tempDirectory()
   const denied = await tempDirectory()

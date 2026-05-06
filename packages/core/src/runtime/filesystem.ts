@@ -34,6 +34,16 @@ export class FilesystemPathInput extends Schema.Class<FilesystemPathInput>("File
   path: NonEmptyPath
 }) {}
 
+export const FilesystemPathCapability = Schema.Literals(["filesystem.read", "filesystem.write"])
+export type FilesystemPathCapability = typeof FilesystemPathCapability.Type
+
+export class FilesystemRealpathInput extends Schema.Class<FilesystemRealpathInput>(
+  "FilesystemRealpathInput"
+)({
+  path: NonEmptyPath,
+  capability: Schema.optionalKey(FilesystemPathCapability)
+}) {}
+
 export class FilesystemWriteInput extends Schema.Class<FilesystemWriteInput>(
   "FilesystemWriteInput"
 )({
@@ -88,8 +98,6 @@ export class FilesystemEvent extends Schema.Class<FilesystemEvent>("FilesystemEv
 }) {}
 
 export type FilesystemError = HostProtocolError
-
-export type FilesystemPathCapability = "filesystem.read" | "filesystem.write"
 
 export interface FilesystemApi {
   readonly read: (path: string) => Effect.Effect<Uint8Array, FilesystemError, never>
@@ -170,18 +178,25 @@ export const makeFilesystem = (
             catch: (error) => mapFilesystemError(error, authorizedPath, "Filesystem.read")
           }).pipe(Effect.map((bytes) => new Uint8Array(bytes)))
         }).pipe(Effect.withSpan("Filesystem.read", { attributes: { path } })),
-      realpath: (path: string, capability: FilesystemPathCapability = "filesystem.read") =>
+      realpath: (path: string, capability?: FilesystemPathCapability) =>
         Effect.gen(function* () {
-          const input = yield* decodePathInput({ path }, "Filesystem.realpath")
+          const input = yield* decodeRealpathInput(
+            { path, ...(capability === undefined ? {} : { capability }) },
+            "Filesystem.realpath"
+          )
           return yield* authorizeFilesystemPath(
             adapter,
             permissions,
             input.path,
-            capability,
+            input.capability ?? "filesystem.read",
             "Filesystem.realpath",
             "existing"
           )
-        }).pipe(Effect.withSpan("Filesystem.realpath", { attributes: { path, capability } })),
+        }).pipe(
+          Effect.withSpan("Filesystem.realpath", {
+            attributes: { path, capability: capability ?? "filesystem.read" }
+          })
+        ),
       write: (path: string, bytes: Uint8Array) =>
         Effect.gen(function* () {
           const input = yield* decodeWriteInput({ path, bytes }, "Filesystem.write")
@@ -473,6 +488,16 @@ const decodeWriteInput = (
   operation: string
 ): Effect.Effect<FilesystemWriteInput, HostProtocolInvalidArgumentError, never> =>
   Schema.decodeUnknownEffect(FilesystemWriteInput)(input).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeRealpathInput = (
+  input: unknown,
+  operation: string
+): Effect.Effect<FilesystemRealpathInput, HostProtocolInvalidArgumentError, never> =>
+  Schema.decodeUnknownEffect(FilesystemRealpathInput)(input).pipe(
     Effect.mapError((error) =>
       makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
     )
