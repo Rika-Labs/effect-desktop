@@ -2,14 +2,15 @@
 
 ## Triage table
 
-| # | Comment | Verdict | Reason / fix |
-| --- | --- | --- | --- |
-| 1 | Credentials are resolved before artifact discovery | Address | Reordered artifact discovery before credential resolution so a missing package output returns `NotarizeFileError` first. |
-| 2 | Password-env redaction is not tested | Address | Added an Apple ID/password-env regression test proving the runner receives the real password and `notarize-report.json` persists `<redacted>`. |
+| #   | Comment                                            | Verdict | Reason / fix                                                                                                                                   |
+| --- | -------------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Credentials are resolved before artifact discovery | Address | Reordered artifact discovery before credential resolution so a missing package output returns `NotarizeFileError` first.                       |
+| 2   | Password-env redaction is not tested               | Address | Added an Apple ID/password-env regression test proving the runner receives the real password and `notarize-report.json` persists `<redacted>`. |
 
 ## Commits made
 
-- Pending at artifact creation time.
+- `95082d1` — `Address notarization review findings (#86)`
+- Pending formatting follow-up commit.
 
 ## Escalations
 
