@@ -282,13 +282,11 @@ impl PtyJob {
             JOB_OBJECT_LIMIT_BREAKAWAY_OK, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
         };
 
-        let process = child
-            .as_raw_handle()
-            .ok_or_else(|| PtyError::InvalidState {
-                current: "missing-process-handle",
-                attempted: "attach-job",
-                operation: "Pty.open",
-            })?;
+        let process = child.as_raw_handle().ok_or(PtyError::InvalidState {
+            current: "missing-process-handle",
+            attempted: "attach-job",
+            operation: "Pty.open",
+        })?;
         let job = unsafe { CreateJobObjectW(null(), null()) };
         if job.is_null() {
             return Err(map_io_error(std::io::Error::last_os_error(), "Pty.open"));
