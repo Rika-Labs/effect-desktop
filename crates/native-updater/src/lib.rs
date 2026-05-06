@@ -25,6 +25,7 @@ pub struct VerifiedManifest {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpdatePolicy {
+    pub app_id: String,
     pub channel: UpdateChannel,
     pub platform: UpdatePlatform,
     pub installed_version: String,
@@ -58,6 +59,7 @@ pub struct UpdateAuditRow {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UpdateAuditEvent {
+    AppIdMismatch,
     WrongChannel,
     BelowMinVersion,
     DowngradeRefused,
@@ -75,6 +77,10 @@ pub enum UpdateCheckError {
         value: String,
         source: VersionSource,
         message: String,
+    },
+    AppIdMismatch {
+        expected: String,
+        actual: String,
     },
     WrongChannel {
         expected: UpdateChannel,
@@ -194,6 +200,17 @@ pub fn evaluate_update(
 ) -> Result<UpdateDecision, Box<UpdatePolicyRejection>> {
     let feed_url = resolve_feed_url(&policy.feed_url, &policy.platform, &policy.channel)
         .map_err(|error| rejection(policy, manifest, error))?;
+
+    if manifest.app_id != policy.app_id {
+        return Err(rejection(
+            policy,
+            manifest,
+            UpdateCheckError::AppIdMismatch {
+                expected: policy.app_id.clone(),
+                actual: manifest.app_id.clone(),
+            },
+        ));
+    }
 
     if manifest.channel != policy.channel {
         return Err(rejection(
@@ -435,6 +452,7 @@ fn audit_event(error: &UpdateCheckError) -> UpdateAuditEvent {
     match error {
         UpdateCheckError::FeedUrlTemplateInvalid { .. } => UpdateAuditEvent::FeedUrlTemplateInvalid,
         UpdateCheckError::VersionInvalid { .. } => UpdateAuditEvent::InvalidVersion,
+        UpdateCheckError::AppIdMismatch { .. } => UpdateAuditEvent::AppIdMismatch,
         UpdateCheckError::WrongChannel { .. } => UpdateAuditEvent::WrongChannel,
         UpdateCheckError::BelowMinVersion { .. } => UpdateAuditEvent::BelowMinVersion,
         UpdateCheckError::DowngradeRefused { .. } => UpdateAuditEvent::DowngradeRefused,
@@ -449,6 +467,9 @@ fn audit_reason(error: &UpdateCheckError) -> String {
         } => format!("feed URL template is missing {missing_placeholder}"),
         UpdateCheckError::VersionInvalid { value, source, .. } => {
             format!("{source:?} version {value} is not valid semver")
+        }
+        UpdateCheckError::AppIdMismatch { expected, actual } => {
+            format!("manifest appId {actual} does not match configured appId {expected}")
         }
         UpdateCheckError::WrongChannel { expected, actual } => {
             format!(
@@ -621,6 +642,25 @@ mod tests {
     }
 
     #[test]
+    fn policy_rejects_manifest_for_a_different_app_id() {
+        let mut manifest = verified_manifest("1.2.3", UpdateChannel::Stable, false, None);
+        manifest.app_id = "dev.effect-desktop.other".to_string();
+        let policy = update_policy(UpdateChannel::Stable, "1.0.0", None);
+
+        let rejection =
+            evaluate_update(&policy, &manifest).expect_err("wrong appId must fail closed");
+
+        assert_eq!(
+            rejection.error,
+            UpdateCheckError::AppIdMismatch {
+                expected: "dev.effect-desktop.playground".to_string(),
+                actual: "dev.effect-desktop.other".to_string()
+            }
+        );
+        assert_eq!(rejection.audit.event, UpdateAuditEvent::AppIdMismatch);
+    }
+
+    #[test]
     fn canary_policy_accepts_canary_manifest_and_resolves_feed_url() {
         let manifest = verified_manifest("1.2.3", UpdateChannel::Canary, false, None);
         let policy = update_policy(UpdateChannel::Canary, "1.0.0", None);
@@ -777,6 +817,7 @@ mod tests {
         min_version: Option<&str>,
     ) -> UpdatePolicy {
         UpdatePolicy {
+            app_id: "dev.effect-desktop.playground".to_string(),
             channel,
             platform: UpdatePlatform::MacosArm64,
             installed_version: installed_version.to_string(),
