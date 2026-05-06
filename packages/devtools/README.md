@@ -1,14 +1,19 @@
 # @effect-desktop/devtools
 
-> **Status:** Phase 0 stub. The package directory exists so the workspace resolves and validation gates run; the public API is populated in Phase 18. See `docs/SPEC.md`.
+> **Status:** Phase 17 command observability surface. Broader devtools panels and transports are populated in Phase 19. See `docs/SPEC.md`.
 
 ## Purpose
 
-Runtime inspector for framework primitives: windows, bridge calls, streams, resources, permissions, processes, logs, traces, metrics, performance.
+Runtime inspector projections for framework primitives: windows, bridge calls, streams, resources, permissions, commands, processes, logs, traces, metrics, performance.
 
 ## Public API
 
-Not yet defined. Phase 0 ships an empty barrel export only.
+`CommandsDevtools` is a read-only Effect service over `CommandRegistry`:
+
+- `list()` returns registered commands with capability, owner scope, invocation count, last invocation, and last error.
+- `observeInvocations()` streams command invocation telemetry as it happens.
+
+The package depends on `@effect-desktop/core` because `CommandRegistry` is the source of truth for command state and invocation telemetry. Keeping the projection in devtools thin avoids a second command read model.
 
 ## Non-goals
 
@@ -17,7 +22,15 @@ See `docs/SPEC.md` for the package's normative non-goals.
 ## Usage
 
 ```ts
-// Reserved for Phase 18.
+import { CommandsDevtools } from "@effect-desktop/devtools"
+import { Effect } from "effect"
+
+const rows = await Effect.runPromise(
+  Effect.gen(function* () {
+    const commands = yield* CommandsDevtools
+    return yield* commands.list()
+  })
+)
 ```
 
 ## Testing
@@ -31,6 +44,6 @@ bun run typecheck
 
 None until the package implements native-touching primitives.
 
-## Internal architecture
+## Internal Architecture
 
-To be documented as the package is built out.
+Devtools services project existing runtime services. They do not own application authority, invoke commands, or invent independent telemetry stores.

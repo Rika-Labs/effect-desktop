@@ -1,4 +1,4 @@
-import { Context, Data, Effect, Option, Ref, Schema } from "effect"
+import { Context, Data, Effect, Option, PubSub, Ref, Schema, Stream } from "effect"
 
 import { AuditEvent, emitAuditEvent } from "./audit-events.js"
 import type { EventLogError, EventLogStore } from "./event-log.js"
@@ -18,6 +18,7 @@ import {
 } from "./resources.js"
 
 const NonEmptyString = Schema.NonEmptyString
+const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export class CommandRegistryInvalidInputError extends Data.TaggedError("InvalidInput")<{
@@ -84,10 +85,25 @@ export interface CommandRegistration<I, O> {
   readonly handler: (input: I) => Effect.Effect<O, unknown, never>
 }
 
+export class CommandInvocationRecord extends Schema.Class<CommandInvocationRecord>(
+  "CommandInvocationRecord"
+)({
+  commandId: Schema.String,
+  actor: Schema.Unknown,
+  traceId: NonEmptyString,
+  outcome: Schema.Literals(["success", "failure"]),
+  timestamp: NonNegativeInt,
+  durationMs: NonNegativeInt,
+  errorTag: Schema.optionalKey(NonEmptyString)
+}) {}
+
 export class CommandSnapshot extends Schema.Class<CommandSnapshot>("CommandSnapshot")({
   id: NonEmptyString,
   capability: Schema.Unknown,
-  ownerScope: NonEmptyString
+  ownerScope: NonEmptyString,
+  invocationCount: NonNegativeInt,
+  lastInvocation: Schema.optionalKey(CommandInvocationRecord),
+  lastError: Schema.optionalKey(CommandInvocationRecord)
 }) {}
 
 export interface CommandRegistryApi {
@@ -101,6 +117,7 @@ export interface CommandRegistryApi {
     context: PermissionContext
   ) => Effect.Effect<unknown, CommandRegistryError, never>
   readonly list: () => Effect.Effect<readonly CommandSnapshot[], never, never>
+  readonly observeInvocations: () => Stream.Stream<CommandInvocationRecord, never, never>
 }
 
 export interface CommandRegistryOptions {
@@ -118,6 +135,9 @@ interface StoredCommand {
   readonly resourceGeneration: number
   readonly registrationToken: symbol
   readonly handler: (input: unknown) => Effect.Effect<unknown, unknown, never>
+  readonly invocationCount: number
+  readonly lastInvocation?: CommandInvocationRecord
+  readonly lastError?: CommandInvocationRecord
 }
 
 export const makeCommandRegistry = (
@@ -127,6 +147,7 @@ export const makeCommandRegistry = (
 ): Effect.Effect<CommandRegistryApi, never, never> =>
   Effect.gen(function* () {
     const commands = yield* Ref.make<ReadonlyMap<string, StoredCommand>>(new Map())
+    const invocations = yield* PubSub.sliding<CommandInvocationRecord>({ capacity: 1024 })
     const now = options.now ?? Date.now
 
     const remove = (
@@ -177,25 +198,7 @@ export const makeCommandRegistry = (
           }
         }).pipe(Effect.withSpan("CommandRegistry.unregister")),
       invoke: (id, input, context) =>
-        Effect.gen(function* () {
-          const decodedId = yield* decodeCommandId(id, "CommandRegistry.invoke")
-          const command = yield* getCommand(commands, decodedId, "CommandRegistry.invoke")
-          const decodedInput = yield* decodeCommandInput(command, input)
-          const grant = yield* permissions.check(command.capability, context, {
-            source: `command:${decodedId}`
-          })
-          const output = yield* permissions.use(grant, invokeCommandHandler(command, decodedInput))
-          const decodedOutput = yield* decodeCommandOutput(command, output)
-          yield* auditCommand(
-            options.audit,
-            "command-invoked",
-            decodedId,
-            "success",
-            now,
-            grant.traceId
-          )
-          return decodedOutput
-        }).pipe(Effect.withSpan("CommandRegistry.invoke", { attributes: { commandId: id } })),
+        invokeCommand(commands, invocations, permissions, options.audit, now, id, input, context),
       list: () =>
         Ref.get(commands).pipe(
           Effect.map((current) =>
@@ -205,12 +208,18 @@ export const makeCommandRegistry = (
                   new CommandSnapshot({
                     id: command.id,
                     capability: command.capability,
-                    ownerScope: command.ownerScope
+                    ownerScope: command.ownerScope,
+                    invocationCount: command.invocationCount,
+                    ...(command.lastInvocation === undefined
+                      ? {}
+                      : { lastInvocation: command.lastInvocation }),
+                    ...(command.lastError === undefined ? {} : { lastError: command.lastError })
                   })
               )
               .sort((left, right) => left.id.localeCompare(right.id))
           )
-        )
+        ),
+      observeInvocations: () => Stream.fromPubSub(invocations)
     } satisfies CommandRegistryApi)
   })
 
@@ -224,6 +233,95 @@ export class CommandRegistry extends Context.Service<CommandRegistry, CommandReg
     })
   }
 ) {}
+
+const invokeCommand = (
+  commands: Ref.Ref<ReadonlyMap<string, StoredCommand>>,
+  invocations: PubSub.PubSub<CommandInvocationRecord>,
+  permissions: PermissionRegistryApi,
+  audit: EventLogStore | undefined,
+  now: () => number,
+  id: string,
+  input: unknown,
+  context: PermissionContext
+): Effect.Effect<unknown, CommandRegistryError, never> => {
+  const startedAt = now()
+
+  return Effect.gen(function* () {
+    const decodedId = yield* decodeCommandId(id, "CommandRegistry.invoke")
+    const command = yield* getCommand(commands, decodedId, "CommandRegistry.invoke")
+    const decodedInput = yield* decodeCommandInput(command, input)
+    const grant = yield* permissions.check(command.capability, context, {
+      source: `command:${decodedId}`
+    })
+    const output = yield* permissions.use(grant, invokeCommandHandler(command, decodedInput))
+    const decodedOutput = yield* decodeCommandOutput(command, output)
+    yield* auditCommand(audit, "command-invoked", decodedId, "success", now, grant.traceId)
+    return decodedOutput
+  }).pipe(
+    Effect.tap(() =>
+      recordCommandInvocation(commands, invocations, now, startedAt, id, context, "success")
+    ),
+    Effect.tapError((error: CommandRegistryError) =>
+      recordCommandInvocation(
+        commands,
+        invocations,
+        now,
+        startedAt,
+        id,
+        context,
+        "failure",
+        errorTag(error)
+      )
+    ),
+    Effect.withSpan("CommandRegistry.invoke", { attributes: { commandId: id } })
+  )
+}
+
+const recordCommandInvocation = (
+  commands: Ref.Ref<ReadonlyMap<string, StoredCommand>>,
+  invocations: PubSub.PubSub<CommandInvocationRecord>,
+  now: () => number,
+  startedAt: number,
+  commandId: string,
+  context: PermissionContext,
+  outcome: "success" | "failure",
+  errorTag?: string
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const timestamp = now()
+    const record = new CommandInvocationRecord({
+      commandId,
+      actor: context.actor,
+      traceId: context.traceId ?? fallbackTraceId(commandId),
+      outcome,
+      timestamp,
+      durationMs: Math.max(0, timestamp - startedAt),
+      ...(errorTag === undefined ? {} : { errorTag })
+    })
+
+    yield* Ref.update(commands, (current) => {
+      const command = current.get(commandId)
+      if (command === undefined) {
+        return current
+      }
+
+      const next = new Map(current)
+      next.set(commandId, {
+        ...command,
+        invocationCount: command.invocationCount + 1,
+        lastInvocation: record,
+        ...(outcome === "failure" ? { lastError: record } : {})
+      })
+      return next
+    })
+    yield* PubSub.publish(invocations, record)
+  })
+
+const fallbackTraceId = (commandId: string): string =>
+  commandId.length === 0 ? "command:unknown" : `command:${commandId}`
+
+const errorTag = (error: CommandRegistryError): string =>
+  "_tag" in error && typeof error._tag === "string" ? error._tag : "PermissionRegistryError"
 
 const registerCommand = <I, O>(
   commands: Ref.Ref<ReadonlyMap<string, StoredCommand>>,
@@ -270,7 +368,8 @@ const registerCommand = <I, O>(
       resourceId,
       resourceGeneration: registeredResourceGeneration,
       registrationToken,
-      handler: registration.handler as (input: unknown) => Effect.Effect<unknown, unknown, never>
+      handler: registration.handler as (input: unknown) => Effect.Effect<unknown, unknown, never>,
+      invocationCount: 0
     }
 
     const reserved = yield* Ref.modify(commands, (current) => {
