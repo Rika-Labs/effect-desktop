@@ -119,6 +119,140 @@ test("desktop check --production treats missing renderer path as a usage error",
   expect(stderr.join("")).toContain("--renderer requires a path")
 })
 
+test("desktop check --repro exits zero for byte-identical staged and packaged outputs", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
+  try {
+    await writePlaygroundFixture(directory)
+    const commandRunner = deterministicBuildRunner()
+    const packageRunner = deterministicPackageRunner(() => "deb")
+    const stdout: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: [
+          "check",
+          "--repro",
+          "--config",
+          "apps/playground/desktop.config.ts",
+          "--platform",
+          "linux-x64",
+          "--artifact",
+          "deb"
+        ],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        commandRunner,
+        packageCommandRunner: packageRunner,
+        writeStdout: (text) => {
+          stdout.push(text)
+        },
+        writeStderr: () => {}
+      })
+    )
+
+    expect(exitCode).toBe(0)
+    expect(stdout.join("")).toContain("byte-identical")
+    expect(stdout.join("")).toContain("target            linux-x64")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --repro reports the differing file and byte offset", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
+  try {
+    await writePlaygroundFixture(directory)
+    const commandRunner = deterministicBuildRunner()
+    let packagePass = 0
+    const packageRunner = deterministicPackageRunner(() => {
+      packagePass += 1
+      return packagePass === 1 ? "deb-a" : "deb-b"
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: [
+          "check",
+          "--repro",
+          "--config",
+          "apps/playground/desktop.config.ts",
+          "--platform",
+          "linux-x64",
+          "--artifact",
+          "deb"
+        ],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        commandRunner,
+        packageCommandRunner: packageRunner,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const output = stderr.join("")
+    expect(exitCode).toBe(1)
+    expect(output).toContain("package-output")
+    expect(output).toContain(".deb")
+    expect(output).toContain("offset          4")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --repro --json returns structured diff reports", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
+  try {
+    await writePlaygroundFixture(directory)
+    const commandRunner = deterministicBuildRunner()
+    let packagePass = 0
+    const packageRunner = deterministicPackageRunner(() => {
+      packagePass += 1
+      return packagePass === 1 ? "deb-a" : "deb-b"
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: [
+          "check",
+          "--repro",
+          "--config",
+          "apps/playground/desktop.config.ts",
+          "--platform",
+          "linux-x64",
+          "--artifact",
+          "deb",
+          "--json"
+        ],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        commandRunner,
+        packageCommandRunner: packageRunner,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const report = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly report: {
+        readonly differences: readonly [{ readonly firstDifferenceOffset: number }]
+      }
+    }
+    expect(exitCode).toBe(1)
+    expect(report.tag).toBe("ReproDiffError")
+    expect(report.report.differences[0]?.firstDifferenceOffset).toBe(4)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop build stages renderer runtime host bridge manifests and report", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-"))
   try {
@@ -555,6 +689,40 @@ const writeBuildLayoutFixture = async (
     )}\n`
   )
 }
+
+const deterministicBuildRunner = (): CommandRunner => (invocation) =>
+  Effect.gen(function* () {
+    if (invocation.step === "renderer") {
+      yield* Effect.promise(() => mkdir(join(invocation.cwd, "dist"), { recursive: true }))
+      yield* Effect.promise(() =>
+        writeFile(join(invocation.cwd, "dist", "index.html"), "<h1>ok</h1>")
+      )
+    }
+    if (invocation.step === "runtime") {
+      const outdir = invocation.args[invocation.args.indexOf("--outdir") + 1]
+      if (outdir !== undefined) {
+        yield* Effect.promise(() => mkdir(outdir, { recursive: true }))
+        yield* Effect.promise(() => writeFile(join(outdir, "main.js"), "console.log('runtime')\n"))
+      }
+    }
+    if (invocation.step === "native-host") {
+      yield* Effect.promise(() =>
+        writeFile(join(invocation.cwd, "target", "debug", "host"), "host")
+      )
+    }
+  })
+
+const deterministicPackageRunner =
+  (content: () => string): PackageCommandRunner =>
+  (invocation) =>
+    Effect.gen(function* () {
+      if (invocation.step === "linux-deb") {
+        const output = invocation.args.at(-1)
+        if (output !== undefined) {
+          yield* Effect.promise(() => writeFile(output, content()))
+        }
+      }
+    })
 
 const fixedClock = (values: readonly number[]): (() => number) => {
   let index = 0
