@@ -9,7 +9,6 @@ import {
   writeFile
 } from "node:fs/promises"
 import { watch as nodeWatch } from "node:fs"
-import { join } from "node:path"
 
 import {
   HostProtocolDiskFullError,
@@ -343,7 +342,7 @@ const handleWatchEvent = (
   event: RawFilesystemEvent
 ): Effect.Effect<void, never, never> => {
   const filename = event.filename
-  const path = filename === undefined ? directory : join(directory, filename)
+  const path = filename === undefined ? directory : appendWatchPathSegment(directory, filename)
 
   return Effect.gen(function* () {
     const kind = yield* classifyWatchEvent(adapter, path, event)
@@ -386,6 +385,13 @@ const classifyWatchEvent = (
       return Effect.fail(mapFilesystemError(error, path, "Filesystem.watch"))
     })
   )
+}
+
+const appendWatchPathSegment = (directory: string, filename: string): string => {
+  if (directory.endsWith("/") || directory.endsWith("\\")) {
+    return `${directory}${filename}`
+  }
+  return `${directory}${directory.includes("\\") && !directory.includes("/") ? "\\" : "/"}${filename}`
 }
 
 const statKind = (stats: Awaited<ReturnType<typeof nodeStat>>): FilesystemEntryKind => {
