@@ -1,17 +1,23 @@
 import { expect, test } from "bun:test"
-import { Effect } from "effect"
+import { Effect, Exit } from "effect"
 
 import {
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
   makeHostProtocolNotFoundError
 } from "@effect-desktop/bridge"
-import { makeResourceRegistry, type ResourceId } from "@effect-desktop/core"
+import {
+  SecretValue,
+  makeSecrets,
+  makeResourceRegistry,
+  type ResourceId
+} from "@effect-desktop/core"
 
 import {
   assertNoOpenResourcesIn,
   formatLeakedHandleReport,
   leakedHandles,
+  makeMemorySecretsSafeStorage,
   registerLeakMatchers,
   runHeadless,
   ResourceLeakError
@@ -204,6 +210,49 @@ test("runHeadless preserves typed destroy errors from the mock host", async () =
   expect(result._tag).toBe("Failure")
   if (result._tag === "Failure") {
     expect(JSON.stringify(result.cause.toJSON())).toContain("NotFound")
+  }
+})
+
+test("makeMemorySecretsSafeStorage backs Secrets with copied in-memory values", async () => {
+  const storage = makeMemorySecretsSafeStorage()
+  const secrets = await Effect.runPromise(
+    makeSecrets(storage, {
+      appId: "com.rika.test",
+      permissions: { read: ["auth"], write: ["auth"] }
+    })
+  )
+  const original = SecretValue.fromUtf8("refresh-token")
+
+  await Effect.runPromise(secrets.set("auth", "token", original))
+  await Effect.runPromise(original.dispose())
+  const stored = await Effect.runPromise(secrets.get("auth", "token"))
+  const snapshot = await Effect.runPromise(storage.snapshot())
+  await Effect.runPromise(secrets.delete("auth", "token"))
+  const missing = await Effect.runPromiseExit(secrets.get("auth", "token"))
+
+  expect(new TextDecoder().decode(stored.unsafeBytes())).toBe("refresh-token")
+  expect([...snapshot.keys()]).toEqual(["com.rika.test/auth/token"])
+  expect(Exit.isFailure(missing)).toBe(true)
+  if (Exit.isFailure(missing)) {
+    expect(JSON.stringify(missing.cause.toJSON())).toContain("SecretNotFound")
+  }
+})
+
+test("makeMemorySecretsSafeStorage models unavailable platform storage as typed values", async () => {
+  const secrets = await Effect.runPromise(
+    makeSecrets(makeMemorySecretsSafeStorage({ available: false }), {
+      appId: "com.rika.test",
+      permissions: { read: ["auth"], write: ["auth"] }
+    })
+  )
+
+  const unavailable = await Effect.runPromiseExit(
+    secrets.set("auth", "token", SecretValue.fromUtf8("refresh-token"))
+  )
+
+  expect(Exit.isFailure(unavailable)).toBe(true)
+  if (Exit.isFailure(unavailable)) {
+    expect(JSON.stringify(unavailable.cause.toJSON())).toContain("SafeStorageUnavailable")
   }
 })
 

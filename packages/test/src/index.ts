@@ -5,9 +5,12 @@ import {
   HOST_PING_METHOD,
   HOST_PROTOCOL_VERSION,
   HOST_VERSION_METHOD,
+  HostProtocolNotFoundError,
   HostProtocolResponseEnvelope,
+  HostProtocolUnsupportedError,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
+  hostProtocolErrorRecoverableDefault,
   makeHostHandshakeClient,
   makeHostProtocolInvalidOutputError,
   makeHostProtocolNotFoundError,
@@ -20,13 +23,15 @@ import {
 } from "@effect-desktop/bridge"
 import {
   ResourceRegistry,
+  SecretValue,
   makeResourceRegistry,
   type RegistrySnapshot,
   type ResourceEntry,
   type ResourceHandle,
   type ResourceRegistryApi,
   type ResourceId,
-  type ResourceKind
+  type ResourceKind,
+  type SecretsSafeStorageApi
 } from "@effect-desktop/core"
 
 export interface LeakDetectionOptions {
@@ -82,6 +87,56 @@ export interface HeadlessRuntime {
     request: HostProtocolRequestEnvelope
   ) => Effect.Effect<HostProtocolResponseEnvelope, HostProtocolError, never>
   readonly window: HostWindowClient
+}
+
+export interface MemorySecretsOptions {
+  readonly available?: boolean
+}
+
+export interface MemorySecretsSafeStorage extends SecretsSafeStorageApi {
+  readonly snapshot: () => Effect.Effect<ReadonlyMap<string, Uint8Array>, never, never>
+}
+
+export const makeMemorySecretsSafeStorage = (
+  options: MemorySecretsOptions = {}
+): MemorySecretsSafeStorage => {
+  const values = new Map<string, Uint8Array>()
+  const available = options.available ?? true
+
+  return {
+    isAvailable: () => Effect.succeed(available),
+    set: (key, value) =>
+      available
+        ? Effect.sync(() => {
+            values.set(key, value.unsafeBytes())
+          })
+        : Effect.fail(unsupportedSafeStorage("SafeStorage.set")),
+    get: (key) =>
+      available
+        ? Effect.gen(function* () {
+            const value = values.get(key)
+            if (value === undefined) {
+              return yield* Effect.fail(secretNotFound(key, "SafeStorage.get"))
+            }
+
+            return SecretValue.fromBytes(value)
+          })
+        : Effect.fail(unsupportedSafeStorage("SafeStorage.get")),
+    delete: (key) =>
+      available
+        ? Effect.sync(() => {
+            values.delete(key)
+          })
+        : Effect.fail(unsupportedSafeStorage("SafeStorage.delete")),
+    list: () =>
+      available
+        ? Effect.sync(() => [...values.keys()].sort())
+        : Effect.fail(unsupportedSafeStorage("SafeStorage.list")),
+    snapshot: () =>
+      Effect.sync(
+        () => new Map([...values.entries()].map(([key, value]) => [key, new Uint8Array(value)]))
+      )
+  }
 }
 
 export const runHeadless = <A, E, R>(
@@ -403,6 +458,24 @@ let matchersRegistered = false
 const DEFAULT_HEADLESS_SCOPE = "headless"
 const DEFAULT_WINDOW_CREATE_PAYLOAD = Symbol("DEFAULT_WINDOW_CREATE_PAYLOAD")
 const DEFAULT_ALLOWED_KINDS = ["app"] as const satisfies readonly ResourceKind[]
+
+const secretNotFound = (key: string, operation: string): HostProtocolNotFoundError =>
+  new HostProtocolNotFoundError({
+    tag: "NotFound",
+    resource: key,
+    message: `secret not found: ${key}`,
+    operation,
+    recoverable: hostProtocolErrorRecoverableDefault("NotFound")
+  })
+
+const unsupportedSafeStorage = (operation: string): HostProtocolUnsupportedError =>
+  new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "memory secrets safe storage is unavailable",
+    message: `unsupported SafeStorage method: ${operation}`,
+    operation,
+    recoverable: hostProtocolErrorRecoverableDefault("Unsupported")
+  })
 
 const isRegistrySnapshot = (value: unknown): value is RegistrySnapshot => {
   return (
