@@ -61,6 +61,14 @@ import {
   type NotarizeCommandRunner,
   type NotarizePipelineError
 } from "./notarization-pipeline.js"
+import {
+  runDesktopPublish,
+  PublishConfigError,
+  PublishFileError,
+  PublishSignatureError,
+  type DesktopPublishReport,
+  type PublishPipelineError
+} from "./update-manifest.js"
 
 export {
   runDesktopPackage,
@@ -119,6 +127,18 @@ export {
   type NotarizeStepReport,
   type NotarizeTarget
 } from "./notarization-pipeline.js"
+export {
+  canonicalUpdateManifestBytes,
+  runDesktopPublish,
+  type DesktopPublishOptions,
+  type DesktopPublishReport,
+  type PublishArtifactKind,
+  type PublishChannel,
+  type PublishPipelineError,
+  type PublishTarget,
+  type UpdateArtifactManifest,
+  type UpdateManifest
+} from "./update-manifest.js"
 
 export class CliUsageError extends Error {
   public override readonly name = "CliUsageError"
@@ -274,13 +294,17 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
       return yield* runNotarizeCli(options)
     }
 
+    if (options.argv[0] === "publish") {
+      return yield* runPublishCli(options)
+    }
+
     if (options.argv[0] === "check" && options.argv.includes("--repro")) {
       return yield* runReproCheckCli(options)
     }
 
     if (options.argv[0] !== "check" || !options.argv.includes("--production")) {
       options.writeStderr(
-        "Usage: desktop build --config <path>\nUsage: desktop package --config <path>\nUsage: desktop sign --config <path>\nUsage: desktop notarize --config <path>\nUsage: desktop doctor [--config <path>] [--ci] [--json]\nUsage: desktop check --production --config <path>\nUsage: desktop check --repro --config <path>\n"
+        "Usage: desktop build --config <path>\nUsage: desktop package --config <path>\nUsage: desktop sign --config <path>\nUsage: desktop notarize --config <path>\nUsage: desktop publish --config <path>\nUsage: desktop doctor [--config <path>] [--ci] [--json]\nUsage: desktop check --production --config <path>\nUsage: desktop check --repro --config <path>\n"
       )
       return 1
     }
@@ -654,6 +678,53 @@ const runDoctorCli = (options: CliRunOptions): Effect.Effect<number, never, neve
     return report.passed ? 0 : 1
   })
 
+const runPublishCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
+  Effect.gen(function* () {
+    if (options.argv.includes("--help")) {
+      options.writeStdout(PUBLISH_HELP)
+      return 0
+    }
+
+    const configPath = yield* readOptionalPathArg(options.argv, "--config", options.writeStderr)
+    if (configPath === undefined && options.argv.includes("--config")) {
+      return 1
+    }
+    const platform = yield* readOptionalPathArg(options.argv, "--platform", options.writeStderr)
+    if (platform === undefined && options.argv.includes("--platform")) {
+      return 1
+    }
+
+    const report = yield* runDesktopPublish({
+      cwd: options.cwd,
+      configPath: configPath ?? "desktop.config.ts",
+      platform,
+      now: options.now ?? Date.now
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          if (options.argv.includes("--json")) {
+            options.writeStderr(`${JSON.stringify(formatPublishError(error), null, 2)}\n`)
+          } else {
+            options.writeStderr(`${formatPublishErrorText(error)}\n`)
+          }
+          return undefined
+        })
+      )
+    )
+
+    if (report === undefined) {
+      return 1
+    }
+
+    if (options.argv.includes("--json")) {
+      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+    } else {
+      options.writeStdout(formatPublishReport(report))
+    }
+
+    return 0
+  })
+
 const runReproCheckCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
   Effect.gen(function* () {
     const configPath = yield* readOptionalPathArg(options.argv, "--config", options.writeStderr)
@@ -1022,6 +1093,13 @@ const NOTARIZE_HELP = [
   ""
 ].join("\n")
 
+const PUBLISH_HELP = [
+  "Usage: desktop publish --config <path> [--platform <target>] [--json]",
+  "",
+  "Publishes an Ed25519-signed update-manifest.json from packaged release artifacts.",
+  ""
+].join("\n")
+
 const DOCTOR_HELP = [
   "Usage: desktop doctor [--config <path>] [--ci] [--json]",
   "",
@@ -1202,6 +1280,45 @@ const formatNotarizeError = (
 
 const formatNotarizeErrorText = (error: NotarizePipelineError): string => {
   const formatted = formatNotarizeError(error)
+  return formatted.remediation === undefined
+    ? `${formatted.tag}: ${formatted.message}`
+    : `${formatted.tag}: ${formatted.message}\nNext: ${formatted.remediation}`
+}
+
+const formatPublishReport = (report: DesktopPublishReport): string =>
+  [
+    "Effect Desktop publish",
+    `app               ${report.appId}`,
+    `version           ${report.version}`,
+    `channel           ${report.channel}`,
+    `keyVersion        ${report.keyVersion}`,
+    `manifest          ${report.manifestPath}`,
+    ...report.artifacts.map(
+      (artifact) =>
+        `${artifact.platform.padEnd(17)} ${artifact.kind.padEnd(8)} ${artifact.sizeBytes
+          .toString()
+          .padStart(4)}b ${artifact.url}`
+    ),
+    ""
+  ].join("\n")
+
+const formatPublishError = (
+  error: PublishPipelineError
+): { readonly tag: string; readonly message: string; readonly remediation?: string } => {
+  if (error instanceof PublishConfigError) {
+    return { tag: error._tag, message: error.message, remediation: error.remediation }
+  }
+  if (error instanceof PublishFileError) {
+    return { tag: error._tag, message: error.message }
+  }
+  if (error instanceof PublishSignatureError) {
+    return { tag: error._tag, message: error.message }
+  }
+  return { tag: "UnknownPublishError", message: "unknown publish error" }
+}
+
+const formatPublishErrorText = (error: PublishPipelineError): string => {
+  const formatted = formatPublishError(error)
   return formatted.remediation === undefined
     ? `${formatted.tag}: ${formatted.message}`
     : `${formatted.tag}: ${formatted.message}\nNext: ${formatted.remediation}`
