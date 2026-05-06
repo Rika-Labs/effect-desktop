@@ -100,3 +100,20 @@ test("desktop check --production fails when an explicit renderer scan file is un
     await rm(directory, { recursive: true, force: true })
   }
 })
+
+test("desktop check --production treats missing renderer path as a usage error", async () => {
+  const stderr: string[] = []
+  const exitCode = await Effect.runPromise(
+    runCli({
+      argv: ["check", "--production", "--renderer", "--config", "desktop.config.ts"],
+      cwd: process.cwd(),
+      writeStdout: () => {},
+      writeStderr: (text) => {
+        stderr.push(text)
+      }
+    })
+  )
+
+  expect(exitCode).toBe(1)
+  expect(stderr.join("")).toContain("--renderer requires a path")
+})

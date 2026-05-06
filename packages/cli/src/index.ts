@@ -1,5 +1,7 @@
-import { Effect } from "effect"
+import { isAbsolute, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
+
+import { Effect } from "effect"
 
 import {
   formatProductionCheckReport,
@@ -26,8 +28,18 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
       return 1
     }
 
-    const configPath = configArg(options.argv) ?? "desktop.config.ts"
-    const absoluteConfigPath = resolvePath(options.cwd, configPath)
+    const configPath = yield* readOptionalPathArg(options.argv, "--config", options.writeStderr)
+    if (configPath === undefined && options.argv.includes("--config")) {
+      return 1
+    }
+
+    const rendererPath = yield* readOptionalPathArg(options.argv, "--renderer", options.writeStderr)
+    if (rendererPath === undefined && options.argv.includes("--renderer")) {
+      return 1
+    }
+
+    const selectedConfigPath = configPath ?? "desktop.config.ts"
+    const absoluteConfigPath = resolvePath(options.cwd, selectedConfigPath)
     const config = yield* loadConfig(absoluteConfigPath).pipe(
       Effect.catch((error) =>
         Effect.sync(() => {
@@ -40,7 +52,7 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
       return 1
     }
 
-    const rendererFiles = yield* loadRendererFiles(options.cwd, options.argv).pipe(
+    const rendererFiles = yield* loadRendererFiles(options.cwd, rendererPath).pipe(
       Effect.catch((error) =>
         Effect.sync(() => {
           options.writeStderr(`${error.name}: ${error.message}\n`)
@@ -51,9 +63,10 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
     if (rendererFiles === undefined) {
       return 1
     }
+
     const report = yield* runProductionCheck({
       config,
-      configPath,
+      configPath: selectedConfigPath,
       rendererFiles
     }).pipe(
       Effect.catch((error) =>
@@ -77,29 +90,39 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
     return 1
   })
 
-const configArg = (argv: readonly string[]): string | undefined => {
-  const index = argv.indexOf("--config")
-  if (index === -1) {
-    return undefined
-  }
-  const value = argv[index + 1]
-  if (value === undefined || value.startsWith("--")) {
-    return undefined
-  }
-  return value
-}
+const readOptionalPathArg = (
+  argv: readonly string[],
+  name: "--config" | "--renderer",
+  writeStderr: (text: string) => void
+): Effect.Effect<string | undefined, never, never> =>
+  optionalPathArg(argv, name).pipe(
+    Effect.catch((error) =>
+      Effect.sync(() => {
+        writeStderr(`${error.name}: ${error.message}\n`)
+        return undefined
+      })
+    )
+  )
 
-const rendererArg = (argv: readonly string[]): string | undefined => {
-  const index = argv.indexOf("--renderer")
-  if (index === -1) {
-    return undefined
-  }
-  const value = argv[index + 1]
-  if (value === undefined || value.startsWith("--")) {
-    return undefined
-  }
-  return value
-}
+const optionalPathArg = (
+  argv: readonly string[],
+  name: "--config" | "--renderer"
+): Effect.Effect<string | undefined, CliUsageError, never> =>
+  Effect.sync(() => {
+    const index = argv.indexOf(name)
+    if (index === -1) {
+      return undefined
+    }
+    const value = argv[index + 1]
+    if (value === undefined || value.startsWith("--")) {
+      return new CliUsageError(`${name} requires a path`)
+    }
+    return value
+  }).pipe(
+    Effect.flatMap((value) =>
+      value instanceof CliUsageError ? Effect.fail(value) : Effect.succeed(value)
+    )
+  )
 
 const loadConfig = (path: string): Effect.Effect<ProductionSecurityConfig, Error, never> =>
   Effect.gen(function* () {
@@ -116,10 +139,9 @@ const loadConfig = (path: string): Effect.Effect<ProductionSecurityConfig, Error
 
 const loadRendererFiles = (
   cwd: string,
-  argv: readonly string[]
+  rendererPath: string | undefined
 ): Effect.Effect<readonly ProductionCheckFile[], Error, never> =>
   Effect.gen(function* () {
-    const rendererPath = rendererArg(argv)
     if (rendererPath === undefined) {
       return []
     }
@@ -135,7 +157,7 @@ const loadRendererFiles = (
   })
 
 const resolvePath = (cwd: string, path: string): string =>
-  path.startsWith("/") ? path : `${cwd}/${path}`
+  isAbsolute(path) ? path : resolve(cwd, path)
 
 const pathToFileUrl = (path: string): string => pathToFileURL(path).href
 
