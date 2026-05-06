@@ -500,6 +500,24 @@ test("MemoryFilesystem follows symlinks in intermediate path segments", async ()
   expect(text(output)).toBe("resolved")
 })
 
+test("MemoryFilesystem resolves relative symlink fixtures from the link directory", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const filesystem = await Effect.runPromise(
+    makeMemoryFilesystem(registry, {
+      directories: ["/workspace/sub"],
+      files: [{ path: "/workspace/sub/file.txt", bytes: bytes("relative") }],
+      symlinks: [{ path: "/workspace/link.txt", target: "sub/file.txt" }],
+      permissions: {
+        readRoots: ["/workspace"]
+      }
+    })
+  )
+
+  const output = await Effect.runPromise(filesystem.read("/workspace/link.txt"))
+
+  expect(text(output)).toBe("relative")
+})
+
 test("MemoryFilesystem rejects directory targets for writes and atomic renames", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   const filesystem = await Effect.runPromise(

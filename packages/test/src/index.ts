@@ -654,7 +654,7 @@ const makeMemoryFilesystemAdapter = (options: MemoryFilesystemOptions = {}): Fil
     ensureDirectory(nodes, posix.dirname(path), now())
     nodes.set(path, {
       kind: "symlink",
-      target: normalizeMemoryPath(symlink.target),
+      target: normalizeMemorySymlinkTarget(symlink.target),
       modifiedAtMs: now()
     })
   }
@@ -693,9 +693,21 @@ const makeMemoryFilesystemAdapter = (options: MemoryFilesystemOptions = {}): Fil
       if (descendants.length > 0) {
         return Promise.reject(nodeError("ENOTEMPTY", toPath))
       }
+      if (node.kind === "directory" && isDescendant(toPath, fromPath)) {
+        return Promise.reject(nodeError("EINVAL", toPath))
+      }
 
       nodes.delete(fromPath)
       nodes.set(toPath, cloneNode(node))
+      if (node.kind === "directory") {
+        for (const childPath of childPaths(nodes, fromPath)) {
+          const child = nodes.get(childPath)
+          if (child !== undefined) {
+            nodes.delete(childPath)
+            nodes.set(`${toPath}${childPath.slice(fromPath.length)}`, cloneNode(child))
+          }
+        }
+      }
       emitMemoryWatch(watchers, fromPath, "rename")
       emitMemoryWatch(watchers, toPath, "rename")
       return Promise.resolve()
@@ -872,9 +884,12 @@ const resolveExistingPath = (
       }
 
       const remaining = segments.slice(index + 1)
+      const target = node.target.startsWith("/")
+        ? node.target
+        : normalizeMemoryPath(posix.join(posix.dirname(current), node.target))
       return resolveExistingPath(
         nodes,
-        posix.join(node.target, ...remaining),
+        posix.join(target, ...remaining),
         new Set([...seen, current])
       )
     }
@@ -894,6 +909,11 @@ const normalizeMemoryPath = (path: string): string => {
   const withoutDrive = path.replaceAll("\\", "/").replace(/^\/?[A-Za-z]:/, "")
   const normalized = posix.normalize(withoutDrive)
   return normalized.startsWith("/") ? normalized : `/${normalized}`
+}
+
+const normalizeMemorySymlinkTarget = (target: string): string => {
+  const normalized = target.replaceAll("\\", "/")
+  return normalized.startsWith("/") ? normalizeMemoryPath(normalized) : posix.normalize(normalized)
 }
 
 const toPlatformMemoryPath = (path: string): string =>
