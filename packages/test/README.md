@@ -20,6 +20,11 @@ typed bridge clients. Tests pin success, failure, and stream responses by full
 contract method name while the fake records method, payload, trace id, and
 timestamp for assertions.
 
+`MemoryFilesystem.layer(options)` provides the core `Filesystem` service backed
+by an in-memory tree. It supports reads, writes, atomic replacement, stats,
+removal, watcher streams, permissions, and symlink fixtures through the same
+core service policy used by the live filesystem.
+
 `runHeadless(body, options)` runs host-protocol clients against `MockHost` and
 fails with a typed `ResourceLeakError` if non-app resources remain open.
 
