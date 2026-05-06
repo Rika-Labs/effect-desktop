@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit, Fiber, Option, Queue, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Fiber, Option, Queue, Ref, Schema, Stream } from "effect"
 
 import {
   type ApiContractClass,
@@ -104,8 +104,10 @@ type BoundStream = {
 }
 
 type StreamQueue = {
-  readonly queue: Queue.Queue<HostProtocolStreamEnvelope, Cause.Done>
+  readonly capacity: number
+  readonly evictedFrames: Ref.Ref<number>
   readonly overflow: NonNullable<BackpressureSpec["overflow"]>
+  readonly queue: Queue.Queue<HostProtocolStreamEnvelope, Cause.Done>
 }
 
 type ActiveStream = {
@@ -124,6 +126,14 @@ export interface BridgeStreamRegistryEntry {
   readonly state: "open" | "terminal"
   readonly terminal?: ApiStreamTerminalType
   readonly terminalAt?: number
+  readonly backpressure?: BridgeStreamBackpressureMetrics
+}
+
+export interface BridgeStreamBackpressureMetrics {
+  readonly evictedFrames: number
+  readonly overflow: NonNullable<BackpressureSpec["overflow"]>
+  readonly queueCapacity: number
+  readonly queueDepth: number
 }
 
 export interface BridgeStreamRegistry {
@@ -135,6 +145,10 @@ export interface BridgeStreamRegistry {
   ) => Effect.Effect<boolean, never, never>
   readonly isTerminal: (streamId: string) => Effect.Effect<boolean, never, never>
   readonly gcExpired: (now: number) => Effect.Effect<number, never, never>
+  readonly updateBackpressure: (
+    streamId: string,
+    metrics: BridgeStreamBackpressureMetrics
+  ) => Effect.Effect<void, never, never>
   readonly snapshot: () => Effect.Effect<ReadonlyArray<BridgeStreamRegistryEntry>, never, never>
 }
 
@@ -169,6 +183,17 @@ export const makeBridgeStreamRegistry = (cleanupGraceMs = 30_000): BridgeStreamR
         return true
       }),
     isTerminal: (streamId) => Effect.sync(() => entries.get(streamId)?.state === "terminal"),
+    updateBackpressure: (streamId, metrics) =>
+      Effect.sync(() => {
+        const current = entries.get(streamId)
+        if (current === undefined) {
+          return
+        }
+        entries.set(streamId, {
+          ...current,
+          backpressure: metrics
+        })
+      }),
     gcExpired: (now) =>
       Effect.sync(() => {
         let removed = 0
@@ -263,6 +288,7 @@ const streamDispatch = (
       const streamId = options.nextStreamId()
       yield* options.registry.register(streamId)
       const queue = yield* makeStreamQueue(bound.spec)
+      yield* syncBackpressureMetrics(options.registry, streamId, queue)
       const producer = runProducer(request, streamId, bound, queue, options, bound.handler(input))
 
       const fiber = yield* Effect.forkScoped(producer)
@@ -273,6 +299,7 @@ const streamDispatch = (
       active.set(request.id, { interrupt, options, queue, request, streamId })
 
       return Stream.fromQueue(queue.queue).pipe(
+        Stream.tap(() => syncBackpressureMetrics(options.registry, streamId, queue)),
         Stream.ensuring(
           Effect.gen(function* () {
             yield* interrupt
@@ -370,6 +397,7 @@ const makeStreamQueue = (spec: BoundStream["spec"]): Effect.Effect<StreamQueue, 
     const backpressure = spec.backpressure ?? spec.output.backpressure
     const capacity = backpressure?.size ?? DEFAULT_STREAM_QUEUE_SIZE
     const overflow = backpressure?.overflow ?? "error"
+    const evictedFrames = yield* Ref.make(0)
     const queue =
       overflow === "dropOldest"
         ? yield* Queue.sliding<HostProtocolStreamEnvelope, Cause.Done>(capacity)
@@ -377,7 +405,7 @@ const makeStreamQueue = (spec: BoundStream["spec"]): Effect.Effect<StreamQueue, 
           ? yield* Queue.bounded<HostProtocolStreamEnvelope, Cause.Done>(capacity)
           : yield* Queue.dropping<HostProtocolStreamEnvelope, Cause.Done>(capacity)
 
-    return { queue, overflow }
+    return { capacity, evictedFrames, overflow, queue }
   })
 
 const offerStreamFrame = (
@@ -393,16 +421,29 @@ const offerStreamFrame = (
 
     if (streamQueue.overflow === "block") {
       yield* Queue.offer(streamQueue.queue, frame)
+      yield* syncBackpressureMetrics(options.registry, frame.resourceId, streamQueue)
       return
     }
 
+    const wasFull = Queue.isFullUnsafe(streamQueue.queue)
     const offered = Queue.offerUnsafe(streamQueue.queue, frame)
+    if (offered && wasFull && streamQueue.overflow === "dropOldest") {
+      yield* Ref.update(streamQueue.evictedFrames, (count) => count + 1)
+    }
+
+    if (!offered) {
+      yield* Ref.update(streamQueue.evictedFrames, (count) => count + 1)
+    }
+
+    yield* syncBackpressureMetrics(options.registry, frame.resourceId, streamQueue)
+
     if (!offered && streamQueue.overflow === "error") {
+      const lostFrames = yield* Ref.get(streamQueue.evictedFrames)
       return yield* Effect.fail(
         new HostProtocolBackpressureOverflowError({
           tag: "BackpressureOverflow",
           policy: "error",
-          lostFrames: 1,
+          lostFrames,
           message: "stream subscriber queue exceeded its declared capacity",
           operation,
           recoverable: true
@@ -425,13 +466,38 @@ const offerTerminalFrame = (
         : yield* options.registry.terminate(streamId, terminal, options.now())
 
     if (shouldOffer) {
-      yield* Effect.sync(() => {
+      const terminalEvictions = yield* Effect.sync(() => {
+        let evictions = 0
         while (!Queue.offerUnsafe(streamQueue.queue, frame)) {
           Queue.takeUnsafe(streamQueue.queue)
+          evictions += 1
         }
+        return evictions
       })
+      if (terminalEvictions > 0) {
+        yield* Ref.update(streamQueue.evictedFrames, (count) => count + terminalEvictions)
+      }
+      yield* syncBackpressureMetrics(options.registry, streamId, streamQueue)
     }
   })
+
+const syncBackpressureMetrics = (
+  registry: BridgeStreamRegistry,
+  streamId: string | undefined,
+  streamQueue: StreamQueue
+): Effect.Effect<void, never, never> =>
+  streamId === undefined
+    ? Effect.void
+    : Effect.gen(function* () {
+        const evictedFrames = yield* Ref.get(streamQueue.evictedFrames)
+        const queueDepth = yield* Queue.size(streamQueue.queue)
+        yield* registry.updateBackpressure(streamId, {
+          evictedFrames,
+          overflow: streamQueue.overflow,
+          queueCapacity: streamQueue.capacity,
+          queueDepth
+        })
+      })
 
 const encodeChunkFrame = (
   request: HostProtocolRequestEnvelope,
