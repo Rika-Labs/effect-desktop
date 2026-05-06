@@ -1,23 +1,37 @@
 import { afterEach, expect } from "bun:test"
-import { Context, Data, Effect, Exit, Layer } from "effect"
+import { Context, Data, Effect, Exit, Layer, Stream } from "effect"
 
 import {
+  ApiStreamCompleteFrame,
+  ApiStreamDataFrame,
+  Client,
   HOST_PING_METHOD,
   HOST_PROTOCOL_VERSION,
   HOST_VERSION_METHOD,
+  HostProtocolCancelByRequestEnvelope,
   HostProtocolNotFoundError,
   HostProtocolResponseEnvelope,
+  HostProtocolStreamByRequestEnvelope,
   HostProtocolUnsupportedError,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
   hostProtocolErrorRecoverableDefault,
+  makeHostProtocolInvalidStateError,
   makeHostHandshakeClient,
   makeHostProtocolInvalidOutputError,
   makeHostProtocolNotFoundError,
+  makeStaleHandleError,
   makeHostWindowClient,
+  type ApiClient,
+  type ApiClientExchange,
+  type ApiClientOptions,
+  type ApiClientResponse,
+  type ApiContractClass,
+  type ApiResourceHandle,
   type HostHandshakeClient,
   type HostProtocolError,
   type HostProtocolRequestEnvelope,
+  type HostProtocolStreamEnvelope,
   type HostWindowClient,
   type WindowCreateInput
 } from "@effect-desktop/bridge"
@@ -140,6 +154,158 @@ export const makeMockHost = (options: MockHostOptions = {}): MockHostApi => {
 
 export const MockHostLive = (options: MockHostOptions = {}): Layer.Layer<MockHost> =>
   Layer.succeed(MockHost)(makeMockHost(options))
+
+export interface MockBridgeCall {
+  readonly method: string
+  readonly payload: unknown
+  readonly traceId: string
+  readonly timestamp: number
+}
+
+export interface MockBridgeApi {
+  readonly exchange: ApiClientExchange
+  readonly client: <Contracts extends Readonly<Record<string, ApiContractClass>>>(
+    contracts: Contracts,
+    options?: ApiClientOptions
+  ) => ApiClient<Contracts>
+  readonly calls: () => readonly MockBridgeCall[]
+  readonly cancels: () => readonly HostProtocolCancelByRequestEnvelope[]
+  readonly disposedResources: () => readonly ApiResourceHandle[]
+  readonly succeed: (method: string, payload: unknown) => Effect.Effect<void, never, never>
+  readonly fail: (method: string, error: unknown) => Effect.Effect<void, never, never>
+  readonly resource: (
+    method: string,
+    handle: ApiResourceHandle
+  ) => Effect.Effect<void, never, never>
+  readonly streamChunks: (
+    method: string,
+    chunks: readonly unknown[]
+  ) => Effect.Effect<void, never, never>
+}
+
+export class MockBridge extends Context.Service<MockBridge, MockBridgeApi>()(
+  "@effect-desktop/test/MockBridge"
+) {}
+
+export interface MockBridgeOptions {
+  readonly now?: () => number
+  readonly registry?: ResourceRegistryApi
+}
+
+export const makeMockBridge = (options: MockBridgeOptions = {}): MockBridgeApi => {
+  const calls: MockBridgeCall[] = []
+  const cancels: HostProtocolCancelByRequestEnvelope[] = []
+  const disposedResources: ApiResourceHandle[] = []
+  const responses = new Map<string, ApiClientResponse[]>()
+  const streams = new Map<string, readonly unknown[]>()
+  const now = options.now ?? Date.now
+
+  const enqueue = (
+    method: string,
+    response: ApiClientResponse
+  ): Effect.Effect<void, never, never> =>
+    Effect.sync(() => {
+      const queue = responses.get(method) ?? []
+      queue.push(response)
+      responses.set(method, queue)
+    })
+
+  const exchange: ApiClientExchange = Object.freeze({
+    request: (request: HostProtocolRequestEnvelope) =>
+      Effect.gen(function* () {
+        recordCall(calls, request)
+        const response = responses.get(request.method)?.shift()
+        if (response === undefined) {
+          return yield* Effect.fail(
+            makeHostProtocolInvalidStateError(
+              "missing pinned response",
+              "MockBridge",
+              request.method
+            )
+          )
+        }
+
+        return response
+      }),
+    stream: (request: HostProtocolRequestEnvelope) => {
+      recordCall(calls, request)
+      const chunks = streams.get(request.method)
+      if (chunks === undefined) {
+        return Stream.fail(
+          makeHostProtocolInvalidStateError("missing pinned stream", "MockBridge", request.method)
+        )
+      }
+
+      return Stream.fromIterable(chunks)
+        .pipe(
+          Stream.map((chunk) =>
+            streamEnvelope(request, now(), new ApiStreamDataFrame({ type: "data", chunk }))
+          )
+        )
+        .pipe(
+          Stream.concat(
+            Stream.succeed(
+              streamEnvelope(request, now(), new ApiStreamCompleteFrame({ type: "complete" }))
+            )
+          )
+        )
+    },
+    cancel: (request: HostProtocolCancelByRequestEnvelope) =>
+      Effect.sync(() => {
+        cancels.push(request)
+      }),
+    resource: {
+      dispose: (handle: ApiResourceHandle) =>
+        Effect.gen(function* () {
+          disposedResources.push(handle)
+
+          if (options.registry === undefined) {
+            return
+          }
+
+          const coreHandle = bridgeHandleToCoreHandle(handle)
+          const entry = yield* Effect.mapError(options.registry.assertFresh(coreHandle), (error) =>
+            makeStaleHandleError("Resource.dispose", handle, error.actualGeneration)
+          )
+
+          yield* entry.handle.dispose()
+        })
+    }
+  })
+
+  return Object.freeze({
+    exchange,
+    client: (contracts, clientOptions = {}) => Client(contracts, exchange, clientOptions),
+    calls: () => calls.slice(),
+    cancels: () => cancels.slice(),
+    disposedResources: () => disposedResources.slice(),
+    succeed: (method, payload) => enqueue(method, { kind: "success", payload }),
+    fail: (method, error) => enqueue(method, { kind: "failure", error }),
+    resource: (method, handle) =>
+      Effect.gen(function* () {
+        if (options.registry === undefined) {
+          yield* enqueue(method, { kind: "success", payload: handle })
+          return
+        }
+
+        const registered = yield* options.registry.register({
+          kind: handle.kind,
+          id: handle.id as ResourceId,
+          ownerScope: handle.ownerScope,
+          state: handle.state,
+          reusableId: true
+        })
+        yield* enqueue(method, { kind: "success", payload: coreHandleToBridgeHandle(registered) })
+      }),
+    streamChunks: (method, chunks) =>
+      Effect.sync(() => {
+        streams.set(method, chunks.slice())
+      })
+  } satisfies MockBridgeApi)
+}
+
+export const MockBridgeLive = (options: MockBridgeOptions = {}): Layer.Layer<MockBridge> =>
+  Layer.succeed(MockBridge)(makeMockBridge(options))
 
 export interface HeadlessRuntime {
   readonly calls: () => readonly HeadlessHostCall[]
@@ -348,6 +514,44 @@ const resolveFixture = (
     ? (result as Effect.Effect<unknown, HostProtocolError, never>)
     : Effect.succeed(result)
 }
+
+const recordCall = (calls: MockBridgeCall[], request: HostProtocolRequestEnvelope): void => {
+  calls.push({
+    method: request.method,
+    payload: request.payload,
+    traceId: request.traceId,
+    timestamp: request.timestamp
+  })
+}
+
+const streamEnvelope = (
+  request: HostProtocolRequestEnvelope,
+  timestamp: number,
+  payload: unknown
+): HostProtocolStreamEnvelope =>
+  new HostProtocolStreamByRequestEnvelope({
+    kind: "stream",
+    id: request.id,
+    timestamp,
+    traceId: request.traceId,
+    payload
+  })
+
+const bridgeHandleToCoreHandle = (handle: ApiResourceHandle): ResourceHandle =>
+  Object.freeze({
+    ...handle,
+    id: handle.id as ResourceId,
+    dispose: () => Effect.void
+  })
+
+const coreHandleToBridgeHandle = (handle: ResourceHandle): ApiResourceHandle =>
+  Object.freeze({
+    kind: handle.kind,
+    id: handle.id,
+    generation: handle.generation,
+    ownerScope: handle.ownerScope,
+    state: handle.state
+  })
 
 const hostClientOptions = (options: HeadlessHarnessOptions): HeadlessClientOptions => {
   const resolved: Partial<MutableHeadlessClientOptions> = {}

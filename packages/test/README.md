@@ -15,6 +15,11 @@ substitute that accepts real host-protocol request envelopes, preserves trace
 IDs on responses, records calls, and maintains an in-memory window registry for
 `Window.create` / `Window.destroy`.
 
+`makeMockBridge(options)` returns a contract-aware `ApiClientExchange` fake for
+typed bridge clients. Tests pin success, failure, and stream responses by full
+contract method name while the fake records method, payload, trace id, and
+timestamp for assertions.
+
 `runHeadless(body, options)` runs host-protocol clients against `MockHost` and
 fails with a typed `ResourceLeakError` if non-app resources remain open.
 

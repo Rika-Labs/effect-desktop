@@ -1,14 +1,19 @@
 import { expect, test } from "bun:test"
-import { Effect, Exit } from "effect"
+import { Effect, Exit, Schema, Stream } from "effect"
 
 import {
+  Api,
   HOST_PING_METHOD,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
   HostProtocolNotFoundError,
   makeHostHandshakeClient,
   makeHostProtocolNotFoundError,
-  makeHostWindowClient
+  makeHostWindowClient,
+  type ApiContractClass,
+  type ApiContractSpec,
+  type ApiHandlers,
+  type ApiLayer
 } from "@effect-desktop/bridge"
 import {
   SecretValue,
@@ -22,6 +27,7 @@ import {
   formatLeakedHandleReport,
   leakedHandles,
   makeMemorySecretsSafeStorage,
+  makeMockBridge,
   MockHost,
   MockHostLive,
   registerLeakMatchers,
@@ -222,6 +228,141 @@ test("MockHost reports unknown window destroy as a typed host error", async () =
   }
 })
 
+test("MockBridge records typed client calls and returns pinned successes", async () => {
+  const ProjectApi = testContract("Test.MockBridge.Success", {
+    open: {
+      input: Schema.Struct({ path: Schema.String }),
+      output: Schema.Struct({ id: Schema.String }),
+      error: Schema.Never
+    }
+  })
+  const bridge = makeMockBridge({ now: () => 1710000000400 })
+  await Effect.runPromise(bridge.succeed("Test.MockBridge.Success.open", { id: "project-1" }))
+  const client = bridge.client(
+    { project: ProjectApi },
+    {
+      nextRequestId: nextSequence("request"),
+      nextTraceId: nextSequence("trace"),
+      now: () => 1710000000400
+    }
+  )
+
+  const output = await Effect.runPromise(client.project.open({ path: "/tmp/project" }))
+
+  expect(output).toEqual({ id: "project-1" })
+  expect(bridge.calls()).toEqual([
+    {
+      method: "Test.MockBridge.Success.open",
+      payload: { path: "/tmp/project" },
+      traceId: "trace-0",
+      timestamp: 1710000000400
+    }
+  ])
+})
+
+test("MockBridge returns pinned contract errors through the typed error channel", async () => {
+  const Failure = Schema.Struct({ tag: Schema.Literal("Denied"), reason: Schema.String })
+  const ProjectApi = testContract("Test.MockBridge.Failure", {
+    open: {
+      input: Schema.Struct({ path: Schema.String }),
+      output: Schema.Struct({ id: Schema.String }),
+      error: Failure
+    }
+  })
+  const bridge = makeMockBridge()
+  await Effect.runPromise(
+    bridge.fail("Test.MockBridge.Failure.open", { tag: "Denied", reason: "not allowed" })
+  )
+  const client = bridge.client(
+    { project: ProjectApi },
+    {
+      nextRequestId: nextSequence("request"),
+      nextTraceId: nextSequence("trace")
+    }
+  )
+
+  const exit = await Effect.runPromiseExit(client.project.open({ path: "/tmp/project" }))
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const fail = exit.cause.reasons.find((reason) => reason._tag === "Fail")
+    expect(fail?.error).toEqual({ tag: "Denied", reason: "not allowed" })
+  }
+})
+
+test("MockBridge replays pinned stream chunks in order", async () => {
+  const ProjectApi = testContract("Test.MockBridge.Stream", {
+    watch: {
+      input: Schema.Struct({ path: Schema.String }),
+      output: Api.Stream(Schema.String, Schema.Never),
+      error: Schema.Never
+    }
+  })
+  const bridge = makeMockBridge({ now: () => 1710000000500 })
+  await Effect.runPromise(bridge.streamChunks("Test.MockBridge.Stream.watch", ["a", "b"]))
+  const client = bridge.client(
+    { project: ProjectApi },
+    {
+      nextRequestId: nextSequence("request"),
+      nextTraceId: nextSequence("trace"),
+      now: () => 1710000000500
+    }
+  )
+
+  const chunks = await Effect.runPromise(
+    client.project.watch({ path: "/tmp/project" }).pipe(Stream.runCollect)
+  )
+
+  expect(Array.from(chunks)).toEqual(["a", "b"])
+  expect(bridge.calls().map((call) => call.method)).toEqual(["Test.MockBridge.Stream.watch"])
+})
+
+test("MockBridge returns disposable resource proxies through the registry", async () => {
+  const ProcessApi = testContract("Test.MockBridge.Resource", {
+    spawn: {
+      input: Schema.Void,
+      output: Api.Resource("process", "running"),
+      error: Schema.Never
+    }
+  })
+  const registry = await Effect.runPromise(makeResourceRegistry({ nextId: () => id("process-1") }))
+  const bridge = makeMockBridge({ registry })
+  await Effect.runPromise(
+    bridge.resource("Test.MockBridge.Resource.spawn", {
+      kind: "process",
+      id: "process-1",
+      generation: 0,
+      ownerScope: "window-1",
+      state: "running"
+    })
+  )
+  const client = bridge.client(
+    { process: ProcessApi },
+    {
+      nextRequestId: nextSequence("request"),
+      nextTraceId: nextSequence("trace")
+    }
+  )
+
+  const proxy = await Effect.runPromise(client.process.spawn())
+  const beforeDispose = await Effect.runPromise(registry.list())
+  await Effect.runPromise(proxy.dispose())
+  const afterDispose = await Effect.runPromise(registry.list())
+
+  expect(proxy.kind).toBe("process")
+  expect(beforeDispose.entries.map((entry) => entry.handle.id)).toEqual([id("process-1")])
+  expect(afterDispose.entries).toEqual([])
+  expect(bridge.disposedResources()).toEqual([
+    {
+      kind: "process",
+      id: "process-1",
+      generation: 0,
+      ownerScope: "window-1",
+      state: "running"
+    }
+  ])
+})
+
 test("runHeadless fails when a headless window is left open", async () => {
   let error: unknown
 
@@ -326,4 +467,26 @@ const nextSequence = (prefix: string): (() => string) => {
   let next = 0
 
   return () => `${prefix}-${next++}`
+}
+
+const testContract = <Tag extends string, Spec extends ApiContractSpec>(
+  tag: Tag,
+  spec: Spec
+): ApiContractClass<Tag, Spec> => {
+  const contract = class {
+    static readonly tag = tag
+    static readonly spec = Object.freeze(spec)
+    static readonly events = Object.freeze({})
+
+    static layer<Handlers extends ApiHandlers<Spec>>(
+      handlers: Handlers
+    ): ApiLayer<Tag, Spec, Handlers> {
+      return Object.freeze({
+        contract,
+        handlers: Object.freeze(handlers)
+      })
+    }
+  } as ApiContractClass<Tag, Spec>
+
+  return Object.freeze(contract)
 }
