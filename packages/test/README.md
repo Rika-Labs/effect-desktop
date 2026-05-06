@@ -25,6 +25,12 @@ by an in-memory tree. It supports reads, writes, atomic replacement, stats,
 removal, watcher streams, permissions, and symlink fixtures through the same
 core service policy used by the live filesystem.
 
+`MockProcess.layer(options)` and `MockPTY.layer(options)` provide the core
+`Process` and `PTY` services with deterministic in-memory children. The mocks
+record stdin, writes, resizes, kills, tree cleanup calls, output chunks, and
+exit statuses while keeping validation, permissions, budgets, typed errors, and
+resource cleanup in the production core service path.
+
 `runHeadless(body, options)` runs host-protocol clients against `MockHost` and
 fails with a typed `ResourceLeakError` if non-app resources remain open.
 
