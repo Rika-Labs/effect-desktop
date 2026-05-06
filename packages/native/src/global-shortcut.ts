@@ -245,7 +245,7 @@ export const makeGlobalShortcutAlreadyRegisteredError = (
 const unsupportedError = (method: string): HostProtocolUnsupportedError =>
   new HostProtocolUnsupportedError({
     tag: "Unsupported",
-    reason: "wayland-no-global-shortcut",
+    reason: "host-adapter-unimplemented",
     message: `unsupported GlobalShortcut method: ${method}`,
     operation: method,
     recoverable: false

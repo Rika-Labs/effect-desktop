@@ -2192,7 +2192,15 @@ test("GlobalShortcut conflicts and unsupported behavior are typed Effect values"
       reason: "host-adapter-unimplemented"
     })
   )
-  expectExitFailure(unsupported.registerExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(
+    unsupported.registerExit,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "reason" in error &&
+      error.reason === "host-adapter-unimplemented"
+  )
   expectExitFailure(unsupported.pressedExit, (error) => hasErrorTag(error, "Unsupported"))
 })
 
