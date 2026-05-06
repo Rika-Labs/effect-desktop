@@ -65,11 +65,15 @@ export interface ApiStreamRuntime<Env = never> {
 export interface ApiStreamRuntimeOptions {
   readonly now?: () => number
   readonly nextStreamId?: () => string
+  readonly cleanupGraceMs?: number
+  readonly registry?: BridgeStreamRegistry
 }
 
 interface ResolvedApiStreamRuntimeOptions {
   readonly now: () => number
   readonly nextStreamId: () => string
+  readonly cleanupGraceMs: number
+  readonly registry: BridgeStreamRegistry
 }
 
 export type ApiStreamLayerEnvironment<Layer> =
@@ -98,6 +102,80 @@ type BoundStream = {
 type StreamQueue = {
   readonly queue: Queue.Queue<HostProtocolStreamEnvelope, Cause.Done>
   readonly overflow: NonNullable<BackpressureSpec["overflow"]>
+}
+
+export type ApiStreamTerminalType = "complete" | "error" | "closed"
+
+export interface BridgeStreamRegistryEntry {
+  readonly streamId: string
+  readonly generation: number
+  readonly state: "open" | "terminal"
+  readonly terminal?: ApiStreamTerminalType
+  readonly terminalAt?: number
+}
+
+export interface BridgeStreamRegistry {
+  readonly register: (streamId: string) => Effect.Effect<BridgeStreamRegistryEntry, never, never>
+  readonly terminate: (
+    streamId: string,
+    terminal: ApiStreamTerminalType,
+    now: number
+  ) => Effect.Effect<boolean, never, never>
+  readonly isTerminal: (streamId: string) => Effect.Effect<boolean, never, never>
+  readonly gcExpired: (now: number) => Effect.Effect<number, never, never>
+  readonly snapshot: () => Effect.Effect<ReadonlyArray<BridgeStreamRegistryEntry>, never, never>
+}
+
+export const makeBridgeStreamRegistry = (cleanupGraceMs = 30_000): BridgeStreamRegistry => {
+  const entries = new Map<string, BridgeStreamRegistryEntry>()
+  const generations = new Map<string, number>()
+
+  const registry: BridgeStreamRegistry = {
+    register: (streamId) =>
+      Effect.sync(() => {
+        const previousGeneration = generations.get(streamId)
+        const generation = previousGeneration === undefined ? 0 : previousGeneration + 1
+        const entry = { streamId, generation, state: "open" } satisfies BridgeStreamRegistryEntry
+        entries.set(streamId, entry)
+        generations.set(streamId, generation)
+        return entry
+      }),
+    terminate: (streamId, terminal, now) =>
+      Effect.sync(() => {
+        const current = entries.get(streamId)
+        if (current?.state === "terminal") {
+          return false
+        }
+        entries.set(streamId, {
+          generation: current?.generation ?? 0,
+          state: "terminal",
+          streamId,
+          terminal,
+          terminalAt: now
+        })
+        generations.set(streamId, current?.generation ?? 0)
+        return true
+      }),
+    isTerminal: (streamId) => Effect.sync(() => entries.get(streamId)?.state === "terminal"),
+    gcExpired: (now) =>
+      Effect.sync(() => {
+        let removed = 0
+        for (const [streamId, entry] of entries) {
+          if (
+            entry.state === "terminal" &&
+            entry.terminalAt !== undefined &&
+            now - entry.terminalAt >= cleanupGraceMs
+          ) {
+            entries.delete(streamId)
+            removed += 1
+          }
+        }
+        return removed
+      }),
+    snapshot: () => Effect.sync(() => Array.from(entries.values()))
+  }
+
+  return Object.freeze(registry)
 }
 
 const makeStreams = <Layers extends readonly AnyApiLayer[]>(
@@ -164,7 +242,9 @@ const streamDispatch = (
   return Stream.unwrap(
     Effect.gen(function* () {
       const input = yield* decodeInput(request.method, bound.spec, request.payload)
+      yield* options.registry.gcExpired(options.now())
       const streamId = options.nextStreamId()
+      yield* options.registry.register(streamId)
       const queue = yield* makeStreamQueue(bound.spec)
       const producer = runProducer(request, streamId, bound, queue, options, bound.handler(input))
 
@@ -189,17 +269,24 @@ const runProducer = (
         Stream.mapEffect((chunk) =>
           encodeChunkFrame(request, streamId, bound.spec.output, chunk, options)
         ),
-        Stream.runForEach((frame) => offerStreamFrame(request.method, streamQueue, frame))
+        Stream.runForEach((frame) => offerStreamFrame(request.method, streamQueue, frame, options))
       )
     )
 
     if (Exit.isFailure(exit)) {
       yield* offerTerminalFrame(
         streamQueue,
-        yield* encodeErrorFrame(request, streamId, bound.spec.output, exit.cause, options)
+        yield* encodeErrorFrame(request, streamId, bound.spec.output, exit.cause, options),
+        options,
+        "error"
       )
     } else {
-      yield* offerTerminalFrame(streamQueue, completeFrame(request, streamId, options))
+      yield* offerTerminalFrame(
+        streamQueue,
+        completeFrame(request, streamId, options),
+        options,
+        "complete"
+      )
     }
 
     yield* Queue.end(streamQueue.queue)
@@ -219,7 +306,9 @@ const runProducer = (
               cause,
               recoverable: false
             })
-          )
+          ),
+          options,
+          "error"
         )
         yield* Queue.end(streamQueue.queue)
       })
@@ -244,9 +333,14 @@ const makeStreamQueue = (spec: BoundStream["spec"]): Effect.Effect<StreamQueue, 
 const offerStreamFrame = (
   operation: string,
   streamQueue: StreamQueue,
-  frame: HostProtocolStreamEnvelope
+  frame: HostProtocolStreamEnvelope,
+  options: ResolvedApiStreamRuntimeOptions
 ): Effect.Effect<void, HostProtocolError, never> =>
   Effect.gen(function* () {
+    if (frame.resourceId !== undefined && (yield* options.registry.isTerminal(frame.resourceId))) {
+      return
+    }
+
     if (streamQueue.overflow === "block") {
       yield* Queue.offer(streamQueue.queue, frame)
       return
@@ -269,11 +363,23 @@ const offerStreamFrame = (
 
 const offerTerminalFrame = (
   streamQueue: StreamQueue,
-  frame: HostProtocolStreamEnvelope
+  frame: HostProtocolStreamEnvelope,
+  options: ResolvedApiStreamRuntimeOptions,
+  terminal: ApiStreamTerminalType
 ): Effect.Effect<void, never, never> =>
-  Effect.sync(() => {
-    while (!Queue.offerUnsafe(streamQueue.queue, frame)) {
-      Queue.takeUnsafe(streamQueue.queue)
+  Effect.gen(function* () {
+    const streamId = frame.resourceId
+    const shouldOffer =
+      streamId === undefined
+        ? true
+        : yield* options.registry.terminate(streamId, terminal, options.now())
+
+    if (shouldOffer) {
+      yield* Effect.sync(() => {
+        while (!Queue.offerUnsafe(streamQueue.queue, frame)) {
+          Queue.takeUnsafe(streamQueue.queue)
+        }
+      })
     }
   })
 
@@ -417,8 +523,10 @@ const encodeStreamError = (
   )
 
 const resolveOptions = (options: ApiStreamRuntimeOptions): ResolvedApiStreamRuntimeOptions => ({
+  cleanupGraceMs: options.cleanupGraceMs ?? 30_000,
   now: options.now ?? Date.now,
-  nextStreamId: options.nextStreamId ?? (() => `stream-${globalThis.crypto.randomUUID()}`)
+  nextStreamId: options.nextStreamId ?? (() => `stream-${globalThis.crypto.randomUUID()}`),
+  registry: options.registry ?? makeBridgeStreamRegistry(options.cleanupGraceMs)
 })
 
 const methodName = (tag: string, method: string): string => `${tag}.${method}`

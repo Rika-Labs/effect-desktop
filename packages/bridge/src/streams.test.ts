@@ -11,6 +11,7 @@ import {
   Streams,
   type HostProtocolError,
   type HostProtocolStreamEnvelope,
+  makeBridgeStreamRegistry,
   makeHostProtocolInvalidOutputError
 } from "./index.js"
 
@@ -142,6 +143,73 @@ test("Streams applies error overflow as a BackpressureOverflow terminal frame", 
   )
 
   expectFailureTag(exit, "BackpressureOverflow")
+})
+
+test("Streams records one terminal state and expires it after cleanup grace", async () => {
+  let now = 1_000
+  const registry = makeBridgeStreamRegistry(30_000)
+  const ProjectApi = makeProjectApi("ProjectApi.StreamLifecycle")
+  const runtime = Streams.withOptions(
+    {
+      now: () => now,
+      nextStreamId: () => "stream-lifecycle",
+      registry
+    },
+    ProjectApi.layer({
+      watch: () => Stream.make(new WatchEvent({ sequence: 1, path: "a" }))
+    })
+  )
+  const client = Client({ project: ProjectApi }, streamExchange(runtime, []))
+
+  await Effect.runPromise(
+    client.project.watch(new WatchInput({ projectId: "project-1" })).pipe(Stream.runCollect)
+  )
+
+  const terminalSnapshot = await Effect.runPromise(registry.snapshot())
+  expect(terminalSnapshot).toEqual([
+    {
+      generation: 0,
+      state: "terminal",
+      streamId: "stream-lifecycle",
+      terminal: "complete",
+      terminalAt: 1_000
+    }
+  ])
+
+  now = 31_000
+  const removed = await Effect.runPromise(registry.gcExpired(now))
+  const reused = await Effect.runPromise(registry.register("stream-lifecycle"))
+  expect(removed).toBe(1)
+  expect(reused).toEqual({
+    generation: 1,
+    state: "open",
+    streamId: "stream-lifecycle"
+  })
+})
+
+test("BridgeStreamRegistry refuses duplicate terminal transitions", async () => {
+  const registry = makeBridgeStreamRegistry()
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      yield* registry.register("stream-duplicate")
+      const first = yield* registry.terminate("stream-duplicate", "complete", 10)
+      const second = yield* registry.terminate("stream-duplicate", "error", 11)
+      const snapshot = yield* registry.snapshot()
+      return { first, second, snapshot }
+    })
+  )
+
+  expect(result.first).toBe(true)
+  expect(result.second).toBe(false)
+  expect(result.snapshot).toEqual([
+    {
+      generation: 0,
+      state: "terminal",
+      streamId: "stream-duplicate",
+      terminal: "complete",
+      terminalAt: 10
+    }
+  ])
 })
 
 type ProjectApiSpec = {
