@@ -1,14 +1,28 @@
 # @effect-desktop/test
 
-> **Status:** Phase 0 stub. The package directory exists so the workspace resolves and validation gates run; the public API is populated in Phases 3.5 and 19. See `docs/SPEC.md`.
+> **Status:** Phase 3.5 headless harness is available. Phase 15 adds a memory
+> Secrets safe-storage adapter. See `docs/SPEC.md`.
 
 ## Purpose
 
-Test harness and mock layers: mock host, mock bridge, memory filesystem, mock permissions, mock process, mock PTY, headless runtime.
+Test harness and mock layers: mock host, mock bridge, memory filesystem, mock
+permissions, mock process, mock PTY, headless runtime, and memory secrets.
 
 ## Public API
 
-Not yet defined. Phase 0 ships an empty barrel export only.
+`runHeadless(body, options)` runs host-protocol clients against an in-process
+host fixture and fails with a typed `ResourceLeakError` if non-app resources
+remain open.
+
+`assertNoOpenResourcesIn(registry, options)` and
+`installResourceLeakDetection(registry, options)` provide leak checks for tests
+that own a `ResourceRegistry`.
+
+`makeMemorySecretsSafeStorage(options)` returns a substitutable
+`SecretsSafeStorageApi` for `@effect-desktop/core` `Secrets` tests. It stores
+copied bytes in memory, returns typed not-found failures, can model unavailable
+platform storage, and exposes `snapshot()` for assertions without leaking
+mutable internal state.
 
 ## Non-goals
 
@@ -17,7 +31,20 @@ See `docs/SPEC.md` for the package's normative non-goals.
 ## Usage
 
 ```ts
-// Reserved for Phases 3.5 and 19.
+import { Effect } from "effect"
+
+import { SecretValue, makeSecrets } from "@effect-desktop/core"
+import { makeMemorySecretsSafeStorage } from "@effect-desktop/test"
+
+const program = Effect.gen(function* () {
+  const secrets = yield* makeSecrets(makeMemorySecretsSafeStorage(), {
+    appId: "com.example.app",
+    permissions: { read: ["auth"], write: ["auth"] }
+  })
+
+  yield* secrets.set("auth", "token", SecretValue.fromUtf8("refresh-token"))
+  return yield* secrets.get("auth", "token")
+})
 ```
 
 ## Testing
@@ -33,4 +60,5 @@ None until the package implements native-touching primitives.
 
 ## Internal architecture
 
-To be documented as the package is built out.
+Test substitutes depend on public package contracts. Runtime packages do not
+depend on `@effect-desktop/test`.
