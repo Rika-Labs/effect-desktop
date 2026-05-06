@@ -65,6 +65,10 @@ import {
   PathLive,
   PathMethodNames,
   CanonicalPath,
+  Shell,
+  ShellApi,
+  ShellLive,
+  ShellMethodNames,
   Tray,
   TrayActivatedEvent,
   TrayApi,
@@ -99,10 +103,13 @@ import {
   makeNotificationServiceLayer,
   makePathBridgeClientLayer,
   makePathServiceLayer,
+  makeShellBridgeClientLayer,
+  makeShellServiceLayer,
   makeUnsupportedDialogClient,
   makeUnsupportedMenuClient,
   makeUnsupportedNotificationClient,
   makeUnsupportedPathClient,
+  makeUnsupportedShellClient,
   makeTrayBridgeClientLayer,
   makeTrayServiceLayer,
   makeUnsupportedTrayClient,
@@ -124,6 +131,7 @@ import {
   type NotificationClientApi,
   type NotificationHandle,
   type PathClientApi,
+  type ShellClientApi,
   type TrayClientApi,
   type TrayHandle,
   type WebViewClientApi,
@@ -222,6 +230,13 @@ const expectedPathMethods: Array<(typeof PathMethodNames)[number]> = [
   "temp",
   "home",
   "downloads"
+]
+
+const expectedShellMethods: Array<(typeof ShellMethodNames)[number]> = [
+  "openExternal",
+  "showItemInFolder",
+  "openPath",
+  "trashItem"
 ]
 
 const expectedTrayMethods: Array<(typeof TrayMethodNames)[number]> = [
@@ -1557,6 +1572,110 @@ test("unsupported Path client reports deferred host methods as Effect values", a
   )
 })
 
+test("ShellApi declares the Phase 8 Shell method surface", () => {
+  expect(ShellApi.tag).toBe("Shell")
+  expect([...ShellMethodNames]).toEqual(expectedShellMethods)
+  expect(Object.keys(ShellApi.spec)).toEqual(expectedShellMethods)
+  expect(Object.keys(ShellApi.events)).toEqual([])
+})
+
+test("Shell service delegates through a substitutable ShellClient port", async () => {
+  const calls: string[] = []
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const shell = yield* Shell
+      yield* shell.openExternal("https://example.com/docs")
+      yield* shell.showItemInFolder("/tmp/report.txt")
+      yield* shell.openPath("/tmp/report.txt")
+      yield* shell.trashItem("/tmp/old-report.txt")
+    }).pipe(Effect.provide(makeShellServiceLayer(shellClient(calls))))
+  )
+
+  expect(calls).toEqual([
+    "openExternal:https://example.com/docs:",
+    "showItemInFolder:/tmp/report.txt",
+    "openPath:/tmp/report.txt:false",
+    "trashItem:/tmp/old-report.txt"
+  ])
+})
+
+test("Shell bridge client validates schemes and path argv before transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Shell
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          ShellLive,
+          makeShellBridgeClientLayer(
+            shellExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  await Effect.runPromise(client.openExternal("https://example.com/docs"))
+  const fileExit = await Effect.runPromiseExit(client.openExternal("file:///etc/passwd"))
+  const executableExit = await Effect.runPromiseExit(client.openPath("/tmp/install.sh"))
+  const metacharExit = await Effect.runPromiseExit(client.trashItem("/tmp/a;b.txt"))
+  await Effect.runPromise(client.openPath("/tmp/install.sh", { allowExecutable: true }))
+
+  expectExitFailure(fileExit, (error) => hasErrorTag(error, "PermissionDenied"))
+  expectExitFailure(executableExit, (error) => hasErrorTag(error, "PermissionDenied"))
+  expectExitFailure(metacharExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["Shell.openExternal", { url: "https://example.com/docs" }],
+    ["Shell.openPath", { path: "/tmp/install.sh", allowExecutable: true }]
+  ])
+})
+
+test("Shell bridge client accepts app-declared external URL schemes", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Shell
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          ShellLive,
+          makeShellBridgeClientLayer(
+            shellExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const denied = await Effect.runPromiseExit(client.openExternal("myapp://callback"))
+  await Effect.runPromise(client.openExternal("myapp://callback", { allowedSchemes: ["myapp"] }))
+
+  expectExitFailure(denied, (error) => hasErrorTag(error, "PermissionDenied"))
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["Shell.openExternal", { url: "myapp://callback", allowedSchemes: ["myapp"] }]
+  ])
+})
+
+test("unsupported Shell client reports deferred host methods as Effect values", async () => {
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const shell = yield* Shell
+      return yield* Effect.exit(shell.openExternal("https://example.com"))
+    }).pipe(Effect.provide(makeShellServiceLayer(makeUnsupportedShellClient())))
+  )
+
+  expectExitFailure(
+    exit,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "operation" in error &&
+      error.operation === "Shell.openExternal"
+  )
+})
+
 test("WindowApi declares the Phase 5 Window method surface", () => {
   expect(WindowApi.tag).toBe("Window")
   expect([...WindowMethodNames]).toEqual(expectedWindowMethods)
@@ -2105,6 +2224,15 @@ const pathResult = (
     return new CanonicalPath({ path })
   })
 
+const shellClient = (calls: string[]): ShellClientApi => ({
+  openExternal: (url, options) =>
+    recordVoid(calls, `openExternal:${url}:${options?.allowedSchemes?.join(",") ?? ""}`),
+  showItemInFolder: (path) => recordVoid(calls, `showItemInFolder:${path}`),
+  openPath: (path, options) =>
+    recordVoid(calls, `openPath:${path}:${options?.allowExecutable ?? false}`),
+  trashItem: (path) => recordVoid(calls, `trashItem:${path}`)
+})
+
 const noopWindowClient: WindowClientApi = {
   create: () => Effect.succeed(windowHandle),
   show: () => Effect.void,
@@ -2345,6 +2473,16 @@ const notificationExchange = (
 })
 
 const pathExchange = (
+  requests: HostProtocolRequestEnvelope[],
+  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
+): ApiClientExchange => ({
+  request: (request) => {
+    requests.push(request)
+    return Effect.succeed(respond(request))
+  }
+})
+
+const shellExchange = (
   requests: HostProtocolRequestEnvelope[],
   respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
 ): ApiClientExchange => ({
