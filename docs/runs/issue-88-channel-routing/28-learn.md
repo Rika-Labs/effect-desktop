@@ -16,7 +16,7 @@ None.
 
 ## Commit And Push
 
-Pending commit: record updater routing learning.
+- `a268275` — `Record updater routing learning (#88)`.
 
 ## Handoff
 
