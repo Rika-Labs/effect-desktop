@@ -63,6 +63,15 @@ test("CSP config flags unknown directives that add sources", () => {
   ])
 })
 
+test("CSP config flags duplicate directives", () => {
+  expect(cspWeakenings({ policy: "script-src 'unsafe-inline'; script-src 'self'" })).toEqual([
+    {
+      directive: "script-src",
+      reason: "script-src appears more than once"
+    }
+  ])
+})
+
 test("ProductionChecker fails unsafe CSP without acknowledgement", async () => {
   const report = await Effect.runPromise(
     runProductionCheck({

@@ -156,6 +156,11 @@ interface RuleContext {
 
 type Rule = (context: RuleContext) => readonly ProductionCheckViolation[]
 
+interface ParsedCspPolicy {
+  readonly directives: ReadonlyMap<string, readonly string[]>
+  readonly duplicates: readonly string[]
+}
+
 export const defineDesktopConfig = <Config extends ProductionSecurityConfig>(
   config: Config
 ): Config => config
@@ -189,10 +194,10 @@ export const renderEffectiveCsp = (
   const directives = DEFAULT_CSP_DIRECTIVES.map(
     ([directive, defaultValues]): [string, readonly string[]] => [
       directive,
-      overrides.get(directive) ?? defaultValues
+      overrides.directives.get(directive) ?? defaultValues
     ]
   )
-  const extraDirectives = [...overrides.entries()].filter(
+  const extraDirectives = [...overrides.directives.entries()].filter(
     ([directive]) => !defaultDirectives.has(directive)
   )
 
@@ -209,7 +214,13 @@ export const cspWeakenings = (csp: CspPolicy): readonly CspWeakening[] => {
   }
 
   const overrides = parseCspPolicy(csp.policy)
-  for (const [directive, overrideValues] of overrides) {
+  for (const directive of overrides.duplicates) {
+    weakenings.push({
+      directive,
+      reason: `${directive} appears more than once`
+    })
+  }
+  for (const [directive, overrideValues] of overrides.directives) {
     const forbidden = overrideValues.find(
       (value) => value === "'unsafe-inline'" || value === "'unsafe-eval'"
     )
@@ -591,21 +602,25 @@ const renderCspDirectives = (
     )
     .join("; ")
 
-const parseCspPolicy = (policy: string | undefined): ReadonlyMap<string, readonly string[]> => {
+const parseCspPolicy = (policy: string | undefined): ParsedCspPolicy => {
   if (policy === undefined) {
-    return new Map()
+    return { directives: new Map(), duplicates: [] }
   }
 
   const directives = new Map<string, readonly string[]>()
+  const duplicates: string[] = []
   for (const rawDirective of policy.split(";")) {
     const parts = rawDirective.trim().split(/\s+/u).filter(isNonEmpty)
     const [directive, ...values] = parts
     if (directive !== undefined) {
+      if (directives.has(directive) && !duplicates.includes(directive)) {
+        duplicates.push(directive)
+      }
       directives.set(directive, values)
     }
   }
 
-  return directives
+  return { directives, duplicates }
 }
 
 const defaultCspDirectiveValues = (directive: string): ReadonlySet<string> | undefined => {
