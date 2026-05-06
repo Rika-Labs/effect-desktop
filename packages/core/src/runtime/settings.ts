@@ -110,6 +110,11 @@ export interface SettingsStore {
     value: A,
     options?: SettingsMutationOptions
   ) => Effect.Effect<void, SettingsError, never>
+  readonly delete: (
+    key: string,
+    options?: SettingsMutationOptions
+  ) => Effect.Effect<void, SettingsError, never>
+  readonly keys: () => Effect.Effect<readonly string[], SettingsError, never>
   readonly update: <A, E, R>(
     key: string,
     schema: Schema.Schema<A>,
@@ -235,6 +240,38 @@ const makeStore = (
           source: options?.source ?? "set"
         })
       }).pipe(Effect.withSpan("Settings.set", { attributes: { namespace, key } })),
+    delete: (key: string, options?: SettingsMutationOptions) =>
+      Effect.gen(function* () {
+        const validatedKey = yield* decodeKey(key, "Settings.delete")
+        const oldValue = yield* readRaw(connection, namespace, validatedKey, "Settings.delete")
+        yield* exec(
+          connection,
+          "DELETE FROM settings_values WHERE namespace = ? AND key = ?",
+          [namespace, validatedKey],
+          "Settings.delete"
+        )
+        if (Option.isSome(oldValue)) {
+          yield* publishChange(changes, {
+            key: validatedKey,
+            oldValue: oldValue.value,
+            newValue: undefined,
+            source: options?.source ?? "delete"
+          })
+        }
+      }).pipe(Effect.withSpan("Settings.delete", { attributes: { namespace, key } })),
+    keys: () =>
+      Effect.gen(function* () {
+        const rows = yield* query(
+          connection,
+          "SELECT key FROM settings_values WHERE namespace = ? ORDER BY key ASC",
+          [namespace],
+          "Settings.keys"
+        )
+        return rows.flatMap((row) => {
+          const key = row["key"]
+          return typeof key === "string" ? [key] : []
+        })
+      }).pipe(Effect.withSpan("Settings.keys", { attributes: { namespace } })),
     update: <A, E, R>(
       key: string,
       schema: Schema.Schema<A>,

@@ -38,6 +38,31 @@ describe("Settings", () => {
     expect(Option.isNone(stored)).toBe(true)
   })
 
+  test("keys returns namespace-local keys in stable order", async () => {
+    const { store } = await makeFixture()
+
+    await Effect.runPromise(store.set("z.token", UserName, "last"))
+    await Effect.runPromise(store.set("a.token", UserName, "first"))
+
+    expect(await Effect.runPromise(store.keys())).toEqual(["a.token", "z.token"])
+  })
+
+  test("delete removes a setting and emits a change event", async () => {
+    const { store } = await makeFixture()
+    const fiber = Effect.runFork(store.changes().pipe(Stream.take(2), Stream.runCollect))
+
+    await Effect.runPromise(store.set("api.token", UserName, "secret", { source: "seed" }))
+    await Effect.runPromise(store.delete("api.token", { source: "migration" }))
+    const stored = await Effect.runPromise(store.get("api.token", UserName))
+    const changes = Array.from(await Effect.runPromise(Fiber.join(fiber)))
+
+    expect(Option.isNone(stored)).toBe(true)
+    expect(changes).toEqual([
+      { key: "api.token", newValue: "secret", source: "seed" },
+      { key: "api.token", oldValue: "secret", source: "migration" }
+    ])
+  })
+
   test("invalid set value returns typed InvalidArgument before writing", async () => {
     const { store } = await makeFixture()
 
