@@ -427,6 +427,13 @@ const globalShortcutCommandCapability: NormalizedCapability = {
   audit: "always"
 }
 
+const menuCommandCapability: NormalizedCapability = {
+  kind: "native.invoke",
+  primitive: "Command",
+  methods: ["app.file.open"],
+  audit: "always"
+}
+
 const webviewHandle: WebViewHandle = {
   kind: "webview",
   id: "webview-1",
@@ -786,6 +793,8 @@ test("MenuApi declares the Phase 7 Menu method and event surface", () => {
 
 test("Menu service delegates through a substitutable MenuClient port", async () => {
   const calls: string[] = []
+  const commandCalls: unknown[] = []
+  const commandLayer = await makeCommandBindingLayer(commandCalls)
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const menu = yield* Menu
@@ -798,10 +807,12 @@ test("Menu service delegates through a substitutable MenuClient port", async () 
       yield* menu.clear()
 
       return { activated, linuxAppMenu }
-    }).pipe(Effect.provide(makeMenuServiceLayer(menuClient(calls))))
+    }).pipe(Effect.provide(Layer.mergeAll(makeMenuServiceLayer(menuClient(calls)), commandLayer)))
   )
+  await Effect.runPromise(Effect.sleep("10 millis"))
 
   expect(result.linuxAppMenu).toBe(false)
+  expect(commandCalls).toEqual([{ itemId: "file.open", windowId: "window-1" }])
   expect(Array.from(result.activated)).toEqual([
     new MenuActivatedEvent({
       itemId: "file.open",
@@ -821,6 +832,7 @@ test("Menu service delegates through a substitutable MenuClient port", async () 
 test("Menu bridge client validates templates, sends host envelopes, and decodes activation events", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const exchange = menuExchange(requests, () => ({ kind: "success", payload: undefined }))
+  const commandLayer = await makeCommandBindingLayer()
 
   const result = await Effect.runPromise(
     Effect.gen(function* () {
@@ -834,23 +846,26 @@ test("Menu bridge client validates templates, sends host envelopes, and decodes 
       return { activated }
     }).pipe(
       Effect.provide(
-        Layer.provide(
-          MenuLive,
-          makeMenuBridgeClientLayer(exchange, {
-            nextRequestId: nextId([
-              "app-menu-request",
-              "window-menu-request",
-              "bind-request",
-              "clear-request"
-            ]),
-            nextTraceId: nextId([
-              "app-menu-trace",
-              "window-menu-trace",
-              "bind-trace",
-              "clear-trace"
-            ]),
-            now: nextNumber([1710000000000, 1710000000001, 1710000000002, 1710000000003])
-          })
+        Layer.mergeAll(
+          Layer.provide(
+            MenuLive,
+            makeMenuBridgeClientLayer(exchange, {
+              nextRequestId: nextId([
+                "app-menu-request",
+                "window-menu-request",
+                "bind-request",
+                "clear-request"
+              ]),
+              nextTraceId: nextId([
+                "app-menu-trace",
+                "window-menu-trace",
+                "bind-trace",
+                "clear-trace"
+              ]),
+              now: nextNumber([1710000000000, 1710000000001, 1710000000002, 1710000000003])
+            })
+          ),
+          commandLayer
         )
       )
     )
@@ -932,6 +947,8 @@ test("ContextMenuApi declares the Phase 8 ContextMenu method and event surface",
 
 test("ContextMenu service delegates through a substitutable ContextMenuClient port", async () => {
   const calls: string[] = []
+  const commandCalls: unknown[] = []
+  const commandLayer = await makeCommandBindingLayer(commandCalls)
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const contextMenu = yield* ContextMenu
@@ -945,9 +962,15 @@ test("ContextMenu service delegates through a substitutable ContextMenuClient po
       const activated = yield* contextMenu.onActivated().pipe(Stream.take(1), Stream.runCollect)
 
       return { activated }
-    }).pipe(Effect.provide(makeContextMenuServiceLayer(contextMenuClient(calls))))
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(makeContextMenuServiceLayer(contextMenuClient(calls)), commandLayer)
+      )
+    )
   )
+  await Effect.runPromise(Effect.sleep("10 millis"))
 
+  expect(commandCalls).toEqual([{ itemId: "file.open", windowId: "window-1" }])
   expect(Array.from(result.activated)).toEqual([
     new ContextMenuActivatedEvent({
       itemId: "file.open",
@@ -965,6 +988,7 @@ test("ContextMenu service delegates through a substitutable ContextMenuClient po
 test("ContextMenu bridge client validates window menu inputs and decodes activation events", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const exchange = contextMenuExchange(requests, () => ({ kind: "success", payload: undefined }))
+  const commandLayer = await makeCommandBindingLayer()
 
   const result = await Effect.runPromise(
     Effect.gen(function* () {
@@ -980,13 +1004,16 @@ test("ContextMenu bridge client validates window menu inputs and decodes activat
       return { activated }
     }).pipe(
       Effect.provide(
-        Layer.provide(
-          ContextMenuLive,
-          makeContextMenuBridgeClientLayer(exchange, {
-            nextRequestId: nextId(["show-request", "bind-request"]),
-            nextTraceId: nextId(["show-trace", "bind-trace"]),
-            now: nextNumber([1710000000000, 1710000000001])
-          })
+        Layer.mergeAll(
+          Layer.provide(
+            ContextMenuLive,
+            makeContextMenuBridgeClientLayer(exchange, {
+              nextRequestId: nextId(["show-request", "bind-request"]),
+              nextTraceId: nextId(["show-trace", "bind-trace"]),
+              now: nextNumber([1710000000000, 1710000000001])
+            })
+          ),
+          commandLayer
         )
       )
     )
@@ -3478,6 +3505,34 @@ const memoryAudit = (rows: EventLogEntry[]): EventLogStore => ({
   subscribe: () => Stream.empty,
   close: () => Effect.void
 })
+
+const makeCommandBindingLayer = async (calls: unknown[] = []) => {
+  const resources = await Effect.runPromise(makeResourceRegistry())
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  const commands = await Effect.runPromise(makeCommandRegistry(resources, permissions))
+  await Effect.runPromise(permissions.declare(menuCommandCapability, { source: "test" }))
+  await Effect.runPromise(
+    commands.register({
+      id: "app.file.open",
+      inputSchema: Schema.Struct({
+        itemId: Schema.String,
+        windowId: Schema.optionalKey(Schema.String)
+      }),
+      outputSchema: Schema.Void,
+      capability: menuCommandCapability,
+      ownerScope: "app",
+      handler: (input) =>
+        Effect.sync(() => {
+          calls.push(input)
+        })
+    })
+  )
+
+  return Layer.mergeAll(
+    Layer.succeed(ResourceRegistry)(resources),
+    Layer.succeed(CommandRegistry)(commands)
+  )
+}
 
 const dialogClient = (calls: string[]): DialogClientApi => ({
   openFile: (input) =>

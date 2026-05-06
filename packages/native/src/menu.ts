@@ -1,4 +1,13 @@
 import {
+  CommandRegistry,
+  PermissionActor,
+  PermissionContext,
+  ResourceRegistry,
+  type CommandRegistryError,
+  type ResourceHandle,
+  type ResourceId
+} from "@effect-desktop/core"
+import {
   Api,
   Client,
   type ApiClientExchange,
@@ -15,7 +24,7 @@ import {
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Schema, Stream } from "effect"
+import { Context, Effect, Fiber, Layer, Option, Schema, Stream } from "effect"
 
 import type { WindowHandle } from "./window.js"
 
@@ -37,6 +46,7 @@ export type MenuPlatform = Schema.Schema.Type<typeof MenuPlatform>
 export type MenuCapabilityName = Schema.Schema.Type<typeof MenuCapabilityName>
 export type MenuWindowHandle = ApiResourceHandle<"window", "open">
 export type MenuError = HostProtocolError
+export type MenuCommandBindingError = MenuError | CommandRegistryError
 
 export const MenuItem = Schema.Struct({
   type: Schema.Literal("item"),
@@ -206,7 +216,15 @@ export class MenuClient extends Context.Service<MenuClient, MenuClientApi>()(
   "@effect-desktop/native/MenuClient"
 ) {}
 
-export interface MenuServiceApi extends Omit<MenuClientApi, "capability"> {
+export interface MenuServiceApi extends Omit<MenuClientApi, "bindCommand" | "capability"> {
+  readonly bindCommand: (
+    itemId: string,
+    commandId: string
+  ) => Effect.Effect<
+    ResourceHandle<"menu-command", "registered">,
+    MenuCommandBindingError,
+    CommandRegistry | ResourceRegistry
+  >
   readonly capability: (
     name: MenuCapabilityName,
     options?: { readonly platform?: MenuPlatform }
@@ -247,7 +265,7 @@ const makeMenuService = (client: MenuClientApi): MenuServiceApi => {
     setApplicationMenu: (template) => client.setApplicationMenu(template),
     setWindowMenu: (window, template) => client.setWindowMenu(window, template),
     clear: (input) => client.clear(input ?? {}),
-    bindCommand: (itemId, commandId) => client.bindCommand(itemId, commandId),
+    bindCommand: (itemId, commandId) => bindMenuCommand(client, itemId, commandId),
     capability: (name, options) =>
       client
         .capability({
@@ -259,6 +277,85 @@ const makeMenuService = (client: MenuClientApi): MenuServiceApi => {
   }
 
   return Object.freeze(service)
+}
+
+const bindMenuCommand = (
+  client: MenuClientApi,
+  itemId: string,
+  commandId: string
+): Effect.Effect<
+  ResourceHandle<"menu-command", "registered">,
+  MenuCommandBindingError,
+  CommandRegistry | ResourceRegistry
+> => {
+  let completed = false
+  let listener: Fiber.Fiber<void, MenuError> | undefined
+
+  return Effect.gen(function* () {
+    const commands = yield* CommandRegistry
+    const resources = yield* ResourceRegistry
+    yield* client.bindCommand(itemId, commandId)
+
+    const fiber = yield* client.onActivated().pipe(
+      Stream.filter((event) => event.itemId === itemId && event.commandId === commandId),
+      Stream.runForEach((event) =>
+        invokeMenuCommand(commands, commandId, event.itemId, event.windowId)
+      ),
+      Effect.forkDetach
+    )
+    listener = fiber
+
+    const handle = yield* resources.register({
+      kind: "menu-command",
+      id: menuCommandResourceId(itemId, commandId),
+      ownerScope: "app",
+      state: "registered",
+      dispose: Fiber.interrupt(fiber).pipe(Effect.asVoid)
+    })
+    completed = true
+    return handle
+  }).pipe(
+    Effect.ensuring(
+      Effect.suspend(() =>
+        completed || listener === undefined
+          ? Effect.void
+          : Fiber.interrupt(listener).pipe(Effect.asVoid)
+      )
+    )
+  )
+}
+
+const invokeMenuCommand = (
+  commands: CommandRegistry["Service"],
+  commandId: string,
+  itemId: string,
+  windowId: string | undefined
+): Effect.Effect<void, never, never> => {
+  const actor =
+    windowId === undefined
+      ? new PermissionActor({ kind: "app", id: "application-menu" })
+      : new PermissionActor({ kind: "window", id: windowId })
+
+  return commands
+    .invoke(
+      commandId,
+      windowId === undefined ? { itemId } : { itemId, windowId },
+      new PermissionContext({
+        actor,
+        traceId: `menu:${windowId ?? "app"}:${itemId}:${commandId}`
+      })
+    )
+    .pipe(
+      Effect.asVoid,
+      Effect.catch((error: CommandRegistryError) =>
+        Effect.logWarning("Menu command invocation failed", {
+          commandId,
+          error,
+          itemId,
+          windowId
+        })
+      )
+    )
 }
 
 const makeMenuBridgeClient = (
@@ -320,6 +417,9 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
     operation: method,
     recoverable: false
   })
+
+const menuCommandResourceId = (itemId: string, commandId: string): ResourceId =>
+  `menu-command:${itemId}:${commandId}` as ResourceId
 
 const toWindowHandle = (handle: WindowHandle): MenuWindowHandle =>
   new ApiResourceHandleShape({
