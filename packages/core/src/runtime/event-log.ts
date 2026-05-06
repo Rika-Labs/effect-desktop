@@ -264,9 +264,14 @@ const makeStore = (
           Effect.gen(function* () {
             const decoded = yield* decodeSubscribeInput(options, "EventLog.subscribe")
             const subscription = yield* PubSub.subscribe(tail)
-            const replay = yield* query(decoded.from === undefined ? {} : { from: decoded.from })
+            if (decoded.from === undefined) {
+              return Stream.fromEffectRepeat(PubSub.take(subscription))
+            }
+
+            const replay = yield* query({ from: decoded.from })
+            const replayHighWater = replay.at(-1)?.id ?? decoded.from - 1
             const live = Stream.fromEffectRepeat(PubSub.take(subscription)).pipe(
-              Stream.filter((entry) => decoded.from === undefined || entry.id >= decoded.from)
+              Stream.filter((entry) => entry.id > replayHighWater)
             )
             return Stream.fromIterable(replay).pipe(Stream.concat(live))
           })

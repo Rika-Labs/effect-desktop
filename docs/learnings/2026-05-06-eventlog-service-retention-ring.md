@@ -31,7 +31,7 @@ flowchart TD
 
 ## What surfaced in review
 
-Review produced three addressable comments and no pushbacks. Two P1 findings changed the final design: `subscribe` had to attach its live PubSub subscription before the replay query to avoid dropping events between replay and tail, and `SQLITE_FULL` had to transition the log into read-only state instead of merely returning one typed error. One P2 finding changed persistence semantics: the log needed a `payload_present` column so explicit JSON `null` survives replay separately from an absent payload.
+Review produced five addressable comments and no pushbacks. Three P1 findings changed the final design: `subscribe` had to attach its live PubSub subscription before the replay query to avoid dropping events between replay and tail, live events had to be filtered past the replay high-water mark to avoid duplicates, and `SQLITE_FULL` had to transition the log into read-only state instead of merely returning one typed error. Two P2 findings changed stream and persistence semantics: default `subscribe()` now starts at the live tail instead of replaying the whole log, and the log uses a `payload_present` column so explicit JSON `null` survives replay separately from an absent payload.
 
 ## First-principles postmortem
 
@@ -43,7 +43,7 @@ The local incentive was to satisfy the issue by naming options and errors from t
 
 ## Non-obvious lesson
 
-Replay plus live tail is a handshake. The consumer must attach to the live source before taking the durable snapshot, then filter the live stream by cursor, or there is a race where committed events land in neither source. The same principle applies to any Effect stream that combines durable replay with a live PubSub channel.
+Replay plus live tail is a handshake. The consumer must attach to the live source before taking the durable snapshot, then filter the live stream past the replay high-water mark, or there is either a gap where committed events land in neither source or a duplicate where events appended during replay appear in both sources. The same principle applies to any Effect stream that combines durable replay with a live PubSub channel.
 
 ## Reproducible pattern (if any)
 
@@ -52,12 +52,13 @@ For replay-and-tail streams:
 1. Decode the cursor as a typed value.
 2. Subscribe to the live channel inside the stream scope.
 3. Query durable replay after the subscription exists.
-4. Concatenate replay with live events filtered by the same cursor.
+4. Compute the replay high-water mark.
+5. Concatenate replay with live events whose id is above that high-water mark.
 
 For optional persisted data, store a presence bit when the API must distinguish absent from explicit `null`.
 
 ## AGENTS.md amendment candidate (if any)
 
-For durable replay-plus-live streams, subscribe before snapshot and filter the live tail by cursor. Why: querying first creates a lost-event window whenever the live channel has no replay buffer.
+For durable replay-plus-live streams, subscribe before snapshot and filter the live tail past the replay high-water mark. Why: querying first creates a lost-event window, while subscribing first without a high-water filter creates duplicate delivery.
 
 This is a proposal. Review and edit AGENTS.md yourself if you want to adopt it — `/learn` never auto-edits AGENTS.md.

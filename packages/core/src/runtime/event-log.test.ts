@@ -107,6 +107,17 @@ describe("EventLog", () => {
     expect(events.map((event) => event.type)).toEqual(["first", "second", "third"])
   })
 
+  test("subscribe without cursor starts at the live tail", async () => {
+    const { store } = await makeFixture()
+
+    await Effect.runPromise(store.append({ type: "before-subscribe" }))
+    const fiber = Effect.runFork(store.subscribe().pipe(Stream.take(1), Stream.runCollect))
+    await Effect.runPromise(store.append({ type: "after-subscribe" }))
+    const events = Array.from(await Effect.runPromise(Fiber.join(fiber)))
+
+    expect(events.map((event) => event.type)).toEqual(["after-subscribe"])
+  })
+
   test("retention keeps only the newest committed events", async () => {
     const { store } = await makeFixture({ maxEvents: 2 })
 
