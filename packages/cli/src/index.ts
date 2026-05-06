@@ -37,6 +37,18 @@ import {
   formatReproReport,
   runDesktopReproCheck
 } from "./reproducible-build-check.js"
+import {
+  runDesktopSign,
+  runSignCommand,
+  SignCommandFailedError,
+  SignConfigError,
+  SignFileError,
+  SignUnsupportedHostError,
+  SignUnsupportedTargetError,
+  type DesktopSignReport,
+  type SignCommandRunner,
+  type SignPipelineError
+} from "./signing-pipeline.js"
 
 export {
   runDesktopPackage,
@@ -68,6 +80,19 @@ export {
   type ReproCheckError,
   type ReproDifference
 } from "./reproducible-build-check.js"
+export {
+  runDesktopSign,
+  type DesktopSignOptions,
+  type DesktopSignReport,
+  type SignArtifactKind,
+  type SignArtifactReport,
+  type SignCommandInvocation,
+  type SignCommandRunner,
+  type SignPipelineError,
+  type SignStepName,
+  type SignStepReport,
+  type SignTarget
+} from "./signing-pipeline.js"
 
 export class CliUsageError extends Error {
   public override readonly name = "CliUsageError"
@@ -127,6 +152,7 @@ export interface CliRunOptions {
   readonly commandRunner?: CommandRunner
   readonly packageCommandRunner?: PackageCommandRunner
   readonly doctorCommandRunner?: DoctorCommandRunner
+  readonly signCommandRunner?: SignCommandRunner
   readonly now?: () => number
   readonly hostTarget?: BuildTarget
   readonly platform?: NodeJS.Platform
@@ -213,13 +239,17 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
       return yield* runDoctorCli(options)
     }
 
+    if (options.argv[0] === "sign") {
+      return yield* runSignCli(options)
+    }
+
     if (options.argv[0] === "check" && options.argv.includes("--repro")) {
       return yield* runReproCheckCli(options)
     }
 
     if (options.argv[0] !== "check" || !options.argv.includes("--production")) {
       options.writeStderr(
-        "Usage: desktop build --config <path>\nUsage: desktop package --config <path>\nUsage: desktop doctor [--config <path>] [--ci] [--json]\nUsage: desktop check --production --config <path>\nUsage: desktop check --repro --config <path>\n"
+        "Usage: desktop build --config <path>\nUsage: desktop package --config <path>\nUsage: desktop sign --config <path>\nUsage: desktop doctor [--config <path>] [--ci] [--json]\nUsage: desktop check --production --config <path>\nUsage: desktop check --repro --config <path>\n"
       )
       return 1
     }
@@ -449,6 +479,55 @@ const runPackageCli = (options: CliRunOptions): Effect.Effect<number, never, nev
       options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
     } else {
       options.writeStdout(formatPackageReport(report))
+    }
+
+    return 0
+  })
+
+const runSignCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
+  Effect.gen(function* () {
+    if (options.argv.includes("--help")) {
+      options.writeStdout(SIGN_HELP)
+      return 0
+    }
+
+    const configPath = yield* readOptionalPathArg(options.argv, "--config", options.writeStderr)
+    if (configPath === undefined && options.argv.includes("--config")) {
+      return 1
+    }
+    const platform = yield* readOptionalPathArg(options.argv, "--platform", options.writeStderr)
+    if (platform === undefined && options.argv.includes("--platform")) {
+      return 1
+    }
+
+    const report = yield* runDesktopSign({
+      cwd: options.cwd,
+      configPath: configPath ?? "desktop.config.ts",
+      platform,
+      commandRunner: options.signCommandRunner ?? runSignCommand,
+      now: options.now ?? Date.now,
+      hostTarget: options.hostTarget
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          if (options.argv.includes("--json")) {
+            options.writeStderr(`${JSON.stringify(formatSignError(error), null, 2)}\n`)
+          } else {
+            options.writeStderr(`${formatSignErrorText(error)}\n`)
+          }
+          return undefined
+        })
+      )
+    )
+
+    if (report === undefined) {
+      return 1
+    }
+
+    if (options.argv.includes("--json")) {
+      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+    } else {
+      options.writeStdout(formatSignReport(report))
     }
 
     return 0
@@ -846,6 +925,13 @@ const PACKAGE_HELP = [
   ""
 ].join("\n")
 
+const SIGN_HELP = [
+  "Usage: desktop sign --config <path> [--platform <target>] [--json]",
+  "",
+  "Signs existing dist/desktop/<platform> artifacts with platform signing tools and writes sign-report.json.",
+  ""
+].join("\n")
+
 const DOCTOR_HELP = [
   "Usage: desktop doctor [--config <path>] [--ci] [--json]",
   "",
@@ -928,6 +1014,56 @@ const formatPackageError = (
 
 const formatPackageErrorText = (error: PackagePipelineError): string => {
   const formatted = formatPackageError(error)
+  return formatted.remediation === undefined
+    ? `${formatted.tag}: ${formatted.message}`
+    : `${formatted.tag}: ${formatted.message}\nNext: ${formatted.remediation}`
+}
+
+const formatSignReport = (report: DesktopSignReport): string =>
+  [
+    "Effect Desktop sign",
+    `app               ${report.appId}`,
+    `target            ${report.target}`,
+    `output            ${report.outputPath}`,
+    ...report.artifacts.map(
+      (artifact) =>
+        `${artifact.kind.padEnd(17)} ${artifact.signedPaths.length
+          .toString()
+          .padStart(4)} paths ${artifact.artifactPath}`
+    ),
+    ""
+  ].join("\n")
+
+const formatSignError = (
+  error: SignPipelineError
+): { readonly tag: string; readonly message: string; readonly remediation?: string } => {
+  if (error instanceof SignUnsupportedTargetError) {
+    return { tag: error._tag, message: error.message, remediation: error.remediation }
+  }
+  if (error instanceof SignUnsupportedHostError) {
+    return { tag: error._tag, message: error.message, remediation: error.remediation }
+  }
+  if (error instanceof SignCommandFailedError) {
+    return {
+      tag: error._tag,
+      message:
+        error.stderr === undefined || error.stderr.length === 0
+          ? error.message
+          : `${error.message}\n${error.stderr}`
+    }
+  }
+  if (error instanceof SignFileError) {
+    return { tag: error._tag, message: error.message }
+  }
+  if (error instanceof SignConfigError) {
+    return { tag: error._tag, message: error.message, remediation: error.remediation }
+  }
+
+  return { tag: "UnknownSignError", message: "unknown sign error" }
+}
+
+const formatSignErrorText = (error: SignPipelineError): string => {
+  const formatted = formatSignError(error)
   return formatted.remediation === undefined
     ? `${formatted.tag}: ${formatted.message}`
     : `${formatted.tag}: ${formatted.message}\nNext: ${formatted.remediation}`
