@@ -115,6 +115,7 @@ interface StoredCommand {
   readonly capability: NormalizedCapability
   readonly ownerScope: ScopeId
   readonly resourceId: ResourceId
+  readonly resourceGeneration: number
   readonly handler: (input: unknown) => Effect.Effect<unknown, unknown, never>
 }
 
@@ -129,14 +130,18 @@ export const makeCommandRegistry = (
 
     const remove = (
       id: string,
-      resourceId?: ResourceId
+      resourceId?: ResourceId,
+      resourceGeneration?: number
     ): Effect.Effect<StoredCommand | undefined, never, never> =>
       Ref.modify(commands, (current) => {
         const command = current.get(id)
         if (command === undefined) {
           return [undefined, current] as const
         }
-        if (resourceId !== undefined && command.resourceId !== resourceId) {
+        if (
+          resourceId !== undefined &&
+          (command.resourceId !== resourceId || command.resourceGeneration !== resourceGeneration)
+        ) {
           return [undefined, current] as const
         }
 
@@ -220,7 +225,8 @@ const registerCommand = <I, O>(
   resources: ResourceRegistryApi,
   remove: (
     id: string,
-    resourceId?: ResourceId
+    resourceId?: ResourceId,
+    resourceGeneration?: number
   ) => Effect.Effect<StoredCommand | undefined, never, never>,
   audit: EventLogStore | undefined,
   now: () => number,
@@ -245,6 +251,7 @@ const registerCommand = <I, O>(
     reservedId = decodedId
     const resourceId = commandResourceId(decodedId)
     let registeredResourceId = resourceId
+    let registeredResourceGeneration = 0
     const stored: StoredCommand = {
       id: decodedId,
       inputSchema: registration.inputSchema as Schema.Schema<unknown>,
@@ -252,6 +259,7 @@ const registerCommand = <I, O>(
       capability: registration.capability,
       ownerScope: registration.ownerScope,
       resourceId,
+      resourceGeneration: registeredResourceGeneration,
       handler: registration.handler as (input: unknown) => Effect.Effect<unknown, unknown, never>
     }
 
@@ -280,18 +288,29 @@ const registerCommand = <I, O>(
       id: resourceId,
       ownerScope: registration.ownerScope,
       state: "registered",
-      dispose: Effect.suspend(() => remove(decodedId, registeredResourceId).pipe(Effect.asVoid))
+      dispose: Effect.suspend(() =>
+        remove(decodedId, registeredResourceId, registeredResourceGeneration).pipe(Effect.asVoid)
+      )
     })
     handle = registeredHandle
     registeredResourceId = registeredHandle.id
+    registeredResourceGeneration = registeredHandle.generation
     const committed = yield* Ref.modify(commands, (current) => {
       const command = current.get(decodedId)
-      if (command === undefined || command.resourceId === registeredHandle.id) {
+      if (
+        command === undefined ||
+        (command.resourceId === registeredHandle.id &&
+          command.resourceGeneration === registeredHandle.generation)
+      ) {
         return [command !== undefined, current] as const
       }
 
       const next = new Map(current)
-      next.set(decodedId, { ...command, resourceId: registeredHandle.id })
+      next.set(decodedId, {
+        ...command,
+        resourceId: registeredHandle.id,
+        resourceGeneration: registeredHandle.generation
+      })
       return [true, next] as const
     })
     if (!committed) {

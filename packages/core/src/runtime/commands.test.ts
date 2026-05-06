@@ -337,6 +337,7 @@ const delayedCleanupResourceRegistry = (
   allowDispose: Deferred.Deferred<void>
 ): ResourceRegistryApi => {
   const cleanupById = new Map<ResourceId, Effect.Effect<void, never, never>>()
+  const generationById = new Map<ResourceId, number>()
   let generated = 0
 
   return {
@@ -347,11 +348,12 @@ const delayedCleanupResourceRegistry = (
             ? input.id
             : (`generated-${++generated}` as ResourceId)
         cleanupById.set(id, input.dispose ?? Effect.void)
+        const generation = generationById.get(id) ?? 0
 
         return {
           kind: input.kind,
           id,
-          generation: 0,
+          generation,
           ownerScope: input.ownerScope,
           state: input.state,
           dispose: () => Effect.void
@@ -362,9 +364,10 @@ const delayedCleanupResourceRegistry = (
     dispose: (id) =>
       Effect.gen(function* () {
         const cleanup = cleanupById.get(id)
+        cleanupById.delete(id)
+        generationById.set(id, (generationById.get(id) ?? 0) + 1)
         yield* Deferred.succeed(disposeStarted, undefined)
         yield* Deferred.await(allowDispose)
-        cleanupById.delete(id)
         if (cleanup !== undefined) {
           yield* cleanup
         }
