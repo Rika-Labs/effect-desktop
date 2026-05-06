@@ -12,6 +12,34 @@ import {
   type ProductionSecurityConfig
 } from "@effect-desktop/config"
 
+import {
+  runDesktopPackage,
+  runPackageCommand,
+  type DesktopPackageReport,
+  type PackageCommandRunner,
+  type PackagePipelineError,
+  PackageCommandFailedError,
+  PackageConfigError,
+  PackageFileError,
+  PackageUnsupportedArtifactError,
+  PackageUnsupportedHostError,
+  PackageUnsupportedTargetError
+} from "./package-pipeline.js"
+
+export {
+  runDesktopPackage,
+  type DesktopPackageOptions,
+  type DesktopPackageReport,
+  type PackageArtifactKind,
+  type PackageArtifactReport,
+  type PackageCommandInvocation,
+  type PackageCommandRunner,
+  type PackagePipelineError,
+  type PackageStepName,
+  type PackageStepReport,
+  type PackageTarget
+} from "./package-pipeline.js"
+
 export class CliUsageError extends Error {
   public override readonly name = "CliUsageError"
 }
@@ -68,6 +96,7 @@ export interface CliRunOptions {
   readonly writeStdout: (text: string) => void
   readonly writeStderr: (text: string) => void
   readonly commandRunner?: CommandRunner
+  readonly packageCommandRunner?: PackageCommandRunner
   readonly now?: () => number
   readonly hostTarget?: BuildTarget
 }
@@ -143,9 +172,13 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
       return yield* runBuildCli(options)
     }
 
+    if (options.argv[0] === "package") {
+      return yield* runPackageCli(options)
+    }
+
     if (options.argv[0] !== "check" || !options.argv.includes("--production")) {
       options.writeStderr(
-        "Usage: desktop build --config <path>\nUsage: desktop check --production --config <path>\n"
+        "Usage: desktop build --config <path>\nUsage: desktop package --config <path>\nUsage: desktop check --production --config <path>\n"
       )
       return 1
     }
@@ -279,6 +312,11 @@ const runProductionCheckCli = (options: CliRunOptions): Effect.Effect<number, ne
 
 const runBuildCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
   Effect.gen(function* () {
+    if (options.argv.includes("--help")) {
+      options.writeStdout(BUILD_HELP)
+      return 0
+    }
+
     const configPath = yield* readOptionalPathArg(options.argv, "--config", options.writeStderr)
     if (configPath === undefined && options.argv.includes("--config")) {
       return 1
@@ -316,6 +354,60 @@ const runBuildCli = (options: CliRunOptions): Effect.Effect<number, never, never
       options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
     } else {
       options.writeStdout(formatBuildReport(report))
+    }
+
+    return 0
+  })
+
+const runPackageCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
+  Effect.gen(function* () {
+    if (options.argv.includes("--help")) {
+      options.writeStdout(PACKAGE_HELP)
+      return 0
+    }
+
+    const configPath = yield* readOptionalPathArg(options.argv, "--config", options.writeStderr)
+    if (configPath === undefined && options.argv.includes("--config")) {
+      return 1
+    }
+    const platform = yield* readOptionalPathArg(options.argv, "--platform", options.writeStderr)
+    if (platform === undefined && options.argv.includes("--platform")) {
+      return 1
+    }
+    const artifact = yield* readOptionalPathArg(options.argv, "--artifact", options.writeStderr)
+    if (artifact === undefined && options.argv.includes("--artifact")) {
+      return 1
+    }
+
+    const report = yield* runDesktopPackage({
+      cwd: options.cwd,
+      configPath: configPath ?? "desktop.config.ts",
+      platform,
+      artifact,
+      commandRunner: options.packageCommandRunner ?? runPackageCommand,
+      now: options.now ?? Date.now,
+      hostTarget: options.hostTarget
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          if (options.argv.includes("--json")) {
+            options.writeStderr(`${JSON.stringify(formatPackageError(error), null, 2)}\n`)
+          } else {
+            options.writeStderr(`${formatPackageErrorText(error)}\n`)
+          }
+          return undefined
+        })
+      )
+    )
+
+    if (report === undefined) {
+      return 1
+    }
+
+    if (options.argv.includes("--json")) {
+      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+    } else {
+      options.writeStdout(formatPackageReport(report))
     }
 
     return 0
@@ -594,6 +686,21 @@ const formatBuildReport = (report: DesktopBuildReport): string =>
     ""
   ].join("\n")
 
+const BUILD_HELP = [
+  "Usage: desktop build --config <path> [--platform <target>] [--json]",
+  "",
+  "Builds renderer, runtime, native host, bridge manifest, and app manifest into build/effect-desktop/<target>.",
+  ""
+].join("\n")
+
+const PACKAGE_HELP = [
+  "Usage: desktop package --config <path> [--platform <target>] [--artifact <kind>] [--json]",
+  "",
+  "Packages an existing build/effect-desktop/<target> layout into the fixed docs/SPEC.md §23.2 artifact set.",
+  "Kinds: all, app, dmg, zip, msi, appimage, deb, rpm.",
+  ""
+].join("\n")
+
 const formatBuildError = (
   error: BuildPipelineError
 ): { readonly tag: string; readonly message: string; readonly remediation?: string } => {
@@ -623,9 +730,60 @@ const formatBuildErrorText = (error: BuildPipelineError): string => {
     : `${formatted.tag}: ${formatted.message}\nNext: ${formatted.remediation}`
 }
 
+const formatPackageReport = (report: DesktopPackageReport): string =>
+  [
+    "Effect Desktop package",
+    `app               ${report.appId}`,
+    `target            ${report.target}`,
+    `output            ${report.outputPath}`,
+    ...report.artifacts.map(
+      (artifact) =>
+        `${artifact.kind.padEnd(17)} ${artifact.sizeBytes.toString().padStart(4)}b ${artifact.artifactPath}`
+    ),
+    ""
+  ].join("\n")
+
+const formatPackageError = (
+  error: PackagePipelineError
+): { readonly tag: string; readonly message: string; readonly remediation?: string } => {
+  if (error instanceof PackageUnsupportedTargetError) {
+    return { tag: error._tag, message: error.message, remediation: error.remediation }
+  }
+  if (error instanceof PackageUnsupportedHostError) {
+    return { tag: error._tag, message: error.message, remediation: error.remediation }
+  }
+  if (error instanceof PackageUnsupportedArtifactError) {
+    return { tag: error._tag, message: error.message, remediation: error.remediation }
+  }
+  if (error instanceof PackageCommandFailedError) {
+    return {
+      tag: error._tag,
+      message:
+        error.stderr === undefined || error.stderr.length === 0
+          ? error.message
+          : `${error.message}\n${error.stderr}`
+    }
+  }
+  if (error instanceof PackageFileError) {
+    return { tag: error._tag, message: error.message }
+  }
+  if (error instanceof PackageConfigError) {
+    return { tag: error._tag, message: error.message }
+  }
+
+  return { tag: "UnknownPackageError", message: "unknown package error" }
+}
+
+const formatPackageErrorText = (error: PackagePipelineError): string => {
+  const formatted = formatPackageError(error)
+  return formatted.remediation === undefined
+    ? `${formatted.tag}: ${formatted.message}`
+    : `${formatted.tag}: ${formatted.message}\nNext: ${formatted.remediation}`
+}
+
 const readOptionalPathArg = (
   argv: readonly string[],
-  name: "--config" | "--renderer" | "--platform",
+  name: "--config" | "--renderer" | "--platform" | "--artifact",
   writeStderr: (text: string) => void
 ): Effect.Effect<string | undefined, never, never> =>
   optionalPathArg(argv, name).pipe(
@@ -639,7 +797,7 @@ const readOptionalPathArg = (
 
 const optionalPathArg = (
   argv: readonly string[],
-  name: "--config" | "--renderer" | "--platform"
+  name: "--config" | "--renderer" | "--platform" | "--artifact"
 ): Effect.Effect<string | undefined, CliUsageError, never> =>
   Effect.sync(() => {
     const index = argv.indexOf(name)
