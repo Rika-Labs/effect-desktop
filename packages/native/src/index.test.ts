@@ -55,6 +55,11 @@ import {
   NotificationMethodNames,
   NotificationPermissionResult,
   NotificationSupportedResult,
+  Path,
+  PathApi,
+  PathLive,
+  PathMethodNames,
+  CanonicalPath,
   WebView,
   WebViewApi,
   WebViewLive,
@@ -79,9 +84,12 @@ import {
   makeMenuServiceLayer,
   makeNotificationBridgeClientLayer,
   makeNotificationServiceLayer,
+  makePathBridgeClientLayer,
+  makePathServiceLayer,
   makeUnsupportedDialogClient,
   makeUnsupportedMenuClient,
   makeUnsupportedNotificationClient,
+  makeUnsupportedPathClient,
   makeUnsupportedAppClient,
   makeUnsupportedWebViewClient,
   makeWebViewBridgeClientLayer,
@@ -98,6 +106,7 @@ import {
   type MenuClientApi,
   type NotificationClientApi,
   type NotificationHandle,
+  type PathClientApi,
   type WebViewClientApi,
   type WebViewHandle,
   type WindowClientApi,
@@ -179,6 +188,15 @@ const expectedNotificationMethods: Array<(typeof NotificationMethodNames)[number
   "isSupported",
   "requestPermission",
   "getPermissionStatus"
+]
+
+const expectedPathMethods: Array<(typeof PathMethodNames)[number]> = [
+  "appData",
+  "cache",
+  "logs",
+  "temp",
+  "home",
+  "downloads"
 ]
 
 const windowHandle: WindowHandle = {
@@ -1147,6 +1165,126 @@ test("unsupported Notification client reports deferred host methods as Effect va
   )
 })
 
+test("PathApi declares the Phase 7 Path method surface", () => {
+  expect(PathApi.tag).toBe("Path")
+  expect([...PathMethodNames]).toEqual(expectedPathMethods)
+  expect(Object.keys(PathApi.spec)).toEqual(expectedPathMethods)
+  expect(Object.keys(PathApi.events)).toEqual([])
+})
+
+test("Path service delegates through a substitutable PathClient port", async () => {
+  const calls: string[] = []
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const path = yield* Path
+      return {
+        appData: yield* path.appData(),
+        cache: yield* path.cache(),
+        logs: yield* path.logs(),
+        temp: yield* path.temp(),
+        home: yield* path.home(),
+        downloads: yield* path.downloads()
+      }
+    }).pipe(Effect.provide(makePathServiceLayer(pathClient(calls))))
+  )
+
+  expect(result).toEqual({
+    appData: "/tmp/effect-desktop/app-data",
+    cache: "/tmp/effect-desktop/cache",
+    logs: "/tmp/effect-desktop/logs",
+    temp: "/tmp/effect-desktop/temp",
+    home: "/Users/test",
+    downloads: "/Users/test/Downloads"
+  })
+  expect(calls).toEqual(["appData", "cache", "logs", "temp", "home", "downloads"])
+})
+
+test("Path bridge client sends typed host envelopes and decodes canonical paths", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = pathExchange(requests, (request) => ({
+    kind: "success",
+    payload: { path: `/host/${request.method.replace("Path.", "")}` }
+  }))
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const path = yield* Path
+      return {
+        appData: yield* path.appData(),
+        cache: yield* path.cache(),
+        logs: yield* path.logs(),
+        temp: yield* path.temp(),
+        home: yield* path.home(),
+        downloads: yield* path.downloads()
+      }
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          PathLive,
+          makePathBridgeClientLayer(exchange, {
+            nextRequestId: nextId([
+              "app-data-request",
+              "cache-request",
+              "logs-request",
+              "temp-request",
+              "home-request",
+              "downloads-request"
+            ]),
+            nextTraceId: nextId([
+              "app-data-trace",
+              "cache-trace",
+              "logs-trace",
+              "temp-trace",
+              "home-trace",
+              "downloads-trace"
+            ]),
+            now: nextNumber([
+              1710000000000, 1710000000001, 1710000000002, 1710000000003, 1710000000004,
+              1710000000005
+            ])
+          })
+        )
+      )
+    )
+  )
+
+  expect(result).toEqual({
+    appData: "/host/appData",
+    cache: "/host/cache",
+    logs: "/host/logs",
+    temp: "/host/temp",
+    home: "/host/home",
+    downloads: "/host/downloads"
+  })
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["Path.appData", undefined],
+    ["Path.cache", undefined],
+    ["Path.logs", undefined],
+    ["Path.temp", undefined],
+    ["Path.home", undefined],
+    ["Path.downloads", undefined]
+  ])
+})
+
+test("unsupported Path client reports deferred host methods as Effect values", async () => {
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const path = yield* Path
+      return yield* Effect.exit(path.appData())
+    }).pipe(Effect.provide(makePathServiceLayer(makeUnsupportedPathClient())))
+  )
+
+  expectExitFailure(
+    exit,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "operation" in error &&
+      error.operation === "Path.appData"
+  )
+})
+
 test("WindowApi declares the Phase 5 Window method surface", () => {
   expect(WindowApi.tag).toBe("Window")
   expect([...WindowMethodNames]).toEqual(expectedWindowMethods)
@@ -1643,6 +1781,25 @@ const notificationClient = (calls: string[]): NotificationClientApi => ({
     )
 })
 
+const pathClient = (calls: string[]): PathClientApi => ({
+  appData: () => pathResult(calls, "appData", "/tmp/effect-desktop/app-data"),
+  cache: () => pathResult(calls, "cache", "/tmp/effect-desktop/cache"),
+  logs: () => pathResult(calls, "logs", "/tmp/effect-desktop/logs"),
+  temp: () => pathResult(calls, "temp", "/tmp/effect-desktop/temp"),
+  home: () => pathResult(calls, "home", "/Users/test"),
+  downloads: () => pathResult(calls, "downloads", "/Users/test/Downloads")
+})
+
+const pathResult = (
+  calls: string[],
+  call: string,
+  path: string
+): Effect.Effect<CanonicalPath, never, never> =>
+  Effect.sync(() => {
+    calls.push(call)
+    return new CanonicalPath({ path })
+  })
+
 const noopWindowClient: WindowClientApi = {
   create: () => Effect.succeed(windowHandle),
   show: () => Effect.void,
@@ -1825,6 +1982,16 @@ const notificationExchange = (
         : Stream.empty,
   resource: {
     dispose: () => Effect.void
+  }
+})
+
+const pathExchange = (
+  requests: HostProtocolRequestEnvelope[],
+  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
+): ApiClientExchange => ({
+  request: (request) => {
+    requests.push(request)
+    return Effect.succeed(respond(request))
   }
 })
 
