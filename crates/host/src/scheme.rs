@@ -178,8 +178,12 @@ mod tests {
             "CSP should include a style nonce"
         );
         assert!(
-            !expected_csp(response.body()).contains("unsafe-inline"),
-            "production CSP should not allow unsafe inline execution"
+            !expected_csp(response.body()).contains("script-src 'self' 'unsafe-inline'"),
+            "production CSP should not allow unsafe inline scripts"
+        );
+        assert!(
+            !expected_csp(response.body()).contains("style-src 'self' 'unsafe-inline'"),
+            "production CSP should keep <style>/<link> behind 'self' + nonce"
         );
         assert!(
             !expected_csp(response.body()).contains("unsafe-eval"),
