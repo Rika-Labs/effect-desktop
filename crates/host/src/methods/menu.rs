@@ -73,6 +73,17 @@ fn validate_template(template: &Value, operation: &str) -> Result<(), HostProtoc
         ));
     }
 
+    if items
+        .iter()
+        .any(|item| item.get("type").and_then(Value::as_str) != Some("submenu"))
+    {
+        return Err(HostProtocolError::invalid_argument(
+            "template.items",
+            "application menu root items must be submenus",
+            operation,
+        ));
+    }
+
     Ok(())
 }
 
@@ -107,5 +118,18 @@ mod tests {
         .expect("template");
 
         assert!(template.get("items").is_some());
+    }
+
+    #[test]
+    fn application_menu_template_rejects_root_items() {
+        assert!(decode_template(
+            Some(json!({
+                "template": {
+                    "items": [{ "type": "item", "id": "open", "label": "Open" }]
+                }
+            })),
+            host_protocol::MENU_SET_APPLICATION_MENU_METHOD,
+        )
+        .is_err());
     }
 }
