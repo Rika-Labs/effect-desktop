@@ -98,9 +98,7 @@ export function Example({
             <span aria-hidden className={`inline-block h-1.5 w-1.5 rounded-full ${tone.dot}`} />
             {title}
           </p>
-          {summary ? (
-            <p className="m-0 mt-1 text-xs text-fd-muted-foreground">{summary}</p>
-          ) : null}
+          {summary ? <p className="m-0 mt-1 text-xs text-fd-muted-foreground">{summary}</p> : null}
         </div>
         <span
           className={`shrink-0 border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide ${
@@ -201,7 +199,14 @@ function RotateIcon() {
         strokeWidth="1.4"
         strokeLinecap="round"
       />
-      <path d="M2.2 3.4v2.4h2.4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M2.2 3.4v2.4h2.4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   )
 }

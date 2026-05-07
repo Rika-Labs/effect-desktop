@@ -8,3 +8,6 @@ docs/SPEC.md
 crates/host-protocol/fixtures/*.json
 bun.lock
 *.lockb
+.next/
+.source/
+next-env.d.ts
