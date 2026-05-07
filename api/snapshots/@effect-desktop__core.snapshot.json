@@ -1,0 +1,1697 @@
+{
+  "schemaVersion": 1,
+  "packageName": "@effect-desktop/core",
+  "entrypoint": "src/index.ts",
+  "symbols": [
+    {
+      "name": "ActorKind",
+      "kind": "type",
+      "signature": "export type ActorKind = typeof ActorKind.Type"
+    },
+    {
+      "name": "Api",
+      "kind": "value",
+      "signature": "const Api: Readonly<{ Resource: <Kind extends string, State extends string>(kind: Kind, state: State) => ApiResourceSpec<Kind, State>; Stream: <Chunk extends Schema.Schema<unknown>, Error extends Schema.Schema<unknown>>(chunk: Chunk, error: Error, backpressure?: BackpressureSpec) => ApiStreamSpec & { readonly chunk: Chunk; readonly error: Error; }; Tag: <Tag extends string>(tag: Tag) => <Self>() => <Spec extends ApiContractSpec, Events extends ApiContractEvents = Record<never, never>>(spec: Spec, events?: Events) => Effect.Effect<ApiContractClass<Tag, Spec, Events>, ApiContractError, never>; entries: () => Effect.Effect<readonly ApiContractClass[], never, never>; freeze: () => Effect.Effect<void, never, never>; get: (tag: string) => Effect.Effect<Option.Option<ApiContractClass>, never, never>; }>"
+    },
+    {
+      "name": "approvalAuditEvent",
+      "kind": "value",
+      "signature": "const approvalAuditEvent: (input: ApprovalAuditEventInput) => AuditEvent"
+    },
+    {
+      "name": "ApprovalAuditEventInput",
+      "kind": "interface",
+      "signature": "export interface ApprovalAuditEventInput { readonly kind: \"approval-requested\" | \"approval-granted\" | \"approval-denied\" readonly source: string readonly traceId: string readonly outcome: string readonly actor: string readonly resource?: string readonly timestamp?: number readonly details?: unknown }"
+    },
+    {
+      "name": "ApprovalBroker",
+      "kind": "class",
+      "signature": "export class ApprovalBroker extends Context.Service<ApprovalBroker, ApprovalBrokerApi>()( \"ApprovalBroker\", { make: Effect.fail( new ApprovalBrokerInvalidArgumentError({ operation: \"ApprovalBroker.make\", field: \"prompt\", message: \"ApprovalBroker requires an explicit host prompt port\", cause: Option.none() }) ) } ) {}"
+    },
+    {
+      "name": "ApprovalBrokerApi",
+      "kind": "interface",
+      "signature": "export interface ApprovalBrokerApi { readonly ask: ( request: ApprovalRequest ) => Effect.Effect<ApprovalOutcome, ApprovalBrokerError, never> }"
+    },
+    {
+      "name": "ApprovalBrokerAuditFailedError",
+      "kind": "class",
+      "signature": "export class ApprovalBrokerAuditFailedError extends Data.TaggedError(\"ApprovalAuditFailed\")<{ readonly operation: string readonly request: ApprovalRequest readonly outcome: Option.Option<ApprovalOutcome> readonly cause: EventLogError }> {}"
+    },
+    {
+      "name": "ApprovalBrokerError",
+      "kind": "type",
+      "signature": "export type ApprovalBrokerError = | ApprovalBrokerInvalidArgumentError | ApprovalBrokerQueueOverflowError | ApprovalBrokerAuditFailedError | ApprovalBrokerPromptFailedError"
+    },
+    {
+      "name": "ApprovalBrokerInvalidArgumentError",
+      "kind": "class",
+      "signature": "export class ApprovalBrokerInvalidArgumentError extends Data.TaggedError(\"InvalidArgument\")<{ readonly operation: string readonly field: string readonly message: string readonly cause: Option.Option<unknown> }> {}"
+    },
+    {
+      "name": "ApprovalBrokerOptions",
+      "kind": "interface",
+      "signature": "export interface ApprovalBrokerOptions { readonly prompt: ApprovalPromptPort readonly audit?: EventLogStore readonly devApproveAll?: boolean readonly maxQueueDepthPerActor?: number readonly now?: () => number readonly traceId?: () => string }"
+    },
+    {
+      "name": "ApprovalBrokerPromptFailedError",
+      "kind": "class",
+      "signature": "export class ApprovalBrokerPromptFailedError extends Data.TaggedError(\"ApprovalPromptFailed\")<{ readonly operation: string readonly request: ApprovalRequest readonly cause: unknown }> {}"
+    },
+    {
+      "name": "ApprovalBrokerQueueOverflowError",
+      "kind": "class",
+      "signature": "export class ApprovalBrokerQueueOverflowError extends Data.TaggedError(\"QueueOverflow\")<{ readonly operation: string readonly actor: string readonly depth: number readonly maxDepth: number }> {}"
+    },
+    {
+      "name": "ApprovalOutcome",
+      "kind": "class",
+      "signature": "export class ApprovalOutcome extends Schema.Class<ApprovalOutcome>(\"ApprovalOutcome\")({ requestId: NonEmptyString, outcome: ApprovalOutcomeKind, traceId: NonEmptyString, decidedAt: Schema.Number, source: NonEmptyString }) {}"
+    },
+    {
+      "name": "ApprovalOutcomeKind",
+      "kind": "type",
+      "signature": "export type ApprovalOutcomeKind = typeof ApprovalOutcomeKind.Type"
+    },
+    {
+      "name": "ApprovalPromptPort",
+      "kind": "interface",
+      "signature": "export interface ApprovalPromptPort { readonly prompt: ( request: ApprovalRequest ) => Effect.Effect<ApprovalOutcome, ApprovalBrokerPromptFailedError, never> }"
+    },
+    {
+      "name": "ApprovalRequest",
+      "kind": "class",
+      "signature": "export class ApprovalRequest extends Schema.Class<ApprovalRequest>(\"ApprovalRequest\")({ id: NonEmptyString, operation: NonEmptyString, actor: NonEmptyString, resource: Schema.optionalKey(Schema.String), risk: ApprovalRisk, summary: NonEmptyString, details: Schema.Unknown, expiresAt: Schema.optionalKey(Schema.Number), traceId: Schema.optionalKey(Schema.String) }) {}"
+    },
+    {
+      "name": "ApprovalRisk",
+      "kind": "type",
+      "signature": "export type ApprovalRisk = typeof ApprovalRisk.Type"
+    },
+    {
+      "name": "AuditEvent",
+      "kind": "class",
+      "signature": "export class AuditEvent extends Schema.Class<AuditEvent>(\"AuditEvent\")({ kind: AuditEventKind, source: NonEmptyString, traceId: NonEmptyString, outcome: NonEmptyString, timestamp: Schema.optionalKey(Schema.Number), normalizedCapability: Schema.optionalKey(Schema.Unknown), actor: Schema.optionalKey(Schema.Unknown), resource: Schema.optionalKey(Schema.String), details: Schema.optionalKey(Schema.Unknown) }) {}"
+    },
+    {
+      "name": "AuditEventKind",
+      "kind": "type",
+      "signature": "const AuditEventKind: Schema.Literals<readonly [\"permission-granted\", \"permission-denied\", \"permission-revoked\", \"permission-expired\", \"permission-consumed\", \"permission-used\", \"approval-requested\", \"approval-granted\", \"approval-denied\", \"command-registered\", \"command-unregistered\", \"command-invoked\", \"job-retrying\", \"trace-id-missing\"]>"
+    },
+    {
+      "name": "AuditEvents",
+      "kind": "class",
+      "signature": "export class AuditEvents extends Context.Service<AuditEvents, AuditEventsApi>()(\"AuditEvents\", { make: Effect.succeed( Object.freeze({ emit: () => Effect.void, query: () => Effect.succeed([]), subscribe: () => Stream.empty } satisfies AuditEventsApi) ) }) {}"
+    },
+    {
+      "name": "AuditEventsApi",
+      "kind": "interface",
+      "signature": "export interface AuditEventsApi { readonly emit: (event: AuditEvent) => Effect.Effect<void, EventLogError, never> readonly query: ( options?: EventLogQueryOptions ) => Effect.Effect<readonly EventLogEntry[], EventLogError, never> readonly subscribe: ( options?: EventLogSubscribeOptions ) => Stream.Stream<EventLogEntry, EventLogError, never> }"
+    },
+    {
+      "name": "AuditPolicy",
+      "kind": "type",
+      "signature": "export type AuditPolicy = typeof AuditPolicy.Type"
+    },
+    {
+      "name": "BridgeCallRegistry",
+      "kind": "interface",
+      "signature": "export interface BridgeCallRegistry { readonly record: (state: BridgeCallState) => Effect.Effect<void, never, never> readonly list: () => Effect.Effect<readonly BridgeCallState[], never, never> readonly observe: () => Stream.Stream<readonly BridgeCallState[], never, never> }"
+    },
+    {
+      "name": "BridgeCallState",
+      "kind": "type",
+      "signature": "export type BridgeCallState = | { readonly tag: \"Pending\" readonly id: string readonly traceId: string readonly startedAt: number } | { readonly tag: \"Authorized\"; readonly id: string; readonly capability: string } | { readonly tag: \"Running\"; readonly id: string; readonly handler: string } | { readonly tag: \"Completed\"; readonly id: string; readonly completedAt: number } | { readonly tag: \"Failed\"; readonly id: string; readonly error: unknown } | { readonly tag: \"Canceled\" readonly id: string readonly canceledBy: \"renderer\" | \"runtime\" | \"host\" } | { readonly tag: \"TimedOut\"; readonly id: string; readonly timeoutMs: number } | { readonly tag: \"RejectedLateFrame\" readonly id: string readonly method: string readonly terminalState: BridgeCallTerminalState }"
+    },
+    {
+      "name": "BridgeStreamRegistry",
+      "kind": "interface",
+      "signature": "export interface BridgeStreamRegistry { readonly register: (streamId: string) => Effect.Effect<BridgeStreamRegistryEntry, never, never> readonly terminate: ( streamId: string, terminal: ApiStreamTerminalType, now: number ) => Effect.Effect<boolean, never, never> readonly isTerminal: (streamId: string) => Effect.Effect<boolean, never, never> readonly gcExpired: (now: number) => Effect.Effect<number, never, never> readonly updateBackpressure: ( streamId: string, metrics: BridgeStreamBackpressureMetrics ) => Effect.Effect<void, never, never> readonly snapshot: () => Effect.Effect<ReadonlyArray<BridgeStreamRegistryEntry>, never, never> readonly observe: () => Stream.Stream<ReadonlyArray<BridgeStreamRegistryEntry>, never, never> }"
+    },
+    {
+      "name": "BridgeStreamRegistryEntry",
+      "kind": "interface",
+      "signature": "export interface BridgeStreamRegistryEntry { readonly streamId: string readonly generation: number readonly state: \"open\" | \"terminal\" readonly terminal?: ApiStreamTerminalType readonly terminalAt?: number readonly backpressure?: BridgeStreamBackpressureMetrics }"
+    },
+    {
+      "name": "BunWorkerAdapter",
+      "kind": "value",
+      "signature": "const BunWorkerAdapter: WorkerAdapter"
+    },
+    {
+      "name": "CapabilityKind",
+      "kind": "type",
+      "signature": "export type CapabilityKind = typeof CapabilityKind.Type"
+    },
+    {
+      "name": "Client",
+      "kind": "value",
+      "signature": "const Client: <Contracts extends Readonly<Record<string, ApiContractClass>>>(contracts: Contracts, exchange: ApiClientExchange, options?: ApiClientOptions) => ApiClient<Contracts>"
+    },
+    {
+      "name": "CommandInvocationRecord",
+      "kind": "class",
+      "signature": "export class CommandInvocationRecord extends Schema.Class<CommandInvocationRecord>( \"CommandInvocationRecord\" )({ commandId: Schema.String, actor: Schema.Unknown, traceId: NonEmptyString, outcome: Schema.Literals([\"success\", \"failure\"]), timestamp: NonNegativeInt, durationMs: NonNegativeInt, errorTag: Schema.optionalKey(NonEmptyString) }) {}"
+    },
+    {
+      "name": "CommandRegistration",
+      "kind": "interface",
+      "signature": "export interface CommandRegistration<I, O> { readonly id: string readonly inputSchema: Schema.Schema<I> readonly outputSchema: Schema.Schema<O> readonly capability: NormalizedCapability readonly ownerScope: ScopeId readonly handler: (input: I) => Effect.Effect<O, unknown, never> }"
+    },
+    {
+      "name": "CommandRegistry",
+      "kind": "class",
+      "signature": "export class CommandRegistry extends Context.Service<CommandRegistry, CommandRegistryApi>()( \"CommandRegistry\", { make: Effect.gen(function* () { const resources = yield* ResourceRegistry const permissions = yield* PermissionRegistry return yield* makeCommandRegistry(resources, permissions) }) } ) {}"
+    },
+    {
+      "name": "CommandRegistryApi",
+      "kind": "interface",
+      "signature": "export interface CommandRegistryApi { readonly register: <I, O>( registration: CommandRegistration<I, O> ) => Effect.Effect<ResourceHandle<\"command\", \"registered\">, CommandRegistryError, never> readonly unregister: (id: string) => Effect.Effect<void, CommandRegistryError, never> readonly invoke: ( id: string, input: unknown, context: PermissionContext ) => Effect.Effect<unknown, CommandRegistryError, never> readonly list: () => Effect.Effect<readonly CommandSnapshot[], never, never> readonly observeInvocations: () => Stream.Stream<CommandInvocationRecord, never, never> }"
+    },
+    {
+      "name": "CommandRegistryAuditFailedError",
+      "kind": "class",
+      "signature": "export class CommandRegistryAuditFailedError extends Data.TaggedError(\"CommandAuditFailed\")<{ readonly operation: string readonly commandId: string readonly cause: EventLogError }> {}"
+    },
+    {
+      "name": "CommandRegistryCommandAlreadyRegisteredError",
+      "kind": "class",
+      "signature": "export class CommandRegistryCommandAlreadyRegisteredError extends Data.TaggedError( \"CommandAlreadyRegistered\" )<{ readonly operation: string readonly commandId: string }> {}"
+    },
+    {
+      "name": "CommandRegistryCommandNotFoundError",
+      "kind": "class",
+      "signature": "export class CommandRegistryCommandNotFoundError extends Data.TaggedError(\"CommandNotFound\")<{ readonly operation: string readonly commandId: string }> {}"
+    },
+    {
+      "name": "CommandRegistryError",
+      "kind": "type",
+      "signature": "export type CommandRegistryError = | CommandRegistryInvalidInputError | CommandRegistryInvalidOutputError | CommandRegistryCommandNotFoundError | CommandRegistryCommandAlreadyRegisteredError | CommandRegistryRegistrationLostError | CommandRegistryHandlerFailureError | CommandRegistryAuditFailedError | PermissionRegistryError"
+    },
+    {
+      "name": "CommandRegistryHandlerFailureError",
+      "kind": "class",
+      "signature": "export class CommandRegistryHandlerFailureError extends Data.TaggedError(\"HandlerFailure\")<{ readonly operation: string readonly commandId: string readonly cause: unknown }> {}"
+    },
+    {
+      "name": "CommandRegistryInvalidInputError",
+      "kind": "class",
+      "signature": "export class CommandRegistryInvalidInputError extends Data.TaggedError(\"InvalidInput\")<{ readonly operation: string readonly commandId: Option.Option<string> readonly field: string readonly message: string readonly cause: Option.Option<unknown> }> {}"
+    },
+    {
+      "name": "CommandRegistryInvalidOutputError",
+      "kind": "class",
+      "signature": "export class CommandRegistryInvalidOutputError extends Data.TaggedError(\"InvalidOutput\")<{ readonly operation: string readonly commandId: string readonly message: string readonly cause: Option.Option<unknown> }> {}"
+    },
+    {
+      "name": "CommandRegistryOptions",
+      "kind": "interface",
+      "signature": "export interface CommandRegistryOptions { readonly audit?: EventLogStore readonly now?: () => number }"
+    },
+    {
+      "name": "CommandRegistryRegistrationLostError",
+      "kind": "class",
+      "signature": "export class CommandRegistryRegistrationLostError extends Data.TaggedError(\"RegistrationLost\")<{ readonly operation: string readonly commandId: string readonly resourceId: ResourceId }> {}"
+    },
+    {
+      "name": "CommandSnapshot",
+      "kind": "class",
+      "signature": "export class CommandSnapshot extends Schema.Class<CommandSnapshot>(\"CommandSnapshot\")({ id: NonEmptyString, capability: Schema.Unknown, ownerScope: NonEmptyString, invocationCount: NonNegativeInt, lastInvocation: Schema.optionalKey(CommandInvocationRecord), lastError: Schema.optionalKey(CommandInvocationRecord) }) {}"
+    },
+    {
+      "name": "CrashRetryPolicy",
+      "kind": "interface",
+      "signature": "export interface CrashRetryPolicy { readonly schedule: Schedule.Schedule<unknown, unknown, never, never> readonly maxTotalDuration: Option.Option<Duration.Duration> readonly isRecoverable: (error: unknown) => boolean }"
+    },
+    {
+      "name": "CrashRetryPolicyOptions",
+      "kind": "interface",
+      "signature": "export interface CrashRetryPolicyOptions { readonly maxRetries: number readonly baseDelay?: Duration.Input readonly factor?: number readonly jittered?: boolean readonly maxTotalDuration?: Duration.Input readonly isRecoverable?: (error: unknown) => boolean }"
+    },
+    {
+      "name": "createBunStdioTransport",
+      "kind": "value",
+      "signature": "const createBunStdioTransport: (options?: FramedTransportOptions) => FramedTransport"
+    },
+    {
+      "name": "createFramedTransport",
+      "kind": "value",
+      "signature": "const createFramedTransport: (input: AsyncIterable<Uint8Array>, write: (chunk: Uint8Array) => Promise<void> | void, options?: FramedTransportOptions) => FramedTransport"
+    },
+    {
+      "name": "defaultWindowStatePath",
+      "kind": "value",
+      "signature": "const defaultWindowStatePath: (bundleId: string) => string"
+    },
+    {
+      "name": "Desktop",
+      "kind": "value",
+      "signature": "const Desktop: Readonly<{ Api: Readonly<{ Resource: <Kind extends string, State extends string>(kind: Kind, state: State) => import(\"@effect-desktop/bridge\").ApiResourceSpec<Kind, State>; Stream: <Chunk extends import(\"effect/Schema\").Schema<unknown>, Error extends import(\"effect/Schema\").Schema<unknown>>(chunk: Chunk, error: Error, backpressure?: import(\"@effect-desktop/bridge\").BackpressureSpec) => import(\"@effect-desktop/bridge\").ApiStreamSpec & { readonly chunk: Chunk; readonly error: Error; }; Tag: <Tag extends string>(tag: Tag) => <Self>() => <Spec extends import(\"@effect-desktop/bridge\").ApiContractSpec, Events extends import(\"@effect-desktop/bridge\").ApiContractEvents = Record<never, never>>(spec: Spec, events?: Events) => import(\"effect/Effect\").Effect<import(\"@effect-desktop/bridge\").ApiContractClass<Tag, Spec, Events>, import(\"@effect-desktop/bridge\").ApiContractError, never>; entries: () => import(\"effect/Effect\").Effect<readonly import(\"@effect-desktop/bridge\").ApiContractClass[], never, never>; freeze: () => import(\"effect/Effect\").Effect<void, never, never>; get: (tag: string) => import(\"effect/Effect\").Effect<import(\"effect/Option\").Option<import(\"@effect-desktop/bridge\").ApiContractClass>, never, never>; }>; Client: <Contracts extends Readonly<Record<string, import(\"@effect-desktop/bridge\").ApiContractClass>>>(contracts: Contracts, exchange: import(\"@effect-desktop/bridge\").ApiClientExchange, options?: import(\"@effect-desktop/bridge\").ApiClientOptions) => import(\"@effect-desktop/bridge\").ApiClient<Contracts>; Handlers: (<Layers extends readonly { readonly contract: import(\"@effect-desktop/bridge\").ApiContractClass<string, import(\"@effect-desktop/bridge\").ApiContractSpec>; readonly handlers: object; }[]>(...layers: Layers) => import(\"@effect-desktop/bridge\").ApiHandlerRuntime<import(\"@effect-desktop/bridge\").ApiLayerEnvironment<Layers[number]>>) & { withOptions: <Layers extends readonly { readonly contract: import(\"@effect-desktop/bridge\").ApiContractClass<string, import(\"@effect-desktop/bridge\").ApiContractSpec>; readonly handlers: object; }[]>(options: import(\"@effect-desktop/bridge\").ApiHandlerRuntimeOptions, ...layers: Layers) => import(\"@effect-desktop/bridge\").ApiHandlerRuntime<import(\"@effect-desktop/bridge\").ApiLayerEnvironment<Layers[number]>>; }; RedactionFilter: Readonly<{ redact: <A>(record: A, options?: import(\"@effect-desktop/bridge\").RedactionFilterOptions) => A; redactedValue: \"[REDACTED]\"; defaultPattern: RegExp; }>; }>"
+    },
+    {
+      "name": "emitAuditEvent",
+      "kind": "value",
+      "signature": "const emitAuditEvent: (audit: EventLogStore | undefined, event: AuditEvent) => Effect.Effect<void, EventLogError, never>"
+    },
+    {
+      "name": "encodeFrame",
+      "kind": "value",
+      "signature": "const encodeFrame: (payload: Uint8Array, options?: FramedTransportOptions) => Uint8Array"
+    },
+    {
+      "name": "EventLog",
+      "kind": "class",
+      "signature": "export class EventLog extends Context.Service<EventLog, EventLogApi>()(\"EventLog\", { make: Effect.gen(function* () { const sqlite = yield* SQLite return yield* makeEventLog(sqlite) }) }) {}"
+    },
+    {
+      "name": "EventLogApi",
+      "kind": "interface",
+      "signature": "export interface EventLogApi { readonly open: ( options: EventLogOpenOptions ) => Effect.Effect<EventLogStore, EventLogError, never> }"
+    },
+    {
+      "name": "EventLogAppend",
+      "kind": "interface",
+      "signature": "export interface EventLogAppend { readonly type: string readonly payload?: unknown }"
+    },
+    {
+      "name": "EventLogAppendInput",
+      "kind": "class",
+      "signature": "export class EventLogAppendInput extends Schema.Class<EventLogAppendInput>(\"EventLogAppendInput\")({ type: NonEmptyString, payload: Schema.optionalKey(Schema.Unknown), source: Schema.optionalKey(Schema.String) }) {}"
+    },
+    {
+      "name": "EventLogAppendOptions",
+      "kind": "interface",
+      "signature": "export interface EventLogAppendOptions { readonly source?: string }"
+    },
+    {
+      "name": "EventLogEntry",
+      "kind": "class",
+      "signature": "export class EventLogEntry extends Schema.Class<EventLogEntry>(\"EventLogEntry\")({ id: NonNegativeInt, type: NonEmptyString, payload: Schema.optionalKey(Schema.Unknown), timestampMs: NonNegativeInt, source: Schema.optionalKey(Schema.String) }) {}"
+    },
+    {
+      "name": "EventLogError",
+      "kind": "type",
+      "signature": "export type EventLogError = | EventLogInvalidArgumentError | EventLogSqliteError | EventLogFullError | EventLogSegmentCorruptError"
+    },
+    {
+      "name": "EventLogFullError",
+      "kind": "class",
+      "signature": "export class EventLogFullError extends Data.TaggedError(\"EventLogFull\")<{ readonly freeBytes: number readonly operation: string readonly cause: Option.Option<unknown> }> {}"
+    },
+    {
+      "name": "EventLogInvalidArgumentError",
+      "kind": "class",
+      "signature": "export class EventLogInvalidArgumentError extends Data.TaggedError(\"InvalidArgument\")<{ readonly operation: string readonly field: string readonly message: string readonly cause: Option.Option<unknown> }> {}"
+    },
+    {
+      "name": "EventLogOpenInput",
+      "kind": "class",
+      "signature": "export class EventLogOpenInput extends Schema.Class<EventLogOpenInput>(\"EventLogOpenInput\")({ path: NonEmptyString, ownerScope: NonEmptyString, namespace: NonEmptyString, maxEvents: Schema.optionalKey(PositiveInt), flushEveryMs: Schema.optionalKey(PositiveInt), flushEveryEvents: Schema.optionalKey(PositiveInt) }) {}"
+    },
+    {
+      "name": "EventLogOpenOptions",
+      "kind": "interface",
+      "signature": "export interface EventLogOpenOptions { readonly path: string readonly ownerScope: string readonly namespace?: string readonly maxEvents?: number readonly flushEveryMs?: number readonly flushEveryEvents?: number readonly now?: () => number }"
+    },
+    {
+      "name": "EventLogQueryInput",
+      "kind": "class",
+      "signature": "export class EventLogQueryInput extends Schema.Class<EventLogQueryInput>(\"EventLogQueryInput\")({ from: Schema.optionalKey(NonNegativeInt), to: Schema.optionalKey(NonNegativeInt), type: Schema.optionalKey(NonEmptyString), limit: Schema.optionalKey(PositiveInt) }) {}"
+    },
+    {
+      "name": "EventLogQueryOptions",
+      "kind": "interface",
+      "signature": "export interface EventLogQueryOptions { readonly from?: number readonly to?: number readonly type?: string readonly limit?: number }"
+    },
+    {
+      "name": "EventLogSegmentCorruptError",
+      "kind": "class",
+      "signature": "export class EventLogSegmentCorruptError extends Data.TaggedError(\"EventLogSegmentCorrupt\")<{ readonly segmentPath: string readonly operation: string readonly cause: Option.Option<unknown> }> {}"
+    },
+    {
+      "name": "EventLogSqliteError",
+      "kind": "class",
+      "signature": "export class EventLogSqliteError extends Data.TaggedError(\"SqliteError\")<{ readonly operation: string readonly cause: SqliteError }> {}"
+    },
+    {
+      "name": "EventLogStore",
+      "kind": "interface",
+      "signature": "export interface EventLogStore { readonly append: ( event: EventLogAppend, options?: EventLogAppendOptions ) => Effect.Effect<number, EventLogError, never> readonly query: ( options?: EventLogQueryOptions ) => Effect.Effect<readonly EventLogEntry[], EventLogError, never> readonly subscribe: ( options?: EventLogSubscribeOptions ) => Stream.Stream<EventLogEntry, EventLogError, never> readonly close: () => Effect.Effect<void, never, never> }"
+    },
+    {
+      "name": "EventLogSubscribeInput",
+      "kind": "class",
+      "signature": "export class EventLogSubscribeInput extends Schema.Class<EventLogSubscribeInput>( \"EventLogSubscribeInput\" )({ from: Schema.optionalKey(NonNegativeInt) }) {}"
+    },
+    {
+      "name": "EventLogSubscribeOptions",
+      "kind": "interface",
+      "signature": "export interface EventLogSubscribeOptions { readonly from?: number }"
+    },
+    {
+      "name": "Filesystem",
+      "kind": "class",
+      "signature": "export class Filesystem extends Context.Service<Filesystem, FilesystemApi>()(\"Filesystem\") {}"
+    },
+    {
+      "name": "FilesystemAdapter",
+      "kind": "interface",
+      "signature": "export interface FilesystemAdapter { readonly readFile: typeof readFile readonly realpath: typeof realpath readonly rename: typeof nodeRename readonly writeFile: typeof writeFile readonly writeFileSynced: (path: string, bytes: Uint8Array) => Promise<void> readonly stat: typeof nodeStat readonly mkdir: (path: string, options?: { readonly recursive: true }) => Promise<void> readonly remove: (path: string, options?: { readonly recursive: true }) => Promise<void> readonly watch: ( path: string, listener: (event: RawFilesystemEvent) => void, onError: (error: FilesystemError) => void ) => Effect.Effect<FilesystemWatcher, FilesystemError, never> }"
+    },
+    {
+      "name": "FilesystemApi",
+      "kind": "interface",
+      "signature": "export interface FilesystemApi { readonly read: (path: string) => Effect.Effect<Uint8Array, FilesystemError, never> readonly realpath: ( path: string, capability?: FilesystemPathCapability ) => Effect.Effect<string, FilesystemError, never> readonly write: (path: string, bytes: Uint8Array) => Effect.Effect<void, FilesystemError, never> readonly writeAtomic: ( path: string, bytes: Uint8Array ) => Effect.Effect<void, FilesystemError, never> readonly stat: (path: string) => Effect.Effect<FilesystemStatResult, FilesystemError, never> readonly mkdir: ( path: string, options?: { readonly recursive?: boolean } ) => Effect.Effect<void, FilesystemError, never> readonly remove: ( path: string, options?: { readonly recursive?: boolean } ) => Effect.Effect<void, FilesystemError, never> readonly watch: ( path: string, options?: { readonly ownerScope: string; readonly bufferSize?: number } ) => Stream.Stream<FilesystemEvent, FilesystemError, never> }"
+    },
+    {
+      "name": "FilesystemEntryKind",
+      "kind": "type",
+      "signature": "const FilesystemEntryKind: Schema.Literals<readonly [\"file\", \"directory\", \"symlink\", \"other\"]>"
+    },
+    {
+      "name": "FilesystemError",
+      "kind": "type",
+      "signature": "export type FilesystemError = HostProtocolError"
+    },
+    {
+      "name": "FilesystemEvent",
+      "kind": "class",
+      "signature": "export class FilesystemEvent extends Schema.Class<FilesystemEvent>(\"FilesystemEvent\")({ kind: FilesystemEventKind, path: Schema.String, directory: Schema.String, filename: Schema.optionalKey(Schema.String) }) {}"
+    },
+    {
+      "name": "FilesystemEventKind",
+      "kind": "type",
+      "signature": "const FilesystemEventKind: Schema.Literals<readonly [\"created\", \"modified\", \"deleted\", \"renamed\"]>"
+    },
+    {
+      "name": "FilesystemLive",
+      "kind": "value",
+      "signature": "const FilesystemLive: Layer.Layer<Filesystem, never, ResourceRegistry>"
+    },
+    {
+      "name": "FilesystemMkdirInput",
+      "kind": "class",
+      "signature": "export class FilesystemMkdirInput extends Schema.Class<FilesystemMkdirInput>( \"FilesystemMkdirInput\" )({ path: NonEmptyPath, recursive: Schema.optionalKey(Schema.Boolean) }) {}"
+    },
+    {
+      "name": "FilesystemOptions",
+      "kind": "interface",
+      "signature": "export interface FilesystemOptions { readonly adapter?: FilesystemAdapter readonly permissions?: FilesystemPermissionPolicy }"
+    },
+    {
+      "name": "FilesystemPathCapability",
+      "kind": "type",
+      "signature": "const FilesystemPathCapability: Schema.Literals<readonly [\"filesystem.read\", \"filesystem.write\"]>"
+    },
+    {
+      "name": "FilesystemPathInput",
+      "kind": "class",
+      "signature": "export class FilesystemPathInput extends Schema.Class<FilesystemPathInput>(\"FilesystemPathInput\")({ path: NonEmptyPath }) {}"
+    },
+    {
+      "name": "FilesystemPermissionPolicy",
+      "kind": "interface",
+      "signature": "export interface FilesystemPermissionPolicy { readonly readRoots?: readonly string[] readonly writeRoots?: readonly string[] readonly deleteRoots?: readonly string[] readonly allowRecursiveRemove?: boolean }"
+    },
+    {
+      "name": "FilesystemRealpathInput",
+      "kind": "class",
+      "signature": "export class FilesystemRealpathInput extends Schema.Class<FilesystemRealpathInput>( \"FilesystemRealpathInput\" )({ path: NonEmptyPath, capability: Schema.optionalKey(FilesystemPathCapability) }) {}"
+    },
+    {
+      "name": "FilesystemRemoveInput",
+      "kind": "class",
+      "signature": "export class FilesystemRemoveInput extends Schema.Class<FilesystemRemoveInput>( \"FilesystemRemoveInput\" )({ path: NonEmptyPath, recursive: Schema.optionalKey(Schema.Boolean) }) {}"
+    },
+    {
+      "name": "FilesystemStatResult",
+      "kind": "class",
+      "signature": "export class FilesystemStatResult extends Schema.Class<FilesystemStatResult>( \"FilesystemStatResult\" )({ path: Schema.String, kind: FilesystemEntryKind, sizeBytes: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)), modifiedAtMs: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)) }) {}"
+    },
+    {
+      "name": "FilesystemWatcher",
+      "kind": "interface",
+      "signature": "export interface FilesystemWatcher { readonly close: () => void }"
+    },
+    {
+      "name": "FilesystemWatchInput",
+      "kind": "class",
+      "signature": "export class FilesystemWatchInput extends Schema.Class<FilesystemWatchInput>( \"FilesystemWatchInput\" )({ path: NonEmptyPath, ownerScope: NonEmptyPath, bufferSize: Schema.optionalKey( Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(65_536)) ) }) {}"
+    },
+    {
+      "name": "FilesystemWriteInput",
+      "kind": "class",
+      "signature": "export class FilesystemWriteInput extends Schema.Class<FilesystemWriteInput>( \"FilesystemWriteInput\" )({ path: NonEmptyPath, bytes: Schema.Uint8Array }) {}"
+    },
+    {
+      "name": "FrameDecoder",
+      "kind": "class",
+      "signature": "export class FrameDecoder { readonly #maxFrameBytes: number readonly #chunks: Uint8Array[] = [] #bufferedBytes = 0 #expectedBodyBytes: number | null = null #headChunkIndex = 0 #headChunkOffset = 0 constructor(options: FramedTransportOptions = {}) { this.#maxFrameBytes = resolveMaxFrameBytes(options) } push(chunk: Uint8Array): Uint8Array[] { if (chunk.byteLength > 0) { this.#chunks.push(chunk) this.#bufferedBytes += chunk.byteLength } const frames: Uint8Array[] = [] while (true) { if (this.#expectedBodyBytes === null) { if (this.#bufferedBytes < LENGTH_PREFIX_BYTES) { return frames } const prefix = this.#readBytes(LENGTH_PREFIX_BYTES) const length = new DataView( prefix.buffer, prefix.byteOffset, LENGTH_PREFIX_BYTES ).getUint32(0, false) if (length > this.#maxFrameBytes) { throw new FrameTooLargeError(length, this.#maxFrameBytes) } this.#expectedBodyBytes = length } if (this.#bufferedBytes < this.#expectedBodyBytes) { return frames } frames.push(this.#readBytes(this.#expectedBodyBytes)) this.#expectedBodyBytes = null } } finish(): void { if (this.#expectedBodyBytes === null) { if (this.#bufferedBytes === 0) { return } throw new FrameTruncatedError(\"length\", LENGTH_PREFIX_BYTES, this.#bufferedBytes) } throw new FrameTruncatedError(\"body\", this.#expectedBodyBytes, this.#bufferedBytes) } #readBytes(byteLength: number): Uint8Array { const bytes = new Uint8Array(byteLength) let copied = 0 while (copied < byteLength) { const chunk = this.#chunks[this.#headChunkIndex] if (chunk === undefined) { throw new Error(\"frame decoder buffer underflow\") } const available = chunk.byteLength - this.#headChunkOffset const take = Math.min(byteLength - copied, available) bytes.set(chunk.subarray(this.#headChunkOffset, this.#headChunkOffset + take), copied) copied += take this.#bufferedBytes -= take this.#headChunkOffset += take if (this.#headChunkOffset === chunk.byteLength) { this.#headChunkIndex += 1 this.#headChunkOffset = 0 this.#compactConsumedChunks() } } return bytes } #compactConsumedChunks(): void { if (this.#headChunkIndex === 0) { return } if (this.#headChunkIndex === this.#chunks.length) { this.#chunks.length = 0 this.#headChunkIndex = 0 return } if (this.#headChunkIndex < 32 && this.#headChunkIndex * 2 < this.#chunks.length) { return } this.#chunks.splice(0, this.#headChunkIndex) this.#headChunkIndex = 0 } }"
+    },
+    {
+      "name": "FramedTransport",
+      "kind": "interface",
+      "signature": "export interface FramedTransport { readonly send: (payload: Uint8Array) => Promise<void> readonly recv: () => Promise<Uint8Array | null> readonly close: () => Promise<void> }"
+    },
+    {
+      "name": "FramedTransportOptions",
+      "kind": "interface",
+      "signature": "export interface FramedTransportOptions { readonly maxFrameBytes?: number }"
+    },
+    {
+      "name": "FrameTooLargeError",
+      "kind": "class",
+      "signature": "export class FrameTooLargeError extends Error { override readonly name = \"FrameTooLargeError\" readonly size: number readonly max: number constructor(size: number, max: number) { super(`frame size ${size} exceeds maxFrameBytes ${max}`) this.size = size this.max = max } }"
+    },
+    {
+      "name": "FrameTruncatedError",
+      "kind": "class",
+      "signature": "export class FrameTruncatedError extends Error { override readonly name = \"FrameTruncatedError\" readonly stage: \"length\" | \"body\" readonly expected: number readonly read: number constructor(stage: \"length\" | \"body\", expected: number, read: number) { super(`frame ${stage} truncated after ${read} of ${expected} bytes`) this.stage = stage this.expected = expected this.read = read } }"
+    },
+    {
+      "name": "generateUuidV7",
+      "kind": "value",
+      "signature": "const generateUuidV7: (now: number) => ResourceId"
+    },
+    {
+      "name": "GrantedCapability",
+      "kind": "class",
+      "signature": "export class GrantedCapability extends Schema.Class<GrantedCapability>(\"GrantedCapability\")({ token: NonEmptyString, capability: NormalizedCapability, actor: PermissionActor, resource: Schema.optionalKey(Schema.String), source: Schema.String, traceId: NonEmptyString, grantedAt: Schema.Number, expiresAt: Schema.optionalKey(Schema.Number), oneTime: Schema.optionalKey(Schema.Boolean) }) {}"
+    },
+    {
+      "name": "GrantStatus",
+      "kind": "type",
+      "signature": "export type GrantStatus = typeof GrantStatus.Type"
+    },
+    {
+      "name": "Handlers",
+      "kind": "value",
+      "signature": "const Handlers: (<Layers extends readonly AnyApiLayer[]>(...layers: Layers) => ApiHandlerRuntime<ApiLayerEnvironment<Layers[number]>>) & { withOptions: <Layers extends readonly AnyApiLayer[]>(options: ApiHandlerRuntimeOptions, ...layers: Layers) => ApiHandlerRuntime<ApiLayerEnvironment<Layers[number]>>; }"
+    },
+    {
+      "name": "InvalidFrameLimitError",
+      "kind": "class",
+      "signature": "export class InvalidFrameLimitError extends Error { override readonly name = \"InvalidFrameLimitError\" readonly maxFrameBytes: number constructor(maxFrameBytes: number) { super(`invalid maxFrameBytes ${maxFrameBytes}; expected an integer from 0 to ${U32_MAX}`) this.maxFrameBytes = maxFrameBytes } }"
+    },
+    {
+      "name": "Job",
+      "kind": "class",
+      "signature": "export class Job extends Context.Service<Job, JobApi>()(\"Job\") {}"
+    },
+    {
+      "name": "JobApi",
+      "kind": "interface",
+      "signature": "export interface JobApi { readonly run: <A, P>( options: JobRunOptions<A, P> ) => Effect.Effect<JobHandle<A, P>, JobError, never> readonly list: () => Effect.Effect<readonly JobSnapshot[], never, never> }"
+    },
+    {
+      "name": "JobAuditFailedError",
+      "kind": "class",
+      "signature": "export class JobAuditFailedError extends Data.TaggedError(\"AuditFailed\")<{ readonly operation: string readonly jobId: string readonly cause: EventLogError }> {}"
+    },
+    {
+      "name": "JobCanceledError",
+      "kind": "class",
+      "signature": "export class JobCanceledError extends Data.TaggedError(\"Canceled\")<{ readonly operation: string readonly jobId: string readonly resourceId: Option.Option<string> }> {}"
+    },
+    {
+      "name": "JobError",
+      "kind": "type",
+      "signature": "export type JobError = | JobInvalidArgumentError | JobFailedError | JobCanceledError | JobTimedOutError | JobAuditFailedError"
+    },
+    {
+      "name": "JobFailedError",
+      "kind": "class",
+      "signature": "export class JobFailedError extends Data.TaggedError(\"JobFailed\")<{ readonly operation: string readonly jobId: string readonly resourceId: Option.Option<string> readonly cause: unknown readonly attempts: number readonly lastError: Option.Option<unknown> }> {}"
+    },
+    {
+      "name": "JobHandle",
+      "kind": "interface",
+      "signature": "export interface JobHandle<A, P> { readonly id: string readonly resource: ResourceHandle<\"job\", \"running\"> readonly status: Effect.Effect<JobStatus, never, never> readonly progress: Stream.Stream<JobProgress<P>, JobError, never> readonly result: Effect.Effect<A, JobError, never> readonly cancel: Effect.Effect<void, never, never> }"
+    },
+    {
+      "name": "JobInvalidArgumentError",
+      "kind": "class",
+      "signature": "export class JobInvalidArgumentError extends Data.TaggedError(\"InvalidArgument\")<{ readonly operation: string readonly field: string readonly message: string readonly cause: Option.Option<unknown> }> {}"
+    },
+    {
+      "name": "JobLayer",
+      "kind": "value",
+      "signature": "const JobLayer: (options?: JobOptions) => Layer.Layer<Job, never, ResourceRegistry>"
+    },
+    {
+      "name": "JobLive",
+      "kind": "value",
+      "signature": "const JobLive: Layer.Layer<Job, never, ResourceRegistry>"
+    },
+    {
+      "name": "JobOptions",
+      "kind": "interface",
+      "signature": "export interface JobOptions { readonly now?: () => number readonly nextId?: () => string readonly progressBufferSize?: number readonly audit?: EventLogStore }"
+    },
+    {
+      "name": "JobProgress",
+      "kind": "type",
+      "signature": "export type JobProgress<P> = P | JobRetrying"
+    },
+    {
+      "name": "JobProgressRecord",
+      "kind": "class",
+      "signature": "export class JobProgressRecord extends Schema.Class<JobProgressRecord>(\"JobProgressRecord\")({ jobId: NonEmptyString, value: Schema.Unknown, emittedAt: NonNegativeInt }) {}"
+    },
+    {
+      "name": "JobRetrying",
+      "kind": "class",
+      "signature": "export class JobRetrying extends Schema.Class<JobRetrying>(\"JobRetrying\")({ _tag: Schema.Literal(\"JobRetrying\"), jobId: NonEmptyString, attempt: PositiveInt, error: Schema.Unknown, nextDelayMs: NonNegativeInt, emittedAt: NonNegativeInt }) {}"
+    },
+    {
+      "name": "JobRunInput",
+      "kind": "class",
+      "signature": "export class JobRunInput extends Schema.Class<JobRunInput>(\"JobRunInput\")({ id: Schema.optionalKey(NonEmptyString), label: Schema.optionalKey(NonEmptyString), ownerScope: NonEmptyString, timeoutMs: Schema.optionalKey(PositiveInt) }) {}"
+    },
+    {
+      "name": "JobRunOptions",
+      "kind": "interface",
+      "signature": "export interface JobRunOptions<A, P> { readonly id?: string readonly label?: string readonly ownerScope: string readonly effect: Effect.Effect<A, unknown, never> readonly progress?: Stream.Stream<P, unknown, never> readonly progressSchema: Schema.Schema<P> readonly retry?: CrashRetryPolicy readonly timeoutMs?: number }"
+    },
+    {
+      "name": "JobSnapshot",
+      "kind": "class",
+      "signature": "export class JobSnapshot extends Schema.Class<JobSnapshot>(\"JobSnapshot\")({ id: NonEmptyString, label: NonEmptyString, ownerScope: NonEmptyString, resourceId: NonEmptyString, status: Schema.Literals([\"running\"]), startedAt: NonNegativeInt, lastProgress: Schema.optionalKey(JobProgressRecord) }) {}"
+    },
+    {
+      "name": "JobStatus",
+      "kind": "type",
+      "signature": "export type JobStatus = \"running\" | \"completed\" | \"failed\" | \"canceled\" | \"timed-out\""
+    },
+    {
+      "name": "JobTimedOutError",
+      "kind": "class",
+      "signature": "export class JobTimedOutError extends Data.TaggedError(\"JobTimedOut\")<{ readonly operation: string readonly jobId: string readonly resourceId: Option.Option<string> readonly timeoutMs: number }> {}"
+    },
+    {
+      "name": "makeApprovalBroker",
+      "kind": "value",
+      "signature": "const makeApprovalBroker: (options: ApprovalBrokerOptions) => Effect.Effect<ApprovalBrokerApi, ApprovalBrokerInvalidArgumentError, never>"
+    },
+    {
+      "name": "makeAuditEvents",
+      "kind": "value",
+      "signature": "const makeAuditEvents: (store: EventLogStore) => AuditEventsApi"
+    },
+    {
+      "name": "makeBridgeCallRegistry",
+      "kind": "value",
+      "signature": "const makeBridgeCallRegistry: (maxEntries?: number) => Effect.Effect<BridgeCallRegistry, never, never>"
+    },
+    {
+      "name": "makeBridgeStreamRegistry",
+      "kind": "value",
+      "signature": "const makeBridgeStreamRegistry: (cleanupGraceMs?: number) => BridgeStreamRegistry"
+    },
+    {
+      "name": "makeCommandRegistry",
+      "kind": "value",
+      "signature": "const makeCommandRegistry: (resources: ResourceRegistryApi, permissions: PermissionRegistryApi, options?: CommandRegistryOptions) => Effect.Effect<CommandRegistryApi, never, never>"
+    },
+    {
+      "name": "makeConnection",
+      "kind": "value",
+      "signature": "const makeConnection: (transport: FramedTransport, operation: string) => TransportConnection"
+    },
+    {
+      "name": "makeEventLog",
+      "kind": "value",
+      "signature": "const makeEventLog: (sqlite: typeof SQLite.Service) => Effect.Effect<EventLogApi, never, never>"
+    },
+    {
+      "name": "makeFilesystem",
+      "kind": "value",
+      "signature": "const makeFilesystem: (registry: ResourceRegistryApi, options?: FilesystemOptions) => Effect.Effect<FilesystemApi, never, never>"
+    },
+    {
+      "name": "makeInMemoryTransportPair",
+      "kind": "value",
+      "signature": "const makeInMemoryTransportPair: () => Effect.Effect<readonly [TransportConnection, TransportConnection], never, never>"
+    },
+    {
+      "name": "makeJob",
+      "kind": "value",
+      "signature": "const makeJob: (resources: ResourceRegistryApi, options?: JobOptions) => Effect.Effect<JobApi, never, never>"
+    },
+    {
+      "name": "makePermissionRegistry",
+      "kind": "value",
+      "signature": "const makePermissionRegistry: (options?: PermissionRegistryOptions) => Effect.Effect<PermissionRegistryApi, never, never>"
+    },
+    {
+      "name": "makeProcess",
+      "kind": "value",
+      "signature": "const makeProcess: (registry: ResourceRegistryApi, options?: ProcessOptions) => Effect.Effect<ProcessApi, never, never>"
+    },
+    {
+      "name": "makePty",
+      "kind": "value",
+      "signature": "const makePty: (registry: ResourceRegistryApi, options?: PtyOptions) => Effect.Effect<PtyApi, never, never>"
+    },
+    {
+      "name": "makeResourceRegistry",
+      "kind": "value",
+      "signature": "const makeResourceRegistry: (options?: ResourceRegistryOptions) => Effect.Effect<ResourceRegistryApi, never, never>"
+    },
+    {
+      "name": "makeSecrets",
+      "kind": "value",
+      "signature": "const makeSecrets: (safeStorage: SecretsSafeStorageApi, options: SecretsOptions) => Effect.Effect<SecretsApi, SecretsInvalidArgumentError, never>"
+    },
+    {
+      "name": "makeSecretsSafeStorageLayer",
+      "kind": "value",
+      "signature": "const makeSecretsSafeStorageLayer: (safeStorage: SecretsSafeStorageApi) => Layer.Layer<SecretsSafeStorage>"
+    },
+    {
+      "name": "makeSettings",
+      "kind": "value",
+      "signature": "const makeSettings: (sqlite: typeof SQLite.Service) => Effect.Effect<SettingsApi, never, never>"
+    },
+    {
+      "name": "makeSQLite",
+      "kind": "value",
+      "signature": "const makeSQLite: (registry: ResourceRegistryApi) => Effect.Effect<SqliteApi, never, never>"
+    },
+    {
+      "name": "makeTelemetry",
+      "kind": "value",
+      "signature": "const makeTelemetry: (options?: TelemetryOptions) => Effect.Effect<TelemetryApi, TelemetryInvalidArgumentError, never>"
+    },
+    {
+      "name": "makeTransport",
+      "kind": "value",
+      "signature": "const makeTransport: () => Effect.Effect<TransportApi, never, never>"
+    },
+    {
+      "name": "makeWindowState",
+      "kind": "value",
+      "signature": "const makeWindowState: (options?: WindowStateOptions) => Effect.Effect<WindowStateApi, never, never>"
+    },
+    {
+      "name": "makeWorker",
+      "kind": "value",
+      "signature": "const makeWorker: (registry: ResourceRegistryApi, permissions: PermissionRegistryApi, options?: WorkerOptions) => Effect.Effect<WorkerApi, never, never>"
+    },
+    {
+      "name": "MAX_FRAME_BYTES",
+      "kind": "value",
+      "signature": "const MAX_FRAME_BYTES: number"
+    },
+    {
+      "name": "NormalizedCapability",
+      "kind": "type",
+      "signature": "const NormalizedCapability: Schema.Union<readonly [Schema.Struct<{ readonly kind: Schema.Literals<readonly [\"filesystem.read\", \"filesystem.write\", \"filesystem.delete\"]>; readonly roots: Schema.$Array<Schema.NonEmptyString>; readonly deny: Schema.optionalKey<Schema.$Array<Schema.NonEmptyString>>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; readonly allowCreate: Schema.optionalKey<Schema.Boolean>; readonly allowOverwrite: Schema.optionalKey<Schema.Boolean>; }>, Schema.Struct<{ readonly kind: Schema.Literals<readonly [\"process.spawn\", \"pty.spawn\"]>; readonly commands: Schema.$Array<Schema.NonEmptyString>; readonly cwd: Schema.optionalKey<Schema.$Array<Schema.NonEmptyString>>; readonly environment: Schema.Literals<readonly [\"none\", \"allowlist\"]>; readonly shell: Schema.Union<readonly [Schema.Literal<false>, Schema.Literal<\"requires-explicit-approval\">]>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literal<\"network.connect\">; readonly hosts: Schema.$Array<Schema.NonEmptyString>; readonly askUnknownHosts: Schema.Boolean; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literals<readonly [\"secrets.read\", \"secrets.write\", \"safeStorage.read\", \"safeStorage.write\"]>; readonly namespaces: Schema.$Array<Schema.NonEmptyString>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literal<\"native.invoke\">; readonly primitive: Schema.NonEmptyString; readonly methods: Schema.$Array<Schema.NonEmptyString>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; }>]>"
+    },
+    {
+      "name": "PermissionActor",
+      "kind": "class",
+      "signature": "export class PermissionActor extends Schema.Class<PermissionActor>(\"PermissionActor\")({ kind: ActorKind, id: NonEmptyString }) {}"
+    },
+    {
+      "name": "permissionAuditEvent",
+      "kind": "value",
+      "signature": "const permissionAuditEvent: (input: PermissionAuditEventInput) => AuditEvent"
+    },
+    {
+      "name": "PermissionAuditEventInput",
+      "kind": "interface",
+      "signature": "export interface PermissionAuditEventInput { readonly kind: | \"permission-granted\" | \"permission-denied\" | \"permission-revoked\" | \"permission-expired\" | \"permission-consumed\" | \"permission-used\" readonly source: string readonly traceId: string readonly outcome: string readonly normalizedCapability: NormalizedCapability readonly actor: PermissionActor readonly resource?: string readonly timestamp?: number readonly details?: unknown }"
+    },
+    {
+      "name": "PermissionAuditFailedError",
+      "kind": "class",
+      "signature": "export class PermissionAuditFailedError extends Data.TaggedError(\"PermissionAuditFailed\")<{ readonly operation: string readonly decision: PermissionDecision readonly cause: EventLogError }> {}"
+    },
+    {
+      "name": "PermissionContext",
+      "kind": "class",
+      "signature": "export class PermissionContext extends Schema.Class<PermissionContext>(\"PermissionContext\")({ actor: PermissionActor, resource: Schema.optionalKey(Schema.String), traceId: Schema.optionalKey(Schema.String) }) {}"
+    },
+    {
+      "name": "PermissionDecision",
+      "kind": "class",
+      "signature": "export class PermissionDecision extends Schema.Class<PermissionDecision>(\"PermissionDecision\")({ outcome: Schema.Literals([\"granted\", \"denied\"]), reason: Schema.optionalKey( Schema.Literals([ \"explicit-deny\", \"approval-denied\", \"revoked\", \"expired\", \"consumed\", \"default-deny\" ]) ), source: Schema.String, capability: NormalizedCapability, actor: PermissionActor, resource: Schema.optionalKey(Schema.String), traceId: NonEmptyString }) {}"
+    },
+    {
+      "name": "PermissionDeclaration",
+      "kind": "class",
+      "signature": "export class PermissionDeclaration extends Schema.Class<PermissionDeclaration>( \"PermissionDeclaration\" )({ capability: NormalizedCapability, effect: PermissionEffect, actor: Schema.optionalKey(PermissionActor), source: Schema.optionalKey(Schema.String) }) {}"
+    },
+    {
+      "name": "PermissionDeniedError",
+      "kind": "class",
+      "signature": "export class PermissionDeniedError extends Data.TaggedError(\"PermissionDenied\")<{ readonly operation: string readonly reason: | \"explicit-deny\" | \"approval-denied\" | \"revoked\" | \"expired\" | \"consumed\" | \"default-deny\" readonly capability: NormalizedCapability readonly actor: PermissionActor readonly resource: Option.Option<string> readonly traceId: string }> {}"
+    },
+    {
+      "name": "PermissionEffect",
+      "kind": "type",
+      "signature": "export type PermissionEffect = typeof PermissionEffect.Type"
+    },
+    {
+      "name": "PermissionGrantNotFoundError",
+      "kind": "class",
+      "signature": "export class PermissionGrantNotFoundError extends Data.TaggedError(\"PermissionGrantNotFound\")<{ readonly operation: string readonly token: string }> {}"
+    },
+    {
+      "name": "PermissionGrantOptions",
+      "kind": "interface",
+      "signature": "export interface PermissionGrantOptions { readonly expiresAt?: number readonly oneTime?: boolean readonly source?: string }"
+    },
+    {
+      "name": "PermissionGrantSnapshot",
+      "kind": "class",
+      "signature": "export class PermissionGrantSnapshot extends Schema.Class<PermissionGrantSnapshot>( \"PermissionGrantSnapshot\" )({ grant: GrantedCapability, status: GrantStatus, updatedAt: Schema.Number }) {}"
+    },
+    {
+      "name": "PermissionInvalidArgumentError",
+      "kind": "class",
+      "signature": "export class PermissionInvalidArgumentError extends Data.TaggedError(\"InvalidArgument\")<{ readonly operation: string readonly field: string readonly message: string readonly cause: Option.Option<unknown> }> {}"
+    },
+    {
+      "name": "PermissionQuery",
+      "kind": "class",
+      "signature": "export class PermissionQuery extends Schema.Class<PermissionQuery>(\"PermissionQuery\")({ kind: CapabilityKind, actor: PermissionActor }) {}"
+    },
+    {
+      "name": "PermissionRegistry",
+      "kind": "class",
+      "signature": "export class PermissionRegistry extends Context.Service< PermissionRegistry, PermissionRegistryApi >()(\"PermissionRegistry\", { make: makePermissionRegistry() }) {}"
+    },
+    {
+      "name": "PermissionRegistryApi",
+      "kind": "interface",
+      "signature": "export interface PermissionRegistryApi { readonly declare: ( capability: NormalizedCapability, options?: { readonly effect?: PermissionEffect readonly actor?: PermissionActor readonly source?: string } ) => Effect.Effect<PermissionRule, PermissionInvalidArgumentError, never> readonly query: ( kind: CapabilityKind, actor: PermissionActor ) => Effect.Effect<readonly PermissionRule[], PermissionInvalidArgumentError, never> readonly check: ( capability: NormalizedCapability, context: PermissionContext, options?: PermissionGrantOptions ) => Effect.Effect<GrantedCapability, PermissionRegistryError, never> readonly grant: ( capability: NormalizedCapability, context: PermissionContext, options?: PermissionGrantOptions ) => Effect.Effect<GrantedCapability, PermissionRegistryError, never> readonly revoke: ( token: string ) => Effect.Effect<PermissionGrantSnapshot, PermissionRegistryError, never> readonly inspect: ( token: string ) => Effect.Effect<PermissionGrantSnapshot, PermissionRegistryError, never> readonly use: <A, E, R>( grant: GrantedCapability, effect: Effect.Effect<A, E, R> ) => Effect.Effect<A, E | PermissionRegistryError, R> readonly listDecisions: () => Effect.Effect<readonly PermissionDecision[], never, never> readonly observeDecisions: () => Stream.Stream<PermissionDecision, never, never> }"
+    },
+    {
+      "name": "PermissionRegistryError",
+      "kind": "type",
+      "signature": "export type PermissionRegistryError = | PermissionInvalidArgumentError | PermissionDeniedError | PermissionAuditFailedError | PermissionGrantNotFoundError | PermissionRevokedError"
+    },
+    {
+      "name": "PermissionRegistryOptions",
+      "kind": "interface",
+      "signature": "export interface PermissionRegistryOptions { readonly audit?: EventLogStore readonly traceId?: () => string readonly nextToken?: () => string readonly now?: () => number }"
+    },
+    {
+      "name": "PermissionRevokedError",
+      "kind": "class",
+      "signature": "export class PermissionRevokedError extends Data.TaggedError(\"PermissionRevoked\")<{ readonly operation: string readonly reason: \"revoked\" | \"expired\" | \"consumed\" readonly token: string readonly capability: NormalizedCapability readonly actor: PermissionActor readonly traceId: string readonly revokedAt: number }> {}"
+    },
+    {
+      "name": "PermissionRule",
+      "kind": "class",
+      "signature": "export class PermissionRule extends Schema.Class<PermissionRule>(\"PermissionRule\")({ capability: NormalizedCapability, effect: PermissionEffect, actor: Schema.optionalKey(PermissionActor), source: Schema.String }) {}"
+    },
+    {
+      "name": "Process",
+      "kind": "class",
+      "signature": "export class Process extends Context.Service<Process, ProcessApi>()(\"Process\") {}"
+    },
+    {
+      "name": "ProcessAdapter",
+      "kind": "interface",
+      "signature": "export interface ProcessAdapter { readonly spawn: (input: ProcessSpawnInput) => ProcessChild }"
+    },
+    {
+      "name": "ProcessApi",
+      "kind": "interface",
+      "signature": "export interface ProcessApi { readonly spawn: ( command: string, args?: readonly string[], options?: ProcessSpawnOptions ) => Effect.Effect<ProcessHandle, ProcessError, never> readonly list: () => Effect.Effect<readonly ProcessSnapshot[], never, never> readonly observe: () => Stream.Stream<readonly ProcessSnapshot[], never, never> }"
+    },
+    {
+      "name": "ProcessBudgetPolicy",
+      "kind": "interface",
+      "signature": "export interface ProcessBudgetPolicy { readonly maxConcurrent?: number readonly stderrBufferBytes?: number readonly stdoutBufferBytes?: number }"
+    },
+    {
+      "name": "ProcessChild",
+      "kind": "interface",
+      "signature": "export interface ProcessChild { readonly pid: number readonly stdout: ReadableStream<Uint8Array> readonly stderr: ReadableStream<Uint8Array> readonly exited: Promise<ProcessExitStatus> readonly writeStdin: (chunk: Uint8Array) => Promise<void> readonly closeStdin: () => Promise<void> readonly isRunning: () => boolean readonly terminateTree: () => Promise<void> readonly forceKillTree: () => Promise<void> readonly kill: (signal?: ProcessSignalInput) => void readonly childPids?: readonly number[] }"
+    },
+    {
+      "name": "ProcessError",
+      "kind": "type",
+      "signature": "export type ProcessError = HostProtocolError"
+    },
+    {
+      "name": "ProcessExitStatus",
+      "kind": "class",
+      "signature": "export class ProcessExitStatus extends Schema.Class<ProcessExitStatus>(\"ProcessExitStatus\")({ code: Schema.Int, signal: Schema.optionalKey(Schema.String) }) {}"
+    },
+    {
+      "name": "ProcessHandle",
+      "kind": "interface",
+      "signature": "export interface ProcessHandle { readonly resource: ResourceHandle<\"process\", \"running\"> readonly pid: number readonly stdin: Sink.Sink<void, Uint8Array, never, ProcessError, never> readonly stdout: Stream.Stream<Uint8Array, ProcessError, never> readonly stderr: Stream.Stream<Uint8Array, ProcessError, never> readonly exit: Effect.Effect<ProcessExitStatus, ProcessError, never> readonly kill: (signal?: ProcessSignalInput) => Effect.Effect<void, ProcessError, never> }"
+    },
+    {
+      "name": "ProcessLayer",
+      "kind": "value",
+      "signature": "const ProcessLayer: (options?: ProcessOptions) => Layer.Layer<Process, never, ResourceRegistry>"
+    },
+    {
+      "name": "ProcessLive",
+      "kind": "value",
+      "signature": "const ProcessLive: Layer.Layer<Process, never, ResourceRegistry>"
+    },
+    {
+      "name": "ProcessOptions",
+      "kind": "interface",
+      "signature": "export interface ProcessOptions { readonly adapter?: ProcessAdapter readonly budgets?: ProcessBudgetPolicy readonly gracefulShutdownMs?: number readonly maxSnapshots?: number readonly permissions?: ProcessPermissionPolicy readonly now?: () => number }"
+    },
+    {
+      "name": "ProcessPermissionPolicy",
+      "kind": "interface",
+      "signature": "export interface ProcessPermissionPolicy { readonly spawn?: readonly string[] readonly shell?: boolean }"
+    },
+    {
+      "name": "ProcessSignalInput",
+      "kind": "type",
+      "signature": "const ProcessSignalInput: Schema.Union<readonly [Schema.NonEmptyString, Schema.Int]>"
+    },
+    {
+      "name": "ProcessSnapshot",
+      "kind": "interface",
+      "signature": "export interface ProcessSnapshot { readonly resourceId: string readonly pid: number readonly command: string readonly args: readonly string[] readonly ownerScope: string readonly childPids: readonly number[] readonly state: \"running\" | \"exited\" readonly startedAt: number readonly updatedAt: number readonly lastExit: Option.Option<ProcessExitStatus> }"
+    },
+    {
+      "name": "ProcessSpawnInput",
+      "kind": "class",
+      "signature": "export class ProcessSpawnInput extends Schema.Class<ProcessSpawnInput>(\"ProcessSpawnInput\")({ command: NonEmptyString, args: Schema.Array(Schema.String), ownerScope: NonEmptyString, shell: Schema.optionalKey(Schema.Boolean), cwd: Schema.optionalKey(NonEmptyString), env: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)) }) {}"
+    },
+    {
+      "name": "ProcessSpawnOptions",
+      "kind": "interface",
+      "signature": "export interface ProcessSpawnOptions { readonly ownerScope: string readonly shell?: boolean readonly cwd?: string readonly env?: Readonly<Record<string, string>> }"
+    },
+    {
+      "name": "PTY",
+      "kind": "class",
+      "signature": "export class PTY extends Context.Service<PTY, PtyApi>()(\"PTY\") {}"
+    },
+    {
+      "name": "PtyAdapter",
+      "kind": "interface",
+      "signature": "export interface PtyAdapter { readonly open: (input: PtyOpenInput) => PtyChild }"
+    },
+    {
+      "name": "PtyApi",
+      "kind": "interface",
+      "signature": "export interface PtyApi { readonly open: (options: PtyOpenOptions) => Effect.Effect<PtyHandle, PtyError, never> }"
+    },
+    {
+      "name": "PtyBudgetPolicy",
+      "kind": "interface",
+      "signature": "export interface PtyBudgetPolicy { readonly maxConcurrent?: number readonly outputBufferBytes?: number readonly outputCoalesceBytes?: number readonly outputCoalesceMs?: number readonly outputOverflow?: PtyOutputOverflow }"
+    },
+    {
+      "name": "PtyChild",
+      "kind": "interface",
+      "signature": "export interface PtyChild { readonly pid: Option.Option<number> readonly output: ReadableStream<Uint8Array> readonly exited: Promise<PtyExitStatus> readonly write: (chunk: Uint8Array) => Promise<void> readonly resize: (size: PtyResizeInput) => Promise<void> readonly isRunning: () => boolean readonly terminateTree: () => Promise<void> readonly forceKillTree: () => Promise<void> readonly kill: (signal?: PtySignalInput) => Promise<void> }"
+    },
+    {
+      "name": "PtyError",
+      "kind": "type",
+      "signature": "export type PtyError = HostProtocolError"
+    },
+    {
+      "name": "PtyExitStatus",
+      "kind": "class",
+      "signature": "export class PtyExitStatus extends Schema.Class<PtyExitStatus>(\"PtyExitStatus\")({ code: Schema.Int, signal: Schema.optionalKey(Schema.String) }) {}"
+    },
+    {
+      "name": "PtyHandle",
+      "kind": "interface",
+      "signature": "export interface PtyHandle { readonly resource: ResourceHandle<\"pty\", \"running\"> readonly pid: Option.Option<number> readonly output: Stream.Stream<Uint8Array, PtyError, never> readonly outputMetrics: Effect.Effect<PtyOutputMetrics, never, never> readonly onExit: Effect.Effect<PtyExitStatus, PtyError, never> readonly write: (chunk: Uint8Array) => Effect.Effect<void, PtyError, never> readonly resize: (size: PtyResizeInput) => Effect.Effect<void, PtyError, never> readonly kill: (signal?: PtySignalInput) => Effect.Effect<void, PtyError, never> }"
+    },
+    {
+      "name": "PtyLayer",
+      "kind": "value",
+      "signature": "const PtyLayer: (options?: PtyOptions) => Layer.Layer<PTY, never, ResourceRegistry>"
+    },
+    {
+      "name": "PtyLive",
+      "kind": "value",
+      "signature": "const PtyLive: Layer.Layer<PTY, never, ResourceRegistry>"
+    },
+    {
+      "name": "PtyOpenInput",
+      "kind": "class",
+      "signature": "export class PtyOpenInput extends Schema.Class<PtyOpenInput>(\"PtyOpenInput\")({ command: NonEmptyString, args: Schema.Array(Schema.String), ownerScope: NonEmptyString, rows: PositiveInt, cols: PositiveInt, cwd: Schema.optionalKey(NonEmptyString), env: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)) }) {}"
+    },
+    {
+      "name": "PtyOpenOptions",
+      "kind": "interface",
+      "signature": "export interface PtyOpenOptions { readonly argv: readonly [string, ...string[]] readonly ownerScope: string readonly rows: number readonly cols: number readonly cwd?: string readonly env?: Readonly<Record<string, string>> }"
+    },
+    {
+      "name": "PtyOptions",
+      "kind": "interface",
+      "signature": "export interface PtyOptions { readonly adapter?: PtyAdapter readonly budgets?: PtyBudgetPolicy readonly gracefulShutdownMs?: number readonly permissions?: PtyPermissionPolicy }"
+    },
+    {
+      "name": "PtyOutputMetrics",
+      "kind": "interface",
+      "signature": "export interface PtyOutputMetrics { readonly coalescedFrames: number readonly coalescingFactor: number readonly droppedBytes: number readonly droppedFrames: number readonly emittedBytes: number readonly emittedFrames: number readonly inputBytes: number readonly inputFrames: number readonly outputBufferBytes: number readonly outputCoalesceBytes: number readonly outputCoalesceMs: number readonly outputOverflow: PtyOutputOverflow readonly queueBytes: number readonly queueDepth: number }"
+    },
+    {
+      "name": "PtyOutputOverflow",
+      "kind": "type",
+      "signature": "export type PtyOutputOverflow = \"block\" | \"dropNewest\" | \"dropOldest\" | \"error\""
+    },
+    {
+      "name": "PtyPermissionPolicy",
+      "kind": "interface",
+      "signature": "export interface PtyPermissionPolicy { readonly spawn?: readonly string[] }"
+    },
+    {
+      "name": "PtyResizeInput",
+      "kind": "class",
+      "signature": "export class PtyResizeInput extends Schema.Class<PtyResizeInput>(\"PtyResizeInput\")({ rows: PositiveInt, cols: PositiveInt }) {}"
+    },
+    {
+      "name": "PtySignalInput",
+      "kind": "type",
+      "signature": "const PtySignalInput: Schema.Union<readonly [Schema.NonEmptyString, Schema.Int]>"
+    },
+    {
+      "name": "RawFilesystemEvent",
+      "kind": "interface",
+      "signature": "export interface RawFilesystemEvent { readonly type: \"rename\" | \"change\" readonly filename?: string }"
+    },
+    {
+      "name": "redact",
+      "kind": "value",
+      "signature": "const redact: <A>(record: A, options?: RedactionFilterOptions) => A"
+    },
+    {
+      "name": "RedactionFilter",
+      "kind": "value",
+      "signature": "const RedactionFilter: Readonly<{ redact: <A>(record: A, options?: RedactionFilterOptions) => A; redactedValue: \"[REDACTED]\"; defaultPattern: RegExp; }>"
+    },
+    {
+      "name": "RegisterResourceInput",
+      "kind": "interface",
+      "signature": "export interface RegisterResourceInput< Kind extends ResourceKind = ResourceKind, State extends ResourceState = ResourceState > { readonly kind: Kind readonly id?: ResourceId readonly ownerScope: ScopeId readonly state: State readonly reusableId?: boolean readonly disposalGraceMs?: number readonly dispose?: Effect.Effect<void, never, never> }"
+    },
+    {
+      "name": "RegistrySnapshot",
+      "kind": "interface",
+      "signature": "export interface RegistrySnapshot { readonly entries: readonly ResourceEntry[] }"
+    },
+    {
+      "name": "ResourceEntry",
+      "kind": "interface",
+      "signature": "export interface ResourceEntry< Kind extends ResourceKind = ResourceKind, State extends ResourceState = ResourceState > { readonly handle: ResourceHandle<Kind, State> readonly createdAt: number }"
+    },
+    {
+      "name": "ResourceHandle",
+      "kind": "interface",
+      "signature": "export interface ResourceHandle< Kind extends ResourceKind = ResourceKind, State extends ResourceState = ResourceState > { readonly kind: Kind readonly id: ResourceId readonly generation: number readonly ownerScope: ScopeId readonly state: State readonly dispose: () => Effect.Effect<void, never, never> }"
+    },
+    {
+      "name": "ResourceHandleShape",
+      "kind": "class",
+      "signature": "export class ResourceHandleShape extends Schema.Class<ResourceHandleShape>(\"ResourceHandle\")({ kind: Schema.String, id: Schema.String, generation: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)), ownerScope: Schema.String, state: Schema.String }) {}"
+    },
+    {
+      "name": "ResourceId",
+      "kind": "type",
+      "signature": "export type ResourceId = string & { readonly ResourceId: unique symbol }"
+    },
+    {
+      "name": "ResourceKind",
+      "kind": "type",
+      "signature": "export type ResourceKind = string"
+    },
+    {
+      "name": "ResourceRegistry",
+      "kind": "class",
+      "signature": "export class ResourceRegistry extends Context.Service<ResourceRegistry, ResourceRegistryApi>()( \"ResourceRegistry\" ) {}"
+    },
+    {
+      "name": "ResourceRegistryApi",
+      "kind": "interface",
+      "signature": "export interface ResourceRegistryApi { readonly register: <Kind extends ResourceKind, State extends ResourceState>( input: RegisterResourceInput<Kind, State> ) => Effect.Effect<ResourceHandle<Kind, State>, never, never> readonly get: (id: ResourceId) => Effect.Effect<Option.Option<ResourceEntry>, never, never> readonly list: () => Effect.Effect<RegistrySnapshot, never, never> readonly dispose: (id: ResourceId) => Effect.Effect<void, never, never> readonly observe: () => Stream.Stream<RegistrySnapshot, never, never> readonly declareScope: (scope: ScopeId, parent?: ScopeId) => Effect.Effect<void, never, never> readonly closeScope: (scope: ScopeId) => Effect.Effect<void, never, never> readonly share: <Kind extends ResourceKind, State extends ResourceState>( handle: ResourceHandle<Kind, State>, targetScope: ScopeId ) => Effect.Effect<ResourceHandle<Kind, State>, StaleHandle, never> readonly assertFresh: <Kind extends ResourceKind, State extends ResourceState>( handle: ResourceHandle<Kind, State> ) => Effect.Effect<ResourceEntry<Kind, State>, StaleHandle, never> }"
+    },
+    {
+      "name": "ResourceRegistryLive",
+      "kind": "value",
+      "signature": "const ResourceRegistryLive: Layer.Layer<ResourceRegistry, never, never>"
+    },
+    {
+      "name": "ResourceRegistryOptions",
+      "kind": "interface",
+      "signature": "export interface ResourceRegistryOptions { readonly now?: () => number readonly nextId?: (now: number) => ResourceId }"
+    },
+    {
+      "name": "ResourceState",
+      "kind": "type",
+      "signature": "export type ResourceState = string"
+    },
+    {
+      "name": "runSecretsMigration",
+      "kind": "value",
+      "signature": "const runSecretsMigration: (options: SecretsMigrationOptions) => Effect.Effect<SecretsMigrationReport, SecretsMigrationError, never>"
+    },
+    {
+      "name": "ScopeId",
+      "kind": "type",
+      "signature": "export type ScopeId = string"
+    },
+    {
+      "name": "SecretNotFoundError",
+      "kind": "class",
+      "signature": "export class SecretNotFoundError extends Data.TaggedError(\"SecretNotFound\")<{ readonly operation: string readonly namespace: string readonly key: string }> {}"
+    },
+    {
+      "name": "Secrets",
+      "kind": "class",
+      "signature": "export class Secrets extends Context.Service<Secrets, SecretsApi>()(\"Secrets\") {}"
+    },
+    {
+      "name": "SecretsApi",
+      "kind": "interface",
+      "signature": "export interface SecretsApi { readonly set: ( namespace: string, key: string, value: SecretValue ) => Effect.Effect<void, SecretsError, never> readonly get: (namespace: string, key: string) => Effect.Effect<SecretValue, SecretsError, never> readonly delete: (namespace: string, key: string) => Effect.Effect<void, SecretsError, never> readonly list: (namespace: string) => Effect.Effect<readonly string[], SecretsError, never> }"
+    },
+    {
+      "name": "SecretsAuditFailedError",
+      "kind": "class",
+      "signature": "export class SecretsAuditFailedError extends Data.TaggedError(\"SecretsAuditFailed\")<{ readonly operation: string readonly namespace: string readonly key: Option.Option<string> readonly cause: EventLogError }> {}"
+    },
+    {
+      "name": "SecretsError",
+      "kind": "type",
+      "signature": "export type SecretsError = | SecretNotFoundError | SecretsSafeStorageUnavailableError | SecretsPermissionDeniedError | SecretsInvalidArgumentError | SecretsAuditFailedError | HostProtocolError"
+    },
+    {
+      "name": "SecretsInvalidArgumentError",
+      "kind": "class",
+      "signature": "export class SecretsInvalidArgumentError extends Data.TaggedError(\"InvalidArgument\")<{ readonly operation: string readonly field: \"appId\" | \"namespace\" | \"key\" readonly message: string readonly cause: Option.Option<unknown> }> {}"
+    },
+    {
+      "name": "SecretsKeyInput",
+      "kind": "class",
+      "signature": "export class SecretsKeyInput extends Schema.Class<SecretsKeyInput>(\"SecretsKeyInput\")({ namespace: SecretName, key: SecretName }) {}"
+    },
+    {
+      "name": "SecretsLayer",
+      "kind": "value",
+      "signature": "const SecretsLayer: (options: SecretsOptions) => Layer.Layer<Secrets, SecretsInvalidArgumentError, SecretsSafeStorage>"
+    },
+    {
+      "name": "SecretsMigrationError",
+      "kind": "type",
+      "signature": "export type SecretsMigrationError = SecretsMigrationFailedError"
+    },
+    {
+      "name": "SecretsMigrationFailedError",
+      "kind": "class",
+      "signature": "export class SecretsMigrationFailedError extends Data.TaggedError(\"SecretsMigrationFailed\")<{ readonly key: Option.Option<string> readonly phase: SecretsMigrationPhase readonly cause: SettingsError | SecretsError | EventLogError | SecretVerificationMismatchError }> {}"
+    },
+    {
+      "name": "SecretsMigrationOptions",
+      "kind": "interface",
+      "signature": "export interface SecretsMigrationOptions { readonly settings: SettingsStore readonly secrets: SecretsApi readonly audit?: EventLogStore readonly namespace?: string readonly completeFlagKey?: string readonly legacyKeys?: readonly string[] readonly keyPattern?: RegExp }"
+    },
+    {
+      "name": "SecretsMigrationPhase",
+      "kind": "type",
+      "signature": "export type SecretsMigrationPhase = | \"read-flag\" | \"list\" | \"read\" | \"write\" | \"verify\" | \"delete\" | \"audit\" | \"write-flag\""
+    },
+    {
+      "name": "SecretsMigrationReport",
+      "kind": "class",
+      "signature": "export class SecretsMigrationReport extends Schema.Class<SecretsMigrationReport>( \"SecretsMigrationReport\" )({ completed: Schema.Boolean, migrated: Schema.Array(Schema.String), skipped: Schema.Boolean }) {}"
+    },
+    {
+      "name": "SecretsNamespaceInput",
+      "kind": "class",
+      "signature": "export class SecretsNamespaceInput extends Schema.Class<SecretsNamespaceInput>( \"SecretsNamespaceInput\" )({ namespace: SecretName }) {}"
+    },
+    {
+      "name": "SecretsOptions",
+      "kind": "interface",
+      "signature": "export interface SecretsOptions { readonly appId: string readonly permissions?: SecretsPermissionPolicy readonly audit?: EventLogStore readonly traceId?: () => string }"
+    },
+    {
+      "name": "SecretsOptionsInput",
+      "kind": "class",
+      "signature": "export class SecretsOptionsInput extends Schema.Class<SecretsOptionsInput>(\"SecretsOptionsInput\")({ appId: NonEmptyString }) {}"
+    },
+    {
+      "name": "SecretsPermissionDeniedError",
+      "kind": "class",
+      "signature": "export class SecretsPermissionDeniedError extends Data.TaggedError(\"PermissionDenied\")<{ readonly operation: string readonly capability: \"secrets.read\" | \"secrets.write\" readonly namespace: string }> {}"
+    },
+    {
+      "name": "SecretsPermissionPolicy",
+      "kind": "interface",
+      "signature": "export interface SecretsPermissionPolicy { readonly read?: readonly string[] readonly write?: readonly string[] }"
+    },
+    {
+      "name": "SecretsSafeStorage",
+      "kind": "class",
+      "signature": "export class SecretsSafeStorage extends Context.Service< SecretsSafeStorage, SecretsSafeStorageApi >()(\"SecretsSafeStorage\") {}"
+    },
+    {
+      "name": "SecretsSafeStorageApi",
+      "kind": "interface",
+      "signature": "export interface SecretsSafeStorageApi { readonly set: (key: string, value: SecretValue) => Effect.Effect<void, HostProtocolError, never> readonly get: (key: string) => Effect.Effect<SecretValue, HostProtocolError, never> readonly delete: (key: string) => Effect.Effect<void, HostProtocolError, never> readonly list: () => Effect.Effect<ReadonlyArray<string>, HostProtocolError, never> readonly isAvailable: () => Effect.Effect<boolean, HostProtocolError, never> }"
+    },
+    {
+      "name": "SecretsSafeStorageUnavailableError",
+      "kind": "class",
+      "signature": "export class SecretsSafeStorageUnavailableError extends Data.TaggedError(\"SafeStorageUnavailable\")<{ readonly operation: string readonly cause: Option.Option<HostProtocolError> }> {}"
+    },
+    {
+      "name": "SecretsSetInput",
+      "kind": "class",
+      "signature": "export class SecretsSetInput extends Schema.Class<SecretsSetInput>(\"SecretsSetInput\")({ namespace: SecretName, key: SecretName }) {}"
+    },
+    {
+      "name": "SecretValue",
+      "kind": "class",
+      "signature": "export class SecretValue { readonly _tag = \"SecretValue\" #bytes: Uint8Array private constructor(bytes: Uint8Array) { this.#bytes = new Uint8Array(bytes) } static fromBytes(bytes: Uint8Array): SecretValue { return new SecretValue(bytes) } static fromUtf8(value: string): SecretValue { return new SecretValue(new TextEncoder().encode(value)) } unsafeBytes(): Uint8Array { return new Uint8Array(this.#bytes) } dispose(): Effect.Effect<void, never, never> { return Effect.sync(() => { this.#bytes.fill(0) }) } toString(): string { return Redacted } toJSON(): string { return Redacted } [NodeInspectCustom](): string { return Redacted } }"
+    },
+    {
+      "name": "SecretVerificationMismatchError",
+      "kind": "class",
+      "signature": "export class SecretVerificationMismatchError extends Data.TaggedError( \"SecretVerificationMismatch\" )<{ readonly namespace: string readonly key: string }> {}"
+    },
+    {
+      "name": "Settings",
+      "kind": "class",
+      "signature": "export class Settings extends Context.Service<Settings, SettingsApi>()(\"Settings\", { make: Effect.gen(function* () { const sqlite = yield* SQLite return yield* makeSettings(sqlite) }) }) {}"
+    },
+    {
+      "name": "SettingsApi",
+      "kind": "interface",
+      "signature": "export interface SettingsApi { readonly open: ( options: SettingsOpenOptions ) => Effect.Effect<SettingsStore, SettingsError, never> }"
+    },
+    {
+      "name": "SettingsChange",
+      "kind": "class",
+      "signature": "export class SettingsChange extends Schema.Class<SettingsChange>(\"SettingsChange\")({ key: Schema.String, oldValue: Schema.optionalKey(Schema.Unknown), newValue: Schema.optionalKey(Schema.Unknown), source: Schema.String }) {}"
+    },
+    {
+      "name": "SettingsError",
+      "kind": "type",
+      "signature": "export type SettingsError = | SettingsInvalidArgumentError | SettingsSqliteError | SettingsMigrationFailedError | SettingsRecoveredFromBackupError"
+    },
+    {
+      "name": "SettingsInvalidArgumentError",
+      "kind": "class",
+      "signature": "export class SettingsInvalidArgumentError extends Data.TaggedError(\"InvalidArgument\")<{ readonly operation: string readonly field: string readonly message: string readonly cause: Option.Option<unknown> }> {}"
+    },
+    {
+      "name": "SettingsMigrated",
+      "kind": "class",
+      "signature": "export class SettingsMigrated extends Schema.Class<SettingsMigrated>(\"SettingsMigrated\")({ from: NonNegativeInt, to: NonNegativeInt, durationMs: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)) }) {}"
+    },
+    {
+      "name": "SettingsMigration",
+      "kind": "interface",
+      "signature": "export interface SettingsMigration { readonly from: number readonly to: number readonly migrate: (context: SettingsMigrationContext) => Effect.Effect<void, SettingsError, never> }"
+    },
+    {
+      "name": "SettingsMigrationContext",
+      "kind": "interface",
+      "signature": "export interface SettingsMigrationContext { readonly getRaw: (key: string) => Effect.Effect<Option.Option<unknown>, SettingsError, never> readonly setRaw: (key: string, value: unknown) => Effect.Effect<void, SettingsError, never> readonly deleteRaw: (key: string) => Effect.Effect<void, SettingsError, never> readonly rename: (from: string, to: string) => Effect.Effect<void, SettingsError, never> }"
+    },
+    {
+      "name": "SettingsMigrationFailedError",
+      "kind": "class",
+      "signature": "export class SettingsMigrationFailedError extends Data.TaggedError(\"SettingsMigrationFailed\")<{ readonly schemaVersion: number readonly operation: string readonly cause: Option.Option<unknown> }> {}"
+    },
+    {
+      "name": "SettingsMutationOptions",
+      "kind": "interface",
+      "signature": "export interface SettingsMutationOptions { readonly source?: string }"
+    },
+    {
+      "name": "SettingsOpenInput",
+      "kind": "class",
+      "signature": "export class SettingsOpenInput extends Schema.Class<SettingsOpenInput>(\"SettingsOpenInput\")({ path: NonEmptyString, ownerScope: NonEmptyString, namespace: NonEmptyString, schemaVersion: NonNegativeInt, backupPath: Schema.optionalKey(NonEmptyString) }) {}"
+    },
+    {
+      "name": "SettingsOpenOptions",
+      "kind": "interface",
+      "signature": "export interface SettingsOpenOptions { readonly path: string readonly ownerScope: string readonly namespace?: string readonly schemaVersion: number readonly migrations?: readonly SettingsMigration[] readonly backupPath?: string readonly now?: () => number }"
+    },
+    {
+      "name": "SettingsRecoveredFromBackupError",
+      "kind": "class",
+      "signature": "export class SettingsRecoveredFromBackupError extends Data.TaggedError( \"SettingsRecoveredFromBackup\" )<{ readonly backupPath: string readonly operation: string readonly cause: Option.Option<unknown> }> {}"
+    },
+    {
+      "name": "SettingsSqliteError",
+      "kind": "class",
+      "signature": "export class SettingsSqliteError extends Data.TaggedError(\"SqliteError\")<{ readonly operation: string readonly cause: SqliteError }> {}"
+    },
+    {
+      "name": "SettingsStore",
+      "kind": "interface",
+      "signature": "export interface SettingsStore { readonly get: <A>( key: string, schema: Schema.Schema<A> ) => Effect.Effect<Option.Option<A>, SettingsError, never> readonly getOrDefault: <A>( key: string, schema: Schema.Schema<A>, defaultValue: A ) => Effect.Effect<A, SettingsError, never> readonly set: <A>( key: string, schema: Schema.Schema<A>, value: A, options?: SettingsMutationOptions ) => Effect.Effect<void, SettingsError, never> readonly delete: ( key: string, options?: SettingsMutationOptions ) => Effect.Effect<void, SettingsError, never> readonly keys: () => Effect.Effect<readonly string[], SettingsError, never> readonly update: <A, E, R>( key: string, schema: Schema.Schema<A>, update: (current: Option.Option<A>) => Effect.Effect<A, E, R>, options?: SettingsMutationOptions ) => Effect.Effect<A, E | SettingsError, R> readonly changes: () => Stream.Stream<SettingsChange, never, never> readonly migrated: () => Stream.Stream<SettingsMigrated, never, never> readonly close: () => Effect.Effect<void, never, never> }"
+    },
+    {
+      "name": "SQLite",
+      "kind": "class",
+      "signature": "export class SQLite extends Context.Service<SQLite, SqliteApi>()(\"SQLite\") {}"
+    },
+    {
+      "name": "SqliteApi",
+      "kind": "interface",
+      "signature": "export interface SqliteApi { readonly connect: ( options: SqliteConnectOptions ) => Effect.Effect<SqliteConnection, SqliteError, never> }"
+    },
+    {
+      "name": "SqliteBusyError",
+      "kind": "class",
+      "signature": "export class SqliteBusyError extends Data.TaggedError(\"Busy\")<SqliteErrorFields> {}"
+    },
+    {
+      "name": "SqliteChanges",
+      "kind": "interface",
+      "signature": "export interface SqliteChanges { readonly changes: number readonly lastInsertRowid: number | bigint }"
+    },
+    {
+      "name": "SqliteConnectInput",
+      "kind": "class",
+      "signature": "export class SqliteConnectInput extends Schema.Class<SqliteConnectInput>(\"SqliteConnectInput\")({ path: NonEmptyString, ownerScope: NonEmptyString, readonly: Schema.optionalKey(Schema.Boolean), create: Schema.optionalKey(Schema.Boolean), readwrite: Schema.optionalKey(Schema.Boolean), safeIntegers: Schema.optionalKey(Schema.Boolean), strict: Schema.optionalKey(Schema.Boolean) }) {}"
+    },
+    {
+      "name": "SqliteConnection",
+      "kind": "interface",
+      "signature": "export interface SqliteConnection { readonly resource: ResourceHandle<\"sqlite\", \"open\"> readonly query: ( sql: string, params?: SqliteParams ) => Effect.Effect<readonly SqliteRow[], SqliteError, never> readonly exec: ( sql: string, params?: SqliteParams ) => Effect.Effect<SqliteChanges, SqliteError, never> readonly prepare: (sql: string) => Effect.Effect<SqlitePreparedStatement, SqliteError, never> readonly transaction: <A, E, R>( effect: Effect.Effect<A, E, R>, options?: SqliteTransactionOptions ) => Effect.Effect<A, E | SqliteError, R> readonly close: () => Effect.Effect<void, never, never> }"
+    },
+    {
+      "name": "SqliteConnectOptions",
+      "kind": "interface",
+      "signature": "export interface SqliteConnectOptions extends DatabaseOptions { readonly path: string readonly ownerScope: string }"
+    },
+    {
+      "name": "SqliteConstraintError",
+      "kind": "class",
+      "signature": "export class SqliteConstraintError extends Data.TaggedError(\"Constraint\")<SqliteErrorFields> {}"
+    },
+    {
+      "name": "SqliteCorruptError",
+      "kind": "class",
+      "signature": "export class SqliteCorruptError extends Data.TaggedError(\"Corrupt\")<SqliteErrorFields> {}"
+    },
+    {
+      "name": "SqliteError",
+      "kind": "type",
+      "signature": "export type SqliteError = | SqliteConstraintError | SqliteBusyError | SqliteLockedError | SqliteCorruptError | SqliteIoError | SqliteInvalidArgumentError | SqliteInvalidStateError"
+    },
+    {
+      "name": "SqliteErrorFields",
+      "kind": "interface",
+      "signature": "export interface SqliteErrorFields { readonly operation: string readonly resource: string readonly message: string readonly code: Option.Option<string> readonly cause: Option.Option<unknown> }"
+    },
+    {
+      "name": "SqliteInvalidArgumentError",
+      "kind": "class",
+      "signature": "export class SqliteInvalidArgumentError extends Data.TaggedError(\"InvalidArgument\")< SqliteErrorFields & { readonly field: string } > {}"
+    },
+    {
+      "name": "SqliteInvalidStateError",
+      "kind": "class",
+      "signature": "export class SqliteInvalidStateError extends Data.TaggedError(\"InvalidState\")<SqliteErrorFields> {}"
+    },
+    {
+      "name": "SqliteIoError",
+      "kind": "class",
+      "signature": "export class SqliteIoError extends Data.TaggedError(\"IoError\")<SqliteErrorFields> {}"
+    },
+    {
+      "name": "SQLiteLive",
+      "kind": "value",
+      "signature": "const SQLiteLive: Layer.Layer<SQLite, never, ResourceRegistry>"
+    },
+    {
+      "name": "SqliteLockedError",
+      "kind": "class",
+      "signature": "export class SqliteLockedError extends Data.TaggedError(\"Locked\")<SqliteErrorFields> {}"
+    },
+    {
+      "name": "SqliteParams",
+      "kind": "type",
+      "signature": "export type SqliteParams = readonly SqliteValue[] | Readonly<Record<string, SqliteValue>>"
+    },
+    {
+      "name": "SqlitePreparedStatement",
+      "kind": "interface",
+      "signature": "export interface SqlitePreparedStatement { readonly resource: ResourceHandle<\"sqlite-statement\", \"open\"> readonly all: (params?: SqliteParams) => Effect.Effect<readonly SqliteRow[], SqliteError, never> readonly get: ( params?: SqliteParams ) => Effect.Effect<Option.Option<SqliteRow>, SqliteError, never> readonly run: (params?: SqliteParams) => Effect.Effect<SqliteChanges, SqliteError, never> readonly dispose: () => Effect.Effect<void, never, never> }"
+    },
+    {
+      "name": "SqliteRow",
+      "kind": "type",
+      "signature": "export type SqliteRow = Readonly<Record<string, SqliteValue>>"
+    },
+    {
+      "name": "SqliteTransactionMode",
+      "kind": "type",
+      "signature": "export type SqliteTransactionMode = \"deferred\" | \"immediate\" | \"exclusive\""
+    },
+    {
+      "name": "SqliteTransactionOptions",
+      "kind": "interface",
+      "signature": "export interface SqliteTransactionOptions { readonly mode?: SqliteTransactionMode }"
+    },
+    {
+      "name": "SqliteValue",
+      "kind": "type",
+      "signature": "export type SqliteValue = string | bigint | number | boolean | Uint8Array | null"
+    },
+    {
+      "name": "StaleHandle",
+      "kind": "class",
+      "signature": "export class StaleHandle extends Schema.Class<StaleHandle>(\"StaleHandle\")({ tag: Schema.Literal(\"StaleHandle\"), kind: Schema.String, id: Schema.String, expectedGeneration: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)), actualGeneration: Schema.Int }) { get _tag(): \"StaleHandle\" { return this.tag } }"
+    },
+    {
+      "name": "Telemetry",
+      "kind": "class",
+      "signature": "export class Telemetry extends Context.Service<Telemetry, TelemetryApi>()(\"Telemetry\", { make: makeTelemetry() }) {}"
+    },
+    {
+      "name": "TelemetryApi",
+      "kind": "interface",
+      "signature": "export interface TelemetryApi { readonly log: (input: TelemetryLogInput) => Effect.Effect<void, never, never> readonly listLogs: () => Effect.Effect<readonly TelemetryLogRecord[], never, never> readonly observeLogs: () => Stream.Stream<readonly TelemetryLogRecord[], never, never> readonly recordSpan: (input: TelemetryTraceSpanInput) => Effect.Effect<void, never, never> readonly listTraces: () => Effect.Effect<readonly TelemetryTraceSpan[], never, never> readonly observeTraces: () => Stream.Stream<readonly TelemetryTraceSpan[], never, never> readonly incrementCounter: (input: TelemetryCounterInput) => Effect.Effect<void, never, never> readonly recordHistogram: (input: TelemetryHistogramInput) => Effect.Effect<void, never, never> readonly listMetrics: () => Effect.Effect<readonly TelemetryMetricSnapshot[], never, never> readonly observeMetrics: () => Stream.Stream<readonly TelemetryMetricSnapshot[], never, never> readonly snapshot: () => Effect.Effect<TelemetrySnapshot, never, never> }"
+    },
+    {
+      "name": "TelemetryCounterInput",
+      "kind": "interface",
+      "signature": "export interface TelemetryCounterInput { readonly name: string readonly by?: number readonly timestamp?: number readonly tags?: Readonly<Record<string, string>> }"
+    },
+    {
+      "name": "TelemetryCounterSnapshot",
+      "kind": "interface",
+      "signature": "export interface TelemetryCounterSnapshot extends TelemetryMetricBase { readonly kind: \"counter\" readonly value: number }"
+    },
+    {
+      "name": "TelemetryHistogramInput",
+      "kind": "interface",
+      "signature": "export interface TelemetryHistogramInput { readonly name: string readonly value: number readonly timestamp?: number readonly tags?: Readonly<Record<string, string>> }"
+    },
+    {
+      "name": "TelemetryHistogramSnapshot",
+      "kind": "interface",
+      "signature": "export interface TelemetryHistogramSnapshot extends TelemetryMetricBase { readonly kind: \"histogram\" readonly count: number readonly sum: number readonly min: number readonly max: number readonly p50: number readonly p95: number readonly p99: number readonly samples: readonly number[] }"
+    },
+    {
+      "name": "TelemetryInvalidArgumentError",
+      "kind": "class",
+      "signature": "export class TelemetryInvalidArgumentError extends Data.TaggedError(\"InvalidArgument\")<{ readonly operation: string readonly field: string readonly message: string }> {}"
+    },
+    {
+      "name": "TelemetryLogInput",
+      "kind": "interface",
+      "signature": "export interface TelemetryLogInput { readonly level: TelemetryLogLevel readonly subsystem: string readonly operation: string readonly traceId: string readonly message: string readonly timestamp?: number readonly resourceId?: string readonly windowId?: string readonly fields?: unknown }"
+    },
+    {
+      "name": "TelemetryLogLevel",
+      "kind": "type",
+      "signature": "export type TelemetryLogLevel = \"debug\" | \"info\" | \"warn\" | \"error\""
+    },
+    {
+      "name": "TelemetryLogRecord",
+      "kind": "interface",
+      "signature": "export interface TelemetryLogRecord { readonly id: number readonly level: TelemetryLogLevel readonly timestamp: number readonly subsystem: string readonly operation: string readonly traceId: string readonly resourceId: Option.Option<string> readonly windowId: Option.Option<string> readonly message: string readonly fields: Option.Option<unknown> }"
+    },
+    {
+      "name": "TelemetryMetricBase",
+      "kind": "interface",
+      "signature": "export interface TelemetryMetricBase { readonly name: string readonly tags: Readonly<Record<string, string>> readonly updatedAt: number }"
+    },
+    {
+      "name": "TelemetryMetricSnapshot",
+      "kind": "type",
+      "signature": "export type TelemetryMetricSnapshot = TelemetryCounterSnapshot | TelemetryHistogramSnapshot"
+    },
+    {
+      "name": "TelemetryOptions",
+      "kind": "interface",
+      "signature": "export interface TelemetryOptions { readonly maxLogs?: number readonly maxMetrics?: number readonly maxHistogramSamples?: number readonly traceRingSize?: number readonly tracingEnabled?: boolean readonly now?: () => number readonly nextSpanId?: () => string }"
+    },
+    {
+      "name": "TelemetrySnapshot",
+      "kind": "interface",
+      "signature": "export interface TelemetrySnapshot { readonly logs: readonly TelemetryLogRecord[] readonly traces: readonly TelemetryTraceSpan[] readonly metrics: readonly TelemetryMetricSnapshot[] }"
+    },
+    {
+      "name": "TelemetryTraceSpan",
+      "kind": "interface",
+      "signature": "export interface TelemetryTraceSpan { readonly traceId: string readonly spanId: string readonly parentSpanId: Option.Option<string> readonly subsystem: string readonly operation: string readonly name: string readonly startedAt: number readonly endedAt: Option.Option<number> readonly durationMs: Option.Option<number> readonly attributes: Option.Option<unknown> }"
+    },
+    {
+      "name": "TelemetryTraceSpanInput",
+      "kind": "interface",
+      "signature": "export interface TelemetryTraceSpanInput { readonly traceId: string readonly spanId?: string readonly parentSpanId?: string readonly subsystem: string readonly operation: string readonly name: string readonly startedAt: number readonly endedAt?: number readonly attributes?: unknown }"
+    },
+    {
+      "name": "Transport",
+      "kind": "class",
+      "signature": "export class Transport extends Context.Service<Transport, TransportApi>()(\"Transport\", { make: makeTransport() }) {}"
+    },
+    {
+      "name": "TransportApi",
+      "kind": "interface",
+      "signature": "export interface TransportApi { readonly frame: (input: TransportFrameInput) => Effect.Effect<Uint8Array, TransportError, never> readonly unframe: ( input: TransportUnframeInput ) => Effect.Effect<readonly Uint8Array[], TransportError, never> readonly unframeStream: ( input: TransportUnframeStreamInput ) => Stream.Stream<Uint8Array, TransportError, never> readonly connect: ( input: TransportConnectInput ) => Effect.Effect<TransportConnection, TransportError, never> }"
+    },
+    {
+      "name": "TransportClosedError",
+      "kind": "class",
+      "signature": "export class TransportClosedError extends Data.TaggedError(\"TransportClosed\")<{ readonly operation: string }> {}"
+    },
+    {
+      "name": "TransportConnectInput",
+      "kind": "class",
+      "signature": "export class TransportConnectInput extends Schema.Class<TransportConnectInput>( \"TransportConnectInput\" )({ target: TransportConnectTarget, maxFrameBytes: Schema.optionalKey(PositiveInt) }) {}"
+    },
+    {
+      "name": "TransportConnection",
+      "kind": "interface",
+      "signature": "export interface TransportConnection { readonly send: (payload: Uint8Array) => Effect.Effect<void, TransportError, never> readonly receive: Stream.Stream<Uint8Array, TransportError, never> readonly close: () => Effect.Effect<void, never, never> }"
+    },
+    {
+      "name": "TransportConnectTarget",
+      "kind": "type",
+      "signature": "const TransportConnectTarget: Schema.Literals<readonly [\"stdio\"]>"
+    },
+    {
+      "name": "TransportError",
+      "kind": "type",
+      "signature": "export type TransportError = | TransportInvalidArgumentError | TransportFrameTooLargeError | TransportFrameTruncatedError | TransportClosedError | TransportWriteError"
+    },
+    {
+      "name": "TransportFrameInput",
+      "kind": "class",
+      "signature": "export class TransportFrameInput extends Schema.Class<TransportFrameInput>(\"TransportFrameInput\")({ scheme: TransportScheme, payload: Schema.Uint8Array, maxFrameBytes: Schema.optionalKey(PositiveInt) }) {}"
+    },
+    {
+      "name": "TransportFrameTooLargeError",
+      "kind": "class",
+      "signature": "export class TransportFrameTooLargeError extends Data.TaggedError(\"FrameTooLarge\")<{ readonly operation: string readonly size: number readonly max: number }> {}"
+    },
+    {
+      "name": "TransportFrameTruncatedError",
+      "kind": "class",
+      "signature": "export class TransportFrameTruncatedError extends Data.TaggedError(\"FrameTruncated\")<{ readonly operation: string readonly stage: \"length\" | \"body\" | \"header\" readonly expected: number readonly read: number }> {}"
+    },
+    {
+      "name": "TransportInvalidArgumentError",
+      "kind": "class",
+      "signature": "export class TransportInvalidArgumentError extends Data.TaggedError(\"InvalidArgument\")<{ readonly operation: string readonly field: string readonly message: string readonly cause: Option.Option<unknown> }> {}"
+    },
+    {
+      "name": "TransportScheme",
+      "kind": "type",
+      "signature": "const TransportScheme: Schema.Literals<readonly [\"length-prefixed\", \"json-rpc\"]>"
+    },
+    {
+      "name": "TransportUnframeInput",
+      "kind": "class",
+      "signature": "export class TransportUnframeInput extends Schema.Class<TransportUnframeInput>( \"TransportUnframeInput\" )({ scheme: TransportScheme, bytes: Schema.Uint8Array, maxFrameBytes: Schema.optionalKey(PositiveInt) }) {}"
+    },
+    {
+      "name": "TransportUnframeStreamInput",
+      "kind": "interface",
+      "signature": "export interface TransportUnframeStreamInput { readonly scheme: TransportScheme readonly chunks: Stream.Stream<Uint8Array, TransportError, never> readonly maxFrameBytes?: number }"
+    },
+    {
+      "name": "TransportWriteError",
+      "kind": "class",
+      "signature": "export class TransportWriteError extends Data.TaggedError(\"TransportWriteFailed\")<{ readonly operation: string readonly cause: Option.Option<unknown> }> {}"
+    },
+    {
+      "name": "WindowDisplayBounds",
+      "kind": "class",
+      "signature": "export class WindowDisplayBounds extends Schema.Class<WindowDisplayBounds>(\"WindowDisplayBounds\")({ x: Schema.Number.check(Schema.isFinite()), y: Schema.Number.check(Schema.isFinite()), width: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)), height: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)), primary: Schema.optionalKey(Schema.Boolean) }) {}"
+    },
+    {
+      "name": "WindowState",
+      "kind": "class",
+      "signature": "export class WindowState extends Context.Service<WindowState, WindowStateApi>()(\"WindowState\") {}"
+    },
+    {
+      "name": "WindowStateApi",
+      "kind": "interface",
+      "signature": "export interface WindowStateApi { readonly restore: ( windowId: string ) => Effect.Effect<Option.Option<WindowStateRecord>, WindowStateError, never> readonly restoreAll: () => Effect.Effect< Readonly<Record<string, WindowStateRecord>>, WindowStateError, never > readonly persist: ( windowId: string, state: WindowStateRecord ) => Effect.Effect<void, WindowStateError, never> readonly clear: (windowId?: string) => Effect.Effect<void, WindowStateError, never> readonly observe: () => Stream.Stream<WindowStateEvent, never, never> }"
+    },
+    {
+      "name": "WindowStateCorruptRenamed",
+      "kind": "class",
+      "signature": "export class WindowStateCorruptRenamed extends Data.TaggedError(\"WindowStateCorruptRenamed\")<{ readonly path: string readonly corruptPath: string readonly reason: string }> {}"
+    },
+    {
+      "name": "WindowStateError",
+      "kind": "type",
+      "signature": "export type WindowStateError = | WindowStateReadFailed | WindowStateWriteFailed | WindowStateCorruptRenamed"
+    },
+    {
+      "name": "WindowStateEvent",
+      "kind": "class",
+      "signature": "export class WindowStateEvent extends Schema.Class<WindowStateEvent>(\"WindowStateEvent\")({ kind: WindowStateEventKind, path: Schema.String, windowId: Schema.optionalKey(Schema.String), corruptPath: Schema.optionalKey(Schema.String), reason: Schema.optionalKey(Schema.String) }) {}"
+    },
+    {
+      "name": "WindowStateEventKind",
+      "kind": "type",
+      "signature": "const WindowStateEventKind: Schema.Literals<readonly [\"persisted\", \"cleared\", \"corrupt-renamed\"]>"
+    },
+    {
+      "name": "WindowStateLive",
+      "kind": "value",
+      "signature": "const WindowStateLive: Layer.Layer<WindowState, never, never>"
+    },
+    {
+      "name": "WindowStateOptions",
+      "kind": "interface",
+      "signature": "export interface WindowStateOptions { readonly path?: string readonly bundleId?: string readonly now?: () => number readonly validateBounds?: (state: WindowStateRecord) => WindowStateRecord readonly displays?: readonly WindowDisplayBounds[] }"
+    },
+    {
+      "name": "WindowStateReadFailed",
+      "kind": "class",
+      "signature": "export class WindowStateReadFailed extends Data.TaggedError(\"WindowStateReadFailed\")<{ readonly path: string readonly reason: string }> {}"
+    },
+    {
+      "name": "WindowStateRecord",
+      "kind": "class",
+      "signature": "export class WindowStateRecord extends Schema.Class<WindowStateRecord>(\"WindowStateRecord\")({ x: Schema.Number.check(Schema.isFinite()), y: Schema.Number.check(Schema.isFinite()), width: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)), height: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)), isFullScreen: Schema.Boolean, scaleFactor: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)), zoom: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)), devtoolsPanel: Schema.optionalKey(Schema.String), scrollPositions: Schema.optionalKey(Schema.Record(Schema.String, Schema.Number)) }) {}"
+    },
+    {
+      "name": "WindowStateStore",
+      "kind": "class",
+      "signature": "export class WindowStateStore extends Schema.Class<WindowStateStore>(\"WindowStateStore\")({ windows: Schema.Record(Schema.String, WindowStateRecord) }) {}"
+    },
+    {
+      "name": "WindowStateWriteFailed",
+      "kind": "class",
+      "signature": "export class WindowStateWriteFailed extends Data.TaggedError(\"WindowStateWriteFailed\")<{ readonly path: string readonly reason: string }> {}"
+    },
+    {
+      "name": "Worker",
+      "kind": "class",
+      "signature": "export class Worker extends Context.Service<Worker, WorkerApi>()(\"Worker\") {}"
+    },
+    {
+      "name": "WorkerAdapter",
+      "kind": "interface",
+      "signature": "export interface WorkerAdapter { readonly spawn: ( input: WorkerAdapterSpawnInput ) => Effect.Effect<WorkerRuntime, WorkerError, never> }"
+    },
+    {
+      "name": "WorkerAdapterSpawnInput",
+      "kind": "interface",
+      "signature": "export interface WorkerAdapterSpawnInput { readonly script: string readonly ownerScope: string readonly capabilities: readonly NormalizedCapability[] readonly messageBufferSize: number readonly gracefulShutdownMs: number }"
+    },
+    {
+      "name": "WorkerApi",
+      "kind": "interface",
+      "signature": "export interface WorkerApi { readonly spawn: <In, Out>( options: WorkerSpawnOptions<In, Out> ) => Effect.Effect<WorkerHandle<In, Out>, WorkerError, never> readonly list: () => Effect.Effect<readonly WorkerSnapshot[], never, never> }"
+    },
+    {
+      "name": "WorkerBudgetPolicy",
+      "kind": "interface",
+      "signature": "export interface WorkerBudgetPolicy { readonly maxConcurrent?: number readonly messageBufferSize?: number }"
+    },
+    {
+      "name": "WorkerCapabilityNotHeldError",
+      "kind": "class",
+      "signature": "export class WorkerCapabilityNotHeldError extends Data.TaggedError(\"CapabilityNotHeld\")<{ readonly operation: string readonly script: string readonly kind: NormalizedCapability[\"kind\"] readonly capability: NormalizedCapability readonly context: PermissionContext readonly cause: Option.Option<PermissionDeniedError | PermissionRegistryError> }> {}"
+    },
+    {
+      "name": "WorkerChannelError",
+      "kind": "class",
+      "signature": "export class WorkerChannelError extends Data.TaggedError(\"ChannelError\")<{ readonly operation: string readonly field: \"input\" | \"output\" | \"transport\" readonly script: string readonly message: string readonly cause: Option.Option<unknown> }> {}"
+    },
+    {
+      "name": "WorkerCrashedError",
+      "kind": "class",
+      "signature": "export class WorkerCrashedError extends Data.TaggedError(\"WorkerCrashed\")<{ readonly operation: string readonly script: string readonly resourceId: Option.Option<string> readonly exitCode: Option.Option<number> readonly signal: Option.Option<string> readonly lastError: Option.Option<unknown> }> {}"
+    },
+    {
+      "name": "WorkerError",
+      "kind": "type",
+      "signature": "export type WorkerError = | WorkerChannelError | WorkerCapabilityNotHeldError | WorkerCrashedError | WorkerInvalidArgumentError | WorkerResourceBusyError | WorkerUnsupportedError"
+    },
+    {
+      "name": "WorkerHandle",
+      "kind": "interface",
+      "signature": "export interface WorkerHandle<In, Out> { readonly resource: ResourceHandle<\"worker\", \"running\"> readonly send: (message: In) => Effect.Effect<void, WorkerError, never> readonly messages: Stream.Stream<Out, WorkerError, never> readonly close: Effect.Effect<void, never, never> }"
+    },
+    {
+      "name": "WorkerInvalidArgumentError",
+      "kind": "class",
+      "signature": "export class WorkerInvalidArgumentError extends Data.TaggedError(\"InvalidArgument\")<{ readonly operation: string readonly field: string readonly message: string readonly cause: Option.Option<unknown> }> {}"
+    },
+    {
+      "name": "WorkerLayer",
+      "kind": "value",
+      "signature": "const WorkerLayer: (options?: WorkerOptions) => Layer.Layer<Worker, never, ResourceRegistry | PermissionRegistry>"
+    },
+    {
+      "name": "WorkerLive",
+      "kind": "value",
+      "signature": "const WorkerLive: Layer.Layer<Worker, never, ResourceRegistry | PermissionRegistry>"
+    },
+    {
+      "name": "WorkerOptions",
+      "kind": "interface",
+      "signature": "export interface WorkerOptions { readonly adapter?: WorkerAdapter readonly budgets?: WorkerBudgetPolicy readonly gracefulShutdownMs?: number readonly now?: () => number }"
+    },
+    {
+      "name": "WorkerResourceBusyError",
+      "kind": "class",
+      "signature": "export class WorkerResourceBusyError extends Data.TaggedError(\"ResourceBusy\")<{ readonly operation: string readonly ownerScope: string readonly maxConcurrent: number }> {}"
+    },
+    {
+      "name": "WorkerRuntime",
+      "kind": "interface",
+      "signature": "export interface WorkerRuntime { readonly send: (message: unknown) => Effect.Effect<void, WorkerError, never> readonly messages: Stream.Stream<unknown, WorkerError, never> readonly exit: Effect.Effect<void, WorkerError, never> readonly shutdown: Effect.Effect<void, never, never> }"
+    },
+    {
+      "name": "WorkerSnapshot",
+      "kind": "class",
+      "signature": "export class WorkerSnapshot extends Schema.Class<WorkerSnapshot>(\"WorkerSnapshot\")({ id: NonEmptyString, script: NonEmptyString, ownerScope: NonEmptyString, resourceId: NonEmptyString, status: Schema.Literals([\"running\"]), uptimeMs: NonNegativeInt, capabilities: Schema.Array(Schema.Unknown), lastError: Schema.optionalKey(Schema.Unknown) }) {}"
+    },
+    {
+      "name": "WorkerSpawnInput",
+      "kind": "class",
+      "signature": "export class WorkerSpawnInput extends Schema.Class<WorkerSpawnInput>(\"WorkerSpawnInput\")({ script: NonEmptyString, ownerScope: NonEmptyString, capabilities: Schema.Array(Schema.Unknown) }) {}"
+    },
+    {
+      "name": "WorkerSpawnOptions",
+      "kind": "interface",
+      "signature": "export interface WorkerSpawnOptions<In, Out> { readonly script: string readonly ownerScope: string readonly inputSchema: Schema.Schema<In> readonly outputSchema: Schema.Schema<Out> readonly context: PermissionContext readonly capabilities?: readonly NormalizedCapability[] }"
+    },
+    {
+      "name": "WorkerUnsupportedError",
+      "kind": "class",
+      "signature": "export class WorkerUnsupportedError extends Data.TaggedError(\"Unsupported\")<{ readonly operation: string readonly script: string readonly reason: string readonly cause: Option.Option<unknown> }> {}"
+    }
+  ]
+}

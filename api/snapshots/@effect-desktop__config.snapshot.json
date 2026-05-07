@@ -1,0 +1,147 @@
+{
+  "schemaVersion": 1,
+  "packageName": "@effect-desktop/config",
+  "entrypoint": "src/index.ts",
+  "symbols": [
+    {
+      "name": "AppProtocolPolicy",
+      "kind": "interface",
+      "signature": "export interface AppProtocolPolicy { readonly allowPathTraversal?: boolean }"
+    },
+    {
+      "name": "ContractCapabilityRequirement",
+      "kind": "interface",
+      "signature": "export interface ContractCapabilityRequirement { readonly contract: string readonly capability: string readonly support: \"supported\" | \"partial\" | \"unsupported\" readonly isSupportedGuard?: boolean }"
+    },
+    {
+      "name": "CspPolicy",
+      "kind": "interface",
+      "signature": "export interface CspPolicy { readonly policy?: string readonly disabled?: boolean readonly acknowledgeWeakening?: boolean readonly justification?: string }"
+    },
+    {
+      "name": "CspWeakening",
+      "kind": "interface",
+      "signature": "export interface CspWeakening { readonly directive: string readonly reason: string }"
+    },
+    {
+      "name": "cspWeakenings",
+      "kind": "value",
+      "signature": "const cspWeakenings: (csp: CspPolicy) => readonly CspWeakening[]"
+    },
+    {
+      "name": "DEFAULT_CSP_DIRECTIVES",
+      "kind": "value",
+      "signature": "const DEFAULT_CSP_DIRECTIVES: readonly [directive: string, values: readonly string[]][]"
+    },
+    {
+      "name": "DEFAULT_CSP_NONCE_PLACEHOLDER",
+      "kind": "value",
+      "signature": "const DEFAULT_CSP_NONCE_PLACEHOLDER: \"{N}\""
+    },
+    {
+      "name": "defineDesktopConfig",
+      "kind": "value",
+      "signature": "const defineDesktopConfig: <Config extends ProductionSecurityConfig>(config: Config) => Config"
+    },
+    {
+      "name": "FilesystemWritePolicy",
+      "kind": "interface",
+      "signature": "export interface FilesystemWritePolicy { readonly enabled?: boolean readonly roots?: readonly string[] }"
+    },
+    {
+      "name": "formatProductionCheckReport",
+      "kind": "value",
+      "signature": "const formatProductionCheckReport: (report: ProductionCheckReport) => string"
+    },
+    {
+      "name": "ProcessPermissionPolicy",
+      "kind": "interface",
+      "signature": "export interface ProcessPermissionPolicy { readonly enabled?: boolean readonly allow?: readonly string[] readonly ask?: readonly string[] readonly deny?: readonly string[] }"
+    },
+    {
+      "name": "ProductionCheckError",
+      "kind": "type",
+      "signature": "export type ProductionCheckError = ProductionCheckInvalidInput"
+    },
+    {
+      "name": "ProductionCheckFile",
+      "kind": "interface",
+      "signature": "export interface ProductionCheckFile { readonly path: string readonly content: string }"
+    },
+    {
+      "name": "ProductionCheckInput",
+      "kind": "interface",
+      "signature": "export interface ProductionCheckInput { readonly config: ProductionSecurityConfig readonly configPath?: string readonly rendererFiles?: readonly ProductionCheckFile[] }"
+    },
+    {
+      "name": "ProductionCheckInvalidInput",
+      "kind": "class",
+      "signature": "export class ProductionCheckInvalidInput extends Data.TaggedError(\"InvalidInput\")<{ readonly operation: string readonly message: string readonly cause: unknown }> {}"
+    },
+    {
+      "name": "ProductionCheckLocation",
+      "kind": "class",
+      "signature": "export class ProductionCheckLocation extends Schema.Class<ProductionCheckLocation>( \"ProductionCheckLocation\" )({ path: NonEmptyString, line: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))), column: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))) }) {}"
+    },
+    {
+      "name": "ProductionCheckReport",
+      "kind": "class",
+      "signature": "export class ProductionCheckReport extends Schema.Class<ProductionCheckReport>( \"ProductionCheckReport\" )({ passed: Schema.Boolean, failures: Schema.Array(ProductionCheckViolation), acknowledgements: Schema.Array(ProductionCheckViolation) }) {}"
+    },
+    {
+      "name": "ProductionCheckSeverity",
+      "kind": "type",
+      "signature": "const ProductionCheckSeverity: Schema.Literals<readonly [\"fail\", \"acknowledged\"]>"
+    },
+    {
+      "name": "ProductionCheckViolation",
+      "kind": "class",
+      "signature": "export class ProductionCheckViolation extends Schema.Class<ProductionCheckViolation>( \"ProductionCheckViolation\" )({ rule: ProductionRuleId, severity: ProductionCheckSeverity, message: NonEmptyString, fix: NonEmptyString, location: ProductionCheckLocation, justification: Schema.optionalKey(NonEmptyString) }) {}"
+    },
+    {
+      "name": "ProductionRuleId",
+      "kind": "type",
+      "signature": "const ProductionRuleId: Schema.Literals<readonly [\"renderer-backend-import\", \"raw-bridge-call\", \"renderer-native-host-protocol\", \"filesystem-write-without-scope\", \"process-permission-without-policy\", \"secret-access-without-audit\", \"update-install-without-signature\", \"app-protocol-path-traversal\", \"weakened-csp\", \"unsafe-external-navigation\", \"devtools-in-prod\", \"unscoped-resource\", \"unsupported-capability-without-guard\", \"secret-pattern-not-redacted\"]>"
+    },
+    {
+      "name": "ProductionSecurityConfig",
+      "kind": "interface",
+      "signature": "export interface ProductionSecurityConfig { readonly security?: { readonly requireTypedBridge?: boolean readonly rendererNativeAccess?: boolean readonly requirePermissions?: boolean readonly externalNavigation?: \"deny\" | \"ask\" | \"allow\" readonly devtoolsInProd?: boolean readonly csp?: CspPolicy readonly redaction?: RedactionPolicy } readonly permissions?: { readonly filesystem?: { readonly write?: FilesystemWritePolicy } readonly process?: { readonly spawn?: ProcessPermissionPolicy } readonly secrets?: SecretPermissionPolicy } readonly update?: { readonly install?: UpdateInstallPolicy } readonly appProtocol?: AppProtocolPolicy readonly resources?: ResourcePolicy readonly contracts?: readonly ContractCapabilityRequirement[] }"
+    },
+    {
+      "name": "RedactionPolicy",
+      "kind": "interface",
+      "signature": "export interface RedactionPolicy { readonly defaultPatternEnabled?: boolean }"
+    },
+    {
+      "name": "renderDefaultCsp",
+      "kind": "value",
+      "signature": "const renderDefaultCsp: (nonce?: string) => string"
+    },
+    {
+      "name": "renderEffectiveCsp",
+      "kind": "value",
+      "signature": "const renderEffectiveCsp: (csp: CspPolicy | undefined, nonce?: string) => string"
+    },
+    {
+      "name": "ResourcePolicy",
+      "kind": "interface",
+      "signature": "export interface ResourcePolicy { readonly allowUnscoped?: boolean }"
+    },
+    {
+      "name": "runProductionCheck",
+      "kind": "value",
+      "signature": "const runProductionCheck: (input: ProductionCheckInput) => Effect.Effect<ProductionCheckReport, ProductionCheckError, never>"
+    },
+    {
+      "name": "SecretPermissionPolicy",
+      "kind": "interface",
+      "signature": "export interface SecretPermissionPolicy { readonly read?: readonly string[] readonly write?: readonly string[] readonly audit?: \"always\" | \"never\" }"
+    },
+    {
+      "name": "UpdateInstallPolicy",
+      "kind": "interface",
+      "signature": "export interface UpdateInstallPolicy { readonly enabled?: boolean readonly signatureVerification?: boolean }"
+    }
+  ]
+}

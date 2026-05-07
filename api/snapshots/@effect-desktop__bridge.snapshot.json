@@ -1,0 +1,827 @@
+{
+  "schemaVersion": 1,
+  "packageName": "@effect-desktop/bridge",
+  "entrypoint": "src/index.ts",
+  "symbols": [
+    {
+      "name": "Api",
+      "kind": "value",
+      "signature": "const Api: Readonly<{ Resource: <Kind extends string, State extends string>(kind: Kind, state: State) => ApiResourceSpec<Kind, State>; Stream: <Chunk extends Schema.Schema<unknown>, Error extends Schema.Schema<unknown>>(chunk: Chunk, error: Error, backpressure?: BackpressureSpec) => ApiStreamSpec & { readonly chunk: Chunk; readonly error: Error; }; Tag: <Tag extends string>(tag: Tag) => <Self>() => <Spec extends ApiContractSpec, Events extends ApiContractEvents = Record<never, never>>(spec: Spec, events?: Events) => Effect.Effect<ApiContractClass<Tag, Spec, Events>, ApiContractError, never>; entries: () => Effect.Effect<readonly ApiContractClass[], never, never>; freeze: () => Effect.Effect<void, never, never>; get: (tag: string) => Effect.Effect<Option.Option<ApiContractClass>, never, never>; }>"
+    },
+    {
+      "name": "ApiClient",
+      "kind": "type",
+      "signature": "export type ApiClient<Contracts extends Readonly<Record<string, ApiContractClass>>> = { readonly [Namespace in keyof Contracts]: ApiClientFor<Contracts[Namespace]> }"
+    },
+    {
+      "name": "ApiClientCallOptions",
+      "kind": "interface",
+      "signature": "export interface ApiClientCallOptions { readonly signal?: AbortSignal }"
+    },
+    {
+      "name": "ApiClientErrorResponse",
+      "kind": "interface",
+      "signature": "export interface ApiClientErrorResponse { readonly kind: \"failure\" readonly error: unknown }"
+    },
+    {
+      "name": "ApiClientEvent",
+      "kind": "type",
+      "signature": "export type ApiClientEvent<Spec extends ApiEventSpec> = Stream.Stream< Schema.Schema.Type<Spec[\"payload\"]>, HostProtocolError, never >"
+    },
+    {
+      "name": "ApiClientExchange",
+      "kind": "interface",
+      "signature": "export interface ApiClientExchange { readonly request: ( request: HostProtocolRequestEnvelope ) => Effect.Effect<ApiClientResponse, HostProtocolError, never> readonly subscribe?: ( method: string ) => Stream.Stream<HostProtocolEventEnvelope, HostProtocolError, never> readonly stream?: ( request: HostProtocolRequestEnvelope ) => Stream.Stream<HostProtocolStreamEnvelope, HostProtocolError, never> readonly cancel?: ( request: HostProtocolCancelByRequestEnvelope ) => Effect.Effect<void, HostProtocolError, never> readonly resource?: ApiResourceExchange }"
+    },
+    {
+      "name": "ApiClientFor",
+      "kind": "type",
+      "signature": "export type ApiClientFor<Contract extends ApiContractClass> = Contract extends ApiContractClass<string, infer Spec, infer Events> ? { readonly [Method in keyof Spec]: ApiClientMethod<Spec[Method]> } & { readonly events: { readonly [Event in keyof Events]: ApiClientEvent<Events[Event]> } } : never"
+    },
+    {
+      "name": "ApiClientMethod",
+      "kind": "type",
+      "signature": "export type ApiClientMethod<Spec extends ApiMethodSpec> = Spec[\"output\"] extends ApiStreamSpec ? undefined extends Schema.Schema.Type<Spec[\"input\"]> ? ( input?: Schema.Schema.Type<Spec[\"input\"]>, options?: ApiClientCallOptions ) => Stream.Stream< Schema.Schema.Type<Spec[\"output\"][\"chunk\"]>, Schema.Schema.Type<Spec[\"output\"][\"error\"]> | HostProtocolError, never > : ( input: Schema.Schema.Type<Spec[\"input\"]>, options?: ApiClientCallOptions ) => Stream.Stream< Schema.Schema.Type<Spec[\"output\"][\"chunk\"]>, Schema.Schema.Type<Spec[\"output\"][\"error\"]> | HostProtocolError, never > : Spec[\"output\"] extends ApiResourceSpec ? undefined extends Schema.Schema.Type<Spec[\"input\"]> ? ( input?: Schema.Schema.Type<Spec[\"input\"]>, options?: ApiClientCallOptions ) => Effect.Effect< ApiResourceProxy<Spec[\"output\"][\"kind\"], Spec[\"output\"][\"state\"]>, Schema.Schema.Type<Spec[\"error\"]> | HostProtocolError, never > : ( input: Schema.Schema.Type<Spec[\"input\"]>, options?: ApiClientCallOptions ) => Effect.Effect< ApiResourceProxy<Spec[\"output\"][\"kind\"], Spec[\"output\"][\"state\"]>, Schema.Schema.Type<Spec[\"error\"]> | HostProtocolError, never > : undefined extends Schema.Schema.Type<Spec[\"input\"]> ? ( input?: Schema.Schema.Type<Spec[\"input\"]>, options?: ApiClientCallOptions ) => Effect.Effect< Schema.Schema.Type<Extract<Spec[\"output\"], Schema.Schema<unknown>>>, Schema.Schema.Type<Spec[\"error\"]> | HostProtocolError, never > : ( input: Schema.Schema.Type<Spec[\"input\"]>, options?: ApiClientCallOptions ) => Effect.Effect< Schema.Schema.Type<Extract<Spec[\"output\"], Schema.Schema<unknown>>>, Schema.Schema.Type<Spec[\"error\"]> | HostProtocolError, never >"
+    },
+    {
+      "name": "ApiClientOptions",
+      "kind": "interface",
+      "signature": "export interface ApiClientOptions { readonly nextRequestId?: () => string readonly nextTraceId?: () => string readonly now?: () => number readonly windowId?: string readonly originToken?: string }"
+    },
+    {
+      "name": "ApiClientResponse",
+      "kind": "type",
+      "signature": "export type ApiClientResponse = ApiClientSuccessResponse | ApiClientErrorResponse"
+    },
+    {
+      "name": "ApiClientSuccessResponse",
+      "kind": "interface",
+      "signature": "export interface ApiClientSuccessResponse { readonly kind: \"success\" readonly payload: unknown }"
+    },
+    {
+      "name": "ApiContractClass",
+      "kind": "interface",
+      "signature": "export interface ApiContractClass< Tag extends string = string, Spec extends ApiContractSpec = ApiContractSpec, Events extends ApiContractEvents = ApiContractEvents > { new (): object readonly tag: Tag readonly spec: Spec readonly events: Events readonly layer: <Handlers extends ApiHandlers<Spec>>( handlers: Handlers ) => ApiLayer<Tag, Spec, Handlers, Events> }"
+    },
+    {
+      "name": "apiContractEntries",
+      "kind": "value",
+      "signature": "const apiContractEntries: () => readonly ApiContractClass[]"
+    },
+    {
+      "name": "ApiContractError",
+      "kind": "type",
+      "signature": "export type ApiContractError = | DuplicateApiContractTag | ApiContractRegistryFrozen | InvalidApiContractSpec"
+    },
+    {
+      "name": "ApiContractEvents",
+      "kind": "type",
+      "signature": "export type ApiContractEvents = Readonly<Record<string, ApiEventSpec>>"
+    },
+    {
+      "name": "ApiContractRegistryFrozen",
+      "kind": "class",
+      "signature": "export class ApiContractRegistryFrozen extends Data.TaggedError(\"ApiContractRegistryFrozen\")<{ readonly tag: string readonly message: string }> {}"
+    },
+    {
+      "name": "ApiContractSpec",
+      "kind": "type",
+      "signature": "export type ApiContractSpec = Readonly<Record<string, ApiMethodSpec>>"
+    },
+    {
+      "name": "ApiEventHub",
+      "kind": "interface",
+      "signature": "export interface ApiEventHub { readonly exchange: { readonly subscribe: ( method: string ) => Stream.Stream<HostProtocolEventEnvelope, HostProtocolError, never> } readonly publish: < Events extends ApiContractEvents, Contract extends ContractWithEvents<Events>, Event extends keyof Events >( contract: Contract, event: Event, payload: Schema.Schema.Type<Events[Event][\"payload\"]> ) => Effect.Effect<void, HostProtocolError, never> }"
+    },
+    {
+      "name": "ApiEventHubOptions",
+      "kind": "interface",
+      "signature": "export interface ApiEventHubOptions { readonly now?: () => number readonly nextTraceId?: () => string readonly windowId?: string }"
+    },
+    {
+      "name": "ApiEventSpec",
+      "kind": "interface",
+      "signature": "export interface ApiEventSpec { readonly payload: Schema.Schema<unknown> readonly backpressure?: BackpressureSpec }"
+    },
+    {
+      "name": "ApiHandlerRuntime",
+      "kind": "interface",
+      "signature": "export interface ApiHandlerRuntime<Env = never> { readonly dispatch: ( request: HostProtocolRequestEnvelope ) => Effect.Effect<ApiClientResponse, HostProtocolError, Env> readonly cancel: ( request: HostProtocolCancelByRequestEnvelope ) => Effect.Effect<void, HostProtocolError, never> }"
+    },
+    {
+      "name": "ApiHandlerRuntimeOptions",
+      "kind": "interface",
+      "signature": "export interface ApiHandlerRuntimeOptions { readonly now?: () => number readonly onState?: (state: BridgeCallState) => Effect.Effect<void, never, never> readonly originAuth?: RendererOriginAuth readonly terminalStateTtlMs?: number }"
+    },
+    {
+      "name": "ApiHandlers",
+      "kind": "type",
+      "signature": "export type ApiHandlers<Spec extends ApiContractSpec> = { readonly [Method in keyof Spec]: ( input: Schema.Schema.Type<Spec[Method][\"input\"]> ) => Spec[Method][\"output\"] extends ApiStreamSpec ? ApiOutputType<Spec[Method][\"output\"]> : Effect.Effect< ApiOutputType<Spec[Method][\"output\"]>, Schema.Schema.Type<Spec[Method][\"error\"]>, unknown > }"
+    },
+    {
+      "name": "ApiLayer",
+      "kind": "interface",
+      "signature": "export interface ApiLayer< Tag extends string, Spec extends ApiContractSpec, Handlers extends ApiHandlers<Spec>, Events extends ApiContractEvents = ApiContractEvents > { readonly contract: ApiContractClass<Tag, Spec, Events> readonly handlers: Handlers }"
+    },
+    {
+      "name": "ApiLayerEnvironment",
+      "kind": "type",
+      "signature": "export type ApiLayerEnvironment<Layer> = Layer extends ApiLayer<string, infer Spec, infer Handlers> ? { readonly [Method in keyof Spec]: HandlerEnvironment<Handlers[Method]> }[keyof Spec] : never"
+    },
+    {
+      "name": "ApiMethodSpec",
+      "kind": "interface",
+      "signature": "export interface ApiMethodSpec { readonly input: Schema.Schema<unknown> readonly output: Schema.Schema<unknown> | ApiStreamSpec | ApiResourceSpec readonly error: Schema.Schema<unknown> readonly permission?: string readonly timeoutMs?: number readonly cachedResultMs?: number readonly idempotent?: boolean readonly cancellable?: boolean readonly backpressure?: BackpressureSpec }"
+    },
+    {
+      "name": "ApiResourceExchange",
+      "kind": "interface",
+      "signature": "export interface ApiResourceExchange { readonly dispose: (handle: ApiResourceHandle) => Effect.Effect<void, HostProtocolError, never> }"
+    },
+    {
+      "name": "ApiResourceHandle",
+      "kind": "interface",
+      "signature": "export interface ApiResourceHandle<Kind extends string = string, State extends string = string> { readonly kind: Kind readonly id: string readonly generation: number readonly ownerScope: string readonly state: State }"
+    },
+    {
+      "name": "ApiResourceHandleShape",
+      "kind": "class",
+      "signature": "export class ApiResourceHandleShape extends Schema.Class<ApiResourceHandleShape>( \"ApiResourceHandle\" )({ kind: Schema.String, id: Schema.String, generation: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)), ownerScope: Schema.String, state: Schema.String }) {}"
+    },
+    {
+      "name": "ApiResourceProxy",
+      "kind": "interface",
+      "signature": "export interface ApiResourceProxy< Kind extends string = string, State extends string = string > extends ApiResourceHandle<Kind, State> { readonly dispose: () => Effect.Effect<void, HostProtocolError, never> }"
+    },
+    {
+      "name": "ApiResourceSpec",
+      "kind": "interface",
+      "signature": "export interface ApiResourceSpec<Kind extends string = string, State extends string = string> { readonly _tag: \"ApiResourceSpec\" readonly kind: Kind readonly state: State readonly schema: typeof ApiResourceHandleShape }"
+    },
+    {
+      "name": "ApiStreamClosedFrame",
+      "kind": "class",
+      "signature": "export class ApiStreamClosedFrame extends Schema.Class<ApiStreamClosedFrame>( \"ApiStreamClosedFrame\" )({ type: Schema.Literal(\"closed\") }) {}"
+    },
+    {
+      "name": "ApiStreamCompleteFrame",
+      "kind": "class",
+      "signature": "export class ApiStreamCompleteFrame extends Schema.Class<ApiStreamCompleteFrame>( \"ApiStreamCompleteFrame\" )({ type: Schema.Literal(\"complete\") }) {}"
+    },
+    {
+      "name": "ApiStreamDataFrame",
+      "kind": "class",
+      "signature": "export class ApiStreamDataFrame extends Schema.Class<ApiStreamDataFrame>(\"ApiStreamDataFrame\")({ type: Schema.Literal(\"data\"), chunk: Schema.Unknown }) {}"
+    },
+    {
+      "name": "ApiStreamErrorFrame",
+      "kind": "class",
+      "signature": "export class ApiStreamErrorFrame extends Schema.Class<ApiStreamErrorFrame>(\"ApiStreamErrorFrame\")({ type: Schema.Literal(\"error\"), error: Schema.Unknown }) {}"
+    },
+    {
+      "name": "ApiStreamFrame",
+      "kind": "type",
+      "signature": "const ApiStreamFrame: Schema.Union<readonly [typeof ApiStreamDataFrame, typeof ApiStreamErrorFrame, typeof ApiStreamCompleteFrame, typeof ApiStreamClosedFrame]>"
+    },
+    {
+      "name": "ApiStreamLayerEnvironment",
+      "kind": "type",
+      "signature": "export type ApiStreamLayerEnvironment<Layer> = Layer extends ApiLayer<string, infer Spec, infer Handlers> ? { readonly [Method in keyof Spec]: HandlerEnvironment<Handlers[Method]> }[keyof Spec] : never"
+    },
+    {
+      "name": "ApiStreamRuntime",
+      "kind": "interface",
+      "signature": "export interface ApiStreamRuntime<Env = never> { readonly stream: ( request: HostProtocolRequestEnvelope ) => Stream.Stream<HostProtocolStreamEnvelope, HostProtocolError, Env> readonly cancel: ( request: HostProtocolCancelByRequestEnvelope ) => Effect.Effect<void, never, never> }"
+    },
+    {
+      "name": "ApiStreamRuntimeOptions",
+      "kind": "interface",
+      "signature": "export interface ApiStreamRuntimeOptions { readonly now?: () => number readonly nextStreamId?: () => string readonly cleanupGraceMs?: number readonly registry?: BridgeStreamRegistry }"
+    },
+    {
+      "name": "ApiStreamSpec",
+      "kind": "interface",
+      "signature": "export interface ApiStreamSpec { readonly _tag: \"ApiStreamSpec\" readonly chunk: Schema.Schema<unknown> readonly error: Schema.Schema<unknown> readonly backpressure?: BackpressureSpec }"
+    },
+    {
+      "name": "ApiStreamTerminalType",
+      "kind": "type",
+      "signature": "export type ApiStreamTerminalType = \"complete\" | \"error\" | \"closed\""
+    },
+    {
+      "name": "BackpressureSpec",
+      "kind": "interface",
+      "signature": "export interface BackpressureSpec { readonly strategy: \"buffer\" | \"drop\" | \"block\" readonly size?: number readonly overflow?: \"error\" | \"dropOldest\" | \"dropNewest\" | \"block\" }"
+    },
+    {
+      "name": "BridgeCallRegistry",
+      "kind": "interface",
+      "signature": "export interface BridgeCallRegistry { readonly record: (state: BridgeCallState) => Effect.Effect<void, never, never> readonly list: () => Effect.Effect<readonly BridgeCallState[], never, never> readonly observe: () => Stream.Stream<readonly BridgeCallState[], never, never> }"
+    },
+    {
+      "name": "BridgeCallState",
+      "kind": "type",
+      "signature": "export type BridgeCallState = | { readonly tag: \"Pending\" readonly id: string readonly traceId: string readonly startedAt: number } | { readonly tag: \"Authorized\"; readonly id: string; readonly capability: string } | { readonly tag: \"Running\"; readonly id: string; readonly handler: string } | { readonly tag: \"Completed\"; readonly id: string; readonly completedAt: number } | { readonly tag: \"Failed\"; readonly id: string; readonly error: unknown } | { readonly tag: \"Canceled\" readonly id: string readonly canceledBy: \"renderer\" | \"runtime\" | \"host\" } | { readonly tag: \"TimedOut\"; readonly id: string; readonly timeoutMs: number } | { readonly tag: \"RejectedLateFrame\" readonly id: string readonly method: string readonly terminalState: BridgeCallTerminalState }"
+    },
+    {
+      "name": "BridgeCallTerminalState",
+      "kind": "type",
+      "signature": "export type BridgeCallTerminalState = \"Completed\" | \"Failed\" | \"Canceled\" | \"TimedOut\""
+    },
+    {
+      "name": "BridgeStreamBackpressureMetrics",
+      "kind": "interface",
+      "signature": "export interface BridgeStreamBackpressureMetrics { readonly evictedFrames: number readonly overflow: NonNullable<BackpressureSpec[\"overflow\"]> readonly queueCapacity: number readonly queueDepth: number }"
+    },
+    {
+      "name": "BridgeStreamRegistry",
+      "kind": "interface",
+      "signature": "export interface BridgeStreamRegistry { readonly register: (streamId: string) => Effect.Effect<BridgeStreamRegistryEntry, never, never> readonly terminate: ( streamId: string, terminal: ApiStreamTerminalType, now: number ) => Effect.Effect<boolean, never, never> readonly isTerminal: (streamId: string) => Effect.Effect<boolean, never, never> readonly gcExpired: (now: number) => Effect.Effect<number, never, never> readonly updateBackpressure: ( streamId: string, metrics: BridgeStreamBackpressureMetrics ) => Effect.Effect<void, never, never> readonly snapshot: () => Effect.Effect<ReadonlyArray<BridgeStreamRegistryEntry>, never, never> readonly observe: () => Stream.Stream<ReadonlyArray<BridgeStreamRegistryEntry>, never, never> }"
+    },
+    {
+      "name": "BridgeStreamRegistryEntry",
+      "kind": "interface",
+      "signature": "export interface BridgeStreamRegistryEntry { readonly streamId: string readonly generation: number readonly state: \"open\" | \"terminal\" readonly terminal?: ApiStreamTerminalType readonly terminalAt?: number readonly backpressure?: BridgeStreamBackpressureMetrics }"
+    },
+    {
+      "name": "Client",
+      "kind": "value",
+      "signature": "const Client: <Contracts extends Readonly<Record<string, ApiContractClass>>>(contracts: Contracts, exchange: ApiClientExchange, options?: ApiClientOptions) => ApiClient<Contracts>"
+    },
+    {
+      "name": "decodeHostProtocolEnvelope",
+      "kind": "value",
+      "signature": "const decodeHostProtocolEnvelope: (input: unknown) => HostProtocolEnvelope"
+    },
+    {
+      "name": "DEFAULT_MAX_BACKFILL_EVENTS",
+      "kind": "value",
+      "signature": "const DEFAULT_MAX_BACKFILL_EVENTS: 1024"
+    },
+    {
+      "name": "DEFAULT_RECONNECT_WINDOW_MS",
+      "kind": "value",
+      "signature": "const DEFAULT_RECONNECT_WINDOW_MS: 30000"
+    },
+    {
+      "name": "DOCK_REQUEST_ATTENTION_METHOD",
+      "kind": "value",
+      "signature": "const DOCK_REQUEST_ATTENTION_METHOD: \"Dock.requestAttention\""
+    },
+    {
+      "name": "DOCK_SET_BADGE_COUNT_METHOD",
+      "kind": "value",
+      "signature": "const DOCK_SET_BADGE_COUNT_METHOD: \"Dock.setBadgeCount\""
+    },
+    {
+      "name": "DOCK_SET_BADGE_TEXT_METHOD",
+      "kind": "value",
+      "signature": "const DOCK_SET_BADGE_TEXT_METHOD: \"Dock.setBadgeText\""
+    },
+    {
+      "name": "DOCK_SET_MENU_METHOD",
+      "kind": "value",
+      "signature": "const DOCK_SET_MENU_METHOD: \"Dock.setMenu\""
+    },
+    {
+      "name": "DuplicateApiContractTag",
+      "kind": "class",
+      "signature": "export class DuplicateApiContractTag extends Data.TaggedError(\"DuplicateApiContractTag\")<{ readonly tag: string readonly message: string }> {}"
+    },
+    {
+      "name": "encodeHostProtocolEnvelope",
+      "kind": "value",
+      "signature": "const encodeHostProtocolEnvelope: (input: HostProtocolEnvelope) => { readonly kind: \"request\"; readonly id: string; readonly method: string; readonly timestamp: number; readonly traceId: string; readonly windowId?: string; readonly originToken?: string; readonly payload?: unknown; } | { readonly kind: \"response\"; readonly id: string; readonly timestamp: number; readonly traceId: string; readonly error?: { readonly tag: \"FileNotFound\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly path: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PermissionDenied\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capability: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; readonly resource?: string; } | { readonly timeoutMs: number; readonly tag: \"Timeout\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"Cancelled\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly source: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"Unsupported\"; readonly message: string; readonly reason: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"InvalidArgument\"; readonly message: string; readonly reason: string; readonly operation: string; readonly recoverable: boolean; readonly field: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"ResourceBusy\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"DiskFull\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly path: string; readonly freeBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RateLimited\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly retryAfterMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"FrameTooLarge\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly sizeBytes: number; readonly limitBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"OriginInvalid\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly kind: string; readonly id: string; readonly tag: \"StaleHandle\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly expectedGeneration: number; readonly actualGeneration: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly kind: string; readonly id: string; readonly ownerScope: string; readonly tag: \"CrossScopeHandle\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly attemptedScope: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"BackpressureOverflow\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly policy: string; readonly lostFrames: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RendererDisconnected\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly durationMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RuntimeRestarted\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RuntimeUnavailable\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly retryAfterMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"HostUnavailable\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"MethodNotFound\"; readonly message: string; readonly method: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"InvalidOutput\"; readonly message: string; readonly method: string; readonly reason: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PermissionRevoked\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capability: string; readonly revokedAt: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"StreamClosed\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly streamId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"BinaryDecodeError\"; readonly message: string; readonly reason: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"ReconnectBackfillExhausted\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly streamId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PanicInNativeCode\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; readonly backtrace?: string; readonly location?: string; } | { readonly kind: string; readonly tag: \"NetworkError\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"NotFound\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"AlreadyExists\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"InvalidState\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly current: string; readonly attempted: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SymlinkEscapesRoot\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capabilityRoots: readonly string[]; readonly requested: string; readonly resolved: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"EventLogFull\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly freeBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateDowngradeRefused\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly installedVersion: string; readonly manifestVersion: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateDownloadTruncated\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly downloadedBytes: number; readonly expectedBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateStaleNotarization\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly notarizedAt: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SettingsMigrationFailed\"; readonly message: string; readonly operation: string; readonly cause: string; readonly recoverable: boolean; readonly schemaVersion: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SettingsRecoveredFromBackup\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly backupPath: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"EventLogSegmentCorrupt\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly segmentPath: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PtyForceKillTimeout\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly ptyId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"Internal\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; }; readonly payload?: unknown; } | { readonly kind: \"event\"; readonly method: string; readonly timestamp: number; readonly traceId: string; readonly windowId?: string; readonly payload?: unknown; } | { readonly kind: \"stream\"; readonly id: string; readonly timestamp: number; readonly traceId: string; readonly error?: { readonly tag: \"FileNotFound\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly path: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PermissionDenied\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capability: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; readonly resource?: string; } | { readonly timeoutMs: number; readonly tag: \"Timeout\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"Cancelled\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly source: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"Unsupported\"; readonly message: string; readonly reason: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"InvalidArgument\"; readonly message: string; readonly reason: string; readonly operation: string; readonly recoverable: boolean; readonly field: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"ResourceBusy\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"DiskFull\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly path: string; readonly freeBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RateLimited\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly retryAfterMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"FrameTooLarge\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly sizeBytes: number; readonly limitBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"OriginInvalid\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly kind: string; readonly id: string; readonly tag: \"StaleHandle\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly expectedGeneration: number; readonly actualGeneration: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly kind: string; readonly id: string; readonly ownerScope: string; readonly tag: \"CrossScopeHandle\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly attemptedScope: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"BackpressureOverflow\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly policy: string; readonly lostFrames: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RendererDisconnected\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly durationMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RuntimeRestarted\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RuntimeUnavailable\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly retryAfterMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"HostUnavailable\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"MethodNotFound\"; readonly message: string; readonly method: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"InvalidOutput\"; readonly message: string; readonly method: string; readonly reason: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PermissionRevoked\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capability: string; readonly revokedAt: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"StreamClosed\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly streamId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"BinaryDecodeError\"; readonly message: string; readonly reason: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"ReconnectBackfillExhausted\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly streamId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PanicInNativeCode\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; readonly backtrace?: string; readonly location?: string; } | { readonly kind: string; readonly tag: \"NetworkError\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"NotFound\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"AlreadyExists\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"InvalidState\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly current: string; readonly attempted: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SymlinkEscapesRoot\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capabilityRoots: readonly string[]; readonly requested: string; readonly resolved: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"EventLogFull\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly freeBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateDowngradeRefused\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly installedVersion: string; readonly manifestVersion: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateDownloadTruncated\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly downloadedBytes: number; readonly expectedBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateStaleNotarization\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly notarizedAt: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SettingsMigrationFailed\"; readonly message: string; readonly operation: string; readonly cause: string; readonly recoverable: boolean; readonly schemaVersion: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SettingsRecoveredFromBackup\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly backupPath: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"EventLogSegmentCorrupt\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly segmentPath: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PtyForceKillTimeout\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly ptyId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"Internal\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; }; readonly payload?: unknown; readonly resourceId?: string; } | { readonly kind: \"stream\"; readonly timestamp: number; readonly traceId: string; readonly resourceId: string; readonly id?: string; readonly error?: { readonly tag: \"FileNotFound\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly path: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PermissionDenied\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capability: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; readonly resource?: string; } | { readonly timeoutMs: number; readonly tag: \"Timeout\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"Cancelled\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly source: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"Unsupported\"; readonly message: string; readonly reason: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"InvalidArgument\"; readonly message: string; readonly reason: string; readonly operation: string; readonly recoverable: boolean; readonly field: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"ResourceBusy\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"DiskFull\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly path: string; readonly freeBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RateLimited\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly retryAfterMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"FrameTooLarge\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly sizeBytes: number; readonly limitBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"OriginInvalid\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly kind: string; readonly id: string; readonly tag: \"StaleHandle\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly expectedGeneration: number; readonly actualGeneration: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly kind: string; readonly id: string; readonly ownerScope: string; readonly tag: \"CrossScopeHandle\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly attemptedScope: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"BackpressureOverflow\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly policy: string; readonly lostFrames: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RendererDisconnected\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly durationMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RuntimeRestarted\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RuntimeUnavailable\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly retryAfterMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"HostUnavailable\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"MethodNotFound\"; readonly message: string; readonly method: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"InvalidOutput\"; readonly message: string; readonly method: string; readonly reason: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PermissionRevoked\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capability: string; readonly revokedAt: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"StreamClosed\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly streamId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"BinaryDecodeError\"; readonly message: string; readonly reason: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"ReconnectBackfillExhausted\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly streamId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PanicInNativeCode\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; readonly backtrace?: string; readonly location?: string; } | { readonly kind: string; readonly tag: \"NetworkError\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"NotFound\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"AlreadyExists\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"InvalidState\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly current: string; readonly attempted: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SymlinkEscapesRoot\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capabilityRoots: readonly string[]; readonly requested: string; readonly resolved: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"EventLogFull\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly freeBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateDowngradeRefused\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly installedVersion: string; readonly manifestVersion: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateDownloadTruncated\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly downloadedBytes: number; readonly expectedBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateStaleNotarization\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly notarizedAt: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SettingsMigrationFailed\"; readonly message: string; readonly operation: string; readonly cause: string; readonly recoverable: boolean; readonly schemaVersion: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SettingsRecoveredFromBackup\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly backupPath: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"EventLogSegmentCorrupt\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly segmentPath: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PtyForceKillTimeout\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly ptyId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"Internal\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; }; readonly payload?: unknown; } | { readonly kind: \"cancel\"; readonly id: string; readonly timestamp: number; readonly traceId: string; readonly resourceId?: string; } | { readonly kind: \"cancel\"; readonly timestamp: number; readonly traceId: string; readonly resourceId: string; readonly id?: string; }"
+    },
+    {
+      "name": "EventHub",
+      "kind": "value",
+      "signature": "const EventHub: (contracts: Iterable<ApiContractClass>, options?: ApiEventHubOptions) => Effect.Effect<ApiEventHub, never, never>"
+    },
+    {
+      "name": "Handlers",
+      "kind": "value",
+      "signature": "const Handlers: (<Layers extends readonly AnyApiLayer[]>(...layers: Layers) => ApiHandlerRuntime<ApiLayerEnvironment<Layers[number]>>) & { withOptions: <Layers extends readonly AnyApiLayer[]>(options: ApiHandlerRuntimeOptions, ...layers: Layers) => ApiHandlerRuntime<ApiLayerEnvironment<Layers[number]>>; }"
+    },
+    {
+      "name": "HOST_PING_METHOD",
+      "kind": "value",
+      "signature": "const HOST_PING_METHOD: \"host.ping\""
+    },
+    {
+      "name": "HOST_PROTOCOL_ERROR_SPECS",
+      "kind": "value",
+      "signature": "const HOST_PROTOCOL_ERROR_SPECS: readonly [{ readonly tag: \"FileNotFound\"; readonly recoverable: false; }, { readonly tag: \"PermissionDenied\"; readonly recoverable: false; }, { readonly tag: \"Timeout\"; readonly recoverable: true; }, { readonly tag: \"Cancelled\"; readonly recoverable: true; }, { readonly tag: \"Unsupported\"; readonly recoverable: false; }, { readonly tag: \"InvalidArgument\"; readonly recoverable: false; }, { readonly tag: \"ResourceBusy\"; readonly recoverable: true; }, { readonly tag: \"DiskFull\"; readonly recoverable: true; }, { readonly tag: \"RateLimited\"; readonly recoverable: true; }, { readonly tag: \"FrameTooLarge\"; readonly recoverable: false; }, { readonly tag: \"OriginInvalid\"; readonly recoverable: false; }, { readonly tag: \"StaleHandle\"; readonly recoverable: false; }, { readonly tag: \"CrossScopeHandle\"; readonly recoverable: false; }, { readonly tag: \"BackpressureOverflow\"; readonly recoverable: true; }, { readonly tag: \"RendererDisconnected\"; readonly recoverable: true; }, { readonly tag: \"RuntimeRestarted\"; readonly recoverable: true; }, { readonly tag: \"RuntimeUnavailable\"; readonly recoverable: true; }, { readonly tag: \"HostUnavailable\"; readonly recoverable: true; }, { readonly tag: \"MethodNotFound\"; readonly recoverable: false; }, { readonly tag: \"InvalidOutput\"; readonly recoverable: false; }, { readonly tag: \"PermissionRevoked\"; readonly recoverable: false; }, { readonly tag: \"StreamClosed\"; readonly recoverable: false; }, { readonly tag: \"BinaryDecodeError\"; readonly recoverable: false; }, { readonly tag: \"ReconnectBackfillExhausted\"; readonly recoverable: false; }, { readonly tag: \"PanicInNativeCode\"; readonly recoverable: false; }, { readonly tag: \"NetworkError\"; readonly recoverable: true; }, { readonly tag: \"NotFound\"; readonly recoverable: false; }, { readonly tag: \"AlreadyExists\"; readonly recoverable: false; }, { readonly tag: \"InvalidState\"; readonly recoverable: false; }, { readonly tag: \"SymlinkEscapesRoot\"; readonly recoverable: false; }, { readonly tag: \"EventLogFull\"; readonly recoverable: true; }, { readonly tag: \"UpdateDowngradeRefused\"; readonly recoverable: false; }, { readonly tag: \"UpdateDownloadTruncated\"; readonly recoverable: true; }, { readonly tag: \"UpdateStaleNotarization\"; readonly recoverable: false; }, { readonly tag: \"SettingsMigrationFailed\"; readonly recoverable: false; }, { readonly tag: \"SettingsRecoveredFromBackup\"; readonly recoverable: true; }, { readonly tag: \"EventLogSegmentCorrupt\"; readonly recoverable: false; }, { readonly tag: \"PtyForceKillTimeout\"; readonly recoverable: false; }, { readonly tag: \"Internal\"; readonly recoverable: false; }]"
+    },
+    {
+      "name": "HOST_PROTOCOL_VERSION",
+      "kind": "value",
+      "signature": "const HOST_PROTOCOL_VERSION: string"
+    },
+    {
+      "name": "HOST_VERSION_METHOD",
+      "kind": "value",
+      "signature": "const HOST_VERSION_METHOD: \"host.version\""
+    },
+    {
+      "name": "HostHandshakeClient",
+      "kind": "interface",
+      "signature": "export interface HostHandshakeClient { readonly ping: () => Effect.Effect<void, HostProtocolError, never> readonly version: () => Effect.Effect<HostVersionPayload, HostProtocolError, never> }"
+    },
+    {
+      "name": "HostHandshakeClientOptions",
+      "kind": "interface",
+      "signature": "export interface HostHandshakeClientOptions { readonly nextRequestId?: () => string readonly nextTraceId?: () => string readonly now?: () => number }"
+    },
+    {
+      "name": "HostHandshakeExchange",
+      "kind": "interface",
+      "signature": "export interface HostHandshakeExchange { readonly request: ( request: HostProtocolRequestEnvelope ) => Effect.Effect<HostProtocolResponseEnvelope, HostProtocolError, never> }"
+    },
+    {
+      "name": "HostProtocolAlreadyExistsError",
+      "kind": "class",
+      "signature": "export class HostProtocolAlreadyExistsError extends Schema.Class<HostProtocolAlreadyExistsError>( \"HostProtocolAlreadyExistsError\" )({ tag: Schema.Literal(\"AlreadyExists\"), resource: Schema.String, ...HostProtocolErrorCommonFields }) { get _tag(): \"AlreadyExists\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolBackpressureOverflowError",
+      "kind": "class",
+      "signature": "export class HostProtocolBackpressureOverflowError extends Schema.Class<HostProtocolBackpressureOverflowError>( \"HostProtocolBackpressureOverflowError\" )({ tag: Schema.Literal(\"BackpressureOverflow\"), policy: Schema.String, lostFrames: UInt, ...HostProtocolErrorCommonFields }) { get _tag(): \"BackpressureOverflow\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolBinaryDecodeError",
+      "kind": "class",
+      "signature": "export class HostProtocolBinaryDecodeError extends Schema.Class<HostProtocolBinaryDecodeError>( \"HostProtocolBinaryDecodeError\" )({ tag: Schema.Literal(\"BinaryDecodeError\"), reason: Schema.String, ...HostProtocolErrorCommonFields }) { get _tag(): \"BinaryDecodeError\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolCancelByRequestEnvelope",
+      "kind": "class",
+      "signature": "export class HostProtocolCancelByRequestEnvelope extends Schema.Class<HostProtocolCancelByRequestEnvelope>( \"HostProtocolCancelByRequestEnvelope\" )({ kind: Schema.Literal(\"cancel\"), id: Schema.String, resourceId: OptionalString, timestamp: UInt, traceId: Schema.String }) {}"
+    },
+    {
+      "name": "HostProtocolCancelByResourceEnvelope",
+      "kind": "class",
+      "signature": "export class HostProtocolCancelByResourceEnvelope extends Schema.Class<HostProtocolCancelByResourceEnvelope>( \"HostProtocolCancelByResourceEnvelope\" )({ kind: Schema.Literal(\"cancel\"), id: OptionalString, resourceId: Schema.String, timestamp: UInt, traceId: Schema.String }) {}"
+    },
+    {
+      "name": "HostProtocolCancelledError",
+      "kind": "class",
+      "signature": "export class HostProtocolCancelledError extends Schema.Class<HostProtocolCancelledError>( \"HostProtocolCancelledError\" )({ tag: Schema.Literal(\"Cancelled\"), source: Schema.String, ...HostProtocolErrorCommonFields }) { get _tag(): \"Cancelled\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolCrossScopeHandleError",
+      "kind": "class",
+      "signature": "export class HostProtocolCrossScopeHandleError extends Schema.Class<HostProtocolCrossScopeHandleError>( \"HostProtocolCrossScopeHandleError\" )({ tag: Schema.Literal(\"CrossScopeHandle\"), kind: Schema.String, id: Schema.String, ownerScope: Schema.String, attemptedScope: Schema.String, ...HostProtocolErrorCommonFields }) { get _tag(): \"CrossScopeHandle\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolDiskFullError",
+      "kind": "class",
+      "signature": "export class HostProtocolDiskFullError extends Schema.Class<HostProtocolDiskFullError>( \"HostProtocolDiskFullError\" )({ tag: Schema.Literal(\"DiskFull\"), path: Schema.String, freeBytes: UInt, ...HostProtocolErrorCommonFields }) { get _tag(): \"DiskFull\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolEnvelope",
+      "kind": "type",
+      "signature": "const HostProtocolEnvelope: Schema.Union<readonly [typeof HostProtocolRequestEnvelope, typeof HostProtocolResponseEnvelope, typeof HostProtocolEventEnvelope, typeof HostProtocolStreamByRequestEnvelope, typeof HostProtocolStreamByResourceEnvelope, typeof HostProtocolCancelByRequestEnvelope, typeof HostProtocolCancelByResourceEnvelope]>"
+    },
+    {
+      "name": "HostProtocolError",
+      "kind": "type",
+      "signature": "const HostProtocolError: Schema.Union<readonly [typeof HostProtocolFileNotFoundError, typeof HostProtocolPermissionDeniedError, typeof HostProtocolTimeoutError, typeof HostProtocolCancelledError, typeof HostProtocolUnsupportedError, typeof HostProtocolInvalidArgumentError, typeof HostProtocolResourceBusyError, typeof HostProtocolDiskFullError, typeof HostProtocolRateLimitedError, typeof HostProtocolFrameTooLargeError, typeof HostProtocolOriginInvalidError, typeof HostProtocolStaleHandleError, typeof HostProtocolCrossScopeHandleError, typeof HostProtocolBackpressureOverflowError, typeof HostProtocolRendererDisconnectedError, typeof HostProtocolRuntimeRestartedError, typeof HostProtocolRuntimeUnavailableError, typeof HostProtocolHostUnavailableError, typeof HostProtocolMethodNotFoundError, typeof HostProtocolInvalidOutputError, typeof HostProtocolPermissionRevokedError, typeof HostProtocolStreamClosedError, typeof HostProtocolBinaryDecodeError, typeof HostProtocolReconnectBackfillExhaustedError, typeof HostProtocolPanicInNativeCodeError, typeof HostProtocolNetworkError, typeof HostProtocolNotFoundError, typeof HostProtocolAlreadyExistsError, typeof HostProtocolInvalidStateError, typeof HostProtocolSymlinkEscapesRootError, typeof HostProtocolEventLogFullError, typeof HostProtocolUpdateDowngradeRefusedError, typeof HostProtocolUpdateDownloadTruncatedError, typeof HostProtocolUpdateStaleNotarizationError, typeof HostProtocolSettingsMigrationFailedError, typeof HostProtocolSettingsRecoveredFromBackupError, typeof HostProtocolEventLogSegmentCorruptError, typeof HostProtocolPtyForceKillTimeoutError, typeof HostProtocolInternalError]>"
+    },
+    {
+      "name": "hostProtocolErrorRecoverableDefault",
+      "kind": "value",
+      "signature": "const hostProtocolErrorRecoverableDefault: (tag: HostProtocolErrorTag) => boolean"
+    },
+    {
+      "name": "HostProtocolErrorSpec",
+      "kind": "type",
+      "signature": "export type HostProtocolErrorSpec = (typeof HOST_PROTOCOL_ERROR_SPECS)[number]"
+    },
+    {
+      "name": "HostProtocolErrorTag",
+      "kind": "type",
+      "signature": "export type HostProtocolErrorTag = HostProtocolErrorSpec[\"tag\"]"
+    },
+    {
+      "name": "HostProtocolEventEnvelope",
+      "kind": "class",
+      "signature": "export class HostProtocolEventEnvelope extends Schema.Class<HostProtocolEventEnvelope>( \"HostProtocolEventEnvelope\" )({ kind: Schema.Literal(\"event\"), method: Schema.String, timestamp: UInt, traceId: Schema.String, windowId: OptionalString, payload: OptionalUnknown }) {}"
+    },
+    {
+      "name": "HostProtocolEventLogFullError",
+      "kind": "class",
+      "signature": "export class HostProtocolEventLogFullError extends Schema.Class<HostProtocolEventLogFullError>( \"HostProtocolEventLogFullError\" )({ tag: Schema.Literal(\"EventLogFull\"), freeBytes: UInt, ...HostProtocolErrorCommonFields }) { get _tag(): \"EventLogFull\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolEventLogSegmentCorruptError",
+      "kind": "class",
+      "signature": "export class HostProtocolEventLogSegmentCorruptError extends Schema.Class<HostProtocolEventLogSegmentCorruptError>( \"HostProtocolEventLogSegmentCorruptError\" )({ tag: Schema.Literal(\"EventLogSegmentCorrupt\"), segmentPath: Schema.String, ...HostProtocolErrorCommonFields }) { get _tag(): \"EventLogSegmentCorrupt\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolFileNotFoundError",
+      "kind": "class",
+      "signature": "export class HostProtocolFileNotFoundError extends Schema.Class<HostProtocolFileNotFoundError>( \"HostProtocolFileNotFoundError\" )({ tag: Schema.Literal(\"FileNotFound\"), path: Schema.String, ...HostProtocolErrorCommonFields }) { get _tag(): \"FileNotFound\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolFrameTooLargeError",
+      "kind": "class",
+      "signature": "export class HostProtocolFrameTooLargeError extends Schema.Class<HostProtocolFrameTooLargeError>( \"HostProtocolFrameTooLargeError\" )({ tag: Schema.Literal(\"FrameTooLarge\"), sizeBytes: UInt, limitBytes: UInt, ...HostProtocolErrorCommonFields }) { get _tag(): \"FrameTooLarge\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolHostUnavailableError",
+      "kind": "class",
+      "signature": "export class HostProtocolHostUnavailableError extends Schema.Class<HostProtocolHostUnavailableError>( \"HostProtocolHostUnavailableError\" )({ tag: Schema.Literal(\"HostUnavailable\"), ...HostProtocolErrorCommonFields }) { get _tag(): \"HostUnavailable\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolInternalError",
+      "kind": "class",
+      "signature": "export class HostProtocolInternalError extends Schema.Class<HostProtocolInternalError>( \"HostProtocolInternalError\" )({ tag: Schema.Literal(\"Internal\"), ...HostProtocolErrorCommonFields }) { get _tag(): \"Internal\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolInvalidArgumentError",
+      "kind": "class",
+      "signature": "export class HostProtocolInvalidArgumentError extends Schema.Class<HostProtocolInvalidArgumentError>( \"HostProtocolInvalidArgumentError\" )({ tag: Schema.Literal(\"InvalidArgument\"), field: Schema.String, reason: Schema.String, ...HostProtocolErrorCommonFields }) { get _tag(): \"InvalidArgument\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolInvalidOutputError",
+      "kind": "class",
+      "signature": "export class HostProtocolInvalidOutputError extends Schema.Class<HostProtocolInvalidOutputError>( \"HostProtocolInvalidOutputError\" )({ tag: Schema.Literal(\"InvalidOutput\"), method: Schema.String, reason: Schema.String, ...HostProtocolErrorCommonFields }) { get _tag(): \"InvalidOutput\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolInvalidStateError",
+      "kind": "class",
+      "signature": "export class HostProtocolInvalidStateError extends Schema.Class<HostProtocolInvalidStateError>( \"HostProtocolInvalidStateError\" )({ tag: Schema.Literal(\"InvalidState\"), current: Schema.String, attempted: Schema.String, ...HostProtocolErrorCommonFields }) { get _tag(): \"InvalidState\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolMethodNotFoundError",
+      "kind": "class",
+      "signature": "export class HostProtocolMethodNotFoundError extends Schema.Class<HostProtocolMethodNotFoundError>( \"HostProtocolMethodNotFoundError\" )({ tag: Schema.Literal(\"MethodNotFound\"), method: Schema.String, ...HostProtocolErrorCommonFields }) { get _tag(): \"MethodNotFound\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolNetworkError",
+      "kind": "class",
+      "signature": "export class HostProtocolNetworkError extends Schema.Class<HostProtocolNetworkError>( \"HostProtocolNetworkError\" )({ tag: Schema.Literal(\"NetworkError\"), kind: Schema.String, ...HostProtocolErrorCommonFields }) { get _tag(): \"NetworkError\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolNotFoundError",
+      "kind": "class",
+      "signature": "export class HostProtocolNotFoundError extends Schema.Class<HostProtocolNotFoundError>( \"HostProtocolNotFoundError\" )({ tag: Schema.Literal(\"NotFound\"), resource: Schema.String, ...HostProtocolErrorCommonFields }) { get _tag(): \"NotFound\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolOriginInvalidError",
+      "kind": "class",
+      "signature": "export class HostProtocolOriginInvalidError extends Schema.Class<HostProtocolOriginInvalidError>( \"HostProtocolOriginInvalidError\" )({ tag: Schema.Literal(\"OriginInvalid\"), ...HostProtocolErrorCommonFields }) { get _tag(): \"OriginInvalid\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolPanicInNativeCodeError",
+      "kind": "class",
+      "signature": "export class HostProtocolPanicInNativeCodeError extends Schema.Class<HostProtocolPanicInNativeCodeError>( \"HostProtocolPanicInNativeCodeError\" )({ tag: Schema.Literal(\"PanicInNativeCode\"), backtrace: OptionalString, location: OptionalString, ...HostProtocolErrorCommonFields }) { get _tag(): \"PanicInNativeCode\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolPermissionDeniedError",
+      "kind": "class",
+      "signature": "export class HostProtocolPermissionDeniedError extends Schema.Class<HostProtocolPermissionDeniedError>( \"HostProtocolPermissionDeniedError\" )({ tag: Schema.Literal(\"PermissionDenied\"), capability: Schema.String, resource: OptionalString, ...HostProtocolErrorCommonFields }) { get _tag(): \"PermissionDenied\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolPermissionRevokedError",
+      "kind": "class",
+      "signature": "export class HostProtocolPermissionRevokedError extends Schema.Class<HostProtocolPermissionRevokedError>( \"HostProtocolPermissionRevokedError\" )({ tag: Schema.Literal(\"PermissionRevoked\"), capability: Schema.String, revokedAt: UInt, ...HostProtocolErrorCommonFields }) { get _tag(): \"PermissionRevoked\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolPtyForceKillTimeoutError",
+      "kind": "class",
+      "signature": "export class HostProtocolPtyForceKillTimeoutError extends Schema.Class<HostProtocolPtyForceKillTimeoutError>( \"HostProtocolPtyForceKillTimeoutError\" )({ tag: Schema.Literal(\"PtyForceKillTimeout\"), ptyId: Schema.String, ...HostProtocolErrorCommonFields }) { get _tag(): \"PtyForceKillTimeout\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolRateLimitedError",
+      "kind": "class",
+      "signature": "export class HostProtocolRateLimitedError extends Schema.Class<HostProtocolRateLimitedError>( \"HostProtocolRateLimitedError\" )({ tag: Schema.Literal(\"RateLimited\"), retryAfterMs: UInt, ...HostProtocolErrorCommonFields }) { get _tag(): \"RateLimited\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolReconnectBackfillExhaustedError",
+      "kind": "class",
+      "signature": "export class HostProtocolReconnectBackfillExhaustedError extends Schema.Class<HostProtocolReconnectBackfillExhaustedError>( \"HostProtocolReconnectBackfillExhaustedError\" )({ tag: Schema.Literal(\"ReconnectBackfillExhausted\"), streamId: Schema.String, ...HostProtocolErrorCommonFields }) { get _tag(): \"ReconnectBackfillExhausted\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolRendererDisconnectedError",
+      "kind": "class",
+      "signature": "export class HostProtocolRendererDisconnectedError extends Schema.Class<HostProtocolRendererDisconnectedError>( \"HostProtocolRendererDisconnectedError\" )({ tag: Schema.Literal(\"RendererDisconnected\"), durationMs: UInt, ...HostProtocolErrorCommonFields }) { get _tag(): \"RendererDisconnected\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolRequestEnvelope",
+      "kind": "class",
+      "signature": "export class HostProtocolRequestEnvelope extends Schema.Class<HostProtocolRequestEnvelope>( \"HostProtocolRequestEnvelope\" )({ kind: Schema.Literal(\"request\"), id: Schema.String, method: Schema.String, timestamp: UInt, traceId: Schema.String, windowId: OptionalString, originToken: OptionalString, payload: OptionalUnknown }) {}"
+    },
+    {
+      "name": "HostProtocolResourceBusyError",
+      "kind": "class",
+      "signature": "export class HostProtocolResourceBusyError extends Schema.Class<HostProtocolResourceBusyError>( \"HostProtocolResourceBusyError\" )({ tag: Schema.Literal(\"ResourceBusy\"), resource: Schema.String, ...HostProtocolErrorCommonFields }) { get _tag(): \"ResourceBusy\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolResponseEnvelope",
+      "kind": "class",
+      "signature": "export class HostProtocolResponseEnvelope extends Schema.Class<HostProtocolResponseEnvelope>( \"HostProtocolResponseEnvelope\" )({ kind: Schema.Literal(\"response\"), id: Schema.String, timestamp: UInt, traceId: Schema.String, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
+    },
+    {
+      "name": "HostProtocolRuntimeRestartedError",
+      "kind": "class",
+      "signature": "export class HostProtocolRuntimeRestartedError extends Schema.Class<HostProtocolRuntimeRestartedError>( \"HostProtocolRuntimeRestartedError\" )({ tag: Schema.Literal(\"RuntimeRestarted\"), ...HostProtocolErrorCommonFields }) { get _tag(): \"RuntimeRestarted\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolRuntimeUnavailableError",
+      "kind": "class",
+      "signature": "export class HostProtocolRuntimeUnavailableError extends Schema.Class<HostProtocolRuntimeUnavailableError>( \"HostProtocolRuntimeUnavailableError\" )({ tag: Schema.Literal(\"RuntimeUnavailable\"), retryAfterMs: UInt, ...HostProtocolErrorCommonFields }) { get _tag(): \"RuntimeUnavailable\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolSettingsMigrationFailedError",
+      "kind": "class",
+      "signature": "export class HostProtocolSettingsMigrationFailedError extends Schema.Class<HostProtocolSettingsMigrationFailedError>( \"HostProtocolSettingsMigrationFailedError\" )({ tag: Schema.Literal(\"SettingsMigrationFailed\"), schemaVersion: UInt32, cause: Schema.String, ...HostProtocolErrorCommonFieldsWithoutCause }) { get _tag(): \"SettingsMigrationFailed\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolSettingsRecoveredFromBackupError",
+      "kind": "class",
+      "signature": "export class HostProtocolSettingsRecoveredFromBackupError extends Schema.Class<HostProtocolSettingsRecoveredFromBackupError>( \"HostProtocolSettingsRecoveredFromBackupError\" )({ tag: Schema.Literal(\"SettingsRecoveredFromBackup\"), backupPath: Schema.String, ...HostProtocolErrorCommonFields }) { get _tag(): \"SettingsRecoveredFromBackup\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolStaleHandleError",
+      "kind": "class",
+      "signature": "export class HostProtocolStaleHandleError extends Schema.Class<HostProtocolStaleHandleError>( \"HostProtocolStaleHandleError\" )({ tag: Schema.Literal(\"StaleHandle\"), kind: Schema.String, id: Schema.String, expectedGeneration: UInt32, actualGeneration: UInt32, ...HostProtocolErrorCommonFields }) { get _tag(): \"StaleHandle\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolStreamByRequestEnvelope",
+      "kind": "class",
+      "signature": "export class HostProtocolStreamByRequestEnvelope extends Schema.Class<HostProtocolStreamByRequestEnvelope>( \"HostProtocolStreamByRequestEnvelope\" )({ kind: Schema.Literal(\"stream\"), id: Schema.String, resourceId: OptionalString, timestamp: UInt, traceId: Schema.String, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
+    },
+    {
+      "name": "HostProtocolStreamByResourceEnvelope",
+      "kind": "class",
+      "signature": "export class HostProtocolStreamByResourceEnvelope extends Schema.Class<HostProtocolStreamByResourceEnvelope>( \"HostProtocolStreamByResourceEnvelope\" )({ kind: Schema.Literal(\"stream\"), id: OptionalString, resourceId: Schema.String, timestamp: UInt, traceId: Schema.String, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
+    },
+    {
+      "name": "HostProtocolStreamClosedError",
+      "kind": "class",
+      "signature": "export class HostProtocolStreamClosedError extends Schema.Class<HostProtocolStreamClosedError>( \"HostProtocolStreamClosedError\" )({ tag: Schema.Literal(\"StreamClosed\"), streamId: Schema.String, ...HostProtocolErrorCommonFields }) { get _tag(): \"StreamClosed\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolStreamEnvelope",
+      "kind": "type",
+      "signature": "export type HostProtocolStreamEnvelope = HostProtocolStreamByRequestEnvelope"
+    },
+    {
+      "name": "HostProtocolSymlinkEscapesRootError",
+      "kind": "class",
+      "signature": "export class HostProtocolSymlinkEscapesRootError extends Schema.Class<HostProtocolSymlinkEscapesRootError>( \"HostProtocolSymlinkEscapesRootError\" )({ tag: Schema.Literal(\"SymlinkEscapesRoot\"), requested: Schema.String, resolved: Schema.String, capabilityRoots: Schema.Array(Schema.String), ...HostProtocolErrorCommonFields }) { get _tag(): \"SymlinkEscapesRoot\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolTimeoutError",
+      "kind": "class",
+      "signature": "export class HostProtocolTimeoutError extends Schema.Class<HostProtocolTimeoutError>( \"HostProtocolTimeoutError\" )({ tag: Schema.Literal(\"Timeout\"), timeoutMs: UInt, ...HostProtocolErrorCommonFields }) { get _tag(): \"Timeout\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolUnsupportedError",
+      "kind": "class",
+      "signature": "export class HostProtocolUnsupportedError extends Schema.Class<HostProtocolUnsupportedError>( \"HostProtocolUnsupportedError\" )({ tag: Schema.Literal(\"Unsupported\"), reason: Schema.String, ...HostProtocolErrorCommonFields }) { get _tag(): \"Unsupported\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolUpdateDowngradeRefusedError",
+      "kind": "class",
+      "signature": "export class HostProtocolUpdateDowngradeRefusedError extends Schema.Class<HostProtocolUpdateDowngradeRefusedError>( \"HostProtocolUpdateDowngradeRefusedError\" )({ tag: Schema.Literal(\"UpdateDowngradeRefused\"), installedVersion: Schema.String, manifestVersion: Schema.String, ...HostProtocolErrorCommonFields }) { get _tag(): \"UpdateDowngradeRefused\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolUpdateDownloadTruncatedError",
+      "kind": "class",
+      "signature": "export class HostProtocolUpdateDownloadTruncatedError extends Schema.Class<HostProtocolUpdateDownloadTruncatedError>( \"HostProtocolUpdateDownloadTruncatedError\" )({ tag: Schema.Literal(\"UpdateDownloadTruncated\"), downloadedBytes: UInt, expectedBytes: UInt, ...HostProtocolErrorCommonFields }) { get _tag(): \"UpdateDownloadTruncated\" { return this.tag } }"
+    },
+    {
+      "name": "HostProtocolUpdateStaleNotarizationError",
+      "kind": "class",
+      "signature": "export class HostProtocolUpdateStaleNotarizationError extends Schema.Class<HostProtocolUpdateStaleNotarizationError>( \"HostProtocolUpdateStaleNotarizationError\" )({ tag: Schema.Literal(\"UpdateStaleNotarization\"), notarizedAt: Schema.String, ...HostProtocolErrorCommonFields }) { get _tag(): \"UpdateStaleNotarization\" { return this.tag } }"
+    },
+    {
+      "name": "HostVersionPayload",
+      "kind": "class",
+      "signature": "export class HostVersionPayload extends Schema.Class<HostVersionPayload>(\"HostVersionPayload\")({ protocolVersion: Schema.String }) {}"
+    },
+    {
+      "name": "HostWindowClient",
+      "kind": "interface",
+      "signature": "export interface HostWindowClient { readonly create: ( input?: WindowCreateInput ) => Effect.Effect<WindowCreateResponse, HostProtocolError, never> readonly destroy: (windowId: string) => Effect.Effect<void, HostProtocolError, never> }"
+    },
+    {
+      "name": "HostWindowClientOptions",
+      "kind": "interface",
+      "signature": "export interface HostWindowClientOptions { readonly nextRequestId?: () => string readonly nextTraceId?: () => string readonly now?: () => number }"
+    },
+    {
+      "name": "HostWindowExchange",
+      "kind": "interface",
+      "signature": "export interface HostWindowExchange { readonly request: ( request: HostProtocolRequestEnvelope ) => Effect.Effect<HostProtocolResponseEnvelope, HostProtocolError, never> }"
+    },
+    {
+      "name": "InvalidApiContractSpec",
+      "kind": "class",
+      "signature": "export class InvalidApiContractSpec extends Data.TaggedError(\"InvalidApiContractSpec\")<{ readonly tag: string readonly method: string readonly reason: string readonly message: string }> {}"
+    },
+    {
+      "name": "isResourceSpec",
+      "kind": "value",
+      "signature": "const isResourceSpec: (value: unknown) => value is ApiResourceSpec"
+    },
+    {
+      "name": "isStreamSpec",
+      "kind": "value",
+      "signature": "const isStreamSpec: (value: unknown) => value is ApiStreamSpec"
+    },
+    {
+      "name": "makeBridgeCallRegistry",
+      "kind": "value",
+      "signature": "const makeBridgeCallRegistry: (maxEntries?: number) => Effect.Effect<BridgeCallRegistry, never, never>"
+    },
+    {
+      "name": "makeBridgeStreamRegistry",
+      "kind": "value",
+      "signature": "const makeBridgeStreamRegistry: (cleanupGraceMs?: number) => BridgeStreamRegistry"
+    },
+    {
+      "name": "makeHostHandshakeClient",
+      "kind": "value",
+      "signature": "const makeHostHandshakeClient: (exchange: HostHandshakeExchange, options?: HostHandshakeClientOptions) => HostHandshakeClient"
+    },
+    {
+      "name": "makeHostProtocolBinaryDecodeError",
+      "kind": "value",
+      "signature": "const makeHostProtocolBinaryDecodeError: (reason: string, operation: string) => HostProtocolBinaryDecodeError"
+    },
+    {
+      "name": "makeHostProtocolFrameTooLargeError",
+      "kind": "value",
+      "signature": "const makeHostProtocolFrameTooLargeError: (sizeBytes: number, limitBytes: number, operation: string) => HostProtocolFrameTooLargeError"
+    },
+    {
+      "name": "makeHostProtocolHostUnavailableError",
+      "kind": "value",
+      "signature": "const makeHostProtocolHostUnavailableError: (operation: string) => HostProtocolHostUnavailableError"
+    },
+    {
+      "name": "makeHostProtocolInvalidArgumentError",
+      "kind": "value",
+      "signature": "const makeHostProtocolInvalidArgumentError: (field: string, reason: string, operation: string) => HostProtocolInvalidArgumentError"
+    },
+    {
+      "name": "makeHostProtocolInvalidOutputError",
+      "kind": "value",
+      "signature": "const makeHostProtocolInvalidOutputError: (method: string, reason: string) => HostProtocolInvalidOutputError"
+    },
+    {
+      "name": "makeHostProtocolInvalidStateError",
+      "kind": "value",
+      "signature": "const makeHostProtocolInvalidStateError: (current: string, attempted: string, operation: string) => HostProtocolInvalidStateError"
+    },
+    {
+      "name": "makeHostProtocolNotFoundError",
+      "kind": "value",
+      "signature": "const makeHostProtocolNotFoundError: (resource: string, operation: string) => HostProtocolNotFoundError"
+    },
+    {
+      "name": "makeHostProtocolOriginInvalidError",
+      "kind": "value",
+      "signature": "const makeHostProtocolOriginInvalidError: (operation: string, message?: string) => HostProtocolOriginInvalidError"
+    },
+    {
+      "name": "makeHostWindowClient",
+      "kind": "value",
+      "signature": "const makeHostWindowClient: (exchange: HostWindowExchange, options?: HostWindowClientOptions) => HostWindowClient"
+    },
+    {
+      "name": "makeResourceProxy",
+      "kind": "value",
+      "signature": "const makeResourceProxy: <Spec extends ApiResourceSpec>(spec: Spec, handle: ApiResourceHandle<Spec[\"kind\"], Spec[\"state\"]>, exchange: ApiResourceExchange) => ApiResourceProxy<Spec[\"kind\"], Spec[\"state\"]>"
+    },
+    {
+      "name": "makeStaleHandleError",
+      "kind": "value",
+      "signature": "const makeStaleHandleError: (operation: string, handle: ApiResourceHandle, actualGeneration: number) => HostProtocolStaleHandleError"
+    },
+    {
+      "name": "MENU_SET_APPLICATION_MENU_METHOD",
+      "kind": "value",
+      "signature": "const MENU_SET_APPLICATION_MENU_METHOD: \"Menu.setApplicationMenu\""
+    },
+    {
+      "name": "MENU_SET_WINDOW_MENU_METHOD",
+      "kind": "value",
+      "signature": "const MENU_SET_WINDOW_MENU_METHOD: \"Menu.setWindowMenu\""
+    },
+    {
+      "name": "negotiateHostVersion",
+      "kind": "value",
+      "signature": "const negotiateHostVersion: (client: HostHandshakeClient, expectedProtocolVersion?: string) => Effect.Effect<HostVersionPayload, HostProtocolError, never>"
+    },
+    {
+      "name": "redact",
+      "kind": "value",
+      "signature": "const redact: <A>(record: A, options?: RedactionFilterOptions) => A"
+    },
+    {
+      "name": "RedactionFilter",
+      "kind": "value",
+      "signature": "const RedactionFilter: Readonly<{ redact: <A>(record: A, options?: RedactionFilterOptions) => A; redactedValue: \"[REDACTED]\"; defaultPattern: RegExp; }>"
+    },
+    {
+      "name": "RedactionFilterOptions",
+      "kind": "interface",
+      "signature": "export interface RedactionFilterOptions { readonly additionalPatterns?: readonly (RegExp | string)[] readonly allowlist?: readonly string[] }"
+    },
+    {
+      "name": "RENDERER_DISCONNECTED_EVENT",
+      "kind": "value",
+      "signature": "const RENDERER_DISCONNECTED_EVENT: \"renderer.disconnected\""
+    },
+    {
+      "name": "RENDERER_RESUME_DENIED_EVENT",
+      "kind": "value",
+      "signature": "const RENDERER_RESUME_DENIED_EVENT: \"renderer.resume.denied\""
+    },
+    {
+      "name": "RENDERER_RESUME_METHOD",
+      "kind": "value",
+      "signature": "const RENDERER_RESUME_METHOD: \"renderer.resume\""
+    },
+    {
+      "name": "RENDERER_RESUMED_EVENT",
+      "kind": "value",
+      "signature": "const RENDERER_RESUMED_EVENT: \"renderer.resumed\""
+    },
+    {
+      "name": "RendererDisconnectedPayload",
+      "kind": "class",
+      "signature": "export class RendererDisconnectedPayload extends Schema.Class<RendererDisconnectedPayload>( \"RendererDisconnectedPayload\" )({ windowId: Schema.String, resumeTicket: ResumeTicket }) {}"
+    },
+    {
+      "name": "RendererOriginAuth",
+      "kind": "interface",
+      "signature": "export interface RendererOriginAuth { readonly verify: ( request: HostProtocolRequestEnvelope ) => Effect.Effect<void, HostProtocolError, never> }"
+    },
+    {
+      "name": "RendererResumeDeniedPayload",
+      "kind": "class",
+      "signature": "export class RendererResumeDeniedPayload extends Schema.Class<RendererResumeDeniedPayload>( \"RendererResumeDeniedPayload\" )({ windowId: Schema.String, reason: RendererResumeDeniedReason, message: Schema.String }) {}"
+    },
+    {
+      "name": "RendererResumeDeniedReason",
+      "kind": "type",
+      "signature": "const RendererResumeDeniedReason: Schema.Literals<readonly [\"expired\", \"windowMismatch\", \"originInvalid\", \"backfillExhausted\"]>"
+    },
+    {
+      "name": "RendererResumedPayload",
+      "kind": "class",
+      "signature": "export class RendererResumedPayload extends Schema.Class<RendererResumedPayload>( \"RendererResumedPayload\" )({ windowId: Schema.String, replayedStreamIds: Schema.Array(Schema.String) }) {}"
+    },
+    {
+      "name": "RendererResumePayload",
+      "kind": "class",
+      "signature": "export class RendererResumePayload extends Schema.Class<RendererResumePayload>( \"RendererResumePayload\" )({ windowId: Schema.String, resumeNonce: Schema.String, cursors: StringRecord }) {}"
+    },
+    {
+      "name": "ResumeTicket",
+      "kind": "class",
+      "signature": "export class ResumeTicket extends Schema.Class<ResumeTicket>(\"ResumeTicket\")({ windowId: Schema.String, originTokenHash: Schema.String, resumeNonce: Schema.String, expiresAt: UInt, lastStreamCursors: StringRecord }) {}"
+    },
+    {
+      "name": "Streams",
+      "kind": "value",
+      "signature": "const Streams: (<Layers extends readonly AnyApiLayer[]>(...layers: Layers) => ApiStreamRuntime<ApiStreamLayerEnvironment<Layers[number]>>) & { withOptions: <Layers extends readonly AnyApiLayer[]>(options: ApiStreamRuntimeOptions, ...layers: Layers) => ApiStreamRuntime<ApiStreamLayerEnvironment<Layers[number]>>; }"
+    },
+    {
+      "name": "WINDOW_CREATE_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_CREATE_METHOD: \"Window.create\""
+    },
+    {
+      "name": "WINDOW_DESTROY_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_DESTROY_METHOD: \"Window.destroy\""
+    },
+    {
+      "name": "WindowCreateInput",
+      "kind": "interface",
+      "signature": "export interface WindowCreateInput { readonly title?: string readonly width?: number readonly height?: number readonly titleBarStyle?: Schema.Schema.Type<typeof WindowTitleBarStyle> readonly vibrancy?: string readonly trafficLights?: Schema.Schema.Type<typeof WindowTrafficLights> }"
+    },
+    {
+      "name": "WindowCreatePayload",
+      "kind": "class",
+      "signature": "export class WindowCreatePayload extends Schema.Class<WindowCreatePayload>(\"WindowCreatePayload\")({ title: Schema.optionalKey(Schema.String), width: Schema.optionalKey(PositiveFiniteNumber), height: Schema.optionalKey(PositiveFiniteNumber), titleBarStyle: Schema.optionalKey(WindowTitleBarStyle), vibrancy: Schema.optionalKey(Schema.String), trafficLights: Schema.optionalKey(WindowTrafficLights) }) {}"
+    },
+    {
+      "name": "WindowCreateResponse",
+      "kind": "class",
+      "signature": "export class WindowCreateResponse extends Schema.Class<WindowCreateResponse>( \"WindowCreateResponse\" )({ windowId: Schema.String }) {}"
+    },
+    {
+      "name": "WindowDestroyPayload",
+      "kind": "class",
+      "signature": "export class WindowDestroyPayload extends Schema.Class<WindowDestroyPayload>( \"WindowDestroyPayload\" )({ windowId: Schema.String }) {}"
+    }
+  ]
+}

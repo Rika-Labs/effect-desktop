@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "packageName": "@effect-desktop/react",
+  "entrypoint": "src/index.ts",
+  "symbols": [
+    {
+      "name": "DesktopClient",
+      "kind": "interface",
+      "signature": "export interface DesktopClient { readonly Window: DesktopWindowClient }"
+    },
+    {
+      "name": "DesktopFailure",
+      "kind": "type",
+      "signature": "export type DesktopFailure = HostProtocolError"
+    },
+    {
+      "name": "DesktopProvider",
+      "kind": "value",
+      "signature": "const DesktopProvider: ({ client, currentWindow, children }: DesktopProviderProps) => import(\"react\").FunctionComponentElement<import(\"react\").ProviderProps<Option.Option<DesktopRuntimeContext>>>"
+    },
+    {
+      "name": "DesktopProviderProps",
+      "kind": "interface",
+      "signature": "export interface DesktopProviderProps { readonly client: DesktopClient readonly currentWindow?: WindowHandle readonly children?: ReactNode }"
+    },
+    {
+      "name": "DesktopRuntimeContext",
+      "kind": "interface",
+      "signature": "export interface DesktopRuntimeContext { readonly client: DesktopClient readonly currentWindow?: WindowHandle }"
+    },
+    {
+      "name": "DesktopStreamState",
+      "kind": "interface",
+      "signature": "export interface DesktopStreamState<A, E> { readonly status: DesktopStreamStatus readonly data: readonly A[] readonly error: Option.Option<Cause.Cause<E>> }"
+    },
+    {
+      "name": "DesktopStreamStatus",
+      "kind": "type",
+      "signature": "export type DesktopStreamStatus = \"idle\" | \"running\" | \"closed\" | \"failure\""
+    },
+    {
+      "name": "DesktopWindowClient",
+      "kind": "interface",
+      "signature": "export interface DesktopWindowClient { readonly create: (input?: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never> readonly setTitle: ( window: WindowHandle, title: string ) => Effect.Effect<void, WindowError, never> readonly close: (window: WindowHandle) => Effect.Effect<void, WindowError, never> }"
+    },
+    {
+      "name": "PermissionState",
+      "kind": "interface",
+      "signature": "export interface PermissionState { readonly status: \"deferred\" readonly permission: string }"
+    },
+    {
+      "name": "useDesktop",
+      "kind": "value",
+      "signature": "const useDesktop: () => Option.Option<DesktopClient>"
+    },
+    {
+      "name": "useDesktopStream",
+      "kind": "value",
+      "signature": "const useDesktopStream: <A, E>(stream: Stream.Stream<A, E, never>, deps?: DependencyList) => DesktopStreamState<A, E>"
+    },
+    {
+      "name": "usePermission",
+      "kind": "value",
+      "signature": "const usePermission: (permission: string) => PermissionState"
+    },
+    {
+      "name": "useResource",
+      "kind": "value",
+      "signature": "const useResource: <Handle extends { readonly dispose: () => Effect.Effect<void, never, never>; }>(handle: Option.Option<Handle> | Handle) => Option.Option<Handle>"
+    },
+    {
+      "name": "useWindow",
+      "kind": "value",
+      "signature": "const useWindow: () => Option.Option<WindowHandle>"
+    }
+  ]
+}

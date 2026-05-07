@@ -382,6 +382,146 @@ test("desktop check --repro --json returns structured diff reports", async () =>
   }
 })
 
+test("desktop check --api writes and verifies public API snapshots", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
+  try {
+    await writeApiFixturePackage(directory, "export interface Widget { readonly id: string }\n")
+    const writeStdout: string[] = []
+
+    const writeExitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--api", "--write"],
+        cwd: directory,
+        writeStdout: (text) => {
+          writeStdout.push(text)
+        },
+        writeStderr: () => {}
+      })
+    )
+
+    expect(writeExitCode).toBe(0)
+    expect(writeStdout.join("")).toContain("mode              write")
+
+    const checkStdout: string[] = []
+    const checkExitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--api"],
+        cwd: directory,
+        writeStdout: (text) => {
+          checkStdout.push(text)
+        },
+        writeStderr: () => {}
+      })
+    )
+
+    expect(checkExitCode).toBe(0)
+    expect(checkStdout.join("")).toContain("@effect-desktop/fixture")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --api fails when the public API changes without a snapshot update", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
+  try {
+    await writeApiFixturePackage(directory, "export interface Widget { readonly id: string }\n")
+    await Effect.runPromise(
+      runCli({
+        argv: ["check", "--api", "--write"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: () => {}
+      })
+    )
+    await writeFile(
+      join(directory, "packages/fixture/src/index.ts"),
+      "export interface Widget { readonly id: string }\nexport const added = 1\n"
+    )
+
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--api"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("ADD @effect-desktop/fixture added")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --api fails when a public signature changes without a snapshot update", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
+  try {
+    await writeApiFixturePackage(directory, "export interface Widget { readonly id: string }\n")
+    await Effect.runPromise(
+      runCli({
+        argv: ["check", "--api", "--write"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: () => {}
+      })
+    )
+    await writeFile(
+      join(directory, "packages/fixture/src/index.ts"),
+      "export interface Widget { readonly id: number }\n"
+    )
+
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--api"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("SIGNATURE-CHANGED @effect-desktop/fixture Widget")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --api --json reports missing snapshots as typed values", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
+  try {
+    await writeApiFixturePackage(directory, "export const present = true\n")
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--api", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("PublicApiFileError")
+    expect(payload.message).toContain("snapshot")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop sign signs macOS app bundle with hardened runtime entitlements", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
   try {
@@ -1734,6 +1874,48 @@ const listFixtureFiles = async (path: string): Promise<readonly string[]> => {
     }
   }
   return files
+}
+
+const writeApiFixturePackage = async (root: string, source: string): Promise<void> => {
+  const packageRoot = join(root, "packages", "fixture")
+  await mkdir(join(packageRoot, "src"), { recursive: true })
+  await writeFile(
+    join(packageRoot, "package.json"),
+    JSON.stringify(
+      {
+        name: "@effect-desktop/fixture",
+        type: "module",
+        exports: {
+          ".": {
+            types: "./src/index.ts",
+            default: "./src/index.ts"
+          }
+        }
+      },
+      null,
+      2
+    )
+  )
+  await writeFile(
+    join(packageRoot, "tsconfig.json"),
+    JSON.stringify(
+      {
+        compilerOptions: {
+          target: "ESNext",
+          module: "NodeNext",
+          moduleResolution: "NodeNext",
+          strict: true,
+          noEmit: true,
+          skipLibCheck: true,
+          types: []
+        },
+        include: ["src"]
+      },
+      null,
+      2
+    )
+  )
+  await writeFile(join(packageRoot, "src", "index.ts"), source)
 }
 
 const testEd25519Key = (): { readonly privateKeyPem: string; readonly publicKey: string } => {

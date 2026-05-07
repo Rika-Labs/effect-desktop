@@ -82,6 +82,9 @@ jobs:
       - name: bun desktop check --repro regression tests
         run: bun test packages/cli/src/index.test.ts -t repro
 
+      - name: bun desktop check --api
+        run: bun packages/cli/src/bin.ts check --api
+
       - name: cargo fmt --check
         run: cargo fmt --check
 

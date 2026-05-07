@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "packageName": "create-effect-desktop",
+  "entrypoint": "src/index.ts",
+  "symbols": []
+}
