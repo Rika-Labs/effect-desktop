@@ -55,10 +55,36 @@ export class WindowStateCorruptRenamed extends Data.TaggedError("WindowStateCorr
   readonly reason: string
 }> {}
 
+export class WindowStateInvalidArgumentError extends Data.TaggedError("InvalidArgument")<{
+  readonly operation: string
+  readonly field: string
+  readonly message: string
+  readonly cause: Option.Option<unknown>
+}> {}
+
 export type WindowStateError =
   | WindowStateReadFailed
   | WindowStateWriteFailed
   | WindowStateCorruptRenamed
+  | WindowStateInvalidArgumentError
+
+const WindowStateWindowIdSchema = Schema.String.check(Schema.isPattern(/\S/))
+
+const decodeWindowId = (
+  windowId: string,
+  operation: string
+): Effect.Effect<string, WindowStateInvalidArgumentError, never> =>
+  Schema.decodeUnknownEffect(WindowStateWindowIdSchema)(windowId).pipe(
+    Effect.mapError(
+      (error) =>
+        new WindowStateInvalidArgumentError({
+          operation,
+          field: "windowId",
+          message: error instanceof Error ? error.message : String(error),
+          cause: Option.some(error)
+        })
+    )
+  )
 
 export interface WindowStateApi {
   readonly restore: (
