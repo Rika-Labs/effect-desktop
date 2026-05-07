@@ -579,6 +579,61 @@
       "signature": "const runReleaseGate: (options: ReleaseGateOptions) => Effect.Effect<ReleaseGateReport, ReleaseGateError, never>"
     },
     {
+      "name": "runSemverGuard",
+      "kind": "value",
+      "signature": "const runSemverGuard: (options: SemverGuardOptions) => Effect.Effect<SemverGuardReport, SemverGuardError, never>"
+    },
+    {
+      "name": "SemverApiChange",
+      "kind": "interface",
+      "signature": "export interface SemverApiChange { readonly packageName: string readonly symbol: string readonly kind: PublicApiChange[\"kind\"] readonly classification: SemverChangeClassification }"
+    },
+    {
+      "name": "SemverChangeClassification",
+      "kind": "type",
+      "signature": "export type SemverChangeClassification = \"additive\" | \"breaking\""
+    },
+    {
+      "name": "SemverGuardError",
+      "kind": "type",
+      "signature": "export type SemverGuardError = | SemverGuardFileError | SemverGuardManifestError | SemverGuardPolicyError | PublicApiSnapshotError"
+    },
+    {
+      "name": "SemverGuardFileError",
+      "kind": "class",
+      "signature": "export class SemverGuardFileError extends Data.TaggedError(\"SemverGuardFileError\")<{ readonly operation: string readonly path: string readonly message: string readonly cause: unknown }> {}"
+    },
+    {
+      "name": "SemverGuardManifestError",
+      "kind": "class",
+      "signature": "export class SemverGuardManifestError extends Data.TaggedError(\"SemverGuardManifestError\")<{ readonly message: string }> {}"
+    },
+    {
+      "name": "SemverGuardOptions",
+      "kind": "interface",
+      "signature": "export interface SemverGuardOptions { readonly cwd: string readonly publicApiCheck?: ( cwd: string ) => Effect.Effect<PublicApiSnapshotReport, PublicApiSnapshotError, never> }"
+    },
+    {
+      "name": "SemverGuardPolicyError",
+      "kind": "class",
+      "signature": "export class SemverGuardPolicyError extends Data.TaggedError(\"SemverGuardPolicyError\")<{ readonly message: string readonly report: SemverGuardReport }> {}"
+    },
+    {
+      "name": "SemverGuardReport",
+      "kind": "interface",
+      "signature": "export interface SemverGuardReport { readonly passed: boolean readonly release: string readonly releaseKind: SemverReleaseKind readonly apiChanges: readonly SemverApiChange[] readonly appendixCRows: readonly string[] }"
+    },
+    {
+      "name": "SemverPolicyManifest",
+      "kind": "interface",
+      "signature": "export interface SemverPolicyManifest { readonly schemaVersion: 1 readonly source: string readonly release: string readonly releaseKind: SemverReleaseKind readonly publicApiSnapshots: string readonly verificationMatrix: string readonly appendixCRows: readonly string[] readonly bridgeEnvelopePolicy: { readonly source: string readonly frozenBetweenMajors: boolean readonly allowedChange: string } readonly deprecationPolicy: { readonly minimumMinorReleases: number readonly requiresJSDocDeprecated: boolean } }"
+    },
+    {
+      "name": "SemverReleaseKind",
+      "kind": "type",
+      "signature": "export type SemverReleaseKind = \"patch\" | \"minor\" | \"major\""
+    },
+    {
       "name": "SignArtifactKind",
       "kind": "type",
       "signature": "export type SignArtifactKind = \"app\" | \"dmg\" | \"zip\" | \"msi\" | \"appimage\" | \"deb\" | \"rpm\""
