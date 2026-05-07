@@ -149,6 +149,71 @@
       "signature": "const detectHostTarget: () => BuildTarget | undefined"
     },
     {
+      "name": "DocsExampleInvocation",
+      "kind": "interface",
+      "signature": "export interface DocsExampleInvocation { readonly file: string readonly blockIndex: number readonly code: string readonly cwd: string }"
+    },
+    {
+      "name": "DocsExampleReport",
+      "kind": "interface",
+      "signature": "export interface DocsExampleReport { readonly file: string readonly blockIndex: number }"
+    },
+    {
+      "name": "DocsExampleRunner",
+      "kind": "type",
+      "signature": "export type DocsExampleRunner = ( invocation: DocsExampleInvocation ) => Effect.Effect<void, DocsGateExampleFailedError | DocsGateFileError, never>"
+    },
+    {
+      "name": "DocsGateExampleFailedError",
+      "kind": "class",
+      "signature": "export class DocsGateExampleFailedError extends Data.TaggedError(\"DocsGateExampleFailedError\")<{ readonly file: string readonly blockIndex: number readonly message: string readonly exitCode?: number readonly stderr?: string readonly cause?: unknown }> {}"
+    },
+    {
+      "name": "DocsGateFileError",
+      "kind": "class",
+      "signature": "export class DocsGateFileError extends Data.TaggedError(\"DocsGateFileError\")<{ readonly operation: string readonly path: string readonly message: string readonly cause: unknown }> {}"
+    },
+    {
+      "name": "DocsGateManifestError",
+      "kind": "class",
+      "signature": "export class DocsGateManifestError extends Data.TaggedError(\"DocsGateManifestError\")<{ readonly message: string }> {}"
+    },
+    {
+      "name": "DocsGateMissingPageError",
+      "kind": "class",
+      "signature": "export class DocsGateMissingPageError extends Data.TaggedError(\"DocsGateMissingPageError\")<{ readonly page: DocsManifestPage readonly message: string }> {}"
+    },
+    {
+      "name": "DocsManifest",
+      "kind": "interface",
+      "signature": "export interface DocsManifest { readonly schemaVersion: 1 readonly source: string readonly pages: readonly DocsManifestPage[] }"
+    },
+    {
+      "name": "DocsManifestPage",
+      "kind": "interface",
+      "signature": "export interface DocsManifestPage { readonly id: string readonly title: string readonly path: string }"
+    },
+    {
+      "name": "DocsPageReport",
+      "kind": "interface",
+      "signature": "export interface DocsPageReport { readonly id: string readonly title: string readonly path: string readonly runnableExamples: number }"
+    },
+    {
+      "name": "DocsReleaseGateError",
+      "kind": "type",
+      "signature": "export type DocsReleaseGateError = | DocsGateFileError | DocsGateManifestError | DocsGateMissingPageError | DocsGateExampleFailedError"
+    },
+    {
+      "name": "DocsReleaseGateOptions",
+      "kind": "interface",
+      "signature": "export interface DocsReleaseGateOptions { readonly cwd: string readonly commandRunner?: DocsExampleRunner }"
+    },
+    {
+      "name": "DocsReleaseGateReport",
+      "kind": "interface",
+      "signature": "export interface DocsReleaseGateReport { readonly passed: boolean readonly pages: readonly DocsPageReport[] readonly examples: readonly DocsExampleReport[] }"
+    },
+    {
       "name": "DoctorCommandInvocation",
       "kind": "interface",
       "signature": "export interface DoctorCommandInvocation { readonly probe: DoctorProbeName readonly command: string readonly args: readonly string[] readonly cwd: string readonly platform: string }"
@@ -382,6 +447,11 @@
       "name": "runDesktopSign",
       "kind": "value",
       "signature": "const runDesktopSign: (options: DesktopSignOptions) => Effect.Effect<DesktopSignReport, SignPipelineError, never>"
+    },
+    {
+      "name": "runDocsReleaseGate",
+      "kind": "value",
+      "signature": "const runDocsReleaseGate: (options: DocsReleaseGateOptions) => Effect.Effect<DocsReleaseGateReport, DocsReleaseGateError, never>"
     },
     {
       "name": "runPublicApiCheck",
