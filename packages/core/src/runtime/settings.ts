@@ -13,25 +13,10 @@ import {
 
 const NonEmptyString = Schema.NonEmptyString
 const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
-
-// Durable settings key for *new writes*: non-empty plus no C0 control bytes
-// (\x00-\x1F) and no DEL (\x7F). The `*` quantifier is intentional —
-// emptiness is rejected by the upstream NonEmptyString so the two failure
-// modes produce distinct, diagnostic errors. See #600.
-//
-// Read-side paths use AddressableKeySchema instead so legacy rows persisted
-// by older builds remain drainable. A parallel validator lives at
-// secrets.ts:10 (SecretNamePattern) with a stricter grammar; the two
-// intentionally diverge today.
 const SettingsKeySchema = Schema.NonEmptyString.check(
-  // eslint-disable-next-line no-control-regex -- intentional: reject C0 + DEL in new writes
+  // eslint-disable-next-line no-control-regex
   Schema.isPattern(/^[^\x00-\x1F\x7F]*$/)
 )
-
-// Addressable key for *reads and deletes*: non-empty only. Legacy rows with
-// control bytes persisted before SettingsKeySchema landed must remain
-// reachable via keys() / get / delete / migration getRaw / deleteRaw /
-// rename source so callers (e.g. secrets-migration.ts) can clean them up.
 const AddressableKeySchema = NonEmptyString
 
 export class SettingsOpenInput extends Schema.Class<SettingsOpenInput>("SettingsOpenInput")({
@@ -279,10 +264,6 @@ const makeStore = (
           })
         }
       }).pipe(Effect.withSpan("Settings.delete", { attributes: { namespace, key } })),
-    // keys() returns whatever the database holds, including legacy
-    // control-byte-bearing rows persisted before SettingsKeySchema landed.
-    // Writer-side enforcement only (#600); readers must remain able to
-    // enumerate legacy rows so callers can drain them.
     keys: () =>
       Effect.gen(function* () {
         const rows = yield* query(
