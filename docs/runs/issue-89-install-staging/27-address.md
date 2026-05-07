@@ -15,7 +15,7 @@
 - `023f41d` — addressed the initial Windows replace review.
 - `e019ea9` — addressed destination-local commit temp, cleanup masking, and restart deadline overflow.
 - `f89bf1a` — fixed the Windows-only `OsStrExt` import after CI proved the target-specific compile failure.
-- Pending commit: preserve Unix execute bits during install staging.
+- `419dade` — preserved Unix execute bits during install staging.
 
 ## Escalations
 
@@ -33,7 +33,7 @@ None.
 
 Focused local verification before push:
 
-- `cargo test -p native-updater` — passed, 20 tests.
+- `cargo test -p native-updater` — passed, 21 tests.
 - `cargo clippy -p native-updater --all-targets -- -D warnings` — passed.
 - `cargo check --workspace` — passed.
 
