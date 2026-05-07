@@ -130,9 +130,9 @@ export class MenuCapabilityResult extends Schema.Class<MenuCapabilityResult>(
 }) {}
 
 export class MenuActivatedEvent extends Schema.Class<MenuActivatedEvent>("MenuActivatedEvent")({
-  itemId: Schema.String,
-  commandId: Schema.String,
-  windowId: Schema.optionalKey(Schema.String)
+  itemId: Schema.NonEmptyString,
+  commandId: Schema.NonEmptyString,
+  windowId: Schema.optionalKey(Schema.NonEmptyString)
 }) {}
 
 export const MenuApiSpec = Object.freeze({

@@ -1301,7 +1301,7 @@
     {
       "name": "MenuActivatedEvent",
       "kind": "class",
-      "signature": "export class MenuActivatedEvent extends Schema.Class<MenuActivatedEvent>(\"MenuActivatedEvent\")({ itemId: Schema.String, commandId: Schema.String, windowId: Schema.optionalKey(Schema.String) }) {}"
+      "signature": "export class MenuActivatedEvent extends Schema.Class<MenuActivatedEvent>(\"MenuActivatedEvent\")({ itemId: Schema.NonEmptyString, commandId: Schema.NonEmptyString, windowId: Schema.optionalKey(Schema.NonEmptyString) }) {}"
     },
     {
       "name": "MenuApi",
