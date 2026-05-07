@@ -47,6 +47,29 @@ test("host window client requests Window.create and decodes the WindowId", async
   ])
 })
 
+test("host window client preserves macOS polish fields in Window.create", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = makeHostWindowClient(windowExchange(requests), {
+    nextRequestId: () => "request-window-create-polished",
+    nextTraceId: () => "trace-window-create-polished",
+    now: () => 1710000000003
+  })
+
+  await Effect.runPromise(
+    client.create({
+      titleBarStyle: "hiddenInset",
+      vibrancy: "windowBackground",
+      trafficLights: { x: 12, y: 13 }
+    })
+  )
+
+  expect(requests[0]?.payload).toEqual({
+    titleBarStyle: "hiddenInset",
+    vibrancy: "windowBackground",
+    trafficLights: { x: 12, y: 13 }
+  })
+})
+
 test("host window client requests Window.destroy", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const client = makeHostWindowClient(windowExchange(requests), {

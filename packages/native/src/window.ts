@@ -26,8 +26,20 @@ import { Context, Effect, Layer, Option, Schema, Stream } from "effect"
 import { type AppEventRouterApi, windowScope } from "./app-events.js"
 
 const PositiveFiniteNumber = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0))
+const FiniteNumber = Schema.Number.check(Schema.isFinite())
+const WindowTitleBarStyle = Schema.Literals([
+  "default",
+  "hidden",
+  "hiddenInset",
+  "customButtonsOnHover"
+])
 const WindowResource = Api.Resource("window", "open")
 const StrictParseOptions = { onExcessProperty: "error" } as const
+
+export class WindowTrafficLights extends Schema.Class<WindowTrafficLights>("WindowTrafficLights")({
+  x: FiniteNumber,
+  y: FiniteNumber
+}) {}
 
 export type WindowHandle = ApiResourceHandle<"window", "open">
 export type WindowError = HostProtocolError
@@ -36,6 +48,9 @@ export class WindowCreateInput extends Schema.Class<WindowCreateInput>("WindowCr
   title: Schema.optionalKey(Schema.String),
   width: Schema.optionalKey(PositiveFiniteNumber),
   height: Schema.optionalKey(PositiveFiniteNumber),
+  titleBarStyle: Schema.optionalKey(WindowTitleBarStyle),
+  vibrancy: Schema.optionalKey(Schema.String),
+  trafficLights: Schema.optionalKey(WindowTrafficLights),
   persistState: Schema.optionalKey(Schema.Boolean)
 }) {}
 
@@ -472,7 +487,10 @@ const toHostWindowCreateInput = (input: WindowCreateOptions): WindowCreateOption
   return {
     ...(input.title === undefined ? {} : { title: input.title }),
     ...(input.width === undefined ? {} : { width: input.width }),
-    ...(input.height === undefined ? {} : { height: input.height })
+    ...(input.height === undefined ? {} : { height: input.height }),
+    ...(input.titleBarStyle === undefined ? {} : { titleBarStyle: input.titleBarStyle }),
+    ...(input.vibrancy === undefined ? {} : { vibrancy: input.vibrancy }),
+    ...(input.trafficLights === undefined ? {} : { trafficLights: input.trafficLights })
   }
 }
 

@@ -16,6 +16,8 @@ pub const HOST_VERSION_METHOD: &str = "host.version";
 pub const PROTOCOL_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const WINDOW_CREATE_METHOD: &str = "Window.create";
 pub const WINDOW_DESTROY_METHOD: &str = "Window.destroy";
+pub const DOCK_SET_BADGE_COUNT_METHOD: &str = "Dock.setBadgeCount";
+pub const DOCK_SET_BADGE_TEXT_METHOD: &str = "Dock.setBadgeText";
 pub const RENDERER_DISCONNECTED_EVENT: &str = "renderer.disconnected";
 pub const RENDERER_RESUME_METHOD: &str = "renderer.resume";
 pub const RENDERER_RESUMED_EVENT: &str = "renderer.resumed";
@@ -50,6 +52,12 @@ pub struct WindowCreatePayload {
     width: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     height: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    title_bar_style: Option<WindowTitleBarStyle>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    vibrancy: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    traffic_lights: Option<WindowTrafficLights>,
 }
 
 impl WindowCreatePayload {
@@ -58,6 +66,9 @@ impl WindowCreatePayload {
             title,
             width,
             height,
+            title_bar_style: None,
+            vibrancy: None,
+            traffic_lights: None,
         }
     }
 
@@ -71,6 +82,48 @@ impl WindowCreatePayload {
 
     pub fn height(&self) -> Option<f64> {
         self.height
+    }
+
+    pub fn title_bar_style(&self) -> Option<WindowTitleBarStyle> {
+        self.title_bar_style
+    }
+
+    pub fn vibrancy(&self) -> Option<&str> {
+        self.vibrancy.as_deref()
+    }
+
+    pub fn traffic_lights(&self) -> Option<&WindowTrafficLights> {
+        self.traffic_lights.as_ref()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum WindowTitleBarStyle {
+    Default,
+    Hidden,
+    HiddenInset,
+    CustomButtonsOnHover,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowTrafficLights {
+    x: f64,
+    y: f64,
+}
+
+impl WindowTrafficLights {
+    pub fn new(x: f64, y: f64) -> Self {
+        Self { x, y }
+    }
+
+    pub fn x(&self) -> f64 {
+        self.x
+    }
+
+    pub fn y(&self) -> f64 {
+        self.y
     }
 }
 
@@ -636,9 +689,9 @@ mod tests {
     use super::{
         HostProtocolEnvelope, HostProtocolError, HostVersionPayload, RendererResumeDeniedPayload,
         RendererResumeDeniedReason, RendererResumePayload, RendererResumedPayload, ResumeTicket,
-        WindowCreatePayload, WindowCreateResponse, WindowDestroyPayload,
-        DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS, HOST_PROTOCOL_ERROR_SPECS,
-        PROTOCOL_VERSION,
+        WindowCreatePayload, WindowCreateResponse, WindowDestroyPayload, WindowTitleBarStyle,
+        WindowTrafficLights, DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
+        HOST_PROTOCOL_ERROR_SPECS, PROTOCOL_VERSION,
     };
     use std::{
         collections::{BTreeMap, BTreeSet},
@@ -861,6 +914,25 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&payload).expect("version payload should encode"),
             format!(r#"{{"protocolVersion":"{PROTOCOL_VERSION}"}}"#)
+        );
+    }
+
+    #[test]
+    fn window_create_payload_accepts_macos_polish_fields() {
+        let payload = serde_json::from_str::<WindowCreatePayload>(
+            r#"{"title":"Polished","width":320,"height":240,"titleBarStyle":"hiddenInset","vibrancy":"windowBackground","trafficLights":{"x":12,"y":13}}"#,
+        )
+        .expect("macOS window polish payload should decode");
+
+        assert_eq!(payload.title(), Some("Polished"));
+        assert_eq!(
+            payload.title_bar_style(),
+            Some(WindowTitleBarStyle::HiddenInset)
+        );
+        assert_eq!(payload.vibrancy(), Some("windowBackground"));
+        assert_eq!(
+            payload.traffic_lights(),
+            Some(&WindowTrafficLights::new(12.0, 13.0))
         );
     }
 

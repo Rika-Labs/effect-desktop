@@ -1,3 +1,4 @@
+mod dock;
 pub(crate) mod handshake;
 mod window;
 
@@ -41,6 +42,12 @@ impl HostMethodRouter {
             host_protocol::HOST_VERSION_METHOD => Ok(Some(handshake::version_payload())),
             host_protocol::WINDOW_CREATE_METHOD => window::create(&*self.window, payload),
             host_protocol::WINDOW_DESTROY_METHOD => window::destroy(&*self.window, payload),
+            host_protocol::DOCK_SET_BADGE_COUNT_METHOD => {
+                dock::set_badge_count(&*self.window, payload)
+            }
+            host_protocol::DOCK_SET_BADGE_TEXT_METHOD => {
+                dock::set_badge_text(&*self.window, payload)
+            }
             _ => Err(HostProtocolError::method_not_found(method.clone())),
         };
 
@@ -260,6 +267,39 @@ mod tests {
         );
     }
 
+    #[test]
+    fn dock_set_badge_text_routes_to_window_handler() {
+        let fake = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-unused")),
+            Ok(()),
+        ));
+        let router = HostMethodRouter::new(fake.clone());
+        let response = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-dock-badge",
+                    host_protocol::DOCK_SET_BADGE_TEXT_METHOD,
+                    serde_json::json!({
+                        "text": "7"
+                    }),
+                ),
+                1710000000108,
+            )
+            .expect("dock badge request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-dock-badge".to_string(),
+                timestamp: 1710000000108,
+                trace_id: "trace-request-dock-badge".to_string(),
+                payload: None,
+                error: None,
+            }
+        );
+        assert_eq!(fake.dock_badge_labels(), vec![Some("7".to_string())]);
+    }
+
     fn request(id: &str, method: &str) -> HostProtocolEnvelope {
         request_with_payload(id, method, serde_json::Value::Null)
     }
@@ -295,6 +335,7 @@ mod tests {
         create_result: Result<WindowCreateResponse, HostProtocolError>,
         destroy_result: Result<(), HostProtocolError>,
         created: Mutex<Vec<WindowCreateRequest>>,
+        dock_badge_labels: Mutex<Vec<Option<String>>>,
     }
 
     impl FakeWindowHandler {
@@ -306,6 +347,7 @@ mod tests {
                 create_result,
                 destroy_result,
                 created: Mutex::new(Vec::new()),
+                dock_badge_labels: Mutex::new(Vec::new()),
             }
         }
 
@@ -313,6 +355,13 @@ mod tests {
             self.created
                 .lock()
                 .expect("fake created requests should lock")
+                .clone()
+        }
+
+        fn dock_badge_labels(&self) -> Vec<Option<String>> {
+            self.dock_badge_labels
+                .lock()
+                .expect("fake dock badge labels should lock")
                 .clone()
         }
     }
@@ -331,6 +380,14 @@ mod tests {
 
         fn destroy(&self, _window_id: &str) -> Result<(), HostProtocolError> {
             self.destroy_result.clone()
+        }
+
+        fn set_dock_badge_label(&self, label: Option<String>) -> Result<(), HostProtocolError> {
+            self.dock_badge_labels
+                .lock()
+                .expect("fake dock badge labels should lock")
+                .push(label);
+            Ok(())
         }
     }
 }

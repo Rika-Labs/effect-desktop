@@ -12,11 +12,25 @@ import {
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 const PositiveFiniteNumber = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0))
+const FiniteNumber = Schema.Number.check(Schema.isFinite())
+const WindowTitleBarStyle = Schema.Literals([
+  "default",
+  "hidden",
+  "hiddenInset",
+  "customButtonsOnHover"
+])
+const WindowTrafficLights = Schema.Struct({
+  x: FiniteNumber,
+  y: FiniteNumber
+})
 
 export class WindowCreatePayload extends Schema.Class<WindowCreatePayload>("WindowCreatePayload")({
   title: Schema.optionalKey(Schema.String),
   width: Schema.optionalKey(PositiveFiniteNumber),
-  height: Schema.optionalKey(PositiveFiniteNumber)
+  height: Schema.optionalKey(PositiveFiniteNumber),
+  titleBarStyle: Schema.optionalKey(WindowTitleBarStyle),
+  vibrancy: Schema.optionalKey(Schema.String),
+  trafficLights: Schema.optionalKey(WindowTrafficLights)
 }) {}
 
 export class WindowCreateResponse extends Schema.Class<WindowCreateResponse>(
@@ -35,6 +49,9 @@ export interface WindowCreateInput {
   readonly title?: string
   readonly width?: number
   readonly height?: number
+  readonly titleBarStyle?: Schema.Schema.Type<typeof WindowTitleBarStyle>
+  readonly vibrancy?: string
+  readonly trafficLights?: Schema.Schema.Type<typeof WindowTrafficLights>
 }
 
 export interface HostWindowExchange {
