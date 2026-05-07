@@ -266,7 +266,7 @@
     {
       "name": "ContextMenuActivatedEvent",
       "kind": "class",
-      "signature": "export class ContextMenuActivatedEvent extends Schema.Class<ContextMenuActivatedEvent>( \"ContextMenuActivatedEvent\" )({ itemId: Schema.String, commandId: Schema.String, windowId: Schema.String }) {}"
+      "signature": "export class ContextMenuActivatedEvent extends Schema.Class<ContextMenuActivatedEvent>( \"ContextMenuActivatedEvent\" )({ itemId: Schema.NonEmptyString, commandId: Schema.NonEmptyString, windowId: Schema.NonEmptyString }) {}"
     },
     {
       "name": "ContextMenuApi",
@@ -2196,7 +2196,7 @@
     {
       "name": "TrayActivatedEvent",
       "kind": "class",
-      "signature": "export class TrayActivatedEvent extends Schema.Class<TrayActivatedEvent>(\"TrayActivatedEvent\")({ tray: TrayResource.schema, ownerWindowId: Schema.optionalKey(Schema.String) }) {}"
+      "signature": "export class TrayActivatedEvent extends Schema.Class<TrayActivatedEvent>(\"TrayActivatedEvent\")({ tray: TrayResource.schema, ownerWindowId: Schema.optionalKey(Schema.NonEmptyString) }) {}"
     },
     {
       "name": "TrayApi",

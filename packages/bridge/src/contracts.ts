@@ -35,10 +35,10 @@ export interface ApiResourceHandle<Kind extends string = string, State extends s
 export class ApiResourceHandleShape extends Schema.Class<ApiResourceHandleShape>(
   "ApiResourceHandle"
 )({
-  kind: Schema.String,
-  id: Schema.String,
+  kind: Schema.NonEmptyString,
+  id: Schema.NonEmptyString,
   generation: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-  ownerScope: Schema.String,
+  ownerScope: Schema.NonEmptyString,
   state: Schema.String
 }) {}
 

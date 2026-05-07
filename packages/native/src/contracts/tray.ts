@@ -36,5 +36,5 @@ export class TrayDestroyInput extends Schema.Class<TrayDestroyInput>("TrayDestro
 
 export class TrayActivatedEvent extends Schema.Class<TrayActivatedEvent>("TrayActivatedEvent")({
   tray: TrayResource.schema,
-  ownerWindowId: Schema.optionalKey(Schema.String)
+  ownerWindowId: Schema.optionalKey(Schema.NonEmptyString)
 }) {}

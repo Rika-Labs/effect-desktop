@@ -146,7 +146,7 @@
     {
       "name": "ApiResourceHandleShape",
       "kind": "class",
-      "signature": "export class ApiResourceHandleShape extends Schema.Class<ApiResourceHandleShape>( \"ApiResourceHandle\" )({ kind: Schema.String, id: Schema.String, generation: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)), ownerScope: Schema.String, state: Schema.String }) {}"
+      "signature": "export class ApiResourceHandleShape extends Schema.Class<ApiResourceHandleShape>( \"ApiResourceHandle\" )({ kind: Schema.NonEmptyString, id: Schema.NonEmptyString, generation: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)), ownerScope: Schema.NonEmptyString, state: Schema.String }) {}"
     },
     {
       "name": "ApiResourceProxy",
