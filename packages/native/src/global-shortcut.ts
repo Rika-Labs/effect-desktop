@@ -31,6 +31,7 @@ import {
   GlobalShortcutPressedEvent,
   GlobalShortcutRegisteredResult,
   GlobalShortcutRegisterInput,
+  type GlobalShortcutSupportReason,
   GlobalShortcutSupportedResult
 } from "./contracts/global-shortcut.js"
 import type { WindowHandle } from "./window.js"
@@ -343,7 +344,7 @@ const makeGlobalShortcutBridgeClient = (
 
 export const makeUnsupportedGlobalShortcutClient = (): GlobalShortcutClientApi => {
   const unsupportedEffect = <A>(method: string): Effect.Effect<A, GlobalShortcutError, never> =>
-    Effect.fail(unsupportedError(method))
+    Effect.fail(unsupportedError(method, "host-adapter-unimplemented"))
   const unsupportedStream = <A>(method: string): Stream.Stream<A, GlobalShortcutError, never> =>
     Stream.fail(unsupportedError(method))
   return Object.freeze({
@@ -362,6 +363,25 @@ export const makeUnsupportedGlobalShortcutClient = (): GlobalShortcutClientApi =
   } satisfies GlobalShortcutClientApi)
 }
 
+export const makeLinuxGlobalShortcutClient = (
+  sessionType = process.env["XDG_SESSION_TYPE"]
+): GlobalShortcutClientApi => {
+  const support = linuxGlobalShortcutSupport(sessionType)
+  const unsupportedEffect = <A>(method: string): Effect.Effect<A, GlobalShortcutError, never> =>
+    Effect.fail(unsupportedError(method, support.reason ?? "host-adapter-unimplemented"))
+  const unsupportedStream = <A>(method: string): Stream.Stream<A, GlobalShortcutError, never> =>
+    Stream.fail(unsupportedError(method, support.reason ?? "host-adapter-unimplemented"))
+
+  return Object.freeze({
+    register: () => unsupportedEffect<void>("GlobalShortcut.register"),
+    unregister: () => unsupportedEffect<void>("GlobalShortcut.unregister"),
+    unregisterAll: () => unsupportedEffect<void>("GlobalShortcut.unregisterAll"),
+    isRegistered: () => Effect.succeed(new GlobalShortcutRegisteredResult({ registered: false })),
+    isSupported: () => Effect.succeed(support),
+    onPressed: () => unsupportedStream<GlobalShortcutPressedEvent>("GlobalShortcut.Pressed")
+  } satisfies GlobalShortcutClientApi)
+}
+
 export const makeGlobalShortcutAlreadyRegisteredError = (
   accelerator: string,
   operation = "GlobalShortcut.register"
@@ -374,14 +394,36 @@ export const makeGlobalShortcutAlreadyRegisteredError = (
     recoverable: true
   })
 
-const unsupportedError = (method: string): HostProtocolUnsupportedError =>
+const unsupportedError = (
+  method: string,
+  reason: GlobalShortcutSupportReason = "host-adapter-unimplemented"
+): HostProtocolUnsupportedError =>
   new HostProtocolUnsupportedError({
     tag: "Unsupported",
-    reason: "host-adapter-unimplemented",
+    reason,
     message: `unsupported GlobalShortcut method: ${method}`,
     operation: method,
     recoverable: false
   })
+
+const linuxGlobalShortcutSupport = (
+  sessionType: string | undefined
+): GlobalShortcutSupportedResult => {
+  const normalized = sessionType?.toLowerCase()
+  if (normalized === "wayland") {
+    return new GlobalShortcutSupportedResult({
+      supported: false,
+      reason: "wayland-no-global-shortcut"
+    })
+  }
+  if (normalized === "x11") {
+    return new GlobalShortcutSupportedResult({ supported: true })
+  }
+  return new GlobalShortcutSupportedResult({
+    supported: false,
+    reason: "host-adapter-unimplemented"
+  })
+}
 
 const globalShortcutCommandResourceId = (windowId: string, accelerator: string): ResourceId =>
   `global-shortcut-command:${windowId}:${accelerator}` as ResourceId

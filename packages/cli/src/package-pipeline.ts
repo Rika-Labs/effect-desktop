@@ -105,6 +105,12 @@ export interface PackageArtifactReport {
   readonly checksumsPath: string
   readonly sizeBytes: number
   readonly sha256: string
+  readonly linuxIntegration?: {
+    readonly desktopFile: string
+    readonly appStreamId: string
+    readonly flatpakAppId: string
+    readonly snapName: string
+  }
 }
 
 export interface PackageStepReport {
@@ -137,6 +143,7 @@ interface PackagePlan {
   readonly platform: PackagePlatform
   readonly artifactKinds: readonly PackageArtifactKind[]
   readonly safeAppName: string
+  readonly linuxPackageName: string
 }
 
 interface AppConfig {
@@ -188,11 +195,7 @@ export const runDesktopPackage = (
       const artifact = plannedArtifact(plan, kind)
       const step = yield* produceArtifact(options, plan, artifact)
       steps.push(step)
-      const metadata = yield* writeArtifactMetadata(
-        artifact.kind,
-        plan.target,
-        artifact.artifactPath
-      )
+      const metadata = yield* writeArtifactMetadata(plan, artifact.kind, artifact.artifactPath)
       artifacts.push(metadata)
       steps.push({
         name: "metadata",
@@ -294,7 +297,8 @@ const normalizePackagePlan = (
       target: options.target,
       platform,
       artifactKinds,
-      safeAppName: safeArtifactName(appName)
+      safeAppName: safeArtifactName(appName),
+      linuxPackageName: linuxPackageName(appId, appName)
     }
   })
 
@@ -500,8 +504,8 @@ const runToolStep = (
   })
 
 const writeArtifactMetadata = (
+  plan: PackagePlan,
   kind: PackageArtifactKind,
-  target: PackageTarget,
   artifactPath: string
 ): Effect.Effect<PackageArtifactReport, PackageFileError, never> =>
   Effect.gen(function* () {
@@ -511,16 +515,26 @@ const writeArtifactMetadata = (
     const checksumsPath = join(rootPath, "checksums.txt")
     const metadata = {
       kind,
-      target,
+      target: plan.target,
       fileName: basename(artifactPath),
       sizeBytes: digest.sizeBytes,
-      sha256: digest.sha256
+      sha256: digest.sha256,
+      ...(plan.platform === "linux"
+        ? {
+            linuxIntegration: {
+              desktopFile: `${plan.linuxPackageName}.desktop`,
+              appStreamId: `${plan.appId}.metainfo.xml`,
+              flatpakAppId: plan.appId,
+              snapName: plan.linuxPackageName
+            }
+          }
+        : {})
     }
     yield* writeJson(artifactJsonPath, metadata)
     yield* writeFileEffect(checksumsPath, `${digest.sha256}  ${basename(artifactPath)}\n`)
     return {
       kind,
-      target,
+      target: plan.target,
       artifactPath,
       artifactJsonPath,
       checksumsPath,
@@ -660,6 +674,11 @@ const artifactExtension = (kind: PackageArtifactKind): string =>
 
 const safeArtifactName = (name: string): string => name.replace(/[^A-Za-z0-9._-]+/g, "-")
 
+const linuxPackageName = (appId: string, appName: string): string => {
+  const source = appId.length > 0 ? appId : appName
+  return source.toLowerCase().replace(/[^a-z0-9+.-]+/g, "-")
+}
+
 const macosAppBundlePath = (plan: PackagePlan): string => plannedArtifact(plan, "app").artifactPath
 
 const hostBinaryName = (target: PackageTarget): string =>
@@ -761,18 +780,22 @@ const stageLinuxAppDir = (
 ): Effect.Effect<void, PackageFileError, never> =>
   Effect.gen(function* () {
     const binDir = join(appDir, "usr", "bin")
-    const shareDir = join(appDir, "usr", "share", plan.safeAppName)
+    const shareDir = join(appDir, "usr", "share", plan.linuxPackageName)
     yield* copyDirectory(plan.layoutPath, shareDir)
     yield* makeDirectory(binDir)
     yield* writeFileEffect(
       join(appDir, "AppRun"),
       `#!/bin/sh
 HERE="$(dirname "$(readlink -f "$0")")"
-exec "$HERE/usr/share/${plan.safeAppName}/native/${hostBinaryName(plan.target)}" "$@"
+exec "$HERE/usr/share/${plan.linuxPackageName}/native/${hostBinaryName(plan.target)}" "$@"
 `
     )
     yield* chmodEffect(join(appDir, "AppRun"), 0o755)
-    yield* writeFileEffect(join(appDir, `${plan.safeAppName}.desktop`), linuxDesktopEntry(plan))
+    yield* stageLinuxLauncherMetadata(plan, appDir)
+    yield* writeFileEffect(
+      join(appDir, `${plan.linuxPackageName}.desktop`),
+      linuxDesktopEntry(plan)
+    )
   })
 
 const stageDebRoot = (
@@ -780,13 +803,13 @@ const stageDebRoot = (
   root: string
 ): Effect.Effect<void, PackageFileError, never> =>
   Effect.gen(function* () {
-    const packageName = plan.safeAppName.toLowerCase()
-    yield* copyDirectory(plan.layoutPath, join(root, "usr", "lib", packageName))
+    yield* copyDirectory(plan.layoutPath, join(root, "usr", "lib", plan.linuxPackageName))
+    yield* stageLinuxLauncherMetadata(plan, join(root, "usr"))
     yield* makeDirectory(join(root, "DEBIAN"))
     yield* writeFileEffect(
       join(root, "DEBIAN", "control"),
       [
-        `Package: ${packageName}`,
+        `Package: ${plan.linuxPackageName}`,
         `Version: ${plan.appVersion}`,
         "Section: utils",
         "Priority: optional",
@@ -803,18 +826,17 @@ const stageRpmRoot = (
   root: string
 ): Effect.Effect<void, PackageFileError, never> =>
   Effect.gen(function* () {
-    const packageName = plan.safeAppName.toLowerCase()
     yield* makeDirectory(join(root, "SPECS"))
     yield* copyDirectory(
       plan.layoutPath,
-      join(root, "BUILDROOT", packageName, "usr", "lib", packageName)
+      join(root, "BUILDROOT", plan.linuxPackageName, "usr", "lib", plan.linuxPackageName)
     )
+    yield* stageLinuxLauncherMetadata(plan, join(root, "BUILDROOT", plan.linuxPackageName, "usr"))
   })
 
 const rpmSpec = (plan: PackagePlan): string => {
-  const packageName = plan.safeAppName.toLowerCase()
   return [
-    `Name: ${packageName}`,
+    `Name: ${plan.linuxPackageName}`,
     `Version: ${plan.appVersion}`,
     "Release: 1",
     "Summary: Effect Desktop application",
@@ -825,19 +847,83 @@ const rpmSpec = (plan: PackagePlan): string => {
     plan.appName,
     "",
     "%files",
-    `/usr/lib/${packageName}`,
+    `/usr/lib/${plan.linuxPackageName}`,
+    `/usr/share/applications/${plan.linuxPackageName}.desktop`,
+    `/usr/share/metainfo/${plan.appId}.metainfo.xml`,
+    `/usr/share/flatpak/${plan.appId}.json`,
+    "/usr/share/snap/snapcraft.yaml",
     ""
   ].join("\n")
 }
+
+const stageLinuxLauncherMetadata = (
+  plan: PackagePlan,
+  root: string
+): Effect.Effect<void, PackageFileError, never> =>
+  Effect.gen(function* () {
+    yield* writeFileEffect(
+      join(root, "share", "applications", `${plan.linuxPackageName}.desktop`),
+      linuxDesktopEntry(plan)
+    )
+    yield* writeFileEffect(
+      join(root, "share", "metainfo", `${plan.appId}.metainfo.xml`),
+      linuxAppstreamMetainfo(plan)
+    )
+    yield* writeFileEffect(
+      join(root, "share", "flatpak", `${plan.appId}.json`),
+      linuxFlatpakHint(plan)
+    )
+    yield* writeFileEffect(join(root, "share", "snap", "snapcraft.yaml"), linuxSnapHint(plan))
+  })
 
 const linuxDesktopEntry = (plan: PackagePlan): string =>
   [
     "[Desktop Entry]",
     `Name=${plan.appName}`,
-    `Exec=${plan.safeAppName}`,
-    `Icon=${plan.safeAppName}`,
+    `Exec=${plan.linuxPackageName}`,
+    `Icon=${plan.appId}`,
     "Type=Application",
     "Categories=Utility;",
+    `X-Flatpak=${plan.appId}`,
+    `X-SnapInstanceName=${plan.linuxPackageName}`,
+    ""
+  ].join("\n")
+
+const linuxAppstreamMetainfo = (
+  plan: PackagePlan
+): string => `<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>${escapeXml(plan.appId)}</id>
+  <name>${escapeXml(plan.appName)}</name>
+  <summary>${escapeXml(plan.appName)}</summary>
+  <launchable type="desktop-id">${escapeXml(plan.linuxPackageName)}.desktop</launchable>
+  <releases>
+    <release version="${escapeXml(plan.appVersion)}" />
+  </releases>
+</component>
+`
+
+const linuxFlatpakHint = (plan: PackagePlan): string =>
+  `${JSON.stringify(
+    {
+      appId: plan.appId,
+      command: plan.linuxPackageName,
+      desktopFile: `${plan.linuxPackageName}.desktop`,
+      metainfo: `${plan.appId}.metainfo.xml`
+    },
+    null,
+    2
+  )}\n`
+
+const linuxSnapHint = (plan: PackagePlan): string =>
+  [
+    `name: ${plan.linuxPackageName}`,
+    `version: ${plan.appVersion}`,
+    `title: ${plan.appName}`,
+    "apps:",
+    `  ${plan.linuxPackageName}:`,
+    `    command: usr/lib/${plan.linuxPackageName}/native/${hostBinaryName(plan.target)}`,
+    `    desktop: usr/share/applications/${plan.linuxPackageName}.desktop`,
     ""
   ].join("\n")
 
