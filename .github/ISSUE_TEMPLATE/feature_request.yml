@@ -1,0 +1,33 @@
+name: Feature request
+description: Propose a scoped framework capability.
+title: "[feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is true now, and what must become true?
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints
+      description: Spec sections, platform boundaries, security requirements, or non-goals.
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-shape
+    attributes:
+      label: Proposed shape
+      description: The smallest API, module, or behavior surface that would solve it.
+    validations:
+      required: false
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification
+      description: How should maintainers prove the feature works?
+    validations:
+      required: true

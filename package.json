@@ -1,6 +1,17 @@
 {
   "name": "effect-desktop-repo",
   "private": true,
+  "description": "Bun-powered, Rust-hosted, React-friendly desktop application framework modeled through Effect.",
+  "license": "MIT OR Apache-2.0",
+  "author": "Rika Labs, LLC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Rika-Labs/effect-desktop.git"
+  },
+  "homepage": "https://github.com/Rika-Labs/effect-desktop#readme",
+  "bugs": {
+    "url": "https://github.com/Rika-Labs/effect-desktop/issues"
+  },
   "packageManager": "bun@1.3.13",
   "workspaces": [
     "apps/*",

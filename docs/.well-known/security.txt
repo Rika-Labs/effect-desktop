@@ -1,0 +1,4 @@
+Contact: mailto:dallenpyrah@rikalabs.sh
+Preferred-Languages: en
+Canonical: https://github.com/Rika-Labs/effect-desktop/blob/main/docs/.well-known/security.txt
+Policy: https://github.com/Rika-Labs/effect-desktop/security/policy
