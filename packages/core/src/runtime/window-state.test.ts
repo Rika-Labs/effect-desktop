@@ -34,7 +34,7 @@ test("WindowState rejects empty window ids on persist before reading durable sta
 
   const exit = await Effect.runPromiseExit(service.persist("", state))
 
-  expectInvalidArgument(exit)
+  expectInvalidArgument(exit, "WindowState.persist")
   expect(await readdir(directory)).toEqual(["window-state.json"])
   expect(await readFile(path, "utf8")).toBe("{")
 })
@@ -47,7 +47,7 @@ test("WindowState rejects empty window ids on restore before reading durable sta
 
   const exit = await Effect.runPromiseExit(service.restore(""))
 
-  expectInvalidArgument(exit)
+  expectInvalidArgument(exit, "WindowState.restore")
   expect(await readdir(directory)).toEqual(["window-state.json"])
   expect(await readFile(path, "utf8")).toBe("{")
 })
@@ -60,7 +60,7 @@ test("WindowState rejects empty window ids on clear before reading durable state
 
   const exit = await Effect.runPromiseExit(service.clear(""))
 
-  expectInvalidArgument(exit)
+  expectInvalidArgument(exit, "WindowState.clear")
   expect(await readdir(directory)).toEqual(["window-state.json"])
   expect(await readFile(path, "utf8")).toBe("{")
 })
@@ -71,7 +71,7 @@ test("WindowState rejects whitespace-only window ids", async () => {
 
   const exit = await Effect.runPromiseExit(service.restore("   "))
 
-  expectInvalidArgument(exit)
+  expectInvalidArgument(exit, "WindowState.restore")
 })
 
 test("WindowState clear with no argument wipes the full store", async () => {
@@ -216,11 +216,14 @@ const tempWindowStatePath = async (): Promise<string> => {
   return join(directory, "window-state.json")
 }
 
-function expectInvalidArgument(exit: Exit.Exit<unknown, unknown>): void {
+function expectInvalidArgument(exit: Exit.Exit<unknown, unknown>, expectedOperation: string): void {
   expect(Exit.isFailure(exit)).toBe(true)
   if (Exit.isFailure(exit)) {
     const fail = exit.cause.reasons.find((reason) => reason._tag === "Fail")
     expect(fail?.error).toBeInstanceOf(WindowStateInvalidArgumentError)
+    const error = fail?.error as WindowStateInvalidArgumentError
+    expect(error.operation).toBe(expectedOperation)
+    expect(error.field).toBe("windowId")
   }
 }
 
