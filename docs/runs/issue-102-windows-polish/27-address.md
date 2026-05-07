@@ -6,6 +6,8 @@
 | --- | ------------------------------------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | Windows dark mode is forced on instead of following `SystemAppearance.getAppearance`. | Address | DWM dark-mode value now derives from Tao's current `Window::theme()`, with tests for light and dark mapping.                     |
 | 2   | AppUserModelID is optional via an env var that the packaging path does not set.       | Address | Host now falls back from `EFFECT_DESKTOP_APP_ID` to the packaged `app-manifest.json` next to the host layout, then validates id. |
+| 3   | Treat pre-set DPI awareness as non-fatal.                                             | Address | `ERROR_ACCESS_DENIED` from `SetProcessDpiAwarenessContext` now logs and continues because DPI awareness is already configured.   |
+| 4   | Avoid hard-failing on unsupported dark-mode window attr.                              | Address | `DwmSetWindowAttribute` dark-mode failures now log and continue so unsupported polish does not prevent valid window creation.    |
 
 ## Commits Made
 

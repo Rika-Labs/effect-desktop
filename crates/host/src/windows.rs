@@ -11,6 +11,10 @@ use tao::window::Theme;
 use tao::window::Window;
 
 const WINDOWS_POLISH_OPERATION: &str = "WindowsPolish";
+#[cfg(any(test, windows))]
+const ERROR_ACCESS_DENIED_CODE: i32 = 5;
+#[cfg(windows)]
+const E_INVALIDARG: i32 = 0x80070057_u32 as i32;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct WindowsProcessPolish {
@@ -132,6 +136,7 @@ mod platform {
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
     use tao::{platform::windows::WindowExtWindows, window::Window};
+    use tracing::warn;
     use windows_sys::Win32::{
         Foundation::HWND,
         Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_USE_IMMERSIVE_DARK_MODE},
@@ -147,6 +152,13 @@ mod platform {
         let dpi_result =
             unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
         if dpi_result == 0 {
+            if last_os_error_is_access_denied() {
+                warn!(
+                    event = "host.windows.dpi_awareness_already_set",
+                    "Windows DPI awareness was already set before host startup"
+                );
+                return Ok(());
+            }
             return Err(last_os_error("SetProcessDpiAwarenessContext"));
         }
 
@@ -177,10 +189,12 @@ mod platform {
             )
         };
         if result < 0 {
-            return Err(HostProtocolError::internal(
-                format!("DwmSetWindowAttribute(DWMWA_USE_IMMERSIVE_DARK_MODE) failed: HRESULT {result:#x}"),
-                WINDOWS_POLISH_OPERATION,
-            ));
+            warn!(
+                event = "host.windows.dark_mode_attribute_unavailable",
+                hresult = format!("{result:#x}"),
+                unsupported = result == super::E_INVALIDARG,
+                "Windows immersive dark-mode window attribute was not applied"
+            );
         }
         Ok(())
     }
@@ -194,6 +208,10 @@ mod platform {
             format!("{operation} failed: {}", std::io::Error::last_os_error()),
             WINDOWS_POLISH_OPERATION,
         )
+    }
+
+    fn last_os_error_is_access_denied() -> bool {
+        std::io::Error::last_os_error().raw_os_error() == Some(super::ERROR_ACCESS_DENIED_CODE)
     }
 }
 
@@ -283,5 +301,10 @@ mod tests {
     fn dark_mode_value_follows_theme() {
         assert_eq!(dark_mode_value(Theme::Dark), 1);
         assert_eq!(dark_mode_value(Theme::Light), 0);
+    }
+
+    #[test]
+    fn access_denied_code_matches_windows_dpi_already_set_error() {
+        assert_eq!(super::ERROR_ACCESS_DENIED_CODE, 5);
     }
 }
