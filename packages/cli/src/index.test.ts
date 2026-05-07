@@ -15,7 +15,7 @@ import {
   symlink,
   writeFile
 } from "node:fs/promises"
-import { dirname, join, relative } from "node:path"
+import { basename, dirname, join, relative } from "node:path"
 import { tmpdir } from "node:os"
 
 import { expect, test } from "bun:test"
@@ -2107,9 +2107,12 @@ test("desktop build stages renderer runtime host bridge manifests and report", a
         }
         if (invocation.step === "runtime") {
           const outdir = invocation.args[invocation.args.indexOf("--outdir") + 1]
-          if (outdir !== undefined) {
+          const entryPath = invocation.args[1]
+          if (outdir !== undefined && entryPath !== undefined) {
+            const entryBase = basename(entryPath)
+            const outputFile = entryBase.replace(/\.tsx?$/, ".js")
             yield* Effect.promise(() => mkdir(outdir, { recursive: true }))
-            yield* Effect.promise(() => writeFile(join(outdir, "main.js"), "console.log('ok')\n"))
+            yield* Effect.promise(() => writeFile(join(outdir, outputFile), "console.log('ok')\n"))
           }
         }
         if (invocation.step === "native-host") {
@@ -2157,7 +2160,10 @@ test("desktop build stages renderer runtime host bridge manifests and report", a
       "native-host:cargo build -p host --release"
     ])
     expect(await readFile(join(layout, "renderer", "index.html"), "utf8")).toBe("<h1>ok</h1>")
-    expect(await readFile(join(layout, "runtime", "main.js"), "utf8")).toContain("ok")
+    expect(await readFile(join(layout, "runtime", "runtime.js"), "utf8")).toContain("ok")
+    expect(appManifest).toMatchObject({
+      runtime: { entry: "runtime/runtime.js" }
+    })
     expect(await readFile(join(layout, "native", "host"), "utf8")).toBe("host")
     expect(appManifest).toMatchObject({
       id: "dev.effect-desktop.playground",
@@ -3225,9 +3231,12 @@ const deterministicBuildRunner = (): CommandRunner => (invocation) =>
     }
     if (invocation.step === "runtime") {
       const outdir = invocation.args[invocation.args.indexOf("--outdir") + 1]
-      if (outdir !== undefined) {
+      const entryPath = invocation.args[1]
+      if (outdir !== undefined && entryPath !== undefined) {
+        const entryBase = basename(entryPath)
+        const outputFile = entryBase.replace(/\.tsx?$/, ".js")
         yield* Effect.promise(() => mkdir(outdir, { recursive: true }))
-        yield* Effect.promise(() => writeFile(join(outdir, "main.js"), "console.log('runtime')\n"))
+        yield* Effect.promise(() => writeFile(join(outdir, outputFile), "console.log('runtime')\n"))
       }
     }
     if (invocation.step === "native-host") {

@@ -1,5 +1,5 @@
 import { mkdir, readdir, rm, stat, writeFile, copyFile } from "node:fs/promises"
-import { dirname, isAbsolute, join, resolve } from "node:path"
+import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import { HOST_PROTOCOL_VERSION } from "@effect-desktop/bridge"
@@ -1276,6 +1276,10 @@ const writeBridgeManifest = (
 const writeAppManifest = (plan: BuildPlan): Effect.Effect<BuildStepReport, BuildFileError, never> =>
   Effect.gen(function* () {
     const path = join(plan.layoutPath, "app-manifest.json")
+    const runtimeBase = basename(plan.runtimeEntryPath)
+    const runtimeEntry = extname(runtimeBase) === ".ts" || extname(runtimeBase) === ".tsx"
+      ? `${runtimeBase.slice(0, -extname(runtimeBase).length)}.js`
+      : runtimeBase
     yield* writeJson(path, {
       id: plan.appId,
       name: plan.appName,
@@ -1287,7 +1291,7 @@ const writeAppManifest = (plan: BuildPlan): Effect.Effect<BuildStepReport, Build
       },
       runtime: {
         engine: "bun",
-        entry: "runtime/main.js"
+        entry: `runtime/${runtimeEntry}`
       },
       nativeHost: {
         binary: `native/${hostBinaryName(plan.target)}`
