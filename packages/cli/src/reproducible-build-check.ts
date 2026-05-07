@@ -84,6 +84,7 @@ export interface ReproDifference {
     | "content"
     | "entry-type"
     | "symlink-target"
+    | "mode"
   readonly firstDifferenceOffset: number | undefined
   readonly firstSizeBytes: number | undefined
   readonly secondSizeBytes: number | undefined
@@ -93,6 +94,8 @@ export interface ReproDifference {
   readonly secondEntryKind: ReproEntryKind | undefined
   readonly firstSymlinkTarget: string | undefined
   readonly secondSymlinkTarget: string | undefined
+  readonly firstMode: number | undefined
+  readonly secondMode: number | undefined
 }
 
 export interface DesktopReproReport {
@@ -117,6 +120,7 @@ type SnapshotEntry =
       readonly absolutePath: string
       readonly sizeBytes: number
       readonly sha256: string
+      readonly mode: number
     }
   | {
       readonly relativePath: string
@@ -286,7 +290,11 @@ const diffSnapshots = (
           secondSymlinkTarget:
             secondEntry !== undefined && secondEntry.kind === "symlink"
               ? secondEntry.target
-              : undefined
+              : undefined,
+          firstMode:
+            firstEntry !== undefined && firstEntry.kind === "file" ? firstEntry.mode : undefined,
+          secondMode:
+            secondEntry !== undefined && secondEntry.kind === "file" ? secondEntry.mode : undefined
         })
         continue
       }
@@ -303,7 +311,9 @@ const diffSnapshots = (
           firstEntryKind: firstEntry.kind,
           secondEntryKind: secondEntry.kind,
           firstSymlinkTarget: firstEntry.kind === "symlink" ? firstEntry.target : undefined,
-          secondSymlinkTarget: secondEntry.kind === "symlink" ? secondEntry.target : undefined
+          secondSymlinkTarget: secondEntry.kind === "symlink" ? secondEntry.target : undefined,
+          firstMode: firstEntry.kind === "file" ? firstEntry.mode : undefined,
+          secondMode: secondEntry.kind === "file" ? secondEntry.mode : undefined
         })
         continue
       }
@@ -321,7 +331,9 @@ const diffSnapshots = (
             firstEntryKind: "symlink",
             secondEntryKind: "symlink",
             firstSymlinkTarget: firstEntry.target,
-            secondSymlinkTarget: secondEntry.target
+            secondSymlinkTarget: secondEntry.target,
+            firstMode: undefined,
+            secondMode: undefined
           })
         }
         continue
@@ -342,7 +354,25 @@ const diffSnapshots = (
             firstEntryKind: "file",
             secondEntryKind: "file",
             firstSymlinkTarget: undefined,
-            secondSymlinkTarget: undefined
+            secondSymlinkTarget: undefined,
+            firstMode: firstEntry.mode,
+            secondMode: secondEntry.mode
+          })
+        } else if ((firstEntry.mode & 0o111) !== (secondEntry.mode & 0o111)) {
+          differences.push({
+            relativePath,
+            kind: "mode",
+            firstDifferenceOffset: undefined,
+            firstSizeBytes: firstEntry.sizeBytes,
+            secondSizeBytes: secondEntry.sizeBytes,
+            firstSha256: firstEntry.sha256,
+            secondSha256: secondEntry.sha256,
+            firstEntryKind: "file",
+            secondEntryKind: "file",
+            firstSymlinkTarget: undefined,
+            secondSymlinkTarget: undefined,
+            firstMode: firstEntry.mode,
+            secondMode: secondEntry.mode
           })
         }
         continue
@@ -386,7 +416,14 @@ const walkSnapshotEntries = (
         yield* walkSnapshotEntries(rootPath, childPath, out)
       } else {
         const { sizeBytes, sha256 } = yield* streamFileDigest(childPath)
-        out.push({ relativePath, kind: "file", absolutePath: childPath, sizeBytes, sha256 })
+        out.push({
+          relativePath,
+          kind: "file",
+          absolutePath: childPath,
+          sizeBytes,
+          sha256,
+          mode: Number(childStat.mode)
+        })
       }
     }
   })
@@ -455,6 +492,9 @@ const deterministicClock = (): (() => number) => {
   }
 }
 
+const formatMode = (mode: number | undefined): string =>
+  mode === undefined ? "missing" : `0o${(mode & 0o777).toString(8).padStart(3, "0")}`
+
 const formatDifference = (difference: ReproDifference): string => {
   const lines: string[] = [`${difference.relativePath}`, `  kind            ${difference.kind}`]
   if (difference.kind === "entry-type") {
@@ -465,6 +505,11 @@ const formatDifference = (difference: ReproDifference): string => {
   if (difference.kind === "symlink-target") {
     lines.push(`  first target    ${difference.firstSymlinkTarget ?? "missing"}`)
     lines.push(`  second target   ${difference.secondSymlinkTarget ?? "missing"}`)
+    return lines.join("\n")
+  }
+  if (difference.kind === "mode") {
+    lines.push(`  first mode      ${formatMode(difference.firstMode)}`)
+    lines.push(`  second mode     ${formatMode(difference.secondMode)}`)
     return lines.join("\n")
   }
   const offset =
