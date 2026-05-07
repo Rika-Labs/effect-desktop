@@ -41,7 +41,7 @@
     {
       "name": "HeadlessRuntime",
       "kind": "interface",
-      "signature": "const HeadlessRuntime: Readonly<{ layer: (options?: HeadlessRuntimeLayerOptions) => Layer.Layer<HeadlessRuntimeServices, TelemetryInvalidArgumentError>; run: <A, E, R>(effect: Effect.Effect<A, E, R>, options?: HeadlessRuntimeLayerOptions) => Effect.Effect<A, TelemetryInvalidArgumentError | ResourceLeakError | E, Exclude<R, HeadlessRuntimeServices>>; }>"
+      "signature": "const HeadlessRuntime: Readonly<{ layer: (options?: HeadlessRuntimeLayerOptions) => Layer.Layer<HeadlessRuntimeServices, TelemetryInvalidArgumentError | HostProtocolInvalidArgumentError>; run: <A, E, R>(effect: Effect.Effect<A, E, R>, options?: HeadlessRuntimeLayerOptions) => Effect.Effect<A, HostProtocolInvalidArgumentError | TelemetryInvalidArgumentError | ResourceLeakError | E, Exclude<R, HeadlessRuntimeServices>>; }>"
     },
     {
       "name": "HeadlessRuntimeLayerOptions",
@@ -51,7 +51,7 @@
     {
       "name": "HeadlessRuntimeLive",
       "kind": "value",
-      "signature": "const HeadlessRuntimeLive: (options?: HeadlessRuntimeLayerOptions) => Layer.Layer<HeadlessRuntimeServices, TelemetryInvalidArgumentError>"
+      "signature": "const HeadlessRuntimeLive: (options?: HeadlessRuntimeLayerOptions) => Layer.Layer<HeadlessRuntimeServices, TelemetryInvalidArgumentError | HostProtocolInvalidArgumentError>"
     },
     {
       "name": "installResourceLeakDetection",
@@ -91,7 +91,7 @@
     {
       "name": "makeMockProcess",
       "kind": "value",
-      "signature": "const makeMockProcess: (registry: ResourceRegistryApi, options?: MockProcessOptions) => Effect.Effect<MockProcessApi, never, never>"
+      "signature": "const makeMockProcess: (registry: ResourceRegistryApi, options?: MockProcessOptions) => Effect.Effect<MockProcessApi, HostProtocolInvalidArgumentError, never>"
     },
     {
       "name": "makeMockPty",
@@ -181,7 +181,7 @@
     {
       "name": "MockProcess",
       "kind": "value",
-      "signature": "const MockProcess: Readonly<{ layer: (options?: MockProcessOptions) => Layer.Layer<Process, never, ResourceRegistry>; }>"
+      "signature": "const MockProcess: Readonly<{ layer: (options?: MockProcessOptions) => Layer.Layer<Process, HostProtocolInvalidArgumentError, ResourceRegistry>; }>"
     },
     {
       "name": "MockProcessApi",
@@ -196,7 +196,7 @@
     {
       "name": "MockProcessLive",
       "kind": "value",
-      "signature": "const MockProcessLive: (options?: MockProcessOptions) => Layer.Layer<Process, never, ResourceRegistry>"
+      "signature": "const MockProcessLive: (options?: MockProcessOptions) => Layer.Layer<Process, HostProtocolInvalidArgumentError, ResourceRegistry>"
     },
     {
       "name": "MockProcessOptions",
@@ -256,7 +256,7 @@
     {
       "name": "runHeadlessRuntime",
       "kind": "value",
-      "signature": "const runHeadlessRuntime: <A, E, R>(effect: Effect.Effect<A, E, R>, options?: HeadlessRuntimeLayerOptions) => Effect.Effect<A, TelemetryInvalidArgumentError | ResourceLeakError | E, Exclude<R, HeadlessRuntimeServices>>"
+      "signature": "const runHeadlessRuntime: <A, E, R>(effect: Effect.Effect<A, E, R>, options?: HeadlessRuntimeLayerOptions) => Effect.Effect<A, HostProtocolInvalidArgumentError | TelemetryInvalidArgumentError | ResourceLeakError | E, Exclude<R, HeadlessRuntimeServices>>"
     }
   ]
 }
