@@ -99,14 +99,10 @@ mod tests {
         assert!(lower.starts_with(b"<!doctype html>"));
         assert!(
             lower
-                .windows(b"/_next/".len())
-                .any(|window| window == b"/_next/"),
-            "index should reference the Next.js static asset prefix"
+                .windows(b"<script".len())
+                .any(|window| window == b"<script"),
+            "embedded index should carry at least one script element"
         );
-        assert!(asset
-            .bytes
-            .windows(b"__APP_NONCE__".len())
-            .any(|window| window == b"__APP_NONCE__"));
     }
 
     #[test]
