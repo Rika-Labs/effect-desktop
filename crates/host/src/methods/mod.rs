@@ -333,7 +333,7 @@ mod tests {
     }
 
     #[test]
-    fn dock_is_supported_returns_linux_capability_payload() {
+    fn dock_is_supported_returns_platform_capability_payload() {
         let response = test_router()
             .dispatch_at(
                 request_with_payload(
@@ -353,7 +353,9 @@ mod tests {
                 id: "request-dock-supported".to_string(),
                 timestamp: 1710000000109,
                 trace_id: "trace-request-dock-supported".to_string(),
-                payload: Some(serde_json::json!({ "supported": false })),
+                payload: Some(serde_json::json!({
+                    "supported": cfg!(target_os = "macos")
+                })),
                 error: None,
             }
         );

@@ -4,11 +4,16 @@
 
 use host_protocol::HostProtocolError;
 use serde_json::{json, Value};
-use std::{env, process::Command};
+#[cfg(target_os = "linux")]
+use std::env;
+#[cfg(target_os = "linux")]
+use std::process::Command;
 
+#[cfg(target_os = "linux")]
 const WAYLAND_GLOBAL_SHORTCUT_REASON: &str = "wayland-no-global-shortcut";
 const HOST_ADAPTER_UNIMPLEMENTED_REASON: &str = "host-adapter-unimplemented";
 
+#[cfg(any(target_os = "linux", test))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum LinuxSession {
     Wayland,
@@ -16,7 +21,9 @@ enum LinuxSession {
     Unknown,
 }
 
+#[cfg(any(target_os = "linux", test))]
 impl LinuxSession {
+    #[cfg(target_os = "linux")]
     fn detect() -> Self {
         Self::from_value(env::var("XDG_SESSION_TYPE").ok().as_deref())
     }
@@ -31,25 +38,11 @@ impl LinuxSession {
 }
 
 pub(crate) fn global_shortcut_is_supported() -> Result<Option<Value>, HostProtocolError> {
-    Ok(Some(match LinuxSession::detect() {
-        LinuxSession::Wayland => json!({
-            "supported": false,
-            "reason": WAYLAND_GLOBAL_SHORTCUT_REASON
-        }),
-        LinuxSession::X11 => json!({ "supported": true }),
-        LinuxSession::Unknown => json!({
-            "supported": false,
-            "reason": HOST_ADAPTER_UNIMPLEMENTED_REASON
-        }),
-    }))
+    Ok(Some(global_shortcut_support_payload()))
 }
 
 pub(crate) fn unsupported_global_shortcut(operation: &'static str) -> HostProtocolError {
-    let reason = match LinuxSession::detect() {
-        LinuxSession::Wayland => WAYLAND_GLOBAL_SHORTCUT_REASON,
-        LinuxSession::X11 | LinuxSession::Unknown => HOST_ADAPTER_UNIMPLEMENTED_REASON,
-    };
-    HostProtocolError::unsupported(reason, operation)
+    HostProtocolError::unsupported(global_shortcut_unsupported_reason(), operation)
 }
 
 pub(crate) fn global_shortcut_is_registered() -> Result<Option<Value>, HostProtocolError> {
@@ -91,9 +84,46 @@ fn decode_method(payload: Option<Value>) -> Result<String, HostProtocolError> {
 }
 
 fn dock_method_supported(method: &str) -> bool {
-    matches!(method, "setBadgeCount" | "setProgress" | "requestAttention")
+    platform_dock_method_supported(method)
 }
 
+#[cfg(target_os = "linux")]
+fn global_shortcut_support_payload() -> Value {
+    match LinuxSession::detect() {
+        LinuxSession::Wayland => json!({
+            "supported": false,
+            "reason": WAYLAND_GLOBAL_SHORTCUT_REASON
+        }),
+        LinuxSession::X11 => json!({ "supported": true }),
+        LinuxSession::Unknown => json!({
+            "supported": false,
+            "reason": HOST_ADAPTER_UNIMPLEMENTED_REASON
+        }),
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn global_shortcut_support_payload() -> Value {
+    json!({
+        "supported": false,
+        "reason": HOST_ADAPTER_UNIMPLEMENTED_REASON
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn global_shortcut_unsupported_reason() -> &'static str {
+    match LinuxSession::detect() {
+        LinuxSession::Wayland => WAYLAND_GLOBAL_SHORTCUT_REASON,
+        LinuxSession::X11 | LinuxSession::Unknown => HOST_ADAPTER_UNIMPLEMENTED_REASON,
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn global_shortcut_unsupported_reason() -> &'static str {
+    HOST_ADAPTER_UNIMPLEMENTED_REASON
+}
+
+#[cfg(target_os = "linux")]
 fn secret_service_available() -> bool {
     if env::var_os("DBUS_SESSION_BUS_ADDRESS").is_none() {
         return false;
@@ -111,6 +141,29 @@ fn secret_service_available() -> bool {
         .status()
         .map(|status| status.success())
         .unwrap_or(false)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn secret_service_available() -> bool {
+    false
+}
+
+#[cfg(target_os = "macos")]
+fn platform_dock_method_supported(method: &str) -> bool {
+    matches!(
+        method,
+        "setBadgeCount" | "setBadgeText" | "requestAttention"
+    )
+}
+
+#[cfg(target_os = "windows")]
+fn platform_dock_method_supported(method: &str) -> bool {
+    matches!(method, "requestAttention")
+}
+
+#[cfg(target_os = "linux")]
+fn platform_dock_method_supported(method: &str) -> bool {
+    matches!(method, "setBadgeCount" | "setProgress" | "requestAttention")
 }
 
 #[cfg(test)]
@@ -141,12 +194,35 @@ mod tests {
     }
 
     #[test]
-    fn linux_dock_support_matches_appendix_k_rows() {
-        assert!(dock_method_supported("setBadgeCount"));
-        assert!(dock_method_supported("setProgress"));
-        assert!(dock_method_supported("requestAttention"));
-        assert!(!dock_method_supported("setBadgeText"));
-        assert!(!dock_method_supported("setMenu"));
-        assert!(!dock_method_supported("setJumpList"));
+    fn dock_support_matches_current_platform_rows() {
+        #[cfg(target_os = "macos")]
+        {
+            assert!(dock_method_supported("setBadgeCount"));
+            assert!(dock_method_supported("setBadgeText"));
+            assert!(dock_method_supported("requestAttention"));
+            assert!(!dock_method_supported("setProgress"));
+            assert!(!dock_method_supported("setMenu"));
+            assert!(!dock_method_supported("setJumpList"));
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            assert!(dock_method_supported("requestAttention"));
+            assert!(!dock_method_supported("setBadgeCount"));
+            assert!(!dock_method_supported("setBadgeText"));
+            assert!(!dock_method_supported("setProgress"));
+            assert!(!dock_method_supported("setMenu"));
+            assert!(!dock_method_supported("setJumpList"));
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            assert!(dock_method_supported("setBadgeCount"));
+            assert!(dock_method_supported("setProgress"));
+            assert!(dock_method_supported("requestAttention"));
+            assert!(!dock_method_supported("setBadgeText"));
+            assert!(!dock_method_supported("setMenu"));
+            assert!(!dock_method_supported("setJumpList"));
+        }
     }
 }
