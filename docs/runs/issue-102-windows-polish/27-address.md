@@ -14,7 +14,7 @@
 
 - `6328df9` — addressed dark-mode source and AppUserModelID source review.
 - `f193462` — hardened DPI and DWM dark-mode compatibility review.
-- Pending commit: continue AppUserModelID after pre-set DPI awareness.
+- `15bf994` — continued AppUserModelID application after pre-set DPI awareness.
 
 ## Escalations
 

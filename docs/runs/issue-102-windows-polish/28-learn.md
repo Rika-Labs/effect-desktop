@@ -17,6 +17,8 @@ None.
 ## Commit and Push
 
 - `220c679` — recorded Windows polish learning on `issue-102-windows-polish`.
+- `15bf994` — incorporated the post-learning address fix that keeps process identity polish running after pre-set DPI awareness.
+- Pending commit — updates this learning artifact with the final address lesson before merge.
 
 ## Handoff
 

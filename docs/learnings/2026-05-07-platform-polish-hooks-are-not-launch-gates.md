@@ -14,6 +14,7 @@ The first Windows polish implementation made two local shortcuts: it forced dark
   - `SetProcessDpiAwarenessContext` `ERROR_ACCESS_DENIED` can mean DPI awareness was already set.
   - Unsupported DWM dark-mode attributes should not fail window creation.
 - Fix commits: `6328df9`, `f193462`.
+- Follow-up fix commit: `15bf994` kept AppUserModelID application running after the non-fatal pre-set DPI branch.
 - Verification:
   - `cargo test -p host` passed with 78 host tests plus startup smoke.
   - `cargo clippy -p host --all-targets -- -D warnings` passed locally.
@@ -39,3 +40,4 @@ Security, signing, update integrity, permissions, and data-loss prevention are n
 ## Proposed amendment or issue
 
 No new issue. The host now reads AppUserModelID from the packaged app manifest when the env override is absent, derives dark-mode styling from Tao's current window theme, treats pre-set DPI awareness as non-fatal, and logs unsupported DWM dark-mode attributes without failing window creation.
+Non-fatal polish handling must continue the rest of the polish sequence unless the failed operation invalidates later work; logging and returning early can silently skip an independent invariant such as taskbar identity.
