@@ -154,14 +154,17 @@ mod tests {
             response.headers().get(TRACE_ID_HEADER),
             Some(&HeaderValue::from_static("trace-app-request"))
         );
-        assert!(response
-            .body()
-            .windows(b"id=\"root\"".len())
-            .any(|window| window == b"id=\"root\""));
-        assert!(response
-            .body()
-            .windows(b"/assets/".len())
-            .any(|window| window == b"/assets/"));
+        let lower = response.body().to_ascii_lowercase();
+        assert!(
+            lower.starts_with(b"<!doctype html>"),
+            "renderer index should start with the html5 doctype"
+        );
+        assert!(
+            lower
+                .windows(b"/_next/".len())
+                .any(|window| window == b"/_next/"),
+            "renderer index should reference the Next.js static asset prefix"
+        );
         assert!(response
             .body()
             .windows(APP_NONCE_PLACEHOLDER.len())

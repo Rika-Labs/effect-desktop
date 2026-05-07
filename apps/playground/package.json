@@ -3,23 +3,27 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
-    "build": "vite build",
+    "dev": "next dev --hostname 127.0.0.1 --port 3000",
+    "build": "next build && node scripts/inject-nonce.mjs",
     "check": "tsc --noEmit -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "lint": "oxlint . --ignore-pattern 'dist/**'"
+    "lint": "oxlint . --ignore-pattern 'dist/**' --ignore-pattern '.next/**' --ignore-pattern '.source/**'"
   },
   "dependencies": {
+    "fumadocs-core": "16.8.8",
+    "fumadocs-mdx": "15.0.0",
+    "fumadocs-ui": "16.8.8",
+    "next": "16.2.6",
     "react": "^19.2.3",
     "react-dom": "^19.2.3"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.1.18",
+    "@tailwindcss/postcss": "^4.1.18",
+    "@types/mdx": "^2.0.13",
+    "@types/node": "^22.10.0",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^5.1.1",
     "tailwindcss": "^4.1.18",
-    "typescript": "^5.9.3",
-    "vite": "^8.0.10"
+    "typescript": "^5.9.3"
   }
 }

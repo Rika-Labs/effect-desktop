@@ -1,0 +1,49 @@
+---
+title: Windows
+description: Compose windows and WebViews without leaking native details.
+---
+
+The renderer asks for view changes. The host owns native windows, WebViews, navigation, menus, and platform polish.
+
+## Open settings
+
+A secondary view gets its own route, title, and lifecycle.
+
+<Example
+  title="Window.open"
+  summary="A scoped WebView, not a global handle."
+  accent="blue"
+  successOutput="settings opened · 720x520"
+  interruptedOutput="open canceled · no orphan WebView"
+>
+
+```ts
+const settings = yield* Window.open({
+  title: "Settings",
+  route: "/settings",
+  size: { width: 720, height: 520 }
+})
+```
+
+</Example>
+
+## Navigation policy
+
+External navigation is not accidental. Policy lives at the native boundary.
+
+<Example
+  title="WebView.setNavigationPolicy"
+  summary="Allowlist routes. External requests ask before opening."
+  accent="amber"
+  successOutput="https://example.com blocked · event emitted"
+  interruptedOutput="policy reset · navigation default"
+>
+
+```ts
+yield* WebView.setNavigationPolicy(view, {
+  allow: ["app://localhost/*"],
+  openExternal: "ask"
+})
+```
+
+</Example>

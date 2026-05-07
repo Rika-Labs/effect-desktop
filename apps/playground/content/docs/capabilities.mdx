@@ -1,0 +1,55 @@
+---
+title: Capabilities
+description: Compose windows, runtime services, and renderer state from one place.
+---
+
+Windows, WebViews, files, processes, PTYs, jobs, storage, permissions, updates, and devtools are framework primitives — not one-off app plumbing.
+
+## Desktop.run
+
+Declare the app shell once. The host owns native startup and the runtime graph.
+
+<Example
+  title="Desktop.run"
+  summary="Host owns shell · runtime owns services · renderer owns UI."
+  accent="emerald"
+  successOutput="window opened · runtime ready"
+  interruptedOutput="host shutdown · windows released"
+>
+
+```ts
+Desktop.run({
+  app: {
+    id: "dev.acme.notes",
+    name: "Acme Notes",
+    version: "1.0.0"
+  },
+  windows: [MainWindow],
+  layer: AppLive
+})
+```
+
+</Example>
+
+## MainWindow
+
+Window state is data. Title, route, size, and lifecycle policy are inspectable.
+
+<Example
+  title="MainWindow"
+  summary="Reconciled through the host protocol."
+  accent="slate"
+  successOutput="route=/ · 960x640"
+  interruptedOutput="window closed · webview disposed"
+>
+
+```ts
+const MainWindow = Window.define({
+  id: "main",
+  title: "Acme Notes",
+  route: "/",
+  size: { width: 960, height: 640 }
+})
+```
+
+</Example>
