@@ -10,7 +10,7 @@ pr: https://github.com/Rika-Labs/effect-desktop/pull/708
 
 ## What we set out to do
 
-`makeProcess` accepted any number for `gracefulShutdownMs`, including `NaN`, `±Infinity`, `0`, and negatives, then defected at scope close when `Effect.timeoutOption(\`${v} millis\`)` parsed the malformed Duration string. Issue #650 closed that gap by validating at construction and surfacing a typed `HostProtocolInvalidArgumentError` before any child process spawned. The locked architecture proposed validation in `makeProcess`, an `Effect.orDie` in `ProcessLive` (defaults are provably valid), and typed-error propagation through `ProcessLayer`. `makeMockProcess` was specified to "mirror ProcessLive's treatment" via the same `Effect.orDie`.
+`makeProcess` accepted any number for `gracefulShutdownMs`, including `NaN`, `±Infinity`, `0`, and negatives, then defected at scope close when `Effect.timeoutOption(\`${v} millis\`)`parsed the malformed Duration string. Issue #650 closed that gap by validating at construction and surfacing a typed`HostProtocolInvalidArgumentError`before any child process spawned. The locked architecture proposed validation in`makeProcess`, an `Effect.orDie`in`ProcessLive`(defaults are provably valid), and typed-error propagation through`ProcessLayer`. `makeMockProcess`was specified to "mirror ProcessLive's treatment" via the same`Effect.orDie`.
 
 ## What actually ended up working
 
@@ -36,11 +36,11 @@ Three inline threads, all Address, zero pushback, zero escalation: (1) predicate
 
 ## First-principles postmortem
 
-The invariant that mattered: every `gracefulShutdownMs` value reaching `Effect.timeoutOption(\`${v} millis\`)` must be a finite positive Duration. The assumption that changed mid-cycle: "production and mock can both safely use `Effect.orDie` because they share defaults." Wrong. The mock exposes the validated option to test authors via `MockProcessOptions.gracefulShutdownMs`; production `ProcessLive` does not. The source-of-truth thing that became clearer: a test double's error channel is not determined by what the production module looks like — it is determined by which inputs the test double itself accepts from callers. Symmetry between production and mock is a property of their input surfaces, not a property of their construction code.
+The invariant that mattered: every `gracefulShutdownMs` value reaching `Effect.timeoutOption(\`${v} millis\`)`must be a finite positive Duration. The assumption that changed mid-cycle: "production and mock can both safely use`Effect.orDie`because they share defaults." Wrong. The mock exposes the validated option to test authors via`MockProcessOptions.gracefulShutdownMs`; production `ProcessLive` does not. The source-of-truth thing that became clearer: a test double's error channel is not determined by what the production module looks like — it is determined by which inputs the test double itself accepts from callers. Symmetry between production and mock is a property of their input surfaces, not a property of their construction code.
 
 ## Game-theory postmortem
 
-Players: architect, reviewer, code-reviewer, implementer (one agent, four hats). Information asymmetry: `/architect` claimed "mock mirrors ProcessLive's treatment" without grounding the claim against `MockProcessOptions`. `/review` reading prose had no incentive to grep for `gracefulShutdownMs` in `packages/test/src/index.ts`. `/code-review`, which grounds every claim at `file:line`, caught the symmetry illusion. This repeats the equilibrium described in `2026-05-07-require-integer-bridge-timing-metadata.md` exactly: `/architect` and `/review` run on prose; `/code-review` runs on diff. Bad equilibrium discovered: the bug class (unvalidated `gracefulShutdownMs` → `Effect.timeoutOption` defect) survives in `pty.ts:155` — issue #650 was titled "process shutdown windows" (singular), so the scoping was honest, but a `/scout` step that grepped for the bug class pattern (`rg "Effect\.timeoutOption\(\`\\\$\{.*Ms\}"`) would have surfaced #709's case during the original cycle. The mechanism that aligned behavior: `/code-review`'s file-grounded reviewer prompts found two architecture rationalizations that survived four prior stages.
+Players: architect, reviewer, code-reviewer, implementer (one agent, four hats). Information asymmetry: `/architect` claimed "mock mirrors ProcessLive's treatment" without grounding the claim against `MockProcessOptions`. `/review` reading prose had no incentive to grep for `gracefulShutdownMs` in `packages/test/src/index.ts`. `/code-review`, which grounds every claim at `file:line`, caught the symmetry illusion. This repeats the equilibrium described in `2026-05-07-require-integer-bridge-timing-metadata.md` exactly: `/architect` and `/review` run on prose; `/code-review` runs on diff. Bad equilibrium discovered: the bug class (unvalidated `gracefulShutdownMs` → `Effect.timeoutOption` defect) survives in `pty.ts:155` — issue #650 was titled "process shutdown windows" (singular), so the scoping was honest, but a `/scout` step that grepped for the bug class pattern (`rg "Effect\.timeoutOption\(\`\\\$\{.\*Ms\}"`) would have surfaced #709's case during the original cycle. The mechanism that aligned behavior: `/code-review`'s file-grounded reviewer prompts found two architecture rationalizations that survived four prior stages.
 
 ## Non-obvious lesson
 
@@ -57,7 +57,7 @@ When the architecture pairs a new validated `make<X>` with an existing `makeMock
 
 When fixing a numeric-validation bug used as a Duration string interpolation:
 
-5. Grep the bug class before scoping the issue: `rg "Effect\.timeoutOption\(\`\\\$\{.*Ms\}"`. Every site is a candidate.
+5. Grep the bug class before scoping the issue: `rg "Effect\.timeoutOption\(\`\\\$\{.\*Ms\}"`. Every site is a candidate.
 
 ## AGENTS.md amendment candidate (if any)
 
