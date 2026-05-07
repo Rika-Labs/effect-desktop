@@ -990,6 +990,54 @@ test("semver guard allows additive public API changes and blocks removals", asyn
   }
 })
 
+test("semver guard rejects additive public API changes in patch releases", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+  try {
+    const manifest = semverManifestFixture()
+    if (!isSemverManifestFixture(manifest)) {
+      throw new Error("invalid semver manifest fixture")
+    }
+    await writeSemverFixture(directory, {
+      manifest: { ...manifest, release: "1.1.1", releaseKind: "patch" }
+    })
+
+    const exit = await Effect.runPromiseExit(
+      runSemverGuard({
+        cwd: directory,
+        publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+      })
+    )
+
+    expect(exit._tag).toBe("Failure")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("semver guard rejects release kind drift from the semantic version", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+  try {
+    const manifest = semverManifestFixture()
+    if (!isSemverManifestFixture(manifest)) {
+      throw new Error("invalid semver manifest fixture")
+    }
+    await writeSemverFixture(directory, {
+      manifest: { ...manifest, release: "1.1.1", releaseKind: "minor" }
+    })
+
+    const exit = await Effect.runPromiseExit(
+      runSemverGuard({
+        cwd: directory,
+        publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+      })
+    )
+
+    expect(exit._tag).toBe("Failure")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop sign signs macOS app bundle with hardened runtime entitlements", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
   try {
@@ -2639,7 +2687,7 @@ const writeSemverFixture = async (
 const semverManifestFixture = (): unknown => ({
   schemaVersion: 1,
   source: "docs/SPEC.md §25.6",
-  release: "1.0.0",
+  release: "1.1.0",
   releaseKind: "minor",
   publicApiSnapshots: "api/snapshots",
   verificationMatrix: "docs/verification-matrix.json",

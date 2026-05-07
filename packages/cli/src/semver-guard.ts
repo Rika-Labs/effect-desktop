@@ -96,17 +96,17 @@ export const runSemverGuard = (
     const apiReport = yield* readPublicApiReport(options)
     const apiChanges = apiReport.changes.map(classifyApiChange)
     const report: SemverGuardReport = {
-      passed: apiChanges.every((change) => change.classification === "additive"),
+      passed: apiChanges.every((change) => isAllowedChange(manifest.releaseKind, change)),
       release: manifest.release,
       releaseKind: manifest.releaseKind,
       apiChanges,
       appendixCRows: manifest.appendixCRows
     }
 
-    if (!report.passed && manifest.releaseKind !== "major") {
+    if (!report.passed) {
       return yield* Effect.fail(
         new SemverGuardPolicyError({
-          message: "semver guard found non-additive public API changes",
+          message: "semver guard found public API changes forbidden for the release kind",
           report
         })
       )
@@ -166,6 +166,14 @@ const validateManifest = (
   if (!/^\d+\.\d+\.\d+$/.test(manifest.release)) {
     return Effect.fail(new SemverGuardManifestError({ message: "semver release must be X.Y.Z" }))
   }
+  const expectedReleaseKind = releaseKindForVersion(manifest.release)
+  if (manifest.releaseKind !== expectedReleaseKind) {
+    return Effect.fail(
+      new SemverGuardManifestError({
+        message: `semver releaseKind must be ${expectedReleaseKind} for ${manifest.release}`
+      })
+    )
+  }
   if (manifest.bridgeEnvelopePolicy.source !== BRIDGE_SOURCE) {
     return Effect.fail(
       new SemverGuardManifestError({ message: `bridge envelope source must be ${BRIDGE_SOURCE}` })
@@ -213,6 +221,27 @@ const classifyApiChange = (change: PublicApiChange): SemverApiChange => ({
   kind: change.kind,
   classification: change.kind === "added" ? "additive" : "breaking"
 })
+
+const isAllowedChange = (releaseKind: SemverReleaseKind, change: SemverApiChange): boolean => {
+  if (releaseKind === "major") {
+    return true
+  }
+  if (releaseKind === "minor") {
+    return change.classification === "additive"
+  }
+  return false
+}
+
+const releaseKindForVersion = (release: string): SemverReleaseKind => {
+  const [, minor, patch] = release.split(".").map(Number)
+  if (minor === 0 && patch === 0) {
+    return "major"
+  }
+  if (patch === 0) {
+    return "minor"
+  }
+  return "patch"
+}
 
 const readJson = <A>(path: string): Effect.Effect<A, SemverGuardFileError, never> =>
   readText(path).pipe(
