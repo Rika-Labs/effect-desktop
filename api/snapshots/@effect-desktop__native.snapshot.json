@@ -126,7 +126,7 @@
     {
       "name": "AppOpenFileEvent",
       "kind": "class",
-      "signature": "export class AppOpenFileEvent extends Schema.Class<AppOpenFileEvent>(\"AppOpenFileEvent\")({ path: Schema.String }) {}"
+      "signature": "export class AppOpenFileEvent extends Schema.Class<AppOpenFileEvent>(\"AppOpenFileEvent\")({ // eslint-disable-next-line no-control-regex path: Schema.NonEmptyString.check(Schema.isPattern(/^[^\\x00]*$/)) }) {}"
     },
     {
       "name": "AppOpenUrlEvent",
