@@ -28,7 +28,7 @@ flowchart TD
 
 ## What surfaced in review
 
-There were no external review comments. The local review pass tightened two facts before the PR opened: the release verifier rejects unpinned actions by inspecting every `uses:` line for a SHA, and it rejects stale checklist evidence instead of trusting a gate id alone. The other important review constraint was honesty: secret scanning and branch protection are repository settings, so the file-based gate verifies the checked policy statement and leaves the actual setting enforcement to GitHub.
+There were no external review comments. The local review pass tightened two facts before the PR opened: the release verifier rejects unpinned actions by inspecting every `uses:` line for a SHA, and it rejects stale checklist evidence instead of trusting a gate id alone. CI then surfaced a workflow issue after `/learn`: widening push CI to every branch created duplicate push and PR runs for the same head SHA, and one duplicate macOS run stayed pending long after the matching PR run passed. The fix changed the CI concurrency group to use the branch name for both events so the latest branch validation cancels stale duplicates.
 
 ## First-principles postmortem
 
@@ -36,7 +36,7 @@ The core invariant was provenance, not workflow volume. A long release workflow 
 
 ## Game-theory postmortem
 
-The friction came from a mismatch between local control and external authority. CI YAML can run SBOM and CVSS tools, but it cannot prove a repository has branch protection or secret scanning enabled. Pretending otherwise would create a bad equilibrium where contributors satisfy review with decorative configuration. The better mechanism is to separate enforceable workflow facts from repository-setting attestations and make the weaker evidence visible in a checked policy document.
+The friction came from a mismatch between local control and external authority. CI YAML can run SBOM and CVSS tools, but it cannot prove a repository has branch protection or secret scanning enabled. Pretending otherwise would create a bad equilibrium where contributors satisfy review with decorative configuration. A second bad equilibrium appeared when every branch push also triggered PR validation: the same head SHA could acquire duplicate required checks, and one stale runner could block merge even though the equivalent PR check had passed. Branch-keyed concurrency keeps "validate this branch" as one logical lease instead of two competing leases.
 
 ## Non-obvious lesson
 
@@ -48,6 +48,7 @@ Encode spec-enumerated release gates in a manifest with exact ids and evidence r
 Implement the verifier as an Effect program with typed file, manifest, and evidence errors.
 Add negative tests for stale evidence, missing required gate ids, unpinned actions, and forbidden signing posture.
 Document repository settings separately when source control cannot enforce them directly.
+When enabling push CI for every branch, key concurrency by branch name across push and pull_request events.
 
 ## AGENTS.md amendment candidate (if any)
 
