@@ -364,6 +364,11 @@ async function runFailingMigration(
     })
   )
 
+  // Re-open at schemaVersion 1 to assert the failed migration rolled back:
+  // settings_meta must still be v1 (otherwise this open would trip a missing-
+  // migration error) and settings_values must be untouched. Relies on
+  // initialize() wrapping the version bump and migrate callback in one
+  // SQLite transaction.
   const after = await makeFixture({ path, schemaVersion: 1 })
   const keys = await Effect.runPromise(after.store.keys())
   await Effect.runPromise(after.store.close())
