@@ -132,6 +132,12 @@ test("Process accepts a valid finite positive graceful shutdown window", async (
   }
 })
 
+test("Process accepts the default graceful shutdown window when omitted", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const exit = await Effect.runPromiseExit(makeProcess(registry))
+  expect(Exit.isSuccess(exit)).toBe(true)
+})
+
 processTest("Process spawn validates required owner scope before adapter activity", async () => {
   let spawnCalls = 0
   const fixture = await makeFixture(
