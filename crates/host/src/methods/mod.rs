@@ -299,7 +299,6 @@ mod tests {
         );
     }
 
-    #[cfg(not(target_os = "linux"))]
     #[test]
     fn dock_set_badge_text_routes_to_window_handler() {
         let fake = Arc::new(FakeWindowHandler::new(

@@ -2,8 +2,6 @@
 // Host method adapters return the canonical HostProtocolError enum from the
 // wire contract. Boxing that error here would obscure the protocol surface.
 
-#[cfg(target_os = "linux")]
-use crate::linux;
 use crate::window::WindowMethodHandler;
 use host_protocol::HostProtocolError;
 use serde_json::Value;
@@ -27,22 +25,10 @@ pub(crate) fn set_badge_text(
     handler: &dyn WindowMethodHandler,
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
-    #[cfg(target_os = "linux")]
-    {
-        let _ = handler;
-        let _ = payload;
-        return Err(linux::unsupported_linux_dock_method(
-            host_protocol::DOCK_SET_BADGE_TEXT_METHOD,
-        ));
-    }
+    let text = decode_text(payload)?;
+    handler.set_dock_badge_label(text, host_protocol::DOCK_SET_BADGE_TEXT_METHOD)?;
 
-    #[cfg(not(target_os = "linux"))]
-    {
-        let text = decode_text(payload)?;
-        handler.set_dock_badge_label(text, host_protocol::DOCK_SET_BADGE_TEXT_METHOD)?;
-
-        Ok(None)
-    }
+    Ok(None)
 }
 
 pub(crate) fn request_attention(
@@ -59,22 +45,10 @@ pub(crate) fn set_menu(
     handler: &dyn WindowMethodHandler,
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
-    #[cfg(target_os = "linux")]
-    {
-        let _ = handler;
-        let _ = payload;
-        return Err(linux::unsupported_linux_dock_method(
-            host_protocol::DOCK_SET_MENU_METHOD,
-        ));
-    }
+    let menu = decode_menu(payload)?;
+    handler.set_dock_menu(menu)?;
 
-    #[cfg(not(target_os = "linux"))]
-    {
-        let menu = decode_menu(payload)?;
-        handler.set_dock_menu(menu)?;
-
-        Ok(None)
-    }
+    Ok(None)
 }
 
 fn decode_menu(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
@@ -207,7 +181,6 @@ mod tests {
         assert!(decode_critical(Some(json!({ "critical": "yes" }))).is_err());
     }
 
-    #[cfg(not(target_os = "linux"))]
     #[test]
     fn dock_menu_accepts_null_clear() {
         assert_eq!(
@@ -216,7 +189,6 @@ mod tests {
         );
     }
 
-    #[cfg(not(target_os = "linux"))]
     #[test]
     fn dock_menu_requires_items() {
         assert!(decode_menu(Some(json!({ "menu": { "items": [] } }))).is_err());

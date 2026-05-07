@@ -8,12 +8,6 @@ use std::{env, process::Command};
 
 const WAYLAND_GLOBAL_SHORTCUT_REASON: &str = "wayland-no-global-shortcut";
 const HOST_ADAPTER_UNIMPLEMENTED_REASON: &str = "host-adapter-unimplemented";
-#[cfg(target_os = "linux")]
-const LINUX_BADGE_TEXT_REASON: &str = "no portable badge text on Linux";
-#[cfg(target_os = "linux")]
-const LINUX_DOCK_MENU_REASON: &str = "no portable dock menu on Linux";
-#[cfg(target_os = "linux")]
-const JUMP_LIST_REASON: &str = "jump lists are Windows-only";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum LinuxSession {
@@ -98,16 +92,6 @@ fn decode_method(payload: Option<Value>) -> Result<String, HostProtocolError> {
 
 fn dock_method_supported(method: &str) -> bool {
     matches!(method, "setBadgeCount" | "setProgress" | "requestAttention")
-}
-
-#[cfg(target_os = "linux")]
-pub(crate) fn unsupported_linux_dock_method(operation: &'static str) -> HostProtocolError {
-    let reason = match operation {
-        host_protocol::DOCK_SET_BADGE_TEXT_METHOD => LINUX_BADGE_TEXT_REASON,
-        host_protocol::DOCK_SET_MENU_METHOD => LINUX_DOCK_MENU_REASON,
-        _ => JUMP_LIST_REASON,
-    };
-    HostProtocolError::unsupported(reason, operation)
 }
 
 fn secret_service_available() -> bool {
