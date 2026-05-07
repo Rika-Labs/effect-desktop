@@ -8,11 +8,13 @@
 | 2   | AppUserModelID is optional via an env var that the packaging path does not set.       | Address | Host now falls back from `EFFECT_DESKTOP_APP_ID` to the packaged `app-manifest.json` next to the host layout, then validates id. |
 | 3   | Treat pre-set DPI awareness as non-fatal.                                             | Address | `ERROR_ACCESS_DENIED` from `SetProcessDpiAwarenessContext` now logs and continues because DPI awareness is already configured.   |
 | 4   | Avoid hard-failing on unsupported dark-mode window attr.                              | Address | `DwmSetWindowAttribute` dark-mode failures now log and continue so unsupported polish does not prevent valid window creation.    |
+| 5   | Continue process polish after DPI access-denied.                                      | Address | The DPI access-denied branch no longer returns early, so AppUserModelID is still applied after logging the pre-set DPI state.    |
 
 ## Commits Made
 
 - `6328df9` — addressed dark-mode source and AppUserModelID source review.
 - `f193462` — hardened DPI and DWM dark-mode compatibility review.
+- Pending commit: continue AppUserModelID after pre-set DPI awareness.
 
 ## Escalations
 

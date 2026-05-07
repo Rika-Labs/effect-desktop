@@ -157,9 +157,9 @@ mod platform {
                     event = "host.windows.dpi_awareness_already_set",
                     "Windows DPI awareness was already set before host startup"
                 );
-                return Ok(());
+            } else {
+                return Err(last_os_error("SetProcessDpiAwarenessContext"));
             }
-            return Err(last_os_error("SetProcessDpiAwarenessContext"));
         }
 
         if let Some(polish) = polish {
