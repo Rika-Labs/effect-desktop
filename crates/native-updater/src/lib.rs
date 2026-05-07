@@ -4,9 +4,15 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+#[cfg(windows)]
+use std::os::windows::ffi::OsStrExt;
 use std::{
     fs,
     path::{Path, PathBuf},
+};
+#[cfg(windows)]
+use windows_sys::Win32::Storage::FileSystem::{
+    MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
 };
 
 pub const TRUST_WINDOW: u32 = 2;
@@ -676,11 +682,6 @@ fn atomic_replace(source: &Path, destination: &Path) -> Result<(), std::io::Erro
 
 #[cfg(windows)]
 fn atomic_replace(source: &Path, destination: &Path) -> Result<(), std::io::Error> {
-    use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::Storage::FileSystem::{
-        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
-    };
-
     let source = wide_path(source);
     let destination = wide_path(destination);
     let result = unsafe {
