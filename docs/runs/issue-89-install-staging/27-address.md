@@ -11,7 +11,9 @@
 
 ## Commits Made
 
-- Pending commit: address install staging review.
+- `023f41d` — addressed the initial Windows replace review.
+- `e019ea9` — addressed destination-local commit temp, cleanup masking, and restart deadline overflow.
+- `f89bf1a` — fixed the Windows-only `OsStrExt` import after CI proved the target-specific compile failure.
 
 ## Escalations
 
@@ -33,11 +35,15 @@ Focused local verification before push:
 - `cargo clippy -p native-updater --all-targets -- -D warnings` — passed.
 - `cargo check --workspace` — passed.
 
-Final CI status will be updated after push and `gh pr checks --watch --fail-fast`.
+Blacksmith CI after final push:
+
+- `validate (blacksmith-2vcpu-ubuntu-2404)` — passed.
+- `validate (blacksmith-2vcpu-windows-2025)` — passed.
+- `validate (blacksmith-6vcpu-macos-latest)` — passed.
 
 ## Open Threads
 
-The addressed threads will be resolved silently after the fix commit is pushed.
+All addressed threads were resolved silently after the fix commits were pushed.
 
 ## Handoff
 
