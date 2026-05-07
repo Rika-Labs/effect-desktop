@@ -1496,9 +1496,23 @@ test("desktop package emits Windows per-user MSI with app-specific UpgradeCode",
 
     expect(exitCode).toBe(0)
     expect(wxs).toContain('Scope="perUser"')
+    expect(wxs).toContain('<ComponentGroupRef Id="StartMenuShortcuts" />')
+    expect(wxs).toContain('<StandardDirectory Id="ProgramMenuFolder">')
+    expect(wxs).toContain(
+      '<Directory Id="ApplicationProgramsFolder" Name="Effect Desktop Playground" />'
+    )
+    expect(wxs).toContain(
+      '<Shortcut Id="ApplicationStartMenuShortcut" Name="Effect Desktop Playground" Description="Effect Desktop Playground" Target="[INSTALLFOLDER]native\\host.exe" WorkingDirectory="INSTALLFOLDER" />'
+    )
+    expect(wxs).toContain(
+      '<RemoveFolder Id="RemoveApplicationProgramsFolder" Directory="ApplicationProgramsFolder" On="uninstall" />'
+    )
     expect(wxs).not.toContain("00000000-0000-0000-0000-000000000064")
     expect(wxs).toMatch(
       /UpgradeCode="[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"/
+    )
+    expect(wxs).toMatch(
+      /<Component Id="StartMenuShortcut" Guid="[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}">/
     )
   } finally {
     await rm(directory, { recursive: true, force: true })
