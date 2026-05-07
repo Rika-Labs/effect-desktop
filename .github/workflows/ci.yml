@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
 
 permissions:
@@ -87,6 +87,9 @@ jobs:
 
       - name: bun desktop check --docs
         run: bun packages/cli/src/bin.ts check --docs
+
+      - name: bun desktop check --release
+        run: bun packages/cli/src/bin.ts check --release
 
       - name: cargo fmt --check
         run: cargo fmt --check

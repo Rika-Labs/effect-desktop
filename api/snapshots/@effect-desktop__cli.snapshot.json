@@ -399,6 +399,56 @@
       "signature": "export type PublishTarget = | \"macos-arm64\" | \"macos-x64\" | \"windows-x64\" | \"linux-x64\" | \"windows-arm64\" | \"linux-arm64\""
     },
     {
+      "name": "ReleaseChecklist",
+      "kind": "interface",
+      "signature": "export interface ReleaseChecklist { readonly schemaVersion: 1 readonly source: string readonly gates: readonly ReleaseChecklistGate[] }"
+    },
+    {
+      "name": "ReleaseChecklistGate",
+      "kind": "interface",
+      "signature": "export interface ReleaseChecklistGate { readonly id: string readonly title: string readonly kind: ReleaseGateEvidenceKind readonly evidence: readonly string[] }"
+    },
+    {
+      "name": "ReleaseGateCheckReport",
+      "kind": "interface",
+      "signature": "export interface ReleaseGateCheckReport { readonly id: string readonly title: string readonly kind: ReleaseGateEvidenceKind readonly evidence: readonly string[] }"
+    },
+    {
+      "name": "ReleaseGateError",
+      "kind": "type",
+      "signature": "export type ReleaseGateError = | ReleaseGateFileError | ReleaseGateManifestError | ReleaseGateEvidenceError"
+    },
+    {
+      "name": "ReleaseGateEvidenceError",
+      "kind": "class",
+      "signature": "export class ReleaseGateEvidenceError extends Data.TaggedError(\"ReleaseGateEvidenceError\")<{ readonly gate: string readonly message: string }> {}"
+    },
+    {
+      "name": "ReleaseGateEvidenceKind",
+      "kind": "type",
+      "signature": "export type ReleaseGateEvidenceKind = \"workflow-step\" | \"policy-document\" | \"repository-setting\""
+    },
+    {
+      "name": "ReleaseGateFileError",
+      "kind": "class",
+      "signature": "export class ReleaseGateFileError extends Data.TaggedError(\"ReleaseGateFileError\")<{ readonly operation: string readonly path: string readonly message: string readonly cause: unknown }> {}"
+    },
+    {
+      "name": "ReleaseGateManifestError",
+      "kind": "class",
+      "signature": "export class ReleaseGateManifestError extends Data.TaggedError(\"ReleaseGateManifestError\")<{ readonly message: string }> {}"
+    },
+    {
+      "name": "ReleaseGateOptions",
+      "kind": "interface",
+      "signature": "export interface ReleaseGateOptions { readonly cwd: string }"
+    },
+    {
+      "name": "ReleaseGateReport",
+      "kind": "interface",
+      "signature": "export interface ReleaseGateReport { readonly passed: boolean readonly gates: readonly ReleaseGateCheckReport[] }"
+    },
+    {
       "name": "ReproCheckError",
       "kind": "type",
       "signature": "export type ReproCheckError = | ReproBuildRunError | ReproPackageRunError | ReproFileError | ReproDiffError"
@@ -457,6 +507,11 @@
       "name": "runPublicApiCheck",
       "kind": "value",
       "signature": "const runPublicApiCheck: (options: PublicApiSnapshotOptions) => Effect.Effect<PublicApiSnapshotReport, PublicApiSnapshotError, never>"
+    },
+    {
+      "name": "runReleaseGate",
+      "kind": "value",
+      "signature": "const runReleaseGate: (options: ReleaseGateOptions) => Effect.Effect<ReleaseGateReport, ReleaseGateError, never>"
     },
     {
       "name": "SignArtifactKind",
