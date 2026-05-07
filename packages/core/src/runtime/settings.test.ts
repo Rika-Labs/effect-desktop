@@ -180,7 +180,6 @@ describe("Settings", () => {
     expect(Option.getOrUndefined(value)).toBe("alice")
   })
 
-
   test("set rejects NUL bytes in keys before writing", async () => {
     const { store } = await makeFixture()
     const key = `api${String.fromCharCode(0)}token`
@@ -317,7 +316,10 @@ function expectFailure<E>(
 async function runFailingMigration(
   migrate: (ctx: SettingsMigrationContext) => Effect.Effect<void, SettingsError, never>,
   seed?: (store: SettingsStore) => Effect.Effect<unknown, SettingsError, never>
-): Promise<{ readonly exit: Exit.Exit<SettingsStore, SettingsError>; readonly keys: readonly string[] }> {
+): Promise<{
+  readonly exit: Exit.Exit<SettingsStore, SettingsError>
+  readonly keys: readonly string[]
+}> {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-settings-"))
   const path = join(directory, "settings.sqlite")
   const initial = await makeFixture({ path, schemaVersion: 1 })
@@ -345,9 +347,7 @@ async function runFailingMigration(
   return { exit, keys }
 }
 
-function expectMigrationFailedDueToInvalidArgument(
-  exit: Exit.Exit<unknown, SettingsError>
-): void {
+function expectMigrationFailedDueToInvalidArgument(exit: Exit.Exit<unknown, SettingsError>): void {
   expect(Exit.isFailure(exit)).toBe(true)
   if (Exit.isFailure(exit)) {
     const failure = exit.cause.reasons.find(Cause.isFailReason)
