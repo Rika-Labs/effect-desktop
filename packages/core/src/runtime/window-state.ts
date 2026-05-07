@@ -55,10 +55,36 @@ export class WindowStateCorruptRenamed extends Data.TaggedError("WindowStateCorr
   readonly reason: string
 }> {}
 
+export class WindowStateInvalidArgumentError extends Data.TaggedError("InvalidArgument")<{
+  readonly operation: string
+  readonly field: string
+  readonly message: string
+  readonly cause: Option.Option<unknown>
+}> {}
+
 export type WindowStateError =
   | WindowStateReadFailed
   | WindowStateWriteFailed
   | WindowStateCorruptRenamed
+  | WindowStateInvalidArgumentError
+
+const WindowStateWindowIdSchema = Schema.String.check(Schema.isPattern(/\S/))
+
+const decodeWindowId = (
+  windowId: string,
+  operation: string
+): Effect.Effect<string, WindowStateInvalidArgumentError, never> =>
+  Schema.decodeUnknownEffect(WindowStateWindowIdSchema)(windowId).pipe(
+    Effect.mapError(
+      (error) =>
+        new WindowStateInvalidArgumentError({
+          operation,
+          field: "windowId",
+          message: error instanceof Error ? error.message : String(error),
+          cause: Option.some(error)
+        })
+    )
+  )
 
 export interface WindowStateApi {
   readonly restore: (
@@ -103,6 +129,7 @@ export const makeWindowState = (
     return Object.freeze({
       restore: (windowId: string) =>
         Effect.gen(function* () {
+          yield* decodeWindowId(windowId, "WindowState.restore")
           const result = yield* read
           yield* publishReadEvent(result)
           const store = result.store
@@ -122,6 +149,7 @@ export const makeWindowState = (
         }),
       persist: (windowId: string, state: WindowStateRecord) =>
         Effect.gen(function* () {
+          yield* decodeWindowId(windowId, "WindowState.persist")
           const result = yield* read
           yield* publishReadEvent(result)
           const current = result.store
@@ -137,6 +165,9 @@ export const makeWindowState = (
         }),
       clear: (windowId?: string) =>
         Effect.gen(function* () {
+          if (windowId !== undefined) {
+            yield* decodeWindowId(windowId, "WindowState.clear")
+          }
           const result = yield* read
           yield* publishReadEvent(result)
           const next =
