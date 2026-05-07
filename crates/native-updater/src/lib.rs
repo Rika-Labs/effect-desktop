@@ -4,6 +4,8 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+#[cfg(unix)]
+use std::io::ErrorKind;
 #[cfg(windows)]
 use std::os::windows::ffi::OsStrExt;
 use std::{
@@ -396,6 +398,7 @@ pub fn stage_install(
         .map_err(|error| io_error("create-temp-dir", &paths.temp_dir, error))?;
     fs::write(&paths.staged_bundle, downloaded)
         .map_err(|error| io_error("write-staged-bundle", &paths.staged_bundle, error))?;
+    preserve_replacement_permissions(&paths.current_bundle, &paths.staged_bundle)?;
     let rollback = RollbackMetadata {
         prior_version: plan.prior_version.clone(),
         target_version: plan.target_version.clone(),
@@ -424,6 +427,7 @@ pub fn commit_staged_install(prepared: &PreparedInstall) -> Result<(), InstallSt
     let commit_temp = commit_temp_path(prepared);
     fs::copy(&prepared.paths.staged_bundle, &commit_temp)
         .map_err(|error| io_error("copy-staged-bundle-to-commit-temp", &commit_temp, error))?;
+    preserve_replacement_permissions(&prepared.paths.current_bundle, &commit_temp)?;
     atomic_replace(&commit_temp, &prepared.paths.current_bundle).map_err(|error| {
         let _ = fs::remove_file(&commit_temp);
         io_error(
@@ -673,6 +677,27 @@ fn commit_temp_path(prepared: &PreparedInstall) -> PathBuf {
         ".{file_name}.commit-{}",
         prepared.plan.target_version
     ))
+}
+
+#[cfg(unix)]
+fn preserve_replacement_permissions(
+    existing: &Path,
+    replacement: &Path,
+) -> Result<(), InstallStagingError> {
+    match fs::metadata(existing) {
+        Ok(metadata) => fs::set_permissions(replacement, metadata.permissions())
+            .map_err(|error| io_error("preserve-replacement-permissions", replacement, error)),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(io_error("read-current-permissions", existing, error)),
+    }
+}
+
+#[cfg(not(unix))]
+fn preserve_replacement_permissions(
+    _existing: &Path,
+    _replacement: &Path,
+) -> Result<(), InstallStagingError> {
+    Ok(())
 }
 
 #[cfg(not(windows))]
@@ -1128,6 +1153,44 @@ mod tests {
             b"new-bundle"
         );
         assert!(!commit_temp_path(&prepared).exists());
+        remove_test_root(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn staged_and_committed_bundle_preserve_existing_execute_bits() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = test_root("commit-install-permissions");
+        let paths = install_paths(&root);
+        fs::create_dir_all(root.join("current")).expect("current dir");
+        fs::write(&paths.current_bundle, b"prior").expect("prior bundle");
+        fs::set_permissions(&paths.current_bundle, fs::Permissions::from_mode(0o755))
+            .expect("current bundle mode");
+        let plan = install_plan(b"new-bundle");
+
+        let prepared = stage_install(&plan, &paths, b"new-bundle", 1_000)
+            .expect("verified bytes should stage");
+
+        assert_eq!(
+            fs::metadata(&paths.staged_bundle)
+                .expect("staged metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o755
+        );
+
+        commit_staged_install(&prepared).expect("commit should replace current bundle");
+
+        assert_eq!(
+            fs::metadata(&paths.current_bundle)
+                .expect("current metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o755
+        );
         remove_test_root(root);
     }
 
