@@ -17,7 +17,7 @@
 - `e019ea9` — addressed destination-local commit temp, cleanup masking, and restart deadline overflow.
 - `f89bf1a` — fixed the Windows-only `OsStrExt` import after CI proved the target-specific compile failure.
 - `419dade` — preserved Unix execute bits during install staging.
-- Pending commit: persist recovery breadcrumb inside the readiness timeout path.
+- `f85eada` — persisted the recovery breadcrumb inside the readiness timeout path.
 
 ## Escalations
 
