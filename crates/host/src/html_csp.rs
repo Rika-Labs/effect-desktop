@@ -94,7 +94,8 @@ mod tests {
 
     #[test]
     fn document_without_targets_passes_through_byte_for_byte() {
-        let input = b"<!doctype html><html><head><title>x</title></head><body><p>hi</p></body></html>";
+        let input =
+            b"<!doctype html><html><head><title>x</title></head><body><p>hi</p></body></html>";
         let outcome = rewrite_with_nonce(input, &nonce()).expect("rewrite should succeed");
 
         assert_eq!(outcome.bytes, input);
@@ -108,7 +109,10 @@ mod tests {
         let input = b"<script>alert(1)</script>";
         let outcome = rewrite_with_nonce(input, &nonce()).expect("rewrite should succeed");
 
-        assert_eq!(outcome.bytes, br#"<script nonce="nonce-x">alert(1)</script>"#);
+        assert_eq!(
+            outcome.bytes,
+            br#"<script nonce="nonce-x">alert(1)</script>"#
+        );
         assert_eq!(outcome.script_count, 1);
     }
 
@@ -129,7 +133,10 @@ mod tests {
         let input = b"<style>body{margin:0}</style>";
         let outcome = rewrite_with_nonce(input, &nonce()).expect("rewrite should succeed");
 
-        assert_eq!(outcome.bytes, br#"<style nonce="nonce-x">body{margin:0}</style>"#);
+        assert_eq!(
+            outcome.bytes,
+            br#"<style nonce="nonce-x">body{margin:0}</style>"#
+        );
         assert_eq!(outcome.style_count, 1);
     }
 

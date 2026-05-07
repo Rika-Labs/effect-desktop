@@ -20,7 +20,8 @@ const REWRITE_FAILED_BODY_PREFIX: &str = "app html rewrite failed; trace=";
 const TEXT_CONTENT_TYPE: &str = "text/plain; charset=utf-8";
 const TRACE_ID_HEADER: HeaderName = HeaderName::from_static("x-effect-trace-id");
 
-type Rewriter = fn(&[u8], &csp::CspNonce) -> Result<html_csp::RewriteOutcome, html_csp::RewriteError>;
+type Rewriter =
+    fn(&[u8], &csp::CspNonce) -> Result<html_csp::RewriteOutcome, html_csp::RewriteError>;
 
 pub(crate) fn register_app_scheme<'a>(builder: WebViewBuilder<'a>) -> WebViewBuilder<'a> {
     builder.with_custom_protocol(APP_SCHEME.into(), |_webview_id, request| {
@@ -61,10 +62,7 @@ fn app_scheme_response_with(
 
     match rewriter(asset.bytes, &nonce) {
         Ok(outcome) => {
-            if outcome.script_count == 0
-                && outcome.style_count == 0
-                && outcome.link_count == 0
-            {
+            if outcome.script_count == 0 && outcome.style_count == 0 && outcome.link_count == 0 {
                 warn!(
                     target: "host.csp",
                     path = %path,
@@ -344,10 +342,7 @@ mod tests {
         );
     }
 
-    fn faulty_rewriter(
-        _: &[u8],
-        _: &CspNonce,
-    ) -> Result<RewriteOutcome, RewriteError> {
+    fn faulty_rewriter(_: &[u8], _: &CspNonce) -> Result<RewriteOutcome, RewriteError> {
         Err(RewriteError::Parse(RewritingError::ContentHandlerError(
             Box::<dyn std::error::Error + Send + Sync>::from("synthetic-rewrite-failure"),
         )))
@@ -363,7 +358,9 @@ mod tests {
         let mut values = BTreeSet::new();
         let mut cursor = body;
         while let Some((_, after)) = cursor.split_once("nonce=\"") {
-            let (value, rest) = after.split_once('"').expect("nonce attribute should be quoted");
+            let (value, rest) = after
+                .split_once('"')
+                .expect("nonce attribute should be quoted");
             values.insert(value.to_owned());
             cursor = rest;
         }

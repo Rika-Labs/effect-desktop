@@ -49,7 +49,9 @@ mod tests {
             "default-src 'self'; script-src 'self' 'nonce-fixednonce'; style-src 'self' 'nonce-fixednonce'; style-src-attr 'unsafe-inline'; connect-src 'self' app:; img-src 'self' app: data: https:; font-src 'self' app: data:; media-src 'self' app:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; worker-src 'self'"
         );
         assert!(
-            !policy.as_str().contains("script-src 'self' 'unsafe-inline'"),
+            !policy
+                .as_str()
+                .contains("script-src 'self' 'unsafe-inline'"),
             "script execution must remain nonce-only"
         );
         assert!(
