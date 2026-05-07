@@ -130,7 +130,7 @@ test("Filesystem stat returns kind, size, and modified time", async () => {
   expect(result.modifiedAtMs).toBeGreaterThan(0)
 })
 
-test("Filesystem stat follows authorized symlink targets", async () => {
+test("Filesystem stat preserves symlink identity", async () => {
   const directory = await tempDirectory()
   const target = join(directory, "target.txt")
   const link = join(directory, "link")
@@ -140,8 +140,8 @@ test("Filesystem stat follows authorized symlink targets", async () => {
   await symlink(target, link)
   const result = await Effect.runPromise(service.stat(link))
 
-  expect(result.path).toBe(await realpath(target))
-  expect(result.kind).toBe("file")
+  expect(result.path).toMatch(/link$/)
+  expect(result.kind).toBe("symlink")
 })
 
 test("Filesystem mkdir and remove perform basic directory operations", async () => {

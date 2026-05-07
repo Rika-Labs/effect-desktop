@@ -12,6 +12,7 @@ fn main() {
     let dist_dir = repo_root.join("apps").join("playground").join("dist");
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
     let generated = out_dir.join("embedded_assets.rs");
+    let assets_dir = out_dir.join("assets");
 
     println!("cargo:rerun-if-changed={}", dist_dir.display());
 
@@ -25,11 +26,22 @@ fn main() {
 
     for (asset_path, file_path) in files {
         println!("cargo:rerun-if-changed={}", file_path.display());
+
+        let relative = file_path
+            .strip_prefix(&dist_dir)
+            .expect("walked file should stay inside dist");
+        let out_asset_path = assets_dir.join(relative);
+        if let Some(parent) = out_asset_path.parent() {
+            fs::create_dir_all(parent).expect("failed to create asset output directory");
+        }
+        fs::copy(&file_path, &out_asset_path).expect("failed to copy asset to output directory");
+
+        let include_path = format!("assets/{}", relative.to_string_lossy().replace('\\', "/"));
         source.push_str("    GeneratedAsset {\n");
         source.push_str(&format!("        path: {},\n", debug_literal(&asset_path)));
         source.push_str(&format!(
             "        bytes: include_bytes!({}),\n",
-            debug_literal(&file_path.display().to_string())
+            debug_literal(&include_path)
         ));
         source.push_str("    },\n");
     }

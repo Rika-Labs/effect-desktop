@@ -2114,7 +2114,10 @@ test("desktop build stages renderer runtime host bridge manifests and report", a
         }
         if (invocation.step === "native-host") {
           yield* Effect.promise(() =>
-            writeFile(join(invocation.cwd, "target", "debug", "host"), "host")
+            mkdir(join(invocation.cwd, "target", "release"), { recursive: true })
+          )
+          yield* Effect.promise(() =>
+            writeFile(join(invocation.cwd, "target", "release", "host"), "host")
           )
         }
       })
@@ -2151,7 +2154,7 @@ test("desktop build stages renderer runtime host bridge manifests and report", a
     expect(calls).toEqual([
       "renderer:bun run build",
       `runtime:bun build ${join(directory, "apps", "playground", "runtime.ts")} --target=bun --outdir ${join(layout, "runtime")}`,
-      "native-host:cargo build -p host"
+      "native-host:cargo build -p host --release"
     ])
     expect(await readFile(join(layout, "renderer", "index.html"), "utf8")).toBe("<h1>ok</h1>")
     expect(await readFile(join(layout, "runtime", "main.js"), "utf8")).toContain("ok")
@@ -3229,7 +3232,10 @@ const deterministicBuildRunner = (): CommandRunner => (invocation) =>
     }
     if (invocation.step === "native-host") {
       yield* Effect.promise(() =>
-        writeFile(join(invocation.cwd, "target", "debug", "host"), "host")
+        mkdir(join(invocation.cwd, "target", "release"), { recursive: true })
+      )
+      yield* Effect.promise(() =>
+        writeFile(join(invocation.cwd, "target", "release", "host"), "host")
       )
     }
   })

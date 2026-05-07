@@ -1277,7 +1277,7 @@ const makeMemoryFilesystemAdapter = (options: MemoryFilesystemOptions = {}): Fil
       )) as FilesystemAdapter["writeFile"],
     writeFileSynced: (path, bytes) => writeMemoryFile(nodes, watchers, path, bytes, now()),
     stat: ((path) => {
-      const canonicalPath = resolveExistingPath(nodes, memoryPathLikeToString(path))
+      const canonicalPath = lookupPath(nodes, memoryPathLikeToString(path), "nofollow")
       const node = nodes.get(canonicalPath)
       if (node === undefined) {
         return Promise.reject(nodeError("ENOENT", canonicalPath))
@@ -1418,9 +1418,12 @@ const createDirectoryRecursive = (
   return Promise.resolve()
 }
 
-const resolveExistingPath = (
+type LookupMode = "follow" | "nofollow"
+
+const lookupPath = (
   nodes: ReadonlyMap<string, MemoryNode>,
   path: string,
+  mode: LookupMode = "follow",
   seen: ReadonlySet<string> = new Set()
 ): string => {
   const normalized = normalizeMemoryPath(path)
@@ -1433,7 +1436,13 @@ const resolveExistingPath = (
     if (node === undefined) {
       throw nodeError("ENOENT", current)
     }
+
+    const isFinalSegment = index === segments.length - 1
+
     if (node.kind === "symlink") {
+      if (mode === "nofollow" && isFinalSegment) {
+        return current
+      }
       if (seen.has(current)) {
         throw nodeError("ELOOP", current)
       }
@@ -1442,13 +1451,14 @@ const resolveExistingPath = (
       const target = node.target.startsWith("/")
         ? node.target
         : normalizeMemoryPath(posix.join(posix.dirname(current), node.target))
-      return resolveExistingPath(
+      return lookupPath(
         nodes,
         posix.join(target, ...remaining),
+        mode,
         new Set([...seen, current])
       )
     }
-    if (node.kind !== "directory" && index < segments.length - 1) {
+    if (node.kind !== "directory" && !isFinalSegment) {
       throw nodeError("ENOTDIR", current)
     }
   }
@@ -1459,6 +1469,12 @@ const resolveExistingPath = (
   }
   return normalized
 }
+
+const resolveExistingPath = (
+  nodes: ReadonlyMap<string, MemoryNode>,
+  path: string,
+  seen: ReadonlySet<string> = new Set()
+): string => lookupPath(nodes, path, "follow", seen)
 
 const normalizeMemoryPath = (path: string): string => {
   const withoutDrive = path.replaceAll("\\", "/").replace(/^\/?[A-Za-z]:/, "")

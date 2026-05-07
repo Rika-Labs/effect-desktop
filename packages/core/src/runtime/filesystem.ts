@@ -235,7 +235,7 @@ export const makeFilesystem = (
             input.path,
             "filesystem.read",
             "Filesystem.stat",
-            "existing"
+            "stat"
           )
           const result = yield* Effect.tryPromise({
             try: () => adapter.stat(authorizedPath),
@@ -539,7 +539,7 @@ type FilesystemCapability =
   | "filesystem.delete"
   | "filesystem.delete.recursive"
 
-type CanonicalizationMode = "existing" | "leaf-may-be-missing" | "directory-entry"
+type CanonicalizationMode = "existing" | "leaf-may-be-missing" | "directory-entry" | "stat"
 
 const authorizeFilesystemPath = (
   adapter: FilesystemAdapter,
@@ -621,17 +621,29 @@ const canonicalizePath = (
 ): Effect.Effect<string, FilesystemError, never> =>
   mode === "directory-entry"
     ? canonicalizeDirectoryEntry(adapter, path, operation)
-    : Effect.tryPromise({
-        try: () => adapter.realpath(path),
-        catch: (error) => error
-      }).pipe(
-        Effect.catch((error) => {
-          if (mode === "leaf-may-be-missing" && isNodeError(error) && error.code === "ENOENT") {
-            return canonicalizePossiblyMissingPath(adapter, path, operation)
-          }
-          return Effect.fail(mapFilesystemError(error, path, operation))
-        })
-      )
+    : mode === "stat"
+      ? canonicalizeStatPath(adapter, path, operation)
+      : Effect.tryPromise({
+          try: () => adapter.realpath(path),
+          catch: (error) => error
+        }).pipe(
+          Effect.catch((error) => {
+            if (mode === "leaf-may-be-missing" && isNodeError(error) && error.code === "ENOENT") {
+              return canonicalizePossiblyMissingPath(adapter, path, operation)
+            }
+            return Effect.fail(mapFilesystemError(error, path, operation))
+          })
+        )
+
+const canonicalizeStatPath = (
+  adapter: FilesystemAdapter,
+  path: string,
+  operation: string
+): Effect.Effect<string, FilesystemError, never> =>
+  Effect.tryPromise({
+    try: async () => join(await adapter.realpath(dirname(path)), pathSegment(path)),
+    catch: (error) => mapFilesystemError(error, path, operation)
+  })
 
 const canonicalizeDirectoryEntry = (
   adapter: FilesystemAdapter,

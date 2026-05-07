@@ -528,6 +528,27 @@ test("MemoryFilesystem resolves relative symlink fixtures from the link director
   expect(text(output)).toBe("relative")
 })
 
+test("MemoryFilesystem preserves symlink stat identity", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const filesystem = await Effect.runPromise(
+    makeMemoryFilesystem(registry, {
+      directories: ["/workspace"],
+      files: [{ path: "/workspace/target.txt", bytes: bytes("target content") }],
+      symlinks: [{ path: "/workspace/link.txt", target: "target.txt" }],
+      permissions: {
+        readRoots: ["/workspace"]
+      }
+    })
+  )
+
+  const stat = await Effect.runPromise(filesystem.stat("/workspace/link.txt"))
+  const output = await Effect.runPromise(filesystem.read("/workspace/link.txt"))
+
+  expect(stat.kind).toBe("symlink")
+  expect(stat.path).toBe("/workspace/link.txt")
+  expect(text(output)).toBe("target content")
+})
+
 test("MemoryFilesystem rejects directory targets for writes and atomic renames", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   const filesystem = await Effect.runPromise(
