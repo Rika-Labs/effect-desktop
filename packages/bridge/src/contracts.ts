@@ -275,17 +275,17 @@ const validateMethodSpec = (
     if (spec.permission !== undefined && typeof spec.permission !== "string") {
       return yield* Effect.fail(invalidSpec(tag, method, "permission must be a string"))
     }
-    if (spec.timeoutMs !== undefined && (!Number.isFinite(spec.timeoutMs) || spec.timeoutMs < 0)) {
+    if (spec.timeoutMs !== undefined && (!Number.isInteger(spec.timeoutMs) || spec.timeoutMs < 0)) {
       return yield* Effect.fail(
-        invalidSpec(tag, method, "timeoutMs must be a non-negative finite number")
+        invalidSpec(tag, method, "timeoutMs must be a non-negative integer")
       )
     }
     if (
       spec.cachedResultMs !== undefined &&
-      (!Number.isFinite(spec.cachedResultMs) || spec.cachedResultMs < 0)
+      (!Number.isInteger(spec.cachedResultMs) || spec.cachedResultMs < 0)
     ) {
       return yield* Effect.fail(
-        invalidSpec(tag, method, "cachedResultMs must be a non-negative finite number")
+        invalidSpec(tag, method, "cachedResultMs must be a non-negative integer")
       )
     }
     if (spec.idempotent !== undefined && typeof spec.idempotent !== "boolean") {

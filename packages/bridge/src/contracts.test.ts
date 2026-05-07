@@ -165,6 +165,45 @@ test("Api.Tag rejects invalid cached result values as a typed Effect failure", a
   expectFailure(exit, InvalidApiContractSpec)
 })
 
+test("Api.Tag rejects fractional timeoutMs as a typed Effect failure", async () => {
+  const exit = await Effect.runPromiseExit(
+    Api.Tag("Test.FractionalTimeout")<unknown>()({
+      call: {
+        ...validMethodSpec(),
+        timeoutMs: 1.5
+      }
+    })
+  )
+
+  expectFailure(exit, InvalidApiContractSpec)
+})
+
+test("Api.Tag rejects fractional cachedResultMs as a typed Effect failure", async () => {
+  const exit = await Effect.runPromiseExit(
+    Api.Tag("Test.FractionalCachedResult")<unknown>()({
+      call: {
+        ...validMethodSpec(),
+        cachedResultMs: 2.5
+      }
+    })
+  )
+
+  expectFailure(exit, InvalidApiContractSpec)
+})
+
+test("Api.Tag accepts timeoutMs: 0 as the non-cancellable sentinel", async () => {
+  const contract = await Effect.runPromise(
+    Api.Tag("Test.ZeroTimeout")<unknown>()({
+      call: {
+        ...validMethodSpec(),
+        timeoutMs: 0
+      }
+    })
+  )
+
+  expect(contract.spec.call.timeoutMs).toBe(0)
+})
+
 test("Api.Tag rejects invalid boolean flags as a typed Effect failure", async () => {
   const exit = await Effect.runPromiseExit(
     Api.Tag("Test.InvalidBooleanFlags")<unknown>()({
