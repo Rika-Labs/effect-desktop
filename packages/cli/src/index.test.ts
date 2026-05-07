@@ -4,7 +4,17 @@ import {
   generateKeyPairSync,
   verify as cryptoVerify
 } from "node:crypto"
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises"
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  symlink,
+  writeFile
+} from "node:fs/promises"
 import { dirname, join, relative } from "node:path"
 import { tmpdir } from "node:os"
 
@@ -520,6 +530,109 @@ reproSymlinkTest(
       await writePlaygroundFixture(directory)
       const commandRunner = deterministicBuildRunner()
       const packageRunner = symlinkDriftPackageRunner(() => "symlink")
+      const stdout: string[] = []
+
+      const exitCode = await Effect.runPromise(
+        runCli({
+          argv: [
+            "check",
+            "--repro",
+            "--config",
+            "apps/playground/desktop.config.ts",
+            "--platform",
+            "linux-x64",
+            "--artifact",
+            "deb"
+          ],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner,
+          packageCommandRunner: packageRunner,
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: () => {}
+        })
+      )
+
+      expect(exitCode).toBe(0)
+      expect(stdout.join("")).toContain("byte-identical")
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  }
+)
+
+const reproModeTest = process.platform === "win32" ? test.skip : test
+
+reproModeTest("desktop check --repro reports mode drift between byte-identical files", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
+  try {
+    await writePlaygroundFixture(directory)
+    const commandRunner = deterministicBuildRunner()
+    let pass = 0
+    const packageRunner = modeDriftPackageRunner(() => {
+      pass += 1
+      return pass === 1 ? 0o755 : 0o644
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: [
+          "check",
+          "--repro",
+          "--config",
+          "apps/playground/desktop.config.ts",
+          "--platform",
+          "linux-x64",
+          "--artifact",
+          "deb",
+          "--json"
+        ],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        commandRunner,
+        packageCommandRunner: packageRunner,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const report = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly report: {
+        readonly differences: ReadonlyArray<{
+          readonly relativePath: string
+          readonly kind: string
+          readonly firstMode?: number
+          readonly secondMode?: number
+        }>
+      }
+    }
+    expect(exitCode).toBe(1)
+    expect(report.tag).toBe("ReproDiffError")
+    const drift = report.report.differences.find((difference) =>
+      difference.relativePath.endsWith("host")
+    )
+    expect(drift?.kind).toBe("mode")
+    expect((drift?.firstMode ?? 0) & 0o111).toBe(0o111)
+    expect((drift?.secondMode ?? 0) & 0o111).toBe(0)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+reproModeTest(
+  "desktop check --repro passes when both passes set the same executable bits",
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
+    try {
+      await writePlaygroundFixture(directory)
+      const commandRunner = deterministicBuildRunner()
+      const packageRunner = modeDriftPackageRunner(() => 0o755)
       const stdout: string[] = []
 
       const exitCode = await Effect.runPromise(
@@ -3129,6 +3242,22 @@ const deterministicPackageRunner =
         const output = invocation.args.at(-1)
         if (output !== undefined) {
           yield* Effect.promise(() => writeFile(output, content()))
+        }
+      }
+    })
+
+const modeDriftPackageRunner =
+  (mode: () => number): PackageCommandRunner =>
+  (invocation) =>
+    Effect.gen(function* () {
+      if (invocation.step === "linux-deb") {
+        const output = invocation.args.at(-1)
+        if (output !== undefined) {
+          yield* Effect.promise(() => writeFile(output, "deb"))
+          const dir = dirname(output)
+          const hostPath = join(dir, "host")
+          yield* Effect.promise(() => writeFile(hostPath, "host"))
+          yield* Effect.promise(() => chmod(hostPath, mode()))
         }
       }
     })
