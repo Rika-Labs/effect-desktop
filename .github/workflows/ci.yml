@@ -85,6 +85,9 @@ jobs:
       - name: bun desktop check --api
         run: bun packages/cli/src/bin.ts check --api
 
+      - name: bun desktop check --docs
+        run: bun packages/cli/src/bin.ts check --docs
+
       - name: cargo fmt --check
         run: cargo fmt --check
 

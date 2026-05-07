@@ -74,6 +74,11 @@ import {
   formatPublicApiReport,
   runPublicApiCheck
 } from "./public-api-snapshot.js"
+import {
+  formatDocsReleaseGateError,
+  formatDocsReleaseGateReport,
+  runDocsReleaseGate
+} from "./docs-release-gate.js"
 
 export {
   runDesktopPackage,
@@ -156,6 +161,22 @@ export {
   type PublicApiSymbolKind,
   type PublicApiSymbolSnapshot
 } from "./public-api-snapshot.js"
+export {
+  runDocsReleaseGate,
+  type DocsExampleInvocation,
+  type DocsExampleReport,
+  type DocsExampleRunner,
+  type DocsGateExampleFailedError,
+  type DocsGateFileError,
+  type DocsGateManifestError,
+  type DocsGateMissingPageError,
+  type DocsManifest,
+  type DocsManifestPage,
+  type DocsPageReport,
+  type DocsReleaseGateError,
+  type DocsReleaseGateOptions,
+  type DocsReleaseGateReport
+} from "./docs-release-gate.js"
 
 export class CliUsageError extends Error {
   public override readonly name = "CliUsageError"
@@ -323,9 +344,13 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
       return yield* runPublicApiCheckCli(options)
     }
 
+    if (options.argv[0] === "check" && options.argv.includes("--docs")) {
+      return yield* runDocsCheckCli(options)
+    }
+
     if (options.argv[0] !== "check" || !options.argv.includes("--production")) {
       options.writeStderr(
-        "Usage: desktop build --config <path>\nUsage: desktop package --config <path>\nUsage: desktop sign --config <path>\nUsage: desktop notarize --config <path>\nUsage: desktop publish --config <path>\nUsage: desktop doctor [--config <path>] [--ci] [--json]\nUsage: desktop check --production --config <path>\nUsage: desktop check --repro --config <path>\nUsage: desktop check --api [--write]\n"
+        "Usage: desktop build --config <path>\nUsage: desktop package --config <path>\nUsage: desktop sign --config <path>\nUsage: desktop notarize --config <path>\nUsage: desktop publish --config <path>\nUsage: desktop doctor [--config <path>] [--ci] [--json]\nUsage: desktop check --production --config <path>\nUsage: desktop check --repro --config <path>\nUsage: desktop check --api [--write]\nUsage: desktop check --docs\n"
       )
       return 1
     }
@@ -841,6 +866,37 @@ const runPublicApiCheckCli = (options: CliRunOptions): Effect.Effect<number, nev
       options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
     } else {
       options.writeStdout(formatPublicApiReport(report))
+    }
+
+    return 0
+  })
+
+const runDocsCheckCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
+  Effect.gen(function* () {
+    const report = yield* runDocsReleaseGate({
+      cwd: options.cwd
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          const formatted = formatDocsReleaseGateError(error)
+          if (options.argv.includes("--json")) {
+            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+          } else {
+            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+          }
+          return undefined
+        })
+      )
+    )
+
+    if (report === undefined) {
+      return 1
+    }
+
+    if (options.argv.includes("--json")) {
+      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+    } else {
+      options.writeStdout(formatDocsReleaseGateReport(report))
     }
 
     return 0

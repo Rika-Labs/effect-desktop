@@ -522,6 +522,145 @@ test("desktop check --api --json reports missing snapshots as typed values", asy
   }
 })
 
+test("desktop check --docs verifies manifest pages and runnable examples", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
+  try {
+    await writeDocsFixture(directory, {
+      "docs/user/installation.md": [
+        "# Installation",
+        "",
+        "```ts run",
+        "const value: string = 'docs'",
+        "if (value.length === 0) throw new Error('empty')",
+        "```"
+      ].join("\n")
+    })
+    const stdout: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--docs"],
+        cwd: directory,
+        writeStdout: (text) => {
+          stdout.push(text)
+        },
+        writeStderr: () => {}
+      })
+    )
+
+    expect(exitCode).toBe(0)
+    expect(stdout.join("")).toContain("pages             1")
+    expect(stdout.join("")).toContain("examples          1")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --docs reports missing pages as typed values", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
+  try {
+    await writeDocsManifest(directory, [
+      { id: "installation", title: "Installation", path: "docs/user/missing.md" }
+    ])
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--docs", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("DocsGateMissingPageError")
+    expect(payload.message).toContain("missing.md")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --docs rejects an incomplete spec manifest even with 24 rows", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
+  try {
+    await mkdir(join(directory, "docs"), { recursive: true })
+    await writeFile(
+      join(directory, "docs", "docs-manifest.json"),
+      JSON.stringify(
+        {
+          schemaVersion: 1,
+          source: "docs/SPEC.md §25.3",
+          pages: Array.from({ length: 24 }, (_, index) => ({
+            id: `page-${index}`,
+            title: `Page ${index}`,
+            path: `docs/user/page-${index}.md`
+          }))
+        },
+        null,
+        2
+      )
+    )
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--docs"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("DocsGateManifestError")
+    expect(stderr.join("")).toContain("installation")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --docs reports failing runnable examples", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
+  try {
+    await writeDocsFixture(directory, {
+      "docs/user/installation.md": [
+        "# Installation",
+        "",
+        "```ts run",
+        "throw new Error('broken docs example')",
+        "```"
+      ].join("\n")
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--docs"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("DocsGateExampleFailedError")
+    expect(stderr.join("")).toContain("installation.md#1")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop sign signs macOS app bundle with hardened runtime entitlements", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
   try {
@@ -1916,6 +2055,43 @@ const writeApiFixturePackage = async (root: string, source: string): Promise<voi
     )
   )
   await writeFile(join(packageRoot, "src", "index.ts"), source)
+}
+
+const writeDocsFixture = async (
+  root: string,
+  pages: Readonly<Record<string, string>>
+): Promise<void> => {
+  await writeDocsManifest(
+    root,
+    Object.keys(pages).map((path) => ({
+      id: "installation",
+      title: "Installation",
+      path
+    }))
+  )
+  for (const [path, body] of Object.entries(pages)) {
+    await mkdir(dirname(join(root, path)), { recursive: true })
+    await writeFile(join(root, path), body)
+  }
+}
+
+const writeDocsManifest = async (
+  root: string,
+  pages: readonly { readonly id: string; readonly title: string; readonly path: string }[]
+): Promise<void> => {
+  await mkdir(join(root, "docs"), { recursive: true })
+  await writeFile(
+    join(root, "docs", "docs-manifest.json"),
+    JSON.stringify(
+      {
+        schemaVersion: 1,
+        source: "test",
+        pages
+      },
+      null,
+      2
+    )
+  )
 }
 
 const testEd25519Key = (): { readonly privateKeyPem: string; readonly publicKey: string } => {
