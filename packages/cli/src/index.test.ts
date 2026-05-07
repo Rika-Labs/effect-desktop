@@ -661,6 +661,167 @@ test("desktop check --docs reports failing runnable examples", async () => {
   }
 })
 
+test("desktop check --release verifies the release supply-chain posture", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+  try {
+    await writeReleaseFixture(directory)
+    const stdout: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--release"],
+        cwd: directory,
+        writeStdout: (text) => {
+          stdout.push(text)
+        },
+        writeStderr: () => {}
+      })
+    )
+
+    expect(exitCode).toBe(0)
+    expect(stdout.join("")).toContain("gates             8")
+    expect(stdout.join("")).toContain("spdx-sbom")
+    expect(stdout.join("")).toContain("branch-protection")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --release rejects incomplete spec gate identities", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+  try {
+    await writeReleaseFixture(directory, {
+      checklist: {
+        schemaVersion: 1,
+        source: "docs/SPEC.md §25.4",
+        gates: Array.from({ length: 8 }, (_, index) => ({
+          id: `gate-${index}`,
+          title: `Gate ${index}`,
+          kind: "workflow-step",
+          evidence: [".github/workflows/release.yml#Gate"]
+        }))
+      }
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--release", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("ReleaseGateManifestError")
+    expect(payload.message).toContain("unknown")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --release rejects runner-local release signing policy", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+  try {
+    await writeReleaseFixture(directory, {
+      keyManagement: "# Release Key Management\n\nHSM-backed release signing uses rotation.\n"
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--release"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("ReleaseGateEvidenceError")
+    expect(stderr.join("")).toContain("runner-local keys are forbidden")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --release rejects stale workflow evidence in the checklist", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+  try {
+    const checklist = releaseChecklistFixture()
+    if (!isReleaseChecklistFixture(checklist)) {
+      throw new Error("invalid release checklist fixture")
+    }
+    await writeReleaseFixture(directory, {
+      checklist: {
+        ...checklist,
+        gates: checklist.gates.map((gate) =>
+          gate.id === "spdx-sbom"
+            ? { ...gate, evidence: [".github/workflows/release.yml#Missing SBOM Step"] }
+            : gate
+        )
+      }
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--release"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("ReleaseGateEvidenceError")
+    expect(stderr.join("")).toContain("Missing SBOM Step")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --release rejects unpinned release workflow actions", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+  try {
+    await writeReleaseFixture(directory, {
+      releaseWorkflow: releaseWorkflowFixture().replace(
+        "actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0",
+        "actions/attest@v4"
+      )
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--release"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("ReleaseGateEvidenceError")
+    expect(stderr.join("")).toContain("unpinned or uncommented action reference")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop sign signs macOS app bundle with hardened runtime entitlements", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
   try {
@@ -2093,6 +2254,202 @@ const writeDocsManifest = async (
     )
   )
 }
+
+const writeReleaseFixture = async (
+  root: string,
+  overrides: {
+    readonly checklist?: unknown
+    readonly ciWorkflow?: string
+    readonly releaseWorkflow?: string
+    readonly keyManagement?: string
+    readonly releaseSettings?: string
+  } = {}
+): Promise<void> => {
+  await mkdir(join(root, "release"), { recursive: true })
+  await mkdir(join(root, ".github", "workflows"), { recursive: true })
+  await mkdir(join(root, "docs", "security"), { recursive: true })
+  await writeFile(
+    join(root, "release", "checklist.json"),
+    JSON.stringify(overrides.checklist ?? releaseChecklistFixture(), null, 2)
+  )
+  await writeFile(
+    join(root, ".github", "workflows", "ci.yml"),
+    overrides.ciWorkflow ?? ciWorkflowFixture()
+  )
+  await writeFile(
+    join(root, ".github", "workflows", "release.yml"),
+    overrides.releaseWorkflow ?? releaseWorkflowFixture()
+  )
+  await writeFile(
+    join(root, "docs", "security", "key-management.md"),
+    overrides.keyManagement ?? keyManagementFixture()
+  )
+  await writeFile(
+    join(root, "docs", "security", "release-settings.md"),
+    overrides.releaseSettings ?? releaseSettingsFixture()
+  )
+}
+
+const releaseChecklistFixture = (): unknown => ({
+  schemaVersion: 1,
+  source: "docs/SPEC.md §25.4",
+  gates: [
+    {
+      id: "spdx-sbom",
+      title: "SPDX SBOM generation and signing",
+      kind: "workflow-step",
+      evidence: [".github/workflows/release.yml#Generate SPDX SBOM"]
+    },
+    {
+      id: "cvss-scan",
+      title: "CVSS >= 7.0 vulnerability scan",
+      kind: "workflow-step",
+      evidence: [
+        ".github/workflows/release.yml#Scan release SBOM for high vulnerabilities",
+        "docs/security/release-settings.md#docs/security/exemptions"
+      ]
+    },
+    {
+      id: "reproducible-build",
+      title: "Reproducible build check",
+      kind: "workflow-step",
+      evidence: [".github/workflows/release.yml#Reproducible build gate"]
+    },
+    {
+      id: "slsa-provenance",
+      title: "SLSA v1.0 provenance attestation",
+      kind: "workflow-step",
+      evidence: [".github/workflows/release.yml#Attest release provenance"]
+    },
+    {
+      id: "hsm-signing",
+      title: "HSM-backed release signing",
+      kind: "policy-document",
+      evidence: [
+        "docs/security/key-management.md#HSM-backed",
+        "docs/security/key-management.md#runner-local keys are forbidden"
+      ]
+    },
+    {
+      id: "secret-scanning",
+      title: "Secret scanning on every branch",
+      kind: "repository-setting",
+      evidence: ["docs/security/release-settings.md#Secret scanning is enabled for every branch"]
+    },
+    {
+      id: "ephemeral-runners",
+      title: "Ephemeral self-hosted runner posture",
+      kind: "repository-setting",
+      evidence: [
+        "docs/security/release-settings.md#Blacksmith",
+        "docs/security/release-settings.md#persistent self-hosted runners are forbidden"
+      ]
+    },
+    {
+      id: "branch-protection",
+      title: "Branch protection review requirements",
+      kind: "repository-setting",
+      evidence: [
+        "docs/security/release-settings.md#main requires at least one review",
+        "docs/security/release-settings.md#release branches require at least two reviews"
+      ]
+    }
+  ]
+})
+
+const isReleaseChecklistFixture = (
+  value: unknown
+): value is {
+  readonly schemaVersion: 1
+  readonly source: string
+  readonly gates: readonly {
+    readonly id: string
+    readonly title: string
+    readonly kind: string
+    readonly evidence: readonly string[]
+  }[]
+} => typeof value === "object" && value !== null && "gates" in value && Array.isArray(value.gates)
+
+const ciWorkflowFixture = (): string =>
+  [
+    "on:",
+    "  push:",
+    '    branches: ["**"]',
+    "jobs:",
+    "  validate:",
+    "    runs-on: blacksmith-2vcpu-ubuntu-2404",
+    "    steps:",
+    "      - name: bun desktop check --repro regression tests",
+    "        run: bun test packages/cli/src/index.test.ts -t repro",
+    "      - name: bun desktop check --release",
+    "        run: bun packages/cli/src/bin.ts check --release"
+  ].join("\n")
+
+const releaseWorkflowFixture = (): string =>
+  [
+    "name: release",
+    "permissions:",
+    "  artifact-metadata: write",
+    "  attestations: write",
+    "  id-token: write",
+    "jobs:",
+    "  release-gates:",
+    "    runs-on: blacksmith-2vcpu-ubuntu-2404",
+    "    env:",
+    "      RELEASE_SIGNING_BACKEND: hsm",
+    "    steps:",
+    "      - name: Checkout",
+    "        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2",
+    "      - name: Reproducible build gate",
+    "        run: bun packages/cli/src/bin.ts check --repro --config apps/playground/desktop.config.ts",
+    "      - name: Sign release artifacts with HSM backend",
+    "        run: |",
+    '          test "$RELEASE_SIGNING_BACKEND" = "hsm"',
+    "          bun packages/cli/src/bin.ts sign --config apps/playground/desktop.config.ts",
+    "      - name: Generate SPDX SBOM",
+    "        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0",
+    "        with:",
+    "          format: spdx-json",
+    "      - name: CVSS exemption policy",
+    "        run: test -d docs/security/exemptions",
+    "      - name: Scan release SBOM for high vulnerabilities",
+    "        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0",
+    "        with:",
+    "          severity-cutoff: high",
+    "          sbom: dist/desktop/effect-desktop.spdx.json",
+    "      - name: Upload SBOM artifacts",
+    "        run: echo sbom-artifacts",
+    "      - name: Attest release provenance",
+    "        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0",
+    "        with:",
+    "          subject-path: dist/desktop/**",
+    "      - name: Attest signed SBOM",
+    "        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0",
+    "        with:",
+    "          subject-path: dist/desktop/effect-desktop.spdx.json",
+    "          sbom-path: dist/desktop/effect-desktop.spdx.json"
+  ].join("\n")
+
+const keyManagementFixture = (): string =>
+  [
+    "# Release Key Management",
+    "",
+    "Release artifacts use an HSM-backed key.",
+    "runner-local keys are forbidden for release jobs.",
+    "Key rotation is recorded for every trust-anchor change."
+  ].join("\n")
+
+const releaseSettingsFixture = (): string =>
+  [
+    "# Release Repository Settings",
+    "",
+    "Secret scanning is enabled for every branch.",
+    "main requires at least one review.",
+    "release branches require at least two reviews.",
+    "Blacksmith ephemeral runners are rebuilt from a clean image per job.",
+    "persistent self-hosted runners are forbidden for release jobs.",
+    "CVSS exemptions live under docs/security/exemptions."
+  ].join("\n")
 
 const testEd25519Key = (): { readonly privateKeyPem: string; readonly publicKey: string } => {
   const { privateKey, publicKey } = generateKeyPairSync("ed25519")

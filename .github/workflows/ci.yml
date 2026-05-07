@@ -2,14 +2,14 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -87,6 +87,9 @@ jobs:
 
       - name: bun desktop check --docs
         run: bun packages/cli/src/bin.ts check --docs
+
+      - name: bun desktop check --release
+        run: bun packages/cli/src/bin.ts check --release
 
       - name: cargo fmt --check
         run: cargo fmt --check

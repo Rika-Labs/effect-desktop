@@ -79,6 +79,7 @@ import {
   formatDocsReleaseGateReport,
   runDocsReleaseGate
 } from "./docs-release-gate.js"
+import { formatReleaseGateError, formatReleaseGateReport, runReleaseGate } from "./release-gate.js"
 
 export {
   runDesktopPackage,
@@ -177,6 +178,19 @@ export {
   type DocsReleaseGateOptions,
   type DocsReleaseGateReport
 } from "./docs-release-gate.js"
+export {
+  runReleaseGate,
+  type ReleaseChecklist,
+  type ReleaseChecklistGate,
+  type ReleaseGateCheckReport,
+  type ReleaseGateError,
+  type ReleaseGateEvidenceError,
+  type ReleaseGateEvidenceKind,
+  type ReleaseGateFileError,
+  type ReleaseGateManifestError,
+  type ReleaseGateOptions,
+  type ReleaseGateReport
+} from "./release-gate.js"
 
 export class CliUsageError extends Error {
   public override readonly name = "CliUsageError"
@@ -348,9 +362,13 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
       return yield* runDocsCheckCli(options)
     }
 
+    if (options.argv[0] === "check" && options.argv.includes("--release")) {
+      return yield* runReleaseCheckCli(options)
+    }
+
     if (options.argv[0] !== "check" || !options.argv.includes("--production")) {
       options.writeStderr(
-        "Usage: desktop build --config <path>\nUsage: desktop package --config <path>\nUsage: desktop sign --config <path>\nUsage: desktop notarize --config <path>\nUsage: desktop publish --config <path>\nUsage: desktop doctor [--config <path>] [--ci] [--json]\nUsage: desktop check --production --config <path>\nUsage: desktop check --repro --config <path>\nUsage: desktop check --api [--write]\nUsage: desktop check --docs\n"
+        "Usage: desktop build --config <path>\nUsage: desktop package --config <path>\nUsage: desktop sign --config <path>\nUsage: desktop notarize --config <path>\nUsage: desktop publish --config <path>\nUsage: desktop doctor [--config <path>] [--ci] [--json]\nUsage: desktop check --production --config <path>\nUsage: desktop check --repro --config <path>\nUsage: desktop check --api [--write]\nUsage: desktop check --docs\nUsage: desktop check --release\n"
       )
       return 1
     }
@@ -897,6 +915,37 @@ const runDocsCheckCli = (options: CliRunOptions): Effect.Effect<number, never, n
       options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
     } else {
       options.writeStdout(formatDocsReleaseGateReport(report))
+    }
+
+    return 0
+  })
+
+const runReleaseCheckCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
+  Effect.gen(function* () {
+    const report = yield* runReleaseGate({
+      cwd: options.cwd
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          const formatted = formatReleaseGateError(error)
+          if (options.argv.includes("--json")) {
+            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+          } else {
+            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+          }
+          return undefined
+        })
+      )
+    )
+
+    if (report === undefined) {
+      return 1
+    }
+
+    if (options.argv.includes("--json")) {
+      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+    } else {
+      options.writeStdout(formatReleaseGateReport(report))
     }
 
     return 0

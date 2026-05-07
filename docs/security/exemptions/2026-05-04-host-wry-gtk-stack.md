@@ -30,7 +30,7 @@ committed Phase 1 asset extensions, full nonce-based CSP generation, renderer
 IPC, permissions, navigation policy, remote content, untrusted HTML execution,
 or any long-lived privileged WebView runtime behavior.
 
-## Rationale
+## Justification
 
 Issue #7 wires the native host binary and dependency graph. Issue #8 creates the
 first Tao native window, keeps it empty, and exits on the native close event.
