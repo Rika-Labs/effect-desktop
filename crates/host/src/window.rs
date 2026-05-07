@@ -60,6 +60,7 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
     fn set_dock_badge_label(
         &self,
         label: Option<String>,
+        operation: &'static str,
     ) -> std::result::Result<(), HostProtocolError>;
 
     fn request_dock_attention(&self, critical: bool) -> std::result::Result<(), HostProtocolError>;
@@ -102,6 +103,7 @@ enum WindowCommand {
     },
     SetDockBadgeLabel {
         label: Option<String>,
+        operation: &'static str,
         reply: Sender<WindowCommandReply>,
     },
     RequestDockAttention {
@@ -284,10 +286,12 @@ impl WindowMethodHandler for WindowMethodPort {
     fn set_dock_badge_label(
         &self,
         label: Option<String>,
+        operation: &'static str,
     ) -> std::result::Result<(), HostProtocolError> {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.enqueue_command(WindowCommand::SetDockBadgeLabel {
             label,
+            operation,
             reply: reply_tx,
         })?;
 
@@ -299,7 +303,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::DockMenuSet
             | WindowCommandResponse::MenuSet => Err(HostProtocolError::internal(
                 "dock badge command received window response",
-                host_protocol::DOCK_SET_BADGE_TEXT_METHOD,
+                operation,
             )),
         }
     }
@@ -527,11 +531,12 @@ impl WindowRegistry {
     fn set_dock_badge_label(
         &self,
         label: Option<String>,
+        operation: &'static str,
     ) -> std::result::Result<(), HostProtocolError> {
         let Some(resources) = self.windows.values().next() else {
             return Err(HostProtocolError::not_found(
                 "Window:firstResponder",
-                host_protocol::DOCK_SET_BADGE_TEXT_METHOD,
+                operation,
             ));
         };
 
@@ -654,9 +659,13 @@ impl WindowRegistry {
                     WindowLifecycleEvent::Other
                 }
             }
-            WindowCommand::SetDockBadgeLabel { label, reply } => {
+            WindowCommand::SetDockBadgeLabel {
+                label,
+                operation,
+                reply,
+            } => {
                 let result = self
-                    .set_dock_badge_label(label)
+                    .set_dock_badge_label(label, operation)
                     .map(|()| WindowCommandResponse::DockBadgeLabelSet);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other

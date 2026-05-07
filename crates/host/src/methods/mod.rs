@@ -393,7 +393,11 @@ mod tests {
             self.destroy_result.clone()
         }
 
-        fn set_dock_badge_label(&self, label: Option<String>) -> Result<(), HostProtocolError> {
+        fn set_dock_badge_label(
+            &self,
+            label: Option<String>,
+            _operation: &'static str,
+        ) -> Result<(), HostProtocolError> {
             self.dock_badge_labels
                 .lock()
                 .expect("fake dock badge labels should lock")

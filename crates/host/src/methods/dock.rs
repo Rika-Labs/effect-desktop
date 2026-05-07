@@ -16,7 +16,7 @@ pub(crate) fn set_badge_count(
     } else {
         Some(count.to_string())
     };
-    handler.set_dock_badge_label(label)?;
+    handler.set_dock_badge_label(label, host_protocol::DOCK_SET_BADGE_COUNT_METHOD)?;
 
     Ok(None)
 }
@@ -26,7 +26,7 @@ pub(crate) fn set_badge_text(
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
     let text = decode_text(payload)?;
-    handler.set_dock_badge_label(text)?;
+    handler.set_dock_badge_label(text, host_protocol::DOCK_SET_BADGE_TEXT_METHOD)?;
 
     Ok(None)
 }
