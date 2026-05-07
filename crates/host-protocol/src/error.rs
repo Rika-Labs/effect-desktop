@@ -937,6 +937,22 @@ impl HostProtocolError {
         }
     }
 
+    pub fn unsupported(reason: impl Into<String>, operation: impl Into<String>) -> Self {
+        let reason = reason.into();
+        let operation = operation.into();
+        Self::Unsupported {
+            message: format!("unsupported operation {operation}: {reason}"),
+            operation,
+            platform: None,
+            code: None,
+            cause: None,
+            recoverable: Self::recoverable_default("Unsupported").expect("known tag"),
+            remediation: None,
+            docs_url: None,
+            reason,
+        }
+    }
+
     pub fn internal(message: impl Into<String>, operation: impl Into<String>) -> Self {
         Self::Internal {
             message: message.into(),

@@ -3107,6 +3107,9 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       title: "Main",
       width: 320,
       height: 240,
+      titleBarStyle: "hiddenInset",
+      vibrancy: "windowBackground",
+      trafficLights: { x: 12, y: 13 },
       persistState: true
     })
     const duringLifetime = yield* registry.list()
@@ -3135,7 +3138,10 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       {
         title: "Main",
         width: 320,
-        height: 240
+        height: 240,
+        titleBarStyle: "hiddenInset",
+        vibrancy: "windowBackground",
+        trafficLights: { x: 12, y: 13 }
       }
     ],
     [

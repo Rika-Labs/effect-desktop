@@ -11,6 +11,8 @@
 - `uuid` mints UUIDv7 `WindowId` values for native windows and UUIDv4 CSP nonces for app protocol responses.
 - `libc` owns POSIX process-group termination and Linux parent-death signal setup for runtime supervision.
 - `windows-sys` owns Windows Job Object calls for runtime process-tree cleanup.
+- `muda` owns the macOS application menu bridge; it is target-scoped so Linux and Windows builds do not inherit native menu dependencies.
+- `window-vibrancy` owns macOS `NSVisualEffectView` attachment for window vibrancy; it is target-scoped because vibrancy is macOS-only host polish.
 
 ## Linux native prerequisites
 

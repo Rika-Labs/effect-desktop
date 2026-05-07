@@ -2,7 +2,7 @@
 // Host method boundaries return the canonical HostProtocolError enum from the
 // wire contract. Boxing that error here would obscure the protocol surface.
 
-use crate::{webview, windows};
+use crate::{macos, webview, windows};
 use anyhow::Result;
 use host_protocol::{HostProtocolError, WindowCreatePayload, WindowCreateResponse};
 use std::{
@@ -56,6 +56,30 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
     ) -> std::result::Result<WindowCreateResponse, HostProtocolError>;
 
     fn destroy(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
+
+    fn set_dock_badge_label(
+        &self,
+        label: Option<String>,
+        operation: &'static str,
+    ) -> std::result::Result<(), HostProtocolError>;
+
+    fn request_dock_attention(&self, critical: bool) -> std::result::Result<(), HostProtocolError>;
+
+    fn set_dock_menu(
+        &self,
+        template: Option<serde_json::Value>,
+    ) -> std::result::Result<(), HostProtocolError>;
+
+    fn set_application_menu(
+        &self,
+        template: serde_json::Value,
+    ) -> std::result::Result<(), HostProtocolError>;
+
+    fn set_window_menu(
+        &self,
+        window_id: &str,
+        template: serde_json::Value,
+    ) -> std::result::Result<(), HostProtocolError>;
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -63,6 +87,7 @@ pub(crate) struct WindowCreateRequest {
     title: String,
     width: f64,
     height: f64,
+    macos_polish: Option<macos::MacosWindowPolish>,
 }
 
 enum HostEvent {}
@@ -76,6 +101,28 @@ enum WindowCommand {
         window_id: String,
         reply: Sender<WindowCommandReply>,
     },
+    SetDockBadgeLabel {
+        label: Option<String>,
+        operation: &'static str,
+        reply: Sender<WindowCommandReply>,
+    },
+    RequestDockAttention {
+        critical: bool,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetDockMenu {
+        template: Option<serde_json::Value>,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetApplicationMenu {
+        template: serde_json::Value,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetWindowMenu {
+        window_id: String,
+        template: serde_json::Value,
+        reply: Sender<WindowCommandReply>,
+    },
 }
 
 type WindowCommandReply = std::result::Result<WindowCommandResponse, HostProtocolError>;
@@ -83,6 +130,10 @@ type WindowCommandReply = std::result::Result<WindowCommandResponse, HostProtoco
 enum WindowCommandResponse {
     Created(WindowCreateResponse),
     Destroyed,
+    DockBadgeLabelSet,
+    DockAttentionRequested,
+    DockMenuSet,
+    MenuSet,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -177,6 +228,22 @@ impl WindowMethodHandler for WindowMethodPort {
 
         match self.recv_reply(reply_rx)? {
             WindowCommandResponse::Created(response) => Ok(response),
+            WindowCommandResponse::DockBadgeLabelSet => Err(HostProtocolError::internal(
+                "window create received dock badge response",
+                host_protocol::WINDOW_CREATE_METHOD,
+            )),
+            WindowCommandResponse::DockAttentionRequested => Err(HostProtocolError::internal(
+                "window create received dock attention response",
+                host_protocol::WINDOW_CREATE_METHOD,
+            )),
+            WindowCommandResponse::DockMenuSet => Err(HostProtocolError::internal(
+                "window create received dock menu response",
+                host_protocol::WINDOW_CREATE_METHOD,
+            )),
+            WindowCommandResponse::MenuSet => Err(HostProtocolError::internal(
+                "window create received menu response",
+                host_protocol::WINDOW_CREATE_METHOD,
+            )),
             WindowCommandResponse::Destroyed => Err(HostProtocolError::internal(
                 "window create received destroy response",
                 host_protocol::WINDOW_CREATE_METHOD,
@@ -193,9 +260,141 @@ impl WindowMethodHandler for WindowMethodPort {
 
         match self.recv_reply(reply_rx)? {
             WindowCommandResponse::Destroyed => Ok(()),
+            WindowCommandResponse::DockBadgeLabelSet => Err(HostProtocolError::internal(
+                "window destroy received dock badge response",
+                host_protocol::WINDOW_DESTROY_METHOD,
+            )),
+            WindowCommandResponse::DockAttentionRequested => Err(HostProtocolError::internal(
+                "window destroy received dock attention response",
+                host_protocol::WINDOW_DESTROY_METHOD,
+            )),
+            WindowCommandResponse::DockMenuSet => Err(HostProtocolError::internal(
+                "window destroy received dock menu response",
+                host_protocol::WINDOW_DESTROY_METHOD,
+            )),
+            WindowCommandResponse::MenuSet => Err(HostProtocolError::internal(
+                "window destroy received menu response",
+                host_protocol::WINDOW_DESTROY_METHOD,
+            )),
             WindowCommandResponse::Created(_) => Err(HostProtocolError::internal(
                 "window destroy received create response",
                 host_protocol::WINDOW_DESTROY_METHOD,
+            )),
+        }
+    }
+
+    fn set_dock_badge_label(
+        &self,
+        label: Option<String>,
+        operation: &'static str,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetDockBadgeLabel {
+            label,
+            operation,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::DockBadgeLabelSet => Ok(()),
+            WindowCommandResponse::Created(_)
+            | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::DockAttentionRequested
+            | WindowCommandResponse::DockMenuSet
+            | WindowCommandResponse::MenuSet => Err(HostProtocolError::internal(
+                "dock badge command received window response",
+                operation,
+            )),
+        }
+    }
+
+    fn request_dock_attention(&self, critical: bool) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::RequestDockAttention {
+            critical,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::DockAttentionRequested => Ok(()),
+            WindowCommandResponse::Created(_)
+            | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockMenuSet
+            | WindowCommandResponse::MenuSet => Err(HostProtocolError::internal(
+                "dock attention command received window response",
+                host_protocol::DOCK_REQUEST_ATTENTION_METHOD,
+            )),
+        }
+    }
+
+    fn set_dock_menu(
+        &self,
+        template: Option<serde_json::Value>,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetDockMenu {
+            template,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::DockMenuSet => Ok(()),
+            WindowCommandResponse::Created(_)
+            | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockAttentionRequested
+            | WindowCommandResponse::MenuSet => Err(HostProtocolError::internal(
+                "dock menu command received window response",
+                host_protocol::DOCK_SET_MENU_METHOD,
+            )),
+        }
+    }
+
+    fn set_application_menu(
+        &self,
+        template: serde_json::Value,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetApplicationMenu {
+            template,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::MenuSet => Ok(()),
+            WindowCommandResponse::Created(_)
+            | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockMenuSet
+            | WindowCommandResponse::DockAttentionRequested => Err(HostProtocolError::internal(
+                "application menu command received window response",
+                host_protocol::MENU_SET_APPLICATION_MENU_METHOD,
+            )),
+        }
+    }
+
+    fn set_window_menu(
+        &self,
+        window_id: &str,
+        template: serde_json::Value,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetWindowMenu {
+            window_id: window_id.to_string(),
+            template,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::MenuSet => Ok(()),
+            WindowCommandResponse::Created(_)
+            | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockMenuSet
+            | WindowCommandResponse::DockAttentionRequested => Err(HostProtocolError::internal(
+                "window menu command received window response",
+                host_protocol::MENU_SET_WINDOW_MENU_METHOD,
             )),
         }
     }
@@ -214,7 +413,13 @@ impl WindowCreateRequest {
             title,
             width,
             height,
+            macos_polish: None,
         })
+    }
+
+    fn with_macos_polish(mut self, polish: Option<macos::MacosWindowPolish>) -> Self {
+        self.macos_polish = polish;
+        self
     }
 
     fn title(&self) -> &str {
@@ -228,17 +433,28 @@ impl WindowCreateRequest {
     fn height(&self) -> f64 {
         self.height
     }
+
+    fn macos_polish(&self) -> Option<&macos::MacosWindowPolish> {
+        self.macos_polish.as_ref()
+    }
 }
 
 impl TryFrom<WindowCreatePayload> for WindowCreateRequest {
     type Error = HostProtocolError;
 
     fn try_from(payload: WindowCreatePayload) -> std::result::Result<Self, Self::Error> {
-        Self::new(
+        let request = Self::new(
             payload.title().unwrap_or(WINDOW_TITLE).to_string(),
             payload.width().unwrap_or(WINDOW_WIDTH),
             payload.height().unwrap_or(WINDOW_HEIGHT),
-        )
+        )?;
+        let macos_polish = macos::MacosWindowPolish::new(
+            payload.title_bar_style(),
+            payload.vibrancy(),
+            payload.traffic_lights(),
+        )?;
+
+        Ok(request.with_macos_polish(macos_polish))
     }
 }
 
@@ -256,9 +472,10 @@ impl WindowRegistry {
         mode: RunMode,
     ) -> std::result::Result<WindowCreateResponse, HostProtocolError> {
         let window_id = Uuid::now_v7().to_string();
-        let window = WindowBuilder::new()
+        let builder = WindowBuilder::new()
             .with_title(request.title())
-            .with_inner_size(LogicalSize::new(request.width(), request.height()))
+            .with_inner_size(LogicalSize::new(request.width(), request.height()));
+        let window = macos::apply_window_builder_polish(builder, request.macos_polish())
             .build(target)
             .map_err(|error| {
                 HostProtocolError::internal(
@@ -267,6 +484,7 @@ impl WindowRegistry {
                 )
             })?;
         windows::apply_window_polish(&window)?;
+        macos::apply_window_polish(&window, request.macos_polish())?;
 
         info!(
             event = WINDOW_OPENED_EVENT,
@@ -308,6 +526,67 @@ impl WindowRegistry {
             window_id, "host window destroyed"
         );
         Ok(())
+    }
+
+    fn set_dock_badge_label(
+        &self,
+        label: Option<String>,
+        operation: &'static str,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.values().next() else {
+            return Err(HostProtocolError::not_found(
+                "Window:firstResponder",
+                operation,
+            ));
+        };
+
+        macos::set_dock_badge_label(&resources._window, label)
+    }
+
+    fn request_dock_attention(&self, critical: bool) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.values().next() else {
+            return Err(HostProtocolError::not_found(
+                "Window:firstResponder",
+                host_protocol::DOCK_REQUEST_ATTENTION_METHOD,
+            ));
+        };
+
+        let attention = if critical {
+            tao::window::UserAttentionType::Critical
+        } else {
+            tao::window::UserAttentionType::Informational
+        };
+        resources._window.request_user_attention(Some(attention));
+        Ok(())
+    }
+
+    fn set_application_menu(
+        &self,
+        template: serde_json::Value,
+    ) -> std::result::Result<(), HostProtocolError> {
+        macos::set_application_menu(template)
+    }
+
+    fn set_dock_menu(
+        &self,
+        template: Option<serde_json::Value>,
+    ) -> std::result::Result<(), HostProtocolError> {
+        macos::set_dock_menu(template)
+    }
+
+    fn set_window_menu(
+        &self,
+        window_id: &str,
+        template: serde_json::Value,
+    ) -> std::result::Result<(), HostProtocolError> {
+        if !self.windows.contains_key(window_id) {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::MENU_SET_WINDOW_MENU_METHOD,
+            ));
+        }
+
+        macos::set_application_menu(template)
     }
 
     fn handle_pending_window_commands(
@@ -379,6 +658,49 @@ impl WindowRegistry {
                 } else {
                     WindowLifecycleEvent::Other
                 }
+            }
+            WindowCommand::SetDockBadgeLabel {
+                label,
+                operation,
+                reply,
+            } => {
+                let result = self
+                    .set_dock_badge_label(label, operation)
+                    .map(|()| WindowCommandResponse::DockBadgeLabelSet);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::RequestDockAttention { critical, reply } => {
+                let result = self
+                    .request_dock_attention(critical)
+                    .map(|()| WindowCommandResponse::DockAttentionRequested);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetDockMenu { template, reply } => {
+                let result = self
+                    .set_dock_menu(template)
+                    .map(|()| WindowCommandResponse::DockMenuSet);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetApplicationMenu { template, reply } => {
+                let result = self
+                    .set_application_menu(template)
+                    .map(|()| WindowCommandResponse::MenuSet);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetWindowMenu {
+                window_id,
+                template,
+                reply,
+            } => {
+                let result = self
+                    .set_window_menu(&window_id, template)
+                    .map(|()| WindowCommandResponse::MenuSet);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
             }
         }
     }
