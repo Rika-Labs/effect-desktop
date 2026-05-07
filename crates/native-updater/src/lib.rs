@@ -365,14 +365,12 @@ pub fn stage_install(
             message: error.to_string(),
         })?;
     if downloaded_bytes < plan.expected_bytes {
-        cleanup_stale_temp_dir(paths)?;
         return Err(InstallStagingError::UpdateDownloadTruncated {
             downloaded_bytes,
             expected_bytes: plan.expected_bytes,
         });
     }
     if downloaded_bytes != plan.expected_bytes {
-        cleanup_stale_temp_dir(paths)?;
         return Err(InstallStagingError::ArtifactSizeMismatch {
             downloaded_bytes,
             expected_bytes: plan.expected_bytes,
@@ -381,7 +379,6 @@ pub fn stage_install(
 
     let actual_sha256 = sha256_hex(downloaded);
     if actual_sha256 != plan.expected_sha256 {
-        cleanup_stale_temp_dir(paths)?;
         return Err(InstallStagingError::ArtifactDigestMismatch {
             expected_sha256: plan.expected_sha256.clone(),
             actual_sha256,
@@ -418,11 +415,11 @@ pub fn commit_staged_install(prepared: &PreparedInstall) -> Result<(), InstallSt
         fs::create_dir_all(parent)
             .map_err(|error| io_error("create-current-parent", parent, error))?;
     }
-    atomic_replace(
-        &prepared.paths.staged_bundle,
-        &prepared.paths.current_bundle,
-    )
-    .map_err(|error| {
+    let commit_temp = commit_temp_path(prepared);
+    fs::copy(&prepared.paths.staged_bundle, &commit_temp)
+        .map_err(|error| io_error("copy-staged-bundle-to-commit-temp", &commit_temp, error))?;
+    atomic_replace(&commit_temp, &prepared.paths.current_bundle).map_err(|error| {
+        let _ = fs::remove_file(&commit_temp);
         io_error(
             "commit-staged-bundle",
             &prepared.paths.current_bundle,
@@ -455,7 +452,7 @@ pub fn validate_notarization(
 pub fn prepare_restart(target_version: &str, now_unix_ms: u64) -> PreparingRestart {
     PreparingRestart {
         target_version: target_version.to_string(),
-        deadline_unix_ms: now_unix_ms + RESTART_DEADLINE_MS,
+        deadline_unix_ms: now_unix_ms.saturating_add(RESTART_DEADLINE_MS),
     }
 }
 
@@ -657,6 +654,19 @@ fn io_error(operation: &'static str, path: &Path, error: std::io::Error) -> Inst
         path: path.to_path_buf(),
         message: error.to_string(),
     }
+}
+
+fn commit_temp_path(prepared: &PreparedInstall) -> PathBuf {
+    let file_name = prepared
+        .paths
+        .current_bundle
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("bundle");
+    prepared.paths.current_bundle.with_file_name(format!(
+        ".{file_name}.commit-{}",
+        prepared.plan.target_version
+    ))
 }
 
 #[cfg(not(windows))]
@@ -1116,7 +1126,28 @@ mod tests {
             fs::read(&paths.current_bundle).expect("current bundle"),
             b"new-bundle"
         );
-        assert!(!paths.staged_bundle.exists());
+        assert!(!commit_temp_path(&prepared).exists());
+        remove_test_root(root);
+    }
+
+    #[test]
+    fn truncated_download_error_is_not_masked_by_stale_temp_cleanup_failure() {
+        let root = test_root("truncated-cleanup-failure");
+        let paths = install_paths(&root);
+        fs::create_dir_all(&root).expect("root dir");
+        fs::write(&paths.temp_dir, b"not a directory").expect("stale temp file");
+        let plan = install_plan(b"new-bundle");
+
+        let error = stage_install(&plan, &paths, b"new", 1_000)
+            .expect_err("truncation must remain the returned failure");
+
+        assert_eq!(
+            error,
+            InstallStagingError::UpdateDownloadTruncated {
+                downloaded_bytes: 3,
+                expected_bytes: 10
+            }
+        );
         remove_test_root(root);
     }
 
@@ -1157,6 +1188,13 @@ mod tests {
         assert_eq!(breadcrumb.target_version, "1.1.0");
         assert!(paths.recovery_breadcrumb.exists());
         remove_test_root(root);
+    }
+
+    #[test]
+    fn restart_deadline_saturates_instead_of_wrapping() {
+        let preparing = prepare_restart("1.1.0", u64::MAX - 1);
+
+        assert_eq!(preparing.deadline_unix_ms, u64::MAX);
     }
 
     struct SignedManifest {
