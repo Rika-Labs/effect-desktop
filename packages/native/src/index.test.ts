@@ -889,6 +889,112 @@ test("Menu bridge client validates templates, sends host envelopes, and decodes 
   ])
 })
 
+test("Menu bridge client rejects empty activation event identifiers as InvalidOutput", async () => {
+  const cases: ReadonlyArray<{
+    readonly name: string
+    readonly payload: { itemId: string; commandId: string; windowId?: string }
+  }> = [
+    {
+      name: "empty itemId",
+      payload: { itemId: "", commandId: "app.file.open", windowId: "window-1" }
+    },
+    {
+      name: "empty commandId",
+      payload: { itemId: "file.open", commandId: "", windowId: "window-1" }
+    },
+    {
+      name: "empty windowId when present",
+      payload: { itemId: "file.open", commandId: "app.file.open", windowId: "" }
+    }
+  ]
+
+  for (const { payload } of cases) {
+    const exchange: ApiClientExchange = {
+      request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
+      subscribe: (method) =>
+        method === "Menu.Activated"
+          ? Stream.make(
+              new HostProtocolEventEnvelope({
+                kind: "event",
+                timestamp: 1710000000300,
+                traceId: "event-trace",
+                method,
+                payload
+              })
+            )
+          : Stream.empty
+    }
+    const commandLayer = await makeCommandBindingLayer()
+
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const menu = yield* Menu
+        return yield* Effect.exit(menu.onActivated().pipe(Stream.take(1), Stream.runCollect))
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            Layer.provide(
+              MenuLive,
+              makeMenuBridgeClientLayer(exchange, {
+                nextRequestId: nextId(["unused"]),
+                nextTraceId: nextId(["unused"]),
+                now: nextNumber([1710000000000])
+              })
+            ),
+            commandLayer
+          )
+        )
+      )
+    )
+
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+  }
+})
+
+test("Menu bridge client decodes activation events with no windowId field", async () => {
+  const exchange: ApiClientExchange = {
+    request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
+    subscribe: (method) =>
+      method === "Menu.Activated"
+        ? Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              timestamp: 1710000000300,
+              traceId: "event-trace",
+              method,
+              payload: { itemId: "file.open", commandId: "app.file.open" }
+            })
+          )
+        : Stream.empty
+  }
+  const commandLayer = await makeCommandBindingLayer()
+
+  const events = await Effect.runPromise(
+    Effect.gen(function* () {
+      const menu = yield* Menu
+      return yield* menu.onActivated().pipe(Stream.take(1), Stream.runCollect)
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.provide(
+            MenuLive,
+            makeMenuBridgeClientLayer(exchange, {
+              nextRequestId: nextId(["unused"]),
+              nextTraceId: nextId(["unused"]),
+              now: nextNumber([1710000000000])
+            })
+          ),
+          commandLayer
+        )
+      )
+    )
+  )
+
+  expect(Array.from(events)).toEqual([
+    new MenuActivatedEvent({ itemId: "file.open", commandId: "app.file.open" })
+  ])
+})
+
 test("Menu bridge client returns invalid templates as typed Effect failures", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const client = await Effect.runPromise(
