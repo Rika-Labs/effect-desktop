@@ -3986,6 +3986,7 @@ The `app://` protocol handler (§11.13) emits CSP headers on every response. The
 default-src 'self';
 script-src 'self' 'nonce-{N}';
 style-src 'self' 'nonce-{N}';
+style-src-attr 'unsafe-inline';
 connect-src 'self' app:;
 img-src 'self' app: data: https:;
 font-src 'self' app: data:;
@@ -3999,9 +4000,11 @@ worker-src 'self';
 
 Rules:
 
-- `{N}` is a per-request nonce, minted by the protocol handler. Inline scripts and styles must carry the nonce. `unsafe-inline` and `unsafe-eval` are forbidden in production.
-- The renderer template's bundler emits the nonce reference at build time; HMR injects the nonce in development.
-- Apps may **tighten** the policy via `desktop.config.ts`'s `security.csp` field. Loosening any directive (e.g., adding `unsafe-inline`) requires `security.csp.acknowledgeWeakening: true` in config plus a justification comment; the production checker fails on weakening without acknowledgement.
+- `{N}` is a per-request nonce, minted by the `app://` protocol handler.
+- Nonce attribution is performed by the host at request time. The handler parses every `text/html` response and attaches `nonce="{N}"` to every `<script>`, `<style>`, and `<link rel="stylesheet">` element. Renderer bundles do not inject nonces, and no `__APP_NONCE__` placeholder is required in renderer output.
+- `style-src-attr 'unsafe-inline'` admits inline `style="..."` attributes that prerendered HTML uses for layout grids, scroll-area variables, and CSS custom properties. `<style>` and `<link rel="stylesheet">` elements remain governed by `style-src 'self' 'nonce-{N}'`. `unsafe-inline` in `script-src` or `style-src` element directives, and `unsafe-eval` anywhere, are forbidden in production.
+- An HTML response that fails the host's rewrite parser produces an HTTP 500 with the trace id, not the un-rewritten body.
+- Apps may **tighten** the policy via `desktop.config.ts`'s `security.csp` field. Loosening any directive (e.g., adding `unsafe-inline` to `script-src` or `style-src`) requires `security.csp.acknowledgeWeakening: true` in config plus a justification comment; the production checker fails on weakening without acknowledgement.
 - The check at §14.6 enforces these defaults.
 
 ## 14.8 Capability lifecycle
