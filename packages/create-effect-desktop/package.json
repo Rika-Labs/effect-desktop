@@ -2,6 +2,18 @@
   "name": "create-effect-desktop",
   "version": "0.0.0",
   "private": true,
+  "description": "Scaffolding command for new Effect Desktop applications.",
+  "license": "MIT OR Apache-2.0",
+  "author": "Rika Labs, LLC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Rika-Labs/effect-desktop.git",
+    "directory": "packages/create-effect-desktop"
+  },
+  "homepage": "https://github.com/Rika-Labs/effect-desktop#readme",
+  "bugs": {
+    "url": "https://github.com/Rika-Labs/effect-desktop/issues"
+  },
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",

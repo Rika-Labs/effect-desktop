@@ -2,6 +2,18 @@
   "name": "@effect-desktop/test",
   "version": "0.0.0",
   "private": true,
+  "description": "Headless runtime, mock host, mock bridge, and in-memory adapters for Effect Desktop tests.",
+  "license": "MIT OR Apache-2.0",
+  "author": "Rika Labs, LLC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Rika-Labs/effect-desktop.git",
+    "directory": "packages/test"
+  },
+  "homepage": "https://github.com/Rika-Labs/effect-desktop#readme",
+  "bugs": {
+    "url": "https://github.com/Rika-Labs/effect-desktop/issues"
+  },
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
