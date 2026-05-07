@@ -6,6 +6,7 @@ mod scheme;
 mod transport;
 mod webview;
 mod window;
+mod windows;
 
 use anyhow::{bail, Result};
 use std::{path::PathBuf, sync::Arc, time::Duration};

@@ -2,7 +2,7 @@
 // Host method boundaries return the canonical HostProtocolError enum from the
 // wire contract. Boxing that error here would obscure the protocol surface.
 
-use crate::webview;
+use crate::{webview, windows};
 use anyhow::Result;
 use host_protocol::{HostProtocolError, WindowCreatePayload, WindowCreateResponse};
 use std::{
@@ -266,6 +266,7 @@ impl WindowRegistry {
                     host_protocol::WINDOW_CREATE_METHOD,
                 )
             })?;
+        windows::apply_window_polish(&window)?;
 
         info!(
             event = WINDOW_OPENED_EVENT,
@@ -392,6 +393,10 @@ fn lifecycle_for_create_result(result: &WindowCommandReply) -> WindowLifecycleEv
 }
 
 pub(crate) fn run_main_window(mode: RunMode, window_methods: WindowMethodPort) -> Result<()> {
+    let windows_polish =
+        windows::WindowsProcessPolish::from_env().map_err(|error| anyhow::anyhow!("{error:?}"))?;
+    windows::apply_process_polish(windows_polish.as_ref())
+        .map_err(|error| anyhow::anyhow!("{error:?}"))?;
     let mut event_loop_builder = EventLoopBuilder::<HostEvent>::with_user_event();
     let event_loop = event_loop_builder.build();
     let command_source = window_methods.clone();
