@@ -1,5 +1,16 @@
 import { createHash } from "node:crypto"
-import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises"
+import { createReadStream } from "node:fs"
+import {
+  copyFile,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  readlink,
+  rm,
+  symlink
+} from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { dirname, join, relative } from "node:path"
 
@@ -63,14 +74,25 @@ export interface DesktopReproOptions {
   readonly packageRunner: ReproPackageRunner
 }
 
+export type ReproEntryKind = "file" | "symlink"
+
 export interface ReproDifference {
   readonly relativePath: string
-  readonly kind: "missing-in-first" | "missing-in-second" | "content"
+  readonly kind:
+    | "missing-in-first"
+    | "missing-in-second"
+    | "content"
+    | "entry-type"
+    | "symlink-target"
   readonly firstDifferenceOffset: number | undefined
   readonly firstSizeBytes: number | undefined
   readonly secondSizeBytes: number | undefined
   readonly firstSha256: string | undefined
   readonly secondSha256: string | undefined
+  readonly firstEntryKind: ReproEntryKind | undefined
+  readonly secondEntryKind: ReproEntryKind | undefined
+  readonly firstSymlinkTarget: string | undefined
+  readonly secondSymlinkTarget: string | undefined
 }
 
 export interface DesktopReproReport {
@@ -88,11 +110,20 @@ interface ReproSnapshot {
   readonly packageOutputPath: string
 }
 
-interface FileDigest {
-  readonly sizeBytes: number
-  readonly sha256: string
-  readonly content: Uint8Array
-}
+type SnapshotEntry =
+  | {
+      readonly relativePath: string
+      readonly kind: "file"
+      readonly absolutePath: string
+      readonly sizeBytes: number
+      readonly sha256: string
+    }
+  | {
+      readonly relativePath: string
+      readonly kind: "symlink"
+      readonly absolutePath: string
+      readonly target: string
+    }
 
 export const runDesktopReproCheck = (
   options: DesktopReproOptions
@@ -212,43 +243,109 @@ const diffSnapshots = (
   second: ReproSnapshot
 ): Effect.Effect<DesktopReproReport, ReproFileError, never> =>
   Effect.gen(function* () {
-    const firstFiles = yield* listRelativeFiles(first.rootPath)
-    const secondFiles = yield* listRelativeFiles(second.rootPath)
-    const relativePaths = [...new Set([...firstFiles, ...secondFiles])].toSorted()
+    const firstEntries = yield* listSnapshotEntries(first.rootPath)
+    const secondEntries = yield* listSnapshotEntries(second.rootPath)
+    const firstByPath = new Map(firstEntries.map((entry) => [entry.relativePath, entry]))
+    const secondByPath = new Map(secondEntries.map((entry) => [entry.relativePath, entry]))
+    const relativePaths = [...new Set([...firstByPath.keys(), ...secondByPath.keys()])].toSorted()
     const differences: ReproDifference[] = []
 
     for (const relativePath of relativePaths) {
-      const firstPath = join(first.rootPath, relativePath)
-      const secondPath = join(second.rootPath, relativePath)
-      const firstHasFile = firstFiles.includes(relativePath)
-      const secondHasFile = secondFiles.includes(relativePath)
+      const firstEntry = firstByPath.get(relativePath)
+      const secondEntry = secondByPath.get(relativePath)
 
-      if (!firstHasFile || !secondHasFile) {
-        const existing = yield* digestFile(firstHasFile ? firstPath : secondPath)
+      if (firstEntry === undefined || secondEntry === undefined) {
+        const present = firstEntry ?? secondEntry
+        if (present === undefined) {
+          continue
+        }
         differences.push({
           relativePath,
-          kind: firstHasFile ? "missing-in-second" : "missing-in-first",
+          kind: firstEntry === undefined ? "missing-in-first" : "missing-in-second",
           firstDifferenceOffset: undefined,
-          firstSizeBytes: firstHasFile ? existing.sizeBytes : undefined,
-          secondSizeBytes: secondHasFile ? existing.sizeBytes : undefined,
-          firstSha256: firstHasFile ? existing.sha256 : undefined,
-          secondSha256: secondHasFile ? existing.sha256 : undefined
+          firstSizeBytes:
+            firstEntry !== undefined && firstEntry.kind === "file"
+              ? firstEntry.sizeBytes
+              : undefined,
+          secondSizeBytes:
+            secondEntry !== undefined && secondEntry.kind === "file"
+              ? secondEntry.sizeBytes
+              : undefined,
+          firstSha256:
+            firstEntry !== undefined && firstEntry.kind === "file" ? firstEntry.sha256 : undefined,
+          secondSha256:
+            secondEntry !== undefined && secondEntry.kind === "file"
+              ? secondEntry.sha256
+              : undefined,
+          firstEntryKind: firstEntry?.kind,
+          secondEntryKind: secondEntry?.kind,
+          firstSymlinkTarget:
+            firstEntry !== undefined && firstEntry.kind === "symlink"
+              ? firstEntry.target
+              : undefined,
+          secondSymlinkTarget:
+            secondEntry !== undefined && secondEntry.kind === "symlink"
+              ? secondEntry.target
+              : undefined
         })
         continue
       }
 
-      const firstDigest = yield* digestFile(firstPath)
-      const secondDigest = yield* digestFile(secondPath)
-      if (firstDigest.sha256 !== secondDigest.sha256) {
+      if (firstEntry.kind !== secondEntry.kind) {
         differences.push({
           relativePath,
-          kind: "content",
-          firstDifferenceOffset: firstDifferenceOffset(firstDigest.content, secondDigest.content),
-          firstSizeBytes: firstDigest.sizeBytes,
-          secondSizeBytes: secondDigest.sizeBytes,
-          firstSha256: firstDigest.sha256,
-          secondSha256: secondDigest.sha256
+          kind: "entry-type",
+          firstDifferenceOffset: undefined,
+          firstSizeBytes: firstEntry.kind === "file" ? firstEntry.sizeBytes : undefined,
+          secondSizeBytes: secondEntry.kind === "file" ? secondEntry.sizeBytes : undefined,
+          firstSha256: firstEntry.kind === "file" ? firstEntry.sha256 : undefined,
+          secondSha256: secondEntry.kind === "file" ? secondEntry.sha256 : undefined,
+          firstEntryKind: firstEntry.kind,
+          secondEntryKind: secondEntry.kind,
+          firstSymlinkTarget: firstEntry.kind === "symlink" ? firstEntry.target : undefined,
+          secondSymlinkTarget: secondEntry.kind === "symlink" ? secondEntry.target : undefined
         })
+        continue
+      }
+
+      if (firstEntry.kind === "symlink" && secondEntry.kind === "symlink") {
+        if (firstEntry.target !== secondEntry.target) {
+          differences.push({
+            relativePath,
+            kind: "symlink-target",
+            firstDifferenceOffset: undefined,
+            firstSizeBytes: undefined,
+            secondSizeBytes: undefined,
+            firstSha256: undefined,
+            secondSha256: undefined,
+            firstEntryKind: "symlink",
+            secondEntryKind: "symlink",
+            firstSymlinkTarget: firstEntry.target,
+            secondSymlinkTarget: secondEntry.target
+          })
+        }
+        continue
+      }
+
+      if (firstEntry.kind === "file" && secondEntry.kind === "file") {
+        if (firstEntry.sha256 !== secondEntry.sha256) {
+          const firstBytes = yield* readFileEffect(firstEntry.absolutePath)
+          const secondBytes = yield* readFileEffect(secondEntry.absolutePath)
+          differences.push({
+            relativePath,
+            kind: "content",
+            firstDifferenceOffset: firstDifferenceOffset(firstBytes, secondBytes),
+            firstSizeBytes: firstEntry.sizeBytes,
+            secondSizeBytes: secondEntry.sizeBytes,
+            firstSha256: firstEntry.sha256,
+            secondSha256: secondEntry.sha256,
+            firstEntryKind: "file",
+            secondEntryKind: "file",
+            firstSymlinkTarget: undefined,
+            secondSymlinkTarget: undefined
+          })
+        }
+        continue
       }
     }
 
@@ -262,28 +359,36 @@ const diffSnapshots = (
     }
   })
 
-const listRelativeFiles = (
+const listSnapshotEntries = (
   rootPath: string
-): Effect.Effect<readonly string[], ReproFileError, never> =>
+): Effect.Effect<readonly SnapshotEntry[], ReproFileError, never> =>
   Effect.gen(function* () {
-    const files = yield* listFiles(rootPath)
-    return files.map((path) => relative(rootPath, path)).toSorted()
+    const entries: SnapshotEntry[] = []
+    yield* walkSnapshotEntries(rootPath, rootPath, entries)
+    return entries.toSorted((a, b) => a.relativePath.localeCompare(b.relativePath))
   })
 
-const listFiles = (path: string): Effect.Effect<readonly string[], ReproFileError, never> =>
+const walkSnapshotEntries = (
+  rootPath: string,
+  currentPath: string,
+  out: SnapshotEntry[]
+): Effect.Effect<void, ReproFileError, never> =>
   Effect.gen(function* () {
-    const entries = yield* readDirectory(path)
-    const files: string[] = []
-    for (const entry of entries.toSorted()) {
-      const child = join(path, entry)
-      const childStat = yield* statPath(child)
-      if (childStat.isDirectory()) {
-        files.push(...(yield* listFiles(child)))
+    const children = yield* readDirectory(currentPath)
+    for (const child of children.toSorted()) {
+      const childPath = join(currentPath, child)
+      const childStat = yield* lstatPath(childPath)
+      const relativePath = relative(rootPath, childPath)
+      if (childStat.isSymbolicLink()) {
+        const target = yield* readlinkEffect(childPath)
+        out.push({ relativePath, kind: "symlink", absolutePath: childPath, target })
+      } else if (childStat.isDirectory()) {
+        yield* walkSnapshotEntries(rootPath, childPath, out)
       } else {
-        files.push(child)
+        const { sizeBytes, sha256 } = yield* streamFileDigest(childPath)
+        out.push({ relativePath, kind: "file", absolutePath: childPath, sizeBytes, sha256 })
       }
     }
-    return files
   })
 
 const copyDirectory = (
@@ -296,8 +401,11 @@ const copyDirectory = (
     for (const entry of entries.toSorted()) {
       const sourcePath = join(source, entry)
       const destinationPath = join(destination, entry)
-      const entryStat = yield* statPath(sourcePath)
-      if (entryStat.isDirectory()) {
+      const entryStat = yield* lstatPath(sourcePath)
+      if (entryStat.isSymbolicLink()) {
+        const target = yield* readlinkEffect(sourcePath)
+        yield* symlinkEffect(target, destinationPath)
+      } else if (entryStat.isDirectory()) {
         yield* copyDirectory(sourcePath, destinationPath)
       } else {
         yield* copyFileEffect(sourcePath, destinationPath)
@@ -305,14 +413,28 @@ const copyDirectory = (
     }
   })
 
-const digestFile = (path: string): Effect.Effect<FileDigest, ReproFileError, never> =>
-  Effect.gen(function* () {
-    const content = yield* readFileEffect(path)
-    return {
-      sizeBytes: content.byteLength,
-      sha256: createHash("sha256").update(content).digest("hex"),
-      content
-    }
+const streamFileDigest = (
+  path: string
+): Effect.Effect<{ readonly sizeBytes: number; readonly sha256: string }, ReproFileError, never> =>
+  Effect.tryPromise({
+    try: async () => {
+      const hash = createHash("sha256")
+      let sizeBytes = 0
+      const stream = createReadStream(path)
+      for await (const chunk of stream) {
+        const buffer = chunk as Buffer
+        sizeBytes += buffer.byteLength
+        hash.update(buffer)
+      }
+      return { sizeBytes, sha256: hash.digest("hex") }
+    },
+    catch: (cause) =>
+      new ReproFileError({
+        operation: "read",
+        path,
+        message: `failed to read ${path}`,
+        cause
+      })
   })
 
 const firstDifferenceOffset = (first: Uint8Array, second: Uint8Array): number | undefined => {
@@ -334,17 +456,25 @@ const deterministicClock = (): (() => number) => {
 }
 
 const formatDifference = (difference: ReproDifference): string => {
+  const lines: string[] = [`${difference.relativePath}`, `  kind            ${difference.kind}`]
+  if (difference.kind === "entry-type") {
+    lines.push(`  first kind      ${difference.firstEntryKind ?? "missing"}`)
+    lines.push(`  second kind     ${difference.secondEntryKind ?? "missing"}`)
+    return lines.join("\n")
+  }
+  if (difference.kind === "symlink-target") {
+    lines.push(`  first target    ${difference.firstSymlinkTarget ?? "missing"}`)
+    lines.push(`  second target   ${difference.secondSymlinkTarget ?? "missing"}`)
+    return lines.join("\n")
+  }
   const offset =
     difference.firstDifferenceOffset === undefined
       ? "n/a"
       : difference.firstDifferenceOffset.toString()
-  return [
-    `${difference.relativePath}`,
-    `  kind            ${difference.kind}`,
-    `  offset          ${offset}`,
-    `  first sha256    ${difference.firstSha256 ?? "missing"}`,
-    `  second sha256   ${difference.secondSha256 ?? "missing"}`
-  ].join("\n")
+  lines.push(`  offset          ${offset}`)
+  lines.push(`  first sha256    ${difference.firstSha256 ?? "missing"}`)
+  lines.push(`  second sha256   ${difference.secondSha256 ?? "missing"}`)
+  return lines.join("\n")
 }
 
 const makeTempDirectory = (): Effect.Effect<string, ReproFileError, never> =>
@@ -407,18 +537,45 @@ const readFileEffect = (path: string): Effect.Effect<Uint8Array, ReproFileError,
       })
   })
 
-const statPath = (
+const lstatPath = (
   path: string
-): Effect.Effect<Awaited<ReturnType<typeof stat>>, ReproFileError, never> =>
+): Effect.Effect<Awaited<ReturnType<typeof lstat>>, ReproFileError, never> =>
   Effect.tryPromise({
-    try: () => stat(path),
+    try: () => lstat(path),
     catch: (cause) =>
       new ReproFileError({
-        operation: "stat",
+        operation: "lstat",
         path,
         message: `failed to stat ${path}`,
         cause
       })
+  })
+
+const readlinkEffect = (path: string): Effect.Effect<string, ReproFileError, never> =>
+  Effect.tryPromise({
+    try: () => readlink(path),
+    catch: (cause) =>
+      new ReproFileError({
+        operation: "readlink",
+        path,
+        message: `failed to read symlink target at ${path}`,
+        cause
+      })
+  })
+
+const symlinkEffect = (target: string, path: string): Effect.Effect<void, ReproFileError, never> =>
+  Effect.gen(function* () {
+    yield* makeDirectory(dirname(path))
+    yield* Effect.tryPromise({
+      try: () => symlink(target, path),
+      catch: (cause) =>
+        new ReproFileError({
+          operation: "symlink",
+          path,
+          message: `failed to create symlink at ${path} -> ${target}`,
+          cause
+        })
+    })
   })
 
 const copyFileEffect = (

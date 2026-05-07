@@ -4,7 +4,7 @@ import {
   generateKeyPairSync,
   verify as cryptoVerify
 } from "node:crypto"
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises"
 import { dirname, join, relative } from "node:path"
 import { tmpdir } from "node:os"
 
@@ -383,6 +383,175 @@ test("desktop check --repro --json returns structured diff reports", async () =>
     await rm(directory, { recursive: true, force: true })
   }
 })
+
+const reproSymlinkTest = process.platform === "win32" ? test.skip : test
+
+reproSymlinkTest(
+  "desktop check --repro reports entry-type drift between symlink and regular file",
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
+    try {
+      await writePlaygroundFixture(directory)
+      const commandRunner = deterministicBuildRunner()
+      let pass = 0
+      const packageRunner = symlinkDriftPackageRunner(() => {
+        pass += 1
+        return pass === 1 ? "symlink" : "regular"
+      })
+      const stderr: string[] = []
+
+      const exitCode = await Effect.runPromise(
+        runCli({
+          argv: [
+            "check",
+            "--repro",
+            "--config",
+            "apps/playground/desktop.config.ts",
+            "--platform",
+            "linux-x64",
+            "--artifact",
+            "deb",
+            "--json"
+          ],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner,
+          packageCommandRunner: packageRunner,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+      )
+
+      const report = JSON.parse(stderr.join("")) as {
+        readonly tag: string
+        readonly report: {
+          readonly differences: ReadonlyArray<{
+            readonly relativePath: string
+            readonly kind: string
+            readonly firstEntryKind?: string
+            readonly secondEntryKind?: string
+          }>
+        }
+      }
+      expect(exitCode).toBe(1)
+      expect(report.tag).toBe("ReproDiffError")
+      const drift = report.report.differences.find((difference) =>
+        difference.relativePath.endsWith("app-link")
+      )
+      expect(drift?.kind).toBe("entry-type")
+      expect(drift?.firstEntryKind).toBe("symlink")
+      expect(drift?.secondEntryKind).toBe("file")
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  }
+)
+
+reproSymlinkTest(
+  "desktop check --repro reports symlink-target drift between two symlinks",
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
+    try {
+      await writePlaygroundFixture(directory)
+      const commandRunner = deterministicBuildRunner()
+      let pass = 0
+      const packageRunner = symlinkDriftPackageRunner(() => {
+        pass += 1
+        return pass === 1 ? "symlink-a" : "symlink-b"
+      })
+      const stderr: string[] = []
+
+      const exitCode = await Effect.runPromise(
+        runCli({
+          argv: [
+            "check",
+            "--repro",
+            "--config",
+            "apps/playground/desktop.config.ts",
+            "--platform",
+            "linux-x64",
+            "--artifact",
+            "deb",
+            "--json"
+          ],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner,
+          packageCommandRunner: packageRunner,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+      )
+
+      const report = JSON.parse(stderr.join("")) as {
+        readonly tag: string
+        readonly report: {
+          readonly differences: ReadonlyArray<{
+            readonly relativePath: string
+            readonly kind: string
+            readonly firstSymlinkTarget?: string
+            readonly secondSymlinkTarget?: string
+          }>
+        }
+      }
+      expect(exitCode).toBe(1)
+      expect(report.tag).toBe("ReproDiffError")
+      const drift = report.report.differences.find((difference) =>
+        difference.relativePath.endsWith("app-link")
+      )
+      expect(drift?.kind).toBe("symlink-target")
+      expect(drift?.firstSymlinkTarget).toBe("target-a.txt")
+      expect(drift?.secondSymlinkTarget).toBe("target-b.txt")
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  }
+)
+
+reproSymlinkTest(
+  "desktop check --repro passes when both passes emit identical symlinks",
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
+    try {
+      await writePlaygroundFixture(directory)
+      const commandRunner = deterministicBuildRunner()
+      const packageRunner = symlinkDriftPackageRunner(() => "symlink")
+      const stdout: string[] = []
+
+      const exitCode = await Effect.runPromise(
+        runCli({
+          argv: [
+            "check",
+            "--repro",
+            "--config",
+            "apps/playground/desktop.config.ts",
+            "--platform",
+            "linux-x64",
+            "--artifact",
+            "deb"
+          ],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner,
+          packageCommandRunner: packageRunner,
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: () => {}
+        })
+      )
+
+      expect(exitCode).toBe(0)
+      expect(stdout.join("")).toContain("byte-identical")
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  }
+)
 
 test("desktop check --api writes and verifies public API snapshots", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
@@ -2960,6 +3129,32 @@ const deterministicPackageRunner =
         const output = invocation.args.at(-1)
         if (output !== undefined) {
           yield* Effect.promise(() => writeFile(output, content()))
+        }
+      }
+    })
+
+const symlinkDriftPackageRunner =
+  (mode: () => "symlink" | "symlink-a" | "symlink-b" | "regular"): PackageCommandRunner =>
+  (invocation) =>
+    Effect.gen(function* () {
+      if (invocation.step === "linux-deb") {
+        const output = invocation.args.at(-1)
+        if (output !== undefined) {
+          yield* Effect.promise(() => writeFile(output, "deb"))
+          const dir = dirname(output)
+          const linkPath = join(dir, "app-link")
+          yield* Effect.promise(() => writeFile(join(dir, "target-a.txt"), "a"))
+          yield* Effect.promise(() => writeFile(join(dir, "target-b.txt"), "b"))
+          const decision = mode()
+          if (decision === "symlink") {
+            yield* Effect.promise(() => symlink("target-a.txt", linkPath))
+          } else if (decision === "symlink-a") {
+            yield* Effect.promise(() => symlink("target-a.txt", linkPath))
+          } else if (decision === "symlink-b") {
+            yield* Effect.promise(() => symlink("target-b.txt", linkPath))
+          } else {
+            yield* Effect.promise(() => writeFile(linkPath, "regular"))
+          }
         }
       }
     })
