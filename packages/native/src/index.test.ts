@@ -1784,6 +1784,57 @@ test("unsupported Path client reports deferred host methods as Effect values", a
   )
 })
 
+test("Path bridge client rejects NUL-bearing host output as InvalidOutput", async () => {
+  const NUL = String.fromCharCode(0)
+  const methods: ReadonlyArray<{
+    readonly name: keyof PathClientApi
+    readonly operation: string
+  }> = [
+    { name: "appData", operation: "Path.appData" },
+    { name: "cache", operation: "Path.cache" },
+    { name: "logs", operation: "Path.logs" },
+    { name: "temp", operation: "Path.temp" },
+    { name: "home", operation: "Path.home" },
+    { name: "downloads", operation: "Path.downloads" }
+  ]
+
+  for (const { name, operation } of methods) {
+    const requests: HostProtocolRequestEnvelope[] = []
+    const exchange = pathExchange(requests, () => ({
+      kind: "success",
+      payload: { path: `/tmp/a${NUL}b` }
+    }))
+
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const path = yield* Path
+        return yield* Effect.exit(path[name]())
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            PathLive,
+            makePathBridgeClientLayer(exchange, {
+              nextRequestId: nextId([`${name}-request`]),
+              nextTraceId: nextId([`${name}-trace`]),
+              now: nextNumber([1710000000000])
+            })
+          )
+        )
+      )
+    )
+
+    expectExitFailure(
+      exit,
+      (error) =>
+        hasErrorTag(error, "InvalidOutput") &&
+        typeof error === "object" &&
+        error !== null &&
+        "operation" in error &&
+        error.operation === operation
+    )
+  }
+})
+
 test("ProtocolApi declares the Phase 8 Protocol method surface", () => {
   expect(ProtocolApi.tag).toBe("Protocol")
   expect([...ProtocolMethodNames]).toEqual(expectedProtocolMethods)
