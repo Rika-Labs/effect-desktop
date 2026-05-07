@@ -341,8 +341,8 @@ const probeNativeHostCache = (
       "native-host-cache",
       binary,
       "native host build cache is empty",
-      "Run `bun desktop build` or `cargo build -p host` before packaging.",
-      "cargo build -p host"
+      "Run `bun desktop build` or `cargo build -p host --release` before packaging.",
+      "cargo build -p host --release"
     )
   })
 

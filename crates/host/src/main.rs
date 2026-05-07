@@ -66,10 +66,7 @@ fn main() -> Result<()> {
 }
 
 fn runtime_config(run_mode: RunMode) -> runtime::RuntimeConfig {
-    let core_package_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .join("packages")
-        .join("core");
+    let core_package_dir = PathBuf::from("../../packages/core");
 
     let config = runtime::RuntimeConfig::new("bun")
         .args(["src/runtime/main.ts"])

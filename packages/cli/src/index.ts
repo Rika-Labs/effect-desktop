@@ -462,7 +462,7 @@ export const runDesktopBuild = (
     const nativeHost = yield* runStep(options, plan, {
       name: "native-host",
       command: "cargo",
-      args: ["build", "-p", "host"],
+      args: ["build", "-p", "host", "--release"],
       cwd: options.cwd,
       outputPath: join(plan.layoutPath, "native", hostBinaryName(target))
     })
@@ -1770,7 +1770,7 @@ const resolvePath = (cwd: string, path: string): string =>
   isAbsolute(path) ? path : resolve(cwd, path)
 
 const hostBuildOutputPath = (repoRoot: string, target: BuildTarget): string =>
-  join(repoRoot, "target", "debug", hostBinaryName(target))
+  join(repoRoot, "target", "release", hostBinaryName(target))
 
 const hostBinaryName = (target: BuildTarget): string =>
   target.startsWith("windows-") ? "host.exe" : "host"
