@@ -418,7 +418,7 @@ pub fn commit_staged_install(prepared: &PreparedInstall) -> Result<(), InstallSt
         fs::create_dir_all(parent)
             .map_err(|error| io_error("create-current-parent", parent, error))?;
     }
-    fs::rename(
+    atomic_replace(
         &prepared.paths.staged_bundle,
         &prepared.paths.current_bundle,
     )
@@ -657,6 +657,39 @@ fn io_error(operation: &'static str, path: &Path, error: std::io::Error) -> Inst
         path: path.to_path_buf(),
         message: error.to_string(),
     }
+}
+
+#[cfg(not(windows))]
+fn atomic_replace(source: &Path, destination: &Path) -> Result<(), std::io::Error> {
+    fs::rename(source, destination)
+}
+
+#[cfg(windows)]
+fn atomic_replace(source: &Path, destination: &Path) -> Result<(), std::io::Error> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+    };
+
+    let source = wide_path(source);
+    let destination = wide_path(destination);
+    let result = unsafe {
+        MoveFileExW(
+            source.as_ptr(),
+            destination.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    };
+    if result == 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+fn wide_path(path: &Path) -> Vec<u16> {
+    path.as_os_str().encode_wide().chain([0]).collect()
 }
 
 fn rollback_allowed(
@@ -1071,6 +1104,8 @@ mod tests {
     fn commit_staged_install_moves_verified_bundle_to_current_path() {
         let root = test_root("commit-install");
         let paths = install_paths(&root);
+        fs::create_dir_all(root.join("current")).expect("current dir");
+        fs::write(&paths.current_bundle, b"prior").expect("prior bundle");
         let plan = install_plan(b"new-bundle");
         let prepared = stage_install(&plan, &paths, b"new-bundle", 1_000)
             .expect("verified bytes should stage");
