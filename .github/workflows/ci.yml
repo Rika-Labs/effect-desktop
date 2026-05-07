@@ -19,10 +19,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - blacksmith-2vcpu-ubuntu-2404
-          - blacksmith-6vcpu-macos-latest
-          - blacksmith-2vcpu-windows-2025
+        include:
+          - cell: linux-x64
+            os: blacksmith-2vcpu-ubuntu-2404
+          - cell: macos-arm64
+            os: blacksmith-6vcpu-macos-latest
+          - cell: windows-x64
+            os: blacksmith-2vcpu-windows-2025
+    env:
+      EFFECT_DESKTOP_MATRIX_CELL: ${{ matrix.cell }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -70,6 +75,9 @@ jobs:
 
       - name: bun test
         run: bun test
+
+      - name: verification matrix gate
+        run: bun test tests/spec/verification-matrix.test.ts
 
       - name: bun desktop check --repro regression tests
         run: bun test packages/cli/src/index.test.ts -t repro
