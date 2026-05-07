@@ -70,7 +70,8 @@ export class AppSecondInstanceEvent extends Schema.Class<AppSecondInstanceEvent>
 }) {}
 
 export class AppOpenFileEvent extends Schema.Class<AppOpenFileEvent>("AppOpenFileEvent")({
-  path: Schema.String
+  // eslint-disable-next-line no-control-regex
+  path: Schema.NonEmptyString.check(Schema.isPattern(/^[^\x00]*$/))
 }) {}
 
 export class AppOpenUrlEvent extends Schema.Class<AppOpenUrlEvent>("AppOpenUrlEvent")({

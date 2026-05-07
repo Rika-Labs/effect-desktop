@@ -589,6 +589,52 @@ test("App bridge client sends typed host envelopes and decodes event streams", a
   ])
 })
 
+test("App bridge client rejects empty or NUL-bearing onOpenFile paths as InvalidOutput", async () => {
+  const NUL = String.fromCharCode(0)
+  const cases: ReadonlyArray<{ readonly payload: unknown }> = [
+    { payload: { path: "" } },
+    { payload: { path: `/tmp/a${NUL}b` } }
+  ]
+
+  for (const { payload } of cases) {
+    const exchange: ApiClientExchange = {
+      request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
+      subscribe: (method) =>
+        method === "App.onOpenFile"
+          ? Stream.make(
+              new HostProtocolEventEnvelope({
+                kind: "event",
+                timestamp: 1710000000400,
+                traceId: "event-trace",
+                method,
+                payload
+              })
+            )
+          : Stream.empty
+    }
+
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const app = yield* App
+        return yield* Effect.exit(app.onOpenFile().pipe(Stream.take(1), Stream.runCollect))
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            AppLive,
+            makeAppBridgeClientLayer(exchange, {
+              nextRequestId: nextId(["unused"]),
+              nextTraceId: nextId(["unused"]),
+              now: nextNumber([1710000000000])
+            })
+          )
+        )
+      )
+    )
+
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+  }
+})
+
 test("unsupported App client reports typed failures as Effect values", async () => {
   const exit = await Effect.runPromiseExit(
     Effect.gen(function* () {
