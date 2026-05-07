@@ -1,12 +1,11 @@
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
-import { defineConfig, type Plugin } from "vite"
+import { defineConfig } from "vite"
 
-const APP_NONCE_PLACEHOLDER = "__APP_NONCE__"
 const APP_ASSET_BASE_URL = "app://localhost/"
 
 export default defineConfig(({ command }) => ({
-  plugins: [react(), tailwindcss(), noncePlaceholder()],
+  plugins: [react(), tailwindcss()],
   base: command === "build" ? APP_ASSET_BASE_URL : "/",
   server: {
     host: "127.0.0.1",
@@ -31,18 +30,3 @@ export default defineConfig(({ command }) => ({
     }
   }
 }))
-
-function noncePlaceholder(): Plugin {
-  return {
-    name: "effect-desktop-template-nonce-placeholder",
-    enforce: "post",
-    transformIndexHtml(html) {
-      return html
-        .replaceAll("<script ", `<script nonce="${APP_NONCE_PLACEHOLDER}" `)
-        .replaceAll(
-          '<link rel="stylesheet" ',
-          `<link rel="stylesheet" nonce="${APP_NONCE_PLACEHOLDER}" `
-        )
-    }
-  }
-}

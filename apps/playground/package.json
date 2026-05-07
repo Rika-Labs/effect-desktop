@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1 --port 3000",
-    "build": "next build && node scripts/inject-nonce.mjs",
+    "build": "next build",
     "check": "tsc --noEmit -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "oxlint . --ignore-pattern 'dist/**' --ignore-pattern '.next/**' --ignore-pattern '.source/**'"
