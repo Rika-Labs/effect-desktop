@@ -4,6 +4,66 @@
   "entrypoint": "src/index.ts",
   "symbols": [
     {
+      "name": "AccessibilityAuditMode",
+      "kind": "interface",
+      "signature": "export interface AccessibilityAuditMode { readonly id: string readonly direction: \"ltr\" | \"rtl\" readonly colorScheme: \"light\" | \"dark\" readonly axe: string readonly pa11y: string }"
+    },
+    {
+      "name": "AccessibilityContrastPair",
+      "kind": "interface",
+      "signature": "export interface AccessibilityContrastPair { readonly id: string readonly foreground: string readonly background: string readonly minimumRatio: number }"
+    },
+    {
+      "name": "AccessibilityGateError",
+      "kind": "type",
+      "signature": "export type AccessibilityGateError = | AccessibilityGateFileError | AccessibilityGateManifestError | AccessibilityGateEvidenceError"
+    },
+    {
+      "name": "AccessibilityGateEvidenceError",
+      "kind": "class",
+      "signature": "export class AccessibilityGateEvidenceError extends Data.TaggedError( \"AccessibilityGateEvidenceError\" )<{ readonly template: string readonly message: string }> {}"
+    },
+    {
+      "name": "AccessibilityGateFileError",
+      "kind": "class",
+      "signature": "export class AccessibilityGateFileError extends Data.TaggedError(\"AccessibilityGateFileError\")<{ readonly operation: string readonly path: string readonly message: string readonly cause: unknown }> {}"
+    },
+    {
+      "name": "AccessibilityGateManifestError",
+      "kind": "class",
+      "signature": "export class AccessibilityGateManifestError extends Data.TaggedError( \"AccessibilityGateManifestError\" )<{ readonly message: string }> {}"
+    },
+    {
+      "name": "AccessibilityGateOptions",
+      "kind": "interface",
+      "signature": "export interface AccessibilityGateOptions { readonly cwd: string }"
+    },
+    {
+      "name": "AccessibilityGateReport",
+      "kind": "interface",
+      "signature": "export interface AccessibilityGateReport { readonly passed: true readonly release: string readonly templates: readonly AccessibilityTemplateReport[] }"
+    },
+    {
+      "name": "AccessibilityManifest",
+      "kind": "interface",
+      "signature": "export interface AccessibilityManifest { readonly schemaVersion: 1 readonly source: string readonly release: string readonly templates: readonly AccessibilityTemplate[] }"
+    },
+    {
+      "name": "AccessibilityRequiredToken",
+      "kind": "interface",
+      "signature": "export interface AccessibilityRequiredToken { readonly file: string readonly token: string }"
+    },
+    {
+      "name": "AccessibilityTemplate",
+      "kind": "interface",
+      "signature": "export interface AccessibilityTemplate { readonly id: string readonly root: string readonly sourceFiles: readonly string[] readonly i18nFiles: readonly string[] readonly auditDir: string readonly auditModes: readonly AccessibilityAuditMode[] readonly contrastPairs: readonly AccessibilityContrastPair[] readonly requiredTokens: readonly AccessibilityRequiredToken[] }"
+    },
+    {
+      "name": "AccessibilityTemplateReport",
+      "kind": "interface",
+      "signature": "export interface AccessibilityTemplateReport { readonly id: string readonly auditModes: number readonly contrastPairs: number readonly scannedFiles: number }"
+    },
+    {
       "name": "BuildArch",
       "kind": "type",
       "signature": "export type BuildArch = \"arm64\" | \"x64\""
@@ -457,6 +517,11 @@
       "name": "ReproDifference",
       "kind": "interface",
       "signature": "export interface ReproDifference { readonly relativePath: string readonly kind: \"missing-in-first\" | \"missing-in-second\" | \"content\" readonly firstDifferenceOffset: number | undefined readonly firstSizeBytes: number | undefined readonly secondSizeBytes: number | undefined readonly firstSha256: string | undefined readonly secondSha256: string | undefined }"
+    },
+    {
+      "name": "runAccessibilityGate",
+      "kind": "value",
+      "signature": "const runAccessibilityGate: (options: AccessibilityGateOptions) => Effect.Effect<AccessibilityGateReport, AccessibilityGateError, never>"
     },
     {
       "name": "runCli",

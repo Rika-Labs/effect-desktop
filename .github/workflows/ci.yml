@@ -91,6 +91,9 @@ jobs:
       - name: bun desktop check --release
         run: bun packages/cli/src/bin.ts check --release
 
+      - name: bun desktop check --a11y
+        run: bun packages/cli/src/bin.ts check --a11y
+
       - name: cargo fmt --check
         run: cargo fmt --check
 

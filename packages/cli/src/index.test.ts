@@ -822,6 +822,107 @@ test("desktop check --release rejects unpinned release workflow actions", async 
   }
 })
 
+test("desktop check --a11y verifies template accessibility evidence", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+  try {
+    await writeAccessibilityFixture(directory)
+    const stdout: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--a11y"],
+        cwd: directory,
+        writeStdout: (text) => {
+          stdout.push(text)
+        },
+        writeStderr: () => {}
+      })
+    )
+
+    expect(exitCode).toBe(0)
+    expect(stdout.join("")).toContain("templates         1")
+    expect(stdout.join("")).toContain("basic-react-tailwind")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --a11y rejects hardcoded template English outside i18n files", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+  try {
+    await writeAccessibilityFixture(directory, {
+      appSource: [
+        "import { templateMessages } from './messages'",
+        "export function App() {",
+        "  return <button>Open window</button>",
+        "}"
+      ].join("\n")
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--a11y"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("AccessibilityGateEvidenceError")
+    expect(stderr.join("")).toContain("hardcoded user-visible English")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --a11y rejects contrast below the WCAG floor", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+  try {
+    const manifest = accessibilityManifestFixture()
+    if (!isAccessibilityManifestFixture(manifest)) {
+      throw new Error("invalid accessibility manifest fixture")
+    }
+    await writeAccessibilityFixture(directory, {
+      manifest: {
+        ...manifest,
+        templates: manifest.templates.map((template) => ({
+          ...template,
+          contrastPairs: [
+            {
+              id: "bad-body",
+              foreground: "#777777",
+              background: "#888888",
+              minimumRatio: 4.5
+            }
+          ]
+        }))
+      }
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--a11y"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("AccessibilityGateEvidenceError")
+    expect(stderr.join("")).toContain("contrast ratio")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop sign signs macOS app bundle with hardened runtime entitlements", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
   try {
@@ -2289,6 +2390,165 @@ const writeReleaseFixture = async (
     overrides.releaseSettings ?? releaseSettingsFixture()
   )
 }
+
+const writeAccessibilityFixture = async (
+  root: string,
+  overrides: {
+    readonly manifest?: unknown
+    readonly appSource?: string
+    readonly styles?: string
+    readonly messages?: string
+    readonly manualAudit?: string
+  } = {}
+): Promise<void> => {
+  const auditRoot = join(root, "docs", "audits", "v1.0.0", "basic-react-tailwind")
+  const sourceRoot = join(root, "templates", "basic-react-tailwind", "src")
+  await mkdir(join(root, "release"), { recursive: true })
+  await mkdir(auditRoot, { recursive: true })
+  await mkdir(sourceRoot, { recursive: true })
+  await writeFile(
+    join(root, "release", "accessibility.json"),
+    JSON.stringify(overrides.manifest ?? accessibilityManifestFixture(), null, 2)
+  )
+  await writeFile(join(sourceRoot, "App.tsx"), overrides.appSource ?? accessibilityAppFixture())
+  await writeFile(join(sourceRoot, "styles.css"), overrides.styles ?? accessibilityStylesFixture())
+  await writeFile(
+    join(sourceRoot, "messages.ts"),
+    overrides.messages ?? accessibilityMessagesFixture()
+  )
+  await writeFile(
+    join(auditRoot, "manual-keyboard.md"),
+    overrides.manualAudit ?? accessibilityManualAuditFixture()
+  )
+  await writeFile(join(auditRoot, "keyboard-walkthrough.webm"), "fixture screencast\n")
+  for (const mode of ["light-ltr", "dark-ltr", "light-rtl", "dark-rtl"]) {
+    await writeFile(
+      join(auditRoot, `axe.${mode}.json`),
+      JSON.stringify(axeAuditFixture(mode), null, 2)
+    )
+    await writeFile(
+      join(auditRoot, `pa11y.${mode}.json`),
+      JSON.stringify(pa11yAuditFixture(mode), null, 2)
+    )
+  }
+}
+
+const accessibilityManifestFixture = (): unknown => ({
+  schemaVersion: 1,
+  source: "docs/SPEC.md §25.5",
+  release: "v1.0.0",
+  templates: [
+    {
+      id: "basic-react-tailwind",
+      root: "templates/basic-react-tailwind",
+      sourceFiles: [
+        "templates/basic-react-tailwind/src/App.tsx",
+        "templates/basic-react-tailwind/src/messages.ts",
+        "templates/basic-react-tailwind/src/styles.css"
+      ],
+      i18nFiles: ["templates/basic-react-tailwind/src/messages.ts"],
+      auditDir: "docs/audits/v1.0.0/basic-react-tailwind",
+      auditModes: [
+        {
+          id: "light-ltr",
+          direction: "ltr",
+          colorScheme: "light",
+          axe: "docs/audits/v1.0.0/basic-react-tailwind/axe.light-ltr.json",
+          pa11y: "docs/audits/v1.0.0/basic-react-tailwind/pa11y.light-ltr.json"
+        },
+        {
+          id: "dark-ltr",
+          direction: "ltr",
+          colorScheme: "dark",
+          axe: "docs/audits/v1.0.0/basic-react-tailwind/axe.dark-ltr.json",
+          pa11y: "docs/audits/v1.0.0/basic-react-tailwind/pa11y.dark-ltr.json"
+        },
+        {
+          id: "light-rtl",
+          direction: "rtl",
+          colorScheme: "light",
+          axe: "docs/audits/v1.0.0/basic-react-tailwind/axe.light-rtl.json",
+          pa11y: "docs/audits/v1.0.0/basic-react-tailwind/pa11y.light-rtl.json"
+        },
+        {
+          id: "dark-rtl",
+          direction: "rtl",
+          colorScheme: "dark",
+          axe: "docs/audits/v1.0.0/basic-react-tailwind/axe.dark-rtl.json",
+          pa11y: "docs/audits/v1.0.0/basic-react-tailwind/pa11y.dark-rtl.json"
+        }
+      ],
+      contrastPairs: [
+        { id: "light-body", foreground: "#020617", background: "#f8fafc", minimumRatio: 4.5 }
+      ],
+      requiredTokens: [
+        { file: "templates/basic-react-tailwind/src/styles.css", token: "prefers-reduced-motion" },
+        { file: "templates/basic-react-tailwind/src/styles.css", token: "prefers-color-scheme" },
+        { file: "templates/basic-react-tailwind/src/App.tsx", token: "templateMessages" },
+        { file: "templates/basic-react-tailwind/src/messages.ts", token: "ar" }
+      ]
+    }
+  ]
+})
+
+const isAccessibilityManifestFixture = (
+  value: unknown
+): value is {
+  readonly templates: readonly {
+    readonly contrastPairs: readonly unknown[]
+  }[]
+} =>
+  typeof value === "object" &&
+  value !== null &&
+  "templates" in value &&
+  Array.isArray(value.templates)
+
+const accessibilityAppFixture = (): string =>
+  [
+    "import { templateMessages } from './messages'",
+    "const copy = templateMessages.en",
+    "export function App() {",
+    "  return <button>{copy.openWindow}</button>",
+    "}"
+  ].join("\n")
+
+const accessibilityStylesFixture = (): string =>
+  [
+    "@media (prefers-color-scheme: dark) { :root { color-scheme: dark; } }",
+    "@media (prefers-reduced-motion: reduce) { * { transition-duration: 0.01ms; } }"
+  ].join("\n")
+
+const accessibilityMessagesFixture = (): string =>
+  [
+    "export const templateMessages = {",
+    "  en: { openWindow: 'Open window' },",
+    "  ar: { openWindow: 'افتح نافذة' }",
+    "}"
+  ].join("\n")
+
+const accessibilityManualAuditFixture = (): string =>
+  [
+    "# basic-react-tailwind Manual Keyboard Audit",
+    "Keyboard-only walkthrough: complete.",
+    "Screencast: keyboard-walkthrough.webm",
+    "RTL example: Arabic fixture complete.",
+    "Sign-off: release operator"
+  ].join("\n")
+
+const axeAuditFixture = (mode: string): unknown => ({
+  url: `fixture:${mode}`,
+  testEngine: { name: "axe-core", version: "4.x" },
+  violations: [],
+  incomplete: [],
+  passes: []
+})
+
+const pa11yAuditFixture = (mode: string): unknown => ({
+  url: `fixture:${mode}`,
+  runner: "pa11y",
+  standard: "WCAG2AA",
+  issues: []
+})
 
 const releaseChecklistFixture = (): unknown => ({
   schemaVersion: 1,

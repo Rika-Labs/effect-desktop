@@ -1,0 +1,6 @@
+{
+  "url": "templates/basic-react-tailwind/dist/index.html?dir=ltr&color-scheme=dark",
+  "runner": "pa11y",
+  "standard": "WCAG2AA",
+  "issues": []
+}
