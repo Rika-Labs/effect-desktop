@@ -201,26 +201,6 @@ describe("Settings", () => {
     expect(await Effect.runPromise(store.keys())).toEqual([])
   })
 
-  test("get rejects NUL bytes in keys before reading", async () => {
-    const { store } = await makeFixture()
-    const key = `api${String.fromCharCode(0)}token`
-
-    const exit = await Effect.runPromiseExit(store.get(key, UserName))
-
-    expectFailure(exit, SettingsInvalidArgumentError)
-  })
-
-  test("delete rejects NUL bytes in keys before mutating", async () => {
-    const { store } = await makeFixture()
-    const key = `api${String.fromCharCode(0)}token`
-
-    await Effect.runPromise(store.set("api.token", UserName, "secret"))
-    const exit = await Effect.runPromiseExit(store.delete(key))
-
-    expectFailure(exit, SettingsInvalidArgumentError)
-    expect(await Effect.runPromise(store.keys())).toEqual(["api.token"])
-  })
-
   test("update rejects NUL bytes in keys before opening transaction", async () => {
     const { store } = await makeFixture()
     const key = `api${String.fromCharCode(0)}token`
@@ -241,32 +221,6 @@ describe("Settings", () => {
     expect(keys).toEqual([])
   })
 
-  test("migration getRaw rejects NUL bytes in keys before reading", async () => {
-    const key = `api${String.fromCharCode(0)}token`
-    const { exit } = await runFailingMigration((ctx) => ctx.getRaw(key).pipe(Effect.asVoid))
-
-    expectMigrationFailedDueToInvalidArgument(exit)
-  })
-
-  test("migration deleteRaw rejects NUL bytes in keys before mutating", async () => {
-    const key = `api${String.fromCharCode(0)}token`
-    const { exit, keys } = await runFailingMigration(
-      (ctx) => ctx.deleteRaw(key),
-      (store) => store.set("api.token", UserName, "secret")
-    )
-
-    expectMigrationFailedDueToInvalidArgument(exit)
-    expect(keys).toEqual(["api.token"])
-  })
-
-  test("migration rename rejects NUL bytes in the source key before reading", async () => {
-    const from = `api${String.fromCharCode(0)}token`
-    const { exit, keys } = await runFailingMigration((ctx) => ctx.rename(from, "api.token"))
-
-    expectMigrationFailedDueToInvalidArgument(exit)
-    expect(keys).toEqual([])
-  })
-
   test("migration rename rejects NUL bytes in the target key before writing", async () => {
     const to = `api${String.fromCharCode(0)}token`
     const { exit, keys } = await runFailingMigration(
@@ -276,6 +230,76 @@ describe("Settings", () => {
 
     expectMigrationFailedDueToInvalidArgument(exit)
     expect(keys).toEqual(["api.token"])
+  })
+
+  test("get rejects empty keys", async () => {
+    const { store } = await makeFixture()
+
+    const exit = await Effect.runPromiseExit(store.get("", UserName))
+
+    expectFailure(exit, SettingsInvalidArgumentError)
+  })
+
+  test("delete rejects empty keys", async () => {
+    const { store } = await makeFixture()
+
+    const exit = await Effect.runPromiseExit(store.delete(""))
+
+    expectFailure(exit, SettingsInvalidArgumentError)
+  })
+
+  test("get drains a legacy control-byte-bearing row persisted by older builds", async () => {
+    const legacyKey = `api${String.fromCharCode(0)}token`
+    const { store } = await makeFixtureWithLegacyKey(legacyKey, "secret")
+
+    const value = await Effect.runPromise(store.get(legacyKey, UserName))
+
+    expect(Option.getOrUndefined(value)).toBe("secret")
+  })
+
+  test("delete drains a legacy control-byte-bearing row persisted by older builds", async () => {
+    const legacyKey = `api${String.fromCharCode(0)}token`
+    const { store } = await makeFixtureWithLegacyKey(legacyKey, "secret")
+
+    await Effect.runPromise(store.delete(legacyKey))
+
+    expect(await Effect.runPromise(store.keys())).toEqual([])
+  })
+
+  test("migration getRaw drains a legacy control-byte-bearing row", async () => {
+    const legacyKey = `api${String.fromCharCode(0)}token`
+    const observedRef: { value: Option.Option<unknown> } = { value: Option.none() }
+    const { exit } = await runMigrationOnSeededDb(legacyKey, "secret", (ctx) =>
+      Effect.gen(function* () {
+        observedRef.value = yield* ctx.getRaw(legacyKey)
+      })
+    )
+
+    expect(Exit.isSuccess(exit)).toBe(true)
+    expect(observedRef.value).toEqual(Option.some("secret"))
+  })
+
+  test("migration deleteRaw drains a legacy control-byte-bearing row", async () => {
+    const legacyKey = `api${String.fromCharCode(0)}token`
+    const { exit, keysAfter } = await runMigrationOnSeededDb(legacyKey, "secret", (ctx) =>
+      ctx.deleteRaw(legacyKey)
+    )
+
+    expect(Exit.isSuccess(exit)).toBe(true)
+    expect(keysAfter).toEqual([])
+  })
+
+  test("migration rename relocates a legacy control-byte-bearing row to a valid key", async () => {
+    const legacyKey = `api${String.fromCharCode(0)}token`
+    const { exit, keysAfter, valueAtNewKey } = await runMigrationOnSeededDb(
+      legacyKey,
+      "secret",
+      (ctx) => ctx.rename(legacyKey, "api.token")
+    )
+
+    expect(Exit.isSuccess(exit)).toBe(true)
+    expect(keysAfter).toEqual(["api.token"])
+    expect(valueAtNewKey).toBe("secret")
   })
 })
 
@@ -360,4 +384,73 @@ function expectMigrationFailedDueToInvalidArgument(exit: Exit.Exit<unknown, Sett
       }
     }
   }
+}
+
+async function makeFixtureWithLegacyKey(
+  legacyKey: string,
+  value: string
+): Promise<{ readonly sqlite: SqliteApi; readonly store: SettingsStore }> {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-settings-"))
+  const path = join(directory, "settings.sqlite")
+  const initial = await makeFixture({ path, schemaVersion: 1 })
+  await Effect.runPromise(initial.store.close())
+  await seedLegacyKey(path, legacyKey, value)
+  return makeFixture({ path, schemaVersion: 1 })
+}
+
+async function runMigrationOnSeededDb(
+  legacyKey: string,
+  value: string,
+  migrate: (ctx: SettingsMigrationContext) => Effect.Effect<void, SettingsError, never>
+): Promise<{
+  readonly exit: Exit.Exit<SettingsStore, SettingsError>
+  readonly keysAfter: readonly string[]
+  readonly valueAtNewKey: string | undefined
+}> {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-settings-"))
+  const path = join(directory, "settings.sqlite")
+  const initial = await makeFixture({ path, schemaVersion: 1 })
+  await Effect.runPromise(initial.store.close())
+  await seedLegacyKey(path, legacyKey, value)
+
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const sqlite = await Effect.runPromise(makeSQLite(registry))
+  const settings = await Effect.runPromise(makeSettings(sqlite))
+  const exit = await Effect.runPromiseExit(
+    settings.open({
+      path,
+      ownerScope: "scope-main",
+      schemaVersion: 2,
+      migrations: [{ from: 1, to: 2, migrate }]
+    })
+  )
+
+  const after = await makeFixture({ path, schemaVersion: 2 })
+  const keysAfter = await Effect.runPromise(after.store.keys())
+  let valueAtNewKey: string | undefined
+  if (keysAfter.length === 1) {
+    const onlyKey = keysAfter[0]
+    if (onlyKey !== undefined && onlyKey !== legacyKey) {
+      const v = await Effect.runPromise(after.store.get(onlyKey, UserName))
+      valueAtNewKey = Option.getOrUndefined(v)
+    }
+  }
+  await Effect.runPromise(after.store.close())
+
+  return { exit, keysAfter, valueAtNewKey }
+}
+
+async function seedLegacyKey(path: string, key: string, value: string): Promise<void> {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const sqlite = await Effect.runPromise(makeSQLite(registry))
+  const connection = await Effect.runPromise(
+    sqlite.connect({ path, ownerScope: "scope-test-seed", create: false, strict: true })
+  )
+  await Effect.runPromise(
+    connection.exec(
+      "INSERT INTO settings_values (namespace, key, value_json, updated_at_ms) VALUES (?, ?, ?, ?)",
+      ["default", key, JSON.stringify(value), Date.now()]
+    )
+  )
+  await Effect.runPromise(connection.close())
 }
