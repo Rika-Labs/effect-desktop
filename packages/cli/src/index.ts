@@ -80,6 +80,11 @@ import {
   runDocsReleaseGate
 } from "./docs-release-gate.js"
 import { formatReleaseGateError, formatReleaseGateReport, runReleaseGate } from "./release-gate.js"
+import {
+  formatAccessibilityGateError,
+  formatAccessibilityGateReport,
+  runAccessibilityGate
+} from "./accessibility-gate.js"
 
 export {
   runDesktopPackage,
@@ -191,6 +196,21 @@ export {
   type ReleaseGateOptions,
   type ReleaseGateReport
 } from "./release-gate.js"
+export {
+  runAccessibilityGate,
+  type AccessibilityAuditMode,
+  type AccessibilityContrastPair,
+  type AccessibilityGateError,
+  type AccessibilityGateEvidenceError,
+  type AccessibilityGateFileError,
+  type AccessibilityGateManifestError,
+  type AccessibilityGateOptions,
+  type AccessibilityGateReport,
+  type AccessibilityManifest,
+  type AccessibilityRequiredToken,
+  type AccessibilityTemplate,
+  type AccessibilityTemplateReport
+} from "./accessibility-gate.js"
 
 export class CliUsageError extends Error {
   public override readonly name = "CliUsageError"
@@ -366,9 +386,13 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
       return yield* runReleaseCheckCli(options)
     }
 
+    if (options.argv[0] === "check" && options.argv.includes("--a11y")) {
+      return yield* runAccessibilityCheckCli(options)
+    }
+
     if (options.argv[0] !== "check" || !options.argv.includes("--production")) {
       options.writeStderr(
-        "Usage: desktop build --config <path>\nUsage: desktop package --config <path>\nUsage: desktop sign --config <path>\nUsage: desktop notarize --config <path>\nUsage: desktop publish --config <path>\nUsage: desktop doctor [--config <path>] [--ci] [--json]\nUsage: desktop check --production --config <path>\nUsage: desktop check --repro --config <path>\nUsage: desktop check --api [--write]\nUsage: desktop check --docs\nUsage: desktop check --release\n"
+        "Usage: desktop build --config <path>\nUsage: desktop package --config <path>\nUsage: desktop sign --config <path>\nUsage: desktop notarize --config <path>\nUsage: desktop publish --config <path>\nUsage: desktop doctor [--config <path>] [--ci] [--json]\nUsage: desktop check --production --config <path>\nUsage: desktop check --repro --config <path>\nUsage: desktop check --api [--write]\nUsage: desktop check --docs\nUsage: desktop check --release\nUsage: desktop check --a11y\n"
       )
       return 1
     }
@@ -946,6 +970,37 @@ const runReleaseCheckCli = (options: CliRunOptions): Effect.Effect<number, never
       options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
     } else {
       options.writeStdout(formatReleaseGateReport(report))
+    }
+
+    return 0
+  })
+
+const runAccessibilityCheckCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
+  Effect.gen(function* () {
+    const report = yield* runAccessibilityGate({
+      cwd: options.cwd
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          const formatted = formatAccessibilityGateError(error)
+          if (options.argv.includes("--json")) {
+            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+          } else {
+            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+          }
+          return undefined
+        })
+      )
+    )
+
+    if (report === undefined) {
+      return 1
+    }
+
+    if (options.argv.includes("--json")) {
+      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+    } else {
+      options.writeStdout(formatAccessibilityGateReport(report))
     }
 
     return 0
