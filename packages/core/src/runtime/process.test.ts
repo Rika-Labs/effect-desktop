@@ -108,6 +108,28 @@ processTest(
   }
 )
 
+test("Process rejects non-finite graceful shutdown windows", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    const exit = await Effect.runPromiseExit(makeProcess(registry, { gracefulShutdownMs: value }))
+    expectFailure(exit, HostProtocolInvalidArgumentError)
+  }
+})
+
+test("Process rejects non-positive graceful shutdown windows", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  for (const value of [0, -1, -5000]) {
+    const exit = await Effect.runPromiseExit(makeProcess(registry, { gracefulShutdownMs: value }))
+    expectFailure(exit, HostProtocolInvalidArgumentError)
+  }
+})
+
+test("Process accepts a valid finite positive graceful shutdown window", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const exit = await Effect.runPromiseExit(makeProcess(registry, { gracefulShutdownMs: 1 }))
+  expect(Exit.isSuccess(exit)).toBe(true)
+})
+
 processTest("Process spawn validates required owner scope before adapter activity", async () => {
   let spawnCalls = 0
   const fixture = await makeFixture(

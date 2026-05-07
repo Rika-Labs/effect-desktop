@@ -429,7 +429,10 @@ export const makeMockProcess = (
       : { gracefulShutdownMs: options.gracefulShutdownMs }),
     ...(options.permissions === undefined ? {} : { permissions: options.permissions }),
     ...(options.now === undefined ? {} : { now: options.now })
-  }).pipe(Effect.map((api) => Object.freeze({ ...api, calls: () => cloneProcessCalls(calls) })))
+  }).pipe(
+    Effect.orDie,
+    Effect.map((api) => Object.freeze({ ...api, calls: () => cloneProcessCalls(calls) }))
+  )
 }
 
 export const MockProcessLive = (
