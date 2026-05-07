@@ -129,6 +129,7 @@ export const makeWindowState = (
     return Object.freeze({
       restore: (windowId: string) =>
         Effect.gen(function* () {
+          yield* decodeWindowId(windowId, "WindowState.restore")
           const result = yield* read
           yield* publishReadEvent(result)
           const store = result.store
@@ -148,6 +149,7 @@ export const makeWindowState = (
         }),
       persist: (windowId: string, state: WindowStateRecord) =>
         Effect.gen(function* () {
+          yield* decodeWindowId(windowId, "WindowState.persist")
           const result = yield* read
           yield* publishReadEvent(result)
           const current = result.store
@@ -163,6 +165,9 @@ export const makeWindowState = (
         }),
       clear: (windowId?: string) =>
         Effect.gen(function* () {
+          if (windowId !== undefined) {
+            yield* decodeWindowId(windowId, "WindowState.clear")
+          }
           const result = yield* read
           yield* publishReadEvent(result)
           const next =
