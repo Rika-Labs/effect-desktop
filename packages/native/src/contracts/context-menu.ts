@@ -40,7 +40,7 @@ export class ContextMenuBindCommandInput extends Schema.Class<ContextMenuBindCom
 export class ContextMenuActivatedEvent extends Schema.Class<ContextMenuActivatedEvent>(
   "ContextMenuActivatedEvent"
 )({
-  itemId: Schema.String,
-  commandId: Schema.String,
-  windowId: Schema.String
+  itemId: Schema.NonEmptyString,
+  commandId: Schema.NonEmptyString,
+  windowId: Schema.NonEmptyString
 }) {}

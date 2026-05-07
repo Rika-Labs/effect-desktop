@@ -1144,6 +1144,58 @@ test("ContextMenu bridge client validates window menu inputs and decodes activat
   ])
 })
 
+test("ContextMenu bridge client rejects empty activation event identifiers as InvalidOutput", async () => {
+  const cases: ReadonlyArray<{
+    readonly payload: { itemId: string; commandId: string; windowId: string }
+  }> = [
+    { payload: { itemId: "", commandId: "app.file.open", windowId: "window-1" } },
+    { payload: { itemId: "file.open", commandId: "", windowId: "window-1" } },
+    { payload: { itemId: "file.open", commandId: "app.file.open", windowId: "" } }
+  ]
+
+  for (const { payload } of cases) {
+    const exchange: ApiClientExchange = {
+      request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
+      subscribe: (method) =>
+        method === "ContextMenu.Activated"
+          ? Stream.make(
+              new HostProtocolEventEnvelope({
+                kind: "event",
+                timestamp: 1710000000350,
+                traceId: "event-trace",
+                method,
+                payload
+              })
+            )
+          : Stream.empty
+    }
+    const commandLayer = await makeCommandBindingLayer()
+
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const contextMenu = yield* ContextMenu
+        return yield* Effect.exit(contextMenu.onActivated().pipe(Stream.take(1), Stream.runCollect))
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            Layer.provide(
+              ContextMenuLive,
+              makeContextMenuBridgeClientLayer(exchange, {
+                nextRequestId: nextId(["unused"]),
+                nextTraceId: nextId(["unused"]),
+                now: nextNumber([1710000000000])
+              })
+            ),
+            commandLayer
+          )
+        )
+      )
+    )
+
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+  }
+})
+
 test("unsupported ContextMenu client reports deferred host methods as Effect values", async () => {
   const exit = await Effect.runPromise(
     Effect.gen(function* () {
@@ -1269,6 +1321,93 @@ test("Tray bridge client sends typed host envelopes and decodes activation event
     ["Tray.setMenu", { tray: trayHandle, menu: menuTemplate }],
     ["Tray.destroy", { tray: trayHandle }]
   ])
+})
+
+test("Tray bridge client rejects empty activation event identifiers as InvalidOutput", async () => {
+  const cases: ReadonlyArray<{ readonly payload: unknown }> = [
+    { payload: { tray: { ...trayHandle, id: "" }, ownerWindowId: "window-1" } },
+    { payload: { tray: { ...trayHandle, kind: "" }, ownerWindowId: "window-1" } },
+    { payload: { tray: { ...trayHandle, ownerScope: "" }, ownerWindowId: "window-1" } },
+    { payload: { tray: trayHandle, ownerWindowId: "" } }
+  ]
+
+  for (const { payload } of cases) {
+    const exchange: ApiClientExchange = {
+      request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
+      subscribe: (method) =>
+        method === "Tray.Activated"
+          ? Stream.make(
+              new HostProtocolEventEnvelope({
+                kind: "event",
+                timestamp: 1710000000360,
+                traceId: "event-trace",
+                method,
+                payload
+              })
+            )
+          : Stream.empty,
+      resource: { dispose: () => Effect.void }
+    }
+
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const tray = yield* Tray
+        return yield* Effect.exit(tray.onActivated().pipe(Stream.take(1), Stream.runCollect))
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            TrayLive,
+            makeTrayBridgeClientLayer(exchange, {
+              nextRequestId: nextId(["unused"]),
+              nextTraceId: nextId(["unused"]),
+              now: nextNumber([1710000000000])
+            })
+          )
+        )
+      )
+    )
+
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+  }
+})
+
+test("Tray bridge client decodes activation events with no ownerWindowId field", async () => {
+  const exchange: ApiClientExchange = {
+    request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
+    subscribe: (method) =>
+      method === "Tray.Activated"
+        ? Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              timestamp: 1710000000360,
+              traceId: "event-trace",
+              method,
+              payload: { tray: trayHandle }
+            })
+          )
+        : Stream.empty,
+    resource: { dispose: () => Effect.void }
+  }
+
+  const events = await Effect.runPromise(
+    Effect.gen(function* () {
+      const tray = yield* Tray
+      return yield* tray.onActivated().pipe(Stream.take(1), Stream.runCollect)
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          TrayLive,
+          makeTrayBridgeClientLayer(exchange, {
+            nextRequestId: nextId(["unused"]),
+            nextTraceId: nextId(["unused"]),
+            now: nextNumber([1710000000000])
+          })
+        )
+      )
+    )
+  )
+
+  expect(Array.from(events)).toEqual([new TrayActivatedEvent({ tray: trayHandle })])
 })
 
 test("unsupported Tray client reports deferred host methods as Effect values", async () => {
