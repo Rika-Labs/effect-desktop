@@ -132,11 +132,20 @@ const EMPTY_PROCESS_PERMISSIONS: ProcessPermissionPolicy = Object.freeze({})
 export const makeProcess = (
   registry: ResourceRegistryApi,
   options: ProcessOptions = {}
-): Effect.Effect<ProcessApi, never, never> =>
+): Effect.Effect<ProcessApi, HostProtocolInvalidArgumentError, never> =>
   Effect.gen(function* () {
     const adapter = options.adapter ?? BunProcessAdapter
     const budgets = { ...DEFAULT_PROCESS_BUDGETS, ...options.budgets }
     const gracefulShutdownMs = options.gracefulShutdownMs ?? DEFAULT_GRACEFUL_SHUTDOWN_MS
+    if (!Number.isFinite(gracefulShutdownMs) || gracefulShutdownMs <= 0) {
+      return yield* Effect.fail(
+        makeHostProtocolInvalidArgumentError(
+          "gracefulShutdownMs",
+          "must be a finite positive number",
+          "Process.make"
+        )
+      )
+    }
     const maxSnapshots = options.maxSnapshots ?? DEFAULT_MAX_PROCESS_SNAPSHOTS
     const permissions = options.permissions ?? EMPTY_PROCESS_PERMISSIONS
     const now = options.now ?? Date.now
@@ -213,13 +222,13 @@ export const ProcessLive = Layer.effect(
   Process,
   Effect.gen(function* () {
     const registry = yield* ResourceRegistry
-    return yield* makeProcess(registry)
+    return yield* makeProcess(registry).pipe(Effect.orDie)
   })
 )
 
 export const ProcessLayer = (
   options: ProcessOptions = {}
-): Layer.Layer<Process, never, ResourceRegistry> =>
+): Layer.Layer<Process, HostProtocolInvalidArgumentError, ResourceRegistry> =>
   Layer.effect(
     Process,
     Effect.gen(function* () {

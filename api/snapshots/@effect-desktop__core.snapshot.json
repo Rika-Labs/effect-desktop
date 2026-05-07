@@ -646,7 +646,7 @@
     {
       "name": "makeProcess",
       "kind": "value",
-      "signature": "const makeProcess: (registry: ResourceRegistryApi, options?: ProcessOptions) => Effect.Effect<ProcessApi, never, never>"
+      "signature": "const makeProcess: (registry: ResourceRegistryApi, options?: ProcessOptions) => Effect.Effect<ProcessApi, HostProtocolInvalidArgumentError, never>"
     },
     {
       "name": "makePty",
@@ -851,7 +851,7 @@
     {
       "name": "ProcessLayer",
       "kind": "value",
-      "signature": "const ProcessLayer: (options?: ProcessOptions) => Layer.Layer<Process, never, ResourceRegistry>"
+      "signature": "const ProcessLayer: (options?: ProcessOptions) => Layer.Layer<Process, HostProtocolInvalidArgumentError, ResourceRegistry>"
     },
     {
       "name": "ProcessLive",

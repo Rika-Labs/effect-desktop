@@ -32,6 +32,7 @@ import {
   type ApiResourceHandle,
   type HostHandshakeClient,
   type HostProtocolError,
+  type HostProtocolInvalidArgumentError,
   type HostProtocolRequestEnvelope,
   type HostProtocolStreamEnvelope,
   type HostWindowClient,
@@ -419,7 +420,7 @@ export interface MockProcessApi extends ProcessApi {
 export const makeMockProcess = (
   registry: ResourceRegistryApi,
   options: MockProcessOptions = {}
-): Effect.Effect<MockProcessApi, never, never> => {
+): Effect.Effect<MockProcessApi, HostProtocolInvalidArgumentError, never> => {
   const calls: MutableMockProcessSpawnRecord[] = []
   return makeProcess(registry, {
     adapter: makeMockProcessAdapter(options, calls),
@@ -434,7 +435,7 @@ export const makeMockProcess = (
 
 export const MockProcessLive = (
   options: MockProcessOptions = {}
-): Layer.Layer<Process, never, ResourceRegistry> =>
+): Layer.Layer<Process, HostProtocolInvalidArgumentError, ResourceRegistry> =>
   Layer.effect(
     Process,
     Effect.gen(function* () {
@@ -530,7 +531,10 @@ type HeadlessRuntimeServices =
 
 export const HeadlessRuntimeLive = (
   options: HeadlessRuntimeLayerOptions = {}
-): Layer.Layer<HeadlessRuntimeServices, TelemetryInvalidArgumentError> =>
+): Layer.Layer<
+  HeadlessRuntimeServices,
+  TelemetryInvalidArgumentError | HostProtocolInvalidArgumentError
+> =>
   Layer.effectContext(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry(options.registry)
@@ -562,7 +566,11 @@ export const runHeadlessRuntime = <A, E, R>(
 const makeHeadlessRuntimeContext = (
   options: HeadlessRuntimeLayerOptions,
   registry: ResourceRegistryApi
-): Effect.Effect<Context.Context<HeadlessRuntimeServices>, TelemetryInvalidArgumentError, never> =>
+): Effect.Effect<
+  Context.Context<HeadlessRuntimeServices>,
+  TelemetryInvalidArgumentError | HostProtocolInvalidArgumentError,
+  never
+> =>
   Effect.gen(function* () {
     const telemetry = yield* makeTelemetry(options.telemetry)
     const permissions = yield* makePermissionRegistry(options.permissions)
