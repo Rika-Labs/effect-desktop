@@ -16,7 +16,7 @@ None.
 
 ## Commit and Push
 
-Pending commit and push.
+- `220c679` — recorded Windows polish learning on `issue-102-windows-polish`.
 
 ## Handoff
 
