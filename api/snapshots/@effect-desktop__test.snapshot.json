@@ -1,0 +1,262 @@
+{
+  "schemaVersion": 1,
+  "packageName": "@effect-desktop/test",
+  "entrypoint": "src/index.ts",
+  "symbols": [
+    {
+      "name": "assertNoOpenResources",
+      "kind": "value",
+      "signature": "const assertNoOpenResources: (options?: LeakDetectionOptions) => Effect.Effect<void, ResourceLeakError, ResourceRegistry>"
+    },
+    {
+      "name": "assertNoOpenResourcesIn",
+      "kind": "value",
+      "signature": "const assertNoOpenResourcesIn: (registry: ResourceRegistryApi, options?: LeakDetectionOptions) => Effect.Effect<void, ResourceLeakError, never>"
+    },
+    {
+      "name": "formatLeakedHandleReport",
+      "kind": "value",
+      "signature": "const formatLeakedHandleReport: (leaks: readonly ResourceEntry[], testName?: string) => string"
+    },
+    {
+      "name": "HeadlessFixture",
+      "kind": "type",
+      "signature": "export type HeadlessFixture = ( request: HostProtocolRequestEnvelope, state: HeadlessHostState ) => Effect.Effect<unknown, HostProtocolError, never> | HeadlessFixturePayload"
+    },
+    {
+      "name": "HeadlessHarnessOptions",
+      "kind": "interface",
+      "signature": "export interface HeadlessHarnessOptions { readonly fixtures?: Readonly<Record<string, HeadlessFixture>> readonly leakDetection?: LeakDetectionOptions readonly nextRequestId?: () => string readonly nextTraceId?: () => string readonly now?: () => number readonly ownerScope?: string }"
+    },
+    {
+      "name": "HeadlessHostCall",
+      "kind": "interface",
+      "signature": "export interface HeadlessHostCall { readonly method: string readonly request: HostProtocolRequestEnvelope }"
+    },
+    {
+      "name": "HeadlessHostState",
+      "kind": "interface",
+      "signature": "export interface HeadlessHostState { readonly windows: ReadonlyMap<string, WindowCreateInput> }"
+    },
+    {
+      "name": "HeadlessRuntime",
+      "kind": "interface",
+      "signature": "const HeadlessRuntime: Readonly<{ layer: (options?: HeadlessRuntimeLayerOptions) => Layer.Layer<HeadlessRuntimeServices, TelemetryInvalidArgumentError>; run: <A, E, R>(effect: Effect.Effect<A, E, R>, options?: HeadlessRuntimeLayerOptions) => Effect.Effect<A, TelemetryInvalidArgumentError | ResourceLeakError | E, Exclude<R, HeadlessRuntimeServices>>; }>"
+    },
+    {
+      "name": "HeadlessRuntimeLayerOptions",
+      "kind": "interface",
+      "signature": "export interface HeadlessRuntimeLayerOptions { readonly bridge?: Omit<MockBridgeOptions, \"registry\"> readonly filesystem?: MemoryFilesystemOptions readonly host?: MockHostOptions readonly leakDetection?: false | LeakDetectionOptions readonly permissions?: PermissionRegistryOptions readonly process?: MockProcessOptions readonly pty?: MockPtyOptions readonly registry?: Parameters<typeof makeResourceRegistry>[0] readonly telemetry?: TelemetryOptions }"
+    },
+    {
+      "name": "HeadlessRuntimeLive",
+      "kind": "value",
+      "signature": "const HeadlessRuntimeLive: (options?: HeadlessRuntimeLayerOptions) => Layer.Layer<HeadlessRuntimeServices, TelemetryInvalidArgumentError>"
+    },
+    {
+      "name": "installResourceLeakDetection",
+      "kind": "value",
+      "signature": "const installResourceLeakDetection: (registry: ResourceRegistryApi, options?: LeakDetectionOptions) => void"
+    },
+    {
+      "name": "LeakDetectionOptions",
+      "kind": "interface",
+      "signature": "export interface LeakDetectionOptions { readonly allowedResourceIds?: readonly ResourceId[] readonly allowedResourceKinds?: readonly ResourceKind[] readonly testName?: string }"
+    },
+    {
+      "name": "leakedHandles",
+      "kind": "value",
+      "signature": "const leakedHandles: (snapshot: RegistrySnapshot, options?: LeakDetectionOptions) => readonly ResourceEntry[]"
+    },
+    {
+      "name": "makeMemoryFilesystem",
+      "kind": "value",
+      "signature": "const makeMemoryFilesystem: (registry: ResourceRegistryApi, options?: MemoryFilesystemOptions) => Effect.Effect<FilesystemApi, never, never>"
+    },
+    {
+      "name": "makeMemorySecretsSafeStorage",
+      "kind": "value",
+      "signature": "const makeMemorySecretsSafeStorage: (options?: MemorySecretsOptions) => MemorySecretsSafeStorage"
+    },
+    {
+      "name": "makeMockBridge",
+      "kind": "value",
+      "signature": "const makeMockBridge: (options?: MockBridgeOptions) => MockBridgeApi"
+    },
+    {
+      "name": "makeMockHost",
+      "kind": "value",
+      "signature": "const makeMockHost: (options?: MockHostOptions) => MockHostApi"
+    },
+    {
+      "name": "makeMockProcess",
+      "kind": "value",
+      "signature": "const makeMockProcess: (registry: ResourceRegistryApi, options?: MockProcessOptions) => Effect.Effect<MockProcessApi, never, never>"
+    },
+    {
+      "name": "makeMockPty",
+      "kind": "value",
+      "signature": "const makeMockPty: (registry: ResourceRegistryApi, options?: MockPtyOptions) => Effect.Effect<MockPtyApi, never, never>"
+    },
+    {
+      "name": "MemoryFilesystem",
+      "kind": "value",
+      "signature": "const MemoryFilesystem: Readonly<{ layer: (options?: MemoryFilesystemOptions) => Layer.Layer<Filesystem, never, ResourceRegistry>; }>"
+    },
+    {
+      "name": "MemoryFilesystemFile",
+      "kind": "interface",
+      "signature": "export interface MemoryFilesystemFile { readonly path: string readonly bytes: Uint8Array }"
+    },
+    {
+      "name": "MemoryFilesystemLive",
+      "kind": "value",
+      "signature": "const MemoryFilesystemLive: (options?: MemoryFilesystemOptions) => Layer.Layer<Filesystem, never, ResourceRegistry>"
+    },
+    {
+      "name": "MemoryFilesystemOptions",
+      "kind": "interface",
+      "signature": "export interface MemoryFilesystemOptions { readonly files?: readonly MemoryFilesystemFile[] readonly directories?: readonly string[] readonly symlinks?: readonly MemoryFilesystemSymlink[] readonly permissions?: FilesystemPermissionPolicy readonly now?: () => number }"
+    },
+    {
+      "name": "MemoryFilesystemSymlink",
+      "kind": "interface",
+      "signature": "export interface MemoryFilesystemSymlink { readonly path: string readonly target: string }"
+    },
+    {
+      "name": "MemorySecretsOptions",
+      "kind": "interface",
+      "signature": "export interface MemorySecretsOptions { readonly available?: boolean }"
+    },
+    {
+      "name": "MemorySecretsSafeStorage",
+      "kind": "interface",
+      "signature": "export interface MemorySecretsSafeStorage extends SecretsSafeStorageApi { readonly snapshot: () => Effect.Effect<ReadonlyMap<string, Uint8Array>, never, never> }"
+    },
+    {
+      "name": "MockBridge",
+      "kind": "class",
+      "signature": "export class MockBridge extends Context.Service<MockBridge, MockBridgeApi>()( \"@effect-desktop/test/MockBridge\" ) {}"
+    },
+    {
+      "name": "MockBridgeApi",
+      "kind": "interface",
+      "signature": "export interface MockBridgeApi { readonly exchange: ApiClientExchange readonly client: <Contracts extends Readonly<Record<string, ApiContractClass>>>( contracts: Contracts, options?: ApiClientOptions ) => ApiClient<Contracts> readonly calls: () => readonly MockBridgeCall[] readonly cancels: () => readonly HostProtocolCancelByRequestEnvelope[] readonly disposedResources: () => readonly ApiResourceHandle[] readonly succeed: (method: string, payload: unknown) => Effect.Effect<void, never, never> readonly fail: (method: string, error: unknown) => Effect.Effect<void, never, never> readonly resource: ( method: string, handle: ApiResourceHandle ) => Effect.Effect<void, never, never> readonly streamChunks: ( method: string, chunks: readonly unknown[] ) => Effect.Effect<void, never, never> }"
+    },
+    {
+      "name": "MockBridgeCall",
+      "kind": "interface",
+      "signature": "export interface MockBridgeCall { readonly method: string readonly payload: unknown readonly traceId: string readonly timestamp: number }"
+    },
+    {
+      "name": "MockBridgeLive",
+      "kind": "value",
+      "signature": "const MockBridgeLive: (options?: MockBridgeOptions) => Layer.Layer<MockBridge>"
+    },
+    {
+      "name": "MockBridgeOptions",
+      "kind": "interface",
+      "signature": "export interface MockBridgeOptions { readonly now?: () => number readonly registry?: ResourceRegistryApi }"
+    },
+    {
+      "name": "MockHost",
+      "kind": "class",
+      "signature": "export class MockHost extends Context.Service<MockHost, MockHostApi>()( \"@effect-desktop/test/MockHost\" ) {}"
+    },
+    {
+      "name": "MockHostApi",
+      "kind": "interface",
+      "signature": "export interface MockHostApi { readonly calls: () => readonly HeadlessHostCall[] readonly request: ( request: HostProtocolRequestEnvelope ) => Effect.Effect<HostProtocolResponseEnvelope, HostProtocolError, never> readonly windows: () => ReadonlyMap<string, WindowCreateInput> }"
+    },
+    {
+      "name": "MockHostLive",
+      "kind": "value",
+      "signature": "const MockHostLive: (options?: MockHostOptions) => Layer.Layer<MockHost>"
+    },
+    {
+      "name": "MockHostOptions",
+      "kind": "type",
+      "signature": "export type MockHostOptions = Omit<HeadlessHarnessOptions, \"leakDetection\" | \"ownerScope\">"
+    },
+    {
+      "name": "MockProcess",
+      "kind": "value",
+      "signature": "const MockProcess: Readonly<{ layer: (options?: MockProcessOptions) => Layer.Layer<Process, never, ResourceRegistry>; }>"
+    },
+    {
+      "name": "MockProcessApi",
+      "kind": "interface",
+      "signature": "export interface MockProcessApi extends ProcessApi { readonly calls: () => readonly MockProcessSpawnRecord[] }"
+    },
+    {
+      "name": "MockProcessFixture",
+      "kind": "interface",
+      "signature": "export interface MockProcessFixture { readonly command?: string readonly args?: readonly string[] readonly pid?: number readonly childPids?: readonly number[] readonly stdout?: readonly Uint8Array[] readonly stderr?: readonly Uint8Array[] readonly exit?: ProcessExitStatus | { readonly code: number; readonly signal?: string } | false }"
+    },
+    {
+      "name": "MockProcessLive",
+      "kind": "value",
+      "signature": "const MockProcessLive: (options?: MockProcessOptions) => Layer.Layer<Process, never, ResourceRegistry>"
+    },
+    {
+      "name": "MockProcessOptions",
+      "kind": "interface",
+      "signature": "export interface MockProcessOptions { readonly processes?: readonly MockProcessFixture[] readonly budgets?: ProcessBudgetPolicy readonly gracefulShutdownMs?: number readonly permissions?: ProcessPermissionPolicy readonly now?: () => number }"
+    },
+    {
+      "name": "MockProcessSpawnRecord",
+      "kind": "interface",
+      "signature": "export interface MockProcessSpawnRecord { readonly input: ProcessSpawnInput readonly pid: number readonly stdin: readonly Uint8Array[] readonly stdinClosed: boolean readonly killedWith: ProcessSignalInput | undefined readonly terminateTreeCalls: number readonly forceKillTreeCalls: number }"
+    },
+    {
+      "name": "MockPTY",
+      "kind": "value",
+      "signature": "const MockPTY: Readonly<{ layer: (options?: MockPtyOptions) => Layer.Layer<PTY, never, ResourceRegistry>; }>"
+    },
+    {
+      "name": "MockPtyApi",
+      "kind": "interface",
+      "signature": "export interface MockPtyApi extends PtyApi { readonly calls: () => readonly MockPtyOpenRecord[] }"
+    },
+    {
+      "name": "MockPtyFixture",
+      "kind": "interface",
+      "signature": "export interface MockPtyFixture { readonly command?: string readonly args?: readonly string[] readonly pid?: number | null readonly output?: readonly Uint8Array[] readonly exit?: PtyExitStatus | { readonly code: number; readonly signal?: string } | false }"
+    },
+    {
+      "name": "MockPtyLive",
+      "kind": "value",
+      "signature": "const MockPtyLive: (options?: MockPtyOptions) => Layer.Layer<PTY, never, ResourceRegistry>"
+    },
+    {
+      "name": "MockPtyOpenRecord",
+      "kind": "interface",
+      "signature": "export interface MockPtyOpenRecord { readonly input: PtyOpenInput readonly pid: number | undefined readonly writes: readonly Uint8Array[] readonly resizes: readonly PtyResizeInput[] readonly killedWith: PtySignalInput | undefined readonly terminateTreeCalls: number readonly forceKillTreeCalls: number }"
+    },
+    {
+      "name": "MockPtyOptions",
+      "kind": "interface",
+      "signature": "export interface MockPtyOptions { readonly ptys?: readonly MockPtyFixture[] readonly budgets?: PtyBudgetPolicy readonly gracefulShutdownMs?: number readonly permissions?: PtyPermissionPolicy }"
+    },
+    {
+      "name": "registerLeakMatchers",
+      "kind": "value",
+      "signature": "const registerLeakMatchers: () => void"
+    },
+    {
+      "name": "ResourceLeakError",
+      "kind": "class",
+      "signature": "export class ResourceLeakError extends Data.TaggedError(\"ResourceLeakError\")<{ readonly leaks: readonly ResourceEntry[] readonly message: string readonly report: string }> {}"
+    },
+    {
+      "name": "runHeadless",
+      "kind": "value",
+      "signature": "const runHeadless: <A, E, R>(body: (runtime: HeadlessRuntime) => Effect.Effect<A, E, R>, options?: HeadlessHarnessOptions) => Effect.Effect<A, E | HostProtocolError | ResourceLeakError, R>"
+    },
+    {
+      "name": "runHeadlessRuntime",
+      "kind": "value",
+      "signature": "const runHeadlessRuntime: <A, E, R>(effect: Effect.Effect<A, E, R>, options?: HeadlessRuntimeLayerOptions) => Effect.Effect<A, TelemetryInvalidArgumentError | ResourceLeakError | E, Exclude<R, HeadlessRuntimeServices>>"
+    }
+  ]
+}

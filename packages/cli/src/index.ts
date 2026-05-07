@@ -69,6 +69,11 @@ import {
   type DesktopPublishReport,
   type PublishPipelineError
 } from "./update-manifest.js"
+import {
+  formatPublicApiError,
+  formatPublicApiReport,
+  runPublicApiCheck
+} from "./public-api-snapshot.js"
 
 export {
   runDesktopPackage,
@@ -139,6 +144,18 @@ export {
   type UpdateArtifactManifest,
   type UpdateManifest
 } from "./update-manifest.js"
+export {
+  runPublicApiCheck,
+  type PublicApiChange,
+  type PublicApiChangeKind,
+  type PublicApiPackageSnapshot,
+  type PublicApiSnapshotError,
+  type PublicApiSnapshotFile,
+  type PublicApiSnapshotOptions,
+  type PublicApiSnapshotReport,
+  type PublicApiSymbolKind,
+  type PublicApiSymbolSnapshot
+} from "./public-api-snapshot.js"
 
 export class CliUsageError extends Error {
   public override readonly name = "CliUsageError"
@@ -302,9 +319,13 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
       return yield* runReproCheckCli(options)
     }
 
+    if (options.argv[0] === "check" && options.argv.includes("--api")) {
+      return yield* runPublicApiCheckCli(options)
+    }
+
     if (options.argv[0] !== "check" || !options.argv.includes("--production")) {
       options.writeStderr(
-        "Usage: desktop build --config <path>\nUsage: desktop package --config <path>\nUsage: desktop sign --config <path>\nUsage: desktop notarize --config <path>\nUsage: desktop publish --config <path>\nUsage: desktop doctor [--config <path>] [--ci] [--json]\nUsage: desktop check --production --config <path>\nUsage: desktop check --repro --config <path>\n"
+        "Usage: desktop build --config <path>\nUsage: desktop package --config <path>\nUsage: desktop sign --config <path>\nUsage: desktop notarize --config <path>\nUsage: desktop publish --config <path>\nUsage: desktop doctor [--config <path>] [--ci] [--json]\nUsage: desktop check --production --config <path>\nUsage: desktop check --repro --config <path>\nUsage: desktop check --api [--write]\n"
       )
       return 1
     }
@@ -786,6 +807,40 @@ const runReproCheckCli = (options: CliRunOptions): Effect.Effect<number, never, 
       options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
     } else {
       options.writeStdout(formatReproReport(report))
+    }
+
+    return 0
+  })
+
+const runPublicApiCheckCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
+  Effect.gen(function* () {
+    const report = yield* runPublicApiCheck({
+      cwd: options.cwd,
+      updateSnapshots: options.argv.includes("--write")
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          const formatted = formatPublicApiError(error)
+          if (options.argv.includes("--json")) {
+            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+          } else if (formatted.report === undefined) {
+            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+          } else {
+            options.writeStderr(formatPublicApiReport(formatted.report))
+          }
+          return undefined
+        })
+      )
+    )
+
+    if (report === undefined) {
+      return 1
+    }
+
+    if (options.argv.includes("--json")) {
+      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+    } else {
+      options.writeStdout(formatPublicApiReport(report))
     }
 
     return 0

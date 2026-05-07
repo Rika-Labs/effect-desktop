@@ -1,0 +1,282 @@
+{
+  "schemaVersion": 1,
+  "packageName": "@effect-desktop/devtools",
+  "entrypoint": "src/index.ts",
+  "symbols": [
+    {
+      "name": "BridgeCallPanelRow",
+      "kind": "interface",
+      "signature": "export interface BridgeCallPanelRow { readonly id: string readonly state: BridgeCallState[\"tag\"] readonly traceId: Option.Option<string> readonly contractTag: Option.Option<string> readonly latencyMs: Option.Option<number> readonly errorTag: Option.Option<string> }"
+    },
+    {
+      "name": "BridgeP99OverlayRow",
+      "kind": "interface",
+      "signature": "export interface BridgeP99OverlayRow extends PerformanceOverlayRow { readonly contractTag: string }"
+    },
+    {
+      "name": "BunLoopbackDevtoolsTransport",
+      "kind": "value",
+      "signature": "const BunLoopbackDevtoolsTransport: DevtoolsLoopbackTransport"
+    },
+    {
+      "name": "CommandsDevtools",
+      "kind": "class",
+      "signature": "export class CommandsDevtools extends Context.Service<CommandsDevtools, CommandsDevtoolsApi>()( \"@effect-desktop/devtools/CommandsDevtools\" ) {}"
+    },
+    {
+      "name": "CommandsDevtoolsApi",
+      "kind": "interface",
+      "signature": "export interface CommandsDevtoolsApi { readonly list: () => Effect.Effect<readonly CommandSnapshot[], never, never> readonly observeInvocations: () => Stream.Stream<CommandInvocationRecord, never, never> }"
+    },
+    {
+      "name": "CommandsDevtoolsLive",
+      "kind": "value",
+      "signature": "const CommandsDevtoolsLive: Layer.Layer<CommandsDevtools, never, CommandRegistry>"
+    },
+    {
+      "name": "DevtoolsBindError",
+      "kind": "class",
+      "signature": "export class DevtoolsBindError extends Data.TaggedError(\"BindError\")<{ readonly operation: string readonly host: string readonly cause: unknown }> {}"
+    },
+    {
+      "name": "DevtoolsError",
+      "kind": "type",
+      "signature": "export type DevtoolsError = | DevtoolsInvalidInputError | DevtoolsTokenError | DevtoolsBindError | DevtoolsShellOpenError"
+    },
+    {
+      "name": "DevtoolsHandle",
+      "kind": "interface",
+      "signature": "export interface DevtoolsHandle { readonly status: \"disabled\" | \"enabled\" readonly url: Option.Option<string> readonly tokenPath: Option.Option<string> readonly disable: Effect.Effect<void, never, never> }"
+    },
+    {
+      "name": "DevtoolsInvalidInputError",
+      "kind": "class",
+      "signature": "export class DevtoolsInvalidInputError extends Data.TaggedError(\"InvalidInput\")<{ readonly operation: string readonly cause: unknown }> {}"
+    },
+    {
+      "name": "DevtoolsListener",
+      "kind": "interface",
+      "signature": "export interface DevtoolsListener { readonly url: string readonly close: Effect.Effect<void, never, never> }"
+    },
+    {
+      "name": "DevtoolsLoopbackTransport",
+      "kind": "interface",
+      "signature": "export interface DevtoolsLoopbackTransport { readonly listen: (input: { readonly host: string readonly token: string }) => Effect.Effect<DevtoolsListener, DevtoolsBindError, never> }"
+    },
+    {
+      "name": "DevtoolsShell",
+      "kind": "class",
+      "signature": "export class DevtoolsShell extends Context.Service<DevtoolsShell, DevtoolsShellApi>()( \"@effect-desktop/devtools/DevtoolsShell\" ) {}"
+    },
+    {
+      "name": "DevtoolsShellApi",
+      "kind": "interface",
+      "signature": "export interface DevtoolsShellApi { readonly start: ( input: typeof DevtoolsStartInput.Encoded ) => Effect.Effect<DevtoolsHandle, DevtoolsError, never> }"
+    },
+    {
+      "name": "DevtoolsShellLive",
+      "kind": "value",
+      "signature": "const DevtoolsShellLive: (options?: DevtoolsShellOptions) => Layer.Layer<DevtoolsShell>"
+    },
+    {
+      "name": "DevtoolsShellOpenError",
+      "kind": "class",
+      "signature": "export class DevtoolsShellOpenError extends Data.TaggedError(\"ShellOpenError\")<{ readonly operation: string readonly url: string readonly cause: unknown }> {}"
+    },
+    {
+      "name": "DevtoolsShellOptions",
+      "kind": "interface",
+      "signature": "export interface DevtoolsShellOptions { readonly transport?: DevtoolsLoopbackTransport readonly shellWindow?: DevtoolsShellWindow readonly tokenName?: string }"
+    },
+    {
+      "name": "DevtoolsShellWindow",
+      "kind": "interface",
+      "signature": "export interface DevtoolsShellWindow { readonly open: (input: { readonly url: string readonly tokenPath: string }) => Effect.Effect<void, DevtoolsShellOpenError, never> }"
+    },
+    {
+      "name": "DevtoolsStartInput",
+      "kind": "class",
+      "signature": "export class DevtoolsStartInput extends Schema.Class<DevtoolsStartInput>(\"DevtoolsStartInput\")({ profile: Schema.Literals([\"dev\", \"prod\"]), stateDir: NonEmptyString, devtoolsFlag: Schema.optionalKey(Schema.Boolean), securityDevtoolsInProd: Schema.optionalKey(Schema.Boolean), openShell: Schema.optionalKey(Schema.Boolean) }) {}"
+    },
+    {
+      "name": "DevtoolsTokenError",
+      "kind": "class",
+      "signature": "export class DevtoolsTokenError extends Data.TaggedError(\"TokenError\")<{ readonly operation: string readonly path: string readonly cause: unknown }> {}"
+    },
+    {
+      "name": "DiagnosticsPanels",
+      "kind": "class",
+      "signature": "export class DiagnosticsPanels extends Context.Service<DiagnosticsPanels, DiagnosticsPanelsApi>()( \"@effect-desktop/devtools/DiagnosticsPanels\" ) {}"
+    },
+    {
+      "name": "DiagnosticsPanelsApi",
+      "kind": "interface",
+      "signature": "export interface DiagnosticsPanelsApi { readonly list: () => Effect.Effect<DiagnosticsPanelsSnapshot, never, never> readonly observe: () => Stream.Stream<DiagnosticsPanelsSnapshot, never, never> }"
+    },
+    {
+      "name": "DiagnosticsPanelsLive",
+      "kind": "value",
+      "signature": "const DiagnosticsPanelsLive: (options?: DiagnosticsPanelsOptions) => Layer.Layer<DiagnosticsPanels, never, Telemetry>"
+    },
+    {
+      "name": "DiagnosticsPanelsOptions",
+      "kind": "interface",
+      "signature": "export interface DiagnosticsPanelsOptions { readonly maxRows?: number readonly frameInterval?: `${number} millis` }"
+    },
+    {
+      "name": "DiagnosticsPanelsSnapshot",
+      "kind": "interface",
+      "signature": "export interface DiagnosticsPanelsSnapshot { readonly logs: readonly TelemetryLogRecord[] readonly traces: readonly TraceGroup[] readonly metrics: readonly TelemetryMetricSnapshot[] }"
+    },
+    {
+      "name": "LiveRuntimePanels",
+      "kind": "class",
+      "signature": "export class LiveRuntimePanels extends Context.Service<LiveRuntimePanels, LiveRuntimePanelsApi>()( \"@effect-desktop/devtools/LiveRuntimePanels\" ) {}"
+    },
+    {
+      "name": "LiveRuntimePanelsApi",
+      "kind": "interface",
+      "signature": "export interface LiveRuntimePanelsApi { readonly list: () => Effect.Effect<LiveRuntimePanelsSnapshot, never, never> readonly observe: () => Stream.Stream<LiveRuntimePanelsSnapshot, never, never> }"
+    },
+    {
+      "name": "LiveRuntimePanelsLive",
+      "kind": "value",
+      "signature": "const LiveRuntimePanelsLive: (sources: LiveRuntimePanelSources, options?: LiveRuntimePanelsOptions) => Layer.Layer<LiveRuntimePanels, never, PermissionRegistry | Process | ResourceRegistry>"
+    },
+    {
+      "name": "LiveRuntimePanelsOptions",
+      "kind": "interface",
+      "signature": "export interface LiveRuntimePanelsOptions { readonly maxRows?: number readonly now?: () => number readonly frameInterval?: `${number} millis` }"
+    },
+    {
+      "name": "LiveRuntimePanelSources",
+      "kind": "interface",
+      "signature": "export interface LiveRuntimePanelSources { readonly bridgeCalls: BridgeCallRegistry readonly streams: BridgeStreamRegistry }"
+    },
+    {
+      "name": "LiveRuntimePanelsSnapshot",
+      "kind": "interface",
+      "signature": "export interface LiveRuntimePanelsSnapshot { readonly bridgeCalls: readonly BridgeCallPanelRow[] readonly streams: readonly StreamPanelRow[] readonly resources: readonly ResourcePanelRow[] readonly permissions: readonly PermissionPanelRow[] readonly processes: readonly ProcessPanelRow[] }"
+    },
+    {
+      "name": "makeDevtoolsShell",
+      "kind": "value",
+      "signature": "const makeDevtoolsShell: (options?: DevtoolsShellOptions) => Effect.Effect<DevtoolsShellApi, never, never>"
+    },
+    {
+      "name": "makeDiagnosticsPanels",
+      "kind": "value",
+      "signature": "const makeDiagnosticsPanels: (options?: DiagnosticsPanelsOptions) => Effect.Effect<DiagnosticsPanelsApi, never, Telemetry>"
+    },
+    {
+      "name": "makeLiveRuntimePanels",
+      "kind": "value",
+      "signature": "const makeLiveRuntimePanels: (sources: LiveRuntimePanelSources, options?: LiveRuntimePanelsOptions) => Effect.Effect<LiveRuntimePanelsApi, never, PermissionRegistry | Process | ResourceRegistry>"
+    },
+    {
+      "name": "makePerformanceOverlay",
+      "kind": "value",
+      "signature": "const makePerformanceOverlay: (options?: PerformanceOverlayOptions) => Effect.Effect<PerformanceOverlayApi, never, Telemetry>"
+    },
+    {
+      "name": "PerformanceBudget",
+      "kind": "interface",
+      "signature": "export interface PerformanceBudget { readonly id: string readonly label: string readonly metricName: string readonly budgetMs: number }"
+    },
+    {
+      "name": "PerformanceBudgetMode",
+      "kind": "type",
+      "signature": "export type PerformanceBudgetMode = \"development\" | \"production\""
+    },
+    {
+      "name": "PerformanceOverlay",
+      "kind": "class",
+      "signature": "export class PerformanceOverlay extends Context.Service< PerformanceOverlay, PerformanceOverlayApi >()(\"@effect-desktop/devtools/PerformanceOverlay\") {}"
+    },
+    {
+      "name": "PerformanceOverlayApi",
+      "kind": "interface",
+      "signature": "export interface PerformanceOverlayApi { readonly list: () => Effect.Effect<PerformanceOverlaySnapshot, never, never> readonly observe: () => Stream.Stream<PerformanceOverlaySnapshot, never, never> }"
+    },
+    {
+      "name": "PerformanceOverlayLive",
+      "kind": "value",
+      "signature": "const PerformanceOverlayLive: (options?: PerformanceOverlayOptions) => Layer.Layer<PerformanceOverlay, never, Telemetry>"
+    },
+    {
+      "name": "PerformanceOverlayOptions",
+      "kind": "interface",
+      "signature": "export interface PerformanceOverlayOptions { readonly mode?: PerformanceBudgetMode readonly frameInterval?: `${number} millis` }"
+    },
+    {
+      "name": "PerformanceOverlayRow",
+      "kind": "interface",
+      "signature": "export interface PerformanceOverlayRow { readonly id: string readonly label: string readonly valueMs: Option.Option<number> readonly budgetMs: number readonly ratio: Option.Option<number> readonly status: PerformanceOverlayStatus readonly samples: readonly number[] }"
+    },
+    {
+      "name": "PerformanceOverlaySnapshot",
+      "kind": "interface",
+      "signature": "export interface PerformanceOverlaySnapshot { readonly startup: readonly PerformanceOverlayRow[] readonly bridgeP99: readonly BridgeP99OverlayRow[] readonly renderFrame: PerformanceOverlayRow }"
+    },
+    {
+      "name": "PerformanceOverlayStatus",
+      "kind": "type",
+      "signature": "export type PerformanceOverlayStatus = \"missing\" | \"within-budget\" | \"over-budget\""
+    },
+    {
+      "name": "PermissionPanelRow",
+      "kind": "interface",
+      "signature": "export interface PermissionPanelRow { readonly capability: string readonly decision: PermissionDecision[\"outcome\"] readonly reason: Option.Option<string> readonly remediation: Option.Option<string> readonly actor: string readonly traceId: string }"
+    },
+    {
+      "name": "ProcessPanelRow",
+      "kind": "interface",
+      "signature": "export interface ProcessPanelRow { readonly pid: number readonly command: string readonly ownerScope: string readonly childPids: readonly number[] readonly lastExit: Option.Option<ProcessExitStatus> readonly state: ProcessSnapshot[\"state\"] }"
+    },
+    {
+      "name": "ResourcePanelRow",
+      "kind": "interface",
+      "signature": "export interface ResourcePanelRow { readonly id: string readonly kind: string readonly scope: string readonly state: string readonly ageMs: number readonly stale: boolean readonly owner: Option.Option<string> }"
+    },
+    {
+      "name": "shouldStartDevtools",
+      "kind": "value",
+      "signature": "const shouldStartDevtools: (input: typeof DevtoolsStartInput.Type) => boolean"
+    },
+    {
+      "name": "StreamPanelRow",
+      "kind": "interface",
+      "signature": "export interface StreamPanelRow { readonly id: string readonly generation: number readonly state: BridgeStreamRegistryEntry[\"state\"] readonly terminal: Option.Option<string> readonly queueDepth: Option.Option<number> readonly queueCapacity: Option.Option<number> readonly overflow: Option.Option<string> }"
+    },
+    {
+      "name": "TraceGroup",
+      "kind": "interface",
+      "signature": "export interface TraceGroup { readonly traceId: string readonly spans: readonly TelemetryTraceSpan[] }"
+    },
+    {
+      "name": "UnavailableDevtoolsShellWindow",
+      "kind": "value",
+      "signature": "const UnavailableDevtoolsShellWindow: DevtoolsShellWindow"
+    },
+    {
+      "name": "WorkersJobsDevtools",
+      "kind": "class",
+      "signature": "export class WorkersJobsDevtools extends Context.Service< WorkersJobsDevtools, WorkersJobsDevtoolsApi >()(\"@effect-desktop/devtools/WorkersJobsDevtools\") {}"
+    },
+    {
+      "name": "WorkersJobsDevtoolsApi",
+      "kind": "interface",
+      "signature": "export interface WorkersJobsDevtoolsApi { readonly list: () => Effect.Effect<WorkersJobsSnapshot, never, never> readonly observe: () => Stream.Stream<WorkersJobsSnapshot, never, never> }"
+    },
+    {
+      "name": "WorkersJobsDevtoolsLive",
+      "kind": "value",
+      "signature": "const WorkersJobsDevtoolsLive: Layer.Layer<WorkersJobsDevtools, never, Worker | Job>"
+    },
+    {
+      "name": "WorkersJobsSnapshot",
+      "kind": "interface",
+      "signature": "export interface WorkersJobsSnapshot { readonly workers: readonly WorkerSnapshot[] readonly jobs: readonly JobSnapshot[] }"
+    }
+  ]
+}

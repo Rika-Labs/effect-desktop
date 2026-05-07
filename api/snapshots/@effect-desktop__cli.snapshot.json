@@ -1,0 +1,442 @@
+{
+  "schemaVersion": 1,
+  "packageName": "@effect-desktop/cli",
+  "entrypoint": "src/index.ts",
+  "symbols": [
+    {
+      "name": "BuildArch",
+      "kind": "type",
+      "signature": "export type BuildArch = \"arm64\" | \"x64\""
+    },
+    {
+      "name": "BuildCommandFailedError",
+      "kind": "class",
+      "signature": "export class BuildCommandFailedError extends Data.TaggedError(\"BuildCommandFailedError\")<{ readonly step: BuildStepName readonly command: readonly string[] readonly cwd: string readonly exitCode: number | undefined readonly message: string }> {}"
+    },
+    {
+      "name": "BuildConfigError",
+      "kind": "class",
+      "signature": "export class BuildConfigError extends Data.TaggedError(\"BuildConfigError\")<{ readonly field: string readonly message: string }> {}"
+    },
+    {
+      "name": "BuildFileError",
+      "kind": "class",
+      "signature": "export class BuildFileError extends Data.TaggedError(\"BuildFileError\")<{ readonly operation: string readonly path: string readonly message: string readonly cause: unknown }> {}"
+    },
+    {
+      "name": "BuildOs",
+      "kind": "type",
+      "signature": "export type BuildOs = \"linux\" | \"macos\" | \"windows\""
+    },
+    {
+      "name": "BuildPipelineError",
+      "kind": "type",
+      "signature": "export type BuildPipelineError = | BuildConfigError | BuildUnsupportedHostError | BuildUnsupportedTargetError | BuildCommandFailedError | BuildFileError"
+    },
+    {
+      "name": "BuildStepName",
+      "kind": "type",
+      "signature": "export type BuildStepName = \"renderer\" | \"runtime\" | \"native-host\" | \"bridge\" | \"manifest\""
+    },
+    {
+      "name": "BuildStepReport",
+      "kind": "interface",
+      "signature": "export interface BuildStepReport { readonly name: BuildStepName readonly command?: readonly string[] readonly cwd?: string readonly elapsedMs: number readonly outputPath: string }"
+    },
+    {
+      "name": "BuildTarget",
+      "kind": "type",
+      "signature": "export type BuildTarget = `${BuildOs}-${BuildArch}`"
+    },
+    {
+      "name": "BuildUnsupportedHostError",
+      "kind": "class",
+      "signature": "export class BuildUnsupportedHostError extends Data.TaggedError(\"BuildUnsupportedHostError\")<{ readonly platform: string readonly arch: string readonly message: string readonly remediation: string }> {}"
+    },
+    {
+      "name": "BuildUnsupportedTargetError",
+      "kind": "class",
+      "signature": "export class BuildUnsupportedTargetError extends Data.TaggedError(\"BuildUnsupportedTargetError\")<{ readonly target: string readonly hostTarget: BuildTarget readonly message: string readonly remediation: string }> {}"
+    },
+    {
+      "name": "canonicalUpdateManifestBytes",
+      "kind": "value",
+      "signature": "const canonicalUpdateManifestBytes: (manifest: UpdateManifest | Record<string, unknown>) => string"
+    },
+    {
+      "name": "CliRunOptions",
+      "kind": "interface",
+      "signature": "export interface CliRunOptions { readonly argv: readonly string[] readonly cwd: string readonly writeStdout: (text: string) => void readonly writeStderr: (text: string) => void readonly commandRunner?: CommandRunner readonly packageCommandRunner?: PackageCommandRunner readonly doctorCommandRunner?: DoctorCommandRunner readonly signCommandRunner?: SignCommandRunner readonly notarizeCommandRunner?: NotarizeCommandRunner readonly now?: () => number readonly hostTarget?: BuildTarget readonly platform?: NodeJS.Platform readonly arch?: string readonly bunVersion?: string }"
+    },
+    {
+      "name": "CliUsageError",
+      "kind": "class",
+      "signature": "export class CliUsageError extends Error { public override readonly name = \"CliUsageError\" }"
+    },
+    {
+      "name": "CommandInvocation",
+      "kind": "interface",
+      "signature": "export interface CommandInvocation { readonly step: BuildStepName readonly command: string readonly args: readonly string[] readonly cwd: string }"
+    },
+    {
+      "name": "CommandRunner",
+      "kind": "type",
+      "signature": "export type CommandRunner = ( invocation: CommandInvocation ) => Effect.Effect<void, BuildCommandFailedError, never>"
+    },
+    {
+      "name": "DesktopBuildOptions",
+      "kind": "interface",
+      "signature": "export interface DesktopBuildOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly commandRunner: CommandRunner readonly now: () => number readonly hostTarget: BuildTarget | undefined }"
+    },
+    {
+      "name": "DesktopBuildReport",
+      "kind": "interface",
+      "signature": "export interface DesktopBuildReport { readonly appId: string readonly appName: string readonly appVersion: string readonly target: BuildTarget readonly layoutPath: string readonly appManifestPath: string readonly bridgeManifestPath: string readonly steps: readonly BuildStepReport[] }"
+    },
+    {
+      "name": "DesktopDoctorReport",
+      "kind": "interface",
+      "signature": "export interface DesktopDoctorReport { readonly passed: boolean readonly ci: boolean readonly platform: string readonly arch: string readonly probes: readonly DoctorProbeResult[] }"
+    },
+    {
+      "name": "DesktopNotarizeOptions",
+      "kind": "interface",
+      "signature": "export interface DesktopNotarizeOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly commandRunner: NotarizeCommandRunner readonly now: () => number readonly hostTarget: NotarizeTarget | undefined }"
+    },
+    {
+      "name": "DesktopNotarizeReport",
+      "kind": "interface",
+      "signature": "export interface DesktopNotarizeReport { readonly appId: string readonly appName: string readonly appVersion: string readonly target: NotarizeTarget readonly outputPath: string readonly artifacts: readonly NotarizeArtifactReport[] readonly steps: readonly NotarizeStepReport[] }"
+    },
+    {
+      "name": "DesktopPackageOptions",
+      "kind": "interface",
+      "signature": "export interface DesktopPackageOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly artifact: string | undefined readonly commandRunner: PackageCommandRunner readonly now: () => number readonly hostTarget: PackageTarget | undefined }"
+    },
+    {
+      "name": "DesktopPackageReport",
+      "kind": "interface",
+      "signature": "export interface DesktopPackageReport { readonly appId: string readonly appName: string readonly appVersion: string readonly target: PackageTarget readonly layoutPath: string readonly outputPath: string readonly artifacts: readonly PackageArtifactReport[] readonly steps: readonly PackageStepReport[] }"
+    },
+    {
+      "name": "DesktopPublishOptions",
+      "kind": "interface",
+      "signature": "export interface DesktopPublishOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly now: () => number }"
+    },
+    {
+      "name": "DesktopPublishReport",
+      "kind": "interface",
+      "signature": "export interface DesktopPublishReport { readonly appId: string readonly version: string readonly channel: PublishChannel readonly keyVersion: number readonly manifestPath: string readonly canonicalBytes: string readonly artifacts: readonly UpdateArtifactManifest[] }"
+    },
+    {
+      "name": "DesktopReproReport",
+      "kind": "interface",
+      "signature": "export interface DesktopReproReport { readonly passed: boolean readonly target: string readonly comparedFiles: number readonly firstSnapshotPath: string readonly secondSnapshotPath: string readonly differences: readonly ReproDifference[] }"
+    },
+    {
+      "name": "DesktopSignOptions",
+      "kind": "interface",
+      "signature": "export interface DesktopSignOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly commandRunner: SignCommandRunner readonly now: () => number readonly hostTarget: SignTarget | undefined }"
+    },
+    {
+      "name": "DesktopSignReport",
+      "kind": "interface",
+      "signature": "export interface DesktopSignReport { readonly appId: string readonly appName: string readonly appVersion: string readonly target: SignTarget readonly outputPath: string readonly artifacts: readonly SignArtifactReport[] readonly steps: readonly SignStepReport[] }"
+    },
+    {
+      "name": "detectHostTarget",
+      "kind": "value",
+      "signature": "const detectHostTarget: () => BuildTarget | undefined"
+    },
+    {
+      "name": "DoctorCommandInvocation",
+      "kind": "interface",
+      "signature": "export interface DoctorCommandInvocation { readonly probe: DoctorProbeName readonly command: string readonly args: readonly string[] readonly cwd: string readonly platform: string }"
+    },
+    {
+      "name": "DoctorCommandOutput",
+      "kind": "interface",
+      "signature": "export interface DoctorCommandOutput { readonly stdout: string readonly stderr: string }"
+    },
+    {
+      "name": "DoctorCommandRunner",
+      "kind": "type",
+      "signature": "export type DoctorCommandRunner = ( invocation: DoctorCommandInvocation ) => Effect.Effect<DoctorCommandOutput, DoctorMissing, never>"
+    },
+    {
+      "name": "DoctorMissing",
+      "kind": "class",
+      "signature": "export class DoctorMissing extends Data.TaggedError(\"DoctorMissing\")<{ readonly probe: DoctorProbeName readonly component: string readonly platform: string readonly message: string readonly remediation: string readonly installHint: string readonly docsUrl: string }> {}"
+    },
+    {
+      "name": "DoctorProbeName",
+      "kind": "type",
+      "signature": "export type DoctorProbeName = | \"bun-version\" | \"rust-toolchain\" | \"platform-sdk\" | \"webview-runtime\" | \"signing-credentials\" | \"build-tools\" | \"package-manager-state\" | \"native-host-cache\" | \"config\""
+    },
+    {
+      "name": "DoctorProbeResult",
+      "kind": "interface",
+      "signature": "export interface DoctorProbeResult { readonly name: DoctorProbeName readonly status: DoctorProbeStatus readonly component: string readonly message: string readonly remediation: string | undefined readonly installHint: string | undefined readonly docsUrl: string | undefined }"
+    },
+    {
+      "name": "DoctorProbeStatus",
+      "kind": "type",
+      "signature": "export type DoctorProbeStatus = \"ok\" | \"missing\" | \"warning\""
+    },
+    {
+      "name": "NotarizeArtifactKind",
+      "kind": "type",
+      "signature": "export type NotarizeArtifactKind = \"app\" | \"dmg\""
+    },
+    {
+      "name": "NotarizeArtifactReport",
+      "kind": "interface",
+      "signature": "export interface NotarizeArtifactReport { readonly kind: NotarizeArtifactKind readonly artifactPath: string readonly alreadyStapled: boolean readonly submissionId?: string readonly status?: string readonly assessed: boolean }"
+    },
+    {
+      "name": "NotarizeCommandInvocation",
+      "kind": "interface",
+      "signature": "export interface NotarizeCommandInvocation { readonly step: NotarizeStepName readonly command: string readonly args: readonly string[] readonly cwd: string }"
+    },
+    {
+      "name": "NotarizeCommandOutput",
+      "kind": "interface",
+      "signature": "export interface NotarizeCommandOutput { readonly stdout: string readonly stderr: string readonly exitCode: number }"
+    },
+    {
+      "name": "NotarizeCommandRunner",
+      "kind": "type",
+      "signature": "export type NotarizeCommandRunner = ( invocation: NotarizeCommandInvocation ) => Effect.Effect<NotarizeCommandOutput, NotarizeCommandFailedError, never>"
+    },
+    {
+      "name": "NotarizePipelineError",
+      "kind": "type",
+      "signature": "export type NotarizePipelineError = | NotarizeConfigError | NotarizeUnsupportedHostError | NotarizeUnsupportedTargetError | NotarizeFileError | NotarizeCommandFailedError"
+    },
+    {
+      "name": "NotarizeStepName",
+      "kind": "type",
+      "signature": "export type NotarizeStepName = | \"stapler-validate\" | \"notarytool-submit\" | \"stapler-staple\" | \"spctl-assess\" | \"metadata\""
+    },
+    {
+      "name": "NotarizeStepReport",
+      "kind": "interface",
+      "signature": "export interface NotarizeStepReport { readonly name: NotarizeStepName readonly command?: readonly string[] readonly cwd?: string readonly elapsedMs: number readonly outputPath: string readonly stdout?: string readonly stderr?: string }"
+    },
+    {
+      "name": "NotarizeTarget",
+      "kind": "type",
+      "signature": "export type NotarizeTarget = \"macos-arm64\" | \"macos-x64\""
+    },
+    {
+      "name": "PackageArtifactKind",
+      "kind": "type",
+      "signature": "export type PackageArtifactKind = \"app\" | \"dmg\" | \"zip\" | \"msi\" | \"appimage\" | \"deb\" | \"rpm\""
+    },
+    {
+      "name": "PackageArtifactReport",
+      "kind": "interface",
+      "signature": "export interface PackageArtifactReport { readonly kind: PackageArtifactKind readonly target: PackageTarget readonly artifactPath: string readonly artifactJsonPath: string readonly checksumsPath: string readonly sizeBytes: number readonly sha256: string readonly linuxIntegration?: { readonly desktopFile: string readonly appStreamId: string readonly flatpakAppId: string readonly snapName: string } }"
+    },
+    {
+      "name": "PackageCommandInvocation",
+      "kind": "interface",
+      "signature": "export interface PackageCommandInvocation { readonly step: PackageStepName readonly command: string readonly args: readonly string[] readonly cwd: string readonly env?: Readonly<Record<string, string>> }"
+    },
+    {
+      "name": "PackageCommandRunner",
+      "kind": "type",
+      "signature": "export type PackageCommandRunner = ( invocation: PackageCommandInvocation ) => Effect.Effect<void, PackageCommandFailedError, never>"
+    },
+    {
+      "name": "PackagePipelineError",
+      "kind": "type",
+      "signature": "export type PackagePipelineError = | PackageConfigError | PackageUnsupportedHostError | PackageUnsupportedTargetError | PackageUnsupportedArtifactError | PackageCommandFailedError | PackageFileError"
+    },
+    {
+      "name": "PackageStepName",
+      "kind": "type",
+      "signature": "export type PackageStepName = | \"macos-app\" | \"macos-dmg\" | \"macos-zip\" | \"windows-msi\" | \"linux-appdir\" | \"linux-appimage\" | \"linux-deb\" | \"linux-rpm\" | \"metadata\""
+    },
+    {
+      "name": "PackageStepReport",
+      "kind": "interface",
+      "signature": "export interface PackageStepReport { readonly name: PackageStepName readonly command?: readonly string[] readonly cwd?: string readonly elapsedMs: number readonly outputPath: string }"
+    },
+    {
+      "name": "PackageTarget",
+      "kind": "type",
+      "signature": "export type PackageTarget = `${PackageOs}-${PackageArch}`"
+    },
+    {
+      "name": "PublicApiChange",
+      "kind": "interface",
+      "signature": "export interface PublicApiChange { readonly packageName: string readonly symbol: string readonly kind: PublicApiChangeKind readonly before?: PublicApiSymbolSnapshot readonly after?: PublicApiSymbolSnapshot }"
+    },
+    {
+      "name": "PublicApiChangeKind",
+      "kind": "type",
+      "signature": "export type PublicApiChangeKind = \"added\" | \"removed\" | \"kind-changed\" | \"signature-changed\""
+    },
+    {
+      "name": "PublicApiPackageSnapshot",
+      "kind": "interface",
+      "signature": "export interface PublicApiPackageSnapshot { readonly packageName: string readonly entrypoint: string readonly symbols: readonly PublicApiSymbolSnapshot[] }"
+    },
+    {
+      "name": "PublicApiSnapshotError",
+      "kind": "type",
+      "signature": "export type PublicApiSnapshotError = | PublicApiFileError | PublicApiPackageError | PublicApiTypeScriptError | PublicApiSnapshotMismatchError"
+    },
+    {
+      "name": "PublicApiSnapshotFile",
+      "kind": "interface",
+      "signature": "export interface PublicApiSnapshotFile { readonly schemaVersion: 1 readonly packageName: string readonly entrypoint: string readonly symbols: readonly PublicApiSymbolSnapshot[] }"
+    },
+    {
+      "name": "PublicApiSnapshotOptions",
+      "kind": "interface",
+      "signature": "export interface PublicApiSnapshotOptions { readonly cwd: string readonly updateSnapshots?: boolean }"
+    },
+    {
+      "name": "PublicApiSnapshotReport",
+      "kind": "interface",
+      "signature": "export interface PublicApiSnapshotReport { readonly passed: boolean readonly updated: boolean readonly packages: readonly PublicApiPackageSnapshot[] readonly changes: readonly PublicApiChange[] }"
+    },
+    {
+      "name": "PublicApiSymbolKind",
+      "kind": "type",
+      "signature": "export type PublicApiSymbolKind = \"class\" | \"function\" | \"interface\" | \"type\" | \"value\""
+    },
+    {
+      "name": "PublicApiSymbolSnapshot",
+      "kind": "interface",
+      "signature": "export interface PublicApiSymbolSnapshot { readonly name: string readonly kind: PublicApiSymbolKind readonly signature: string }"
+    },
+    {
+      "name": "PublishArtifactKind",
+      "kind": "type",
+      "signature": "export type PublishArtifactKind = \"app\" | \"dmg\" | \"zip\" | \"msi\" | \"appimage\" | \"deb\" | \"rpm\""
+    },
+    {
+      "name": "PublishChannel",
+      "kind": "type",
+      "signature": "export type PublishChannel = \"stable\" | \"beta\" | \"canary\""
+    },
+    {
+      "name": "PublishPipelineError",
+      "kind": "type",
+      "signature": "export type PublishPipelineError = PublishConfigError | PublishFileError | PublishSignatureError"
+    },
+    {
+      "name": "PublishTarget",
+      "kind": "type",
+      "signature": "export type PublishTarget = | \"macos-arm64\" | \"macos-x64\" | \"windows-x64\" | \"linux-x64\" | \"windows-arm64\" | \"linux-arm64\""
+    },
+    {
+      "name": "ReproCheckError",
+      "kind": "type",
+      "signature": "export type ReproCheckError = | ReproBuildRunError | ReproPackageRunError | ReproFileError | ReproDiffError"
+    },
+    {
+      "name": "ReproDifference",
+      "kind": "interface",
+      "signature": "export interface ReproDifference { readonly relativePath: string readonly kind: \"missing-in-first\" | \"missing-in-second\" | \"content\" readonly firstDifferenceOffset: number | undefined readonly firstSizeBytes: number | undefined readonly secondSizeBytes: number | undefined readonly firstSha256: string | undefined readonly secondSha256: string | undefined }"
+    },
+    {
+      "name": "runCli",
+      "kind": "value",
+      "signature": "const runCli: (options: CliRunOptions) => Effect.Effect<number, never, never>"
+    },
+    {
+      "name": "runDesktopBuild",
+      "kind": "value",
+      "signature": "const runDesktopBuild: (options: DesktopBuildOptions) => Effect.Effect<DesktopBuildReport, BuildPipelineError, never>"
+    },
+    {
+      "name": "runDesktopDoctor",
+      "kind": "value",
+      "signature": "const runDesktopDoctor: (options: DesktopDoctorOptions) => Effect.Effect<DesktopDoctorReport, never, never>"
+    },
+    {
+      "name": "runDesktopNotarize",
+      "kind": "value",
+      "signature": "const runDesktopNotarize: (options: DesktopNotarizeOptions) => Effect.Effect<DesktopNotarizeReport, NotarizePipelineError, never>"
+    },
+    {
+      "name": "runDesktopPackage",
+      "kind": "value",
+      "signature": "const runDesktopPackage: (options: DesktopPackageOptions) => Effect.Effect<DesktopPackageReport, PackagePipelineError, never>"
+    },
+    {
+      "name": "runDesktopPublish",
+      "kind": "value",
+      "signature": "const runDesktopPublish: (options: DesktopPublishOptions) => Effect.Effect<DesktopPublishReport, PublishPipelineError, never>"
+    },
+    {
+      "name": "runDesktopReproCheck",
+      "kind": "value",
+      "signature": "const runDesktopReproCheck: (options: DesktopReproOptions) => Effect.Effect<DesktopReproReport, ReproCheckError, never>"
+    },
+    {
+      "name": "runDesktopSign",
+      "kind": "value",
+      "signature": "const runDesktopSign: (options: DesktopSignOptions) => Effect.Effect<DesktopSignReport, SignPipelineError, never>"
+    },
+    {
+      "name": "runPublicApiCheck",
+      "kind": "value",
+      "signature": "const runPublicApiCheck: (options: PublicApiSnapshotOptions) => Effect.Effect<PublicApiSnapshotReport, PublicApiSnapshotError, never>"
+    },
+    {
+      "name": "SignArtifactKind",
+      "kind": "type",
+      "signature": "export type SignArtifactKind = \"app\" | \"dmg\" | \"zip\" | \"msi\" | \"appimage\" | \"deb\" | \"rpm\""
+    },
+    {
+      "name": "SignArtifactReport",
+      "kind": "interface",
+      "signature": "export interface SignArtifactReport { readonly kind: SignArtifactKind readonly artifactPath: string readonly signedPaths: readonly string[] readonly signaturePath?: string }"
+    },
+    {
+      "name": "SignCommandInvocation",
+      "kind": "interface",
+      "signature": "export interface SignCommandInvocation { readonly step: SignStepName readonly command: string readonly args: readonly string[] readonly cwd: string }"
+    },
+    {
+      "name": "SignCommandRunner",
+      "kind": "type",
+      "signature": "export type SignCommandRunner = ( invocation: SignCommandInvocation ) => Effect.Effect<void, SignCommandFailedError, never>"
+    },
+    {
+      "name": "SignPipelineError",
+      "kind": "type",
+      "signature": "export type SignPipelineError = | SignConfigError | SignUnsupportedHostError | SignUnsupportedTargetError | SignFileError | SignCommandFailedError"
+    },
+    {
+      "name": "SignStepName",
+      "kind": "type",
+      "signature": "export type SignStepName = | \"macos-entitlements\" | \"macos-codesign\" | \"windows-authenticode\" | \"windows-unblock\" | \"linux-appstream\" | \"linux-desktop\" | \"linux-gpg\" | \"metadata\""
+    },
+    {
+      "name": "SignStepReport",
+      "kind": "interface",
+      "signature": "export interface SignStepReport { readonly name: SignStepName readonly command?: readonly string[] readonly cwd?: string readonly elapsedMs: number readonly outputPath: string }"
+    },
+    {
+      "name": "SignTarget",
+      "kind": "type",
+      "signature": "export type SignTarget = `${SignOs}-${SignArch}`"
+    },
+    {
+      "name": "UpdateArtifactManifest",
+      "kind": "interface",
+      "signature": "export interface UpdateArtifactManifest { readonly platform: PublishTarget readonly kind: PublishArtifactKind readonly url: string readonly sizeBytes: number readonly sha256: string readonly signature: string }"
+    },
+    {
+      "name": "UpdateManifest",
+      "kind": "interface",
+      "signature": "export interface UpdateManifest { readonly schemaVersion: 1 readonly appId: string readonly version: string readonly channel: PublishChannel readonly keyVersion: number readonly publishedAt: string readonly rollback?: boolean readonly minVersion?: string readonly maxVersion?: string readonly artifacts: readonly UpdateArtifactManifest[] readonly signature: string }"
+    }
+  ]
+}
