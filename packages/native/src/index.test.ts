@@ -168,6 +168,9 @@ import {
   makeDockServiceLayer,
   makeGlobalShortcutAlreadyRegisteredError,
   makeGlobalShortcutBridgeClientLayer,
+  makeLinuxDockClient,
+  makeLinuxGlobalShortcutClient,
+  makeLinuxSafeStorageClient,
   makeGlobalShortcutServiceLayer,
   makePowerMonitorBridgeClientLayer,
   makePowerMonitorServiceLayer,
@@ -1978,6 +1981,34 @@ test("unsupported SafeStorage client reports availability and typed command fail
   expectExitFailure(result.getExit, (error) => hasErrorTag(error, "Unsupported"))
 })
 
+test("Linux SafeStorage client reports Secret Service availability as an Effect value", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const availableStorage = yield* SafeStorage
+      const available = yield* availableStorage.isAvailable()
+      const unavailable = yield* makeLinuxSafeStorageClient(Effect.succeed(false)).isAvailable()
+      const setExit = yield* Effect.exit(
+        availableStorage.set("token", SecretValue.fromUtf8("secret"))
+      )
+      return { available, setExit, unavailable }
+    }).pipe(
+      Effect.provide(makeSafeStorageServiceLayer(makeLinuxSafeStorageClient(Effect.succeed(true))))
+    )
+  )
+
+  expect(result.available).toBe(true)
+  expect(result.unavailable).toBe(false)
+  expectExitFailure(
+    result.setExit,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "reason" in error &&
+      error.reason === "secret-service-adapter-unimplemented"
+  )
+})
+
 test("UpdaterApi declares the Phase 8 Updater method surface", () => {
   expect(UpdaterApi.tag).toBe("Updater")
   expect([...UpdaterMethodNames]).toEqual(expectedUpdaterMethods)
@@ -2624,6 +2655,34 @@ test("unsupported Dock client exposes support checks and typed command failures"
   expectExitFailure(result.exit, (error) => hasErrorTag(error, "Unsupported"))
 })
 
+test("Linux Dock client follows Appendix K partial and unsupported rows", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const dock = yield* Dock
+      const badgeCountSupported = yield* dock.isSupported("setBadgeCount")
+      const badgeTextSupported = yield* dock.isSupported("setBadgeText")
+      const menuSupported = yield* dock.isSupported("setMenu")
+      const textExit = yield* Effect.exit(dock.setBadgeText("hi"))
+      const menuExit = yield* Effect.exit(dock.setMenu(null))
+      return { badgeCountSupported, badgeTextSupported, menuExit, menuSupported, textExit }
+    }).pipe(Effect.provide(makeDockServiceLayer(makeLinuxDockClient())))
+  )
+
+  expect(result.badgeCountSupported).toBe(true)
+  expect(result.badgeTextSupported).toBe(false)
+  expect(result.menuSupported).toBe(false)
+  expectExitFailure(
+    result.textExit,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "reason" in error &&
+      error.reason === "no portable badge text on Linux"
+  )
+  expectExitFailure(result.menuExit, (error) => hasErrorTag(error, "Unsupported"))
+})
+
 test("GlobalShortcutApi declares the Phase 8 GlobalShortcut method and event surface", () => {
   expect(GlobalShortcutApi.tag).toBe("GlobalShortcut")
   expect([...GlobalShortcutMethodNames]).toEqual(expectedGlobalShortcutMethods)
@@ -3012,6 +3071,37 @@ test("GlobalShortcut conflicts and unsupported behavior are typed Effect values"
       error.reason === "host-adapter-unimplemented"
   )
   expectExitFailure(unsupported.pressedExit, (error) => hasErrorTag(error, "Unsupported"))
+})
+
+test("Linux GlobalShortcut client reports Wayland unsupported as a typed value", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const shortcuts = yield* GlobalShortcut
+      const supported = yield* shortcuts.isSupported()
+      const registerExit = yield* Effect.exit(shortcuts.register("CmdOrCtrl+K", windowHandle))
+      const x11Supported = yield* makeLinuxGlobalShortcutClient("x11").isSupported()
+      return { registerExit, supported, x11Supported }
+    }).pipe(
+      Effect.provide(makeGlobalShortcutServiceLayer(makeLinuxGlobalShortcutClient("wayland")))
+    )
+  )
+
+  expect(result.supported).toEqual(
+    new GlobalShortcutSupportedResult({
+      supported: false,
+      reason: "wayland-no-global-shortcut"
+    })
+  )
+  expect(result.x11Supported).toEqual(new GlobalShortcutSupportedResult({ supported: true }))
+  expectExitFailure(
+    result.registerExit,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "reason" in error &&
+      error.reason === "wayland-no-global-shortcut"
+  )
 })
 
 test("WindowApi declares the Phase 5 Window method surface", () => {

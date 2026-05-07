@@ -190,10 +190,42 @@ export const makeUnsupportedDockClient = (): DockClientApi => {
   } satisfies DockClientApi)
 }
 
-const unsupportedError = (method: string): HostProtocolUnsupportedError =>
+export const makeLinuxDockClient = (): DockClientApi => {
+  const unsupportedEffect = <A>(
+    method: string,
+    reason: string
+  ): Effect.Effect<A, DockError, never> => Effect.fail(unsupportedError(method, reason))
+  return Object.freeze({
+    setBadgeCount: () =>
+      unsupportedEffect<void>("Dock.setBadgeCount", "launcher badge API is not connected yet"),
+    setBadgeText: () =>
+      unsupportedEffect<void>("Dock.setBadgeText", "no portable badge text on Linux"),
+    setProgress: () =>
+      unsupportedEffect<void>("Dock.setProgress", "launcher progress API is not connected yet"),
+    setMenu: () => unsupportedEffect<void>("Dock.setMenu", "no portable dock menu on Linux"),
+    setJumpList: () => unsupportedEffect<void>("Dock.setJumpList", "jump lists are Windows-only"),
+    requestAttention: () =>
+      unsupportedEffect<void>(
+        "Dock.requestAttention",
+        "window-manager attention API is not connected yet"
+      ),
+    isSupported: (method) =>
+      Effect.succeed(
+        new DockSupportedResult({
+          supported:
+            method === "setBadgeCount" || method === "setProgress" || method === "requestAttention"
+        })
+      )
+  } satisfies DockClientApi)
+}
+
+const unsupportedError = (
+  method: string,
+  reason = "host Dock platform adapter is not implemented yet"
+): HostProtocolUnsupportedError =>
   new HostProtocolUnsupportedError({
     tag: "Unsupported",
-    reason: "host Dock platform adapter is not implemented yet",
+    reason,
     message: `unsupported Dock method: ${method}`,
     operation: method,
     recoverable: false

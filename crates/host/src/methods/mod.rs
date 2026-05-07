@@ -3,7 +3,7 @@ pub(crate) mod handshake;
 mod menu;
 mod window;
 
-use crate::window::WindowMethodHandler;
+use crate::{linux, window::WindowMethodHandler};
 use host_protocol::{HostProtocolEnvelope, HostProtocolError};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -53,6 +53,27 @@ impl HostMethodRouter {
             host_protocol::DOCK_REQUEST_ATTENTION_METHOD => {
                 dock::request_attention(&*self.window, payload)
             }
+            host_protocol::DOCK_IS_SUPPORTED_METHOD => linux::dock_is_supported(payload),
+            host_protocol::GLOBAL_SHORTCUT_REGISTER_METHOD => Err(
+                linux::unsupported_global_shortcut(host_protocol::GLOBAL_SHORTCUT_REGISTER_METHOD),
+            ),
+            host_protocol::GLOBAL_SHORTCUT_UNREGISTER_METHOD => {
+                Err(linux::unsupported_global_shortcut(
+                    host_protocol::GLOBAL_SHORTCUT_UNREGISTER_METHOD,
+                ))
+            }
+            host_protocol::GLOBAL_SHORTCUT_UNREGISTER_ALL_METHOD => {
+                Err(linux::unsupported_global_shortcut(
+                    host_protocol::GLOBAL_SHORTCUT_UNREGISTER_ALL_METHOD,
+                ))
+            }
+            host_protocol::GLOBAL_SHORTCUT_IS_REGISTERED_METHOD => {
+                linux::global_shortcut_is_registered()
+            }
+            host_protocol::GLOBAL_SHORTCUT_IS_SUPPORTED_METHOD => {
+                linux::global_shortcut_is_supported()
+            }
+            host_protocol::SAFE_STORAGE_IS_AVAILABLE_METHOD => linux::safe_storage_is_available(),
             host_protocol::MENU_SET_APPLICATION_MENU_METHOD => {
                 menu::set_application_menu(&*self.window, payload)
             }
@@ -278,6 +299,7 @@ mod tests {
         );
     }
 
+    #[cfg(not(target_os = "linux"))]
     #[test]
     fn dock_set_badge_text_routes_to_window_handler() {
         let fake = Arc::new(FakeWindowHandler::new(
@@ -309,6 +331,89 @@ mod tests {
             }
         );
         assert_eq!(fake.dock_badge_labels(), vec![Some("7".to_string())]);
+    }
+
+    #[test]
+    fn dock_is_supported_returns_linux_capability_payload() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-dock-supported",
+                    host_protocol::DOCK_IS_SUPPORTED_METHOD,
+                    serde_json::json!({
+                        "method": "setBadgeText"
+                    }),
+                ),
+                1710000000109,
+            )
+            .expect("dock support request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-dock-supported".to_string(),
+                timestamp: 1710000000109,
+                trace_id: "trace-request-dock-supported".to_string(),
+                payload: Some(serde_json::json!({ "supported": false })),
+                error: None,
+            }
+        );
+    }
+
+    #[test]
+    fn global_shortcut_is_registered_returns_false_until_adapter_is_connected() {
+        let response = test_router()
+            .dispatch_at(
+                request(
+                    "request-global-shortcut-registered",
+                    host_protocol::GLOBAL_SHORTCUT_IS_REGISTERED_METHOD,
+                ),
+                1710000000110,
+            )
+            .expect("global shortcut support request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-global-shortcut-registered".to_string(),
+                timestamp: 1710000000110,
+                trace_id: "trace-request-global-shortcut-registered".to_string(),
+                payload: Some(serde_json::json!({ "registered": false })),
+                error: None,
+            }
+        );
+    }
+
+    #[test]
+    fn safe_storage_is_available_returns_boolean_payload() {
+        let response = test_router()
+            .dispatch_at(
+                request(
+                    "request-safe-storage-available",
+                    host_protocol::SAFE_STORAGE_IS_AVAILABLE_METHOD,
+                ),
+                1710000000111,
+            )
+            .expect("safe storage availability request should return response");
+
+        match response {
+            HostProtocolEnvelope::Response {
+                id,
+                timestamp,
+                trace_id,
+                payload: Some(payload),
+                error: None,
+            } => {
+                assert_eq!(id, "request-safe-storage-available");
+                assert_eq!(timestamp, 1710000000111);
+                assert_eq!(trace_id, "trace-request-safe-storage-available");
+                assert!(payload
+                    .get("available")
+                    .and_then(serde_json::Value::as_bool)
+                    .is_some());
+            }
+            other => panic!("unexpected safe storage response: {other:?}"),
+        }
     }
 
     fn request(id: &str, method: &str) -> HostProtocolEnvelope {

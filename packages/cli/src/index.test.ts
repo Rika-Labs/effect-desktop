@@ -1395,12 +1395,22 @@ test("desktop package emits Linux AppImage deb rpm artifacts with metadata", asy
       })
     )
 
+    const appImageRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-linux-x64.AppImage")
     const debMetadata = JSON.parse(
       await readFile(
         join(outputRoot, "Effect-Desktop-Playground-0.0.0-linux-x64.deb", "artifact.json"),
         "utf8"
       )
-    ) as { readonly kind: string; readonly sizeBytes: number }
+    ) as {
+      readonly kind: string
+      readonly sizeBytes: number
+      readonly linuxIntegration?: {
+        readonly desktopFile: string
+        readonly appStreamId: string
+        readonly flatpakAppId: string
+        readonly snapName: string
+      }
+    }
 
     expect(exitCode).toBe(0)
     expect(calls).toEqual([
@@ -1409,6 +1419,30 @@ test("desktop package emits Linux AppImage deb rpm artifacts with metadata", asy
       "linux-rpm:rpmbuild"
     ])
     expect(debMetadata).toMatchObject({ kind: "deb", sizeBytes: 3 })
+    expect(debMetadata.linuxIntegration).toEqual({
+      desktopFile: "dev.effect-desktop.playground.desktop",
+      appStreamId: "dev.effect-desktop.playground.metainfo.xml",
+      flatpakAppId: "dev.effect-desktop.playground",
+      snapName: "dev.effect-desktop.playground"
+    })
+    expect(
+      await readFile(
+        join(
+          appImageRoot,
+          "Effect-Desktop-Playground.AppDir",
+          "share",
+          "applications",
+          "dev.effect-desktop.playground.desktop"
+        ),
+        "utf8"
+      )
+    ).toContain("X-Flatpak=dev.effect-desktop.playground")
+    expect(
+      await readFile(
+        join(appImageRoot, "Effect-Desktop-Playground.AppDir", "share", "snap", "snapcraft.yaml"),
+        "utf8"
+      )
+    ).toContain("name: dev.effect-desktop.playground")
     expect(
       await readFile(
         join(outputRoot, "Effect-Desktop-Playground-0.0.0-linux-x64.rpm", "checksums.txt"),

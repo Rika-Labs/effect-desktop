@@ -1,5 +1,6 @@
 mod assets;
 mod csp;
+mod linux;
 mod macos;
 mod methods;
 mod runtime;
