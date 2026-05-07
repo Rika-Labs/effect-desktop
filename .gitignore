@@ -2,6 +2,7 @@ node_modules/
 dist/
 !apps/playground/dist/
 !apps/playground/dist/**
+apps/playground/dist/desktop/
 build/
 target/
 .turbo/
