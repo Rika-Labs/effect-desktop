@@ -41,6 +41,50 @@ pub(crate) fn request_attention(
     Ok(None)
 }
 
+pub(crate) fn set_menu(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let menu = decode_menu(payload)?;
+    handler.set_dock_menu(menu)?;
+
+    Ok(None)
+}
+
+fn decode_menu(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
+    let payload = required_payload(payload, host_protocol::DOCK_SET_MENU_METHOD)?;
+    match payload.get("menu") {
+        Some(Value::Null) => Ok(None),
+        Some(menu) => {
+            validate_template(menu)?;
+            Ok(Some(menu.clone()))
+        }
+        None => Err(HostProtocolError::invalid_argument(
+            "menu",
+            "is required",
+            host_protocol::DOCK_SET_MENU_METHOD,
+        )),
+    }
+}
+
+fn validate_template(template: &Value) -> Result<(), HostProtocolError> {
+    let Some(items) = template.get("items").and_then(Value::as_array) else {
+        return Err(HostProtocolError::invalid_argument(
+            "menu.items",
+            "must be an array",
+            host_protocol::DOCK_SET_MENU_METHOD,
+        ));
+    };
+    if items.is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "menu.items",
+            "must not be empty",
+            host_protocol::DOCK_SET_MENU_METHOD,
+        ));
+    }
+    Ok(())
+}
+
 fn decode_count(payload: Option<Value>) -> Result<u64, HostProtocolError> {
     let payload = required_payload(payload, host_protocol::DOCK_SET_BADGE_COUNT_METHOD)?;
     let Some(count) = payload.get("count").and_then(Value::as_f64) else {
@@ -100,7 +144,7 @@ fn required_payload(payload: Option<Value>, operation: &str) -> Result<Value, Ho
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_count, decode_critical, decode_text};
+    use super::{decode_count, decode_critical, decode_menu, decode_text};
     use serde_json::json;
 
     #[test]
@@ -135,5 +179,18 @@ mod tests {
     #[test]
     fn critical_rejects_non_boolean_values() {
         assert!(decode_critical(Some(json!({ "critical": "yes" }))).is_err());
+    }
+
+    #[test]
+    fn dock_menu_accepts_null_clear() {
+        assert_eq!(
+            decode_menu(Some(json!({ "menu": null }))).expect("menu"),
+            None
+        );
+    }
+
+    #[test]
+    fn dock_menu_requires_items() {
+        assert!(decode_menu(Some(json!({ "menu": { "items": [] } }))).is_err());
     }
 }

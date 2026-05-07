@@ -1,5 +1,6 @@
 mod dock;
 pub(crate) mod handshake;
+mod menu;
 mod window;
 
 use crate::window::WindowMethodHandler;
@@ -48,8 +49,15 @@ impl HostMethodRouter {
             host_protocol::DOCK_SET_BADGE_TEXT_METHOD => {
                 dock::set_badge_text(&*self.window, payload)
             }
+            host_protocol::DOCK_SET_MENU_METHOD => dock::set_menu(&*self.window, payload),
             host_protocol::DOCK_REQUEST_ATTENTION_METHOD => {
                 dock::request_attention(&*self.window, payload)
+            }
+            host_protocol::MENU_SET_APPLICATION_MENU_METHOD => {
+                menu::set_application_menu(&*self.window, payload)
+            }
+            host_protocol::MENU_SET_WINDOW_MENU_METHOD => {
+                menu::set_window_menu(&*self.window, payload)
             }
             _ => Err(HostProtocolError::method_not_found(method.clone())),
         };
@@ -394,6 +402,28 @@ mod tests {
         }
 
         fn request_dock_attention(&self, _critical: bool) -> Result<(), HostProtocolError> {
+            Ok(())
+        }
+
+        fn set_dock_menu(
+            &self,
+            _template: Option<serde_json::Value>,
+        ) -> Result<(), HostProtocolError> {
+            Ok(())
+        }
+
+        fn set_application_menu(
+            &self,
+            _template: serde_json::Value,
+        ) -> Result<(), HostProtocolError> {
+            Ok(())
+        }
+
+        fn set_window_menu(
+            &self,
+            _window_id: &str,
+            _template: serde_json::Value,
+        ) -> Result<(), HostProtocolError> {
             Ok(())
         }
     }

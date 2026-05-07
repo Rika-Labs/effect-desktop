@@ -18,6 +18,8 @@
 - `cargo test -p host macos` — macOS polish validation tests passed.
 - `cargo test -p host dock_set_badge_text_routes_to_window_handler` — Dock badge host routing test passed.
 - `cargo test -p host dock` — Dock decoder/routing tests passed after `Dock.requestAttention` routing.
+- `cargo test -p host menu` — Menu payload validation tests passed.
+- `cargo check -p host --all-targets` — host compiled with `muda` and `window-vibrancy` on macOS.
 - `cargo clippy -p host --all-targets -- -D warnings` — host clippy passed after `Dock.requestAttention` routing.
 - `cargo test -p host-protocol window_create_payload_accepts_macos_polish_fields` — Rust protocol payload parity test passed.
 - `bun test packages/bridge/src/window.test.ts` — bridge window payload tests passed.
@@ -25,8 +27,9 @@
 
 ## Coverage Limits
 
-- No visual assertion proves `NSVisualEffectView` vibrancy because it is not attached yet.
-- No host route currently proves `Menu.setApplicationMenu`, `Menu.setWindowMenu`, or `Dock.setMenu`.
+- No visual assertion proves the attached `NSVisualEffectView` vibrancy because this gate is headless.
+- No visual/manual proof currently proves the installed macOS menus are rendered by AppKit.
+- `Dock.setMenu` is routed and validates payloads, but native macOS Dock menu installation returns typed `Unsupported` pending an `NSApplication` delegate bridge.
 
 ## Handoff
 

@@ -3,6 +3,7 @@
 // boundary. Boxing it here would make this boundary differ from host methods.
 
 use host_protocol::{HostProtocolError, WindowTitleBarStyle, WindowTrafficLights};
+use serde_json::Value;
 use tao::{window::Window, window::WindowBuilder};
 
 const MACOS_POLISH_OPERATION: &str = "MacosPolish";
@@ -53,10 +54,12 @@ impl MacosWindowPolish {
         }))
     }
 
+    #[cfg(target_os = "macos")]
     fn title_bar_style(&self) -> WindowTitleBarStyle {
         self.title_bar_style
     }
 
+    #[cfg(any(target_os = "macos", test))]
     fn vibrancy(&self) -> Option<MacosVibrancyMaterial> {
         self.vibrancy
     }
@@ -134,6 +137,14 @@ pub(crate) fn set_dock_badge_label(
     platform::set_dock_badge_label(window, label)
 }
 
+pub(crate) fn set_application_menu(template: Value) -> std::result::Result<(), HostProtocolError> {
+    platform::set_application_menu(template)
+}
+
+pub(crate) fn set_dock_menu(template: Option<Value>) -> std::result::Result<(), HostProtocolError> {
+    platform::set_dock_menu(template)
+}
+
 fn invalid_argument(field: &str, reason: &str) -> HostProtocolError {
     HostProtocolError::invalid_argument(field, reason, MACOS_POLISH_OPERATION)
 }
@@ -146,7 +157,6 @@ mod platform {
         platform::macos::{WindowBuilderExtMacOS, WindowExtMacOS},
         window::{Window, WindowBuilder},
     };
-    use tracing::warn;
 
     pub(super) fn apply_window_builder_polish(
         builder: WindowBuilder,
@@ -175,14 +185,22 @@ mod platform {
     }
 
     pub(super) fn apply_window_polish(
-        _window: &Window,
+        window: &Window,
         polish: Option<&MacosWindowPolish>,
     ) -> std::result::Result<(), HostProtocolError> {
-        if polish.and_then(MacosWindowPolish::vibrancy).is_some() {
-            warn!(
-                event = "host.macos.vibrancy_pending_native_effect_view",
-                "macOS vibrancy material was validated but NSVisualEffectView attachment is not implemented yet"
-            );
+        if let Some(material) = polish.and_then(MacosWindowPolish::vibrancy) {
+            window_vibrancy::apply_vibrancy(
+                window,
+                vibrancy_material(material),
+                Some(window_vibrancy::NSVisualEffectState::FollowsWindowActiveState),
+                None,
+            )
+            .map_err(|error| {
+                HostProtocolError::internal(
+                    format!("failed to apply macOS vibrancy: {error}"),
+                    "Window.create",
+                )
+            })?;
         }
         Ok(())
     }
@@ -193,6 +211,139 @@ mod platform {
     ) -> std::result::Result<(), HostProtocolError> {
         WindowExtMacOS::set_badge_label(window, label);
         Ok(())
+    }
+
+    pub(super) fn set_application_menu(
+        template: serde_json::Value,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let menu = build_menu(&template)?;
+        menu.init_for_nsapp();
+        Ok(())
+    }
+
+    pub(super) fn set_dock_menu(
+        _template: Option<serde_json::Value>,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "macOS Dock menu installation requires an NSApplication delegate bridge that is not part of this host adapter yet",
+            host_protocol::DOCK_SET_MENU_METHOD,
+        ))
+    }
+
+    #[allow(deprecated)]
+    fn vibrancy_material(
+        material: super::MacosVibrancyMaterial,
+    ) -> window_vibrancy::NSVisualEffectMaterial {
+        match material {
+            super::MacosVibrancyMaterial::AppearanceBased => {
+                window_vibrancy::NSVisualEffectMaterial::AppearanceBased
+            }
+            super::MacosVibrancyMaterial::ContentBackground => {
+                window_vibrancy::NSVisualEffectMaterial::ContentBackground
+            }
+            super::MacosVibrancyMaterial::HeaderView => {
+                window_vibrancy::NSVisualEffectMaterial::HeaderView
+            }
+            super::MacosVibrancyMaterial::HudWindow => {
+                window_vibrancy::NSVisualEffectMaterial::HudWindow
+            }
+            super::MacosVibrancyMaterial::Menu => window_vibrancy::NSVisualEffectMaterial::Menu,
+            super::MacosVibrancyMaterial::Popover => {
+                window_vibrancy::NSVisualEffectMaterial::Popover
+            }
+            super::MacosVibrancyMaterial::Selection => {
+                window_vibrancy::NSVisualEffectMaterial::Selection
+            }
+            super::MacosVibrancyMaterial::Sidebar => {
+                window_vibrancy::NSVisualEffectMaterial::Sidebar
+            }
+            super::MacosVibrancyMaterial::Titlebar => {
+                window_vibrancy::NSVisualEffectMaterial::Titlebar
+            }
+            super::MacosVibrancyMaterial::WindowBackground => {
+                window_vibrancy::NSVisualEffectMaterial::WindowBackground
+            }
+        }
+    }
+
+    fn build_menu(
+        template: &serde_json::Value,
+    ) -> std::result::Result<muda::Menu, HostProtocolError> {
+        let menu = muda::Menu::new();
+        let items = template
+            .get("items")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| super::invalid_argument("template.items", "must be an array"))?;
+        for item in items {
+            let submenu = build_submenu(item)?;
+            menu.append(&submenu).map_err(menu_error)?;
+        }
+        Ok(menu)
+    }
+
+    fn build_submenu(
+        value: &serde_json::Value,
+    ) -> std::result::Result<muda::Submenu, HostProtocolError> {
+        let label = field_string(value, "label")?;
+        let enabled = value
+            .get("enabled")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(true);
+        let submenu = muda::Submenu::with_id(field_string(value, "id")?, label, enabled);
+        let items = value
+            .get("items")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| super::invalid_argument("items", "submenu items must be an array"))?;
+        for item in items {
+            match field_string(item, "type")?.as_str() {
+                "item" => {
+                    let enabled = item
+                        .get("enabled")
+                        .and_then(serde_json::Value::as_bool)
+                        .unwrap_or(true);
+                    let menu_item = muda::MenuItem::with_id(
+                        field_string(item, "id")?,
+                        field_string(item, "label")?,
+                        enabled,
+                        None,
+                    );
+                    submenu.append(&menu_item).map_err(menu_error)?;
+                }
+                "separator" => {
+                    let separator = muda::PredefinedMenuItem::separator();
+                    submenu.append(&separator).map_err(menu_error)?;
+                }
+                "submenu" => {
+                    let nested = build_submenu(item)?;
+                    submenu.append(&nested).map_err(menu_error)?;
+                }
+                _ => {
+                    return Err(super::invalid_argument(
+                        "type",
+                        "must be item, separator, or submenu",
+                    ))
+                }
+            }
+        }
+        Ok(submenu)
+    }
+
+    fn field_string(
+        value: &serde_json::Value,
+        field: &str,
+    ) -> std::result::Result<String, HostProtocolError> {
+        value
+            .get(field)
+            .and_then(serde_json::Value::as_str)
+            .map(ToOwned::to_owned)
+            .ok_or_else(|| super::invalid_argument(field, "must be a string"))
+    }
+
+    fn menu_error(error: muda::Error) -> HostProtocolError {
+        HostProtocolError::internal(
+            format!("failed to build macOS menu: {error}"),
+            host_protocol::MENU_SET_APPLICATION_MENU_METHOD,
+        )
     }
 }
 
@@ -222,6 +373,24 @@ mod platform {
         Err(HostProtocolError::unsupported(
             "Dock badge labels are macOS-only",
             host_protocol::DOCK_SET_BADGE_TEXT_METHOD,
+        ))
+    }
+
+    pub(super) fn set_application_menu(
+        _template: serde_json::Value,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "application menus are macOS-only in the host adapter",
+            host_protocol::MENU_SET_APPLICATION_MENU_METHOD,
+        ))
+    }
+
+    pub(super) fn set_dock_menu(
+        _template: Option<serde_json::Value>,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "Dock menus are macOS-only",
+            host_protocol::DOCK_SET_MENU_METHOD,
         ))
     }
 }
