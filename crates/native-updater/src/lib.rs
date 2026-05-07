@@ -467,10 +467,12 @@ pub fn prepare_restart(target_version: &str, now_unix_ms: u64) -> PreparingResta
 }
 
 pub fn ready_for_restart(
+    paths: &InstallPaths,
     preparing: &PreparingRestart,
     acknowledged_unix_ms: u64,
 ) -> Result<RestartReadiness, InstallStagingError> {
     if acknowledged_unix_ms > preparing.deadline_unix_ms {
+        record_restart_breadcrumb(paths, preparing, acknowledged_unix_ms)?;
         return Err(InstallStagingError::RestartDeadlineExceeded {
             deadline_unix_ms: preparing.deadline_unix_ms,
             observed_unix_ms: acknowledged_unix_ms,
@@ -1237,10 +1239,8 @@ mod tests {
         let preparing = prepare_restart("1.1.0", 1_000);
         let late = preparing.deadline_unix_ms + 1;
 
-        let error = ready_for_restart(&preparing, late)
+        let error = ready_for_restart(&paths, &preparing, late)
             .expect_err("late readiness acknowledgement must fail");
-        let breadcrumb = record_restart_breadcrumb(&paths, &preparing, late)
-            .expect("breadcrumb should be written");
 
         assert_eq!(
             error,
@@ -1249,6 +1249,9 @@ mod tests {
                 observed_unix_ms: 6_001
             }
         );
+        let breadcrumb: RestartBreadcrumb =
+            serde_json::from_slice(&fs::read(&paths.recovery_breadcrumb).expect("breadcrumb"))
+                .expect("breadcrumb json");
         assert_eq!(breadcrumb.target_version, "1.1.0");
         assert!(paths.recovery_breadcrumb.exists());
         remove_test_root(root);
