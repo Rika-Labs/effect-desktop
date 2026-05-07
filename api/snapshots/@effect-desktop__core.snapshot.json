@@ -1551,7 +1551,7 @@
     {
       "name": "WindowStateError",
       "kind": "type",
-      "signature": "export type WindowStateError = | WindowStateReadFailed | WindowStateWriteFailed | WindowStateCorruptRenamed"
+      "signature": "export type WindowStateError = | WindowStateReadFailed | WindowStateWriteFailed | WindowStateCorruptRenamed | WindowStateInvalidArgumentError"
     },
     {
       "name": "WindowStateEvent",
@@ -1562,6 +1562,11 @@
       "name": "WindowStateEventKind",
       "kind": "type",
       "signature": "const WindowStateEventKind: Schema.Literals<readonly [\"persisted\", \"cleared\", \"corrupt-renamed\"]>"
+    },
+    {
+      "name": "WindowStateInvalidArgumentError",
+      "kind": "class",
+      "signature": "export class WindowStateInvalidArgumentError extends Data.TaggedError(\"InvalidArgument\")<{ readonly operation: string readonly field: string readonly message: string readonly cause: Option.Option<unknown> }> {}"
     },
     {
       "name": "WindowStateLive",
