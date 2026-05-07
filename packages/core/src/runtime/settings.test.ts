@@ -11,6 +11,8 @@ import {
   makeSettings,
   SettingsInvalidArgumentError,
   SettingsMigrationFailedError,
+  type SettingsError,
+  type SettingsMigrationContext,
   type SettingsStore
 } from "./settings.js"
 import { makeSQLite, type SqliteApi } from "./sqlite.js"
@@ -177,6 +179,105 @@ describe("Settings", () => {
 
     expect(Option.getOrUndefined(value)).toBe("alice")
   })
+
+
+  test("set rejects NUL bytes in keys before writing", async () => {
+    const { store } = await makeFixture()
+    const key = `api${String.fromCharCode(0)}token`
+
+    const exit = await Effect.runPromiseExit(store.set(key, UserName, "secret"))
+
+    expectFailure(exit, SettingsInvalidArgumentError)
+    expect(await Effect.runPromise(store.keys())).toEqual([])
+  })
+
+  test("set rejects every C0 control byte and DEL in keys", async () => {
+    const { store } = await makeFixture()
+
+    for (const codePoint of [0x00, 0x09, 0x0a, 0x0d, 0x1b, 0x7f]) {
+      const key = `api${String.fromCharCode(codePoint)}token`
+      const exit = await Effect.runPromiseExit(store.set(key, UserName, "secret"))
+      expectFailure(exit, SettingsInvalidArgumentError)
+    }
+    expect(await Effect.runPromise(store.keys())).toEqual([])
+  })
+
+  test("get rejects NUL bytes in keys before reading", async () => {
+    const { store } = await makeFixture()
+    const key = `api${String.fromCharCode(0)}token`
+
+    const exit = await Effect.runPromiseExit(store.get(key, UserName))
+
+    expectFailure(exit, SettingsInvalidArgumentError)
+  })
+
+  test("delete rejects NUL bytes in keys before mutating", async () => {
+    const { store } = await makeFixture()
+    const key = `api${String.fromCharCode(0)}token`
+
+    await Effect.runPromise(store.set("api.token", UserName, "secret"))
+    const exit = await Effect.runPromiseExit(store.delete(key))
+
+    expectFailure(exit, SettingsInvalidArgumentError)
+    expect(await Effect.runPromise(store.keys())).toEqual(["api.token"])
+  })
+
+  test("update rejects NUL bytes in keys before opening transaction", async () => {
+    const { store } = await makeFixture()
+    const key = `api${String.fromCharCode(0)}token`
+
+    const exit = await Effect.runPromiseExit(
+      store.update(key, UserName, () => Effect.succeed("secret"))
+    )
+
+    expectFailure(exit, SettingsInvalidArgumentError)
+    expect(await Effect.runPromise(store.keys())).toEqual([])
+  })
+
+  test("migration setRaw rejects NUL bytes in keys before writing", async () => {
+    const key = `api${String.fromCharCode(0)}token`
+    const { exit, keys } = await runFailingMigration((ctx) => ctx.setRaw(key, "x"))
+
+    expectMigrationFailedDueToInvalidArgument(exit)
+    expect(keys).toEqual([])
+  })
+
+  test("migration getRaw rejects NUL bytes in keys before reading", async () => {
+    const key = `api${String.fromCharCode(0)}token`
+    const { exit } = await runFailingMigration((ctx) => ctx.getRaw(key).pipe(Effect.asVoid))
+
+    expectMigrationFailedDueToInvalidArgument(exit)
+  })
+
+  test("migration deleteRaw rejects NUL bytes in keys before mutating", async () => {
+    const key = `api${String.fromCharCode(0)}token`
+    const { exit, keys } = await runFailingMigration(
+      (ctx) => ctx.deleteRaw(key),
+      (store) => store.set("api.token", UserName, "secret")
+    )
+
+    expectMigrationFailedDueToInvalidArgument(exit)
+    expect(keys).toEqual(["api.token"])
+  })
+
+  test("migration rename rejects NUL bytes in the source key before reading", async () => {
+    const from = `api${String.fromCharCode(0)}token`
+    const { exit, keys } = await runFailingMigration((ctx) => ctx.rename(from, "api.token"))
+
+    expectMigrationFailedDueToInvalidArgument(exit)
+    expect(keys).toEqual([])
+  })
+
+  test("migration rename rejects NUL bytes in the target key before writing", async () => {
+    const to = `api${String.fromCharCode(0)}token`
+    const { exit, keys } = await runFailingMigration(
+      (ctx) => ctx.rename("api.token", to),
+      (store) => store.set("api.token", UserName, "secret")
+    )
+
+    expectMigrationFailedDueToInvalidArgument(exit)
+    expect(keys).toEqual(["api.token"])
+  })
 })
 
 async function makeFixture(
@@ -210,5 +311,53 @@ function expectFailure<E>(
     const failure = exit.cause.reasons.find(Cause.isFailReason)
     const error = failure?.error
     expect(error).toBeInstanceOf(errorClass)
+  }
+}
+
+async function runFailingMigration(
+  migrate: (ctx: SettingsMigrationContext) => Effect.Effect<void, SettingsError, never>,
+  seed?: (store: SettingsStore) => Effect.Effect<unknown, SettingsError, never>
+): Promise<{ readonly exit: Exit.Exit<SettingsStore, SettingsError>; readonly keys: readonly string[] }> {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-settings-"))
+  const path = join(directory, "settings.sqlite")
+  const initial = await makeFixture({ path, schemaVersion: 1 })
+  if (seed !== undefined) {
+    await Effect.runPromise(seed(initial.store))
+  }
+  await Effect.runPromise(initial.store.close())
+
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const sqlite = await Effect.runPromise(makeSQLite(registry))
+  const settings = await Effect.runPromise(makeSettings(sqlite))
+  const exit = await Effect.runPromiseExit(
+    settings.open({
+      path,
+      ownerScope: "scope-main",
+      schemaVersion: 2,
+      migrations: [{ from: 1, to: 2, migrate }]
+    })
+  )
+
+  const after = await makeFixture({ path, schemaVersion: 1 })
+  const keys = await Effect.runPromise(after.store.keys())
+  await Effect.runPromise(after.store.close())
+
+  return { exit, keys }
+}
+
+function expectMigrationFailedDueToInvalidArgument(
+  exit: Exit.Exit<unknown, SettingsError>
+): void {
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    const error = failure?.error
+    expect(error).toBeInstanceOf(SettingsMigrationFailedError)
+    if (error instanceof SettingsMigrationFailedError) {
+      expect(Option.isSome(error.cause)).toBe(true)
+      if (Option.isSome(error.cause)) {
+        expect(error.cause.value).toBeInstanceOf(SettingsInvalidArgumentError)
+      }
+    }
   }
 }

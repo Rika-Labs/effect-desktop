@@ -13,6 +13,10 @@ import {
 
 const NonEmptyString = Schema.NonEmptyString
 const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+const SettingsKeySchema = Schema.NonEmptyString.check(
+  // eslint-disable-next-line no-control-regex -- intentional: reject C0 + DEL in keys
+  Schema.isPattern(/^[^\x00-\x1F\x7F]*$/)
+)
 
 export class SettingsOpenInput extends Schema.Class<SettingsOpenInput>("SettingsOpenInput")({
   path: NonEmptyString,
@@ -454,24 +458,48 @@ const migrationContext = (
   connection: SqliteConnection,
   namespace: string
 ): SettingsMigrationContext => ({
-  getRaw: (key) => readRaw(connection, namespace, key, "Settings.migration.getRaw"),
+  getRaw: (key) =>
+    Effect.gen(function* () {
+      const validatedKey = yield* decodeKey(key, "Settings.migration.getRaw")
+      return yield* readRaw(connection, namespace, validatedKey, "Settings.migration.getRaw")
+    }),
   setRaw: (key, value) =>
-    writeRaw(connection, namespace, key, value, Date.now(), "Settings.migration.setRaw"),
+    Effect.gen(function* () {
+      const validatedKey = yield* decodeKey(key, "Settings.migration.setRaw")
+      yield* writeRaw(
+        connection,
+        namespace,
+        validatedKey,
+        value,
+        Date.now(),
+        "Settings.migration.setRaw"
+      )
+    }),
   deleteRaw: (key) =>
-    exec(
-      connection,
-      "DELETE FROM settings_values WHERE namespace = ? AND key = ?",
-      [namespace, key],
-      "Settings.migration.deleteRaw"
-    ),
+    Effect.gen(function* () {
+      const validatedKey = yield* decodeKey(key, "Settings.migration.deleteRaw")
+      yield* exec(
+        connection,
+        "DELETE FROM settings_values WHERE namespace = ? AND key = ?",
+        [namespace, validatedKey],
+        "Settings.migration.deleteRaw"
+      )
+    }),
   rename: (from, to) =>
     Effect.gen(function* () {
-      const current = yield* readRaw(connection, namespace, from, "Settings.migration.rename")
+      const validatedFrom = yield* decodeKey(from, "Settings.migration.rename.from")
+      const validatedTo = yield* decodeKey(to, "Settings.migration.rename.to")
+      const current = yield* readRaw(
+        connection,
+        namespace,
+        validatedFrom,
+        "Settings.migration.rename"
+      )
       if (Option.isSome(current)) {
         yield* writeRaw(
           connection,
           namespace,
-          to,
+          validatedTo,
           current.value,
           Date.now(),
           "Settings.migration.rename"
@@ -479,7 +507,7 @@ const migrationContext = (
         yield* exec(
           connection,
           "DELETE FROM settings_values WHERE namespace = ? AND key = ?",
-          [namespace, from],
+          [namespace, validatedFrom],
           "Settings.migration.rename"
         )
       }
@@ -620,7 +648,7 @@ const decodeKey = (
   key: string,
   operation: string
 ): Effect.Effect<string, SettingsInvalidArgumentError, never> =>
-  Schema.decodeUnknownEffect(NonEmptyString)(key).pipe(
+  Schema.decodeUnknownEffect(SettingsKeySchema)(key).pipe(
     Effect.mapError(
       (error) =>
         new SettingsInvalidArgumentError({
