@@ -186,7 +186,7 @@
     {
       "name": "CanonicalPath",
       "kind": "class",
-      "signature": "export class CanonicalPath extends Schema.Class<CanonicalPath>(\"CanonicalPath\")({ path: Schema.String }) {}"
+      "signature": "export class CanonicalPath extends Schema.Class<CanonicalPath>(\"CanonicalPath\")({ // eslint-disable-next-line no-control-regex path: Schema.String.check(Schema.isPattern(/^[^\\x00]*$/)) }) {}"
     },
     {
       "name": "Clipboard",
