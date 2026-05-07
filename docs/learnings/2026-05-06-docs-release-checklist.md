@@ -27,7 +27,7 @@ flowchart TD
 
 ## What surfaced in review
 
-There were no external review findings. The local review pass found one correctness issue before merge: checking only that the production manifest had 24 rows preserved the count but not the identity of the required pages. The fix made the gate validate the exact section 25.3 ids and paths and added a regression test where 24 wrong rows still fail.
+There were no external review findings. The local review pass found one correctness issue before merge: checking only that the production manifest had 24 rows preserved the count but not the identity of the required pages. The fix made the gate validate the exact section 25.3 ids and paths and added a regression test where 24 wrong rows still fail. CI then caught that the new docs gate public symbols changed the CLI API snapshot; updating the snapshot made that contract explicit instead of treating the gate as an internal-only change.
 
 ## First-principles postmortem
 
@@ -39,7 +39,7 @@ The risky local move was making the easy check cheap: "there are 24 pages" is si
 
 ## Non-obvious lesson
 
-A release gate must validate the named promise, not a proxy metric. For documentation coverage, page count is a proxy; canonical page identity is the promise.
+A release gate must validate the named promise, not a proxy metric. For documentation coverage, page count is a proxy; canonical page identity is the promise. If the gate exports reusable typed errors and reports, the public API snapshot is part of the same change.
 
 ## Reproducible pattern (if any)
 
