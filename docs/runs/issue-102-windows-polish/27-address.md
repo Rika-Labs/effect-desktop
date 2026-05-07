@@ -11,7 +11,8 @@
 
 ## Commits Made
 
-- Pending commit: address Windows polish review.
+- `6328df9` — addressed dark-mode source and AppUserModelID source review.
+- `f193462` — hardened DPI and DWM dark-mode compatibility review.
 
 ## Escalations
 
@@ -27,11 +28,15 @@ None.
 
 ## CI Status
 
-Pending after push.
+Blacksmith CI after final address push:
+
+- `validate (blacksmith-2vcpu-ubuntu-2404)` — passed.
+- `validate (blacksmith-2vcpu-windows-2025)` — passed.
+- `validate (blacksmith-6vcpu-macos-latest)` — passed.
 
 ## Open Threads
 
-The addressed threads will be resolved silently after the fix commit is pushed.
+All addressed threads were resolved silently after the fix commits were pushed.
 
 ## Handoff
 
