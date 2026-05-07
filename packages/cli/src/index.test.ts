@@ -15,9 +15,11 @@ import {
   canonicalUpdateManifestBytes,
   DoctorMissing,
   runCli,
+  runSemverGuard,
   type CommandRunner,
   type DoctorCommandRunner,
   type NotarizeCommandRunner,
+  type PublicApiSnapshotReport,
   type SignCommandRunner
 } from "./index.js"
 import type { UpdateManifest } from "./update-manifest.js"
@@ -918,6 +920,71 @@ test("desktop check --a11y rejects contrast below the WCAG floor", async () => {
     expect(exitCode).toBe(1)
     expect(stderr.join("")).toContain("AccessibilityGateEvidenceError")
     expect(stderr.join("")).toContain("contrast ratio")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("semver guard verifies additive release posture", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+  try {
+    await writeSemverFixture(directory)
+    const report = await Effect.runPromise(
+      runSemverGuard({
+        cwd: directory,
+        publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+      })
+    )
+
+    expect(report.passed).toBe(true)
+    expect(report.appendixCRows).toHaveLength(4)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("semver guard rejects missing Appendix C rows", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+  try {
+    const manifest = semverManifestFixture()
+    if (!isSemverManifestFixture(manifest)) {
+      throw new Error("invalid semver manifest fixture")
+    }
+    await writeSemverFixture(directory, {
+      manifest: { ...manifest, appendixCRows: ["C.54", "C.404"] }
+    })
+    const exit = await Effect.runPromiseExit(
+      runSemverGuard({
+        cwd: directory,
+        publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+      })
+    )
+
+    expect(exit._tag).toBe("Failure")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("semver guard allows additive public API changes and blocks removals", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+  try {
+    await writeSemverFixture(directory)
+    const additive = await Effect.runPromise(
+      runSemverGuard({
+        cwd: directory,
+        publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+      })
+    )
+    expect(additive.passed).toBe(true)
+
+    const removalExit = await Effect.runPromiseExit(
+      runSemverGuard({
+        cwd: directory,
+        publicApiCheck: () => Effect.succeed(publicApiReportFixture("removed"))
+      })
+    )
+    expect(removalExit._tag).toBe("Failure")
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -2548,6 +2615,85 @@ const pa11yAuditFixture = (mode: string): unknown => ({
   runner: "pa11y",
   standard: "WCAG2AA",
   issues: []
+})
+
+const writeSemverFixture = async (
+  root: string,
+  overrides: {
+    readonly manifest?: unknown
+    readonly matrix?: unknown
+  } = {}
+): Promise<void> => {
+  await mkdir(join(root, "release"), { recursive: true })
+  await mkdir(join(root, "docs"), { recursive: true })
+  await writeFile(
+    join(root, "release", "semver.json"),
+    JSON.stringify(overrides.manifest ?? semverManifestFixture(), null, 2)
+  )
+  await writeFile(
+    join(root, "docs", "verification-matrix.json"),
+    JSON.stringify(overrides.matrix ?? semverMatrixFixture(), null, 2)
+  )
+}
+
+const semverManifestFixture = (): unknown => ({
+  schemaVersion: 1,
+  source: "docs/SPEC.md §25.6",
+  release: "1.0.0",
+  releaseKind: "minor",
+  publicApiSnapshots: "api/snapshots",
+  verificationMatrix: "docs/verification-matrix.json",
+  appendixCRows: ["C.54", "C.71", "C.72", "C.81"],
+  bridgeEnvelopePolicy: {
+    source: "docs/SPEC.md §9.3",
+    frozenBetweenMajors: true,
+    allowedChange: "fields may be added with defaults; fields may not be removed or reordered"
+  },
+  deprecationPolicy: {
+    minimumMinorReleases: 3,
+    requiresJSDocDeprecated: true
+  }
+})
+
+const isSemverManifestFixture = (
+  value: unknown
+): value is {
+  readonly appendixCRows: readonly string[]
+} =>
+  typeof value === "object" &&
+  value !== null &&
+  "appendixCRows" in value &&
+  Array.isArray(value.appendixCRows)
+
+const semverMatrixFixture = (): unknown => ({
+  rows: {
+    "C.54": {},
+    "C.71": {},
+    "C.72": {},
+    "C.81": {}
+  }
+})
+
+const publicApiReportFixture = (kind: "added" | "removed"): PublicApiSnapshotReport => ({
+  passed: kind === "added",
+  updated: false,
+  packages: [],
+  changes: [
+    {
+      packageName: "@effect-desktop/core",
+      symbol: "Example",
+      kind,
+      ...(kind === "added"
+        ? { after: { name: "Example", kind: "function", signature: "function Example(): void" } }
+        : {
+            before: {
+              name: "Example",
+              kind: "function",
+              signature: "function Example(): void"
+            }
+          })
+    }
+  ]
 })
 
 const releaseChecklistFixture = (): unknown => ({

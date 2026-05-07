@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "source": "docs/SPEC.md §25.6",
+  "release": "1.0.0",
+  "releaseKind": "minor",
+  "publicApiSnapshots": "api/snapshots",
+  "verificationMatrix": "docs/verification-matrix.json",
+  "appendixCRows": ["C.54", "C.71", "C.72", "C.81"],
+  "bridgeEnvelopePolicy": {
+    "source": "docs/SPEC.md §9.3",
+    "frozenBetweenMajors": true,
+    "allowedChange": "fields may be added with defaults; fields may not be removed or reordered"
+  },
+  "deprecationPolicy": {
+    "minimumMinorReleases": 3,
+    "requiresJSDocDeprecated": true
+  }
+}

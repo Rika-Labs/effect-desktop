@@ -85,6 +85,7 @@ import {
   formatAccessibilityGateReport,
   runAccessibilityGate
 } from "./accessibility-gate.js"
+import { formatSemverGuardError, formatSemverGuardReport, runSemverGuard } from "./semver-guard.js"
 
 export {
   runDesktopPackage,
@@ -211,6 +212,19 @@ export {
   type AccessibilityTemplate,
   type AccessibilityTemplateReport
 } from "./accessibility-gate.js"
+export {
+  runSemverGuard,
+  type SemverApiChange,
+  type SemverChangeClassification,
+  type SemverGuardError,
+  type SemverGuardFileError,
+  type SemverGuardManifestError,
+  type SemverGuardOptions,
+  type SemverGuardPolicyError,
+  type SemverGuardReport,
+  type SemverPolicyManifest,
+  type SemverReleaseKind
+} from "./semver-guard.js"
 
 export class CliUsageError extends Error {
   public override readonly name = "CliUsageError"
@@ -390,9 +404,13 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
       return yield* runAccessibilityCheckCli(options)
     }
 
+    if (options.argv[0] === "check" && options.argv.includes("--semver")) {
+      return yield* runSemverCheckCli(options)
+    }
+
     if (options.argv[0] !== "check" || !options.argv.includes("--production")) {
       options.writeStderr(
-        "Usage: desktop build --config <path>\nUsage: desktop package --config <path>\nUsage: desktop sign --config <path>\nUsage: desktop notarize --config <path>\nUsage: desktop publish --config <path>\nUsage: desktop doctor [--config <path>] [--ci] [--json]\nUsage: desktop check --production --config <path>\nUsage: desktop check --repro --config <path>\nUsage: desktop check --api [--write]\nUsage: desktop check --docs\nUsage: desktop check --release\nUsage: desktop check --a11y\n"
+        "Usage: desktop build --config <path>\nUsage: desktop package --config <path>\nUsage: desktop sign --config <path>\nUsage: desktop notarize --config <path>\nUsage: desktop publish --config <path>\nUsage: desktop doctor [--config <path>] [--ci] [--json]\nUsage: desktop check --production --config <path>\nUsage: desktop check --repro --config <path>\nUsage: desktop check --api [--write]\nUsage: desktop check --docs\nUsage: desktop check --release\nUsage: desktop check --a11y\nUsage: desktop check --semver\n"
       )
       return 1
     }
@@ -1001,6 +1019,39 @@ const runAccessibilityCheckCli = (options: CliRunOptions): Effect.Effect<number,
       options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
     } else {
       options.writeStdout(formatAccessibilityGateReport(report))
+    }
+
+    return 0
+  })
+
+const runSemverCheckCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
+  Effect.gen(function* () {
+    const report = yield* runSemverGuard({
+      cwd: options.cwd
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          const formatted = formatSemverGuardError(error)
+          if (options.argv.includes("--json")) {
+            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+          } else if (formatted.report === undefined) {
+            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+          } else {
+            options.writeStderr(formatSemverGuardReport(formatted.report))
+          }
+          return undefined
+        })
+      )
+    )
+
+    if (report === undefined) {
+      return 1
+    }
+
+    if (options.argv.includes("--json")) {
+      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+    } else {
+      options.writeStdout(formatSemverGuardReport(report))
     }
 
     return 0
