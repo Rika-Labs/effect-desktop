@@ -1,0 +1,49 @@
+---
+title: Native APIs
+description: Native capabilities are typed Effect services.
+---
+
+Filesystem, clipboard, dialogs, shell, notifications, and paths are permissioned contracts — not renderer globals.
+
+## Filesystem.writeText
+
+Renderer intent becomes a typed runtime request.
+
+<Example
+  title="Filesystem.writeText"
+  summary="Permission is data; the path is decoded; the result is typed."
+  accent="emerald"
+  successOutput="bytes written · permission recorded"
+  interruptedOutput="partial write prevented"
+>
+
+```ts
+const saved = yield* Filesystem.writeText({
+  path: notePath,
+  contents: markdown,
+  permission: "filesystem.write"
+}).pipe(Effect.withSpan("notes.save"))
+```
+
+</Example>
+
+## Dialog.open
+
+User-selected paths enter the app as structured values.
+
+<Example
+  title="Dialog.open"
+  summary="Cancel is a value, not a thrown exception."
+  accent="blue"
+  successOutput="selected.md decoded"
+  interruptedOutput="dialog canceled · caller handles none"
+>
+
+```ts
+const selected = yield* Dialog.open({
+  title: "Import workspace",
+  filters: [{ name: "Markdown", extensions: ["md"] }]
+})
+```
+
+</Example>

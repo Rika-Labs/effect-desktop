@@ -1,0 +1,56 @@
+---
+title: Errors
+description: Failures are typed values, attached to the operation that caused them.
+---
+
+Effect Desktop treats recoverable failure as data, records the cause, and gives the UI enough structure to show useful remediation.
+
+## Surface a typed error
+
+Map runtime failure into UI state without losing the capability, cause, or fix.
+
+<Example
+  title="PermissionDenied"
+  summary="Specific message, preserved cause, indexed remediation."
+  accent="amber"
+  successOutput="ErrorPanel rendered · remediation shown"
+  interruptedOutput="cause discarded · audit not written"
+>
+
+```ts
+const result = yield* Effect.either(
+  Process.spawn("git", ["push"]).pipe(Effect.withSpan("git.push"))
+)
+
+if (Either.isLeft(result)) {
+  return ErrorPanel.fromCause(result.left)
+}
+```
+
+</Example>
+
+## Observe the failure
+
+The same error goes to devtools and audit logs with trace context.
+
+<Example
+  title="Telemetry.record"
+  summary="Cause + span + remediation. Observability is one place."
+  accent="slate"
+  successOutput="cause recorded · audit linked"
+  interruptedOutput="span finalized · partial trace flagged"
+>
+
+```ts
+yield* program.pipe(
+  Effect.tapErrorCause((cause) =>
+    Telemetry.record({
+      span: "git.push",
+      cause,
+      remediation: "Grant process.spawn"
+    })
+  )
+)
+```
+
+</Example>

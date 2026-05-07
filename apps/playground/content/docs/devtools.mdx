@@ -1,0 +1,47 @@
+---
+title: Devtools
+description: Every long-lived thing is visible while the app runs.
+---
+
+Runtime panels expose command calls, workers, jobs, permissions, event logs, and stream state for debugging.
+
+## Command trace
+
+Renderer-to-runtime calls are inspectable with args, latency, and failure state.
+
+<Example
+  title="CommandRegistry.invoke"
+  summary="Span + cause flow into the panel."
+  accent="blue"
+  successOutput="trace 42ms · panel refreshed"
+  interruptedOutput="partial span · cause retained"
+>
+
+```ts
+yield* CommandRegistry.invoke("notes.save", input).pipe(
+  Effect.withSpan("command.notes.save"),
+  Effect.tapErrorCause(Telemetry.recordCause)
+)
+```
+
+</Example>
+
+## Live panel
+
+The devtools shell observes runtime state without becoming the source of truth.
+
+<Example
+  title="LiveRuntimePanels.snapshot"
+  summary="Snapshot is redacted. Runtime stays authoritative."
+  accent="slate"
+  successOutput="snapshot · jobs · workers · permissions"
+  interruptedOutput="observer unsubscribed · timer disposed"
+>
+
+```ts
+const snapshot = yield* LiveRuntimePanels.snapshot({
+  include: ["jobs", "workers", "permissions"]
+})
+```
+
+</Example>

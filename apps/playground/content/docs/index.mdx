@@ -1,0 +1,49 @@
+---
+title: Why Effect Desktop
+description: Native power without hidden failure.
+---
+
+Most desktop stacks make native calls, renderer state, background work, and errors hard to see together. Effect Desktop puts those boundaries in one typed Effect graph.
+
+## Without Effect Desktop
+
+Ambient globals, hidden promises, unstructured errors. Easy to start, hard to prove.
+
+<Example
+  title="The usual desktop problem"
+  summary="What can fail? Who owns cleanup? Which permission was granted?"
+  accent="amber"
+  successOutput="UnhandledRejection"
+  interruptedOutput="unknown cleanup"
+>
+
+```ts
+window.native.writeFile(path, text)
+window.native.spawn("git", ["status"])
+```
+
+</Example>
+
+## With Effect Desktop
+
+Native work becomes typed services, scoped resources, inspectable events.
+
+<Example
+  title="The Effect Desktop answer"
+  summary="Capabilities are typed contracts; failures are values; cleanup is scoped."
+  accent="emerald"
+  successOutput="Exit.Success · trace saved"
+  interruptedOutput="Scope closed · finalizers ran"
+>
+
+```ts
+const program = Effect.gen(function* () {
+  const files = yield* Filesystem
+  const process = yield* Process
+
+  yield* files.writeText(notePath, markdown)
+  return yield* process.spawn("git", ["status"])
+}).pipe(Effect.withSpan("workspace.save-and-status"))
+```
+
+</Example>
