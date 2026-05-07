@@ -1,6 +1,6 @@
 # @effect-desktop/devtools
 
-> **Status:** Phase 17 command observability surface. Broader devtools panels and transports are populated in Phase 19. See `docs/SPEC.md`.
+> **Status:** Phase 19 runtime inspector projections. See `docs/SPEC.md`.
 
 ## Purpose
 
