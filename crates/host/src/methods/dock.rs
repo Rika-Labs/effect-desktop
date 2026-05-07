@@ -31,6 +31,16 @@ pub(crate) fn set_badge_text(
     Ok(None)
 }
 
+pub(crate) fn request_attention(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let critical = decode_critical(payload)?;
+    handler.request_dock_attention(critical)?;
+
+    Ok(None)
+}
+
 fn decode_count(payload: Option<Value>) -> Result<u64, HostProtocolError> {
     let payload = required_payload(payload, host_protocol::DOCK_SET_BADGE_COUNT_METHOD)?;
     let Some(count) = payload.get("count").and_then(Value::as_f64) else {
@@ -69,13 +79,28 @@ fn decode_text(payload: Option<Value>) -> Result<Option<String>, HostProtocolErr
     }
 }
 
+fn decode_critical(payload: Option<Value>) -> Result<bool, HostProtocolError> {
+    match payload {
+        None => Ok(false),
+        Some(payload) => match payload.get("critical") {
+            None => Ok(false),
+            Some(Value::Bool(critical)) => Ok(*critical),
+            Some(_) => Err(HostProtocolError::invalid_argument(
+                "critical",
+                "must be a boolean",
+                host_protocol::DOCK_REQUEST_ATTENTION_METHOD,
+            )),
+        },
+    }
+}
+
 fn required_payload(payload: Option<Value>, operation: &str) -> Result<Value, HostProtocolError> {
     payload.ok_or_else(|| HostProtocolError::invalid_argument("payload", "is required", operation))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_count, decode_text};
+    use super::{decode_count, decode_critical, decode_text};
     use serde_json::json;
 
     #[test]
@@ -99,5 +124,16 @@ mod tests {
     #[test]
     fn text_rejects_missing_field() {
         assert!(decode_text(Some(json!({}))).is_err());
+    }
+
+    #[test]
+    fn critical_defaults_to_false() {
+        assert!(!decode_critical(None).expect("critical"));
+        assert!(!decode_critical(Some(json!({}))).expect("critical"));
+    }
+
+    #[test]
+    fn critical_rejects_non_boolean_values() {
+        assert!(decode_critical(Some(json!({ "critical": "yes" }))).is_err());
     }
 }

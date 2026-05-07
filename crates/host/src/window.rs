@@ -61,6 +61,8 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         &self,
         label: Option<String>,
     ) -> std::result::Result<(), HostProtocolError>;
+
+    fn request_dock_attention(&self, critical: bool) -> std::result::Result<(), HostProtocolError>;
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -86,6 +88,10 @@ enum WindowCommand {
         label: Option<String>,
         reply: Sender<WindowCommandReply>,
     },
+    RequestDockAttention {
+        critical: bool,
+        reply: Sender<WindowCommandReply>,
+    },
 }
 
 type WindowCommandReply = std::result::Result<WindowCommandResponse, HostProtocolError>;
@@ -94,6 +100,7 @@ enum WindowCommandResponse {
     Created(WindowCreateResponse),
     Destroyed,
     DockBadgeLabelSet,
+    DockAttentionRequested,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -192,6 +199,10 @@ impl WindowMethodHandler for WindowMethodPort {
                 "window create received dock badge response",
                 host_protocol::WINDOW_CREATE_METHOD,
             )),
+            WindowCommandResponse::DockAttentionRequested => Err(HostProtocolError::internal(
+                "window create received dock attention response",
+                host_protocol::WINDOW_CREATE_METHOD,
+            )),
             WindowCommandResponse::Destroyed => Err(HostProtocolError::internal(
                 "window create received destroy response",
                 host_protocol::WINDOW_CREATE_METHOD,
@@ -210,6 +221,10 @@ impl WindowMethodHandler for WindowMethodPort {
             WindowCommandResponse::Destroyed => Ok(()),
             WindowCommandResponse::DockBadgeLabelSet => Err(HostProtocolError::internal(
                 "window destroy received dock badge response",
+                host_protocol::WINDOW_DESTROY_METHOD,
+            )),
+            WindowCommandResponse::DockAttentionRequested => Err(HostProtocolError::internal(
+                "window destroy received dock attention response",
                 host_protocol::WINDOW_DESTROY_METHOD,
             )),
             WindowCommandResponse::Created(_) => Err(HostProtocolError::internal(
@@ -231,12 +246,30 @@ impl WindowMethodHandler for WindowMethodPort {
 
         match self.recv_reply(reply_rx)? {
             WindowCommandResponse::DockBadgeLabelSet => Ok(()),
-            WindowCommandResponse::Created(_) | WindowCommandResponse::Destroyed => {
-                Err(HostProtocolError::internal(
-                    "dock badge command received window response",
-                    host_protocol::DOCK_SET_BADGE_TEXT_METHOD,
-                ))
-            }
+            WindowCommandResponse::Created(_)
+            | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::DockAttentionRequested => Err(HostProtocolError::internal(
+                "dock badge command received window response",
+                host_protocol::DOCK_SET_BADGE_TEXT_METHOD,
+            )),
+        }
+    }
+
+    fn request_dock_attention(&self, critical: bool) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::RequestDockAttention {
+            critical,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::DockAttentionRequested => Ok(()),
+            WindowCommandResponse::Created(_)
+            | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::DockBadgeLabelSet => Err(HostProtocolError::internal(
+                "dock attention command received window response",
+                host_protocol::DOCK_REQUEST_ATTENTION_METHOD,
+            )),
         }
     }
 }
@@ -383,6 +416,23 @@ impl WindowRegistry {
         macos::set_dock_badge_label(&resources._window, label)
     }
 
+    fn request_dock_attention(&self, critical: bool) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.values().next() else {
+            return Err(HostProtocolError::not_found(
+                "Window:firstResponder",
+                host_protocol::DOCK_REQUEST_ATTENTION_METHOD,
+            ));
+        };
+
+        let attention = if critical {
+            tao::window::UserAttentionType::Critical
+        } else {
+            tao::window::UserAttentionType::Informational
+        };
+        resources._window.request_user_attention(Some(attention));
+        Ok(())
+    }
+
     fn handle_pending_window_commands(
         &mut self,
         target: &EventLoopWindowTarget<HostEvent>,
@@ -457,6 +507,13 @@ impl WindowRegistry {
                 let result = self
                     .set_dock_badge_label(label)
                     .map(|()| WindowCommandResponse::DockBadgeLabelSet);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::RequestDockAttention { critical, reply } => {
+                let result = self
+                    .request_dock_attention(critical)
+                    .map(|()| WindowCommandResponse::DockAttentionRequested);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
