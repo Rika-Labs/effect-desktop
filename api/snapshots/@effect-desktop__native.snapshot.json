@@ -256,7 +256,7 @@
     {
       "name": "ClipboardText",
       "kind": "class",
-      "signature": "export class ClipboardText extends Schema.Class<ClipboardText>(\"ClipboardText\")({ text: Schema.String }) {}"
+      "signature": "export class ClipboardText extends Schema.Class<ClipboardText>(\"ClipboardText\")({ // eslint-disable-next-line no-control-regex -- Clipboard text must reject NUL. text: Schema.String.check(Schema.isPattern(/^[^\\u0000]*$/)) }) {}"
     },
     {
       "name": "ContextMenu",

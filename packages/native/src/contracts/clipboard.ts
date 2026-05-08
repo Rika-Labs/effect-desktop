@@ -5,7 +5,8 @@ export const ClipboardImageMime = Schema.Literals(["image/png", "image/jpeg"])
 export type ClipboardImageMime = Schema.Schema.Type<typeof ClipboardImageMime>
 
 export class ClipboardText extends Schema.Class<ClipboardText>("ClipboardText")({
-  text: Schema.String
+  // eslint-disable-next-line no-control-regex -- Clipboard text must reject NUL.
+  text: Schema.String.check(Schema.isPattern(/^[^\u0000]*$/))
 }) {}
 
 export class ClipboardImage extends Schema.Class<ClipboardImage>("ClipboardImage")({

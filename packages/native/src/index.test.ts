@@ -1746,6 +1746,31 @@ test("Clipboard bridge client rejects mismatched image mime before transport", a
   expect(requests).toEqual([])
 })
 
+test("Clipboard bridge client rejects NUL bytes in writeText as InvalidArgument", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Clipboard
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          ClipboardLive,
+          makeClipboardBridgeClientLayer(
+            clipboardExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const exit = await Effect.runPromiseExit(client.writeText("hello\u0000world"))
+  expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+
+  await Effect.runPromise(client.writeText("valid text"))
+  expect(requests.length).toBe(1)
+})
+
 test("unsupported Clipboard client reports deferred host methods as Effect values", async () => {
   const exit = await Effect.runPromise(
     Effect.gen(function* () {
