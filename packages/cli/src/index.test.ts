@@ -2032,6 +2032,99 @@ test("desktop publish rejects stale package metadata before signing the manifest
   }
 })
 
+test("desktop publish rejects invalid feedUrl", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-invalid-feed-url-"))
+  const key = testEd25519Key()
+  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+  const previousPrivateKey = process.env[privateKeyEnv]
+  process.env[privateKeyEnv] = key.privateKeyPem
+  try {
+    await writePlaygroundFixture(directory, {
+      update: {
+        channel: "stable",
+        feedUrl: "not-a-url",
+        publicKey: key.publicKey,
+        privateKeyEnv,
+        keyVersion: 5
+      }
+    })
+    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["publish", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        now: () => 1_772_923_200_000,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("update.feedUrl")
+    expect(stderr.join("")).toContain("valid http(s) URL template")
+  } finally {
+    if (previousPrivateKey === undefined) {
+      delete process.env[privateKeyEnv]
+    } else {
+      process.env[privateKeyEnv] = previousPrivateKey
+    }
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop publish rejects artifact target mismatching platform directory", async () => {
+  const directory = await mkdtemp(
+    join(tmpdir(), "effect-desktop-cli-publish-target-mismatch-")
+  )
+  const key = testEd25519Key()
+  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+  const previousPrivateKey = process.env[privateKeyEnv]
+  process.env[privateKeyEnv] = key.privateKeyPem
+  try {
+    await writePlaygroundFixture(directory, {
+      update: {
+        channel: "stable",
+        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+        publicKey: key.publicKey,
+        privateKeyEnv,
+        keyVersion: 5
+      }
+    })
+    const artifactPath = await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+    const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
+    const artifactJson = JSON.parse(await readFile(artifactJsonPath, "utf8")) as Record<
+      string,
+      unknown
+    >
+    artifactJson.target = "linux-x64"
+    await writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
+
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["publish", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        now: () => 1_772_923_200_000,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("does not match platform directory")
+  } finally {
+    if (previousPrivateKey === undefined) {
+      delete process.env[privateKeyEnv]
+    } else {
+      process.env[privateKeyEnv] = previousPrivateKey
+    }
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop publish signs macOS app directory artifacts with deterministic directory digests", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-"))
   const key = testEd25519Key()
@@ -2178,6 +2271,29 @@ test("desktop build stages renderer runtime host bridge manifests and report", a
       target: "linux-x64",
       layoutPath: layout
     })
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop build rejects missing runtime.entry", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-missing-runtime-entry-"))
+  try {
+    await writePlaygroundFixture(directory, { runtime: {} })
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["build", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("runtime.entry is required")
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

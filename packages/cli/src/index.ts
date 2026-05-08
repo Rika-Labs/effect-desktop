@@ -1101,11 +1101,8 @@ const normalizeBuildPlan = (
     const appVersion = yield* readRequiredString(config.app?.version, "app.version")
     const rendererDist =
       (yield* readOptionalString(config.renderer?.dist, "renderer.dist")) ?? "dist"
-    const configuredRuntimeEntry = yield* readOptionalString(config.runtime?.entry, "runtime.entry")
-    const runtimeEntryPath =
-      configuredRuntimeEntry === undefined
-        ? resolvePath(options.workspaceRoot, "packages/core/src/runtime/main.ts")
-        : resolvePath(appRoot, configuredRuntimeEntry)
+    const runtimeEntry = yield* readRequiredString(config.runtime?.entry, "runtime.entry")
+    const runtimeEntryPath = resolvePath(appRoot, runtimeEntry)
 
     return {
       appId,
