@@ -1274,9 +1274,10 @@ const writeAppManifest = (plan: BuildPlan): Effect.Effect<BuildStepReport, Build
   Effect.gen(function* () {
     const path = join(plan.layoutPath, "app-manifest.json")
     const runtimeBase = basename(plan.runtimeEntryPath)
-    const runtimeEntry = extname(runtimeBase) === ".ts" || extname(runtimeBase) === ".tsx"
-      ? `${runtimeBase.slice(0, -extname(runtimeBase).length)}.js`
-      : runtimeBase
+    const runtimeEntry =
+      extname(runtimeBase) === ".ts" || extname(runtimeBase) === ".tsx"
+        ? `${runtimeBase.slice(0, -extname(runtimeBase).length)}.js`
+        : runtimeBase
     yield* writeJson(path, {
       id: plan.appId,
       name: plan.appName,

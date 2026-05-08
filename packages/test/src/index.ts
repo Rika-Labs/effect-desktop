@@ -1451,12 +1451,7 @@ const lookupPath = (
       const target = node.target.startsWith("/")
         ? node.target
         : normalizeMemoryPath(posix.join(posix.dirname(current), node.target))
-      return lookupPath(
-        nodes,
-        posix.join(target, ...remaining),
-        mode,
-        new Set([...seen, current])
-      )
+      return lookupPath(nodes, posix.join(target, ...remaining), mode, new Set([...seen, current]))
     }
     if (node.kind !== "directory" && !isFinalSegment) {
       throw nodeError("ENOTDIR", current)

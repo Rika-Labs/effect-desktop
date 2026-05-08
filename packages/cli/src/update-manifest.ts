@@ -524,9 +524,7 @@ const artifactUrl = (
     : `${manifestUrl.slice(0, slashIndex + 1)}${encodedName}`
 }
 
-const validateFeedUrl = (
-  feedUrl: string
-): Effect.Effect<void, PublishConfigError, never> =>
+const validateFeedUrl = (feedUrl: string): Effect.Effect<void, PublishConfigError, never> =>
   Effect.gen(function* () {
     const substituted = feedUrl
       .replaceAll("{platform}", "macos-arm64")

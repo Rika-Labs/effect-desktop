@@ -2075,9 +2075,7 @@ test("desktop publish rejects invalid feedUrl", async () => {
 })
 
 test("desktop publish rejects artifact target mismatching platform directory", async () => {
-  const directory = await mkdtemp(
-    join(tmpdir(), "effect-desktop-cli-publish-target-mismatch-")
-  )
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-target-mismatch-"))
   const key = testEd25519Key()
   const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
   const previousPrivateKey = process.env[privateKeyEnv]
