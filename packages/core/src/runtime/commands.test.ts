@@ -379,6 +379,27 @@ test("CommandRegistry interrupted registration rollback does not remove a replac
   expect(snapshots.map((snapshot) => snapshot.id)).toEqual(["openProject"])
 })
 
+test("CommandRegistry rejects control characters in command ids", async () => {
+  const rows: EventLogEntry[] = []
+  const { registry } = await makeTestRegistry(rows)
+
+  const nulExit = await Effect.runPromiseExit(registry.register(registration("open\u0000Project")))
+  const newlineExit = await Effect.runPromiseExit(registry.register(registration("open\nProject")))
+  const tabExit = await Effect.runPromiseExit(registry.register(registration("open\tProject")))
+  const crExit = await Effect.runPromiseExit(registry.register(registration("open\rProject")))
+  const delExit = await Effect.runPromiseExit(registry.register(registration("open\x7fProject")))
+  const fineExit = await Effect.runPromiseExit(registry.register(registration("openProject")))
+
+  expectFailure(nulExit, CommandRegistryInvalidInputError)
+  expectFailure(newlineExit, CommandRegistryInvalidInputError)
+  expectFailure(tabExit, CommandRegistryInvalidInputError)
+  expectFailure(crExit, CommandRegistryInvalidInputError)
+  expectFailure(delExit, CommandRegistryInvalidInputError)
+  expect(Exit.isSuccess(fineExit)).toBe(true)
+
+  expect(rows.filter((r) => r.type === "command-registered")).toEqual([])
+})
+
 const registration = (id: string) => ({
   id,
   inputSchema: OpenInput,

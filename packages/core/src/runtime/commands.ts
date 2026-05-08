@@ -18,6 +18,8 @@ import {
 } from "./resources.js"
 
 const NonEmptyString = Schema.NonEmptyString
+// eslint-disable-next-line no-control-regex -- Intentionally matches control chars to reject them.
+const CommandIdString = Schema.NonEmptyString.check(Schema.isPattern(/^[^\x00-\x1f\x7f]+$/))
 const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
@@ -521,14 +523,14 @@ const decodeCommandId = (
   id: string,
   operation: string
 ): Effect.Effect<string, CommandRegistryInvalidInputError, never> =>
-  Schema.decodeUnknownEffect(NonEmptyString)(id).pipe(
+  Schema.decodeUnknownEffect(CommandIdString)(id).pipe(
     Effect.mapError(
       (cause) =>
         new CommandRegistryInvalidInputError({
           operation,
           commandId: Option.none(),
           field: "id",
-          message: "command id must be a non-empty string",
+          message: "command id must be a printable non-empty string",
           cause: Option.some(cause)
         })
     )
