@@ -3778,6 +3778,128 @@ test("host WindowClient adapter returns typed failures for invalid input and bad
   )
 })
 
+test("Shell bridge client rejects empty path strings as InvalidArgument", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Shell
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          ShellLive,
+          makeShellBridgeClientLayer(
+            shellExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const showExit = await Effect.runPromiseExit(client.showItemInFolder(""))
+  const openExit = await Effect.runPromiseExit(client.openPath(""))
+  const trashExit = await Effect.runPromiseExit(client.trashItem(""))
+
+  expectExitFailure(showExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(openExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(trashExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
+test("Path bridge client rejects empty canonical path strings from host as InvalidOutput", async () => {
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Path
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          PathLive,
+          makePathBridgeClientLayer(
+            pathExchange([], () => ({ kind: "success", payload: { path: "" } }))
+          )
+        )
+      )
+    )
+  )
+
+  const exit = await Effect.runPromiseExit(client.appData())
+  expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+})
+
+test("Updater bridge client rejects empty version strings as InvalidArgument", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Updater
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          UpdaterLive,
+          makeUpdaterBridgeClientLayer(
+            updaterExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const checkExit = await Effect.runPromiseExit(client.check({ currentVersion: "" }))
+  const downloadExit = await Effect.runPromiseExit(client.download({ version: "" }))
+  const installExit = await Effect.runPromiseExit(client.install({ version: "" }))
+
+  expectExitFailure(checkExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(downloadExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(installExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
+test("Updater bridge client rejects out-of-bounds progress values from host as InvalidOutput", async () => {
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Updater
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          UpdaterLive,
+          makeUpdaterBridgeClientLayer(
+            updaterExchange([], () => ({
+              kind: "success",
+              payload: { state: "downloading", progress: 1.5 }
+            }))
+          )
+        )
+      )
+    )
+  )
+
+  const exit = await Effect.runPromiseExit(client.getStatus())
+  expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+})
+
+test("Dialog bridge client rejects empty message strings as InvalidArgument", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Dialog
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          DialogLive,
+          makeDialogBridgeClientLayer(
+            dialogExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const messageExit = await Effect.runPromiseExit(client.message({ level: "info", message: "" }))
+  const confirmExit = await Effect.runPromiseExit(client.confirm({ message: "" }))
+
+  expectExitFailure(messageExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(confirmExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
 const recordVoid = (calls: string[], call: string): Effect.Effect<void, never, never> =>
   Effect.sync(() => {
     calls.push(call)

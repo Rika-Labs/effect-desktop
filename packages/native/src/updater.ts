@@ -10,6 +10,7 @@ import {
   type ApiLayer,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
+  makeHostProtocolInvalidArgumentError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Option, Schema } from "effect"
@@ -157,18 +158,78 @@ export const makeHostUpdaterApiLayer = <Handlers extends ApiHandlers<UpdaterApiS
   handlers: Handlers
 ): ApiLayer<"Updater", UpdaterApiSpec, Handlers, UpdaterApiEvents> => UpdaterApi.layer(handlers)
 
+const StrictParseOptions = { onExcessProperty: "error" } as const
+
 const makeUpdaterBridgeClient = (
   exchange: ApiClientExchange,
   options: ApiClientOptions
 ): UpdaterClientApi => {
   const client = Client({ Updater: UpdaterApi }, exchange, options).Updater
   return Object.freeze({
-    check: (input = {}) => client.check(makeUpdaterCheckInput(input)),
-    download: (input = {}) => client.download(makeUpdaterDownloadInput(input)),
-    install: (input = {}) => client.install(makeUpdaterInstallInput(input)),
-    installAndRestart: (input = {}) => client.installAndRestart(makeUpdaterInstallInput(input)),
+    check: (input = {}) =>
+      decodeUpdaterCheckInput(input, "Updater.check").pipe(Effect.flatMap(client.check)),
+    download: (input = {}) =>
+      decodeUpdaterDownloadInput(input, "Updater.download").pipe(Effect.flatMap(client.download)),
+    install: (input = {}) =>
+      decodeUpdaterInstallInput(input, "Updater.install").pipe(Effect.flatMap(client.install)),
+    installAndRestart: (input = {}) =>
+      decodeUpdaterInstallInput(input, "Updater.installAndRestart").pipe(
+        Effect.flatMap(client.installAndRestart)
+      ),
     getStatus: () => client.getStatus()
   } satisfies UpdaterClientApi)
+}
+
+const decodeUpdaterCheckInput = (
+  input: unknown,
+  operation: string
+): Effect.Effect<UpdaterCheckInput, UpdaterError, never> =>
+  decodeInput(UpdaterCheckInput, input, operation) as Effect.Effect<
+    UpdaterCheckInput,
+    UpdaterError,
+    never
+  >
+
+const decodeUpdaterDownloadInput = (
+  input: unknown,
+  operation: string
+): Effect.Effect<UpdaterDownloadInput, UpdaterError, never> =>
+  decodeInput(UpdaterDownloadInput, input, operation) as Effect.Effect<
+    UpdaterDownloadInput,
+    UpdaterError,
+    never
+  >
+
+const decodeUpdaterInstallInput = (
+  input: unknown,
+  operation: string
+): Effect.Effect<UpdaterInstallInput, UpdaterError, never> =>
+  decodeInput(UpdaterInstallInput, input, operation) as Effect.Effect<
+    UpdaterInstallInput,
+    UpdaterError,
+    never
+  >
+
+const decodeInput = (
+  schema: Schema.Schema<unknown>,
+  input: unknown,
+  operation: string
+): Effect.Effect<unknown, UpdaterError, never> =>
+  Effect.mapError(
+    Schema.decodeUnknownEffect(schema)(input, StrictParseOptions) as Effect.Effect<
+      unknown,
+      unknown,
+      never
+    >,
+    (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+  )
+
+const formatUnknownError = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  return String(error)
 }
 
 export const makeUnsupportedUpdaterClient = (): UpdaterClientApi => {
@@ -191,18 +252,3 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
     operation: method,
     recoverable: false
   })
-
-const makeUpdaterCheckInput = (input: UpdaterCheckOptions): UpdaterCheckInput =>
-  input.currentVersion === undefined
-    ? new UpdaterCheckInput({})
-    : new UpdaterCheckInput({ currentVersion: input.currentVersion })
-
-const makeUpdaterDownloadInput = (input: UpdaterDownloadOptions): UpdaterDownloadInput =>
-  input.version === undefined
-    ? new UpdaterDownloadInput({})
-    : new UpdaterDownloadInput({ version: input.version })
-
-const makeUpdaterInstallInput = (input: UpdaterInstallOptions): UpdaterInstallInput =>
-  input.version === undefined
-    ? new UpdaterInstallInput({})
-    : new UpdaterInstallInput({ version: input.version })

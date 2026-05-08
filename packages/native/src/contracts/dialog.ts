@@ -41,7 +41,7 @@ export type DialogSaveFileOptions = Schema.Schema.Type<typeof DialogSaveFileInpu
 export class DialogMessageInput extends Schema.Class<DialogMessageInput>("DialogMessageInput")({
   level: DialogLevel,
   title: Schema.optionalKey(Schema.String),
-  message: Schema.String,
+  message: Schema.NonEmptyString,
   detail: Schema.optionalKey(Schema.String)
 }) {}
 
@@ -49,7 +49,7 @@ export type DialogMessageOptions = Schema.Schema.Type<typeof DialogMessageInput>
 
 export class DialogConfirmInput extends Schema.Class<DialogConfirmInput>("DialogConfirmInput")({
   title: Schema.optionalKey(Schema.String),
-  message: Schema.String,
+  message: Schema.NonEmptyString,
   detail: Schema.optionalKey(Schema.String),
   confirmLabel: Schema.optionalKey(Schema.String),
   cancelLabel: Schema.optionalKey(Schema.String)

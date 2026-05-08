@@ -231,6 +231,10 @@ const validatePathInput = <A extends { readonly path: string }>(
   input: A,
   operation: string
 ): Effect.Effect<A, ShellError, never> => {
+  if (input.path.length === 0) {
+    return Effect.fail(makeHostProtocolInvalidArgumentError("path", "must not be empty", operation))
+  }
+
   if (ShellMetacharacters.test(input.path)) {
     return Effect.fail(
       makeHostProtocolInvalidArgumentError("path", "contains shell metacharacters", operation)
