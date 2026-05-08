@@ -367,6 +367,7 @@ const makeMenuBridgeClient = (
   const menuClient: MenuClientApi = {
     setApplicationMenu: (template) =>
       decodeMenuSetApplicationMenuInput({ template }).pipe(
+        Effect.flatMap(validateApplicationMenuRoots),
         Effect.flatMap(client.setApplicationMenu)
       ),
     setWindowMenu: (window, template) =>
@@ -472,6 +473,22 @@ const decodeMenuCapabilityInput = (
     MenuError,
     never
   >
+
+const validateApplicationMenuRoots = (
+  input: MenuSetApplicationMenuInput
+): Effect.Effect<MenuSetApplicationMenuInput, MenuError, never> => {
+  const nonSubmenu = input.template.items.find((item) => item.type !== "submenu")
+  if (nonSubmenu !== undefined) {
+    return Effect.fail(
+      makeHostProtocolInvalidArgumentError(
+        "template.items",
+        `application menu root entry must be submenu, got "${nonSubmenu.type}"`,
+        "Menu.setApplicationMenu"
+      )
+    )
+  }
+  return Effect.succeed(input)
+}
 
 const decodeInput = (
   schema: Schema.Schema<unknown>,
