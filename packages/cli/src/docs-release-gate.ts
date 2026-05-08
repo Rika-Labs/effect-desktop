@@ -1,5 +1,5 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
-import { join } from "node:path"
+import { isAbsolute, join, relative } from "node:path"
 
 import { Data, Effect } from "effect"
 
@@ -129,6 +129,17 @@ export const runDocsReleaseGate = (
 
     for (const page of manifest.pages) {
       const absolutePath = join(options.cwd, page.path)
+      if (
+        isAbsolute(page.path) ||
+        relative(options.cwd, absolutePath).startsWith("..") ||
+        page.path.includes("..")
+      ) {
+        return yield* Effect.fail(
+          new DocsGateManifestError({
+            message: `docs manifest page path ${page.path} escapes the repo`
+          })
+        )
+      }
       const body = yield* readText(absolutePath).pipe(
         Effect.catch((error) =>
           Effect.fail(
