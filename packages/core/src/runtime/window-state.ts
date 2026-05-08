@@ -13,7 +13,9 @@ export class WindowStateRecord extends Schema.Class<WindowStateRecord>("WindowSt
   scaleFactor: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)),
   zoom: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)),
   devtoolsPanel: Schema.optionalKey(Schema.String),
-  scrollPositions: Schema.optionalKey(Schema.Record(Schema.String, Schema.Number))
+  scrollPositions: Schema.optionalKey(
+    Schema.Record(Schema.String, Schema.Number.check(Schema.isFinite()))
+  )
 }) {}
 
 export class WindowStateStore extends Schema.Class<WindowStateStore>("WindowStateStore")({
