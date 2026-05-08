@@ -174,6 +174,32 @@ test("ApprovalBroker propagates host prompt failure as a typed value", async () 
   expectFailure(exit, ApprovalBrokerPromptFailedError)
 })
 
+test("ApprovalBroker rejects empty explicit trace ids", async () => {
+  expect(
+    () =>
+      new ApprovalRequest({
+        id: "request-1",
+        operation: "x",
+        actor: "window-main",
+        risk: "low",
+        summary: "test",
+        details: {},
+        traceId: ""
+      })
+  ).toThrow()
+  expect(
+    () =>
+      new ApprovalRequest({
+        id: "request-2",
+        operation: "x",
+        actor: "window-main",
+        risk: "low",
+        summary: "test",
+        details: {}
+      })
+  ).not.toThrow()
+})
+
 const approvalRequest = (
   id: string,
   operation: string,

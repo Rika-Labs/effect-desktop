@@ -30,7 +30,7 @@ export class ApprovalRequest extends Schema.Class<ApprovalRequest>("ApprovalRequ
   summary: NonEmptyString,
   details: Schema.Unknown,
   expiresAt: Schema.optionalKey(Schema.Number),
-  traceId: Schema.optionalKey(Schema.String)
+  traceId: Schema.optionalKey(NonEmptyString)
 }) {}
 
 export class ApprovalOutcome extends Schema.Class<ApprovalOutcome>("ApprovalOutcome")({
