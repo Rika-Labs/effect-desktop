@@ -186,7 +186,7 @@
     {
       "name": "CanonicalPath",
       "kind": "class",
-      "signature": "export class CanonicalPath extends Schema.Class<CanonicalPath>(\"CanonicalPath\")({ // eslint-disable-next-line no-control-regex path: Schema.String.check(Schema.isPattern(/^[^\\x00]*$/)) }) {}"
+      "signature": "export class CanonicalPath extends Schema.Class<CanonicalPath>(\"CanonicalPath\")({ // eslint-disable-next-line no-control-regex -- Canonical paths must reject NUL. path: Schema.NonEmptyString.check(Schema.isPattern(/^[^\\u0000]*$/)) }) {}"
     },
     {
       "name": "Clipboard",
@@ -461,7 +461,7 @@
     {
       "name": "DialogConfirmInput",
       "kind": "class",
-      "signature": "export class DialogConfirmInput extends Schema.Class<DialogConfirmInput>(\"DialogConfirmInput\")({ title: Schema.optionalKey(Schema.String), message: Schema.String, detail: Schema.optionalKey(Schema.String), confirmLabel: Schema.optionalKey(Schema.String), cancelLabel: Schema.optionalKey(Schema.String) }) {}"
+      "signature": "export class DialogConfirmInput extends Schema.Class<DialogConfirmInput>(\"DialogConfirmInput\")({ title: Schema.optionalKey(Schema.String), message: Schema.NonEmptyString, detail: Schema.optionalKey(Schema.String), confirmLabel: Schema.optionalKey(Schema.String), cancelLabel: Schema.optionalKey(Schema.String) }) {}"
     },
     {
       "name": "DialogConfirmOptions",
@@ -501,7 +501,7 @@
     {
       "name": "DialogMessageInput",
       "kind": "class",
-      "signature": "export class DialogMessageInput extends Schema.Class<DialogMessageInput>(\"DialogMessageInput\")({ level: DialogLevel, title: Schema.optionalKey(Schema.String), message: Schema.String, detail: Schema.optionalKey(Schema.String) }) {}"
+      "signature": "export class DialogMessageInput extends Schema.Class<DialogMessageInput>(\"DialogMessageInput\")({ level: DialogLevel, title: Schema.optionalKey(Schema.String), message: Schema.NonEmptyString, detail: Schema.optionalKey(Schema.String) }) {}"
     },
     {
       "name": "DialogMessageOptions",
@@ -2306,7 +2306,7 @@
     {
       "name": "UpdaterCheckInput",
       "kind": "class",
-      "signature": "export class UpdaterCheckInput extends Schema.Class<UpdaterCheckInput>(\"UpdaterCheckInput\")({ currentVersion: Schema.optionalKey(Schema.String) }) {}"
+      "signature": "export class UpdaterCheckInput extends Schema.Class<UpdaterCheckInput>(\"UpdaterCheckInput\")({ currentVersion: Schema.optionalKey(Schema.NonEmptyString) }) {}"
     },
     {
       "name": "UpdaterCheckOptions",
@@ -2331,7 +2331,7 @@
     {
       "name": "UpdaterDownloadInput",
       "kind": "class",
-      "signature": "export class UpdaterDownloadInput extends Schema.Class<UpdaterDownloadInput>( \"UpdaterDownloadInput\" )({ version: Schema.optionalKey(Schema.String) }) {}"
+      "signature": "export class UpdaterDownloadInput extends Schema.Class<UpdaterDownloadInput>( \"UpdaterDownloadInput\" )({ version: Schema.optionalKey(Schema.NonEmptyString) }) {}"
     },
     {
       "name": "UpdaterDownloadOptions",
@@ -2346,7 +2346,7 @@
     {
       "name": "UpdaterInstallInput",
       "kind": "class",
-      "signature": "export class UpdaterInstallInput extends Schema.Class<UpdaterInstallInput>(\"UpdaterInstallInput\")({ version: Schema.optionalKey(Schema.String) }) {}"
+      "signature": "export class UpdaterInstallInput extends Schema.Class<UpdaterInstallInput>(\"UpdaterInstallInput\")({ version: Schema.optionalKey(Schema.NonEmptyString) }) {}"
     },
     {
       "name": "UpdaterInstallOptions",
@@ -2371,7 +2371,7 @@
     {
       "name": "UpdaterStatusResult",
       "kind": "class",
-      "signature": "export class UpdaterStatusResult extends Schema.Class<UpdaterStatusResult>(\"UpdaterStatusResult\")({ state: UpdaterStatusState, version: Schema.optionalKey(Schema.String), progress: Schema.optionalKey(Schema.Number), message: Schema.optionalKey(Schema.String) }) {}"
+      "signature": "export class UpdaterStatusResult extends Schema.Class<UpdaterStatusResult>(\"UpdaterStatusResult\")({ state: UpdaterStatusState, version: Schema.optionalKey(Schema.String), progress: Schema.optionalKey( Schema.Number.check( Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(1) ) ), message: Schema.optionalKey(Schema.String) }) {}"
     },
     {
       "name": "UpdaterStatusState",
