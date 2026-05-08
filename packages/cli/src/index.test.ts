@@ -945,6 +945,62 @@ test("desktop check --docs reports failing runnable examples", async () => {
   }
 })
 
+test("desktop check --docs rejects manifest paths outside the repo", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
+  try {
+    await writeDocsManifest(directory, [{ id: "escape", title: "Escape", path: "../outside.md" }])
+
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--docs", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+    expect(exitCode).toBe(1)
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(payload.tag).toBe("DocsGateManifestError")
+    expect(payload.message).toContain("escapes the repo")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --docs rejects absolute manifest paths", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
+  try {
+    await writeDocsManifest(directory, [{ id: "absolute", title: "Absolute", path: "/etc/passwd" }])
+
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--docs", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+    expect(exitCode).toBe(1)
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(payload.tag).toBe("DocsGateManifestError")
+    expect(payload.message).toContain("escapes the repo")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop check --release verifies the release supply-chain posture", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
   try {
