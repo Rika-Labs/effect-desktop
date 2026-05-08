@@ -2098,7 +2098,7 @@ test("desktop publish rejects artifact target mismatching platform directory", a
       string,
       unknown
     >
-    artifactJson.target = "linux-x64"
+    artifactJson["target"] = "linux-x64"
     await writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
 
     const stderr: string[] = []
