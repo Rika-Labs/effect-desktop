@@ -223,6 +223,7 @@ const normalizePublishPlan = (
       "update.feedUrl",
       "Set update.feedUrl to the published manifest URL template."
     )
+    yield* validateFeedUrl(feedUrl)
     const publicKey = yield* readRequiredString(
       update?.publicKey,
       "update.publicKey",
@@ -314,6 +315,15 @@ const readPackagedArtifacts = (
           metadata.target,
           `${relative(plan.outputPath, metadataPath)}#target`
         )
+        if (platformDirectory(target) !== platform) {
+          return yield* Effect.fail(
+            new PublishConfigError({
+              field: `${relative(plan.outputPath, metadataPath)}#target`,
+              message: `artifact target ${target} does not match platform directory ${platform}`,
+              remediation: "Regenerate package metadata with the correct target."
+            })
+          )
+        }
         if (plan.target !== undefined && target !== plan.target) {
           continue
         }
@@ -513,6 +523,31 @@ const artifactUrl = (
     ? `${manifestUrl}/${encodedName}`
     : `${manifestUrl.slice(0, slashIndex + 1)}${encodedName}`
 }
+
+const validateFeedUrl = (
+  feedUrl: string
+): Effect.Effect<void, PublishConfigError, never> =>
+  Effect.gen(function* () {
+    const substituted = feedUrl
+      .replaceAll("{platform}", "macos-arm64")
+      .replaceAll("{channel}", "stable")
+    try {
+      const url = new URL(substituted)
+      if (url.protocol !== "http:" && url.protocol !== "https:") {
+        throw new Error("URL must use http or https protocol")
+      }
+    } catch {
+      return yield* Effect.fail(
+        new PublishConfigError({
+          field: "update.feedUrl",
+          message:
+            "update.feedUrl must be a valid http(s) URL template with optional {platform} and {channel} placeholders",
+          remediation:
+            "Set update.feedUrl to a valid absolute URL like https://example.invalid/{platform}/{channel}.json"
+        })
+      )
+    }
+  })
 
 const readConfigObject = (
   rawConfig: unknown
