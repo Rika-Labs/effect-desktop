@@ -1278,9 +1278,10 @@
       "number": 770,
       "title": "Expose the documented bun desktop entrypoint",
       "url": "https://github.com/Rika-Labs/effect-desktop/issues/770",
-      "status": "implemented",
-      "workflow": ["scout", "architect", "review", "work"],
-      "updated_at": "2026-05-09T00:06:30.000Z"
+      "status": "pr-open",
+      "workflow": ["scout", "architect", "review", "work", "pr"],
+      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/774",
+      "updated_at": "2026-05-09T00:13:30.000Z"
     },
     "worked": [],
     "remaining": [
