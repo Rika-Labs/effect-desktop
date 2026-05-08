@@ -116,7 +116,7 @@
     {
       "name": "AppOpenAtLoginInput",
       "kind": "class",
-      "signature": "export class AppOpenAtLoginInput extends Schema.Class<AppOpenAtLoginInput>(\"AppOpenAtLoginInput\")({ enabled: Schema.Boolean, args: Schema.optionalKey(Schema.Array(Schema.String)) }) {}"
+      "signature": "export class AppOpenAtLoginInput extends Schema.Class<AppOpenAtLoginInput>(\"AppOpenAtLoginInput\")({ enabled: Schema.Boolean, args: Schema.optionalKey(Schema.Array(ArgString)) }) {}"
     },
     {
       "name": "AppOpenAtLoginOptions",
@@ -156,7 +156,7 @@
     {
       "name": "AppRestartInput",
       "kind": "class",
-      "signature": "export class AppRestartInput extends Schema.Class<AppRestartInput>(\"AppRestartInput\")({ args: Schema.optionalKey(Schema.Array(Schema.String)) }) {}"
+      "signature": "export class AppRestartInput extends Schema.Class<AppRestartInput>(\"AppRestartInput\")({ args: Schema.optionalKey(Schema.Array(ArgString)) }) {}"
     },
     {
       "name": "AppRestartOptions",
