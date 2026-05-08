@@ -214,3 +214,20 @@ test("denies a resume when a requested stream cursor is no longer buffered", () 
     message: "reconnect backfill exhausted"
   })
 })
+
+test("denies renderer resume decisions with non-finite clocks", () => {
+  const shouldDeny = (now: number, expiresAt: number) =>
+    evaluateRendererResume({
+      ticket: { ...ticket, expiresAt },
+      resume,
+      now,
+      originTokenHash: "sha256:origin",
+      availableBackfillEventsByStream: { "stream-1": 1 }
+    })
+
+  expect(shouldDeny(Number.NaN, 1_000)._tag).toBe("Denied")
+  expect(shouldDeny(Number.POSITIVE_INFINITY, 1_000)._tag).toBe("Denied")
+  expect(shouldDeny(1_000, Number.NaN)._tag).toBe("Denied")
+  expect(shouldDeny(1_000, Number.POSITIVE_INFINITY)._tag).toBe("Denied")
+  expect(shouldDeny(999, 1_000)._tag).toBe("Accepted")
+})

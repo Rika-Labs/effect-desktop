@@ -40,6 +40,10 @@ export const evaluateRendererResume = (
     return deny(input.resume.windowId, "windowMismatch", "resume ticket belongs to another window")
   }
 
+  if (!Number.isFinite(input.now) || !Number.isFinite(input.ticket.expiresAt)) {
+    return deny(input.resume.windowId, "expired", "resume ticket malformed: non-finite clock")
+  }
+
   if (input.now > input.ticket.expiresAt) {
     return deny(input.resume.windowId, "expired", "resume ticket expired")
   }
