@@ -3925,6 +3925,42 @@ test("Dialog bridge client rejects empty message strings as InvalidArgument", as
   expect(requests).toEqual([])
 })
 
+test("Dialog bridge client rejects NUL bytes in defaultPath as InvalidArgument", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Dialog
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          DialogLive,
+          makeDialogBridgeClientLayer(
+            dialogExchange(requests, () => ({
+              kind: "success",
+              payload: { paths: [] }
+            }))
+          )
+        )
+      )
+    )
+  )
+
+  const openFileExit = await Effect.runPromiseExit(
+    client.openFile({ defaultPath: "/tmp/a\u0000b" })
+  )
+  const openDirExit = await Effect.runPromiseExit(
+    client.openDirectory({ defaultPath: "/tmp/a\u0000b" })
+  )
+  const saveFileExit = await Effect.runPromiseExit(
+    client.saveFile({ defaultPath: "/tmp/a\u0000b" })
+  )
+
+  expectExitFailure(openFileExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(openDirExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(saveFileExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
 const recordVoid = (calls: string[], call: string): Effect.Effect<void, never, never> =>
   Effect.sync(() => {
     calls.push(call)
