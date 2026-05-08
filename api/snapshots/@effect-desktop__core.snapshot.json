@@ -81,7 +81,7 @@
     {
       "name": "ApprovalRequest",
       "kind": "class",
-      "signature": "export class ApprovalRequest extends Schema.Class<ApprovalRequest>(\"ApprovalRequest\")({ id: NonEmptyString, operation: NonEmptyString, actor: NonEmptyString, resource: Schema.optionalKey(Schema.String), risk: ApprovalRisk, summary: NonEmptyString, details: Schema.Unknown, expiresAt: Schema.optionalKey(Schema.Number), traceId: Schema.optionalKey(Schema.String) }) {}"
+      "signature": "export class ApprovalRequest extends Schema.Class<ApprovalRequest>(\"ApprovalRequest\")({ id: NonEmptyString, operation: NonEmptyString, actor: NonEmptyString, resource: Schema.optionalKey(Schema.String), risk: ApprovalRisk, summary: NonEmptyString, details: Schema.Unknown, expiresAt: Schema.optionalKey(Schema.Number), traceId: Schema.optionalKey(NonEmptyString) }) {}"
     },
     {
       "name": "ApprovalRisk",
