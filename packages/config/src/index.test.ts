@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test"
-import { Effect } from "effect"
+import { Effect, Exit } from "effect"
 
 import {
   cspWeakenings,
   formatProductionCheckReport,
+  ProductionCheckInvalidInput,
   renderDefaultCsp,
   renderEffectiveCsp,
   runProductionCheck,
@@ -309,4 +310,43 @@ test("ProductionChecker rule registry covers the current production rule set", a
       "secret-pattern-not-redacted"
     ])
   )
+})
+
+test("ProductionChecker rejects empty config paths", async () => {
+  const emptyExit = await Effect.runPromiseExit(
+    runProductionCheck({
+      configPath: "",
+      config: {
+        security: { externalNavigation: "allow" }
+      } as never
+    })
+  )
+  const whitespaceExit = await Effect.runPromiseExit(
+    runProductionCheck({
+      configPath: "   ",
+      config: {
+        security: { externalNavigation: "allow" }
+      } as never
+    })
+  )
+  const absentExit = await Effect.runPromiseExit(
+    runProductionCheck({
+      config: {
+        security: { externalNavigation: "allow" }
+      } as never
+    })
+  )
+
+  expect(Exit.isFailure(emptyExit)).toBe(true)
+  expect(Exit.isFailure(whitespaceExit)).toBe(true)
+  expect(Exit.isSuccess(absentExit)).toBe(true)
+
+  if (Exit.isFailure(emptyExit)) {
+    const failReason = emptyExit.cause.reasons.find((r) => r._tag === "Fail")
+    expect(failReason?.error).toBeInstanceOf(ProductionCheckInvalidInput)
+  }
+  if (Exit.isFailure(whitespaceExit)) {
+    const failReason = whitespaceExit.cause.reasons.find((r) => r._tag === "Fail")
+    expect(failReason?.error).toBeInstanceOf(ProductionCheckInvalidInput)
+  }
 })
