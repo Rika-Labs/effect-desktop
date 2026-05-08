@@ -305,11 +305,17 @@ const decodeProductionCheckInput = (
   input: ProductionCheckInput
 ): Effect.Effect<RuleContext, ProductionCheckInvalidInput, never> =>
   Effect.try({
-    try: () => ({
-      config: input.config,
-      configPath: input.configPath ?? "desktop.config.ts",
-      rendererFiles: input.rendererFiles ?? []
-    }),
+    try: () => {
+      const configPath = input.configPath ?? "desktop.config.ts"
+      if (configPath.trim() === "") {
+        throw new Error("configPath must be a non-empty string")
+      }
+      return {
+        config: input.config,
+        configPath,
+        rendererFiles: input.rendererFiles ?? []
+      }
+    },
     catch: (cause) =>
       new ProductionCheckInvalidInput({
         operation: "ProductionChecker.input",
