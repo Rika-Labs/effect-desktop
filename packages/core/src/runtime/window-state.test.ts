@@ -211,6 +211,17 @@ test("WindowState observe emits persist, clear, and corrupt recovery events", as
   expect(events[2]?.corruptPath).toContain("window-state.corrupt.1710000000000.json")
 })
 
+test("WindowState rejects non-finite scroll positions", async () => {
+  expect(() => makeWindowStateRecord({ scrollPositions: { feed: Number.NaN } })).toThrow()
+  expect(() =>
+    makeWindowStateRecord({ scrollPositions: { feed: Number.POSITIVE_INFINITY } })
+  ).toThrow()
+  expect(() =>
+    makeWindowStateRecord({ scrollPositions: { feed: Number.NEGATIVE_INFINITY } })
+  ).toThrow()
+  expect(() => makeWindowStateRecord({ scrollPositions: { feed: 42 } })).not.toThrow()
+})
+
 const tempWindowStatePath = async (): Promise<string> => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-window-state-"))
   return join(directory, "window-state.json")

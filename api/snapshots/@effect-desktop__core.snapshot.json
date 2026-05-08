@@ -1586,7 +1586,7 @@
     {
       "name": "WindowStateRecord",
       "kind": "class",
-      "signature": "export class WindowStateRecord extends Schema.Class<WindowStateRecord>(\"WindowStateRecord\")({ x: Schema.Number.check(Schema.isFinite()), y: Schema.Number.check(Schema.isFinite()), width: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)), height: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)), isFullScreen: Schema.Boolean, scaleFactor: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)), zoom: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)), devtoolsPanel: Schema.optionalKey(Schema.String), scrollPositions: Schema.optionalKey(Schema.Record(Schema.String, Schema.Number)) }) {}"
+      "signature": "export class WindowStateRecord extends Schema.Class<WindowStateRecord>(\"WindowStateRecord\")({ x: Schema.Number.check(Schema.isFinite()), y: Schema.Number.check(Schema.isFinite()), width: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)), height: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)), isFullScreen: Schema.Boolean, scaleFactor: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)), zoom: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)), devtoolsPanel: Schema.optionalKey(Schema.String), scrollPositions: Schema.optionalKey( Schema.Record(Schema.String, Schema.Number.check(Schema.isFinite())) ) }) {}"
     },
     {
       "name": "WindowStateStore",
