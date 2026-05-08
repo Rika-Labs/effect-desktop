@@ -1,17 +1,20 @@
 import { Schema } from "effect"
 
+// eslint-disable-next-line no-control-regex -- Updater versions must reject NUL.
+const UpdaterVersion = Schema.NonEmptyString.check(Schema.isPattern(/^[^\u0000]*$/))
+
 export class UpdaterCheckInput extends Schema.Class<UpdaterCheckInput>("UpdaterCheckInput")({
-  currentVersion: Schema.optionalKey(Schema.NonEmptyString)
+  currentVersion: Schema.optionalKey(UpdaterVersion)
 }) {}
 
 export class UpdaterDownloadInput extends Schema.Class<UpdaterDownloadInput>(
   "UpdaterDownloadInput"
 )({
-  version: Schema.optionalKey(Schema.NonEmptyString)
+  version: Schema.optionalKey(UpdaterVersion)
 }) {}
 
 export class UpdaterInstallInput extends Schema.Class<UpdaterInstallInput>("UpdaterInstallInput")({
-  version: Schema.optionalKey(Schema.NonEmptyString)
+  version: Schema.optionalKey(UpdaterVersion)
 }) {}
 
 export class UpdaterCheckResult extends Schema.Class<UpdaterCheckResult>("UpdaterCheckResult")({

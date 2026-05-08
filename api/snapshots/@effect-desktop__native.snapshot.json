@@ -2306,7 +2306,7 @@
     {
       "name": "UpdaterCheckInput",
       "kind": "class",
-      "signature": "export class UpdaterCheckInput extends Schema.Class<UpdaterCheckInput>(\"UpdaterCheckInput\")({ currentVersion: Schema.optionalKey(Schema.NonEmptyString) }) {}"
+      "signature": "export class UpdaterCheckInput extends Schema.Class<UpdaterCheckInput>(\"UpdaterCheckInput\")({ currentVersion: Schema.optionalKey(UpdaterVersion) }) {}"
     },
     {
       "name": "UpdaterCheckOptions",
@@ -2331,7 +2331,7 @@
     {
       "name": "UpdaterDownloadInput",
       "kind": "class",
-      "signature": "export class UpdaterDownloadInput extends Schema.Class<UpdaterDownloadInput>( \"UpdaterDownloadInput\" )({ version: Schema.optionalKey(Schema.NonEmptyString) }) {}"
+      "signature": "export class UpdaterDownloadInput extends Schema.Class<UpdaterDownloadInput>( \"UpdaterDownloadInput\" )({ version: Schema.optionalKey(UpdaterVersion) }) {}"
     },
     {
       "name": "UpdaterDownloadOptions",
@@ -2346,7 +2346,7 @@
     {
       "name": "UpdaterInstallInput",
       "kind": "class",
-      "signature": "export class UpdaterInstallInput extends Schema.Class<UpdaterInstallInput>(\"UpdaterInstallInput\")({ version: Schema.optionalKey(Schema.NonEmptyString) }) {}"
+      "signature": "export class UpdaterInstallInput extends Schema.Class<UpdaterInstallInput>(\"UpdaterInstallInput\")({ version: Schema.optionalKey(UpdaterVersion) }) {}"
     },
     {
       "name": "UpdaterInstallOptions",
