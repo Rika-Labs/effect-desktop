@@ -11,9 +11,12 @@ export class DialogFileFilter extends Schema.Class<DialogFileFilter>("DialogFile
 
 export type DialogFileFilterOptions = Schema.Schema.Type<typeof DialogFileFilter>
 
+// eslint-disable-next-line no-control-regex -- Dialog default paths must reject NUL.
+const DialogDefaultPath = Schema.String.check(Schema.isPattern(/^[^\u0000]*$/))
+
 export class DialogOpenFileInput extends Schema.Class<DialogOpenFileInput>("DialogOpenFileInput")({
   title: Schema.optionalKey(Schema.String),
-  defaultPath: Schema.optionalKey(Schema.String),
+  defaultPath: Schema.optionalKey(DialogDefaultPath),
   filters: Schema.optionalKey(Schema.Array(DialogFileFilter)),
   multiple: Schema.optionalKey(Schema.Boolean)
 }) {}
@@ -24,7 +27,7 @@ export class DialogOpenDirectoryInput extends Schema.Class<DialogOpenDirectoryIn
   "DialogOpenDirectoryInput"
 )({
   title: Schema.optionalKey(Schema.String),
-  defaultPath: Schema.optionalKey(Schema.String),
+  defaultPath: Schema.optionalKey(DialogDefaultPath),
   multiple: Schema.optionalKey(Schema.Boolean)
 }) {}
 
@@ -32,7 +35,7 @@ export type DialogOpenDirectoryOptions = Schema.Schema.Type<typeof DialogOpenDir
 
 export class DialogSaveFileInput extends Schema.Class<DialogSaveFileInput>("DialogSaveFileInput")({
   title: Schema.optionalKey(Schema.String),
-  defaultPath: Schema.optionalKey(Schema.String),
+  defaultPath: Schema.optionalKey(DialogDefaultPath),
   filters: Schema.optionalKey(Schema.Array(DialogFileFilter))
 }) {}
 
