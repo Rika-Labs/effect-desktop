@@ -678,6 +678,28 @@ test("unsupported App client reports typed failures as Effect values", async () 
   )
 })
 
+test("App bridge client rejects non-portable quit exit codes as InvalidArgument", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* App
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          AppLive,
+          makeAppBridgeClientLayer(
+            appExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const exit256 = await Effect.runPromiseExit(client.quit({ exitCode: 256 }))
+  expectExitFailure(exit256, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
 test("WebViewApi declares the Phase 7 WebView method and event surface", () => {
   expect(WebViewApi.tag).toBe("WebView")
   expect([...WebViewMethodNames]).toEqual(expectedWebViewMethods)

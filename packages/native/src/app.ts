@@ -17,6 +17,10 @@ import { Context, Effect, Layer, Option, Schema, Stream } from "effect"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 const NonNegativeInteger = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+const PortableExitCode = Schema.Int.check(
+  Schema.isGreaterThanOrEqualTo(0),
+  Schema.isLessThanOrEqualTo(255)
+)
 // eslint-disable-next-line no-control-regex -- App launch args must reject NUL.
 const ArgString = Schema.String.check(Schema.isPattern(/^[^\u0000]*$/))
 
@@ -32,7 +36,7 @@ export class AppCommandLine extends Schema.Class<AppCommandLine>("AppCommandLine
 }) {}
 
 export class AppQuitInput extends Schema.Class<AppQuitInput>("AppQuitInput")({
-  exitCode: Schema.optionalKey(NonNegativeInteger)
+  exitCode: Schema.optionalKey(PortableExitCode)
 }) {}
 
 export type AppQuitOptions = Schema.Schema.Type<typeof AppQuitInput>
