@@ -3900,6 +3900,33 @@ test("Updater bridge client rejects out-of-bounds progress values from host as I
   expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
 })
 
+test("Updater bridge client rejects NUL bytes in version inputs as InvalidArgument", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Updater
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          UpdaterLive,
+          makeUpdaterBridgeClientLayer(
+            updaterExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const checkExit = await Effect.runPromiseExit(client.check({ currentVersion: "1.0.0\u0000dev" }))
+  const downloadExit = await Effect.runPromiseExit(client.download({ version: "1.1.0\u0000dev" }))
+  const installExit = await Effect.runPromiseExit(client.install({ version: "1.1.0\u0000dev" }))
+
+  expectExitFailure(checkExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(downloadExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(installExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
 test("Dialog bridge client rejects empty message strings as InvalidArgument", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const client = await Effect.runPromise(
