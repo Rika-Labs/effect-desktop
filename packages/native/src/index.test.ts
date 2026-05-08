@@ -635,6 +635,30 @@ test("App bridge client rejects empty or NUL-bearing onOpenFile paths as Invalid
   }
 })
 
+test("App bridge client rejects NUL bytes in restart args as InvalidArgument", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* App
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          AppLive,
+          makeAppBridgeClientLayer(
+            appExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const restartExit = await Effect.runPromiseExit(
+    client.restart({ args: ["--flag", "value\u0000broken"] })
+  )
+  expectExitFailure(restartExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
 test("unsupported App client reports typed failures as Effect values", async () => {
   const exit = await Effect.runPromiseExit(
     Effect.gen(function* () {

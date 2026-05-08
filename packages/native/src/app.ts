@@ -17,6 +17,8 @@ import { Context, Effect, Layer, Option, Schema, Stream } from "effect"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 const NonNegativeInteger = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+// eslint-disable-next-line no-control-regex -- App launch args must reject NUL.
+const ArgString = Schema.String.check(Schema.isPattern(/^[^\u0000]*$/))
 
 export class AppInfo extends Schema.Class<AppInfo>("AppInfo")({
   id: Schema.String,
@@ -36,7 +38,7 @@ export class AppQuitInput extends Schema.Class<AppQuitInput>("AppQuitInput")({
 export type AppQuitOptions = Schema.Schema.Type<typeof AppQuitInput>
 
 export class AppRestartInput extends Schema.Class<AppRestartInput>("AppRestartInput")({
-  args: Schema.optionalKey(Schema.Array(Schema.String))
+  args: Schema.optionalKey(Schema.Array(ArgString))
 }) {}
 
 export type AppRestartOptions = Schema.Schema.Type<typeof AppRestartInput>
@@ -50,7 +52,7 @@ export class AppSingleInstanceResult extends Schema.Class<AppSingleInstanceResul
 
 export class AppOpenAtLoginInput extends Schema.Class<AppOpenAtLoginInput>("AppOpenAtLoginInput")({
   enabled: Schema.Boolean,
-  args: Schema.optionalKey(Schema.Array(Schema.String))
+  args: Schema.optionalKey(Schema.Array(ArgString))
 }) {}
 
 export type AppOpenAtLoginOptions = Schema.Schema.Type<typeof AppOpenAtLoginInput>
