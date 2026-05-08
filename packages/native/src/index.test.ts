@@ -458,6 +458,17 @@ const menuTemplate = new MenuTemplate({
   ]
 })
 
+const applicationMenuTemplate = new MenuTemplate({
+  items: [
+    {
+      type: "submenu",
+      id: "file",
+      label: "File",
+      items: [{ type: "item", id: "file.open", label: "Open", commandId: "app.file.open" }]
+    }
+  ]
+})
+
 const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1])
 const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 1])
 
@@ -893,7 +904,7 @@ test("Menu service delegates through a substitutable MenuClient port", async () 
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const menu = yield* Menu
-      yield* menu.setApplicationMenu(menuTemplate)
+      yield* menu.setApplicationMenu(applicationMenuTemplate)
       yield* menu.setWindowMenu(windowHandle, menuTemplate)
       yield* menu.bindCommand("file.open", "app.file.open")
       const linuxAppMenu = yield* menu.capability("application menu", { platform: "linux" })
@@ -916,7 +927,7 @@ test("Menu service delegates through a substitutable MenuClient port", async () 
     })
   ])
   expect(calls).toEqual([
-    "setApplicationMenu:3",
+    "setApplicationMenu:1",
     "setWindowMenu:window-1:3",
     "bindCommand:file.open:app.file.open",
     "clear:window-1",
@@ -932,7 +943,7 @@ test("Menu bridge client validates templates, sends host envelopes, and decodes 
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const menu = yield* Menu
-      yield* menu.setApplicationMenu(menuTemplate)
+      yield* menu.setApplicationMenu(applicationMenuTemplate)
       yield* menu.setWindowMenu(windowHandle, menuTemplate)
       yield* menu.bindCommand("file.open", "app.file.open")
       const activated = yield* menu.onActivated().pipe(Stream.take(1), Stream.runCollect)
@@ -974,7 +985,7 @@ test("Menu bridge client validates templates, sends host envelopes, and decodes 
     })
   ])
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
-    ["Menu.setApplicationMenu", { template: menuTemplate }],
+    ["Menu.setApplicationMenu", { template: applicationMenuTemplate }],
     ["Menu.setWindowMenu", { window: windowHandle, template: menuTemplate }],
     ["Menu.bindCommand", { itemId: "file.open", commandId: "app.file.open" }],
     ["Menu.clear", { window: windowHandle }]
@@ -1108,6 +1119,33 @@ test("Menu bridge client returns invalid templates as typed Effect failures", as
     client.setApplicationMenu({
       items: [{ type: "item", id: "file.open", commandId: "app.file.open" }]
     } as never)
+  )
+
+  expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
+test("Menu bridge client rejects application menu root items before transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Menu
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          MenuLive,
+          makeMenuBridgeClientLayer(
+            menuExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const exit = await Effect.runPromiseExit(
+    client.setApplicationMenu({
+      items: [{ type: "item", id: "file.open", label: "Open", commandId: "app.file.open" }]
+    })
   )
 
   expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
