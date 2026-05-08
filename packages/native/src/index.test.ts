@@ -2308,6 +2308,35 @@ test("Protocol bridge client validates custom schemes and path boundaries", asyn
   ])
 })
 
+test("Protocol bridge client rejects control characters in paths as InvalidArgument", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Protocol
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          ProtocolLive,
+          makeProtocolBridgeClientLayer(
+            protocolExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const newlineExit = await Effect.runPromiseExit(
+    client.serveRoute({ scheme: "myapp", route: "/settings\nadmin" })
+  )
+  const denyExit = await Effect.runPromiseExit(
+    client.deny({ scheme: "assets", path: "/private\ntoken" })
+  )
+
+  expectExitFailure(newlineExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(denyExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
 test("unsupported Protocol client reports deferred host methods as Effect values", async () => {
   const exit = await Effect.runPromise(
     Effect.gen(function* () {

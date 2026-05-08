@@ -234,14 +234,17 @@ const validateScheme = (
   return Effect.succeed(scheme)
 }
 
+// eslint-disable-next-line no-control-regex -- Intentionally matches control chars to reject them.
+const ControlCharPattern = /[\x00-\x1f\x7f]/
+
 const validateLocalPath = (
   path: string,
   field: string,
   operation: string
 ): Effect.Effect<string, ProtocolError, never> => {
-  if (path.includes("\0")) {
+  if (ControlCharPattern.test(path)) {
     return Effect.fail(
-      makeHostProtocolInvalidArgumentError(field, "must not contain NUL bytes", operation)
+      makeHostProtocolInvalidArgumentError(field, "must not contain control characters", operation)
     )
   }
 
