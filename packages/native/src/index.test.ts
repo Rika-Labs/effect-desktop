@@ -3090,23 +3090,35 @@ test("SystemAppearance bridge client decodes nullable accent color and events", 
   ])
 })
 
-test("unsupported SystemAppearance client returns typed values, support checks, and failing event stream", async () => {
+test("unsupported SystemAppearance client fails reads and event stream as Unsupported", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const appearance = yield* SystemAppearance
-      const mode = yield* appearance.getAppearance()
-      const accent = yield* appearance.getAccentColor()
+      const modeExit = yield* Effect.exit(appearance.getAppearance())
+      const accentExit = yield* Effect.exit(appearance.getAccentColor())
+      const motionExit = yield* Effect.exit(appearance.getReducedMotion())
+      const transparencyExit = yield* Effect.exit(appearance.getReducedTransparency())
       const accentSupported = yield* appearance.isSupported("getAccentColor")
       const changeSupported = yield* appearance.isSupported("onAppearanceChanged")
       const eventExit = yield* appearance.onAppearanceChanged().pipe(Stream.runHead, Effect.exit)
-      return { accent, accentSupported, changeSupported, eventExit, mode }
+      return {
+        accentExit,
+        accentSupported,
+        changeSupported,
+        eventExit,
+        modeExit,
+        motionExit,
+        transparencyExit
+      }
     }).pipe(
       Effect.provide(makeSystemAppearanceServiceLayer(makeUnsupportedSystemAppearanceClient()))
     )
   )
 
-  expect(result.mode).toBe("light")
-  expect(result.accent).toBeNull()
+  expectExitFailure(result.modeExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(result.accentExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(result.motionExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(result.transparencyExit, (error) => hasErrorTag(error, "Unsupported"))
   expect(result.accentSupported).toBe(false)
   expect(result.changeSupported).toBe(false)
   expectExitFailure(result.eventExit, (error) => hasErrorTag(error, "Unsupported"))

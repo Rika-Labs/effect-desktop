@@ -227,11 +227,11 @@ export const makeUnsupportedSystemAppearanceClient = (): SystemAppearanceClientA
   const unsupportedStream = <A>(method: string): Stream.Stream<A, SystemAppearanceError, never> =>
     Stream.fail(unsupportedError(method))
   return Object.freeze({
-    getAppearance: () => Effect.succeed(new SystemAppearanceResult({ appearance: "light" })),
-    getAccentColor: () => Effect.succeed(new SystemAppearanceAccentColorResult({ color: null })),
-    getReducedMotion: () => Effect.succeed(new SystemAppearanceBooleanResult({ enabled: false })),
+    getAppearance: () => Effect.fail(unsupportedError("SystemAppearance.getAppearance")),
+    getAccentColor: () => Effect.fail(unsupportedError("SystemAppearance.getAccentColor")),
+    getReducedMotion: () => Effect.fail(unsupportedError("SystemAppearance.getReducedMotion")),
     getReducedTransparency: () =>
-      Effect.succeed(new SystemAppearanceBooleanResult({ enabled: false })),
+      Effect.fail(unsupportedError("SystemAppearance.getReducedTransparency")),
     onAppearanceChanged: () =>
       unsupportedStream<SystemAppearanceChangedEvent>("SystemAppearance.AppearanceChanged"),
     isSupported: () => Effect.succeed(new SystemAppearanceSupportedResult({ supported: false }))
