@@ -1278,10 +1278,11 @@
       "number": 769,
       "title": "Make the CLI package install outside the workspace",
       "url": "https://github.com/Rika-Labs/effect-desktop/issues/769",
-      "status": "work-complete",
-      "workflow": ["scout", "architect", "review", "work"],
+      "status": "pr-open",
+      "workflow": ["scout", "architect", "review", "work", "pr"],
       "branch": "issue-769-cli-install-outside-workspace",
-      "updated_at": "2026-05-09T00:21:30.000Z"
+      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/796",
+      "updated_at": "2026-05-09T00:23:30.000Z"
     },
     "worked": [
       {
