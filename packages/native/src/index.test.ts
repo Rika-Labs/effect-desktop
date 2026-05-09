@@ -1233,7 +1233,13 @@ test("Menu and ContextMenu schemas reject newline-bearing labels and ids", async
   ]
 
   for (const { label, value } of cases) {
-    const exit = await Effect.runPromiseExit(Schema.decodeUnknownEffect(MenuTemplate)(value))
+    const exit = await Effect.runPromiseExit(
+      Schema.decodeUnknownEffect(MenuTemplate)(value) as Effect.Effect<
+        MenuTemplate,
+        Schema.SchemaError,
+        never
+      >
+    )
     expect(Exit.isFailure(exit)).toBe(true)
     expect(label).toBeDefined()
   }
