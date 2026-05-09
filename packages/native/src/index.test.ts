@@ -2512,23 +2512,21 @@ test("unsupported SafeStorage client reports availability and typed command fail
   expectExitFailure(result.getExit, (error) => hasErrorTag(error, "Unsupported"))
 })
 
-test("Linux SafeStorage client reports Secret Service availability as an Effect value", async () => {
+test("Linux SafeStorage client reports unimplemented adapter as unavailable with unsupported operations", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
-      const availableStorage = yield* SafeStorage
-      const available = yield* availableStorage.isAvailable()
-      const unavailable = yield* makeLinuxSafeStorageClient(Effect.succeed(false)).isAvailable()
-      const setExit = yield* Effect.exit(
-        availableStorage.set("token", SecretValue.fromUtf8("secret"))
-      )
-      return { available, setExit, unavailable }
-    }).pipe(
-      Effect.provide(makeSafeStorageServiceLayer(makeLinuxSafeStorageClient(Effect.succeed(true))))
-    )
+      const storage = yield* SafeStorage
+      const available = yield* storage.isAvailable()
+      const setExit = yield* Effect.exit(storage.set("token", SecretValue.fromUtf8("secret")))
+      const getExit = yield* Effect.exit(storage.get("token"))
+      const deleteExit = yield* Effect.exit(storage.delete("token"))
+      const keys = yield* storage.list()
+      return { available, deleteExit, getExit, keys, setExit }
+    }).pipe(Effect.provide(makeSafeStorageServiceLayer(makeLinuxSafeStorageClient())))
   )
 
-  expect(result.available).toBe(true)
-  expect(result.unavailable).toBe(false)
+  expect(result.available).toBe(false)
+  expect(result.keys).toEqual([])
   expectExitFailure(
     result.setExit,
     (error) =>
@@ -2538,6 +2536,8 @@ test("Linux SafeStorage client reports Secret Service availability as an Effect 
       "reason" in error &&
       error.reason === "secret-service-adapter-unimplemented"
   )
+  expectExitFailure(result.getExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(result.deleteExit, (error) => hasErrorTag(error, "Unsupported"))
 })
 
 test("UpdaterApi declares the Phase 8 Updater method surface", () => {

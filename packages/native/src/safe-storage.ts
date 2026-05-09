@@ -227,19 +227,15 @@ export const makeUnsupportedSafeStorageClient = (): SafeStorageClientApi => {
   } satisfies SafeStorageClientApi)
 }
 
-export const makeLinuxSafeStorageClient = (
-  availability: Effect.Effect<boolean, SafeStorageError, never> = Effect.sync(() =>
-    Boolean(process.env["DBUS_SESSION_BUS_ADDRESS"])
-  )
-): SafeStorageClientApi => {
+export const makeLinuxSafeStorageClient = (): SafeStorageClientApi => {
   const unsupportedEffect = <A>(method: string): Effect.Effect<A, SafeStorageError, never> =>
     Effect.fail(unsupportedError(method, "secret-service-adapter-unimplemented"))
   return Object.freeze({
     set: () => unsupportedEffect<void>("SafeStorage.set"),
     get: () => unsupportedEffect<SecretValue>("SafeStorage.get"),
     delete: () => unsupportedEffect<void>("SafeStorage.delete"),
-    list: () => availability.pipe(Effect.map((available) => (available ? [] : []))),
-    isAvailable: () => availability
+    list: () => Effect.succeed([]),
+    isAvailable: () => Effect.succeed(false)
   } satisfies SafeStorageClientApi)
 }
 
