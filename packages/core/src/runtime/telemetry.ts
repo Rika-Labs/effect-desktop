@@ -217,7 +217,11 @@ export const makeTelemetry = (
             return
           }
           yield* SubscriptionRef.update(traces, (current) =>
-            appendBounded(current, toTraceSpan(input, () => resolvedSpanId), traceRingSize)
+            appendBounded(
+              current,
+              toTraceSpan(input, () => resolvedSpanId),
+              traceRingSize
+            )
           )
         }),
       listTraces: () => SubscriptionRef.get(traces),

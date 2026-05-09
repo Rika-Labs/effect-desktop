@@ -210,10 +210,10 @@ describe("EventLog", () => {
       sqlite.connect({ path, ownerScope: "scope-control", strict: true })
     )
     await Effect.runPromise(
-      control.exec(
-        "UPDATE event_log_entries SET source = ? WHERE namespace = ? AND event_id = 0",
-        [`runtime${String.fromCharCode(10)}forged`, "default"]
-      )
+      control.exec("UPDATE event_log_entries SET source = ? WHERE namespace = ? AND event_id = 0", [
+        `runtime${String.fromCharCode(10)}forged`,
+        "default"
+      ])
     )
     await Effect.runPromise(control.close())
 

@@ -218,10 +218,7 @@ test("Telemetry counter rejects control bytes in metric name and tag entries", a
 
   for (let codePoint = 0; codePoint <= 31; codePoint += 1) {
     const sample = `id${String.fromCharCode(codePoint)}forged`
-    expectInvalid(
-      await Effect.runPromiseExit(telemetry.incrementCounter({ name: sample })),
-      "name"
-    )
+    expectInvalid(await Effect.runPromiseExit(telemetry.incrementCounter({ name: sample })), "name")
     expectInvalid(
       await Effect.runPromiseExit(
         telemetry.incrementCounter({ name: "ok", tags: { [sample]: "value" } })
