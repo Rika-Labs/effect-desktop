@@ -818,7 +818,6 @@ const isContainedFileName = (value: string): boolean => {
   return true
 }
 
-
 const resolveContainedArtifactPath = (
   rootPath: string,
   fileName: string,

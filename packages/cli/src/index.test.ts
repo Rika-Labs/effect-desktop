@@ -1677,7 +1677,7 @@ test("desktop sign GPG-signs Linux AppImage and writes Linux metadata", async ()
     expect(await readFile(`${artifactPath}.asc`, "utf8")).toBe("signature")
     expect(metainfo).toContain("<id>dev.effect-desktop.playground</id>")
     expect(metainfo).toContain(
-      "<launchable type=\"desktop-id\">dev.effect-desktop.playground.desktop</launchable>"
+      '<launchable type="desktop-id">dev.effect-desktop.playground.desktop</launchable>'
     )
     expect(desktop).toContain("Name=Effect Desktop Playground")
     expect(desktop).toContain("Exec=dev.effect-desktop.playground")
