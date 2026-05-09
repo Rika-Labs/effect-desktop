@@ -196,19 +196,59 @@ describe("EventLog", () => {
     expectFailure(reopenExit, EventLogFullError)
     expect(reopenedEvents).toHaveLength(0)
   })
+
+  test("disk-full metadata latch failure preserves original full error", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-event-log-"))
+    const path = join(directory, "events.sqlite")
+    const registry = await Effect.runPromise(makeResourceRegistry())
+    const sqlite = await Effect.runPromise(makeSQLite(registry))
+    const failingSqlite = failNextEventInsert(sqlite, { failReadOnlyUpdate: true })
+    const eventLog = await Effect.runPromise(makeEventLog(failingSqlite))
+    const store = await Effect.runPromise(
+      eventLog.open({ path, ownerScope: "scope-main", namespace: "default" })
+    )
+
+    const fullExit = await Effect.runPromiseExit(store.append({ type: "after-full" }))
+    const latchedExit = await Effect.runPromiseExit(store.append({ type: "after-latch" }))
+    const events = await Effect.runPromise(store.query())
+
+    expectFailure(fullExit, EventLogFullError)
+    expectFailure(latchedExit, EventLogFullError)
+    expect(events).toHaveLength(0)
+  })
 })
 
-const failNextEventInsert = (sqlite: SqliteApi): SqliteApi =>
+const failNextEventInsert = (
+  sqlite: SqliteApi,
+  failureOptions: { readonly failReadOnlyUpdate?: boolean } = {}
+): SqliteApi =>
   Object.freeze({
-    connect: (options: Parameters<SqliteApi["connect"]>[0]) =>
-      sqlite.connect(options).pipe(
+    connect: (connectOptions: Parameters<SqliteApi["connect"]>[0]) =>
+      sqlite.connect(connectOptions).pipe(
         Effect.map((connection) => {
           let failed = false
+          let readOnlyUpdateFailed = false
           const wrapped: SqliteConnection = {
             ...connection,
             exec: (sql, params) => {
               if (!failed && sql.startsWith("INSERT INTO event_log_entries")) {
                 failed = true
+                return Effect.fail(
+                  new SqliteInvalidStateError({
+                    operation: "SQLite.exec",
+                    resource: connection.resource.id,
+                    message: "database or disk is full",
+                    code: Option.some("SQLITE_FULL"),
+                    cause: Option.none()
+                  })
+                )
+              }
+              if (
+                failureOptions.failReadOnlyUpdate === true &&
+                !readOnlyUpdateFailed &&
+                sql.startsWith("UPDATE event_log_meta SET read_only = 1")
+              ) {
+                readOnlyUpdateFailed = true
                 return Effect.fail(
                   new SqliteInvalidStateError({
                     operation: "SQLite.exec",

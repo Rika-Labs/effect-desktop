@@ -409,8 +409,14 @@ const markReadOnly = (
     [namespace],
     "EventLog.append"
   ).pipe(
-    // Preserve the original EventLogFull failure when the metadata write also hits disk-full.
-    Effect.catch(() => Effect.void)
+    Effect.catch((error: EventLogError) =>
+      Effect.logWarning("EventLog.markReadOnly failed", {
+        namespace,
+        failure: error._tag,
+        operation: error.operation,
+        reason: formatUnknownError(error)
+      })
+    )
   )
 
 const applyRetention = (
