@@ -1,4 +1,4 @@
-import { copyFile, mkdir, rm, stat, writeFile } from "node:fs/promises"
+import { copyFile, mkdir, stat, writeFile } from "node:fs/promises"
 import { basename, dirname, join, resolve } from "node:path"
 
 interface PackageJson {
@@ -17,8 +17,8 @@ if (destination === undefined || destination.length === 0) {
 const outputRoot = resolve(process.cwd(), destination)
 const packageNames = ["bridge", "config", "cli"] as const
 
-await rm(outputRoot, { recursive: true, force: true })
-await mkdir(outputRoot, { recursive: true })
+await mkdir(dirname(outputRoot), { recursive: true })
+await mkdir(outputRoot)
 
 for (const name of packageNames) {
   await copyPackage(name)
