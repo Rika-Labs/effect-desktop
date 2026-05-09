@@ -8,6 +8,8 @@ export type {
   BridgeStreamRegistry,
   BridgeStreamRegistryEntry
 } from "@effect-desktop/bridge"
+export * from "./runtime/desktop-env-config.js"
+export * from "./runtime/logger.js"
 export * from "./runtime/resources.js"
 export * from "./runtime/filesystem.js"
 export * from "./runtime/event-log.js"
