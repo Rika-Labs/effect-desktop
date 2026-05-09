@@ -1,7 +1,6 @@
 import { Context, Data, Effect, Option, PubSub, Ref, Schema, Stream } from "effect"
 
-import { AuditEvent, emitAuditEvent } from "./audit-events.js"
-import type { EventLogError, EventLogStore } from "./event-log.js"
+import { AuditEvent, emitAuditEvent, type AuditEventsApi } from "./audit-events.js"
 import {
   PermissionRegistry,
   type NormalizedCapability,
@@ -65,7 +64,7 @@ export class CommandRegistryHandlerFailureError extends Data.TaggedError("Handle
 export class CommandRegistryAuditFailedError extends Data.TaggedError("CommandAuditFailed")<{
   readonly operation: string
   readonly commandId: string
-  readonly cause: EventLogError
+  readonly cause: unknown
 }> {}
 
 export type CommandRegistryError =
@@ -123,7 +122,7 @@ export interface CommandRegistryApi {
 }
 
 export interface CommandRegistryOptions {
-  readonly audit?: EventLogStore
+  readonly audit?: AuditEventsApi
   readonly now?: () => number
 }
 
@@ -240,7 +239,7 @@ const invokeCommand = (
   commands: Ref.Ref<ReadonlyMap<string, StoredCommand>>,
   invocations: PubSub.PubSub<CommandInvocationRecord>,
   permissions: PermissionRegistryApi,
-  audit: EventLogStore | undefined,
+  audit: AuditEventsApi | undefined,
   now: () => number,
   id: string,
   input: unknown,
@@ -334,7 +333,7 @@ const registerCommand = <I, O>(
     resourceGeneration?: number,
     registrationToken?: symbol
   ) => Effect.Effect<StoredCommand | undefined, never, never>,
-  audit: EventLogStore | undefined,
+  audit: AuditEventsApi | undefined,
   now: () => number,
   registration: CommandRegistration<I, O>
 ): Effect.Effect<ResourceHandle<"command", "registered">, CommandRegistryError, never> => {
@@ -539,7 +538,7 @@ const decodeCommandId = (
 const commandResourceId = (id: string): ResourceId => `command:${id}` as ResourceId
 
 const auditCommand = (
-  audit: EventLogStore | undefined,
+  audit: AuditEventsApi | undefined,
   kind: "command-registered" | "command-unregistered" | "command-invoked",
   commandId: string,
   outcome: string,

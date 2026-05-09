@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { Cause, Deferred, Effect, Exit, Fiber, Option, Schema, Stream } from "effect"
 
-import { EventLogEntry, type EventLogStore } from "./event-log.js"
+import { AuditEvent, type AuditEventsApi } from "./audit-events.js"
 import {
   CommandRegistryCommandAlreadyRegisteredError,
   CommandRegistryCommandNotFoundError,
@@ -48,7 +48,7 @@ const actor = new PermissionActor({ kind: "window", id: "window-1" })
 const context = new PermissionContext({ actor, traceId: "trace-1" })
 
 test("CommandRegistry registers, invokes with validated input, checks permission, and audits", async () => {
-  const rows: EventLogEntry[] = []
+  const rows: AuditEvent[] = []
   const { registry, permissions } = await makeTestRegistry(rows)
   await Effect.runPromise(permissions.declare(commandCapability, { source: "test" }))
   const calls: OpenInput[] = []
@@ -80,9 +80,9 @@ test("CommandRegistry registers, invokes with validated input, checks permission
   expect(snapshots[0]?.lastInvocation?.outcome).toBe("success")
   expect(snapshots[0]?.lastInvocation?.traceId).toBe("trace-1")
   expect(snapshots[0]?.lastError).toBeUndefined()
-  expect(rows.map((row) => row.type)).toContain("audit/permission-granted")
-  expect(rows.map((row) => row.type)).toContain("audit/command-invoked")
-  expect(auditTraceIds(rows, "audit/command-invoked")).toEqual(["trace-1"])
+  expect(rows.map((row) => row.kind)).toContain("permission-granted")
+  expect(rows.map((row) => row.kind)).toContain("command-invoked")
+  expect(auditTraceIds(rows, "command-invoked")).toEqual(["trace-1"])
 })
 
 test("CommandRegistry exposes invocation events and failure state for devtools", async () => {
@@ -129,7 +129,7 @@ test("CommandRegistry reports missing commands as typed values", async () => {
 })
 
 test("CommandRegistry validates input before permission and handler side effects", async () => {
-  const rows: EventLogEntry[] = []
+  const rows: AuditEvent[] = []
   const { registry, permissions } = await makeTestRegistry(rows)
   await Effect.runPromise(permissions.declare(commandCapability, { source: "test" }))
   let handled = false
@@ -148,7 +148,7 @@ test("CommandRegistry validates input before permission and handler side effects
 
   expectFailure(exit, CommandRegistryInvalidInputError)
   expect(handled).toBe(false)
-  expect(rows.map((row) => row.type)).not.toContain("audit/permission-granted")
+  expect(rows.map((row) => row.kind)).not.toContain("permission-granted")
 })
 
 test("CommandRegistry returns PermissionDenied when capability is not declared", async () => {
@@ -223,15 +223,15 @@ test("CommandRegistry catches handler throws and defects as typed values", async
 })
 
 test("CommandRegistry command invocation audit uses the permission grant trace id", async () => {
-  const rows: EventLogEntry[] = []
+  const rows: AuditEvent[] = []
   const { registry, permissions } = await makeTestRegistry(rows)
   await Effect.runPromise(permissions.declare(commandCapability, { source: "test" }))
   await Effect.runPromise(registry.register(registration("openProject")))
 
   await Effect.runPromise(registry.invoke("openProject", { path: "/tmp/project" }, context))
 
-  expect(auditTraceIds(rows, "audit/permission-used")).toEqual(["trace-1"])
-  expect(auditTraceIds(rows, "audit/command-invoked")).toEqual(["trace-1"])
+  expect(auditTraceIds(rows, "permission-used")).toEqual(["trace-1"])
+  expect(auditTraceIds(rows, "command-invoked")).toEqual(["trace-1"])
 })
 
 test("CommandRegistry unregisters commands when the owner scope closes", async () => {
@@ -380,7 +380,7 @@ test("CommandRegistry interrupted registration rollback does not remove a replac
 })
 
 test("CommandRegistry rejects control characters in command ids", async () => {
-  const rows: EventLogEntry[] = []
+  const rows: AuditEvent[] = []
   const { registry } = await makeTestRegistry(rows)
 
   const nulExit = await Effect.runPromiseExit(registry.register(registration("open\u0000Project")))
@@ -397,7 +397,7 @@ test("CommandRegistry rejects control characters in command ids", async () => {
   expectFailure(delExit, CommandRegistryInvalidInputError)
   expect(Exit.isSuccess(fineExit)).toBe(true)
 
-  expect(rows.filter((r) => r.type === "command-registered")).toEqual([])
+  expect(rows.filter((r) => r.kind === "command-registered")).toHaveLength(1)
 })
 
 const registration = (id: string) => ({
@@ -410,7 +410,7 @@ const registration = (id: string) => ({
 })
 
 const makeTestRegistry = async (
-  rows: EventLogEntry[] = []
+  rows: AuditEvent[] = []
 ): Promise<{
   readonly registry: CommandRegistryApi
   readonly permissions: PermissionRegistryApi
@@ -425,23 +425,11 @@ const makeTestRegistry = async (
   return { registry, permissions, resources }
 }
 
-const memoryAudit = (rows: EventLogEntry[]): EventLogStore => ({
-  append: (event, options) =>
+const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
+  emit: (event: AuditEvent) =>
     Effect.sync(() => {
-      rows.push(
-        new EventLogEntry({
-          id: rows.length + 1,
-          type: event.type,
-          payload: event.payload,
-          source: options?.source ?? "test",
-          timestampMs: rows.length + 1
-        })
-      )
-      return rows.length
-    }),
-  query: () => Effect.succeed(rows),
-  subscribe: () => Stream.empty,
-  close: () => Effect.void
+      rows.push(event)
+    })
 })
 
 const delayedCleanupResourceRegistry = (
@@ -589,14 +577,13 @@ const firstRegisterStalledResourceRegistry = (
   }
 }
 
-const auditTraceIds = (rows: readonly EventLogEntry[], type: string): readonly string[] =>
+const auditTraceIds = (rows: readonly AuditEvent[], kind: string): readonly string[] =>
   rows.flatMap((row) => {
-    if (row.type !== type) {
+    if (row.kind !== kind) {
       return []
     }
 
-    const payload = row.payload as { readonly traceId?: unknown }
-    return typeof payload.traceId === "string" ? [payload.traceId] : []
+    return typeof row.traceId === "string" ? [row.traceId] : []
   })
 
 const expectFailure = (

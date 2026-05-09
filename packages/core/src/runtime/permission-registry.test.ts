@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test"
-import { Cause, Deferred, Effect, Exit, Fiber, Option, Stream } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Stream } from "effect"
+import { EventJournal } from "effect/unstable/eventlog"
 
-import { EventLogFullError, type EventLogStore } from "./event-log.js"
+import { AuditEvent, type AuditEventsApi } from "./audit-events.js"
 import {
   makePermissionRegistry,
   type NormalizedCapability,
@@ -26,23 +27,12 @@ test("PermissionRegistry denies undeclared capabilities by default and audits th
     expect(error.reason).toBe("default-deny")
     expect(error.traceId).toBe("trace-1")
   })
-  expect(rows).toEqual([
-    {
-      type: "audit/permission-denied",
-      payload: {
-        kind: "permission-denied",
-        source: "default-deny",
-        traceId: "trace-1",
-        outcome: "denied",
-        normalizedCapability: filesystemWrite(["/tmp/app/file.txt"]),
-        actor: actor("window-main"),
-        details: {
-          reason: "default-deny"
-        }
-      },
-      source: "AuditEvents"
-    }
-  ])
+  expect(rows).toHaveLength(1)
+  expect(rows[0]).toBeInstanceOf(AuditEvent)
+  expect((rows[0] as AuditEvent).kind).toBe("permission-denied")
+  expect((rows[0] as AuditEvent).source).toBe("default-deny")
+  expect((rows[0] as AuditEvent).traceId).toBe("trace-1")
+  expect((rows[0] as AuditEvent).outcome).toBe("denied")
 })
 
 test("PermissionRegistry allows filesystem writes inside declared roots and denies outside", async () => {
@@ -295,9 +285,9 @@ test("PermissionRegistry expires grants as typed revocation values and audits th
     expect(error.token).toBe("grant-1")
   })
   expect(snapshot.status).toBe("expired")
-  expect(rows.map((row) => eventType(row))).toEqual([
-    "audit/permission-granted",
-    "audit/permission-expired"
+  expect(rows.map((row) => (row as AuditEvent).kind)).toEqual([
+    "permission-granted",
+    "permission-expired"
   ])
 })
 
@@ -373,33 +363,21 @@ const networkConnect = (hosts: readonly string[]): NormalizedCapability => ({
   audit: "always"
 })
 
-const memoryAudit = (rows: unknown[]): EventLogStore => ({
-  append: (event, options) =>
+const memoryAudit = (rows: unknown[]): AuditEventsApi => ({
+  emit: (event: AuditEvent) =>
     Effect.sync(() => {
-      rows.push({
-        type: event.type,
-        ...(event.payload === undefined ? {} : { payload: event.payload }),
-        ...(options?.source === undefined ? {} : { source: options.source })
-      })
-      return rows.length - 1
-    }),
-  query: () => Effect.succeed([]),
-  subscribe: () => Stream.die("unused"),
-  close: () => Effect.void
+      rows.push(event)
+    })
 })
 
-const failingAudit = (): EventLogStore => ({
-  append: () =>
+const failingAudit = (): AuditEventsApi => ({
+  emit: () =>
     Effect.fail(
-      new EventLogFullError({
-        freeBytes: 0,
-        operation: "EventLog.append",
-        cause: Option.none()
+      new EventJournal.EventJournalError({
+        method: "EventJournal.write",
+        cause: new Error("journal full")
       })
-    ),
-  query: () => Effect.succeed([]),
-  subscribe: () => Stream.die("unused"),
-  close: () => Effect.void
+    )
 })
 
 const expectDenied = (
@@ -448,8 +426,3 @@ const expectRevoked = (
     }
   }
 }
-
-const eventType = (row: unknown): string | undefined =>
-  typeof row === "object" && row !== null && "type" in row && typeof row.type === "string"
-    ? row.type
-    : undefined

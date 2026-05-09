@@ -2,8 +2,7 @@ import { randomUUID } from "node:crypto"
 
 import { Cause, Context, Data, Deferred, Effect, Match, Option, Ref, Schema } from "effect"
 
-import { approvalAuditEvent, emitAuditEvent } from "./audit-events.js"
-import type { EventLogError, EventLogStore } from "./event-log.js"
+import { approvalAuditEvent, emitAuditEvent, type AuditEventsApi } from "./audit-events.js"
 
 const NonEmptyString = Schema.NonEmptyString
 const ApprovalMetadataText = Schema.NonEmptyString.check(
@@ -63,7 +62,7 @@ export class ApprovalBrokerAuditFailedError extends Data.TaggedError("ApprovalAu
   readonly operation: string
   readonly request: ApprovalRequest
   readonly outcome: Option.Option<ApprovalOutcome>
-  readonly cause: EventLogError
+  readonly cause: unknown
 }> {}
 
 export class ApprovalBrokerPromptFailedError extends Data.TaggedError("ApprovalPromptFailed")<{
@@ -86,7 +85,7 @@ export interface ApprovalPromptPort {
 
 export interface ApprovalBrokerOptions {
   readonly prompt: ApprovalPromptPort
-  readonly audit?: EventLogStore
+  readonly audit?: AuditEventsApi
   readonly devApproveAll?: boolean
   readonly maxQueueDepthPerActor?: number
   readonly now?: () => number
@@ -269,7 +268,7 @@ const enqueue = (
 const runPromptLoop = (
   state: Ref.Ref<BrokerState>,
   prompt: ApprovalPromptPort,
-  audit: EventLogStore | undefined,
+  audit: AuditEventsApi | undefined,
   entry: PromptEntry
 ): Effect.Effect<void, never, never> =>
   Effect.gen(function* () {
@@ -347,7 +346,7 @@ const completeFailure = (
   Effect.forEach(entry.waiters, (waiter) => Deferred.fail(waiter, error)).pipe(Effect.asVoid)
 
 const auditApproval = (
-  audit: EventLogStore | undefined,
+  audit: AuditEventsApi | undefined,
   type: "approval requested" | "approval granted" | "approval denied",
   request: ApprovalRequest,
   outcome: Option.Option<ApprovalOutcome>

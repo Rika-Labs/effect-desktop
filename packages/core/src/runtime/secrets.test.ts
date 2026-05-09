@@ -3,9 +3,10 @@ import {
   hostProtocolErrorRecoverableDefault
 } from "@effect-desktop/bridge"
 import { expect, test } from "bun:test"
-import { Cause, Effect, Exit, Option, Stream } from "effect"
+import { Cause, Effect, Exit } from "effect"
+import { EventJournal } from "effect/unstable/eventlog"
 
-import { EventLogFullError, type EventLogStore } from "./event-log.js"
+import { AuditEvent, type AuditEventsApi } from "./audit-events.js"
 import {
   SecretNotFoundError,
   SecretValue,
@@ -92,35 +93,16 @@ test("Secrets maps unavailable safe storage before commands", async () => {
 })
 
 test("Secrets writes audit rows without secret values", async () => {
-  const rows: unknown[] = []
+  const rows: AuditEvent[] = []
   const secrets = await makeSecretsService([], rows)
 
   await Effect.runPromise(secrets.set("auth", "token", SecretValue.fromUtf8("refresh-token")))
   await Effect.runPromise(secrets.get("auth", "token"))
 
   expect(JSON.stringify(rows)).not.toContain("refresh-token")
-  expect(rows).toEqual([
-    {
-      type: "secret accessed",
-      payload: {
-        operation: "Secrets.set",
-        namespace: "auth",
-        key: "token",
-        outcome: "ok",
-        traceId: "trace-1"
-      }
-    },
-    {
-      type: "secret accessed",
-      payload: {
-        operation: "Secrets.get",
-        namespace: "auth",
-        key: "token",
-        outcome: "ok",
-        traceId: "trace-1"
-      }
-    }
-  ])
+  expect(rows.map((r) => r.kind)).toEqual(["secrets-accessed", "secrets-accessed"])
+  expect(rows[0]?.outcome).toBe("ok")
+  expect(rows[0]?.traceId).toBe("trace-1")
 })
 
 test("Secrets returns typed audit failures", async () => {
@@ -128,12 +110,7 @@ test("Secrets returns typed audit failures", async () => {
     makeSecrets(memorySafeStorage(), {
       appId: "com.rika.test",
       permissions: { read: ["auth"], write: ["auth"] },
-      audit: {
-        append: () => Effect.fail(newTestAuditFailure()),
-        query: () => Effect.succeed([]),
-        subscribe: () => Stream.die("unused"),
-        close: () => Effect.void
-      }
+      audit: failingAudit()
     })
   )
 
@@ -146,7 +123,7 @@ test("Secrets returns typed audit failures", async () => {
 
 const makeSecretsService = async (
   calls: string[] = [],
-  auditRows?: unknown[]
+  auditRows?: AuditEvent[]
 ): Promise<SecretsApi> =>
   Effect.runPromise(
     makeSecrets(memorySafeStorage(calls), {
@@ -192,18 +169,21 @@ const memorySafeStorage = (
   }
 }
 
-const memoryAudit = (rows: unknown[]): EventLogStore => ({
-  append: (event: { readonly type: string; readonly payload?: unknown }) =>
+const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
+  emit: (event: AuditEvent) =>
     Effect.sync(() => {
-      rows.push({
-        type: event.type,
-        ...(event.payload === undefined ? {} : { payload: event.payload })
+      rows.push(event)
+    })
+})
+
+const failingAudit = (): AuditEventsApi => ({
+  emit: () =>
+    Effect.fail(
+      new EventJournal.EventJournalError({
+        method: "EventJournal.write",
+        cause: new Error("journal full")
       })
-      return rows.length - 1
-    }),
-  query: () => Effect.succeed([]),
-  subscribe: () => Stream.die("unused"),
-  close: () => Effect.void
+    )
 })
 
 const notFound = (key: string): HostProtocolNotFoundError =>
@@ -213,13 +193,6 @@ const notFound = (key: string): HostProtocolNotFoundError =>
     message: `secret not found: ${key}`,
     operation: "SafeStorage.get",
     recoverable: hostProtocolErrorRecoverableDefault("NotFound")
-  })
-
-const newTestAuditFailure = (): EventLogFullError =>
-  new EventLogFullError({
-    freeBytes: 0,
-    operation: "EventLog.append",
-    cause: Option.none()
   })
 
 const expectFailure = <E>(

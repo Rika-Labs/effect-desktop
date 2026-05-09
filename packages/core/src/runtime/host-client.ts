@@ -14,20 +14,19 @@ import type {
 } from "@effect-desktop/bridge"
 import { Effect } from "effect"
 
-import { AuditEvent, emitAuditEvent } from "./audit-events.js"
-import type { EventLogStore } from "./event-log.js"
+import { AuditEvent, emitAuditEvent, type AuditEventsApi } from "./audit-events.js"
 import { FrameTooLargeError, FrameTruncatedError, type FramedTransport } from "./transport.js"
 
 const TextEncoderCtor = globalThis.TextEncoder
 const TextDecoderCtor = globalThis.TextDecoder
 
 export interface HostProtocolExchangeOptions {
-  readonly audit?: EventLogStore
+  readonly audit?: AuditEventsApi
   readonly nextTraceId?: () => string
 }
 
 interface ResolvedHostProtocolExchangeOptions {
-  readonly audit: EventLogStore | undefined
+  readonly audit: AuditEventsApi | undefined
   readonly nextTraceId: () => string
 }
 
@@ -131,7 +130,7 @@ const ensureTraceId = (
   })
 
 const emitTraceIdMissing = (
-  audit: EventLogStore | undefined,
+  audit: AuditEventsApi | undefined,
   traceId: string,
   request: HostProtocolRequestEnvelope,
   boundaryKind: string

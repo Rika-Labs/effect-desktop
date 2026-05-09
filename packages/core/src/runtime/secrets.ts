@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto"
 import { HostProtocolPermissionDeniedError, type HostProtocolError } from "@effect-desktop/bridge"
 import { Context, Data, Effect, Layer, Option, Schema } from "effect"
 
-import type { EventLogError, EventLogStore } from "./event-log.js"
+import { emitAuditEvent, secretsAuditEvent, type AuditEventsApi } from "./audit-events.js"
 
 const NonEmptyString = Schema.NonEmptyString
 const SecretName = Schema.NonEmptyString
@@ -98,7 +98,7 @@ export class SecretsAuditFailedError extends Data.TaggedError("SecretsAuditFaile
   readonly operation: string
   readonly namespace: string
   readonly key: Option.Option<string>
-  readonly cause: EventLogError
+  readonly cause: unknown
 }> {}
 
 export type SecretsError =
@@ -141,7 +141,7 @@ export interface SecretsPermissionPolicy {
 export interface SecretsOptions {
   readonly appId: string
   readonly permissions?: SecretsPermissionPolicy
-  readonly audit?: EventLogStore
+  readonly audit?: AuditEventsApi
   readonly traceId?: () => string
 }
 
@@ -345,7 +345,7 @@ const authorize = (
 }
 
 const auditSecretAccess = (
-  audit: EventLogStore | undefined,
+  audit: AuditEventsApi | undefined,
   traceId: string,
   input: {
     readonly operation: string
@@ -354,34 +354,26 @@ const auditSecretAccess = (
     readonly outcome: "ok" | "denied" | "error"
   }
 ): Effect.Effect<void, SecretsAuditFailedError, never> =>
-  audit === undefined
-    ? Effect.void
-    : audit
-        .append(
-          {
-            type: "secret accessed",
-            payload: {
-              operation: input.operation,
-              namespace: input.namespace,
-              ...(Option.isSome(input.key) ? { key: input.key.value } : {}),
-              outcome: input.outcome,
-              traceId
-            }
-          },
-          { source: "Secrets" }
-        )
-        .pipe(
-          Effect.asVoid,
-          Effect.mapError(
-            (cause) =>
-              new SecretsAuditFailedError({
-                operation: input.operation,
-                namespace: input.namespace,
-                key: input.key,
-                cause
-              })
-          )
-        )
+  emitAuditEvent(
+    audit,
+    secretsAuditEvent({
+      source: "Secrets",
+      traceId,
+      outcome: input.outcome,
+      namespace: input.namespace,
+      ...(Option.isSome(input.key) ? { key: input.key.value } : {})
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new SecretsAuditFailedError({
+          operation: input.operation,
+          namespace: input.namespace,
+          key: input.key,
+          cause
+        })
+    )
+  )
 
 const mapSafeStorageError =
   (operation: string, namespace: string, key: string | undefined) =>
