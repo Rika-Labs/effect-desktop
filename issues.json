@@ -1279,10 +1279,10 @@
       "title": "Preserve trace integrity in diagnostics row caps",
       "url": "https://github.com/Rika-Labs/effect-desktop/issues/876",
       "status": "pr-open",
-      "workflow": ["scout", "architect", "review", "work", "pr", "code-review", "address"],
+      "workflow": ["scout", "architect", "review", "work", "pr", "code-review", "address", "learn"],
       "pr": "https://github.com/Rika-Labs/effect-desktop/pull/906",
       "branch": "issue-876-preserve-trace-integrity-in-diagnostics-row-caps",
-      "updated_at": "2026-05-09T04:08:30.000Z"
+      "updated_at": "2026-05-09T04:16:10.000Z"
     },
     "worked": [
       {
