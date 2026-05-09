@@ -376,7 +376,7 @@
     {
       "name": "CrashReporterBreadcrumbInput",
       "kind": "class",
-      "signature": "export class CrashReporterBreadcrumbInput extends Schema.Class<CrashReporterBreadcrumbInput>( \"CrashReporterBreadcrumbInput\" )({ category: Schema.String, message: Schema.String, details: Schema.optionalKey(Schema.Unknown), timestamp: Schema.optionalKey(Schema.Number) }) {}"
+      "signature": "export class CrashReporterBreadcrumbInput extends Schema.Class<CrashReporterBreadcrumbInput>( \"CrashReporterBreadcrumbInput\" )({ category: CrashReporterCategory, message: Schema.String, details: Schema.optionalKey(Schema.Unknown), timestamp: Schema.optionalKey(Schema.Number) }) {}"
     },
     {
       "name": "CrashReporterClient",

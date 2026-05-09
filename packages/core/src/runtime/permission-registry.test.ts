@@ -170,6 +170,86 @@ test("PermissionRegistry validates inputs before audit side effects", async () =
   expect(rows).toEqual([])
 })
 
+test("PermissionRegistry rejects control bytes in caller-supplied trace ids", async () => {
+  const rows: unknown[] = []
+  const registry = await Effect.runPromise(makePermissionRegistry({ audit: memoryAudit(rows) }))
+  for (let codePoint = 0; codePoint <= 31; codePoint += 1) {
+    const traceId = `trace${String.fromCharCode(codePoint)}forged`
+    const checkExit = await Effect.runPromiseExit(
+      registry.check(filesystemWrite(["/tmp/app"]), {
+        actor: actor("window-main"),
+        traceId
+      })
+    )
+    const grantExit = await Effect.runPromiseExit(
+      registry.grant(filesystemWrite(["/tmp/app"]), {
+        actor: actor("window-main"),
+        traceId
+      })
+    )
+    expectInvalid(checkExit)
+    expectInvalid(grantExit)
+  }
+  const delTrace = `trace${String.fromCharCode(127)}forged`
+  expectInvalid(
+    await Effect.runPromiseExit(
+      registry.check(filesystemWrite(["/tmp/app"]), {
+        actor: actor("window-main"),
+        traceId: delTrace
+      })
+    )
+  )
+  expect(rows).toEqual([])
+})
+
+test("PermissionRegistry rejects control bytes returned by the trace id callback", async () => {
+  const registry = await Effect.runPromise(
+    makePermissionRegistry({ traceId: () => `gen${String.fromCharCode(10)}forged` })
+  )
+  const checkExit = await Effect.runPromiseExit(
+    registry.check(filesystemWrite(["/tmp/app"]), context("window-main"))
+  )
+  const grantExit = await Effect.runPromiseExit(
+    registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"))
+  )
+
+  expectInvalid(checkExit)
+  expectInvalid(grantExit)
+})
+
+test("PermissionRegistry rejects control bytes in actor ids, resources, and sources", async () => {
+  const registry = await Effect.runPromise(makePermissionRegistry())
+
+  const declareExit = await Effect.runPromiseExit(
+    registry.declare(filesystemWrite(["/tmp/app"]), {
+      source: `declaration${String.fromCharCode(10)}forged`
+    })
+  )
+  expectInvalid(declareExit)
+
+  const actorExit = await Effect.runPromiseExit(
+    registry.check(filesystemWrite(["/tmp/app"]), {
+      actor: { kind: "window", id: `app${String.fromCharCode(10)}forged` } as never
+    })
+  )
+  expectInvalid(actorExit)
+
+  const resourceExit = await Effect.runPromiseExit(
+    registry.check(filesystemWrite(["/tmp/app"]), {
+      actor: actor("window-main"),
+      resource: `resource${String.fromCharCode(10)}forged`
+    })
+  )
+  expectInvalid(resourceExit)
+
+  const grantSourceExit = await Effect.runPromiseExit(
+    registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"), {
+      source: `grant${String.fromCharCode(10)}forged`
+    })
+  )
+  expectInvalid(grantSourceExit)
+})
+
 test("PermissionRegistry does not retain a new grant when initial lifecycle audit fails", async () => {
   const registry = await Effect.runPromise(
     makePermissionRegistry({

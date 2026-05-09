@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
-import { Effect, Fiber, Option, Stream } from "effect"
+import { Cause, Effect, Exit, Fiber, Option, Stream } from "effect"
 
-import { makeTelemetry } from "./telemetry.js"
+import { makeTelemetry, TelemetryInvalidArgumentError } from "./telemetry.js"
 
 test("Telemetry records redacted structured logs and publishes bounded snapshots", async () => {
   const telemetry = await Effect.runPromise(makeTelemetry({ maxLogs: 1, now: () => 100 }))
@@ -134,3 +134,141 @@ test("Telemetry rejects invalid buffer sizes as typed values", async () => {
     field: "traceRingSize"
   })
 })
+
+test("Telemetry log rejects control bytes in correlation metadata", async () => {
+  const telemetry = await Effect.runPromise(makeTelemetry())
+  const baseInput = {
+    level: "info" as const,
+    subsystem: "bridge",
+    operation: "Bridge.call",
+    message: "called bridge"
+  }
+
+  for (let codePoint = 0; codePoint <= 31; codePoint += 1) {
+    const sample = `id${String.fromCharCode(codePoint)}forged`
+    expectInvalid(
+      await Effect.runPromiseExit(telemetry.log({ ...baseInput, traceId: sample })),
+      "traceId"
+    )
+    expectInvalid(
+      await Effect.runPromiseExit(
+        telemetry.log({ ...baseInput, traceId: "trace-1", resourceId: sample })
+      ),
+      "resourceId"
+    )
+    expectInvalid(
+      await Effect.runPromiseExit(
+        telemetry.log({ ...baseInput, traceId: "trace-1", windowId: sample })
+      ),
+      "windowId"
+    )
+  }
+  const delSample = `id${String.fromCharCode(127)}forged`
+  expectInvalid(
+    await Effect.runPromiseExit(telemetry.log({ ...baseInput, traceId: delSample })),
+    "traceId"
+  )
+
+  expect(await Effect.runPromise(telemetry.listLogs())).toEqual([])
+})
+
+test("Telemetry recordSpan rejects control bytes in span identifiers", async () => {
+  const telemetry = await Effect.runPromise(makeTelemetry())
+  const baseInput = {
+    subsystem: "bridge",
+    operation: "Bridge.call",
+    name: "call",
+    startedAt: 1
+  }
+
+  for (let codePoint = 0; codePoint <= 31; codePoint += 1) {
+    const sample = `id${String.fromCharCode(codePoint)}forged`
+    expectInvalid(
+      await Effect.runPromiseExit(telemetry.recordSpan({ ...baseInput, traceId: sample })),
+      "traceId"
+    )
+    expectInvalid(
+      await Effect.runPromiseExit(
+        telemetry.recordSpan({ ...baseInput, traceId: "trace-1", spanId: sample })
+      ),
+      "spanId"
+    )
+    expectInvalid(
+      await Effect.runPromiseExit(
+        telemetry.recordSpan({ ...baseInput, traceId: "trace-1", parentSpanId: sample })
+      ),
+      "parentSpanId"
+    )
+  }
+
+  const generated = await Effect.runPromise(
+    makeTelemetry({ nextSpanId: () => `gen${String.fromCharCode(10)}forged` })
+  )
+  expectInvalid(
+    await Effect.runPromiseExit(generated.recordSpan({ ...baseInput, traceId: "trace-1" })),
+    "spanId"
+  )
+
+  expect(await Effect.runPromise(telemetry.listTraces())).toEqual([])
+  expect(await Effect.runPromise(generated.listTraces())).toEqual([])
+})
+
+test("Telemetry counter rejects control bytes in metric name and tag entries", async () => {
+  const telemetry = await Effect.runPromise(makeTelemetry())
+
+  for (let codePoint = 0; codePoint <= 31; codePoint += 1) {
+    const sample = `id${String.fromCharCode(codePoint)}forged`
+    expectInvalid(await Effect.runPromiseExit(telemetry.incrementCounter({ name: sample })), "name")
+    expectInvalid(
+      await Effect.runPromiseExit(
+        telemetry.incrementCounter({ name: "ok", tags: { [sample]: "value" } })
+      ),
+      "tags.key"
+    )
+    expectInvalid(
+      await Effect.runPromiseExit(
+        telemetry.incrementCounter({ name: "ok", tags: { route: sample } })
+      ),
+      "tags.value"
+    )
+  }
+
+  expect(await Effect.runPromise(telemetry.listMetrics())).toEqual([])
+})
+
+test("Telemetry histogram rejects control bytes in metric name and tag entries", async () => {
+  const telemetry = await Effect.runPromise(makeTelemetry())
+
+  for (let codePoint = 0; codePoint <= 31; codePoint += 1) {
+    const sample = `id${String.fromCharCode(codePoint)}forged`
+    expectInvalid(
+      await Effect.runPromiseExit(telemetry.recordHistogram({ name: sample, value: 1 })),
+      "name"
+    )
+    expectInvalid(
+      await Effect.runPromiseExit(
+        telemetry.recordHistogram({ name: "ok", value: 1, tags: { [sample]: "value" } })
+      ),
+      "tags.key"
+    )
+    expectInvalid(
+      await Effect.runPromiseExit(
+        telemetry.recordHistogram({ name: "ok", value: 1, tags: { route: sample } })
+      ),
+      "tags.value"
+    )
+  }
+
+  expect(await Effect.runPromise(telemetry.listMetrics())).toEqual([])
+})
+
+const expectInvalid = (exit: Exit.Exit<unknown, unknown>, field: string): void => {
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(TelemetryInvalidArgumentError)
+    if (failure?.error instanceof TelemetryInvalidArgumentError) {
+      expect(failure.error.field).toBe(field)
+    }
+  }
+}

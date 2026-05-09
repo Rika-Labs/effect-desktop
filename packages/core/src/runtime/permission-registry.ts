@@ -6,6 +6,10 @@ import { emitAuditEvent, permissionAuditEvent } from "./audit-events.js"
 import type { EventLogError, EventLogStore } from "./event-log.js"
 
 const NonEmptyString = Schema.NonEmptyString
+const PermissionMetadataText = Schema.NonEmptyString.check(
+  // eslint-disable-next-line no-control-regex
+  Schema.isPattern(/^[^\x00-\x1F\x7F]+$/)
+)
 const AuditPolicy = Schema.Literals(["always", "on-deny", "never"])
 export type AuditPolicy = typeof AuditPolicy.Type
 const CapabilityKind = Schema.Literals([
@@ -84,13 +88,13 @@ export type NormalizedCapability = typeof NormalizedCapability.Type
 
 export class PermissionActor extends Schema.Class<PermissionActor>("PermissionActor")({
   kind: ActorKind,
-  id: NonEmptyString
+  id: PermissionMetadataText
 }) {}
 
 export class PermissionContext extends Schema.Class<PermissionContext>("PermissionContext")({
   actor: PermissionActor,
-  resource: Schema.optionalKey(Schema.String),
-  traceId: Schema.optionalKey(Schema.String)
+  resource: Schema.optionalKey(PermissionMetadataText),
+  traceId: Schema.optionalKey(PermissionMetadataText)
 }) {}
 
 export class PermissionDeclaration extends Schema.Class<PermissionDeclaration>(
@@ -99,7 +103,7 @@ export class PermissionDeclaration extends Schema.Class<PermissionDeclaration>(
   capability: NormalizedCapability,
   effect: PermissionEffect,
   actor: Schema.optionalKey(PermissionActor),
-  source: Schema.optionalKey(Schema.String)
+  source: Schema.optionalKey(PermissionMetadataText)
 }) {}
 
 export class PermissionQuery extends Schema.Class<PermissionQuery>("PermissionQuery")({
@@ -111,16 +115,16 @@ export class PermissionRule extends Schema.Class<PermissionRule>("PermissionRule
   capability: NormalizedCapability,
   effect: PermissionEffect,
   actor: Schema.optionalKey(PermissionActor),
-  source: Schema.String
+  source: PermissionMetadataText
 }) {}
 
 export class GrantedCapability extends Schema.Class<GrantedCapability>("GrantedCapability")({
   token: NonEmptyString,
   capability: NormalizedCapability,
   actor: PermissionActor,
-  resource: Schema.optionalKey(Schema.String),
-  source: Schema.String,
-  traceId: NonEmptyString,
+  resource: Schema.optionalKey(PermissionMetadataText),
+  source: PermissionMetadataText,
+  traceId: PermissionMetadataText,
   grantedAt: Schema.Number,
   expiresAt: Schema.optionalKey(Schema.Number),
   oneTime: Schema.optionalKey(Schema.Boolean)
@@ -138,11 +142,11 @@ export class PermissionDecision extends Schema.Class<PermissionDecision>("Permis
       "default-deny"
     ])
   ),
-  source: Schema.String,
+  source: PermissionMetadataText,
   capability: NormalizedCapability,
   actor: PermissionActor,
-  resource: Schema.optionalKey(Schema.String),
-  traceId: NonEmptyString
+  resource: Schema.optionalKey(PermissionMetadataText),
+  traceId: PermissionMetadataText
 }) {}
 
 const GrantStatus = Schema.Literals(["active", "revoked", "expired", "consumed"])
@@ -311,7 +315,11 @@ export const makePermissionRegistry = (
           const decodedContext = yield* decodeContext(context, "PermissionRegistry.check")
           const current = yield* Ref.get(rules)
           const resolved = resolve(current, decodedCapability, decodedContext)
-          const id = decodedContext.traceId ?? traceId()
+          const id = yield* resolveTraceId(
+            decodedContext.traceId,
+            traceId,
+            "PermissionRegistry.check"
+          )
 
           if (resolved._tag === "Denied") {
             const decision = new PermissionDecision({
@@ -342,6 +350,11 @@ export const makePermissionRegistry = (
             )
           }
 
+          const grantSource = yield* decodeOptionalAttribution(
+            grantOptions.source,
+            "PermissionRegistry.check",
+            "grantSource"
+          )
           const granted = yield* issueGrant(
             grants,
             options.audit,
@@ -350,7 +363,7 @@ export const makePermissionRegistry = (
             decodedCapability,
             decodedContext,
             id,
-            { ...grantOptions, source: grantOptions.source ?? resolved.source }
+            { ...grantOptions, source: grantSource ?? resolved.source }
           )
           const decision = new PermissionDecision({
             outcome: "granted",
@@ -376,6 +389,16 @@ export const makePermissionRegistry = (
             "capability"
           )
           const decodedContext = yield* decodeContext(context, "PermissionRegistry.grant")
+          const id = yield* resolveTraceId(
+            decodedContext.traceId,
+            traceId,
+            "PermissionRegistry.grant"
+          )
+          const grantSource = yield* decodeOptionalAttribution(
+            grantOptions.source,
+            "PermissionRegistry.grant",
+            "grantSource"
+          )
           return yield* issueGrant(
             grants,
             options.audit,
@@ -383,8 +406,8 @@ export const makePermissionRegistry = (
             now,
             decodedCapability,
             decodedContext,
-            decodedContext.traceId ?? traceId(),
-            { ...grantOptions, source: grantOptions.source ?? "grant" }
+            id,
+            { ...grantOptions, source: grantSource ?? "grant" }
           )
         }).pipe(
           Effect.withSpan("PermissionRegistry.grant", {
@@ -889,6 +912,28 @@ const decodeContext = (
   Schema.decodeUnknownEffect(PermissionContext)(input).pipe(
     Effect.mapError((cause) => invalidArgument(operation, "context", cause))
   )
+
+const resolveTraceId = (
+  contextTraceId: string | undefined,
+  fallback: () => string,
+  operation: string
+): Effect.Effect<string, PermissionInvalidArgumentError, never> =>
+  contextTraceId === undefined
+    ? Schema.decodeUnknownEffect(PermissionMetadataText)(fallback()).pipe(
+        Effect.mapError((cause) => invalidArgument(operation, "traceId", cause))
+      )
+    : Effect.succeed(contextTraceId)
+
+const decodeOptionalAttribution = (
+  value: string | undefined,
+  operation: string,
+  field: string
+): Effect.Effect<string | undefined, PermissionInvalidArgumentError, never> =>
+  value === undefined
+    ? Effect.succeed(undefined)
+    : Schema.decodeUnknownEffect(PermissionMetadataText)(value).pipe(
+        Effect.mapError((cause) => invalidArgument(operation, field, cause))
+      )
 
 const invalidArgument = (
   operation: string,
