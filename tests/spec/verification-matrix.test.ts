@@ -10,6 +10,8 @@ const CI_PATH = join(REPO_ROOT, ".github", "workflows", "ci.yml")
 const REQUIRED_CELLS = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"] as const
 const OPTIONAL_CELLS = ["windows-arm64", "linux-arm64"] as const
 
+const githubHostedCiRunners = new Set(["ubuntu-latest", "macos-latest", "windows-latest"])
+
 interface VerificationMatrix {
   schemaVersion: number
   requiredCells: readonly string[]
@@ -157,12 +159,12 @@ describe("verification matrix", () => {
     }
   })
 
-  test("CI workflow exposes required headless cells as named Blacksmith matrix cells", () => {
+  test("CI workflow exposes required headless cells as named GitHub-hosted matrix cells", () => {
     for (const cell of matrix.ciCells) {
       expect(matrix.requiredCells).toContain(cell.cell)
       expect(ci).toContain(`cell: ${cell.cell}`)
       expect(ci).toContain(`os: ${cell.runner}`)
-      expect(cell.runner.startsWith("blacksmith-")).toBe(true)
+      expect(githubHostedCiRunners.has(cell.runner)).toBe(true)
       expect(cell.headless).toBe(true)
     }
     expect(ci).toContain("EFFECT_DESKTOP_MATRIX_CELL")

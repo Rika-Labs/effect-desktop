@@ -21,11 +21,11 @@ jobs:
       matrix:
         include:
           - cell: linux-x64
-            os: blacksmith-2vcpu-ubuntu-2404
+            os: ubuntu-latest
           - cell: macos-arm64
-            os: blacksmith-6vcpu-macos-latest
+            os: macos-latest
           - cell: windows-x64
-            os: blacksmith-2vcpu-windows-2025
+            os: windows-latest
     env:
       EFFECT_DESKTOP_MATRIX_CELL: ${{ matrix.cell }}
     steps:
