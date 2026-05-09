@@ -37,6 +37,7 @@ const ExecutableExtensions = Object.freeze([
   ".app"
 ])
 const ShellMetacharacters = /[;|&><`\n]|\$\(/u
+const NUL_BYTE = String.fromCharCode(0)
 
 export type ShellError = HostProtocolError
 
@@ -233,6 +234,12 @@ const validatePathInput = <A extends { readonly path: string }>(
 ): Effect.Effect<A, ShellError, never> => {
   if (input.path.length === 0) {
     return Effect.fail(makeHostProtocolInvalidArgumentError("path", "must not be empty", operation))
+  }
+
+  if (input.path.includes(NUL_BYTE)) {
+    return Effect.fail(
+      makeHostProtocolInvalidArgumentError("path", "must not contain NUL bytes", operation)
+    )
   }
 
   if (ShellMetacharacters.test(input.path)) {

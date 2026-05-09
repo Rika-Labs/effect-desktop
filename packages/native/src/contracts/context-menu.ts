@@ -2,12 +2,15 @@ import { Api } from "@effect-desktop/bridge"
 import { Schema } from "effect"
 
 import { MenuTemplate } from "../menu.js"
+import { PrintableNonEmptyString } from "./strings.js"
 
 const WindowResource = Api.Resource("window", "open")
 const ContextMenuCoordinate = Schema.Number.check(
   Schema.isFinite(),
   Schema.isGreaterThanOrEqualTo(0)
 )
+
+export const ContextMenuIdentifier = PrintableNonEmptyString
 
 export class ContextMenuPosition extends Schema.Class<ContextMenuPosition>("ContextMenuPosition")({
   x: ContextMenuCoordinate,
@@ -37,14 +40,14 @@ export type ContextMenuBuildFromTemplateOptions = Schema.Schema.Type<
 export class ContextMenuBindCommandInput extends Schema.Class<ContextMenuBindCommandInput>(
   "ContextMenuBindCommandInput"
 )({
-  itemId: Schema.String,
-  commandId: Schema.String
+  itemId: ContextMenuIdentifier,
+  commandId: ContextMenuIdentifier
 }) {}
 
 export class ContextMenuActivatedEvent extends Schema.Class<ContextMenuActivatedEvent>(
   "ContextMenuActivatedEvent"
 )({
-  itemId: Schema.NonEmptyString,
-  commandId: Schema.NonEmptyString,
-  windowId: Schema.NonEmptyString
+  itemId: ContextMenuIdentifier,
+  commandId: ContextMenuIdentifier,
+  windowId: ContextMenuIdentifier
 }) {}

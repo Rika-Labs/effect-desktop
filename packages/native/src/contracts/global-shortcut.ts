@@ -1,6 +1,8 @@
 import { Api } from "@effect-desktop/bridge"
 import { Schema } from "effect"
 
+import { BridgeSafeNonEmptyString } from "./strings.js"
+
 const WindowResource = Api.Resource("window", "open")
 
 export const GlobalShortcutSupportReason = Schema.Literals([
@@ -13,14 +15,14 @@ export type GlobalShortcutSupportReason = Schema.Schema.Type<typeof GlobalShortc
 export class GlobalShortcutRegisterInput extends Schema.Class<GlobalShortcutRegisterInput>(
   "GlobalShortcutRegisterInput"
 )({
-  accelerator: Schema.String,
+  accelerator: BridgeSafeNonEmptyString,
   registrarWindow: WindowResource.schema
 }) {}
 
 export class GlobalShortcutAcceleratorInput extends Schema.Class<GlobalShortcutAcceleratorInput>(
   "GlobalShortcutAcceleratorInput"
 )({
-  accelerator: Schema.String
+  accelerator: BridgeSafeNonEmptyString
 }) {}
 
 export class GlobalShortcutSupportedResult extends Schema.Class<GlobalShortcutSupportedResult>(
@@ -29,6 +31,15 @@ export class GlobalShortcutSupportedResult extends Schema.Class<GlobalShortcutSu
   supported: Schema.Boolean,
   reason: Schema.optionalKey(GlobalShortcutSupportReason)
 }) {}
+
+export const GlobalShortcutSupportedOutput = GlobalShortcutSupportedResult.check(
+  Schema.makeFilter<GlobalShortcutSupportedResult>((value) =>
+    value.supported
+      ? value.reason === undefined ||
+        "supported result must not include reason when supported is true"
+      : value.reason !== undefined || "supported result requires reason when supported is false"
+  )
+)
 
 export class GlobalShortcutRegisteredResult extends Schema.Class<GlobalShortcutRegisteredResult>(
   "GlobalShortcutRegisteredResult"
@@ -39,6 +50,6 @@ export class GlobalShortcutRegisteredResult extends Schema.Class<GlobalShortcutR
 export class GlobalShortcutPressedEvent extends Schema.Class<GlobalShortcutPressedEvent>(
   "GlobalShortcutPressedEvent"
 )({
-  accelerator: Schema.String,
-  registrarWindowId: Schema.String
+  accelerator: BridgeSafeNonEmptyString,
+  registrarWindowId: BridgeSafeNonEmptyString
 }) {}

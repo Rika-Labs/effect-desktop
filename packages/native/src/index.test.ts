@@ -48,6 +48,7 @@ import {
   ContextMenu,
   ContextMenuActivatedEvent,
   ContextMenuApi,
+  ContextMenuBindCommandInput,
   ContextMenuLive,
   ContextMenuMethodNames,
   CrashReporter,
@@ -871,6 +872,56 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
   ])
 })
 
+test("WebView bridge client rejects unsafe navigation inputs before transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = webViewExchange(requests, () => ({
+    kind: "success",
+    payload: webviewHandle
+  }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* WebView
+    }).pipe(Effect.provide(Layer.provide(WebViewLive, makeWebViewBridgeClientLayer(exchange))))
+  )
+
+  const javascriptCreateExit = await Effect.runPromiseExit(
+    client.create({
+      url: "javascript:alert(1)",
+      originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" }
+    })
+  )
+  const fileUrlExit = await Effect.runPromiseExit(
+    client.loadUrl(webviewHandle, "file:///etc/passwd")
+  )
+  const traversalExit = await Effect.runPromiseExit(client.loadRoute(webviewHandle, "../secret"))
+  const emptyOriginExit = await Effect.runPromiseExit(
+    client.create({
+      url: "app://localhost/",
+      originPolicy: { allowedOrigins: [""], onDisallowed: "block" }
+    })
+  )
+  const javascriptOriginExit = await Effect.runPromiseExit(
+    client.create({
+      url: "app://localhost/",
+      originPolicy: { allowedOrigins: ["javascript:"], onDisallowed: "block" }
+    })
+  )
+  const policyExit = await Effect.runPromiseExit(
+    client.setNavigationPolicy(webviewHandle, {
+      allowedOrigins: ["file://"],
+      onDisallowed: "block"
+    })
+  )
+
+  expectExitFailure(javascriptCreateExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(fileUrlExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(traversalExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(emptyOriginExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(javascriptOriginExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(policyExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
 test("unsupported WebView client reports deferred host methods as Effect values", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
@@ -1162,6 +1213,142 @@ test("Menu bridge client returns invalid templates as typed Effect failures", as
   )
 
   expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
+test("ContextMenu identifier schemas reject control bytes in bind input and activation events", async () => {
+  const bindExit = await Effect.runPromiseExit(
+    Schema.decodeUnknownEffect(ContextMenuBindCommandInput)({
+      itemId: "open\u0000x",
+      commandId: "cmd\u0000x"
+    })
+  )
+  const eventExit = await Effect.runPromiseExit(
+    Schema.decodeUnknownEffect(ContextMenuActivatedEvent)({
+      itemId: "open\u0000x",
+      commandId: "cmd\u0000x",
+      windowId: "win\u0000x"
+    })
+  )
+
+  expect(Exit.isFailure(bindExit)).toBe(true)
+  expect(Exit.isFailure(eventExit)).toBe(true)
+})
+
+test("Menu and ContextMenu schemas reject newline-bearing labels and ids", async () => {
+  const cases: ReadonlyArray<{ readonly label: string; readonly value: unknown }> = [
+    {
+      label: "menu item label",
+      value: { items: [{ type: "item", id: "ok", label: "Open\n", commandId: "cmd" }] }
+    },
+    {
+      label: "menu item id",
+      value: { items: [{ type: "item", id: "ok\n", label: "Open", commandId: "cmd" }] }
+    },
+    {
+      label: "menu item commandId",
+      value: { items: [{ type: "item", id: "ok", label: "Open", commandId: "cmd\n" }] }
+    },
+    {
+      label: "menu separator id",
+      value: { items: [{ type: "separator", id: "sep\n" }] }
+    },
+    {
+      label: "submenu id",
+      value: {
+        items: [{ type: "submenu", id: "view\n", label: "View", items: [] }]
+      }
+    },
+    {
+      label: "submenu label",
+      value: {
+        items: [{ type: "submenu", id: "view", label: "View\n", items: [] }]
+      }
+    }
+  ]
+
+  for (const { label, value } of cases) {
+    const exit = await Effect.runPromiseExit(
+      Schema.decodeUnknownEffect(MenuTemplate)(value) as Effect.Effect<
+        MenuTemplate,
+        Schema.SchemaError,
+        never
+      >
+    )
+    expect(Exit.isFailure(exit)).toBe(true)
+    expect(label).toBeDefined()
+  }
+
+  const bindExit = await Effect.runPromiseExit(
+    Schema.decodeUnknownEffect(ContextMenuBindCommandInput)({
+      itemId: "open\n",
+      commandId: "cmd"
+    })
+  )
+  const eventExit = await Effect.runPromiseExit(
+    Schema.decodeUnknownEffect(ContextMenuActivatedEvent)({
+      itemId: "open",
+      commandId: "cmd\n",
+      windowId: "win-1"
+    })
+  )
+  expect(Exit.isFailure(bindExit)).toBe(true)
+  expect(Exit.isFailure(eventExit)).toBe(true)
+})
+
+test("Menu bridge client rejects NUL-bearing accelerators before transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Menu
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          MenuLive,
+          makeMenuBridgeClientLayer(
+            menuExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const applicationExit = await Effect.runPromiseExit(
+    client.setApplicationMenu({
+      items: [
+        {
+          type: "submenu",
+          id: "file",
+          label: "File",
+          items: [
+            {
+              type: "item",
+              id: "file.open",
+              label: "Open",
+              commandId: "app.file.open",
+              accelerator: "Cmd\u0000O"
+            }
+          ]
+        }
+      ]
+    })
+  )
+  const windowExit = await Effect.runPromiseExit(
+    client.setWindowMenu(windowHandle, {
+      items: [
+        {
+          type: "item",
+          id: "file.open",
+          label: "Open",
+          commandId: "app.file.open",
+          accelerator: ""
+        }
+      ]
+    })
+  )
+
+  expectExitFailure(applicationExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(windowExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(requests).toEqual([])
 })
 
@@ -1648,6 +1835,37 @@ test("unsupported Tray client reports deferred host methods as Effect values", a
   )
 })
 
+test("Tray bridge client rejects invalid icon and tooltip metadata before transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Tray
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          TrayLive,
+          makeTrayBridgeClientLayer(
+            trayExchange(requests, () => ({ kind: "success", payload: trayHandle }))
+          )
+        )
+      )
+    )
+  )
+
+  const emptyIconExit = await Effect.runPromiseExit(client.create({ icon: "" }))
+  const fileIconExit = await Effect.runPromiseExit(client.setIcon(trayHandle, "file:///etc/passwd"))
+  const emptyTooltipExit = await Effect.runPromiseExit(client.setTooltip(trayHandle, ""))
+  const nulTooltipExit = await Effect.runPromiseExit(
+    client.create({ icon: "app://assets/tray.png", tooltip: "tip\u0000text" })
+  )
+
+  expectExitFailure(emptyIconExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(fileIconExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(emptyTooltipExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(nulTooltipExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
 test("DialogApi declares the Phase 7 Dialog method surface", () => {
   expect(DialogApi.tag).toBe("Dialog")
   expect([...DialogMethodNames]).toEqual(expectedDialogMethods)
@@ -2131,6 +2349,86 @@ test("Notification bridge client returns invalid input as typed Effect failures"
   expect(requests).toEqual([])
 })
 
+test("Notification bridge client rejects invalid action ids and labels before transport", async () => {
+  const cases: ReadonlyArray<{
+    readonly label: string
+    readonly action: { readonly id: string; readonly label: string }
+  }> = [
+    { label: "empty id", action: { id: "", label: "Open" } },
+    { label: "empty label", action: { id: "open", label: "" } },
+    { label: "control id", action: { id: "open\nx", label: "Open" } },
+    { label: "control label", action: { id: "open", label: "Open" } }
+  ]
+
+  for (const { label, action } of cases) {
+    const requests: HostProtocolRequestEnvelope[] = []
+    const client = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* Notification
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            NotificationLive,
+            makeNotificationBridgeClientLayer(
+              notificationExchange(requests, () => ({ kind: "success", payload: undefined }))
+            )
+          )
+        )
+      )
+    )
+
+    const exit = await Effect.runPromiseExit(
+      client.show({ title: "Heads up", body: "Click", actions: [action] })
+    )
+
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+    expect(label).toBeDefined()
+    expect(requests).toEqual([])
+  }
+})
+
+test("Notification action stream rejects malformed actionId payloads as InvalidOutput", async () => {
+  const cases: ReadonlyArray<{ readonly label: string; readonly actionId: unknown }> = [
+    { label: "empty", actionId: "" },
+    { label: "control", actionId: "open\nx" }
+  ]
+
+  for (const { label, actionId } of cases) {
+    const exchange: ApiClientExchange = {
+      request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
+      subscribe: (method) =>
+        method === "Notification.Action"
+          ? Stream.make(
+              new HostProtocolEventEnvelope({
+                kind: "event",
+                timestamp: 1710000000420,
+                traceId: "event-trace",
+                method,
+                payload: {
+                  notification: notificationHandle,
+                  actionId,
+                  ownerWindowId: "window-1"
+                }
+              })
+            )
+          : Stream.empty,
+      resource: { dispose: () => Effect.void }
+    }
+
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const notification = yield* Notification
+        return yield* Effect.exit(notification.onAction().pipe(Stream.take(1), Stream.runCollect))
+      }).pipe(
+        Effect.provide(Layer.provide(NotificationLive, makeNotificationBridgeClientLayer(exchange)))
+      )
+    )
+
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+    expect(label).toBeDefined()
+  }
+})
+
 test("unsupported Notification client reports deferred host methods as Effect values", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
@@ -2535,6 +2833,48 @@ test("SafeStorage bridge client validates keys and redacts decoded values", asyn
     ["SafeStorage.isAvailable", undefined],
     ["SafeStorage.delete", { key: "token" }]
   ])
+})
+
+test("SafeStorage bridge client rejects invalid keys in list output as InvalidOutput", async () => {
+  const cases: ReadonlyArray<{ readonly label: string; readonly keys: ReadonlyArray<string> }> = [
+    { label: "empty", keys: [""] },
+    { label: "nul", keys: ["a\u0000O"] }
+  ]
+
+  for (const { label, keys } of cases) {
+    const exchange = safeStorageExchange([], () => ({
+      kind: "success",
+      payload: { keys }
+    }))
+    const client = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* SafeStorage
+      }).pipe(
+        Effect.provide(Layer.provide(SafeStorageLive, makeSafeStorageBridgeClientLayer(exchange)))
+      )
+    )
+
+    const exit = await Effect.runPromiseExit(client.list())
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+    expect(label).toBeDefined()
+  }
+})
+
+test("SafeStorage bridge client decodes valid printable keys in list output", async () => {
+  const exchange = safeStorageExchange([], () => ({
+    kind: "success",
+    payload: { keys: ["token", "session"] }
+  }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* SafeStorage
+    }).pipe(
+      Effect.provide(Layer.provide(SafeStorageLive, makeSafeStorageBridgeClientLayer(exchange)))
+    )
+  )
+
+  const keys = await Effect.runPromise(client.list())
+  expect(keys).toEqual(["token", "session"])
 })
 
 test("unsupported SafeStorage client reports availability and typed command failures", async () => {
@@ -3522,6 +3862,139 @@ test("GlobalShortcut bridge client sends typed host envelopes and decodes presse
   ])
 })
 
+test("GlobalShortcut bridge client rejects inconsistent isSupported output as InvalidOutput", async () => {
+  const cases: ReadonlyArray<{ readonly label: string; readonly payload: unknown }> = [
+    {
+      label: "true with reason",
+      payload: { supported: true, reason: "wayland-no-global-shortcut" }
+    },
+    { label: "false without reason", payload: { supported: false } }
+  ]
+
+  for (const { label, payload } of cases) {
+    const exchange = globalShortcutExchange([], () => ({ kind: "success", payload }))
+    const client = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* GlobalShortcut
+      }).pipe(
+        Effect.provide(
+          Layer.provide(GlobalShortcutLive, makeGlobalShortcutBridgeClientLayer(exchange))
+        )
+      )
+    )
+
+    const exit = await Effect.runPromiseExit(client.isSupported())
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+    expect(label).toBeDefined()
+  }
+})
+
+test("GlobalShortcut bridge client decodes valid isSupported outputs", async () => {
+  const cases: ReadonlyArray<{
+    readonly payload: unknown
+    readonly expected: GlobalShortcutSupportedResult
+  }> = [
+    {
+      payload: { supported: true },
+      expected: new GlobalShortcutSupportedResult({ supported: true })
+    },
+    {
+      payload: { supported: false, reason: "wayland-no-global-shortcut" },
+      expected: new GlobalShortcutSupportedResult({
+        supported: false,
+        reason: "wayland-no-global-shortcut"
+      })
+    }
+  ]
+
+  for (const { payload, expected } of cases) {
+    const exchange = globalShortcutExchange([], () => ({ kind: "success", payload }))
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const shortcuts = yield* GlobalShortcut
+        return yield* shortcuts.isSupported()
+      }).pipe(
+        Effect.provide(
+          Layer.provide(GlobalShortcutLive, makeGlobalShortcutBridgeClientLayer(exchange))
+        )
+      )
+    )
+
+    expect(result).toEqual(expected)
+  }
+})
+
+test("GlobalShortcut bridge client rejects invalid pressed event identifiers as InvalidOutput", async () => {
+  const cases: ReadonlyArray<{ readonly label: string; readonly payload: unknown }> = [
+    { label: "empty accelerator", payload: { accelerator: "", registrarWindowId: "window-1" } },
+    { label: "empty windowId", payload: { accelerator: "CmdOrCtrl+K", registrarWindowId: "" } },
+    {
+      label: "nul accelerator",
+      payload: { accelerator: "Cmd\u0000K", registrarWindowId: "window-1" }
+    }
+  ]
+
+  for (const { label, payload } of cases) {
+    const exchange: ApiClientExchange = {
+      request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
+      subscribe: (method) =>
+        method === "GlobalShortcut.Pressed"
+          ? Stream.make(
+              new HostProtocolEventEnvelope({
+                kind: "event",
+                timestamp: 1710000000900,
+                traceId: "event-trace",
+                method,
+                payload
+              })
+            )
+          : Stream.empty
+    }
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const shortcuts = yield* GlobalShortcut
+        return yield* Effect.exit(shortcuts.onPressed().pipe(Stream.take(1), Stream.runCollect))
+      }).pipe(
+        Effect.provide(
+          Layer.provide(GlobalShortcutLive, makeGlobalShortcutBridgeClientLayer(exchange))
+        )
+      )
+    )
+
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+    expect(label).toBeDefined()
+  }
+})
+
+test("GlobalShortcut bridge client rejects empty and NUL-bearing accelerators as InvalidArgument", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* GlobalShortcut
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          GlobalShortcutLive,
+          makeGlobalShortcutBridgeClientLayer(
+            globalShortcutExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const registerEmptyExit = await Effect.runPromiseExit(client.register("", windowHandle))
+  const isRegisteredEmptyExit = await Effect.runPromiseExit(client.isRegistered(""))
+  const unregisterNulExit = await Effect.runPromiseExit(client.unregister("Cmd\u0000K"))
+  const registerNulExit = await Effect.runPromiseExit(client.register("Cmd\u0000K", windowHandle))
+
+  expectExitFailure(registerEmptyExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(isRegisteredEmptyExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(unregisterNulExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(registerNulExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
 test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar events, keeps listening after command failure, and unregisters on scope close", async () => {
   const calls: string[] = []
   const rows: EventLogEntry[] = []
@@ -4291,6 +4764,33 @@ test("Shell bridge client rejects empty path strings as InvalidArgument", async 
   const showExit = await Effect.runPromiseExit(client.showItemInFolder(""))
   const openExit = await Effect.runPromiseExit(client.openPath(""))
   const trashExit = await Effect.runPromiseExit(client.trashItem(""))
+
+  expectExitFailure(showExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(openExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(trashExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
+test("Shell bridge client rejects NUL bytes in path inputs as InvalidArgument", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Shell
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          ShellLive,
+          makeShellBridgeClientLayer(
+            shellExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const showExit = await Effect.runPromiseExit(client.showItemInFolder("/tmp/a\u0000b"))
+  const openExit = await Effect.runPromiseExit(client.openPath("/tmp/a\u0000b.txt"))
+  const trashExit = await Effect.runPromiseExit(client.trashItem("/tmp/a\u0000b"))
 
   expectExitFailure(showExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(openExit, (error) => hasErrorTag(error, "InvalidArgument"))

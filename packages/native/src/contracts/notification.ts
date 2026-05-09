@@ -1,6 +1,8 @@
 import { Api, type ApiResourceHandle } from "@effect-desktop/bridge"
 import { Schema } from "effect"
 
+import { PrintableNonEmptyString } from "./strings.js"
+
 const WindowResource = Api.Resource("window", "open")
 export const NotificationResource = Api.Resource("notification", "open")
 export const PermissionState = Schema.Literals(["granted", "denied", "default"])
@@ -9,8 +11,8 @@ export type NotificationHandle = ApiResourceHandle<"notification", "open">
 export type PermissionState = Schema.Schema.Type<typeof PermissionState>
 
 export class NotificationAction extends Schema.Class<NotificationAction>("NotificationAction")({
-  id: Schema.String,
-  label: Schema.String
+  id: PrintableNonEmptyString,
+  label: PrintableNonEmptyString
 }) {}
 
 export class NotificationShowInput extends Schema.Class<NotificationShowInput>(
@@ -53,6 +55,6 @@ export class NotificationActionEvent extends Schema.Class<NotificationActionEven
   "NotificationActionEvent"
 )({
   notification: NotificationResource.schema,
-  actionId: Schema.String,
+  actionId: PrintableNonEmptyString,
   ownerWindowId: Schema.optionalKey(Schema.String)
 }) {}
