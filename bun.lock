@@ -107,6 +107,7 @@
       "dependencies": {
         "@effect-desktop/bridge": "workspace:*",
         "@effect-desktop/native": "workspace:*",
+        "@effect/platform-browser": "4.0.0-beta.60",
         "effect": "4.0.0-beta.60",
       },
       "devDependencies": {
@@ -268,6 +269,8 @@
     "@effect-desktop/test": ["@effect-desktop/test@workspace:packages/test"],
 
     "@effect/opentelemetry": ["@effect/opentelemetry@4.0.0-beta.60", "", { "peerDependencies": { "@opentelemetry/api": "^1.9", "@opentelemetry/resources": "^2.0.0", "@opentelemetry/sdk-logs": ">=0.203.0 <0.300.0", "@opentelemetry/sdk-metrics": "^2.0.0", "@opentelemetry/sdk-trace-base": "^2.0.0", "@opentelemetry/sdk-trace-node": "^2.0.0", "@opentelemetry/sdk-trace-web": "^2.0.0", "@opentelemetry/semantic-conventions": "^1.33.0", "effect": "^4.0.0-beta.60" }, "optionalPeers": ["@opentelemetry/api", "@opentelemetry/resources", "@opentelemetry/sdk-logs", "@opentelemetry/sdk-metrics", "@opentelemetry/sdk-trace-base", "@opentelemetry/sdk-trace-node", "@opentelemetry/sdk-trace-web"] }, "sha512-yQCo/T6divTcg09VGJpi2/vDOqUNFwxkgGWT1groQdKgy9A/NlHDMk9B75ALhT/NeNzqsYAhhIlu6Xrv+Ghj+A=="],
+
+    "@effect/platform-browser": ["@effect/platform-browser@4.0.0-beta.60", "", { "dependencies": { "multipasta": "^0.2.7" }, "peerDependencies": { "effect": "^4.0.0-beta.60" } }, "sha512-trM/3DM5VhVBGZt8KccLG7LA+F34gw6o3APHa70dl8jHXNQ04tZ74WbG5RbCkekUHitj0MFC0sfuhGLNGxDtDg=="],
 
     "@effect/platform-bun": ["@effect/platform-bun@4.0.0-beta.60", "", { "dependencies": { "@effect/platform-node-shared": "^4.0.0-beta.60" }, "peerDependencies": { "effect": "^4.0.0-beta.60" } }, "sha512-UHm4RyigOie5Rk3KvNqJZwNJ/mG/OlDt3Uz7hwAxD3KjgHZL4CouInwI0/VXDD31BMFwUSLgUECDFGk0nojwag=="],
 
