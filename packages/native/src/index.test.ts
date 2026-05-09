@@ -1130,6 +1130,62 @@ test("Menu bridge client returns invalid templates as typed Effect failures", as
   expect(requests).toEqual([])
 })
 
+test("Menu bridge client rejects NUL-bearing accelerators before transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Menu
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          MenuLive,
+          makeMenuBridgeClientLayer(
+            menuExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const applicationExit = await Effect.runPromiseExit(
+    client.setApplicationMenu({
+      items: [
+        {
+          type: "submenu",
+          id: "file",
+          label: "File",
+          items: [
+            {
+              type: "item",
+              id: "file.open",
+              label: "Open",
+              commandId: "app.file.open",
+              accelerator: "Cmd O"
+            }
+          ]
+        }
+      ]
+    })
+  )
+  const windowExit = await Effect.runPromiseExit(
+    client.setWindowMenu(windowHandle, {
+      items: [
+        {
+          type: "item",
+          id: "file.open",
+          label: "Open",
+          commandId: "app.file.open",
+          accelerator: ""
+        }
+      ]
+    })
+  )
+
+  expectExitFailure(applicationExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(windowExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
 test("Menu bridge client rejects application menu root items before transport", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const client = await Effect.runPromise(

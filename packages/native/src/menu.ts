@@ -26,6 +26,7 @@ import {
 } from "@effect-desktop/bridge"
 import { Context, Effect, Fiber, Layer, Option, Schema, Stream } from "effect"
 
+import { BridgeSafeNonEmptyString } from "./contracts/strings.js"
 import type { WindowHandle } from "./window.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
@@ -39,7 +40,7 @@ const MenuItemBase = {
   commandId: Schema.optionalKey(Schema.String),
   enabled: Schema.optionalKey(Schema.Boolean),
   checked: Schema.optionalKey(Schema.Boolean),
-  accelerator: Schema.optionalKey(Schema.String)
+  accelerator: Schema.optionalKey(BridgeSafeNonEmptyString)
 }
 
 export type MenuPlatform = Schema.Schema.Type<typeof MenuPlatform>
