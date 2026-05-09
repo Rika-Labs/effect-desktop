@@ -389,6 +389,9 @@ const makeWindowBridgeClient = (
             )
           )
         )
+        if (decoded.persistState === true) {
+          return yield* Effect.fail(unsupportedError("Window.create persistState"))
+        }
         return yield* client.create(decoded)
       }),
     show: () => unsupported("Window.show"),
@@ -424,6 +427,9 @@ const makeHostWindowHandlers = (
   return {
     create: (input) =>
       Effect.gen(function* () {
+        if (input.persistState === true) {
+          return yield* Effect.fail(unsupportedError("Window.create persistState"))
+        }
         const registry = yield* ResourceRegistry
         const created = yield* host.create(toHostWindowCreateInput(input))
         knownWindowIds.add(created.windowId)

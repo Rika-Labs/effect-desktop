@@ -3828,8 +3828,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       height: 240,
       titleBarStyle: "hiddenInset",
       vibrancy: "windowBackground",
-      trafficLights: { x: 12, y: 13 },
-      persistState: true
+      trafficLights: { x: 12, y: 13 }
     })
     const duringLifetime = yield* registry.list()
     yield* window.close(created)
@@ -3870,6 +3869,29 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       }
     ]
   ])
+})
+
+test("Window.create rejects persistState until the persistence backend is implemented", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const apiExchange = makeWindowApiExchange(windowExchange(requests), registry)
+  const program = Effect.gen(function* () {
+    const window = yield* Window
+    return yield* Effect.exit(window.create({ persistState: true }))
+  }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(apiExchange))))
+
+  const exit = await Effect.runPromise(program)
+
+  expectExitFailure(
+    exit,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "operation" in error &&
+      error.operation === "Window.create persistState"
+  )
+  expect(requests).toEqual([])
 })
 
 test("AppEventRouter sends firstResponder events to the focused window only", async () => {
