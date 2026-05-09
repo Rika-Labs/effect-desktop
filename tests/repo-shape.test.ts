@@ -13,7 +13,8 @@ const REQUIRED_TS_PACKAGES = [
   "devtools",
   "test",
   "config",
-  "create-effect-desktop"
+  "create-effect-desktop",
+  "vite"
 ] as const
 
 const REQUIRED_RUST_CRATES = ["host", "host-protocol", "native-pty", "native-updater"] as const
