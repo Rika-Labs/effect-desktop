@@ -22,7 +22,9 @@ use std::{
 use tracing::{debug, error, warn};
 
 const RUNTIME_READY_EVENT: &str = "runtime.ready";
+const RUNTIME_EXECUTABLE_ENV: &str = "EFFECT_DESKTOP_RUNTIME_EXECUTABLE";
 const RUNTIME_PROFILE_ENV: &str = "EFFECT_DESKTOP_PROFILE";
+const BUN_INSTALL_ENV: &str = "BUN_INSTALL";
 const DEFAULT_RESTART_READY_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_DEV_RESTARTS: usize = 3;
 const TERMINATION_GRACE: Duration = Duration::from_secs(5);
@@ -40,7 +42,7 @@ pub(crate) struct RuntimeConfig {
 impl RuntimeConfig {
     pub(crate) fn new(executable: impl Into<PathBuf>) -> Self {
         Self {
-            executable: executable.into(),
+            executable: resolve_runtime_executable(executable.into()),
             args: Vec::new(),
             envs: Vec::new(),
             cwd: None,
@@ -84,6 +86,50 @@ impl RuntimeConfig {
 
         command
     }
+}
+
+fn resolve_runtime_executable(executable: PathBuf) -> PathBuf {
+    resolve_runtime_executable_from_env(
+        executable,
+        std::env::var_os(RUNTIME_EXECUTABLE_ENV),
+        std::env::var_os(BUN_INSTALL_ENV),
+    )
+}
+
+fn resolve_runtime_executable_from_env(
+    executable: PathBuf,
+    runtime_executable: Option<OsString>,
+    bun_install: Option<OsString>,
+) -> PathBuf {
+    if executable.as_os_str() != "bun" {
+        return executable;
+    }
+
+    if let Some(runtime_executable) = non_empty_os_string(runtime_executable) {
+        return PathBuf::from(runtime_executable);
+    }
+
+    if let Some(bun_install) = non_empty_os_string(bun_install) {
+        return PathBuf::from(bun_install)
+            .join("bin")
+            .join(bun_executable_name());
+    }
+
+    executable
+}
+
+fn non_empty_os_string(value: Option<OsString>) -> Option<OsString> {
+    value.filter(|value| !value.is_empty())
+}
+
+#[cfg(windows)]
+fn bun_executable_name() -> &'static str {
+    "bun.exe"
+}
+
+#[cfg(not(windows))]
+fn bun_executable_name() -> &'static str {
+    "bun"
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -815,11 +861,13 @@ fn join_thread(thread: Option<JoinHandle<()>>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        await_ready, await_ready_events, monitor_runtime, parse_runtime_ready_line, RestartPolicy,
-        RuntimeChild, RuntimeConfig, RuntimeEvent, RuntimeProfile, RuntimeReady, RuntimeStream,
-        Supervisor, Termination,
+        await_ready, await_ready_events, bun_executable_name, monitor_runtime,
+        parse_runtime_ready_line, resolve_runtime_executable_from_env, RestartPolicy, RuntimeChild,
+        RuntimeConfig, RuntimeEvent, RuntimeProfile, RuntimeReady, RuntimeStream, Supervisor,
+        Termination,
     };
     use std::{
+        ffi::OsString,
         fs,
         io::Cursor,
         path::{Path, PathBuf},
@@ -909,6 +957,44 @@ if (
   throw new Error(`unexpected host.ping response: ${JSON.stringify(ping)}`);
 }
 "#;
+
+    #[test]
+    fn runtime_config_resolves_bun_from_explicit_runtime_executable_env() {
+        let executable = resolve_runtime_executable_from_env(
+            PathBuf::from("bun"),
+            Some(OsString::from("/opt/effect-desktop/bin/bun")),
+            Some(OsString::from("/ignored/bun-install")),
+        );
+
+        assert_eq!(executable, PathBuf::from("/opt/effect-desktop/bin/bun"));
+    }
+
+    #[test]
+    fn runtime_config_resolves_bun_from_bun_install_env() {
+        let executable = resolve_runtime_executable_from_env(
+            PathBuf::from("bun"),
+            None,
+            Some(OsString::from("/opt/bun")),
+        );
+
+        assert_eq!(
+            executable,
+            PathBuf::from("/opt/bun")
+                .join("bin")
+                .join(bun_executable_name())
+        );
+    }
+
+    #[test]
+    fn runtime_config_preserves_non_bun_executables() {
+        let executable = resolve_runtime_executable_from_env(
+            PathBuf::from("/usr/bin/node"),
+            Some(OsString::from("/opt/effect-desktop/bin/bun")),
+            Some(OsString::from("/opt/bun")),
+        );
+
+        assert_eq!(executable, PathBuf::from("/usr/bin/node"));
+    }
 
     #[test]
     fn supervisor_emits_started_stdio_and_exit_events() {
