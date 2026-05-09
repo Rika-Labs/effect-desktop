@@ -1,380 +1,90 @@
-import { mkdtemp } from "node:fs/promises"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
-
 import { describe, expect, test } from "bun:test"
 
-import { Cause, Effect, Exit, Fiber, Option, Stream } from "effect"
+import { Effect, Layer } from "effect"
+import { EventJournal, EventLog as EL, EventLogEncryption } from "effect/unstable/eventlog"
 
 import {
-  EventLogFullError,
-  EventLogInvalidArgumentError,
-  makeEventLog,
-  type EventLogStore
-} from "./event-log.js"
-import { makeResourceRegistry } from "./resources.js"
-import {
-  makeSQLite,
-  type SqliteApi,
-  type SqliteConnection,
-  SqliteInvalidStateError
-} from "./sqlite.js"
+  AuditEvent,
+  AuditGroup,
+  AuditGroupLayer,
+  AuditReactivityLayer,
+  makeAuditEvents
+} from "./audit-events.js"
 
-describe("EventLog", () => {
-  test("append returns monotonic ids and query replays in order", async () => {
-    const { store } = await makeFixture()
+const AuditSchema = EL.schema(AuditGroup)
 
-    const first = await Effect.runPromise(
-      store.append({ type: "user.created", payload: { id: 1 } })
-    )
-    const second = await Effect.runPromise(
-      store.append({ type: "user.updated", payload: { id: 1 } })
-    )
-    const events = await Effect.runPromise(store.query())
+const identityLayer = Layer.effect(EL.Identity, EL.makeIdentity).pipe(
+  Layer.provide(EventLogEncryption.layerSubtle)
+)
 
-    expect(first).toBe(0)
-    expect(second).toBe(1)
-    expect(events.map((event) => event.id)).toEqual([0, 1])
-    expect(events.map((event) => event.type)).toEqual(["user.created", "user.updated"])
-  })
+const auditLayer = Layer.mergeAll(
+  EventJournal.layerMemory,
+  identityLayer,
+  AuditGroupLayer,
+  AuditReactivityLayer
+).pipe(Layer.provideMerge(EL.layerRegistry))
 
-  test("query filters by cursor and type", async () => {
-    const { store } = await makeFixture()
+const eventLogLayer = Layer.provide(EL.layerEventLog, auditLayer)
 
-    await Effect.runPromise(store.append({ type: "a", payload: { n: 1 } }))
-    await Effect.runPromise(store.append({ type: "b", payload: { n: 2 } }))
-    await Effect.runPromise(store.append({ type: "b", payload: { n: 3 } }))
-    const events = await Effect.runPromise(store.query({ from: 1, type: "b" }))
-
-    expect(events.map((event) => event.id)).toEqual([1, 2])
-  })
-
-  test("replay preserves explicit null payloads separately from absent payloads", async () => {
-    const { store } = await makeFixture()
-
-    await Effect.runPromise(store.append({ type: "absent" }))
-    await Effect.runPromise(store.append({ type: "null", payload: null }))
-    const events = await Effect.runPromise(store.query())
-
-    expect(Object.hasOwn(events[0] ?? {}, "payload")).toBe(false)
-    expect(Object.hasOwn(events[1] ?? {}, "payload")).toBe(true)
-    expect(events[1]?.payload).toBe(null)
-  })
-
-  test("concurrent appends allocate one monotonic id sequence", async () => {
-    const { store } = await makeFixture()
-
-    const ids = await Effect.runPromise(
-      Effect.all(
-        Array.from({ length: 20 }, (_value, index) =>
-          store.append({ type: "concurrent", payload: { index } })
-        ),
-        { concurrency: "unbounded" }
-      )
-    )
-    const events = await Effect.runPromise(store.query())
-
-    expect([...ids].sort((left, right) => left - right)).toEqual(
-      Array.from({ length: 20 }, (_value, index) => index)
-    )
-    expect(events.map((event) => event.id)).toEqual(
-      Array.from({ length: 20 }, (_value, index) => index)
-    )
-  })
-
-  test("append persists across reopen", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-event-log-"))
-    const path = join(directory, "events.sqlite")
-    const first = await makeFixture({ path })
-
-    await Effect.runPromise(first.store.append({ type: "audit", payload: { ok: true } }))
-    await Effect.runPromise(first.store.close())
-
-    const reopened = await makeFixture({ path })
-    const events = await Effect.runPromise(reopened.store.query())
-
-    expect(events).toHaveLength(1)
-    expect(events[0]?.type).toBe("audit")
-    expect(events[0]?.payload).toEqual({ ok: true })
-  })
-
-  test("subscribe replays from cursor then follows the live tail", async () => {
-    const { store } = await makeFixture()
-
-    await Effect.runPromise(store.append({ type: "first" }))
-    const fiber = Effect.runFork(
-      store.subscribe({ from: 0 }).pipe(Stream.take(3), Stream.runCollect)
-    )
-    await Effect.runPromise(store.append({ type: "second" }))
-    await Effect.runPromise(store.append({ type: "third" }))
-    const events = Array.from(await Effect.runPromise(Fiber.join(fiber)))
-
-    expect(events.map((event) => event.type)).toEqual(["first", "second", "third"])
-  })
-
-  test("subscribe without cursor starts at the live tail", async () => {
-    const { store } = await makeFixture()
-
-    await Effect.runPromise(store.append({ type: "before-subscribe" }))
-    const fiber = Effect.runFork(store.subscribe().pipe(Stream.take(1), Stream.runCollect))
-    await Effect.runPromise(store.append({ type: "after-subscribe" }))
-    const events = Array.from(await Effect.runPromise(Fiber.join(fiber)))
-
-    expect(events.map((event) => event.type)).toEqual(["after-subscribe"])
-  })
-
-  test("retention keeps only the newest committed events", async () => {
-    const { store } = await makeFixture({ maxEvents: 2 })
-
-    await Effect.runPromise(store.append({ type: "one" }))
-    await Effect.runPromise(store.append({ type: "two" }))
-    await Effect.runPromise(store.append({ type: "three" }))
-    const events = await Effect.runPromise(store.query())
-
-    expect(events.map((event) => event.type)).toEqual(["two", "three"])
-  })
-
-  test("invalid append input returns typed InvalidArgument before writing", async () => {
-    const { store } = await makeFixture()
-
-    const exit = await Effect.runPromiseExit(store.append({ type: "", payload: { ok: true } }))
-    const events = await Effect.runPromise(store.query())
-
-    expectFailure(exit, EventLogInvalidArgumentError)
-    expect(events).toHaveLength(0)
-  })
-
-  test("append rejects every C0 control byte and DEL in event type", async () => {
-    const { store } = await makeFixture()
-
-    for (let codePoint = 0; codePoint <= 31; codePoint += 1) {
-      const type = `audit${String.fromCharCode(codePoint)}forged`
-      const exit = await Effect.runPromiseExit(store.append({ type, payload: { ok: true } }))
-      expectFailure(exit, EventLogInvalidArgumentError)
-    }
-    const delExit = await Effect.runPromiseExit(
-      store.append({ type: `audit${String.fromCharCode(127)}forged`, payload: { ok: true } })
-    )
-    expectFailure(delExit, EventLogInvalidArgumentError)
-
-    const events = await Effect.runPromise(store.query())
-    expect(events).toHaveLength(0)
-  })
-
-  test("append rejects every C0 control byte and DEL in source", async () => {
-    const { store } = await makeFixture()
-
-    for (let codePoint = 0; codePoint <= 31; codePoint += 1) {
-      const source = `runtime${String.fromCharCode(codePoint)}forged`
-      const exit = await Effect.runPromiseExit(store.append({ type: "audit.ok" }, { source }))
-      expectFailure(exit, EventLogInvalidArgumentError)
-    }
-    const delExit = await Effect.runPromiseExit(
-      store.append({ type: "audit.ok" }, { source: `runtime${String.fromCharCode(127)}forged` })
-    )
-    expectFailure(delExit, EventLogInvalidArgumentError)
-
-    const events = await Effect.runPromise(store.query())
-    expect(events).toHaveLength(0)
-  })
-
-  test("open rejects every C0 control byte and DEL in namespace", async () => {
-    const registry = await Effect.runPromise(makeResourceRegistry())
-    const sqlite = await Effect.runPromise(makeSQLite(registry))
-    const eventLog = await Effect.runPromise(makeEventLog(sqlite))
-
-    for (let codePoint = 0; codePoint <= 31; codePoint += 1) {
-      const namespace = `audit${String.fromCharCode(codePoint)}forged`
-      const exit = await Effect.runPromiseExit(
-        eventLog.open({ path: ":memory:", ownerScope: "scope-main", namespace })
-      )
-      expectFailure(exit, EventLogInvalidArgumentError)
-    }
-    const delExit = await Effect.runPromiseExit(
-      eventLog.open({
-        path: ":memory:",
-        ownerScope: "scope-main",
-        namespace: `audit${String.fromCharCode(127)}forged`
-      })
-    )
-    expectFailure(delExit, EventLogInvalidArgumentError)
-  })
-
-  test("query surfaces stored sources containing control bytes as InvalidArgument", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-event-log-"))
-    const path = join(directory, "events.sqlite")
-    const { sqlite, store } = await makeFixture({ path })
-
-    await Effect.runPromise(store.append({ type: "audit.ok" }))
-    const control = await Effect.runPromise(
-      sqlite.connect({ path, ownerScope: "scope-control", strict: true })
-    )
+describe("EventLog (effect/unstable/eventlog)", () => {
+  test("write publishes an audit event to the journal", async () => {
     await Effect.runPromise(
-      control.exec("UPDATE event_log_entries SET source = ? WHERE namespace = ? AND event_id = 0", [
-        `runtime${String.fromCharCode(10)}forged`,
-        "default"
-      ])
+      Effect.gen(function* () {
+        const log = yield* EL.EventLog
+        yield* log.write({
+          schema: AuditSchema,
+          event: "permission-granted",
+          payload: { traceId: "t1", source: "test", outcome: "granted" }
+        })
+        const entries = yield* log.entries
+        expect(entries).toHaveLength(1)
+        expect(entries[0]?.event).toBe("permission-granted")
+      }).pipe(Effect.provide(eventLogLayer))
     )
-    await Effect.runPromise(control.close())
-
-    const exit = await Effect.runPromiseExit(store.query())
-    expectFailure(exit, EventLogInvalidArgumentError)
   })
 
-  test("read-only meta state returns EventLogFull and preserves query", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-event-log-"))
-    const path = join(directory, "events.sqlite")
-    const { sqlite, store } = await makeFixture({ path })
-
-    await Effect.runPromise(store.append({ type: "before-full" }))
-    const control = await Effect.runPromise(
-      sqlite.connect({ path, ownerScope: "scope-control", strict: true })
-    )
+  test("write publishes multiple audit events with distinct entries", async () => {
     await Effect.runPromise(
-      control.exec("UPDATE event_log_meta SET read_only = 1 WHERE namespace = ?", ["default"])
+      Effect.gen(function* () {
+        const log = yield* EL.EventLog
+        yield* log.write({
+          schema: AuditSchema,
+          event: "permission-granted",
+          payload: { traceId: "t1", source: "test", outcome: "granted" }
+        })
+        yield* log.write({
+          schema: AuditSchema,
+          event: "permission-denied",
+          payload: { traceId: "t2", source: "test", outcome: "denied" }
+        })
+        const entries = yield* log.entries
+        expect(entries).toHaveLength(2)
+        expect(entries.map((e: EventJournal.Entry) => e.event)).toEqual([
+          "permission-granted",
+          "permission-denied"
+        ])
+      }).pipe(Effect.provide(eventLogLayer))
     )
-    await Effect.runPromise(control.close())
-    const exit = await Effect.runPromiseExit(store.append({ type: "after-full" }))
-    const events = await Effect.runPromise(store.query())
-
-    expectFailure(exit, EventLogFullError)
-    expect(events.map((event) => event.type)).toEqual(["before-full"])
   })
 
-  test("disk-full append persists read-only state across reopen", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-event-log-"))
-    const path = join(directory, "events.sqlite")
-    const registry = await Effect.runPromise(makeResourceRegistry())
-    const sqlite = await Effect.runPromise(makeSQLite(registry))
-    const failingSqlite = failNextEventInsert(sqlite)
-    const eventLog = await Effect.runPromise(makeEventLog(failingSqlite))
-    const store = await Effect.runPromise(
-      eventLog.open({ path, ownerScope: "scope-main", namespace: "default" })
+  test("makeAuditEvents emit delegates to EventLog write", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const log = yield* EL.EventLog
+        const audit = makeAuditEvents(log)
+        yield* audit.emit(
+          new AuditEvent({
+            kind: "permission-granted",
+            source: "test",
+            traceId: "trace-audit",
+            outcome: "granted"
+          })
+        )
+        const entries = yield* log.entries
+        expect(entries).toHaveLength(1)
+        expect(entries[0]?.event).toBe("permission-granted")
+        expect(entries[0]?.primaryKey).toBe("trace-audit")
+      }).pipe(Effect.provide(eventLogLayer))
     )
-
-    const fullExit = await Effect.runPromiseExit(store.append({ type: "after-full" }))
-    const eventsAfterFull = await Effect.runPromise(store.query())
-    const control = await Effect.runPromise(
-      sqlite.connect({ path, ownerScope: "scope-control", strict: true })
-    )
-    const meta = await Effect.runPromise(
-      control.query("SELECT read_only FROM event_log_meta WHERE namespace = ?", ["default"])
-    )
-    await Effect.runPromise(store.close())
-    await Effect.runPromise(control.close())
-
-    const reopened = await makeFixture({ path })
-    const reopenExit = await Effect.runPromiseExit(reopened.store.append({ type: "after-reopen" }))
-    const reopenedEvents = await Effect.runPromise(reopened.store.query())
-
-    expectFailure(fullExit, EventLogFullError)
-    expect(eventsAfterFull).toHaveLength(0)
-    expect(meta).toEqual([{ read_only: 1 }])
-    expectFailure(reopenExit, EventLogFullError)
-    expect(reopenedEvents).toHaveLength(0)
-  })
-
-  test("disk-full metadata latch failure preserves original full error", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-event-log-"))
-    const path = join(directory, "events.sqlite")
-    const registry = await Effect.runPromise(makeResourceRegistry())
-    const sqlite = await Effect.runPromise(makeSQLite(registry))
-    const failingSqlite = failNextEventInsert(sqlite, { failReadOnlyUpdate: true })
-    const eventLog = await Effect.runPromise(makeEventLog(failingSqlite))
-    const store = await Effect.runPromise(
-      eventLog.open({ path, ownerScope: "scope-main", namespace: "default" })
-    )
-
-    const fullExit = await Effect.runPromiseExit(store.append({ type: "after-full" }))
-    const latchedExit = await Effect.runPromiseExit(store.append({ type: "after-latch" }))
-    const events = await Effect.runPromise(store.query())
-
-    expectFailure(fullExit, EventLogFullError)
-    expectFailure(latchedExit, EventLogFullError)
-    expect(events).toHaveLength(0)
   })
 })
-
-const failNextEventInsert = (
-  sqlite: SqliteApi,
-  failureOptions: { readonly failReadOnlyUpdate?: boolean } = {}
-): SqliteApi =>
-  Object.freeze({
-    connect: (connectOptions: Parameters<SqliteApi["connect"]>[0]) =>
-      sqlite.connect(connectOptions).pipe(
-        Effect.map((connection) => {
-          let failed = false
-          let readOnlyUpdateFailed = false
-          const wrapped: SqliteConnection = {
-            ...connection,
-            exec: (sql, params) => {
-              if (!failed && sql.startsWith("INSERT INTO event_log_entries")) {
-                failed = true
-                return Effect.fail(
-                  new SqliteInvalidStateError({
-                    operation: "SQLite.exec",
-                    resource: connection.resource.id,
-                    message: "database or disk is full",
-                    code: Option.some("SQLITE_FULL"),
-                    cause: Option.none()
-                  })
-                )
-              }
-              if (
-                failureOptions.failReadOnlyUpdate === true &&
-                !readOnlyUpdateFailed &&
-                sql.startsWith("UPDATE event_log_meta SET read_only = 1")
-              ) {
-                readOnlyUpdateFailed = true
-                return Effect.fail(
-                  new SqliteInvalidStateError({
-                    operation: "SQLite.exec",
-                    resource: connection.resource.id,
-                    message: "database or disk is full",
-                    code: Option.some("SQLITE_FULL"),
-                    cause: Option.none()
-                  })
-                )
-              }
-
-              return connection.exec(sql, params)
-            }
-          }
-
-          return wrapped
-        })
-      )
-  })
-
-async function makeFixture(
-  options: {
-    readonly path?: string
-    readonly maxEvents?: number
-  } = {}
-): Promise<{ readonly sqlite: SqliteApi; readonly store: EventLogStore }> {
-  const registry = await Effect.runPromise(makeResourceRegistry())
-  const sqlite = await Effect.runPromise(makeSQLite(registry))
-  const store = await Effect.runPromise(
-    Effect.gen(function* () {
-      const eventLog = yield* makeEventLog(sqlite)
-      return yield* eventLog.open({
-        path: options.path ?? ":memory:",
-        ownerScope: "scope-main",
-        ...(options.maxEvents === undefined ? {} : { maxEvents: options.maxEvents })
-      })
-    })
-  )
-
-  return { sqlite, store }
-}
-function expectFailure<E>(
-  exit: Exit.Exit<unknown, E>,
-  errorClass: abstract new (...args: never[]) => E
-): void {
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const failure = exit.cause.reasons.find(Cause.isFailReason)
-    const error = failure?.error
-    expect(error).toBeInstanceOf(errorClass)
-  }
-}

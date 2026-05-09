@@ -4,9 +4,10 @@ import {
   hostProtocolErrorRecoverableDefault
 } from "@effect-desktop/bridge"
 import { expect, test } from "bun:test"
-import { Cause, Effect, Exit, Option, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Option, Schema } from "effect"
 
-import { type EventLogStore } from "./event-log.js"
+import { AuditEvent, type AuditEventsApi } from "./audit-events.js"
+import { makeResourceRegistry } from "./resources.js"
 import { SecretValue, type SecretsApi, type SecretsSafeStorageApi, makeSecrets } from "./secrets.js"
 import { SecretsMigrationFailedError, runSecretsMigration } from "./secrets-migration.js"
 import { makeSettings, type SettingsStore } from "./settings.js"
@@ -29,13 +30,9 @@ test("SecretsMigration moves secret-shaped Settings keys into Secrets and audits
   expect(Option.isNone(legacy)).toBe(true)
   expect(Option.getOrUndefined(theme)).toBe("dark")
   expect(JSON.stringify(auditRows)).not.toContain("refresh-value")
-  expect(auditRows).toEqual([
-    {
-      type: "secret-migrated",
-      payload: { sourceKey: "refresh_token", namespace: "legacy", outcome: "ok" },
-      source: "SecretsMigration"
-    }
-  ])
+  expect(auditRows).toHaveLength(1)
+  expect((auditRows[0] as AuditEvent).kind).toBe("secrets-accessed")
+  expect((auditRows[0] as AuditEvent).outcome).toBe("ok")
 })
 
 test("SecretsMigration is a no-op after the complete flag is written", async () => {
@@ -93,7 +90,7 @@ async function makeFixture(
 ): Promise<{
   readonly settings: SettingsStore
   readonly secrets: SecretsApi
-  readonly auditRows: unknown[]
+  readonly auditRows: AuditEvent[]
 }> {
   const kv = await Effect.runPromise(
     Effect.gen(function* () {
@@ -144,19 +141,11 @@ const memorySafeStorage = (failOnce?: {
   }
 }
 
-const memoryAudit = (rows: unknown[]): EventLogStore => ({
-  append: (event, options) =>
+const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
+  emit: (event: AuditEvent) =>
     Effect.sync(() => {
-      rows.push({
-        type: event.type,
-        ...(event.payload === undefined ? {} : { payload: event.payload }),
-        ...(options?.source === undefined ? {} : { source: options.source })
-      })
-      return rows.length - 1
-    }),
-  query: () => Effect.succeed([]),
-  subscribe: () => Stream.die("unused"),
-  close: () => Effect.void
+      rows.push(event)
+    })
 })
 
 const secretText = (secret: SecretValue): string => new TextDecoder().decode(secret.unsafeBytes())

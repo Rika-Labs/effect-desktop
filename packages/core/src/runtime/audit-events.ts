@@ -1,13 +1,7 @@
 import { redact } from "@effect-desktop/bridge"
-import { Context, Effect, Schema, Stream } from "effect"
+import { Context, Effect, Layer, Schema } from "effect"
+import { EventGroup, EventJournal, EventLog } from "effect/unstable/eventlog"
 
-import type {
-  EventLogEntry,
-  EventLogError,
-  EventLogQueryOptions,
-  EventLogStore,
-  EventLogSubscribeOptions
-} from "./event-log.js"
 import type { NormalizedCapability, PermissionActor } from "./permission-registry.js"
 
 const NonEmptyString = Schema.NonEmptyString
@@ -25,6 +19,8 @@ export const AuditEventKind = Schema.Literals([
   "command-registered",
   "command-unregistered",
   "command-invoked",
+  "job-retrying",
+  "secrets-accessed",
   "trace-id-missing"
 ])
 export type AuditEventKind = typeof AuditEventKind.Type
@@ -59,6 +55,15 @@ export interface PermissionAuditEventInput {
   readonly details?: unknown
 }
 
+export interface SecretsAuditEventInput {
+  readonly source: string
+  readonly traceId: string
+  readonly outcome: string
+  readonly namespace: string
+  readonly key?: string
+  readonly timestamp?: number
+}
+
 export interface ApprovalAuditEventInput {
   readonly kind: "approval-requested" | "approval-granted" | "approval-denied"
   readonly source: string
@@ -71,52 +76,104 @@ export interface ApprovalAuditEventInput {
 }
 
 export interface AuditEventsApi {
-  readonly emit: (event: AuditEvent) => Effect.Effect<void, EventLogError, never>
-  readonly query: (
-    options?: EventLogQueryOptions
-  ) => Effect.Effect<readonly EventLogEntry[], EventLogError, never>
-  readonly subscribe: (
-    options?: EventLogSubscribeOptions
-  ) => Stream.Stream<EventLogEntry, EventLogError, never>
+  readonly emit: (event: AuditEvent) => Effect.Effect<void, EventJournal.EventJournalError, never>
 }
 
-export const makeAuditEvents = (store: EventLogStore): AuditEventsApi =>
-  Object.freeze({
-    emit: (event: AuditEvent) =>
-      store
-        .append(
-          {
-            type: `audit/${event.kind}`,
-            payload: redact({
-              kind: event.kind,
-              source: event.source,
-              traceId: event.traceId,
-              outcome: event.outcome,
-              ...(event.timestamp === undefined ? {} : { timestamp: event.timestamp }),
-              ...(event.normalizedCapability === undefined
-                ? {}
-                : { normalizedCapability: event.normalizedCapability }),
-              ...(event.actor === undefined ? {} : { actor: event.actor }),
-              ...(event.resource === undefined ? {} : { resource: event.resource }),
-              ...(event.details === undefined ? {} : { details: event.details })
-            })
-          },
-          { source: "AuditEvents" }
-        )
-        .pipe(Effect.asVoid),
-    query: (options?: EventLogQueryOptions) => store.query(options),
-    subscribe: (options?: EventLogSubscribeOptions) => store.subscribe(options)
-  })
+const auditPrimaryKey = (p: unknown): string => {
+  const payload = p as { readonly traceId?: string }
+  return payload.traceId ?? ""
+}
+
+export const AuditGroup = EventGroup.empty
+  .add({ tag: "permission-granted", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
+  .add({ tag: "permission-denied", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
+  .add({ tag: "permission-revoked", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
+  .add({ tag: "permission-expired", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
+  .add({ tag: "permission-consumed", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
+  .add({ tag: "permission-used", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
+  .add({ tag: "approval-requested", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
+  .add({ tag: "approval-granted", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
+  .add({ tag: "approval-denied", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
+  .add({ tag: "command-registered", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
+  .add({ tag: "command-unregistered", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
+  .add({ tag: "command-invoked", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
+  .add({ tag: "job-retrying", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
+  .add({ tag: "secrets-accessed", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
+  .add({ tag: "trace-id-missing", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
+
+const AuditSchema = EventLog.schema(AuditGroup)
+
+export const AuditGroupLayer = EventLog.group(AuditGroup, (handlers) =>
+  handlers
+    .handle("permission-granted", () => Effect.void)
+    .handle("permission-denied", () => Effect.void)
+    .handle("permission-revoked", () => Effect.void)
+    .handle("permission-expired", () => Effect.void)
+    .handle("permission-consumed", () => Effect.void)
+    .handle("permission-used", () => Effect.void)
+    .handle("approval-requested", () => Effect.void)
+    .handle("approval-granted", () => Effect.void)
+    .handle("approval-denied", () => Effect.void)
+    .handle("command-registered", () => Effect.void)
+    .handle("command-unregistered", () => Effect.void)
+    .handle("command-invoked", () => Effect.void)
+    .handle("job-retrying", () => Effect.void)
+    .handle("secrets-accessed", () => Effect.void)
+    .handle("trace-id-missing", () => Effect.void)
+)
+
+export const AuditReactivityLayer = EventLog.groupReactivity(AuditGroup, ["audit"])
 
 export class AuditEvents extends Context.Service<AuditEvents, AuditEventsApi>()("AuditEvents", {
-  make: Effect.succeed(
-    Object.freeze({
-      emit: () => Effect.void,
-      query: () => Effect.succeed([]),
-      subscribe: () => Stream.empty
-    } satisfies AuditEventsApi)
-  )
+  make: Effect.succeed({
+    emit: () => Effect.void as Effect.Effect<void, EventJournal.EventJournalError, never>
+  } satisfies AuditEventsApi)
 }) {}
+
+export const AuditEventsLayer: Layer.Layer<
+  AuditEvents,
+  never,
+  EventLog.EventLog | EventLog.Registry
+> = Layer.effect(
+  AuditEvents,
+  Effect.gen(function* () {
+    const log = yield* EventLog.EventLog
+    return { emit: makeEmit(log) }
+  })
+)
+
+export const makeAuditEvents = (log: EventLog.EventLog["Service"]): AuditEventsApi => ({
+  emit: makeEmit(log)
+})
+
+const makeEmit =
+  (log: EventLog.EventLog["Service"]) =>
+  (event: AuditEvent): Effect.Effect<void, EventJournal.EventJournalError, never> => {
+    const payload = redact({
+      kind: event.kind,
+      source: event.source,
+      traceId: event.traceId,
+      outcome: event.outcome,
+      ...(event.timestamp === undefined ? {} : { timestamp: event.timestamp }),
+      ...(event.normalizedCapability === undefined
+        ? {}
+        : { normalizedCapability: event.normalizedCapability }),
+      ...(event.actor === undefined ? {} : { actor: event.actor }),
+      ...(event.resource === undefined ? {} : { resource: event.resource }),
+      ...(event.details === undefined ? {} : { details: event.details })
+    })
+    return log.write({
+      schema: AuditSchema,
+      event: event.kind,
+      payload
+    }) as Effect.Effect<void, EventJournal.EventJournalError, never>
+  }
+
+export const emitAuditEvent = (
+  audit: AuditEventsApi | undefined,
+  event: AuditEvent
+): Effect.Effect<void, EventJournal.EventJournalError, never> =>
+  audit === undefined ? Effect.void : audit.emit(event)
 
 export const permissionAuditEvent = (input: PermissionAuditEventInput): AuditEvent =>
   new AuditEvent({
@@ -143,8 +200,14 @@ export const approvalAuditEvent = (input: ApprovalAuditEventInput): AuditEvent =
     ...(input.details === undefined ? {} : { details: input.details })
   })
 
-export const emitAuditEvent = (
-  audit: EventLogStore | undefined,
-  event: AuditEvent
-): Effect.Effect<void, EventLogError, never> =>
-  audit === undefined ? Effect.void : makeAuditEvents(audit).emit(event)
+export const secretsAuditEvent = (input: SecretsAuditEventInput): AuditEvent =>
+  new AuditEvent({
+    kind: "secrets-accessed",
+    source: input.source,
+    traceId: input.traceId,
+    outcome: input.outcome,
+    ...(input.timestamp === undefined ? {} : { timestamp: input.timestamp }),
+    ...(input.key === undefined
+      ? { details: { namespace: input.namespace } }
+      : { details: { namespace: input.namespace, key: input.key } })
+  })

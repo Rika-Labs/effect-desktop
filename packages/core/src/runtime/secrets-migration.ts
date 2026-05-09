@@ -1,14 +1,14 @@
 import { RedactionFilter } from "@effect-desktop/bridge"
 import { Data, Effect, Option, Schema } from "effect"
 
-import type { EventLogError, EventLogStore } from "./event-log.js"
+import { emitAuditEvent, secretsAuditEvent, type AuditEventsApi } from "./audit-events.js"
+import { EventJournal } from "effect/unstable/eventlog"
 import { type SecretsApi, type SecretsError, SecretValue } from "./secrets.js"
 import type { SettingsError, SettingsStore } from "./settings.js"
 
 const MigrationCompleteFlag = "migration.secrets.v1.complete"
 const LegacyNamespace = "legacy"
 const MigrationSource = "SecretsMigration"
-const MigrationEventType = "secret-migrated"
 
 export type SecretsMigrationPhase =
   | "read-flag"
@@ -23,7 +23,11 @@ export type SecretsMigrationPhase =
 export class SecretsMigrationFailedError extends Data.TaggedError("SecretsMigrationFailed")<{
   readonly key: Option.Option<string>
   readonly phase: SecretsMigrationPhase
-  readonly cause: SettingsError | SecretsError | EventLogError | SecretVerificationMismatchError
+  readonly cause:
+    | SettingsError
+    | SecretsError
+    | EventJournal.EventJournalError
+    | SecretVerificationMismatchError
 }> {}
 
 export class SecretVerificationMismatchError extends Data.TaggedError(
@@ -46,7 +50,7 @@ export class SecretsMigrationReport extends Schema.Class<SecretsMigrationReport>
 export interface SecretsMigrationOptions {
   readonly settings: SettingsStore
   readonly secrets: SecretsApi
-  readonly audit?: EventLogStore
+  readonly audit?: AuditEventsApi
   readonly namespace?: string
   readonly completeFlagKey?: string
   readonly legacyKeys?: readonly string[]
@@ -158,31 +162,31 @@ const verifySecret = (
   )
 
 const auditMigrated = (
-  audit: EventLogStore | undefined,
+  audit: AuditEventsApi | undefined,
   namespace: string,
   key: string
 ): Effect.Effect<void, SecretsMigrationError, never> =>
-  audit === undefined
-    ? Effect.void
-    : audit
-        .append(
-          {
-            type: MigrationEventType,
-            payload: { sourceKey: key, namespace, outcome: "ok" }
-          },
-          { source: MigrationSource }
-        )
-        .pipe(
-          Effect.asVoid,
-          Effect.mapError((cause) =>
-            migrationFailed({ key: Option.some(key), phase: "audit", cause })
-          )
-        )
+  emitAuditEvent(
+    audit,
+    secretsAuditEvent({
+      source: MigrationSource,
+      traceId: key,
+      outcome: "ok",
+      namespace,
+      key
+    })
+  ).pipe(
+    Effect.mapError((cause) => migrationFailed({ key: Option.some(key), phase: "audit", cause }))
+  )
 
 const migrationFailed = (input: {
   readonly key: Option.Option<string>
   readonly phase: SecretsMigrationPhase
-  readonly cause: SettingsError | SecretsError | EventLogError | SecretVerificationMismatchError
+  readonly cause:
+    | SettingsError
+    | SecretsError
+    | EventJournal.EventJournalError
+    | SecretVerificationMismatchError
 }): SecretsMigrationFailedError =>
   new SecretsMigrationFailedError({
     key: input.key,

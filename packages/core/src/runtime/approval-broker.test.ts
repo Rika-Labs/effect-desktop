@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test"
-import { Cause, Deferred, Effect, Exit, Fiber, Option, Stream } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber } from "effect"
 
-import { EventLogFullError, type EventLogStore } from "./event-log.js"
+import { EventJournal } from "effect/unstable/eventlog"
+
+import { AuditEvent, type AuditEventsApi } from "./audit-events.js"
 import {
   ApprovalBrokerAuditFailedError,
   ApprovalBrokerInvalidArgumentError,
@@ -14,7 +16,7 @@ import {
 } from "./approval-broker.js"
 
 test("ApprovalBroker coalesces identical concurrent requests into one host prompt", async () => {
-  const rows: unknown[] = []
+  const rows: AuditEvent[] = []
   let promptCount = 0
   const prompt: ApprovalPromptPort = {
     prompt: (request) =>
@@ -50,12 +52,12 @@ test("ApprovalBroker coalesces identical concurrent requests into one host promp
   ])
   expect(fourth.outcome).toBe("denied-for-scope")
   expect(fourth.source).toBe("scope-cache")
-  expect(rows.map((row) => eventType(row))).toEqual([
-    "audit/approval-requested",
-    "audit/approval-requested",
-    "audit/approval-requested",
-    "audit/approval-denied",
-    "audit/approval-requested"
+  expect(rows.map((row) => row.kind)).toEqual([
+    "approval-requested",
+    "approval-requested",
+    "approval-requested",
+    "approval-denied",
+    "approval-requested"
   ])
 })
 
@@ -100,7 +102,7 @@ test("ApprovalBroker rejects the ninth distinct queued request for one actor", a
 })
 
 test("ApprovalBroker dev bypass grants without touching the host prompt", async () => {
-  const rows: unknown[] = []
+  const rows: AuditEvent[] = []
   let promptCount = 0
   const broker = await Effect.runPromise(
     makeApprovalBroker({
@@ -126,10 +128,7 @@ test("ApprovalBroker dev bypass grants without touching the host prompt", async 
   expect(result.source).toBe("dev-bypass")
   expect(result.traceId).toBe("trace-1")
   expect(promptCount).toBe(0)
-  expect(rows.map((row) => eventType(row))).toEqual([
-    "audit/approval-requested",
-    "audit/approval-granted"
-  ])
+  expect(rows.map((row) => row.kind)).toEqual(["approval-requested", "approval-granted"])
 })
 
 test("ApprovalBroker returns typed failures for invalid input and audit failure", async () => {
@@ -329,33 +328,21 @@ const outcome = (
     source: "host"
   })
 
-const memoryAudit = (rows: unknown[]): EventLogStore => ({
-  append: (event, options) =>
+const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
+  emit: (event: AuditEvent) =>
     Effect.sync(() => {
-      rows.push({
-        type: event.type,
-        ...(event.payload === undefined ? {} : { payload: event.payload }),
-        ...(options?.source === undefined ? {} : { source: options.source })
-      })
-      return rows.length - 1
-    }),
-  query: () => Effect.succeed([]),
-  subscribe: () => Stream.die("unused"),
-  close: () => Effect.void
+      rows.push(event)
+    })
 })
 
-const failingAudit = (): EventLogStore => ({
-  append: () =>
+const failingAudit = (): AuditEventsApi => ({
+  emit: () =>
     Effect.fail(
-      new EventLogFullError({
-        freeBytes: 0,
-        operation: "EventLog.append",
-        cause: Option.none()
+      new EventJournal.EventJournalError({
+        method: "EventJournal.write",
+        cause: new Error("journal full")
       })
-    ),
-  query: () => Effect.succeed([]),
-  subscribe: () => Stream.die("unused"),
-  close: () => Effect.void
+    )
 })
 
 const expectFailure = <ErrorClass extends abstract new (...args: never[]) => unknown>(
@@ -372,8 +359,3 @@ const expectFailure = <ErrorClass extends abstract new (...args: never[]) => unk
     }
   }
 }
-
-const eventType = (row: unknown): string | undefined =>
-  typeof row === "object" && row !== null && "type" in row && typeof row.type === "string"
-    ? row.type
-    : undefined

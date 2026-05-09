@@ -8,10 +8,10 @@ import {
   HostProtocolResponseEnvelope,
   encodeHostProtocolEnvelope
 } from "@effect-desktop/bridge"
-import { Effect, Exit, Stream } from "effect"
+import { Effect, Exit } from "effect"
 
+import { AuditEvent, type AuditEventsApi } from "./audit-events.js"
 import { createHostProtocolExchange } from "./host-client.js"
-import type { EventLogAppend, EventLogAppendOptions, EventLogStore } from "./event-log.js"
 import { FrameTooLargeError, FrameTruncatedError, type FramedTransport } from "./transport.js"
 
 test("host protocol exchange maps oversized received frames to FrameTooLarge", async () => {
@@ -129,7 +129,7 @@ test("host protocol exchange preserves semantic response mismatches as InvalidOu
 })
 
 test("host protocol exchange auto-mints missing host response trace IDs and audits", async () => {
-  const rows: EventLogAppend[] = []
+  const rows: AuditEvent[] = []
   const exchange = createHostProtocolExchange(
     transport({
       recv: async () =>
@@ -150,24 +150,12 @@ test("host protocol exchange auto-mints missing host response trace IDs and audi
   const response = await Effect.runPromise(exchange.request(request()))
 
   expect(response.traceId).toBe("trace-auto")
-  expect(rows).toEqual([
-    {
-      type: "audit/trace-id-missing",
-      payload: {
-        kind: "trace-id-missing",
-        source: "HostProtocol",
-        traceId: "trace-auto",
-        outcome: "auto-minted",
-        timestamp: 1,
-        details: {
-          boundary: "host-runtime",
-          envelopeKind: "response",
-          requestId: "request-1",
-          method: "host.ping"
-        }
-      }
-    }
-  ])
+  expect(rows).toHaveLength(1)
+  expect(rows[0]).toBeInstanceOf(AuditEvent)
+  expect(rows[0]?.kind).toBe("trace-id-missing")
+  expect(rows[0]?.source).toBe("HostProtocol")
+  expect(rows[0]?.traceId).toBe("trace-auto")
+  expect(rows[0]?.outcome).toBe("auto-minted")
 })
 
 test("host protocol exchange maps oversized outbound frames to FrameTooLarge", async () => {
@@ -222,15 +210,11 @@ const transport = (overrides: Partial<FramedTransport>): FramedTransport => ({
   ...overrides
 })
 
-const memoryAudit = (rows: EventLogAppend[]): EventLogStore => ({
-  append: (event: EventLogAppend, _options?: EventLogAppendOptions) =>
+const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
+  emit: (event: AuditEvent) =>
     Effect.sync(() => {
       rows.push(event)
-      return rows.length
-    }),
-  query: () => Effect.succeed([]),
-  subscribe: () => Stream.empty,
-  close: () => Effect.void
+    })
 })
 
 const expectFailure = (

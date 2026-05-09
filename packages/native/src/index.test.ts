@@ -15,13 +15,13 @@ import {
   type HostWindowExchange
 } from "@effect-desktop/bridge"
 import {
+  AuditEvent,
   CommandRegistry,
-  EventLogEntry,
   ResourceRegistry,
   makeCommandRegistry,
   makePermissionRegistry,
   makeResourceRegistry,
-  type EventLogStore,
+  type AuditEventsApi,
   type NormalizedCapability
 } from "@effect-desktop/core"
 import { Cause, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect"
@@ -3998,7 +3998,7 @@ test("GlobalShortcut bridge client rejects empty and NUL-bearing accelerators as
 
 test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar events, keeps listening after command failure, and unregisters on scope close", async () => {
   const calls: string[] = []
-  const rows: EventLogEntry[] = []
+  const rows: AuditEvent[] = []
   const pressed = await Effect.runPromise(Queue.unbounded<GlobalShortcutPressedEvent>())
   const invoked = await Effect.runPromise(Deferred.make<void>())
   const resources = await Effect.runPromise(makeResourceRegistry())
@@ -4105,13 +4105,13 @@ test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar 
   })
   expect(handlerCalls).toBe(2)
   expect(calls).toEqual(["register:CmdOrCtrl+K:window-1", "unregister:CmdOrCtrl+K"])
-  expect(rows.map((row) => row.type)).toContain("audit/permission-granted")
-  expect(rows.map((row) => row.type)).toContain("audit/command-invoked")
+  expect(rows.map((row) => row.kind)).toContain("permission-granted")
+  expect(rows.map((row) => row.kind)).toContain("command-invoked")
 })
 
 test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar events and unregisters on scope close", async () => {
   const calls: string[] = []
-  const rows: EventLogEntry[] = []
+  const rows: AuditEvent[] = []
   const pressed = await Effect.runPromise(Queue.unbounded<GlobalShortcutPressedEvent>())
   const invoked = await Effect.runPromise(Deferred.make<void>())
   const resources = await Effect.runPromise(makeResourceRegistry())
@@ -4205,8 +4205,8 @@ test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar 
   })
   expect(handlerCalls).toBe(1)
   expect(calls).toEqual(["register:CmdOrCtrl+K:window-1", "unregister:CmdOrCtrl+K"])
-  expect(rows.map((row) => row.type)).toContain("audit/permission-granted")
-  expect(rows.map((row) => row.type)).toContain("audit/command-invoked")
+  expect(rows.map((row) => row.kind)).toContain("permission-granted")
+  expect(rows.map((row) => row.kind)).toContain("command-invoked")
 })
 
 test("GlobalShortcut conflicts and unsupported behavior are typed Effect values", async () => {
@@ -5184,23 +5184,11 @@ const globalShortcutClient = (calls: string[]): GlobalShortcutClientApi => ({
     )
 })
 
-const memoryAudit = (rows: EventLogEntry[]): EventLogStore => ({
-  append: (event, options) =>
+const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
+  emit: (event: AuditEvent) =>
     Effect.sync(() => {
-      rows.push(
-        new EventLogEntry({
-          id: rows.length + 1,
-          type: event.type,
-          payload: event.payload,
-          source: options?.source ?? "test",
-          timestampMs: rows.length + 1
-        })
-      )
-      return rows.length
-    }),
-  query: () => Effect.succeed(rows),
-  subscribe: () => Stream.empty,
-  close: () => Effect.void
+      rows.push(event)
+    })
 })
 
 const makeCommandBindingLayer = async (calls: unknown[] = []) => {

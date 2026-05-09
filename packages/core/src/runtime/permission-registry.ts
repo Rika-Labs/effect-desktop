@@ -2,8 +2,7 @@ import { randomUUID } from "node:crypto"
 
 import { Context, Data, Deferred, Effect, Option, PubSub, Ref, Schema, Stream } from "effect"
 
-import { emitAuditEvent, permissionAuditEvent } from "./audit-events.js"
-import type { EventLogError, EventLogStore } from "./event-log.js"
+import { emitAuditEvent, permissionAuditEvent, type AuditEventsApi } from "./audit-events.js"
 
 const NonEmptyString = Schema.NonEmptyString
 const PermissionMetadataText = Schema.NonEmptyString.check(
@@ -185,7 +184,7 @@ export class PermissionDeniedError extends Data.TaggedError("PermissionDenied")<
 export class PermissionAuditFailedError extends Data.TaggedError("PermissionAuditFailed")<{
   readonly operation: string
   readonly decision: PermissionDecision
-  readonly cause: EventLogError
+  readonly cause: unknown
 }> {}
 
 export class PermissionGrantNotFoundError extends Data.TaggedError("PermissionGrantNotFound")<{
@@ -211,7 +210,7 @@ export type PermissionRegistryError =
   | PermissionRevokedError
 
 export interface PermissionRegistryOptions {
-  readonly audit?: EventLogStore
+  readonly audit?: AuditEventsApi
   readonly traceId?: () => string
   readonly nextToken?: () => string
   readonly now?: () => number
@@ -575,7 +574,7 @@ const rootCovers = (declaredRoot: string, requestedRoot: string): boolean => {
 
 const issueGrant = (
   grants: Ref.Ref<ReadonlyMap<string, TrackedGrant>>,
-  audit: EventLogStore | undefined,
+  audit: AuditEventsApi | undefined,
   nextToken: () => string,
   now: () => number,
   capability: NormalizedCapability,
@@ -613,7 +612,7 @@ const issueGrant = (
 
 const inspectGrant = (
   grants: Ref.Ref<ReadonlyMap<string, TrackedGrant>>,
-  audit: EventLogStore | undefined,
+  audit: AuditEventsApi | undefined,
   token: string,
   now: number
 ): Effect.Effect<PermissionGrantSnapshot, PermissionRegistryError, never> =>
@@ -624,7 +623,7 @@ const inspectGrant = (
 
 const prepareGrantUse = (
   grants: Ref.Ref<ReadonlyMap<string, TrackedGrant>>,
-  audit: EventLogStore | undefined,
+  audit: AuditEventsApi | undefined,
   token: string,
   now: number
 ): Effect.Effect<
@@ -649,7 +648,7 @@ const prepareGrantUse = (
 
 const expireIfNeeded = (
   grants: Ref.Ref<ReadonlyMap<string, TrackedGrant>>,
-  audit: EventLogStore | undefined,
+  audit: AuditEventsApi | undefined,
   token: string,
   now: number
 ): Effect.Effect<TrackedGrant, PermissionRegistryError, never> =>
@@ -690,7 +689,7 @@ const recordPermissionDecision = (
 
 const transitionGrant = (
   grants: Ref.Ref<ReadonlyMap<string, TrackedGrant>>,
-  audit: EventLogStore | undefined,
+  audit: AuditEventsApi | undefined,
   token: string,
   status: Exclude<GrantStatus, "active">,
   updatedAt: number
@@ -776,7 +775,7 @@ const revokedError = (
   })
 
 const auditLifecycle = (
-  audit: EventLogStore | undefined,
+  audit: AuditEventsApi | undefined,
   transition: "grant" | "use" | "revoke" | "expire" | "consumed",
   tracked: TrackedGrant
 ): Effect.Effect<void, PermissionAuditFailedError, never> =>
@@ -854,7 +853,7 @@ const permissionLifecycleKind = (
 }
 
 const auditDecision = (
-  audit: EventLogStore | undefined,
+  audit: AuditEventsApi | undefined,
   decision: PermissionDecision
 ): Effect.Effect<void, PermissionAuditFailedError, never> =>
   emitAuditEvent(
