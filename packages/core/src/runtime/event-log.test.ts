@@ -144,6 +144,23 @@ describe("EventLog", () => {
     expect(events).toHaveLength(0)
   })
 
+  test("append rejects every C0 control byte and DEL in event type", async () => {
+    const { store } = await makeFixture()
+
+    for (let codePoint = 0; codePoint <= 31; codePoint += 1) {
+      const type = `audit${String.fromCharCode(codePoint)}forged`
+      const exit = await Effect.runPromiseExit(store.append({ type, payload: { ok: true } }))
+      expectFailure(exit, EventLogInvalidArgumentError)
+    }
+    const delExit = await Effect.runPromiseExit(
+      store.append({ type: `audit${String.fromCharCode(127)}forged`, payload: { ok: true } })
+    )
+    expectFailure(delExit, EventLogInvalidArgumentError)
+
+    const events = await Effect.runPromise(store.query())
+    expect(events).toHaveLength(0)
+  })
+
   test("read-only meta state returns EventLogFull and preserves query", async () => {
     const directory = await mkdtemp(join(tmpdir(), "effect-desktop-event-log-"))
     const path = join(directory, "events.sqlite")

@@ -11,6 +11,10 @@ import {
 const NonEmptyString = Schema.NonEmptyString
 const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0))
+const EventLogMetadataText = Schema.NonEmptyString.check(
+  // eslint-disable-next-line no-control-regex
+  Schema.isPattern(/^[^\x00-\x1F\x7F]+$/)
+)
 
 export class EventLogOpenInput extends Schema.Class<EventLogOpenInput>("EventLogOpenInput")({
   path: NonEmptyString,
@@ -22,7 +26,7 @@ export class EventLogOpenInput extends Schema.Class<EventLogOpenInput>("EventLog
 }) {}
 
 export class EventLogAppendInput extends Schema.Class<EventLogAppendInput>("EventLogAppendInput")({
-  type: NonEmptyString,
+  type: EventLogMetadataText,
   payload: Schema.optionalKey(Schema.Unknown),
   source: Schema.optionalKey(Schema.String)
 }) {}
@@ -30,7 +34,7 @@ export class EventLogAppendInput extends Schema.Class<EventLogAppendInput>("Even
 export class EventLogQueryInput extends Schema.Class<EventLogQueryInput>("EventLogQueryInput")({
   from: Schema.optionalKey(NonNegativeInt),
   to: Schema.optionalKey(NonNegativeInt),
-  type: Schema.optionalKey(NonEmptyString),
+  type: Schema.optionalKey(EventLogMetadataText),
   limit: Schema.optionalKey(PositiveInt)
 }) {}
 
@@ -42,7 +46,7 @@ export class EventLogSubscribeInput extends Schema.Class<EventLogSubscribeInput>
 
 export class EventLogEntry extends Schema.Class<EventLogEntry>("EventLogEntry")({
   id: NonNegativeInt,
-  type: NonEmptyString,
+  type: EventLogMetadataText,
   payload: Schema.optionalKey(Schema.Unknown),
   timestampMs: NonNegativeInt,
   source: Schema.optionalKey(Schema.String)
@@ -504,14 +508,33 @@ const rowToEntry = (
       )
     }
 
+    const type = yield* stringField(row, "type", operation)
+    const decodedType = yield* decodeMetadataField(type, operation, "type")
     return new EventLogEntry({
       id: yield* numberField(row, "event_id", operation),
-      type: yield* stringField(row, "type", operation),
+      type: decodedType,
       ...(payloadPresent ? { payload } : {}),
       timestampMs: yield* numberField(row, "timestamp_ms", operation),
       ...(source === null || source === undefined ? {} : { source })
     })
   })
+
+const decodeMetadataField = (
+  value: string,
+  operation: string,
+  field: string
+): Effect.Effect<string, EventLogInvalidArgumentError, never> =>
+  Schema.decodeUnknownEffect(EventLogMetadataText)(value).pipe(
+    Effect.mapError(
+      (cause) =>
+        new EventLogInvalidArgumentError({
+          operation,
+          field,
+          message: formatUnknownError(cause),
+          cause: Option.some(cause)
+        })
+    )
+  )
 
 const decodeOpenInput = (
   input: unknown,
