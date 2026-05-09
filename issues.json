@@ -1279,10 +1279,10 @@
       "title": "Contain notarization artifact file names to their metadata directory",
       "url": "https://github.com/Rika-Labs/effect-desktop/issues/819",
       "status": "pr-open",
-      "workflow": ["scout", "architect", "review", "work", "pr"],
+      "workflow": ["scout", "architect", "review", "work", "pr", "code-review"],
       "pr": "https://github.com/Rika-Labs/effect-desktop/pull/941",
       "branch": "issue-819-contain-notarization-artifact-file-names",
-      "updated_at": "2026-05-09T05:13:55.000Z"
+      "updated_at": "2026-05-09T05:21:07.000Z"
     },
     "worked": [
       {
