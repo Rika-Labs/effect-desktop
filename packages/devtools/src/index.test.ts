@@ -1,10 +1,8 @@
 import { expect, test } from "bun:test"
 import {
   CommandRegistry,
-  Job,
   makeBridgeCallRegistry,
   makeBridgeStreamRegistry,
-  makeJob,
   makeCommandRegistry,
   makePermissionRegistry,
   makeProcess,
@@ -19,7 +17,6 @@ import {
   ResourceRegistry,
   Telemetry,
   Worker,
-  type JobApi,
   type NormalizedCapability,
   type ProcessAdapter,
   type ProcessApi,
@@ -41,9 +38,9 @@ import {
   LiveRuntimePanelsLive,
   PerformanceOverlay,
   PerformanceOverlayLive,
-  WorkersJobsDevtools,
-  WorkersJobsDevtoolsLive,
-  type WorkersJobsSnapshot
+  WorkersDevtools,
+  WorkersDevtoolsLive,
+  type WorkersSnapshot
 } from "./index.js"
 
 const commandCapability: NormalizedCapability = {
@@ -106,8 +103,8 @@ test("CommandsDevtools lists registered commands and observes invocation telemet
   expect(result.finalList[0]?.lastInvocation?.outcome).toBe("success")
 })
 
-test("WorkersJobsDevtools lists live workers and jobs with redacted progress", async () => {
-  const fixture = await makeWorkersJobsFixture()
+test("WorkersDevtools lists live workers with redacted scripts", async () => {
+  const fixture = await makeWorkersFixture()
   const workerHandle = await Effect.runPromise(
     fixture.worker.spawn({
       script: "./secret-worker.ts",
@@ -120,33 +117,14 @@ test("WorkersJobsDevtools lists live workers and jobs with redacted progress", a
       })
     })
   )
-  const jobHandle = await Effect.runPromise(
-    fixture.job.run({
-      id: "job-devtools",
-      ownerScope: "scope-main",
-      effect: Effect.never,
-      progress: Stream.fromIterable([{ step: 1, token: "runtime-secret" }]),
-      progressSchema: Schema.Struct({
-        step: Schema.Number,
-        token: Schema.String
-      })
-    })
+
+  const snapshot = await waitForWorkersSnapshot(fixture, (snapshot) =>
+    snapshot.workers.some((row) => row.resourceId === workerHandle.resource.id)
   )
 
-  const snapshot = await waitForDevtoolsSnapshot(fixture, (snapshot) => {
-    const job = snapshot.jobs.find((row) => row.id === "job-devtools")
-    return (
-      snapshot.workers.some((row) => row.resourceId === workerHandle.resource.id) &&
-      job?.lastProgress !== undefined
-    )
-  })
-  const job = snapshot.jobs.find((row) => row.id === "job-devtools")
-
   expect(snapshot.workers.map((worker) => worker.script)).toEqual(["./secret-worker.ts"])
-  expect(job?.lastProgress?.value).toEqual({ step: 1, token: "[REDACTED]" })
 
   await Effect.runPromise(workerHandle.close)
-  await Effect.runPromise(jobHandle.cancel)
 })
 
 test("LiveRuntimePanels projects bridge, stream, resource, permission, and process tables", async () => {
@@ -516,10 +494,9 @@ test("PerformanceOverlay compares startup, bridge p99, and render frame metrics 
   expect(JSON.stringify(snapshot)).not.toContain("secret-token")
 })
 
-interface WorkersJobsFixture {
+interface WorkersFixture {
   readonly registry: ResourceRegistryApi
   readonly worker: WorkerApi
-  readonly job: JobApi
 }
 
 const makeProcessService = (registry: ResourceRegistryApi): Promise<ProcessApi> =>
@@ -556,7 +533,7 @@ const fakeProcessChild = (): ProcessChild => ({
   kill: () => undefined
 })
 
-const makeWorkersJobsFixture = async (): Promise<WorkersJobsFixture> => {
+const makeWorkersFixture = async (): Promise<WorkersFixture> => {
   let timestamp = 1_000
   const registry = await Effect.runPromise(
     makeResourceRegistry({
@@ -572,31 +549,20 @@ const makeWorkersJobsFixture = async (): Promise<WorkersJobsFixture> => {
       now: () => timestamp++
     })
   )
-  const job = await Effect.runPromise(
-    makeJob(registry, {
-      now: () => timestamp++,
-      nextId: () => `job-${timestamp++}`
-    })
-  )
-  return { registry, worker, job }
+  return { registry, worker }
 }
 
-const waitForDevtoolsSnapshot = async (
-  fixture: WorkersJobsFixture,
-  predicate: (snapshot: WorkersJobsSnapshot) => boolean
-): Promise<WorkersJobsSnapshot> => {
+const waitForWorkersSnapshot = async (
+  fixture: WorkersFixture,
+  predicate: (snapshot: WorkersSnapshot) => boolean
+): Promise<WorkersSnapshot> => {
   for (let attempt = 0; attempt < 50; attempt += 1) {
     const snapshot = await Effect.runPromise(
       Effect.gen(function* () {
-        const devtools = yield* WorkersJobsDevtools
+        const devtools = yield* WorkersDevtools
         return yield* devtools.list()
       }).pipe(
-        Effect.provide(
-          Layer.provide(
-            WorkersJobsDevtoolsLive,
-            Layer.merge(Layer.succeed(Worker)(fixture.worker), Layer.succeed(Job)(fixture.job))
-          )
-        )
+        Effect.provide(Layer.provide(WorkersDevtoolsLive, Layer.succeed(Worker)(fixture.worker)))
       )
     )
     if (predicate(snapshot)) {
