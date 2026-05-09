@@ -25,6 +25,7 @@ import {
   canonicalUpdateManifestBytes,
   DoctorMissing,
   runCli,
+  runDesktopPackage,
   runSemverGuard,
   type CommandRunner,
   type DoctorCommandRunner,
@@ -2458,6 +2459,86 @@ test("desktop package emits macOS app dmg zip artifacts with metadata", async ()
     expect(appMetadata.sha256).toHaveLength(64)
     expect(await readFile(join(dmgRoot, "checksums.txt"), "utf8")).toContain(".dmg")
     expect(await readFile(join(zipRoot, "checksums.txt"), "utf8")).toContain(".zip")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop package stages macOS app bundle before explicit dmg artifact", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-dmg-"))
+  try {
+    await writePlaygroundFixture(directory)
+    await writeBuildLayoutFixture(directory, "macos-arm64")
+    const outputRoot = join(directory, "apps", "playground", "dist", "desktop", "macos")
+    const appRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.app")
+    const appBundle = join(appRoot, "Effect-Desktop-Playground.app")
+    const dmgRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg")
+    const dmgPath = join(dmgRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg")
+    const calls: string[] = []
+    const runner: PackageCommandRunner = (invocation) =>
+      Effect.gen(function* () {
+        calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+        yield* Effect.promise(() => writeFile(dmgPath, invocation.step))
+      })
+
+    const report = await Effect.runPromise(
+      runDesktopPackage({
+        cwd: directory,
+        configPath: "apps/playground/desktop.config.ts",
+        platform: undefined,
+        artifact: "dmg",
+        commandRunner: runner,
+        now: fixedClock([100, 120, 200, 230]),
+        hostTarget: "macos-arm64"
+      })
+    )
+
+    expect(report.steps.map((step) => step.name)).toEqual(["macos-app", "macos-dmg", "metadata"])
+    expect(calls).toEqual([`macos-dmg:hdiutil create -srcFolder ${appBundle} -o ${dmgPath}`])
+    expect(await readFile(join(appBundle, "Contents", "Info.plist"), "utf8")).toContain(
+      "dev.effect-desktop.playground"
+    )
+    expect(report.artifacts.map((artifact) => artifact.kind)).toEqual(["dmg"])
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop package stages macOS app bundle before explicit zip artifact", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-zip-"))
+  try {
+    await writePlaygroundFixture(directory)
+    await writeBuildLayoutFixture(directory, "macos-arm64")
+    const outputRoot = join(directory, "apps", "playground", "dist", "desktop", "macos")
+    const appRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.app")
+    const appBundle = join(appRoot, "Effect-Desktop-Playground.app")
+    const zipRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.zip")
+    const zipPath = join(zipRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.zip")
+    const calls: string[] = []
+    const runner: PackageCommandRunner = (invocation) =>
+      Effect.gen(function* () {
+        calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+        yield* Effect.promise(() => writeFile(zipPath, invocation.step))
+      })
+
+    const report = await Effect.runPromise(
+      runDesktopPackage({
+        cwd: directory,
+        configPath: "apps/playground/desktop.config.ts",
+        platform: undefined,
+        artifact: "zip",
+        commandRunner: runner,
+        now: fixedClock([100, 120, 200, 230]),
+        hostTarget: "macos-arm64"
+      })
+    )
+
+    expect(report.steps.map((step) => step.name)).toEqual(["macos-app", "macos-zip", "metadata"])
+    expect(calls).toEqual([`macos-zip:ditto -c -k --keepParent ${appBundle} ${zipPath}`])
+    expect(await readFile(join(appBundle, "Contents", "Info.plist"), "utf8")).toContain(
+      "dev.effect-desktop.playground"
+    )
+    expect(report.artifacts.map((artifact) => artifact.kind)).toEqual(["zip"])
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
