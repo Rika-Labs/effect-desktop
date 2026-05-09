@@ -2,9 +2,7 @@ import {
   CommandRegistry,
   type CommandInvocationRecord,
   type CommandSnapshot,
-  Job,
   redact,
-  type JobSnapshot,
   Worker,
   type WorkerSnapshot
 } from "@effect-desktop/core"
@@ -34,33 +32,26 @@ export const CommandsDevtoolsLive = Layer.effect(CommandsDevtools)(
   })
 )
 
-export interface WorkersJobsSnapshot {
+export interface WorkersSnapshot {
   readonly workers: readonly WorkerSnapshot[]
-  readonly jobs: readonly JobSnapshot[]
 }
 
-export interface WorkersJobsDevtoolsApi {
-  readonly list: () => Effect.Effect<WorkersJobsSnapshot, never, never>
-  readonly observe: () => Stream.Stream<WorkersJobsSnapshot, never, never>
+export interface WorkersDevtoolsApi {
+  readonly list: () => Effect.Effect<WorkersSnapshot, never, never>
+  readonly observe: () => Stream.Stream<WorkersSnapshot, never, never>
 }
 
-export class WorkersJobsDevtools extends Context.Service<
-  WorkersJobsDevtools,
-  WorkersJobsDevtoolsApi
->()("@effect-desktop/devtools/WorkersJobsDevtools") {}
+export class WorkersDevtools extends Context.Service<WorkersDevtools, WorkersDevtoolsApi>()(
+  "@effect-desktop/devtools/WorkersDevtools"
+) {}
 
-export const WorkersJobsDevtoolsLive = Layer.effect(WorkersJobsDevtools)(
+export const WorkersDevtoolsLive = Layer.effect(WorkersDevtools)(
   Effect.gen(function* () {
     const workers = yield* Worker
-    const jobs = yield* Job
-    const list = (): Effect.Effect<WorkersJobsSnapshot, never, never> =>
+    const list = (): Effect.Effect<WorkersSnapshot, never, never> =>
       Effect.gen(function* () {
         const workerRows = yield* workers.list()
-        const jobRows = yield* jobs.list()
-        return redact({
-          workers: workerRows,
-          jobs: jobRows
-        })
+        return redact({ workers: workerRows })
       })
 
     return Object.freeze({
@@ -71,6 +62,6 @@ export const WorkersJobsDevtoolsLive = Layer.effect(WorkersJobsDevtools)(
             Stream.fromEffectRepeat(Effect.sleep("16 millis").pipe(Effect.andThen(list())))
           )
         )
-    } satisfies WorkersJobsDevtoolsApi)
+    } satisfies WorkersDevtoolsApi)
   })
 )

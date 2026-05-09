@@ -2364,14 +2364,14 @@
       "signature": "export class TraySetTooltipInput extends Schema.Class<TraySetTooltipInput>(\"TraySetTooltipInput\")({ tray: TrayResource.schema, tooltip: TrayTooltip }) {}"
     },
     {
-      "name": "TrayTooltip",
-      "kind": "value",
-      "signature": "const TrayTooltip: Schema.NonEmptyString"
-    },
-    {
       "name": "TraySupportedResult",
       "kind": "class",
       "signature": "export class TraySupportedResult extends Schema.Class<TraySupportedResult>(\"TraySupportedResult\")({ supported: Schema.Boolean }) {}"
+    },
+    {
+      "name": "TrayTooltip",
+      "kind": "value",
+      "signature": "const TrayTooltip: Schema.NonEmptyString"
     },
     {
       "name": "Updater",
