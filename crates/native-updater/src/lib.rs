@@ -198,7 +198,7 @@ pub enum InstallStagingError {
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UpdateManifest {
     pub schema_version: u32,
     pub app_id: String,
@@ -214,7 +214,7 @@ pub struct UpdateManifest {
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UpdateArtifact {
     pub platform: UpdatePlatform,
     pub kind: UpdateArtifactKind,
@@ -927,6 +927,86 @@ mod tests {
     }
 
     #[test]
+    fn rejects_unknown_top_level_signed_field() {
+        let signed = sign_value(json!({
+            "schemaVersion": 1,
+            "appId": "dev.effect-desktop.playground",
+            "version": "1.2.3",
+            "channel": "stable",
+            "keyVersion": 5,
+            "publishedAt": "2026-05-06T00:00:00.000Z",
+            "critical": true,
+            "artifacts": [{
+                "platform": "macos-arm64",
+                "kind": "dmg",
+                "url": "https://updates.example.invalid/app.dmg",
+                "sizeBytes": 4,
+                "sha256": "0".repeat(64),
+                "signature": "ed25519:artifact"
+            }]
+        }));
+
+        let error = verify_manifest(
+            &signed.json,
+            &[TrustAnchor {
+                key_version: 5,
+                public_key: signed.public_key,
+            }],
+        )
+        .expect_err("manifest with unknown top-level field must fail closed");
+
+        match error {
+            UpdateManifestError::ManifestShapeInvalid { message } => {
+                assert!(
+                    message.contains("critical"),
+                    "expected unknown-field error to mention `critical`, got: {message}"
+                );
+            }
+            other => panic!("expected ManifestShapeInvalid, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_artifact_field() {
+        let signed = sign_value(json!({
+            "schemaVersion": 1,
+            "appId": "dev.effect-desktop.playground",
+            "version": "1.2.3",
+            "channel": "stable",
+            "keyVersion": 5,
+            "publishedAt": "2026-05-06T00:00:00.000Z",
+            "artifacts": [{
+                "platform": "macos-arm64",
+                "kind": "dmg",
+                "url": "https://updates.example.invalid/app.dmg",
+                "sizeBytes": 4,
+                "sha256": "0".repeat(64),
+                "signature": "ed25519:artifact",
+                "priority": "high"
+            }]
+        }));
+
+        let error = verify_manifest(
+            &signed.json,
+            &[TrustAnchor {
+                key_version: 5,
+                public_key: signed.public_key,
+            }],
+        )
+        .expect_err("manifest with unknown artifact field must fail closed");
+
+        match error {
+            UpdateManifestError::ManifestShapeInvalid { message } => {
+                assert!(
+                    message.contains("priority"),
+                    "expected unknown-field error to mention `priority`, got: {message}"
+                );
+            }
+            other => panic!("expected ManifestShapeInvalid, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn rejects_unknown_schema_version() {
         let signed = signed_manifest_with_schema(2, 5, "1.2.3");
 
@@ -1330,13 +1410,7 @@ mod tests {
         key_version: u32,
         version: &str,
     ) -> SignedManifest {
-        let seed = [7_u8; 32];
-        let signing_key = SigningKey::from_bytes(&seed);
-        let public_key = format!(
-            "ed25519:{}",
-            STANDARD.encode(signing_key.verifying_key().as_bytes())
-        );
-        let unsigned = json!({
+        sign_value(json!({
             "schemaVersion": schema_version,
             "appId": "dev.effect-desktop.playground",
             "version": version,
@@ -1351,7 +1425,16 @@ mod tests {
                 "sha256": "0".repeat(64),
                 "signature": "ed25519:artifact"
             }]
-        });
+        }))
+    }
+
+    fn sign_value(unsigned: Value) -> SignedManifest {
+        let seed = [7_u8; 32];
+        let signing_key = SigningKey::from_bytes(&seed);
+        let public_key = format!(
+            "ed25519:{}",
+            STANDARD.encode(signing_key.verifying_key().as_bytes())
+        );
         let canonical = canonical_json(&unsigned);
         let signature = format!(
             "ed25519:{}",
