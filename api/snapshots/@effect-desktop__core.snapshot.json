@@ -591,7 +591,17 @@
     {
       "name": "makeSettings",
       "kind": "value",
-      "signature": "const makeSettings: (sqlite: typeof SQLite.Service) => Effect.Effect<SettingsApi, never, never>"
+      "signature": "const makeSettings: (kv: KeyValueStore.KeyValueStore) => Effect.Effect<SettingsApi, never, never>"
+    },
+    {
+      "name": "makeSettingsLayer",
+      "kind": "value",
+      "signature": "const makeSettingsLayer: (path: string) => Layer.Layer<Settings, never, never>"
+    },
+    {
+      "name": "makeSettingsLayerMemory",
+      "kind": "value",
+      "signature": "const makeSettingsLayerMemory: Layer.Layer<Settings, never, never>"
     },
     {
       "name": "makeSQLite",
@@ -1106,7 +1116,7 @@
     {
       "name": "Settings",
       "kind": "class",
-      "signature": "export class Settings extends Context.Service<Settings, SettingsApi>()(\"Settings\", { make: Effect.gen(function* () { const sqlite = yield* SQLite return yield* makeSettings(sqlite) }) }) {}"
+      "signature": "export class Settings extends Context.Service<Settings, SettingsApi>()(\"Settings\") {}"
     },
     {
       "name": "SettingsApi",
@@ -1121,12 +1131,17 @@
     {
       "name": "SettingsError",
       "kind": "type",
-      "signature": "export type SettingsError = | SettingsInvalidArgumentError | SettingsSqliteError | SettingsMigrationFailedError | SettingsRecoveredFromBackupError"
+      "signature": "export type SettingsError = | SettingsInvalidArgumentError | SettingsKvError | SettingsMigrationFailedError | SettingsRecoveredFromBackupError"
     },
     {
       "name": "SettingsInvalidArgumentError",
       "kind": "class",
       "signature": "export class SettingsInvalidArgumentError extends Data.TaggedError(\"InvalidArgument\")<{ readonly operation: string readonly field: string readonly message: string readonly cause: Option.Option<unknown> }> {}"
+    },
+    {
+      "name": "SettingsKvError",
+      "kind": "class",
+      "signature": "export class SettingsKvError extends Data.TaggedError(\"KvError\")<{ readonly operation: string readonly cause: unknown }> {}"
     },
     {
       "name": "SettingsMigrated",
@@ -1167,11 +1182,6 @@
       "name": "SettingsRecoveredFromBackupError",
       "kind": "class",
       "signature": "export class SettingsRecoveredFromBackupError extends Data.TaggedError( \"SettingsRecoveredFromBackup\" )<{ readonly backupPath: string readonly operation: string readonly cause: Option.Option<unknown> }> {}"
-    },
-    {
-      "name": "SettingsSqliteError",
-      "kind": "class",
-      "signature": "export class SettingsSqliteError extends Data.TaggedError(\"SqliteError\")<{ readonly operation: string readonly cause: SqliteError }> {}"
     },
     {
       "name": "SettingsStore",
