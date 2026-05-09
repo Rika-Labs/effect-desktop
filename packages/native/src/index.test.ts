@@ -223,6 +223,7 @@ import {
   makeWebViewServiceLayer,
   makeWindowBridgeClientLayer,
   makeWindowServiceLayer,
+  makeUnsupportedWindowClient,
   firstResponderRoute,
   broadcastRoute,
   targetedRoute,
@@ -4406,6 +4407,19 @@ test("Window service can be composed from a separately provided WindowClient", a
 
   expect(created.id).toBe("window-1")
   expect(calls).toEqual(["create:0"])
+})
+
+test("makeUnsupportedWindowClient returns Unsupported for all methods", async () => {
+  const client = makeUnsupportedWindowClient()
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const createError = yield* client.create({}).pipe(Effect.flip)
+      const showError = yield* client.show(windowHandle).pipe(Effect.flip)
+      return { createError, showError }
+    })
+  )
+  expect(result.createError._tag).toBe("Unsupported")
+  expect(result.showError._tag).toBe("Unsupported")
 })
 
 test("host WindowClient adapter opens and closes through host envelopes with registry lifetime", async () => {
