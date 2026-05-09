@@ -503,12 +503,21 @@ const publicKeyObject = (publicKey: string): ReturnType<typeof createPublicKey> 
   })
 }
 
+const CANONICAL_BASE64 = /^[A-Za-z0-9+/]+={0,2}$/u
+
 const decodeEd25519Value = (value: string, label: string): Buffer => {
   const encoded = value.startsWith("ed25519:") ? value.slice("ed25519:".length) : undefined
   if (encoded === undefined || encoded.length === 0) {
     throw new Error(`${label} must start with ed25519:`)
   }
-  return Buffer.from(encoded, "base64")
+  if (!CANONICAL_BASE64.test(encoded) || encoded.length % 4 !== 0) {
+    throw new Error(`${label} must be canonical base64`)
+  }
+  const decoded = Buffer.from(encoded, "base64")
+  if (decoded.toString("base64") !== encoded) {
+    throw new Error(`${label} must be canonical base64`)
+  }
+  return decoded
 }
 
 const canonicalJson = (value: unknown): string => {
