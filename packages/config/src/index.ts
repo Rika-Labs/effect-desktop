@@ -173,6 +173,7 @@ export const DEFAULT_CSP_DIRECTIVES: readonly [directive: string, values: readon
   ["default-src", ["'self'"]],
   ["script-src", ["'self'", "'nonce-{N}'"]],
   ["style-src", ["'self'", "'nonce-{N}'"]],
+  ["style-src-attr", ["'unsafe-inline'"]],
   ["connect-src", ["'self'", "app:"]],
   ["img-src", ["'self'", "app:", "data:", "https:"]],
   ["font-src", ["'self'", "app:", "data:"]],
@@ -223,8 +224,11 @@ export const cspWeakenings = (csp: CspPolicy): readonly CspWeakening[] => {
     })
   }
   for (const [directive, overrideValues] of overrides.directives) {
+    const defaultValues = defaultCspDirectiveValues(directive)
     const forbidden = overrideValues.find(
-      (value) => value === "'unsafe-inline'" || value === "'unsafe-eval'"
+      (value) =>
+        (value === "'unsafe-inline'" || value === "'unsafe-eval'") &&
+        !isPermittedDefaultSource(value, defaultValues)
     )
     if (forbidden !== undefined) {
       weakenings.push({
@@ -234,7 +238,6 @@ export const cspWeakenings = (csp: CspPolicy): readonly CspWeakening[] => {
       continue
     }
 
-    const defaultValues = defaultCspDirectiveValues(directive)
     if (defaultValues === undefined) {
       if (isAdditionalCspTightening(directive, overrideValues)) {
         continue
@@ -661,6 +664,11 @@ const defaultCspDirectiveValues = (directive: string): ReadonlySet<string> | und
 
 const normalizeCspValue = (value: string): string =>
   value === "'nonce-{N}'" ? "'nonce-{N}'" : value
+
+const isPermittedDefaultSource = (
+  source: string,
+  defaults: ReadonlySet<string> | undefined
+): boolean => defaults?.has(normalizeCspValue(source)) === true
 
 const isAdditionalCspTightening = (directive: string, values: readonly string[]): boolean =>
   (values.length === 0 && NO_VALUE_HARDENING_CSP_DIRECTIVES.has(directive)) ||
