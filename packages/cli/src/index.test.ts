@@ -1676,7 +1676,53 @@ test("desktop sign GPG-signs Linux AppImage and writes Linux metadata", async ()
     expect(calls[0]).toContain("--local-user ABCD1234")
     expect(await readFile(`${artifactPath}.asc`, "utf8")).toBe("signature")
     expect(metainfo).toContain("<id>dev.effect-desktop.playground</id>")
+    expect(metainfo).toContain(
+      "<launchable type=\"desktop-id\">dev.effect-desktop.playground.desktop</launchable>"
+    )
     expect(desktop).toContain("Name=Effect Desktop Playground")
+    expect(desktop).toContain("Exec=dev.effect-desktop.playground")
+    expect(desktop).toContain("Icon=dev.effect-desktop.playground")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop sign rejects Linux signable artifacts without linuxIntegration metadata", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-no-linux-int-"))
+  try {
+    await writePlaygroundFixture(directory, { signing: { linux: { gpgKey: "ABCD1234" } } })
+    const artifactPath = await writePackagedArtifactFixture(directory, "linux-x64", "appimage")
+    const artifactRoot = dirname(artifactPath)
+    const artifactJsonPath = join(artifactRoot, "artifact.json")
+    const artifactJson = JSON.parse(await readFile(artifactJsonPath, "utf8")) as Record<
+      string,
+      unknown
+    >
+    delete artifactJson["linuxIntegration"]
+    await writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
+    const calls: string[] = []
+    const runner: SignCommandRunner = (invocation) => {
+      calls.push(invocation.step)
+      return Effect.die("signing commands must not run when linuxIntegration is missing")
+    }
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["sign", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        signCommandRunner: runner,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+    expect(exitCode).toBe(1)
+    expect(calls).toEqual([])
+    expect(stderr.join("")).toContain("SignConfigError")
+    expect(stderr.join("")).toContain("linuxIntegration")
+    await expect(stat(`${artifactPath}.asc`)).rejects.toThrow()
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -3477,9 +3523,20 @@ const writePackagedArtifactFixture = async (
     await writeFile(artifactPath, kind)
   }
   const digest = await digestArtifactFixture(artifactPath)
+  const linuxIntegration =
+    platform === "linux"
+      ? {
+          linuxIntegration: {
+            desktopFile: "dev.effect-desktop.playground.desktop",
+            appStreamId: "dev.effect-desktop.playground.metainfo.xml",
+            flatpakAppId: "dev.effect-desktop.playground",
+            snapName: "dev.effect-desktop.playground"
+          }
+        }
+      : {}
   await writeFile(
     join(root, "artifact.json"),
-    `${JSON.stringify({ kind, target, fileName, ...digest }, null, 2)}\n`
+    `${JSON.stringify({ kind, target, fileName, ...digest, ...linuxIntegration }, null, 2)}\n`
   )
   return artifactPath
 }

@@ -152,6 +152,13 @@ interface PackagedArtifact {
   readonly kind: SignArtifactKind
   readonly rootPath: string
   readonly artifactPath: string
+  readonly linuxIntegration: LinuxIntegration | undefined
+}
+
+interface LinuxIntegration {
+  readonly desktopFile: string
+  readonly appStreamId: string
+  readonly snapName: string
 }
 
 const DEFAULT_TIMESTAMP_URL = "http://timestamp.digicert.com"
@@ -437,12 +444,31 @@ const signLinuxAppImage = (
       "signing.linux.gpgKey",
       "Configure signing.linux.gpgKey before signing Linux AppImages."
     )
-    const appstreamPath = join(artifact.rootPath, "share", "metainfo", `${plan.appId}.metainfo.xml`)
-    const desktopPath = join(artifact.rootPath, "share", "applications", `${plan.appId}.desktop`)
+    if (artifact.linuxIntegration === undefined) {
+      return yield* Effect.fail(
+        new SignConfigError({
+          field: "artifact.json#linuxIntegration",
+          message: "Linux signable artifacts must include linuxIntegration metadata",
+          remediation: "Regenerate package metadata with `bun desktop package`."
+        })
+      )
+    }
+    const appstreamPath = join(
+      artifact.rootPath,
+      "share",
+      "metainfo",
+      artifact.linuxIntegration.appStreamId
+    )
+    const desktopPath = join(
+      artifact.rootPath,
+      "share",
+      "applications",
+      artifact.linuxIntegration.desktopFile
+    )
     const appstreamStart = options.now()
-    yield* writeFileEffect(appstreamPath, appstreamMetainfo(plan))
+    yield* writeFileEffect(appstreamPath, appstreamMetainfo(plan, artifact.linuxIntegration))
     const desktopStart = options.now()
-    yield* writeFileEffect(desktopPath, linuxDesktopEntry(plan))
+    yield* writeFileEffect(desktopPath, linuxDesktopEntry(plan, artifact.linuxIntegration))
     const signaturePath = `${artifact.artifactPath}.asc`
     const steps: SignStepReport[] = [
       {
@@ -575,13 +601,18 @@ const readPackagedArtifacts = (
       const metadata = yield* readJson<{
         readonly kind?: unknown
         readonly fileName?: unknown
+        readonly linuxIntegration?: unknown
       }>(metadataPath)
       const kind = yield* readArtifactKind(metadata.kind, metadataPath)
       const fileNameField = `${relative(plan.outputPath, metadataPath)}#fileName`
       const fileName = yield* readContainedFileName(metadata.fileName, fileNameField)
       const artifactPath = yield* resolveContainedArtifactPath(rootPath, fileName, fileNameField)
       yield* statPath(artifactPath)
-      artifacts.push({ kind, rootPath, artifactPath })
+      const linuxIntegration = yield* readLinuxIntegration(
+        metadata.linuxIntegration,
+        relative(plan.outputPath, metadataPath)
+      )
+      artifacts.push({ kind, rootPath, artifactPath, linuxIntegration })
     }
     const relevant = artifacts.filter(
       (artifact) =>
@@ -700,24 +731,27 @@ const permissionNames = (config: AppConfig): ReadonlySet<string> => {
   return new Set(names)
 }
 
-const appstreamMetainfo = (plan: SignPlan): string => `<?xml version="1.0" encoding="UTF-8"?>
+const appstreamMetainfo = (
+  plan: SignPlan,
+  integration: LinuxIntegration
+): string => `<?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
   <id>${escapeXml(plan.appId)}</id>
   <name>${escapeXml(plan.appName)}</name>
   <summary>${escapeXml(plan.appName)}</summary>
-  <launchable type="desktop-id">${escapeXml(plan.appId)}.desktop</launchable>
+  <launchable type="desktop-id">${escapeXml(integration.desktopFile)}</launchable>
   <releases>
     <release version="${escapeXml(plan.appVersion)}" />
   </releases>
 </component>
 `
 
-const linuxDesktopEntry = (plan: SignPlan): string =>
+const linuxDesktopEntry = (plan: SignPlan, integration: LinuxIntegration): string =>
   [
     "[Desktop Entry]",
     `Name=${plan.appName}`,
-    `Exec=${plan.safeAppName}`,
-    `Icon=${plan.safeAppName}`,
+    `Exec=${integration.snapName}`,
+    `Icon=${integration.snapName}`,
     "Type=Application",
     "Categories=Utility;",
     ""
@@ -843,6 +877,44 @@ const resolveContainedArtifactPath = (
     )
   }
   return Effect.succeed(candidate)
+}
+
+const readLinuxIntegration = (
+  value: unknown,
+  metadataRelativePath: string
+): Effect.Effect<LinuxIntegration | undefined, SignConfigError, never> => {
+  if (value === undefined) {
+    return Effect.succeed(undefined)
+  }
+  if (!isRecord(value)) {
+    return Effect.fail(
+      new SignConfigError({
+        field: `${metadataRelativePath}#linuxIntegration`,
+        message: `${metadataRelativePath}#linuxIntegration must be an object`,
+        remediation: "Regenerate package metadata with `bun desktop package`."
+      })
+    )
+  }
+  const desktopFile = value["desktopFile"]
+  const appStreamId = value["appStreamId"]
+  const snapName = value["snapName"]
+  if (
+    typeof desktopFile !== "string" ||
+    desktopFile.length === 0 ||
+    typeof appStreamId !== "string" ||
+    appStreamId.length === 0 ||
+    typeof snapName !== "string" ||
+    snapName.length === 0
+  ) {
+    return Effect.fail(
+      new SignConfigError({
+        field: `${metadataRelativePath}#linuxIntegration`,
+        message: `${metadataRelativePath}#linuxIntegration must include desktopFile, appStreamId, and snapName`,
+        remediation: "Regenerate package metadata with `bun desktop package`."
+      })
+    )
+  }
+  return Effect.succeed({ desktopFile, appStreamId, snapName })
 }
 
 const readArtifactKind = (
