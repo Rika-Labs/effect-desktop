@@ -308,7 +308,7 @@ const notarizeArtifact = (
       options,
       "spctl-assess",
       "spctl",
-      ["--assess", "--type", "execute", "--verbose=4", artifact.artifactPath],
+      spctlAssessArgs(artifact),
       plan.outputPath,
       artifact.artifactPath
     )
@@ -325,6 +325,19 @@ const notarizeArtifact = (
       steps
     }
   })
+
+const spctlAssessArgs = (artifact: PackagedArtifact): readonly string[] =>
+  artifact.kind === "dmg"
+    ? [
+        "--assess",
+        "--type",
+        "open",
+        "--context",
+        "context:primary-signature",
+        "--verbose=4",
+        artifact.artifactPath
+      ]
+    : ["--assess", "--type", "execute", "--verbose=4", artifact.artifactPath]
 
 const runToolStep = (
   options: DesktopNotarizeOptions,

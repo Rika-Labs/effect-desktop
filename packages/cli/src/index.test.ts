@@ -1676,7 +1676,109 @@ test("desktop sign GPG-signs Linux AppImage and writes Linux metadata", async ()
     expect(calls[0]).toContain("--local-user ABCD1234")
     expect(await readFile(`${artifactPath}.asc`, "utf8")).toBe("signature")
     expect(metainfo).toContain("<id>dev.effect-desktop.playground</id>")
+    expect(metainfo).toContain(
+      '<launchable type="desktop-id">dev.effect-desktop.playground.desktop</launchable>'
+    )
     expect(desktop).toContain("Name=Effect Desktop Playground")
+    expect(desktop).toContain("Exec=dev.effect-desktop.playground")
+    expect(desktop).toContain("Icon=dev.effect-desktop.playground")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop sign rejects Linux signable artifacts without linuxIntegration metadata", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-no-linux-int-"))
+  try {
+    await writePlaygroundFixture(directory, { signing: { linux: { gpgKey: "ABCD1234" } } })
+    const artifactPath = await writePackagedArtifactFixture(directory, "linux-x64", "appimage")
+    const artifactRoot = dirname(artifactPath)
+    const artifactJsonPath = join(artifactRoot, "artifact.json")
+    const artifactJson = JSON.parse(await readFile(artifactJsonPath, "utf8")) as Record<
+      string,
+      unknown
+    >
+    delete artifactJson["linuxIntegration"]
+    await writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
+    const calls: string[] = []
+    const runner: SignCommandRunner = (invocation) => {
+      calls.push(invocation.step)
+      return Effect.die("signing commands must not run when linuxIntegration is missing")
+    }
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["sign", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        signCommandRunner: runner,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+    expect(exitCode).toBe(1)
+    expect(calls).toEqual([])
+    expect(stderr.join("")).toContain("SignConfigError")
+    expect(stderr.join("")).toContain("linuxIntegration")
+    await expect(stat(`${artifactPath}.asc`)).rejects.toThrow()
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop sign rejects artifact fileName that escapes the metadata directory", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-traversal-"))
+  try {
+    await writePlaygroundFixture(directory, { signing: { linux: { gpgKey: "ABCD1234" } } })
+    const artifactPath = await writePackagedArtifactFixture(directory, "linux-x64", "appimage")
+    const artifactRoot = dirname(artifactPath)
+    const linuxDir = dirname(artifactRoot)
+    const outsideName = "outside.AppImage"
+    const outsidePath = join(linuxDir, outsideName)
+    await writeFile(outsidePath, "outside artifact bytes")
+    await writeFile(
+      join(artifactRoot, "artifact.json"),
+      `${JSON.stringify(
+        {
+          kind: "appimage",
+          target: "linux-x64",
+          fileName: `../${outsideName}`,
+          sizeBytes: 0,
+          sha256: "0".repeat(64)
+        },
+        null,
+        2
+      )}\n`
+    )
+    const calls: string[] = []
+    const runner: SignCommandRunner = (invocation) =>
+      Effect.gen(function* () {
+        calls.push(invocation.step)
+        const outputPath = invocation.args[invocation.args.indexOf("--output") + 1]
+        if (typeof outputPath === "string") {
+          yield* Effect.promise(() => writeFile(outputPath, "signature"))
+        }
+      })
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["sign", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        signCommandRunner: runner,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("SignConfigError")
+    expect(stderr.join("")).toContain("#fileName")
+    expect(calls).toEqual([])
+    await expect(stat(`${outsidePath}.asc`)).rejects.toThrow()
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -1767,6 +1869,40 @@ test("desktop notarize is a no-op submit when staple validation already passes",
 
     expect(exitCode).toBe(0)
     expect(calls).toEqual(["stapler-validate", "spctl-assess"])
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop notarize assesses DMG artifacts as disk images", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-dmg-spctl-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+    })
+    const dmgPath = await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+    const calls: string[] = []
+    const runner: NotarizeCommandRunner = (invocation) => {
+      calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+      return Effect.succeed({ stdout: `${invocation.step} ok`, stderr: "", exitCode: 0 })
+    }
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["notarize", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "macos-arm64",
+        notarizeCommandRunner: runner,
+        writeStdout: () => {},
+        writeStderr: () => {}
+      })
+    )
+
+    expect(exitCode).toBe(0)
+    expect(calls).toContain(
+      `spctl-assess:spctl --assess --type open --context context:primary-signature --verbose=4 ${dmgPath}`
+    )
+    expect(calls.some((call) => call.includes("--type execute"))).toBe(false)
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -2274,7 +2410,7 @@ test("desktop publish rejects invalid feedUrl", async () => {
     await writePlaygroundFixture(directory, {
       update: {
         channel: "stable",
-        feedUrl: "not-a-url",
+        feedUrl: "not-a-url-{platform}-{channel}",
         publicKey: key.publicKey,
         privateKeyEnv,
         keyVersion: 5
@@ -2296,6 +2432,90 @@ test("desktop publish rejects invalid feedUrl", async () => {
     expect(exitCode).toBe(1)
     expect(stderr.join("")).toContain("update.feedUrl")
     expect(stderr.join("")).toContain("valid http(s) URL template")
+  } finally {
+    if (previousPrivateKey === undefined) {
+      delete process.env[privateKeyEnv]
+    } else {
+      process.env[privateKeyEnv] = previousPrivateKey
+    }
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop publish rejects feedUrl missing the {platform} placeholder", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-feed-no-platform-"))
+  const key = testEd25519Key()
+  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+  const previousPrivateKey = process.env[privateKeyEnv]
+  process.env[privateKeyEnv] = key.privateKeyPem
+  try {
+    await writePlaygroundFixture(directory, {
+      update: {
+        channel: "stable",
+        feedUrl: "https://updates.example.invalid/{channel}.json",
+        publicKey: key.publicKey,
+        privateKeyEnv,
+        keyVersion: 5
+      }
+    })
+    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["publish", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        now: () => 1_772_923_200_000,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("update.feedUrl")
+    expect(stderr.join("")).toContain("{platform}")
+  } finally {
+    if (previousPrivateKey === undefined) {
+      delete process.env[privateKeyEnv]
+    } else {
+      process.env[privateKeyEnv] = previousPrivateKey
+    }
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop publish rejects feedUrl missing the {channel} placeholder", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-feed-no-channel-"))
+  const key = testEd25519Key()
+  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+  const previousPrivateKey = process.env[privateKeyEnv]
+  process.env[privateKeyEnv] = key.privateKeyPem
+  try {
+    await writePlaygroundFixture(directory, {
+      update: {
+        channel: "stable",
+        feedUrl: "https://updates.example.invalid/{platform}/stable.json",
+        publicKey: key.publicKey,
+        privateKeyEnv,
+        keyVersion: 5
+      }
+    })
+    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["publish", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        now: () => 1_772_923_200_000,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("update.feedUrl")
+    expect(stderr.join("")).toContain("{channel}")
   } finally {
     if (previousPrivateKey === undefined) {
       delete process.env[privateKeyEnv]
@@ -2345,6 +2565,332 @@ test("desktop publish rejects artifact target mismatching platform directory", a
     )
     expect(exitCode).toBe(1)
     expect(stderr.join("")).toContain("does not match platform directory")
+  } finally {
+    if (previousPrivateKey === undefined) {
+      delete process.env[privateKeyEnv]
+    } else {
+      process.env[privateKeyEnv] = previousPrivateKey
+    }
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop publish rejects artifact fileName that escapes the metadata directory", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-traversal-"))
+  const key = testEd25519Key()
+  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+  const previousPrivateKey = process.env[privateKeyEnv]
+  process.env[privateKeyEnv] = key.privateKeyPem
+  try {
+    await writePlaygroundFixture(directory, {
+      update: {
+        channel: "stable",
+        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+        publicKey: key.publicKey,
+        privateKeyEnv,
+        keyVersion: 5
+      }
+    })
+    const artifactPath = await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+    const artifactRoot = dirname(artifactPath)
+    const macosDir = dirname(artifactRoot)
+    const outsideName = "outside.dmg"
+    const outsidePath = join(macosDir, outsideName)
+    const outsideBytes = Buffer.from("outside artifact bytes")
+    await writeFile(outsidePath, outsideBytes)
+    await writeFile(
+      join(artifactRoot, "artifact.json"),
+      `${JSON.stringify(
+        {
+          kind: "dmg",
+          target: "macos-arm64",
+          fileName: `../${outsideName}`,
+          sizeBytes: outsideBytes.byteLength,
+          sha256: createHash("sha256").update(outsideBytes).digest("hex")
+        },
+        null,
+        2
+      )}\n`
+    )
+    const manifestPath = join(
+      directory,
+      "apps",
+      "playground",
+      "dist",
+      "desktop",
+      "update-manifest.json"
+    )
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["publish", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        now: () => 1_772_923_200_000,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("PublishConfigError")
+    expect(stderr.join("")).toContain("#fileName")
+    await expect(stat(manifestPath)).rejects.toThrow()
+  } finally {
+    if (previousPrivateKey === undefined) {
+      delete process.env[privateKeyEnv]
+    } else {
+      process.env[privateKeyEnv] = previousPrivateKey
+    }
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop publish rejects update.minVersion greater than app.version", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-min-version-"))
+  const key = testEd25519Key()
+  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+  const previousPrivateKey = process.env[privateKeyEnv]
+  process.env[privateKeyEnv] = key.privateKeyPem
+  try {
+    await writePlaygroundFixture(directory, {
+      app: {
+        id: "dev.effect-desktop.playground",
+        name: "Effect Desktop Playground",
+        version: "1.2.3"
+      },
+      update: {
+        channel: "stable",
+        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+        publicKey: key.publicKey,
+        privateKeyEnv,
+        keyVersion: 5,
+        minVersion: "9.0.0"
+      }
+    })
+    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+    const manifestPath = join(
+      directory,
+      "apps",
+      "playground",
+      "dist",
+      "desktop",
+      "update-manifest.json"
+    )
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["publish", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        now: () => 1_772_923_200_000,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("update.minVersion")
+    expect(stderr.join("")).toContain("must not exceed app.version")
+    await expect(stat(manifestPath)).rejects.toThrow()
+  } finally {
+    if (previousPrivateKey === undefined) {
+      delete process.env[privateKeyEnv]
+    } else {
+      process.env[privateKeyEnv] = previousPrivateKey
+    }
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop publish rejects rollback manifests without maxVersion", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-rollback-"))
+  const key = testEd25519Key()
+  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+  const previousPrivateKey = process.env[privateKeyEnv]
+  process.env[privateKeyEnv] = key.privateKeyPem
+  try {
+    await writePlaygroundFixture(directory, {
+      app: {
+        id: "dev.effect-desktop.playground",
+        name: "Effect Desktop Playground",
+        version: "1.2.3"
+      },
+      update: {
+        channel: "stable",
+        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+        publicKey: key.publicKey,
+        privateKeyEnv,
+        keyVersion: 5,
+        rollback: true
+      }
+    })
+    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+    const manifestPath = join(
+      directory,
+      "apps",
+      "playground",
+      "dist",
+      "desktop",
+      "update-manifest.json"
+    )
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["publish", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        now: () => 1_772_923_200_000,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("update.maxVersion")
+    expect(stderr.join("")).toContain("update.rollback is true")
+    await expect(stat(manifestPath)).rejects.toThrow()
+  } finally {
+    if (previousPrivateKey === undefined) {
+      delete process.env[privateKeyEnv]
+    } else {
+      process.env[privateKeyEnv] = previousPrivateKey
+    }
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop publish accepts rollback manifests with maxVersion", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-rollback-ok-"))
+  const key = testEd25519Key()
+  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+  const previousPrivateKey = process.env[privateKeyEnv]
+  process.env[privateKeyEnv] = key.privateKeyPem
+  try {
+    await writePlaygroundFixture(directory, {
+      app: {
+        id: "dev.effect-desktop.playground",
+        name: "Effect Desktop Playground",
+        version: "1.2.3"
+      },
+      update: {
+        channel: "stable",
+        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+        publicKey: key.publicKey,
+        privateKeyEnv,
+        keyVersion: 5,
+        rollback: true,
+        maxVersion: "2.0.0"
+      }
+    })
+    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+    const manifestPath = join(
+      directory,
+      "apps",
+      "playground",
+      "dist",
+      "desktop",
+      "update-manifest.json"
+    )
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["publish", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        now: () => 1_772_923_200_000,
+        writeStdout: () => {},
+        writeStderr: () => {}
+      })
+    )
+    expect(exitCode).toBe(0)
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as UpdateManifest
+    expect(manifest).toMatchObject({ rollback: true, maxVersion: "2.0.0" })
+  } finally {
+    if (previousPrivateKey === undefined) {
+      delete process.env[privateKeyEnv]
+    } else {
+      process.env[privateKeyEnv] = previousPrivateKey
+    }
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop publish rejects update.publicKey with non-canonical base64", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-key-base64-"))
+  const key = testEd25519Key()
+  const garbledKey = `${key.publicKey.slice(0, "ed25519:".length + 8)}!!${key.publicKey.slice("ed25519:".length + 10)}`
+  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+  const previousPrivateKey = process.env[privateKeyEnv]
+  process.env[privateKeyEnv] = key.privateKeyPem
+  try {
+    await writePlaygroundFixture(directory, {
+      update: {
+        channel: "stable",
+        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+        publicKey: garbledKey,
+        privateKeyEnv,
+        keyVersion: 5
+      }
+    })
+    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["publish", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        now: () => 1_772_923_200_000,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("PublishConfigError")
+    expect(stderr.join("")).toContain("Ed25519 public key")
+    expect(stderr.join("")).toContain("canonical base64")
+  } finally {
+    if (previousPrivateKey === undefined) {
+      delete process.env[privateKeyEnv]
+    } else {
+      process.env[privateKeyEnv] = previousPrivateKey
+    }
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop publish accepts update.minVersion equal to app.version", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-min-version-equal-"))
+  const key = testEd25519Key()
+  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+  const previousPrivateKey = process.env[privateKeyEnv]
+  process.env[privateKeyEnv] = key.privateKeyPem
+  try {
+    await writePlaygroundFixture(directory, {
+      app: {
+        id: "dev.effect-desktop.playground",
+        name: "Effect Desktop Playground",
+        version: "1.2.3"
+      },
+      update: {
+        channel: "stable",
+        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+        publicKey: key.publicKey,
+        privateKeyEnv,
+        keyVersion: 5,
+        minVersion: "1.2.3"
+      }
+    })
+    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["publish", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        now: () => 1_772_923_200_000,
+        writeStdout: () => {},
+        writeStderr: () => {}
+      })
+    )
+    expect(exitCode).toBe(0)
   } finally {
     if (previousPrivateKey === undefined) {
       delete process.env[privateKeyEnv]
@@ -3061,9 +3607,20 @@ const writePackagedArtifactFixture = async (
     await writeFile(artifactPath, kind)
   }
   const digest = await digestArtifactFixture(artifactPath)
+  const linuxIntegration =
+    platform === "linux"
+      ? {
+          linuxIntegration: {
+            desktopFile: "dev.effect-desktop.playground.desktop",
+            appStreamId: "dev.effect-desktop.playground.metainfo.xml",
+            flatpakAppId: "dev.effect-desktop.playground",
+            snapName: "dev.effect-desktop.playground"
+          }
+        }
+      : {}
   await writeFile(
     join(root, "artifact.json"),
-    `${JSON.stringify({ kind, target, fileName, ...digest }, null, 2)}\n`
+    `${JSON.stringify({ kind, target, fileName, ...digest, ...linuxIntegration }, null, 2)}\n`
   )
   return artifactPath
 }

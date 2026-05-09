@@ -6,7 +6,7 @@ import {
   verify as cryptoVerify
 } from "node:crypto"
 import { readdir, readFile, stat, writeFile } from "node:fs/promises"
-import { dirname, isAbsolute, join, relative, resolve } from "node:path"
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import { Data, Effect } from "effect"
@@ -236,9 +236,42 @@ const normalizePublishPlan = (
       "Set update.privateKeyEnv to the environment variable that contains the Ed25519 private key PEM."
     )
     const keyVersion = yield* readPositiveInteger(update?.keyVersion, "update.keyVersion")
-    const minVersion = yield* readOptionalString(update?.minVersion, "update.minVersion")
-    const maxVersion = yield* readOptionalString(update?.maxVersion, "update.maxVersion")
+    const appSemver = yield* readSemver(version, "app.version")
+    const minVersion = yield* readOptionalSemver(update?.minVersion, "update.minVersion")
+    const maxVersion = yield* readOptionalSemver(update?.maxVersion, "update.maxVersion")
     const rollback = yield* readOptionalBoolean(update?.rollback, "update.rollback")
+    if (minVersion !== undefined && compareSemver(minVersion.parsed, appSemver) > 0) {
+      return yield* Effect.fail(
+        new PublishConfigError({
+          field: "update.minVersion",
+          message: `update.minVersion ${minVersion.value} must not exceed app.version ${version}`,
+          remediation: "Lower update.minVersion to app.version or below."
+        })
+      )
+    }
+    if (
+      maxVersion !== undefined &&
+      minVersion !== undefined &&
+      compareSemver(minVersion.parsed, maxVersion.parsed) > 0
+    ) {
+      return yield* Effect.fail(
+        new PublishConfigError({
+          field: "update.maxVersion",
+          message: `update.maxVersion ${maxVersion.value} must not be lower than update.minVersion ${minVersion.value}`,
+          remediation: "Raise update.maxVersion to update.minVersion or above."
+        })
+      )
+    }
+    if (rollback === true && maxVersion === undefined) {
+      return yield* Effect.fail(
+        new PublishConfigError({
+          field: "update.maxVersion",
+          message: "update.maxVersion is required when update.rollback is true",
+          remediation:
+            "Set update.maxVersion to the highest installed.version that should accept this rollback pack."
+        })
+      )
+    }
     const target = yield* readOptionalTarget(options.platform)
     return {
       appId,
@@ -248,8 +281,8 @@ const normalizePublishPlan = (
       publicKey,
       privateKeyEnv,
       keyVersion,
-      minVersion,
-      maxVersion,
+      minVersion: minVersion?.value,
+      maxVersion: maxVersion?.value,
       rollback,
       outputPath: resolvePath(appRoot, join("dist", "desktop")),
       target
@@ -331,11 +364,8 @@ const readPackagedArtifacts = (
           metadata.kind,
           `${relative(plan.outputPath, metadataPath)}#kind`
         )
-        const fileName = yield* readRequiredString(
-          metadata.fileName,
-          `${relative(plan.outputPath, metadataPath)}#fileName`,
-          "Regenerate package metadata."
-        )
+        const fileNameField = `${relative(plan.outputPath, metadataPath)}#fileName`
+        const fileName = yield* readContainedFileName(metadata.fileName, fileNameField)
         const sizeBytes = yield* readNonNegativeInteger(
           metadata.sizeBytes,
           `${relative(plan.outputPath, metadataPath)}#sizeBytes`
@@ -344,7 +374,7 @@ const readPackagedArtifacts = (
           metadata.sha256,
           `${relative(plan.outputPath, metadataPath)}#sha256`
         )
-        const artifactPath = join(rootPath, fileName)
+        const artifactPath = yield* resolveContainedArtifactPath(rootPath, fileName, fileNameField)
         yield* statPath(artifactPath)
         artifacts.push({ platform: target, kind, fileName, artifactPath, sizeBytes, sha256 })
       }
@@ -473,12 +503,21 @@ const publicKeyObject = (publicKey: string): ReturnType<typeof createPublicKey> 
   })
 }
 
+const CANONICAL_BASE64 = /^[A-Za-z0-9+/]+={0,2}$/u
+
 const decodeEd25519Value = (value: string, label: string): Buffer => {
   const encoded = value.startsWith("ed25519:") ? value.slice("ed25519:".length) : undefined
   if (encoded === undefined || encoded.length === 0) {
     throw new Error(`${label} must start with ed25519:`)
   }
-  return Buffer.from(encoded, "base64")
+  if (!CANONICAL_BASE64.test(encoded) || encoded.length % 4 !== 0) {
+    throw new Error(`${label} must be canonical base64`)
+  }
+  const decoded = Buffer.from(encoded, "base64")
+  if (decoded.toString("base64") !== encoded) {
+    throw new Error(`${label} must be canonical base64`)
+  }
+  return decoded
 }
 
 const canonicalJson = (value: unknown): string => {
@@ -526,6 +565,26 @@ const artifactUrl = (
 
 const validateFeedUrl = (feedUrl: string): Effect.Effect<void, PublishConfigError, never> =>
   Effect.gen(function* () {
+    if (!feedUrl.includes("{platform}")) {
+      return yield* Effect.fail(
+        new PublishConfigError({
+          field: "update.feedUrl",
+          message: "update.feedUrl must contain the {platform} placeholder",
+          remediation:
+            "Set update.feedUrl to an http(s) URL template with both {platform} and {channel} placeholders, e.g. https://example.invalid/{platform}/{channel}.json"
+        })
+      )
+    }
+    if (!feedUrl.includes("{channel}")) {
+      return yield* Effect.fail(
+        new PublishConfigError({
+          field: "update.feedUrl",
+          message: "update.feedUrl must contain the {channel} placeholder",
+          remediation:
+            "Set update.feedUrl to an http(s) URL template with both {platform} and {channel} placeholders, e.g. https://example.invalid/{platform}/{channel}.json"
+        })
+      )
+    }
     const substituted = feedUrl
       .replaceAll("{platform}", "macos-arm64")
       .replaceAll("{channel}", "stable")
@@ -539,7 +598,7 @@ const validateFeedUrl = (feedUrl: string): Effect.Effect<void, PublishConfigErro
         new PublishConfigError({
           field: "update.feedUrl",
           message:
-            "update.feedUrl must be a valid http(s) URL template with optional {platform} and {channel} placeholders",
+            "update.feedUrl must be a valid http(s) URL template with {platform} and {channel} placeholders",
           remediation:
             "Set update.feedUrl to a valid absolute URL like https://example.invalid/{platform}/{channel}.json"
         })
@@ -569,23 +628,89 @@ const readRequiredString = (
     ? Effect.succeed(value)
     : Effect.fail(new PublishConfigError({ field, message: `${field} is required`, remediation }))
 
-const readOptionalString = (
+interface Semver {
+  readonly major: number
+  readonly minor: number
+  readonly patch: number
+}
+
+interface SemverField {
+  readonly value: string
+  readonly parsed: Semver
+}
+
+const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u
+
+const parseSemver = (value: string): Semver | undefined => {
+  const match = SEMVER_PATTERN.exec(value)
+  if (match === null) {
+    return undefined
+  }
+  const [, major, minor, patch] = match
+  if (major === undefined || minor === undefined || patch === undefined) {
+    return undefined
+  }
+  return {
+    major: Number.parseInt(major, 10),
+    minor: Number.parseInt(minor, 10),
+    patch: Number.parseInt(patch, 10)
+  }
+}
+
+const compareSemver = (left: Semver, right: Semver): number => {
+  if (left.major !== right.major) {
+    return left.major - right.major
+  }
+  if (left.minor !== right.minor) {
+    return left.minor - right.minor
+  }
+  return left.patch - right.patch
+}
+
+const readSemver = (
+  value: string,
+  field: string
+): Effect.Effect<Semver, PublishConfigError, never> => {
+  const parsed = parseSemver(value)
+  if (parsed === undefined) {
+    return Effect.fail(
+      new PublishConfigError({
+        field,
+        message: `${field} must be a SemVer X.Y.Z string`,
+        remediation: `Set ${field} to a SemVer string such as 1.2.3.`
+      })
+    )
+  }
+  return Effect.succeed(parsed)
+}
+
+const readOptionalSemver = (
   value: unknown,
   field: string
-): Effect.Effect<string | undefined, PublishConfigError, never> => {
+): Effect.Effect<SemverField | undefined, PublishConfigError, never> => {
   if (value === undefined) {
     return Effect.succeed(undefined)
   }
-  if (typeof value === "string" && value.length > 0) {
-    return Effect.succeed(value)
+  if (typeof value !== "string" || value.length === 0) {
+    return Effect.fail(
+      new PublishConfigError({
+        field,
+        message: `${field} must be a non-empty string when provided`,
+        remediation: `Remove ${field} or set it to a SemVer string such as 1.2.3.`
+      })
+    )
   }
-  return Effect.fail(
-    new PublishConfigError({
-      field,
-      message: `${field} must be a non-empty string when provided`,
-      remediation: `Remove ${field} or set it to a non-empty string.`
-    })
-  )
+  const parsed = parseSemver(value)
+  if (parsed === undefined) {
+    return Effect.fail(
+      new PublishConfigError({
+        field,
+        message: `${field} must be a SemVer X.Y.Z string when provided`,
+        remediation: `Set ${field} to a SemVer string such as 1.2.3.`
+      })
+    )
+  }
+  return Effect.succeed({ value, parsed })
 }
 
 const readOptionalBoolean = (
@@ -645,6 +770,72 @@ const readNonNegativeInteger = (
           remediation: "Regenerate package metadata."
         })
       )
+
+const readContainedFileName = (
+  value: unknown,
+  field: string
+): Effect.Effect<string, PublishConfigError, never> => {
+  if (typeof value !== "string" || value.length === 0) {
+    return Effect.fail(
+      new PublishConfigError({
+        field,
+        message: `${field} is required`,
+        remediation: "Regenerate package metadata."
+      })
+    )
+  }
+  if (!isContainedFileName(value)) {
+    return Effect.fail(
+      new PublishConfigError({
+        field,
+        message: `${field} must be a single file name without path separators`,
+        remediation: "Regenerate package metadata with `bun desktop package`."
+      })
+    )
+  }
+  return Effect.succeed(value)
+}
+
+const isContainedFileName = (value: string): boolean => {
+  if (value === "." || value === "..") {
+    return false
+  }
+  if (value.includes("/") || value.includes("\\")) {
+    return false
+  }
+  if (isAbsolute(value)) {
+    return false
+  }
+  if (basename(value) !== value) {
+    return false
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    if (code < 0x20 || code === 0x7f) {
+      return false
+    }
+  }
+  return true
+}
+
+const resolveContainedArtifactPath = (
+  rootPath: string,
+  fileName: string,
+  field: string
+): Effect.Effect<string, PublishConfigError, never> => {
+  const candidate = resolve(rootPath, fileName)
+  const containedPrefix = `${rootPath}${sep}`
+  if (candidate !== rootPath && !candidate.startsWith(containedPrefix)) {
+    return Effect.fail(
+      new PublishConfigError({
+        field,
+        message: `${field} resolves outside the artifact metadata directory`,
+        remediation: "Regenerate package metadata with `bun desktop package`."
+      })
+    )
+  }
+  return Effect.succeed(candidate)
+}
 
 const readSha256 = (
   value: unknown,
