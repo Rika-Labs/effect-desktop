@@ -6,24 +6,24 @@
   "ciCells": [
     {
       "cell": "linux-x64",
-      "runner": "blacksmith-2vcpu-ubuntu-2404",
+      "runner": "ubuntu-latest",
       "headless": true
     },
     {
       "cell": "macos-arm64",
-      "runner": "blacksmith-6vcpu-macos-latest",
+      "runner": "macos-latest",
       "headless": true
     },
     {
       "cell": "windows-x64",
-      "runner": "blacksmith-2vcpu-windows-2025",
+      "runner": "windows-latest",
       "headless": true
     }
   ],
   "manualGateCells": [
     {
       "cell": "macos-x64",
-      "reason": "No Blacksmith macOS x64 runner label is documented for this repo's runner pool yet.",
+      "reason": "GitHub-hosted macOS runners are Apple Silicon only; Intel macOS is tracked manually until a documented x64 CI label exists.",
       "path": "docs/manual-gates/macos.md"
     }
   ],
