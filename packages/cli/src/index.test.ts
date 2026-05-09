@@ -1784,6 +1784,96 @@ test("desktop sign rejects artifact fileName that escapes the metadata directory
   }
 })
 
+test("desktop sign skips artifacts whose metadata target does not match the requested target", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-target-mismatch-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      signing: { macos: { identity: "Developer ID Application: Example Inc.", teamId: "ABCD1234" } }
+    })
+    const artifactPath = await writePackagedArtifactFixture(directory, "macos-arm64", "app")
+    const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
+    const artifactJson = JSON.parse(await readFile(artifactJsonPath, "utf8")) as Record<
+      string,
+      unknown
+    >
+    artifactJson["target"] = "linux-x64"
+    await writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
+
+    const calls: string[] = []
+    const runner: SignCommandRunner = (invocation) => {
+      calls.push(invocation.step)
+      return Effect.void
+    }
+
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["sign", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        hostTarget: "macos-arm64",
+        signCommandRunner: runner,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const error = JSON.parse(stderr.join("")) as { readonly tag: string; readonly message: string }
+    expect(exitCode).toBe(1)
+    expect(calls).toEqual([])
+    expect(error.tag).toBe("SignFileError")
+    expect(error.message).toContain("no macos packaged artifacts found")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop notarize skips artifacts whose metadata target does not match the requested target", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-target-mismatch-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+    })
+    const artifactPath = await writePackagedArtifactFixture(directory, "macos-arm64", "app")
+    const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
+    const artifactJson = JSON.parse(await readFile(artifactJsonPath, "utf8")) as Record<
+      string,
+      unknown
+    >
+    artifactJson["target"] = "macos-x64"
+    await writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
+
+    const calls: string[] = []
+    const runner: NotarizeCommandRunner = (invocation) => {
+      calls.push(invocation.step)
+      return Effect.succeed({ stdout: "", stderr: "", exitCode: 0 })
+    }
+
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["notarize", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        hostTarget: "macos-arm64",
+        notarizeCommandRunner: runner,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const error = JSON.parse(stderr.join("")) as { readonly tag: string; readonly message: string }
+    expect(exitCode).toBe(1)
+    expect(calls).toEqual([])
+    expect(error.tag).toBe("NotarizeFileError")
+    expect(error.message).toContain("no directly notarizable macOS artifacts found")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop notarize submits staples and assesses unstapled macOS artifacts", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
   try {
