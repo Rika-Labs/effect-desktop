@@ -17,6 +17,8 @@ import {
 } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Option, Schema, Stream } from "effect"
 
+import { BridgeSafeNonEmptyString } from "./contracts/strings.js"
+
 const StrictParseOptions = { onExcessProperty: "error" } as const
 const WebViewResource = Api.Resource("webview", "open")
 const WebViewPlatform = Schema.Literals(["macos", "windows", "linux"])
@@ -32,6 +34,18 @@ const WebViewCapabilityName = Schema.Literals([
 ])
 const WebViewNavigationDecision = Schema.Literals(["block", "openExternal"])
 
+const WebViewNavigationUrl = BridgeSafeNonEmptyString.check(
+  Schema.isPattern(/^(?!javascript:|data:|vbscript:|blob:|file:)[\s\S]*$/iu)
+)
+
+const WebViewOrigin = BridgeSafeNonEmptyString.check(
+  Schema.isPattern(/^(?:app|https?):\/\/[^/?#\s]+$/iu)
+)
+
+const WebViewRoute = BridgeSafeNonEmptyString.check(
+  Schema.isPattern(/^\/(?!.*(?:^|\/)\.\.(?:\/|$))[^?#]*$/u)
+)
+
 export type WebViewHandle = ApiResourceHandle<"webview", "open">
 export type WebViewError = HostProtocolError
 export type WebViewPlatform = Schema.Schema.Type<typeof WebViewPlatform>
@@ -41,14 +55,14 @@ export type WebViewCapabilityName = Schema.Schema.Type<typeof WebViewCapabilityN
 export class WebViewNavigationPolicy extends Schema.Class<WebViewNavigationPolicy>(
   "WebViewNavigationPolicy"
 )({
-  allowedOrigins: Schema.Array(Schema.String),
+  allowedOrigins: Schema.Array(WebViewOrigin),
   onDisallowed: WebViewNavigationDecision
 }) {}
 
 export type WebViewNavigationPolicyOptions = Schema.Schema.Type<typeof WebViewNavigationPolicy>
 
 export class WebViewCreateInput extends Schema.Class<WebViewCreateInput>("WebViewCreateInput")({
-  url: Schema.String,
+  url: WebViewNavigationUrl,
   originPolicy: WebViewNavigationPolicy
 }) {}
 
@@ -62,12 +76,12 @@ export class WebViewLoadRouteInput extends Schema.Class<WebViewLoadRouteInput>(
   "WebViewLoadRouteInput"
 )({
   webview: WebViewResource.schema,
-  route: Schema.String
+  route: WebViewRoute
 }) {}
 
 export class WebViewLoadUrlInput extends Schema.Class<WebViewLoadUrlInput>("WebViewLoadUrlInput")({
   webview: WebViewResource.schema,
-  url: Schema.String
+  url: WebViewNavigationUrl
 }) {}
 
 export class WebViewSetNavigationPolicyInput extends Schema.Class<WebViewSetNavigationPolicyInput>(

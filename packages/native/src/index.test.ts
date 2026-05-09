@@ -865,6 +865,56 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
   ])
 })
 
+test("WebView bridge client rejects unsafe navigation inputs before transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = webViewExchange(requests, () => ({
+    kind: "success",
+    payload: webviewHandle
+  }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* WebView
+    }).pipe(
+      Effect.provide(Layer.provide(WebViewLive, makeWebViewBridgeClientLayer(exchange)))
+    )
+  )
+
+  const javascriptCreateExit = await Effect.runPromiseExit(
+    client.create({
+      url: "javascript:alert(1)",
+      originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" }
+    })
+  )
+  const fileUrlExit = await Effect.runPromiseExit(client.loadUrl(webviewHandle, "file:///etc/passwd"))
+  const traversalExit = await Effect.runPromiseExit(client.loadRoute(webviewHandle, "../secret"))
+  const emptyOriginExit = await Effect.runPromiseExit(
+    client.create({
+      url: "app://localhost/",
+      originPolicy: { allowedOrigins: [""], onDisallowed: "block" }
+    })
+  )
+  const javascriptOriginExit = await Effect.runPromiseExit(
+    client.create({
+      url: "app://localhost/",
+      originPolicy: { allowedOrigins: ["javascript:"], onDisallowed: "block" }
+    })
+  )
+  const policyExit = await Effect.runPromiseExit(
+    client.setNavigationPolicy(webviewHandle, {
+      allowedOrigins: ["file://"],
+      onDisallowed: "block"
+    })
+  )
+
+  expectExitFailure(javascriptCreateExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(fileUrlExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(traversalExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(emptyOriginExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(javascriptOriginExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(policyExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
 test("unsupported WebView client reports deferred host methods as Effect values", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
