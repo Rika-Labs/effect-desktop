@@ -1,5 +1,7 @@
 import { Schema } from "effect"
 
+const CrashReporterFlushCount = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+
 export class CrashReporterStartInput extends Schema.Class<CrashReporterStartInput>(
   "CrashReporterStartInput"
 )({
@@ -18,5 +20,5 @@ export class CrashReporterBreadcrumbInput extends Schema.Class<CrashReporterBrea
 export class CrashReporterFlushResult extends Schema.Class<CrashReporterFlushResult>(
   "CrashReporterFlushResult"
 )({
-  flushed: Schema.Number
+  flushed: CrashReporterFlushCount
 }) {}

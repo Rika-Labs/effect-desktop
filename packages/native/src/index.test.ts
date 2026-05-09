@@ -2717,7 +2717,7 @@ test("CrashReporter bridge client records breadcrumbs and defers upload handlers
   const requests: HostProtocolRequestEnvelope[] = []
   const exchange = crashReporterExchange(requests, (request) => ({
     kind: "success",
-    payload: request.method === "CrashReporter.flush" ? { flushed: 1 } : undefined
+    payload: request.method === "CrashReporter.flush" ? { flushed: 0 } : undefined
   }))
   const reporter = await Effect.runPromise(
     Effect.gen(function* () {
@@ -2741,7 +2741,7 @@ test("CrashReporter bridge client records breadcrumbs and defers upload handlers
   )
   const handlerExit = await Effect.runPromiseExit(reporter.setUploadHandler(() => Effect.void))
 
-  expect(flush.flushed).toBe(1)
+  expect(flush.flushed).toBe(0)
   expectExitFailure(startHandlerExit, (error) => hasErrorTag(error, "Unsupported"))
   expectExitFailure(handlerExit, (error) => hasErrorTag(error, "Unsupported"))
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
@@ -2756,6 +2756,32 @@ test("CrashReporter bridge client records breadcrumbs and defers upload handlers
     ],
     ["CrashReporter.flush", undefined]
   ])
+})
+
+test("CrashReporter bridge client rejects invalid flush counts as InvalidOutput", async () => {
+  const cases = [-1, Number.NaN, Number.POSITIVE_INFINITY, 1.5]
+
+  for (const flushed of cases) {
+    const requests: HostProtocolRequestEnvelope[] = []
+    const exchange = crashReporterExchange(requests, (request) => ({
+      kind: "success",
+      payload: request.method === "CrashReporter.flush" ? { flushed } : undefined
+    }))
+    const reporter = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* CrashReporter
+      }).pipe(
+        Effect.provide(
+          Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange))
+        )
+      )
+    )
+
+    const exit = await Effect.runPromiseExit(reporter.flush())
+
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+    expect(requests.map((request) => request.method)).toEqual(["CrashReporter.flush"])
+  }
 })
 
 test("unsupported CrashReporter client reports every command as a typed Effect failure", async () => {

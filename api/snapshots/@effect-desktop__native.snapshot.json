@@ -396,7 +396,7 @@
     {
       "name": "CrashReporterFlushResult",
       "kind": "class",
-      "signature": "export class CrashReporterFlushResult extends Schema.Class<CrashReporterFlushResult>( \"CrashReporterFlushResult\" )({ flushed: Schema.Number }) {}"
+      "signature": "export class CrashReporterFlushResult extends Schema.Class<CrashReporterFlushResult>( \"CrashReporterFlushResult\" )({ flushed: CrashReporterFlushCount }) {}"
     },
     {
       "name": "CrashReporterLive",

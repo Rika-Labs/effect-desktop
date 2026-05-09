@@ -1275,16 +1275,24 @@
   ],
   "workflow_ledger": {
     "active": {
-      "number": 813,
-      "title": "Validate ContextMenu.show position coordinates",
-      "url": "https://github.com/Rika-Labs/effect-desktop/issues/813",
+      "number": 812,
+      "title": "Validate CrashReporter.flush output counts",
+      "url": "https://github.com/Rika-Labs/effect-desktop/issues/812",
       "status": "work-in-progress",
-      "workflow": ["scout", "architect", "review", "work", "pr", "code-review", "address", "learn"],
-      "branch": "issue-813-validate-context-menu-position",
-      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/832",
-      "updated_at": "2026-05-09T01:28:00.000Z"
+      "workflow": ["scout", "architect", "review", "work"],
+      "branch": "issue-812-validate-crash-reporter-flush-count",
+      "pr": null,
+      "updated_at": "2026-05-09T01:32:01.000Z"
     },
     "worked": [
+      {
+        "number": 813,
+        "title": "Validate ContextMenu.show position coordinates",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/813",
+        "status": "merged",
+        "pr": "https://github.com/Rika-Labs/effect-desktop/pull/832",
+        "updated_at": "2026-05-09T01:32:01.000Z"
+      },
       {
         "number": 814,
         "title": "Validate Dock.setBadgeText display strings",
