@@ -532,6 +532,17 @@ const runProductionCheckCli = (options: CliRunOptions): Effect.Effect<number, ne
       return 1
     }
 
+    if (options.argv.includes("--json")) {
+      const formatted = `${JSON.stringify(report, null, 2)}\n`
+      if (report.passed) {
+        options.writeStdout(formatted)
+        return 0
+      }
+
+      options.writeStderr(formatted)
+      return 1
+    }
+
     const formatted = formatProductionCheckReport(report)
     if (report.passed) {
       options.writeStdout(formatted)
