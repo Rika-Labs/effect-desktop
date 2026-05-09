@@ -66,17 +66,23 @@ export class TransportWriteError extends Data.TaggedError("TransportWriteFailed"
   readonly cause: Option.Option<unknown>
 }> {}
 
+export class TransportCloseError extends Data.TaggedError("TransportCloseFailed")<{
+  readonly operation: string
+  readonly cause: Option.Option<unknown>
+}> {}
+
 export type TransportError =
   | TransportInvalidArgumentError
   | TransportFrameTooLargeError
   | TransportFrameTruncatedError
   | TransportClosedError
   | TransportWriteError
+  | TransportCloseError
 
 export interface TransportConnection {
   readonly send: (payload: Uint8Array) => Effect.Effect<void, TransportError, never>
   readonly receive: Stream.Stream<Uint8Array, TransportError, never>
-  readonly close: () => Effect.Effect<void, never, never>
+  readonly close: () => Effect.Effect<void, TransportError, never>
 }
 
 export interface TransportUnframeStreamInput {
@@ -387,11 +393,12 @@ export const makeConnection = (
     close: () =>
       Effect.tryPromise({
         try: () => transport.close(),
-        catch: () => undefined
-      }).pipe(
-        Effect.asVoid,
-        Effect.catch(() => Effect.void)
-      )
+        catch: (error) =>
+          new TransportCloseError({
+            operation: `${operation}.close`,
+            cause: Option.some(error)
+          })
+      })
   })
 
 export const makeInMemoryTransportPair = (): Effect.Effect<

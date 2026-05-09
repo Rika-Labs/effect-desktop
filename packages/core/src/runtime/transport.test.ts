@@ -7,6 +7,7 @@ import {
   FrameTooLargeError,
   FrameTruncatedError,
   MAX_FRAME_BYTES,
+  TransportCloseError,
   TransportFrameTooLargeError,
   TransportFrameTruncatedError,
   TransportInvalidArgumentError,
@@ -213,6 +214,26 @@ test("connection close stops receives with a typed closed failure", async () => 
   )
 
   expectFailure(exit, TransportClosedError)
+})
+
+test("connection close reports adapter close failures", async () => {
+  const connection = makeConnection(
+    {
+      send: async () => {
+        return
+      },
+      recv: async () => null,
+      close: async () => {
+        throw new Error("close failed")
+      }
+    },
+    "test"
+  )
+
+  const exit = await Effect.runPromiseExit(connection.close())
+
+  expectFailure(exit, TransportCloseError)
+  expect(getFailure(exit)).toMatchObject({ operation: "test.close" })
 })
 
 async function* chunks(...values: Uint8Array[]): AsyncIterable<Uint8Array> {
