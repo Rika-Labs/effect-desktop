@@ -3,6 +3,7 @@ import { Effect, Exit } from "effect"
 
 import {
   cspWeakenings,
+  DEFAULT_CSP_DIRECTIVES,
   formatProductionCheckReport,
   ProductionCheckInvalidInput,
   renderDefaultCsp,
@@ -61,6 +62,13 @@ test("CSP config still rejects 'unsafe-eval' on any directive", () => {
       reason: "script-src includes forbidden source 'unsafe-eval'"
     }
   ])
+})
+
+test("DEFAULT_CSP_DIRECTIVES never permits 'unsafe-eval' on any directive", () => {
+  const entriesWithUnsafeEval = DEFAULT_CSP_DIRECTIVES.filter(([, values]) =>
+    values.includes("'unsafe-eval'")
+  )
+  expect(entriesWithUnsafeEval).toEqual([])
 })
 
 test("CSP config can tighten a default directive", () => {
