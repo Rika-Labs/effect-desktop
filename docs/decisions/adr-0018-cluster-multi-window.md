@@ -59,6 +59,7 @@ Cross-links: [ADR-0009](adr-0009-workflow.md) (ClusterWorkflowEngine is an upgra
 ## Prototype findings (T29)
 
 **What works:**
+
 - `effect/unstable/cluster` lives inside `effect@4.0.0-beta.60` at `effect/unstable/cluster` — no separate package needed, no peer dependency conflict.
 - `Entity.make("Window", [Rpc.make(...)])` with `toLayer(..., { maxIdleTime: "5 minutes" })` compiles and runs against `TestRunner.layer` (in-memory cluster, no network).
 - `Singleton.make("HealthMonitor", ...)` provides a cluster-global singleton with no per-window duplication.
@@ -67,12 +68,14 @@ Cross-links: [ADR-0009](adr-0009-workflow.md) (ClusterWorkflowEngine is an upgra
 - Tests pass against the in-memory `TestRunner.layer`: entity routing, per-entity state isolation, focus/title mutation.
 
 **WebViewRunner design:**
+
 - The renderer cannot host entities (it is not a Bun process and has no direct socket server). The correct model is `SocketRunner.layerClientOnly`: the Bun host runs `SingleRunner` (or `SocketRunner`) hosting all entities; each renderer window connects as a client-only participant.
 - `WebViewRunner` as a full runner (with its own shard assignments) is unnecessarily complex for single-host desktop. The existing T05 `MessagePort` bridge already provides the transport; wrapping it as a custom `Runners` implementation would replicate serialization, ping, and storage logic that `SocketRunner.layerClientOnly` already handles.
 - Path for v1 (if verdict becomes "go"): Bun host uses `SingleRunner`; renderer uses `SocketRunner.layerClientOnly` over a WebSocket-compatible adapter. No new runner type needed.
 - Path for upstream contribution: only if multi-host cluster (across machines) is needed — then a `MessagePortRunner` for embedded browser contexts would be the contribution. Not needed for single-host desktop.
 
 **Blocking issues for production adoption:**
+
 1. `effect/unstable/cluster` API stability — the `unstable` prefix signals breaking changes are expected before 4.0 stable.
 2. `SingleRunner` requires a `SqlClient` (SQLite) for message and runner storage. The T02 `@effect/sql-sqlite-bun` service satisfies this but adds cluster storage migration on top of the existing SQLite service.
 3. The renderer-side `SocketRunner.layerClientOnly` requires a stable WebSocket or socket address to connect to the Bun host's cluster server. This is a new IPC surface distinct from the existing stdio/MessagePort bridge (T05) — two IPC channels for one renderer window.
