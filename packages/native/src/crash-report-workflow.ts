@@ -1,6 +1,11 @@
 import { Effect, Layer, Schedule, Schema } from "effect"
 import { EventGroup, EventJournal, EventLog } from "effect/unstable/eventlog"
-import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http"
+import {
+  FetchHttpClient,
+  HttpClient,
+  HttpClientRequest,
+  HttpClientResponse
+} from "effect/unstable/http"
 import { PersistedQueue } from "effect/unstable/persistence"
 import { Activity, Workflow, WorkflowEngine } from "effect/unstable/workflow"
 
@@ -62,35 +67,30 @@ const makeCrashSubmitActivity = (report: CrashReport, endpointUrl: string) =>
   Activity.make({
     name: "crash-submit-http",
     error: CrashReportSubmitError,
-    execute: HttpClient.HttpClient.pipe(
-      Effect.flatMap((rawClient) => {
-        const client = HttpClient.filterStatusOk(rawClient)
-        return HttpClientRequest.post(endpointUrl).pipe(
-          HttpClientRequest.bodyJsonUnsafe({
-            id: report.id,
-            capturedAt: report.capturedAt,
-            breadcrumbs: report.breadcrumbs,
-            ...(report.appVersion === undefined ? {} : { appVersion: report.appVersion }),
-            ...(report.platform === undefined ? {} : { platform: report.platform })
-          }),
-          client.execute,
-          Effect.as(undefined as void)
-        )
+    execute: HttpClientRequest.post(endpointUrl).pipe(
+      HttpClientRequest.bodyJsonUnsafe({
+        id: report.id,
+        capturedAt: report.capturedAt,
+        breadcrumbs: report.breadcrumbs,
+        ...(report.appVersion === undefined ? {} : { appVersion: report.appVersion }),
+        ...(report.platform === undefined ? {} : { platform: report.platform })
       }),
+      HttpClient.execute,
+      Effect.flatMap(HttpClientResponse.filterStatusOk),
+      Effect.as(undefined as void),
       Effect.retry({ schedule: submissionRetrySchedule }),
-      Effect.catchTag("ResponseError", (e) =>
-        Effect.fail(new CrashReportSubmitError({ status: e.response.status, message: e.message }))
+      Effect.catchTag("StatusCodeError", (e) =>
+        Effect.fail(
+          new CrashReportSubmitError({
+            status: e.response.status,
+            message: `HTTP ${String(e.response.status)}`
+          })
+        )
       )
     )
   })
 
-export const makeCrashSubmissionWorkflowLayer = (
-  endpointUrl: string
-): Layer.Layer<
-  never,
-  never,
-  WorkflowEngine.WorkflowEngine | EventLog.EventLog | EventLog.Registry | HttpClient.HttpClient
-> =>
+export const makeCrashSubmissionWorkflowLayer = (endpointUrl: string) =>
   CrashSubmissionWorkflow.toLayer((report) =>
     Effect.gen(function* () {
       const log = yield* EventLog.EventLog
@@ -141,7 +141,7 @@ export const makeCrashReportDrainLayer = (options: {
   | EventLog.Registry
   | HttpClient.HttpClient
 > =>
-  Layer.scopedDiscard(
+  Layer.effectDiscard(
     Effect.gen(function* () {
       const queue = yield* makeCrashReportQueue
 
