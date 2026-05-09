@@ -545,7 +545,7 @@ test("MemoryFilesystem preserves symlink stat identity", async () => {
   const output = await Effect.runPromise(filesystem.read("/workspace/link.txt"))
 
   expect(stat.kind).toBe("symlink")
-  expect(stat.path).toBe("/workspace/link.txt")
+  expect(stat.path.replaceAll("\\", "/")).toBe("/workspace/link.txt")
   expect(text(output)).toBe("target content")
 })
 

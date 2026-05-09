@@ -21,6 +21,7 @@
   ],
   "scripts": {
     "dev": "turbo dev",
+    "desktop": "bun packages/cli/src/bin.ts",
     "build": "turbo build",
     "check": "turbo check",
     "typecheck": "turbo typecheck",

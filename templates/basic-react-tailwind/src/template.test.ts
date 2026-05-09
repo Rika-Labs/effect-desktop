@@ -10,6 +10,11 @@ import { TEMPLATE_WINDOW_TITLE } from "./App.js"
 
 const templateRoot = fileURLToPath(new URL("..", import.meta.url))
 
+interface TemplatePackageJson {
+  readonly scripts?: Record<string, string>
+  readonly dependencies?: Record<string, string>
+}
+
 test("template smoke exercises one typed window call", async () => {
   const calls = await Effect.runPromise(
     runHeadless((runtime) =>
@@ -41,6 +46,15 @@ test("template import guard catches side-effect private imports", () => {
   expect(privateImportViolations(`import "${privateSpecifier}"`, "src/example.ts")).toEqual([
     `src/example.ts imports ${privateSpecifier}`
   ])
+})
+
+test("template package exposes the documented desktop command", () => {
+  const pkg = JSON.parse(
+    readFileSync(join(templateRoot, "package.json"), "utf8")
+  ) as TemplatePackageJson
+
+  expect(pkg.scripts?.["desktop"]).toBe("desktop")
+  expect(pkg.dependencies?.["@effect-desktop/cli"]).toBe("workspace:*")
 })
 
 function privateImportViolations(text: string, file: string): readonly string[] {

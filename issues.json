@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-04T19:49:19.368Z",
+  "generated_at": "2026-05-08T23:45:53.628Z",
   "spec": "docs/SPEC.md §24 (Implementation Milestones)",
   "repo": "https://github.com/Rika-Labs/effect-desktop",
   "ordering": "Phases follow the §24.0.1 dependency graph. Sub-issues within each phase are ordered by GitHub issue number, which preserves the slicing-plan order in which they were created.",
@@ -1272,5 +1272,26 @@
         }
       ]
     }
-  ]
+  ],
+  "workflow_ledger": {
+    "active": {
+      "number": 770,
+      "title": "Expose the documented bun desktop entrypoint",
+      "url": "https://github.com/Rika-Labs/effect-desktop/issues/770",
+      "status": "pr-open",
+      "workflow": ["scout", "architect", "review", "work", "pr"],
+      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/774",
+      "updated_at": "2026-05-09T00:13:30.000Z"
+    },
+    "worked": [],
+    "remaining": [
+      {
+        "number": 769,
+        "title": "Make the CLI package install outside the workspace",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/769",
+        "status": "queued",
+        "updated_at": "2026-05-08T23:48:55.000Z"
+      }
+    ]
+  }
 }

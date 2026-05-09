@@ -43,6 +43,27 @@ describe("workspaces", () => {
   test("root package.json declares the spec §5.4 globs", () => {
     expect(root.workspaces).toEqual(["apps/*", "apps/examples/*", "packages/*", "templates/*"])
   })
+
+  test("root package.json exposes the documented bun desktop entrypoint", () => {
+    expect(root.scripts?.desktop).toBe("bun packages/cli/src/bin.ts")
+  })
+
+  test("bun desktop resolves to the CLI instead of a missing Bun script", async () => {
+    const proc = Bun.spawn(["bun", "desktop"], {
+      cwd: REPO_ROOT,
+      stdout: "pipe",
+      stderr: "pipe"
+    })
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited
+    ])
+
+    expect(exitCode).toBe(1)
+    expect(stderr).not.toContain('Script not found "desktop"')
+    expect(stdout + stderr).toContain("Usage: desktop build")
+  })
 })
 
 describe("packages/*", () => {
