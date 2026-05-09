@@ -1,6 +1,8 @@
 import { Api, Client, Handlers, RedactionFilter } from "@effect-desktop/bridge"
-import { Layer } from "effect"
+import { Effect, Layer } from "effect"
 
+import type { NormalizedCapability } from "./runtime/permission-registry.js"
+import { PermissionRegistry } from "./runtime/permission-registry.js"
 import type { WorkflowLayer } from "./runtime/workflow.js"
 import { WorkflowEngine, WorkflowEngineLive } from "./runtime/workflow.js"
 
@@ -26,6 +28,7 @@ export * from "./runtime/pty.js"
 export * from "./runtime/worker.js"
 export * from "./runtime/workflow.js"
 export * from "./runtime/permission-registry.js"
+export * from "./runtime/permission-interceptor.js"
 export * from "./runtime/secrets.js"
 export * from "./runtime/secrets-migration.js"
 export * from "./runtime/settings.js"
@@ -39,26 +42,37 @@ export * from "./runtime/framework-metrics.js"
 export * from "./runtime/window-state.js"
 export * from "./runtime/reactivity.js"
 
-export interface DesktopAppOptions<RIn = never, E = never> {
-  readonly workflows?: readonly WorkflowLayer<RIn, E>[]
+export interface DesktopAppOptions {
+  readonly workflows?: readonly WorkflowLayer[]
+  readonly permissions?: readonly NormalizedCapability[]
 }
 
-const app = <RIn = never, E = never>(
-  options: DesktopAppOptions<RIn, E> = {}
-): Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn> => {
+const app = (
+  options: DesktopAppOptions = {}
+): Layer.Layer<WorkflowEngine.WorkflowEngine, never, PermissionRegistry> => {
   const wfs = options.workflows ?? []
-  if (wfs.length === 0) {
-    return WorkflowEngineLive as unknown as Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn>
-  }
-  const merged = wfs.reduce<Layer.Layer<never, E, RIn | WorkflowEngine.WorkflowEngine>>(
-    (acc, wf) => Layer.merge(acc, wf),
-    Layer.empty as Layer.Layer<never, E, RIn | WorkflowEngine.WorkflowEngine>
+  const permissions = options.permissions ?? []
+
+  const declareLayer = Layer.effectDiscard(
+    Effect.gen(function* () {
+      const registry = yield* PermissionRegistry
+      for (const capability of permissions) {
+        yield* registry
+          .declare(capability, { source: "Desktop.app", effect: "allow" })
+          .pipe(Effect.orDie)
+      }
+    })
   )
-  return Layer.provideMerge(merged, WorkflowEngineLive) as Layer.Layer<
-    WorkflowEngine.WorkflowEngine,
-    E,
-    RIn
-  >
+
+  if (wfs.length === 0) {
+    return Layer.merge(WorkflowEngineLive, declareLayer)
+  }
+
+  const merged = wfs.reduce<Layer.Layer<never, never, WorkflowEngine.WorkflowEngine>>(
+    (acc, wf) => Layer.merge(acc, wf),
+    Layer.empty as Layer.Layer<never, never, WorkflowEngine.WorkflowEngine>
+  )
+  return Layer.merge(Layer.provideMerge(merged, WorkflowEngineLive), declareLayer)
 }
 
 export const Desktop = Object.freeze({
