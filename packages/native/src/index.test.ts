@@ -895,6 +895,35 @@ test("unsupported WebView client reports deferred host methods as Effect values"
   )
 })
 
+test("WebView capability matrix reports spec-partial features as unsupported", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      return {
+        linuxPrint: yield* webview.capability("print", { platform: "linux" }),
+        linuxPopupBlocking: yield* webview.capability("popup blocking", { platform: "linux" }),
+        linuxGetUserMedia: yield* webview.capability("getUserMedia", { platform: "linux" }),
+        linuxServiceWorkers: yield* webview.capability("service workers in app:", {
+          platform: "linux"
+        }),
+        macosServiceWorkers: yield* webview.capability("service workers in app:", {
+          platform: "macos"
+        }),
+        windowsPrint: yield* webview.capability("print", { platform: "windows" }),
+        linuxPdf: yield* webview.capability("PDF embedded viewer", { platform: "linux" })
+      }
+    }).pipe(Effect.provide(makeWebViewServiceLayer(makeUnsupportedWebViewClient())))
+  )
+
+  expect(result.linuxPrint).toBe(false)
+  expect(result.linuxPopupBlocking).toBe(false)
+  expect(result.linuxGetUserMedia).toBe(false)
+  expect(result.linuxServiceWorkers).toBe(false)
+  expect(result.macosServiceWorkers).toBe(false)
+  expect(result.windowsPrint).toBe(true)
+  expect(result.linuxPdf).toBe(false)
+})
+
 test("MenuApi declares the Phase 7 Menu method and event surface", () => {
   expect(MenuApi.tag).toBe("Menu")
   expect([...MenuMethodNames]).toEqual(expectedMenuMethods)

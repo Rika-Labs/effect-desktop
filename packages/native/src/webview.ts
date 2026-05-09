@@ -474,7 +474,7 @@ const WEBVIEW_CAPABILITY_MATRIX: Readonly<
     autofill: true,
     "devtools open": "dev-only",
     getUserMedia: true,
-    "service workers in app:": true,
+    "service workers in app:": false,
     "PDF embedded viewer": true
   }),
   windows: Object.freeze({
@@ -487,12 +487,12 @@ const WEBVIEW_CAPABILITY_MATRIX: Readonly<
     "PDF embedded viewer": true
   }),
   linux: Object.freeze({
-    print: true,
-    "popup blocking": true,
+    print: false,
+    "popup blocking": false,
     autofill: false,
     "devtools open": "dev-only",
-    getUserMedia: true,
-    "service workers in app:": true,
+    getUserMedia: false,
+    "service workers in app:": false,
     "PDF embedded viewer": false
   })
 })
