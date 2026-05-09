@@ -234,7 +234,10 @@ const makeStore = (
           Effect.catch(
             (error: EventLogError): Effect.Effect<never, EventLogError, never> =>
               error instanceof EventLogFullError
-                ? Ref.set(readOnly, true).pipe(Effect.flatMap(() => Effect.fail(error)))
+                ? Ref.set(readOnly, true).pipe(
+                    Effect.flatMap(() => markReadOnly(connection, input.namespace)),
+                    Effect.flatMap(() => Effect.fail(error))
+                  )
                 : Effect.fail(error)
           )
         )
@@ -394,6 +397,20 @@ const setNextEventId = (
     "UPDATE event_log_meta SET next_event_id = ? WHERE namespace = ?",
     [nextEventId, namespace],
     "EventLog.append"
+  )
+
+const markReadOnly = (
+  connection: SqliteConnection,
+  namespace: string
+): Effect.Effect<void, never, never> =>
+  exec(
+    connection,
+    "UPDATE event_log_meta SET read_only = 1 WHERE namespace = ?",
+    [namespace],
+    "EventLog.append"
+  ).pipe(
+    // Preserve the original EventLogFull failure when the metadata write also hits disk-full.
+    Effect.catch(() => Effect.void)
   )
 
 const applyRetention = (

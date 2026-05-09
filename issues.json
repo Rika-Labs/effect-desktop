@@ -1274,7 +1274,15 @@
     }
   ],
   "workflow_ledger": {
-    "active": null,
+    "active": {
+      "number": 870,
+      "title": "Persist EventLog read-only state after disk-full failures",
+      "url": "https://github.com/Rika-Labs/effect-desktop/issues/870",
+      "status": "work-in-progress",
+      "workflow": ["scout", "architect", "review", "work"],
+      "branch": "issue-870-persist-eventlog-readonly-state",
+      "updated_at": "2026-05-09T02:43:28.000Z"
+    },
     "worked": [
       {
         "number": 850,
