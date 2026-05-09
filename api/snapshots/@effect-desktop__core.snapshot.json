@@ -1179,6 +1179,26 @@
       "signature": "export interface SettingsStore { readonly get: <A>( key: string, schema: Schema.Schema<A> ) => Effect.Effect<Option.Option<A>, SettingsError, never> readonly getOrDefault: <A>( key: string, schema: Schema.Schema<A>, defaultValue: A ) => Effect.Effect<A, SettingsError, never> readonly set: <A>( key: string, schema: Schema.Schema<A>, value: A, options?: SettingsMutationOptions ) => Effect.Effect<void, SettingsError, never> readonly delete: ( key: string, options?: SettingsMutationOptions ) => Effect.Effect<void, SettingsError, never> readonly keys: () => Effect.Effect<readonly string[], SettingsError, never> readonly update: <A, E, R>( key: string, schema: Schema.Schema<A>, update: (current: Option.Option<A>) => Effect.Effect<A, E, R>, options?: SettingsMutationOptions ) => Effect.Effect<A, E | SettingsError, R> readonly changes: () => Stream.Stream<SettingsChange, never, never> readonly migrated: () => Stream.Stream<SettingsMigrated, never, never> readonly close: () => Effect.Effect<void, never, never> }"
     },
     {
+      "name": "SqlClient",
+      "kind": "interface",
+      "signature": "export interface SqlClient extends Constructor { readonly [TypeId]: typeof TypeId; /** * Copy of the client for safeql etc. */ readonly safe: this; /** * Copy of the client without transformations. */ readonly withoutTransforms: () => this; readonly reserve: Effect.Effect<Connection.Connection, SqlError, Scope.Scope>; /** * With the given effect, ensure all sql queries are run in a transaction. */ readonly withTransaction: <R, E, A>(self: Effect.Effect<A, E, R>) => Effect.Effect<A, E | SqlError, R>; /** * The transaction service for this client. */ readonly transactionService: Context.Service<TransactionConnection, TransactionConnection.Service>; /** * Use the Reactivity service from @effect/experimental to create a reactive * query. */ readonly reactive: <A, E, R>(keys: ReadonlyArray<unknown> | ReadonlyRecord<string, ReadonlyArray<unknown>>, effect: Effect.Effect<A, E, R>) => Stream.Stream<A, E, R>; /** * Use the Reactivity service to create a reactive * query. */ readonly reactiveMailbox: <A, E, R>(keys: ReadonlyArray<unknown> | ReadonlyRecord<string, ReadonlyArray<unknown>>, effect: Effect.Effect<A, E, R>) => Effect.Effect<Queue.Dequeue<A, E>, never, R | Scope.Scope>; }"
+    },
+    {
+      "name": "SqlClientLayerConfig",
+      "kind": "interface",
+      "signature": "export interface SqlClientLayerConfig { readonly filename: string readonly ownerScope: string readonly readonly?: boolean | undefined readonly create?: boolean | undefined readonly readwrite?: boolean | undefined readonly disableWAL?: boolean | undefined }"
+    },
+    {
+      "name": "SqlClientLive",
+      "kind": "value",
+      "signature": "const SqlClientLive: (config: SqlClientLayerConfig) => Layer.Layer<SqlClient, never, ResourceRegistry>"
+    },
+    {
+      "name": "SqlError",
+      "kind": "class",
+      "signature": "export declare class SqlError extends SqlError_base { /** * @since 4.0.0 */ readonly [TypeId]: \"~effect/sql/SqlError\"; /** * @since 4.0.0 */ readonly cause: ConnectionError | AuthenticationError | AuthorizationError | SqlSyntaxError | ConstraintError | DeadlockError | SerializationError | LockTimeoutError | StatementTimeoutError | UnknownError; /** * @since 4.0.0 */ get message(): string; /** * @since 4.0.0 */ get isRetryable(): boolean; }"
+    },
+    {
       "name": "SQLite",
       "kind": "class",
       "signature": "export class SQLite extends Context.Service<SQLite, SqliteApi>()(\"SQLite\") {}"
@@ -1197,6 +1217,16 @@
       "name": "SqliteChanges",
       "kind": "interface",
       "signature": "export interface SqliteChanges { readonly changes: number readonly lastInsertRowid: number | bigint }"
+    },
+    {
+      "name": "SqliteClient",
+      "kind": "value",
+      "signature": "import * as Config from \"effect/Config\"; import * as Context from \"effect/Context\"; import * as Effect from \"effect/Effect\"; import * as Layer from \"effect/Layer\"; import * as Scope from \"effect/Scope\"; import * as Reactivity from \"effect/unstable/reactivity/Reactivity\"; import * as Client from \"effect/unstable/sql/SqlClient\"; import { SqlError } from \"effect/unstable/sql/SqlError\"; /** * @category type ids * @since 1.0.0 */ export declare const TypeId: TypeId; /** * @category type ids * @since 1.0.0 */ export type TypeId = \"~@effect/sql-sqlite-bun/SqliteClient\"; /** * @category models * @since 1.0.0 */ export interface SqliteClient extends Client.SqlClient { readonly [TypeId]: TypeId; readonly config: SqliteClientConfig; readonly export: Effect.Effect<Uint8Array, SqlError>; readonly loadExtension: (path: string) => Effect.Effect<void, SqlError>; /** Not supported in sqlite */ readonly updateValues: never; } /** * @category tags * @since 1.0.0 */ export declare const SqliteClient: Context.Service<SqliteClient, SqliteClient>; /** * @category models * @since 1.0.0 */ export interface SqliteClientConfig { readonly filename: string; readonly readonly?: boolean | undefined; readonly create?: boolean | undefined; readonly readwrite?: boolean | undefined; readonly disableWAL?: boolean | undefined; readonly spanAttributes?: Record<string, unknown> | undefined; readonly transformResultNames?: ((str: string) => string) | undefined; readonly transformQueryNames?: ((str: string) => string) | undefined; } /** * @category constructor * @since 1.0.0 */ export declare const make: (options: SqliteClientConfig) => Effect.Effect<SqliteClient, never, Scope.Scope | Reactivity.Reactivity>; /** * @category layers * @since 1.0.0 */ export declare const layerConfig: (config: Config.Wrap<SqliteClientConfig>) => Layer.Layer<SqliteClient | Client.SqlClient, Config.ConfigError>; /** * @category layers * @since 1.0.0 */ export declare const layer: (config: SqliteClientConfig) => Layer.Layer<SqliteClient | Client.SqlClient>; //# sourceMappingURL=SqliteClient.d.ts.map"
+    },
+    {
+      "name": "SqliteClientConfig",
+      "kind": "interface",
+      "signature": "export interface SqliteClientConfig { readonly filename: string; readonly readonly?: boolean | undefined; readonly create?: boolean | undefined; readonly readwrite?: boolean | undefined; readonly disableWAL?: boolean | undefined; readonly spanAttributes?: Record<string, unknown> | undefined; readonly transformResultNames?: ((str: string) => string) | undefined; readonly transformQueryNames?: ((str: string) => string) | undefined; }"
     },
     {
       "name": "SqliteConnectInput",
@@ -1287,6 +1317,11 @@
       "name": "SqliteValue",
       "kind": "type",
       "signature": "export type SqliteValue = string | bigint | number | boolean | Uint8Array | null"
+    },
+    {
+      "name": "SqlModel",
+      "kind": "value",
+      "signature": "import type * as Cause from \"../../Cause.ts\"; import * as Effect from \"../../Effect.ts\"; import * as RequestResolver from \"../../RequestResolver.ts\"; import type * as Schema from \"../../Schema.ts\"; import type { Scope } from \"../../Scope.ts\"; import type * as Model from \"../schema/Model.ts\"; import { SqlClient } from \"./SqlClient.ts\"; import type { ResultLengthMismatch, SqlError } from \"./SqlError.ts\"; import * as SqlResolver from \"./SqlResolver.ts\"; /** * Create a simple CRUD repository from a model. * * @since 4.0.0 * @category repository */ export declare const makeRepository: <S extends Model.Any, Id extends (keyof S[\"Type\"]) & (keyof S[\"update\"][\"Type\"]) & (keyof S[\"fields\"])>(Model: S, options: { readonly tableName: string; readonly spanPrefix: string; readonly idColumn: Id; }) => Effect.Effect<{ readonly insert: (insert: S[\"insert\"][\"Type\"]) => Effect.Effect<S[\"Type\"], Schema.SchemaError | SqlError, S[\"DecodingServices\"] | S[\"insert\"][\"EncodingServices\"]>; readonly insertVoid: (insert: S[\"insert\"][\"Type\"]) => Effect.Effect<void, Schema.SchemaError | SqlError, S[\"insert\"][\"EncodingServices\"]>; readonly update: (update: S[\"update\"][\"Type\"]) => Effect.Effect<S[\"Type\"], Schema.SchemaError | SqlError, S[\"DecodingServices\"] | S[\"update\"][\"EncodingServices\"]>; readonly updateVoid: (update: S[\"update\"][\"Type\"]) => Effect.Effect<void, Schema.SchemaError | SqlError, S[\"update\"][\"EncodingServices\"]>; readonly findById: (id: S[\"fields\"][Id][\"Type\"]) => Effect.Effect<S[\"Type\"], Cause.NoSuchElementError | Schema.SchemaError | SqlError, S[\"DecodingServices\"] | S[\"fields\"][Id][\"EncodingServices\"]>; readonly delete: (id: S[\"fields\"][Id][\"Type\"]) => Effect.Effect<void, Schema.SchemaError | SqlError, S[\"fields\"][Id][\"EncodingServices\"]>; }, never, SqlClient>; /** * Create some simple data loaders from a model. * * @since 4.0.0 * @category repository */ export declare const makeResolvers: <S extends Model.Any, Id extends (keyof S[\"Type\"]) & (keyof S[\"update\"][\"Type\"]) & (keyof S[\"fields\"])>(Model: S, options: { readonly tableName: string; readonly spanPrefix: string; readonly idColumn: Id; }) => Effect.Effect<{ readonly insert: RequestResolver.RequestResolver<SqlResolver.SqlRequest<S[\"insert\"][\"Type\"], S[\"Type\"], ResultLengthMismatch | SqlError, S[\"insert\"][\"EncodingServices\"]>>; readonly insertVoid: RequestResolver.RequestResolver<SqlResolver.SqlRequest<S[\"insert\"][\"Type\"], void, SqlError, S[\"insert\"][\"EncodingServices\"]>>; readonly findById: RequestResolver.RequestResolver<SqlResolver.SqlRequest<S[\"fields\"][Id][\"Type\"], S[\"Type\"], Cause.NoSuchElementError | SqlError, S[\"DecodingServices\"] | S[\"fields\"][Id][\"EncodingServices\"]>>; readonly delete: RequestResolver.RequestResolver<SqlResolver.SqlRequest<S[\"fields\"][Id][\"Type\"], void, SqlError, S[\"fields\"][Id][\"EncodingServices\"]>>; }, never, SqlClient | Scope>; //# sourceMappingURL=SqlModel.d.ts.map"
     },
     {
       "name": "StaleHandle",

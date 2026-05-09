@@ -1,17 +1,21 @@
 import { describe, expect, test } from "bun:test"
 
-import { Cause, Deferred, Effect, Exit, Fiber, Option } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Layer, Option, Schema } from "effect"
+import { Model } from "effect/unstable/schema"
+import { SqlClient } from "effect/unstable/sql/SqlClient"
+import * as SqlModel from "effect/unstable/sql/SqlModel"
 
+import { makeResourceRegistry, ResourceRegistry, type ResourceRegistryApi } from "./resources.js"
 import {
   makeSQLite,
+  SqlClientLive,
   SqliteConstraintError,
   SqliteInvalidArgumentError,
   SqliteInvalidStateError,
   type SqliteConnection
 } from "./sqlite.js"
-import { makeResourceRegistry, type ResourceRegistryApi } from "./resources.js"
 
-describe("SQLite", () => {
+describe("SQLite (bespoke)", () => {
   test("connects to an in-memory database and queries rows", async () => {
     const { connection } = await makeFixture()
 
@@ -194,6 +198,72 @@ describe("SQLite", () => {
     )
 
     expectFailure(exit, SqliteConstraintError)
+  })
+})
+
+describe("SqlClientLive (effect/unstable/sql)", () => {
+  test("SqlClient executes a raw query against in-memory database", async () => {
+    const program = Effect.gen(function* () {
+      const sql = yield* SqlClient
+      const rows = yield* sql`SELECT 1 AS value`
+      return rows
+    })
+
+    const registry = await Effect.runPromise(makeResourceRegistry())
+    const layer = SqlClientLive({ filename: ":memory:", ownerScope: "scope-sql" }).pipe(
+      Layer.provide(Layer.succeed(ResourceRegistry, registry))
+    )
+
+    const rows = await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))))
+    expect(rows).toEqual([{ value: 1 }])
+  })
+
+  test("SqlClientLive registers a sqlite resource in ResourceRegistry", async () => {
+    const program = Effect.gen(function* () {
+      const sql = yield* SqlClient
+      yield* sql`SELECT 1`
+    })
+
+    const registry = await Effect.runPromise(makeResourceRegistry())
+    const layer = SqlClientLive({ filename: ":memory:", ownerScope: "scope-sql" }).pipe(
+      Layer.provide(Layer.succeed(ResourceRegistry, registry))
+    )
+
+    await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))))
+
+    const snapshot = await Effect.runPromise(registry.list())
+    expect(snapshot.entries.some((e) => e.handle.kind === "sqlite")).toBe(true)
+  })
+
+  test("Model.makeRepository round-trips a row through SqlClient", async () => {
+    class Item extends Model.Class<Item>("Item")({
+      id: Model.Generated(Schema.Number),
+      name: Schema.NonEmptyString
+    }) {}
+
+    const program = Effect.gen(function* () {
+      const sql = yield* SqlClient
+      yield* sql`CREATE TABLE item (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)`
+
+      const repo = yield* SqlModel.makeRepository(Item, {
+        tableName: "item",
+        spanPrefix: "Item",
+        idColumn: "id"
+      })
+
+      const inserted = yield* repo.insert({ name: "widget" })
+      const found = yield* repo.findById(inserted.id)
+      return found
+    })
+
+    const registry = await Effect.runPromise(makeResourceRegistry())
+    const layer = SqlClientLive({ filename: ":memory:", ownerScope: "scope-model" }).pipe(
+      Layer.provide(Layer.succeed(ResourceRegistry, registry))
+    )
+
+    const item = await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))))
+    expect(item.name).toBe("widget")
+    expect(typeof item.id).toBe("number")
   })
 })
 

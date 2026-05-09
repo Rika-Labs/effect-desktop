@@ -7,10 +7,51 @@ import {
 } from "bun:sqlite"
 
 import { Context, Data, Effect, Exit, Layer, Option, Ref, Schema, Semaphore } from "effect"
+import { SqlClient } from "effect/unstable/sql/SqlClient"
+import { SqlError } from "effect/unstable/sql/SqlError"
+import * as SqlModel from "effect/unstable/sql/SqlModel"
+import * as UpstreamSqliteClient from "@effect/sql-sqlite-bun/SqliteClient"
 
 import { ResourceRegistry, type ResourceHandle, type ResourceRegistryApi } from "./resources.js"
 
+export { SqlClient, SqlError, SqlModel }
+export { UpstreamSqliteClient as SqliteClient }
+export type { SqliteClientConfig } from "@effect/sql-sqlite-bun/SqliteClient"
+
 const NonEmptyString = Schema.NonEmptyString
+
+export interface SqlClientLayerConfig {
+  readonly filename: string
+  readonly ownerScope: string
+  readonly readonly?: boolean | undefined
+  readonly create?: boolean | undefined
+  readonly readwrite?: boolean | undefined
+  readonly disableWAL?: boolean | undefined
+}
+
+export const SqlClientLive = (
+  config: SqlClientLayerConfig
+): Layer.Layer<SqlClient, never, ResourceRegistry> =>
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const registry = yield* ResourceRegistry
+      yield* registry.register({
+        kind: "sqlite",
+        ownerScope: config.ownerScope,
+        state: "open"
+      })
+    })
+  ).pipe(
+    Layer.provideMerge(
+      UpstreamSqliteClient.layer({
+        filename: config.filename,
+        readonly: config.readonly,
+        create: config.create,
+        readwrite: config.readwrite,
+        disableWAL: config.disableWAL
+      })
+    )
+  )
 
 export class SqliteConnectInput extends Schema.Class<SqliteConnectInput>("SqliteConnectInput")({
   path: NonEmptyString,
