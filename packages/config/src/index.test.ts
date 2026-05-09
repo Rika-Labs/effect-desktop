@@ -312,6 +312,62 @@ test("ProductionChecker rule registry covers the current production rule set", a
   )
 })
 
+test("ProductionChecker requires audit for wildcard secret reads", async () => {
+  const report = await Effect.runPromise(
+    runProductionCheck({
+      config: {
+        permissions: {
+          secrets: {
+            read: ["*"],
+            audit: "never"
+          }
+        }
+      }
+    })
+  )
+
+  expect(report.passed).toBe(false)
+  expect(report.failures.map((violation) => violation.rule)).toEqual([
+    "secret-access-without-audit"
+  ])
+})
+
+test("ProductionChecker requires audit for wildcard secret writes", async () => {
+  const report = await Effect.runPromise(
+    runProductionCheck({
+      config: {
+        permissions: {
+          secrets: {
+            write: ["*"]
+          }
+        }
+      }
+    })
+  )
+
+  expect(report.passed).toBe(false)
+  expect(report.failures.map((violation) => violation.rule)).toEqual([
+    "secret-access-without-audit"
+  ])
+})
+
+test("ProductionChecker accepts missing secret audit when no secret access is declared", async () => {
+  const report = await Effect.runPromise(
+    runProductionCheck({
+      config: {
+        permissions: {
+          secrets: {
+            audit: "never"
+          }
+        }
+      }
+    })
+  )
+
+  expect(report.passed).toBe(true)
+  expect(report.failures).toEqual([])
+})
+
 test("ProductionChecker accepts guarded partial OS-state contracts", async () => {
   const report = await Effect.runPromise(
     runProductionCheck({

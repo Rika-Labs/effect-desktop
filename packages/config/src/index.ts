@@ -434,7 +434,7 @@ const processPermissionPolicyRule: Rule = ({ config, configPath }) => {
 
 const secretAuditRule: Rule = ({ config, configPath }) => {
   const secrets = config.permissions?.secrets
-  const hasSecretAccess = hasScopedList(secrets?.read) || hasScopedList(secrets?.write)
+  const hasSecretAccess = hasAnyList(secrets?.read) || hasAnyList(secrets?.write)
   if (!hasSecretAccess || secrets?.audit === "always") {
     return []
   }
@@ -609,6 +609,9 @@ const configLocation = (path: string, configPath: string): ProductionCheckLocati
 
 const hasScopedList = (values: readonly string[] | undefined): boolean =>
   values !== undefined && values.length > 0 && !values.includes("*")
+
+const hasAnyList = (values: readonly string[] | undefined): boolean =>
+  values !== undefined && values.length > 0
 
 const isNonEmpty = (value: string | undefined): value is string =>
   value !== undefined && value.trim().length > 0

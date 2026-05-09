@@ -1275,16 +1275,24 @@
   ],
   "workflow_ledger": {
     "active": {
-      "number": 871,
-      "title": "Report transport close failures",
-      "url": "https://github.com/Rika-Labs/effect-desktop/issues/871",
-      "status": "work-in-progress",
-      "workflow": ["scout", "architect", "review", "work", "pr", "code-review", "address"],
-      "branch": "issue-871-report-transport-close-failures",
-      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/878",
-      "updated_at": "2026-05-09T03:20:31.000Z"
+      "number": 872,
+      "title": "Require audit for wildcard secret access",
+      "url": "https://github.com/Rika-Labs/effect-desktop/issues/872",
+      "status": "pr-open",
+      "workflow": ["scout", "architect", "review", "work", "pr", "code-review", "address", "learn"],
+      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/889",
+      "branch": "issue-872-require-audit-wildcard-secret-access",
+      "updated_at": "2026-05-09T03:39:12.000Z"
     },
     "worked": [
+      {
+        "number": 871,
+        "title": "Report transport close failures",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/871",
+        "status": "merged",
+        "pr": "https://github.com/Rika-Labs/effect-desktop/pull/878",
+        "updated_at": "2026-05-09T03:27:45.000Z"
+      },
       {
         "number": 870,
         "title": "Persist EventLog read-only state after disk-full failures",
