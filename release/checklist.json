@@ -46,10 +46,10 @@
     },
     {
       "id": "ephemeral-runners",
-      "title": "Ephemeral self-hosted runner posture",
+      "title": "GitHub-hosted ephemeral runner posture",
       "kind": "repository-setting",
       "evidence": [
-        "docs/security/release-settings.md#Blacksmith",
+        "docs/security/release-settings.md#GitHub-hosted runners",
         "docs/security/release-settings.md#persistent self-hosted runners are forbidden"
       ]
     },
