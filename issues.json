@@ -1278,10 +1278,11 @@
       "number": 875,
       "title": "Publish job retry progress after audit success",
       "url": "https://github.com/Rika-Labs/effect-desktop/issues/875",
-      "status": "work-in-progress",
-      "workflow": ["scout"],
+      "status": "pr-open",
+      "workflow": ["scout", "architect", "review", "work", "pr"],
+      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/900",
       "branch": "issue-875-publish-job-retry-progress-after-audit-success",
-      "updated_at": "2026-05-09T03:43:15.000Z"
+      "updated_at": "2026-05-09T03:51:00.000Z"
     },
     "worked": [
       {
