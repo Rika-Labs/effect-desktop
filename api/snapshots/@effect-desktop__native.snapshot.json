@@ -561,7 +561,7 @@
     {
       "name": "DialogMethodNames",
       "kind": "value",
-      "signature": "const DialogMethodNames: readonly (\"message\" | \"openFile\" | \"openDirectory\" | \"saveFile\" | \"confirm\")[]"
+      "signature": "const DialogMethodNames: readonly (\"message\" | \"confirm\" | \"openFile\" | \"openDirectory\" | \"saveFile\")[]"
     },
     {
       "name": "DialogOpenDirectoryInput",
