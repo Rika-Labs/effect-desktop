@@ -136,6 +136,7 @@ import {
   TrayApi,
   TrayLive,
   TrayMethodNames,
+  TraySupportedResult,
   Updater,
   UpdaterApi,
   UpdaterCheckResult,
@@ -417,7 +418,8 @@ const expectedTrayMethods: Array<(typeof TrayMethodNames)[number]> = [
   "setIcon",
   "setTooltip",
   "setMenu",
-  "destroy"
+  "destroy",
+  "isSupported"
 ]
 
 const windowHandle: WindowHandle = {
@@ -1621,15 +1623,18 @@ test("Tray bridge client decodes activation events with no ownerWindowId field",
 })
 
 test("unsupported Tray client reports deferred host methods as Effect values", async () => {
-  const exit = await Effect.runPromise(
+  const result = await Effect.runPromise(
     Effect.gen(function* () {
       const tray = yield* Tray
-      return yield* Effect.exit(tray.create({ icon: "app://assets/tray.png" }))
+      const supported = yield* tray.isSupported()
+      const createExit = yield* Effect.exit(tray.create({ icon: "app://assets/tray.png" }))
+      return { createExit, supported }
     }).pipe(Effect.provide(makeTrayServiceLayer(makeUnsupportedTrayClient())))
   )
 
+  expect(result.supported).toBe(false)
   expectExitFailure(
-    exit,
+    result.createExit,
     (error) =>
       hasErrorTag(error, "Unsupported") &&
       typeof error === "object" &&
@@ -4565,7 +4570,12 @@ const trayClient = (calls: string[]): TrayClientApi => ({
   setMenu: (tray, menu) => recordVoid(calls, `setMenu:${tray.id}:${menu.items.length}`),
   destroy: (tray) => recordVoid(calls, `destroy:${tray.id}`),
   onActivated: () =>
-    Stream.make(new TrayActivatedEvent({ tray: trayHandle, ownerWindowId: "window-1" }))
+    Stream.make(new TrayActivatedEvent({ tray: trayHandle, ownerWindowId: "window-1" })),
+  isSupported: () =>
+    Effect.sync(() => {
+      calls.push("isSupported")
+      return new TraySupportedResult({ supported: true })
+    })
 })
 
 const globalShortcutClient = (calls: string[]): GlobalShortcutClientApi => ({

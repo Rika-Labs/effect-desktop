@@ -38,3 +38,7 @@ export class TrayActivatedEvent extends Schema.Class<TrayActivatedEvent>("TrayAc
   tray: TrayResource.schema,
   ownerWindowId: Schema.optionalKey(Schema.NonEmptyString)
 }) {}
+
+export class TraySupportedResult extends Schema.Class<TraySupportedResult>("TraySupportedResult")({
+  supported: Schema.Boolean
+}) {}
