@@ -1279,10 +1279,10 @@
       "title": "Validate Window.create chrome inputs",
       "url": "https://github.com/Rika-Labs/effect-desktop/issues/806",
       "status": "pr-open",
-      "workflow": ["scout", "architect", "review", "work", "pr", "code-review"],
+      "workflow": ["scout", "architect", "review", "work", "pr", "code-review", "address"],
       "pr": "https://github.com/Rika-Labs/effect-desktop/pull/935",
       "branch": "issue-806-validate-window-create-chrome-inputs",
-      "updated_at": "2026-05-09T04:59:08.000Z"
+      "updated_at": "2026-05-09T05:00:07.000Z"
     },
     "worked": [
       {
