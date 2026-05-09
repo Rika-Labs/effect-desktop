@@ -2482,6 +2482,106 @@ test("desktop publish rejects artifact fileName that escapes the metadata direct
   }
 })
 
+test("desktop publish rejects update.minVersion greater than app.version", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-min-version-"))
+  const key = testEd25519Key()
+  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+  const previousPrivateKey = process.env[privateKeyEnv]
+  process.env[privateKeyEnv] = key.privateKeyPem
+  try {
+    await writePlaygroundFixture(directory, {
+      app: {
+        id: "dev.effect-desktop.playground",
+        name: "Effect Desktop Playground",
+        version: "1.2.3"
+      },
+      update: {
+        channel: "stable",
+        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+        publicKey: key.publicKey,
+        privateKeyEnv,
+        keyVersion: 5,
+        minVersion: "9.0.0"
+      }
+    })
+    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+    const manifestPath = join(
+      directory,
+      "apps",
+      "playground",
+      "dist",
+      "desktop",
+      "update-manifest.json"
+    )
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["publish", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        now: () => 1_772_923_200_000,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("update.minVersion")
+    expect(stderr.join("")).toContain("must not exceed app.version")
+    await expect(stat(manifestPath)).rejects.toThrow()
+  } finally {
+    if (previousPrivateKey === undefined) {
+      delete process.env[privateKeyEnv]
+    } else {
+      process.env[privateKeyEnv] = previousPrivateKey
+    }
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop publish accepts update.minVersion equal to app.version", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-min-version-equal-"))
+  const key = testEd25519Key()
+  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+  const previousPrivateKey = process.env[privateKeyEnv]
+  process.env[privateKeyEnv] = key.privateKeyPem
+  try {
+    await writePlaygroundFixture(directory, {
+      app: {
+        id: "dev.effect-desktop.playground",
+        name: "Effect Desktop Playground",
+        version: "1.2.3"
+      },
+      update: {
+        channel: "stable",
+        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+        publicKey: key.publicKey,
+        privateKeyEnv,
+        keyVersion: 5,
+        minVersion: "1.2.3"
+      }
+    })
+    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["publish", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        now: () => 1_772_923_200_000,
+        writeStdout: () => {},
+        writeStderr: () => {}
+      })
+    )
+    expect(exitCode).toBe(0)
+  } finally {
+    if (previousPrivateKey === undefined) {
+      delete process.env[privateKeyEnv]
+    } else {
+      process.env[privateKeyEnv] = previousPrivateKey
+    }
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop publish signs macOS app directory artifacts with deterministic directory digests", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-"))
   const key = testEd25519Key()

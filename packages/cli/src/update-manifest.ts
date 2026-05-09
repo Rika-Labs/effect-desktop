@@ -236,9 +236,19 @@ const normalizePublishPlan = (
       "Set update.privateKeyEnv to the environment variable that contains the Ed25519 private key PEM."
     )
     const keyVersion = yield* readPositiveInteger(update?.keyVersion, "update.keyVersion")
-    const minVersion = yield* readOptionalString(update?.minVersion, "update.minVersion")
-    const maxVersion = yield* readOptionalString(update?.maxVersion, "update.maxVersion")
+    const appSemver = yield* readSemver(version, "app.version")
+    const minVersion = yield* readOptionalSemver(update?.minVersion, "update.minVersion")
+    const maxVersion = yield* readOptionalSemver(update?.maxVersion, "update.maxVersion")
     const rollback = yield* readOptionalBoolean(update?.rollback, "update.rollback")
+    if (minVersion !== undefined && compareSemver(minVersion.parsed, appSemver) > 0) {
+      return yield* Effect.fail(
+        new PublishConfigError({
+          field: "update.minVersion",
+          message: `update.minVersion ${minVersion.value} must not exceed app.version ${version}`,
+          remediation: "Lower update.minVersion to app.version or below."
+        })
+      )
+    }
     const target = yield* readOptionalTarget(options.platform)
     return {
       appId,
@@ -248,8 +258,8 @@ const normalizePublishPlan = (
       publicKey,
       privateKeyEnv,
       keyVersion,
-      minVersion,
-      maxVersion,
+      minVersion: minVersion?.value,
+      maxVersion: maxVersion?.value,
       rollback,
       outputPath: resolvePath(appRoot, join("dist", "desktop")),
       target
@@ -565,6 +575,91 @@ const readRequiredString = (
   typeof value === "string" && value.length > 0
     ? Effect.succeed(value)
     : Effect.fail(new PublishConfigError({ field, message: `${field} is required`, remediation }))
+
+interface Semver {
+  readonly major: number
+  readonly minor: number
+  readonly patch: number
+}
+
+interface SemverField {
+  readonly value: string
+  readonly parsed: Semver
+}
+
+const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u
+
+const parseSemver = (value: string): Semver | undefined => {
+  const match = SEMVER_PATTERN.exec(value)
+  if (match === null) {
+    return undefined
+  }
+  const [, major, minor, patch] = match
+  if (major === undefined || minor === undefined || patch === undefined) {
+    return undefined
+  }
+  return {
+    major: Number.parseInt(major, 10),
+    minor: Number.parseInt(minor, 10),
+    patch: Number.parseInt(patch, 10)
+  }
+}
+
+const compareSemver = (left: Semver, right: Semver): number => {
+  if (left.major !== right.major) {
+    return left.major - right.major
+  }
+  if (left.minor !== right.minor) {
+    return left.minor - right.minor
+  }
+  return left.patch - right.patch
+}
+
+const readSemver = (
+  value: string,
+  field: string
+): Effect.Effect<Semver, PublishConfigError, never> => {
+  const parsed = parseSemver(value)
+  if (parsed === undefined) {
+    return Effect.fail(
+      new PublishConfigError({
+        field,
+        message: `${field} must be a SemVer X.Y.Z string`,
+        remediation: `Set ${field} to a SemVer string such as 1.2.3.`
+      })
+    )
+  }
+  return Effect.succeed(parsed)
+}
+
+const readOptionalSemver = (
+  value: unknown,
+  field: string
+): Effect.Effect<SemverField | undefined, PublishConfigError, never> => {
+  if (value === undefined) {
+    return Effect.succeed(undefined)
+  }
+  if (typeof value !== "string" || value.length === 0) {
+    return Effect.fail(
+      new PublishConfigError({
+        field,
+        message: `${field} must be a non-empty string when provided`,
+        remediation: `Remove ${field} or set it to a SemVer string such as 1.2.3.`
+      })
+    )
+  }
+  const parsed = parseSemver(value)
+  if (parsed === undefined) {
+    return Effect.fail(
+      new PublishConfigError({
+        field,
+        message: `${field} must be a SemVer X.Y.Z string when provided`,
+        remediation: `Set ${field} to a SemVer string such as 1.2.3.`
+      })
+    )
+  }
+  return Effect.succeed({ value, parsed })
+}
 
 const readOptionalString = (
   value: unknown,
