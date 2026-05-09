@@ -78,15 +78,15 @@ console.log(`\nNext steps:
 
 interface ParseResult {
   readonly name: string
-  readonly template: TemplateName | string
-  readonly rendererStorage: RendererStorage | string
+  readonly template: string
+  readonly rendererStorage: string
   readonly error?: string
 }
 
 function parseArgs(argv: readonly string[]): ParseResult {
   let name: string | undefined
-  let template: TemplateName | string = "basic-react-tailwind"
-  let rendererStorage: RendererStorage | string = "none"
+  let template = "basic-react-tailwind"
+  let rendererStorage = "none"
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index]
