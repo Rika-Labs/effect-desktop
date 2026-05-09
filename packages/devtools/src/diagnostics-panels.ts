@@ -5,7 +5,7 @@ import {
   type TelemetryMetricSnapshot,
   type TelemetryTraceSpan
 } from "@effect-desktop/core"
-import { Context, Effect, Layer, Stream } from "effect"
+import { Context, Effect, Layer, Option, Stream } from "effect"
 
 export interface TraceGroup {
   readonly traceId: string
@@ -50,7 +50,7 @@ export const makeDiagnosticsPanels = (
         const snapshot = yield* telemetry.snapshot()
         return redact({
           logs: snapshot.logs.slice(-maxRows),
-          traces: groupTraceSpans(snapshot.traces).slice(-maxRows),
+          traces: groupTraceSpans(selectTraceProjectionSpans(snapshot.traces, maxRows)),
           metrics: snapshot.metrics.slice(-maxRows)
         } satisfies DiagnosticsPanelsSnapshot)
       })
@@ -78,3 +78,48 @@ const groupTraceSpans = (spans: readonly TelemetryTraceSpan[]): readonly TraceGr
     spans: group.toSorted((left, right) => left.startedAt - right.startedAt)
   }))
 }
+
+const selectTraceProjectionSpans = (
+  spans: readonly TelemetryTraceSpan[],
+  maxRows: number
+): readonly TelemetryTraceSpan[] => {
+  const windowStart = Math.max(0, spans.length - maxRows)
+  const selected = new Set<number>()
+  const pendingParents = new Set<string>()
+
+  for (let index = windowStart; index < spans.length; index += 1) {
+    const span = spans[index]
+    if (span === undefined) {
+      continue
+    }
+
+    selected.add(index)
+    addPendingParent(pendingParents, span)
+  }
+
+  for (let index = windowStart - 1; index >= 0 && pendingParents.size > 0; index -= 1) {
+    const span = spans[index]
+    if (span === undefined) {
+      continue
+    }
+
+    const key = traceSpanKey(span)
+    if (!pendingParents.has(key)) {
+      continue
+    }
+
+    selected.add(index)
+    pendingParents.delete(key)
+    addPendingParent(pendingParents, span)
+  }
+
+  return spans.filter((_, index) => selected.has(index))
+}
+
+const addPendingParent = (pendingParents: Set<string>, span: TelemetryTraceSpan): void => {
+  if (Option.isSome(span.parentSpanId)) {
+    pendingParents.add(`${span.traceId}\u0000${span.parentSpanId.value}`)
+  }
+}
+
+const traceSpanKey = (span: TelemetryTraceSpan): string => `${span.traceId}\u0000${span.spanId}`
