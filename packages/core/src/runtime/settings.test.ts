@@ -1,24 +1,33 @@
-import { copyFile, mkdtemp, writeFile } from "node:fs/promises"
+import { mkdtemp } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 
 import { describe, expect, test } from "bun:test"
 
 import { Cause, Effect, Exit, Fiber, Option, Schema, Stream } from "effect"
+import { KeyValueStore } from "effect/unstable/persistence"
 
-import { makeResourceRegistry } from "./resources.js"
 import {
   makeSettings,
+  makeSettingsLayer,
+  makeSettingsLayerMemory,
+  Settings,
   SettingsInvalidArgumentError,
   SettingsMigrationFailedError,
   type SettingsError,
   type SettingsMigrationContext,
   type SettingsStore
 } from "./settings.js"
-import { makeSQLite, type SqliteApi } from "./sqlite.js"
 
 const UserName = Schema.String
 const Counter = Schema.Number
+
+const makeKvMemory = (): Promise<KeyValueStore.KeyValueStore> =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* KeyValueStore.KeyValueStore
+    }).pipe(Effect.provide(KeyValueStore.layerMemory))
+  )
 
 describe("Settings", () => {
   test("set then get returns a schema-validated value", async () => {
@@ -108,39 +117,37 @@ describe("Settings", () => {
     ])
   })
 
-  test("registered migration runs in a transaction and emits migration event", async () => {
+  test("registered migration runs and emits migration event", async () => {
     const directory = await mkdtemp(join(tmpdir(), "effect-desktop-settings-"))
     const path = join(directory, "settings.sqlite")
-    const initial = await makeFixture({ path, schemaVersion: 1 })
+    const layer = makeSettingsLayer(path)
 
-    await Effect.runPromise(initial.store.set("user.username", UserName, "alice"))
-    await Effect.runPromise(initial.store.close())
+    const { value, migrated } = await Effect.runPromise(
+      Effect.gen(function* () {
+        const api1 = yield* Settings
+        const store1 = yield* api1.open({ path, ownerScope: "scope-main", schemaVersion: 1 })
+        yield* store1.set("user.username", UserName, "alice")
 
-    const registry = await Effect.runPromise(makeResourceRegistry())
-    const sqlite = await Effect.runPromise(makeSQLite(registry))
-    const settings = await Effect.runPromise(makeSettings(sqlite))
-    const storeEffect = settings.open({
-      path,
-      ownerScope: "scope-main",
-      schemaVersion: 2,
-      migrations: [
-        {
-          from: 1,
-          to: 2,
-          migrate: (context) => context.rename("user.username", "user.name")
-        }
-      ],
-      now: () => 10
-    })
-    const store = await Effect.runPromise(storeEffect)
-    const migratedFiber = Effect.runFork(store.migrated().pipe(Stream.take(1), Stream.runCollect))
-    const value = await Effect.runPromise(store.get("user.name", UserName))
-
-    expect(Option.getOrUndefined(value)).toBe("alice")
-    const migrated = await Effect.runPromise(
-      Fiber.join(migratedFiber).pipe(Effect.timeoutOption("10 millis"))
+        const api2 = yield* Settings
+        const store2 = yield* api2.open({
+          path,
+          ownerScope: "scope-main",
+          schemaVersion: 2,
+          migrations: [
+            { from: 1, to: 2, migrate: (ctx) => ctx.rename("user.username", "user.name") }
+          ],
+          now: () => 10
+        })
+        const migratedFiber = Effect.runFork(
+          store2.migrated().pipe(Stream.take(1), Stream.runCollect)
+        )
+        const value = yield* store2.get("user.name", UserName)
+        const migrated = yield* Fiber.join(migratedFiber).pipe(Effect.timeoutOption("10 millis"))
+        return { value, migrated }
+      }).pipe(Effect.provide(layer))
     )
 
+    expect(Option.getOrUndefined(value)).toBe("alice")
     expect(Option.isSome(migrated)).toBe(true)
     if (Option.isSome(migrated)) {
       expect(Array.from(migrated.value)).toEqual([{ from: 1, to: 2, durationMs: 0 }])
@@ -150,34 +157,19 @@ describe("Settings", () => {
   test("missing migration returns SettingsMigrationFailed", async () => {
     const directory = await mkdtemp(join(tmpdir(), "effect-desktop-settings-"))
     const path = join(directory, "settings.sqlite")
-    const initial = await makeFixture({ path, schemaVersion: 1 })
+    const layer = makeSettingsLayer(path)
 
-    await Effect.runPromise(initial.store.close())
-    const registry = await Effect.runPromise(makeResourceRegistry())
-    const sqlite = await Effect.runPromise(makeSQLite(registry))
-    const settings = await Effect.runPromise(makeSettings(sqlite))
     const exit = await Effect.runPromiseExit(
-      settings.open({ path, ownerScope: "scope-main", schemaVersion: 2 })
+      Effect.gen(function* () {
+        const api1 = yield* Settings
+        yield* api1.open({ path, ownerScope: "scope-main", schemaVersion: 1 })
+
+        const api2 = yield* Settings
+        return yield* api2.open({ path, ownerScope: "scope-main", schemaVersion: 2 })
+      }).pipe(Effect.provide(layer))
     )
 
     expectFailure(exit, SettingsMigrationFailedError)
-  })
-
-  test("corrupt database recovers from an explicit backup", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-settings-"))
-    const path = join(directory, "settings.sqlite")
-    const backupPath = join(directory, "settings.backup.sqlite")
-    const initial = await makeFixture({ path, schemaVersion: 1 })
-
-    await Effect.runPromise(initial.store.set("user.name", UserName, "alice"))
-    await Effect.runPromise(initial.store.close())
-    await copyFile(path, backupPath)
-    await writeFile(path, new Uint8Array([1, 2, 3, 4]))
-
-    const recovered = await makeFixture({ path, backupPath, schemaVersion: 1 })
-    const value = await Effect.runPromise(recovered.store.get("user.name", UserName))
-
-    expect(Option.getOrUndefined(value)).toBe("alice")
   })
 
   test("set rejects NUL bytes in keys before writing", async () => {
@@ -202,19 +194,13 @@ describe("Settings", () => {
   })
 
   test("open rejects every C0 control byte and DEL in namespace", async () => {
-    const registry = await Effect.runPromise(makeResourceRegistry())
-    const sqlite = await Effect.runPromise(makeSQLite(registry))
-    const settings = await Effect.runPromise(makeSettings(sqlite))
+    const kv = await makeKvMemory()
+    const settings = await Effect.runPromise(makeSettings(kv))
 
     for (let codePoint = 0; codePoint <= 31; codePoint += 1) {
       const namespace = `settings${String.fromCharCode(codePoint)}forged`
       const exit = await Effect.runPromiseExit(
-        settings.open({
-          path: ":memory:",
-          ownerScope: "scope-main",
-          namespace,
-          schemaVersion: 1
-        })
+        settings.open({ path: ":memory:", ownerScope: "scope-main", namespace, schemaVersion: 1 })
       )
       expectFailure(exit, SettingsInvalidArgumentError)
     }
@@ -329,28 +315,56 @@ describe("Settings", () => {
     expect(keysAfter).toEqual(["api.token"])
     expect(valueAtNewKey).toBe("secret")
   })
+
+  test("Settings Layer wires SqliteClient.layer for persistence", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-settings-"))
+    const path = join(directory, "settings.sqlite")
+
+    const program = Effect.gen(function* () {
+      const settingsApi = yield* Settings
+      const store = yield* settingsApi.open({ path, ownerScope: "test", schemaVersion: 1 })
+      yield* store.set("hello", UserName, "world")
+      return yield* store.get("hello", UserName)
+    })
+
+    const layer = makeSettingsLayer(path)
+    const result = await Effect.runPromise(Effect.provide(program, layer))
+    expect(Option.getOrUndefined(result)).toBe("world")
+  })
+
+  test("makeSettingsLayerMemory provides in-memory Settings", async () => {
+    const program = Effect.gen(function* () {
+      const settingsApi = yield* Settings
+      const store = yield* settingsApi.open({
+        path: ":memory:",
+        ownerScope: "test",
+        schemaVersion: 1
+      })
+      yield* store.set("key", UserName, "value")
+      return yield* store.get("key", UserName)
+    })
+
+    const result = await Effect.runPromise(Effect.provide(program, makeSettingsLayerMemory))
+    expect(Option.getOrUndefined(result)).toBe("value")
+  })
 })
 
 async function makeFixture(
   options: {
-    readonly path?: string
-    readonly backupPath?: string
     readonly schemaVersion?: number
   } = {}
-): Promise<{ readonly sqlite: SqliteApi; readonly store: SettingsStore }> {
-  const registry = await Effect.runPromise(makeResourceRegistry())
-  const sqlite = await Effect.runPromise(makeSQLite(registry))
-  const settings = await Effect.runPromise(makeSettings(sqlite))
+): Promise<{ readonly store: SettingsStore }> {
+  const kv = await makeKvMemory()
+  const settings = await Effect.runPromise(makeSettings(kv))
   const store = await Effect.runPromise(
     settings.open({
-      path: options.path ?? ":memory:",
+      path: ":memory:",
       ownerScope: "scope-main",
-      schemaVersion: options.schemaVersion ?? 1,
-      ...(options.backupPath === undefined ? {} : { backupPath: options.backupPath })
+      schemaVersion: options.schemaVersion ?? 1
     })
   )
 
-  return { sqlite, store }
+  return { store }
 }
 
 function expectFailure<E>(
@@ -372,29 +386,30 @@ async function runFailingMigration(
   readonly exit: Exit.Exit<SettingsStore, SettingsError>
   readonly keys: readonly string[]
 }> {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-settings-"))
-  const path = join(directory, "settings.sqlite")
-  const initial = await makeFixture({ path, schemaVersion: 1 })
+  const kv = await makeKvMemory()
+  const settings = await Effect.runPromise(makeSettings(kv))
+  const initial = await Effect.runPromise(
+    settings.open({ path: ":memory:", ownerScope: "scope-main", schemaVersion: 1 })
+  )
   if (seed !== undefined) {
-    await Effect.runPromise(seed(initial.store))
+    await Effect.runPromise(seed(initial))
   }
-  await Effect.runPromise(initial.store.close())
 
-  const registry = await Effect.runPromise(makeResourceRegistry())
-  const sqlite = await Effect.runPromise(makeSQLite(registry))
-  const settings = await Effect.runPromise(makeSettings(sqlite))
+  const settings2 = await Effect.runPromise(makeSettings(kv))
   const exit = await Effect.runPromiseExit(
-    settings.open({
-      path,
+    settings2.open({
+      path: ":memory:",
       ownerScope: "scope-main",
       schemaVersion: 2,
       migrations: [{ from: 1, to: 2, migrate }]
     })
   )
 
-  const after = await makeFixture({ path, schemaVersion: 1 })
-  const keys = await Effect.runPromise(after.store.keys())
-  await Effect.runPromise(after.store.close())
+  const settings3 = await Effect.runPromise(makeSettings(kv))
+  const after = await Effect.runPromise(
+    settings3.open({ path: ":memory:", ownerScope: "scope-main", schemaVersion: 1 })
+  )
+  const keys = await Effect.runPromise(after.keys())
 
   return { exit, keys }
 }
@@ -417,13 +432,16 @@ function expectMigrationFailedDueToInvalidArgument(exit: Exit.Exit<unknown, Sett
 async function makeFixtureWithLegacyKey(
   legacyKey: string,
   value: string
-): Promise<{ readonly sqlite: SqliteApi; readonly store: SettingsStore }> {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-settings-"))
-  const path = join(directory, "settings.sqlite")
-  const initial = await makeFixture({ path, schemaVersion: 1 })
-  await Effect.runPromise(initial.store.close())
-  await seedLegacyKey(path, legacyKey, value)
-  return makeFixture({ path, schemaVersion: 1 })
+): Promise<{ readonly store: SettingsStore }> {
+  const kv = await makeKvMemory()
+  await Effect.runPromise(kv.set(`default/${legacyKey}`, JSON.stringify(value)))
+  await Effect.runPromise(kv.set("default/__meta__/keys", JSON.stringify([legacyKey])))
+  await Effect.runPromise(kv.set("default/__meta__/version", JSON.stringify(1)))
+  const settings = await Effect.runPromise(makeSettings(kv))
+  const store = await Effect.runPromise(
+    settings.open({ path: ":memory:", ownerScope: "scope-main", schemaVersion: 1 })
+  )
+  return { store }
 }
 
 async function runMigrationOnSeededDb(
@@ -435,50 +453,34 @@ async function runMigrationOnSeededDb(
   readonly keysAfter: readonly string[]
   readonly valueAtNewKey: string | undefined
 }> {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-settings-"))
-  const path = join(directory, "settings.sqlite")
-  const initial = await makeFixture({ path, schemaVersion: 1 })
-  await Effect.runPromise(initial.store.close())
-  await seedLegacyKey(path, legacyKey, value)
+  const kv = await makeKvMemory()
+  await Effect.runPromise(kv.set(`default/${legacyKey}`, JSON.stringify(value)))
+  await Effect.runPromise(kv.set("default/__meta__/keys", JSON.stringify([legacyKey])))
+  await Effect.runPromise(kv.set("default/__meta__/version", JSON.stringify(1)))
 
-  const registry = await Effect.runPromise(makeResourceRegistry())
-  const sqlite = await Effect.runPromise(makeSQLite(registry))
-  const settings = await Effect.runPromise(makeSettings(sqlite))
+  const settings = await Effect.runPromise(makeSettings(kv))
   const exit = await Effect.runPromiseExit(
     settings.open({
-      path,
+      path: ":memory:",
       ownerScope: "scope-main",
       schemaVersion: 2,
       migrations: [{ from: 1, to: 2, migrate }]
     })
   )
 
-  const after = await makeFixture({ path, schemaVersion: 2 })
-  const keysAfter = await Effect.runPromise(after.store.keys())
+  const settings2 = await Effect.runPromise(makeSettings(kv))
+  const after = await Effect.runPromise(
+    settings2.open({ path: ":memory:", ownerScope: "scope-main", schemaVersion: 2 })
+  )
+  const keysAfter = await Effect.runPromise(after.keys())
   let valueAtNewKey: string | undefined
   if (keysAfter.length === 1) {
     const onlyKey = keysAfter[0]
     if (onlyKey !== undefined && onlyKey !== legacyKey) {
-      const v = await Effect.runPromise(after.store.get(onlyKey, UserName))
+      const v = await Effect.runPromise(after.get(onlyKey, UserName))
       valueAtNewKey = Option.getOrUndefined(v)
     }
   }
-  await Effect.runPromise(after.store.close())
 
   return { exit, keysAfter, valueAtNewKey }
-}
-
-async function seedLegacyKey(path: string, key: string, value: string): Promise<void> {
-  const registry = await Effect.runPromise(makeResourceRegistry())
-  const sqlite = await Effect.runPromise(makeSQLite(registry))
-  const connection = await Effect.runPromise(
-    sqlite.connect({ path, ownerScope: "scope-test-seed", create: false, strict: true })
-  )
-  await Effect.runPromise(
-    connection.exec(
-      "INSERT INTO settings_values (namespace, key, value_json, updated_at_ms) VALUES (?, ?, ?, ?)",
-      ["default", key, JSON.stringify(value), Date.now()]
-    )
-  )
-  await Effect.runPromise(connection.close())
 }

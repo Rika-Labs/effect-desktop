@@ -1,15 +1,6 @@
-import { copyFile } from "node:fs/promises"
-
-import { Context, Data, Effect, Option, PubSub, Schema, Stream } from "effect"
-
-import {
-  SQLite,
-  type SqliteConnection,
-  SqliteCorruptError,
-  type SqliteError,
-  type SqliteRow,
-  type SqliteValue
-} from "./sqlite.js"
+import { Context, Data, Effect, Layer, Option, PubSub, Schema, Stream } from "effect"
+import { SqliteClient } from "@effect/sql-sqlite-bun"
+import { KeyValueStore } from "effect/unstable/persistence"
 
 const NonEmptyString = Schema.NonEmptyString
 const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
@@ -48,9 +39,9 @@ export class SettingsInvalidArgumentError extends Data.TaggedError("InvalidArgum
   readonly cause: Option.Option<unknown>
 }> {}
 
-export class SettingsSqliteError extends Data.TaggedError("SqliteError")<{
+export class SettingsKvError extends Data.TaggedError("KvError")<{
   readonly operation: string
-  readonly cause: SqliteError
+  readonly cause: unknown
 }> {}
 
 export class SettingsMigrationFailedError extends Data.TaggedError("SettingsMigrationFailed")<{
@@ -69,7 +60,7 @@ export class SettingsRecoveredFromBackupError extends Data.TaggedError(
 
 export type SettingsError =
   | SettingsInvalidArgumentError
-  | SettingsSqliteError
+  | SettingsKvError
   | SettingsMigrationFailedError
   | SettingsRecoveredFromBackupError
 
@@ -138,8 +129,148 @@ export interface SettingsApi {
   ) => Effect.Effect<SettingsStore, SettingsError, never>
 }
 
+const VERSION_KEY_SUFFIX = "__meta__/version"
+const INDEX_KEY_SUFFIX = "__meta__/keys"
+
+const versionKey = (namespace: string): string => `${namespace}/${VERSION_KEY_SUFFIX}`
+const indexKey = (namespace: string): string => `${namespace}/${INDEX_KEY_SUFFIX}`
+const valueKey = (namespace: string, key: string): string => `${namespace}/${key}`
+
+const kvGet = (
+  kv: KeyValueStore.KeyValueStore,
+  storeKey: string,
+  operation: string
+): Effect.Effect<Option.Option<unknown>, SettingsError, never> =>
+  kv.get(storeKey).pipe(
+    Effect.mapError((cause) => new SettingsKvError({ operation, cause })),
+    Effect.flatMap((raw) => {
+      if (raw === undefined) {
+        return Effect.succeed(Option.none())
+      }
+      return Effect.try({
+        try: () => Option.some(JSON.parse(raw) as unknown),
+        catch: (error) =>
+          new SettingsInvalidArgumentError({
+            operation,
+            field: storeKey,
+            message: formatUnknownError(error),
+            cause: Option.some(error)
+          })
+      })
+    })
+  )
+
+const kvSet = (
+  kv: KeyValueStore.KeyValueStore,
+  storeKey: string,
+  value: unknown,
+  operation: string
+): Effect.Effect<void, SettingsError, never> =>
+  Effect.try({
+    try: () => JSON.stringify(value),
+    catch: (error) =>
+      new SettingsInvalidArgumentError({
+        operation,
+        field: storeKey,
+        message: formatUnknownError(error),
+        cause: Option.some(error)
+      })
+  }).pipe(
+    Effect.flatMap((json) =>
+      kv
+        .set(storeKey, json)
+        .pipe(Effect.mapError((cause) => new SettingsKvError({ operation, cause })))
+    )
+  )
+
+const kvRemove = (
+  kv: KeyValueStore.KeyValueStore,
+  storeKey: string,
+  operation: string
+): Effect.Effect<void, SettingsError, never> =>
+  kv.remove(storeKey).pipe(Effect.mapError((cause) => new SettingsKvError({ operation, cause })))
+
+const readIndex = (
+  kv: KeyValueStore.KeyValueStore,
+  namespace: string,
+  operation: string
+): Effect.Effect<readonly string[], SettingsError, never> =>
+  kvGet(kv, indexKey(namespace), operation).pipe(
+    Effect.flatMap((opt) => {
+      if (Option.isNone(opt)) {
+        return Effect.succeed([])
+      }
+      const raw = opt.value
+      if (!Array.isArray(raw)) {
+        return Effect.succeed([])
+      }
+      return Effect.succeed(raw.filter((k): k is string => typeof k === "string"))
+    })
+  )
+
+const writeIndex = (
+  kv: KeyValueStore.KeyValueStore,
+  namespace: string,
+  keys: readonly string[],
+  operation: string
+): Effect.Effect<void, SettingsError, never> => {
+  const sorted = [...keys].sort()
+  return kvSet(kv, indexKey(namespace), sorted, operation)
+}
+
+const addToIndex = (
+  kv: KeyValueStore.KeyValueStore,
+  namespace: string,
+  key: string,
+  operation: string
+): Effect.Effect<void, SettingsError, never> =>
+  readIndex(kv, namespace, operation).pipe(
+    Effect.flatMap((existing) => {
+      if (existing.includes(key)) {
+        return Effect.void
+      }
+      return writeIndex(kv, namespace, [...existing, key], operation)
+    })
+  )
+
+const removeFromIndex = (
+  kv: KeyValueStore.KeyValueStore,
+  namespace: string,
+  key: string,
+  operation: string
+): Effect.Effect<void, SettingsError, never> =>
+  readIndex(kv, namespace, operation).pipe(
+    Effect.flatMap((existing) => {
+      const next = existing.filter((k) => k !== key)
+      if (next.length === existing.length) {
+        return Effect.void
+      }
+      return writeIndex(kv, namespace, next, operation)
+    })
+  )
+
+const readVersion = (
+  kv: KeyValueStore.KeyValueStore,
+  namespace: string,
+  operation: string
+): Effect.Effect<number | undefined, SettingsError, never> =>
+  kvGet(kv, versionKey(namespace), operation).pipe(
+    Effect.map((opt) => {
+      if (Option.isNone(opt)) return undefined
+      const val = opt.value
+      return typeof val === "number" ? val : undefined
+    })
+  )
+
+const writeVersion = (
+  kv: KeyValueStore.KeyValueStore,
+  namespace: string,
+  version: number,
+  operation: string
+): Effect.Effect<void, SettingsError, never> => kvSet(kv, versionKey(namespace), version, operation)
+
 export const makeSettings = (
-  sqlite: typeof SQLite.Service
+  kv: KeyValueStore.KeyValueStore
 ): Effect.Effect<SettingsApi, never, never> =>
   Effect.sync(() =>
     Object.freeze({
@@ -156,35 +287,15 @@ export const makeSettings = (
             "Settings.open"
           )
           const changes = yield* PubSub.sliding<SettingsChange>({ capacity: 1024, replay: 0 })
-          const migrations = yield* PubSub.sliding<SettingsMigrated>({ capacity: 16, replay: 16 })
+          const migratedPub = yield* PubSub.sliding<SettingsMigrated>({
+            capacity: 16,
+            replay: 16
+          })
           const now = options.now ?? Date.now
-          const connection = yield* openConnection(sqlite, input, "Settings.open")
-          const recoveredConnection = yield* initialize(
-            connection,
-            input,
-            options.migrations ?? [],
-            now,
-            migrations
-          ).pipe(
-            Effect.as(connection),
-            Effect.catchTag("SqliteError", (error) =>
-              error.cause instanceof SqliteCorruptError && input.backupPath !== undefined
-                ? recoverFromBackup(sqlite, connection, input, error.cause).pipe(
-                    Effect.flatMap((nextConnection) =>
-                      initialize(
-                        nextConnection,
-                        input,
-                        options.migrations ?? [],
-                        now,
-                        migrations
-                      ).pipe(Effect.as(nextConnection))
-                    )
-                  )
-                : Effect.fail(error)
-            )
-          )
 
-          return makeStore(recoveredConnection, input.namespace, now, changes, migrations)
+          yield* initialize(kv, input, options.migrations ?? [], now, migratedPub)
+
+          return makeStore(kv, input.namespace, changes, migratedPub)
         }).pipe(
           Effect.withSpan("Settings.open", {
             attributes: {
@@ -198,17 +309,29 @@ export const makeSettings = (
     })
   )
 
-export class Settings extends Context.Service<Settings, SettingsApi>()("Settings", {
-  make: Effect.gen(function* () {
-    const sqlite = yield* SQLite
-    return yield* makeSettings(sqlite)
+export class Settings extends Context.Service<Settings, SettingsApi>()("Settings") {}
+
+const SettingsFromKv: Layer.Layer<Settings, never, KeyValueStore.KeyValueStore> = Layer.effect(
+  Settings,
+  Effect.gen(function* () {
+    const kv = yield* KeyValueStore.KeyValueStore
+    return yield* makeSettings(kv)
   })
-}) {}
+)
+
+export const makeSettingsLayer = (path: string): Layer.Layer<Settings, never, never> =>
+  SettingsFromKv.pipe(
+    Layer.provide(KeyValueStore.layerSql()),
+    Layer.provide(SqliteClient.layer({ filename: path }))
+  )
+
+export const makeSettingsLayerMemory: Layer.Layer<Settings, never, never> = SettingsFromKv.pipe(
+  Layer.provide(KeyValueStore.layerMemory)
+)
 
 const makeStore = (
-  connection: SqliteConnection,
+  kv: KeyValueStore.KeyValueStore,
   namespace: string,
-  now: () => number,
   changes: PubSub.PubSub<SettingsChange>,
   migrations: PubSub.PubSub<SettingsMigrated>
 ): SettingsStore => {
@@ -218,7 +341,7 @@ const makeStore = (
   ): Effect.Effect<Option.Option<A>, SettingsError, never> =>
     Effect.gen(function* () {
       const validatedKey = yield* decodeAddressableKey(key, "Settings.get")
-      const raw = yield* readRaw(connection, namespace, validatedKey, "Settings.get")
+      const raw = yield* kvGet(kv, valueKey(namespace, validatedKey), "Settings.get")
       if (Option.isNone(raw)) {
         return Option.none()
       }
@@ -237,11 +360,12 @@ const makeStore = (
       Effect.gen(function* () {
         const validatedKey = yield* decodeKey(key, "Settings.set")
         const encoded = yield* encodeValue(schema, value, validatedKey, "Settings.set")
-        const oldValue = yield* readRaw(connection, namespace, validatedKey, "Settings.set")
-        yield* writeRaw(connection, namespace, validatedKey, encoded, now(), "Settings.set")
+        const oldRaw = yield* kvGet(kv, valueKey(namespace, validatedKey), "Settings.set")
+        yield* kvSet(kv, valueKey(namespace, validatedKey), encoded, "Settings.set")
+        yield* addToIndex(kv, namespace, validatedKey, "Settings.set")
         yield* publishChange(changes, {
           key: validatedKey,
-          oldValue: optionToOptional(oldValue),
+          oldValue: optionToOptional(oldRaw),
           newValue: encoded,
           source: options?.source ?? "set"
         })
@@ -249,178 +373,85 @@ const makeStore = (
     delete: (key: string, options?: SettingsMutationOptions) =>
       Effect.gen(function* () {
         const validatedKey = yield* decodeAddressableKey(key, "Settings.delete")
-        const oldValue = yield* readRaw(connection, namespace, validatedKey, "Settings.delete")
-        yield* exec(
-          connection,
-          "DELETE FROM settings_values WHERE namespace = ? AND key = ?",
-          [namespace, validatedKey],
-          "Settings.delete"
-        )
-        if (Option.isSome(oldValue)) {
+        const oldRaw = yield* kvGet(kv, valueKey(namespace, validatedKey), "Settings.delete")
+        yield* kvRemove(kv, valueKey(namespace, validatedKey), "Settings.delete")
+        yield* removeFromIndex(kv, namespace, validatedKey, "Settings.delete")
+        if (Option.isSome(oldRaw)) {
           yield* publishChange(changes, {
             key: validatedKey,
-            oldValue: oldValue.value,
+            oldValue: oldRaw.value,
             newValue: undefined,
             source: options?.source ?? "delete"
           })
         }
       }).pipe(Effect.withSpan("Settings.delete", { attributes: { namespace, key } })),
     keys: () =>
-      Effect.gen(function* () {
-        const rows = yield* query(
-          connection,
-          "SELECT key FROM settings_values WHERE namespace = ? ORDER BY key ASC",
-          [namespace],
-          "Settings.keys"
-        )
-        return rows.flatMap((row) => {
-          const key = row["key"]
-          return typeof key === "string" ? [key] : []
-        })
-      }).pipe(Effect.withSpan("Settings.keys", { attributes: { namespace } })),
+      readIndex(kv, namespace, "Settings.keys").pipe(
+        Effect.withSpan("Settings.keys", { attributes: { namespace } })
+      ),
     update: <A, E, R>(
       key: string,
       schema: Schema.Schema<A>,
-      update: (current: Option.Option<A>) => Effect.Effect<A, E, R>,
+      updateFn: (current: Option.Option<A>) => Effect.Effect<A, E, R>,
       options?: SettingsMutationOptions
     ) =>
       Effect.gen(function* () {
         const validatedKey = yield* decodeKey(key, "Settings.update")
-        return yield* connection
-          .transaction(
-            Effect.gen(function* () {
-              const raw = yield* readRaw(connection, namespace, validatedKey, "Settings.update")
-              const current = Option.isSome(raw)
-                ? Option.some(
-                    yield* decodeValue(schema, raw.value, validatedKey, "Settings.update")
-                  )
-                : Option.none()
-              const next = yield* update(current)
-              const encoded = yield* encodeValue(schema, next, validatedKey, "Settings.update")
-              yield* writeRaw(
-                connection,
-                namespace,
-                validatedKey,
-                encoded,
-                now(),
-                "Settings.update"
-              )
-              yield* publishChange(changes, {
-                key: validatedKey,
-                oldValue: optionToOptional(raw),
-                newValue: encoded,
-                source: options?.source ?? "update"
-              })
-              return next
-            })
-          )
-          .pipe(Effect.mapError(mapTransactionError))
+        const raw = yield* kvGet(kv, valueKey(namespace, validatedKey), "Settings.update")
+        const current = Option.isSome(raw)
+          ? Option.some(yield* decodeValue(schema, raw.value, validatedKey, "Settings.update"))
+          : Option.none()
+        const next = yield* updateFn(current)
+        const encoded = yield* encodeValue(schema, next, validatedKey, "Settings.update")
+        yield* kvSet(kv, valueKey(namespace, validatedKey), encoded, "Settings.update")
+        yield* addToIndex(kv, namespace, validatedKey, "Settings.update")
+        yield* publishChange(changes, {
+          key: validatedKey,
+          oldValue: optionToOptional(raw),
+          newValue: encoded,
+          source: options?.source ?? "update"
+        })
+        return next
       }).pipe(Effect.withSpan("Settings.update", { attributes: { namespace, key } })),
     changes: () => Stream.fromPubSub(changes),
     migrated: () => Stream.fromPubSub(migrations),
-    close: () => connection.close()
+    close: () => Effect.void
   })
 }
 
-const openConnection = (
-  sqlite: typeof SQLite.Service,
-  input: SettingsOpenInput,
-  operation: string
-): Effect.Effect<SqliteConnection, SettingsError, never> =>
-  sqlite
-    .connect({
-      path: input.path,
-      ownerScope: input.ownerScope,
-      create: true,
-      strict: true
-    })
-    .pipe(Effect.mapError((error) => new SettingsSqliteError({ operation, cause: error })))
-
 const initialize = (
-  connection: SqliteConnection,
+  kv: KeyValueStore.KeyValueStore,
   input: SettingsOpenInput,
   migrations: readonly SettingsMigration[],
   now: () => number,
   migrated: PubSub.PubSub<SettingsMigrated>
 ): Effect.Effect<void, SettingsError, never> =>
-  connection
-    .transaction(
-      Effect.gen(function* () {
-        yield* createTables(connection)
-        const current = yield* currentSchemaVersion(connection, input.namespace)
-        if (current === input.schemaVersion) {
-          return
-        }
+  Effect.gen(function* () {
+    const current = yield* readVersion(kv, input.namespace, "Settings.initialize")
+    if (current === input.schemaVersion) {
+      return
+    }
 
-        if (current === undefined) {
-          yield* setSchemaVersion(connection, input.namespace, input.schemaVersion)
-          return
-        }
+    if (current === undefined) {
+      yield* writeVersion(kv, input.namespace, input.schemaVersion, "Settings.initialize")
+      return
+    }
 
-        const started = now()
-        yield* runMigrations(connection, input.namespace, current, input.schemaVersion, migrations)
-        yield* setSchemaVersion(connection, input.namespace, input.schemaVersion)
-        yield* PubSub.publish(
-          migrated,
-          new SettingsMigrated({
-            from: current,
-            to: input.schemaVersion,
-            durationMs: now() - started
-          })
-        )
+    const started = now()
+    yield* runMigrations(kv, input.namespace, current, input.schemaVersion, migrations)
+    yield* writeVersion(kv, input.namespace, input.schemaVersion, "Settings.initialize")
+    yield* PubSub.publish(
+      migrated,
+      new SettingsMigrated({
+        from: current,
+        to: input.schemaVersion,
+        durationMs: now() - started
       })
     )
-    .pipe(Effect.mapError((error) => mapTransactionError(error) as SettingsError))
-
-const createTables = (connection: SqliteConnection): Effect.Effect<void, SettingsError, never> =>
-  Effect.gen(function* () {
-    yield* exec(
-      connection,
-      "CREATE TABLE IF NOT EXISTS settings_meta (namespace TEXT PRIMARY KEY, schema_version INTEGER NOT NULL)",
-      [],
-      "Settings.initialize"
-    )
-    yield* exec(
-      connection,
-      "CREATE TABLE IF NOT EXISTS settings_values (namespace TEXT NOT NULL, key TEXT NOT NULL, value_json TEXT NOT NULL, updated_at_ms INTEGER NOT NULL, PRIMARY KEY(namespace, key))",
-      [],
-      "Settings.initialize"
-    )
   })
-
-const currentSchemaVersion = (
-  connection: SqliteConnection,
-  namespace: string
-): Effect.Effect<number | undefined, SettingsError, never> =>
-  Effect.gen(function* () {
-    const rows = yield* query(
-      connection,
-      "SELECT schema_version FROM settings_meta WHERE namespace = ?",
-      [namespace],
-      "Settings.initialize"
-    )
-    const row = rows[0]
-    if (row === undefined) {
-      return undefined
-    }
-    const value = row["schema_version"]
-    return typeof value === "number" ? value : undefined
-  })
-
-const setSchemaVersion = (
-  connection: SqliteConnection,
-  namespace: string,
-  schemaVersion: number
-): Effect.Effect<void, SettingsError, never> =>
-  exec(
-    connection,
-    "INSERT INTO settings_meta (namespace, schema_version) VALUES (?, ?) ON CONFLICT(namespace) DO UPDATE SET schema_version = excluded.schema_version",
-    [namespace, schemaVersion],
-    "Settings.initialize"
-  )
 
 const runMigrations = (
-  connection: SqliteConnection,
+  kv: KeyValueStore.KeyValueStore,
   namespace: string,
   from: number,
   to: number,
@@ -442,7 +473,7 @@ const runMigrations = (
         )
       }
 
-      yield* migration.migrate(migrationContext(connection, namespace)).pipe(
+      yield* migration.migrate(migrationContext(kv, namespace)).pipe(
         Effect.mapError(
           (error) =>
             new SettingsMigrationFailedError({
@@ -457,178 +488,48 @@ const runMigrations = (
   })
 
 const migrationContext = (
-  connection: SqliteConnection,
+  kv: KeyValueStore.KeyValueStore,
   namespace: string
 ): SettingsMigrationContext => ({
   getRaw: (key) =>
     Effect.gen(function* () {
       const validatedKey = yield* decodeAddressableKey(key, "Settings.migration.getRaw")
-      return yield* readRaw(connection, namespace, validatedKey, "Settings.migration.getRaw")
+      return yield* kvGet(kv, valueKey(namespace, validatedKey), "Settings.migration.getRaw")
     }),
   setRaw: (key, value) =>
     Effect.gen(function* () {
       const validatedKey = yield* decodeKey(key, "Settings.migration.setRaw")
-      yield* writeRaw(
-        connection,
-        namespace,
-        validatedKey,
-        value,
-        Date.now(),
-        "Settings.migration.setRaw"
-      )
+      yield* kvSet(kv, valueKey(namespace, validatedKey), value, "Settings.migration.setRaw")
+      yield* addToIndex(kv, namespace, validatedKey, "Settings.migration.setRaw")
     }),
   deleteRaw: (key) =>
     Effect.gen(function* () {
       const validatedKey = yield* decodeAddressableKey(key, "Settings.migration.deleteRaw")
-      yield* exec(
-        connection,
-        "DELETE FROM settings_values WHERE namespace = ? AND key = ?",
-        [namespace, validatedKey],
-        "Settings.migration.deleteRaw"
-      )
+      yield* kvRemove(kv, valueKey(namespace, validatedKey), "Settings.migration.deleteRaw")
+      yield* removeFromIndex(kv, namespace, validatedKey, "Settings.migration.deleteRaw")
     }),
   rename: (from, to) =>
     Effect.gen(function* () {
       const validatedFrom = yield* decodeAddressableKey(from, "Settings.migration.rename.from")
       const validatedTo = yield* decodeKey(to, "Settings.migration.rename.to")
-      const current = yield* readRaw(
-        connection,
-        namespace,
-        validatedFrom,
+      const current = yield* kvGet(
+        kv,
+        valueKey(namespace, validatedFrom),
         "Settings.migration.rename"
       )
       if (Option.isSome(current)) {
-        yield* writeRaw(
-          connection,
-          namespace,
-          validatedTo,
+        yield* kvSet(
+          kv,
+          valueKey(namespace, validatedTo),
           current.value,
-          Date.now(),
           "Settings.migration.rename"
         )
-        yield* exec(
-          connection,
-          "DELETE FROM settings_values WHERE namespace = ? AND key = ?",
-          [namespace, validatedFrom],
-          "Settings.migration.rename"
-        )
+        yield* addToIndex(kv, namespace, validatedTo, "Settings.migration.rename")
+        yield* kvRemove(kv, valueKey(namespace, validatedFrom), "Settings.migration.rename")
+        yield* removeFromIndex(kv, namespace, validatedFrom, "Settings.migration.rename")
       }
     })
 })
-
-const readRaw = (
-  connection: SqliteConnection,
-  namespace: string,
-  key: string,
-  operation: string
-): Effect.Effect<Option.Option<unknown>, SettingsError, never> =>
-  Effect.gen(function* () {
-    const rows = yield* query(
-      connection,
-      "SELECT value_json FROM settings_values WHERE namespace = ? AND key = ?",
-      [namespace, key],
-      operation
-    )
-    const row = rows[0]
-    if (row === undefined) {
-      return Option.none()
-    }
-    const json = row["value_json"]
-    if (typeof json !== "string") {
-      return yield* Effect.fail(
-        new SettingsInvalidArgumentError({
-          operation,
-          field: "value_json",
-          message: "stored setting is not JSON text",
-          cause: Option.none()
-        })
-      )
-    }
-
-    return yield* Effect.try({
-      try: () => Option.some(JSON.parse(json) as unknown),
-      catch: (error) =>
-        new SettingsInvalidArgumentError({
-          operation,
-          field: key,
-          message: formatUnknownError(error),
-          cause: Option.some(error)
-        })
-    })
-  })
-
-const writeRaw = (
-  connection: SqliteConnection,
-  namespace: string,
-  key: string,
-  value: unknown,
-  updatedAtMs: number,
-  operation: string
-): Effect.Effect<void, SettingsError, never> =>
-  Effect.gen(function* () {
-    const json = yield* Effect.try({
-      try: () => JSON.stringify(value),
-      catch: (error) =>
-        new SettingsInvalidArgumentError({
-          operation,
-          field: key,
-          message: formatUnknownError(error),
-          cause: Option.some(error)
-        })
-    })
-    yield* exec(
-      connection,
-      "INSERT INTO settings_values (namespace, key, value_json, updated_at_ms) VALUES (?, ?, ?, ?) ON CONFLICT(namespace, key) DO UPDATE SET value_json = excluded.value_json, updated_at_ms = excluded.updated_at_ms",
-      [namespace, key, json, updatedAtMs],
-      operation
-    )
-  })
-
-const query = (
-  connection: SqliteConnection,
-  sql: string,
-  params: readonly SqliteValue[],
-  operation: string
-): Effect.Effect<readonly SqliteRow[], SettingsError, never> =>
-  connection
-    .query(sql, params)
-    .pipe(Effect.mapError((error) => new SettingsSqliteError({ operation, cause: error })))
-
-const exec = (
-  connection: SqliteConnection,
-  sql: string,
-  params: readonly SqliteValue[],
-  operation: string
-): Effect.Effect<void, SettingsError, never> =>
-  connection.exec(sql, params).pipe(
-    Effect.asVoid,
-    Effect.mapError((error) => new SettingsSqliteError({ operation, cause: error }))
-  )
-
-const recoverFromBackup = (
-  sqlite: typeof SQLite.Service,
-  connection: SqliteConnection,
-  input: SettingsOpenInput,
-  cause: SqliteCorruptError
-): Effect.Effect<SqliteConnection, SettingsError, never> =>
-  Effect.gen(function* () {
-    const backupPath = input.backupPath
-    if (backupPath === undefined) {
-      return yield* Effect.fail(new SettingsSqliteError({ operation: "Settings.recover", cause }))
-    }
-
-    yield* connection.close()
-    yield* Effect.tryPromise({
-      try: () => copyFile(backupPath, input.path),
-      catch: (error) =>
-        new SettingsRecoveredFromBackupError({
-          backupPath,
-          operation: "Settings.recover",
-          cause: Option.some(error)
-        })
-    })
-    return yield* openConnection(sqlite, input, "Settings.recover")
-  })
 
 const decodeOpenInput = (
   input: unknown,
@@ -735,36 +636,6 @@ const publishChange = (
 
 const optionToOptional = (value: Option.Option<unknown>): unknown =>
   Option.isSome(value) ? value.value : undefined
-
-const mapTransactionError = <E>(error: E | SettingsError | SqliteError): E | SettingsError => {
-  if (isSettingsError(error)) {
-    return error
-  }
-
-  if (isSqliteError(error)) {
-    return new SettingsSqliteError({ operation: "Settings.transaction", cause: error })
-  }
-
-  return error
-}
-
-const isSettingsError = (error: unknown): error is SettingsError =>
-  error instanceof SettingsInvalidArgumentError ||
-  error instanceof SettingsSqliteError ||
-  error instanceof SettingsMigrationFailedError ||
-  error instanceof SettingsRecoveredFromBackupError
-
-const isSqliteError = (error: unknown): error is SqliteError =>
-  typeof error === "object" &&
-  error !== null &&
-  "_tag" in error &&
-  (error._tag === "Constraint" ||
-    error._tag === "Busy" ||
-    error._tag === "Locked" ||
-    error._tag === "Corrupt" ||
-    error._tag === "IoError" ||
-    error._tag === "InvalidArgument" ||
-    error._tag === "InvalidState")
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {

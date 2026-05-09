@@ -7,11 +7,10 @@ import { expect, test } from "bun:test"
 import { Cause, Effect, Exit, Option, Schema, Stream } from "effect"
 
 import { type EventLogStore } from "./event-log.js"
-import { makeResourceRegistry } from "./resources.js"
 import { SecretValue, type SecretsApi, type SecretsSafeStorageApi, makeSecrets } from "./secrets.js"
 import { SecretsMigrationFailedError, runSecretsMigration } from "./secrets-migration.js"
 import { makeSettings, type SettingsStore } from "./settings.js"
-import { makeSQLite } from "./sqlite.js"
+import { KeyValueStore } from "effect/unstable/persistence"
 
 test("SecretsMigration moves secret-shaped Settings keys into Secrets and audits without values", async () => {
   const { settings, secrets, auditRows } = await makeFixture()
@@ -96,9 +95,12 @@ async function makeFixture(
   readonly secrets: SecretsApi
   readonly auditRows: unknown[]
 }> {
-  const registry = await Effect.runPromise(makeResourceRegistry())
-  const sqlite = await Effect.runPromise(makeSQLite(registry))
-  const settingsApi = await Effect.runPromise(makeSettings(sqlite))
+  const kv = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* KeyValueStore.KeyValueStore
+    }).pipe(Effect.provide(KeyValueStore.layerMemory))
+  )
+  const settingsApi = await Effect.runPromise(makeSettings(kv))
   const settings = await Effect.runPromise(
     settingsApi.open({ path: ":memory:", ownerScope: "scope-main", schemaVersion: 1 })
   )
