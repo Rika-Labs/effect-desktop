@@ -1828,6 +1828,40 @@ test("desktop notarize is a no-op submit when staple validation already passes",
   }
 })
 
+test("desktop notarize assesses DMG artifacts as disk images", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-dmg-spctl-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+    })
+    const dmgPath = await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+    const calls: string[] = []
+    const runner: NotarizeCommandRunner = (invocation) => {
+      calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+      return Effect.succeed({ stdout: `${invocation.step} ok`, stderr: "", exitCode: 0 })
+    }
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["notarize", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "macos-arm64",
+        notarizeCommandRunner: runner,
+        writeStdout: () => {},
+        writeStderr: () => {}
+      })
+    )
+
+    expect(exitCode).toBe(0)
+    expect(calls).toContain(
+      `spctl-assess:spctl --assess --type open --context context:primary-signature --verbose=4 ${dmgPath}`
+    )
+    expect(calls.some((call) => call.includes("--type execute"))).toBe(false)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop notarize rejects artifact file names outside the metadata directory", async () => {
   const invalidFileNames = [
     "../outside.dmg",
