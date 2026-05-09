@@ -11,23 +11,56 @@ import {
   type ProductionSecurityConfig
 } from "./index.js"
 
+const HOST_DEFAULT_CSP_FOR_NONCE = (nonce: string): string =>
+  [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}'`,
+    `style-src 'self' 'nonce-${nonce}'`,
+    "style-src-attr 'unsafe-inline'",
+    "connect-src 'self' app:",
+    "img-src 'self' app: data: https:",
+    "font-src 'self' app: data:",
+    "media-src 'self' app:",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "worker-src 'self'"
+  ].join("; ")
+
 test("CSP defaults render the spec policy with a nonce", () => {
-  expect(renderDefaultCsp("abc123")).toBe(
-    [
-      "default-src 'self'",
-      "script-src 'self' 'nonce-abc123'",
-      "style-src 'self' 'nonce-abc123'",
-      "connect-src 'self' app:",
-      "img-src 'self' app: data: https:",
-      "font-src 'self' app: data:",
-      "media-src 'self' app:",
-      "object-src 'none'",
-      "frame-ancestors 'none'",
-      "base-uri 'self'",
-      "form-action 'self'",
-      "worker-src 'self'"
-    ].join("; ")
-  )
+  expect(renderDefaultCsp("abc123")).toBe(HOST_DEFAULT_CSP_FOR_NONCE("abc123"))
+})
+
+test("CSP config accepts the host/spec default policy without weakenings", () => {
+  expect(cspWeakenings({ policy: HOST_DEFAULT_CSP_FOR_NONCE("{N}") })).toEqual([])
+})
+
+test("CSP config still rejects script-src 'unsafe-inline' as a weakening", () => {
+  expect(cspWeakenings({ policy: "script-src 'self' 'unsafe-inline'" })).toEqual([
+    {
+      directive: "script-src",
+      reason: "script-src includes forbidden source 'unsafe-inline'"
+    }
+  ])
+})
+
+test("CSP config still rejects style-src 'unsafe-inline' as a weakening", () => {
+  expect(cspWeakenings({ policy: "style-src 'self' 'unsafe-inline'" })).toEqual([
+    {
+      directive: "style-src",
+      reason: "style-src includes forbidden source 'unsafe-inline'"
+    }
+  ])
+})
+
+test("CSP config still rejects 'unsafe-eval' on any directive", () => {
+  expect(cspWeakenings({ policy: "script-src 'self' 'unsafe-eval'" })).toEqual([
+    {
+      directive: "script-src",
+      reason: "script-src includes forbidden source 'unsafe-eval'"
+    }
+  ])
 })
 
 test("CSP config can tighten a default directive", () => {
