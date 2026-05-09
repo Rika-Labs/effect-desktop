@@ -2355,6 +2355,77 @@ test("desktop publish rejects artifact target mismatching platform directory", a
   }
 })
 
+test("desktop publish rejects artifact fileName that escapes the metadata directory", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-traversal-"))
+  const key = testEd25519Key()
+  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+  const previousPrivateKey = process.env[privateKeyEnv]
+  process.env[privateKeyEnv] = key.privateKeyPem
+  try {
+    await writePlaygroundFixture(directory, {
+      update: {
+        channel: "stable",
+        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+        publicKey: key.publicKey,
+        privateKeyEnv,
+        keyVersion: 5
+      }
+    })
+    const artifactPath = await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+    const artifactRoot = dirname(artifactPath)
+    const macosDir = dirname(artifactRoot)
+    const outsideName = "outside.dmg"
+    const outsidePath = join(macosDir, outsideName)
+    const outsideBytes = Buffer.from("outside artifact bytes")
+    await writeFile(outsidePath, outsideBytes)
+    await writeFile(
+      join(artifactRoot, "artifact.json"),
+      `${JSON.stringify(
+        {
+          kind: "dmg",
+          target: "macos-arm64",
+          fileName: `../${outsideName}`,
+          sizeBytes: outsideBytes.byteLength,
+          sha256: createHash("sha256").update(outsideBytes).digest("hex")
+        },
+        null,
+        2
+      )}\n`
+    )
+    const manifestPath = join(
+      directory,
+      "apps",
+      "playground",
+      "dist",
+      "desktop",
+      "update-manifest.json"
+    )
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["publish", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        now: () => 1_772_923_200_000,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("PublishConfigError")
+    expect(stderr.join("")).toContain("#fileName")
+    await expect(stat(manifestPath)).rejects.toThrow()
+  } finally {
+    if (previousPrivateKey === undefined) {
+      delete process.env[privateKeyEnv]
+    } else {
+      process.env[privateKeyEnv] = previousPrivateKey
+    }
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop publish signs macOS app directory artifacts with deterministic directory digests", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-"))
   const key = testEd25519Key()
