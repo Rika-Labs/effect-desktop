@@ -43,6 +43,7 @@ import {
   ClipboardImage,
   ClipboardLive,
   ClipboardMethodNames,
+  ClipboardSupportedResult,
   ClipboardText,
   ContextMenu,
   ContextMenuActivatedEvent,
@@ -136,11 +137,13 @@ import {
   TrayApi,
   TrayLive,
   TrayMethodNames,
+  TraySupportedResult,
   Updater,
   UpdaterApi,
   UpdaterCheckResult,
   UpdaterLive,
   UpdaterMethodNames,
+  UpdaterPreparingRestartEvent,
   UpdaterStatusResult,
   WebView,
   WebViewApi,
@@ -338,7 +341,8 @@ const expectedClipboardMethods: Array<(typeof ClipboardMethodNames)[number]> = [
   "writeText",
   "readImage",
   "writeImage",
-  "clear"
+  "clear",
+  "isSupported"
 ]
 
 const expectedNotificationMethods: Array<(typeof NotificationMethodNames)[number]> = [
@@ -378,7 +382,8 @@ const expectedUpdaterMethods: Array<(typeof UpdaterMethodNames)[number]> = [
   "download",
   "install",
   "installAndRestart",
-  "getStatus"
+  "getStatus",
+  "readyForRestart"
 ]
 
 const expectedCrashReporterMethods: Array<(typeof CrashReporterMethodNames)[number]> = [
@@ -417,7 +422,8 @@ const expectedTrayMethods: Array<(typeof TrayMethodNames)[number]> = [
   "setIcon",
   "setTooltip",
   "setMenu",
-  "destroy"
+  "destroy",
+  "isSupported"
 ]
 
 const windowHandle: WindowHandle = {
@@ -895,6 +901,35 @@ test("unsupported WebView client reports deferred host methods as Effect values"
   )
 })
 
+test("WebView capability matrix reports spec-partial features as unsupported", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      return {
+        linuxPrint: yield* webview.capability("print", { platform: "linux" }),
+        linuxPopupBlocking: yield* webview.capability("popup blocking", { platform: "linux" }),
+        linuxGetUserMedia: yield* webview.capability("getUserMedia", { platform: "linux" }),
+        linuxServiceWorkers: yield* webview.capability("service workers in app:", {
+          platform: "linux"
+        }),
+        macosServiceWorkers: yield* webview.capability("service workers in app:", {
+          platform: "macos"
+        }),
+        windowsPrint: yield* webview.capability("print", { platform: "windows" }),
+        linuxPdf: yield* webview.capability("PDF embedded viewer", { platform: "linux" })
+      }
+    }).pipe(Effect.provide(makeWebViewServiceLayer(makeUnsupportedWebViewClient())))
+  )
+
+  expect(result.linuxPrint).toBe(false)
+  expect(result.linuxPopupBlocking).toBe(false)
+  expect(result.linuxGetUserMedia).toBe(false)
+  expect(result.linuxServiceWorkers).toBe(false)
+  expect(result.macosServiceWorkers).toBe(false)
+  expect(result.windowsPrint).toBe(true)
+  expect(result.linuxPdf).toBe(false)
+})
+
 test("MenuApi declares the Phase 7 Menu method and event surface", () => {
   expect(MenuApi.tag).toBe("Menu")
   expect([...MenuMethodNames]).toEqual(expectedMenuMethods)
@@ -1157,20 +1192,22 @@ test("Menu bridge client rejects application menu root items before transport", 
   expect(requests).toEqual([])
 })
 
-test("unsupported Menu client reports deferred host methods as Effect values", async () => {
+test("unsupported Menu client reports capabilities as unavailable and methods as Unsupported", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const menu = yield* Menu
       const macosAppMenu = yield* menu.capability("application menu", { platform: "macos" })
       const windowsAppMenu = yield* menu.capability("application menu", { platform: "windows" })
+      const linuxAppMenu = yield* menu.capability("application menu", { platform: "linux" })
       const setExit = yield* Effect.exit(menu.setApplicationMenu(menuTemplate))
 
-      return { macosAppMenu, setExit, windowsAppMenu }
+      return { linuxAppMenu, macosAppMenu, setExit, windowsAppMenu }
     }).pipe(Effect.provide(makeMenuServiceLayer(makeUnsupportedMenuClient())))
   )
 
-  expect(result.macosAppMenu).toBe(true)
+  expect(result.macosAppMenu).toBe(false)
   expect(result.windowsAppMenu).toBe(false)
+  expect(result.linuxAppMenu).toBe(false)
   expectExitFailure(
     result.setExit,
     (error) =>
@@ -1590,15 +1627,18 @@ test("Tray bridge client decodes activation events with no ownerWindowId field",
 })
 
 test("unsupported Tray client reports deferred host methods as Effect values", async () => {
-  const exit = await Effect.runPromise(
+  const result = await Effect.runPromise(
     Effect.gen(function* () {
       const tray = yield* Tray
-      return yield* Effect.exit(tray.create({ icon: "app://assets/tray.png" }))
+      const supported = yield* tray.isSupported()
+      const createExit = yield* Effect.exit(tray.create({ icon: "app://assets/tray.png" }))
+      return { createExit, supported }
     }).pipe(Effect.provide(makeTrayServiceLayer(makeUnsupportedTrayClient())))
   )
 
+  expect(result.supported).toBe(false)
   expectExitFailure(
-    exit,
+    result.createExit,
     (error) =>
       hasErrorTag(error, "Unsupported") &&
       typeof error === "object" &&
@@ -1905,15 +1945,20 @@ test("Clipboard bridge client rejects NUL bytes in writeText as InvalidArgument"
 })
 
 test("unsupported Clipboard client reports deferred host methods as Effect values", async () => {
-  const exit = await Effect.runPromise(
+  const result = await Effect.runPromise(
     Effect.gen(function* () {
       const clipboard = yield* Clipboard
-      return yield* Effect.exit(clipboard.readText())
+      const textSupported = yield* clipboard.isSupported("text")
+      const imageSupported = yield* clipboard.isSupported("image")
+      const readExit = yield* Effect.exit(clipboard.readText())
+      return { imageSupported, readExit, textSupported }
     }).pipe(Effect.provide(makeClipboardServiceLayer(makeUnsupportedClipboardClient())))
   )
 
+  expect(result.textSupported).toBe(false)
+  expect(result.imageSupported).toBe(false)
   expectExitFailure(
-    exit,
+    result.readExit,
     (error) =>
       hasErrorTag(error, "Unsupported") &&
       typeof error === "object" &&
@@ -2510,23 +2555,21 @@ test("unsupported SafeStorage client reports availability and typed command fail
   expectExitFailure(result.getExit, (error) => hasErrorTag(error, "Unsupported"))
 })
 
-test("Linux SafeStorage client reports Secret Service availability as an Effect value", async () => {
+test("Linux SafeStorage client reports unimplemented adapter as unavailable with unsupported operations", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
-      const availableStorage = yield* SafeStorage
-      const available = yield* availableStorage.isAvailable()
-      const unavailable = yield* makeLinuxSafeStorageClient(Effect.succeed(false)).isAvailable()
-      const setExit = yield* Effect.exit(
-        availableStorage.set("token", SecretValue.fromUtf8("secret"))
-      )
-      return { available, setExit, unavailable }
-    }).pipe(
-      Effect.provide(makeSafeStorageServiceLayer(makeLinuxSafeStorageClient(Effect.succeed(true))))
-    )
+      const storage = yield* SafeStorage
+      const available = yield* storage.isAvailable()
+      const setExit = yield* Effect.exit(storage.set("token", SecretValue.fromUtf8("secret")))
+      const getExit = yield* Effect.exit(storage.get("token"))
+      const deleteExit = yield* Effect.exit(storage.delete("token"))
+      const keys = yield* storage.list()
+      return { available, deleteExit, getExit, keys, setExit }
+    }).pipe(Effect.provide(makeSafeStorageServiceLayer(makeLinuxSafeStorageClient())))
   )
 
-  expect(result.available).toBe(true)
-  expect(result.unavailable).toBe(false)
+  expect(result.available).toBe(false)
+  expect(result.keys).toEqual([])
   expectExitFailure(
     result.setExit,
     (error) =>
@@ -2536,13 +2579,15 @@ test("Linux SafeStorage client reports Secret Service availability as an Effect 
       "reason" in error &&
       error.reason === "secret-service-adapter-unimplemented"
   )
+  expectExitFailure(result.getExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(result.deleteExit, (error) => hasErrorTag(error, "Unsupported"))
 })
 
 test("UpdaterApi declares the Phase 8 Updater method surface", () => {
   expect(UpdaterApi.tag).toBe("Updater")
   expect([...UpdaterMethodNames]).toEqual(expectedUpdaterMethods)
   expect(Object.keys(UpdaterApi.spec)).toEqual(expectedUpdaterMethods)
-  expect(Object.keys(UpdaterApi.events)).toEqual([])
+  expect(Object.keys(UpdaterApi.events)).toEqual(["PreparingRestart"])
 })
 
 test("Updater service delegates through a substitutable UpdaterClient port", async () => {
@@ -2614,7 +2659,9 @@ test("unsupported Updater client keeps consume-only status but defers install fl
       const status = yield* updater.getStatus()
       const downloadExit = yield* Effect.exit(updater.download())
       const restartExit = yield* Effect.exit(updater.installAndRestart())
-      return { check, downloadExit, restartExit, status }
+      const readyExit = yield* Effect.exit(updater.readyForRestart())
+      const prepareExit = yield* updater.onPreparingRestart().pipe(Stream.runHead, Effect.exit)
+      return { check, downloadExit, prepareExit, readyExit, restartExit, status }
     }).pipe(Effect.provide(makeUpdaterServiceLayer(makeUnsupportedUpdaterClient())))
   )
 
@@ -2622,6 +2669,27 @@ test("unsupported Updater client keeps consume-only status but defers install fl
   expect(result.status.state).toBe("idle")
   expectExitFailure(result.downloadExit, (error) => hasErrorTag(error, "Unsupported"))
   expectExitFailure(result.restartExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(result.readyExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(result.prepareExit, (error) => hasErrorTag(error, "Unsupported"))
+})
+
+test("Updater service exposes the restart readiness handshake", async () => {
+  const calls: string[] = []
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const updater = yield* Updater
+      const restartStatus = yield* updater.installAndRestart({ version: "1.1.0" })
+      const events = yield* updater.onPreparingRestart().pipe(Stream.take(1), Stream.runCollect)
+      yield* updater.readyForRestart()
+      return { events, restartStatus }
+    }).pipe(Effect.provide(makeUpdaterServiceLayer(updaterClient(calls))))
+  )
+
+  expect(result.restartStatus.state).toBe("installing")
+  expect(Array.from(result.events)).toEqual([
+    new UpdaterPreparingRestartEvent({ deadlineMs: 5_000 })
+  ])
+  expect(calls).toEqual(["installAndRestart:1.1.0", "readyForRestart"])
 })
 
 test("CrashReporterApi declares the Phase 8 CrashReporter method surface", () => {
@@ -3126,23 +3194,35 @@ test("SystemAppearance bridge client decodes nullable accent color and events", 
   ])
 })
 
-test("unsupported SystemAppearance client returns typed values, support checks, and failing event stream", async () => {
+test("unsupported SystemAppearance client fails reads and event stream as Unsupported", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const appearance = yield* SystemAppearance
-      const mode = yield* appearance.getAppearance()
-      const accent = yield* appearance.getAccentColor()
+      const modeExit = yield* Effect.exit(appearance.getAppearance())
+      const accentExit = yield* Effect.exit(appearance.getAccentColor())
+      const motionExit = yield* Effect.exit(appearance.getReducedMotion())
+      const transparencyExit = yield* Effect.exit(appearance.getReducedTransparency())
       const accentSupported = yield* appearance.isSupported("getAccentColor")
       const changeSupported = yield* appearance.isSupported("onAppearanceChanged")
       const eventExit = yield* appearance.onAppearanceChanged().pipe(Stream.runHead, Effect.exit)
-      return { accent, accentSupported, changeSupported, eventExit, mode }
+      return {
+        accentExit,
+        accentSupported,
+        changeSupported,
+        eventExit,
+        modeExit,
+        motionExit,
+        transparencyExit
+      }
     }).pipe(
       Effect.provide(makeSystemAppearanceServiceLayer(makeUnsupportedSystemAppearanceClient()))
     )
   )
 
-  expect(result.mode).toBe("light")
-  expect(result.accent).toBeNull()
+  expectExitFailure(result.modeExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(result.accentExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(result.motionExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(result.transparencyExit, (error) => hasErrorTag(error, "Unsupported"))
   expect(result.accentSupported).toBe(false)
   expect(result.changeSupported).toBe(false)
   expectExitFailure(result.eventExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -3306,22 +3386,43 @@ test("unsupported Dock client exposes support checks and typed command failures"
   expectExitFailure(result.exit, (error) => hasErrorTag(error, "Unsupported"))
 })
 
-test("Linux Dock client follows Appendix K partial and unsupported rows", async () => {
+test("Linux Dock client reports unimplemented partial methods as unsupported", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const dock = yield* Dock
       const badgeCountSupported = yield* dock.isSupported("setBadgeCount")
+      const progressSupported = yield* dock.isSupported("setProgress")
+      const attentionSupported = yield* dock.isSupported("requestAttention")
       const badgeTextSupported = yield* dock.isSupported("setBadgeText")
       const menuSupported = yield* dock.isSupported("setMenu")
+      const badgeCountExit = yield* Effect.exit(dock.setBadgeCount(1))
+      const progressExit = yield* Effect.exit(dock.setProgress(0.5))
+      const attentionExit = yield* Effect.exit(dock.requestAttention())
       const textExit = yield* Effect.exit(dock.setBadgeText("hi"))
       const menuExit = yield* Effect.exit(dock.setMenu(null))
-      return { badgeCountSupported, badgeTextSupported, menuExit, menuSupported, textExit }
+      return {
+        attentionExit,
+        attentionSupported,
+        badgeCountExit,
+        badgeCountSupported,
+        badgeTextSupported,
+        menuExit,
+        menuSupported,
+        progressExit,
+        progressSupported,
+        textExit
+      }
     }).pipe(Effect.provide(makeDockServiceLayer(makeLinuxDockClient())))
   )
 
-  expect(result.badgeCountSupported).toBe(true)
+  expect(result.badgeCountSupported).toBe(false)
+  expect(result.progressSupported).toBe(false)
+  expect(result.attentionSupported).toBe(false)
   expect(result.badgeTextSupported).toBe(false)
   expect(result.menuSupported).toBe(false)
+  expectExitFailure(result.badgeCountExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(result.progressExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(result.attentionExit, (error) => hasErrorTag(error, "Unsupported"))
   expectExitFailure(
     result.textExit,
     (error) =>
@@ -3850,8 +3951,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       height: 240,
       titleBarStyle: "hiddenInset",
       vibrancy: "windowBackground",
-      trafficLights: { x: 12, y: 13 },
-      persistState: true
+      trafficLights: { x: 12, y: 13 }
     })
     const duringLifetime = yield* registry.list()
     yield* window.close(created)
@@ -3892,6 +3992,29 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       }
     ]
   ])
+})
+
+test("Window.create rejects persistState until the persistence backend is implemented", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const apiExchange = makeWindowApiExchange(windowExchange(requests), registry)
+  const program = Effect.gen(function* () {
+    const window = yield* Window
+    return yield* Effect.exit(window.create({ persistState: true }))
+  }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(apiExchange))))
+
+  const exit = await Effect.runPromise(program)
+
+  expectExitFailure(
+    exit,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "operation" in error &&
+      error.operation === "Window.create persistState"
+  )
+  expect(requests).toEqual([])
 })
 
 test("AppEventRouter sends firstResponder events to the focused window only", async () => {
@@ -4085,6 +4208,43 @@ test("host WindowClient adapter returns typed failures for invalid input and bad
     repeatedCloseExit,
     (error) => error instanceof HostProtocolStaleHandleError && error.operation === "Window.close"
   )
+})
+
+test("host WindowClient adapter reports unimplemented public methods as Unsupported", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const apiExchange = makeWindowApiExchange(windowExchange([]), registry)
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* WindowClient
+    }).pipe(Effect.provide(makeWindowBridgeClientLayer(apiExchange)))
+  )
+
+  const created = await Effect.runPromise(client.create({}))
+  const exits = await Effect.runPromise(
+    Effect.gen(function* () {
+      return {
+        show: yield* Effect.exit(client.show(created)),
+        hide: yield* Effect.exit(client.hide(created)),
+        focus: yield* Effect.exit(client.focus(created)),
+        setVibrancy: yield* Effect.exit(client.setVibrancy(created, "appearance-based")),
+        persistState: yield* Effect.exit(client.persistState(created))
+      }
+    })
+  )
+
+  expectExitFailure(
+    exits.show,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "operation" in error &&
+      error.operation === "Window.show"
+  )
+  expectExitFailure(exits.hide, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(exits.focus, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(exits.setVibrancy, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(exits.persistState, (error) => hasErrorTag(error, "Unsupported"))
 })
 
 test("Window bridge client rejects invalid chrome inputs before crossing the host boundary", async () => {
@@ -4478,7 +4638,12 @@ const trayClient = (calls: string[]): TrayClientApi => ({
   setMenu: (tray, menu) => recordVoid(calls, `setMenu:${tray.id}:${menu.items.length}`),
   destroy: (tray) => recordVoid(calls, `destroy:${tray.id}`),
   onActivated: () =>
-    Stream.make(new TrayActivatedEvent({ tray: trayHandle, ownerWindowId: "window-1" }))
+    Stream.make(new TrayActivatedEvent({ tray: trayHandle, ownerWindowId: "window-1" })),
+  isSupported: () =>
+    Effect.sync(() => {
+      calls.push("isSupported")
+      return new TraySupportedResult({ supported: true })
+    })
 })
 
 const globalShortcutClient = (calls: string[]): GlobalShortcutClientApi => ({
@@ -4591,7 +4756,12 @@ const clipboardClient = (calls: string[]): ClipboardClientApi => ({
       return new ClipboardImage({ mime: "image/png", bytes: pngBytes })
     }),
   writeImage: (input) => recordVoid(calls, `writeImage:${input.mime}:${input.bytes.length}`),
-  clear: () => recordVoid(calls, "clear")
+  clear: () => recordVoid(calls, "clear"),
+  isSupported: (capability) =>
+    Effect.sync(() => {
+      calls.push(`isSupported:${capability}`)
+      return new ClipboardSupportedResult({ supported: true })
+    })
 })
 
 const notificationClient = (calls: string[]): NotificationClientApi => ({
@@ -4707,7 +4877,9 @@ const updaterClient = (calls: string[]): UpdaterClientApi => ({
     Effect.sync(() => {
       calls.push("getStatus")
       return new UpdaterStatusResult({ state: "update-available", version: "1.1.0" })
-    })
+    }),
+  readyForRestart: () => recordVoid(calls, "readyForRestart"),
+  onPreparingRestart: () => Stream.make(new UpdaterPreparingRestartEvent({ deadlineMs: 5_000 }))
 })
 
 const updaterStatus = (

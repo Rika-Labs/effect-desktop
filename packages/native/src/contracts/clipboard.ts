@@ -15,3 +15,19 @@ export class ClipboardImage extends Schema.Class<ClipboardImage>("ClipboardImage
 }) {}
 
 export type ClipboardImageOptions = Schema.Schema.Type<typeof ClipboardImage>
+
+export const ClipboardCapability = Schema.Literals(["text", "image"])
+
+export type ClipboardCapability = Schema.Schema.Type<typeof ClipboardCapability>
+
+export class ClipboardIsSupportedInput extends Schema.Class<ClipboardIsSupportedInput>(
+  "ClipboardIsSupportedInput"
+)({
+  capability: ClipboardCapability
+}) {}
+
+export class ClipboardSupportedResult extends Schema.Class<ClipboardSupportedResult>(
+  "ClipboardSupportedResult"
+)({
+  supported: Schema.Boolean
+}) {}

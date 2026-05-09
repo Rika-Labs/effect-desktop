@@ -13,13 +13,14 @@ import {
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Schema } from "effect"
+import { Context, Effect, Layer, Option, Schema, Stream } from "effect"
 
 import {
   UpdaterCheckInput,
   UpdaterCheckResult,
   UpdaterDownloadInput,
   UpdaterInstallInput,
+  UpdaterPreparingRestartEvent,
   UpdaterStatusResult
 } from "./contracts/updater.js"
 
@@ -61,12 +62,20 @@ export const UpdaterApiSpec = Object.freeze({
     output: UpdaterStatusResult,
     error: HostProtocolErrorSchema,
     permission: "native.invoke:Updater.getStatus"
+  },
+  readyForRestart: {
+    input: Schema.Void,
+    output: Schema.Void,
+    error: HostProtocolErrorSchema,
+    permission: "native.invoke:Updater.readyForRestart"
   }
 }) satisfies ApiContractSpec
 
 export type UpdaterApiSpec = typeof UpdaterApiSpec
 
-export const UpdaterApiEvents = Object.freeze({})
+export const UpdaterApiEvents = Object.freeze({
+  PreparingRestart: { payload: UpdaterPreparingRestartEvent }
+})
 
 export type UpdaterApiEvents = typeof UpdaterApiEvents
 
@@ -117,6 +126,12 @@ export interface UpdaterClientApi {
     options?: UpdaterInstallOptions
   ) => Effect.Effect<UpdaterStatusResult, UpdaterError, never>
   readonly getStatus: () => Effect.Effect<UpdaterStatusResult, UpdaterError, never>
+  readonly readyForRestart: () => Effect.Effect<void, UpdaterError, never>
+  readonly onPreparingRestart: () => Stream.Stream<
+    UpdaterPreparingRestartEvent,
+    UpdaterError,
+    never
+  >
 }
 
 export class UpdaterClient extends Context.Service<UpdaterClient, UpdaterClientApi>()(
@@ -137,7 +152,9 @@ export const UpdaterLive = Layer.effect(Updater)(
       download: (options) => client.download(options),
       install: (options) => client.install(options),
       installAndRestart: (options) => client.installAndRestart(options),
-      getStatus: () => client.getStatus()
+      getStatus: () => client.getStatus(),
+      readyForRestart: () => client.readyForRestart(),
+      onPreparingRestart: () => client.onPreparingRestart()
     } satisfies UpdaterServiceApi)
   })
 )
@@ -176,7 +193,9 @@ const makeUpdaterBridgeClient = (
       decodeUpdaterInstallInput(input, "Updater.installAndRestart").pipe(
         Effect.flatMap(client.installAndRestart)
       ),
-    getStatus: () => client.getStatus()
+    getStatus: () => client.getStatus(),
+    readyForRestart: () => client.readyForRestart(),
+    onPreparingRestart: () => client.events.PreparingRestart
   } satisfies UpdaterClientApi)
 }
 
@@ -235,12 +254,17 @@ const formatUnknownError = (error: unknown): string => {
 export const makeUnsupportedUpdaterClient = (): UpdaterClientApi => {
   const unsupportedEffect = <A>(method: string): Effect.Effect<A, UpdaterError, never> =>
     Effect.fail(unsupportedError(method))
+  const unsupportedStream = <A>(method: string): Stream.Stream<A, UpdaterError, never> =>
+    Stream.fail(unsupportedError(method))
   return Object.freeze({
     check: () => Effect.succeed(new UpdaterCheckResult({ available: false })),
     download: () => unsupportedEffect<UpdaterStatusResult>("Updater.download"),
     install: () => unsupportedEffect<UpdaterStatusResult>("Updater.install"),
     installAndRestart: () => unsupportedEffect<UpdaterStatusResult>("Updater.installAndRestart"),
-    getStatus: () => Effect.succeed(new UpdaterStatusResult({ state: "idle" }))
+    getStatus: () => Effect.succeed(new UpdaterStatusResult({ state: "idle" })),
+    readyForRestart: () => unsupportedEffect<void>("Updater.readyForRestart"),
+    onPreparingRestart: () =>
+      unsupportedStream<UpdaterPreparingRestartEvent>("Updater.PreparingRestart")
   } satisfies UpdaterClientApi)
 }
 

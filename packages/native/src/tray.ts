@@ -25,7 +25,8 @@ import {
   TrayResource,
   TraySetIconInput,
   TraySetMenuInput,
-  TraySetTooltipInput
+  TraySetTooltipInput,
+  TraySupportedResult
 } from "./contracts/tray.js"
 import type { MenuTemplateOptions } from "./menu.js"
 
@@ -43,7 +44,13 @@ export const TrayApiSpec = Object.freeze({
   setIcon: trayMethodSpec(TraySetIconInput, "native.invoke:Tray.setIcon"),
   setTooltip: trayMethodSpec(TraySetTooltipInput, "native.invoke:Tray.setTooltip"),
   setMenu: trayMethodSpec(TraySetMenuInput, "native.invoke:Tray.setMenu"),
-  destroy: trayMethodSpec(TrayDestroyInput, "native.invoke:Tray.destroy")
+  destroy: trayMethodSpec(TrayDestroyInput, "native.invoke:Tray.destroy"),
+  isSupported: {
+    input: Schema.Void,
+    output: TraySupportedResult,
+    error: HostProtocolErrorSchema,
+    permission: "none"
+  }
 }) satisfies ApiContractSpec
 
 export type TrayApiSpec = typeof TrayApiSpec
@@ -101,13 +108,16 @@ export interface TrayClientApi {
   ) => Effect.Effect<void, TrayError, never>
   readonly destroy: (tray: TrayHandle) => Effect.Effect<void, TrayError, never>
   readonly onActivated: () => Stream.Stream<TrayActivatedEvent, TrayError, never>
+  readonly isSupported: () => Effect.Effect<TraySupportedResult, TrayError, never>
 }
 
 export class TrayClient extends Context.Service<TrayClient, TrayClientApi>()(
   "@effect-desktop/native/TrayClient"
 ) {}
 
-export type TrayServiceApi = TrayClientApi
+export interface TrayServiceApi extends Omit<TrayClientApi, "isSupported"> {
+  readonly isSupported: () => Effect.Effect<boolean, TrayError, never>
+}
 
 export class Tray extends Context.Service<Tray, TrayServiceApi>()("@effect-desktop/native/Tray") {}
 
@@ -120,7 +130,8 @@ export const TrayLive = Layer.effect(Tray)(
       setTooltip: (tray, tooltip) => client.setTooltip(tray, tooltip),
       setMenu: (tray, menu) => client.setMenu(tray, menu),
       destroy: (tray) => client.destroy(tray),
-      onActivated: () => client.onActivated()
+      onActivated: () => client.onActivated(),
+      isSupported: () => client.isSupported().pipe(Effect.map((result) => result.supported))
     } satisfies TrayServiceApi)
   })
 )
@@ -161,7 +172,8 @@ const makeTrayBridgeClient = (
         Effect.flatMap(client.setMenu)
       ),
     destroy: (tray) => client.destroy(new TrayDestroyInput({ tray: toTrayHandle(tray) })),
-    onActivated: () => client.events.Activated
+    onActivated: () => client.events.Activated,
+    isSupported: () => client.isSupported()
   }
 
   return Object.freeze(trayClient)
@@ -179,7 +191,8 @@ export const makeUnsupportedTrayClient = (): TrayClientApi => {
     setTooltip: () => unsupportedEffect<void>("Tray.setTooltip"),
     setMenu: () => unsupportedEffect<void>("Tray.setMenu"),
     destroy: () => unsupportedEffect<void>("Tray.destroy"),
-    onActivated: () => unsupportedStream<TrayActivatedEvent>("Tray.Activated")
+    onActivated: () => unsupportedStream<TrayActivatedEvent>("Tray.Activated"),
+    isSupported: () => Effect.succeed(new TraySupportedResult({ supported: false }))
   }
 
   return Object.freeze(client)

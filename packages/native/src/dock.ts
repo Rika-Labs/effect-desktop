@@ -209,13 +209,7 @@ export const makeLinuxDockClient = (): DockClientApi => {
         "Dock.requestAttention",
         "window-manager attention API is not connected yet"
       ),
-    isSupported: (method) =>
-      Effect.succeed(
-        new DockSupportedResult({
-          supported:
-            method === "setBadgeCount" || method === "setProgress" || method === "requestAttention"
-        })
-      )
+    isSupported: () => Effect.succeed(new DockSupportedResult({ supported: false }))
   } satisfies DockClientApi)
 }
 
