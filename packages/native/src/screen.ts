@@ -14,7 +14,14 @@ import {
 } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 
-import { ScreenDisplay, ScreenDisplaysResult, ScreenPoint } from "./contracts/screen.js"
+import {
+  ScreenDisplay,
+  ScreenDisplaysResult,
+  ScreenIsSupportedInput,
+  type ScreenMethod,
+  ScreenPoint,
+  ScreenSupportedResult
+} from "./contracts/screen.js"
 
 export type ScreenError = HostProtocolError
 
@@ -33,7 +40,13 @@ export const ScreenApiSpec = Object.freeze({
     Schema.Void,
     ScreenPoint,
     "native.invoke:Screen.getPointerPoint"
-  )
+  ),
+  isSupported: {
+    input: ScreenIsSupportedInput,
+    output: ScreenSupportedResult,
+    error: HostProtocolErrorSchema,
+    permission: "none"
+  }
 }) satisfies ApiContractSpec
 
 export type ScreenApiSpec = typeof ScreenApiSpec
@@ -79,6 +92,9 @@ export interface ScreenClientApi {
   readonly getDisplays: () => Effect.Effect<ScreenDisplaysResult, ScreenError, never>
   readonly getPrimaryDisplay: () => Effect.Effect<ScreenDisplay, ScreenError, never>
   readonly getPointerPoint: () => Effect.Effect<ScreenPoint, ScreenError, never>
+  readonly isSupported: (
+    method: ScreenMethod
+  ) => Effect.Effect<ScreenSupportedResult, ScreenError, never>
 }
 
 export class ScreenClient extends Context.Service<ScreenClient, ScreenClientApi>()(
@@ -89,6 +105,7 @@ export interface ScreenServiceApi {
   readonly getDisplays: () => Effect.Effect<ReadonlyArray<ScreenDisplay>, ScreenError, never>
   readonly getPrimaryDisplay: () => Effect.Effect<ScreenDisplay, ScreenError, never>
   readonly getPointerPoint: () => Effect.Effect<ScreenPoint, ScreenError, never>
+  readonly isSupported: (method: ScreenMethod) => Effect.Effect<boolean, ScreenError, never>
 }
 
 export class Screen extends Context.Service<Screen, ScreenServiceApi>()(
@@ -101,7 +118,9 @@ export const ScreenLive = Layer.effect(Screen)(
     return Object.freeze({
       getDisplays: () => client.getDisplays().pipe(Effect.map((result) => result.displays)),
       getPrimaryDisplay: () => client.getPrimaryDisplay(),
-      getPointerPoint: () => client.getPointerPoint()
+      getPointerPoint: () => client.getPointerPoint(),
+      isSupported: (method) =>
+        client.isSupported(method).pipe(Effect.map((result) => result.supported))
     } satisfies ScreenServiceApi)
   })
 )
@@ -130,7 +149,8 @@ const makeScreenBridgeClient = (
   return Object.freeze({
     getDisplays: () => client.getDisplays(),
     getPrimaryDisplay: () => client.getPrimaryDisplay(),
-    getPointerPoint: () => client.getPointerPoint()
+    getPointerPoint: () => client.getPointerPoint(),
+    isSupported: (method) => client.isSupported(new ScreenIsSupportedInput({ method }))
   } satisfies ScreenClientApi)
 }
 
@@ -140,7 +160,8 @@ export const makeUnsupportedScreenClient = (): ScreenClientApi => {
   return Object.freeze({
     getDisplays: () => unsupportedEffect<ScreenDisplaysResult>("Screen.getDisplays"),
     getPrimaryDisplay: () => unsupportedEffect<ScreenDisplay>("Screen.getPrimaryDisplay"),
-    getPointerPoint: () => unsupportedEffect<ScreenPoint>("Screen.getPointerPoint")
+    getPointerPoint: () => unsupportedEffect<ScreenPoint>("Screen.getPointerPoint"),
+    isSupported: () => Effect.succeed(new ScreenSupportedResult({ supported: false }))
   } satisfies ScreenClientApi)
 }
 

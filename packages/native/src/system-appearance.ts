@@ -19,8 +19,11 @@ import {
   SystemAppearanceAccentColorResult,
   SystemAppearanceBooleanResult,
   SystemAppearanceChangedEvent,
+  SystemAppearanceIsSupportedInput,
+  type SystemAppearanceMethod,
   type SystemAppearanceMode,
-  SystemAppearanceResult
+  SystemAppearanceResult,
+  SystemAppearanceSupportedResult
 } from "./contracts/system-appearance.js"
 
 export type SystemAppearanceError = HostProtocolError
@@ -45,7 +48,13 @@ export const SystemAppearanceApiSpec = Object.freeze({
     Schema.Void,
     SystemAppearanceBooleanResult,
     "native.invoke:SystemAppearance.getReducedTransparency"
-  )
+  ),
+  isSupported: {
+    input: SystemAppearanceIsSupportedInput,
+    output: SystemAppearanceSupportedResult,
+    error: HostProtocolErrorSchema,
+    permission: "none"
+  }
 }) satisfies ApiContractSpec
 
 export type SystemAppearanceApiSpec = typeof SystemAppearanceApiSpec
@@ -122,6 +131,9 @@ export interface SystemAppearanceClientApi {
     SystemAppearanceError,
     never
   >
+  readonly isSupported: (
+    method: SystemAppearanceMethod
+  ) => Effect.Effect<SystemAppearanceSupportedResult, SystemAppearanceError, never>
 }
 
 export class SystemAppearanceClient extends Context.Service<
@@ -143,6 +155,9 @@ export interface SystemAppearanceServiceApi {
     SystemAppearanceError,
     never
   >
+  readonly isSupported: (
+    method: SystemAppearanceMethod
+  ) => Effect.Effect<boolean, SystemAppearanceError, never>
 }
 
 export class SystemAppearance extends Context.Service<
@@ -160,7 +175,9 @@ export const SystemAppearanceLive = Layer.effect(SystemAppearance)(
         client.getReducedMotion().pipe(Effect.map((result) => result.enabled)),
       getReducedTransparency: () =>
         client.getReducedTransparency().pipe(Effect.map((result) => result.enabled)),
-      onAppearanceChanged: () => client.onAppearanceChanged()
+      onAppearanceChanged: () => client.onAppearanceChanged(),
+      isSupported: (method) =>
+        client.isSupported(method).pipe(Effect.map((result) => result.supported))
     } satisfies SystemAppearanceServiceApi)
   })
 )
@@ -201,7 +218,8 @@ const makeSystemAppearanceBridgeClient = (
     getAccentColor: () => client.getAccentColor(),
     getReducedMotion: () => client.getReducedMotion(),
     getReducedTransparency: () => client.getReducedTransparency(),
-    onAppearanceChanged: () => client.events.AppearanceChanged
+    onAppearanceChanged: () => client.events.AppearanceChanged,
+    isSupported: (method) => client.isSupported(new SystemAppearanceIsSupportedInput({ method }))
   } satisfies SystemAppearanceClientApi)
 }
 
@@ -215,7 +233,8 @@ export const makeUnsupportedSystemAppearanceClient = (): SystemAppearanceClientA
     getReducedTransparency: () =>
       Effect.succeed(new SystemAppearanceBooleanResult({ enabled: false })),
     onAppearanceChanged: () =>
-      unsupportedStream<SystemAppearanceChangedEvent>("SystemAppearance.AppearanceChanged")
+      unsupportedStream<SystemAppearanceChangedEvent>("SystemAppearance.AppearanceChanged"),
+    isSupported: () => Effect.succeed(new SystemAppearanceSupportedResult({ supported: false }))
   } satisfies SystemAppearanceClientApi)
 }
 

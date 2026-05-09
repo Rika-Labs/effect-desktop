@@ -116,6 +116,7 @@ import {
   ScreenLive,
   ScreenMethodNames,
   ScreenPoint,
+  ScreenSupportedResult,
   Shell,
   ShellApi,
   ShellLive,
@@ -129,6 +130,7 @@ import {
   SystemAppearanceLive,
   SystemAppearanceMethodNames,
   SystemAppearanceResult,
+  SystemAppearanceSupportedResult,
   Tray,
   TrayActivatedEvent,
   TrayApi,
@@ -385,12 +387,13 @@ const expectedCrashReporterMethods: Array<(typeof CrashReporterMethodNames)[numb
   "setUploadHandler"
 ]
 
-const expectedPowerMonitorMethods: Array<(typeof PowerMonitorMethodNames)[number]> = []
+const expectedPowerMonitorMethods: Array<(typeof PowerMonitorMethodNames)[number]> = ["isSupported"]
 
 const expectedScreenMethods: Array<(typeof ScreenMethodNames)[number]> = [
   "getDisplays",
   "getPrimaryDisplay",
-  "getPointerPoint"
+  "getPointerPoint",
+  "isSupported"
 ]
 
 const expectedShellMethods: Array<(typeof ShellMethodNames)[number]> = [
@@ -404,7 +407,8 @@ const expectedSystemAppearanceMethods: Array<(typeof SystemAppearanceMethodNames
   "getAppearance",
   "getAccentColor",
   "getReducedMotion",
-  "getReducedTransparency"
+  "getReducedTransparency",
+  "isSupported"
 ]
 
 const expectedTrayMethods: Array<(typeof TrayMethodNames)[number]> = [
@@ -2923,7 +2927,8 @@ test("Screen service delegates through a substitutable ScreenClient port", async
       return {
         displays: yield* screen.getDisplays(),
         primary: yield* screen.getPrimaryDisplay(),
-        pointer: yield* screen.getPointerPoint()
+        pointer: yield* screen.getPointerPoint(),
+        pointerSupported: yield* screen.isSupported("getPointerPoint")
       }
     }).pipe(Effect.provide(makeScreenServiceLayer(screenClient(calls))))
   )
@@ -2931,7 +2936,13 @@ test("Screen service delegates through a substitutable ScreenClient port", async
   expect(result.displays).toEqual([primaryDisplay])
   expect(result.primary).toEqual(primaryDisplay)
   expect(result.pointer).toEqual(new ScreenPoint({ x: 12, y: 34 }))
-  expect(calls).toEqual(["getDisplays", "getPrimaryDisplay", "getPointerPoint"])
+  expect(result.pointerSupported).toBe(true)
+  expect(calls).toEqual([
+    "getDisplays",
+    "getPrimaryDisplay",
+    "getPointerPoint",
+    "isSupported:getPointerPoint"
+  ])
 })
 
 test("Screen bridge client sends typed host envelopes and decodes values", async () => {
@@ -2943,7 +2954,9 @@ test("Screen bridge client sends typed host envelopes and decodes values", async
         ? { displays: [primaryDisplay] }
         : request.method === "Screen.getPrimaryDisplay"
           ? primaryDisplay
-          : { x: 12, y: 34 }
+          : request.method === "Screen.isSupported"
+            ? { supported: true }
+            : { x: 12, y: 34 }
   }))
 
   const result = await Effect.runPromise(
@@ -2952,7 +2965,8 @@ test("Screen bridge client sends typed host envelopes and decodes values", async
       return {
         displays: yield* screen.getDisplays(),
         primary: yield* screen.getPrimaryDisplay(),
-        pointer: yield* screen.getPointerPoint()
+        pointer: yield* screen.getPointerPoint(),
+        pointerSupported: yield* screen.isSupported("getPointerPoint")
       }
     }).pipe(Effect.provide(Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange))))
   )
@@ -2960,22 +2974,27 @@ test("Screen bridge client sends typed host envelopes and decodes values", async
   expect(result.displays).toEqual([primaryDisplay])
   expect(result.primary).toMatchObject(primaryDisplay)
   expect(result.pointer).toEqual(new ScreenPoint({ x: 12, y: 34 }))
+  expect(result.pointerSupported).toBe(true)
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     ["Screen.getDisplays", undefined],
     ["Screen.getPrimaryDisplay", undefined],
-    ["Screen.getPointerPoint", undefined]
+    ["Screen.getPointerPoint", undefined],
+    ["Screen.isSupported", { method: "getPointerPoint" }]
   ])
 })
 
-test("unsupported Screen client reports deferred host methods as Effect values", async () => {
-  const exit = await Effect.runPromise(
+test("unsupported Screen client exposes support checks and typed method failures", async () => {
+  const result = await Effect.runPromise(
     Effect.gen(function* () {
       const screen = yield* Screen
-      return yield* Effect.exit(screen.getDisplays())
+      const supported = yield* screen.isSupported("getPointerPoint")
+      const exit = yield* Effect.exit(screen.getDisplays())
+      return { exit, supported }
     }).pipe(Effect.provide(makeScreenServiceLayer(makeUnsupportedScreenClient())))
   )
 
-  expectExitFailure(exit, (error) => hasErrorTag(error, "Unsupported"))
+  expect(result.supported).toBe(false)
+  expectExitFailure(result.exit, (error) => hasErrorTag(error, "Unsupported"))
 })
 
 test("SystemAppearanceApi declares the Phase 8 SystemAppearance method and event surface", () => {
@@ -2995,7 +3014,9 @@ test("SystemAppearance service maps result wrappers to public values", async () 
         accent: yield* appearance.getAccentColor(),
         motion: yield* appearance.getReducedMotion(),
         transparency: yield* appearance.getReducedTransparency(),
-        changed: yield* appearance.onAppearanceChanged().pipe(Stream.take(1), Stream.runCollect)
+        changed: yield* appearance.onAppearanceChanged().pipe(Stream.take(1), Stream.runCollect),
+        accentSupported: yield* appearance.isSupported("getAccentColor"),
+        changeSupported: yield* appearance.isSupported("onAppearanceChanged")
       }
     }).pipe(Effect.provide(makeSystemAppearanceServiceLayer(systemAppearanceClient(calls))))
   )
@@ -3004,6 +3025,8 @@ test("SystemAppearance service maps result wrappers to public values", async () 
   expect(result.accent).toEqual(accentColor)
   expect(result.motion).toBe(true)
   expect(result.transparency).toBe(false)
+  expect(result.accentSupported).toBe(true)
+  expect(result.changeSupported).toBe(true)
   expect(Array.from(result.changed)).toEqual([
     new SystemAppearanceChangedEvent({ appearance: "highContrast" })
   ])
@@ -3011,7 +3034,9 @@ test("SystemAppearance service maps result wrappers to public values", async () 
     "getAppearance",
     "getAccentColor",
     "getReducedMotion",
-    "getReducedTransparency"
+    "getReducedTransparency",
+    "isSupported:getAccentColor",
+    "isSupported:onAppearanceChanged"
   ])
 })
 
@@ -3024,7 +3049,9 @@ test("SystemAppearance bridge client decodes nullable accent color and events", 
         ? { appearance: "dark" }
         : request.method === "SystemAppearance.getAccentColor"
           ? { color: null }
-          : { enabled: request.method === "SystemAppearance.getReducedMotion" }
+          : request.method === "SystemAppearance.isSupported"
+            ? { supported: true }
+            : { enabled: request.method === "SystemAppearance.getReducedMotion" }
   }))
 
   const result = await Effect.runPromise(
@@ -3035,7 +3062,8 @@ test("SystemAppearance bridge client decodes nullable accent color and events", 
         accent: yield* appearance.getAccentColor(),
         motion: yield* appearance.getReducedMotion(),
         transparency: yield* appearance.getReducedTransparency(),
-        changed: yield* appearance.onAppearanceChanged().pipe(Stream.take(1), Stream.runCollect)
+        changed: yield* appearance.onAppearanceChanged().pipe(Stream.take(1), Stream.runCollect),
+        accentSupported: yield* appearance.isSupported("getAccentColor")
       }
     }).pipe(
       Effect.provide(
@@ -3048,6 +3076,7 @@ test("SystemAppearance bridge client decodes nullable accent color and events", 
   expect(result.accent).toBeNull()
   expect(result.motion).toBe(true)
   expect(result.transparency).toBe(false)
+  expect(result.accentSupported).toBe(true)
   expect(Array.from(result.changed)).toEqual([
     new SystemAppearanceChangedEvent({ appearance: "highContrast" })
   ])
@@ -3055,18 +3084,21 @@ test("SystemAppearance bridge client decodes nullable accent color and events", 
     "SystemAppearance.getAppearance",
     "SystemAppearance.getAccentColor",
     "SystemAppearance.getReducedMotion",
-    "SystemAppearance.getReducedTransparency"
+    "SystemAppearance.getReducedTransparency",
+    "SystemAppearance.isSupported"
   ])
 })
 
-test("unsupported SystemAppearance client returns typed values and failing event stream", async () => {
+test("unsupported SystemAppearance client returns typed values, support checks, and failing event stream", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const appearance = yield* SystemAppearance
       const mode = yield* appearance.getAppearance()
       const accent = yield* appearance.getAccentColor()
+      const accentSupported = yield* appearance.isSupported("getAccentColor")
+      const changeSupported = yield* appearance.isSupported("onAppearanceChanged")
       const eventExit = yield* appearance.onAppearanceChanged().pipe(Stream.runHead, Effect.exit)
-      return { accent, eventExit, mode }
+      return { accent, accentSupported, changeSupported, eventExit, mode }
     }).pipe(
       Effect.provide(makeSystemAppearanceServiceLayer(makeUnsupportedSystemAppearanceClient()))
     )
@@ -3074,13 +3106,15 @@ test("unsupported SystemAppearance client returns typed values and failing event
 
   expect(result.mode).toBe("light")
   expect(result.accent).toBeNull()
+  expect(result.accentSupported).toBe(false)
+  expect(result.changeSupported).toBe(false)
   expectExitFailure(result.eventExit, (error) => hasErrorTag(error, "Unsupported"))
 })
 
 test("PowerMonitorApi declares the Phase 8 event-only surface", () => {
   expect(PowerMonitorApi.tag).toBe("PowerMonitor")
   expect([...PowerMonitorMethodNames]).toEqual(expectedPowerMonitorMethods)
-  expect(Object.keys(PowerMonitorApi.spec)).toEqual([])
+  expect(Object.keys(PowerMonitorApi.spec)).toEqual(expectedPowerMonitorMethods)
   expect(Object.keys(PowerMonitorApi.events)).toEqual([
     "Suspend",
     "Resume",
@@ -3097,7 +3131,8 @@ test("PowerMonitor bridge client decodes power event streams", async () => {
         suspend: yield* power.onSuspend().pipe(Stream.take(1), Stream.runCollect),
         resume: yield* power.onResume().pipe(Stream.take(1), Stream.runCollect),
         shutdown: yield* power.onShutdown().pipe(Stream.take(1), Stream.runCollect),
-        source: yield* power.onPowerSourceChanged().pipe(Stream.take(1), Stream.runCollect)
+        source: yield* power.onPowerSourceChanged().pipe(Stream.take(1), Stream.runCollect),
+        sourceSupported: yield* power.isSupported("onPowerSourceChanged")
       }
     }).pipe(
       Effect.provide(
@@ -3112,17 +3147,21 @@ test("PowerMonitor bridge client decodes power event streams", async () => {
   expect(Array.from(result.source)).toEqual([
     new PowerMonitorSourceChangedEvent({ source: "battery" })
   ])
+  expect(result.sourceSupported).toBe(true)
 })
 
-test("unsupported PowerMonitor client reports deferred event streams as Effect values", async () => {
-  const exit = await Effect.runPromise(
+test("unsupported PowerMonitor client exposes support checks and typed event stream failures", async () => {
+  const result = await Effect.runPromise(
     Effect.gen(function* () {
       const power = yield* PowerMonitor
-      return yield* power.onSuspend().pipe(Stream.runHead, Effect.exit)
+      const supported = yield* power.isSupported("onPowerSourceChanged")
+      const exit = yield* power.onSuspend().pipe(Stream.runHead, Effect.exit)
+      return { exit, supported }
     }).pipe(Effect.provide(makePowerMonitorServiceLayer(makeUnsupportedPowerMonitorClient())))
   )
 
-  expectExitFailure(exit, (error) => hasErrorTag(error, "Unsupported"))
+  expect(result.supported).toBe(false)
+  expectExitFailure(result.exit, (error) => hasErrorTag(error, "Unsupported"))
 })
 
 test("DockApi declares the Phase 8 Dock method surface", () => {
@@ -4642,6 +4681,11 @@ const screenClient = (calls: string[]): ScreenClientApi => ({
     Effect.sync(() => {
       calls.push("getPointerPoint")
       return new ScreenPoint({ x: 12, y: 34 })
+    }),
+  isSupported: (method) =>
+    Effect.sync(() => {
+      calls.push(`isSupported:${method}`)
+      return new ScreenSupportedResult({ supported: true })
     })
 })
 
@@ -4667,7 +4711,12 @@ const systemAppearanceClient = (calls: string[]): SystemAppearanceClientApi => (
       return new SystemAppearanceBooleanResult({ enabled: false })
     }),
   onAppearanceChanged: () =>
-    Stream.make(new SystemAppearanceChangedEvent({ appearance: "highContrast" }))
+    Stream.make(new SystemAppearanceChangedEvent({ appearance: "highContrast" })),
+  isSupported: (method) =>
+    Effect.sync(() => {
+      calls.push(`isSupported:${method}`)
+      return new SystemAppearanceSupportedResult({ supported: true })
+    })
 })
 
 const dockClient = (calls: string[]): DockClientApi => ({
@@ -5019,7 +5068,10 @@ const systemAppearanceExchange = (
 })
 
 const powerMonitorExchange = (): ApiClientExchange => ({
-  request: () => Effect.die("PowerMonitor has no request methods"),
+  request: (request) =>
+    request.method === "PowerMonitor.isSupported"
+      ? Effect.succeed({ kind: "success", payload: { supported: true } })
+      : Effect.die(`unexpected PowerMonitor request: ${request.method}`),
   subscribe: (method) =>
     method === "PowerMonitor.Suspend"
       ? Stream.make(

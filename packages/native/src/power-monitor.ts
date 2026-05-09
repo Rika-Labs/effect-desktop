@@ -8,21 +8,32 @@ import {
   type ApiContractSpec,
   type ApiHandlers,
   type ApiLayer,
+  HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Option, Stream } from "effect"
 
 import {
+  PowerMonitorIsSupportedInput,
+  type PowerMonitorMethod,
   PowerMonitorResumeEvent,
   PowerMonitorShutdownEvent,
   PowerMonitorSourceChangedEvent,
+  PowerMonitorSupportedResult,
   PowerMonitorSuspendEvent
 } from "./contracts/power-monitor.js"
 
 export type PowerMonitorError = HostProtocolError
 
-export const PowerMonitorApiSpec = Object.freeze({}) satisfies ApiContractSpec
+export const PowerMonitorApiSpec = Object.freeze({
+  isSupported: {
+    input: PowerMonitorIsSupportedInput,
+    output: PowerMonitorSupportedResult,
+    error: HostProtocolErrorSchema,
+    permission: "none"
+  }
+}) satisfies ApiContractSpec
 
 export type PowerMonitorApiSpec = typeof PowerMonitorApiSpec
 
@@ -72,7 +83,9 @@ export const registerPowerMonitorApi = (): Effect.Effect<
     return yield* Api.Tag("PowerMonitor")<unknown>()(PowerMonitorApiSpec, PowerMonitorApiEvents)
   })
 
-export const PowerMonitorMethodNames = Object.freeze([] as ReadonlyArray<keyof PowerMonitorApiSpec>)
+export const PowerMonitorMethodNames = Object.freeze(
+  Object.keys(PowerMonitorApiSpec) as ReadonlyArray<keyof PowerMonitorApiSpec>
+)
 
 export interface PowerMonitorClientApi {
   readonly onSuspend: () => Stream.Stream<PowerMonitorSuspendEvent, PowerMonitorError, never>
@@ -83,6 +96,9 @@ export interface PowerMonitorClientApi {
     PowerMonitorError,
     never
   >
+  readonly isSupported: (
+    method: PowerMonitorMethod
+  ) => Effect.Effect<PowerMonitorSupportedResult, PowerMonitorError, never>
 }
 
 export class PowerMonitorClient extends Context.Service<
@@ -90,7 +106,11 @@ export class PowerMonitorClient extends Context.Service<
   PowerMonitorClientApi
 >()("@effect-desktop/native/PowerMonitorClient") {}
 
-export type PowerMonitorServiceApi = PowerMonitorClientApi
+export interface PowerMonitorServiceApi extends Omit<PowerMonitorClientApi, "isSupported"> {
+  readonly isSupported: (
+    method: PowerMonitorMethod
+  ) => Effect.Effect<boolean, PowerMonitorError, never>
+}
 
 export class PowerMonitor extends Context.Service<PowerMonitor, PowerMonitorServiceApi>()(
   "@effect-desktop/native/PowerMonitor"
@@ -103,7 +123,9 @@ export const PowerMonitorLive = Layer.effect(PowerMonitor)(
       onSuspend: () => client.onSuspend(),
       onResume: () => client.onResume(),
       onShutdown: () => client.onShutdown(),
-      onPowerSourceChanged: () => client.onPowerSourceChanged()
+      onPowerSourceChanged: () => client.onPowerSourceChanged(),
+      isSupported: (method) =>
+        client.isSupported(method).pipe(Effect.map((result) => result.supported))
     } satisfies PowerMonitorServiceApi)
   })
 )
@@ -136,7 +158,8 @@ const makePowerMonitorBridgeClient = (
     onSuspend: () => client.events.Suspend,
     onResume: () => client.events.Resume,
     onShutdown: () => client.events.Shutdown,
-    onPowerSourceChanged: () => client.events.PowerSourceChanged
+    onPowerSourceChanged: () => client.events.PowerSourceChanged,
+    isSupported: (method) => client.isSupported(new PowerMonitorIsSupportedInput({ method }))
   } satisfies PowerMonitorClientApi)
 }
 
@@ -148,7 +171,8 @@ export const makeUnsupportedPowerMonitorClient = (): PowerMonitorClientApi => {
     onResume: () => unsupportedStream<PowerMonitorResumeEvent>("PowerMonitor.Resume"),
     onShutdown: () => unsupportedStream<PowerMonitorShutdownEvent>("PowerMonitor.Shutdown"),
     onPowerSourceChanged: () =>
-      unsupportedStream<PowerMonitorSourceChangedEvent>("PowerMonitor.PowerSourceChanged")
+      unsupportedStream<PowerMonitorSourceChangedEvent>("PowerMonitor.PowerSourceChanged"),
+    isSupported: () => Effect.succeed(new PowerMonitorSupportedResult({ supported: false }))
   } satisfies PowerMonitorClientApi)
 }
 
