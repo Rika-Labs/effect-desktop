@@ -504,6 +504,37 @@ const makeHostWindowHandlers = (
   }
 }
 
+export const makeUnsupportedWindowClient = (): WindowClientApi => {
+  const unsupportedEffect = <A>(method: string): Effect.Effect<A, WindowError, never> =>
+    Effect.fail(unsupportedError(method))
+  const unsupportedStream = <A>(method: string): Stream.Stream<A, WindowError, never> =>
+    Stream.fail(unsupportedError(method))
+
+  const client: WindowClientApi = {
+    create: () => unsupportedEffect<WindowHandle>("Window.create"),
+    show: () => unsupportedEffect<void>("Window.show"),
+    hide: () => unsupportedEffect<void>("Window.hide"),
+    focus: () => unsupportedEffect<void>("Window.focus"),
+    close: () => unsupportedEffect<void>("Window.close"),
+    setTitle: () => unsupportedEffect<void>("Window.setTitle"),
+    setSize: () => unsupportedEffect<void>("Window.setSize"),
+    setPosition: () => unsupportedEffect<void>("Window.setPosition"),
+    setBackgroundColor: () => unsupportedEffect<void>("Window.setBackgroundColor"),
+    setVibrancy: () => unsupportedEffect<void>("Window.setVibrancy"),
+    setHasShadow: () => unsupportedEffect<void>("Window.setHasShadow"),
+    setFullscreen: () => unsupportedEffect<void>("Window.setFullscreen"),
+    enterFullScreen: () => unsupportedEffect<void>("Window.enterFullScreen"),
+    exitFullScreen: () => unsupportedEffect<void>("Window.exitFullScreen"),
+    onFullScreenChanged: () =>
+      unsupportedStream<WindowFullScreenChanged>("Window.onFullScreenChanged"),
+    getScaleFactor: () => unsupportedEffect<WindowScaleFactorOutput>("Window.getScaleFactor"),
+    onScaleChanged: () => unsupportedStream<WindowScaleChanged>("Window.onScaleChanged"),
+    persistState: () => unsupportedEffect<void>("Window.persistState")
+  }
+
+  return Object.freeze(client)
+}
+
 const unsupportedError = (method: string): HostProtocolUnsupportedError =>
   new HostProtocolUnsupportedError({
     tag: "Unsupported",
