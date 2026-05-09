@@ -19,7 +19,7 @@ const EventLogMetadataText = Schema.NonEmptyString.check(
 export class EventLogOpenInput extends Schema.Class<EventLogOpenInput>("EventLogOpenInput")({
   path: NonEmptyString,
   ownerScope: NonEmptyString,
-  namespace: NonEmptyString,
+  namespace: EventLogMetadataText,
   maxEvents: Schema.optionalKey(PositiveInt),
   flushEveryMs: Schema.optionalKey(PositiveInt),
   flushEveryEvents: Schema.optionalKey(PositiveInt)
@@ -28,7 +28,7 @@ export class EventLogOpenInput extends Schema.Class<EventLogOpenInput>("EventLog
 export class EventLogAppendInput extends Schema.Class<EventLogAppendInput>("EventLogAppendInput")({
   type: EventLogMetadataText,
   payload: Schema.optionalKey(Schema.Unknown),
-  source: Schema.optionalKey(Schema.String)
+  source: Schema.optionalKey(EventLogMetadataText)
 }) {}
 
 export class EventLogQueryInput extends Schema.Class<EventLogQueryInput>("EventLogQueryInput")({
@@ -49,7 +49,7 @@ export class EventLogEntry extends Schema.Class<EventLogEntry>("EventLogEntry")(
   type: EventLogMetadataText,
   payload: Schema.optionalKey(Schema.Unknown),
   timestampMs: NonNegativeInt,
-  source: Schema.optionalKey(Schema.String)
+  source: Schema.optionalKey(EventLogMetadataText)
 }) {}
 
 export class EventLogInvalidArgumentError extends Data.TaggedError("InvalidArgument")<{
@@ -510,12 +510,16 @@ const rowToEntry = (
 
     const type = yield* stringField(row, "type", operation)
     const decodedType = yield* decodeMetadataField(type, operation, "type")
+    const decodedSource =
+      source === null || source === undefined
+        ? undefined
+        : yield* decodeMetadataField(source, operation, "source")
     return new EventLogEntry({
       id: yield* numberField(row, "event_id", operation),
       type: decodedType,
       ...(payloadPresent ? { payload } : {}),
       timestampMs: yield* numberField(row, "timestamp_ms", operation),
-      ...(source === null || source === undefined ? {} : { source })
+      ...(decodedSource === undefined ? {} : { source: decodedSource })
     })
   })
 

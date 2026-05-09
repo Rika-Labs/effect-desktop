@@ -161,6 +161,66 @@ describe("EventLog", () => {
     expect(events).toHaveLength(0)
   })
 
+  test("append rejects every C0 control byte and DEL in source", async () => {
+    const { store } = await makeFixture()
+
+    for (let codePoint = 0; codePoint <= 31; codePoint += 1) {
+      const source = `runtime${String.fromCharCode(codePoint)}forged`
+      const exit = await Effect.runPromiseExit(store.append({ type: "audit.ok" }, { source }))
+      expectFailure(exit, EventLogInvalidArgumentError)
+    }
+    const delExit = await Effect.runPromiseExit(
+      store.append({ type: "audit.ok" }, { source: `runtime${String.fromCharCode(127)}forged` })
+    )
+    expectFailure(delExit, EventLogInvalidArgumentError)
+
+    const events = await Effect.runPromise(store.query())
+    expect(events).toHaveLength(0)
+  })
+
+  test("open rejects every C0 control byte and DEL in namespace", async () => {
+    const registry = await Effect.runPromise(makeResourceRegistry())
+    const sqlite = await Effect.runPromise(makeSQLite(registry))
+    const eventLog = await Effect.runPromise(makeEventLog(sqlite))
+
+    for (let codePoint = 0; codePoint <= 31; codePoint += 1) {
+      const namespace = `audit${String.fromCharCode(codePoint)}forged`
+      const exit = await Effect.runPromiseExit(
+        eventLog.open({ path: ":memory:", ownerScope: "scope-main", namespace })
+      )
+      expectFailure(exit, EventLogInvalidArgumentError)
+    }
+    const delExit = await Effect.runPromiseExit(
+      eventLog.open({
+        path: ":memory:",
+        ownerScope: "scope-main",
+        namespace: `audit${String.fromCharCode(127)}forged`
+      })
+    )
+    expectFailure(delExit, EventLogInvalidArgumentError)
+  })
+
+  test("query surfaces stored sources containing control bytes as InvalidArgument", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-event-log-"))
+    const path = join(directory, "events.sqlite")
+    const { sqlite, store } = await makeFixture({ path })
+
+    await Effect.runPromise(store.append({ type: "audit.ok" }))
+    const control = await Effect.runPromise(
+      sqlite.connect({ path, ownerScope: "scope-control", strict: true })
+    )
+    await Effect.runPromise(
+      control.exec(
+        "UPDATE event_log_entries SET source = ? WHERE namespace = ? AND event_id = 0",
+        [`runtime${String.fromCharCode(10)}forged`, "default"]
+      )
+    )
+    await Effect.runPromise(control.close())
+
+    const exit = await Effect.runPromiseExit(store.query())
+    expectFailure(exit, EventLogInvalidArgumentError)
+  })
+
   test("read-only meta state returns EventLogFull and preserves query", async () => {
     const directory = await mkdtemp(join(tmpdir(), "effect-desktop-event-log-"))
     const path = join(directory, "events.sqlite")
