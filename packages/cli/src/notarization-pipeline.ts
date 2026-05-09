@@ -1,5 +1,5 @@
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises"
-import { dirname, isAbsolute, join, relative, resolve } from "node:path"
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import { Data, Effect } from "effect"
@@ -517,7 +517,7 @@ const readPackagedArtifacts = (
         `${relative(plan.outputPath, metadataPath)}#fileName`,
         "Run `bun desktop package` before `bun desktop notarize`."
       )
-      const artifactPath = join(rootPath, fileName)
+      const artifactPath = yield* resolveArtifactPath(rootPath, fileName, metadataPath)
       yield* statPath(artifactPath)
       artifacts.push({ kind, rootPath, artifactPath })
     }
@@ -592,6 +592,55 @@ const readArtifactKind = (
       remediation: "Regenerate macOS artifacts with `bun desktop package`."
     })
   )
+}
+
+const resolveArtifactPath = (
+  rootPath: string,
+  fileName: string,
+  metadataPath: string
+): Effect.Effect<string, NotarizeConfigError, never> => {
+  const field = `${metadataPath}#fileName`
+  const invalid =
+    fileName !== basename(fileName) ||
+    fileName.includes("/") ||
+    fileName.includes("\\") ||
+    fileName.includes("..") ||
+    fileName.includes(":") ||
+    containsControlCharacter(fileName)
+
+  if (invalid) {
+    return Effect.fail(
+      new NotarizeConfigError({
+        field,
+        message: `${field} must be a contained artifact file name`,
+        remediation: "Regenerate macOS artifacts with `bun desktop package`."
+      })
+    )
+  }
+
+  const resolvedRoot = resolve(rootPath)
+  const artifactPath = resolve(resolvedRoot, fileName)
+  if (dirname(artifactPath) !== resolvedRoot) {
+    return Effect.fail(
+      new NotarizeConfigError({
+        field,
+        message: `${field} must resolve inside its artifact metadata directory`,
+        remediation: "Regenerate macOS artifacts with `bun desktop package`."
+      })
+    )
+  }
+
+  return Effect.succeed(artifactPath)
+}
+
+const containsControlCharacter = (value: string): boolean => {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0)
+    if (codePoint !== undefined && (codePoint <= 0x1f || codePoint === 0x7f)) {
+      return true
+    }
+  }
+  return false
 }
 
 const loadConfig = (path: string): Effect.Effect<unknown, NotarizeConfigError, never> =>
