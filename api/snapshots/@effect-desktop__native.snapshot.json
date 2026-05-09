@@ -2601,7 +2601,7 @@
     {
       "name": "WindowCreateInput",
       "kind": "class",
-      "signature": "export class WindowCreateInput extends Schema.Class<WindowCreateInput>(\"WindowCreateInput\")({ title: Schema.optionalKey(Schema.String), width: Schema.optionalKey(PositiveFiniteNumber), height: Schema.optionalKey(PositiveFiniteNumber), titleBarStyle: Schema.optionalKey(WindowTitleBarStyle), vibrancy: Schema.optionalKey(Schema.String), trafficLights: Schema.optionalKey(WindowTrafficLights), persistState: Schema.optionalKey(Schema.Boolean) }) {}"
+      "signature": "export class WindowCreateInput extends Schema.Class<WindowCreateInput>(\"WindowCreateInput\")({ title: Schema.optionalKey(Schema.NonEmptyString), width: Schema.optionalKey(PositiveFiniteNumber), height: Schema.optionalKey(PositiveFiniteNumber), titleBarStyle: Schema.optionalKey(WindowTitleBarStyle), vibrancy: Schema.optionalKey(WindowVibrancyMaterial), trafficLights: Schema.optionalKey(WindowTrafficLights), persistState: Schema.optionalKey(Schema.Boolean) }) {}"
     },
     {
       "name": "WindowCreateOptions",
@@ -2696,7 +2696,7 @@
     {
       "name": "WindowTrafficLights",
       "kind": "class",
-      "signature": "export class WindowTrafficLights extends Schema.Class<WindowTrafficLights>(\"WindowTrafficLights\")({ x: FiniteNumber, y: FiniteNumber }) {}"
+      "signature": "export class WindowTrafficLights extends Schema.Class<WindowTrafficLights>(\"WindowTrafficLights\")({ x: NonNegativeFiniteNumber, y: NonNegativeFiniteNumber }) {}"
     },
     {
       "name": "WindowVibrancyInput",

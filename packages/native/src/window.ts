@@ -26,30 +26,50 @@ import { Context, Effect, Layer, Option, Schema, Stream } from "effect"
 import { type AppEventRouterApi, windowScope } from "./app-events.js"
 
 const PositiveFiniteNumber = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0))
-const FiniteNumber = Schema.Number.check(Schema.isFinite())
+const NonNegativeFiniteNumber = Schema.Number.check(
+  Schema.isFinite(),
+  Schema.isGreaterThanOrEqualTo(0)
+)
 const WindowTitleBarStyle = Schema.Literals([
   "default",
   "hidden",
   "hiddenInset",
   "customButtonsOnHover"
 ])
+const WindowVibrancyMaterial = Schema.Literals([
+  "appearanceBased",
+  "appearance-based",
+  "contentBackground",
+  "content-background",
+  "headerView",
+  "header-view",
+  "hudWindow",
+  "hud-window",
+  "menu",
+  "popover",
+  "selection",
+  "sidebar",
+  "titlebar",
+  "windowBackground",
+  "window-background"
+])
 const WindowResource = Api.Resource("window", "open")
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export class WindowTrafficLights extends Schema.Class<WindowTrafficLights>("WindowTrafficLights")({
-  x: FiniteNumber,
-  y: FiniteNumber
+  x: NonNegativeFiniteNumber,
+  y: NonNegativeFiniteNumber
 }) {}
 
 export type WindowHandle = ApiResourceHandle<"window", "open">
 export type WindowError = HostProtocolError
 
 export class WindowCreateInput extends Schema.Class<WindowCreateInput>("WindowCreateInput")({
-  title: Schema.optionalKey(Schema.String),
+  title: Schema.optionalKey(Schema.NonEmptyString),
   width: Schema.optionalKey(PositiveFiniteNumber),
   height: Schema.optionalKey(PositiveFiniteNumber),
   titleBarStyle: Schema.optionalKey(WindowTitleBarStyle),
-  vibrancy: Schema.optionalKey(Schema.String),
+  vibrancy: Schema.optionalKey(WindowVibrancyMaterial),
   trafficLights: Schema.optionalKey(WindowTrafficLights),
   persistState: Schema.optionalKey(Schema.Boolean)
 }) {}

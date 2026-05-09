@@ -95,14 +95,24 @@ test("host window client requests Window.destroy", async () => {
 })
 
 test("host window client rejects invalid create bounds before crossing the host boundary", async () => {
-  const client = makeHostWindowClient(windowExchange([]))
+  const invalidInputs: ReadonlyArray<unknown> = [
+    { width: 0 },
+    { title: "" },
+    { vibrancy: "not-a-material" },
+    { trafficLights: { x: -1, y: 0 } },
+    { trafficLights: { x: 0, y: -1 } }
+  ]
 
-  await expectEffectFailure(
-    client.create({
-      width: 0
-    }),
-    (error) => error instanceof HostProtocolInvalidArgumentError && error.field === "payload"
-  )
+  for (const input of invalidInputs) {
+    const requests: HostProtocolRequestEnvelope[] = []
+    const client = makeHostWindowClient(windowExchange(requests))
+
+    await expectEffectFailure(
+      client.create(input as Parameters<typeof client.create>[0]),
+      (error) => error instanceof HostProtocolInvalidArgumentError && error.field === "payload"
+    )
+    expect(requests).toEqual([])
+  }
 })
 
 test("host window client propagates destroy response errors", async () => {
