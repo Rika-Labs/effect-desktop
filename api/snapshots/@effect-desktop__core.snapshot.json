@@ -66,7 +66,7 @@
     {
       "name": "ApprovalOutcome",
       "kind": "class",
-      "signature": "export class ApprovalOutcome extends Schema.Class<ApprovalOutcome>(\"ApprovalOutcome\")({ requestId: NonEmptyString, outcome: ApprovalOutcomeKind, traceId: NonEmptyString, decidedAt: Schema.Number, source: NonEmptyString }) {}"
+      "signature": "export class ApprovalOutcome extends Schema.Class<ApprovalOutcome>(\"ApprovalOutcome\")({ requestId: ApprovalMetadataText, outcome: ApprovalOutcomeKind, traceId: ApprovalMetadataText, decidedAt: Schema.Number, source: ApprovalMetadataText }) {}"
     },
     {
       "name": "ApprovalOutcomeKind",
@@ -81,7 +81,7 @@
     {
       "name": "ApprovalRequest",
       "kind": "class",
-      "signature": "export class ApprovalRequest extends Schema.Class<ApprovalRequest>(\"ApprovalRequest\")({ id: NonEmptyString, operation: NonEmptyString, actor: NonEmptyString, resource: Schema.optionalKey(Schema.String), risk: ApprovalRisk, summary: NonEmptyString, details: Schema.Unknown, expiresAt: Schema.optionalKey(Schema.Number), traceId: Schema.optionalKey(NonEmptyString) }) {}"
+      "signature": "export class ApprovalRequest extends Schema.Class<ApprovalRequest>(\"ApprovalRequest\")({ id: ApprovalMetadataText, operation: ApprovalMetadataText, actor: ApprovalMetadataText, resource: Schema.optionalKey(ApprovalMetadataText), risk: ApprovalRisk, summary: NonEmptyString, details: Schema.Unknown, expiresAt: Schema.optionalKey(Schema.Number), traceId: Schema.optionalKey(ApprovalMetadataText) }) {}"
     },
     {
       "name": "ApprovalRisk",
@@ -276,7 +276,7 @@
     {
       "name": "EventLogAppendInput",
       "kind": "class",
-      "signature": "export class EventLogAppendInput extends Schema.Class<EventLogAppendInput>(\"EventLogAppendInput\")({ type: NonEmptyString, payload: Schema.optionalKey(Schema.Unknown), source: Schema.optionalKey(Schema.String) }) {}"
+      "signature": "export class EventLogAppendInput extends Schema.Class<EventLogAppendInput>(\"EventLogAppendInput\")({ type: EventLogMetadataText, payload: Schema.optionalKey(Schema.Unknown), source: Schema.optionalKey(EventLogMetadataText) }) {}"
     },
     {
       "name": "EventLogAppendOptions",
@@ -286,7 +286,7 @@
     {
       "name": "EventLogEntry",
       "kind": "class",
-      "signature": "export class EventLogEntry extends Schema.Class<EventLogEntry>(\"EventLogEntry\")({ id: NonNegativeInt, type: NonEmptyString, payload: Schema.optionalKey(Schema.Unknown), timestampMs: NonNegativeInt, source: Schema.optionalKey(Schema.String) }) {}"
+      "signature": "export class EventLogEntry extends Schema.Class<EventLogEntry>(\"EventLogEntry\")({ id: NonNegativeInt, type: EventLogMetadataText, payload: Schema.optionalKey(Schema.Unknown), timestampMs: NonNegativeInt, source: Schema.optionalKey(EventLogMetadataText) }) {}"
     },
     {
       "name": "EventLogError",
@@ -306,7 +306,7 @@
     {
       "name": "EventLogOpenInput",
       "kind": "class",
-      "signature": "export class EventLogOpenInput extends Schema.Class<EventLogOpenInput>(\"EventLogOpenInput\")({ path: NonEmptyString, ownerScope: NonEmptyString, namespace: NonEmptyString, maxEvents: Schema.optionalKey(PositiveInt), flushEveryMs: Schema.optionalKey(PositiveInt), flushEveryEvents: Schema.optionalKey(PositiveInt) }) {}"
+      "signature": "export class EventLogOpenInput extends Schema.Class<EventLogOpenInput>(\"EventLogOpenInput\")({ path: NonEmptyString, ownerScope: NonEmptyString, namespace: EventLogMetadataText, maxEvents: Schema.optionalKey(PositiveInt), flushEveryMs: Schema.optionalKey(PositiveInt), flushEveryEvents: Schema.optionalKey(PositiveInt) }) {}"
     },
     {
       "name": "EventLogOpenOptions",
@@ -316,7 +316,7 @@
     {
       "name": "EventLogQueryInput",
       "kind": "class",
-      "signature": "export class EventLogQueryInput extends Schema.Class<EventLogQueryInput>(\"EventLogQueryInput\")({ from: Schema.optionalKey(NonNegativeInt), to: Schema.optionalKey(NonNegativeInt), type: Schema.optionalKey(NonEmptyString), limit: Schema.optionalKey(PositiveInt) }) {}"
+      "signature": "export class EventLogQueryInput extends Schema.Class<EventLogQueryInput>(\"EventLogQueryInput\")({ from: Schema.optionalKey(NonNegativeInt), to: Schema.optionalKey(NonNegativeInt), type: Schema.optionalKey(EventLogMetadataText), limit: Schema.optionalKey(PositiveInt) }) {}"
     },
     {
       "name": "EventLogQueryOptions",
@@ -476,7 +476,7 @@
     {
       "name": "GrantedCapability",
       "kind": "class",
-      "signature": "export class GrantedCapability extends Schema.Class<GrantedCapability>(\"GrantedCapability\")({ token: NonEmptyString, capability: NormalizedCapability, actor: PermissionActor, resource: Schema.optionalKey(Schema.String), source: Schema.String, traceId: NonEmptyString, grantedAt: Schema.Number, expiresAt: Schema.optionalKey(Schema.Number), oneTime: Schema.optionalKey(Schema.Boolean) }) {}"
+      "signature": "export class GrantedCapability extends Schema.Class<GrantedCapability>(\"GrantedCapability\")({ token: NonEmptyString, capability: NormalizedCapability, actor: PermissionActor, resource: Schema.optionalKey(PermissionMetadataText), source: PermissionMetadataText, traceId: PermissionMetadataText, grantedAt: Schema.Number, expiresAt: Schema.optionalKey(Schema.Number), oneTime: Schema.optionalKey(Schema.Boolean) }) {}"
     },
     {
       "name": "GrantStatus",
@@ -711,7 +711,7 @@
     {
       "name": "PermissionActor",
       "kind": "class",
-      "signature": "export class PermissionActor extends Schema.Class<PermissionActor>(\"PermissionActor\")({ kind: ActorKind, id: NonEmptyString }) {}"
+      "signature": "export class PermissionActor extends Schema.Class<PermissionActor>(\"PermissionActor\")({ kind: ActorKind, id: PermissionMetadataText }) {}"
     },
     {
       "name": "permissionAuditEvent",
@@ -731,17 +731,17 @@
     {
       "name": "PermissionContext",
       "kind": "class",
-      "signature": "export class PermissionContext extends Schema.Class<PermissionContext>(\"PermissionContext\")({ actor: PermissionActor, resource: Schema.optionalKey(Schema.String), traceId: Schema.optionalKey(Schema.String) }) {}"
+      "signature": "export class PermissionContext extends Schema.Class<PermissionContext>(\"PermissionContext\")({ actor: PermissionActor, resource: Schema.optionalKey(PermissionMetadataText), traceId: Schema.optionalKey(PermissionMetadataText) }) {}"
     },
     {
       "name": "PermissionDecision",
       "kind": "class",
-      "signature": "export class PermissionDecision extends Schema.Class<PermissionDecision>(\"PermissionDecision\")({ outcome: Schema.Literals([\"granted\", \"denied\"]), reason: Schema.optionalKey( Schema.Literals([ \"explicit-deny\", \"approval-denied\", \"revoked\", \"expired\", \"consumed\", \"default-deny\" ]) ), source: Schema.String, capability: NormalizedCapability, actor: PermissionActor, resource: Schema.optionalKey(Schema.String), traceId: NonEmptyString }) {}"
+      "signature": "export class PermissionDecision extends Schema.Class<PermissionDecision>(\"PermissionDecision\")({ outcome: Schema.Literals([\"granted\", \"denied\"]), reason: Schema.optionalKey( Schema.Literals([ \"explicit-deny\", \"approval-denied\", \"revoked\", \"expired\", \"consumed\", \"default-deny\" ]) ), source: PermissionMetadataText, capability: NormalizedCapability, actor: PermissionActor, resource: Schema.optionalKey(PermissionMetadataText), traceId: PermissionMetadataText }) {}"
     },
     {
       "name": "PermissionDeclaration",
       "kind": "class",
-      "signature": "export class PermissionDeclaration extends Schema.Class<PermissionDeclaration>( \"PermissionDeclaration\" )({ capability: NormalizedCapability, effect: PermissionEffect, actor: Schema.optionalKey(PermissionActor), source: Schema.optionalKey(Schema.String) }) {}"
+      "signature": "export class PermissionDeclaration extends Schema.Class<PermissionDeclaration>( \"PermissionDeclaration\" )({ capability: NormalizedCapability, effect: PermissionEffect, actor: Schema.optionalKey(PermissionActor), source: Schema.optionalKey(PermissionMetadataText) }) {}"
     },
     {
       "name": "PermissionDeniedError",
@@ -806,7 +806,7 @@
     {
       "name": "PermissionRule",
       "kind": "class",
-      "signature": "export class PermissionRule extends Schema.Class<PermissionRule>(\"PermissionRule\")({ capability: NormalizedCapability, effect: PermissionEffect, actor: Schema.optionalKey(PermissionActor), source: Schema.String }) {}"
+      "signature": "export class PermissionRule extends Schema.Class<PermissionRule>(\"PermissionRule\")({ capability: NormalizedCapability, effect: PermissionEffect, actor: Schema.optionalKey(PermissionActor), source: PermissionMetadataText }) {}"
     },
     {
       "name": "Process",
@@ -1236,7 +1236,7 @@
     {
       "name": "SettingsOpenInput",
       "kind": "class",
-      "signature": "export class SettingsOpenInput extends Schema.Class<SettingsOpenInput>(\"SettingsOpenInput\")({ path: NonEmptyString, ownerScope: NonEmptyString, namespace: NonEmptyString, schemaVersion: NonNegativeInt, backupPath: Schema.optionalKey(NonEmptyString) }) {}"
+      "signature": "export class SettingsOpenInput extends Schema.Class<SettingsOpenInput>(\"SettingsOpenInput\")({ path: NonEmptyString, ownerScope: NonEmptyString, namespace: SettingsMetadataText, schemaVersion: NonNegativeInt, backupPath: Schema.optionalKey(NonEmptyString) }) {}"
     },
     {
       "name": "SettingsOpenOptions",
@@ -1381,7 +1381,7 @@
     {
       "name": "TelemetryApi",
       "kind": "interface",
-      "signature": "export interface TelemetryApi { readonly log: (input: TelemetryLogInput) => Effect.Effect<void, never, never> readonly listLogs: () => Effect.Effect<readonly TelemetryLogRecord[], never, never> readonly observeLogs: () => Stream.Stream<readonly TelemetryLogRecord[], never, never> readonly recordSpan: (input: TelemetryTraceSpanInput) => Effect.Effect<void, never, never> readonly listTraces: () => Effect.Effect<readonly TelemetryTraceSpan[], never, never> readonly observeTraces: () => Stream.Stream<readonly TelemetryTraceSpan[], never, never> readonly incrementCounter: (input: TelemetryCounterInput) => Effect.Effect<void, never, never> readonly recordHistogram: (input: TelemetryHistogramInput) => Effect.Effect<void, never, never> readonly listMetrics: () => Effect.Effect<readonly TelemetryMetricSnapshot[], never, never> readonly observeMetrics: () => Stream.Stream<readonly TelemetryMetricSnapshot[], never, never> readonly snapshot: () => Effect.Effect<TelemetrySnapshot, never, never> }"
+      "signature": "export interface TelemetryApi { readonly log: ( input: TelemetryLogInput ) => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly listLogs: () => Effect.Effect<readonly TelemetryLogRecord[], never, never> readonly observeLogs: () => Stream.Stream<readonly TelemetryLogRecord[], never, never> readonly recordSpan: ( input: TelemetryTraceSpanInput ) => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly listTraces: () => Effect.Effect<readonly TelemetryTraceSpan[], never, never> readonly observeTraces: () => Stream.Stream<readonly TelemetryTraceSpan[], never, never> readonly incrementCounter: ( input: TelemetryCounterInput ) => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly recordHistogram: ( input: TelemetryHistogramInput ) => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly listMetrics: () => Effect.Effect<readonly TelemetryMetricSnapshot[], never, never> readonly observeMetrics: () => Stream.Stream<readonly TelemetryMetricSnapshot[], never, never> readonly snapshot: () => Effect.Effect<TelemetrySnapshot, never, never> }"
     },
     {
       "name": "TelemetryCounterInput",
