@@ -201,6 +201,34 @@ describe("Settings", () => {
     expect(await Effect.runPromise(store.keys())).toEqual([])
   })
 
+  test("open rejects every C0 control byte and DEL in namespace", async () => {
+    const registry = await Effect.runPromise(makeResourceRegistry())
+    const sqlite = await Effect.runPromise(makeSQLite(registry))
+    const settings = await Effect.runPromise(makeSettings(sqlite))
+
+    for (let codePoint = 0; codePoint <= 31; codePoint += 1) {
+      const namespace = `settings${String.fromCharCode(codePoint)}forged`
+      const exit = await Effect.runPromiseExit(
+        settings.open({
+          path: ":memory:",
+          ownerScope: "scope-main",
+          namespace,
+          schemaVersion: 1
+        })
+      )
+      expectFailure(exit, SettingsInvalidArgumentError)
+    }
+    const delExit = await Effect.runPromiseExit(
+      settings.open({
+        path: ":memory:",
+        ownerScope: "scope-main",
+        namespace: `settings${String.fromCharCode(127)}forged`,
+        schemaVersion: 1
+      })
+    )
+    expectFailure(delExit, SettingsInvalidArgumentError)
+  })
+
   test("update rejects NUL bytes in keys before opening transaction", async () => {
     const { store } = await makeFixture()
     const key = `api${String.fromCharCode(0)}token`

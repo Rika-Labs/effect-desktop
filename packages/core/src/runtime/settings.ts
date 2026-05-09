@@ -13,16 +13,17 @@ import {
 
 const NonEmptyString = Schema.NonEmptyString
 const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
-const SettingsKeySchema = Schema.NonEmptyString.check(
+const SettingsMetadataText = Schema.NonEmptyString.check(
   // eslint-disable-next-line no-control-regex
-  Schema.isPattern(/^[^\x00-\x1F\x7F]*$/)
+  Schema.isPattern(/^[^\x00-\x1F\x7F]+$/)
 )
+const SettingsKeySchema = SettingsMetadataText
 const AddressableKeySchema = NonEmptyString
 
 export class SettingsOpenInput extends Schema.Class<SettingsOpenInput>("SettingsOpenInput")({
   path: NonEmptyString,
   ownerScope: NonEmptyString,
-  namespace: NonEmptyString,
+  namespace: SettingsMetadataText,
   schemaVersion: NonNegativeInt,
   backupPath: Schema.optionalKey(NonEmptyString)
 }) {}
