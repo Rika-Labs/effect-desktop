@@ -174,8 +174,8 @@ Options:
                                Choices: basic-react-tailwind | todo-sqlite | multi-window
   --renderer-storage <kind>    Add renderer-side storage adapter (default: none)
                                Choices: none | indexeddb | sqlite-wasm | pglite
-  --include-workflows          Register workflow support in the spine
-  --include-cluster            Register cluster entities (requires T29)
+  --include-workflows          Add workflow companion dependencies
+  --include-cluster            Add cluster dependencies (requires T29)
   -h, --help                   Show this help
 
 Examples:
