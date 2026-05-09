@@ -5,7 +5,7 @@ Locked architecture: keep the containment check private to notarization discover
 Checks:
 
 - Basename-only validation matches the existing package writer, which emits `basename(artifactPath)`.
-- Rejecting `/`, `\`, `..`, `:`, and control bytes covers traversal, nested paths, URL-shaped values, and malformed bytes named in the issue.
+- Rejecting `/`, `\`, `:`, and control bytes covers traversal, nested paths, URL-shaped values, and malformed bytes named in the issue while allowing package-produced basenames with consecutive dots.
 - Resolving the root and candidate path gives a second containment check if the lexical validation is changed later.
 - The regression asserts zero command invocations, which proves failure ordering rather than only checking exit code.
 

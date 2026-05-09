@@ -1744,6 +1744,45 @@ test("desktop notarize rejects artifact file names outside the metadata director
   }
 })
 
+test("desktop notarize accepts contained artifact file names with consecutive dots", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-dotted-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+    })
+    const outputRoot = join(directory, "apps", "playground", "dist", "desktop", "macos")
+    const artifactRoot = join(outputRoot, "artifact-root")
+    const fileName = "Effect..Desktop-0.0.0-macos-arm64.dmg"
+    await mkdir(artifactRoot, { recursive: true })
+    await writeFile(join(artifactRoot, fileName), "dmg")
+    await writeFile(
+      join(artifactRoot, "artifact.json"),
+      `${JSON.stringify({ kind: "dmg", target: "macos-arm64", fileName }, null, 2)}\n`
+    )
+    const calls: string[] = []
+    const runner: NotarizeCommandRunner = (invocation) => {
+      calls.push(invocation.step)
+      return Effect.succeed({ stdout: `${invocation.step} ok`, stderr: "", exitCode: 0 })
+    }
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["notarize", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "macos-arm64",
+        notarizeCommandRunner: runner,
+        writeStdout: () => {},
+        writeStderr: () => {}
+      })
+    )
+
+    expect(exitCode).toBe(0)
+    expect(calls).toEqual(["stapler-validate", "spctl-assess"])
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop notarize ignores zip sidecars that stapler cannot staple", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
   try {

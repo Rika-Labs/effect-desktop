@@ -604,7 +604,6 @@ const resolveArtifactPath = (
     fileName !== basename(fileName) ||
     fileName.includes("/") ||
     fileName.includes("\\") ||
-    fileName.includes("..") ||
     fileName.includes(":") ||
     containsControlCharacter(fileName)
 
