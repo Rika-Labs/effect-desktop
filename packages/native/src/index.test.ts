@@ -1664,6 +1664,39 @@ test("unsupported Tray client reports deferred host methods as Effect values", a
   )
 })
 
+test("Tray bridge client rejects invalid icon and tooltip metadata before transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Tray
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          TrayLive,
+          makeTrayBridgeClientLayer(
+            trayExchange(requests, () => ({ kind: "success", payload: trayHandle }))
+          )
+        )
+      )
+    )
+  )
+
+  const emptyIconExit = await Effect.runPromiseExit(client.create({ icon: "" }))
+  const fileIconExit = await Effect.runPromiseExit(
+    client.setIcon(trayHandle, "file:///etc/passwd")
+  )
+  const emptyTooltipExit = await Effect.runPromiseExit(client.setTooltip(trayHandle, ""))
+  const nulTooltipExit = await Effect.runPromiseExit(
+    client.create({ icon: "app://assets/tray.png", tooltip: "tip\u0000text" })
+  )
+
+  expectExitFailure(emptyIconExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(fileIconExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(emptyTooltipExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(nulTooltipExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
 test("DialogApi declares the Phase 7 Dialog method surface", () => {
   expect(DialogApi.tag).toBe("Dialog")
   expect([...DialogMethodNames]).toEqual(expectedDialogMethods)
