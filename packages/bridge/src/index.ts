@@ -8,3 +8,15 @@ export * from "./protocol.js"
 export * from "./redaction.js"
 export * from "./resources.js"
 export * from "./window.js"
+
+export {
+  Rpc,
+  RpcClient,
+  RpcClientError,
+  RpcGroup,
+  RpcMessage,
+  RpcMiddleware,
+  RpcSchema,
+  RpcSerialization,
+  RpcServer
+} from "effect/unstable/rpc"
