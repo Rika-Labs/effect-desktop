@@ -8,6 +8,7 @@ import {
   DesktopProvider,
   type DesktopClient,
   type DesktopStreamState,
+  retainDesktopStreamData,
   useDesktopStream,
   useDesktop,
   usePermission,
@@ -118,4 +119,28 @@ test("useDesktopStream exposes an initial value state during render", () => {
     data: [],
     error: Option.none()
   })
+})
+
+test("useDesktopStream retention keeps only the newest items within capacity", () => {
+  const retained = [1, 2, 3, 4, 5].reduce<readonly number[]>(
+    (current, item) => retainDesktopStreamData(current, item, 3),
+    []
+  )
+
+  expect(retained).toEqual([3, 4, 5])
+})
+
+test("useDesktopStream retention can disable stored data", () => {
+  const retained = [1, 2, 3].reduce<readonly number[]>(
+    (current, item) => retainDesktopStreamData(current, item, 0),
+    []
+  )
+
+  expect(retained).toEqual([])
+})
+
+test("useDesktopStream retention rejects invalid capacities", () => {
+  expect(() => retainDesktopStreamData([], 1, -1)).toThrow(RangeError)
+  expect(() => retainDesktopStreamData([], 1, 1.5)).toThrow(RangeError)
+  expect(() => retainDesktopStreamData([], 1, Number.POSITIVE_INFINITY)).toThrow(RangeError)
 })

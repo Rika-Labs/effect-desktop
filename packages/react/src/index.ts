@@ -44,10 +44,21 @@ export interface DesktopStreamState<A, E> {
   readonly error: Option.Option<Cause.Cause<E>>
 }
 
+export interface DesktopStreamRetentionPolicy {
+  readonly capacity?: number
+}
+
+export interface DesktopStreamOptions<A> extends DesktopStreamRetentionPolicy {
+  readonly deps?: DependencyList
+  readonly onItem?: (item: A) => void
+}
+
 export interface PermissionState {
   readonly status: "deferred"
   readonly permission: string
 }
+
+const DEFAULT_DESKTOP_STREAM_CAPACITY = 1024
 
 const DesktopContext = createContext<Option.Option<DesktopRuntimeContext>>(Option.none())
 
@@ -68,9 +79,10 @@ export const useWindow = (): Option.Option<WindowHandle> =>
 
 export const useDesktopStream = <A, E>(
   stream: Stream.Stream<A, E, never>,
-  deps: DependencyList = []
+  options: DependencyList | DesktopStreamOptions<A> = []
 ): DesktopStreamState<A, E> => {
   const [state, setState] = useState<DesktopStreamState<A, E>>(idleStreamState<A, E>())
+  const resolved = resolveDesktopStreamOptions(options)
 
   useEffect(() => {
     let mounted = true
@@ -80,9 +92,10 @@ export const useDesktopStream = <A, E>(
       Stream.runForEach(stream, (item) =>
         Effect.sync(() => {
           if (mounted) {
+            resolved.onItem?.(item)
             setState((current) => ({
               ...current,
-              data: [...current.data, item]
+              data: retainDesktopStreamData(current.data, item, resolved.capacity)
             }))
           }
         })
@@ -114,9 +127,22 @@ export const useDesktopStream = <A, E>(
       mounted = false
       void Effect.runPromiseExit(Fiber.interrupt(fiber))
     }
-  }, [stream, ...deps])
+  }, [stream, resolved.capacity, resolved.onItem, ...resolved.deps])
 
   return state
+}
+
+export const retainDesktopStreamData = <A>(
+  current: readonly A[],
+  item: A,
+  capacity: number = DEFAULT_DESKTOP_STREAM_CAPACITY
+): readonly A[] => {
+  const resolvedCapacity = validateDesktopStreamCapacity(capacity)
+  if (resolvedCapacity === 0) {
+    return []
+  }
+  const next = [...current, item]
+  return next.length <= resolvedCapacity ? next : next.slice(next.length - resolvedCapacity)
 }
 
 export const useResource = <
@@ -166,3 +192,38 @@ const runningStreamState = <A, E>(): DesktopStreamState<A, E> => ({
   data: [],
   error: Option.none()
 })
+
+interface ResolvedDesktopStreamOptions<A> {
+  readonly deps: DependencyList
+  readonly capacity: number
+  readonly onItem?: (item: A) => void
+}
+
+const resolveDesktopStreamOptions = <A>(
+  options: DependencyList | DesktopStreamOptions<A>
+): ResolvedDesktopStreamOptions<A> => {
+  if (isDependencyList(options)) {
+    return { deps: options, capacity: DEFAULT_DESKTOP_STREAM_CAPACITY }
+  }
+
+  const capacity = validateDesktopStreamCapacity(
+    options.capacity === undefined ? DEFAULT_DESKTOP_STREAM_CAPACITY : options.capacity
+  )
+
+  return {
+    deps: options.deps ?? [],
+    capacity,
+    ...(options.onItem === undefined ? {} : { onItem: options.onItem })
+  }
+}
+
+const isDependencyList = <A>(
+  options: DependencyList | DesktopStreamOptions<A>
+): options is DependencyList => Array.isArray(options)
+
+const validateDesktopStreamCapacity = (capacity: number): number => {
+  if (!Number.isSafeInteger(capacity) || capacity < 0) {
+    throw new RangeError("useDesktopStream capacity must be a non-negative safe integer")
+  }
+  return capacity
+}

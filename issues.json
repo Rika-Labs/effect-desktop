@@ -1275,16 +1275,24 @@
   ],
   "workflow_ledger": {
     "active": {
-      "number": 812,
-      "title": "Validate CrashReporter.flush output counts",
-      "url": "https://github.com/Rika-Labs/effect-desktop/issues/812",
+      "number": 841,
+      "title": "Bound React stream hook retention",
+      "url": "https://github.com/Rika-Labs/effect-desktop/issues/841",
       "status": "work-in-progress",
       "workflow": ["scout", "architect", "review", "work", "pr", "code-review", "address", "learn"],
-      "branch": "issue-812-validate-crash-reporter-flush-count",
-      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/835",
-      "updated_at": "2026-05-09T01:41:00.000Z"
+      "branch": "issue-841-bound-react-stream-hook-retention",
+      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/844",
+      "updated_at": "2026-05-09T02:00:00.000Z"
     },
     "worked": [
+      {
+        "number": 812,
+        "title": "Validate CrashReporter.flush output counts",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/812",
+        "status": "merged",
+        "pr": "https://github.com/Rika-Labs/effect-desktop/pull/835",
+        "updated_at": "2026-05-09T01:49:40.000Z"
+      },
       {
         "number": 813,
         "title": "Validate ContextMenu.show position coordinates",
