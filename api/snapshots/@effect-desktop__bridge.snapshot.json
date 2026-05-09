@@ -806,12 +806,12 @@
     {
       "name": "WindowCreateInput",
       "kind": "interface",
-      "signature": "export interface WindowCreateInput { readonly title?: string readonly width?: number readonly height?: number readonly titleBarStyle?: Schema.Schema.Type<typeof WindowTitleBarStyle> readonly vibrancy?: string readonly trafficLights?: Schema.Schema.Type<typeof WindowTrafficLights> }"
+      "signature": "export interface WindowCreateInput { readonly title?: string readonly width?: number readonly height?: number readonly titleBarStyle?: Schema.Schema.Type<typeof WindowTitleBarStyle> readonly vibrancy?: Schema.Schema.Type<typeof WindowVibrancyMaterial> readonly trafficLights?: Schema.Schema.Type<typeof WindowTrafficLights> }"
     },
     {
       "name": "WindowCreatePayload",
       "kind": "class",
-      "signature": "export class WindowCreatePayload extends Schema.Class<WindowCreatePayload>(\"WindowCreatePayload\")({ title: Schema.optionalKey(Schema.String), width: Schema.optionalKey(PositiveFiniteNumber), height: Schema.optionalKey(PositiveFiniteNumber), titleBarStyle: Schema.optionalKey(WindowTitleBarStyle), vibrancy: Schema.optionalKey(Schema.String), trafficLights: Schema.optionalKey(WindowTrafficLights) }) {}"
+      "signature": "export class WindowCreatePayload extends Schema.Class<WindowCreatePayload>(\"WindowCreatePayload\")({ title: Schema.optionalKey(Schema.NonEmptyString), width: Schema.optionalKey(PositiveFiniteNumber), height: Schema.optionalKey(PositiveFiniteNumber), titleBarStyle: Schema.optionalKey(WindowTitleBarStyle), vibrancy: Schema.optionalKey(WindowVibrancyMaterial), trafficLights: Schema.optionalKey(WindowTrafficLights) }) {}"
     },
     {
       "name": "WindowCreateResponse",

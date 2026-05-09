@@ -23,6 +23,8 @@ Implemented `Window.create` chrome validation in the native SDK and bridge paylo
 - `bun run typecheck`
 - `bun run lint`
 - `bun run lint:types`
+- `bun packages/cli/src/bin.ts check --api --write`
+- `bun packages/cli/src/bin.ts check --api`
 - `bun prettier --check packages/native/src/window.ts packages/bridge/src/window.ts packages/native/src/index.test.ts packages/bridge/src/window.test.ts docs/runs/issue-806-validate-window-create-chrome-inputs/05-scout.md docs/runs/issue-806-validate-window-create-chrome-inputs/19-architect.md docs/runs/issue-806-validate-window-create-chrome-inputs/20-review.md docs/runs/issue-806-validate-window-create-chrome-inputs/21-work.md issues.json`
 - `bun test`
 - `cargo fmt --check`
