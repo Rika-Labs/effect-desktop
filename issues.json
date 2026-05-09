@@ -1278,11 +1278,11 @@
       "number": 824,
       "title": "Honor --json for production checks",
       "url": "https://github.com/Rika-Labs/effect-desktop/issues/824",
-      "status": "work-complete",
-      "workflow": ["work"],
-      "pr": null,
+      "status": "pr-open",
+      "workflow": ["work", "pr"],
+      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/950",
       "branch": "issue-824-honor-json-production-check",
-      "updated_at": "2026-05-09T05:34:04.000Z"
+      "updated_at": "2026-05-09T05:35:48.000Z"
     },
     "worked": [
       {
