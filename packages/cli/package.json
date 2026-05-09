@@ -35,6 +35,7 @@
   "dependencies": {
     "@effect-desktop/bridge": "workspace:*",
     "@effect-desktop/config": "workspace:*",
-    "effect": "4.0.0-beta.60"
+    "effect": "4.0.0-beta.60",
+    "typescript": "6.0.3"
   }
 }

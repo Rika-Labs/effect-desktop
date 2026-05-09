@@ -49,6 +49,7 @@
         "@effect-desktop/bridge": "workspace:*",
         "@effect-desktop/config": "workspace:*",
         "effect": "4.0.0-beta.60",
+        "typescript": "6.0.3",
       },
     },
     "packages/config": {
@@ -121,6 +122,7 @@
       "name": "@effect-desktop/template-basic-react-tailwind",
       "dependencies": {
         "@effect-desktop/bridge": "workspace:*",
+        "@effect-desktop/cli": "workspace:*",
         "@effect-desktop/native": "workspace:*",
         "@effect-desktop/react": "workspace:*",
         "@effect-desktop/test": "workspace:*",

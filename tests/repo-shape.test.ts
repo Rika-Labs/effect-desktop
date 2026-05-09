@@ -25,6 +25,9 @@ const PHASE_0_TS_TEST_MARKER = "phase 0 stub compiles and runs"
 const PHASE_0_RUST_TEST_MARKER = "fn it_compiles"
 
 interface PackageJson {
+  dependencies?: Record<string, string>
+  bin?: Record<string, string>
+  name?: string
   scripts?: Record<string, string>
   workspaces?: ReadonlyArray<string>
   [key: string]: unknown
@@ -63,6 +66,19 @@ describe("workspaces", () => {
     expect(exitCode).toBe(1)
     expect(stderr).not.toContain('Script not found "desktop"')
     expect(stdout + stderr).toContain("Usage: desktop build")
+  })
+})
+
+describe("@effect-desktop/cli package manifest", () => {
+  const cli = readJson<PackageJson>(join(REPO_ROOT, "packages", "cli", "package.json"))
+
+  test("bin points at the checked-in executable entrypoint", () => {
+    expect(cli.bin?.desktop).toBe("src/bin.ts")
+  })
+
+  test("workspace manifest keeps first-party dependencies linked in-repo", () => {
+    expect(cli.dependencies?.["@effect-desktop/bridge"]).toBe("workspace:*")
+    expect(cli.dependencies?.["@effect-desktop/config"]).toBe("workspace:*")
   })
 })
 
