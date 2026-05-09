@@ -1279,10 +1279,10 @@
       "title": "Bound React stream hook retention",
       "url": "https://github.com/Rika-Labs/effect-desktop/issues/841",
       "status": "work-in-progress",
-      "workflow": ["scout", "architect", "review", "work"],
+      "workflow": ["scout", "architect", "review", "work", "pr"],
       "branch": "issue-841-bound-react-stream-hook-retention",
-      "pr": null,
-      "updated_at": "2026-05-09T01:49:40.000Z"
+      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/844",
+      "updated_at": "2026-05-09T01:55:00.000Z"
     },
     "worked": [
       {
