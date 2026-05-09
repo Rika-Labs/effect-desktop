@@ -70,7 +70,11 @@ export type WindowStateError =
   | WindowStateCorruptRenamed
   | WindowStateInvalidArgumentError
 
-const WindowStateWindowIdSchema = Schema.String.check(Schema.isPattern(/\S/))
+const WindowStateWindowIdSchema = Schema.NonEmptyString.check(
+  Schema.isPattern(/\S/),
+  // eslint-disable-next-line no-control-regex
+  Schema.isPattern(/^[^\x00-\x1F\x7F]+$/)
+)
 
 const decodeWindowId = (
   windowId: string,

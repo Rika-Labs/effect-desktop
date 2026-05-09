@@ -74,6 +74,31 @@ test("WindowState rejects whitespace-only window ids", async () => {
   expectInvalidArgument(exit, "WindowState.restore")
 })
 
+test("WindowState rejects every C0 control byte and DEL in window ids", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-window-state-"))
+  const path = join(directory, "window-state.json")
+  const service = await Effect.runPromise(makeWindowState({ path }))
+
+  for (let codePoint = 0; codePoint <= 31; codePoint += 1) {
+    const windowId = `main${String.fromCharCode(codePoint)}forged`
+    const persistExit = await Effect.runPromiseExit(service.persist(windowId, state))
+    const restoreExit = await Effect.runPromiseExit(service.restore(windowId))
+    const clearExit = await Effect.runPromiseExit(service.clear(windowId))
+    expectInvalidArgument(persistExit, "WindowState.persist")
+    expectInvalidArgument(restoreExit, "WindowState.restore")
+    expectInvalidArgument(clearExit, "WindowState.clear")
+  }
+  const delId = `main${String.fromCharCode(127)}forged`
+  expectInvalidArgument(
+    await Effect.runPromiseExit(service.persist(delId, state)),
+    "WindowState.persist"
+  )
+  expectInvalidArgument(await Effect.runPromiseExit(service.restore(delId)), "WindowState.restore")
+  expectInvalidArgument(await Effect.runPromiseExit(service.clear(delId)), "WindowState.clear")
+
+  expect(await readdir(directory)).toEqual([])
+})
+
 test("WindowState clear with no argument wipes the full store", async () => {
   const path = await tempWindowStatePath()
   const service = await Effect.runPromise(makeWindowState({ path }))
