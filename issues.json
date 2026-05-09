@@ -1275,16 +1275,24 @@
   ],
   "workflow_ledger": {
     "active": {
-      "number": 806,
-      "title": "Validate Window.create chrome inputs",
-      "url": "https://github.com/Rika-Labs/effect-desktop/issues/806",
+      "number": 819,
+      "title": "Contain notarization artifact file names to their metadata directory",
+      "url": "https://github.com/Rika-Labs/effect-desktop/issues/819",
       "status": "pr-open",
       "workflow": ["scout", "architect", "review", "work", "pr", "code-review", "address"],
-      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/935",
-      "branch": "issue-806-validate-window-create-chrome-inputs",
-      "updated_at": "2026-05-09T05:00:07.000Z"
+      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/941",
+      "branch": "issue-819-contain-notarization-artifact-file-names",
+      "updated_at": "2026-05-09T05:23:20.000Z"
     },
     "worked": [
+      {
+        "number": 806,
+        "title": "Validate Window.create chrome inputs",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/806",
+        "status": "merged",
+        "pr": "https://github.com/Rika-Labs/effect-desktop/pull/935",
+        "updated_at": "2026-05-09T05:07:35.000Z"
+      },
       {
         "number": 877,
         "title": "Stage macOS app bundle for dmg and zip packaging",
