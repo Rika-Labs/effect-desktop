@@ -143,6 +143,7 @@ import {
   UpdaterCheckResult,
   UpdaterLive,
   UpdaterMethodNames,
+  UpdaterPreparingRestartEvent,
   UpdaterStatusResult,
   WebView,
   WebViewApi,
@@ -381,7 +382,8 @@ const expectedUpdaterMethods: Array<(typeof UpdaterMethodNames)[number]> = [
   "download",
   "install",
   "installAndRestart",
-  "getStatus"
+  "getStatus",
+  "readyForRestart"
 ]
 
 const expectedCrashReporterMethods: Array<(typeof CrashReporterMethodNames)[number]> = [
@@ -2585,7 +2587,7 @@ test("UpdaterApi declares the Phase 8 Updater method surface", () => {
   expect(UpdaterApi.tag).toBe("Updater")
   expect([...UpdaterMethodNames]).toEqual(expectedUpdaterMethods)
   expect(Object.keys(UpdaterApi.spec)).toEqual(expectedUpdaterMethods)
-  expect(Object.keys(UpdaterApi.events)).toEqual([])
+  expect(Object.keys(UpdaterApi.events)).toEqual(["PreparingRestart"])
 })
 
 test("Updater service delegates through a substitutable UpdaterClient port", async () => {
@@ -2657,7 +2659,11 @@ test("unsupported Updater client keeps consume-only status but defers install fl
       const status = yield* updater.getStatus()
       const downloadExit = yield* Effect.exit(updater.download())
       const restartExit = yield* Effect.exit(updater.installAndRestart())
-      return { check, downloadExit, restartExit, status }
+      const readyExit = yield* Effect.exit(updater.readyForRestart())
+      const prepareExit = yield* updater
+        .onPreparingRestart()
+        .pipe(Stream.runHead, Effect.exit)
+      return { check, downloadExit, prepareExit, readyExit, restartExit, status }
     }).pipe(Effect.provide(makeUpdaterServiceLayer(makeUnsupportedUpdaterClient())))
   )
 
@@ -2665,6 +2671,29 @@ test("unsupported Updater client keeps consume-only status but defers install fl
   expect(result.status.state).toBe("idle")
   expectExitFailure(result.downloadExit, (error) => hasErrorTag(error, "Unsupported"))
   expectExitFailure(result.restartExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(result.readyExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(result.prepareExit, (error) => hasErrorTag(error, "Unsupported"))
+})
+
+test("Updater service exposes the restart readiness handshake", async () => {
+  const calls: string[] = []
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const updater = yield* Updater
+      const restartStatus = yield* updater.installAndRestart({ version: "1.1.0" })
+      const events = yield* updater
+        .onPreparingRestart()
+        .pipe(Stream.take(1), Stream.runCollect)
+      yield* updater.readyForRestart()
+      return { events, restartStatus }
+    }).pipe(Effect.provide(makeUpdaterServiceLayer(updaterClient(calls))))
+  )
+
+  expect(result.restartStatus.state).toBe("installing")
+  expect(Array.from(result.events)).toEqual([
+    new UpdaterPreparingRestartEvent({ deadlineMs: 5_000 })
+  ])
+  expect(calls).toEqual(["installAndRestart:1.1.0", "readyForRestart"])
 })
 
 test("CrashReporterApi declares the Phase 8 CrashReporter method surface", () => {
@@ -4816,7 +4845,10 @@ const updaterClient = (calls: string[]): UpdaterClientApi => ({
     Effect.sync(() => {
       calls.push("getStatus")
       return new UpdaterStatusResult({ state: "update-available", version: "1.1.0" })
-    })
+    }),
+  readyForRestart: () => recordVoid(calls, "readyForRestart"),
+  onPreparingRestart: () =>
+    Stream.make(new UpdaterPreparingRestartEvent({ deadlineMs: 5_000 }))
 })
 
 const updaterStatus = (

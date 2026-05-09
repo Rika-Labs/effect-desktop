@@ -47,3 +47,9 @@ export class UpdaterStatusResult extends Schema.Class<UpdaterStatusResult>("Upda
   ),
   message: Schema.optionalKey(Schema.String)
 }) {}
+
+export class UpdaterPreparingRestartEvent extends Schema.Class<UpdaterPreparingRestartEvent>(
+  "UpdaterPreparingRestartEvent"
+)({
+  deadlineMs: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+}) {}
