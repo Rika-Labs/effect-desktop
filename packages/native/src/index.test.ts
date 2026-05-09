@@ -3385,6 +3385,35 @@ test("GlobalShortcut bridge client sends typed host envelopes and decodes presse
   ])
 })
 
+test("GlobalShortcut bridge client rejects empty and NUL-bearing accelerators as InvalidArgument", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* GlobalShortcut
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          GlobalShortcutLive,
+          makeGlobalShortcutBridgeClientLayer(
+            globalShortcutExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const registerEmptyExit = await Effect.runPromiseExit(client.register("", windowHandle))
+  const isRegisteredEmptyExit = await Effect.runPromiseExit(client.isRegistered(""))
+  const unregisterNulExit = await Effect.runPromiseExit(client.unregister("Cmd\u0000K"))
+  const registerNulExit = await Effect.runPromiseExit(client.register("Cmd\u0000K", windowHandle))
+
+  expectExitFailure(registerEmptyExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(isRegisteredEmptyExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(unregisterNulExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(registerNulExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
 test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar events, keeps listening after command failure, and unregisters on scope close", async () => {
   const calls: string[] = []
   const rows: EventLogEntry[] = []

@@ -1,6 +1,8 @@
 import { Api } from "@effect-desktop/bridge"
 import { Schema } from "effect"
 
+import { BridgeSafeNonEmptyString } from "./strings.js"
+
 const WindowResource = Api.Resource("window", "open")
 
 export const GlobalShortcutSupportReason = Schema.Literals([
@@ -13,14 +15,14 @@ export type GlobalShortcutSupportReason = Schema.Schema.Type<typeof GlobalShortc
 export class GlobalShortcutRegisterInput extends Schema.Class<GlobalShortcutRegisterInput>(
   "GlobalShortcutRegisterInput"
 )({
-  accelerator: Schema.String,
+  accelerator: BridgeSafeNonEmptyString,
   registrarWindow: WindowResource.schema
 }) {}
 
 export class GlobalShortcutAcceleratorInput extends Schema.Class<GlobalShortcutAcceleratorInput>(
   "GlobalShortcutAcceleratorInput"
 )({
-  accelerator: Schema.String
+  accelerator: BridgeSafeNonEmptyString
 }) {}
 
 export class GlobalShortcutSupportedResult extends Schema.Class<GlobalShortcutSupportedResult>(
