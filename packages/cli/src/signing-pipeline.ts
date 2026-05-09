@@ -1,5 +1,5 @@
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises"
-import { dirname, isAbsolute, join, relative, resolve } from "node:path"
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import { Data, Effect } from "effect"
@@ -577,12 +577,9 @@ const readPackagedArtifacts = (
         readonly fileName?: unknown
       }>(metadataPath)
       const kind = yield* readArtifactKind(metadata.kind, metadataPath)
-      const fileName = yield* readRequiredString(
-        metadata.fileName,
-        `${relative(plan.outputPath, metadataPath)}#fileName`,
-        "Run `bun desktop package` before `bun desktop sign`."
-      )
-      const artifactPath = join(rootPath, fileName)
+      const fileNameField = `${relative(plan.outputPath, metadataPath)}#fileName`
+      const fileName = yield* readContainedFileName(metadata.fileName, fileNameField)
+      const artifactPath = yield* resolveContainedArtifactPath(rootPath, fileName, fileNameField)
       yield* statPath(artifactPath)
       artifacts.push({ kind, rootPath, artifactPath })
     }
@@ -780,6 +777,72 @@ const readOptionalString = (
       remediation: `Remove ${field} or set it to a non-empty string.`
     })
   )
+}
+
+const readContainedFileName = (
+  value: unknown,
+  field: string
+): Effect.Effect<string, SignConfigError, never> => {
+  if (typeof value !== "string" || value.length === 0) {
+    return Effect.fail(
+      new SignConfigError({
+        field,
+        message: `${field} is required`,
+        remediation: "Run `bun desktop package` before `bun desktop sign`."
+      })
+    )
+  }
+  if (!isContainedFileName(value)) {
+    return Effect.fail(
+      new SignConfigError({
+        field,
+        message: `${field} must be a single file name without path separators`,
+        remediation: "Regenerate package metadata with `bun desktop package`."
+      })
+    )
+  }
+  return Effect.succeed(value)
+}
+
+const isContainedFileName = (value: string): boolean => {
+  if (value === "." || value === "..") {
+    return false
+  }
+  if (value.includes("/") || value.includes("\\")) {
+    return false
+  }
+  if (isAbsolute(value)) {
+    return false
+  }
+  if (basename(value) !== value) {
+    return false
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    if (code < 0x20 || code === 0x7f) {
+      return false
+    }
+  }
+  return true
+}
+
+const resolveContainedArtifactPath = (
+  rootPath: string,
+  fileName: string,
+  field: string
+): Effect.Effect<string, SignConfigError, never> => {
+  const candidate = resolve(rootPath, fileName)
+  const containedPrefix = `${rootPath}${sep}`
+  if (candidate !== rootPath && !candidate.startsWith(containedPrefix)) {
+    return Effect.fail(
+      new SignConfigError({
+        field,
+        message: `${field} resolves outside the artifact metadata directory`,
+        remediation: "Regenerate package metadata with `bun desktop package`."
+      })
+    )
+  }
+  return Effect.succeed(candidate)
 }
 
 const readArtifactKind = (

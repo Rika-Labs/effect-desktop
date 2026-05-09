@@ -1682,6 +1682,62 @@ test("desktop sign GPG-signs Linux AppImage and writes Linux metadata", async ()
   }
 })
 
+test("desktop sign rejects artifact fileName that escapes the metadata directory", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-traversal-"))
+  try {
+    await writePlaygroundFixture(directory, { signing: { linux: { gpgKey: "ABCD1234" } } })
+    const artifactPath = await writePackagedArtifactFixture(directory, "linux-x64", "appimage")
+    const artifactRoot = dirname(artifactPath)
+    const linuxDir = dirname(artifactRoot)
+    const outsideName = "outside.AppImage"
+    const outsidePath = join(linuxDir, outsideName)
+    await writeFile(outsidePath, "outside artifact bytes")
+    await writeFile(
+      join(artifactRoot, "artifact.json"),
+      `${JSON.stringify(
+        {
+          kind: "appimage",
+          target: "linux-x64",
+          fileName: `../${outsideName}`,
+          sizeBytes: 0,
+          sha256: "0".repeat(64)
+        },
+        null,
+        2
+      )}\n`
+    )
+    const calls: string[] = []
+    const runner: SignCommandRunner = (invocation) =>
+      Effect.gen(function* () {
+        calls.push(invocation.step)
+        const outputPath = invocation.args[invocation.args.indexOf("--output") + 1]
+        if (typeof outputPath === "string") {
+          yield* Effect.promise(() => writeFile(outputPath, "signature"))
+        }
+      })
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["sign", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        signCommandRunner: runner,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("SignConfigError")
+    expect(stderr.join("")).toContain("#fileName")
+    expect(calls).toEqual([])
+    await expect(stat(`${outsidePath}.asc`)).rejects.toThrow()
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop notarize submits staples and assesses unstapled macOS artifacts", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
   try {
