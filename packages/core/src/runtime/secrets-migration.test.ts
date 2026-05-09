@@ -7,7 +7,6 @@ import { expect, test } from "bun:test"
 import { Cause, Effect, Exit, Option, Schema } from "effect"
 
 import { AuditEvent, type AuditEventsApi } from "./audit-events.js"
-import { makeResourceRegistry } from "./resources.js"
 import { SecretValue, type SecretsApi, type SecretsSafeStorageApi, makeSecrets } from "./secrets.js"
 import { SecretsMigrationFailedError, runSecretsMigration } from "./secrets-migration.js"
 import { makeSettings, type SettingsStore } from "./settings.js"

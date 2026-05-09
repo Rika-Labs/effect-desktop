@@ -54,7 +54,7 @@ Cross-links: [ADR-0003](adr-0003-sql-effect-unstable-sql.md) (optional SQL journ
 
 ## Validation
 
-Port one non-critical flow (e.g., crash submission) to `Workflow.make`; assert that killing the runtime mid-activity and restarting resumes the workflow on the memory engine within the same scope semantics. `job.ts` call-sites are replaced with adapter shims; no test references the deleted internals.
+Port one non-critical flow (e.g., crash submission) to `Workflow.make`. With the memory engine, validate in-process recovery semantics only: a transient activity failure followed by `Activity.retry` must resume the workflow within the same runtime instance, and `Workflow.withCompensation` must run on terminal failure. Cross-restart resume validation is reserved for the SQL/cluster engine upgrade path — the memory engine carries no journal and cannot satisfy that criterion. `job.ts` call-sites are replaced with adapter shims; no test references the deleted internals.
 
 ## Migration notes
 

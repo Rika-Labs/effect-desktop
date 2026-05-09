@@ -39,20 +39,26 @@ export * from "./runtime/framework-metrics.js"
 export * from "./runtime/window-state.js"
 export * from "./runtime/reactivity.js"
 
-export interface DesktopAppOptions {
-  readonly workflows?: readonly WorkflowLayer[]
+export interface DesktopAppOptions<RIn = never, E = never> {
+  readonly workflows?: readonly WorkflowLayer<RIn, E>[]
 }
 
-const app = (options: DesktopAppOptions = {}): Layer.Layer<WorkflowEngine.WorkflowEngine> => {
+const app = <RIn = never, E = never>(
+  options: DesktopAppOptions<RIn, E> = {}
+): Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn> => {
   const wfs = options.workflows ?? []
   if (wfs.length === 0) {
-    return WorkflowEngineLive
+    return WorkflowEngineLive as unknown as Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn>
   }
-  const merged = wfs.reduce<Layer.Layer<never, never, WorkflowEngine.WorkflowEngine>>(
+  const merged = wfs.reduce<Layer.Layer<never, E, RIn | WorkflowEngine.WorkflowEngine>>(
     (acc, wf) => Layer.merge(acc, wf),
-    Layer.empty as Layer.Layer<never, never, WorkflowEngine.WorkflowEngine>
+    Layer.empty as Layer.Layer<never, E, RIn | WorkflowEngine.WorkflowEngine>
   )
-  return Layer.provideMerge(merged, WorkflowEngineLive)
+  return Layer.provideMerge(merged, WorkflowEngineLive) as Layer.Layer<
+    WorkflowEngine.WorkflowEngine,
+    E,
+    RIn
+  >
 }
 
 export const Desktop = Object.freeze({

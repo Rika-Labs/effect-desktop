@@ -59,6 +59,7 @@ export interface SecretsAuditEventInput {
   readonly source: string
   readonly traceId: string
   readonly outcome: string
+  readonly operation: string
   readonly namespace: string
   readonly key?: string
   readonly timestamp?: number
@@ -207,7 +208,8 @@ export const secretsAuditEvent = (input: SecretsAuditEventInput): AuditEvent =>
     traceId: input.traceId,
     outcome: input.outcome,
     ...(input.timestamp === undefined ? {} : { timestamp: input.timestamp }),
-    ...(input.key === undefined
-      ? { details: { namespace: input.namespace } }
-      : { details: { namespace: input.namespace, key: input.key } })
+    details:
+      input.key === undefined
+        ? { namespace: input.namespace, operation: input.operation }
+        : { namespace: input.namespace, key: input.key, operation: input.operation }
   })

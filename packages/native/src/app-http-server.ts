@@ -41,11 +41,24 @@ const mintNonce = (): string => {
 
 const renderCsp = (nonce: string): string => APP_CSP_TEMPLATE.replaceAll("{N}", nonce)
 
+const NONCE_TAG_PATTERN = /<(script|link|style)\b([^>]*)>/gi
+
 const injectNonceIntoHtml = (html: string, nonce: string): string =>
-  html
-    .replaceAll("<script", `<script nonce="${nonce}"`)
-    .replaceAll("<link", `<link nonce="${nonce}"`)
-    .replaceAll("<style", `<style nonce="${nonce}"`)
+  html.replace(NONCE_TAG_PATTERN, (match, tagName: string, attrs: string) => {
+    const lowerAttrs = attrs.toLowerCase()
+    if (lowerAttrs.includes("nonce=")) {
+      return match
+    }
+    return `<${tagName}${attrs} nonce="${nonce}">`
+  })
+
+const ALLOWED_HOSTS: ReadonlySet<string> = new Set(["", "localhost", "127.0.0.1"])
+const ALLOWED_SCHEMES: ReadonlySet<string> = new Set(["app:", "http:", "https:"])
+
+const TRAVERSAL_PATTERN = /(^|[\\/])\.\.([\\/]|$)|%2e%2e/i
+
+const hasTraversal = (rawPath: string): boolean =>
+  rawPath.includes("\\") || TRAVERSAL_PATTERN.test(rawPath)
 
 const computeEtag = (bytes: Uint8Array): string => {
   let hash = 2166136261
@@ -103,18 +116,20 @@ const buildAssetResponse = (
   const htmlCsp = renderCsp(nonce)
   const rewritten = injectNonceIntoHtml(htmlText, nonce)
   const rewrittenBytes = new TextEncoder().encode(rewritten)
-  const etag = computeEtag(rewrittenBytes)
+  // ETag derived from source bytes — nonce changes per request, but the
+  // underlying HTML does not, so conditional caching stays meaningful.
+  const sourceEtag = `"${computeEtag(asset.bytes).slice(1, -1)}-html"`
 
-  if (ifNoneMatch !== undefined && ifNoneMatch === etag) {
+  if (ifNoneMatch !== undefined && ifNoneMatch === sourceEtag) {
     return HttpServerResponse.empty({
       status: 304,
-      headers: { etag, "content-security-policy": htmlCsp }
+      headers: { etag: sourceEtag, "content-security-policy": htmlCsp }
     })
   }
 
   return HttpServerResponse.uint8Array(rewrittenBytes, {
     contentType: asset.contentType,
-    headers: { etag, "content-security-policy": htmlCsp }
+    headers: { etag: sourceEtag, "content-security-policy": htmlCsp }
   })
 }
 
@@ -130,15 +145,26 @@ export const AppHttpServerLive: Layer.Layer<AppHttpServer, never, AppAssetResolv
     return Object.freeze({
       handle: (request) =>
         Effect.gen(function* () {
-          const url = new URL(request.url, "http://localhost")
+          const reject = (status: 400 | 404) =>
+            HttpServerResponse.text(status === 400 ? "bad request" : "app asset not found", {
+              status,
+              headers: { "content-security-policy": renderCsp(mintNonce()) }
+            })
+
+          if (hasTraversal(request.url)) {
+            return reject(400)
+          }
+
+          const url = new URL(request.url, "app://localhost")
+          if (!ALLOWED_SCHEMES.has(url.protocol) || !ALLOWED_HOSTS.has(url.hostname)) {
+            return reject(404)
+          }
+
           const normalizedPath = normalizePath(url.pathname)
           const asset = yield* resolver.resolve(normalizedPath)
 
           if (asset === null) {
-            return HttpServerResponse.text("app asset not found", {
-              status: 404,
-              headers: { "content-security-policy": renderCsp(mintNonce()) }
-            })
+            return reject(404)
           }
 
           const nonce = mintNonce()

@@ -58,7 +58,7 @@ With the flag off, PGlite WASM must not appear in the renderer bundle — confir
 
 ## Migration notes
 
-1. Add `@effect/sql-pglite` as an optional devDependency in `packages/react`.
+1. Add `@effect/sql-pglite` as an `optionalDependency` (or `peerDependency` with `peerDependenciesMeta.optional = true`) in `packages/react`. Listing it under `devDependencies` would cause downstream consumers to fail at build/runtime when `renderer.sql === "pglite"` is enabled — `devDependencies` are not installed for dependents. The package must resolve in consumer installs whenever the flag is on.
 2. Implement `PgliteClient.layer` wiring gated on `renderer.sql === "pglite"` in the spine.
 3. Add pgvector and full-text search examples to renderer templates.
 4. Run bundle-size validation; document results in this ADR before changing status to Accepted.

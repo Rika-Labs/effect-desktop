@@ -936,6 +936,67 @@ type ClientWriteFn = (
 
 type ServerWriteFn = (clientId: number, data: RpcMessage.FromClientEncoded) => Effect.Effect<void>
 
+const isHostProtocolError = (value: unknown): value is HostProtocolError => {
+  if (typeof value !== "object" || value === null) {
+    return false
+  }
+  const tag = (value as { tag?: unknown }).tag
+  return typeof tag === "string" && HOST_PROTOCOL_ERROR_TAGS.has(tag)
+}
+
+const HOST_PROTOCOL_ERROR_TAGS: ReadonlySet<string> = new Set(
+  HOST_PROTOCOL_ERROR_SPECS.map((spec) => spec.tag)
+)
+
+const formatDefect = (defect: unknown): string => {
+  if (defect instanceof Error) {
+    return defect.message
+  }
+  if (typeof defect === "string") {
+    return defect
+  }
+  try {
+    return JSON.stringify(defect)
+  } catch {
+    return String(defect)
+  }
+}
+
+export const makeHostProtocolInternalError = (
+  message: string,
+  operation: string
+): HostProtocolError =>
+  new HostProtocolInternalError({
+    tag: "Internal",
+    message,
+    operation,
+    recoverable: false
+  })
+
+const encodeCauseAsHostProtocolError = (
+  cause: ReadonlyArray<{ readonly _tag: string; readonly error?: unknown; readonly defect?: unknown }>,
+  operation: string,
+  options: ResolvedDesktopProtocolOptions
+): HostProtocolError => {
+  void options
+  const failure = cause.find((entry) => entry._tag === "Fail")
+  if (failure !== undefined) {
+    if (isHostProtocolError(failure.error)) {
+      return failure.error
+    }
+    return makeHostProtocolInternalError(formatDefect(failure.error), operation)
+  }
+  const die = cause.find((entry) => entry._tag === "Die")
+  if (die !== undefined) {
+    return makeHostProtocolInternalError(formatDefect(die.defect ?? die.error), operation)
+  }
+  const interrupt = cause.find((entry) => entry._tag === "Interrupt")
+  if (interrupt !== undefined) {
+    return makeHostProtocolInternalError("interrupted", operation)
+  }
+  return makeHostProtocolInternalError("unknown failure", operation)
+}
+
 export const makeDesktopClientProtocol = (
   transport: DesktopTransportSend & DesktopTransportRun,
   options: DesktopProtocolOptions = {}
@@ -1012,6 +1073,17 @@ export const makeDesktopClientProtocol = (
           return writeToClient(0, msg)
         }
         if (envelope.kind === "stream" && envelope.id !== undefined) {
+          if (envelope.error !== undefined) {
+            const failure: RpcMessage.FromServerEncoded = {
+              _tag: "Exit",
+              requestId: envelope.id,
+              exit: {
+                _tag: "Failure",
+                cause: [{ _tag: "Fail", error: envelope.error }]
+              }
+            }
+            return writeToClient(0, failure)
+          }
           const chunk: RpcMessage.FromServerEncoded = {
             _tag: "Chunk",
             requestId: envelope.id,
@@ -1059,23 +1131,31 @@ export const makeDesktopServerProtocol = (
             if (exit._tag === "Success") {
               fields.payload = exit.value
             } else {
-              const first = exit.cause[0]
-              if (first !== undefined && first._tag === "Fail") {
-                fields.error = first.error as HostProtocolError
-              }
+              fields.error = encodeCauseAsHostProtocolError(
+                exit.cause,
+                response.requestId,
+                resolved
+              )
             }
             return transport.send(new HostProtocolResponseEnvelope(fields))
           }
           if (response._tag === "Chunk") {
-            const firstValue = response.values[0]
-            return transport.send(
-              new HostProtocolStreamByRequestEnvelope({
-                kind: "stream",
-                id: response.requestId,
-                timestamp: resolved.now(),
-                traceId: resolved.nextTraceId(),
-                payload: firstValue
-              })
+            if (response.values.length === 0) {
+              return Effect.void
+            }
+            return Effect.forEach(
+              response.values,
+              (value) =>
+                transport.send(
+                  new HostProtocolStreamByRequestEnvelope({
+                    kind: "stream",
+                    id: response.requestId,
+                    timestamp: resolved.now(),
+                    traceId: resolved.nextTraceId(),
+                    payload: value
+                  })
+                ),
+              { discard: true }
             )
           }
           return Effect.void

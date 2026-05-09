@@ -16,9 +16,18 @@ const readyEvent = {
   version: packageJson.version
 } as const
 
+const TRUTHY_ENV_VALUES = new Set(["1", "true", "yes", "on"])
+
 const windowSmokeTest: Config.Config<boolean> = Config.option(
-  Config.boolean("EFFECT_DESKTOP_WINDOW_SMOKE_TEST")
-).pipe(Config.map(Option.getOrElse(() => false)))
+  Config.string("EFFECT_DESKTOP_WINDOW_SMOKE_TEST")
+).pipe(
+  Config.map(
+    Option.match({
+      onNone: () => false,
+      onSome: (value) => TRUTHY_ENV_VALUES.has(value.trim().toLowerCase())
+    })
+  )
+)
 
 await Bun.write(Bun.stdout, `${JSON.stringify(readyEvent)}\n`)
 

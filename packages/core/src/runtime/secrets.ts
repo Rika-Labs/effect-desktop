@@ -360,6 +360,7 @@ const auditSecretAccess = (
       source: "Secrets",
       traceId,
       outcome: input.outcome,
+      operation: input.operation,
       namespace: input.namespace,
       ...(Option.isSome(input.key) ? { key: input.key.value } : {})
     })

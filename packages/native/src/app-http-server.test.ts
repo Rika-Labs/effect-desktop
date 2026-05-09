@@ -161,7 +161,7 @@ test("returns 404 with CSP header for unknown paths", async () => {
   expect(typeof csp).toBe("string")
 })
 
-test("traversal URLs normalize via the URL API and resolve to a regular miss", async () => {
+test("traversal URLs are rejected before normalization", async () => {
   const response = await Effect.runPromise(
     Effect.gen(function* () {
       const server = yield* makeServer()
@@ -169,7 +169,29 @@ test("traversal URLs normalize via the URL API and resolve to a regular miss", a
     })
   )
 
-  expect(response.status).toBe(404)
+  expect(response.status).toBe(400)
+})
+
+test("encoded traversal URLs are rejected before normalization", async () => {
+  const response = await Effect.runPromise(
+    Effect.gen(function* () {
+      const server = yield* makeServer()
+      return yield* Effect.scoped(server.handle(makeRequest("/%2e%2e/secret")))
+    })
+  )
+
+  expect(response.status).toBe(400)
+})
+
+test("backslash traversal URLs are rejected before normalization", async () => {
+  const response = await Effect.runPromise(
+    Effect.gen(function* () {
+      const server = yield* makeServer()
+      return yield* Effect.scoped(server.handle(makeRequest("/assets\\..\\secret")))
+    })
+  )
+
+  expect(response.status).toBe(400)
 })
 
 test("AppHttpServerLive requires AppAssetResolver", async () => {

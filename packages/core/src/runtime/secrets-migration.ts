@@ -172,6 +172,7 @@ const auditMigrated = (
       source: MigrationSource,
       traceId: key,
       outcome: "ok",
+      operation: "Secrets.migrate",
       namespace,
       key
     })

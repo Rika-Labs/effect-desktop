@@ -9,7 +9,11 @@ import {
 
 export { Activity, DurableClock, DurableDeferred, Workflow, WorkflowEngine }
 
-export type WorkflowLayer = Layer.Layer<never, never, WorkflowEngine.WorkflowEngine>
+export type WorkflowLayer<RIn = never, E = never> = Layer.Layer<
+  never,
+  E,
+  RIn | WorkflowEngine.WorkflowEngine
+>
 
 export const WorkflowEngineLive: Layer.Layer<WorkflowEngine.WorkflowEngine, never, never> =
   WorkflowEngine.layerMemory
