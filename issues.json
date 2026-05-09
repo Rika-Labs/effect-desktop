@@ -1278,10 +1278,11 @@
       "number": 872,
       "title": "Require audit for wildcard secret access",
       "url": "https://github.com/Rika-Labs/effect-desktop/issues/872",
-      "status": "work-in-progress",
-      "workflow": ["scout"],
+      "status": "pr-open",
+      "workflow": ["scout", "architect", "review", "work", "pr"],
+      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/889",
       "branch": "issue-872-require-audit-wildcard-secret-access",
-      "updated_at": "2026-05-09T03:28:05.000Z"
+      "updated_at": "2026-05-09T03:32:00.000Z"
     },
     "worked": [
       {
