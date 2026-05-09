@@ -1195,7 +1195,7 @@ test("ContextMenu service delegates through a substitutable ContextMenuClient po
       yield* contextMenu.show({
         window: windowHandle,
         template: menuTemplate,
-        position: { x: 12, y: 34 }
+        position: { x: 12.5, y: 34.25 }
       })
       yield* contextMenu.bindCommand("file.open", "app.file.open")
       const activated = yield* contextMenu.onActivated().pipe(Stream.take(1), Stream.runCollect)
@@ -1219,7 +1219,7 @@ test("ContextMenu service delegates through a substitutable ContextMenuClient po
   ])
   expect(calls).toEqual([
     "buildFromTemplate:3",
-    "show:window-1:12:34:3",
+    "show:window-1:12.5:34.25:3",
     "bindCommand:file.open:app.file.open"
   ])
 })
@@ -1235,7 +1235,7 @@ test("ContextMenu bridge client validates window menu inputs and decodes activat
       yield* contextMenu.show({
         window: windowHandle,
         template: menuTemplate,
-        position: { x: 12, y: 34 }
+        position: { x: 12.5, y: 34.25 }
       })
       yield* contextMenu.bindCommand("file.open", "app.file.open")
       const activated = yield* contextMenu.onActivated().pipe(Stream.take(1), Stream.runCollect)
@@ -1268,10 +1268,54 @@ test("ContextMenu bridge client validates window menu inputs and decodes activat
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     [
       "ContextMenu.show",
-      { window: windowHandle, template: menuTemplate, position: { x: 12, y: 34 } }
+      { window: windowHandle, template: menuTemplate, position: { x: 12.5, y: 34.25 } }
     ],
     ["ContextMenu.bindCommand", { itemId: "file.open", commandId: "app.file.open" }]
   ])
+})
+
+test("ContextMenu bridge client rejects invalid popup positions before transport", async () => {
+  const cases: ReadonlyArray<{
+    readonly position: { readonly x: number; readonly y: number }
+  }> = [
+    { position: { x: Number.NaN, y: 10 } },
+    { position: { x: Number.POSITIVE_INFINITY, y: 10 } },
+    { position: { x: Number.NEGATIVE_INFINITY, y: 10 } },
+    { position: { x: -1, y: 10 } },
+    { position: { x: 10, y: -1 } }
+  ]
+
+  for (const { position } of cases) {
+    const requests: HostProtocolRequestEnvelope[] = []
+    const exchange = contextMenuExchange(requests, () => ({ kind: "success", payload: undefined }))
+    const commandLayer = await makeCommandBindingLayer()
+
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const contextMenu = yield* ContextMenu
+        return yield* Effect.exit(
+          contextMenu.show({ window: windowHandle, template: menuTemplate, position })
+        )
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            Layer.provide(
+              ContextMenuLive,
+              makeContextMenuBridgeClientLayer(exchange, {
+                nextRequestId: nextId(["unused"]),
+                nextTraceId: nextId(["unused"]),
+                now: nextNumber([1710000000000])
+              })
+            ),
+            commandLayer
+          )
+        )
+      )
+    )
+
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+    expect(requests).toEqual([])
+  }
 })
 
 test("ContextMenu bridge client rejects empty activation event identifiers as InvalidOutput", async () => {

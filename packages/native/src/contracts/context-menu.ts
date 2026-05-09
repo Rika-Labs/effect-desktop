@@ -4,10 +4,14 @@ import { Schema } from "effect"
 import { MenuTemplate } from "../menu.js"
 
 const WindowResource = Api.Resource("window", "open")
+const ContextMenuCoordinate = Schema.Number.check(
+  Schema.isFinite(),
+  Schema.isGreaterThanOrEqualTo(0)
+)
 
 export class ContextMenuPosition extends Schema.Class<ContextMenuPosition>("ContextMenuPosition")({
-  x: Schema.Number,
-  y: Schema.Number
+  x: ContextMenuCoordinate,
+  y: ContextMenuCoordinate
 }) {}
 
 export class ContextMenuShowInput extends Schema.Class<ContextMenuShowInput>(

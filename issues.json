@@ -1275,16 +1275,24 @@
   ],
   "workflow_ledger": {
     "active": {
-      "number": 814,
-      "title": "Validate Dock.setBadgeText display strings",
-      "url": "https://github.com/Rika-Labs/effect-desktop/issues/814",
+      "number": 813,
+      "title": "Validate ContextMenu.show position coordinates",
+      "url": "https://github.com/Rika-Labs/effect-desktop/issues/813",
       "status": "work-in-progress",
-      "workflow": ["scout", "architect", "review", "work", "pr", "code-review", "address", "learn"],
-      "branch": "issue-814-validate-dock-badge-text",
-      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/828",
-      "updated_at": "2026-05-09T01:13:00.000Z"
+      "workflow": ["scout", "architect", "review", "work"],
+      "branch": "issue-813-validate-context-menu-position",
+      "pr": null,
+      "updated_at": "2026-05-09T01:17:23.000Z"
     },
     "worked": [
+      {
+        "number": 814,
+        "title": "Validate Dock.setBadgeText display strings",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/814",
+        "status": "merged",
+        "pr": "https://github.com/Rika-Labs/effect-desktop/pull/828",
+        "updated_at": "2026-05-09T01:17:23.000Z"
+      },
       {
         "number": 815,
         "title": "Validate Dialog native UI text fields",

@@ -331,7 +331,7 @@
     {
       "name": "ContextMenuPosition",
       "kind": "class",
-      "signature": "export class ContextMenuPosition extends Schema.Class<ContextMenuPosition>(\"ContextMenuPosition\")({ x: Schema.Number, y: Schema.Number }) {}"
+      "signature": "export class ContextMenuPosition extends Schema.Class<ContextMenuPosition>(\"ContextMenuPosition\")({ x: ContextMenuCoordinate, y: ContextMenuCoordinate }) {}"
     },
     {
       "name": "ContextMenuServiceApi",
