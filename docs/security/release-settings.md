@@ -18,8 +18,7 @@ every release workflow supply-chain gate.
 
 ## Runner Posture
 
-Release jobs run on Blacksmith ephemeral runners rebuilt from a clean image per
-job. persistent self-hosted runners are forbidden for release jobs.
+GitHub-hosted runners allocate a fresh virtual machine for each job. persistent self-hosted runners are forbidden for release jobs.
 
 ## CVSS Exemptions
 
