@@ -90,7 +90,10 @@ const CI_WORKFLOW_TOKENS: ReadonlyMap<string, readonly string[]> = new Map([
   ["cvss-scan", ["bun packages/cli/src/bin.ts check --release"]],
   ["reproducible-build", ["bun desktop check --repro regression tests"]],
   ["secret-scanning", ['branches: ["**"]']],
-  ["ephemeral-runners", ["blacksmith-"]],
+  [
+    "ephemeral-runners",
+    ["ubuntu-latest", "macos-latest", "windows-latest"]
+  ],
   ["branch-protection", ["bun packages/cli/src/bin.ts check --release"]]
 ])
 
@@ -303,11 +306,11 @@ const validateWorkflowActionPins = (
 const validateReleaseRunnerPosture = (
   body: string
 ): Effect.Effect<void, ReleaseGateEvidenceError, never> => {
-  if (!body.includes("runs-on: blacksmith-")) {
+  if (!body.includes("runs-on: ubuntu-latest")) {
     return Effect.fail(
       new ReleaseGateEvidenceError({
         gate: "ephemeral-runners",
-        message: "release workflow must run on Blacksmith ephemeral runners"
+        message: "release workflow must run on GitHub-hosted runners"
       })
     )
   }
@@ -333,7 +336,7 @@ const validatePolicyDocuments = (files: {
     ["secret-scanning", files.releaseSettings, "Secret scanning is enabled for every branch"],
     ["branch-protection", files.releaseSettings, "main requires at least one review"],
     ["branch-protection", files.releaseSettings, "release branches require at least two reviews"],
-    ["ephemeral-runners", files.releaseSettings, "Blacksmith"],
+    ["ephemeral-runners", files.releaseSettings, "GitHub-hosted runners"],
     ["ephemeral-runners", files.releaseSettings, "persistent self-hosted runners are forbidden"]
   ] as const
   for (const [gate, body, token] of required) {
