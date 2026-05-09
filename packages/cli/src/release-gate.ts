@@ -90,10 +90,7 @@ const CI_WORKFLOW_TOKENS: ReadonlyMap<string, readonly string[]> = new Map([
   ["cvss-scan", ["bun packages/cli/src/bin.ts check --release"]],
   ["reproducible-build", ["bun desktop check --repro regression tests"]],
   ["secret-scanning", ['branches: ["**"]']],
-  [
-    "ephemeral-runners",
-    ["ubuntu-latest", "macos-latest", "windows-latest"]
-  ],
+  ["ephemeral-runners", ["ubuntu-latest", "macos-latest", "windows-latest"]],
   ["branch-protection", ["bun packages/cli/src/bin.ts check --release"]]
 ])
 
