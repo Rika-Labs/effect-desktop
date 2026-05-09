@@ -1275,16 +1275,24 @@
   ],
   "workflow_ledger": {
     "active": {
-      "number": 819,
-      "title": "Contain notarization artifact file names to their metadata directory",
-      "url": "https://github.com/Rika-Labs/effect-desktop/issues/819",
+      "number": 824,
+      "title": "Honor --json for production checks",
+      "url": "https://github.com/Rika-Labs/effect-desktop/issues/824",
       "status": "pr-open",
-      "workflow": ["scout", "architect", "review", "work", "pr", "code-review", "address"],
-      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/941",
-      "branch": "issue-819-contain-notarization-artifact-file-names",
-      "updated_at": "2026-05-09T05:23:20.000Z"
+      "workflow": ["work", "pr", "code-review", "address"],
+      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/950",
+      "branch": "issue-824-honor-json-production-check",
+      "updated_at": "2026-05-09T05:42:27.000Z"
     },
     "worked": [
+      {
+        "number": 819,
+        "title": "Contain notarization artifact file names to their metadata directory",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/819",
+        "status": "merged",
+        "pr": "https://github.com/Rika-Labs/effect-desktop/pull/941",
+        "updated_at": "2026-05-09T05:31:15.000Z"
+      },
       {
         "number": 806,
         "title": "Validate Window.create chrome inputs",

@@ -69,6 +69,51 @@ test("desktop check --production exits non-zero for unacknowledged CSP weakening
   }
 })
 
+test("desktop check --production --json writes failed reports to stderr", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-"))
+  try {
+    await writeFile(
+      join(directory, "desktop.config.ts"),
+      [
+        "export default {",
+        "  security: {",
+        "    csp: { policy: \"script-src 'self' 'unsafe-inline'\" }",
+        "  }",
+        "}"
+      ].join("\n")
+    )
+
+    const stdout: string[] = []
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--production", "--config", "desktop.config.ts", "--json"],
+        cwd: directory,
+        writeStdout: (text) => {
+          stdout.push(text)
+        },
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const report = JSON.parse(stderr.join("")) as {
+      readonly passed: boolean
+      readonly failures: ReadonlyArray<{ readonly rule: string }>
+      readonly acknowledgements: ReadonlyArray<unknown>
+    }
+    expect(exitCode).toBe(1)
+    expect(stdout.join("")).toBe("")
+    expect(report.passed).toBe(false)
+    expect(report.failures.map((failure) => failure.rule)).toContain("weakened-csp")
+    expect(report.acknowledgements).toEqual([])
+    expect(stderr.join("")).not.toContain("FAIL weakened-csp")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop check --production exits zero and reports acknowledged weakenings", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-"))
   try {
@@ -101,6 +146,43 @@ test("desktop check --production exits zero and reports acknowledged weakenings"
 
     expect(exitCode).toBe(0)
     expect(stdout.join("")).toContain("ACK weakened-csp")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --production --json writes passed reports to stdout", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-"))
+  try {
+    await writeFile(join(directory, "desktop.config.ts"), "export default {}\n")
+
+    const stdout: string[] = []
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--production", "--config", "desktop.config.ts", "--json"],
+        cwd: directory,
+        writeStdout: (text) => {
+          stdout.push(text)
+        },
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const report = JSON.parse(stdout.join("")) as {
+      readonly passed: boolean
+      readonly failures: ReadonlyArray<unknown>
+      readonly acknowledgements: ReadonlyArray<unknown>
+    }
+    expect(exitCode).toBe(0)
+    expect(stderr.join("")).toBe("")
+    expect(report).toEqual({
+      passed: true,
+      failures: [],
+      acknowledgements: []
+    })
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
