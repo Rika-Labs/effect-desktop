@@ -1,3 +1,15 @@
+export {
+  RendererSqliteMemoryLive,
+  RendererSqliteWorkerLive,
+  SqliteWasmClient,
+  SqlClient,
+  SqlError,
+  SqlModel,
+  type RendererSqliteClient,
+  type RendererSqliteMemoryOptions,
+  type RendererSqliteWorkerOptions
+} from "./sqlite-wasm.js"
+
 import type { HostProtocolError } from "@effect-desktop/bridge"
 import type { WindowCreateOptions, WindowError, WindowHandle } from "@effect-desktop/native"
 import { Cause, Effect, Exit, Fiber, Option, Stream } from "effect"
