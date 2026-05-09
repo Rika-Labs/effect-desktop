@@ -461,7 +461,7 @@
     {
       "name": "DialogConfirmInput",
       "kind": "class",
-      "signature": "export class DialogConfirmInput extends Schema.Class<DialogConfirmInput>(\"DialogConfirmInput\")({ title: Schema.optionalKey(Schema.String), message: Schema.NonEmptyString, detail: Schema.optionalKey(Schema.String), confirmLabel: Schema.optionalKey(Schema.String), cancelLabel: Schema.optionalKey(Schema.String) }) {}"
+      "signature": "export class DialogConfirmInput extends Schema.Class<DialogConfirmInput>(\"DialogConfirmInput\")({ title: Schema.optionalKey(DialogDisplayText), message: DialogDisplayText, detail: Schema.optionalKey(DialogDisplayText), confirmLabel: Schema.optionalKey(DialogDisplayText), cancelLabel: Schema.optionalKey(DialogDisplayText) }) {}"
     },
     {
       "name": "DialogConfirmOptions",
@@ -501,7 +501,7 @@
     {
       "name": "DialogMessageInput",
       "kind": "class",
-      "signature": "export class DialogMessageInput extends Schema.Class<DialogMessageInput>(\"DialogMessageInput\")({ level: DialogLevel, title: Schema.optionalKey(Schema.String), message: Schema.NonEmptyString, detail: Schema.optionalKey(Schema.String) }) {}"
+      "signature": "export class DialogMessageInput extends Schema.Class<DialogMessageInput>(\"DialogMessageInput\")({ level: DialogLevel, title: Schema.optionalKey(DialogDisplayText), message: DialogDisplayText, detail: Schema.optionalKey(DialogDisplayText) }) {}"
     },
     {
       "name": "DialogMessageOptions",
@@ -516,7 +516,7 @@
     {
       "name": "DialogOpenDirectoryInput",
       "kind": "class",
-      "signature": "export class DialogOpenDirectoryInput extends Schema.Class<DialogOpenDirectoryInput>( \"DialogOpenDirectoryInput\" )({ title: Schema.optionalKey(Schema.String), defaultPath: Schema.optionalKey(DialogDefaultPath), multiple: Schema.optionalKey(Schema.Boolean) }) {}"
+      "signature": "export class DialogOpenDirectoryInput extends Schema.Class<DialogOpenDirectoryInput>( \"DialogOpenDirectoryInput\" )({ title: Schema.optionalKey(DialogDisplayText), defaultPath: Schema.optionalKey(DialogDefaultPath), multiple: Schema.optionalKey(Schema.Boolean) }) {}"
     },
     {
       "name": "DialogOpenDirectoryOptions",
@@ -526,7 +526,7 @@
     {
       "name": "DialogOpenFileInput",
       "kind": "class",
-      "signature": "export class DialogOpenFileInput extends Schema.Class<DialogOpenFileInput>(\"DialogOpenFileInput\")({ title: Schema.optionalKey(Schema.String), defaultPath: Schema.optionalKey(DialogDefaultPath), filters: Schema.optionalKey(Schema.Array(DialogFileFilter)), multiple: Schema.optionalKey(Schema.Boolean) }) {}"
+      "signature": "export class DialogOpenFileInput extends Schema.Class<DialogOpenFileInput>(\"DialogOpenFileInput\")({ title: Schema.optionalKey(DialogDisplayText), defaultPath: Schema.optionalKey(DialogDefaultPath), filters: Schema.optionalKey(Schema.Array(DialogFileFilter)), multiple: Schema.optionalKey(Schema.Boolean) }) {}"
     },
     {
       "name": "DialogOpenFileOptions",
@@ -541,7 +541,7 @@
     {
       "name": "DialogSaveFileInput",
       "kind": "class",
-      "signature": "export class DialogSaveFileInput extends Schema.Class<DialogSaveFileInput>(\"DialogSaveFileInput\")({ title: Schema.optionalKey(Schema.String), defaultPath: Schema.optionalKey(DialogDefaultPath), filters: Schema.optionalKey(Schema.Array(DialogFileFilter)) }) {}"
+      "signature": "export class DialogSaveFileInput extends Schema.Class<DialogSaveFileInput>(\"DialogSaveFileInput\")({ title: Schema.optionalKey(DialogDisplayText), defaultPath: Schema.optionalKey(DialogDefaultPath), filters: Schema.optionalKey(Schema.Array(DialogFileFilter)) }) {}"
     },
     {
       "name": "DialogSaveFileOptions",
