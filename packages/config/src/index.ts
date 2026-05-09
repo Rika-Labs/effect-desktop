@@ -228,7 +228,7 @@ export const cspWeakenings = (csp: CspPolicy): readonly CspWeakening[] => {
     const forbidden = overrideValues.find(
       (value) =>
         (value === "'unsafe-inline'" || value === "'unsafe-eval'") &&
-        defaultValues?.has(normalizeCspValue(value)) !== true
+        !isPermittedDefaultSource(value, defaultValues)
     )
     if (forbidden !== undefined) {
       weakenings.push({
@@ -664,6 +664,11 @@ const defaultCspDirectiveValues = (directive: string): ReadonlySet<string> | und
 
 const normalizeCspValue = (value: string): string =>
   value === "'nonce-{N}'" ? "'nonce-{N}'" : value
+
+const isPermittedDefaultSource = (
+  source: string,
+  defaults: ReadonlySet<string> | undefined
+): boolean => defaults?.has(normalizeCspValue(source)) === true
 
 const isAdditionalCspTightening = (directive: string, values: readonly string[]): boolean =>
   (values.length === 0 && NO_VALUE_HARDENING_CSP_DIRECTIVES.has(directive)) ||
