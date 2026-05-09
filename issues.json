@@ -1279,10 +1279,10 @@
       "title": "Validate CrashReporter.flush output counts",
       "url": "https://github.com/Rika-Labs/effect-desktop/issues/812",
       "status": "work-in-progress",
-      "workflow": ["scout", "architect", "review", "work", "pr", "code-review"],
+      "workflow": ["scout", "architect", "review", "work", "pr", "code-review", "address"],
       "branch": "issue-812-validate-crash-reporter-flush-count",
       "pr": "https://github.com/Rika-Labs/effect-desktop/pull/835",
-      "updated_at": "2026-05-09T01:37:00.000Z"
+      "updated_at": "2026-05-09T01:38:00.000Z"
     },
     "worked": [
       {
