@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 
-import { Cause, Context, Data, Deferred, Effect, Option, Ref, Schema } from "effect"
+import { Cause, Context, Data, Deferred, Effect, Match, Option, Ref, Schema } from "effect"
 
 import { approvalAuditEvent, emitAuditEvent } from "./audit-events.js"
 import type { EventLogError, EventLogStore } from "./event-log.js"
@@ -158,17 +158,17 @@ export const makeApprovalBroker = (
             enqueue(current, requestWithTrace, waiter, maxQueueDepthPerActor, now())
           )
 
-          switch (result._tag) {
-            case "Await":
-              return yield* Deferred.await(waiter)
-            case "Immediate":
-              return result.outcome
-            case "Overflow":
-              return yield* Effect.fail(result.error)
-            case "Start":
-              yield* runPromptLoop(state, options.prompt, options.audit, result.entry)
-              return yield* Deferred.await(waiter)
-          }
+          return yield* Match.value(result).pipe(
+            Match.tag("Await", () => Deferred.await(waiter)),
+            Match.tag("Immediate", (r) => Effect.succeed(r.outcome)),
+            Match.tag("Overflow", (r) => Effect.fail(r.error)),
+            Match.tag("Start", (r) =>
+              runPromptLoop(state, options.prompt, options.audit, r.entry).pipe(
+                Effect.flatMap(() => Deferred.await(waiter))
+              )
+            ),
+            Match.exhaustive
+          )
         }).pipe(
           Effect.withSpan("ApprovalBroker.ask", {
             attributes: { operation: request.operation, actor: request.actor }

@@ -37,6 +37,7 @@ export * from "./runtime/telemetry.js"
 export * from "./runtime/telemetry-otel.js"
 export * from "./runtime/framework-metrics.js"
 export * from "./runtime/window-state.js"
+export * from "./runtime/reactivity.js"
 
 export interface DesktopAppOptions {
   readonly workflows?: readonly WorkflowLayer[]

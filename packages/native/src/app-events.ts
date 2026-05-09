@@ -1,4 +1,4 @@
-import { Context, Data, Effect, Layer, Queue, Ref, Stream } from "effect"
+import { Context, Data, Effect, Layer, Match, Queue, Ref, Stream } from "effect"
 
 import type { WindowHandle } from "./window.js"
 
@@ -355,21 +355,24 @@ type RouteTargets =
   | { readonly _tag: "buffer" }
   | { readonly _tag: "drop" }
 
-const routeTargets = (state: RouterState, route: AppEventRoute): RouteTargets => {
-  switch (route._tag) {
-    case "firstResponder": {
+const routeTargets = (state: RouterState, route: AppEventRoute): RouteTargets =>
+  Match.value(route).pipe(
+    Match.tag("firstResponder", () => {
       const focused =
         state.focusedWindowId === undefined ? undefined : findWindow(state, state.focusedWindowId)
-      return focused === undefined ? { _tag: "buffer" } : { _tag: "targets", targets: [focused] }
-    }
-    case "broadcast":
-      return { _tag: "targets", targets: state.windows }
-    case "targeted": {
-      const target = findWindow(state, route.windowId)
-      return target === undefined ? { _tag: "drop" } : { _tag: "targets", targets: [target] }
-    }
-  }
-}
+      return focused === undefined
+        ? ({ _tag: "buffer" } as const)
+        : ({ _tag: "targets", targets: [focused] } as const)
+    }),
+    Match.tag("broadcast", () => ({ _tag: "targets", targets: state.windows }) as const),
+    Match.tag("targeted", (r) => {
+      const target = findWindow(state, r.windowId)
+      return target === undefined
+        ? ({ _tag: "drop" } as const)
+        : ({ _tag: "targets", targets: [target] } as const)
+    }),
+    Match.exhaustive
+  )
 
 const routedEvent = <Payload>(
   target: WindowEntry,

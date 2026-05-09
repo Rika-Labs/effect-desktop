@@ -12,7 +12,7 @@ import {
   ResourceRegistry,
   type ResourceEntry
 } from "@effect-desktop/core"
-import { Context, Effect, Layer, Option, Stream } from "effect"
+import { Context, Effect, Layer, Match, Option, Stream } from "effect"
 
 export interface BridgeCallPanelRow {
   readonly id: string
@@ -173,42 +173,39 @@ const toBridgeCallRows = (
 const applyBridgeState = (
   current: BridgeCallProjection,
   state: BridgeCallState
-): BridgeCallProjection => {
-  switch (state.tag) {
-    case "Pending":
-      return {
-        ...current,
-        state: state.tag,
-        traceId: Option.some(state.traceId),
-        startedAt: Option.some(state.startedAt)
-      }
-    case "Authorized":
-      return { ...current, state: state.tag }
-    case "Running":
-      return {
-        ...current,
-        state: state.tag,
-        contractTag: Option.some(contractTagFromMethod(state.handler))
-      }
-    case "Completed":
-      return { ...current, state: state.tag, completedAt: Option.some(state.completedAt) }
-    case "Failed":
-      return {
-        ...current,
-        state: state.tag,
-        errorTag: Option.some(errorTag(state.error))
-      }
-    case "Canceled":
-    case "TimedOut":
-      return { ...current, state: state.tag }
-    case "RejectedLateFrame":
-      return {
-        ...current,
-        state: state.tag,
-        contractTag: Option.some(contractTagFromMethod(state.method))
-      }
-  }
-}
+): BridgeCallProjection =>
+  Match.value(state).pipe(
+    Match.when({ tag: "Pending" }, (s) => ({
+      ...current,
+      state: s.tag,
+      traceId: Option.some(s.traceId),
+      startedAt: Option.some(s.startedAt)
+    })),
+    Match.when({ tag: "Authorized" }, (s) => ({ ...current, state: s.tag })),
+    Match.when({ tag: "Running" }, (s) => ({
+      ...current,
+      state: s.tag,
+      contractTag: Option.some(contractTagFromMethod(s.handler))
+    })),
+    Match.when({ tag: "Completed" }, (s) => ({
+      ...current,
+      state: s.tag,
+      completedAt: Option.some(s.completedAt)
+    })),
+    Match.when({ tag: "Failed" }, (s) => ({
+      ...current,
+      state: s.tag,
+      errorTag: Option.some(errorTag(s.error))
+    })),
+    Match.when({ tag: "Canceled" }, (s) => ({ ...current, state: s.tag })),
+    Match.when({ tag: "TimedOut" }, (s) => ({ ...current, state: s.tag })),
+    Match.when({ tag: "RejectedLateFrame" }, (s) => ({
+      ...current,
+      state: s.tag,
+      contractTag: Option.some(contractTagFromMethod(s.method))
+    })),
+    Match.exhaustive
+  )
 
 const emptyBridgeProjection = (
   id: string,
