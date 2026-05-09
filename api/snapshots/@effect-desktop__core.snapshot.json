@@ -1469,6 +1469,11 @@
       "signature": "export class TransportClosedError extends Data.TaggedError(\"TransportClosed\")<{ readonly operation: string }> {}"
     },
     {
+      "name": "TransportCloseError",
+      "kind": "class",
+      "signature": "export class TransportCloseError extends Data.TaggedError(\"TransportCloseFailed\")<{ readonly operation: string readonly cause: Option.Option<unknown> }> {}"
+    },
+    {
       "name": "TransportConnectInput",
       "kind": "class",
       "signature": "export class TransportConnectInput extends Schema.Class<TransportConnectInput>( \"TransportConnectInput\" )({ target: TransportConnectTarget, maxFrameBytes: Schema.optionalKey(PositiveInt) }) {}"
@@ -1476,7 +1481,7 @@
     {
       "name": "TransportConnection",
       "kind": "interface",
-      "signature": "export interface TransportConnection { readonly send: (payload: Uint8Array) => Effect.Effect<void, TransportError, never> readonly receive: Stream.Stream<Uint8Array, TransportError, never> readonly close: () => Effect.Effect<void, never, never> }"
+      "signature": "export interface TransportConnection { readonly send: (payload: Uint8Array) => Effect.Effect<void, TransportError, never> readonly receive: Stream.Stream<Uint8Array, TransportError, never> readonly close: () => Effect.Effect<void, TransportError, never> }"
     },
     {
       "name": "TransportConnectTarget",
@@ -1486,7 +1491,7 @@
     {
       "name": "TransportError",
       "kind": "type",
-      "signature": "export type TransportError = | TransportInvalidArgumentError | TransportFrameTooLargeError | TransportFrameTruncatedError | TransportClosedError | TransportWriteError"
+      "signature": "export type TransportError = | TransportInvalidArgumentError | TransportFrameTooLargeError | TransportFrameTruncatedError | TransportClosedError | TransportWriteError | TransportCloseError"
     },
     {
       "name": "TransportFrameInput",
