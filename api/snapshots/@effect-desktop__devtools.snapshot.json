@@ -259,24 +259,24 @@
       "signature": "const UnavailableDevtoolsShellWindow: DevtoolsShellWindow"
     },
     {
-      "name": "WorkersJobsDevtools",
+      "name": "WorkersDevtools",
       "kind": "class",
-      "signature": "export class WorkersJobsDevtools extends Context.Service< WorkersJobsDevtools, WorkersJobsDevtoolsApi >()(\"@effect-desktop/devtools/WorkersJobsDevtools\") {}"
+      "signature": "export class WorkersDevtools extends Context.Service<WorkersDevtools, WorkersDevtoolsApi>()( \"@effect-desktop/devtools/WorkersDevtools\" ) {}"
     },
     {
-      "name": "WorkersJobsDevtoolsApi",
+      "name": "WorkersDevtoolsApi",
       "kind": "interface",
-      "signature": "export interface WorkersJobsDevtoolsApi { readonly list: () => Effect.Effect<WorkersJobsSnapshot, never, never> readonly observe: () => Stream.Stream<WorkersJobsSnapshot, never, never> }"
+      "signature": "export interface WorkersDevtoolsApi { readonly list: () => Effect.Effect<WorkersSnapshot, never, never> readonly observe: () => Stream.Stream<WorkersSnapshot, never, never> }"
     },
     {
-      "name": "WorkersJobsDevtoolsLive",
+      "name": "WorkersDevtoolsLive",
       "kind": "value",
-      "signature": "const WorkersJobsDevtoolsLive: Layer.Layer<WorkersJobsDevtools, never, Worker | Job>"
+      "signature": "const WorkersDevtoolsLive: Layer.Layer<WorkersDevtools, never, Worker>"
     },
     {
-      "name": "WorkersJobsSnapshot",
+      "name": "WorkersSnapshot",
       "kind": "interface",
-      "signature": "export interface WorkersJobsSnapshot { readonly workers: readonly WorkerSnapshot[] readonly jobs: readonly JobSnapshot[] }"
+      "signature": "export interface WorkersSnapshot { readonly workers: readonly WorkerSnapshot[] }"
     }
   ]
 }
