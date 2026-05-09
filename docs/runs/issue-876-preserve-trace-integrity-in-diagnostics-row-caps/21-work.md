@@ -1,13 +1,14 @@
 # Work
 
-Implemented #876 by moving the diagnostics trace cap from raw spans to grouped traces.
+Implemented #876 by moving diagnostics trace projection to a bounded tail-plus-parent-chain selection before grouping.
 
 ## Changes
 
 - `packages/devtools/src/diagnostics-panels.ts`
-  - Changed trace projection from `groupTraceSpans(snapshot.traces.slice(-maxRows))` to `groupTraceSpans(snapshot.traces).slice(-maxRows)`.
+  - Changed trace projection from raw tail grouping to `selectTraceProjectionSpans`, which keeps the capped raw tail as the recency source and adds required parent spans before grouping.
 - `packages/devtools/src/index.test.ts`
   - Added a regression proving `maxRows: 1` returns both root and child spans for a single trace group.
+  - Added a regression proving a later child span keeps its trace selected over an older unrelated trace under `maxRows: 1`.
 
 ## Verification
 

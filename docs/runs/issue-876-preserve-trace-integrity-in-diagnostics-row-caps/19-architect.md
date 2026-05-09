@@ -8,24 +8,25 @@ The system has three facts:
 - `DiagnosticsPanels` owns the trace projection shown to users.
 - A returned child span with a missing returned parent is a false diagnostic unless the API says the group was truncated.
 
-The smallest correct change is to group all retained telemetry spans first, sort spans inside each group as today, then apply `maxRows` to the trace-group array. Logs and metrics keep their existing independent row caps. This trades exact raw-span count parity for trace integrity; the telemetry ring still bounds memory, and the diagnostics API stays unchanged.
+The smallest correct change is to keep the capped raw tail as the recency source, then include only the parent chain needed by spans in that tail before grouping. Logs and metrics keep their existing independent row caps. This trades exact raw-span count parity for trace integrity; the telemetry ring still bounds memory, and diagnostics avoids grouping the entire trace ring on every frame.
 
 ```mermaid
 flowchart LR
   Telemetry["Telemetry snapshot"] --> Logs["logs.slice(-maxRows)"]
   Telemetry --> RawSpans["raw retained spans"]
-  RawSpans --> Groups["groupTraceSpans(all spans)"]
-  Groups --> TraceCap["traceGroups.slice(-maxRows)"]
+  RawSpans --> Tail["tail spans by maxRows"]
+  Tail --> Parents["include required parent chain"]
+  Parents --> Groups["group selected spans"]
   Telemetry --> Metrics["metrics.slice(-maxRows)"]
   Logs --> Redact["redact snapshot"]
-  TraceCap --> Redact
+  Groups --> Redact
   Metrics --> Redact
 ```
 
 ## Modules
 
-- `packages/devtools/src/diagnostics-panels.ts` owns the projection change by moving `slice(-maxRows)` after `groupTraceSpans`.
-- `packages/devtools/src/index.test.ts` owns the regression: a root and child in the same trace with `maxRows: 1` must return both spans in one group.
+- `packages/devtools/src/diagnostics-panels.ts` owns the projection change by selecting the capped tail plus required parent spans before `groupTraceSpans`.
+- `packages/devtools/src/index.test.ts` owns the regressions: a root and child in the same trace with `maxRows: 1` must return both spans in one group, and the capped projection must follow latest span activity rather than first-seen trace insertion order.
 
 ## Verification
 
