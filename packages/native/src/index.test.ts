@@ -2225,6 +2225,86 @@ test("Notification bridge client returns invalid input as typed Effect failures"
   expect(requests).toEqual([])
 })
 
+test("Notification bridge client rejects invalid action ids and labels before transport", async () => {
+  const cases: ReadonlyArray<{
+    readonly label: string
+    readonly action: { readonly id: string; readonly label: string }
+  }> = [
+    { label: "empty id", action: { id: "", label: "Open" } },
+    { label: "empty label", action: { id: "open", label: "" } },
+    { label: "control id", action: { id: "open\nx", label: "Open" } },
+    { label: "control label", action: { id: "open", label: "Open" } }
+  ]
+
+  for (const { label, action } of cases) {
+    const requests: HostProtocolRequestEnvelope[] = []
+    const client = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* Notification
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            NotificationLive,
+            makeNotificationBridgeClientLayer(
+              notificationExchange(requests, () => ({ kind: "success", payload: undefined }))
+            )
+          )
+        )
+      )
+    )
+
+    const exit = await Effect.runPromiseExit(
+      client.show({ title: "Heads up", body: "Click", actions: [action] })
+    )
+
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+    expect(label).toBeDefined()
+    expect(requests).toEqual([])
+  }
+})
+
+test("Notification action stream rejects malformed actionId payloads as InvalidOutput", async () => {
+  const cases: ReadonlyArray<{ readonly label: string; readonly actionId: unknown }> = [
+    { label: "empty", actionId: "" },
+    { label: "control", actionId: "open\nx" }
+  ]
+
+  for (const { label, actionId } of cases) {
+    const exchange: ApiClientExchange = {
+      request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
+      subscribe: (method) =>
+        method === "Notification.Action"
+          ? Stream.make(
+              new HostProtocolEventEnvelope({
+                kind: "event",
+                timestamp: 1710000000420,
+                traceId: "event-trace",
+                method,
+                payload: {
+                  notification: notificationHandle,
+                  actionId,
+                  ownerWindowId: "window-1"
+                }
+              })
+            )
+          : Stream.empty,
+      resource: { dispose: () => Effect.void }
+    }
+
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const notification = yield* Notification
+        return yield* Effect.exit(notification.onAction().pipe(Stream.take(1), Stream.runCollect))
+      }).pipe(
+        Effect.provide(Layer.provide(NotificationLive, makeNotificationBridgeClientLayer(exchange)))
+      )
+    )
+
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+    expect(label).toBeDefined()
+  }
+})
+
 test("unsupported Notification client reports deferred host methods as Effect values", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
