@@ -4,9 +4,14 @@
   "entrypoint": "src/index.ts",
   "symbols": [
     {
+      "name": "RENDERER_STORAGE_KINDS",
+      "kind": "value",
+      "signature": "const RENDERER_STORAGE_KINDS: readonly [\"none\", \"indexeddb\", \"sqlite-wasm\", \"pglite\"]"
+    },
+    {
       "name": "RendererStorage",
       "kind": "type",
-      "signature": "export type RendererStorage = \"none\" | \"indexeddb\" | \"sqlite-wasm\" | \"pglite\""
+      "signature": "export type RendererStorage = (typeof RENDERER_STORAGE_KINDS)[number]"
     },
     {
       "name": "scaffold",
@@ -24,9 +29,14 @@
       "signature": "export interface ScaffoldResult { readonly path: string readonly template: TemplateName readonly stubs: readonly string[] }"
     },
     {
+      "name": "TEMPLATE_NAMES",
+      "kind": "value",
+      "signature": "const TEMPLATE_NAMES: readonly [\"basic-react-tailwind\", \"todo-sqlite\", \"multi-window\"]"
+    },
+    {
       "name": "TemplateName",
       "kind": "type",
-      "signature": "export type TemplateName = \"basic-react-tailwind\" | \"todo-sqlite\" | \"multi-window\""
+      "signature": "export type TemplateName = (typeof TEMPLATE_NAMES)[number]"
     }
   ]
 }
