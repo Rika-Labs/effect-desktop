@@ -3284,22 +3284,43 @@ test("unsupported Dock client exposes support checks and typed command failures"
   expectExitFailure(result.exit, (error) => hasErrorTag(error, "Unsupported"))
 })
 
-test("Linux Dock client follows Appendix K partial and unsupported rows", async () => {
+test("Linux Dock client reports unimplemented partial methods as unsupported", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const dock = yield* Dock
       const badgeCountSupported = yield* dock.isSupported("setBadgeCount")
+      const progressSupported = yield* dock.isSupported("setProgress")
+      const attentionSupported = yield* dock.isSupported("requestAttention")
       const badgeTextSupported = yield* dock.isSupported("setBadgeText")
       const menuSupported = yield* dock.isSupported("setMenu")
+      const badgeCountExit = yield* Effect.exit(dock.setBadgeCount(1))
+      const progressExit = yield* Effect.exit(dock.setProgress(0.5))
+      const attentionExit = yield* Effect.exit(dock.requestAttention())
       const textExit = yield* Effect.exit(dock.setBadgeText("hi"))
       const menuExit = yield* Effect.exit(dock.setMenu(null))
-      return { badgeCountSupported, badgeTextSupported, menuExit, menuSupported, textExit }
+      return {
+        attentionExit,
+        attentionSupported,
+        badgeCountExit,
+        badgeCountSupported,
+        badgeTextSupported,
+        menuExit,
+        menuSupported,
+        progressExit,
+        progressSupported,
+        textExit
+      }
     }).pipe(Effect.provide(makeDockServiceLayer(makeLinuxDockClient())))
   )
 
-  expect(result.badgeCountSupported).toBe(true)
+  expect(result.badgeCountSupported).toBe(false)
+  expect(result.progressSupported).toBe(false)
+  expect(result.attentionSupported).toBe(false)
   expect(result.badgeTextSupported).toBe(false)
   expect(result.menuSupported).toBe(false)
+  expectExitFailure(result.badgeCountExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(result.progressExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(result.attentionExit, (error) => hasErrorTag(error, "Unsupported"))
   expectExitFailure(
     result.textExit,
     (error) =>
