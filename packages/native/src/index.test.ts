@@ -2660,9 +2660,7 @@ test("unsupported Updater client keeps consume-only status but defers install fl
       const downloadExit = yield* Effect.exit(updater.download())
       const restartExit = yield* Effect.exit(updater.installAndRestart())
       const readyExit = yield* Effect.exit(updater.readyForRestart())
-      const prepareExit = yield* updater
-        .onPreparingRestart()
-        .pipe(Stream.runHead, Effect.exit)
+      const prepareExit = yield* updater.onPreparingRestart().pipe(Stream.runHead, Effect.exit)
       return { check, downloadExit, prepareExit, readyExit, restartExit, status }
     }).pipe(Effect.provide(makeUpdaterServiceLayer(makeUnsupportedUpdaterClient())))
   )
@@ -2681,9 +2679,7 @@ test("Updater service exposes the restart readiness handshake", async () => {
     Effect.gen(function* () {
       const updater = yield* Updater
       const restartStatus = yield* updater.installAndRestart({ version: "1.1.0" })
-      const events = yield* updater
-        .onPreparingRestart()
-        .pipe(Stream.take(1), Stream.runCollect)
+      const events = yield* updater.onPreparingRestart().pipe(Stream.take(1), Stream.runCollect)
       yield* updater.readyForRestart()
       return { events, restartStatus }
     }).pipe(Effect.provide(makeUpdaterServiceLayer(updaterClient(calls))))
@@ -4847,8 +4843,7 @@ const updaterClient = (calls: string[]): UpdaterClientApi => ({
       return new UpdaterStatusResult({ state: "update-available", version: "1.1.0" })
     }),
   readyForRestart: () => recordVoid(calls, "readyForRestart"),
-  onPreparingRestart: () =>
-    Stream.make(new UpdaterPreparingRestartEvent({ deadlineMs: 5_000 }))
+  onPreparingRestart: () => Stream.make(new UpdaterPreparingRestartEvent({ deadlineMs: 5_000 }))
 })
 
 const updaterStatus = (
