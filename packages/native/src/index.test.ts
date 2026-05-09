@@ -2718,6 +2718,42 @@ test("CrashReporter redacts structured breadcrumb details", async () => {
   ])
 })
 
+test("CrashReporter rejects control bytes in breadcrumb categories", async () => {
+  const client = await Effect.runPromise(makeCrashReporterMemoryClient())
+  await Effect.runPromise(client.start())
+
+  const exits = await Effect.runPromise(
+    Effect.gen(function* () {
+      const collected: Array<Exit.Exit<unknown, unknown>> = []
+      for (let codePoint = 0; codePoint <= 31; codePoint += 1) {
+        collected.push(
+          yield* Effect.exit(
+            client.recordBreadcrumb({
+              category: `user${String.fromCharCode(codePoint)}forged`,
+              message: "ok"
+            })
+          )
+        )
+      }
+      collected.push(
+        yield* Effect.exit(
+          client.recordBreadcrumb({
+            category: `user${String.fromCharCode(127)}forged`,
+            message: "ok"
+          })
+        )
+      )
+      return collected
+    })
+  )
+  for (const exit of exits) {
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+  }
+  await Effect.runPromise(client.recordBreadcrumb({ category: "user", message: "ok" }))
+  const flushed = await Effect.runPromise(client.flush())
+  expect(flushed.flushed).toBe(1)
+})
+
 test("CrashReporter bridge client records breadcrumbs and defers upload handlers", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const exchange = crashReporterExchange(requests, (request) => ({

@@ -10,6 +10,7 @@ import {
   type ApiLayer,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
+  makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidStateError,
   redact,
   type HostProtocolError
@@ -180,13 +181,14 @@ export const makeCrashReporterMemoryClient = (): Effect.Effect<
         }),
       recordBreadcrumb: (breadcrumb) =>
         Effect.gen(function* () {
+          const validated = yield* validateBreadcrumb(breadcrumb)
           const current = yield* Ref.get(state)
           if (!current.started) {
             return yield* Effect.fail(notStartedError("CrashReporter.recordBreadcrumb"))
           }
           yield* Ref.update(state, (latest) => ({
             ...latest,
-            breadcrumbs: [...latest.breadcrumbs, normalizeBreadcrumb(breadcrumb)]
+            breadcrumbs: [...latest.breadcrumbs, normalizeBreadcrumb(validated)]
           }))
         }),
       flush: () =>
@@ -234,7 +236,10 @@ const makeCrashReporterBridgeClient = (
         : input.enabled === undefined
           ? client.start(new CrashReporterStartInput({}))
           : client.start(new CrashReporterStartInput({ enabled: input.enabled })),
-    recordBreadcrumb: (input) => client.recordBreadcrumb(makeBreadcrumbInput(input)),
+    recordBreadcrumb: (input) =>
+      validateBreadcrumb(input).pipe(
+        Effect.flatMap((validated) => client.recordBreadcrumb(makeBreadcrumbInput(validated)))
+      ),
     flush: () => client.flush(),
     setUploadHandler: () =>
       Effect.fail(unsupportedError("CrashReporter.setUploadHandler", "phase-22"))
@@ -271,6 +276,19 @@ function crashReporterMethodSpec<Input extends Schema.Schema<unknown>>(
 ) {
   return { input, output: Schema.Void, error: HostProtocolErrorSchema, permission } as const
 }
+
+const validateBreadcrumb = (
+  breadcrumb: CrashReporterBreadcrumb
+): Effect.Effect<CrashReporterBreadcrumb, CrashReporterError, never> =>
+  Schema.decodeUnknownEffect(CrashReporterBreadcrumbInput)(breadcrumb).pipe(
+    Effect.mapError((cause) =>
+      makeHostProtocolInvalidArgumentError(
+        "category",
+        cause instanceof Error ? cause.message : String(cause),
+        "CrashReporter.recordBreadcrumb"
+      )
+    )
+  )
 
 const normalizeBreadcrumb = (breadcrumb: CrashReporterBreadcrumb): CrashReporterBreadcrumb => ({
   category: breadcrumb.category,
