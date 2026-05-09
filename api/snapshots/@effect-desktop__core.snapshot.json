@@ -4,6 +4,16 @@
   "entrypoint": "src/index.ts",
   "symbols": [
     {
+      "name": "ActiveFibers",
+      "kind": "value",
+      "signature": "const ActiveFibers: Metric.Gauge<number>"
+    },
+    {
+      "name": "ActiveWindows",
+      "kind": "value",
+      "signature": "const ActiveWindows: Metric.Gauge<number>"
+    },
+    {
       "name": "Activity",
       "kind": "value",
       "signature": "import type { NonEmptyReadonlyArray } from \"../../Array.ts\"; import * as Cause from \"../../Cause.ts\"; import * as Context from \"../../Context.ts\"; import * as Effect from \"../../Effect.ts\"; import * as Schedule from \"../../Schedule.ts\"; import * as Schema from \"../../Schema.ts\"; import type { Scope } from \"../../Scope.ts\"; import type * as Types from \"../../Types.ts\"; import type { WorkflowEngine, WorkflowInstance } from \"./WorkflowEngine.ts\"; declare const TypeId = \"~effect/workflow/Activity\"; /** * @since 4.0.0 * @category Models */ export interface Activity<Success extends Schema.Top = Schema.Void, Error extends Schema.Top = Schema.Never, R = never> extends Effect.Effect<Success[\"Type\"], Error[\"Type\"], Success[\"DecodingServices\"] | Error[\"DecodingServices\"] | R | WorkflowEngine | WorkflowInstance> { readonly [TypeId]: typeof TypeId; readonly name: string; readonly successSchema: Success; readonly errorSchema: Error; readonly exitSchema: Schema.Exit<Success, Error, Schema.Defect>; readonly annotations: Context.Context<never>; annotate<I, S>(key: Context.Key<I, S>, value: S): Activity<Success, Error, R>; annotateMerge<I>(annotations: Context.Context<I>): Activity<Success, Error, R>; readonly execute: Effect.Effect<Success[\"Type\"], Error[\"Type\"], Success[\"DecodingServices\"] | Success[\"EncodingServices\"] | Error[\"DecodingServices\"] | Error[\"EncodingServices\"] | R | Scope | WorkflowEngine | WorkflowInstance>; readonly executeEncoded: Effect.Effect<unknown, unknown, Success[\"DecodingServices\"] | Success[\"EncodingServices\"] | Error[\"DecodingServices\"] | Error[\"EncodingServices\"] | R | Scope | WorkflowEngine | WorkflowInstance>; } /** * @since 4.0.0 * @category Models */ export interface Any { readonly [TypeId]: typeof TypeId; readonly name: string; readonly executeEncoded: Effect.Effect<any, any, any>; readonly annotations: Context.Context<never>; } /** * @since 4.0.0 * @category Models */ export interface AnyWithProps { readonly [TypeId]: typeof TypeId; readonly name: string; readonly successSchema: Schema.Top; readonly errorSchema: Schema.Top; readonly executeEncoded: Effect.Effect<any, any, any>; } /** * @since 4.0.0 * @category Constructors */ export declare const make: <R, Success extends Schema.Top = Schema.Void, Error extends Schema.Top = Schema.Never>(options: { readonly name: string; readonly success?: Success | undefined; readonly error?: Error | undefined; readonly execute: Effect.Effect<Success[\"Type\"], Error[\"Type\"], R>; readonly interruptRetryPolicy?: Schedule.Schedule<any, Cause.Cause<unknown>> | undefined; readonly annotations?: Context.Context<never> | undefined; }) => Activity<Success, Error, Exclude<R, WorkflowInstance | WorkflowEngine | Scope>>; /** * @since 4.0.0 * @category Error handling */ export declare const retry: { /** * @since 4.0.0 * @category Error handling */ <E, O extends Types.NoExcessProperties<Omit<Effect.Retry.Options<E>, \"schedule\">, O>>(options: O): <A, R>(self: Effect.Effect<A, E, R>) => Effect.Retry.Return<R, E, A, O>; /** * @since 4.0.0 * @category Error handling */ <A, E, R, O extends Types.NoExcessProperties<Omit<Effect.Retry.Options<E>, \"schedule\">, O>>(self: Effect.Effect<A, E, R>, options: O): Effect.Retry.Return<R, E, A, O>; }; /** * @since 4.0.0 * @category Attempts */ export declare const CurrentAttempt: Context.Reference<number>; /** * @since 4.0.0 * @category Idempotency */ export declare const idempotencyKey: (name: string, options?: { readonly includeAttempt?: boolean | undefined; } | undefined) => Effect.Effect<string, never, WorkflowInstance>; /** * @since 4.0.0 * @category Racing */ export declare const raceAll: <const Activities extends NonEmptyReadonlyArray<Any>>(name: string, activities: Activities) => Effect.Effect<Activities[number] extends Activity<infer _A, infer _E, infer _R> ? _A[\"Type\"] : never, Activities[number] extends Activity<infer _A, infer _E_1, infer _R_1> ? _E_1[\"Type\"] : never, (Activities[number] extends Activity<infer Success, infer Error, infer R> ? Success[\"DecodingServices\"] | Error[\"DecodingServices\"] | R : never) | WorkflowEngine | WorkflowInstance>; export {}; //# sourceMappingURL=Activity.d.ts.map"
@@ -14,9 +24,19 @@
       "signature": "export type ActorKind = typeof ActorKind.Type"
     },
     {
+      "name": "AnyApiLayer",
+      "kind": "interface",
+      "signature": "export interface AnyApiLayer { readonly contract: ApiContractClass<string, ApiContractSpec> readonly handlers: object }"
+    },
+    {
       "name": "Api",
       "kind": "value",
       "signature": "const Api: Readonly<{ Resource: <Kind extends string, State extends string>(kind: Kind, state: State) => ApiResourceSpec<Kind, State>; Stream: <Chunk extends Schema.Schema<unknown>, Error extends Schema.Schema<unknown>>(chunk: Chunk, error: Error, backpressure?: BackpressureSpec) => ApiStreamSpec & { readonly chunk: Chunk; readonly error: Error; }; Tag: <Tag extends string>(tag: Tag) => <Self>() => <Spec extends ApiContractSpec, Events extends ApiContractEvents = Record<never, never>>(spec: Spec, events?: Events) => Effect.Effect<ApiContractClass<Tag, Spec, Events>, ApiContractError, never>; entries: () => Effect.Effect<readonly ApiContractClass[], never, never>; freeze: () => Effect.Effect<void, never, never>; get: (tag: string) => Effect.Effect<Option.Option<ApiContractClass>, never, never>; }>"
+    },
+    {
+      "name": "app",
+      "kind": "value",
+      "signature": "const app: <RIn = never, E = never>(config: DesktopConfig<RIn, E>) => Layer.Layer<DesktopApp, DesktopConfigError | E, RIn>"
     },
     {
       "name": "approvalAuditEvent",
@@ -41,7 +61,7 @@
     {
       "name": "ApprovalBrokerAuditFailedError",
       "kind": "class",
-      "signature": "export class ApprovalBrokerAuditFailedError extends Data.TaggedError(\"ApprovalAuditFailed\")<{ readonly operation: string readonly request: ApprovalRequest readonly outcome: Option.Option<ApprovalOutcome> readonly cause: EventLogError }> {}"
+      "signature": "export class ApprovalBrokerAuditFailedError extends Data.TaggedError(\"ApprovalAuditFailed\")<{ readonly operation: string readonly request: ApprovalRequest readonly outcome: Option.Option<ApprovalOutcome> readonly cause: unknown }> {}"
     },
     {
       "name": "ApprovalBrokerError",
@@ -56,7 +76,7 @@
     {
       "name": "ApprovalBrokerOptions",
       "kind": "interface",
-      "signature": "export interface ApprovalBrokerOptions { readonly prompt: ApprovalPromptPort readonly audit?: EventLogStore readonly devApproveAll?: boolean readonly maxQueueDepthPerActor?: number readonly now?: () => number readonly traceId?: () => string }"
+      "signature": "export interface ApprovalBrokerOptions { readonly prompt: ApprovalPromptPort readonly audit?: AuditEventsApi readonly devApproveAll?: boolean readonly maxQueueDepthPerActor?: number readonly now?: () => number readonly traceId?: () => string }"
     },
     {
       "name": "ApprovalBrokerPromptFailedError",
@@ -101,22 +121,42 @@
     {
       "name": "AuditEventKind",
       "kind": "type",
-      "signature": "const AuditEventKind: Schema.Literals<readonly [\"permission-granted\", \"permission-denied\", \"permission-revoked\", \"permission-expired\", \"permission-consumed\", \"permission-used\", \"approval-requested\", \"approval-granted\", \"approval-denied\", \"command-registered\", \"command-unregistered\", \"command-invoked\", \"trace-id-missing\"]>"
+      "signature": "const AuditEventKind: Schema.Literals<readonly [\"permission-granted\", \"permission-denied\", \"permission-revoked\", \"permission-expired\", \"permission-consumed\", \"permission-used\", \"approval-requested\", \"approval-granted\", \"approval-denied\", \"command-registered\", \"command-unregistered\", \"command-invoked\", \"job-retrying\", \"secrets-accessed\", \"trace-id-missing\"]>"
     },
     {
       "name": "AuditEvents",
       "kind": "class",
-      "signature": "export class AuditEvents extends Context.Service<AuditEvents, AuditEventsApi>()(\"AuditEvents\", { make: Effect.succeed( Object.freeze({ emit: () => Effect.void, query: () => Effect.succeed([]), subscribe: () => Stream.empty } satisfies AuditEventsApi) ) }) {}"
+      "signature": "export class AuditEvents extends Context.Service<AuditEvents, AuditEventsApi>()(\"AuditEvents\", { make: Effect.succeed({ emit: () => Effect.void as Effect.Effect<void, EventJournal.EventJournalError, never> } satisfies AuditEventsApi) }) {}"
     },
     {
       "name": "AuditEventsApi",
       "kind": "interface",
-      "signature": "export interface AuditEventsApi { readonly emit: (event: AuditEvent) => Effect.Effect<void, EventLogError, never> readonly query: ( options?: EventLogQueryOptions ) => Effect.Effect<readonly EventLogEntry[], EventLogError, never> readonly subscribe: ( options?: EventLogSubscribeOptions ) => Stream.Stream<EventLogEntry, EventLogError, never> }"
+      "signature": "export interface AuditEventsApi { readonly emit: (event: AuditEvent) => Effect.Effect<void, EventJournal.EventJournalError, never> }"
+    },
+    {
+      "name": "AuditEventsLayer",
+      "kind": "value",
+      "signature": "const AuditEventsLayer: Layer.Layer<AuditEvents, never, EventLog.Registry | EventLog.EventLog>"
+    },
+    {
+      "name": "AuditGroup",
+      "kind": "value",
+      "signature": "const AuditGroup: EventGroup.EventGroup<import(\"effect/unstable/eventlog/Event\").Event<\"permission-granted\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"permission-denied\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"permission-revoked\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"permission-expired\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"permission-consumed\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"permission-used\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"approval-requested\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"approval-granted\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"approval-denied\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"command-registered\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"command-unregistered\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"command-invoked\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"job-retrying\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"secrets-accessed\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"trace-id-missing\", Schema.Unknown, Schema.Void, Schema.Never>>"
+    },
+    {
+      "name": "AuditGroupLayer",
+      "kind": "value",
+      "signature": "const AuditGroupLayer: Layer.Layer<import(\"effect/unstable/eventlog/Event\").EventHandler<\"permission-granted\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"permission-denied\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"permission-revoked\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"permission-expired\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"permission-consumed\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"permission-used\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"approval-requested\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"approval-granted\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"approval-denied\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"command-registered\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"command-unregistered\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"command-invoked\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"job-retrying\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"secrets-accessed\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"trace-id-missing\">, never, EventLog.Registry>"
     },
     {
       "name": "AuditPolicy",
       "kind": "type",
       "signature": "export type AuditPolicy = typeof AuditPolicy.Type"
+    },
+    {
+      "name": "AuditReactivityLayer",
+      "kind": "value",
+      "signature": "const AuditReactivityLayer: Layer.Layer<never, never, EventLog.Registry>"
     },
     {
       "name": "BridgeCallRegistry",
@@ -139,9 +179,19 @@
       "signature": "export interface BridgeStreamRegistryEntry { readonly streamId: string readonly generation: number readonly state: \"open\" | \"terminal\" readonly terminal?: ApiStreamTerminalType readonly terminalAt?: number readonly backpressure?: BridgeStreamBackpressureMetrics }"
     },
     {
+      "name": "BunServicesLayer",
+      "kind": "value",
+      "signature": "const BunServicesLayer: import(\"effect/Layer\").Layer<BunServices.BunServices, never, never>"
+    },
+    {
       "name": "BunWorkerAdapter",
       "kind": "value",
       "signature": "const BunWorkerAdapter: WorkerAdapter"
+    },
+    {
+      "name": "CacheHitRate",
+      "kind": "value",
+      "signature": "const CacheHitRate: Metric.Frequency"
     },
     {
       "name": "CapabilityKind",
@@ -176,7 +226,7 @@
     {
       "name": "CommandRegistryAuditFailedError",
       "kind": "class",
-      "signature": "export class CommandRegistryAuditFailedError extends Data.TaggedError(\"CommandAuditFailed\")<{ readonly operation: string readonly commandId: string readonly cause: EventLogError }> {}"
+      "signature": "export class CommandRegistryAuditFailedError extends Data.TaggedError(\"CommandAuditFailed\")<{ readonly operation: string readonly commandId: string readonly cause: unknown }> {}"
     },
     {
       "name": "CommandRegistryCommandAlreadyRegisteredError",
@@ -211,7 +261,7 @@
     {
       "name": "CommandRegistryOptions",
       "kind": "interface",
-      "signature": "export interface CommandRegistryOptions { readonly audit?: EventLogStore readonly now?: () => number }"
+      "signature": "export interface CommandRegistryOptions { readonly audit?: AuditEventsApi readonly now?: () => number }"
     },
     {
       "name": "CommandRegistryRegistrationLostError",
@@ -241,22 +291,27 @@
     {
       "name": "Desktop",
       "kind": "value",
-      "signature": "const Desktop: Readonly<{ Api: Readonly<{ Resource: <Kind extends string, State extends string>(kind: Kind, state: State) => import(\"@effect-desktop/bridge\").ApiResourceSpec<Kind, State>; Stream: <Chunk extends import(\"effect/Schema\").Schema<unknown>, Error extends import(\"effect/Schema\").Schema<unknown>>(chunk: Chunk, error: Error, backpressure?: import(\"@effect-desktop/bridge\").BackpressureSpec) => import(\"@effect-desktop/bridge\").ApiStreamSpec & { readonly chunk: Chunk; readonly error: Error; }; Tag: <Tag extends string>(tag: Tag) => <Self>() => <Spec extends import(\"@effect-desktop/bridge\").ApiContractSpec, Events extends import(\"@effect-desktop/bridge\").ApiContractEvents = Record<never, never>>(spec: Spec, events?: Events) => import(\"effect/Effect\").Effect<import(\"@effect-desktop/bridge\").ApiContractClass<Tag, Spec, Events>, import(\"@effect-desktop/bridge\").ApiContractError, never>; entries: () => import(\"effect/Effect\").Effect<readonly import(\"@effect-desktop/bridge\").ApiContractClass[], never, never>; freeze: () => import(\"effect/Effect\").Effect<void, never, never>; get: (tag: string) => import(\"effect/Effect\").Effect<import(\"effect/Option\").Option<import(\"@effect-desktop/bridge\").ApiContractClass>, never, never>; }>; Client: <Contracts extends Readonly<Record<string, import(\"@effect-desktop/bridge\").ApiContractClass>>>(contracts: Contracts, exchange: import(\"@effect-desktop/bridge\").ApiClientExchange, options?: import(\"@effect-desktop/bridge\").ApiClientOptions) => import(\"@effect-desktop/bridge\").ApiClient<Contracts>; Handlers: (<Layers extends readonly { readonly contract: import(\"@effect-desktop/bridge\").ApiContractClass<string, import(\"@effect-desktop/bridge\").ApiContractSpec>; readonly handlers: object; }[]>(...layers: Layers) => import(\"@effect-desktop/bridge\").ApiHandlerRuntime<import(\"@effect-desktop/bridge\").ApiLayerEnvironment<Layers[number]>>) & { withOptions: <Layers extends readonly { readonly contract: import(\"@effect-desktop/bridge\").ApiContractClass<string, import(\"@effect-desktop/bridge\").ApiContractSpec>; readonly handlers: object; }[]>(options: import(\"@effect-desktop/bridge\").ApiHandlerRuntimeOptions, ...layers: Layers) => import(\"@effect-desktop/bridge\").ApiHandlerRuntime<import(\"@effect-desktop/bridge\").ApiLayerEnvironment<Layers[number]>>; }; RedactionFilter: Readonly<{ redact: <A>(record: A, options?: import(\"@effect-desktop/bridge\").RedactionFilterOptions) => A; redactedValue: \"[REDACTED]\"; defaultPattern: RegExp; }>; app: (options?: DesktopAppOptions) => Layer.Layer<WorkflowEngine.WorkflowEngine>; }>"
+      "signature": "const Desktop: Readonly<{ Api: Readonly<{ Resource: <Kind extends string, State extends string>(kind: Kind, state: State) => import(\"@effect-desktop/bridge\").ApiResourceSpec<Kind, State>; Stream: <Chunk extends import(\"effect/Schema\").Schema<unknown>, Error extends import(\"effect/Schema\").Schema<unknown>>(chunk: Chunk, error: Error, backpressure?: import(\"@effect-desktop/bridge\").BackpressureSpec) => import(\"@effect-desktop/bridge\").ApiStreamSpec & { readonly chunk: Chunk; readonly error: Error; }; Tag: <Tag extends string>(tag: Tag) => <Self>() => <Spec extends import(\"@effect-desktop/bridge\").ApiContractSpec, Events extends import(\"@effect-desktop/bridge\").ApiContractEvents = Record<never, never>>(spec: Spec, events?: Events) => import(\"effect/Effect\").Effect<import(\"@effect-desktop/bridge\").ApiContractClass<Tag, Spec, Events>, import(\"@effect-desktop/bridge\").ApiContractError, never>; entries: () => import(\"effect/Effect\").Effect<readonly import(\"@effect-desktop/bridge\").ApiContractClass[], never, never>; freeze: () => import(\"effect/Effect\").Effect<void, never, never>; get: (tag: string) => import(\"effect/Effect\").Effect<import(\"effect/Option\").Option<import(\"@effect-desktop/bridge\").ApiContractClass>, never, never>; }>; Client: <Contracts extends Readonly<Record<string, import(\"@effect-desktop/bridge\").ApiContractClass>>>(contracts: Contracts, exchange: import(\"@effect-desktop/bridge\").ApiClientExchange, options?: import(\"@effect-desktop/bridge\").ApiClientOptions) => import(\"@effect-desktop/bridge\").ApiClient<Contracts>; Handlers: (<Layers extends readonly { readonly contract: import(\"@effect-desktop/bridge\").ApiContractClass<string, import(\"@effect-desktop/bridge\").ApiContractSpec>; readonly handlers: object; }[]>(...layers: Layers) => import(\"@effect-desktop/bridge\").ApiHandlerRuntime<import(\"@effect-desktop/bridge\").ApiLayerEnvironment<Layers[number]>>) & { withOptions: <Layers extends readonly { readonly contract: import(\"@effect-desktop/bridge\").ApiContractClass<string, import(\"@effect-desktop/bridge\").ApiContractSpec>; readonly handlers: object; }[]>(options: import(\"@effect-desktop/bridge\").ApiHandlerRuntimeOptions, ...layers: Layers) => import(\"@effect-desktop/bridge\").ApiHandlerRuntime<import(\"@effect-desktop/bridge\").ApiLayerEnvironment<Layers[number]>>; }; RedactionFilter: Readonly<{ redact: <A>(record: A, options?: import(\"@effect-desktop/bridge\").RedactionFilterOptions) => A; redactedValue: \"[REDACTED]\"; defaultPattern: RegExp; }>; app: <RIn = never, E = never>(config: import(\"./runtime/desktop-app.js\").DesktopConfig<RIn, E>) => import(\"effect/Layer\").Layer<import(\"./runtime/desktop-app.js\").DesktopApp, import(\"./runtime/desktop-app.js\").DesktopConfigError | E, RIn>; launch: (layer: import(\"effect/Layer\").Layer<import(\"./runtime/desktop-app.js\").DesktopApp, import(\"./runtime/desktop-app.js\").DesktopConfigError, never>) => import(\"effect/Effect\").Effect<never, import(\"./runtime/desktop-app.js\").DesktopConfigError, never>; }>"
     },
     {
-      "name": "DesktopAppOptions",
+      "name": "DesktopApp",
+      "kind": "class",
+      "signature": "export class DesktopApp extends Context.Service<DesktopApp, DesktopAppApi>()(\"DesktopApp\") {}"
+    },
+    {
+      "name": "DesktopAppApi",
       "kind": "interface",
-      "signature": "export interface DesktopAppOptions { readonly workflows?: readonly WorkflowLayer[] }"
+      "signature": "export interface DesktopAppApi { readonly appId: string readonly windows: Readonly<Record<string, WindowSpec>> }"
     },
     {
-      "name": "DurableClock",
-      "kind": "value",
-      "signature": "import * as Duration from \"../../Duration.ts\"; import * as Effect from \"../../Effect.ts\"; import type * as Schema from \"../../Schema.ts\"; import * as DurableDeferred from \"./DurableDeferred.ts\"; import type { WorkflowEngine, WorkflowInstance } from \"./WorkflowEngine.ts\"; declare const TypeId = \"~effect/workflow/DurableClock\"; /** * @since 4.0.0 * @category Models */ export interface DurableClock { readonly [TypeId]: typeof TypeId; readonly name: string; readonly duration: Duration.Duration; readonly deferred: DurableDeferred.DurableDeferred<typeof Schema.Void>; } /** * @since 4.0.0 * @category Constructors */ export declare const make: (options: { readonly name: string; readonly duration: Duration.Input; }) => DurableClock; /** * @since 1.0.0 * @category Sleeping */ export declare const sleep: (options: { readonly name: string; readonly duration: Duration.Input; /** * If the duration is less than or equal to this threshold, the clock will * be executed in memory. * * Defaults to 60 seconds. */ readonly inMemoryThreshold?: Duration.Input | undefined; }) => Effect.Effect<void, never, WorkflowEngine | WorkflowInstance>; export {}; //# sourceMappingURL=DurableClock.d.ts.map"
+      "name": "DesktopConfig",
+      "kind": "interface",
+      "signature": "export interface DesktopConfig<RIn = never, E = never> { readonly id: string readonly windows: Readonly<Record<string, WindowSpec>> readonly handlers?: ReadonlyArray<AnyApiLayer> readonly layers?: ReadonlyArray<Layer.Layer<unknown, E, RIn>> readonly permissions?: ReadonlyArray<NormalizedCapability> readonly workflows?: ReadonlyArray<WorkflowLayer> }"
     },
     {
-      "name": "DurableDeferred",
-      "kind": "value",
-      "signature": "import type { NonEmptyReadonlyArray } from \"../../Array.ts\"; import type * as Brand from \"../../Brand.ts\"; import * as Cause from \"../../Cause.ts\"; import * as Effect from \"../../Effect.ts\"; import * as Exit from \"../../Exit.ts\"; import * as Schema from \"../../Schema.ts\"; import * as Workflow from \"./Workflow.ts\"; import type { WorkflowEngine, WorkflowInstance } from \"./WorkflowEngine.ts\"; declare const TypeId = \"~effect/workflow/DurableDeferred\"; /** * @since 4.0.0 * @category Models */ export interface DurableDeferred<Success extends Schema.Top, Error extends Schema.Top = Schema.Never> { readonly [TypeId]: typeof TypeId; readonly name: string; readonly successSchema: Success; readonly errorSchema: Error; readonly exitSchema: Schema.Exit<Schema.Top, Schema.Top, Schema.Top>; readonly withActivityAttempt: Effect.Effect<DurableDeferred<Success, Error>>; } /** * @since 4.0.0 * @category Models */ export interface Any { readonly [TypeId]: typeof TypeId; readonly name: string; } /** * @since 4.0.0 * @category Models */ export interface AnyWithProps { readonly [TypeId]: typeof TypeId; readonly name: string; readonly successSchema: Schema.Top; readonly errorSchema: Schema.Top; readonly exitSchema: Schema.Exit<any, any, any>; } /** * @since 4.0.0 * @category Constructors */ export declare const make: <Success extends Schema.Top = Schema.Void, Error extends Schema.Top = Schema.Never>(name: string, options?: { readonly success?: Success | undefined; readonly error?: Error | undefined; }) => DurableDeferred<Success, Error>; declare const await_: <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>) => Effect.Effect<Success[\"Type\"], Error[\"Type\"], WorkflowEngine | WorkflowInstance | Success[\"DecodingServices\"] | Error[\"DecodingServices\"]>; export { /** * @since 4.0.0 * @category Combinators */ await_ as await }; /** * @since 4.0.0 * @category Combinators */ export declare const into: { /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>): <R>(effect: Effect.Effect<Success[\"Type\"], Error[\"Type\"], R>) => Effect.Effect<Success[\"Type\"], Error[\"Type\"], R | WorkflowEngine | WorkflowInstance | Success[\"DecodingServices\"] | Error[\"DecodingServices\"]>; /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top, R>(effect: Effect.Effect<Success[\"Type\"], Error[\"Type\"], R>, self: DurableDeferred<Success, Error>): Effect.Effect<Success[\"Type\"], Error[\"Type\"], R | WorkflowEngine | WorkflowInstance | Success[\"DecodingServices\"] | Error[\"DecodingServices\"]>; }; /** * @since 4.0.0 * @category Racing */ export declare const raceAll: <const Effects extends NonEmptyReadonlyArray<Effect.Effect<any, any, any>>, Success extends Schema.Schema<Effect.Success<Effects[number]>>, Error extends Schema.Schema<Effect.Error<Effects[number]>>>(options: { name: string; success: Success; error: Error; effects: Effects; }) => Effect.Effect<Effect.Success<Effects[number]>, Effect.Error<Effects[number]>, Effect.Services<Effects[number]> | Success[\"DecodingServices\"] | Success[\"EncodingServices\"] | Error[\"DecodingServices\"] | Error[\"EncodingServices\"] | WorkflowEngine | WorkflowInstance>; /** * @since 4.0.0 */ export declare const TokenTypeId = \"~effect/workflow/DurableDeferred/Token\"; /** * @since 4.0.0 */ export type TokenTypeId = typeof TokenTypeId; /** * @since 4.0.0 * @category Token */ export type Token = Brand.Branded<string, TokenTypeId>; /** * @since 4.0.0 * @category Token */ export declare const Token: Schema.brand<Schema.String, TokenTypeId>; declare const TokenParsed_base: Schema.Class<TokenParsed, Schema.Struct<{ readonly workflowName: Schema.String; readonly executionId: Schema.String; readonly deferredName: Schema.String; }>, {}>; /** * @since 4.0.0 * @category Token */ export declare class TokenParsed extends TokenParsed_base { /** * @since 4.0.0 */ get asToken(): Token; /** * @since 4.0.0 */ static readonly FromString: Schema.decodeTo<typeof TokenParsed, Schema.decodeTo<Schema.fromJsonString<Schema.Tuple<readonly [Schema.String, Schema.String, Schema.String]>>, Schema.String, never, never>, never, never>; /** * @since 4.0.0 */ static readonly fromString: (input: string, options?: import(\"../../SchemaAST.ts\").ParseOptions) => TokenParsed; /** * @since 4.0.0 */ static readonly encode: (input: TokenParsed, options?: import(\"../../SchemaAST.ts\").ParseOptions) => string; } /** * @since 4.0.0 * @category Token */ export declare const token: <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>) => Effect.Effect<Token, never, WorkflowInstance>; /** * @since 4.0.0 * @category Token */ export declare const tokenFromExecutionId: { /** * @since 4.0.0 * @category Token */ (options: { readonly workflow: Workflow.Any; readonly executionId: string; }): <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>) => Token; /** * @since 4.0.0 * @category Token */ <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>, options: { readonly workflow: Workflow.Any; readonly executionId: string; }): Token; }; /** * @since 4.0.0 * @category Token */ export declare const tokenFromPayload: { /** * @since 4.0.0 * @category Token */ <W extends Workflow.Any>(options: { readonly workflow: W; readonly payload: Workflow.PayloadSchema<W>[\"~type.make.in\"]; }): <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>) => Effect.Effect<Token>; /** * @since 4.0.0 * @category Token */ <Success extends Schema.Top, Error extends Schema.Top, W extends Workflow.Any>(self: DurableDeferred<Success, Error>, options: { readonly workflow: W; readonly payload: Workflow.PayloadSchema<W>[\"~type.make.in\"]; }): Effect.Effect<Token>; }; /** * @since 4.0.0 * @category Combinators */ export declare const done: { /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(options: { readonly token: Token; readonly exit: Exit.Exit<Success[\"Type\"], Error[\"Type\"]>; }): (self: DurableDeferred<Success, Error>) => Effect.Effect<void, never, WorkflowEngine | Success[\"EncodingServices\"] | Error[\"EncodingServices\"]>; /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>, options: { readonly token: Token; readonly exit: Exit.Exit<Success[\"Type\"], Error[\"Type\"]>; }): Effect.Effect<void, never, WorkflowEngine | Success[\"EncodingServices\"] | Error[\"EncodingServices\"]>; }; /** * @since 4.0.0 * @category Combinators */ export declare const succeed: { /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(options: { readonly token: Token; readonly value: Success[\"Type\"]; }): (self: DurableDeferred<Success, Error>) => Effect.Effect<void, never, WorkflowEngine | Success[\"EncodingServices\"]>; /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>, options: { readonly token: Token; readonly value: Success[\"Type\"]; }): Effect.Effect<void, never, WorkflowEngine | Success[\"EncodingServices\"]>; }; /** * @since 4.0.0 * @category Combinators */ export declare const fail: { /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(options: { readonly token: Token; readonly error: Error[\"Type\"]; }): (self: DurableDeferred<Success, Error>) => Effect.Effect<void, never, WorkflowEngine | Error[\"EncodingServices\"]>; /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>, options: { readonly token: Token; readonly error: Error[\"Type\"]; }): Effect.Effect<void, never, WorkflowEngine | Error[\"EncodingServices\"]>; }; /** * @since 4.0.0 * @category Combinators */ export declare const failCause: { /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(options: { readonly token: Token; readonly cause: Cause.Cause<Error[\"Type\"]>; }): (self: DurableDeferred<Success, Error>) => Effect.Effect<void, never, WorkflowEngine | Error[\"EncodingServices\"]>; /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>, options: { readonly token: Token; readonly cause: Cause.Cause<Error[\"Type\"]>; }): Effect.Effect<void, never, WorkflowEngine | Error[\"EncodingServices\"]>; }; //# sourceMappingURL=DurableDeferred.d.ts.map"
+      "name": "DesktopConfigError",
+      "kind": "class",
+      "signature": "export class DesktopConfigError extends Data.TaggedError(\"DesktopConfigError\")<{ readonly appId: string readonly reason: \"missing-permission\" | \"invalid-config\" readonly message: string readonly contract?: string readonly method?: string readonly permission?: string }> {}"
     },
     {
       "name": "DesktopEnvConfig",
@@ -269,9 +324,19 @@
       "signature": "const DesktopLoggerLayer: Layer.Layer<never, Config.ConfigError, never>"
     },
     {
+      "name": "DurableClock",
+      "kind": "value",
+      "signature": "import * as Duration from \"../../Duration.ts\"; import * as Effect from \"../../Effect.ts\"; import type * as Schema from \"../../Schema.ts\"; import * as DurableDeferred from \"./DurableDeferred.ts\"; import type { WorkflowEngine, WorkflowInstance } from \"./WorkflowEngine.ts\"; declare const TypeId = \"~effect/workflow/DurableClock\"; /** * @since 4.0.0 * @category Models */ export interface DurableClock { readonly [TypeId]: typeof TypeId; readonly name: string; readonly duration: Duration.Duration; readonly deferred: DurableDeferred.DurableDeferred<typeof Schema.Void>; } /** * @since 4.0.0 * @category Constructors */ export declare const make: (options: { readonly name: string; readonly duration: Duration.Input; }) => DurableClock; /** * @since 1.0.0 * @category Sleeping */ export declare const sleep: (options: { readonly name: string; readonly duration: Duration.Input; /** * If the duration is less than or equal to this threshold, the clock will * be executed in memory. * * Defaults to 60 seconds. */ readonly inMemoryThreshold?: Duration.Input | undefined; }) => Effect.Effect<void, never, WorkflowEngine | WorkflowInstance>; export {}; //# sourceMappingURL=DurableClock.d.ts.map"
+    },
+    {
+      "name": "DurableDeferred",
+      "kind": "value",
+      "signature": "import type { NonEmptyReadonlyArray } from \"../../Array.ts\"; import type * as Brand from \"../../Brand.ts\"; import * as Cause from \"../../Cause.ts\"; import * as Effect from \"../../Effect.ts\"; import * as Exit from \"../../Exit.ts\"; import * as Schema from \"../../Schema.ts\"; import * as Workflow from \"./Workflow.ts\"; import type { WorkflowEngine, WorkflowInstance } from \"./WorkflowEngine.ts\"; declare const TypeId = \"~effect/workflow/DurableDeferred\"; /** * @since 4.0.0 * @category Models */ export interface DurableDeferred<Success extends Schema.Top, Error extends Schema.Top = Schema.Never> { readonly [TypeId]: typeof TypeId; readonly name: string; readonly successSchema: Success; readonly errorSchema: Error; readonly exitSchema: Schema.Exit<Schema.Top, Schema.Top, Schema.Top>; readonly withActivityAttempt: Effect.Effect<DurableDeferred<Success, Error>>; } /** * @since 4.0.0 * @category Models */ export interface Any { readonly [TypeId]: typeof TypeId; readonly name: string; } /** * @since 4.0.0 * @category Models */ export interface AnyWithProps { readonly [TypeId]: typeof TypeId; readonly name: string; readonly successSchema: Schema.Top; readonly errorSchema: Schema.Top; readonly exitSchema: Schema.Exit<any, any, any>; } /** * @since 4.0.0 * @category Constructors */ export declare const make: <Success extends Schema.Top = Schema.Void, Error extends Schema.Top = Schema.Never>(name: string, options?: { readonly success?: Success | undefined; readonly error?: Error | undefined; }) => DurableDeferred<Success, Error>; declare const await_: <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>) => Effect.Effect<Success[\"Type\"], Error[\"Type\"], WorkflowEngine | WorkflowInstance | Success[\"DecodingServices\"] | Error[\"DecodingServices\"]>; export { /** * @since 4.0.0 * @category Combinators */ await_ as await }; /** * @since 4.0.0 * @category Combinators */ export declare const into: { /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>): <R>(effect: Effect.Effect<Success[\"Type\"], Error[\"Type\"], R>) => Effect.Effect<Success[\"Type\"], Error[\"Type\"], R | WorkflowEngine | WorkflowInstance | Success[\"DecodingServices\"] | Error[\"DecodingServices\"]>; /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top, R>(effect: Effect.Effect<Success[\"Type\"], Error[\"Type\"], R>, self: DurableDeferred<Success, Error>): Effect.Effect<Success[\"Type\"], Error[\"Type\"], R | WorkflowEngine | WorkflowInstance | Success[\"DecodingServices\"] | Error[\"DecodingServices\"]>; }; /** * @since 4.0.0 * @category Racing */ export declare const raceAll: <const Effects extends NonEmptyReadonlyArray<Effect.Effect<any, any, any>>, Success extends Schema.Schema<Effect.Success<Effects[number]>>, Error extends Schema.Schema<Effect.Error<Effects[number]>>>(options: { name: string; success: Success; error: Error; effects: Effects; }) => Effect.Effect<Effect.Success<Effects[number]>, Effect.Error<Effects[number]>, Effect.Services<Effects[number]> | Success[\"DecodingServices\"] | Success[\"EncodingServices\"] | Error[\"DecodingServices\"] | Error[\"EncodingServices\"] | WorkflowEngine | WorkflowInstance>; /** * @since 4.0.0 */ export declare const TokenTypeId = \"~effect/workflow/DurableDeferred/Token\"; /** * @since 4.0.0 */ export type TokenTypeId = typeof TokenTypeId; /** * @since 4.0.0 * @category Token */ export type Token = Brand.Branded<string, TokenTypeId>; /** * @since 4.0.0 * @category Token */ export declare const Token: Schema.brand<Schema.String, TokenTypeId>; declare const TokenParsed_base: Schema.Class<TokenParsed, Schema.Struct<{ readonly workflowName: Schema.String; readonly executionId: Schema.String; readonly deferredName: Schema.String; }>, {}>; /** * @since 4.0.0 * @category Token */ export declare class TokenParsed extends TokenParsed_base { /** * @since 4.0.0 */ get asToken(): Token; /** * @since 4.0.0 */ static readonly FromString: Schema.decodeTo<typeof TokenParsed, Schema.decodeTo<Schema.fromJsonString<Schema.Tuple<readonly [Schema.String, Schema.String, Schema.String]>>, Schema.String, never, never>, never, never>; /** * @since 4.0.0 */ static readonly fromString: (input: string, options?: import(\"../../SchemaAST.ts\").ParseOptions) => TokenParsed; /** * @since 4.0.0 */ static readonly encode: (input: TokenParsed, options?: import(\"../../SchemaAST.ts\").ParseOptions) => string; } /** * @since 4.0.0 * @category Token */ export declare const token: <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>) => Effect.Effect<Token, never, WorkflowInstance>; /** * @since 4.0.0 * @category Token */ export declare const tokenFromExecutionId: { /** * @since 4.0.0 * @category Token */ (options: { readonly workflow: Workflow.Any; readonly executionId: string; }): <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>) => Token; /** * @since 4.0.0 * @category Token */ <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>, options: { readonly workflow: Workflow.Any; readonly executionId: string; }): Token; }; /** * @since 4.0.0 * @category Token */ export declare const tokenFromPayload: { /** * @since 4.0.0 * @category Token */ <W extends Workflow.Any>(options: { readonly workflow: W; readonly payload: Workflow.PayloadSchema<W>[\"~type.make.in\"]; }): <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>) => Effect.Effect<Token>; /** * @since 4.0.0 * @category Token */ <Success extends Schema.Top, Error extends Schema.Top, W extends Workflow.Any>(self: DurableDeferred<Success, Error>, options: { readonly workflow: W; readonly payload: Workflow.PayloadSchema<W>[\"~type.make.in\"]; }): Effect.Effect<Token>; }; /** * @since 4.0.0 * @category Combinators */ export declare const done: { /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(options: { readonly token: Token; readonly exit: Exit.Exit<Success[\"Type\"], Error[\"Type\"]>; }): (self: DurableDeferred<Success, Error>) => Effect.Effect<void, never, WorkflowEngine | Success[\"EncodingServices\"] | Error[\"EncodingServices\"]>; /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>, options: { readonly token: Token; readonly exit: Exit.Exit<Success[\"Type\"], Error[\"Type\"]>; }): Effect.Effect<void, never, WorkflowEngine | Success[\"EncodingServices\"] | Error[\"EncodingServices\"]>; }; /** * @since 4.0.0 * @category Combinators */ export declare const succeed: { /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(options: { readonly token: Token; readonly value: Success[\"Type\"]; }): (self: DurableDeferred<Success, Error>) => Effect.Effect<void, never, WorkflowEngine | Success[\"EncodingServices\"]>; /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>, options: { readonly token: Token; readonly value: Success[\"Type\"]; }): Effect.Effect<void, never, WorkflowEngine | Success[\"EncodingServices\"]>; }; /** * @since 4.0.0 * @category Combinators */ export declare const fail: { /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(options: { readonly token: Token; readonly error: Error[\"Type\"]; }): (self: DurableDeferred<Success, Error>) => Effect.Effect<void, never, WorkflowEngine | Error[\"EncodingServices\"]>; /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>, options: { readonly token: Token; readonly error: Error[\"Type\"]; }): Effect.Effect<void, never, WorkflowEngine | Error[\"EncodingServices\"]>; }; /** * @since 4.0.0 * @category Combinators */ export declare const failCause: { /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(options: { readonly token: Token; readonly cause: Cause.Cause<Error[\"Type\"]>; }): (self: DurableDeferred<Success, Error>) => Effect.Effect<void, never, WorkflowEngine | Error[\"EncodingServices\"]>; /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>, options: { readonly token: Token; readonly cause: Cause.Cause<Error[\"Type\"]>; }): Effect.Effect<void, never, WorkflowEngine | Error[\"EncodingServices\"]>; }; //# sourceMappingURL=DurableDeferred.d.ts.map"
+    },
+    {
       "name": "emitAuditEvent",
       "kind": "value",
-      "signature": "const emitAuditEvent: (audit: EventLogStore | undefined, event: AuditEvent) => Effect.Effect<void, EventLogError, never>"
+      "signature": "const emitAuditEvent: (audit: AuditEventsApi | undefined, event: AuditEvent) => Effect.Effect<void, EventJournal.EventJournalError, never>"
     },
     {
       "name": "encodeFrame",
@@ -279,99 +344,34 @@
       "signature": "const encodeFrame: (payload: Uint8Array, options?: FramedTransportOptions) => Uint8Array"
     },
     {
+      "name": "Event",
+      "kind": "value",
+      "signature": "import * as Schema from \"../../Schema.ts\"; import * as Msgpack from \"../encoding/Msgpack.ts\"; /** * @since 4.0.0 * @category type ids */ export type TypeId = \"~effect/eventlog/Event\"; /** * @since 4.0.0 * @category type ids */ export declare const TypeId: TypeId; /** * @since 4.0.0 * @category guards */ export declare const isEvent: (u: unknown) => u is Event<any, any, any, any>; /** * Represents an event in an EventLog. * * @since 4.0.0 * @category models */ export interface Event<out Tag extends string, in out Payload extends Schema.Top = typeof Schema.Void, in out Success extends Schema.Top = typeof Schema.Void, in out Error extends Schema.Top = typeof Schema.Never> { readonly [TypeId]: TypeId; readonly tag: Tag; readonly primaryKey: (payload: Schema.Schema.Type<Payload>) => string; readonly payload: Payload; readonly payloadMsgPack: Msgpack.schema<Payload>; readonly success: Success; readonly error: Error; } /** * @since 4.0.0 * @category models */ export interface EventHandler<in out Tag extends string> { readonly _: unique symbol; readonly tag: Tag; } /** * @since 4.0.0 * @category models */ export interface Any { readonly [TypeId]: TypeId; readonly tag: string; readonly primaryKey: (payload: any) => string; readonly payload: Schema.Top; readonly payloadMsgPack: Msgpack.schema<Schema.Top>; readonly success: Schema.Top; readonly error: Schema.Top; } /** * @since 4.0.0 * @category models */ export interface AnyWithProps extends Any { } /** * @since 4.0.0 * @category models */ export type ToService<A> = A extends Event<infer _Tag, infer _Payload, infer _Success, infer _Error> ? EventHandler<_Tag> : never; /** * @since 4.0.0 * @category models */ export type Tag<A> = A extends Event<infer _Tag, infer _Payload, infer _Success, infer _Error> ? _Tag : never; /** * @since 4.0.0 * @category models */ export type ErrorSchema<A extends Any> = A extends Event<infer _Tag, infer _Payload, infer _Success, infer _Error> ? _Error : never; /** * @since 4.0.0 * @category models */ export type Error<A extends Any> = Schema.Schema.Type<ErrorSchema<A>>; /** * @since 4.0.0 * @category models */ export type AddError<A extends Any, Error extends Schema.Top> = A extends Event<infer _Tag, infer _Payload, infer _Success, infer _Error> ? Event<_Tag, _Payload, _Success, _Error | Error> : never; /** * @since 4.0.0 * @category models */ export type PayloadSchema<A extends Any> = A extends Event<infer _Tag, infer _Payload, infer _Success, infer _Error> ? _Payload : never; /** * @since 4.0.0 * @category models */ export type PayloadSchemaWithTag<A extends Any, Tag extends string> = A extends Event<Tag, infer _Payload, infer _Success, infer _Error> ? _Payload : never; /** * @since 4.0.0 * @category models */ export type Payload<A extends Any> = Schema.Schema.Type<PayloadSchema<A>>; /** * @since 4.0.0 * @category models */ export type TaggedPayload<A extends Any> = A extends Event<infer _Tag, infer _Payload, infer _Success, infer _Error> ? { readonly _tag: _Tag; readonly payload: Schema.Schema.Type<_Payload>; } : never; /** * @since 4.0.0 * @category models */ export type SuccessSchema<A extends Any> = A extends Event<infer _Tag, infer _Payload, infer _Success, infer _Error> ? _Success : never; /** * @since 4.0.0 * @category models */ export type Success<A extends Any> = Schema.Schema.Type<SuccessSchema<A>>; /** * @since 4.0.0 * @category models */ export type ServicesClient<A> = A extends Event<infer _Tag, infer _Payload, infer _Success, infer _Error> ? _Payload[\"EncodingServices\"] | _Success[\"DecodingServices\"] | _Error[\"DecodingServices\"] : never; /** * @since 4.0.0 * @category models */ export type ServicesServer<A> = A extends Event<infer _Tag, infer _Payload, infer _Success, infer _Error> ? _Payload[\"DecodingServices\"] | _Success[\"EncodingServices\"] | _Error[\"EncodingServices\"] : never; /** * @since 4.0.0 * @category models */ export type Services<A> = A extends Event<infer _Tag, infer _Payload, infer _Success, infer _Error> ? _Payload[\"DecodingServices\"] | _Success[\"EncodingServices\"] | _Error[\"EncodingServices\"] | _Payload[\"EncodingServices\"] | _Success[\"DecodingServices\"] | _Error[\"DecodingServices\"] : never; /** * @since 4.0.0 * @category models */ export type WithTag<Events extends Any, Tag extends string> = Extract<Events, { readonly tag: Tag; }>; /** * @since 4.0.0 * @category models */ export type ExcludeTag<Events extends Any, Tag extends string> = Exclude<Events, { readonly tag: Tag; }>; /** * @since 4.0.0 * @category models */ export type PayloadWithTag<Events extends Any, Tag extends string> = Payload<WithTag<Events, Tag>>; /** * @since 4.0.0 * @category models */ export type SuccessWithTag<Events extends Any, Tag extends string> = Success<WithTag<Events, Tag>>; /** * @since 4.0.0 * @category models */ export type ErrorWithTag<Events extends Any, Tag extends string> = Error<WithTag<Events, Tag>>; /** * @since 4.0.0 * @category models */ export type ServicesClientWithTag<Events extends Any, Tag extends string> = ServicesClient<WithTag<Events, Tag>>; /** * @since 4.0.0 * @category constructors */ export declare function make<Tag extends string, Payload extends Schema.Top = typeof Schema.Void, Success extends Schema.Top = typeof Schema.Void, Error extends Schema.Top = typeof Schema.Never>(options: { readonly tag: Tag; readonly primaryKey: (payload: Schema.Schema.Type<Payload>) => string; readonly payload?: Payload | undefined; readonly success?: Success | undefined; readonly error?: Error | undefined; }): Event<Tag, Payload, Success, Error>; /** * @since 4.0.0 * @category constructors */ export declare function addError<A extends Any, Error2 extends Schema.Top>(event: A, error: Error2): AddError<A, Error2>; //# sourceMappingURL=Event.d.ts.map"
+    },
+    {
+      "name": "EventGroup",
+      "kind": "value",
+      "signature": "import { type Pipeable } from \"../../Pipeable.ts\"; import * as Record from \"../../Record.ts\"; import type * as Schema from \"../../Schema.ts\"; import * as Event from \"./Event.ts\"; /** * @since 4.0.0 * @category type ids */ export type TypeId = \"~effect/eventlog/EventGroup\"; /** * @since 4.0.0 * @category type ids */ export declare const TypeId: TypeId; /** * @since 4.0.0 * @category guards */ export declare const isEventGroup: (u: unknown) => u is Any; /** * An `EventGroup` is a collection of `Event`s. You can use an `EventGroup` to * represent a portion of your domain. * * The events can be implemented later using the `EventLogBuilder.group` api. * * @since 4.0.0 * @category models */ export interface EventGroup<out Events extends Event.Any = Event.Any> extends Pipeable { readonly [TypeId]: TypeId; readonly events: Record.ReadonlyRecord<string, Events>; /** * Add an `Event` to the `EventGroup`. */ add<Tag extends string, Payload extends Schema.Top = typeof Schema.Void, Success extends Schema.Top = typeof Schema.Void, Error extends Schema.Top = typeof Schema.Never>(options: { readonly tag: Tag; readonly primaryKey: (payload: Schema.Schema.Type<Payload>) => string; readonly payload?: Payload; readonly success?: Success; readonly error?: Error; }): EventGroup<Events | Event.Event<Tag, Payload, Success, Error>>; /** * Add an error schema to all the events in the `EventGroup`. */ addError<Error extends Schema.Top>(error: Error): EventGroup<Event.AddError<Events, Error>>; } /** * @since 4.0.0 * @category models */ export interface Any { readonly [TypeId]: TypeId; } /** * @since 4.0.0 * @category models */ export type AnyWithProps = EventGroup<Event.Any>; /** * @since 4.0.0 * @category models */ export type ToService<A> = A extends EventGroup<infer _Events> ? Event.ToService<_Events> : never; /** * @since 4.0.0 * @category models */ export type Events<Group> = Group extends EventGroup<infer _Events> ? _Events : never; /** * @since 4.0.0 * @category models */ export type ServicesClient<Group> = Event.ServicesClient<Events<Group>>; /** * @since 4.0.0 * @category models */ export type ServicesServer<Group> = Event.ServicesServer<Events<Group>>; /** * An `EventGroup` is a collection of `Event`s. You can use an `EventGroup` to * represent a portion of your domain. * * The events can be implemented later using the `EventLog.group` api. * * @since 4.0.0 * @category constructors */ export declare const empty: EventGroup<never>; //# sourceMappingURL=EventGroup.d.ts.map"
+    },
+    {
+      "name": "EventJournal",
+      "kind": "value",
+      "signature": "import type { Brand } from \"../../Brand.ts\"; import * as Context from \"../../Context.ts\"; import * as DateTime from \"../../DateTime.ts\"; import * as Effect from \"../../Effect.ts\"; import * as Layer from \"../../Layer.ts\"; import * as Order from \"../../Order.ts\"; import * as PubSub from \"../../PubSub.ts\"; import * as Schema from \"../../Schema.ts\"; import type { Scope } from \"../../Scope.ts\"; import * as Msgpack from \"../encoding/Msgpack.ts\"; import type { StoreId } from \"./EventLogMessage.ts\"; declare const EventJournal_base: Context.ServiceClass<EventJournal, \"effect/eventlog/EventJournal\", { /** * Read all the entries in the journal. */ readonly entries: Effect.Effect<ReadonlyArray<Entry>, EventJournalError>; /** * Write an event to the journal, performing an effect before committing the * event. */ readonly write: <A, E, R>(options: { readonly event: string; readonly primaryKey: string; readonly payload: Uint8Array; readonly effect: (entry: Entry) => Effect.Effect<A, E, R>; }) => Effect.Effect<A, EventJournalError | E, R>; /** * Write events from a remote source to the journal. * * Effects run sequentially in compaction bracket order. */ readonly writeFromRemote: (options: { readonly remoteId: RemoteId; readonly entries: ReadonlyArray<RemoteEntry>; readonly compact?: ((uncommitted: ReadonlyArray<RemoteEntry>) => Effect.Effect<ReadonlyArray<Entry>, EventJournalError>) | undefined; readonly effect: (options: { readonly entry: Entry; readonly conflicts: ReadonlyArray<Entry>; }) => Effect.Effect<void, EventJournalError>; }) => Effect.Effect<{ readonly duplicateEntries: ReadonlyArray<Entry>; }, EventJournalError>; /** * Return the uncommitted entries for a remote source. */ readonly withRemoteUncommited: <A, E, R>(remoteId: RemoteId, f: (entries: ReadonlyArray<Entry>) => Effect.Effect<A, E, R>) => Effect.Effect<A, EventJournalError | E, R>; /** * Retrieve the last known sequence number for a remote source. */ readonly nextRemoteSequence: (remoteId: RemoteId) => Effect.Effect<number, EventJournalError>; /** * The entries added to the local journal. */ readonly changes: Effect.Effect<PubSub.Subscription<Entry>, never, Scope>; /** * Remove all data */ readonly destroy: Effect.Effect<void, EventJournalError>; /** * Run an effect with a lock on the journal. */ readonly withLock: (storeId: StoreId) => <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>; }>; /** * @since 4.0.0 * @category context */ export declare class EventJournal extends EventJournal_base { } declare const TypeId: \"effect/eventlog/EventJournal/EventJournalError\"; declare const EventJournalError_base: new <A extends Record<string, any> = {}>(args: import(\"../../Types.ts\").VoidIfEmpty<{ readonly [P in keyof A as P extends \"_tag\" ? never : P]: A[P]; }>) => import(\"../../Cause.ts\").YieldableError & { readonly _tag: \"EventJournalError\"; } & Readonly<A>; /** * @since 4.0.0 * @category errors */ export declare class EventJournalError extends EventJournalError_base<{ readonly method: string; readonly cause: unknown; }> { /** * @since 4.0.0 */ readonly [TypeId]: \"effect/eventlog/EventJournal/EventJournalError\"; } /** * @since 4.0.0 * @category remote */ export type RemoteIdTypeId = \"effect/eventlog/EventJournal/RemoteId\"; /** * @since 4.0.0 * @category remote */ export declare const RemoteIdTypeId: RemoteIdTypeId; /** * @since 4.0.0 * @category remote */ export type RemoteId = Uint8Array & Brand<RemoteIdTypeId>; /** * @since 4.0.0 * @category remote */ export declare const RemoteId: Schema.brand<Schema.Uint8Array, \"effect/eventlog/EventJournal/RemoteId\">; /** * @since 4.0.0 * @category remote */ export declare const makeRemoteIdUnsafe: () => RemoteId; /** * @since 4.0.0 * @category entry */ export declare const EntryIdTypeId: EntryIdTypeId; /** * @since 4.0.0 * @category entry */ export type EntryIdTypeId = \"effect/eventlog/EventJournal/EntryId\"; /** * @since 4.0.0 * @category entry */ export type EntryId = Uint8Array<ArrayBuffer> & Brand<EntryIdTypeId>; /** * @since 4.0.0 * @category entry */ export declare const EntryId: Schema.brand<Schema.instanceOf<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>, \"effect/eventlog/EventJournal/EntryId\">; /** * @since 4.0.0 * @category entry */ export declare const EntryIdOrder: Order.Order<EntryId>; /** * @since 4.0.0 * @category entry */ export declare const makeEntryIdUnsafe: (options?: { msecs?: number; }) => EntryId; /** * @since 4.0.0 * @category entry */ export declare const entryIdMillis: (entryId: EntryId) => number; declare const Entry_base: Schema.Class<Entry, Schema.Struct<{ readonly id: Schema.brand<Schema.instanceOf<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>, \"effect/eventlog/EventJournal/EntryId\">; readonly event: Schema.String; readonly primaryKey: Schema.String; readonly payload: Schema.Uint8Array; }>, {}>; /** * @since 4.0.0 * @category entry */ export declare class Entry extends Entry_base { /** * @since 4.0.0 */ static arrayMsgpack: Schema.$Array<Msgpack.schema<typeof Entry>>; /** * @since 4.0.0 */ static encodeArray: (input: unknown, options?: import(\"../../SchemaAST.ts\").ParseOptions) => Effect.Effect<readonly Uint8Array<ArrayBuffer>[], Schema.SchemaError, never>; /** * @since 4.0.0 */ static decodeArray: (input: unknown, options?: import(\"../../SchemaAST.ts\").ParseOptions) => Effect.Effect<readonly Entry[], Schema.SchemaError, never>; /** * @since 4.0.0 */ static Order: Order.Order<Entry>; /** * @since 4.0.0 */ get idString(): string; /** * @since 4.0.0 */ get createdAtMillis(): number; /** * @since 4.0.0 */ get createdAt(): DateTime.Utc; } declare const RemoteEntry_base: Schema.Class<RemoteEntry, Schema.Struct<{ readonly remoteSequence: Schema.Number; readonly entry: typeof Entry; }>, {}>; /** * @since 4.0.0 * @category entry */ export declare class RemoteEntry extends RemoteEntry_base { } /** * @since 4.0.0 * @category memory */ export declare const makeMemory: Effect.Effect<EventJournal[\"Service\"]>; /** * @since 4.0.0 * @category memory */ export declare const layerMemory: Layer.Layer<EventJournal>; /** * @since 4.0.0 * @category indexed db */ export declare const makeIndexedDb: (options?: { readonly database?: string; }) => Effect.Effect<EventJournal[\"Service\"], EventJournalError, Scope>; /** * @since 4.0.0 * @category indexed db */ export declare const layerIndexedDb: (options?: { readonly database?: string; }) => Layer.Layer<EventJournal, EventJournalError>; export {}; //# sourceMappingURL=EventJournal.d.ts.map"
+    },
+    {
       "name": "EventLog",
-      "kind": "class",
-      "signature": "export class EventLog extends Context.Service<EventLog, EventLogApi>()(\"EventLog\", { make: Effect.gen(function* () { const sqlite = yield* SQLite return yield* makeEventLog(sqlite) }) }) {}"
-    },
-    {
-      "name": "EventLogApi",
-      "kind": "interface",
-      "signature": "export interface EventLogApi { readonly open: ( options: EventLogOpenOptions ) => Effect.Effect<EventLogStore, EventLogError, never> }"
-    },
-    {
-      "name": "EventLogAppend",
-      "kind": "interface",
-      "signature": "export interface EventLogAppend { readonly type: string readonly payload?: unknown }"
-    },
-    {
-      "name": "EventLogAppendInput",
-      "kind": "class",
-      "signature": "export class EventLogAppendInput extends Schema.Class<EventLogAppendInput>(\"EventLogAppendInput\")({ type: EventLogMetadataText, payload: Schema.optionalKey(Schema.Unknown), source: Schema.optionalKey(EventLogMetadataText) }) {}"
-    },
-    {
-      "name": "EventLogAppendOptions",
-      "kind": "interface",
-      "signature": "export interface EventLogAppendOptions { readonly source?: string }"
-    },
-    {
-      "name": "EventLogEntry",
-      "kind": "class",
-      "signature": "export class EventLogEntry extends Schema.Class<EventLogEntry>(\"EventLogEntry\")({ id: NonNegativeInt, type: EventLogMetadataText, payload: Schema.optionalKey(Schema.Unknown), timestampMs: NonNegativeInt, source: Schema.optionalKey(EventLogMetadataText) }) {}"
-    },
-    {
-      "name": "EventLogError",
-      "kind": "type",
-      "signature": "export type EventLogError = | EventLogInvalidArgumentError | EventLogSqliteError | EventLogFullError | EventLogSegmentCorruptError"
-    },
-    {
-      "name": "EventLogFullError",
-      "kind": "class",
-      "signature": "export class EventLogFullError extends Data.TaggedError(\"EventLogFull\")<{ readonly freeBytes: number readonly operation: string readonly cause: Option.Option<unknown> }> {}"
-    },
-    {
-      "name": "EventLogInvalidArgumentError",
-      "kind": "class",
-      "signature": "export class EventLogInvalidArgumentError extends Data.TaggedError(\"InvalidArgument\")<{ readonly operation: string readonly field: string readonly message: string readonly cause: Option.Option<unknown> }> {}"
-    },
-    {
-      "name": "EventLogOpenInput",
-      "kind": "class",
-      "signature": "export class EventLogOpenInput extends Schema.Class<EventLogOpenInput>(\"EventLogOpenInput\")({ path: NonEmptyString, ownerScope: NonEmptyString, namespace: EventLogMetadataText, maxEvents: Schema.optionalKey(PositiveInt), flushEveryMs: Schema.optionalKey(PositiveInt), flushEveryEvents: Schema.optionalKey(PositiveInt) }) {}"
-    },
-    {
-      "name": "EventLogOpenOptions",
-      "kind": "interface",
-      "signature": "export interface EventLogOpenOptions { readonly path: string readonly ownerScope: string readonly namespace?: string readonly maxEvents?: number readonly flushEveryMs?: number readonly flushEveryEvents?: number readonly now?: () => number }"
-    },
-    {
-      "name": "EventLogQueryInput",
-      "kind": "class",
-      "signature": "export class EventLogQueryInput extends Schema.Class<EventLogQueryInput>(\"EventLogQueryInput\")({ from: Schema.optionalKey(NonNegativeInt), to: Schema.optionalKey(NonNegativeInt), type: Schema.optionalKey(EventLogMetadataText), limit: Schema.optionalKey(PositiveInt) }) {}"
-    },
-    {
-      "name": "EventLogQueryOptions",
-      "kind": "interface",
-      "signature": "export interface EventLogQueryOptions { readonly from?: number readonly to?: number readonly type?: string readonly limit?: number }"
-    },
-    {
-      "name": "EventLogSegmentCorruptError",
-      "kind": "class",
-      "signature": "export class EventLogSegmentCorruptError extends Data.TaggedError(\"EventLogSegmentCorrupt\")<{ readonly segmentPath: string readonly operation: string readonly cause: Option.Option<unknown> }> {}"
-    },
-    {
-      "name": "EventLogSqliteError",
-      "kind": "class",
-      "signature": "export class EventLogSqliteError extends Data.TaggedError(\"SqliteError\")<{ readonly operation: string readonly cause: SqliteError }> {}"
-    },
-    {
-      "name": "EventLogStore",
-      "kind": "interface",
-      "signature": "export interface EventLogStore { readonly append: ( event: EventLogAppend, options?: EventLogAppendOptions ) => Effect.Effect<number, EventLogError, never> readonly query: ( options?: EventLogQueryOptions ) => Effect.Effect<readonly EventLogEntry[], EventLogError, never> readonly subscribe: ( options?: EventLogSubscribeOptions ) => Stream.Stream<EventLogEntry, EventLogError, never> readonly close: () => Effect.Effect<void, never, never> }"
-    },
-    {
-      "name": "EventLogSubscribeInput",
-      "kind": "class",
-      "signature": "export class EventLogSubscribeInput extends Schema.Class<EventLogSubscribeInput>( \"EventLogSubscribeInput\" )({ from: Schema.optionalKey(NonNegativeInt) }) {}"
-    },
-    {
-      "name": "EventLogSubscribeOptions",
-      "kind": "interface",
-      "signature": "export interface EventLogSubscribeOptions { readonly from?: number }"
+      "kind": "value",
+      "signature": "import * as Context from \"../../Context.ts\"; import * as Effect from \"../../Effect.ts\"; import * as Layer from \"../../Layer.ts\"; import type { Pipeable } from \"../../Pipeable.ts\"; import type * as Record from \"../../Record.ts\"; import * as Redacted from \"../../Redacted.ts\"; import * as Schema from \"../../Schema.ts\"; import type * as Scope from \"../../Scope.ts\"; import type { Covariant } from \"../../Types.ts\"; import { Reactivity } from \"../reactivity/Reactivity.ts\"; import type * as Event from \"./Event.ts\"; import type * as EventGroup from \"./EventGroup.ts\"; import { Entry, EventJournal, type EventJournalError } from \"./EventJournal.ts\"; import * as EventLogEncryption from \"./EventLogEncryption.ts\"; import { StoreId } from \"./EventLogMessage.ts\"; import type { EventLogRemote } from \"./EventLogRemote.ts\"; declare const EventLog_base: Context.ServiceClass<EventLog, \"effect/eventlog/EventLog\", { readonly write: <Groups extends EventGroup.Any, Tag extends Event.Tag<EventGroup.Events<Groups>>>(options: { readonly schema: EventLogSchema<Groups>; readonly event: Tag; readonly payload: Event.PayloadWithTag<EventGroup.Events<Groups>, Tag>; }) => Effect.Effect<Event.SuccessWithTag<EventGroup.Events<Groups>, Tag>, Event.ErrorWithTag<EventGroup.Events<Groups>, Tag> | EventJournalError>; readonly entries: Effect.Effect<ReadonlyArray<Entry>, EventJournalError>; readonly destroy: Effect.Effect<void, EventJournalError>; }>; /** * @since 4.0.0 * @category tags */ export declare class EventLog extends EventLog_base { } declare const Registry_base: Context.ServiceClass<Registry, \"effect/unstable/eventlog/EventLog/Registry\", { readonly registerHandlerUnsafe: (options: { readonly event: string; readonly handler: Handlers.Item<any>; }) => void; readonly handlers: ReadonlyMap<string, Handlers.Item<any>>; readonly registerCompaction: (options: { readonly events: ReadonlyArray<string>; readonly effect: (options: { readonly entries: ReadonlyArray<Entry>; readonly write: (entry: Entry) => Effect.Effect<void>; }) => Effect.Effect<void>; }) => Effect.Effect<void, never, Scope.Scope>; readonly compactors: ReadonlyMap<string, { readonly events: ReadonlySet<string>; readonly effect: (options: { readonly entries: ReadonlyArray<Entry>; readonly write: (entry: Entry) => Effect.Effect<void>; }) => Effect.Effect<void>; }>; readonly registerRemote: (remote: EventLogRemote[\"Service\"]) => Effect.Effect<void, never, Scope.Scope>; readonly handleRemote: (handler: (remote: EventLogRemote[\"Service\"]) => Effect.Effect<void>) => Effect.Effect<void>; readonly registerReactivity: (keys: Record<string, ReadonlyArray<string>>) => Effect.Effect<void, never, Scope.Scope>; readonly reactivityKeys: Record<string, ReadonlyArray<string>>; }>; /** * @since 4.0.0 * @category Registry */ export declare class Registry extends Registry_base { } /** * @since 4.0.0 * @category Registry */ export declare const layerRegistry: Layer.Layer<Registry, never, never>; declare const Identity_base: Context.ServiceClass<Identity, \"effect/eventlog/EventLog/Identity\", { readonly publicKey: string; readonly privateKey: Redacted.Redacted<Uint8Array<ArrayBuffer>>; }>; /** * @since 4.0.0 * @category models */ export declare class Identity extends Identity_base { } /** * @since 4.0.0 * @category schema */ export type SchemaTypeId = \"~effect/eventlog/EventLog/Schema\"; /** * @since 4.0.0 * @category schema */ export declare const SchemaTypeId: SchemaTypeId; /** * @since 4.0.0 * @category schema */ export declare const isEventLogSchema: (u: unknown) => u is EventLogSchema<EventGroup.Any>; /** * @since 4.0.0 * @category schema */ export interface EventLogSchema<Groups extends EventGroup.Any> { readonly [SchemaTypeId]: SchemaTypeId; readonly groups: ReadonlyArray<Groups>; } /** * @since 4.0.0 * @category schema */ export declare const schema: <Groups extends ReadonlyArray<EventGroup.Any>>(...groups: Groups) => EventLogSchema<Groups[number]>; /** * @since 4.0.0 * @category handlers */ export type HandlersTypeId = \"~effect/eventlog/EventLog/Handlers\"; /** * @since 4.0.0 * @category handlers */ export declare const HandlersTypeId: HandlersTypeId; /** * Represents a handled `EventGroup`. * * @since 4.0.0 * @category handlers */ export interface Handlers<R, Events extends Event.Any = never> extends Pipeable { readonly [HandlersTypeId]: { _Events: Covariant<Events>; }; readonly group: EventGroup.AnyWithProps; readonly handlers: Record.ReadonlyRecord<string, Handlers.Item<R>>; readonly context: Context.Context<R>; /** * Add the implementation for an `Event` to a `Handlers` group. */ handle<Tag extends Event.Tag<Events>, R1>(name: Tag, handler: (options: { readonly storeId: StoreId; readonly payload: Event.PayloadWithTag<Events, Tag>; readonly entry: Entry; readonly conflicts: ReadonlyArray<{ readonly entry: Entry; readonly payload: Event.PayloadWithTag<Events, Tag>; }>; }) => Effect.Effect<Event.SuccessWithTag<Events, Tag>, Event.ErrorWithTag<Events, Tag>, R1>): Handlers<R | R1, Event.ExcludeTag<Events, Tag>>; } /** * @since 4.0.0 * @category handlers */ export declare namespace Handlers { /** * @since 4.0.0 * @category handlers */ interface Any { readonly [HandlersTypeId]: unknown; } /** * @since 4.0.0 * @category handlers */ type Item<R> = { readonly event: Event.AnyWithProps; readonly context: Context.Context<R>; readonly handler: (options: { readonly storeId: StoreId; readonly payload: unknown; readonly entry: Entry; readonly conflicts: ReadonlyArray<{ readonly entry: Entry; readonly payload: unknown; }>; }) => Effect.Effect<unknown, unknown, R>; }; /** * @since 4.0.0 * @category handlers */ type ValidateReturn<A> = A extends (Handlers<infer _R, infer _Events> | Effect.Effect<Handlers<infer _R, infer _Events>, infer _EX, infer _RX>) ? [_Events] extends [never] ? A : `Event not handled: ${Event.Tag<_Events>}` : `Must return the implemented handlers`; /** * @since 4.0.0 * @category handlers */ type Error<A> = A extends Effect.Effect<Handlers<infer _R, infer _Events>, infer _EX, infer _RX> ? _EX : never; /** * @since 4.0.0 * @category handlers */ type Services<A> = A extends Handlers<infer _R, infer _Events> ? _R | Event.Services<_Events> : A extends Effect.Effect<Handlers<infer _R, infer _Events>, infer _EX, infer _RX> ? _R | _RX | Event.Services<_Events> : never; } declare const CurrentStoreId_base: Context.Reference<StoreId>; /** * @since 4.0.0 * @category models */ export declare class CurrentStoreId extends CurrentStoreId_base { } /** * @since 4.0.0 * @category schema */ export declare const IdentitySchema: Schema.Struct<{ readonly publicKey: Schema.String; readonly privateKey: Schema.decodeTo<Schema.Redacted<Schema.Uint8Array>, Schema.Uint8ArrayFromBase64, never, never>; }>; /** * @since 4.0.0 * @category constructors */ export declare const decodeIdentityString: (value: string) => Identity[\"Service\"]; /** * @since 4.0.0 * @category constructors */ export declare const encodeIdentityString: (identity: Identity[\"Service\"]) => string; /** * @since 4.0.0 * @category constructors */ export declare const makeIdentity: Effect.Effect<Identity[\"Service\"], never, EventLogEncryption.EventLogEncryption>; /** * @since 4.0.0 * @category handlers */ export declare const group: <Events extends Event.Any, Return>(group: EventGroup.EventGroup<Events>, f: (handlers: Handlers<never, Events>) => Handlers.ValidateReturn<Return>) => Layer.Layer<Event.ToService<Events>, Handlers.Error<Return>, Exclude<Handlers.Services<Return>, Scope.Scope | Identity> | Registry>; /** * @since 4.0.0 * @category compaction */ export declare const groupCompaction: <Events extends Event.Any, R>(group: EventGroup.EventGroup<Events>, effect: (options: { readonly primaryKey: string; readonly entries: ReadonlyArray<Entry>; readonly events: ReadonlyArray<Event.TaggedPayload<Events>>; readonly write: <Tag extends Event.Tag<Events>>(tag: Tag, payload: Event.PayloadWithTag<Events, Tag>) => Effect.Effect<void, never, Event.PayloadSchemaWithTag<Events, Tag>[\"EncodingServices\"]>; }) => Effect.Effect<void, never, R>) => Layer.Layer<never, never, R | Event.PayloadSchema<Events>[\"DecodingServices\"] | Registry>; /** * @since 4.0.0 * @category reactivity */ export declare const groupReactivity: <Events extends Event.Any>(group: EventGroup.EventGroup<Events>, keys: { readonly [Tag in Event.Tag<Events>]?: ReadonlyArray<string>; } | ReadonlyArray<string>) => Layer.Layer<never, never, Registry>; /** * @since 4.0.0 * @category handlers */ export declare const makeReplayFromRemote: (options: { readonly handlers: ReadonlyMap<string, Handlers.Item<any>>; readonly storeId: StoreId; readonly identity: Identity[\"Service\"]; readonly reactivity: Reactivity[\"Service\"]; readonly reactivityKeys: Record<string, ReadonlyArray<string>>; readonly logAnnotations: { readonly service: string; readonly effect: string; }; }) => (args_0: { readonly entry: Entry; readonly conflicts: ReadonlyArray<Entry>; }) => Effect.Effect<void, never, never>; /** * @since 4.0.0 * @category layers */ export declare const layerEventLog: Layer.Layer<EventLog | Registry, never, EventJournal | Identity>; /** * @since 4.0.0 * @category layers */ export declare const layer: <Groups extends EventGroup.Any, E, R>(_schema: EventLogSchema<Groups>, layer: Layer.Layer<EventGroup.ToService<Groups>, E, R>) => Layer.Layer<EventLog | Registry, E, Exclude<R, EventLog | Registry> | EventJournal | Identity>; /** * @since 4.0.0 * @category client */ export declare const makeClient: <Groups extends EventGroup.Any>(schema: EventLogSchema<Groups>) => Effect.Effect<(<Tag extends Event.Tag<EventGroup.Events<Groups>>>(event: Tag, payload: Event.PayloadWithTag<EventGroup.Events<Groups>, Tag>) => Effect.Effect<Event.SuccessWithTag<EventGroup.Events<Groups>, Tag>, Event.ErrorWithTag<EventGroup.Events<Groups>, Tag> | EventJournalError>), never, EventLog>; export {}; //# sourceMappingURL=EventLog.d.ts.map"
     },
     {
       "name": "Filesystem",
       "kind": "class",
       "signature": "export class Filesystem extends Context.Service<Filesystem, FilesystemApi>()(\"Filesystem\") {}"
+    },
+    {
+      "name": "FileSystem",
+      "kind": "interface",
+      "signature": "export interface FileSystem { readonly [TypeId]: typeof TypeId; /** * Check if a file can be accessed. * You can optionally specify the level of access to check for. */ readonly access: (path: string, options?: { readonly ok?: boolean | undefined; readonly readable?: boolean | undefined; readonly writable?: boolean | undefined; }) => Effect.Effect<void, PlatformError>; /** * Copy a file or directory from `fromPath` to `toPath`. * * Equivalent to `cp -r`. */ readonly copy: (fromPath: string, toPath: string, options?: { readonly overwrite?: boolean | undefined; readonly preserveTimestamps?: boolean | undefined; }) => Effect.Effect<void, PlatformError>; /** * Copy a file from `fromPath` to `toPath`. */ readonly copyFile: (fromPath: string, toPath: string) => Effect.Effect<void, PlatformError>; /** * Change the permissions of a file. */ readonly chmod: (path: string, mode: number) => Effect.Effect<void, PlatformError>; /** * Change the owner and group of a file. */ readonly chown: (path: string, uid: number, gid: number) => Effect.Effect<void, PlatformError>; /** * Check if a path exists. */ readonly exists: (path: string) => Effect.Effect<boolean, PlatformError>; /** * Create a hard link from `fromPath` to `toPath`. */ readonly link: (fromPath: string, toPath: string) => Effect.Effect<void, PlatformError>; /** * Create a directory at `path`. You can optionally specify the mode and * whether to recursively create nested directories. */ readonly makeDirectory: (path: string, options?: { readonly recursive?: boolean | undefined; readonly mode?: number | undefined; }) => Effect.Effect<void, PlatformError>; /** * Create a temporary directory. * * By default the directory will be created inside the system's default * temporary directory, but you can specify a different location by setting * the `directory` option. * * You can also specify a prefix for the directory name by setting the * `prefix` option. */ readonly makeTempDirectory: (options?: { readonly directory?: string | undefined; readonly prefix?: string | undefined; }) => Effect.Effect<string, PlatformError>; /** * Create a temporary directory inside a scope. * * Functionally equivalent to `makeTempDirectory`, but the directory will be * automatically deleted when the scope is closed. */ readonly makeTempDirectoryScoped: (options?: { readonly directory?: string | undefined; readonly prefix?: string | undefined; }) => Effect.Effect<string, PlatformError, Scope>; /** * Create a temporary file. * The directory creation is functionally equivalent to `makeTempDirectory`. * The file name will be a randomly generated string. */ readonly makeTempFile: (options?: { readonly directory?: string | undefined; readonly prefix?: string | undefined; readonly suffix?: string | undefined; }) => Effect.Effect<string, PlatformError>; /** * Create a temporary file inside a scope. * * Functionally equivalent to `makeTempFile`, but the file will be * automatically deleted when the scope is closed. */ readonly makeTempFileScoped: (options?: { readonly directory?: string | undefined; readonly prefix?: string | undefined; readonly suffix?: string | undefined; }) => Effect.Effect<string, PlatformError, Scope>; /** * Open a file at `path` with the specified `options`. * * The file handle will be automatically closed when the scope is closed. */ readonly open: (path: string, options?: { readonly flag?: OpenFlag | undefined; readonly mode?: number | undefined; }) => Effect.Effect<File, PlatformError, Scope>; /** * List the contents of a directory. * * You can recursively list the contents of nested directories by setting the * `recursive` option. */ readonly readDirectory: (path: string, options?: { readonly recursive?: boolean | undefined; }) => Effect.Effect<Array<string>, PlatformError>; /** * Read the contents of a file. */ readonly readFile: (path: string) => Effect.Effect<Uint8Array, PlatformError>; /** * Read the contents of a file. */ readonly readFileString: (path: string, encoding?: string) => Effect.Effect<string, PlatformError>; /** * Read the destination of a symbolic link. */ readonly readLink: (path: string) => Effect.Effect<string, PlatformError>; /** * Resolve a path to its canonicalized absolute pathname. */ readonly realPath: (path: string) => Effect.Effect<string, PlatformError>; /** * Remove a file or directory. */ readonly remove: (path: string, options?: { /** * When `true`, you can recursively remove nested directories. */ readonly recursive?: boolean | undefined; /** * When `true`, exceptions will be ignored if `path` does not exist. */ readonly force?: boolean | undefined; }) => Effect.Effect<void, PlatformError>; /** * Rename a file or directory. */ readonly rename: (oldPath: string, newPath: string) => Effect.Effect<void, PlatformError>; /** * Create a writable `Sink` for the specified `path`. */ readonly sink: (path: string, options?: { readonly flag?: OpenFlag | undefined; readonly mode?: number | undefined; }) => Sink.Sink<void, Uint8Array, never, PlatformError>; /** * Get information about a file at `path`. */ readonly stat: (path: string) => Effect.Effect<File.Info, PlatformError>; /** * Create a readable `Stream` for the specified `path`. * * Changing the `bufferSize` option will change the internal buffer size of * the stream. It defaults to `4`. * * The `chunkSize` option will change the size of the chunks emitted by the * stream. It defaults to 64kb. * * Changing `offset` and `bytesToRead` will change the offset and the number * of bytes to read from the file. */ readonly stream: (path: string, options?: { readonly bytesToRead?: SizeInput | undefined; readonly chunkSize?: SizeInput | undefined; readonly offset?: SizeInput | undefined; }) => Stream.Stream<Uint8Array, PlatformError>; /** * Create a symbolic link from `fromPath` to `toPath`. */ readonly symlink: (fromPath: string, toPath: string) => Effect.Effect<void, PlatformError>; /** * Truncate a file to a specified length. If the `length` is not specified, * the file will be truncated to length `0`. */ readonly truncate: (path: string, length?: SizeInput) => Effect.Effect<void, PlatformError>; /** * Change the file system timestamps of the file at `path`. */ readonly utimes: (path: string, atime: Date | number, mtime: Date | number) => Effect.Effect<void, PlatformError>; /** * Watch a directory or file for changes */ readonly watch: (path: string) => Stream.Stream<WatchEvent, PlatformError>; /** * Write data to a file at `path`. */ readonly writeFile: (path: string, data: Uint8Array, options?: { readonly flag?: OpenFlag | undefined; readonly mode?: number | undefined; }) => Effect.Effect<void, PlatformError>; /** * Write a string to a file at `path`. */ readonly writeFileString: (path: string, data: string, options?: { readonly flag?: OpenFlag | undefined; readonly mode?: number | undefined; }) => Effect.Effect<void, PlatformError>; }"
     },
     {
       "name": "FilesystemAdapter",
@@ -449,6 +449,11 @@
       "signature": "export class FilesystemStatResult extends Schema.Class<FilesystemStatResult>( \"FilesystemStatResult\" )({ path: Schema.String, kind: FilesystemEntryKind, sizeBytes: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)), modifiedAtMs: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)) }) {}"
     },
     {
+      "name": "FileSystemTag",
+      "kind": "interface",
+      "signature": "export interface FileSystem { readonly [TypeId]: typeof TypeId; /** * Check if a file can be accessed. * You can optionally specify the level of access to check for. */ readonly access: (path: string, options?: { readonly ok?: boolean | undefined; readonly readable?: boolean | undefined; readonly writable?: boolean | undefined; }) => Effect.Effect<void, PlatformError>; /** * Copy a file or directory from `fromPath` to `toPath`. * * Equivalent to `cp -r`. */ readonly copy: (fromPath: string, toPath: string, options?: { readonly overwrite?: boolean | undefined; readonly preserveTimestamps?: boolean | undefined; }) => Effect.Effect<void, PlatformError>; /** * Copy a file from `fromPath` to `toPath`. */ readonly copyFile: (fromPath: string, toPath: string) => Effect.Effect<void, PlatformError>; /** * Change the permissions of a file. */ readonly chmod: (path: string, mode: number) => Effect.Effect<void, PlatformError>; /** * Change the owner and group of a file. */ readonly chown: (path: string, uid: number, gid: number) => Effect.Effect<void, PlatformError>; /** * Check if a path exists. */ readonly exists: (path: string) => Effect.Effect<boolean, PlatformError>; /** * Create a hard link from `fromPath` to `toPath`. */ readonly link: (fromPath: string, toPath: string) => Effect.Effect<void, PlatformError>; /** * Create a directory at `path`. You can optionally specify the mode and * whether to recursively create nested directories. */ readonly makeDirectory: (path: string, options?: { readonly recursive?: boolean | undefined; readonly mode?: number | undefined; }) => Effect.Effect<void, PlatformError>; /** * Create a temporary directory. * * By default the directory will be created inside the system's default * temporary directory, but you can specify a different location by setting * the `directory` option. * * You can also specify a prefix for the directory name by setting the * `prefix` option. */ readonly makeTempDirectory: (options?: { readonly directory?: string | undefined; readonly prefix?: string | undefined; }) => Effect.Effect<string, PlatformError>; /** * Create a temporary directory inside a scope. * * Functionally equivalent to `makeTempDirectory`, but the directory will be * automatically deleted when the scope is closed. */ readonly makeTempDirectoryScoped: (options?: { readonly directory?: string | undefined; readonly prefix?: string | undefined; }) => Effect.Effect<string, PlatformError, Scope>; /** * Create a temporary file. * The directory creation is functionally equivalent to `makeTempDirectory`. * The file name will be a randomly generated string. */ readonly makeTempFile: (options?: { readonly directory?: string | undefined; readonly prefix?: string | undefined; readonly suffix?: string | undefined; }) => Effect.Effect<string, PlatformError>; /** * Create a temporary file inside a scope. * * Functionally equivalent to `makeTempFile`, but the file will be * automatically deleted when the scope is closed. */ readonly makeTempFileScoped: (options?: { readonly directory?: string | undefined; readonly prefix?: string | undefined; readonly suffix?: string | undefined; }) => Effect.Effect<string, PlatformError, Scope>; /** * Open a file at `path` with the specified `options`. * * The file handle will be automatically closed when the scope is closed. */ readonly open: (path: string, options?: { readonly flag?: OpenFlag | undefined; readonly mode?: number | undefined; }) => Effect.Effect<File, PlatformError, Scope>; /** * List the contents of a directory. * * You can recursively list the contents of nested directories by setting the * `recursive` option. */ readonly readDirectory: (path: string, options?: { readonly recursive?: boolean | undefined; }) => Effect.Effect<Array<string>, PlatformError>; /** * Read the contents of a file. */ readonly readFile: (path: string) => Effect.Effect<Uint8Array, PlatformError>; /** * Read the contents of a file. */ readonly readFileString: (path: string, encoding?: string) => Effect.Effect<string, PlatformError>; /** * Read the destination of a symbolic link. */ readonly readLink: (path: string) => Effect.Effect<string, PlatformError>; /** * Resolve a path to its canonicalized absolute pathname. */ readonly realPath: (path: string) => Effect.Effect<string, PlatformError>; /** * Remove a file or directory. */ readonly remove: (path: string, options?: { /** * When `true`, you can recursively remove nested directories. */ readonly recursive?: boolean | undefined; /** * When `true`, exceptions will be ignored if `path` does not exist. */ readonly force?: boolean | undefined; }) => Effect.Effect<void, PlatformError>; /** * Rename a file or directory. */ readonly rename: (oldPath: string, newPath: string) => Effect.Effect<void, PlatformError>; /** * Create a writable `Sink` for the specified `path`. */ readonly sink: (path: string, options?: { readonly flag?: OpenFlag | undefined; readonly mode?: number | undefined; }) => Sink.Sink<void, Uint8Array, never, PlatformError>; /** * Get information about a file at `path`. */ readonly stat: (path: string) => Effect.Effect<File.Info, PlatformError>; /** * Create a readable `Stream` for the specified `path`. * * Changing the `bufferSize` option will change the internal buffer size of * the stream. It defaults to `4`. * * The `chunkSize` option will change the size of the chunks emitted by the * stream. It defaults to 64kb. * * Changing `offset` and `bytesToRead` will change the offset and the number * of bytes to read from the file. */ readonly stream: (path: string, options?: { readonly bytesToRead?: SizeInput | undefined; readonly chunkSize?: SizeInput | undefined; readonly offset?: SizeInput | undefined; }) => Stream.Stream<Uint8Array, PlatformError>; /** * Create a symbolic link from `fromPath` to `toPath`. */ readonly symlink: (fromPath: string, toPath: string) => Effect.Effect<void, PlatformError>; /** * Truncate a file to a specified length. If the `length` is not specified, * the file will be truncated to length `0`. */ readonly truncate: (path: string, length?: SizeInput) => Effect.Effect<void, PlatformError>; /** * Change the file system timestamps of the file at `path`. */ readonly utimes: (path: string, atime: Date | number, mtime: Date | number) => Effect.Effect<void, PlatformError>; /** * Watch a directory or file for changes */ readonly watch: (path: string) => Stream.Stream<WatchEvent, PlatformError>; /** * Write data to a file at `path`. */ readonly writeFile: (path: string, data: Uint8Array, options?: { readonly flag?: OpenFlag | undefined; readonly mode?: number | undefined; }) => Effect.Effect<void, PlatformError>; /** * Write a string to a file at `path`. */ readonly writeFileString: (path: string, data: string, options?: { readonly flag?: OpenFlag | undefined; readonly mode?: number | undefined; }) => Effect.Effect<void, PlatformError>; }"
+    },
+    {
       "name": "FilesystemWatcher",
       "kind": "interface",
       "signature": "export interface FilesystemWatcher { readonly close: () => void }"
@@ -509,9 +514,29 @@
       "signature": "const Handlers: (<Layers extends readonly AnyApiLayer[]>(...layers: Layers) => ApiHandlerRuntime<ApiLayerEnvironment<Layers[number]>>) & { withOptions: <Layers extends readonly AnyApiLayer[]>(options: ApiHandlerRuntimeOptions, ...layers: Layers) => ApiHandlerRuntime<ApiLayerEnvironment<Layers[number]>>; }"
     },
     {
+      "name": "invalidate",
+      "kind": "value",
+      "signature": "const invalidate: (keys: ReadonlyArray<unknown> | import(\"effect/Record\").ReadonlyRecord<string, ReadonlyArray<unknown>>) => import(\"effect/Effect\").Effect<void, never, ReactivityNS.Reactivity>"
+    },
+    {
       "name": "InvalidFrameLimitError",
       "kind": "class",
       "signature": "export class InvalidFrameLimitError extends Error { override readonly name = \"InvalidFrameLimitError\" readonly maxFrameBytes: number constructor(maxFrameBytes: number) { super(`invalid maxFrameBytes ${maxFrameBytes}; expected an integer from 0 to ${U32_MAX}`) this.maxFrameBytes = maxFrameBytes } }"
+    },
+    {
+      "name": "launch",
+      "kind": "value",
+      "signature": "const launch: (layer: Layer.Layer<DesktopApp, DesktopConfigError, never>) => Effect.Effect<never, DesktopConfigError, never>"
+    },
+    {
+      "name": "layerPostMessageSocket",
+      "kind": "value",
+      "signature": "const layerPostMessageSocket: Layer.Layer<Socket.Socket, never, never>"
+    },
+    {
+      "name": "layerStdioSocket",
+      "kind": "value",
+      "signature": "const layerStdioSocket: Layer.Layer<Socket.Socket, never, never>"
     },
     {
       "name": "makeApprovalBroker",
@@ -521,7 +546,7 @@
     {
       "name": "makeAuditEvents",
       "kind": "value",
-      "signature": "const makeAuditEvents: (store: EventLogStore) => AuditEventsApi"
+      "signature": "const makeAuditEvents: (log: EventLog.EventLog[\"Service\"]) => AuditEventsApi"
     },
     {
       "name": "makeBridgeCallRegistry",
@@ -544,11 +569,6 @@
       "signature": "const makeConnection: (transport: FramedTransport, operation: string) => TransportConnection"
     },
     {
-      "name": "makeEventLog",
-      "kind": "value",
-      "signature": "const makeEventLog: (sqlite: typeof SQLite.Service) => Effect.Effect<EventLogApi, never, never>"
-    },
-    {
       "name": "makeFilesystem",
       "kind": "value",
       "signature": "const makeFilesystem: (registry: ResourceRegistryApi, options?: FilesystemOptions) => Effect.Effect<FilesystemApi, never, never>"
@@ -557,6 +577,11 @@
       "name": "makeInMemoryTransportPair",
       "kind": "value",
       "signature": "const makeInMemoryTransportPair: () => Effect.Effect<readonly [TransportConnection, TransportConnection], never, never>"
+    },
+    {
+      "name": "makeOtelLayer",
+      "kind": "value",
+      "signature": "const makeOtelLayer: (options: OtelPipelineOptions) => Layer.Layer<Resource.Resource>"
     },
     {
       "name": "makePermissionRegistry",
@@ -634,9 +659,29 @@
       "signature": "const MAX_FRAME_BYTES: number"
     },
     {
+      "name": "mutation",
+      "kind": "value",
+      "signature": "const mutation: { (keys: ReadonlyArray<unknown> | import(\"effect/Record\").ReadonlyRecord<string, ReadonlyArray<unknown>>): <A, E, R>(effect: import(\"effect/Effect\").Effect<A, E, R>) => import(\"effect/Effect\").Effect<A, E, R | ReactivityNS.Reactivity>; <A, E, R>(effect: import(\"effect/Effect\").Effect<A, E, R>, keys: ReadonlyArray<unknown> | import(\"effect/Record\").ReadonlyRecord<string, ReadonlyArray<unknown>>): import(\"effect/Effect\").Effect<A, E, R | ReactivityNS.Reactivity>; }"
+    },
+    {
       "name": "NormalizedCapability",
       "kind": "type",
       "signature": "const NormalizedCapability: Schema.Union<readonly [Schema.Struct<{ readonly kind: Schema.Literals<readonly [\"filesystem.read\", \"filesystem.write\", \"filesystem.delete\"]>; readonly roots: Schema.$Array<Schema.NonEmptyString>; readonly deny: Schema.optionalKey<Schema.$Array<Schema.NonEmptyString>>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; readonly allowCreate: Schema.optionalKey<Schema.Boolean>; readonly allowOverwrite: Schema.optionalKey<Schema.Boolean>; }>, Schema.Struct<{ readonly kind: Schema.Literals<readonly [\"process.spawn\", \"pty.spawn\"]>; readonly commands: Schema.$Array<Schema.NonEmptyString>; readonly cwd: Schema.optionalKey<Schema.$Array<Schema.NonEmptyString>>; readonly environment: Schema.Literals<readonly [\"none\", \"allowlist\"]>; readonly shell: Schema.Union<readonly [Schema.Literal<false>, Schema.Literal<\"requires-explicit-approval\">]>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literal<\"network.connect\">; readonly hosts: Schema.$Array<Schema.NonEmptyString>; readonly askUnknownHosts: Schema.Boolean; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literals<readonly [\"secrets.read\", \"secrets.write\", \"safeStorage.read\", \"safeStorage.write\"]>; readonly namespaces: Schema.$Array<Schema.NonEmptyString>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literal<\"native.invoke\">; readonly primitive: Schema.NonEmptyString; readonly methods: Schema.$Array<Schema.NonEmptyString>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; }>]>"
+    },
+    {
+      "name": "OtelPipelineOptions",
+      "kind": "interface",
+      "signature": "export interface OtelPipelineOptions { readonly serviceName: string readonly serviceVersion?: string readonly spanExporter?: SpanExporter readonly metricReader?: MetricReader }"
+    },
+    {
+      "name": "Path",
+      "kind": "interface",
+      "signature": "export interface Path { readonly [TypeId]: typeof TypeId; readonly sep: string; readonly basename: (path: string, suffix?: string) => string; readonly dirname: (path: string) => string; readonly extname: (path: string) => string; readonly format: (pathObject: Partial<Path.Parsed>) => string; readonly fromFileUrl: (url: URL) => Effect.Effect<string, BadArgument>; readonly isAbsolute: (path: string) => boolean; readonly join: (...paths: ReadonlyArray<string>) => string; readonly normalize: (path: string) => string; readonly parse: (path: string) => Path.Parsed; readonly relative: (from: string, to: string) => string; readonly resolve: (...pathSegments: ReadonlyArray<string>) => string; readonly toFileUrl: (path: string) => Effect.Effect<URL, BadArgument>; readonly toNamespacedPath: (path: string) => string; }"
+    },
+    {
+      "name": "PathTag",
+      "kind": "interface",
+      "signature": "export interface Path { readonly [TypeId]: typeof TypeId; readonly sep: string; readonly basename: (path: string, suffix?: string) => string; readonly dirname: (path: string) => string; readonly extname: (path: string) => string; readonly format: (pathObject: Partial<Path.Parsed>) => string; readonly fromFileUrl: (url: URL) => Effect.Effect<string, BadArgument>; readonly isAbsolute: (path: string) => boolean; readonly join: (...paths: ReadonlyArray<string>) => string; readonly normalize: (path: string) => string; readonly parse: (path: string) => Path.Parsed; readonly relative: (from: string, to: string) => string; readonly resolve: (...pathSegments: ReadonlyArray<string>) => string; readonly toFileUrl: (path: string) => Effect.Effect<URL, BadArgument>; readonly toNamespacedPath: (path: string) => string; }"
     },
     {
       "name": "PermissionActor",
@@ -656,7 +701,7 @@
     {
       "name": "PermissionAuditFailedError",
       "kind": "class",
-      "signature": "export class PermissionAuditFailedError extends Data.TaggedError(\"PermissionAuditFailed\")<{ readonly operation: string readonly decision: PermissionDecision readonly cause: EventLogError }> {}"
+      "signature": "export class PermissionAuditFailedError extends Data.TaggedError(\"PermissionAuditFailed\")<{ readonly operation: string readonly decision: PermissionDecision readonly cause: unknown }> {}"
     },
     {
       "name": "PermissionContext",
@@ -726,7 +771,7 @@
     {
       "name": "PermissionRegistryOptions",
       "kind": "interface",
-      "signature": "export interface PermissionRegistryOptions { readonly audit?: EventLogStore readonly traceId?: () => string readonly nextToken?: () => string readonly now?: () => number }"
+      "signature": "export interface PermissionRegistryOptions { readonly audit?: AuditEventsApi readonly traceId?: () => string readonly nextToken?: () => string readonly now?: () => number }"
     },
     {
       "name": "PermissionRevokedError",
@@ -737,6 +782,11 @@
       "name": "PermissionRule",
       "kind": "class",
       "signature": "export class PermissionRule extends Schema.Class<PermissionRule>(\"PermissionRule\")({ capability: NormalizedCapability, effect: PermissionEffect, actor: Schema.optionalKey(PermissionActor), source: PermissionMetadataText }) {}"
+    },
+    {
+      "name": "PlatformError",
+      "kind": "class",
+      "signature": "export declare class PlatformError extends PlatformError_base<{ reason: BadArgument | SystemError; }> { constructor(reason: BadArgument | SystemError); /** * @since 4.0.0 */ readonly [TypeId]: typeof TypeId; get message(): string; }"
     },
     {
       "name": "Process",
@@ -909,9 +959,24 @@
       "signature": "const PtySignalInput: Schema.Union<readonly [Schema.NonEmptyString, Schema.Int]>"
     },
     {
+      "name": "QueueDepth",
+      "kind": "value",
+      "signature": "const QueueDepth: Metric.Counter<number>"
+    },
+    {
       "name": "RawFilesystemEvent",
       "kind": "interface",
       "signature": "export interface RawFilesystemEvent { readonly type: \"rename\" | \"change\" readonly filename?: string }"
+    },
+    {
+      "name": "Reactivity",
+      "kind": "type",
+      "signature": "export type Reactivity = ReactivityNS.Reactivity"
+    },
+    {
+      "name": "ReactivityLayer",
+      "kind": "value",
+      "signature": "const ReactivityLayer: Layer.Layer<ReactivityNS.Reactivity, never, never>"
     },
     {
       "name": "redact",
@@ -984,6 +1049,11 @@
       "signature": "export type ResourceState = string"
     },
     {
+      "name": "RpcLatency",
+      "kind": "value",
+      "signature": "const RpcLatency: Metric.Histogram<number>"
+    },
+    {
       "name": "runSecretsMigration",
       "kind": "value",
       "signature": "const runSecretsMigration: (options: SecretsMigrationOptions) => Effect.Effect<SecretsMigrationReport, SecretsMigrationError, never>"
@@ -1009,9 +1079,19 @@
       "signature": "export interface SecretsApi { readonly set: ( namespace: string, key: string, value: SecretValue ) => Effect.Effect<void, SecretsError, never> readonly get: (namespace: string, key: string) => Effect.Effect<SecretValue, SecretsError, never> readonly delete: (namespace: string, key: string) => Effect.Effect<void, SecretsError, never> readonly list: (namespace: string) => Effect.Effect<readonly string[], SecretsError, never> }"
     },
     {
+      "name": "secretsAuditEvent",
+      "kind": "value",
+      "signature": "const secretsAuditEvent: (input: SecretsAuditEventInput) => AuditEvent"
+    },
+    {
+      "name": "SecretsAuditEventInput",
+      "kind": "interface",
+      "signature": "export interface SecretsAuditEventInput { readonly source: string readonly traceId: string readonly outcome: string readonly namespace: string readonly key?: string readonly timestamp?: number }"
+    },
+    {
       "name": "SecretsAuditFailedError",
       "kind": "class",
-      "signature": "export class SecretsAuditFailedError extends Data.TaggedError(\"SecretsAuditFailed\")<{ readonly operation: string readonly namespace: string readonly key: Option.Option<string> readonly cause: EventLogError }> {}"
+      "signature": "export class SecretsAuditFailedError extends Data.TaggedError(\"SecretsAuditFailed\")<{ readonly operation: string readonly namespace: string readonly key: Option.Option<string> readonly cause: unknown }> {}"
     },
     {
       "name": "SecretsError",
@@ -1041,12 +1121,12 @@
     {
       "name": "SecretsMigrationFailedError",
       "kind": "class",
-      "signature": "export class SecretsMigrationFailedError extends Data.TaggedError(\"SecretsMigrationFailed\")<{ readonly key: Option.Option<string> readonly phase: SecretsMigrationPhase readonly cause: SettingsError | SecretsError | EventLogError | SecretVerificationMismatchError }> {}"
+      "signature": "export class SecretsMigrationFailedError extends Data.TaggedError(\"SecretsMigrationFailed\")<{ readonly key: Option.Option<string> readonly phase: SecretsMigrationPhase readonly cause: | SettingsError | SecretsError | EventJournal.EventJournalError | SecretVerificationMismatchError }> {}"
     },
     {
       "name": "SecretsMigrationOptions",
       "kind": "interface",
-      "signature": "export interface SecretsMigrationOptions { readonly settings: SettingsStore readonly secrets: SecretsApi readonly audit?: EventLogStore readonly namespace?: string readonly completeFlagKey?: string readonly legacyKeys?: readonly string[] readonly keyPattern?: RegExp }"
+      "signature": "export interface SecretsMigrationOptions { readonly settings: SettingsStore readonly secrets: SecretsApi readonly audit?: AuditEventsApi readonly namespace?: string readonly completeFlagKey?: string readonly legacyKeys?: readonly string[] readonly keyPattern?: RegExp }"
     },
     {
       "name": "SecretsMigrationPhase",
@@ -1066,7 +1146,7 @@
     {
       "name": "SecretsOptions",
       "kind": "interface",
-      "signature": "export interface SecretsOptions { readonly appId: string readonly permissions?: SecretsPermissionPolicy readonly audit?: EventLogStore readonly traceId?: () => string }"
+      "signature": "export interface SecretsOptions { readonly appId: string readonly permissions?: SecretsPermissionPolicy readonly audit?: AuditEventsApi readonly traceId?: () => string }"
     },
     {
       "name": "SecretsOptionsInput",
@@ -1209,6 +1289,11 @@
       "signature": "export declare class SqlError extends SqlError_base { /** * @since 4.0.0 */ readonly [TypeId]: \"~effect/sql/SqlError\"; /** * @since 4.0.0 */ readonly cause: ConnectionError | AuthenticationError | AuthorizationError | SqlSyntaxError | ConstraintError | DeadlockError | SerializationError | LockTimeoutError | StatementTimeoutError | UnknownError; /** * @since 4.0.0 */ get message(): string; /** * @since 4.0.0 */ get isRetryable(): boolean; }"
     },
     {
+      "name": "SqlEventJournal",
+      "kind": "value",
+      "signature": "import * as Effect from \"../../Effect.ts\"; import * as Layer from \"../../Layer.ts\"; import * as SqlClient from \"../sql/SqlClient.ts\"; import * as SqlError from \"../sql/SqlError.ts\"; import * as EventJournal from \"./EventJournal.ts\"; /** * @since 4.0.0 * @category constructors */ export declare const make: (options?: { readonly entryTable?: string; readonly remotesTable?: string; }) => Effect.Effect<EventJournal.EventJournal[\"Service\"], SqlError.SqlError, SqlClient.SqlClient>; /** * @since 4.0.0 * @category layers */ export declare const layer: (options?: { readonly entryTable?: string; readonly remotesTable?: string; }) => Layer.Layer<EventJournal.EventJournal, SqlError.SqlError, SqlClient.SqlClient>; //# sourceMappingURL=SqlEventJournal.d.ts.map"
+    },
+    {
       "name": "SQLite",
       "kind": "class",
       "signature": "export class SQLite extends Context.Service<SQLite, SqliteApi>()(\"SQLite\") {}"
@@ -1339,6 +1424,16 @@
       "signature": "export class StaleHandle extends Schema.Class<StaleHandle>(\"StaleHandle\")({ tag: Schema.Literal(\"StaleHandle\"), kind: Schema.String, id: Schema.String, expectedGeneration: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)), actualGeneration: Schema.Int }) { get _tag(): \"StaleHandle\" { return this.tag } }"
     },
     {
+      "name": "Stdio",
+      "kind": "interface",
+      "signature": "export interface Stdio { readonly [TypeId]: TypeId; readonly args: Effect.Effect<ReadonlyArray<string>>; stdout(options?: { readonly endOnDone?: boolean | undefined; }): Sink.Sink<void, string | Uint8Array, never, PlatformError>; stderr(options?: { readonly endOnDone?: boolean | undefined; }): Sink.Sink<void, string | Uint8Array, never, PlatformError>; readonly stdin: Stream.Stream<Uint8Array, PlatformError>; }"
+    },
+    {
+      "name": "stream",
+      "kind": "value",
+      "signature": "const stream: { (keys: ReadonlyArray<unknown> | import(\"effect/Record\").ReadonlyRecord<string, ReadonlyArray<unknown>>): <A, E, R>(effect: import(\"effect/Effect\").Effect<A, E, R>) => import(\"effect/Stream\").Stream<A, E, Exclude<R, import(\"effect/Scope\").Scope> | ReactivityNS.Reactivity>; <A, E, R>(effect: import(\"effect/Effect\").Effect<A, E, R>, keys: ReadonlyArray<unknown> | import(\"effect/Record\").ReadonlyRecord<string, ReadonlyArray<unknown>>): import(\"effect/Stream\").Stream<A, E, Exclude<R, import(\"effect/Scope\").Scope> | ReactivityNS.Reactivity>; }"
+    },
+    {
       "name": "Telemetry",
       "kind": "class",
       "signature": "export class Telemetry extends Context.Service<Telemetry, TelemetryApi>()(\"Telemetry\", { make: makeTelemetry() }) {}"
@@ -1417,6 +1512,16 @@
       "name": "TelemetryTraceSpanInput",
       "kind": "interface",
       "signature": "export interface TelemetryTraceSpanInput { readonly traceId: string readonly spanId?: string readonly parentSpanId?: string readonly subsystem: string readonly operation: string readonly name: string readonly startedAt: number readonly endedAt?: number readonly attributes?: unknown }"
+    },
+    {
+      "name": "Terminal",
+      "kind": "interface",
+      "signature": "export interface Terminal { readonly [TypeId]: typeof TypeId; /** * The number of columns available on the platform's terminal interface. */ readonly columns: Effect.Effect<number>; /** * Reads input events from the default standard input. */ readonly readInput: Effect.Effect<Queue.Dequeue<UserInput, Cause.Done>, never, Scope.Scope>; /** * Reads a single line from the default standard input. */ readonly readLine: Effect.Effect<string, QuitError>; /** * Displays text to the default standard output. */ readonly display: (text: string) => Effect.Effect<void, PlatformError>; }"
+    },
+    {
+      "name": "TerminalTag",
+      "kind": "interface",
+      "signature": "export interface Terminal { readonly [TypeId]: typeof TypeId; /** * The number of columns available on the platform's terminal interface. */ readonly columns: Effect.Effect<number>; /** * Reads input events from the default standard input. */ readonly readInput: Effect.Effect<Queue.Dequeue<UserInput, Cause.Done>, never, Scope.Scope>; /** * Reads a single line from the default standard input. */ readonly readLine: Effect.Effect<string, QuitError>; /** * Displays text to the default standard output. */ readonly display: (text: string) => Effect.Effect<void, PlatformError>; }"
     },
     {
       "name": "Transport",
@@ -1502,6 +1607,11 @@
       "name": "WindowDisplayBounds",
       "kind": "class",
       "signature": "export class WindowDisplayBounds extends Schema.Class<WindowDisplayBounds>(\"WindowDisplayBounds\")({ x: Schema.Number.check(Schema.isFinite()), y: Schema.Number.check(Schema.isFinite()), width: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)), height: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)), primary: Schema.optionalKey(Schema.Boolean) }) {}"
+    },
+    {
+      "name": "WindowSpec",
+      "kind": "interface",
+      "signature": "export interface WindowSpec { readonly title: string readonly width: number readonly height: number }"
     },
     {
       "name": "WindowState",
@@ -1631,7 +1741,7 @@
     {
       "name": "WorkerLive",
       "kind": "value",
-      "signature": "const WorkerLive: Layer.Layer<Worker, never, ResourceRegistry | PermissionRegistry>"
+      "signature": "const WorkerLive: Layer.Layer<Worker, never, PermissionRegistry | ResourceRegistry>"
     },
     {
       "name": "WorkerOptions",
