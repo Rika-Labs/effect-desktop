@@ -47,6 +47,7 @@ import {
   ContextMenu,
   ContextMenuActivatedEvent,
   ContextMenuApi,
+  ContextMenuBindCommandInput,
   ContextMenuLive,
   ContextMenuMethodNames,
   CrashReporter,
@@ -1178,6 +1179,61 @@ test("Menu bridge client returns invalid templates as typed Effect failures", as
 
   expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(requests).toEqual([])
+})
+
+test("Menu and ContextMenu schemas reject newline-bearing labels and ids", async () => {
+  const cases: ReadonlyArray<{ readonly label: string; readonly value: unknown }> = [
+    {
+      label: "menu item label",
+      value: { items: [{ type: "item", id: "ok", label: "Open\n", commandId: "cmd" }] }
+    },
+    {
+      label: "menu item id",
+      value: { items: [{ type: "item", id: "ok\n", label: "Open", commandId: "cmd" }] }
+    },
+    {
+      label: "menu item commandId",
+      value: { items: [{ type: "item", id: "ok", label: "Open", commandId: "cmd\n" }] }
+    },
+    {
+      label: "menu separator id",
+      value: { items: [{ type: "separator", id: "sep\n" }] }
+    },
+    {
+      label: "submenu id",
+      value: {
+        items: [{ type: "submenu", id: "view\n", label: "View", items: [] }]
+      }
+    },
+    {
+      label: "submenu label",
+      value: {
+        items: [{ type: "submenu", id: "view", label: "View\n", items: [] }]
+      }
+    }
+  ]
+
+  for (const { label, value } of cases) {
+    const exit = await Effect.runPromiseExit(Schema.decodeUnknownEffect(MenuTemplate)(value))
+    expect(Exit.isFailure(exit)).toBe(true)
+    expect(label).toBeDefined()
+  }
+
+  const bindExit = await Effect.runPromiseExit(
+    Schema.decodeUnknownEffect(ContextMenuBindCommandInput)({
+      itemId: "open\n",
+      commandId: "cmd"
+    })
+  )
+  const eventExit = await Effect.runPromiseExit(
+    Schema.decodeUnknownEffect(ContextMenuActivatedEvent)({
+      itemId: "open",
+      commandId: "cmd\n",
+      windowId: "win-1"
+    })
+  )
+  expect(Exit.isFailure(bindExit)).toBe(true)
+  expect(Exit.isFailure(eventExit)).toBe(true)
 })
 
 test("Menu bridge client rejects NUL-bearing accelerators before transport", async () => {

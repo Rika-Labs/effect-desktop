@@ -26,7 +26,7 @@ import {
 } from "@effect-desktop/bridge"
 import { Context, Effect, Fiber, Layer, Option, Schema, Stream } from "effect"
 
-import { BridgeSafeNonEmptyString } from "./contracts/strings.js"
+import { PrintableNonEmptyString } from "./contracts/strings.js"
 import type { WindowHandle } from "./window.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
@@ -35,12 +35,12 @@ const MenuPlatform = Schema.Literals(["macos", "windows", "linux"])
 const MenuCapabilityName = Schema.Literals(["application menu", "window menu", "command binding"])
 
 const MenuItemBase = {
-  id: Schema.String,
-  label: Schema.String,
-  commandId: Schema.optionalKey(Schema.String),
+  id: PrintableNonEmptyString,
+  label: PrintableNonEmptyString,
+  commandId: Schema.optionalKey(PrintableNonEmptyString),
   enabled: Schema.optionalKey(Schema.Boolean),
   checked: Schema.optionalKey(Schema.Boolean),
-  accelerator: Schema.optionalKey(BridgeSafeNonEmptyString)
+  accelerator: Schema.optionalKey(PrintableNonEmptyString)
 }
 
 export type MenuPlatform = Schema.Schema.Type<typeof MenuPlatform>
@@ -58,7 +58,7 @@ export type MenuItem = Schema.Schema.Type<typeof MenuItem>
 
 export const MenuSeparator = Schema.Struct({
   type: Schema.Literal("separator"),
-  id: Schema.optionalKey(Schema.String)
+  id: Schema.optionalKey(PrintableNonEmptyString)
 })
 
 export type MenuSeparator = Schema.Schema.Type<typeof MenuSeparator>
@@ -75,8 +75,8 @@ export type MenuTemplateEntry = MenuItem | MenuSeparator | MenuSubmenuShape
 
 export const MenuSubmenu: Schema.Schema<MenuSubmenuShape> = Schema.Struct({
   type: Schema.Literal("submenu"),
-  id: Schema.String,
-  label: Schema.String,
+  id: PrintableNonEmptyString,
+  label: PrintableNonEmptyString,
   enabled: Schema.optionalKey(Schema.Boolean),
   items: Schema.Array(Schema.suspend((): Schema.Schema<MenuTemplateEntry> => MenuTemplateEntry))
 })
@@ -113,8 +113,8 @@ export type MenuClearOptions = Schema.Schema.Type<typeof MenuClearInput>
 export class MenuBindCommandInput extends Schema.Class<MenuBindCommandInput>(
   "MenuBindCommandInput"
 )({
-  itemId: Schema.String,
-  commandId: Schema.String
+  itemId: PrintableNonEmptyString,
+  commandId: PrintableNonEmptyString
 }) {}
 
 export class MenuCapabilityInput extends Schema.Class<MenuCapabilityInput>("MenuCapabilityInput")({
@@ -131,9 +131,9 @@ export class MenuCapabilityResult extends Schema.Class<MenuCapabilityResult>(
 }) {}
 
 export class MenuActivatedEvent extends Schema.Class<MenuActivatedEvent>("MenuActivatedEvent")({
-  itemId: Schema.NonEmptyString,
-  commandId: Schema.NonEmptyString,
-  windowId: Schema.optionalKey(Schema.NonEmptyString)
+  itemId: PrintableNonEmptyString,
+  commandId: PrintableNonEmptyString,
+  windowId: Schema.optionalKey(PrintableNonEmptyString)
 }) {}
 
 export const MenuApiSpec = Object.freeze({
