@@ -114,8 +114,12 @@ export interface TelemetryApi {
   ) => Effect.Effect<void, TelemetryInvalidArgumentError, never>
   readonly listTraces: () => Effect.Effect<readonly TelemetryTraceSpan[], never, never>
   readonly observeTraces: () => Stream.Stream<readonly TelemetryTraceSpan[], never, never>
-  readonly incrementCounter: (input: TelemetryCounterInput) => Effect.Effect<void, never, never>
-  readonly recordHistogram: (input: TelemetryHistogramInput) => Effect.Effect<void, never, never>
+  readonly incrementCounter: (
+    input: TelemetryCounterInput
+  ) => Effect.Effect<void, TelemetryInvalidArgumentError, never>
+  readonly recordHistogram: (
+    input: TelemetryHistogramInput
+  ) => Effect.Effect<void, TelemetryInvalidArgumentError, never>
   readonly listMetrics: () => Effect.Effect<readonly TelemetryMetricSnapshot[], never, never>
   readonly observeMetrics: () => Stream.Stream<readonly TelemetryMetricSnapshot[], never, never>
   readonly snapshot: () => Effect.Effect<TelemetrySnapshot, never, never>
@@ -219,18 +223,24 @@ export const makeTelemetry = (
       listTraces: () => SubscriptionRef.get(traces),
       observeTraces: () => SubscriptionRef.changes(traces),
       incrementCounter: (input) =>
-        SubscriptionRef.update(metrics, (current) =>
-          upsertMetric(current, toCounterSnapshot(input, now()), maxMetrics)
-        ),
-      recordHistogram: (input) =>
-        SubscriptionRef.update(metrics, (current) =>
-          upsertMetric(
-            current,
-            toHistogramSnapshot(input, now(), maxHistogramSamples),
-            maxMetrics,
-            maxHistogramSamples
+        Effect.gen(function* () {
+          yield* validateMetricMetadata(input.name, input.tags, "Telemetry.incrementCounter")
+          yield* SubscriptionRef.update(metrics, (current) =>
+            upsertMetric(current, toCounterSnapshot(input, now()), maxMetrics)
           )
-        ),
+        }),
+      recordHistogram: (input) =>
+        Effect.gen(function* () {
+          yield* validateMetricMetadata(input.name, input.tags, "Telemetry.recordHistogram")
+          yield* SubscriptionRef.update(metrics, (current) =>
+            upsertMetric(
+              current,
+              toHistogramSnapshot(input, now(), maxHistogramSamples),
+              maxMetrics,
+              maxHistogramSamples
+            )
+          )
+        }),
       listMetrics,
       observeMetrics: () =>
         SubscriptionRef.changes(metrics).pipe(
@@ -290,6 +300,22 @@ const validateOptionalMetadataField = (
   field: string
 ): Effect.Effect<void, TelemetryInvalidArgumentError, never> =>
   value === undefined ? Effect.void : validateMetadataField(value, operation, field)
+
+const validateMetricMetadata = (
+  name: string,
+  tags: Readonly<Record<string, string>> | undefined,
+  operation: string
+): Effect.Effect<void, TelemetryInvalidArgumentError, never> =>
+  Effect.gen(function* () {
+    yield* validateMetadataField(name, operation, "name")
+    if (tags === undefined) {
+      return
+    }
+    for (const [key, value] of Object.entries(tags)) {
+      yield* validateMetadataField(key, operation, "tags.key")
+      yield* validateMetadataField(value, operation, "tags.value")
+    }
+  })
 
 const appendBounded = <A>(current: readonly A[], value: A, maxRows: number): readonly A[] =>
   [...current, value].slice(-maxRows)

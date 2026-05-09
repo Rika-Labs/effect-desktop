@@ -213,6 +213,58 @@ test("Telemetry recordSpan rejects control bytes in span identifiers", async () 
   expect(await Effect.runPromise(generated.listTraces())).toEqual([])
 })
 
+test("Telemetry counter rejects control bytes in metric name and tag entries", async () => {
+  const telemetry = await Effect.runPromise(makeTelemetry())
+
+  for (let codePoint = 0; codePoint <= 31; codePoint += 1) {
+    const sample = `id${String.fromCharCode(codePoint)}forged`
+    expectInvalid(
+      await Effect.runPromiseExit(telemetry.incrementCounter({ name: sample })),
+      "name"
+    )
+    expectInvalid(
+      await Effect.runPromiseExit(
+        telemetry.incrementCounter({ name: "ok", tags: { [sample]: "value" } })
+      ),
+      "tags.key"
+    )
+    expectInvalid(
+      await Effect.runPromiseExit(
+        telemetry.incrementCounter({ name: "ok", tags: { route: sample } })
+      ),
+      "tags.value"
+    )
+  }
+
+  expect(await Effect.runPromise(telemetry.listMetrics())).toEqual([])
+})
+
+test("Telemetry histogram rejects control bytes in metric name and tag entries", async () => {
+  const telemetry = await Effect.runPromise(makeTelemetry())
+
+  for (let codePoint = 0; codePoint <= 31; codePoint += 1) {
+    const sample = `id${String.fromCharCode(codePoint)}forged`
+    expectInvalid(
+      await Effect.runPromiseExit(telemetry.recordHistogram({ name: sample, value: 1 })),
+      "name"
+    )
+    expectInvalid(
+      await Effect.runPromiseExit(
+        telemetry.recordHistogram({ name: "ok", value: 1, tags: { [sample]: "value" } })
+      ),
+      "tags.key"
+    )
+    expectInvalid(
+      await Effect.runPromiseExit(
+        telemetry.recordHistogram({ name: "ok", value: 1, tags: { route: sample } })
+      ),
+      "tags.value"
+    )
+  }
+
+  expect(await Effect.runPromise(telemetry.listMetrics())).toEqual([])
+})
+
 const expectInvalid = (exit: Exit.Exit<unknown, unknown>, field: string): void => {
   expect(Exit.isFailure(exit)).toBe(true)
   if (Exit.isFailure(exit)) {
