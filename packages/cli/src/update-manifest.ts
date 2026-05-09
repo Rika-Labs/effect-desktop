@@ -249,6 +249,29 @@ const normalizePublishPlan = (
         })
       )
     }
+    if (
+      maxVersion !== undefined &&
+      minVersion !== undefined &&
+      compareSemver(minVersion.parsed, maxVersion.parsed) > 0
+    ) {
+      return yield* Effect.fail(
+        new PublishConfigError({
+          field: "update.maxVersion",
+          message: `update.maxVersion ${maxVersion.value} must not be lower than update.minVersion ${minVersion.value}`,
+          remediation: "Raise update.maxVersion to update.minVersion or above."
+        })
+      )
+    }
+    if (rollback === true && maxVersion === undefined) {
+      return yield* Effect.fail(
+        new PublishConfigError({
+          field: "update.maxVersion",
+          message: "update.maxVersion is required when update.rollback is true",
+          remediation:
+            "Set update.maxVersion to the highest installed.version that should accept this rollback pack."
+        })
+      )
+    }
     const target = yield* readOptionalTarget(options.platform)
     return {
       appId,

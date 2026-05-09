@@ -2539,6 +2539,117 @@ test("desktop publish rejects update.minVersion greater than app.version", async
   }
 })
 
+test("desktop publish rejects rollback manifests without maxVersion", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-rollback-"))
+  const key = testEd25519Key()
+  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+  const previousPrivateKey = process.env[privateKeyEnv]
+  process.env[privateKeyEnv] = key.privateKeyPem
+  try {
+    await writePlaygroundFixture(directory, {
+      app: {
+        id: "dev.effect-desktop.playground",
+        name: "Effect Desktop Playground",
+        version: "1.2.3"
+      },
+      update: {
+        channel: "stable",
+        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+        publicKey: key.publicKey,
+        privateKeyEnv,
+        keyVersion: 5,
+        rollback: true
+      }
+    })
+    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+    const manifestPath = join(
+      directory,
+      "apps",
+      "playground",
+      "dist",
+      "desktop",
+      "update-manifest.json"
+    )
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["publish", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        now: () => 1_772_923_200_000,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("update.maxVersion")
+    expect(stderr.join("")).toContain("update.rollback is true")
+    await expect(stat(manifestPath)).rejects.toThrow()
+  } finally {
+    if (previousPrivateKey === undefined) {
+      delete process.env[privateKeyEnv]
+    } else {
+      process.env[privateKeyEnv] = previousPrivateKey
+    }
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop publish accepts rollback manifests with maxVersion", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-rollback-ok-"))
+  const key = testEd25519Key()
+  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+  const previousPrivateKey = process.env[privateKeyEnv]
+  process.env[privateKeyEnv] = key.privateKeyPem
+  try {
+    await writePlaygroundFixture(directory, {
+      app: {
+        id: "dev.effect-desktop.playground",
+        name: "Effect Desktop Playground",
+        version: "1.2.3"
+      },
+      update: {
+        channel: "stable",
+        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+        publicKey: key.publicKey,
+        privateKeyEnv,
+        keyVersion: 5,
+        rollback: true,
+        maxVersion: "2.0.0"
+      }
+    })
+    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+    const manifestPath = join(
+      directory,
+      "apps",
+      "playground",
+      "dist",
+      "desktop",
+      "update-manifest.json"
+    )
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["publish", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        now: () => 1_772_923_200_000,
+        writeStdout: () => {},
+        writeStderr: () => {}
+      })
+    )
+    expect(exitCode).toBe(0)
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as UpdateManifest
+    expect(manifest).toMatchObject({ rollback: true, maxVersion: "2.0.0" })
+  } finally {
+    if (previousPrivateKey === undefined) {
+      delete process.env[privateKeyEnv]
+    } else {
+      process.env[privateKeyEnv] = previousPrivateKey
+    }
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop publish accepts update.minVersion equal to app.version", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-min-version-equal-"))
   const key = testEd25519Key()
