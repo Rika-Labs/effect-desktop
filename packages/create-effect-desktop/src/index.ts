@@ -1,9 +1,12 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 
-export type TemplateName = "basic-react-tailwind" | "todo-sqlite" | "multi-window"
-export type RendererStorage = "none" | "indexeddb" | "sqlite-wasm" | "pglite"
+export const TEMPLATE_NAMES = ["basic-react-tailwind", "todo-sqlite", "multi-window"] as const
+export type TemplateName = (typeof TEMPLATE_NAMES)[number]
+
+export const RENDERER_STORAGE_KINDS = ["none", "indexeddb", "sqlite-wasm", "pglite"] as const
+export type RendererStorage = (typeof RENDERER_STORAGE_KINDS)[number]
 
 export interface ScaffoldOptions {
   readonly name: string
@@ -21,6 +24,7 @@ export interface ScaffoldResult {
 }
 
 const EFFECT_VERSION = "4.0.0-beta.60"
+const EFFECT_DESKTOP_VERSION = "0.0.0"
 
 const COMPANION_VERSIONS: Record<string, string> = {
   "@effect/platform": EFFECT_VERSION,
@@ -49,10 +53,16 @@ export const scaffold = (options: ScaffoldOptions): ScaffoldResult => {
     throw new Error(`Template '${options.template}' not found at ${templateSrc}`)
   }
 
+  if (existsSync(options.outDir) && readdirSync(options.outDir).length > 0) {
+    throw new Error(`Target directory '${options.outDir}' already exists and is not empty`)
+  }
+
   mkdirSync(options.outDir, { recursive: true })
 
   cpSync(templateSrc, options.outDir, {
     recursive: true,
+    force: false,
+    errorOnExist: true,
     filter: (src) => !src.includes("node_modules") && !src.includes("dist")
   })
 
@@ -63,6 +73,7 @@ export const scaffold = (options: ScaffoldOptions): ScaffoldResult => {
 
   const deps = (pkg["dependencies"] ?? {}) as Record<string, string>
   deps["effect"] = EFFECT_VERSION
+  rewriteWorkspaceDependencies(deps)
 
   if (options.rendererStorage !== "none") {
     Object.assign(deps, rendererStorageDeps(options.rendererStorage))
@@ -88,6 +99,14 @@ export const scaffold = (options: ScaffoldOptions): ScaffoldResult => {
     path: options.outDir,
     template: options.template,
     stubs: TEMPLATE_STUBS[options.template]
+  }
+}
+
+const rewriteWorkspaceDependencies = (dependencies: Record<string, string>): void => {
+  for (const [name, version] of Object.entries(dependencies)) {
+    if (name.startsWith("@effect-desktop/") && version.startsWith("workspace:")) {
+      dependencies[name] = EFFECT_DESKTOP_VERSION
+    }
   }
 }
 

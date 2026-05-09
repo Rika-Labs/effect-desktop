@@ -1,10 +1,13 @@
 #!/usr/bin/env bun
-import { join } from "node:path"
+import { basename, join } from "node:path"
 
-import { scaffold, type RendererStorage, type TemplateName } from "./index.js"
-
-const TEMPLATES: readonly TemplateName[] = ["basic-react-tailwind", "todo-sqlite", "multi-window"]
-const STORAGES: readonly RendererStorage[] = ["none", "indexeddb", "sqlite-wasm", "pglite"]
+import {
+  RENDERER_STORAGE_KINDS,
+  scaffold,
+  TEMPLATE_NAMES,
+  type RendererStorage,
+  type TemplateName
+} from "./index.js"
 
 const args = process.argv.slice(2)
 
@@ -13,22 +16,28 @@ if (args.includes("--help") || args.includes("-h")) {
   process.exit(0)
 }
 
-const name = args.find((a) => !a.startsWith("--")) ?? "my-effect-desktop-app"
-const template = flagValue(args, "--template") ?? "basic-react-tailwind"
-const rendererStorage = flagValue(args, "--renderer-storage") ?? "none"
+const parseResult = parseArgs(args)
+const name = parseResult.name
+const template = parseResult.template
+const rendererStorage = parseResult.rendererStorage
 const includeWorkflows = args.includes("--include-workflows")
 const includeCluster = args.includes("--include-cluster")
 
-if (!TEMPLATES.includes(template as TemplateName)) {
+if (parseResult.error !== undefined) {
+  console.error(`create-effect-desktop: ${parseResult.error}`)
+  process.exit(1)
+}
+
+if (!isTemplateName(template)) {
   console.error(
-    `create-effect-desktop: unknown template '${template}'. Valid: ${TEMPLATES.join(", ")}`
+    `create-effect-desktop: unknown template '${template}'. Valid: ${TEMPLATE_NAMES.join(", ")}`
   )
   process.exit(1)
 }
 
-if (!STORAGES.includes(rendererStorage as RendererStorage)) {
+if (!isRendererStorage(rendererStorage)) {
   console.error(
-    `create-effect-desktop: unknown renderer-storage '${rendererStorage}'. Valid: ${STORAGES.join(", ")}`
+    `create-effect-desktop: unknown renderer-storage '${rendererStorage}'. Valid: ${RENDERER_STORAGE_KINDS.join(", ")}`
   )
   process.exit(1)
 }
@@ -41,8 +50,8 @@ let result
 try {
   result = scaffold({
     name,
-    template: template as TemplateName,
-    rendererStorage: rendererStorage as RendererStorage,
+    template,
+    rendererStorage,
     includeWorkflows,
     includeCluster,
     outDir
@@ -67,12 +76,94 @@ console.log(`\nNext steps:
   bun run dev
 `)
 
-function flagValue(argv: readonly string[], flag: string): string | undefined {
-  const idx = argv.indexOf(flag)
-  if (idx === -1) return undefined
-  const next = argv[idx + 1]
-  if (next === undefined || next.startsWith("--")) return undefined
-  return next
+interface ParseResult {
+  readonly name: string
+  readonly template: TemplateName | string
+  readonly rendererStorage: RendererStorage | string
+  readonly error?: string
+}
+
+function parseArgs(argv: readonly string[]): ParseResult {
+  let name: string | undefined
+  let template: TemplateName | string = "basic-react-tailwind"
+  let rendererStorage: RendererStorage | string = "none"
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index]
+    if (token === undefined) {
+      continue
+    }
+    if (token === "--template") {
+      const value = argv[index + 1]
+      if (value === undefined || value.startsWith("--")) {
+        return {
+          name: defaultName(name),
+          template,
+          rendererStorage,
+          error: "--template requires a value"
+        }
+      }
+      template = value
+      index += 1
+      continue
+    }
+    if (token === "--renderer-storage") {
+      const value = argv[index + 1]
+      if (value === undefined || value.startsWith("--")) {
+        return {
+          name: defaultName(name),
+          template,
+          rendererStorage,
+          error: "--renderer-storage requires a value"
+        }
+      }
+      rendererStorage = value
+      index += 1
+      continue
+    }
+    if (token === "--include-workflows" || token === "--include-cluster") {
+      continue
+    }
+    if (token.startsWith("--")) {
+      return {
+        name: defaultName(name),
+        template,
+        rendererStorage,
+        error: `unknown option '${token}'`
+      }
+    }
+    if (name !== undefined) {
+      return {
+        name,
+        template,
+        rendererStorage,
+        error: `unexpected positional argument '${token}'`
+      }
+    }
+    if (token !== basename(token) || token === "." || token === "..") {
+      return {
+        name: defaultName(name),
+        template,
+        rendererStorage,
+        error: `project name must be a single directory name`
+      }
+    }
+    name = token
+  }
+
+  return { name: defaultName(name), template, rendererStorage }
+}
+
+function defaultName(name: string | undefined): string {
+  return name ?? "my-effect-desktop-app"
+}
+
+function isTemplateName(value: string): value is TemplateName {
+  return TEMPLATE_NAMES.some((template) => template === value)
+}
+
+function isRendererStorage(value: string): value is RendererStorage {
+  return RENDERER_STORAGE_KINDS.some((storage) => storage === value)
 }
 
 function printUsage(): void {

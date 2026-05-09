@@ -1,11 +1,13 @@
 import { expect, test, afterEach } from "bun:test"
-import { existsSync, rmSync, readFileSync } from "node:fs"
+import { existsSync, mkdirSync, rmSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
+import { fileURLToPath } from "node:url"
 
 import { scaffold, type ScaffoldOptions } from "./index.js"
 
 const testDir = join(tmpdir(), "create-effect-desktop-test")
+const cliPath = fileURLToPath(new URL("bin.ts", import.meta.url))
 
 afterEach(() => {
   if (existsSync(testDir)) {
@@ -53,6 +55,27 @@ test("scaffold pins effect to the lockstep version", () => {
   expect(pkg.dependencies["effect"]).toBe("4.0.0-beta.60")
 })
 
+test("scaffold rewrites workspace dependencies for generated packages", () => {
+  scaffold(makeOptions({ template: "todo-sqlite" }))
+
+  const pkg = JSON.parse(readFileSync(join(testDir, "package.json"), "utf8")) as {
+    dependencies: Record<string, string>
+  }
+  const workspaceDeps = Object.entries(pkg.dependencies).filter(([, version]) =>
+    version.startsWith("workspace:")
+  )
+
+  expect(workspaceDeps).toEqual([])
+  expect(pkg.dependencies["@effect-desktop/core"]).toBe("0.0.0")
+})
+
+test("scaffold rejects non-empty target directories", () => {
+  mkdirSync(testDir, { recursive: true })
+  writeFileSync(join(testDir, "existing.txt"), "user-owned")
+
+  expect(() => scaffold(makeOptions())).toThrow("already exists and is not empty")
+})
+
 test("scaffold adds sqlite-wasm deps when renderer-storage is sqlite-wasm", () => {
   scaffold(makeOptions({ rendererStorage: "sqlite-wasm" }))
 
@@ -92,4 +115,49 @@ test("scaffold throws for unknown template path", () => {
   const badOptions = { ...options, template: "does-not-exist" as "basic-react-tailwind" }
 
   expect(() => scaffold(badOptions)).toThrow()
+})
+
+test("cli skips valued flag operands when defaulting the project name", async () => {
+  const cwd = join(tmpdir(), "create-effect-desktop-cli-test")
+  if (existsSync(cwd)) {
+    rmSync(cwd, { recursive: true })
+  }
+  mkdirSync(cwd, { recursive: true })
+
+  const proc = Bun.spawn({
+    cmd: [process.execPath, cliPath, "--template", "todo-sqlite"],
+    cwd,
+    stdout: "pipe",
+    stderr: "pipe"
+  })
+  const [exitCode, stdout, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text()
+  ])
+
+  try {
+    expect(exitCode).toBe(0)
+    expect(stderr).toBe("")
+    expect(stdout).toContain("Scaffolding my-effect-desktop-app from template todo-sqlite")
+    expect(existsSync(join(cwd, "my-effect-desktop-app", "package.json"))).toBe(true)
+    expect(existsSync(join(cwd, "todo-sqlite"))).toBe(false)
+  } finally {
+    if (existsSync(cwd)) {
+      rmSync(cwd, { recursive: true })
+    }
+  }
+})
+
+test("cli rejects project names that escape the current directory", async () => {
+  const proc = Bun.spawn({
+    cmd: [process.execPath, cliPath, "../outside"],
+    cwd: tmpdir(),
+    stdout: "pipe",
+    stderr: "pipe"
+  })
+  const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()])
+
+  expect(exitCode).toBe(1)
+  expect(stderr).toContain("project name must be a single directory name")
 })
