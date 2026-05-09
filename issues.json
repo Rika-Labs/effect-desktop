@@ -1279,9 +1279,10 @@
       "title": "Validate Dialog native UI text fields",
       "url": "https://github.com/Rika-Labs/effect-desktop/issues/815",
       "status": "work-in-progress",
-      "workflow": ["scout", "architect", "review", "work"],
+      "workflow": ["scout", "architect", "review", "work", "pr"],
       "branch": "issue-815-validate-dialog-native-ui-text-fields",
-      "updated_at": "2026-05-09T00:42:30.000Z"
+      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/818",
+      "updated_at": "2026-05-09T00:44:20.000Z"
     },
     "worked": [
       {
