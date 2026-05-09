@@ -875,9 +875,7 @@ test("WebView bridge client rejects unsafe navigation inputs before transport", 
   const client = await Effect.runPromise(
     Effect.gen(function* () {
       return yield* WebView
-    }).pipe(
-      Effect.provide(Layer.provide(WebViewLive, makeWebViewBridgeClientLayer(exchange)))
-    )
+    }).pipe(Effect.provide(Layer.provide(WebViewLive, makeWebViewBridgeClientLayer(exchange))))
   )
 
   const javascriptCreateExit = await Effect.runPromiseExit(
@@ -886,7 +884,9 @@ test("WebView bridge client rejects unsafe navigation inputs before transport", 
       originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" }
     })
   )
-  const fileUrlExit = await Effect.runPromiseExit(client.loadUrl(webviewHandle, "file:///etc/passwd"))
+  const fileUrlExit = await Effect.runPromiseExit(
+    client.loadUrl(webviewHandle, "file:///etc/passwd")
+  )
   const traversalExit = await Effect.runPromiseExit(client.loadRoute(webviewHandle, "../secret"))
   const emptyOriginExit = await Effect.runPromiseExit(
     client.create({
@@ -1813,9 +1813,7 @@ test("Tray bridge client rejects invalid icon and tooltip metadata before transp
   )
 
   const emptyIconExit = await Effect.runPromiseExit(client.create({ icon: "" }))
-  const fileIconExit = await Effect.runPromiseExit(
-    client.setIcon(trayHandle, "file:///etc/passwd")
-  )
+  const fileIconExit = await Effect.runPromiseExit(client.setIcon(trayHandle, "file:///etc/passwd"))
   const emptyTooltipExit = await Effect.runPromiseExit(client.setTooltip(trayHandle, ""))
   const nulTooltipExit = await Effect.runPromiseExit(
     client.create({ icon: "app://assets/tray.png", tooltip: "tip\u0000text" })
@@ -3755,8 +3753,14 @@ test("GlobalShortcut bridge client rejects inconsistent isSupported output as In
 })
 
 test("GlobalShortcut bridge client decodes valid isSupported outputs", async () => {
-  const cases: ReadonlyArray<{ readonly payload: unknown; readonly expected: GlobalShortcutSupportedResult }> = [
-    { payload: { supported: true }, expected: new GlobalShortcutSupportedResult({ supported: true }) },
+  const cases: ReadonlyArray<{
+    readonly payload: unknown
+    readonly expected: GlobalShortcutSupportedResult
+  }> = [
+    {
+      payload: { supported: true },
+      expected: new GlobalShortcutSupportedResult({ supported: true })
+    },
     {
       payload: { supported: false, reason: "wayland-no-global-shortcut" },
       expected: new GlobalShortcutSupportedResult({

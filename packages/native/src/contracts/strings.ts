@@ -9,9 +9,7 @@ const NoControlPattern = new RegExp(`^[^${NUL}-${UNIT_SEPARATOR}${DEL}]*$`, "u")
 
 export const BridgeSafeString = Schema.String.check(Schema.isPattern(NoNulPattern))
 
-export const BridgeSafeNonEmptyString = Schema.NonEmptyString.check(
-  Schema.isPattern(NoNulPattern)
-)
+export const BridgeSafeNonEmptyString = Schema.NonEmptyString.check(Schema.isPattern(NoNulPattern))
 
 export const PrintableString = Schema.String.check(Schema.isPattern(NoControlPattern))
 

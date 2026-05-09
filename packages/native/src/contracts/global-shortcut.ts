@@ -37,8 +37,7 @@ export const GlobalShortcutSupportedOutput = GlobalShortcutSupportedResult.check
     value.supported
       ? value.reason === undefined ||
         "supported result must not include reason when supported is true"
-      : value.reason !== undefined ||
-        "supported result requires reason when supported is false"
+      : value.reason !== undefined || "supported result requires reason when supported is false"
   )
 )
 
