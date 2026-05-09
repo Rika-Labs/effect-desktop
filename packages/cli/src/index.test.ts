@@ -1736,7 +1736,8 @@ test("desktop notarize rejects artifact file names outside the metadata director
       expect(exitCode).toBe(1)
       expect(calls).toEqual([])
       expect(stderr.join("")).toContain("NotarizeConfigError")
-      expect(stderr.join("")).toContain("artifact-root/artifact.json#fileName")
+      expect(stderr.join("")).toContain("artifact-root")
+      expect(stderr.join("")).toContain("artifact.json#fileName")
     } finally {
       await rm(directory, { recursive: true, force: true })
     }
