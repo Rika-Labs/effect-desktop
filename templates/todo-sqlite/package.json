@@ -1,13 +1,13 @@
 {
-  "name": "@effect-desktop/template-basic-react-tailwind",
+  "name": "@effect-desktop/template-todo-sqlite",
   "private": true,
-  "description": "First-party React and Tailwind template for Effect Desktop applications.",
+  "description": "Full bridge-crossing todo app with renderer-side SQLite cache and live invalidation.",
   "license": "MIT OR Apache-2.0",
   "author": "Rika Labs, LLC",
   "repository": {
     "type": "git",
     "url": "https://github.com/Rika-Labs/effect-desktop.git",
-    "directory": "templates/basic-react-tailwind"
+    "directory": "templates/todo-sqlite"
   },
   "homepage": "https://github.com/Rika-Labs/effect-desktop#readme",
   "bugs": {
@@ -16,7 +16,7 @@
   "type": "module",
   "scripts": {
     "desktop": "desktop",
-    "dev": "vite --host 127.0.0.1 --port 5174 --strictPort",
+    "dev": "vite --host 127.0.0.1 --port 5175 --strictPort",
     "build": "vite build",
     "check": "tsc --noEmit -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
