@@ -2,9 +2,11 @@
 
 Changes:
 
-- Changed `@effect-desktop/cli` first-party runtime dependencies from `workspace:*` to sibling `file:` specs.
-- Added repo-shape assertions for the CLI bin and dependency specs.
-- Added a temp consumer install smoke that installs `file:<repo>/packages/cli` and runs `bunx desktop`.
+- Added `scripts/pack-installable-cli.ts` to copy the CLI runtime package set into an installable artifact.
+- Rewrites only the copied CLI manifest from `workspace:*` to sibling `file:` specs.
+- Installs artifact-local production dependencies so the file-installed bin can resolve runtime imports from outside the monorepo.
+- Added repo-shape assertions for the CLI bin and workspace dependency contract.
+- Added a temp consumer install smoke that installs the generated artifact and runs `bunx desktop`.
 
 Verification:
 
