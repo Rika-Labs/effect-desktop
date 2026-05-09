@@ -4066,10 +4066,10 @@ const releaseChecklistFixture = (): unknown => ({
     },
     {
       id: "ephemeral-runners",
-      title: "Ephemeral self-hosted runner posture",
+      title: "GitHub-hosted ephemeral runner posture",
       kind: "repository-setting",
       evidence: [
-        "docs/security/release-settings.md#Blacksmith",
+        "docs/security/release-settings.md#GitHub-hosted runners",
         "docs/security/release-settings.md#persistent self-hosted runners are forbidden"
       ]
     },
@@ -4105,7 +4105,13 @@ const ciWorkflowFixture = (): string =>
     '    branches: ["**"]',
     "jobs:",
     "  validate:",
-    "    runs-on: blacksmith-2vcpu-ubuntu-2404",
+    "    strategy:",
+    "      matrix:",
+    "        include:",
+    "          - os: ubuntu-latest",
+    "          - os: macos-latest",
+    "          - os: windows-latest",
+    "    runs-on: ubuntu-latest",
     "    steps:",
     "      - name: bun desktop check --repro regression tests",
     "        run: bun test packages/cli/src/index.test.ts -t repro",
@@ -4122,7 +4128,7 @@ const releaseWorkflowFixture = (): string =>
     "  id-token: write",
     "jobs:",
     "  release-gates:",
-    "    runs-on: blacksmith-2vcpu-ubuntu-2404",
+    "    runs-on: ubuntu-latest",
     "    env:",
     "      RELEASE_SIGNING_BACKEND: hsm",
     "    steps:",
@@ -4174,7 +4180,7 @@ const releaseSettingsFixture = (): string =>
     "Secret scanning is enabled for every branch.",
     "main requires at least one review.",
     "release branches require at least two reviews.",
-    "Blacksmith ephemeral runners are rebuilt from a clean image per job.",
+    "GitHub-hosted runners allocate a fresh virtual machine for each job.",
     "persistent self-hosted runners are forbidden for release jobs.",
     "CVSS exemptions live under docs/security/exemptions."
   ].join("\n")
