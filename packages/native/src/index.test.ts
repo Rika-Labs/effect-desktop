@@ -4101,6 +4101,68 @@ test("Dialog bridge client rejects NUL bytes in defaultPath as InvalidArgument",
   expect(requests).toEqual([])
 })
 
+test("Dialog bridge client rejects invalid native UI text before transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Dialog
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          DialogLive,
+          makeDialogBridgeClientLayer(
+            dialogExchange(requests, () => ({
+              kind: "success",
+              payload: { paths: [] }
+            }))
+          )
+        )
+      )
+    )
+  )
+
+  const openFileTitleExit = await Effect.runPromiseExit(client.openFile({ title: "bad\u0000" }))
+  const openDirectoryTitleExit = await Effect.runPromiseExit(
+    client.openDirectory({ title: "bad\n" })
+  )
+  const saveFileTitleExit = await Effect.runPromiseExit(client.saveFile({ title: "" }))
+  const messageTitleExit = await Effect.runPromiseExit(
+    client.message({ level: "info", title: "bad\u0000", message: "hello" })
+  )
+  const messageTextExit = await Effect.runPromiseExit(
+    client.message({ level: "info", message: "hello\nworld" })
+  )
+  const messageDetailExit = await Effect.runPromiseExit(
+    client.message({ level: "info", message: "hello", detail: "bad\u007f" })
+  )
+  const confirmTitleExit = await Effect.runPromiseExit(
+    client.confirm({ title: "bad\u0000", message: "go" })
+  )
+  const confirmMessageExit = await Effect.runPromiseExit(client.confirm({ message: "go\t" }))
+  const confirmLabelExit = await Effect.runPromiseExit(
+    client.confirm({ message: "go", confirmLabel: "yes\n" })
+  )
+  const cancelLabelExit = await Effect.runPromiseExit(
+    client.confirm({ message: "go", cancelLabel: "" })
+  )
+
+  for (const exit of [
+    openFileTitleExit,
+    openDirectoryTitleExit,
+    saveFileTitleExit,
+    messageTitleExit,
+    messageTextExit,
+    messageDetailExit,
+    confirmTitleExit,
+    confirmMessageExit,
+    confirmLabelExit,
+    cancelLabelExit
+  ]) {
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+  }
+  expect(requests).toEqual([])
+})
+
 const recordVoid = (calls: string[], call: string): Effect.Effect<void, never, never> =>
   Effect.sync(() => {
     calls.push(call)

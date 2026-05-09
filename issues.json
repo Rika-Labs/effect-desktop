@@ -1275,16 +1275,23 @@
   ],
   "workflow_ledger": {
     "active": {
-      "number": 769,
-      "title": "Make the CLI package install outside the workspace",
-      "url": "https://github.com/Rika-Labs/effect-desktop/issues/769",
-      "status": "pr-open",
-      "workflow": ["scout", "architect", "review", "work", "pr"],
-      "branch": "issue-769-cli-install-outside-workspace",
-      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/796",
-      "updated_at": "2026-05-09T00:23:30.000Z"
+      "number": 815,
+      "title": "Validate Dialog native UI text fields",
+      "url": "https://github.com/Rika-Labs/effect-desktop/issues/815",
+      "status": "work-in-progress",
+      "workflow": ["scout", "architect", "review", "work"],
+      "branch": "issue-815-validate-dialog-native-ui-text-fields",
+      "updated_at": "2026-05-09T00:42:30.000Z"
     },
     "worked": [
+      {
+        "number": 769,
+        "title": "Make the CLI package install outside the workspace",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/769",
+        "status": "merged",
+        "pr": "https://github.com/Rika-Labs/effect-desktop/pull/796",
+        "updated_at": "2026-05-09T00:40:07.000Z"
+      },
       {
         "number": 770,
         "title": "Expose the documented bun desktop entrypoint",
