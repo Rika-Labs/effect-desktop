@@ -1,5 +1,10 @@
 import { redact } from "@effect-desktop/bridge"
-import { Context, Data, Effect, Option, Ref, Stream, SubscriptionRef } from "effect"
+import { Context, Data, Effect, Option, Ref, Schema, Stream, SubscriptionRef } from "effect"
+
+const TelemetryMetadataText = Schema.NonEmptyString.check(
+  // eslint-disable-next-line no-control-regex
+  Schema.isPattern(/^[^\x00-\x1F\x7F]+$/)
+)
 
 export type TelemetryLogLevel = "debug" | "info" | "warn" | "error"
 
@@ -99,10 +104,14 @@ export interface TelemetrySnapshot {
 }
 
 export interface TelemetryApi {
-  readonly log: (input: TelemetryLogInput) => Effect.Effect<void, never, never>
+  readonly log: (
+    input: TelemetryLogInput
+  ) => Effect.Effect<void, TelemetryInvalidArgumentError, never>
   readonly listLogs: () => Effect.Effect<readonly TelemetryLogRecord[], never, never>
   readonly observeLogs: () => Stream.Stream<readonly TelemetryLogRecord[], never, never>
-  readonly recordSpan: (input: TelemetryTraceSpanInput) => Effect.Effect<void, never, never>
+  readonly recordSpan: (
+    input: TelemetryTraceSpanInput
+  ) => Effect.Effect<void, TelemetryInvalidArgumentError, never>
   readonly listTraces: () => Effect.Effect<readonly TelemetryTraceSpan[], never, never>
   readonly observeTraces: () => Stream.Stream<readonly TelemetryTraceSpan[], never, never>
   readonly incrementCounter: (input: TelemetryCounterInput) => Effect.Effect<void, never, never>
@@ -169,6 +178,9 @@ export const makeTelemetry = (
     return Object.freeze({
       log: (input) =>
         Effect.gen(function* () {
+          yield* validateMetadataField(input.traceId, "Telemetry.log", "traceId")
+          yield* validateOptionalMetadataField(input.resourceId, "Telemetry.log", "resourceId")
+          yield* validateOptionalMetadataField(input.windowId, "Telemetry.log", "windowId")
           const id = yield* Ref.getAndUpdate(nextLogId, (current) => current + 1)
           const record = redact({
             id,
@@ -187,11 +199,23 @@ export const makeTelemetry = (
       listLogs: () => SubscriptionRef.get(logs),
       observeLogs: () => SubscriptionRef.changes(logs),
       recordSpan: (input) =>
-        tracingEnabled
-          ? SubscriptionRef.update(traces, (current) =>
-              appendBounded(current, toTraceSpan(input, nextSpanId), traceRingSize)
-            )
-          : Effect.void,
+        Effect.gen(function* () {
+          yield* validateMetadataField(input.traceId, "Telemetry.recordSpan", "traceId")
+          yield* validateOptionalMetadataField(input.spanId, "Telemetry.recordSpan", "spanId")
+          yield* validateOptionalMetadataField(
+            input.parentSpanId,
+            "Telemetry.recordSpan",
+            "parentSpanId"
+          )
+          const resolvedSpanId = input.spanId ?? nextSpanId()
+          yield* validateMetadataField(resolvedSpanId, "Telemetry.recordSpan", "spanId")
+          if (!tracingEnabled) {
+            return
+          }
+          yield* SubscriptionRef.update(traces, (current) =>
+            appendBounded(current, toTraceSpan(input, () => resolvedSpanId), traceRingSize)
+          )
+        }),
       listTraces: () => SubscriptionRef.get(traces),
       observeTraces: () => SubscriptionRef.changes(traces),
       incrementCounter: (input) =>
@@ -242,6 +266,30 @@ const positiveIntegerOption = (
         })
       )
 }
+
+const validateMetadataField = (
+  value: string,
+  operation: string,
+  field: string
+): Effect.Effect<void, TelemetryInvalidArgumentError, never> =>
+  Schema.decodeUnknownEffect(TelemetryMetadataText)(value).pipe(
+    Effect.asVoid,
+    Effect.mapError(
+      () =>
+        new TelemetryInvalidArgumentError({
+          operation,
+          field,
+          message: "must be a printable non-empty string"
+        })
+    )
+  )
+
+const validateOptionalMetadataField = (
+  value: string | undefined,
+  operation: string,
+  field: string
+): Effect.Effect<void, TelemetryInvalidArgumentError, never> =>
+  value === undefined ? Effect.void : validateMetadataField(value, operation, field)
 
 const appendBounded = <A>(current: readonly A[], value: A, maxRows: number): readonly A[] =>
   [...current, value].slice(-maxRows)
