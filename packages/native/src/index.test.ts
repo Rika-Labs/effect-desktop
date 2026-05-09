@@ -1181,6 +1181,25 @@ test("Menu bridge client returns invalid templates as typed Effect failures", as
   expect(requests).toEqual([])
 })
 
+test("ContextMenu identifier schemas reject control bytes in bind input and activation events", async () => {
+  const bindExit = await Effect.runPromiseExit(
+    Schema.decodeUnknownEffect(ContextMenuBindCommandInput)({
+      itemId: "open\u0000x",
+      commandId: "cmd\u0000x"
+    })
+  )
+  const eventExit = await Effect.runPromiseExit(
+    Schema.decodeUnknownEffect(ContextMenuActivatedEvent)({
+      itemId: "open\u0000x",
+      commandId: "cmd\u0000x",
+      windowId: "win\u0000x"
+    })
+  )
+
+  expect(Exit.isFailure(bindExit)).toBe(true)
+  expect(Exit.isFailure(eventExit)).toBe(true)
+})
+
 test("Menu and ContextMenu schemas reject newline-bearing labels and ids", async () => {
   const cases: ReadonlyArray<{ readonly label: string; readonly value: unknown }> = [
     {
