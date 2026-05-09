@@ -312,6 +312,39 @@ test("ProductionChecker rule registry covers the current production rule set", a
   )
 })
 
+test("ProductionChecker accepts guarded partial OS-state contracts", async () => {
+  const report = await Effect.runPromise(
+    runProductionCheck({
+      config: {
+        contracts: [
+          {
+            contract: "Screen.getPointerPoint",
+            capability: "native.invoke:Screen.getPointerPoint",
+            support: "partial",
+            isSupportedGuard: true
+          },
+          {
+            contract: "PowerMonitor.onPowerSourceChanged",
+            capability: "native.event:PowerMonitor.PowerSourceChanged",
+            support: "partial",
+            isSupportedGuard: true
+          },
+          {
+            contract: "SystemAppearance.getAccentColor",
+            capability: "native.invoke:SystemAppearance.getAccentColor",
+            support: "unsupported",
+            isSupportedGuard: true
+          }
+        ]
+      }
+    })
+  )
+
+  expect(report.failures.map((violation) => violation.rule)).not.toContain(
+    "unsupported-capability-without-guard"
+  )
+})
+
 test("ProductionChecker rejects empty config paths", async () => {
   const emptyExit = await Effect.runPromiseExit(
     runProductionCheck({

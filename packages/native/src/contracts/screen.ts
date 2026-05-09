@@ -1,5 +1,9 @@
 import { Schema } from "effect"
 
+export const ScreenMethod = Schema.Literals(["getDisplays", "getPrimaryDisplay", "getPointerPoint"])
+
+export type ScreenMethod = Schema.Schema.Type<typeof ScreenMethod>
+
 export class ScreenBounds extends Schema.Class<ScreenBounds>("ScreenBounds")({
   x: Schema.Number,
   y: Schema.Number,
@@ -24,4 +28,16 @@ export class ScreenDisplaysResult extends Schema.Class<ScreenDisplaysResult>(
   "ScreenDisplaysResult"
 )({
   displays: Schema.Array(ScreenDisplay)
+}) {}
+
+export class ScreenIsSupportedInput extends Schema.Class<ScreenIsSupportedInput>(
+  "ScreenIsSupportedInput"
+)({
+  method: ScreenMethod
+}) {}
+
+export class ScreenSupportedResult extends Schema.Class<ScreenSupportedResult>(
+  "ScreenSupportedResult"
+)({
+  supported: Schema.Boolean
 }) {}
