@@ -1160,7 +1160,7 @@ test("Menu bridge client rejects NUL-bearing accelerators before transport", asy
               id: "file.open",
               label: "Open",
               commandId: "app.file.open",
-              accelerator: "Cmd O"
+              accelerator: "Cmd\u0000O"
             }
           ]
         }
@@ -2546,6 +2546,48 @@ test("SafeStorage bridge client validates keys and redacts decoded values", asyn
     ["SafeStorage.isAvailable", undefined],
     ["SafeStorage.delete", { key: "token" }]
   ])
+})
+
+test("SafeStorage bridge client rejects invalid keys in list output as InvalidOutput", async () => {
+  const cases: ReadonlyArray<{ readonly label: string; readonly keys: ReadonlyArray<string> }> = [
+    { label: "empty", keys: [""] },
+    { label: "nul", keys: ["a\u0000O"] }
+  ]
+
+  for (const { label, keys } of cases) {
+    const exchange = safeStorageExchange([], () => ({
+      kind: "success",
+      payload: { keys }
+    }))
+    const client = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* SafeStorage
+      }).pipe(
+        Effect.provide(Layer.provide(SafeStorageLive, makeSafeStorageBridgeClientLayer(exchange)))
+      )
+    )
+
+    const exit = await Effect.runPromiseExit(client.list())
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+    expect(label).toBeDefined()
+  }
+})
+
+test("SafeStorage bridge client decodes valid printable keys in list output", async () => {
+  const exchange = safeStorageExchange([], () => ({
+    kind: "success",
+    payload: { keys: ["token", "session"] }
+  }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* SafeStorage
+    }).pipe(
+      Effect.provide(Layer.provide(SafeStorageLive, makeSafeStorageBridgeClientLayer(exchange)))
+    )
+  )
+
+  const keys = await Effect.runPromise(client.list())
+  expect(keys).toEqual(["token", "session"])
 })
 
 test("unsupported SafeStorage client reports availability and typed command failures", async () => {

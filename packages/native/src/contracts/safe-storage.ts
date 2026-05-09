@@ -1,11 +1,15 @@
 import { Schema } from "effect"
 
+import { BridgeSafeNonEmptyString } from "./strings.js"
+
+export const SafeStorageKey = BridgeSafeNonEmptyString
+
 export class SafeStorageKeyInput extends Schema.Class<SafeStorageKeyInput>("SafeStorageKeyInput")({
-  key: Schema.String
+  key: SafeStorageKey
 }) {}
 
 export class SafeStorageSetInput extends Schema.Class<SafeStorageSetInput>("SafeStorageSetInput")({
-  key: Schema.String,
+  key: SafeStorageKey,
   value: Schema.Uint8Array
 }) {}
 
@@ -18,7 +22,7 @@ export class SafeStorageSecretPayload extends Schema.Class<SafeStorageSecretPayl
 export class SafeStorageListResult extends Schema.Class<SafeStorageListResult>(
   "SafeStorageListResult"
 )({
-  keys: Schema.Array(Schema.String)
+  keys: Schema.Array(SafeStorageKey)
 }) {}
 
 export class SafeStorageAvailabilityResult extends Schema.Class<SafeStorageAvailabilityResult>(
