@@ -50,7 +50,7 @@ export const makeDiagnosticsPanels = (
         const snapshot = yield* telemetry.snapshot()
         return redact({
           logs: snapshot.logs.slice(-maxRows),
-          traces: groupTraceSpans(snapshot.traces.slice(-maxRows)),
+          traces: groupTraceSpans(snapshot.traces).slice(-maxRows),
           metrics: snapshot.metrics.slice(-maxRows)
         } satisfies DiagnosticsPanelsSnapshot)
       })
