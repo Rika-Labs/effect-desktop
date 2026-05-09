@@ -11,7 +11,7 @@ Thin React integration for renderer clients: `DesktopProvider`, `useDesktop`, `u
 - `DesktopProvider` supplies a public `DesktopClient` to renderer components.
 - `useDesktop` returns `Option.Option<DesktopClient>` instead of throwing when no provider is mounted.
 - `useWindow` returns `Option.Option<WindowHandle>` for the current renderer window.
-- `useDesktopStream` subscribes to an Effect stream and interrupts it from React cleanup.
+- `useDesktopStream` subscribes to an Effect stream, interrupts it from React cleanup, and retains at most 1024 emitted items by default.
 - `useResource` disposes a handle from React cleanup.
 - `usePermission` exposes the Phase 16 placeholder state.
 
@@ -39,6 +39,19 @@ export function Toolbar() {
   return null
 }
 ```
+
+Stream retention is explicit:
+
+```ts
+const output = useDesktopStream(process.stdout, {
+  capacity: 128,
+  onItem: (chunk) => {
+    // Optional side effect for callers that project stream items elsewhere.
+  }
+})
+```
+
+Use `capacity: 0` for callback-only consumption. The hook rejects negative, fractional, infinite, or unsafe capacities.
 
 ## Testing
 

@@ -29,6 +29,16 @@
       "signature": "export interface DesktopRuntimeContext { readonly client: DesktopClient readonly currentWindow?: WindowHandle }"
     },
     {
+      "name": "DesktopStreamOptions",
+      "kind": "interface",
+      "signature": "export interface DesktopStreamOptions<A> extends DesktopStreamRetentionPolicy { readonly deps?: DependencyList readonly onItem?: (item: A) => void }"
+    },
+    {
+      "name": "DesktopStreamRetentionPolicy",
+      "kind": "interface",
+      "signature": "export interface DesktopStreamRetentionPolicy { readonly capacity?: number }"
+    },
+    {
       "name": "DesktopStreamState",
       "kind": "interface",
       "signature": "export interface DesktopStreamState<A, E> { readonly status: DesktopStreamStatus readonly data: readonly A[] readonly error: Option.Option<Cause.Cause<E>> }"
@@ -49,6 +59,11 @@
       "signature": "export interface PermissionState { readonly status: \"deferred\" readonly permission: string }"
     },
     {
+      "name": "retainDesktopStreamData",
+      "kind": "value",
+      "signature": "const retainDesktopStreamData: <A>(current: readonly A[], item: A, capacity?: number) => readonly A[]"
+    },
+    {
       "name": "useDesktop",
       "kind": "value",
       "signature": "const useDesktop: () => Option.Option<DesktopClient>"
@@ -56,7 +71,7 @@
     {
       "name": "useDesktopStream",
       "kind": "value",
-      "signature": "const useDesktopStream: <A, E>(stream: Stream.Stream<A, E, never>, deps?: DependencyList) => DesktopStreamState<A, E>"
+      "signature": "const useDesktopStream: <A, E>(stream: Stream.Stream<A, E, never>, options?: DependencyList | DesktopStreamOptions<A>) => DesktopStreamState<A, E>"
     },
     {
       "name": "usePermission",
