@@ -518,9 +518,18 @@ const readPackagedArtifacts = (
         continue
       }
       const metadataPath = join(rootPath, "artifact.json")
-      const metadata = yield* readJson<{ readonly kind?: unknown; readonly fileName?: unknown }>(
-        metadataPath
+      const metadata = yield* readJson<{
+        readonly kind?: unknown
+        readonly target?: unknown
+        readonly fileName?: unknown
+      }>(metadataPath)
+      const target = yield* readTarget(
+        metadata.target,
+        `${relative(plan.outputPath, metadataPath)}#target`
       )
+      if (target !== plan.target) {
+        continue
+      }
       const kind = yield* readArtifactKind(metadata.kind, metadataPath)
       if (kind === undefined) {
         continue
@@ -606,6 +615,20 @@ const readArtifactKind = (
     })
   )
 }
+
+const readTarget = (
+  value: unknown,
+  field: string
+): Effect.Effect<NotarizeTarget, NotarizeConfigError, never> =>
+  isNotarizeTarget(value)
+    ? Effect.succeed(value)
+    : Effect.fail(
+        new NotarizeConfigError({
+          field,
+          message: `${field} must be a supported notarize target`,
+          remediation: "Regenerate macOS artifacts with `bun desktop package`."
+        })
+      )
 
 const resolveArtifactPath = (
   rootPath: string,
@@ -706,6 +729,9 @@ const resolveNotarizeTarget = (
   }
   return Effect.succeed(target)
 }
+
+const isNotarizeTarget = (value: unknown): value is NotarizeTarget =>
+  value === "macos-arm64" || value === "macos-x64"
 
 const resolveHostTarget = (
   override: NotarizeTarget | undefined

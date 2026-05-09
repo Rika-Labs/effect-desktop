@@ -600,9 +600,17 @@ const readPackagedArtifacts = (
       const metadataPath = join(rootPath, "artifact.json")
       const metadata = yield* readJson<{
         readonly kind?: unknown
+        readonly target?: unknown
         readonly fileName?: unknown
         readonly linuxIntegration?: unknown
       }>(metadataPath)
+      const target = yield* readTarget(
+        metadata.target,
+        `${relative(plan.outputPath, metadataPath)}#target`
+      )
+      if (target !== plan.target) {
+        continue
+      }
       const kind = yield* readArtifactKind(metadata.kind, metadataPath)
       const fileNameField = `${relative(plan.outputPath, metadataPath)}#fileName`
       const fileName = yield* readContainedFileName(metadata.fileName, fileNameField)
@@ -933,6 +941,20 @@ const readArtifactKind = (
   )
 }
 
+const readTarget = (
+  value: unknown,
+  field: string
+): Effect.Effect<SignTarget, SignConfigError, never> =>
+  isSignTarget(value)
+    ? Effect.succeed(value)
+    : Effect.fail(
+        new SignConfigError({
+          field,
+          message: `${field} must be a supported sign target`,
+          remediation: "Regenerate package artifacts with `bun desktop package`."
+        })
+      )
+
 const loadConfig = (path: string): Effect.Effect<unknown, SignConfigError, never> =>
   Effect.gen(function* () {
     const module = yield* Effect.tryPromise({
@@ -1089,7 +1111,7 @@ const listFiles = (path: string): Effect.Effect<readonly string[], SignFileError
     return files
   })
 
-const isSignTarget = (value: string): value is SignTarget =>
+const isSignTarget = (value: unknown): value is SignTarget =>
   value === "linux-x64" ||
   value === "linux-arm64" ||
   value === "macos-x64" ||
