@@ -713,25 +713,6 @@ const readOptionalSemver = (
   return Effect.succeed({ value, parsed })
 }
 
-const readOptionalString = (
-  value: unknown,
-  field: string
-): Effect.Effect<string | undefined, PublishConfigError, never> => {
-  if (value === undefined) {
-    return Effect.succeed(undefined)
-  }
-  if (typeof value === "string" && value.length > 0) {
-    return Effect.succeed(value)
-  }
-  return Effect.fail(
-    new PublishConfigError({
-      field,
-      message: `${field} must be a non-empty string when provided`,
-      remediation: `Remove ${field} or set it to a non-empty string.`
-    })
-  )
-}
-
 const readOptionalBoolean = (
   value: unknown,
   field: string
