@@ -1275,16 +1275,24 @@
   ],
   "workflow_ledger": {
     "active": {
-      "number": 875,
-      "title": "Publish job retry progress after audit success",
-      "url": "https://github.com/Rika-Labs/effect-desktop/issues/875",
+      "number": 876,
+      "title": "Preserve trace integrity in diagnostics row caps",
+      "url": "https://github.com/Rika-Labs/effect-desktop/issues/876",
       "status": "pr-open",
       "workflow": ["scout", "architect", "review", "work", "pr", "code-review", "address", "learn"],
-      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/900",
-      "branch": "issue-875-publish-job-retry-progress-after-audit-success",
-      "updated_at": "2026-05-09T03:55:10.000Z"
+      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/906",
+      "branch": "issue-876-preserve-trace-integrity-in-diagnostics-row-caps",
+      "updated_at": "2026-05-09T04:16:10.000Z"
     },
     "worked": [
+      {
+        "number": 875,
+        "title": "Publish job retry progress after audit success",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/875",
+        "status": "merged",
+        "pr": "https://github.com/Rika-Labs/effect-desktop/pull/900",
+        "updated_at": "2026-05-09T03:58:10.000Z"
+      },
       {
         "number": 872,
         "title": "Require audit for wildcard secret access",
