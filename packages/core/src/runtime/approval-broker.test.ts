@@ -200,6 +200,92 @@ test("ApprovalBroker rejects empty explicit trace ids", async () => {
   ).not.toThrow()
 })
 
+test("ApprovalBroker rejects control bytes in approval request metadata", async () => {
+  const fields: ReadonlyArray<keyof ApprovalRequest> = [
+    "id",
+    "operation",
+    "actor",
+    "resource",
+    "traceId"
+  ]
+  for (const field of fields) {
+    for (const codePoint of [10, 13, 0, 27, 127]) {
+      const bad = `value${String.fromCharCode(codePoint)}forged`
+      expect(
+        () =>
+          new ApprovalRequest({
+            id: field === "id" ? bad : "request-1",
+            operation: field === "operation" ? bad : "operation",
+            actor: field === "actor" ? bad : "window-main",
+            ...(field === "resource" ? { resource: bad } : {}),
+            risk: "low",
+            summary: "test",
+            details: {},
+            ...(field === "traceId" ? { traceId: bad } : {})
+          })
+      ).toThrow()
+    }
+  }
+})
+
+test("ApprovalBroker ask rejects control bytes returned by the trace id callback", async () => {
+  const prompt: ApprovalPromptPort = {
+    prompt: (request) => Effect.succeed(outcome(request, "approved-once", 1_100))
+  }
+  const broker = await Effect.runPromise(
+    makeApprovalBroker({
+      prompt,
+      now: () => 1_000,
+      traceId: () => `gen${String.fromCharCode(10)}forged`
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(
+    broker.ask(
+      new ApprovalRequest({
+        id: "request-1",
+        operation: "operation",
+        actor: "window-main",
+        risk: "low",
+        summary: "test",
+        details: {}
+      })
+    )
+  )
+
+  expectFailure(exit, ApprovalBrokerInvalidArgumentError)
+})
+
+test("ApprovalBroker ask rejects prompt outcomes containing control bytes", async () => {
+  const prompt: ApprovalPromptPort = {
+    prompt: (request) =>
+      Effect.succeed(
+        new ApprovalOutcome({
+          requestId: request.id,
+          outcome: "approved-once",
+          traceId: request.traceId ?? "trace-1",
+          decidedAt: 1_100,
+          source: "host"
+        })
+      ).pipe(
+        Effect.map(
+          (good) =>
+            ({
+              ...good,
+              source: `host${String.fromCharCode(10)}forged`
+            }) as ApprovalOutcome
+        )
+      )
+  }
+  const broker = await Effect.runPromise(makeApprovalBroker({ prompt, now: () => 1_000 }))
+
+  const exit = await Effect.runPromiseExit(
+    broker.ask(approvalRequest("request-1", "operation", "window-main", "/tmp/app"))
+  )
+
+  expectFailure(exit, ApprovalBrokerInvalidArgumentError)
+})
+
 const approvalRequest = (
   id: string,
   operation: string,

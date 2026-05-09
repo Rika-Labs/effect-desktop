@@ -6,6 +6,10 @@ import { approvalAuditEvent, emitAuditEvent } from "./audit-events.js"
 import type { EventLogError, EventLogStore } from "./event-log.js"
 
 const NonEmptyString = Schema.NonEmptyString
+const ApprovalMetadataText = Schema.NonEmptyString.check(
+  // eslint-disable-next-line no-control-regex
+  Schema.isPattern(/^[^\x00-\x1F\x7F]+$/)
+)
 const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0))
 const ApprovalRisk = Schema.Literals(["low", "medium", "high", "critical"])
 export type ApprovalRisk = typeof ApprovalRisk.Type
@@ -22,23 +26,23 @@ const ApprovalOutcomeKind = Schema.Literals([
 export type ApprovalOutcomeKind = typeof ApprovalOutcomeKind.Type
 
 export class ApprovalRequest extends Schema.Class<ApprovalRequest>("ApprovalRequest")({
-  id: NonEmptyString,
-  operation: NonEmptyString,
-  actor: NonEmptyString,
-  resource: Schema.optionalKey(Schema.String),
+  id: ApprovalMetadataText,
+  operation: ApprovalMetadataText,
+  actor: ApprovalMetadataText,
+  resource: Schema.optionalKey(ApprovalMetadataText),
   risk: ApprovalRisk,
   summary: NonEmptyString,
   details: Schema.Unknown,
   expiresAt: Schema.optionalKey(Schema.Number),
-  traceId: Schema.optionalKey(NonEmptyString)
+  traceId: Schema.optionalKey(ApprovalMetadataText)
 }) {}
 
 export class ApprovalOutcome extends Schema.Class<ApprovalOutcome>("ApprovalOutcome")({
-  requestId: NonEmptyString,
+  requestId: ApprovalMetadataText,
   outcome: ApprovalOutcomeKind,
-  traceId: NonEmptyString,
+  traceId: ApprovalMetadataText,
   decidedAt: Schema.Number,
-  source: NonEmptyString
+  source: ApprovalMetadataText
 }) {}
 
 export class ApprovalBrokerInvalidArgumentError extends Data.TaggedError("InvalidArgument")<{
@@ -135,7 +139,7 @@ export const makeApprovalBroker = (
       ask: (request) =>
         Effect.gen(function* () {
           const decoded = yield* decodeRequest(request)
-          const requestWithTrace = withTraceId(decoded, traceId)
+          const requestWithTrace = yield* withTraceId(decoded, traceId)
           yield* auditApproval(options.audit, "approval requested", requestWithTrace, Option.none())
 
           if (options.devApproveAll === true) {
@@ -272,7 +276,9 @@ const runPromptLoop = (
     let current: Option.Option<PromptEntry> = Option.some(entry)
     while (Option.isSome(current)) {
       const active = current.value
-      const exit = yield* prompt.prompt(active.request).pipe(Effect.exit)
+      const exit = yield* prompt
+        .prompt(active.request)
+        .pipe(Effect.flatMap(decodeOutcome), Effect.exit)
       const completed = yield* currentActiveEntry(state, active)
       if (exit._tag === "Success") {
         const auditExit = yield* auditApproval(
@@ -398,9 +404,9 @@ const approvalAuditType = (outcome: ApprovalOutcome): "approval granted" | "appr
     : "approval denied"
 
 const causeToPromptFailure = (
-  cause: Cause.Cause<ApprovalBrokerPromptFailedError>,
+  cause: Cause.Cause<ApprovalBrokerPromptFailedError | ApprovalBrokerInvalidArgumentError>,
   request: ApprovalRequest
-): ApprovalBrokerPromptFailedError => {
+): ApprovalBrokerPromptFailedError | ApprovalBrokerInvalidArgumentError => {
   const failure = cause.reasons.find(Cause.isFailReason)
   return failure === undefined
     ? new ApprovalBrokerPromptFailedError({
@@ -460,26 +466,42 @@ const approvalOutcome = (
     source
   })
 
-const withTraceId = (request: ApprovalRequest, traceId: () => string): ApprovalRequest =>
+const withTraceId = (
+  request: ApprovalRequest,
+  traceId: () => string
+): Effect.Effect<ApprovalRequest, ApprovalBrokerInvalidArgumentError, never> =>
   request.traceId === undefined
-    ? new ApprovalRequest({
-        id: request.id,
-        operation: request.operation,
-        actor: request.actor,
-        ...(request.resource === undefined ? {} : { resource: request.resource }),
-        risk: request.risk,
-        summary: request.summary,
-        details: request.details,
-        ...(request.expiresAt === undefined ? {} : { expiresAt: request.expiresAt }),
-        traceId: traceId()
-      })
-    : request
+    ? Schema.decodeUnknownEffect(ApprovalMetadataText)(traceId()).pipe(
+        Effect.map(
+          (resolved) =>
+            new ApprovalRequest({
+              id: request.id,
+              operation: request.operation,
+              actor: request.actor,
+              ...(request.resource === undefined ? {} : { resource: request.resource }),
+              risk: request.risk,
+              summary: request.summary,
+              details: request.details,
+              ...(request.expiresAt === undefined ? {} : { expiresAt: request.expiresAt }),
+              traceId: resolved
+            })
+        ),
+        Effect.mapError((cause) => invalidArgument("ApprovalBroker.ask", "traceId", cause))
+      )
+    : Effect.succeed(request)
 
 const decodeRequest = (
   input: unknown
 ): Effect.Effect<ApprovalRequest, ApprovalBrokerInvalidArgumentError, never> =>
   Schema.decodeUnknownEffect(ApprovalRequest)(input).pipe(
     Effect.mapError((cause) => invalidArgument("ApprovalBroker.ask", "request", cause))
+  )
+
+const decodeOutcome = (
+  input: ApprovalOutcome
+): Effect.Effect<ApprovalOutcome, ApprovalBrokerInvalidArgumentError, never> =>
+  Schema.decodeUnknownEffect(ApprovalOutcome)(input).pipe(
+    Effect.mapError((cause) => invalidArgument("ApprovalBroker.ask", "outcome", cause))
   )
 
 const decodeQueueDepth = (
