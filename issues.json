@@ -1279,10 +1279,10 @@
       "title": "Validate Dock.setBadgeText display strings",
       "url": "https://github.com/Rika-Labs/effect-desktop/issues/814",
       "status": "work-in-progress",
-      "workflow": ["scout", "architect", "review", "work", "pr"],
+      "workflow": ["scout", "architect", "review", "work", "pr", "code-review", "address"],
       "branch": "issue-814-validate-dock-badge-text",
       "pr": "https://github.com/Rika-Labs/effect-desktop/pull/828",
-      "updated_at": "2026-05-09T01:07:00.000Z"
+      "updated_at": "2026-05-09T01:12:10.000Z"
     },
     "worked": [
       {
