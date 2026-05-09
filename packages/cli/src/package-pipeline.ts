@@ -170,6 +170,10 @@ interface PlannedArtifact {
   readonly artifactPath: string
 }
 
+interface PackageProductionState {
+  macosAppStep: PackageStepReport | undefined
+}
+
 export const runDesktopPackage = (
   options: DesktopPackageOptions
 ): Effect.Effect<DesktopPackageReport, PackagePipelineError, never> =>
@@ -190,11 +194,14 @@ export const runDesktopPackage = (
 
     const steps: PackageStepReport[] = []
     const artifacts: PackageArtifactReport[] = []
+    const productionState: PackageProductionState = {
+      macosAppStep: undefined
+    }
 
     for (const kind of plan.artifactKinds) {
       const artifact = plannedArtifact(plan, kind)
-      const step = yield* produceArtifact(options, plan, artifact)
-      steps.push(step)
+      const artifactSteps = yield* produceArtifact(options, plan, artifact, productionState)
+      steps.push(...artifactSteps)
       const metadata = yield* writeArtifactMetadata(plan, artifact.kind, artifact.artifactPath)
       artifacts.push(metadata)
       steps.push({
@@ -334,39 +341,71 @@ const validateBuildLayout = (plan: PackagePlan): Effect.Effect<void, PackageFile
 const produceArtifact = (
   options: DesktopPackageOptions,
   plan: PackagePlan,
-  artifact: PlannedArtifact
-): Effect.Effect<PackageStepReport, PackageCommandFailedError | PackageFileError, never> => {
+  artifact: PlannedArtifact,
+  state: PackageProductionState
+): Effect.Effect<
+  readonly PackageStepReport[],
+  PackageCommandFailedError | PackageFileError,
+  never
+> => {
   switch (artifact.kind) {
     case "app":
-      return produceMacosApp(options, plan, artifact)
+      return Effect.gen(function* () {
+        const step = yield* ensureMacosAppBundle(options, plan, state)
+        return [step]
+      })
     case "dmg":
-      return runToolStep(
-        options,
-        "macos-dmg",
-        "hdiutil",
-        ["create", "-srcFolder", macosAppBundlePath(plan), "-o", artifact.artifactPath],
-        plan.outputPath,
-        artifact.artifactPath
-      )
+      return Effect.gen(function* () {
+        const hadAppBundle = state.macosAppStep !== undefined
+        const appStep = yield* ensureMacosAppBundle(options, plan, state)
+        const step = yield* runToolStep(
+          options,
+          "macos-dmg",
+          "hdiutil",
+          ["create", "-srcFolder", macosAppBundlePath(plan), "-o", artifact.artifactPath],
+          plan.outputPath,
+          artifact.artifactPath
+        )
+        return hadAppBundle ? [step] : [appStep, step]
+      })
     case "zip":
-      return runToolStep(
-        options,
-        "macos-zip",
-        "ditto",
-        ["-c", "-k", "--keepParent", macosAppBundlePath(plan), artifact.artifactPath],
-        plan.outputPath,
-        artifact.artifactPath
-      )
+      return Effect.gen(function* () {
+        const hadAppBundle = state.macosAppStep !== undefined
+        const appStep = yield* ensureMacosAppBundle(options, plan, state)
+        const step = yield* runToolStep(
+          options,
+          "macos-zip",
+          "ditto",
+          ["-c", "-k", "--keepParent", macosAppBundlePath(plan), artifact.artifactPath],
+          plan.outputPath,
+          artifact.artifactPath
+        )
+        return hadAppBundle ? [step] : [appStep, step]
+      })
     case "msi":
-      return produceWindowsMsi(options, plan, artifact)
+      return Effect.map(produceWindowsMsi(options, plan, artifact), (step) => [step])
     case "appimage":
-      return produceLinuxAppImage(options, plan, artifact)
+      return Effect.map(produceLinuxAppImage(options, plan, artifact), (step) => [step])
     case "deb":
-      return produceLinuxDeb(options, plan, artifact)
+      return Effect.map(produceLinuxDeb(options, plan, artifact), (step) => [step])
     case "rpm":
-      return produceLinuxRpm(options, plan, artifact)
+      return Effect.map(produceLinuxRpm(options, plan, artifact), (step) => [step])
   }
 }
+
+const ensureMacosAppBundle = (
+  options: DesktopPackageOptions,
+  plan: PackagePlan,
+  state: PackageProductionState
+): Effect.Effect<PackageStepReport, PackageFileError, never> =>
+  Effect.gen(function* () {
+    if (state.macosAppStep !== undefined) {
+      return state.macosAppStep
+    }
+    const step = yield* produceMacosApp(options, plan, plannedArtifact(plan, "app"))
+    state.macosAppStep = step
+    return step
+  })
 
 const produceMacosApp = (
   options: DesktopPackageOptions,

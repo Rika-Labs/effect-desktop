@@ -1275,16 +1275,24 @@
   ],
   "workflow_ledger": {
     "active": {
-      "number": 876,
-      "title": "Preserve trace integrity in diagnostics row caps",
-      "url": "https://github.com/Rika-Labs/effect-desktop/issues/876",
+      "number": 877,
+      "title": "Stage macOS app bundle for dmg and zip packaging",
+      "url": "https://github.com/Rika-Labs/effect-desktop/issues/877",
       "status": "pr-open",
-      "workflow": ["scout", "architect", "review", "work", "pr", "code-review", "address", "learn"],
-      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/906",
-      "branch": "issue-876-preserve-trace-integrity-in-diagnostics-row-caps",
-      "updated_at": "2026-05-09T04:16:10.000Z"
+      "workflow": ["scout", "architect", "review", "work", "pr", "code-review", "address"],
+      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/919",
+      "branch": "issue-877-stage-macos-app-bundle-for-dmg-and-zip-packaging",
+      "updated_at": "2026-05-09T04:37:00.000Z"
     },
     "worked": [
+      {
+        "number": 876,
+        "title": "Preserve trace integrity in diagnostics row caps",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/876",
+        "status": "merged",
+        "pr": "https://github.com/Rika-Labs/effect-desktop/pull/906",
+        "updated_at": "2026-05-09T04:18:29.000Z"
+      },
       {
         "number": 875,
         "title": "Publish job retry progress after audit success",
