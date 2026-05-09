@@ -66,6 +66,7 @@
         "@effect-desktop/bridge": "workspace:*",
         "@effect/opentelemetry": "4.0.0-beta.60",
         "@effect/platform-bun": "4.0.0-beta.60",
+        "@effect/sql-sqlite-bun": "4.0.0-beta.60",
         "@opentelemetry/api": "^1.9",
         "@opentelemetry/resources": "^2.0.0",
         "@opentelemetry/sdk-logs": "^0.203.0",
@@ -216,6 +217,8 @@
     "@effect/platform-bun": ["@effect/platform-bun@4.0.0-beta.60", "", { "dependencies": { "@effect/platform-node-shared": "^4.0.0-beta.60" }, "peerDependencies": { "effect": "^4.0.0-beta.60" } }, "sha512-UHm4RyigOie5Rk3KvNqJZwNJ/mG/OlDt3Uz7hwAxD3KjgHZL4CouInwI0/VXDD31BMFwUSLgUECDFGk0nojwag=="],
 
     "@effect/platform-node-shared": ["@effect/platform-node-shared@4.0.0-beta.65", "", { "dependencies": { "@types/ws": "^8.18.1", "ws": "^8.20.0" }, "peerDependencies": { "effect": "^4.0.0-beta.65" } }, "sha512-3rY8F3WLEax6Hj08GI/OvDIH+KqjfxH7RM2bAMfgR75NgRmwDtny1P49PtPkoRjH5dcdtThThtsvE4X9OTZkpQ=="],
+
+    "@effect/sql-sqlite-bun": ["@effect/sql-sqlite-bun@4.0.0-beta.60", "", { "peerDependencies": { "effect": "^4.0.0-beta.60" } }, "sha512-vDXAGVmRZkB8gq+4KHfp3JgxqttSg+Bl6wn6YOYqGi4/X0BMMACLndY09c2+Pt4Whd4W+xNM2SD4SIo1Hd5i6w=="],
 
     "@emnapi/core": ["@emnapi/core@1.10.0", "", { "dependencies": { "@emnapi/wasi-threads": "1.2.1", "tslib": "^2.4.0" } }, "sha512-yq6OkJ4p82CAfPl0u9mQebQHKPJkY7WrIuk205cTYnYe+k2Z8YBh11FrbRG/H6ihirqcacOgl2BIO8oyMQLeXw=="],
 
