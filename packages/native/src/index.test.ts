@@ -43,6 +43,7 @@ import {
   ClipboardImage,
   ClipboardLive,
   ClipboardMethodNames,
+  ClipboardSupportedResult,
   ClipboardText,
   ContextMenu,
   ContextMenuActivatedEvent,
@@ -339,7 +340,8 @@ const expectedClipboardMethods: Array<(typeof ClipboardMethodNames)[number]> = [
   "writeText",
   "readImage",
   "writeImage",
-  "clear"
+  "clear",
+  "isSupported"
 ]
 
 const expectedNotificationMethods: Array<(typeof NotificationMethodNames)[number]> = [
@@ -1941,15 +1943,20 @@ test("Clipboard bridge client rejects NUL bytes in writeText as InvalidArgument"
 })
 
 test("unsupported Clipboard client reports deferred host methods as Effect values", async () => {
-  const exit = await Effect.runPromise(
+  const result = await Effect.runPromise(
     Effect.gen(function* () {
       const clipboard = yield* Clipboard
-      return yield* Effect.exit(clipboard.readText())
+      const textSupported = yield* clipboard.isSupported("text")
+      const imageSupported = yield* clipboard.isSupported("image")
+      const readExit = yield* Effect.exit(clipboard.readText())
+      return { imageSupported, readExit, textSupported }
     }).pipe(Effect.provide(makeClipboardServiceLayer(makeUnsupportedClipboardClient())))
   )
 
+  expect(result.textSupported).toBe(false)
+  expect(result.imageSupported).toBe(false)
   expectExitFailure(
-    exit,
+    result.readExit,
     (error) =>
       hasErrorTag(error, "Unsupported") &&
       typeof error === "object" &&
@@ -4688,7 +4695,12 @@ const clipboardClient = (calls: string[]): ClipboardClientApi => ({
       return new ClipboardImage({ mime: "image/png", bytes: pngBytes })
     }),
   writeImage: (input) => recordVoid(calls, `writeImage:${input.mime}:${input.bytes.length}`),
-  clear: () => recordVoid(calls, "clear")
+  clear: () => recordVoid(calls, "clear"),
+  isSupported: (capability) =>
+    Effect.sync(() => {
+      calls.push(`isSupported:${capability}`)
+      return new ClipboardSupportedResult({ supported: true })
+    })
 })
 
 const notificationClient = (calls: string[]): NotificationClientApi => ({

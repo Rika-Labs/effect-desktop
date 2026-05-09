@@ -16,9 +16,12 @@ import {
 import { Context, Effect, Layer, Option, Schema } from "effect"
 
 import {
+  type ClipboardCapability,
   ClipboardImage,
   type ClipboardImageMime,
   type ClipboardImageOptions,
+  ClipboardIsSupportedInput,
+  ClipboardSupportedResult,
   ClipboardText
 } from "./contracts/clipboard.js"
 
@@ -56,6 +59,12 @@ export const ClipboardApiSpec = Object.freeze({
     output: Schema.Void,
     error: HostProtocolErrorSchema,
     permission: "native.invoke:Clipboard.clear"
+  },
+  isSupported: {
+    input: ClipboardIsSupportedInput,
+    output: ClipboardSupportedResult,
+    error: HostProtocolErrorSchema,
+    permission: "none"
   }
 }) satisfies ApiContractSpec
 
@@ -109,6 +118,9 @@ export interface ClipboardClientApi {
   readonly readImage: () => Effect.Effect<ClipboardImage, ClipboardError, never>
   readonly writeImage: (input: ClipboardImageOptions) => Effect.Effect<void, ClipboardError, never>
   readonly clear: () => Effect.Effect<void, ClipboardError, never>
+  readonly isSupported: (
+    capability: ClipboardCapability
+  ) => Effect.Effect<ClipboardSupportedResult, ClipboardError, never>
 }
 
 export class ClipboardClient extends Context.Service<ClipboardClient, ClipboardClientApi>()(
@@ -121,6 +133,9 @@ export interface ClipboardServiceApi {
   readonly readImage: () => Effect.Effect<ClipboardImage, ClipboardError, never>
   readonly writeImage: (input: ClipboardImageOptions) => Effect.Effect<void, ClipboardError, never>
   readonly clear: () => Effect.Effect<void, ClipboardError, never>
+  readonly isSupported: (
+    capability: ClipboardCapability
+  ) => Effect.Effect<boolean, ClipboardError, never>
 }
 
 export class Clipboard extends Context.Service<Clipboard, ClipboardServiceApi>()(
@@ -158,7 +173,9 @@ const makeClipboardService = (client: ClipboardClientApi): ClipboardServiceApi =
     writeText: (text) => client.writeText(text),
     readImage: () => client.readImage(),
     writeImage: (input) => client.writeImage(input),
-    clear: () => client.clear()
+    clear: () => client.clear(),
+    isSupported: (capability) =>
+      client.isSupported(capability).pipe(Effect.map((result) => result.supported))
   }
 
   return Object.freeze(service)
@@ -178,7 +195,8 @@ const makeClipboardBridgeClient = (
       decodeClipboardImage(input)
         .pipe(Effect.flatMap(validateClipboardImage))
         .pipe(Effect.flatMap(client.writeImage)),
-    clear: () => client.clear()
+    clear: () => client.clear(),
+    isSupported: (capability) => client.isSupported(new ClipboardIsSupportedInput({ capability }))
   }
 
   return Object.freeze(clipboardClient)
@@ -193,7 +211,8 @@ export const makeUnsupportedClipboardClient = (): ClipboardClientApi => {
     writeText: () => unsupportedEffect<void>("Clipboard.writeText"),
     readImage: () => unsupportedEffect<ClipboardImage>("Clipboard.readImage"),
     writeImage: () => unsupportedEffect<void>("Clipboard.writeImage"),
-    clear: () => unsupportedEffect<void>("Clipboard.clear")
+    clear: () => unsupportedEffect<void>("Clipboard.clear"),
+    isSupported: () => Effect.succeed(new ClipboardSupportedResult({ supported: false }))
   }
 
   return Object.freeze(client)
