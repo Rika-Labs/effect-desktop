@@ -3566,6 +3566,104 @@ test("GlobalShortcut bridge client sends typed host envelopes and decodes presse
   ])
 })
 
+test("GlobalShortcut bridge client rejects inconsistent isSupported output as InvalidOutput", async () => {
+  const cases: ReadonlyArray<{ readonly label: string; readonly payload: unknown }> = [
+    {
+      label: "true with reason",
+      payload: { supported: true, reason: "wayland-no-global-shortcut" }
+    },
+    { label: "false without reason", payload: { supported: false } }
+  ]
+
+  for (const { label, payload } of cases) {
+    const exchange = globalShortcutExchange([], () => ({ kind: "success", payload }))
+    const client = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* GlobalShortcut
+      }).pipe(
+        Effect.provide(
+          Layer.provide(GlobalShortcutLive, makeGlobalShortcutBridgeClientLayer(exchange))
+        )
+      )
+    )
+
+    const exit = await Effect.runPromiseExit(client.isSupported())
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+    expect(label).toBeDefined()
+  }
+})
+
+test("GlobalShortcut bridge client decodes valid isSupported outputs", async () => {
+  const cases: ReadonlyArray<{ readonly payload: unknown; readonly expected: GlobalShortcutSupportedResult }> = [
+    { payload: { supported: true }, expected: new GlobalShortcutSupportedResult({ supported: true }) },
+    {
+      payload: { supported: false, reason: "wayland-no-global-shortcut" },
+      expected: new GlobalShortcutSupportedResult({
+        supported: false,
+        reason: "wayland-no-global-shortcut"
+      })
+    }
+  ]
+
+  for (const { payload, expected } of cases) {
+    const exchange = globalShortcutExchange([], () => ({ kind: "success", payload }))
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const shortcuts = yield* GlobalShortcut
+        return yield* shortcuts.isSupported()
+      }).pipe(
+        Effect.provide(
+          Layer.provide(GlobalShortcutLive, makeGlobalShortcutBridgeClientLayer(exchange))
+        )
+      )
+    )
+
+    expect(result).toEqual(expected)
+  }
+})
+
+test("GlobalShortcut bridge client rejects invalid pressed event identifiers as InvalidOutput", async () => {
+  const cases: ReadonlyArray<{ readonly label: string; readonly payload: unknown }> = [
+    { label: "empty accelerator", payload: { accelerator: "", registrarWindowId: "window-1" } },
+    { label: "empty windowId", payload: { accelerator: "CmdOrCtrl+K", registrarWindowId: "" } },
+    {
+      label: "nul accelerator",
+      payload: { accelerator: "Cmd\u0000K", registrarWindowId: "window-1" }
+    }
+  ]
+
+  for (const { label, payload } of cases) {
+    const exchange: ApiClientExchange = {
+      request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
+      subscribe: (method) =>
+        method === "GlobalShortcut.Pressed"
+          ? Stream.make(
+              new HostProtocolEventEnvelope({
+                kind: "event",
+                timestamp: 1710000000900,
+                traceId: "event-trace",
+                method,
+                payload
+              })
+            )
+          : Stream.empty
+    }
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const shortcuts = yield* GlobalShortcut
+        return yield* Effect.exit(shortcuts.onPressed().pipe(Stream.take(1), Stream.runCollect))
+      }).pipe(
+        Effect.provide(
+          Layer.provide(GlobalShortcutLive, makeGlobalShortcutBridgeClientLayer(exchange))
+        )
+      )
+    )
+
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+    expect(label).toBeDefined()
+  }
+})
+
 test("GlobalShortcut bridge client rejects empty and NUL-bearing accelerators as InvalidArgument", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const client = await Effect.runPromise(

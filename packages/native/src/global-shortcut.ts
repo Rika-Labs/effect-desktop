@@ -32,6 +32,7 @@ import {
   GlobalShortcutRegisteredResult,
   GlobalShortcutRegisterInput,
   type GlobalShortcutSupportReason,
+  GlobalShortcutSupportedOutput,
   GlobalShortcutSupportedResult
 } from "./contracts/global-shortcut.js"
 import type { WindowHandle } from "./window.js"
@@ -65,7 +66,7 @@ export const GlobalShortcutApiSpec = Object.freeze({
   },
   isSupported: {
     input: Schema.Void,
-    output: GlobalShortcutSupportedResult,
+    output: GlobalShortcutSupportedOutput,
     error: HostProtocolErrorSchema,
     permission: "none"
   }

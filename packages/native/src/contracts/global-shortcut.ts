@@ -32,6 +32,16 @@ export class GlobalShortcutSupportedResult extends Schema.Class<GlobalShortcutSu
   reason: Schema.optionalKey(GlobalShortcutSupportReason)
 }) {}
 
+export const GlobalShortcutSupportedOutput = GlobalShortcutSupportedResult.check(
+  Schema.makeFilter<GlobalShortcutSupportedResult>((value) =>
+    value.supported
+      ? value.reason === undefined ||
+        "supported result must not include reason when supported is true"
+      : value.reason !== undefined ||
+        "supported result requires reason when supported is false"
+  )
+)
+
 export class GlobalShortcutRegisteredResult extends Schema.Class<GlobalShortcutRegisteredResult>(
   "GlobalShortcutRegisteredResult"
 )({
@@ -41,6 +51,6 @@ export class GlobalShortcutRegisteredResult extends Schema.Class<GlobalShortcutR
 export class GlobalShortcutPressedEvent extends Schema.Class<GlobalShortcutPressedEvent>(
   "GlobalShortcutPressedEvent"
 )({
-  accelerator: Schema.String,
-  registrarWindowId: Schema.String
+  accelerator: BridgeSafeNonEmptyString,
+  registrarWindowId: BridgeSafeNonEmptyString
 }) {}
