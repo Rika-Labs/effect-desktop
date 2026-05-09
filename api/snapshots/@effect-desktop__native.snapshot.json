@@ -641,7 +641,7 @@
     {
       "name": "DockSetBadgeTextInput",
       "kind": "class",
-      "signature": "export class DockSetBadgeTextInput extends Schema.Class<DockSetBadgeTextInput>( \"DockSetBadgeTextInput\" )({ text: Schema.NullOr(Schema.String) }) {}"
+      "signature": "export class DockSetBadgeTextInput extends Schema.Class<DockSetBadgeTextInput>( \"DockSetBadgeTextInput\" )({ text: Schema.NullOr(DockBadgeText) }) {}"
     },
     {
       "name": "DockSetJumpListInput",

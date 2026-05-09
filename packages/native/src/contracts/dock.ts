@@ -16,6 +16,9 @@ export const DockProgressState = Schema.Literals(["normal", "indeterminate", "er
 export type DockMethod = Schema.Schema.Type<typeof DockMethod>
 export type DockProgressState = Schema.Schema.Type<typeof DockProgressState>
 
+// eslint-disable-next-line no-control-regex -- Dock badge text must reject ASCII control bytes.
+const DockBadgeText = Schema.String.check(Schema.isPattern(/^[^\u0000-\u001f\u007f]*$/))
+
 export class DockSetBadgeCountInput extends Schema.Class<DockSetBadgeCountInput>(
   "DockSetBadgeCountInput"
 )({
@@ -25,7 +28,7 @@ export class DockSetBadgeCountInput extends Schema.Class<DockSetBadgeCountInput>
 export class DockSetBadgeTextInput extends Schema.Class<DockSetBadgeTextInput>(
   "DockSetBadgeTextInput"
 )({
-  text: Schema.NullOr(Schema.String)
+  text: Schema.NullOr(DockBadgeText)
 }) {}
 
 export class DockSetProgressOptions extends Schema.Class<DockSetProgressOptions>(
