@@ -1157,20 +1157,22 @@ test("Menu bridge client rejects application menu root items before transport", 
   expect(requests).toEqual([])
 })
 
-test("unsupported Menu client reports deferred host methods as Effect values", async () => {
+test("unsupported Menu client reports capabilities as unavailable and methods as Unsupported", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const menu = yield* Menu
       const macosAppMenu = yield* menu.capability("application menu", { platform: "macos" })
       const windowsAppMenu = yield* menu.capability("application menu", { platform: "windows" })
+      const linuxAppMenu = yield* menu.capability("application menu", { platform: "linux" })
       const setExit = yield* Effect.exit(menu.setApplicationMenu(menuTemplate))
 
-      return { macosAppMenu, setExit, windowsAppMenu }
+      return { linuxAppMenu, macosAppMenu, setExit, windowsAppMenu }
     }).pipe(Effect.provide(makeMenuServiceLayer(makeUnsupportedMenuClient())))
   )
 
-  expect(result.macosAppMenu).toBe(true)
+  expect(result.macosAppMenu).toBe(false)
   expect(result.windowsAppMenu).toBe(false)
+  expect(result.linuxAppMenu).toBe(false)
   expectExitFailure(
     result.setExit,
     (error) =>

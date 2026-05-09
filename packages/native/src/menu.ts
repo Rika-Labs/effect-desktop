@@ -398,12 +398,7 @@ export const makeUnsupportedMenuClient = (): MenuClientApi => {
     setWindowMenu: () => unsupportedEffect<void>("Menu.setWindowMenu"),
     clear: () => unsupportedEffect<void>("Menu.clear"),
     bindCommand: () => unsupportedEffect<void>("Menu.bindCommand"),
-    capability: (input) =>
-      Effect.succeed(
-        new MenuCapabilityResult({
-          supported: menuCapability(input.name, input.platform ?? currentMenuPlatform())
-        })
-      ),
+    capability: () => Effect.succeed(new MenuCapabilityResult({ supported: false })),
     onActivated: () => unsupportedStream<MenuActivatedEvent>("Menu.Activated")
   }
 
