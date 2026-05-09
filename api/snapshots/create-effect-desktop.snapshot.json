@@ -2,5 +2,31 @@
   "schemaVersion": 1,
   "packageName": "create-effect-desktop",
   "entrypoint": "src/index.ts",
-  "symbols": []
+  "symbols": [
+    {
+      "name": "RendererStorage",
+      "kind": "type",
+      "signature": "export type RendererStorage = \"none\" | \"indexeddb\" | \"sqlite-wasm\" | \"pglite\""
+    },
+    {
+      "name": "scaffold",
+      "kind": "value",
+      "signature": "const scaffold: (options: ScaffoldOptions) => ScaffoldResult"
+    },
+    {
+      "name": "ScaffoldOptions",
+      "kind": "interface",
+      "signature": "export interface ScaffoldOptions { readonly name: string readonly template: TemplateName readonly rendererStorage: RendererStorage readonly includeWorkflows: boolean readonly includeCluster: boolean readonly outDir: string }"
+    },
+    {
+      "name": "ScaffoldResult",
+      "kind": "interface",
+      "signature": "export interface ScaffoldResult { readonly path: string readonly template: TemplateName readonly stubs: readonly string[] }"
+    },
+    {
+      "name": "TemplateName",
+      "kind": "type",
+      "signature": "export type TemplateName = \"basic-react-tailwind\" | \"todo-sqlite\" | \"multi-window\""
+    }
+  ]
 }
