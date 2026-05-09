@@ -1275,16 +1275,24 @@
   ],
   "workflow_ledger": {
     "active": {
-      "number": 872,
-      "title": "Require audit for wildcard secret access",
-      "url": "https://github.com/Rika-Labs/effect-desktop/issues/872",
+      "number": 875,
+      "title": "Publish job retry progress after audit success",
+      "url": "https://github.com/Rika-Labs/effect-desktop/issues/875",
       "status": "pr-open",
       "workflow": ["scout", "architect", "review", "work", "pr", "code-review", "address", "learn"],
-      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/889",
-      "branch": "issue-872-require-audit-wildcard-secret-access",
-      "updated_at": "2026-05-09T03:39:12.000Z"
+      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/900",
+      "branch": "issue-875-publish-job-retry-progress-after-audit-success",
+      "updated_at": "2026-05-09T03:55:10.000Z"
     },
     "worked": [
+      {
+        "number": 872,
+        "title": "Require audit for wildcard secret access",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/872",
+        "status": "merged",
+        "pr": "https://github.com/Rika-Labs/effect-desktop/pull/889",
+        "updated_at": "2026-05-09T03:42:30.000Z"
+      },
       {
         "number": 871,
         "title": "Report transport close failures",

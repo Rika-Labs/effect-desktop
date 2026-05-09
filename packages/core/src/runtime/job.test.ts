@@ -1,9 +1,21 @@
 import { expect, test } from "bun:test"
-import { Cause, Data, Deferred, Duration, Effect, Exit, Schema, Schedule, Stream } from "effect"
+import {
+  Cause,
+  Data,
+  Deferred,
+  Duration,
+  Effect,
+  Exit,
+  Option,
+  Schema,
+  Schedule,
+  Stream
+} from "effect"
 
-import { EventLogEntry, type EventLogStore } from "./event-log.js"
+import { EventLogEntry, EventLogFullError, type EventLogStore } from "./event-log.js"
 import {
   CrashRetryPolicy,
+  JobAuditFailedError,
   JobCanceledError,
   JobInvalidArgumentError,
   JobFailedError,
@@ -224,6 +236,54 @@ test("Job retry policy retries recoverable failures and emits progress plus audi
   expect(auditRows.map((row) => row.type)).toEqual(["audit/job-retrying", "audit/job-retrying"])
 })
 
+test("Job retry policy does not publish retry progress before audit succeeds", async () => {
+  let auditCalls = 0
+  const fixture = await makeFixture({
+    audit: {
+      append: () =>
+        Effect.sync(() => {
+          auditCalls += 1
+        }).pipe(
+          Effect.andThen(
+            Effect.fail(
+              new EventLogFullError({
+                freeBytes: 0,
+                operation: "EventLog.append",
+                cause: Option.none()
+              })
+            )
+          )
+        ),
+      query: () => Effect.succeed([]),
+      subscribe: () => Stream.die("unused"),
+      close: () => Effect.void
+    }
+  })
+  let attempts = 0
+  const handle = await Effect.runPromise(
+    fixture.service.run({
+      id: "job-retry-audit-fails",
+      ownerScope: "scope-main",
+      effect: Effect.sync(() => {
+        attempts += 1
+        return attempts
+      }).pipe(Effect.flatMap((attempt) => Effect.fail(new TransientFailure({ attempt })))),
+      progressSchema: Progress,
+      retry: CrashRetryPolicy.fixed({ maxRetries: 1, delay: "0 millis" })
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(handle.result)
+  const replayExit = await Effect.runPromiseExit(
+    handle.progress.pipe(Stream.take(1), Stream.runCollect, Effect.timeout("20 millis"))
+  )
+
+  expectFailure(exit, JobAuditFailedError)
+  expect(auditCalls).toBe(1)
+  expect(attempts).toBe(1)
+  expect(Exit.isFailure(replayExit)).toBe(true)
+})
+
 test("Job retry policy does not retry non-recoverable failures", async () => {
   const fixture = await makeFixture()
   let attempts = 0
@@ -335,6 +395,7 @@ const makeFixture = async (
   options: {
     readonly progressBufferSize?: number
     readonly auditRows?: EventLogEntry[]
+    readonly audit?: EventLogStore
   } = {}
 ): Promise<Fixture> => {
   let id = 0
@@ -350,7 +411,9 @@ const makeFixture = async (
       ...(options.progressBufferSize === undefined
         ? {}
         : { progressBufferSize: options.progressBufferSize }),
-      ...(options.auditRows === undefined ? {} : { audit: memoryAudit(options.auditRows) })
+      ...(options.audit === undefined && options.auditRows === undefined
+        ? {}
+        : { audit: options.audit ?? memoryAudit(options.auditRows ?? []) })
     })
   )
   return { registry, service }

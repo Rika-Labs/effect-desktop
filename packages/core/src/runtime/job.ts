@@ -594,6 +594,9 @@ const jobErrorFromCause = (
   if (error instanceof JobInvalidArgumentError) {
     return error
   }
+  if (error instanceof JobAuditFailedError) {
+    return error
+  }
   if (error instanceof JobFailedError) {
     return error
   }
@@ -737,8 +740,6 @@ const emitRetrying = <P>(
 ): Effect.Effect<void, JobError, never> =>
   Effect.gen(function* () {
     const event = new JobRetrying(redact(input) as typeof JobRetrying.Type)
-    yield* Ref.update(progressLog, (current) => [...current, event].slice(-progressBufferSize))
-    yield* PubSub.publish(progressBus, Exit.succeed(event))
     yield* emitAuditEvent(
       audit,
       new AuditEvent({
@@ -760,6 +761,8 @@ const emitRetrying = <P>(
           })
       )
     )
+    yield* Ref.update(progressLog, (current) => [...current, event].slice(-progressBufferSize))
+    yield* PubSub.publish(progressBus, Exit.succeed(event))
   })
 
 const jobErrorCause = (
