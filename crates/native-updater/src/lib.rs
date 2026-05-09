@@ -1085,6 +1085,57 @@ mod tests {
     }
 
     #[test]
+    fn feed_url_template_without_platform_placeholder_is_rejected() {
+        let error = resolve_feed_url(
+            "https://updates.example.invalid/{channel}.json",
+            &UpdatePlatform::MacosArm64,
+            &UpdateChannel::Stable,
+        )
+        .expect_err("template without platform placeholder must fail");
+
+        assert_eq!(
+            error,
+            UpdateCheckError::FeedUrlTemplateInvalid {
+                template: "https://updates.example.invalid/{channel}.json".to_string(),
+                missing_placeholder: "{platform}"
+            }
+        );
+    }
+
+    #[test]
+    fn feed_url_template_without_any_placeholder_is_rejected() {
+        let error = resolve_feed_url(
+            "https://updates.example.invalid/stable.json",
+            &UpdatePlatform::MacosArm64,
+            &UpdateChannel::Stable,
+        )
+        .expect_err("template without placeholders must fail");
+
+        assert_eq!(
+            error,
+            UpdateCheckError::FeedUrlTemplateInvalid {
+                template: "https://updates.example.invalid/stable.json".to_string(),
+                missing_placeholder: "{platform}"
+            }
+        );
+    }
+
+    #[test]
+    fn feed_url_template_with_both_placeholders_resolves() {
+        let resolved = resolve_feed_url(
+            "https://updates.example.invalid/{platform}/{channel}.json",
+            &UpdatePlatform::MacosArm64,
+            &UpdateChannel::Stable,
+        )
+        .expect("template with both placeholders must resolve");
+
+        assert_eq!(
+            resolved,
+            "https://updates.example.invalid/macos-arm64/stable.json"
+        );
+    }
+
+    #[test]
     fn truncated_download_aborts_and_leaves_current_bundle_intact() {
         let root = test_root("truncated-download");
         let paths = install_paths(&root);

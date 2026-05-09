@@ -565,6 +565,26 @@ const artifactUrl = (
 
 const validateFeedUrl = (feedUrl: string): Effect.Effect<void, PublishConfigError, never> =>
   Effect.gen(function* () {
+    if (!feedUrl.includes("{platform}")) {
+      return yield* Effect.fail(
+        new PublishConfigError({
+          field: "update.feedUrl",
+          message: "update.feedUrl must contain the {platform} placeholder",
+          remediation:
+            "Set update.feedUrl to an http(s) URL template with both {platform} and {channel} placeholders, e.g. https://example.invalid/{platform}/{channel}.json"
+        })
+      )
+    }
+    if (!feedUrl.includes("{channel}")) {
+      return yield* Effect.fail(
+        new PublishConfigError({
+          field: "update.feedUrl",
+          message: "update.feedUrl must contain the {channel} placeholder",
+          remediation:
+            "Set update.feedUrl to an http(s) URL template with both {platform} and {channel} placeholders, e.g. https://example.invalid/{platform}/{channel}.json"
+        })
+      )
+    }
     const substituted = feedUrl
       .replaceAll("{platform}", "macos-arm64")
       .replaceAll("{channel}", "stable")
@@ -578,7 +598,7 @@ const validateFeedUrl = (feedUrl: string): Effect.Effect<void, PublishConfigErro
         new PublishConfigError({
           field: "update.feedUrl",
           message:
-            "update.feedUrl must be a valid http(s) URL template with optional {platform} and {channel} placeholders",
+            "update.feedUrl must be a valid http(s) URL template with {platform} and {channel} placeholders",
           remediation:
             "Set update.feedUrl to a valid absolute URL like https://example.invalid/{platform}/{channel}.json"
         })

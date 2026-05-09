@@ -2410,7 +2410,7 @@ test("desktop publish rejects invalid feedUrl", async () => {
     await writePlaygroundFixture(directory, {
       update: {
         channel: "stable",
-        feedUrl: "not-a-url",
+        feedUrl: "not-a-url-{platform}-{channel}",
         publicKey: key.publicKey,
         privateKeyEnv,
         keyVersion: 5
@@ -2432,6 +2432,90 @@ test("desktop publish rejects invalid feedUrl", async () => {
     expect(exitCode).toBe(1)
     expect(stderr.join("")).toContain("update.feedUrl")
     expect(stderr.join("")).toContain("valid http(s) URL template")
+  } finally {
+    if (previousPrivateKey === undefined) {
+      delete process.env[privateKeyEnv]
+    } else {
+      process.env[privateKeyEnv] = previousPrivateKey
+    }
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop publish rejects feedUrl missing the {platform} placeholder", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-feed-no-platform-"))
+  const key = testEd25519Key()
+  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+  const previousPrivateKey = process.env[privateKeyEnv]
+  process.env[privateKeyEnv] = key.privateKeyPem
+  try {
+    await writePlaygroundFixture(directory, {
+      update: {
+        channel: "stable",
+        feedUrl: "https://updates.example.invalid/{channel}.json",
+        publicKey: key.publicKey,
+        privateKeyEnv,
+        keyVersion: 5
+      }
+    })
+    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["publish", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        now: () => 1_772_923_200_000,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("update.feedUrl")
+    expect(stderr.join("")).toContain("{platform}")
+  } finally {
+    if (previousPrivateKey === undefined) {
+      delete process.env[privateKeyEnv]
+    } else {
+      process.env[privateKeyEnv] = previousPrivateKey
+    }
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop publish rejects feedUrl missing the {channel} placeholder", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-feed-no-channel-"))
+  const key = testEd25519Key()
+  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+  const previousPrivateKey = process.env[privateKeyEnv]
+  process.env[privateKeyEnv] = key.privateKeyPem
+  try {
+    await writePlaygroundFixture(directory, {
+      update: {
+        channel: "stable",
+        feedUrl: "https://updates.example.invalid/{platform}/stable.json",
+        publicKey: key.publicKey,
+        privateKeyEnv,
+        keyVersion: 5
+      }
+    })
+    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["publish", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        now: () => 1_772_923_200_000,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("update.feedUrl")
+    expect(stderr.join("")).toContain("{channel}")
   } finally {
     if (previousPrivateKey === undefined) {
       delete process.env[privateKeyEnv]
