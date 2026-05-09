@@ -3,7 +3,21 @@ import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path
 import { pathToFileURL } from "node:url"
 
 import { HOST_PROTOCOL_VERSION } from "@effect-desktop/bridge"
-import { Data, Effect } from "effect"
+import {
+  Console,
+  Data,
+  Effect,
+  FileSystem,
+  Layer,
+  Option,
+  Path,
+  Ref,
+  Sink,
+  Stdio,
+  Terminal
+} from "effect"
+import { Command, Flag } from "effect/unstable/cli"
+import * as ChildProcessSpawnerModule from "effect/unstable/process"
 
 import {
   formatProductionCheckReport,
@@ -29,8 +43,7 @@ import {
   formatDoctorReport,
   runDesktopDoctor,
   runDoctorCommand,
-  type DoctorCommandRunner,
-  type DesktopDoctorReport
+  type DoctorCommandRunner
 } from "./doctor.js"
 import {
   formatReproError,
@@ -360,62 +373,345 @@ interface AppConfig {
 
 export const runCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
   Effect.gen(function* () {
-    if (options.argv[0] === "build") {
-      return yield* runBuildCli(options)
-    }
+    const exitCodeRef = yield* Ref.make(0)
 
-    if (options.argv[0] === "package") {
-      return yield* runPackageCli(options)
-    }
+    const fail = (code: number): Effect.Effect<void, never, never> => Ref.set(exitCodeRef, code)
 
-    if (options.argv[0] === "doctor") {
-      return yield* runDoctorCli(options)
-    }
-
-    if (options.argv[0] === "sign") {
-      return yield* runSignCli(options)
-    }
-
-    if (options.argv[0] === "notarize") {
-      return yield* runNotarizeCli(options)
-    }
-
-    if (options.argv[0] === "publish") {
-      return yield* runPublishCli(options)
-    }
-
-    if (options.argv[0] === "check" && options.argv.includes("--repro")) {
-      return yield* runReproCheckCli(options)
-    }
-
-    if (options.argv[0] === "check" && options.argv.includes("--api")) {
-      return yield* runPublicApiCheckCli(options)
-    }
-
-    if (options.argv[0] === "check" && options.argv.includes("--docs")) {
-      return yield* runDocsCheckCli(options)
-    }
-
-    if (options.argv[0] === "check" && options.argv.includes("--release")) {
-      return yield* runReleaseCheckCli(options)
-    }
-
-    if (options.argv[0] === "check" && options.argv.includes("--a11y")) {
-      return yield* runAccessibilityCheckCli(options)
-    }
-
-    if (options.argv[0] === "check" && options.argv.includes("--semver")) {
-      return yield* runSemverCheckCli(options)
-    }
-
-    if (options.argv[0] !== "check" || !options.argv.includes("--production")) {
-      options.writeStderr(
-        "Usage: desktop build --config <path>\nUsage: desktop package --config <path>\nUsage: desktop sign --config <path>\nUsage: desktop notarize --config <path>\nUsage: desktop publish --config <path>\nUsage: desktop doctor [--config <path>] [--ci] [--json]\nUsage: desktop check --production --config <path>\nUsage: desktop check --repro --config <path>\nUsage: desktop check --api [--write]\nUsage: desktop check --docs\nUsage: desktop check --release\nUsage: desktop check --a11y\nUsage: desktop check --semver\n"
+    const buildCmd = Command.make(
+      "build",
+      {
+        config: Flag.string("config").pipe(Flag.withDefault("desktop.config.ts")),
+        platform: Flag.optional(Flag.string("platform")),
+        json: Flag.boolean("json").pipe(Flag.withDefault(false))
+      },
+      (flags) =>
+        Effect.gen(function* () {
+          const report = yield* runDesktopBuild({
+            cwd: options.cwd,
+            configPath: flags.config,
+            platform: Option.getOrUndefined(flags.platform),
+            commandRunner: options.commandRunner ?? runCommand,
+            now: options.now ?? Date.now,
+            hostTarget: options.hostTarget
+          }).pipe(
+            Effect.catch((error) =>
+              Effect.sync(() => {
+                if (flags.json) {
+                  options.writeStderr(`${JSON.stringify(formatBuildError(error), null, 2)}\n`)
+                } else {
+                  options.writeStderr(`${formatBuildErrorText(error)}\n`)
+                }
+                return undefined
+              })
+            )
+          )
+          if (report === undefined) {
+            yield* fail(1)
+            return
+          }
+          if (flags.json) {
+            options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+          } else {
+            options.writeStdout(formatBuildReport(report))
+          }
+        })
+    ).pipe(
+      Command.withDescription(
+        "Build renderer, runtime, native host, bridge manifest, and app manifest into build/effect-desktop/<target>."
       )
-      return 1
-    }
+    )
 
-    return yield* runProductionCheckCli(options)
+    const packageCmd = Command.make(
+      "package",
+      {
+        config: Flag.string("config").pipe(Flag.withDefault("desktop.config.ts")),
+        platform: Flag.optional(Flag.string("platform")),
+        artifact: Flag.optional(Flag.string("artifact")),
+        json: Flag.boolean("json").pipe(Flag.withDefault(false))
+      },
+      (flags) =>
+        Effect.gen(function* () {
+          const report = yield* runDesktopPackage({
+            cwd: options.cwd,
+            configPath: flags.config,
+            platform: Option.getOrUndefined(flags.platform),
+            artifact: Option.getOrUndefined(flags.artifact),
+            commandRunner: options.packageCommandRunner ?? runPackageCommand,
+            now: options.now ?? Date.now,
+            hostTarget: options.hostTarget
+          }).pipe(
+            Effect.catch((error) =>
+              Effect.sync(() => {
+                if (flags.json) {
+                  options.writeStderr(`${JSON.stringify(formatPackageError(error), null, 2)}\n`)
+                } else {
+                  options.writeStderr(`${formatPackageErrorText(error)}\n`)
+                }
+                return undefined
+              })
+            )
+          )
+          if (report === undefined) {
+            yield* fail(1)
+            return
+          }
+          if (flags.json) {
+            options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+          } else {
+            options.writeStdout(formatPackageReport(report))
+          }
+        })
+    ).pipe(
+      Command.withDescription(
+        "Package an existing build/effect-desktop/<target> layout into the fixed §23.2 artifact set."
+      )
+    )
+
+    const signCmd = Command.make(
+      "sign",
+      {
+        config: Flag.string("config").pipe(Flag.withDefault("desktop.config.ts")),
+        platform: Flag.optional(Flag.string("platform")),
+        json: Flag.boolean("json").pipe(Flag.withDefault(false))
+      },
+      (flags) =>
+        Effect.gen(function* () {
+          const report = yield* runDesktopSign({
+            cwd: options.cwd,
+            configPath: flags.config,
+            platform: Option.getOrUndefined(flags.platform),
+            commandRunner: options.signCommandRunner ?? runSignCommand,
+            now: options.now ?? Date.now,
+            hostTarget: options.hostTarget
+          }).pipe(
+            Effect.catch((error) =>
+              Effect.sync(() => {
+                if (flags.json) {
+                  options.writeStderr(`${JSON.stringify(formatSignError(error), null, 2)}\n`)
+                } else {
+                  options.writeStderr(`${formatSignErrorText(error)}\n`)
+                }
+                return undefined
+              })
+            )
+          )
+          if (report === undefined) {
+            yield* fail(1)
+            return
+          }
+          if (flags.json) {
+            options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+          } else {
+            options.writeStdout(formatSignReport(report))
+          }
+        })
+    ).pipe(
+      Command.withDescription(
+        "Sign existing dist/desktop/<platform> artifacts and write sign-report.json."
+      )
+    )
+
+    const notarizeCmd = Command.make(
+      "notarize",
+      {
+        config: Flag.string("config").pipe(Flag.withDefault("desktop.config.ts")),
+        platform: Flag.optional(Flag.string("platform")),
+        json: Flag.boolean("json").pipe(Flag.withDefault(false))
+      },
+      (flags) =>
+        Effect.gen(function* () {
+          const macosTarget =
+            options.hostTarget === "macos-arm64" || options.hostTarget === "macos-x64"
+              ? options.hostTarget
+              : undefined
+          const report = yield* runDesktopNotarize({
+            cwd: options.cwd,
+            configPath: flags.config,
+            platform: Option.getOrUndefined(flags.platform),
+            commandRunner: options.notarizeCommandRunner ?? runNotarizeCommand,
+            now: options.now ?? Date.now,
+            hostTarget: macosTarget
+          }).pipe(
+            Effect.catch((error) =>
+              Effect.sync(() => {
+                if (flags.json) {
+                  options.writeStderr(`${JSON.stringify(formatNotarizeError(error), null, 2)}\n`)
+                } else {
+                  options.writeStderr(`${formatNotarizeErrorText(error)}\n`)
+                }
+                return undefined
+              })
+            )
+          )
+          if (report === undefined) {
+            yield* fail(1)
+            return
+          }
+          if (flags.json) {
+            options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+          } else {
+            options.writeStdout(formatNotarizeReport(report))
+          }
+        })
+    ).pipe(
+      Command.withDescription(
+        "Submit signed macOS artifacts to Apple notarization, staple tickets, and assess Gatekeeper."
+      )
+    )
+
+    const publishCmd = Command.make(
+      "publish",
+      {
+        config: Flag.string("config").pipe(Flag.withDefault("desktop.config.ts")),
+        platform: Flag.optional(Flag.string("platform")),
+        json: Flag.boolean("json").pipe(Flag.withDefault(false))
+      },
+      (flags) =>
+        Effect.gen(function* () {
+          const report = yield* runDesktopPublish({
+            cwd: options.cwd,
+            configPath: flags.config,
+            platform: Option.getOrUndefined(flags.platform),
+            now: options.now ?? Date.now
+          }).pipe(
+            Effect.catch((error) =>
+              Effect.sync(() => {
+                if (flags.json) {
+                  options.writeStderr(`${JSON.stringify(formatPublishError(error), null, 2)}\n`)
+                } else {
+                  options.writeStderr(`${formatPublishErrorText(error)}\n`)
+                }
+                return undefined
+              })
+            )
+          )
+          if (report === undefined) {
+            yield* fail(1)
+            return
+          }
+          if (flags.json) {
+            options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+          } else {
+            options.writeStdout(formatPublishReport(report))
+          }
+        })
+    ).pipe(
+      Command.withDescription(
+        "Publish an Ed25519-signed update-manifest.json from packaged release artifacts."
+      )
+    )
+
+    const doctorCmd = Command.make(
+      "doctor",
+      {
+        config: Flag.optional(Flag.string("config")),
+        ci: Flag.boolean("ci").pipe(Flag.withDefault(false)),
+        json: Flag.boolean("json").pipe(Flag.withDefault(false))
+      },
+      (flags) =>
+        Effect.gen(function* () {
+          const report = yield* runDesktopDoctor({
+            cwd: options.cwd,
+            configPath: Option.getOrUndefined(flags.config),
+            ci: flags.ci,
+            platform: options.platform ?? process.platform,
+            arch: options.arch ?? process.arch,
+            bunVersion: options.bunVersion ?? Bun.version,
+            commandRunner: options.doctorCommandRunner ?? runDoctorCommand
+          })
+          if (flags.json) {
+            if (report.passed) {
+              options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+            } else {
+              options.writeStderr(`${JSON.stringify(report, null, 2)}\n`)
+            }
+          } else if (report.passed) {
+            options.writeStdout(formatDoctorReport(report))
+          } else {
+            options.writeStderr(formatDoctorReport(report))
+          }
+          if (!report.passed) {
+            yield* fail(1)
+          }
+        })
+    ).pipe(
+      Command.withDescription(
+        "Validate Bun, Rust, platform SDK, WebView runtime, signing credentials, build tools, package manager state, native host cache, and desktop config."
+      )
+    )
+
+    const checkCmd = Command.make(
+      "check",
+      {
+        production: Flag.boolean("production").pipe(Flag.withDefault(false)),
+        repro: Flag.boolean("repro").pipe(Flag.withDefault(false)),
+        api: Flag.boolean("api").pipe(Flag.withDefault(false)),
+        docs: Flag.boolean("docs").pipe(Flag.withDefault(false)),
+        release: Flag.boolean("release").pipe(Flag.withDefault(false)),
+        a11y: Flag.boolean("a11y").pipe(Flag.withDefault(false)),
+        semver: Flag.boolean("semver").pipe(Flag.withDefault(false)),
+        config: Flag.optional(Flag.string("config")),
+        renderer: Flag.optional(Flag.string("renderer")),
+        platform: Flag.optional(Flag.string("platform")),
+        artifact: Flag.optional(Flag.string("artifact")),
+        write: Flag.boolean("write").pipe(Flag.withDefault(false)),
+        json: Flag.boolean("json").pipe(Flag.withDefault(false))
+      },
+      (flags) =>
+        Effect.gen(function* () {
+          if (flags.repro) {
+            yield* runReproCheckHandler(flags, options, fail)
+          } else if (flags.api) {
+            yield* runApiCheckHandler(flags, options, fail)
+          } else if (flags.docs) {
+            yield* runDocsCheckHandler(flags, options, fail)
+          } else if (flags.release) {
+            yield* runReleaseCheckHandler(flags, options, fail)
+          } else if (flags.a11y) {
+            yield* runA11yCheckHandler(flags, options, fail)
+          } else if (flags.semver) {
+            yield* runSemverCheckHandler(flags, options, fail)
+          } else if (flags.production) {
+            yield* runProductionCheckHandler(flags, options, fail)
+          } else {
+            options.writeStderr(
+              "Usage: desktop check --production --config <path>\n" +
+                "       desktop check --repro --config <path>\n" +
+                "       desktop check --api [--write]\n" +
+                "       desktop check --docs\n" +
+                "       desktop check --release\n" +
+                "       desktop check --a11y\n" +
+                "       desktop check --semver\n"
+            )
+            yield* fail(1)
+          }
+        })
+    ).pipe(
+      Command.withDescription(
+        "Run production security, reproducibility, public API, docs, release, accessibility, or semver checks."
+      )
+    )
+
+    const desktopCmd = Command.make("desktop").pipe(
+      Command.withSubcommands([
+        buildCmd,
+        packageCmd,
+        signCmd,
+        notarizeCmd,
+        publishCmd,
+        doctorCmd,
+        checkCmd
+      ])
+    )
+
+    const cliLayer = makeCliLayer(options)
+
+    yield* Command.runWith(desktopCmd, { version: "0.0.0" })(options.argv).pipe(
+      Effect.catch(() => fail(1)),
+      Effect.provide(cliLayer)
+    )
+
+    return yield* Ref.get(exitCodeRef)
   })
 
 export const runDesktopBuild = (
@@ -475,597 +771,6 @@ export const runDesktopBuild = (
     yield* writeJson(join(plan.layoutPath, "build-report.json"), report)
 
     return report
-  })
-
-const runProductionCheckCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
-  Effect.gen(function* () {
-    const configPath = yield* readOptionalPathArg(options.argv, "--config", options.writeStderr)
-    if (configPath === undefined && options.argv.includes("--config")) {
-      return 1
-    }
-
-    const rendererPath = yield* readOptionalPathArg(options.argv, "--renderer", options.writeStderr)
-    if (rendererPath === undefined && options.argv.includes("--renderer")) {
-      return 1
-    }
-
-    const selectedConfigPath = configPath ?? "desktop.config.ts"
-    const absoluteConfigPath = resolvePath(options.cwd, selectedConfigPath)
-    const config = yield* loadConfig(absoluteConfigPath).pipe(
-      Effect.map((value) => value as ProductionSecurityConfig),
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          options.writeStderr(`${error.name}: ${error.message}\n`)
-          return undefined
-        })
-      )
-    )
-    if (config === undefined) {
-      return 1
-    }
-
-    const rendererFiles = yield* loadRendererFiles(options.cwd, rendererPath).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          options.writeStderr(`${error.name}: ${error.message}\n`)
-          return undefined
-        })
-      )
-    )
-    if (rendererFiles === undefined) {
-      return 1
-    }
-
-    const report = yield* runProductionCheck({
-      config,
-      configPath: selectedConfigPath,
-      rendererFiles
-    }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          options.writeStderr(`${error._tag}: ${error.message}\n`)
-          return undefined
-        })
-      )
-    )
-    if (report === undefined) {
-      return 1
-    }
-
-    if (options.argv.includes("--json")) {
-      const formatted = `${JSON.stringify(report, null, 2)}\n`
-      if (report.passed) {
-        options.writeStdout(formatted)
-        return 0
-      }
-
-      options.writeStderr(formatted)
-      return 1
-    }
-
-    const formatted = formatProductionCheckReport(report)
-    if (report.passed) {
-      options.writeStdout(formatted)
-      return 0
-    }
-
-    options.writeStderr(formatted)
-    return 1
-  })
-
-const runBuildCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
-  Effect.gen(function* () {
-    if (options.argv.includes("--help")) {
-      options.writeStdout(BUILD_HELP)
-      return 0
-    }
-
-    const configPath = yield* readOptionalPathArg(options.argv, "--config", options.writeStderr)
-    if (configPath === undefined && options.argv.includes("--config")) {
-      return 1
-    }
-    const platform = yield* readOptionalPathArg(options.argv, "--platform", options.writeStderr)
-    if (platform === undefined && options.argv.includes("--platform")) {
-      return 1
-    }
-
-    const report = yield* runDesktopBuild({
-      cwd: options.cwd,
-      configPath: configPath ?? "desktop.config.ts",
-      platform,
-      commandRunner: options.commandRunner ?? runCommand,
-      now: options.now ?? Date.now,
-      hostTarget: options.hostTarget
-    }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          if (options.argv.includes("--json")) {
-            options.writeStderr(`${JSON.stringify(formatBuildError(error), null, 2)}\n`)
-          } else {
-            options.writeStderr(`${formatBuildErrorText(error)}\n`)
-          }
-          return undefined
-        })
-      )
-    )
-
-    if (report === undefined) {
-      return 1
-    }
-
-    if (options.argv.includes("--json")) {
-      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
-    } else {
-      options.writeStdout(formatBuildReport(report))
-    }
-
-    return 0
-  })
-
-const runPackageCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
-  Effect.gen(function* () {
-    if (options.argv.includes("--help")) {
-      options.writeStdout(PACKAGE_HELP)
-      return 0
-    }
-
-    const configPath = yield* readOptionalPathArg(options.argv, "--config", options.writeStderr)
-    if (configPath === undefined && options.argv.includes("--config")) {
-      return 1
-    }
-    const platform = yield* readOptionalPathArg(options.argv, "--platform", options.writeStderr)
-    if (platform === undefined && options.argv.includes("--platform")) {
-      return 1
-    }
-    const artifact = yield* readOptionalPathArg(options.argv, "--artifact", options.writeStderr)
-    if (artifact === undefined && options.argv.includes("--artifact")) {
-      return 1
-    }
-
-    const report = yield* runDesktopPackage({
-      cwd: options.cwd,
-      configPath: configPath ?? "desktop.config.ts",
-      platform,
-      artifact,
-      commandRunner: options.packageCommandRunner ?? runPackageCommand,
-      now: options.now ?? Date.now,
-      hostTarget: options.hostTarget
-    }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          if (options.argv.includes("--json")) {
-            options.writeStderr(`${JSON.stringify(formatPackageError(error), null, 2)}\n`)
-          } else {
-            options.writeStderr(`${formatPackageErrorText(error)}\n`)
-          }
-          return undefined
-        })
-      )
-    )
-
-    if (report === undefined) {
-      return 1
-    }
-
-    if (options.argv.includes("--json")) {
-      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
-    } else {
-      options.writeStdout(formatPackageReport(report))
-    }
-
-    return 0
-  })
-
-const runSignCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
-  Effect.gen(function* () {
-    if (options.argv.includes("--help")) {
-      options.writeStdout(SIGN_HELP)
-      return 0
-    }
-
-    const configPath = yield* readOptionalPathArg(options.argv, "--config", options.writeStderr)
-    if (configPath === undefined && options.argv.includes("--config")) {
-      return 1
-    }
-    const platform = yield* readOptionalPathArg(options.argv, "--platform", options.writeStderr)
-    if (platform === undefined && options.argv.includes("--platform")) {
-      return 1
-    }
-
-    const report = yield* runDesktopSign({
-      cwd: options.cwd,
-      configPath: configPath ?? "desktop.config.ts",
-      platform,
-      commandRunner: options.signCommandRunner ?? runSignCommand,
-      now: options.now ?? Date.now,
-      hostTarget: options.hostTarget
-    }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          if (options.argv.includes("--json")) {
-            options.writeStderr(`${JSON.stringify(formatSignError(error), null, 2)}\n`)
-          } else {
-            options.writeStderr(`${formatSignErrorText(error)}\n`)
-          }
-          return undefined
-        })
-      )
-    )
-
-    if (report === undefined) {
-      return 1
-    }
-
-    if (options.argv.includes("--json")) {
-      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
-    } else {
-      options.writeStdout(formatSignReport(report))
-    }
-
-    return 0
-  })
-
-const runNotarizeCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
-  Effect.gen(function* () {
-    if (options.argv.includes("--help")) {
-      options.writeStdout(NOTARIZE_HELP)
-      return 0
-    }
-
-    const configPath = yield* readOptionalPathArg(options.argv, "--config", options.writeStderr)
-    if (configPath === undefined && options.argv.includes("--config")) {
-      return 1
-    }
-    const platform = yield* readOptionalPathArg(options.argv, "--platform", options.writeStderr)
-    if (platform === undefined && options.argv.includes("--platform")) {
-      return 1
-    }
-
-    const report = yield* runDesktopNotarize({
-      cwd: options.cwd,
-      configPath: configPath ?? "desktop.config.ts",
-      platform,
-      commandRunner: options.notarizeCommandRunner ?? runNotarizeCommand,
-      now: options.now ?? Date.now,
-      hostTarget:
-        options.hostTarget === "macos-arm64" || options.hostTarget === "macos-x64"
-          ? options.hostTarget
-          : undefined
-    }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          if (options.argv.includes("--json")) {
-            options.writeStderr(`${JSON.stringify(formatNotarizeError(error), null, 2)}\n`)
-          } else {
-            options.writeStderr(`${formatNotarizeErrorText(error)}\n`)
-          }
-          return undefined
-        })
-      )
-    )
-
-    if (report === undefined) {
-      return 1
-    }
-
-    if (options.argv.includes("--json")) {
-      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
-    } else {
-      options.writeStdout(formatNotarizeReport(report))
-    }
-
-    return 0
-  })
-
-const runDoctorCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
-  Effect.gen(function* () {
-    if (options.argv.includes("--help")) {
-      options.writeStdout(DOCTOR_HELP)
-      return 0
-    }
-
-    const configPath = yield* readOptionalPathArg(options.argv, "--config", options.writeStderr)
-    if (configPath === undefined && options.argv.includes("--config")) {
-      return 1
-    }
-
-    const report = yield* runDesktopDoctor({
-      cwd: options.cwd,
-      configPath,
-      ci: options.argv.includes("--ci"),
-      platform: options.platform ?? process.platform,
-      arch: options.arch ?? process.arch,
-      bunVersion: options.bunVersion ?? Bun.version,
-      commandRunner: options.doctorCommandRunner ?? runDoctorCommand
-    })
-
-    if (options.argv.includes("--json")) {
-      const output: DesktopDoctorReport = report
-      if (report.passed) {
-        options.writeStdout(`${JSON.stringify(output, null, 2)}\n`)
-      } else {
-        options.writeStderr(`${JSON.stringify(output, null, 2)}\n`)
-      }
-    } else if (report.passed) {
-      options.writeStdout(formatDoctorReport(report))
-    } else {
-      options.writeStderr(formatDoctorReport(report))
-    }
-
-    return report.passed ? 0 : 1
-  })
-
-const runPublishCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
-  Effect.gen(function* () {
-    if (options.argv.includes("--help")) {
-      options.writeStdout(PUBLISH_HELP)
-      return 0
-    }
-
-    const configPath = yield* readOptionalPathArg(options.argv, "--config", options.writeStderr)
-    if (configPath === undefined && options.argv.includes("--config")) {
-      return 1
-    }
-    const platform = yield* readOptionalPathArg(options.argv, "--platform", options.writeStderr)
-    if (platform === undefined && options.argv.includes("--platform")) {
-      return 1
-    }
-
-    const report = yield* runDesktopPublish({
-      cwd: options.cwd,
-      configPath: configPath ?? "desktop.config.ts",
-      platform,
-      now: options.now ?? Date.now
-    }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          if (options.argv.includes("--json")) {
-            options.writeStderr(`${JSON.stringify(formatPublishError(error), null, 2)}\n`)
-          } else {
-            options.writeStderr(`${formatPublishErrorText(error)}\n`)
-          }
-          return undefined
-        })
-      )
-    )
-
-    if (report === undefined) {
-      return 1
-    }
-
-    if (options.argv.includes("--json")) {
-      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
-    } else {
-      options.writeStdout(formatPublishReport(report))
-    }
-
-    return 0
-  })
-
-const runReproCheckCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
-  Effect.gen(function* () {
-    const configPath = yield* readOptionalPathArg(options.argv, "--config", options.writeStderr)
-    if (configPath === undefined && options.argv.includes("--config")) {
-      return 1
-    }
-    const platform = yield* readOptionalPathArg(options.argv, "--platform", options.writeStderr)
-    if (platform === undefined && options.argv.includes("--platform")) {
-      return 1
-    }
-    const artifact = yield* readOptionalPathArg(options.argv, "--artifact", options.writeStderr)
-    if (artifact === undefined && options.argv.includes("--artifact")) {
-      return 1
-    }
-
-    const selectedConfigPath = configPath ?? "desktop.config.ts"
-    const selectedArtifact = artifact ?? "all"
-    const report = yield* runDesktopReproCheck({
-      buildRunner: ({ now }) =>
-        runDesktopBuild({
-          cwd: options.cwd,
-          configPath: selectedConfigPath,
-          platform,
-          commandRunner: options.commandRunner ?? runCommand,
-          now,
-          hostTarget: options.hostTarget
-        }),
-      packageRunner: ({ now }) =>
-        runDesktopPackage({
-          cwd: options.cwd,
-          configPath: selectedConfigPath,
-          platform,
-          artifact: selectedArtifact,
-          commandRunner: options.packageCommandRunner ?? runPackageCommand,
-          now,
-          hostTarget: options.hostTarget
-        })
-    }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          const formatted = formatReproError(error)
-          if (options.argv.includes("--json")) {
-            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
-          } else if (formatted.report === undefined) {
-            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
-          } else {
-            options.writeStderr(formatReproReport(formatted.report))
-          }
-          return undefined
-        })
-      )
-    )
-
-    if (report === undefined) {
-      return 1
-    }
-
-    if (options.argv.includes("--json")) {
-      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
-    } else {
-      options.writeStdout(formatReproReport(report))
-    }
-
-    return 0
-  })
-
-const runPublicApiCheckCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
-  Effect.gen(function* () {
-    const report = yield* runPublicApiCheck({
-      cwd: options.cwd,
-      updateSnapshots: options.argv.includes("--write")
-    }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          const formatted = formatPublicApiError(error)
-          if (options.argv.includes("--json")) {
-            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
-          } else if (formatted.report === undefined) {
-            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
-          } else {
-            options.writeStderr(formatPublicApiReport(formatted.report))
-          }
-          return undefined
-        })
-      )
-    )
-
-    if (report === undefined) {
-      return 1
-    }
-
-    if (options.argv.includes("--json")) {
-      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
-    } else {
-      options.writeStdout(formatPublicApiReport(report))
-    }
-
-    return 0
-  })
-
-const runDocsCheckCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
-  Effect.gen(function* () {
-    const report = yield* runDocsReleaseGate({
-      cwd: options.cwd
-    }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          const formatted = formatDocsReleaseGateError(error)
-          if (options.argv.includes("--json")) {
-            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
-          } else {
-            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
-          }
-          return undefined
-        })
-      )
-    )
-
-    if (report === undefined) {
-      return 1
-    }
-
-    if (options.argv.includes("--json")) {
-      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
-    } else {
-      options.writeStdout(formatDocsReleaseGateReport(report))
-    }
-
-    return 0
-  })
-
-const runReleaseCheckCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
-  Effect.gen(function* () {
-    const report = yield* runReleaseGate({
-      cwd: options.cwd
-    }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          const formatted = formatReleaseGateError(error)
-          if (options.argv.includes("--json")) {
-            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
-          } else {
-            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
-          }
-          return undefined
-        })
-      )
-    )
-
-    if (report === undefined) {
-      return 1
-    }
-
-    if (options.argv.includes("--json")) {
-      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
-    } else {
-      options.writeStdout(formatReleaseGateReport(report))
-    }
-
-    return 0
-  })
-
-const runAccessibilityCheckCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
-  Effect.gen(function* () {
-    const report = yield* runAccessibilityGate({
-      cwd: options.cwd
-    }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          const formatted = formatAccessibilityGateError(error)
-          if (options.argv.includes("--json")) {
-            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
-          } else {
-            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
-          }
-          return undefined
-        })
-      )
-    )
-
-    if (report === undefined) {
-      return 1
-    }
-
-    if (options.argv.includes("--json")) {
-      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
-    } else {
-      options.writeStdout(formatAccessibilityGateReport(report))
-    }
-
-    return 0
-  })
-
-const runSemverCheckCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
-  Effect.gen(function* () {
-    const report = yield* runSemverGuard({
-      cwd: options.cwd
-    }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          const formatted = formatSemverGuardError(error)
-          if (options.argv.includes("--json")) {
-            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
-          } else if (formatted.report === undefined) {
-            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
-          } else {
-            options.writeStderr(formatSemverGuardReport(formatted.report))
-          }
-          return undefined
-        })
-      )
-    )
-
-    if (report === undefined) {
-      return 1
-    }
-
-    if (options.argv.includes("--json")) {
-      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
-    } else {
-      options.writeStdout(formatSemverGuardReport(report))
-    }
-
-    return 0
   })
 
 const runStep = (
@@ -1343,49 +1048,6 @@ const formatBuildReport = (report: DesktopBuildReport): string =>
     ""
   ].join("\n")
 
-const BUILD_HELP = [
-  "Usage: desktop build --config <path> [--platform <target>] [--json]",
-  "",
-  "Builds renderer, runtime, native host, bridge manifest, and app manifest into build/effect-desktop/<target>.",
-  ""
-].join("\n")
-
-const PACKAGE_HELP = [
-  "Usage: desktop package --config <path> [--platform <target>] [--artifact <kind>] [--json]",
-  "",
-  "Packages an existing build/effect-desktop/<target> layout into the fixed docs/SPEC.md §23.2 artifact set.",
-  "Kinds: all, app, dmg, zip, msi, appimage, deb, rpm.",
-  ""
-].join("\n")
-
-const SIGN_HELP = [
-  "Usage: desktop sign --config <path> [--platform <target>] [--json]",
-  "",
-  "Signs existing dist/desktop/<platform> artifacts with platform signing tools and writes sign-report.json.",
-  ""
-].join("\n")
-
-const NOTARIZE_HELP = [
-  "Usage: desktop notarize --config <path> [--platform macos-arm64|macos-x64] [--json]",
-  "",
-  "Submits signed macOS artifacts to Apple notarization, staples tickets, assesses Gatekeeper, and writes notarize-report.json.",
-  ""
-].join("\n")
-
-const PUBLISH_HELP = [
-  "Usage: desktop publish --config <path> [--platform <target>] [--json]",
-  "",
-  "Publishes an Ed25519-signed update-manifest.json from packaged release artifacts.",
-  ""
-].join("\n")
-
-const DOCTOR_HELP = [
-  "Usage: desktop doctor [--config <path>] [--ci] [--json]",
-  "",
-  "Validates Bun, Rust, platform SDK, WebView runtime, signing credentials, build tools, package manager state, native host cache, and desktop config before build/package.",
-  ""
-].join("\n")
-
 const formatBuildError = (
   error: BuildPipelineError
 ): { readonly tag: string; readonly message: string; readonly remediation?: string } => {
@@ -1603,40 +1265,6 @@ const formatPublishErrorText = (error: PublishPipelineError): string => {
     : `${formatted.tag}: ${formatted.message}\nNext: ${formatted.remediation}`
 }
 
-const readOptionalPathArg = (
-  argv: readonly string[],
-  name: "--config" | "--renderer" | "--platform" | "--artifact",
-  writeStderr: (text: string) => void
-): Effect.Effect<string | undefined, never, never> =>
-  optionalPathArg(argv, name).pipe(
-    Effect.catch((error) =>
-      Effect.sync(() => {
-        writeStderr(`${error.name}: ${error.message}\n`)
-        return undefined
-      })
-    )
-  )
-
-const optionalPathArg = (
-  argv: readonly string[],
-  name: "--config" | "--renderer" | "--platform" | "--artifact"
-): Effect.Effect<string | undefined, CliUsageError, never> =>
-  Effect.sync(() => {
-    const index = argv.indexOf(name)
-    if (index === -1) {
-      return undefined
-    }
-    const value = argv[index + 1]
-    if (value === undefined || value.startsWith("--")) {
-      return new CliUsageError(`${name} requires a path`)
-    }
-    return value
-  }).pipe(
-    Effect.flatMap((value) =>
-      value instanceof CliUsageError ? Effect.fail(value) : Effect.succeed(value)
-    )
-  )
-
 const loadConfig = (path: string): Effect.Effect<unknown, BuildConfigError, never> =>
   Effect.gen(function* () {
     const module = yield* Effect.tryPromise({
@@ -1795,3 +1423,412 @@ const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
 
 const formatUnknownError = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause)
+
+type CheckFlags = {
+  readonly production: boolean
+  readonly repro: boolean
+  readonly api: boolean
+  readonly docs: boolean
+  readonly release: boolean
+  readonly a11y: boolean
+  readonly semver: boolean
+  readonly config: Option.Option<string>
+  readonly renderer: Option.Option<string>
+  readonly platform: Option.Option<string>
+  readonly artifact: Option.Option<string>
+  readonly write: boolean
+  readonly json: boolean
+}
+
+const runProductionCheckHandler = (
+  flags: CheckFlags,
+  options: CliRunOptions,
+  fail: (code: number) => Effect.Effect<void, never, never>
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const configPath = Option.getOrElse(flags.config, () => "desktop.config.ts")
+    const absoluteConfigPath = resolvePath(options.cwd, configPath)
+    const config = yield* loadConfig(absoluteConfigPath).pipe(
+      Effect.map((value) => value as ProductionSecurityConfig),
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          options.writeStderr(`${error.name}: ${error.message}\n`)
+          return undefined
+        })
+      )
+    )
+    if (config === undefined) {
+      yield* fail(1)
+      return
+    }
+
+    const rendererFiles = yield* loadRendererFiles(
+      options.cwd,
+      Option.getOrUndefined(flags.renderer)
+    ).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          options.writeStderr(`${error.name}: ${error.message}\n`)
+          return undefined
+        })
+      )
+    )
+    if (rendererFiles === undefined) {
+      yield* fail(1)
+      return
+    }
+
+    const report = yield* runProductionCheck({
+      config,
+      configPath,
+      rendererFiles
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          options.writeStderr(`${error._tag}: ${error.message}\n`)
+          return undefined
+        })
+      )
+    )
+    if (report === undefined) {
+      yield* fail(1)
+      return
+    }
+
+    if (flags.json) {
+      const formatted = `${JSON.stringify(report, null, 2)}\n`
+      if (report.passed) {
+        options.writeStdout(formatted)
+      } else {
+        options.writeStderr(formatted)
+        yield* fail(1)
+      }
+      return
+    }
+
+    const formatted = formatProductionCheckReport(report)
+    if (report.passed) {
+      options.writeStdout(formatted)
+    } else {
+      options.writeStderr(formatted)
+      yield* fail(1)
+    }
+  })
+
+const runReproCheckHandler = (
+  flags: CheckFlags,
+  options: CliRunOptions,
+  fail: (code: number) => Effect.Effect<void, never, never>
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const configPath = Option.getOrElse(flags.config, () => "desktop.config.ts")
+    const artifact = Option.getOrElse(flags.artifact, () => "all")
+    const report = yield* runDesktopReproCheck({
+      buildRunner: ({ now }) =>
+        runDesktopBuild({
+          cwd: options.cwd,
+          configPath,
+          platform: Option.getOrUndefined(flags.platform),
+          commandRunner: options.commandRunner ?? runCommand,
+          now,
+          hostTarget: options.hostTarget
+        }),
+      packageRunner: ({ now }) =>
+        runDesktopPackage({
+          cwd: options.cwd,
+          configPath,
+          platform: Option.getOrUndefined(flags.platform),
+          artifact,
+          commandRunner: options.packageCommandRunner ?? runPackageCommand,
+          now,
+          hostTarget: options.hostTarget
+        })
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          const formatted = formatReproError(error)
+          if (flags.json) {
+            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+          } else if (formatted.report === undefined) {
+            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+          } else {
+            options.writeStderr(formatReproReport(formatted.report))
+          }
+          return undefined
+        })
+      )
+    )
+    if (report === undefined) {
+      yield* fail(1)
+      return
+    }
+    if (flags.json) {
+      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+    } else {
+      options.writeStdout(formatReproReport(report))
+    }
+  })
+
+const runApiCheckHandler = (
+  flags: CheckFlags,
+  options: CliRunOptions,
+  fail: (code: number) => Effect.Effect<void, never, never>
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const report = yield* runPublicApiCheck({
+      cwd: options.cwd,
+      updateSnapshots: flags.write
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          const formatted = formatPublicApiError(error)
+          if (flags.json) {
+            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+          } else if (formatted.report === undefined) {
+            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+          } else {
+            options.writeStderr(formatPublicApiReport(formatted.report))
+          }
+          return undefined
+        })
+      )
+    )
+    if (report === undefined) {
+      yield* fail(1)
+      return
+    }
+    if (flags.json) {
+      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+    } else {
+      options.writeStdout(formatPublicApiReport(report))
+    }
+  })
+
+const runDocsCheckHandler = (
+  flags: CheckFlags,
+  options: CliRunOptions,
+  fail: (code: number) => Effect.Effect<void, never, never>
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const report = yield* runDocsReleaseGate({ cwd: options.cwd }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          const formatted = formatDocsReleaseGateError(error)
+          if (flags.json) {
+            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+          } else {
+            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+          }
+          return undefined
+        })
+      )
+    )
+    if (report === undefined) {
+      yield* fail(1)
+      return
+    }
+    if (flags.json) {
+      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+    } else {
+      options.writeStdout(formatDocsReleaseGateReport(report))
+    }
+  })
+
+const runReleaseCheckHandler = (
+  flags: CheckFlags,
+  options: CliRunOptions,
+  fail: (code: number) => Effect.Effect<void, never, never>
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const report = yield* runReleaseGate({ cwd: options.cwd }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          const formatted = formatReleaseGateError(error)
+          if (flags.json) {
+            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+          } else {
+            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+          }
+          return undefined
+        })
+      )
+    )
+    if (report === undefined) {
+      yield* fail(1)
+      return
+    }
+    if (flags.json) {
+      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+    } else {
+      options.writeStdout(formatReleaseGateReport(report))
+    }
+  })
+
+const runA11yCheckHandler = (
+  flags: CheckFlags,
+  options: CliRunOptions,
+  fail: (code: number) => Effect.Effect<void, never, never>
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const report = yield* runAccessibilityGate({ cwd: options.cwd }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          const formatted = formatAccessibilityGateError(error)
+          if (flags.json) {
+            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+          } else {
+            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+          }
+          return undefined
+        })
+      )
+    )
+    if (report === undefined) {
+      yield* fail(1)
+      return
+    }
+    if (flags.json) {
+      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+    } else {
+      options.writeStdout(formatAccessibilityGateReport(report))
+    }
+  })
+
+const runSemverCheckHandler = (
+  flags: CheckFlags,
+  options: CliRunOptions,
+  fail: (code: number) => Effect.Effect<void, never, never>
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const report = yield* runSemverGuard({ cwd: options.cwd }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          const formatted = formatSemverGuardError(error)
+          if (flags.json) {
+            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+          } else if (formatted.report === undefined) {
+            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+          } else {
+            options.writeStderr(formatSemverGuardReport(formatted.report))
+          }
+          return undefined
+        })
+      )
+    )
+    if (report === undefined) {
+      yield* fail(1)
+      return
+    }
+    if (flags.json) {
+      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+    } else {
+      options.writeStdout(formatSemverGuardReport(report))
+    }
+  })
+
+type CliEnvironment =
+  | FileSystem.FileSystem
+  | Path.Path
+  | Terminal.Terminal
+  | ChildProcessSpawnerModule.ChildProcessSpawner.ChildProcessSpawner
+  | Stdio.Stdio
+
+const makeCliLayer = (options: CliRunOptions): Layer.Layer<CliEnvironment, never, never> => {
+  const fileSystemLayer = FileSystem.layerNoop({})
+
+  const pathLayer = Path.layer
+
+  const terminalLayer = Layer.succeed(
+    Terminal.Terminal,
+    Terminal.make({
+      columns: Effect.succeed(80),
+      readInput: Effect.die("readInput not supported in non-interactive CLI"),
+      readLine: Effect.die("readLine not supported in non-interactive CLI"),
+      display: (text) =>
+        Effect.sync(() => {
+          options.writeStdout(text)
+        })
+    })
+  )
+
+  const stdioLayer = Stdio.layerTest({
+    args: Effect.succeed([]),
+    stdout: () =>
+      Sink.forEach((chunk: string | Uint8Array) =>
+        Effect.sync(() => {
+          options.writeStdout(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk))
+        })
+      ),
+    stderr: () =>
+      Sink.forEach((chunk: string | Uint8Array) =>
+        Effect.sync(() => {
+          options.writeStderr(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk))
+        })
+      )
+  })
+
+  const childProcessSpawnerLayer = Layer.succeed(
+    ChildProcessSpawnerModule.ChildProcessSpawner.ChildProcessSpawner,
+    ChildProcessSpawnerModule.ChildProcessSpawner.make(() =>
+      Effect.die("spawn not supported in non-interactive CLI")
+    )
+  )
+
+  const format = (args: ReadonlyArray<unknown>): string =>
+    args.map((a) => (typeof a === "string" ? a : String(a))).join(" ")
+
+  const consoleLayer = Layer.succeed(Console.Console, {
+    assert: (condition, ...args) => {
+      if (!condition) options.writeStderr(`Assertion failed: ${format(args)}\n`)
+    },
+    clear: () => {},
+    count: () => {},
+    countReset: () => {},
+    debug: (...args) => {
+      options.writeStdout(`${format(args)}\n`)
+    },
+    dir: (item) => {
+      options.writeStdout(`${String(item)}\n`)
+    },
+    dirxml: (...args) => {
+      options.writeStdout(`${format(args)}\n`)
+    },
+    error: (...args) => {
+      options.writeStderr(`${format(args)}\n`)
+    },
+    group: (...args) => {
+      if (args.length > 0) options.writeStdout(`${format(args)}\n`)
+    },
+    groupCollapsed: (...args) => {
+      if (args.length > 0) options.writeStdout(`${format(args)}\n`)
+    },
+    groupEnd: () => {},
+    info: (...args) => {
+      options.writeStdout(`${format(args)}\n`)
+    },
+    log: (...args) => {
+      options.writeStdout(`${format(args)}\n`)
+    },
+    table: (tabularData) => {
+      options.writeStdout(`${String(tabularData)}\n`)
+    },
+    time: () => {},
+    timeEnd: () => {},
+    timeLog: () => {},
+    trace: (...args) => {
+      options.writeStderr(`${format(args)}\n`)
+    },
+    warn: (...args) => {
+      options.writeStderr(`${format(args)}\n`)
+    }
+  })
+
+  return Layer.mergeAll(
+    fileSystemLayer,
+    pathLayer,
+    terminalLayer,
+    stdioLayer,
+    childProcessSpawnerLayer,
+    consoleLayer
+  )
+}
