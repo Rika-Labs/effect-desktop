@@ -1279,9 +1279,10 @@
       "title": "Report transport close failures",
       "url": "https://github.com/Rika-Labs/effect-desktop/issues/871",
       "status": "work-in-progress",
-      "workflow": ["scout"],
+      "workflow": ["scout", "architect", "review", "work", "pr", "code-review", "address"],
       "branch": "issue-871-report-transport-close-failures",
-      "updated_at": "2026-05-09T03:10:07.000Z"
+      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/878",
+      "updated_at": "2026-05-09T03:20:31.000Z"
     },
     "worked": [
       {
