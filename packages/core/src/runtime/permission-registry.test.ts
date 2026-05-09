@@ -217,6 +217,39 @@ test("PermissionRegistry rejects control bytes returned by the trace id callback
   expectInvalid(grantExit)
 })
 
+test("PermissionRegistry rejects control bytes in actor ids, resources, and sources", async () => {
+  const registry = await Effect.runPromise(makePermissionRegistry())
+
+  const declareExit = await Effect.runPromiseExit(
+    registry.declare(filesystemWrite(["/tmp/app"]), {
+      source: `declaration${String.fromCharCode(10)}forged`
+    })
+  )
+  expectInvalid(declareExit)
+
+  const actorExit = await Effect.runPromiseExit(
+    registry.check(filesystemWrite(["/tmp/app"]), {
+      actor: { kind: "window", id: `app${String.fromCharCode(10)}forged` } as never
+    })
+  )
+  expectInvalid(actorExit)
+
+  const resourceExit = await Effect.runPromiseExit(
+    registry.check(filesystemWrite(["/tmp/app"]), {
+      actor: actor("window-main"),
+      resource: `resource${String.fromCharCode(10)}forged`
+    })
+  )
+  expectInvalid(resourceExit)
+
+  const grantSourceExit = await Effect.runPromiseExit(
+    registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"), {
+      source: `grant${String.fromCharCode(10)}forged`
+    })
+  )
+  expectInvalid(grantSourceExit)
+})
+
 test("PermissionRegistry does not retain a new grant when initial lifecycle audit fails", async () => {
   const registry = await Effect.runPromise(
     makePermissionRegistry({
