@@ -4,7 +4,7 @@ import { join } from "node:path"
 
 import { describe, expect, test } from "bun:test"
 
-import { Cause, Effect, Exit, Fiber, Stream } from "effect"
+import { Cause, Effect, Exit, Fiber, Option, Stream } from "effect"
 
 import {
   EventLogFullError,
@@ -13,7 +13,12 @@ import {
   type EventLogStore
 } from "./event-log.js"
 import { makeResourceRegistry } from "./resources.js"
-import { makeSQLite, type SqliteApi } from "./sqlite.js"
+import {
+  makeSQLite,
+  type SqliteApi,
+  type SqliteConnection,
+  SqliteInvalidStateError
+} from "./sqlite.js"
 
 describe("EventLog", () => {
   test("append returns monotonic ids and query replays in order", async () => {
@@ -158,7 +163,111 @@ describe("EventLog", () => {
     expectFailure(exit, EventLogFullError)
     expect(events.map((event) => event.type)).toEqual(["before-full"])
   })
+
+  test("disk-full append persists read-only state across reopen", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-event-log-"))
+    const path = join(directory, "events.sqlite")
+    const registry = await Effect.runPromise(makeResourceRegistry())
+    const sqlite = await Effect.runPromise(makeSQLite(registry))
+    const failingSqlite = failNextEventInsert(sqlite)
+    const eventLog = await Effect.runPromise(makeEventLog(failingSqlite))
+    const store = await Effect.runPromise(
+      eventLog.open({ path, ownerScope: "scope-main", namespace: "default" })
+    )
+
+    const fullExit = await Effect.runPromiseExit(store.append({ type: "after-full" }))
+    const eventsAfterFull = await Effect.runPromise(store.query())
+    const control = await Effect.runPromise(
+      sqlite.connect({ path, ownerScope: "scope-control", strict: true })
+    )
+    const meta = await Effect.runPromise(
+      control.query("SELECT read_only FROM event_log_meta WHERE namespace = ?", ["default"])
+    )
+    await Effect.runPromise(store.close())
+    await Effect.runPromise(control.close())
+
+    const reopened = await makeFixture({ path })
+    const reopenExit = await Effect.runPromiseExit(reopened.store.append({ type: "after-reopen" }))
+    const reopenedEvents = await Effect.runPromise(reopened.store.query())
+
+    expectFailure(fullExit, EventLogFullError)
+    expect(eventsAfterFull).toHaveLength(0)
+    expect(meta).toEqual([{ read_only: 1 }])
+    expectFailure(reopenExit, EventLogFullError)
+    expect(reopenedEvents).toHaveLength(0)
+  })
+
+  test("disk-full metadata latch failure preserves original full error", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-event-log-"))
+    const path = join(directory, "events.sqlite")
+    const registry = await Effect.runPromise(makeResourceRegistry())
+    const sqlite = await Effect.runPromise(makeSQLite(registry))
+    const failingSqlite = failNextEventInsert(sqlite, { failReadOnlyUpdate: true })
+    const eventLog = await Effect.runPromise(makeEventLog(failingSqlite))
+    const store = await Effect.runPromise(
+      eventLog.open({ path, ownerScope: "scope-main", namespace: "default" })
+    )
+
+    const fullExit = await Effect.runPromiseExit(store.append({ type: "after-full" }))
+    const latchedExit = await Effect.runPromiseExit(store.append({ type: "after-latch" }))
+    const events = await Effect.runPromise(store.query())
+
+    expectFailure(fullExit, EventLogFullError)
+    expectFailure(latchedExit, EventLogFullError)
+    expect(events).toHaveLength(0)
+  })
 })
+
+const failNextEventInsert = (
+  sqlite: SqliteApi,
+  failureOptions: { readonly failReadOnlyUpdate?: boolean } = {}
+): SqliteApi =>
+  Object.freeze({
+    connect: (connectOptions: Parameters<SqliteApi["connect"]>[0]) =>
+      sqlite.connect(connectOptions).pipe(
+        Effect.map((connection) => {
+          let failed = false
+          let readOnlyUpdateFailed = false
+          const wrapped: SqliteConnection = {
+            ...connection,
+            exec: (sql, params) => {
+              if (!failed && sql.startsWith("INSERT INTO event_log_entries")) {
+                failed = true
+                return Effect.fail(
+                  new SqliteInvalidStateError({
+                    operation: "SQLite.exec",
+                    resource: connection.resource.id,
+                    message: "database or disk is full",
+                    code: Option.some("SQLITE_FULL"),
+                    cause: Option.none()
+                  })
+                )
+              }
+              if (
+                failureOptions.failReadOnlyUpdate === true &&
+                !readOnlyUpdateFailed &&
+                sql.startsWith("UPDATE event_log_meta SET read_only = 1")
+              ) {
+                readOnlyUpdateFailed = true
+                return Effect.fail(
+                  new SqliteInvalidStateError({
+                    operation: "SQLite.exec",
+                    resource: connection.resource.id,
+                    message: "database or disk is full",
+                    code: Option.some("SQLITE_FULL"),
+                    cause: Option.none()
+                  })
+                )
+              }
+
+              return connection.exec(sql, params)
+            }
+          }
+
+          return wrapped
+        })
+      )
+  })
 
 async function makeFixture(
   options: {

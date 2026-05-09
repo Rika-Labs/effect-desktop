@@ -234,7 +234,10 @@ const makeStore = (
           Effect.catch(
             (error: EventLogError): Effect.Effect<never, EventLogError, never> =>
               error instanceof EventLogFullError
-                ? Ref.set(readOnly, true).pipe(Effect.flatMap(() => Effect.fail(error)))
+                ? Ref.set(readOnly, true).pipe(
+                    Effect.flatMap(() => markReadOnly(connection, input.namespace)),
+                    Effect.flatMap(() => Effect.fail(error))
+                  )
                 : Effect.fail(error)
           )
         )
@@ -394,6 +397,26 @@ const setNextEventId = (
     "UPDATE event_log_meta SET next_event_id = ? WHERE namespace = ?",
     [nextEventId, namespace],
     "EventLog.append"
+  )
+
+const markReadOnly = (
+  connection: SqliteConnection,
+  namespace: string
+): Effect.Effect<void, never, never> =>
+  exec(
+    connection,
+    "UPDATE event_log_meta SET read_only = 1 WHERE namespace = ?",
+    [namespace],
+    "EventLog.append"
+  ).pipe(
+    Effect.catch((error: EventLogError) =>
+      Effect.logWarning("EventLog.markReadOnly failed", {
+        namespace,
+        failure: error._tag,
+        operation: error.operation,
+        reason: formatUnknownError(error)
+      })
+    )
   )
 
 const applyRetention = (

@@ -1275,16 +1275,24 @@
   ],
   "workflow_ledger": {
     "active": {
-      "number": 850,
-      "title": "Expose guards for partial OS-state primitives",
-      "url": "https://github.com/Rika-Labs/effect-desktop/issues/850",
+      "number": 870,
+      "title": "Persist EventLog read-only state after disk-full failures",
+      "url": "https://github.com/Rika-Labs/effect-desktop/issues/870",
       "status": "work-in-progress",
-      "workflow": ["scout", "architect", "review", "work", "pr", "code-review", "address", "learn"],
-      "branch": "issue-850-expose-os-state-support-guards",
-      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/856",
-      "updated_at": "2026-05-09T02:05:45.000Z"
+      "workflow": ["scout", "architect", "review", "work", "pr", "code-review", "address"],
+      "branch": "issue-870-persist-eventlog-readonly-state",
+      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/873",
+      "updated_at": "2026-05-09T02:55:44.000Z"
     },
     "worked": [
+      {
+        "number": 850,
+        "title": "Expose guards for partial OS-state primitives",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/850",
+        "status": "merged",
+        "pr": "https://github.com/Rika-Labs/effect-desktop/pull/856",
+        "updated_at": "2026-05-09T02:40:02.000Z"
+      },
       {
         "number": 841,
         "title": "Bound React stream hook retention",
