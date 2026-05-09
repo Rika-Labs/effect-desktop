@@ -244,6 +244,7 @@ import {
   type WebViewClientApi,
   type WebViewHandle,
   type WindowClientApi,
+  type WindowCreateOptions,
   type WindowHandle
 } from "./index.js"
 
@@ -4048,6 +4049,30 @@ test("host WindowClient adapter returns typed failures for invalid input and bad
     repeatedCloseExit,
     (error) => error instanceof HostProtocolStaleHandleError && error.operation === "Window.close"
   )
+})
+
+test("Window bridge client rejects invalid chrome inputs before crossing the host boundary", async () => {
+  const invalidInputs: ReadonlyArray<unknown> = [
+    { title: "" },
+    { vibrancy: "not-a-material" },
+    { trafficLights: { x: -10, y: 0 } },
+    { trafficLights: { x: 0, y: -20 } }
+  ]
+
+  for (const input of invalidInputs) {
+    const requests: HostProtocolRequestEnvelope[] = []
+    const registry = await Effect.runPromise(makeResourceRegistry())
+    const apiExchange = makeWindowApiExchange(windowExchange(requests), registry)
+    const program = Effect.gen(function* () {
+      const window = yield* Window
+      return yield* Effect.exit(window.create(input as WindowCreateOptions))
+    }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(apiExchange))))
+
+    const exit = await Effect.runPromise(program)
+
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+    expect(requests).toEqual([])
+  }
 })
 
 test("Shell bridge client rejects empty path strings as InvalidArgument", async () => {

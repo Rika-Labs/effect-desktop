@@ -1275,16 +1275,23 @@
   ],
   "workflow_ledger": {
     "active": {
-      "number": 877,
-      "title": "Stage macOS app bundle for dmg and zip packaging",
-      "url": "https://github.com/Rika-Labs/effect-desktop/issues/877",
-      "status": "pr-open",
-      "workflow": ["scout", "architect", "review", "work", "pr", "code-review", "address"],
-      "pr": "https://github.com/Rika-Labs/effect-desktop/pull/919",
-      "branch": "issue-877-stage-macos-app-bundle-for-dmg-and-zip-packaging",
-      "updated_at": "2026-05-09T04:37:00.000Z"
+      "number": 806,
+      "title": "Validate Window.create chrome inputs",
+      "url": "https://github.com/Rika-Labs/effect-desktop/issues/806",
+      "status": "worked",
+      "workflow": ["scout", "architect", "review", "work"],
+      "branch": "issue-806-validate-window-create-chrome-inputs",
+      "updated_at": "2026-05-09T04:48:39.000Z"
     },
     "worked": [
+      {
+        "number": 877,
+        "title": "Stage macOS app bundle for dmg and zip packaging",
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/877",
+        "status": "merged",
+        "pr": "https://github.com/Rika-Labs/effect-desktop/pull/919",
+        "updated_at": "2026-05-09T04:43:54.000Z"
+      },
       {
         "number": 876,
         "title": "Preserve trace integrity in diagnostics row caps",
