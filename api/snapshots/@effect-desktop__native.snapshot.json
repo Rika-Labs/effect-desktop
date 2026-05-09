@@ -1666,7 +1666,7 @@
     {
       "name": "PowerMonitorServiceApi",
       "kind": "interface",
-      "signature": "export interface PowerMonitorServiceApi extends Omit<PowerMonitorClientApi, \"isSupported\"> { readonly isSupported: (method: PowerMonitorMethod) => Effect.Effect<boolean, PowerMonitorError, never> }"
+      "signature": "export interface PowerMonitorServiceApi extends Omit<PowerMonitorClientApi, \"isSupported\"> { readonly isSupported: ( method: PowerMonitorMethod ) => Effect.Effect<boolean, PowerMonitorError, never> }"
     },
     {
       "name": "PowerMonitorShutdownEvent",
@@ -1996,7 +1996,7 @@
     {
       "name": "ScreenClientApi",
       "kind": "interface",
-      "signature": "export interface ScreenClientApi { readonly getDisplays: () => Effect.Effect<ScreenDisplaysResult, ScreenError, never> readonly getPrimaryDisplay: () => Effect.Effect<ScreenDisplay, ScreenError, never> readonly getPointerPoint: () => Effect.Effect<ScreenPoint, ScreenError, never> readonly isSupported: (method: ScreenMethod) => Effect.Effect<ScreenSupportedResult, ScreenError, never> }"
+      "signature": "export interface ScreenClientApi { readonly getDisplays: () => Effect.Effect<ScreenDisplaysResult, ScreenError, never> readonly getPrimaryDisplay: () => Effect.Effect<ScreenDisplay, ScreenError, never> readonly getPointerPoint: () => Effect.Effect<ScreenPoint, ScreenError, never> readonly isSupported: ( method: ScreenMethod ) => Effect.Effect<ScreenSupportedResult, ScreenError, never> }"
     },
     {
       "name": "ScreenDisplay",
