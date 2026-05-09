@@ -403,6 +403,58 @@ test("DiagnosticsPanels keeps trace groups internally consistent under row caps"
   expect(snapshot.traces[0]?.spans.map((span) => span.spanId)).toEqual(["root", "child"])
 })
 
+test("DiagnosticsPanels preserves recent trace activity when row caps include parent spans", async () => {
+  const telemetry = await Effect.runPromise(makeTelemetry())
+  await Effect.runPromise(
+    telemetry.recordSpan({
+      traceId: "trace-a",
+      spanId: "root-a",
+      subsystem: "runtime",
+      operation: "root-a",
+      name: "root a",
+      startedAt: 1,
+      endedAt: 2
+    })
+  )
+  await Effect.runPromise(
+    telemetry.recordSpan({
+      traceId: "trace-b",
+      spanId: "root-b",
+      subsystem: "runtime",
+      operation: "root-b",
+      name: "root b",
+      startedAt: 3,
+      endedAt: 4
+    })
+  )
+  await Effect.runPromise(
+    telemetry.recordSpan({
+      traceId: "trace-a",
+      spanId: "child-a",
+      parentSpanId: "root-a",
+      subsystem: "runtime",
+      operation: "child-a",
+      name: "child a",
+      startedAt: 5,
+      endedAt: 6
+    })
+  )
+
+  const snapshot = await Effect.runPromise(
+    Effect.gen(function* () {
+      const panels = yield* DiagnosticsPanels
+      return yield* panels.list()
+    }).pipe(
+      Effect.provide(
+        Layer.provide(DiagnosticsPanelsLive({ maxRows: 1 }), Layer.succeed(Telemetry)(telemetry))
+      )
+    )
+  )
+
+  expect(snapshot.traces.map((trace) => trace.traceId)).toEqual(["trace-a"])
+  expect(snapshot.traces[0]?.spans.map((span) => span.spanId)).toEqual(["root-a", "child-a"])
+})
+
 test("PerformanceOverlay compares startup, bridge p99, and render frame metrics to budgets", async () => {
   const telemetry = await Effect.runPromise(makeTelemetry({ now: () => 1_000 }))
   await Effect.runPromise(telemetry.recordHistogram({ name: "startup.cli.config_load", value: 80 }))
