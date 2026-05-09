@@ -3100,6 +3100,7 @@ test("Dock bridge client sends typed host envelopes and maps support result", as
     Effect.gen(function* () {
       const dock = yield* Dock
       yield* dock.setBadgeCount(5)
+      yield* dock.setBadgeText("1")
       yield* dock.setBadgeText(null)
       yield* dock.setProgress(null)
       yield* dock.setMenu(null)
@@ -3112,6 +3113,7 @@ test("Dock bridge client sends typed host envelopes and maps support result", as
   expect(supported).toBe(true)
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     ["Dock.setBadgeCount", { count: 5 }],
+    ["Dock.setBadgeText", { text: "1" }],
     ["Dock.setBadgeText", { text: null }],
     ["Dock.setProgress", { value: null }],
     ["Dock.setMenu", { menu: null }],
@@ -3119,6 +3121,29 @@ test("Dock bridge client sends typed host envelopes and maps support result", as
     ["Dock.requestAttention", {}],
     ["Dock.isSupported", { method: "setJumpList" }]
   ])
+})
+
+test("Dock bridge client rejects invalid badge text before transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = dockExchange(requests, () => ({
+    kind: "success",
+    payload: undefined
+  }))
+
+  const dock = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Dock
+    }).pipe(Effect.provide(Layer.provide(DockLive, makeDockBridgeClientLayer(exchange))))
+  )
+
+  const nulExit = await Effect.runPromiseExit(dock.setBadgeText("bad\u0000text"))
+  const newlineExit = await Effect.runPromiseExit(dock.setBadgeText("line\nbreak"))
+  const tabExit = await Effect.runPromiseExit(dock.setBadgeText("badge\ttext"))
+
+  for (const exit of [nulExit, newlineExit, tabExit]) {
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+  }
+  expect(requests).toEqual([])
 })
 
 test("unsupported Dock client exposes support checks and typed command failures", async () => {
