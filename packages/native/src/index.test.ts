@@ -4102,6 +4102,33 @@ test("Shell bridge client rejects empty path strings as InvalidArgument", async 
   expect(requests).toEqual([])
 })
 
+test("Shell bridge client rejects NUL bytes in path inputs as InvalidArgument", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Shell
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          ShellLive,
+          makeShellBridgeClientLayer(
+            shellExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const showExit = await Effect.runPromiseExit(client.showItemInFolder("/tmp/a\u0000b"))
+  const openExit = await Effect.runPromiseExit(client.openPath("/tmp/a\u0000b.txt"))
+  const trashExit = await Effect.runPromiseExit(client.trashItem("/tmp/a\u0000b"))
+
+  expectExitFailure(showExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(openExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(trashExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
 test("Path bridge client rejects empty canonical path strings from host as InvalidOutput", async () => {
   const client = await Effect.runPromise(
     Effect.gen(function* () {
