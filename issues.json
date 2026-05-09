@@ -1279,7 +1279,7 @@
       "title": "Expose guards for partial OS-state primitives",
       "url": "https://github.com/Rika-Labs/effect-desktop/issues/850",
       "status": "work-in-progress",
-      "workflow": ["scout", "architect", "review", "work", "pr", "code-review", "address"],
+      "workflow": ["scout", "architect", "review", "work", "pr", "code-review", "address", "learn"],
       "branch": "issue-850-expose-os-state-support-guards",
       "pr": "https://github.com/Rika-Labs/effect-desktop/pull/856",
       "updated_at": "2026-05-09T02:05:45.000Z"
