@@ -1,4 +1,5 @@
-import { Schema } from "effect"
+import { Effect, Option, Queue, Scope, Schema } from "effect"
+import { RpcClient, RpcClientError, RpcMessage, RpcServer } from "effect/unstable/rpc"
 
 import packageJson from "../package.json" with { type: "json" }
 
@@ -894,3 +895,223 @@ export const decodeHostProtocolEnvelope = (input: unknown): HostProtocolEnvelope
 
 export const encodeHostProtocolEnvelope = (input: HostProtocolEnvelope) =>
   encodeHostProtocolEnvelopeSync(input, StrictParseOptions)
+
+export interface DesktopTransportSend {
+  readonly send: (envelope: HostProtocolEnvelope) => Effect.Effect<void>
+}
+
+export interface DesktopTransportRun {
+  readonly run: (
+    onEnvelope: (envelope: HostProtocolEnvelope) => Effect.Effect<void>
+  ) => Effect.Effect<never>
+}
+
+export interface DesktopProtocolOptions {
+  readonly windowId?: string
+  readonly originToken?: string
+  readonly now?: () => number
+  readonly nextTraceId?: () => string
+}
+
+interface ResolvedDesktopProtocolOptions {
+  readonly windowId: string
+  readonly originToken: string
+  readonly now: () => number
+  readonly nextTraceId: () => string
+}
+
+const resolveProtocolOptions = (
+  options: DesktopProtocolOptions
+): ResolvedDesktopProtocolOptions => ({
+  windowId: options.windowId ?? "",
+  originToken: options.originToken ?? "",
+  now: options.now ?? Date.now,
+  nextTraceId: options.nextTraceId ?? (() => `trace-${globalThis.crypto.randomUUID()}`)
+})
+
+type ClientWriteFn = (
+  clientId: number,
+  response: RpcMessage.FromServerEncoded
+) => Effect.Effect<void>
+
+type ServerWriteFn = (clientId: number, data: RpcMessage.FromClientEncoded) => Effect.Effect<void>
+
+export const makeDesktopClientProtocol = (
+  transport: DesktopTransportSend & DesktopTransportRun,
+  options: DesktopProtocolOptions = {}
+): Effect.Effect<RpcClient.Protocol["Service"], never, Scope.Scope> =>
+  Effect.gen(function* () {
+    const resolved = resolveProtocolOptions(options)
+
+    let writeToClient: ClientWriteFn = (_clientId, _response) => Effect.void
+
+    const protocol = yield* RpcClient.Protocol.make((write, _clientIds) => {
+      writeToClient = write
+      return Effect.succeed({
+        send: (
+          _clientId: number,
+          request: RpcMessage.FromClientEncoded
+        ): Effect.Effect<void, RpcClientError.RpcClientError> => {
+          if (request._tag === "Request") {
+            const fields: {
+              kind: "request"
+              id: string
+              method: string
+              timestamp: number
+              traceId: string
+              windowId?: string
+              originToken?: string
+              payload?: unknown
+            } = {
+              kind: "request",
+              id: request.id,
+              method: request.tag,
+              timestamp: resolved.now(),
+              traceId: request.traceId ?? resolved.nextTraceId()
+            }
+            if (resolved.windowId !== "") fields.windowId = resolved.windowId
+            if (resolved.originToken !== "") fields.originToken = resolved.originToken
+            if (request.payload !== undefined) fields.payload = request.payload
+            return transport.send(new HostProtocolRequestEnvelope(fields)) as Effect.Effect<
+              void,
+              RpcClientError.RpcClientError
+            >
+          }
+          if (request._tag === "Interrupt") {
+            return transport.send(
+              new HostProtocolCancelByRequestEnvelope({
+                kind: "cancel",
+                id: request.requestId,
+                timestamp: resolved.now(),
+                traceId: resolved.nextTraceId()
+              })
+            ) as Effect.Effect<void, RpcClientError.RpcClientError>
+          }
+          return Effect.void
+        },
+        supportsAck: false,
+        supportsTransferables: false
+      })
+    })
+
+    yield* Effect.forkScoped(
+      transport.run((envelope) => {
+        if (envelope.kind === "response") {
+          const msg: RpcMessage.FromServerEncoded =
+            envelope.error !== undefined
+              ? {
+                  _tag: "Exit",
+                  requestId: envelope.id,
+                  exit: { _tag: "Failure", cause: [{ _tag: "Fail", error: envelope.error }] }
+                }
+              : {
+                  _tag: "Exit",
+                  requestId: envelope.id,
+                  exit: { _tag: "Success", value: envelope.payload }
+                }
+          return writeToClient(0, msg)
+        }
+        if (envelope.kind === "stream" && envelope.id !== undefined) {
+          const chunk: RpcMessage.FromServerEncoded = {
+            _tag: "Chunk",
+            requestId: envelope.id,
+            values: [envelope.payload] as readonly [unknown]
+          }
+          return writeToClient(0, chunk)
+        }
+        return Effect.void
+      })
+    )
+
+    return protocol
+  })
+
+export const makeDesktopServerProtocol = (
+  transport: DesktopTransportSend & DesktopTransportRun,
+  options: DesktopProtocolOptions = {}
+): Effect.Effect<RpcServer.Protocol["Service"], never, Scope.Scope> =>
+  Effect.gen(function* () {
+    const resolved = resolveProtocolOptions(options)
+    const disconnects = yield* Queue.unbounded<number>()
+
+    let writeToServer: ServerWriteFn = (_clientId, _data) => Effect.void
+
+    const protocol = yield* RpcServer.Protocol.make((write) => {
+      writeToServer = write
+      return Effect.succeed({
+        disconnects: Queue.asDequeue(disconnects),
+        send: (_clientId: number, response: RpcMessage.FromServerEncoded): Effect.Effect<void> => {
+          if (response._tag === "Exit") {
+            const exit = response.exit
+            const fields: {
+              kind: "response"
+              id: string
+              timestamp: number
+              traceId: string
+              payload?: unknown
+              error?: HostProtocolError
+            } = {
+              kind: "response",
+              id: response.requestId,
+              timestamp: resolved.now(),
+              traceId: resolved.nextTraceId()
+            }
+            if (exit._tag === "Success") {
+              fields.payload = exit.value
+            } else {
+              const first = exit.cause[0]
+              if (first !== undefined && first._tag === "Fail") {
+                fields.error = first.error as HostProtocolError
+              }
+            }
+            return transport.send(new HostProtocolResponseEnvelope(fields))
+          }
+          if (response._tag === "Chunk") {
+            const firstValue = response.values[0]
+            return transport.send(
+              new HostProtocolStreamByRequestEnvelope({
+                kind: "stream",
+                id: response.requestId,
+                timestamp: resolved.now(),
+                traceId: resolved.nextTraceId(),
+                payload: firstValue
+              })
+            )
+          }
+          return Effect.void
+        },
+        end: (_clientId: number): Effect.Effect<void> => Effect.void,
+        clientIds: Effect.succeed(new Set<number>([0])),
+        initialMessage: Effect.succeed(Option.none()),
+        supportsAck: false,
+        supportsTransferables: false,
+        supportsSpanPropagation: false
+      })
+    })
+
+    yield* Effect.forkScoped(
+      transport.run((envelope) => {
+        if (envelope.kind === "request") {
+          const request: RpcMessage.FromClientEncoded = {
+            _tag: "Request",
+            id: envelope.id,
+            tag: envelope.method,
+            payload: envelope.payload,
+            headers: [],
+            traceId: envelope.traceId
+          }
+          return writeToServer(0, request)
+        }
+        if (envelope.kind === "cancel" && typeof envelope.id === "string") {
+          const interrupt: RpcMessage.FromClientEncoded = {
+            _tag: "Interrupt",
+            requestId: envelope.id
+          }
+          return writeToServer(0, interrupt)
+        }
+        return Effect.void
+      })
+    )
+
+    return protocol
+  })
