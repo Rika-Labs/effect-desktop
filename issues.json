@@ -1279,10 +1279,10 @@
       "title": "Validate ContextMenu.show position coordinates",
       "url": "https://github.com/Rika-Labs/effect-desktop/issues/813",
       "status": "work-in-progress",
-      "workflow": ["scout", "architect", "review", "work", "pr", "code-review", "address"],
+      "workflow": ["scout", "architect", "review", "work", "pr", "code-review", "address", "learn"],
       "branch": "issue-813-validate-context-menu-position",
       "pr": "https://github.com/Rika-Labs/effect-desktop/pull/832",
-      "updated_at": "2026-05-09T01:24:00.000Z"
+      "updated_at": "2026-05-09T01:28:00.000Z"
     },
     "worked": [
       {
