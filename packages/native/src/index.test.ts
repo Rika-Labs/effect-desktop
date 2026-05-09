@@ -4065,6 +4065,43 @@ test("host WindowClient adapter returns typed failures for invalid input and bad
   )
 })
 
+test("host WindowClient adapter reports unimplemented public methods as Unsupported", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const apiExchange = makeWindowApiExchange(windowExchange([]), registry)
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* WindowClient
+    }).pipe(Effect.provide(makeWindowBridgeClientLayer(apiExchange)))
+  )
+
+  const created = await Effect.runPromise(client.create({}))
+  const exits = await Effect.runPromise(
+    Effect.gen(function* () {
+      return {
+        show: yield* Effect.exit(client.show(created)),
+        hide: yield* Effect.exit(client.hide(created)),
+        focus: yield* Effect.exit(client.focus(created)),
+        setVibrancy: yield* Effect.exit(client.setVibrancy(created, "appearance-based")),
+        persistState: yield* Effect.exit(client.persistState(created))
+      }
+    })
+  )
+
+  expectExitFailure(
+    exits.show,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "operation" in error &&
+      error.operation === "Window.show"
+  )
+  expectExitFailure(exits.hide, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(exits.focus, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(exits.setVibrancy, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(exits.persistState, (error) => hasErrorTag(error, "Unsupported"))
+})
+
 test("Window bridge client rejects invalid chrome inputs before crossing the host boundary", async () => {
   const invalidInputs: ReadonlyArray<unknown> = [
     { title: "" },

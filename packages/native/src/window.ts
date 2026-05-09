@@ -13,8 +13,8 @@ import {
   type HostWindowClientOptions,
   type HostWindowExchange,
   HostProtocolError as HostProtocolErrorSchema,
+  HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
-  makeHostProtocolInvalidStateError,
   makeHostProtocolNotFoundError,
   makeHostWindowClient,
   makeStaleHandleError,
@@ -372,8 +372,7 @@ const makeWindowBridgeClient = (
   options: ApiClientOptions
 ): WindowClientApi => {
   const client = Client({ Window: WindowApi }, exchange, options).Window
-  const unsupported = (method: string) =>
-    Effect.fail(makeHostProtocolInvalidStateError("unimplemented", "call", method))
+  const unsupported = (method: string) => Effect.fail(unsupportedError(method))
 
   const windowClient: WindowClientApi = {
     create: (input) =>
@@ -420,8 +419,7 @@ const makeHostWindowHandlers = (
 ): ApiHandlers<WindowApiSpec> => {
   const host = makeHostWindowClient(exchange, options)
   const knownWindowIds = new Set<string>()
-  const unsupported = (method: string) =>
-    Effect.fail(makeHostProtocolInvalidStateError("unimplemented", "call", method))
+  const unsupported = (method: string) => Effect.fail(unsupportedError(method))
 
   return {
     create: (input) =>
@@ -500,8 +498,14 @@ const makeHostWindowHandlers = (
   }
 }
 
-const unsupportedError = (method: string): HostProtocolError =>
-  makeHostProtocolInvalidStateError("unimplemented", "call", method)
+const unsupportedError = (method: string): HostProtocolUnsupportedError =>
+  new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "host Window adapter does not implement this method yet",
+    message: `unsupported Window method: ${method}`,
+    operation: method,
+    recoverable: false
+  })
 
 const toHostWindowCreateInput = (input: WindowCreateOptions): WindowCreateOptions => {
   return {
