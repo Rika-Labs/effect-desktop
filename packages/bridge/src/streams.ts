@@ -12,6 +12,7 @@ import {
 import {
   HostProtocolBackpressureOverflowError,
   HostProtocolCancelByRequestEnvelope,
+  HostProtocolCancelByResourceEnvelope,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolInternalError,
   HostProtocolRequestEnvelope,
@@ -62,7 +63,7 @@ export interface ApiStreamRuntime<Env = never> {
     request: HostProtocolRequestEnvelope
   ) => Stream.Stream<HostProtocolStreamEnvelope, HostProtocolError, Env>
   readonly cancel: (
-    request: HostProtocolCancelByRequestEnvelope
+    request: HostProtocolCancelByRequestEnvelope | HostProtocolCancelByResourceEnvelope
   ) => Effect.Effect<void, never, never>
 }
 
@@ -255,6 +256,7 @@ const makeStreamsWithOptions = <Layers extends readonly AnyApiLayer[]>(
   ...layers: Layers
 ): ApiStreamRuntime<ApiStreamLayerEnvironment<Layers[number]>> => {
   const active = new Map<string, ActiveStream>()
+  const activeByResource = new Map<string, ActiveStream>()
   const table = new Map<string, BoundStream>()
   const resolved = resolveOptions(options)
 
@@ -282,12 +284,12 @@ const makeStreamsWithOptions = <Layers extends readonly AnyApiLayer[]>(
 
   const runtime: ApiStreamRuntime<ApiStreamLayerEnvironment<Layers[number]>> = {
     stream: (request: HostProtocolRequestEnvelope) =>
-      streamDispatch(table, active, resolved, request) as Stream.Stream<
+      streamDispatch(table, active, activeByResource, resolved, request) as Stream.Stream<
         HostProtocolStreamEnvelope,
         HostProtocolError,
         ApiStreamLayerEnvironment<Layers[number]>
       >,
-    cancel: (request) => cancelStream(active, request)
+    cancel: (request) => cancelStream(active, activeByResource, request)
   }
 
   return Object.freeze(runtime)
@@ -300,6 +302,7 @@ export const Streams = Object.assign(makeStreams, {
 const streamDispatch = (
   table: ReadonlyMap<string, BoundStream>,
   active: Map<string, ActiveStream>,
+  activeByResource: Map<string, ActiveStream>,
   options: ResolvedApiStreamRuntimeOptions,
   request: HostProtocolRequestEnvelope
 ): Stream.Stream<HostProtocolStreamEnvelope, HostProtocolError, unknown> => {
@@ -314,6 +317,12 @@ const streamDispatch = (
   return Stream.unwrap(
     Effect.gen(function* () {
       const input = yield* decodeInput(request.method, bound.spec, request.payload)
+      if (active.has(request.id)) {
+        return Stream.fail(
+          makeHostProtocolInvalidArgumentError("id", "request already active", request.id)
+        )
+      }
+
       yield* options.registry.gcExpired(options.now())
       const streamId = options.nextStreamId()
       yield* options.registry.register(streamId)
@@ -326,14 +335,19 @@ const streamDispatch = (
         yield* Fiber.interrupt(fiber)
         yield* Effect.exit(Fiber.join(fiber))
       })
-      active.set(request.id, { interrupt, options, queue, request, streamId })
+      const stream = { interrupt, options, queue, request, streamId }
+      active.set(request.id, stream)
+      activeByResource.set(streamId, stream)
 
       return Stream.fromQueue(queue.queue).pipe(
         Stream.tap(() => syncBackpressureMetrics(options.registry, streamId, queue)),
         Stream.ensuring(
           Effect.gen(function* () {
             yield* interrupt
-            yield* Effect.sync(() => active.delete(request.id))
+            yield* Effect.sync(() => {
+              active.delete(request.id)
+              activeByResource.delete(streamId)
+            })
           })
         )
       )
@@ -343,10 +357,22 @@ const streamDispatch = (
 
 const cancelStream = (
   active: Map<string, ActiveStream>,
-  request: HostProtocolCancelByRequestEnvelope
+  activeByResource: Map<string, ActiveStream>,
+  request: HostProtocolCancelByRequestEnvelope | HostProtocolCancelByResourceEnvelope
 ): Effect.Effect<void, never, never> =>
   Effect.gen(function* () {
-    const stream = active.get(request.id)
+    const streamByRequest = request.id === undefined ? undefined : active.get(request.id)
+    const streamByResource =
+      request.resourceId === undefined ? undefined : activeByResource.get(request.resourceId)
+    const stream =
+      streamByRequest ??
+      streamByResource ??
+      Array.from(active.values()).find(
+        (activeStream) =>
+          activeStream.streamId === request.resourceId ||
+          activeStream.request.id === request.resourceId
+      )
+
     if (stream === undefined) {
       return
     }
@@ -359,7 +385,10 @@ const cancelStream = (
     )
     yield* Queue.end(stream.queue.queue)
     yield* stream.interrupt
-    active.delete(request.id)
+    yield* Effect.sync(() => {
+      active.delete(stream.request.id)
+      activeByResource.delete(stream.streamId)
+    })
   })
 
 const runProducer = (

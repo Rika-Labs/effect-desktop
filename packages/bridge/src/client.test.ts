@@ -249,6 +249,36 @@ test("Client resource proxies return stale-handle disposal failures as values", 
   expectFailureTag(exit, "StaleHandle")
 })
 
+test("Client resource proxies dispose only once", async () => {
+  const ProcessApi = makeProcessApi("ProjectApi.ResourceProxyIdempotent")
+  const disposed: ApiResourceHandle[] = []
+  const handle = {
+    kind: "process",
+    id: "process-once",
+    generation: 0,
+    ownerScope: "window-1",
+    state: "running"
+  } as const
+  const client = Client(
+    { process: ProcessApi },
+    {
+      ...responseExchange([], handle),
+      resource: {
+        dispose: (resource) =>
+          Effect.sync(() => {
+            disposed.push(resource)
+          })
+      }
+    }
+  )
+
+  const proxy = await Effect.runPromise(client.process.spawn())
+  await Effect.runPromise(proxy.dispose())
+  await Effect.runPromise(proxy.dispose())
+
+  expect(disposed).toEqual([handle])
+})
+
 test("Client abort signals propagate as typed bridge cancellation", async () => {
   const ProcessApi = makeProjectApi("ProjectApi.ClientCancel")
   const started = await Effect.runPromise(Deferred.make<void>())
