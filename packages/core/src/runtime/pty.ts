@@ -28,6 +28,10 @@ import { ResourceRegistry, type ResourceHandle, type ResourceRegistryApi } from 
 
 const NonEmptyString = Schema.NonEmptyString
 const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0))
+// eslint-disable-next-line no-control-regex -- PTY signals and env values must not contain control bytes or NUL.
+const PtySignalString = Schema.NonEmptyString.check(Schema.isPattern(/^[^\u0000-\u001F\u007F]+$/))
+const EnvironmentVariableName = Schema.NonEmptyString.check(Schema.isPattern(/^[^\u0000]+$/))
+const EnvironmentVariableValue = Schema.String.check(Schema.isPattern(/^[^\u0000]*$/))
 
 export class PtyOpenInput extends Schema.Class<PtyOpenInput>("PtyOpenInput")({
   command: NonEmptyString,
@@ -36,7 +40,7 @@ export class PtyOpenInput extends Schema.Class<PtyOpenInput>("PtyOpenInput")({
   rows: PositiveInt,
   cols: PositiveInt,
   cwd: Schema.optionalKey(NonEmptyString),
-  env: Schema.optionalKey(Schema.Record(Schema.String, Schema.String))
+  env: Schema.optionalKey(Schema.Record(EnvironmentVariableName, EnvironmentVariableValue))
 }) {}
 
 export class PtyResizeInput extends Schema.Class<PtyResizeInput>("PtyResizeInput")({
@@ -45,7 +49,7 @@ export class PtyResizeInput extends Schema.Class<PtyResizeInput>("PtyResizeInput
 }) {}
 
 export const PtySignalInput = Schema.Union([
-  NonEmptyString,
+  PtySignalString,
   Schema.Int.check(Schema.isGreaterThan(0))
 ])
 export type PtySignalInput = typeof PtySignalInput.Type

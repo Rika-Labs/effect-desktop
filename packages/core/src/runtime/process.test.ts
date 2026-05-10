@@ -229,6 +229,50 @@ processTest(
   }
 )
 
+processTest("Process spawn rejects NUL bytes in environment names", async () => {
+  let spawnCalls = 0
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => {
+      spawnCalls += 1
+      return makeFakeChild({ stdout: [], exit: { code: 0 } })
+    }),
+    { permissions: { spawn: ["echo"] } }
+  )
+  const nul = String.fromCharCode(0)
+
+  const exit = await Effect.runPromiseExit(
+    fixture.service.spawn("echo", ["hi"], {
+      ownerScope: "scope-main",
+      env: { [`key${nul}`]: "value" }
+    })
+  )
+
+  expect(spawnCalls).toBe(0)
+  expectFailure(exit, HostProtocolInvalidArgumentError)
+})
+
+processTest("Process spawn rejects NUL bytes in environment values", async () => {
+  let spawnCalls = 0
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => {
+      spawnCalls += 1
+      return makeFakeChild({ stdout: [], exit: { code: 0 } })
+    }),
+    { permissions: { spawn: ["echo"] } }
+  )
+  const nul = String.fromCharCode(0)
+
+  const exit = await Effect.runPromiseExit(
+    fixture.service.spawn("echo", ["hi"], {
+      ownerScope: "scope-main",
+      env: { key: `value${nul}` }
+    })
+  )
+
+  expect(spawnCalls).toBe(0)
+  expectFailure(exit, HostProtocolInvalidArgumentError)
+})
+
 processTest("Process spawn requires process.shell when shell mode is requested", async () => {
   let spawnCalls = 0
   const fixture = await makeFixture(
@@ -445,6 +489,20 @@ processTest("Process kill returns a typed effect and exit preserves the signal",
 
   expect(child.killedWith).toBe("SIGTERM")
   expect(status).toEqual(new ProcessExitStatus({ code: 0, signal: "SIGTERM" }))
+})
+
+processTest("Process kill rejects control bytes in signal names", async () => {
+  const child = makeFakeChild({ stdout: [], exit: { code: 0 } })
+  const fixture = await makeFixture(makeFakeAdapter(() => child))
+  const handle = await Effect.runPromise(
+    fixture.service.spawn("sleep", ["10"], { ownerScope: "scope-main" })
+  )
+  const nul = String.fromCharCode(0)
+
+  const exit = await Effect.runPromiseExit(handle.kill(`SIG${nul}TERM`))
+
+  expectFailure(exit, HostProtocolInvalidArgumentError)
+  expect(child.killedWith).toBeUndefined()
 })
 
 if (process.platform !== "win32") {

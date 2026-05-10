@@ -19,6 +19,12 @@ import {
 } from "./resources.js"
 
 const NonEmptyString = Schema.NonEmptyString
+// eslint-disable-next-line no-control-regex -- Process signals and env values must not contain control bytes or NUL.
+const ProcessSignalString = Schema.NonEmptyString.check(
+  Schema.isPattern(/^[^\u0000-\u001F\u007F]+$/)
+)
+const EnvironmentVariableName = Schema.NonEmptyString.check(Schema.isPattern(/^[^\u0000]+$/))
+const EnvironmentVariableValue = Schema.String.check(Schema.isPattern(/^[^\u0000]*$/))
 
 export class ProcessSpawnInput extends Schema.Class<ProcessSpawnInput>("ProcessSpawnInput")({
   command: NonEmptyString,
@@ -26,11 +32,11 @@ export class ProcessSpawnInput extends Schema.Class<ProcessSpawnInput>("ProcessS
   ownerScope: NonEmptyString,
   shell: Schema.optionalKey(Schema.Boolean),
   cwd: Schema.optionalKey(NonEmptyString),
-  env: Schema.optionalKey(Schema.Record(Schema.String, Schema.String))
+  env: Schema.optionalKey(Schema.Record(EnvironmentVariableName, EnvironmentVariableValue))
 }) {}
 
 export const ProcessSignalInput = Schema.Union([
-  NonEmptyString,
+  ProcessSignalString,
   Schema.Int.check(Schema.isGreaterThan(0))
 ])
 export type ProcessSignalInput = typeof ProcessSignalInput.Type
