@@ -1,8 +1,8 @@
 import {
   describeRpcs,
-  MissingDesktopContextError,
-  MissingDesktopRpcClientError,
-  MissingDesktopRpcsError,
+  makeMissingDesktopContextError,
+  makeMissingDesktopRpcClientError,
+  makeMissingDesktopRpcsError,
   type DesktopAppManifest,
   type RpcGroupWithRequests
 } from "@effect-desktop/core"
@@ -119,19 +119,18 @@ export const VueDesktop = Object.freeze({
         MissingVueDesktopContext
       )
       if (context === MissingVueDesktopContext) {
-        throw new MissingDesktopContextError({
-          framework: "vue",
-          message:
-            "VueDesktop.provideDesktop() or VueDesktop.createApp() is required before useDesktop(group)"
-        })
+        throw makeMissingDesktopContextError(
+          "vue",
+          "VueDesktop.provideDesktop() or VueDesktop.createApp() is required before useDesktop(group)"
+        )
       }
 
       const client = context.clients.get(group)
       if (client === undefined) {
-        throw new MissingDesktopRpcsError({
-          message: "No renderer RPC client is installed for this group",
-          tags: Array.from(group.requests.keys())
-        })
+        throw makeMissingDesktopRpcsError(
+          Array.from(group.requests.keys()),
+          "No renderer RPC client is installed for this group"
+        )
       }
 
       return makeEndpoints(describeRpcs(app, group), client) as VueDesktopRpcs<Group>
@@ -176,11 +175,11 @@ const makeEndpoints = (
     const invoke = (input: unknown): ReturnType<VueDesktopRpcClientMethod> => {
       const method = client[descriptor.tag]
       if (method === undefined) {
-        throw new MissingDesktopRpcClientError({
-          framework: "vue",
-          message: `No renderer RPC client method is installed for ${descriptor.tag}`,
-          tag: descriptor.tag
-        })
+        throw makeMissingDesktopRpcClientError(
+          "vue",
+          descriptor.tag,
+          `No renderer RPC client method is installed for ${descriptor.tag}`
+        )
       }
       return method(input)
     }
@@ -317,11 +316,11 @@ const asEffect = (
   if (Effect.isEffect(value)) {
     return value as Effect.Effect<unknown, unknown, never>
   }
-  throw new MissingDesktopRpcClientError({
-    framework: "vue",
-    message: `Renderer RPC client method ${tag} returned a Stream where an Effect was expected`,
-    tag
-  })
+  throw makeMissingDesktopRpcClientError(
+    "vue",
+    tag,
+    `Renderer RPC client method ${tag} returned a Stream where an Effect was expected`
+  )
 }
 
 const asStream = (
@@ -331,9 +330,9 @@ const asStream = (
   if (Stream.isStream(value)) {
     return value as Stream.Stream<unknown, unknown, never>
   }
-  throw new MissingDesktopRpcClientError({
-    framework: "vue",
-    message: `Renderer RPC client method ${tag} returned an Effect where a Stream was expected`,
-    tag
-  })
+  throw makeMissingDesktopRpcClientError(
+    "vue",
+    tag,
+    `Renderer RPC client method ${tag} returned an Effect where a Stream was expected`
+  )
 }

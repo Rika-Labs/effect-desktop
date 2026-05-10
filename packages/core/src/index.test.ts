@@ -34,6 +34,25 @@ test("public Desktop facade exposes the API contract registry", async () => {
   expect(core.Desktop.RedactionFilter.redact({ token: "abc" })).toEqual({ token: "[REDACTED]" })
 })
 
+test("framework boundary errors carry public diagnostic fields", async () => {
+  const core = await import("./index.js")
+  const error = core.makeMissingDesktopContextError(
+    "react",
+    "ReactDesktopRoot is required before useDesktop(group)"
+  )
+
+  expect(error).toBeInstanceOf(core.MissingDesktopContextError)
+  expect(error).toMatchObject({
+    code: "EDESKTOP_MISSING_CONTEXT",
+    category: "usage",
+    summary: "Desktop framework context is missing.",
+    actor: "renderer",
+    details: { framework: "react" }
+  })
+  expect(error.remediation).toContain("react")
+  expect(error.docsUrl).toContain("docs/SPEC.md")
+})
+
 test("Desktop.make produces a pipeable app definition and Desktop.provide appends layers", async () => {
   const core = await import("./index.js")
   const definition = core.Desktop.make({

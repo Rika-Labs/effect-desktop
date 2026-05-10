@@ -15,7 +15,10 @@ import type {
   DesktopAppManifest,
   DesktopRpcGroupDescriptor
 } from "./desktop-app.js"
-import { DuplicateDesktopRpcNameError, MissingDesktopRpcsError } from "./desktop-errors.js"
+import {
+  makeDuplicateDesktopRpcNameError,
+  makeMissingDesktopRpcsError
+} from "./desktop-errors.js"
 
 export type RpcEndpointDescriptorKind = "query" | "mutation" | "stream"
 export type RpcGroupWithRequests = RpcGroup.Any & {
@@ -45,10 +48,10 @@ export const describeRpcs = <Group extends RpcGroupWithRequests>(
 ): readonly RpcEndpointDescriptor[] => {
   const provided = providedRpcGroup(app, group)
   if (provided === undefined) {
-    throw new MissingDesktopRpcsError({
-      message: `RpcGroup is not provided to this Desktop app: ${groupTags(group).join(", ")}`,
-      tags: groupTags(group)
-    })
+    throw makeMissingDesktopRpcsError(
+      groupTags(group),
+      `RpcGroup is not provided to this Desktop app: ${groupTags(group).join(", ")}`
+    )
   }
 
   const descriptors = Array.from(provided.group.requests.values()).map((rpc) =>
@@ -73,11 +76,11 @@ const assertUniqueEndpointNames = (descriptors: readonly RpcEndpointDescriptor[]
   for (const descriptor of descriptors) {
     const previous = seen.get(descriptor.name)
     if (previous !== undefined) {
-      throw new DuplicateDesktopRpcNameError({
-        message: `Rpc endpoint name "${descriptor.name}" is produced by both "${previous}" and "${descriptor.tag}"`,
-        name: descriptor.name,
-        tags: Object.freeze([previous, descriptor.tag])
-      })
+      throw makeDuplicateDesktopRpcNameError(
+        descriptor.name,
+        Object.freeze([previous, descriptor.tag]),
+        `Rpc endpoint name "${descriptor.name}" is produced by both "${previous}" and "${descriptor.tag}"`
+      )
     }
 
     seen.set(descriptor.name, descriptor.tag)
