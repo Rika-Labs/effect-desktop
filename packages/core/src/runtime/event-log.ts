@@ -1,8 +1,5 @@
 import type { Layer } from "effect"
-import {
-  EventJournal,
-  SqlEventJournal
-} from "effect/unstable/eventlog"
+import { EventJournal, SqlEventJournal } from "effect/unstable/eventlog"
 
 export {
   Event,

@@ -12,7 +12,7 @@ Five bespoke runtime services — `filesystem`, `process`, `worker`, `pty`, and 
 
 2. Accidental duplication of the upstream abstract service tags (`FileSystem`, `Path`, `ChildProcessSpawner`, etc.) that every Effect application knows. Code that wants the standard platform surface must instead learn the bespoke shape of the `Filesystem` context service, which differs from `effect/FileSystem`.
 
-The result is that standard Effect patterns ("yield* FileSystem.FileSystem") do not work because `BunServices.layer` is not provided at the runtime spine.
+The result is that standard Effect patterns ("yield\* FileSystem.FileSystem") do not work because `BunServices.layer` is not provided at the runtime spine.
 
 `@effect/platform-bun` v4 (versioned alongside `effect` v4 beta) provides `BunServices.layer`, which bundles the standard `FileSystem`, `Path`, `Terminal`, `Stdio`, and `ChildProcessSpawner` services as a single composable layer.
 
@@ -21,6 +21,7 @@ The result is that standard Effect patterns ("yield* FileSystem.FileSystem") do 
 Add `@effect/platform-bun@4.0.0-beta.60` (pinned to match `effect@4.0.0-beta.60`) as a dependency of `packages/core`.
 
 Create `packages/core/src/runtime/platform.ts` that:
+
 - Exports `BunServicesLayer` — the upstream `BunServices.layer` providing `FileSystem`, `Path`, `Terminal`, `Stdio`, and `ChildProcessSpawner` from the standard effect tags.
 - Re-exports the standard platform service tags (`FileSystem`, `Path`, `Terminal`, `Stdio`, `PlatformError`) so every consumer can import them from `@effect-desktop/core` without knowing the upstream module path.
 

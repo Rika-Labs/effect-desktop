@@ -974,7 +974,11 @@ export const makeHostProtocolInternalError = (
   })
 
 const encodeCauseAsHostProtocolError = (
-  cause: ReadonlyArray<{ readonly _tag: string; readonly error?: unknown; readonly defect?: unknown }>,
+  cause: ReadonlyArray<{
+    readonly _tag: string
+    readonly error?: unknown
+    readonly defect?: unknown
+  }>,
   operation: string,
   options: ResolvedDesktopProtocolOptions
 ): HostProtocolError => {
