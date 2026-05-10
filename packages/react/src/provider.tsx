@@ -74,8 +74,23 @@ const makeContext = (
     : { client, currentWindow, registry, runtime }
 }
 
+export const createUnavailableDesktopClient = (message = "missing host bridge"): DesktopClient => {
+  const unavailable = <A,>(operation: string): Effect.Effect<A, WindowError, never> =>
+    Effect.fail(makeHostProtocolInvalidStateError(message, "call", operation))
+
+  return Object.freeze({
+    window: Object.freeze({
+      create: (_input?: WindowCreateOptions) => unavailable<WindowHandle>("window.create"),
+      setTitle: (_window: WindowHandle, _title: string) => unavailable<void>("window.setTitle"),
+      close: (_window: WindowHandle) => unavailable<void>("window.close")
+    })
+  } satisfies DesktopClient)
+}
+
+const defaultUnavailableDesktopClient = createUnavailableDesktopClient()
+
 export const DesktopProvider = ({
-  client = createUnavailableDesktopClient(),
+  client = defaultUnavailableDesktopClient,
   currentWindow,
   children,
   onCleanupError
@@ -111,16 +126,3 @@ export const useDesktopClient = (): DesktopClient => {
 
 export const useWindow = (): Option.Option<WindowHandle> =>
   Option.flatMap(useContext(DesktopContext), (ctx) => Option.fromUndefinedOr(ctx.currentWindow))
-
-export const createUnavailableDesktopClient = (message = "missing host bridge"): DesktopClient => {
-  const unavailable = <A,>(operation: string): Effect.Effect<A, WindowError, never> =>
-    Effect.fail(makeHostProtocolInvalidStateError(message, "call", operation))
-
-  return Object.freeze({
-    window: Object.freeze({
-      create: (_input?: WindowCreateOptions) => unavailable<WindowHandle>("window.create"),
-      setTitle: (_window: WindowHandle, _title: string) => unavailable<void>("window.setTitle"),
-      close: (_window: WindowHandle) => unavailable<void>("window.close")
-    })
-  } satisfies DesktopClient)
-}
