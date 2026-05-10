@@ -286,7 +286,13 @@ const syncPath = (
     try: async () => {
       const handle = await open(targetPath, "r")
       try {
-        await handle.sync()
+        await handle.sync().catch((error) => {
+          if (process.platform === "win32" && isNodeError(error) && error.code === "EPERM") {
+            return
+          }
+
+          throw error
+        })
       } finally {
         await handle.close()
       }
