@@ -9,14 +9,17 @@ export const useAtomValue = <A>(atom: Atom.Atom<A>): A | undefined => {
 
   const subscribe = (onStoreChange: () => void): (() => void) => {
     if (Option.isNone(ctx)) return () => {}
-    return ctx.value.registry.subscribe(atom, onStoreChange)
+    const unmount = ctx.value.registry.mount(atom)
+    const unsubscribe = ctx.value.registry.subscribe(atom, onStoreChange)
+    return () => {
+      unsubscribe()
+      unmount()
+    }
   }
 
   const getSnapshot = (): A | undefined => {
     if (Option.isNone(ctx)) return undefined
-    const registry = ctx.value.registry
-    registry.mount(atom)
-    return registry.get(atom)
+    return ctx.value.registry.get(atom)
   }
 
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
