@@ -1,0 +1,15 @@
+{
+  "title": "Effect Desktop",
+  "pages": [
+    "index",
+    "getting-started",
+    "---Core---",
+    "architecture",
+    "desktop-config",
+    "typed-apis",
+    "---Operate---",
+    "testing",
+    "deployment"
+  ]
+}
+

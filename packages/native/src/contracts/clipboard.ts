@@ -1,6 +1,7 @@
 import { Schema } from "effect"
+import { ImageMime } from "./image.js"
 
-export const ClipboardImageMime = Schema.Literals(["image/png", "image/jpeg"])
+export const ClipboardImageMime = ImageMime
 
 export type ClipboardImageMime = Schema.Schema.Type<typeof ClipboardImageMime>
 

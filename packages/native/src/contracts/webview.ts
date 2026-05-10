@@ -2,6 +2,7 @@ import { Api, type ApiResourceHandle } from "@effect-desktop/bridge"
 import { Schema } from "effect"
 
 import { BridgeSafeNonEmptyString, BridgeSafeString } from "./strings.js"
+import { ImageMime } from "./image.js"
 
 export const WebViewResource = Api.Resource("webview", "open")
 const WebViewPlatform = Schema.Literals(["macos", "windows", "linux"])
@@ -86,8 +87,11 @@ export class WebViewCapabilityResult extends Schema.Class<WebViewCapabilityResul
   supported: Schema.Boolean
 }) {}
 
+export const WebViewScreenshotMime = ImageMime
+export type WebViewScreenshotMime = Schema.Schema.Type<typeof WebViewScreenshotMime>
+
 export class WebViewScreenshot extends Schema.Class<WebViewScreenshot>("WebViewScreenshot")({
-  mime: Schema.String,
+  mime: WebViewScreenshotMime,
   bytes: Schema.Uint8Array
 }) {}
 

@@ -1,12 +1,18 @@
 import { Schema } from "effect"
+import { BridgeSafeNonEmptyString, PrintableNonEmptyString } from "./strings.js"
 
 export const DialogLevel = Schema.Literals(["info", "warning", "error"])
 
 export type DialogLevel = Schema.Schema.Type<typeof DialogLevel>
 
+const DialogFileFilterName = PrintableNonEmptyString
+const DialogFileFilterExtension = Schema.NonEmptyString.check(
+  Schema.isPattern(/^(?!\*)[^\u0000-\u001f\u007f]+$/)
+)
+
 export class DialogFileFilter extends Schema.Class<DialogFileFilter>("DialogFileFilter")({
-  name: Schema.String,
-  extensions: Schema.Array(Schema.String)
+  name: DialogFileFilterName,
+  extensions: Schema.Array(DialogFileFilterExtension)
 }) {}
 
 export type DialogFileFilterOptions = Schema.Schema.Type<typeof DialogFileFilter>
@@ -63,11 +69,11 @@ export class DialogConfirmInput extends Schema.Class<DialogConfirmInput>("Dialog
 export type DialogConfirmOptions = Schema.Schema.Type<typeof DialogConfirmInput>
 
 export class DialogOpenResult extends Schema.Class<DialogOpenResult>("DialogOpenResult")({
-  paths: Schema.Array(Schema.String)
+  paths: Schema.Array(BridgeSafeNonEmptyString)
 }) {}
 
 export class DialogSaveResult extends Schema.Class<DialogSaveResult>("DialogSaveResult")({
-  path: Schema.String
+  path: BridgeSafeNonEmptyString
 }) {}
 
 export class DialogConfirmResult extends Schema.Class<DialogConfirmResult>("DialogConfirmResult")({

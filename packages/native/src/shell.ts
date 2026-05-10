@@ -196,7 +196,6 @@ const validateExternalUrl = (
   Effect.gen(function* () {
     const parsed = yield* parseUrl(input.url, "Shell.openExternal")
     const scheme = parsed.protocol.replace(/:$/u, "").toLowerCase()
-    const allowedSchemes = new Set([...(input.allowedSchemes ?? []), ...DefaultExternalSchemes])
 
     if (parsed.protocol === "file:") {
       return yield* Effect.fail(
@@ -204,7 +203,7 @@ const validateExternalUrl = (
       )
     }
 
-    if (!allowedSchemes.has(scheme)) {
+    if (!DefaultExternalSchemes.includes(scheme)) {
       return yield* Effect.fail(
         permissionDenied("native.invoke:Shell.openExternal", scheme, "Shell.openExternal")
       )
@@ -283,8 +282,7 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
 
 const normalizeOpenExternalOptions = (
   options: Omit<ShellOpenExternalOptions, "url"> | undefined
-): Omit<ShellOpenExternalOptions, "url"> =>
-  options?.allowedSchemes === undefined ? {} : { allowedSchemes: options.allowedSchemes }
+): Omit<ShellOpenExternalOptions, "url"> => ({})
 
 const normalizeOpenPathOptions = (
   options: Omit<ShellOpenPathOptions, "path"> | undefined

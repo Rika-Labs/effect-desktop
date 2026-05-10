@@ -95,6 +95,8 @@ export interface CspWeakening {
 
 export interface RedactionPolicy {
   readonly defaultPatternEnabled?: boolean
+  readonly additionalPatterns?: readonly string[]
+  readonly allowlist?: readonly string[]
 }
 
 export interface UpdateInstallPolicy {
@@ -122,7 +124,7 @@ export interface ProductionSecurityConfig {
     readonly requireTypedBridge?: boolean
     readonly rendererNativeAccess?: boolean
     readonly requirePermissions?: boolean
-    readonly externalNavigation?: "deny" | "ask" | "allow"
+    readonly externalNavigation?: "deny" | "ask"
     readonly devtoolsInProd?: boolean
     readonly csp?: CspPolicy
     readonly redaction?: RedactionPolicy
@@ -519,16 +521,18 @@ const weakenedCspRule: Rule = ({ config, configPath }) => {
 }
 
 const externalNavigationRule: Rule = ({ config, configPath }) =>
-  config.security?.externalNavigation === "allow"
-    ? [
+  config.security?.externalNavigation === undefined ||
+  config.security?.externalNavigation === "ask" ||
+  config.security?.externalNavigation === "deny"
+    ? []
+    : [
         violation({
           rule: "unsafe-external-navigation",
           location: configLocation(configPath, "security.externalNavigation"),
-          message: "external navigation is allowed without Shell approval flow",
-          fix: 'Use "deny" or "ask" so external navigation goes through policy.'
+          message: "external navigation must be either \"deny\" or \"ask\"",
+          fix: 'Set security.externalNavigation to "deny" or "ask".'
         })
       ]
-    : []
 
 const devtoolsInProdRule: Rule = ({ config, configPath }) =>
   config.security?.devtoolsInProd === true
@@ -651,7 +655,8 @@ const parseCspPolicy = (policy: string | undefined): ParsedCspPolicy => {
   const duplicates: string[] = []
   for (const rawDirective of policy.split(";")) {
     const parts = rawDirective.trim().split(/\s+/u).filter(isNonEmpty)
-    const [directive, ...values] = parts
+    const [rawName, ...values] = parts
+    const directive = rawName?.toLowerCase()
     if (directive !== undefined) {
       if (directives.has(directive) && !duplicates.includes(directive)) {
         duplicates.push(directive)

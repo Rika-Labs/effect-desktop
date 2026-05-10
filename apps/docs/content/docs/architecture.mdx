@@ -1,0 +1,23 @@
+---
+title: Architecture
+description: The renderer asks for work; the runtime and host own native effects.
+---
+
+Effect Desktop keeps app concerns separated by failure boundary.
+
+## Renderer
+
+The renderer is ordinary React and web code. It renders UI and sends typed requests through the bridge.
+
+## Runtime
+
+The runtime owns Effect services, resource scopes, long-running jobs, stream lifecycles, and telemetry.
+
+## Host
+
+The host owns native windows, WebViews, protocol handling, packaging constraints, and OS-specific behavior.
+
+## Bridge
+
+The bridge is the typed message boundary between renderer intent and runtime work. It carries requests, responses, stream frames, events, and structured errors.
+

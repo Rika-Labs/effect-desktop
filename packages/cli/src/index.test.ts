@@ -4355,16 +4355,21 @@ const writePlaygroundFixture = async (
       version: "0.0.0"
     },
     runtime: { entry: "runtime.ts" },
-    renderer: { dist: "dist" },
+    renderer: {
+      entry: "src/renderer/main.tsx",
+      dist: "dist"
+    },
     ...extraConfig
   }
   await mkdir(appRoot, { recursive: true })
+  await mkdir(join(appRoot, "src", "renderer"), { recursive: true })
   await writeFile(
     join(appRoot, "desktop.config.ts"),
     `export default ${JSON.stringify(config, null, 2)} as const\n`
   )
   await writeFile(join(appRoot, "package.json"), '{"type":"module"}\n')
   await writeFile(join(appRoot, "runtime.ts"), "console.log('runtime')\n")
+  await writeFile(join(appRoot, "src/renderer/main.tsx"), "console.log('renderer')\n")
   await mkdir(join(directory, "target", "debug"), { recursive: true })
 }
 
