@@ -187,8 +187,9 @@ export const toLayer = <E, R>(
 export const app = <RIn = never, E = never>(
   config: DesktopConfig<RIn, E>
 ): Layer.Layer<DesktopApp, DesktopConfigError | E, RIn> => {
-  const validationLayer = Layer.effectDiscard(checkPermissions(config))
-  const spine = buildSpine(config)
+  const normalized = normalizeDesktopConfig(config)
+  const validationLayer = Layer.effectDiscard(checkPermissions(normalized))
+  const spine = buildSpine(normalized)
   return Layer.provideMerge(validationLayer, spine) as unknown as Layer.Layer<
     DesktopApp,
     DesktopConfigError | E,
@@ -199,6 +200,45 @@ export const app = <RIn = never, E = never>(
 export const launch = (
   layer: Layer.Layer<DesktopApp, DesktopConfigError, never>
 ): Effect.Effect<never, DesktopConfigError, never> => Layer.launch(layer)
+
+const normalizeDesktopConfig = <RIn, E>(config: DesktopConfig<RIn, E>): DesktopConfig<RIn, E> => {
+  const handlers = config.handlers ?? []
+  if (handlers.length === 0) {
+    return config
+  }
+
+  return {
+    id: config.id,
+    windows: config.windows,
+    ...(config.layers === undefined ? {} : { layers: config.layers }),
+    ...(config.permissions === undefined ? {} : { permissions: config.permissions }),
+    ...(config.workflows === undefined ? {} : { workflows: config.workflows }),
+    rpcs: Object.freeze([...handlers.map(apiLayerToRpcLayer), ...(config.rpcs ?? [])])
+  }
+}
+
+const apiLayerToRpcLayer = (apiLayer: AnyApiLayer): AnyDesktopRpcLayer => {
+  const group = apiLayer.contract.toRpcGroup()
+  const handlers: Record<string, (input: unknown) => unknown> = Object.create(null) as Record<
+    string,
+    (input: unknown) => unknown
+  >
+
+  for (const method of Object.keys(apiLayer.contract.spec)) {
+    const rpcTag = `${apiLayer.contract.tag}.${method}`
+    const handler = Reflect.get(apiLayer.handlers, method)
+    handlers[rpcTag] =
+      typeof handler === "function"
+        ? (input: unknown): unknown => handler(input)
+        : (): Effect.Effect<never> =>
+            Effect.die(`Legacy API handler is missing for ${rpcTag}`)
+  }
+
+  return Rpcs.layer(
+    group,
+    group.toLayer(Object.freeze(handlers) as never)
+  ) as unknown as AnyDesktopRpcLayer
+}
 
 const checkPermissions = <RIn, E>(
   config: DesktopConfig<RIn, E>

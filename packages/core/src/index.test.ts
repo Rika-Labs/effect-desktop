@@ -5,8 +5,9 @@ import {
   RpcEndpoint,
   RpcSupport
 } from "@effect-desktop/bridge"
-import { Cause, Effect, Exit, Layer, Schema } from "effect"
+import { Cause, Context, Effect, Exit, Layer, Schema } from "effect"
 import { Rpc, RpcGroup, RpcServer } from "effect/unstable/rpc"
+import type { AnyApiLayer } from "./index.js"
 
 test("public barrel exports the ResourceRegistry factory", async () => {
   const core = await import("./index.js")
@@ -109,6 +110,69 @@ test("Desktop.toLayer binds RpcGroups into the runtime RpcServer protocol", asyn
 
   expect(Exit.isSuccess(exit)).toBe(true)
   expect(acquired).toBe(1)
+})
+
+test("Desktop.app lowers legacy Api layers into the RpcGroup registry", async () => {
+  const core = await import("./index.js")
+  const List = Rpc.make("Legacy.Notes.list", {
+    payload: Schema.Void,
+    success: Schema.Array(Schema.String),
+    error: Schema.Never
+  })
+  const LegacyRpcs = RpcGroup.make(List)
+  class LegacyNotes {
+    static readonly tag = "Legacy.Notes"
+    static readonly spec = {
+      list: {
+        input: Schema.Void,
+        output: Schema.Array(Schema.String),
+        error: Schema.Never
+      }
+    }
+    static readonly events = {}
+    static toRpcGroup(): typeof LegacyRpcs {
+      return LegacyRpcs
+    }
+    static layer(
+      handlers: { readonly list: () => Effect.Effect<readonly string[], never, never> }
+    ) {
+      return Object.freeze({
+        contract: LegacyNotes,
+        handlers: Object.freeze(handlers)
+      })
+    }
+  }
+  const legacyLayer = LegacyNotes.layer({
+    list: () => Effect.succeed(["inbox"])
+  }) as unknown as AnyApiLayer
+  const transport = {
+    send: () => Effect.void,
+    run: () => Effect.never
+  }
+  const protocolLayer = Layer.effect(RpcServer.Protocol)(makeDesktopServerProtocol(transport))
+  const app = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const context = yield* Layer.build(
+          core
+            .desktopApp({
+              id: "legacy-notes",
+              windows: {
+                main: {
+                  title: "Notes"
+                }
+              },
+              handlers: [legacyLayer]
+            })
+            .pipe(Layer.provide(protocolLayer))
+        )
+        return Context.get(context, core.DesktopApp)
+      })
+    )
+  )
+
+  expect(app.rpcLayers).toHaveLength(1)
+  expect(app.rpcLayers[0]?.group.requests.has("Legacy.Notes.list")).toBe(true)
 })
 
 test("Desktop.toLayer rejects RpcGroup methods that require undeclared capabilities", async () => {
