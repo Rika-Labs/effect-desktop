@@ -56,6 +56,7 @@
       "@rikalabs/effect-desktop/react/storage/kv.js": ["./packages/react/src/storage/kv.ts"],
       "@rikalabs/effect-desktop/react/windows": ["./packages/react/src/windows.ts"],
       "@rikalabs/effect-desktop/react/windows.js": ["./packages/react/src/windows.ts"],
+      "@rikalabs/effect-desktop/solid": ["./packages/solid/src/index.ts"],
       "@rikalabs/effect-desktop/test": ["./packages/test/src/index.ts"],
       "@rikalabs/effect-desktop/vue": ["./packages/vue/src/index.ts"],
       "@rikalabs/effect-desktop/vite": ["./packages/vite/src/index.ts"]
