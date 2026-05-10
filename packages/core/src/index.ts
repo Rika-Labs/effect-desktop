@@ -1,4 +1,12 @@
-import { Api, Client, Handlers, RedactionFilter } from "@rikalabs/effect-desktop/bridge"
+import {
+  Api,
+  Client,
+  Handlers,
+  RedactionFilter,
+  RpcCapability,
+  RpcEndpoint,
+  RpcSupport
+} from "@rikalabs/effect-desktop/bridge"
 import { Effect, Layer } from "effect"
 
 import { Rpcs, app as desktopApp, launch, make, provide, toLayer } from "./runtime/desktop-app.js"
@@ -9,13 +17,25 @@ import { describeRpcs } from "./runtime/rpc-descriptors.js"
 import type { WorkflowLayer } from "./runtime/workflow.js"
 import { WorkflowEngine, WorkflowEngineLive } from "./runtime/workflow.js"
 
-export { Api, Client, Handlers, RedactionFilter, redact } from "@rikalabs/effect-desktop/bridge"
+export {
+  Api,
+  Client,
+  Handlers,
+  RedactionFilter,
+  RpcCapability,
+  RpcEndpoint,
+  RpcSupport,
+  redact
+} from "@rikalabs/effect-desktop/bridge"
 export { makeBridgeCallRegistry, makeBridgeStreamRegistry } from "@rikalabs/effect-desktop/bridge"
 export type {
   BridgeCallRegistry,
   BridgeCallState,
   BridgeStreamRegistry,
-  BridgeStreamRegistryEntry
+  BridgeStreamRegistryEntry,
+  RpcCapabilityMetadata,
+  RpcEndpointKind,
+  RpcSupportMetadata
 } from "@rikalabs/effect-desktop/bridge"
 export * from "./runtime/desktop-env-config.js"
 export * from "./runtime/logger.js"
@@ -129,6 +149,9 @@ export const Desktop = Object.freeze({
   Client,
   Handlers,
   RedactionFilter,
+  RpcCapability,
+  RpcEndpoint,
+  RpcSupport,
   app,
   launch,
   make,
