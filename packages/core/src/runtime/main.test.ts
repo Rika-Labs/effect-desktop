@@ -92,7 +92,12 @@ const runRuntimeWithFakeHost = (): Promise<RuntimeHostResult> =>
         EFFECT_DESKTOP_WINDOW_SMOKE_TEST: "1"
       },
       stdio: ["pipe", "pipe", "pipe"]
-    })
+    }) as unknown as NodeJS.EventEmitter & {
+      stdin: NodeJS.WritableStream
+      stdout: NodeJS.ReadableStream
+      stderr: NodeJS.ReadableStream
+      kill: () => void
+    }
     const readyEvents: RuntimeReadyEvent[] = []
     const methods: string[] = []
     const stderrChunks: Buffer[] = []
@@ -122,7 +127,7 @@ const runRuntimeWithFakeHost = (): Promise<RuntimeHostResult> =>
       stderrChunks.push(chunk)
     })
     child.on("error", reject)
-    child.on("close", (exitCode) => {
+    child.on("close", (exitCode: number | null) => {
       if (settled) {
         return
       }
