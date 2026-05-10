@@ -32,6 +32,7 @@
     "sourceMap": true,
     "paths": {
       "@rikalabs/effect-desktop": ["./packages/core/src/index.ts"],
+      "@rikalabs/effect-desktop/astro": ["./packages/astro/src/index.ts"],
       "@rikalabs/effect-desktop/bridge": ["./packages/bridge/src/index.ts"],
       "@rikalabs/effect-desktop/cli": ["./packages/cli/src/index.ts"],
       "@rikalabs/effect-desktop/config": ["./packages/config/src/index.ts"],
@@ -39,6 +40,7 @@
       "@rikalabs/effect-desktop/create": ["./packages/create-effect-desktop/src/index.ts"],
       "@rikalabs/effect-desktop/devtools": ["./packages/devtools/src/index.ts"],
       "@rikalabs/effect-desktop/native": ["./packages/native/src/index.ts"],
+      "@rikalabs/effect-desktop/next": ["./packages/next/src/index.ts"],
       "@rikalabs/effect-desktop/react": ["./packages/react/src/index.ts"],
       "@rikalabs/effect-desktop/react/api": ["./packages/react/src/api.ts"],
       "@rikalabs/effect-desktop/react/api.js": ["./packages/react/src/api.ts"],

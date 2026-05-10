@@ -52,6 +52,14 @@
         "typescript": "^5.9.3",
       },
     },
+    "packages/astro": {
+      "name": "@effect-desktop/astro",
+      "version": "0.0.0",
+      "dependencies": {
+        "@effect-desktop/core": "workspace:*",
+        "effect": "4.0.0-beta.60",
+      },
+    },
     "packages/bridge": {
       "name": "@effect-desktop/bridge",
       "version": "0.0.0",
@@ -119,6 +127,20 @@
         "@effect-desktop/bridge": "workspace:*",
         "@effect-desktop/core": "workspace:*",
         "effect": "4.0.0-beta.60",
+      },
+    },
+    "packages/next": {
+      "name": "@effect-desktop/next",
+      "version": "0.0.0",
+      "dependencies": {
+        "@effect-desktop/react": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/react": "^19.2.7",
+        "react": "^19.2.3",
+      },
+      "peerDependencies": {
+        "react": "^19.0.0",
       },
     },
     "packages/react": {
@@ -312,6 +334,8 @@
 
     "@babel/types": ["@babel/types@7.29.0", "", { "dependencies": { "@babel/helper-string-parser": "^7.27.1", "@babel/helper-validator-identifier": "^7.28.5" } }, "sha512-LwdZHpScM4Qz8Xw2iKSzS+cfglZzJGvofQICy7W7v4caru4EaAmyUuO6BGrbyQ2mYV11W0U8j5mBhd14dd3B0A=="],
 
+    "@effect-desktop/astro": ["@effect-desktop/astro@workspace:packages/astro"],
+
     "@effect-desktop/bridge": ["@effect-desktop/bridge@workspace:packages/bridge"],
 
     "@effect-desktop/cli": ["@effect-desktop/cli@workspace:packages/cli"],
@@ -325,6 +349,8 @@
     "@effect-desktop/docs": ["@effect-desktop/docs@workspace:apps/docs"],
 
     "@effect-desktop/native": ["@effect-desktop/native@workspace:packages/native"],
+
+    "@effect-desktop/next": ["@effect-desktop/next@workspace:packages/next"],
 
     "@effect-desktop/playground": ["@effect-desktop/playground@workspace:apps/playground"],
 
