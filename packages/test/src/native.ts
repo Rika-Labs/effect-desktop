@@ -38,8 +38,6 @@ import {
   Tray,
   TraySupportedResult,
   Updater,
-  UpdaterCheckResult,
-  UpdaterStatusResult,
   Window,
   type AppClientApi,
   type AppError,
@@ -90,9 +88,11 @@ import {
   type TrayHandle,
   type UpdaterCheckOptions,
   type UpdaterClientApi,
+  type UpdaterCheckResult,
   type UpdaterDownloadOptions,
   type UpdaterError,
   type UpdaterInstallOptions,
+  type UpdaterStatusResult,
   type WindowClientApi,
   type WindowCreateOptions,
   type WindowError,
@@ -793,41 +793,54 @@ export const makeTestUpdaterClient = (options: TestUpdaterOptions = {}): TestUpd
     log.push({ method, args })
   }
 
+  const checkResult = (available: boolean): UpdaterCheckResult =>
+    available
+      ? {
+          available: true,
+          version: options.version ?? "0.0.0"
+        }
+      : {
+          available: false,
+          ...(options.version === undefined ? {} : { version: options.version })
+        }
+
+  const statusResult = (state: "downloaded" | "installing"): UpdaterStatusResult => ({
+    state,
+    version: options.version ?? "0.0.0"
+  })
+
   return Object.freeze({
     calls: () => log.slice(),
     check: (input?: UpdaterCheckOptions): Effect.Effect<UpdaterCheckResult, UpdaterError, never> =>
       Effect.sync(() => {
         record("Updater.check", [input])
-        return new UpdaterCheckResult({
-          available: options.available ?? false,
-          ...(options.version !== undefined ? { version: options.version } : {})
-        })
+        return checkResult(options.available ?? false)
       }),
     download: (
       input?: UpdaterDownloadOptions
     ): Effect.Effect<UpdaterStatusResult, UpdaterError, never> =>
       Effect.sync(() => {
         record("Updater.download", [input])
-        return new UpdaterStatusResult({ state: "downloaded" })
+        return statusResult("downloaded")
       }),
     install: (
       input?: UpdaterInstallOptions
     ): Effect.Effect<UpdaterStatusResult, UpdaterError, never> =>
       Effect.sync(() => {
         record("Updater.install", [input])
-        return new UpdaterStatusResult({ state: "installing" })
+        return statusResult("installing")
       }),
     installAndRestart: (
       input?: UpdaterInstallOptions
     ): Effect.Effect<UpdaterStatusResult, UpdaterError, never> =>
       Effect.sync(() => {
         record("Updater.installAndRestart", [input])
-        return new UpdaterStatusResult({ state: "installing" })
+        return statusResult("installing")
       }),
     getStatus: (): Effect.Effect<UpdaterStatusResult, UpdaterError, never> =>
       Effect.sync(() => {
         record("Updater.getStatus", [])
-        return new UpdaterStatusResult({ state: "idle" })
+        return { state: "idle" }
       }),
     readyForRestart: (): Effect.Effect<void, UpdaterError, never> =>
       Effect.sync(() => record("Updater.readyForRestart", [])),

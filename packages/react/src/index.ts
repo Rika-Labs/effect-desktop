@@ -23,17 +23,6 @@ export * as indexedDbStorage from "./storage/idb.js"
 export * as keyValueStorage from "./storage/kv.js"
 export type { HostProtocolError } from "@effect-desktop/bridge"
 export type { WindowCreateOptions, WindowError, WindowHandle } from "@effect-desktop/native"
-import { Cause, Effect, Exit, Fiber, Option, Stream } from "effect"
-import {
-  createContext,
-  createElement,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type DependencyList,
-  type ReactNode
-} from "react"
 
 export { AsyncResult, Atom } from "effect/unstable/reactivity"
 
