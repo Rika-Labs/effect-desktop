@@ -115,6 +115,10 @@
         "react": "^19.2.3",
         "react-dom": "^19.2.3",
       },
+      "optionalDependencies": {
+        "@effect/sql-pglite": "4.0.0-beta.60",
+        "@electric-sql/pglite": "^0.4.4",
+      },
       "peerDependencies": {
         "react": "^19.0.0",
       },
@@ -269,7 +273,11 @@
 
     "@effect/platform-node-shared": ["@effect/platform-node-shared@4.0.0-beta.65", "", { "dependencies": { "@types/ws": "^8.18.1", "ws": "^8.20.0" }, "peerDependencies": { "effect": "^4.0.0-beta.65" } }, "sha512-3rY8F3WLEax6Hj08GI/OvDIH+KqjfxH7RM2bAMfgR75NgRmwDtny1P49PtPkoRjH5dcdtThThtsvE4X9OTZkpQ=="],
 
+    "@effect/sql-pglite": ["@effect/sql-pglite@4.0.0-beta.60", "", { "dependencies": { "@electric-sql/pglite": "^0.4.4" }, "peerDependencies": { "effect": "^4.0.0-beta.60" } }, "sha512-3T/0sgZB28Har5MY+S7mR9sPh9hCg0WqOFj22WK/aGF9WmsHYmuQcDJydzzOPAqRSMYF6WR3D7FW4PId2kFVzQ=="],
+
     "@effect/sql-sqlite-bun": ["@effect/sql-sqlite-bun@4.0.0-beta.60", "", { "peerDependencies": { "effect": "^4.0.0-beta.60" } }, "sha512-vDXAGVmRZkB8gq+4KHfp3JgxqttSg+Bl6wn6YOYqGi4/X0BMMACLndY09c2+Pt4Whd4W+xNM2SD4SIo1Hd5i6w=="],
+
+    "@electric-sql/pglite": ["@electric-sql/pglite@0.4.5", "", {}, "sha512-aGG2zGEyZzGWKy8P+9ZoNUV0jxt1+hgbeTf+bVAYyxVZZLXg3/9aFlfLxb08AYZVAfAkQlQIysmWjhc5hwDG8g=="],
 
     "@emnapi/core": ["@emnapi/core@1.10.0", "", { "dependencies": { "@emnapi/wasi-threads": "1.2.1", "tslib": "^2.4.0" } }, "sha512-yq6OkJ4p82CAfPl0u9mQebQHKPJkY7WrIuk205cTYnYe+k2Z8YBh11FrbRG/H6ihirqcacOgl2BIO8oyMQLeXw=="],
 
