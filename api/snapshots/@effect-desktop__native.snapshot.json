@@ -1309,6 +1309,11 @@
       "signature": "const makeUnsupportedWebViewClient: () => WebViewClientApi"
     },
     {
+      "name": "makeUnsupportedWindowClient",
+      "kind": "value",
+      "signature": "const makeUnsupportedWindowClient: () => WindowClientApi"
+    },
+    {
       "name": "makeUpdaterBridgeClientLayer",
       "kind": "value",
       "signature": "const makeUpdaterBridgeClientLayer: (exchange: ApiClientExchange, options?: ApiClientOptions) => Layer.Layer<UpdaterClient>"

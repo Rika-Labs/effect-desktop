@@ -1,36 +1,53 @@
 # create-effect-desktop
 
-> **Status:** Phase 0 stub. The package directory exists so the workspace resolves and validation gates run; the public API is populated in Phases 6+ (after templates exist). See `docs/SPEC.md`.
-
 ## Purpose
 
-Scaffolding command for new applications: template selection, package install hints, initial config, example API, renderer template.
+Scaffolding command for new applications: template selection, dependency lockstep, initial config, example API, and renderer template copy.
 
 ## Public API
 
-Not yet defined. Phase 0 ships an empty barrel export only.
+```ts
+import { scaffold } from "create-effect-desktop"
+```
+
+`scaffold(options)` copies a first-party template, rewrites the generated package name, pins the Effect beta tuple, and normalizes first-party `@effect-desktop/*` dependencies for standalone install.
+
+The CLI entrypoint accepts:
+
+```bash
+bun create effect-desktop [name] \
+  --template basic-react-tailwind \
+  --renderer-storage none
+```
+
+Supported templates are `basic-react-tailwind`, `todo-sqlite`, and `multi-window`. Supported renderer storage adapters are `none`, `indexeddb`, `sqlite-wasm`, and `pglite`.
 
 ## Non-goals
 
-See `docs/SPEC.md` for the package's normative non-goals.
+- Full vertical product template infrastructure beyond the first-party template matrix.
+- Marketplace or community template discovery.
+- Migration tooling for pre-v4 generated apps.
 
 ## Usage
 
-```ts
-// Reserved for Phases 6+ (after templates exist).
+```bash
+bun create effect-desktop my-app
+cd my-app
+bun install
+bun run dev
 ```
 
 ## Testing
 
 ```bash
-bun test
+bun test packages/create-effect-desktop/src/index.test.ts
 bun run typecheck
 ```
 
 ## Platform notes
 
-None until the package implements native-touching primitives.
+The package writes files under the requested project directory and rejects non-empty targets. Template bytes are copied from the checked-in first-party template set.
 
 ## Internal architecture
 
-To be documented as the package is built out.
+`src/bin.ts` owns CLI argument parsing and user-facing errors. `src/index.ts` owns template resolution, copy safety, and generated manifest normalization.
