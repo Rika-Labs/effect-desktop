@@ -6,7 +6,8 @@ import {
   STARTUP_WINDOWS_ENV,
   StartupWindowConfigError,
   openDeclaredWindows,
-  readStartupWindowsEnv
+  readStartupWindowsEnv,
+  toStartupModuleSpecifier
 } from "./window-supervisor.js"
 
 test("openDeclaredWindows opens declared windows and smoke-test destroys them", async () => {
@@ -111,6 +112,17 @@ test("readStartupWindowsEnv rejects reserved object names before building the wi
   expect(error).toBeInstanceOf(StartupWindowConfigError)
   expect(error?.message).toContain("reserved window name")
   expect(({} as { readonly title?: unknown }).title).toBeUndefined()
+})
+
+test("toStartupModuleSpecifier classifies paths, package specifiers, and URL schemes explicitly", () => {
+  expect(toStartupModuleSpecifier("C:\\app\\main.ts")).toBe("file:///C:/app/main.ts")
+  expect(toStartupModuleSpecifier("\\\\server\\share\\main.ts")).toBe("file://server/share/main.ts")
+  expect(toStartupModuleSpecifier("@scope/pkg/spine")).toBe("@scope/pkg/spine")
+  expect(toStartupModuleSpecifier("pkg/spine")).toBe("pkg/spine")
+  expect(toStartupModuleSpecifier("file:///app/main.js")).toBe("file:///app/main.js")
+  expect(() => toStartupModuleSpecifier("data:text/javascript,export default {}")).toThrow(
+    "only accepts file URLs"
+  )
 })
 
 const getFailure = <E>(exit: Exit.Exit<unknown, E>): E | undefined => {

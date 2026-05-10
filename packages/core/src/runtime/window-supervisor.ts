@@ -1,3 +1,4 @@
+import path from "node:path"
 import { pathToFileURL } from "node:url"
 
 import type { HostProtocolError, HostWindowClient, WindowCreateInput } from "@effect-desktop/bridge"
@@ -59,7 +60,7 @@ export const readStartupWindows = (
   const exportName = normalizedAppExport(env)
   return Effect.tryPromise({
     try: async () => {
-      const module = (await import(toModuleSpecifier(rawModule))) as Readonly<
+      const module = (await import(toStartupModuleSpecifier(rawModule))) as Readonly<
         Record<string, unknown>
       >
       const app = module[exportName]
@@ -225,21 +226,58 @@ const normalizedAppExport = (env: Readonly<Record<string, string | undefined>>):
   return exportName.trim()
 }
 
-const toModuleSpecifier = (raw: string): string => {
+export const toStartupModuleSpecifier = (raw: string): string => {
   const value = raw.trim()
-  if (isImportSpecifier(value)) {
+  if (value === "") {
+    throw new Error(`${APP_MODULE_ENV} must not be empty`)
+  }
+  if (isWindowsDrivePath(value)) {
+    return windowsDrivePathToFileUrl(value)
+  }
+  if (isWindowsUncPath(value)) {
+    return windowsUncPathToFileUrl(value)
+  }
+
+  const parsedUrl = parseUrl(value)
+  if (parsedUrl !== undefined) {
+    if (parsedUrl.protocol !== "file:") {
+      throw new Error(`${APP_MODULE_ENV} only accepts file URLs, file paths, or package specifiers`)
+    }
     return value
   }
-  return pathToFileURL(value).href
+
+  if (isFilesystemPath(value)) {
+    return pathToFileURL(value).href
+  }
+
+  return value
 }
 
-const isImportSpecifier = (value: string): boolean => {
+const parseUrl = (value: string): URL | undefined => {
   try {
-    const url = new URL(value)
-    return url.protocol.length > 0
+    return new URL(value)
   } catch {
-    return false
+    return undefined
   }
+}
+
+const isFilesystemPath = (value: string): boolean =>
+  value === "." ||
+  value === ".." ||
+  value.startsWith("./") ||
+  value.startsWith("../") ||
+  value.startsWith("/") ||
+  path.isAbsolute(value)
+
+const isWindowsDrivePath = (value: string): boolean => /^[a-zA-Z]:[\\/]/.test(value)
+
+const isWindowsUncPath = (value: string): boolean => /^\\\\[^\\]+\\[^\\]+/.test(value)
+
+const windowsDrivePathToFileUrl = (value: string): string => `file:///${value.replace(/\\/g, "/")}`
+
+const windowsUncPathToFileUrl = (value: string): string => {
+  const withoutPrefix = value.slice(2).replace(/\\/g, "/")
+  return `file://${withoutPrefix}`
 }
 
 const isDesktopAppDefinition = (value: unknown): value is DesktopAppDefinition<unknown, unknown> =>
