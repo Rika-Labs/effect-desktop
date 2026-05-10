@@ -2,7 +2,6 @@ import {
   ApiResourceHandleShape,
   HostProtocolNotFoundError,
   hostProtocolErrorRecoverableDefault,
-  type HostProtocolError
 } from "@effect-desktop/bridge"
 import { Effect, Layer, Stream } from "effect"
 
@@ -660,7 +659,7 @@ export const makeTestSafeStorageClient = (): TestSafeStorageApi => {
         record("SafeStorage.get", [key])
         const value = store.get(key)
         if (value === undefined) {
-          return yield* Effect.fail(notFound(key, "SafeStorage.get") as HostProtocolError)
+          return yield* Effect.fail(notFound(key, "SafeStorage.get"))
         }
         return SecretValue.fromBytes(value)
       }),
