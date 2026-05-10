@@ -255,7 +255,7 @@ export const useDesktopQuery = <A, E>(
         void Effect.runPromiseExit(Fiber.interrupt(fiber))
       }
     },
-    deps === undefined ? [reloads, operation] : [...deps, reloads]
+    deps === undefined ? [reloads] : [...deps, reloads]
   )
 
   return {

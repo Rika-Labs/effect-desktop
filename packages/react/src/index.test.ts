@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { readFileSync } from "node:fs"
 import { makeHostProtocolInvalidStateError } from "@effect-desktop/bridge"
 import { AsyncResult } from "effect/unstable/reactivity"
 import { Cause, Effect, Exit, Option, Schema } from "effect"
@@ -145,6 +146,13 @@ test("defineDesktopApi exposes lowerCamel operation hook objects", () => {
   expect(typeof notes.createNote.useAction).toBe("function")
   expect(Object.isFrozen(notes)).toBe(true)
   expect(Object.isFrozen(notes.createNote)).toBe(true)
+})
+
+test("useDesktopQuery defaults to reload-only dependencies for inline operations", () => {
+  const source = readFileSync(new URL("./hooks/desktop.ts", import.meta.url), "utf8")
+
+  expect(source).toContain("deps === undefined ? [reloads] : [...deps, reloads]")
+  expect(source).not.toContain("deps === undefined ? [reloads, operation]")
 })
 
 test("usePermission exports the deferred shape", () => {
