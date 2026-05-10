@@ -332,7 +332,7 @@ test("ProductionChecker rule registry covers the current production rule set", a
       requireTypedBridge: false,
       rendererNativeAccess: true,
       requirePermissions: false,
-      externalNavigation: "deny",
+      externalNavigation: "allow" as never,
       csp: { disabled: true },
       redaction: { defaultPatternEnabled: false }
     },
