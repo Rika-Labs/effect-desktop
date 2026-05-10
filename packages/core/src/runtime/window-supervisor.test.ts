@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import type { HostWindowClient, WindowCreateInput } from "@rikalabs/effect-desktop/bridge"
+import type { HostWindowClient, WindowCreateInput } from "@effect-desktop/bridge"
 import { Cause, Effect, Exit } from "effect"
 
 import {

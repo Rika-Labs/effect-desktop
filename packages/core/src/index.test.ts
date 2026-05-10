@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { RpcEndpoint, RpcSupport } from "@rikalabs/effect-desktop/bridge"
+import { RpcEndpoint, RpcSupport } from "@effect-desktop/bridge"
 import { Effect, Layer, Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 

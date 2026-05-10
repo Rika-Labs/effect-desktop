@@ -1,12 +1,12 @@
 import {
   makeHostProtocolInvalidStateError,
   type HostProtocolError
-} from "@rikalabs/effect-desktop/bridge"
+} from "@effect-desktop/bridge"
 import type {
   WindowCreateOptions,
   WindowError,
   WindowHandle
-} from "@rikalabs/effect-desktop/native"
+} from "@effect-desktop/native"
 import { Effect, Option } from "effect"
 
 import { useMutation, type MutationResult } from "./mutation.js"

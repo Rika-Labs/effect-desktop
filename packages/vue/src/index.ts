@@ -5,8 +5,8 @@ import {
   MissingDesktopRpcsError,
   type DesktopAppDefinition,
   type RpcGroupWithRequests
-} from "@rikalabs/effect-desktop/core"
-import type { WithRpcEndpointKind } from "@rikalabs/effect-desktop/bridge"
+} from "@effect-desktop/core"
+import type { WithRpcEndpointKind } from "@effect-desktop/bridge"
 import { Cause, Effect, Exit, Fiber, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import {
@@ -96,7 +96,7 @@ export interface VueDesktopAdapter<App extends DesktopAppDefinition<unknown, unk
 export {
   MissingDesktopContextError,
   MissingDesktopRpcClientError
-} from "@rikalabs/effect-desktop/core"
+} from "@effect-desktop/core"
 
 interface VueDesktopContext {
   readonly clients: VueDesktopClientMap

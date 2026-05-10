@@ -5,7 +5,7 @@ import {
   rpcSupport,
   type RpcCapabilityMetadata,
   type RpcSupportMetadata
-} from "@rikalabs/effect-desktop/bridge"
+} from "@effect-desktop/bridge"
 import { Option, Schema } from "effect"
 import { Rpc, RpcGroup, RpcSchema } from "effect/unstable/rpc"
 

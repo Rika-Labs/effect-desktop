@@ -4,9 +4,9 @@ import {
   MissingDesktopRpcClientError,
   MissingDesktopRpcsError,
   type DesktopAppDefinition
-} from "@rikalabs/effect-desktop/core"
-import type { RpcGroupWithRequests } from "@rikalabs/effect-desktop/core"
-import type { WithRpcEndpointKind } from "@rikalabs/effect-desktop/bridge"
+} from "@effect-desktop/core"
+import type { RpcGroupWithRequests } from "@effect-desktop/core"
+import type { WithRpcEndpointKind } from "@effect-desktop/bridge"
 import { Effect, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { createContext, createElement, useContext, useMemo, type ReactNode } from "react"
@@ -65,7 +65,7 @@ export interface ReactDesktopAdapter<App extends DesktopAppDefinition<unknown, u
 export {
   MissingDesktopContextError,
   MissingDesktopRpcClientError
-} from "@rikalabs/effect-desktop/core"
+} from "@effect-desktop/core"
 
 interface ReactDesktopContextValue {
   readonly clients: ReactDesktopClientMap

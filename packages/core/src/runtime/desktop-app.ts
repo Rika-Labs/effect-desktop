@@ -1,7 +1,7 @@
 import { Config, Context, Data, Effect, Layer } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
-import type { ApiContractClass, ApiContractSpec } from "@rikalabs/effect-desktop/bridge"
+import type { ApiContractClass, ApiContractSpec } from "@effect-desktop/bridge"
 
 import { DesktopLoggerLayer } from "./logger.js"
 import { BunServicesLayer } from "./platform.js"

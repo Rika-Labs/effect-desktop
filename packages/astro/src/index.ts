@@ -1,4 +1,4 @@
-import type { DesktopAppDefinition } from "@rikalabs/effect-desktop/core"
+import type { DesktopAppDefinition } from "@effect-desktop/core"
 import { Data } from "effect"
 
 export type AstroHydrationDirective = "load" | "idle" | "visible" | "media" | "only"

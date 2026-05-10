@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
-import { RpcEndpoint } from "@rikalabs/effect-desktop/bridge"
-import { Desktop, MissingDesktopRpcsError } from "@rikalabs/effect-desktop/core"
+import { RpcEndpoint } from "@effect-desktop/bridge"
+import { Desktop, MissingDesktopRpcsError } from "@effect-desktop/core"
 import { Effect, Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { createApp, effectScope } from "vue"

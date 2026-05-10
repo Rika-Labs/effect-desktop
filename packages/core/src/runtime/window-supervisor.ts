@@ -2,7 +2,7 @@ import type {
   HostProtocolError,
   HostWindowClient,
   WindowCreateInput
-} from "@rikalabs/effect-desktop/bridge"
+} from "@effect-desktop/bridge"
 import { Data, Effect } from "effect"
 
 import type { WindowSpec } from "./desktop-app.js"

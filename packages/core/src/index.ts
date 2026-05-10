@@ -6,7 +6,7 @@ import {
   RpcCapability,
   RpcEndpoint,
   RpcSupport
-} from "@rikalabs/effect-desktop/bridge"
+} from "@effect-desktop/bridge"
 import { Effect, Layer } from "effect"
 
 import { Rpcs, app as desktopApp, launch, make, provide, toLayer } from "./runtime/desktop-app.js"
@@ -26,8 +26,8 @@ export {
   RpcEndpoint,
   RpcSupport,
   redact
-} from "@rikalabs/effect-desktop/bridge"
-export { makeBridgeCallRegistry, makeBridgeStreamRegistry } from "@rikalabs/effect-desktop/bridge"
+} from "@effect-desktop/bridge"
+export { makeBridgeCallRegistry, makeBridgeStreamRegistry } from "@effect-desktop/bridge"
 export type {
   BridgeCallRegistry,
   BridgeCallState,
@@ -36,7 +36,7 @@ export type {
   RpcCapabilityMetadata,
   RpcEndpointKind,
   RpcSupportMetadata
-} from "@rikalabs/effect-desktop/bridge"
+} from "@effect-desktop/bridge"
 export * from "./runtime/desktop-env-config.js"
 export * from "./runtime/logger.js"
 export * from "./runtime/resources.js"

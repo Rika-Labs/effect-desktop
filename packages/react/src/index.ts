@@ -21,12 +21,12 @@ export {
 
 export * as indexedDbStorage from "./storage/idb.js"
 export * as keyValueStorage from "./storage/kv.js"
-export type { HostProtocolError } from "@rikalabs/effect-desktop/bridge"
+export type { HostProtocolError } from "@effect-desktop/bridge"
 export type {
   WindowCreateOptions,
   WindowError,
   WindowHandle
-} from "@rikalabs/effect-desktop/native"
+} from "@effect-desktop/native"
 
 export { AsyncResult, Atom } from "effect/unstable/reactivity"
 

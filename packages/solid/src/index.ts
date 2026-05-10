@@ -1,4 +1,4 @@
-import type { WithRpcEndpointKind } from "@rikalabs/effect-desktop/bridge"
+import type { WithRpcEndpointKind } from "@effect-desktop/bridge"
 import {
   describeRpcs,
   MissingDesktopContextError,
@@ -6,7 +6,7 @@ import {
   MissingDesktopRpcsError,
   type DesktopAppDefinition,
   type RpcGroupWithRequests
-} from "@rikalabs/effect-desktop/core"
+} from "@effect-desktop/core"
 import { Cause, Effect, Exit, Fiber, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import {
@@ -105,7 +105,7 @@ export interface SolidDesktopAdapter<App extends DesktopAppDefinition<unknown, u
 export {
   MissingDesktopContextError,
   MissingDesktopRpcClientError
-} from "@rikalabs/effect-desktop/core"
+} from "@effect-desktop/core"
 
 interface SolidDesktopContextValue {
   readonly clients: SolidDesktopClientMap

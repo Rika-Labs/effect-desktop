@@ -47,15 +47,15 @@ export type WithRpcSupport<R extends Rpc.Any, Support extends RpcSupportMetadata
   RpcSupportMarker<Support>
 
 export const RpcEndpointKindAnnotation = Context.Service<RpcEndpointKind>(
-  "@rikalabs/effect-desktop/bridge/RpcEndpointKind"
+  "@effect-desktop/bridge/RpcEndpointKind"
 )
 
 export const RpcCapabilityAnnotation = Context.Service<RpcCapabilityMetadata>(
-  "@rikalabs/effect-desktop/bridge/RpcCapability"
+  "@effect-desktop/bridge/RpcCapability"
 )
 
 export const RpcSupportAnnotation = Context.Service<RpcSupportMetadata>(
-  "@rikalabs/effect-desktop/bridge/RpcSupport"
+  "@effect-desktop/bridge/RpcSupport"
 )
 
 export const RpcEndpoint = Object.freeze({

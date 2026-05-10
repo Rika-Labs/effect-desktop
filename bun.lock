@@ -133,6 +133,7 @@
       "name": "@effect-desktop/next",
       "version": "0.0.0",
       "dependencies": {
+        "@effect-desktop/core": "workspace:*",
         "@effect-desktop/react": "workspace:*",
       },
       "devDependencies": {
@@ -173,6 +174,7 @@
       "name": "@effect-desktop/solid",
       "version": "0.0.0",
       "dependencies": {
+        "@effect-desktop/bridge": "workspace:*",
         "@effect-desktop/core": "workspace:*",
         "effect": "4.0.0-beta.60",
       },
@@ -212,6 +214,7 @@
       "name": "@effect-desktop/vue",
       "version": "0.0.0",
       "dependencies": {
+        "@effect-desktop/bridge": "workspace:*",
         "@effect-desktop/core": "workspace:*",
         "effect": "4.0.0-beta.60",
       },

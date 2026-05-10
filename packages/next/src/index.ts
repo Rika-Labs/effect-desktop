@@ -1,11 +1,11 @@
 "use client"
 
-import type { DesktopAppDefinition } from "@rikalabs/effect-desktop/core"
+import type { DesktopAppDefinition } from "@effect-desktop/core"
 import {
   ReactDesktop,
   type ReactDesktopAdapter,
   type ReactDesktopRootProps
-} from "@rikalabs/effect-desktop/react/desktop"
+} from "@effect-desktop/react/desktop"
 import type { ReactNode } from "react"
 
 export interface NextDesktopAdapter<
