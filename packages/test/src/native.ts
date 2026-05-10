@@ -1,7 +1,7 @@
 import {
   ApiResourceHandleShape,
   HostProtocolNotFoundError,
-  hostProtocolErrorRecoverableDefault,
+  hostProtocolErrorRecoverableDefault
 } from "@effect-desktop/bridge"
 import { Effect, Layer, Stream } from "effect"
 
@@ -715,40 +715,34 @@ export const makeTestCrashReporterClient = (): Effect.Effect<TestCrashReporterAp
       start: (
         options?: CrashReporterStartOptions
       ): Effect.Effect<void, CrashReporterError, never> =>
-        inner
-          .start(options)
-          .pipe(
-            Effect.tap(() =>
-              Effect.sync(() => {
-                record("CrashReporter.start", [options])
-                breadcrumbs.length = 0
-              })
-            )
-          ),
+        inner.start(options).pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              record("CrashReporter.start", [options])
+              breadcrumbs.length = 0
+            })
+          )
+        ),
       recordBreadcrumb: (
         breadcrumb: CrashReporterBreadcrumb
       ): Effect.Effect<void, CrashReporterError, never> =>
-        inner
-          .recordBreadcrumb(breadcrumb)
-          .pipe(
-            Effect.tap(() =>
-              Effect.sync(() => {
-                breadcrumbs.push(breadcrumb)
-                record("CrashReporter.recordBreadcrumb", [breadcrumb])
-              })
-            )
-          ),
+        inner.recordBreadcrumb(breadcrumb).pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              breadcrumbs.push(breadcrumb)
+              record("CrashReporter.recordBreadcrumb", [breadcrumb])
+            })
+          )
+        ),
       flush: (): Effect.Effect<CrashReporterFlushResult, CrashReporterError, never> =>
-        inner
-          .flush()
-          .pipe(
-            Effect.tap((result) =>
-              Effect.sync(() => {
-                record("CrashReporter.flush", [result])
-                breadcrumbs.length = 0
-              })
-            )
-          ),
+        inner.flush().pipe(
+          Effect.tap((result) =>
+            Effect.sync(() => {
+              record("CrashReporter.flush", [result])
+              breadcrumbs.length = 0
+            })
+          )
+        ),
       setUploadHandler: (
         handler: CrashReportUploadHandler
       ): Effect.Effect<void, CrashReporterError, never> =>
