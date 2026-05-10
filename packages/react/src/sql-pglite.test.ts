@@ -1,10 +1,7 @@
 import { expect, test } from "bun:test"
 import { Effect, Layer } from "effect"
 
-import {
-  RendererPgliteLive,
-  type RendererPgliteOptions
-} from "./sql-pglite.js"
+import { RendererPgliteLive, type RendererPgliteOptions } from "./sql-pglite.js"
 
 test("RendererPgliteLive produces a Layer", () => {
   const layer = RendererPgliteLive()

@@ -26,8 +26,6 @@ export const RendererPgliteLive = (
           })
       }),
       (mod) =>
-        mod.PgliteClient.layer(
-          options.dataDir === undefined ? {} : { dataDir: options.dataDir }
-        )
+        mod.PgliteClient.layer(options.dataDir === undefined ? {} : { dataDir: options.dataDir })
     )
   )

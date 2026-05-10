@@ -65,7 +65,7 @@ describe("workspaces", () => {
 
     expect(exitCode).toBe(1)
     expect(stderr).not.toContain('Script not found "desktop"')
-    expect(stdout + stderr).toContain("Usage: desktop build")
+    expect(stdout + stderr).toContain("USAGE\n  desktop")
   })
 })
 
