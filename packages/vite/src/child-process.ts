@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process"
+import { spawn } from "node:child_process"
 import { resolve } from "node:path"
 
 export interface RuntimeChild {
@@ -18,7 +18,7 @@ export interface SpawnRuntimeOptions {
 export const spawnRuntime = (options: SpawnRuntimeOptions): RuntimeChild => {
   const entryPath = resolve(options.cwd, options.entry)
 
-  const child: ChildProcess = spawn("bun", ["run", entryPath], {
+  const child = spawn("bun", ["run", entryPath], {
     cwd: options.cwd,
     env: { ...process.env, ...options.env },
     stdio: ["pipe", "pipe", "inherit"]
@@ -32,7 +32,7 @@ export const spawnRuntime = (options: SpawnRuntimeOptions): RuntimeChild => {
       child.kill("SIGTERM")
     },
     onExit: (cb) => {
-      child.on("exit", cb)
+      ;(child as unknown as NodeJS.EventEmitter).on("exit", cb)
     }
   }
 }

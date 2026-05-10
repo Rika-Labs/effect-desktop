@@ -616,7 +616,7 @@
     {
       "name": "HostVersionPayload",
       "kind": "class",
-      "signature": "export class HostVersionPayload extends Schema.Class<HostVersionPayload>(\"HostVersionPayload\")({ protocolVersion: Schema.String }) {}"
+      "signature": "export class HostVersionPayload extends Schema.Class<HostVersionPayload>(\"HostVersionPayload\")({ protocolVersion: ProtocolVersion }) {}"
     },
     {
       "name": "HostWindowClient",
@@ -796,7 +796,7 @@
     {
       "name": "RendererResumeDeniedPayload",
       "kind": "class",
-      "signature": "export class RendererResumeDeniedPayload extends Schema.Class<RendererResumeDeniedPayload>( \"RendererResumeDeniedPayload\" )({ windowId: Schema.String, reason: RendererResumeDeniedReason, message: Schema.String }) {}"
+      "signature": "export class RendererResumeDeniedPayload extends Schema.Class<RendererResumeDeniedPayload>( \"RendererResumeDeniedPayload\" )({ windowId: HostIdentityString, reason: RendererResumeDeniedReason, message: Schema.String }) {}"
     },
     {
       "name": "RendererResumeDeniedReason",
@@ -806,17 +806,17 @@
     {
       "name": "RendererResumedPayload",
       "kind": "class",
-      "signature": "export class RendererResumedPayload extends Schema.Class<RendererResumedPayload>( \"RendererResumedPayload\" )({ windowId: Schema.String, replayedStreamIds: Schema.Array(Schema.String) }) {}"
+      "signature": "export class RendererResumedPayload extends Schema.Class<RendererResumedPayload>( \"RendererResumedPayload\" )({ windowId: HostIdentityString, replayedStreamIds: Schema.Array(Schema.String) }) {}"
     },
     {
       "name": "RendererResumePayload",
       "kind": "class",
-      "signature": "export class RendererResumePayload extends Schema.Class<RendererResumePayload>( \"RendererResumePayload\" )({ windowId: Schema.String, resumeNonce: Schema.String, cursors: StringRecord }) {}"
+      "signature": "export class RendererResumePayload extends Schema.Class<RendererResumePayload>( \"RendererResumePayload\" )({ windowId: HostIdentityString, resumeNonce: HostIdentityString, cursors: StringRecord }) {}"
     },
     {
       "name": "ResumeTicket",
       "kind": "class",
-      "signature": "export class ResumeTicket extends Schema.Class<ResumeTicket>(\"ResumeTicket\")({ windowId: Schema.String, originTokenHash: Schema.String, resumeNonce: Schema.String, expiresAt: UInt, lastStreamCursors: StringRecord }) {}"
+      "signature": "export class ResumeTicket extends Schema.Class<ResumeTicket>(\"ResumeTicket\")({ windowId: HostIdentityString, originTokenHash: HostIdentityString, resumeNonce: HostIdentityString, expiresAt: UInt, lastStreamCursors: StringRecord }) {}"
     },
     {
       "name": "Rpc",

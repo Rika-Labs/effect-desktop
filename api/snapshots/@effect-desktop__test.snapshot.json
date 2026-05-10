@@ -14,6 +14,51 @@
       "signature": "const assertNoOpenResourcesIn: (registry: ResourceRegistryApi, options?: LeakDetectionOptions) => Effect.Effect<void, ResourceLeakError, never>"
     },
     {
+      "name": "expectAppearance",
+      "kind": "value",
+      "signature": "const expectAppearance: (client: TestSystemAppearanceApi, method: string, count?: number) => void"
+    },
+    {
+      "name": "expectClipboardText",
+      "kind": "value",
+      "signature": "const expectClipboardText: (client: TestClipboardApi, expected: string) => void"
+    },
+    {
+      "name": "expectCrashBreadcrumb",
+      "kind": "value",
+      "signature": "const expectCrashBreadcrumb: (client: TestCrashReporterApi, count?: number) => void"
+    },
+    {
+      "name": "expectMenuCall",
+      "kind": "value",
+      "signature": "const expectMenuCall: (client: TestMenuApi, method: string, count?: number) => void"
+    },
+    {
+      "name": "expectNotificationShown",
+      "kind": "value",
+      "signature": "const expectNotificationShown: (client: TestNotificationApi, count?: number) => void"
+    },
+    {
+      "name": "expectSafeStorageKey",
+      "kind": "value",
+      "signature": "const expectSafeStorageKey: (client: TestSafeStorageApi, key: string) => void"
+    },
+    {
+      "name": "expectShellCall",
+      "kind": "value",
+      "signature": "const expectShellCall: (client: TestShellApi, method: string, count?: number) => void"
+    },
+    {
+      "name": "expectUpdaterCall",
+      "kind": "value",
+      "signature": "const expectUpdaterCall: (client: TestUpdaterApi, method: string, count?: number) => void"
+    },
+    {
+      "name": "expectWindowCall",
+      "kind": "value",
+      "signature": "const expectWindowCall: (client: TestWindowApi, method: string, count?: number) => void"
+    },
+    {
       "name": "formatLeakedHandleReport",
       "kind": "value",
       "signature": "const formatLeakedHandleReport: (leaks: readonly ResourceEntry[], testName?: string) => string"
@@ -21,7 +66,7 @@
     {
       "name": "HeadlessFixture",
       "kind": "type",
-      "signature": "export type HeadlessFixture = ( request: HostProtocolRequestEnvelope, state: HeadlessHostState ) => Effect.Effect<unknown, HostProtocolError, never> | HeadlessFixturePayload"
+      "signature": "export type HeadlessFixture = ( request: HostProtocolRequestEnvelope, state: HeadlessHostState ) => Effect.Effect<HeadlessFixturePayload, HostProtocolError, never> | HeadlessFixturePayload"
     },
     {
       "name": "HeadlessHarnessOptions",
@@ -99,6 +144,76 @@
       "signature": "const makeMockPty: (registry: ResourceRegistryApi, options?: MockPtyOptions) => Effect.Effect<MockPtyApi, never, never>"
     },
     {
+      "name": "makeTestAppClient",
+      "kind": "value",
+      "signature": "const makeTestAppClient: (options?: TestAppOptions) => TestAppApi"
+    },
+    {
+      "name": "makeTestClipboardClient",
+      "kind": "value",
+      "signature": "const makeTestClipboardClient: () => TestClipboardApi"
+    },
+    {
+      "name": "makeTestCrashReporterClient",
+      "kind": "value",
+      "signature": "const makeTestCrashReporterClient: () => Effect.Effect<TestCrashReporterApi, never, never>"
+    },
+    {
+      "name": "makeTestDialogClient",
+      "kind": "value",
+      "signature": "const makeTestDialogClient: (options?: TestDialogOptions) => TestDialogApi"
+    },
+    {
+      "name": "makeTestMenuClient",
+      "kind": "value",
+      "signature": "const makeTestMenuClient: () => TestMenuApi"
+    },
+    {
+      "name": "makeTestNotificationClient",
+      "kind": "value",
+      "signature": "const makeTestNotificationClient: () => TestNotificationApi"
+    },
+    {
+      "name": "makeTestPowerMonitorClient",
+      "kind": "value",
+      "signature": "const makeTestPowerMonitorClient: () => TestPowerMonitorApi"
+    },
+    {
+      "name": "makeTestSafeStorageClient",
+      "kind": "value",
+      "signature": "const makeTestSafeStorageClient: () => TestSafeStorageApi"
+    },
+    {
+      "name": "makeTestScreenClient",
+      "kind": "value",
+      "signature": "const makeTestScreenClient: (_options?: TestScreenOptions) => TestScreenApi"
+    },
+    {
+      "name": "makeTestShellClient",
+      "kind": "value",
+      "signature": "const makeTestShellClient: () => TestShellApi"
+    },
+    {
+      "name": "makeTestSystemAppearanceClient",
+      "kind": "value",
+      "signature": "const makeTestSystemAppearanceClient: (options?: TestSystemAppearanceOptions) => TestSystemAppearanceApi"
+    },
+    {
+      "name": "makeTestTrayClient",
+      "kind": "value",
+      "signature": "const makeTestTrayClient: () => TestTrayApi"
+    },
+    {
+      "name": "makeTestUpdaterClient",
+      "kind": "value",
+      "signature": "const makeTestUpdaterClient: (options?: TestUpdaterOptions) => TestUpdaterApi"
+    },
+    {
+      "name": "makeTestWindowClient",
+      "kind": "value",
+      "signature": "const makeTestWindowClient: () => TestWindowApi"
+    },
+    {
       "name": "MemoryFilesystem",
       "kind": "value",
       "signature": "const MemoryFilesystem: Readonly<{ layer: (options?: MemoryFilesystemOptions) => Layer.Layer<Filesystem, never, ResourceRegistry>; }>"
@@ -141,7 +256,7 @@
     {
       "name": "MockBridgeApi",
       "kind": "interface",
-      "signature": "export interface MockBridgeApi { readonly exchange: ApiClientExchange readonly client: <Contracts extends Readonly<Record<string, ApiContractClass>>>( contracts: Contracts, options?: ApiClientOptions ) => ApiClient<Contracts> readonly calls: () => readonly MockBridgeCall[] readonly cancels: () => readonly HostProtocolCancelByRequestEnvelope[] readonly disposedResources: () => readonly ApiResourceHandle[] readonly succeed: (method: string, payload: unknown) => Effect.Effect<void, never, never> readonly fail: (method: string, error: unknown) => Effect.Effect<void, never, never> readonly resource: ( method: string, handle: ApiResourceHandle ) => Effect.Effect<void, never, never> readonly streamChunks: ( method: string, chunks: readonly unknown[] ) => Effect.Effect<void, never, never> }"
+      "signature": "export interface MockBridgeApi { readonly exchange: ApiClientExchange readonly client: <Contracts extends Readonly<Record<string, ApiContractClass>>>( contracts: Contracts, options?: ApiClientOptions ) => ApiClient<Contracts> readonly calls: () => readonly MockBridgeCall[] readonly cancels: () => readonly HostProtocolCancelByRequestEnvelope[] readonly disposedResources: () => readonly ApiResourceHandle[] readonly succeed: ( method: string, payload: unknown ) => Effect.Effect<void, HostProtocolError, never> readonly fail: (method: string, error: unknown) => Effect.Effect<void, HostProtocolError, never> readonly resource: ( method: string, handle: ApiResourceHandle ) => Effect.Effect<void, HostProtocolError, never> readonly streamChunks: ( method: string, chunks: readonly unknown[] ) => Effect.Effect<void, HostProtocolError, never> }"
     },
     {
       "name": "MockBridgeCall",
@@ -257,6 +372,261 @@
       "name": "runHeadlessRuntime",
       "kind": "value",
       "signature": "const runHeadlessRuntime: <A, E, R>(effect: Effect.Effect<A, E, R>, options?: HeadlessRuntimeLayerOptions) => Effect.Effect<A, HostProtocolInvalidArgumentError | TelemetryInvalidArgumentError | ResourceLeakError | E, Exclude<R, HeadlessRuntimeServices>>"
+    },
+    {
+      "name": "TestApp",
+      "kind": "value",
+      "signature": "const TestApp: Readonly<{ layer: (options?: TestAppOptions) => Layer.Layer<App>; }>"
+    },
+    {
+      "name": "TestAppApi",
+      "kind": "interface",
+      "signature": "export interface TestAppApi extends AppClientApi { readonly calls: () => readonly TestAppCall[] }"
+    },
+    {
+      "name": "TestAppCall",
+      "kind": "interface",
+      "signature": "export interface TestAppCall { readonly method: string readonly args: ReadonlyArray<unknown> }"
+    },
+    {
+      "name": "TestAppOptions",
+      "kind": "interface",
+      "signature": "export interface TestAppOptions { readonly id?: string readonly name?: string readonly version?: string }"
+    },
+    {
+      "name": "TestClipboard",
+      "kind": "value",
+      "signature": "const TestClipboard: Readonly<{ layer: () => Layer.Layer<Clipboard>; }>"
+    },
+    {
+      "name": "TestClipboardApi",
+      "kind": "interface",
+      "signature": "export interface TestClipboardApi extends ClipboardClientApi { readonly calls: () => readonly TestClipboardCall[] readonly text: () => string }"
+    },
+    {
+      "name": "TestClipboardCall",
+      "kind": "interface",
+      "signature": "export interface TestClipboardCall { readonly method: string readonly args: ReadonlyArray<unknown> }"
+    },
+    {
+      "name": "TestCrashReporter",
+      "kind": "value",
+      "signature": "const TestCrashReporter: Readonly<{ layer: () => Layer.Layer<CrashReporter>; }>"
+    },
+    {
+      "name": "TestCrashReporterApi",
+      "kind": "interface",
+      "signature": "export interface TestCrashReporterApi extends CrashReporterClientApi { readonly calls: () => readonly TestCrashReporterCall[] readonly breadcrumbs: () => ReadonlyArray<CrashReporterBreadcrumb> }"
+    },
+    {
+      "name": "TestCrashReporterCall",
+      "kind": "interface",
+      "signature": "export interface TestCrashReporterCall { readonly method: string readonly args: ReadonlyArray<unknown> }"
+    },
+    {
+      "name": "TestDesktop",
+      "kind": "value",
+      "signature": "const TestDesktop: Readonly<{ layer: (options?: TestDesktopOptions) => Layer.Layer<TestDesktopServices>; }>"
+    },
+    {
+      "name": "TestDesktopLive",
+      "kind": "value",
+      "signature": "const TestDesktopLive: (options?: TestDesktopOptions) => Layer.Layer<TestDesktopServices>"
+    },
+    {
+      "name": "TestDesktopOptions",
+      "kind": "interface",
+      "signature": "export interface TestDesktopOptions { readonly app?: TestAppOptions readonly dialog?: TestDialogOptions readonly screen?: TestScreenOptions readonly systemAppearance?: TestSystemAppearanceOptions readonly updater?: TestUpdaterOptions }"
+    },
+    {
+      "name": "TestDesktopServices",
+      "kind": "type",
+      "signature": "export type TestDesktopServices = | App | Clipboard | CrashReporter | Dialog | Menu | Notification | PowerMonitor | SafeStorage | Screen | Shell | SystemAppearance | Tray | Updater | Window"
+    },
+    {
+      "name": "TestDialog",
+      "kind": "value",
+      "signature": "const TestDialog: Readonly<{ layer: (options?: TestDialogOptions) => Layer.Layer<Dialog>; }>"
+    },
+    {
+      "name": "TestDialogApi",
+      "kind": "interface",
+      "signature": "export interface TestDialogApi extends DialogClientApi { readonly calls: () => readonly TestDialogCall[] }"
+    },
+    {
+      "name": "TestDialogCall",
+      "kind": "interface",
+      "signature": "export interface TestDialogCall { readonly method: string readonly args: ReadonlyArray<unknown> }"
+    },
+    {
+      "name": "TestDialogOptions",
+      "kind": "interface",
+      "signature": "export interface TestDialogOptions { readonly openFilePaths?: readonly string[] readonly openDirectoryPaths?: readonly string[] readonly saveFilePath?: string readonly confirmResult?: boolean }"
+    },
+    {
+      "name": "TestMenu",
+      "kind": "value",
+      "signature": "const TestMenu: Readonly<{ layer: () => Layer.Layer<Menu>; }>"
+    },
+    {
+      "name": "TestMenuApi",
+      "kind": "interface",
+      "signature": "export interface TestMenuApi extends MenuClientApi { readonly calls: () => readonly TestMenuCall[] }"
+    },
+    {
+      "name": "TestMenuCall",
+      "kind": "interface",
+      "signature": "export interface TestMenuCall { readonly method: string readonly args: ReadonlyArray<unknown> }"
+    },
+    {
+      "name": "TestNotification",
+      "kind": "value",
+      "signature": "const TestNotification: Readonly<{ layer: () => Layer.Layer<Notification>; }>"
+    },
+    {
+      "name": "TestNotificationApi",
+      "kind": "interface",
+      "signature": "export interface TestNotificationApi extends NotificationClientApi { readonly calls: () => readonly TestNotificationCall[] readonly shown: () => readonly NotificationHandle[] }"
+    },
+    {
+      "name": "TestNotificationCall",
+      "kind": "interface",
+      "signature": "export interface TestNotificationCall { readonly method: string readonly args: ReadonlyArray<unknown> }"
+    },
+    {
+      "name": "TestPowerMonitor",
+      "kind": "value",
+      "signature": "const TestPowerMonitor: Readonly<{ layer: () => Layer.Layer<PowerMonitor>; }>"
+    },
+    {
+      "name": "TestPowerMonitorApi",
+      "kind": "interface",
+      "signature": "export interface TestPowerMonitorApi extends PowerMonitorClientApi { readonly calls: () => readonly TestPowerMonitorCall[] }"
+    },
+    {
+      "name": "TestPowerMonitorCall",
+      "kind": "interface",
+      "signature": "export interface TestPowerMonitorCall { readonly method: string readonly args: ReadonlyArray<unknown> }"
+    },
+    {
+      "name": "TestSafeStorage",
+      "kind": "value",
+      "signature": "const TestSafeStorage: Readonly<{ layer: () => Layer.Layer<SafeStorage>; }>"
+    },
+    {
+      "name": "TestSafeStorageApi",
+      "kind": "interface",
+      "signature": "export interface TestSafeStorageApi extends SafeStorageClientApi { readonly calls: () => readonly TestSafeStorageCall[] readonly snapshot: () => ReadonlyMap<string, Uint8Array> }"
+    },
+    {
+      "name": "TestSafeStorageCall",
+      "kind": "interface",
+      "signature": "export interface TestSafeStorageCall { readonly method: string readonly args: ReadonlyArray<unknown> }"
+    },
+    {
+      "name": "TestScreen",
+      "kind": "value",
+      "signature": "const TestScreen: Readonly<{ layer: (options?: TestScreenOptions) => Layer.Layer<Screen>; }>"
+    },
+    {
+      "name": "TestScreenApi",
+      "kind": "interface",
+      "signature": "export interface TestScreenApi extends ScreenClientApi { readonly calls: () => readonly TestScreenCall[] }"
+    },
+    {
+      "name": "TestScreenCall",
+      "kind": "interface",
+      "signature": "export interface TestScreenCall { readonly method: string readonly args: ReadonlyArray<unknown> }"
+    },
+    {
+      "name": "TestScreenOptions",
+      "kind": "interface",
+      "signature": "export interface TestScreenOptions { readonly displays?: readonly { id?: string bounds?: { x?: number; y?: number; width?: number; height?: number } workArea?: { x?: number; y?: number; width?: number; height?: number } scaleFactor?: number primary?: boolean }[] }"
+    },
+    {
+      "name": "TestShell",
+      "kind": "value",
+      "signature": "const TestShell: Readonly<{ layer: () => Layer.Layer<Shell>; }>"
+    },
+    {
+      "name": "TestShellApi",
+      "kind": "interface",
+      "signature": "export interface TestShellApi extends ShellClientApi { readonly calls: () => readonly TestShellCall[] }"
+    },
+    {
+      "name": "TestShellCall",
+      "kind": "interface",
+      "signature": "export interface TestShellCall { readonly method: string readonly args: ReadonlyArray<unknown> }"
+    },
+    {
+      "name": "TestSystemAppearance",
+      "kind": "value",
+      "signature": "const TestSystemAppearance: Readonly<{ layer: (options?: TestSystemAppearanceOptions) => Layer.Layer<SystemAppearance>; }>"
+    },
+    {
+      "name": "TestSystemAppearanceApi",
+      "kind": "interface",
+      "signature": "export interface TestSystemAppearanceApi extends SystemAppearanceClientApi { readonly calls: () => readonly TestSystemAppearanceCall[] }"
+    },
+    {
+      "name": "TestSystemAppearanceCall",
+      "kind": "interface",
+      "signature": "export interface TestSystemAppearanceCall { readonly method: string readonly args: ReadonlyArray<unknown> }"
+    },
+    {
+      "name": "TestSystemAppearanceOptions",
+      "kind": "interface",
+      "signature": "export interface TestSystemAppearanceOptions { readonly appearance?: \"light\" | \"dark\" | \"highContrast\" readonly accentColor?: { r: number; g: number; b: number; a: number } | null readonly reducedMotion?: boolean readonly reducedTransparency?: boolean }"
+    },
+    {
+      "name": "TestTray",
+      "kind": "value",
+      "signature": "const TestTray: Readonly<{ layer: () => Layer.Layer<Tray>; }>"
+    },
+    {
+      "name": "TestTrayApi",
+      "kind": "interface",
+      "signature": "export interface TestTrayApi extends TrayClientApi { readonly calls: () => readonly TestTrayCall[] }"
+    },
+    {
+      "name": "TestTrayCall",
+      "kind": "interface",
+      "signature": "export interface TestTrayCall { readonly method: string readonly args: ReadonlyArray<unknown> }"
+    },
+    {
+      "name": "TestUpdater",
+      "kind": "value",
+      "signature": "const TestUpdater: Readonly<{ layer: (options?: TestUpdaterOptions) => Layer.Layer<Updater>; }>"
+    },
+    {
+      "name": "TestUpdaterApi",
+      "kind": "interface",
+      "signature": "export interface TestUpdaterApi extends UpdaterClientApi { readonly calls: () => readonly TestUpdaterCall[] }"
+    },
+    {
+      "name": "TestUpdaterCall",
+      "kind": "interface",
+      "signature": "export interface TestUpdaterCall { readonly method: string readonly args: ReadonlyArray<unknown> }"
+    },
+    {
+      "name": "TestUpdaterOptions",
+      "kind": "interface",
+      "signature": "export interface TestUpdaterOptions { readonly available?: boolean readonly version?: string }"
+    },
+    {
+      "name": "TestWindow",
+      "kind": "value",
+      "signature": "const TestWindow: Readonly<{ layer: () => Layer.Layer<Window>; }>"
+    },
+    {
+      "name": "TestWindowApi",
+      "kind": "interface",
+      "signature": "export interface TestWindowApi extends WindowClientApi { readonly calls: () => readonly TestWindowCall[] readonly openHandles: () => ReadonlyMap<string, WindowHandle> }"
+    },
+    {
+      "name": "TestWindowCall",
+      "kind": "interface",
+      "signature": "export interface TestWindowCall { readonly method: string readonly args: ReadonlyArray<unknown> }"
     }
   ]
 }

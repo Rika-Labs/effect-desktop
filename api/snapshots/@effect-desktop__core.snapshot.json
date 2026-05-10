@@ -614,6 +614,11 @@
       "signature": "const Handlers: (<Layers extends readonly AnyApiLayer[]>(...layers: Layers) => ApiHandlerRuntime<ApiLayerEnvironment<Layers[number]>>) & { withOptions: <Layers extends readonly AnyApiLayer[]>(options: ApiHandlerRuntimeOptions, ...layers: Layers) => ApiHandlerRuntime<ApiLayerEnvironment<Layers[number]>>; }"
     },
     {
+      "name": "InMemoryTransportPairOptions",
+      "kind": "interface",
+      "signature": "export interface InMemoryTransportPairOptions { readonly queueCapacity?: number }"
+    },
+    {
       "name": "invalidate",
       "kind": "value",
       "signature": "const invalidate: (keys: ReadonlyArray<unknown> | import(\"effect/Record\").ReadonlyRecord<string, ReadonlyArray<unknown>>) => import(\"effect/Effect\").Effect<void, never, ReactivityNS.Reactivity>"
@@ -676,7 +681,7 @@
     {
       "name": "makeInMemoryTransportPair",
       "kind": "value",
-      "signature": "const makeInMemoryTransportPair: () => Effect.Effect<readonly [TransportConnection, TransportConnection], never, never>"
+      "signature": "const makeInMemoryTransportPair: (options?: InMemoryTransportPairOptions) => Effect.Effect<readonly [TransportConnection, TransportConnection], never, never>"
     },
     {
       "name": "makeOtelLayer",
@@ -1001,7 +1006,7 @@
     {
       "name": "ProcessSpawnInput",
       "kind": "class",
-      "signature": "export class ProcessSpawnInput extends Schema.Class<ProcessSpawnInput>(\"ProcessSpawnInput\")({ command: NonEmptyString, args: Schema.Array(Schema.String), ownerScope: NonEmptyString, shell: Schema.optionalKey(Schema.Boolean), cwd: Schema.optionalKey(NonEmptyString), env: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)) }) {}"
+      "signature": "export class ProcessSpawnInput extends Schema.Class<ProcessSpawnInput>(\"ProcessSpawnInput\")({ command: NonEmptyString, args: Schema.Array(Schema.String), ownerScope: NonEmptyString, shell: Schema.optionalKey(Schema.Boolean), cwd: Schema.optionalKey(NonEmptyString), env: Schema.optionalKey(Schema.Record(EnvironmentVariableName, EnvironmentVariableValue)) }) {}"
     },
     {
       "name": "ProcessSpawnOptions",
@@ -1061,7 +1066,7 @@
     {
       "name": "PtyOpenInput",
       "kind": "class",
-      "signature": "export class PtyOpenInput extends Schema.Class<PtyOpenInput>(\"PtyOpenInput\")({ command: NonEmptyString, args: Schema.Array(Schema.String), ownerScope: NonEmptyString, rows: PositiveInt, cols: PositiveInt, cwd: Schema.optionalKey(NonEmptyString), env: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)) }) {}"
+      "signature": "export class PtyOpenInput extends Schema.Class<PtyOpenInput>(\"PtyOpenInput\")({ command: NonEmptyString, args: Schema.Array(Schema.String), ownerScope: NonEmptyString, rows: PositiveInt, cols: PositiveInt, cwd: Schema.optionalKey(NonEmptyString), env: Schema.optionalKey(Schema.Record(EnvironmentVariableName, EnvironmentVariableValue)) }) {}"
     },
     {
       "name": "PtyOpenOptions",
@@ -1766,7 +1771,7 @@
     {
       "name": "TransportUnframeStreamInput",
       "kind": "interface",
-      "signature": "export interface TransportUnframeStreamInput { readonly scheme: TransportScheme readonly chunks: Stream.Stream<Uint8Array, TransportError, never> readonly maxFrameBytes?: number }"
+      "signature": "export interface TransportUnframeStreamInput { readonly scheme: TransportScheme readonly chunks: Stream.Stream<Uint8Array, TransportError, never> readonly maxFrameBytes?: number readonly frameQueueCapacity?: number }"
     },
     {
       "name": "TransportWriteError",

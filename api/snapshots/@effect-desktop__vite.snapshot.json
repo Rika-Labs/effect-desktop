@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "packageName": "@effect-desktop/vite",
+  "entrypoint": "src/index.ts",
+  "symbols": [
+    {
+      "name": "default",
+      "kind": "function",
+      "signature": "function default(options: DesktopPluginOptions): Plugin<any>"
+    },
+    {
+      "name": "DesktopPluginOptions",
+      "kind": "interface",
+      "signature": "export interface DesktopPluginOptions { readonly entry: string }"
+    }
+  ]
+}

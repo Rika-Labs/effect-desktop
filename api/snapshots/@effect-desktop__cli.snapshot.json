@@ -361,7 +361,7 @@
     {
       "name": "PackageArtifactReport",
       "kind": "interface",
-      "signature": "export interface PackageArtifactReport { readonly kind: PackageArtifactKind readonly target: PackageTarget readonly artifactPath: string readonly artifactJsonPath: string readonly checksumsPath: string readonly sizeBytes: number readonly sha256: string readonly linuxIntegration?: { readonly desktopFile: string readonly appStreamId: string readonly flatpakAppId: string readonly snapName: string } }"
+      "signature": "export interface PackageArtifactReport { readonly kind: PackageArtifactKind readonly target: PackageTarget readonly artifactPath: string readonly artifactJsonPath: string readonly checksumsPath: string readonly appId: string readonly appName: string readonly appVersion: string readonly sizeBytes: number readonly sha256: string readonly linuxIntegration?: { readonly desktopFile: string readonly appStreamId: string readonly flatpakAppId: string readonly snapName: string } }"
     },
     {
       "name": "PackageCommandInvocation",
