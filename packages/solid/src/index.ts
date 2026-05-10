@@ -286,11 +286,9 @@ const createQueryState = <A, E>(
   const [state, setState] = createSignal<SolidAsyncState<A, E>>({ status: "running" })
   let active = true
 
-  onCleanup(() => {
-    active = false
-  })
+  const fiber = Effect.runFork(effect)
 
-  void Effect.runPromiseExit(effect).then((exit) => {
+  void Effect.runPromiseExit(Fiber.join(fiber)).then((exit) => {
     if (!active) {
       return
     }
@@ -299,6 +297,11 @@ const createQueryState = <A, E>(
         ? { status: "success", value: exit.value }
         : { status: "failure", cause: exit.cause }
     )
+  })
+
+  onCleanup(() => {
+    active = false
+    void Effect.runPromiseExit(Fiber.interrupt(fiber))
   })
 
   return state

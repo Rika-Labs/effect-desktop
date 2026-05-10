@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { RpcEndpoint } from "@effect-desktop/bridge"
 import { Desktop, DuplicateDesktopRpcNameError, MissingDesktopRpcsError } from "@effect-desktop/core"
-import { Effect, Schema } from "effect"
+import { Deferred, Effect, Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { createRoot } from "solid-js"
 import { createComponent, renderToString } from "solid-js/web"
@@ -95,6 +95,49 @@ test("SolidDesktop.useDesktop rejects colliding endpoint names", () => {
       }
     })
   )
+})
+
+test("SolidDesktop query effects are interrupted when the owner is disposed", async () => {
+  const interrupted = await Effect.runPromise(Deferred.make<void>())
+  const Slow = Rpc.make("Notes.Slow", { success: Schema.String }).pipe(RpcEndpoint.query)
+  const NotesRpcs = RpcGroup.make(Slow)
+  const NotesApp = Desktop.make({
+    windows: {
+      main: {
+        title: "Notes"
+      }
+    }
+  }).pipe(
+    Desktop.provide(
+      Desktop.Rpcs.layer(
+        NotesRpcs,
+        NotesRpcs.toLayer({
+          "Notes.Slow": () => Effect.succeed("unused")
+        })
+      )
+    )
+  )
+  const NotesSolid = SolidDesktop.from(NotesApp)
+  const client: SolidDesktopRpcClient = {
+    "Notes.Slow": () =>
+      Effect.never.pipe(Effect.ensuring(Deferred.succeed(interrupted, undefined)))
+  }
+
+  const dispose = createRoot((disposeRoot) => {
+    createComponent(NotesSolid.DesktopRoot, {
+      clients: [[NotesRpcs, client]],
+      get children() {
+        const notes = NotesSolid.useDesktop(NotesRpcs)
+        notes.slow.createQuery()
+        return undefined
+      }
+    })
+    return disposeRoot
+  })
+
+  dispose()
+
+  await Effect.runPromise(Deferred.await(interrupted))
 })
 
 test("SolidDesktop.useDesktop fails loudly without context or an installed client", () => {
