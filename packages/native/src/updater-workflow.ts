@@ -187,7 +187,7 @@ export const scheduleUpdateChecks = (manifestUrl: string): Effect.Effect<never, 
       const checkResult = yield* Effect.gen(function* () {
         const client = yield* HttpClientTag
         const response = yield* client.get(manifestUrl)
-        const json = yield* response.json.pipe(Effect.orDie)
+        const json = yield* response.json
         return yield* Schema.decodeUnknownEffect(UpdateManifest)(json)
       }).pipe(Effect.option)
 
