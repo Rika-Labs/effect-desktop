@@ -109,7 +109,16 @@ fn decode_text(payload: Option<Value>) -> Result<Option<String>, HostProtocolErr
     let payload = required_payload(payload, host_protocol::DOCK_SET_BADGE_TEXT_METHOD)?;
     match payload.get("text") {
         Some(Value::Null) => Ok(None),
-        Some(Value::String(text)) => Ok(Some(text.clone())),
+        Some(Value::String(text)) => {
+            if has_ascii_control_characters(text) {
+                return Err(HostProtocolError::invalid_argument(
+                    "text",
+                    "must not include control characters",
+                    host_protocol::DOCK_SET_BADGE_TEXT_METHOD,
+                ))
+            }
+            Ok(Some(text.clone()))
+        }
         Some(_) => Err(HostProtocolError::invalid_argument(
             "text",
             "must be a string or null",
@@ -121,6 +130,10 @@ fn decode_text(payload: Option<Value>) -> Result<Option<String>, HostProtocolErr
             host_protocol::DOCK_SET_BADGE_TEXT_METHOD,
         )),
     }
+}
+
+fn has_ascii_control_characters(text: &str) -> bool {
+    text.bytes().any(|byte| matches!(byte, 0x00..=0x1f | 0x7f))
 }
 
 fn decode_critical(payload: Option<Value>) -> Result<bool, HostProtocolError> {
@@ -168,6 +181,13 @@ mod tests {
     #[test]
     fn text_rejects_missing_field() {
         assert!(decode_text(Some(json!({}))).is_err());
+    }
+
+    #[test]
+    fn text_rejects_ascii_control_characters() {
+        assert!(decode_text(Some(json!({ "text": "bad\u{0000}text" }))).is_err());
+        assert!(decode_text(Some(json!({ "text": "line\nbreak" }))).is_err());
+        assert!(decode_text(Some(json!({ "text": "badge\ttext" }))).is_err());
     }
 
     #[test]

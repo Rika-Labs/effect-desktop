@@ -333,6 +333,37 @@ mod tests {
     }
 
     #[test]
+    fn dock_set_badge_text_rejects_ascii_control_characters() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-dock-badge",
+                    host_protocol::DOCK_SET_BADGE_TEXT_METHOD,
+                    serde_json::json!({
+                        "text": "line\nbreak"
+                    }),
+                ),
+                1710000000112,
+            )
+            .expect("dock badge request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-dock-badge".to_string(),
+                timestamp: 1710000000112,
+                trace_id: "trace-request-dock-badge".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::invalid_argument(
+                    "text",
+                    "must not include control characters",
+                    host_protocol::DOCK_SET_BADGE_TEXT_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
     fn dock_is_supported_returns_platform_capability_payload() {
         let response = test_router()
             .dispatch_at(
