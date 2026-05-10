@@ -8,7 +8,7 @@ Prototype complete — verdict: defer production adoption to post-v1.0.0
 
 Multi-window state coordination is the user's problem today. Two windows mutating shared state need explicit pub/sub, manual cache invalidation, and ad-hoc replication. The Reactivity layer (T15, [ADR-0013](adr-0013-reactivity.md)) solves cross-window invalidation for live queries, but does not address actor-style stateful coordination: owned entities, passivation when idle, shard-balanced message routing.
 
-`effect/unstable/cluster` provides `Entity`, `Singleton`, `ClusterCron`, and a runner interface. Platform runners (`BunClusterSocket`, `BunClusterHttp`) are available for Bun processes. The renderer is a WebView, not a Bun process, so a custom `WebViewRunner` over `MessagePort` is required — and does not yet exist. The cluster module itself is still alpha.
+`effect/unstable/cluster` provides `Entity`, `Singleton`, `ClusterCron`, and a runner interface. Platform runners (`BunClusterSocket`, `BunClusterHttp`) are available for Bun processes. The renderer is a WebView, not a Bun process, so the prototype had to determine whether a custom `WebViewRunner` over `MessagePort` was necessary. The verdict is no for v1: renderer windows should remain client-only if cluster is revisited. The cluster module itself is still alpha.
 
 Status is **Prototype complete** because this R&D pass produced a go/no-go verdict. It is not a feature commitment for v1.0.0.
 
@@ -28,7 +28,7 @@ Prototype the cluster model for multi-window state. Do not adopt cluster as a pr
 - If verdict is "go": `ClusterWorkflowEngine` replaces the memory engine from T08 ([ADR-0009](adr-0009-workflow.md)) with no workflow definition changes.
 - If verdict is "no-go": T15 Reactivity remains the cross-window coordination model; the prototype is shelved and documented.
 
-Cross-links: [ADR-0009](adr-0009-workflow.md) (ClusterWorkflowEngine is an upgrade path from the memory engine), [ADR-0006](adr-0006-socket-transport.md) (WebViewRunner uses the postMessage Socket adapter as transport), [ADR-0013](adr-0013-reactivity.md) (Reactivity remains the cross-window model if verdict is no-go).
+Cross-links: [ADR-0009](adr-0009-workflow.md) (ClusterWorkflowEngine is an upgrade path from the memory engine), [ADR-0006](adr-0006-socket-transport.md) (the postMessage Socket adapter is the bridge transport constraint evaluated by this prototype), [ADR-0013](adr-0013-reactivity.md) (Reactivity remains the cross-window model while the verdict is deferred).
 
 ## Alternatives considered
 
@@ -44,12 +44,12 @@ Cross-links: [ADR-0009](adr-0009-workflow.md) (ClusterWorkflowEngine is an upgra
 
 - If go: passivation means 50 open tabs do not pin 50 fibers; message routing is automatic.
 - If go: `ClusterCron` fires once across the cluster rather than once per window.
-- `WebViewRunner` — if the shape proves portable — becomes an upstream contribution for any Effect app running in a browser.
+- The prototype identifies the client-only renderer topology before production code depends on a custom runner.
 
 **Negative**
 
 - `effect/unstable/cluster` is alpha; API stability risk is higher than other adoptions in this set.
-- `WebViewRunner` requires implementing against a cluster runner interface that is not yet stable.
+- Cluster adoption still requires a second stable renderer IPC surface if `SocketRunner.layerClientOnly` is used later.
 - Prototype effort may produce a "no-go" verdict — time cost with no production delivery.
 
 **Neutral**
