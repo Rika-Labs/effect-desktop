@@ -236,6 +236,56 @@ ptyTest("PTY open rejects argv0 shell metacharacters before permission lookup", 
   expectFailure(exit, HostProtocolInvalidArgumentError)
 })
 
+ptyTest("PTY open rejects NUL bytes in environment names", async () => {
+  let openCalls = 0
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => {
+      openCalls += 1
+      return makeFakeChild({ output: [], exit: { code: 0 } })
+    }),
+    { permissions: { spawn: ["bash"] } }
+  )
+  const nul = String.fromCharCode(0)
+
+  const exit = await Effect.runPromiseExit(
+    fixture.service.open({
+      argv: ["bash"],
+      ownerScope: "scope-main",
+      rows: 24,
+      cols: 80,
+      env: { [`key${nul}`]: "value" }
+    })
+  )
+
+  expect(openCalls).toBe(0)
+  expectFailure(exit, HostProtocolInvalidArgumentError)
+})
+
+ptyTest("PTY open rejects NUL bytes in environment values", async () => {
+  let openCalls = 0
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => {
+      openCalls += 1
+      return makeFakeChild({ output: [], exit: { code: 0 } })
+    }),
+    { permissions: { spawn: ["bash"] } }
+  )
+  const nul = String.fromCharCode(0)
+
+  const exit = await Effect.runPromiseExit(
+    fixture.service.open({
+      argv: ["bash"],
+      ownerScope: "scope-main",
+      rows: 24,
+      cols: 80,
+      env: { key: `value${nul}` }
+    })
+  )
+
+  expect(openCalls).toBe(0)
+  expectFailure(exit, HostProtocolInvalidArgumentError)
+})
+
 ptyTest("PTY default adapter fails loudly as Unsupported", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   const service = await Effect.runPromise(makePty(registry, { permissions: { spawn: ["bash"] } }))
@@ -445,6 +495,25 @@ ptyTest("PTY handle writes, resizes, kills, and preserves exit signal", async ()
   expect(child.resizes).toEqual([new PtyResizeInput({ rows: 40, cols: 120 })])
   expect(child.killedWith).toBe("SIGTERM")
   expect(status).toEqual(new PtyExitStatus({ code: 0, signal: "SIGTERM" }))
+})
+
+ptyTest("PTY kill rejects control bytes in signal names", async () => {
+  const child = makeFakeChild({ output: [], exit: { code: 0 } })
+  const fixture = await makeFixture(makeFakeAdapter(() => child), { permissions: { spawn: ["bash"] } })
+  const handle = await Effect.runPromise(
+    fixture.service.open({
+      argv: ["bash"],
+      ownerScope: "scope-main",
+      rows: 24,
+      cols: 80
+    })
+  )
+  const nul = String.fromCharCode(0)
+
+  const exit = await Effect.runPromiseExit(handle.kill(`SIG${nul}TERM`))
+
+  expectFailure(exit, HostProtocolInvalidArgumentError)
+  expect(child.killedWith).toBeUndefined()
 })
 
 ptyTest("PTY scope close kills the child", async () => {
