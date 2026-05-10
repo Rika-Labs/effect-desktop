@@ -568,7 +568,12 @@ effect-desktop/
     core/
     bridge/
     native/
+    vite/
     react/
+    vue/
+    solid/
+    next/
+    astro/
     cli/
     devtools/
     test/

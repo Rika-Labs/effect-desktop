@@ -35,7 +35,8 @@ Endpoint metadata is carried on the RPC value through Effect annotations:
 
 - `RpcEndpoint.query(rpc)` marks a non-stream endpoint as query-like.
 - `RpcEndpoint.mutation(rpc)` marks a non-stream endpoint as mutation-like.
-- `RpcCapability({ kind })` carries permission or capability metadata.
+- `RpcCapability(capability)` carries the full scoped capability metadata required
+  by the permission registry, not only the capability kind.
 - `RpcSupport.supported(rpc)` and `RpcSupport.unsupported(reason)(rpc)` expose implemented and unsupported methods to descriptors.
 
 Framework adapters are intentionally framework-native:
@@ -45,6 +46,10 @@ Framework adapters are intentionally framework-native:
 - Solid exposes resources, accessors, mutation state, and owner-scoped cleanup from `SolidDesktop.from(Desktop.manifest(App)).useDesktop(group)`.
 - Next is a client-component wrapper around the React adapter.
 - Astro records island metadata and validates hydration directives; desktop access lives in hydrated React, Vue, or Solid islands.
+
+Framework adapters derive runtime clients from the desktop manifest and the
+host-installed renderer transport. Raw client maps are not a normal public API
+because manual maps let renderer code drift from the assembled app boundary.
 
 Startup windows are host-owned. Renderer components must not open the initial window as a side effect. The runtime exposes declared window metadata after protocol readiness, and the host opens those windows from the `Desktop.make({ windows })` declaration.
 

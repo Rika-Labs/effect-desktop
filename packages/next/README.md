@@ -1,10 +1,35 @@
 # @effect-desktop/next
 
-Next.js integration for app-scoped Effect Desktop RPC clients.
+Next.js client-component adapter for app-scoped Effect Desktop RPC groups.
 
-The package is a client-component entry point over `@effect-desktop/react`. It intentionally does not expose server-component APIs: renderer desktop RPCs belong in files with a client boundary, and server code should keep using normal Effect services.
+## Purpose
 
-This package has no runtime dependency on `next`; the `"use client"` entry point is the integration boundary, and the app owns its Next.js version.
+`@effect-desktop/next` is a `"use client"` boundary over the React adapter. It
+keeps desktop RPC access in client components while allowing Next applications to
+use their normal routing and server-component model.
+
+## Public API
+
+- `NextDesktop.from(manifest)` creates a Next client adapter for one desktop app
+  manifest.
+- `createRoot(children, props?)` creates the React desktop provider element.
+- `DesktopRoot` is the underlying client provider component.
+- `useDesktop(group)` derives endpoints from the imported `RpcGroup`.
+
+Endpoint shapes match `@effect-desktop/react`: queries use `useQuery`, mutations
+use `useMutation`, streams use `useStream`, and every endpoint exposes `support`
+and `isSupported`.
+
+## Non-goals
+
+- This package does not expose server-component desktop RPC APIs.
+- This package does not define desktop APIs. Use `Rpc.make`, `RpcGroup.make`, and
+  `Desktop.Rpcs.layer(...)` in app code.
+- This package does not open startup windows. Startup windows belong to
+  `Desktop.make({ windows })` and the host runtime.
+- This package does not own the app's Next.js version.
+
+## Usage
 
 ```tsx
 "use client"
@@ -15,13 +40,36 @@ import { App, NotesRpcs } from "../desktop/app"
 
 export const Desktop = NextDesktop.from(DesktopCore.manifest(App))
 
-export function NotesProviders(props: { children: React.ReactNode }) {
+export function NotesProviders(props: { readonly children: React.ReactNode }) {
   return Desktop.createRoot(props.children)
 }
 
 export function NotesList() {
   const notes = Desktop.useDesktop(NotesRpcs)
-  const list = notes.list.createQuery()
+  const list = notes.list.useQuery()
   return null
 }
 ```
+
+Server components should pass data through normal Next mechanisms. Desktop RPCs
+belong to client components because they are renderer-to-host calls with renderer
+lifecycle and cleanup.
+
+## Testing
+
+```bash
+bun test packages/next/src/index.test.ts
+bun run typecheck
+```
+
+## Platform notes
+
+The package has no runtime dependency on `next`. Apps own Next.js and React
+versions. The desktop host installs the renderer transport in the client runtime.
+
+## Internal architecture
+
+The package re-exports a Next-shaped facade over `ReactDesktop.from(manifest)`.
+It does not create a second client model; all RPC descriptors, support metadata,
+transport wiring, and scope cleanup come from the React adapter and core renderer
+RPC runtime.
