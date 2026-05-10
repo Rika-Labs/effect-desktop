@@ -1,6 +1,6 @@
 import { join } from "node:path"
 
-import { Context, Data, Effect, Layer, Schema } from "effect"
+import { Cause, Context, Data, Effect, Layer, Schema } from "effect"
 import { FileSystem } from "effect/FileSystem"
 import { Activity, Workflow, WorkflowEngine } from "effect/unstable/workflow"
 
@@ -12,6 +12,7 @@ const RestoreErrorSchema = Schema.TaggedStruct("RestoreError", {
   message: Schema.String,
   cause: Schema.Unknown
 })
+type RestoreFailure = typeof RestoreErrorSchema.Type
 
 export class RestoreError extends Data.TaggedError("RestoreError")<{
   readonly phase: RestorePhase
@@ -61,6 +62,7 @@ export const RestoreWorkflowLayer: Layer.Layer<
     const quiesce = yield* WriterQuiesceService
 
     const preRestoreSnapshot = `${payload.archivePath}.pre-restore`
+    const preRestoreDb = `${payload.archivePath}.pre-restore.db`
 
     const validate = Activity.make({
       name: "validate",
@@ -99,9 +101,17 @@ export const RestoreWorkflowLayer: Layer.Layer<
     const snapshotCurrent = Activity.make({
       name: "snapshot-current",
       error: RestoreErrorSchema,
-      execute: fs
-        .copy(config.userDataDir, preRestoreSnapshot, { overwrite: true })
-        .pipe(Effect.mapError(wrapError("files")))
+      execute: Effect.all(
+        [
+          fs
+            .copy(config.userDataDir, preRestoreSnapshot, { overwrite: true })
+            .pipe(Effect.mapError(wrapError("files"))),
+          fs
+            .copy(config.dbPath, preRestoreDb, { overwrite: true })
+            .pipe(Effect.mapError(wrapError("database")))
+        ],
+        { discard: true }
+      )
     })
 
     const restoreDb = Activity.make({
@@ -126,17 +136,33 @@ export const RestoreWorkflowLayer: Layer.Layer<
     yield* validate
     yield* stopWriters
 
-    yield* RestoreWorkflow.withCompensation(
-      Effect.gen(function* () {
-        yield* snapshotCurrent.execute
-        yield* restoreDb.execute
-        yield* restoreFiles.execute
-      }),
-      (_value, _cause) =>
-        Effect.ignore(fs.copy(preRestoreSnapshot, config.userDataDir, { overwrite: true }))
-    )
+    const rollback = () =>
+      Effect.all(
+        [
+          fs.copy(preRestoreSnapshot, config.userDataDir, { overwrite: true }),
+          fs.copy(preRestoreDb, config.dbPath, { overwrite: true })
+        ],
+        { discard: true }
+      ).pipe(Effect.ignore)
 
-    yield* quiesce.resume()
-    yield* Effect.ignore(fs.remove(preRestoreSnapshot, { recursive: true }))
+    yield* Effect.gen(function* () {
+      yield* snapshotCurrent.execute
+      yield* restoreDb.execute
+      yield* restoreFiles.execute
+    }).pipe(
+      Effect.catchCause((cause: Cause.Cause<RestoreFailure>) =>
+        rollback().pipe(Effect.andThen(Effect.failCause(cause)))
+      ),
+      Effect.ensuring(quiesce.resume()),
+      Effect.ensuring(
+        Effect.all(
+          [
+            fs.remove(preRestoreSnapshot, { recursive: true }),
+            fs.remove(preRestoreDb, { recursive: true })
+          ],
+          { discard: true }
+        ).pipe(Effect.ignore)
+      )
+    )
   })
 )
