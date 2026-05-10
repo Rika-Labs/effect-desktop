@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { RpcEndpoint } from "@effect-desktop/bridge"
 import { Desktop, MissingDesktopRpcsError } from "@effect-desktop/core"
-import { Effect, Schema } from "effect"
+import { Deferred, Effect, Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { createApp, effectScope } from "vue"
 
@@ -59,6 +59,45 @@ test("VueDesktop.from exposes app-scoped composables from provided groups", () =
     })
     scope.stop()
   })
+})
+
+test("VueDesktop query effects are interrupted when the scope is disposed", async () => {
+  const interrupted = await Effect.runPromise(Deferred.make<void>())
+  const Slow = Rpc.make("Notes.Slow", { success: Schema.String }).pipe(RpcEndpoint.query)
+  const NotesRpcs = RpcGroup.make(Slow)
+  const NotesApp = Desktop.make({
+    windows: {
+      main: {
+        title: "Notes"
+      }
+    }
+  }).pipe(
+    Desktop.provide(
+      Desktop.Rpcs.layer(
+        NotesRpcs,
+        NotesRpcs.toLayer({
+          "Notes.Slow": () => Effect.succeed("unused")
+        })
+      )
+    )
+  )
+  const NotesVue = VueDesktop.from(NotesApp)
+  const client: VueDesktopRpcClient = {
+    "Notes.Slow": () =>
+      Effect.never.pipe(Effect.ensuring(Deferred.succeed(interrupted, undefined)))
+  }
+  const app = NotesVue.createApp(Root, { clients: [[NotesRpcs, client]] })
+
+  app.runWithContext(() => {
+    const scope = effectScope()
+    scope.run(() => {
+      const notes = NotesVue.useDesktop(NotesRpcs)
+      notes.slow.useQuery()
+    })
+    scope.stop()
+  })
+
+  await Effect.runPromise(Deferred.await(interrupted))
 })
 
 test("VueDesktop.useDesktop fails loudly without provide/inject context or an installed client", () => {

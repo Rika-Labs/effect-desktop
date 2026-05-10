@@ -255,17 +255,20 @@ const runQuery = <A, E>(effect: Effect.Effect<A, E, never>): Readonly<Ref<VueAsy
   const state = shallowRef<VueAsyncState<A, E>>({ status: "running" })
   let active = true
 
-  onScopeDispose(() => {
-    active = false
-  })
+  const fiber = Effect.runFork(effect)
 
-  void Effect.runPromiseExit(effect).then((exit) => {
+  void Effect.runPromiseExit(Fiber.join(fiber)).then((exit) => {
     if (!active) {
       return
     }
     state.value = Exit.isSuccess(exit)
       ? { status: "success", value: exit.value }
       : { status: "failure", cause: exit.cause }
+  })
+
+  onScopeDispose(() => {
+    active = false
+    void Effect.runPromiseExit(Fiber.interrupt(fiber))
   })
 
   return state
