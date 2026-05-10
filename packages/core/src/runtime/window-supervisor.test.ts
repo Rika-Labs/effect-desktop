@@ -100,6 +100,19 @@ test("readStartupWindowsEnv rejects invalid declared window specs with a typed e
   expect(error?.message).toContain('entry "main"')
 })
 
+test("readStartupWindowsEnv rejects reserved object names before building the windows map", async () => {
+  const exit = await Effect.runPromiseExit(
+    readStartupWindowsEnv({
+      [STARTUP_WINDOWS_ENV]: '{"__proto__":{"title":"Polluted"}}'
+    })
+  )
+
+  const error = getFailure(exit)
+  expect(error).toBeInstanceOf(StartupWindowConfigError)
+  expect(error?.message).toContain("reserved window name")
+  expect(({} as { readonly title?: unknown }).title).toBeUndefined()
+})
+
 const getFailure = <E>(exit: Exit.Exit<unknown, E>): E | undefined => {
   expect(Exit.isFailure(exit)).toBe(true)
   if (Exit.isFailure(exit)) {

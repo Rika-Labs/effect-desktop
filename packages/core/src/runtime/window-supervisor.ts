@@ -13,6 +13,7 @@ export const APP_MODULE_ENV = "EFFECT_DESKTOP_APP_MODULE"
 export const APP_EXPORT_ENV = "EFFECT_DESKTOP_APP_EXPORT"
 export const STARTUP_WINDOWS_ENV = "EFFECT_DESKTOP_STARTUP_WINDOWS"
 const DEFAULT_APP_EXPORT = "default"
+const RESERVED_WINDOW_NAMES = new Set(["__proto__", "constructor", "prototype"])
 
 export interface OpenedDeclaredWindow {
   readonly name: string
@@ -122,16 +123,20 @@ const validateStartupWindows = (
     return invalidStartupWindows("expected a JSON object keyed by window name")
   }
 
-  const windows: Record<string, WindowSpec> = {}
+  const windows: Array<readonly [string, WindowSpec]> = []
   for (const [name, spec] of Object.entries(value)) {
+    if (!isSafeWindowName(name)) {
+      return invalidStartupWindows(`reserved window name "${name}" is not allowed`)
+    }
+
     const validated = validateWindowSpec(name, spec)
     if (validated._tag === "Failure") {
       return Effect.fail(validated.error)
     }
-    windows[name] = validated.value
+    windows.push([name, validated.value])
   }
 
-  return Effect.succeed(Object.freeze(windows))
+  return Effect.succeed(Object.freeze(Object.fromEntries(windows)))
 }
 
 const validateWindowSpec = (name: string, value: unknown): WindowSpecValidation => {
@@ -202,6 +207,9 @@ const validationFailure = (error: StartupWindowConfigError): WindowSpecValidatio
 
 const isPositiveFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value) && value > 0
+
+const isSafeWindowName = (name: string): boolean =>
+  name.length > 0 && !RESERVED_WINDOW_NAMES.has(name)
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {
