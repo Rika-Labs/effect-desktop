@@ -1,3 +1,6 @@
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+
 import { Cause, Effect, Schedule, Schema } from "effect"
 import { HttpClient as HttpClientNs } from "effect/unstable/http"
 import { Activity, DurableClock, DurableDeferred, Workflow } from "effect/unstable/workflow"
@@ -57,6 +60,7 @@ const checkUpdate = (manifestUrl: string) =>
 const downloadSchedule = Schedule.jittered(Schedule.exponential("500 millis")).pipe(
   Schedule.andThen(Schedule.recurs(5))
 )
+const STAGED_VERSION_PATTERN = /^[A-Za-z0-9._-]+$/
 
 const downloadBundle = (url: string) =>
   Activity.make({
@@ -101,13 +105,24 @@ const stageBundle = (bytes: Uint8Array, version: string) =>
     name: "stage-bundle",
     success: Schema.String,
     error: UpdateError,
-    execute: Effect.tryPromise({
-      try: async () => {
-        const tmpPath = `/tmp/effect-desktop-update-${version}`
-        await Bun.write(tmpPath, bytes)
-        return tmpPath
-      },
-      catch: (e) => new UpdateError({ stage: "stage", message: String(e) })
+    execute: Effect.gen(function* () {
+      if (!STAGED_VERSION_PATTERN.test(version) || version === "." || version === "..") {
+        return yield* Effect.fail(
+          new UpdateError({
+            stage: "stage",
+            message: "update version must be a safe filename segment"
+          })
+        )
+      }
+
+      return yield* Effect.tryPromise({
+        try: async () => {
+          const tmpPath = join(tmpdir(), `effect-desktop-update-${version}`)
+          await Bun.write(tmpPath, bytes)
+          return tmpPath
+        },
+        catch: (e) => new UpdateError({ stage: "stage", message: String(e) })
+      })
     })
   })
 

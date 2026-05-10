@@ -77,3 +77,55 @@ test("UpdateWorkflow fails signature verification as a typed workflow error", as
   ])
   expect(installCalled).toBe(false)
 })
+
+test("UpdateWorkflow rejects manifest versions that are not safe filename segments", async () => {
+  const manifest = {
+    version: "../escape",
+    url: "https://updates.example/app.bin",
+    signature: "sig"
+  }
+
+  const httpLayer = Layer.succeed(HttpClient.HttpClient, {
+    get: (url: string) => {
+      if (url === "https://updates.example/manifest.json") {
+        return Effect.succeed({
+          json: Effect.succeed(manifest)
+        })
+      }
+      return Effect.succeed({
+        arrayBuffer: Effect.succeed(new TextEncoder().encode("bundle").buffer)
+      })
+    }
+  } as never)
+
+  const updaterLayer = makeUpdaterServiceLayer({
+    check: () => Effect.succeed({ available: true, version: "../escape" }),
+    download: () => Effect.die("unexpected download"),
+    install: () => Effect.die("unexpected install"),
+    installAndRestart: () => Effect.die("unexpected installAndRestart"),
+    getStatus: () => Effect.succeed(new UpdaterStatusResult({ state: "idle" })),
+    readyForRestart: () => Effect.void,
+    onPreparingRestart: () => Stream.empty
+  })
+
+  const layers = Layer.mergeAll(UpdateWorkflowLayer as never, httpLayer, updaterLayer) as never
+  const exit = await Effect.runPromiseExit(
+    UpdateWorkflow.execute(
+      new UpdatePayload({
+        version: "../escape",
+        manifestUrl: "https://updates.example/manifest.json"
+      })
+    ).pipe(Effect.provide(layers), provideEngine)
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const fail = exit.cause.reasons.find((reason) => reason._tag === "Fail")
+    expect(fail).toBeDefined()
+    if (fail?._tag === "Fail") {
+      expect(fail.error).toBeInstanceOf(UpdateError)
+      const error = fail.error as UpdateError
+      expect(error.stage).toBe("stage")
+    }
+  }
+})
