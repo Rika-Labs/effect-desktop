@@ -1,3 +1,5 @@
+import { pathToFileURL } from "node:url"
+
 import type {
   HostProtocolError,
   HostWindowClient,
@@ -5,9 +7,12 @@ import type {
 } from "@effect-desktop/bridge"
 import { Data, Effect } from "effect"
 
-import type { WindowSpec } from "./desktop-app.js"
+import type { DesktopAppDefinition, WindowSpec } from "./desktop-app.js"
 
+export const APP_MODULE_ENV = "EFFECT_DESKTOP_APP_MODULE"
+export const APP_EXPORT_ENV = "EFFECT_DESKTOP_APP_EXPORT"
 export const STARTUP_WINDOWS_ENV = "EFFECT_DESKTOP_STARTUP_WINDOWS"
+const DEFAULT_APP_EXPORT = "default"
 
 export interface OpenedDeclaredWindow {
   readonly name: string
@@ -42,6 +47,32 @@ export const readStartupWindowsEnv = (
       new StartupWindowConfigError({
         env: STARTUP_WINDOWS_ENV,
         message: `Invalid ${STARTUP_WINDOWS_ENV}: ${formatUnknownError(error)}`
+      })
+  }).pipe(Effect.flatMap(validateStartupWindows))
+}
+
+export const readStartupWindows = (
+  env: Readonly<Record<string, string | undefined>>
+): Effect.Effect<Readonly<Record<string, WindowSpec>>, StartupWindowConfigError, never> => {
+  const rawModule = env[APP_MODULE_ENV]
+  if (rawModule === undefined || rawModule.trim() === "") {
+    return readStartupWindowsEnv(env)
+  }
+
+  const exportName = normalizedAppExport(env)
+  return Effect.tryPromise({
+    try: async () => {
+      const module = (await import(toModuleSpecifier(rawModule))) as Readonly<Record<string, unknown>>
+      const app = module[exportName]
+      if (!isDesktopAppDefinition(app)) {
+        throw new Error(`export "${exportName}" is not a Desktop app definition`)
+      }
+      return app.windows
+    },
+    catch: (error) =>
+      new StartupWindowConfigError({
+        env: APP_MODULE_ENV,
+        message: `Invalid ${APP_MODULE_ENV}: ${formatUnknownError(error)}`
       })
   }).pipe(Effect.flatMap(validateStartupWindows))
 }
@@ -179,3 +210,37 @@ const formatUnknownError = (error: unknown): string => {
 
   return String(error)
 }
+
+const normalizedAppExport = (env: Readonly<Record<string, string | undefined>>): string => {
+  const exportName = env[APP_EXPORT_ENV]
+  if (exportName === undefined || exportName.trim() === "") {
+    return DEFAULT_APP_EXPORT
+  }
+  return exportName.trim()
+}
+
+const toModuleSpecifier = (raw: string): string => {
+  const value = raw.trim()
+  if (isImportSpecifier(value)) {
+    return value
+  }
+  return pathToFileURL(value).href
+}
+
+const isImportSpecifier = (value: string): boolean => {
+  try {
+    const url = new URL(value)
+    return url.protocol.length > 0
+  } catch {
+    return false
+  }
+}
+
+const isDesktopAppDefinition = (value: unknown): value is DesktopAppDefinition<unknown, unknown> =>
+  typeof value === "object" &&
+  value !== null &&
+  "_tag" in value &&
+  (value as { readonly _tag?: unknown })._tag === "DesktopAppDefinition" &&
+  "windows" in value &&
+  typeof (value as { readonly windows?: unknown }).windows === "object" &&
+  (value as { readonly windows?: unknown }).windows !== null

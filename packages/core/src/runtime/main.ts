@@ -10,7 +10,7 @@ import { Config, Effect, Option } from "effect"
 import packageJson from "../../package.json" with { type: "json" }
 import { createHostProtocolExchange } from "./host-client.js"
 import { createBunStdioTransport } from "./transport.js"
-import { openDeclaredWindows, readStartupWindowsEnv } from "./window-supervisor.js"
+import { openDeclaredWindows, readStartupWindows } from "./window-supervisor.js"
 
 const readyEvent = {
   event: "runtime.ready",
@@ -44,7 +44,7 @@ const smokeTestWindows = Object.freeze({
 await Effect.runPromise(
   Effect.gen(function* () {
     const isSmokeTest = yield* windowSmokeTest
-    const startupWindows = yield* readStartupWindowsEnv(process.env)
+    const startupWindows = yield* readStartupWindows(process.env)
     const declaredWindows =
       isSmokeTest && Object.keys(startupWindows).length === 0 ? smokeTestWindows : startupWindows
     yield* negotiateHostVersion(handshake, HOST_PROTOCOL_VERSION)

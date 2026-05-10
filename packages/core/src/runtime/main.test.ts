@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test"
 import { Buffer } from "node:buffer"
 import { spawn } from "node:child_process"
-import { resolve } from "node:path"
-import { fileURLToPath } from "node:url"
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join, resolve } from "node:path"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
 import {
   HOST_PING_METHOD,
@@ -12,7 +14,7 @@ import {
   WINDOW_DESTROY_METHOD
 } from "@effect-desktop/bridge"
 import packageJson from "../../package.json" with { type: "json" }
-import { STARTUP_WINDOWS_ENV } from "./window-supervisor.js"
+import { APP_MODULE_ENV, STARTUP_WINDOWS_ENV } from "./window-supervisor.js"
 
 const PACKAGE_ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)))
 
@@ -107,7 +109,44 @@ test("runtime smoke mode opens a fallback window when no startup windows are dec
   ])
 })
 
+test("runtime entry can open startup windows from the Desktop app module", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-runtime-"))
+  const modulePath = join(directory, "app.ts")
+  const coreSpecifier = pathToFileURL(resolve(PACKAGE_ROOT, "src/index.ts")).href
+  await writeFile(
+    modulePath,
+    [
+      `import { Desktop } from ${JSON.stringify(coreSpecifier)}`,
+      "export default Desktop.make({",
+      "  windows: {",
+      "    main: { title: \"Module Notes\", width: 960, height: 640, renderer: \"/\" }",
+      "  }",
+      "})"
+    ].join("\n"),
+    "utf8"
+  )
+
+  try {
+    const result = await runRuntimeWithFakeHost({
+      appModule: pathToFileURL(modulePath).href
+    })
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toBe("")
+    expect(result.trailingStdoutBytes).toBe(0)
+    expect(result.methods).toEqual([
+      HOST_VERSION_METHOD,
+      HOST_PING_METHOD,
+      WINDOW_CREATE_METHOD,
+      WINDOW_DESTROY_METHOD
+    ])
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 interface RuntimeHostOptions {
+  readonly appModule?: string
   readonly startupWindows?: unknown
 }
 
@@ -118,6 +157,10 @@ const runRuntimeWithFakeHost = (options: RuntimeHostOptions = {}): Promise<Runti
       EFFECT_DESKTOP_WINDOW_SMOKE_TEST: "1"
     }
     delete env[STARTUP_WINDOWS_ENV]
+    delete env[APP_MODULE_ENV]
+    if (options.appModule !== undefined) {
+      env[APP_MODULE_ENV] = options.appModule
+    }
     if (options.startupWindows !== undefined) {
       env[STARTUP_WINDOWS_ENV] = JSON.stringify(options.startupWindows)
     }
