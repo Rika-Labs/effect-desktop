@@ -1,13 +1,15 @@
 import { expect, test } from "bun:test"
-import { Data, Effect, Layer, Schema } from "effect"
+import { Cause, Data, Effect, Exit, Layer, Schema } from "effect"
 import { EventJournal, EventLog as EL, EventLogEncryption } from "effect/unstable/eventlog"
 import { PersistedQueue } from "effect/unstable/persistence"
 import { Activity, Workflow, WorkflowEngine } from "effect/unstable/workflow"
 
 import {
   CrashReport,
+  CrashReportDrainConfigError,
   CrashReportGroupLayer,
   CrashReportReactivityLayer,
+  crashReportRateLimitIntervalMs,
   makeCrashReportQueueUploadHandler,
   makeCrashReportQueue
 } from "./crash-report-workflow.js"
@@ -115,6 +117,18 @@ test("CrashReport queue upload handler enqueues flushed breadcrumbs", async () =
       expect(report.breadcrumbs[0]?.message).toBe("boom")
     }).pipe(Effect.provide(queueLayer))
   )
+})
+
+test("crashReportRateLimitIntervalMs rejects invalid rate limits", async () => {
+  const valid = await Effect.runPromise(crashReportRateLimitIntervalMs(120))
+  expect(valid).toBe(30_000)
+
+  const exit = await Effect.runPromiseExit(crashReportRateLimitIntervalMs(0))
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(CrashReportDrainConfigError)
+  }
 })
 
 class FlakyError extends Data.TaggedError("FlakyError")<{

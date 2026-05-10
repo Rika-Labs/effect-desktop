@@ -30,6 +30,14 @@ export class CrashReportSubmitError extends Schema.ErrorClass<CrashReportSubmitE
   message: Schema.String
 }) {}
 
+export class CrashReportDrainConfigError extends Schema.ErrorClass<CrashReportDrainConfigError>(
+  "CrashReportDrainConfigError"
+)({
+  _tag: Schema.tag("CrashReportDrainConfigError"),
+  field: Schema.String,
+  message: Schema.String
+}) {}
+
 const submitError = (status: number, message: string): CrashReportSubmitError =>
   new CrashReportSubmitError({ status, message })
 
@@ -170,17 +178,27 @@ export const makeCrashReportQueue: Effect.Effect<
   PersistedQueue.PersistedQueueFactory
 > = PersistedQueue.make({ name: "crash-reports", schema: CrashReport })
 
-const rateGuard = (perHour: number): Effect.Effect<void, never, never> => {
-  const intervalMs = Math.ceil((60 * 60 * 1000) / perHour)
-  return Effect.sleep(intervalMs)
-}
+export const crashReportRateLimitIntervalMs = (
+  perHour: number
+): Effect.Effect<number, CrashReportDrainConfigError, never> =>
+  Number.isFinite(perHour) && perHour > 0
+    ? Effect.succeed(Math.ceil((60 * 60 * 1000) / perHour))
+    : Effect.fail(
+        new CrashReportDrainConfigError({
+          field: "rateLimitPerHour",
+          message: "rateLimitPerHour must be a positive finite number"
+        })
+      )
+
+const rateGuard = (intervalMs: number): Effect.Effect<void, never, never> =>
+  Effect.sleep(intervalMs)
 
 export const makeCrashReportDrainLayer = (options: {
   readonly endpointUrl: string
   readonly rateLimitPerHour: number
 }): Layer.Layer<
   never,
-  never,
+  CrashReportDrainConfigError,
   | PersistedQueue.PersistedQueueFactory
   | WorkflowEngine.WorkflowEngine
   | EventLog.EventLog
@@ -189,12 +207,13 @@ export const makeCrashReportDrainLayer = (options: {
 > =>
   Layer.effectDiscard(
     Effect.gen(function* () {
+      const intervalMs = yield* crashReportRateLimitIntervalMs(options.rateLimitPerHour)
       const queue = yield* makeCrashReportQueue
 
       yield* Effect.forever(
         queue.take((report, _meta) =>
           Effect.gen(function* () {
-            yield* rateGuard(options.rateLimitPerHour)
+            yield* rateGuard(intervalMs)
             yield* CrashSubmissionWorkflow.execute(report, { discard: true })
           })
         )
@@ -210,7 +229,7 @@ export const CrashReportWorkflowLayerFetch = (options: {
   readonly rateLimitPerHour: number
 }): Layer.Layer<
   never,
-  never,
+  CrashReportDrainConfigError,
   | PersistedQueue.PersistedQueueFactory
   | WorkflowEngine.WorkflowEngine
   | EventLog.EventLog
