@@ -1,11 +1,18 @@
 import { expect, test } from "bun:test"
 import { makeHostProtocolInvalidStateError } from "@effect-desktop/bridge"
-import { Cause, Effect, Option } from "effect"
 import { AsyncResult } from "effect/unstable/reactivity"
+import { Cause, Effect, Option, Schema } from "effect"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 
 import {
+  BrowserHttpClient,
+  BrowserKeyValueStore,
+  IndexedDb,
+  IndexedDbDatabase,
+  IndexedDbQueryBuilder,
+  IndexedDbTable,
+  IndexedDbVersion,
   DesktopProvider,
   type DesktopClient,
   type DesktopWindowClient,
@@ -116,4 +123,76 @@ test("AsyncResult is re-exported from package index", () => {
   expect(typeof AsyncResult.isInitial).toBe("function")
   expect(typeof AsyncResult.isSuccess).toBe("function")
   expect(typeof AsyncResult.isFailure).toBe("function")
+})
+
+test("platform-browser IndexedDbTable.make produces a typed table descriptor", () => {
+  const DraftTable = IndexedDbTable.make({
+    name: "drafts",
+    schema: Schema.Struct({
+      id: Schema.Number,
+      body: Schema.String
+    }),
+    keyPath: "id",
+    autoIncrement: true
+  })
+
+  expect(DraftTable.tableName).toBe("drafts")
+  expect(DraftTable.autoIncrement).toBe(true)
+  expect(DraftTable.keyPath).toBe("id")
+})
+
+test("platform-browser IndexedDbVersion.make accepts a table descriptor", () => {
+  const DraftTable = IndexedDbTable.make({
+    name: "drafts",
+    schema: Schema.Struct({
+      id: Schema.Number,
+      body: Schema.String
+    }),
+    keyPath: "id",
+    autoIncrement: true
+  })
+
+  const v1 = IndexedDbVersion.make(DraftTable)
+
+  expect(v1.tables.has("drafts")).toBe(true)
+  expect(v1.tables.size).toBe(1)
+})
+
+test("platform-browser IndexedDbDatabase.make produces a schema builder", () => {
+  const DraftTable = IndexedDbTable.make({
+    name: "drafts",
+    schema: Schema.Struct({
+      id: Schema.Number,
+      body: Schema.String
+    }),
+    keyPath: "id",
+    autoIncrement: true
+  })
+
+  const v1 = IndexedDbVersion.make(DraftTable)
+
+  const schema = IndexedDbDatabase.make(v1, (tx) =>
+    tx.createObjectStore("drafts").pipe(Effect.asVoid)
+  )
+
+  expect(typeof schema.layer).toBe("function")
+  expect(schema.version).toBe(v1)
+})
+
+test("platform-browser BrowserKeyValueStore exports layerLocalStorage and layerSessionStorage", () => {
+  expect(typeof BrowserKeyValueStore.layerLocalStorage).toBe("object")
+  expect(typeof BrowserKeyValueStore.layerSessionStorage).toBe("object")
+})
+
+test("platform-browser BrowserHttpClient exports layerFetch and layerXMLHttpRequest", () => {
+  expect(typeof BrowserHttpClient.layerFetch).toBe("object")
+  expect(typeof BrowserHttpClient.layerXMLHttpRequest).toBe("object")
+})
+
+test("platform-browser IndexedDb exports layerWindow", () => {
+  expect(typeof IndexedDb.layerWindow).toBe("object")
+})
+
+test("platform-browser IndexedDbQueryBuilder exports make", () => {
+  expect(typeof IndexedDbQueryBuilder.make).toBe("function")
 })

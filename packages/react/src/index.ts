@@ -1,3 +1,12 @@
+export {
+  BrowserHttpClient,
+  BrowserKeyValueStore,
+  IndexedDb,
+  IndexedDbDatabase,
+  IndexedDbQueryBuilder,
+  IndexedDbTable,
+  IndexedDbVersion
+} from "./platform-browser.js"
 export type { HostProtocolError } from "@effect-desktop/bridge"
 export type { WindowCreateOptions, WindowError, WindowHandle } from "@effect-desktop/native"
 
