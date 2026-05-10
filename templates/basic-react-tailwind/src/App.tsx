@@ -1,7 +1,11 @@
-import type { WindowCreateOptions } from "@effect-desktop/native"
-import { useDesktop, useWindow } from "@effect-desktop/react"
-import { Effect, Exit, Option } from "effect"
-import { useState } from "react"
+import type { WindowCreateOptions, WindowError, WindowHandle } from "@effect-desktop/native"
+import {
+  defineDesktopApi,
+  type DesktopAsyncState,
+  useDesktopClient,
+  useWindow
+} from "@effect-desktop/react"
+import { Option } from "effect"
 
 import { templateMessages } from "./messages.js"
 
@@ -13,38 +17,16 @@ const windowRequest: WindowCreateOptions = Object.freeze({
   height: 640
 })
 
-type WindowState =
-  | { readonly _tag: "Idle" }
-  | { readonly _tag: "Running" }
-  | { readonly _tag: "Succeeded"; readonly windowId: string }
-  | { readonly _tag: "Failed"; readonly message: string }
-
 export const TEMPLATE_WINDOW_TITLE = copy.windowTitle
 
 export function App() {
-  const desktop = useDesktop()
+  const desktop = useDesktopClient()
   const currentWindow = useWindow()
-  const [windowState, setWindowState] = useState<WindowState>({ _tag: "Idle" })
+  const windowApi = defineDesktopApi(desktop.window)
+  const createWindow = windowApi.create.useAction()
 
-  const openWindow = () => {
-    if (Option.isNone(desktop)) {
-      setWindowState({ _tag: "Failed", message: copy.unavailable })
-      return
-    }
-
-    setWindowState({ _tag: "Running" })
-
-    void Effect.runPromiseExit(desktop.value.Window.create(windowRequest)).then((exit) => {
-      if (Exit.isSuccess(exit)) {
-        setWindowState({ _tag: "Succeeded", windowId: exit.value.id })
-        return
-      }
-      setWindowState({ _tag: "Failed", message: String(exit.cause) })
-    })
-  }
-
-  const canOpenWindow = Option.isSome(desktop) && windowState._tag !== "Running"
-  const statusText = windowStatus(windowState, currentWindow)
+  const canOpenWindow = createWindow.status !== "running"
+  const statusText = windowStatus(createWindow.state, currentWindow)
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950 dark:bg-zinc-950 dark:text-zinc-50">
@@ -63,7 +45,9 @@ export function App() {
             className="inline-flex min-h-11 items-center justify-center rounded-md bg-emerald-700 px-5 text-sm font-semibold text-white motion-safe:transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-400 dark:disabled:bg-zinc-700"
             disabled={!canOpenWindow}
             type="button"
-            onClick={openWindow}
+            onClick={() => {
+              createWindow.run(windowRequest)
+            }}
           >
             {copy.openWindow}
           </button>
@@ -77,7 +61,7 @@ export function App() {
 }
 
 function windowStatus(
-  state: WindowState,
+  state: DesktopAsyncState<WindowHandle, WindowError>,
   currentWindow: Option.Option<{ readonly id: string }>
 ): string {
   if (Option.isSome(currentWindow)) {
@@ -89,9 +73,13 @@ function windowStatus(
       return copy.ready
     case "Running":
       return copy.running
-    case "Succeeded":
-      return copy.opened(state.windowId)
-    case "Failed":
+    case "Success":
+      return copy.opened(state.value.id)
+    case "Failure":
+      return state.message
+    case "Canceled":
+      return copy.ready
+    case "Unavailable":
       return state.message
   }
 }

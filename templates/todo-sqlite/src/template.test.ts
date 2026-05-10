@@ -28,3 +28,11 @@ test("contract defines four RPCs in AppRpc group", async () => {
   expect(AppRpc.requests.has("DeleteTodo")).toBe(true)
   expect(TODO_REACTIVITY_KEY).toBe("todos")
 })
+
+test("renderer provider owns unavailable host state", () => {
+  const main = readFileSync(join(templateRoot, "src", "main.tsx"), "utf8")
+
+  expect(main).toContain("<DesktopProvider>")
+  expect(main).not.toContain("unavailableWindow")
+  expect(main).not.toContain("desktopClient")
+})

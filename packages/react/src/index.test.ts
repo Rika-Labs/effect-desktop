@@ -1,13 +1,15 @@
 import { expect, test } from "bun:test"
 import { makeHostProtocolInvalidStateError } from "@effect-desktop/bridge"
 import { AsyncResult } from "effect/unstable/reactivity"
-import { Cause, Effect, Option, Schema } from "effect"
+import { Cause, Effect, Exit, Option, Schema } from "effect"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 
 import {
   BrowserHttpClient,
   BrowserKeyValueStore,
+  createUnavailableDesktopClient,
+  defineDesktopApi,
   IndexedDb,
   IndexedDbDatabase,
   IndexedDbQueryBuilder,
@@ -18,6 +20,8 @@ import {
   type DesktopWindowClient,
   type PermissionState,
   useDesktop,
+  useDesktopClient,
+  useOptionalDesktopClient,
   usePermission,
   useWindow
 } from "./index.js"
@@ -30,10 +34,10 @@ import { disposeRuntime } from "./provider.js"
 
 const unavailableWindow: DesktopWindowClient = {
   create: () =>
-    Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "Window.create")),
+    Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "window.create")),
   setTitle: () =>
-    Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "Window.setTitle")),
-  close: () => Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "Window.close"))
+    Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "window.setTitle")),
+  close: () => Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "window.close"))
 }
 
 test("disposeRuntime reports cleanup defects through onCleanupError", async () => {
@@ -52,7 +56,7 @@ test("disposeRuntime reports cleanup defects through onCleanupError", async () =
 })
 
 const desktop: DesktopClient = Object.freeze({
-  Window: unavailableWindow
+  window: unavailableWindow
 })
 
 test("DesktopProvider renders children without crashing (SSR)", () => {
@@ -63,19 +67,42 @@ test("DesktopProvider renders children without crashing (SSR)", () => {
   expect(html).toBe("<span>child</span>")
 })
 
+test("DesktopProvider can create its unavailable client internally", () => {
+  const Probe = () => {
+    const client = useDesktopClient()
+    return createElement("span", null, typeof client.window.create)
+  }
+
+  expect(renderToStaticMarkup(createElement(DesktopProvider, null, createElement(Probe)))).toBe(
+    "<span>function</span>"
+  )
+})
+
 test("hooks model a missing provider without throwing", () => {
   const Probe = () => {
     const desktopOption = useDesktop()
+    const optionalDesktop = useOptionalDesktopClient()
     const windowOption = useWindow()
 
     return createElement(
       "span",
       null,
-      Option.isNone(desktopOption) && Option.isNone(windowOption) ? "missing" : "provided"
+      Option.isNone(desktopOption) && Option.isNone(optionalDesktop) && Option.isNone(windowOption)
+        ? "missing"
+        : "provided"
     )
   }
 
   expect(renderToStaticMarkup(createElement(Probe))).toBe("<span>missing</span>")
+})
+
+test("useDesktopClient fails loudly without a provider", () => {
+  const Probe = () => {
+    useDesktopClient()
+    return createElement("span", null, "mounted")
+  }
+
+  expect(() => renderToStaticMarkup(createElement(Probe))).toThrow(RangeError)
 })
 
 test("DesktopProvider can expose the current window handle", () => {
@@ -100,6 +127,24 @@ test("DesktopProvider can expose the current window handle", () => {
       )
     )
   ).toBe("<span>window-1</span>")
+})
+
+test("createUnavailableDesktopClient exposes lowercase renderer namespaces", async () => {
+  const client = createUnavailableDesktopClient("test unavailable")
+  const exit = await Effect.runPromiseExit(client.window.create())
+
+  expect(Exit.isFailure(exit)).toBe(true)
+})
+
+test("defineDesktopApi exposes lowerCamel operation hook objects", () => {
+  const notes = defineDesktopApi({
+    createNote: (input: { readonly title: string }) =>
+      Effect.succeed({ id: "note-1", title: input.title })
+  })
+
+  expect(typeof notes.createNote.useAction).toBe("function")
+  expect(Object.isFrozen(notes)).toBe(true)
+  expect(Object.isFrozen(notes.createNote)).toBe(true)
 })
 
 test("usePermission exports the deferred shape", () => {

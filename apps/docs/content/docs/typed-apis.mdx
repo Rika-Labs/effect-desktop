@@ -22,3 +22,15 @@ const program = Effect.gen(function* () {
 ```
 
 The shape is explicit: services are dependencies, native calls are effects, and failures are part of the type.
+
+Renderer code should consume those effects through React desktop hooks instead of calling `Effect.runPromiseExit` in components:
+
+```tsx
+const desktop = useDesktopClient()
+const windowApi = defineDesktopApi(desktop.window)
+const createWindow = windowApi.create.useAction()
+
+createWindow.run({ title: "Notes", width: 960, height: 640 })
+```
+
+Generated app SDKs should use the same shape for domain APIs: `notes.createNote.useAction()`, not `notes.CreateNote.useAction()`.

@@ -1,10 +1,10 @@
-import { useDesktop } from "@effect-desktop/react"
+import { useOptionalDesktopClient } from "@effect-desktop/react"
 import { Option } from "effect"
 
 import { multiWindowTemplateMessages as copy } from "./messages.js"
 
 export function App() {
-  const desktop = useDesktop()
+  const desktop = useOptionalDesktopClient()
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950 dark:bg-zinc-950 dark:text-zinc-50">
