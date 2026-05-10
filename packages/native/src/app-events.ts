@@ -2,6 +2,9 @@ import { Context, Data, Effect, Layer, Match, Queue, Ref, Stream } from "effect"
 
 import type { WindowHandle } from "./window.js"
 
+const DEFAULT_APP_EVENT_SUBSCRIPTION_QUEUE_CAPACITY = 16
+const DEFAULT_APP_EVENT_AUDIT_QUEUE_CAPACITY = 16
+
 export type AppEventName =
   | "onOpenFile"
   | "onOpenUrl"
@@ -75,6 +78,11 @@ export interface AppEventRouterApi {
   readonly audit: () => Stream.Stream<AppEventAudit, never, never>
 }
 
+export interface AppEventRouterOptions {
+  readonly subscriptionQueueCapacity?: number
+  readonly auditQueueCapacity?: number
+}
+
 export class AppEventRouter extends Context.Service<AppEventRouter, AppEventRouterApi>()(
   "@effect-desktop/native/AppEventRouter"
 ) {}
@@ -88,8 +96,19 @@ export const targetedRoute = (windowId: string): AppEventRoute =>
 
 export const windowScope = (windowId: string): string => `window:${windowId}`
 
-export function makeAppEventRouter(): Effect.Effect<AppEventRouterApi, never, never> {
+export function makeAppEventRouter(
+  options: AppEventRouterOptions = {}
+): Effect.Effect<AppEventRouterApi, never, never> {
   return Effect.gen(function* () {
+    const subscriptionQueueCapacity = resolveQueueCapacity(
+      options.subscriptionQueueCapacity,
+      DEFAULT_APP_EVENT_SUBSCRIPTION_QUEUE_CAPACITY
+    )
+    const auditQueueCapacity = resolveQueueCapacity(
+      options.auditQueueCapacity,
+      DEFAULT_APP_EVENT_AUDIT_QUEUE_CAPACITY
+    )
+
     const state = yield* Ref.make<RouterState>({
       windows: [],
       focusedWindowId: undefined,
@@ -97,7 +116,7 @@ export function makeAppEventRouter(): Effect.Effect<AppEventRouterApi, never, ne
       pendingWindowEvents: new Map(),
       subscriptions: new Map()
     })
-    const auditQueue = yield* Queue.unbounded<AppEventAudit>()
+    const auditQueue = yield* Queue.sliding<AppEventAudit>(auditQueueCapacity)
 
     const emitAudit = (audit: AppEventAudit): Effect.Effect<void, never, never> =>
       Effect.asVoid(Queue.offer(auditQueue, audit))
@@ -219,7 +238,7 @@ export function makeAppEventRouter(): Effect.Effect<AppEventRouterApi, never, ne
     ): Stream.Stream<RoutedAppEvent<Payload>, AppEventRoutingError, never> =>
       Stream.unwrap(
         Effect.gen(function* () {
-          const queue = yield* Queue.unbounded<RoutedAppEvent<Payload>>()
+          const queue = yield* Queue.sliding<RoutedAppEvent<Payload>>(subscriptionQueueCapacity)
           const subscription: EventSubscription = {
             event,
             offer: (item) => Queue.offer(queue, item as RoutedAppEvent<Payload>),
@@ -417,3 +436,10 @@ const removeSubscription = (
     subscriptions
   }
 }
+
+const resolveQueueCapacity = (value: number | undefined, fallback: number): number =>
+  value === undefined
+    ? fallback
+    : Number.isSafeInteger(value) && value > 0
+      ? value
+      : fallback

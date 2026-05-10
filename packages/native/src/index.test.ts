@@ -4578,6 +4578,70 @@ test("AppEventRouter buffers one firstResponder event per kind until a window op
   expect(Array.from(result.audit).map((event) => event._tag)).toEqual(["EventBufferEvicted"])
 })
 
+test("AppEventRouter drops oldest buffered subscription events when subscription queue is full", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const router = yield* makeAppEventRouter({ subscriptionQueueCapacity: 1 })
+      yield* router.windowOpened(handleFor("window-1"))
+      const events = yield* router
+        .subscribe<{ readonly path: string }>("window-1", "onOpenFile")
+        .pipe(Stream.take(1), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+
+      yield* router.publish({
+        event: "onOpenFile",
+        payload: { path: "first.txt" },
+        route: targetedRoute("window-1")
+      })
+      yield* router.publish({
+        event: "onOpenFile",
+        payload: { path: "second.txt" },
+        route: targetedRoute("window-1")
+      })
+      yield* router.publish({
+        event: "onOpenFile",
+        payload: { path: "third.txt" },
+        route: targetedRoute("window-1")
+      })
+
+      return yield* Fiber.join(events)
+    })
+  )
+
+  expect(Array.from(result).map((event) => event.payload.path)).toEqual(["third.txt"])
+})
+
+test("AppEventRouter keeps newest audit event when audit queue is full", async () => {
+  const audits = await Effect.runPromise(
+    Effect.gen(function* () {
+      const router = yield* makeAppEventRouter({ auditQueueCapacity: 1 })
+      yield* router.publish({
+        event: "Tray.activation",
+        payload: { button: "left" },
+        route: targetedRoute("closed-window")
+      })
+      yield* router.publish({
+        event: "Tray.activation",
+        payload: { button: "right" },
+        route: targetedRoute("closed-window")
+      })
+
+      return yield* router.audit().pipe(Stream.take(1), Stream.runCollect)
+    })
+  )
+
+  expect(Array.from(audits)).toEqual([
+    {
+      _tag: "EventDroppedTargetClosed",
+      event: "Tray.activation",
+      windowId: "closed-window",
+      dropped: {
+        event: "Tray.activation",
+        payload: { button: "right" }
+      }
+    }
+  ])
+})
+
 test("AppEventRouter broadcasts in creation order and short-circuits on refusal", async () => {
   const seen: string[] = []
   const decision = await Effect.runPromise(

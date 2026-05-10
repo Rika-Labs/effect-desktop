@@ -1,6 +1,8 @@
 import { Cause, Context, Data, Effect, Fiber, Option, Queue, Schema, Stream } from "effect"
 
 export const MAX_FRAME_BYTES = 4 * 1024 * 1024
+const DEFAULT_IN_MEMORY_TRANSPORT_QUEUE_CAPACITY = 16
+const DEFAULT_UNFRAME_STREAM_QUEUE_CAPACITY = 16
 
 const LENGTH_PREFIX_BYTES = 4
 const U32_MAX = 0xffff_ffff
@@ -89,6 +91,11 @@ export interface TransportUnframeStreamInput {
   readonly scheme: TransportScheme
   readonly chunks: Stream.Stream<Uint8Array, TransportError, never>
   readonly maxFrameBytes?: number
+  readonly frameQueueCapacity?: number
+}
+
+export interface InMemoryTransportPairOptions {
+  readonly queueCapacity?: number
 }
 
 export interface TransportApi {
@@ -401,14 +408,20 @@ export const makeConnection = (
       })
   })
 
-export const makeInMemoryTransportPair = (): Effect.Effect<
+export const makeInMemoryTransportPair = (
+  options: InMemoryTransportPairOptions = {}
+): Effect.Effect<
   readonly [TransportConnection, TransportConnection],
   never,
   never
 > =>
   Effect.gen(function* () {
-    const leftInbound = yield* Queue.unbounded<Uint8Array, TransportError>()
-    const rightInbound = yield* Queue.unbounded<Uint8Array, TransportError>()
+    const queueCapacity = resolveQueueCapacity(
+      options.queueCapacity,
+      DEFAULT_IN_MEMORY_TRANSPORT_QUEUE_CAPACITY
+    )
+    const leftInbound = yield* Queue.bounded<Uint8Array, TransportError>(queueCapacity)
+    const rightInbound = yield* Queue.bounded<Uint8Array, TransportError>(queueCapacity)
     return [
       makeQueuedConnection(leftInbound, rightInbound, "Transport.memory.left"),
       makeQueuedConnection(rightInbound, leftInbound, "Transport.memory.right")
@@ -469,6 +482,13 @@ const resolveMaxFrameBytes = (options: FramedTransportOptions): number => {
   return maxFrameBytes
 }
 
+const resolveQueueCapacity = (value: number | undefined, fallback: number): number =>
+  value === undefined
+    ? fallback
+    : Number.isSafeInteger(value) && value > 0
+      ? value
+      : fallback
+
 const framePayload = (
   scheme: TransportScheme,
   payload: Uint8Array,
@@ -503,7 +523,10 @@ const makeUnframeStream = (
   Stream.unwrap(
     Effect.gen(function* () {
       const decoded = yield* decodeUnframeStreamInput(input, "Transport.unframeStream")
-      const queue = yield* Queue.unbounded<Uint8Array, TransportError | Cause.Done>()
+      const queue = yield* Queue.bounded<
+        Uint8Array,
+        TransportError | Cause.Done
+      >(resolveQueueCapacity(input.frameQueueCapacity, DEFAULT_UNFRAME_STREAM_QUEUE_CAPACITY))
       const decoder =
         decoded.scheme === "length-prefixed"
           ? makeLengthPrefixedStreamingDecoder(decoded)
@@ -779,11 +802,15 @@ const decodeUnframeStreamInput = (
   Schema.decodeUnknownEffect(
     Schema.Struct({
       scheme: TransportScheme,
-      maxFrameBytes: Schema.optionalKey(PositiveInt)
+      maxFrameBytes: Schema.optionalKey(PositiveInt),
+      frameQueueCapacity: Schema.optionalKey(PositiveInt)
     })
   )({
     scheme: input.scheme,
-    ...(input.maxFrameBytes === undefined ? {} : { maxFrameBytes: input.maxFrameBytes })
+    ...(input.maxFrameBytes === undefined ? {} : { maxFrameBytes: input.maxFrameBytes }),
+    ...(input.frameQueueCapacity === undefined
+      ? {}
+      : { frameQueueCapacity: input.frameQueueCapacity })
   }).pipe(
     Effect.as(input),
     Effect.mapError((error) => invalidArgument(operation, "input", error))
