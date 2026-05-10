@@ -93,10 +93,7 @@ export interface VueDesktopAdapter<App extends DesktopAppManifest> {
   readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => VueDesktopRpcs<Group>
 }
 
-export {
-  MissingDesktopContextError,
-  MissingDesktopRpcClientError
-} from "@effect-desktop/core"
+export { MissingDesktopContextError, MissingDesktopRpcClientError } from "@effect-desktop/core"
 
 interface VueDesktopContext {
   readonly clients: VueDesktopClientMap

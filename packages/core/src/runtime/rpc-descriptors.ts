@@ -15,10 +15,7 @@ import type {
   DesktopAppManifest,
   DesktopRpcGroupDescriptor
 } from "./desktop-app.js"
-import {
-  makeDuplicateDesktopRpcNameError,
-  makeMissingDesktopRpcsError
-} from "./desktop-errors.js"
+import { makeDuplicateDesktopRpcNameError, makeMissingDesktopRpcsError } from "./desktop-errors.js"
 
 export type RpcEndpointDescriptorKind = "query" | "mutation" | "stream"
 export type RpcGroupWithRequests = RpcGroup.Any & {
@@ -91,7 +88,9 @@ const providedRpcGroup = <Group extends RpcGroupWithRequests>(
   app: DesktopRpcDescriptorSource,
   group: Group
 ): AnyDesktopRpcLayer | DesktopRpcGroupDescriptor | undefined =>
-  "rpcGroups" in app ? providedRpcGroupDescriptor(app.rpcGroups, group) : providedRpcLayer(app.rpcLayers, group)
+  "rpcGroups" in app
+    ? providedRpcGroupDescriptor(app.rpcGroups, group)
+    : providedRpcLayer(app.rpcLayers, group)
 
 const providedRpcLayer = <Group extends RpcGroupWithRequests>(
   layers: readonly AnyDesktopRpcLayer[],

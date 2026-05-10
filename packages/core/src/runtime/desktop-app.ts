@@ -257,8 +257,7 @@ const apiLayerToRpcLayer = (apiLayer: AnyApiLayer): AnyDesktopRpcLayer => {
     handlers[rpcTag] =
       typeof handler === "function"
         ? (input: unknown): unknown => handler(input)
-        : (): Effect.Effect<never> =>
-            Effect.die(`Legacy API handler is missing for ${rpcTag}`)
+        : (): Effect.Effect<never> => Effect.die(`Legacy API handler is missing for ${rpcTag}`)
   }
 
   return Rpcs.layer(

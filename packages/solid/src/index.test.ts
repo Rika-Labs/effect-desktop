@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test"
 import { RpcEndpoint } from "@effect-desktop/bridge"
-import { Desktop, DuplicateDesktopRpcNameError, MissingDesktopRpcsError } from "@effect-desktop/core"
+import {
+  Desktop,
+  DuplicateDesktopRpcNameError,
+  MissingDesktopRpcsError
+} from "@effect-desktop/core"
 import { Deferred, Effect, Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { createRoot } from "solid-js"
@@ -88,9 +92,7 @@ test("SolidDesktop.useDesktop rejects colliding endpoint names", () => {
     createComponent(CollidingSolid.DesktopRoot, {
       clients: [[CollidingRpcs, client]],
       get children() {
-        expect(() => CollidingSolid.useDesktop(CollidingRpcs)).toThrow(
-          DuplicateDesktopRpcNameError
-        )
+        expect(() => CollidingSolid.useDesktop(CollidingRpcs)).toThrow(DuplicateDesktopRpcNameError)
         return undefined
       }
     })
@@ -119,8 +121,7 @@ test("SolidDesktop query effects are interrupted when the owner is disposed", as
   )
   const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
   const client: SolidDesktopRpcClient = {
-    "Notes.Slow": () =>
-      Effect.never.pipe(Effect.ensuring(Deferred.succeed(interrupted, undefined)))
+    "Notes.Slow": () => Effect.never.pipe(Effect.ensuring(Deferred.succeed(interrupted, undefined)))
   }
 
   const dispose = createRoot((disposeRoot) => {

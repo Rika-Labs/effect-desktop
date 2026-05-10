@@ -102,10 +102,7 @@ export interface SolidDesktopAdapter<App extends DesktopAppManifest> {
   readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => SolidDesktopRpcs<Group>
 }
 
-export {
-  MissingDesktopContextError,
-  MissingDesktopRpcClientError
-} from "@effect-desktop/core"
+export { MissingDesktopContextError, MissingDesktopRpcClientError } from "@effect-desktop/core"
 
 interface SolidDesktopContextValue {
   readonly clients: SolidDesktopClientMap
@@ -114,9 +111,7 @@ interface SolidDesktopContextValue {
 const SolidDesktopContext = createContext<SolidDesktopContextValue>()
 
 export const SolidDesktop = Object.freeze({
-  from: <App extends DesktopAppManifest>(
-    app: App
-  ): SolidDesktopAdapter<App> => {
+  from: <App extends DesktopAppManifest>(app: App): SolidDesktopAdapter<App> => {
     const DesktopRoot = (props: SolidDesktopRootProps): JSX.Element =>
       createComponent(SolidDesktopContext.Provider, {
         value: { clients: normalizeClients(props.clients) },

@@ -8,7 +8,9 @@ import {
 } from "@effect-desktop/react/desktop"
 import type { ReactNode } from "react"
 
-export interface NextDesktopAdapter<App extends DesktopAppManifest> extends ReactDesktopAdapter<App> {
+export interface NextDesktopAdapter<
+  App extends DesktopAppManifest
+> extends ReactDesktopAdapter<App> {
   readonly app: App
   readonly DesktopRoot: (props: ReactDesktopRootProps) => ReactNode
   readonly createRoot: (

@@ -163,9 +163,9 @@ test("Desktop.app lowers legacy Api layers into the RpcGroup registry", async ()
     static toRpcGroup(): typeof LegacyRpcs {
       return LegacyRpcs
     }
-    static layer(
-      handlers: { readonly list: () => Effect.Effect<readonly string[], never, never> }
-    ) {
+    static layer(handlers: {
+      readonly list: () => Effect.Effect<readonly string[], never, never>
+    }) {
       return Object.freeze({
         contract: LegacyNotes,
         handlers: Object.freeze(handlers)
@@ -231,7 +231,9 @@ test("Desktop.toLayer rejects RpcGroup methods that require undeclared capabilit
     )
   )
 
-  const exit = await Effect.runPromiseExit(Effect.scoped(Layer.build(core.Desktop.toLayer(definition))))
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(Layer.build(core.Desktop.toLayer(definition)))
+  )
 
   expect(Exit.isFailure(exit)).toBe(true)
   if (Exit.isFailure(exit)) {

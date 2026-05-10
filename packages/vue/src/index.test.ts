@@ -83,8 +83,7 @@ test("VueDesktop query effects are interrupted when the scope is disposed", asyn
   )
   const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
   const client: VueDesktopRpcClient = {
-    "Notes.Slow": () =>
-      Effect.never.pipe(Effect.ensuring(Deferred.succeed(interrupted, undefined)))
+    "Notes.Slow": () => Effect.never.pipe(Effect.ensuring(Deferred.succeed(interrupted, undefined)))
   }
   const app = NotesVue.createApp(Root, { clients: [[NotesRpcs, client]] })
 

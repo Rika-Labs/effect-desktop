@@ -62,10 +62,7 @@ export interface ReactDesktopAdapter<App extends DesktopAppManifest> {
   readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => ReactDesktopRpcs<Group>
 }
 
-export {
-  MissingDesktopContextError,
-  MissingDesktopRpcClientError
-} from "@effect-desktop/core"
+export { MissingDesktopContextError, MissingDesktopRpcClientError } from "@effect-desktop/core"
 
 interface ReactDesktopContextValue {
   readonly clients: ReactDesktopClientMap
@@ -74,9 +71,7 @@ interface ReactDesktopContextValue {
 const ReactDesktopContext = createContext<ReactDesktopContextValue | undefined>(undefined)
 
 export const ReactDesktop = Object.freeze({
-  from: <App extends DesktopAppManifest>(
-    app: App
-  ): ReactDesktopAdapter<App> => {
+  from: <App extends DesktopAppManifest>(app: App): ReactDesktopAdapter<App> => {
     const DesktopRoot = ({ clients, children }: ReactDesktopRootProps): ReactNode => {
       const value = useMemo<ReactDesktopContextValue>(
         () => ({ clients: normalizeClients(clients) }),

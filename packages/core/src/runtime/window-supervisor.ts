@@ -1,10 +1,6 @@
 import { pathToFileURL } from "node:url"
 
-import type {
-  HostProtocolError,
-  HostWindowClient,
-  WindowCreateInput
-} from "@effect-desktop/bridge"
+import type { HostProtocolError, HostWindowClient, WindowCreateInput } from "@effect-desktop/bridge"
 import { Data, Effect } from "effect"
 
 import type { DesktopAppDefinition, WindowSpec } from "./desktop-app.js"
@@ -63,7 +59,9 @@ export const readStartupWindows = (
   const exportName = normalizedAppExport(env)
   return Effect.tryPromise({
     try: async () => {
-      const module = (await import(toModuleSpecifier(rawModule))) as Readonly<Record<string, unknown>>
+      const module = (await import(toModuleSpecifier(rawModule))) as Readonly<
+        Record<string, unknown>
+      >
       const app = module[exportName]
       if (!isDesktopAppDefinition(app)) {
         throw new Error(`export "${exportName}" is not a Desktop app definition`)

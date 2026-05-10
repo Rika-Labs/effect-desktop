@@ -1,7 +1,4 @@
-import {
-  makeHostProtocolInvalidStateError,
-  type HostProtocolError
-} from "@effect-desktop/bridge"
+import { makeHostProtocolInvalidStateError, type HostProtocolError } from "@effect-desktop/bridge"
 import type { WindowError, WindowHandle } from "@effect-desktop/native"
 import { Effect, Option } from "effect"
 

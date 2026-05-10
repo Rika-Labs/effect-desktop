@@ -50,9 +50,7 @@ export class MissingDesktopRpcsError extends Data.TaggedError("MissingDesktopRpc
   readonly docsUrl: string
 }> {}
 
-export class DuplicateDesktopRpcNameError extends Data.TaggedError(
-  "DuplicateDesktopRpcNameError"
-)<{
+export class DuplicateDesktopRpcNameError extends Data.TaggedError("DuplicateDesktopRpcNameError")<{
   readonly message: string
   readonly name: string
   readonly tags: readonly string[]
@@ -137,8 +135,7 @@ export const makeDuplicateDesktopRpcNameError = (
       summary: "Multiple RPC tags lower to the same framework endpoint name.",
       details: { name, tags: [...tags] },
       actor: "application",
-      remediation:
-        "Rename one RPC method so the final tag segment is unique inside the RpcGroup."
+      remediation: "Rename one RPC method so the final tag segment is unique inside the RpcGroup."
     })
   })
 
