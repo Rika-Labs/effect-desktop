@@ -5,7 +5,7 @@ import { FileSystem } from "effect/FileSystem"
 import { Activity, Workflow, WorkflowEngine } from "effect/unstable/workflow"
 import { SqliteClient } from "@effect/sql-sqlite-bun/SqliteClient"
 
-const BackupPhase = Schema.Literals(["snapshot", "database", "archive", "cleanup"])
+const BackupPhase = Schema.Literals(["validate", "snapshot", "database", "archive", "cleanup"])
 type BackupPhase = typeof BackupPhase.Type
 
 const BackupErrorSchema = Schema.TaggedStruct("BackupError", {
@@ -50,6 +50,19 @@ const wrapError =
   (e: unknown): BackupError =>
     new BackupError({ phase, message: e instanceof Error ? e.message : String(e), cause: e })
 
+const BACKUP_LABEL_PATTERN = /^[A-Za-z0-9._-]+$/
+
+const validateBackupLabel = (label: string): Effect.Effect<string, BackupError, never> =>
+  BACKUP_LABEL_PATTERN.test(label) && label !== "." && label !== ".."
+    ? Effect.succeed(label)
+    : Effect.fail(
+        new BackupError({
+          phase: "validate",
+          message: "backup label must be a safe filename segment",
+          cause: label
+        })
+      )
+
 export const BackupWorkflowLayer: Layer.Layer<
   never,
   never,
@@ -59,9 +72,10 @@ export const BackupWorkflowLayer: Layer.Layer<
     const fs = yield* FileSystem
     const config = yield* BackupConfigService
     const sqliteClient = yield* SqliteClient
+    const label = yield* validateBackupLabel(payload.label)
 
-    const snapshotDir = join(config.outputDir, `${payload.label}-snapshot`)
-    const archivePath = join(config.outputDir, `${payload.label}.backup`)
+    const snapshotDir = join(config.outputDir, `${label}-snapshot`)
+    const archivePath = join(config.outputDir, `${label}.backup`)
 
     const snapshot = Activity.make({
       name: "snapshot",
@@ -98,7 +112,7 @@ export const BackupWorkflowLayer: Layer.Layer<
       execute: Effect.gen(function* () {
         const manifestBytes = new TextEncoder().encode(
           JSON.stringify({
-            label: payload.label,
+            label,
             createdAt: Date.now(),
             format: "effect-desktop-backup-v1"
           })

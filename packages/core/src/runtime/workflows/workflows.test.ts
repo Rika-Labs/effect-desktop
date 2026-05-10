@@ -110,6 +110,44 @@ test("Backup: produces archive directory with manifest, db.sqlite, and files/", 
   await rm(base, { recursive: true, force: true })
 })
 
+test("Backup: rejects labels that escape the output directory", async () => {
+  const base = await tempDir()
+  const userDataDir = join(base, "userdata")
+  const outputDir = join(base, "backups")
+
+  await mkdir(userDataDir, { recursive: true })
+  await mkdir(outputDir, { recursive: true })
+
+  const SqliteClientStub = {
+    export: Effect.succeed(new Uint8Array())
+  }
+
+  const configLayer = Layer.succeed(BackupConfigService, { userDataDir, outputDir })
+  const sqliteLayer = Layer.succeed(
+    (await import("@effect/sql-sqlite-bun/SqliteClient")).SqliteClient,
+    SqliteClientStub as never
+  )
+  const { BunFileSystem } = await import("@effect/platform-bun")
+  const layers = Layer.mergeAll(
+    BackupWorkflowLayer as never,
+    configLayer,
+    sqliteLayer,
+    BunFileSystem.layer
+  ) as never
+
+  const exit = await Effect.runPromiseExit(
+    BackupWorkflow.execute({ label: "../escape" }).pipe(
+      Effect.provide(layers as never),
+      provideEngine
+    )
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  expect(await Bun.file(join(base, "escape.backup")).exists()).toBe(false)
+
+  await rm(base, { recursive: true, force: true })
+})
+
 test("Restore: round-trip restores files and database", async () => {
   const base = await tempDir()
   const userDataDir = join(base, "userdata")
