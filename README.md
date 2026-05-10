@@ -1,6 +1,7 @@
 # Effect Desktop
 
-Effect Desktop is a Bun-powered, Rust-hosted, React-friendly desktop framework where native desktop capabilities, renderer communication, long-running resources, permissions, worker processes, and runtime observability are modeled through Effect.
+Effect Desktop is a pre-1.0 desktop framework for building local-first apps with a
+Rust shell, a Bun runtime, React renderers, and Effect services.
 
 ```txt
 Rust owns the shell.
@@ -9,303 +10,156 @@ React owns the UI.
 Effect owns correctness.
 ```
 
-The build specification is the source of truth: [`docs/SPEC.md`](docs/SPEC.md).
+The source of truth is [`docs/SPEC.md`](docs/SPEC.md). This README is the short
+path for understanding the repo and getting something running.
 
 ## Status
 
-Pre-v1.0.0. Public APIs are not yet stable, and milestone work is tracked against `docs/SPEC.md` §24. The current tree contains typed host protocol schemas, bridge contracts, native service definitions, React renderer hooks, runtime services, devtools projections, packaging/release gates, a Rust host, and a basic React + Tailwind template.
+Effect Desktop is not a stable public framework yet.
 
-## Open Source
+- Public APIs are still changing.
+- `bun create effect-desktop` is implemented in this repo, but the package is not
+  ready to treat as a stable published installer.
+- The current desktop CLI exposes `build`, `package`, `sign`, `notarize`,
+  `publish`, `doctor`, and `check`.
+- The target v1 developer loop includes `bun desktop dev`, but that command is
+  not implemented in the current CLI.
 
-Effect Desktop is published by Rika Labs, LLC under either the MIT license or the Apache License 2.0, at your option. See [`LICENSE`](LICENSE), [`LICENSE-MIT`](LICENSE-MIT), and [`LICENSE-APACHE`](LICENSE-APACHE).
-
-Security issues should be reported privately. See [`SECURITY.md`](SECURITY.md).
-
-Contribution expectations are documented in [`CONTRIBUTING.md`](CONTRIBUTING.md), with repository-specific implementation rules in [`AGENTS.md`](AGENTS.md).
-
-Use this README as a tour of the intended developer experience and the implemented slices. Use `docs/SPEC.md` for normative behavior, milestone order, and release criteria.
+Use the checked-in templates and package READMEs for the current runnable
+surface. Use the spec for required v1 behavior.
 
 ## What It Is
 
-Effect Desktop is for local-first desktop applications that need more than a WebView wrapper:
+Effect Desktop is for desktop apps that need typed native capabilities instead
+of raw renderer access to the machine.
 
-- a Rust host for windows, WebViews, app protocol handling, and native platform adapters;
+The framework provides:
+
+- a Rust host for windows, WebViews, app protocol handling, and platform work;
 - a Bun runtime for TypeScript application services;
-- a generated typed bridge between renderer code and runtime services;
-- Effect services, schemas, layers, streams, resources, and typed failures at authority boundaries;
-- React integration that keeps renderer code ordinary while making privileged operations explicit;
-- permission, approval, audit, telemetry, devtools, packaging, signing, and update primitives.
+- typed bridge contracts between renderer code and runtime services;
+- Effect services for native APIs, permissions, resources, jobs, audit, and
+  telemetry;
+- React hooks and providers for renderer code;
+- CLI gates for build, packaging, signing, publishing, diagnostics, and release
+  checks.
 
-The framework does not put application logic in Rust, expose raw native authority to the renderer, or make long-lived resources ambient. Privileged work crosses named services and returns typed data, streams, resource handles, or typed errors.
+The core rule is simple: privileged work crosses named, typed services. The
+renderer does not get broad filesystem, process, secret, shell, or host access.
+
+## Get Started In This Repo
+
+Install the pinned toolchain dependencies:
+
+```bash
+bun install --frozen-lockfile
+```
+
+Run the basic React renderer template:
+
+```bash
+cd templates/basic-react-tailwind
+bun run dev
+```
+
+In another terminal, run the template checks:
+
+```bash
+cd templates/basic-react-tailwind
+bun run typecheck
+bun test
+```
+
+From the repo root, inspect the current desktop CLI:
+
+```bash
+bun run desktop --help
+bun run desktop doctor --config apps/playground/desktop.config.ts
+```
+
+The `templates/basic-react-tailwind` app is the smallest working renderer
+surface. It demonstrates `DesktopProvider`, a typed `Window.create` Effect value,
+Tailwind through Vite, and public `@effect-desktop/*` imports.
+
+## Scaffold A Template Locally
+
+The scaffolder can copy a first-party template from this checkout:
+
+```bash
+bun packages/create-effect-desktop/src/bin.ts my-app
+cd my-app
+```
+
+The generated app reflects the intended published flow, but standalone install
+depends on published `@effect-desktop/*` packages. Until the framework is
+released, the most reliable path is to work with templates inside this monorepo.
+
+Available templates:
+
+| Template               | Status                                                     |
+| ---------------------- | ---------------------------------------------------------- |
+| `basic-react-tailwind` | Smallest runnable React and Tailwind renderer template.    |
+| `todo-sqlite`          | First-party todo/storage verification template.            |
+| `multi-window`         | Reserved for cluster-backed multi-window work; not stable. |
+
+Scaffold options:
+
+```bash
+bun packages/create-effect-desktop/src/bin.ts my-app \
+  --template basic-react-tailwind \
+  --renderer-storage none
+```
+
+## Validate The Repo
+
+The full phase gate is:
+
+```bash
+bun install --frozen-lockfile
+bun run check
+bun run typecheck
+bun run lint
+bun run lint:types
+bun run format:check
+bun test
+cargo fmt --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo check --workspace
+cargo test --workspace
+```
+
+For README-only changes, `bun run format:check` is the tightest automated check.
 
 ## Repository Map
 
-| Path                                                               | Purpose                                                                                                                                                          |
-| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`crates/host`](crates/host)                                       | Rust native host and WebView shell.                                                                                                                              |
-| [`crates/host-protocol`](crates/host-protocol)                     | Shared host protocol fixtures and Rust schemas.                                                                                                                  |
-| [`packages/bridge`](packages/bridge)                               | Typed contracts, clients, handlers, events, streams, resources, redaction, and host protocol mirrors.                                                            |
-| [`packages/core`](packages/core)                                   | Public framework entry point plus runtime services such as filesystem, processes, jobs, workers, settings, SQLite, permissions, audit, telemetry, and resources. |
-| [`packages/native`](packages/native)                               | TypeScript-facing native services backed by host calls.                                                                                                          |
-| [`packages/react`](packages/react)                                 | Renderer provider and hooks for desktop clients, windows, streams, resources, and permissions.                                                                   |
-| [`packages/cli`](packages/cli)                                     | Build, package, signing, release, doctor, and reproducibility gates.                                                                                             |
-| [`packages/devtools`](packages/devtools)                           | Runtime diagnostics panels and shell projections.                                                                                                                |
-| [`templates/basic-react-tailwind`](templates/basic-react-tailwind) | First-party renderer template.                                                                                                                                   |
-| [`apps/playground`](apps/playground)                               | Local playground app used while framework slices land.                                                                                                           |
+| Path                                                               | Purpose                                                |
+| ------------------------------------------------------------------ | ------------------------------------------------------ |
+| [`docs/SPEC.md`](docs/SPEC.md)                                     | Normative v1 framework specification.                  |
+| [`crates/host`](crates/host)                                       | Rust native host and WebView shell.                    |
+| [`crates/host-protocol`](crates/host-protocol)                     | Shared host protocol fixtures and Rust schemas.        |
+| [`packages/bridge`](packages/bridge)                               | Typed contracts, clients, handlers, events, resources. |
+| [`packages/core`](packages/core)                                   | Runtime services and public framework primitives.      |
+| [`packages/native`](packages/native)                               | TypeScript-facing native services.                     |
+| [`packages/react`](packages/react)                                 | Renderer provider and hooks.                           |
+| [`packages/cli`](packages/cli)                                     | Build, package, release, doctor, and check commands.   |
+| [`packages/create-effect-desktop`](packages/create-effect-desktop) | Template scaffolder.                                   |
+| [`packages/devtools`](packages/devtools)                           | Runtime diagnostics projections.                       |
+| [`templates/basic-react-tailwind`](templates/basic-react-tailwind) | First-party minimal renderer template.                 |
+| [`apps/playground`](apps/playground)                               | Local framework playground.                            |
 
-## Quick Start
-
-From this repository:
-
-```bash
-bun install --frozen-lockfile
-bun run check
-bun run typecheck
-bun run lint
-bun run lint:types
-bun run format:check
-bun test
-cargo fmt --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo check --workspace
-cargo test --workspace
-```
-
-The v1.0.0 target developer flow is:
-
-```bash
-bun create effect-desktop my-app
-cd my-app
-bun desktop dev
-bun desktop package
-```
-
-That create/package flow is still pre-release. For current runnable code, start with the template and package READMEs.
-
-## Effect Desktop In Action
-
-### 1. Describe A Desktop App
-
-The template keeps app metadata, windows, and permissions in plain configuration:
-
-```ts
-export default {
-  app: {
-    id: "dev.effect-desktop.basic-react-tailwind",
-    name: "Basic React Tailwind"
-  },
-  windows: [
-    {
-      id: "main",
-      title: "Basic React Tailwind",
-      width: 960,
-      height: 640
-    }
-  ],
-  permissions: []
-} as const
-```
-
-The v1.0.0 shape is intentionally small: configuration declares identity and capability posture; Effect services own behavior.
-
-### 2. Call Native Services From React Without Raw IPC
-
-Renderer code receives a typed desktop client from React context. Missing provider state is explicit through `Option`, and native calls are still Effect values:
-
-```tsx
-import type { WindowCreateOptions } from "@effect-desktop/native"
-import { useDesktop, useWindow } from "@effect-desktop/react"
-import { Effect, Exit, Option } from "effect"
-import { useState } from "react"
-
-const windowRequest: WindowCreateOptions = {
-  title: "Inspector",
-  width: 960,
-  height: 640
-}
-
-export function Toolbar() {
-  const desktop = useDesktop()
-  const currentWindow = useWindow()
-  const [message, setMessage] = useState("Ready.")
-
-  const openInspector = () => {
-    if (Option.isNone(desktop)) {
-      setMessage("Desktop runtime is unavailable.")
-      return
-    }
-
-    void Effect.runPromiseExit(desktop.value.Window.create(windowRequest)).then((exit) => {
-      if (Exit.isSuccess(exit)) {
-        setMessage(`Opened ${exit.value.id}.`)
-        return
-      }
-
-      setMessage(String(exit.cause))
-    })
-  }
-
-  return (
-    <button disabled={Option.isNone(currentWindow)} type="button" onClick={openInspector}>
-      Open inspector
-    </button>
-  )
-}
-```
-
-The renderer asks for a window through the generated client. It does not receive raw host transport, filesystem, process, secret, or native shell access.
-
-### 3. Use A Native Service As An Effect Dependency
-
-Runtime code depends on native capabilities as services. Tests can substitute the service layer; live adapters bind the service to host protocol calls.
-
-```ts
-import { Window } from "@effect-desktop/native"
-import { Effect } from "effect"
-
-export const openMainWindow = Effect.gen(function* () {
-  const window = yield* Window
-
-  return yield* window.create({
-    title: "Effect Desktop",
-    width: 1200,
-    height: 800
-  })
-})
-```
-
-This is the core pattern: application logic is TypeScript + Effect, native behavior is a service boundary, and the Rust host stays a shell primitive.
-
-### 4. Define A Typed Bridge Contract
-
-Bridge contracts describe renderer-callable methods with schemas, metadata, and typed handler/client generation.
-
-```ts
-import { Api } from "@effect-desktop/bridge"
-import { Effect, Schema } from "effect"
-
-class ProjectOpenInput extends Schema.Class<ProjectOpenInput>("ProjectOpenInput")({
-  path: Schema.String
-}) {}
-
-class ProjectOpenOutput extends Schema.Class<ProjectOpenOutput>("ProjectOpenOutput")({
-  id: Schema.String,
-  name: Schema.String
-}) {}
-
-export const registerProjectApi = Effect.gen(function* () {
-  return yield* Api.Tag("Project")<unknown>()({
-    open: {
-      input: ProjectOpenInput,
-      output: ProjectOpenOutput,
-      error: Schema.Never,
-      permission: "project:open"
-    }
-  })
-})
-```
-
-The contract is the authority boundary. Inputs and outputs are decoded, privileged methods carry capability metadata, and callers receive typed failures instead of ad hoc transport exceptions.
-
-### 5. Guard Privileged Runtime Work
-
-The permission registry is deny-by-default. It records declarations, grants, denials, expiry, one-time use, revocation, and audit events.
-
-```ts
-import { Effect } from "effect"
-import { PermissionActor, PermissionContext, PermissionRegistry } from "@effect-desktop/core"
-
-export const readProjectFile = Effect.gen(function* () {
-  const permissions = yield* PermissionRegistry
-  const capability = {
-    kind: "filesystem.read",
-    roots: ["/workspace"],
-    audit: "always"
-  } as const
-  const actor = new PermissionActor({ kind: "window", id: "main" })
-
-  yield* permissions.declare(capability, { source: "desktop.config.ts" })
-
-  const grant = yield* permissions.check(
-    capability,
-    new PermissionContext({
-      actor,
-      resource: "/workspace/README.md",
-      traceId: "trace-read-project-file"
-    })
-  )
-
-  return yield* permissions.use(
-    grant,
-    Effect.sync(() => "privileged read happens behind the grant")
-  )
-})
-```
-
-The exact capability shapes are owned by the runtime services, but the rule is stable: permission checks happen before adapter activity, and failures are typed Effect values.
-
-### 6. Scope Long-Lived Work
-
-Runtime services register long-lived resources under owner scopes so shutdown, cancellation, and renderer disconnects have observable cleanup behavior.
-
-```ts
-import { Job, ResourceRegistry } from "@effect-desktop/core"
-import { Effect, Schema } from "effect"
-
-class Progress extends Schema.Class<Progress>("Progress")({
-  completed: Schema.Number,
-  total: Schema.Number
-}) {}
-
-export const importProject = Effect.gen(function* () {
-  const resources = yield* ResourceRegistry
-  const jobs = yield* Job
-
-  yield* resources.declareScope("window:main", "app")
-
-  return yield* jobs.run({
-    ownerScope: "window:main",
-    progressSchema: Progress,
-    effect: Effect.succeed("done")
-  })
-})
-```
-
-Jobs, workers, processes, PTYs, database connections, file watchers, streams, windows, and WebViews follow the same principle: the owner scope is explicit, and cleanup is part of the contract.
-
-## Design Laws
+## Design Rules
 
 - Rust owns shell behavior, not application behavior.
-- The renderer never gets broad native authority by default.
-- Every renderer-callable API is typed and generated from a contract.
-- Every long-lived object has an owner, state, and disposal path.
+- Application logic belongs in TypeScript and Effect.
+- Renderer-callable APIs are typed contracts, not raw IPC.
+- Long-lived resources have an owner and a disposal path.
 - Dangerous operations are permissioned and auditable.
-- Errors are data, not swallowed exceptions.
-- Devtools observe runtime state from the owning service, not a panel-side cache.
+- Errors are typed data, not swallowed exceptions.
 
-## Validation Gate
+## Project Links
 
-Before a phase is complete, the repo-local gate is:
-
-```bash
-bun install --frozen-lockfile
-bun run check
-bun run typecheck
-bun run lint
-bun run lint:types
-bun run format:check
-bun test
-cargo fmt --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo check --workspace
-cargo test --workspace
-```
-
-For docs-only README changes, `bun run format:check` is the tightest automated check that exercises the edited file.
-
-## Documentation
-
-- [`docs/SPEC.md`](docs/SPEC.md) is normative.
-- Package READMEs describe the currently implemented public surface.
-- Milestone reports under `docs/milestones/` record completed phase work.
-- ADRs under `docs/decisions/` record dependency and architecture decisions.
+- [`docs/SPEC.md`](docs/SPEC.md): source of truth for v1 behavior.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): contribution expectations.
+- [`AGENTS.md`](AGENTS.md): repo-local implementation rules.
+- [`SECURITY.md`](SECURITY.md): private vulnerability reporting.
+- [`LICENSE`](LICENSE): MIT or Apache-2.0, at your option.
