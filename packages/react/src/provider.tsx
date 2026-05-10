@@ -1,7 +1,7 @@
 import type { WindowCreateOptions, WindowError, WindowHandle } from "@effect-desktop/native"
 import { Effect, Layer, ManagedRuntime, Option } from "effect"
 import { AtomRegistry, Reactivity } from "effect/unstable/reactivity"
-import { createContext, createElement, useContext, useEffect, useRef, type ReactNode } from "react"
+import { createContext, createElement, useContext, useEffect, useMemo, type ReactNode } from "react"
 
 export interface DesktopWindowClient {
   readonly create: (input?: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never>
@@ -47,13 +47,7 @@ export const DesktopProvider = ({
   currentWindow,
   children
 }: DesktopProviderProps): ReactNode => {
-  const ctxRef = useRef<DesktopRuntimeContext | undefined>(undefined)
-
-  if (ctxRef.current === undefined) {
-    ctxRef.current = makeContext(client, currentWindow)
-  }
-
-  const ctx = ctxRef.current
+  const ctx = useMemo(() => makeContext(client, currentWindow), [client, currentWindow])
 
   useEffect(() => {
     return () => {
