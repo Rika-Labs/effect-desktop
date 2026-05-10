@@ -1,6 +1,6 @@
 # Next.js build cache
 .next/
+next-env.d.ts
 
 # Fumadocs MDX generated source
 .source/
-

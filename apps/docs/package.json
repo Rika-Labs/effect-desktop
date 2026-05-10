@@ -17,8 +17,8 @@
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1 --port 3001",
     "build": "next build",
-    "check": "fumadocs-mdx && tsc --noEmit -p tsconfig.json",
-    "typecheck": "fumadocs-mdx && tsc --noEmit -p tsconfig.json",
+    "check": "next typegen && fumadocs-mdx && tsc --noEmit -p tsconfig.json",
+    "typecheck": "next typegen && fumadocs-mdx && tsc --noEmit -p tsconfig.json",
     "lint": "oxlint . --ignore-pattern '.next/**' --ignore-pattern '.source/**'"
   },
   "dependencies": {
