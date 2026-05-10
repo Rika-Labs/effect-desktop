@@ -3,6 +3,7 @@ import { EventGroup, EventJournal, EventLog } from "effect/unstable/eventlog"
 import {
   FetchHttpClient,
   HttpClient,
+  HttpClientError,
   HttpClientRequest,
   HttpClientResponse
 } from "effect/unstable/http"
@@ -77,13 +78,13 @@ const makeCrashSubmitActivity = (report: CrashReport, endpointUrl: string) =>
       }),
       HttpClient.execute,
       Effect.flatMap(HttpClientResponse.filterStatusOk),
-      Effect.as(undefined as void),
+      Effect.asVoid,
       Effect.retry({ schedule: submissionRetrySchedule }),
-      Effect.catchTag("StatusCodeError", (e) =>
+      Effect.catch((e: HttpClientError.HttpClientError) =>
         Effect.fail(
           new CrashReportSubmitError({
-            status: e.response.status,
-            message: `HTTP ${String(e.response.status)}`
+            status: e.response?.status ?? 0,
+            message: e.response === undefined ? e.message : `HTTP ${String(e.response.status)}`
           })
         )
       )
