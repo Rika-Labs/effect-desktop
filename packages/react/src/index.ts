@@ -36,3 +36,15 @@ export {
 } from "./hooks/native.js"
 
 export { usePermission, type PermissionState } from "./permission.js"
+
+export {
+  PermissionApprovalQueue,
+  useApprovalNotifications,
+  usePermissionApproval,
+  type ApprovalDecision,
+  type ApprovalResolver,
+  type PendingApproval,
+  type PermissionApprovalPromptProps,
+  type PermissionApprovalQueueProps,
+  type PermissionApprovalState
+} from "./permission-approval.js"
