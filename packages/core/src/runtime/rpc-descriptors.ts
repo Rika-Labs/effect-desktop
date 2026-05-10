@@ -12,6 +12,9 @@ import { Rpc, RpcGroup, RpcSchema } from "effect/unstable/rpc"
 import type { AnyDesktopRpcLayer, DesktopAppDefinition } from "./desktop-app.js"
 
 export type RpcEndpointDescriptorKind = "query" | "mutation" | "stream"
+export type RpcGroupWithRequests = RpcGroup.Any & {
+  readonly requests: ReadonlyMap<string, Rpc.Any>
+}
 
 export interface RpcEndpointDescriptor {
   readonly name: string
@@ -31,9 +34,9 @@ interface RpcWithSuccessSchema extends Rpc.Any {
   readonly successSchema: Schema.Top
 }
 
-export const describeRpcs = <Rpcs extends Rpc.Any>(
+export const describeRpcs = <Group extends RpcGroupWithRequests>(
   app: Pick<DesktopAppDefinition<unknown, unknown>, "rpcLayers">,
-  group: RpcGroup.RpcGroup<Rpcs>
+  group: Group
 ): readonly RpcEndpointDescriptor[] => {
   const provided = providedRpcLayer(app.rpcLayers, group)
   if (provided === undefined) {
@@ -57,9 +60,9 @@ export const describeRpcs = <Rpcs extends Rpc.Any>(
   )
 }
 
-const providedRpcLayer = <Rpcs extends Rpc.Any>(
+const providedRpcLayer = <Group extends RpcGroupWithRequests>(
   layers: readonly AnyDesktopRpcLayer[],
-  group: RpcGroup.RpcGroup<Rpcs>
+  group: Group
 ): AnyDesktopRpcLayer | undefined => layers.find((layer) => layer.group === group)
 
 const endpointKind = (rpc: Rpc.Any): RpcEndpointDescriptorKind =>
@@ -67,5 +70,4 @@ const endpointKind = (rpc: Rpc.Any): RpcEndpointDescriptorKind =>
 
 const successSchema = (rpc: Rpc.Any): Schema.Top => (rpc as RpcWithSuccessSchema).successSchema
 
-const groupTags = <Rpcs extends Rpc.Any>(group: RpcGroup.RpcGroup<Rpcs>): readonly string[] =>
-  Array.from(group.requests.keys())
+const groupTags = (group: RpcGroupWithRequests): readonly string[] => Array.from(group.requests.keys())

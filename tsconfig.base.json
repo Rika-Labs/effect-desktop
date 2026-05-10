@@ -30,6 +30,35 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
+    "paths": {
+      "@rikalabs/effect-desktop": ["./packages/core/src/index.ts"],
+      "@rikalabs/effect-desktop/bridge": ["./packages/bridge/src/index.ts"],
+      "@rikalabs/effect-desktop/cli": ["./packages/cli/src/index.ts"],
+      "@rikalabs/effect-desktop/config": ["./packages/config/src/index.ts"],
+      "@rikalabs/effect-desktop/core": ["./packages/core/src/index.ts"],
+      "@rikalabs/effect-desktop/create": ["./packages/create-effect-desktop/src/index.ts"],
+      "@rikalabs/effect-desktop/devtools": ["./packages/devtools/src/index.ts"],
+      "@rikalabs/effect-desktop/native": ["./packages/native/src/index.ts"],
+      "@rikalabs/effect-desktop/react": ["./packages/react/src/index.ts"],
+      "@rikalabs/effect-desktop/react/api": ["./packages/react/src/api.ts"],
+      "@rikalabs/effect-desktop/react/api.js": ["./packages/react/src/api.ts"],
+      "@rikalabs/effect-desktop/react/current-window": ["./packages/react/src/current-window.ts"],
+      "@rikalabs/effect-desktop/react/current-window.js": [
+        "./packages/react/src/current-window.ts"
+      ],
+      "@rikalabs/effect-desktop/react/desktop": ["./packages/react/src/desktop.tsx"],
+      "@rikalabs/effect-desktop/react/desktop.js": ["./packages/react/src/desktop.tsx"],
+      "@rikalabs/effect-desktop/react/sql-pglite": ["./packages/react/src/sql-pglite.ts"],
+      "@rikalabs/effect-desktop/react/sql-pglite.js": ["./packages/react/src/sql-pglite.ts"],
+      "@rikalabs/effect-desktop/react/storage/idb": ["./packages/react/src/storage/idb.ts"],
+      "@rikalabs/effect-desktop/react/storage/idb.js": ["./packages/react/src/storage/idb.ts"],
+      "@rikalabs/effect-desktop/react/storage/kv": ["./packages/react/src/storage/kv.ts"],
+      "@rikalabs/effect-desktop/react/storage/kv.js": ["./packages/react/src/storage/kv.ts"],
+      "@rikalabs/effect-desktop/react/windows": ["./packages/react/src/windows.ts"],
+      "@rikalabs/effect-desktop/react/windows.js": ["./packages/react/src/windows.ts"],
+      "@rikalabs/effect-desktop/test": ["./packages/test/src/index.ts"],
+      "@rikalabs/effect-desktop/vite": ["./packages/vite/src/index.ts"]
+    },
     "resolveJsonModule": true
   }
 }

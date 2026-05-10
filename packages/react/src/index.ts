@@ -21,8 +21,12 @@ export {
 
 export * as indexedDbStorage from "./storage/idb.js"
 export * as keyValueStorage from "./storage/kv.js"
-export type { HostProtocolError } from "@effect-desktop/bridge"
-export type { WindowCreateOptions, WindowError, WindowHandle } from "@effect-desktop/native"
+export type { HostProtocolError } from "@rikalabs/effect-desktop/bridge"
+export type {
+  WindowCreateOptions,
+  WindowError,
+  WindowHandle
+} from "@rikalabs/effect-desktop/native"
 
 export { AsyncResult, Atom } from "effect/unstable/reactivity"
 
@@ -35,6 +39,64 @@ export {
   type DesktopRuntimeContext,
   type DesktopWindowClient
 } from "./provider.js"
+
+export {
+  defineApi,
+  mutation,
+  query,
+  stream,
+  type MutationEndpoint,
+  type QueryEndpoint,
+  type QueryHook,
+  type QueryResult,
+  type ReactApiEndpoint,
+  type StreamEndpoint,
+  type StreamHook
+} from "./api.js"
+
+export {
+  MissingDesktopContextError,
+  MissingDesktopRpcClientError,
+  ReactDesktop,
+  type ReactDesktopAdapter,
+  type ReactDesktopClientMap,
+  type ReactDesktopRpcClient,
+  type ReactDesktopRpcClientMethod,
+  type ReactDesktopRootProps,
+  type ReactDesktopRpcs
+} from "./desktop.js"
+
+export {
+  useMutation,
+  type MutationResult,
+  type MutationRun,
+  type MutationRunPromise,
+  type MutationState,
+  type MutationStatus
+} from "./mutation.js"
+
+export {
+  currentWindow,
+  useCloseCurrentWindowMutation,
+  useCurrentWindow,
+  useCurrentWindowId,
+  useSetCurrentWindowTitleMutation,
+  type CurrentWindowCloseMutation,
+  type CurrentWindowSetTitleInput,
+  type CurrentWindowSetTitleMutation
+} from "./current-window.js"
+
+export {
+  windows,
+  useCloseWindowMutation,
+  useCreateWindowMutation,
+  useSetWindowTitleMutation,
+  type WindowCloseInput,
+  type WindowCloseMutation,
+  type WindowCreateMutation,
+  type WindowSetTitleInput,
+  type WindowSetTitleMutation
+} from "./windows.js"
 
 export { useAtom, useAtomValue, useAtomSet } from "./atoms.js"
 
