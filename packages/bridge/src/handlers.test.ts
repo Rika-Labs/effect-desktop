@@ -292,6 +292,38 @@ test("Handlers encodes contract failures into failure responses", async () => {
   })
 })
 
+test("Handlers wraps synchronous handler throws into typed failure responses", async () => {
+  const ProjectApi = makeProjectApi("ProjectApi.HandlerSyncThrow")
+  const states: string[] = []
+  const runtime = Handlers.withOptions(
+    {
+      ...testOriginAuthDisabled,
+      onState: (state) =>
+        Effect.sync(() => {
+          states.push(state.tag)
+        })
+    },
+    ProjectApi.layer({
+      open: () => {
+        throw new ProjectOpenError({ tag: "ProjectOpenError", code: 403 })
+      }
+    })
+  )
+
+  const response = await Effect.runPromise(
+    runtime.dispatch(request("ProjectApi.HandlerSyncThrow.open", { path: "/tmp/project" }))
+  )
+
+  expect(response).toEqual({
+    kind: "failure",
+    error: {
+      tag: "ProjectOpenError",
+      code: "403"
+    }
+  })
+  expect(states).toEqual(["Pending", "Authorized", "Running", "Failed"])
+})
+
 test("Handlers redacts secret-shaped contract failure fields before renderer emission", async () => {
   class ProjectSecretError extends Schema.Class<ProjectSecretError>("HandlerProjectSecretError")({
     tag: Schema.Literal("ProjectSecretError"),

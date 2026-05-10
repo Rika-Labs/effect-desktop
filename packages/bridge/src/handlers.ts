@@ -358,7 +358,10 @@ const runWithTimeout = (
   operation: string,
   input: unknown
 ): Effect.Effect<unknown, unknown, unknown> => {
-  const effect = bound.handler(input)
+  const effect = Effect.try({
+    try: () => bound.handler(input),
+    catch: (error) => error
+  }).pipe(Effect.flatMap((effect) => effect))
   const timeoutMs = bound.spec.timeoutMs ?? DEFAULT_TIMEOUT_MS
 
   if (bound.spec.cancellable === false || timeoutMs === 0) {
