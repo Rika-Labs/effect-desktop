@@ -265,9 +265,7 @@ test("Desktop.app accepts legacy Api permission kinds when declared by normalize
     static toRpcGroup(): typeof LegacyNetworkRpcs {
       return LegacyNetworkRpcs
     }
-    static layer(handlers: {
-      readonly connect: () => Effect.Effect<void, never, never>
-    }) {
+    static layer(handlers: { readonly connect: () => Effect.Effect<void, never, never> }) {
       return Object.freeze({
         contract: LegacyNetwork,
         handlers: Object.freeze(handlers)
