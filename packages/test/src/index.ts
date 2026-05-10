@@ -110,20 +110,24 @@ export interface HeadlessHarnessOptions {
 
 export type MockHostOptions = Omit<HeadlessHarnessOptions, "leakDetection" | "ownerScope">
 
-export type HeadlessFixture = (
-  request: HostProtocolRequestEnvelope,
-  state: HeadlessHostState
-) => Effect.Effect<unknown, HostProtocolError, never> | HeadlessFixturePayload
+interface HeadlessFixturePayloadObject {
+  readonly [key: string]: HeadlessFixturePayload
+}
 
 type HeadlessFixturePayload =
-  | Readonly<Record<string, unknown>>
-  | readonly unknown[]
   | string
   | number
   | boolean
   | symbol
   | null
   | undefined
+  | readonly HeadlessFixturePayload[]
+  | HeadlessFixturePayloadObject
+
+export type HeadlessFixture = (
+  request: HostProtocolRequestEnvelope,
+  state: HeadlessHostState
+) => Effect.Effect<HeadlessFixturePayload, HostProtocolError, never> | HeadlessFixturePayload
 
 export interface HeadlessHostCall {
   readonly method: string
@@ -210,16 +214,19 @@ export interface MockBridgeApi {
   readonly calls: () => readonly MockBridgeCall[]
   readonly cancels: () => readonly HostProtocolCancelByRequestEnvelope[]
   readonly disposedResources: () => readonly ApiResourceHandle[]
-  readonly succeed: (method: string, payload: unknown) => Effect.Effect<void, never, never>
-  readonly fail: (method: string, error: unknown) => Effect.Effect<void, never, never>
+  readonly succeed: (
+    method: string,
+    payload: unknown
+  ) => Effect.Effect<void, HostProtocolError, never>
+  readonly fail: (method: string, error: unknown) => Effect.Effect<void, HostProtocolError, never>
   readonly resource: (
     method: string,
     handle: ApiResourceHandle
-  ) => Effect.Effect<void, never, never>
+  ) => Effect.Effect<void, HostProtocolError, never>
   readonly streamChunks: (
     method: string,
     chunks: readonly unknown[]
-  ) => Effect.Effect<void, never, never>
+  ) => Effect.Effect<void, HostProtocolError, never>
 }
 
 export class MockBridge extends Context.Service<MockBridge, MockBridgeApi>()(
@@ -242,7 +249,7 @@ export const makeMockBridge = (options: MockBridgeOptions = {}): MockBridgeApi =
   const enqueue = (
     method: string,
     response: ApiClientResponse
-  ): Effect.Effect<void, never, never> =>
+  ): Effect.Effect<void, HostProtocolError, never> =>
     Effect.sync(() => {
       const queue = responses.get(method) ?? []
       queue.push(response)
@@ -318,11 +325,18 @@ export const makeMockBridge = (options: MockBridgeOptions = {}): MockBridgeApi =
     calls: () => calls.slice(),
     cancels: () => cancels.slice(),
     disposedResources: () => disposedResources.slice(),
-    succeed: (method, payload) => enqueue(method, { kind: "success", payload }),
-    fail: (method, error) => enqueue(method, { kind: "failure", error }),
+    succeed: (method, payload) =>
+      validateJsonPayload(method, payload).pipe(
+        Effect.flatMap((validated) => enqueue(method, { kind: "success", payload: validated }))
+      ),
+    fail: (method, error) =>
+      validateJsonPayload(method, error).pipe(
+        Effect.flatMap((validated) => enqueue(method, { kind: "failure", error: validated }))
+      ),
     resource: (method, handle) =>
       Effect.gen(function* () {
         if (options.registry === undefined) {
+          yield* validateJsonPayload(method, handle)
           yield* enqueue(method, { kind: "success", payload: handle })
           return
         }
@@ -334,11 +348,15 @@ export const makeMockBridge = (options: MockBridgeOptions = {}): MockBridgeApi =
           state: handle.state,
           reusableId: true
         })
-        yield* enqueue(method, { kind: "success", payload: coreHandleToBridgeHandle(registered) })
+        const payload = coreHandleToBridgeHandle(registered)
+        yield* validateJsonPayload(method, payload)
+        yield* enqueue(method, { kind: "success", payload })
       }),
     streamChunks: (method, chunks) =>
-      Effect.sync(() => {
+      Effect.gen(function* () {
+        yield* Effect.forEach(chunks, (chunk) => validateJsonPayload(method, chunk))
         streams.set(method, chunks.slice())
+        return yield* Effect.void
       })
   } satisfies MockBridgeApi)
 }
@@ -816,13 +834,63 @@ const resolveFixture = (
   fixture: HeadlessFixture,
   request: HostProtocolRequestEnvelope,
   state: HeadlessHostState
-): Effect.Effect<unknown, HostProtocolError, never> => {
+): Effect.Effect<HeadlessFixturePayload, HostProtocolError, never> => {
   const result = fixture(request, state)
 
-  return Effect.isEffect(result)
-    ? (result as Effect.Effect<unknown, HostProtocolError, never>)
-    : Effect.succeed(result)
+  return Effect.gen(function* () {
+    const payload = yield* Effect.isEffect(result) ? result : Effect.succeed(result)
+    return yield* validateJsonPayload(request.method, payload)
+  })
 }
+
+const isJsonPayload = (
+  value: unknown,
+  seen = new Set<object>(),
+  allowUndefined = true
+): boolean => {
+  if (value === undefined) {
+    return allowUndefined
+  }
+  if (value === null) {
+    return true
+  }
+  if (typeof value === "string" || typeof value === "boolean") {
+    return true
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value)
+  }
+  if (typeof value !== "object") {
+    return false
+  }
+  if (seen.has(value as object)) {
+    return false
+  }
+
+  if (Array.isArray(value)) {
+    seen.add(value)
+    return value.every((item) => isJsonPayload(item, seen, false))
+  }
+
+  if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) {
+    return false
+  }
+  seen.add(value as object)
+  return Object.values(value).every((item) => isJsonPayload(item, seen, false))
+}
+
+const validateJsonPayload = (
+  operation: string,
+  payload: unknown
+): Effect.Effect<HeadlessFixturePayload, HostProtocolError, never> =>
+  isJsonPayload(payload)
+    ? Effect.succeed(payload as HeadlessFixturePayload)
+    : Effect.fail(
+        makeHostProtocolInvalidOutputError(
+          operation,
+          `${operation} payload is not JSON-serializable`
+        )
+      )
 
 const recordCall = (calls: MockBridgeCall[], request: HostProtocolRequestEnvelope): void => {
   calls.push({
@@ -1689,7 +1757,7 @@ declare module "bun:test" {
 let matchersRegistered = false
 
 const DEFAULT_HEADLESS_SCOPE = "headless"
-const DEFAULT_WINDOW_CREATE_PAYLOAD = Symbol("DEFAULT_WINDOW_CREATE_PAYLOAD")
+const DEFAULT_WINDOW_CREATE_PAYLOAD = undefined
 const DEFAULT_ALLOWED_KINDS = ["app"] as const satisfies readonly ResourceKind[]
 
 const secretNotFound = (key: string, operation: string): HostProtocolNotFoundError =>

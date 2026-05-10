@@ -56,6 +56,51 @@ test("redact handles arrays and cycles", () => {
   expect(output.self).toBe(output)
 })
 
+test("redact handles nested maps and redacts map keys", () => {
+  const input = new Map<string, string | Map<string, string>>([
+    ["api_key", "secret"],
+    [
+      "payload",
+      new Map<string, string>([
+        ["token", "nested"],
+        ["user", "ada"]
+      ])
+    ]
+  ])
+
+  const output = redact(input) as Map<string, unknown>
+
+  expect(output).toBeInstanceOf(Map)
+  expect(output).not.toBe(input)
+  expect(output.get("api_key")).toBe("[REDACTED]")
+  expect(output.get("payload")).toBeInstanceOf(Map)
+  expect((output.get("payload") as Map<string, unknown>).get("token")).toBe("[REDACTED]")
+  expect((output.get("payload") as Map<string, unknown>).get("user")).toBe("ada")
+})
+
+test("redact returns original map when no entries match", () => {
+  const input = new Map<string, string | Map<string, string>>([
+    ["name", "Ada"],
+    ["session", new Map<string, string>([["safe", "ok"]])]
+  ])
+
+  const output = redact(input) as Map<string, string | Map<string, string>>
+
+  expect(output).toBe(input)
+  expect(output.get("session")).toBe(input.get("session"))
+})
+
+test("redact handles map cycles safely", () => {
+  const input = new Map<string, unknown>([["token", "secret"]])
+  input.set("self", input)
+
+  const output = redact(input) as Map<string, unknown>
+
+  expect(output).not.toBe(input)
+  expect(output.get("token")).toBe("[REDACTED]")
+  expect(output.get("self")).toBe(output)
+})
+
 test("redact leaves byte arrays intact unless the containing field matches", () => {
   const bytes = new Uint8Array([1, 2, 3])
 

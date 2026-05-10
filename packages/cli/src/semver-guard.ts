@@ -89,7 +89,9 @@ export const runSemverGuard = (
   options: SemverGuardOptions
 ): Effect.Effect<SemverGuardReport, SemverGuardError, never> =>
   Effect.gen(function* () {
-    const manifest = yield* readJson<SemverPolicyManifest>(join(options.cwd, MANIFEST_PATH))
+    const manifest = yield* readJson(join(options.cwd, MANIFEST_PATH)).pipe(
+      Effect.flatMap(parseSemverPolicyManifest)
+    )
     yield* validateManifest(manifest)
     yield* validateAppendixCRows(options.cwd, manifest)
 
@@ -258,6 +260,127 @@ const readJson = <A>(path: string): Effect.Effect<A, SemverGuardFileError, never
       })
     )
   )
+
+const parseSemverPolicyManifest = (
+  value: unknown
+): Effect.Effect<SemverPolicyManifest, SemverGuardManifestError, never> => {
+  if (!isSemverRecord(value)) {
+    return Effect.fail(
+      new SemverGuardManifestError({ message: "semver manifest must be a JSON object" })
+    )
+  }
+  const schemaVersion = value["schemaVersion"]
+  if (typeof schemaVersion !== "number") {
+    return Effect.fail(
+      new SemverGuardManifestError({ message: "semver schemaVersion must be a number" })
+    )
+  }
+  if (schemaVersion !== 1) {
+    return Effect.fail(new SemverGuardManifestError({ message: "semver schemaVersion must be 1" }))
+  }
+  if (typeof value["source"] !== "string") {
+    return Effect.fail(new SemverGuardManifestError({ message: "semver source must be a string" }))
+  }
+  if (typeof value["release"] !== "string") {
+    return Effect.fail(
+      new SemverGuardManifestError({ message: "semver release must be a semantic version string" })
+    )
+  }
+  if (!isSemverReleaseKind(value["releaseKind"])) {
+    return Effect.fail(
+      new SemverGuardManifestError({ message: "semver releaseKind must be patch, minor, or major" })
+    )
+  }
+  if (typeof value["publicApiSnapshots"] !== "string") {
+    return Effect.fail(
+      new SemverGuardManifestError({ message: "semver publicApiSnapshots must be a string" })
+    )
+  }
+  if (typeof value["verificationMatrix"] !== "string") {
+    return Effect.fail(
+      new SemverGuardManifestError({ message: "semver verificationMatrix must be a string" })
+    )
+  }
+  if (
+    !Array.isArray(value["appendixCRows"]) ||
+    !value["appendixCRows"].every((row) => typeof row === "string")
+  ) {
+    return Effect.fail(
+      new SemverGuardManifestError({ message: "semver appendixCRows must be an array of strings" })
+    )
+  }
+  const bridge = value["bridgeEnvelopePolicy"]
+  if (!isSemverRecord(bridge)) {
+    return Effect.fail(
+      new SemverGuardManifestError({ message: "semver bridgeEnvelopePolicy must be an object" })
+    )
+  }
+  if (typeof bridge["source"] !== "string") {
+    return Effect.fail(
+      new SemverGuardManifestError({
+        message: "semver bridgeEnvelopePolicy.source must be a string"
+      })
+    )
+  }
+  if (typeof bridge["frozenBetweenMajors"] !== "boolean") {
+    return Effect.fail(
+      new SemverGuardManifestError({
+        message: "semver bridgeEnvelopePolicy.frozenBetweenMajors must be a boolean"
+      })
+    )
+  }
+  if (typeof bridge["allowedChange"] !== "string") {
+    return Effect.fail(
+      new SemverGuardManifestError({
+        message: "semver bridgeEnvelopePolicy.allowedChange must be a string"
+      })
+    )
+  }
+  const deprecationPolicy = value["deprecationPolicy"]
+  if (!isSemverRecord(deprecationPolicy)) {
+    return Effect.fail(
+      new SemverGuardManifestError({ message: "semver deprecationPolicy must be an object" })
+    )
+  }
+  if (typeof deprecationPolicy["minimumMinorReleases"] !== "number") {
+    return Effect.fail(
+      new SemverGuardManifestError({
+        message: "semver deprecationPolicy.minimumMinorReleases must be a number"
+      })
+    )
+  }
+  if (typeof deprecationPolicy["requiresJSDocDeprecated"] !== "boolean") {
+    return Effect.fail(
+      new SemverGuardManifestError({
+        message: "semver deprecationPolicy.requiresJSDocDeprecated must be a boolean"
+      })
+    )
+  }
+  return Effect.succeed({
+    schemaVersion: 1,
+    source: value["source"],
+    release: value["release"],
+    releaseKind: value["releaseKind"],
+    publicApiSnapshots: value["publicApiSnapshots"],
+    verificationMatrix: value["verificationMatrix"],
+    appendixCRows: value["appendixCRows"],
+    bridgeEnvelopePolicy: {
+      source: bridge["source"],
+      frozenBetweenMajors: bridge["frozenBetweenMajors"],
+      allowedChange: bridge["allowedChange"]
+    },
+    deprecationPolicy: {
+      minimumMinorReleases: deprecationPolicy["minimumMinorReleases"],
+      requiresJSDocDeprecated: deprecationPolicy["requiresJSDocDeprecated"]
+    }
+  })
+}
+
+const isSemverRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null
+
+const isSemverReleaseKind = (value: unknown): value is SemverReleaseKind =>
+  value === "patch" || value === "minor" || value === "major"
 
 const readText = (path: string): Effect.Effect<string, SemverGuardFileError, never> =>
   Effect.tryPromise({

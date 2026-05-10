@@ -290,10 +290,14 @@ const recordCommandInvocation = (
 ): Effect.Effect<void, never, never> =>
   Effect.gen(function* () {
     const timestamp = now()
+    const traceId =
+      context.traceId === undefined || context.traceId.length === 0
+        ? fallbackTraceId(commandId)
+        : context.traceId
     const record = new CommandInvocationRecord({
       commandId,
       actor: context.actor,
-      traceId: context.traceId ?? fallbackTraceId(commandId),
+      traceId,
       outcome,
       timestamp,
       durationMs: Math.max(0, timestamp - startedAt),

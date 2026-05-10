@@ -25,6 +25,14 @@
     "./sql-pglite": {
       "types": "./src/sql-pglite.ts",
       "default": "./src/sql-pglite.ts"
+    },
+    "./storage/idb": {
+      "types": "./src/storage/idb.ts",
+      "default": "./src/storage/idb.ts"
+    },
+    "./storage/kv": {
+      "types": "./src/storage/kv.ts",
+      "default": "./src/storage/kv.ts"
     }
   },
   "scripts": {

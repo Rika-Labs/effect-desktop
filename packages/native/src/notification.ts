@@ -241,9 +241,10 @@ export const makeUnsupportedNotificationClient = (): NotificationClientApi => {
     show: () => unsupportedEffect<NotificationHandle>("Notification.show"),
     close: () => unsupportedEffect<void>("Notification.close"),
     isSupported: () => Effect.succeed(new NotificationSupportedResult({ supported: false })),
-    requestPermission: () => Effect.succeed(new NotificationPermissionResult({ state: "denied" })),
+    requestPermission: () =>
+      unsupportedEffect<NotificationPermissionResult>("Notification.requestPermission"),
     getPermissionStatus: () =>
-      Effect.succeed(new NotificationPermissionResult({ state: "denied" })),
+      unsupportedEffect<NotificationPermissionResult>("Notification.getPermissionStatus"),
     onClick: () => unsupportedStream<NotificationClickEvent>("Notification.Click"),
     onAction: () => unsupportedStream<NotificationActionEvent>("Notification.Action")
   }

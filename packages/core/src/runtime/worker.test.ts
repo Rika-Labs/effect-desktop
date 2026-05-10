@@ -7,12 +7,13 @@ import {
   PermissionContext,
   type NormalizedCapability
 } from "./permission-registry.js"
-import { makeResourceRegistry, type ResourceRegistryApi } from "./resources.js"
+import { makeResourceRegistry, type ResourceId, type ResourceRegistryApi } from "./resources.js"
 import {
   makeWorker,
   WorkerCapabilityNotHeldError,
   WorkerChannelError,
   WorkerCrashedError,
+  WorkerInvalidArgumentError,
   type WorkerAdapter,
   type WorkerApi,
   type WorkerError,
@@ -29,6 +30,7 @@ const filesystemReadCapability: NormalizedCapability = {
   roots: ["/tmp"],
   audit: "always"
 }
+const id = (value: string): ResourceId => value as ResourceId
 
 test("Worker validates channel send and receive through schemas", async () => {
   const runtime = await makeFakeRuntime()
@@ -50,6 +52,36 @@ test("Worker validates channel send and receive through schemas", async () => {
 
   expect(runtime.sent).toEqual([{ text: "hello" }])
   expect(Array.from(messages)).toEqual([{ echoed: "hello" }])
+})
+
+test("Worker rejects generated resource ids that violate non-empty contract", async () => {
+  const runtime = await makeFakeRuntime()
+  const registry = await Effect.runPromise(
+    makeResourceRegistry({
+      now: () => 1,
+      nextId: () => id("")
+    })
+  )
+  const permissions = await Effect.runPromise(makePermissionRegistry({ traceId: () => "trace" }))
+
+  const service = await Effect.runPromise(
+    makeWorker(registry, permissions, {
+      adapter: makeFakeAdapter(runtime)
+    })
+  )
+  const exit = await Effect.runPromiseExit(
+    service.spawn({
+      script: "./worker.ts",
+      ownerScope: "scope-main",
+      inputSchema: EchoIn,
+      outputSchema: EchoOut,
+      context
+    })
+  )
+  const listed = await Effect.runPromise(service.list())
+
+  expectFailure(exit, WorkerInvalidArgumentError)
+  expect(listed).toEqual([])
 })
 
 test("Worker closes with the owning resource scope", async () => {
@@ -352,6 +384,56 @@ test("Worker default Bun adapter sends, receives, and closes a real worker", asy
     expect(Array.from(messages)).toEqual([{ echoed: "hello" }])
   } finally {
     URL.revokeObjectURL(script)
+  }
+})
+
+test("Bun adapter shutdown stays infallible when shutdown stages throw", async () => {
+  const originalWorker = globalThis.Worker
+  const throwingWorkerLog: string[] = []
+
+  class ThrowingWorker {
+    constructor(_script: string) {}
+    addEventListener(..._args: readonly unknown[]): void {}
+    removeEventListener(..._args: readonly unknown[]): void {}
+    postMessage(_message: unknown, ..._transfer: readonly unknown[]): void {
+      throwingWorkerLog.push("postMessage")
+      throw new Error("postMessage failed")
+    }
+    terminate(): void {
+      throwingWorkerLog.push("terminate")
+      throw new Error("terminate failed")
+    }
+  }
+
+  ;(globalThis as unknown as { Worker: typeof ThrowingWorker }).Worker = ThrowingWorker
+
+  const file = new File(
+    [`self.onmessage = (event) => { if (event.data?._tag === "Shutdown") { close() } }`],
+    "effect-desktop-worker-test.ts",
+    { type: "application/typescript" }
+  )
+  const script = URL.createObjectURL(file)
+  const fixture = await makeFixture(undefined, [], { gracefulShutdownMs: 0 })
+
+  try {
+    const handle = await Effect.runPromise(
+      fixture.service.spawn({
+        script,
+        ownerScope: "scope-main",
+        inputSchema: EchoIn,
+        outputSchema: EchoOut,
+        context
+      })
+    )
+
+    await Effect.runPromise(handle.close)
+    const afterClose = await Effect.runPromise(fixture.registry.list())
+
+    expect(afterClose.entries).toEqual([])
+    expect(throwingWorkerLog).toEqual(["postMessage", "terminate"])
+  } finally {
+    URL.revokeObjectURL(script)
+    ;(globalThis as unknown as { Worker: typeof ThrowingWorker }).Worker = originalWorker as never
   }
 })
 

@@ -192,6 +192,10 @@ export const renderEffectiveCsp = (
   csp: CspPolicy | undefined,
   nonce: string = DEFAULT_CSP_NONCE_PLACEHOLDER
 ): string => {
+  if (csp?.disabled === true) {
+    return ""
+  }
+
   const overrides = parseCspPolicy(csp?.policy)
   const defaultDirectives = new Set(DEFAULT_CSP_DIRECTIVES.map(([directive]) => directive))
   const directives = DEFAULT_CSP_DIRECTIVES.map(
@@ -210,10 +214,12 @@ export const renderEffectiveCsp = (
 export const cspWeakenings = (csp: CspPolicy): readonly CspWeakening[] => {
   const weakenings: CspWeakening[] = []
   if (csp.disabled === true) {
-    weakenings.push({
-      directive: "security.csp.disabled",
-      reason: "content security policy is disabled"
-    })
+    return [
+      {
+        directive: "security.csp.disabled",
+        reason: "content security policy is disabled"
+      }
+    ]
   }
 
   const overrides = parseCspPolicy(csp.policy)
@@ -246,6 +252,10 @@ export const cspWeakenings = (csp: CspPolicy): readonly CspWeakening[] => {
         directive,
         reason: `${directive} is not part of the default production CSP`
       })
+      continue
+    }
+
+    if (isAdditionalCspTightening(directive, overrideValues)) {
       continue
     }
 

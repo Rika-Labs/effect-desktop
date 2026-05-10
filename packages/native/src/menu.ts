@@ -17,7 +17,6 @@ import {
   type ApiContractSpec,
   type ApiHandlers,
   type ApiLayer,
-  type ApiResourceHandle,
   ApiResourceHandleShape,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
@@ -26,115 +25,28 @@ import {
 } from "@effect-desktop/bridge"
 import { Context, Effect, Fiber, Layer, Option, Schema, Stream } from "effect"
 
-import { PrintableNonEmptyString } from "./contracts/strings.js"
+export * from "./contracts/menu.js"
+import {
+  type MenuCapabilityName,
+  type MenuClearOptions,
+  MenuCapabilityInput,
+  MenuCapabilityResult,
+  MenuBindCommandInput,
+  type MenuPlatform,
+  MenuSetApplicationMenuInput,
+  MenuSetWindowMenuInput,
+  type MenuTemplateOptions,
+  type MenuWindowHandle,
+  MenuActivatedEvent,
+  MenuClearInput
+} from "./contracts/menu.js"
 import type { WindowHandle } from "./window.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
-const WindowResource = Api.Resource("window", "open")
-const MenuPlatform = Schema.Literals(["macos", "windows", "linux"])
-const MenuCapabilityName = Schema.Literals(["application menu", "window menu", "command binding"])
-
-const MenuItemBase = {
-  id: PrintableNonEmptyString,
-  label: PrintableNonEmptyString,
-  commandId: Schema.optionalKey(PrintableNonEmptyString),
-  enabled: Schema.optionalKey(Schema.Boolean),
-  checked: Schema.optionalKey(Schema.Boolean),
-  accelerator: Schema.optionalKey(PrintableNonEmptyString)
-}
-
-export type MenuPlatform = Schema.Schema.Type<typeof MenuPlatform>
-export type MenuCapabilityName = Schema.Schema.Type<typeof MenuCapabilityName>
-export type MenuWindowHandle = ApiResourceHandle<"window", "open">
 export type MenuError = HostProtocolError
 export type MenuCommandBindingError = MenuError | CommandRegistryError
 
-export const MenuItem = Schema.Struct({
-  type: Schema.Literal("item"),
-  ...MenuItemBase
-})
-
-export type MenuItem = Schema.Schema.Type<typeof MenuItem>
-
-export const MenuSeparator = Schema.Struct({
-  type: Schema.Literal("separator"),
-  id: Schema.optionalKey(PrintableNonEmptyString)
-})
-
-export type MenuSeparator = Schema.Schema.Type<typeof MenuSeparator>
-
-export interface MenuSubmenuShape {
-  readonly type: "submenu"
-  readonly id: string
-  readonly label: string
-  readonly enabled?: boolean
-  readonly items: ReadonlyArray<MenuTemplateEntry>
-}
-
-export type MenuTemplateEntry = MenuItem | MenuSeparator | MenuSubmenuShape
-
-export const MenuSubmenu: Schema.Schema<MenuSubmenuShape> = Schema.Struct({
-  type: Schema.Literal("submenu"),
-  id: PrintableNonEmptyString,
-  label: PrintableNonEmptyString,
-  enabled: Schema.optionalKey(Schema.Boolean),
-  items: Schema.Array(Schema.suspend((): Schema.Schema<MenuTemplateEntry> => MenuTemplateEntry))
-})
-
-export const MenuTemplateEntry: Schema.Schema<MenuTemplateEntry> = Schema.suspend(() =>
-  Schema.Union([MenuItem, MenuSeparator, MenuSubmenu])
-)
-
-export class MenuTemplate extends Schema.Class<MenuTemplate>("MenuTemplate")({
-  items: Schema.Array(MenuTemplateEntry)
-}) {}
-
-export type MenuTemplateOptions = Schema.Schema.Type<typeof MenuTemplate>
-
-export class MenuSetApplicationMenuInput extends Schema.Class<MenuSetApplicationMenuInput>(
-  "MenuSetApplicationMenuInput"
-)({
-  template: MenuTemplate
-}) {}
-
-export class MenuSetWindowMenuInput extends Schema.Class<MenuSetWindowMenuInput>(
-  "MenuSetWindowMenuInput"
-)({
-  window: WindowResource.schema,
-  template: MenuTemplate
-}) {}
-
-export class MenuClearInput extends Schema.Class<MenuClearInput>("MenuClearInput")({
-  window: Schema.optionalKey(WindowResource.schema)
-}) {}
-
-export type MenuClearOptions = Schema.Schema.Type<typeof MenuClearInput>
-
-export class MenuBindCommandInput extends Schema.Class<MenuBindCommandInput>(
-  "MenuBindCommandInput"
-)({
-  itemId: PrintableNonEmptyString,
-  commandId: PrintableNonEmptyString
-}) {}
-
-export class MenuCapabilityInput extends Schema.Class<MenuCapabilityInput>("MenuCapabilityInput")({
-  name: MenuCapabilityName,
-  platform: Schema.optionalKey(MenuPlatform)
-}) {}
-
 export type MenuCapabilityOptions = Schema.Schema.Type<typeof MenuCapabilityInput>
-
-export class MenuCapabilityResult extends Schema.Class<MenuCapabilityResult>(
-  "MenuCapabilityResult"
-)({
-  supported: Schema.Boolean
-}) {}
-
-export class MenuActivatedEvent extends Schema.Class<MenuActivatedEvent>("MenuActivatedEvent")({
-  itemId: PrintableNonEmptyString,
-  commandId: PrintableNonEmptyString,
-  windowId: Schema.optionalKey(PrintableNonEmptyString)
-}) {}
 
 export const MenuApiSpec = Object.freeze({
   setApplicationMenu: menuMethodSpec(

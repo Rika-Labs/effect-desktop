@@ -812,9 +812,9 @@ const normalizeBuildPlan = (
   Effect.gen(function* () {
     const config = yield* readConfigObject(rawConfig)
     const appRoot = dirname(options.configPath)
-    const appId = yield* readRequiredString(config.app?.id, "app.id")
+    const appId = yield* readSafeAppId(config.app?.id, "app.id")
     const appName = yield* readRequiredString(config.app?.name, "app.name")
-    const appVersion = yield* readRequiredString(config.app?.version, "app.version")
+    const appVersion = yield* readSemverString(config.app?.version, "app.version")
     const rendererDist =
       (yield* readOptionalString(config.renderer?.dist, "renderer.dist")) ?? "dist"
     const runtimeEntry = yield* readRequiredString(config.runtime?.entry, "runtime.entry")
@@ -1111,13 +1111,12 @@ const formatPackageError = (
           : `${error.message}\n${error.stderr}`
     }
   }
-  if (error instanceof PackageFileError) {
-    return { tag: error._tag, message: error.message }
-  }
   if (error instanceof PackageConfigError) {
     return { tag: error._tag, message: error.message }
   }
-
+  if (error instanceof PackageFileError) {
+    return { tag: error._tag, message: error.message }
+  }
   return { tag: "UnknownPackageError", message: "unknown package error" }
 }
 
@@ -1127,6 +1126,61 @@ const formatPackageErrorText = (error: PackagePipelineError): string => {
     ? `${formatted.tag}: ${formatted.message}`
     : `${formatted.tag}: ${formatted.message}\nNext: ${formatted.remediation}`
 }
+
+const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u
+
+const isContainedFileName = (value: string): boolean => {
+  if (value === "." || value === "..") {
+    return false
+  }
+  if (value.includes("/") || value.includes("\\")) {
+    return false
+  }
+  if (isAbsolute(value)) {
+    return false
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    if (code < 0x20 || code === 0x7f) {
+      return false
+    }
+  }
+  return true
+}
+
+const appIdMatch = (value: string): boolean =>
+  /^([a-zA-Z][a-zA-Z0-9-]*)(\.[a-zA-Z][a-zA-Z0-9-]*)+$/.test(value) && isContainedFileName(value)
+
+const readSafeAppId = (
+  value: unknown,
+  field: string
+): Effect.Effect<string, BuildConfigError, never> =>
+  readRequiredString(value, field).pipe(
+    Effect.flatMap((appId) =>
+      appIdMatch(appId)
+        ? Effect.succeed(appId)
+        : Effect.fail(
+            new BuildConfigError({
+              field,
+              message: `${field} must be a reverse-DNS ASCII identifier`
+            })
+          )
+    )
+  )
+
+const readSemverString = (
+  value: unknown,
+  field: string
+): Effect.Effect<string, BuildConfigError, never> =>
+  readRequiredString(value, field).pipe(
+    Effect.flatMap((version) =>
+      SEMVER_PATTERN.test(version)
+        ? Effect.succeed(version)
+        : Effect.fail(
+            new BuildConfigError({ field, message: `${field} must be a SemVer X.Y.Z string` })
+          )
+    )
+  )
 
 const formatSignReport = (report: DesktopSignReport): string =>
   [
@@ -1225,6 +1279,22 @@ const formatNotarizeErrorText = (error: NotarizePipelineError): string => {
     ? `${formatted.tag}: ${formatted.message}`
     : `${formatted.tag}: ${formatted.message}\nNext: ${formatted.remediation}`
 }
+
+const formatProductionCheckError = (error: BuildConfigError | Error): string =>
+  JSON.stringify(
+    error instanceof BuildConfigError
+      ? {
+          tag: error._tag,
+          message: error.message,
+          field: error.field
+        }
+      : {
+          tag: error.name,
+          message: error.message
+        },
+    null,
+    2
+  )
 
 const formatPublishReport = (report: DesktopPublishReport): string =>
   [
@@ -1452,7 +1522,10 @@ const runProductionCheckHandler = (
       Effect.map((value) => value as ProductionSecurityConfig),
       Effect.catch((error) =>
         Effect.sync(() => {
-          options.writeStderr(`${error.name}: ${error.message}\n`)
+          const output = flags.json
+            ? `${formatProductionCheckError(error)}\n`
+            : `${error.name}: ${error.message}\n`
+          options.writeStderr(output)
           return undefined
         })
       )
@@ -1468,7 +1541,10 @@ const runProductionCheckHandler = (
     ).pipe(
       Effect.catch((error) =>
         Effect.sync(() => {
-          options.writeStderr(`${error.name}: ${error.message}\n`)
+          const output = flags.json
+            ? `${formatProductionCheckError(error)}\n`
+            : `${error.name}: ${error.message}\n`
+          options.writeStderr(output)
           return undefined
         })
       )

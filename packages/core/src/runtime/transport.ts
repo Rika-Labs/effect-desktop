@@ -7,8 +7,10 @@ const DEFAULT_UNFRAME_STREAM_QUEUE_CAPACITY = 16
 const LENGTH_PREFIX_BYTES = 4
 const U32_MAX = 0xffff_ffff
 const TEXT_ENCODER = new TextEncoder()
-const TEXT_DECODER = new TextDecoder()
+const UTF8_TEXT_DECODER = new TextDecoder("utf-8", { fatal: true })
 const JSON_RPC_HEADER_END = "\r\n\r\n"
+const JSON_RPC_HEADER_END_BYTES = new TextEncoder().encode(JSON_RPC_HEADER_END)
+const JSON_RPC_HEADER_END_BYTE_LENGTH = JSON_RPC_HEADER_END_BYTES.byteLength
 
 const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(U32_MAX))
 
@@ -410,11 +412,7 @@ export const makeConnection = (
 
 export const makeInMemoryTransportPair = (
   options: InMemoryTransportPairOptions = {}
-): Effect.Effect<
-  readonly [TransportConnection, TransportConnection],
-  never,
-  never
-> =>
+): Effect.Effect<readonly [TransportConnection, TransportConnection], never, never> =>
   Effect.gen(function* () {
     const queueCapacity = resolveQueueCapacity(
       options.queueCapacity,
@@ -483,11 +481,7 @@ const resolveMaxFrameBytes = (options: FramedTransportOptions): number => {
 }
 
 const resolveQueueCapacity = (value: number | undefined, fallback: number): number =>
-  value === undefined
-    ? fallback
-    : Number.isSafeInteger(value) && value > 0
-      ? value
-      : fallback
+  value === undefined ? fallback : Number.isSafeInteger(value) && value > 0 ? value : fallback
 
 const framePayload = (
   scheme: TransportScheme,
@@ -523,10 +517,9 @@ const makeUnframeStream = (
   Stream.unwrap(
     Effect.gen(function* () {
       const decoded = yield* decodeUnframeStreamInput(input, "Transport.unframeStream")
-      const queue = yield* Queue.bounded<
-        Uint8Array,
-        TransportError | Cause.Done
-      >(resolveQueueCapacity(input.frameQueueCapacity, DEFAULT_UNFRAME_STREAM_QUEUE_CAPACITY))
+      const queue = yield* Queue.bounded<Uint8Array, TransportError | Cause.Done>(
+        resolveQueueCapacity(input.frameQueueCapacity, DEFAULT_UNFRAME_STREAM_QUEUE_CAPACITY)
+      )
       const decoder =
         decoded.scheme === "length-prefixed"
           ? makeLengthPrefixedStreamingDecoder(decoded)
@@ -659,21 +652,18 @@ class JsonRpcFrameDecoder {
     const frames: Uint8Array[] = []
 
     while (this.#buffer.byteLength > 0) {
-      const remainingText = TEXT_DECODER.decode(this.#buffer)
-      const headerEnd = remainingText.indexOf(JSON_RPC_HEADER_END)
+      const headerEnd = findHeaderEnd(this.#buffer)
       if (headerEnd < 0) {
         return frames
       }
 
-      const headerText = remainingText.slice(0, headerEnd)
+      const headerText = decodeHeaderText(this.#buffer.slice(0, headerEnd))
       const contentLength = parseContentLength(headerText)
       if (contentLength > this.#maxFrameBytes) {
         throw new FrameTooLargeError(contentLength, this.#maxFrameBytes)
       }
 
-      const bodyOffset = TEXT_ENCODER.encode(
-        remainingText.slice(0, headerEnd + JSON_RPC_HEADER_END.length)
-      ).byteLength
+      const bodyOffset = headerEnd + JSON_RPC_HEADER_END_BYTE_LENGTH
       const bodyEnd = bodyOffset + contentLength
       if (bodyEnd > this.#buffer.byteLength) {
         return frames
@@ -691,8 +681,7 @@ class JsonRpcFrameDecoder {
       return
     }
 
-    const remainingText = TEXT_DECODER.decode(this.#buffer)
-    const headerEnd = remainingText.indexOf(JSON_RPC_HEADER_END)
+    const headerEnd = findHeaderEnd(this.#buffer)
     if (headerEnd < 0) {
       throw new JsonRpcFrameTruncatedError(
         "header",
@@ -701,11 +690,9 @@ class JsonRpcFrameDecoder {
       )
     }
 
-    const headerText = remainingText.slice(0, headerEnd)
+    const headerText = decodeHeaderText(this.#buffer.slice(0, headerEnd))
     const contentLength = parseContentLength(headerText)
-    const bodyOffset = TEXT_ENCODER.encode(
-      remainingText.slice(0, headerEnd + JSON_RPC_HEADER_END.length)
-    ).byteLength
+    const bodyOffset = headerEnd + JSON_RPC_HEADER_END_BYTE_LENGTH
     throw new JsonRpcFrameTruncatedError(
       "body",
       contentLength,
@@ -745,6 +732,29 @@ const parseContentLength = (headerText: string): number => {
   }
 
   return length
+}
+
+const decodeHeaderText = (headerBytes: Uint8Array): string => {
+  try {
+    return UTF8_TEXT_DECODER.decode(headerBytes)
+  } catch (error) {
+    throw new JsonRpcFrameHeaderError("invalid utf-8")
+  }
+}
+
+const findHeaderEnd = (bytes: Uint8Array): number => {
+  for (let index = 0; index + 3 < bytes.byteLength; index += 1) {
+    if (
+      bytes[index] === JSON_RPC_HEADER_END_BYTES[0] &&
+      bytes[index + 1] === JSON_RPC_HEADER_END_BYTES[1] &&
+      bytes[index + 2] === JSON_RPC_HEADER_END_BYTES[2] &&
+      bytes[index + 3] === JSON_RPC_HEADER_END_BYTES[3]
+    ) {
+      return index
+    }
+  }
+
+  return -1
 }
 
 class JsonRpcFrameHeaderError extends Error {

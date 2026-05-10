@@ -222,7 +222,7 @@ export const makeUnsupportedSafeStorageClient = (): SafeStorageClientApi => {
     set: () => unsupportedEffect<void>("SafeStorage.set"),
     get: () => unsupportedEffect<SecretValue>("SafeStorage.get"),
     delete: () => unsupportedEffect<void>("SafeStorage.delete"),
-    list: () => Effect.succeed([]),
+    list: () => unsupportedEffect<ReadonlyArray<string>>("SafeStorage.list"),
     isAvailable: () => Effect.succeed(false)
   } satisfies SafeStorageClientApi)
 }

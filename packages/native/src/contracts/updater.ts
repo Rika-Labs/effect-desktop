@@ -1,7 +1,7 @@
 import { Schema } from "effect"
+import { PrintableNonEmptyString } from "./strings.js"
 
-// eslint-disable-next-line no-control-regex -- Updater versions must reject NUL.
-const UpdaterVersion = Schema.NonEmptyString.check(Schema.isPattern(/^[^\u0000]*$/))
+const UpdaterVersion = PrintableNonEmptyString
 
 export class UpdaterCheckInput extends Schema.Class<UpdaterCheckInput>("UpdaterCheckInput")({
   currentVersion: Schema.optionalKey(UpdaterVersion)
@@ -17,11 +17,24 @@ export class UpdaterInstallInput extends Schema.Class<UpdaterInstallInput>("Upda
   version: Schema.optionalKey(UpdaterVersion)
 }) {}
 
-export class UpdaterCheckResult extends Schema.Class<UpdaterCheckResult>("UpdaterCheckResult")({
-  available: Schema.Boolean,
-  version: Schema.optionalKey(Schema.String),
+const UpdaterCheckUnavailableResult = Schema.Struct({
+  available: Schema.Literal(false),
+  version: Schema.optionalKey(UpdaterVersion),
   notes: Schema.optionalKey(Schema.String)
-}) {}
+})
+
+const UpdaterCheckAvailableResult = Schema.Struct({
+  available: Schema.Literal(true),
+  version: UpdaterVersion,
+  notes: Schema.optionalKey(Schema.String)
+})
+
+export const UpdaterCheckResult = Schema.Union([
+  UpdaterCheckUnavailableResult,
+  UpdaterCheckAvailableResult
+])
+
+export type UpdaterCheckResult = Schema.Schema.Type<typeof UpdaterCheckResult>
 
 export const UpdaterStatusState = Schema.Literals([
   "idle",
@@ -35,18 +48,32 @@ export const UpdaterStatusState = Schema.Literals([
 
 export type UpdaterStatusState = Schema.Schema.Type<typeof UpdaterStatusState>
 
-export class UpdaterStatusResult extends Schema.Class<UpdaterStatusResult>("UpdaterStatusResult")({
-  state: UpdaterStatusState,
-  version: Schema.optionalKey(Schema.String),
-  progress: Schema.optionalKey(
-    Schema.Number.check(
-      Schema.isFinite(),
-      Schema.isGreaterThanOrEqualTo(0),
-      Schema.isLessThanOrEqualTo(1)
-    )
-  ),
+const UpdaterStatusProgress = Schema.Number.check(
+  Schema.isFinite(),
+  Schema.isGreaterThanOrEqualTo(0),
+  Schema.isLessThanOrEqualTo(1)
+)
+
+const UpdaterStatusWithoutUpdateVersion = Schema.Struct({
+  state: Schema.Literals(["idle", "checking", "error"]),
+  version: Schema.optionalKey(UpdaterVersion),
+  progress: Schema.optionalKey(UpdaterStatusProgress),
   message: Schema.optionalKey(Schema.String)
-}) {}
+})
+
+const UpdaterStatusWithUpdateVersion = Schema.Struct({
+  state: Schema.Literals(["update-available", "downloading", "downloaded", "installing"]),
+  version: UpdaterVersion,
+  progress: Schema.optionalKey(UpdaterStatusProgress),
+  message: Schema.optionalKey(Schema.String)
+})
+
+export const UpdaterStatusResult = Schema.Union([
+  UpdaterStatusWithoutUpdateVersion,
+  UpdaterStatusWithUpdateVersion
+])
+
+export type UpdaterStatusResult = Schema.Schema.Type<typeof UpdaterStatusResult>
 
 export class UpdaterPreparingRestartEvent extends Schema.Class<UpdaterPreparingRestartEvent>(
   "UpdaterPreparingRestartEvent"

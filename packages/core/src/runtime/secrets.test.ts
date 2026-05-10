@@ -105,7 +105,7 @@ test("Secrets writes audit rows without secret values", async () => {
   expect(rows[0]?.traceId).toBe("trace-1")
 })
 
-test("Secrets returns typed audit failures", async () => {
+test("Secrets returns typed audit failures for successful audit writes", async () => {
   const secrets = await Effect.runPromise(
     makeSecrets(memorySafeStorage(), {
       appId: "com.rika.test",
@@ -119,6 +119,41 @@ test("Secrets returns typed audit failures", async () => {
   )
 
   expectFailure(exit, SecretsAuditFailedError)
+})
+
+test("Secrets preserves denied errors when deny-audit write fails", async () => {
+  const secrets = await Effect.runPromise(
+    makeSecrets(memorySafeStorage(), {
+      appId: "com.rika.test",
+      permissions: { read: ["auth"] },
+      audit: failingAudit()
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(
+    secrets.set("auth", "token", SecretValue.fromUtf8("refresh-token"))
+  )
+
+  expectFailure(exit, SecretsPermissionDeniedError)
+})
+
+test("Secrets preserves storage errors when error-audit write fails", async () => {
+  const secrets = await Effect.runPromise(
+    makeSecrets(
+      failingStorage({
+        get: () => Effect.fail(notFound("auth/token"))
+      }),
+      {
+        appId: "com.rika.test",
+        permissions: { read: ["auth"], write: ["auth"] },
+        audit: failingAudit()
+      }
+    )
+  )
+
+  const exit = await Effect.runPromiseExit(secrets.get("auth", "token"))
+
+  expectFailure(exit, SecretNotFoundError)
 })
 
 const makeSecretsService = async (
@@ -175,6 +210,30 @@ const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
       rows.push(event)
     })
 })
+
+const failingStorage = (
+  options: {
+    readonly get?: () => Effect.Effect<SecretValue, HostProtocolNotFoundError, never>
+    readonly set?: () => Effect.Effect<void, never, never>
+    readonly delete?: () => Effect.Effect<void, never, never>
+    readonly list?: () => Effect.Effect<readonly string[], never, never>
+    readonly available?: () => Effect.Effect<boolean, never, never>
+  } = {}
+): SecretsSafeStorageApi => {
+  const values = new Map<string, SecretValue>()
+  return {
+    isAvailable: options.available ?? (() => Effect.succeed(true)),
+    set:
+      options.set ??
+      (() =>
+        Effect.sync(() => {
+          values.set("auth/token", SecretValue.fromUtf8("refresh-token"))
+        })),
+    get: options.get ?? (() => Effect.fail(notFound("missing"))),
+    delete: options.delete ?? (() => Effect.void),
+    list: options.list ?? (() => Effect.succeed(Array.from(values.keys())))
+  }
+}
 
 const failingAudit = (): AuditEventsApi => ({
   emit: () =>

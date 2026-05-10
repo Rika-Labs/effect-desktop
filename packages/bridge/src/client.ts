@@ -231,7 +231,13 @@ const requestContractMethod = <Spec extends ApiMethodSpec>(
     const operation = methodName(tag, method)
     const payload = yield* encodeInput(operation, spec, input)
     const request = makeRequest(operation, payload, options)
-    const response = yield* runRequestWithCancellation(exchange, request, callOptions, options.now)
+    const response = yield* runRequestWithCancellation(
+      exchange,
+      request,
+      callOptions,
+      operation,
+      options.now
+    )
 
     if (response.kind === "failure") {
       return yield* decodeContractError(operation, spec, response.error)
@@ -381,16 +387,36 @@ const streamContractMethod = <Spec extends ApiMethodSpec & { readonly output: Ap
       const payload = yield* encodeInput(operation, spec, input)
       const request = makeRequest(operation, payload, options)
       yield* failIfAlreadyAborted(request, callOptions)
+      let terminal = false
       const removeAbortListener = yield* installAbortCancellation(
         exchange,
         request,
         callOptions,
         options.now
       )
+      let cancelSent = false
+      const cancelRequest = () => {
+        if (cancelSent || exchange.cancel === undefined) {
+          return
+        }
+        cancelSent = true
+        Effect.runFork(exchange.cancel(makeCancelRequest(request, options.now)))
+      }
 
       return stream(request).pipe(
-        Stream.flatMap((envelope) => decodeStreamEnvelope(operation, spec.output, envelope)),
-        Stream.ensuring(Effect.sync(removeAbortListener))
+        Stream.flatMap((envelope) =>
+          decodeStreamEnvelope(operation, spec.output, envelope, () => {
+            terminal = true
+          })
+        ),
+        Stream.ensuring(
+          Effect.sync(() => {
+            removeAbortListener()
+            if (!terminal) {
+              cancelRequest()
+            }
+          })
+        )
       )
     })
   ) as Stream.Stream<
@@ -403,7 +429,8 @@ const streamContractMethod = <Spec extends ApiMethodSpec & { readonly output: Ap
 const decodeStreamEnvelope = <Spec extends ApiStreamSpec>(
   operation: string,
   spec: Spec,
-  envelope: HostProtocolStreamEnvelope
+  envelope: HostProtocolStreamEnvelope,
+  onTerminal: () => void = () => {}
 ): Stream.Stream<
   Schema.Schema.Type<Spec["chunk"]>,
   Schema.Schema.Type<Spec["error"]> | HostProtocolError,
@@ -419,12 +446,15 @@ const decodeStreamEnvelope = <Spec extends ApiStreamSpec>(
         return Stream.fromEffect(decodeStreamChunk(operation, spec, frame.chunk))
       }
       if (frame instanceof ApiStreamErrorFrame) {
+        onTerminal()
         return Stream.fromEffect(decodeStreamError(operation, spec, frame.error))
       }
       if (frame instanceof ApiStreamCompleteFrame) {
+        onTerminal()
         return Stream.empty
       }
 
+      onTerminal()
       return Stream.fail(
         new HostProtocolStreamClosedError({
           tag: "StreamClosed",
@@ -501,19 +531,60 @@ const runRequestWithCancellation = (
   exchange: ApiClientExchange,
   request: HostProtocolRequestEnvelope,
   options: ApiClientCallOptions,
+  operation: string,
   now: () => number
 ): Effect.Effect<ApiClientResponse, HostProtocolError, never> =>
   Effect.gen(function* () {
     yield* failIfAlreadyAborted(request, options)
-    const removeAbortListener = yield* installAbortCancellation(exchange, request, options, now)
-    return yield* exchange.request(request).pipe(Effect.ensuring(Effect.sync(removeAbortListener)))
+    if (options.signal === undefined) {
+      return yield* exchange.request(request)
+    }
+
+    const cancelRequest = () => {
+      if (exchange.cancel === undefined) {
+        return
+      }
+      Effect.runFork(exchange.cancel(makeCancelRequest(request, now)))
+    }
+
+    const failWithCancel = makeCancelledError(operation)
+    const signal = options.signal
+    let removeAbortListener = () => {}
+    const abortEffect = Effect.callback<never, HostProtocolError, never>((resume) => {
+      const cancelInFlight = () => {
+        cancelRequest()
+        resume(Effect.fail(failWithCancel))
+      }
+
+      if (signal.aborted) {
+        cancelInFlight()
+        return Effect.void
+      }
+
+      const onAbort = () => {
+        cancelInFlight()
+        removeAbortListener()
+      }
+
+      signal.addEventListener("abort", onAbort, { once: true })
+      removeAbortListener = () => signal.removeEventListener("abort", onAbort)
+      return Effect.sync(removeAbortListener)
+    })
+
+    return yield* Effect.raceFirst(exchange.request(request), abortEffect).pipe(
+      Effect.ensuring(Effect.sync(removeAbortListener))
+    )
   })
 
 const failIfAlreadyAborted = (
   request: HostProtocolRequestEnvelope,
   options: ApiClientCallOptions
 ): Effect.Effect<void, HostProtocolError, never> =>
-  options.signal?.aborted === true ? Effect.fail(makeCancelledError(request.method)) : Effect.void
+  Effect.sync(() => {
+    return options.signal?.aborted === true
+      ? Effect.fail(makeCancelledError(request.method))
+      : Effect.void
+  }).pipe(Effect.flatten)
 
 const installAbortCancellation = (
   exchange: ApiClientExchange,

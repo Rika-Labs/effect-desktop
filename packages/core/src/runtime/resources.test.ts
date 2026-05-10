@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Effect, Fiber, Option, Schema, Stream } from "effect"
+import { Deferred, Effect, Fiber, Option, Schema, Stream } from "effect"
 
 import {
   generateUuidV7,
@@ -38,7 +38,9 @@ test("register returns handles and list enumerates live resources", async () => 
     ownerScope: "scope-test",
     state: "running"
   })
-  expect(result.snapshot.entries.map((entry) => entry.handle.id)).toEqual([result.handle.id])
+  expect(result.snapshot.entries.map((entry) => entry.handle.id)).toEqual([
+    result.snapshot.entries[0]!.handle.id
+  ])
   expect(result.snapshot.entries[0]?.createdAt).toBe(1710000000000)
 })
 
@@ -90,6 +92,56 @@ test("dispose runs cleanup once and removes the resource", async () => {
 
   expect(result.cleanupCount).toBe(1)
   expect(result.snapshot.entries).toEqual([])
+})
+
+test("dispose keeps resources in the registry while cleanup is in progress", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void, never>()
+      const resume = yield* Deferred.make<void, never>()
+      const registry = yield* makeResourceRegistry({
+        now: () => 1710000000001,
+        nextId: () => id("018e2f36-5800-7000-8000-000000000008")
+      })
+      const handle = yield* registry.register({
+        kind: "stream",
+        ownerScope: "scope-stream",
+        state: "open",
+        dispose: Effect.gen(function* () {
+          yield* Deferred.succeed(started, undefined)
+          yield* Deferred.await(resume)
+        })
+      })
+      const disposal = yield* registry.dispose(handle.id).pipe(Effect.forkChild())
+
+      yield* Deferred.await(started)
+      const snapshot = yield* registry.list()
+      const stale = yield* registry.assertFresh(handle).pipe(
+        Effect.match({
+          onFailure: (error) => error,
+          onSuccess: () => {
+            throw new Error("expected disposing handle to be stale")
+          }
+        })
+      )
+      yield* Deferred.succeed(resume, undefined)
+      yield* Fiber.join(disposal)
+      const final = yield* registry.list()
+
+      return { snapshot, stale, final }
+    })
+  )
+
+  expect(result.snapshot.entries.map((entry) => entry.handle.id)).toEqual([
+    id("018e2f36-5800-7000-8000-000000000008")
+  ])
+  expect(result.stale).toBeInstanceOf(StaleHandle)
+  expect(result.stale).toMatchObject({
+    tag: "StaleHandle",
+    kind: "stream",
+    id: "018e2f36-5800-7000-8000-000000000008"
+  })
+  expect(result.final.entries).toEqual([])
 })
 
 test("assertFresh returns StaleHandle after non-reusable disposal", async () => {
@@ -299,6 +351,47 @@ test("closeScope disposes transitively owned resources child scopes first", asyn
 
   expect(disposalOrder.order).toEqual(["stream", "process", "window"])
   expect(disposalOrder.snapshot.entries).toEqual([])
+})
+
+test("closeScope continues to close all scope resources when one disposer fails", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const order: string[] = []
+      let now = 1710000000000
+      const registry = yield* makeResourceRegistry({
+        now: () => {
+          now += 1
+          return now
+        }
+      })
+      yield* registry.register({
+        kind: "process",
+        id: id("018e2f36-5800-7000-8000-000000000100"),
+        ownerScope: "scope-failure",
+        state: "running",
+        dispose: Effect.sync(() => {
+          order.push("process")
+          throw new Error("process disposer failed")
+        })
+      })
+      yield* registry.register({
+        kind: "worker",
+        id: id("018e2f36-5800-7000-8000-000000000101"),
+        ownerScope: "scope-failure",
+        state: "running",
+        dispose: Effect.sync(() => {
+          order.push("worker")
+        })
+      })
+      yield* registry.closeScope("scope-failure")
+      const snapshot = yield* registry.list()
+
+      return { order, snapshot }
+    })
+  )
+
+  expect(result.order).toEqual(["worker", "process"])
+  expect(result.snapshot.entries).toEqual([])
 })
 
 test("share returns a fresh target-scope handle without closing with the source scope", async () => {

@@ -5,6 +5,7 @@ import {
   HOST_PING_METHOD,
   HOST_PROTOCOL_VERSION,
   HOST_VERSION_METHOD,
+  HostProtocolInvalidOutputError,
   HostProtocolInvalidStateError,
   HostProtocolResponseEnvelope,
   HostProtocolUnsupportedError,
@@ -70,6 +71,19 @@ test("host version negotiation fails on protocol mismatch", async () => {
       error instanceof HostProtocolInvalidStateError &&
       error.current === "9.9.9" &&
       error.attempted === HOST_PROTOCOL_VERSION
+  )
+})
+
+test("host version response rejects control bytes", async () => {
+  const client = makeHostHandshakeClient(versionExchange([], "1.0.0\x00evil"), {
+    nextRequestId: () => "request-version",
+    nextTraceId: () => "trace-version",
+    now: () => 1710000000004
+  })
+
+  await expectEffectFailure(
+    client.version(),
+    (error) => error instanceof HostProtocolInvalidOutputError
   )
 })
 

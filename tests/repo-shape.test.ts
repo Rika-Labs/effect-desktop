@@ -22,7 +22,8 @@ const REQUIRED_RUST_CRATES = ["host", "host-protocol", "native-pty", "native-upd
 const REQUIRED_PACKAGE_SCRIPTS = ["check", "typecheck", "test", "lint"] as const
 
 const PHASE_0_STUB_INDEX = "export {}\n"
-const PHASE_0_TS_TEST_MARKER = "phase 0 stub compiles and runs"
+const PHASE_0_TS_TEST_MARKER = /^\s*(?:test|it)\(["']phase 0 stub compiles and runs["']/m
+const PHASE_0_RUST_STUB_INDEX = /^\/\/! Phase 0 stub\.$/m
 const PHASE_0_RUST_TEST_MARKER = "fn it_compiles"
 
 interface PackageJson {
@@ -113,7 +114,7 @@ describe("packages/*", () => {
       const testBody = readFileSync(testPath, "utf8")
 
       const isStubIndex = indexBody === PHASE_0_STUB_INDEX
-      const isStubTest = testBody.includes(PHASE_0_TS_TEST_MARKER)
+      const isStubTest = PHASE_0_TS_TEST_MARKER.test(testBody)
 
       // Allowed: stub index + stub test (Phase 0 baseline) OR real index + real test.
       // Forbidden: real index alongside the Phase 0 tautology test.
@@ -140,7 +141,7 @@ describe("crates/*", () => {
       // Marker contract: a Phase 0 stub crate carries a `//! Phase 0 stub.` doc
       // comment. When implementation lands, the contributor removes the comment
       // first. After that, the placeholder `fn it_compiles` must also go.
-      const carriesStubMarker = lib.includes("Phase 0 stub.")
+      const carriesStubMarker = PHASE_0_RUST_STUB_INDEX.test(lib)
       const hasStubTest = lib.includes(PHASE_0_RUST_TEST_MARKER)
 
       if (!carriesStubMarker && hasStubTest) {

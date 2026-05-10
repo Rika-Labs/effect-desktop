@@ -172,6 +172,40 @@ describe("Settings", () => {
     expectFailure(exit, SettingsMigrationFailedError)
   })
 
+  test("non-advancing migration returns SettingsMigrationFailed", async () => {
+    const kv = await makeKvMemory()
+    const settings = await Effect.runPromise(makeSettings(kv))
+
+    await Effect.runPromise(
+      settings.open({
+        path: ":memory:",
+        ownerScope: "scope-main",
+        schemaVersion: 1
+      })
+    )
+    const exit = await Effect.runPromiseExit(
+      settings.open({
+        path: ":memory:",
+        ownerScope: "scope-main",
+        schemaVersion: 2,
+        migrations: [{ from: 1, to: 1, migrate: () => Effect.void }]
+      })
+    )
+
+    expectFailure(exit, SettingsMigrationFailedError)
+    if (Exit.isFailure(exit)) {
+      const failure = exit.cause.reasons.find(Cause.isFailReason)
+      const error = failure?.error
+      expect(error).toBeInstanceOf(SettingsMigrationFailedError)
+      if (error instanceof SettingsMigrationFailedError) {
+        expect(Option.isSome(error.cause)).toBe(true)
+        if (Option.isSome(error.cause)) {
+          expect(error.cause.value).toBe("non-advancing migration from 1 to 1")
+        }
+      }
+    }
+  })
+
   test("set rejects NUL bytes in keys before writing", async () => {
     const { store } = await makeFixture()
     const key = `api${String.fromCharCode(0)}token`

@@ -12,9 +12,10 @@ import {
 } from "./protocol.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
+const ProtocolVersion = Schema.NonEmptyString.check(Schema.isPattern(/^[^\x00-\x1f\x7f]+$/u))
 
 export class HostVersionPayload extends Schema.Class<HostVersionPayload>("HostVersionPayload")({
-  protocolVersion: Schema.String
+  protocolVersion: ProtocolVersion
 }) {}
 
 export interface HostHandshakeExchange {

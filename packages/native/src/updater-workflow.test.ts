@@ -3,7 +3,6 @@ import { Effect, Exit, Layer, Stream } from "effect"
 import { HttpClient } from "effect/unstable/http"
 import { WorkflowEngine } from "effect/unstable/workflow"
 
-import { UpdaterStatusResult } from "./contracts/updater.js"
 import { makeUpdaterServiceLayer } from "./updater.js"
 import {
   UpdateError,
@@ -47,9 +46,9 @@ test("UpdateWorkflow fails signature verification as a typed workflow error", as
     installAndRestart: () =>
       Effect.sync(() => {
         installCalled = true
-        return new UpdaterStatusResult({ state: "idle" })
+        return { state: "idle" }
       }),
-    getStatus: () => Effect.succeed(new UpdaterStatusResult({ state: "idle" })),
+    getStatus: () => Effect.succeed({ state: "idle" }),
     readyForRestart: () => Effect.void,
     onPreparingRestart: () => Stream.empty
   })
@@ -103,7 +102,7 @@ test("UpdateWorkflow rejects manifest versions that are not safe filename segmen
     download: () => Effect.die("unexpected download"),
     install: () => Effect.die("unexpected install"),
     installAndRestart: () => Effect.die("unexpected installAndRestart"),
-    getStatus: () => Effect.succeed(new UpdaterStatusResult({ state: "idle" })),
+    getStatus: () => Effect.succeed({ state: "idle" }),
     readyForRestart: () => Effect.void,
     onPreparingRestart: () => Stream.empty
   })

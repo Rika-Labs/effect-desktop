@@ -234,6 +234,49 @@ test("CommandRegistry command invocation audit uses the permission grant trace i
   expect(auditTraceIds(rows, "command-invoked")).toEqual(["trace-1"])
 })
 
+test("CommandRegistry accepts empty trace ids in context and falls back in invocation history", async () => {
+  const rows: AuditEvent[] = []
+  const resources = await Effect.runPromise(makeResourceRegistry())
+  const permissions = {
+    declare: () => Effect.die("unused"),
+    query: () => Effect.die("unused"),
+    check: () =>
+      Effect.succeed({
+        token: "grant-1",
+        capability: commandCapability,
+        actor,
+        source: "check",
+        traceId: "trace-1",
+        grantedAt: 1
+      } as unknown as {
+        readonly token: string
+        readonly capability: NormalizedCapability
+        readonly actor: PermissionActor
+        readonly source: string
+        readonly traceId: string
+      }),
+    grant: () => Effect.die("unused"),
+    revoke: () => Effect.die("unused"),
+    inspect: () => Effect.die("unused"),
+    use: (_grant: unknown, effect: Effect.Effect<unknown, unknown, never>) => effect,
+    listDecisions: () => Effect.succeed([] as const),
+    observeDecisions: () => Stream.empty
+  } as unknown as PermissionRegistryApi
+  const registry = await Effect.runPromise(
+    makeCommandRegistry(resources, permissions, { audit: memoryAudit(rows) })
+  )
+  await Effect.runPromise(registry.register(registration("openProject")))
+
+  const contextWithEmptyTrace = { actor, traceId: "" } as PermissionContext
+  await Effect.runPromise(
+    registry.invoke("openProject", { path: "/tmp/project" }, contextWithEmptyTrace)
+  )
+  const snapshots = await Effect.runPromise(registry.list())
+
+  expect(snapshots[0]?.lastInvocation?.traceId).toBe("command:openProject")
+  expect(auditTraceIds(rows, "command-invoked")).toEqual(["trace-1"])
+})
+
 test("CommandRegistry unregisters commands when the owner scope closes", async () => {
   const { registry, resources } = await makeTestRegistry()
   await Effect.runPromise(resources.declareScope("app"))

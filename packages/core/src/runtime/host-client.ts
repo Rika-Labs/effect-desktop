@@ -19,6 +19,7 @@ import { FrameTooLargeError, FrameTruncatedError, type FramedTransport } from ".
 
 const TextEncoderCtor = globalThis.TextEncoder
 const TextDecoderCtor = globalThis.TextDecoder
+const TextDecoderUtf8 = new TextDecoderCtor("utf-8", { fatal: true })
 
 export interface HostProtocolExchangeOptions {
   readonly audit?: AuditEventsApi
@@ -77,7 +78,7 @@ const decodeResponseFrame = (
   Effect.gen(function* () {
     const parsed = yield* Effect.try({
       try: () => {
-        return JSON.parse(new TextDecoderCtor().decode(frame)) as unknown
+        return JSON.parse(TextDecoderUtf8.decode(frame)) as unknown
       },
       catch: (error) => makeHostProtocolBinaryDecodeError(formatUnknownError(error), request.method)
     })

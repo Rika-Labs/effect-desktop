@@ -1,5 +1,5 @@
 import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { tmpdir } from "node:os"
 
 import { expect, test } from "bun:test"
@@ -24,6 +24,16 @@ test("WindowState persists and restores a validated window record", async () => 
 
   expect(Option.getOrUndefined(restored)).toEqual(state)
   expect(await readFile(path, "utf8")).toContain('"main"')
+})
+
+test("WindowState persists without leaving temporary files", async () => {
+  const path = await tempWindowStatePath()
+  const service = await Effect.runPromise(makeWindowState({ path }))
+
+  await Effect.runPromise(service.persist("main", state))
+
+  const files = await readdir(dirname(path))
+  expect(files).toEqual(["window-state.json"])
 })
 
 test("WindowState rejects empty window ids on persist before reading durable state", async () => {

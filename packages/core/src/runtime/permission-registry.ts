@@ -362,6 +362,7 @@ export const makePermissionRegistry = (
             decodedCapability,
             decodedContext,
             id,
+            "PermissionRegistry.check",
             { ...grantOptions, source: grantSource ?? resolved.source }
           )
           const decision = new PermissionDecision({
@@ -406,6 +407,7 @@ export const makePermissionRegistry = (
             decodedCapability,
             decodedContext,
             id,
+            "PermissionRegistry.grant",
             { ...grantOptions, source: grantSource ?? "grant" }
           )
         }).pipe(
@@ -580,12 +582,14 @@ const issueGrant = (
   capability: NormalizedCapability,
   context: PermissionContext,
   traceId: string,
+  operation: string,
   options: PermissionGrantOptions
 ): Effect.Effect<GrantedCapability, PermissionRegistryError, never> =>
   Effect.gen(function* () {
+    const token = yield* resolveGeneratedIdentifier(operation, "token", nextToken())
     const grantedAt = now()
     const grant = new GrantedCapability({
-      token: nextToken(),
+      token,
       capability,
       actor: context.actor,
       ...(context.resource === undefined ? {} : { resource: context.resource }),
@@ -918,10 +922,17 @@ const resolveTraceId = (
   operation: string
 ): Effect.Effect<string, PermissionInvalidArgumentError, never> =>
   contextTraceId === undefined
-    ? Schema.decodeUnknownEffect(PermissionMetadataText)(fallback()).pipe(
-        Effect.mapError((cause) => invalidArgument(operation, "traceId", cause))
-      )
+    ? resolveGeneratedIdentifier(operation, "traceId", fallback())
     : Effect.succeed(contextTraceId)
+
+const resolveGeneratedIdentifier = (
+  operation: string,
+  field: string,
+  value: string
+): Effect.Effect<string, PermissionInvalidArgumentError, never> =>
+  Schema.decodeUnknownEffect(PermissionMetadataText)(value).pipe(
+    Effect.mapError((cause) => invalidArgument(operation, field, cause))
+  )
 
 const decodeOptionalAttribution = (
   value: string | undefined,

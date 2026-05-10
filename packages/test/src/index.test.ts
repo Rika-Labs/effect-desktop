@@ -6,6 +6,7 @@ import {
   HOST_PING_METHOD,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
+  HostProtocolInvalidOutputError,
   HostProtocolNotFoundError,
   makeHostHandshakeClient,
   makeHostProtocolNotFoundError,
@@ -242,6 +243,34 @@ test("MockHost reports unknown window destroy as a typed host error", async () =
   }
 })
 
+test("MockHost rejects non-JSON fixture payloads", async () => {
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const host = yield* MockHost
+      const window = makeHostWindowClient(host, {
+        nextRequestId: nextSequence("request"),
+        nextTraceId: nextSequence("trace")
+      })
+
+      return yield* Effect.exit(window.create({ title: "Mock Host" }))
+    }).pipe(
+      Effect.provide(
+        MockHostLive({
+          fixtures: {
+            [WINDOW_CREATE_METHOD]: () => Symbol("not-json")
+          }
+        })
+      )
+    )
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const fail = exit.cause.reasons.find((reason) => reason._tag === "Fail")
+    expect(fail?.error).toBeInstanceOf(HostProtocolInvalidOutputError)
+  }
+})
+
 test("MockBridge records typed client calls and returns pinned successes", async () => {
   const ProjectApi = testContract("Test.MockBridge.Success", {
     open: {
@@ -272,6 +301,49 @@ test("MockBridge records typed client calls and returns pinned successes", async
       timestamp: 1710000000400
     }
   ])
+})
+
+test("MockBridge rejects pinned success payloads that are not JSON-serializable", async () => {
+  const bridge = makeMockBridge()
+  const pin = await Effect.runPromiseExit(
+    bridge.succeed("Test.MockBridge.Symbol.open", Symbol("not-json"))
+  )
+
+  expect(Exit.isFailure(pin)).toBe(true)
+  if (Exit.isFailure(pin)) {
+    const fail = pin.cause.reasons.find((reason) => reason._tag === "Fail")
+    expect(fail?.error).toBeInstanceOf(HostProtocolInvalidOutputError)
+  }
+})
+
+test("MockBridge rejects pinned stream chunks that are not JSON-serializable", async () => {
+  const ProjectApi = testContract("Test.MockBridge.Stream", {
+    watch: {
+      input: Schema.Void,
+      output: Api.Stream(Schema.String, Schema.Never),
+      error: Schema.Never
+    }
+  })
+  const bridge = makeMockBridge()
+  const pin = await Effect.runPromiseExit(
+    bridge.streamChunks("Test.MockBridge.Stream.watch", [Symbol("not-json")])
+  )
+
+  expect(Exit.isFailure(pin)).toBe(true)
+  if (Exit.isFailure(pin)) {
+    const fail = pin.cause.reasons.find((reason) => reason._tag === "Fail")
+    expect(fail?.error).toBeInstanceOf(HostProtocolInvalidOutputError)
+  }
+
+  const client = bridge.client(
+    { project: ProjectApi },
+    {
+      nextRequestId: nextSequence("request"),
+      nextTraceId: nextSequence("trace")
+    }
+  )
+  const chunks = await Effect.runPromiseExit(client.project.watch().pipe(Stream.runCollect))
+  expect(Exit.isFailure(chunks)).toBe(true)
 })
 
 test("MockBridge returns pinned contract errors through the typed error channel", async () => {

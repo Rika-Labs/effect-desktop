@@ -141,10 +141,10 @@ import {
   TraySupportedResult,
   Updater,
   UpdaterApi,
-  UpdaterCheckResult,
   UpdaterLive,
   UpdaterMethodNames,
   UpdaterPreparingRestartEvent,
+  UpdaterStatusState,
   UpdaterStatusResult,
   WebView,
   WebViewApi,
@@ -871,6 +871,52 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
     ["WebView.captureScreenshot", { webview: webviewHandle }],
     ["WebView.capability", { name: "devtools open", platform: "windows" }]
   ])
+})
+
+test("WebView bridge client rejects control-byte navigation-blocked reasons", async () => {
+  const exchange: ApiClientExchange = {
+    request: (request) =>
+      Effect.succeed(
+        request.method === "WebView.create"
+          ? { kind: "success", payload: webviewHandle }
+          : { kind: "success", payload: undefined }
+      ),
+    subscribe: (method) =>
+      method === "WebView.NavigationBlocked"
+        ? Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              timestamp: 1710000000200,
+              traceId: "event-trace",
+              method,
+              payload: {
+                webview: webviewHandle,
+                url: "https://blocked.example",
+                reason: `origin not allowed ${String.fromCharCode(0)}`
+              }
+            })
+          )
+        : Stream.empty,
+    resource: {
+      dispose: () => Effect.void
+    }
+  }
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.create()
+      return yield* webview.onNavigationBlocked().pipe(Stream.take(1), Stream.runCollect)
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          WebViewLive,
+          makeWebViewBridgeClientLayer(exchange, { nextTraceId: () => "trace" })
+        )
+      )
+    )
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
 })
 
 test("WebView bridge client rejects unsafe navigation inputs before transport", async () => {
@@ -2328,26 +2374,36 @@ test("Notification bridge client sends typed host envelopes and decodes events",
 })
 
 test("Notification bridge client returns invalid input as typed Effect failures", async () => {
-  const requests: HostProtocolRequestEnvelope[] = []
-  const client = await Effect.runPromise(
-    Effect.gen(function* () {
-      return yield* Notification
-    }).pipe(
-      Effect.provide(
-        Layer.provide(
-          NotificationLive,
-          makeNotificationBridgeClientLayer(
-            notificationExchange(requests, () => ({ kind: "success", payload: undefined }))
+  const cases: ReadonlyArray<{ readonly label: string; readonly input: Record<string, string> }> = [
+    { label: "missing body", input: { title: "Missing body" } },
+    { label: "control char in title", input: { title: "Build\nfinished", body: "Open results" } },
+    { label: "control char in body", input: { title: "Build finished", body: "Open\nresults" } },
+    { label: "DEL in title", input: { title: "Build finished\u007f", body: "Open results" } }
+  ]
+
+  for (const { label, input } of cases) {
+    const requests: HostProtocolRequestEnvelope[] = []
+    const client = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* Notification
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            NotificationLive,
+            makeNotificationBridgeClientLayer(
+              notificationExchange(requests, () => ({ kind: "success", payload: undefined }))
+            )
           )
         )
       )
     )
-  )
 
-  const exit = await Effect.runPromiseExit(client.show({ title: "Missing body" } as never))
+    const exit = await Effect.runPromiseExit(client.show(input as never))
 
-  expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
-  expect(requests).toEqual([])
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+    expect(label).toBeDefined()
+    expect(requests).toEqual([])
+  }
 })
 
 test("Notification bridge client rejects invalid action ids and labels before transport", async () => {
@@ -2435,17 +2491,35 @@ test("unsupported Notification client reports deferred host methods as Effect va
     Effect.gen(function* () {
       const notification = yield* Notification
       const supported = yield* notification.isSupported()
-      const permission = yield* notification.getPermissionStatus()
+      const requestPermissionExit = yield* Effect.exit(notification.requestPermission())
+      const statusExit = yield* Effect.exit(notification.getPermissionStatus())
       const showExit = yield* Effect.exit(
         notification.show({ title: "Build finished", body: "Open results" })
       )
 
-      return { permission, showExit, supported }
+      return { requestPermissionExit, showExit, statusExit, supported }
     }).pipe(Effect.provide(makeNotificationServiceLayer(makeUnsupportedNotificationClient())))
   )
 
   expect(result.supported).toBe(false)
-  expect(result.permission).toBe("denied")
+  expectExitFailure(
+    result.requestPermissionExit,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "operation" in error &&
+      error.operation === "Notification.requestPermission"
+  )
+  expectExitFailure(
+    result.statusExit,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "operation" in error &&
+      error.operation === "Notification.getPermissionStatus"
+  )
   expectExitFailure(
     result.showExit,
     (error) =>
@@ -2836,6 +2910,41 @@ test("SafeStorage bridge client validates keys and redacts decoded values", asyn
   ])
 })
 
+test("SafeStorage bridge client rejects control-byte keys as InvalidArgument", async () => {
+  const cases: ReadonlyArray<{
+    readonly label: string
+    readonly key: string
+  }> = [
+    { label: "empty key", key: "" },
+    { label: "newline key", key: "\n" },
+    { label: "DEL key", key: "\u007f" }
+  ]
+
+  for (const { label, key } of cases) {
+    const requests: HostProtocolRequestEnvelope[] = []
+    const exchange = safeStorageExchange(requests, () => ({ kind: "success", payload: undefined }))
+    const client = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* SafeStorage
+      }).pipe(
+        Effect.provide(Layer.provide(SafeStorageLive, makeSafeStorageBridgeClientLayer(exchange)))
+      )
+    )
+
+    const setExit = await Effect.runPromiseExit(
+      client.set(key, SecretValue.fromUtf8("refresh-token"))
+    )
+    const getExit = await Effect.runPromiseExit(client.get(key))
+    const deleteExit = await Effect.runPromiseExit(client.delete(key))
+
+    expect(label).toBeDefined()
+    expectExitFailure(setExit, (error) => hasErrorTag(error, "InvalidArgument"))
+    expectExitFailure(getExit, (error) => hasErrorTag(error, "InvalidArgument"))
+    expectExitFailure(deleteExit, (error) => hasErrorTag(error, "InvalidArgument"))
+    expect(requests).toEqual([])
+  }
+})
+
 test("SafeStorage bridge client rejects invalid keys in list output as InvalidOutput", async () => {
   const cases: ReadonlyArray<{ readonly label: string; readonly keys: ReadonlyArray<string> }> = [
     { label: "empty", keys: [""] },
@@ -2883,15 +2992,23 @@ test("unsupported SafeStorage client reports availability and typed command fail
     Effect.gen(function* () {
       const storage = yield* SafeStorage
       const available = yield* storage.isAvailable()
-      const keys = yield* storage.list()
+      const listExit = yield* Effect.exit(storage.list())
       const setExit = yield* Effect.exit(storage.set("token", SecretValue.fromUtf8("secret")))
       const getExit = yield* Effect.exit(storage.get("token"))
-      return { available, getExit, keys, setExit }
+      return { available, getExit, listExit, setExit }
     }).pipe(Effect.provide(makeSafeStorageServiceLayer(makeUnsupportedSafeStorageClient())))
   )
 
   expect(result.available).toBe(false)
-  expect(result.keys).toEqual([])
+  expectExitFailure(
+    result.listExit,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "operation" in error &&
+      error.operation === "SafeStorage.list"
+  )
   expectExitFailure(result.setExit, (error) => hasErrorTag(error, "Unsupported"))
   expectExitFailure(result.getExit, (error) => hasErrorTag(error, "Unsupported"))
 })
@@ -2996,18 +3113,34 @@ test("unsupported Updater client keeps consume-only status but defers install fl
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const updater = yield* Updater
-      const check = yield* updater.check()
-      const status = yield* updater.getStatus()
+      const checkExit = yield* Effect.exit(updater.check())
+      const statusExit = yield* Effect.exit(updater.getStatus())
       const downloadExit = yield* Effect.exit(updater.download())
       const restartExit = yield* Effect.exit(updater.installAndRestart())
       const readyExit = yield* Effect.exit(updater.readyForRestart())
       const prepareExit = yield* updater.onPreparingRestart().pipe(Stream.runHead, Effect.exit)
-      return { check, downloadExit, prepareExit, readyExit, restartExit, status }
+      return { checkExit, downloadExit, prepareExit, readyExit, restartExit, statusExit }
     }).pipe(Effect.provide(makeUpdaterServiceLayer(makeUnsupportedUpdaterClient())))
   )
 
-  expect(result.check.available).toBe(false)
-  expect(result.status.state).toBe("idle")
+  expectExitFailure(
+    result.checkExit,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "operation" in error &&
+      error.operation === "Updater.check"
+  )
+  expectExitFailure(
+    result.statusExit,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "operation" in error &&
+      error.operation === "Updater.getStatus"
+  )
   expectExitFailure(result.downloadExit, (error) => hasErrorTag(error, "Unsupported"))
   expectExitFailure(result.restartExit, (error) => hasErrorTag(error, "Unsupported"))
   expectExitFailure(result.readyExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -3163,6 +3296,25 @@ test("CrashReporter rejects control bytes in breadcrumb categories", async () =>
   expect(flushed.flushed).toBe(1)
 })
 
+test("CrashReporter rejects cyclic breadcrumb details", async () => {
+  const client = await Effect.runPromise(makeCrashReporterMemoryClient())
+  await Effect.runPromise(client.start())
+  const cyclicDetails: { self: unknown } = { self: null }
+  cyclicDetails.self = cyclicDetails
+
+  const exit = await Effect.runPromiseExit(
+    client.recordBreadcrumb({
+      category: "system",
+      message: "cyclic details",
+      details: cyclicDetails
+    })
+  )
+
+  expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+  const flushed = await Effect.runPromise(client.flush())
+  expect(flushed.flushed).toBe(0)
+})
+
 test("CrashReporter bridge client records breadcrumbs and defers upload handlers", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const exchange = crashReporterExchange(requests, (request) => ({
@@ -3206,6 +3358,36 @@ test("CrashReporter bridge client records breadcrumbs and defers upload handlers
     ],
     ["CrashReporter.flush", undefined]
   ])
+})
+
+test("CrashReporter bridge client rejects cyclic breadcrumb details before host transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = crashReporterExchange(requests, (request) => ({
+    kind: "success",
+    payload: request.method === "CrashReporter.flush" ? { flushed: 0 } : undefined
+  }))
+  const reporter = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* CrashReporter
+    }).pipe(
+      Effect.provide(Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange)))
+    )
+  )
+
+  await Effect.runPromise(reporter.start())
+  const cyclicDetails: { self: unknown } = { self: null }
+  cyclicDetails.self = cyclicDetails
+
+  const exit = await Effect.runPromiseExit(
+    reporter.recordBreadcrumb({
+      category: "system",
+      message: "cyclic details",
+      details: cyclicDetails
+    })
+  )
+
+  expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests.map((request) => request.method)).toEqual(["CrashReporter.start"])
 })
 
 test("CrashReporter bridge client rejects invalid flush counts as InvalidOutput", async () => {
@@ -3427,6 +3609,39 @@ test("Screen bridge client sends typed host envelopes and decodes values", async
     ["Screen.getPointerPoint", undefined],
     ["Screen.isSupported", { method: "getPointerPoint" }]
   ])
+})
+
+test("Screen bridge client rejects empty display lists as InvalidOutput", async () => {
+  const exchange = screenExchange([], () => ({ kind: "success", payload: { displays: [] } }))
+  const result = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const screen = yield* Screen
+      return yield* screen.getDisplays()
+    }).pipe(Effect.provide(Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange))))
+  )
+
+  expectExitFailure(result, (error) => hasErrorTag(error, "InvalidOutput"))
+})
+
+test("Screen bridge client rejects invalid primary display topologies as InvalidOutput", async () => {
+  const multiplePrimary = {
+    displays: [
+      { ...primaryDisplay, id: "secondary-1", primary: true },
+      { ...primaryDisplay, id: "secondary-2", primary: true }
+    ]
+  }
+  const exchange = screenExchange([], (request) => ({
+    kind: "success",
+    payload: request.method === "Screen.getDisplays" ? multiplePrimary : primaryDisplay
+  }))
+  const result = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const screen = yield* Screen
+      return yield* screen.getDisplays()
+    }).pipe(Effect.provide(Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange))))
+  )
+
+  expectExitFailure(result, (error) => hasErrorTag(error, "InvalidOutput"))
 })
 
 test("unsupported Screen client exposes support checks and typed method failures", async () => {
@@ -4255,11 +4470,12 @@ test("GlobalShortcut conflicts and unsupported behavior are typed Effect values"
       const shortcuts = yield* GlobalShortcut
       const supported = yield* shortcuts.isSupported()
       const registerExit = yield* Effect.exit(shortcuts.register("CmdOrCtrl+K", windowHandle))
+      const isRegisteredExit = yield* Effect.exit(shortcuts.isRegistered("CmdOrCtrl+K"))
       const bindExit = yield* Effect.exit(
         shortcuts.bindCommand("CmdOrCtrl+K", "openProject", windowHandle)
       )
       const pressedExit = yield* shortcuts.onPressed().pipe(Stream.runHead, Effect.exit)
-      return { bindExit, pressedExit, registerExit, supported }
+      return { bindExit, isRegisteredExit, pressedExit, registerExit, supported }
     }).pipe(
       Effect.provide(
         Layer.mergeAll(
@@ -4286,6 +4502,15 @@ test("GlobalShortcut conflicts and unsupported behavior are typed Effect values"
       error !== null &&
       "reason" in error &&
       error.reason === "host-adapter-unimplemented"
+  )
+  expectExitFailure(
+    unsupported.isRegisteredExit,
+    (error) =>
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "operation" in error &&
+      error.operation === "GlobalShortcut.isRegistered"
   )
   expectExitFailure(
     unsupported.bindExit,
@@ -4576,6 +4801,41 @@ test("AppEventRouter buffers one firstResponder event per kind until a window op
 
   expect(Array.from(result.events).map((event) => event.payload.path)).toEqual(["newer.txt"])
   expect(Array.from(result.audit).map((event) => event._tag)).toEqual(["EventBufferEvicted"])
+})
+
+test("AppEventRouter rejects empty window identifiers", async () => {
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const router = yield* makeAppEventRouter()
+      return yield* router.windowOpened(handleFor(""))
+    })
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+})
+
+test("AppEventRouter targetedRoute rejects control-byte window identifiers", () => {
+  expect(() => {
+    targetedRoute(`window-${String.fromCharCode(0)}route`)
+  }).toThrow(RangeError)
+})
+
+test("AppEventRouter rejects control-byte route metadata on publish", async () => {
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const router = yield* makeAppEventRouter()
+      return yield* router.publish({
+        event: "onOpenFile",
+        payload: { path: "/tmp/route.txt" },
+        route: {
+          _tag: "targeted",
+          windowId: `window-${String.fromCharCode(0)}route`
+        }
+      })
+    })
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
 })
 
 test("AppEventRouter drops oldest buffered subscription events when subscription queue is full", async () => {
@@ -4923,6 +5183,63 @@ test("Updater bridge client rejects empty version strings as InvalidArgument", a
   expect(requests).toEqual([])
 })
 
+test("Updater bridge client rejects check responses missing version when available", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Updater
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          UpdaterLive,
+          makeUpdaterBridgeClientLayer(
+            updaterExchange(requests, () => ({ kind: "success", payload: { available: true } }))
+          )
+        )
+      )
+    )
+  )
+
+  const checkExit = await Effect.runPromiseExit(client.check({ currentVersion: "1.0.0" }))
+
+  expectExitFailure(checkExit, (error) => hasErrorTag(error, "InvalidOutput"))
+  expect(requests).toEqual([
+    expect.objectContaining({ method: "Updater.check", payload: { currentVersion: "1.0.0" } })
+  ])
+})
+
+test("Updater bridge client requires version for update-bearing status states", async () => {
+  const updateStates: ReadonlyArray<UpdaterStatusState> = [
+    "update-available",
+    "downloading",
+    "downloaded",
+    "installing"
+  ]
+  for (const state of updateStates) {
+    const client = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* Updater
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            UpdaterLive,
+            makeUpdaterBridgeClientLayer(
+              updaterExchange([], () => ({
+                kind: "success",
+                payload: { state }
+              }))
+            )
+          )
+        )
+      )
+    )
+
+    const statusExit = await Effect.runPromiseExit(client.getStatus())
+
+    expectExitFailure(statusExit, (error) => hasErrorTag(error, "InvalidOutput"))
+  }
+})
+
 test("Updater bridge client rejects out-of-bounds progress values from host as InvalidOutput", async () => {
   const client = await Effect.runPromise(
     Effect.gen(function* () {
@@ -4946,7 +5263,7 @@ test("Updater bridge client rejects out-of-bounds progress values from host as I
   expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
 })
 
-test("Updater bridge client rejects NUL bytes in version inputs as InvalidArgument", async () => {
+test("Updater bridge client rejects control-byte versions as InvalidArgument", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const client = await Effect.runPromise(
     Effect.gen(function* () {
@@ -4963,14 +5280,65 @@ test("Updater bridge client rejects NUL bytes in version inputs as InvalidArgume
     )
   )
 
-  const checkExit = await Effect.runPromiseExit(client.check({ currentVersion: "1.0.0\u0000dev" }))
-  const downloadExit = await Effect.runPromiseExit(client.download({ version: "1.1.0\u0000dev" }))
-  const installExit = await Effect.runPromiseExit(client.install({ version: "1.1.0\u0000dev" }))
+  const versions = ["1.0.0\u0000dev", "1.0.0\n", "1.0.0\u007f"]
 
-  expectExitFailure(checkExit, (error) => hasErrorTag(error, "InvalidArgument"))
-  expectExitFailure(downloadExit, (error) => hasErrorTag(error, "InvalidArgument"))
-  expectExitFailure(installExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  for (const version of versions) {
+    const checkExit = await Effect.runPromiseExit(client.check({ currentVersion: version }))
+    const downloadExit = await Effect.runPromiseExit(client.download({ version }))
+    const installExit = await Effect.runPromiseExit(client.install({ version }))
+
+    expectExitFailure(checkExit, (error) => hasErrorTag(error, "InvalidArgument"))
+    expectExitFailure(downloadExit, (error) => hasErrorTag(error, "InvalidArgument"))
+    expectExitFailure(installExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  }
   expect(requests).toEqual([])
+})
+
+test("Updater bridge client rejects control-byte versions from host output", async () => {
+  const checkRequests: HostProtocolRequestEnvelope[] = []
+  const checkClient = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Updater
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          UpdaterLive,
+          makeUpdaterBridgeClientLayer(
+            updaterExchange(checkRequests, () => ({
+              kind: "success",
+              payload: { available: true, version: "1.2.3\n", notes: "update" }
+            }))
+          )
+        )
+      )
+    )
+  )
+  const statusRequests: HostProtocolRequestEnvelope[] = []
+  const statusClient = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Updater
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          UpdaterLive,
+          makeUpdaterBridgeClientLayer(
+            updaterExchange(statusRequests, () => ({
+              kind: "success",
+              payload: { state: "downloading", version: "2.0.0\u007f", progress: 0.5 }
+            }))
+          )
+        )
+      )
+    )
+  )
+
+  const checkExit = await Effect.runPromiseExit(checkClient.check({ currentVersion: "1.0.0" }))
+  const statusExit = await Effect.runPromiseExit(statusClient.getStatus())
+
+  expectExitFailure(checkExit, (error) => hasErrorTag(error, "InvalidOutput"))
+  expectExitFailure(statusExit, (error) => hasErrorTag(error, "InvalidOutput"))
+  expect(checkRequests).toHaveLength(1)
+  expect(statusRequests).toHaveLength(1)
 })
 
 test("Dialog bridge client rejects empty message strings as InvalidArgument", async () => {
@@ -5418,31 +5786,31 @@ const updaterClient = (calls: string[]): UpdaterClientApi => ({
   check: (options) =>
     Effect.sync(() => {
       calls.push(`check:${options?.currentVersion ?? ""}`)
-      return new UpdaterCheckResult({
+      return {
         available: true,
         version: "1.1.0",
         notes: "security update"
-      })
+      }
     }),
   download: (options) =>
     Effect.sync(() => {
       calls.push(`download:${options?.version ?? ""}`)
-      return updaterStatus("downloaded", options?.version)
+      return updaterStatus("downloaded", options?.version ?? "1.1.0")
     }),
   install: (options) =>
     Effect.sync(() => {
       calls.push(`install:${options?.version ?? ""}`)
-      return updaterStatus("installing", options?.version)
+      return updaterStatus("installing", options?.version ?? "1.1.0")
     }),
   installAndRestart: (options) =>
     Effect.sync(() => {
       calls.push(`installAndRestart:${options?.version ?? ""}`)
-      return updaterStatus("installing", options?.version)
+      return updaterStatus("installing", options?.version ?? "1.1.0")
     }),
   getStatus: () =>
     Effect.sync(() => {
       calls.push("getStatus")
-      return new UpdaterStatusResult({ state: "update-available", version: "1.1.0" })
+      return { state: "update-available", version: "1.1.0" }
     }),
   readyForRestart: () => recordVoid(calls, "readyForRestart"),
   onPreparingRestart: () => Stream.make(new UpdaterPreparingRestartEvent({ deadlineMs: 5_000 }))
@@ -5450,11 +5818,8 @@ const updaterClient = (calls: string[]): UpdaterClientApi => ({
 
 const updaterStatus = (
   state: "downloaded" | "installing",
-  version: string | undefined
-): UpdaterStatusResult =>
-  version === undefined
-    ? new UpdaterStatusResult({ state })
-    : new UpdaterStatusResult({ state, version })
+  version: string
+): UpdaterStatusResult => ({ state, version })
 
 const shellClient = (calls: string[]): ShellClientApi => ({
   openExternal: (url, options) =>

@@ -1,7 +1,7 @@
 import { Api, type ApiResourceHandle } from "@effect-desktop/bridge"
 import { Schema } from "effect"
 
-import { PrintableNonEmptyString } from "./strings.js"
+import { PrintableNonEmptyString, PrintableString } from "./strings.js"
 
 const WindowResource = Api.Resource("window", "open")
 export const NotificationResource = Api.Resource("notification", "open")
@@ -18,8 +18,8 @@ export class NotificationAction extends Schema.Class<NotificationAction>("Notifi
 export class NotificationShowInput extends Schema.Class<NotificationShowInput>(
   "NotificationShowInput"
 )({
-  title: Schema.String,
-  body: Schema.String,
+  title: PrintableString,
+  body: PrintableString,
   actions: Schema.optionalKey(Schema.Array(NotificationAction)),
   ownerWindow: Schema.optionalKey(WindowResource.schema)
 }) {}

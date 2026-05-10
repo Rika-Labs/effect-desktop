@@ -1,4 +1,14 @@
-import { Context, Effect, Layer, Option, Schema, Stream, SubscriptionRef } from "effect"
+import {
+  Context,
+  Deferred,
+  Effect,
+  Exit,
+  Layer,
+  Option,
+  Schema,
+  Stream,
+  SubscriptionRef
+} from "effect"
 
 export type ResourceId = string & { readonly ResourceId: unique symbol }
 export type ResourceKind = string
@@ -96,6 +106,7 @@ export const makeResourceRegistry = (
     const disposedGenerations = new Map<ResourceId, DisposedGeneration>()
     const scopeParents = new Map<ScopeId, ScopeId>()
     const cleanupGroups = new Map<ResourceId, CleanupGroup>()
+    const disposalWaiters = new Map<ResourceId, Deferred.Deferred<void>>()
 
     const snapshot = (): Effect.Effect<RegistrySnapshot, never, never> =>
       Effect.map(SubscriptionRef.get(entries), snapshotFromMap)
@@ -105,15 +116,61 @@ export const makeResourceRegistry = (
     ): Effect.Effect<StoredResourceEntry | undefined, never, never> =>
       SubscriptionRef.modify(entries, (current) => {
         const entry = current.get(id)
-        if (entry === undefined) {
+        if (entry === undefined || entry.disposing) {
           return [undefined, current] as const
         }
 
         const next = new Map(current)
-        next.delete(id)
+        next.set(id, { ...entry, disposing: true })
 
         return [entry, next] as const
       })
+
+    const clearEntry = (id: ResourceId): Effect.Effect<void, never, never> =>
+      SubscriptionRef.update(entries, (current) => {
+        const next = new Map(current)
+        next.delete(id)
+        return next
+      })
+
+    const awaitDisposal = (id: ResourceId): Effect.Effect<void, never, never> =>
+      Effect.gen(function* () {
+        const waiter = disposalWaiters.get(id)
+        if (waiter === undefined) {
+          return
+        }
+
+        yield* Deferred.await(waiter)
+      })
+
+    const reportDisposalFailure = (
+      entry: StoredResourceEntry,
+      reason: unknown
+    ): Effect.Effect<void, never, never> =>
+      Effect.logWarning("ResourceRegistry.cleanup failed", {
+        id: entry.handle.id,
+        kind: entry.handle.kind,
+        scope: entry.handle.ownerScope,
+        reason: String(reason)
+      }).pipe(Effect.ignore)
+
+    const disposeEntry = (entry: StoredResourceEntry): Effect.Effect<void, never, never> =>
+      Effect.gen(function* () {
+        const result = yield* Effect.exit(
+          Effect.timeoutOption(
+            releaseCleanup(entry.cleanupGroupId, cleanupGroups),
+            `${entry.disposalGraceMs} millis`
+          )
+        )
+        if (Exit.isFailure(result)) {
+          yield* reportDisposalFailure(entry, result.cause)
+        }
+
+        yield* clearEntry(entry.handle.id)
+      }).pipe(
+        Effect.catchDefect((cause) => reportDisposalFailure(entry, cause)),
+        Effect.catch((cause) => reportDisposalFailure(entry, cause))
+      )
 
     const markDisposed = (id: ResourceId, entry: StoredResourceEntry): void => {
       disposedGenerations.set(id, {
@@ -128,9 +185,19 @@ export const makeResourceRegistry = (
         const entry = yield* takeEntry(id)
 
         if (entry !== undefined) {
-          markDisposed(id, entry)
-          yield* releaseCleanup(entry.cleanupGroupId, cleanupGroups)
+          const completion = yield* Deferred.make<void, never>()
+          disposalWaiters.set(id, completion)
+
+          try {
+            markDisposed(id, entry)
+            yield* disposeEntry(entry)
+          } finally {
+            disposalWaiters.delete(id)
+            yield* Deferred.succeed(completion, undefined)
+          }
         }
+
+        yield* awaitDisposal(id)
       })
 
     const disposeForScopeClose = (entry: StoredResourceEntry): Effect.Effect<void, never, never> =>
@@ -138,12 +205,7 @@ export const makeResourceRegistry = (
         const removed = yield* takeEntry(entry.handle.id)
         if (removed !== undefined) {
           markDisposed(entry.handle.id, removed)
-          yield* Effect.asVoid(
-            Effect.timeoutOption(
-              releaseCleanup(removed.cleanupGroupId, cleanupGroups),
-              `${removed.disposalGraceMs} millis`
-            )
-          )
+          yield* disposeEntry(removed)
         }
       })
 
@@ -188,7 +250,8 @@ export const makeResourceRegistry = (
             createdAt,
             reusableId: input.reusableId === true,
             disposalGraceMs: input.disposalGraceMs ?? DEFAULT_DISPOSAL_GRACE_MS,
-            cleanupGroupId
+            cleanupGroupId,
+            disposing: false
           }
           const next = new Map(current)
           next.set(id, stored)
@@ -206,7 +269,8 @@ export const makeResourceRegistry = (
         if (
           entry !== undefined &&
           entry.handle.kind === handle.kind &&
-          entry.handle.generation === handle.generation
+          entry.handle.generation === handle.generation &&
+          !entry.disposing
         ) {
           return Effect.succeed(publicEntry(entry) as ResourceEntry<Kind, State>)
         }
@@ -239,7 +303,22 @@ export const makeResourceRegistry = (
         const entriesToDispose = entriesInDependencyOrder(current, scopes, scopeParents)
 
         for (const entry of entriesToDispose) {
-          yield* disposeForScopeClose(entry)
+          yield* disposeForScopeClose(entry).pipe(
+            Effect.catch((cause) =>
+              reportDisposalFailure(entry, {
+                phase: "closeScope",
+                scope,
+                cause
+              })
+            ),
+            Effect.catchDefect((cause) =>
+              reportDisposalFailure(entry, {
+                phase: "closeScope",
+                scope,
+                cause
+              })
+            )
+          )
         }
       })
 
@@ -300,6 +379,7 @@ interface StoredResourceEntry extends ResourceEntry {
   readonly reusableId: boolean
   readonly disposalGraceMs: number
   readonly cleanupGroupId: ResourceId
+  readonly disposing: boolean
 }
 
 interface CleanupGroup {

@@ -208,6 +208,20 @@ export const makeWorker = (
                   Effect.andThen(releaseWorkerBudget(workerBudgets, input.ownerScope))
                 )
               })
+              if (resource.id.length === 0) {
+                yield* resource.dispose().pipe(
+                  Effect.andThen(
+                    Effect.fail(
+                      new WorkerInvalidArgumentError({
+                        operation: "Worker.spawn",
+                        field: "resourceId",
+                        message: "resource id must be non-empty",
+                        cause: Option.none()
+                      })
+                    )
+                  )
+                )
+              }
               registeredResourceId = resource.id
               yield* Ref.update(workers, (current) =>
                 new Map(current).set(resource.id, {
@@ -595,10 +609,17 @@ export const BunWorkerAdapter: WorkerAdapter = Object.freeze({
         messages: Stream.fromQueue(queue),
         exit: Deferred.await(exit),
         shutdown: Effect.gen(function* () {
+          const warnShutdownFailure = (phase: string, cause: unknown) =>
+            Effect.logWarning("Worker.shutdown failed", {
+              script: input.script,
+              phase,
+              reason: String(cause)
+            })
+
           yield* Effect.try({
             try: () => worker.postMessage({ _tag: "Shutdown" }),
             catch: (cause) => cause
-          }).pipe(Effect.catchCause(() => Effect.void))
+          }).pipe(Effect.catch((cause) => warnShutdownFailure("postMessage", cause)))
           const gracefulExit = yield* Effect.timeoutOption(
             Deferred.await(exit),
             `${input.gracefulShutdownMs} millis`
@@ -607,11 +628,16 @@ export const BunWorkerAdapter: WorkerAdapter = Object.freeze({
             yield* Effect.try({
               try: () => worker.terminate(),
               catch: (cause) => cause
-            }).pipe(Effect.catchCause(() => Effect.void))
+            }).pipe(Effect.catch((cause) => warnShutdownFailure("terminate", cause)))
           }
-          yield* cleanupWorkerListeners(worker, onMessage, onError, onMessageError, onClose)
-          yield* Queue.shutdown(queue)
-        }).pipe(Effect.catchCause(() => Effect.void))
+          yield* cleanupWorkerListeners(worker, onMessage, onError, onMessageError, onClose).pipe(
+            Effect.catchDefect((cause) => warnShutdownFailure("removeListeners", cause))
+          )
+          yield* Queue.shutdown(queue).pipe(
+            Effect.catch((cause) => warnShutdownFailure("queueShutdown", cause)),
+            Effect.catchDefect((cause) => warnShutdownFailure("queueShutdown", cause))
+          )
+        }) as Effect.Effect<void, never, never>
       } satisfies WorkerRuntime
     })
 })

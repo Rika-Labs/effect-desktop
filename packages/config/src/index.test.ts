@@ -33,8 +33,36 @@ test("CSP defaults render the spec policy with a nonce", () => {
   expect(renderDefaultCsp("abc123")).toBe(HOST_DEFAULT_CSP_FOR_NONCE("abc123"))
 })
 
+test("CSP disabled config renders no effective CSP policy", () => {
+  expect(renderEffectiveCsp({ disabled: true })).toBe("")
+})
+
 test("CSP config accepts the host/spec default policy without weakenings", () => {
   expect(cspWeakenings({ policy: HOST_DEFAULT_CSP_FOR_NONCE("{N}") })).toEqual([])
+})
+
+test("CSP disabled policy reports disabled weakening", () => {
+  expect(cspWeakenings({ disabled: true })).toEqual([
+    { directive: "security.csp.disabled", reason: "content security policy is disabled" }
+  ])
+})
+
+test("CSP disabled is rejected by the production checker without acknowledgement", async () => {
+  const report = await Effect.runPromise(
+    runProductionCheck({
+      config: {
+        security: {
+          csp: {
+            disabled: true
+          }
+        }
+      }
+    })
+  )
+
+  expect(report.passed).toBe(false)
+  expect(report.failures.map((violation) => violation.rule)).toEqual(["weakened-csp"])
+  expect(report.failures[0]?.message).toContain("content security policy is disabled")
 })
 
 test("CSP config still rejects script-src 'unsafe-inline' as a weakening", () => {
@@ -77,6 +105,13 @@ test("CSP config can tighten a default directive", () => {
   expect(cspWeakenings(csp)).toEqual([])
   expect(renderEffectiveCsp(csp, "abc123")).toContain("connect-src 'self';")
   expect(renderEffectiveCsp(csp, "abc123")).not.toContain("connect-src 'self' app:")
+})
+
+test("CSP config treats source-list overrides set to none as hardening", () => {
+  expect(cspWeakenings({ policy: "script-src 'none'" })).toEqual([])
+  expect(renderEffectiveCsp({ policy: "script-src 'none'" }, "abc123")).toContain(
+    "script-src 'none'"
+  )
 })
 
 test("CSP config flags directive loosening beyond the default", () => {

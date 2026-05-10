@@ -91,8 +91,17 @@ export const AppEventRouterLive = Layer.effect(AppEventRouter)(makeAppEventRoute
 
 export const firstResponderRoute: AppEventRoute = Object.freeze({ _tag: "firstResponder" })
 export const broadcastRoute: AppEventRoute = Object.freeze({ _tag: "broadcast" })
+const WindowIdString = /^[^\x00-\x1f\x7f]+$/
+const validateWindowId = (windowId: string): string => {
+  if (windowId.length === 0 || !WindowIdString.test(windowId)) {
+    throw new RangeError("AppEventRouter requires a printable non-empty window id")
+  }
+
+  return windowId
+}
+
 export const targetedRoute = (windowId: string): AppEventRoute =>
-  Object.freeze({ _tag: "targeted", windowId })
+  Object.freeze({ _tag: "targeted", windowId: validateWindowId(windowId) })
 
 export const windowScope = (windowId: string): string => `window:${windowId}`
 
@@ -135,6 +144,8 @@ export function makeAppEventRouter(
 
     const windowOpened = (window: WindowHandle): Effect.Effect<void, never, never> =>
       Effect.gen(function* () {
+        validateWindowId(window.id)
+
         const replay = yield* Ref.modify(state, (current) => {
           const existing = current.windows.find((entry) => entry.windowId === window.id)
           const entry = {
@@ -290,6 +301,9 @@ export function makeAppEventRouter(
       ) => Effect.Effect<AppEventDeliveryDecision, Error, never>
     ) =>
       Effect.gen(function* () {
+        if (input.route._tag === "targeted") {
+          validateWindowId(input.route.windowId)
+        }
         const current = yield* Ref.get(state)
         const envelope = {
           event: input.event,
@@ -438,8 +452,4 @@ const removeSubscription = (
 }
 
 const resolveQueueCapacity = (value: number | undefined, fallback: number): number =>
-  value === undefined
-    ? fallback
-    : Number.isSafeInteger(value) && value > 0
-      ? value
-      : fallback
+  value === undefined ? fallback : Number.isSafeInteger(value) && value > 0 ? value : fallback

@@ -326,7 +326,7 @@ pub(crate) fn await_ready(supervisor: &mut Supervisor, timeout: Duration) -> Res
 }
 
 fn await_ready_events(events: &Receiver<RuntimeEvent>, timeout: Duration) -> Result<RuntimeReady> {
-    let deadline = Instant::now() + timeout;
+    let deadline = checked_ready_deadline(timeout)?;
     let mut last_stdout_line = None;
 
     loop {
@@ -397,6 +397,12 @@ fn timeout_error(timeout: Duration, last_stdout_line: Option<&str>) -> Result<Ru
         ),
         None => bail!("timed out waiting for {RUNTIME_READY_EVENT} after {timeout:?}"),
     }
+}
+
+fn checked_ready_deadline(timeout: Duration) -> Result<Instant> {
+    Instant::now().checked_add(timeout).ok_or_else(|| {
+        anyhow::anyhow!("failed to schedule runtime ready timeout after {timeout:?}: duration overflows system time")
+    })
 }
 
 fn spawn_runtime_child(
@@ -598,7 +604,10 @@ fn await_ready_events_or_shutdown(
     timeout: Duration,
     shutdown: &Receiver<MonitorCommand>,
 ) -> ReadyWait {
-    let deadline = Instant::now() + timeout;
+    let deadline = match checked_ready_deadline(timeout) {
+        Ok(deadline) => deadline,
+        Err(error) => return ReadyWait::Ready(Err(error)),
+    };
     let mut last_stdout_line = None;
 
     loop {
@@ -710,7 +719,9 @@ where
         if let Err(error) = serve_framed_host_requests(reader, stdin, &method_router) {
             let _ = events.send(RuntimeEvent::StdioError {
                 stream: RuntimeStream::Stdout,
-                error: error.to_string(),
+                error: format!(
+                    "runtime failed while reading runtime protocol after {RUNTIME_READY_EVENT}: {error}"
+                ),
             });
         }
     })
@@ -728,14 +739,20 @@ where
     let mut reader = FrameReader::new(reader);
     let mut writer = FrameWriter::new(writer);
 
-    while let Some(frame) = reader.recv()? {
-        let envelope: HostProtocolEnvelope =
-            serde_json::from_slice(&frame).context("failed to decode host protocol frame")?;
+    while let Some(frame) = reader.recv().context(format!(
+        "failed to read runtime protocol frame after {RUNTIME_READY_EVENT}"
+    ))? {
+        let envelope: HostProtocolEnvelope = serde_json::from_slice(&frame).context(format!(
+            "failed to decode host protocol frame after {RUNTIME_READY_EVENT}"
+        ))?;
 
         if let Some(response) = method_router.dispatch(envelope) {
-            let response =
-                serde_json::to_vec(&response).context("failed to encode host protocol response")?;
-            writer.send(&response)?;
+            let response = serde_json::to_vec(&response).context(format!(
+                "failed to encode host protocol response after {RUNTIME_READY_EVENT}"
+            ))?;
+            writer.send(&response).context(format!(
+                "failed to write host protocol response after {RUNTIME_READY_EVENT}"
+            ))?;
         }
     }
 
@@ -956,6 +973,9 @@ if (
 ) {
   throw new Error(`unexpected host.ping response: ${JSON.stringify(ping)}`);
 }
+"#;
+    const RUNTIME_POST_READY_STDOUT_SCRIPT: &str = r#"console.log(JSON.stringify({ event: "runtime.ready", version: "test" }));
+console.log("this is not framed");
 "#;
 
     #[test]
@@ -1178,6 +1198,48 @@ if (
     }
 
     #[test]
+    fn child_runtime_fails_if_plain_stdout_follows_ready() {
+        let supervisor = Supervisor::spawn(
+            RuntimeConfig::new("bun").args([
+                "-e".to_string(),
+                RUNTIME_POST_READY_STDOUT_SCRIPT.to_string(),
+            ]),
+            test_policy(RuntimeProfile::Prod, 0, EVENT_TIMEOUT),
+            test_router(),
+        )
+        .expect("runtime child should spawn");
+
+        let events = collect_until_exit(supervisor.events());
+
+        assert!(
+            events.iter().any(
+                |event| matches!(event, RuntimeEvent::Stdout { line } if line == r#"{"event":"runtime.ready","version":"test"}"#)
+            ),
+            "events did not include ready stdout line: {events:?}"
+        );
+        let runtime_stdio_error = events.iter().find_map(|event| {
+            if let RuntimeEvent::StdioError {
+                stream: RuntimeStream::Stdout,
+                error,
+            } = event
+            {
+                Some(error.as_str())
+            } else {
+                None
+            }
+        });
+
+        assert!(
+            matches!(
+                runtime_stdio_error,
+                Some(error) if error.contains("after runtime.ready")
+            ),
+            "events did not include framed-protocol violation: {events:?}"
+        );
+        assert_terminal_event_closes_channel(&supervisor);
+    }
+
+    #[test]
     fn monitor_terminates_child_on_stdio_error() {
         let (events_tx, events_rx) = mpsc::channel();
         let (child, terminated_rx) = child_that_reports_termination(events_rx);
@@ -1333,6 +1395,21 @@ if (
         assert_eq!(
             error.to_string(),
             "timed out waiting for runtime.ready after 1ms"
+        );
+    }
+
+    #[test]
+    fn await_ready_events_rejects_overflowing_timeout() {
+        let (_events_tx, events_rx) = mpsc::channel();
+
+        let error = await_ready_events(&events_rx, Duration::MAX)
+            .expect_err("an overflowing timeout should reject instead of panicking");
+
+        assert!(
+            error
+                .to_string()
+                .contains("failed to schedule runtime ready timeout after"),
+            "unexpected error for overflowing timeout: {error}"
         );
     }
 

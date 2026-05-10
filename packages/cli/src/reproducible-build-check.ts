@@ -358,7 +358,10 @@ const diffSnapshots = (
             firstMode: firstEntry.mode,
             secondMode: secondEntry.mode
           })
-        } else if ((firstEntry.mode & 0o111) !== (secondEntry.mode & 0o111)) {
+        } else if (
+          process.platform !== "win32" &&
+          (firstEntry.mode & 0o777) !== (secondEntry.mode & 0o777)
+        ) {
           differences.push({
             relativePath,
             kind: "mode",

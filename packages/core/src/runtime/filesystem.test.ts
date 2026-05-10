@@ -104,6 +104,33 @@ test("Filesystem writeAtomic preserves destination and removes temp on rename fa
   expect((await readdir(directory)).filter((entry) => entry.includes(".tmp."))).toEqual([])
 })
 
+test("Filesystem writeAtomic preserves destination when temp cleanup fails", async () => {
+  const directory = await tempDirectory()
+  const path = join(directory, "config.json")
+  await Bun.write(path, "old")
+  const service = await makeTestFilesystem({
+    adapter: {
+      ...NodeTestFilesystemAdapter,
+      rename: () => Promise.reject(Object.assign(new Error("denied"), { code: "EACCES" })),
+      remove: async (pathToRemove) => {
+        if (pathToRemove.includes(".tmp.")) {
+          throw Object.assign(new Error("busy"), { code: "EPERM" })
+        }
+        return undefined
+      }
+    },
+    permissions: allowFilesystemRoot(directory)
+  })
+
+  const exit = await Effect.runPromiseExit(
+    service.writeAtomic(path, new TextEncoder().encode("new"))
+  )
+
+  expectFailureTag(exit, "PermissionDenied")
+  expect(await readFile(path, "utf8")).toBe("old")
+  expect((await readdir(directory)).filter((entry) => entry.includes(".tmp.")).length).toBe(1)
+})
+
 test("Filesystem writeAtomic consumes the write capability", async () => {
   const allowed = await tempDirectory()
   const denied = await tempDirectory()
@@ -221,6 +248,44 @@ test("Filesystem maps adapter permission failures to PermissionDenied", async ()
   const exit = await Effect.runPromiseExit(service.write("/denied.txt", new Uint8Array([1])))
 
   expectFailureTag(exit, "PermissionDenied")
+})
+
+test("Filesystem maps remove EACCES to filesystem.delete", async () => {
+  const service = await makeTestFilesystem({
+    permissions: { deleteRoots: ["/"], allowRecursiveRemove: false },
+    adapter: {
+      ...NodeTestFilesystemAdapter,
+      remove: () => {
+        const error = Object.assign(new Error("permission denied"), { code: "EACCES" })
+        return Promise.reject(error)
+      }
+    }
+  })
+
+  const exit = await Effect.runPromiseExit(service.remove("/tmp/remove-target.txt"))
+  const error = expectFailurePermissionDenied(exit)
+
+  expect(error.capability).toBe("filesystem.delete")
+})
+
+test("Filesystem maps recursive remove EACCES to filesystem.delete.recursive", async () => {
+  const service = await makeTestFilesystem({
+    permissions: { deleteRoots: ["/"], allowRecursiveRemove: true },
+    adapter: {
+      ...NodeTestFilesystemAdapter,
+      remove: () => {
+        const error = Object.assign(new Error("permission denied"), { code: "EACCES" })
+        return Promise.reject(error)
+      }
+    }
+  })
+
+  const exit = await Effect.runPromiseExit(
+    service.remove("/tmp/remove-target.txt", { recursive: true })
+  )
+  const error = expectFailurePermissionDenied(exit)
+
+  expect(error.capability).toBe("filesystem.delete.recursive")
 })
 
 test("Filesystem maps adapter disk-full failures to DiskFull", async () => {
@@ -415,6 +480,19 @@ test("Filesystem watch classifies rename events as created or deleted", async ()
 
   expect(created.kind).toBe("created")
   expect(deleted.kind).toBe("deleted")
+})
+
+test("Filesystem watch rejects control-byte filenames in adapter events", async () => {
+  const fixture = await makeWatchFixture()
+  const fiber = Effect.runFork(
+    fixture.service.watch("/tmp/project", { ownerScope: "scope-main" }).pipe(Stream.runCollect)
+  )
+
+  await waitUntil(() => fixture.listener !== undefined)
+  fixture.listener?.({ type: "change", filename: "audit\nlog.txt" })
+  const exit = await Effect.runPromiseExit(Fiber.join(fiber))
+
+  expectFailureTag(exit, "InvalidArgument")
 })
 
 test("Filesystem watch reports missing options as typed invalid input", async () => {
@@ -632,6 +710,21 @@ function expectFailureTag(exit: Exit.Exit<unknown, unknown>, tag: string): void 
     const fail = exit.cause.reasons.find((reason) => reason._tag === "Fail")
     expect((fail?.error as { readonly _tag?: string } | undefined)?._tag).toBe(tag)
   }
+}
+
+const expectFailurePermissionDenied = (
+  exit: Exit.Exit<unknown, FilesystemError>
+): HostProtocolPermissionDeniedError => {
+  expectFailureTag(exit, "PermissionDenied")
+  if (Exit.isFailure(exit)) {
+    const fail = exit.cause.reasons.find((reason) => reason._tag === "Fail")
+    const error = fail?.error
+    expect(error instanceof HostProtocolPermissionDeniedError).toBe(true)
+    if (error instanceof HostProtocolPermissionDeniedError) {
+      return error
+    }
+  }
+  throw new Error("expected permission denied error")
 }
 
 function expectSymlinkEscapesRoot(

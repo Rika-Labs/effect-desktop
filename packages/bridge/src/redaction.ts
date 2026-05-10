@@ -37,6 +37,9 @@ const redactValue = (
   if (Array.isArray(value)) {
     return redactArray(value, path, options, seen)
   }
+  if (value instanceof Map) {
+    return redactMap(value, path, options, seen)
+  }
   if (value instanceof Uint8Array) {
     return value
   }
@@ -56,6 +59,34 @@ const redactArray = (
     const redacted = redactValue(item, [...path, String(index)], options, seen)
     next.push(redacted)
     changed ||= redacted !== item
+  }
+
+  if (!changed) {
+    seen.set(value, value)
+    return value
+  }
+  return next
+}
+
+const redactMap = (
+  value: ReadonlyMap<unknown, unknown>,
+  path: readonly string[],
+  options: ResolvedRedactionFilterOptions,
+  seen: WeakMap<object, unknown>
+): unknown => {
+  let changed = false
+  const next = new Map<unknown, unknown>()
+  seen.set(value, next)
+
+  for (const [key, child] of value.entries()) {
+    const mapKey = String(key)
+    const childPath = [...path, mapKey]
+    const redacted = shouldRedact(mapKey, childPath, options)
+      ? Redacted
+      : redactValue(child, childPath, options, seen)
+
+    next.set(key, redacted)
+    changed ||= redacted !== child
   }
 
   if (!changed) {
