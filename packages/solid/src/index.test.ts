@@ -6,11 +6,7 @@ import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { createRoot } from "solid-js"
 import { createComponent, renderToString } from "solid-js/web"
 
-import {
-  MissingDesktopContextError,
-  SolidDesktop,
-  type SolidDesktopRpcClient
-} from "./index.js"
+import { MissingDesktopContextError, SolidDesktop, type SolidDesktopRpcClient } from "./index.js"
 
 test("SolidDesktop.from exposes app-scoped primitives from provided groups", () => {
   const ListNotes = Rpc.make("Notes.List", { success: Schema.Array(Schema.String) }).pipe(

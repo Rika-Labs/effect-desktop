@@ -2,16 +2,12 @@ import { Data } from "effect"
 
 export type DesktopFramework = "react" | "vue" | "solid" | "next" | "astro" | "unknown"
 
-export class MissingDesktopContextError extends Data.TaggedError(
-  "MissingDesktopContextError"
-)<{
+export class MissingDesktopContextError extends Data.TaggedError("MissingDesktopContextError")<{
   readonly framework: DesktopFramework
   readonly message: string
 }> {}
 
-export class MissingDesktopRpcClientError extends Data.TaggedError(
-  "MissingDesktopRpcClientError"
-)<{
+export class MissingDesktopRpcClientError extends Data.TaggedError("MissingDesktopRpcClientError")<{
   readonly framework: DesktopFramework
   readonly message: string
   readonly tag: string

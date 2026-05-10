@@ -18,10 +18,7 @@ test("WindowApi exposes host implementation support metadata through RpcGroup lo
   })
 })
 
-const request = (
-  group: ReturnType<typeof WindowApi.toRpcGroup>,
-  tag: string
-): Rpc.Any => {
+const request = (group: ReturnType<typeof WindowApi.toRpcGroup>, tag: string): Rpc.Any => {
   const rpc = group.requests.get(tag)
 
   expect(rpc, tag).toBeDefined()

@@ -66,4 +66,5 @@ const endpointKind = (rpc: Rpc.Any): RpcEndpointDescriptorKind =>
 
 const successSchema = (rpc: Rpc.Any): Schema.Top => (rpc as RpcWithSuccessSchema).successSchema
 
-const groupTags = (group: RpcGroupWithRequests): readonly string[] => Array.from(group.requests.keys())
+const groupTags = (group: RpcGroupWithRequests): readonly string[] =>
+  Array.from(group.requests.keys())

@@ -5,11 +5,7 @@ import { Effect, Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { createApp, effectScope } from "vue"
 
-import {
-  MissingDesktopContextError,
-  VueDesktop,
-  type VueDesktopRpcClient
-} from "./index.js"
+import { MissingDesktopContextError, VueDesktop, type VueDesktopRpcClient } from "./index.js"
 
 const Root = {
   setup() {

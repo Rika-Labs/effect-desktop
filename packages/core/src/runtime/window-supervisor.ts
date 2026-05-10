@@ -103,10 +103,7 @@ const validateStartupWindows = (
   return Effect.succeed(Object.freeze(windows))
 }
 
-const validateWindowSpec = (
-  name: string,
-  value: unknown
-): WindowSpecValidation => {
+const validateWindowSpec = (name: string, value: unknown): WindowSpecValidation => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return validationFailure(makeInvalidWindow(name, "expected an object"))
   }

@@ -9,10 +9,7 @@ export interface AstroIslandOptions {
   readonly renderer?: AstroClientOnlyRenderer
 }
 
-export interface AstroDesktopIsland<
-  App extends DesktopAppDefinition<unknown, unknown>,
-  Adapter
-> {
+export interface AstroDesktopIsland<App extends DesktopAppDefinition<unknown, unknown>, Adapter> {
   readonly app: App
   readonly adapter: Adapter
   readonly directive: AstroHydrationDirective
@@ -34,9 +31,7 @@ export class MissingAstroClientOnlyRendererError extends Data.TaggedError(
 }> {}
 
 export const AstroDesktop = Object.freeze({
-  from: <App extends DesktopAppDefinition<unknown, unknown>>(
-    app: App
-  ): AstroDesktopAdapter<App> =>
+  from: <App extends DesktopAppDefinition<unknown, unknown>>(app: App): AstroDesktopAdapter<App> =>
     Object.freeze({
       app,
       island: <Adapter>(adapter: Adapter, options?: AstroIslandOptions) =>
@@ -57,7 +52,8 @@ const makeIsland = <App extends DesktopAppDefinition<unknown, unknown>, Adapter>
   const directive = options?.directive ?? "load"
   if (directive === "only" && options?.renderer === undefined) {
     throw new MissingAstroClientOnlyRendererError({
-      message: 'Astro client:only islands must declare a renderer such as "react", "vue", or "solid-js"'
+      message:
+        'Astro client:only islands must declare a renderer such as "react", "vue", or "solid-js"'
     })
   }
 

@@ -33,7 +33,9 @@ type VueRpcEndpoint<R extends Rpc.Any> =
       : VueMutationEndpoint<Rpc.PayloadConstructor<R>, Rpc.Success<R>, Rpc.Error<R>>
 
 export type VueDesktopRpcs<Group extends RpcGroup.Any> = {
-  readonly [Current in RpcGroup.Rpcs<Group> as EndpointName<Current["_tag"]>]: VueRpcEndpoint<Current>
+  readonly [Current in RpcGroup.Rpcs<Group> as EndpointName<
+    Current["_tag"]
+  >]: VueRpcEndpoint<Current>
 }
 
 export type VueAsyncState<A, E> =
@@ -91,7 +93,10 @@ export interface VueDesktopAdapter<App extends DesktopAppDefinition<unknown, unk
   readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => VueDesktopRpcs<Group>
 }
 
-export { MissingDesktopContextError, MissingDesktopRpcClientError } from "@rikalabs/effect-desktop/core"
+export {
+  MissingDesktopContextError,
+  MissingDesktopRpcClientError
+} from "@rikalabs/effect-desktop/core"
 
 interface VueDesktopContext {
   readonly clients: VueDesktopClientMap
@@ -106,7 +111,9 @@ export const VueDesktop = Object.freeze({
       provide(VueDesktopKey, { clients: normalizeClients(options?.clients) })
     }
 
-    const useDesktop = <Group extends RpcGroupWithRequests>(group: Group): VueDesktopRpcs<Group> => {
+    const useDesktop = <Group extends RpcGroupWithRequests>(
+      group: Group
+    ): VueDesktopRpcs<Group> => {
       const context = inject<VueDesktopContext | typeof MissingVueDesktopContext>(
         VueDesktopKey as InjectionKey<VueDesktopContext | typeof MissingVueDesktopContext>,
         MissingVueDesktopContext
@@ -114,7 +121,8 @@ export const VueDesktop = Object.freeze({
       if (context === MissingVueDesktopContext) {
         throw new MissingDesktopContextError({
           framework: "vue",
-          message: "VueDesktop.provideDesktop() or VueDesktop.createApp() is required before useDesktop(group)"
+          message:
+            "VueDesktop.provideDesktop() or VueDesktop.createApp() is required before useDesktop(group)"
         })
       }
 
@@ -142,8 +150,9 @@ export const VueDesktop = Object.freeze({
   }
 })
 
-const normalizeClients = (clients: VueDesktopOptions["clients"] | undefined): VueDesktopClientMap =>
-  clients === undefined ? new Map() : new Map(clients)
+const normalizeClients = (
+  clients: VueDesktopOptions["clients"] | undefined
+): VueDesktopClientMap => (clients === undefined ? new Map() : new Map(clients))
 
 const makeEndpoints = (
   descriptors: ReturnType<typeof describeRpcs>,
@@ -179,7 +188,8 @@ const makeEndpoints = (
     endpoints[descriptor.name] =
       descriptor.kind === "stream"
         ? {
-            useStream: ((input?: unknown) => runStream(asStream(invoke(input), descriptor.tag))) as VueComposable<
+            useStream: ((input?: unknown) =>
+              runStream(asStream(invoke(input), descriptor.tag))) as VueComposable<
               unknown,
               Readonly<Ref<VueStreamState<unknown, unknown>>>
             >
@@ -193,8 +203,8 @@ const makeEndpoints = (
               >
             }
           : {
-            useMutation: () => useMutation((input) => asEffect(invoke(input), descriptor.tag))
-          }
+              useMutation: () => useMutation((input) => asEffect(invoke(input), descriptor.tag))
+            }
   }
 
   return Object.freeze(endpoints)
@@ -241,9 +251,7 @@ const useMutation = <I, A, E>(
   }
 }
 
-const runQuery = <A, E>(
-  effect: Effect.Effect<A, E, never>
-): Readonly<Ref<VueAsyncState<A, E>>> => {
+const runQuery = <A, E>(effect: Effect.Effect<A, E, never>): Readonly<Ref<VueAsyncState<A, E>>> => {
   const state = shallowRef<VueAsyncState<A, E>>({ status: "running" })
   let active = true
 

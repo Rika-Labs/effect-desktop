@@ -99,14 +99,12 @@ test("describeRpcs derives endpoint descriptors from provided RpcGroups", async 
     )
   )
 
-  expect(core.Desktop.describeRpcs(definition, NotesRpcs).map((descriptor) => descriptor.name)).toEqual([
-    "list",
-    "tail"
-  ])
-  expect(core.Desktop.describeRpcs(definition, NotesRpcs).map((descriptor) => descriptor.kind)).toEqual([
-    "query",
-    "stream"
-  ])
+  expect(
+    core.Desktop.describeRpcs(definition, NotesRpcs).map((descriptor) => descriptor.name)
+  ).toEqual(["list", "tail"])
+  expect(
+    core.Desktop.describeRpcs(definition, NotesRpcs).map((descriptor) => descriptor.kind)
+  ).toEqual(["query", "stream"])
   expect(core.Desktop.describeRpcs(definition, NotesRpcs)[1]?.support).toEqual({
     status: "unsupported",
     reason: "host stream is unavailable"
@@ -124,7 +122,5 @@ test("describeRpcs fails loudly when a group is not provided to the app", async 
     }
   })
 
-  expect(() => core.Desktop.describeRpcs(definition, Missing)).toThrow(
-    core.MissingDesktopRpcsError
-  )
+  expect(() => core.Desktop.describeRpcs(definition, Missing)).toThrow(core.MissingDesktopRpcsError)
 })

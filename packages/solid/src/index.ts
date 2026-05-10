@@ -31,7 +31,9 @@ type SolidRpcEndpoint<R extends Rpc.Any> =
       : SolidMutationEndpoint<Rpc.PayloadConstructor<R>, Rpc.Success<R>, Rpc.Error<R>>
 
 export type SolidDesktopRpcs<Group extends RpcGroup.Any> = {
-  readonly [Current in RpcGroup.Rpcs<Group> as EndpointName<Current["_tag"]>]: SolidRpcEndpoint<Current>
+  readonly [Current in RpcGroup.Rpcs<Group> as EndpointName<
+    Current["_tag"]
+  >]: SolidRpcEndpoint<Current>
 }
 
 export type SolidAsyncState<A, E> =
@@ -79,7 +81,9 @@ export type SolidDesktopRpcClient = Readonly<Record<string, SolidDesktopRpcClien
 export type SolidDesktopClientMap = ReadonlyMap<RpcGroup.Any, SolidDesktopRpcClient>
 
 export interface SolidDesktopRootProps {
-  readonly clients?: SolidDesktopClientMap | readonly (readonly [RpcGroup.Any, SolidDesktopRpcClient])[]
+  readonly clients?:
+    | SolidDesktopClientMap
+    | readonly (readonly [RpcGroup.Any, SolidDesktopRpcClient])[]
   readonly children?: JSX.Element
 }
 
@@ -98,7 +102,10 @@ export interface SolidDesktopAdapter<App extends DesktopAppDefinition<unknown, u
   readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => SolidDesktopRpcs<Group>
 }
 
-export { MissingDesktopContextError, MissingDesktopRpcClientError } from "@rikalabs/effect-desktop/core"
+export {
+  MissingDesktopContextError,
+  MissingDesktopRpcClientError
+} from "@rikalabs/effect-desktop/core"
 
 interface SolidDesktopContextValue {
   readonly clients: SolidDesktopClientMap
@@ -125,7 +132,8 @@ export const SolidDesktop = Object.freeze({
       if (context === undefined) {
         throw new MissingDesktopContextError({
           framework: "solid",
-          message: "SolidDesktop.DesktopRoot or SolidDesktop.render() is required before useDesktop(group)"
+          message:
+            "SolidDesktop.DesktopRoot or SolidDesktop.render() is required before useDesktop(group)"
         })
       }
 
@@ -221,8 +229,9 @@ const makeEndpoints = (
               >
             }
           : {
-            createMutation: () => createMutationState((input) => asEffect(invoke(input), descriptor.tag))
-          }
+              createMutation: () =>
+                createMutationState((input) => asEffect(invoke(input), descriptor.tag))
+            }
   }
 
   return Object.freeze(endpoints)

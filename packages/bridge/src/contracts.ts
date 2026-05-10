@@ -512,8 +512,7 @@ const apiMethodSuccessSchema = (
 }
 
 const annotateApiMethodRpc = (rpc: Rpc.Any, spec: ApiMethodSpec): Rpc.Any => {
-  const endpointRpc =
-    spec.idempotent === true ? RpcEndpoint.query(rpc) : RpcEndpoint.mutation(rpc)
+  const endpointRpc = spec.idempotent === true ? RpcEndpoint.query(rpc) : RpcEndpoint.mutation(rpc)
   const capabilityRpc =
     spec.permission === undefined
       ? endpointRpc

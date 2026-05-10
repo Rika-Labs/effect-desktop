@@ -33,7 +33,9 @@ type ReactRpcEndpoint<R extends Rpc.Any> =
       : MutationEndpoint<Rpc.PayloadConstructor<R>, Rpc.Success<R>, Rpc.Error<R>>
 
 export type ReactDesktopRpcs<Group extends RpcGroup.Any> = {
-  readonly [Current in RpcGroup.Rpcs<Group> as EndpointName<Current["_tag"]>]: ReactRpcEndpoint<Current>
+  readonly [Current in RpcGroup.Rpcs<Group> as EndpointName<
+    Current["_tag"]
+  >]: ReactRpcEndpoint<Current>
 }
 
 export type ReactDesktopRpcClientMethod = (
@@ -44,7 +46,9 @@ export type ReactDesktopRpcClient = Readonly<Record<string, ReactDesktopRpcClien
 export type ReactDesktopClientMap = ReadonlyMap<RpcGroup.Any, ReactDesktopRpcClient>
 
 export interface ReactDesktopRootProps {
-  readonly clients?: ReactDesktopClientMap | readonly (readonly [RpcGroup.Any, ReactDesktopRpcClient])[]
+  readonly clients?:
+    | ReactDesktopClientMap
+    | readonly (readonly [RpcGroup.Any, ReactDesktopRpcClient])[]
   readonly children?: ReactNode | undefined
 }
 
@@ -55,12 +59,13 @@ export interface ReactDesktopAdapter<App extends DesktopAppDefinition<unknown, u
     children: ReactNode,
     props?: Omit<ReactDesktopRootProps, "children">
   ) => ReactNode
-  readonly useDesktop: <Group extends RpcGroupWithRequests>(
-    group: Group
-  ) => ReactDesktopRpcs<Group>
+  readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => ReactDesktopRpcs<Group>
 }
 
-export { MissingDesktopContextError, MissingDesktopRpcClientError } from "@rikalabs/effect-desktop/core"
+export {
+  MissingDesktopContextError,
+  MissingDesktopRpcClientError
+} from "@rikalabs/effect-desktop/core"
 
 interface ReactDesktopContextValue {
   readonly clients: ReactDesktopClientMap

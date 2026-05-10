@@ -113,8 +113,5 @@ export const rpcEndpointName = (tag: string): string => {
   return first === undefined ? segment : `${first.toLowerCase()}${segment.slice(1)}`
 }
 
-const annotateRpc = <R extends Rpc.Any, I, S>(
-  rpc: R,
-  tag: Context.Key<I, S>,
-  value: S
-): R => (rpc as R & AnnotatableRpc).annotate(tag, value) as R
+const annotateRpc = <R extends Rpc.Any, I, S>(rpc: R, tag: Context.Key<I, S>, value: S): R =>
+  (rpc as R & AnnotatableRpc).annotate(tag, value) as R

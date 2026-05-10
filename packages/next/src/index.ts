@@ -8,8 +8,9 @@ import {
 } from "@rikalabs/effect-desktop/react/desktop"
 import type { ReactNode } from "react"
 
-export interface NextDesktopAdapter<App extends DesktopAppDefinition<unknown, unknown>>
-  extends ReactDesktopAdapter<App> {
+export interface NextDesktopAdapter<
+  App extends DesktopAppDefinition<unknown, unknown>
+> extends ReactDesktopAdapter<App> {
   readonly app: App
   readonly DesktopRoot: (props: ReactDesktopRootProps) => ReactNode
   readonly createRoot: (
@@ -20,9 +21,7 @@ export interface NextDesktopAdapter<App extends DesktopAppDefinition<unknown, un
 }
 
 export const NextDesktop = Object.freeze({
-  from: <App extends DesktopAppDefinition<unknown, unknown>>(
-    app: App
-  ): NextDesktopAdapter<App> => {
+  from: <App extends DesktopAppDefinition<unknown, unknown>>(app: App): NextDesktopAdapter<App> => {
     const react = ReactDesktop.from(app)
     return Object.freeze({
       app,

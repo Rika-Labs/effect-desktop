@@ -110,10 +110,7 @@ export const WindowApiSpec = Object.freeze({
     permission: "native.invoke:Window.setFullscreen",
     support: UnsupportedWindowMethodSupport
   },
-  enterFullScreen: unsupportedMethodSpec(
-    WindowHandleInput,
-    "native.invoke:Window.enterFullScreen"
-  ),
+  enterFullScreen: unsupportedMethodSpec(WindowHandleInput, "native.invoke:Window.enterFullScreen"),
   exitFullScreen: unsupportedMethodSpec(WindowHandleInput, "native.invoke:Window.exitFullScreen"),
   onFullScreenChanged: {
     input: WindowHandleInput,

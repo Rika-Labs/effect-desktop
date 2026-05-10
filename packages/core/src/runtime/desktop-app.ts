@@ -53,11 +53,7 @@ export interface DesktopAppDefinition<E = never, R = never> {
   pipe(): DesktopAppDefinition<E, R>
   pipe<A>(ab: (self: DesktopAppDefinition<E, R>) => A): A
   pipe<A, B>(ab: (self: DesktopAppDefinition<E, R>) => A, bc: (a: A) => B): B
-  pipe<A, B, C>(
-    ab: (self: DesktopAppDefinition<E, R>) => A,
-    bc: (a: A) => B,
-    cd: (b: B) => C
-  ): C
+  pipe<A, B, C>(ab: (self: DesktopAppDefinition<E, R>) => A, bc: (a: A) => B, cd: (b: B) => C): C
 }
 
 export interface DesktopRpcLayer<Rpcs extends Rpc.Any = Rpc.Any, E = never, R = never> {
@@ -126,9 +122,9 @@ export function provide<Rpcs extends Rpc.Any, E, R>(
 ): <AppE, AppR>(
   definition: DesktopAppDefinition<AppE, AppR>
 ) => DesktopAppDefinition<E | AppE, R | AppR>
-export function provide(provided: unknown): (
-  definition: DesktopAppDefinition<unknown, unknown>
-) => DesktopAppDefinition<unknown, unknown> {
+export function provide(
+  provided: unknown
+): (definition: DesktopAppDefinition<unknown, unknown>) => DesktopAppDefinition<unknown, unknown> {
   return (definition) =>
     isDesktopRpcLayer(provided)
       ? appendRpcLayer(definition, provided)
@@ -151,17 +147,17 @@ const appendLayer = <E, R, AppE, AppR>(
   definition: DesktopAppDefinition<AppE, AppR>,
   layer: Layer.Layer<unknown, E, R>
 ): DesktopAppDefinition<E | AppE, R | AppR> =>
-    makeDefinition({
-      id: definition.id,
-      windows: definition.windows,
-      layers: Object.freeze([
-        ...definition.layers,
-        layer as Layer.Layer<unknown, E | AppE, R | AppR>
-      ]),
-      rpcLayers: definition.rpcLayers,
-      permissions: definition.permissions,
-      workflows: definition.workflows
-    })
+  makeDefinition({
+    id: definition.id,
+    windows: definition.windows,
+    layers: Object.freeze([
+      ...definition.layers,
+      layer as Layer.Layer<unknown, E | AppE, R | AppR>
+    ]),
+    rpcLayers: definition.rpcLayers,
+    permissions: definition.permissions,
+    workflows: definition.workflows
+  })
 
 const appendRpcLayer = <E, R, AppE, AppR>(
   definition: DesktopAppDefinition<AppE, AppR>,
@@ -174,10 +170,7 @@ const appendRpcLayer = <E, R, AppE, AppR>(
       ...definition.layers,
       rpcLayer.layer as Layer.Layer<unknown, E | AppE, R | AppR>
     ]),
-    rpcLayers: Object.freeze([
-      ...definition.rpcLayers,
-      rpcLayer as unknown as AnyDesktopRpcLayer
-    ]),
+    rpcLayers: Object.freeze([...definition.rpcLayers, rpcLayer as unknown as AnyDesktopRpcLayer]),
     permissions: definition.permissions,
     workflows: definition.workflows
   })

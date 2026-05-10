@@ -1,8 +1,5 @@
 import { expect, test } from "bun:test"
-import {
-  makeHostProtocolInvalidStateError,
-  RpcEndpoint
-} from "@rikalabs/effect-desktop/bridge"
+import { makeHostProtocolInvalidStateError, RpcEndpoint } from "@rikalabs/effect-desktop/bridge"
 import { Desktop, MissingDesktopRpcsError } from "@rikalabs/effect-desktop/core"
 import { AsyncResult } from "effect/unstable/reactivity"
 import { Cause, Effect, Option, Schema } from "effect"
