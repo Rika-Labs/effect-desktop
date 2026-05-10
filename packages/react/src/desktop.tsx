@@ -1,15 +1,20 @@
 import {
   describeRpcs,
+  makeDesktopRendererRpcRuntime,
   makeMissingDesktopContextError,
   makeMissingDesktopRpcClientError,
   makeMissingDesktopRpcsError,
-  type DesktopAppManifest
+  type DesktopAppManifest,
+  type DesktopRendererRpcClient,
+  type DesktopRendererRpcClientMap,
+  type DesktopRendererRpcClientMethod,
+  type DesktopRendererRpcTransport
 } from "@effect-desktop/core"
 import type { RpcGroupWithRequests } from "@effect-desktop/core"
-import type { WithRpcEndpointKind } from "@effect-desktop/bridge"
+import type { RpcSupportMetadata, WithRpcEndpointKind } from "@effect-desktop/bridge"
 import { Effect, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
-import { createContext, createElement, useContext, useMemo, type ReactNode } from "react"
+import { createContext, createElement, useContext, useEffect, useMemo, type ReactNode } from "react"
 
 import {
   mutation,
@@ -25,12 +30,13 @@ type EndpointName<Tag extends string> = Tag extends `${string}.${infer Rest}`
   ? EndpointName<Rest>
   : Uncapitalize<Tag>
 
-type ReactRpcEndpoint<R extends Rpc.Any> =
+type ReactRpcEndpoint<R extends Rpc.Any> = WithSupport<
   Rpc.Success<R> extends Stream.Stream<infer A, infer E, infer _R>
     ? StreamEndpoint<Rpc.PayloadConstructor<R>, A, E | Rpc.Error<R>>
     : R extends WithRpcEndpointKind<R, "query">
       ? QueryEndpoint<Rpc.PayloadConstructor<R>, Rpc.Success<R>, Rpc.Error<R>>
       : MutationEndpoint<Rpc.PayloadConstructor<R>, Rpc.Success<R>, Rpc.Error<R>>
+>
 
 export type ReactDesktopRpcs<Group extends RpcGroup.Any> = {
   readonly [Current in RpcGroup.Rpcs<Group> as EndpointName<
@@ -38,17 +44,19 @@ export type ReactDesktopRpcs<Group extends RpcGroup.Any> = {
   >]: ReactRpcEndpoint<Current>
 }
 
-export type ReactDesktopRpcClientMethod = (
-  input: unknown
-) => Effect.Effect<unknown, unknown, never> | Stream.Stream<unknown, unknown, never>
+export interface ReactDesktopSupport {
+  readonly support: RpcSupportMetadata
+  readonly isSupported: boolean
+}
 
-export type ReactDesktopRpcClient = Readonly<Record<string, ReactDesktopRpcClientMethod>>
-export type ReactDesktopClientMap = ReadonlyMap<RpcGroup.Any, ReactDesktopRpcClient>
+type WithSupport<Endpoint> = Endpoint & ReactDesktopSupport
+
+export type ReactDesktopRpcClientMethod = DesktopRendererRpcClientMethod
+export type ReactDesktopRpcClient = DesktopRendererRpcClient
+export type ReactDesktopClientMap = DesktopRendererRpcClientMap
 
 export interface ReactDesktopRootProps {
-  readonly clients?:
-    | ReactDesktopClientMap
-    | readonly (readonly [RpcGroup.Any, ReactDesktopRpcClient])[]
+  readonly transport?: DesktopRendererRpcTransport | undefined
   readonly children?: ReactNode | undefined
 }
 
@@ -72,10 +80,20 @@ const ReactDesktopContext = createContext<ReactDesktopContextValue | undefined>(
 
 export const ReactDesktop = Object.freeze({
   from: <App extends DesktopAppManifest>(app: App): ReactDesktopAdapter<App> => {
-    const DesktopRoot = ({ clients, children }: ReactDesktopRootProps): ReactNode => {
+    const DesktopRoot = ({ transport, children }: ReactDesktopRootProps): ReactNode => {
+      const runtime = useMemo(
+        () => makeDesktopRendererRpcRuntime(app, { framework: "react", transport }),
+        [app, transport]
+      )
+      useEffect(
+        () => () => {
+          void Effect.runPromiseExit(runtime.dispose())
+        },
+        [runtime]
+      )
       const value = useMemo<ReactDesktopContextValue>(
-        () => ({ clients: normalizeClients(clients) }),
-        [clients]
+        () => ({ clients: runtime.clients }),
+        [runtime]
       )
       return createElement(ReactDesktopContext.Provider, { value }, children)
     }
@@ -115,15 +133,6 @@ export const ReactDesktop = Object.freeze({
   }
 })
 
-const normalizeClients = (
-  clients: ReactDesktopRootProps["clients"] | undefined
-): ReactDesktopClientMap => {
-  if (clients === undefined) {
-    return new Map()
-  }
-  return new Map(clients)
-}
-
 const makeEndpoints = (
   descriptors: ReturnType<typeof describeRpcs>,
   client: ReactDesktopRpcClient
@@ -143,16 +152,28 @@ const makeEndpoints = (
       return method(input)
     }
 
-    endpoints[descriptor.name] =
+    const endpoint =
       descriptor.kind === "stream"
         ? stream((input) => asStream(invoke(input), descriptor.tag))
         : descriptor.kind === "query"
           ? query((input) => asEffect(invoke(input), descriptor.tag))
           : mutation((input) => asEffect(invoke(input), descriptor.tag))
+
+    endpoints[descriptor.name] = withSupport(endpoint, descriptor.support)
   }
 
   return Object.freeze(endpoints)
 }
+
+const withSupport = <Endpoint extends ReactApiEndpoint>(
+  endpoint: Endpoint,
+  support: RpcSupportMetadata
+): Endpoint & ReactDesktopSupport =>
+  Object.freeze({
+    ...endpoint,
+    support,
+    isSupported: support.status === "supported"
+  }) as unknown as Endpoint & ReactDesktopSupport
 
 const asEffect = (
   value: ReturnType<ReactDesktopRpcClientMethod>,

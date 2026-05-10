@@ -59,7 +59,8 @@ export {
   type ReactDesktopRpcClient,
   type ReactDesktopRpcClientMethod,
   type ReactDesktopRootProps,
-  type ReactDesktopRpcs
+  type ReactDesktopRpcs,
+  type ReactDesktopSupport
 } from "./desktop.js"
 
 export {

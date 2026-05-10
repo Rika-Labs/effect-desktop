@@ -31,32 +31,37 @@
     {
       "name": "SolidDesktopClientMap",
       "kind": "type",
-      "signature": "export type SolidDesktopClientMap = ReadonlyMap<RpcGroup.Any, SolidDesktopRpcClient>"
+      "signature": "export type SolidDesktopClientMap = DesktopRendererRpcClientMap"
     },
     {
       "name": "SolidDesktopRenderOptions",
       "kind": "interface",
-      "signature": "export interface SolidDesktopRenderOptions { readonly clients?: SolidDesktopRootProps[\"clients\"] }"
+      "signature": "export interface SolidDesktopRenderOptions { readonly transport?: SolidDesktopRootProps[\"transport\"] }"
     },
     {
       "name": "SolidDesktopRootProps",
       "kind": "interface",
-      "signature": "export interface SolidDesktopRootProps { readonly clients?: | SolidDesktopClientMap | readonly (readonly [RpcGroup.Any, SolidDesktopRpcClient])[] readonly children?: JSX.Element }"
+      "signature": "export interface SolidDesktopRootProps { readonly transport?: DesktopRendererRpcTransport | undefined readonly children?: JSX.Element }"
     },
     {
       "name": "SolidDesktopRpcClient",
       "kind": "type",
-      "signature": "export type SolidDesktopRpcClient = Readonly<Record<string, SolidDesktopRpcClientMethod>>"
+      "signature": "export type SolidDesktopRpcClient = DesktopRendererRpcClient"
     },
     {
       "name": "SolidDesktopRpcClientMethod",
       "kind": "type",
-      "signature": "export type SolidDesktopRpcClientMethod = ( input: unknown ) => Effect.Effect<unknown, unknown, never> | Stream.Stream<unknown, unknown, never>"
+      "signature": "export type SolidDesktopRpcClientMethod = DesktopRendererRpcClientMethod"
     },
     {
       "name": "SolidDesktopRpcs",
       "kind": "type",
       "signature": "export type SolidDesktopRpcs<Group extends RpcGroup.Any> = { readonly [Current in RpcGroup.Rpcs<Group> as EndpointName< Current[\"_tag\"] >]: SolidRpcEndpoint<Current> }"
+    },
+    {
+      "name": "SolidDesktopSupport",
+      "kind": "interface",
+      "signature": "export interface SolidDesktopSupport { readonly support: RpcSupportMetadata readonly isSupported: boolean }"
     },
     {
       "name": "SolidMutation",

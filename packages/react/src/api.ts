@@ -44,7 +44,7 @@ export const query = <I, A, E>(
 ): QueryEndpoint<I, A, E> =>
   Object.freeze({
     useQuery: ((input?: I) => {
-      const effect = useMemo(() => makeEffect(input as I), [input])
+      const effect = useMemo(() => makeEffect(input as I), [input, makeEffect])
       return useEffectResult(effect)
     }) as QueryHook<I, A, E>
   })
@@ -61,7 +61,7 @@ export const stream = <I, A, E>(
 ): StreamEndpoint<I, A, E> =>
   Object.freeze({
     useStream: ((input?: I) => {
-      const effectStream = useMemo(() => makeStream(input as I), [input])
+      const effectStream = useMemo(() => makeStream(input as I), [input, makeStream])
       return useEffectStream(effectStream)
     }) as StreamHook<I, A, E>
   })

@@ -1,12 +1,22 @@
 import { expect, test } from "bun:test"
-import { makeHostProtocolInvalidStateError, RpcEndpoint } from "@effect-desktop/bridge"
+import {
+  HostProtocolResponseEnvelope,
+  HostProtocolStreamByRequestEnvelope,
+  makeHostProtocolInvalidOutputError,
+  makeHostProtocolInvalidStateError,
+  RpcEndpoint,
+  RpcSupport,
+  type HostProtocolEnvelope,
+  type HostProtocolError
+} from "@effect-desktop/bridge"
 import {
   Desktop,
   DuplicateDesktopRpcNameError,
-  MissingDesktopRpcsError
+  MissingDesktopRpcClientError,
+  type DesktopRendererRpcTransport
 } from "@effect-desktop/core"
 import { AsyncResult } from "effect/unstable/reactivity"
-import { Cause, Effect, Option, Schema } from "effect"
+import { Cause, Effect, Exit, Fiber, Option, Queue, Schema, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
@@ -25,7 +35,6 @@ import {
   currentWindow,
   type DesktopClient,
   type DesktopWindowClient,
-  type ReactDesktopRpcClient,
   windows,
   type PermissionState,
   useDesktop,
@@ -179,11 +188,13 @@ test("ReactDesktop.from exposes app-scoped RPC hooks from provided groups", () =
     )
   )
   const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
-  const client: ReactDesktopRpcClient = {
+  const transport = makeRpcTransport({
     "Notes.List": () => Effect.succeed(["inbox"]),
-    "Notes.Create": (input) =>
-      Effect.succeed(`note:${(input as { readonly title?: unknown }).title ?? "untitled"}`)
-  }
+    "Notes.Create": (input) => {
+      const title = (input as { readonly title?: unknown }).title
+      return Effect.succeed(`note:${typeof title === "string" ? title : "untitled"}`)
+    }
+  })
   const Probe = () => {
     const notes = NotesReact.useDesktop(NotesRpcs)
     const list = notes.list.useQuery()
@@ -197,13 +208,7 @@ test("ReactDesktop.from exposes app-scoped RPC hooks from provided groups", () =
   }
 
   expect(
-    renderToStaticMarkup(
-      createElement(
-        NotesReact.DesktopRoot,
-        { clients: [[NotesRpcs, client]] },
-        createElement(Probe)
-      )
-    )
+    renderToStaticMarkup(createElement(NotesReact.DesktopRoot, { transport }, createElement(Probe)))
   ).toBe("<span>initial:idle</span>")
 })
 
@@ -229,10 +234,10 @@ test("ReactDesktop.useDesktop rejects colliding endpoint names", () => {
     )
   )
   const CollidingReact = ReactDesktop.from(Desktop.manifest(CollidingApp))
-  const client: ReactDesktopRpcClient = {
+  const transport = makeRpcTransport({
     "Projects.List": () => Effect.succeed(["project"]),
     "Tasks.List": () => Effect.succeed(["task"])
-  }
+  })
   const Probe = () => {
     CollidingReact.useDesktop(CollidingRpcs)
     return createElement("span", null, "mounted")
@@ -240,16 +245,12 @@ test("ReactDesktop.useDesktop rejects colliding endpoint names", () => {
 
   expect(() =>
     renderToStaticMarkup(
-      createElement(
-        CollidingReact.DesktopRoot,
-        { clients: [[CollidingRpcs, client]] },
-        createElement(Probe)
-      )
+      createElement(CollidingReact.DesktopRoot, { transport }, createElement(Probe))
     )
   ).toThrow(DuplicateDesktopRpcNameError)
 })
 
-test("ReactDesktop.useDesktop fails loudly without a generated root or installed client", () => {
+test("ReactDesktop.useDesktop fails loudly without a generated root or transport", () => {
   const Ping = Rpc.make("Notes.Ping")
   const NotesRpcs = RpcGroup.make(Ping)
   const NotesApp = Desktop.make({
@@ -277,7 +278,47 @@ test("ReactDesktop.useDesktop fails loudly without a generated root or installed
   expect(() => renderToStaticMarkup(createElement(Probe))).toThrow(MissingDesktopContextError)
   expect(() =>
     renderToStaticMarkup(createElement(NotesReact.DesktopRoot, null, createElement(Probe)))
-  ).toThrow(MissingDesktopRpcsError)
+  ).toThrow(MissingDesktopRpcClientError)
+})
+
+test("ReactDesktop.useDesktop exposes RpcSupport metadata on generated endpoints", () => {
+  const Unsupported = Rpc.make("Notes.Unsupported", { success: Schema.String }).pipe(
+    RpcEndpoint.query,
+    RpcSupport.unsupported("host method is unavailable")
+  )
+  const NotesRpcs = RpcGroup.make(Unsupported)
+  const NotesApp = Desktop.make({
+    windows: {
+      main: {
+        title: "Notes"
+      }
+    }
+  }).pipe(
+    Desktop.provide(
+      Desktop.Rpcs.layer(
+        NotesRpcs,
+        NotesRpcs.toLayer({
+          "Notes.Unsupported": () => Effect.succeed("unused")
+        })
+      )
+    )
+  )
+  const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
+  const transport = makeRpcTransport({
+    "Notes.Unsupported": () => Effect.succeed("unused")
+  })
+  const Probe = () => {
+    const notes = NotesReact.useDesktop(NotesRpcs)
+    return createElement(
+      "span",
+      null,
+      `${notes.unsupported.isSupported}:${notes.unsupported.support.status}`
+    )
+  }
+
+  expect(
+    renderToStaticMarkup(createElement(NotesReact.DesktopRoot, { transport }, createElement(Probe)))
+  ).toBe("<span>false:unsupported</span>")
 })
 
 test("usePermission exports the deferred shape", () => {
@@ -332,6 +373,104 @@ test("AsyncResult is re-exported from package index", () => {
   expect(typeof AsyncResult.isSuccess).toBe("function")
   expect(typeof AsyncResult.isFailure).toBe("function")
 })
+
+type RpcTransportHandler = (
+  payload: unknown
+) => Effect.Effect<unknown, unknown, never> | Stream.Stream<unknown, unknown, never>
+
+const makeRpcTransport = (
+  handlers: Readonly<Record<string, RpcTransportHandler>>
+): DesktopRendererRpcTransport => {
+  const queue = Effect.runSync(Queue.unbounded<HostProtocolEnvelope>())
+  const fibers = new Map<string, Fiber.Fiber<void, unknown>>()
+  return {
+    send: (envelope) => {
+      if (envelope.kind === "cancel" && envelope.id !== undefined) {
+        const fiber = fibers.get(envelope.id)
+        if (fiber === undefined) {
+          return Effect.void
+        }
+        fibers.delete(envelope.id)
+        return Fiber.interrupt(fiber).pipe(Effect.asVoid)
+      }
+      if (envelope.kind !== "request") {
+        return Effect.void
+      }
+      const handler = handlers[envelope.method]
+      if (handler === undefined) {
+        return Queue.offer(
+          queue,
+          responseEnvelope(envelope, {
+            error: makeHostProtocolInvalidOutputError(envelope.method, "missing test handler")
+          })
+        )
+      }
+      const result = handler(envelope.payload)
+      if (Stream.isStream(result)) {
+        return Effect.gen(function* () {
+          const fiber = yield* Effect.forkDetach(
+            Effect.exit(
+              Stream.runForEach(result, (item) =>
+                Queue.offer(queue, streamEnvelope(envelope, item))
+              )
+            ).pipe(
+              Effect.flatMap((exit) => Queue.offer(queue, responseFromExit(envelope, exit))),
+              Effect.asVoid
+            ),
+            { startImmediately: true }
+          )
+          fibers.set(envelope.id, fiber)
+        })
+      }
+      return Effect.exit(result).pipe(
+        Effect.flatMap((exit) => Queue.offer(queue, responseFromExit(envelope, exit)))
+      )
+    },
+    run: (onEnvelope) => Effect.forever(Queue.take(queue).pipe(Effect.flatMap(onEnvelope)))
+  }
+}
+
+const responseFromExit = (
+  request: Extract<HostProtocolEnvelope, { readonly kind: "request" }>,
+  exit: Exit.Exit<unknown, unknown>
+): HostProtocolResponseEnvelope =>
+  Exit.isSuccess(exit)
+    ? responseEnvelope(request, { payload: exit.value === undefined ? null : exit.value })
+    : responseEnvelope(request, { error: hostProtocolErrorFromCause(request.method, exit.cause) })
+
+const responseEnvelope = (
+  request: Extract<HostProtocolEnvelope, { readonly kind: "request" }>,
+  fields: { readonly payload?: unknown; readonly error?: HostProtocolError }
+): HostProtocolResponseEnvelope =>
+  new HostProtocolResponseEnvelope({
+    kind: "response",
+    id: request.id,
+    timestamp: 0,
+    traceId: request.traceId,
+    ...fields
+  })
+
+const streamEnvelope = (
+  request: Extract<HostProtocolEnvelope, { readonly kind: "request" }>,
+  payload: unknown
+): HostProtocolStreamByRequestEnvelope =>
+  new HostProtocolStreamByRequestEnvelope({
+    kind: "stream",
+    id: request.id,
+    timestamp: 0,
+    traceId: request.traceId,
+    payload
+  })
+
+const hostProtocolErrorFromCause = (
+  method: string,
+  cause: Cause.Cause<unknown>
+): HostProtocolError => {
+  const failure = cause.reasons.find(Cause.isFailReason)
+  return failure?.error instanceof Error || typeof failure?.error === "string"
+    ? makeHostProtocolInvalidOutputError(method, String(failure.error))
+    : makeHostProtocolInvalidOutputError(method, String(cause))
+}
 
 test("platform-browser IndexedDbTable.make produces a typed table descriptor", () => {
   const DraftTable = IndexedDbTable.make({

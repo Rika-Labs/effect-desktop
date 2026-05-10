@@ -36,27 +36,32 @@
     {
       "name": "VueDesktopClientMap",
       "kind": "type",
-      "signature": "export type VueDesktopClientMap = ReadonlyMap<RpcGroup.Any, VueDesktopRpcClient>"
+      "signature": "export type VueDesktopClientMap = DesktopRendererRpcClientMap"
     },
     {
       "name": "VueDesktopOptions",
       "kind": "interface",
-      "signature": "export interface VueDesktopOptions { readonly clients?: VueDesktopClientMap | readonly (readonly [RpcGroup.Any, VueDesktopRpcClient])[] }"
+      "signature": "export interface VueDesktopOptions { readonly transport?: DesktopRendererRpcTransport | undefined }"
     },
     {
       "name": "VueDesktopRpcClient",
       "kind": "type",
-      "signature": "export type VueDesktopRpcClient = Readonly<Record<string, VueDesktopRpcClientMethod>>"
+      "signature": "export type VueDesktopRpcClient = DesktopRendererRpcClient"
     },
     {
       "name": "VueDesktopRpcClientMethod",
       "kind": "type",
-      "signature": "export type VueDesktopRpcClientMethod = ( input: unknown ) => Effect.Effect<unknown, unknown, never> | Stream.Stream<unknown, unknown, never>"
+      "signature": "export type VueDesktopRpcClientMethod = DesktopRendererRpcClientMethod"
     },
     {
       "name": "VueDesktopRpcs",
       "kind": "type",
       "signature": "export type VueDesktopRpcs<Group extends RpcGroup.Any> = { readonly [Current in RpcGroup.Rpcs<Group> as EndpointName< Current[\"_tag\"] >]: VueRpcEndpoint<Current> }"
+    },
+    {
+      "name": "VueDesktopSupport",
+      "kind": "interface",
+      "signature": "export interface VueDesktopSupport { readonly support: RpcSupportMetadata readonly isSupported: boolean }"
     },
     {
       "name": "VueMutation",

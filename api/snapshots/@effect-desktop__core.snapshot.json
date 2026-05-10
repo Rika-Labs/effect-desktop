@@ -449,6 +449,36 @@
       "signature": "export interface DesktopPublicErrorFields { readonly code: string readonly category: DesktopPublicErrorCategory readonly summary: string readonly details: Readonly<Record<string, unknown>> readonly actor: string readonly remediation: string readonly docsUrl: string }"
     },
     {
+      "name": "DesktopRendererRpcClient",
+      "kind": "type",
+      "signature": "export type DesktopRendererRpcClient = Readonly<Record<string, DesktopRendererRpcClientMethod>>"
+    },
+    {
+      "name": "DesktopRendererRpcClientMap",
+      "kind": "type",
+      "signature": "export type DesktopRendererRpcClientMap = ReadonlyMap<RpcGroup.Any, DesktopRendererRpcClient>"
+    },
+    {
+      "name": "DesktopRendererRpcClientMethod",
+      "kind": "type",
+      "signature": "export type DesktopRendererRpcClientMethod = ( input: unknown ) => Effect.Effect<unknown, unknown, never> | Stream.Stream<unknown, unknown, never>"
+    },
+    {
+      "name": "DesktopRendererRpcRuntime",
+      "kind": "interface",
+      "signature": "export interface DesktopRendererRpcRuntime { readonly clients: DesktopRendererRpcClientMap readonly dispose: () => Effect.Effect<void, never, never> }"
+    },
+    {
+      "name": "DesktopRendererRpcRuntimeOptions",
+      "kind": "interface",
+      "signature": "export interface DesktopRendererRpcRuntimeOptions extends DesktopProtocolOptions { readonly framework: DesktopFramework readonly transport?: DesktopRendererRpcTransport | undefined }"
+    },
+    {
+      "name": "DesktopRendererRpcTransport",
+      "kind": "type",
+      "signature": "export type DesktopRendererRpcTransport = DesktopTransportSend & DesktopTransportRun"
+    },
+    {
       "name": "DesktopRpcDescriptorSource",
       "kind": "type",
       "signature": "export type DesktopRpcDescriptorSource = | Pick<DesktopAppDefinition<unknown, unknown>, \"rpcLayers\"> | Pick<DesktopAppManifest, \"rpcGroups\">"
@@ -747,6 +777,11 @@
       "name": "makeConnection",
       "kind": "value",
       "signature": "const makeConnection: (transport: FramedTransport, operation: string) => TransportConnection"
+    },
+    {
+      "name": "makeDesktopRendererRpcRuntime",
+      "kind": "value",
+      "signature": "const makeDesktopRendererRpcRuntime: (app: DesktopAppManifest, options: DesktopRendererRpcRuntimeOptions) => DesktopRendererRpcRuntime"
     },
     {
       "name": "makeDuplicateDesktopRpcNameError",
@@ -1559,6 +1594,11 @@
       "signature": "export class SecretVerificationMismatchError extends Data.TaggedError( \"SecretVerificationMismatch\" )<{ readonly namespace: string readonly key: string }> {}"
     },
     {
+      "name": "setGlobalDesktopRendererRpcTransport",
+      "kind": "value",
+      "signature": "const setGlobalDesktopRendererRpcTransport: (transport: DesktopRendererRpcTransport | undefined) => void"
+    },
+    {
       "name": "Settings",
       "kind": "class",
       "signature": "export class Settings extends Context.Service<Settings, SettingsApi>()(\"Settings\") {}"
@@ -1902,6 +1942,11 @@
       "name": "toLayer",
       "kind": "value",
       "signature": "const toLayer: <E, R>(definition: DesktopAppDefinition<E, R>) => Layer.Layer<DesktopApp, DesktopConfigError | E, R>"
+    },
+    {
+      "name": "toStartupModuleSpecifier",
+      "kind": "value",
+      "signature": "const toStartupModuleSpecifier: (raw: string) => string"
     },
     {
       "name": "toWindowCreateInput",

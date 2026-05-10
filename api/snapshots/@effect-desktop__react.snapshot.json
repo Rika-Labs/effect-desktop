@@ -251,27 +251,32 @@
     {
       "name": "ReactDesktopClientMap",
       "kind": "type",
-      "signature": "export type ReactDesktopClientMap = ReadonlyMap<RpcGroup.Any, ReactDesktopRpcClient>"
+      "signature": "export type ReactDesktopClientMap = DesktopRendererRpcClientMap"
     },
     {
       "name": "ReactDesktopRootProps",
       "kind": "interface",
-      "signature": "export interface ReactDesktopRootProps { readonly clients?: | ReactDesktopClientMap | readonly (readonly [RpcGroup.Any, ReactDesktopRpcClient])[] readonly children?: ReactNode | undefined }"
+      "signature": "export interface ReactDesktopRootProps { readonly transport?: DesktopRendererRpcTransport | undefined readonly children?: ReactNode | undefined }"
     },
     {
       "name": "ReactDesktopRpcClient",
       "kind": "type",
-      "signature": "export type ReactDesktopRpcClient = Readonly<Record<string, ReactDesktopRpcClientMethod>>"
+      "signature": "export type ReactDesktopRpcClient = DesktopRendererRpcClient"
     },
     {
       "name": "ReactDesktopRpcClientMethod",
       "kind": "type",
-      "signature": "export type ReactDesktopRpcClientMethod = ( input: unknown ) => Effect.Effect<unknown, unknown, never> | Stream.Stream<unknown, unknown, never>"
+      "signature": "export type ReactDesktopRpcClientMethod = DesktopRendererRpcClientMethod"
     },
     {
       "name": "ReactDesktopRpcs",
       "kind": "type",
       "signature": "export type ReactDesktopRpcs<Group extends RpcGroup.Any> = { readonly [Current in RpcGroup.Rpcs<Group> as EndpointName< Current[\"_tag\"] >]: ReactRpcEndpoint<Current> }"
+    },
+    {
+      "name": "ReactDesktopSupport",
+      "kind": "interface",
+      "signature": "export interface ReactDesktopSupport { readonly support: RpcSupportMetadata readonly isSupported: boolean }"
     },
     {
       "name": "RendererSqliteClient",

@@ -1,10 +1,16 @@
 import type { WithRpcEndpointKind } from "@effect-desktop/bridge"
+import type { RpcSupportMetadata } from "@effect-desktop/bridge"
 import {
   describeRpcs,
+  makeDesktopRendererRpcRuntime,
   makeMissingDesktopContextError,
   makeMissingDesktopRpcClientError,
   makeMissingDesktopRpcsError,
   type DesktopAppManifest,
+  type DesktopRendererRpcClient,
+  type DesktopRendererRpcClientMap,
+  type DesktopRendererRpcClientMethod,
+  type DesktopRendererRpcTransport,
   type RpcGroupWithRequests
 } from "@effect-desktop/core"
 import { Cause, Effect, Exit, Fiber, Stream } from "effect"
@@ -23,12 +29,13 @@ type EndpointName<Tag extends string> = Tag extends `${string}.${infer Rest}`
   ? EndpointName<Rest>
   : Uncapitalize<Tag>
 
-type SolidRpcEndpoint<R extends Rpc.Any> =
+type SolidRpcEndpoint<R extends Rpc.Any> = WithSupport<
   Rpc.Success<R> extends Stream.Stream<infer A, infer E, infer _R>
     ? SolidStreamEndpoint<Rpc.PayloadConstructor<R>, A, E | Rpc.Error<R>>
     : R extends WithRpcEndpointKind<R, "query">
       ? SolidQueryEndpoint<Rpc.PayloadConstructor<R>, Rpc.Success<R>, Rpc.Error<R>>
       : SolidMutationEndpoint<Rpc.PayloadConstructor<R>, Rpc.Success<R>, Rpc.Error<R>>
+>
 
 export type SolidDesktopRpcs<Group extends RpcGroup.Any> = {
   readonly [Current in RpcGroup.Rpcs<Group> as EndpointName<
@@ -73,22 +80,24 @@ export interface SolidStreamEndpoint<I, A, E> {
   readonly createStream: SolidPrimitive<I, Accessor<SolidStreamState<A, E>>>
 }
 
-export type SolidDesktopRpcClientMethod = (
-  input: unknown
-) => Effect.Effect<unknown, unknown, never> | Stream.Stream<unknown, unknown, never>
+export interface SolidDesktopSupport {
+  readonly support: RpcSupportMetadata
+  readonly isSupported: boolean
+}
 
-export type SolidDesktopRpcClient = Readonly<Record<string, SolidDesktopRpcClientMethod>>
-export type SolidDesktopClientMap = ReadonlyMap<RpcGroup.Any, SolidDesktopRpcClient>
+type WithSupport<Endpoint> = Endpoint & SolidDesktopSupport
+
+export type SolidDesktopRpcClientMethod = DesktopRendererRpcClientMethod
+export type SolidDesktopRpcClient = DesktopRendererRpcClient
+export type SolidDesktopClientMap = DesktopRendererRpcClientMap
 
 export interface SolidDesktopRootProps {
-  readonly clients?:
-    | SolidDesktopClientMap
-    | readonly (readonly [RpcGroup.Any, SolidDesktopRpcClient])[]
+  readonly transport?: DesktopRendererRpcTransport | undefined
   readonly children?: JSX.Element
 }
 
 export interface SolidDesktopRenderOptions {
-  readonly clients?: SolidDesktopRootProps["clients"]
+  readonly transport?: SolidDesktopRootProps["transport"]
 }
 
 export interface SolidDesktopAdapter<App extends DesktopAppManifest> {
@@ -112,13 +121,21 @@ const SolidDesktopContext = createContext<SolidDesktopContextValue>()
 
 export const SolidDesktop = Object.freeze({
   from: <App extends DesktopAppManifest>(app: App): SolidDesktopAdapter<App> => {
-    const DesktopRoot = (props: SolidDesktopRootProps): JSX.Element =>
-      createComponent(SolidDesktopContext.Provider, {
-        value: { clients: normalizeClients(props.clients) },
+    const DesktopRoot = (props: SolidDesktopRootProps): JSX.Element => {
+      const runtime = makeDesktopRendererRpcRuntime(app, {
+        framework: "solid",
+        transport: props.transport
+      })
+      onCleanup(() => {
+        void Effect.runPromiseExit(runtime.dispose())
+      })
+      return createComponent(SolidDesktopContext.Provider, {
+        value: { clients: runtime.clients },
         get children() {
           return props.children
         }
       })
+    }
 
     const useDesktop = <Group extends RpcGroupWithRequests>(
       group: Group
@@ -151,14 +168,14 @@ export const SolidDesktop = Object.freeze({
         options?: SolidDesktopRenderOptions
       ) => {
         const rootProps =
-          options?.clients === undefined
+          options?.transport === undefined
             ? {
                 get children() {
                   return children()
                 }
               }
             : {
-                clients: options.clients,
+                transport: options.transport,
                 get children() {
                   return children()
                 }
@@ -169,10 +186,6 @@ export const SolidDesktop = Object.freeze({
     })
   }
 })
-
-const normalizeClients = (
-  clients: SolidDesktopRootProps["clients"] | undefined
-): SolidDesktopClientMap => (clients === undefined ? new Map() : new Map(clients))
 
 const makeEndpoints = (
   descriptors: ReturnType<typeof describeRpcs>,
@@ -205,7 +218,7 @@ const makeEndpoints = (
       return method(input)
     }
 
-    endpoints[descriptor.name] =
+    const endpoint =
       descriptor.kind === "stream"
         ? {
             createStream: ((input?: unknown) =>
@@ -226,10 +239,27 @@ const makeEndpoints = (
               createMutation: () =>
                 createMutationState((input) => asEffect(invoke(input), descriptor.tag))
             }
+
+    endpoints[descriptor.name] = withSupport(endpoint, descriptor.support)
   }
 
   return Object.freeze(endpoints)
 }
+
+const withSupport = <
+  Endpoint extends
+    | SolidMutationEndpoint<unknown, unknown, unknown>
+    | SolidQueryEndpoint<unknown, unknown, unknown>
+    | SolidStreamEndpoint<unknown, unknown, unknown>
+>(
+  endpoint: Endpoint,
+  support: RpcSupportMetadata
+): Endpoint & SolidDesktopSupport =>
+  Object.freeze({
+    ...endpoint,
+    support,
+    isSupported: support.status === "supported"
+  }) as unknown as Endpoint & SolidDesktopSupport
 
 const createMutationState = <I, A, E>(
   makeEffect: (input: I) => Effect.Effect<A, E, never>
