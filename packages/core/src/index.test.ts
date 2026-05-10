@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
-import { RpcEndpoint, RpcSupport } from "@effect-desktop/bridge"
-import { Effect, Layer, Schema } from "effect"
+import { RpcCapability, RpcEndpoint, RpcSupport } from "@effect-desktop/bridge"
+import { Cause, Effect, Exit, Layer, Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
 test("public barrel exports the ResourceRegistry factory", async () => {
@@ -68,6 +68,46 @@ test("Desktop.Rpcs.layer pairs an RpcGroup with its implementation for app adapt
   expect(definition.layers).toHaveLength(0)
   expect(definition.rpcLayers).toHaveLength(1)
   expect(definition.rpcLayers[0]?.group.requests.has("Notes.Ping")).toBe(true)
+})
+
+test("Desktop.toLayer rejects RpcGroup methods that require undeclared capabilities", async () => {
+  const core = await import("./index.js")
+  const Connect = Rpc.make("Network.Connect").pipe(
+    RpcCapability({
+      kind: "network.connect"
+    })
+  )
+  const NetworkRpcs = RpcGroup.make(Connect)
+  const definition = core.Desktop.make({
+    id: "network-app",
+    windows: {
+      main: {
+        title: "Network"
+      }
+    }
+  }).pipe(
+    core.Desktop.provide(
+      core.Desktop.Rpcs.layer(
+        NetworkRpcs,
+        NetworkRpcs.toLayer({
+          "Network.Connect": () => Effect.succeed(undefined)
+        })
+      )
+    )
+  )
+
+  const exit = await Effect.runPromiseExit(Effect.scoped(Layer.build(core.Desktop.toLayer(definition))))
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toMatchObject({
+      _tag: "DesktopConfigError",
+      reason: "missing-permission",
+      method: "Network.Connect",
+      permission: "network.connect"
+    })
+  }
 })
 
 test("describeRpcs derives endpoint descriptors from provided RpcGroups", async () => {

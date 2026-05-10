@@ -1,7 +1,7 @@
-import { Config, Context, Data, Effect, Layer } from "effect"
+import { Config, Context, Data, Effect, Layer, Option } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
-import type { ApiContractClass, ApiContractSpec } from "@effect-desktop/bridge"
+import { rpcCapability, type ApiContractClass, type ApiContractSpec } from "@effect-desktop/bridge"
 
 import { DesktopLoggerLayer } from "./logger.js"
 import { BunServicesLayer } from "./platform.js"
@@ -209,7 +209,7 @@ const checkPermissions = <RIn, E>(
   const seenRpcTags = new Set<string>()
 
   for (const rpcLayer of rpcLayers) {
-    for (const tag of rpcLayer.group.requests.keys()) {
+    for (const [tag, rpc] of rpcLayer.group.requests.entries()) {
       if (seenRpcTags.has(tag)) {
         return Effect.fail(
           new DesktopConfigError({
@@ -221,6 +221,24 @@ const checkPermissions = <RIn, E>(
         )
       }
       seenRpcTags.add(tag)
+
+      const required = rpcCapability(rpc)
+      if (Option.isNone(required)) {
+        continue
+      }
+
+      const covered = declared.some((cap) => cap.kind === required.value.kind)
+      if (!covered) {
+        return Effect.fail(
+          new DesktopConfigError({
+            appId: config.id,
+            reason: "missing-permission",
+            message: `RPC method "${tag}" requires capability "${required.value.kind}" but it is not declared in config.permissions`,
+            method: tag,
+            permission: required.value.kind
+          })
+        )
+      }
     }
   }
 
