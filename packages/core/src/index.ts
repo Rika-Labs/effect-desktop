@@ -29,6 +29,7 @@ export * from "./runtime/worker.js"
 export * from "./runtime/workflow.js"
 export * from "./runtime/permission-registry.js"
 export * from "./runtime/permission-interceptor.js"
+export * from "./runtime/permission-approval-workflow.js"
 export * from "./runtime/secrets.js"
 export * from "./runtime/secrets-migration.js"
 export * from "./runtime/settings.js"
@@ -41,6 +42,9 @@ export * from "./runtime/telemetry-otel.js"
 export * from "./runtime/framework-metrics.js"
 export * from "./runtime/window-state.js"
 export * from "./runtime/reactivity.js"
+export * from "./runtime/workflows/auto-save.js"
+export * from "./runtime/workflows/backup.js"
+export * from "./runtime/workflows/restore.js"
 
 export interface DesktopAppOptions {
   readonly workflows?: readonly WorkflowLayer[]

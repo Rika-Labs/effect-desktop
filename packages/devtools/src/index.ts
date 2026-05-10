@@ -12,6 +12,14 @@ export * from "./shell.js"
 export * from "./live-panels.js"
 export * from "./diagnostics-panels.js"
 export * from "./performance-overlay.js"
+export * from "./devtools-server.js"
+export * from "./event-log-panel.js"
+export * from "./workflows-panel.js"
+export * from "./reactivity-panel.js"
+export * from "./persistence-panel.js"
+export * from "./logs-panel.js"
+export * from "./cluster-panel.js"
+export * from "./snapshot-client.js"
 
 export interface CommandsDevtoolsApi {
   readonly list: () => Effect.Effect<readonly CommandSnapshot[], never, never>

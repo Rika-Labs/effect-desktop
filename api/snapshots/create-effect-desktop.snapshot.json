@@ -2,5 +2,41 @@
   "schemaVersion": 1,
   "packageName": "create-effect-desktop",
   "entrypoint": "src/index.ts",
-  "symbols": []
+  "symbols": [
+    {
+      "name": "RENDERER_STORAGE_KINDS",
+      "kind": "value",
+      "signature": "const RENDERER_STORAGE_KINDS: readonly [\"none\", \"indexeddb\", \"sqlite-wasm\", \"pglite\"]"
+    },
+    {
+      "name": "RendererStorage",
+      "kind": "type",
+      "signature": "export type RendererStorage = (typeof RENDERER_STORAGE_KINDS)[number]"
+    },
+    {
+      "name": "scaffold",
+      "kind": "value",
+      "signature": "const scaffold: (options: ScaffoldOptions) => ScaffoldResult"
+    },
+    {
+      "name": "ScaffoldOptions",
+      "kind": "interface",
+      "signature": "export interface ScaffoldOptions { readonly name: string readonly template: TemplateName readonly rendererStorage: RendererStorage readonly includeWorkflows: boolean readonly includeCluster: boolean readonly outDir: string }"
+    },
+    {
+      "name": "ScaffoldResult",
+      "kind": "interface",
+      "signature": "export interface ScaffoldResult { readonly path: string readonly template: TemplateName readonly stubs: readonly string[] }"
+    },
+    {
+      "name": "TEMPLATE_NAMES",
+      "kind": "value",
+      "signature": "const TEMPLATE_NAMES: readonly [\"basic-react-tailwind\", \"todo-sqlite\", \"multi-window\"]"
+    },
+    {
+      "name": "TemplateName",
+      "kind": "type",
+      "signature": "export type TemplateName = (typeof TEMPLATE_NAMES)[number]"
+    }
+  ]
 }
