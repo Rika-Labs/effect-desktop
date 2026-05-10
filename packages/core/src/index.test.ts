@@ -1,7 +1,12 @@
 import { expect, test } from "bun:test"
-import { RpcCapability, RpcEndpoint, RpcSupport } from "@effect-desktop/bridge"
+import {
+  makeDesktopServerProtocol,
+  RpcCapability,
+  RpcEndpoint,
+  RpcSupport
+} from "@effect-desktop/bridge"
 import { Cause, Effect, Exit, Layer, Schema } from "effect"
-import { Rpc, RpcGroup } from "effect/unstable/rpc"
+import { Rpc, RpcGroup, RpcServer } from "effect/unstable/rpc"
 
 test("public barrel exports the ResourceRegistry factory", async () => {
   const core = await import("./index.js")
@@ -68,6 +73,42 @@ test("Desktop.Rpcs.layer pairs an RpcGroup with its implementation for app adapt
   expect(definition.layers).toHaveLength(0)
   expect(definition.rpcLayers).toHaveLength(1)
   expect(definition.rpcLayers[0]?.group.requests.has("Notes.Ping")).toBe(true)
+})
+
+test("Desktop.toLayer binds RpcGroups into the runtime RpcServer protocol", async () => {
+  const core = await import("./index.js")
+  let acquired = 0
+  const Ping = Rpc.make("Notes.Ping", { success: Schema.String })
+  const NotesRpcs = RpcGroup.make(Ping)
+  const NotesLive = Layer.merge(
+    NotesRpcs.toLayer({
+      "Notes.Ping": () => Effect.succeed("pong")
+    }),
+    Layer.effectDiscard(
+      Effect.sync(() => {
+        acquired += 1
+      })
+    )
+  )
+  const definition = core.Desktop.make({
+    id: "notes",
+    windows: {
+      main: {
+        title: "Notes"
+      }
+    }
+  }).pipe(core.Desktop.provide(core.Desktop.Rpcs.layer(NotesRpcs, NotesLive)))
+  const transport = {
+    send: () => Effect.void,
+    run: () => Effect.never
+  }
+  const protocolLayer = Layer.effect(RpcServer.Protocol)(makeDesktopServerProtocol(transport))
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(Layer.build(core.Desktop.toLayer(definition).pipe(Layer.provide(protocolLayer))))
+  )
+
+  expect(Exit.isSuccess(exit)).toBe(true)
+  expect(acquired).toBe(1)
 })
 
 test("Desktop.toLayer rejects RpcGroup methods that require undeclared capabilities", async () => {

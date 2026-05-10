@@ -1,5 +1,5 @@
 import { Config, Context, Data, Effect, Layer, Option } from "effect"
-import { Rpc, RpcGroup } from "effect/unstable/rpc"
+import { Rpc, RpcGroup, RpcServer } from "effect/unstable/rpc"
 
 import { rpcCapability, type ApiContractClass, type ApiContractSpec } from "@effect-desktop/bridge"
 
@@ -270,9 +270,7 @@ const checkPermissions = <RIn, E>(
 
 const buildSpine = <RIn, E>(config: DesktopConfig<RIn, E>): Layer.Layer<DesktopApp, E, RIn> => {
   const wfs = config.workflows ?? []
-  const rpcLayers = (config.rpcs ?? []).map(
-    (rpcLayer) => rpcLayer.layer as Layer.Layer<unknown, E, RIn>
-  )
+  const rpcLayers = (config.rpcs ?? []).map((rpcLayer) => bindRpcLayer<E, RIn>(rpcLayer))
   const userLayers = [...(config.layers ?? []), ...rpcLayers]
 
   const workflowLayer: Layer.Layer<never, never, never> =
@@ -306,6 +304,12 @@ const buildSpine = <RIn, E>(config: DesktopConfig<RIn, E>): Layer.Layer<DesktopA
 
   return Layer.provideMerge(desktopAppLayer, services)
 }
+
+const bindRpcLayer = <E, R>(rpcLayer: AnyDesktopRpcLayer): Layer.Layer<never, E, R> =>
+  Layer.provide(
+    RpcServer.layer(rpcLayer.group as RpcGroup.RpcGroup<Rpc.Any>),
+    rpcLayer.layer as Layer.Layer<unknown, E, R>
+  ) as unknown as Layer.Layer<never, E, R>
 
 const makeDefinition = <E, R>(definition: {
   readonly id: string
