@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { makeHostProtocolInvalidStateError, RpcEndpoint } from "@effect-desktop/bridge"
-import { Desktop, MissingDesktopRpcsError } from "@effect-desktop/core"
+import { Desktop, DuplicateDesktopRpcNameError, MissingDesktopRpcsError } from "@effect-desktop/core"
 import { AsyncResult } from "effect/unstable/reactivity"
 import { Cause, Effect, Option, Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
@@ -201,6 +201,48 @@ test("ReactDesktop.from exposes app-scoped RPC hooks from provided groups", () =
       )
     )
   ).toBe("<span>initial:idle</span>")
+})
+
+test("ReactDesktop.useDesktop rejects colliding endpoint names", () => {
+  const ProjectList = Rpc.make("Projects.List", { success: Schema.Array(Schema.String) })
+  const TaskList = Rpc.make("Tasks.List", { success: Schema.Array(Schema.String) })
+  const CollidingRpcs = RpcGroup.make(ProjectList, TaskList)
+  const CollidingApp = Desktop.make({
+    windows: {
+      main: {
+        title: "Lists"
+      }
+    }
+  }).pipe(
+    Desktop.provide(
+      Desktop.Rpcs.layer(
+        CollidingRpcs,
+        CollidingRpcs.toLayer({
+          "Projects.List": () => Effect.succeed(["project"]),
+          "Tasks.List": () => Effect.succeed(["task"])
+        })
+      )
+    )
+  )
+  const CollidingReact = ReactDesktop.from(CollidingApp)
+  const client: ReactDesktopRpcClient = {
+    "Projects.List": () => Effect.succeed(["project"]),
+    "Tasks.List": () => Effect.succeed(["task"])
+  }
+  const Probe = () => {
+    CollidingReact.useDesktop(CollidingRpcs)
+    return createElement("span", null, "mounted")
+  }
+
+  expect(() =>
+    renderToStaticMarkup(
+      createElement(
+        CollidingReact.DesktopRoot,
+        { clients: [[CollidingRpcs, client]] },
+        createElement(Probe)
+      )
+    )
+  ).toThrow(DuplicateDesktopRpcNameError)
 })
 
 test("ReactDesktop.useDesktop fails loudly without a generated root or installed client", () => {
