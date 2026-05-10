@@ -143,8 +143,8 @@ test("scaffold renderer storage dependency matrix is exact", () => {
   }> = [
     {
       storage: "none",
-      expected: [],
-      absent: ["@effect/platform-browser", "@effect/sql-sqlite-wasm", "@effect/sql-pglite"]
+      expected: ["@effect/platform-browser"],
+      absent: ["@effect/sql-sqlite-wasm", "@effect/sql-pglite"]
     },
     {
       storage: "indexeddb",
