@@ -4,7 +4,7 @@ import type { ClusterPanelSnapshot } from "./cluster-panel.js"
 import { ClusterPanel } from "./cluster-panel.js"
 import type { DiagnosticsPanelsSnapshot } from "./diagnostics-panels.js"
 import { DiagnosticsPanels } from "./diagnostics-panels.js"
-import type { EventLogPanelSnapshot } from "./event-log-panel.js"
+import type { EventLogPanelError, EventLogPanelSnapshot } from "./event-log-panel.js"
 import { EventLogPanel } from "./event-log-panel.js"
 import type { LiveRuntimePanelsSnapshot } from "./live-panels.js"
 import { LiveRuntimePanels } from "./live-panels.js"
@@ -32,7 +32,7 @@ export interface DevtoolsSnapshot {
 }
 
 export interface DevtoolsSnapshotClientApi {
-  readonly exportSnapshot: () => Effect.Effect<DevtoolsSnapshot, never, never>
+  readonly exportSnapshot: () => Effect.Effect<DevtoolsSnapshot, EventLogPanelError, never>
 }
 
 export class DevtoolsSnapshotClient extends Context.Service<

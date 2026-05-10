@@ -14,9 +14,11 @@ export interface EventLogPanelSnapshot {
   readonly totalCount: number
 }
 
+export type EventLogPanelError = EventJournal.EventJournalError
+
 export interface EventLogPanelApi {
-  readonly list: () => Effect.Effect<EventLogPanelSnapshot, never, never>
-  readonly observe: () => Stream.Stream<EventLogPanelSnapshot, never, never>
+  readonly list: () => Effect.Effect<EventLogPanelSnapshot, EventLogPanelError, never>
+  readonly observe: () => Stream.Stream<EventLogPanelSnapshot, EventLogPanelError, never>
 }
 
 export interface EventLogPanelOptions {
@@ -41,7 +43,7 @@ export const makeEventLogPanel = (
     const maxRows = options.maxRows ?? 256
     const frameInterval = options.frameInterval ?? "16 millis"
 
-    const list = (): Effect.Effect<EventLogPanelSnapshot, never, never> =>
+    const list = (): Effect.Effect<EventLogPanelSnapshot, EventLogPanelError, never> =>
       eventLog.entries.pipe(
         Effect.map((entries: ReadonlyArray<EventJournal.Entry>) => {
           const total = entries.length
@@ -50,8 +52,7 @@ export const makeEventLogPanel = (
             entries: visible.map(toRow),
             totalCount: total
           } satisfies EventLogPanelSnapshot
-        }),
-        Effect.orDie
+        })
       )
 
     return Object.freeze({

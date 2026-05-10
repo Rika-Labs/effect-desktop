@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Effect, Layer, Option } from "effect"
+import { Cause, Effect, Exit, Layer, Option } from "effect"
 
 import {
   ClusterPanel,
@@ -18,9 +18,7 @@ import {
   WorkflowsPanelLive,
   type WorkflowsPanelSnapshot
 } from "./index.js"
-import { WorkflowEngine } from "effect/unstable/workflow"
-import { EventLog as EventLogNS } from "effect/unstable/eventlog"
-import { Reactivity as ReactivityNS } from "effect/unstable/reactivity"
+import { EventJournal, EventLog as EventLogNS } from "effect/unstable/eventlog"
 
 test("ClusterPanel returns disabled state", async () => {
   const result = await Effect.runPromise(
@@ -91,13 +89,7 @@ test("WorkflowsPanel snapshot counts running and completed executions", async ()
       return yield* panel.list()
     }).pipe(
       Effect.provide(
-        Layer.provide(
-          WorkflowsPanelLive(),
-          Layer.mergeAll(
-            Layer.succeed(WorkflowExecutionRegistry)(registry),
-            WorkflowEngine.layerMemory
-          )
-        )
+        Layer.provide(WorkflowsPanelLive(), Layer.succeed(WorkflowExecutionRegistry)(registry))
       )
     )
   )) as WorkflowsPanelSnapshot
@@ -137,10 +129,7 @@ test("ReactivityPanel snapshot aggregates unique keys", async () => {
       return yield* panel.list()
     }).pipe(
       Effect.provide(
-        Layer.provide(
-          ReactivityPanelLive(),
-          Layer.mergeAll(Layer.succeed(ReactivityTracker)(tracker), ReactivityNS.layer)
-        )
+        Layer.provide(ReactivityPanelLive(), Layer.succeed(ReactivityTracker)(tracker))
       )
     )
   )
@@ -191,4 +180,36 @@ test("EventLogPanel lists entries from an empty journal", async () => {
 
   expect(result.totalCount).toBe(0)
   expect(result.entries).toHaveLength(0)
+})
+
+test("EventLogPanel reports journal read failures as typed errors", async () => {
+  const journalError = new EventJournal.EventJournalError({
+    method: "entries",
+    cause: new Error("journal unavailable")
+  })
+  const fakeEventLog = EventLogNS.EventLog.of({
+    entries: Effect.fail(journalError),
+    write: () => Effect.die("not implemented"),
+    destroy: Effect.void
+  })
+
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const panel = yield* EventLogPanel
+      return yield* panel.list()
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          EventLogPanelLive({ maxRows: 10 }),
+          Layer.succeed(EventLogNS.EventLog)(fakeEventLog)
+        )
+      )
+    )
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const fail = exit.cause.reasons.find(Cause.isFailReason)
+    expect(fail?.error).toBe(journalError)
+  }
 })

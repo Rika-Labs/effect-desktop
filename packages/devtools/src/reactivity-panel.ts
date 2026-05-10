@@ -1,5 +1,4 @@
 import { Context, Effect, Layer, Stream, SubscriptionRef } from "effect"
-import { Reactivity as ReactivityNS } from "effect/unstable/reactivity"
 
 export interface ReactivityInvalidationRecord {
   readonly keys: readonly string[]
@@ -75,12 +74,12 @@ export class ReactivityPanel extends Context.Service<ReactivityPanel, Reactivity
 
 export const ReactivityPanelLive = (
   options: ReactivityPanelOptions = {}
-): Layer.Layer<ReactivityPanel, never, ReactivityTracker | ReactivityNS.Reactivity> =>
+): Layer.Layer<ReactivityPanel, never, ReactivityTracker> =>
   Layer.effect(ReactivityPanel)(makeReactivityPanel(options))
 
 export const makeReactivityPanel = (
   options: ReactivityPanelOptions = {}
-): Effect.Effect<ReactivityPanelApi, never, ReactivityTracker | ReactivityNS.Reactivity> =>
+): Effect.Effect<ReactivityPanelApi, never, ReactivityTracker> =>
   Effect.gen(function* () {
     const tracker = yield* ReactivityTracker
     const maxRows = options.maxRows ?? 256

@@ -1,5 +1,4 @@
 import { Context, Effect, Layer, Option, Stream, SubscriptionRef } from "effect"
-import { WorkflowEngine } from "effect/unstable/workflow"
 
 export type WorkflowExecutionState = "running" | "completed" | "failed" | "interrupted"
 
@@ -84,16 +83,12 @@ export class WorkflowsPanel extends Context.Service<WorkflowsPanel, WorkflowsPan
 
 export const WorkflowsPanelLive = (
   options: WorkflowsPanelOptions = {}
-): Layer.Layer<WorkflowsPanel, never, WorkflowExecutionRegistry | WorkflowEngine.WorkflowEngine> =>
+): Layer.Layer<WorkflowsPanel, never, WorkflowExecutionRegistry> =>
   Layer.effect(WorkflowsPanel)(makeWorkflowsPanel(options))
 
 export const makeWorkflowsPanel = (
   options: WorkflowsPanelOptions = {}
-): Effect.Effect<
-  WorkflowsPanelApi,
-  never,
-  WorkflowExecutionRegistry | WorkflowEngine.WorkflowEngine
-> =>
+): Effect.Effect<WorkflowsPanelApi, never, WorkflowExecutionRegistry> =>
   Effect.gen(function* () {
     const registry = yield* WorkflowExecutionRegistry
     const maxRows = options.maxRows ?? 256
