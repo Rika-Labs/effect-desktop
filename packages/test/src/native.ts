@@ -602,7 +602,11 @@ export const makeTestNotificationClient = (): TestNotificationApi => {
         return handle
       }),
     close: (notification: NotificationHandle): Effect.Effect<void, NotificationError, never> =>
-      Effect.sync(() => record("Notification.close", [notification])),
+      Effect.sync(() => {
+        record("Notification.close", [notification])
+        const idx = shown.findIndex((n) => n.id === notification.id)
+        if (idx !== -1) shown.splice(idx, 1)
+      }),
     isSupported: (): Effect.Effect<NotificationSupportedResult, NotificationError, never> =>
       Effect.succeed(new NotificationSupportedResult({ supported: true })),
     requestPermission: (): Effect.Effect<NotificationPermissionResult, NotificationError, never> =>
