@@ -3,6 +3,7 @@ import { Cause, Deferred, Effect, Exit, Schema } from "effect"
 
 import {
   Api,
+  apiContractToRpcGroup,
   type ApiContractClass,
   type ApiHandlers,
   type ApiLayer,
@@ -410,6 +411,10 @@ const makeProcessApi = <Tag extends string>(tag: Tag): ApiContractClass<Tag, Pro
     })
     static readonly events = Object.freeze({})
 
+    static toRpcGroup() {
+      return apiContractToRpcGroup(contract.tag, contract.spec, contract.events)
+    }
+
     static layer<Handlers extends ApiHandlers<ProcessApiSpec>>(
       handlers: Handlers
     ): ApiLayer<Tag, ProcessApiSpec, Handlers> {
@@ -434,6 +439,10 @@ const makeProjectApi = <Tag extends string>(tag: Tag): ApiContractClass<Tag, Pro
       })
     })
     static readonly events = Object.freeze({})
+
+    static toRpcGroup() {
+      return apiContractToRpcGroup(contract.tag, contract.spec, contract.events)
+    }
 
     static layer<Handlers extends ApiHandlers<ProjectApiSpec>>(
       handlers: Handlers
@@ -467,6 +476,10 @@ const makeVoidApi = <Tag extends string>(tag: Tag): ApiContractClass<Tag, VoidAp
       })
     })
     static readonly events = Object.freeze({})
+
+    static toRpcGroup() {
+      return apiContractToRpcGroup(contract.tag, contract.spec, contract.events)
+    }
 
     static layer<Handlers extends ApiHandlers<VoidApiSpec>>(
       handlers: Handlers
@@ -502,6 +515,10 @@ const makeEncodedInputApi = <Tag extends string>(
       })
     })
     static readonly events = Object.freeze({})
+
+    static toRpcGroup() {
+      return apiContractToRpcGroup(contract.tag, contract.spec, contract.events)
+    }
 
     static layer<Handlers extends ApiHandlers<EncodedInputApiSpec>>(
       handlers: Handlers

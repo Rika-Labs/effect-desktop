@@ -1,4 +1,7 @@
 import { Data, Effect, Option, Schema, Stream } from "effect"
+import { Rpc, RpcGroup } from "effect/unstable/rpc"
+
+import { RpcCapability, RpcEndpoint } from "./rpc-endpoint.js"
 
 export interface ApiMethodSpec {
   readonly input: Schema.Schema<unknown>
@@ -75,6 +78,7 @@ export interface ApiContractClass<
   readonly tag: Tag
   readonly spec: Spec
   readonly events: Events
+  readonly toRpcGroup: () => RpcGroup.RpcGroup<Rpc.Any>
   readonly layer: <Handlers extends ApiHandlers<Spec>>(
     handlers: Handlers
   ) => ApiLayer<Tag, Spec, Handlers, Events>
@@ -178,6 +182,27 @@ export const Api = Object.freeze({
 export const apiContractEntries = (): readonly ApiContractClass[] =>
   Object.freeze(Array.from(apiContracts.values()))
 
+export const apiContractToRpcGroup = <
+  Tag extends string,
+  Spec extends ApiContractSpec,
+  Events extends ApiContractEvents
+>(
+  tag: Tag,
+  spec: Spec,
+  events: Events
+): RpcGroup.RpcGroup<Rpc.Any> => {
+  const rpcs: Rpc.Any[] = []
+
+  for (const [method, methodSpec] of Object.entries(spec)) {
+    rpcs.push(apiMethodToRpc(tag, method, methodSpec))
+  }
+  for (const [event, eventSpec] of Object.entries(events)) {
+    rpcs.push(apiEventToRpc(tag, event, eventSpec))
+  }
+
+  return RpcGroup.make(...rpcs)
+}
+
 const registerApiContract = <
   Tag extends string,
   Spec extends ApiContractSpec,
@@ -211,10 +236,15 @@ const registerApiContract = <
 
     const frozenSpec = freezeContractSpec(spec)
     const frozenEvents = freezeContractEvents(events)
+    const rpcGroup = apiContractToRpcGroup(tag, frozenSpec, frozenEvents)
     const contract = class {
       static readonly tag = tag
       static readonly spec = frozenSpec
       static readonly events = frozenEvents
+
+      static toRpcGroup(): RpcGroup.RpcGroup<Rpc.Any> {
+        return rpcGroup
+      }
 
       static layer<Handlers extends ApiHandlers<Spec>>(
         handlers: Handlers
@@ -405,6 +435,51 @@ const invalidSpec = (tag: string, method: string, reason: string): InvalidApiCon
     reason,
     message: `Invalid API contract ${tag}.${method}: ${reason}`
   })
+
+const apiMethodToRpc = (tag: string, method: string, spec: ApiMethodSpec): Rpc.Any => {
+  const rpc = isStreamSpec(spec.output)
+    ? Rpc.make(`${tag}.${method}`, {
+        payload: spec.input,
+        success: spec.output.chunk,
+        error: spec.output.error,
+        stream: true
+      })
+    : Rpc.make(`${tag}.${method}`, {
+        payload: spec.input,
+        success: apiMethodSuccessSchema(spec.output),
+        error: spec.error
+      })
+
+  return annotateApiMethodRpc(rpc, spec)
+}
+
+const apiEventToRpc = (tag: string, event: string, spec: ApiEventSpec): Rpc.Any =>
+  Rpc.make(`${tag}.events.${event}`, {
+    success: spec.payload,
+    error: Schema.Never,
+    stream: true
+  })
+
+const apiMethodSuccessSchema = (
+  output: Schema.Schema<unknown> | ApiStreamSpec | ApiResourceSpec
+): Schema.Schema<unknown> => {
+  if (isResourceSpec(output)) {
+    return output.schema
+  }
+  if (isStreamSpec(output)) {
+    return output.chunk
+  }
+  return output
+}
+
+const annotateApiMethodRpc = (rpc: Rpc.Any, spec: ApiMethodSpec): Rpc.Any => {
+  const endpointRpc =
+    spec.idempotent === true ? RpcEndpoint.query(rpc) : RpcEndpoint.mutation(rpc)
+
+  return spec.permission === undefined
+    ? endpointRpc
+    : RpcCapability({ kind: spec.permission })(endpointRpc)
+}
 
 const isSchema = (value: unknown): value is Schema.Schema<unknown> => {
   return (
