@@ -149,7 +149,12 @@ test("Desktop.app lowers legacy Api layers into the RpcGroup registry", async ()
     success: Schema.Array(Schema.String),
     error: Schema.Never
   })
-  const LegacyRpcs = RpcGroup.make(List)
+  const Changed = Rpc.make("Legacy.Notes.events.changed", {
+    payload: Schema.String,
+    success: Schema.Void,
+    error: Schema.Never
+  })
+  const LegacyRpcs = RpcGroup.make(List, Changed)
   class LegacyNotes {
     static readonly tag = "Legacy.Notes"
     static readonly spec = {
@@ -159,11 +164,16 @@ test("Desktop.app lowers legacy Api layers into the RpcGroup registry", async ()
         error: Schema.Never
       }
     }
-    static readonly events = {}
+    static readonly events = {
+      changed: {
+        payload: Schema.String
+      }
+    }
     static toRpcGroup(): typeof LegacyRpcs {
       return LegacyRpcs
     }
     static layer(handlers: {
+      readonly prefix: string
       readonly list: () => Effect.Effect<readonly string[], never, never>
     }) {
       return Object.freeze({
@@ -173,7 +183,10 @@ test("Desktop.app lowers legacy Api layers into the RpcGroup registry", async ()
     }
   }
   const legacyLayer = LegacyNotes.layer({
-    list: () => Effect.succeed(["inbox"])
+    prefix: "inbox",
+    list(this: { readonly prefix: string }) {
+      return Effect.succeed([this.prefix])
+    }
   }) as unknown as AnyApiLayer
   const transport = {
     send: () => Effect.void,
@@ -203,13 +216,79 @@ test("Desktop.app lowers legacy Api layers into the RpcGroup registry", async ()
 
   expect(app.rpcLayers).toHaveLength(1)
   expect(app.rpcLayers[0]?.group.requests.has("Legacy.Notes.list")).toBe(true)
+  expect(app.rpcLayers[0]?.group.requests.has("Legacy.Notes.events.changed")).toBe(false)
+
+  const rpcLayer = app.rpcLayers[0]
+  expect(rpcLayer).toBeDefined()
+  if (rpcLayer !== undefined) {
+    const result = await Effect.runPromise(
+      Effect.provide(
+        Effect.gen(function* () {
+          const handler = yield* LegacyRpcs.accessHandler("Legacy.Notes.list")
+          const value = handler(undefined, {
+            client: new Rpc.ServerClient(0),
+            requestId: "legacy-request" as never,
+            headers: [] as never
+          })
+          return yield* value
+        }),
+        rpcLayer.layer as unknown as Layer.Layer<Rpc.Handler<"Legacy.Notes.list">, never, never>
+      )
+    )
+    expect(result).toEqual(["inbox"])
+  }
+})
+
+test("Desktop.toLayer rejects RpcGroup methods that declare known capability kinds without scoped fields", async () => {
+  const core = await import("./index.js")
+  const Connect = Rpc.make("Network.Connect").pipe(
+    RpcCapability({
+      kind: "network.connect"
+    })
+  )
+  const NetworkRpcs = RpcGroup.make(Connect)
+  const definition = core.Desktop.make({
+    id: "network-app",
+    windows: {
+      main: {
+        title: "Network"
+      }
+    }
+  }).pipe(
+    core.Desktop.provide(
+      core.Desktop.Rpcs.layer(
+        NetworkRpcs,
+        NetworkRpcs.toLayer({
+          "Network.Connect": () => Effect.succeed(undefined)
+        })
+      )
+    )
+  )
+
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(Layer.build(core.Desktop.toLayer(definition)))
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toMatchObject({
+      _tag: "DesktopConfigError",
+      reason: "invalid-config",
+      method: "Network.Connect",
+      permission: "network.connect"
+    })
+  }
 })
 
 test("Desktop.toLayer rejects RpcGroup methods that require undeclared capabilities", async () => {
   const core = await import("./index.js")
   const Connect = Rpc.make("Network.Connect").pipe(
     RpcCapability({
-      kind: "network.connect"
+      kind: "network.connect",
+      hosts: ["api.example.com"],
+      askUnknownHosts: false,
+      audit: "on-deny"
     })
   )
   const NetworkRpcs = RpcGroup.make(Connect)
@@ -245,6 +324,73 @@ test("Desktop.toLayer rejects RpcGroup methods that require undeclared capabilit
       permission: "network.connect"
     })
   }
+})
+
+test("Desktop.toLayer validates RpcGroup capability scope coverage", async () => {
+  const core = await import("./index.js")
+  const requiredCapability = {
+    kind: "network.connect",
+    hosts: ["api.example.com"],
+    askUnknownHosts: false,
+    audit: "on-deny"
+  } as const
+  const Connect = Rpc.make("Network.Connect").pipe(RpcCapability(requiredCapability))
+  const NetworkRpcs = RpcGroup.make(Connect)
+  const layer = core.Desktop.Rpcs.layer(
+    NetworkRpcs,
+    NetworkRpcs.toLayer({
+      "Network.Connect": () => Effect.succeed(undefined)
+    })
+  )
+  const transport = {
+    send: () => Effect.void,
+    run: () => Effect.never
+  }
+  const protocolLayer = Layer.effect(RpcServer.Protocol)(makeDesktopServerProtocol(transport))
+  const wrongScope = core.Desktop.make({
+    id: "network-app",
+    windows: {
+      main: {
+        title: "Network"
+      }
+    },
+    permissions: [
+      {
+        ...requiredCapability,
+        hosts: ["other.example.com"]
+      }
+    ]
+  }).pipe(core.Desktop.provide(layer))
+  const coveredScope = core.Desktop.make({
+    id: "network-app",
+    windows: {
+      main: {
+        title: "Network"
+      }
+    },
+    permissions: [requiredCapability]
+  }).pipe(core.Desktop.provide(layer))
+
+  const rejected = await Effect.runPromiseExit(
+    Effect.scoped(Layer.build(core.Desktop.toLayer(wrongScope)))
+  )
+  const accepted = await Effect.runPromiseExit(
+    Effect.scoped(
+      Layer.build(core.Desktop.toLayer(coveredScope).pipe(Layer.provide(protocolLayer)))
+    )
+  )
+
+  expect(Exit.isFailure(rejected)).toBe(true)
+  if (Exit.isFailure(rejected)) {
+    const failure = rejected.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toMatchObject({
+      _tag: "DesktopConfigError",
+      reason: "missing-permission",
+      method: "Network.Connect",
+      permission: "network.connect"
+    })
+  }
+  expect(Exit.isSuccess(accepted)).toBe(true)
 })
 
 test("describeRpcs derives endpoint descriptors from provided RpcGroups", async () => {

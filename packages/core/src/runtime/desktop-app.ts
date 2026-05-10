@@ -1,11 +1,16 @@
-import { Config, Context, Data, Effect, Layer, Option } from "effect"
+import { Config, Context, Data, Effect, Layer, Option, Schema } from "effect"
 import { Rpc, RpcGroup, RpcServer } from "effect/unstable/rpc"
 
 import { rpcCapability, type ApiContractClass, type ApiContractSpec } from "@effect-desktop/bridge"
 
 import { DesktopLoggerLayer } from "./logger.js"
 import { BunServicesLayer } from "./platform.js"
-import { PermissionRegistry, makePermissionRegistry } from "./permission-registry.js"
+import {
+  NormalizedCapability as NormalizedCapabilitySchema,
+  PermissionRegistry,
+  capabilityCovers,
+  makePermissionRegistry
+} from "./permission-registry.js"
 import type { NormalizedCapability } from "./permission-registry.js"
 import { ReactivityLayer } from "./reactivity.js"
 import { ResourceRegistryLive } from "./resources.js"
@@ -88,6 +93,20 @@ export class DesktopConfigError extends Data.TaggedError("DesktopConfigError")<{
   readonly method?: string
   readonly permission?: string
 }> {}
+
+const NormalizedCapabilityKinds = new Set<NormalizedCapability["kind"]>([
+  "filesystem.read",
+  "filesystem.write",
+  "filesystem.delete",
+  "process.spawn",
+  "pty.spawn",
+  "network.connect",
+  "secrets.read",
+  "secrets.write",
+  "safeStorage.read",
+  "safeStorage.write",
+  "native.invoke"
+])
 
 export interface DesktopAppApi {
   readonly appId: string
@@ -245,7 +264,14 @@ const normalizeDesktopConfig = <RIn, E>(config: DesktopConfig<RIn, E>): DesktopC
 }
 
 const apiLayerToRpcLayer = (apiLayer: AnyApiLayer): AnyDesktopRpcLayer => {
-  const group = apiLayer.contract.toRpcGroup()
+  const eventTags = Object.keys(apiLayer.contract.events ?? {}).map(
+    (event) => `${apiLayer.contract.tag}.events.${event}`
+  )
+  const fullGroup = apiLayer.contract.toRpcGroup()
+  const group =
+    eventTags.length === 0
+      ? fullGroup
+      : fullGroup.omit(...(eventTags as unknown as ReadonlyArray<never>))
   const handlers: Record<string, (input: unknown) => unknown> = Object.create(null) as Record<
     string,
     (input: unknown) => unknown
@@ -256,7 +282,7 @@ const apiLayerToRpcLayer = (apiLayer: AnyApiLayer): AnyDesktopRpcLayer => {
     const handler = Reflect.get(apiLayer.handlers, method)
     handlers[rpcTag] =
       typeof handler === "function"
-        ? (input: unknown): unknown => handler(input)
+        ? (input: unknown): unknown => handler.call(apiLayer.handlers, input)
         : (): Effect.Effect<never> => Effect.die(`Legacy API handler is missing for ${rpcTag}`)
   }
 
@@ -293,15 +319,20 @@ const checkPermissions = <RIn, E>(
         continue
       }
 
-      const covered = declared.some((cap) => cap.kind === required.value.kind)
+      const requiredCapability = decodeRpcCapability(required.value, config.id, tag)
+      if (Effect.isEffect(requiredCapability)) {
+        return requiredCapability
+      }
+
+      const covered = declared.some((cap) => capabilityCovers(cap, requiredCapability))
       if (!covered) {
         return Effect.fail(
           new DesktopConfigError({
             appId: config.id,
             reason: "missing-permission",
-            message: `RPC method "${tag}" requires capability "${required.value.kind}" but it is not declared in config.permissions`,
+            message: `RPC method "${tag}" requires capability "${requiredCapability.kind}" but it is not declared in config.permissions`,
             method: tag,
-            permission: required.value.kind
+            permission: requiredCapability.kind
           })
         )
       }
@@ -332,6 +363,37 @@ const checkPermissions = <RIn, E>(
   }
 
   return Effect.void
+}
+
+const decodeRpcCapability = (
+  value: Readonly<{ readonly kind: string }>,
+  appId: string,
+  method: string
+): NormalizedCapability | Effect.Effect<never, DesktopConfigError, never> => {
+  const decoded = Schema.decodeUnknownOption(NormalizedCapabilitySchema)(value)
+  if (Option.isSome(decoded)) {
+    return decoded.value
+  }
+  if (NormalizedCapabilityKinds.has(value.kind as NormalizedCapability["kind"])) {
+    return Effect.fail(
+      new DesktopConfigError({
+        appId,
+        reason: "invalid-config",
+        message: `RPC method "${method}" declares capability "${value.kind}" without the required scoped capability fields`,
+        method,
+        permission: value.kind
+      })
+    )
+  }
+  return Effect.fail(
+    new DesktopConfigError({
+      appId,
+      reason: "missing-permission",
+      message: `RPC method "${method}" requires legacy capability "${value.kind}" but it is not declared in config.permissions`,
+      method,
+      permission: value.kind
+    })
+  )
 }
 
 const buildSpine = <RIn, E>(config: DesktopConfig<RIn, E>): Layer.Layer<DesktopApp, E, RIn> => {
