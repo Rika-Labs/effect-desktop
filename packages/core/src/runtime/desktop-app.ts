@@ -1,6 +1,6 @@
 import { Config, Context, Data, Effect, Layer } from "effect"
 
-import type { ApiContractClass, ApiContractSpec } from "@effect-desktop/bridge"
+import type { ApiContractClass, ApiContractSpec } from "@rikalabs/effect-desktop/bridge"
 
 import { DesktopLoggerLayer } from "./logger.js"
 import { BunServicesLayer } from "./platform.js"
@@ -14,8 +14,9 @@ import type { WorkflowLayer } from "./workflow.js"
 
 export interface WindowSpec {
   readonly title: string
-  readonly width: number
-  readonly height: number
+  readonly width?: number
+  readonly height?: number
+  readonly renderer?: string
 }
 
 export interface AnyApiLayer {
@@ -30,6 +31,30 @@ export interface DesktopConfig<RIn = never, E = never> {
   readonly layers?: ReadonlyArray<Layer.Layer<unknown, E, RIn>>
   readonly permissions?: ReadonlyArray<NormalizedCapability>
   readonly workflows?: ReadonlyArray<WorkflowLayer>
+}
+
+export interface DesktopMakeConfig {
+  readonly id?: string
+  readonly windows: Readonly<Record<string, WindowSpec>>
+  readonly permissions?: ReadonlyArray<NormalizedCapability>
+  readonly workflows?: ReadonlyArray<WorkflowLayer>
+}
+
+export interface DesktopAppDefinition<E = never, R = never> {
+  readonly _tag: "DesktopAppDefinition"
+  readonly id: string
+  readonly windows: Readonly<Record<string, WindowSpec>>
+  readonly layers: ReadonlyArray<Layer.Layer<unknown, E, R>>
+  readonly permissions: ReadonlyArray<NormalizedCapability>
+  readonly workflows: ReadonlyArray<WorkflowLayer>
+  pipe(): DesktopAppDefinition<E, R>
+  pipe<A>(ab: (self: DesktopAppDefinition<E, R>) => A): A
+  pipe<A, B>(ab: (self: DesktopAppDefinition<E, R>) => A, bc: (a: A) => B): B
+  pipe<A, B, C>(
+    ab: (self: DesktopAppDefinition<E, R>) => A,
+    bc: (a: A) => B,
+    cd: (b: B) => C
+  ): C
 }
 
 export class DesktopConfigError extends Data.TaggedError("DesktopConfigError")<{
@@ -64,6 +89,40 @@ const coreServicesLayer: Layer.Layer<never, Config.ConfigError, never> = Layer.m
   BunServicesLayer,
   WorkflowEngineLive
 )
+
+export const make = (config: DesktopMakeConfig): DesktopAppDefinition<never, never> =>
+  makeDefinition({
+    id: config.id ?? "app",
+    windows: freezeWindows(config.windows),
+    layers: Object.freeze([]),
+    permissions: freezeArray(config.permissions),
+    workflows: freezeArray(config.workflows)
+  })
+
+export const provide =
+  <Provided, E, R>(layer: Layer.Layer<Provided, E, R>) =>
+  <AppE, AppR>(definition: DesktopAppDefinition<AppE, AppR>): DesktopAppDefinition<E | AppE, R | AppR> =>
+    makeDefinition({
+      id: definition.id,
+      windows: definition.windows,
+      layers: Object.freeze([
+        ...definition.layers,
+        layer as Layer.Layer<unknown, E | AppE, R | AppR>
+      ]),
+      permissions: definition.permissions,
+      workflows: definition.workflows
+    })
+
+export const toLayer = <E, R>(
+  definition: DesktopAppDefinition<E, R>
+): Layer.Layer<DesktopApp, DesktopConfigError | E, R> =>
+  app({
+    id: definition.id,
+    windows: definition.windows,
+    layers: definition.layers,
+    permissions: definition.permissions,
+    workflows: definition.workflows
+  })
 
 export const app = <RIn = never, E = never>(
   config: DesktopConfig<RIn, E>
@@ -147,3 +206,35 @@ const buildSpine = <RIn, E>(config: DesktopConfig<RIn, E>): Layer.Layer<DesktopA
 
   return Layer.provideMerge(desktopAppLayer, services)
 }
+
+const makeDefinition = <E, R>(definition: {
+  readonly id: string
+  readonly windows: Readonly<Record<string, WindowSpec>>
+  readonly layers: ReadonlyArray<Layer.Layer<unknown, E, R>>
+  readonly permissions: ReadonlyArray<NormalizedCapability>
+  readonly workflows: ReadonlyArray<WorkflowLayer>
+}): DesktopAppDefinition<E, R> =>
+  Object.freeze({
+    _tag: "DesktopAppDefinition" as const,
+    id: definition.id,
+    windows: definition.windows,
+    layers: definition.layers,
+    permissions: definition.permissions,
+    workflows: definition.workflows,
+    pipe(...operations: ReadonlyArray<(value: unknown) => unknown>): unknown {
+      if (operations.length === 0) {
+        return this
+      }
+      return operations.reduce<unknown>((value, operation) => operation(value), this)
+    }
+  }) as DesktopAppDefinition<E, R>
+
+const freezeArray = <A>(values: ReadonlyArray<A> | undefined): ReadonlyArray<A> =>
+  Object.freeze([...(values ?? [])])
+
+const freezeWindows = (
+  windows: Readonly<Record<string, WindowSpec>>
+): Readonly<Record<string, WindowSpec>> =>
+  Object.freeze(
+    Object.fromEntries(Object.entries(windows).map(([name, spec]) => [name, Object.freeze(spec)]))
+  )

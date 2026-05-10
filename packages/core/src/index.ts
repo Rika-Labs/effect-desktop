@@ -1,21 +1,21 @@
-import { Api, Client, Handlers, RedactionFilter } from "@effect-desktop/bridge"
+import { Api, Client, Handlers, RedactionFilter } from "@rikalabs/effect-desktop/bridge"
 import { Effect, Layer } from "effect"
 
-import { app as desktopApp, launch } from "./runtime/desktop-app.js"
+import { app as desktopApp, launch, make, provide, toLayer } from "./runtime/desktop-app.js"
 import type { DesktopApp, DesktopConfig, DesktopConfigError } from "./runtime/desktop-app.js"
 import type { NormalizedCapability } from "./runtime/permission-registry.js"
 import { PermissionRegistry } from "./runtime/permission-registry.js"
 import type { WorkflowLayer } from "./runtime/workflow.js"
 import { WorkflowEngine, WorkflowEngineLive } from "./runtime/workflow.js"
 
-export { Api, Client, Handlers, RedactionFilter, redact } from "@effect-desktop/bridge"
-export { makeBridgeCallRegistry, makeBridgeStreamRegistry } from "@effect-desktop/bridge"
+export { Api, Client, Handlers, RedactionFilter, redact } from "@rikalabs/effect-desktop/bridge"
+export { makeBridgeCallRegistry, makeBridgeStreamRegistry } from "@rikalabs/effect-desktop/bridge"
 export type {
   BridgeCallRegistry,
   BridgeCallState,
   BridgeStreamRegistry,
   BridgeStreamRegistryEntry
-} from "@effect-desktop/bridge"
+} from "@rikalabs/effect-desktop/bridge"
 export * from "./runtime/desktop-env-config.js"
 export * from "./runtime/logger.js"
 export * from "./runtime/resources.js"
@@ -48,9 +48,14 @@ export {
   DesktopApp,
   app as desktopApp,
   launch,
+  make,
+  provide,
+  toLayer,
   type AnyApiLayer,
   type DesktopAppApi,
+  type DesktopAppDefinition,
   type DesktopConfig,
+  type DesktopMakeConfig,
   type WindowSpec
 } from "./runtime/desktop-app.js"
 export { DesktopConfigError as DesktopSpineConfigError } from "./runtime/desktop-app.js"
@@ -118,5 +123,8 @@ export const Desktop = Object.freeze({
   Handlers,
   RedactionFilter,
   app,
-  launch
+  launch,
+  make,
+  provide,
+  toLayer
 })

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { Layer } from "effect"
 
 test("public barrel exports the ResourceRegistry factory", async () => {
   const core = await import("./index.js")
@@ -20,4 +21,24 @@ test("public Desktop facade exposes the API contract registry", async () => {
   expect(core.Desktop.Client).toBeFunction()
   expect(core.Desktop.Handlers).toBeFunction()
   expect(core.Desktop.RedactionFilter.redact({ token: "abc" })).toEqual({ token: "[REDACTED]" })
+})
+
+test("Desktop.make produces a pipeable app definition and Desktop.provide appends layers", async () => {
+  const core = await import("./index.js")
+  const definition = core.Desktop.make({
+    id: "notes",
+    windows: {
+      main: {
+        title: "Notes",
+        renderer: "/"
+      }
+    }
+  }).pipe(core.Desktop.provide(Layer.empty))
+
+  expect(definition._tag).toBe("DesktopAppDefinition")
+  expect(definition.id).toBe("notes")
+  expect(definition.windows["main"]?.title).toBe("Notes")
+  expect(definition.windows["main"]?.renderer).toBe("/")
+  expect(definition.layers).toHaveLength(1)
+  expect(Layer.isLayer(core.Desktop.toLayer(definition))).toBe(true)
 })
