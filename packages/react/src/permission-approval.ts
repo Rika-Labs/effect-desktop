@@ -12,7 +12,8 @@ export interface PendingApproval {
 export type ApprovalDecision = "approved" | "denied"
 
 export interface ApprovalResolver {
-  readonly resolve: (token: string, approved: boolean) => Effect.Effect<void, never, never>
+  readonly resolve: (token: string, approved: boolean) => Effect.Effect<void, unknown, never>
+  readonly onResolveError?: (error: unknown, approval: PendingApproval) => void
 }
 
 export interface PermissionApprovalState {
@@ -35,10 +36,31 @@ export const usePermissionApproval = (resolver: ApprovalResolver): PermissionApp
     })
   }, [])
 
-  const resolve = useCallback((token: string, approved: boolean) => {
-    setPending((current) => current.filter((p) => p.token !== token))
-    void Effect.runPromise(resolverRef.current.resolve(token, approved))
-  }, [])
+  const resolve = useCallback(
+    (token: string, approved: boolean) => {
+      const approval = pending.find((p) => p.token === token)
+      if (approval === undefined) {
+        return
+      }
+
+      void Effect.runPromise(resolverRef.current.resolve(token, approved)).then(
+        () => {
+          setPending((current) => current.filter((p) => p.token !== token))
+        },
+        (error: unknown) => {
+          const onResolveError = resolverRef.current.onResolveError
+          if (onResolveError !== undefined) {
+            onResolveError(error, approval)
+            return
+          }
+          queueMicrotask(() => {
+            throw error
+          })
+        }
+      )
+    },
+    [pending]
+  )
 
   return { pending, push, resolve }
 }

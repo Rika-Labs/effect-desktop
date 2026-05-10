@@ -30,10 +30,22 @@ export const PermissionApprovalWorkflow = Workflow.make({
   },
   idempotencyKey: (p) => p.traceId,
   success: Grant,
-  error: Schema.TaggedStruct("PermissionDenied", {
-    traceId: Schema.NonEmptyString,
-    reason: Schema.Literal("user-denied")
-  })
+  error: Schema.Union([
+    Schema.TaggedStruct("PermissionDenied", {
+      traceId: Schema.NonEmptyString,
+      reason: Schema.Literal("user-denied")
+    }),
+    Schema.TaggedStruct("PermissionApprovalFailed", {
+      traceId: Schema.NonEmptyString,
+      phase: Schema.Union([
+        Schema.Literal("declare"),
+        Schema.Literal("audit"),
+        Schema.Literal("grant"),
+        Schema.Literal("revoke")
+      ]),
+      cause: Schema.String
+    })
+  ])
 })
 
 export interface PermissionApprovalWorkflowOptions {
@@ -57,7 +69,7 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
           actor,
           source: `approval:${payload.traceId}`
         })
-        .pipe(Effect.orDie)
+        .pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "declare", cause)))
 
       yield* emitAuditEvent(
         options.audit,
@@ -70,7 +82,7 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
           ...(payload.resource === undefined ? {} : { resource: payload.resource }),
           details: { capability }
         })
-      ).pipe(Effect.orDie)
+      ).pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "audit", cause)))
 
       const token = yield* DurableDeferred.token(approvalPrompt)
 
@@ -91,7 +103,7 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
             actor: JSON.stringify(actor),
             ...(payload.resource === undefined ? {} : { resource: payload.resource })
           })
-        ).pipe(Effect.orDie)
+        ).pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "audit", cause)))
 
         return yield* Effect.fail({
           _tag: "PermissionDenied" as const,
@@ -116,7 +128,7 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
             source: `approval:${payload.traceId}`
           }
         )
-        .pipe(Effect.orDie)
+        .pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "grant", cause)))
 
       yield* emitAuditEvent(
         options.audit,
@@ -129,7 +141,7 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
           ...(payload.resource === undefined ? {} : { resource: payload.resource }),
           details: { token: grant.token, grantedAt, expiresAt }
         })
-      ).pipe(Effect.orDie)
+      ).pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "audit", cause)))
 
       if (payload.ttlMs !== undefined && expiresAt !== undefined) {
         yield* DurableClock.sleep({
@@ -137,7 +149,9 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
           duration: `${payload.ttlMs} millis`
         })
 
-        yield* options.registry.revoke(grant.token).pipe(Effect.ignore)
+        yield* options.registry
+          .revoke(grant.token)
+          .pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "revoke", cause)))
 
         yield* emitAuditEvent(
           options.audit,
@@ -150,7 +164,7 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
             ...(payload.resource === undefined ? {} : { resource: payload.resource }),
             details: { token: grant.token, expiredAt: expiresAt }
           })
-        ).pipe(Effect.orDie)
+        ).pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "audit", cause)))
       }
 
       return new Grant({
@@ -162,6 +176,22 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
     })
   )
 }
+
+const approvalFailed = (
+  traceId: string,
+  phase: "declare" | "audit" | "grant" | "revoke",
+  cause: unknown
+): {
+  readonly _tag: "PermissionApprovalFailed"
+  readonly traceId: string
+  readonly phase: "declare" | "audit" | "grant" | "revoke"
+  readonly cause: string
+} => ({
+  _tag: "PermissionApprovalFailed" as const,
+  traceId,
+  phase,
+  cause: String(cause)
+})
 
 export type ApprovalWorkflowLayer = ReturnType<typeof makePermissionApprovalWorkflowLayer>
 
