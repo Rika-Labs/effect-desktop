@@ -1,22 +1,48 @@
 import { Schema } from "effect"
+import { BridgeSafeNonEmptyString, PrintableNonEmptyString } from "./strings.js"
+import { ProtocolScheme } from "./protocol.js"
 
 const NonNegativeInteger = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const PortableExitCode = Schema.Int.check(
   Schema.isGreaterThanOrEqualTo(0),
   Schema.isLessThanOrEqualTo(255)
 )
+const AppVersion = Schema.NonEmptyString.check(
+  Schema.isPattern(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u)
+)
 // eslint-disable-next-line no-control-regex -- App launch args must reject NUL.
 const ArgString = Schema.String.check(Schema.isPattern(/^[^\u0000]*$/))
+const isAppUrl = (value: string): boolean => {
+  if (value.length === 0) {
+    return false
+  }
+
+  if (value.includes("\u0000")) {
+    return false
+  }
+
+  try {
+    // eslint-disable-next-line no-new -- URL validates URL-like strings and protocol prefixes.
+    new URL(value)
+    return true
+  } catch {
+    return false
+  }
+}
+
+const AppUrl = PrintableNonEmptyString.check(
+  Schema.makeFilter((value) => isAppUrl(value) || "must be a valid URL")
+)
 
 export class AppInfo extends Schema.Class<AppInfo>("AppInfo")({
-  id: Schema.String,
-  name: Schema.String,
-  version: Schema.String
+  id: PrintableNonEmptyString,
+  name: PrintableNonEmptyString,
+  version: AppVersion
 }) {}
 
 export class AppCommandLine extends Schema.Class<AppCommandLine>("AppCommandLine")({
-  argv: Schema.Array(Schema.String),
-  cwd: Schema.String
+  argv: Schema.Array(ArgString),
+  cwd: BridgeSafeNonEmptyString
 }) {}
 
 export class AppQuitInput extends Schema.Class<AppQuitInput>("AppQuitInput")({
@@ -46,7 +72,7 @@ export class AppOpenAtLoginInput extends Schema.Class<AppOpenAtLoginInput>("AppO
 export type AppOpenAtLoginOptions = Schema.Schema.Type<typeof AppOpenAtLoginInput>
 
 export class AppProtocolInput extends Schema.Class<AppProtocolInput>("AppProtocolInput")({
-  scheme: Schema.String
+  scheme: ProtocolScheme
 }) {}
 
 export type AppProtocolOptions = Schema.Schema.Type<typeof AppProtocolInput>
@@ -54,9 +80,9 @@ export type AppProtocolOptions = Schema.Schema.Type<typeof AppProtocolInput>
 export class AppSecondInstanceEvent extends Schema.Class<AppSecondInstanceEvent>(
   "AppSecondInstanceEvent"
 )({
-  argv: Schema.Array(Schema.String),
-  cwd: Schema.String,
-  traceId: Schema.String
+  argv: Schema.Array(ArgString),
+  cwd: BridgeSafeNonEmptyString,
+  traceId: PrintableNonEmptyString
 }) {}
 
 export class AppOpenFileEvent extends Schema.Class<AppOpenFileEvent>("AppOpenFileEvent")({
@@ -65,9 +91,9 @@ export class AppOpenFileEvent extends Schema.Class<AppOpenFileEvent>("AppOpenFil
 }) {}
 
 export class AppOpenUrlEvent extends Schema.Class<AppOpenUrlEvent>("AppOpenUrlEvent")({
-  url: Schema.String
+  url: AppUrl
 }) {}
 
 export class AppBeforeQuitEvent extends Schema.Class<AppBeforeQuitEvent>("AppBeforeQuitEvent")({
-  traceId: Schema.String
+  traceId: PrintableNonEmptyString
 }) {}

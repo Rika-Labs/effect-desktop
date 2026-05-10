@@ -613,6 +613,185 @@ test("App bridge client sends typed host envelopes and decodes event streams", a
   ])
 })
 
+test("App bridge client validates protocol registration scheme before host requests", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* App
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          AppLive,
+          makeAppBridgeClientLayer(
+            appExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  await Effect.runPromise(client.registerProtocol({ scheme: "effect-desktop" }))
+
+  const invalidSchemes = ["", "http", "https", "file", "app", "chrome", "view-source", "bad scheme", "app://", "MyApp", "x^@y"]
+  for (const scheme of invalidSchemes) {
+    const exit = await Effect.runPromiseExit(client.registerProtocol({ scheme }))
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+  }
+
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["App.registerProtocol", { scheme: "effect-desktop" }]
+  ])
+})
+
+test("App bridge client rejects malformed App.getInfo and App.getCommandLine output as InvalidOutput", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* App
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          AppLive,
+          makeAppBridgeClientLayer(
+            appExchange(requests, (request) =>
+              request.method === "App.getInfo"
+                ? {
+                    kind: "success",
+                    payload: {
+                      id: "",
+                      name: "bad^@name",
+                      version: "not-semver"
+                    }
+                  }
+                : request.method === "App.getCommandLine"
+                  ? { kind: "success", payload: { argv: ["app", "bad\u0000arg"], cwd: "" } }
+                  : ({ kind: "success", payload: undefined }) as const
+            )
+          )
+        )
+      )
+    )
+  )
+
+  const infoExit = await Effect.runPromiseExit(client.getInfo())
+  const commandLineExit = await Effect.runPromiseExit(client.getCommandLine())
+
+  expectExitFailure(infoExit, (error) => hasErrorTag(error, "InvalidOutput"))
+  expectExitFailure(commandLineExit, (error) => hasErrorTag(error, "InvalidOutput"))
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["App.getInfo", undefined],
+    ["App.getCommandLine", undefined]
+  ])
+})
+
+test("App bridge client rejects malformed App lifecycle event payloads as InvalidOutput", async () => {
+  const invalidUrlExchange: ApiClientExchange = {
+    request: () => Effect.succeed({ kind: "success", payload: undefined }),
+    subscribe: (method) =>
+      method === "App.onOpenUrl"
+        ? Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              timestamp: 1710000000400,
+              traceId: "event-trace",
+              method,
+              payload: { url: "not a url^@" }
+            })
+          )
+        : Stream.empty
+  }
+
+  const invalidSecondInstanceExchange: ApiClientExchange = {
+    request: () => Effect.succeed({ kind: "success", payload: undefined }),
+    subscribe: (method) =>
+      method === "App.onSecondInstance"
+        ? Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              timestamp: 1710000000400,
+              traceId: "event-trace",
+              method,
+              payload: { argv: ["app", "bad\u0000arg"], cwd: "", traceId: "" }
+            })
+          )
+        : Stream.empty
+  }
+
+  const invalidBeforeQuitExchange: ApiClientExchange = {
+    request: () => Effect.succeed({ kind: "success", payload: undefined }),
+    subscribe: (method) =>
+      method === "App.onBeforeQuit"
+        ? Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              timestamp: 1710000000400,
+              traceId: "",
+              method,
+              payload: { traceId: "" }
+            })
+          )
+        : Stream.empty
+  }
+
+  const openUrlExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const app = yield* App
+      return yield* Effect.exit(app.onOpenUrl().pipe(Stream.take(1), Stream.runCollect))
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          AppLive,
+          makeAppBridgeClientLayer(invalidUrlExchange, {
+            nextRequestId: nextId(["unused"]),
+            nextTraceId: nextId(["unused"]),
+            now: nextNumber([1710000000000])
+          })
+        )
+      )
+    )
+  )
+
+  const secondInstanceExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const app = yield* App
+      return yield* Effect.exit(app.onSecondInstance().pipe(Stream.take(1), Stream.runCollect))
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          AppLive,
+          makeAppBridgeClientLayer(invalidSecondInstanceExchange, {
+            nextRequestId: nextId(["unused"]),
+            nextTraceId: nextId(["unused"]),
+            now: nextNumber([1710000000000])
+          })
+        )
+      )
+    )
+  )
+
+  const beforeQuitExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const app = yield* App
+      return yield* Effect.exit(app.onBeforeQuit().pipe(Stream.take(1), Stream.runCollect))
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          AppLive,
+          makeAppBridgeClientLayer(invalidBeforeQuitExchange, {
+            nextRequestId: nextId(["unused"]),
+            nextTraceId: nextId(["unused"]),
+            now: nextNumber([1710000000000])
+          })
+          )
+      )
+    )
+  )
+
+  expectExitFailure(openUrlExit, (error) => hasErrorTag(error, "InvalidOutput"))
+  expectExitFailure(secondInstanceExit, (error) => hasErrorTag(error, "InvalidOutput"))
+  expectExitFailure(beforeQuitExit, (error) => hasErrorTag(error, "InvalidOutput"))
+})
+
 test("App bridge client rejects empty or NUL-bearing onOpenFile paths as InvalidOutput", async () => {
   const NUL = String.fromCharCode(0)
   const cases: ReadonlyArray<{ readonly payload: unknown }> = [
