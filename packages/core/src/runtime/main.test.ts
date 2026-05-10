@@ -12,6 +12,7 @@ import {
   WINDOW_DESTROY_METHOD
 } from "@effect-desktop/bridge"
 import packageJson from "../../package.json" with { type: "json" }
+import { STARTUP_WINDOWS_ENV } from "./window-supervisor.js"
 
 const PACKAGE_ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)))
 
@@ -63,7 +64,7 @@ const isHostProtocolRequest = (value: unknown): value is HostProtocolRequest => 
   )
 }
 
-test("runtime entry emits ready and completes the host handshake plus window smoke calls", async () => {
+test("runtime entry emits ready and opens declared startup windows after host readiness", async () => {
   const result = await runRuntimeWithFakeHost()
 
   expect(result.exitCode).toBe(0)
@@ -89,7 +90,15 @@ const runRuntimeWithFakeHost = (): Promise<RuntimeHostResult> =>
       cwd: PACKAGE_ROOT,
       env: {
         ...process.env,
-        EFFECT_DESKTOP_WINDOW_SMOKE_TEST: "1"
+        EFFECT_DESKTOP_WINDOW_SMOKE_TEST: "1",
+        [STARTUP_WINDOWS_ENV]: JSON.stringify({
+          main: {
+            title: "Notes",
+            width: 960,
+            height: 640,
+            renderer: "/"
+          }
+        })
       },
       stdio: ["pipe", "pipe", "pipe"]
     }) as unknown as NodeJS.EventEmitter & {
