@@ -292,7 +292,15 @@ const DEFAULT_RUNTIME_ENGINE = "bun"
 const DEFAULT_RENDERER_FRAMEWORK = "react"
 const DEFAULT_RENDERER_STYLING = "tailwind"
 const DEFAULT_PROFILE = "dev"
-const RESERVED_PROTOCOL_SCHEMES = new Set(["http", "https", "file", "about", "data", "chrome", "view-source"])
+const RESERVED_PROTOCOL_SCHEMES = new Set([
+  "http",
+  "https",
+  "file",
+  "about",
+  "data",
+  "chrome",
+  "view-source"
+])
 const DEFAULT_PROTOCOL_FRAME_BYTES = 4 * 1024 * 1024
 const MAX_PROTOCOL_FRAME_BYTES = 16 * 1024 * 1024
 const DEFAULT_PROTOCOL_CONCURRENT_REQUESTS_PER_WINDOW = 256
@@ -388,15 +396,17 @@ interface BuildPlan {
     | undefined
   readonly protocols: readonly { readonly scheme: string; readonly handler: string | undefined }[]
   readonly windows: unknown
-  readonly updateManifestInput: {
-    readonly channel?: "stable" | "beta" | "canary"
-    readonly publicKey?: string
-    readonly feedUrl?: string
-    readonly minVersion?: string
-    readonly maxVersion?: string
-    readonly keyVersion?: number
-    readonly rollback?: boolean
-  } | undefined
+  readonly updateManifestInput:
+    | {
+        readonly channel?: "stable" | "beta" | "canary"
+        readonly publicKey?: string
+        readonly feedUrl?: string
+        readonly minVersion?: string
+        readonly maxVersion?: string
+        readonly keyVersion?: number
+        readonly rollback?: boolean
+      }
+    | undefined
   readonly target: BuildTarget
 }
 
@@ -919,7 +929,11 @@ const normalizeBuildPlan = (
     const profileEnv = yield* readProfileEnv(config.env, profile)
     const protocolEntries = yield* readProtocols(config.protocols)
     const protocolLimits = yield* readProtocolLimits(config.protocol?.limits)
-    const buildTargets = yield* readBuildTargets(config.build?.targets, options.target, "build.targets")
+    const buildTargets = yield* readBuildTargets(
+      config.build?.targets,
+      options.target,
+      "build.targets"
+    )
     if (!buildTargets.includes(options.target)) {
       return yield* Effect.fail(
         new BuildConfigError({
@@ -1382,9 +1396,10 @@ const readOptionalSemver = (
   if (value === undefined) {
     return Effect.succeed(undefined)
   }
-  return readOptionalString(value, field).pipe(
-    Effect.flatMap((value) =>
-      parseSemver(value) === undefined
+  return readRequiredString(value, field).pipe(
+    Effect.flatMap((version) => {
+      const parsed = parseSemver(version)
+      return parsed === undefined
         ? Effect.fail(
             new BuildConfigError({
               field,
@@ -1392,10 +1407,10 @@ const readOptionalSemver = (
             })
           )
         : Effect.succeed({
-            value,
-            parsed: parseSemver(value)
+            value: version,
+            parsed
           })
-    )
+    })
   )
 }
 
@@ -1421,56 +1436,60 @@ const loadAndMergeBuildConfig = (path: string): Effect.Effect<AppConfig, BuildCo
 const normalizeBuildConfig = (rawConfig: unknown): AppConfig =>
   isRecord(rawConfig) ? (rawConfig as AppConfig) : {}
 
-const mergeBuildConfig = (shared: AppConfig, app: AppConfig): AppConfig => ({
-  app: {
-    ...shared.app,
-    ...app.app
-  },
-  runtime: {
-    ...shared.runtime,
-    ...app.runtime
-  },
-  renderer: {
-    ...shared.renderer,
-    ...app.renderer
-  },
-  build: {
-    ...shared.build,
-    ...app.build
-  },
-  security: {
-    ...shared.security,
-    ...app.security
-  },
-  env: mergeRecordMap(shared.env, app.env),
-  protocol: {
-    limits: {
-      ...extractRecord(shared.protocol?.limits),
-      ...extractRecord(app.protocol?.limits)
-    }
-  },
-  protocols:
+const mergeBuildConfig = (shared: AppConfig, app: AppConfig): AppConfig => {
+  const env = mergeRecordMap(shared.env, app.env)
+  const protocols =
     Array.isArray(app.protocols) && app.protocols.length > 0
       ? app.protocols
       : Array.isArray(shared.protocols)
         ? shared.protocols
-        : undefined,
-  native: {
-    ...shared.native,
-    ...app.native
-  },
-  workspace: app.workspace ?? shared.workspace,
-  update: {
-    ...shared.update,
-    ...app.update
-  },
-  windows: app.windows ?? shared.windows
-})
+        : undefined
+  const workspace = app.workspace ?? shared.workspace
+  const windows = app.windows ?? shared.windows
 
-const mergeRecordMap = (
-  shared: unknown,
-  local: unknown
-): Record<string, unknown> | undefined => {
+  return {
+    app: {
+      ...shared.app,
+      ...app.app
+    },
+    runtime: {
+      ...shared.runtime,
+      ...app.runtime
+    },
+    renderer: {
+      ...shared.renderer,
+      ...app.renderer
+    },
+    build: {
+      ...shared.build,
+      ...app.build
+    },
+    security: {
+      ...shared.security,
+      ...app.security
+    },
+    ...(env === undefined ? {} : { env }),
+    protocol: {
+      limits: {
+        ...extractRecord(shared.protocol?.limits),
+        ...extractRecord(app.protocol?.limits)
+      }
+    },
+    ...(protocols === undefined ? {} : { protocols }),
+    native: {
+      ...shared.native,
+      ...app.native
+    },
+    ...(workspace === undefined ? {} : { workspace }),
+    update: {
+      ...shared.update,
+      ...app.update
+    },
+    ...(windows === undefined ? {} : { windows })
+  }
+}
+
+const mergeRecordMap = (shared: unknown, local: unknown): Record<string, unknown> | undefined => {
   if (shared === undefined && local === undefined) {
     return undefined
   }
@@ -1499,12 +1518,9 @@ const mergeRecordMap = (
   return merged
 }
 
-const extractRecord = (value: unknown): Record<string, unknown> =>
-  isRecord(value) ? value : {}
+const extractRecord = (value: unknown): Record<string, unknown> => (isRecord(value) ? value : {})
 
-const readRuntimeEngine = (
-  value: unknown
-): Effect.Effect<"bun", BuildConfigError, never> =>
+const readRuntimeEngine = (value: unknown): Effect.Effect<"bun", BuildConfigError, never> =>
   readOptionalString(value, "runtime.engine").pipe(
     Effect.map((rawEngine) => rawEngine ?? DEFAULT_RUNTIME_ENGINE),
     Effect.flatMap((runtimeEngine) =>
@@ -1519,9 +1535,7 @@ const readRuntimeEngine = (
     )
   )
 
-const readRendererFramework = (
-  value: unknown
-): Effect.Effect<"react", BuildConfigError, never> =>
+const readRendererFramework = (value: unknown): Effect.Effect<"react", BuildConfigError, never> =>
   readOptionalString(value, "renderer.framework").pipe(
     Effect.map((rawFramework) => rawFramework ?? DEFAULT_RENDERER_FRAMEWORK),
     Effect.flatMap((rendererFramework) =>
@@ -1536,9 +1550,7 @@ const readRendererFramework = (
     )
   )
 
-const readRendererStyling = (
-  value: unknown
-): Effect.Effect<"tailwind", BuildConfigError, never> =>
+const readRendererStyling = (value: unknown): Effect.Effect<"tailwind", BuildConfigError, never> =>
   readOptionalString(value, "renderer.styling").pipe(
     Effect.map((rawStyling) => rawStyling ?? DEFAULT_RENDERER_STYLING),
     Effect.flatMap((rendererStyling) =>
@@ -1580,7 +1592,11 @@ const readRequiredExistingFile = (
 
 const readProtocols = (
   value: unknown
-): Effect.Effect<readonly { readonly scheme: string; readonly handler: string | undefined }[], BuildConfigError, never> =>
+): Effect.Effect<
+  readonly { readonly scheme: string; readonly handler: string | undefined }[],
+  BuildConfigError,
+  never
+> =>
   Effect.gen(function* () {
     if (value === undefined) {
       return []
@@ -1599,7 +1615,7 @@ const readProtocols = (
           new BuildConfigError({ field, message: `${field} must be an object` })
         )
       }
-      const scheme = yield* readRequiredString(protocol.scheme, `${field}.scheme`)
+      const scheme = yield* readRequiredString(protocol["scheme"], `${field}.scheme`)
       if (!PROTOCOL_SCHEME_PATTERN.test(scheme) || RESERVED_PROTOCOL_SCHEMES.has(scheme)) {
         return yield* Effect.fail(
           new BuildConfigError({
@@ -1608,12 +1624,8 @@ const readProtocols = (
           })
         )
       }
-      const handler = yield* readOptionalString(protocol.handler, `${field}.handler`)
-      if (
-        handler !== undefined &&
-        handler !== "open" &&
-        handler !== "view"
-      ) {
+      const handler = yield* readOptionalString(protocol["handler"], `${field}.handler`)
+      if (handler !== undefined && handler !== "open" && handler !== "view") {
         return yield* Effect.fail(
           new BuildConfigError({
             field: `${field}.handler`,
@@ -1698,7 +1710,9 @@ const readProtocolLimit = (
       : Effect.succeed(defaultValue)
   }
   if (typeof raw !== "number" || !Number.isSafeInteger(raw) || raw <= 0) {
-    return Effect.fail(new BuildConfigError({ field, message: `${field} must be a positive integer` }))
+    return Effect.fail(
+      new BuildConfigError({ field, message: `${field} must be a positive integer` })
+    )
   }
   if (raw > cap) {
     return Effect.fail(
@@ -1810,20 +1824,17 @@ const readUpdateFields = (
         new BuildConfigError({ field: "update", message: "update must be an object" })
       )
     }
-    const channel = yield* readOptionalUpdateChannel(value.channel)
+    const channel = yield* readOptionalUpdateChannel(value["channel"])
     if (channel === undefined) {
       return undefined
     }
-    const publicKey = yield* readRequiredString(
-      value.publicKey,
-      "update.publicKey"
-    )
-    const feedUrl = yield* readRequiredString(value.feedUrl, "update.feedUrl")
-    const minVersion = yield* readOptionalSemver(value.minVersion, "update.minVersion")
-    const maxVersion = yield* readOptionalSemver(value.maxVersion, "update.maxVersion")
+    const publicKey = yield* readRequiredString(value["publicKey"], "update.publicKey")
+    const feedUrl = yield* readRequiredString(value["feedUrl"], "update.feedUrl")
+    const minVersion = yield* readOptionalSemver(value["minVersion"], "update.minVersion")
+    const maxVersion = yield* readOptionalSemver(value["maxVersion"], "update.maxVersion")
     const keyVersion =
-      value.keyVersion === undefined || typeof value.keyVersion === "number"
-        ? value.keyVersion
+      value["keyVersion"] === undefined || typeof value["keyVersion"] === "number"
+        ? value["keyVersion"]
         : yield* Effect.fail(
             new BuildConfigError({
               field: "update.keyVersion",
@@ -1831,8 +1842,8 @@ const readUpdateFields = (
             })
           )
     const rollback =
-      value.rollback === undefined || typeof value.rollback === "boolean"
-        ? value.rollback
+      value["rollback"] === undefined || typeof value["rollback"] === "boolean"
+        ? value["rollback"]
         : yield* Effect.fail(
             new BuildConfigError({
               field: "update.rollback",
@@ -1856,7 +1867,11 @@ const readUpdateFields = (
         })
       )
     }
-    if (maxVersion !== undefined && minVersion !== undefined && compareSemver(minVersion.parsed, maxVersion.parsed) > 0) {
+    if (
+      maxVersion !== undefined &&
+      minVersion !== undefined &&
+      compareSemver(minVersion.parsed, maxVersion.parsed) > 0
+    ) {
       return yield* Effect.fail(
         new BuildConfigError({
           field: "update.maxVersion",
@@ -1876,10 +1891,10 @@ const readUpdateFields = (
       channel,
       publicKey,
       feedUrl,
-      minVersion: minVersion?.value,
-      maxVersion: maxVersion?.value,
-      keyVersion,
-      rollback
+      ...(minVersion === undefined ? {} : { minVersion: minVersion.value }),
+      ...(maxVersion === undefined ? {} : { maxVersion: maxVersion.value }),
+      ...(keyVersion === undefined ? {} : { keyVersion }),
+      ...(rollback === undefined ? {} : { rollback })
     }
   })
 

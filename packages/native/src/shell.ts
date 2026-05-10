@@ -281,7 +281,7 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
   })
 
 const normalizeOpenExternalOptions = (
-  options: Omit<ShellOpenExternalOptions, "url"> | undefined
+  _options: Omit<ShellOpenExternalOptions, "url"> | undefined
 ): Omit<ShellOpenExternalOptions, "url"> => ({})
 
 const normalizeOpenPathOptions = (

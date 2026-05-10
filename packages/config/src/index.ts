@@ -529,7 +529,7 @@ const externalNavigationRule: Rule = ({ config, configPath }) =>
         violation({
           rule: "unsafe-external-navigation",
           location: configLocation(configPath, "security.externalNavigation"),
-          message: "external navigation must be either \"deny\" or \"ask\"",
+          message: 'external navigation must be either "deny" or "ask"',
           fix: 'Set security.externalNavigation to "deny" or "ask".'
         })
       ]

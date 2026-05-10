@@ -251,8 +251,9 @@ test("Filesystem maps adapter permission failures to PermissionDenied", async ()
 })
 
 test("Filesystem maps remove EACCES to filesystem.delete", async () => {
+  const directory = await tempDirectory()
   const service = await makeTestFilesystem({
-    permissions: { deleteRoots: ["/"], allowRecursiveRemove: false },
+    permissions: { deleteRoots: [directory], allowRecursiveRemove: false },
     adapter: {
       ...NodeTestFilesystemAdapter,
       remove: () => {
@@ -262,15 +263,16 @@ test("Filesystem maps remove EACCES to filesystem.delete", async () => {
     }
   })
 
-  const exit = await Effect.runPromiseExit(service.remove("/tmp/remove-target.txt"))
+  const exit = await Effect.runPromiseExit(service.remove(join(directory, "remove-target.txt")))
   const error = expectFailurePermissionDenied(exit)
 
   expect(error.capability).toBe("filesystem.delete")
 })
 
 test("Filesystem maps recursive remove EACCES to filesystem.delete.recursive", async () => {
+  const directory = await tempDirectory()
   const service = await makeTestFilesystem({
-    permissions: { deleteRoots: ["/"], allowRecursiveRemove: true },
+    permissions: { deleteRoots: [directory], allowRecursiveRemove: true },
     adapter: {
       ...NodeTestFilesystemAdapter,
       remove: () => {
@@ -281,7 +283,7 @@ test("Filesystem maps recursive remove EACCES to filesystem.delete.recursive", a
   })
 
   const exit = await Effect.runPromiseExit(
-    service.remove("/tmp/remove-target.txt", { recursive: true })
+    service.remove(join(directory, "remove-target.txt"), { recursive: true })
   )
   const error = expectFailurePermissionDenied(exit)
 

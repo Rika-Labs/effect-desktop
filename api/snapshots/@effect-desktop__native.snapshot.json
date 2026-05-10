@@ -41,7 +41,7 @@
     {
       "name": "AppBeforeQuitEvent",
       "kind": "class",
-      "signature": "export class AppBeforeQuitEvent extends Schema.Class<AppBeforeQuitEvent>(\"AppBeforeQuitEvent\")({ traceId: Schema.String }) {}"
+      "signature": "export class AppBeforeQuitEvent extends Schema.Class<AppBeforeQuitEvent>(\"AppBeforeQuitEvent\")({ traceId: PrintableNonEmptyString }) {}"
     },
     {
       "name": "AppClient",
@@ -56,7 +56,7 @@
     {
       "name": "AppCommandLine",
       "kind": "class",
-      "signature": "export class AppCommandLine extends Schema.Class<AppCommandLine>(\"AppCommandLine\")({ argv: Schema.Array(Schema.String), cwd: Schema.String }) {}"
+      "signature": "export class AppCommandLine extends Schema.Class<AppCommandLine>(\"AppCommandLine\")({ argv: Schema.Array(ArgString), cwd: BridgeSafeNonEmptyString }) {}"
     },
     {
       "name": "AppError",
@@ -136,7 +136,7 @@
     {
       "name": "AppInfo",
       "kind": "class",
-      "signature": "export class AppInfo extends Schema.Class<AppInfo>(\"AppInfo\")({ id: Schema.String, name: Schema.String, version: Schema.String }) {}"
+      "signature": "export class AppInfo extends Schema.Class<AppInfo>(\"AppInfo\")({ id: PrintableNonEmptyString, name: PrintableNonEmptyString, version: AppVersion }) {}"
     },
     {
       "name": "AppLive",
@@ -166,12 +166,12 @@
     {
       "name": "AppOpenUrlEvent",
       "kind": "class",
-      "signature": "export class AppOpenUrlEvent extends Schema.Class<AppOpenUrlEvent>(\"AppOpenUrlEvent\")({ url: Schema.String }) {}"
+      "signature": "export class AppOpenUrlEvent extends Schema.Class<AppOpenUrlEvent>(\"AppOpenUrlEvent\")({ url: AppUrl }) {}"
     },
     {
       "name": "AppProtocolInput",
       "kind": "class",
-      "signature": "export class AppProtocolInput extends Schema.Class<AppProtocolInput>(\"AppProtocolInput\")({ scheme: Schema.String }) {}"
+      "signature": "export class AppProtocolInput extends Schema.Class<AppProtocolInput>(\"AppProtocolInput\")({ scheme: ProtocolScheme }) {}"
     },
     {
       "name": "AppProtocolOptions",
@@ -201,7 +201,7 @@
     {
       "name": "AppSecondInstanceEvent",
       "kind": "class",
-      "signature": "export class AppSecondInstanceEvent extends Schema.Class<AppSecondInstanceEvent>( \"AppSecondInstanceEvent\" )({ argv: Schema.Array(Schema.String), cwd: Schema.String, traceId: Schema.String }) {}"
+      "signature": "export class AppSecondInstanceEvent extends Schema.Class<AppSecondInstanceEvent>( \"AppSecondInstanceEvent\" )({ argv: Schema.Array(ArgString), cwd: BridgeSafeNonEmptyString, traceId: PrintableNonEmptyString }) {}"
     },
     {
       "name": "AppServiceApi",
@@ -586,7 +586,7 @@
     {
       "name": "DialogFileFilter",
       "kind": "class",
-      "signature": "export class DialogFileFilter extends Schema.Class<DialogFileFilter>(\"DialogFileFilter\")({ name: Schema.String, extensions: Schema.Array(Schema.String) }) {}"
+      "signature": "export class DialogFileFilter extends Schema.Class<DialogFileFilter>(\"DialogFileFilter\")({ name: DialogFileFilterName, extensions: Schema.Array(DialogFileFilterExtension) }) {}"
     },
     {
       "name": "DialogFileFilterOptions",
@@ -641,7 +641,7 @@
     {
       "name": "DialogOpenResult",
       "kind": "class",
-      "signature": "export class DialogOpenResult extends Schema.Class<DialogOpenResult>(\"DialogOpenResult\")({ paths: Schema.Array(Schema.String) }) {}"
+      "signature": "export class DialogOpenResult extends Schema.Class<DialogOpenResult>(\"DialogOpenResult\")({ paths: Schema.Array(BridgeSafeNonEmptyString) }) {}"
     },
     {
       "name": "DialogSaveFileInput",
@@ -656,7 +656,7 @@
     {
       "name": "DialogSaveResult",
       "kind": "class",
-      "signature": "export class DialogSaveResult extends Schema.Class<DialogSaveResult>(\"DialogSaveResult\")({ path: Schema.String }) {}"
+      "signature": "export class DialogSaveResult extends Schema.Class<DialogSaveResult>(\"DialogSaveResult\")({ path: BridgeSafeNonEmptyString }) {}"
     },
     {
       "name": "DialogServiceApi",
@@ -706,7 +706,7 @@
     {
       "name": "DockJumpListItem",
       "kind": "class",
-      "signature": "export class DockJumpListItem extends Schema.Class<DockJumpListItem>(\"DockJumpListItem\")({ id: Schema.String, title: Schema.String, commandId: Schema.String }) {}"
+      "signature": "export class DockJumpListItem extends Schema.Class<DockJumpListItem>(\"DockJumpListItem\")({ id: DockJumpListItemId, title: DockJumpListItemText, commandId: DockJumpListItemId }) {}"
     },
     {
       "name": "DockLive",
@@ -741,7 +741,7 @@
     {
       "name": "DockSetBadgeCountInput",
       "kind": "class",
-      "signature": "export class DockSetBadgeCountInput extends Schema.Class<DockSetBadgeCountInput>( \"DockSetBadgeCountInput\" )({ count: Schema.Number }) {}"
+      "signature": "export class DockSetBadgeCountInput extends Schema.Class<DockSetBadgeCountInput>( \"DockSetBadgeCountInput\" )({ count: NonNegativeInteger }) {}"
     },
     {
       "name": "DockSetBadgeTextInput",
@@ -761,7 +761,7 @@
     {
       "name": "DockSetProgressInput",
       "kind": "class",
-      "signature": "export class DockSetProgressInput extends Schema.Class<DockSetProgressInput>( \"DockSetProgressInput\" )({ value: Schema.NullOr(Schema.Number), options: Schema.optionalKey(DockSetProgressOptions) }) {}"
+      "signature": "export class DockSetProgressInput extends Schema.Class<DockSetProgressInput>( \"DockSetProgressInput\" )({ value: Schema.NullOr(FiniteZeroToOne), options: Schema.optionalKey(DockSetProgressOptions) }) {}"
     },
     {
       "name": "DockSetProgressOptions",
@@ -1881,7 +1881,7 @@
     {
       "name": "ProtocolDenyInput",
       "kind": "class",
-      "signature": "export class ProtocolDenyInput extends Schema.Class<ProtocolDenyInput>(\"ProtocolDenyInput\")({ scheme: Schema.String, path: Schema.String }) {}"
+      "signature": "export class ProtocolDenyInput extends Schema.Class<ProtocolDenyInput>(\"ProtocolDenyInput\")({ scheme: ProtocolScheme, path: Schema.String }) {}"
     },
     {
       "name": "ProtocolDenyOptions",
@@ -1906,7 +1906,7 @@
     {
       "name": "ProtocolRegisterAppProtocolInput",
       "kind": "class",
-      "signature": "export class ProtocolRegisterAppProtocolInput extends Schema.Class<ProtocolRegisterAppProtocolInput>( \"ProtocolRegisterAppProtocolInput\" )({ scheme: Schema.String }) {}"
+      "signature": "export class ProtocolRegisterAppProtocolInput extends Schema.Class<ProtocolRegisterAppProtocolInput>( \"ProtocolRegisterAppProtocolInput\" )({ scheme: ProtocolScheme }) {}"
     },
     {
       "name": "ProtocolRegisterAppProtocolOptions",
@@ -1914,9 +1914,14 @@
       "signature": "export type ProtocolRegisterAppProtocolOptions = Schema.Schema.Type< typeof ProtocolRegisterAppProtocolInput >"
     },
     {
+      "name": "ProtocolScheme",
+      "kind": "value",
+      "signature": "const ProtocolScheme: Schema.String"
+    },
+    {
       "name": "ProtocolServeAssetInput",
       "kind": "class",
-      "signature": "export class ProtocolServeAssetInput extends Schema.Class<ProtocolServeAssetInput>( \"ProtocolServeAssetInput\" )({ scheme: Schema.String, root: Schema.String }) {}"
+      "signature": "export class ProtocolServeAssetInput extends Schema.Class<ProtocolServeAssetInput>( \"ProtocolServeAssetInput\" )({ scheme: ProtocolScheme, root: Schema.String }) {}"
     },
     {
       "name": "ProtocolServeAssetOptions",
@@ -1926,7 +1931,7 @@
     {
       "name": "ProtocolServeRouteInput",
       "kind": "class",
-      "signature": "export class ProtocolServeRouteInput extends Schema.Class<ProtocolServeRouteInput>( \"ProtocolServeRouteInput\" )({ scheme: Schema.String, route: Schema.String }) {}"
+      "signature": "export class ProtocolServeRouteInput extends Schema.Class<ProtocolServeRouteInput>( \"ProtocolServeRouteInput\" )({ scheme: ProtocolScheme, route: Schema.String }) {}"
     },
     {
       "name": "ProtocolServeRouteOptions",
@@ -2276,7 +2281,7 @@
     {
       "name": "ShellOpenExternalInput",
       "kind": "class",
-      "signature": "export class ShellOpenExternalInput extends Schema.Class<ShellOpenExternalInput>( \"ShellOpenExternalInput\" )({ url: Schema.String, allowedSchemes: Schema.optionalKey(Schema.Array(Schema.String)) }) {}"
+      "signature": "export class ShellOpenExternalInput extends Schema.Class<ShellOpenExternalInput>( \"ShellOpenExternalInput\" )({ url: Schema.String }) {}"
     },
     {
       "name": "ShellOpenExternalOptions",
@@ -2644,11 +2649,6 @@
       "signature": "const UpdateWorkflowLayer: import(\"effect/Layer\").Layer<never, never, import(\"effect/unstable/workflow/WorkflowEngine\").WorkflowEngine | HttpClientNs.HttpClient | Updater>"
     },
     {
-      "name": "validateClipboardImage",
-      "kind": "value",
-      "signature": "const validateClipboardImage: (image: ClipboardImage) => Effect.Effect<ClipboardImage, ClipboardError, never>"
-    },
-    {
       "name": "WebView",
       "kind": "class",
       "signature": "export class WebView extends Context.Service<WebView, WebViewServiceApi>()( \"@effect-desktop/native/WebView\" ) {}"
@@ -2776,7 +2776,12 @@
     {
       "name": "WebViewScreenshot",
       "kind": "class",
-      "signature": "export class WebViewScreenshot extends Schema.Class<WebViewScreenshot>(\"WebViewScreenshot\")({ mime: Schema.String, bytes: Schema.Uint8Array }) {}"
+      "signature": "export class WebViewScreenshot extends Schema.Class<WebViewScreenshot>(\"WebViewScreenshot\")({ mime: WebViewScreenshotMime, bytes: Schema.Uint8Array }) {}"
+    },
+    {
+      "name": "WebViewScreenshotMime",
+      "kind": "type",
+      "signature": "const WebViewScreenshotMime: Schema.Literals<readonly [\"image/png\", \"image/jpeg\"]>"
     },
     {
       "name": "WebViewServiceApi",

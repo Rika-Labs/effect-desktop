@@ -632,7 +632,19 @@ test("App bridge client validates protocol registration scheme before host reque
 
   await Effect.runPromise(client.registerProtocol({ scheme: "effect-desktop" }))
 
-  const invalidSchemes = ["", "http", "https", "file", "app", "chrome", "view-source", "bad scheme", "app://", "MyApp", "x^@y"]
+  const invalidSchemes = [
+    "",
+    "http",
+    "https",
+    "file",
+    "app",
+    "chrome",
+    "view-source",
+    "bad scheme",
+    "app://",
+    "MyApp",
+    "x^@y"
+  ]
   for (const scheme of invalidSchemes) {
     const exit = await Effect.runPromiseExit(client.registerProtocol({ scheme }))
     expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
@@ -665,7 +677,7 @@ test("App bridge client rejects malformed App.getInfo and App.getCommandLine out
                   }
                 : request.method === "App.getCommandLine"
                   ? { kind: "success", payload: { argv: ["app", "bad\u0000arg"], cwd: "" } }
-                  : ({ kind: "success", payload: undefined }) as const
+                  : ({ kind: "success", payload: undefined } as const)
             )
           )
         )
@@ -782,7 +794,7 @@ test("App bridge client rejects malformed App lifecycle event payloads as Invali
             nextTraceId: nextId(["unused"]),
             now: nextNumber([1710000000000])
           })
-          )
+        )
       )
     )
   )
@@ -1017,9 +1029,7 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
   )
 
   expect(result.created).toMatchObject(webviewHandle)
-  expect(result.screenshot).toEqual(
-    new WebViewScreenshot({ mime: "image/png", bytes: pngBytes })
-  )
+  expect(result.screenshot).toEqual(new WebViewScreenshot({ mime: "image/png", bytes: pngBytes }))
   expect(result.canOpenDevtools).toBe(true)
   expect(Array.from(result.blocked)).toEqual([
     new WebViewNavigationBlockedEvent({
@@ -3767,12 +3777,9 @@ test("Shell bridge client validates external URL schemes", async () => {
   )
 
   const denied = await Effect.runPromiseExit(client.openExternal("myapp://callback"))
-  await Effect.runPromise(client.openExternal("myapp://callback"))
 
   expectExitFailure(denied, (error) => hasErrorTag(error, "PermissionDenied"))
-  expect(requests.map((request) => [request.method, request.payload])).toEqual([
-    ["Shell.openExternal", { url: "myapp://callback" }]
-  ])
+  expect(requests).toEqual([])
 })
 
 test("unsupported Shell client reports deferred host methods as Effect values", async () => {
@@ -5764,7 +5771,10 @@ test("Dialog bridge client rejects malformed file filters before transport", asy
 })
 
 test("Dialog bridge client rejects malformed host output paths as InvalidOutput", async () => {
-  const cases: ReadonlyArray<{ readonly method: keyof DialogClientApi; readonly operation: string }> = [
+  const cases: ReadonlyArray<{
+    readonly method: keyof DialogClientApi
+    readonly operation: string
+  }> = [
     { method: "openFile", operation: "Dialog.openFile" },
     { method: "openDirectory", operation: "Dialog.openDirectory" },
     { method: "saveFile", operation: "Dialog.saveFile" }
@@ -5784,21 +5794,15 @@ test("Dialog bridge client rejects malformed host output paths as InvalidOutput"
       const client = await Effect.runPromise(
         Effect.gen(function* () {
           return yield* Dialog
-        }).pipe(
-          Effect.provide(
-            Layer.provide(
-              DialogLive,
-              makeDialogBridgeClientLayer(exchange)
-            )
-          )
-        )
+        }).pipe(Effect.provide(Layer.provide(DialogLive, makeDialogBridgeClientLayer(exchange))))
       )
 
-      const exit = await Effect.runPromiseExit(
-        client[method](
-          method === "saveFile" ? { defaultPath: "/tmp/seed.txt" } : { defaultPath: "/tmp/seed.txt" }
-        )
-      )
+      const exit =
+        method === "saveFile"
+          ? await Effect.runPromiseExit(client.saveFile({ defaultPath: "/tmp/seed.txt" }))
+          : method === "openFile"
+            ? await Effect.runPromiseExit(client.openFile({ defaultPath: "/tmp/seed.txt" }))
+            : await Effect.runPromiseExit(client.openDirectory({ defaultPath: "/tmp/seed.txt" }))
 
       expectExitFailure(
         exit,

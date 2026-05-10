@@ -57,11 +57,15 @@ test("Protocol bridge client validates asset roots as absolute local paths", asy
   )
 
   await Effect.runPromise(client.serveAsset({ scheme: "assets", root: "/app/assets" }))
-  const emptyRootExit = await Effect.runPromiseExit(client.serveAsset({ scheme: "assets", root: "" }))
+  const emptyRootExit = await Effect.runPromiseExit(
+    client.serveAsset({ scheme: "assets", root: "" })
+  )
   const relativeRootExit = await Effect.runPromiseExit(
     client.serveAsset({ scheme: "assets", root: "relative/assets" })
   )
-  const traversalRootExit = await Effect.runPromiseExit(client.serveAsset({ scheme: "assets", root: "../outside" }))
+  const traversalRootExit = await Effect.runPromiseExit(
+    client.serveAsset({ scheme: "assets", root: "../outside" })
+  )
   const fileUrlRootExit = await Effect.runPromiseExit(
     client.serveAsset({ scheme: "assets", root: "file:///tmp/assets" })
   )

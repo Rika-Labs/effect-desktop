@@ -115,7 +115,7 @@ fn decode_text(payload: Option<Value>) -> Result<Option<String>, HostProtocolErr
                     "text",
                     "must not include control characters",
                     host_protocol::DOCK_SET_BADGE_TEXT_METHOD,
-                ))
+                ));
             }
             Ok(Some(text.clone()))
         }

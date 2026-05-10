@@ -36,4 +36,3 @@ export async function generateMetadata(props: { params: Promise<{ slug?: string[
     description: page.data.description
   }
 }
-

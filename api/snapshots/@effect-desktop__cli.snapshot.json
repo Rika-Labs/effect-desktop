@@ -146,7 +146,7 @@
     {
       "name": "DesktopBuildOptions",
       "kind": "interface",
-      "signature": "export interface DesktopBuildOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly commandRunner: CommandRunner readonly now: () => number readonly hostTarget: BuildTarget | undefined }"
+      "signature": "export interface DesktopBuildOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly profile: string readonly commandRunner: CommandRunner readonly now: () => number readonly hostTarget: BuildTarget | undefined }"
     },
     {
       "name": "DesktopBuildReport",

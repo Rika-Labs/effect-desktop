@@ -191,7 +191,7 @@
     {
       "name": "ApiStreamRuntime",
       "kind": "interface",
-      "signature": "export interface ApiStreamRuntime<Env = never> { readonly stream: ( request: HostProtocolRequestEnvelope ) => Stream.Stream<HostProtocolStreamEnvelope, HostProtocolError, Env> readonly cancel: ( request: HostProtocolCancelByRequestEnvelope ) => Effect.Effect<void, never, never> }"
+      "signature": "export interface ApiStreamRuntime<Env = never> { readonly stream: ( request: HostProtocolRequestEnvelope ) => Stream.Stream<HostProtocolStreamEnvelope, HostProtocolError, Env> readonly cancel: ( request: HostProtocolCancelByRequestEnvelope | HostProtocolCancelByResourceEnvelope ) => Effect.Effect<void, never, never> }"
     },
     {
       "name": "ApiStreamRuntimeOptions",

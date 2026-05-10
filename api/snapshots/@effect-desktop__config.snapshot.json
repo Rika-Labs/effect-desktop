@@ -106,12 +106,12 @@
     {
       "name": "ProductionSecurityConfig",
       "kind": "interface",
-      "signature": "export interface ProductionSecurityConfig { readonly security?: { readonly requireTypedBridge?: boolean readonly rendererNativeAccess?: boolean readonly requirePermissions?: boolean readonly externalNavigation?: \"deny\" | \"ask\" | \"allow\" readonly devtoolsInProd?: boolean readonly csp?: CspPolicy readonly redaction?: RedactionPolicy } readonly permissions?: { readonly filesystem?: { readonly write?: FilesystemWritePolicy } readonly process?: { readonly spawn?: ProcessPermissionPolicy } readonly secrets?: SecretPermissionPolicy } readonly update?: { readonly install?: UpdateInstallPolicy } readonly appProtocol?: AppProtocolPolicy readonly resources?: ResourcePolicy readonly contracts?: readonly ContractCapabilityRequirement[] }"
+      "signature": "export interface ProductionSecurityConfig { readonly security?: { readonly requireTypedBridge?: boolean readonly rendererNativeAccess?: boolean readonly requirePermissions?: boolean readonly externalNavigation?: \"deny\" | \"ask\" readonly devtoolsInProd?: boolean readonly csp?: CspPolicy readonly redaction?: RedactionPolicy } readonly permissions?: { readonly filesystem?: { readonly write?: FilesystemWritePolicy } readonly process?: { readonly spawn?: ProcessPermissionPolicy } readonly secrets?: SecretPermissionPolicy } readonly update?: { readonly install?: UpdateInstallPolicy } readonly appProtocol?: AppProtocolPolicy readonly resources?: ResourcePolicy readonly contracts?: readonly ContractCapabilityRequirement[] }"
     },
     {
       "name": "RedactionPolicy",
       "kind": "interface",
-      "signature": "export interface RedactionPolicy { readonly defaultPatternEnabled?: boolean }"
+      "signature": "export interface RedactionPolicy { readonly defaultPatternEnabled?: boolean readonly additionalPatterns?: readonly string[] readonly allowlist?: readonly string[] }"
     },
     {
       "name": "renderDefaultCsp",

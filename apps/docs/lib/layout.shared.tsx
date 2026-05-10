@@ -16,4 +16,3 @@ export function baseOptions(): BaseLayoutProps {
     githubUrl: "https://github.com/Rika-Labs/effect-desktop"
   }
 }
-

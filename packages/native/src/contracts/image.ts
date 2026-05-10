@@ -6,10 +6,7 @@ export type ImageMime = Schema.Schema.Type<typeof ImageMime>
 export const PNG_HEADER = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 export const JPEG_HEADER = new Uint8Array([0xff, 0xd8, 0xff])
 
-export const isSupportedImageHeader = (
-  mime: ImageMime,
-  bytes: Uint8Array
-): boolean => {
+export const isSupportedImageHeader = (mime: ImageMime, bytes: Uint8Array): boolean => {
   if (mime === "image/png") {
     return hasPrefix(bytes, PNG_HEADER)
   }
