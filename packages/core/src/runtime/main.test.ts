@@ -65,7 +65,16 @@ const isHostProtocolRequest = (value: unknown): value is HostProtocolRequest => 
 }
 
 test("runtime entry emits ready and opens declared startup windows after host readiness", async () => {
-  const result = await runRuntimeWithFakeHost()
+  const result = await runRuntimeWithFakeHost({
+    startupWindows: {
+      main: {
+        title: "Notes",
+        width: 960,
+        height: 640,
+        renderer: "/"
+      }
+    }
+  })
 
   expect(result.exitCode).toBe(0)
   expect(result.stderr).toBe("")
@@ -84,22 +93,38 @@ test("runtime entry emits ready and opens declared startup windows after host re
   ])
 })
 
-const runRuntimeWithFakeHost = (): Promise<RuntimeHostResult> =>
+test("runtime smoke mode opens a fallback window when no startup windows are declared", async () => {
+  const result = await runRuntimeWithFakeHost()
+
+  expect(result.exitCode).toBe(0)
+  expect(result.stderr).toBe("")
+  expect(result.trailingStdoutBytes).toBe(0)
+  expect(result.methods).toEqual([
+    HOST_VERSION_METHOD,
+    HOST_PING_METHOD,
+    WINDOW_CREATE_METHOD,
+    WINDOW_DESTROY_METHOD
+  ])
+})
+
+interface RuntimeHostOptions {
+  readonly startupWindows?: unknown
+}
+
+const runRuntimeWithFakeHost = (options: RuntimeHostOptions = {}): Promise<RuntimeHostResult> =>
   new Promise((resolvePromise, rejectPromise) => {
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      EFFECT_DESKTOP_WINDOW_SMOKE_TEST: "1"
+    }
+    delete env[STARTUP_WINDOWS_ENV]
+    if (options.startupWindows !== undefined) {
+      env[STARTUP_WINDOWS_ENV] = JSON.stringify(options.startupWindows)
+    }
+
     const child = spawn("bun", ["src/runtime/main.ts"], {
       cwd: PACKAGE_ROOT,
-      env: {
-        ...process.env,
-        EFFECT_DESKTOP_WINDOW_SMOKE_TEST: "1",
-        [STARTUP_WINDOWS_ENV]: JSON.stringify({
-          main: {
-            title: "Notes",
-            width: 960,
-            height: 640,
-            renderer: "/"
-          }
-        })
-      },
+      env,
       stdio: ["pipe", "pipe", "pipe"]
     }) as unknown as NodeJS.EventEmitter & {
       stdin: NodeJS.WritableStream

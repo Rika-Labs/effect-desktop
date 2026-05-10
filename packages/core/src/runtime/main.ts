@@ -35,14 +35,21 @@ await Bun.write(Bun.stdout, `${JSON.stringify(readyEvent)}\n`)
 const hostExchange = createHostProtocolExchange(createBunStdioTransport())
 const handshake = makeHostHandshakeClient(hostExchange)
 const windows = makeHostWindowClient(hostExchange)
+const smokeTestWindows = Object.freeze({
+  smoke: Object.freeze({
+    title: "Effect Desktop"
+  })
+})
 
 await Effect.runPromise(
   Effect.gen(function* () {
     const isSmokeTest = yield* windowSmokeTest
     const startupWindows = yield* readStartupWindowsEnv(process.env)
+    const declaredWindows =
+      isSmokeTest && Object.keys(startupWindows).length === 0 ? smokeTestWindows : startupWindows
     yield* negotiateHostVersion(handshake, HOST_PROTOCOL_VERSION)
     yield* handshake.ping()
-    yield* openDeclaredWindows(windows, startupWindows, { smokeTest: isSmokeTest })
+    yield* openDeclaredWindows(windows, declaredWindows, { smokeTest: isSmokeTest })
   })
 )
 
