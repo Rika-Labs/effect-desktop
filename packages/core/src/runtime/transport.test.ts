@@ -161,7 +161,7 @@ test("unframeStream validates frameQueueCapacity", async () => {
       .unframeStream({
         scheme: "json-rpc",
         frameQueueCapacity: 0,
-        chunks: Stream.empty
+        chunks: Stream.make<Uint8Array, TransportError, never>([])
       })
       .pipe(Stream.runCollect)
   )
