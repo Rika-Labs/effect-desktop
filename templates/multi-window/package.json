@@ -1,13 +1,13 @@
 {
-  "name": "@effect-desktop/template-basic-react-tailwind",
+  "name": "@effect-desktop/template-multi-window",
   "private": true,
-  "description": "First-party React and Tailwind template for Effect Desktop applications.",
+  "description": "Multi-window template with cluster entity coordination (stub — depends on T29).",
   "license": "MIT OR Apache-2.0",
   "author": "Rika Labs, LLC",
   "repository": {
     "type": "git",
     "url": "https://github.com/Rika-Labs/effect-desktop.git",
-    "directory": "templates/basic-react-tailwind"
+    "directory": "templates/multi-window"
   },
   "homepage": "https://github.com/Rika-Labs/effect-desktop#readme",
   "bugs": {
@@ -16,7 +16,7 @@
   "type": "module",
   "scripts": {
     "desktop": "desktop",
-    "dev": "vite --host 127.0.0.1 --port 5174 --strictPort",
+    "dev": "vite --host 127.0.0.1 --port 5176 --strictPort",
     "build": "vite build",
     "check": "tsc --noEmit -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
