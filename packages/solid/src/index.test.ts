@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { RpcEndpoint } from "@effect-desktop/bridge"
-import { Desktop, MissingDesktopRpcsError } from "@effect-desktop/core"
+import { Desktop, DuplicateDesktopRpcNameError, MissingDesktopRpcsError } from "@effect-desktop/core"
 import { Effect, Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { createRoot } from "solid-js"
@@ -51,6 +51,46 @@ test("SolidDesktop.from exposes app-scoped primitives from provided groups", () 
 
         expect(list().status).toBe("running")
         expect(create.state().status).toBe("idle")
+        return undefined
+      }
+    })
+  )
+})
+
+test("SolidDesktop.useDesktop rejects colliding endpoint names", () => {
+  const ProjectList = Rpc.make("Projects.List", { success: Schema.Array(Schema.String) })
+  const TaskList = Rpc.make("Tasks.List", { success: Schema.Array(Schema.String) })
+  const CollidingRpcs = RpcGroup.make(ProjectList, TaskList)
+  const CollidingApp = Desktop.make({
+    windows: {
+      main: {
+        title: "Lists"
+      }
+    }
+  }).pipe(
+    Desktop.provide(
+      Desktop.Rpcs.layer(
+        CollidingRpcs,
+        CollidingRpcs.toLayer({
+          "Projects.List": () => Effect.succeed(["project"]),
+          "Tasks.List": () => Effect.succeed(["task"])
+        })
+      )
+    )
+  )
+  const CollidingSolid = SolidDesktop.from(CollidingApp)
+  const client: SolidDesktopRpcClient = {
+    "Projects.List": () => Effect.succeed(["project"]),
+    "Tasks.List": () => Effect.succeed(["task"])
+  }
+
+  renderToString(() =>
+    createComponent(CollidingSolid.DesktopRoot, {
+      clients: [[CollidingRpcs, client]],
+      get children() {
+        expect(() => CollidingSolid.useDesktop(CollidingRpcs)).toThrow(
+          DuplicateDesktopRpcNameError
+        )
         return undefined
       }
     })
