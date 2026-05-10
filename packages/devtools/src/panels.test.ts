@@ -10,6 +10,8 @@ import {
   LogsPanelLive,
   makeReactivityTracker,
   makeWorkflowExecutionRegistry,
+  PersistencePanel,
+  PersistencePanelLive,
   ReactivityPanel,
   ReactivityPanelLive,
   ReactivityTracker,
@@ -19,6 +21,7 @@ import {
   type WorkflowsPanelSnapshot
 } from "./index.js"
 import { EventJournal, EventLog as EventLogNS } from "effect/unstable/eventlog"
+import { KeyValueStore } from "effect/unstable/persistence"
 
 test("ClusterPanel returns disabled state", async () => {
   const result = await Effect.runPromise(
@@ -212,4 +215,49 @@ test("EventLogPanel reports journal read failures as typed errors", async () => 
     const fail = exit.cause.reasons.find(Cause.isFailReason)
     expect(fail?.error).toBe(journalError)
   }
+})
+
+test("PersistencePanel reports key-value store size and health", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const panel = yield* PersistencePanel
+      return yield* panel.list()
+    }).pipe(Effect.provide(Layer.provide(PersistencePanelLive(), KeyValueStore.layerMemory)))
+  )
+
+  expect(result.kvHealthy).toBe(true)
+  expect(result.kvSize).toEqual(Option.some(0))
+  expect(result.kvError).toEqual(Option.none())
+})
+
+test("PersistencePanel reports typed key-value store failures", async () => {
+  const storeError = new KeyValueStore.KeyValueStoreError({
+    method: "size",
+    message: "store unavailable"
+  })
+  const failingStore = KeyValueStore.makeStringOnly({
+    get: () => Effect.succeed(undefined),
+    set: () => Effect.void,
+    remove: () => Effect.void,
+    clear: Effect.void,
+    size: Effect.fail(storeError)
+  })
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const panel = yield* PersistencePanel
+      return yield* panel.list()
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          PersistencePanelLive(),
+          Layer.succeed(KeyValueStore.KeyValueStore)(failingStore)
+        )
+      )
+    )
+  )
+
+  expect(result.kvHealthy).toBe(false)
+  expect(result.kvSize).toEqual(Option.none())
+  expect(result.kvError).toEqual(Option.some("size: store unavailable"))
 })
