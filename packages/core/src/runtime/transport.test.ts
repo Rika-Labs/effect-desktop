@@ -154,6 +154,21 @@ test("Transport service unframes split stream chunks incrementally", async () =>
   ])
 })
 
+test("unframeStream validates frameQueueCapacity", async () => {
+  const transport = await Effect.runPromise(makeTransport())
+  const invalid = await Effect.runPromiseExit(
+    transport
+      .unframeStream({
+        scheme: "json-rpc",
+        frameQueueCapacity: 0,
+        chunks: Stream.empty
+      })
+      .pipe(Stream.runCollect)
+  )
+
+  expectFailure(invalid, TransportInvalidArgumentError)
+})
+
 test("Transport service returns typed failures for invalid input and bad frames", async () => {
   const transport = await Effect.runPromise(makeTransport())
 
@@ -186,6 +201,34 @@ test("Transport service returns typed failures for invalid input and bad frames"
   expectFailure(malformedHeader, TransportInvalidArgumentError)
   expectFailure(malformedInput, TransportInvalidArgumentError)
   expect(getFailure(malformedHeader)).toMatchObject({ field: "header" })
+})
+
+test("in-memory transport pair accepts bounded queue capacity", async () => {
+  const [left, right] = await Effect.runPromise(makeInMemoryTransportPair({ queueCapacity: 1 }))
+
+  await Effect.runPromise(left.send(new Uint8Array([0x68, 0x69])))
+  const blockedSecond = await Effect.runFork(left.send(new Uint8Array([0x6f, 0x6b])))
+  const isStillBlocked = await Promise.race([
+    Effect.runPromise(Fiber.join(blockedSecond)).then(() => false),
+    new Promise<boolean>((resolve) => {
+      setTimeout(() => resolve(true), 25)
+    })
+  ])
+
+  expect(isStillBlocked).toBe(true)
+
+  const received = await Effect.runPromise(
+    right.receive.pipe(Stream.take(2), Stream.runCollect)
+  )
+  const collected = Array.from(received).map((chunk) => Array.from(chunk))
+  expect(collected).toEqual([
+    [0x68, 0x69],
+    [0x6f, 0x6b]
+  ])
+
+  await Effect.runPromise(Fiber.join(blockedSecond))
+  await Effect.runPromise(left.close())
+  await Effect.runPromise(right.close())
 })
 
 test("in-memory transport pair substitutes a scoped host protocol transport", async () => {

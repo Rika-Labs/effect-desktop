@@ -360,11 +360,7 @@ export const makeUnsupportedWebViewClient = (): WebViewClientApi => {
     capability: (input) =>
       Effect.succeed(
         new WebViewCapabilityResult({
-          supported: webViewCapability(
-            input.name,
-            input.platform ?? currentWebViewPlatform(),
-            input.mode ?? "prod"
-          )
+          supported: webViewCapability(input.name, input.platform, input.mode)
         })
       ),
     destroy: () => unsupportedEffect<void>("WebView.destroy"),
