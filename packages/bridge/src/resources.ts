@@ -20,10 +20,17 @@ export const makeResourceProxy = <Spec extends ApiResourceSpec>(
   exchange: ApiResourceExchange
 ): ApiResourceProxy<Spec["kind"], Spec["state"]> => {
   void spec
+  let disposed = false
 
   return Object.freeze({
     ...handle,
-    dispose: () => exchange.dispose(handle)
+    dispose: () => {
+      if (disposed) {
+        return Effect.void
+      }
+      disposed = true
+      return exchange.dispose(handle)
+    }
   })
 }
 

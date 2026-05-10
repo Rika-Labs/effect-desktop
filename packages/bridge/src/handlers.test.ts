@@ -3,6 +3,7 @@ import { Cause, Deferred, Effect, Exit, Schema } from "effect"
 
 import {
   type ApiContractClass,
+  type ApiClientResponse,
   type ApiHandlers,
   type ApiLayer,
   Handlers,
@@ -311,7 +312,9 @@ test("Handlers wraps synchronous handler throws into typed failure responses", a
   )
 
   const response = await Effect.runPromise(
-    runtime.dispatch(request("ProjectApi.HandlerSyncThrow.open", { path: "/tmp/project" }))
+    runtime.dispatch(
+      request("ProjectApi.HandlerSyncThrow.open", { path: "/tmp/project" })
+    ) as Effect.Effect<ApiClientResponse, HostProtocolError | unknown, never>
   )
 
   expect(response).toEqual({

@@ -8,6 +8,7 @@ import {
   type ApiLayer,
   Client,
   HostProtocolCancelByRequestEnvelope,
+  HostProtocolCancelByResourceEnvelope,
   HostProtocolRequestEnvelope,
   Streams,
   type HostProtocolError,
@@ -72,6 +73,59 @@ test("Streams carries typed chunks from handler to client in order", async () =>
       payload: new WatchInput({ projectId: "project-1" })
     })
   ])
+})
+
+test("Streams rejects duplicate active request ids", async () => {
+  const ProjectApi = makeProjectApi("ProjectApi.StreamDuplicateRequest")
+  const lifecycle: string[] = []
+  const runtime = Streams(
+    ProjectApi.layer({
+      watch: () =>
+        Stream.scoped(
+          Stream.fromEffect(
+            Effect.acquireRelease(
+              Effect.sync(() => {
+                lifecycle.push("acquired")
+              }),
+              () => Effect.sync(() => lifecycle.push("released"))
+            ).pipe(Effect.andThen(Effect.never))
+          )
+        )
+    })
+  )
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = Client(
+    { project: ProjectApi },
+    streamExchange(runtime, requests),
+    {
+      nextRequestId: () => "request-stream-duplicate",
+      nextTraceId: () => "trace-stream-duplicate",
+      now: () => 41
+    }
+  )
+  const controller = new AbortController()
+
+  const firstFiber = Effect.runFork(
+    client.project.watch(new WatchInput({ projectId: "project-1" }), {
+      signal: controller.signal
+    }).pipe(Stream.runCollect)
+  )
+
+  await waitFor(() => requests.length === 1)
+  await waitFor(() => lifecycle.includes("acquired"))
+
+  const duplicateExit = await Effect.runPromiseExit(
+    client.project.watch(new WatchInput({ projectId: "project-1" })).pipe(Stream.runCollect)
+  )
+  expectFailureTag(duplicateExit, "InvalidArgument")
+  expect(lifecycle).toEqual(["acquired"])
+  expect(requests).toHaveLength(2)
+
+  controller.abort()
+  const firstStreamFiber = await firstFiber
+  const firstExit = await Effect.runPromiseExit(Fiber.join(firstStreamFiber))
+  await waitFor(() => lifecycle.includes("released"))
+  expectFailureTag(firstExit, "StreamClosed")
 })
 
 test("Streams carries typed stream errors as values in the error channel", async () => {
@@ -439,6 +493,64 @@ test("Streams cancellation interrupts the producer and emits a closed terminal",
       },
       state: "terminal",
       streamId: "stream-cancel",
+      terminal: "closed",
+      terminalAt: 42
+    }
+  ])
+})
+
+test("Streams cancellation by resource id interrupts the producer", async () => {
+  const ProjectApi = makeProjectApi("ProjectApi.StreamCancelByResource")
+  const registry = makeBridgeStreamRegistry()
+  const finalizers: string[] = []
+  const runtime = Streams.withOptions(
+    {
+      nextStreamId: () => "stream-resource-cancel",
+      now: () => 42,
+      registry
+    },
+    ProjectApi.layer({
+      watch: () =>
+        Stream.scoped(
+          Stream.fromEffect(
+            Effect.acquireRelease(
+              Effect.sync(() => finalizers.push("acquired")),
+              (_acquired, _exit) => Effect.sync(() => finalizers.push("interrupted"))
+            ).pipe(Effect.andThen(Effect.never))
+          )
+        )
+    })
+  )
+  const client = Client({ project: ProjectApi }, streamExchange(runtime, []))
+  const exitPromise = Effect.runPromiseExit(
+    client.project.watch(new WatchInput({ projectId: "project-1" })).pipe(Stream.runCollect)
+  )
+
+  await waitFor(() => finalizers.includes("acquired"))
+  await Effect.runPromise(
+    runtime.cancel({
+      kind: "cancel",
+      resourceId: "stream-resource-cancel",
+      timestamp: 42,
+      traceId: "trace-stream-resource-cancel"
+    } satisfies HostProtocolCancelByResourceEnvelope)
+  )
+
+  const exit = await exitPromise
+  await waitFor(() => finalizers.includes("interrupted"))
+  expectFailureTag(exit, "StreamClosed")
+  expect(finalizers).toEqual(["acquired", "interrupted"])
+  expect(await Effect.runPromise(registry.snapshot())).toEqual([
+    {
+      generation: 0,
+      backpressure: {
+        evictedFrames: 0,
+        overflow: "error",
+        queueCapacity: 1024,
+        queueDepth: 0
+      },
+      state: "terminal",
+      streamId: "stream-resource-cancel",
       terminal: "closed",
       terminalAt: 42
     }
