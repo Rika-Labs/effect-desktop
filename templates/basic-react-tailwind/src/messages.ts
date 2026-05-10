@@ -10,30 +10,34 @@ export interface TemplateCopy {
   readonly unavailable: string
   readonly running: string
   readonly opened: (windowId: string) => string
+  readonly currentWindow: (windowId: string) => string
 }
 
 export const templateMessages: Record<TemplateLocale, TemplateCopy> = {
   en: {
-    windowTitle: "Effect Desktop template window",
+    windowTitle: "Effect Desktop basic React Tailwind template",
     eyebrow: "basic-react-tailwind",
-    title: "Build a desktop renderer with React, Tailwind, and typed Effects.",
+    title: "Build a desktop renderer with React, Tailwind, and Effect.",
     description:
-      "This template uses public Effect Desktop hooks and keeps native calls as explicit Effect values, so failures stay observable instead of being thrown from the render path.",
+      "RPC contracts live in src/contract.ts as Rpc.make and RpcGroup.make. The host spine in src/app.ts wires Desktop.app() with the handler layer.",
     openWindow: "Open window",
     ready: "Desktop client ready.",
     unavailable: "Desktop client unavailable.",
     running: "Opening window...",
-    opened: (windowId) => `Opened ${windowId}.`
+    opened: (windowId) => `Opened ${windowId}.`,
+    currentWindow: (windowId) => `Current window: ${windowId}`
   },
   ar: {
-    windowTitle: "نافذة قالب Effect Desktop",
+    windowTitle: "قالب Effect Desktop مع React و Tailwind",
     eyebrow: "basic-react-tailwind",
     title: "ابن واجهة سطح مكتب باستخدام React و Tailwind و Effect.",
-    description: "يحافظ هذا القالب على استدعاءات النظام كقيم Effect صريحة حتى تبقى الأعطال مرئية.",
+    description:
+      "تعيش عقود RPC في src/contract.ts باستخدام Rpc.make و RpcGroup.make. ويربط src/app.ts تطبيق Desktop.app() بطبقة المعالجات.",
     openWindow: "افتح نافذة",
     ready: "عميل سطح المكتب جاهز.",
     unavailable: "عميل سطح المكتب غير متاح.",
     running: "جار فتح النافذة...",
-    opened: (windowId) => `تم فتح ${windowId}.`
+    opened: (windowId) => `تم فتح ${windowId}.`,
+    currentWindow: (windowId) => `النافذة الحالية: ${windowId}`
   }
 }

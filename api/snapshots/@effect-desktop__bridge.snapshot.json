@@ -689,6 +689,11 @@
       "signature": "const makeHostProtocolHostUnavailableError: (operation: string) => HostProtocolHostUnavailableError"
     },
     {
+      "name": "makeHostProtocolInternalError",
+      "kind": "value",
+      "signature": "const makeHostProtocolInternalError: (message: string, operation: string) => HostProtocolError"
+    },
+    {
       "name": "makeHostProtocolInvalidArgumentError",
       "kind": "value",
       "signature": "const makeHostProtocolInvalidArgumentError: (field: string, reason: string, operation: string) => HostProtocolInvalidArgumentError"
