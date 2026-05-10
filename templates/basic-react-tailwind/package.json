@@ -26,6 +26,7 @@
   "dependencies": {
     "@effect-desktop/bridge": "workspace:*",
     "@effect-desktop/cli": "workspace:*",
+    "@effect-desktop/core": "workspace:*",
     "@effect-desktop/native": "workspace:*",
     "@effect-desktop/react": "workspace:*",
     "@effect-desktop/test": "workspace:*",

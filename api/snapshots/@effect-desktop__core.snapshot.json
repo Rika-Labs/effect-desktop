@@ -34,11 +34,6 @@
       "signature": "const Api: Readonly<{ Resource: <Kind extends string, State extends string>(kind: Kind, state: State) => ApiResourceSpec<Kind, State>; Stream: <Chunk extends Schema.Schema<unknown>, Error extends Schema.Schema<unknown>>(chunk: Chunk, error: Error, backpressure?: BackpressureSpec) => ApiStreamSpec & { readonly chunk: Chunk; readonly error: Error; }; Tag: <Tag extends string>(tag: Tag) => <Self>() => <Spec extends ApiContractSpec, Events extends ApiContractEvents = Record<never, never>>(spec: Spec, events?: Events) => Effect.Effect<ApiContractClass<Tag, Spec, Events>, ApiContractError, never>; entries: () => Effect.Effect<readonly ApiContractClass[], never, never>; freeze: () => Effect.Effect<void, never, never>; get: (tag: string) => Effect.Effect<Option.Option<ApiContractClass>, never, never>; }>"
     },
     {
-      "name": "app",
-      "kind": "value",
-      "signature": "const app: <RIn = never, E = never>(config: DesktopConfig<RIn, E>) => Layer.Layer<DesktopApp, DesktopConfigError | E, RIn>"
-    },
-    {
       "name": "approvalAuditEvent",
       "kind": "value",
       "signature": "const approvalAuditEvent: (input: ApprovalAuditEventInput) => AuditEvent"
@@ -114,6 +109,11 @@
       "signature": "export type ApprovalRisk = typeof ApprovalRisk.Type"
     },
     {
+      "name": "ApprovalWorkflowLayer",
+      "kind": "type",
+      "signature": "export type ApprovalWorkflowLayer = ReturnType<typeof makePermissionApprovalWorkflowLayer>"
+    },
+    {
       "name": "AuditEvent",
       "kind": "class",
       "signature": "export class AuditEvent extends Schema.Class<AuditEvent>(\"AuditEvent\")({ kind: AuditEventKind, source: NonEmptyString, traceId: NonEmptyString, outcome: NonEmptyString, timestamp: Schema.optionalKey(Schema.Number), normalizedCapability: Schema.optionalKey(Schema.Unknown), actor: Schema.optionalKey(Schema.Unknown), resource: Schema.optionalKey(Schema.String), details: Schema.optionalKey(Schema.Unknown) }) {}"
@@ -159,6 +159,61 @@
       "signature": "const AuditReactivityLayer: Layer.Layer<never, never, EventLog.Registry>"
     },
     {
+      "name": "AutoSaveError",
+      "kind": "class",
+      "signature": "export class AutoSaveError extends Data.TaggedError(\"AutoSaveError\")<{ readonly target: string readonly message: string readonly cause: unknown }> {}"
+    },
+    {
+      "name": "AutoSavePort",
+      "kind": "interface",
+      "signature": "export interface AutoSavePort { readonly flush: (target: string) => Effect.Effect<void, AutoSaveError, never> }"
+    },
+    {
+      "name": "AutoSaveService",
+      "kind": "class",
+      "signature": "export class AutoSaveService extends Context.Service<AutoSaveService, AutoSavePort>()( \"AutoSaveService\" ) {}"
+    },
+    {
+      "name": "AutoSaveWorkflow",
+      "kind": "value",
+      "signature": "const AutoSaveWorkflow: Workflow.Workflow<\"AutoSave\", Schema.Struct<{ target: Schema.NonEmptyString; }>, Schema.Void, Schema.TaggedStruct<\"AutoSaveError\", { readonly target: Schema.String; readonly message: Schema.String; readonly cause: Schema.Unknown; }>>"
+    },
+    {
+      "name": "AutoSaveWorkflowLayer",
+      "kind": "value",
+      "signature": "const AutoSaveWorkflowLayer: Layer.Layer<never, never, WorkflowEngine.WorkflowEngine | AutoSaveService>"
+    },
+    {
+      "name": "BackupConfig",
+      "kind": "interface",
+      "signature": "export interface BackupConfig { readonly userDataDir: string readonly outputDir: string }"
+    },
+    {
+      "name": "BackupConfigService",
+      "kind": "class",
+      "signature": "export class BackupConfigService extends Context.Service<BackupConfigService, BackupConfig>()( \"BackupConfigService\" ) {}"
+    },
+    {
+      "name": "BackupError",
+      "kind": "class",
+      "signature": "export class BackupError extends Data.TaggedError(\"BackupError\")<{ readonly phase: BackupPhase readonly message: string readonly cause: unknown }> {}"
+    },
+    {
+      "name": "BackupResult",
+      "kind": "type",
+      "signature": "export type BackupResult = typeof BackupResultSchema.Type"
+    },
+    {
+      "name": "BackupWorkflow",
+      "kind": "value",
+      "signature": "const BackupWorkflow: Workflow.Workflow<\"Backup\", Schema.Struct<{ label: Schema.NonEmptyString; }>, Schema.Struct<{ readonly archivePath: Schema.NonEmptyString; readonly dbBytes: Schema.Number; }>, Schema.TaggedStruct<\"BackupError\", { readonly phase: Schema.Literals<readonly [\"validate\", \"snapshot\", \"database\", \"archive\", \"cleanup\"]>; readonly message: Schema.String; readonly cause: Schema.Unknown; }>>"
+    },
+    {
+      "name": "BackupWorkflowLayer",
+      "kind": "value",
+      "signature": "const BackupWorkflowLayer: Layer.Layer<never, never, FileSystem | WorkflowEngine.WorkflowEngine | SqliteClient | BackupConfigService>"
+    },
+    {
       "name": "BridgeCallRegistry",
       "kind": "interface",
       "signature": "export interface BridgeCallRegistry { readonly record: (state: BridgeCallState) => Effect.Effect<void, never, never> readonly list: () => Effect.Effect<readonly BridgeCallState[], never, never> readonly observe: () => Stream.Stream<readonly BridgeCallState[], never, never> }"
@@ -192,6 +247,16 @@
       "name": "CacheHitRate",
       "kind": "value",
       "signature": "const CacheHitRate: Metric.Frequency"
+    },
+    {
+      "name": "CapabilityAnnotation",
+      "kind": "value",
+      "signature": "const CapabilityAnnotation: Context.Service<{ readonly kind: \"filesystem.read\" | \"filesystem.write\" | \"filesystem.delete\"; readonly roots: readonly string[]; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly deny?: readonly string[]; readonly allowCreate?: boolean; readonly allowOverwrite?: boolean; } | { readonly kind: \"process.spawn\" | \"pty.spawn\"; readonly audit: \"always\" | \"on-deny\"; readonly commands: readonly string[]; readonly environment: \"allowlist\" | \"none\"; readonly shell: false | \"requires-explicit-approval\"; readonly cwd?: readonly string[]; } | { readonly kind: \"network.connect\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly hosts: readonly string[]; readonly askUnknownHosts: boolean; } | { readonly kind: \"secrets.read\" | \"secrets.write\" | \"safeStorage.read\" | \"safeStorage.write\"; readonly audit: \"always\" | \"on-deny\"; readonly namespaces: readonly string[]; } | { readonly kind: \"native.invoke\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly methods: readonly string[]; readonly primitive: string; }, { readonly kind: \"filesystem.read\" | \"filesystem.write\" | \"filesystem.delete\"; readonly roots: readonly string[]; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly deny?: readonly string[]; readonly allowCreate?: boolean; readonly allowOverwrite?: boolean; } | { readonly kind: \"process.spawn\" | \"pty.spawn\"; readonly audit: \"always\" | \"on-deny\"; readonly commands: readonly string[]; readonly environment: \"allowlist\" | \"none\"; readonly shell: false | \"requires-explicit-approval\"; readonly cwd?: readonly string[]; } | { readonly kind: \"network.connect\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly hosts: readonly string[]; readonly askUnknownHosts: boolean; } | { readonly kind: \"secrets.read\" | \"secrets.write\" | \"safeStorage.read\" | \"safeStorage.write\"; readonly audit: \"always\" | \"on-deny\"; readonly namespaces: readonly string[]; } | { readonly kind: \"native.invoke\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly methods: readonly string[]; readonly primitive: string; }>"
+    },
+    {
+      "name": "capabilityCovers",
+      "kind": "value",
+      "signature": "const capabilityCovers: (declared: NormalizedCapability, requested: NormalizedCapability) => boolean"
     },
     {
       "name": "CapabilityKind",
@@ -291,7 +356,12 @@
     {
       "name": "Desktop",
       "kind": "value",
-      "signature": "const Desktop: Readonly<{ Api: Readonly<{ Resource: <Kind extends string, State extends string>(kind: Kind, state: State) => import(\"@effect-desktop/bridge\").ApiResourceSpec<Kind, State>; Stream: <Chunk extends import(\"effect/Schema\").Schema<unknown>, Error extends import(\"effect/Schema\").Schema<unknown>>(chunk: Chunk, error: Error, backpressure?: import(\"@effect-desktop/bridge\").BackpressureSpec) => import(\"@effect-desktop/bridge\").ApiStreamSpec & { readonly chunk: Chunk; readonly error: Error; }; Tag: <Tag extends string>(tag: Tag) => <Self>() => <Spec extends import(\"@effect-desktop/bridge\").ApiContractSpec, Events extends import(\"@effect-desktop/bridge\").ApiContractEvents = Record<never, never>>(spec: Spec, events?: Events) => import(\"effect/Effect\").Effect<import(\"@effect-desktop/bridge\").ApiContractClass<Tag, Spec, Events>, import(\"@effect-desktop/bridge\").ApiContractError, never>; entries: () => import(\"effect/Effect\").Effect<readonly import(\"@effect-desktop/bridge\").ApiContractClass[], never, never>; freeze: () => import(\"effect/Effect\").Effect<void, never, never>; get: (tag: string) => import(\"effect/Effect\").Effect<import(\"effect/Option\").Option<import(\"@effect-desktop/bridge\").ApiContractClass>, never, never>; }>; Client: <Contracts extends Readonly<Record<string, import(\"@effect-desktop/bridge\").ApiContractClass>>>(contracts: Contracts, exchange: import(\"@effect-desktop/bridge\").ApiClientExchange, options?: import(\"@effect-desktop/bridge\").ApiClientOptions) => import(\"@effect-desktop/bridge\").ApiClient<Contracts>; Handlers: (<Layers extends readonly { readonly contract: import(\"@effect-desktop/bridge\").ApiContractClass<string, import(\"@effect-desktop/bridge\").ApiContractSpec>; readonly handlers: object; }[]>(...layers: Layers) => import(\"@effect-desktop/bridge\").ApiHandlerRuntime<import(\"@effect-desktop/bridge\").ApiLayerEnvironment<Layers[number]>>) & { withOptions: <Layers extends readonly { readonly contract: import(\"@effect-desktop/bridge\").ApiContractClass<string, import(\"@effect-desktop/bridge\").ApiContractSpec>; readonly handlers: object; }[]>(options: import(\"@effect-desktop/bridge\").ApiHandlerRuntimeOptions, ...layers: Layers) => import(\"@effect-desktop/bridge\").ApiHandlerRuntime<import(\"@effect-desktop/bridge\").ApiLayerEnvironment<Layers[number]>>; }; RedactionFilter: Readonly<{ redact: <A>(record: A, options?: import(\"@effect-desktop/bridge\").RedactionFilterOptions) => A; redactedValue: \"[REDACTED]\"; defaultPattern: RegExp; }>; app: <RIn = never, E = never>(config: import(\"./runtime/desktop-app.js\").DesktopConfig<RIn, E>) => import(\"effect/Layer\").Layer<import(\"./runtime/desktop-app.js\").DesktopApp, import(\"./runtime/desktop-app.js\").DesktopConfigError | E, RIn>; launch: (layer: import(\"effect/Layer\").Layer<import(\"./runtime/desktop-app.js\").DesktopApp, import(\"./runtime/desktop-app.js\").DesktopConfigError, never>) => import(\"effect/Effect\").Effect<never, import(\"./runtime/desktop-app.js\").DesktopConfigError, never>; }>"
+      "signature": "const Desktop: Readonly<{ Api: Readonly<{ Resource: <Kind extends string, State extends string>(kind: Kind, state: State) => import(\"@effect-desktop/bridge\").ApiResourceSpec<Kind, State>; Stream: <Chunk extends import(\"effect/Schema\").Schema<unknown>, Error extends import(\"effect/Schema\").Schema<unknown>>(chunk: Chunk, error: Error, backpressure?: import(\"@effect-desktop/bridge\").BackpressureSpec) => import(\"@effect-desktop/bridge\").ApiStreamSpec & { readonly chunk: Chunk; readonly error: Error; }; Tag: <Tag extends string>(tag: Tag) => <Self>() => <Spec extends import(\"@effect-desktop/bridge\").ApiContractSpec, Events extends import(\"@effect-desktop/bridge\").ApiContractEvents = Record<never, never>>(spec: Spec, events?: Events) => Effect.Effect<import(\"@effect-desktop/bridge\").ApiContractClass<Tag, Spec, Events>, import(\"@effect-desktop/bridge\").ApiContractError, never>; entries: () => Effect.Effect<readonly import(\"@effect-desktop/bridge\").ApiContractClass[], never, never>; freeze: () => Effect.Effect<void, never, never>; get: (tag: string) => Effect.Effect<import(\"effect/Option\").Option<import(\"@effect-desktop/bridge\").ApiContractClass>, never, never>; }>; Client: <Contracts extends Readonly<Record<string, import(\"@effect-desktop/bridge\").ApiContractClass>>>(contracts: Contracts, exchange: import(\"@effect-desktop/bridge\").ApiClientExchange, options?: import(\"@effect-desktop/bridge\").ApiClientOptions) => import(\"@effect-desktop/bridge\").ApiClient<Contracts>; Handlers: (<Layers extends readonly { readonly contract: import(\"@effect-desktop/bridge\").ApiContractClass<string, import(\"@effect-desktop/bridge\").ApiContractSpec>; readonly handlers: object; }[]>(...layers: Layers) => import(\"@effect-desktop/bridge\").ApiHandlerRuntime<import(\"@effect-desktop/bridge\").ApiLayerEnvironment<Layers[number]>>) & { withOptions: <Layers extends readonly { readonly contract: import(\"@effect-desktop/bridge\").ApiContractClass<string, import(\"@effect-desktop/bridge\").ApiContractSpec>; readonly handlers: object; }[]>(options: import(\"@effect-desktop/bridge\").ApiHandlerRuntimeOptions, ...layers: Layers) => import(\"@effect-desktop/bridge\").ApiHandlerRuntime<import(\"@effect-desktop/bridge\").ApiLayerEnvironment<Layers[number]>>; }; RedactionFilter: Readonly<{ redact: <A>(record: A, options?: import(\"@effect-desktop/bridge\").RedactionFilterOptions) => A; redactedValue: \"[REDACTED]\"; defaultPattern: RegExp; }>; app: { (): Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>; (options: DesktopAppOptionsWithPermissions): Layer.Layer<WorkflowEngine.WorkflowEngine, never, PermissionRegistry>; <RIn = never, E = never>(config: DesktopConfig<RIn, E>): Layer.Layer<DesktopApp, DesktopConfigError | E, RIn>; }; launch: (layer: Layer.Layer<DesktopApp, DesktopConfigError, never>) => Effect.Effect<never, DesktopConfigError, never>; }>"
+    },
+    {
+      "name": "desktopApp",
+      "kind": "value",
+      "signature": "const app: <RIn = never, E = never>(config: DesktopConfig<RIn, E>) => Layer.Layer<DesktopApp, DesktopConfigError | E, RIn>"
     },
     {
       "name": "DesktopApp",
@@ -304,6 +374,11 @@
       "signature": "export interface DesktopAppApi { readonly appId: string readonly windows: Readonly<Record<string, WindowSpec>> }"
     },
     {
+      "name": "DesktopAppOptions",
+      "kind": "interface",
+      "signature": "export interface DesktopAppOptions { readonly workflows?: readonly WorkflowLayer[] readonly permissions?: readonly NormalizedCapability[] }"
+    },
+    {
       "name": "DesktopConfig",
       "kind": "interface",
       "signature": "export interface DesktopConfig<RIn = never, E = never> { readonly id: string readonly windows: Readonly<Record<string, WindowSpec>> readonly handlers?: ReadonlyArray<AnyApiLayer> readonly layers?: ReadonlyArray<Layer.Layer<unknown, E, RIn>> readonly permissions?: ReadonlyArray<NormalizedCapability> readonly workflows?: ReadonlyArray<WorkflowLayer> }"
@@ -311,7 +386,7 @@
     {
       "name": "DesktopConfigError",
       "kind": "class",
-      "signature": "export class DesktopConfigError extends Data.TaggedError(\"DesktopConfigError\")<{ readonly appId: string readonly reason: \"missing-permission\" | \"invalid-config\" readonly message: string readonly contract?: string readonly method?: string readonly permission?: string }> {}"
+      "signature": "export class DesktopConfigError extends Data.TaggedError(\"DesktopConfigError\")<{ readonly reason: \"undeclared-capability\" readonly contract: string readonly capability: NormalizedCapabilityType readonly message: string }> {}"
     },
     {
       "name": "DesktopEnvConfig",
@@ -324,6 +399,11 @@
       "signature": "const DesktopLoggerLayer: Layer.Layer<never, Config.ConfigError, never>"
     },
     {
+      "name": "DesktopSpineConfigError",
+      "kind": "class",
+      "signature": "export class DesktopConfigError extends Data.TaggedError(\"DesktopConfigError\")<{ readonly appId: string readonly reason: \"missing-permission\" | \"invalid-config\" readonly message: string readonly contract?: string readonly method?: string readonly permission?: string }> {}"
+    },
+    {
       "name": "DurableClock",
       "kind": "value",
       "signature": "import * as Duration from \"../../Duration.ts\"; import * as Effect from \"../../Effect.ts\"; import type * as Schema from \"../../Schema.ts\"; import * as DurableDeferred from \"./DurableDeferred.ts\"; import type { WorkflowEngine, WorkflowInstance } from \"./WorkflowEngine.ts\"; declare const TypeId = \"~effect/workflow/DurableClock\"; /** * @since 4.0.0 * @category Models */ export interface DurableClock { readonly [TypeId]: typeof TypeId; readonly name: string; readonly duration: Duration.Duration; readonly deferred: DurableDeferred.DurableDeferred<typeof Schema.Void>; } /** * @since 4.0.0 * @category Constructors */ export declare const make: (options: { readonly name: string; readonly duration: Duration.Input; }) => DurableClock; /** * @since 1.0.0 * @category Sleeping */ export declare const sleep: (options: { readonly name: string; readonly duration: Duration.Input; /** * If the duration is less than or equal to this threshold, the clock will * be executed in memory. * * Defaults to 60 seconds. */ readonly inMemoryThreshold?: Duration.Input | undefined; }) => Effect.Effect<void, never, WorkflowEngine | WorkflowInstance>; export {}; //# sourceMappingURL=DurableClock.d.ts.map"
@@ -332,6 +412,11 @@
       "name": "DurableDeferred",
       "kind": "value",
       "signature": "import type { NonEmptyReadonlyArray } from \"../../Array.ts\"; import type * as Brand from \"../../Brand.ts\"; import * as Cause from \"../../Cause.ts\"; import * as Effect from \"../../Effect.ts\"; import * as Exit from \"../../Exit.ts\"; import * as Schema from \"../../Schema.ts\"; import * as Workflow from \"./Workflow.ts\"; import type { WorkflowEngine, WorkflowInstance } from \"./WorkflowEngine.ts\"; declare const TypeId = \"~effect/workflow/DurableDeferred\"; /** * @since 4.0.0 * @category Models */ export interface DurableDeferred<Success extends Schema.Top, Error extends Schema.Top = Schema.Never> { readonly [TypeId]: typeof TypeId; readonly name: string; readonly successSchema: Success; readonly errorSchema: Error; readonly exitSchema: Schema.Exit<Schema.Top, Schema.Top, Schema.Top>; readonly withActivityAttempt: Effect.Effect<DurableDeferred<Success, Error>>; } /** * @since 4.0.0 * @category Models */ export interface Any { readonly [TypeId]: typeof TypeId; readonly name: string; } /** * @since 4.0.0 * @category Models */ export interface AnyWithProps { readonly [TypeId]: typeof TypeId; readonly name: string; readonly successSchema: Schema.Top; readonly errorSchema: Schema.Top; readonly exitSchema: Schema.Exit<any, any, any>; } /** * @since 4.0.0 * @category Constructors */ export declare const make: <Success extends Schema.Top = Schema.Void, Error extends Schema.Top = Schema.Never>(name: string, options?: { readonly success?: Success | undefined; readonly error?: Error | undefined; }) => DurableDeferred<Success, Error>; declare const await_: <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>) => Effect.Effect<Success[\"Type\"], Error[\"Type\"], WorkflowEngine | WorkflowInstance | Success[\"DecodingServices\"] | Error[\"DecodingServices\"]>; export { /** * @since 4.0.0 * @category Combinators */ await_ as await }; /** * @since 4.0.0 * @category Combinators */ export declare const into: { /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>): <R>(effect: Effect.Effect<Success[\"Type\"], Error[\"Type\"], R>) => Effect.Effect<Success[\"Type\"], Error[\"Type\"], R | WorkflowEngine | WorkflowInstance | Success[\"DecodingServices\"] | Error[\"DecodingServices\"]>; /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top, R>(effect: Effect.Effect<Success[\"Type\"], Error[\"Type\"], R>, self: DurableDeferred<Success, Error>): Effect.Effect<Success[\"Type\"], Error[\"Type\"], R | WorkflowEngine | WorkflowInstance | Success[\"DecodingServices\"] | Error[\"DecodingServices\"]>; }; /** * @since 4.0.0 * @category Racing */ export declare const raceAll: <const Effects extends NonEmptyReadonlyArray<Effect.Effect<any, any, any>>, Success extends Schema.Schema<Effect.Success<Effects[number]>>, Error extends Schema.Schema<Effect.Error<Effects[number]>>>(options: { name: string; success: Success; error: Error; effects: Effects; }) => Effect.Effect<Effect.Success<Effects[number]>, Effect.Error<Effects[number]>, Effect.Services<Effects[number]> | Success[\"DecodingServices\"] | Success[\"EncodingServices\"] | Error[\"DecodingServices\"] | Error[\"EncodingServices\"] | WorkflowEngine | WorkflowInstance>; /** * @since 4.0.0 */ export declare const TokenTypeId = \"~effect/workflow/DurableDeferred/Token\"; /** * @since 4.0.0 */ export type TokenTypeId = typeof TokenTypeId; /** * @since 4.0.0 * @category Token */ export type Token = Brand.Branded<string, TokenTypeId>; /** * @since 4.0.0 * @category Token */ export declare const Token: Schema.brand<Schema.String, TokenTypeId>; declare const TokenParsed_base: Schema.Class<TokenParsed, Schema.Struct<{ readonly workflowName: Schema.String; readonly executionId: Schema.String; readonly deferredName: Schema.String; }>, {}>; /** * @since 4.0.0 * @category Token */ export declare class TokenParsed extends TokenParsed_base { /** * @since 4.0.0 */ get asToken(): Token; /** * @since 4.0.0 */ static readonly FromString: Schema.decodeTo<typeof TokenParsed, Schema.decodeTo<Schema.fromJsonString<Schema.Tuple<readonly [Schema.String, Schema.String, Schema.String]>>, Schema.String, never, never>, never, never>; /** * @since 4.0.0 */ static readonly fromString: (input: string, options?: import(\"../../SchemaAST.ts\").ParseOptions) => TokenParsed; /** * @since 4.0.0 */ static readonly encode: (input: TokenParsed, options?: import(\"../../SchemaAST.ts\").ParseOptions) => string; } /** * @since 4.0.0 * @category Token */ export declare const token: <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>) => Effect.Effect<Token, never, WorkflowInstance>; /** * @since 4.0.0 * @category Token */ export declare const tokenFromExecutionId: { /** * @since 4.0.0 * @category Token */ (options: { readonly workflow: Workflow.Any; readonly executionId: string; }): <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>) => Token; /** * @since 4.0.0 * @category Token */ <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>, options: { readonly workflow: Workflow.Any; readonly executionId: string; }): Token; }; /** * @since 4.0.0 * @category Token */ export declare const tokenFromPayload: { /** * @since 4.0.0 * @category Token */ <W extends Workflow.Any>(options: { readonly workflow: W; readonly payload: Workflow.PayloadSchema<W>[\"~type.make.in\"]; }): <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>) => Effect.Effect<Token>; /** * @since 4.0.0 * @category Token */ <Success extends Schema.Top, Error extends Schema.Top, W extends Workflow.Any>(self: DurableDeferred<Success, Error>, options: { readonly workflow: W; readonly payload: Workflow.PayloadSchema<W>[\"~type.make.in\"]; }): Effect.Effect<Token>; }; /** * @since 4.0.0 * @category Combinators */ export declare const done: { /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(options: { readonly token: Token; readonly exit: Exit.Exit<Success[\"Type\"], Error[\"Type\"]>; }): (self: DurableDeferred<Success, Error>) => Effect.Effect<void, never, WorkflowEngine | Success[\"EncodingServices\"] | Error[\"EncodingServices\"]>; /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>, options: { readonly token: Token; readonly exit: Exit.Exit<Success[\"Type\"], Error[\"Type\"]>; }): Effect.Effect<void, never, WorkflowEngine | Success[\"EncodingServices\"] | Error[\"EncodingServices\"]>; }; /** * @since 4.0.0 * @category Combinators */ export declare const succeed: { /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(options: { readonly token: Token; readonly value: Success[\"Type\"]; }): (self: DurableDeferred<Success, Error>) => Effect.Effect<void, never, WorkflowEngine | Success[\"EncodingServices\"]>; /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>, options: { readonly token: Token; readonly value: Success[\"Type\"]; }): Effect.Effect<void, never, WorkflowEngine | Success[\"EncodingServices\"]>; }; /** * @since 4.0.0 * @category Combinators */ export declare const fail: { /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(options: { readonly token: Token; readonly error: Error[\"Type\"]; }): (self: DurableDeferred<Success, Error>) => Effect.Effect<void, never, WorkflowEngine | Error[\"EncodingServices\"]>; /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>, options: { readonly token: Token; readonly error: Error[\"Type\"]; }): Effect.Effect<void, never, WorkflowEngine | Error[\"EncodingServices\"]>; }; /** * @since 4.0.0 * @category Combinators */ export declare const failCause: { /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(options: { readonly token: Token; readonly cause: Cause.Cause<Error[\"Type\"]>; }): (self: DurableDeferred<Success, Error>) => Effect.Effect<void, never, WorkflowEngine | Error[\"EncodingServices\"]>; /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>, options: { readonly token: Token; readonly cause: Cause.Cause<Error[\"Type\"]>; }): Effect.Effect<void, never, WorkflowEngine | Error[\"EncodingServices\"]>; }; //# sourceMappingURL=DurableDeferred.d.ts.map"
+    },
+    {
+      "name": "DurableEventJournalOptions",
+      "kind": "interface",
+      "signature": "export interface DurableEventJournalOptions { readonly entryTable?: string readonly remotesTable?: string }"
     },
     {
       "name": "emitAuditEvent",
@@ -357,6 +442,16 @@
       "name": "EventJournal",
       "kind": "value",
       "signature": "import type { Brand } from \"../../Brand.ts\"; import * as Context from \"../../Context.ts\"; import * as DateTime from \"../../DateTime.ts\"; import * as Effect from \"../../Effect.ts\"; import * as Layer from \"../../Layer.ts\"; import * as Order from \"../../Order.ts\"; import * as PubSub from \"../../PubSub.ts\"; import * as Schema from \"../../Schema.ts\"; import type { Scope } from \"../../Scope.ts\"; import * as Msgpack from \"../encoding/Msgpack.ts\"; import type { StoreId } from \"./EventLogMessage.ts\"; declare const EventJournal_base: Context.ServiceClass<EventJournal, \"effect/eventlog/EventJournal\", { /** * Read all the entries in the journal. */ readonly entries: Effect.Effect<ReadonlyArray<Entry>, EventJournalError>; /** * Write an event to the journal, performing an effect before committing the * event. */ readonly write: <A, E, R>(options: { readonly event: string; readonly primaryKey: string; readonly payload: Uint8Array; readonly effect: (entry: Entry) => Effect.Effect<A, E, R>; }) => Effect.Effect<A, EventJournalError | E, R>; /** * Write events from a remote source to the journal. * * Effects run sequentially in compaction bracket order. */ readonly writeFromRemote: (options: { readonly remoteId: RemoteId; readonly entries: ReadonlyArray<RemoteEntry>; readonly compact?: ((uncommitted: ReadonlyArray<RemoteEntry>) => Effect.Effect<ReadonlyArray<Entry>, EventJournalError>) | undefined; readonly effect: (options: { readonly entry: Entry; readonly conflicts: ReadonlyArray<Entry>; }) => Effect.Effect<void, EventJournalError>; }) => Effect.Effect<{ readonly duplicateEntries: ReadonlyArray<Entry>; }, EventJournalError>; /** * Return the uncommitted entries for a remote source. */ readonly withRemoteUncommited: <A, E, R>(remoteId: RemoteId, f: (entries: ReadonlyArray<Entry>) => Effect.Effect<A, E, R>) => Effect.Effect<A, EventJournalError | E, R>; /** * Retrieve the last known sequence number for a remote source. */ readonly nextRemoteSequence: (remoteId: RemoteId) => Effect.Effect<number, EventJournalError>; /** * The entries added to the local journal. */ readonly changes: Effect.Effect<PubSub.Subscription<Entry>, never, Scope>; /** * Remove all data */ readonly destroy: Effect.Effect<void, EventJournalError>; /** * Run an effect with a lock on the journal. */ readonly withLock: (storeId: StoreId) => <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>; }>; /** * @since 4.0.0 * @category context */ export declare class EventJournal extends EventJournal_base { } declare const TypeId: \"effect/eventlog/EventJournal/EventJournalError\"; declare const EventJournalError_base: new <A extends Record<string, any> = {}>(args: import(\"../../Types.ts\").VoidIfEmpty<{ readonly [P in keyof A as P extends \"_tag\" ? never : P]: A[P]; }>) => import(\"../../Cause.ts\").YieldableError & { readonly _tag: \"EventJournalError\"; } & Readonly<A>; /** * @since 4.0.0 * @category errors */ export declare class EventJournalError extends EventJournalError_base<{ readonly method: string; readonly cause: unknown; }> { /** * @since 4.0.0 */ readonly [TypeId]: \"effect/eventlog/EventJournal/EventJournalError\"; } /** * @since 4.0.0 * @category remote */ export type RemoteIdTypeId = \"effect/eventlog/EventJournal/RemoteId\"; /** * @since 4.0.0 * @category remote */ export declare const RemoteIdTypeId: RemoteIdTypeId; /** * @since 4.0.0 * @category remote */ export type RemoteId = Uint8Array & Brand<RemoteIdTypeId>; /** * @since 4.0.0 * @category remote */ export declare const RemoteId: Schema.brand<Schema.Uint8Array, \"effect/eventlog/EventJournal/RemoteId\">; /** * @since 4.0.0 * @category remote */ export declare const makeRemoteIdUnsafe: () => RemoteId; /** * @since 4.0.0 * @category entry */ export declare const EntryIdTypeId: EntryIdTypeId; /** * @since 4.0.0 * @category entry */ export type EntryIdTypeId = \"effect/eventlog/EventJournal/EntryId\"; /** * @since 4.0.0 * @category entry */ export type EntryId = Uint8Array<ArrayBuffer> & Brand<EntryIdTypeId>; /** * @since 4.0.0 * @category entry */ export declare const EntryId: Schema.brand<Schema.instanceOf<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>, \"effect/eventlog/EventJournal/EntryId\">; /** * @since 4.0.0 * @category entry */ export declare const EntryIdOrder: Order.Order<EntryId>; /** * @since 4.0.0 * @category entry */ export declare const makeEntryIdUnsafe: (options?: { msecs?: number; }) => EntryId; /** * @since 4.0.0 * @category entry */ export declare const entryIdMillis: (entryId: EntryId) => number; declare const Entry_base: Schema.Class<Entry, Schema.Struct<{ readonly id: Schema.brand<Schema.instanceOf<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>, \"effect/eventlog/EventJournal/EntryId\">; readonly event: Schema.String; readonly primaryKey: Schema.String; readonly payload: Schema.Uint8Array; }>, {}>; /** * @since 4.0.0 * @category entry */ export declare class Entry extends Entry_base { /** * @since 4.0.0 */ static arrayMsgpack: Schema.$Array<Msgpack.schema<typeof Entry>>; /** * @since 4.0.0 */ static encodeArray: (input: unknown, options?: import(\"../../SchemaAST.ts\").ParseOptions) => Effect.Effect<readonly Uint8Array<ArrayBuffer>[], Schema.SchemaError, never>; /** * @since 4.0.0 */ static decodeArray: (input: unknown, options?: import(\"../../SchemaAST.ts\").ParseOptions) => Effect.Effect<readonly Entry[], Schema.SchemaError, never>; /** * @since 4.0.0 */ static Order: Order.Order<Entry>; /** * @since 4.0.0 */ get idString(): string; /** * @since 4.0.0 */ get createdAtMillis(): number; /** * @since 4.0.0 */ get createdAt(): DateTime.Utc; } declare const RemoteEntry_base: Schema.Class<RemoteEntry, Schema.Struct<{ readonly remoteSequence: Schema.Number; readonly entry: typeof Entry; }>, {}>; /** * @since 4.0.0 * @category entry */ export declare class RemoteEntry extends RemoteEntry_base { } /** * @since 4.0.0 * @category memory */ export declare const makeMemory: Effect.Effect<EventJournal[\"Service\"]>; /** * @since 4.0.0 * @category memory */ export declare const layerMemory: Layer.Layer<EventJournal>; /** * @since 4.0.0 * @category indexed db */ export declare const makeIndexedDb: (options?: { readonly database?: string; }) => Effect.Effect<EventJournal[\"Service\"], EventJournalError, Scope>; /** * @since 4.0.0 * @category indexed db */ export declare const layerIndexedDb: (options?: { readonly database?: string; }) => Layer.Layer<EventJournal, EventJournalError>; export {}; //# sourceMappingURL=EventJournal.d.ts.map"
+    },
+    {
+      "name": "EventJournalMemoryLive",
+      "kind": "value",
+      "signature": "const EventJournalMemoryLive: Layer.Layer<EventJournal.EventJournal, never, never>"
+    },
+    {
+      "name": "EventJournalSqlLive",
+      "kind": "value",
+      "signature": "const EventJournalSqlLive: (options?: DurableEventJournalOptions) => ReturnType<typeof SqlEventJournal.layer>"
     },
     {
       "name": "EventLog",
@@ -499,6 +594,11 @@
       "signature": "const generateUuidV7: (now: number) => ResourceId"
     },
     {
+      "name": "Grant",
+      "kind": "class",
+      "signature": "export class Grant extends Schema.Class<Grant>(\"Grant\")({ traceId: Schema.NonEmptyString, token: Schema.NonEmptyString, grantedAt: Schema.Number, expiresAt: Schema.optionalKey(Schema.Number) }) {}"
+    },
+    {
       "name": "GrantedCapability",
       "kind": "class",
       "signature": "export class GrantedCapability extends Schema.Class<GrantedCapability>(\"GrantedCapability\")({ token: NonEmptyString, capability: NormalizedCapability, actor: PermissionActor, resource: Schema.optionalKey(PermissionMetadataText), source: PermissionMetadataText, traceId: PermissionMetadataText, grantedAt: Schema.Number, expiresAt: Schema.optionalKey(Schema.Number), oneTime: Schema.optionalKey(Schema.Boolean) }) {}"
@@ -582,6 +682,16 @@
       "name": "makeOtelLayer",
       "kind": "value",
       "signature": "const makeOtelLayer: (options: OtelPipelineOptions) => Layer.Layer<Resource.Resource>"
+    },
+    {
+      "name": "makePermissionApprovalWorkflowLayer",
+      "kind": "value",
+      "signature": "const makePermissionApprovalWorkflowLayer: (options: PermissionApprovalWorkflowOptions) => import(\"effect/Layer\").Layer<never, never, WorkflowEngine.WorkflowEngine>"
+    },
+    {
+      "name": "makePermissionInterceptorLayer",
+      "kind": "value",
+      "signature": "const makePermissionInterceptorLayer: (options?: PermissionInterceptorOptions) => Layer.Layer<PermissionInterceptor, never, PermissionRegistry>"
     },
     {
       "name": "makePermissionRegistry",
@@ -674,6 +784,11 @@
       "signature": "export interface OtelPipelineOptions { readonly serviceName: string readonly serviceVersion?: string readonly spanExporter?: SpanExporter readonly metricReader?: MetricReader }"
     },
     {
+      "name": "P",
+      "kind": "value",
+      "signature": "const P: Readonly<{ filesystemRead: (options: { readonly roots: readonly string[]; readonly deny?: readonly string[]; readonly allowCreate?: boolean; readonly allowOverwrite?: boolean; }) => NormalizedCapabilityType; filesystemWrite: (options: { readonly roots: readonly string[]; readonly deny?: readonly string[]; readonly allowCreate?: boolean; readonly allowOverwrite?: boolean; }) => NormalizedCapabilityType; filesystemDelete: (options: { readonly roots: readonly string[]; readonly deny?: readonly string[]; }) => NormalizedCapabilityType; processSpawn: (options: { readonly commands: readonly string[]; readonly cwd?: readonly string[]; readonly environment?: \"none\" | \"allowlist\"; }) => NormalizedCapabilityType; ptySpawn: (options: { readonly commands: readonly string[]; readonly cwd?: readonly string[]; readonly environment?: \"none\" | \"allowlist\"; }) => NormalizedCapabilityType; networkConnect: (options: { readonly hosts: readonly string[]; readonly askUnknownHosts?: boolean; }) => NormalizedCapabilityType; secretsRead: (options: { readonly namespaces: readonly string[]; }) => NormalizedCapabilityType; secretsWrite: (options: { readonly namespaces: readonly string[]; }) => NormalizedCapabilityType; safeStorageRead: (options: { readonly namespaces: readonly string[]; }) => NormalizedCapabilityType; safeStorageWrite: (options: { readonly namespaces: readonly string[]; }) => NormalizedCapabilityType; nativeInvoke: (options: { readonly primitive: string; readonly methods: readonly string[]; }) => NormalizedCapabilityType; }>"
+    },
+    {
       "name": "Path",
       "kind": "interface",
       "signature": "export interface Path { readonly [TypeId]: typeof TypeId; readonly sep: string; readonly basename: (path: string, suffix?: string) => string; readonly dirname: (path: string) => string; readonly extname: (path: string) => string; readonly format: (pathObject: Partial<Path.Parsed>) => string; readonly fromFileUrl: (url: URL) => Effect.Effect<string, BadArgument>; readonly isAbsolute: (path: string) => boolean; readonly join: (...paths: ReadonlyArray<string>) => string; readonly normalize: (path: string) => string; readonly parse: (path: string) => Path.Parsed; readonly relative: (from: string, to: string) => string; readonly resolve: (...pathSegments: ReadonlyArray<string>) => string; readonly toFileUrl: (path: string) => Effect.Effect<URL, BadArgument>; readonly toNamespacedPath: (path: string) => string; }"
@@ -687,6 +802,16 @@
       "name": "PermissionActor",
       "kind": "class",
       "signature": "export class PermissionActor extends Schema.Class<PermissionActor>(\"PermissionActor\")({ kind: ActorKind, id: PermissionMetadataText }) {}"
+    },
+    {
+      "name": "PermissionApprovalWorkflow",
+      "kind": "value",
+      "signature": "const PermissionApprovalWorkflow: Workflow.Workflow<\"PermissionApproval\", Schema.Struct<{ traceId: Schema.NonEmptyString; capability: Schema.Unknown; actor: Schema.Unknown; resource: Schema.optionalKey<Schema.NonEmptyString>; ttlMs: Schema.optionalKey<Schema.Int>; }>, typeof Grant, Schema.Union<readonly [Schema.TaggedStruct<\"PermissionDenied\", { readonly traceId: Schema.NonEmptyString; readonly reason: Schema.Literal<\"user-denied\">; }>, Schema.TaggedStruct<\"PermissionApprovalFailed\", { readonly traceId: Schema.NonEmptyString; readonly phase: Schema.Union<readonly [Schema.Literal<\"declare\">, Schema.Literal<\"audit\">, Schema.Literal<\"grant\">, Schema.Literal<\"revoke\">]>; readonly cause: Schema.String; }>]>>"
+    },
+    {
+      "name": "PermissionApprovalWorkflowOptions",
+      "kind": "interface",
+      "signature": "export interface PermissionApprovalWorkflowOptions { readonly registry: PermissionRegistryApi readonly audit?: AuditEventsApi readonly now?: () => number readonly notify?: (token: string, traceId: string) => Effect.Effect<void, never, never> }"
     },
     {
       "name": "permissionAuditEvent",
@@ -742,6 +867,21 @@
       "name": "PermissionGrantSnapshot",
       "kind": "class",
       "signature": "export class PermissionGrantSnapshot extends Schema.Class<PermissionGrantSnapshot>( \"PermissionGrantSnapshot\" )({ grant: GrantedCapability, status: GrantStatus, updatedAt: Schema.Number }) {}"
+    },
+    {
+      "name": "PermissionInterceptor",
+      "kind": "class",
+      "signature": "export class PermissionInterceptor extends RpcMiddleware.Service<PermissionInterceptor>()< \"PermissionInterceptor\", typeof PermissionInterceptorErrorSchema >(\"PermissionInterceptor\", { error: PermissionInterceptorErrorSchema }) {}"
+    },
+    {
+      "name": "PermissionInterceptorError",
+      "kind": "class",
+      "signature": "export class PermissionInterceptorError extends Data.TaggedError(\"PermissionInterceptorError\")<{ readonly reason: string readonly capability: NormalizedCapabilityType readonly actor: PermissionActor readonly traceId: string readonly message: string }> {}"
+    },
+    {
+      "name": "PermissionInterceptorOptions",
+      "kind": "interface",
+      "signature": "export interface PermissionInterceptorOptions { readonly nextTraceId?: () => string readonly actorId?: string readonly actorKind?: \"app\" | \"window\" | \"resource\" | \"worker\" | \"process\" }"
     },
     {
       "name": "PermissionInvalidArgumentError",
@@ -999,6 +1139,11 @@
       "signature": "export interface RegistrySnapshot { readonly entries: readonly ResourceEntry[] }"
     },
     {
+      "name": "resolveApprovalDeferred",
+      "kind": "value",
+      "signature": "const resolveApprovalDeferred: (rawToken: string, approved: boolean) => Effect.Effect<void, never, WorkflowEngine.WorkflowEngine>"
+    },
+    {
       "name": "ResourceEntry",
       "kind": "interface",
       "signature": "export interface ResourceEntry< Kind extends ResourceKind = ResourceKind, State extends ResourceState = ResourceState > { readonly handle: ResourceHandle<Kind, State> readonly createdAt: number }"
@@ -1049,6 +1194,31 @@
       "signature": "export type ResourceState = string"
     },
     {
+      "name": "RestoreConfig",
+      "kind": "interface",
+      "signature": "export interface RestoreConfig { readonly userDataDir: string readonly dbPath: string }"
+    },
+    {
+      "name": "RestoreConfigService",
+      "kind": "class",
+      "signature": "export class RestoreConfigService extends Context.Service<RestoreConfigService, RestoreConfig>()( \"RestoreConfigService\" ) {}"
+    },
+    {
+      "name": "RestoreError",
+      "kind": "class",
+      "signature": "export class RestoreError extends Data.TaggedError(\"RestoreError\")<{ readonly phase: RestorePhase readonly message: string readonly cause: unknown }> {}"
+    },
+    {
+      "name": "RestoreWorkflow",
+      "kind": "value",
+      "signature": "const RestoreWorkflow: Workflow.Workflow<\"Restore\", Schema.Struct<{ archivePath: Schema.NonEmptyString; }>, Schema.Void, Schema.TaggedStruct<\"RestoreError\", { readonly phase: Schema.Literals<readonly [\"validate\", \"quiesce\", \"database\", \"files\", \"rollback\"]>; readonly message: Schema.String; readonly cause: Schema.Unknown; }>>"
+    },
+    {
+      "name": "RestoreWorkflowLayer",
+      "kind": "value",
+      "signature": "const RestoreWorkflowLayer: Layer.Layer<never, never, FileSystem | WorkflowEngine.WorkflowEngine | RestoreConfigService | WriterQuiesceService>"
+    },
+    {
       "name": "RpcLatency",
       "kind": "value",
       "signature": "const RpcLatency: Metric.Histogram<number>"
@@ -1086,7 +1256,7 @@
     {
       "name": "SecretsAuditEventInput",
       "kind": "interface",
-      "signature": "export interface SecretsAuditEventInput { readonly source: string readonly traceId: string readonly outcome: string readonly namespace: string readonly key?: string readonly timestamp?: number }"
+      "signature": "export interface SecretsAuditEventInput { readonly source: string readonly traceId: string readonly outcome: string readonly operation: string readonly namespace: string readonly key?: string readonly timestamp?: number }"
     },
     {
       "name": "SecretsAuditFailedError",
@@ -1604,6 +1774,11 @@
       "signature": "export class TransportWriteError extends Data.TaggedError(\"TransportWriteFailed\")<{ readonly operation: string readonly cause: Option.Option<unknown> }> {}"
     },
     {
+      "name": "validatePermissions",
+      "kind": "value",
+      "signature": "const validatePermissions: (declared: readonly NormalizedCapabilityType[], required: readonly NormalizedCapabilityType[]) => Effect.Effect<void, DesktopConfigError, never>"
+    },
+    {
       "name": "WindowDisplayBounds",
       "kind": "class",
       "signature": "export class WindowDisplayBounds extends Schema.Class<WindowDisplayBounds>(\"WindowDisplayBounds\")({ x: Schema.Number.check(Schema.isFinite()), y: Schema.Number.check(Schema.isFinite()), width: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)), height: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)), primary: Schema.optionalKey(Schema.Boolean) }) {}"
@@ -1796,7 +1971,17 @@
     {
       "name": "WorkflowLayer",
       "kind": "type",
-      "signature": "export type WorkflowLayer = Layer.Layer<never, never, WorkflowEngine.WorkflowEngine>"
+      "signature": "export type WorkflowLayer<RIn = never, E = never> = Layer.Layer< never, E, RIn | WorkflowEngine.WorkflowEngine >"
+    },
+    {
+      "name": "WriterQuiescePort",
+      "kind": "interface",
+      "signature": "export interface WriterQuiescePort { readonly stop: () => Effect.Effect<void, never, never> readonly resume: () => Effect.Effect<void, never, never> }"
+    },
+    {
+      "name": "WriterQuiesceService",
+      "kind": "class",
+      "signature": "export class WriterQuiesceService extends Context.Service< WriterQuiesceService, WriterQuiescePort >()(\"WriterQuiesceService\") {}"
     }
   ]
 }

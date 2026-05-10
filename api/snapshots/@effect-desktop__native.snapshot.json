@@ -399,6 +399,16 @@
       "signature": "export type ContextMenuShowOptions = Schema.Schema.Type<typeof ContextMenuShowInput>"
     },
     {
+      "name": "CrashReport",
+      "kind": "class",
+      "signature": "export class CrashReport extends Schema.Class<CrashReport>(\"CrashReport\")({ id: Schema.String, breadcrumbs: Schema.Array(CrashReporterBreadcrumbInput), capturedAt: Schema.Number, appVersion: Schema.optionalKey(Schema.String), platform: Schema.optionalKey(Schema.String) }) {}"
+    },
+    {
+      "name": "CrashReportDrainConfigError",
+      "kind": "class",
+      "signature": "export class CrashReportDrainConfigError extends Schema.ErrorClass<CrashReportDrainConfigError>( \"CrashReportDrainConfigError\" )({ _tag: Schema.tag(\"CrashReportDrainConfigError\"), field: Schema.String, message: Schema.String }) {}"
+    },
+    {
       "name": "CrashReporter",
       "kind": "class",
       "signature": "export class CrashReporter extends Context.Service<CrashReporter, CrashReporterServiceApi>()( \"@effect-desktop/native/CrashReporter\" ) {}"
@@ -456,7 +466,7 @@
     {
       "name": "CrashReporterMethodNames",
       "kind": "value",
-      "signature": "const CrashReporterMethodNames: readonly (\"start\" | \"recordBreadcrumb\" | \"flush\" | \"setUploadHandler\")[]"
+      "signature": "const CrashReporterMethodNames: readonly (\"flush\" | \"start\" | \"recordBreadcrumb\" | \"setUploadHandler\")[]"
     },
     {
       "name": "CrashReporterServiceApi",
@@ -474,9 +484,49 @@
       "signature": "export type CrashReporterStartOptions = Schema.Schema.Type<typeof CrashReporterStartInput> & { readonly uploadHandler?: CrashReportUploadHandler }"
     },
     {
+      "name": "CrashReportEventSchema",
+      "kind": "value",
+      "signature": "const CrashReportEventSchema: EventLog.EventLogSchema<EventGroup.EventGroup<import(\"effect/unstable/eventlog/Event\").Event<\"crash-report-submitted\", typeof CrashReport, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"crash-report-dropped\", typeof CrashReport, Schema.Void, Schema.Never>>>"
+    },
+    {
+      "name": "CrashReportGroupLayer",
+      "kind": "value",
+      "signature": "const CrashReportGroupLayer: Layer.Layer<import(\"effect/unstable/eventlog/Event\").EventHandler<\"crash-report-submitted\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"crash-report-dropped\">, never, EventLog.Registry>"
+    },
+    {
+      "name": "CrashReportQueueUploadHandlerOptions",
+      "kind": "interface",
+      "signature": "export interface CrashReportQueueUploadHandlerOptions { readonly now?: () => number readonly id?: () => string readonly appVersion?: string readonly platform?: string }"
+    },
+    {
+      "name": "crashReportRateLimitIntervalMs",
+      "kind": "value",
+      "signature": "const crashReportRateLimitIntervalMs: (perHour: number) => Effect.Effect<number, CrashReportDrainConfigError, never>"
+    },
+    {
+      "name": "CrashReportReactivityLayer",
+      "kind": "value",
+      "signature": "const CrashReportReactivityLayer: Layer.Layer<never, never, EventLog.Registry>"
+    },
+    {
+      "name": "CrashReportSubmitError",
+      "kind": "class",
+      "signature": "export class CrashReportSubmitError extends Schema.ErrorClass<CrashReportSubmitError>( \"CrashReportSubmitError\" )({ _tag: Schema.tag(\"CrashReportSubmitError\"), status: Schema.Number, message: Schema.String }) {}"
+    },
+    {
       "name": "CrashReportUploadHandler",
       "kind": "type",
       "signature": "export type CrashReportUploadHandler = ( breadcrumbs: ReadonlyArray<CrashReporterBreadcrumb> ) => Effect.Effect<void, CrashReporterError, never>"
+    },
+    {
+      "name": "CrashReportWorkflowLayerFetch",
+      "kind": "value",
+      "signature": "const CrashReportWorkflowLayerFetch: (options: { readonly endpointUrl: string; readonly rateLimitPerHour: number; }) => Layer.Layer<never, CrashReportDrainConfigError, PersistedQueue.PersistedQueueFactory | WorkflowEngine.WorkflowEngine | EventLog.EventLog | EventLog.Registry>"
+    },
+    {
+      "name": "CrashSubmissionWorkflow",
+      "kind": "value",
+      "signature": "const CrashSubmissionWorkflow: Workflow.Workflow<\"CrashSubmission\", typeof CrashReport, Schema.Void, typeof CrashReportSubmitError>"
     },
     {
       "name": "Dialog",
@@ -719,6 +769,16 @@
       "signature": "export class DockSupportedResult extends Schema.Class<DockSupportedResult>(\"DockSupportedResult\")({ supported: Schema.Boolean }) {}"
     },
     {
+      "name": "DurableDeferred",
+      "kind": "value",
+      "signature": "import type { NonEmptyReadonlyArray } from \"../../Array.ts\"; import type * as Brand from \"../../Brand.ts\"; import * as Cause from \"../../Cause.ts\"; import * as Effect from \"../../Effect.ts\"; import * as Exit from \"../../Exit.ts\"; import * as Schema from \"../../Schema.ts\"; import * as Workflow from \"./Workflow.ts\"; import type { WorkflowEngine, WorkflowInstance } from \"./WorkflowEngine.ts\"; declare const TypeId = \"~effect/workflow/DurableDeferred\"; /** * @since 4.0.0 * @category Models */ export interface DurableDeferred<Success extends Schema.Top, Error extends Schema.Top = Schema.Never> { readonly [TypeId]: typeof TypeId; readonly name: string; readonly successSchema: Success; readonly errorSchema: Error; readonly exitSchema: Schema.Exit<Schema.Top, Schema.Top, Schema.Top>; readonly withActivityAttempt: Effect.Effect<DurableDeferred<Success, Error>>; } /** * @since 4.0.0 * @category Models */ export interface Any { readonly [TypeId]: typeof TypeId; readonly name: string; } /** * @since 4.0.0 * @category Models */ export interface AnyWithProps { readonly [TypeId]: typeof TypeId; readonly name: string; readonly successSchema: Schema.Top; readonly errorSchema: Schema.Top; readonly exitSchema: Schema.Exit<any, any, any>; } /** * @since 4.0.0 * @category Constructors */ export declare const make: <Success extends Schema.Top = Schema.Void, Error extends Schema.Top = Schema.Never>(name: string, options?: { readonly success?: Success | undefined; readonly error?: Error | undefined; }) => DurableDeferred<Success, Error>; declare const await_: <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>) => Effect.Effect<Success[\"Type\"], Error[\"Type\"], WorkflowEngine | WorkflowInstance | Success[\"DecodingServices\"] | Error[\"DecodingServices\"]>; export { /** * @since 4.0.0 * @category Combinators */ await_ as await }; /** * @since 4.0.0 * @category Combinators */ export declare const into: { /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>): <R>(effect: Effect.Effect<Success[\"Type\"], Error[\"Type\"], R>) => Effect.Effect<Success[\"Type\"], Error[\"Type\"], R | WorkflowEngine | WorkflowInstance | Success[\"DecodingServices\"] | Error[\"DecodingServices\"]>; /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top, R>(effect: Effect.Effect<Success[\"Type\"], Error[\"Type\"], R>, self: DurableDeferred<Success, Error>): Effect.Effect<Success[\"Type\"], Error[\"Type\"], R | WorkflowEngine | WorkflowInstance | Success[\"DecodingServices\"] | Error[\"DecodingServices\"]>; }; /** * @since 4.0.0 * @category Racing */ export declare const raceAll: <const Effects extends NonEmptyReadonlyArray<Effect.Effect<any, any, any>>, Success extends Schema.Schema<Effect.Success<Effects[number]>>, Error extends Schema.Schema<Effect.Error<Effects[number]>>>(options: { name: string; success: Success; error: Error; effects: Effects; }) => Effect.Effect<Effect.Success<Effects[number]>, Effect.Error<Effects[number]>, Effect.Services<Effects[number]> | Success[\"DecodingServices\"] | Success[\"EncodingServices\"] | Error[\"DecodingServices\"] | Error[\"EncodingServices\"] | WorkflowEngine | WorkflowInstance>; /** * @since 4.0.0 */ export declare const TokenTypeId = \"~effect/workflow/DurableDeferred/Token\"; /** * @since 4.0.0 */ export type TokenTypeId = typeof TokenTypeId; /** * @since 4.0.0 * @category Token */ export type Token = Brand.Branded<string, TokenTypeId>; /** * @since 4.0.0 * @category Token */ export declare const Token: Schema.brand<Schema.String, TokenTypeId>; declare const TokenParsed_base: Schema.Class<TokenParsed, Schema.Struct<{ readonly workflowName: Schema.String; readonly executionId: Schema.String; readonly deferredName: Schema.String; }>, {}>; /** * @since 4.0.0 * @category Token */ export declare class TokenParsed extends TokenParsed_base { /** * @since 4.0.0 */ get asToken(): Token; /** * @since 4.0.0 */ static readonly FromString: Schema.decodeTo<typeof TokenParsed, Schema.decodeTo<Schema.fromJsonString<Schema.Tuple<readonly [Schema.String, Schema.String, Schema.String]>>, Schema.String, never, never>, never, never>; /** * @since 4.0.0 */ static readonly fromString: (input: string, options?: import(\"../../SchemaAST.ts\").ParseOptions) => TokenParsed; /** * @since 4.0.0 */ static readonly encode: (input: TokenParsed, options?: import(\"../../SchemaAST.ts\").ParseOptions) => string; } /** * @since 4.0.0 * @category Token */ export declare const token: <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>) => Effect.Effect<Token, never, WorkflowInstance>; /** * @since 4.0.0 * @category Token */ export declare const tokenFromExecutionId: { /** * @since 4.0.0 * @category Token */ (options: { readonly workflow: Workflow.Any; readonly executionId: string; }): <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>) => Token; /** * @since 4.0.0 * @category Token */ <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>, options: { readonly workflow: Workflow.Any; readonly executionId: string; }): Token; }; /** * @since 4.0.0 * @category Token */ export declare const tokenFromPayload: { /** * @since 4.0.0 * @category Token */ <W extends Workflow.Any>(options: { readonly workflow: W; readonly payload: Workflow.PayloadSchema<W>[\"~type.make.in\"]; }): <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>) => Effect.Effect<Token>; /** * @since 4.0.0 * @category Token */ <Success extends Schema.Top, Error extends Schema.Top, W extends Workflow.Any>(self: DurableDeferred<Success, Error>, options: { readonly workflow: W; readonly payload: Workflow.PayloadSchema<W>[\"~type.make.in\"]; }): Effect.Effect<Token>; }; /** * @since 4.0.0 * @category Combinators */ export declare const done: { /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(options: { readonly token: Token; readonly exit: Exit.Exit<Success[\"Type\"], Error[\"Type\"]>; }): (self: DurableDeferred<Success, Error>) => Effect.Effect<void, never, WorkflowEngine | Success[\"EncodingServices\"] | Error[\"EncodingServices\"]>; /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>, options: { readonly token: Token; readonly exit: Exit.Exit<Success[\"Type\"], Error[\"Type\"]>; }): Effect.Effect<void, never, WorkflowEngine | Success[\"EncodingServices\"] | Error[\"EncodingServices\"]>; }; /** * @since 4.0.0 * @category Combinators */ export declare const succeed: { /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(options: { readonly token: Token; readonly value: Success[\"Type\"]; }): (self: DurableDeferred<Success, Error>) => Effect.Effect<void, never, WorkflowEngine | Success[\"EncodingServices\"]>; /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>, options: { readonly token: Token; readonly value: Success[\"Type\"]; }): Effect.Effect<void, never, WorkflowEngine | Success[\"EncodingServices\"]>; }; /** * @since 4.0.0 * @category Combinators */ export declare const fail: { /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(options: { readonly token: Token; readonly error: Error[\"Type\"]; }): (self: DurableDeferred<Success, Error>) => Effect.Effect<void, never, WorkflowEngine | Error[\"EncodingServices\"]>; /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>, options: { readonly token: Token; readonly error: Error[\"Type\"]; }): Effect.Effect<void, never, WorkflowEngine | Error[\"EncodingServices\"]>; }; /** * @since 4.0.0 * @category Combinators */ export declare const failCause: { /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(options: { readonly token: Token; readonly cause: Cause.Cause<Error[\"Type\"]>; }): (self: DurableDeferred<Success, Error>) => Effect.Effect<void, never, WorkflowEngine | Error[\"EncodingServices\"]>; /** * @since 4.0.0 * @category Combinators */ <Success extends Schema.Top, Error extends Schema.Top>(self: DurableDeferred<Success, Error>, options: { readonly token: Token; readonly cause: Cause.Cause<Error[\"Type\"]>; }): Effect.Effect<void, never, WorkflowEngine | Error[\"EncodingServices\"]>; }; //# sourceMappingURL=DurableDeferred.d.ts.map"
+    },
+    {
+      "name": "EventJournal",
+      "kind": "value",
+      "signature": "import type { Brand } from \"../../Brand.ts\"; import * as Context from \"../../Context.ts\"; import * as DateTime from \"../../DateTime.ts\"; import * as Effect from \"../../Effect.ts\"; import * as Layer from \"../../Layer.ts\"; import * as Order from \"../../Order.ts\"; import * as PubSub from \"../../PubSub.ts\"; import * as Schema from \"../../Schema.ts\"; import type { Scope } from \"../../Scope.ts\"; import * as Msgpack from \"../encoding/Msgpack.ts\"; import type { StoreId } from \"./EventLogMessage.ts\"; declare const EventJournal_base: Context.ServiceClass<EventJournal, \"effect/eventlog/EventJournal\", { /** * Read all the entries in the journal. */ readonly entries: Effect.Effect<ReadonlyArray<Entry>, EventJournalError>; /** * Write an event to the journal, performing an effect before committing the * event. */ readonly write: <A, E, R>(options: { readonly event: string; readonly primaryKey: string; readonly payload: Uint8Array; readonly effect: (entry: Entry) => Effect.Effect<A, E, R>; }) => Effect.Effect<A, EventJournalError | E, R>; /** * Write events from a remote source to the journal. * * Effects run sequentially in compaction bracket order. */ readonly writeFromRemote: (options: { readonly remoteId: RemoteId; readonly entries: ReadonlyArray<RemoteEntry>; readonly compact?: ((uncommitted: ReadonlyArray<RemoteEntry>) => Effect.Effect<ReadonlyArray<Entry>, EventJournalError>) | undefined; readonly effect: (options: { readonly entry: Entry; readonly conflicts: ReadonlyArray<Entry>; }) => Effect.Effect<void, EventJournalError>; }) => Effect.Effect<{ readonly duplicateEntries: ReadonlyArray<Entry>; }, EventJournalError>; /** * Return the uncommitted entries for a remote source. */ readonly withRemoteUncommited: <A, E, R>(remoteId: RemoteId, f: (entries: ReadonlyArray<Entry>) => Effect.Effect<A, E, R>) => Effect.Effect<A, EventJournalError | E, R>; /** * Retrieve the last known sequence number for a remote source. */ readonly nextRemoteSequence: (remoteId: RemoteId) => Effect.Effect<number, EventJournalError>; /** * The entries added to the local journal. */ readonly changes: Effect.Effect<PubSub.Subscription<Entry>, never, Scope>; /** * Remove all data */ readonly destroy: Effect.Effect<void, EventJournalError>; /** * Run an effect with a lock on the journal. */ readonly withLock: (storeId: StoreId) => <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>; }>; /** * @since 4.0.0 * @category context */ export declare class EventJournal extends EventJournal_base { } declare const TypeId: \"effect/eventlog/EventJournal/EventJournalError\"; declare const EventJournalError_base: new <A extends Record<string, any> = {}>(args: import(\"../../Types.ts\").VoidIfEmpty<{ readonly [P in keyof A as P extends \"_tag\" ? never : P]: A[P]; }>) => import(\"../../Cause.ts\").YieldableError & { readonly _tag: \"EventJournalError\"; } & Readonly<A>; /** * @since 4.0.0 * @category errors */ export declare class EventJournalError extends EventJournalError_base<{ readonly method: string; readonly cause: unknown; }> { /** * @since 4.0.0 */ readonly [TypeId]: \"effect/eventlog/EventJournal/EventJournalError\"; } /** * @since 4.0.0 * @category remote */ export type RemoteIdTypeId = \"effect/eventlog/EventJournal/RemoteId\"; /** * @since 4.0.0 * @category remote */ export declare const RemoteIdTypeId: RemoteIdTypeId; /** * @since 4.0.0 * @category remote */ export type RemoteId = Uint8Array & Brand<RemoteIdTypeId>; /** * @since 4.0.0 * @category remote */ export declare const RemoteId: Schema.brand<Schema.Uint8Array, \"effect/eventlog/EventJournal/RemoteId\">; /** * @since 4.0.0 * @category remote */ export declare const makeRemoteIdUnsafe: () => RemoteId; /** * @since 4.0.0 * @category entry */ export declare const EntryIdTypeId: EntryIdTypeId; /** * @since 4.0.0 * @category entry */ export type EntryIdTypeId = \"effect/eventlog/EventJournal/EntryId\"; /** * @since 4.0.0 * @category entry */ export type EntryId = Uint8Array<ArrayBuffer> & Brand<EntryIdTypeId>; /** * @since 4.0.0 * @category entry */ export declare const EntryId: Schema.brand<Schema.instanceOf<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>, \"effect/eventlog/EventJournal/EntryId\">; /** * @since 4.0.0 * @category entry */ export declare const EntryIdOrder: Order.Order<EntryId>; /** * @since 4.0.0 * @category entry */ export declare const makeEntryIdUnsafe: (options?: { msecs?: number; }) => EntryId; /** * @since 4.0.0 * @category entry */ export declare const entryIdMillis: (entryId: EntryId) => number; declare const Entry_base: Schema.Class<Entry, Schema.Struct<{ readonly id: Schema.brand<Schema.instanceOf<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>, \"effect/eventlog/EventJournal/EntryId\">; readonly event: Schema.String; readonly primaryKey: Schema.String; readonly payload: Schema.Uint8Array; }>, {}>; /** * @since 4.0.0 * @category entry */ export declare class Entry extends Entry_base { /** * @since 4.0.0 */ static arrayMsgpack: Schema.$Array<Msgpack.schema<typeof Entry>>; /** * @since 4.0.0 */ static encodeArray: (input: unknown, options?: import(\"../../SchemaAST.ts\").ParseOptions) => Effect.Effect<readonly Uint8Array<ArrayBuffer>[], Schema.SchemaError, never>; /** * @since 4.0.0 */ static decodeArray: (input: unknown, options?: import(\"../../SchemaAST.ts\").ParseOptions) => Effect.Effect<readonly Entry[], Schema.SchemaError, never>; /** * @since 4.0.0 */ static Order: Order.Order<Entry>; /** * @since 4.0.0 */ get idString(): string; /** * @since 4.0.0 */ get createdAtMillis(): number; /** * @since 4.0.0 */ get createdAt(): DateTime.Utc; } declare const RemoteEntry_base: Schema.Class<RemoteEntry, Schema.Struct<{ readonly remoteSequence: Schema.Number; readonly entry: typeof Entry; }>, {}>; /** * @since 4.0.0 * @category entry */ export declare class RemoteEntry extends RemoteEntry_base { } /** * @since 4.0.0 * @category memory */ export declare const makeMemory: Effect.Effect<EventJournal[\"Service\"]>; /** * @since 4.0.0 * @category memory */ export declare const layerMemory: Layer.Layer<EventJournal>; /** * @since 4.0.0 * @category indexed db */ export declare const makeIndexedDb: (options?: { readonly database?: string; }) => Effect.Effect<EventJournal[\"Service\"], EventJournalError, Scope>; /** * @since 4.0.0 * @category indexed db */ export declare const layerIndexedDb: (options?: { readonly database?: string; }) => Layer.Layer<EventJournal, EventJournalError>; export {}; //# sourceMappingURL=EventJournal.d.ts.map"
+    },
+    {
       "name": "firstResponderRoute",
       "kind": "value",
       "signature": "const firstResponderRoute: AppEventRoute"
@@ -879,6 +939,11 @@
       "signature": "const makeContextMenuServiceLayer: (client: ContextMenuClientApi) => Layer.Layer<ContextMenu>"
     },
     {
+      "name": "makeCrashReportDrainLayer",
+      "kind": "value",
+      "signature": "const makeCrashReportDrainLayer: (options: { readonly endpointUrl: string; readonly rateLimitPerHour: number; }) => Layer.Layer<never, CrashReportDrainConfigError, PersistedQueue.PersistedQueueFactory | WorkflowEngine.WorkflowEngine | EventLog.EventLog | EventLog.Registry | HttpClient.HttpClient>"
+    },
+    {
       "name": "makeCrashReporterBridgeClientLayer",
       "kind": "value",
       "signature": "const makeCrashReporterBridgeClientLayer: (exchange: ApiClientExchange, options?: ApiClientOptions) => Layer.Layer<CrashReporterClient>"
@@ -897,6 +962,21 @@
       "name": "makeCrashReporterServiceLayer",
       "kind": "value",
       "signature": "const makeCrashReporterServiceLayer: (client: CrashReporterClientApi) => Layer.Layer<CrashReporter>"
+    },
+    {
+      "name": "makeCrashReportQueue",
+      "kind": "value",
+      "signature": "const makeCrashReportQueue: Effect.Effect<PersistedQueue.PersistedQueue<CrashReport, never>, never, PersistedQueue.PersistedQueueFactory>"
+    },
+    {
+      "name": "makeCrashReportQueueUploadHandler",
+      "kind": "value",
+      "signature": "const makeCrashReportQueueUploadHandler: (options?: CrashReportQueueUploadHandlerOptions) => Effect.Effect<CrashReportUploadHandler, never, PersistedQueue.PersistedQueueFactory>"
+    },
+    {
+      "name": "makeCrashSubmissionWorkflowLayer",
+      "kind": "value",
+      "signature": "const makeCrashSubmissionWorkflowLayer: (endpointUrl: string) => Layer.Layer<never, never, EventLog.EventLog | WorkflowEngine.WorkflowEngine | HttpClient.HttpClient>"
     },
     {
       "name": "makeDialogBridgeClientLayer",
@@ -1959,6 +2039,11 @@
       "signature": "export interface ResolvedAsset { readonly bytes: Uint8Array readonly contentType: string }"
     },
     {
+      "name": "resolveUserPrompt",
+      "kind": "value",
+      "signature": "const resolveUserPrompt: (token: DurableDeferred.Token, accepted: boolean) => Effect.Effect<void, never, import(\"effect/unstable/workflow/WorkflowEngine\").WorkflowEngine>"
+    },
+    {
       "name": "RoutedAppEvent",
       "kind": "interface",
       "signature": "export interface RoutedAppEvent<Payload = unknown> extends AppEventEnvelope<Payload> { readonly windowId: string readonly ownerScope: string }"
@@ -2042,6 +2127,11 @@
       "name": "SafeStorageSetInput",
       "kind": "class",
       "signature": "export class SafeStorageSetInput extends Schema.Class<SafeStorageSetInput>(\"SafeStorageSetInput\")({ key: SafeStorageKey, value: Schema.Uint8Array }) {}"
+    },
+    {
+      "name": "scheduleUpdateChecks",
+      "kind": "value",
+      "signature": "const scheduleUpdateChecks: (manifestUrl: string) => Effect.Effect<never, never, never>"
     },
     {
       "name": "Screen",
@@ -2424,6 +2514,21 @@
       "signature": "const TrayTooltip: Schema.NonEmptyString"
     },
     {
+      "name": "UpdateError",
+      "kind": "class",
+      "signature": "export class UpdateError extends Schema.TaggedErrorClass<UpdateError>()(\"UpdateError\", { stage: Schema.Literals([\"check\", \"download\", \"verify\", \"stage\", \"apply\"]), message: Schema.String }) {}"
+    },
+    {
+      "name": "UpdateManifest",
+      "kind": "class",
+      "signature": "export class UpdateManifest extends Schema.Class<UpdateManifest>(\"UpdateManifest\")({ version: Schema.String, url: Schema.String, signature: Schema.String, notes: Schema.optionalKey(Schema.String) }) {}"
+    },
+    {
+      "name": "UpdatePayload",
+      "kind": "class",
+      "signature": "export class UpdatePayload extends Schema.Class<UpdatePayload>(\"UpdatePayload\")({ version: Schema.String, manifestUrl: Schema.String }) {}"
+    },
+    {
       "name": "Updater",
       "kind": "class",
       "signature": "export class Updater extends Context.Service<Updater, UpdaterServiceApi>()( \"@effect-desktop/native/Updater\" ) {}"
@@ -2522,6 +2627,16 @@
       "name": "UpdaterStatusState",
       "kind": "type",
       "signature": "const UpdaterStatusState: Schema.Literals<readonly [\"idle\", \"checking\", \"update-available\", \"downloading\", \"downloaded\", \"installing\", \"error\"]>"
+    },
+    {
+      "name": "UpdateWorkflow",
+      "kind": "value",
+      "signature": "const UpdateWorkflow: Workflow.Workflow<\"Update\", typeof UpdatePayload, Schema.Void, typeof UpdateError>"
+    },
+    {
+      "name": "UpdateWorkflowLayer",
+      "kind": "value",
+      "signature": "const UpdateWorkflowLayer: import(\"effect/Layer\").Layer<never, never, import(\"effect/unstable/workflow/WorkflowEngine\").WorkflowEngine | HttpClientNs.HttpClient | Updater>"
     },
     {
       "name": "validateClipboardImage",

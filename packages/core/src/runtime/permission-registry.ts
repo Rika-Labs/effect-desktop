@@ -519,7 +519,7 @@ const revocationReason = (effect: PermissionEffect): "revoked" | "expired" | "co
   }
 }
 
-const capabilityCovers = (
+export const capabilityCovers = (
   declared: NormalizedCapability,
   requested: NormalizedCapability
 ): boolean => {
