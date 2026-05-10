@@ -34,8 +34,8 @@ export default function HomePage() {
           </div>
           <div className="max-w-xl lg:justify-self-end">
             <p className="text-pretty text-lg leading-8 text-fd-muted-foreground">
-              Effect Desktop turns windows, WebViews, native services, permissions, background
-              jobs, and diagnostics into typed contracts that can be tested and operated.
+              Effect Desktop turns windows, WebViews, native services, permissions, background jobs,
+              and diagnostics into typed contracts that can be tested and operated.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
@@ -56,7 +56,10 @@ export default function HomePage() {
 
         <div className="grid border-y border-fd-border md:grid-cols-4">
           {PRINCIPLES.map((principle) => (
-            <div key={principle} className="border-fd-border py-5 md:border-r md:px-5 md:last:border-r-0">
+            <div
+              key={principle}
+              className="border-fd-border py-5 md:border-r md:px-5 md:last:border-r-0"
+            >
               <p className="m-0 font-mono text-xs uppercase tracking-wide text-fd-muted-foreground">
                 {principle}
               </p>
@@ -67,4 +70,3 @@ export default function HomePage() {
     </main>
   )
 }
-

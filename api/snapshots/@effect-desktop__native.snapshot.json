@@ -586,7 +586,7 @@
     {
       "name": "DialogFileFilter",
       "kind": "class",
-      "signature": "export class DialogFileFilter extends Schema.Class<DialogFileFilter>(\"DialogFileFilter\")({ name: Schema.String, extensions: Schema.Array(Schema.String) }) {}"
+      "signature": "export class DialogFileFilter extends Schema.Class<DialogFileFilter>(\"DialogFileFilter\")({ name: DialogFileFilterName, extensions: Schema.Array(DialogFileFilterExtension) }) {}"
     },
     {
       "name": "DialogFileFilterOptions",
@@ -641,7 +641,7 @@
     {
       "name": "DialogOpenResult",
       "kind": "class",
-      "signature": "export class DialogOpenResult extends Schema.Class<DialogOpenResult>(\"DialogOpenResult\")({ paths: Schema.Array(Schema.String) }) {}"
+      "signature": "export class DialogOpenResult extends Schema.Class<DialogOpenResult>(\"DialogOpenResult\")({ paths: Schema.Array(BridgeSafeNonEmptyString) }) {}"
     },
     {
       "name": "DialogSaveFileInput",
@@ -656,7 +656,7 @@
     {
       "name": "DialogSaveResult",
       "kind": "class",
-      "signature": "export class DialogSaveResult extends Schema.Class<DialogSaveResult>(\"DialogSaveResult\")({ path: Schema.String }) {}"
+      "signature": "export class DialogSaveResult extends Schema.Class<DialogSaveResult>(\"DialogSaveResult\")({ path: BridgeSafeNonEmptyString }) {}"
     },
     {
       "name": "DialogServiceApi",
@@ -706,7 +706,7 @@
     {
       "name": "DockJumpListItem",
       "kind": "class",
-      "signature": "export class DockJumpListItem extends Schema.Class<DockJumpListItem>(\"DockJumpListItem\")({ id: Schema.String, title: Schema.String, commandId: Schema.String }) {}"
+      "signature": "export class DockJumpListItem extends Schema.Class<DockJumpListItem>(\"DockJumpListItem\")({ id: DockJumpListItemId, title: DockJumpListItemText, commandId: DockJumpListItemId }) {}"
     },
     {
       "name": "DockLive",
@@ -741,7 +741,7 @@
     {
       "name": "DockSetBadgeCountInput",
       "kind": "class",
-      "signature": "export class DockSetBadgeCountInput extends Schema.Class<DockSetBadgeCountInput>( \"DockSetBadgeCountInput\" )({ count: Schema.Number }) {}"
+      "signature": "export class DockSetBadgeCountInput extends Schema.Class<DockSetBadgeCountInput>( \"DockSetBadgeCountInput\" )({ count: NonNegativeInteger }) {}"
     },
     {
       "name": "DockSetBadgeTextInput",
@@ -761,7 +761,7 @@
     {
       "name": "DockSetProgressInput",
       "kind": "class",
-      "signature": "export class DockSetProgressInput extends Schema.Class<DockSetProgressInput>( \"DockSetProgressInput\" )({ value: Schema.NullOr(Schema.Number), options: Schema.optionalKey(DockSetProgressOptions) }) {}"
+      "signature": "export class DockSetProgressInput extends Schema.Class<DockSetProgressInput>( \"DockSetProgressInput\" )({ value: Schema.NullOr(FiniteZeroToOne), options: Schema.optionalKey(DockSetProgressOptions) }) {}"
     },
     {
       "name": "DockSetProgressOptions",
@@ -2281,7 +2281,7 @@
     {
       "name": "ShellOpenExternalInput",
       "kind": "class",
-      "signature": "export class ShellOpenExternalInput extends Schema.Class<ShellOpenExternalInput>( \"ShellOpenExternalInput\" )({ url: Schema.String, allowedSchemes: Schema.optionalKey(Schema.Array(Schema.String)) }) {}"
+      "signature": "export class ShellOpenExternalInput extends Schema.Class<ShellOpenExternalInput>( \"ShellOpenExternalInput\" )({ url: Schema.String }) {}"
     },
     {
       "name": "ShellOpenExternalOptions",
@@ -2649,11 +2649,6 @@
       "signature": "const UpdateWorkflowLayer: import(\"effect/Layer\").Layer<never, never, import(\"effect/unstable/workflow/WorkflowEngine\").WorkflowEngine | HttpClientNs.HttpClient | Updater>"
     },
     {
-      "name": "validateClipboardImage",
-      "kind": "value",
-      "signature": "const validateClipboardImage: (image: ClipboardImage) => Effect.Effect<ClipboardImage, ClipboardError, never>"
-    },
-    {
       "name": "WebView",
       "kind": "class",
       "signature": "export class WebView extends Context.Service<WebView, WebViewServiceApi>()( \"@effect-desktop/native/WebView\" ) {}"
@@ -2781,7 +2776,12 @@
     {
       "name": "WebViewScreenshot",
       "kind": "class",
-      "signature": "export class WebViewScreenshot extends Schema.Class<WebViewScreenshot>(\"WebViewScreenshot\")({ mime: Schema.String, bytes: Schema.Uint8Array }) {}"
+      "signature": "export class WebViewScreenshot extends Schema.Class<WebViewScreenshot>(\"WebViewScreenshot\")({ mime: WebViewScreenshotMime, bytes: Schema.Uint8Array }) {}"
+    },
+    {
+      "name": "WebViewScreenshotMime",
+      "kind": "type",
+      "signature": "const WebViewScreenshotMime: Schema.Literals<readonly [\"image/png\", \"image/jpeg\"]>"
     },
     {
       "name": "WebViewServiceApi",
