@@ -227,3 +227,15 @@ const validateDesktopStreamCapacity = (capacity: number): number => {
   }
   return capacity
 }
+
+export {
+  PermissionApprovalQueue,
+  useApprovalNotifications,
+  usePermissionApproval,
+  type ApprovalDecision,
+  type ApprovalResolver,
+  type PendingApproval,
+  type PermissionApprovalPromptProps,
+  type PermissionApprovalQueueProps,
+  type PermissionApprovalState
+} from "./permission-approval.js"
