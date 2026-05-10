@@ -1,5 +1,5 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
+import { basename, isAbsolute, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 export const TEMPLATE_NAMES = ["basic-react-tailwind", "todo-sqlite", "multi-window"] as const
@@ -47,7 +47,17 @@ const templatesRoot = (): string => {
 }
 
 export const scaffold = (options: ScaffoldOptions): ScaffoldResult => {
-  const templateSrc = join(templatesRoot(), options.template)
+  if (!isTemplateName(options.template)) {
+    throw new Error(`Unknown template '${String(options.template)}'`)
+  }
+
+  const root = resolve(templatesRoot())
+  const templateSrc = resolve(root, options.template)
+  const templateRelativePath = relative(root, templateSrc)
+
+  if (templateRelativePath.startsWith("..") || isAbsolute(templateRelativePath)) {
+    throw new Error(`Template '${options.template}' escapes the templates directory`)
+  }
 
   if (!existsSync(templateSrc)) {
     throw new Error(`Template '${options.template}' not found at ${templateSrc}`)
@@ -63,7 +73,10 @@ export const scaffold = (options: ScaffoldOptions): ScaffoldResult => {
     recursive: true,
     force: false,
     errorOnExist: true,
-    filter: (src) => !src.includes("node_modules") && !src.includes("dist")
+    filter: (src) => {
+      const name = basename(src)
+      return name !== "node_modules" && name !== "dist"
+    }
   })
 
   const pkgPath = join(options.outDir, "package.json")
@@ -101,6 +114,9 @@ export const scaffold = (options: ScaffoldOptions): ScaffoldResult => {
     stubs: TEMPLATE_STUBS[options.template]
   }
 }
+
+const isTemplateName = (value: string): value is TemplateName =>
+  TEMPLATE_NAMES.some((template) => template === value)
 
 const rewriteWorkspaceDependencies = (dependencies: Record<string, string>): void => {
   for (const [name, version] of Object.entries(dependencies)) {

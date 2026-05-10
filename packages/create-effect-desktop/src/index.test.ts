@@ -4,7 +4,7 @@ import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { fileURLToPath } from "node:url"
 
-import { scaffold, type ScaffoldOptions } from "./index.js"
+import { scaffold, TEMPLATE_NAMES, type RendererStorage, type ScaffoldOptions } from "./index.js"
 
 const testDir = join(tmpdir(), "create-effect-desktop-test")
 const cliPath = fileURLToPath(new URL("bin.ts", import.meta.url))
@@ -114,7 +114,96 @@ test("scaffold throws for unknown template path", () => {
   const options = makeOptions()
   const badOptions = { ...options, template: "does-not-exist" as "basic-react-tailwind" }
 
-  expect(() => scaffold(badOptions)).toThrow()
+  expect(() => scaffold(badOptions)).toThrow("Unknown template")
+})
+
+test("scaffold rejects template traversal at the API boundary", () => {
+  const options = makeOptions()
+  const badOptions = { ...options, template: "../package.json" as "basic-react-tailwind" }
+
+  expect(() => scaffold(badOptions)).toThrow("Unknown template")
+})
+
+test("scaffold copies every selectable template", () => {
+  for (const template of TEMPLATE_NAMES) {
+    const outDir = join(testDir, template)
+    const result = scaffold(makeOptions({ outDir, template }))
+
+    expect(result.template).toBe(template)
+    expect(existsSync(join(outDir, "package.json"))).toBe(true)
+    expect(existsSync(join(outDir, "src", "App.tsx"))).toBe(true)
+  }
+})
+
+test("scaffold renderer storage dependency matrix is exact", () => {
+  const cases: ReadonlyArray<{
+    readonly storage: RendererStorage
+    readonly expected: readonly string[]
+    readonly absent: readonly string[]
+  }> = [
+    {
+      storage: "none",
+      expected: [],
+      absent: ["@effect/platform-browser", "@effect/sql-sqlite-wasm", "@effect/sql-pglite"]
+    },
+    {
+      storage: "indexeddb",
+      expected: ["@effect/platform-browser"],
+      absent: ["@effect/sql-sqlite-wasm", "@effect/sql-pglite"]
+    },
+    {
+      storage: "sqlite-wasm",
+      expected: ["@effect/platform-browser", "@effect/sql-sqlite-wasm"],
+      absent: ["@effect/sql-pglite"]
+    },
+    {
+      storage: "pglite",
+      expected: ["@effect/platform-browser", "@effect/sql-pglite"],
+      absent: ["@effect/sql-sqlite-wasm"]
+    }
+  ]
+
+  for (const entry of cases) {
+    const outDir = join(testDir, entry.storage)
+    scaffold(makeOptions({ outDir, rendererStorage: entry.storage }))
+
+    const pkg = JSON.parse(readFileSync(join(outDir, "package.json"), "utf8")) as {
+      dependencies: Record<string, string>
+    }
+
+    for (const dependency of entry.expected) {
+      expect(pkg.dependencies[dependency]).toBeDefined()
+    }
+    for (const dependency of entry.absent) {
+      expect(pkg.dependencies[dependency]).toBeUndefined()
+    }
+  }
+})
+
+test("scaffold adds optional companion dependencies only for selected options", () => {
+  const baseDir = join(testDir, "base")
+  scaffold(makeOptions({ outDir: baseDir }))
+  const basePkg = JSON.parse(readFileSync(join(baseDir, "package.json"), "utf8")) as {
+    dependencies: Record<string, string>
+  }
+  expect(basePkg.dependencies["@effect/platform"]).toBeUndefined()
+  expect(basePkg.dependencies["@effect/cluster"]).toBeUndefined()
+
+  const workflowsDir = join(testDir, "workflows")
+  scaffold(makeOptions({ outDir: workflowsDir, includeWorkflows: true }))
+  const workflowsPkg = JSON.parse(readFileSync(join(workflowsDir, "package.json"), "utf8")) as {
+    dependencies: Record<string, string>
+  }
+  expect(workflowsPkg.dependencies["@effect/platform"]).toBeDefined()
+  expect(workflowsPkg.dependencies["@effect/platform-bun"]).toBeDefined()
+  expect(workflowsPkg.dependencies["@effect/cluster"]).toBeUndefined()
+
+  const clusterDir = join(testDir, "cluster")
+  scaffold(makeOptions({ outDir: clusterDir, includeCluster: true }))
+  const clusterPkg = JSON.parse(readFileSync(join(clusterDir, "package.json"), "utf8")) as {
+    dependencies: Record<string, string>
+  }
+  expect(clusterPkg.dependencies["@effect/cluster"]).toBeDefined()
 })
 
 test("cli skips valued flag operands when defaulting the project name", async () => {
@@ -160,4 +249,44 @@ test("cli rejects project names that escape the current directory", async () => 
 
   expect(exitCode).toBe(1)
   expect(stderr).toContain("project name must be a single directory name")
+})
+
+test("cli rejects invalid arguments before scaffolding", async () => {
+  const cases: ReadonlyArray<{
+    readonly args: readonly string[]
+    readonly message: string
+  }> = [
+    { args: ["--template", "does-not-exist"], message: "unknown template" },
+    { args: ["--renderer-storage", "bad"], message: "unknown renderer-storage" },
+    { args: ["--template"], message: "--template requires a value" },
+    { args: ["--renderer-storage"], message: "--renderer-storage requires a value" },
+    { args: ["--unknown"], message: "unknown option" },
+    { args: ["one", "two"], message: "unexpected positional argument" }
+  ]
+
+  for (const entry of cases) {
+    const cwd = join(tmpdir(), `create-effect-desktop-cli-invalid-${entry.message}`)
+    if (existsSync(cwd)) {
+      rmSync(cwd, { recursive: true })
+    }
+    mkdirSync(cwd, { recursive: true })
+
+    const proc = Bun.spawn({
+      cmd: [process.execPath, cliPath, ...entry.args],
+      cwd,
+      stdout: "pipe",
+      stderr: "pipe"
+    })
+    const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()])
+
+    try {
+      expect(exitCode).toBe(1)
+      expect(stderr).toContain(entry.message)
+      expect(existsSync(join(cwd, "my-effect-desktop-app"))).toBe(false)
+    } finally {
+      if (existsSync(cwd)) {
+        rmSync(cwd, { recursive: true })
+      }
+    }
+  }
 })

@@ -3,6 +3,7 @@ import { Option } from "effect"
 import { useRef, useState } from "react"
 
 import type { Todo } from "./contract.js"
+import { todoTemplateMessages as copy } from "./messages.js"
 
 type AppState =
   | { readonly _tag: "Idle" }
@@ -21,14 +22,14 @@ export function App() {
     <main className="min-h-screen bg-slate-50 text-slate-950 dark:bg-zinc-950 dark:text-zinc-50">
       <section className="mx-auto w-full max-w-2xl px-6 py-12">
         <p className="text-sm font-semibold uppercase tracking-normal text-emerald-700 dark:text-emerald-300">
-          todo-sqlite
+          {copy.eyebrow}
         </p>
-        <h1 className="mt-2 text-3xl font-semibold">Todos</h1>
+        <h1 className="mt-2 text-3xl font-semibold">{copy.title}</h1>
         <p className="mt-2 text-sm text-slate-600 dark:text-zinc-400">
-          Host-side SQLite via{" "}
+          {copy.descriptionStart}{" "}
           <code className="rounded bg-slate-100 px-1 dark:bg-zinc-800">Model.Class</code> +{" "}
           <code className="rounded bg-slate-100 px-1 dark:bg-zinc-800">makeRepository</code>.
-          Mutations invalidate via{" "}
+          {copy.descriptionEnd}{" "}
           <code className="rounded bg-slate-100 px-1 dark:bg-zinc-800">Reactivity.mutation</code>.
         </p>
 
@@ -36,7 +37,7 @@ export function App() {
           <input
             ref={inputRef}
             className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900"
-            placeholder="New todo..."
+            placeholder={copy.placeholder}
             value={input}
             onChange={(e) => {
               setInput(e.target.value)
@@ -47,13 +48,13 @@ export function App() {
             disabled={input.trim() === "" || Option.isNone(desktop)}
             type="button"
           >
-            Add
+            {copy.add}
           </button>
         </div>
 
         <ul className="mt-4 space-y-2" data-testid="todo-list">
           {state._tag === "Idle" && (
-            <li className="text-sm text-slate-500 dark:text-zinc-500">Connecting...</li>
+            <li className="text-sm text-slate-500 dark:text-zinc-500">{copy.connecting}</li>
           )}
           {state._tag === "Error" && (
             <li className="text-sm text-red-600 dark:text-red-400">{state.message}</li>
@@ -71,7 +72,7 @@ export function App() {
             </li>
           ))}
           {state._tag === "Ready" && todos.length === 0 && (
-            <li className="text-sm text-slate-500 dark:text-zinc-500">No todos yet.</li>
+            <li className="text-sm text-slate-500 dark:text-zinc-500">{copy.empty}</li>
           )}
         </ul>
       </section>
