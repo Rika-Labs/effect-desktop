@@ -108,6 +108,8 @@
         "@effect-desktop/bridge": "workspace:*",
         "@effect-desktop/native": "workspace:*",
         "@effect/platform-browser": "4.0.0-beta.60",
+        "@effect/sql-sqlite-wasm": "4.0.0-beta.60",
+        "@effect/wa-sqlite": "^0.1.2",
         "effect": "4.0.0-beta.60",
       },
       "devDependencies": {
@@ -158,6 +160,7 @@
         "@effect-desktop/native": "workspace:*",
         "@effect-desktop/react": "workspace:*",
         "@effect-desktop/test": "workspace:*",
+        "@effect/platform-browser": "4.0.0-beta.60",
         "effect": "4.0.0-beta.60",
         "react": "^19.2.3",
         "react-dom": "^19.2.3",
@@ -204,7 +207,6 @@
         "@effect-desktop/native": "workspace:*",
         "@effect-desktop/react": "workspace:*",
         "@effect-desktop/test": "workspace:*",
-        "@effect/platform-browser": "4.0.0-beta.60",
         "effect": "4.0.0-beta.60",
         "react": "^19.2.3",
         "react-dom": "^19.2.3",
@@ -298,6 +300,10 @@
     "@effect/sql-pglite": ["@effect/sql-pglite@4.0.0-beta.60", "", { "dependencies": { "@electric-sql/pglite": "^0.4.4" }, "peerDependencies": { "effect": "^4.0.0-beta.60" } }, "sha512-3T/0sgZB28Har5MY+S7mR9sPh9hCg0WqOFj22WK/aGF9WmsHYmuQcDJydzzOPAqRSMYF6WR3D7FW4PId2kFVzQ=="],
 
     "@effect/sql-sqlite-bun": ["@effect/sql-sqlite-bun@4.0.0-beta.60", "", { "peerDependencies": { "effect": "^4.0.0-beta.60" } }, "sha512-vDXAGVmRZkB8gq+4KHfp3JgxqttSg+Bl6wn6YOYqGi4/X0BMMACLndY09c2+Pt4Whd4W+xNM2SD4SIo1Hd5i6w=="],
+
+    "@effect/sql-sqlite-wasm": ["@effect/sql-sqlite-wasm@4.0.0-beta.60", "", { "peerDependencies": { "@effect/wa-sqlite": "^0.1.2", "effect": "^4.0.0-beta.60" } }, "sha512-UvB4hL4cJr87dYnXN3K8pdjqGrEqhbSYUmgmaTjsSjjAqMSBFZ2Q4zoHYXTqX5EkccNR3R9exlQEGjGxLLgcZA=="],
+
+    "@effect/wa-sqlite": ["@effect/wa-sqlite@0.1.2", "", {}, "sha512-2JvJ9BDkBOwfeY/gXsC0XwEKC0AwisP2W5ABJ6mx14QyXTK12MGDIybDlHieuZt1TEFSMiKfpg7yyqyRWRooJQ=="],
 
     "@electric-sql/pglite": ["@electric-sql/pglite@0.4.5", "", {}, "sha512-aGG2zGEyZzGWKy8P+9ZoNUV0jxt1+hgbeTf+bVAYyxVZZLXg3/9aFlfLxb08AYZVAfAkQlQIysmWjhc5hwDG8g=="],
 
