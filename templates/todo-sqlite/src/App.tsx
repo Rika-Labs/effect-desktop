@@ -1,4 +1,4 @@
-import { useDesktop } from "@effect-desktop/react"
+import { useOptionalDesktopClient } from "@effect-desktop/react"
 import { Option } from "effect"
 import { useRef, useState } from "react"
 
@@ -11,7 +11,7 @@ type AppState =
   | { readonly _tag: "Error"; readonly message: string }
 
 export function App() {
-  const desktop = useDesktop()
+  const desktop = useOptionalDesktopClient()
   const [state] = useState<AppState>({ _tag: "Idle" })
   const [input, setInput] = useState("")
   const inputRef = useRef<HTMLInputElement>(null)

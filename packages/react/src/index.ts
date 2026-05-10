@@ -27,8 +27,11 @@ export type { WindowCreateOptions, WindowError, WindowHandle } from "@effect-des
 export { AsyncResult, Atom } from "effect/unstable/reactivity"
 
 export {
+  createUnavailableDesktopClient,
   DesktopProvider,
   useDesktop,
+  useDesktopClient,
+  useOptionalDesktopClient,
   useWindow,
   type DesktopClient,
   type DesktopProviderProps,
@@ -39,12 +42,35 @@ export {
 export { useAtom, useAtomValue, useAtomSet } from "./atoms.js"
 
 export {
+  useDesktopStream,
   useStream,
   useSubscribable,
   useEffectResult,
+  type DesktopStreamOptions,
   type StreamState,
   type StreamStatus
 } from "./hooks/stream.js"
+
+export {
+  defineDesktopApi,
+  defineDesktopOperation,
+  statusOf,
+  useDesktopAction,
+  useDesktopQuery,
+  useDesktopResource,
+  useResource,
+  type DesktopApi,
+  type DesktopAction,
+  type DesktopActionConcurrency,
+  type DesktopActionOptions,
+  type DesktopAsyncState,
+  type DesktopAsyncStatus,
+  type DesktopDisposable,
+  type DesktopEffectOperation,
+  type DesktopOperation,
+  type DesktopQuery,
+  type DesktopResourceState
+} from "./hooks/desktop.js"
 
 export {
   useTheme,

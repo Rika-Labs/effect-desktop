@@ -1,14 +1,43 @@
 # Typed APIs
 
-Typed APIs are declared through public bridge contracts and consumed through generated clients and handlers.
+Typed APIs are declared once as Effect RPC contracts and consumed from runtime handlers and React hooks.
 
-## Runnable Example
+## Contract
 
-```ts run
-import { CliUsageError } from "../packages/cli/src/index.js"
+```ts
+import { Rpc, RpcGroup } from "@effect-desktop/bridge"
+import { Schema } from "effect"
 
-const error = new CliUsageError("docs")
-if (error.name !== "CliUsageError") {
-  throw new Error("unexpected CLI error name")
-}
+export const CreateNote = Rpc.make("CreateNote", {
+  payload: { title: Schema.NonEmptyString },
+  success: Schema.Struct({ id: Schema.String, title: Schema.String })
+})
+
+export const NotesApi = RpcGroup.make(CreateNote)
 ```
+
+## Runtime handler
+
+```ts
+export const NotesLive = NotesApi.toLayer({
+  CreateNote: ({ title }) =>
+    Effect.gen(function* () {
+      const notes = yield* Notes
+      return yield* notes.create(title)
+    })
+})
+```
+
+## Renderer boundary
+
+React components should not run Effects manually. Use the React desktop hooks for renderer-callable clients so components observe `state` and `status` snapshots while the hook owns execution and cleanup.
+
+Generated renderer SDKs should expose domain nouns and lowerCamel operations:
+
+```tsx
+const createNote = notes.createNote.useAction()
+
+createNote.run({ title: "Draft" })
+```
+
+`CreateNote` can remain the RPC tag and handler key. It should not be the property name React users type in the renderer.

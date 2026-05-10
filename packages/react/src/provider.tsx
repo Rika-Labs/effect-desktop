@@ -1,3 +1,4 @@
+import { makeHostProtocolInvalidStateError } from "@effect-desktop/bridge"
 import type { WindowCreateOptions, WindowError, WindowHandle } from "@effect-desktop/native"
 import { Effect, Layer, ManagedRuntime, Option } from "effect"
 import { AtomRegistry, Reactivity } from "effect/unstable/reactivity"
@@ -15,7 +16,7 @@ export interface DesktopWindowClient {
 }
 
 export interface DesktopClient {
-  readonly Window: DesktopWindowClient
+  readonly window: DesktopWindowClient
 }
 
 export interface DesktopRuntimeContext {
@@ -50,7 +51,7 @@ export const disposeRuntime = (
 }
 
 export interface DesktopProviderProps {
-  readonly client: DesktopClient
+  readonly client?: DesktopClient | undefined
   readonly currentWindow?: WindowHandle | undefined
   readonly children?: ReactNode | undefined
   readonly onCleanupError?: CleanupErrorHandler
@@ -73,8 +74,23 @@ const makeContext = (
     : { client, currentWindow, registry, runtime }
 }
 
+export const createUnavailableDesktopClient = (message = "missing host bridge"): DesktopClient => {
+  const unavailable = <A,>(operation: string): Effect.Effect<A, WindowError, never> =>
+    Effect.fail(makeHostProtocolInvalidStateError(message, "call", operation))
+
+  return Object.freeze({
+    window: Object.freeze({
+      create: (_input?: WindowCreateOptions) => unavailable<WindowHandle>("window.create"),
+      setTitle: (_window: WindowHandle, _title: string) => unavailable<void>("window.setTitle"),
+      close: (_window: WindowHandle) => unavailable<void>("window.close")
+    })
+  } satisfies DesktopClient)
+}
+
+const defaultUnavailableDesktopClient = createUnavailableDesktopClient()
+
 export const DesktopProvider = ({
-  client,
+  client = defaultUnavailableDesktopClient,
   currentWindow,
   children,
   onCleanupError
@@ -97,6 +113,16 @@ export const useDesktopContext = (): Option.Option<DesktopRuntimeContext> =>
 
 export const useDesktop = (): Option.Option<DesktopClient> =>
   Option.map(useContext(DesktopContext), (ctx) => ctx.client)
+
+export const useOptionalDesktopClient = (): Option.Option<DesktopClient> => useDesktop()
+
+export const useDesktopClient = (): DesktopClient => {
+  const desktop = useDesktop()
+  if (Option.isNone(desktop)) {
+    throw new RangeError("DesktopProvider is required before calling useDesktopClient")
+  }
+  return desktop.value
+}
 
 export const useWindow = (): Option.Option<WindowHandle> =>
   Option.flatMap(useContext(DesktopContext), (ctx) => Option.fromUndefinedOr(ctx.currentWindow))

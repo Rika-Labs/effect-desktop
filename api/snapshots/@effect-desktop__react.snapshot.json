@@ -34,9 +34,69 @@
       "signature": "import type * as Layer from \"effect/Layer\"; import * as KeyValueStore from \"effect/unstable/persistence/KeyValueStore\"; /** * Creates a `KeyValueStore` layer that uses the browser's `localStorage` api. * * Values are stored between sessions. * * @since 1.0.0 * @category Layers */ export declare const layerLocalStorage: Layer.Layer<KeyValueStore.KeyValueStore>; /** * Creates a `KeyValueStore` layer that uses the browser's `sessionStorage` api. * * Values are stored only for the current session. * * @since 1.0.0 * @category Layers */ export declare const layerSessionStorage: Layer.Layer<KeyValueStore.KeyValueStore>; //# sourceMappingURL=BrowserKeyValueStore.d.ts.map"
     },
     {
+      "name": "createUnavailableDesktopClient",
+      "kind": "value",
+      "signature": "const createUnavailableDesktopClient: (message?: string) => DesktopClient"
+    },
+    {
+      "name": "defineDesktopApi",
+      "kind": "value",
+      "signature": "const defineDesktopApi: <Operations extends { readonly [Key in keyof Operations]: AnyDesktopEffectOperation; }>(operations: Operations) => DesktopApi<Operations>"
+    },
+    {
+      "name": "defineDesktopOperation",
+      "kind": "value",
+      "signature": "const defineDesktopOperation: <Args extends readonly unknown[], A, E>(effect: DesktopEffectOperation<Args, A, E>) => DesktopOperation<Args, A, E>"
+    },
+    {
+      "name": "DesktopAction",
+      "kind": "interface",
+      "signature": "export interface DesktopAction<Args extends readonly unknown[], A, E> { readonly state: DesktopAsyncState<A, E> readonly status: DesktopAsyncStatus readonly run: (...args: Args) => void readonly cancel: () => void readonly reset: () => void }"
+    },
+    {
+      "name": "DesktopActionConcurrency",
+      "kind": "type",
+      "signature": "export type DesktopActionConcurrency = \"drop\" | \"replace\" | \"queue\""
+    },
+    {
+      "name": "DesktopActionOptions",
+      "kind": "interface",
+      "signature": "export interface DesktopActionOptions { readonly concurrency?: DesktopActionConcurrency | undefined }"
+    },
+    {
+      "name": "DesktopApi",
+      "kind": "type",
+      "signature": "export type DesktopApi< Operations extends { readonly [Key in keyof Operations]: AnyDesktopEffectOperation } > = { readonly [Key in keyof Operations]: DesktopOperationFor<Operations[Key]> }"
+    },
+    {
+      "name": "DesktopAsyncState",
+      "kind": "type",
+      "signature": "export type DesktopAsyncState<A, E> = | { readonly _tag: \"Idle\" } | { readonly _tag: \"Running\" } | { readonly _tag: \"Success\"; readonly value: A } | { readonly _tag: \"Failure\"; readonly cause: Cause.Cause<E>; readonly message: string } | { readonly _tag: \"Canceled\" } | { readonly _tag: \"Unavailable\"; readonly message: string }"
+    },
+    {
+      "name": "DesktopAsyncStatus",
+      "kind": "type",
+      "signature": "export type DesktopAsyncStatus = | \"idle\" | \"running\" | \"success\" | \"failure\" | \"canceled\" | \"unavailable\""
+    },
+    {
       "name": "DesktopClient",
       "kind": "interface",
-      "signature": "export interface DesktopClient { readonly Window: DesktopWindowClient }"
+      "signature": "export interface DesktopClient { readonly window: DesktopWindowClient }"
+    },
+    {
+      "name": "DesktopDisposable",
+      "kind": "interface",
+      "signature": "export interface DesktopDisposable<E = never> { readonly dispose: () => Effect.Effect<void, E, never> }"
+    },
+    {
+      "name": "DesktopEffectOperation",
+      "kind": "type",
+      "signature": "export type DesktopEffectOperation<Args extends readonly unknown[], A, E> = ( ...args: Args ) => Effect.Effect<A, E, never>"
+    },
+    {
+      "name": "DesktopOperation",
+      "kind": "interface",
+      "signature": "export interface DesktopOperation<Args extends readonly unknown[], A, E> { readonly useAction: (options?: DesktopActionOptions) => DesktopAction<Args, A, E> }"
     },
     {
       "name": "DesktopProvider",
@@ -46,12 +106,27 @@
     {
       "name": "DesktopProviderProps",
       "kind": "interface",
-      "signature": "export interface DesktopProviderProps { readonly client: DesktopClient readonly currentWindow?: WindowHandle | undefined readonly children?: ReactNode | undefined readonly onCleanupError?: CleanupErrorHandler }"
+      "signature": "export interface DesktopProviderProps { readonly client?: DesktopClient | undefined readonly currentWindow?: WindowHandle | undefined readonly children?: ReactNode | undefined readonly onCleanupError?: CleanupErrorHandler }"
+    },
+    {
+      "name": "DesktopQuery",
+      "kind": "interface",
+      "signature": "export interface DesktopQuery<A, E> { readonly state: DesktopAsyncState<A, E> readonly status: DesktopAsyncStatus readonly reload: () => void readonly cancel: () => void readonly reset: () => void }"
+    },
+    {
+      "name": "DesktopResourceState",
+      "kind": "interface",
+      "signature": "export interface DesktopResourceState<E> { readonly status: \"idle\" | \"active\" | \"disposed\" | \"failure\" readonly error: Cause.Cause<E> | undefined }"
     },
     {
       "name": "DesktopRuntimeContext",
       "kind": "interface",
       "signature": "export interface DesktopRuntimeContext { readonly client: DesktopClient readonly currentWindow?: WindowHandle | undefined readonly registry: AtomRegistry.AtomRegistry readonly runtime: ManagedRuntime.ManagedRuntime< Reactivity.Reactivity | IndexedDb.IndexedDb, never > }"
+    },
+    {
+      "name": "DesktopStreamOptions",
+      "kind": "interface",
+      "signature": "export interface DesktopStreamOptions<A> { readonly capacity?: number | undefined readonly onItem?: ((item: A) => void) | undefined }"
     },
     {
       "name": "DesktopWindowClient",
@@ -189,6 +264,11 @@
       "signature": "import type * as Cause from \"../../Cause.ts\"; import * as Effect from \"../../Effect.ts\"; import * as RequestResolver from \"../../RequestResolver.ts\"; import type * as Schema from \"../../Schema.ts\"; import type { Scope } from \"../../Scope.ts\"; import type * as Model from \"../schema/Model.ts\"; import { SqlClient } from \"./SqlClient.ts\"; import type { ResultLengthMismatch, SqlError } from \"./SqlError.ts\"; import * as SqlResolver from \"./SqlResolver.ts\"; /** * Create a simple CRUD repository from a model. * * @since 4.0.0 * @category repository */ export declare const makeRepository: <S extends Model.Any, Id extends (keyof S[\"Type\"]) & (keyof S[\"update\"][\"Type\"]) & (keyof S[\"fields\"])>(Model: S, options: { readonly tableName: string; readonly spanPrefix: string; readonly idColumn: Id; }) => Effect.Effect<{ readonly insert: (insert: S[\"insert\"][\"Type\"]) => Effect.Effect<S[\"Type\"], Schema.SchemaError | SqlError, S[\"DecodingServices\"] | S[\"insert\"][\"EncodingServices\"]>; readonly insertVoid: (insert: S[\"insert\"][\"Type\"]) => Effect.Effect<void, Schema.SchemaError | SqlError, S[\"insert\"][\"EncodingServices\"]>; readonly update: (update: S[\"update\"][\"Type\"]) => Effect.Effect<S[\"Type\"], Schema.SchemaError | SqlError, S[\"DecodingServices\"] | S[\"update\"][\"EncodingServices\"]>; readonly updateVoid: (update: S[\"update\"][\"Type\"]) => Effect.Effect<void, Schema.SchemaError | SqlError, S[\"update\"][\"EncodingServices\"]>; readonly findById: (id: S[\"fields\"][Id][\"Type\"]) => Effect.Effect<S[\"Type\"], Cause.NoSuchElementError | Schema.SchemaError | SqlError, S[\"DecodingServices\"] | S[\"fields\"][Id][\"EncodingServices\"]>; readonly delete: (id: S[\"fields\"][Id][\"Type\"]) => Effect.Effect<void, Schema.SchemaError | SqlError, S[\"fields\"][Id][\"EncodingServices\"]>; }, never, SqlClient>; /** * Create some simple data loaders from a model. * * @since 4.0.0 * @category repository */ export declare const makeResolvers: <S extends Model.Any, Id extends (keyof S[\"Type\"]) & (keyof S[\"update\"][\"Type\"]) & (keyof S[\"fields\"])>(Model: S, options: { readonly tableName: string; readonly spanPrefix: string; readonly idColumn: Id; }) => Effect.Effect<{ readonly insert: RequestResolver.RequestResolver<SqlResolver.SqlRequest<S[\"insert\"][\"Type\"], S[\"Type\"], ResultLengthMismatch | SqlError, S[\"insert\"][\"EncodingServices\"]>>; readonly insertVoid: RequestResolver.RequestResolver<SqlResolver.SqlRequest<S[\"insert\"][\"Type\"], void, SqlError, S[\"insert\"][\"EncodingServices\"]>>; readonly findById: RequestResolver.RequestResolver<SqlResolver.SqlRequest<S[\"fields\"][Id][\"Type\"], S[\"Type\"], Cause.NoSuchElementError | SqlError, S[\"DecodingServices\"] | S[\"fields\"][Id][\"EncodingServices\"]>>; readonly delete: RequestResolver.RequestResolver<SqlResolver.SqlRequest<S[\"fields\"][Id][\"Type\"], void, SqlError, S[\"fields\"][Id][\"EncodingServices\"]>>; }, never, SqlClient | Scope>; //# sourceMappingURL=SqlModel.d.ts.map"
     },
     {
+      "name": "statusOf",
+      "kind": "value",
+      "signature": "const statusOf: <A, E>(state: DesktopAsyncState<A, E>) => DesktopAsyncStatus"
+    },
+    {
       "name": "StreamState",
       "kind": "interface",
       "signature": "export interface StreamState<A, E> { readonly status: StreamStatus readonly data: readonly A[] readonly error: Option.Option<Cause.Cause<E>> }"
@@ -234,6 +314,31 @@
       "signature": "const useDesktop: () => Option.Option<DesktopClient>"
     },
     {
+      "name": "useDesktopAction",
+      "kind": "value",
+      "signature": "const useDesktopAction: <Args extends readonly unknown[], A, E>(operation: (...args: Args) => Effect.Effect<A, E, never>, options?: DesktopActionOptions) => DesktopAction<Args, A, E>"
+    },
+    {
+      "name": "useDesktopClient",
+      "kind": "value",
+      "signature": "const useDesktopClient: () => DesktopClient"
+    },
+    {
+      "name": "useDesktopQuery",
+      "kind": "value",
+      "signature": "const useDesktopQuery: <A, E>(operation: () => Effect.Effect<A, E, never>, deps?: DependencyList) => DesktopQuery<A, E>"
+    },
+    {
+      "name": "useDesktopResource",
+      "kind": "value",
+      "signature": "const useDesktopResource: <E>(resource: DesktopDisposable<E> | undefined, deps?: DependencyList) => DesktopResourceState<E>"
+    },
+    {
+      "name": "useDesktopStream",
+      "kind": "value",
+      "signature": "const useDesktopStream: <A, E>(stream: Stream.Stream<A, E, never>, options?: DesktopStreamOptions<A>) => StreamState<A, E>"
+    },
+    {
       "name": "useDisplays",
       "kind": "value",
       "signature": "const useDisplays: (getDisplays: () => Effect.Effect<ReadonlyArray<ScreenDisplay>, ScreenError, never>) => AsyncResult.AsyncResult<ReadonlyArray<ScreenDisplay>, ScreenError>"
@@ -242,6 +347,11 @@
       "name": "useEffectResult",
       "kind": "value",
       "signature": "const useEffectResult: <A, E>(effect: Effect.Effect<A, E, never>, deps?: DependencyList) => AsyncResult.AsyncResult<A, E>"
+    },
+    {
+      "name": "useOptionalDesktopClient",
+      "kind": "value",
+      "signature": "const useOptionalDesktopClient: () => Option.Option<DesktopClient>"
     },
     {
       "name": "usePermission",
@@ -259,9 +369,14 @@
       "signature": "const usePower: (streams: { readonly onSuspend: () => Stream.Stream<PowerMonitorSuspendEvent, PowerMonitorError, never>; readonly onResume: () => Stream.Stream<PowerMonitorResumeEvent, PowerMonitorError, never>; readonly onShutdown: () => Stream.Stream<PowerMonitorShutdownEvent, PowerMonitorError, never>; readonly onPowerSourceChanged: () => Stream.Stream<PowerMonitorSourceChangedEvent, PowerMonitorError, never>; }) => PowerState"
     },
     {
+      "name": "useResource",
+      "kind": "value",
+      "signature": "const useResource: <E>(resource: DesktopDisposable<E> | undefined, deps?: DependencyList) => DesktopResourceState<E>"
+    },
+    {
       "name": "useStream",
       "kind": "value",
-      "signature": "const useStream: <A, E>(stream: Stream.Stream<A, E, never>) => StreamState<A, E>"
+      "signature": "const useStream: <A, E>(stream: Stream.Stream<A, E, never>, options?: DesktopStreamOptions<A>) => StreamState<A, E>"
     },
     {
       "name": "useSubscribable",

@@ -1,18 +1,22 @@
 # @effect-desktop/react
 
-> **Status:** Phase 6 public surface. The provider and value-returning hooks are intentionally minimal while the renderer template lands; stream/resource hooks are populated by later Phase 6 issues.
+> **Status:** Phase 6 public surface. Renderer code should use React-shaped hooks at the boundary and keep raw Effect execution out of components.
 
 ## Purpose
 
-Thin React integration for renderer clients: `DesktopProvider`, `useDesktop`, `useDesktopStream`, `usePermission`, `useWindow`, `useResource`.
+Thin React integration for renderer clients: `DesktopProvider`, `useDesktopClient`, `useOptionalDesktopClient`, `defineDesktopApi`, `useDesktopAction`, `useDesktopQuery`, `useDesktopStream`, `useDesktopResource`, `usePermission`, and `useWindow`.
 
 ## Public API
 
-- `DesktopProvider` supplies a public `DesktopClient` to renderer components.
-- `useDesktop` returns `Option.Option<DesktopClient>` instead of throwing when no provider is mounted.
+- `DesktopProvider` supplies a public `DesktopClient` to renderer components and creates an unavailable client when the host bridge is absent.
+- `useDesktopClient` returns the required client and fails loudly when no provider is mounted.
+- `useOptionalDesktopClient` and `useDesktop` return `Option.Option<DesktopClient>` for SSR and library code.
 - `useWindow` returns `Option.Option<WindowHandle>` for the current renderer window.
+- `defineDesktopApi` turns lowerCamel Effect operations into objects shaped like `notes.createNote.useAction()`.
+- `useDesktopAction` runs user-triggered Effect commands and exposes `state`, `status`, `run`, `cancel`, and `reset`.
+- `useDesktopQuery` runs lifecycle reads and exposes `state`, `status`, `reload`, `cancel`, and `reset`.
 - `useDesktopStream` subscribes to an Effect stream, interrupts it from React cleanup, and retains at most 1024 emitted items by default.
-- `useResource` disposes a handle from React cleanup.
+- `useDesktopResource` and `useResource` dispose a handle from React cleanup.
 - `usePermission` exposes the Phase 16 placeholder state.
 
 ## Dependency note
@@ -26,17 +30,25 @@ See `docs/SPEC.md` for the package's normative non-goals.
 ## Usage
 
 ```ts
-import { Option } from "effect"
-import { useDesktop } from "@effect-desktop/react"
+import { defineDesktopApi, useDesktopClient } from "@effect-desktop/react"
 
 export function Toolbar() {
-  const desktop = useDesktop()
+  const desktop = useDesktopClient()
+  const windowApi = defineDesktopApi(desktop.window)
+  const createWindow = windowApi.create.useAction()
 
-  if (Option.isSome(desktop)) {
-    // desktop.value.Window.create(...)
+  if (createWindow.state._tag === "Failure") {
+    return <p>{createWindow.state.message}</p>
   }
 
-  return null
+  return (
+    <button
+      disabled={createWindow.status === "running"}
+      onClick={() => createWindow.run({ title: "Notes", width: 960, height: 640 })}
+    >
+      Open
+    </button>
+  )
 }
 ```
 
@@ -66,4 +78,4 @@ The package is renderer-only. Native operations stay represented as Effect value
 
 ## Internal architecture
 
-React context stores an optional desktop client and current window handle. Absence is modeled as `Option.none()` so renderer code can branch explicitly instead of catching provider errors.
+React context stores an optional desktop client and current window handle. Application components should use `useDesktopClient`; library and SSR code can branch on `useOptionalDesktopClient`.

@@ -64,6 +64,17 @@ test("template contract uses Rpc.make + RpcGroup.make", async () => {
   expect(AppRpc.requests.has("Greet")).toBe(true)
 })
 
+test("renderer uses desktop action hooks instead of manual Effect runners", () => {
+  const app = readFileSync(join(templateRoot, "src", "App.tsx"), "utf8")
+  const main = readFileSync(join(templateRoot, "src", "main.tsx"), "utf8")
+
+  expect(app).toContain("defineDesktopApi")
+  expect(app).toContain("windowApi.create.useAction")
+  expect(app).not.toContain("runPromiseExit")
+  expect(main).not.toContain("unavailableWindow")
+  expect(main).not.toContain("desktopClient")
+})
+
 function privateImportViolations(text: string, file: string): readonly string[] {
   return importSpecifiers(text)
     .filter((specifier) => specifier.includes("/src/") || specifier.includes("/_internal"))
