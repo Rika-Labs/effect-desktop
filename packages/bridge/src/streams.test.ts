@@ -445,6 +445,57 @@ test("Streams cancellation interrupts the producer and emits a closed terminal",
   ])
 })
 
+test("Streams sends cancel on early consumer finalization without abort signal", async () => {
+  const ProjectApi = makeProjectApi("ProjectApi.StreamTakeWithoutSignal")
+  const requests: HostProtocolRequestEnvelope[] = []
+  const cancelRequests: HostProtocolCancelByRequestEnvelope[] = []
+  const runtime = Streams.withOptions(
+    {
+      nextStreamId: () => "stream-take-without-signal",
+      now: () => 42
+    },
+    ProjectApi.layer({
+      watch: () => Stream.make(new WatchEvent({ sequence: 1, path: "a" })).pipe(Stream.concat(Stream.never))
+    })
+  )
+  const client = Client(
+    { project: ProjectApi },
+    streamExchange(runtime, requests, cancelRequests),
+    {
+      nextRequestId: () => "request-stream-take",
+      nextTraceId: () => "trace-stream-take",
+      now: () => 41
+    }
+  )
+
+  const events = await Effect.runPromise(
+    client.project
+      .watch(new WatchInput({ projectId: "project-1" }))
+      .pipe(Stream.take(1), Stream.runCollect)
+  )
+
+  expect(Array.from(events).map((event) => event.path)).toEqual(["a"])
+  expect(requests).toEqual([
+    new HostProtocolRequestEnvelope({
+      kind: "request",
+      id: "request-stream-take",
+      method: "ProjectApi.StreamTakeWithoutSignal.watch",
+      timestamp: 41,
+      traceId: "trace-stream-take",
+      payload: new WatchInput({ projectId: "project-1" })
+    })
+  ])
+  await waitFor(() => cancelRequests.length === 1)
+  expect(cancelRequests).toEqual([
+    new HostProtocolCancelByRequestEnvelope({
+      kind: "cancel",
+      id: "request-stream-take",
+      timestamp: 41,
+      traceId: "trace-stream-take"
+    })
+  ])
+})
+
 type ProjectApiSpec = {
   readonly watch: {
     readonly input: typeof WatchInput
