@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import { Context, Effect, Exit, Layer, Option } from "effect"
+import { Headers } from "effect/unstable/http"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { Schema } from "effect"
 
@@ -9,6 +10,7 @@ import {
   makePermissionInterceptorLayer,
   P,
   PermissionInterceptor,
+  PermissionInterceptorError,
   validatePermissions
 } from "./permission-interceptor.js"
 import {
@@ -191,6 +193,45 @@ test("makePermissionInterceptorLayer allows call when capability is declared", a
   )
 
   expect(result).toBeDefined()
+})
+
+test("makePermissionInterceptorLayer fails denied calls as typed middleware errors", async () => {
+  const cap = P.filesystemRead({ roots: ["/tmp/app"] })
+  const GuardedRpc = Rpc.make("ReadFile", {
+    payload: { path: Schema.String },
+    success: Schema.String
+  })
+    .annotate(CapabilityAnnotation, cap)
+    .middleware(PermissionInterceptor)
+
+  const interceptorLayer = makePermissionInterceptorLayer()
+
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const middleware = yield* PermissionInterceptor
+        return yield* middleware(Effect.succeed({} as never), {
+          client: undefined as never,
+          requestId: 1 as never,
+          rpc: GuardedRpc as never,
+          payload: { path: "/tmp/app/file.txt" },
+          headers: Headers.empty
+        })
+      })
+    ).pipe(Effect.provide(interceptorLayer), Effect.provide(RegistryLayer))
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const fail = exit.cause.reasons.find((r) => r._tag === "Fail")
+    expect(fail).toBeDefined()
+    if (fail?._tag === "Fail") {
+      expect(fail.error).toBeInstanceOf(PermissionInterceptorError)
+      const error = fail.error as PermissionInterceptorError
+      expect(error.reason).toBe("default-deny")
+      expect(error.capability.kind).toBe("filesystem.read")
+    }
+  }
 })
 
 test("validatePermissions succeeds when all required capabilities are declared", async () => {
