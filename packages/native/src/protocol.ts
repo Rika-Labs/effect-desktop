@@ -14,6 +14,7 @@ import {
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Option, Schema } from "effect"
+import * as nodePath from "node:path"
 
 import {
   ProtocolDenyInput,
@@ -234,21 +235,45 @@ const validateScheme = (
   return Effect.succeed(scheme)
 }
 
+const TraversalSegmentPattern = /(?:^|[\\/])\.\.(?:$|[\\/])/
+
 // eslint-disable-next-line no-control-regex -- Intentionally matches control chars to reject them.
 const ControlCharPattern = /[\x00-\x1f\x7f]/
 
 const validateLocalPath = (
-  path: string,
+  inputPath: string,
   field: string,
   operation: string
 ): Effect.Effect<string, ProtocolError, never> => {
-  if (ControlCharPattern.test(path)) {
+  if (inputPath.length === 0) {
+    return Effect.fail(
+      makeHostProtocolInvalidArgumentError(
+        field,
+        "must be a non-empty absolute local path",
+        operation
+      )
+    )
+  }
+
+  if (!nodePath.isAbsolute(inputPath)) {
+    return Effect.fail(
+      makeHostProtocolInvalidArgumentError(field, "must be an absolute local path", operation)
+    )
+  }
+
+  if (TraversalSegmentPattern.test(inputPath)) {
+    return Effect.fail(
+      makeHostProtocolInvalidArgumentError(field, "must not contain traversal segments", operation)
+    )
+  }
+
+  if (ControlCharPattern.test(inputPath)) {
     return Effect.fail(
       makeHostProtocolInvalidArgumentError(field, "must not contain control characters", operation)
     )
   }
 
-  return Effect.succeed(path)
+  return Effect.succeed(inputPath)
 }
 
 const validateRoutePath = (
