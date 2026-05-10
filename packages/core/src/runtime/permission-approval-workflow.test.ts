@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Cause, Effect, Exit, Fiber } from "effect"
+import { Cause, Effect, Exit, Fiber, Option } from "effect"
 import { WorkflowEngine } from "effect/unstable/workflow"
 
 import {
@@ -8,7 +8,11 @@ import {
   PermissionApprovalWorkflow,
   resolveApprovalDeferred
 } from "./permission-approval-workflow.js"
-import { makePermissionRegistry } from "./permission-registry.js"
+import {
+  makePermissionRegistry,
+  PermissionInvalidArgumentError,
+  type PermissionRegistryApi
+} from "./permission-registry.js"
 
 const provideEngine = <A, E, R>(
   effect: Effect.Effect<A, E, R | WorkflowEngine.WorkflowEngine>
@@ -145,4 +149,42 @@ test("PermissionApproval workflow records a grant with ttl when ttlMs provided",
   expect(result).toBeInstanceOf(Grant)
   expect(result.expiresAt).toBeDefined()
   expect(result.expiresAt! - result.grantedAt).toBe(ttlMs)
+})
+
+test("PermissionApproval workflow reports registry declaration failures as typed workflow errors", async () => {
+  const baseRegistry = await Effect.runPromise(makePermissionRegistry())
+  const registry: PermissionRegistryApi = {
+    ...baseRegistry,
+    declare: (_capability, _options) =>
+      Effect.fail(
+        new PermissionInvalidArgumentError({
+          operation: "PermissionRegistry.declare",
+          field: "capability",
+          message: "invalid",
+          cause: Option.none()
+        })
+      )
+  }
+  const actor = { kind: "app" as const, id: "test-app" }
+
+  const exit = await Effect.runPromise(
+    Effect.exit(
+      PermissionApprovalWorkflow.execute({
+        traceId: "trace-invalid-capability",
+        capability: { kind: "filesystem.read", roots: [], audit: "on-deny" },
+        actor
+      }).pipe(Effect.provide(makePermissionApprovalWorkflowLayer({ registry })), provideEngine)
+    )
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failReason = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failReason).toBeDefined()
+    if (failReason !== undefined) {
+      const error = failReason.error as { readonly _tag: string; readonly phase?: string }
+      expect(error._tag).toBe("PermissionApprovalFailed")
+      expect(error.phase).toBe("declare")
+    }
+  }
 })
