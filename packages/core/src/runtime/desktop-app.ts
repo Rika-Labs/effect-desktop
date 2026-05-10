@@ -1,4 +1,5 @@
 import { Config, Context, Data, Effect, Layer } from "effect"
+import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
 import type { ApiContractClass, ApiContractSpec } from "@rikalabs/effect-desktop/bridge"
 
@@ -29,6 +30,7 @@ export interface DesktopConfig<RIn = never, E = never> {
   readonly windows: Readonly<Record<string, WindowSpec>>
   readonly handlers?: ReadonlyArray<AnyApiLayer>
   readonly layers?: ReadonlyArray<Layer.Layer<unknown, E, RIn>>
+  readonly rpcs?: ReadonlyArray<AnyDesktopRpcLayer>
   readonly permissions?: ReadonlyArray<NormalizedCapability>
   readonly workflows?: ReadonlyArray<WorkflowLayer>
 }
@@ -45,6 +47,7 @@ export interface DesktopAppDefinition<E = never, R = never> {
   readonly id: string
   readonly windows: Readonly<Record<string, WindowSpec>>
   readonly layers: ReadonlyArray<Layer.Layer<unknown, E, R>>
+  readonly rpcLayers: ReadonlyArray<AnyDesktopRpcLayer>
   readonly permissions: ReadonlyArray<NormalizedCapability>
   readonly workflows: ReadonlyArray<WorkflowLayer>
   pipe(): DesktopAppDefinition<E, R>
@@ -57,9 +60,21 @@ export interface DesktopAppDefinition<E = never, R = never> {
   ): C
 }
 
+export interface DesktopRpcLayer<Rpcs extends Rpc.Any = Rpc.Any, E = never, R = never> {
+  readonly _tag: "DesktopRpcsLayer"
+  readonly group: RpcGroup.RpcGroup<Rpcs>
+  readonly layer: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
+}
+
+export interface AnyDesktopRpcLayer {
+  readonly _tag: "DesktopRpcsLayer"
+  readonly group: RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> }
+  readonly layer: Layer.Layer<unknown, unknown, unknown>
+}
+
 export class DesktopConfigError extends Data.TaggedError("DesktopConfigError")<{
   readonly appId: string
-  readonly reason: "missing-permission" | "invalid-config"
+  readonly reason: "missing-permission" | "invalid-config" | "duplicate-rpc"
   readonly message: string
   readonly contract?: string
   readonly method?: string
@@ -69,6 +84,7 @@ export class DesktopConfigError extends Data.TaggedError("DesktopConfigError")<{
 export interface DesktopAppApi {
   readonly appId: string
   readonly windows: Readonly<Record<string, WindowSpec>>
+  readonly rpcLayers: ReadonlyArray<AnyDesktopRpcLayer>
 }
 
 export class DesktopApp extends Context.Service<DesktopApp, DesktopAppApi>()("DesktopApp") {}
@@ -95,13 +111,46 @@ export const make = (config: DesktopMakeConfig): DesktopAppDefinition<never, nev
     id: config.id ?? "app",
     windows: freezeWindows(config.windows),
     layers: Object.freeze([]),
+    rpcLayers: Object.freeze([]),
     permissions: freezeArray(config.permissions),
     workflows: freezeArray(config.workflows)
   })
 
-export const provide =
-  <Provided, E, R>(layer: Layer.Layer<Provided, E, R>) =>
-  <AppE, AppR>(definition: DesktopAppDefinition<AppE, AppR>): DesktopAppDefinition<E | AppE, R | AppR> =>
+export function provide<Provided, E, R>(
+  layer: Layer.Layer<Provided, E, R>
+): <AppE, AppR>(
+  definition: DesktopAppDefinition<AppE, AppR>
+) => DesktopAppDefinition<E | AppE, R | AppR>
+export function provide<Rpcs extends Rpc.Any, E, R>(
+  rpcLayer: DesktopRpcLayer<Rpcs, E, R>
+): <AppE, AppR>(
+  definition: DesktopAppDefinition<AppE, AppR>
+) => DesktopAppDefinition<E | AppE, R | AppR>
+export function provide(provided: unknown): (
+  definition: DesktopAppDefinition<unknown, unknown>
+) => DesktopAppDefinition<unknown, unknown> {
+  return (definition) =>
+    isDesktopRpcLayer(provided)
+      ? appendRpcLayer(definition, provided)
+      : appendLayer(definition, provided as Layer.Layer<unknown, unknown, unknown>)
+}
+
+export const Rpcs = Object.freeze({
+  layer: <Rpcs extends Rpc.Any, E, R>(
+    group: RpcGroup.RpcGroup<Rpcs>,
+    layer: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
+  ): DesktopRpcLayer<Rpcs, E, R> =>
+    Object.freeze({
+      _tag: "DesktopRpcsLayer" as const,
+      group,
+      layer
+    })
+})
+
+const appendLayer = <E, R, AppE, AppR>(
+  definition: DesktopAppDefinition<AppE, AppR>,
+  layer: Layer.Layer<unknown, E, R>
+): DesktopAppDefinition<E | AppE, R | AppR> =>
     makeDefinition({
       id: definition.id,
       windows: definition.windows,
@@ -109,9 +158,29 @@ export const provide =
         ...definition.layers,
         layer as Layer.Layer<unknown, E | AppE, R | AppR>
       ]),
+      rpcLayers: definition.rpcLayers,
       permissions: definition.permissions,
       workflows: definition.workflows
     })
+
+const appendRpcLayer = <E, R, AppE, AppR>(
+  definition: DesktopAppDefinition<AppE, AppR>,
+  rpcLayer: AnyDesktopRpcLayer
+): DesktopAppDefinition<E | AppE, R | AppR> =>
+  makeDefinition({
+    id: definition.id,
+    windows: definition.windows,
+    layers: Object.freeze([
+      ...definition.layers,
+      rpcLayer.layer as Layer.Layer<unknown, E | AppE, R | AppR>
+    ]),
+    rpcLayers: Object.freeze([
+      ...definition.rpcLayers,
+      rpcLayer as unknown as AnyDesktopRpcLayer
+    ]),
+    permissions: definition.permissions,
+    workflows: definition.workflows
+  })
 
 export const toLayer = <E, R>(
   definition: DesktopAppDefinition<E, R>
@@ -120,6 +189,7 @@ export const toLayer = <E, R>(
     id: definition.id,
     windows: definition.windows,
     layers: definition.layers,
+    rpcs: definition.rpcLayers,
     permissions: definition.permissions,
     workflows: definition.workflows
   })
@@ -145,6 +215,24 @@ const checkPermissions = <RIn, E>(
 ): Effect.Effect<void, DesktopConfigError, never> => {
   const declared = config.permissions ?? []
   const handlers = config.handlers ?? []
+  const rpcLayers = config.rpcs ?? []
+  const seenRpcTags = new Set<string>()
+
+  for (const rpcLayer of rpcLayers) {
+    for (const tag of rpcLayer.group.requests.keys()) {
+      if (seenRpcTags.has(tag)) {
+        return Effect.fail(
+          new DesktopConfigError({
+            appId: config.id,
+            reason: "duplicate-rpc",
+            message: `RPC method "${tag}" is provided more than once`,
+            method: tag
+          })
+        )
+      }
+      seenRpcTags.add(tag)
+    }
+  }
 
   for (const apiLayer of handlers) {
     for (const [method, spec] of Object.entries(apiLayer.contract.spec)) {
@@ -174,7 +262,10 @@ const checkPermissions = <RIn, E>(
 
 const buildSpine = <RIn, E>(config: DesktopConfig<RIn, E>): Layer.Layer<DesktopApp, E, RIn> => {
   const wfs = config.workflows ?? []
-  const userLayers = config.layers ?? []
+  const rpcLayers = (config.rpcs ?? []).map(
+    (rpcLayer) => rpcLayer.layer as Layer.Layer<unknown, E, RIn>
+  )
+  const userLayers = [...(config.layers ?? []), ...rpcLayers]
 
   const workflowLayer: Layer.Layer<never, never, never> =
     wfs.length === 0
@@ -200,7 +291,8 @@ const buildSpine = <RIn, E>(config: DesktopConfig<RIn, E>): Layer.Layer<DesktopA
   const desktopAppLayer: Layer.Layer<DesktopApp, never, never> = Layer.effect(DesktopApp)(
     Effect.succeed({
       appId: config.id,
-      windows: config.windows
+      windows: config.windows,
+      rpcLayers: config.rpcs ?? []
     })
   )
 
@@ -211,6 +303,7 @@ const makeDefinition = <E, R>(definition: {
   readonly id: string
   readonly windows: Readonly<Record<string, WindowSpec>>
   readonly layers: ReadonlyArray<Layer.Layer<unknown, E, R>>
+  readonly rpcLayers: ReadonlyArray<AnyDesktopRpcLayer>
   readonly permissions: ReadonlyArray<NormalizedCapability>
   readonly workflows: ReadonlyArray<WorkflowLayer>
 }): DesktopAppDefinition<E, R> =>
@@ -219,6 +312,7 @@ const makeDefinition = <E, R>(definition: {
     id: definition.id,
     windows: definition.windows,
     layers: definition.layers,
+    rpcLayers: definition.rpcLayers,
     permissions: definition.permissions,
     workflows: definition.workflows,
     pipe(...operations: ReadonlyArray<(value: unknown) => unknown>): unknown {
@@ -238,3 +332,9 @@ const freezeWindows = (
   Object.freeze(
     Object.fromEntries(Object.entries(windows).map(([name, spec]) => [name, Object.freeze(spec)]))
   )
+
+const isDesktopRpcLayer = (value: unknown): value is AnyDesktopRpcLayer =>
+  typeof value === "object" &&
+  value !== null &&
+  "_tag" in value &&
+  (value as { readonly _tag?: unknown })._tag === "DesktopRpcsLayer"

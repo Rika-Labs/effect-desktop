@@ -1,7 +1,7 @@
 import { Api, Client, Handlers, RedactionFilter } from "@rikalabs/effect-desktop/bridge"
 import { Effect, Layer } from "effect"
 
-import { app as desktopApp, launch, make, provide, toLayer } from "./runtime/desktop-app.js"
+import { Rpcs, app as desktopApp, launch, make, provide, toLayer } from "./runtime/desktop-app.js"
 import type { DesktopApp, DesktopConfig, DesktopConfigError } from "./runtime/desktop-app.js"
 import type { NormalizedCapability } from "./runtime/permission-registry.js"
 import { PermissionRegistry } from "./runtime/permission-registry.js"
@@ -50,12 +50,15 @@ export {
   launch,
   make,
   provide,
+  Rpcs,
   toLayer,
   type AnyApiLayer,
+  type AnyDesktopRpcLayer,
   type DesktopAppApi,
   type DesktopAppDefinition,
   type DesktopConfig,
   type DesktopMakeConfig,
+  type DesktopRpcLayer,
   type WindowSpec
 } from "./runtime/desktop-app.js"
 export { DesktopConfigError as DesktopSpineConfigError } from "./runtime/desktop-app.js"
@@ -126,5 +129,6 @@ export const Desktop = Object.freeze({
   launch,
   make,
   provide,
+  Rpcs,
   toLayer
 })
