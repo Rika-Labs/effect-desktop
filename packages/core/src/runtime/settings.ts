@@ -461,14 +461,21 @@ const runMigrations = (
     let version = from
     while (version !== to) {
       const migration = migrations.find(
-        (candidate) => candidate.from === version && candidate.to <= to
+        (candidate) => candidate.from === version && candidate.to > version && candidate.to <= to
       )
       if (migration === undefined) {
+        const nonAdvancing = migrations.find(
+          (candidate) => candidate.from === version && candidate.to <= version
+        )
+        const cause =
+          nonAdvancing === undefined
+            ? `missing migration from ${version} to ${to}`
+            : `non-advancing migration from ${version} to ${nonAdvancing.to}`
         return yield* Effect.fail(
           new SettingsMigrationFailedError({
             schemaVersion: to,
             operation: "Settings.migrate",
-            cause: Option.some(`missing migration from ${version} to ${to}`)
+            cause: Option.some(cause)
           })
         )
       }

@@ -287,13 +287,20 @@ const validateBreadcrumb = (
         cause instanceof Error ? cause.message : String(cause),
         "CrashReporter.recordBreadcrumb"
       )
+    ),
+    Effect.flatMap((validated) =>
+      validated.details === undefined
+        ? Effect.succeed(validated)
+        : normalizeBreadcrumbDetails(validated.details).pipe(
+            Effect.map((details) => ({ ...validated, details }))
+          )
     )
   )
 
 const normalizeBreadcrumb = (breadcrumb: CrashReporterBreadcrumb): CrashReporterBreadcrumb => ({
   category: breadcrumb.category,
   message: breadcrumb.message,
-  ...(breadcrumb.details === undefined ? {} : { details: redact(breadcrumb.details) }),
+  ...(breadcrumb.details === undefined ? {} : { details: breadcrumb.details }),
   timestamp: breadcrumb.timestamp ?? Date.now()
 })
 
@@ -302,14 +309,33 @@ const makeBreadcrumbInput = (breadcrumb: CrashReporterBreadcrumb): CrashReporter
     ? new CrashReporterBreadcrumbInput({
         category: breadcrumb.category,
         message: breadcrumb.message,
-        ...(breadcrumb.details === undefined ? {} : { details: redact(breadcrumb.details) })
+        ...(breadcrumb.details === undefined ? {} : { details: breadcrumb.details })
       })
     : new CrashReporterBreadcrumbInput({
         category: breadcrumb.category,
         message: breadcrumb.message,
-        ...(breadcrumb.details === undefined ? {} : { details: redact(breadcrumb.details) }),
+        ...(breadcrumb.details === undefined ? {} : { details: breadcrumb.details }),
         timestamp: breadcrumb.timestamp
       })
+
+const normalizeBreadcrumbDetails = (
+  details: unknown
+): Effect.Effect<unknown, CrashReporterError, never> =>
+  Effect.try({
+    try: () => {
+      const redacted = redact(details)
+      if (JSON.stringify(redacted) === undefined) {
+        throw new Error("details cannot be represented in host JSON")
+      }
+      return redacted
+    },
+    catch: (error) =>
+      makeHostProtocolInvalidArgumentError(
+        "details",
+        error instanceof Error ? error.message : String(error),
+        "CrashReporter.recordBreadcrumb"
+      )
+  })
 
 const notStartedError = (operation: string): CrashReporterError =>
   makeHostProtocolInvalidStateError("not-started", operation, operation)

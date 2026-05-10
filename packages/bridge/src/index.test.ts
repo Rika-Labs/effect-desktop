@@ -128,6 +128,59 @@ test("renderer reconnect payload schemas decode canonical shapes", () => {
   ).toBe("backfillExhausted")
 })
 
+test("renderer reconnect payload schemas reject empty identity fields", () => {
+  const decodeResumeTicket = Schema.decodeUnknownSync(ResumeTicket)
+  const decodeResume = Schema.decodeUnknownSync(RendererResumePayload)
+  const decodeResumed = Schema.decodeUnknownSync(RendererResumedPayload)
+  const decodeDenied = Schema.decodeUnknownSync(RendererResumeDeniedPayload)
+
+  expect(() =>
+    decodeResumeTicket(
+      {
+        windowId: "",
+        originTokenHash: "sha256:origin",
+        resumeNonce: "resume-1",
+        expiresAt: 1710000030000,
+        lastStreamCursors: {
+          "stream-1": "42"
+        }
+      },
+      StrictParseOptions
+    )
+  ).toThrow()
+  expect(() =>
+    decodeResume(
+      {
+        windowId: "window-1",
+        resumeNonce: "",
+        cursors: {
+          "stream-1": "42"
+        }
+      },
+      StrictParseOptions
+    )
+  ).toThrow()
+  expect(() =>
+    decodeResumed(
+      {
+        windowId: "",
+        replayedStreamIds: ["stream-1"]
+      },
+      StrictParseOptions
+    )
+  ).toThrow()
+  expect(() =>
+    decodeDenied(
+      {
+        windowId: "",
+        reason: "backfillExhausted",
+        message: "reconnect backfill exhausted"
+      },
+      StrictParseOptions
+    )
+  ).toThrow()
+})
+
 test("host protocol error type supports Effect catchTag", async () => {
   const error = decodeUnknownHostProtocolError(
     {

@@ -8,7 +8,6 @@ import {
   type ApiLayer,
   type ApiClientExchange,
   type ApiClientOptions,
-  type ApiResourceHandle,
   ApiResourceHandleShape,
   type HostWindowClientOptions,
   type HostWindowExchange,
@@ -24,184 +23,101 @@ import { ResourceRegistry, type ResourceId } from "@effect-desktop/core"
 import { Context, Effect, Layer, Option, Schema, Stream } from "effect"
 
 import { type AppEventRouterApi, windowScope } from "./app-events.js"
-
-const PositiveFiniteNumber = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0))
-const NonNegativeFiniteNumber = Schema.Number.check(
-  Schema.isFinite(),
-  Schema.isGreaterThanOrEqualTo(0)
-)
-const WindowTitleBarStyle = Schema.Literals([
-  "default",
-  "hidden",
-  "hiddenInset",
-  "customButtonsOnHover"
-])
-const WindowVibrancyMaterial = Schema.Literals([
-  "appearanceBased",
-  "appearance-based",
-  "contentBackground",
-  "content-background",
-  "headerView",
-  "header-view",
-  "hudWindow",
-  "hud-window",
-  "menu",
-  "popover",
-  "selection",
-  "sidebar",
-  "titlebar",
-  "windowBackground",
-  "window-background"
-])
-const WindowResource = Api.Resource("window", "open")
+export * from "./contracts/window.js"
+import {
+  WindowBackgroundColorInput,
+  WindowCreateInput,
+  type WindowCreateOptions,
+  WindowFullscreenInput,
+  type WindowHandle,
+  WindowHandleInput,
+  WindowPositionInput,
+  WindowResource,
+  WindowScaleChanged,
+  WindowScaleFactorOutput,
+  WindowSizeInput,
+  WindowTitleInput,
+  WindowVibrancyInput,
+  WindowShadowInput,
+  WindowFullScreenChanged
+} from "./contracts/window.js"
 const StrictParseOptions = { onExcessProperty: "error" } as const
-
-export class WindowTrafficLights extends Schema.Class<WindowTrafficLights>("WindowTrafficLights")({
-  x: NonNegativeFiniteNumber,
-  y: NonNegativeFiniteNumber
-}) {}
-
-export type WindowHandle = ApiResourceHandle<"window", "open">
 export type WindowError = HostProtocolError
-
-export class WindowCreateInput extends Schema.Class<WindowCreateInput>("WindowCreateInput")({
-  title: Schema.optionalKey(Schema.NonEmptyString),
-  width: Schema.optionalKey(PositiveFiniteNumber),
-  height: Schema.optionalKey(PositiveFiniteNumber),
-  titleBarStyle: Schema.optionalKey(WindowTitleBarStyle),
-  vibrancy: Schema.optionalKey(WindowVibrancyMaterial),
-  trafficLights: Schema.optionalKey(WindowTrafficLights),
-  persistState: Schema.optionalKey(Schema.Boolean)
-}) {}
-
-export type WindowCreateOptions = Schema.Schema.Type<typeof WindowCreateInput>
-
-export class WindowHandleInput extends Schema.Class<WindowHandleInput>("WindowHandleInput")({
-  window: WindowResource.schema
-}) {}
-
-export class WindowTitleInput extends Schema.Class<WindowTitleInput>("WindowTitleInput")({
-  window: WindowResource.schema,
-  title: Schema.String
-}) {}
-
-export class WindowSizeInput extends Schema.Class<WindowSizeInput>("WindowSizeInput")({
-  window: WindowResource.schema,
-  width: PositiveFiniteNumber,
-  height: PositiveFiniteNumber
-}) {}
-
-export class WindowPositionInput extends Schema.Class<WindowPositionInput>("WindowPositionInput")({
-  window: WindowResource.schema,
-  x: Schema.Number.check(Schema.isFinite()),
-  y: Schema.Number.check(Schema.isFinite())
-}) {}
-
-export class WindowBackgroundColorInput extends Schema.Class<WindowBackgroundColorInput>(
-  "WindowBackgroundColorInput"
-)({
-  window: WindowResource.schema,
-  color: Schema.String
-}) {}
-
-export class WindowVibrancyInput extends Schema.Class<WindowVibrancyInput>("WindowVibrancyInput")({
-  window: WindowResource.schema,
-  material: Schema.String
-}) {}
-
-export class WindowShadowInput extends Schema.Class<WindowShadowInput>("WindowShadowInput")({
-  window: WindowResource.schema,
-  hasShadow: Schema.Boolean
-}) {}
-
-export class WindowFullscreenInput extends Schema.Class<WindowFullscreenInput>(
-  "WindowFullscreenInput"
-)({
-  window: WindowResource.schema,
-  fullscreen: Schema.Boolean
-}) {}
-
-export class WindowScaleFactorOutput extends Schema.Class<WindowScaleFactorOutput>(
-  "WindowScaleFactorOutput"
-)({
-  scaleFactor: PositiveFiniteNumber
-}) {}
-
-export class WindowFullScreenChanged extends Schema.Class<WindowFullScreenChanged>(
-  "WindowFullScreenChanged"
-)({
-  window: WindowResource.schema,
-  fullscreen: Schema.Boolean
-}) {}
-
-export class WindowScaleChanged extends Schema.Class<WindowScaleChanged>("WindowScaleChanged")({
-  window: WindowResource.schema,
-  scaleFactor: PositiveFiniteNumber
-}) {}
 
 export const WindowApiSpec = Object.freeze({
   create: {
     input: WindowCreateInput,
     output: WindowResource,
-    error: HostProtocolErrorSchema
+    error: HostProtocolErrorSchema,
+    permission: "native.invoke:Window.create"
   },
-  show: handleMethodSpec(),
-  hide: handleMethodSpec(),
-  focus: handleMethodSpec(),
-  close: handleMethodSpec(),
+  show: handleMethodSpec(WindowHandleInput, "native.invoke:Window.show"),
+  hide: handleMethodSpec(WindowHandleInput, "native.invoke:Window.hide"),
+  focus: handleMethodSpec(WindowHandleInput, "native.invoke:Window.focus"),
+  close: handleMethodSpec(WindowHandleInput, "native.invoke:Window.close"),
   setTitle: {
     input: WindowTitleInput,
     output: Schema.Void,
-    error: HostProtocolErrorSchema
+    error: HostProtocolErrorSchema,
+    permission: "native.invoke:Window.setTitle"
   },
   setSize: {
     input: WindowSizeInput,
     output: Schema.Void,
-    error: HostProtocolErrorSchema
+    error: HostProtocolErrorSchema,
+    permission: "native.invoke:Window.setSize"
   },
   setPosition: {
     input: WindowPositionInput,
     output: Schema.Void,
-    error: HostProtocolErrorSchema
+    error: HostProtocolErrorSchema,
+    permission: "native.invoke:Window.setPosition"
   },
   setBackgroundColor: {
     input: WindowBackgroundColorInput,
     output: Schema.Void,
-    error: HostProtocolErrorSchema
+    error: HostProtocolErrorSchema,
+    permission: "native.invoke:Window.setBackgroundColor"
   },
   setVibrancy: {
     input: WindowVibrancyInput,
     output: Schema.Void,
-    error: HostProtocolErrorSchema
+    error: HostProtocolErrorSchema,
+    permission: "native.invoke:Window.setVibrancy"
   },
   setHasShadow: {
     input: WindowShadowInput,
     output: Schema.Void,
-    error: HostProtocolErrorSchema
+    error: HostProtocolErrorSchema,
+    permission: "native.invoke:Window.setHasShadow"
   },
   setFullscreen: {
     input: WindowFullscreenInput,
     output: Schema.Void,
-    error: HostProtocolErrorSchema
+    error: HostProtocolErrorSchema,
+    permission: "native.invoke:Window.setFullscreen"
   },
-  enterFullScreen: handleMethodSpec(),
-  exitFullScreen: handleMethodSpec(),
+  enterFullScreen: handleMethodSpec(WindowHandleInput, "native.invoke:Window.enterFullScreen"),
+  exitFullScreen: handleMethodSpec(WindowHandleInput, "native.invoke:Window.exitFullScreen"),
   onFullScreenChanged: {
     input: WindowHandleInput,
     output: Api.Stream(WindowFullScreenChanged, HostProtocolErrorSchema),
-    error: HostProtocolErrorSchema
+    error: HostProtocolErrorSchema,
+    permission: "native.invoke:Window.onFullScreenChanged"
   },
   getScaleFactor: {
     input: WindowHandleInput,
     output: WindowScaleFactorOutput,
-    error: HostProtocolErrorSchema
+    error: HostProtocolErrorSchema,
+    permission: "native.invoke:Window.getScaleFactor"
   },
   onScaleChanged: {
     input: WindowHandleInput,
     output: Api.Stream(WindowScaleChanged, HostProtocolErrorSchema),
-    error: HostProtocolErrorSchema
+    error: HostProtocolErrorSchema,
+    permission: "native.invoke:Window.onScaleChanged"
   },
-  persistState: handleMethodSpec()
+  persistState: handleMethodSpec(WindowHandleInput, "native.invoke:Window.persistState")
 }) satisfies ApiContractSpec
 
 export type WindowApiSpec = typeof WindowApiSpec
@@ -572,10 +488,11 @@ const formatUnknownError = (error: unknown): string => {
   return String(error)
 }
 
-function handleMethodSpec() {
+function handleMethodSpec<Input extends Schema.Schema<unknown>>(input: Input, permission: string) {
   return {
-    input: WindowHandleInput,
+    input,
     output: Schema.Void,
-    error: HostProtocolErrorSchema
+    error: HostProtocolErrorSchema,
+    permission
   } as const
 }

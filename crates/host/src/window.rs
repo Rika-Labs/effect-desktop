@@ -204,12 +204,14 @@ impl WindowMethodPort {
     fn take_pending_commands(&self) -> Vec<WindowCommand> {
         match self.state.commands.lock() {
             Ok(mut commands) => commands.drain(..).collect(),
-            Err(_) => {
+            Err(error) => {
+                let mut commands = error.into_inner();
+                let pending = commands.drain(..).collect();
                 warn!(
                     event = "host.window.command_queue_poisoned",
                     "window command queue mutex poisoned"
                 );
-                Vec::new()
+                pending
             }
         }
     }
@@ -851,6 +853,7 @@ mod tests {
     };
     use host_protocol::{HostProtocolError, WindowCreatePayload, WindowCreateResponse};
     use std::sync::mpsc;
+    use std::thread;
     use std::time::Instant;
     use tao::event_loop::ControlFlow;
 
@@ -932,6 +935,27 @@ mod tests {
         })
         .expect("window command should queue before the native event loop starts");
 
+        assert_eq!(port.take_pending_commands().len(), 1);
+    }
+
+    #[test]
+    fn window_commands_queue_is_preserved_when_mutex_is_poisoned() {
+        let port = WindowMethodPort::new();
+        let (reply, _rx) = mpsc::channel();
+        port.enqueue_command(WindowCommand::Destroy {
+            window_id: "pending".to_string(),
+            reply,
+        })
+        .expect("window command should queue before the native event loop starts");
+
+        let state = port.state.clone();
+        let poison_result = thread::spawn(move || {
+            let _lock = state.commands.lock().unwrap();
+            panic!("intentional panic to poison command mutex");
+        })
+        .join();
+
+        assert!(poison_result.is_err());
         assert_eq!(port.take_pending_commands().len(), 1);
     }
 

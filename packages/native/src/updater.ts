@@ -257,11 +257,11 @@ export const makeUnsupportedUpdaterClient = (): UpdaterClientApi => {
   const unsupportedStream = <A>(method: string): Stream.Stream<A, UpdaterError, never> =>
     Stream.fail(unsupportedError(method))
   return Object.freeze({
-    check: () => Effect.succeed(new UpdaterCheckResult({ available: false })),
+    check: () => unsupportedEffect<UpdaterCheckResult>("Updater.check"),
     download: () => unsupportedEffect<UpdaterStatusResult>("Updater.download"),
     install: () => unsupportedEffect<UpdaterStatusResult>("Updater.install"),
     installAndRestart: () => unsupportedEffect<UpdaterStatusResult>("Updater.installAndRestart"),
-    getStatus: () => Effect.succeed(new UpdaterStatusResult({ state: "idle" })),
+    getStatus: () => unsupportedEffect<UpdaterStatusResult>("Updater.getStatus"),
     readyForRestart: () => unsupportedEffect<void>("Updater.readyForRestart"),
     onPreparingRestart: () =>
       unsupportedStream<UpdaterPreparingRestartEvent>("Updater.PreparingRestart")

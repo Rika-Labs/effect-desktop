@@ -1,8 +1,8 @@
 import { Schema } from "effect"
 
-import { BridgeSafeNonEmptyString } from "./strings.js"
+import { PrintableNonEmptyString } from "./strings.js"
 
-export const SafeStorageKey = BridgeSafeNonEmptyString
+export const SafeStorageKey = PrintableNonEmptyString
 
 export class SafeStorageKeyInput extends Schema.Class<SafeStorageKeyInput>("SafeStorageKeyInput")({
   key: SafeStorageKey

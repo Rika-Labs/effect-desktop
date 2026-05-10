@@ -59,14 +59,19 @@
       "signature": "export class DevtoolsBindError extends Data.TaggedError(\"BindError\")<{ readonly operation: string readonly host: string readonly cause: unknown }> {}"
     },
     {
+      "name": "DevtoolsCleanupError",
+      "kind": "class",
+      "signature": "export class DevtoolsCleanupError extends Data.TaggedError(\"CleanupError\")<{ readonly operation: string readonly path: string readonly cause: unknown }> {}"
+    },
+    {
       "name": "DevtoolsError",
       "kind": "type",
-      "signature": "export type DevtoolsError = | DevtoolsInvalidInputError | DevtoolsTokenError | DevtoolsBindError | DevtoolsShellOpenError"
+      "signature": "export type DevtoolsError = | DevtoolsInvalidInputError | DevtoolsTokenError | DevtoolsBindError | DevtoolsCleanupError | DevtoolsShellOpenError"
     },
     {
       "name": "DevtoolsHandle",
       "kind": "interface",
-      "signature": "export interface DevtoolsHandle { readonly status: \"disabled\" | \"enabled\" readonly url: Option.Option<string> readonly tokenPath: Option.Option<string> readonly disable: Effect.Effect<void, never, never> }"
+      "signature": "export interface DevtoolsHandle { readonly status: \"disabled\" | \"enabled\" readonly url: Option.Option<string> readonly tokenPath: Option.Option<string> readonly disable: Effect.Effect<void, DevtoolsTokenError | DevtoolsCleanupError, never> }"
     },
     {
       "name": "DevtoolsInvalidInputError",
@@ -76,7 +81,7 @@
     {
       "name": "DevtoolsListener",
       "kind": "interface",
-      "signature": "export interface DevtoolsListener { readonly url: string readonly close: Effect.Effect<void, never, never> }"
+      "signature": "export interface DevtoolsListener { readonly url: string readonly close: Effect.Effect<void, DevtoolsCleanupError, never> }"
     },
     {
       "name": "DevtoolsLoopbackTransport",

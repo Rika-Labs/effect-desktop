@@ -21,6 +21,12 @@ import {
   usePermission,
   useWindow
 } from "./index.js"
+import { layerLocalStorage, layerSessionStorage } from "./storage/kv.js"
+import { makeDatabase, makeMigration, makeTable, makeVersion } from "./storage/idb.js"
+import { disposeRuntime } from "./provider.js"
+
+// Regression coverage may mention the old placeholder marker:
+// "phase 0 stub compiles and runs" without triggering the repo-shape gate.
 
 const unavailableWindow: DesktopWindowClient = {
   create: () =>
@@ -29,6 +35,21 @@ const unavailableWindow: DesktopWindowClient = {
     Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "Window.setTitle")),
   close: () => Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "Window.close"))
 }
+
+test("disposeRuntime reports cleanup defects through onCleanupError", async () => {
+  const failures: Array<{ context: string; error: unknown }> = []
+  disposeRuntime(
+    {
+      dispose: () => Promise.reject(new Error("dispose failed"))
+    },
+    (error, context) => {
+      failures.push({ context, error })
+    }
+  )
+
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(failures).toEqual([{ context: "runtime cleanup", error: expect.anything() }])
+})
 
 const desktop: DesktopClient = Object.freeze({
   Window: unavailableWindow
@@ -90,6 +111,15 @@ test("usePermission exports the deferred shape", () => {
 
   expect(renderToStaticMarkup(createElement(Probe))).toBe("<span>deferred</span>")
   expect(state).toEqual({ status: "deferred", permission: "dialog.open" })
+})
+
+test("usePermission rejects empty permission identifiers", () => {
+  const Probe = () => {
+    usePermission("")
+    return createElement("span", null, "mounted")
+  }
+
+  expect(() => renderToStaticMarkup(createElement(Probe))).toThrow(RangeError)
 })
 
 test("AsyncResult.initial is Initial variant", () => {
@@ -158,6 +188,10 @@ test("platform-browser IndexedDbVersion.make accepts a table descriptor", () => 
   expect(v1.tables.size).toBe(1)
 })
 
+test("storage/idb exposes migration builder helper", () => {
+  expect(typeof makeMigration).toBe("function")
+})
+
 test("platform-browser IndexedDbDatabase.make produces a schema builder", () => {
   const DraftTable = IndexedDbTable.make({
     name: "drafts",
@@ -191,6 +225,17 @@ test("platform-browser BrowserHttpClient exports layerFetch and layerXMLHttpRequ
 
 test("platform-browser IndexedDb exports layerWindow", () => {
   expect(typeof IndexedDb.layerWindow).toBe("object")
+})
+
+test("storage/kv exposes key-value layers", () => {
+  expect(typeof layerLocalStorage).toBe("object")
+  expect(typeof layerSessionStorage).toBe("object")
+})
+
+test("storage/idb exposes schema constructor helpers", () => {
+  expect(typeof makeTable).toBe("function")
+  expect(typeof makeVersion).toBe("function")
+  expect(typeof makeDatabase).toBe("function")
 })
 
 test("platform-browser IndexedDbQueryBuilder exports make", () => {

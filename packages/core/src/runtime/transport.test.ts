@@ -203,6 +203,26 @@ test("Transport service returns typed failures for invalid input and bad frames"
   expect(getFailure(malformedHeader)).toMatchObject({ field: "header" })
 })
 
+test("JSON-RPC unframe rejects invalid UTF-8 in headers", async () => {
+  const transport = await Effect.runPromise(makeTransport())
+  const framed = new Uint8Array([
+    ...new TextEncoder().encode("Content-Length: 2\r\nX-Header: "),
+    0xff,
+    ...new TextEncoder().encode("\r\n\r\nok")
+  ])
+  const exit = await Effect.runPromiseExit(
+    transport.unframe({
+      scheme: "json-rpc",
+      bytes: framed
+    })
+  )
+
+  expectFailure(exit, TransportInvalidArgumentError)
+  expect(getFailure(exit)).toMatchObject({
+    field: "header"
+  })
+})
+
 test("in-memory transport pair accepts bounded queue capacity", async () => {
   const [left, right] = await Effect.runPromise(makeInMemoryTransportPair({ queueCapacity: 1 }))
 
@@ -217,9 +237,7 @@ test("in-memory transport pair accepts bounded queue capacity", async () => {
 
   expect(isStillBlocked).toBe(true)
 
-  const received = await Effect.runPromise(
-    right.receive.pipe(Stream.take(2), Stream.runCollect)
-  )
+  const received = await Effect.runPromise(right.receive.pipe(Stream.take(2), Stream.runCollect))
   const collected = Array.from(received).map((chunk) => Array.from(chunk))
   expect(collected).toEqual([
     [0x68, 0x69],

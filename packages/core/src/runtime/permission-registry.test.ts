@@ -207,6 +207,25 @@ test("PermissionRegistry rejects control bytes returned by the trace id callback
   expectInvalid(grantExit)
 })
 
+test("PermissionRegistry rejects empty trace IDs returned by the traceId callback", async () => {
+  const rows: unknown[] = []
+  const registry = await Effect.runPromise(
+    makePermissionRegistry({
+      audit: memoryAudit(rows),
+      traceId: () => "",
+      nextToken: () => "grant-1"
+    })
+  )
+  await Effect.runPromise(registry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" }))
+
+  const exit = await Effect.runPromiseExit(
+    registry.check(filesystemWrite(["/tmp/app"]), context("window-main"))
+  )
+  expectInvalid(exit)
+  expect(rows).toEqual([])
+  expect(await Effect.runPromise(registry.listDecisions())).toEqual([])
+})
+
 test("PermissionRegistry rejects control bytes in actor ids, resources, and sources", async () => {
   const registry = await Effect.runPromise(makePermissionRegistry())
 
@@ -238,6 +257,30 @@ test("PermissionRegistry rejects control bytes in actor ids, resources, and sour
     })
   )
   expectInvalid(grantSourceExit)
+})
+
+test("PermissionRegistry rejects empty token returned by the nextToken callback during check and grant", async () => {
+  const auditRows: unknown[] = []
+  const registry = await Effect.runPromise(
+    makePermissionRegistry({
+      nextToken: () => "",
+      traceId: () => "trace-1",
+      audit: memoryAudit(auditRows)
+    })
+  )
+  await Effect.runPromise(registry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" }))
+
+  const checkExit = await Effect.runPromiseExit(
+    registry.check(filesystemWrite(["/tmp/app"]), context("window-main"))
+  )
+  const grantExit = await Effect.runPromiseExit(
+    registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"))
+  )
+
+  expectInvalid(checkExit)
+  expectInvalid(grantExit)
+  expect(auditRows).toEqual([])
+  expect(await Effect.runPromise(registry.listDecisions())).toEqual([])
 })
 
 test("PermissionRegistry does not retain a new grant when initial lifecycle audit fails", async () => {

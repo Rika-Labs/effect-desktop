@@ -34,6 +34,12 @@ export class DevtoolsBindError extends Data.TaggedError("BindError")<{
   readonly cause: unknown
 }> {}
 
+export class DevtoolsCleanupError extends Data.TaggedError("CleanupError")<{
+  readonly operation: string
+  readonly path: string
+  readonly cause: unknown
+}> {}
+
 export class DevtoolsShellOpenError extends Data.TaggedError("ShellOpenError")<{
   readonly operation: string
   readonly url: string
@@ -44,13 +50,14 @@ export type DevtoolsError =
   | DevtoolsInvalidInputError
   | DevtoolsTokenError
   | DevtoolsBindError
+  | DevtoolsCleanupError
   | DevtoolsShellOpenError
 
 export interface DevtoolsHandle {
   readonly status: "disabled" | "enabled"
   readonly url: Option.Option<string>
   readonly tokenPath: Option.Option<string>
-  readonly disable: Effect.Effect<void, never, never>
+  readonly disable: Effect.Effect<void, DevtoolsTokenError | DevtoolsCleanupError, never>
 }
 
 export interface DevtoolsShellApi {
@@ -61,7 +68,7 @@ export interface DevtoolsShellApi {
 
 export interface DevtoolsListener {
   readonly url: string
-  readonly close: Effect.Effect<void, never, never>
+  readonly close: Effect.Effect<void, DevtoolsCleanupError, never>
 }
 
 export interface DevtoolsLoopbackTransport {
@@ -147,8 +154,16 @@ export const BunLoopbackDevtoolsTransport: DevtoolsLoopbackTransport = Object.fr
 
         return {
           url: `http://${input.host}:${server.port}`,
-          close: Effect.sync(() => {
-            void server.stop(true)
+          close: Effect.tryPromise({
+            try: async () => {
+              await server.stop(true)
+            },
+            catch: (cause) =>
+              new DevtoolsCleanupError({
+                operation: "Devtools.listen.close",
+                path: server.hostname + ":" + server.port,
+                cause
+              })
           })
         } satisfies DevtoolsListener
       },
@@ -182,7 +197,7 @@ const disabledHandle: DevtoolsHandle = Object.freeze({
 const enabledHandle = (
   url: string,
   tokenPath: string,
-  cleanup: Effect.Effect<void, never, never>
+  cleanup: Effect.Effect<void, DevtoolsTokenError | DevtoolsCleanupError, never>
 ): DevtoolsHandle =>
   Object.freeze({
     status: "enabled",
@@ -223,11 +238,13 @@ const writeToken = (path: string, token: string): Effect.Effect<void, DevtoolsTo
       })
   })
 
-const removeToken = (path: string): Effect.Effect<void, never, never> =>
+const removeToken = (path: string): Effect.Effect<void, DevtoolsTokenError, never> =>
   Effect.tryPromise({
     try: () => rm(path, { force: true }),
-    catch: () => undefined
-  }).pipe(
-    Effect.catchCause(() => Effect.void),
-    Effect.asVoid
-  )
+    catch: (cause) =>
+      new DevtoolsTokenError({
+        operation: "Devtools.token.remove",
+        path,
+        cause
+      })
+  })

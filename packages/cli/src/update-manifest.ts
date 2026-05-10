@@ -84,6 +84,7 @@ export interface DesktopPublishReport {
 interface AppConfig {
   readonly app?: {
     readonly id?: unknown
+    readonly name?: unknown
     readonly version?: unknown
   }
   readonly update?: {
@@ -100,6 +101,7 @@ interface AppConfig {
 
 interface PublishPlan {
   readonly appId: string
+  readonly appName: string
   readonly version: string
   readonly channel: PublishChannel
   readonly feedUrl: string
@@ -115,6 +117,9 @@ interface PublishPlan {
 
 interface PackagedArtifact {
   readonly platform: PublishTarget
+  readonly appId: string
+  readonly appName: string
+  readonly appVersion: string
   readonly kind: PublishArtifactKind
   readonly fileName: string
   readonly artifactPath: string
@@ -211,6 +216,7 @@ const normalizePublishPlan = (
     const config = yield* readConfigObject(rawConfig)
     const appRoot = dirname(options.configPath)
     const appId = yield* readRequiredString(config.app?.id, "app.id", "Set app.id.")
+    const appName = yield* readRequiredString(config.app?.name, "app.name", "Set app.name.")
     const version = yield* readRequiredString(
       config.app?.version,
       "app.version",
@@ -275,6 +281,7 @@ const normalizePublishPlan = (
     const target = yield* readOptionalTarget(options.platform)
     return {
       appId,
+      appName,
       version,
       channel,
       feedUrl,
@@ -343,7 +350,55 @@ const readPackagedArtifacts = (
           readonly fileName?: unknown
           readonly sizeBytes?: unknown
           readonly sha256?: unknown
+          readonly appId?: unknown
+          readonly appName?: unknown
+          readonly appVersion?: unknown
         }>(metadataPath)
+        const appIdField = `${relative(plan.outputPath, metadataPath)}#appId`
+        const appNameField = `${relative(plan.outputPath, metadataPath)}#appName`
+        const appVersionField = `${relative(plan.outputPath, metadataPath)}#appVersion`
+        const appId = yield* readRequiredString(
+          metadata.appId,
+          appIdField,
+          "Regenerate package metadata with `bun desktop package`."
+        )
+        const appName = yield* readRequiredString(
+          metadata.appName,
+          appNameField,
+          "Regenerate package metadata with `bun desktop package`."
+        )
+        const appVersion = yield* readRequiredString(
+          metadata.appVersion,
+          appVersionField,
+          "Regenerate package metadata with `bun desktop package`."
+        )
+        if (appId !== plan.appId) {
+          return yield* Effect.fail(
+            new PublishConfigError({
+              field: appIdField,
+              message: `${appIdField} ${appId} does not match active app.id ${plan.appId}`,
+              remediation: "Run `bun desktop package` with the active config before publishing."
+            })
+          )
+        }
+        if (appVersion !== plan.version) {
+          return yield* Effect.fail(
+            new PublishConfigError({
+              field: appVersionField,
+              message: `${appVersionField} ${appVersion} does not match active app.version ${plan.version}`,
+              remediation: "Run `bun desktop package` with the active config before publishing."
+            })
+          )
+        }
+        if (appName !== plan.appName) {
+          return yield* Effect.fail(
+            new PublishConfigError({
+              field: appNameField,
+              message: `${appNameField} ${appName} does not match active app.name ${plan.appName}`,
+              remediation: "Run `bun desktop package` with the active config before publishing."
+            })
+          )
+        }
         const target = yield* readTarget(
           metadata.target,
           `${relative(plan.outputPath, metadataPath)}#target`
@@ -376,7 +431,17 @@ const readPackagedArtifacts = (
         )
         const artifactPath = yield* resolveContainedArtifactPath(rootPath, fileName, fileNameField)
         yield* statPath(artifactPath)
-        artifacts.push({ platform: target, kind, fileName, artifactPath, sizeBytes, sha256 })
+        artifacts.push({
+          platform: target,
+          kind,
+          fileName,
+          artifactPath,
+          sizeBytes,
+          sha256,
+          appId,
+          appName,
+          appVersion
+        })
       }
     }
     if (artifacts.length === 0) {
@@ -555,12 +620,15 @@ const artifactUrl = (
   channel: PublishChannel,
   fileName: string
 ): string => {
-  const manifestUrl = feedUrl.replaceAll("{platform}", platform).replaceAll("{channel}", channel)
-  const slashIndex = manifestUrl.lastIndexOf("/")
+  const manifestUrl = new URL(
+    feedUrl.replaceAll("{platform}", platform).replaceAll("{channel}", channel)
+  )
   const encodedName = encodeURIComponent(fileName)
-  return slashIndex === -1
-    ? `${manifestUrl}/${encodedName}`
-    : `${manifestUrl.slice(0, slashIndex + 1)}${encodedName}`
+  const parentPath = manifestUrl.pathname.endsWith("/")
+    ? manifestUrl.pathname
+    : manifestUrl.pathname.slice(0, manifestUrl.pathname.lastIndexOf("/") + 1)
+  manifestUrl.pathname = `${parentPath}${encodedName}`
+  return manifestUrl.toString()
 }
 
 const validateFeedUrl = (feedUrl: string): Effect.Effect<void, PublishConfigError, never> =>

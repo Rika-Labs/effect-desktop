@@ -569,6 +569,7 @@ pub fn verify_manifest(
             .verify_strict(canonical.as_bytes(), &signature)
             .is_ok()
         {
+            validate_signed_fields(&manifest)?;
             return Ok(VerifiedManifest {
                 app_id: manifest.app_id,
                 version: manifest.version,
@@ -588,6 +589,266 @@ pub fn verify_manifest(
             key_version: manifest.key_version,
         })
     }
+}
+
+fn validate_signed_fields(manifest: &UpdateManifest) -> Result<(), UpdateManifestError> {
+    if manifest.app_id.trim().is_empty() {
+        return Err(UpdateManifestError::ManifestShapeInvalid {
+            message: "manifest appId must be non-empty".to_string(),
+        });
+    }
+    validate_published_at("publishedAt", &manifest.published_at)?;
+    parse_signed_version("version", &manifest.version)?;
+    validate_signed_version_opt("minVersion", manifest.min_version.as_deref())?;
+    validate_signed_version_opt("maxVersion", manifest.max_version.as_deref())?;
+    Ok(())
+}
+
+fn parse_signed_version(field_name: &'static str, value: &str) -> Result<(), UpdateManifestError> {
+    Version::parse(value)
+        .map(|_| ())
+        .map_err(|error| UpdateManifestError::ManifestShapeInvalid {
+            message: format!("{field_name} must be a valid semantic version: {error}"),
+        })
+}
+
+fn validate_signed_version_opt(
+    field_name: &'static str,
+    value: Option<&str>,
+) -> Result<(), UpdateManifestError> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    if value.trim().is_empty() {
+        return Err(UpdateManifestError::ManifestShapeInvalid {
+            message: format!("{field_name} must be non-empty"),
+        });
+    }
+    parse_signed_version(field_name, value)
+}
+
+fn validate_published_at(field_name: &'static str, value: &str) -> Result<(), UpdateManifestError> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(UpdateManifestError::ManifestShapeInvalid {
+            message: format!("{field_name} must be non-empty"),
+        });
+    }
+
+    let mut parts = value.split('T');
+    let date = parts
+        .next()
+        .ok_or_else(|| UpdateManifestError::ManifestShapeInvalid {
+            message: format!("{field_name} must be RFC3339 date-time"),
+        })?;
+    let time_with_zone = parts
+        .next()
+        .ok_or_else(|| UpdateManifestError::ManifestShapeInvalid {
+            message: format!("{field_name} must be RFC3339 date-time"),
+        })?;
+    if parts.next().is_some() {
+        return Err(UpdateManifestError::ManifestShapeInvalid {
+            message: format!("{field_name} must be RFC3339 date-time"),
+        });
+    }
+
+    let mut date_parts = date.split('-');
+    let year = date_parts
+        .next()
+        .ok_or_else(|| UpdateManifestError::ManifestShapeInvalid {
+            message: format!("{field_name} must be RFC3339 date-time"),
+        })?;
+    let month = date_parts
+        .next()
+        .ok_or_else(|| UpdateManifestError::ManifestShapeInvalid {
+            message: format!("{field_name} must be RFC3339 date-time"),
+        })?;
+    let day = date_parts
+        .next()
+        .ok_or_else(|| UpdateManifestError::ManifestShapeInvalid {
+            message: format!("{field_name} must be RFC3339 date-time"),
+        })?;
+    if date_parts.next().is_some() {
+        return Err(UpdateManifestError::ManifestShapeInvalid {
+            message: format!("{field_name} must be RFC3339 date-time"),
+        });
+    }
+    let year = year
+        .parse::<u32>()
+        .map_err(|_| UpdateManifestError::ManifestShapeInvalid {
+            message: format!("{field_name} must be RFC3339 date-time"),
+        })?;
+    let month = month
+        .parse::<u32>()
+        .map_err(|_| UpdateManifestError::ManifestShapeInvalid {
+            message: format!("{field_name} must be RFC3339 date-time"),
+        })?;
+    let day = day
+        .parse::<u32>()
+        .map_err(|_| UpdateManifestError::ManifestShapeInvalid {
+            message: format!("{field_name} must be RFC3339 date-time"),
+        })?;
+
+    if month == 0 || month > 12 {
+        return Err(UpdateManifestError::ManifestShapeInvalid {
+            message: format!("{field_name} must be valid date-time"),
+        });
+    }
+
+    let max_days = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            let leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+            if leap {
+                29
+            } else {
+                28
+            }
+        }
+        _ => unreachable!(),
+    };
+    if day == 0 || day > max_days {
+        return Err(UpdateManifestError::ManifestShapeInvalid {
+            message: format!("{field_name} must be valid date-time"),
+        });
+    }
+
+    if year < 1 {
+        return Err(UpdateManifestError::ManifestShapeInvalid {
+            message: format!("{field_name} must be RFC3339 date-time"),
+        });
+    }
+
+    let (time, zone) = split_time_and_zone(time_with_zone)?;
+    let mut time_parts = time.split(':');
+    let hour = time_parts
+        .next()
+        .ok_or_else(|| UpdateManifestError::ManifestShapeInvalid {
+            message: format!("{field_name} must be RFC3339 date-time"),
+        })?;
+    let minute = time_parts
+        .next()
+        .ok_or_else(|| UpdateManifestError::ManifestShapeInvalid {
+            message: format!("{field_name} must be RFC3339 date-time"),
+        })?;
+    let second = time_parts
+        .next()
+        .ok_or_else(|| UpdateManifestError::ManifestShapeInvalid {
+            message: format!("{field_name} must be RFC3339 date-time"),
+        })?;
+    if time_parts.next().is_some() {
+        return Err(UpdateManifestError::ManifestShapeInvalid {
+            message: format!("{field_name} must be RFC3339 date-time"),
+        });
+    }
+
+    let hour = hour
+        .parse::<u32>()
+        .map_err(|_| UpdateManifestError::ManifestShapeInvalid {
+            message: format!("{field_name} must be RFC3339 date-time"),
+        })?;
+    let minute = minute
+        .parse::<u32>()
+        .map_err(|_| UpdateManifestError::ManifestShapeInvalid {
+            message: format!("{field_name} must be RFC3339 date-time"),
+        })?;
+    let (second, fraction) = match second.split_once('.') {
+        Some((whole, fraction)) => (whole, Some(fraction)),
+        None => (second, None),
+    };
+    if let Some(fraction) = fraction {
+        if second.is_empty() {
+            return Err(UpdateManifestError::ManifestShapeInvalid {
+                message: format!("{field_name} must be RFC3339 date-time"),
+            });
+        }
+        if fraction.is_empty() {
+            return Err(UpdateManifestError::ManifestShapeInvalid {
+                message: format!("{field_name} must be RFC3339 date-time"),
+            });
+        }
+        if fraction.parse::<u32>().is_err() {
+            return Err(UpdateManifestError::ManifestShapeInvalid {
+                message: format!("{field_name} must be RFC3339 date-time"),
+            });
+        }
+    }
+    let second = second
+        .parse::<u32>()
+        .map_err(|_| UpdateManifestError::ManifestShapeInvalid {
+            message: format!("{field_name} must be RFC3339 date-time"),
+        })?;
+    if hour > 23 || minute > 59 || second > 59 {
+        return Err(UpdateManifestError::ManifestShapeInvalid {
+            message: format!("{field_name} must be valid date-time"),
+        });
+    }
+
+    validate_timezone(zone)?;
+    Ok(())
+}
+
+fn split_time_and_zone(value: &str) -> Result<(&str, &str), UpdateManifestError> {
+    if let Some(value) = value.strip_suffix('Z') {
+        return Ok((value, "Z"));
+    }
+
+    let Some(index) = value.rfind(['+', '-']) else {
+        return Err(UpdateManifestError::ManifestShapeInvalid {
+            message: "publishedAt must be RFC3339 date-time".to_string(),
+        });
+    };
+    let (time, zone) = value.split_at(index);
+    if zone.len() != 6 {
+        return Err(UpdateManifestError::ManifestShapeInvalid {
+            message: "publishedAt must be RFC3339 date-time".to_string(),
+        });
+    }
+
+    Ok((time, zone))
+}
+
+fn validate_timezone(value: &str) -> Result<(), UpdateManifestError> {
+    if value == "Z" {
+        return Ok(());
+    }
+    let bytes = value.as_bytes();
+    if bytes.len() != 6 {
+        return Err(UpdateManifestError::ManifestShapeInvalid {
+            message: "publishedAt must be RFC3339 date-time".to_string(),
+        });
+    }
+    if bytes[0] != b'+' && bytes[0] != b'-' {
+        return Err(UpdateManifestError::ManifestShapeInvalid {
+            message: "publishedAt must be RFC3339 date-time".to_string(),
+        });
+    }
+    if bytes[3] != b':' {
+        return Err(UpdateManifestError::ManifestShapeInvalid {
+            message: "publishedAt must be RFC3339 date-time".to_string(),
+        });
+    }
+
+    let hour = std::str::from_utf8(&bytes[1..3])
+        .ok()
+        .and_then(|value| value.parse::<u32>().ok())
+        .ok_or_else(|| UpdateManifestError::ManifestShapeInvalid {
+            message: "publishedAt must be RFC3339 date-time".to_string(),
+        })?;
+    let minute = std::str::from_utf8(&bytes[4..6])
+        .ok()
+        .and_then(|value| value.parse::<u32>().ok())
+        .ok_or_else(|| UpdateManifestError::ManifestShapeInvalid {
+            message: "publishedAt must be RFC3339 date-time".to_string(),
+        })?;
+
+    if hour > 23 || minute > 59 {
+        return Err(UpdateManifestError::ManifestShapeInvalid {
+            message: "publishedAt must be valid date-time".to_string(),
+        });
+    }
+    Ok(())
 }
 
 pub fn canonical_manifest_bytes(manifest_json: &str) -> Result<String, UpdateManifestError> {
@@ -861,6 +1122,163 @@ mod tests {
         assert_eq!(verified.app_id, "dev.effect-desktop.playground");
         assert_eq!(verified.version, "1.2.3");
         assert_eq!(verified.key_version, 5);
+    }
+
+    #[test]
+    fn rejects_manifest_with_empty_app_id() {
+        let signed = sign_value(json!({
+            "schemaVersion": 1,
+            "appId": "",
+            "version": "1.2.3",
+            "channel": "stable",
+            "keyVersion": 5,
+            "publishedAt": "2026-05-06T00:00:00.000Z",
+            "artifacts": [{
+                "platform": "macos-arm64",
+                "kind": "dmg",
+                "url": "https://updates.example.invalid/app.dmg",
+                "sizeBytes": 4,
+                "sha256": "0".repeat(64),
+                "signature": "ed25519:artifact"
+            }]
+        }));
+
+        let error = verify_manifest(
+            &signed.json,
+            &[TrustAnchor {
+                key_version: 5,
+                public_key: signed.public_key,
+            }],
+        )
+        .expect_err("empty appId must fail");
+
+        match error {
+            UpdateManifestError::ManifestShapeInvalid { message } => {
+                assert!(
+                    message.contains("appId"),
+                    "expected appId error, got: {message}"
+                );
+            }
+            other => panic!("expected ManifestShapeInvalid, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_manifest_with_invalid_version() {
+        let signed = sign_value(json!({
+            "schemaVersion": 1,
+            "appId": "dev.effect-desktop.playground",
+            "version": "not-a-version",
+            "channel": "stable",
+            "keyVersion": 5,
+            "publishedAt": "2026-05-06T00:00:00.000Z",
+            "artifacts": [{
+                "platform": "macos-arm64",
+                "kind": "dmg",
+                "url": "https://updates.example.invalid/app.dmg",
+                "sizeBytes": 4,
+                "sha256": "0".repeat(64),
+                "signature": "ed25519:artifact"
+            }]
+        }));
+
+        let error = verify_manifest(
+            &signed.json,
+            &[TrustAnchor {
+                key_version: 5,
+                public_key: signed.public_key,
+            }],
+        )
+        .expect_err("invalid version must fail");
+
+        match error {
+            UpdateManifestError::ManifestShapeInvalid { message } => {
+                assert!(
+                    message.contains("version"),
+                    "expected version error, got: {message}"
+                );
+            }
+            other => panic!("expected ManifestShapeInvalid, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_manifest_with_invalid_published_at_timestamp() {
+        let signed = sign_value(json!({
+            "schemaVersion": 1,
+            "appId": "dev.effect-desktop.playground",
+            "version": "1.2.3",
+            "channel": "stable",
+            "keyVersion": 5,
+            "publishedAt": "not-a-date",
+            "artifacts": [{
+                "platform": "macos-arm64",
+                "kind": "dmg",
+                "url": "https://updates.example.invalid/app.dmg",
+                "sizeBytes": 4,
+                "sha256": "0".repeat(64),
+                "signature": "ed25519:artifact"
+            }]
+        }));
+
+        let error = verify_manifest(
+            &signed.json,
+            &[TrustAnchor {
+                key_version: 5,
+                public_key: signed.public_key,
+            }],
+        )
+        .expect_err("invalid publishedAt must fail");
+
+        match error {
+            UpdateManifestError::ManifestShapeInvalid { message } => {
+                assert!(
+                    message.contains("publishedAt"),
+                    "expected publishedAt error, got: {message}"
+                );
+            }
+            other => panic!("expected ManifestShapeInvalid, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_manifest_with_empty_min_version() {
+        let signed = sign_value(json!({
+            "schemaVersion": 1,
+            "appId": "dev.effect-desktop.playground",
+            "version": "1.2.3",
+            "channel": "stable",
+            "keyVersion": 5,
+            "publishedAt": "2026-05-06T00:00:00.000Z",
+            "minVersion": "",
+            "artifacts": [{
+                "platform": "macos-arm64",
+                "kind": "dmg",
+                "url": "https://updates.example.invalid/app.dmg",
+                "sizeBytes": 4,
+                "sha256": "0".repeat(64),
+                "signature": "ed25519:artifact"
+            }]
+        }));
+
+        let error = verify_manifest(
+            &signed.json,
+            &[TrustAnchor {
+                key_version: 5,
+                public_key: signed.public_key,
+            }],
+        )
+        .expect_err("empty minVersion must fail");
+
+        match error {
+            UpdateManifestError::ManifestShapeInvalid { message } => {
+                assert!(
+                    message.contains("minVersion"),
+                    "expected minVersion error, got: {message}"
+                );
+            }
+            other => panic!("expected ManifestShapeInvalid, got {other:?}"),
+        }
     }
 
     #[test]

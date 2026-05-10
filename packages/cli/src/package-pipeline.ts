@@ -1,5 +1,16 @@
 import { createHash } from "node:crypto"
-import { chmod, copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises"
+import {
+  chmod,
+  copyFile,
+  lstat,
+  mkdir,
+  readlink,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  writeFile
+} from "node:fs/promises"
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
@@ -103,6 +114,9 @@ export interface PackageArtifactReport {
   readonly artifactPath: string
   readonly artifactJsonPath: string
   readonly checksumsPath: string
+  readonly appId: string
+  readonly appName: string
+  readonly appVersion: string
   readonly sizeBytes: number
   readonly sha256: string
   readonly linuxIntegration?: {
@@ -189,7 +203,6 @@ export const runDesktopPackage = (
     })
 
     yield* validateBuildLayout(plan)
-    yield* removePath(plan.outputPath)
     yield* makeDirectory(plan.outputPath)
 
     const steps: PackageStepReport[] = []
@@ -200,6 +213,7 @@ export const runDesktopPackage = (
 
     for (const kind of plan.artifactKinds) {
       const artifact = plannedArtifact(plan, kind)
+      yield* removePath(artifact.rootPath)
       const artifactSteps = yield* produceArtifact(options, plan, artifact, productionState)
       steps.push(...artifactSteps)
       const metadata = yield* writeArtifactMetadata(plan, artifact.kind, artifact.artifactPath)
@@ -288,11 +302,20 @@ const normalizePackagePlan = (
   Effect.gen(function* () {
     const config = yield* readConfigObject(rawConfig)
     const appRoot = dirname(options.configPath)
-    const appId = yield* readRequiredString(config.app?.id, "app.id")
+    const appId = yield* readSafeAppId(config.app?.id, "app.id")
     const appName = yield* readRequiredString(config.app?.name, "app.name")
-    const appVersion = yield* readRequiredString(config.app?.version, "app.version")
+    const appVersion = yield* readSemverString(config.app?.version, "app.version")
     const platform = platformFromTarget(options.target)
     const artifactKinds = yield* resolveArtifactKinds(options.artifact, options.target)
+    const safeAppName = safeArtifactName(appName)
+    if (safeAppName === "." || safeAppName === "..") {
+      return yield* Effect.fail(
+        new PackageConfigError({
+          field: "app.name",
+          message: "app.name must not sanitize to . or .."
+        })
+      )
+    }
 
     return {
       appId,
@@ -304,7 +327,7 @@ const normalizePackagePlan = (
       target: options.target,
       platform,
       artifactKinds,
-      safeAppName: safeArtifactName(appName),
+      safeAppName,
       linuxPackageName: linuxPackageName(appId, appName)
     }
   })
@@ -553,6 +576,9 @@ const writeArtifactMetadata = (
     const artifactJsonPath = join(rootPath, "artifact.json")
     const checksumsPath = join(rootPath, "checksums.txt")
     const metadata = {
+      appId: plan.appId,
+      appName: plan.appName,
+      appVersion: plan.appVersion,
       kind,
       target: plan.target,
       fileName: basename(artifactPath),
@@ -577,6 +603,9 @@ const writeArtifactMetadata = (
       artifactPath,
       artifactJsonPath,
       checksumsPath,
+      appId: plan.appId,
+      appName: plan.appName,
+      appVersion: plan.appVersion,
       sizeBytes: digest.sizeBytes,
       sha256: digest.sha256
     }
@@ -988,6 +1017,61 @@ const readRequiredString = (
   return Effect.fail(new PackageConfigError({ field, message: `${field} is required` }))
 }
 
+const isContainedFileName = (value: string): boolean => {
+  if (value === "." || value === "..") {
+    return false
+  }
+  if (value.includes("/") || value.includes("\\")) {
+    return false
+  }
+  if (isAbsolute(value)) {
+    return false
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    if (code < 0x20 || code === 0x7f) {
+      return false
+    }
+  }
+  return true
+}
+
+const appIdMatch = (value: string): boolean =>
+  /^([a-zA-Z][a-zA-Z0-9-]*)(\.[a-zA-Z][a-zA-Z0-9-]*)+$/.test(value) && isContainedFileName(value)
+
+const readSafeAppId = (
+  value: unknown,
+  field: string
+): Effect.Effect<string, PackageConfigError, never> =>
+  readRequiredString(value, field).pipe(
+    Effect.flatMap((appId) =>
+      appIdMatch(appId)
+        ? Effect.succeed(appId)
+        : Effect.fail(
+            new PackageConfigError({
+              field,
+              message: `${field} must be a reverse-DNS ASCII identifier`
+            })
+          )
+    )
+  )
+
+const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u
+
+const readSemverString = (
+  value: unknown,
+  field: string
+): Effect.Effect<string, PackageConfigError, never> =>
+  readRequiredString(value, field).pipe(
+    Effect.flatMap((version) =>
+      SEMVER_PATTERN.test(version)
+        ? Effect.succeed(version)
+        : Effect.fail(
+            new PackageConfigError({ field, message: `${field} must be a SemVer X.Y.Z string` })
+          )
+    )
+  )
+
 const loadConfig = (path: string): Effect.Effect<unknown, PackageConfigError, never> =>
   Effect.gen(function* () {
     const module = yield* Effect.tryPromise({
@@ -1041,29 +1125,81 @@ const digestPath = (
     const files = yield* listFiles(path)
     const hash = createHash("sha256")
     let sizeBytes = 0
-    for (const file of files) {
-      const rel = relative(path, file)
-      const content = yield* readFileEffect(file)
-      sizeBytes += content.byteLength
-      hash.update(rel)
+    for (const file of files.toSorted((a, b) => a.relativePath.localeCompare(b.relativePath))) {
+      hash.update(file.kind)
       hash.update("\0")
+      hash.update(file.relativePath)
+      hash.update("\0")
+      hash.update((file.mode & 0o777).toString(8))
+      hash.update("\0")
+      if (file.kind !== "file") {
+        hash.update(file.target)
+        hash.update("\0")
+        continue
+      }
+      const content = yield* readFileEffect(file.absolutePath)
+      sizeBytes += content.byteLength
       hash.update(content)
       hash.update("\0")
     }
     return { sizeBytes, sha256: hash.digest("hex") }
   })
 
-const listFiles = (path: string): Effect.Effect<readonly string[], PackageFileError, never> =>
+type DirectoryEntryKind = "directory" | "file" | "symlink"
+
+interface DirectoryEntry {
+  readonly absolutePath: string
+  readonly kind: DirectoryEntryKind
+  readonly relativePath: string
+  readonly mode: number
+  readonly target: string
+}
+
+const listFiles = (
+  path: string
+): Effect.Effect<readonly DirectoryEntry[], PackageFileError, never> =>
   Effect.gen(function* () {
-    const entries = yield* readDirectory(path)
-    const files: string[] = []
+    const files = yield* walkDirectoryEntries(path, path)
+    return files
+  })
+
+const walkDirectoryEntries = (
+  rootPath: string,
+  currentPath: string
+): Effect.Effect<readonly DirectoryEntry[], PackageFileError, never> =>
+  Effect.gen(function* () {
+    const entries = yield* readDirectory(currentPath)
+    const files: DirectoryEntry[] = []
     for (const entry of entries.toSorted()) {
-      const child = join(path, entry)
-      const childStat = yield* statPath(child)
+      const childPath = join(currentPath, entry)
+      const childStat = yield* lstatPath(childPath)
+      const childRelativePath = relative(rootPath, childPath)
       if (childStat.isDirectory()) {
-        files.push(...(yield* listFiles(child)))
+        files.push({
+          absolutePath: childPath,
+          kind: "directory",
+          relativePath: childRelativePath,
+          mode: Number(childStat.mode),
+          target: ""
+        })
+        files.push(...(yield* walkDirectoryEntries(rootPath, childPath)))
+      } else if (childStat.isSymbolicLink()) {
+        const target = yield* readlinkPath(childPath)
+        files.push({
+          absolutePath: childPath,
+          kind: "symlink",
+          relativePath: childRelativePath,
+          mode: Number(childStat.mode),
+          target
+        })
       } else {
-        files.push(child)
+        files.push({
+          absolutePath: childPath,
+          kind: "file",
+          relativePath: childRelativePath,
+          mode: Number(childStat.mode),
+          target: ""
+        })
       }
     }
     return files
@@ -1167,6 +1303,32 @@ const statPath = (
         operation: "stat",
         path,
         message: `failed to stat ${path}`,
+        cause
+      })
+  })
+
+const lstatPath = (
+  path: string
+): Effect.Effect<Awaited<ReturnType<typeof lstat>>, PackageFileError, never> =>
+  Effect.tryPromise({
+    try: () => lstat(path),
+    catch: (cause) =>
+      new PackageFileError({
+        operation: "lstat",
+        path,
+        message: `failed to lstat ${path}`,
+        cause
+      })
+  })
+
+const readlinkPath = (path: string): Effect.Effect<string, PackageFileError, never> =>
+  Effect.tryPromise({
+    try: () => readlink(path),
+    catch: (cause) =>
+      new PackageFileError({
+        operation: "readlink",
+        path,
+        message: `failed to readlink ${path}`,
         cause
       })
   })

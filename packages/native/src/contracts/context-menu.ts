@@ -1,7 +1,7 @@
 import { Api } from "@effect-desktop/bridge"
 import { Schema } from "effect"
 
-import { MenuTemplate } from "../menu.js"
+import { MenuTemplate } from "./menu.js"
 import { PrintableNonEmptyString } from "./strings.js"
 
 const WindowResource = Api.Resource("window", "open")

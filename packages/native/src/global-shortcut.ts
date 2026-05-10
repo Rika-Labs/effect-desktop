@@ -352,7 +352,8 @@ export const makeUnsupportedGlobalShortcutClient = (): GlobalShortcutClientApi =
     register: () => unsupportedEffect<void>("GlobalShortcut.register"),
     unregister: () => unsupportedEffect<void>("GlobalShortcut.unregister"),
     unregisterAll: () => unsupportedEffect<void>("GlobalShortcut.unregisterAll"),
-    isRegistered: () => Effect.succeed(new GlobalShortcutRegisteredResult({ registered: false })),
+    isRegistered: () =>
+      unsupportedEffect<GlobalShortcutRegisteredResult>("GlobalShortcut.isRegistered"),
     isSupported: () =>
       Effect.succeed(
         new GlobalShortcutSupportedResult({

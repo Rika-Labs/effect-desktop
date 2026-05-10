@@ -84,6 +84,31 @@ test("host protocol exchange maps malformed JSON frames to BinaryDecodeError", a
   })
 })
 
+test("host protocol exchange rejects invalid UTF-8 in response frames", async () => {
+  const prefix = new TextEncoder().encode(
+    '{"kind":"response","id":"request-1","timestamp":1,"traceId":"trace-'
+  )
+  const suffix = new TextEncoder().encode('"}')
+  const frame = new Uint8Array(prefix.length + 1 + suffix.length)
+  frame.set(prefix)
+  frame[prefix.length] = 0xff
+  frame.set(suffix, prefix.length + 1)
+
+  const exchange = createHostProtocolExchange(
+    transport({
+      recv: async () => frame
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(exchange.request(request()))
+
+  expectFailure(exit, HostProtocolBinaryDecodeError)
+  expect(getFailure(exit)).toMatchObject({
+    operation: "host.ping",
+    tag: "BinaryDecodeError"
+  })
+})
+
 test("host protocol exchange preserves decoded envelope shape failures as InvalidOutput", async () => {
   const exchange = createHostProtocolExchange(
     transport({

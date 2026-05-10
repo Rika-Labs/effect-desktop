@@ -10795,7 +10795,7 @@ Grouped rows are allowed only when every method in the group has identical behav
 | `Notification.show`, `close`, `onClick`, `onAction`, `isSupported`, `getPermissionStatus` | ✓ (after `requestPermission`) | ✓ | partial(distro-dep) |
 | `Notification.requestPermission` | ✓ (must be called once) | ✓ (no-op, returns `granted`) | ✓ (no-op for daemons) |
 | `Shell.openExternal`, `openPath`, `showItemInFolder` | ✓ | ✓ | ✓ |
-| `Screen.getDisplays`, `getPrimaryDisplay` | ✓ | ✓ | ✓ |
+| `Screen.getDisplays`, `getPrimaryDisplay`, `Screen.isSupported` | ✓ | ✓ | ✓ |
 | `Screen.getPointerPoint` | ✓ | ✓ | partial(Wayland may deny) |
 | `GlobalShortcut.register`, `unregister`, `unregisterAll`, `isRegistered`, `isSupported` | ✓ | ✓ | partial(X11 ✓; Wayland error(`Unsupported`, "wayland-no-global-shortcut")) |
 | `Protocol.registerAppProtocol`, `serveAsset`, `serveRoute`, `deny` | ✓ | ✓ | ✓ |
@@ -10803,9 +10803,9 @@ Grouped rows are allowed only when every method in the group has identical behav
 | `Path.appData`, `cache`, `logs`, `temp`, `home`, `downloads` | ✓ | ✓ | ✓ |
 | `Updater.check`, `download`, `install`, `installAndRestart`, `getStatus` | ✓ | ✓ | ✓ |
 | `CrashReporter.start`, `recordBreadcrumb`, `flush`, `setUploadHandler` | ✓ | ✓ | ✓ |
-| `PowerMonitor.onSuspend`, `onResume`, `onShutdown` | ✓ | ✓ | ✓ |
+| `PowerMonitor.onSuspend`, `onResume`, `onShutdown`, `PowerMonitor.isSupported` | ✓ | ✓ | ✓ |
 | `PowerMonitor.onPowerSourceChanged` | ✓ | ✓ | partial(distro-dep) |
-| `SystemAppearance.getAppearance`, `onAppearanceChanged` | ✓ | ✓ | partial(distro-dep) |
+| `SystemAppearance.getAppearance`, `onAppearanceChanged`, `SystemAppearance.isSupported`, `getReducedMotion`, `getReducedTransparency` | ✓ | ✓ | partial(distro-dep) |
 | `SystemAppearance.getAccentColor` | ✓ | ✓ | error(`Unsupported`, "no canonical accent on Linux") |
 | `Dock.setBadgeCount` | ✓ | ✓ (taskbar overlay) | partial(launcher-dep) |
 | `Dock.setBadgeText` | ✓ | error(`Unsupported`, "no badge text on Windows") | error(`Unsupported`, "no portable badge text on Linux") |

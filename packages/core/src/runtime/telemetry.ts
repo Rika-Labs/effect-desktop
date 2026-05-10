@@ -455,6 +455,9 @@ const mergeMetric = (
 const percentile = (samples: readonly number[], percentile: number): number => {
   const sorted = samples.toSorted((left, right) => left - right)
   const lastIndex = sorted.length - 1
-  const index = Math.min(lastIndex, Math.max(0, Math.ceil(lastIndex * percentile)))
+  if (lastIndex < 0) {
+    return 0
+  }
+  const index = Math.min(lastIndex, Math.max(0, Math.ceil(sorted.length * percentile) - 1))
   return sorted[index] ?? 0
 }

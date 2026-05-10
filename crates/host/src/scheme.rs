@@ -5,7 +5,7 @@ use tracing::{debug, error, warn};
 use wry::{
     http::{
         header::{CONTENT_SECURITY_POLICY, CONTENT_TYPE},
-        HeaderName, HeaderValue, Request, Response, StatusCode,
+        HeaderName, HeaderValue, Method, Request, Response, StatusCode,
     },
     WebViewBuilder,
 };
@@ -41,23 +41,34 @@ fn app_scheme_response_with(
     let nonce = csp::CspNonce::mint();
     let trace_id = request_trace_id(request);
     let path = request.uri().path().to_owned();
+    let method = request.method();
 
     if request.uri().host() != Some(APP_HOST) {
         return app_not_found_response(&nonce, &trace_id);
+    }
+    if request
+        .uri()
+        .authority()
+        .is_none_or(|authority| authority.as_str() != APP_HOST)
+    {
+        return app_not_found_response(&nonce, &trace_id);
+    }
+    if method != Method::GET && method != Method::HEAD {
+        return app_method_not_allowed_response(&nonce, &trace_id);
     }
 
     let Some(asset) = assets::resolve(&path) else {
         return app_not_found_response(&nonce, &trace_id);
     };
 
+    let body = if method == Method::HEAD {
+        Cow::Borrowed::<[u8]>(b"")
+    } else {
+        Cow::Borrowed(asset.bytes)
+    };
+
     if !asset.content_type.starts_with("text/html") {
-        return app_response(
-            StatusCode::OK,
-            asset.content_type,
-            Cow::Borrowed(asset.bytes),
-            &nonce,
-            &trace_id,
-        );
+        return app_response(StatusCode::OK, asset.content_type, body, &nonce, &trace_id);
     }
 
     match rewriter(asset.bytes, &nonce) {
@@ -82,7 +93,11 @@ fn app_scheme_response_with(
             app_response(
                 StatusCode::OK,
                 asset.content_type,
-                Cow::Owned(outcome.bytes),
+                if method == Method::HEAD {
+                    Cow::Borrowed(b"")
+                } else {
+                    Cow::Owned(outcome.bytes)
+                },
                 &nonce,
                 &trace_id,
             )
@@ -108,6 +123,19 @@ fn app_not_found_response(
         StatusCode::NOT_FOUND,
         TEXT_CONTENT_TYPE,
         Cow::Borrowed(NOT_FOUND_BODY.as_bytes()),
+        nonce,
+        trace_id,
+    )
+}
+
+fn app_method_not_allowed_response(
+    nonce: &csp::CspNonce,
+    trace_id: &HeaderValue,
+) -> Response<Cow<'static, [u8]>> {
+    app_response(
+        StatusCode::METHOD_NOT_ALLOWED,
+        TEXT_CONTENT_TYPE,
+        Cow::Borrowed(b"app protocol supports only GET and HEAD requests"),
         nonce,
         trace_id,
     )
@@ -174,7 +202,7 @@ mod tests {
     use std::collections::BTreeSet;
     use wry::http::{
         header::{CONTENT_SECURITY_POLICY, CONTENT_TYPE},
-        HeaderValue, Request, StatusCode,
+        HeaderValue, Method, Request, StatusCode,
     };
 
     #[test]
@@ -311,6 +339,55 @@ mod tests {
             Some(&HeaderValue::from_static(TEXT_CONTENT_TYPE))
         );
         assert_eq!(response.body().as_ref(), b"app asset not found");
+    }
+
+    #[test]
+    fn app_scheme_response_returns_not_found_for_non_canonical_ports() {
+        let request = Request::builder()
+            .uri("app://localhost:1234/index.html")
+            .body(Vec::new())
+            .expect("test request should build");
+        let response = app_scheme_response(&request);
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            response.headers().get(CONTENT_TYPE),
+            Some(&HeaderValue::from_static(TEXT_CONTENT_TYPE))
+        );
+        assert_eq!(response.body().as_ref(), b"app asset not found");
+    }
+
+    #[test]
+    fn app_scheme_response_rejects_post_requests() {
+        let request = Request::builder()
+            .method(Method::POST)
+            .uri(APP_URL)
+            .body(Vec::new())
+            .expect("test request should build");
+        let response = app_scheme_response(&request);
+
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(
+            response.headers().get(CONTENT_TYPE),
+            Some(&HeaderValue::from_static(TEXT_CONTENT_TYPE))
+        );
+        assert_eq!(
+            response.body().as_ref(),
+            b"app protocol supports only GET and HEAD requests"
+        );
+    }
+
+    #[test]
+    fn app_scheme_response_for_head_has_empty_body() {
+        let request = Request::builder()
+            .method(Method::HEAD)
+            .uri(APP_URL)
+            .body(Vec::new())
+            .expect("test request should build");
+        let response = app_scheme_response(&request);
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.body().as_ref(), b"");
     }
 
     #[test]

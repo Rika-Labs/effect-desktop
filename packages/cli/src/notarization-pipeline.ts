@@ -141,6 +141,9 @@ interface NotarizePlan {
 }
 
 interface PackagedArtifact {
+  readonly appId: string
+  readonly appName: string
+  readonly appVersion: string
   readonly kind: NotarizeArtifactKind
   readonly rootPath: string
   readonly artifactPath: string
@@ -522,7 +525,55 @@ const readPackagedArtifacts = (
         readonly kind?: unknown
         readonly target?: unknown
         readonly fileName?: unknown
+        readonly appId?: unknown
+        readonly appName?: unknown
+        readonly appVersion?: unknown
       }>(metadataPath)
+      const appIdField = `${relative(plan.outputPath, metadataPath)}#appId`
+      const appNameField = `${relative(plan.outputPath, metadataPath)}#appName`
+      const appVersionField = `${relative(plan.outputPath, metadataPath)}#appVersion`
+      const appId = yield* readRequiredString(
+        metadata.appId,
+        appIdField,
+        "Regenerate package metadata with `bun desktop package`."
+      )
+      const appName = yield* readRequiredString(
+        metadata.appName,
+        appNameField,
+        "Regenerate package metadata with `bun desktop package`."
+      )
+      const appVersion = yield* readRequiredString(
+        metadata.appVersion,
+        appVersionField,
+        "Regenerate package metadata with `bun desktop package`."
+      )
+      if (appId !== plan.appId) {
+        return yield* Effect.fail(
+          new NotarizeConfigError({
+            field: appIdField,
+            message: `${appIdField} ${appId} does not match active app.id ${plan.appId}`,
+            remediation: "Run `bun desktop package` with the active config before notarizing."
+          })
+        )
+      }
+      if (appName !== plan.appName) {
+        return yield* Effect.fail(
+          new NotarizeConfigError({
+            field: appNameField,
+            message: `${appNameField} ${appName} does not match active app.name ${plan.appName}`,
+            remediation: "Run `bun desktop package` with the active config before notarizing."
+          })
+        )
+      }
+      if (appVersion !== plan.appVersion) {
+        return yield* Effect.fail(
+          new NotarizeConfigError({
+            field: appVersionField,
+            message: `${appVersionField} ${appVersion} does not match active app.version ${plan.appVersion}`,
+            remediation: "Run `bun desktop package` with the active config before notarizing."
+          })
+        )
+      }
       const target = yield* readTarget(
         metadata.target,
         `${relative(plan.outputPath, metadataPath)}#target`
@@ -541,7 +592,7 @@ const readPackagedArtifacts = (
       )
       const artifactPath = yield* resolveArtifactPath(rootPath, fileName, metadataPath)
       yield* statPath(artifactPath)
-      artifacts.push({ kind, rootPath, artifactPath })
+      artifacts.push({ kind, rootPath, artifactPath, appId, appName, appVersion })
     }
     if (artifacts.length === 0) {
       return yield* Effect.fail(

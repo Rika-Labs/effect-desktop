@@ -24,11 +24,12 @@ import {
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Cause, Context, Effect, Layer, Queue, Schema, Stream } from "effect"
+import { Cause, Context, Effect, Exit, Layer, Queue, Schema, Stream } from "effect"
 
 import { ResourceRegistry, type ResourceRegistryApi } from "./resources.js"
 
 const NonEmptyPath = Schema.NonEmptyString
+const WatchEventFilename = Schema.String.check(Schema.isPattern(/^[^\x00-\x1f\x7f]*$/u))
 
 export class FilesystemPathInput extends Schema.Class<FilesystemPathInput>("FilesystemPathInput")({
   path: NonEmptyPath
@@ -292,7 +293,8 @@ export const makeFilesystem = (
               input.recursive === true
                 ? adapter.remove(authorizedPath, { recursive: true })
                 : adapter.remove(authorizedPath),
-            catch: (error) => mapFilesystemError(error, authorizedPath, "Filesystem.remove")
+            catch: (error) =>
+              mapFilesystemError(error, authorizedPath, "Filesystem.remove", capability)
           })
         }).pipe(Effect.withSpan("Filesystem.remove", { attributes: { path } })),
       watch: (
@@ -450,7 +452,15 @@ const writeAtomicFile = (
     Effect.ensuring(
       Effect.gen(function* () {
         if (!committed) {
-          yield* cleanupAtomicTemp(adapter, tempPath)
+          const cleanup = yield* Effect.exit(cleanupAtomicTemp(adapter, tempPath))
+          if (Exit.isFailure(cleanup)) {
+            yield* Effect.logWarning("Filesystem.writeAtomic temp cleanup failed", {
+              operation: "Filesystem.writeAtomic",
+              path,
+              tempPath,
+              cause: String(cleanup.cause)
+            })
+          }
         }
       })
     )
@@ -460,7 +470,7 @@ const writeAtomicFile = (
 const cleanupAtomicTemp = (
   adapter: FilesystemAdapter,
   tempPath: string
-): Effect.Effect<void, never, never> =>
+): Effect.Effect<void, unknown, never> =>
   Effect.tryPromise({
     try: () => adapter.remove(tempPath),
     catch: (error) => error
@@ -469,7 +479,7 @@ const cleanupAtomicTemp = (
       if (isNodeError(error) && error.code === "ENOENT") {
         return Effect.void
       }
-      return Effect.void
+      return Effect.fail(error)
     })
   )
 
@@ -787,10 +797,10 @@ const handleWatchEvent = (
   directory: string,
   event: RawFilesystemEvent
 ): Effect.Effect<void, never, never> => {
-  const filename = event.filename
-  const path = filename === undefined ? directory : appendWatchPathSegment(directory, filename)
-
   return Effect.gen(function* () {
+    const filename =
+      event.filename === undefined ? undefined : yield* decodeWatchEventFilename(event.filename)
+    const path = filename === undefined ? directory : appendWatchPathSegment(directory, filename)
     const kind = yield* classifyWatchEvent(adapter, path, event)
     yield* Queue.offer(
       queue,
@@ -806,6 +816,19 @@ const handleWatchEvent = (
     Effect.asVoid
   )
 }
+
+const decodeWatchEventFilename = (
+  filename: string
+): Effect.Effect<string, HostProtocolInvalidArgumentError, never> =>
+  Schema.decodeUnknownEffect(WatchEventFilename)(filename).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError(
+        "filename",
+        formatUnknownError(error),
+        "Filesystem.watch"
+      )
+    )
+  )
 
 const classifyWatchEvent = (
   adapter: FilesystemAdapter,
@@ -853,7 +876,12 @@ const statKind = (stats: Awaited<ReturnType<typeof nodeStat>>): FilesystemEntryK
   return "other"
 }
 
-const mapFilesystemError = (error: unknown, path: string, operation: string): HostProtocolError => {
+const mapFilesystemError = (
+  error: unknown,
+  path: string,
+  operation: string,
+  capability?: FilesystemCapability
+): HostProtocolError => {
   if (isNodeError(error)) {
     switch (error.code) {
       case "ENOENT":
@@ -868,7 +896,7 @@ const mapFilesystemError = (error: unknown, path: string, operation: string): Ho
       case "EPERM":
         return new HostProtocolPermissionDeniedError({
           tag: "PermissionDenied",
-          capability: filesystemCapability(operation),
+          capability: capability ?? filesystemCapability(operation),
           resource: path,
           code: error.code,
           cause: sanitizeNodeError(error),

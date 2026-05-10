@@ -499,7 +499,10 @@ ptyTest("PTY handle writes, resizes, kills, and preserves exit signal", async ()
 
 ptyTest("PTY kill rejects control bytes in signal names", async () => {
   const child = makeFakeChild({ output: [], exit: { code: 0 } })
-  const fixture = await makeFixture(makeFakeAdapter(() => child), { permissions: { spawn: ["bash"] } })
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => child),
+    { permissions: { spawn: ["bash"] } }
+  )
   const handle = await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],

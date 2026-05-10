@@ -78,6 +78,25 @@ interface AppConfig {
     readonly name?: unknown
     readonly version?: unknown
   }
+  readonly signing?: {
+    readonly macos?: {
+      readonly identity?: unknown
+      readonly teamId?: unknown
+      readonly notarytoolProfile?: unknown
+      readonly appleId?: unknown
+      readonly passwordEnv?: unknown
+    }
+    readonly windows?: {
+      readonly thumbprint?: unknown
+      readonly pfx?: {
+        readonly path?: unknown
+        readonly passwordEnv?: unknown
+      }
+    }
+    readonly linux?: {
+      readonly gpgKey?: unknown
+    }
+  }
 }
 
 const DOCS_URL = "https://github.com/Rika-Labs/effect-desktop/blob/main/docs/SPEC.md"
@@ -242,15 +261,11 @@ const probeWebviewRuntime = (
 const probeSigningCredentials = (
   options: DesktopDoctorOptions
 ): Effect.Effect<DoctorProbeResult, never, never> =>
-  Effect.sync(() => {
-    const credential =
-      options.platform === "darwin"
-        ? process.env["APPLE_TEAM_ID"]
-        : options.platform === "win32"
-          ? process.env["WINDOWS_SIGNING_CERT"]
-          : process.env["LINUX_GPG_KEY"]
-    if (credential !== undefined && credential.length > 0) {
-      return ok("signing-credentials", "signing", "signing credential environment is configured")
+  Effect.gen(function* () {
+    const config = yield* readDesktopConfigForDoctor(options)
+    const hasCredentials = probeSigningCredentialSupport(config, options.platform)
+    if (hasCredentials) {
+      return ok("signing-credentials", "signing", "signing credential configuration is present")
     }
     return warning(
       "signing-credentials",
@@ -522,6 +537,76 @@ const formatProbe = (probe: DoctorProbeResult): string => {
     ...installHint
   ].join("\n")
 }
+
+const probeSigningCredentialSupport = (
+  config: AppConfig | undefined,
+  platform: string
+): boolean => {
+  if (platform === "darwin") {
+    const macos = config?.signing?.macos
+    const identity = optionalString(macos?.identity)
+    const notarytoolProfile =
+      optionalString(macos?.notarytoolProfile) ?? process.env["APPLE_NOTARYTOOL_PROFILE"]
+    const teamId = optionalString(macos?.teamId) ?? process.env["APPLE_TEAM_ID"]
+    const appleId = optionalString(macos?.appleId) ?? process.env["APPLE_ID"]
+    const passwordEnv = optionalString(macos?.passwordEnv) ?? "APPLE_APP_SPECIFIC_PASSWORD"
+    const password = process.env[passwordEnv]
+    return (
+      identity !== undefined &&
+      ((notarytoolProfile !== undefined && notarytoolProfile.length > 0) ||
+        (teamId !== undefined &&
+          appleId !== undefined &&
+          password !== undefined &&
+          teamId.length > 0 &&
+          appleId.length > 0 &&
+          password.length > 0))
+    )
+  }
+  if (platform === "win32") {
+    const windows = config?.signing?.windows
+    if (optionalString(windows?.thumbprint) !== undefined) {
+      return true
+    }
+    const pfxPath = optionalString(windows?.pfx?.path)
+    const pfxPasswordEnv = optionalString(windows?.pfx?.passwordEnv)
+    if (
+      pfxPath !== undefined &&
+      pfxPasswordEnv !== undefined &&
+      process.env[pfxPasswordEnv] !== undefined
+    ) {
+      return true
+    }
+    return process.env["WINDOWS_SIGNING_CERT"] !== undefined
+  }
+  if (platform === "linux") {
+    return (
+      optionalString(config?.signing?.linux?.gpgKey) !== undefined ||
+      process.env["LINUX_GPG_KEY"] !== undefined
+    )
+  }
+  return false
+}
+
+const optionalString = (value: unknown): string | undefined =>
+  typeof value === "string" && value.length > 0 ? value : undefined
+
+const readDesktopConfigForDoctor = (
+  options: DesktopDoctorOptions
+): Effect.Effect<AppConfig | undefined, never, never> =>
+  Effect.gen(function* () {
+    const configPath = resolve(options.cwd, options.configPath ?? "desktop.config.ts")
+    const module = yield* Effect.tryPromise({
+      try: async () =>
+        (await import(pathToFileURL(configPath).href)) as {
+          readonly default?: unknown
+        },
+      catch: (cause) => cause
+    }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+    if (module === undefined || !isRecord(module.default)) {
+      return undefined
+    }
+    return module.default as AppConfig
+  })
 
 const remediationForCommand = (command: string): string => {
   if (command === "cargo" || command === "rustc") {

@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 
-import { MenuTemplate } from "../menu.js"
+import { MenuTemplate } from "./menu.js"
 
 export const DockMethod = Schema.Literals([
   "setBadgeCount",

@@ -118,10 +118,28 @@ test("Telemetry aggregates counters and histograms by metric name and tags", asy
     max: 30
   })
   expect(metrics.find((metric) => metric.name === "bridge.latency")).toMatchObject({
-    p50: 30,
+    p50: 20,
     p95: 30,
     p99: 30,
     samples: [30, 20]
+  })
+})
+
+test("Telemetry histogram percentiles use nearest-rank raw samples", async () => {
+  const telemetry = await Effect.runPromise(makeTelemetry({ maxHistogramSamples: 100 }))
+
+  for (let sample = 1; sample <= 100; sample += 1) {
+    await Effect.runPromise(telemetry.recordHistogram({ name: "bridge.latency", value: sample }))
+  }
+
+  const metrics = await Effect.runPromise(telemetry.listMetrics())
+  const histogram = metrics.find((metric) => metric.name === "bridge.latency")
+
+  expect(histogram).toMatchObject({
+    kind: "histogram",
+    p50: 50,
+    p95: 95,
+    p99: 99
   })
 })
 

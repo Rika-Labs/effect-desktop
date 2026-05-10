@@ -26,6 +26,7 @@ const UInt32 = UInt.check(Schema.isLessThanOrEqualTo(4_294_967_295))
 const OptionalString = Schema.optionalKey(Schema.String)
 const OptionalUnknown = Schema.optionalKey(Schema.Unknown)
 const StringRecord = Schema.Record(Schema.String, Schema.String)
+const HostIdentityString = Schema.NonEmptyString.check(Schema.isPattern(/^[^\x00-\x1f\x7f]+$/u))
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export const HOST_PROTOCOL_ERROR_SPECS = [
@@ -750,9 +751,9 @@ export const makeHostProtocolNotFoundError = (
   })
 
 export class ResumeTicket extends Schema.Class<ResumeTicket>("ResumeTicket")({
-  windowId: Schema.String,
-  originTokenHash: Schema.String,
-  resumeNonce: Schema.String,
+  windowId: HostIdentityString,
+  originTokenHash: HostIdentityString,
+  resumeNonce: HostIdentityString,
   expiresAt: UInt,
   lastStreamCursors: StringRecord
 }) {}
@@ -767,15 +768,15 @@ export class RendererDisconnectedPayload extends Schema.Class<RendererDisconnect
 export class RendererResumePayload extends Schema.Class<RendererResumePayload>(
   "RendererResumePayload"
 )({
-  windowId: Schema.String,
-  resumeNonce: Schema.String,
+  windowId: HostIdentityString,
+  resumeNonce: HostIdentityString,
   cursors: StringRecord
 }) {}
 
 export class RendererResumedPayload extends Schema.Class<RendererResumedPayload>(
   "RendererResumedPayload"
 )({
-  windowId: Schema.String,
+  windowId: HostIdentityString,
   replayedStreamIds: Schema.Array(Schema.String)
 }) {}
 
@@ -791,7 +792,7 @@ export type RendererResumeDeniedReason = typeof RendererResumeDeniedReason.Type
 export class RendererResumeDeniedPayload extends Schema.Class<RendererResumeDeniedPayload>(
   "RendererResumeDeniedPayload"
 )({
-  windowId: Schema.String,
+  windowId: HostIdentityString,
   reason: RendererResumeDeniedReason,
   message: Schema.String
 }) {}

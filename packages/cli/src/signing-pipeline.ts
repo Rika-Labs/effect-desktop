@@ -149,6 +149,9 @@ interface SignPlan {
 }
 
 interface PackagedArtifact {
+  readonly appId: string
+  readonly appName: string
+  readonly appVersion: string
   readonly kind: SignArtifactKind
   readonly rootPath: string
   readonly artifactPath: string
@@ -544,11 +547,7 @@ const normalizeSignPlan = (
   Effect.gen(function* () {
     const config = yield* readConfigObject(rawConfig)
     const appRoot = dirname(options.configPath)
-    const appId = yield* readRequiredString(
-      config.app?.id,
-      "app.id",
-      "Set app.id in desktop.config.ts."
-    )
+    const appId = yield* readSafeAppId(config.app?.id, "app.id")
     const appName = yield* readRequiredString(
       config.app?.name,
       "app.name",
@@ -560,6 +559,16 @@ const normalizeSignPlan = (
       "Set app.version in desktop.config.ts."
     )
     const platform = platformFromTarget(options.target)
+    const safeAppName = safeArtifactName(appName)
+    if (safeAppName === "." || safeAppName === "..") {
+      return yield* Effect.fail(
+        new SignConfigError({
+          field: "app.name",
+          message: "app.name must not sanitize to . or ..",
+          remediation: "Set app.name in desktop.config.ts."
+        })
+      )
+    }
     return {
       appId,
       appName,
@@ -568,7 +577,7 @@ const normalizeSignPlan = (
       outputPath: resolvePath(appRoot, join("dist", "desktop", platform)),
       target: options.target,
       platform,
-      safeAppName: safeArtifactName(appName),
+      safeAppName,
       config
     }
   })
@@ -603,7 +612,55 @@ const readPackagedArtifacts = (
         readonly target?: unknown
         readonly fileName?: unknown
         readonly linuxIntegration?: unknown
+        readonly appId?: unknown
+        readonly appName?: unknown
+        readonly appVersion?: unknown
       }>(metadataPath)
+      const appIdField = `${relative(plan.outputPath, metadataPath)}#appId`
+      const appNameField = `${relative(plan.outputPath, metadataPath)}#appName`
+      const appVersionField = `${relative(plan.outputPath, metadataPath)}#appVersion`
+      const appId = yield* readRequiredString(
+        metadata.appId,
+        appIdField,
+        "Regenerate package metadata with `bun desktop package`."
+      )
+      const appName = yield* readRequiredString(
+        metadata.appName,
+        appNameField,
+        "Regenerate package metadata with `bun desktop package`."
+      )
+      const appVersion = yield* readRequiredString(
+        metadata.appVersion,
+        appVersionField,
+        "Regenerate package metadata with `bun desktop package`."
+      )
+      if (appId !== plan.appId) {
+        return yield* Effect.fail(
+          new SignConfigError({
+            field: appIdField,
+            message: `${appIdField} ${appId} does not match active app.id ${plan.appId}`,
+            remediation: "Run `bun desktop package` with the active config before signing."
+          })
+        )
+      }
+      if (appName !== plan.appName) {
+        return yield* Effect.fail(
+          new SignConfigError({
+            field: appNameField,
+            message: `${appNameField} ${appName} does not match active app.name ${plan.appName}`,
+            remediation: "Run `bun desktop package` with the active config before signing."
+          })
+        )
+      }
+      if (appVersion !== plan.appVersion) {
+        return yield* Effect.fail(
+          new SignConfigError({
+            field: appVersionField,
+            message: `${appVersionField} ${appVersion} does not match active app.version ${plan.appVersion}`,
+            remediation: "Run `bun desktop package` with the active config before signing."
+          })
+        )
+      }
       const target = yield* readTarget(
         metadata.target,
         `${relative(plan.outputPath, metadataPath)}#target`
@@ -620,7 +677,7 @@ const readPackagedArtifacts = (
         metadata.linuxIntegration,
         relative(plan.outputPath, metadataPath)
       )
-      artifacts.push({ kind, rootPath, artifactPath, linuxIntegration })
+      artifacts.push({ kind, rootPath, artifactPath, linuxIntegration, appId, appName, appVersion })
     }
     const relevant = artifacts.filter(
       (artifact) =>
@@ -821,6 +878,24 @@ const readOptionalString = (
   )
 }
 
+const readSafeAppId = (
+  value: unknown,
+  field: string
+): Effect.Effect<string, SignConfigError, never> =>
+  readRequiredString(value, field, "Set app.id in desktop.config.ts.").pipe(
+    Effect.flatMap((appId) =>
+      appIdMatch(appId)
+        ? Effect.succeed(appId)
+        : Effect.fail(
+            new SignConfigError({
+              field,
+              message: `${field} must be a reverse-DNS ASCII identifier`,
+              remediation: "Set app.id to a reverse-DNS identifier such as com.example.app."
+            })
+          )
+    )
+  )
+
 const readContainedFileName = (
   value: unknown,
   field: string
@@ -867,6 +942,9 @@ const isContainedFileName = (value: string): boolean => {
   }
   return true
 }
+
+const appIdMatch = (value: string): boolean =>
+  /^([a-zA-Z][a-zA-Z0-9-]*)(\.[a-zA-Z][a-zA-Z0-9-]*)+$/.test(value) && isContainedFileName(value)
 
 const resolveContainedArtifactPath = (
   rootPath: string,

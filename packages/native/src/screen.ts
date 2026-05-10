@@ -8,6 +8,7 @@ import {
   type ApiContractSpec,
   type ApiHandlers,
   type ApiLayer,
+  makeHostProtocolInvalidOutputError,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   type HostProtocolError
@@ -147,11 +148,34 @@ const makeScreenBridgeClient = (
 ): ScreenClientApi => {
   const client = Client({ Screen: ScreenApi }, exchange, options).Screen
   return Object.freeze({
-    getDisplays: () => client.getDisplays(),
+    getDisplays: () => client.getDisplays().pipe(Effect.flatMap(validateScreenDisplays)),
     getPrimaryDisplay: () => client.getPrimaryDisplay(),
     getPointerPoint: () => client.getPointerPoint(),
     isSupported: (method) => client.isSupported(new ScreenIsSupportedInput({ method }))
   } satisfies ScreenClientApi)
+}
+
+const validateScreenDisplays = (
+  result: ScreenDisplaysResult
+): Effect.Effect<ScreenDisplaysResult, ScreenError, never> => {
+  const primaryCount = result.displays.filter((display) => display.primary).length
+  if (result.displays.length === 0) {
+    return Effect.fail(
+      makeHostProtocolInvalidOutputError(
+        "Screen.getDisplays",
+        "getDisplays payload must include at least one display"
+      )
+    )
+  }
+  if (primaryCount !== 1) {
+    return Effect.fail(
+      makeHostProtocolInvalidOutputError(
+        "Screen.getDisplays",
+        "getDisplays payload must include exactly one primary display"
+      )
+    )
+  }
+  return Effect.succeed(result)
 }
 
 export const makeUnsupportedScreenClient = (): ScreenClientApi => {

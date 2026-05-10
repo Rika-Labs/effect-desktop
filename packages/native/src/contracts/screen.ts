@@ -3,7 +3,6 @@ import { Schema } from "effect"
 export const ScreenMethod = Schema.Literals(["getDisplays", "getPrimaryDisplay", "getPointerPoint"])
 
 export type ScreenMethod = Schema.Schema.Type<typeof ScreenMethod>
-
 export class ScreenBounds extends Schema.Class<ScreenBounds>("ScreenBounds")({
   x: Schema.Number,
   y: Schema.Number,

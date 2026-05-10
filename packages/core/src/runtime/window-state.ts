@@ -1,5 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
+import { mkdir, open, readFile, rename, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 
 import { Context, Data, Effect, Layer, Option, PubSub, Schema, Stream } from "effect"
@@ -270,10 +270,35 @@ const writeStore = (
       try: () => writeFile(tempPath, `${encoded}\n`, "utf8"),
       catch: (error) => new WindowStateWriteFailed({ path, reason: formatUnknownError(error) })
     })
+    yield* syncPath(tempPath, path)
     yield* Effect.tryPromise({
       try: () => rename(tempPath, path),
       catch: (error) => new WindowStateWriteFailed({ path, reason: formatUnknownError(error) })
     })
+    yield* syncPath(dirname(path), path)
+  })
+
+const syncPath = (
+  targetPath: string,
+  failurePath: string
+): Effect.Effect<void, WindowStateWriteFailed, never> =>
+  Effect.tryPromise({
+    try: async () => {
+      const handle = await open(targetPath, "r")
+      try {
+        await handle.sync().catch((error) => {
+          if (process.platform === "win32" && isNodeError(error) && error.code === "EPERM") {
+            return
+          }
+
+          throw error
+        })
+      } finally {
+        await handle.close()
+      }
+    },
+    catch: (error) =>
+      new WindowStateWriteFailed({ path: failurePath, reason: formatUnknownError(error) })
   })
 
 const renameCorruptFile = (

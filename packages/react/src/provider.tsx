@@ -3,6 +3,8 @@ import { Effect, Layer, ManagedRuntime, Option } from "effect"
 import { AtomRegistry, Reactivity } from "effect/unstable/reactivity"
 import { createContext, createElement, useContext, useEffect, useMemo, type ReactNode } from "react"
 
+import { BrowserContext, type IndexedDb } from "./platform-browser.js"
+
 export interface DesktopWindowClient {
   readonly create: (input?: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never>
   readonly setTitle: (
@@ -20,13 +22,38 @@ export interface DesktopRuntimeContext {
   readonly client: DesktopClient
   readonly currentWindow?: WindowHandle | undefined
   readonly registry: AtomRegistry.AtomRegistry
-  readonly runtime: ManagedRuntime.ManagedRuntime<Reactivity.Reactivity, never>
+  readonly runtime: ManagedRuntime.ManagedRuntime<
+    Reactivity.Reactivity | IndexedDb.IndexedDb,
+    never
+  >
+}
+
+export type CleanupErrorHandler = (error: unknown, context: string) => void
+
+export const disposeRuntime = (
+  runtime: Pick<
+    ManagedRuntime.ManagedRuntime<Reactivity.Reactivity | IndexedDb.IndexedDb, never>,
+    "dispose"
+  >,
+  onCleanupError?: CleanupErrorHandler
+): void => {
+  void Promise.resolve(runtime.dispose()).then(undefined, (cause) => {
+    if (cause !== undefined) {
+      if (onCleanupError === undefined) {
+        const reportable = cause instanceof Error ? cause : new Error("runtime cleanup failed")
+        reportError(reportable)
+      } else {
+        onCleanupError(cause, "runtime cleanup")
+      }
+    }
+  })
 }
 
 export interface DesktopProviderProps {
   readonly client: DesktopClient
   readonly currentWindow?: WindowHandle | undefined
   readonly children?: ReactNode | undefined
+  readonly onCleanupError?: CleanupErrorHandler
 }
 
 const DesktopContext = createContext<Option.Option<DesktopRuntimeContext>>(Option.none())
@@ -36,7 +63,11 @@ const makeContext = (
   currentWindow: WindowHandle | undefined
 ): DesktopRuntimeContext => {
   const registry = AtomRegistry.make()
-  const runtime = ManagedRuntime.make(Layer.provide(Reactivity.layer, AtomRegistry.layer))
+  const runtimeLayer = Layer.merge(
+    Layer.provide(Reactivity.layer, AtomRegistry.layer),
+    BrowserContext.layer
+  )
+  const runtime = ManagedRuntime.make(runtimeLayer)
   return currentWindow === undefined
     ? { client, registry, runtime }
     : { client, currentWindow, registry, runtime }
@@ -45,16 +76,17 @@ const makeContext = (
 export const DesktopProvider = ({
   client,
   currentWindow,
-  children
+  children,
+  onCleanupError
 }: DesktopProviderProps): ReactNode => {
   const ctx = useMemo(() => makeContext(client, currentWindow), [client, currentWindow])
 
   useEffect(() => {
     return () => {
       ctx.registry.dispose()
-      void ctx.runtime.dispose()
+      disposeRuntime(ctx.runtime, onCleanupError)
     }
-  }, [ctx])
+  }, [ctx, onCleanupError])
 
   const value = Option.some(ctx)
   return createElement(DesktopContext.Provider, { value }, children)
