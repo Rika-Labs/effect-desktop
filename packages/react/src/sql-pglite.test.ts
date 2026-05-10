@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Layer } from "effect"
+import { Effect, Layer } from "effect"
 
 import {
   RendererPgliteLive,
@@ -23,23 +23,8 @@ test("RendererPgliteOptions accepts optional dataDir only", () => {
   expect(withoutDir.dataDir).toBeUndefined()
 })
 
-test("pgvector similarity query shape compiles at type level", () => {
-  const sql = `
-    SELECT id, content, 1 - (embedding <=> $1::vector) AS similarity
-    FROM documents
-    ORDER BY embedding <=> $1::vector
-    LIMIT 5
-  `
-  expect(typeof sql).toBe("string")
-})
-
-test("tsvector full-text search query shape compiles at type level", () => {
-  const sql = `
-    SELECT id, title, ts_rank(search_vec, query) AS rank
-    FROM documents, to_tsquery('english', $1) query
-    WHERE search_vec @@ query
-    ORDER BY rank DESC
-    LIMIT 10
-  `
-  expect(typeof sql).toBe("string")
+test("RendererPgliteLive dynamic import resolves and layer builds successfully", async () => {
+  const layer = RendererPgliteLive()
+  const context = await Effect.runPromise(Effect.scoped(Layer.build(layer)))
+  expect(context).toBeDefined()
 })
