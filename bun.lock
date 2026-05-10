@@ -13,6 +13,26 @@
         "typescript": "latest",
       },
     },
+    "apps/docs": {
+      "name": "@effect-desktop/docs",
+      "dependencies": {
+        "fumadocs-core": "16.8.8",
+        "fumadocs-mdx": "15.0.0",
+        "fumadocs-ui": "16.8.8",
+        "next": "16.2.6",
+        "react": "^19.2.3",
+        "react-dom": "^19.2.3",
+      },
+      "devDependencies": {
+        "@tailwindcss/postcss": "^4.1.18",
+        "@types/mdx": "^2.0.13",
+        "@types/node": "^22.0.0",
+        "@types/react": "^19.2.7",
+        "@types/react-dom": "^19.2.3",
+        "tailwindcss": "^4.1.18",
+        "typescript": "^5.9.3",
+      },
+    },
     "apps/playground": {
       "name": "@effect-desktop/playground",
       "dependencies": {
@@ -272,6 +292,8 @@
     "@effect-desktop/core": ["@effect-desktop/core@workspace:packages/core"],
 
     "@effect-desktop/devtools": ["@effect-desktop/devtools@workspace:packages/devtools"],
+
+    "@effect-desktop/docs": ["@effect-desktop/docs@workspace:apps/docs"],
 
     "@effect-desktop/native": ["@effect-desktop/native@workspace:packages/native"],
 
@@ -1244,6 +1266,8 @@
     "@babel/core/semver": ["semver@6.3.1", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA=="],
 
     "@babel/helper-compilation-targets/semver": ["semver@6.3.1", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA=="],
+
+    "@effect-desktop/docs/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "@effect-desktop/playground/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 

@@ -3,8 +3,7 @@ import { Schema } from "effect"
 export class ShellOpenExternalInput extends Schema.Class<ShellOpenExternalInput>(
   "ShellOpenExternalInput"
 )({
-  url: Schema.String,
-  allowedSchemes: Schema.optionalKey(Schema.Array(Schema.String))
+  url: Schema.String
 }) {}
 
 export type ShellOpenExternalOptions = Schema.Schema.Type<typeof ShellOpenExternalInput>

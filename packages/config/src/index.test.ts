@@ -332,7 +332,7 @@ test("ProductionChecker rule registry covers the current production rule set", a
       requireTypedBridge: false,
       rendererNativeAccess: true,
       requirePermissions: false,
-      externalNavigation: "allow",
+      externalNavigation: "deny",
       csp: { disabled: true },
       redaction: { defaultPatternEnabled: false }
     },
@@ -482,7 +482,7 @@ test("ProductionChecker rejects empty config paths", async () => {
     runProductionCheck({
       configPath: "",
       config: {
-        security: { externalNavigation: "allow" }
+        security: { externalNavigation: "deny" }
       } as never
     })
   )
@@ -490,14 +490,14 @@ test("ProductionChecker rejects empty config paths", async () => {
     runProductionCheck({
       configPath: "   ",
       config: {
-        security: { externalNavigation: "allow" }
+        security: { externalNavigation: "deny" }
       } as never
     })
   )
   const absentExit = await Effect.runPromiseExit(
     runProductionCheck({
       config: {
-        security: { externalNavigation: "allow" }
+        security: { externalNavigation: "deny" }
       } as never
     })
   )

@@ -78,6 +78,16 @@ interface AppConfig {
     readonly name?: unknown
     readonly version?: unknown
   }
+  readonly update?: {
+    readonly channel?: unknown
+    readonly publicKey?: unknown
+    readonly feedUrl?: unknown
+    readonly minVersion?: unknown
+    readonly maxVersion?: unknown
+    readonly keyVersion?: unknown
+    readonly privateKeyEnv?: unknown
+    readonly rollback?: unknown
+  }
   readonly signing?: {
     readonly macos?: {
       readonly identity?: unknown
@@ -406,6 +416,35 @@ const probeConfig = (
       typeof config.app.name === "string" &&
       typeof config.app.version === "string"
     ) {
+      if (typeof config.update?.channel === "string") {
+        if (typeof config.update.publicKey !== "string" || config.update.publicKey.length === 0) {
+          return missingResult(
+            missing({
+              probe: "config",
+              component: "desktop.config.ts",
+              platform: options.platform,
+              message: "update.publicKey is required when update.channel is set",
+              remediation: "Set update.publicKey in desktop.config.ts.",
+              installHint: "update: { publicKey: 'ed25519:...' }",
+              docsUrl: DOCS_URL
+            })
+          )
+        }
+        if (typeof config.update.feedUrl !== "string" || config.update.feedUrl.length === 0) {
+          return missingResult(
+            missing({
+              probe: "config",
+              component: "desktop.config.ts",
+              platform: options.platform,
+              message: "update.feedUrl is required when update.channel is set",
+              remediation: "Set update.feedUrl in desktop.config.ts.",
+              installHint:
+                "update: { feedUrl: 'https://example.invalid/{platform}/{channel}.json' }",
+              docsUrl: DOCS_URL
+            })
+          )
+        }
+      }
       return ok("config", "desktop.config.ts", "desktop config has required app metadata")
     }
     return missingResult(

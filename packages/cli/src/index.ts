@@ -288,6 +288,20 @@ export type BuildOs = "linux" | "macos" | "windows"
 export type BuildArch = "arm64" | "x64"
 export type BuildTarget = `${BuildOs}-${BuildArch}`
 export type BuildStepName = "renderer" | "runtime" | "native-host" | "bridge" | "manifest"
+const DEFAULT_RUNTIME_ENGINE = "bun"
+const DEFAULT_RENDERER_FRAMEWORK = "react"
+const DEFAULT_RENDERER_STYLING = "tailwind"
+const DEFAULT_PROFILE = "dev"
+const RESERVED_PROTOCOL_SCHEMES = new Set(["http", "https", "file", "about", "data", "chrome", "view-source"])
+const DEFAULT_PROTOCOL_FRAME_BYTES = 4 * 1024 * 1024
+const MAX_PROTOCOL_FRAME_BYTES = 16 * 1024 * 1024
+const DEFAULT_PROTOCOL_CONCURRENT_REQUESTS_PER_WINDOW = 256
+const MAX_PROTOCOL_CONCURRENT_REQUESTS_PER_WINDOW = 4096
+const DEFAULT_PROTOCOL_CONCURRENT_STREAMS_PER_WINDOW = 64
+const MAX_PROTOCOL_CONCURRENT_STREAMS_PER_WINDOW = 1024
+const DEFAULT_PROTOCOL_QUEUED_EVENTS_PER_SUBSCRIPTION = 1024
+const MAX_PROTOCOL_QUEUED_EVENTS_PER_SUBSCRIPTION = 65_536
+const PROTOCOL_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*$/u
 
 export interface CliRunOptions {
   readonly argv: readonly string[]
@@ -340,6 +354,7 @@ export interface DesktopBuildOptions {
   readonly cwd: string
   readonly configPath: string
   readonly platform: string | undefined
+  readonly profile: string
   readonly commandRunner: CommandRunner
   readonly now: () => number
   readonly hostTarget: BuildTarget | undefined
@@ -349,11 +364,39 @@ interface BuildPlan {
   readonly appId: string
   readonly appName: string
   readonly appVersion: string
+  readonly profile: string
+  readonly buildTargets: readonly BuildTarget[]
   readonly appRoot: string
   readonly configPath: string
+  readonly runtimeEngine: "bun"
+  readonly runtimeEntry: string
+  readonly rendererFramework: "react"
+  readonly rendererStyling: "tailwind"
+  readonly rendererEntry: string
   readonly rendererDistPath: string
   readonly runtimeEntryPath: string
+  readonly rendererEntryPath: string
   readonly layoutPath: string
+  readonly targetEnv: Record<string, string>
+  readonly runtimeProtocolLimits:
+    | {
+        readonly maxFrameBytes: number
+        readonly maxConcurrentRequestsPerWindow: number
+        readonly maxConcurrentStreamsPerWindow: number
+        readonly maxQueuedEventsPerSubscription: number | undefined
+      }
+    | undefined
+  readonly protocols: readonly { readonly scheme: string; readonly handler: string | undefined }[]
+  readonly windows: unknown
+  readonly updateManifestInput: {
+    readonly channel?: "stable" | "beta" | "canary"
+    readonly publicKey?: string
+    readonly feedUrl?: string
+    readonly minVersion?: string
+    readonly maxVersion?: string
+    readonly keyVersion?: number
+    readonly rollback?: boolean
+  } | undefined
   readonly target: BuildTarget
 }
 
@@ -364,11 +407,44 @@ interface AppConfig {
     readonly version?: unknown
   }
   readonly runtime?: {
+    readonly engine?: unknown
     readonly entry?: unknown
   }
   readonly renderer?: {
+    readonly framework?: unknown
+    readonly styling?: unknown
+    readonly entry?: unknown
     readonly dist?: unknown
   }
+  readonly build?: {
+    readonly targets?: unknown
+  }
+  readonly security?: {
+    readonly externalNavigation?: unknown
+    readonly devtoolsInProd?: unknown
+  }
+  readonly env?: unknown
+  readonly protocol?: {
+    readonly limits?: unknown
+  }
+  readonly protocols?: unknown
+  readonly native?: {
+    readonly host?: unknown
+    readonly renderer?: unknown
+  }
+  readonly workspace?: {
+    readonly sharedConfigPath?: unknown
+  }
+  readonly update?: {
+    readonly channel?: unknown
+    readonly publicKey?: unknown
+    readonly feedUrl?: unknown
+    readonly minVersion?: unknown
+    readonly maxVersion?: unknown
+    readonly keyVersion?: unknown
+    readonly rollback?: unknown
+  }
+  readonly windows?: unknown
 }
 
 export const runCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
@@ -382,6 +458,7 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
       {
         config: Flag.string("config").pipe(Flag.withDefault("desktop.config.ts")),
         platform: Flag.optional(Flag.string("platform")),
+        profile: Flag.string("profile").pipe(Flag.withDefault(DEFAULT_PROFILE)),
         json: Flag.boolean("json").pipe(Flag.withDefault(false))
       },
       (flags) =>
@@ -390,6 +467,7 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
             cwd: options.cwd,
             configPath: flags.config,
             platform: Option.getOrUndefined(flags.platform),
+            profile: flags.profile,
             commandRunner: options.commandRunner ?? runCommand,
             now: options.now ?? Date.now,
             hostTarget: options.hostTarget
@@ -719,13 +797,13 @@ export const runDesktopBuild = (
 ): Effect.Effect<DesktopBuildReport, BuildPipelineError, never> =>
   Effect.gen(function* () {
     const absoluteConfigPath = resolvePath(options.cwd, options.configPath)
-    const rawConfig = yield* loadConfig(absoluteConfigPath)
+    const config = yield* loadAndMergeBuildConfig(absoluteConfigPath)
     const hostTarget = yield* resolveHostTarget(options.hostTarget)
     const target = yield* resolveBuildTarget(options.platform, hostTarget)
-    const plan = yield* normalizeBuildPlan(rawConfig, {
+    const plan = yield* normalizeBuildPlan(config, {
+      profile: options.profile,
       configPath: absoluteConfigPath,
       hostTarget,
-      workspaceRoot: options.cwd,
       target
     })
 
@@ -801,47 +879,82 @@ const runStep = (
   })
 
 const normalizeBuildPlan = (
-  rawConfig: unknown,
+  config: AppConfig,
   options: {
     readonly configPath: string
     readonly hostTarget: BuildTarget
-    readonly workspaceRoot: string
     readonly target: BuildTarget
+    readonly profile: string
   }
 ): Effect.Effect<BuildPlan, BuildConfigError | BuildUnsupportedTargetError, never> =>
   Effect.gen(function* () {
-    const config = yield* readConfigObject(rawConfig)
     const appRoot = dirname(options.configPath)
     const appId = yield* readSafeAppId(config.app?.id, "app.id")
     const appName = yield* readRequiredString(config.app?.name, "app.name")
     const appVersion = yield* readSemverString(config.app?.version, "app.version")
+    const runtimeEngine = yield* readRuntimeEngine(config.runtime?.engine)
+    const rendererFramework = yield* readRendererFramework(config.renderer?.framework)
+    const rendererStyling = yield* readRendererStyling(config.renderer?.styling)
+    const rendererEntry = yield* readRequiredExistingFile(
+      config.renderer?.entry,
+      "renderer.entry",
+      appRoot
+    )
+    const rendererEntryPath = resolvePath(appRoot, rendererEntry)
+    const runtimeEntry = yield* readRequiredExistingFile(
+      config.runtime?.entry,
+      "runtime.entry",
+      appRoot
+    )
+    const runtimeEntryPath = resolvePath(appRoot, runtimeEntry)
+    const runtimeEntryName = basename(runtimeEntry)
+    const runtimeEntryExt = extname(runtimeEntryName)
+    const runtimeEntryOutputName =
+      runtimeEntryExt === ".ts" || runtimeEntryExt === ".tsx"
+        ? `${runtimeEntryName.slice(0, -runtimeEntryExt.length)}.js`
+        : runtimeEntryName
     const rendererDist =
       (yield* readOptionalString(config.renderer?.dist, "renderer.dist")) ?? "dist"
-    const runtimeEntry = yield* readRequiredString(config.runtime?.entry, "runtime.entry")
-    const runtimeEntryPath = resolvePath(appRoot, runtimeEntry)
+    const profile = yield* readRequiredString(options.profile, "profile")
+    const profileEnv = yield* readProfileEnv(config.env, profile)
+    const protocolEntries = yield* readProtocols(config.protocols)
+    const protocolLimits = yield* readProtocolLimits(config.protocol?.limits)
+    const buildTargets = yield* readBuildTargets(config.build?.targets, options.target, "build.targets")
+    if (!buildTargets.includes(options.target)) {
+      return yield* Effect.fail(
+        new BuildConfigError({
+          field: "build.targets",
+          message: `build.targets does not include target ${options.target}`
+        })
+      )
+    }
+    const updateManifestInput = yield* readUpdateFields(config.update, appVersion)
 
     return {
       appId,
       appName,
       appVersion,
+      profile,
+      rendererFramework,
+      rendererStyling,
+      rendererEntry,
       appRoot,
       configPath: options.configPath,
+      runtimeEngine,
+      runtimeEntry: `runtime/${runtimeEntryOutputName}`,
       rendererDistPath: resolvePath(appRoot, rendererDist),
       runtimeEntryPath,
+      rendererEntryPath,
+      targetEnv: profileEnv,
+      runtimeProtocolLimits: protocolLimits,
+      protocols: protocolEntries,
+      windows: config.windows,
+      buildTargets,
+      updateManifestInput,
       layoutPath: resolvePath(appRoot, join("build", "effect-desktop", options.target)),
       target: options.target
     }
   })
-
-const readConfigObject = (rawConfig: unknown): Effect.Effect<AppConfig, BuildConfigError, never> =>
-  isRecord(rawConfig)
-    ? Effect.succeed(rawConfig as AppConfig)
-    : Effect.fail(
-        new BuildConfigError({
-          field: "default",
-          message: "desktop config must export an object"
-        })
-      )
 
 const readRequiredString = (
   value: unknown,
@@ -989,30 +1102,73 @@ const writeBridgeManifest = (
 const writeAppManifest = (plan: BuildPlan): Effect.Effect<BuildStepReport, BuildFileError, never> =>
   Effect.gen(function* () {
     const path = join(plan.layoutPath, "app-manifest.json")
-    const runtimeBase = basename(plan.runtimeEntryPath)
-    const runtimeEntry =
-      extname(runtimeBase) === ".ts" || extname(runtimeBase) === ".tsx"
-        ? `${runtimeBase.slice(0, -extname(runtimeBase).length)}.js`
-        : runtimeBase
+    const protocolSchemes = plan.protocols.map((protocol) => protocol.scheme)
     yield* writeJson(path, {
       id: plan.appId,
       name: plan.appName,
       version: plan.appVersion,
       target: plan.target,
+      appManifest: {
+        id: plan.appId,
+        name: plan.appName,
+        version: plan.appVersion,
+        profile: plan.profile,
+        dataDirs: ["data"],
+        protocolSchemes
+      },
+      hostManifest: {
+        nativeHost: "rust-wry-tao",
+        systemWebView: "system-webview",
+        windows: plan.windows,
+        protocols: protocolSchemes,
+        signingHints: {}
+      },
+      runtimeManifest: {
+        engine: plan.runtimeEngine,
+        entry: plan.runtimeEntry,
+        env: plan.targetEnv,
+        permissions: {},
+        telemetry: { enabled: true },
+        protocolLimits: plan.runtimeProtocolLimits
+      },
+      rendererManifest: {
+        framework: plan.rendererFramework,
+        entry: plan.rendererEntry,
+        assetBaseUrl: "app://localhost/",
+        csp: {},
+        navigationPolicy: "deny"
+      },
       renderer: {
         assetBaseUrl: "app://localhost/",
         path: "renderer"
       },
       runtime: {
-        engine: "bun",
-        entry: `runtime/${runtimeEntry}`
+        engine: plan.runtimeEngine,
+        entry: plan.runtimeEntry
       },
       nativeHost: {
         binary: `native/${hostBinaryName(plan.target)}`
       },
       bridge: {
         manifest: "bridge/bridge-manifest.json"
-      }
+      },
+      permissionManifest: {
+        normalizedCapabilities: {},
+        approvalDefaults: {},
+        redactionPolicy: {
+          defaultPatternEnabled: true,
+          additionalPatterns: [],
+          allowlist: []
+        }
+      },
+      packageManifest: {
+        targets: plan.buildTargets,
+        artifactLayout: join("dist", "desktop"),
+        bundleId: plan.appId,
+        resources: [],
+        signing: {}
+      },
+      updateManifestInput: plan.updateManifestInput
     })
     return {
       name: "manifest",
@@ -1174,13 +1330,572 @@ const readSemverString = (
 ): Effect.Effect<string, BuildConfigError, never> =>
   readRequiredString(value, field).pipe(
     Effect.flatMap((version) =>
-      SEMVER_PATTERN.test(version)
+      parseSemver(version) !== undefined
         ? Effect.succeed(version)
         : Effect.fail(
             new BuildConfigError({ field, message: `${field} must be a SemVer X.Y.Z string` })
           )
     )
   )
+
+const parseSemver = (value: string): Semver | undefined => {
+  const match = SEMVER_PATTERN.exec(value)
+  if (match === undefined || match === null) {
+    return undefined
+  }
+  const [, major, minor, patch] = match
+  if (major === undefined || minor === undefined || patch === undefined) {
+    return undefined
+  }
+  return {
+    major: Number.parseInt(major, 10),
+    minor: Number.parseInt(minor, 10),
+    patch: Number.parseInt(patch, 10)
+  }
+}
+
+type Semver = {
+  readonly major: number
+  readonly minor: number
+  readonly patch: number
+}
+
+type SemverField = {
+  readonly value: string
+  readonly parsed: Semver
+}
+
+const compareSemver = (left: Semver, right: Semver): number => {
+  if (left.major !== right.major) {
+    return left.major - right.major
+  }
+  if (left.minor !== right.minor) {
+    return left.minor - right.minor
+  }
+  return left.patch - right.patch
+}
+
+const readOptionalSemver = (
+  value: unknown,
+  field: string
+): Effect.Effect<SemverField | undefined, BuildConfigError, never> => {
+  if (value === undefined) {
+    return Effect.succeed(undefined)
+  }
+  return readOptionalString(value, field).pipe(
+    Effect.flatMap((value) =>
+      parseSemver(value) === undefined
+        ? Effect.fail(
+            new BuildConfigError({
+              field,
+              message: `${field} must be a SemVer X.Y.Z string`
+            })
+          )
+        : Effect.succeed({
+            value,
+            parsed: parseSemver(value)
+          })
+    )
+  )
+}
+
+const loadAndMergeBuildConfig = (path: string): Effect.Effect<AppConfig, BuildConfigError, never> =>
+  Effect.gen(function* () {
+    const rawConfig = yield* loadConfig(path).pipe(Effect.map((value) => value as AppConfig))
+    const appConfig = normalizeBuildConfig(rawConfig)
+    const sharedConfigPath = yield* readOptionalString(
+      appConfig.workspace?.sharedConfigPath,
+      "workspace.sharedConfigPath"
+    )
+    if (sharedConfigPath === undefined) {
+      return appConfig
+    }
+    const workspaceRoot = dirname(path)
+    const rawSharedConfig = yield* loadConfig(resolvePath(workspaceRoot, sharedConfigPath)).pipe(
+      Effect.map((value) => value as AppConfig)
+    )
+    const sharedConfig = normalizeBuildConfig(rawSharedConfig)
+    return mergeBuildConfig(sharedConfig, appConfig)
+  })
+
+const normalizeBuildConfig = (rawConfig: unknown): AppConfig =>
+  isRecord(rawConfig) ? (rawConfig as AppConfig) : {}
+
+const mergeBuildConfig = (shared: AppConfig, app: AppConfig): AppConfig => ({
+  app: {
+    ...shared.app,
+    ...app.app
+  },
+  runtime: {
+    ...shared.runtime,
+    ...app.runtime
+  },
+  renderer: {
+    ...shared.renderer,
+    ...app.renderer
+  },
+  build: {
+    ...shared.build,
+    ...app.build
+  },
+  security: {
+    ...shared.security,
+    ...app.security
+  },
+  env: mergeRecordMap(shared.env, app.env),
+  protocol: {
+    limits: {
+      ...extractRecord(shared.protocol?.limits),
+      ...extractRecord(app.protocol?.limits)
+    }
+  },
+  protocols:
+    Array.isArray(app.protocols) && app.protocols.length > 0
+      ? app.protocols
+      : Array.isArray(shared.protocols)
+        ? shared.protocols
+        : undefined,
+  native: {
+    ...shared.native,
+    ...app.native
+  },
+  workspace: app.workspace ?? shared.workspace,
+  update: {
+    ...shared.update,
+    ...app.update
+  },
+  windows: app.windows ?? shared.windows
+})
+
+const mergeRecordMap = (
+  shared: unknown,
+  local: unknown
+): Record<string, unknown> | undefined => {
+  if (shared === undefined && local === undefined) {
+    return undefined
+  }
+  const merged: Record<string, unknown> = {}
+  if (isRecord(shared)) {
+    for (const key of Object.keys(shared)) {
+      const value = shared[key]
+      if (isRecord(value)) {
+        merged[key] = mergeRecordMap(merged[key], value)
+      } else {
+        merged[key] = value
+      }
+    }
+  }
+  if (isRecord(local)) {
+    for (const key of Object.keys(local)) {
+      const value = local[key]
+      const existing = merged[key]
+      if (isRecord(existing) && isRecord(value)) {
+        merged[key] = mergeRecordMap(existing, value)
+      } else {
+        merged[key] = value
+      }
+    }
+  }
+  return merged
+}
+
+const extractRecord = (value: unknown): Record<string, unknown> =>
+  isRecord(value) ? value : {}
+
+const readRuntimeEngine = (
+  value: unknown
+): Effect.Effect<"bun", BuildConfigError, never> =>
+  readOptionalString(value, "runtime.engine").pipe(
+    Effect.map((rawEngine) => rawEngine ?? DEFAULT_RUNTIME_ENGINE),
+    Effect.flatMap((runtimeEngine) =>
+      runtimeEngine === DEFAULT_RUNTIME_ENGINE
+        ? Effect.succeed(runtimeEngine)
+        : Effect.fail(
+            new BuildConfigError({
+              field: "runtime.engine",
+              message: `runtime.engine must be ${DEFAULT_RUNTIME_ENGINE}`
+            })
+          )
+    )
+  )
+
+const readRendererFramework = (
+  value: unknown
+): Effect.Effect<"react", BuildConfigError, never> =>
+  readOptionalString(value, "renderer.framework").pipe(
+    Effect.map((rawFramework) => rawFramework ?? DEFAULT_RENDERER_FRAMEWORK),
+    Effect.flatMap((rendererFramework) =>
+      rendererFramework === DEFAULT_RENDERER_FRAMEWORK
+        ? Effect.succeed(rendererFramework)
+        : Effect.fail(
+            new BuildConfigError({
+              field: "renderer.framework",
+              message: `renderer.framework must be ${DEFAULT_RENDERER_FRAMEWORK}`
+            })
+          )
+    )
+  )
+
+const readRendererStyling = (
+  value: unknown
+): Effect.Effect<"tailwind", BuildConfigError, never> =>
+  readOptionalString(value, "renderer.styling").pipe(
+    Effect.map((rawStyling) => rawStyling ?? DEFAULT_RENDERER_STYLING),
+    Effect.flatMap((rendererStyling) =>
+      rendererStyling === DEFAULT_RENDERER_STYLING
+        ? Effect.succeed(rendererStyling)
+        : Effect.fail(
+            new BuildConfigError({
+              field: "renderer.styling",
+              message: `renderer.styling must be ${DEFAULT_RENDERER_STYLING}`
+            })
+          )
+    )
+  )
+
+const readRequiredExistingFile = (
+  value: unknown,
+  field: string,
+  root: string
+): Effect.Effect<string, BuildConfigError, never> =>
+  readRequiredString(value, field).pipe(
+    Effect.flatMap((path) =>
+      statPath(resolvePath(root, path)).pipe(
+        Effect.flatMap((stats) =>
+          stats.isDirectory()
+            ? Effect.fail(
+                new BuildConfigError({
+                  field,
+                  message: `${field} must be an existing file, not a directory`
+                })
+              )
+            : Effect.succeed(path)
+        ),
+        Effect.catch(() =>
+          Effect.fail(new BuildConfigError({ field, message: `${field} must exist at ${path}` }))
+        )
+      )
+    )
+  )
+
+const readProtocols = (
+  value: unknown
+): Effect.Effect<readonly { readonly scheme: string; readonly handler: string | undefined }[], BuildConfigError, never> =>
+  Effect.gen(function* () {
+    if (value === undefined) {
+      return []
+    }
+    if (!Array.isArray(value)) {
+      return yield* Effect.fail(
+        new BuildConfigError({ field: "protocols", message: "protocols must be an array" })
+      )
+    }
+    const entries: { scheme: string; handler: string | undefined }[] = []
+    for (let index = 0; index < value.length; index += 1) {
+      const field = `protocols[${index}]`
+      const protocol = value[index]
+      if (!isRecord(protocol)) {
+        return yield* Effect.fail(
+          new BuildConfigError({ field, message: `${field} must be an object` })
+        )
+      }
+      const scheme = yield* readRequiredString(protocol.scheme, `${field}.scheme`)
+      if (!PROTOCOL_SCHEME_PATTERN.test(scheme) || RESERVED_PROTOCOL_SCHEMES.has(scheme)) {
+        return yield* Effect.fail(
+          new BuildConfigError({
+            field: `${field}.scheme`,
+            message: `${field}.scheme must be a lowercase ASCII scheme not in ${[...RESERVED_PROTOCOL_SCHEMES].join(", ")}`
+          })
+        )
+      }
+      const handler = yield* readOptionalString(protocol.handler, `${field}.handler`)
+      if (
+        handler !== undefined &&
+        handler !== "open" &&
+        handler !== "view"
+      ) {
+        return yield* Effect.fail(
+          new BuildConfigError({
+            field: `${field}.handler`,
+            message: `${field}.handler must be \"open\" or \"view\"`
+          })
+        )
+      }
+      entries.push({ scheme, handler })
+    }
+    return entries
+  })
+
+type BuildProtocolLimits = {
+  readonly maxFrameBytes: number
+  readonly maxConcurrentRequestsPerWindow: number
+  readonly maxConcurrentStreamsPerWindow: number
+  readonly maxQueuedEventsPerSubscription: number | undefined
+}
+
+const readProtocolLimits = (
+  value: unknown
+): Effect.Effect<BuildProtocolLimits, BuildConfigError, never> => {
+  const limits = isRecord(value) ? value : {}
+  return readProtocolLimit(
+    limits,
+    "protocol.limits.maxFrameBytes",
+    MAX_PROTOCOL_FRAME_BYTES,
+    false,
+    DEFAULT_PROTOCOL_FRAME_BYTES
+  ).pipe(
+    Effect.flatMap((maxFrameBytes) =>
+      readProtocolLimit(
+        limits,
+        "protocol.limits.maxConcurrentRequestsPerWindow",
+        MAX_PROTOCOL_CONCURRENT_REQUESTS_PER_WINDOW,
+        false,
+        DEFAULT_PROTOCOL_CONCURRENT_REQUESTS_PER_WINDOW
+      ).pipe(
+        Effect.flatMap((maxConcurrentRequestsPerWindow) =>
+          readProtocolLimit(
+            limits,
+            "protocol.limits.maxConcurrentStreamsPerWindow",
+            MAX_PROTOCOL_CONCURRENT_STREAMS_PER_WINDOW,
+            false,
+            DEFAULT_PROTOCOL_CONCURRENT_STREAMS_PER_WINDOW
+          ).pipe(
+            Effect.flatMap((maxConcurrentStreamsPerWindow) =>
+              readProtocolLimit(
+                limits,
+                "protocol.limits.maxQueuedEventsPerSubscription",
+                MAX_PROTOCOL_QUEUED_EVENTS_PER_SUBSCRIPTION,
+                false,
+                DEFAULT_PROTOCOL_QUEUED_EVENTS_PER_SUBSCRIPTION
+              ).pipe(
+                Effect.map((maxQueuedEventsPerSubscription) => ({
+                  maxFrameBytes,
+                  maxConcurrentRequestsPerWindow,
+                  maxConcurrentStreamsPerWindow,
+                  maxQueuedEventsPerSubscription
+                }))
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+const readProtocolLimit = (
+  value: Record<string, unknown>,
+  field: string,
+  cap: number,
+  required = false,
+  defaultValue = cap
+): Effect.Effect<number, BuildConfigError, never> => {
+  const key = field.substring(field.lastIndexOf(".") + 1)
+  const raw = value[key]
+  if (raw === undefined) {
+    return required
+      ? Effect.fail(new BuildConfigError({ field, message: `${field} is required` }))
+      : Effect.succeed(defaultValue)
+  }
+  if (typeof raw !== "number" || !Number.isSafeInteger(raw) || raw <= 0) {
+    return Effect.fail(new BuildConfigError({ field, message: `${field} must be a positive integer` }))
+  }
+  if (raw > cap) {
+    return Effect.fail(
+      new BuildConfigError({
+        field,
+        message: `${field} cannot exceed ${cap}`
+      })
+    )
+  }
+  return Effect.succeed(raw)
+}
+
+const readBuildTargets = (
+  value: unknown,
+  defaultTarget: BuildTarget,
+  field: string
+): Effect.Effect<readonly BuildTarget[], BuildConfigError, never> => {
+  if (value === undefined) {
+    return Effect.succeed([defaultTarget])
+  }
+  if (!Array.isArray(value)) {
+    return Effect.fail(
+      new BuildConfigError({ field, message: `${field} must be an array of build targets` })
+    )
+  }
+  const targets: BuildTarget[] = []
+  for (const raw of value) {
+    if (typeof raw !== "string") {
+      return Effect.fail(
+        new BuildConfigError({ field, message: `${field} must be an array of build targets` })
+      )
+    }
+    if (!isBuildTarget(raw)) {
+      return Effect.fail(
+        new BuildConfigError({
+          field,
+          message: `${field} must include only known targets, not ${raw}`
+        })
+      )
+    }
+    if (!targets.includes(raw)) {
+      targets.push(raw)
+    }
+  }
+  return Effect.succeed(targets)
+}
+
+const readProfileEnv = (
+  value: unknown,
+  profile: string
+): Effect.Effect<Record<string, string>, BuildConfigError, never> => {
+  if (value === undefined) {
+    return Effect.succeed({})
+  }
+  if (!isRecord(value)) {
+    return Effect.fail(new BuildConfigError({ field: "env", message: "env must be an object" }))
+  }
+  const profileEnv = value[profile]
+  if (profileEnv === undefined) {
+    return Effect.succeed({})
+  }
+  if (!isRecord(profileEnv)) {
+    return Effect.fail(
+      new BuildConfigError({
+        field: `env.${profile}`,
+        message: `env.${profile} must be an object`
+      })
+    )
+  }
+  const result: Record<string, string> = {}
+  for (const key of Object.keys(profileEnv)) {
+    const entry = profileEnv[key]
+    if (typeof entry !== "string") {
+      return Effect.fail(
+        new BuildConfigError({
+          field: `env.${profile}.${key}`,
+          message: `env.${profile}.${key} must be a string`
+        })
+      )
+    }
+    result[key] = entry
+  }
+  return Effect.succeed(result)
+}
+
+const readUpdateFields = (
+  value: unknown,
+  appVersion: string
+): Effect.Effect<
+  | {
+      readonly channel?: "stable" | "beta" | "canary"
+      readonly publicKey?: string
+      readonly feedUrl?: string
+      readonly minVersion?: string
+      readonly maxVersion?: string
+      readonly keyVersion?: number
+      readonly rollback?: boolean
+    }
+  | undefined,
+  BuildConfigError,
+  never
+> =>
+  Effect.gen(function* () {
+    if (value === undefined) {
+      return undefined
+    }
+    if (!isRecord(value)) {
+      return yield* Effect.fail(
+        new BuildConfigError({ field: "update", message: "update must be an object" })
+      )
+    }
+    const channel = yield* readOptionalUpdateChannel(value.channel)
+    if (channel === undefined) {
+      return undefined
+    }
+    const publicKey = yield* readRequiredString(
+      value.publicKey,
+      "update.publicKey"
+    )
+    const feedUrl = yield* readRequiredString(value.feedUrl, "update.feedUrl")
+    const minVersion = yield* readOptionalSemver(value.minVersion, "update.minVersion")
+    const maxVersion = yield* readOptionalSemver(value.maxVersion, "update.maxVersion")
+    const keyVersion =
+      value.keyVersion === undefined || typeof value.keyVersion === "number"
+        ? value.keyVersion
+        : yield* Effect.fail(
+            new BuildConfigError({
+              field: "update.keyVersion",
+              message: "update.keyVersion must be an integer"
+            })
+          )
+    const rollback =
+      value.rollback === undefined || typeof value.rollback === "boolean"
+        ? value.rollback
+        : yield* Effect.fail(
+            new BuildConfigError({
+              field: "update.rollback",
+              message: "update.rollback must be a boolean"
+            })
+          )
+    const parsedAppVersion = parseSemver(appVersion)
+    if (parsedAppVersion === undefined) {
+      return yield* Effect.fail(
+        new BuildConfigError({
+          field: "app.version",
+          message: "app.version must be a SemVer X.Y.Z string"
+        })
+      )
+    }
+    if (minVersion !== undefined && compareSemver(minVersion.parsed, parsedAppVersion) > 0) {
+      return yield* Effect.fail(
+        new BuildConfigError({
+          field: "update.minVersion",
+          message: `update.minVersion ${minVersion.value} must not exceed app.version ${appVersion}`
+        })
+      )
+    }
+    if (maxVersion !== undefined && minVersion !== undefined && compareSemver(minVersion.parsed, maxVersion.parsed) > 0) {
+      return yield* Effect.fail(
+        new BuildConfigError({
+          field: "update.maxVersion",
+          message: `update.maxVersion ${maxVersion.value} must not be lower than update.minVersion ${minVersion.value}`
+        })
+      )
+    }
+    if (rollback === true && maxVersion === undefined) {
+      return yield* Effect.fail(
+        new BuildConfigError({
+          field: "update.maxVersion",
+          message: "update.maxVersion is required when rollback is true"
+        })
+      )
+    }
+    return {
+      channel,
+      publicKey,
+      feedUrl,
+      minVersion: minVersion?.value,
+      maxVersion: maxVersion?.value,
+      keyVersion,
+      rollback
+    }
+  })
+
+const readOptionalUpdateChannel = (
+  value: unknown
+): Effect.Effect<"stable" | "beta" | "canary" | undefined, BuildConfigError, never> =>
+  value === undefined
+    ? Effect.succeed(undefined)
+    : value === "stable" || value === "beta" || value === "canary"
+      ? Effect.succeed(value)
+      : Effect.fail(
+          new BuildConfigError({
+            field: "update.channel",
+            message: "update.channel must be stable, beta, or canary"
+          })
+        )
 
 const formatSignReport = (report: DesktopSignReport): string =>
   [
@@ -1605,6 +2320,7 @@ const runReproCheckHandler = (
           cwd: options.cwd,
           configPath,
           platform: Option.getOrUndefined(flags.platform),
+          profile: DEFAULT_PROFILE,
           commandRunner: options.commandRunner ?? runCommand,
           now,
           hostTarget: options.hostTarget

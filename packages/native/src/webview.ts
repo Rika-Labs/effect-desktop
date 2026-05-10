@@ -11,6 +11,7 @@ import {
   ApiResourceHandleShape,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
+  makeHostProtocolInvalidOutputError,
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
@@ -36,6 +37,7 @@ import {
   WebViewSetNavigationPolicyInput,
   WebViewScreenshot
 } from "./contracts/webview.js"
+import { isSupportedImageHeader } from "./contracts/image.js"
 const StrictParseOptions = { onExcessProperty: "error" } as const
 type WebViewError = HostProtocolError
 
@@ -246,7 +248,9 @@ const makeWebViewBridgeClient = (
     goForward: (webview) =>
       client.goForward(new WebViewHandleInput({ webview: toWebViewHandle(webview) })),
     captureScreenshot: (webview) =>
-      client.captureScreenshot(new WebViewHandleInput({ webview: toWebViewHandle(webview) })),
+      client
+        .captureScreenshot(new WebViewHandleInput({ webview: toWebViewHandle(webview) }))
+        .pipe(Effect.flatMap(validateWebViewScreenshot)),
     setNavigationPolicy: (webview, policy) =>
       decodeWebViewSetNavigationPolicyInput({ webview: toWebViewHandle(webview), policy }).pipe(
         Effect.flatMap(client.setNavigationPolicy)
@@ -360,6 +364,18 @@ const decodeWebViewCapabilityInput = (
     WebViewError,
     never
   >
+
+const validateWebViewScreenshot = (
+  screenshot: WebViewScreenshot
+): Effect.Effect<WebViewScreenshot, WebViewError, never> =>
+  isSupportedImageHeader(screenshot.mime, screenshot.bytes)
+    ? Effect.succeed(screenshot)
+    : Effect.fail(
+        makeHostProtocolInvalidOutputError(
+          "WebView.captureScreenshot",
+          `declared ${screenshot.mime} does not match image header`
+        )
+      )
 
 const decodeInput = (
   schema: Schema.Schema<unknown>,

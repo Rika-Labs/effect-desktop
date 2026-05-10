@@ -11,6 +11,7 @@ import {
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
+  makeHostProtocolInvalidOutputError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Option, Schema } from "effect"
@@ -18,12 +19,12 @@ import { Context, Effect, Layer, Option, Schema } from "effect"
 import {
   type ClipboardCapability,
   ClipboardImage,
-  type ClipboardImageMime,
   type ClipboardImageOptions,
   ClipboardIsSupportedInput,
   ClipboardSupportedResult,
   ClipboardText
 } from "./contracts/clipboard.js"
+import { isSupportedImageHeader } from "./contracts/image.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
@@ -190,10 +191,10 @@ const makeClipboardBridgeClient = (
   const clipboardClient: ClipboardClientApi = {
     readText: () => client.readText(),
     writeText: (text) => decodeClipboardText({ text }).pipe(Effect.flatMap(client.writeText)),
-    readImage: () => client.readImage(),
+    readImage: () => client.readImage().pipe(Effect.flatMap(validateClipboardImageOutput)),
     writeImage: (input) =>
       decodeClipboardImage(input)
-        .pipe(Effect.flatMap(validateClipboardImage))
+        .pipe(Effect.flatMap(validateClipboardImageInput))
         .pipe(Effect.flatMap(client.writeImage)),
     clear: () => client.clear(),
     isSupported: (capability) => client.isSupported(new ClipboardIsSupportedInput({ capability }))
@@ -218,7 +219,7 @@ export const makeUnsupportedClipboardClient = (): ClipboardClientApi => {
   return Object.freeze(client)
 }
 
-export const validateClipboardImage = (
+const validateClipboardImageInput = (
   image: ClipboardImage
 ): Effect.Effect<ClipboardImage, ClipboardError, never> =>
   isSupportedImageHeader(image.mime, image.bytes)
@@ -228,6 +229,18 @@ export const validateClipboardImage = (
           "payload.bytes",
           `declared ${image.mime} does not match image header`,
           "Clipboard.writeImage"
+        )
+      )
+
+const validateClipboardImageOutput = (
+  image: ClipboardImage
+): Effect.Effect<ClipboardImage, ClipboardError, never> =>
+  isSupportedImageHeader(image.mime, image.bytes)
+    ? Effect.succeed(image)
+    : Effect.fail(
+        makeHostProtocolInvalidOutputError(
+          "Clipboard.readImage",
+          `declared ${image.mime} does not match image header`
         )
       )
 
@@ -269,25 +282,6 @@ const decodeInput = (
     >,
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
-
-const isSupportedImageHeader = (mime: ClipboardImageMime, bytes: Uint8Array): boolean => {
-  if (mime === "image/png") {
-    return hasPrefix(bytes, PNG_HEADER)
-  }
-
-  return hasPrefix(bytes, JPEG_HEADER)
-}
-
-const hasPrefix = (bytes: Uint8Array, prefix: Uint8Array): boolean => {
-  if (bytes.length < prefix.length) {
-    return false
-  }
-
-  return prefix.every((byte, index) => bytes[index] === byte)
-}
-
-const PNG_HEADER = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
-const JPEG_HEADER = new Uint8Array([0xff, 0xd8, 0xff])
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {

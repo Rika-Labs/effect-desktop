@@ -977,7 +977,7 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
       request.method === "WebView.create"
         ? webviewHandle
         : request.method === "WebView.captureScreenshot"
-          ? { mime: "image/png", bytes: new Uint8Array([4, 5, 6]) }
+          ? { mime: "image/png", bytes: pngBytes }
           : request.method === "WebView.capability"
             ? { supported: true }
             : undefined
@@ -1030,7 +1030,7 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
 
   expect(result.created).toMatchObject(webviewHandle)
   expect(result.screenshot).toEqual(
-    new WebViewScreenshot({ mime: "image/png", bytes: new Uint8Array([4, 5, 6]) })
+    new WebViewScreenshot({ mime: "image/png", bytes: pngBytes })
   )
   expect(result.canOpenDevtools).toBe(true)
   expect(Array.from(result.blocked)).toEqual([
@@ -1158,6 +1158,48 @@ test("WebView bridge client rejects unsafe navigation inputs before transport", 
   expectExitFailure(javascriptOriginExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(policyExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(requests).toEqual([])
+})
+
+test("WebView bridge client rejects malformed screenshot output bytes as InvalidOutput", async () => {
+  const invalidScreenshots: Array<{ readonly mime: string; readonly bytes: Uint8Array }> = [
+    { mime: "image/png", bytes: new Uint8Array([1, 2, 3]) },
+    { mime: "image/jpeg", bytes: pngBytes },
+    { mime: "image/png", bytes: new Uint8Array() }
+  ]
+  for (const payload of invalidScreenshots) {
+    const requests: HostProtocolRequestEnvelope[] = []
+    const exchange = webViewExchange(requests, (request) =>
+      request.method === "WebView.captureScreenshot"
+        ? { kind: "success", payload }
+        : { kind: "success", payload: undefined }
+    )
+
+    const exit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const webview = yield* WebView
+        return yield* webview.captureScreenshot(webviewHandle)
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            WebViewLive,
+            makeWebViewBridgeClientLayer(exchange, {
+              nextRequestId: nextId(["capture-screenshot-request"]),
+              nextTraceId: nextId(["capture-screenshot-trace"]),
+              now: nextNumber([1710000000000])
+            })
+          )
+        )
+      )
+    )
+
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+    expect(requests).toEqual([
+      expect.objectContaining({
+        method: "WebView.captureScreenshot",
+        payload: { webview: webviewHandle }
+      })
+    ])
+  }
 })
 
 test("unsupported WebView client reports deferred host methods as Effect values", async () => {
@@ -2373,6 +2415,39 @@ test("Clipboard bridge client rejects mismatched image mime before transport", a
 
   expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(requests).toEqual([])
+})
+
+test("Clipboard bridge client rejects malformed image headers from host as InvalidOutput", async () => {
+  const invalidOutputs: Array<{ readonly mime: string; readonly bytes: Uint8Array }> = [
+    { mime: "image/png", bytes: new Uint8Array([1, 2, 3]) },
+    { mime: "image/jpeg", bytes: pngBytes }
+  ]
+
+  for (const payload of invalidOutputs) {
+    const requests: HostProtocolRequestEnvelope[] = []
+    const client = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* Clipboard
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            ClipboardLive,
+            makeClipboardBridgeClientLayer(
+              clipboardExchange(requests, (request) => ({
+                kind: "success",
+                payload: request.method === "Clipboard.readImage" ? payload : undefined
+              }))
+            )
+          )
+        )
+      )
+    )
+
+    const exit = await Effect.runPromiseExit(client.readImage())
+
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+    expect(requests).toEqual([expect.objectContaining({ method: "Clipboard.readImage" })])
+  }
 })
 
 test("Clipboard bridge client rejects NUL bytes in writeText as InvalidArgument", async () => {
@@ -3686,7 +3761,7 @@ test("Shell bridge client validates schemes and path argv before transport", asy
   ])
 })
 
-test("Shell bridge client accepts app-declared external URL schemes", async () => {
+test("Shell bridge client validates external URL schemes", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const client = await Effect.runPromise(
     Effect.gen(function* () {
@@ -3704,11 +3779,11 @@ test("Shell bridge client accepts app-declared external URL schemes", async () =
   )
 
   const denied = await Effect.runPromiseExit(client.openExternal("myapp://callback"))
-  await Effect.runPromise(client.openExternal("myapp://callback", { allowedSchemes: ["myapp"] }))
+  await Effect.runPromise(client.openExternal("myapp://callback"))
 
   expectExitFailure(denied, (error) => hasErrorTag(error, "PermissionDenied"))
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
-    ["Shell.openExternal", { url: "myapp://callback", allowedSchemes: ["myapp"] }]
+    ["Shell.openExternal", { url: "myapp://callback" }]
   ])
 })
 
@@ -4114,6 +4189,69 @@ test("Dock bridge client rejects invalid badge text before transport", async () 
   const tabExit = await Effect.runPromiseExit(dock.setBadgeText("badge\ttext"))
 
   for (const exit of [nulExit, newlineExit, tabExit]) {
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+  }
+  expect(requests).toEqual([])
+})
+
+test("Dock bridge client rejects invalid numeric state before transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = dockExchange(requests, () => ({
+    kind: "success",
+    payload: undefined
+  }))
+
+  const dock = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Dock
+    }).pipe(Effect.provide(Layer.provide(DockLive, makeDockBridgeClientLayer(exchange))))
+  )
+
+  const negativeBadgeExit = await Effect.runPromiseExit(dock.setBadgeCount(-1))
+  const fractionalBadgeExit = await Effect.runPromiseExit(dock.setBadgeCount(1.5))
+  const belowZeroProgressExit = await Effect.runPromiseExit(dock.setProgress(-0.5))
+  const aboveOneProgressExit = await Effect.runPromiseExit(dock.setProgress(1.5))
+  const invalidProgressExit = await Effect.runPromiseExit(dock.setProgress(Number.NaN))
+
+  for (const exit of [
+    negativeBadgeExit,
+    fractionalBadgeExit,
+    belowZeroProgressExit,
+    aboveOneProgressExit,
+    invalidProgressExit
+  ]) {
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+  }
+  expect(requests).toEqual([])
+})
+
+test("Dock bridge client rejects malformed jump-list items before transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = dockExchange(requests, () => ({
+    kind: "success",
+    payload: undefined
+  }))
+  const invalidItems: Array<
+    Array<{
+      readonly id: string
+      readonly title: string
+      readonly commandId: string
+    }>
+  > = [
+    [{ id: "", title: "Open", commandId: "app.open" }],
+    [{ id: "open", title: "", commandId: "app.open" }],
+    [{ id: "open", title: "Open", commandId: "" }],
+    [{ id: "open", title: "Open", commandId: "bad\u0000" }]
+  ]
+
+  const dock = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Dock
+    }).pipe(Effect.provide(Layer.provide(DockLive, makeDockBridgeClientLayer(exchange))))
+  )
+
+  for (const items of invalidItems) {
+    const exit = await Effect.runPromiseExit(dock.setJumpList(items))
     expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
   }
   expect(requests).toEqual([])
@@ -5593,6 +5731,105 @@ test("Dialog bridge client rejects NUL bytes in defaultPath as InvalidArgument",
   expect(requests).toEqual([])
 })
 
+test("Dialog bridge client rejects malformed file filters before transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Dialog
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          DialogLive,
+          makeDialogBridgeClientLayer(
+            dialogExchange(requests, () => ({
+              kind: "success",
+              payload: { paths: ["/canonical/file.txt"] }
+            }))
+          )
+        )
+      )
+    )
+  )
+
+  const openFileExit = await Effect.runPromiseExit(
+    client.openFile({ filters: [{ name: "", extensions: ["txt"] }] })
+  )
+  const openFileBadNameExit = await Effect.runPromiseExit(
+    client.openFile({ filters: [{ name: "Docs", extensions: [""] }] })
+  )
+  const openFileBadExtensionExit = await Effect.runPromiseExit(
+    client.openFile({ filters: [{ name: "Docs", extensions: ["*.txt"] }] })
+  )
+  const openFileControlExtensionExit = await Effect.runPromiseExit(
+    client.openFile({ filters: [{ name: "Docs", extensions: ["txt\n"] }] })
+  )
+  const openFileNulExtensionExit = await Effect.runPromiseExit(
+    client.openFile({ filters: [{ name: "Docs", extensions: [`txt${String.fromCharCode(0)}x`] }] })
+  )
+
+  expectExitFailure(openFileExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(openFileBadNameExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(openFileBadExtensionExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(openFileControlExtensionExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(openFileNulExtensionExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
+test("Dialog bridge client rejects malformed host output paths as InvalidOutput", async () => {
+  const cases: ReadonlyArray<{ readonly method: keyof DialogClientApi; readonly operation: string }> = [
+    { method: "openFile", operation: "Dialog.openFile" },
+    { method: "openDirectory", operation: "Dialog.openDirectory" },
+    { method: "saveFile", operation: "Dialog.saveFile" }
+  ]
+  const badPaths = ["/tmp/a\u0000b", ""]
+
+  for (const badPath of badPaths) {
+    for (const { method, operation } of cases) {
+      const requests: HostProtocolRequestEnvelope[] = []
+      const exchange = dialogExchange(requests, (request) => {
+        if (request.method === "Dialog.saveFile") {
+          return { kind: "success", payload: { path: badPath } }
+        }
+        return { kind: "success", payload: { paths: ["/tmp/good.txt", badPath] } }
+      })
+
+      const client = await Effect.runPromise(
+        Effect.gen(function* () {
+          return yield* Dialog
+        }).pipe(
+          Effect.provide(
+            Layer.provide(
+              DialogLive,
+              makeDialogBridgeClientLayer(exchange)
+            )
+          )
+        )
+      )
+
+      const exit = await Effect.runPromiseExit(
+        client[method](
+          method === "saveFile" ? { defaultPath: "/tmp/seed.txt" } : { defaultPath: "/tmp/seed.txt" }
+        )
+      )
+
+      expectExitFailure(
+        exit,
+        (error) =>
+          hasErrorTag(error, "InvalidOutput") &&
+          typeof error === "object" &&
+          error !== null &&
+          "operation" in error &&
+          error.operation === operation
+      )
+      expect(requests).toEqual([
+        expect.objectContaining({
+          method: operation
+        })
+      ])
+    }
+  }
+})
+
 test("Dialog bridge client rejects invalid native UI text before transport", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const client = await Effect.runPromise(
@@ -6013,8 +6250,7 @@ const updaterStatus = (
 ): UpdaterStatusResult => ({ state, version })
 
 const shellClient = (calls: string[]): ShellClientApi => ({
-  openExternal: (url, options) =>
-    recordVoid(calls, `openExternal:${url}:${options?.allowedSchemes?.join(",") ?? ""}`),
+  openExternal: (url) => recordVoid(calls, `openExternal:${url}:`),
   showItemInFolder: (path) => recordVoid(calls, `showItemInFolder:${path}`),
   openPath: (path, options) =>
     recordVoid(calls, `openPath:${path}:${options?.allowExecutable ?? false}`),
