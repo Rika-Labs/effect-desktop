@@ -117,6 +117,12 @@ test("readStartupWindowsEnv rejects reserved object names before building the wi
 test("toStartupModuleSpecifier classifies paths, package specifiers, and URL schemes explicitly", () => {
   expect(toStartupModuleSpecifier("C:\\app\\main.ts")).toBe("file:///C:/app/main.ts")
   expect(toStartupModuleSpecifier("\\\\server\\share\\main.ts")).toBe("file://server/share/main.ts")
+  expect(toStartupModuleSpecifier("C:\\app\\release#1\\spine?.ts")).toBe(
+    "file:///C:/app/release%231/spine%3F.ts"
+  )
+  expect(toStartupModuleSpecifier("\\\\server\\share\\release#1\\spine?.ts")).toBe(
+    "file://server/share/release%231/spine%3F.ts"
+  )
   expect(toStartupModuleSpecifier("@scope/pkg/spine")).toBe("@scope/pkg/spine")
   expect(toStartupModuleSpecifier("pkg/spine")).toBe("pkg/spine")
   expect(toStartupModuleSpecifier("file:///app/main.js")).toBe("file:///app/main.js")

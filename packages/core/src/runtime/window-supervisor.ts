@@ -273,12 +273,18 @@ const isWindowsDrivePath = (value: string): boolean => /^[a-zA-Z]:[\\/]/.test(va
 
 const isWindowsUncPath = (value: string): boolean => /^\\\\[^\\]+\\[^\\]+/.test(value)
 
-const windowsDrivePathToFileUrl = (value: string): string => `file:///${value.replace(/\\/g, "/")}`
+const windowsDrivePathToFileUrl = (value: string): string => {
+  const [drive, ...segments] = value.replace(/\\/g, "/").split("/")
+  return `file:///${drive}/${encodePathSegments(segments)}`
+}
 
 const windowsUncPathToFileUrl = (value: string): string => {
-  const withoutPrefix = value.slice(2).replace(/\\/g, "/")
-  return `file://${withoutPrefix}`
+  const [host, ...segments] = value.slice(2).replace(/\\/g, "/").split("/")
+  return `file://${host}/${encodePathSegments(segments)}`
 }
+
+const encodePathSegments = (segments: ReadonlyArray<string>): string =>
+  segments.map((segment) => encodeURIComponent(segment)).join("/")
 
 const isDesktopAppDefinition = (value: unknown): value is DesktopAppDefinition<unknown, unknown> =>
   typeof value === "object" &&
