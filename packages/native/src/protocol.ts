@@ -24,22 +24,11 @@ import {
   ProtocolServeAssetInput,
   type ProtocolServeAssetOptions,
   ProtocolServeRouteInput,
-  type ProtocolServeRouteOptions
+  type ProtocolServeRouteOptions,
+  ProtocolScheme
 } from "./contracts/protocol.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
-const SchemePattern = /^[a-z][a-z0-9+.-]*$/u
-const ReservedSchemes = Object.freeze([
-  "about",
-  "app",
-  "blob",
-  "data",
-  "file",
-  "http",
-  "https",
-  "javascript"
-])
-
 export type ProtocolError = HostProtocolError
 
 export const ProtocolApiSpec = Object.freeze({
@@ -216,23 +205,11 @@ const validateScheme = (
   scheme: string,
   operation: string
 ): Effect.Effect<string, ProtocolError, never> => {
-  if (!SchemePattern.test(scheme)) {
-    return Effect.fail(
-      makeHostProtocolInvalidArgumentError(
-        "scheme",
-        "must be lowercase and match RFC 3986 scheme syntax",
-        operation
-      )
-    )
-  }
-
-  if (ReservedSchemes.includes(scheme)) {
-    return Effect.fail(
-      makeHostProtocolInvalidArgumentError("scheme", `reserved scheme: ${scheme}`, operation)
-    )
-  }
-
-  return Effect.succeed(scheme)
+  return decodeInput(
+    ProtocolScheme,
+    scheme,
+    operation
+  ) as Effect.Effect<string, ProtocolError, never>
 }
 
 const TraversalSegmentPattern = /(?:^|[\\/])\.\.(?:$|[\\/])/

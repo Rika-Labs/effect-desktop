@@ -1,27 +1,48 @@
 import { Schema } from "effect"
 
+const SchemePattern = /^[a-z][a-z0-9+.-]*$/u
+const ReservedSchemes = Object.freeze([
+  "about",
+  "app",
+  "blob",
+  "data",
+  "file",
+  "http",
+  "https",
+  "javascript",
+  "chrome",
+  "view-source"
+]) as const
+
+export const ProtocolScheme = Schema.String.check(
+  Schema.isPattern(SchemePattern),
+  Schema.makeFilter((scheme) =>
+    !ReservedSchemes.includes(scheme as (typeof ReservedSchemes)[number]) || "scheme is reserved"
+  )
+)
+
 export class ProtocolRegisterAppProtocolInput extends Schema.Class<ProtocolRegisterAppProtocolInput>(
   "ProtocolRegisterAppProtocolInput"
 )({
-  scheme: Schema.String
+  scheme: ProtocolScheme
 }) {}
 
 export class ProtocolServeAssetInput extends Schema.Class<ProtocolServeAssetInput>(
   "ProtocolServeAssetInput"
 )({
-  scheme: Schema.String,
+  scheme: ProtocolScheme,
   root: Schema.String
 }) {}
 
 export class ProtocolServeRouteInput extends Schema.Class<ProtocolServeRouteInput>(
   "ProtocolServeRouteInput"
 )({
-  scheme: Schema.String,
+  scheme: ProtocolScheme,
   route: Schema.String
 }) {}
 
 export class ProtocolDenyInput extends Schema.Class<ProtocolDenyInput>("ProtocolDenyInput")({
-  scheme: Schema.String,
+  scheme: ProtocolScheme,
   path: Schema.String
 }) {}
 
