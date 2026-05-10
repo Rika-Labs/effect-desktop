@@ -57,6 +57,7 @@
       "@rikalabs/effect-desktop/react/windows": ["./packages/react/src/windows.ts"],
       "@rikalabs/effect-desktop/react/windows.js": ["./packages/react/src/windows.ts"],
       "@rikalabs/effect-desktop/test": ["./packages/test/src/index.ts"],
+      "@rikalabs/effect-desktop/vue": ["./packages/vue/src/index.ts"],
       "@rikalabs/effect-desktop/vite": ["./packages/vite/src/index.ts"]
     },
     "resolveJsonModule": true
