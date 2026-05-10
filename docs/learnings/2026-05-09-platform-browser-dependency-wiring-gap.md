@@ -15,6 +15,7 @@ Add `@effect/platform-browser` as a renderer dependency so apps get typed, schem
 ## What actually ended up working
 
 PR #1115 shipped only the dependency addition and re-exports:
+
 - Added `@effect/platform-browser@4.0.0-beta.60` to `packages/react`
 - Created `platform-browser.ts` as a pure re-export barrel
 - Re-exported symbols from `packages/react/src/index.ts`
