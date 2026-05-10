@@ -64,6 +64,14 @@ test("template contract uses Rpc.make + RpcGroup.make", async () => {
   expect(AppRpc.requests.has("Greet")).toBe(true)
 })
 
+test("template spine assembles the app with Desktop.make and Desktop.Rpcs.layer", async () => {
+  const { AppRpc } = await import("./contract.js")
+  const { TemplateApp } = await import("./spine.js")
+
+  expect(TemplateApp.windows["main"]?.renderer).toBe("/")
+  expect(TemplateApp.rpcLayers[0]?.group).toBe(AppRpc)
+})
+
 function privateImportViolations(text: string, file: string): readonly string[] {
   return importSpecifiers(text)
     .filter((specifier) => specifier.includes("/src/") || specifier.includes("/_internal"))
