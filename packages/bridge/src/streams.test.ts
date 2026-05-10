@@ -94,21 +94,19 @@ test("Streams rejects duplicate active request ids", async () => {
     })
   )
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = Client(
-    { project: ProjectApi },
-    streamExchange(runtime, requests),
-    {
-      nextRequestId: () => "request-stream-duplicate",
-      nextTraceId: () => "trace-stream-duplicate",
-      now: () => 41
-    }
-  )
+  const client = Client({ project: ProjectApi }, streamExchange(runtime, requests), {
+    nextRequestId: () => "request-stream-duplicate",
+    nextTraceId: () => "trace-stream-duplicate",
+    now: () => 41
+  })
   const controller = new AbortController()
 
   const firstFiber = Effect.runFork(
-    client.project.watch(new WatchInput({ projectId: "project-1" }), {
-      signal: controller.signal
-    }).pipe(Stream.runCollect)
+    client.project
+      .watch(new WatchInput({ projectId: "project-1" }), {
+        signal: controller.signal
+      })
+      .pipe(Stream.runCollect)
   )
 
   await waitFor(() => requests.length === 1)
@@ -567,7 +565,8 @@ test("Streams sends cancel on early consumer finalization without abort signal",
       now: () => 42
     },
     ProjectApi.layer({
-      watch: () => Stream.make(new WatchEvent({ sequence: 1, path: "a" })).pipe(Stream.concat(Stream.never))
+      watch: () =>
+        Stream.make(new WatchEvent({ sequence: 1, path: "a" })).pipe(Stream.concat(Stream.never))
     })
   )
   const client = Client(

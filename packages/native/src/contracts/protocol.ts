@@ -1,7 +1,7 @@
 import { Schema } from "effect"
 
 const SchemePattern = /^[a-z][a-z0-9+.-]*$/u
-const ReservedSchemes = Object.freeze([
+const ReservedSchemes = [
   "about",
   "app",
   "blob",
@@ -12,13 +12,12 @@ const ReservedSchemes = Object.freeze([
   "javascript",
   "chrome",
   "view-source"
-]) as const
+] as const
+const ReservedSchemeSet: ReadonlySet<string> = new Set(ReservedSchemes)
 
 export const ProtocolScheme = Schema.String.check(
   Schema.isPattern(SchemePattern),
-  Schema.makeFilter((scheme) =>
-    !ReservedSchemes.includes(scheme as (typeof ReservedSchemes)[number]) || "scheme is reserved"
-  )
+  Schema.makeFilter((scheme) => !ReservedSchemeSet.has(scheme) || "scheme is reserved")
 )
 
 export class ProtocolRegisterAppProtocolInput extends Schema.Class<ProtocolRegisterAppProtocolInput>(

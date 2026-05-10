@@ -205,11 +205,11 @@ const validateScheme = (
   scheme: string,
   operation: string
 ): Effect.Effect<string, ProtocolError, never> => {
-  return decodeInput(
-    ProtocolScheme,
-    scheme,
-    operation
-  ) as Effect.Effect<string, ProtocolError, never>
+  return decodeInput(ProtocolScheme, scheme, operation) as Effect.Effect<
+    string,
+    ProtocolError,
+    never
+  >
 }
 
 const TraversalSegmentPattern = /(?:^|[\\/])\.\.(?:$|[\\/])/

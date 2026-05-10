@@ -632,7 +632,19 @@ test("App bridge client validates protocol registration scheme before host reque
 
   await Effect.runPromise(client.registerProtocol({ scheme: "effect-desktop" }))
 
-  const invalidSchemes = ["", "http", "https", "file", "app", "chrome", "view-source", "bad scheme", "app://", "MyApp", "x^@y"]
+  const invalidSchemes = [
+    "",
+    "http",
+    "https",
+    "file",
+    "app",
+    "chrome",
+    "view-source",
+    "bad scheme",
+    "app://",
+    "MyApp",
+    "x^@y"
+  ]
   for (const scheme of invalidSchemes) {
     const exit = await Effect.runPromiseExit(client.registerProtocol({ scheme }))
     expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
@@ -665,7 +677,7 @@ test("App bridge client rejects malformed App.getInfo and App.getCommandLine out
                   }
                 : request.method === "App.getCommandLine"
                   ? { kind: "success", payload: { argv: ["app", "bad\u0000arg"], cwd: "" } }
-                  : ({ kind: "success", payload: undefined }) as const
+                  : ({ kind: "success", payload: undefined } as const)
             )
           )
         )
@@ -782,7 +794,7 @@ test("App bridge client rejects malformed App lifecycle event payloads as Invali
             nextTraceId: nextId(["unused"]),
             now: nextNumber([1710000000000])
           })
-          )
+        )
       )
     )
   )
