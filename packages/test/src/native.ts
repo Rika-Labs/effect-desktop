@@ -1009,17 +1009,40 @@ export const makeTestScreenClient = (_options: TestScreenOptions = {}): TestScre
     log.push({ method, args })
   }
 
+  const displays = _options.displays?.map(
+    (d) =>
+      new ScreenDisplay({
+        id: d.id ?? "display-1",
+        bounds: {
+          x: d.bounds?.x ?? 0,
+          y: d.bounds?.y ?? 0,
+          width: d.bounds?.width ?? 1920,
+          height: d.bounds?.height ?? 1080
+        },
+        workArea: {
+          x: d.workArea?.x ?? 0,
+          y: d.workArea?.y ?? 0,
+          width: d.workArea?.width ?? 1920,
+          height: d.workArea?.height ?? 1080
+        },
+        scaleFactor: d.scaleFactor ?? 2,
+        primary: d.primary ?? true
+      })
+  ) ?? [DEFAULT_DISPLAY]
+
+  const primaryDisplay = displays.find((d) => d.primary) ?? displays[0] ?? DEFAULT_DISPLAY
+
   return Object.freeze({
     calls: () => log.slice(),
     getDisplays: (): Effect.Effect<ScreenDisplaysResult, ScreenError, never> =>
       Effect.sync(() => {
         record("Screen.getDisplays", [])
-        return new ScreenDisplaysResult({ displays: [DEFAULT_DISPLAY] })
+        return new ScreenDisplaysResult({ displays })
       }),
     getPrimaryDisplay: (): Effect.Effect<ScreenDisplay, ScreenError, never> =>
       Effect.sync(() => {
         record("Screen.getPrimaryDisplay", [])
-        return DEFAULT_DISPLAY
+        return primaryDisplay
       }),
     getPointerPoint: (): Effect.Effect<ScreenPoint, ScreenError, never> =>
       Effect.sync(() => {
