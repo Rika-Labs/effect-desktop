@@ -166,10 +166,7 @@ const appendRpcLayer = <E, R, AppE, AppR>(
   makeDefinition({
     id: definition.id,
     windows: definition.windows,
-    layers: Object.freeze([
-      ...definition.layers,
-      rpcLayer.layer as Layer.Layer<unknown, E | AppE, R | AppR>
-    ]),
+    layers: definition.layers as ReadonlyArray<Layer.Layer<unknown, E | AppE, R | AppR>>,
     rpcLayers: Object.freeze([...definition.rpcLayers, rpcLayer as unknown as AnyDesktopRpcLayer]),
     permissions: definition.permissions,
     workflows: definition.workflows

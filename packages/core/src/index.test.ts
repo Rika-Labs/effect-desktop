@@ -65,7 +65,7 @@ test("Desktop.Rpcs.layer pairs an RpcGroup with its implementation for app adapt
     }
   }).pipe(core.Desktop.provide(core.Desktop.Rpcs.layer(NotesRpcs, NotesLive)))
 
-  expect(definition.layers).toHaveLength(1)
+  expect(definition.layers).toHaveLength(0)
   expect(definition.rpcLayers).toHaveLength(1)
   expect(definition.rpcLayers[0]?.group.requests.has("Notes.Ping")).toBe(true)
 })
