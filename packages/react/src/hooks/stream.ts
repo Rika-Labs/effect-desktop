@@ -101,7 +101,9 @@ export const useEffectResult = <A, E>(
       let active = true
       setResult(AsyncResult.initial<A, E>(true))
 
-      void Effect.runPromiseExit(effectRef.current).then((exit) => {
+      const fiber = Effect.runFork(effectRef.current)
+
+      void Effect.runPromiseExit(Fiber.join(fiber)).then((exit) => {
         if (!active) return
         if (Exit.isSuccess(exit)) {
           setResult(AsyncResult.success(exit.value))
@@ -112,6 +114,7 @@ export const useEffectResult = <A, E>(
 
       return () => {
         active = false
+        void Effect.runPromiseExit(Fiber.interrupt(fiber))
       }
     },
     deps ?? [effect]
