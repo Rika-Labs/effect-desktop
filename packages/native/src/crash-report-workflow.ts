@@ -1,3 +1,4 @@
+import { makeHostProtocolInvalidStateError } from "@effect-desktop/bridge"
 import { Effect, Layer, Schedule, Schema } from "effect"
 import { EventGroup, EventJournal, EventLog } from "effect/unstable/eventlog"
 import {
@@ -10,6 +11,7 @@ import {
 import { PersistedQueue } from "effect/unstable/persistence"
 import { Activity, Workflow, WorkflowEngine } from "effect/unstable/workflow"
 
+import type { CrashReportUploadHandler } from "./crash-reporter.js"
 import { CrashReporterBreadcrumbInput } from "./contracts/crash-reporter.js"
 
 export class CrashReport extends Schema.Class<CrashReport>("CrashReport")({
@@ -27,6 +29,9 @@ export class CrashReportSubmitError extends Schema.ErrorClass<CrashReportSubmitE
   status: Schema.Number,
   message: Schema.String
 }) {}
+
+const submitError = (status: number, message: string): CrashReportSubmitError =>
+  new CrashReportSubmitError({ status, message })
 
 const crashReportGroup = EventGroup.empty
   .add({
@@ -82,13 +87,67 @@ const makeCrashSubmitActivity = (report: CrashReport, endpointUrl: string) =>
       Effect.retry({ schedule: submissionRetrySchedule }),
       Effect.catch((e: HttpClientError.HttpClientError) =>
         Effect.fail(
-          new CrashReportSubmitError({
-            status: e.response?.status ?? 0,
-            message: e.response === undefined ? e.message : `HTTP ${String(e.response.status)}`
-          })
+          submitError(
+            e.response?.status ?? 0,
+            e.response === undefined ? e.message : `HTTP ${String(e.response.status)}`
+          )
         )
       )
     )
+  })
+
+const mapAuditError = (error: EventJournal.EventJournalError): CrashReportSubmitError =>
+  submitError(0, `EventLog.${error.method} failed`)
+
+const writeCrashReportEvent = (
+  log: EventLog.EventLog["Service"],
+  event: "crash-report-submitted" | "crash-report-dropped",
+  report: CrashReport
+): Effect.Effect<void, CrashReportSubmitError, never> =>
+  log
+    .write({
+      schema: CrashReportEventSchema,
+      event,
+      payload: report
+    })
+    .pipe(Effect.mapError(mapAuditError))
+
+export interface CrashReportQueueUploadHandlerOptions {
+  readonly now?: () => number
+  readonly id?: () => string
+  readonly appVersion?: string
+  readonly platform?: string
+}
+
+export const makeCrashReportQueueUploadHandler = (
+  options: CrashReportQueueUploadHandlerOptions = {}
+): Effect.Effect<CrashReportUploadHandler, never, PersistedQueue.PersistedQueueFactory> =>
+  Effect.gen(function* () {
+    const queue = yield* makeCrashReportQueue
+    const now = options.now ?? Date.now
+    const nextId =
+      options.id ?? (() => `crash-${String(now())}-${Math.random().toString(36).slice(2)}`)
+
+    return (breadcrumbs) => {
+      const id = nextId()
+      const report = new CrashReport({
+        id,
+        breadcrumbs,
+        capturedAt: now(),
+        ...(options.appVersion === undefined ? {} : { appVersion: options.appVersion }),
+        ...(options.platform === undefined ? {} : { platform: options.platform })
+      })
+      return queue.offer(report, { id }).pipe(
+        Effect.asVoid,
+        Effect.mapError((error) =>
+          makeHostProtocolInvalidStateError(
+            "queue-offer-failed",
+            error instanceof Error ? error.message : String(error),
+            "CrashReporter.flush"
+          )
+        )
+      )
+    }
   })
 
 export const makeCrashSubmissionWorkflowLayer = (endpointUrl: string) =>
@@ -98,22 +157,8 @@ export const makeCrashSubmissionWorkflowLayer = (endpointUrl: string) =>
       const activity = makeCrashSubmitActivity(report, endpointUrl)
       yield* activity.pipe(
         Effect.matchEffect({
-          onSuccess: () =>
-            log
-              .write({
-                schema: CrashReportEventSchema,
-                event: "crash-report-submitted",
-                payload: report
-              })
-              .pipe(Effect.orDie),
-          onFailure: (_e) =>
-            log
-              .write({
-                schema: CrashReportEventSchema,
-                event: "crash-report-dropped",
-                payload: report
-              })
-              .pipe(Effect.orDie)
+          onSuccess: () => writeCrashReportEvent(log, "crash-report-submitted", report),
+          onFailure: (_e) => writeCrashReportEvent(log, "crash-report-dropped", report)
         })
       )
     })

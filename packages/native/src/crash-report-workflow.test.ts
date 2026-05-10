@@ -8,6 +8,7 @@ import {
   CrashReport,
   CrashReportGroupLayer,
   CrashReportReactivityLayer,
+  makeCrashReportQueueUploadHandler,
   makeCrashReportQueue
 } from "./crash-report-workflow.js"
 
@@ -87,6 +88,31 @@ test("PersistedQueue deduplicates reports with the same id", async () => {
       )
 
       expect(count).toBe(1)
+    }).pipe(Effect.provide(queueLayer))
+  )
+})
+
+test("CrashReport queue upload handler enqueues flushed breadcrumbs", async () => {
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const handler = yield* makeCrashReportQueueUploadHandler({
+        now: () => 12345,
+        id: () => "queued-report-1",
+        appVersion: "1.2.3",
+        platform: "darwin"
+      })
+
+      yield* handler([{ category: "error", message: "boom" }])
+
+      const queue = yield* makeCrashReportQueue
+      const report = yield* queue.take((r) => Effect.succeed(r))
+
+      expect(report.id).toBe("queued-report-1")
+      expect(report.capturedAt).toBe(12345)
+      expect(report.appVersion).toBe("1.2.3")
+      expect(report.platform).toBe("darwin")
+      expect(report.breadcrumbs).toHaveLength(1)
+      expect(report.breadcrumbs[0]?.message).toBe("boom")
     }).pipe(Effect.provide(queueLayer))
   )
 })
