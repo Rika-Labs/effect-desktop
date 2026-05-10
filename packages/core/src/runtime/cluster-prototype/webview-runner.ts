@@ -6,7 +6,7 @@ export type MessagePortLike = {
 }
 
 export interface MessagePortProviderApi {
-  readonly acquirePort: (windowId: string) => Effect.Effect<MessagePortLike>
+  readonly acquirePort: (windowId: string) => Effect.Effect<MessagePortLike, never, never>
 }
 
 export class MessagePortProvider extends Context.Service<

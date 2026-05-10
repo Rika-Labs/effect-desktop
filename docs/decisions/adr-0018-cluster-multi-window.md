@@ -10,7 +10,7 @@ Multi-window state coordination is the user's problem today. Two windows mutatin
 
 `effect/unstable/cluster` provides `Entity`, `Singleton`, `ClusterCron`, and a runner interface. Platform runners (`BunClusterSocket`, `BunClusterHttp`) are available for Bun processes. The renderer is a WebView, not a Bun process, so a custom `WebViewRunner` over `MessagePort` is required — and does not yet exist. The cluster module itself is still alpha.
 
-Status is **Proposed** because this is an R&D prototype. The goal is a go/no-go verdict on whether cluster is the right model for multi-window desktop state, plus a `WebViewRunner` sketch to prove the abstraction is portable. It is not a feature commitment for v1.0.0.
+Status is **Prototype complete** because this R&D pass produced a go/no-go verdict. It is not a feature commitment for v1.0.0.
 
 ## Decision (proposed — R&D only)
 
@@ -21,7 +21,7 @@ Prototype the cluster model for multi-window state. Do not adopt cluster as a pr
 - Each window is modeled as `Entity.make("Window", [...])` with `maxIdleTime` passivation.
 - Main runtime services are modeled as `Singleton.make(...)`.
 - `ClusterCron` carries scheduled tasks (auto-update polling, cleanup).
-- A `WebViewRunner` is implemented against the cluster runner interface using `MessagePort` (T05 bridge) as transport. If the shape proves portable, it is proposed upstream as a `MessagePortRunner`.
+- The renderer runner shape is evaluated against the T05 `MessagePort` bridge. The prototype rejects a full `WebViewRunner` for single-host desktop and keeps `SocketRunner.layerClientOnly` as the later production path if cluster becomes viable post-v1.
 
 **Upgrade paths from earlier ADRs:**
 
@@ -87,8 +87,8 @@ Rationale: the entity model is correct and the prototype is clean. The blocking 
 ## Validation (prototype exit criteria)
 
 - Two windows join cluster membership; messages route between entities without manual pub/sub. ✓ (TestRunner, in-memory)
-- Idle window passivates after `maxIdleTime`; sending a message respawns it transparently. ✓ (configured, not exercised in test — requires timing)
-- `ClusterCron` fires once across the cluster, not once per window. ✓ (structure confirmed; not exercised in unit test — requires clock)
+- Idle window passivates after `maxIdleTime`; sending a message respawns it transparently. Partial: configured, not exercised in test — requires timing.
+- `ClusterCron` fires once across the cluster, not once per window. Partial: structure confirmed, not exercised in unit test — requires clock.
 - Verdict captured with explicit go/no-go. ✓ defer to post-v1.0.0.
 
 ## Migration notes (when verdict becomes go)
