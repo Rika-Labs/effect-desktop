@@ -21,6 +21,10 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./sql-pglite": {
+      "types": "./src/sql-pglite.ts",
+      "default": "./src/sql-pglite.ts"
     }
   },
   "scripts": {
