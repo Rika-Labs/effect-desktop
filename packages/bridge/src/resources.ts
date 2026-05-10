@@ -28,8 +28,7 @@ export const makeResourceProxy = <Spec extends ApiResourceSpec>(
       if (disposed) {
         return Effect.void
       }
-      disposed = true
-      return exchange.dispose(handle)
+      return exchange.dispose(handle).pipe(Effect.tap(() => Effect.sync(() => (disposed = true))))
     }
   })
 }
