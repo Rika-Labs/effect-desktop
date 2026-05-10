@@ -1,11 +1,13 @@
 import {
   describeRpcs,
+  MissingDesktopContextError,
+  MissingDesktopRpcClientError,
   MissingDesktopRpcsError,
   type DesktopAppDefinition,
   type RpcGroupWithRequests
 } from "@rikalabs/effect-desktop/core"
 import type { WithRpcEndpointKind } from "@rikalabs/effect-desktop/bridge"
-import { Cause, Data, Effect, Exit, Fiber, Stream } from "effect"
+import { Cause, Effect, Exit, Fiber, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import {
   createApp as createVueApp,
@@ -89,14 +91,7 @@ export interface VueDesktopAdapter<App extends DesktopAppDefinition<unknown, unk
   readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => VueDesktopRpcs<Group>
 }
 
-export class MissingDesktopContextError extends Data.TaggedError("MissingDesktopContextError")<{
-  readonly message: string
-}> {}
-
-export class MissingDesktopRpcClientError extends Data.TaggedError("MissingDesktopRpcClientError")<{
-  readonly message: string
-  readonly tag: string
-}> {}
+export { MissingDesktopContextError, MissingDesktopRpcClientError } from "@rikalabs/effect-desktop/core"
 
 interface VueDesktopContext {
   readonly clients: VueDesktopClientMap
@@ -118,6 +113,7 @@ export const VueDesktop = Object.freeze({
       )
       if (context === MissingVueDesktopContext) {
         throw new MissingDesktopContextError({
+          framework: "vue",
           message: "VueDesktop.provideDesktop() or VueDesktop.createApp() is required before useDesktop(group)"
         })
       }
@@ -172,6 +168,7 @@ const makeEndpoints = (
       const method = client[descriptor.tag]
       if (method === undefined) {
         throw new MissingDesktopRpcClientError({
+          framework: "vue",
           message: `No renderer RPC client method is installed for ${descriptor.tag}`,
           tag: descriptor.tag
         })
@@ -310,6 +307,7 @@ const asEffect = (
     return value as Effect.Effect<unknown, unknown, never>
   }
   throw new MissingDesktopRpcClientError({
+    framework: "vue",
     message: `Renderer RPC client method ${tag} returned a Stream where an Effect was expected`,
     tag
   })
@@ -323,6 +321,7 @@ const asStream = (
     return value as Stream.Stream<unknown, unknown, never>
   }
   throw new MissingDesktopRpcClientError({
+    framework: "vue",
     message: `Renderer RPC client method ${tag} returned an Effect where a Stream was expected`,
     tag
   })

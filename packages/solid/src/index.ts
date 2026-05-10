@@ -1,11 +1,13 @@
 import type { WithRpcEndpointKind } from "@rikalabs/effect-desktop/bridge"
 import {
   describeRpcs,
+  MissingDesktopContextError,
+  MissingDesktopRpcClientError,
   MissingDesktopRpcsError,
   type DesktopAppDefinition,
   type RpcGroupWithRequests
 } from "@rikalabs/effect-desktop/core"
-import { Cause, Data, Effect, Exit, Fiber, Stream } from "effect"
+import { Cause, Effect, Exit, Fiber, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import {
   createContext,
@@ -96,14 +98,7 @@ export interface SolidDesktopAdapter<App extends DesktopAppDefinition<unknown, u
   readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => SolidDesktopRpcs<Group>
 }
 
-export class MissingDesktopContextError extends Data.TaggedError("MissingDesktopContextError")<{
-  readonly message: string
-}> {}
-
-export class MissingDesktopRpcClientError extends Data.TaggedError("MissingDesktopRpcClientError")<{
-  readonly message: string
-  readonly tag: string
-}> {}
+export { MissingDesktopContextError, MissingDesktopRpcClientError } from "@rikalabs/effect-desktop/core"
 
 interface SolidDesktopContextValue {
   readonly clients: SolidDesktopClientMap
@@ -129,6 +124,7 @@ export const SolidDesktop = Object.freeze({
       const context = useContext(SolidDesktopContext)
       if (context === undefined) {
         throw new MissingDesktopContextError({
+          framework: "solid",
           message: "SolidDesktop.DesktopRoot or SolidDesktop.render() is required before useDesktop(group)"
         })
       }
@@ -199,6 +195,7 @@ const makeEndpoints = (
       const method = client[descriptor.tag]
       if (method === undefined) {
         throw new MissingDesktopRpcClientError({
+          framework: "solid",
           message: `No renderer RPC client method is installed for ${descriptor.tag}`,
           tag: descriptor.tag
         })
@@ -344,6 +341,7 @@ const asEffect = (
     return value as Effect.Effect<unknown, unknown, never>
   }
   throw new MissingDesktopRpcClientError({
+    framework: "solid",
     message: `Renderer RPC client method ${tag} returned a Stream where an Effect was expected`,
     tag
   })
@@ -357,6 +355,7 @@ const asStream = (
     return value as Stream.Stream<unknown, unknown, never>
   }
   throw new MissingDesktopRpcClientError({
+    framework: "solid",
     message: `Renderer RPC client method ${tag} returned an Effect where a Stream was expected`,
     tag
   })

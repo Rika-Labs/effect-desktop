@@ -6,10 +6,11 @@ import {
   type RpcCapabilityMetadata,
   type RpcSupportMetadata
 } from "@rikalabs/effect-desktop/bridge"
-import { Data, Option, Schema } from "effect"
+import { Option, Schema } from "effect"
 import { Rpc, RpcGroup, RpcSchema } from "effect/unstable/rpc"
 
 import type { AnyDesktopRpcLayer, DesktopAppDefinition } from "./desktop-app.js"
+import { MissingDesktopRpcsError } from "./desktop-errors.js"
 
 export type RpcEndpointDescriptorKind = "query" | "mutation" | "stream"
 export type RpcGroupWithRequests = RpcGroup.Any & {
@@ -24,11 +25,6 @@ export interface RpcEndpointDescriptor {
   readonly capability: Option.Option<RpcCapabilityMetadata>
   readonly support: RpcSupportMetadata
 }
-
-export class MissingDesktopRpcsError extends Data.TaggedError("MissingDesktopRpcsError")<{
-  readonly message: string
-  readonly tags: readonly string[]
-}> {}
 
 interface RpcWithSuccessSchema extends Rpc.Any {
   readonly successSchema: Schema.Top

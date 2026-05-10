@@ -45,6 +45,7 @@ export * from "./runtime/telemetry-otel.js"
 export * from "./runtime/framework-metrics.js"
 export * from "./runtime/window-state.js"
 export * from "./runtime/window-supervisor.js"
+export * from "./runtime/desktop-errors.js"
 export * from "./runtime/reactivity.js"
 export * from "./runtime/rpc-descriptors.js"
 export {
