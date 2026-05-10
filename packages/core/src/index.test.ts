@@ -256,6 +256,34 @@ test("describeRpcs derives endpoint descriptors from provided RpcGroups", async 
   })
 })
 
+test("describeRpcs rejects duplicate endpoint names before adapters build maps", async () => {
+  const core = await import("./index.js")
+  const ProjectList = Rpc.make("Projects.List", { success: Schema.Array(Schema.String) })
+  const TaskList = Rpc.make("Tasks.List", { success: Schema.Array(Schema.String) })
+  const CollidingRpcs = RpcGroup.make(ProjectList, TaskList)
+  const definition = core.Desktop.make({
+    windows: {
+      main: {
+        title: "Lists"
+      }
+    }
+  }).pipe(
+    core.Desktop.provide(
+      core.Desktop.Rpcs.layer(
+        CollidingRpcs,
+        CollidingRpcs.toLayer({
+          "Projects.List": () => Effect.succeed(["project"]),
+          "Tasks.List": () => Effect.succeed(["task"])
+        })
+      )
+    )
+  )
+
+  expect(() => core.Desktop.describeRpcs(definition, CollidingRpcs)).toThrow(
+    core.DuplicateDesktopRpcNameError
+  )
+})
+
 test("describeRpcs fails loudly when a group is not provided to the app", async () => {
   const core = await import("./index.js")
   const Missing = RpcGroup.make(Rpc.make("Notes.Missing"))

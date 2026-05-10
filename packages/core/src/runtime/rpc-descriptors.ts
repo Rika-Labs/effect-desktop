@@ -10,7 +10,7 @@ import { Option, Schema } from "effect"
 import { Rpc, RpcGroup, RpcSchema } from "effect/unstable/rpc"
 
 import type { AnyDesktopRpcLayer, DesktopAppDefinition } from "./desktop-app.js"
-import { MissingDesktopRpcsError } from "./desktop-errors.js"
+import { DuplicateDesktopRpcNameError, MissingDesktopRpcsError } from "./desktop-errors.js"
 
 export type RpcEndpointDescriptorKind = "query" | "mutation" | "stream"
 export type RpcGroupWithRequests = RpcGroup.Any & {
@@ -42,18 +42,37 @@ export const describeRpcs = <Group extends RpcGroupWithRequests>(
     })
   }
 
-  return Object.freeze(
-    Array.from(provided.group.requests.values()).map((rpc) =>
-      Object.freeze({
-        name: rpcEndpointName(rpc._tag),
-        tag: rpc._tag,
-        kind: endpointKind(rpc),
-        rpc,
-        capability: rpcCapability(rpc),
-        support: rpcSupport(rpc)
-      })
-    )
+  const descriptors = Array.from(provided.group.requests.values()).map((rpc) =>
+    Object.freeze({
+      name: rpcEndpointName(rpc._tag),
+      tag: rpc._tag,
+      kind: endpointKind(rpc),
+      rpc,
+      capability: rpcCapability(rpc),
+      support: rpcSupport(rpc)
+    })
   )
+
+  assertUniqueEndpointNames(descriptors)
+
+  return Object.freeze(descriptors)
+}
+
+const assertUniqueEndpointNames = (descriptors: readonly RpcEndpointDescriptor[]): void => {
+  const seen = new Map<string, string>()
+
+  for (const descriptor of descriptors) {
+    const previous = seen.get(descriptor.name)
+    if (previous !== undefined) {
+      throw new DuplicateDesktopRpcNameError({
+        message: `Rpc endpoint name "${descriptor.name}" is produced by both "${previous}" and "${descriptor.tag}"`,
+        name: descriptor.name,
+        tags: Object.freeze([previous, descriptor.tag])
+      })
+    }
+
+    seen.set(descriptor.name, descriptor.tag)
+  }
 }
 
 const providedRpcLayer = <Group extends RpcGroupWithRequests>(

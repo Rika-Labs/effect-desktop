@@ -17,3 +17,11 @@ export class MissingDesktopRpcsError extends Data.TaggedError("MissingDesktopRpc
   readonly message: string
   readonly tags: readonly string[]
 }> {}
+
+export class DuplicateDesktopRpcNameError extends Data.TaggedError(
+  "DuplicateDesktopRpcNameError"
+)<{
+  readonly message: string
+  readonly name: string
+  readonly tags: readonly string[]
+}> {}
