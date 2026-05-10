@@ -108,6 +108,8 @@ const NormalizedCapabilityKinds = new Set<NormalizedCapability["kind"]>([
   "native.invoke"
 ])
 
+const legacyRpcCapabilities = new WeakMap<AnyDesktopRpcLayer, ReadonlyMap<string, string>>()
+
 export interface DesktopAppApi {
   readonly appId: string
   readonly windows: Readonly<Record<string, WindowSpec>>
@@ -286,10 +288,22 @@ const apiLayerToRpcLayer = (apiLayer: AnyApiLayer): AnyDesktopRpcLayer => {
         : (): Effect.Effect<never> => Effect.die(`Legacy API handler is missing for ${rpcTag}`)
   }
 
-  return Rpcs.layer(
+  const rpcLayer = Rpcs.layer(
     group,
     group.toLayer(Object.freeze(handlers) as never)
   ) as unknown as AnyDesktopRpcLayer
+
+  const capabilities = new Map<string, string>()
+  for (const [method, spec] of Object.entries(apiLayer.contract.spec)) {
+    if (spec.permission !== undefined) {
+      capabilities.set(`${apiLayer.contract.tag}.${method}`, spec.permission)
+    }
+  }
+  if (capabilities.size > 0) {
+    legacyRpcCapabilities.set(rpcLayer, capabilities)
+  }
+
+  return rpcLayer
 }
 
 const checkPermissions = <RIn, E>(
@@ -313,6 +327,23 @@ const checkPermissions = <RIn, E>(
         )
       }
       seenRpcTags.add(tag)
+
+      const legacyCapability = legacyRpcCapabilities.get(rpcLayer)?.get(tag)
+      if (legacyCapability !== undefined) {
+        const covered = declared.some((cap) => cap.kind === legacyCapability)
+        if (!covered) {
+          return Effect.fail(
+            new DesktopConfigError({
+              appId: config.id,
+              reason: "missing-permission",
+              message: `RPC method "${tag}" requires legacy capability "${legacyCapability}" but it is not declared in config.permissions`,
+              method: tag,
+              permission: legacyCapability
+            })
+          )
+        }
+        continue
+      }
 
       const required = rpcCapability(rpc)
       if (Option.isNone(required)) {

@@ -239,6 +239,78 @@ test("Desktop.app lowers legacy Api layers into the RpcGroup registry", async ()
   }
 })
 
+test("Desktop.app accepts legacy Api permission kinds when declared by normalized capability", async () => {
+  const core = await import("./index.js")
+  const Connect = Rpc.make("Legacy.Network.connect", {
+    payload: Schema.Void,
+    success: Schema.Void,
+    error: Schema.Never
+  }).pipe(
+    RpcCapability({
+      kind: "network.connect"
+    })
+  )
+  const LegacyNetworkRpcs = RpcGroup.make(Connect)
+  class LegacyNetwork {
+    static readonly tag = "Legacy.Network"
+    static readonly spec = {
+      connect: {
+        input: Schema.Void,
+        output: Schema.Void,
+        error: Schema.Never,
+        permission: "network.connect"
+      }
+    }
+    static readonly events = {}
+    static toRpcGroup(): typeof LegacyNetworkRpcs {
+      return LegacyNetworkRpcs
+    }
+    static layer(handlers: {
+      readonly connect: () => Effect.Effect<void, never, never>
+    }) {
+      return Object.freeze({
+        contract: LegacyNetwork,
+        handlers: Object.freeze(handlers)
+      })
+    }
+  }
+  const legacyLayer = LegacyNetwork.layer({
+    connect: () => Effect.void
+  }) as unknown as AnyApiLayer
+  const transport = {
+    send: () => Effect.void,
+    run: () => Effect.never
+  }
+  const protocolLayer = Layer.effect(RpcServer.Protocol)(makeDesktopServerProtocol(transport))
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(
+      Layer.build(
+        core
+          .desktopApp({
+            id: "legacy-network",
+            windows: {
+              main: {
+                title: "Network"
+              }
+            },
+            handlers: [legacyLayer],
+            permissions: [
+              {
+                kind: "network.connect",
+                hosts: ["api.example.com"],
+                askUnknownHosts: false,
+                audit: "on-deny"
+              }
+            ]
+          })
+          .pipe(Layer.provide(protocolLayer))
+      )
+    )
+  )
+
+  expect(Exit.isSuccess(exit)).toBe(true)
+})
+
 test("Desktop.toLayer rejects RpcGroup methods that declare known capability kinds without scoped fields", async () => {
   const core = await import("./index.js")
   const Connect = Rpc.make("Network.Connect").pipe(
