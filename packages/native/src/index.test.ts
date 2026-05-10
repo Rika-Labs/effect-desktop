@@ -3777,12 +3777,9 @@ test("Shell bridge client validates external URL schemes", async () => {
   )
 
   const denied = await Effect.runPromiseExit(client.openExternal("myapp://callback"))
-  await Effect.runPromise(client.openExternal("myapp://callback"))
 
   expectExitFailure(denied, (error) => hasErrorTag(error, "PermissionDenied"))
-  expect(requests.map((request) => [request.method, request.payload])).toEqual([
-    ["Shell.openExternal", { url: "myapp://callback" }]
-  ])
+  expect(requests).toEqual([])
 })
 
 test("unsupported Shell client reports deferred host methods as Effect values", async () => {
