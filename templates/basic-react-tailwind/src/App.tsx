@@ -1,10 +1,5 @@
-import type { WindowCreateOptions, WindowError, WindowHandle } from "@effect-desktop/native"
-import {
-  defineDesktopApi,
-  type DesktopAsyncState,
-  useDesktopClient,
-  useWindow
-} from "@effect-desktop/react"
+import type { WindowCreateOptions } from "@effect-desktop/native"
+import { defineDesktopApi, useDesktopClient, useWindow } from "@effect-desktop/react"
 import { Option } from "effect"
 
 import { templateMessages } from "./messages.js"
@@ -25,8 +20,27 @@ export function App() {
   const windowApi = defineDesktopApi(desktop.window)
   const createWindow = windowApi.create.useAction()
 
-  const canOpenWindow = createWindow.status !== "running"
-  const statusText = windowStatus(createWindow.state, currentWindow)
+  const canOpenWindow = createWindow.state._tag !== "Running"
+  const statusText = (() => {
+    if (Option.isSome(currentWindow)) {
+      return copy.currentWindow(currentWindow.value.id)
+    }
+
+    switch (createWindow.state._tag) {
+      case "Idle":
+        return copy.ready
+      case "Running":
+        return copy.running
+      case "Success":
+        return copy.opened(createWindow.state.value.id)
+      case "Failure":
+        return createWindow.state.message
+      case "Canceled":
+        return copy.ready
+      case "Unavailable":
+        return createWindow.state.message
+    }
+  })()
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950 dark:bg-zinc-950 dark:text-zinc-50">
@@ -58,28 +72,4 @@ export function App() {
       </section>
     </main>
   )
-}
-
-function windowStatus(
-  state: DesktopAsyncState<WindowHandle, WindowError>,
-  currentWindow: Option.Option<{ readonly id: string }>
-): string {
-  if (Option.isSome(currentWindow)) {
-    return copy.currentWindow(currentWindow.value.id)
-  }
-
-  switch (state._tag) {
-    case "Idle":
-      return copy.ready
-    case "Running":
-      return copy.running
-    case "Success":
-      return copy.opened(state.value.id)
-    case "Failure":
-      return state.message
-    case "Canceled":
-      return copy.ready
-    case "Unavailable":
-      return state.message
-  }
 }
