@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "packageName": "@effect-desktop/next",
+  "entrypoint": "src/index.ts",
+  "symbols": [
+    {
+      "name": "NextDesktop",
+      "kind": "value",
+      "signature": "const NextDesktop: Readonly<{ from: <App extends DesktopAppDefinition<unknown, unknown>>(app: App) => NextDesktopAdapter<App>; }>"
+    },
+    {
+      "name": "NextDesktopAdapter",
+      "kind": "interface",
+      "signature": "export interface NextDesktopAdapter< App extends DesktopAppDefinition<unknown, unknown> > extends ReactDesktopAdapter<App> { readonly app: App readonly DesktopRoot: (props: ReactDesktopRootProps) => ReactNode readonly createRoot: ( children: ReactNode, props?: Omit<ReactDesktopRootProps, \"children\"> ) => ReactNode readonly useDesktop: ReactDesktopAdapter<App>[\"useDesktop\"] }"
+    }
+  ]
+}

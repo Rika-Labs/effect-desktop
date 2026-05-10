@@ -34,6 +34,31 @@
       "signature": "import type * as Layer from \"effect/Layer\"; import * as KeyValueStore from \"effect/unstable/persistence/KeyValueStore\"; /** * Creates a `KeyValueStore` layer that uses the browser's `localStorage` api. * * Values are stored between sessions. * * @since 1.0.0 * @category Layers */ export declare const layerLocalStorage: Layer.Layer<KeyValueStore.KeyValueStore>; /** * Creates a `KeyValueStore` layer that uses the browser's `sessionStorage` api. * * Values are stored only for the current session. * * @since 1.0.0 * @category Layers */ export declare const layerSessionStorage: Layer.Layer<KeyValueStore.KeyValueStore>; //# sourceMappingURL=BrowserKeyValueStore.d.ts.map"
     },
     {
+      "name": "currentWindow",
+      "kind": "value",
+      "signature": "const currentWindow: Readonly<{ handle: Readonly<{ useQuery: () => Option.Option<WindowHandle>; }>; id: Readonly<{ useQuery: () => Option.Option<string>; }>; setTitle: Readonly<{ useMutation: () => CurrentWindowSetTitleMutation; }>; close: Readonly<{ useMutation: () => CurrentWindowCloseMutation; }>; }>"
+    },
+    {
+      "name": "CurrentWindowCloseMutation",
+      "kind": "type",
+      "signature": "export type CurrentWindowCloseMutation = MutationResult<void, void, WindowError>"
+    },
+    {
+      "name": "CurrentWindowSetTitleInput",
+      "kind": "interface",
+      "signature": "export interface CurrentWindowSetTitleInput { readonly title: string }"
+    },
+    {
+      "name": "CurrentWindowSetTitleMutation",
+      "kind": "type",
+      "signature": "export type CurrentWindowSetTitleMutation = MutationResult< CurrentWindowSetTitleInput, void, WindowError >"
+    },
+    {
+      "name": "defineApi",
+      "kind": "value",
+      "signature": "const defineApi: <const Api extends Readonly<Record<string, unknown>>>(api: Api) => Api"
+    },
+    {
       "name": "DesktopClient",
       "kind": "interface",
       "signature": "export interface DesktopClient { readonly Window: DesktopWindowClient }"
@@ -104,6 +129,51 @@
       "signature": "import { BrowserKeyValueStore } from \"../platform-browser.js\" export { BrowserKeyValueStore } from \"../platform-browser.js\" export const layerLocalStorage = BrowserKeyValueStore.layerLocalStorage export const layerSessionStorage = BrowserKeyValueStore.layerSessionStorage"
     },
     {
+      "name": "MissingDesktopContextError",
+      "kind": "class",
+      "signature": "export class MissingDesktopContextError extends Data.TaggedError(\"MissingDesktopContextError\")<{ readonly framework: DesktopFramework readonly message: string }> {}"
+    },
+    {
+      "name": "MissingDesktopRpcClientError",
+      "kind": "class",
+      "signature": "export class MissingDesktopRpcClientError extends Data.TaggedError(\"MissingDesktopRpcClientError\")<{ readonly framework: DesktopFramework readonly message: string readonly tag: string }> {}"
+    },
+    {
+      "name": "mutation",
+      "kind": "value",
+      "signature": "const mutation: <I, A, E>(makeEffect: (input: I) => Effect.Effect<A, E, never>) => MutationEndpoint<I, A, E>"
+    },
+    {
+      "name": "MutationEndpoint",
+      "kind": "interface",
+      "signature": "export interface MutationEndpoint<I, A, E> { readonly useMutation: () => MutationResult<I, A, E> }"
+    },
+    {
+      "name": "MutationResult",
+      "kind": "interface",
+      "signature": "export interface MutationResult<I, A, E> { readonly state: MutationState<A, E> readonly status: MutationStatus readonly isIdle: boolean readonly isRunning: boolean readonly isSuccess: boolean readonly isFailure: boolean readonly run: MutationRun<I> readonly runPromise: MutationRunPromise<I, A, E> readonly reset: () => void }"
+    },
+    {
+      "name": "MutationRun",
+      "kind": "type",
+      "signature": "export type MutationRun<I> = [I] extends [void] ? () => void : undefined extends I ? (input?: I) => void : (input: I) => void"
+    },
+    {
+      "name": "MutationRunPromise",
+      "kind": "type",
+      "signature": "export type MutationRunPromise<I, A, E> = [I] extends [void] ? () => Promise<Exit.Exit<A, E>> : undefined extends I ? (input?: I) => Promise<Exit.Exit<A, E>> : (input: I) => Promise<Exit.Exit<A, E>>"
+    },
+    {
+      "name": "MutationState",
+      "kind": "type",
+      "signature": "export type MutationState<A, E> = | { readonly status: \"idle\" } | { readonly status: \"running\" } | { readonly status: \"success\"; readonly value: A } | { readonly status: \"failure\"; readonly cause: Cause.Cause<E> }"
+    },
+    {
+      "name": "MutationStatus",
+      "kind": "type",
+      "signature": "export type MutationStatus = \"idle\" | \"running\" | \"success\" | \"failure\""
+    },
+    {
       "name": "PendingApproval",
       "kind": "interface",
       "signature": "export interface PendingApproval { readonly token: string readonly traceId: string readonly capability: unknown readonly actor: unknown readonly resource?: string }"
@@ -142,6 +212,66 @@
       "name": "PowerState",
       "kind": "type",
       "signature": "export type PowerState = StreamState<PowerEvent, PowerMonitorError>"
+    },
+    {
+      "name": "query",
+      "kind": "value",
+      "signature": "const query: <I, A, E>(makeEffect: (input: I) => Effect.Effect<A, E, never>) => QueryEndpoint<I, A, E>"
+    },
+    {
+      "name": "QueryEndpoint",
+      "kind": "interface",
+      "signature": "export interface QueryEndpoint<I, A, E> { readonly useQuery: QueryHook<I, A, E> }"
+    },
+    {
+      "name": "QueryHook",
+      "kind": "type",
+      "signature": "export type QueryHook<I, A, E> = [I] extends [void] ? () => QueryResult<A, E> : undefined extends I ? (input?: I) => QueryResult<A, E> : (input: I) => QueryResult<A, E>"
+    },
+    {
+      "name": "QueryResult",
+      "kind": "type",
+      "signature": "export type QueryResult<A, E> = AsyncResult.AsyncResult<A, E>"
+    },
+    {
+      "name": "ReactApiEndpoint",
+      "kind": "type",
+      "signature": "export type ReactApiEndpoint = | QueryEndpoint<unknown, unknown, unknown> | MutationEndpoint<unknown, unknown, unknown> | StreamEndpoint<unknown, unknown, unknown>"
+    },
+    {
+      "name": "ReactDesktop",
+      "kind": "value",
+      "signature": "const ReactDesktop: Readonly<{ from: <App extends DesktopAppDefinition<unknown, unknown>>(app: App) => ReactDesktopAdapter<App>; }>"
+    },
+    {
+      "name": "ReactDesktopAdapter",
+      "kind": "interface",
+      "signature": "export interface ReactDesktopAdapter<App extends DesktopAppDefinition<unknown, unknown>> { readonly app: App readonly DesktopRoot: (props: ReactDesktopRootProps) => ReactNode readonly createRoot: ( children: ReactNode, props?: Omit<ReactDesktopRootProps, \"children\"> ) => ReactNode readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => ReactDesktopRpcs<Group> }"
+    },
+    {
+      "name": "ReactDesktopClientMap",
+      "kind": "type",
+      "signature": "export type ReactDesktopClientMap = ReadonlyMap<RpcGroup.Any, ReactDesktopRpcClient>"
+    },
+    {
+      "name": "ReactDesktopRootProps",
+      "kind": "interface",
+      "signature": "export interface ReactDesktopRootProps { readonly clients?: | ReactDesktopClientMap | readonly (readonly [RpcGroup.Any, ReactDesktopRpcClient])[] readonly children?: ReactNode | undefined }"
+    },
+    {
+      "name": "ReactDesktopRpcClient",
+      "kind": "type",
+      "signature": "export type ReactDesktopRpcClient = Readonly<Record<string, ReactDesktopRpcClientMethod>>"
+    },
+    {
+      "name": "ReactDesktopRpcClientMethod",
+      "kind": "type",
+      "signature": "export type ReactDesktopRpcClientMethod = ( input: unknown ) => Effect.Effect<unknown, unknown, never> | Stream.Stream<unknown, unknown, never>"
+    },
+    {
+      "name": "ReactDesktopRpcs",
+      "kind": "type",
+      "signature": "export type ReactDesktopRpcs<Group extends RpcGroup.Any> = { readonly [Current in RpcGroup.Rpcs<Group> as EndpointName< Current[\"_tag\"] >]: ReactRpcEndpoint<Current> }"
     },
     {
       "name": "RendererSqliteClient",
@@ -189,6 +319,21 @@
       "signature": "import type * as Cause from \"../../Cause.ts\"; import * as Effect from \"../../Effect.ts\"; import * as RequestResolver from \"../../RequestResolver.ts\"; import type * as Schema from \"../../Schema.ts\"; import type { Scope } from \"../../Scope.ts\"; import type * as Model from \"../schema/Model.ts\"; import { SqlClient } from \"./SqlClient.ts\"; import type { ResultLengthMismatch, SqlError } from \"./SqlError.ts\"; import * as SqlResolver from \"./SqlResolver.ts\"; /** * Create a simple CRUD repository from a model. * * @since 4.0.0 * @category repository */ export declare const makeRepository: <S extends Model.Any, Id extends (keyof S[\"Type\"]) & (keyof S[\"update\"][\"Type\"]) & (keyof S[\"fields\"])>(Model: S, options: { readonly tableName: string; readonly spanPrefix: string; readonly idColumn: Id; }) => Effect.Effect<{ readonly insert: (insert: S[\"insert\"][\"Type\"]) => Effect.Effect<S[\"Type\"], Schema.SchemaError | SqlError, S[\"DecodingServices\"] | S[\"insert\"][\"EncodingServices\"]>; readonly insertVoid: (insert: S[\"insert\"][\"Type\"]) => Effect.Effect<void, Schema.SchemaError | SqlError, S[\"insert\"][\"EncodingServices\"]>; readonly update: (update: S[\"update\"][\"Type\"]) => Effect.Effect<S[\"Type\"], Schema.SchemaError | SqlError, S[\"DecodingServices\"] | S[\"update\"][\"EncodingServices\"]>; readonly updateVoid: (update: S[\"update\"][\"Type\"]) => Effect.Effect<void, Schema.SchemaError | SqlError, S[\"update\"][\"EncodingServices\"]>; readonly findById: (id: S[\"fields\"][Id][\"Type\"]) => Effect.Effect<S[\"Type\"], Cause.NoSuchElementError | Schema.SchemaError | SqlError, S[\"DecodingServices\"] | S[\"fields\"][Id][\"EncodingServices\"]>; readonly delete: (id: S[\"fields\"][Id][\"Type\"]) => Effect.Effect<void, Schema.SchemaError | SqlError, S[\"fields\"][Id][\"EncodingServices\"]>; }, never, SqlClient>; /** * Create some simple data loaders from a model. * * @since 4.0.0 * @category repository */ export declare const makeResolvers: <S extends Model.Any, Id extends (keyof S[\"Type\"]) & (keyof S[\"update\"][\"Type\"]) & (keyof S[\"fields\"])>(Model: S, options: { readonly tableName: string; readonly spanPrefix: string; readonly idColumn: Id; }) => Effect.Effect<{ readonly insert: RequestResolver.RequestResolver<SqlResolver.SqlRequest<S[\"insert\"][\"Type\"], S[\"Type\"], ResultLengthMismatch | SqlError, S[\"insert\"][\"EncodingServices\"]>>; readonly insertVoid: RequestResolver.RequestResolver<SqlResolver.SqlRequest<S[\"insert\"][\"Type\"], void, SqlError, S[\"insert\"][\"EncodingServices\"]>>; readonly findById: RequestResolver.RequestResolver<SqlResolver.SqlRequest<S[\"fields\"][Id][\"Type\"], S[\"Type\"], Cause.NoSuchElementError | SqlError, S[\"DecodingServices\"] | S[\"fields\"][Id][\"EncodingServices\"]>>; readonly delete: RequestResolver.RequestResolver<SqlResolver.SqlRequest<S[\"fields\"][Id][\"Type\"], void, SqlError, S[\"fields\"][Id][\"EncodingServices\"]>>; }, never, SqlClient | Scope>; //# sourceMappingURL=SqlModel.d.ts.map"
     },
     {
+      "name": "stream",
+      "kind": "value",
+      "signature": "const stream: <I, A, E>(makeStream: (input: I) => Stream.Stream<A, E, never>) => StreamEndpoint<I, A, E>"
+    },
+    {
+      "name": "StreamEndpoint",
+      "kind": "interface",
+      "signature": "export interface StreamEndpoint<I, A, E> { readonly useStream: StreamHook<I, A, E> }"
+    },
+    {
+      "name": "StreamHook",
+      "kind": "type",
+      "signature": "export type StreamHook<I, A, E> = [I] extends [void] ? () => StreamState<A, E> : undefined extends I ? (input?: I) => StreamState<A, E> : (input: I) => StreamState<A, E>"
+    },
+    {
       "name": "StreamState",
       "kind": "interface",
       "signature": "export interface StreamState<A, E> { readonly status: StreamStatus readonly data: readonly A[] readonly error: Option.Option<Cause.Cause<E>> }"
@@ -229,6 +374,31 @@
       "signature": "const useAtomValue: <A>(atom: Atom.Atom<A>) => A | undefined"
     },
     {
+      "name": "useCloseCurrentWindowMutation",
+      "kind": "value",
+      "signature": "const useCloseCurrentWindowMutation: () => CurrentWindowCloseMutation"
+    },
+    {
+      "name": "useCloseWindowMutation",
+      "kind": "value",
+      "signature": "const useCloseWindowMutation: () => WindowCloseMutation"
+    },
+    {
+      "name": "useCreateWindowMutation",
+      "kind": "value",
+      "signature": "const useCreateWindowMutation: () => WindowCreateMutation"
+    },
+    {
+      "name": "useCurrentWindow",
+      "kind": "value",
+      "signature": "const useCurrentWindow: () => Option.Option<WindowHandle>"
+    },
+    {
+      "name": "useCurrentWindowId",
+      "kind": "value",
+      "signature": "const useCurrentWindowId: () => Option.Option<string>"
+    },
+    {
       "name": "useDesktop",
       "kind": "value",
       "signature": "const useDesktop: () => Option.Option<DesktopClient>"
@@ -244,6 +414,11 @@
       "signature": "const useEffectResult: <A, E>(effect: Effect.Effect<A, E, never>, deps?: DependencyList) => AsyncResult.AsyncResult<A, E>"
     },
     {
+      "name": "useMutation",
+      "kind": "value",
+      "signature": "const useMutation: <I, A, E>(makeEffect: (input: I) => Effect.Effect<A, E, never>) => MutationResult<I, A, E>"
+    },
+    {
       "name": "usePermission",
       "kind": "value",
       "signature": "const usePermission: (permission: string) => PermissionState"
@@ -257,6 +432,16 @@
       "name": "usePower",
       "kind": "value",
       "signature": "const usePower: (streams: { readonly onSuspend: () => Stream.Stream<PowerMonitorSuspendEvent, PowerMonitorError, never>; readonly onResume: () => Stream.Stream<PowerMonitorResumeEvent, PowerMonitorError, never>; readonly onShutdown: () => Stream.Stream<PowerMonitorShutdownEvent, PowerMonitorError, never>; readonly onPowerSourceChanged: () => Stream.Stream<PowerMonitorSourceChangedEvent, PowerMonitorError, never>; }) => PowerState"
+    },
+    {
+      "name": "useSetCurrentWindowTitleMutation",
+      "kind": "value",
+      "signature": "const useSetCurrentWindowTitleMutation: () => CurrentWindowSetTitleMutation"
+    },
+    {
+      "name": "useSetWindowTitleMutation",
+      "kind": "value",
+      "signature": "const useSetWindowTitleMutation: () => WindowSetTitleMutation"
     },
     {
       "name": "useStream",
@@ -284,6 +469,21 @@
       "signature": "const useWindow: () => Option.Option<WindowHandle>"
     },
     {
+      "name": "WindowCloseInput",
+      "kind": "interface",
+      "signature": "export interface WindowCloseInput { readonly window: WindowHandle }"
+    },
+    {
+      "name": "WindowCloseMutation",
+      "kind": "type",
+      "signature": "export type WindowCloseMutation = MutationResult<WindowCloseInput, void, WindowError>"
+    },
+    {
+      "name": "WindowCreateMutation",
+      "kind": "type",
+      "signature": "export type WindowCreateMutation = MutationResult< WindowCreateOptions | undefined, WindowHandle, WindowError >"
+    },
+    {
       "name": "WindowCreateOptions",
       "kind": "type",
       "signature": "export type WindowCreateOptions = Schema.Schema.Type<typeof WindowCreateInput>"
@@ -297,6 +497,21 @@
       "name": "WindowHandle",
       "kind": "type",
       "signature": "export type WindowHandle = ApiResourceHandle<\"window\", \"open\">"
+    },
+    {
+      "name": "windows",
+      "kind": "value",
+      "signature": "const windows: Readonly<{ create: Readonly<{ useMutation: () => WindowCreateMutation; }>; setTitle: Readonly<{ useMutation: () => WindowSetTitleMutation; }>; close: Readonly<{ useMutation: () => WindowCloseMutation; }>; }>"
+    },
+    {
+      "name": "WindowSetTitleInput",
+      "kind": "interface",
+      "signature": "export interface WindowSetTitleInput { readonly window: WindowHandle readonly title: string }"
+    },
+    {
+      "name": "WindowSetTitleMutation",
+      "kind": "type",
+      "signature": "export type WindowSetTitleMutation = MutationResult<WindowSetTitleInput, void, WindowError>"
     }
   ]
 }

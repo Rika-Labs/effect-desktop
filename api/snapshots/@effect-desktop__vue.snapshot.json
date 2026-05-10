@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "packageName": "@effect-desktop/vue",
+  "entrypoint": "src/index.ts",
+  "symbols": [
+    {
+      "name": "MissingDesktopContextError",
+      "kind": "class",
+      "signature": "export class MissingDesktopContextError extends Data.TaggedError(\"MissingDesktopContextError\")<{ readonly framework: DesktopFramework readonly message: string }> {}"
+    },
+    {
+      "name": "MissingDesktopRpcClientError",
+      "kind": "class",
+      "signature": "export class MissingDesktopRpcClientError extends Data.TaggedError(\"MissingDesktopRpcClientError\")<{ readonly framework: DesktopFramework readonly message: string readonly tag: string }> {}"
+    },
+    {
+      "name": "VueAsyncState",
+      "kind": "type",
+      "signature": "export type VueAsyncState<A, E> = | { readonly status: \"idle\" } | { readonly status: \"running\" } | { readonly status: \"success\"; readonly value: A } | { readonly status: \"failure\"; readonly cause: Cause.Cause<E> }"
+    },
+    {
+      "name": "VueComposable",
+      "kind": "type",
+      "signature": "export type VueComposable<I, A> = [I] extends [void] ? () => A : undefined extends I ? (input?: I) => A : (input: I) => A"
+    },
+    {
+      "name": "VueDesktop",
+      "kind": "value",
+      "signature": "const VueDesktop: Readonly<{ from: <App extends DesktopAppDefinition<unknown, unknown>>(app: App) => VueDesktopAdapter<App>; }>"
+    },
+    {
+      "name": "VueDesktopAdapter",
+      "kind": "interface",
+      "signature": "export interface VueDesktopAdapter<App extends DesktopAppDefinition<unknown, unknown>> { readonly app: App readonly createApp: (rootComponent: Component, options?: VueDesktopOptions) => VueApp readonly provideDesktop: (options?: VueDesktopOptions) => void readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => VueDesktopRpcs<Group> }"
+    },
+    {
+      "name": "VueDesktopClientMap",
+      "kind": "type",
+      "signature": "export type VueDesktopClientMap = ReadonlyMap<RpcGroup.Any, VueDesktopRpcClient>"
+    },
+    {
+      "name": "VueDesktopOptions",
+      "kind": "interface",
+      "signature": "export interface VueDesktopOptions { readonly clients?: VueDesktopClientMap | readonly (readonly [RpcGroup.Any, VueDesktopRpcClient])[] }"
+    },
+    {
+      "name": "VueDesktopRpcClient",
+      "kind": "type",
+      "signature": "export type VueDesktopRpcClient = Readonly<Record<string, VueDesktopRpcClientMethod>>"
+    },
+    {
+      "name": "VueDesktopRpcClientMethod",
+      "kind": "type",
+      "signature": "export type VueDesktopRpcClientMethod = ( input: unknown ) => Effect.Effect<unknown, unknown, never> | Stream.Stream<unknown, unknown, never>"
+    },
+    {
+      "name": "VueDesktopRpcs",
+      "kind": "type",
+      "signature": "export type VueDesktopRpcs<Group extends RpcGroup.Any> = { readonly [Current in RpcGroup.Rpcs<Group> as EndpointName< Current[\"_tag\"] >]: VueRpcEndpoint<Current> }"
+    },
+    {
+      "name": "VueMutation",
+      "kind": "interface",
+      "signature": "export interface VueMutation<I, A, E> { readonly state: Readonly<Ref<VueAsyncState<A, E>>> readonly run: VueComposable<I, void> readonly runPromise: VueComposable<I, Promise<Exit.Exit<A, E>>> readonly reset: () => void }"
+    },
+    {
+      "name": "VueMutationEndpoint",
+      "kind": "interface",
+      "signature": "export interface VueMutationEndpoint<I, A, E> { readonly useMutation: () => VueMutation<I, A, E> }"
+    },
+    {
+      "name": "VueQueryEndpoint",
+      "kind": "interface",
+      "signature": "export interface VueQueryEndpoint<I, A, E> { readonly useQuery: VueComposable<I, Readonly<Ref<VueAsyncState<A, E>>>> }"
+    },
+    {
+      "name": "VueStreamEndpoint",
+      "kind": "interface",
+      "signature": "export interface VueStreamEndpoint<I, A, E> { readonly useStream: VueComposable<I, Readonly<Ref<VueStreamState<A, E>>>> }"
+    },
+    {
+      "name": "VueStreamState",
+      "kind": "interface",
+      "signature": "export interface VueStreamState<A, E> { readonly status: \"idle\" | \"running\" | \"closed\" | \"failure\" readonly data: readonly A[] readonly cause: Cause.Cause<E> | undefined }"
+    }
+  ]
+}

@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "packageName": "@effect-desktop/solid",
+  "entrypoint": "src/index.ts",
+  "symbols": [
+    {
+      "name": "MissingDesktopContextError",
+      "kind": "class",
+      "signature": "export class MissingDesktopContextError extends Data.TaggedError(\"MissingDesktopContextError\")<{ readonly framework: DesktopFramework readonly message: string }> {}"
+    },
+    {
+      "name": "MissingDesktopRpcClientError",
+      "kind": "class",
+      "signature": "export class MissingDesktopRpcClientError extends Data.TaggedError(\"MissingDesktopRpcClientError\")<{ readonly framework: DesktopFramework readonly message: string readonly tag: string }> {}"
+    },
+    {
+      "name": "SolidAsyncState",
+      "kind": "type",
+      "signature": "export type SolidAsyncState<A, E> = | { readonly status: \"idle\" } | { readonly status: \"running\" } | { readonly status: \"success\"; readonly value: A } | { readonly status: \"failure\"; readonly cause: Cause.Cause<E> }"
+    },
+    {
+      "name": "SolidDesktop",
+      "kind": "value",
+      "signature": "const SolidDesktop: Readonly<{ from: <App extends DesktopAppDefinition<unknown, unknown>>(app: App) => SolidDesktopAdapter<App>; }>"
+    },
+    {
+      "name": "SolidDesktopAdapter",
+      "kind": "interface",
+      "signature": "export interface SolidDesktopAdapter<App extends DesktopAppDefinition<unknown, unknown>> { readonly app: App readonly DesktopRoot: (props: SolidDesktopRootProps) => JSX.Element readonly render: ( children: () => JSX.Element, mount: HTMLElement, options?: SolidDesktopRenderOptions ) => () => void readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => SolidDesktopRpcs<Group> }"
+    },
+    {
+      "name": "SolidDesktopClientMap",
+      "kind": "type",
+      "signature": "export type SolidDesktopClientMap = ReadonlyMap<RpcGroup.Any, SolidDesktopRpcClient>"
+    },
+    {
+      "name": "SolidDesktopRenderOptions",
+      "kind": "interface",
+      "signature": "export interface SolidDesktopRenderOptions { readonly clients?: SolidDesktopRootProps[\"clients\"] }"
+    },
+    {
+      "name": "SolidDesktopRootProps",
+      "kind": "interface",
+      "signature": "export interface SolidDesktopRootProps { readonly clients?: | SolidDesktopClientMap | readonly (readonly [RpcGroup.Any, SolidDesktopRpcClient])[] readonly children?: JSX.Element }"
+    },
+    {
+      "name": "SolidDesktopRpcClient",
+      "kind": "type",
+      "signature": "export type SolidDesktopRpcClient = Readonly<Record<string, SolidDesktopRpcClientMethod>>"
+    },
+    {
+      "name": "SolidDesktopRpcClientMethod",
+      "kind": "type",
+      "signature": "export type SolidDesktopRpcClientMethod = ( input: unknown ) => Effect.Effect<unknown, unknown, never> | Stream.Stream<unknown, unknown, never>"
+    },
+    {
+      "name": "SolidDesktopRpcs",
+      "kind": "type",
+      "signature": "export type SolidDesktopRpcs<Group extends RpcGroup.Any> = { readonly [Current in RpcGroup.Rpcs<Group> as EndpointName< Current[\"_tag\"] >]: SolidRpcEndpoint<Current> }"
+    },
+    {
+      "name": "SolidMutation",
+      "kind": "interface",
+      "signature": "export interface SolidMutation<I, A, E> { readonly state: Accessor<SolidAsyncState<A, E>> readonly run: SolidPrimitive<I, void> readonly runPromise: SolidPrimitive<I, Promise<Exit.Exit<A, E>>> readonly reset: () => void }"
+    },
+    {
+      "name": "SolidMutationEndpoint",
+      "kind": "interface",
+      "signature": "export interface SolidMutationEndpoint<I, A, E> { readonly createMutation: () => SolidMutation<I, A, E> }"
+    },
+    {
+      "name": "SolidPrimitive",
+      "kind": "type",
+      "signature": "export type SolidPrimitive<I, A> = [I] extends [void] ? () => A : undefined extends I ? (input?: I) => A : (input: I) => A"
+    },
+    {
+      "name": "SolidQueryEndpoint",
+      "kind": "interface",
+      "signature": "export interface SolidQueryEndpoint<I, A, E> { readonly createQuery: SolidPrimitive<I, Accessor<SolidAsyncState<A, E>>> }"
+    },
+    {
+      "name": "SolidStreamEndpoint",
+      "kind": "interface",
+      "signature": "export interface SolidStreamEndpoint<I, A, E> { readonly createStream: SolidPrimitive<I, Accessor<SolidStreamState<A, E>>> }"
+    },
+    {
+      "name": "SolidStreamState",
+      "kind": "interface",
+      "signature": "export interface SolidStreamState<A, E> { readonly status: \"idle\" | \"running\" | \"closed\" | \"failure\" readonly data: readonly A[] readonly cause: Cause.Cause<E> | undefined }"
+    }
+  ]
+}
