@@ -4,7 +4,7 @@ import {
   hostProtocolErrorRecoverableDefault,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Effect, Layer, Ref, Stream } from "effect"
+import { Effect, Layer, Stream } from "effect"
 
 import {
   App,
@@ -704,28 +704,28 @@ export const makeTestCrashReporterClient = (): Effect.Effect<TestCrashReporterAp
   Effect.gen(function* () {
     const log: TestCrashReporterCall[] = []
     const inner = yield* makeCrashReporterMemoryClient()
+    const breadcrumbs: CrashReporterBreadcrumb[] = []
 
     const record = (method: string, args: ReadonlyArray<unknown>): void => {
       log.push({ method, args })
     }
 
-    const breadcrumbsRef = yield* Ref.make<CrashReporterBreadcrumb[]>([])
-
     return Object.freeze({
       calls: () => log.slice(),
-      breadcrumbs: () => {
-        let result: CrashReporterBreadcrumb[] = []
-        Effect.runSync(
-          Ref.get(breadcrumbsRef).pipe(Effect.tap((b) => Effect.sync(() => (result = b))))
-        )
-        return result
-      },
+      breadcrumbs: () => breadcrumbs.slice(),
       start: (
         options?: CrashReporterStartOptions
       ): Effect.Effect<void, CrashReporterError, never> =>
         inner
           .start(options)
-          .pipe(Effect.tap(() => Effect.sync(() => record("CrashReporter.start", [options])))),
+          .pipe(
+            Effect.tap(() =>
+              Effect.sync(() => {
+                record("CrashReporter.start", [options])
+                breadcrumbs.length = 0
+              })
+            )
+          ),
       recordBreadcrumb: (
         breadcrumb: CrashReporterBreadcrumb
       ): Effect.Effect<void, CrashReporterError, never> =>
@@ -733,17 +733,23 @@ export const makeTestCrashReporterClient = (): Effect.Effect<TestCrashReporterAp
           .recordBreadcrumb(breadcrumb)
           .pipe(
             Effect.tap(() =>
-              Ref.update(breadcrumbsRef, (b) => [...b, breadcrumb]).pipe(
-                Effect.tap(() =>
-                  Effect.sync(() => record("CrashReporter.recordBreadcrumb", [breadcrumb]))
-                )
-              )
+              Effect.sync(() => {
+                breadcrumbs.push(breadcrumb)
+                record("CrashReporter.recordBreadcrumb", [breadcrumb])
+              })
             )
           ),
       flush: (): Effect.Effect<CrashReporterFlushResult, CrashReporterError, never> =>
         inner
           .flush()
-          .pipe(Effect.tap((result) => Effect.sync(() => record("CrashReporter.flush", [result])))),
+          .pipe(
+            Effect.tap((result) =>
+              Effect.sync(() => {
+                record("CrashReporter.flush", [result])
+                breadcrumbs.length = 0
+              })
+            )
+          ),
       setUploadHandler: (
         handler: CrashReportUploadHandler
       ): Effect.Effect<void, CrashReporterError, never> =>
