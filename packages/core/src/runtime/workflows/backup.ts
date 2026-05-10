@@ -31,7 +31,6 @@ export class BackupConfigService extends Context.Service<BackupConfigService, Ba
 
 const BackupResultSchema = Schema.Struct({
   archivePath: Schema.NonEmptyString,
-  snapshotDir: Schema.NonEmptyString,
   dbBytes: Schema.Number
 })
 
@@ -127,7 +126,7 @@ export const BackupWorkflowLayer: Layer.Layer<
       })
     })
 
-    const snapshotResult = yield* snapshot
+    yield* snapshot
     const dbResult = yield* backupDb
 
     const archiveResult = yield* BackupWorkflow.withCompensation(
@@ -139,7 +138,6 @@ export const BackupWorkflowLayer: Layer.Layer<
 
     return {
       archivePath: archiveResult.archivePath,
-      snapshotDir: snapshotResult.snapshotDir as string,
       dbBytes: dbResult.dbBytes
     }
   })
