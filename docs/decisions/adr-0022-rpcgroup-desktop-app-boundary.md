@@ -82,6 +82,10 @@ Startup windows are host-owned. Renderer components must not open the initial wi
 - Existing low-level React provider hooks remain compatibility APIs, but new docs and templates use `ReactDesktop.from(Desktop.manifest(App))`.
 - Native host support remains partial. This ADR only makes support visible; it does not implement missing host methods.
 
+## Dependency note
+
+`vendor/effect` is a pinned upstream Effect v4 beta reference checkout for grounding `RpcGroup`, `RpcClient`, and `RpcServer` API behavior while this boundary uses `effect/unstable/rpc`. It is not runtime vendoring: packages must import Effect from the workspace dependency in `package.json`, not from `vendor/effect`. Update the submodule when the Effect beta changes RPC semantics, then verify the framework bridge and adapter tests against the pinned package version.
+
 ## Migration notes
 
 New apps should define APIs as:
