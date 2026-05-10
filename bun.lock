@@ -133,6 +133,53 @@
       "dependencies": {
         "@effect-desktop/bridge": "workspace:*",
         "@effect-desktop/cli": "workspace:*",
+        "@effect-desktop/core": "workspace:*",
+        "@effect-desktop/native": "workspace:*",
+        "@effect-desktop/react": "workspace:*",
+        "@effect-desktop/test": "workspace:*",
+        "effect": "4.0.0-beta.60",
+        "react": "^19.2.3",
+        "react-dom": "^19.2.3",
+      },
+      "devDependencies": {
+        "@tailwindcss/vite": "^4.1.18",
+        "@types/react": "^19.2.7",
+        "@types/react-dom": "^19.2.3",
+        "@vitejs/plugin-react": "^5.1.1",
+        "tailwindcss": "^4.1.18",
+        "typescript": "^5.9.3",
+        "vite": "^8.0.10",
+      },
+    },
+    "templates/multi-window": {
+      "name": "@effect-desktop/template-multi-window",
+      "dependencies": {
+        "@effect-desktop/bridge": "workspace:*",
+        "@effect-desktop/cli": "workspace:*",
+        "@effect-desktop/core": "workspace:*",
+        "@effect-desktop/native": "workspace:*",
+        "@effect-desktop/react": "workspace:*",
+        "@effect-desktop/test": "workspace:*",
+        "effect": "4.0.0-beta.60",
+        "react": "^19.2.3",
+        "react-dom": "^19.2.3",
+      },
+      "devDependencies": {
+        "@tailwindcss/vite": "^4.1.18",
+        "@types/react": "^19.2.7",
+        "@types/react-dom": "^19.2.3",
+        "@vitejs/plugin-react": "^5.1.1",
+        "tailwindcss": "^4.1.18",
+        "typescript": "^5.9.3",
+        "vite": "^8.0.10",
+      },
+    },
+    "templates/todo-sqlite": {
+      "name": "@effect-desktop/template-todo-sqlite",
+      "dependencies": {
+        "@effect-desktop/bridge": "workspace:*",
+        "@effect-desktop/cli": "workspace:*",
+        "@effect-desktop/core": "workspace:*",
         "@effect-desktop/native": "workspace:*",
         "@effect-desktop/react": "workspace:*",
         "@effect-desktop/test": "workspace:*",
@@ -209,6 +256,10 @@
     "@effect-desktop/react": ["@effect-desktop/react@workspace:packages/react"],
 
     "@effect-desktop/template-basic-react-tailwind": ["@effect-desktop/template-basic-react-tailwind@workspace:templates/basic-react-tailwind"],
+
+    "@effect-desktop/template-multi-window": ["@effect-desktop/template-multi-window@workspace:templates/multi-window"],
+
+    "@effect-desktop/template-todo-sqlite": ["@effect-desktop/template-todo-sqlite@workspace:templates/todo-sqlite"],
 
     "@effect-desktop/test": ["@effect-desktop/test@workspace:packages/test"],
 
@@ -1161,6 +1212,10 @@
     "@effect-desktop/playground/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "@effect-desktop/template-basic-react-tailwind/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
+    "@effect-desktop/template-multi-window/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
+    "@effect-desktop/template-todo-sqlite/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "@opentelemetry/sdk-logs/@opentelemetry/core": ["@opentelemetry/core@2.0.1", "", { "dependencies": { "@opentelemetry/semantic-conventions": "^1.29.0" }, "peerDependencies": { "@opentelemetry/api": ">=1.0.0 <1.10.0" } }, "sha512-MaZk9SJIDgo1peKevlbhP6+IwIiNPNmswNL4AF0WaQJLbHXjr9SrZMgS12+iqr9ToV4ZVosCcc0f8Rg67LXjxw=="],
 
