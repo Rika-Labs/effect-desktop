@@ -5,6 +5,7 @@ import { Rpcs, app as desktopApp, launch, make, provide, toLayer } from "./runti
 import type { DesktopApp, DesktopConfig, DesktopConfigError } from "./runtime/desktop-app.js"
 import type { NormalizedCapability } from "./runtime/permission-registry.js"
 import { PermissionRegistry } from "./runtime/permission-registry.js"
+import { describeRpcs } from "./runtime/rpc-descriptors.js"
 import type { WorkflowLayer } from "./runtime/workflow.js"
 import { WorkflowEngine, WorkflowEngineLive } from "./runtime/workflow.js"
 
@@ -44,6 +45,7 @@ export * from "./runtime/telemetry-otel.js"
 export * from "./runtime/framework-metrics.js"
 export * from "./runtime/window-state.js"
 export * from "./runtime/reactivity.js"
+export * from "./runtime/rpc-descriptors.js"
 export {
   DesktopApp,
   app as desktopApp,
@@ -130,5 +132,6 @@ export const Desktop = Object.freeze({
   make,
   provide,
   Rpcs,
-  toLayer
+  toLayer,
+  describeRpcs
 })

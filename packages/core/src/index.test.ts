@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { RpcEndpoint, RpcSupport } from "@rikalabs/effect-desktop/bridge"
 import { Effect, Layer, Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
@@ -64,4 +65,63 @@ test("Desktop.Rpcs.layer pairs an RpcGroup with its implementation for app adapt
   expect(definition.layers).toHaveLength(1)
   expect(definition.rpcLayers).toHaveLength(1)
   expect(definition.rpcLayers[0]?.group.requests.has("Notes.Ping")).toBe(true)
+})
+
+test("describeRpcs derives endpoint descriptors from provided RpcGroups", async () => {
+  const core = await import("./index.js")
+  const List = Rpc.make("Notes.List", { success: Schema.Array(Schema.String) }).pipe(
+    RpcEndpoint.query
+  )
+  const Tail = Rpc.make("Notes.Tail", {
+    success: Schema.String,
+    error: Schema.Never,
+    stream: true
+  }).pipe(RpcSupport.unsupported("host stream is unavailable"))
+  const NotesRpcs = RpcGroup.make(List, Tail)
+  const definition = core.Desktop.make({
+    windows: {
+      main: {
+        title: "Notes"
+      }
+    }
+  }).pipe(
+    core.Desktop.provide(
+      core.Desktop.Rpcs.layer(
+        NotesRpcs,
+        NotesRpcs.toLayer({
+          "Notes.List": () => Effect.succeed(["inbox"]),
+          "Notes.Tail": () => Effect.never
+        })
+      )
+    )
+  )
+
+  expect(core.Desktop.describeRpcs(definition, NotesRpcs).map((descriptor) => descriptor.name)).toEqual([
+    "list",
+    "tail"
+  ])
+  expect(core.Desktop.describeRpcs(definition, NotesRpcs).map((descriptor) => descriptor.kind)).toEqual([
+    "query",
+    "stream"
+  ])
+  expect(core.Desktop.describeRpcs(definition, NotesRpcs)[1]?.support).toEqual({
+    status: "unsupported",
+    reason: "host stream is unavailable"
+  })
+})
+
+test("describeRpcs fails loudly when a group is not provided to the app", async () => {
+  const core = await import("./index.js")
+  const Missing = RpcGroup.make(Rpc.make("Notes.Missing"))
+  const definition = core.Desktop.make({
+    windows: {
+      main: {
+        title: "Notes"
+      }
+    }
+  })
+
+  expect(() => core.Desktop.describeRpcs(definition, Missing)).toThrow(
+    core.MissingDesktopRpcsError
+  )
 })
