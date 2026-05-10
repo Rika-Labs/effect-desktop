@@ -14,6 +14,7 @@ import {
   makeHostProtocolInvalidOutputError,
   rpcCapability,
   rpcEndpointKind,
+  rpcSupport,
   type ApiContractSpec,
   type HostProtocolError
 } from "./index.js"
@@ -253,6 +254,22 @@ test("Api.Tag rejects invalid backpressure values as a typed Effect failure", as
   expectFailure(exit, InvalidApiContractSpec)
 })
 
+test("Api.Tag rejects invalid support metadata as a typed Effect failure", async () => {
+  const exit = await Effect.runPromiseExit(
+    Api.Tag("Test.InvalidSupport")<unknown>()({
+      call: {
+        ...validMethodSpec(),
+        support: {
+          status: "unsupported",
+          reason: ""
+        }
+      }
+    })
+  )
+
+  expectFailure(exit, InvalidApiContractSpec)
+})
+
 test("Api.Tag rejects invalid event specs as a typed Effect failure", async () => {
   const exit = await Effect.runPromiseExit(
     Api.Tag("Test.InvalidEvent")<unknown>()(
@@ -362,7 +379,11 @@ test("Api.Tag lowers methods, streams, permissions, and events into RpcGroup", a
           input: Schema.Struct({ id: Schema.String }),
           output: Schema.Struct({ ok: Schema.Boolean }),
           error: Schema.Never,
-          permission: "notes:open"
+          permission: "notes:open",
+          support: {
+            status: "unsupported",
+            reason: "host adapter does not implement open yet"
+          }
         },
         watch: {
           input: Schema.Void,
@@ -393,6 +414,11 @@ test("Api.Tag lowers methods, streams, permissions, and events into RpcGroup", a
       onSome: (capability) => capability
     })
   ).toEqual({ kind: "notes:open" })
+  expect(rpcSupport(request(group, "Test.LegacyRpcLowering.open"))).toEqual({
+    status: "unsupported",
+    reason: "host adapter does not implement open yet"
+  })
+  expect(Object.isFrozen(LegacyApi.spec.open.support)).toBe(true)
   expect(
     RpcSchema.isStreamSchema(successSchema(request(group, "Test.LegacyRpcLowering.watch")))
   ).toBe(true)

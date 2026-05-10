@@ -1,7 +1,7 @@
 import { Data, Effect, Option, Schema, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
-import { RpcCapability, RpcEndpoint } from "./rpc-endpoint.js"
+import { RpcCapability, RpcEndpoint, RpcSupport, type RpcSupportMetadata } from "./rpc-endpoint.js"
 
 export interface ApiMethodSpec {
   readonly input: Schema.Schema<unknown>
@@ -13,6 +13,7 @@ export interface ApiMethodSpec {
   readonly idempotent?: boolean
   readonly cancellable?: boolean
   readonly backpressure?: BackpressureSpec
+  readonly support?: RpcSupportMetadata
 }
 
 export interface ApiEventSpec {
@@ -332,6 +333,9 @@ const validateMethodSpec = (
     if (spec.backpressure !== undefined) {
       yield* validateBackpressureSpec(tag, method, spec.backpressure)
     }
+    if (spec.support !== undefined) {
+      yield* validateSupportSpec(tag, method, spec.support)
+    }
   })
 
 const validateContractEvents = (
@@ -397,10 +401,45 @@ const validateBackpressureSpec = (
     }
   })
 
+const validateSupportSpec = (
+  tag: string,
+  method: string,
+  spec: RpcSupportMetadata
+): Effect.Effect<void, InvalidApiContractSpec, never> =>
+  Effect.gen(function* () {
+    if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
+      return yield* Effect.fail(invalidSpec(tag, method, "support must be an object"))
+    }
+
+    if (!supportStatuses.has(spec.status)) {
+      return yield* Effect.fail(
+        invalidSpec(tag, method, "support.status must be supported or unsupported")
+      )
+    }
+
+    if (spec.status === "supported") {
+      if ("reason" in spec && spec.reason !== undefined) {
+        return yield* Effect.fail(
+          invalidSpec(tag, method, "support.reason is only allowed when status is unsupported")
+        )
+      }
+      return
+    }
+
+    if (typeof spec.reason !== "string" || spec.reason.length === 0) {
+      return yield* Effect.fail(
+        invalidSpec(tag, method, "unsupported methods must declare a non-empty support.reason")
+      )
+    }
+  })
+
 const freezeContractSpec = <Spec extends ApiContractSpec>(spec: Spec): Spec => {
   for (const methodSpec of Object.values(spec)) {
     if (methodSpec.backpressure !== undefined) {
       Object.freeze(methodSpec.backpressure)
+    }
+    if (methodSpec.support !== undefined) {
+      Object.freeze(methodSpec.support)
     }
     if (isStreamSpec(methodSpec.output) && methodSpec.output.backpressure !== undefined) {
       Object.freeze(methodSpec.output.backpressure)
@@ -475,10 +514,18 @@ const apiMethodSuccessSchema = (
 const annotateApiMethodRpc = (rpc: Rpc.Any, spec: ApiMethodSpec): Rpc.Any => {
   const endpointRpc =
     spec.idempotent === true ? RpcEndpoint.query(rpc) : RpcEndpoint.mutation(rpc)
+  const capabilityRpc =
+    spec.permission === undefined
+      ? endpointRpc
+      : RpcCapability({ kind: spec.permission })(endpointRpc)
 
-  return spec.permission === undefined
-    ? endpointRpc
-    : RpcCapability({ kind: spec.permission })(endpointRpc)
+  if (spec.support === undefined) {
+    return capabilityRpc
+  }
+
+  return spec.support.status === "supported"
+    ? RpcSupport.supported(capabilityRpc)
+    : RpcSupport.unsupported(spec.support.reason)(capabilityRpc)
 }
 
 const isSchema = (value: unknown): value is Schema.Schema<unknown> => {
@@ -515,4 +562,5 @@ const backpressureOverflows = new Set<NonNullable<BackpressureSpec["overflow"]>>
   "dropNewest",
   "block"
 ])
+const supportStatuses = new Set<RpcSupportMetadata["status"]>(["supported", "unsupported"])
 let registryFrozen = false
