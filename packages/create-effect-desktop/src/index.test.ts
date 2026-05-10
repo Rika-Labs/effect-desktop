@@ -1,4 +1,4 @@
-import { expect, test, afterEach } from "bun:test"
+import { expect, test, afterEach, beforeEach } from "bun:test"
 import { existsSync, mkdirSync, rmSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
@@ -9,9 +9,13 @@ import { scaffold, TEMPLATE_NAMES, type RendererStorage, type ScaffoldOptions } 
 const testDir = join(tmpdir(), "create-effect-desktop-test")
 const cliPath = fileURLToPath(new URL("bin.ts", import.meta.url))
 
+beforeEach(() => {
+  rmSync(testDir, { recursive: true, force: true })
+})
+
 afterEach(() => {
   if (existsSync(testDir)) {
-    rmSync(testDir, { recursive: true })
+    rmSync(testDir, { recursive: true, force: true })
   }
 })
 
