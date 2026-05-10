@@ -41,7 +41,7 @@
     {
       "name": "AppBeforeQuitEvent",
       "kind": "class",
-      "signature": "export class AppBeforeQuitEvent extends Schema.Class<AppBeforeQuitEvent>(\"AppBeforeQuitEvent\")({ traceId: Schema.String }) {}"
+      "signature": "export class AppBeforeQuitEvent extends Schema.Class<AppBeforeQuitEvent>(\"AppBeforeQuitEvent\")({ traceId: PrintableNonEmptyString }) {}"
     },
     {
       "name": "AppClient",
@@ -56,7 +56,7 @@
     {
       "name": "AppCommandLine",
       "kind": "class",
-      "signature": "export class AppCommandLine extends Schema.Class<AppCommandLine>(\"AppCommandLine\")({ argv: Schema.Array(Schema.String), cwd: Schema.String }) {}"
+      "signature": "export class AppCommandLine extends Schema.Class<AppCommandLine>(\"AppCommandLine\")({ argv: Schema.Array(ArgString), cwd: BridgeSafeNonEmptyString }) {}"
     },
     {
       "name": "AppError",
@@ -136,7 +136,7 @@
     {
       "name": "AppInfo",
       "kind": "class",
-      "signature": "export class AppInfo extends Schema.Class<AppInfo>(\"AppInfo\")({ id: Schema.String, name: Schema.String, version: Schema.String }) {}"
+      "signature": "export class AppInfo extends Schema.Class<AppInfo>(\"AppInfo\")({ id: PrintableNonEmptyString, name: PrintableNonEmptyString, version: AppVersion }) {}"
     },
     {
       "name": "AppLive",
@@ -166,12 +166,12 @@
     {
       "name": "AppOpenUrlEvent",
       "kind": "class",
-      "signature": "export class AppOpenUrlEvent extends Schema.Class<AppOpenUrlEvent>(\"AppOpenUrlEvent\")({ url: Schema.String }) {}"
+      "signature": "export class AppOpenUrlEvent extends Schema.Class<AppOpenUrlEvent>(\"AppOpenUrlEvent\")({ url: AppUrl }) {}"
     },
     {
       "name": "AppProtocolInput",
       "kind": "class",
-      "signature": "export class AppProtocolInput extends Schema.Class<AppProtocolInput>(\"AppProtocolInput\")({ scheme: Schema.String }) {}"
+      "signature": "export class AppProtocolInput extends Schema.Class<AppProtocolInput>(\"AppProtocolInput\")({ scheme: ProtocolScheme }) {}"
     },
     {
       "name": "AppProtocolOptions",
@@ -201,7 +201,7 @@
     {
       "name": "AppSecondInstanceEvent",
       "kind": "class",
-      "signature": "export class AppSecondInstanceEvent extends Schema.Class<AppSecondInstanceEvent>( \"AppSecondInstanceEvent\" )({ argv: Schema.Array(Schema.String), cwd: Schema.String, traceId: Schema.String }) {}"
+      "signature": "export class AppSecondInstanceEvent extends Schema.Class<AppSecondInstanceEvent>( \"AppSecondInstanceEvent\" )({ argv: Schema.Array(ArgString), cwd: BridgeSafeNonEmptyString, traceId: PrintableNonEmptyString }) {}"
     },
     {
       "name": "AppServiceApi",
@@ -1881,7 +1881,7 @@
     {
       "name": "ProtocolDenyInput",
       "kind": "class",
-      "signature": "export class ProtocolDenyInput extends Schema.Class<ProtocolDenyInput>(\"ProtocolDenyInput\")({ scheme: Schema.String, path: Schema.String }) {}"
+      "signature": "export class ProtocolDenyInput extends Schema.Class<ProtocolDenyInput>(\"ProtocolDenyInput\")({ scheme: ProtocolScheme, path: Schema.String }) {}"
     },
     {
       "name": "ProtocolDenyOptions",
@@ -1906,7 +1906,7 @@
     {
       "name": "ProtocolRegisterAppProtocolInput",
       "kind": "class",
-      "signature": "export class ProtocolRegisterAppProtocolInput extends Schema.Class<ProtocolRegisterAppProtocolInput>( \"ProtocolRegisterAppProtocolInput\" )({ scheme: Schema.String }) {}"
+      "signature": "export class ProtocolRegisterAppProtocolInput extends Schema.Class<ProtocolRegisterAppProtocolInput>( \"ProtocolRegisterAppProtocolInput\" )({ scheme: ProtocolScheme }) {}"
     },
     {
       "name": "ProtocolRegisterAppProtocolOptions",
@@ -1914,9 +1914,14 @@
       "signature": "export type ProtocolRegisterAppProtocolOptions = Schema.Schema.Type< typeof ProtocolRegisterAppProtocolInput >"
     },
     {
+      "name": "ProtocolScheme",
+      "kind": "value",
+      "signature": "const ProtocolScheme: Schema.String"
+    },
+    {
       "name": "ProtocolServeAssetInput",
       "kind": "class",
-      "signature": "export class ProtocolServeAssetInput extends Schema.Class<ProtocolServeAssetInput>( \"ProtocolServeAssetInput\" )({ scheme: Schema.String, root: Schema.String }) {}"
+      "signature": "export class ProtocolServeAssetInput extends Schema.Class<ProtocolServeAssetInput>( \"ProtocolServeAssetInput\" )({ scheme: ProtocolScheme, root: Schema.String }) {}"
     },
     {
       "name": "ProtocolServeAssetOptions",
@@ -1926,7 +1931,7 @@
     {
       "name": "ProtocolServeRouteInput",
       "kind": "class",
-      "signature": "export class ProtocolServeRouteInput extends Schema.Class<ProtocolServeRouteInput>( \"ProtocolServeRouteInput\" )({ scheme: Schema.String, route: Schema.String }) {}"
+      "signature": "export class ProtocolServeRouteInput extends Schema.Class<ProtocolServeRouteInput>( \"ProtocolServeRouteInput\" )({ scheme: ProtocolScheme, route: Schema.String }) {}"
     },
     {
       "name": "ProtocolServeRouteOptions",
