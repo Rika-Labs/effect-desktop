@@ -68,7 +68,8 @@ test("pack-installable-cli emits a workspace-free CLI package installable by a t
       help.exited
     ])
     expect(helpExitCode).toBe(1)
-    expect(helpStdout + helpStderr).toContain("USAGE\n  desktop")
+    expect(helpStdout + helpStderr).toContain("USAGE\n  desktop <subcommand> [flags]")
+    expect(helpStdout + helpStderr).toContain("build       Build renderer, runtime, native host")
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
