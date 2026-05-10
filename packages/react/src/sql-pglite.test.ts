@@ -3,8 +3,7 @@ import { Layer } from "effect"
 
 import {
   RendererPgliteLive,
-  type RendererPgliteOptions,
-  type RendererSqlBackend
+  type RendererPgliteOptions
 } from "./sql-pglite.js"
 
 test("RendererPgliteLive produces a Layer", () => {
@@ -15,11 +14,6 @@ test("RendererPgliteLive produces a Layer", () => {
 test("RendererPgliteLive accepts dataDir option", () => {
   const layer = RendererPgliteLive({ dataDir: "/tmp/test-db" })
   expect(Layer.isLayer(layer)).toBe(true)
-})
-
-test("RendererSqlBackend type covers pglite and sqlite-wasm literals", () => {
-  const backends: readonly RendererSqlBackend[] = ["pglite", "sqlite-wasm"]
-  expect(backends).toHaveLength(2)
 })
 
 test("RendererPgliteOptions accepts optional dataDir only", () => {

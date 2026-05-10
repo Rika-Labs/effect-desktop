@@ -5,8 +5,6 @@ import { SqlError, UnknownError } from "effect/unstable/sql/SqlError"
 export type { PgliteClient } from "@effect/sql-pglite/PgliteClient"
 export type { PgliteClientConfig } from "@effect/sql-pglite/PgliteClient"
 
-export type RendererSqlBackend = "pglite" | "sqlite-wasm"
-
 export interface RendererPgliteOptions {
   readonly dataDir?: string | undefined
 }
