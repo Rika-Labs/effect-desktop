@@ -224,6 +224,24 @@ test("validatePermissions fails with DesktopConfigError when capability kind is 
   }
 })
 
+test("validatePermissions fails when declared capability does not cover the required scope", async () => {
+  const declared: readonly NormalizedCapability[] = [P.filesystemRead({ roots: ["/tmp/app"] })]
+  const required: readonly NormalizedCapability[] = [P.filesystemRead({ roots: ["/tmp/other"] })]
+
+  const exit = await Effect.runPromiseExit(validatePermissions(declared, required))
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const fail = exit.cause.reasons.find((r) => r._tag === "Fail")
+    expect(fail).toBeDefined()
+    if (fail?._tag === "Fail") {
+      expect(fail.error).toBeInstanceOf(DesktopConfigError)
+      const error = fail.error as DesktopConfigError
+      expect(error.reason).toBe("undeclared-capability")
+      expect(error.contract).toBe("filesystem.read")
+    }
+  }
+})
+
 test("validatePermissions succeeds with empty required list", async () => {
   const declared: readonly NormalizedCapability[] = []
   const required: readonly NormalizedCapability[] = []

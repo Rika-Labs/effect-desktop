@@ -4,6 +4,7 @@ import { Context, Data, Effect, Layer, Option } from "effect"
 import { RpcMiddleware } from "effect/unstable/rpc"
 
 import {
+  capabilityCovers,
   type NormalizedCapability,
   PermissionActor,
   PermissionContext,
@@ -189,7 +190,7 @@ export const validatePermissions = (
 ): Effect.Effect<void, DesktopConfigError, never> =>
   Effect.gen(function* () {
     for (const req of required) {
-      const found = declared.some((cap) => cap.kind === req.kind)
+      const found = declared.some((cap) => capabilityCovers(cap, req))
       if (!found) {
         return yield* Effect.fail(
           new DesktopConfigError({
