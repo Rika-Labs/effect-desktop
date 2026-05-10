@@ -39,6 +39,16 @@
       "signature": "const Api: Readonly<{ Resource: <Kind extends string, State extends string>(kind: Kind, state: State) => ApiResourceSpec<Kind, State>; Stream: <Chunk extends Schema.Schema<unknown>, Error extends Schema.Schema<unknown>>(chunk: Chunk, error: Error, backpressure?: BackpressureSpec) => ApiStreamSpec & { readonly chunk: Chunk; readonly error: Error; }; Tag: <Tag extends string>(tag: Tag) => <Self>() => <Spec extends ApiContractSpec, Events extends ApiContractEvents = Record<never, never>>(spec: Spec, events?: Events) => Effect.Effect<ApiContractClass<Tag, Spec, Events>, ApiContractError, never>; entries: () => Effect.Effect<readonly ApiContractClass[], never, never>; freeze: () => Effect.Effect<void, never, never>; get: (tag: string) => Effect.Effect<Option.Option<ApiContractClass>, never, never>; }>"
     },
     {
+      "name": "APP_EXPORT_ENV",
+      "kind": "value",
+      "signature": "const APP_EXPORT_ENV: \"EFFECT_DESKTOP_APP_EXPORT\""
+    },
+    {
+      "name": "APP_MODULE_ENV",
+      "kind": "value",
+      "signature": "const APP_MODULE_ENV: \"EFFECT_DESKTOP_APP_MODULE\""
+    },
+    {
       "name": "approvalAuditEvent",
       "kind": "value",
       "signature": "const approvalAuditEvent: (input: ApprovalAuditEventInput) => AuditEvent"
@@ -361,12 +371,12 @@
     {
       "name": "describeRpcs",
       "kind": "value",
-      "signature": "const describeRpcs: <Group extends RpcGroupWithRequests>(app: Pick<DesktopAppDefinition<unknown, unknown>, \"rpcLayers\">, group: Group) => readonly RpcEndpointDescriptor[]"
+      "signature": "const describeRpcs: <Group extends RpcGroupWithRequests>(app: DesktopRpcDescriptorSource, group: Group) => readonly RpcEndpointDescriptor[]"
     },
     {
       "name": "Desktop",
       "kind": "value",
-      "signature": "const Desktop: Readonly<{ Api: Readonly<{ Resource: <Kind extends string, State extends string>(kind: Kind, state: State) => import(\"@rikalabs/effect-desktop/bridge\").ApiResourceSpec<Kind, State>; Stream: <Chunk extends import(\"effect/Schema\").Schema<unknown>, Error extends import(\"effect/Schema\").Schema<unknown>>(chunk: Chunk, error: Error, backpressure?: import(\"@rikalabs/effect-desktop/bridge\").BackpressureSpec) => import(\"@rikalabs/effect-desktop/bridge\").ApiStreamSpec & { readonly chunk: Chunk; readonly error: Error; }; Tag: <Tag extends string>(tag: Tag) => <Self>() => <Spec extends import(\"@rikalabs/effect-desktop/bridge\").ApiContractSpec, Events extends import(\"@rikalabs/effect-desktop/bridge\").ApiContractEvents = Record<never, never>>(spec: Spec, events?: Events) => Effect.Effect<import(\"@rikalabs/effect-desktop/bridge\").ApiContractClass<Tag, Spec, Events>, import(\"@rikalabs/effect-desktop/bridge\").ApiContractError, never>; entries: () => Effect.Effect<readonly import(\"@rikalabs/effect-desktop/bridge\").ApiContractClass[], never, never>; freeze: () => Effect.Effect<void, never, never>; get: (tag: string) => Effect.Effect<import(\"effect/Option\").Option<import(\"@rikalabs/effect-desktop/bridge\").ApiContractClass>, never, never>; }>; Client: <Contracts extends Readonly<Record<string, import(\"@rikalabs/effect-desktop/bridge\").ApiContractClass>>>(contracts: Contracts, exchange: import(\"@rikalabs/effect-desktop/bridge\").ApiClientExchange, options?: import(\"@rikalabs/effect-desktop/bridge\").ApiClientOptions) => import(\"@rikalabs/effect-desktop/bridge\").ApiClient<Contracts>; Handlers: (<Layers extends readonly { readonly contract: import(\"@rikalabs/effect-desktop/bridge\").ApiContractClass<string, import(\"@rikalabs/effect-desktop/bridge\").ApiContractSpec>; readonly handlers: object; }[]>(...layers: Layers) => import(\"@rikalabs/effect-desktop/bridge\").ApiHandlerRuntime<import(\"@rikalabs/effect-desktop/bridge\").ApiLayerEnvironment<Layers[number]>>) & { withOptions: <Layers extends readonly { readonly contract: import(\"@rikalabs/effect-desktop/bridge\").ApiContractClass<string, import(\"@rikalabs/effect-desktop/bridge\").ApiContractSpec>; readonly handlers: object; }[]>(options: import(\"@rikalabs/effect-desktop/bridge\").ApiHandlerRuntimeOptions, ...layers: Layers) => import(\"@rikalabs/effect-desktop/bridge\").ApiHandlerRuntime<import(\"@rikalabs/effect-desktop/bridge\").ApiLayerEnvironment<Layers[number]>>; }; RedactionFilter: Readonly<{ redact: <A>(record: A, options?: import(\"@rikalabs/effect-desktop/bridge\").RedactionFilterOptions) => A; redactedValue: \"[REDACTED]\"; defaultPattern: RegExp; }>; RpcCapability: <Capability extends import(\"@rikalabs/effect-desktop/bridge\").RpcCapabilityMetadata>(capability: Capability) => <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@rikalabs/effect-desktop/bridge\").WithRpcCapability<R, Capability>; RpcEndpoint: Readonly<{ query: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@rikalabs/effect-desktop/bridge\").WithRpcEndpointKind<R, \"query\">; mutation: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@rikalabs/effect-desktop/bridge\").WithRpcEndpointKind<R, \"mutation\">; }>; RpcSupport: Readonly<{ supported: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@rikalabs/effect-desktop/bridge\").WithRpcSupport<R, { readonly status: \"supported\"; }>; unsupported: (reason: string) => <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@rikalabs/effect-desktop/bridge\").WithRpcSupport<R, { readonly status: \"unsupported\"; readonly reason: string; }>; }>; app: { (): Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>; (options: DesktopAppOptionsWithPermissions): Layer.Layer<WorkflowEngine.WorkflowEngine, never, PermissionRegistry>; <RIn = never, E = never>(config: DesktopConfig<RIn, E>): Layer.Layer<DesktopApp, DesktopConfigError | E, RIn>; }; launch: (layer: Layer.Layer<DesktopApp, DesktopConfigError, never>) => Effect.Effect<never, DesktopConfigError, never>; make: (config: import(\"./runtime/desktop-app.js\").DesktopMakeConfig) => import(\"./runtime/desktop-app.js\").DesktopAppDefinition<never, never>; provide: { <Provided, E, R>(layer: Layer.Layer<Provided, E, R>): <AppE, AppR>(definition: import(\"./runtime/desktop-app.js\").DesktopAppDefinition<AppE, AppR>) => import(\"./runtime/desktop-app.js\").DesktopAppDefinition<E | AppE, R | AppR>; <Rpcs extends import(\"effect/unstable/rpc/Rpc\").Any, E, R>(rpcLayer: import(\"./runtime/desktop-app.js\").DesktopRpcLayer<Rpcs, E, R>): <AppE, AppR>(definition: import(\"./runtime/desktop-app.js\").DesktopAppDefinition<AppE, AppR>) => import(\"./runtime/desktop-app.js\").DesktopAppDefinition<E | AppE, R | AppR>; }; Rpcs: Readonly<{ layer: <Rpcs extends import(\"effect/unstable/rpc/Rpc\").Any, E, R>(group: import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<Rpcs>, layer: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").ToHandler<Rpcs>, E, R>) => import(\"./runtime/desktop-app.js\").DesktopRpcLayer<Rpcs, E, R>; }>; toLayer: <E, R>(definition: import(\"./runtime/desktop-app.js\").DesktopAppDefinition<E, R>) => Layer.Layer<DesktopApp, DesktopConfigError | E, R>; describeRpcs: <Group extends import(\"./runtime/rpc-descriptors.js\").RpcGroupWithRequests>(app: Pick<import(\"./runtime/desktop-app.js\").DesktopAppDefinition<unknown, unknown>, \"rpcLayers\">, group: Group) => readonly import(\"./runtime/rpc-descriptors.js\").RpcEndpointDescriptor[]; }>"
+      "signature": "const Desktop: Readonly<{ Api: Readonly<{ Resource: <Kind extends string, State extends string>(kind: Kind, state: State) => import(\"@effect-desktop/bridge\").ApiResourceSpec<Kind, State>; Stream: <Chunk extends import(\"effect/Schema\").Schema<unknown>, Error extends import(\"effect/Schema\").Schema<unknown>>(chunk: Chunk, error: Error, backpressure?: import(\"@effect-desktop/bridge\").BackpressureSpec) => import(\"@effect-desktop/bridge\").ApiStreamSpec & { readonly chunk: Chunk; readonly error: Error; }; Tag: <Tag extends string>(tag: Tag) => <Self>() => <Spec extends import(\"@effect-desktop/bridge\").ApiContractSpec, Events extends import(\"@effect-desktop/bridge\").ApiContractEvents = Record<never, never>>(spec: Spec, events?: Events) => Effect.Effect<import(\"@effect-desktop/bridge\").ApiContractClass<Tag, Spec, Events>, import(\"@effect-desktop/bridge\").ApiContractError, never>; entries: () => Effect.Effect<readonly import(\"@effect-desktop/bridge\").ApiContractClass[], never, never>; freeze: () => Effect.Effect<void, never, never>; get: (tag: string) => Effect.Effect<import(\"effect/Option\").Option<import(\"@effect-desktop/bridge\").ApiContractClass>, never, never>; }>; Client: <Contracts extends Readonly<Record<string, import(\"@effect-desktop/bridge\").ApiContractClass>>>(contracts: Contracts, exchange: import(\"@effect-desktop/bridge\").ApiClientExchange, options?: import(\"@effect-desktop/bridge\").ApiClientOptions) => import(\"@effect-desktop/bridge\").ApiClient<Contracts>; Handlers: (<Layers extends readonly { readonly contract: import(\"@effect-desktop/bridge\").ApiContractClass<string, import(\"@effect-desktop/bridge\").ApiContractSpec>; readonly handlers: object; }[]>(...layers: Layers) => import(\"@effect-desktop/bridge\").ApiHandlerRuntime<import(\"@effect-desktop/bridge\").ApiLayerEnvironment<Layers[number]>>) & { withOptions: <Layers extends readonly { readonly contract: import(\"@effect-desktop/bridge\").ApiContractClass<string, import(\"@effect-desktop/bridge\").ApiContractSpec>; readonly handlers: object; }[]>(options: import(\"@effect-desktop/bridge\").ApiHandlerRuntimeOptions, ...layers: Layers) => import(\"@effect-desktop/bridge\").ApiHandlerRuntime<import(\"@effect-desktop/bridge\").ApiLayerEnvironment<Layers[number]>>; }; RedactionFilter: Readonly<{ redact: <A>(record: A, options?: import(\"@effect-desktop/bridge\").RedactionFilterOptions) => A; redactedValue: \"[REDACTED]\"; defaultPattern: RegExp; }>; RpcCapability: <Capability extends import(\"@effect-desktop/bridge\").RpcCapabilityMetadata>(capability: Capability) => <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcCapability<R, Capability>; RpcEndpoint: Readonly<{ query: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcEndpointKind<R, \"query\">; mutation: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcEndpointKind<R, \"mutation\">; }>; RpcSupport: Readonly<{ supported: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcSupport<R, { readonly status: \"supported\"; }>; unsupported: (reason: string) => <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcSupport<R, { readonly status: \"unsupported\"; readonly reason: string; }>; }>; app: { (): Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>; (options: DesktopAppOptionsWithPermissions): Layer.Layer<WorkflowEngine.WorkflowEngine, never, PermissionRegistry>; <RIn = never, E = never>(config: DesktopConfig<RIn, E>): Layer.Layer<DesktopApp, DesktopConfigError | E, RIn>; }; launch: (layer: Layer.Layer<DesktopApp, DesktopConfigError, never>) => Effect.Effect<never, DesktopConfigError, never>; make: (config: import(\"./runtime/desktop-app.js\").DesktopMakeConfig) => import(\"./runtime/desktop-app.js\").DesktopAppDefinition<never, never>; manifest: <E, R>(definition: import(\"./runtime/desktop-app.js\").DesktopAppDefinition<E, R>) => import(\"./runtime/desktop-app.js\").DesktopAppManifest; provide: { <Provided, E, R>(layer: Layer.Layer<Provided, E, R>): <AppE, AppR>(definition: import(\"./runtime/desktop-app.js\").DesktopAppDefinition<AppE, AppR>) => import(\"./runtime/desktop-app.js\").DesktopAppDefinition<E | AppE, R | AppR>; <Rpcs extends import(\"effect/unstable/rpc/Rpc\").Any, E, R>(rpcLayer: import(\"./runtime/desktop-app.js\").DesktopRpcLayer<Rpcs, E, R>): <AppE, AppR>(definition: import(\"./runtime/desktop-app.js\").DesktopAppDefinition<AppE, AppR>) => import(\"./runtime/desktop-app.js\").DesktopAppDefinition<E | AppE, R | AppR>; }; Rpcs: Readonly<{ layer: <Rpcs extends import(\"effect/unstable/rpc/Rpc\").Any, E, R>(group: import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<Rpcs>, layer: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").ToHandler<Rpcs>, E, R>) => import(\"./runtime/desktop-app.js\").DesktopRpcLayer<Rpcs, E, R>; }>; toLayer: <E, R>(definition: import(\"./runtime/desktop-app.js\").DesktopAppDefinition<E, R>) => Layer.Layer<DesktopApp, DesktopConfigError | E, R>; describeRpcs: <Group extends import(\"./runtime/rpc-descriptors.js\").RpcGroupWithRequests>(app: import(\"./runtime/rpc-descriptors.js\").DesktopRpcDescriptorSource, group: Group) => readonly import(\"./runtime/rpc-descriptors.js\").RpcEndpointDescriptor[]; }>"
     },
     {
       "name": "desktopApp",
@@ -387,6 +397,11 @@
       "name": "DesktopAppDefinition",
       "kind": "interface",
       "signature": "export interface DesktopAppDefinition<E = never, R = never> { readonly _tag: \"DesktopAppDefinition\" readonly id: string readonly windows: Readonly<Record<string, WindowSpec>> readonly layers: ReadonlyArray<Layer.Layer<unknown, E, R>> readonly rpcLayers: ReadonlyArray<AnyDesktopRpcLayer> readonly permissions: ReadonlyArray<NormalizedCapability> readonly workflows: ReadonlyArray<WorkflowLayer> pipe(): DesktopAppDefinition<E, R> pipe<A>(ab: (self: DesktopAppDefinition<E, R>) => A): A pipe<A, B>(ab: (self: DesktopAppDefinition<E, R>) => A, bc: (a: A) => B): B pipe<A, B, C>(ab: (self: DesktopAppDefinition<E, R>) => A, bc: (a: A) => B, cd: (b: B) => C): C }"
+    },
+    {
+      "name": "DesktopAppManifest",
+      "kind": "interface",
+      "signature": "export interface DesktopAppManifest { readonly _tag: \"DesktopAppManifest\" readonly id: string readonly windows: Readonly<Record<string, WindowSpec>> readonly rpcGroups: ReadonlyArray<DesktopRpcGroupDescriptor> }"
     },
     {
       "name": "DesktopAppOptions",
@@ -424,6 +439,26 @@
       "signature": "export interface DesktopMakeConfig { readonly id?: string readonly windows: Readonly<Record<string, WindowSpec>> readonly permissions?: ReadonlyArray<NormalizedCapability> readonly workflows?: ReadonlyArray<WorkflowLayer> }"
     },
     {
+      "name": "DesktopPublicErrorCategory",
+      "kind": "type",
+      "signature": "export type DesktopPublicErrorCategory = \"usage\" | \"configuration\" | \"contract\""
+    },
+    {
+      "name": "DesktopPublicErrorFields",
+      "kind": "interface",
+      "signature": "export interface DesktopPublicErrorFields { readonly code: string readonly category: DesktopPublicErrorCategory readonly summary: string readonly details: Readonly<Record<string, unknown>> readonly actor: string readonly remediation: string readonly docsUrl: string }"
+    },
+    {
+      "name": "DesktopRpcDescriptorSource",
+      "kind": "type",
+      "signature": "export type DesktopRpcDescriptorSource = | Pick<DesktopAppDefinition<unknown, unknown>, \"rpcLayers\"> | Pick<DesktopAppManifest, \"rpcGroups\">"
+    },
+    {
+      "name": "DesktopRpcGroupDescriptor",
+      "kind": "interface",
+      "signature": "export interface DesktopRpcGroupDescriptor { readonly _tag: \"DesktopRpcGroup\" readonly group: RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> } }"
+    },
+    {
       "name": "DesktopRpcLayer",
       "kind": "interface",
       "signature": "export interface DesktopRpcLayer<Rpcs extends Rpc.Any = Rpc.Any, E = never, R = never> { readonly _tag: \"DesktopRpcsLayer\" readonly group: RpcGroup.RpcGroup<Rpcs> readonly layer: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R> }"
@@ -432,6 +467,11 @@
       "name": "DesktopSpineConfigError",
       "kind": "class",
       "signature": "export class DesktopConfigError extends Data.TaggedError(\"DesktopConfigError\")<{ readonly appId: string readonly reason: \"missing-permission\" | \"invalid-config\" | \"duplicate-rpc\" readonly message: string readonly contract?: string readonly method?: string readonly permission?: string }> {}"
+    },
+    {
+      "name": "DuplicateDesktopRpcNameError",
+      "kind": "class",
+      "signature": "export class DuplicateDesktopRpcNameError extends Data.TaggedError(\"DuplicateDesktopRpcNameError\")<{ readonly message: string readonly name: string readonly tags: readonly string[] readonly code: string readonly category: DesktopPublicErrorCategory readonly summary: string readonly details: Readonly<Record<string, unknown>> readonly actor: string readonly remediation: string readonly docsUrl: string }> {}"
     },
     {
       "name": "DurableClock",
@@ -709,6 +749,11 @@
       "signature": "const makeConnection: (transport: FramedTransport, operation: string) => TransportConnection"
     },
     {
+      "name": "makeDuplicateDesktopRpcNameError",
+      "kind": "value",
+      "signature": "const makeDuplicateDesktopRpcNameError: (name: string, tags: readonly string[], message: string) => DuplicateDesktopRpcNameError"
+    },
+    {
       "name": "makeFilesystem",
       "kind": "value",
       "signature": "const makeFilesystem: (registry: ResourceRegistryApi, options?: FilesystemOptions) => Effect.Effect<FilesystemApi, never, never>"
@@ -717,6 +762,21 @@
       "name": "makeInMemoryTransportPair",
       "kind": "value",
       "signature": "const makeInMemoryTransportPair: (options?: InMemoryTransportPairOptions) => Effect.Effect<readonly [TransportConnection, TransportConnection], never, never>"
+    },
+    {
+      "name": "makeMissingDesktopContextError",
+      "kind": "value",
+      "signature": "const makeMissingDesktopContextError: (framework: DesktopFramework, message: string) => MissingDesktopContextError"
+    },
+    {
+      "name": "makeMissingDesktopRpcClientError",
+      "kind": "value",
+      "signature": "const makeMissingDesktopRpcClientError: (framework: DesktopFramework, tag: string, message: string) => MissingDesktopRpcClientError"
+    },
+    {
+      "name": "makeMissingDesktopRpcsError",
+      "kind": "value",
+      "signature": "const makeMissingDesktopRpcsError: (tags: readonly string[], message: string) => MissingDesktopRpcsError"
     },
     {
       "name": "makeOtelLayer",
@@ -804,6 +864,11 @@
       "signature": "const makeWorker: (registry: ResourceRegistryApi, permissions: PermissionRegistryApi, options?: WorkerOptions) => Effect.Effect<WorkerApi, never, never>"
     },
     {
+      "name": "manifest",
+      "kind": "value",
+      "signature": "const manifest: <E, R>(definition: DesktopAppDefinition<E, R>) => DesktopAppManifest"
+    },
+    {
       "name": "MAX_FRAME_BYTES",
       "kind": "value",
       "signature": "const MAX_FRAME_BYTES: number"
@@ -811,17 +876,17 @@
     {
       "name": "MissingDesktopContextError",
       "kind": "class",
-      "signature": "export class MissingDesktopContextError extends Data.TaggedError(\"MissingDesktopContextError\")<{ readonly framework: DesktopFramework readonly message: string }> {}"
+      "signature": "export class MissingDesktopContextError extends Data.TaggedError(\"MissingDesktopContextError\")<{ readonly framework: DesktopFramework readonly message: string readonly code: string readonly category: DesktopPublicErrorCategory readonly summary: string readonly details: Readonly<Record<string, unknown>> readonly actor: string readonly remediation: string readonly docsUrl: string }> {}"
     },
     {
       "name": "MissingDesktopRpcClientError",
       "kind": "class",
-      "signature": "export class MissingDesktopRpcClientError extends Data.TaggedError(\"MissingDesktopRpcClientError\")<{ readonly framework: DesktopFramework readonly message: string readonly tag: string }> {}"
+      "signature": "export class MissingDesktopRpcClientError extends Data.TaggedError(\"MissingDesktopRpcClientError\")<{ readonly framework: DesktopFramework readonly message: string readonly tag: string readonly code: string readonly category: DesktopPublicErrorCategory readonly summary: string readonly details: Readonly<Record<string, unknown>> readonly actor: string readonly remediation: string readonly docsUrl: string }> {}"
     },
     {
       "name": "MissingDesktopRpcsError",
       "kind": "class",
-      "signature": "export class MissingDesktopRpcsError extends Data.TaggedError(\"MissingDesktopRpcsError\")<{ readonly message: string readonly tags: readonly string[] }> {}"
+      "signature": "export class MissingDesktopRpcsError extends Data.TaggedError(\"MissingDesktopRpcsError\")<{ readonly message: string readonly tags: readonly string[] readonly code: string readonly category: DesktopPublicErrorCategory readonly summary: string readonly details: Readonly<Record<string, unknown>> readonly actor: string readonly remediation: string readonly docsUrl: string }> {}"
     },
     {
       "name": "mutation",
@@ -1187,6 +1252,11 @@
       "name": "ReactivityLayer",
       "kind": "value",
       "signature": "const ReactivityLayer: Layer.Layer<ReactivityNS.Reactivity, never, never>"
+    },
+    {
+      "name": "readStartupWindows",
+      "kind": "value",
+      "signature": "const readStartupWindows: (env: Readonly<Record<string, string | undefined>>) => Effect.Effect<Readonly<Record<string, WindowSpec>>, StartupWindowConfigError, never>"
     },
     {
       "name": "readStartupWindowsEnv",

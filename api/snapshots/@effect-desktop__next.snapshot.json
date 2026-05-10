@@ -6,12 +6,12 @@
     {
       "name": "NextDesktop",
       "kind": "value",
-      "signature": "const NextDesktop: Readonly<{ from: <App extends DesktopAppDefinition<unknown, unknown>>(app: App) => NextDesktopAdapter<App>; }>"
+      "signature": "const NextDesktop: Readonly<{ from: <App extends DesktopAppManifest>(app: App) => NextDesktopAdapter<App>; }>"
     },
     {
       "name": "NextDesktopAdapter",
       "kind": "interface",
-      "signature": "export interface NextDesktopAdapter< App extends DesktopAppDefinition<unknown, unknown> > extends ReactDesktopAdapter<App> { readonly app: App readonly DesktopRoot: (props: ReactDesktopRootProps) => ReactNode readonly createRoot: ( children: ReactNode, props?: Omit<ReactDesktopRootProps, \"children\"> ) => ReactNode readonly useDesktop: ReactDesktopAdapter<App>[\"useDesktop\"] }"
+      "signature": "export interface NextDesktopAdapter< App extends DesktopAppManifest > extends ReactDesktopAdapter<App> { readonly app: App readonly DesktopRoot: (props: ReactDesktopRootProps) => ReactNode readonly createRoot: ( children: ReactNode, props?: Omit<ReactDesktopRootProps, \"children\"> ) => ReactNode readonly useDesktop: ReactDesktopAdapter<App>[\"useDesktop\"] }"
     }
   ]
 }

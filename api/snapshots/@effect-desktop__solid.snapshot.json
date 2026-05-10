@@ -6,12 +6,12 @@
     {
       "name": "MissingDesktopContextError",
       "kind": "class",
-      "signature": "export class MissingDesktopContextError extends Data.TaggedError(\"MissingDesktopContextError\")<{ readonly framework: DesktopFramework readonly message: string }> {}"
+      "signature": "export class MissingDesktopContextError extends Data.TaggedError(\"MissingDesktopContextError\")<{ readonly framework: DesktopFramework readonly message: string readonly code: string readonly category: DesktopPublicErrorCategory readonly summary: string readonly details: Readonly<Record<string, unknown>> readonly actor: string readonly remediation: string readonly docsUrl: string }> {}"
     },
     {
       "name": "MissingDesktopRpcClientError",
       "kind": "class",
-      "signature": "export class MissingDesktopRpcClientError extends Data.TaggedError(\"MissingDesktopRpcClientError\")<{ readonly framework: DesktopFramework readonly message: string readonly tag: string }> {}"
+      "signature": "export class MissingDesktopRpcClientError extends Data.TaggedError(\"MissingDesktopRpcClientError\")<{ readonly framework: DesktopFramework readonly message: string readonly tag: string readonly code: string readonly category: DesktopPublicErrorCategory readonly summary: string readonly details: Readonly<Record<string, unknown>> readonly actor: string readonly remediation: string readonly docsUrl: string }> {}"
     },
     {
       "name": "SolidAsyncState",
@@ -21,12 +21,12 @@
     {
       "name": "SolidDesktop",
       "kind": "value",
-      "signature": "const SolidDesktop: Readonly<{ from: <App extends DesktopAppDefinition<unknown, unknown>>(app: App) => SolidDesktopAdapter<App>; }>"
+      "signature": "const SolidDesktop: Readonly<{ from: <App extends DesktopAppManifest>(app: App) => SolidDesktopAdapter<App>; }>"
     },
     {
       "name": "SolidDesktopAdapter",
       "kind": "interface",
-      "signature": "export interface SolidDesktopAdapter<App extends DesktopAppDefinition<unknown, unknown>> { readonly app: App readonly DesktopRoot: (props: SolidDesktopRootProps) => JSX.Element readonly render: ( children: () => JSX.Element, mount: HTMLElement, options?: SolidDesktopRenderOptions ) => () => void readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => SolidDesktopRpcs<Group> }"
+      "signature": "export interface SolidDesktopAdapter<App extends DesktopAppManifest> { readonly app: App readonly DesktopRoot: (props: SolidDesktopRootProps) => JSX.Element readonly render: ( children: () => JSX.Element, mount: HTMLElement, options?: SolidDesktopRenderOptions ) => () => void readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => SolidDesktopRpcs<Group> }"
     },
     {
       "name": "SolidDesktopClientMap",

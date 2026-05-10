@@ -11,17 +11,17 @@
     {
       "name": "AstroDesktop",
       "kind": "value",
-      "signature": "const AstroDesktop: Readonly<{ from: <App extends DesktopAppDefinition<unknown, unknown>>(app: App) => AstroDesktopAdapter<App>; island: <App extends DesktopAppDefinition<unknown, unknown>, Adapter>(app: App, adapter: Adapter, options?: AstroIslandOptions) => AstroDesktopIsland<App, Adapter>; }>"
+      "signature": "const AstroDesktop: Readonly<{ from: <App extends DesktopAppManifest>(app: App) => AstroDesktopAdapter<App>; island: <App extends DesktopAppManifest, Adapter>(app: App, adapter: Adapter, options?: AstroIslandOptions) => AstroDesktopIsland<App, Adapter>; }>"
     },
     {
       "name": "AstroDesktopAdapter",
       "kind": "interface",
-      "signature": "export interface AstroDesktopAdapter<App extends DesktopAppDefinition<unknown, unknown>> { readonly app: App readonly island: <Adapter>( adapter: Adapter, options?: AstroIslandOptions ) => AstroDesktopIsland<App, Adapter> }"
+      "signature": "export interface AstroDesktopAdapter<App extends DesktopAppManifest> { readonly app: App readonly island: <Adapter>( adapter: Adapter, options?: AstroIslandOptions ) => AstroDesktopIsland<App, Adapter> }"
     },
     {
       "name": "AstroDesktopIsland",
       "kind": "interface",
-      "signature": "export interface AstroDesktopIsland<App extends DesktopAppDefinition<unknown, unknown>, Adapter> { readonly app: App readonly adapter: Adapter readonly directive: AstroHydrationDirective readonly renderer: AstroClientOnlyRenderer | undefined }"
+      "signature": "export interface AstroDesktopIsland<App extends DesktopAppManifest, Adapter> { readonly app: App readonly adapter: Adapter readonly directive: AstroHydrationDirective readonly renderer: AstroClientOnlyRenderer | undefined }"
     },
     {
       "name": "AstroHydrationDirective",

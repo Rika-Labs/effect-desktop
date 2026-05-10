@@ -6,12 +6,12 @@
     {
       "name": "MissingDesktopContextError",
       "kind": "class",
-      "signature": "export class MissingDesktopContextError extends Data.TaggedError(\"MissingDesktopContextError\")<{ readonly framework: DesktopFramework readonly message: string }> {}"
+      "signature": "export class MissingDesktopContextError extends Data.TaggedError(\"MissingDesktopContextError\")<{ readonly framework: DesktopFramework readonly message: string readonly code: string readonly category: DesktopPublicErrorCategory readonly summary: string readonly details: Readonly<Record<string, unknown>> readonly actor: string readonly remediation: string readonly docsUrl: string }> {}"
     },
     {
       "name": "MissingDesktopRpcClientError",
       "kind": "class",
-      "signature": "export class MissingDesktopRpcClientError extends Data.TaggedError(\"MissingDesktopRpcClientError\")<{ readonly framework: DesktopFramework readonly message: string readonly tag: string }> {}"
+      "signature": "export class MissingDesktopRpcClientError extends Data.TaggedError(\"MissingDesktopRpcClientError\")<{ readonly framework: DesktopFramework readonly message: string readonly tag: string readonly code: string readonly category: DesktopPublicErrorCategory readonly summary: string readonly details: Readonly<Record<string, unknown>> readonly actor: string readonly remediation: string readonly docsUrl: string }> {}"
     },
     {
       "name": "VueAsyncState",
@@ -26,12 +26,12 @@
     {
       "name": "VueDesktop",
       "kind": "value",
-      "signature": "const VueDesktop: Readonly<{ from: <App extends DesktopAppDefinition<unknown, unknown>>(app: App) => VueDesktopAdapter<App>; }>"
+      "signature": "const VueDesktop: Readonly<{ from: <App extends DesktopAppManifest>(app: App) => VueDesktopAdapter<App>; }>"
     },
     {
       "name": "VueDesktopAdapter",
       "kind": "interface",
-      "signature": "export interface VueDesktopAdapter<App extends DesktopAppDefinition<unknown, unknown>> { readonly app: App readonly createApp: (rootComponent: Component, options?: VueDesktopOptions) => VueApp readonly provideDesktop: (options?: VueDesktopOptions) => void readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => VueDesktopRpcs<Group> }"
+      "signature": "export interface VueDesktopAdapter<App extends DesktopAppManifest> { readonly app: App readonly createApp: (rootComponent: Component, options?: VueDesktopOptions) => VueApp readonly provideDesktop: (options?: VueDesktopOptions) => void readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => VueDesktopRpcs<Group> }"
     },
     {
       "name": "VueDesktopClientMap",
