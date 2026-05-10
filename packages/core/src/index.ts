@@ -51,22 +51,33 @@ export interface DesktopAppOptions {
   readonly permissions?: readonly NormalizedCapability[]
 }
 
-const app = (
+interface DesktopAppOptionsWithPermissions extends DesktopAppOptions {
+  readonly permissions: readonly NormalizedCapability[]
+}
+
+function app(): Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>
+function app(
+  options: DesktopAppOptionsWithPermissions
+): Layer.Layer<WorkflowEngine.WorkflowEngine, never, PermissionRegistry>
+function app(
   options: DesktopAppOptions = {}
-): Layer.Layer<WorkflowEngine.WorkflowEngine, never, PermissionRegistry> => {
+): Layer.Layer<WorkflowEngine.WorkflowEngine, never, PermissionRegistry> {
   const wfs = options.workflows ?? []
   const permissions = options.permissions ?? []
 
-  const declareLayer = Layer.effectDiscard(
-    Effect.gen(function* () {
-      const registry = yield* PermissionRegistry
-      for (const capability of permissions) {
-        yield* registry
-          .declare(capability, { source: "Desktop.app", effect: "allow" })
-          .pipe(Effect.orDie)
-      }
-    })
-  )
+  const declareLayer =
+    permissions.length === 0
+      ? Layer.empty
+      : Layer.effectDiscard(
+          Effect.gen(function* () {
+            const registry = yield* PermissionRegistry
+            for (const capability of permissions) {
+              yield* registry
+                .declare(capability, { source: "Desktop.app", effect: "allow" })
+                .pipe(Effect.orDie)
+            }
+          })
+        )
 
   if (wfs.length === 0) {
     return Layer.merge(WorkflowEngineLive, declareLayer)
