@@ -34,7 +34,7 @@ test("SolidDesktop.from exposes app-scoped primitives from provided groups", () 
       )
     )
   )
-  const NotesSolid = SolidDesktop.from(NotesApp)
+  const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
   const client: SolidDesktopRpcClient = {
     "Notes.List": () => Effect.succeed(["inbox"]),
     "Notes.Create": (input) =>
@@ -78,7 +78,7 @@ test("SolidDesktop.useDesktop rejects colliding endpoint names", () => {
       )
     )
   )
-  const CollidingSolid = SolidDesktop.from(CollidingApp)
+  const CollidingSolid = SolidDesktop.from(Desktop.manifest(CollidingApp))
   const client: SolidDesktopRpcClient = {
     "Projects.List": () => Effect.succeed(["project"]),
     "Tasks.List": () => Effect.succeed(["task"])
@@ -117,7 +117,7 @@ test("SolidDesktop query effects are interrupted when the owner is disposed", as
       )
     )
   )
-  const NotesSolid = SolidDesktop.from(NotesApp)
+  const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
   const client: SolidDesktopRpcClient = {
     "Notes.Slow": () =>
       Effect.never.pipe(Effect.ensuring(Deferred.succeed(interrupted, undefined)))
@@ -159,7 +159,7 @@ test("SolidDesktop.useDesktop fails loudly without context or an installed clien
       )
     )
   )
-  const NotesSolid = SolidDesktop.from(NotesApp)
+  const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
 
   createRoot((dispose) => {
     expect(() => NotesSolid.useDesktop(NotesRpcs)).toThrow(MissingDesktopContextError)

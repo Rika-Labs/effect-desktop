@@ -4,7 +4,7 @@ import {
   MissingDesktopContextError,
   MissingDesktopRpcClientError,
   MissingDesktopRpcsError,
-  type DesktopAppDefinition,
+  type DesktopAppManifest,
   type RpcGroupWithRequests
 } from "@effect-desktop/core"
 import { Cause, Effect, Exit, Fiber, Stream } from "effect"
@@ -91,7 +91,7 @@ export interface SolidDesktopRenderOptions {
   readonly clients?: SolidDesktopRootProps["clients"]
 }
 
-export interface SolidDesktopAdapter<App extends DesktopAppDefinition<unknown, unknown>> {
+export interface SolidDesktopAdapter<App extends DesktopAppManifest> {
   readonly app: App
   readonly DesktopRoot: (props: SolidDesktopRootProps) => JSX.Element
   readonly render: (
@@ -114,7 +114,7 @@ interface SolidDesktopContextValue {
 const SolidDesktopContext = createContext<SolidDesktopContextValue>()
 
 export const SolidDesktop = Object.freeze({
-  from: <App extends DesktopAppDefinition<unknown, unknown>>(
+  from: <App extends DesktopAppManifest>(
     app: App
   ): SolidDesktopAdapter<App> => {
     const DesktopRoot = (props: SolidDesktopRootProps): JSX.Element =>

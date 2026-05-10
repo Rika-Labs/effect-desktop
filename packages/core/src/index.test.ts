@@ -74,6 +74,17 @@ test("Desktop.Rpcs.layer pairs an RpcGroup with its implementation for app adapt
   expect(definition.layers).toHaveLength(0)
   expect(definition.rpcLayers).toHaveLength(1)
   expect(definition.rpcLayers[0]?.group.requests.has("Notes.Ping")).toBe(true)
+  expect(core.Desktop.manifest(definition)).toEqual({
+    _tag: "DesktopAppManifest",
+    id: "notes",
+    windows: definition.windows,
+    rpcGroups: [
+      {
+        _tag: "DesktopRpcGroup",
+        group: NotesRpcs
+      }
+    ]
+  })
 })
 
 test("Desktop.toLayer binds RpcGroups into the runtime RpcServer protocol", async () => {

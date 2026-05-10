@@ -3,7 +3,7 @@ import {
   MissingDesktopContextError,
   MissingDesktopRpcClientError,
   MissingDesktopRpcsError,
-  type DesktopAppDefinition
+  type DesktopAppManifest
 } from "@effect-desktop/core"
 import type { RpcGroupWithRequests } from "@effect-desktop/core"
 import type { WithRpcEndpointKind } from "@effect-desktop/bridge"
@@ -52,7 +52,7 @@ export interface ReactDesktopRootProps {
   readonly children?: ReactNode | undefined
 }
 
-export interface ReactDesktopAdapter<App extends DesktopAppDefinition<unknown, unknown>> {
+export interface ReactDesktopAdapter<App extends DesktopAppManifest> {
   readonly app: App
   readonly DesktopRoot: (props: ReactDesktopRootProps) => ReactNode
   readonly createRoot: (
@@ -74,7 +74,7 @@ interface ReactDesktopContextValue {
 const ReactDesktopContext = createContext<ReactDesktopContextValue | undefined>(undefined)
 
 export const ReactDesktop = Object.freeze({
-  from: <App extends DesktopAppDefinition<unknown, unknown>>(
+  from: <App extends DesktopAppManifest>(
     app: App
   ): ReactDesktopAdapter<App> => {
     const DesktopRoot = ({ clients, children }: ReactDesktopRootProps): ReactNode => {

@@ -11,9 +11,10 @@ test("NextDesktop.from exposes the React desktop adapter behind a client boundar
       }
     }
   })
-  const NotesNext = NextDesktop.from(NotesApp)
+  const NotesManifest = Desktop.manifest(NotesApp)
+  const NotesNext = NextDesktop.from(NotesManifest)
 
-  expect(NotesNext.app).toBe(NotesApp)
+  expect(NotesNext.app).toBe(NotesManifest)
   expect(typeof NotesNext.DesktopRoot).toBe("function")
   expect(typeof NotesNext.createRoot).toBe("function")
   expect(typeof NotesNext.useDesktop).toBe("function")

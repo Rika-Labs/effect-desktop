@@ -3,7 +3,7 @@ import {
   MissingDesktopContextError,
   MissingDesktopRpcClientError,
   MissingDesktopRpcsError,
-  type DesktopAppDefinition,
+  type DesktopAppManifest,
   type RpcGroupWithRequests
 } from "@effect-desktop/core"
 import type { WithRpcEndpointKind } from "@effect-desktop/bridge"
@@ -86,7 +86,7 @@ export interface VueDesktopOptions {
   readonly clients?: VueDesktopClientMap | readonly (readonly [RpcGroup.Any, VueDesktopRpcClient])[]
 }
 
-export interface VueDesktopAdapter<App extends DesktopAppDefinition<unknown, unknown>> {
+export interface VueDesktopAdapter<App extends DesktopAppManifest> {
   readonly app: App
   readonly createApp: (rootComponent: Component, options?: VueDesktopOptions) => VueApp
   readonly provideDesktop: (options?: VueDesktopOptions) => void
@@ -106,7 +106,7 @@ const VueDesktopKey: InjectionKey<VueDesktopContext> = Symbol("VueDesktop")
 const MissingVueDesktopContext = Symbol("MissingVueDesktopContext")
 
 export const VueDesktop = Object.freeze({
-  from: <App extends DesktopAppDefinition<unknown, unknown>>(app: App): VueDesktopAdapter<App> => {
+  from: <App extends DesktopAppManifest>(app: App): VueDesktopAdapter<App> => {
     const provideDesktop = (options?: VueDesktopOptions): void => {
       provide(VueDesktopKey, { clients: normalizeClients(options?.clients) })
     }

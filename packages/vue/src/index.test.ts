@@ -39,7 +39,7 @@ test("VueDesktop.from exposes app-scoped composables from provided groups", () =
       )
     )
   )
-  const NotesVue = VueDesktop.from(NotesApp)
+  const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
   const client: VueDesktopRpcClient = {
     "Notes.List": () => Effect.succeed(["inbox"]),
     "Notes.Create": (input) =>
@@ -81,7 +81,7 @@ test("VueDesktop query effects are interrupted when the scope is disposed", asyn
       )
     )
   )
-  const NotesVue = VueDesktop.from(NotesApp)
+  const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
   const client: VueDesktopRpcClient = {
     "Notes.Slow": () =>
       Effect.never.pipe(Effect.ensuring(Deferred.succeed(interrupted, undefined)))
@@ -119,7 +119,7 @@ test("VueDesktop.useDesktop fails loudly without provide/inject context or an in
       )
     )
   )
-  const NotesVue = VueDesktop.from(NotesApp)
+  const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
 
   const bareApp = createApp(Root)
   bareApp.config.warnHandler = () => undefined

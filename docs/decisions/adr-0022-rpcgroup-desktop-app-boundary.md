@@ -40,9 +40,9 @@ Endpoint metadata is carried on the RPC value through Effect annotations:
 
 Framework adapters are intentionally framework-native:
 
-- React exposes hooks from `ReactDesktop.from(App).useDesktop(group)`.
-- Vue exposes composables returning refs from `VueDesktop.from(App).useDesktop(group)`.
-- Solid exposes resources, accessors, mutation state, and owner-scoped cleanup from `SolidDesktop.from(App).useDesktop(group)`.
+- React exposes hooks from `ReactDesktop.from(Desktop.manifest(App)).useDesktop(group)`.
+- Vue exposes composables returning refs from `VueDesktop.from(Desktop.manifest(App)).useDesktop(group)`.
+- Solid exposes resources, accessors, mutation state, and owner-scoped cleanup from `SolidDesktop.from(Desktop.manifest(App)).useDesktop(group)`.
 - Next is a client-component wrapper around the React adapter.
 - Astro records island metadata and validates hydration directives; desktop access lives in hydrated React, Vue, or Solid islands.
 
@@ -79,7 +79,7 @@ Startup windows are host-owned. Renderer components must not open the initial wi
 
 **Neutral**
 
-- Existing low-level React provider hooks remain compatibility APIs, but new docs and templates use `ReactDesktop.from(App)`.
+- Existing low-level React provider hooks remain compatibility APIs, but new docs and templates use `ReactDesktop.from(Desktop.manifest(App))`.
 - Native host support remains partial. This ADR only makes support visible; it does not implement missing host methods.
 
 ## Migration notes
@@ -126,7 +126,8 @@ Legacy `Api.Tag` contracts may continue to exist when the package already owns t
 Renderer code should import the framework adapter, not raw bridge clients:
 
 ```tsx
-const NotesReact = ReactDesktop.from(App)
+const Manifest = Desktop.manifest(App)
+const NotesReact = ReactDesktop.from(Manifest)
 
 function NotesView() {
   const notes = NotesReact.useDesktop(NotesRpcs)

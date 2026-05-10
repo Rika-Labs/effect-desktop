@@ -15,11 +15,14 @@ import NotesIsland from "../components/NotesIsland.tsx"
 ```
 
 ```ts
+import { Desktop } from "@effect-desktop/core"
 import { AstroDesktop } from "@effect-desktop/astro"
 import { ReactDesktop } from "@effect-desktop/react"
 import { App } from "../desktop/app"
 
-export const NotesAstro = AstroDesktop.from(App).island(ReactDesktop.from(App), {
+const Manifest = Desktop.manifest(App)
+
+export const NotesAstro = AstroDesktop.from(Manifest).island(ReactDesktop.from(Manifest), {
   directive: "only",
   renderer: "react"
 })

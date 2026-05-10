@@ -174,7 +174,7 @@ test("ReactDesktop.from exposes app-scoped RPC hooks from provided groups", () =
       )
     )
   )
-  const NotesReact = ReactDesktop.from(NotesApp)
+  const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
   const client: ReactDesktopRpcClient = {
     "Notes.List": () => Effect.succeed(["inbox"]),
     "Notes.Create": (input) =>
@@ -224,7 +224,7 @@ test("ReactDesktop.useDesktop rejects colliding endpoint names", () => {
       )
     )
   )
-  const CollidingReact = ReactDesktop.from(CollidingApp)
+  const CollidingReact = ReactDesktop.from(Desktop.manifest(CollidingApp))
   const client: ReactDesktopRpcClient = {
     "Projects.List": () => Effect.succeed(["project"]),
     "Tasks.List": () => Effect.succeed(["task"])
@@ -264,7 +264,7 @@ test("ReactDesktop.useDesktop fails loudly without a generated root or installed
       )
     )
   )
-  const NotesReact = ReactDesktop.from(NotesApp)
+  const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
   const Probe = () => {
     NotesReact.useDesktop(NotesRpcs)
     return createElement("span", null, "mounted")

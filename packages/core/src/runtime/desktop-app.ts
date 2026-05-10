@@ -56,6 +56,18 @@ export interface DesktopAppDefinition<E = never, R = never> {
   pipe<A, B, C>(ab: (self: DesktopAppDefinition<E, R>) => A, bc: (a: A) => B, cd: (b: B) => C): C
 }
 
+export interface DesktopRpcGroupDescriptor {
+  readonly _tag: "DesktopRpcGroup"
+  readonly group: RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> }
+}
+
+export interface DesktopAppManifest {
+  readonly _tag: "DesktopAppManifest"
+  readonly id: string
+  readonly windows: Readonly<Record<string, WindowSpec>>
+  readonly rpcGroups: ReadonlyArray<DesktopRpcGroupDescriptor>
+}
+
 export interface DesktopRpcLayer<Rpcs extends Rpc.Any = Rpc.Any, E = never, R = never> {
   readonly _tag: "DesktopRpcsLayer"
   readonly group: RpcGroup.RpcGroup<Rpcs>
@@ -110,6 +122,21 @@ export const make = (config: DesktopMakeConfig): DesktopAppDefinition<never, nev
     rpcLayers: Object.freeze([]),
     permissions: freezeArray(config.permissions),
     workflows: freezeArray(config.workflows)
+  })
+
+export const manifest = <E, R>(definition: DesktopAppDefinition<E, R>): DesktopAppManifest =>
+  Object.freeze({
+    _tag: "DesktopAppManifest" as const,
+    id: definition.id,
+    windows: definition.windows,
+    rpcGroups: Object.freeze(
+      definition.rpcLayers.map((rpcLayer) =>
+        Object.freeze({
+          _tag: "DesktopRpcGroup" as const,
+          group: rpcLayer.group
+        })
+      )
+    )
   })
 
 export function provide<Provided, E, R>(

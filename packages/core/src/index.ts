@@ -9,7 +9,15 @@ import {
 } from "@effect-desktop/bridge"
 import { Effect, Layer } from "effect"
 
-import { Rpcs, app as desktopApp, launch, make, provide, toLayer } from "./runtime/desktop-app.js"
+import {
+  Rpcs,
+  app as desktopApp,
+  launch,
+  make,
+  manifest,
+  provide,
+  toLayer
+} from "./runtime/desktop-app.js"
 import type { DesktopApp, DesktopConfig, DesktopConfigError } from "./runtime/desktop-app.js"
 import type { NormalizedCapability } from "./runtime/permission-registry.js"
 import { PermissionRegistry } from "./runtime/permission-registry.js"
@@ -73,6 +81,7 @@ export {
   app as desktopApp,
   launch,
   make,
+  manifest,
   provide,
   Rpcs,
   toLayer,
@@ -80,8 +89,10 @@ export {
   type AnyDesktopRpcLayer,
   type DesktopAppApi,
   type DesktopAppDefinition,
+  type DesktopAppManifest,
   type DesktopConfig,
   type DesktopMakeConfig,
+  type DesktopRpcGroupDescriptor,
   type DesktopRpcLayer,
   type WindowSpec
 } from "./runtime/desktop-app.js"
@@ -155,6 +166,7 @@ export const Desktop = Object.freeze({
   app,
   launch,
   make,
+  manifest,
   provide,
   Rpcs,
   toLayer,

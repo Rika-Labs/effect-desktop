@@ -9,7 +9,12 @@ import {
 import { Option, Schema } from "effect"
 import { Rpc, RpcGroup, RpcSchema } from "effect/unstable/rpc"
 
-import type { AnyDesktopRpcLayer, DesktopAppDefinition } from "./desktop-app.js"
+import type {
+  AnyDesktopRpcLayer,
+  DesktopAppDefinition,
+  DesktopAppManifest,
+  DesktopRpcGroupDescriptor
+} from "./desktop-app.js"
 import { DuplicateDesktopRpcNameError, MissingDesktopRpcsError } from "./desktop-errors.js"
 
 export type RpcEndpointDescriptorKind = "query" | "mutation" | "stream"
@@ -26,15 +31,19 @@ export interface RpcEndpointDescriptor {
   readonly support: RpcSupportMetadata
 }
 
+export type DesktopRpcDescriptorSource =
+  | Pick<DesktopAppDefinition<unknown, unknown>, "rpcLayers">
+  | Pick<DesktopAppManifest, "rpcGroups">
+
 interface RpcWithSuccessSchema extends Rpc.Any {
   readonly successSchema: Schema.Top
 }
 
 export const describeRpcs = <Group extends RpcGroupWithRequests>(
-  app: Pick<DesktopAppDefinition<unknown, unknown>, "rpcLayers">,
+  app: DesktopRpcDescriptorSource,
   group: Group
 ): readonly RpcEndpointDescriptor[] => {
-  const provided = providedRpcLayer(app.rpcLayers, group)
+  const provided = providedRpcGroup(app, group)
   if (provided === undefined) {
     throw new MissingDesktopRpcsError({
       message: `RpcGroup is not provided to this Desktop app: ${groupTags(group).join(", ")}`,
@@ -75,10 +84,21 @@ const assertUniqueEndpointNames = (descriptors: readonly RpcEndpointDescriptor[]
   }
 }
 
+const providedRpcGroup = <Group extends RpcGroupWithRequests>(
+  app: DesktopRpcDescriptorSource,
+  group: Group
+): AnyDesktopRpcLayer | DesktopRpcGroupDescriptor | undefined =>
+  "rpcGroups" in app ? providedRpcGroupDescriptor(app.rpcGroups, group) : providedRpcLayer(app.rpcLayers, group)
+
 const providedRpcLayer = <Group extends RpcGroupWithRequests>(
   layers: readonly AnyDesktopRpcLayer[],
   group: Group
 ): AnyDesktopRpcLayer | undefined => layers.find((layer) => layer.group === group)
+
+const providedRpcGroupDescriptor = <Group extends RpcGroupWithRequests>(
+  groups: readonly DesktopRpcGroupDescriptor[],
+  group: Group
+): DesktopRpcGroupDescriptor | undefined => groups.find((descriptor) => descriptor.group === group)
 
 const endpointKind = (rpc: Rpc.Any): RpcEndpointDescriptorKind =>
   RpcSchema.isStreamSchema(successSchema(rpc)) ? "stream" : rpcEndpointKind(rpc)

@@ -1,4 +1,4 @@
-import type { DesktopAppDefinition } from "@effect-desktop/core"
+import type { DesktopAppManifest } from "@effect-desktop/core"
 import { Data } from "effect"
 
 export type AstroHydrationDirective = "load" | "idle" | "visible" | "media" | "only"
@@ -9,14 +9,14 @@ export interface AstroIslandOptions {
   readonly renderer?: AstroClientOnlyRenderer
 }
 
-export interface AstroDesktopIsland<App extends DesktopAppDefinition<unknown, unknown>, Adapter> {
+export interface AstroDesktopIsland<App extends DesktopAppManifest, Adapter> {
   readonly app: App
   readonly adapter: Adapter
   readonly directive: AstroHydrationDirective
   readonly renderer: AstroClientOnlyRenderer | undefined
 }
 
-export interface AstroDesktopAdapter<App extends DesktopAppDefinition<unknown, unknown>> {
+export interface AstroDesktopAdapter<App extends DesktopAppManifest> {
   readonly app: App
   readonly island: <Adapter>(
     adapter: Adapter,
@@ -31,20 +31,20 @@ export class MissingAstroClientOnlyRendererError extends Data.TaggedError(
 }> {}
 
 export const AstroDesktop = Object.freeze({
-  from: <App extends DesktopAppDefinition<unknown, unknown>>(app: App): AstroDesktopAdapter<App> =>
+  from: <App extends DesktopAppManifest>(app: App): AstroDesktopAdapter<App> =>
     Object.freeze({
       app,
       island: <Adapter>(adapter: Adapter, options?: AstroIslandOptions) =>
         makeIsland(app, adapter, options)
     }),
-  island: <App extends DesktopAppDefinition<unknown, unknown>, Adapter>(
+  island: <App extends DesktopAppManifest, Adapter>(
     app: App,
     adapter: Adapter,
     options?: AstroIslandOptions
   ): AstroDesktopIsland<App, Adapter> => makeIsland(app, adapter, options)
 })
 
-const makeIsland = <App extends DesktopAppDefinition<unknown, unknown>, Adapter>(
+const makeIsland = <App extends DesktopAppManifest, Adapter>(
   app: App,
   adapter: Adapter,
   options?: AstroIslandOptions

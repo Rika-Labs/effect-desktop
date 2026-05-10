@@ -9,10 +9,11 @@ This package has no runtime dependency on `next`; the `"use client"` entry point
 ```tsx
 "use client"
 
+import { Desktop as DesktopCore } from "@effect-desktop/core"
 import { NextDesktop } from "@effect-desktop/next"
 import { App, NotesRpcs } from "../desktop/app"
 
-export const Desktop = NextDesktop.from(App)
+export const Desktop = NextDesktop.from(DesktopCore.manifest(App))
 
 export function NotesProviders(props: { children: React.ReactNode }) {
   return Desktop.createRoot(props.children)

@@ -4734,9 +4734,9 @@ Requirements:
 
 Framework adapters derive from the assembled desktop app:
 
-- React exposes hooks from `ReactDesktop.from(App).useDesktop(ProjectRpcs)`;
-- Vue exposes composables and refs from `VueDesktop.from(App).useDesktop(ProjectRpcs)`;
-- Solid exposes resources, accessors, signals, mutations, and owner-scoped cleanup from `SolidDesktop.from(App).useDesktop(ProjectRpcs)`;
+- React exposes hooks from `ReactDesktop.from(Desktop.manifest(App)).useDesktop(ProjectRpcs)`;
+- Vue exposes composables and refs from `VueDesktop.from(Desktop.manifest(App)).useDesktop(ProjectRpcs)`;
+- Solid exposes resources, accessors, signals, mutations, and owner-scoped cleanup from `SolidDesktop.from(Desktop.manifest(App)).useDesktop(ProjectRpcs)`;
 - Next uses the React adapter from a client component boundary;
 - Astro uses hydrated React, Vue, or Solid islands; `.astro` files do not expose fake desktop hooks.
 

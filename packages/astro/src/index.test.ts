@@ -12,12 +12,13 @@ test("AstroDesktop.from records framework island hydration metadata", () => {
     }
   })
   const adapter = { framework: "react" }
-  const island = AstroDesktop.from(NotesApp).island(adapter, {
+  const NotesManifest = Desktop.manifest(NotesApp)
+  const island = AstroDesktop.from(NotesManifest).island(adapter, {
     directive: "only",
     renderer: "react"
   })
 
-  expect(island.app).toBe(NotesApp)
+  expect(island.app).toBe(NotesManifest)
   expect(island.adapter).toBe(adapter)
   expect(island.directive).toBe("only")
   expect(island.renderer).toBe("react")
@@ -33,6 +34,9 @@ test("AstroDesktop rejects client:only islands without an explicit renderer hint
   })
 
   expect(() =>
-    AstroDesktop.from(NotesApp).island({ framework: "solid" }, { directive: "only" })
+    AstroDesktop.from(Desktop.manifest(NotesApp)).island(
+      { framework: "solid" },
+      { directive: "only" }
+    )
   ).toThrow(MissingAstroClientOnlyRendererError)
 })
