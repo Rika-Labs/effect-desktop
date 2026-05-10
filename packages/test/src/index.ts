@@ -1718,3 +1718,5 @@ const isRegistrySnapshot = (value: unknown): value is RegistrySnapshot => {
     Array.isArray(value.entries)
   )
 }
+
+export * from "./native.js"
