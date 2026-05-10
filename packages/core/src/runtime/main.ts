@@ -43,9 +43,9 @@ await Effect.runPromise(
     const window = yield* windows.create()
     if (isSmokeTest) {
       yield* windows.destroy(window.windowId)
+      return
     }
   })
 )
 
-// The Phase 3 runtime entry is still a smoke binary; later issues replace this with the service loop.
 process.exit(0)

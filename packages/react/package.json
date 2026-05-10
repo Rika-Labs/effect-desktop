@@ -21,6 +21,10 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./sql-pglite": {
+      "types": "./src/sql-pglite.ts",
+      "default": "./src/sql-pglite.ts"
     }
   },
   "scripts": {
@@ -32,6 +36,7 @@
   "dependencies": {
     "@effect-desktop/bridge": "workspace:*",
     "@effect-desktop/native": "workspace:*",
+    "@effect/platform-browser": "4.0.0-beta.60",
     "@effect/sql-sqlite-wasm": "4.0.0-beta.60",
     "@effect/wa-sqlite": "^0.1.2",
     "effect": "4.0.0-beta.60"
@@ -44,5 +49,9 @@
     "@types/react-dom": "^19.2.3",
     "react": "^19.2.3",
     "react-dom": "^19.2.3"
+  },
+  "optionalDependencies": {
+    "@effect/sql-pglite": "4.0.0-beta.60",
+    "@electric-sql/pglite": "^0.4.4"
   }
 }

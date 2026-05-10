@@ -57,6 +57,13 @@ test("template package exposes the documented desktop command", () => {
   expect(pkg.dependencies?.["@effect-desktop/cli"]).toBe("workspace:*")
 })
 
+test("template contract uses Rpc.make + RpcGroup.make", async () => {
+  const { AppRpc, GreetRpc } = await import("./contract.js")
+
+  expect(GreetRpc._tag).toBe("Greet")
+  expect(AppRpc.requests.has("Greet")).toBe(true)
+})
+
 function privateImportViolations(text: string, file: string): readonly string[] {
   return importSpecifiers(text)
     .filter((specifier) => specifier.includes("/src/") || specifier.includes("/_internal"))

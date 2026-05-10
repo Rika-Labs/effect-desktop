@@ -391,6 +391,7 @@ const NodeFilesystemAdapter: FilesystemAdapter = {
   watch: (path, listener, onError) =>
     Effect.try({
       try: () => {
+        type FilesystemNodeWatcher = { close: () => void } & NodeJS.EventEmitter
         const watcher = nodeWatch(
           path,
           { persistent: false },
@@ -402,8 +403,9 @@ const NodeFilesystemAdapter: FilesystemAdapter = {
               })
             }
           }
-        )
-        watcher.on("error", (error) => {
+        ) as unknown as FilesystemNodeWatcher
+
+        watcher.on("error", (error: unknown) => {
           onError(mapFilesystemError(error, path, "Filesystem.watch"))
         })
         return { close: () => watcher.close() }

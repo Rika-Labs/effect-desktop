@@ -13,7 +13,8 @@ const REQUIRED_TS_PACKAGES = [
   "devtools",
   "test",
   "config",
-  "create-effect-desktop"
+  "create-effect-desktop",
+  "vite"
 ] as const
 
 const REQUIRED_RUST_CRATES = ["host", "host-protocol", "native-pty", "native-updater"] as const
@@ -66,8 +67,8 @@ describe("workspaces", () => {
     expect(exitCode).toBe(1)
     expect(stderr).not.toContain('Script not found "desktop"')
     const helpText = stdout + stderr
-    expect(helpText).toContain("USAGE")
-    expect(helpText).toContain("desktop <subcommand>")
+    expect(helpText).toContain("USAGE\n  desktop <subcommand> [flags]")
+    expect(helpText).toContain("build       Build renderer, runtime, native host")
   })
 })
 

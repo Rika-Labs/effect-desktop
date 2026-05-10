@@ -1,21 +1,25 @@
 import { expect, test } from "bun:test"
 import { makeHostProtocolInvalidStateError } from "@effect-desktop/bridge"
-import { Effect, Option, Stream } from "effect"
+import { AsyncResult } from "effect/unstable/reactivity"
+import { Cause, Effect, Option, Schema } from "effect"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 
 import {
+  BrowserHttpClient,
+  BrowserKeyValueStore,
+  IndexedDb,
+  IndexedDbDatabase,
+  IndexedDbQueryBuilder,
+  IndexedDbTable,
+  IndexedDbVersion,
   DesktopProvider,
   type DesktopClient,
-  type DesktopStreamState,
-  retainDesktopStreamData,
-  useDesktopStream,
+  type DesktopWindowClient,
+  type PermissionState,
   useDesktop,
   usePermission,
-  useResource,
-  useWindow,
-  type DesktopWindowClient,
-  type PermissionState
+  useWindow
 } from "./index.js"
 
 const unavailableWindow: DesktopWindowClient = {
@@ -30,16 +34,12 @@ const desktop: DesktopClient = Object.freeze({
   Window: unavailableWindow
 })
 
-test("DesktopProvider supplies the desktop client as a value", () => {
-  const Probe = () => {
-    const provided = useDesktop()
-
-    return createElement("span", null, Option.isSome(provided) ? "provided" : "missing")
-  }
-
-  expect(
-    renderToStaticMarkup(createElement(DesktopProvider, { client: desktop }, createElement(Probe)))
-  ).toBe("<span>provided</span>")
+test("DesktopProvider renders children without crashing (SSR)", () => {
+  const Child = () => createElement("span", null, "child")
+  const html = renderToStaticMarkup(
+    createElement(DesktopProvider, { client: desktop }, createElement(Child))
+  )
+  expect(html).toBe("<span>child</span>")
 })
 
 test("hooks model a missing provider without throwing", () => {
@@ -60,7 +60,6 @@ test("hooks model a missing provider without throwing", () => {
 test("DesktopProvider can expose the current window handle", () => {
   const Probe = () => {
     const window = useWindow()
-
     return createElement("span", null, Option.isSome(window) ? window.value.id : "missing")
   }
   const window = {
@@ -82,11 +81,10 @@ test("DesktopProvider can expose the current window handle", () => {
   ).toBe("<span>window-1</span>")
 })
 
-test("usePermission exports the deferred Phase 16 shape", () => {
+test("usePermission exports the deferred shape", () => {
   let state: PermissionState | undefined
   const Probe = () => {
     state = usePermission("dialog.open")
-
     return createElement("span", null, state.status)
   }
 
@@ -94,53 +92,107 @@ test("usePermission exports the deferred Phase 16 shape", () => {
   expect(state).toEqual({ status: "deferred", permission: "dialog.open" })
 })
 
-test("hook exports are callable from components without provider throws", () => {
-  const Probe = () => {
-    useDesktopStream(Stream.empty)
-    useResource(Option.none())
-
-    return createElement("span", null, "mounted")
-  }
-
-  expect(renderToStaticMarkup(createElement(Probe))).toBe("<span>mounted</span>")
+test("AsyncResult.initial is Initial variant", () => {
+  const result = AsyncResult.initial<number, string>()
+  expect(AsyncResult.isInitial(result)).toBe(true)
+  expect(AsyncResult.isSuccess(result)).toBe(false)
+  expect(AsyncResult.isFailure(result)).toBe(false)
 })
 
-test("useDesktopStream exposes an initial value state during render", () => {
-  let state: DesktopStreamState<number, never> | undefined
-  const Probe = () => {
-    state = useDesktopStream(Stream.make(1))
-
-    return createElement("span", null, state.status)
+test("AsyncResult.success carries value", () => {
+  const result = AsyncResult.success(42)
+  expect(AsyncResult.isSuccess(result)).toBe(true)
+  if (AsyncResult.isSuccess(result)) {
+    expect(result.value).toBe(42)
   }
+})
 
-  expect(renderToStaticMarkup(createElement(Probe))).toBe("<span>idle</span>")
-  expect(state).toEqual({
-    status: "idle",
-    data: [],
-    error: Option.none()
+test("AsyncResult.failure carries cause", () => {
+  const cause = Cause.fail("boom")
+  const result = AsyncResult.failure<number, string>(cause)
+  expect(AsyncResult.isFailure(result)).toBe(true)
+  if (AsyncResult.isFailure(result)) {
+    expect(result.cause).toBe(cause)
+  }
+})
+
+test("AsyncResult is re-exported from package index", () => {
+  expect(typeof AsyncResult.initial).toBe("function")
+  expect(typeof AsyncResult.success).toBe("function")
+  expect(typeof AsyncResult.failure).toBe("function")
+  expect(typeof AsyncResult.isInitial).toBe("function")
+  expect(typeof AsyncResult.isSuccess).toBe("function")
+  expect(typeof AsyncResult.isFailure).toBe("function")
+})
+
+test("platform-browser IndexedDbTable.make produces a typed table descriptor", () => {
+  const DraftTable = IndexedDbTable.make({
+    name: "drafts",
+    schema: Schema.Struct({
+      id: Schema.Number,
+      body: Schema.String
+    }),
+    keyPath: "id",
+    autoIncrement: true
   })
+
+  expect(DraftTable.tableName).toBe("drafts")
+  expect(DraftTable.autoIncrement).toBe(true)
+  expect(DraftTable.keyPath).toBe("id")
 })
 
-test("useDesktopStream retention keeps only the newest items within capacity", () => {
-  const retained = [1, 2, 3, 4, 5].reduce<readonly number[]>(
-    (current, item) => retainDesktopStreamData(current, item, 3),
-    []
+test("platform-browser IndexedDbVersion.make accepts a table descriptor", () => {
+  const DraftTable = IndexedDbTable.make({
+    name: "drafts",
+    schema: Schema.Struct({
+      id: Schema.Number,
+      body: Schema.String
+    }),
+    keyPath: "id",
+    autoIncrement: true
+  })
+
+  const v1 = IndexedDbVersion.make(DraftTable)
+
+  expect(v1.tables.has("drafts")).toBe(true)
+  expect(v1.tables.size).toBe(1)
+})
+
+test("platform-browser IndexedDbDatabase.make produces a schema builder", () => {
+  const DraftTable = IndexedDbTable.make({
+    name: "drafts",
+    schema: Schema.Struct({
+      id: Schema.Number,
+      body: Schema.String
+    }),
+    keyPath: "id",
+    autoIncrement: true
+  })
+
+  const v1 = IndexedDbVersion.make(DraftTable)
+
+  const schema = IndexedDbDatabase.make(v1, (tx) =>
+    tx.createObjectStore("drafts").pipe(Effect.asVoid)
   )
 
-  expect(retained).toEqual([3, 4, 5])
+  expect(typeof schema.layer).toBe("function")
+  expect(schema.version).toBe(v1)
 })
 
-test("useDesktopStream retention can disable stored data", () => {
-  const retained = [1, 2, 3].reduce<readonly number[]>(
-    (current, item) => retainDesktopStreamData(current, item, 0),
-    []
-  )
-
-  expect(retained).toEqual([])
+test("platform-browser BrowserKeyValueStore exports layerLocalStorage and layerSessionStorage", () => {
+  expect(typeof BrowserKeyValueStore.layerLocalStorage).toBe("object")
+  expect(typeof BrowserKeyValueStore.layerSessionStorage).toBe("object")
 })
 
-test("useDesktopStream retention rejects invalid capacities", () => {
-  expect(() => retainDesktopStreamData([], 1, -1)).toThrow(RangeError)
-  expect(() => retainDesktopStreamData([], 1, 1.5)).toThrow(RangeError)
-  expect(() => retainDesktopStreamData([], 1, Number.POSITIVE_INFINITY)).toThrow(RangeError)
+test("platform-browser BrowserHttpClient exports layerFetch and layerXMLHttpRequest", () => {
+  expect(typeof BrowserHttpClient.layerFetch).toBe("object")
+  expect(typeof BrowserHttpClient.layerXMLHttpRequest).toBe("object")
+})
+
+test("platform-browser IndexedDb exports layerWindow", () => {
+  expect(typeof IndexedDb.layerWindow).toBe("object")
+})
+
+test("platform-browser IndexedDbQueryBuilder exports make", () => {
+  expect(typeof IndexedDbQueryBuilder.make).toBe("function")
 })

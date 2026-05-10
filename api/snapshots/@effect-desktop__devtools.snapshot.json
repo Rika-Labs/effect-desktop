@@ -19,6 +19,26 @@
       "signature": "const BunLoopbackDevtoolsTransport: DevtoolsLoopbackTransport"
     },
     {
+      "name": "ClusterPanel",
+      "kind": "class",
+      "signature": "export class ClusterPanel extends Context.Service<ClusterPanel, ClusterPanelApi>()( \"@effect-desktop/devtools/ClusterPanel\" ) {}"
+    },
+    {
+      "name": "ClusterPanelApi",
+      "kind": "interface",
+      "signature": "export interface ClusterPanelApi { readonly list: () => Effect.Effect<ClusterPanelSnapshot, never, never> readonly observe: () => Stream.Stream<ClusterPanelSnapshot, never, never> }"
+    },
+    {
+      "name": "ClusterPanelLive",
+      "kind": "value",
+      "signature": "const ClusterPanelLive: Layer.Layer<ClusterPanel, never, never>"
+    },
+    {
+      "name": "ClusterPanelSnapshot",
+      "kind": "interface",
+      "signature": "export interface ClusterPanelSnapshot { readonly enabled: false readonly reason: \"cluster-not-enabled\" }"
+    },
+    {
       "name": "CommandsDevtools",
       "kind": "class",
       "signature": "export class CommandsDevtools extends Context.Service<CommandsDevtools, CommandsDevtoolsApi>()( \"@effect-desktop/devtools/CommandsDevtools\" ) {}"
@@ -94,6 +114,31 @@
       "signature": "export interface DevtoolsShellWindow { readonly open: (input: { readonly url: string readonly tokenPath: string }) => Effect.Effect<void, DevtoolsShellOpenError, never> }"
     },
     {
+      "name": "DevtoolsSnapshot",
+      "kind": "interface",
+      "signature": "export interface DevtoolsSnapshot { readonly liveRuntime: LiveRuntimePanelsSnapshot readonly diagnostics: DiagnosticsPanelsSnapshot readonly performance: PerformanceOverlaySnapshot readonly eventLog: EventLogPanelSnapshot readonly workflows: WorkflowsPanelSnapshot readonly reactivity: ReactivityPanelSnapshot readonly persistence: PersistencePanelSnapshot readonly logs: LogsPanelSnapshot readonly cluster: ClusterPanelSnapshot }"
+    },
+    {
+      "name": "DevtoolsSnapshotClient",
+      "kind": "class",
+      "signature": "export class DevtoolsSnapshotClient extends Context.Service< DevtoolsSnapshotClient, DevtoolsSnapshotClientApi >()(\"@effect-desktop/devtools/DevtoolsSnapshotClient\") {}"
+    },
+    {
+      "name": "DevtoolsSnapshotClientApi",
+      "kind": "interface",
+      "signature": "export interface DevtoolsSnapshotClientApi { readonly exportSnapshot: () => Effect.Effect<DevtoolsSnapshot, EventLogPanelError, never> }"
+    },
+    {
+      "name": "DevtoolsSnapshotClientLive",
+      "kind": "value",
+      "signature": "const DevtoolsSnapshotClientLive: Layer.Layer<DevtoolsSnapshotClient, never, DevtoolsSnapshotClientRequirements>"
+    },
+    {
+      "name": "DevtoolsSnapshotClientRequirements",
+      "kind": "type",
+      "signature": "export type DevtoolsSnapshotClientRequirements = | LiveRuntimePanels | DiagnosticsPanels | PerformanceOverlay | EventLogPanel | WorkflowsPanel | ReactivityPanel | PersistencePanel | LogsPanel | ClusterPanel"
+    },
+    {
       "name": "DevtoolsStartInput",
       "kind": "class",
       "signature": "export class DevtoolsStartInput extends Schema.Class<DevtoolsStartInput>(\"DevtoolsStartInput\")({ profile: Schema.Literals([\"dev\", \"prod\"]), stateDir: NonEmptyString, devtoolsFlag: Schema.optionalKey(Schema.Boolean), securityDevtoolsInProd: Schema.optionalKey(Schema.Boolean), openShell: Schema.optionalKey(Schema.Boolean) }) {}"
@@ -102,6 +147,16 @@
       "name": "DevtoolsTokenError",
       "kind": "class",
       "signature": "export class DevtoolsTokenError extends Data.TaggedError(\"TokenError\")<{ readonly operation: string readonly path: string readonly cause: unknown }> {}"
+    },
+    {
+      "name": "DevtoolsTracerLayerNoOp",
+      "kind": "value",
+      "signature": "const DevtoolsTracerLayerNoOp: Layer.Layer<never, never, never>"
+    },
+    {
+      "name": "DevtoolsTracerOptions",
+      "kind": "interface",
+      "signature": "export interface DevtoolsTracerOptions { readonly webSocketUrl?: string }"
     },
     {
       "name": "DiagnosticsPanels",
@@ -127,6 +182,41 @@
       "name": "DiagnosticsPanelsSnapshot",
       "kind": "interface",
       "signature": "export interface DiagnosticsPanelsSnapshot { readonly logs: readonly TelemetryLogRecord[] readonly traces: readonly TraceGroup[] readonly metrics: readonly TelemetryMetricSnapshot[] }"
+    },
+    {
+      "name": "EventLogPanel",
+      "kind": "class",
+      "signature": "export class EventLogPanel extends Context.Service<EventLogPanel, EventLogPanelApi>()( \"@effect-desktop/devtools/EventLogPanel\" ) {}"
+    },
+    {
+      "name": "EventLogPanelApi",
+      "kind": "interface",
+      "signature": "export interface EventLogPanelApi { readonly list: () => Effect.Effect<EventLogPanelSnapshot, EventLogPanelError, never> readonly observe: () => Stream.Stream<EventLogPanelSnapshot, EventLogPanelError, never> }"
+    },
+    {
+      "name": "EventLogPanelError",
+      "kind": "type",
+      "signature": "export type EventLogPanelError = EventJournal.EventJournalError"
+    },
+    {
+      "name": "EventLogPanelLive",
+      "kind": "value",
+      "signature": "const EventLogPanelLive: (options?: EventLogPanelOptions) => Layer.Layer<EventLogPanel, never, EventLogNS.EventLog>"
+    },
+    {
+      "name": "EventLogPanelOptions",
+      "kind": "interface",
+      "signature": "export interface EventLogPanelOptions { readonly maxRows?: number readonly frameInterval?: `${number} millis` }"
+    },
+    {
+      "name": "EventLogPanelRow",
+      "kind": "interface",
+      "signature": "export interface EventLogPanelRow { readonly id: string readonly event: string readonly primaryKey: string readonly payloadBytes: number readonly timestampMs: number }"
+    },
+    {
+      "name": "EventLogPanelSnapshot",
+      "kind": "interface",
+      "signature": "export interface EventLogPanelSnapshot { readonly entries: readonly EventLogPanelRow[] readonly totalCount: number }"
     },
     {
       "name": "LiveRuntimePanels",
@@ -159,9 +249,49 @@
       "signature": "export interface LiveRuntimePanelsSnapshot { readonly bridgeCalls: readonly BridgeCallPanelRow[] readonly streams: readonly StreamPanelRow[] readonly resources: readonly ResourcePanelRow[] readonly permissions: readonly PermissionPanelRow[] readonly processes: readonly ProcessPanelRow[] }"
     },
     {
+      "name": "LogsPanel",
+      "kind": "class",
+      "signature": "export class LogsPanel extends Context.Service<LogsPanel, LogsPanelApi>()( \"@effect-desktop/devtools/LogsPanel\" ) {}"
+    },
+    {
+      "name": "LogsPanelApi",
+      "kind": "interface",
+      "signature": "export interface LogsPanelApi { readonly list: () => Effect.Effect<LogsPanelSnapshot, never, never> readonly setLevelFilter: (level: LogsPanelLevel) => Effect.Effect<void, never, never> readonly observe: () => Stream.Stream<LogsPanelSnapshot, never, never> readonly layer: () => Layer.Layer<never> }"
+    },
+    {
+      "name": "LogsPanelLevel",
+      "kind": "type",
+      "signature": "export type LogsPanelLevel = \"Trace\" | \"Debug\" | \"Info\" | \"Warning\" | \"Error\" | \"Fatal\""
+    },
+    {
+      "name": "LogsPanelLive",
+      "kind": "value",
+      "signature": "const LogsPanelLive: (options?: LogsPanelOptions) => Layer.Layer<LogsPanel>"
+    },
+    {
+      "name": "LogsPanelOptions",
+      "kind": "interface",
+      "signature": "export interface LogsPanelOptions { readonly maxRows?: number readonly levelFilter?: LogsPanelLevel readonly frameInterval?: `${number} millis` }"
+    },
+    {
+      "name": "LogsPanelRecord",
+      "kind": "interface",
+      "signature": "export interface LogsPanelRecord { readonly timestamp: number readonly level: LogsPanelLevel readonly message: string readonly fiber: string }"
+    },
+    {
+      "name": "LogsPanelSnapshot",
+      "kind": "interface",
+      "signature": "export interface LogsPanelSnapshot { readonly records: readonly LogsPanelRecord[] readonly totalCount: number readonly levelFilter: LogsPanelLevel }"
+    },
+    {
       "name": "makeDevtoolsShell",
       "kind": "value",
       "signature": "const makeDevtoolsShell: (options?: DevtoolsShellOptions) => Effect.Effect<DevtoolsShellApi, never, never>"
+    },
+    {
+      "name": "makeDevtoolsTracerLayer",
+      "kind": "value",
+      "signature": "const makeDevtoolsTracerLayer: (options?: DevtoolsTracerOptions) => Layer.Layer<never>"
     },
     {
       "name": "makeDiagnosticsPanels",
@@ -169,14 +299,49 @@
       "signature": "const makeDiagnosticsPanels: (options?: DiagnosticsPanelsOptions) => Effect.Effect<DiagnosticsPanelsApi, never, Telemetry>"
     },
     {
+      "name": "makeEventLogPanel",
+      "kind": "value",
+      "signature": "const makeEventLogPanel: (options?: EventLogPanelOptions) => Effect.Effect<EventLogPanelApi, never, EventLogNS.EventLog>"
+    },
+    {
       "name": "makeLiveRuntimePanels",
       "kind": "value",
       "signature": "const makeLiveRuntimePanels: (sources: LiveRuntimePanelSources, options?: LiveRuntimePanelsOptions) => Effect.Effect<LiveRuntimePanelsApi, never, PermissionRegistry | Process | ResourceRegistry>"
     },
     {
+      "name": "makeLogsPanel",
+      "kind": "value",
+      "signature": "const makeLogsPanel: (options?: LogsPanelOptions) => Effect.Effect<LogsPanelApi, never, never>"
+    },
+    {
       "name": "makePerformanceOverlay",
       "kind": "value",
       "signature": "const makePerformanceOverlay: (options?: PerformanceOverlayOptions) => Effect.Effect<PerformanceOverlayApi, never, Telemetry>"
+    },
+    {
+      "name": "makePersistencePanel",
+      "kind": "value",
+      "signature": "const makePersistencePanel: (options?: PersistencePanelOptions) => Effect.Effect<PersistencePanelApi, never, KeyValueStore.KeyValueStore>"
+    },
+    {
+      "name": "makeReactivityPanel",
+      "kind": "value",
+      "signature": "const makeReactivityPanel: (options?: ReactivityPanelOptions) => Effect.Effect<ReactivityPanelApi, never, ReactivityTracker>"
+    },
+    {
+      "name": "makeReactivityTracker",
+      "kind": "value",
+      "signature": "const makeReactivityTracker: (options?: { readonly maxRows?: number; readonly now?: () => number; }) => Effect.Effect<ReactivityTrackerApi, never, never>"
+    },
+    {
+      "name": "makeWorkflowExecutionRegistry",
+      "kind": "value",
+      "signature": "const makeWorkflowExecutionRegistry: (options?: { readonly maxRows?: number; readonly now?: () => number; }) => Effect.Effect<WorkflowExecutionRegistryApi, never, never>"
+    },
+    {
+      "name": "makeWorkflowsPanel",
+      "kind": "value",
+      "signature": "const makeWorkflowsPanel: (options?: WorkflowsPanelOptions) => Effect.Effect<WorkflowsPanelApi, never, WorkflowExecutionRegistry>"
     },
     {
       "name": "PerformanceBudget",
@@ -229,9 +394,79 @@
       "signature": "export interface PermissionPanelRow { readonly capability: string readonly decision: PermissionDecision[\"outcome\"] readonly reason: Option.Option<string> readonly remediation: Option.Option<string> readonly actor: string readonly traceId: string }"
     },
     {
+      "name": "PersistencePanel",
+      "kind": "class",
+      "signature": "export class PersistencePanel extends Context.Service<PersistencePanel, PersistencePanelApi>()( \"@effect-desktop/devtools/PersistencePanel\" ) {}"
+    },
+    {
+      "name": "PersistencePanelApi",
+      "kind": "interface",
+      "signature": "export interface PersistencePanelApi { readonly list: () => Effect.Effect<PersistencePanelSnapshot, never, never> readonly observe: () => Stream.Stream<PersistencePanelSnapshot, never, never> }"
+    },
+    {
+      "name": "PersistencePanelLive",
+      "kind": "value",
+      "signature": "const PersistencePanelLive: (options?: PersistencePanelOptions) => Layer.Layer<PersistencePanel, never, KeyValueStore.KeyValueStore>"
+    },
+    {
+      "name": "PersistencePanelOptions",
+      "kind": "interface",
+      "signature": "export interface PersistencePanelOptions { readonly frameInterval?: `${number} millis` }"
+    },
+    {
+      "name": "PersistencePanelSnapshot",
+      "kind": "interface",
+      "signature": "export interface PersistencePanelSnapshot { readonly kvSize: Option.Option<number> readonly kvHealthy: boolean readonly kvError: Option.Option<string> }"
+    },
+    {
       "name": "ProcessPanelRow",
       "kind": "interface",
       "signature": "export interface ProcessPanelRow { readonly pid: number readonly command: string readonly ownerScope: string readonly childPids: readonly number[] readonly lastExit: Option.Option<ProcessExitStatus> readonly state: ProcessSnapshot[\"state\"] }"
+    },
+    {
+      "name": "ReactivityInvalidationRecord",
+      "kind": "interface",
+      "signature": "export interface ReactivityInvalidationRecord { readonly keys: readonly string[] readonly timestampMs: number readonly count: number }"
+    },
+    {
+      "name": "ReactivityPanel",
+      "kind": "class",
+      "signature": "export class ReactivityPanel extends Context.Service<ReactivityPanel, ReactivityPanelApi>()( \"@effect-desktop/devtools/ReactivityPanel\" ) {}"
+    },
+    {
+      "name": "ReactivityPanelApi",
+      "kind": "interface",
+      "signature": "export interface ReactivityPanelApi { readonly list: () => Effect.Effect<ReactivityPanelSnapshot, never, never> readonly observe: () => Stream.Stream<ReactivityPanelSnapshot, never, never> }"
+    },
+    {
+      "name": "ReactivityPanelLive",
+      "kind": "value",
+      "signature": "const ReactivityPanelLive: (options?: ReactivityPanelOptions) => Layer.Layer<ReactivityPanel, never, ReactivityTracker>"
+    },
+    {
+      "name": "ReactivityPanelOptions",
+      "kind": "interface",
+      "signature": "export interface ReactivityPanelOptions { readonly maxRows?: number }"
+    },
+    {
+      "name": "ReactivityPanelSnapshot",
+      "kind": "interface",
+      "signature": "export interface ReactivityPanelSnapshot { readonly invalidations: readonly ReactivityInvalidationRecord[] readonly totalInvalidations: number readonly uniqueKeys: readonly string[] }"
+    },
+    {
+      "name": "ReactivityTracker",
+      "kind": "class",
+      "signature": "export class ReactivityTracker extends Context.Service<ReactivityTracker, ReactivityTrackerApi>()( \"@effect-desktop/devtools/ReactivityTracker\" ) {}"
+    },
+    {
+      "name": "ReactivityTrackerApi",
+      "kind": "interface",
+      "signature": "export interface ReactivityTrackerApi { readonly trackInvalidation: ( keys: ReadonlyArray<unknown> | Readonly<Record<string, ReadonlyArray<unknown>>> ) => Effect.Effect<void, never, never> readonly list: () => Effect.Effect<readonly ReactivityInvalidationRecord[], never, never> readonly observe: () => Stream.Stream<readonly ReactivityInvalidationRecord[], never, never> }"
+    },
+    {
+      "name": "ReactivityTrackerLive",
+      "kind": "value",
+      "signature": "const ReactivityTrackerLive: Layer.Layer<ReactivityTracker, never, never>"
     },
     {
       "name": "ResourcePanelRow",
@@ -277,6 +512,61 @@
       "name": "WorkersSnapshot",
       "kind": "interface",
       "signature": "export interface WorkersSnapshot { readonly workers: readonly WorkerSnapshot[] }"
+    },
+    {
+      "name": "WorkflowExecutionEvent",
+      "kind": "type",
+      "signature": "export type WorkflowExecutionEvent = | { readonly tag: \"Started\" readonly executionId: string readonly workflowName: string readonly startedAt: number } | { readonly tag: \"Completed\"; readonly executionId: string; readonly endedAt: number } | { readonly tag: \"Failed\" readonly executionId: string readonly endedAt: number readonly errorTag: string } | { readonly tag: \"Interrupted\"; readonly executionId: string; readonly endedAt: number }"
+    },
+    {
+      "name": "WorkflowExecutionRecord",
+      "kind": "interface",
+      "signature": "export interface WorkflowExecutionRecord { readonly executionId: string readonly workflowName: string readonly state: WorkflowExecutionState readonly startedAt: number readonly endedAt: Option.Option<number> readonly durationMs: Option.Option<number> readonly errorTag: Option.Option<string> }"
+    },
+    {
+      "name": "WorkflowExecutionRegistry",
+      "kind": "class",
+      "signature": "export class WorkflowExecutionRegistry extends Context.Service< WorkflowExecutionRegistry, WorkflowExecutionRegistryApi >()(\"@effect-desktop/devtools/WorkflowExecutionRegistry\") {}"
+    },
+    {
+      "name": "WorkflowExecutionRegistryApi",
+      "kind": "interface",
+      "signature": "export interface WorkflowExecutionRegistryApi { readonly record: (event: WorkflowExecutionEvent) => Effect.Effect<void, never, never> readonly list: () => Effect.Effect<readonly WorkflowExecutionRecord[], never, never> readonly observe: () => Stream.Stream<readonly WorkflowExecutionRecord[], never, never> }"
+    },
+    {
+      "name": "WorkflowExecutionRegistryLive",
+      "kind": "value",
+      "signature": "const WorkflowExecutionRegistryLive: Layer.Layer<WorkflowExecutionRegistry, never, never>"
+    },
+    {
+      "name": "WorkflowExecutionState",
+      "kind": "type",
+      "signature": "export type WorkflowExecutionState = \"running\" | \"completed\" | \"failed\" | \"interrupted\""
+    },
+    {
+      "name": "WorkflowsPanel",
+      "kind": "class",
+      "signature": "export class WorkflowsPanel extends Context.Service<WorkflowsPanel, WorkflowsPanelApi>()( \"@effect-desktop/devtools/WorkflowsPanel\" ) {}"
+    },
+    {
+      "name": "WorkflowsPanelApi",
+      "kind": "interface",
+      "signature": "export interface WorkflowsPanelApi { readonly list: () => Effect.Effect<WorkflowsPanelSnapshot, never, never> readonly observe: () => Stream.Stream<WorkflowsPanelSnapshot, never, never> }"
+    },
+    {
+      "name": "WorkflowsPanelLive",
+      "kind": "value",
+      "signature": "const WorkflowsPanelLive: (options?: WorkflowsPanelOptions) => Layer.Layer<WorkflowsPanel, never, WorkflowExecutionRegistry>"
+    },
+    {
+      "name": "WorkflowsPanelOptions",
+      "kind": "interface",
+      "signature": "export interface WorkflowsPanelOptions { readonly maxRows?: number readonly frameInterval?: `${number} millis` }"
+    },
+    {
+      "name": "WorkflowsPanelSnapshot",
+      "kind": "interface",
+      "signature": "export interface WorkflowsPanelSnapshot { readonly executions: readonly WorkflowExecutionRecord[] readonly runningCount: number readonly completedCount: number readonly failedCount: number }"
     }
   ]
 }
