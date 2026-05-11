@@ -912,7 +912,12 @@ const configLocation = (path: string, configPath: string): ProductionCheckLocati
   new ProductionCheckLocation({ path: `${path}#${configPath}`, line: 1, column: 1 })
 
 const hasScopedList = (values: readonly string[] | undefined): boolean =>
-  values !== undefined && values.length > 0 && !values.includes("*")
+  values !== undefined &&
+  values.length > 0 &&
+  values.every((value) => {
+    const normalized = value.trim()
+    return normalized.length > 0 && normalized !== "*"
+  })
 
 const hasAnyList = (values: readonly string[] | undefined): boolean =>
   values !== undefined && values.length > 0

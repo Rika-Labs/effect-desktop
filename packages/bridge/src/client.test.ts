@@ -282,6 +282,24 @@ test("Client decodes resource outputs into disposable renderer proxies", async (
   expect(disposed).toEqual([handle])
 })
 
+test("Client rejects resource outputs with empty owner scopes", async () => {
+  const ProcessRpcs = makeProcessRpcs("ProjectRpcs.ResourceProxyEmptyOwner")
+  const client = Client(
+    { process: ProcessRpcs },
+    responseExchange([], {
+      kind: "process",
+      id: "process-empty-owner",
+      generation: 0,
+      ownerScope: "",
+      state: "running"
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(client.process.spawn())
+
+  expectFailureTag(exit, "InvalidOutput")
+})
+
 test("Client resource proxies return stale-handle disposal failures as values", async () => {
   const ProcessRpcs = makeProcessRpcs("ProjectRpcs.ResourceProxyStale")
   const handle = {

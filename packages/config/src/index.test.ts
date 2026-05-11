@@ -588,6 +588,74 @@ test("ProductionChecker fails filesystem writes without scoped roots", async () 
   ])
 })
 
+test("ProductionChecker rejects blank and wildcard-shaped permission scopes", async () => {
+  for (const roots of [[""], [" * "]]) {
+    const report = await Effect.runPromise(
+      runProductionCheck({
+        config: {
+          permissions: {
+            filesystem: {
+              write: {
+                enabled: true,
+                roots
+              }
+            }
+          }
+        }
+      })
+    )
+
+    expect(report.failures.map((violation) => violation.rule)).toContain(
+      "filesystem-write-without-scope"
+    )
+  }
+
+  const processReport = await Effect.runPromise(
+    runProductionCheck({
+      config: {
+        permissions: {
+          process: {
+            spawn: {
+              enabled: true,
+              allow: [" * "]
+            }
+          }
+        }
+      }
+    })
+  )
+  const scopedReport = await Effect.runPromise(
+    runProductionCheck({
+      config: {
+        permissions: {
+          filesystem: {
+            write: {
+              enabled: true,
+              roots: ["/tmp/app"]
+            }
+          },
+          process: {
+            spawn: {
+              enabled: true,
+              allow: ["git"]
+            }
+          }
+        }
+      }
+    })
+  )
+
+  expect(processReport.failures.map((violation) => violation.rule)).toContain(
+    "process-permission-without-policy"
+  )
+  expect(scopedReport.failures.map((violation) => violation.rule)).not.toContain(
+    "filesystem-write-without-scope"
+  )
+  expect(scopedReport.failures.map((violation) => violation.rule)).not.toContain(
+    "process-permission-without-policy"
+  )
+})
+
 test("ProductionChecker rule registry covers the current production rule set", async () => {
   const config: ProductionSecurityConfig = {
     security: {
