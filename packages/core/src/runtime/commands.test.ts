@@ -113,6 +113,25 @@ test("CommandRegistry exposes invocation events and failure state for devtools",
   expect(result.snapshots[0]?.lastError?.errorTag).toBe("InvalidInput")
 })
 
+test("CommandRegistry does not publish invocation records for invalid command ids", async () => {
+  const { registry } = await makeTestRegistry()
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const observedFiber = yield* registry
+        .observeInvocations()
+        .pipe(Stream.take(1), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+      yield* Effect.sleep("1 millis")
+      const exit = yield* Effect.exit(registry.invoke("", {}, context))
+      const observed = yield* Fiber.join(observedFiber).pipe(Effect.timeoutOption("20 millis"))
+      return { exit, observed }
+    })
+  )
+
+  expectFailure(result.exit, CommandRegistryInvalidInputError)
+  expect(Option.isNone(result.observed)).toBe(true)
+})
+
 test("CommandRegistry rejects duplicate command ids", async () => {
   const { registry } = await makeTestRegistry()
 
