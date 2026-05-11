@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Cause, Deferred, Effect, Exit, Fiber } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Option } from "effect"
 
 import { EventJournal } from "effect/unstable/eventlog"
 
@@ -98,6 +98,33 @@ test("ApprovalBroker rejects the ninth distinct queued request for one actor", a
       expect(error.depth).toBe(8)
       expect(error.maxDepth).toBe(8)
     })
+  }
+})
+
+test("ApprovalBroker continues coalesced prompts after starter fiber interruption", async () => {
+  const promptStarted = await Effect.runPromise(Deferred.make<void>())
+  const releasePrompt = await Effect.runPromise(Deferred.make<void>())
+  const prompt: ApprovalPromptPort = {
+    prompt: (request) =>
+      Effect.gen(function* () {
+        yield* Deferred.succeed(promptStarted, undefined)
+        yield* Deferred.await(releasePrompt)
+        return outcome(request, "approved-once", 1_100)
+      })
+  }
+  const broker = await Effect.runPromise(makeApprovalBroker({ prompt, now: () => 1_000 }))
+  const request = approvalRequest("request-1", "filesystem.write", "window-main", "/tmp/app")
+  const starter = Effect.runFork(broker.ask(request))
+
+  await Effect.runPromise(Deferred.await(promptStarted))
+  await Effect.runPromise(Fiber.interrupt(starter))
+  const waiter = Effect.runFork(broker.ask(copyRequest(request, "request-2")))
+  await Effect.runPromise(Deferred.succeed(releasePrompt, undefined))
+  const result = await Effect.runPromise(Fiber.join(waiter).pipe(Effect.timeoutOption("50 millis")))
+
+  expect(Option.isSome(result)).toBe(true)
+  if (Option.isSome(result)) {
+    expect(result.value.outcome).toBe("approved-once")
   }
 })
 

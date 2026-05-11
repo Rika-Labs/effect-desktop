@@ -163,7 +163,7 @@ export const makeApprovalBroker = (
             Match.tag("Immediate", (r) => Effect.succeed(r.outcome)),
             Match.tag("Overflow", (r) => Effect.fail(r.error)),
             Match.tag("Start", (r) =>
-              runPromptLoop(state, options.prompt, options.audit, r.entry).pipe(
+              startPromptLoop(state, options.prompt, options.audit, r.entry).pipe(
                 Effect.flatMap(() => Deferred.await(waiter))
               )
             ),
@@ -265,6 +265,16 @@ const enqueue = (
     })
   ]
 }
+
+const startPromptLoop = (
+  state: Ref.Ref<BrokerState>,
+  prompt: ApprovalPromptPort,
+  audit: AuditEventsApi | undefined,
+  entry: PromptEntry
+): Effect.Effect<void, never, never> =>
+  Effect.sync(() => {
+    Effect.runFork(runPromptLoop(state, prompt, audit, entry))
+  })
 
 const runPromptLoop = (
   state: Ref.Ref<BrokerState>,
