@@ -1,6 +1,8 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs"
-import { basename, isAbsolute, join, relative, resolve } from "node:path"
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
+
+import { Data, Effect, FileSystem } from "effect"
+import type { PlatformError } from "effect/PlatformError"
 
 export const TEMPLATE_NAMES = ["basic-react-tailwind", "todo-sqlite", "multi-window"] as const
 export type TemplateName = (typeof TEMPLATE_NAMES)[number]
@@ -22,6 +24,35 @@ export interface ScaffoldResult {
   readonly template: TemplateName
   readonly stubs: readonly string[]
 }
+
+export class ScaffoldTemplateError extends Data.TaggedError("ScaffoldTemplateError")<{
+  readonly template: string
+  readonly message: string
+}> {}
+
+export class ScaffoldTargetError extends Data.TaggedError("ScaffoldTargetError")<{
+  readonly path: string
+  readonly message: string
+}> {}
+
+export class ScaffoldPackageJsonError extends Data.TaggedError("ScaffoldPackageJsonError")<{
+  readonly path: string
+  readonly message: string
+  readonly cause: unknown
+}> {}
+
+export class ScaffoldFileError extends Data.TaggedError("ScaffoldFileError")<{
+  readonly operation: string
+  readonly path: string
+  readonly message: string
+  readonly cause: PlatformError
+}> {}
+
+export type ScaffoldError =
+  | ScaffoldTemplateError
+  | ScaffoldTargetError
+  | ScaffoldPackageJsonError
+  | ScaffoldFileError
 
 const EFFECT_VERSION = "4.0.0-beta.60"
 const EFFECT_DESKTOP_VERSION = "0.0.0"
@@ -46,74 +77,170 @@ const templatesRoot = (): string => {
   return join(thisFile, "..", "..", "..", "..", "templates")
 }
 
-export const scaffold = (options: ScaffoldOptions): ScaffoldResult => {
-  if (!isTemplateName(options.template)) {
-    throw new Error(`Unknown template '${String(options.template)}'`)
-  }
+export const scaffold = (
+  options: ScaffoldOptions
+): Effect.Effect<ScaffoldResult, ScaffoldError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
 
-  const root = resolve(templatesRoot())
-  const templateSrc = resolve(root, options.template)
-  const templateRelativePath = relative(root, templateSrc)
+    if (!isTemplateName(options.template)) {
+      return yield* Effect.fail(
+        new ScaffoldTemplateError({
+          template: String(options.template),
+          message: `Unknown template '${String(options.template)}'`
+        })
+      )
+    }
 
-  if (templateRelativePath.startsWith("..") || isAbsolute(templateRelativePath)) {
-    throw new Error(`Template '${options.template}' escapes the templates directory`)
-  }
+    const root = resolve(templatesRoot())
+    const templateSrc = resolve(root, options.template)
+    const templateRelativePath = relative(root, templateSrc)
 
-  if (!existsSync(templateSrc)) {
-    throw new Error(`Template '${options.template}' not found at ${templateSrc}`)
-  }
+    if (templateRelativePath.startsWith("..") || isAbsolute(templateRelativePath)) {
+      return yield* Effect.fail(
+        new ScaffoldTemplateError({
+          template: options.template,
+          message: `Template '${options.template}' escapes the templates directory`
+        })
+      )
+    }
 
-  if (existsSync(options.outDir) && readdirSync(options.outDir).length > 0) {
-    throw new Error(`Target directory '${options.outDir}' already exists and is not empty`)
-  }
+    const templateExists = yield* fs.exists(templateSrc).pipe(mapFileError("exists", templateSrc))
+    if (!templateExists) {
+      return yield* Effect.fail(
+        new ScaffoldTemplateError({
+          template: options.template,
+          message: `Template '${options.template}' not found at ${templateSrc}`
+        })
+      )
+    }
 
-  mkdirSync(options.outDir, { recursive: true })
+    const targetExists = yield* fs
+      .exists(options.outDir)
+      .pipe(mapFileError("exists", options.outDir))
+    if (targetExists) {
+      const entries = yield* fs
+        .readDirectory(options.outDir)
+        .pipe(mapFileError("readdir", options.outDir))
+      if (entries.length > 0) {
+        return yield* Effect.fail(
+          new ScaffoldTargetError({
+            path: options.outDir,
+            message: `Target directory '${options.outDir}' already exists and is not empty`
+          })
+        )
+      }
+    }
 
-  cpSync(templateSrc, options.outDir, {
-    recursive: true,
-    force: false,
-    errorOnExist: true,
-    filter: (src) => {
-      const name = basename(src)
-      return name !== "node_modules" && name !== "dist"
+    yield* fs
+      .makeDirectory(options.outDir, { recursive: true })
+      .pipe(mapFileError("mkdir", options.outDir))
+    yield* copyTemplateTree(fs, templateSrc, options.outDir)
+
+    const pkgPath = join(options.outDir, "package.json")
+    const pkgContent = yield* fs.readFileString(pkgPath).pipe(mapFileError("read", pkgPath))
+    const pkg = yield* parsePackageJson(pkgPath, pkgContent)
+
+    pkg["name"] = options.name
+
+    const deps = (pkg["dependencies"] ?? {}) as Record<string, string>
+    deps["effect"] = EFFECT_VERSION
+    rewriteWorkspaceDependencies(deps)
+
+    if (options.rendererStorage !== "none") {
+      Object.assign(deps, rendererStorageDeps(options.rendererStorage))
+    }
+    if (options.includeWorkflows) {
+      Object.assign(deps, COMPANION_VERSIONS)
+    }
+    if (options.includeCluster) {
+      deps["@effect/cluster"] = EFFECT_VERSION
+    }
+
+    pkg["dependencies"] = deps
+
+    for (const [pkgName, version] of Object.entries(COMPANION_VERSIONS)) {
+      const peerDeps = (pkg["peerDependencies"] ?? {}) as Record<string, string>
+      peerDeps[pkgName] = version
+      pkg["peerDependencies"] = peerDeps
+    }
+
+    yield* fs
+      .writeFileString(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`)
+      .pipe(mapFileError("write", pkgPath))
+
+    return {
+      path: options.outDir,
+      template: options.template,
+      stubs: TEMPLATE_STUBS[options.template]
     }
   })
 
-  const pkgPath = join(options.outDir, "package.json")
-  const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as Record<string, unknown>
+const copyTemplateTree = (
+  fs: FileSystem.FileSystem,
+  source: string,
+  target: string
+): Effect.Effect<void, ScaffoldError> =>
+  Effect.gen(function* () {
+    const sourceInfo = yield* fs.stat(source).pipe(mapFileError("stat", source))
+    if (sourceInfo.type === "Directory") {
+      if (shouldSkipTemplateEntry(basename(source))) {
+        return
+      }
+      yield* fs.makeDirectory(target, { recursive: true }).pipe(mapFileError("mkdir", target))
+      const entries = yield* fs.readDirectory(source).pipe(mapFileError("readdir", source))
+      for (const entry of entries) {
+        yield* copyTemplateTree(fs, join(source, entry), join(target, entry))
+      }
+      return
+    }
 
-  pkg["name"] = options.name
+    if (sourceInfo.type === "File") {
+      yield* fs
+        .makeDirectory(dirname(target), { recursive: true })
+        .pipe(mapFileError("mkdir", dirname(target)))
+      yield* fs.copyFile(source, target).pipe(mapFileError("copy", source))
+      return
+    }
 
-  const deps = (pkg["dependencies"] ?? {}) as Record<string, string>
-  deps["effect"] = EFFECT_VERSION
-  rewriteWorkspaceDependencies(deps)
+    return yield* Effect.fail(
+      new ScaffoldTargetError({
+        path: source,
+        message: `Template entry '${source}' is not a regular file or directory`
+      })
+    )
+  })
 
-  if (options.rendererStorage !== "none") {
-    Object.assign(deps, rendererStorageDeps(options.rendererStorage))
-  }
-  if (options.includeWorkflows) {
-    Object.assign(deps, COMPANION_VERSIONS)
-  }
-  if (options.includeCluster) {
-    deps["@effect/cluster"] = EFFECT_VERSION
-  }
+const shouldSkipTemplateEntry = (name: string): boolean =>
+  name === "node_modules" || name === "dist"
 
-  pkg["dependencies"] = deps
+const parsePackageJson = (
+  path: string,
+  content: string
+): Effect.Effect<Record<string, unknown>, ScaffoldPackageJsonError> =>
+  Effect.try({
+    try: () => JSON.parse(content) as Record<string, unknown>,
+    catch: (cause) =>
+      new ScaffoldPackageJsonError({
+        path,
+        message: `failed to parse ${path}`,
+        cause
+      })
+  })
 
-  for (const [pkg_, version] of Object.entries(COMPANION_VERSIONS)) {
-    const peerDeps = (pkg["peerDependencies"] ?? {}) as Record<string, string>
-    peerDeps[pkg_] = version
-    pkg["peerDependencies"] = peerDeps
-  }
-
-  writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n")
-
-  return {
-    path: options.outDir,
-    template: options.template,
-    stubs: TEMPLATE_STUBS[options.template]
-  }
-}
+const mapFileError =
+  (operation: string, path: string) =>
+  <A>(effect: Effect.Effect<A, PlatformError>): Effect.Effect<A, ScaffoldFileError> =>
+    Effect.mapError(
+      effect,
+      (cause) =>
+        new ScaffoldFileError({
+          operation,
+          path,
+          message: `failed to ${operation} ${path}`,
+          cause
+        })
+    )
 
 const isTemplateName = (value: string): value is TemplateName =>
   TEMPLATE_NAMES.some((template) => template === value)

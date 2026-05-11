@@ -3,6 +3,7 @@ import { Effect, Exit, Fiber, Layer, Schema, Stream } from "effect"
 
 import {
   Api,
+  HOST_PROTOCOL_VERSION,
   HOST_PING_METHOD,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
@@ -182,7 +183,7 @@ test("runHeadless records host calls and exits without leaked windows", async ()
     WINDOW_CREATE_METHOD,
     WINDOW_DESTROY_METHOD
   ])
-  expect(result.protocolVersion).toBe("0.0.0")
+  expect(result.protocolVersion).toBe(HOST_PROTOCOL_VERSION)
 })
 
 test("MockHost layer speaks host protocol in-process and preserves trace IDs", async () => {
@@ -220,7 +221,7 @@ test("MockHost layer speaks host protocol in-process and preserves trace IDs", a
       { method: WINDOW_CREATE_METHOD, traceId: "trace-2" },
       { method: WINDOW_DESTROY_METHOD, traceId: "trace-3" }
     ],
-    protocolVersion: "0.0.0",
+    protocolVersion: HOST_PROTOCOL_VERSION,
     windows: 0
   })
 })

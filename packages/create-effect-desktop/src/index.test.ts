@@ -1,8 +1,11 @@
 import { expect, test, afterEach } from "bun:test"
+import { BunServices } from "@effect/platform-bun"
 import { existsSync, mkdirSync, rmSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { fileURLToPath } from "node:url"
+
+import { Effect } from "effect"
 
 import { scaffold, TEMPLATE_NAMES, type RendererStorage, type ScaffoldOptions } from "./index.js"
 
@@ -27,8 +30,14 @@ function makeOptions(overrides: Partial<ScaffoldOptions> = {}): ScaffoldOptions 
   }
 }
 
-test("scaffold copies basic-react-tailwind into outDir", () => {
-  const result = scaffold(makeOptions())
+const runScaffold = (options: ScaffoldOptions) =>
+  Effect.runPromise(scaffold(options).pipe(Effect.provide(BunServices.layer)))
+
+const runScaffoldFailure = (options: ScaffoldOptions) =>
+  Effect.runPromise(Effect.flip(scaffold(options).pipe(Effect.provide(BunServices.layer))))
+
+test("scaffold copies basic-react-tailwind into outDir", async () => {
+  const result = await runScaffold(makeOptions())
 
   expect(result.path).toBe(testDir)
   expect(result.template).toBe("basic-react-tailwind")
@@ -37,8 +46,8 @@ test("scaffold copies basic-react-tailwind into outDir", () => {
   expect(existsSync(join(testDir, "src", "spine.ts"))).toBe(true)
 })
 
-test("scaffold rewrites package name in generated package.json", () => {
-  scaffold(makeOptions({ name: "my-custom-app" }))
+test("scaffold rewrites package name in generated package.json", async () => {
+  await runScaffold(makeOptions({ name: "my-custom-app" }))
 
   const pkg = JSON.parse(readFileSync(join(testDir, "package.json"), "utf8")) as {
     name: string
@@ -46,8 +55,8 @@ test("scaffold rewrites package name in generated package.json", () => {
   expect(pkg.name).toBe("my-custom-app")
 })
 
-test("scaffold pins effect to the lockstep version", () => {
-  scaffold(makeOptions())
+test("scaffold pins effect to the lockstep version", async () => {
+  await runScaffold(makeOptions())
 
   const pkg = JSON.parse(readFileSync(join(testDir, "package.json"), "utf8")) as {
     dependencies: Record<string, string>
@@ -55,8 +64,8 @@ test("scaffold pins effect to the lockstep version", () => {
   expect(pkg.dependencies["effect"]).toBe("4.0.0-beta.60")
 })
 
-test("scaffold rewrites workspace dependencies for generated packages", () => {
-  scaffold(makeOptions({ template: "todo-sqlite" }))
+test("scaffold rewrites workspace dependencies for generated packages", async () => {
+  await runScaffold(makeOptions({ template: "todo-sqlite" }))
 
   const pkg = JSON.parse(readFileSync(join(testDir, "package.json"), "utf8")) as {
     dependencies: Record<string, string>
@@ -69,15 +78,17 @@ test("scaffold rewrites workspace dependencies for generated packages", () => {
   expect(pkg.dependencies["@effect-desktop/core"]).toBe("0.0.0")
 })
 
-test("scaffold rejects non-empty target directories", () => {
+test("scaffold rejects non-empty target directories", async () => {
   mkdirSync(testDir, { recursive: true })
   writeFileSync(join(testDir, "existing.txt"), "user-owned")
 
-  expect(() => scaffold(makeOptions())).toThrow("already exists and is not empty")
+  const error = await runScaffoldFailure(makeOptions())
+
+  expect(error.message).toContain("already exists and is not empty")
 })
 
-test("scaffold adds sqlite-wasm deps when renderer-storage is sqlite-wasm", () => {
-  scaffold(makeOptions({ rendererStorage: "sqlite-wasm" }))
+test("scaffold adds sqlite-wasm deps when renderer-storage is sqlite-wasm", async () => {
+  await runScaffold(makeOptions({ rendererStorage: "sqlite-wasm" }))
 
   const pkg = JSON.parse(readFileSync(join(testDir, "package.json"), "utf8")) as {
     dependencies: Record<string, string>
@@ -86,8 +97,8 @@ test("scaffold adds sqlite-wasm deps when renderer-storage is sqlite-wasm", () =
   expect(pkg.dependencies["@effect/platform-browser"]).toBeDefined()
 })
 
-test("scaffold adds pglite dep when renderer-storage is pglite", () => {
-  scaffold(makeOptions({ rendererStorage: "pglite" }))
+test("scaffold adds pglite dep when renderer-storage is pglite", async () => {
+  await runScaffold(makeOptions({ rendererStorage: "pglite" }))
 
   const pkg = JSON.parse(readFileSync(join(testDir, "package.json"), "utf8")) as {
     dependencies: Record<string, string>
@@ -95,39 +106,43 @@ test("scaffold adds pglite dep when renderer-storage is pglite", () => {
   expect(pkg.dependencies["@effect/sql-pglite"]).toBeDefined()
 })
 
-test("scaffold copies todo-sqlite template", () => {
-  const result = scaffold(makeOptions({ template: "todo-sqlite" }))
+test("scaffold copies todo-sqlite template", async () => {
+  const result = await runScaffold(makeOptions({ template: "todo-sqlite" }))
 
   expect(result.template).toBe("todo-sqlite")
   expect(existsSync(join(testDir, "src", "contract.ts"))).toBe(true)
   expect(result.stubs).toHaveLength(0)
 })
 
-test("scaffold returns stubs notice for multi-window template", () => {
-  const result = scaffold(makeOptions({ template: "multi-window" }))
+test("scaffold returns stubs notice for multi-window template", async () => {
+  const result = await runScaffold(makeOptions({ template: "multi-window" }))
 
   expect(result.stubs.length).toBeGreaterThan(0)
   expect(result.stubs[0]).toContain("T29")
 })
 
-test("scaffold throws for unknown template path", () => {
+test("scaffold throws for unknown template path", async () => {
   const options = makeOptions()
   const badOptions = { ...options, template: "does-not-exist" as "basic-react-tailwind" }
 
-  expect(() => scaffold(badOptions)).toThrow("Unknown template")
+  const error = await runScaffoldFailure(badOptions)
+
+  expect(error.message).toContain("Unknown template")
 })
 
-test("scaffold rejects template traversal at the API boundary", () => {
+test("scaffold rejects template traversal at the API boundary", async () => {
   const options = makeOptions()
   const badOptions = { ...options, template: "../package.json" as "basic-react-tailwind" }
 
-  expect(() => scaffold(badOptions)).toThrow("Unknown template")
+  const error = await runScaffoldFailure(badOptions)
+
+  expect(error.message).toContain("Unknown template")
 })
 
-test("scaffold copies every selectable template", () => {
+test("scaffold copies every selectable template", async () => {
   for (const template of TEMPLATE_NAMES) {
     const outDir = join(testDir, template)
-    const result = scaffold(makeOptions({ outDir, template }))
+    const result = await runScaffold(makeOptions({ outDir, template }))
 
     expect(result.template).toBe(template)
     expect(existsSync(join(outDir, "package.json"))).toBe(true)
@@ -135,7 +150,7 @@ test("scaffold copies every selectable template", () => {
   }
 })
 
-test("scaffold renderer storage dependency matrix is exact", () => {
+test("scaffold renderer storage dependency matrix is exact", async () => {
   const cases: ReadonlyArray<{
     readonly storage: RendererStorage
     readonly expected: readonly string[]
@@ -165,7 +180,7 @@ test("scaffold renderer storage dependency matrix is exact", () => {
 
   for (const entry of cases) {
     const outDir = join(testDir, entry.storage)
-    scaffold(makeOptions({ outDir, rendererStorage: entry.storage }))
+    await runScaffold(makeOptions({ outDir, rendererStorage: entry.storage }))
 
     const pkg = JSON.parse(readFileSync(join(outDir, "package.json"), "utf8")) as {
       dependencies: Record<string, string>
@@ -180,9 +195,9 @@ test("scaffold renderer storage dependency matrix is exact", () => {
   }
 })
 
-test("scaffold adds optional companion dependencies only for selected options", () => {
+test("scaffold adds optional companion dependencies only for selected options", async () => {
   const baseDir = join(testDir, "base")
-  scaffold(makeOptions({ outDir: baseDir }))
+  await runScaffold(makeOptions({ outDir: baseDir }))
   const basePkg = JSON.parse(readFileSync(join(baseDir, "package.json"), "utf8")) as {
     dependencies: Record<string, string>
   }
@@ -190,7 +205,7 @@ test("scaffold adds optional companion dependencies only for selected options", 
   expect(basePkg.dependencies["@effect/cluster"]).toBeUndefined()
 
   const workflowsDir = join(testDir, "workflows")
-  scaffold(makeOptions({ outDir: workflowsDir, includeWorkflows: true }))
+  await runScaffold(makeOptions({ outDir: workflowsDir, includeWorkflows: true }))
   const workflowsPkg = JSON.parse(readFileSync(join(workflowsDir, "package.json"), "utf8")) as {
     dependencies: Record<string, string>
   }
@@ -199,7 +214,7 @@ test("scaffold adds optional companion dependencies only for selected options", 
   expect(workflowsPkg.dependencies["@effect/cluster"]).toBeUndefined()
 
   const clusterDir = join(testDir, "cluster")
-  scaffold(makeOptions({ outDir: clusterDir, includeCluster: true }))
+  await runScaffold(makeOptions({ outDir: clusterDir, includeCluster: true }))
   const clusterPkg = JSON.parse(readFileSync(join(clusterDir, "package.json"), "utf8")) as {
     dependencies: Record<string, string>
   }
@@ -256,16 +271,19 @@ test("cli rejects invalid arguments before scaffolding", async () => {
     readonly args: readonly string[]
     readonly message: string
   }> = [
-    { args: ["--template", "does-not-exist"], message: "unknown template" },
-    { args: ["--renderer-storage", "bad"], message: "unknown renderer-storage" },
+    { args: ["--template", "does-not-exist"], message: "Invalid value for flag --template" },
+    {
+      args: ["--renderer-storage", "bad"],
+      message: "Invalid value for flag --renderer-storage"
+    },
     { args: ["--template"], message: "--template requires a value" },
     { args: ["--renderer-storage"], message: "--renderer-storage requires a value" },
-    { args: ["--unknown"], message: "unknown option" },
+    { args: ["--unknown"], message: "Unrecognized flag: --unknown" },
     { args: ["one", "two"], message: "unexpected positional argument" }
   ]
 
-  for (const entry of cases) {
-    const cwd = join(tmpdir(), `create-effect-desktop-cli-invalid-${entry.message}`)
+  for (const [index, entry] of cases.entries()) {
+    const cwd = join(tmpdir(), `create-effect-desktop-cli-invalid-${index}`)
     if (existsSync(cwd)) {
       rmSync(cwd, { recursive: true })
     }

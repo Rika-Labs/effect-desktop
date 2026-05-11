@@ -768,7 +768,7 @@ test("App bridge client rejects malformed App lifecycle event payloads as Invali
             new HostProtocolEventEnvelope({
               kind: "event",
               timestamp: 1710000000400,
-              traceId: "",
+              traceId: "event-trace",
               method,
               payload: { traceId: "" }
             })

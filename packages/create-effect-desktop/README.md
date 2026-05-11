@@ -7,10 +7,11 @@ Scaffolding command for new applications: template selection, dependency lockste
 ## Public API
 
 ```ts
+import { Effect } from "effect"
 import { scaffold } from "create-effect-desktop"
 ```
 
-`scaffold(options)` copies a first-party template, rewrites the generated package name, pins the Effect beta tuple, and normalizes first-party `@effect-desktop/*` dependencies for standalone install.
+`scaffold(options)` returns an Effect program that copies a first-party template, rewrites the generated package name, pins the Effect beta tuple, and normalizes first-party `@effect-desktop/*` dependencies for standalone install.
 
 The CLI entrypoint accepts:
 
@@ -47,7 +48,8 @@ bun run typecheck
 ## Platform notes
 
 The package writes files under the requested project directory and rejects non-empty targets. Template bytes are copied from the checked-in first-party template set.
+The package depends on `effect` for typed scaffold failures and on `@effect/platform-bun` for the live filesystem and CLI runtime used by the binary.
 
 ## Internal architecture
 
-`src/bin.ts` owns CLI argument parsing and user-facing errors. `src/index.ts` owns template resolution, copy safety, and generated manifest normalization.
+`src/bin.ts` owns the Effect CLI command definition and user-facing errors. `src/index.ts` owns template resolution, copy safety, and generated manifest normalization.

@@ -30,8 +30,6 @@ const windowSmokeTest: Config.Config<boolean> = Config.option(
   )
 )
 
-await Bun.write(Bun.stdout, `${JSON.stringify(readyEvent)}\n`)
-
 const hostExchange = createHostProtocolExchange(createBunStdioTransport())
 const handshake = makeHostHandshakeClient(hostExchange)
 const windows = makeHostWindowClient(hostExchange)
@@ -43,6 +41,8 @@ const smokeTestWindows = Object.freeze({
 
 await Effect.runPromise(
   Effect.gen(function* () {
+    yield* Effect.tryPromise(() => Bun.write(Bun.stdout, `${JSON.stringify(readyEvent)}\n`))
+
     const isSmokeTest = yield* windowSmokeTest
     const startupWindows = yield* readStartupWindows(process.env)
     const declaredWindows =

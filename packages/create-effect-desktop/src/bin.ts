@@ -1,186 +1,130 @@
 #!/usr/bin/env bun
+import { BunRuntime, BunServices } from "@effect/platform-bun"
 import { basename, join } from "node:path"
 
-import {
-  RENDERER_STORAGE_KINDS,
-  scaffold,
-  TEMPLATE_NAMES,
-  type RendererStorage,
-  type TemplateName
-} from "./index.js"
+import { Console, Data, Effect } from "effect"
+import { Argument, Command, Flag, type CliError } from "effect/unstable/cli"
 
-const args = process.argv.slice(2)
+import { RENDERER_STORAGE_KINDS, scaffold, TEMPLATE_NAMES, type ScaffoldError } from "./index.js"
 
-if (args.includes("--help") || args.includes("-h")) {
-  printUsage()
-  process.exit(0)
-}
+class CreateCliError extends Data.TaggedError("CreateCliError")<{
+  readonly message: string
+}> {}
 
-const parseResult = parseArgs(args)
-const name = parseResult.name
-const template = parseResult.template
-const rendererStorage = parseResult.rendererStorage
-const includeWorkflows = args.includes("--include-workflows")
-const includeCluster = args.includes("--include-cluster")
-
-if (parseResult.error !== undefined) {
-  console.error(`create-effect-desktop: ${parseResult.error}`)
-  process.exit(1)
-}
-
-if (!isTemplateName(template)) {
-  console.error(
-    `create-effect-desktop: unknown template '${template}'. Valid: ${TEMPLATE_NAMES.join(", ")}`
+export const runCreateEffectDesktop = (
+  args: readonly string[],
+  cwd: string
+): Effect.Effect<
+  void,
+  CreateCliError | ScaffoldError | CliError.CliError,
+  BunServices.BunServices
+> =>
+  Effect.andThen(
+    validateRawArgs(args),
+    Command.runWith(makeCreateCommand(cwd), { version: "0.0.0" })(args)
   )
-  process.exit(1)
-}
 
-if (!isRendererStorage(rendererStorage)) {
-  console.error(
-    `create-effect-desktop: unknown renderer-storage '${rendererStorage}'. Valid: ${RENDERER_STORAGE_KINDS.join(", ")}`
-  )
-  process.exit(1)
-}
+const makeCreateCommand = (cwd: string) =>
+  Command.make(
+    "create-effect-desktop",
+    {
+      name: Argument.string("name").pipe(Argument.withDefault("my-effect-desktop-app")),
+      template: Flag.choice("template", TEMPLATE_NAMES).pipe(
+        Flag.withDefault("basic-react-tailwind")
+      ),
+      rendererStorage: Flag.choice("renderer-storage", RENDERER_STORAGE_KINDS).pipe(
+        Flag.withDefault("none")
+      ),
+      includeWorkflows: Flag.boolean("include-workflows"),
+      includeCluster: Flag.boolean("include-cluster")
+    },
+    (args) =>
+      Effect.gen(function* () {
+        if (args.name !== basename(args.name) || args.name === "." || args.name === "..") {
+          return yield* failCreate("project name must be a single directory name")
+        }
 
-const outDir = join(process.cwd(), name)
+        const outDir = join(cwd, args.name)
 
-console.log(`Scaffolding ${name} from template ${template}...`)
+        yield* Console.log(`Scaffolding ${args.name} from template ${args.template}...`)
 
-let result
-try {
-  result = scaffold({
-    name,
-    template,
-    rendererStorage,
-    includeWorkflows,
-    includeCluster,
-    outDir
-  })
-} catch (err) {
-  console.error(`create-effect-desktop: ${String(err)}`)
-  process.exit(1)
-}
+        const result = yield* scaffold({
+          name: args.name,
+          template: args.template,
+          rendererStorage: args.rendererStorage,
+          includeWorkflows: args.includeWorkflows,
+          includeCluster: args.includeCluster,
+          outDir
+        }).pipe(
+          Effect.tapError((error) => Console.error(`create-effect-desktop: ${formatError(error)}`))
+        )
 
-console.log(`\nCreated ${result.path}`)
+        yield* Console.log(`\nCreated ${result.path}`)
 
-if (result.stubs.length > 0) {
-  console.log("\nStubs (not production-ready):")
-  for (const stub of result.stubs) {
-    console.log(`  - ${stub}`)
-  }
-}
+        if (result.stubs.length > 0) {
+          yield* Console.log("\nStubs (not production-ready):")
+          for (const stub of result.stubs) {
+            yield* Console.log(`  - ${stub}`)
+          }
+        }
 
-console.log(`\nNext steps:
-  cd ${name}
+        yield* Console.log(`\nNext steps:
+  cd ${args.name}
   bun install
   bun run dev
 `)
+      })
+  ).pipe(Command.withDescription("Create a new Effect Desktop application from a template."))
 
-interface ParseResult {
-  readonly name: string
-  readonly template: string
-  readonly rendererStorage: string
-  readonly error?: string
-}
+const validateRawArgs = (args: readonly string[]): Effect.Effect<void, CreateCliError> =>
+  Effect.gen(function* () {
+    const positionals: string[] = []
 
-function parseArgs(argv: readonly string[]): ParseResult {
-  let name: string | undefined
-  let template = "basic-react-tailwind"
-  let rendererStorage = "none"
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index]
-    if (token === undefined) {
-      continue
-    }
-    if (token === "--template") {
-      const value = argv[index + 1]
-      if (value === undefined || value.startsWith("--")) {
-        return {
-          name: defaultName(name),
-          template,
-          rendererStorage,
-          error: "--template requires a value"
+    for (let index = 0; index < args.length; index += 1) {
+      const token = args[index]
+      if (token === undefined) {
+        continue
+      }
+      if (token === "--template" || token === "--renderer-storage") {
+        const value = args[index + 1]
+        if (value === undefined || value.startsWith("--")) {
+          return yield* failCreate(`${token} requires a value`)
         }
+        index += 1
+        continue
       }
-      template = value
-      index += 1
-      continue
-    }
-    if (token === "--renderer-storage") {
-      const value = argv[index + 1]
-      if (value === undefined || value.startsWith("--")) {
-        return {
-          name: defaultName(name),
-          template,
-          rendererStorage,
-          error: "--renderer-storage requires a value"
-        }
+      if (token.startsWith("--") || token === "-h") {
+        continue
       }
-      rendererStorage = value
-      index += 1
-      continue
+      positionals.push(token)
     }
-    if (token === "--include-workflows" || token === "--include-cluster") {
-      continue
+
+    if (positionals.length > 1) {
+      return yield* failCreate(`unexpected positional argument '${positionals[1]}'`)
     }
-    if (token.startsWith("--")) {
-      return {
-        name: defaultName(name),
-        template,
-        rendererStorage,
-        error: `unknown option '${token}'`
-      }
-    }
-    if (name !== undefined) {
-      return {
-        name,
-        template,
-        rendererStorage,
-        error: `unexpected positional argument '${token}'`
-      }
-    }
-    if (token !== basename(token) || token === "." || token === "..") {
-      return {
-        name: defaultName(name),
-        template,
-        rendererStorage,
-        error: `project name must be a single directory name`
-      }
-    }
-    name = token
+    return undefined
+  })
+
+const failCreate = (message: string): Effect.Effect<never, CreateCliError> =>
+  Effect.gen(function* () {
+    const error = new CreateCliError({ message })
+    yield* Console.error(`create-effect-desktop: ${formatError(error)}`)
+    return yield* Effect.fail(error)
+  })
+
+function formatError(error: CreateCliError | ScaffoldError): string {
+  switch (error._tag) {
+    case "CreateCliError":
+    case "ScaffoldTemplateError":
+    case "ScaffoldTargetError":
+    case "ScaffoldPackageJsonError":
+    case "ScaffoldFileError":
+      return error.message
   }
-
-  return { name: defaultName(name), template, rendererStorage }
 }
 
-function defaultName(name: string | undefined): string {
-  return name ?? "my-effect-desktop-app"
-}
+const program = runCreateEffectDesktop(Bun.argv.slice(2), process.cwd()).pipe(
+  Effect.provide(BunServices.layer)
+)
 
-function isTemplateName(value: string): value is TemplateName {
-  return TEMPLATE_NAMES.some((template) => template === value)
-}
-
-function isRendererStorage(value: string): value is RendererStorage {
-  return RENDERER_STORAGE_KINDS.some((storage) => storage === value)
-}
-
-function printUsage(): void {
-  console.log(`Usage: bun create effect-desktop [name] [options]
-
-Options:
-  --template <name>            Template to use (default: basic-react-tailwind)
-                               Choices: basic-react-tailwind | todo-sqlite | multi-window
-  --renderer-storage <kind>    Add renderer-side storage adapter (default: none)
-                               Choices: none | indexeddb | sqlite-wasm | pglite
-  --include-workflows          Add workflow companion dependencies
-  --include-cluster            Add cluster dependencies (requires T29)
-  -h, --help                   Show this help
-
-Examples:
-  bun create effect-desktop my-app
-  bun create effect-desktop my-app --template todo-sqlite --renderer-storage sqlite-wasm
-  bun create effect-desktop my-app --template basic-react-tailwind --include-workflows
-`)
-}
+BunRuntime.runMain(program)

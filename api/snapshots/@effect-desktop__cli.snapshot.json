@@ -71,7 +71,7 @@
     {
       "name": "BuildCommandFailedError",
       "kind": "class",
-      "signature": "export class BuildCommandFailedError extends Data.TaggedError(\"BuildCommandFailedError\")<{ readonly step: BuildStepName readonly command: readonly string[] readonly cwd: string readonly exitCode: number | undefined readonly message: string }> {}"
+      "signature": "export class BuildCommandFailedError extends Data.TaggedError(\"BuildCommandFailedError\")<{ readonly step: BuildStepName readonly command: readonly string[] readonly cwd: string readonly exitCode: number | undefined readonly message: string readonly stdout?: string readonly stderr?: string }> {}"
     },
     {
       "name": "BuildConfigError",
@@ -224,6 +224,11 @@
       "signature": "export type DocsExampleRunner = ( invocation: DocsExampleInvocation ) => Effect.Effect<void, DocsGateExampleFailedError | DocsGateFileError, never>"
     },
     {
+      "name": "DocsGateCoverageError",
+      "kind": "class",
+      "signature": "export class DocsGateCoverageError extends Data.TaggedError(\"DocsGateCoverageError\")<{ readonly page: DocsManifestPage readonly expectedTokens: readonly string[] readonly message: string }> {}"
+    },
+    {
       "name": "DocsGateExampleFailedError",
       "kind": "class",
       "signature": "export class DocsGateExampleFailedError extends Data.TaggedError(\"DocsGateExampleFailedError\")<{ readonly file: string readonly blockIndex: number readonly message: string readonly exitCode?: number readonly stderr?: string readonly cause?: unknown }> {}"
@@ -261,12 +266,12 @@
     {
       "name": "DocsReleaseGateError",
       "kind": "type",
-      "signature": "export type DocsReleaseGateError = | DocsGateFileError | DocsGateManifestError | DocsGateMissingPageError | DocsGateExampleFailedError"
+      "signature": "export type DocsReleaseGateError = | DocsGateFileError | DocsGateManifestError | DocsGateMissingPageError | DocsGateExampleFailedError | DocsGateCoverageError"
     },
     {
       "name": "DocsReleaseGateOptions",
       "kind": "interface",
-      "signature": "export interface DocsReleaseGateOptions { readonly cwd: string readonly commandRunner?: DocsExampleRunner }"
+      "signature": "export interface DocsReleaseGateOptions { readonly cwd: string readonly commandRunner?: DocsExampleRunner readonly exampleTimeoutMillis?: number }"
     },
     {
       "name": "DocsReleaseGateReport",
@@ -376,7 +381,7 @@
     {
       "name": "PackagePipelineError",
       "kind": "type",
-      "signature": "export type PackagePipelineError = | PackageConfigError | PackageUnsupportedHostError | PackageUnsupportedTargetError | PackageUnsupportedArtifactError | PackageCommandFailedError | PackageFileError"
+      "signature": "export type PackagePipelineError = | PackageConfigError | PackageUnsupportedHostError | PackageUnsupportedTargetError | PackageUnsupportedArtifactError | PackageCommandFailedError | PackageMissingBuildArtifactError | PackageFileError"
     },
     {
       "name": "PackageStepName",
@@ -621,7 +626,12 @@
     {
       "name": "SemverGuardReport",
       "kind": "interface",
-      "signature": "export interface SemverGuardReport { readonly passed: boolean readonly release: string readonly releaseKind: SemverReleaseKind readonly apiChanges: readonly SemverApiChange[] readonly appendixCRows: readonly string[] }"
+      "signature": "export interface SemverGuardReport { readonly passed: boolean readonly release: string readonly releaseKind: SemverReleaseKind readonly apiChanges: readonly SemverApiChange[] readonly appendixCRows: readonly string[] readonly packageVersions: readonly SemverPackageVersion[] }"
+    },
+    {
+      "name": "SemverPackageVersion",
+      "kind": "interface",
+      "signature": "export interface SemverPackageVersion { readonly name: string readonly version: string readonly path: string }"
     },
     {
       "name": "SemverPolicyManifest",

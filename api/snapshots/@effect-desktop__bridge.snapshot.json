@@ -336,7 +336,7 @@
     {
       "name": "HOST_PROTOCOL_VERSION",
       "kind": "value",
-      "signature": "const HOST_PROTOCOL_VERSION: string"
+      "signature": "const HOST_PROTOCOL_VERSION: \"0.0.0\""
     },
     {
       "name": "HOST_VERSION_METHOD",
@@ -376,12 +376,12 @@
     {
       "name": "HostProtocolCancelByRequestEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolCancelByRequestEnvelope extends Schema.Class<HostProtocolCancelByRequestEnvelope>( \"HostProtocolCancelByRequestEnvelope\" )({ kind: Schema.Literal(\"cancel\"), id: Schema.String, resourceId: OptionalString, timestamp: UInt, traceId: Schema.String }) {}"
+      "signature": "export class HostProtocolCancelByRequestEnvelope extends Schema.Class<HostProtocolCancelByRequestEnvelope>( \"HostProtocolCancelByRequestEnvelope\" )({ kind: Schema.Literal(\"cancel\"), id: Schema.String, resourceId: OptionalNonEmptyString, timestamp: UInt, traceId: HostProtocolNonEmptyString }) {}"
     },
     {
       "name": "HostProtocolCancelByResourceEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolCancelByResourceEnvelope extends Schema.Class<HostProtocolCancelByResourceEnvelope>( \"HostProtocolCancelByResourceEnvelope\" )({ kind: Schema.Literal(\"cancel\"), id: OptionalString, resourceId: Schema.String, timestamp: UInt, traceId: Schema.String }) {}"
+      "signature": "export class HostProtocolCancelByResourceEnvelope extends Schema.Class<HostProtocolCancelByResourceEnvelope>( \"HostProtocolCancelByResourceEnvelope\" )({ kind: Schema.Literal(\"cancel\"), id: OptionalString, resourceId: HostProtocolNonEmptyString, timestamp: UInt, traceId: HostProtocolNonEmptyString }) {}"
     },
     {
       "name": "HostProtocolCancelledError",
@@ -426,7 +426,7 @@
     {
       "name": "HostProtocolEventEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolEventEnvelope extends Schema.Class<HostProtocolEventEnvelope>( \"HostProtocolEventEnvelope\" )({ kind: Schema.Literal(\"event\"), method: Schema.String, timestamp: UInt, traceId: Schema.String, windowId: OptionalString, payload: OptionalUnknown }) {}"
+      "signature": "export class HostProtocolEventEnvelope extends Schema.Class<HostProtocolEventEnvelope>( \"HostProtocolEventEnvelope\" )({ kind: Schema.Literal(\"event\"), method: HostProtocolNonEmptyString, timestamp: UInt, traceId: HostProtocolNonEmptyString, windowId: OptionalNonEmptyString, payload: OptionalUnknown }) {}"
     },
     {
       "name": "HostProtocolEventLogFullError",
@@ -531,7 +531,7 @@
     {
       "name": "HostProtocolRequestEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolRequestEnvelope extends Schema.Class<HostProtocolRequestEnvelope>( \"HostProtocolRequestEnvelope\" )({ kind: Schema.Literal(\"request\"), id: Schema.String, method: Schema.String, timestamp: UInt, traceId: Schema.String, windowId: OptionalString, originToken: OptionalString, payload: OptionalUnknown }) {}"
+      "signature": "export class HostProtocolRequestEnvelope extends Schema.Class<HostProtocolRequestEnvelope>( \"HostProtocolRequestEnvelope\" )({ kind: Schema.Literal(\"request\"), id: Schema.String, method: HostProtocolNonEmptyString, timestamp: UInt, traceId: HostProtocolNonEmptyString, windowId: OptionalNonEmptyString, originToken: OptionalNonEmptyString, payload: OptionalUnknown }) {}"
     },
     {
       "name": "HostProtocolResourceBusyError",
@@ -541,7 +541,7 @@
     {
       "name": "HostProtocolResponseEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolResponseEnvelope extends Schema.Class<HostProtocolResponseEnvelope>( \"HostProtocolResponseEnvelope\" )({ kind: Schema.Literal(\"response\"), id: Schema.String, timestamp: UInt, traceId: Schema.String, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
+      "signature": "export class HostProtocolResponseEnvelope extends Schema.Class<HostProtocolResponseEnvelope>( \"HostProtocolResponseEnvelope\" )({ kind: Schema.Literal(\"response\"), id: Schema.String, timestamp: UInt, traceId: HostProtocolNonEmptyString, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
     },
     {
       "name": "HostProtocolRuntimeRestartedError",
@@ -571,12 +571,12 @@
     {
       "name": "HostProtocolStreamByRequestEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolStreamByRequestEnvelope extends Schema.Class<HostProtocolStreamByRequestEnvelope>( \"HostProtocolStreamByRequestEnvelope\" )({ kind: Schema.Literal(\"stream\"), id: Schema.String, resourceId: OptionalString, timestamp: UInt, traceId: Schema.String, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
+      "signature": "export class HostProtocolStreamByRequestEnvelope extends Schema.Class<HostProtocolStreamByRequestEnvelope>( \"HostProtocolStreamByRequestEnvelope\" )({ kind: Schema.Literal(\"stream\"), id: Schema.String, resourceId: OptionalNonEmptyString, timestamp: UInt, traceId: HostProtocolNonEmptyString, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
     },
     {
       "name": "HostProtocolStreamByResourceEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolStreamByResourceEnvelope extends Schema.Class<HostProtocolStreamByResourceEnvelope>( \"HostProtocolStreamByResourceEnvelope\" )({ kind: Schema.Literal(\"stream\"), id: OptionalString, resourceId: Schema.String, timestamp: UInt, traceId: Schema.String, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
+      "signature": "export class HostProtocolStreamByResourceEnvelope extends Schema.Class<HostProtocolStreamByResourceEnvelope>( \"HostProtocolStreamByResourceEnvelope\" )({ kind: Schema.Literal(\"stream\"), id: OptionalString, resourceId: HostProtocolNonEmptyString, timestamp: UInt, traceId: HostProtocolNonEmptyString, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
     },
     {
       "name": "HostProtocolStreamClosedError",
@@ -954,9 +954,19 @@
       "signature": "const Streams: (<Layers extends readonly AnyApiLayer[]>(...layers: Layers) => ApiStreamRuntime<ApiStreamLayerEnvironment<Layers[number]>>) & { withOptions: <Layers extends readonly AnyApiLayer[]>(options: ApiStreamRuntimeOptions, ...layers: Layers) => ApiStreamRuntime<ApiStreamLayerEnvironment<Layers[number]>>; }"
     },
     {
+      "name": "validateHostProtocolNonEmptyString",
+      "kind": "value",
+      "signature": "const validateHostProtocolNonEmptyString: (field: string, value: string, operation: string) => Effect.Effect<string, HostProtocolInvalidArgumentError, never>"
+    },
+    {
       "name": "validateHostProtocolTimestamp",
       "kind": "value",
       "signature": "const validateHostProtocolTimestamp: (timestamp: number, operation: string) => Effect.Effect<number, HostProtocolInvalidArgumentError, never>"
+    },
+    {
+      "name": "validateOptionalHostProtocolNonEmptyString",
+      "kind": "value",
+      "signature": "const validateOptionalHostProtocolNonEmptyString: (field: string, value: string | undefined, operation: string) => Effect.Effect<string | undefined, HostProtocolInvalidArgumentError, never>"
     },
     {
       "name": "WINDOW_CREATE_METHOD",
@@ -981,12 +991,12 @@
     {
       "name": "WindowCreateResponse",
       "kind": "class",
-      "signature": "export class WindowCreateResponse extends Schema.Class<WindowCreateResponse>( \"WindowCreateResponse\" )({ windowId: Schema.String }) {}"
+      "signature": "export class WindowCreateResponse extends Schema.Class<WindowCreateResponse>( \"WindowCreateResponse\" )({ windowId: Schema.NonEmptyString }) {}"
     },
     {
       "name": "WindowDestroyPayload",
       "kind": "class",
-      "signature": "export class WindowDestroyPayload extends Schema.Class<WindowDestroyPayload>( \"WindowDestroyPayload\" )({ windowId: Schema.String }) {}"
+      "signature": "export class WindowDestroyPayload extends Schema.Class<WindowDestroyPayload>( \"WindowDestroyPayload\" )({ windowId: Schema.NonEmptyString }) {}"
     },
     {
       "name": "WithRpcCapability",

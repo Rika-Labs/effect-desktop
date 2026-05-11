@@ -141,7 +141,7 @@
     {
       "name": "makeMockPty",
       "kind": "value",
-      "signature": "const makeMockPty: (registry: ResourceRegistryApi, options?: MockPtyOptions) => Effect.Effect<MockPtyApi, never, never>"
+      "signature": "const makeMockPty: (registry: ResourceRegistryApi, options?: MockPtyOptions) => Effect.Effect<MockPtyApi, HostProtocolInvalidArgumentError, never>"
     },
     {
       "name": "makeTestAppClient",
@@ -326,7 +326,7 @@
     {
       "name": "MockPTY",
       "kind": "value",
-      "signature": "const MockPTY: Readonly<{ layer: (options?: MockPtyOptions) => Layer.Layer<PTY, never, ResourceRegistry>; }>"
+      "signature": "const MockPTY: Readonly<{ layer: (options?: MockPtyOptions) => Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceRegistry>; }>"
     },
     {
       "name": "MockPtyApi",
@@ -341,7 +341,7 @@
     {
       "name": "MockPtyLive",
       "kind": "value",
-      "signature": "const MockPtyLive: (options?: MockPtyOptions) => Layer.Layer<PTY, never, ResourceRegistry>"
+      "signature": "const MockPtyLive: (options?: MockPtyOptions) => Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceRegistry>"
     },
     {
       "name": "MockPtyOpenRecord",

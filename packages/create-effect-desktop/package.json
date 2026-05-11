@@ -20,6 +20,10 @@
   "bin": {
     "create-effect-desktop": "src/bin.ts"
   },
+  "dependencies": {
+    "@effect/platform-bun": "4.0.0-beta.60",
+    "effect": "4.0.0-beta.60"
+  },
   "exports": {
     ".": {
       "types": "./src/index.ts",

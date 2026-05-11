@@ -133,7 +133,8 @@ test("Worker list returns live snapshots and removes closed workers", async () =
 test("Worker list normalizes fractional uptime before snapshot construction", async () => {
   const runtime = await makeFakeRuntime()
   const fixture = await makeFixture(makeFakeAdapter(runtime), [], {
-    nowStart: 10.25
+    nowStart: 10,
+    workerNowStart: 10.25
   })
   await Effect.runPromise(
     fixture.service.spawn({
@@ -624,10 +625,11 @@ const makeFixture = async (
     readonly gracefulShutdownMs?: number
     readonly maxConcurrent?: number
     readonly nowStart?: number
+    readonly workerNowStart?: number
   } = {}
 ): Promise<Fixture> => {
   let resourceNow = 1
-  let workerNow = options.nowStart ?? 1
+  let workerNow = options.workerNowStart ?? options.nowStart ?? 1
   const registry = await Effect.runPromise(
     makeResourceRegistry({
       now: () => resourceNow++,

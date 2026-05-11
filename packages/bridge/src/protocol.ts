@@ -1,11 +1,9 @@
 import { Effect, Option, Queue, Scope, Schema } from "effect"
 import { RpcClient, RpcClientError, RpcMessage, RpcServer } from "effect/unstable/rpc"
 
-import packageJson from "../package.json" with { type: "json" }
-
 export const HOST_PING_METHOD = "host.ping"
 export const HOST_VERSION_METHOD = "host.version"
-export const HOST_PROTOCOL_VERSION = packageJson.version
+export const HOST_PROTOCOL_VERSION = "0.0.0"
 export const WINDOW_CREATE_METHOD = "Window.create"
 export const WINDOW_DESTROY_METHOD = "Window.destroy"
 export const DOCK_SET_BADGE_COUNT_METHOD = "Dock.setBadgeCount"
