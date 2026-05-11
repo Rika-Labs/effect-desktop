@@ -4,6 +4,7 @@ import {
   HostProtocolInvalidArgumentError,
   HostProtocolPermissionDeniedError,
   HostProtocolResourceBusyError,
+  HostProtocolStaleHandleError,
   HostProtocolUnsupportedError
 } from "@effect-desktop/bridge"
 import { Cause, Effect, Exit, Option, Stream } from "effect"
@@ -547,6 +548,79 @@ ptyTest("PTY handle writes, resizes, kills, and preserves exit signal", async ()
   expect(child.resizes).toEqual([new PtyResizeInput({ rows: 40, cols: 120 })])
   expect(child.killedWith).toBe("SIGTERM")
   expect(status).toEqual(new PtyExitStatus({ code: 0, signal: "SIGTERM" }))
+})
+
+ptyTest("PTY write rejects non-byte chunks before adapter activity", async () => {
+  const child = makeFakeChild({ output: [], exit: { code: 0 }, naturalExitDelayMs: 60_000 })
+  const fixture = await makeFixture(makeFakeAdapter(() => child))
+  const handle = await Effect.runPromise(
+    fixture.service.open({
+      argv: ["bash"],
+      ownerScope: "scope-main",
+      rows: 24,
+      cols: 80
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(handle.write("echo hi\n" as never))
+  await Effect.runPromise(fixture.registry.closeScope("scope-main"))
+
+  expect(child.writes).toEqual([])
+  expectFailure(exit, HostProtocolInvalidArgumentError)
+})
+
+ptyTest("PTY side effects reject handles after child exit", async () => {
+  const child = makeFakeChild({ output: [], exit: { code: 0 } })
+  const fixture = await makeFixture(makeFakeAdapter(() => child))
+  const handle = await Effect.runPromise(
+    fixture.service.open({
+      argv: ["bash"],
+      ownerScope: "scope-main",
+      rows: 24,
+      cols: 80
+    })
+  )
+  await Effect.runPromise(handle.onExit)
+
+  const writeExit = await Effect.runPromiseExit(handle.write(textEncoder.encode("echo hi\n")))
+  const resizeExit = await Effect.runPromiseExit(
+    handle.resize(new PtyResizeInput({ rows: 40, cols: 120 }))
+  )
+  const killExit = await Effect.runPromiseExit(handle.kill("SIGTERM"))
+
+  expect(child.writes).toEqual([])
+  expect(child.resizes).toEqual([])
+  expect(child.kills).toEqual([])
+  expectFailure(writeExit, HostProtocolStaleHandleError)
+  expectFailure(resizeExit, HostProtocolStaleHandleError)
+  expectFailure(killExit, HostProtocolStaleHandleError)
+})
+
+ptyTest("PTY side effects reject handles after scope close", async () => {
+  const child = makeFakeChild({ output: [], exit: { code: 0 }, naturalExitDelayMs: 60_000 })
+  const fixture = await makeFixture(makeFakeAdapter(() => child))
+  const handle = await Effect.runPromise(
+    fixture.service.open({
+      argv: ["bash"],
+      ownerScope: "scope-main",
+      rows: 24,
+      cols: 80
+    })
+  )
+  await Effect.runPromise(fixture.registry.closeScope("scope-main"))
+
+  const writeExit = await Effect.runPromiseExit(handle.write(textEncoder.encode("echo hi\n")))
+  const resizeExit = await Effect.runPromiseExit(
+    handle.resize(new PtyResizeInput({ rows: 40, cols: 120 }))
+  )
+  const killExit = await Effect.runPromiseExit(handle.kill("SIGKILL"))
+
+  expect(child.writes).toEqual([])
+  expect(child.resizes).toEqual([])
+  expect(child.kills).toEqual(["SIGTERM"])
+  expectFailure(writeExit, HostProtocolStaleHandleError)
+  expectFailure(resizeExit, HostProtocolStaleHandleError)
+  expectFailure(killExit, HostProtocolStaleHandleError)
 })
 
 ptyTest("PTY kill rejects control bytes in signal names", async () => {

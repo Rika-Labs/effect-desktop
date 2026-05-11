@@ -4,6 +4,7 @@ import {
   HostProtocolInvalidArgumentError,
   HostProtocolPermissionDeniedError,
   HostProtocolResourceBusyError,
+  HostProtocolStaleHandleError,
   HostProtocolUnsupportedError,
   hostProtocolErrorRecoverableDefault,
   makeHostProtocolInvalidArgumentError,
@@ -24,7 +25,12 @@ import {
   Stream
 } from "effect"
 
-import { ResourceRegistry, type ResourceHandle, type ResourceRegistryApi } from "./resources.js"
+import {
+  ResourceRegistry,
+  type ResourceHandle,
+  type ResourceRegistryApi,
+  type StaleHandle
+} from "./resources.js"
 
 const NonEmptyString = Schema.NonEmptyString
 const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0))
@@ -208,7 +214,7 @@ export const makePty = (
             })
           )
 
-          return yield* makeHandle(child, resource, input.command, budgets)
+          return yield* makeHandle(child, resource, input.command, budgets, registry)
         }).pipe(
           Effect.withSpan("PTY.open", {
             attributes: {
@@ -249,7 +255,8 @@ const makeHandle = (
   child: PtyChild,
   resource: ResourceHandle<"pty", "running">,
   command: string,
-  budgets: Required<PtyBudgetPolicy>
+  budgets: Required<PtyBudgetPolicy>,
+  registry: ResourceRegistryApi
 ): Effect.Effect<PtyHandle, never, never> =>
   Effect.gen(function* () {
     const outputMetrics = yield* makeOutputMetrics(budgets)
@@ -277,13 +284,18 @@ const makeHandle = (
       outputMetrics: Ref.get(outputMetrics),
       onExit,
       write: (chunk: Uint8Array) =>
-        Effect.tryPromise({
-          try: () => child.write(chunk),
-          catch: (error) => mapPtyError(error, command, "PTY.write")
+        Effect.gen(function* () {
+          const bytes = yield* decodeWriteInput(chunk, "PTY.write")
+          yield* assertPtyHandleFresh(registry, resource, "PTY.write")
+          yield* Effect.tryPromise({
+            try: () => child.write(bytes),
+            catch: (error) => mapPtyError(error, command, "PTY.write")
+          })
         }),
       resize: (size: PtyResizeInput) =>
         Effect.gen(function* () {
           const decodedSize = yield* decodeResizeInput(size, "PTY.resize")
+          yield* assertPtyHandleFresh(registry, resource, "PTY.resize")
           yield* Effect.tryPromise({
             try: () => child.resize(decodedSize),
             catch: (error) => mapPtyError(error, command, "PTY.resize")
@@ -293,6 +305,7 @@ const makeHandle = (
         Effect.gen(function* () {
           const decodedSignal =
             signal === undefined ? undefined : yield* decodeSignalInput(signal, "PTY.kill")
+          yield* assertPtyHandleFresh(registry, resource, "PTY.kill")
           yield* Effect.tryPromise({
             try: () => child.kill(decodedSignal),
             catch: (error) => mapPtyError(error, command, "PTY.kill")
@@ -795,6 +808,39 @@ const decodeSignalInput = (
       makeHostProtocolInvalidArgumentError("signal", formatUnknownError(error), operation)
     )
   )
+
+const decodeWriteInput = (
+  input: unknown,
+  operation: string
+): Effect.Effect<Uint8Array, HostProtocolInvalidArgumentError, never> =>
+  input instanceof Uint8Array
+    ? Effect.succeed(input)
+    : Effect.fail(makeHostProtocolInvalidArgumentError("chunk", "must be a Uint8Array", operation))
+
+const assertPtyHandleFresh = (
+  registry: ResourceRegistryApi,
+  resource: ResourceHandle<"pty", "running">,
+  operation: string
+): Effect.Effect<void, HostProtocolStaleHandleError, never> =>
+  registry.assertFresh(resource).pipe(
+    Effect.asVoid,
+    Effect.mapError((error) => makePtyStaleHandleError(error, operation))
+  )
+
+const makePtyStaleHandleError = (
+  error: StaleHandle,
+  operation: string
+): HostProtocolStaleHandleError =>
+  new HostProtocolStaleHandleError({
+    tag: "StaleHandle",
+    kind: error.kind,
+    id: error.id,
+    expectedGeneration: error.expectedGeneration,
+    actualGeneration: Math.max(0, error.actualGeneration),
+    message: `stale resource handle: ${error.kind}:${error.id}`,
+    operation,
+    recoverable: false
+  })
 
 const authorizePtyOpen = (
   permissions: PtyPermissionPolicy,
