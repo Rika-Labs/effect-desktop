@@ -36,6 +36,52 @@ import {
 import type { UpdateManifest } from "./update-manifest.js"
 import type { PackageCommandRunner } from "./package-pipeline.js"
 
+test("desktop --help exits zero with root usage on stdout", async () => {
+  const stdout: string[] = []
+  const stderr: string[] = []
+  const exitCode = await Effect.runPromise(
+    runCli({
+      argv: ["--help"],
+      cwd: process.cwd(),
+      writeStdout: (text) => {
+        stdout.push(text)
+      },
+      writeStderr: (text) => {
+        stderr.push(text)
+      }
+    })
+  )
+
+  expect(exitCode).toBe(0)
+  expect(stdout.join("")).toContain("Usage: desktop <command>")
+  expect(stderr.join("")).toBe("")
+})
+
+test("desktop value-flag usage errors honor --json", async () => {
+  const stdout: string[] = []
+  const stderr: string[] = []
+  const exitCode = await Effect.runPromise(
+    runCli({
+      argv: ["build", "--config", "--json"],
+      cwd: process.cwd(),
+      writeStdout: (text) => {
+        stdout.push(text)
+      },
+      writeStderr: (text) => {
+        stderr.push(text)
+      }
+    })
+  )
+
+  const payload = JSON.parse(stderr.join("")) as { readonly tag: string; readonly message: string }
+  expect(exitCode).toBe(1)
+  expect(stdout.join("")).toBe("")
+  expect(payload).toEqual({
+    tag: "CliUsageError",
+    message: "--config requires a value"
+  })
+})
+
 test("desktop check --production exits non-zero for unacknowledged CSP weakening", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-"))
   try {

@@ -310,6 +310,28 @@ const MAX_PROTOCOL_CONCURRENT_STREAMS_PER_WINDOW = 1024
 const DEFAULT_PROTOCOL_QUEUED_EVENTS_PER_SUBSCRIPTION = 1024
 const MAX_PROTOCOL_QUEUED_EVENTS_PER_SUBSCRIPTION = 65_536
 const PROTOCOL_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*$/u
+const ROOT_HELP = [
+  "Usage: desktop <command> [options]",
+  "",
+  "Commands:",
+  "  build",
+  "  package",
+  "  sign",
+  "  notarize",
+  "  publish",
+  "  doctor",
+  "  check",
+  ""
+].join("\n")
+const JSON_VALUE_FLAGS = new Set([
+  "--artifact",
+  "--config",
+  "--out",
+  "--platform",
+  "--profile",
+  "--renderer",
+  "--target"
+])
 
 export interface CliRunOptions {
   readonly argv: readonly string[]
@@ -459,6 +481,17 @@ interface AppConfig {
 
 export const runCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
   Effect.gen(function* () {
+    if (isRootHelp(options.argv)) {
+      options.writeStdout(ROOT_HELP)
+      return 0
+    }
+
+    const usageError = findJsonValueFlagUsageError(options.argv)
+    if (usageError !== undefined) {
+      options.writeStderr(`${JSON.stringify(formatCliUsageError(usageError), null, 2)}\n`)
+      return 1
+    }
+
     const exitCodeRef = yield* Ref.make(0)
 
     const fail = (code: number): Effect.Effect<void, never, never> => Ref.set(exitCodeRef, code)
@@ -801,6 +834,36 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
 
     return yield* Ref.get(exitCodeRef)
   })
+
+const isRootHelp = (argv: readonly string[]): boolean =>
+  argv.length === 1 && (argv[0] === "--help" || argv[0] === "-h")
+
+const findJsonValueFlagUsageError = (argv: readonly string[]): CliUsageError | undefined => {
+  if (!argv.includes("--json")) {
+    return undefined
+  }
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]
+    if (arg === undefined || !JSON_VALUE_FLAGS.has(arg)) {
+      continue
+    }
+
+    const value = argv[index + 1]
+    if (value === undefined || value.startsWith("--")) {
+      return new CliUsageError(`${arg} requires a value`)
+    }
+  }
+
+  return undefined
+}
+
+const formatCliUsageError = (
+  error: CliUsageError
+): { readonly tag: "CliUsageError"; readonly message: string } => ({
+  tag: "CliUsageError",
+  message: error.message
+})
 
 export const runDesktopBuild = (
   options: DesktopBuildOptions
