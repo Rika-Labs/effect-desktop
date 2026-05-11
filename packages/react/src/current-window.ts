@@ -26,8 +26,8 @@ export const useCurrentWindowId = (): Option.Option<string> =>
 export const useSetCurrentWindowTitleMutation = (): CurrentWindowSetTitleMutation => {
   const context = useDesktopContext()
   return useMutation((input) =>
-    currentWindowEffect(context, "Window.setTitle", (ctx, window) =>
-      ctx.client.Window.setTitle(window, input.title)
+    currentWindowEffect(context, "window.setTitle", (ctx, window) =>
+      ctx.client.window.setTitle(window, input.title)
     )
   )
 }
@@ -35,7 +35,7 @@ export const useSetCurrentWindowTitleMutation = (): CurrentWindowSetTitleMutatio
 export const useCloseCurrentWindowMutation = (): CurrentWindowCloseMutation => {
   const context = useDesktopContext()
   return useMutation(() =>
-    currentWindowEffect(context, "Window.close", (ctx, window) => ctx.client.Window.close(window))
+    currentWindowEffect(context, "window.close", (ctx, window) => ctx.client.window.close(window))
   )
 }
 

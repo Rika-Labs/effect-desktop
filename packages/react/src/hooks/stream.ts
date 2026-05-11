@@ -10,6 +10,11 @@ export interface StreamState<A, E> {
   readonly error: Option.Option<Cause.Cause<E>>
 }
 
+export interface DesktopStreamOptions<A> {
+  readonly capacity?: number | undefined
+  readonly onItem?: ((item: A) => void) | undefined
+}
+
 const idle = <A, E>(): StreamState<A, E> => ({
   status: "idle",
   data: [],
@@ -22,10 +27,16 @@ const running = <A, E>(): StreamState<A, E> => ({
   error: Option.none()
 })
 
-export const useStream = <A, E>(stream: Stream.Stream<A, E, never>): StreamState<A, E> => {
+export const useDesktopStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  options: DesktopStreamOptions<A> = {}
+): StreamState<A, E> => {
+  const capacity = normalizeCapacity(options.capacity)
   const [state, setState] = useState<StreamState<A, E>>(idle<A, E>)
   const streamRef = useRef<Stream.Stream<A, E, never>>(stream)
+  const onItemRef = useRef<((item: A) => void) | undefined>(options.onItem)
   streamRef.current = stream
+  onItemRef.current = options.onItem
 
   useEffect(() => {
     let active = true
@@ -34,8 +45,12 @@ export const useStream = <A, E>(stream: Stream.Stream<A, E, never>): StreamState
     const fiber = Effect.runFork(
       Stream.runForEach(streamRef.current, (item) =>
         Effect.sync(() => {
+          onItemRef.current?.(item)
           if (active) {
-            setState((prev) => ({ ...prev, data: [...prev.data, item] }))
+            setState((prev) => ({
+              ...prev,
+              data: capacity === 0 ? prev.data : [...prev.data, item].slice(-capacity)
+            }))
           }
         })
       )
@@ -58,10 +73,12 @@ export const useStream = <A, E>(stream: Stream.Stream<A, E, never>): StreamState
       active = false
       void Effect.runPromiseExit(Fiber.interrupt(fiber))
     }
-  }, [stream])
+  }, [stream, capacity])
 
   return state
 }
+
+export const useStream = useDesktopStream
 
 export const useSubscribable = <A>(ref: SubscriptionRef.SubscriptionRef<A>): A | undefined => {
   const [value, setValue] = useState<A | undefined>(undefined)
@@ -121,4 +138,12 @@ export const useEffectResult = <A, E>(
   )
 
   return result
+}
+
+const normalizeCapacity = (capacity: number | undefined): number => {
+  const resolved = capacity ?? 1_024
+  if (!Number.isSafeInteger(resolved) || resolved < 0) {
+    throw new RangeError("desktop stream capacity must be a non-negative safe integer")
+  }
+  return resolved
 }

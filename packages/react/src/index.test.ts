@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { readFileSync } from "node:fs"
 import {
   HostProtocolResponseEnvelope,
   HostProtocolStreamByRequestEnvelope,
@@ -24,6 +25,8 @@ import { renderToStaticMarkup } from "react-dom/server"
 import {
   BrowserHttpClient,
   BrowserKeyValueStore,
+  createUnavailableDesktopClient,
+  defineDesktopApi,
   IndexedDb,
   IndexedDbDatabase,
   IndexedDbQueryBuilder,
@@ -50,10 +53,10 @@ import { disposeRuntime } from "./provider.js"
 
 const unavailableWindow: DesktopWindowClient = {
   create: () =>
-    Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "Window.create")),
+    Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "window.create")),
   setTitle: () =>
-    Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "Window.setTitle")),
-  close: () => Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "Window.close"))
+    Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "window.setTitle")),
+  close: () => Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "window.close"))
 }
 
 test("disposeRuntime reports cleanup defects through onCleanupError", async () => {
@@ -72,7 +75,7 @@ test("disposeRuntime reports cleanup defects through onCleanupError", async () =
 })
 
 const desktop: DesktopClient = Object.freeze({
-  Window: unavailableWindow
+  window: unavailableWindow
 })
 
 test("DesktopProvider renders children without crashing (SSR)", () => {
@@ -159,6 +162,31 @@ test("windows subpath exposes idle create mutation state before invocation", () 
   expect(
     renderToStaticMarkup(createElement(DesktopProvider, { client: desktop }, createElement(Probe)))
   ).toBe("<span>idle</span>")
+})
+
+test("createUnavailableDesktopClient exposes lowercase renderer namespaces", async () => {
+  const client = createUnavailableDesktopClient("test unavailable")
+  const exit = await Effect.runPromiseExit(client.window.create())
+
+  expect(Exit.isFailure(exit)).toBe(true)
+})
+
+test("defineDesktopApi exposes lowerCamel operation hook objects", () => {
+  const notes = defineDesktopApi({
+    createNote: (input: { readonly title: string }) =>
+      Effect.succeed({ id: "note-1", title: input.title })
+  })
+
+  expect(typeof notes.createNote.useAction).toBe("function")
+  expect(Object.isFrozen(notes)).toBe(true)
+  expect(Object.isFrozen(notes.createNote)).toBe(true)
+})
+
+test("useDesktopQuery defaults to reload-only dependencies for inline operations", () => {
+  const source = readFileSync(new URL("./hooks/desktop.ts", import.meta.url), "utf8")
+
+  expect(source).toContain("deps === undefined ? [reloads] : [...deps, reloads]")
+  expect(source).not.toContain("deps === undefined ? [reloads, operation]")
 })
 
 test("ReactDesktop.from exposes app-scoped RPC hooks from provided groups", () => {

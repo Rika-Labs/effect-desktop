@@ -36,3 +36,11 @@ test("template spine declares startup windows and provided RPCs", async () => {
   expect(TodoApp.windows["main"]?.title).toBe("Todos")
   expect(TodoApp.rpcLayers[0]?.group).toBe(AppRpc)
 })
+
+test("renderer provider owns unavailable host state", () => {
+  const main = readFileSync(join(templateRoot, "src", "main.tsx"), "utf8")
+
+  expect(main).toContain("<DesktopProvider>")
+  expect(main).not.toContain("unavailableWindow")
+  expect(main).not.toContain("desktopClient")
+})

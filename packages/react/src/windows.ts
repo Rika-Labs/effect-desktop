@@ -25,15 +25,15 @@ export type WindowCloseMutation = MutationResult<WindowCloseInput, void, WindowE
 export const useCreateWindowMutation = (): WindowCreateMutation => {
   const context = useDesktopContext()
   return useMutation((input) =>
-    desktopContextEffect(context, "Window.create", (ctx) => ctx.client.Window.create(input))
+    desktopContextEffect(context, "window.create", (ctx) => ctx.client.window.create(input))
   )
 }
 
 export const useSetWindowTitleMutation = (): WindowSetTitleMutation => {
   const context = useDesktopContext()
   return useMutation((input) =>
-    desktopContextEffect(context, "Window.setTitle", (ctx) =>
-      ctx.client.Window.setTitle(input.window, input.title)
+    desktopContextEffect(context, "window.setTitle", (ctx) =>
+      ctx.client.window.setTitle(input.window, input.title)
     )
   )
 }
@@ -41,7 +41,7 @@ export const useSetWindowTitleMutation = (): WindowSetTitleMutation => {
 export const useCloseWindowMutation = (): WindowCloseMutation => {
   const context = useDesktopContext()
   return useMutation((input) =>
-    desktopContextEffect(context, "Window.close", (ctx) => ctx.client.Window.close(input.window))
+    desktopContextEffect(context, "window.close", (ctx) => ctx.client.window.close(input.window))
   )
 }
 
