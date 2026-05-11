@@ -54,6 +54,8 @@ type EventQueue = {
   readonly queue: Queue.Queue<HostProtocolEventEnvelope>
 }
 
+type EventOverflow = NonNullable<NonNullable<ApiEventSpec["backpressure"]>["overflow"]>
+
 export const EventHub = (
   contracts: Iterable<ApiContractClass>,
   options: ApiEventHubOptions = {}
@@ -155,7 +157,7 @@ const publish = <Events extends ApiContractEvents, Event extends keyof Events>(
 const makeEventQueue = (spec: ApiEventSpec): Effect.Effect<EventQueue, never, never> =>
   Effect.gen(function* () {
     const capacity = spec.backpressure?.size ?? DEFAULT_EVENT_QUEUE_SIZE
-    const overflow = spec.backpressure?.overflow ?? "block"
+    const overflow = resolveEventOverflow(spec)
     const queue =
       overflow === "dropOldest"
         ? yield* Queue.sliding<HostProtocolEventEnvelope>(capacity)
@@ -167,6 +169,14 @@ const makeEventQueue = (spec: ApiEventSpec): Effect.Effect<EventQueue, never, ne
       queue
     } as const
   })
+
+const resolveEventOverflow = (spec: ApiEventSpec): EventOverflow => {
+  if (spec.backpressure?.overflow !== undefined) {
+    return spec.backpressure.overflow
+  }
+
+  return spec.backpressure?.strategy === "drop" ? "dropNewest" : "block"
+}
 
 const offerEvent = (
   eventQueue: EventQueue,

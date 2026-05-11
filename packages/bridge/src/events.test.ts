@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Cause, Effect, Exit, Fiber, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Fiber, Option, Schema, Stream } from "effect"
 
 import {
   apiContractToRpcGroup,
@@ -170,6 +170,33 @@ test("EventHub honors dropNewest event overflow without failing publishers", asy
   expect(Exit.isSuccess(exit)).toBe(true)
 })
 
+test("EventHub drop backpressure does not block publishers when overflow is omitted", async () => {
+  const ProjectApi = makeProjectApi("ProjectApi.EventsDropDefault", {
+    includeOverflow: false,
+    queueSize: 1
+  })
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const hub = yield* EventHub([ProjectApi])
+      const fiber = yield* hub.exchange.subscribe("ProjectApi.EventsDropDefault.changed").pipe(
+        Stream.tap(() => Effect.sleep("1 second")),
+        Stream.runDrain,
+        Effect.forkChild({ startImmediately: true })
+      )
+
+      yield* hub.publish(ProjectApi, "changed", new ProjectChangedEvent({ sequence: 1, path: "a" }))
+      yield* hub.publish(ProjectApi, "changed", new ProjectChangedEvent({ sequence: 2, path: "b" }))
+      const third = yield* hub
+        .publish(ProjectApi, "changed", new ProjectChangedEvent({ sequence: 3, path: "c" }))
+        .pipe(Effect.timeoutOption("50 millis"))
+      yield* Fiber.interrupt(fiber)
+      return third
+    })
+  )
+
+  expect(Option.isSome(result)).toBe(true)
+})
+
 type ProjectApiSpec = {
   readonly open: {
     readonly input: typeof ProjectOpenInput
@@ -186,8 +213,10 @@ type ProjectApiEvents = {
 }
 
 const makeProjectApi = <Tag extends string>(
-  tag: Tag
+  tag: Tag,
+  options: { readonly includeOverflow?: boolean; readonly queueSize?: number } = {}
 ): ApiContractClass<Tag, ProjectApiSpec, ProjectApiEvents> => {
+  const includeOverflow = options.includeOverflow ?? true
   const contract = class {
     static readonly tag = tag
     static readonly spec = Object.freeze({
@@ -202,8 +231,8 @@ const makeProjectApi = <Tag extends string>(
         payload: ProjectChangedEvent,
         backpressure: Object.freeze({
           strategy: "drop",
-          size: tag === "ProjectApi.EventsDropNewest" ? 1 : 16,
-          overflow: "dropNewest"
+          size: options.queueSize ?? (tag === "ProjectApi.EventsDropNewest" ? 1 : 16),
+          ...(includeOverflow ? { overflow: "dropNewest" } : {})
         } as const)
       })
     })
