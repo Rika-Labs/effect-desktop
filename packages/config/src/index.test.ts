@@ -628,3 +628,18 @@ test("ProductionChecker rejects empty config paths", async () => {
     expect(failReason?.error).toBeInstanceOf(ProductionCheckInvalidInput)
   }
 })
+
+test("ProductionChecker rejects malformed renderer file inputs", async () => {
+  const exit = await Effect.runPromiseExit(
+    runProductionCheck({
+      config: {},
+      rendererFiles: [{ path: "src/renderer/main.ts" } as never]
+    })
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failReason = exit.cause.reasons.find((r) => r._tag === "Fail")
+    expect(failReason?.error).toBeInstanceOf(ProductionCheckInvalidInput)
+  }
+})

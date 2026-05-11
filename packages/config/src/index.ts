@@ -334,10 +334,16 @@ const decodeProductionCheckInput = (
       if (configPath.trim() === "") {
         throw new Error("configPath must be a non-empty string")
       }
+      const rendererFiles = input.rendererFiles ?? []
+      for (const [index, file] of rendererFiles.entries()) {
+        if (!isProductionCheckFile(file)) {
+          throw new Error(`rendererFiles[${index}] must include string path and content`)
+        }
+      }
       return {
         config: input.config,
         configPath,
-        rendererFiles: input.rendererFiles ?? []
+        rendererFiles
       }
     },
     catch: (cause) =>
@@ -347,6 +353,14 @@ const decodeProductionCheckInput = (
         cause
       })
   })
+
+const isProductionCheckFile = (value: unknown): value is ProductionCheckFile =>
+  typeof value === "object" &&
+  value !== null &&
+  "path" in value &&
+  "content" in value &&
+  typeof value.path === "string" &&
+  typeof value.content === "string"
 
 const rendererBackendImportRule: Rule = ({ rendererFiles }) =>
   rendererFiles.flatMap((file) =>
