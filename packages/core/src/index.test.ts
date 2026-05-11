@@ -215,12 +215,42 @@ test("Desktop.app lowers legacy Api layers into the RpcGroup registry", async ()
   )
 
   expect(app.rpcLayers).toHaveLength(1)
+  expect(app.rpcLayers[0]?.group).toBe(LegacyRpcs)
   expect(app.rpcLayers[0]?.group.requests.has("Legacy.Notes.list")).toBe(true)
-  expect(app.rpcLayers[0]?.group.requests.has("Legacy.Notes.events.changed")).toBe(false)
+  expect(app.rpcLayers[0]?.group.requests.has("Legacy.Notes.events.changed")).toBe(true)
 
   const rpcLayer = app.rpcLayers[0]
   expect(rpcLayer).toBeDefined()
   if (rpcLayer !== undefined) {
+    const servedGroup = rpcLayer.servedGroup ?? rpcLayer.group
+    expect(servedGroup.requests.has("Legacy.Notes.list")).toBe(true)
+    expect(servedGroup.requests.has("Legacy.Notes.events.changed")).toBe(false)
+    expect(core.Desktop.describeRpcs({ rpcLayers: app.rpcLayers }, LegacyRpcs)).toEqual([
+      expect.objectContaining({ tag: "Legacy.Notes.list" })
+    ])
+
+    const renderer = core.makeDesktopRendererRpcRuntime(
+      {
+        _tag: "DesktopAppManifest",
+        id: "legacy-notes",
+        windows: {},
+        rpcGroups: [
+          {
+            _tag: "DesktopRpcGroup",
+            group: LegacyRpcs,
+            servedGroup
+          }
+        ]
+      },
+      {
+        framework: "react",
+        transport
+      }
+    )
+    expect(renderer.clients.get(LegacyRpcs)?.["Legacy.Notes.list"]).toBeFunction()
+    expect(renderer.clients.get(LegacyRpcs)?.["Legacy.Notes.events.changed"]).toBeUndefined()
+    await Effect.runPromise(renderer.dispose())
+
     const result = await Effect.runPromise(
       Effect.provide(
         Effect.gen(function* () {

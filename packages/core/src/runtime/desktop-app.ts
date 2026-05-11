@@ -64,6 +64,7 @@ export interface DesktopAppDefinition<E = never, R = never> {
 export interface DesktopRpcGroupDescriptor {
   readonly _tag: "DesktopRpcGroup"
   readonly group: RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> }
+  readonly servedGroup?: RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> }
 }
 
 export interface DesktopAppManifest {
@@ -76,12 +77,14 @@ export interface DesktopAppManifest {
 export interface DesktopRpcLayer<Rpcs extends Rpc.Any = Rpc.Any, E = never, R = never> {
   readonly _tag: "DesktopRpcsLayer"
   readonly group: RpcGroup.RpcGroup<Rpcs>
+  readonly servedGroup?: RpcGroup.RpcGroup<Rpcs>
   readonly layer: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
 }
 
 export interface AnyDesktopRpcLayer {
   readonly _tag: "DesktopRpcsLayer"
   readonly group: RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> }
+  readonly servedGroup?: RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> }
   readonly layer: Layer.Layer<unknown, unknown, unknown>
 }
 
@@ -151,12 +154,14 @@ export const manifest = <E, R>(definition: DesktopAppDefinition<E, R>): DesktopA
     id: definition.id,
     windows: definition.windows,
     rpcGroups: Object.freeze(
-      definition.rpcLayers.map((rpcLayer) =>
-        Object.freeze({
+      definition.rpcLayers.map((rpcLayer) => {
+        const servedGroup = servedRpcGroup(rpcLayer)
+        return Object.freeze({
           _tag: "DesktopRpcGroup" as const,
-          group: rpcLayer.group
+          group: rpcLayer.group,
+          ...(servedGroup === rpcLayer.group ? {} : { servedGroup })
         })
-      )
+      })
     )
   })
 
@@ -270,7 +275,7 @@ const apiLayerToRpcLayer = (apiLayer: AnyApiLayer): AnyDesktopRpcLayer => {
     (event) => `${apiLayer.contract.tag}.events.${event}`
   )
   const fullGroup = apiLayer.contract.toRpcGroup()
-  const group =
+  const servedGroup =
     eventTags.length === 0
       ? fullGroup
       : fullGroup.omit(...(eventTags as unknown as ReadonlyArray<never>))
@@ -288,10 +293,12 @@ const apiLayerToRpcLayer = (apiLayer: AnyApiLayer): AnyDesktopRpcLayer => {
         : (): Effect.Effect<never> => Effect.die(`Legacy API handler is missing for ${rpcTag}`)
   }
 
-  const rpcLayer = Rpcs.layer(
-    group,
-    group.toLayer(Object.freeze(handlers) as never)
-  ) as unknown as AnyDesktopRpcLayer
+  const rpcLayer = Object.freeze({
+    _tag: "DesktopRpcsLayer" as const,
+    group: fullGroup,
+    ...(servedGroup === fullGroup ? {} : { servedGroup }),
+    layer: servedGroup.toLayer(Object.freeze(handlers) as never)
+  }) as unknown as AnyDesktopRpcLayer
 
   const capabilities = new Map<string, string>()
   for (const [method, spec] of Object.entries(apiLayer.contract.spec)) {
@@ -315,7 +322,7 @@ const checkPermissions = <RIn, E>(
   const seenRpcTags = new Set<string>()
 
   for (const rpcLayer of rpcLayers) {
-    for (const [tag, rpc] of rpcLayer.group.requests.entries()) {
+    for (const [tag, rpc] of servedRpcGroup(rpcLayer).requests.entries()) {
       if (seenRpcTags.has(tag)) {
         return Effect.fail(
           new DesktopConfigError({
@@ -466,9 +473,14 @@ const buildSpine = <RIn, E>(config: DesktopConfig<RIn, E>): Layer.Layer<DesktopA
 
 const bindRpcLayer = <E, R>(rpcLayer: AnyDesktopRpcLayer): Layer.Layer<never, E, R> =>
   Layer.provide(
-    RpcServer.layer(rpcLayer.group as RpcGroup.RpcGroup<Rpc.Any>),
+    RpcServer.layer(servedRpcGroup(rpcLayer) as RpcGroup.RpcGroup<Rpc.Any>),
     rpcLayer.layer as Layer.Layer<unknown, E, R>
   ) as unknown as Layer.Layer<never, E, R>
+
+const servedRpcGroup = (
+  rpcLayer: AnyDesktopRpcLayer
+): RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> } =>
+  rpcLayer.servedGroup ?? rpcLayer.group
 
 const makeDefinition = <E, R>(definition: {
   readonly id: string

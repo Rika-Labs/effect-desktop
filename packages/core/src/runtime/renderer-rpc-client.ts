@@ -65,12 +65,15 @@ export const makeDesktopRendererRpcRuntime = (
       scope
     )
   )
-  const clients = new Map<RpcGroup.Any, DesktopRendererRpcClient>(
-    app.rpcGroups.map((descriptor) => [
-      descriptor.group,
-      makeGroupClient(descriptor.group, protocol, scope, options.framework)
-    ])
-  )
+  const clients = new Map<RpcGroup.Any, DesktopRendererRpcClient>()
+  for (const descriptor of app.rpcGroups) {
+    const servedGroup = descriptor.servedGroup ?? descriptor.group
+    const client = makeGroupClient(servedGroup, protocol, scope, options.framework)
+    clients.set(descriptor.group, client)
+    if (servedGroup !== descriptor.group) {
+      clients.set(servedGroup, client)
+    }
+  }
 
   return Object.freeze({
     clients,

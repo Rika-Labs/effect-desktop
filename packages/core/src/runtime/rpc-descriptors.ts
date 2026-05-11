@@ -51,7 +51,7 @@ export const describeRpcs = <Group extends RpcGroupWithRequests>(
     )
   }
 
-  const descriptors = Array.from(provided.group.requests.values()).map((rpc) =>
+  const descriptors = Array.from(descriptorGroup(provided).requests.values()).map((rpc) =>
     Object.freeze({
       name: rpcEndpointName(rpc._tag),
       tag: rpc._tag,
@@ -95,12 +95,18 @@ const providedRpcGroup = <Group extends RpcGroupWithRequests>(
 const providedRpcLayer = <Group extends RpcGroupWithRequests>(
   layers: readonly AnyDesktopRpcLayer[],
   group: Group
-): AnyDesktopRpcLayer | undefined => layers.find((layer) => layer.group === group)
+): AnyDesktopRpcLayer | undefined =>
+  layers.find((layer) => layer.group === group || layer.servedGroup === group)
 
 const providedRpcGroupDescriptor = <Group extends RpcGroupWithRequests>(
   groups: readonly DesktopRpcGroupDescriptor[],
   group: Group
-): DesktopRpcGroupDescriptor | undefined => groups.find((descriptor) => descriptor.group === group)
+): DesktopRpcGroupDescriptor | undefined =>
+  groups.find((descriptor) => descriptor.group === group || descriptor.servedGroup === group)
+
+const descriptorGroup = (
+  descriptor: AnyDesktopRpcLayer | DesktopRpcGroupDescriptor
+): RpcGroupWithRequests => descriptor.servedGroup ?? descriptor.group
 
 const endpointKind = (rpc: Rpc.Any): RpcEndpointDescriptorKind =>
   RpcSchema.isStreamSchema(successSchema(rpc)) ? "stream" : rpcEndpointKind(rpc)
