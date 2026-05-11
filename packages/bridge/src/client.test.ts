@@ -444,6 +444,43 @@ test("Client abort signals release callers when the exchange does not answer", a
   ])
 })
 
+test("Client abort ignores invalid cancel timestamps without throwing from listeners", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.ClientCancelInvalidTimestamp")
+  const cancelRequests: HostProtocolCancelByRequestEnvelope[] = []
+  const controller = new AbortController()
+  const timestamps = [42, Number.NaN]
+  const client = Client(
+    { project: ProjectRpcs },
+    {
+      request: () => Effect.never,
+      cancel: (request) =>
+        Effect.sync(() => {
+          cancelRequests.push(request)
+        })
+    },
+    {
+      nextRequestId: () => "request-client-cancel-invalid-timestamp",
+      nextTraceId: () => "trace-client-cancel-invalid-timestamp",
+      now: () => timestamps.shift() ?? Number.NaN
+    }
+  )
+
+  const exitPromise = Effect.runPromise(
+    client.project
+      .open(new ProjectOpenInput({ path: "/tmp/project" }), { signal: controller.signal })
+      .pipe(Effect.exit, Effect.timeoutOption("50 millis"))
+  )
+
+  expect(() => controller.abort()).not.toThrow()
+  const result = await exitPromise
+
+  expect(Option.isSome(result)).toBe(true)
+  if (Option.isSome(result)) {
+    expectFailureTag(result.value, "Cancelled")
+  }
+  expect(cancelRequests).toEqual([])
+})
+
 test("Client pre-aborted signals fail typed without dispatching requests", async () => {
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.ClientPreCancel")
   const requests: HostProtocolRequestEnvelope[] = []

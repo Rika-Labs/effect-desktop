@@ -251,10 +251,10 @@ const validateMethodSpec = (tag: string, method: string, spec: BridgeRpcMethodSp
     throw invalidSpec(tag, method, "cancellable must be a boolean")
   }
   if (spec.backpressure !== undefined) {
-    validateBackpressureSpec(tag, method, spec.backpressure)
+    validateBackpressureSpec(tag, method, spec.backpressure, { requirePositiveSize: true })
   }
   if (isStreamSpec(spec.output) && spec.output.backpressure !== undefined) {
-    validateBackpressureSpec(tag, method, spec.output.backpressure)
+    validateBackpressureSpec(tag, method, spec.output.backpressure, { requirePositiveSize: true })
   }
   if (spec.support !== undefined) {
     validateSupportSpec(tag, method, spec.support)
@@ -283,11 +283,16 @@ const validateEventSpec = (tag: string, event: string, spec: BridgeRpcEventSpec)
     throw invalidSpec(tag, event, "event payload schema is required")
   }
   if (spec.backpressure !== undefined) {
-    validateBackpressureSpec(tag, event, spec.backpressure)
+    validateBackpressureSpec(tag, event, spec.backpressure, { requirePositiveSize: false })
   }
 }
 
-const validateBackpressureSpec = (tag: string, method: string, spec: BackpressureSpec): void => {
+const validateBackpressureSpec = (
+  tag: string,
+  method: string,
+  spec: BackpressureSpec,
+  options: { readonly requirePositiveSize: boolean }
+): void => {
   if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
     throw invalidSpec(tag, method, "backpressure must be an object")
   }
@@ -297,6 +302,9 @@ const validateBackpressureSpec = (tag: string, method: string, spec: Backpressur
   }
   if (spec.size !== undefined && (!Number.isInteger(spec.size) || spec.size < 0)) {
     throw invalidSpec(tag, method, "backpressure.size must be a non-negative integer")
+  }
+  if (options.requirePositiveSize && spec.size === 0) {
+    throw invalidSpec(tag, method, "backpressure.size must be a positive integer")
   }
   if (spec.overflow !== undefined && !backpressureOverflows.has(spec.overflow)) {
     throw invalidSpec(

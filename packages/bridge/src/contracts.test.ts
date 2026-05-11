@@ -143,6 +143,23 @@ test("BridgeRpc.group validates specs before producing a group", () => {
   ).toThrow(InvalidBridgeRpcSpec)
   expect(() =>
     BridgeRpc.group(
+      "Test.ZeroStreamBackpressure",
+      {
+        call: {
+          input: Schema.String,
+          output: BridgeRpc.Stream(Schema.String, Schema.Never, {
+            strategy: "buffer",
+            size: 0,
+            overflow: "error"
+          }),
+          error: Schema.Never
+        }
+      },
+      {}
+    )
+  ).toThrow(InvalidBridgeRpcSpec)
+  expect(() =>
+    BridgeRpc.group(
       "Test.InvalidSupport",
       {
         call: {
