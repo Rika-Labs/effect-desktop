@@ -1421,6 +1421,25 @@ test("Menu service delegates through a substitutable MenuClient port", async () 
   ])
 })
 
+test("Menu bindCommand does not duplicate listeners for identical bindings", async () => {
+  const calls: string[] = []
+  const commandCalls: unknown[] = []
+  const commandLayer = await makeCommandBindingLayer(commandCalls)
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const menu = yield* Menu
+      const first = yield* menu.bindCommand("file.open", "app.file.open")
+      const second = yield* menu.bindCommand("file.open", "app.file.open")
+      return { first, second }
+    }).pipe(Effect.provide(Layer.mergeAll(makeMenuServiceLayer(menuClient(calls)), commandLayer)))
+  )
+  await Effect.runPromise(Effect.sleep("10 millis"))
+
+  expect(result.second).toEqual(result.first)
+  expect(commandCalls).toEqual([{ itemId: "file.open", windowId: "window-1" }])
+  expect(calls).toEqual(["bindCommand:file.open:app.file.open"])
+})
+
 test("Menu bridge client validates templates, sends host envelopes, and decodes activation events", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const exchange = menuExchange(requests, () => ({ kind: "success", payload: undefined }))
@@ -1846,6 +1865,29 @@ test("ContextMenu service delegates through a substitutable ContextMenuClient po
     "show:window-1:12.5:34.25:3",
     "bindCommand:file.open:app.file.open"
   ])
+})
+
+test("ContextMenu bindCommand does not duplicate listeners for identical bindings", async () => {
+  const calls: string[] = []
+  const commandCalls: unknown[] = []
+  const commandLayer = await makeCommandBindingLayer(commandCalls)
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const contextMenu = yield* ContextMenu
+      const first = yield* contextMenu.bindCommand("file.open", "app.file.open")
+      const second = yield* contextMenu.bindCommand("file.open", "app.file.open")
+      return { first, second }
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(makeContextMenuServiceLayer(contextMenuClient(calls)), commandLayer)
+      )
+    )
+  )
+  await Effect.runPromise(Effect.sleep("10 millis"))
+
+  expect(result.second).toEqual(result.first)
+  expect(commandCalls).toEqual([{ itemId: "file.open", windowId: "window-1" }])
+  expect(calls).toEqual(["bindCommand:file.open:app.file.open"])
 })
 
 test("ContextMenu bridge client validates window menu inputs and decodes activation events", async () => {

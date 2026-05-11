@@ -23,7 +23,7 @@ import {
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Fiber, Layer, Schema, Stream } from "effect"
+import { Context, Effect, Fiber, Layer, Option, Schema, Stream } from "effect"
 
 import { commandBindingWarningError } from "./command-binding-log.js"
 import {
@@ -129,6 +129,12 @@ const bindContextMenuCommand = (
   return Effect.gen(function* () {
     const commands = yield* CommandRegistry
     const resources = yield* ResourceRegistry
+    const resourceId = contextMenuCommandResourceId(itemId, commandId)
+    const existing = yield* resources.get(resourceId)
+    if (Option.isSome(existing)) {
+      return existing.value.handle as ResourceHandle<"context-menu-command", "registered">
+    }
+
     yield* client.bindCommand(itemId, commandId)
 
     const fiber = yield* client.onActivated().pipe(
@@ -143,7 +149,7 @@ const bindContextMenuCommand = (
     const handle = yield* resources
       .register({
         kind: "context-menu-command",
-        id: contextMenuCommandResourceId(itemId, commandId),
+        id: resourceId,
         ownerScope: "app",
         state: "registered",
         dispose: Fiber.interrupt(fiber).pipe(Effect.asVoid)
