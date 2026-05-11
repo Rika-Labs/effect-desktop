@@ -181,6 +181,31 @@ processTest("Process spawn validates required owner scope before adapter activit
   expectFailure(exit, HostProtocolInvalidArgumentError)
 })
 
+processTest(
+  "Process spawn rejects invalid snapshot timestamps before adapter activity",
+  async () => {
+    for (const now of invalidTimestamps) {
+      let spawnCalls = 0
+      const fixture = await makeFixture(
+        makeFakeAdapter(() => {
+          spawnCalls += 1
+          return makeFakeChild({ stdout: [], exit: { code: 0 } })
+        }),
+        { now: () => now }
+      )
+
+      const exit = await Effect.runPromiseExit(
+        fixture.service.spawn("echo", ["hi"], { ownerScope: "scope-main" })
+      )
+
+      expectFailure(exit, HostProtocolInvalidArgumentError)
+      expect(spawnCalls).toBe(0)
+      expect(await Effect.runPromise(fixture.service.list())).toEqual([])
+      expect((await Effect.runPromise(fixture.registry.list())).entries).toEqual([])
+    }
+  }
+)
+
 processTest("Process spawn denies binaries by default before adapter activity", async () => {
   let spawnCalls = 0
   const registry = await Effect.runPromise(makeResourceRegistry())
@@ -632,6 +657,38 @@ processTest("Process kill rejects handles after process exit", async () => {
   expectFailure(exit, HostProtocolStaleHandleError)
 })
 
+processTest(
+  "Process exit rejects invalid snapshot timestamps before publishing exit state",
+  async () => {
+    for (const now of invalidTimestamps) {
+      let currentTime = 1_000
+      const fixture = await makeFixture(
+        makeFakeAdapter(() =>
+          makeFakeChild({ stdout: [], exit: { code: 0 }, naturalExitDelayMs: 10 })
+        ),
+        { now: () => currentTime }
+      )
+      const observed = Effect.runFork(
+        fixture.service.observe().pipe(Stream.take(2), Stream.runCollect)
+      )
+      const handle = await Effect.runPromise(
+        fixture.service.spawn("echo", ["hi"], { ownerScope: "scope-main" })
+      )
+      currentTime = now
+
+      const exit = await Effect.runPromiseExit(handle.exit)
+      const listed = await Effect.runPromise(fixture.service.list())
+      const snapshots = Array.from(await Effect.runPromise(Fiber.join(observed)))
+
+      expectFailure(exit, HostProtocolInvalidArgumentError)
+      expect(listed[0]?.state).toBe("running")
+      expect(listed[0]?.updatedAt).toBe(1_000)
+      expect(snapshots.at(-1)?.[0]?.state).toBe("running")
+      expect(snapshots.at(-1)?.[0]?.updatedAt).toBe(1_000)
+    }
+  }
+)
+
 processTest("Process kill rejects handles after scope close", async () => {
   const child = makeFakeChild({
     stdout: [],
@@ -746,6 +803,7 @@ const makeFixture = async (
     readonly budgets?: ProcessBudgetPolicy
     readonly gracefulShutdownMs?: number
     readonly maxSnapshots?: number
+    readonly now?: () => number
     readonly permissions?: ProcessPermissionPolicy
   } = {}
 ): Promise<{ readonly registry: ResourceRegistryApi; readonly service: ProcessApi }> => {
@@ -761,6 +819,7 @@ const makeService = (
     readonly budgets?: ProcessBudgetPolicy
     readonly gracefulShutdownMs?: number
     readonly maxSnapshots?: number
+    readonly now?: () => number
     readonly permissions?: ProcessPermissionPolicy
   } = {}
 ) =>
@@ -772,13 +831,16 @@ const makeService = (
       ...(options.gracefulShutdownMs === undefined
         ? {}
         : { gracefulShutdownMs: options.gracefulShutdownMs }),
-      ...(options.maxSnapshots === undefined ? {} : { maxSnapshots: options.maxSnapshots })
+      ...(options.maxSnapshots === undefined ? {} : { maxSnapshots: options.maxSnapshots }),
+      ...(options.now === undefined ? {} : { now: options.now })
     })
   )
 
 const ALLOW_TEST_PROCESS_PERMISSIONS: ProcessPermissionPolicy = {
   spawn: ["echo", "sleep", "cat", "definitely-missing", process.execPath, "/bin/sh"]
 }
+
+const invalidTimestamps = [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -1, 1.5]
 
 const makeFakeAdapter = (makeChild: () => ProcessChild): ProcessAdapter => ({
   spawn: () => makeChild()

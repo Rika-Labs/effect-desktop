@@ -41,6 +41,7 @@ const ProcessSignalString = Schema.NonEmptyString.check(
 )
 const EnvironmentVariableName = Schema.NonEmptyString.check(Schema.isPattern(/^[^\u0000]+$/))
 const EnvironmentVariableValue = Schema.String.check(Schema.isPattern(/^[^\u0000]*$/))
+const ProcessTimestamp = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 
 export class ProcessSpawnInput extends Schema.Class<ProcessSpawnInput>("ProcessSpawnInput")({
   command: NonEmptyString,
@@ -199,6 +200,7 @@ export const makeProcess = (
             "Process.spawn"
           )
           yield* authorizeProcessSpawn(permissions, input)
+          const startedAt = yield* decodeProcessTimestamp(now(), "Process.spawn")
           const { child, resource } = yield* Effect.uninterruptible(
             Effect.gen(function* () {
               yield* reserveProcessBudget(processBudgets, input.ownerScope, budgets.maxConcurrent)
@@ -216,7 +218,6 @@ export const makeProcess = (
                   )
                 })
                 .pipe(Effect.orDie)
-              const startedAt = now()
               yield* upsertProcessSnapshot(
                 snapshots,
                 resource.id,
@@ -317,8 +318,8 @@ const makeHandle = (
     try: () => child.exited,
     catch: (error) => mapProcessError(error, command, "Process.exit")
   })
-  const recordExit = (status: ProcessExitStatus): Effect.Effect<void, never, never> =>
-    markProcessExited(snapshots, resource.id, status, now())
+  const recordExit = (status: ProcessExitStatus): Effect.Effect<void, ProcessError, never> =>
+    markProcessExited(snapshots, resource.id, status, now(), "Process.exit")
   observeChildExit(exitStatus, resource, command, recordExit)
   const exit = exitStatus.pipe(
     Effect.tap((status) => recordExit(status)),
@@ -469,7 +470,7 @@ const observeChildExit = (
   exitStatus: Effect.Effect<ProcessExitStatus, ProcessError, never>,
   resource: ResourceHandle<"process", "running">,
   command: string,
-  recordExit: (status: ProcessExitStatus) => Effect.Effect<void, never, never>
+  recordExit: (status: ProcessExitStatus) => Effect.Effect<void, ProcessError, never>
 ): void => {
   Effect.runFork(
     exitStatus.pipe(
@@ -601,6 +602,16 @@ const decodeStdinChunk = (
   input instanceof Uint8Array
     ? Effect.succeed(input)
     : Effect.fail(makeHostProtocolInvalidArgumentError("chunk", "must be a Uint8Array", operation))
+
+const decodeProcessTimestamp = (
+  input: unknown,
+  operation: string
+): Effect.Effect<number, HostProtocolInvalidArgumentError, never> =>
+  Schema.decodeUnknownEffect(ProcessTimestamp)(input).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("now", formatUnknownError(error), operation)
+    )
+  )
 
 const assertProcessHandleFresh = (
   registry: ResourceRegistryApi,
@@ -743,21 +754,25 @@ const markProcessExited = (
   snapshots: SubscriptionRef.SubscriptionRef<Map<ResourceId, ProcessSnapshot>>,
   id: ResourceId,
   status: ProcessExitStatus,
-  updatedAt: number
-): Effect.Effect<void, never, never> =>
-  SubscriptionRef.update(snapshots, (current) => {
-    const existing = current.get(id)
-    if (existing === undefined) {
-      return current
-    }
-    const next = new Map(current)
-    next.set(id, {
-      ...existing,
-      state: "exited",
-      updatedAt,
-      lastExit: Option.some(status)
+  updatedAt: number,
+  operation: string
+): Effect.Effect<void, HostProtocolInvalidArgumentError, never> =>
+  Effect.gen(function* () {
+    const decodedUpdatedAt = yield* decodeProcessTimestamp(updatedAt, operation)
+    yield* SubscriptionRef.update(snapshots, (current) => {
+      const existing = current.get(id)
+      if (existing === undefined) {
+        return current
+      }
+      const next = new Map(current)
+      next.set(id, {
+        ...existing,
+        state: "exited",
+        updatedAt: decodedUpdatedAt,
+        lastExit: Option.some(status)
+      })
+      return next
     })
-    return next
   })
 
 const validateProcessBudgets = (
