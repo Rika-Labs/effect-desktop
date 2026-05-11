@@ -50,7 +50,13 @@ test("ApprovalBroker coalesces identical concurrent requests into one host promp
     "denied-for-scope",
     "denied-for-scope"
   ])
+  expect(outcomes.map((current) => current.requestId)).toEqual([
+    "request-1",
+    "request-2",
+    "request-3"
+  ])
   expect(fourth.outcome).toBe("denied-for-scope")
+  expect(fourth.requestId).toBe("request-4")
   expect(fourth.source).toBe("scope-cache")
   expect(rows.map((row) => row.kind)).toEqual([
     "approval-requested",

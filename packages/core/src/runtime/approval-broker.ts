@@ -112,7 +112,12 @@ interface ActorQueue {
 interface PromptEntry {
   readonly key: string
   readonly request: ApprovalRequest
-  readonly waiters: readonly Deferred.Deferred<ApprovalOutcome, ApprovalBrokerError>[]
+  readonly waiters: readonly PromptWaiter[]
+}
+
+interface PromptWaiter {
+  readonly request: ApprovalRequest
+  readonly deferred: Deferred.Deferred<ApprovalOutcome, ApprovalBrokerError>
 }
 
 type EnqueueResult =
@@ -216,7 +221,7 @@ const enqueue = (
       { _tag: "Await" },
       setActorQueue(state, request.actor, {
         ...actor,
-        active: Option.some(addWaiter(active, waiter))
+        active: Option.some(addWaiter(active, request, waiter))
       })
     ]
   }
@@ -228,13 +233,13 @@ const enqueue = (
       setActorQueue(state, request.actor, {
         ...actor,
         queued: actor.queued.map((entry, index) =>
-          index === queuedIndex ? addWaiter(entry, waiter) : entry
+          index === queuedIndex ? addWaiter(entry, request, waiter) : entry
         )
       })
     ]
   }
 
-  const entry: PromptEntry = { key, request, waiters: [waiter] }
+  const entry: PromptEntry = { key, request, waiters: [promptWaiter(request, waiter)] }
   if (active === undefined) {
     return [
       { _tag: "Start", entry },
@@ -348,13 +353,17 @@ const completeSuccess = (
   entry: PromptEntry,
   outcome: ApprovalOutcome
 ): Effect.Effect<void, never, never> =>
-  Effect.forEach(entry.waiters, (waiter) => Deferred.succeed(waiter, outcome)).pipe(Effect.asVoid)
+  Effect.forEach(entry.waiters, (waiter) =>
+    Deferred.succeed(waiter.deferred, outcomeForRequest(outcome, waiter.request))
+  ).pipe(Effect.asVoid)
 
 const completeFailure = (
   entry: PromptEntry,
   error: ApprovalBrokerError
 ): Effect.Effect<void, never, never> =>
-  Effect.forEach(entry.waiters, (waiter) => Deferred.fail(waiter, error)).pipe(Effect.asVoid)
+  Effect.forEach(entry.waiters, (waiter) => Deferred.fail(waiter.deferred, error)).pipe(
+    Effect.asVoid
+  )
 
 const auditApproval = (
   audit: AuditEventsApi | undefined,
@@ -456,8 +465,17 @@ const setActorQueue = (state: BrokerState, actor: string, queue: ActorQueue): Br
 
 const addWaiter = (
   entry: PromptEntry,
+  request: ApprovalRequest,
   waiter: Deferred.Deferred<ApprovalOutcome, ApprovalBrokerError>
-): PromptEntry => ({ ...entry, waiters: [...entry.waiters, waiter] })
+): PromptEntry => ({
+  ...entry,
+  waiters: [...entry.waiters, promptWaiter(request, waiter)]
+})
+
+const promptWaiter = (
+  request: ApprovalRequest,
+  deferred: Deferred.Deferred<ApprovalOutcome, ApprovalBrokerError>
+): PromptWaiter => ({ request, deferred })
 
 const approvalKey = (request: ApprovalRequest): string =>
   `${request.operation}\u0000${request.actor}\u0000${request.resource ?? ""}`
@@ -474,6 +492,15 @@ const approvalOutcome = (
     traceId: request.traceId ?? randomUUID(),
     decidedAt,
     source
+  })
+
+const outcomeForRequest = (outcome: ApprovalOutcome, request: ApprovalRequest): ApprovalOutcome =>
+  new ApprovalOutcome({
+    requestId: request.id,
+    outcome: outcome.outcome,
+    traceId: request.traceId ?? outcome.traceId,
+    decidedAt: outcome.decidedAt,
+    source: outcome.source
   })
 
 const withTraceId = (
