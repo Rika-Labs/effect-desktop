@@ -109,8 +109,9 @@ export const makeHostWindowClient = (
     create: (input = {}) =>
       Effect.gen(function* () {
         const payload = yield* encodeCreatePayload(input)
+        const request = makeRequest(WINDOW_CREATE_METHOD, resolved, payload)
         const response = yield* requireSuccess(
-          yield* exchange.request(makeRequest(WINDOW_CREATE_METHOD, resolved, payload))
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
 
         return yield* decodeCreateResponse(response.payload)
@@ -118,11 +119,35 @@ export const makeHostWindowClient = (
     destroy: (windowId) =>
       Effect.gen(function* () {
         const payload = yield* encodeDestroyPayload(windowId)
+        const request = makeRequest(WINDOW_DESTROY_METHOD, resolved, payload)
         yield* requireSuccess(
-          yield* exchange.request(makeRequest(WINDOW_DESTROY_METHOD, resolved, payload))
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
       })
   }
+}
+
+const requireMatchingResponse = (
+  request: HostProtocolRequestEnvelope,
+  response: HostProtocolResponseEnvelope
+): Effect.Effect<HostProtocolResponseEnvelope, HostProtocolError, never> => {
+  if (response.id !== request.id) {
+    return Effect.fail(
+      makeHostProtocolInvalidOutputError(
+        request.method,
+        `response id ${response.id} does not match request id ${request.id}`
+      )
+    )
+  }
+  if (response.traceId !== request.traceId) {
+    return Effect.fail(
+      makeHostProtocolInvalidOutputError(
+        request.method,
+        `response traceId ${response.traceId} does not match request traceId ${request.traceId}`
+      )
+    )
+  }
+  return Effect.succeed(response)
 }
 
 const requireSuccess = (

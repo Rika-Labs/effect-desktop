@@ -137,6 +137,37 @@ test("host window client rejects malformed create output", async () => {
   )
 })
 
+test("host window client rejects mismatched response ids", async () => {
+  const client = makeHostWindowClient(mismatchedResponseExchange({ id: "request-window-other" }), {
+    nextRequestId: () => "request-window-create",
+    nextTraceId: () => "trace-window-create",
+    now: () => 1710000000004
+  })
+
+  await expectEffectFailure(
+    client.create(),
+    (error) =>
+      error instanceof HostProtocolInvalidOutputError && error.operation === WINDOW_CREATE_METHOD
+  )
+})
+
+test("host window client rejects mismatched response trace ids", async () => {
+  const client = makeHostWindowClient(
+    mismatchedResponseExchange({ traceId: "trace-window-other" }),
+    {
+      nextRequestId: () => "request-window-create",
+      nextTraceId: () => "trace-window-create",
+      now: () => 1710000000005
+    }
+  )
+
+  await expectEffectFailure(
+    client.create(),
+    (error) =>
+      error instanceof HostProtocolInvalidOutputError && error.operation === WINDOW_CREATE_METHOD
+  )
+})
+
 const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExchange => ({
   request: (request) => {
     requests.push(request)
@@ -184,6 +215,21 @@ const malformedCreateExchange = (): HostWindowExchange => ({
         timestamp: request.timestamp + 1,
         traceId: request.traceId,
         payload: {}
+      })
+    )
+})
+
+const mismatchedResponseExchange = (
+  fields: Partial<Pick<HostProtocolResponseEnvelope, "id" | "traceId">>
+): HostWindowExchange => ({
+  request: (request) =>
+    Effect.succeed(
+      new HostProtocolResponseEnvelope({
+        kind: "response",
+        id: fields.id ?? request.id,
+        timestamp: request.timestamp + 1,
+        traceId: fields.traceId ?? request.traceId,
+        payload: { windowId: "window-1" }
       })
     )
 })
