@@ -463,16 +463,36 @@ const initialize = (
 
     const started = now()
     yield* runMigrations(kv, input.namespace, current, input.schemaVersion, migrations)
+    const durationMs = yield* readMigrationDuration(started, now(), input.schemaVersion)
     yield* writeVersion(kv, input.namespace, input.schemaVersion, "Settings.initialize")
     yield* PubSub.publish(
       migrated,
       new SettingsMigrated({
         from: current,
         to: input.schemaVersion,
-        durationMs: now() - started
+        durationMs
       })
     )
   })
+
+const readMigrationDuration = (
+  started: number,
+  ended: number,
+  schemaVersion: number
+): Effect.Effect<number, SettingsMigrationFailedError, never> => {
+  const durationMs = ended - started
+  if (!Number.isFinite(durationMs)) {
+    return Effect.fail(
+      new SettingsMigrationFailedError({
+        schemaVersion,
+        operation: "Settings.migrate",
+        cause: Option.some("migration duration must be finite")
+      })
+    )
+  }
+
+  return Effect.succeed(Math.max(0, durationMs))
+}
 
 const runMigrations = (
   kv: KeyValueStore.KeyValueStore,

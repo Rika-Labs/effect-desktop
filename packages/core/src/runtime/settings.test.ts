@@ -205,6 +205,68 @@ describe("Settings", () => {
     }
   })
 
+  test("migration events clamp negative durations from non-monotonic clocks", async () => {
+    const kv = await makeKvMemory()
+    const settings = await Effect.runPromise(makeSettings(kv))
+    let currentTime = 10
+
+    await Effect.runPromise(
+      settings.open({
+        path: ":memory:",
+        ownerScope: "scope-main",
+        schemaVersion: 1
+      })
+    )
+    const store = await Effect.runPromise(
+      settings.open({
+        path: ":memory:",
+        ownerScope: "scope-main",
+        schemaVersion: 2,
+        migrations: [
+          {
+            from: 1,
+            to: 2,
+            migrate: () =>
+              Effect.sync(() => {
+                currentTime = 0
+              })
+          }
+        ],
+        now: () => currentTime
+      })
+    )
+
+    const migrated = await Effect.runPromise(
+      store.migrated().pipe(Stream.take(1), Stream.runCollect)
+    )
+
+    expect(Array.from(migrated)).toEqual([{ from: 1, to: 2, durationMs: 0 }])
+  })
+
+  test("migration events reject non-finite durations as typed failures", async () => {
+    const kv = await makeKvMemory()
+    const settings = await Effect.runPromise(makeSettings(kv))
+
+    await Effect.runPromise(
+      settings.open({
+        path: ":memory:",
+        ownerScope: "scope-main",
+        schemaVersion: 1
+      })
+    )
+    const exit = await Effect.runPromiseExit(
+      settings.open({
+        path: ":memory:",
+        ownerScope: "scope-main",
+        schemaVersion: 2,
+        migrations: [{ from: 1, to: 2, migrate: () => Effect.void }],
+        now: () => Number.NaN
+      })
+    )
+
+    expectFailure(exit, SettingsMigrationFailedError)
+  })
+
   test("missing migration returns SettingsMigrationFailed", async () => {
     const directory = await mkdtemp(join(tmpdir(), "effect-desktop-settings-"))
     const path = join(directory, "settings.sqlite")
