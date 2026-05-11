@@ -7,5 +7,5 @@
   "runOnly": ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"],
   "violations": [],
   "incomplete": [],
-  "passes": []
+  "passes": [{ "id": "color-contrast", "nodes": [{ "target": ["body"] }] }]
 }

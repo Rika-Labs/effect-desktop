@@ -1807,6 +1807,72 @@ test("desktop check --a11y rejects hardcoded template English outside i18n files
   }
 })
 
+test("desktop check --a11y rejects zero-pass axe reports", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+  try {
+    await writeAccessibilityFixture(directory, {
+      axePasses: []
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--a11y", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("AccessibilityGateEvidenceError")
+    expect(payload.message).toContain("no axe pass evidence")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --a11y rejects comment-only required tokens", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+  try {
+    await writeAccessibilityFixture(directory, {
+      styles: [
+        "/* prefers-color-scheme */",
+        "/* prefers-reduced-motion */",
+        ":root { color-scheme: light; }"
+      ].join("\n")
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--a11y", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("AccessibilityGateEvidenceError")
+    expect(payload.message).toContain("prefers-reduced-motion")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop check --a11y rejects contrast below the WCAG floor", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
   try {
@@ -5330,6 +5396,7 @@ const writeAccessibilityFixture = async (
     readonly styles?: string
     readonly messages?: string
     readonly manualAudit?: string
+    readonly axePasses?: readonly unknown[]
   } = {}
 ): Promise<void> => {
   const auditRoot = join(root, "docs", "audits", "v1.0.0", "basic-react-tailwind")
@@ -5355,7 +5422,7 @@ const writeAccessibilityFixture = async (
   for (const mode of ["light-ltr", "dark-ltr", "light-rtl", "dark-rtl"]) {
     await writeFile(
       join(auditRoot, `axe.${mode}.json`),
-      JSON.stringify(axeAuditFixture(mode), null, 2)
+      JSON.stringify(axeAuditFixture(mode, overrides.axePasses), null, 2)
     )
     await writeFile(
       join(auditRoot, `pa11y.${mode}.json`),
@@ -5466,12 +5533,15 @@ const accessibilityManualAuditFixture = (): string =>
     "Sign-off: release operator"
   ].join("\n")
 
-const axeAuditFixture = (mode: string): unknown => ({
+const axeAuditFixture = (
+  mode: string,
+  passes: readonly unknown[] = [{ id: "color-contrast" }]
+): unknown => ({
   url: `fixture:${mode}`,
   testEngine: { name: "axe-core", version: "4.x" },
   violations: [],
   incomplete: [],
-  passes: []
+  passes
 })
 
 const pa11yAuditFixture = (mode: string): unknown => ({

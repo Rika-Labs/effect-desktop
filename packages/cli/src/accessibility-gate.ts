@@ -236,6 +236,9 @@ const validateAuditModes = (
       if ((axe.incomplete ?? []).length > 0) {
         return yield* evidenceError(template, `${mode.axe} contains incomplete axe checks`)
       }
+      if ((axe.passes ?? []).length === 0) {
+        return yield* evidenceError(template, `${mode.axe} has no axe pass evidence`)
+      }
 
       const pa11y = yield* readJson<Pa11yAudit>(join(cwd, mode.pa11y))
       if (pa11y.runner !== "pa11y") {
@@ -310,7 +313,7 @@ const validateRequiredTokens = (
   Effect.gen(function* () {
     for (const required of template.requiredTokens) {
       const body = yield* readText(join(cwd, required.file))
-      if (!body.includes(required.token)) {
+      if (!hasRequiredTokenEvidence(required, body)) {
         return yield* evidenceError(
           template,
           `${required.file} is missing required token ${required.token}`
@@ -318,6 +321,19 @@ const validateRequiredTokens = (
       }
     }
   })
+
+const hasRequiredTokenEvidence = (required: AccessibilityRequiredToken, body: string): boolean => {
+  const uncommented = stripSourceComments(body)
+  if (required.token === "prefers-reduced-motion" || required.token === "prefers-color-scheme") {
+    return new RegExp(`@media\\s*\\([^)]*\\b${escapeRegExp(required.token)}\\b`).test(uncommented)
+  }
+  return uncommented.includes(required.token)
+}
+
+const stripSourceComments = (body: string): string =>
+  body.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1")
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
 const validateContrast = (
   template: AccessibilityTemplate
