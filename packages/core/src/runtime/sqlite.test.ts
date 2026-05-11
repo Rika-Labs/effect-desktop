@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test"
+import { access, mkdtemp, realpath } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
 import { Cause, Deferred, Effect, Exit, Fiber, Layer, Option, Schema } from "effect"
 import { Model } from "effect/unstable/schema"
@@ -6,6 +9,7 @@ import { SqlClient } from "effect/unstable/sql/SqlClient"
 import * as SqlModel from "effect/unstable/sql/SqlModel"
 
 import { makeResourceRegistry, ResourceRegistry, type ResourceRegistryApi } from "./resources.js"
+import { makePermissionRegistry, PermissionDeniedError } from "./permission-registry.js"
 import {
   makeSQLite,
   SqlClientLive,
@@ -35,6 +39,53 @@ describe("SQLite (bespoke)", () => {
 
     expectFailure(exit, SqliteInvalidArgumentError)
     expect(snapshot.entries).toHaveLength(0)
+  })
+
+  test("denies file-backed database paths without sqlite.open permission before creating files", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-sqlite-denied-"))
+    const databasePath = join(directory, "blocked.sqlite")
+    const registry = await Effect.runPromise(makeResourceRegistry())
+    const permissions = await Effect.runPromise(
+      makePermissionRegistry({ traceId: () => "trace-sqlite" })
+    )
+    const service = await Effect.runPromise(makeSQLite(registry, { permissions }))
+
+    const exit = await Effect.runPromiseExit(
+      service.connect({ path: databasePath, ownerScope: "scope-main", create: true })
+    )
+    const snapshot = await Effect.runPromise(registry.list())
+    const decisions = await Effect.runPromise(permissions.listDecisions())
+
+    expectFailure(exit, PermissionDeniedError)
+    expect(snapshot.entries).toHaveLength(0)
+    expect(decisions.map((decision) => decision.outcome)).toEqual(["denied"])
+    expect(decisions[0]?.capability.kind).toBe("sqlite.open")
+    expect(await exists(databasePath)).toBe(false)
+  })
+
+  test("opens file-backed database paths inside a declared sqlite.open root", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-sqlite-allowed-"))
+    const root = await realpath(directory)
+    const databasePath = join(directory, "allowed.sqlite")
+    const registry = await Effect.runPromise(makeResourceRegistry())
+    const permissions = await Effect.runPromise(
+      makePermissionRegistry({ traceId: () => "trace-sqlite", nextToken: () => "grant-sqlite" })
+    )
+    await Effect.runPromise(
+      permissions.declare({ kind: "sqlite.open", roots: [root], audit: "always" })
+    )
+    const service = await Effect.runPromise(makeSQLite(registry, { permissions }))
+
+    const connection = await Effect.runPromise(
+      service.connect({ path: databasePath, ownerScope: "scope-main", create: true })
+    )
+    await Effect.runPromise(connection.exec("CREATE TABLE items (name TEXT)"))
+    await Effect.runPromise(connection.close())
+    const decisions = await Effect.runPromise(permissions.listDecisions())
+
+    expect(decisions.map((decision) => decision.outcome)).toEqual(["granted"])
+    expect(decisions[0]?.capability.kind).toBe("sqlite.open")
+    expect(await exists(databasePath)).toBe(true)
   })
 
   test("rejects NUL bytes in SQLite paths before opening a database", async () => {
@@ -304,3 +355,9 @@ function expectFailure<E>(
     expect(error).toBeInstanceOf(errorClass)
   }
 }
+
+const exists = (path: string): Promise<boolean> =>
+  access(path).then(
+    () => true,
+    () => false
+  )

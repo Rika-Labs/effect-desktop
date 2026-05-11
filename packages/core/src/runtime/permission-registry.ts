@@ -15,6 +15,7 @@ const CapabilityKind = Schema.Literals([
   "filesystem.read",
   "filesystem.write",
   "filesystem.delete",
+  "sqlite.open",
   "process.spawn",
   "pty.spawn",
   "network.connect",
@@ -45,6 +46,13 @@ const FilesystemCapability = Schema.Struct({
   audit: AuditPolicy,
   allowCreate: Schema.optionalKey(Schema.Boolean),
   allowOverwrite: Schema.optionalKey(Schema.Boolean)
+})
+
+const SqliteCapability = Schema.Struct({
+  kind: Schema.Literal("sqlite.open"),
+  roots: Schema.Array(NonEmptyString),
+  deny: Schema.optionalKey(Schema.Array(NonEmptyString)),
+  audit: AuditPolicy
 })
 
 const ProcessCapability = Schema.Struct({
@@ -78,6 +86,7 @@ const NativeInvokeCapability = Schema.Struct({
 
 export const NormalizedCapability = Schema.Union([
   FilesystemCapability,
+  SqliteCapability,
   ProcessCapability,
   NetworkCapability,
   SecretsCapability,
@@ -532,6 +541,7 @@ export const capabilityCovers = (
     case "filesystem.read":
     case "filesystem.write":
     case "filesystem.delete":
+    case "sqlite.open":
       return (
         declared.kind === requested.kind &&
         requested.roots.every((root) =>

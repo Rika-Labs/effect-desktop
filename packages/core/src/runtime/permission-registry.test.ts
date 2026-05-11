@@ -55,6 +55,28 @@ test("PermissionRegistry allows filesystem writes inside declared roots and deni
   })
 })
 
+test("PermissionRegistry allows sqlite opens inside declared database roots and denies outside", async () => {
+  const registry = await Effect.runPromise(
+    makePermissionRegistry({ traceId: () => "trace-1", nextToken: () => "grant-1" })
+  )
+
+  await Effect.runPromise(
+    registry.declare(sqliteOpen(["/tmp/app/databases"]), { source: "manifest" })
+  )
+  const granted = await Effect.runPromise(
+    registry.check(sqliteOpen(["/tmp/app/databases/main.sqlite"]), context("window-main"))
+  )
+  const denied = await Effect.runPromiseExit(
+    registry.check(sqliteOpen(["/tmp/other/main.sqlite"]), context("window-main"))
+  )
+
+  expect(granted.token).toBe("grant-1")
+  expect(granted.source).toBe("manifest")
+  expectDenied(denied, (error) => {
+    expect(error.reason).toBe("default-deny")
+  })
+})
+
 test("PermissionRegistry exposes decision history and live decision events for devtools", async () => {
   const registry = await Effect.runPromise(
     makePermissionRegistry({ traceId: () => "trace-devtools", nextToken: () => "grant-1" })
@@ -395,6 +417,12 @@ const context = (id: string) => ({ actor: actor(id) })
 
 const filesystemWrite = (roots: readonly string[]): NormalizedCapability => ({
   kind: "filesystem.write",
+  roots,
+  audit: "always"
+})
+
+const sqliteOpen = (roots: readonly string[]): NormalizedCapability => ({
+  kind: "sqlite.open",
   roots,
   audit: "always"
 })

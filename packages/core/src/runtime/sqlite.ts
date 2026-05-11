@@ -5,6 +5,8 @@ import {
   type SQLQueryBindings,
   type Statement
 } from "bun:sqlite"
+import { realpath } from "node:fs/promises"
+import { dirname, join } from "node:path"
 
 import { Context, Data, Effect, Exit, Layer, Option, Ref, Schema, Semaphore } from "effect"
 import { SqlClient } from "effect/unstable/sql/SqlClient"
@@ -13,6 +15,12 @@ import * as SqlModel from "effect/unstable/sql/SqlModel"
 import * as UpstreamSqliteClient from "@effect/sql-sqlite-bun/SqliteClient"
 
 import { ResourceRegistry, type ResourceHandle, type ResourceRegistryApi } from "./resources.js"
+import {
+  PermissionActor,
+  PermissionRegistry,
+  type PermissionRegistryApi,
+  type PermissionRegistryError
+} from "./permission-registry.js"
 
 export { SqlClient, SqlError, SqlModel }
 export { UpstreamSqliteClient as SqliteClient }
@@ -118,7 +126,7 @@ export type SqliteTransactionMode = "deferred" | "immediate" | "exclusive"
 export interface SqliteApi {
   readonly connect: (
     options: SqliteConnectOptions
-  ) => Effect.Effect<SqliteConnection, SqliteError, never>
+  ) => Effect.Effect<SqliteConnection, SqliteError | PermissionRegistryError, never>
 }
 
 export class SqliteConstraintError extends Data.TaggedError("Constraint")<SqliteErrorFields> {}
@@ -148,15 +156,23 @@ export interface SqliteErrorFields {
   readonly cause: Option.Option<unknown>
 }
 
-export const makeSQLite = (registry: ResourceRegistryApi): Effect.Effect<SqliteApi, never, never> =>
+export interface SQLiteOptions {
+  readonly permissions?: PermissionRegistryApi
+}
+
+export const makeSQLite = (
+  registry: ResourceRegistryApi,
+  serviceOptions: SQLiteOptions = {}
+): Effect.Effect<SqliteApi, never, never> =>
   Effect.sync(() =>
     Object.freeze({
       connect: (options: SqliteConnectOptions) =>
         Effect.gen(function* () {
           const input = yield* decodeConnectInput(options, "SQLite.connect")
+          const authorizedPath = yield* authorizeSQLitePath(input, serviceOptions.permissions)
           const database = yield* Effect.try({
-            try: () => new Database(input.path, databaseOptions(input)),
-            catch: (error) => mapSqliteError(error, input.path, "SQLite.connect")
+            try: () => new Database(authorizedPath, databaseOptions(input)),
+            catch: (error) => mapSqliteError(error, authorizedPath, "SQLite.connect")
           })
           const mutex = yield* Semaphore.make(1)
           const transactionOwner = yield* Ref.make<Option.Option<number>>(Option.none())
@@ -165,7 +181,7 @@ export const makeSQLite = (registry: ResourceRegistryApi): Effect.Effect<SqliteA
               kind: "sqlite",
               ownerScope: input.ownerScope,
               state: "open",
-              dispose: closeDatabase(database, input.path)
+              dispose: closeDatabase(database, authorizedPath)
             })
             .pipe(Effect.orDie)
 
@@ -184,7 +200,8 @@ export const SQLiteLive = Layer.effect(
   SQLite,
   Effect.gen(function* () {
     const registry = yield* ResourceRegistry
-    return yield* makeSQLite(registry)
+    const permissions = yield* PermissionRegistry
+    return yield* makeSQLite(registry, { permissions })
   })
 )
 
@@ -422,6 +439,93 @@ const decodeConnectInput = (
     )
   )
 
+const authorizeSQLitePath = (
+  input: SqliteConnectInput,
+  permissions: PermissionRegistryApi | undefined
+): Effect.Effect<string, SqliteInvalidArgumentError | PermissionRegistryError, never> =>
+  Effect.gen(function* () {
+    if (input.path === ":memory:") {
+      return input.path
+    }
+
+    const canonicalPath = yield* canonicalizeSqlitePath(input.path)
+    if (permissions === undefined) {
+      return canonicalPath
+    }
+
+    yield* permissions.check(
+      {
+        kind: "sqlite.open",
+        roots: [canonicalPath],
+        audit: "always"
+      },
+      {
+        actor: new PermissionActor({ kind: "resource", id: input.ownerScope }),
+        resource: canonicalPath
+      },
+      { source: "SQLite.connect" }
+    )
+
+    return canonicalPath
+  })
+
+const canonicalizeSqlitePath = (
+  path: string
+): Effect.Effect<string, SqliteInvalidArgumentError, never> =>
+  Effect.tryPromise({
+    try: () => realpath(path),
+    catch: (error) => error
+  }).pipe(
+    Effect.catch((error) => {
+      if (isNodeError(error) && error.code === "ENOENT") {
+        const parent = dirname(path)
+        if (parent === path) {
+          return Effect.fail(makeSqliteInvalidPath(path, error))
+        }
+        return canonicalizeSqliteParent(parent).pipe(
+          Effect.map((canonicalParent) => join(canonicalParent, pathSegment(path)))
+        )
+      }
+      return Effect.fail(makeSqliteInvalidPath(path, error))
+    })
+  )
+
+const canonicalizeSqliteParent = (
+  path: string
+): Effect.Effect<string, SqliteInvalidArgumentError, never> =>
+  Effect.tryPromise({
+    try: () => realpath(path),
+    catch: (error) => error
+  }).pipe(
+    Effect.catch((error) => {
+      if (isNodeError(error) && error.code === "ENOENT") {
+        const parent = dirname(path)
+        if (parent === path) {
+          return Effect.fail(makeSqliteInvalidPath(path, error))
+        }
+        return canonicalizeSqliteParent(parent).pipe(
+          Effect.map((canonicalParent) => join(canonicalParent, pathSegment(path)))
+        )
+      }
+      return Effect.fail(makeSqliteInvalidPath(path, error))
+    })
+  )
+
+const pathSegment = (path: string): string => {
+  const normalized = path.replaceAll("\\", "/")
+  return normalized.slice(normalized.lastIndexOf("/") + 1)
+}
+
+const makeSqliteInvalidPath = (path: string, cause: unknown): SqliteInvalidArgumentError =>
+  new SqliteInvalidArgumentError({
+    field: "path",
+    operation: "SQLite.connect",
+    resource: path,
+    message: formatUnknownError(cause),
+    code: Option.none(),
+    cause: Option.some(cause)
+  })
+
 const databaseOptions = (input: SqliteConnectInput): DatabaseOptions => ({
   ...(input.readonly === undefined ? {} : { readonly: input.readonly }),
   ...(input.create === undefined ? {} : { create: input.create }),
@@ -527,6 +631,9 @@ interface SqliteDriverError extends Error {
 
 const isSqliteError = (error: unknown): error is SqliteDriverError =>
   error instanceof Error && error.name === "SQLiteError"
+
+const isNodeError = (error: unknown): error is Error & { readonly code: string } =>
+  error instanceof Error && "code" in error && typeof error.code === "string"
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {
