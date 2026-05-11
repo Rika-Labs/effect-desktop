@@ -3747,15 +3747,19 @@ test("Shell bridge client validates schemes and path argv before transport", asy
   await Effect.runPromise(client.openExternal("https://example.com/docs"))
   const fileExit = await Effect.runPromiseExit(client.openExternal("file:///etc/passwd"))
   const executableExit = await Effect.runPromiseExit(client.openPath("/tmp/install.sh"))
+  const cmdExecutableExit = await Effect.runPromiseExit(client.openPath("C:\\Temp\\install.cmd"))
   const metacharExit = await Effect.runPromiseExit(client.trashItem("/tmp/a;b.txt"))
   await Effect.runPromise(client.openPath("/tmp/install.sh", { allowExecutable: true }))
+  await Effect.runPromise(client.openPath("C:\\Temp\\install.cmd", { allowExecutable: true }))
 
   expectExitFailure(fileExit, (error) => hasErrorTag(error, "PermissionDenied"))
   expectExitFailure(executableExit, (error) => hasErrorTag(error, "PermissionDenied"))
+  expectExitFailure(cmdExecutableExit, (error) => hasErrorTag(error, "PermissionDenied"))
   expectExitFailure(metacharExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     ["Shell.openExternal", { url: "https://example.com/docs" }],
-    ["Shell.openPath", { path: "/tmp/install.sh", allowExecutable: true }]
+    ["Shell.openPath", { path: "/tmp/install.sh", allowExecutable: true }],
+    ["Shell.openPath", { path: "C:\\Temp\\install.cmd", allowExecutable: true }]
   ])
 })
 
@@ -3777,8 +3781,41 @@ test("Shell bridge client validates external URL schemes", async () => {
   )
 
   const denied = await Effect.runPromiseExit(client.openExternal("myapp://callback"))
+  const javascriptDenied = await Effect.runPromiseExit(
+    client.openExternal("javascript:alert(1)", { allowedSchemes: ["javascript"] } as never)
+  )
 
   expectExitFailure(denied, (error) => hasErrorTag(error, "PermissionDenied"))
+  expectExitFailure(javascriptDenied, (error) => hasErrorTag(error, "PermissionDenied"))
+  expect(requests).toEqual([])
+})
+
+test("Shell bridge client rejects control characters in external URLs before transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Shell
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          ShellLive,
+          makeShellBridgeClientLayer(
+            shellExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  for (const url of [
+    "https://example.com/ok\nHeader: x",
+    "https://example.com/\r",
+    `https://example.com/${String.fromCharCode(0)}`
+  ]) {
+    const exit = await Effect.runPromiseExit(client.openExternal(url))
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+  }
+
   expect(requests).toEqual([])
 })
 

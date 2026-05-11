@@ -30,6 +30,7 @@ const DefaultExternalSchemes = Object.freeze(["http", "https", "mailto", "tel"])
 const ExecutableExtensions = Object.freeze([
   ".exe",
   ".bat",
+  ".cmd",
   ".sh",
   ".ps1",
   ".js",
@@ -38,6 +39,8 @@ const ExecutableExtensions = Object.freeze([
 ])
 const ShellMetacharacters = /[;|&><`\n]|\$\(/u
 const NUL_BYTE = String.fromCharCode(0)
+// eslint-disable-next-line no-control-regex -- Shell URLs must not carry raw control bytes.
+const ShellUrlControlCharacters = /[\u0000-\u001f\u007f]/u
 
 export type ShellError = HostProtocolError
 
@@ -194,6 +197,16 @@ const validateExternalUrl = (
   input: ShellOpenExternalInput
 ): Effect.Effect<ShellOpenExternalInput, ShellError, never> =>
   Effect.gen(function* () {
+    if (ShellUrlControlCharacters.test(input.url)) {
+      return yield* Effect.fail(
+        makeHostProtocolInvalidArgumentError(
+          "url",
+          "must not contain control characters",
+          "Shell.openExternal"
+        )
+      )
+    }
+
     const parsed = yield* parseUrl(input.url, "Shell.openExternal")
     const scheme = parsed.protocol.replace(/:$/u, "").toLowerCase()
 
