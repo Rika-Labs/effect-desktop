@@ -34,6 +34,27 @@ test("SecretsMigration moves secret-shaped Settings keys into Secrets and audits
   expect((auditRows[0] as AuditEvent).outcome).toBe("ok")
 })
 
+test("SecretsMigration reports only legacy keys that were actually migrated", async () => {
+  const { settings, secrets, auditRows } = await makeFixture()
+
+  await Effect.runPromise(settings.set("api_key", Schema.String, "key-value"))
+  const report = await Effect.runPromise(
+    runSecretsMigration({
+      settings,
+      secrets,
+      audit: memoryAudit(auditRows),
+      legacyKeys: ["api_key", "missing_secret"]
+    })
+  )
+  const migrated = await Effect.runPromise(secrets.get("legacy", "api_key"))
+  const storedKeys = await Effect.runPromise(secrets.list("legacy"))
+
+  expect(report).toEqual({ completed: true, migrated: ["api_key"], skipped: false })
+  expect(secretText(migrated)).toBe("key-value")
+  expect(storedKeys).toEqual(["api_key"])
+  expect(auditRows).toHaveLength(1)
+})
+
 test("SecretsMigration is a no-op after the complete flag is written", async () => {
   const { settings, secrets, auditRows } = await makeFixture()
 

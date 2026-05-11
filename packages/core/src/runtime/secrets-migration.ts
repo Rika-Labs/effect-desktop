@@ -87,7 +87,12 @@ export const runSecretsMigration = (
             )
         : options.legacyKeys
     const candidates = keys.filter((key) => key !== completeFlagKey && matches(pattern, key))
-    const migrated = yield* Effect.forEach(candidates, (key) => migrateKey(options, namespace, key))
+    const migratedResults = yield* Effect.forEach(candidates, (key) =>
+      migrateKey(options, namespace, key)
+    )
+    const migrated = migratedResults.flatMap((result) =>
+      Option.isSome(result) ? [result.value] : []
+    )
 
     yield* options.settings
       .set(completeFlagKey, Schema.Boolean, true, { source: MigrationSource })
@@ -104,7 +109,7 @@ const migrateKey = (
   options: SecretsMigrationOptions,
   namespace: string,
   key: string
-): Effect.Effect<string, SecretsMigrationError, never> =>
+): Effect.Effect<Option.Option<string>, SecretsMigrationError, never> =>
   Effect.gen(function* () {
     const current = yield* options.settings
       .get(key, Schema.String)
@@ -112,7 +117,7 @@ const migrateKey = (
         Effect.mapError((cause) => migrationFailed({ key: Option.some(key), phase: "read", cause }))
       )
     if (Option.isNone(current)) {
-      return key
+      return Option.none()
     }
 
     yield* options.secrets
@@ -131,7 +136,7 @@ const migrateKey = (
           migrationFailed({ key: Option.some(key), phase: "delete", cause })
         )
       )
-    return key
+    return Option.some(key)
   }).pipe(Effect.withSpan("SecretsMigration.migrateKey", { attributes: { namespace, key } }))
 
 const verifySecret = (
