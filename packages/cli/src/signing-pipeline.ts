@@ -731,6 +731,7 @@ const windowsCredentialArgs = (
   Effect.gen(function* () {
     const thumbprint = yield* readOptionalString(windows?.thumbprint, "signing.windows.thumbprint")
     if (thumbprint !== undefined) {
+      yield* validateWindowsThumbprint(thumbprint)
       return { args: ["/sha1", thumbprint], reportArgs: ["/sha1", thumbprint] }
     }
     const pfxPath = yield* readOptionalString(windows?.pfx?.path, "signing.windows.pfx.path")
@@ -763,6 +764,22 @@ const windowsCredentialArgs = (
       })
     )
   })
+
+const WINDOWS_SHA1_THUMBPRINT_PATTERN = /^[0-9a-fA-F]{40}$/u
+
+const validateWindowsThumbprint = (
+  thumbprint: string
+): Effect.Effect<void, SignConfigError, never> =>
+  WINDOWS_SHA1_THUMBPRINT_PATTERN.test(thumbprint)
+    ? Effect.void
+    : Effect.fail(
+        new SignConfigError({
+          field: "signing.windows.thumbprint",
+          message: "signing.windows.thumbprint must be a 40-character SHA-1 hex thumbprint",
+          remediation:
+            "Set signing.windows.thumbprint to the certificate SHA-1 fingerprint without spaces."
+        })
+      )
 
 const macosEntitlementsPlist = (config: AppConfig): Effect.Effect<string, SignConfigError, never> =>
   Effect.gen(function* () {

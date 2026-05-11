@@ -2519,7 +2519,10 @@ test("desktop sign Authenticode-signs Windows MSI with RFC 3161 timestamp", asyn
   try {
     await writePlaygroundFixture(directory, {
       signing: {
-        windows: { thumbprint: "a1b2c3d4", timestampUrl: "http://timestamp.digicert.com" }
+        windows: {
+          thumbprint: "A1B2C3D4E5F60718293A4B5C6D7E8F9012345678",
+          timestampUrl: "http://timestamp.digicert.com"
+        }
       }
     })
     await writePackagedArtifactFixture(directory, "windows-x64", "msi")
@@ -2544,7 +2547,47 @@ test("desktop sign Authenticode-signs Windows MSI with RFC 3161 timestamp", asyn
     expect(calls[0]).toContain("windows-unblock:powershell")
     expect(calls[0]).toContain("Unblock-File")
     expect(calls[1]).toContain("windows-authenticode:signtool sign /fd SHA256")
-    expect(calls[1]).toContain("/tr http://timestamp.digicert.com /td SHA256 /sha1 a1b2c3d4")
+    expect(calls[1]).toContain(
+      "/tr http://timestamp.digicert.com /td SHA256 /sha1 A1B2C3D4E5F60718293A4B5C6D7E8F9012345678"
+    )
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop sign rejects malformed Windows certificate thumbprints", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      signing: {
+        windows: { thumbprint: "not-a-sha1", timestampUrl: "http://timestamp.digicert.com" }
+      }
+    })
+    await writePackagedArtifactFixture(directory, "windows-x64", "msi")
+    const calls: string[] = []
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["sign", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        hostTarget: "windows-x64",
+        signCommandRunner: (invocation) =>
+          Effect.sync(() => {
+            calls.push(invocation.step)
+          }),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const error = JSON.parse(stderr.join("")) as { readonly tag: string; readonly message: string }
+    expect(exitCode).toBe(1)
+    expect(calls).toEqual([])
+    expect(error.tag).toBe("SignConfigError")
+    expect(error.message).toContain("signing.windows.thumbprint")
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
