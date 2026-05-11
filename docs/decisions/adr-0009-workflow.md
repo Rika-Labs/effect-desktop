@@ -46,7 +46,7 @@ Cross-links: [ADR-0003](adr-0003-sql-effect-unstable-sql.md) (optional SQL journ
 **Negative**
 
 - `effect/unstable/workflow` is alpha. API churn is possible before the updater/installer migration gate.
-- Migration shims add a short-lived compatibility surface.
+- Engine-specific adapters add a short-lived engine surface.
 
 **Neutral**
 

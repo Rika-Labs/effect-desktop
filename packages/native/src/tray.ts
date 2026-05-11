@@ -1,20 +1,19 @@
 import {
-  Api,
+  BridgeRpc,
   Client,
-  type ApiClientExchange,
-  type ApiClientOptions,
-  type ApiContractClass,
-  type ApiContractError,
-  type ApiContractSpec,
-  type ApiHandlers,
-  type ApiLayer,
-  ApiResourceHandleShape,
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeRpcGroup,
+  type BridgeRpcSpec,
+  type BridgeRpcHandlers,
+  type BridgeRpcLayer,
+  BridgeResourceHandleShape,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Schema, Stream } from "effect"
+import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import {
   TrayActivatedEvent,
@@ -34,7 +33,7 @@ const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export type TrayError = HostProtocolError
 
-export const TrayApiSpec = Object.freeze({
+export const TrayRpcSpec = Object.freeze({
   create: {
     input: TrayCreateInput,
     output: TrayResource,
@@ -51,51 +50,24 @@ export const TrayApiSpec = Object.freeze({
     error: HostProtocolErrorSchema,
     permission: "none"
   }
-}) satisfies ApiContractSpec
+}) satisfies BridgeRpcSpec
 
-export type TrayApiSpec = typeof TrayApiSpec
+export type TrayRpcSpec = typeof TrayRpcSpec
 
-export const TrayApiEvents = Object.freeze({
+export const TrayRpcEvents = Object.freeze({
   Activated: { payload: TrayActivatedEvent }
 })
 
-export type TrayApiEvents = typeof TrayApiEvents
+export type TrayRpcEvents = typeof TrayRpcEvents
 
-export const TrayApi: ApiContractClass<"Tray", TrayApiSpec, TrayApiEvents> = (() => {
-  const contract = class {
-    static readonly tag = "Tray"
-    static readonly spec = TrayApiSpec
-    static readonly events = TrayApiEvents
-
-    static layer<Handlers extends ApiHandlers<TrayApiSpec>>(
-      handlers: Handlers
-    ): ApiLayer<"Tray", TrayApiSpec, Handlers, TrayApiEvents> {
-      return Object.freeze({
-        contract,
-        handlers: Object.freeze(handlers)
-      })
-    }
-  } as ApiContractClass<"Tray", TrayApiSpec, TrayApiEvents>
-
-  return Object.freeze(contract)
-})()
-
-export const registerTrayApi = (): Effect.Effect<
-  ApiContractClass<"Tray", TrayApiSpec, TrayApiEvents>,
-  ApiContractError,
-  never
-> =>
-  Effect.gen(function* () {
-    const existing = yield* Api.get("Tray")
-    if (Option.isSome(existing)) {
-      return existing.value as ApiContractClass<"Tray", TrayApiSpec, TrayApiEvents>
-    }
-
-    return yield* Api.Tag("Tray")<unknown>()(TrayApiSpec, TrayApiEvents)
-  })
+export const TrayRpcs: BridgeRpcGroup<"Tray", TrayRpcSpec, TrayRpcEvents> = BridgeRpc.group(
+  "Tray",
+  TrayRpcSpec,
+  TrayRpcEvents
+)
 
 export const TrayMethodNames = Object.freeze(
-  Object.keys(TrayApiSpec) as ReadonlyArray<keyof TrayApiSpec>
+  Object.keys(TrayRpcSpec) as ReadonlyArray<keyof TrayRpcSpec>
 )
 
 export interface TrayClientApi {
@@ -143,19 +115,20 @@ export const makeTrayServiceLayer = (client: TrayClientApi): Layer.Layer<Tray> =
   Layer.provide(TrayLive, makeTrayClientLayer(client))
 
 export const makeTrayBridgeClientLayer = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions = {}
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
 ): Layer.Layer<TrayClient> => Layer.succeed(TrayClient)(makeTrayBridgeClient(exchange, options))
 
-export const makeHostTrayApiLayer = <Handlers extends ApiHandlers<TrayApiSpec>>(
+export const makeHostTrayBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<TrayRpcSpec>>(
   handlers: Handlers
-): ApiLayer<"Tray", TrayApiSpec, Handlers, TrayApiEvents> => TrayApi.layer(handlers)
+): BridgeRpcLayer<"Tray", TrayRpcSpec, Handlers, TrayRpcEvents> =>
+  BridgeRpc.layer(TrayRpcs)(handlers)
 
 const makeTrayBridgeClient = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
 ): TrayClientApi => {
-  const client = Client({ Tray: TrayApi }, exchange, options).Tray
+  const client = Client({ Tray: TrayRpcs }, exchange, options).Tray
 
   const trayClient: TrayClientApi = {
     create: (input) => decodeTrayCreateInput(input).pipe(Effect.flatMap(client.create)),
@@ -209,7 +182,7 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
   })
 
 const toTrayHandle = (handle: TrayHandle): TrayHandle =>
-  new ApiResourceHandleShape({
+  new BridgeResourceHandleShape({
     kind: handle.kind,
     id: handle.id,
     generation: handle.generation,

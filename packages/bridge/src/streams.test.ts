@@ -2,13 +2,10 @@ import { expect, test } from "bun:test"
 import { Cause, Effect, Exit, Fiber, Schema, Stream } from "effect"
 
 import {
-  Api,
-  ApiStreamCompleteFrame,
-  ApiStreamDataFrame,
-  apiContractToRpcGroup,
-  type ApiContractClass,
-  type ApiHandlers,
-  type ApiLayer,
+  BridgeRpc,
+  BridgeStreamCompleteFrame,
+  BridgeStreamDataFrame,
+  type BridgeRpcGroup,
   Client,
   HostProtocolCancelByRequestEnvelope,
   HostProtocolCancelByResourceEnvelope,
@@ -36,13 +33,13 @@ class WatchError extends Schema.Class<WatchError>("StreamWatchError")({
 }) {}
 
 test("Streams carries typed chunks from handler to client in order", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.StreamOrdered")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamOrdered")
   const runtime = Streams.withOptions(
     {
       now: () => 42,
       nextStreamId: () => "stream-1"
     },
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       watch: () =>
         Stream.make(
           new WatchEvent({ sequence: 1, path: "a" }),
@@ -52,7 +49,7 @@ test("Streams carries typed chunks from handler to client in order", async () =>
     })
   )
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = Client({ project: ProjectApi }, streamExchange(runtime, requests), {
+  const client = Client({ project: ProjectRpcs }, streamExchange(runtime, requests), {
     nextRequestId: () => "request-watch",
     nextTraceId: () => "trace-watch",
     now: () => 41,
@@ -69,7 +66,7 @@ test("Streams carries typed chunks from handler to client in order", async () =>
     new HostProtocolRequestEnvelope({
       kind: "request",
       id: "request-watch",
-      method: "ProjectApi.StreamOrdered.watch",
+      method: "ProjectRpcs.StreamOrdered.watch",
       timestamp: 41,
       traceId: "trace-watch",
       windowId: "window-1",
@@ -80,9 +77,9 @@ test("Streams carries typed chunks from handler to client in order", async () =>
 })
 
 test("Client rejects stream envelopes for the wrong request id", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.StreamWrongRequest")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamWrongRequest")
   const client = Client(
-    { project: ProjectApi },
+    { project: ProjectRpcs },
     {
       request: () => Effect.fail(makeHostProtocolInvalidOutputError("test", "unused")),
       stream: () =>
@@ -93,7 +90,7 @@ test("Client rejects stream envelopes for the wrong request id", async () => {
             resourceId: "stream-wrong-request",
             timestamp: 42,
             traceId: "trace-stream",
-            payload: new ApiStreamDataFrame({
+            payload: new BridgeStreamDataFrame({
               type: "data",
               chunk: { sequence: "1", path: "a" }
             })
@@ -115,10 +112,10 @@ test("Client rejects stream envelopes for the wrong request id", async () => {
 })
 
 test("Streams rejects duplicate active request ids", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.StreamDuplicateRequest")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamDuplicateRequest")
   const lifecycle: string[] = []
   const runtime = Streams(
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       watch: () =>
         Stream.scoped(
           Stream.fromEffect(
@@ -133,7 +130,7 @@ test("Streams rejects duplicate active request ids", async () => {
     })
   )
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = Client({ project: ProjectApi }, streamExchange(runtime, requests), {
+  const client = Client({ project: ProjectRpcs }, streamExchange(runtime, requests), {
     nextRequestId: () => "request-stream-duplicate",
     nextTraceId: () => "trace-stream-duplicate",
     now: () => 41
@@ -166,9 +163,9 @@ test("Streams rejects duplicate active request ids", async () => {
 })
 
 test("Streams carries typed stream errors as values in the error channel", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.StreamError")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamError")
   const runtime = Streams(
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       watch: () =>
         Stream.make(new WatchEvent({ sequence: 1, path: "a" })).pipe(
           Stream.concat(
@@ -182,7 +179,7 @@ test("Streams carries typed stream errors as values in the error channel", async
         )
     })
   )
-  const client = Client({ project: ProjectApi }, streamExchange(runtime, []))
+  const client = Client({ project: ProjectRpcs }, streamExchange(runtime, []))
 
   const exit = await Effect.runPromiseExit(
     client.project.watch(new WatchInput({ projectId: "project-1" })).pipe(Stream.runCollect)
@@ -192,16 +189,16 @@ test("Streams carries typed stream errors as values in the error channel", async
 })
 
 test("Client stops bridge streams at complete frames", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.StreamCompleteTerminal")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamCompleteTerminal")
   const requests: HostProtocolRequestEnvelope[] = []
   const cancelRequests: HostProtocolCancelByRequestEnvelope[] = []
   const client = Client(
-    { project: ProjectApi },
+    { project: ProjectRpcs },
     {
       request: () =>
         Effect.fail(
           makeHostProtocolInvalidOutputError(
-            "ProjectApi.StreamCompleteTerminal.watch",
+            "ProjectRpcs.StreamCompleteTerminal.watch",
             "unexpected unary request"
           )
         ),
@@ -214,7 +211,7 @@ test("Client stops bridge streams at complete frames", async () => {
             resourceId: "stream-terminal",
             timestamp: 42,
             traceId: request.traceId,
-            payload: new ApiStreamCompleteFrame({ type: "complete" })
+            payload: new BridgeStreamCompleteFrame({ type: "complete" })
           }),
           new HostProtocolStreamByRequestEnvelope({
             kind: "stream",
@@ -222,7 +219,7 @@ test("Client stops bridge streams at complete frames", async () => {
             resourceId: "stream-terminal",
             timestamp: 43,
             traceId: request.traceId,
-            payload: new ApiStreamDataFrame({
+            payload: new BridgeStreamDataFrame({
               type: "data",
               chunk: { sequence: "1", path: "late" }
             })
@@ -250,7 +247,7 @@ test("Client stops bridge streams at complete frames", async () => {
     new HostProtocolRequestEnvelope({
       kind: "request",
       id: "request-stream-complete",
-      method: "ProjectApi.StreamCompleteTerminal.watch",
+      method: "ProjectRpcs.StreamCompleteTerminal.watch",
       timestamp: 41,
       traceId: "trace-stream-complete",
       payload: new WatchInput({ projectId: "project-1" })
@@ -260,9 +257,9 @@ test("Client stops bridge streams at complete frames", async () => {
 })
 
 test("Streams rejects malformed chunks as typed HostProtocol failures", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.StreamInvalidChunk")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamInvalidChunk")
   const runtime = Streams(
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       watch: () =>
         Stream.make({
           sequence: Number.NaN,
@@ -270,7 +267,7 @@ test("Streams rejects malformed chunks as typed HostProtocol failures", async ()
         } as unknown as WatchEvent)
     })
   )
-  const client = Client({ project: ProjectApi }, streamExchange(runtime, []))
+  const client = Client({ project: ProjectRpcs }, streamExchange(runtime, []))
 
   const exit = await Effect.runPromiseExit(
     client.project.watch(new WatchInput({ projectId: "project-1" })).pipe(Stream.runCollect)
@@ -280,16 +277,16 @@ test("Streams rejects malformed chunks as typed HostProtocol failures", async ()
 })
 
 test("Streams rejects invalid generated timestamps as typed Effect failures", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.StreamInvalidTimestamp")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamInvalidTimestamp")
   const runtime = Streams.withOptions(
     {
       now: () => Number.NaN
     },
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       watch: () => Stream.make(new WatchEvent({ sequence: 1, path: "a" }))
     })
   )
-  const client = Client({ project: ProjectApi }, streamExchange(runtime, []))
+  const client = Client({ project: ProjectRpcs }, streamExchange(runtime, []))
 
   const exit = await Effect.runPromiseExit(
     client.project.watch(new WatchInput({ projectId: "project-1" })).pipe(Stream.runCollect)
@@ -300,7 +297,7 @@ test("Streams rejects invalid generated timestamps as typed Effect failures", as
 
 test("Streams applies error overflow as a BackpressureOverflow terminal frame", async () => {
   const registry = makeBridgeStreamRegistry()
-  const ProjectApi = makeProjectApi("ProjectApi.StreamOverflow", {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamOverflow", {
     backpressure: { strategy: "buffer", size: 1, overflow: "error" }
   })
   const runtime = Streams.withOptions(
@@ -308,7 +305,7 @@ test("Streams applies error overflow as a BackpressureOverflow terminal frame", 
       nextStreamId: () => "stream-overflow",
       registry
     },
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       watch: () =>
         Stream.make(
           new WatchEvent({ sequence: 1, path: "a" }),
@@ -317,7 +314,7 @@ test("Streams applies error overflow as a BackpressureOverflow terminal frame", 
         )
     })
   )
-  const client = Client({ project: ProjectApi }, streamExchange(runtime, []))
+  const client = Client({ project: ProjectRpcs }, streamExchange(runtime, []))
 
   const exit = await Effect.runPromiseExit(
     client.project.watch(new WatchInput({ projectId: "project-1" })).pipe(
@@ -351,7 +348,7 @@ test("Streams applies error overflow as a BackpressureOverflow terminal frame", 
 
 test("Streams records dropNewest overflow metrics without failing publishers", async () => {
   const registry = makeBridgeStreamRegistry()
-  const ProjectApi = makeProjectApi("ProjectApi.StreamDropNewest", {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamDropNewest", {
     backpressure: { strategy: "drop", size: 2, overflow: "dropNewest" }
   })
   const runtime = Streams.withOptions(
@@ -359,7 +356,7 @@ test("Streams records dropNewest overflow metrics without failing publishers", a
       nextStreamId: () => "stream-drop-newest",
       registry
     },
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       watch: () =>
         Stream.make(
           new WatchEvent({ sequence: 1, path: "a" }),
@@ -370,7 +367,7 @@ test("Streams records dropNewest overflow metrics without failing publishers", a
         )
     })
   )
-  const client = Client({ project: ProjectApi }, streamExchange(runtime, []))
+  const client = Client({ project: ProjectRpcs }, streamExchange(runtime, []))
 
   const exit = await Effect.runPromiseExit(
     client.project.watch(new WatchInput({ projectId: "project-1" })).pipe(
@@ -399,7 +396,7 @@ test("Streams records dropNewest overflow metrics without failing publishers", a
 
 test("Streams records dropOldest overflow metrics while keeping the stream successful", async () => {
   const registry = makeBridgeStreamRegistry()
-  const ProjectApi = makeProjectApi("ProjectApi.StreamDropOldest", {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamDropOldest", {
     backpressure: { strategy: "drop", size: 2, overflow: "dropOldest" }
   })
   const runtime = Streams.withOptions(
@@ -407,7 +404,7 @@ test("Streams records dropOldest overflow metrics while keeping the stream succe
       nextStreamId: () => "stream-drop-oldest",
       registry
     },
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       watch: () =>
         Stream.make(
           new WatchEvent({ sequence: 1, path: "a" }),
@@ -418,7 +415,7 @@ test("Streams records dropOldest overflow metrics while keeping the stream succe
         )
     })
   )
-  const client = Client({ project: ProjectApi }, streamExchange(runtime, []))
+  const client = Client({ project: ProjectRpcs }, streamExchange(runtime, []))
 
   const exit = await Effect.runPromiseExit(
     client.project.watch(new WatchInput({ projectId: "project-1" })).pipe(
@@ -448,18 +445,18 @@ test("Streams records dropOldest overflow metrics while keeping the stream succe
 test("Streams records one terminal state and expires it after cleanup grace", async () => {
   let now = 1_000
   const registry = makeBridgeStreamRegistry(30_000)
-  const ProjectApi = makeProjectApi("ProjectApi.StreamLifecycle")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamLifecycle")
   const runtime = Streams.withOptions(
     {
       now: () => now,
       nextStreamId: () => "stream-lifecycle",
       registry
     },
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       watch: () => Stream.make(new WatchEvent({ sequence: 1, path: "a" }))
     })
   )
-  const client = Client({ project: ProjectApi }, streamExchange(runtime, []))
+  const client = Client({ project: ProjectRpcs }, streamExchange(runtime, []))
 
   await Effect.runPromise(
     client.project.watch(new WatchInput({ projectId: "project-1" })).pipe(Stream.runCollect)
@@ -551,7 +548,7 @@ test("BridgeStreamRegistry observe emits current and updated snapshots", async (
 })
 
 test("Streams cancellation interrupts the producer and emits a closed terminal", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.StreamCancel")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamCancel")
   const registry = makeBridgeStreamRegistry()
   const finalizers: string[] = []
   const runtime = Streams.withOptions(
@@ -560,7 +557,7 @@ test("Streams cancellation interrupts the producer and emits a closed terminal",
       now: () => 42,
       registry
     },
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       watch: () =>
         Stream.scoped(
           Stream.fromEffect(
@@ -575,7 +572,7 @@ test("Streams cancellation interrupts the producer and emits a closed terminal",
   const requests: HostProtocolRequestEnvelope[] = []
   const cancelRequests: HostProtocolCancelByRequestEnvelope[] = []
   const client = Client(
-    { project: ProjectApi },
+    { project: ProjectRpcs },
     streamExchange(runtime, requests, cancelRequests),
     {
       nextRequestId: () => "request-stream-cancel",
@@ -624,7 +621,7 @@ test("Streams cancellation interrupts the producer and emits a closed terminal",
 })
 
 test("Streams cancellation by resource id interrupts the producer", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.StreamCancelByResource")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamCancelByResource")
   const registry = makeBridgeStreamRegistry()
   const finalizers: string[] = []
   const runtime = Streams.withOptions(
@@ -633,7 +630,7 @@ test("Streams cancellation by resource id interrupts the producer", async () => 
       now: () => 42,
       registry
     },
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       watch: () =>
         Stream.scoped(
           Stream.fromEffect(
@@ -645,7 +642,7 @@ test("Streams cancellation by resource id interrupts the producer", async () => 
         )
     })
   )
-  const client = Client({ project: ProjectApi }, streamExchange(runtime, []))
+  const client = Client({ project: ProjectRpcs }, streamExchange(runtime, []))
   const exitPromise = Effect.runPromiseExit(
     client.project.watch(new WatchInput({ projectId: "project-1" })).pipe(Stream.runCollect)
   )
@@ -682,7 +679,7 @@ test("Streams cancellation by resource id interrupts the producer", async () => 
 })
 
 test("Streams sends cancel on early consumer finalization without abort signal", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.StreamTakeWithoutSignal")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamTakeWithoutSignal")
   const requests: HostProtocolRequestEnvelope[] = []
   const cancelRequests: HostProtocolCancelByRequestEnvelope[] = []
   const runtime = Streams.withOptions(
@@ -690,13 +687,13 @@ test("Streams sends cancel on early consumer finalization without abort signal",
       nextStreamId: () => "stream-take-without-signal",
       now: () => 42
     },
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       watch: () =>
         Stream.make(new WatchEvent({ sequence: 1, path: "a" })).pipe(Stream.concat(Stream.never))
     })
   )
   const client = Client(
-    { project: ProjectApi },
+    { project: ProjectRpcs },
     streamExchange(runtime, requests, cancelRequests),
     {
       nextRequestId: () => "request-stream-take",
@@ -716,7 +713,7 @@ test("Streams sends cancel on early consumer finalization without abort signal",
     new HostProtocolRequestEnvelope({
       kind: "request",
       id: "request-stream-take",
-      method: "ProjectApi.StreamTakeWithoutSignal.watch",
+      method: "ProjectRpcs.StreamTakeWithoutSignal.watch",
       timestamp: 41,
       traceId: "trace-stream-take",
       payload: new WatchInput({ projectId: "project-1" })
@@ -733,7 +730,7 @@ test("Streams sends cancel on early consumer finalization without abort signal",
   ])
 })
 
-type ProjectApiSpec = {
+type ProjectRpcSpec = {
   readonly watch: {
     readonly input: typeof WatchInput
     readonly output: ReturnType<typeof makeWatchStream>
@@ -746,39 +743,21 @@ type ProjectApiSpec = {
   }
 }
 
-const makeWatchStream = () => Api.Stream(WatchEvent, WatchError)
+const makeWatchStream = () => BridgeRpc.Stream(WatchEvent, WatchError)
 
-const makeProjectApi = <Tag extends string>(
+const makeProjectRpcs = <Tag extends string>(
   tag: Tag,
-  watchSpec: Pick<ProjectApiSpec["watch"], "backpressure"> = {}
-): ApiContractClass<Tag, ProjectApiSpec> => {
-  const contract = class {
-    static readonly tag = tag
-    static readonly spec = Object.freeze({
-      watch: Object.freeze({
-        input: WatchInput,
-        output: makeWatchStream(),
-        error: WatchError,
-        ...watchSpec
-      })
+  watchSpec: Pick<ProjectRpcSpec["watch"], "backpressure"> = {}
+): BridgeRpcGroup<Tag, ProjectRpcSpec> => {
+  const spec = Object.freeze({
+    watch: Object.freeze({
+      input: WatchInput,
+      output: makeWatchStream(),
+      error: WatchError,
+      ...watchSpec
     })
-    static readonly events = Object.freeze({})
-
-    static toRpcGroup() {
-      return apiContractToRpcGroup(contract.tag, contract.spec, contract.events)
-    }
-
-    static layer<Handlers extends ApiHandlers<ProjectApiSpec>>(
-      handlers: Handlers
-    ): ApiLayer<Tag, ProjectApiSpec, Handlers> {
-      return Object.freeze({
-        contract,
-        handlers: Object.freeze(handlers)
-      })
-    }
-  } as ApiContractClass<Tag, ProjectApiSpec>
-
-  return Object.freeze(contract)
+  })
+  return BridgeRpc.group(tag, spec, Object.freeze({}))
 }
 
 const streamExchange = (

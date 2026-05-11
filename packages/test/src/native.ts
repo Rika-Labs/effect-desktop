@@ -1,5 +1,5 @@
 import {
-  ApiResourceHandleShape,
+  BridgeResourceHandleShape,
   HostProtocolNotFoundError,
   hostProtocolErrorRecoverableDefault
 } from "@effect-desktop/bridge"
@@ -163,12 +163,12 @@ export interface TestWindowCall {
   readonly args: ReadonlyArray<unknown>
 }
 
-export interface TestWindowApi extends WindowClientApi {
+export interface TestWindowRpcs extends WindowClientApi {
   readonly calls: () => readonly TestWindowCall[]
   readonly openHandles: () => ReadonlyMap<string, WindowHandle>
 }
 
-export const makeTestWindowClient = (): TestWindowApi => {
+export const makeTestWindowClient = (): TestWindowRpcs => {
   const log: TestWindowCall[] = []
   const handles = new Map<string, WindowHandle>()
   let nextId = 1
@@ -178,7 +178,7 @@ export const makeTestWindowClient = (): TestWindowApi => {
   }
 
   const makeHandle = (id: string): WindowHandle =>
-    new ApiResourceHandleShape({
+    new BridgeResourceHandleShape({
       kind: "window",
       id,
       generation: 0,
@@ -261,11 +261,6 @@ export const makeTestWindowClient = (): TestWindowApi => {
         Effect.tap(() => Effect.sync(() => record("Window.setHasShadow", [window, hasShadow]))),
         Effect.asVoid
       ),
-    setFullscreen: (window: WindowHandle, fullscreen: boolean) =>
-      assertHandle(window, "Window.setFullscreen").pipe(
-        Effect.tap(() => Effect.sync(() => record("Window.setFullscreen", [window, fullscreen]))),
-        Effect.asVoid
-      ),
     enterFullScreen: (window: WindowHandle) =>
       assertHandle(window, "Window.enterFullScreen").pipe(
         Effect.tap(() => Effect.sync(() => record("Window.enterFullScreen", [window]))),
@@ -294,7 +289,7 @@ export const makeTestWindowClient = (): TestWindowApi => {
         Effect.tap(() => Effect.sync(() => record("Window.persistState", [window]))),
         Effect.asVoid
       )
-  } satisfies TestWindowApi)
+  } satisfies TestWindowRpcs)
 }
 
 export const TestWindow = Object.freeze({
@@ -310,11 +305,11 @@ export interface TestMenuCall {
   readonly args: ReadonlyArray<unknown>
 }
 
-export interface TestMenuApi extends MenuClientApi {
+export interface TestMenuRpcs extends MenuClientApi {
   readonly calls: () => readonly TestMenuCall[]
 }
 
-export const makeTestMenuClient = (): TestMenuApi => {
+export const makeTestMenuClient = (): TestMenuRpcs => {
   const log: TestMenuCall[] = []
 
   const record = (method: string, args: ReadonlyArray<unknown>): void => {
@@ -338,7 +333,7 @@ export const makeTestMenuClient = (): TestMenuApi => {
         return new MenuCapabilityResult({ supported: true })
       }),
     onActivated: (): Stream.Stream<MenuActivatedEvent, MenuError, never> => Stream.empty
-  } satisfies TestMenuApi)
+  } satisfies TestMenuRpcs)
 }
 
 export const TestMenu = Object.freeze({
@@ -354,11 +349,11 @@ export interface TestTrayCall {
   readonly args: ReadonlyArray<unknown>
 }
 
-export interface TestTrayApi extends TrayClientApi {
+export interface TestTrayRpcs extends TrayClientApi {
   readonly calls: () => readonly TestTrayCall[]
 }
 
-export const makeTestTrayClient = (): TestTrayApi => {
+export const makeTestTrayClient = (): TestTrayRpcs => {
   const log: TestTrayCall[] = []
   const handles = new Map<string, TrayHandle>()
   let nextId = 1
@@ -384,7 +379,7 @@ export const makeTestTrayClient = (): TestTrayApi => {
       Effect.sync(() => {
         const id = `test-tray-${nextId++}`
         record("Tray.create", [input])
-        const handle = new ApiResourceHandleShape({
+        const handle = new BridgeResourceHandleShape({
           kind: "tray",
           id,
           generation: 0,
@@ -421,7 +416,7 @@ export const makeTestTrayClient = (): TestTrayApi => {
     onActivated: (): Stream.Stream<TrayActivatedEvent, TrayError, never> => Stream.empty,
     isSupported: (): Effect.Effect<TraySupportedResult, TrayError, never> =>
       Effect.succeed(new TraySupportedResult({ supported: true }))
-  } satisfies TestTrayApi)
+  } satisfies TestTrayRpcs)
 }
 
 export const TestTray = Object.freeze({
@@ -444,11 +439,11 @@ export interface TestDialogOptions {
   readonly confirmResult?: boolean
 }
 
-export interface TestDialogApi extends DialogClientApi {
+export interface TestDialogRpcs extends DialogClientApi {
   readonly calls: () => readonly TestDialogCall[]
 }
 
-export const makeTestDialogClient = (options: TestDialogOptions = {}): TestDialogApi => {
+export const makeTestDialogClient = (options: TestDialogOptions = {}): TestDialogRpcs => {
   const log: TestDialogCall[] = []
 
   const record = (method: string, args: ReadonlyArray<unknown>): void => {
@@ -487,7 +482,7 @@ export const makeTestDialogClient = (options: TestDialogOptions = {}): TestDialo
         record("Dialog.confirm", [input])
         return new DialogConfirmResult({ confirmed: options.confirmResult ?? true })
       })
-  } satisfies TestDialogApi)
+  } satisfies TestDialogRpcs)
 }
 
 export const TestDialog = Object.freeze({
@@ -504,12 +499,12 @@ export interface TestClipboardCall {
   readonly args: ReadonlyArray<unknown>
 }
 
-export interface TestClipboardApi extends ClipboardClientApi {
+export interface TestClipboardRpcs extends ClipboardClientApi {
   readonly calls: () => readonly TestClipboardCall[]
   readonly text: () => string
 }
 
-export const makeTestClipboardClient = (): TestClipboardApi => {
+export const makeTestClipboardClient = (): TestClipboardRpcs => {
   const log: TestClipboardCall[] = []
   let textContent = ""
   let imageContent: ClipboardImage | undefined
@@ -552,7 +547,7 @@ export const makeTestClipboardClient = (): TestClipboardApi => {
         record("Clipboard.isSupported", [])
         return new ClipboardSupportedResult({ supported: true })
       })
-  } satisfies TestClipboardApi)
+  } satisfies TestClipboardRpcs)
 }
 
 export const TestClipboard = Object.freeze({
@@ -568,12 +563,12 @@ export interface TestNotificationCall {
   readonly args: ReadonlyArray<unknown>
 }
 
-export interface TestNotificationApi extends NotificationClientApi {
+export interface TestNotificationRpcs extends NotificationClientApi {
   readonly calls: () => readonly TestNotificationCall[]
   readonly shown: () => readonly NotificationHandle[]
 }
 
-export const makeTestNotificationClient = (): TestNotificationApi => {
+export const makeTestNotificationClient = (): TestNotificationRpcs => {
   const log: TestNotificationCall[] = []
   const shown: NotificationHandle[] = []
   let nextId = 1
@@ -590,7 +585,7 @@ export const makeTestNotificationClient = (): TestNotificationApi => {
     ): Effect.Effect<NotificationHandle, NotificationError, never> =>
       Effect.sync(() => {
         record("Notification.show", [input])
-        const handle = new ApiResourceHandleShape({
+        const handle = new BridgeResourceHandleShape({
           kind: "notification",
           id: `test-notification-${nextId++}`,
           generation: 0,
@@ -617,7 +612,7 @@ export const makeTestNotificationClient = (): TestNotificationApi => {
     > => Effect.succeed(new NotificationPermissionResult({ state: "granted" })),
     onClick: (): Stream.Stream<NotificationClickEvent, NotificationError, never> => Stream.empty,
     onAction: (): Stream.Stream<NotificationActionEvent, NotificationError, never> => Stream.empty
-  } satisfies TestNotificationApi)
+  } satisfies TestNotificationRpcs)
 }
 
 export const TestNotification = Object.freeze({
@@ -633,12 +628,12 @@ export interface TestSafeStorageCall {
   readonly args: ReadonlyArray<unknown>
 }
 
-export interface TestSafeStorageApi extends SafeStorageClientApi {
+export interface TestSafeStorageRpcs extends SafeStorageClientApi {
   readonly calls: () => readonly TestSafeStorageCall[]
   readonly snapshot: () => ReadonlyMap<string, Uint8Array>
 }
 
-export const makeTestSafeStorageClient = (): TestSafeStorageApi => {
+export const makeTestSafeStorageClient = (): TestSafeStorageRpcs => {
   const log: TestSafeStorageCall[] = []
   const store = new Map<string, Uint8Array>()
 
@@ -678,7 +673,7 @@ export const makeTestSafeStorageClient = (): TestSafeStorageApi => {
         record("SafeStorage.isAvailable", [])
         return true
       })
-  } satisfies TestSafeStorageApi)
+  } satisfies TestSafeStorageRpcs)
 }
 
 export const TestSafeStorage = Object.freeze({
@@ -694,12 +689,12 @@ export interface TestCrashReporterCall {
   readonly args: ReadonlyArray<unknown>
 }
 
-export interface TestCrashReporterApi extends CrashReporterClientApi {
+export interface TestCrashReporterRpcs extends CrashReporterClientApi {
   readonly calls: () => readonly TestCrashReporterCall[]
   readonly breadcrumbs: () => ReadonlyArray<CrashReporterBreadcrumb>
 }
 
-export const makeTestCrashReporterClient = (): Effect.Effect<TestCrashReporterApi, never, never> =>
+export const makeTestCrashReporterClient = (): Effect.Effect<TestCrashReporterRpcs, never, never> =>
   Effect.gen(function* () {
     const log: TestCrashReporterCall[] = []
     const inner = yield* makeCrashReporterMemoryClient()
@@ -749,7 +744,7 @@ export const makeTestCrashReporterClient = (): Effect.Effect<TestCrashReporterAp
         inner
           .setUploadHandler(handler)
           .pipe(Effect.tap(() => Effect.sync(() => record("CrashReporter.setUploadHandler", []))))
-    } satisfies TestCrashReporterApi)
+    } satisfies TestCrashReporterRpcs)
   })
 
 export const TestCrashReporter = Object.freeze({
@@ -782,11 +777,11 @@ export interface TestUpdaterOptions {
   readonly version?: string
 }
 
-export interface TestUpdaterApi extends UpdaterClientApi {
+export interface TestUpdaterRpcs extends UpdaterClientApi {
   readonly calls: () => readonly TestUpdaterCall[]
 }
 
-export const makeTestUpdaterClient = (options: TestUpdaterOptions = {}): TestUpdaterApi => {
+export const makeTestUpdaterClient = (options: TestUpdaterOptions = {}): TestUpdaterRpcs => {
   const log: TestUpdaterCall[] = []
 
   const record = (method: string, args: ReadonlyArray<unknown>): void => {
@@ -846,7 +841,7 @@ export const makeTestUpdaterClient = (options: TestUpdaterOptions = {}): TestUpd
       Effect.sync(() => record("Updater.readyForRestart", [])),
     onPreparingRestart: (): Stream.Stream<UpdaterPreparingRestartEvent, UpdaterError, never> =>
       Stream.empty
-  } satisfies TestUpdaterApi)
+  } satisfies TestUpdaterRpcs)
 }
 
 export const TestUpdater = Object.freeze({
@@ -870,13 +865,13 @@ export interface TestSystemAppearanceOptions {
   readonly reducedTransparency?: boolean
 }
 
-export interface TestSystemAppearanceApi extends SystemAppearanceClientApi {
+export interface TestSystemAppearanceRpcs extends SystemAppearanceClientApi {
   readonly calls: () => readonly TestSystemAppearanceCall[]
 }
 
 export const makeTestSystemAppearanceClient = (
   options: TestSystemAppearanceOptions = {}
-): TestSystemAppearanceApi => {
+): TestSystemAppearanceRpcs => {
   const log: TestSystemAppearanceCall[] = []
 
   const record = (method: string, args: ReadonlyArray<unknown>): void => {
@@ -933,7 +928,7 @@ export const makeTestSystemAppearanceClient = (
         record("SystemAppearance.isSupported", [_method])
         return new SystemAppearanceSupportedResult({ supported: true })
       })
-  } satisfies TestSystemAppearanceApi)
+  } satisfies TestSystemAppearanceRpcs)
 }
 
 export const TestSystemAppearance = Object.freeze({
@@ -950,11 +945,11 @@ export interface TestPowerMonitorCall {
   readonly args: ReadonlyArray<unknown>
 }
 
-export interface TestPowerMonitorApi extends PowerMonitorClientApi {
+export interface TestPowerMonitorRpcs extends PowerMonitorClientApi {
   readonly calls: () => readonly TestPowerMonitorCall[]
 }
 
-export const makeTestPowerMonitorClient = (): TestPowerMonitorApi => {
+export const makeTestPowerMonitorClient = (): TestPowerMonitorRpcs => {
   const log: TestPowerMonitorCall[] = []
 
   const record = (method: string, args: ReadonlyArray<unknown>): void => {
@@ -980,7 +975,7 @@ export const makeTestPowerMonitorClient = (): TestPowerMonitorApi => {
         record("PowerMonitor.isSupported", [method])
         return new PowerMonitorSupportedResult({ supported: true })
       })
-  } satisfies TestPowerMonitorApi)
+  } satisfies TestPowerMonitorRpcs)
 }
 
 export const TestPowerMonitor = Object.freeze({
@@ -1006,7 +1001,7 @@ export interface TestScreenOptions {
   }[]
 }
 
-export interface TestScreenApi extends ScreenClientApi {
+export interface TestScreenRpcs extends ScreenClientApi {
   readonly calls: () => readonly TestScreenCall[]
 }
 
@@ -1018,7 +1013,7 @@ const DEFAULT_DISPLAY: ScreenDisplay = new ScreenDisplay({
   primary: true
 })
 
-export const makeTestScreenClient = (_options: TestScreenOptions = {}): TestScreenApi => {
+export const makeTestScreenClient = (_options: TestScreenOptions = {}): TestScreenRpcs => {
   const log: TestScreenCall[] = []
 
   const record = (method: string, args: ReadonlyArray<unknown>): void => {
@@ -1070,7 +1065,7 @@ export const makeTestScreenClient = (_options: TestScreenOptions = {}): TestScre
         record("Screen.isSupported", [method])
         return new ScreenSupportedResult({ supported: true })
       })
-  } satisfies TestScreenApi)
+  } satisfies TestScreenRpcs)
 }
 
 export const TestScreen = Object.freeze({
@@ -1087,11 +1082,11 @@ export interface TestShellCall {
   readonly args: ReadonlyArray<unknown>
 }
 
-export interface TestShellApi extends ShellClientApi {
+export interface TestShellRpcs extends ShellClientApi {
   readonly calls: () => readonly TestShellCall[]
 }
 
-export const makeTestShellClient = (): TestShellApi => {
+export const makeTestShellClient = (): TestShellRpcs => {
   const log: TestShellCall[] = []
 
   const record = (method: string, args: ReadonlyArray<unknown>): void => {
@@ -1114,7 +1109,7 @@ export const makeTestShellClient = (): TestShellApi => {
       Effect.sync(() => record("Shell.openPath", [path, options])),
     trashItem: (path: string): Effect.Effect<void, ShellError, never> =>
       Effect.sync(() => record("Shell.trashItem", [path]))
-  } satisfies TestShellApi)
+  } satisfies TestShellRpcs)
 }
 
 export const TestShell = Object.freeze({
@@ -1136,11 +1131,11 @@ export interface TestAppOptions {
   readonly version?: string
 }
 
-export interface TestAppApi extends AppClientApi {
+export interface TestAppRpcs extends AppClientApi {
   readonly calls: () => readonly TestAppCall[]
 }
 
-export const makeTestAppClient = (options: TestAppOptions = {}): TestAppApi => {
+export const makeTestAppClient = (options: TestAppOptions = {}): TestAppRpcs => {
   const log: TestAppCall[] = []
 
   const record = (method: string, args: ReadonlyArray<unknown>): void => {
@@ -1181,7 +1176,7 @@ export const makeTestAppClient = (options: TestAppOptions = {}): TestAppApi => {
     onOpenFile: (): Stream.Stream<AppOpenFileEvent, AppError, never> => Stream.empty,
     onOpenUrl: (): Stream.Stream<AppOpenUrlEvent, AppError, never> => Stream.empty,
     onBeforeQuit: (): Stream.Stream<AppBeforeQuitEvent, AppError, never> => Stream.empty
-  } satisfies TestAppApi)
+  } satisfies TestAppRpcs)
 }
 
 export const TestApp = Object.freeze({
@@ -1245,7 +1240,7 @@ export const TestDesktop = Object.freeze({
 // Assertion helpers
 // ---------------------------------------------------------------------------
 
-export const expectWindowCall = (client: TestWindowApi, method: string, count?: number): void => {
+export const expectWindowCall = (client: TestWindowRpcs, method: string, count?: number): void => {
   const matching = client.calls().filter((call) => call.method === method)
   const expected = count ?? 1
   if (matching.length !== expected) {
@@ -1255,7 +1250,7 @@ export const expectWindowCall = (client: TestWindowApi, method: string, count?: 
   }
 }
 
-export const expectMenuCall = (client: TestMenuApi, method: string, count?: number): void => {
+export const expectMenuCall = (client: TestMenuRpcs, method: string, count?: number): void => {
   const matching = client.calls().filter((call) => call.method === method)
   const expected = count ?? 1
   if (matching.length !== expected) {
@@ -1265,7 +1260,7 @@ export const expectMenuCall = (client: TestMenuApi, method: string, count?: numb
   }
 }
 
-export const expectShellCall = (client: TestShellApi, method: string, count?: number): void => {
+export const expectShellCall = (client: TestShellRpcs, method: string, count?: number): void => {
   const matching = client.calls().filter((call) => call.method === method)
   const expected = count ?? 1
   if (matching.length !== expected) {
@@ -1275,14 +1270,14 @@ export const expectShellCall = (client: TestShellApi, method: string, count?: nu
   }
 }
 
-export const expectClipboardText = (client: TestClipboardApi, expected: string): void => {
+export const expectClipboardText = (client: TestClipboardRpcs, expected: string): void => {
   const actual = client.text()
   if (actual !== expected) {
     throw new Error(`Expected clipboard text "${expected}", got "${actual}"`)
   }
 }
 
-export const expectNotificationShown = (client: TestNotificationApi, count?: number): void => {
+export const expectNotificationShown = (client: TestNotificationRpcs, count?: number): void => {
   const actual = client.shown().length
   const expected = count ?? 1
   if (actual !== expected) {
@@ -1290,7 +1285,7 @@ export const expectNotificationShown = (client: TestNotificationApi, count?: num
   }
 }
 
-export const expectCrashBreadcrumb = (client: TestCrashReporterApi, count?: number): void => {
+export const expectCrashBreadcrumb = (client: TestCrashReporterRpcs, count?: number): void => {
   const actual = client.breadcrumbs().length
   const expected = count ?? 1
   if (actual !== expected) {
@@ -1298,7 +1293,7 @@ export const expectCrashBreadcrumb = (client: TestCrashReporterApi, count?: numb
   }
 }
 
-export const expectSafeStorageKey = (client: TestSafeStorageApi, key: string): void => {
+export const expectSafeStorageKey = (client: TestSafeStorageRpcs, key: string): void => {
   const snapshot = client.snapshot()
   if (!snapshot.has(key)) {
     throw new Error(
@@ -1307,7 +1302,11 @@ export const expectSafeStorageKey = (client: TestSafeStorageApi, key: string): v
   }
 }
 
-export const expectUpdaterCall = (client: TestUpdaterApi, method: string, count?: number): void => {
+export const expectUpdaterCall = (
+  client: TestUpdaterRpcs,
+  method: string,
+  count?: number
+): void => {
   const matching = client.calls().filter((call) => call.method === method)
   const expected = count ?? 1
   if (matching.length !== expected) {
@@ -1318,7 +1317,7 @@ export const expectUpdaterCall = (client: TestUpdaterApi, method: string, count?
 }
 
 export const expectAppearance = (
-  client: TestSystemAppearanceApi,
+  client: TestSystemAppearanceRpcs,
   method: string,
   count?: number
 ): void => {

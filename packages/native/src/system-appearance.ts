@@ -1,18 +1,17 @@
 import {
-  Api,
+  BridgeRpc,
   Client,
-  type ApiClientExchange,
-  type ApiClientOptions,
-  type ApiContractClass,
-  type ApiContractError,
-  type ApiContractSpec,
-  type ApiHandlers,
-  type ApiLayer,
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeRpcGroup,
+  type BridgeRpcSpec,
+  type BridgeRpcHandlers,
+  type BridgeRpcLayer,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Schema, Stream } from "effect"
+import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import {
   type SystemAppearanceColor,
@@ -28,7 +27,7 @@ import {
 
 export type SystemAppearanceError = HostProtocolError
 
-export const SystemAppearanceApiSpec = Object.freeze({
+export const SystemAppearanceRpcSpec = Object.freeze({
   getAppearance: systemAppearanceMethodSpec(
     Schema.Void,
     SystemAppearanceResult,
@@ -55,58 +54,24 @@ export const SystemAppearanceApiSpec = Object.freeze({
     error: HostProtocolErrorSchema,
     permission: "none"
   }
-}) satisfies ApiContractSpec
+}) satisfies BridgeRpcSpec
 
-export type SystemAppearanceApiSpec = typeof SystemAppearanceApiSpec
+export type SystemAppearanceRpcSpec = typeof SystemAppearanceRpcSpec
 
-export const SystemAppearanceApiEvents = Object.freeze({
+export const SystemAppearanceRpcEvents = Object.freeze({
   AppearanceChanged: { payload: SystemAppearanceChangedEvent }
 })
 
-export type SystemAppearanceApiEvents = typeof SystemAppearanceApiEvents
+export type SystemAppearanceRpcEvents = typeof SystemAppearanceRpcEvents
 
-export const SystemAppearanceApi: ApiContractClass<
+export const SystemAppearanceRpcs: BridgeRpcGroup<
   "SystemAppearance",
-  SystemAppearanceApiSpec,
-  SystemAppearanceApiEvents
-> = (() => {
-  const contract = class {
-    static readonly tag = "SystemAppearance"
-    static readonly spec = SystemAppearanceApiSpec
-    static readonly events = SystemAppearanceApiEvents
-
-    static layer<Handlers extends ApiHandlers<SystemAppearanceApiSpec>>(
-      handlers: Handlers
-    ): ApiLayer<"SystemAppearance", SystemAppearanceApiSpec, Handlers, SystemAppearanceApiEvents> {
-      return Object.freeze({ contract, handlers: Object.freeze(handlers) })
-    }
-  } as ApiContractClass<"SystemAppearance", SystemAppearanceApiSpec, SystemAppearanceApiEvents>
-
-  return Object.freeze(contract)
-})()
-
-export const registerSystemAppearanceApi = (): Effect.Effect<
-  ApiContractClass<"SystemAppearance", SystemAppearanceApiSpec, SystemAppearanceApiEvents>,
-  ApiContractError,
-  never
-> =>
-  Effect.gen(function* () {
-    const existing = yield* Api.get("SystemAppearance")
-    if (Option.isSome(existing)) {
-      return existing.value as ApiContractClass<
-        "SystemAppearance",
-        SystemAppearanceApiSpec,
-        SystemAppearanceApiEvents
-      >
-    }
-    return yield* Api.Tag("SystemAppearance")<unknown>()(
-      SystemAppearanceApiSpec,
-      SystemAppearanceApiEvents
-    )
-  })
+  SystemAppearanceRpcSpec,
+  SystemAppearanceRpcEvents
+> = BridgeRpc.group("SystemAppearance", SystemAppearanceRpcSpec, SystemAppearanceRpcEvents)
 
 export const SystemAppearanceMethodNames = Object.freeze(
-  Object.keys(SystemAppearanceApiSpec) as ReadonlyArray<keyof SystemAppearanceApiSpec>
+  Object.keys(SystemAppearanceRpcSpec) as ReadonlyArray<keyof SystemAppearanceRpcSpec>
 )
 
 export interface SystemAppearanceClientApi {
@@ -192,24 +157,28 @@ export const makeSystemAppearanceServiceLayer = (
   Layer.provide(SystemAppearanceLive, makeSystemAppearanceClientLayer(client))
 
 export const makeSystemAppearanceBridgeClientLayer = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions = {}
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
 ): Layer.Layer<SystemAppearanceClient> =>
   Layer.succeed(SystemAppearanceClient)(makeSystemAppearanceBridgeClient(exchange, options))
 
-export const makeHostSystemAppearanceApiLayer = <
-  Handlers extends ApiHandlers<SystemAppearanceApiSpec>
+export const makeHostSystemAppearanceBridgeRpcLayer = <
+  Handlers extends BridgeRpcHandlers<SystemAppearanceRpcSpec>
 >(
   handlers: Handlers
-): ApiLayer<"SystemAppearance", SystemAppearanceApiSpec, Handlers, SystemAppearanceApiEvents> =>
-  SystemAppearanceApi.layer(handlers)
+): BridgeRpcLayer<
+  "SystemAppearance",
+  SystemAppearanceRpcSpec,
+  Handlers,
+  SystemAppearanceRpcEvents
+> => BridgeRpc.layer(SystemAppearanceRpcs)(handlers)
 
 const makeSystemAppearanceBridgeClient = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
 ): SystemAppearanceClientApi => {
   const client = Client(
-    { SystemAppearance: SystemAppearanceApi },
+    { SystemAppearance: SystemAppearanceRpcs },
     exchange,
     options
   ).SystemAppearance

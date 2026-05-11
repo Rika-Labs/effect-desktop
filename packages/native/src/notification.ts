@@ -1,21 +1,20 @@
 import {
-  Api,
+  BridgeRpc,
   Client,
-  type ApiClientExchange,
-  type ApiClientOptions,
-  type ApiContractClass,
-  type ApiContractError,
-  type ApiContractSpec,
-  type ApiHandlers,
-  type ApiLayer,
-  type ApiResourceHandle,
-  ApiResourceHandleShape,
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeRpcGroup,
+  type BridgeRpcSpec,
+  type BridgeRpcHandlers,
+  type BridgeRpcLayer,
+  type BridgeResourceHandle,
+  BridgeResourceHandleShape,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Schema, Stream } from "effect"
+import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import {
   NotificationActionEvent,
@@ -35,7 +34,7 @@ const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export type NotificationError = HostProtocolError
 
-export const NotificationApiSpec = Object.freeze({
+export const NotificationRpcSpec = Object.freeze({
   show: {
     input: NotificationShowInput,
     output: NotificationResource,
@@ -66,60 +65,25 @@ export const NotificationApiSpec = Object.freeze({
     error: HostProtocolErrorSchema,
     permission: "none"
   }
-}) satisfies ApiContractSpec
+}) satisfies BridgeRpcSpec
 
-export type NotificationApiSpec = typeof NotificationApiSpec
+export type NotificationRpcSpec = typeof NotificationRpcSpec
 
-export const NotificationApiEvents = Object.freeze({
+export const NotificationRpcEvents = Object.freeze({
   Click: { payload: NotificationClickEvent },
   Action: { payload: NotificationActionEvent }
 })
 
-export type NotificationApiEvents = typeof NotificationApiEvents
+export type NotificationRpcEvents = typeof NotificationRpcEvents
 
-export const NotificationApi: ApiContractClass<
+export const NotificationRpcs: BridgeRpcGroup<
   "Notification",
-  NotificationApiSpec,
-  NotificationApiEvents
-> = (() => {
-  const contract = class {
-    static readonly tag = "Notification"
-    static readonly spec = NotificationApiSpec
-    static readonly events = NotificationApiEvents
-
-    static layer<Handlers extends ApiHandlers<NotificationApiSpec>>(
-      handlers: Handlers
-    ): ApiLayer<"Notification", NotificationApiSpec, Handlers, NotificationApiEvents> {
-      return Object.freeze({
-        contract,
-        handlers: Object.freeze(handlers)
-      })
-    }
-  } as ApiContractClass<"Notification", NotificationApiSpec, NotificationApiEvents>
-
-  return Object.freeze(contract)
-})()
-
-export const registerNotificationApi = (): Effect.Effect<
-  ApiContractClass<"Notification", NotificationApiSpec, NotificationApiEvents>,
-  ApiContractError,
-  never
-> =>
-  Effect.gen(function* () {
-    const existing = yield* Api.get("Notification")
-    if (Option.isSome(existing)) {
-      return existing.value as ApiContractClass<
-        "Notification",
-        NotificationApiSpec,
-        NotificationApiEvents
-      >
-    }
-
-    return yield* Api.Tag("Notification")<unknown>()(NotificationApiSpec, NotificationApiEvents)
-  })
+  NotificationRpcSpec,
+  NotificationRpcEvents
+> = BridgeRpc.group("Notification", NotificationRpcSpec, NotificationRpcEvents)
 
 export const NotificationMethodNames = Object.freeze(
-  Object.keys(NotificationApiSpec) as ReadonlyArray<keyof NotificationApiSpec>
+  Object.keys(NotificationRpcSpec) as ReadonlyArray<keyof NotificationRpcSpec>
 )
 
 export interface NotificationClientApi {
@@ -183,15 +147,17 @@ export const makeNotificationServiceLayer = (
 ): Layer.Layer<Notification> => Layer.provide(NotificationLive, makeNotificationClientLayer(client))
 
 export const makeNotificationBridgeClientLayer = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions = {}
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
 ): Layer.Layer<NotificationClient> =>
   Layer.succeed(NotificationClient)(makeNotificationBridgeClient(exchange, options))
 
-export const makeHostNotificationApiLayer = <Handlers extends ApiHandlers<NotificationApiSpec>>(
+export const makeHostNotificationBridgeRpcLayer = <
+  Handlers extends BridgeRpcHandlers<NotificationRpcSpec>
+>(
   handlers: Handlers
-): ApiLayer<"Notification", NotificationApiSpec, Handlers, NotificationApiEvents> =>
-  NotificationApi.layer(handlers)
+): BridgeRpcLayer<"Notification", NotificationRpcSpec, Handlers, NotificationRpcEvents> =>
+  BridgeRpc.layer(NotificationRpcs)(handlers)
 
 const makeNotificationService = (client: NotificationClientApi): NotificationServiceApi => {
   const service: NotificationServiceApi = {
@@ -209,10 +175,10 @@ const makeNotificationService = (client: NotificationClientApi): NotificationSer
 }
 
 const makeNotificationBridgeClient = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
 ): NotificationClientApi => {
-  const client = Client({ Notification: NotificationApi }, exchange, options).Notification
+  const client = Client({ Notification: NotificationRpcs }, exchange, options).Notification
 
   const notificationClient: NotificationClientApi = {
     show: (input) =>
@@ -270,17 +236,17 @@ const toNotificationShowInput = (input: NotificationShowOptions): unknown => ({
     : { ownerWindow: toWindowHandle(input.ownerWindow as WindowHandle) })
 })
 
-const toWindowHandle = (handle: WindowHandle): ApiResourceHandle<"window", "open"> =>
-  new ApiResourceHandleShape({
+const toWindowHandle = (handle: WindowHandle): BridgeResourceHandle<"window", "open"> =>
+  new BridgeResourceHandleShape({
     kind: handle.kind,
     id: handle.id,
     generation: handle.generation,
     ownerScope: handle.ownerScope,
     state: handle.state
-  }) as ApiResourceHandle<"window", "open">
+  }) as BridgeResourceHandle<"window", "open">
 
 const toNotificationHandle = (handle: NotificationHandle): NotificationHandle =>
-  new ApiResourceHandleShape({
+  new BridgeResourceHandleShape({
     kind: handle.kind,
     id: handle.id,
     generation: handle.generation,

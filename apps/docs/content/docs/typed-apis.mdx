@@ -1,5 +1,5 @@
 ---
-title: Typed APIs
+title: Typed RPCs
 description: Native capabilities are modeled as typed services instead of ambient renderer globals.
 ---
 
@@ -23,14 +23,13 @@ const program = Effect.gen(function* () {
 
 The shape is explicit: services are dependencies, native calls are effects, and failures are part of the type.
 
-Renderer code should consume those effects through React desktop hooks instead of calling `Effect.runPromiseExit` in components:
+Renderer code should consume RPC groups through React desktop hooks instead of calling `Effect.runPromiseExit` in components:
 
 ```tsx
-const desktop = useDesktopClient()
-const windowApi = defineDesktopApi(desktop.window)
-const createWindow = windowApi.create.useAction()
+const window = DesktopApp.useDesktop(WindowRpcs)
+const createWindow = window.create.useMutation()
 
-createWindow.run({ title: "Notes", width: 960, height: 640 })
+createWindow.run({ title: "Notes" })
 ```
 
-Generated app SDKs should use the same shape for domain APIs: `notes.createNote.useAction()`, not `notes.CreateNote.useAction()`.
+Generated app SDKs should use the same shape for domain RPCs: `notes.createNote.useMutation()`, not `notes.CreateNote.useMutation()`.

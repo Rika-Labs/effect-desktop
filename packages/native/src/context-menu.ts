@@ -8,23 +8,22 @@ import {
   type ResourceId
 } from "@effect-desktop/core"
 import {
-  Api,
+  BridgeRpc,
   Client,
-  type ApiClientExchange,
-  type ApiClientOptions,
-  type ApiContractClass,
-  type ApiContractError,
-  type ApiContractSpec,
-  type ApiHandlers,
-  type ApiLayer,
-  type ApiResourceHandle,
-  ApiResourceHandleShape,
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeRpcGroup,
+  type BridgeRpcSpec,
+  type BridgeRpcHandlers,
+  type BridgeRpcLayer,
+  type BridgeResourceHandle,
+  BridgeResourceHandleShape,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Fiber, Layer, Option, Schema, Stream } from "effect"
+import { Context, Effect, Fiber, Layer, Schema, Stream } from "effect"
 
 import { commandBindingWarningError } from "./command-binding-log.js"
 import {
@@ -42,7 +41,7 @@ const StrictParseOptions = { onExcessProperty: "error" } as const
 export type ContextMenuError = HostProtocolError
 export type ContextMenuCommandBindingError = ContextMenuError | CommandRegistryError
 
-export const ContextMenuApiSpec = Object.freeze({
+export const ContextMenuRpcSpec = Object.freeze({
   show: contextMenuMethodSpec(ContextMenuShowInput, "native.invoke:ContextMenu.show"),
   buildFromTemplate: contextMenuMethodSpec(
     ContextMenuBuildFromTemplateInput,
@@ -52,59 +51,24 @@ export const ContextMenuApiSpec = Object.freeze({
     ContextMenuBindCommandInput,
     "native.invoke:ContextMenu.bindCommand"
   )
-}) satisfies ApiContractSpec
+}) satisfies BridgeRpcSpec
 
-export type ContextMenuApiSpec = typeof ContextMenuApiSpec
+export type ContextMenuRpcSpec = typeof ContextMenuRpcSpec
 
-export const ContextMenuApiEvents = Object.freeze({
+export const ContextMenuRpcEvents = Object.freeze({
   Activated: { payload: ContextMenuActivatedEvent }
 })
 
-export type ContextMenuApiEvents = typeof ContextMenuApiEvents
+export type ContextMenuRpcEvents = typeof ContextMenuRpcEvents
 
-export const ContextMenuApi: ApiContractClass<
+export const ContextMenuRpcs: BridgeRpcGroup<
   "ContextMenu",
-  ContextMenuApiSpec,
-  ContextMenuApiEvents
-> = (() => {
-  const contract = class {
-    static readonly tag = "ContextMenu"
-    static readonly spec = ContextMenuApiSpec
-    static readonly events = ContextMenuApiEvents
-
-    static layer<Handlers extends ApiHandlers<ContextMenuApiSpec>>(
-      handlers: Handlers
-    ): ApiLayer<"ContextMenu", ContextMenuApiSpec, Handlers, ContextMenuApiEvents> {
-      return Object.freeze({
-        contract,
-        handlers: Object.freeze(handlers)
-      })
-    }
-  } as ApiContractClass<"ContextMenu", ContextMenuApiSpec, ContextMenuApiEvents>
-
-  return Object.freeze(contract)
-})()
-
-export const registerContextMenuApi = (): Effect.Effect<
-  ApiContractClass<"ContextMenu", ContextMenuApiSpec, ContextMenuApiEvents>,
-  ApiContractError,
-  never
-> =>
-  Effect.gen(function* () {
-    const existing = yield* Api.get("ContextMenu")
-    if (Option.isSome(existing)) {
-      return existing.value as ApiContractClass<
-        "ContextMenu",
-        ContextMenuApiSpec,
-        ContextMenuApiEvents
-      >
-    }
-
-    return yield* Api.Tag("ContextMenu")<unknown>()(ContextMenuApiSpec, ContextMenuApiEvents)
-  })
+  ContextMenuRpcSpec,
+  ContextMenuRpcEvents
+> = BridgeRpc.group("ContextMenu", ContextMenuRpcSpec, ContextMenuRpcEvents)
 
 export const ContextMenuMethodNames = Object.freeze(
-  Object.keys(ContextMenuApiSpec) as ReadonlyArray<keyof ContextMenuApiSpec>
+  Object.keys(ContextMenuRpcSpec) as ReadonlyArray<keyof ContextMenuRpcSpec>
 )
 
 export interface ContextMenuClientApi {
@@ -234,21 +198,23 @@ export const makeContextMenuServiceLayer = (
 ): Layer.Layer<ContextMenu> => Layer.provide(ContextMenuLive, makeContextMenuClientLayer(client))
 
 export const makeContextMenuBridgeClientLayer = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions = {}
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
 ): Layer.Layer<ContextMenuClient> =>
   Layer.succeed(ContextMenuClient)(makeContextMenuBridgeClient(exchange, options))
 
-export const makeHostContextMenuApiLayer = <Handlers extends ApiHandlers<ContextMenuApiSpec>>(
+export const makeHostContextMenuBridgeRpcLayer = <
+  Handlers extends BridgeRpcHandlers<ContextMenuRpcSpec>
+>(
   handlers: Handlers
-): ApiLayer<"ContextMenu", ContextMenuApiSpec, Handlers, ContextMenuApiEvents> =>
-  ContextMenuApi.layer(handlers)
+): BridgeRpcLayer<"ContextMenu", ContextMenuRpcSpec, Handlers, ContextMenuRpcEvents> =>
+  BridgeRpc.layer(ContextMenuRpcs)(handlers)
 
 const makeContextMenuBridgeClient = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
 ): ContextMenuClientApi => {
-  const client = Client({ ContextMenu: ContextMenuApi }, exchange, options).ContextMenu
+  const client = Client({ ContextMenu: ContextMenuRpcs }, exchange, options).ContextMenu
 
   const contextMenuClient: ContextMenuClientApi = {
     show: (input) =>
@@ -299,14 +265,14 @@ const toContextMenuShowInput = (input: ContextMenuShowOptions): unknown => ({
   position: input.position
 })
 
-const toWindowHandle = (handle: WindowHandle): ApiResourceHandle<"window", "open"> =>
-  new ApiResourceHandleShape({
+const toWindowHandle = (handle: WindowHandle): BridgeResourceHandle<"window", "open"> =>
+  new BridgeResourceHandleShape({
     kind: handle.kind,
     id: handle.id,
     generation: handle.generation,
     ownerScope: handle.ownerScope,
     state: handle.state
-  }) as ApiResourceHandle<"window", "open">
+  }) as BridgeResourceHandle<"window", "open">
 
 const decodeContextMenuShowInput = (
   input: unknown

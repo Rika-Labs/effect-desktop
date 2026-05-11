@@ -1,4 +1,4 @@
-import { Api, type ApiResourceHandle } from "@effect-desktop/bridge"
+import { BridgeRpc, type BridgeResourceHandle } from "@effect-desktop/bridge"
 import { Schema } from "effect"
 
 const PositiveFiniteNumber = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0))
@@ -30,8 +30,8 @@ const WindowVibrancyMaterial = Schema.Literals([
   "window-background"
 ])
 
-export const WindowResource = Api.Resource("window", "open")
-export type WindowHandle = ApiResourceHandle<"window", "open">
+export const WindowResource = BridgeRpc.Resource("window", "open")
+export type WindowHandle = BridgeResourceHandle<"window", "open">
 
 export class WindowTrafficLights extends Schema.Class<WindowTrafficLights>("WindowTrafficLights")({
   x: NonNegativeFiniteNumber,
@@ -86,13 +86,6 @@ export class WindowVibrancyInput extends Schema.Class<WindowVibrancyInput>("Wind
 export class WindowShadowInput extends Schema.Class<WindowShadowInput>("WindowShadowInput")({
   window: WindowResource.schema,
   hasShadow: Schema.Boolean
-}) {}
-
-export class WindowFullscreenInput extends Schema.Class<WindowFullscreenInput>(
-  "WindowFullscreenInput"
-)({
-  window: WindowResource.schema,
-  fullscreen: Schema.Boolean
 }) {}
 
 export class WindowScaleFactorOutput extends Schema.Class<WindowScaleFactorOutput>(

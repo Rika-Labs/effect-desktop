@@ -8,22 +8,21 @@ import {
   type ResourceId
 } from "@effect-desktop/core"
 import {
-  Api,
+  BridgeRpc,
   Client,
-  type ApiClientExchange,
-  type ApiClientOptions,
-  type ApiContractClass,
-  type ApiContractError,
-  type ApiContractSpec,
-  type ApiHandlers,
-  type ApiLayer,
-  ApiResourceHandleShape,
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeRpcGroup,
+  type BridgeRpcSpec,
+  type BridgeRpcHandlers,
+  type BridgeRpcLayer,
+  BridgeResourceHandleShape,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Fiber, Layer, Option, Schema, Stream } from "effect"
+import { Context, Effect, Fiber, Layer, Schema, Stream } from "effect"
 
 export * from "./contracts/menu.js"
 import { commandBindingWarningError } from "./command-binding-log.js"
@@ -49,7 +48,7 @@ export type MenuCommandBindingError = MenuError | CommandRegistryError
 
 export type MenuCapabilityOptions = Schema.Schema.Type<typeof MenuCapabilityInput>
 
-export const MenuApiSpec = Object.freeze({
+export const MenuRpcSpec = Object.freeze({
   setApplicationMenu: menuMethodSpec(
     MenuSetApplicationMenuInput,
     "native.invoke:Menu.setApplicationMenu"
@@ -63,51 +62,24 @@ export const MenuApiSpec = Object.freeze({
     error: HostProtocolErrorSchema,
     permission: "none"
   }
-}) satisfies ApiContractSpec
+}) satisfies BridgeRpcSpec
 
-export type MenuApiSpec = typeof MenuApiSpec
+export type MenuRpcSpec = typeof MenuRpcSpec
 
-export const MenuApiEvents = Object.freeze({
+export const MenuRpcEvents = Object.freeze({
   Activated: { payload: MenuActivatedEvent }
 })
 
-export type MenuApiEvents = typeof MenuApiEvents
+export type MenuRpcEvents = typeof MenuRpcEvents
 
-export const MenuApi: ApiContractClass<"Menu", MenuApiSpec, MenuApiEvents> = (() => {
-  const contract = class {
-    static readonly tag = "Menu"
-    static readonly spec = MenuApiSpec
-    static readonly events = MenuApiEvents
-
-    static layer<Handlers extends ApiHandlers<MenuApiSpec>>(
-      handlers: Handlers
-    ): ApiLayer<"Menu", MenuApiSpec, Handlers, MenuApiEvents> {
-      return Object.freeze({
-        contract,
-        handlers: Object.freeze(handlers)
-      })
-    }
-  } as ApiContractClass<"Menu", MenuApiSpec, MenuApiEvents>
-
-  return Object.freeze(contract)
-})()
-
-export const registerMenuApi = (): Effect.Effect<
-  ApiContractClass<"Menu", MenuApiSpec, MenuApiEvents>,
-  ApiContractError,
-  never
-> =>
-  Effect.gen(function* () {
-    const existing = yield* Api.get("Menu")
-    if (Option.isSome(existing)) {
-      return existing.value as ApiContractClass<"Menu", MenuApiSpec, MenuApiEvents>
-    }
-
-    return yield* Api.Tag("Menu")<unknown>()(MenuApiSpec, MenuApiEvents)
-  })
+export const MenuRpcs: BridgeRpcGroup<"Menu", MenuRpcSpec, MenuRpcEvents> = BridgeRpc.group(
+  "Menu",
+  MenuRpcSpec,
+  MenuRpcEvents
+)
 
 export const MenuMethodNames = Object.freeze(
-  Object.keys(MenuApiSpec) as ReadonlyArray<keyof MenuApiSpec>
+  Object.keys(MenuRpcSpec) as ReadonlyArray<keyof MenuRpcSpec>
 )
 
 export interface MenuClientApi {
@@ -161,13 +133,14 @@ export const makeMenuServiceLayer = (client: MenuClientApi): Layer.Layer<Menu> =
   Layer.provide(MenuLive, makeMenuClientLayer(client))
 
 export const makeMenuBridgeClientLayer = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions = {}
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
 ): Layer.Layer<MenuClient> => Layer.succeed(MenuClient)(makeMenuBridgeClient(exchange, options))
 
-export const makeHostMenuApiLayer = <Handlers extends ApiHandlers<MenuApiSpec>>(
+export const makeHostMenuBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<MenuRpcSpec>>(
   handlers: Handlers
-): ApiLayer<"Menu", MenuApiSpec, Handlers, MenuApiEvents> => MenuApi.layer(handlers)
+): BridgeRpcLayer<"Menu", MenuRpcSpec, Handlers, MenuRpcEvents> =>
+  BridgeRpc.layer(MenuRpcs)(handlers)
 
 export const menuCapability = (
   name: MenuCapabilityName,
@@ -275,10 +248,10 @@ const invokeMenuCommand = (
 }
 
 const makeMenuBridgeClient = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
 ): MenuClientApi => {
-  const client = Client({ Menu: MenuApi }, exchange, options).Menu
+  const client = Client({ Menu: MenuRpcs }, exchange, options).Menu
 
   const menuClient: MenuClientApi = {
     setApplicationMenu: (template) =>
@@ -334,7 +307,7 @@ const menuCommandResourceId = (itemId: string, commandId: string): ResourceId =>
   `menu-command:${itemId}:${commandId}` as ResourceId
 
 const toWindowHandle = (handle: WindowHandle): MenuWindowHandle =>
-  new ApiResourceHandleShape({
+  new BridgeResourceHandleShape({
     kind: handle.kind,
     id: handle.id,
     generation: handle.generation,

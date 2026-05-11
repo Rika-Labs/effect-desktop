@@ -1,12 +1,12 @@
-import { Api, type ApiResourceHandle } from "@effect-desktop/bridge"
+import { BridgeRpc, type BridgeResourceHandle } from "@effect-desktop/bridge"
 import { Schema } from "effect"
 
 import { MenuTemplate } from "./menu.js"
 import { BridgeSafeNonEmptyString, PrintableNonEmptyString } from "./strings.js"
 
-export const TrayResource = Api.Resource("tray", "open")
+export const TrayResource = BridgeRpc.Resource("tray", "open")
 
-export type TrayHandle = ApiResourceHandle<"tray", "open">
+export type TrayHandle = BridgeResourceHandle<"tray", "open">
 
 export const TrayIcon = BridgeSafeNonEmptyString.check(Schema.isPattern(/^(?!file:)/iu))
 

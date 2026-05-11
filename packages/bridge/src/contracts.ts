@@ -1,11 +1,11 @@
-import { Data, Effect, Option, Schema, Stream } from "effect"
+import { Data, Effect, Schema, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
 import { RpcCapability, RpcEndpoint, RpcSupport, type RpcSupportMetadata } from "./rpc-endpoint.js"
 
-export interface ApiMethodSpec {
+export interface BridgeRpcMethodSpec {
   readonly input: Schema.Schema<unknown>
-  readonly output: Schema.Schema<unknown> | ApiStreamSpec | ApiResourceSpec
+  readonly output: Schema.Schema<unknown> | BridgeRpcStreamSpec | BridgeRpcResourceSpec
   readonly error: Schema.Schema<unknown>
   readonly permission?: string
   readonly timeoutMs?: number
@@ -16,19 +16,19 @@ export interface ApiMethodSpec {
   readonly support?: RpcSupportMetadata
 }
 
-export interface ApiEventSpec {
+export interface BridgeRpcEventSpec {
   readonly payload: Schema.Schema<unknown>
   readonly backpressure?: BackpressureSpec
 }
 
-export interface ApiStreamSpec {
-  readonly _tag: "ApiStreamSpec"
+export interface BridgeRpcStreamSpec {
+  readonly _tag: "BridgeRpcStreamSpec"
   readonly chunk: Schema.Schema<unknown>
   readonly error: Schema.Schema<unknown>
   readonly backpressure?: BackpressureSpec
 }
 
-export interface ApiResourceHandle<Kind extends string = string, State extends string = string> {
+export interface BridgeResourceHandle<Kind extends string = string, State extends string = string> {
   readonly kind: Kind
   readonly id: string
   readonly generation: number
@@ -36,8 +36,8 @@ export interface ApiResourceHandle<Kind extends string = string, State extends s
   readonly state: State
 }
 
-export class ApiResourceHandleShape extends Schema.Class<ApiResourceHandleShape>(
-  "ApiResourceHandle"
+export class BridgeResourceHandleShape extends Schema.Class<BridgeResourceHandleShape>(
+  "BridgeResourceHandle"
 )({
   kind: Schema.NonEmptyString,
   id: Schema.NonEmptyString,
@@ -46,17 +46,20 @@ export class ApiResourceHandleShape extends Schema.Class<ApiResourceHandleShape>
   state: Schema.String
 }) {}
 
-export interface ApiResourceSpec<Kind extends string = string, State extends string = string> {
-  readonly _tag: "ApiResourceSpec"
+export interface BridgeRpcResourceSpec<
+  Kind extends string = string,
+  State extends string = string
+> {
+  readonly _tag: "BridgeRpcResourceSpec"
   readonly kind: Kind
   readonly state: State
-  readonly schema: typeof ApiResourceHandleShape
+  readonly schema: typeof BridgeResourceHandleShape
 }
 
-type ApiOutputType<Output> = Output extends ApiStreamSpec
+type BridgeRpcOutputType<Output> = Output extends BridgeRpcStreamSpec
   ? Stream.Stream<Schema.Schema.Type<Output["chunk"]>, Schema.Schema.Type<Output["error"]>, unknown>
-  : Output extends ApiResourceSpec<infer Kind, infer State>
-    ? ApiResourceHandle<Kind, State>
+  : Output extends BridgeRpcResourceSpec<infer Kind, infer State>
+    ? BridgeResourceHandle<Kind, State>
     : Output extends Schema.Schema<unknown>
       ? Schema.Schema.Type<Output>
       : never
@@ -67,388 +70,257 @@ export interface BackpressureSpec {
   readonly overflow?: "error" | "dropOldest" | "dropNewest" | "block"
 }
 
-export type ApiContractSpec = Readonly<Record<string, ApiMethodSpec>>
-export type ApiContractEvents = Readonly<Record<string, ApiEventSpec>>
+export type BridgeRpcSpec = Readonly<Record<string, BridgeRpcMethodSpec>>
+export type BridgeRpcEvents = Readonly<Record<string, BridgeRpcEventSpec>>
 
-export interface ApiContractClass<
+export interface BridgeRpcGroup<
   Tag extends string = string,
-  Spec extends ApiContractSpec = ApiContractSpec,
-  Events extends ApiContractEvents = ApiContractEvents
-> {
-  new (): object
+  Spec extends BridgeRpcSpec = BridgeRpcSpec,
+  Events extends BridgeRpcEvents = BridgeRpcEvents
+> extends RpcGroup.RpcGroup<Rpc.Any> {
   readonly tag: Tag
   readonly spec: Spec
   readonly events: Events
-  readonly toRpcGroup: () => RpcGroup.RpcGroup<Rpc.Any>
-  readonly layer: <Handlers extends ApiHandlers<Spec>>(
-    handlers: Handlers
-  ) => ApiLayer<Tag, Spec, Handlers, Events>
 }
 
-export type ApiHandlers<Spec extends ApiContractSpec> = {
+export type BridgeRpcHandlers<Spec extends BridgeRpcSpec> = {
   readonly [Method in keyof Spec]: (
     input: Schema.Schema.Type<Spec[Method]["input"]>
-  ) => Spec[Method]["output"] extends ApiStreamSpec
-    ? ApiOutputType<Spec[Method]["output"]>
+  ) => Spec[Method]["output"] extends BridgeRpcStreamSpec
+    ? BridgeRpcOutputType<Spec[Method]["output"]>
     : Effect.Effect<
-        ApiOutputType<Spec[Method]["output"]>,
+        BridgeRpcOutputType<Spec[Method]["output"]>,
         Schema.Schema.Type<Spec[Method]["error"]>,
         unknown
       >
 }
 
-export interface ApiLayer<
+export interface BridgeRpcLayer<
   Tag extends string,
-  Spec extends ApiContractSpec,
-  Handlers extends ApiHandlers<Spec>,
-  Events extends ApiContractEvents = ApiContractEvents
+  Spec extends BridgeRpcSpec,
+  Handlers extends BridgeRpcHandlers<Spec>,
+  Events extends BridgeRpcEvents = BridgeRpcEvents
 > {
-  readonly contract: ApiContractClass<Tag, Spec, Events>
+  readonly group: BridgeRpcGroup<Tag, Spec, Events>
   readonly handlers: Handlers
 }
 
-export class DuplicateApiContractTag extends Data.TaggedError("DuplicateApiContractTag")<{
-  readonly tag: string
-  readonly message: string
-}> {}
-
-export class ApiContractRegistryFrozen extends Data.TaggedError("ApiContractRegistryFrozen")<{
-  readonly tag: string
-  readonly message: string
-}> {}
-
-export class InvalidApiContractSpec extends Data.TaggedError("InvalidApiContractSpec")<{
+export class InvalidBridgeRpcSpec extends Data.TaggedError("InvalidBridgeRpcSpec")<{
   readonly tag: string
   readonly method: string
   readonly reason: string
   readonly message: string
 }> {}
 
-export type ApiContractError =
-  | DuplicateApiContractTag
-  | ApiContractRegistryFrozen
-  | InvalidApiContractSpec
+export type BridgeRpcSpecError = InvalidBridgeRpcSpec
 
-export const Api = Object.freeze({
+export const BridgeRpc = Object.freeze({
   Resource: <Kind extends string, State extends string>(
     kind: Kind,
     state: State
-  ): ApiResourceSpec<Kind, State> =>
+  ): BridgeRpcResourceSpec<Kind, State> =>
     Object.freeze({
-      _tag: "ApiResourceSpec",
+      _tag: "BridgeRpcResourceSpec",
       kind,
       state,
-      schema: ApiResourceHandleShape
+      schema: BridgeResourceHandleShape
     }),
   Stream: <Chunk extends Schema.Schema<unknown>, Error extends Schema.Schema<unknown>>(
     chunk: Chunk,
     error: Error,
     backpressure?: BackpressureSpec
-  ): ApiStreamSpec & {
+  ): BridgeRpcStreamSpec & {
     readonly chunk: Chunk
     readonly error: Error
   } =>
     Object.freeze({
-      _tag: "ApiStreamSpec",
+      _tag: "BridgeRpcStreamSpec",
       chunk,
       error,
       ...(backpressure === undefined ? {} : { backpressure: Object.freeze(backpressure) })
     }),
-  Tag: <Tag extends string>(tag: Tag) =>
-    function ApiTagSelf<Self>() {
-      void (undefined as Self | undefined)
-
-      return <
-        Spec extends ApiContractSpec,
-        Events extends ApiContractEvents = Record<never, never>
-      >(
-        spec: Spec,
-        events: Events = {} as Events
-      ): Effect.Effect<ApiContractClass<Tag, Spec, Events>, ApiContractError, never> =>
-        registerApiContract(tag, spec, events)
-    },
-  entries: (): Effect.Effect<readonly ApiContractClass[], never, never> =>
-    Effect.sync(apiContractEntries),
-  freeze: (): Effect.Effect<void, never, never> =>
-    Effect.sync(() => {
-      registryFrozen = true
-    }),
-  get: (tag: string): Effect.Effect<Option.Option<ApiContractClass>, never, never> =>
-    Effect.sync(() => {
-      const contract = apiContracts.get(tag)
-      return contract === undefined ? Option.none() : Option.some(contract)
-    })
+  group: <Tag extends string, Spec extends BridgeRpcSpec, Events extends BridgeRpcEvents>(
+    tag: Tag,
+    spec: Spec,
+    events: Events
+  ): BridgeRpcGroup<Tag, Spec, Events> => makeBridgeRpcGroup(tag, spec, events),
+  layer:
+    <Tag extends string, Spec extends BridgeRpcSpec, Events extends BridgeRpcEvents>(
+      group: BridgeRpcGroup<Tag, Spec, Events>
+    ) =>
+    <Handlers extends BridgeRpcHandlers<Spec>>(
+      handlers: Handlers
+    ): BridgeRpcLayer<Tag, Spec, Handlers, Events> =>
+      Object.freeze({
+        group,
+        handlers: Object.freeze(handlers)
+      })
 })
 
-export const apiContractEntries = (): readonly ApiContractClass[] =>
-  Object.freeze(Array.from(apiContracts.values()))
-
-export const apiContractToRpcGroup = <
+export const makeBridgeRpcGroup = <
   Tag extends string,
-  Spec extends ApiContractSpec,
-  Events extends ApiContractEvents
+  Spec extends BridgeRpcSpec,
+  Events extends BridgeRpcEvents
 >(
   tag: Tag,
   spec: Spec,
   events: Events
-): RpcGroup.RpcGroup<Rpc.Any> => {
+): BridgeRpcGroup<Tag, Spec, Events> => {
+  validateBridgeRpcSpec(tag, spec)
+  validateBridgeRpcEvents(tag, events)
+  const frozenSpec = freezeRpcSpec(spec)
+  const frozenEvents = freezeRpcEvents(events)
   const rpcs: Rpc.Any[] = []
 
-  for (const [method, methodSpec] of Object.entries(spec)) {
-    rpcs.push(apiMethodToRpc(tag, method, methodSpec))
+  for (const [method, methodSpec] of Object.entries(frozenSpec)) {
+    rpcs.push(bridgeMethodToRpc(tag, method, methodSpec))
   }
-  for (const [event, eventSpec] of Object.entries(events)) {
-    rpcs.push(apiEventToRpc(tag, event, eventSpec))
+  for (const [event, eventSpec] of Object.entries(frozenEvents)) {
+    rpcs.push(bridgeEventToRpc(tag, event, eventSpec))
   }
 
-  return RpcGroup.make(...rpcs)
+  return Object.freeze(
+    Object.assign(RpcGroup.make(...rpcs), {
+      tag,
+      spec: frozenSpec,
+      events: frozenEvents
+    })
+  ) as BridgeRpcGroup<Tag, Spec, Events>
 }
 
-const registerApiContract = <
-  Tag extends string,
-  Spec extends ApiContractSpec,
-  Events extends ApiContractEvents
->(
-  tag: Tag,
-  spec: Spec,
-  events: Events
-): Effect.Effect<ApiContractClass<Tag, Spec, Events>, ApiContractError, never> =>
-  Effect.gen(function* () {
-    if (registryFrozen) {
-      return yield* Effect.fail(
-        new ApiContractRegistryFrozen({
-          tag,
-          message: `API contract registry is frozen; cannot register ${tag}`
-        })
-      )
-    }
+const validateBridgeRpcSpec = (tag: string, spec: BridgeRpcSpec): void => {
+  if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
+    throw invalidSpec(tag, "<group>", "RPC spec must be an object")
+  }
 
-    if (apiContracts.has(tag)) {
-      return yield* Effect.fail(
-        new DuplicateApiContractTag({
-          tag,
-          message: `API contract tag already registered: ${tag}`
-        })
-      )
+  for (const [method, methodSpec] of Object.entries(spec)) {
+    if (method === "events") {
+      throw invalidSpec(tag, method, "events is a reserved method name")
     }
+    validateMethodSpec(tag, method, methodSpec)
+  }
+}
 
-    yield* validateContractSpec(tag, spec)
-    yield* validateContractEvents(tag, events)
+const validateMethodSpec = (tag: string, method: string, spec: BridgeRpcMethodSpec): void => {
+  if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
+    throw invalidSpec(tag, method, "method spec must be an object")
+  }
 
-    const frozenSpec = freezeContractSpec(spec)
-    const frozenEvents = freezeContractEvents(events)
-    const rpcGroup = apiContractToRpcGroup(tag, frozenSpec, frozenEvents)
-    const contract = class {
-      static readonly tag = tag
-      static readonly spec = frozenSpec
-      static readonly events = frozenEvents
+  if (!isSchema(spec.input)) {
+    throw invalidSpec(tag, method, "input schema is required")
+  }
+  if (!isSchema(spec.output) && !isStreamSpec(spec.output) && !isResourceSpec(spec.output)) {
+    throw invalidSpec(tag, method, "output schema, stream, or resource is required")
+  }
+  if (isResourceSpec(spec.output)) {
+    validateResourceSpec(tag, method, spec.output)
+  }
+  if (!isSchema(spec.error)) {
+    throw invalidSpec(tag, method, "error schema is required")
+  }
+  if (spec.permission !== undefined && typeof spec.permission !== "string") {
+    throw invalidSpec(tag, method, "permission must be a string")
+  }
+  if (spec.timeoutMs !== undefined && (!Number.isInteger(spec.timeoutMs) || spec.timeoutMs < 0)) {
+    throw invalidSpec(tag, method, "timeoutMs must be a non-negative integer")
+  }
+  if (
+    spec.cachedResultMs !== undefined &&
+    (!Number.isInteger(spec.cachedResultMs) || spec.cachedResultMs < 0)
+  ) {
+    throw invalidSpec(tag, method, "cachedResultMs must be a non-negative integer")
+  }
+  if (spec.idempotent !== undefined && typeof spec.idempotent !== "boolean") {
+    throw invalidSpec(tag, method, "idempotent must be a boolean")
+  }
+  if (spec.idempotent === true && spec.cachedResultMs === undefined) {
+    throw invalidSpec(tag, method, "idempotent methods must declare cachedResultMs")
+  }
+  if (spec.cancellable !== undefined && typeof spec.cancellable !== "boolean") {
+    throw invalidSpec(tag, method, "cancellable must be a boolean")
+  }
+  if (spec.backpressure !== undefined) {
+    validateBackpressureSpec(tag, method, spec.backpressure)
+  }
+  if (isStreamSpec(spec.output) && spec.output.backpressure !== undefined) {
+    validateBackpressureSpec(tag, method, spec.output.backpressure)
+  }
+  if (spec.support !== undefined) {
+    validateSupportSpec(tag, method, spec.support)
+  }
+}
 
-      static toRpcGroup(): RpcGroup.RpcGroup<Rpc.Any> {
-        return rpcGroup
-      }
+const validateBridgeRpcEvents = (tag: string, events: BridgeRpcEvents): void => {
+  if (typeof events !== "object" || events === null || Array.isArray(events)) {
+    throw invalidSpec(tag, "<events>", "events spec must be an object")
+  }
 
-      static layer<Handlers extends ApiHandlers<Spec>>(
-        handlers: Handlers
-      ): ApiLayer<Tag, Spec, Handlers, Events> {
-        const frozenHandlers = Object.freeze(handlers)
+  for (const [event, eventSpec] of Object.entries(events)) {
+    validateEventSpec(tag, event, eventSpec)
+  }
+}
 
-        return Object.freeze({
-          contract,
-          handlers: frozenHandlers
-        })
-      }
-    } as ApiContractClass<Tag, Spec, Events>
+const validateEventSpec = (tag: string, event: string, spec: BridgeRpcEventSpec): void => {
+  if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
+    throw invalidSpec(tag, event, "event spec must be an object")
+  }
 
-    Object.freeze(contract)
-    apiContracts.set(tag, contract)
+  if (!isSchema(spec.payload)) {
+    throw invalidSpec(tag, event, "event payload schema is required")
+  }
+  if (spec.backpressure !== undefined) {
+    validateBackpressureSpec(tag, event, spec.backpressure)
+  }
+}
 
-    return contract
-  })
+const validateBackpressureSpec = (tag: string, method: string, spec: BackpressureSpec): void => {
+  if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
+    throw invalidSpec(tag, method, "backpressure must be an object")
+  }
 
-const validateContractSpec = (
-  tag: string,
-  spec: ApiContractSpec
-): Effect.Effect<void, InvalidApiContractSpec, never> =>
-  Effect.gen(function* () {
-    if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
-      return yield* Effect.fail(invalidSpec(tag, "<contract>", "contract spec must be an object"))
-    }
+  if (!backpressureStrategies.has(spec.strategy)) {
+    throw invalidSpec(tag, method, "backpressure.strategy must be buffer, drop, or block")
+  }
+  if (spec.size !== undefined && (!Number.isInteger(spec.size) || spec.size < 0)) {
+    throw invalidSpec(tag, method, "backpressure.size must be a non-negative integer")
+  }
+  if (spec.overflow !== undefined && !backpressureOverflows.has(spec.overflow)) {
+    throw invalidSpec(
+      tag,
+      method,
+      "backpressure.overflow must be error, dropOldest, dropNewest, or block"
+    )
+  }
+}
 
-    for (const [method, methodSpec] of Object.entries(spec)) {
-      if (method === "events") {
-        return yield* Effect.fail(invalidSpec(tag, method, "events is a reserved method name"))
-      }
-      yield* validateMethodSpec(tag, method, methodSpec)
-    }
-  })
+const validateSupportSpec = (tag: string, method: string, spec: RpcSupportMetadata): void => {
+  if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
+    throw invalidSpec(tag, method, "support must be an object")
+  }
 
-const validateMethodSpec = (
-  tag: string,
-  method: string,
-  spec: ApiMethodSpec
-): Effect.Effect<void, InvalidApiContractSpec, never> =>
-  Effect.gen(function* () {
-    if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
-      return yield* Effect.fail(invalidSpec(tag, method, "method spec must be an object"))
-    }
+  if (!supportStatuses.has(spec.status)) {
+    throw invalidSpec(tag, method, "support.status must be supported or unsupported")
+  }
 
-    if (!isSchema(spec.input)) {
-      return yield* Effect.fail(invalidSpec(tag, method, "input schema is required"))
+  if (spec.status === "supported") {
+    if ("reason" in spec && spec.reason !== undefined) {
+      throw invalidSpec(tag, method, "support.reason is only allowed when status is unsupported")
     }
-    if (!isSchema(spec.output) && !isStreamSpec(spec.output) && !isResourceSpec(spec.output)) {
-      return yield* Effect.fail(
-        invalidSpec(tag, method, "output schema, stream, or resource is required")
-      )
-    }
-    if (isResourceSpec(spec.output)) {
-      yield* validateResourceSpec(tag, method, spec.output)
-    }
-    if (!isSchema(spec.error)) {
-      return yield* Effect.fail(invalidSpec(tag, method, "error schema is required"))
-    }
-    if (spec.permission !== undefined && typeof spec.permission !== "string") {
-      return yield* Effect.fail(invalidSpec(tag, method, "permission must be a string"))
-    }
-    if (spec.timeoutMs !== undefined && (!Number.isInteger(spec.timeoutMs) || spec.timeoutMs < 0)) {
-      return yield* Effect.fail(
-        invalidSpec(tag, method, "timeoutMs must be a non-negative integer")
-      )
-    }
-    if (
-      spec.cachedResultMs !== undefined &&
-      (!Number.isInteger(spec.cachedResultMs) || spec.cachedResultMs < 0)
-    ) {
-      return yield* Effect.fail(
-        invalidSpec(tag, method, "cachedResultMs must be a non-negative integer")
-      )
-    }
-    if (spec.idempotent !== undefined && typeof spec.idempotent !== "boolean") {
-      return yield* Effect.fail(invalidSpec(tag, method, "idempotent must be a boolean"))
-    }
-    if (spec.idempotent === true && spec.cachedResultMs === undefined) {
-      return yield* Effect.fail(
-        invalidSpec(tag, method, "idempotent methods must declare cachedResultMs")
-      )
-    }
-    if (spec.cancellable !== undefined && typeof spec.cancellable !== "boolean") {
-      return yield* Effect.fail(invalidSpec(tag, method, "cancellable must be a boolean"))
-    }
-    if (spec.backpressure !== undefined) {
-      yield* validateBackpressureSpec(tag, method, spec.backpressure)
-    }
-    if (isStreamSpec(spec.output) && spec.output.backpressure !== undefined) {
-      yield* validateBackpressureSpec(tag, method, spec.output.backpressure)
-    }
-    if (spec.support !== undefined) {
-      yield* validateSupportSpec(tag, method, spec.support)
-    }
-  })
+    return
+  }
 
-const validateContractEvents = (
-  tag: string,
-  events: ApiContractEvents
-): Effect.Effect<void, InvalidApiContractSpec, never> =>
-  Effect.gen(function* () {
-    if (typeof events !== "object" || events === null || Array.isArray(events)) {
-      return yield* Effect.fail(invalidSpec(tag, "<events>", "events spec must be an object"))
-    }
+  if (typeof spec.reason !== "string" || spec.reason.length === 0) {
+    throw invalidSpec(tag, method, "unsupported methods must declare a non-empty support.reason")
+  }
+}
 
-    for (const [event, eventSpec] of Object.entries(events)) {
-      yield* validateEventSpec(tag, event, eventSpec)
-    }
-  })
+const validateResourceSpec = (tag: string, method: string, spec: BridgeRpcResourceSpec): void => {
+  if (spec.kind.trim().length === 0 || spec.state.trim().length === 0) {
+    throw invalidSpec(tag, method, "resource kind and state must be non-empty")
+  }
+}
 
-const validateEventSpec = (
-  tag: string,
-  event: string,
-  spec: ApiEventSpec
-): Effect.Effect<void, InvalidApiContractSpec, never> =>
-  Effect.gen(function* () {
-    if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
-      return yield* Effect.fail(invalidSpec(tag, event, "event spec must be an object"))
-    }
-
-    if (!isSchema(spec.payload)) {
-      return yield* Effect.fail(invalidSpec(tag, event, "event payload schema is required"))
-    }
-    if (spec.backpressure !== undefined) {
-      yield* validateBackpressureSpec(tag, event, spec.backpressure)
-    }
-  })
-
-const validateBackpressureSpec = (
-  tag: string,
-  method: string,
-  spec: BackpressureSpec
-): Effect.Effect<void, InvalidApiContractSpec, never> =>
-  Effect.gen(function* () {
-    if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
-      return yield* Effect.fail(invalidSpec(tag, method, "backpressure must be an object"))
-    }
-
-    if (!backpressureStrategies.has(spec.strategy)) {
-      return yield* Effect.fail(
-        invalidSpec(tag, method, "backpressure.strategy must be buffer, drop, or block")
-      )
-    }
-    if (spec.size !== undefined && (!Number.isInteger(spec.size) || spec.size < 0)) {
-      return yield* Effect.fail(
-        invalidSpec(tag, method, "backpressure.size must be a non-negative integer")
-      )
-    }
-    if (spec.overflow !== undefined && !backpressureOverflows.has(spec.overflow)) {
-      return yield* Effect.fail(
-        invalidSpec(
-          tag,
-          method,
-          "backpressure.overflow must be error, dropOldest, dropNewest, or block"
-        )
-      )
-    }
-  })
-
-const validateSupportSpec = (
-  tag: string,
-  method: string,
-  spec: RpcSupportMetadata
-): Effect.Effect<void, InvalidApiContractSpec, never> =>
-  Effect.gen(function* () {
-    if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
-      return yield* Effect.fail(invalidSpec(tag, method, "support must be an object"))
-    }
-
-    if (!supportStatuses.has(spec.status)) {
-      return yield* Effect.fail(
-        invalidSpec(tag, method, "support.status must be supported or unsupported")
-      )
-    }
-
-    if (spec.status === "supported") {
-      if ("reason" in spec && spec.reason !== undefined) {
-        return yield* Effect.fail(
-          invalidSpec(tag, method, "support.reason is only allowed when status is unsupported")
-        )
-      }
-      return
-    }
-
-    if (typeof spec.reason !== "string" || spec.reason.length === 0) {
-      return yield* Effect.fail(
-        invalidSpec(tag, method, "unsupported methods must declare a non-empty support.reason")
-      )
-    }
-  })
-
-const validateResourceSpec = (
-  tag: string,
-  method: string,
-  spec: ApiResourceSpec
-): Effect.Effect<void, InvalidApiContractSpec, never> =>
-  spec.kind.trim().length === 0 || spec.state.trim().length === 0
-    ? Effect.fail(invalidSpec(tag, method, "resource kind and state must be non-empty"))
-    : Effect.void
-
-const freezeContractSpec = <Spec extends ApiContractSpec>(spec: Spec): Spec => {
+const freezeRpcSpec = <Spec extends BridgeRpcSpec>(spec: Spec): Spec => {
   for (const methodSpec of Object.values(spec)) {
     if (methodSpec.backpressure !== undefined) {
       Object.freeze(methodSpec.backpressure)
@@ -471,7 +343,7 @@ const freezeContractSpec = <Spec extends ApiContractSpec>(spec: Spec): Spec => {
   return Object.freeze(spec)
 }
 
-const freezeContractEvents = <Events extends ApiContractEvents>(events: Events): Events => {
+const freezeRpcEvents = <Events extends BridgeRpcEvents>(events: Events): Events => {
   for (const eventSpec of Object.values(events)) {
     if (eventSpec.backpressure !== undefined) {
       Object.freeze(eventSpec.backpressure)
@@ -482,15 +354,15 @@ const freezeContractEvents = <Events extends ApiContractEvents>(events: Events):
   return Object.freeze(events)
 }
 
-const invalidSpec = (tag: string, method: string, reason: string): InvalidApiContractSpec =>
-  new InvalidApiContractSpec({
+const invalidSpec = (tag: string, method: string, reason: string): InvalidBridgeRpcSpec =>
+  new InvalidBridgeRpcSpec({
     tag,
     method,
     reason,
-    message: `Invalid API contract ${tag}.${method}: ${reason}`
+    message: `Invalid RPC group ${tag}.${method}: ${reason}`
   })
 
-const apiMethodToRpc = (tag: string, method: string, spec: ApiMethodSpec): Rpc.Any => {
+const bridgeMethodToRpc = (tag: string, method: string, spec: BridgeRpcMethodSpec): Rpc.Any => {
   const rpc = isStreamSpec(spec.output)
     ? Rpc.make(`${tag}.${method}`, {
         payload: spec.input,
@@ -500,22 +372,22 @@ const apiMethodToRpc = (tag: string, method: string, spec: ApiMethodSpec): Rpc.A
       })
     : Rpc.make(`${tag}.${method}`, {
         payload: spec.input,
-        success: apiMethodSuccessSchema(spec.output),
+        success: bridgeMethodSuccessSchema(spec.output),
         error: spec.error
       })
 
-  return annotateApiMethodRpc(rpc, spec)
+  return annotateBridgeMethodRpc(rpc, spec)
 }
 
-const apiEventToRpc = (tag: string, event: string, spec: ApiEventSpec): Rpc.Any =>
+const bridgeEventToRpc = (tag: string, event: string, spec: BridgeRpcEventSpec): Rpc.Any =>
   Rpc.make(`${tag}.events.${event}`, {
     success: spec.payload,
     error: Schema.Never,
     stream: true
   })
 
-const apiMethodSuccessSchema = (
-  output: Schema.Schema<unknown> | ApiStreamSpec | ApiResourceSpec
+const bridgeMethodSuccessSchema = (
+  output: Schema.Schema<unknown> | BridgeRpcStreamSpec | BridgeRpcResourceSpec
 ): Schema.Schema<unknown> => {
   if (isResourceSpec(output)) {
     return output.schema
@@ -526,7 +398,7 @@ const apiMethodSuccessSchema = (
   return output
 }
 
-const annotateApiMethodRpc = (rpc: Rpc.Any, spec: ApiMethodSpec): Rpc.Any => {
+const annotateBridgeMethodRpc = (rpc: Rpc.Any, spec: BridgeRpcMethodSpec): Rpc.Any => {
   const endpointRpc = spec.idempotent === true ? RpcEndpoint.query(rpc) : RpcEndpoint.mutation(rpc)
   const capabilityRpc =
     spec.permission === undefined
@@ -548,27 +420,26 @@ const isSchema = (value: unknown): value is Schema.Schema<unknown> => {
   )
 }
 
-export const isStreamSpec = (value: unknown): value is ApiStreamSpec =>
+export const isStreamSpec = (value: unknown): value is BridgeRpcStreamSpec =>
   typeof value === "object" &&
   value !== null &&
   "_tag" in value &&
-  (value as { readonly _tag?: unknown })._tag === "ApiStreamSpec" &&
+  (value as { readonly _tag?: unknown })._tag === "BridgeRpcStreamSpec" &&
   "chunk" in value &&
   "error" in value &&
   isSchema((value as { readonly chunk?: unknown }).chunk) &&
   isSchema((value as { readonly error?: unknown }).error)
 
-export const isResourceSpec = (value: unknown): value is ApiResourceSpec =>
+export const isResourceSpec = (value: unknown): value is BridgeRpcResourceSpec =>
   typeof value === "object" &&
   value !== null &&
   "_tag" in value &&
-  (value as { readonly _tag?: unknown })._tag === "ApiResourceSpec" &&
+  (value as { readonly _tag?: unknown })._tag === "BridgeRpcResourceSpec" &&
   "kind" in value &&
   "state" in value &&
   typeof (value as { readonly kind?: unknown }).kind === "string" &&
   typeof (value as { readonly state?: unknown }).state === "string"
 
-const apiContracts = new Map<string, ApiContractClass>()
 const backpressureStrategies = new Set<BackpressureSpec["strategy"]>(["buffer", "drop", "block"])
 const backpressureOverflows = new Set<NonNullable<BackpressureSpec["overflow"]>>([
   "error",
@@ -577,4 +448,3 @@ const backpressureOverflows = new Set<NonNullable<BackpressureSpec["overflow"]>>
   "block"
 ])
 const supportStatuses = new Set<RpcSupportMetadata["status"]>(["supported", "unsupported"])
-let registryFrozen = false

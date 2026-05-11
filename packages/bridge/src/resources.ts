@@ -1,24 +1,24 @@
 import { Effect } from "effect"
 
-import { type ApiResourceHandle, type ApiResourceSpec } from "./contracts.js"
+import { type BridgeResourceHandle, type BridgeRpcResourceSpec } from "./contracts.js"
 import { HostProtocolStaleHandleError, type HostProtocolError } from "./protocol.js"
 
-export interface ApiResourceExchange {
-  readonly dispose: (handle: ApiResourceHandle) => Effect.Effect<void, HostProtocolError, never>
+export interface BridgeResourceExchange {
+  readonly dispose: (handle: BridgeResourceHandle) => Effect.Effect<void, HostProtocolError, never>
 }
 
-export interface ApiResourceProxy<
+export interface BridgeResourceProxy<
   Kind extends string = string,
   State extends string = string
-> extends ApiResourceHandle<Kind, State> {
+> extends BridgeResourceHandle<Kind, State> {
   readonly dispose: () => Effect.Effect<void, HostProtocolError, never>
 }
 
-export const makeResourceProxy = <Spec extends ApiResourceSpec>(
+export const makeResourceProxy = <Spec extends BridgeRpcResourceSpec>(
   spec: Spec,
-  handle: ApiResourceHandle<Spec["kind"], Spec["state"]>,
-  exchange: ApiResourceExchange
-): ApiResourceProxy<Spec["kind"], Spec["state"]> => {
+  handle: BridgeResourceHandle<Spec["kind"], Spec["state"]>,
+  exchange: BridgeResourceExchange
+): BridgeResourceProxy<Spec["kind"], Spec["state"]> => {
   void spec
   let disposed = false
 
@@ -35,7 +35,7 @@ export const makeResourceProxy = <Spec extends ApiResourceSpec>(
 
 export const makeStaleHandleError = (
   operation: string,
-  handle: ApiResourceHandle,
+  handle: BridgeResourceHandle,
   actualGeneration: number
 ): HostProtocolStaleHandleError =>
   new HostProtocolStaleHandleError({

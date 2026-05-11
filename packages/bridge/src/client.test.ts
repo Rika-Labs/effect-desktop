@@ -2,14 +2,11 @@ import { expect, test } from "bun:test"
 import { Cause, Deferred, Effect, Exit, Option, Schema } from "effect"
 
 import {
-  Api,
-  apiContractToRpcGroup,
-  type ApiContractClass,
-  type ApiHandlers,
-  type ApiLayer,
-  type ApiClientResponse,
-  type ApiResourceHandle,
-  type ApiResourceSpec,
+  BridgeRpc,
+  type BridgeRpcGroup,
+  type BridgeClientResponse,
+  type BridgeResourceHandle,
+  type BridgeRpcResourceSpec,
   Client,
   Handlers,
   HostProtocolCancelByRequestEnvelope,
@@ -18,7 +15,7 @@ import {
   makeHostProtocolInvalidOutputError,
   makeStaleHandleError,
   type HostProtocolError,
-  type ApiClientExchange
+  type BridgeClientExchange
 } from "./index.js"
 
 class ProjectOpenInput extends Schema.Class<ProjectOpenInput>("ProjectOpenInput")({
@@ -36,8 +33,8 @@ class ProjectOpenError extends Schema.Class<ProjectOpenError>("ProjectOpenError"
 
 test("Client generates a typed namespace from contract entries", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const ProjectApi = makeProjectApi("ProjectApi.ClientTest")
-  const client = Client({ project: ProjectApi }, responseExchange(requests, { id: "project-1" }), {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.ClientTest")
+  const client = Client({ project: ProjectRpcs }, responseExchange(requests, { id: "project-1" }), {
     nextRequestId: () => "request-project-open",
     nextTraceId: () => "trace-project-open",
     now: () => 42,
@@ -54,7 +51,7 @@ test("Client generates a typed namespace from contract entries", async () => {
     new HostProtocolRequestEnvelope({
       kind: "request",
       id: "request-project-open",
-      method: "ProjectApi.ClientTest.open",
+      method: "ProjectRpcs.ClientTest.open",
       timestamp: 42,
       traceId: "trace-project-open",
       windowId: "window-1",
@@ -68,8 +65,8 @@ test("Client generates a typed namespace from contract entries", async () => {
 
 test("Client rejects malformed input as a typed Effect failure before transport", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const ProjectApi = makeProjectApi("ProjectApi.InvalidInput")
-  const client = Client({ project: ProjectApi }, responseExchange(requests, { id: "project-1" }))
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.InvalidInput")
+  const client = Client({ project: ProjectRpcs }, responseExchange(requests, { id: "project-1" }))
 
   const exit = await Effect.runPromiseExit(
     client.project.open({ path: 123 } as unknown as ProjectOpenInput)
@@ -81,8 +78,8 @@ test("Client rejects malformed input as a typed Effect failure before transport"
 
 test("Client rejects invalid generated timestamps as typed Effect failures before transport", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const ProjectApi = makeProjectApi("ProjectApi.InvalidTimestamp")
-  const client = Client({ project: ProjectApi }, responseExchange(requests, { id: "project-1" }), {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.InvalidTimestamp")
+  const client = Client({ project: ProjectRpcs }, responseExchange(requests, { id: "project-1" }), {
     now: () => Number.NaN
   })
 
@@ -97,8 +94,8 @@ test("Client rejects invalid generated timestamps as typed Effect failures befor
 
 test("Client rejects empty generated trace IDs as typed Effect failures before transport", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const ProjectApi = makeProjectApi("ProjectApi.EmptyTrace")
-  const client = Client({ project: ProjectApi }, responseExchange(requests, { id: "project-1" }), {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EmptyTrace")
+  const client = Client({ project: ProjectRpcs }, responseExchange(requests, { id: "project-1" }), {
     nextTraceId: () => ""
   })
 
@@ -122,9 +119,9 @@ test("Client rejects empty renderer origin fields as typed Effect failures befor
 
   for (const { field, options } of cases) {
     const requests: HostProtocolRequestEnvelope[] = []
-    const ProjectApi = makeProjectApi(`ProjectApi.Empty${field}`)
+    const ProjectRpcs = makeProjectRpcs(`ProjectRpcs.Empty${field}`)
     const client = Client(
-      { project: ProjectApi },
+      { project: ProjectRpcs },
       responseExchange(requests, { id: "project-1" }),
       options
     )
@@ -141,8 +138,8 @@ test("Client rejects empty renderer origin fields as typed Effect failures befor
 
 test("Client allows zero-argument calls for void-input methods", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const VoidApi = makeVoidApi("ProjectApi.VoidInput")
-  const client = Client({ project: VoidApi }, responseExchange(requests, { id: "project-1" }), {
+  const VoidRpcs = makeVoidRpcs("ProjectRpcs.VoidInput")
+  const client = Client({ project: VoidRpcs }, responseExchange(requests, { id: "project-1" }), {
     nextRequestId: () => "request-void-input",
     nextTraceId: () => "trace-void-input",
     now: () => 42
@@ -155,7 +152,7 @@ test("Client allows zero-argument calls for void-input methods", async () => {
     new HostProtocolRequestEnvelope({
       kind: "request",
       id: "request-void-input",
-      method: "ProjectApi.VoidInput.open",
+      method: "ProjectRpcs.VoidInput.open",
       timestamp: 42,
       traceId: "trace-void-input"
     })
@@ -164,9 +161,9 @@ test("Client allows zero-argument calls for void-input methods", async () => {
 
 test("Client encodes typed input before sending request payloads", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const EncodedInputApi = makeEncodedInputApi("ProjectApi.EncodedInput")
+  const EncodedInputRpcs = makeEncodedInputRpcs("ProjectRpcs.EncodedInput")
   const client = Client(
-    { project: EncodedInputApi },
+    { project: EncodedInputRpcs },
     responseExchange(requests, { id: "project-1" }),
     {
       nextRequestId: () => "request-encoded-input",
@@ -182,7 +179,7 @@ test("Client encodes typed input before sending request payloads", async () => {
     new HostProtocolRequestEnvelope({
       kind: "request",
       id: "request-encoded-input",
-      method: "ProjectApi.EncodedInput.open",
+      method: "ProjectRpcs.EncodedInput.open",
       timestamp: 42,
       traceId: "trace-encoded-input",
       payload: "42"
@@ -191,8 +188,8 @@ test("Client encodes typed input before sending request payloads", async () => {
 })
 
 test("Client decodes malformed output as a typed Effect failure", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.InvalidOutput")
-  const client = Client({ project: ProjectApi }, responseExchange([], { id: 123 }))
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.InvalidOutput")
+  const client = Client({ project: ProjectRpcs }, responseExchange([], { id: 123 }))
 
   const exit = await Effect.runPromiseExit(
     client.project.open(new ProjectOpenInput({ path: "/tmp/project" }))
@@ -202,9 +199,9 @@ test("Client decodes malformed output as a typed Effect failure", async () => {
 })
 
 test("Client decodes contract error responses as typed Effect failures", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.ResponseError")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.ResponseError")
   const client = Client(
-    { project: ProjectApi },
+    { project: ProjectRpcs },
     responseExchange([], {
       kind: "failure",
       error: new ProjectOpenError({
@@ -222,9 +219,9 @@ test("Client decodes contract error responses as typed Effect failures", async (
 })
 
 test("Client reports malformed contract error responses as InvalidOutput", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.MalformedError")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.MalformedError")
   const client = Client(
-    { project: ProjectApi },
+    { project: ProjectRpcs },
     responseExchange([], {
       kind: "failure",
       error: {
@@ -241,10 +238,10 @@ test("Client reports malformed contract error responses as InvalidOutput", async
 })
 
 test("Client propagates exchange failures", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.ExchangeError")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.ExchangeError")
   const client = Client(
-    { project: ProjectApi },
-    failingExchange(makeHostProtocolInvalidOutputError("ProjectApi.ExchangeError.open", "bad"))
+    { project: ProjectRpcs },
+    failingExchange(makeHostProtocolInvalidOutputError("ProjectRpcs.ExchangeError.open", "bad"))
   )
 
   const exit = await Effect.runPromiseExit(
@@ -255,8 +252,8 @@ test("Client propagates exchange failures", async () => {
 })
 
 test("Client decodes resource outputs into disposable renderer proxies", async () => {
-  const ProcessApi = makeProcessApi("ProjectApi.ResourceProxy")
-  const disposed: ApiResourceHandle[] = []
+  const ProcessRpcs = makeProcessRpcs("ProjectRpcs.ResourceProxy")
+  const disposed: BridgeResourceHandle[] = []
   const handle = {
     kind: "process",
     id: "process-1",
@@ -265,7 +262,7 @@ test("Client decodes resource outputs into disposable renderer proxies", async (
     state: "running"
   } as const
   const client = Client(
-    { process: ProcessApi },
+    { process: ProcessRpcs },
     {
       ...responseExchange([], handle),
       resource: {
@@ -286,7 +283,7 @@ test("Client decodes resource outputs into disposable renderer proxies", async (
 })
 
 test("Client resource proxies return stale-handle disposal failures as values", async () => {
-  const ProcessApi = makeProcessApi("ProjectApi.ResourceProxyStale")
+  const ProcessRpcs = makeProcessRpcs("ProjectRpcs.ResourceProxyStale")
   const handle = {
     kind: "process",
     id: "process-stale",
@@ -295,7 +292,7 @@ test("Client resource proxies return stale-handle disposal failures as values", 
     state: "running"
   } as const
   const client = Client(
-    { process: ProcessApi },
+    { process: ProcessRpcs },
     {
       ...responseExchange([], handle),
       resource: {
@@ -311,8 +308,8 @@ test("Client resource proxies return stale-handle disposal failures as values", 
 })
 
 test("Client resource proxies dispose only once", async () => {
-  const ProcessApi = makeProcessApi("ProjectApi.ResourceProxyIdempotent")
-  const disposed: ApiResourceHandle[] = []
+  const ProcessRpcs = makeProcessRpcs("ProjectRpcs.ResourceProxyIdempotent")
+  const disposed: BridgeResourceHandle[] = []
   const handle = {
     kind: "process",
     id: "process-once",
@@ -321,7 +318,7 @@ test("Client resource proxies dispose only once", async () => {
     state: "running"
   } as const
   const client = Client(
-    { process: ProcessApi },
+    { process: ProcessRpcs },
     {
       ...responseExchange([], handle),
       resource: {
@@ -341,7 +338,7 @@ test("Client resource proxies dispose only once", async () => {
 })
 
 test("Client abort signals propagate as typed bridge cancellation", async () => {
-  const ProcessApi = makeProjectApi("ProjectApi.ClientCancel")
+  const ProcessRpcs = makeProjectRpcs("ProjectRpcs.ClientCancel")
   const started = await Effect.runPromise(Deferred.make<void>())
   const states: string[] = []
   const runtime = Handlers.withOptions(
@@ -352,7 +349,7 @@ test("Client abort signals propagate as typed bridge cancellation", async () => 
           states.push(state.tag)
         })
     },
-    ProcessApi.layer({
+    BridgeRpc.layer(ProcessRpcs)({
       open: () =>
         Effect.gen(function* () {
           yield* Deferred.succeed(started, undefined)
@@ -364,7 +361,7 @@ test("Client abort signals propagate as typed bridge cancellation", async () => 
   const cancelRequests: HostProtocolCancelByRequestEnvelope[] = []
   const controller = new AbortController()
   const client = Client(
-    { project: ProcessApi },
+    { project: ProcessRpcs },
     {
       request: runtime.dispatch,
       cancel: (request) =>
@@ -404,11 +401,11 @@ test("Client abort signals propagate as typed bridge cancellation", async () => 
 })
 
 test("Client abort signals release callers when the exchange does not answer", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.ClientCancelNever")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.ClientCancelNever")
   const cancelRequests: HostProtocolCancelByRequestEnvelope[] = []
   const controller = new AbortController()
   const client = Client(
-    { project: ProjectApi },
+    { project: ProjectRpcs },
     {
       request: () => Effect.never,
       cancel: (request) =>
@@ -448,13 +445,13 @@ test("Client abort signals release callers when the exchange does not answer", a
 })
 
 test("Client pre-aborted signals fail typed without dispatching requests", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.ClientPreCancel")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.ClientPreCancel")
   const requests: HostProtocolRequestEnvelope[] = []
   const cancelRequests: HostProtocolCancelByRequestEnvelope[] = []
   const controller = new AbortController()
   controller.abort()
   const client = Client(
-    { project: ProjectApi },
+    { project: ProjectRpcs },
     {
       request: (request) => {
         requests.push(request)
@@ -487,7 +484,7 @@ test("Client pre-aborted signals fail typed without dispatching requests", async
   expect(cancelRequests).toEqual([])
 })
 
-type ProjectApiSpec = {
+type ProjectRpcSpec = {
   readonly open: {
     readonly input: typeof ProjectOpenInput
     readonly output: typeof ProjectOpenOutput
@@ -495,73 +492,37 @@ type ProjectApiSpec = {
   }
 }
 
-type ProcessApiSpec = {
+type ProcessRpcSpec = {
   readonly spawn: {
     readonly input: typeof Schema.Void
-    readonly output: ApiResourceSpec<"process", "running">
+    readonly output: BridgeRpcResourceSpec<"process", "running">
     readonly error: typeof ProjectOpenError
   }
 }
 
-const makeProcessApi = <Tag extends string>(tag: Tag): ApiContractClass<Tag, ProcessApiSpec> => {
-  const contract = class {
-    static readonly tag = tag
-    static readonly spec = Object.freeze({
-      spawn: Object.freeze({
-        input: Schema.Void,
-        output: Api.Resource("process", "running"),
-        error: ProjectOpenError
-      })
+const makeProcessRpcs = <Tag extends string>(tag: Tag): BridgeRpcGroup<Tag, ProcessRpcSpec> => {
+  const spec = Object.freeze({
+    spawn: Object.freeze({
+      input: Schema.Void,
+      output: BridgeRpc.Resource("process", "running"),
+      error: ProjectOpenError
     })
-    static readonly events = Object.freeze({})
-
-    static toRpcGroup() {
-      return apiContractToRpcGroup(contract.tag, contract.spec, contract.events)
-    }
-
-    static layer<Handlers extends ApiHandlers<ProcessApiSpec>>(
-      handlers: Handlers
-    ): ApiLayer<Tag, ProcessApiSpec, Handlers> {
-      return Object.freeze({
-        contract,
-        handlers: Object.freeze(handlers)
-      })
-    }
-  } as ApiContractClass<Tag, ProcessApiSpec>
-
-  return Object.freeze(contract)
+  })
+  return BridgeRpc.group(tag, spec, Object.freeze({}))
 }
 
-const makeProjectApi = <Tag extends string>(tag: Tag): ApiContractClass<Tag, ProjectApiSpec> => {
-  const contract = class {
-    static readonly tag = tag
-    static readonly spec = Object.freeze({
-      open: Object.freeze({
-        input: ProjectOpenInput,
-        output: ProjectOpenOutput,
-        error: ProjectOpenError
-      })
+const makeProjectRpcs = <Tag extends string>(tag: Tag): BridgeRpcGroup<Tag, ProjectRpcSpec> => {
+  const spec = Object.freeze({
+    open: Object.freeze({
+      input: ProjectOpenInput,
+      output: ProjectOpenOutput,
+      error: ProjectOpenError
     })
-    static readonly events = Object.freeze({})
-
-    static toRpcGroup() {
-      return apiContractToRpcGroup(contract.tag, contract.spec, contract.events)
-    }
-
-    static layer<Handlers extends ApiHandlers<ProjectApiSpec>>(
-      handlers: Handlers
-    ): ApiLayer<Tag, ProjectApiSpec, Handlers> {
-      return Object.freeze({
-        contract,
-        handlers: Object.freeze(handlers)
-      })
-    }
-  } as ApiContractClass<Tag, ProjectApiSpec>
-
-  return Object.freeze(contract)
+  })
+  return BridgeRpc.group(tag, spec, Object.freeze({}))
 }
 
-type VoidApiSpec = {
+type VoidRpcSpec = {
   readonly open: {
     readonly input: typeof Schema.Void
     readonly output: typeof ProjectOpenOutput
@@ -569,36 +530,18 @@ type VoidApiSpec = {
   }
 }
 
-const makeVoidApi = <Tag extends string>(tag: Tag): ApiContractClass<Tag, VoidApiSpec> => {
-  const contract = class {
-    static readonly tag = tag
-    static readonly spec = Object.freeze({
-      open: Object.freeze({
-        input: Schema.Void,
-        output: ProjectOpenOutput,
-        error: ProjectOpenError
-      })
+const makeVoidRpcs = <Tag extends string>(tag: Tag): BridgeRpcGroup<Tag, VoidRpcSpec> => {
+  const spec = Object.freeze({
+    open: Object.freeze({
+      input: Schema.Void,
+      output: ProjectOpenOutput,
+      error: ProjectOpenError
     })
-    static readonly events = Object.freeze({})
-
-    static toRpcGroup() {
-      return apiContractToRpcGroup(contract.tag, contract.spec, contract.events)
-    }
-
-    static layer<Handlers extends ApiHandlers<VoidApiSpec>>(
-      handlers: Handlers
-    ): ApiLayer<Tag, VoidApiSpec, Handlers> {
-      return Object.freeze({
-        contract,
-        handlers: Object.freeze(handlers)
-      })
-    }
-  } as ApiContractClass<Tag, VoidApiSpec>
-
-  return Object.freeze(contract)
+  })
+  return BridgeRpc.group(tag, spec, Object.freeze({}))
 }
 
-type EncodedInputApiSpec = {
+type EncodedInputRpcSpec = {
   readonly open: {
     readonly input: typeof Schema.NumberFromString
     readonly output: typeof ProjectOpenOutput
@@ -606,45 +549,27 @@ type EncodedInputApiSpec = {
   }
 }
 
-const makeEncodedInputApi = <Tag extends string>(
+const makeEncodedInputRpcs = <Tag extends string>(
   tag: Tag
-): ApiContractClass<Tag, EncodedInputApiSpec> => {
-  const contract = class {
-    static readonly tag = tag
-    static readonly spec = Object.freeze({
-      open: Object.freeze({
-        input: Schema.NumberFromString,
-        output: ProjectOpenOutput,
-        error: ProjectOpenError
-      })
+): BridgeRpcGroup<Tag, EncodedInputRpcSpec> => {
+  const spec = Object.freeze({
+    open: Object.freeze({
+      input: Schema.NumberFromString,
+      output: ProjectOpenOutput,
+      error: ProjectOpenError
     })
-    static readonly events = Object.freeze({})
-
-    static toRpcGroup() {
-      return apiContractToRpcGroup(contract.tag, contract.spec, contract.events)
-    }
-
-    static layer<Handlers extends ApiHandlers<EncodedInputApiSpec>>(
-      handlers: Handlers
-    ): ApiLayer<Tag, EncodedInputApiSpec, Handlers> {
-      return Object.freeze({
-        contract,
-        handlers: Object.freeze(handlers)
-      })
-    }
-  } as ApiContractClass<Tag, EncodedInputApiSpec>
-
-  return Object.freeze(contract)
+  })
+  return BridgeRpc.group(tag, spec, Object.freeze({}))
 }
 
 const responseExchange = (
   requests: HostProtocolRequestEnvelope[],
   response: unknown
-): ApiClientExchange => ({
+): BridgeClientExchange => ({
   request: (request) => {
     requests.push(request)
     return Effect.succeed(
-      isApiClientResponse(response)
+      isBridgeClientResponse(response)
         ? response
         : {
             kind: "success",
@@ -654,11 +579,11 @@ const responseExchange = (
   }
 })
 
-const failingExchange = (error: HostProtocolError): ApiClientExchange => ({
+const failingExchange = (error: HostProtocolError): BridgeClientExchange => ({
   request: () => Effect.fail(error)
 })
 
-const isApiClientResponse = (value: unknown): value is ApiClientResponse => {
+const isBridgeClientResponse = (value: unknown): value is BridgeClientResponse => {
   return (
     typeof value === "object" &&
     value !== null &&

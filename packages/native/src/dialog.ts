@@ -1,19 +1,18 @@
 import {
-  Api,
+  BridgeRpc,
   Client,
-  type ApiClientExchange,
-  type ApiClientOptions,
-  type ApiContractClass,
-  type ApiContractError,
-  type ApiContractSpec,
-  type ApiHandlers,
-  type ApiLayer,
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeRpcGroup,
+  type BridgeRpcSpec,
+  type BridgeRpcHandlers,
+  type BridgeRpcLayer,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Schema } from "effect"
+import { Context, Effect, Layer, Schema } from "effect"
 
 import {
   DialogConfirmInput,
@@ -35,7 +34,7 @@ const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export type DialogError = HostProtocolError
 
-export const DialogApiSpec = Object.freeze({
+export const DialogRpcSpec = Object.freeze({
   openFile: {
     input: DialogOpenFileInput,
     output: DialogOpenResult,
@@ -66,49 +65,22 @@ export const DialogApiSpec = Object.freeze({
     error: HostProtocolErrorSchema,
     permission: "native.invoke:Dialog.confirm"
   }
-}) satisfies ApiContractSpec
+}) satisfies BridgeRpcSpec
 
-export type DialogApiSpec = typeof DialogApiSpec
+export type DialogRpcSpec = typeof DialogRpcSpec
 
-export const DialogApiEvents = Object.freeze({})
+export const DialogRpcEvents = Object.freeze({})
 
-export type DialogApiEvents = typeof DialogApiEvents
+export type DialogRpcEvents = typeof DialogRpcEvents
 
-export const DialogApi: ApiContractClass<"Dialog", DialogApiSpec, DialogApiEvents> = (() => {
-  const contract = class {
-    static readonly tag = "Dialog"
-    static readonly spec = DialogApiSpec
-    static readonly events = DialogApiEvents
-
-    static layer<Handlers extends ApiHandlers<DialogApiSpec>>(
-      handlers: Handlers
-    ): ApiLayer<"Dialog", DialogApiSpec, Handlers, DialogApiEvents> {
-      return Object.freeze({
-        contract,
-        handlers: Object.freeze(handlers)
-      })
-    }
-  } as ApiContractClass<"Dialog", DialogApiSpec, DialogApiEvents>
-
-  return Object.freeze(contract)
-})()
-
-export const registerDialogApi = (): Effect.Effect<
-  ApiContractClass<"Dialog", DialogApiSpec, DialogApiEvents>,
-  ApiContractError,
-  never
-> =>
-  Effect.gen(function* () {
-    const existing = yield* Api.get("Dialog")
-    if (Option.isSome(existing)) {
-      return existing.value as ApiContractClass<"Dialog", DialogApiSpec, DialogApiEvents>
-    }
-
-    return yield* Api.Tag("Dialog")<unknown>()(DialogApiSpec, DialogApiEvents)
-  })
+export const DialogRpcs: BridgeRpcGroup<"Dialog", DialogRpcSpec, DialogRpcEvents> = BridgeRpc.group(
+  "Dialog",
+  DialogRpcSpec,
+  DialogRpcEvents
+)
 
 export const DialogMethodNames = Object.freeze(
-  Object.keys(DialogApiSpec) as ReadonlyArray<keyof DialogApiSpec>
+  Object.keys(DialogRpcSpec) as ReadonlyArray<keyof DialogRpcSpec>
 )
 
 export interface DialogClientApi {
@@ -161,14 +133,15 @@ export const makeDialogServiceLayer = (client: DialogClientApi): Layer.Layer<Dia
   Layer.provide(DialogLive, makeDialogClientLayer(client))
 
 export const makeDialogBridgeClientLayer = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions = {}
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
 ): Layer.Layer<DialogClient> =>
   Layer.succeed(DialogClient)(makeDialogBridgeClient(exchange, options))
 
-export const makeHostDialogApiLayer = <Handlers extends ApiHandlers<DialogApiSpec>>(
+export const makeHostDialogBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<DialogRpcSpec>>(
   handlers: Handlers
-): ApiLayer<"Dialog", DialogApiSpec, Handlers, DialogApiEvents> => DialogApi.layer(handlers)
+): BridgeRpcLayer<"Dialog", DialogRpcSpec, Handlers, DialogRpcEvents> =>
+  BridgeRpc.layer(DialogRpcs)(handlers)
 
 const makeDialogService = (client: DialogClientApi): DialogServiceApi => {
   const service: DialogServiceApi = {
@@ -184,10 +157,10 @@ const makeDialogService = (client: DialogClientApi): DialogServiceApi => {
 }
 
 const makeDialogBridgeClient = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
 ): DialogClientApi => {
-  const client = Client({ Dialog: DialogApi }, exchange, options).Dialog
+  const client = Client({ Dialog: DialogRpcs }, exchange, options).Dialog
 
   const dialogClient: DialogClientApi = {
     openFile: (input = {}) =>

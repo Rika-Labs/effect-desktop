@@ -3,8 +3,8 @@ import { posix, sep } from "node:path"
 import { Context, Data, Effect, Exit, Layer, Option, Stream } from "effect"
 
 import {
-  ApiStreamCompleteFrame,
-  ApiStreamDataFrame,
+  BridgeStreamCompleteFrame,
+  BridgeStreamDataFrame,
   Client,
   HOST_PING_METHOD,
   HOST_PROTOCOL_VERSION,
@@ -25,12 +25,12 @@ import {
   makeHostProtocolNotFoundError,
   makeStaleHandleError,
   makeHostWindowClient,
-  type ApiClient,
-  type ApiClientExchange,
-  type ApiClientOptions,
-  type ApiClientResponse,
-  type ApiContractClass,
-  type ApiResourceHandle,
+  type BridgeClient,
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeClientResponse,
+  type BridgeRpcGroup,
+  type BridgeResourceHandle,
   type HostHandshakeClient,
   type HostProtocolError,
   type HostProtocolInvalidArgumentError,
@@ -212,14 +212,14 @@ export interface MockBridgeCall {
 }
 
 export interface MockBridgeApi {
-  readonly exchange: ApiClientExchange
-  readonly client: <Contracts extends Readonly<Record<string, ApiContractClass>>>(
+  readonly exchange: BridgeClientExchange
+  readonly client: <Contracts extends Readonly<Record<string, BridgeRpcGroup>>>(
     contracts: Contracts,
-    options?: ApiClientOptions
-  ) => ApiClient<Contracts>
+    options?: BridgeClientOptions
+  ) => BridgeClient<Contracts>
   readonly calls: () => readonly MockBridgeCall[]
   readonly cancels: () => readonly HostProtocolCancelByRequestEnvelope[]
-  readonly disposedResources: () => readonly ApiResourceHandle[]
+  readonly disposedResources: () => readonly BridgeResourceHandle[]
   readonly succeed: (
     method: string,
     payload: unknown
@@ -227,7 +227,7 @@ export interface MockBridgeApi {
   readonly fail: (method: string, error: unknown) => Effect.Effect<void, HostProtocolError, never>
   readonly resource: (
     method: string,
-    handle: ApiResourceHandle
+    handle: BridgeResourceHandle
   ) => Effect.Effect<void, HostProtocolError, never>
   readonly streamChunks: (
     method: string,
@@ -247,14 +247,14 @@ export interface MockBridgeOptions {
 export const makeMockBridge = (options: MockBridgeOptions = {}): MockBridgeApi => {
   const calls: MockBridgeCall[] = []
   const cancels: HostProtocolCancelByRequestEnvelope[] = []
-  const disposedResources: ApiResourceHandle[] = []
-  const responses = new Map<string, ApiClientResponse[]>()
+  const disposedResources: BridgeResourceHandle[] = []
+  const responses = new Map<string, BridgeClientResponse[]>()
   const streams = new Map<string, readonly unknown[]>()
   const now = options.now ?? Date.now
 
   const enqueue = (
     method: string,
-    response: ApiClientResponse
+    response: BridgeClientResponse
   ): Effect.Effect<void, HostProtocolError, never> =>
     Effect.sync(() => {
       const queue = responses.get(method) ?? []
@@ -262,7 +262,7 @@ export const makeMockBridge = (options: MockBridgeOptions = {}): MockBridgeApi =
       responses.set(method, queue)
     })
 
-  const exchange: ApiClientExchange = Object.freeze({
+  const exchange: BridgeClientExchange = Object.freeze({
     request: (request: HostProtocolRequestEnvelope) =>
       Effect.gen(function* () {
         recordCall(calls, request)
@@ -291,13 +291,13 @@ export const makeMockBridge = (options: MockBridgeOptions = {}): MockBridgeApi =
       return Stream.fromIterable(chunks)
         .pipe(
           Stream.map((chunk) =>
-            streamEnvelope(request, now(), new ApiStreamDataFrame({ type: "data", chunk }))
+            streamEnvelope(request, now(), new BridgeStreamDataFrame({ type: "data", chunk }))
           )
         )
         .pipe(
           Stream.concat(
             Stream.succeed(
-              streamEnvelope(request, now(), new ApiStreamCompleteFrame({ type: "complete" }))
+              streamEnvelope(request, now(), new BridgeStreamCompleteFrame({ type: "complete" }))
             )
           )
         )
@@ -307,7 +307,7 @@ export const makeMockBridge = (options: MockBridgeOptions = {}): MockBridgeApi =
         cancels.push(request)
       }),
     resource: {
-      dispose: (handle: ApiResourceHandle) =>
+      dispose: (handle: BridgeResourceHandle) =>
         Effect.gen(function* () {
           disposedResources.push(handle)
 
@@ -961,14 +961,14 @@ const streamEnvelope = (
     payload
   })
 
-const bridgeHandleToCoreHandle = (handle: ApiResourceHandle): ResourceHandle =>
+const bridgeHandleToCoreHandle = (handle: BridgeResourceHandle): ResourceHandle =>
   Object.freeze({
     ...handle,
     id: handle.id as ResourceId,
     dispose: () => Effect.void
   })
 
-const coreHandleToBridgeHandle = (handle: ResourceHandle): ApiResourceHandle =>
+const coreHandleToBridgeHandle = (handle: ResourceHandle): BridgeResourceHandle =>
   Object.freeze({
     kind: handle.kind,
     id: handle.id,

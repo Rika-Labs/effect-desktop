@@ -26,7 +26,6 @@ import {
   BrowserHttpClient,
   BrowserKeyValueStore,
   createUnavailableDesktopClient,
-  defineDesktopApi,
   IndexedDb,
   IndexedDbDatabase,
   IndexedDbQueryBuilder,
@@ -169,17 +168,6 @@ test("createUnavailableDesktopClient exposes lowercase renderer namespaces", asy
   const exit = await Effect.runPromiseExit(client.window.create())
 
   expect(Exit.isFailure(exit)).toBe(true)
-})
-
-test("defineDesktopApi exposes lowerCamel operation hook objects", () => {
-  const notes = defineDesktopApi({
-    createNote: (input: { readonly title: string }) =>
-      Effect.succeed({ id: "note-1", title: input.title })
-  })
-
-  expect(typeof notes.createNote.useAction).toBe("function")
-  expect(Object.isFrozen(notes)).toBe(true)
-  expect(Object.isFrozen(notes.createNote)).toBe(true)
 })
 
 test("useDesktopQuery defaults to reload-only dependencies for inline operations", () => {

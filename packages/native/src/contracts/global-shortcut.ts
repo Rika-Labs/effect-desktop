@@ -1,9 +1,9 @@
-import { Api } from "@effect-desktop/bridge"
+import { BridgeRpc } from "@effect-desktop/bridge"
 import { Schema } from "effect"
 
 import { BridgeSafeNonEmptyString } from "./strings.js"
 
-const WindowResource = Api.Resource("window", "open")
+const WindowResource = BridgeRpc.Resource("window", "open")
 
 export const GlobalShortcutSupportReason = Schema.Literals([
   "wayland-no-global-shortcut",

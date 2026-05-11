@@ -1,15 +1,13 @@
 import {
-  Api,
+  BridgeRpc,
   Client,
-  apiContractToRpcGroup,
-  type ApiContractError,
-  type ApiContractClass,
-  type ApiContractSpec,
-  type ApiHandlers,
-  type ApiLayer,
-  type ApiClientExchange,
-  type ApiClientOptions,
-  ApiResourceHandleShape,
+  type BridgeRpcGroup,
+  type BridgeRpcSpec,
+  type BridgeRpcHandlers,
+  type BridgeRpcLayer,
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  BridgeResourceHandleShape,
   type HostWindowClientOptions,
   type HostWindowExchange,
   HostProtocolError as HostProtocolErrorSchema,
@@ -30,7 +28,6 @@ import {
   WindowBackgroundColorInput,
   WindowCreateInput,
   type WindowCreateOptions,
-  WindowFullscreenInput,
   type WindowHandle,
   WindowHandleInput,
   WindowPositionInput,
@@ -50,7 +47,7 @@ const UnsupportedWindowMethodSupport = Object.freeze({
 }) satisfies RpcSupportMetadata
 export type WindowError = HostProtocolError
 
-export const WindowApiSpec = Object.freeze({
+export const WindowRpcSpec = Object.freeze({
   create: {
     input: WindowCreateInput,
     output: WindowResource,
@@ -103,18 +100,11 @@ export const WindowApiSpec = Object.freeze({
     permission: "native.invoke:Window.setHasShadow",
     support: UnsupportedWindowMethodSupport
   },
-  setFullscreen: {
-    input: WindowFullscreenInput,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Window.setFullscreen",
-    support: UnsupportedWindowMethodSupport
-  },
   enterFullScreen: unsupportedMethodSpec(WindowHandleInput, "native.invoke:Window.enterFullScreen"),
   exitFullScreen: unsupportedMethodSpec(WindowHandleInput, "native.invoke:Window.exitFullScreen"),
   onFullScreenChanged: {
     input: WindowHandleInput,
-    output: Api.Stream(WindowFullScreenChanged, HostProtocolErrorSchema),
+    output: BridgeRpc.Stream(WindowFullScreenChanged, HostProtocolErrorSchema),
     error: HostProtocolErrorSchema,
     permission: "native.invoke:Window.onFullScreenChanged",
     support: UnsupportedWindowMethodSupport
@@ -128,56 +118,24 @@ export const WindowApiSpec = Object.freeze({
   },
   onScaleChanged: {
     input: WindowHandleInput,
-    output: Api.Stream(WindowScaleChanged, HostProtocolErrorSchema),
+    output: BridgeRpc.Stream(WindowScaleChanged, HostProtocolErrorSchema),
     error: HostProtocolErrorSchema,
     permission: "native.invoke:Window.onScaleChanged",
     support: UnsupportedWindowMethodSupport
   },
   persistState: unsupportedMethodSpec(WindowHandleInput, "native.invoke:Window.persistState")
-}) satisfies ApiContractSpec
+}) satisfies BridgeRpcSpec
 
-export type WindowApiSpec = typeof WindowApiSpec
+export type WindowRpcSpec = typeof WindowRpcSpec
 
-export const WindowApi: ApiContractClass<"Window", WindowApiSpec> = (() => {
-  const rpcGroup = apiContractToRpcGroup("Window", WindowApiSpec, {})
-  const contract = class {
-    static readonly tag = "Window"
-    static readonly spec = WindowApiSpec
-    static readonly events = Object.freeze({})
-
-    static toRpcGroup() {
-      return rpcGroup
-    }
-
-    static layer<Handlers extends ApiHandlers<WindowApiSpec>>(
-      handlers: Handlers
-    ): ApiLayer<"Window", WindowApiSpec, Handlers> {
-      return Object.freeze({
-        contract,
-        handlers: Object.freeze(handlers)
-      })
-    }
-  } as ApiContractClass<"Window", WindowApiSpec>
-
-  return Object.freeze(contract)
-})()
-
-export const registerWindowApi = (): Effect.Effect<
-  ApiContractClass<"Window", WindowApiSpec>,
-  ApiContractError,
-  never
-> =>
-  Effect.gen(function* () {
-    const existing = yield* Api.get("Window")
-    if (Option.isSome(existing)) {
-      return existing.value as ApiContractClass<"Window", WindowApiSpec>
-    }
-
-    return yield* Api.Tag("Window")<unknown>()(WindowApiSpec)
-  })
+export const WindowRpcs: BridgeRpcGroup<"Window", WindowRpcSpec> = BridgeRpc.group(
+  "Window",
+  WindowRpcSpec,
+  Object.freeze({})
+)
 
 export const WindowMethodNames = Object.freeze(
-  Object.keys(WindowApiSpec) as ReadonlyArray<keyof WindowApiSpec>
+  Object.keys(WindowRpcSpec) as ReadonlyArray<keyof WindowRpcSpec>
 )
 
 export interface WindowClientApi {
@@ -209,10 +167,6 @@ export interface WindowClientApi {
   readonly setHasShadow: (
     window: WindowHandle,
     hasShadow: boolean
-  ) => Effect.Effect<void, WindowError, never>
-  readonly setFullscreen: (
-    window: WindowHandle,
-    fullscreen: boolean
   ) => Effect.Effect<void, WindowError, never>
   readonly enterFullScreen: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
   readonly exitFullScreen: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
@@ -254,18 +208,18 @@ export const makeWindowServiceLayer = (client: WindowClientApi): Layer.Layer<Win
   Layer.provide(WindowLive, makeWindowClientLayer(client))
 
 export const makeWindowBridgeClientLayer = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions = {}
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
 ): Layer.Layer<WindowClient> =>
   Layer.succeed(WindowClient)(makeWindowBridgeClient(exchange, options))
 
-export const makeHostWindowApiLayer = (
+export const makeHostWindowBridgeRpcLayer = (
   exchange: HostWindowExchange,
-  options: HostWindowApiOptions = {}
-): ApiLayer<"Window", WindowApiSpec, ApiHandlers<WindowApiSpec>> =>
-  WindowApi.layer(makeHostWindowHandlers(exchange, options))
+  options: HostWindowRpcOptions = {}
+): BridgeRpcLayer<"Window", WindowRpcSpec, BridgeRpcHandlers<WindowRpcSpec>> =>
+  BridgeRpc.layer(WindowRpcs)(makeHostWindowHandlers(exchange, options))
 
-export interface HostWindowApiOptions extends HostWindowClientOptions {
+export interface HostWindowRpcOptions extends HostWindowClientOptions {
   readonly appEventRouter?: AppEventRouterApi
 }
 
@@ -292,7 +246,6 @@ const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
     setBackgroundColor: (window, color) => client.setBackgroundColor(window, color),
     setVibrancy: (window, material) => client.setVibrancy(window, material),
     setHasShadow: (window, hasShadow) => client.setHasShadow(window, hasShadow),
-    setFullscreen: (window, fullscreen) => client.setFullscreen(window, fullscreen),
     enterFullScreen: (window) => client.enterFullScreen(window),
     exitFullScreen: (window) => client.exitFullScreen(window),
     onFullScreenChanged: (window) => client.onFullScreenChanged(window),
@@ -305,10 +258,10 @@ const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
 }
 
 const makeWindowBridgeClient = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
 ): WindowClientApi => {
-  const client = Client({ Window: WindowApi }, exchange, options).Window
+  const client = Client({ Window: WindowRpcs }, exchange, options).Window
   const unsupported = (method: string) => Effect.fail(unsupportedError(method))
 
   const windowClient: WindowClientApi = {
@@ -341,7 +294,6 @@ const makeWindowBridgeClient = (
     setBackgroundColor: () => unsupported("Window.setBackgroundColor"),
     setVibrancy: () => unsupported("Window.setVibrancy"),
     setHasShadow: () => unsupported("Window.setHasShadow"),
-    setFullscreen: () => unsupported("Window.setFullscreen"),
     enterFullScreen: () => unsupported("Window.enterFullScreen"),
     exitFullScreen: () => unsupported("Window.exitFullScreen"),
     onFullScreenChanged: () => Stream.fail(unsupportedError("Window.onFullScreenChanged")),
@@ -355,8 +307,8 @@ const makeWindowBridgeClient = (
 
 const makeHostWindowHandlers = (
   exchange: HostWindowExchange,
-  options: HostWindowApiOptions
-): ApiHandlers<WindowApiSpec> => {
+  options: HostWindowRpcOptions
+): BridgeRpcHandlers<WindowRpcSpec> => {
   const host = makeHostWindowClient(exchange, options)
   const knownWindowIds = new Set<string>()
   const unsupported = (method: string) => Effect.fail(unsupportedError(method))
@@ -433,7 +385,6 @@ const makeHostWindowHandlers = (
     setBackgroundColor: () => unsupported("Window.setBackgroundColor"),
     setVibrancy: () => unsupported("Window.setVibrancy"),
     setHasShadow: () => unsupported("Window.setHasShadow"),
-    setFullscreen: () => unsupported("Window.setFullscreen"),
     enterFullScreen: () => unsupported("Window.enterFullScreen"),
     exitFullScreen: () => unsupported("Window.exitFullScreen"),
     onFullScreenChanged: () => Stream.fail(unsupportedError("Window.onFullScreenChanged")),
@@ -461,7 +412,6 @@ export const makeUnsupportedWindowClient = (): WindowClientApi => {
     setBackgroundColor: () => unsupportedEffect<void>("Window.setBackgroundColor"),
     setVibrancy: () => unsupportedEffect<void>("Window.setVibrancy"),
     setHasShadow: () => unsupportedEffect<void>("Window.setHasShadow"),
-    setFullscreen: () => unsupportedEffect<void>("Window.setFullscreen"),
     enterFullScreen: () => unsupportedEffect<void>("Window.enterFullScreen"),
     exitFullScreen: () => unsupportedEffect<void>("Window.exitFullScreen"),
     onFullScreenChanged: () =>
@@ -495,7 +445,7 @@ const toHostWindowCreateInput = (input: WindowCreateOptions): WindowCreateOption
 }
 
 const toWindowHandle = (handle: WindowHandle): WindowHandle =>
-  new ApiResourceHandleShape({
+  new BridgeResourceHandleShape({
     kind: handle.kind,
     id: handle.id,
     generation: handle.generation,

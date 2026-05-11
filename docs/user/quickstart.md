@@ -1,6 +1,6 @@
 # Quickstart
 
-Start with the basic React Tailwind template and keep native calls behind the React desktop client.
+Start with the basic React Tailwind template and keep native calls behind imported RPC groups.
 
 ## From this repository
 
@@ -15,27 +15,32 @@ The current development loop uses Vite. `desktop dev` is not implemented yet.
 ## Runnable Example
 
 ```ts run
-import { defineDesktopApi, useDesktopClient } from "../packages/react/src/index.js"
+import { ReactDesktop } from "../packages/react/src/index.js"
+import { WindowRpcs } from "../packages/native/src/index.js"
 
-if (typeof defineDesktopApi !== "function" || typeof useDesktopClient !== "function") {
-  throw new Error("React desktop client helpers are unavailable")
+if (typeof ReactDesktop.from !== "function" || WindowRpcs === undefined) {
+  throw new Error("React desktop RPC helpers are unavailable")
 }
 ```
 
 ## First renderer action
 
 ```tsx
-import { defineDesktopApi, useDesktopClient } from "@effect-desktop/react"
+import { Desktop } from "@effect-desktop/core"
+import { WindowRpcs } from "@effect-desktop/native"
+import { ReactDesktop } from "@effect-desktop/react"
+import { App } from "./desktop"
+
+const DesktopApp = ReactDesktop.from(Desktop.manifest(App))
 
 export function Toolbar() {
-  const desktop = useDesktopClient()
-  const windowApi = defineDesktopApi(desktop.window)
-  const createWindow = windowApi.create.useAction()
+  const window = DesktopApp.useDesktop(WindowRpcs)
+  const createWindow = window.create.useMutation()
 
   return (
     <button
       disabled={createWindow.status === "running"}
-      onClick={() => createWindow.run({ title: "Notes", width: 960, height: 640 })}
+      onClick={() => createWindow.run({ title: "Notes" })}
     >
       Open
     </button>

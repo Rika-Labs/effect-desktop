@@ -40,20 +40,6 @@ export {
 } from "./provider.js"
 
 export {
-  defineApi,
-  mutation,
-  query,
-  stream,
-  type MutationEndpoint,
-  type QueryEndpoint,
-  type QueryHook,
-  type QueryResult,
-  type ReactApiEndpoint,
-  type StreamEndpoint,
-  type StreamHook
-} from "./api.js"
-
-export {
   MissingDesktopContextError,
   MissingDesktopRpcClientError,
   ReactDesktop,
@@ -102,7 +88,6 @@ export { useAtom, useAtomValue, useAtomSet } from "./atoms.js"
 
 export {
   useDesktopStream,
-  useStream,
   useSubscribable,
   useEffectResult,
   type DesktopStreamOptions,
@@ -110,23 +95,20 @@ export {
   type StreamStatus
 } from "./hooks/stream.js"
 
+export type { QueryResult } from "./endpoints.js"
+
 export {
-  defineDesktopApi,
-  defineDesktopOperation,
   statusOf,
   useDesktopAction,
   useDesktopQuery,
   useDesktopResource,
   useResource,
-  type DesktopApi,
   type DesktopAction,
   type DesktopActionConcurrency,
   type DesktopActionOptions,
   type DesktopAsyncState,
   type DesktopAsyncStatus,
   type DesktopDisposable,
-  type DesktopEffectOperation,
-  type DesktopOperation,
   type DesktopQuery,
   type DesktopResourceState
 } from "./hooks/desktop.js"

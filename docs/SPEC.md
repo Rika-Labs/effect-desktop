@@ -761,14 +761,14 @@ create-effect-desktop
 
 - `Desktop.run`
 - `Desktop.window`
-- `Desktop.Api`
+- `Desktop.Rpcs`
 - `Desktop.Resource`
 - `Desktop.Command`
 - `Desktop.Capability`
 - `Desktop.Errors`
 - `Desktop.Config`
 
-`Desktop.*` are thin facades over Effect v4 primitives (per §4.4.1). `Desktop.Errors.*` are `Schema.Class<E>` declarations. `Desktop.Api.Tag` builds on `Effect.Service` and `Schema`. `Desktop.Stream` is `Stream.Stream<A, E, R>` re-exported with stream-contract metadata. Framework facades exist to keep app-author code terse; they must not hide v4 semantics.
+`Desktop.*` are thin facades over Effect v4 primitives (per §4.4.1). `Desktop.Errors.*` are `Schema.Class<E>` declarations. `Desktop.Rpcs.layer(...)` binds an Effect `RpcGroup` to its handler layer. `Desktop.Stream` is `Stream.Stream<A, E, R>` re-exported with stream-contract metadata. Framework facades exist to keep app-author code terse; they must not hide v4 semantics.
 
 ### Required implementation traits
 
@@ -1815,31 +1815,33 @@ A private low-level bridge may exist internally for generated clients, but appli
 ## 10.3 API contract shape
 
 ```ts
-export class ProjectApi extends Desktop.Api.Tag("ProjectApi")<ProjectApi>()({
-  open: {
-    input: Schema.Struct({ path: Schema.String }),
-    output: Project,
-    error: Schema.Union(
-      Desktop.Errors.PermissionDenied,
-      Desktop.Errors.FileNotFound
-    ),
-    permission: "project:open",
-    timeoutMs: 30_000,
-    idempotent: true,
-    cancellable: true
-  },
+import { Schema } from "effect"
+import { Rpc } from "effect/unstable/rpc"
+import { Desktop } from "@effect-desktop/core"
 
-  watch: {
-    input: Schema.Struct({ projectId: Schema.String }),
-    output: Desktop.Stream(ProjectEvent),
-    error: Schema.Union(
-      Desktop.Errors.PermissionDenied,
-      Desktop.Errors.NotFound
-    ),
-    permission: "project:watch",
-    backpressure: { strategy: "buffer", size: 1024, overflow: "error" }
-  }
-}) {}
+export const ProjectOpen = Rpc.make("project.open", {
+  payload: Schema.Struct({ path: Schema.String }),
+  success: Project,
+  error: Schema.Union(
+    Desktop.Errors.PermissionDenied,
+    Desktop.Errors.FileNotFound
+  )
+}).pipe(
+  Desktop.RpcEndpoint.mutation,
+  Desktop.RpcCapability({ kind: "project:open" })
+)
+
+export const ProjectWatch = Rpc.make("project.watch", {
+  payload: Schema.Struct({ projectId: Schema.String }),
+  success: ProjectEvent,
+  error: Schema.Union(
+    Desktop.Errors.PermissionDenied,
+    Desktop.Errors.NotFound
+  )
+}).pipe(
+  Desktop.RpcEndpoint.query,
+  Desktop.RpcCapability({ kind: "project:watch" })
+)
 ```
 
 ### Required and default fields
@@ -2115,7 +2117,6 @@ Sizes, positions, and bounds returned or accepted by §11 primitives are in **lo
 - `App.registerProtocol(scheme)` — registers a custom URL scheme handler.
 - `App.onOpenFile` — file association open event.
 - `App.onOpenUrl` — custom URL scheme open event.
-- `App.onProtocolUrl` — alias for `onOpenUrl`, retained for clarity in apps that distinguish file-vs-protocol activation.
 - `App.onBeforeQuit`
 ### Required implementation details
 
@@ -2167,7 +2168,6 @@ Sizes, positions, and bounds returned or accepted by §11 primitives are in **lo
 - `Window.setBackgroundColor`
 - `Window.setVibrancy(material)` — macOS only; `Unsupported` elsewhere.
 - `Window.setHasShadow`
-- `Window.setFullscreen` — alias for `enterFullScreen` retained for compatibility.
 - `Window.enterFullScreen`
 - `Window.exitFullScreen`
 - `Window.onFullScreenChanged`
@@ -3771,7 +3771,7 @@ A capability grants concrete authority to a window, resource, or operation. Capa
 
 ```ts
 const MainWindow = Desktop.window({ id: "main", route: "/" })
-  .allow(ProjectApi)
+  .allow(ProjectRpcs)
   .allow(Desktop.Dialog, ["openFile", "openDirectory"])
   .allow(Desktop.Clipboard, ["readText", "writeText"])
 ```
@@ -4393,7 +4393,7 @@ The resolved config must produce:
 - `hostManifest`: `{ nativeHost, systemWebView, windows, protocols, signingHints }`;
 - `runtimeManifest`: `{ engine, entry, env, permissions, telemetry, protocolLimits }`;
 - `rendererManifest`: `{ framework, entry, assetBaseUrl, csp, navigationPolicy }`;
-- `bridgeManifest`: `{ protocolVersion, generatedAt, apiContracts, errorRegistryHash }`;
+- `bridgeManifest`: `{ protocolVersion, generatedAt, rpcGroups, errorRegistryHash }`;
 - `permissionManifest`: `{ normalizedCapabilities, approvalDefaults, redactionPolicy }`;
 - `packageManifest`: `{ targets, artifactLayout, bundleId, resources, signing }`;
 - `updateManifestInput`: `{ channel, feedUrl, publicKey, keyVersion, minVersion?, maxVersion? }`.
@@ -4530,7 +4530,7 @@ export const MainWindow = Desktop.window({
     minHeight: 600
   },
   titleBarStyle: "default"
-}).allow(ProjectApi)
+}).allow(ProjectRpcs)
 ```
 
 Requirements:
@@ -4556,50 +4556,7 @@ export class Project extends Schema.Class<Project>("Project")({
   name: Schema.String
 }) {}
 
-export class ProjectApi extends Desktop.Api.Tag("ProjectApi")<ProjectApi>()({
-  list: {
-    input: Schema.Void,
-    output: Schema.Array(Project),
-    error: Schema.Never,
-    permission: "project:list"
-  },
-
-  open: {
-    input: Schema.Struct({ path: Schema.String }),
-    output: Project,
-    error: Schema.Union(
-      Desktop.Errors.PermissionDenied,
-      Desktop.Errors.FileNotFound
-    ),
-    permission: "project:open"
-  }
-}) {}
-```
-
-Requirements:
-
-- every method declares input schema;
-- every method declares output schema;
-- every method declares error schema;
-- dangerous methods declare permission;
-- methods can declare timeout;
-- streaming methods declare backpressure;
-- binary methods declare transport preferences.
-
-### 18.3.1 Canonical RPC boundary
-
-New renderer-callable APIs use Effect `RpcGroup` as the canonical contract model. `Desktop.Api.Tag` is a compatibility surface and must lower into `RpcGroup`; it is not a second source of truth.
-
-```ts
-import { Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
-import { Desktop } from "@effect-desktop/core"
-
-export class Project extends Schema.Class<Project>("Project")({
-  id: Schema.String,
-  path: Schema.String,
-  name: Schema.String
-}) {}
 
 export const ProjectList = Rpc.make("project.list", {
   success: Schema.Array(Project),
@@ -4624,15 +4581,12 @@ export const ProjectRpcs = RpcGroup.make(ProjectList, ProjectOpen)
 Requirements:
 
 - `RpcGroup` is the canonical renderer-callable API boundary;
-- `Desktop.Api.Tag(...).toRpcGroup()` preserves legacy methods, streams, events, permissions, endpoint intent, and support metadata;
 - permissions and native support state are annotations on the RPC value, not duplicated in framework adapters;
 - app code imports the contract value and passes it to framework adapters; string API lookup is not a public contract path.
 
 ## 18.4 Service implementation
 
-Two equivalent shapes are supported. Apps choose the form that fits their dependency graph; both compose under Effect v4 layers.
-
-The canonical implementation shape for renderer-callable APIs is `RpcGroup.toLayer`. `Api.layer(...)` remains for compatibility with legacy `Desktop.Api.Tag` contracts.
+The implementation shape for renderer-callable APIs is `RpcGroup.toLayer`.
 
 ```ts
 import { Effect } from "effect"
@@ -4657,28 +4611,6 @@ export const App = Desktop.make({
     main: { title: "Example App", renderer: "/" }
   }
 }).pipe(Desktop.provide(Desktop.Rpcs.layer(ProjectRpcs, ProjectRpcsLive)))
-```
-
-### 18.4.1 Contract-driven (`Api.layer(...)`)
-
-The framework's `Desktop.Api.Tag` produces a `.layer({ ... })` builder that maps each contract method to a handler. Each handler returns an `Effect`.
-
-```ts
-import { Effect } from "effect"
-
-export const ProjectApiLive = ProjectApi.layer({
-  list: Effect.gen(function* () {
-    const store = yield* ProjectStore
-    return yield* store.list()
-  }),
-
-  open: ({ path }) =>
-    Effect.gen(function* () {
-      yield* Desktop.Permissions.require("project:open", { path })
-      const store = yield* ProjectStore
-      return yield* store.open(path)
-    })
-})
 ```
 
 ### 18.4.2 Class-based service (`Effect.Service`)
@@ -6802,7 +6734,7 @@ Each ADR must include:
 
 ## 27.11 ADR-0022: RpcGroup is the desktop app boundary
 
-**Decision:** `RpcGroup` is the canonical renderer-callable API boundary; `Desktop.Api.Tag` lowers into `RpcGroup` for compatibility.
+**Decision:** `RpcGroup` is the renderer-callable API boundary.
 
 **Reason:** One contract value must drive runtime implementation, app assembly, framework adapters, permissions, support metadata, and examples.
 
@@ -7040,7 +6972,8 @@ export interface WindowService {
   setTitle(input: unknown): Effect.Effect<unknown, DesktopError, never>
   setSize(input: unknown): Effect.Effect<unknown, DesktopError, never>
   setPosition(input: unknown): Effect.Effect<unknown, DesktopError, never>
-  setFullscreen(input: unknown): Effect.Effect<unknown, DesktopError, never>
+  enterFullScreen(input: unknown): Effect.Effect<unknown, DesktopError, never>
+  exitFullScreen(input: unknown): Effect.Effect<unknown, DesktopError, never>
   persistState(input: unknown): Effect.Effect<unknown, DesktopError, never>
 }
 ```
@@ -10847,7 +10780,7 @@ Release notes must include:
 - known issues;
 - validation status.
 
-## J.5 Backward compatibility rules
+## J.5 Post-v1 compatibility rules
 
 Post-v1 changes require:
 
@@ -10877,12 +10810,12 @@ Grouped rows are allowed only when every method in the group has identical behav
 | `App.requestSingleInstanceLock` | ✓ (flock) | ✓ (named mutex `Global\<bundle>`) | ✓ (flock) |
 | `App.onSecondInstance` | ✓ | ✓ | ✓ |
 | `App.setOpenAtLogin` | ✓ (`SMAppService`) | ✓ (HKCU Run key) | ✓ (`~/.config/autostart`) |
-| `App.registerProtocol`, `App.onOpenUrl`, `App.onProtocolUrl` | ✓ | ✓ | partial(distro-dep, requires `xdg-mime`) |
+| `App.registerProtocol`, `App.onOpenUrl` | ✓ | ✓ | partial(distro-dep, requires `xdg-mime`) |
 | `App.onOpenFile` | ✓ | ✓ | partial(file-manager-dep) |
 | `Window.create`, `show`, `hide`, `focus`, `close`, `setTitle`, `setSize`, `setPosition`, `setBackgroundColor`, `persistState` | ✓ | ✓ | ✓ |
 | `Window.setVibrancy` | ✓ | error(`Unsupported`, "no vibrancy on Windows") | error(`Unsupported`, "no vibrancy on Linux") |
 | `Window.setHasShadow` | ✓ | ✓ | partial(compositor-dep) |
-| `Window.setFullscreen`, `enterFullScreen`, `exitFullScreen`, `onFullScreenChanged` | ✓ | ✓ | partial(WM-dep) |
+| `Window.enterFullScreen`, `exitFullScreen`, `onFullScreenChanged` | ✓ | ✓ | partial(WM-dep) |
 | `Window.getScaleFactor`, `Window.onScaleChanged` | ✓ | ✓ | ✓ |
 | `WebView.create`, `loadRoute`, `reload`, `goBack`, `goForward`, `destroy`, `setNavigationPolicy` | ✓ | ✓ | ✓ |
 | `WebView.loadUrl` | ✓ | ✓ | ✓ (subject to navigation policy) |

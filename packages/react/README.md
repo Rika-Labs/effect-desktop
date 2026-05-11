@@ -20,7 +20,7 @@ transport, and React owns component state and cleanup.
 - Stream endpoints expose `useStream(input?, options?)`.
 - Every endpoint exposes `support` and `isSupported` metadata.
 - `useDesktopStream`, `useResource`, `usePermission`, `useWindow`, and the low-level
-  `DesktopProvider` remain compatibility utilities for existing renderer clients.
+  `DesktopProvider` remain explicit lower-level hooks for renderer clients that need them.
 
 `DesktopRoot` accepts an optional `transport` for tests and custom renderers. Normal
 desktop applications do not pass client maps by hand; the host installs the renderer

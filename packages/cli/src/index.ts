@@ -1251,7 +1251,7 @@ const writeBridgeManifest = (
     yield* writeJson(path, {
       protocolVersion: HOST_PROTOCOL_VERSION,
       generatedAt: new Date(0).toISOString(),
-      apiContracts: [],
+      rpcGroups: [],
       errorRegistryHash: HOST_PROTOCOL_VERSION
     })
     return {

@@ -59,21 +59,6 @@
       "signature": "export type CurrentWindowSetTitleMutation = MutationResult< CurrentWindowSetTitleInput, void, WindowError >"
     },
     {
-      "name": "defineApi",
-      "kind": "value",
-      "signature": "const defineApi: <const Api extends Readonly<Record<string, unknown>>>(api: Api) => Api"
-    },
-    {
-      "name": "defineDesktopApi",
-      "kind": "value",
-      "signature": "const defineDesktopApi: <Operations extends { readonly [Key in keyof Operations]: AnyDesktopEffectOperation; }>(operations: Operations) => DesktopApi<Operations>"
-    },
-    {
-      "name": "defineDesktopOperation",
-      "kind": "value",
-      "signature": "const defineDesktopOperation: <Args extends readonly unknown[], A, E>(effect: DesktopEffectOperation<Args, A, E>) => DesktopOperation<Args, A, E>"
-    },
-    {
       "name": "DesktopAction",
       "kind": "interface",
       "signature": "export interface DesktopAction<Args extends readonly unknown[], A, E> { readonly state: DesktopAsyncState<A, E> readonly status: DesktopAsyncStatus readonly run: (...args: Args) => void readonly cancel: () => void readonly reset: () => void }"
@@ -87,11 +72,6 @@
       "name": "DesktopActionOptions",
       "kind": "interface",
       "signature": "export interface DesktopActionOptions { readonly concurrency?: DesktopActionConcurrency | undefined }"
-    },
-    {
-      "name": "DesktopApi",
-      "kind": "type",
-      "signature": "export type DesktopApi< Operations extends { readonly [Key in keyof Operations]: AnyDesktopEffectOperation } > = { readonly [Key in keyof Operations]: DesktopOperationFor<Operations[Key]> }"
     },
     {
       "name": "DesktopAsyncState",
@@ -112,16 +92,6 @@
       "name": "DesktopDisposable",
       "kind": "interface",
       "signature": "export interface DesktopDisposable<E = never> { readonly dispose: () => Effect.Effect<void, E, never> }"
-    },
-    {
-      "name": "DesktopEffectOperation",
-      "kind": "type",
-      "signature": "export type DesktopEffectOperation<Args extends readonly unknown[], A, E> = ( ...args: Args ) => Effect.Effect<A, E, never>"
-    },
-    {
-      "name": "DesktopOperation",
-      "kind": "interface",
-      "signature": "export interface DesktopOperation<Args extends readonly unknown[], A, E> { readonly useAction: (options?: DesktopActionOptions) => DesktopAction<Args, A, E> }"
     },
     {
       "name": "DesktopProvider",
@@ -214,16 +184,6 @@
       "signature": "export class MissingDesktopRpcClientError extends Data.TaggedError(\"MissingDesktopRpcClientError\")<{ readonly framework: DesktopFramework readonly message: string readonly tag: string readonly code: string readonly category: DesktopPublicErrorCategory readonly summary: string readonly details: Readonly<Record<string, unknown>> readonly actor: string readonly remediation: string readonly docsUrl: string }> {}"
     },
     {
-      "name": "mutation",
-      "kind": "value",
-      "signature": "const mutation: <I, A, E>(makeEffect: (input: I) => Effect.Effect<A, E, never>) => MutationEndpoint<I, A, E>"
-    },
-    {
-      "name": "MutationEndpoint",
-      "kind": "interface",
-      "signature": "export interface MutationEndpoint<I, A, E> { readonly useMutation: () => MutationResult<I, A, E> }"
-    },
-    {
       "name": "MutationResult",
       "kind": "interface",
       "signature": "export interface MutationResult<I, A, E> { readonly state: MutationState<A, E> readonly status: MutationStatus readonly isIdle: boolean readonly isRunning: boolean readonly isSuccess: boolean readonly isFailure: boolean readonly run: MutationRun<I> readonly runPromise: MutationRunPromise<I, A, E> readonly reset: () => void }"
@@ -289,29 +249,9 @@
       "signature": "export type PowerState = StreamState<PowerEvent, PowerMonitorError>"
     },
     {
-      "name": "query",
-      "kind": "value",
-      "signature": "const query: <I, A, E>(makeEffect: (input: I) => Effect.Effect<A, E, never>) => QueryEndpoint<I, A, E>"
-    },
-    {
-      "name": "QueryEndpoint",
-      "kind": "interface",
-      "signature": "export interface QueryEndpoint<I, A, E> { readonly useQuery: QueryHook<I, A, E> }"
-    },
-    {
-      "name": "QueryHook",
-      "kind": "type",
-      "signature": "export type QueryHook<I, A, E> = [I] extends [void] ? () => QueryResult<A, E> : undefined extends I ? (input?: I) => QueryResult<A, E> : (input: I) => QueryResult<A, E>"
-    },
-    {
       "name": "QueryResult",
       "kind": "type",
       "signature": "export type QueryResult<A, E> = AsyncResult.AsyncResult<A, E>"
-    },
-    {
-      "name": "ReactApiEndpoint",
-      "kind": "type",
-      "signature": "export type ReactApiEndpoint = | QueryEndpoint<unknown, unknown, unknown> | MutationEndpoint<unknown, unknown, unknown> | StreamEndpoint<unknown, unknown, unknown>"
     },
     {
       "name": "ReactDesktop",
@@ -402,21 +342,6 @@
       "name": "statusOf",
       "kind": "value",
       "signature": "const statusOf: <A, E>(state: DesktopAsyncState<A, E>) => DesktopAsyncStatus"
-    },
-    {
-      "name": "stream",
-      "kind": "value",
-      "signature": "const stream: <I, A, E>(makeStream: (input: I) => Stream.Stream<A, E, never>) => StreamEndpoint<I, A, E>"
-    },
-    {
-      "name": "StreamEndpoint",
-      "kind": "interface",
-      "signature": "export interface StreamEndpoint<I, A, E> { readonly useStream: StreamHook<I, A, E> }"
-    },
-    {
-      "name": "StreamHook",
-      "kind": "type",
-      "signature": "export type StreamHook<I, A, E> = [I] extends [void] ? () => StreamState<A, E> : undefined extends I ? (input?: I) => StreamState<A, E> : (input: I) => StreamState<A, E>"
     },
     {
       "name": "StreamState",
@@ -564,11 +489,6 @@
       "signature": "const useSetWindowTitleMutation: () => WindowSetTitleMutation"
     },
     {
-      "name": "useStream",
-      "kind": "value",
-      "signature": "const useStream: <A, E>(stream: Stream.Stream<A, E, never>, options?: DesktopStreamOptions<A>) => StreamState<A, E>"
-    },
-    {
       "name": "useSubscribable",
       "kind": "value",
       "signature": "const useSubscribable: <A>(ref: SubscriptionRef.SubscriptionRef<A>) => A | undefined"
@@ -616,7 +536,7 @@
     {
       "name": "WindowHandle",
       "kind": "type",
-      "signature": "export type WindowHandle = ApiResourceHandle<\"window\", \"open\">"
+      "signature": "export type WindowHandle = BridgeResourceHandle<\"window\", \"open\">"
     },
     {
       "name": "windows",

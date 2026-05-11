@@ -48,32 +48,6 @@ export interface DesktopDisposable<E = never> {
   readonly dispose: () => Effect.Effect<void, E, never>
 }
 
-export type DesktopEffectOperation<Args extends readonly unknown[], A, E> = (
-  ...args: Args
-) => Effect.Effect<A, E, never>
-
-export interface DesktopOperation<Args extends readonly unknown[], A, E> {
-  readonly useAction: (options?: DesktopActionOptions) => DesktopAction<Args, A, E>
-}
-
-type AnyDesktopEffectOperation = (
-  ...args: readonly never[]
-) => Effect.Effect<unknown, unknown, never>
-
-type DesktopOperationFor<Operation> = Operation extends (
-  ...args: infer Args
-) => Effect.Effect<infer A, infer E, never>
-  ? Args extends readonly unknown[]
-    ? DesktopOperation<Args, A, E>
-    : never
-  : never
-
-export type DesktopApi<
-  Operations extends { readonly [Key in keyof Operations]: AnyDesktopEffectOperation }
-> = {
-  readonly [Key in keyof Operations]: DesktopOperationFor<Operations[Key]>
-}
-
 const idle = <A, E>(): DesktopAsyncState<A, E> => ({ _tag: "Idle" })
 
 export const statusOf = <A, E>(state: DesktopAsyncState<A, E>): DesktopAsyncStatus => {
@@ -318,31 +292,6 @@ export const useDesktopResource = <E>(
 }
 
 export const useResource = useDesktopResource
-
-export const defineDesktopOperation = <Args extends readonly unknown[], A, E>(
-  effect: DesktopEffectOperation<Args, A, E>
-): DesktopOperation<Args, A, E> => {
-  const useAction = (options?: DesktopActionOptions): DesktopAction<Args, A, E> =>
-    useDesktopAction(effect, options)
-
-  return Object.freeze({
-    useAction
-  })
-}
-
-export const defineDesktopApi = <
-  Operations extends { readonly [Key in keyof Operations]: AnyDesktopEffectOperation }
->(
-  operations: Operations
-): DesktopApi<Operations> =>
-  Object.freeze(
-    Object.fromEntries(
-      Object.entries(operations).map(([name, effect]) => [
-        name,
-        defineDesktopOperation(effect as AnyDesktopEffectOperation)
-      ])
-    )
-  ) as DesktopApi<Operations>
 
 const stateFromExit = <A, E>(exit: Exit.Exit<A, E>): DesktopAsyncState<A, E> => {
   if (Exit.isSuccess(exit)) {

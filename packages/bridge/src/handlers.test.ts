@@ -2,11 +2,9 @@ import { expect, test } from "bun:test"
 import { Cause, Deferred, Effect, Exit, Schema } from "effect"
 
 import {
-  apiContractToRpcGroup,
-  type ApiContractClass,
-  type ApiClientResponse,
-  type ApiHandlers,
-  type ApiLayer,
+  BridgeRpc,
+  type BridgeRpcGroup,
+  type BridgeClientResponse,
   Handlers,
   HostProtocolCancelByRequestEnvelope,
   HostProtocolRequestEnvelope,
@@ -29,9 +27,9 @@ class ProjectOpenError extends Schema.Class<ProjectOpenError>("HandlerProjectOpe
 
 test("Handlers fails closed when renderer origin verification is not configured", async () => {
   let handled = false
-  const ProjectApi = makeProjectApi("ProjectApi.HandlerDefaultOrigin")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.HandlerDefaultOrigin")
   const runtime = Handlers(
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       open: () =>
         Effect.sync(() => {
           handled = true
@@ -41,7 +39,7 @@ test("Handlers fails closed when renderer origin verification is not configured"
   )
 
   const exit = await Effect.runPromiseExit(
-    runtime.dispatch(request("ProjectApi.HandlerDefaultOrigin.open", { path: "/tmp/project" }))
+    runtime.dispatch(request("ProjectRpcs.HandlerDefaultOrigin.open", { path: "/tmp/project" }))
   )
 
   expectFailureTag(exit, "OriginInvalid")
@@ -49,10 +47,10 @@ test("Handlers fails closed when renderer origin verification is not configured"
 })
 
 test("Handlers binds contract layers into a request dispatcher", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.HandlerSuccess")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.HandlerSuccess")
   const runtime = Handlers.withOptions(
     testOriginAuthDisabled,
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       open: (input) =>
         Effect.succeed(
           new ProjectOpenOutput({
@@ -64,7 +62,7 @@ test("Handlers binds contract layers into a request dispatcher", async () => {
 
   const response = await Effect.runPromise(
     runtime.dispatch(
-      request("ProjectApi.HandlerSuccess.open", {
+      request("ProjectRpcs.HandlerSuccess.open", {
         path: "/tmp/project"
       })
     )
@@ -80,7 +78,7 @@ test("Handlers binds contract layers into a request dispatcher", async () => {
 
 test("Handlers emits the request lifecycle in order for successful calls", async () => {
   const states: string[] = []
-  const ProjectApi = makeProjectApi("ProjectApi.HandlerLifecycle")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.HandlerLifecycle")
   const runtime = Handlers.withOptions(
     {
       ...testOriginAuthDisabled,
@@ -90,13 +88,13 @@ test("Handlers emits the request lifecycle in order for successful calls", async
           states.push(state.tag)
         })
     },
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       open: () => Effect.succeed(new ProjectOpenOutput({ id: 1 }))
     })
   )
 
   const response = await Effect.runPromise(
-    runtime.dispatch(request("ProjectApi.HandlerLifecycle.open", { path: "/tmp/project" }))
+    runtime.dispatch(request("ProjectRpcs.HandlerLifecycle.open", { path: "/tmp/project" }))
   )
 
   expect(response.kind).toBe("success")
@@ -105,12 +103,12 @@ test("Handlers emits the request lifecycle in order for successful calls", async
 
 test("Handlers verifies renderer origin before dispatching", async () => {
   let handled = false
-  const ProjectApi = makeProjectApi("ProjectApi.OriginVerified")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.OriginVerified")
   const runtime = Handlers.withOptions(
     {
       originAuth: RendererOriginAuth.fromCurrentTokens(new Map([["window-1", "origin-1"]]))
     },
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       open: () =>
         Effect.sync(() => {
           handled = true
@@ -122,7 +120,7 @@ test("Handlers verifies renderer origin before dispatching", async () => {
   const response = await Effect.runPromise(
     runtime.dispatch(
       requestWithOrigin(
-        "ProjectApi.OriginVerified.open",
+        "ProjectRpcs.OriginVerified.open",
         { path: "/tmp/project" },
         "window-1",
         "origin-1"
@@ -136,12 +134,12 @@ test("Handlers verifies renderer origin before dispatching", async () => {
 
 test("Handlers rejects missing renderer origin before handler lookup", async () => {
   let handled = false
-  const ProjectApi = makeProjectApi("ProjectApi.OriginMissing")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.OriginMissing")
   const runtime = Handlers.withOptions(
     {
       originAuth: RendererOriginAuth.fromCurrentTokens(new Map([["window-1", "origin-1"]]))
     },
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       open: () =>
         Effect.sync(() => {
           handled = true
@@ -151,7 +149,7 @@ test("Handlers rejects missing renderer origin before handler lookup", async () 
   )
 
   const exit = await Effect.runPromiseExit(
-    runtime.dispatch(request("ProjectApi.OriginMissing.open", { path: "/tmp/project" }))
+    runtime.dispatch(request("ProjectRpcs.OriginMissing.open", { path: "/tmp/project" }))
   )
 
   expectFailureTag(exit, "OriginInvalid")
@@ -160,7 +158,7 @@ test("Handlers rejects missing renderer origin before handler lookup", async () 
 
 test("Handlers rejects forged renderer origin tokens", async () => {
   const states: string[] = []
-  const ProjectApi = makeProjectApi("ProjectApi.OriginForged")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.OriginForged")
   const runtime = Handlers.withOptions(
     {
       originAuth: RendererOriginAuth.fromCurrentTokens(new Map([["window-1", "origin-1"]])),
@@ -169,7 +167,7 @@ test("Handlers rejects forged renderer origin tokens", async () => {
           states.push(state.tag)
         })
     },
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       open: () => Effect.succeed(new ProjectOpenOutput({ id: 1 }))
     })
   )
@@ -177,7 +175,7 @@ test("Handlers rejects forged renderer origin tokens", async () => {
   const exit = await Effect.runPromiseExit(
     runtime.dispatch(
       requestWithOrigin(
-        "ProjectApi.OriginForged.open",
+        "ProjectRpcs.OriginForged.open",
         { path: "/tmp/project" },
         "window-1",
         "origin-2"
@@ -190,12 +188,12 @@ test("Handlers rejects forged renderer origin tokens", async () => {
 })
 
 test("Handlers rejects stale origin tokens after rotation", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.OriginRotated")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.OriginRotated")
   const runtime = Handlers.withOptions(
     {
       originAuth: RendererOriginAuth.fromCurrentTokens(new Map([["window-1", "origin-2"]]))
     },
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       open: () => Effect.succeed(new ProjectOpenOutput({ id: 1 }))
     })
   )
@@ -203,7 +201,7 @@ test("Handlers rejects stale origin tokens after rotation", async () => {
   const exit = await Effect.runPromiseExit(
     runtime.dispatch(
       requestWithOrigin(
-        "ProjectApi.OriginRotated.open",
+        "ProjectRpcs.OriginRotated.open",
         { path: "/tmp/project" },
         "window-1",
         "origin-1"
@@ -215,7 +213,7 @@ test("Handlers rejects stale origin tokens after rotation", async () => {
 })
 
 test("Handlers preserves prototype handler receivers", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.PrototypeReceiver")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.PrototypeReceiver")
 
   class ProjectHandlers {
     readonly prefix = "project"
@@ -231,11 +229,11 @@ test("Handlers preserves prototype handler receivers", async () => {
 
   const runtime = Handlers.withOptions(
     testOriginAuthDisabled,
-    ProjectApi.layer(new ProjectHandlers())
+    BridgeRpc.layer(ProjectRpcs)(new ProjectHandlers())
   )
 
   const response = await Effect.runPromise(
-    runtime.dispatch(request("ProjectApi.PrototypeReceiver.open", { path: "/tmp/project" }))
+    runtime.dispatch(request("ProjectRpcs.PrototypeReceiver.open", { path: "/tmp/project" }))
   )
 
   expect(response).toEqual({
@@ -247,10 +245,10 @@ test("Handlers preserves prototype handler receivers", async () => {
 })
 
 test("Handlers decodes transformed input payloads before calling handlers", async () => {
-  const EncodedInputApi = makeEncodedInputApi("ProjectApi.HandlerEncodedInput")
+  const EncodedInputRpcs = makeEncodedInputRpcs("ProjectRpcs.HandlerEncodedInput")
   const runtime = Handlers.withOptions(
     testOriginAuthDisabled,
-    EncodedInputApi.layer({
+    BridgeRpc.layer(EncodedInputRpcs)({
       open: (input) =>
         Effect.succeed(
           new ProjectOpenOutput({
@@ -261,7 +259,7 @@ test("Handlers decodes transformed input payloads before calling handlers", asyn
   )
 
   const response = await Effect.runPromise(
-    runtime.dispatch(request("ProjectApi.HandlerEncodedInput.open", "42"))
+    runtime.dispatch(request("ProjectRpcs.HandlerEncodedInput.open", "42"))
   )
 
   expect(response).toEqual({
@@ -273,10 +271,10 @@ test("Handlers decodes transformed input payloads before calling handlers", asyn
 })
 
 test("Handlers encodes contract failures into failure responses", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.HandlerFailure")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.HandlerFailure")
   const runtime = Handlers.withOptions(
     testOriginAuthDisabled,
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       open: () =>
         Effect.fail(
           new ProjectOpenError({
@@ -288,7 +286,7 @@ test("Handlers encodes contract failures into failure responses", async () => {
   )
 
   const response = await Effect.runPromise(
-    runtime.dispatch(request("ProjectApi.HandlerFailure.open", { path: "/tmp/project" }))
+    runtime.dispatch(request("ProjectRpcs.HandlerFailure.open", { path: "/tmp/project" }))
   )
 
   expect(response).toEqual({
@@ -301,7 +299,7 @@ test("Handlers encodes contract failures into failure responses", async () => {
 })
 
 test("Handlers wraps synchronous handler throws into typed failure responses", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.HandlerSyncThrow")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.HandlerSyncThrow")
   const states: string[] = []
   const runtime = Handlers.withOptions(
     {
@@ -311,7 +309,7 @@ test("Handlers wraps synchronous handler throws into typed failure responses", a
           states.push(state.tag)
         })
     },
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       open: () => {
         throw new ProjectOpenError({ tag: "ProjectOpenError", code: 403 })
       }
@@ -320,8 +318,8 @@ test("Handlers wraps synchronous handler throws into typed failure responses", a
 
   const response = await Effect.runPromise(
     runtime.dispatch(
-      request("ProjectApi.HandlerSyncThrow.open", { path: "/tmp/project" })
-    ) as Effect.Effect<ApiClientResponse, HostProtocolError | unknown, never>
+      request("ProjectRpcs.HandlerSyncThrow.open", { path: "/tmp/project" })
+    ) as Effect.Effect<BridgeClientResponse, HostProtocolError | unknown, never>
   )
 
   expect(response).toEqual({
@@ -344,7 +342,7 @@ test("Handlers redacts secret-shaped contract failure fields before renderer emi
       safe: Schema.String
     })
   }) {}
-  type SecretErrorApiSpec = {
+  type SecretErrorRpcSpec = {
     readonly open: {
       readonly input: typeof ProjectOpenInput
       readonly output: typeof ProjectOpenOutput
@@ -352,27 +350,17 @@ test("Handlers redacts secret-shaped contract failure fields before renderer emi
     }
   }
   const states: unknown[] = []
-  const contract = class {
-    static readonly tag = "ProjectApi.HandlerRedactedFailure"
-    static readonly spec = Object.freeze({
+  const contract = BridgeRpc.group(
+    "ProjectRpcs.HandlerRedactedFailure",
+    Object.freeze({
       open: Object.freeze({
         input: ProjectOpenInput,
         output: ProjectOpenOutput,
         error: ProjectSecretError
       })
-    })
-    static readonly events = Object.freeze({})
-
-    static toRpcGroup() {
-      return apiContractToRpcGroup(contract.tag, contract.spec, contract.events)
-    }
-
-    static layer<HandlersShape extends ApiHandlers<SecretErrorApiSpec>>(
-      handlers: HandlersShape
-    ): ApiLayer<string, SecretErrorApiSpec, HandlersShape> {
-      return Object.freeze({ contract, handlers: Object.freeze(handlers) })
-    }
-  } as ApiContractClass<string, SecretErrorApiSpec>
+    }),
+    Object.freeze({})
+  ) as BridgeRpcGroup<string, SecretErrorRpcSpec>
   const runtime = Handlers.withOptions(
     {
       ...testOriginAuthDisabled,
@@ -385,7 +373,7 @@ test("Handlers redacts secret-shaped contract failure fields before renderer emi
           states.push(state)
         })
     },
-    contract.layer({
+    BridgeRpc.layer(contract)({
       open: () =>
         Effect.fail(
           new ProjectSecretError({
@@ -399,7 +387,7 @@ test("Handlers redacts secret-shaped contract failure fields before renderer emi
   )
 
   const response = await Effect.runPromise(
-    runtime.dispatch(request("ProjectApi.HandlerRedactedFailure.open", { path: "/tmp/project" }))
+    runtime.dispatch(request("ProjectRpcs.HandlerRedactedFailure.open", { path: "/tmp/project" }))
   )
 
   expect(response).toEqual({
@@ -419,7 +407,7 @@ test("Handlers redacts secret-shaped contract failure fields before renderer emi
 test("Handlers rejects malformed input before calling handlers", async () => {
   const calls: string[] = []
   const states: string[] = []
-  const ProjectApi = makeProjectApi("ProjectApi.HandlerInvalidInput")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.HandlerInvalidInput")
   const runtime = Handlers.withOptions(
     {
       ...testOriginAuthDisabled,
@@ -428,7 +416,7 @@ test("Handlers rejects malformed input before calling handlers", async () => {
           states.push(state.tag)
         })
     },
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       open: (input) => {
         calls.push(input.path)
         return Effect.succeed(new ProjectOpenOutput({ id: 1 }))
@@ -437,7 +425,7 @@ test("Handlers rejects malformed input before calling handlers", async () => {
   )
 
   const exit = await Effect.runPromiseExit(
-    runtime.dispatch(request("ProjectApi.HandlerInvalidInput.open", { path: 123 }))
+    runtime.dispatch(request("ProjectRpcs.HandlerInvalidInput.open", { path: 123 }))
   )
 
   expectFailureTag(exit, "InvalidArgument")
@@ -446,10 +434,10 @@ test("Handlers rejects malformed input before calling handlers", async () => {
 })
 
 test("Handlers reports malformed handler output as InvalidOutput", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.HandlerInvalidOutput")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.HandlerInvalidOutput")
   const runtime = Handlers.withOptions(
     testOriginAuthDisabled,
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       open: () =>
         Effect.succeed({
           id: Number.NaN
@@ -458,17 +446,17 @@ test("Handlers reports malformed handler output as InvalidOutput", async () => {
   )
 
   const exit = await Effect.runPromiseExit(
-    runtime.dispatch(request("ProjectApi.HandlerInvalidOutput.open", { path: "/tmp/project" }))
+    runtime.dispatch(request("ProjectRpcs.HandlerInvalidOutput.open", { path: "/tmp/project" }))
   )
 
   expectFailureTag(exit, "InvalidOutput")
 })
 
 test("Handlers reports malformed contract errors as InvalidOutput", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.HandlerInvalidError")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.HandlerInvalidError")
   const runtime = Handlers.withOptions(
     testOriginAuthDisabled,
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       open: () =>
         Effect.fail({
           tag: "ProjectOpenError",
@@ -478,7 +466,7 @@ test("Handlers reports malformed contract errors as InvalidOutput", async () => 
   )
 
   const exit = await Effect.runPromiseExit(
-    runtime.dispatch(request("ProjectApi.HandlerInvalidError.open", { path: "/tmp/project" }))
+    runtime.dispatch(request("ProjectRpcs.HandlerInvalidError.open", { path: "/tmp/project" }))
   )
 
   expectFailureTag(exit, "InvalidOutput")
@@ -486,7 +474,7 @@ test("Handlers reports malformed contract errors as InvalidOutput", async () => 
 
 test("Handlers times out cancellable handlers and records a terminal state", async () => {
   const states: string[] = []
-  const ProjectApi = makeProjectApi("ProjectApi.HandlerTimeout", { timeoutMs: 5 })
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.HandlerTimeout", { timeoutMs: 5 })
   const runtime = Handlers.withOptions(
     {
       ...testOriginAuthDisabled,
@@ -495,7 +483,7 @@ test("Handlers times out cancellable handlers and records a terminal state", asy
           states.push(state.tag)
         })
     },
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       open: () =>
         Effect.gen(function* () {
           yield* Effect.sleep(50)
@@ -505,7 +493,7 @@ test("Handlers times out cancellable handlers and records a terminal state", asy
   )
 
   const exit = await Effect.runPromiseExit(
-    runtime.dispatch(request("ProjectApi.HandlerTimeout.open", { path: "/tmp/project" }))
+    runtime.dispatch(request("ProjectRpcs.HandlerTimeout.open", { path: "/tmp/project" }))
   )
 
   expectFailureTag(exit, "Timeout")
@@ -515,10 +503,10 @@ test("Handlers times out cancellable handlers and records a terminal state", asy
 test("Handlers ignore renderer cancel envelopes for non-cancellable methods", async () => {
   const started = await Effect.runPromise(Deferred.make<void>())
   const states: string[] = []
-  const ProjectApi = makeProjectApi("ProjectApi.HandlerNonCancellable", {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.HandlerNonCancellable", {
     cancellable: false
   })
-  const requestEnvelope = request("ProjectApi.HandlerNonCancellable.open", {
+  const requestEnvelope = request("ProjectRpcs.HandlerNonCancellable.open", {
     path: "/tmp/project"
   })
   const runtime = Handlers.withOptions(
@@ -529,7 +517,7 @@ test("Handlers ignore renderer cancel envelopes for non-cancellable methods", as
           states.push(state.tag)
         })
     },
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       open: () =>
         Effect.gen(function* () {
           yield* Deferred.succeed(started, undefined)
@@ -569,38 +557,25 @@ test("Handlers does not confuse domain _tag collisions with Effect timeout error
       code: Schema.NumberFromString
     }
   ) {}
-  type TimeoutCollisionApiSpec = {
+  type TimeoutCollisionRpcSpec = {
     readonly open: {
       readonly input: typeof ProjectOpenInput
       readonly output: typeof ProjectOpenOutput
       readonly error: typeof ProjectTimeoutError
     }
   }
-  const contract = class {
-    static readonly tag = "ProjectApi.HandlerTimeoutCollision"
-    static readonly spec = Object.freeze({
+  const contract = BridgeRpc.group(
+    "ProjectRpcs.HandlerTimeoutCollision",
+    Object.freeze({
       open: Object.freeze({
         input: ProjectOpenInput,
         output: ProjectOpenOutput,
         error: ProjectTimeoutError,
         timeoutMs: 50
       })
-    })
-    static readonly events = Object.freeze({})
-
-    static toRpcGroup() {
-      return apiContractToRpcGroup(contract.tag, contract.spec, contract.events)
-    }
-
-    static layer<HandlersShape extends ApiHandlers<TimeoutCollisionApiSpec>>(
-      handlers: HandlersShape
-    ): ApiLayer<string, TimeoutCollisionApiSpec, HandlersShape> {
-      return Object.freeze({
-        contract,
-        handlers: Object.freeze(handlers)
-      })
-    }
-  } as ApiContractClass<string, TimeoutCollisionApiSpec>
+    }),
+    Object.freeze({})
+  ) as BridgeRpcGroup<string, TimeoutCollisionRpcSpec>
   const states: string[] = []
   const runtime = Handlers.withOptions(
     {
@@ -610,14 +585,14 @@ test("Handlers does not confuse domain _tag collisions with Effect timeout error
           states.push(state.tag)
         })
     },
-    contract.layer({
+    BridgeRpc.layer(contract)({
       open: () => Effect.fail(new ProjectTimeoutError({ _tag: "TimeoutError", code: 408 }))
     })
   )
 
   const response = await Effect.runPromise(
     runtime.dispatch(
-      request("ProjectApi.HandlerTimeoutCollision.open", {
+      request("ProjectRpcs.HandlerTimeoutCollision.open", {
         path: "/tmp/project"
       })
     )
@@ -635,7 +610,7 @@ test("Handlers does not confuse domain _tag collisions with Effect timeout error
 
 test("Handlers rejects duplicate request ids after a terminal state", async () => {
   const states: string[] = []
-  const ProjectApi = makeProjectApi("ProjectApi.HandlerDuplicate")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.HandlerDuplicate")
   const runtime = Handlers.withOptions(
     {
       ...testOriginAuthDisabled,
@@ -644,14 +619,14 @@ test("Handlers rejects duplicate request ids after a terminal state", async () =
           states.push(state.tag)
         })
     },
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       open: () => Effect.succeed(new ProjectOpenOutput({ id: 1 }))
     })
   )
   const duplicate = new HostProtocolRequestEnvelope({
     kind: "request",
     id: "request-duplicate",
-    method: "ProjectApi.HandlerDuplicate.open",
+    method: "ProjectRpcs.HandlerDuplicate.open",
     timestamp: 42,
     traceId: "trace-duplicate",
     payload: { path: "/tmp/project" }
@@ -667,7 +642,7 @@ test("Handlers rejects duplicate request ids after a terminal state", async () =
 test("Handlers expires terminal request ids after the replay window", async () => {
   let now = 1_000
   const states: string[] = []
-  const ProjectApi = makeProjectApi("ProjectApi.HandlerDuplicateExpiry")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.HandlerDuplicateExpiry")
   const runtime = Handlers.withOptions(
     {
       ...testOriginAuthDisabled,
@@ -678,14 +653,14 @@ test("Handlers expires terminal request ids after the replay window", async () =
           states.push(state.tag)
         })
     },
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       open: () => Effect.succeed(new ProjectOpenOutput({ id: 1 }))
     })
   )
   const duplicate = new HostProtocolRequestEnvelope({
     kind: "request",
     id: "request-duplicate-expiry",
-    method: "ProjectApi.HandlerDuplicateExpiry.open",
+    method: "ProjectRpcs.HandlerDuplicateExpiry.open",
     timestamp: 42,
     traceId: "trace-duplicate-expiry",
     payload: { path: "/tmp/project" }
@@ -709,22 +684,22 @@ test("Handlers expires terminal request ids after the replay window", async () =
 })
 
 test("Handlers reports unknown methods as MethodNotFound", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.HandlerUnknownMethod")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.HandlerUnknownMethod")
   const runtime = Handlers.withOptions(
     testOriginAuthDisabled,
-    ProjectApi.layer({
+    BridgeRpc.layer(ProjectRpcs)({
       open: () => Effect.succeed(new ProjectOpenOutput({ id: 1 }))
     })
   )
 
   const exit = await Effect.runPromiseExit(
-    runtime.dispatch(request("ProjectApi.HandlerUnknownMethod.close", { path: "/tmp/project" }))
+    runtime.dispatch(request("ProjectRpcs.HandlerUnknownMethod.close", { path: "/tmp/project" }))
   )
 
   expectFailureTag(exit, "MethodNotFound")
 })
 
-type ProjectApiSpec = {
+type ProjectRpcSpec = {
   readonly open: {
     readonly input: typeof ProjectOpenInput
     readonly output: typeof ProjectOpenOutput
@@ -732,44 +707,26 @@ type ProjectApiSpec = {
   }
 }
 
-const makeProjectApi = (
+const makeProjectRpcs = (
   tag: string,
   metadata: {
     readonly timeoutMs?: number
     readonly cancellable?: boolean
     readonly permission?: string
   } = {}
-): ApiContractClass<string, ProjectApiSpec> => {
-  const contract = class {
-    static readonly tag = tag
-    static readonly spec = Object.freeze({
-      open: Object.freeze({
-        input: ProjectOpenInput,
-        output: ProjectOpenOutput,
-        error: ProjectOpenError,
-        ...metadata
-      })
+): BridgeRpcGroup<string, ProjectRpcSpec> => {
+  const spec = Object.freeze({
+    open: Object.freeze({
+      input: ProjectOpenInput,
+      output: ProjectOpenOutput,
+      error: ProjectOpenError,
+      ...metadata
     })
-    static readonly events = Object.freeze({})
-
-    static toRpcGroup() {
-      return apiContractToRpcGroup(contract.tag, contract.spec, contract.events)
-    }
-
-    static layer<HandlersShape extends ApiHandlers<ProjectApiSpec>>(
-      handlers: HandlersShape
-    ): ApiLayer<string, ProjectApiSpec, HandlersShape> {
-      return Object.freeze({
-        contract,
-        handlers: Object.freeze(handlers)
-      })
-    }
-  } as ApiContractClass<string, ProjectApiSpec>
-
-  return Object.freeze(contract)
+  })
+  return BridgeRpc.group(tag, spec, Object.freeze({}))
 }
 
-type EncodedInputApiSpec = {
+type EncodedInputRpcSpec = {
   readonly open: {
     readonly input: typeof Schema.NumberFromString
     readonly output: typeof ProjectOpenOutput
@@ -777,35 +734,17 @@ type EncodedInputApiSpec = {
   }
 }
 
-const makeEncodedInputApi = <Tag extends string>(
+const makeEncodedInputRpcs = <Tag extends string>(
   tag: Tag
-): ApiContractClass<Tag, EncodedInputApiSpec> => {
-  const contract = class {
-    static readonly tag = tag
-    static readonly spec = Object.freeze({
-      open: Object.freeze({
-        input: Schema.NumberFromString,
-        output: ProjectOpenOutput,
-        error: ProjectOpenError
-      })
+): BridgeRpcGroup<Tag, EncodedInputRpcSpec> => {
+  const spec = Object.freeze({
+    open: Object.freeze({
+      input: Schema.NumberFromString,
+      output: ProjectOpenOutput,
+      error: ProjectOpenError
     })
-    static readonly events = Object.freeze({})
-
-    static toRpcGroup() {
-      return apiContractToRpcGroup(contract.tag, contract.spec, contract.events)
-    }
-
-    static layer<HandlersShape extends ApiHandlers<EncodedInputApiSpec>>(
-      handlers: HandlersShape
-    ): ApiLayer<Tag, EncodedInputApiSpec, HandlersShape> {
-      return Object.freeze({
-        contract,
-        handlers: Object.freeze(handlers)
-      })
-    }
-  } as ApiContractClass<Tag, EncodedInputApiSpec>
-
-  return Object.freeze(contract)
+  })
+  return BridgeRpc.group(tag, spec, Object.freeze({}))
 }
 
 const request = (method: string, payload: unknown): HostProtocolRequestEnvelope =>

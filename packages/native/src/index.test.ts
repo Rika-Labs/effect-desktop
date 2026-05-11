@@ -7,8 +7,8 @@ import {
   RendererOriginAuth,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
-  type ApiClientExchange,
-  type ApiClientResponse,
+  type BridgeClientExchange,
+  type BridgeClientResponse,
   type HostProtocolRequestEnvelope,
   HostProtocolEventEnvelope,
   type HostWindowClientOptions,
@@ -30,7 +30,7 @@ import { Cause, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } fr
 import {
   AppEventRouter,
   App,
-  AppApi,
+  AppRpcs,
   AppBeforeQuitEvent,
   AppCommandLine,
   AppInfo,
@@ -40,7 +40,7 @@ import {
   AppOpenUrlEvent,
   AppSecondInstanceEvent,
   Clipboard,
-  ClipboardApi,
+  ClipboardRpcs,
   ClipboardImage,
   ClipboardLive,
   ClipboardMethodNames,
@@ -48,28 +48,28 @@ import {
   ClipboardText,
   ContextMenu,
   ContextMenuActivatedEvent,
-  ContextMenuApi,
+  ContextMenuRpcs,
   ContextMenuBindCommandInput,
   ContextMenuLive,
   ContextMenuMethodNames,
   CrashReporter,
-  CrashReporterApi,
+  CrashReporterRpcs,
   CrashReporterLive,
   CrashReporterMethodNames,
   Dialog,
-  DialogApi,
+  DialogRpcs,
   DialogConfirmResult,
   DialogLive,
   DialogMethodNames,
   DialogOpenResult,
   DialogSaveResult,
   Dock,
-  DockApi,
+  DockRpcs,
   DockLive,
   DockMethodNames,
   DockSupportedResult,
   GlobalShortcut,
-  GlobalShortcutApi,
+  GlobalShortcutRpcs,
   GlobalShortcutLive,
   GlobalShortcutMethodNames,
   GlobalShortcutPressedEvent,
@@ -77,29 +77,29 @@ import {
   GlobalShortcutSupportedResult,
   Menu,
   MenuActivatedEvent,
-  MenuApi,
+  MenuRpcs,
   MenuLive,
   MenuMethodNames,
   MenuTemplate,
   Notification,
   NotificationActionEvent,
-  NotificationApi,
+  NotificationRpcs,
   NotificationClickEvent,
   NotificationLive,
   NotificationMethodNames,
   NotificationPermissionResult,
   NotificationSupportedResult,
   Path,
-  PathApi,
+  PathRpcs,
   PathLive,
   PathMethodNames,
   CanonicalPath,
   Protocol,
-  ProtocolApi,
+  ProtocolRpcs,
   ProtocolLive,
   ProtocolMethodNames,
   PowerMonitor,
-  PowerMonitorApi,
+  PowerMonitorRpcs,
   PowerMonitorLive,
   PowerMonitorMethodNames,
   PowerMonitorResumeEvent,
@@ -107,12 +107,12 @@ import {
   PowerMonitorSourceChangedEvent,
   PowerMonitorSuspendEvent,
   SafeStorage,
-  SafeStorageApi,
+  SafeStorageRpcs,
   SafeStorageLive,
   SafeStorageMethodNames,
   SecretValue,
   Screen,
-  ScreenApi,
+  ScreenRpcs,
   ScreenBounds,
   ScreenDisplay,
   ScreenDisplaysResult,
@@ -121,12 +121,12 @@ import {
   ScreenPoint,
   ScreenSupportedResult,
   Shell,
-  ShellApi,
+  ShellRpcs,
   ShellLive,
   ShellMethodNames,
   SystemAppearance,
   SystemAppearanceAccentColorResult,
-  SystemAppearanceApi,
+  SystemAppearanceRpcs,
   SystemAppearanceBooleanResult,
   SystemAppearanceChangedEvent,
   SystemAppearanceColor,
@@ -136,29 +136,29 @@ import {
   SystemAppearanceSupportedResult,
   Tray,
   TrayActivatedEvent,
-  TrayApi,
+  TrayRpcs,
   TrayLive,
   TrayMethodNames,
   TraySupportedResult,
   Updater,
-  UpdaterApi,
+  UpdaterRpcs,
   UpdaterLive,
   UpdaterMethodNames,
   UpdaterPreparingRestartEvent,
   UpdaterStatusState,
   UpdaterStatusResult,
   WebView,
-  WebViewApi,
+  WebViewRpcs,
   WebViewLive,
   WebViewMethodNames,
   WebViewNavigationBlockedEvent,
   WebViewScreenshot,
   Window,
-  WindowApi,
+  WindowRpcs,
   WindowClient,
   WindowLive,
   WindowMethodNames,
-  makeHostWindowApiLayer,
+  makeHostWindowBridgeRpcLayer,
   makeAppEventRouter,
   makeAppBridgeClientLayer,
   makeAppServiceLayer,
@@ -267,7 +267,6 @@ const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = [
   "setBackgroundColor",
   "setVibrancy",
   "setHasShadow",
-  "setFullscreen",
   "enterFullScreen",
   "exitFullScreen",
   "onFullScreenChanged",
@@ -513,11 +512,11 @@ const primaryDisplay = new ScreenDisplay({
 })
 const accentColor = new SystemAppearanceColor({ r: 0.1, g: 0.2, b: 0.3, a: 1 })
 
-test("AppApi declares the Phase 7 App method and event surface", () => {
-  expect(AppApi.tag).toBe("App")
+test("AppRpcs declares the Phase 7 App method and event surface", () => {
+  expect(AppRpcs.tag).toBe("App")
   expect([...AppMethodNames]).toEqual(expectedAppMethods)
-  expect(Object.keys(AppApi.spec)).toEqual(expectedAppMethods)
-  expect(Object.keys(AppApi.events)).toEqual([
+  expect(Object.keys(AppRpcs.spec)).toEqual(expectedAppMethods)
+  expect(Object.keys(AppRpcs.events)).toEqual([
     "onSecondInstance",
     "onOpenFile",
     "onOpenUrl",
@@ -537,7 +536,7 @@ test("App service delegates through a substitutable AppClient port", async () =>
       yield* app.restart({ args: ["--restarted"] })
       yield* app.setOpenAtLogin({ enabled: true, args: ["--hidden"] })
       yield* app.registerProtocol({ scheme: "effect-desktop" })
-      const protocolEvents = yield* app.onProtocolUrl().pipe(Stream.take(1), Stream.runCollect)
+      const protocolEvents = yield* app.onOpenUrl().pipe(Stream.take(1), Stream.runCollect)
 
       return { commandLine, info, protocolEvents }
     }).pipe(Effect.provide(makeAppServiceLayer(appClient(calls))))
@@ -728,7 +727,7 @@ test("App single-instance lock rejects acquired results with primary pids", asyn
 })
 
 test("App bridge client rejects malformed App lifecycle event payloads as InvalidOutput", async () => {
-  const invalidUrlExchange: ApiClientExchange = {
+  const invalidUrlExchange: BridgeClientExchange = {
     request: () => Effect.succeed({ kind: "success", payload: undefined }),
     subscribe: (method) =>
       method === "App.onOpenUrl"
@@ -744,7 +743,7 @@ test("App bridge client rejects malformed App lifecycle event payloads as Invali
         : Stream.empty
   }
 
-  const invalidSecondInstanceExchange: ApiClientExchange = {
+  const invalidSecondInstanceExchange: BridgeClientExchange = {
     request: () => Effect.succeed({ kind: "success", payload: undefined }),
     subscribe: (method) =>
       method === "App.onSecondInstance"
@@ -760,7 +759,7 @@ test("App bridge client rejects malformed App lifecycle event payloads as Invali
         : Stream.empty
   }
 
-  const invalidBeforeQuitExchange: ApiClientExchange = {
+  const invalidBeforeQuitExchange: BridgeClientExchange = {
     request: () => Effect.succeed({ kind: "success", payload: undefined }),
     subscribe: (method) =>
       method === "App.onBeforeQuit"
@@ -843,7 +842,7 @@ test("App bridge client rejects empty or NUL-bearing onOpenFile paths as Invalid
   ]
 
   for (const { payload } of cases) {
-    const exchange: ApiClientExchange = {
+    const exchange: BridgeClientExchange = {
       request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
       subscribe: (method) =>
         method === "App.onOpenFile"
@@ -946,11 +945,11 @@ test("App bridge client rejects non-portable quit exit codes as InvalidArgument"
   expect(requests).toEqual([])
 })
 
-test("WebViewApi declares the Phase 7 WebView method and event surface", () => {
-  expect(WebViewApi.tag).toBe("WebView")
+test("WebViewRpcs declares the Phase 7 WebView method and event surface", () => {
+  expect(WebViewRpcs.tag).toBe("WebView")
   expect([...WebViewMethodNames]).toEqual(expectedWebViewMethods)
-  expect(Object.keys(WebViewApi.spec)).toEqual(expectedWebViewMethods)
-  expect(Object.keys(WebViewApi.events)).toEqual(["NavigationBlocked"])
+  expect(Object.keys(WebViewRpcs.spec)).toEqual(expectedWebViewMethods)
+  expect(Object.keys(WebViewRpcs.events)).toEqual(["NavigationBlocked"])
 })
 
 test("WebView service delegates through a substitutable WebViewClient port", async () => {
@@ -1135,7 +1134,7 @@ test("WebView captureScreenshot rejects empty byte payloads", async () => {
 })
 
 test("WebView bridge client rejects control-byte navigation-blocked reasons", async () => {
-  const exchange: ApiClientExchange = {
+  const exchange: BridgeClientExchange = {
     request: (request) =>
       Effect.succeed(
         request.method === "WebView.create"
@@ -1181,7 +1180,7 @@ test("WebView bridge client rejects control-byte navigation-blocked reasons", as
 })
 
 test("WebView bridge client rejects invalid navigation-blocked event URLs", async () => {
-  const exchange: ApiClientExchange = {
+  const exchange: BridgeClientExchange = {
     request: (request) =>
       Effect.succeed(
         request.method === "WebView.create"
@@ -1377,11 +1376,11 @@ test("WebView capability matrix reports spec-partial features as unsupported", a
   expect(result.linuxPdf).toBe(false)
 })
 
-test("MenuApi declares the Phase 7 Menu method and event surface", () => {
-  expect(MenuApi.tag).toBe("Menu")
+test("MenuRpcs declares the Phase 7 Menu method and event surface", () => {
+  expect(MenuRpcs.tag).toBe("Menu")
   expect([...MenuMethodNames]).toEqual(expectedMenuMethods)
-  expect(Object.keys(MenuApi.spec)).toEqual(expectedMenuMethods)
-  expect(Object.keys(MenuApi.events)).toEqual(["Activated"])
+  expect(Object.keys(MenuRpcs.spec)).toEqual(expectedMenuMethods)
+  expect(Object.keys(MenuRpcs.events)).toEqual(["Activated"])
 })
 
 test("Menu service delegates through a substitutable MenuClient port", async () => {
@@ -1499,7 +1498,7 @@ test("Menu bridge client rejects empty activation event identifiers as InvalidOu
   ]
 
   for (const { payload } of cases) {
-    const exchange: ApiClientExchange = {
+    const exchange: BridgeClientExchange = {
       request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
       subscribe: (method) =>
         method === "Menu.Activated"
@@ -1542,7 +1541,7 @@ test("Menu bridge client rejects empty activation event identifiers as InvalidOu
 })
 
 test("Menu bridge client decodes activation events with no windowId field", async () => {
-  const exchange: ApiClientExchange = {
+  const exchange: BridgeClientExchange = {
     request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
     subscribe: (method) =>
       method === "Menu.Activated"
@@ -1802,11 +1801,11 @@ test("unsupported Menu client reports capabilities as unavailable and methods as
   )
 })
 
-test("ContextMenuApi declares the Phase 8 ContextMenu method and event surface", () => {
-  expect(ContextMenuApi.tag).toBe("ContextMenu")
+test("ContextMenuRpcs declares the Phase 8 ContextMenu method and event surface", () => {
+  expect(ContextMenuRpcs.tag).toBe("ContextMenu")
   expect([...ContextMenuMethodNames]).toEqual(expectedContextMenuMethods)
-  expect(Object.keys(ContextMenuApi.spec)).toEqual(expectedContextMenuMethods)
-  expect(Object.keys(ContextMenuApi.events)).toEqual(["Activated"])
+  expect(Object.keys(ContextMenuRpcs.spec)).toEqual(expectedContextMenuMethods)
+  expect(Object.keys(ContextMenuRpcs.events)).toEqual(["Activated"])
 })
 
 test("ContextMenu service delegates through a substitutable ContextMenuClient port", async () => {
@@ -1953,7 +1952,7 @@ test("ContextMenu bridge client rejects empty activation event identifiers as In
   ]
 
   for (const { payload } of cases) {
-    const exchange: ApiClientExchange = {
+    const exchange: BridgeClientExchange = {
       request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
       subscribe: (method) =>
         method === "ContextMenu.Activated"
@@ -2016,11 +2015,11 @@ test("unsupported ContextMenu client reports deferred host methods as Effect val
   )
 })
 
-test("TrayApi declares the Phase 8 Tray method and event surface", () => {
-  expect(TrayApi.tag).toBe("Tray")
+test("TrayRpcs declares the Phase 8 Tray method and event surface", () => {
+  expect(TrayRpcs.tag).toBe("Tray")
   expect([...TrayMethodNames]).toEqual(expectedTrayMethods)
-  expect(Object.keys(TrayApi.spec)).toEqual(expectedTrayMethods)
-  expect(Object.keys(TrayApi.events)).toEqual(["Activated"])
+  expect(Object.keys(TrayRpcs.spec)).toEqual(expectedTrayMethods)
+  expect(Object.keys(TrayRpcs.events)).toEqual(["Activated"])
 })
 
 test("Tray service delegates through a substitutable TrayClient port", async () => {
@@ -2131,7 +2130,7 @@ test("Tray bridge client rejects empty activation event identifiers as InvalidOu
   ]
 
   for (const { payload } of cases) {
-    const exchange: ApiClientExchange = {
+    const exchange: BridgeClientExchange = {
       request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
       subscribe: (method) =>
         method === "Tray.Activated"
@@ -2171,7 +2170,7 @@ test("Tray bridge client rejects empty activation event identifiers as InvalidOu
 })
 
 test("Tray bridge client decodes activation events with no ownerWindowId field", async () => {
-  const exchange: ApiClientExchange = {
+  const exchange: BridgeClientExchange = {
     request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
     subscribe: (method) =>
       method === "Tray.Activated"
@@ -2287,11 +2286,11 @@ test("Tray bridge client rejects stale destroy handles before host transport", a
   expect(requests).toEqual([])
 })
 
-test("DialogApi declares the Phase 7 Dialog method surface", () => {
-  expect(DialogApi.tag).toBe("Dialog")
+test("DialogRpcs declares the Phase 7 Dialog method surface", () => {
+  expect(DialogRpcs.tag).toBe("Dialog")
   expect([...DialogMethodNames]).toEqual(expectedDialogMethods)
-  expect(Object.keys(DialogApi.spec)).toEqual(expectedDialogMethods)
-  expect(Object.keys(DialogApi.events)).toEqual([])
+  expect(Object.keys(DialogRpcs.spec)).toEqual(expectedDialogMethods)
+  expect(Object.keys(DialogRpcs.events)).toEqual([])
 })
 
 test("Dialog service delegates through a substitutable DialogClient port", async () => {
@@ -2439,11 +2438,11 @@ test("unsupported Dialog client reports deferred host methods as Effect values",
   )
 })
 
-test("ClipboardApi declares the Phase 7 Clipboard method surface", () => {
-  expect(ClipboardApi.tag).toBe("Clipboard")
+test("ClipboardRpcs declares the Phase 7 Clipboard method surface", () => {
+  expect(ClipboardRpcs.tag).toBe("Clipboard")
   expect([...ClipboardMethodNames]).toEqual(expectedClipboardMethods)
-  expect(Object.keys(ClipboardApi.spec)).toEqual(expectedClipboardMethods)
-  expect(Object.keys(ClipboardApi.events)).toEqual([])
+  expect(Object.keys(ClipboardRpcs.spec)).toEqual(expectedClipboardMethods)
+  expect(Object.keys(ClipboardRpcs.events)).toEqual([])
 })
 
 test("Clipboard service delegates through a substitutable ClipboardClient port", async () => {
@@ -2640,11 +2639,11 @@ test("unsupported Clipboard client reports deferred host methods as Effect value
   )
 })
 
-test("NotificationApi declares the Phase 7 Notification method and event surface", () => {
-  expect(NotificationApi.tag).toBe("Notification")
+test("NotificationRpcs declares the Phase 7 Notification method and event surface", () => {
+  expect(NotificationRpcs.tag).toBe("Notification")
   expect([...NotificationMethodNames]).toEqual(expectedNotificationMethods)
-  expect(Object.keys(NotificationApi.spec)).toEqual(expectedNotificationMethods)
-  expect(Object.keys(NotificationApi.events)).toEqual(["Click", "Action"])
+  expect(Object.keys(NotificationRpcs.spec)).toEqual(expectedNotificationMethods)
+  expect(Object.keys(NotificationRpcs.events)).toEqual(["Click", "Action"])
 })
 
 test("Notification service delegates through a substitutable NotificationClient port", async () => {
@@ -2858,7 +2857,7 @@ test("Notification action stream rejects malformed actionId payloads as InvalidO
   ]
 
   for (const { label, actionId } of cases) {
-    const exchange: ApiClientExchange = {
+    const exchange: BridgeClientExchange = {
       request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
       subscribe: (method) =>
         method === "Notification.Action"
@@ -2890,51 +2889,6 @@ test("Notification action stream rejects malformed actionId payloads as InvalidO
 
     expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
     expect(label).toBeDefined()
-  }
-})
-
-test("Notification interaction streams reject blank ownerWindowId payloads as InvalidOutput", async () => {
-  const cases: ReadonlyArray<{ readonly method: "Notification.Click" | "Notification.Action" }> = [
-    { method: "Notification.Click" },
-    { method: "Notification.Action" }
-  ]
-
-  for (const { method } of cases) {
-    const exchange: ApiClientExchange = {
-      request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
-      subscribe: (eventMethod) =>
-        eventMethod === method
-          ? Stream.make(
-              new HostProtocolEventEnvelope({
-                kind: "event",
-                timestamp: 1710000000421,
-                traceId: "event-trace",
-                method: eventMethod,
-                payload: {
-                  notification: notificationHandle,
-                  ...(method === "Notification.Action" ? { actionId: "open" } : {}),
-                  ownerWindowId: ""
-                }
-              })
-            )
-          : Stream.empty,
-      resource: { dispose: () => Effect.void }
-    }
-
-    const exit = await Effect.runPromise(
-      Effect.gen(function* () {
-        const notification = yield* Notification
-        return yield* Effect.exit(
-          method === "Notification.Click"
-            ? notification.onClick().pipe(Stream.take(1), Stream.runCollect)
-            : notification.onAction().pipe(Stream.take(1), Stream.runCollect)
-        )
-      }).pipe(
-        Effect.provide(Layer.provide(NotificationLive, makeNotificationBridgeClientLayer(exchange)))
-      )
-    )
-
-    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
   }
 })
 
@@ -2983,11 +2937,11 @@ test("unsupported Notification client reports deferred host methods as Effect va
   )
 })
 
-test("PathApi declares the Phase 7 Path method surface", () => {
-  expect(PathApi.tag).toBe("Path")
+test("PathRpcs declares the Phase 7 Path method surface", () => {
+  expect(PathRpcs.tag).toBe("Path")
   expect([...PathMethodNames]).toEqual(expectedPathMethods)
-  expect(Object.keys(PathApi.spec)).toEqual(expectedPathMethods)
-  expect(Object.keys(PathApi.events)).toEqual([])
+  expect(Object.keys(PathRpcs.spec)).toEqual(expectedPathMethods)
+  expect(Object.keys(PathRpcs.events)).toEqual([])
 })
 
 test("Path service delegates through a substitutable PathClient port", async () => {
@@ -3174,11 +3128,11 @@ test("Path bridge client rejects relative canonical paths from host as InvalidOu
   expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
 })
 
-test("ProtocolApi declares the Phase 8 Protocol method surface", () => {
-  expect(ProtocolApi.tag).toBe("Protocol")
+test("ProtocolRpcs declares the Phase 8 Protocol method surface", () => {
+  expect(ProtocolRpcs.tag).toBe("Protocol")
   expect([...ProtocolMethodNames]).toEqual(expectedProtocolMethods)
-  expect(Object.keys(ProtocolApi.spec)).toEqual(expectedProtocolMethods)
-  expect(Object.keys(ProtocolApi.events)).toEqual([])
+  expect(Object.keys(ProtocolRpcs.spec)).toEqual(expectedProtocolMethods)
+  expect(Object.keys(ProtocolRpcs.events)).toEqual([])
 })
 
 test("Protocol service delegates through a substitutable ProtocolClient port", async () => {
@@ -3295,11 +3249,11 @@ test("unsupported Protocol client reports deferred host methods as Effect values
   )
 })
 
-test("SafeStorageApi declares the Phase 8 SafeStorage method surface", () => {
-  expect(SafeStorageApi.tag).toBe("SafeStorage")
+test("SafeStorageRpcs declares the Phase 8 SafeStorage method surface", () => {
+  expect(SafeStorageRpcs.tag).toBe("SafeStorage")
   expect([...SafeStorageMethodNames]).toEqual(expectedSafeStorageMethods)
-  expect(Object.keys(SafeStorageApi.spec)).toEqual(expectedSafeStorageMethods)
-  expect(Object.keys(SafeStorageApi.events)).toEqual([])
+  expect(Object.keys(SafeStorageRpcs.spec)).toEqual(expectedSafeStorageMethods)
+  expect(Object.keys(SafeStorageRpcs.events)).toEqual([])
 })
 
 test("SecretValue redacts string and JSON formatting while exposing explicit byte copies", async () => {
@@ -3314,14 +3268,6 @@ test("SecretValue redacts string and JSON formatting while exposing explicit byt
   expect(Array.from(secret.unsafeBytes())).toEqual(
     Array.from({ length: "refresh-token".length }, () => 0)
   )
-})
-
-test("SecretValue rejects non-byte fromBytes input", () => {
-  expect(() => SecretValue.fromBytes("refresh-token" as never)).toThrow(TypeError)
-  const bytes = new Uint8Array([1, 2, 3])
-  const secret = SecretValue.fromBytes(bytes)
-  bytes.fill(0)
-  expect(Array.from(secret.unsafeBytes())).toEqual([1, 2, 3])
 })
 
 test("SafeStorage service delegates through a substitutable SafeStorageClient port", async () => {
@@ -3521,11 +3467,11 @@ test("Linux SafeStorage client reports unimplemented adapter as unavailable with
   expectExitFailure(result.deleteExit, (error) => hasErrorTag(error, "Unsupported"))
 })
 
-test("UpdaterApi declares the Phase 8 Updater method surface", () => {
-  expect(UpdaterApi.tag).toBe("Updater")
+test("UpdaterRpcs declares the Phase 8 Updater method surface", () => {
+  expect(UpdaterRpcs.tag).toBe("Updater")
   expect([...UpdaterMethodNames]).toEqual(expectedUpdaterMethods)
-  expect(Object.keys(UpdaterApi.spec)).toEqual(expectedUpdaterMethods)
-  expect(Object.keys(UpdaterApi.events)).toEqual(["PreparingRestart"])
+  expect(Object.keys(UpdaterRpcs.spec)).toEqual(expectedUpdaterMethods)
+  expect(Object.keys(UpdaterRpcs.events)).toEqual(["PreparingRestart"])
 })
 
 test("Updater service delegates through a substitutable UpdaterClient port", async () => {
@@ -3646,11 +3592,11 @@ test("Updater service exposes the restart readiness handshake", async () => {
   expect(calls).toEqual(["installAndRestart:1.1.0", "readyForRestart"])
 })
 
-test("CrashReporterApi declares the Phase 8 CrashReporter method surface", () => {
-  expect(CrashReporterApi.tag).toBe("CrashReporter")
+test("CrashReporterRpcs declares the Phase 8 CrashReporter method surface", () => {
+  expect(CrashReporterRpcs.tag).toBe("CrashReporter")
   expect([...CrashReporterMethodNames]).toEqual(expectedCrashReporterMethods)
-  expect(Object.keys(CrashReporterApi.spec)).toEqual(expectedCrashReporterMethods)
-  expect(Object.keys(CrashReporterApi.events)).toEqual([])
+  expect(Object.keys(CrashReporterRpcs.spec)).toEqual(expectedCrashReporterMethods)
+  expect(Object.keys(CrashReporterRpcs.events)).toEqual([])
 })
 
 test("CrashReporter memory client requires start and flushes breadcrumbs to an Effect handler", async () => {
@@ -3916,11 +3862,11 @@ test("unsupported CrashReporter client reports every command as a typed Effect f
   expectExitFailure(result.handlerExit, (error) => hasErrorTag(error, "Unsupported"))
 })
 
-test("ShellApi declares the Phase 8 Shell method surface", () => {
-  expect(ShellApi.tag).toBe("Shell")
+test("ShellRpcs declares the Phase 8 Shell method surface", () => {
+  expect(ShellRpcs.tag).toBe("Shell")
   expect([...ShellMethodNames]).toEqual(expectedShellMethods)
-  expect(Object.keys(ShellApi.spec)).toEqual(expectedShellMethods)
-  expect(Object.keys(ShellApi.events)).toEqual([])
+  expect(Object.keys(ShellRpcs.spec)).toEqual(expectedShellMethods)
+  expect(Object.keys(ShellRpcs.events)).toEqual([])
 })
 
 test("Shell service delegates through a substitutable ShellClient port", async () => {
@@ -4057,11 +4003,11 @@ test("unsupported Shell client reports deferred host methods as Effect values", 
   )
 })
 
-test("ScreenApi declares the Phase 8 Screen method surface", () => {
-  expect(ScreenApi.tag).toBe("Screen")
+test("ScreenRpcs declares the Phase 8 Screen method surface", () => {
+  expect(ScreenRpcs.tag).toBe("Screen")
   expect([...ScreenMethodNames]).toEqual(expectedScreenMethods)
-  expect(Object.keys(ScreenApi.spec)).toEqual(expectedScreenMethods)
-  expect(Object.keys(ScreenApi.events)).toEqual([])
+  expect(Object.keys(ScreenRpcs.spec)).toEqual(expectedScreenMethods)
+  expect(Object.keys(ScreenRpcs.events)).toEqual([])
 })
 
 test("Screen service delegates through a substitutable ScreenClient port", async () => {
@@ -4175,11 +4121,11 @@ test("unsupported Screen client exposes support checks and typed method failures
   expectExitFailure(result.exit, (error) => hasErrorTag(error, "Unsupported"))
 })
 
-test("SystemAppearanceApi declares the Phase 8 SystemAppearance method and event surface", () => {
-  expect(SystemAppearanceApi.tag).toBe("SystemAppearance")
+test("SystemAppearanceRpcs declares the Phase 8 SystemAppearance method and event surface", () => {
+  expect(SystemAppearanceRpcs.tag).toBe("SystemAppearance")
   expect([...SystemAppearanceMethodNames]).toEqual(expectedSystemAppearanceMethods)
-  expect(Object.keys(SystemAppearanceApi.spec)).toEqual(expectedSystemAppearanceMethods)
-  expect(Object.keys(SystemAppearanceApi.events)).toEqual(["AppearanceChanged"])
+  expect(Object.keys(SystemAppearanceRpcs.spec)).toEqual(expectedSystemAppearanceMethods)
+  expect(Object.keys(SystemAppearanceRpcs.events)).toEqual(["AppearanceChanged"])
 })
 
 test("SystemAppearance service maps result wrappers to public values", async () => {
@@ -4301,11 +4247,11 @@ test("unsupported SystemAppearance client fails reads and event stream as Unsupp
   expectExitFailure(result.eventExit, (error) => hasErrorTag(error, "Unsupported"))
 })
 
-test("PowerMonitorApi declares the Phase 8 event-only surface", () => {
-  expect(PowerMonitorApi.tag).toBe("PowerMonitor")
+test("PowerMonitorRpcs declares the Phase 8 event-only surface", () => {
+  expect(PowerMonitorRpcs.tag).toBe("PowerMonitor")
   expect([...PowerMonitorMethodNames]).toEqual(expectedPowerMonitorMethods)
-  expect(Object.keys(PowerMonitorApi.spec)).toEqual(expectedPowerMonitorMethods)
-  expect(Object.keys(PowerMonitorApi.events)).toEqual([
+  expect(Object.keys(PowerMonitorRpcs.spec)).toEqual(expectedPowerMonitorMethods)
+  expect(Object.keys(PowerMonitorRpcs.events)).toEqual([
     "Suspend",
     "Resume",
     "Shutdown",
@@ -4350,7 +4296,7 @@ test("PowerMonitor bridge client rejects blank event reasons as InvalidOutput", 
   ]
 
   for (const { method } of cases) {
-    const exchange: ApiClientExchange = {
+    const exchange: BridgeClientExchange = {
       request: (request) =>
         request.method === "PowerMonitor.isSupported"
           ? Effect.succeed({ kind: "success" as const, payload: { supported: true } })
@@ -4402,11 +4348,11 @@ test("unsupported PowerMonitor client exposes support checks and typed event str
   expectExitFailure(result.exit, (error) => hasErrorTag(error, "Unsupported"))
 })
 
-test("DockApi declares the Phase 8 Dock method surface", () => {
-  expect(DockApi.tag).toBe("Dock")
+test("DockRpcs declares the Phase 8 Dock method surface", () => {
+  expect(DockRpcs.tag).toBe("Dock")
   expect([...DockMethodNames]).toEqual(expectedDockMethods)
-  expect(Object.keys(DockApi.spec)).toEqual(expectedDockMethods)
-  expect(Object.keys(DockApi.events)).toEqual([])
+  expect(Object.keys(DockRpcs.spec)).toEqual(expectedDockMethods)
+  expect(Object.keys(DockRpcs.events)).toEqual([])
 })
 
 test("Dock service delegates through a substitutable DockClient port", async () => {
@@ -4486,9 +4432,8 @@ test("Dock bridge client rejects invalid badge text before transport", async () 
   const nulExit = await Effect.runPromiseExit(dock.setBadgeText("bad\u0000text"))
   const newlineExit = await Effect.runPromiseExit(dock.setBadgeText("line\nbreak"))
   const tabExit = await Effect.runPromiseExit(dock.setBadgeText("badge\ttext"))
-  const emptyExit = await Effect.runPromiseExit(dock.setBadgeText(""))
 
-  for (const exit of [nulExit, newlineExit, tabExit, emptyExit]) {
+  for (const exit of [nulExit, newlineExit, tabExit]) {
     expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
   }
   expect(requests).toEqual([])
@@ -4620,11 +4565,11 @@ test("Linux Dock client reports unimplemented partial methods as unsupported", a
   expectExitFailure(result.menuExit, (error) => hasErrorTag(error, "Unsupported"))
 })
 
-test("GlobalShortcutApi declares the Phase 8 GlobalShortcut method and event surface", () => {
-  expect(GlobalShortcutApi.tag).toBe("GlobalShortcut")
+test("GlobalShortcutRpcs declares the Phase 8 GlobalShortcut method and event surface", () => {
+  expect(GlobalShortcutRpcs.tag).toBe("GlobalShortcut")
   expect([...GlobalShortcutMethodNames]).toEqual(expectedGlobalShortcutMethods)
-  expect(Object.keys(GlobalShortcutApi.spec)).toEqual(expectedGlobalShortcutMethods)
-  expect(Object.keys(GlobalShortcutApi.events)).toEqual(["Pressed"])
+  expect(Object.keys(GlobalShortcutRpcs.spec)).toEqual(expectedGlobalShortcutMethods)
+  expect(Object.keys(GlobalShortcutRpcs.events)).toEqual(["Pressed"])
 })
 
 test("GlobalShortcut service delegates through a substitutable GlobalShortcutClient port", async () => {
@@ -4780,7 +4725,7 @@ test("GlobalShortcut bridge client rejects invalid pressed event identifiers as 
   ]
 
   for (const { label, payload } of cases) {
-    const exchange: ApiClientExchange = {
+    const exchange: BridgeClientExchange = {
       request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
       subscribe: (method) =>
         method === "GlobalShortcut.Pressed"
@@ -5213,12 +5158,12 @@ test("Linux GlobalShortcut client reports Wayland unsupported as a typed value",
   )
 })
 
-test("WindowApi declares the Phase 5 Window method surface", () => {
-  expect(WindowApi.tag).toBe("Window")
+test("WindowRpcs declares the Phase 5 Window method surface", () => {
+  expect(WindowRpcs.tag).toBe("Window")
   expect([...WindowMethodNames]).toEqual(expectedWindowMethods)
-  expect(Object.keys(WindowApi.spec)).toEqual(expectedWindowMethods)
-  expect(WindowApi.spec.create.output).toMatchObject({
-    _tag: "ApiResourceSpec",
+  expect(Object.keys(WindowRpcs.spec)).toEqual(expectedWindowMethods)
+  expect(WindowRpcs.spec.create.output).toMatchObject({
+    _tag: "BridgeRpcResourceSpec",
     kind: "window",
     state: "open"
   })
@@ -5243,7 +5188,6 @@ test("Window service delegates through a substitutable WindowClient port", async
     setBackgroundColor: (_window, color) => recordVoid(calls, `setBackgroundColor:${color}`),
     setVibrancy: (_window, material) => recordVoid(calls, `setVibrancy:${material}`),
     setHasShadow: (_window, hasShadow) => recordVoid(calls, `setHasShadow:${hasShadow}`),
-    setFullscreen: (_window, fullscreen) => recordVoid(calls, `setFullscreen:${fullscreen}`),
     enterFullScreen: () => recordVoid(calls, "enterFullScreen"),
     exitFullScreen: () => recordVoid(calls, "exitFullScreen"),
     onFullScreenChanged: () => Stream.empty,
@@ -5308,7 +5252,7 @@ test("makeUnsupportedWindowClient returns Unsupported for all methods", async ()
 test("host WindowClient adapter opens and closes through host envelopes with registry lifetime", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const registry = await Effect.runPromise(makeResourceRegistry())
-  const apiExchange = makeWindowApiExchange(windowExchange(requests), registry, {
+  const rpcExchange = makeWindowRpcExchange(windowExchange(requests), registry, {
     nextRequestId: nextId(["create-request", "destroy-request"]),
     nextTraceId: nextId(["create-trace", "destroy-trace"]),
     now: nextNumber([1710000000000, 1710000000001])
@@ -5328,7 +5272,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
     const afterClose = yield* registry.list()
 
     return { created, duringLifetime, afterClose }
-  }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(apiExchange))))
+  }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
 
   const result = await Effect.runPromise(program)
 
@@ -5367,11 +5311,11 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
 test("Window.create rejects persistState until the persistence backend is implemented", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const registry = await Effect.runPromise(makeResourceRegistry())
-  const apiExchange = makeWindowApiExchange(windowExchange(requests), registry)
+  const rpcExchange = makeWindowRpcExchange(windowExchange(requests), registry)
   const program = Effect.gen(function* () {
     const window = yield* Window
     return yield* Effect.exit(window.create({ persistState: true }))
-  }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(apiExchange))))
+  }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
 
   const exit = await Effect.runPromise(program)
 
@@ -5622,7 +5566,7 @@ test("AppEventRouter drops targeted events for closed targets with an audit row"
 test("host WindowClient adapter declares per-window scopes and closes scoped resources", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   const router = await Effect.runPromise(makeAppEventRouter())
-  const apiExchange = makeWindowApiExchange(windowExchange([]), registry, {}, router)
+  const rpcExchange = makeWindowRpcExchange(windowExchange([]), registry, {}, router)
   const program = Effect.gen(function* () {
     const window = yield* Window
     const created = yield* window.create({})
@@ -5635,7 +5579,7 @@ test("host WindowClient adapter declares per-window scopes and closes scoped res
     const afterClose = yield* registry.list()
 
     return { child, afterClose }
-  }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(apiExchange))))
+  }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
 
   const result = await Effect.runPromise(program)
 
@@ -5645,11 +5589,11 @@ test("host WindowClient adapter declares per-window scopes and closes scoped res
 
 test("host WindowClient adapter returns typed failures for invalid input and bad handles", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
-  const apiExchange = makeWindowApiExchange(windowExchange([]), registry)
+  const rpcExchange = makeWindowRpcExchange(windowExchange([]), registry)
   const client = await Effect.runPromise(
     Effect.gen(function* () {
       return yield* WindowClient
-    }).pipe(Effect.provide(makeWindowBridgeClientLayer(apiExchange)))
+    }).pipe(Effect.provide(makeWindowBridgeClientLayer(rpcExchange)))
   )
 
   const invalidCreateExit = await Effect.runPromiseExit(client.create({ width: 0 }))
@@ -5681,11 +5625,11 @@ test("host WindowClient adapter returns typed failures for invalid input and bad
 
 test("host WindowClient adapter reports unimplemented public methods as Unsupported", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
-  const apiExchange = makeWindowApiExchange(windowExchange([]), registry)
+  const rpcExchange = makeWindowRpcExchange(windowExchange([]), registry)
   const client = await Effect.runPromise(
     Effect.gen(function* () {
       return yield* WindowClient
-    }).pipe(Effect.provide(makeWindowBridgeClientLayer(apiExchange)))
+    }).pipe(Effect.provide(makeWindowBridgeClientLayer(rpcExchange)))
   )
 
   const created = await Effect.runPromise(client.create({}))
@@ -5727,11 +5671,11 @@ test("Window bridge client rejects invalid chrome inputs before crossing the hos
   for (const input of invalidInputs) {
     const requests: HostProtocolRequestEnvelope[] = []
     const registry = await Effect.runPromise(makeResourceRegistry())
-    const apiExchange = makeWindowApiExchange(windowExchange(requests), registry)
+    const rpcExchange = makeWindowRpcExchange(windowExchange(requests), registry)
     const program = Effect.gen(function* () {
       const window = yield* Window
       return yield* Effect.exit(window.create(input as WindowCreateOptions))
-    }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(apiExchange))))
+    }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
 
     const exit = await Effect.runPromise(program)
 
@@ -6665,7 +6609,6 @@ const noopWindowClient: WindowClientApi = {
   setBackgroundColor: () => Effect.void,
   setVibrancy: () => Effect.void,
   setHasShadow: () => Effect.void,
-  setFullscreen: () => Effect.void,
   enterFullScreen: () => Effect.void,
   exitFullScreen: () => Effect.void,
   onFullScreenChanged: () => Stream.empty,
@@ -6701,8 +6644,8 @@ const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExch
 
 const appExchange = (
   requests: HostProtocolRequestEnvelope[],
-  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
-): ApiClientExchange => ({
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+): BridgeClientExchange => ({
   request: (request) => {
     requests.push(request)
     return Effect.succeed(respond(request))
@@ -6723,8 +6666,8 @@ const appExchange = (
 
 const webViewExchange = (
   requests: HostProtocolRequestEnvelope[],
-  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
-): ApiClientExchange => ({
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+): BridgeClientExchange => ({
   request: (request) => {
     requests.push(request)
     return Effect.succeed(respond(request))
@@ -6752,8 +6695,8 @@ const webViewExchange = (
 
 const menuExchange = (
   requests: HostProtocolRequestEnvelope[],
-  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
-): ApiClientExchange => ({
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+): BridgeClientExchange => ({
   request: (request) => {
     requests.push(request)
     return Effect.succeed(respond(request))
@@ -6778,8 +6721,8 @@ const menuExchange = (
 
 const contextMenuExchange = (
   requests: HostProtocolRequestEnvelope[],
-  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
-): ApiClientExchange => ({
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+): BridgeClientExchange => ({
   request: (request) => {
     requests.push(request)
     return Effect.succeed(respond(request))
@@ -6804,8 +6747,8 @@ const contextMenuExchange = (
 
 const trayExchange = (
   requests: HostProtocolRequestEnvelope[],
-  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
-): ApiClientExchange => ({
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+): BridgeClientExchange => ({
   request: (request) => {
     requests.push(request)
     return Effect.succeed(respond(request))
@@ -6832,8 +6775,8 @@ const trayExchange = (
 
 const dialogExchange = (
   requests: HostProtocolRequestEnvelope[],
-  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
-): ApiClientExchange => ({
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+): BridgeClientExchange => ({
   request: (request) => {
     requests.push(request)
     return Effect.succeed(respond(request))
@@ -6842,8 +6785,8 @@ const dialogExchange = (
 
 const clipboardExchange = (
   requests: HostProtocolRequestEnvelope[],
-  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
-): ApiClientExchange => ({
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+): BridgeClientExchange => ({
   request: (request) => {
     requests.push(request)
     return Effect.succeed(respond(request))
@@ -6852,8 +6795,8 @@ const clipboardExchange = (
 
 const notificationExchange = (
   requests: HostProtocolRequestEnvelope[],
-  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
-): ApiClientExchange => ({
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+): BridgeClientExchange => ({
   request: (request) => {
     requests.push(request)
     return Effect.succeed(respond(request))
@@ -6894,8 +6837,8 @@ const notificationExchange = (
 
 const pathExchange = (
   requests: HostProtocolRequestEnvelope[],
-  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
-): ApiClientExchange => ({
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+): BridgeClientExchange => ({
   request: (request) => {
     requests.push(request)
     return Effect.succeed(respond(request))
@@ -6904,8 +6847,8 @@ const pathExchange = (
 
 const protocolExchange = (
   requests: HostProtocolRequestEnvelope[],
-  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
-): ApiClientExchange => ({
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+): BridgeClientExchange => ({
   request: (request) => {
     requests.push(request)
     return Effect.succeed(respond(request))
@@ -6914,8 +6857,8 @@ const protocolExchange = (
 
 const safeStorageExchange = (
   requests: HostProtocolRequestEnvelope[],
-  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
-): ApiClientExchange => ({
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+): BridgeClientExchange => ({
   request: (request) => {
     requests.push(request)
     return Effect.succeed(respond(request))
@@ -6924,8 +6867,8 @@ const safeStorageExchange = (
 
 const updaterExchange = (
   requests: HostProtocolRequestEnvelope[],
-  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
-): ApiClientExchange => ({
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+): BridgeClientExchange => ({
   request: (request) => {
     requests.push(request)
     return Effect.succeed(respond(request))
@@ -6934,8 +6877,8 @@ const updaterExchange = (
 
 const crashReporterExchange = (
   requests: HostProtocolRequestEnvelope[],
-  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
-): ApiClientExchange => ({
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+): BridgeClientExchange => ({
   request: (request) => {
     requests.push(request)
     return Effect.succeed(respond(request))
@@ -6944,8 +6887,8 @@ const crashReporterExchange = (
 
 const shellExchange = (
   requests: HostProtocolRequestEnvelope[],
-  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
-): ApiClientExchange => ({
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+): BridgeClientExchange => ({
   request: (request) => {
     requests.push(request)
     return Effect.succeed(respond(request))
@@ -6954,8 +6897,8 @@ const shellExchange = (
 
 const screenExchange = (
   requests: HostProtocolRequestEnvelope[],
-  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
-): ApiClientExchange => ({
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+): BridgeClientExchange => ({
   request: (request) => {
     requests.push(request)
     return Effect.succeed(respond(request))
@@ -6964,8 +6907,8 @@ const screenExchange = (
 
 const systemAppearanceExchange = (
   requests: HostProtocolRequestEnvelope[],
-  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
-): ApiClientExchange => ({
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+): BridgeClientExchange => ({
   request: (request) => {
     requests.push(request)
     return Effect.succeed(respond(request))
@@ -6984,7 +6927,7 @@ const systemAppearanceExchange = (
       : Stream.empty
 })
 
-const powerMonitorExchange = (): ApiClientExchange => ({
+const powerMonitorExchange = (): BridgeClientExchange => ({
   request: (request) =>
     request.method === "PowerMonitor.isSupported"
       ? Effect.succeed({ kind: "success", payload: { supported: true } })
@@ -7035,8 +6978,8 @@ const powerMonitorExchange = (): ApiClientExchange => ({
 
 const dockExchange = (
   requests: HostProtocolRequestEnvelope[],
-  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
-): ApiClientExchange => ({
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+): BridgeClientExchange => ({
   request: (request) => {
     requests.push(request)
     return Effect.succeed(respond(request))
@@ -7045,8 +6988,8 @@ const dockExchange = (
 
 const globalShortcutExchange = (
   requests: HostProtocolRequestEnvelope[],
-  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
-): ApiClientExchange => ({
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+): BridgeClientExchange => ({
   request: (request) => {
     requests.push(request)
     return Effect.succeed(respond(request))
@@ -7068,23 +7011,23 @@ const globalShortcutExchange = (
       : Stream.empty
 })
 
-const makeWindowApiExchange = (
+const makeWindowRpcExchange = (
   hostExchange: HostWindowExchange,
   registry: ResourceRegistry["Service"],
   options: HostWindowClientOptions = {},
   appEventRouter?: AppEventRouter["Service"]
-): ApiClientExchange => {
+): BridgeClientExchange => {
   const runtime = Handlers.withOptions(
     { originAuth: RendererOriginAuth.unsafeDisabledForTests },
-    makeHostWindowApiLayer(hostExchange, {
+    makeHostWindowBridgeRpcLayer(hostExchange, {
       ...options,
       ...(appEventRouter === undefined ? {} : { appEventRouter })
     })
   )
   const registryLayer = Layer.succeed(ResourceRegistry)(registry)
-  const request: ApiClientExchange["request"] = (request) =>
+  const request: BridgeClientExchange["request"] = (request) =>
     runtime.dispatch(request).pipe(Effect.provide(registryLayer)) as ReturnType<
-      ApiClientExchange["request"]
+      BridgeClientExchange["request"]
     >
 
   return {

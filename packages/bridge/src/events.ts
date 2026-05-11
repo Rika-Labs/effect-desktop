@@ -1,10 +1,10 @@
 import { Effect, Queue, Schema, Stream } from "effect"
 
 import {
-  type ApiContractClass,
-  type ApiContractEvents,
-  type ApiContractSpec,
-  type ApiEventSpec
+  type BridgeRpcGroup,
+  type BridgeRpcEvents,
+  type BridgeRpcSpec,
+  type BridgeRpcEventSpec
 } from "./contracts.js"
 import {
   HostProtocolEventEnvelope,
@@ -16,26 +16,26 @@ import {
 const StrictParseOptions = { onExcessProperty: "error" } as const
 const DEFAULT_EVENT_QUEUE_SIZE = 1_024
 
-export interface ApiEventHubOptions {
+export interface BridgeEventHubOptions {
   readonly now?: () => number
   readonly nextTraceId?: () => string
   readonly windowId?: string
 }
 
-interface ResolvedApiEventHubOptions {
+interface ResolvedBridgeEventHubOptions {
   readonly now: () => number
   readonly nextTraceId: () => string
   readonly windowId: string | undefined
 }
 
-export interface ApiEventHub {
+export interface BridgeEventHub {
   readonly exchange: {
     readonly subscribe: (
       method: string
     ) => Stream.Stream<HostProtocolEventEnvelope, HostProtocolError, never>
   }
   readonly publish: <
-    Events extends ApiContractEvents,
+    Events extends BridgeRpcEvents,
     Contract extends ContractWithEvents<Events>,
     Event extends keyof Events
   >(
@@ -46,7 +46,7 @@ export interface ApiEventHub {
 }
 
 type EventChannel = {
-  readonly spec: ApiEventSpec
+  readonly spec: BridgeRpcEventSpec
   readonly queues: Set<EventQueue>
 }
 
@@ -54,12 +54,12 @@ type EventQueue = {
   readonly queue: Queue.Queue<HostProtocolEventEnvelope>
 }
 
-type EventOverflow = NonNullable<NonNullable<ApiEventSpec["backpressure"]>["overflow"]>
+type EventOverflow = NonNullable<NonNullable<BridgeRpcEventSpec["backpressure"]>["overflow"]>
 
 export const EventHub = (
-  contracts: Iterable<ApiContractClass>,
-  options: ApiEventHubOptions = {}
-): Effect.Effect<ApiEventHub, never, never> =>
+  contracts: Iterable<BridgeRpcGroup>,
+  options: BridgeEventHubOptions = {}
+): Effect.Effect<BridgeEventHub, never, never> =>
   Effect.sync(() => {
     const resolved = resolveOptions(options)
     const channels = new Map<string, EventChannel>()
@@ -73,7 +73,7 @@ export const EventHub = (
       }
     }
 
-    const hub: ApiEventHub = {
+    const hub: BridgeEventHub = {
       exchange: Object.freeze({
         subscribe: (method: string) => subscribe(channels, method)
       }),
@@ -84,9 +84,9 @@ export const EventHub = (
     return Object.freeze(hub)
   })
 
-type ContractWithEvents<Events extends ApiContractEvents> = ApiContractClass<
+type ContractWithEvents<Events extends BridgeRpcEvents> = BridgeRpcGroup<
   string,
-  ApiContractSpec,
+  BridgeRpcSpec,
   Events
 > & {
   readonly events: Events
@@ -121,9 +121,9 @@ const subscribe = (
   )
 }
 
-const publish = <Events extends ApiContractEvents, Event extends keyof Events>(
+const publish = <Events extends BridgeRpcEvents, Event extends keyof Events>(
   channels: ReadonlyMap<string, EventChannel>,
-  options: ResolvedApiEventHubOptions,
+  options: ResolvedBridgeEventHubOptions,
   contract: ContractWithEvents<Events>,
   event: Event,
   payload: Schema.Schema.Type<Events[Event]["payload"]>
@@ -154,7 +154,7 @@ const publish = <Events extends ApiContractEvents, Event extends keyof Events>(
     })
   })
 
-const makeEventQueue = (spec: ApiEventSpec): Effect.Effect<EventQueue, never, never> =>
+const makeEventQueue = (spec: BridgeRpcEventSpec): Effect.Effect<EventQueue, never, never> =>
   Effect.gen(function* () {
     const capacity = spec.backpressure?.size ?? DEFAULT_EVENT_QUEUE_SIZE
     const overflow = resolveEventOverflow(spec)
@@ -170,7 +170,7 @@ const makeEventQueue = (spec: ApiEventSpec): Effect.Effect<EventQueue, never, ne
     } as const
   })
 
-const resolveEventOverflow = (spec: ApiEventSpec): EventOverflow => {
+const resolveEventOverflow = (spec: BridgeRpcEventSpec): EventOverflow => {
   if (spec.backpressure?.overflow !== undefined) {
     return spec.backpressure.overflow
   }
@@ -186,7 +186,7 @@ const offerEvent = (
     yield* Queue.offer(eventQueue.queue, envelope)
   })
 
-const encodeEventPayload = <Spec extends ApiEventSpec>(
+const encodeEventPayload = <Spec extends BridgeRpcEventSpec>(
   operation: string,
   spec: Spec,
   payload: Schema.Schema.Type<Spec["payload"]>
@@ -200,7 +200,7 @@ const encodeEventPayload = <Spec extends ApiEventSpec>(
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
 
-const resolveOptions = (options: ApiEventHubOptions): ResolvedApiEventHubOptions => ({
+const resolveOptions = (options: BridgeEventHubOptions): ResolvedBridgeEventHubOptions => ({
   now: options.now ?? Date.now,
   nextTraceId: options.nextTraceId ?? (() => `trace-${globalThis.crypto.randomUUID()}`),
   windowId: options.windowId

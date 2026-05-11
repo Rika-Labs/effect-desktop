@@ -1,11 +1,11 @@
 import { Cause, Effect, Exit, Fiber, Option, Queue, Ref, Schema, Stream } from "effect"
 
 import {
-  type ApiContractClass,
-  type ApiContractSpec,
-  type ApiLayer,
-  type ApiMethodSpec,
-  type ApiStreamSpec,
+  type BridgeRpcGroup,
+  type BridgeRpcSpec,
+  type BridgeRpcLayer,
+  type BridgeRpcMethodSpec,
+  type BridgeRpcStreamSpec,
   type BackpressureSpec,
   isStreamSpec
 } from "./contracts.js"
@@ -28,38 +28,42 @@ const DEFAULT_STREAM_QUEUE_SIZE = 1_024
 
 export type HostProtocolStreamEnvelope = HostProtocolStreamByRequestEnvelope
 
-export class ApiStreamDataFrame extends Schema.Class<ApiStreamDataFrame>("ApiStreamDataFrame")({
+export class BridgeStreamDataFrame extends Schema.Class<BridgeStreamDataFrame>(
+  "BridgeStreamDataFrame"
+)({
   type: Schema.Literal("data"),
   chunk: Schema.Unknown
 }) {}
 
-export class ApiStreamErrorFrame extends Schema.Class<ApiStreamErrorFrame>("ApiStreamErrorFrame")({
+export class BridgeStreamErrorFrame extends Schema.Class<BridgeStreamErrorFrame>(
+  "BridgeStreamErrorFrame"
+)({
   type: Schema.Literal("error"),
   error: Schema.Unknown
 }) {}
 
-export class ApiStreamCompleteFrame extends Schema.Class<ApiStreamCompleteFrame>(
-  "ApiStreamCompleteFrame"
+export class BridgeStreamCompleteFrame extends Schema.Class<BridgeStreamCompleteFrame>(
+  "BridgeStreamCompleteFrame"
 )({
   type: Schema.Literal("complete")
 }) {}
 
-export class ApiStreamClosedFrame extends Schema.Class<ApiStreamClosedFrame>(
-  "ApiStreamClosedFrame"
+export class BridgeStreamClosedFrame extends Schema.Class<BridgeStreamClosedFrame>(
+  "BridgeStreamClosedFrame"
 )({
   type: Schema.Literal("closed")
 }) {}
 
-export const ApiStreamFrame = Schema.Union([
-  ApiStreamDataFrame,
-  ApiStreamErrorFrame,
-  ApiStreamCompleteFrame,
-  ApiStreamClosedFrame
+export const BridgeStreamFrame = Schema.Union([
+  BridgeStreamDataFrame,
+  BridgeStreamErrorFrame,
+  BridgeStreamCompleteFrame,
+  BridgeStreamClosedFrame
 ])
 
-export type ApiStreamFrame = typeof ApiStreamFrame.Type
+export type BridgeStreamFrame = typeof BridgeStreamFrame.Type
 
-export interface ApiStreamRuntime<Env = never> {
+export interface BridgeStreamRuntime<Env = never> {
   readonly stream: (
     request: HostProtocolRequestEnvelope
   ) => Stream.Stream<HostProtocolStreamEnvelope, HostProtocolError, Env>
@@ -68,22 +72,22 @@ export interface ApiStreamRuntime<Env = never> {
   ) => Effect.Effect<void, never, never>
 }
 
-export interface ApiStreamRuntimeOptions {
+export interface BridgeStreamRuntimeOptions {
   readonly now?: () => number
   readonly nextStreamId?: () => string
   readonly cleanupGraceMs?: number
   readonly registry?: BridgeStreamRegistry
 }
 
-interface ResolvedApiStreamRuntimeOptions {
+interface ResolvedBridgeStreamRuntimeOptions {
   readonly now: () => number
   readonly nextStreamId: () => string
   readonly cleanupGraceMs: number
   readonly registry: BridgeStreamRegistry
 }
 
-export type ApiStreamLayerEnvironment<Layer> =
-  Layer extends ApiLayer<string, infer Spec, infer Handlers>
+export type BridgeStreamLayerEnvironment<Layer> =
+  Layer extends BridgeRpcLayer<string, infer Spec, infer Handlers>
     ? {
         readonly [Method in keyof Spec]: HandlerEnvironment<Handlers[Method]>
       }[keyof Spec]
@@ -95,13 +99,13 @@ type HandlerEnvironment<Handler> = Handler extends (
   ? Env
   : never
 
-type AnyApiLayer = {
-  readonly contract: ApiContractClass<string, ApiContractSpec>
+type AnyBridgeRpcLayer = {
+  readonly group: BridgeRpcGroup<string, BridgeRpcSpec>
   readonly handlers: object
 }
 
 type BoundStream = {
-  readonly spec: ApiMethodSpec & { readonly output: ApiStreamSpec }
+  readonly spec: BridgeRpcMethodSpec & { readonly output: BridgeRpcStreamSpec }
   readonly handler: (input: unknown) => Stream.Stream<unknown, unknown, unknown>
 }
 
@@ -114,19 +118,19 @@ type StreamQueue = {
 
 type ActiveStream = {
   readonly interrupt: Effect.Effect<void, never, never>
-  readonly options: ResolvedApiStreamRuntimeOptions
+  readonly options: ResolvedBridgeStreamRuntimeOptions
   readonly queue: StreamQueue
   readonly request: HostProtocolRequestEnvelope
   readonly streamId: string
 }
 
-export type ApiStreamTerminalType = "complete" | "error" | "closed"
+export type BridgeStreamTerminalType = "complete" | "error" | "closed"
 
 export interface BridgeStreamRegistryEntry {
   readonly streamId: string
   readonly generation: number
   readonly state: "open" | "terminal"
-  readonly terminal?: ApiStreamTerminalType
+  readonly terminal?: BridgeStreamTerminalType
   readonly terminalAt?: number
   readonly backpressure?: BridgeStreamBackpressureMetrics
 }
@@ -142,7 +146,7 @@ export interface BridgeStreamRegistry {
   readonly register: (streamId: string) => Effect.Effect<BridgeStreamRegistryEntry, never, never>
   readonly terminate: (
     streamId: string,
-    terminal: ApiStreamTerminalType,
+    terminal: BridgeStreamTerminalType,
     now: number
   ) => Effect.Effect<boolean, never, never>
   readonly isTerminal: (streamId: string) => Effect.Effect<boolean, never, never>
@@ -247,27 +251,27 @@ export const makeBridgeStreamRegistry = (cleanupGraceMs = 30_000): BridgeStreamR
   return Object.freeze(registry)
 }
 
-const makeStreams = <Layers extends readonly AnyApiLayer[]>(
+const makeStreams = <Layers extends readonly AnyBridgeRpcLayer[]>(
   ...layers: Layers
-): ApiStreamRuntime<ApiStreamLayerEnvironment<Layers[number]>> =>
+): BridgeStreamRuntime<BridgeStreamLayerEnvironment<Layers[number]>> =>
   makeStreamsWithOptions({}, ...layers)
 
-const makeStreamsWithOptions = <Layers extends readonly AnyApiLayer[]>(
-  options: ApiStreamRuntimeOptions,
+const makeStreamsWithOptions = <Layers extends readonly AnyBridgeRpcLayer[]>(
+  options: BridgeStreamRuntimeOptions,
   ...layers: Layers
-): ApiStreamRuntime<ApiStreamLayerEnvironment<Layers[number]>> => {
+): BridgeStreamRuntime<BridgeStreamLayerEnvironment<Layers[number]>> => {
   const active = new Map<string, ActiveStream>()
   const activeByResource = new Map<string, ActiveStream>()
   const table = new Map<string, BoundStream>()
   const resolved = resolveOptions(options)
 
   for (const layer of layers) {
-    for (const [method, spec] of Object.entries(layer.contract.spec)) {
+    for (const [method, spec] of Object.entries(layer.group.spec)) {
       if (!isStreamSpec(spec.output)) {
         continue
       }
 
-      const operation = methodName(layer.contract.tag, method)
+      const operation = methodName(layer.group.tag, method)
       const handler = Reflect.get(layer.handlers, method) as (
         this: object,
         input: unknown
@@ -283,12 +287,12 @@ const makeStreamsWithOptions = <Layers extends readonly AnyApiLayer[]>(
     }
   }
 
-  const runtime: ApiStreamRuntime<ApiStreamLayerEnvironment<Layers[number]>> = {
+  const runtime: BridgeStreamRuntime<BridgeStreamLayerEnvironment<Layers[number]>> = {
     stream: (request: HostProtocolRequestEnvelope) =>
       streamDispatch(table, active, activeByResource, resolved, request) as Stream.Stream<
         HostProtocolStreamEnvelope,
         HostProtocolError,
-        ApiStreamLayerEnvironment<Layers[number]>
+        BridgeStreamLayerEnvironment<Layers[number]>
       >,
     cancel: (request) => cancelStream(active, activeByResource, request)
   }
@@ -304,7 +308,7 @@ const streamDispatch = (
   table: ReadonlyMap<string, BoundStream>,
   active: Map<string, ActiveStream>,
   activeByResource: Map<string, ActiveStream>,
-  options: ResolvedApiStreamRuntimeOptions,
+  options: ResolvedBridgeStreamRuntimeOptions,
   request: HostProtocolRequestEnvelope
 ): Stream.Stream<HostProtocolStreamEnvelope, HostProtocolError, unknown> => {
   const bound = table.get(request.method)
@@ -396,7 +400,7 @@ const runProducer = (
   streamId: string,
   bound: BoundStream,
   streamQueue: StreamQueue,
-  options: ResolvedApiStreamRuntimeOptions,
+  options: ResolvedBridgeStreamRuntimeOptions,
   source: Stream.Stream<unknown, unknown, unknown>
 ): Effect.Effect<void, never, unknown> =>
   Effect.gen(function* () {
@@ -488,7 +492,7 @@ const offerStreamFrame = (
   operation: string,
   streamQueue: StreamQueue,
   frame: HostProtocolStreamEnvelope,
-  options: ResolvedApiStreamRuntimeOptions
+  options: ResolvedBridgeStreamRuntimeOptions
 ): Effect.Effect<void, HostProtocolError, never> =>
   Effect.gen(function* () {
     if (frame.resourceId !== undefined && (yield* options.registry.isTerminal(frame.resourceId))) {
@@ -531,8 +535,8 @@ const offerStreamFrame = (
 const offerTerminalFrame = (
   streamQueue: StreamQueue,
   frame: HostProtocolStreamEnvelope,
-  options: ResolvedApiStreamRuntimeOptions,
-  terminal: ApiStreamTerminalType
+  options: ResolvedBridgeStreamRuntimeOptions,
+  terminal: BridgeStreamTerminalType
 ): Effect.Effect<void, never, never> =>
   Effect.gen(function* () {
     const streamId = frame.resourceId
@@ -578,9 +582,9 @@ const syncBackpressureMetrics = (
 const encodeChunkFrame = (
   request: HostProtocolRequestEnvelope,
   streamId: string,
-  spec: ApiStreamSpec,
+  spec: BridgeRpcStreamSpec,
   chunk: unknown,
-  options: ResolvedApiStreamRuntimeOptions
+  options: ResolvedBridgeStreamRuntimeOptions
 ): Effect.Effect<HostProtocolStreamEnvelope, HostProtocolError, never> =>
   Effect.gen(function* () {
     const encodedChunk = yield* encodeStreamChunk(request.method, spec, chunk)
@@ -589,16 +593,16 @@ const encodeChunkFrame = (
       request,
       streamId,
       options,
-      new ApiStreamDataFrame({ type: "data", chunk: encodedChunk })
+      new BridgeStreamDataFrame({ type: "data", chunk: encodedChunk })
     )
   })
 
 const encodeErrorFrame = (
   request: HostProtocolRequestEnvelope,
   streamId: string,
-  spec: ApiStreamSpec,
+  spec: BridgeRpcStreamSpec,
   cause: Cause.Cause<unknown>,
-  options: ResolvedApiStreamRuntimeOptions
+  options: ResolvedBridgeStreamRuntimeOptions
 ): Effect.Effect<HostProtocolStreamEnvelope, HostProtocolError, never> =>
   Effect.gen(function* () {
     const fail = cause.reasons.find(Cause.isFailReason)
@@ -622,29 +626,29 @@ const encodeErrorFrame = (
       request,
       streamId,
       options,
-      new ApiStreamErrorFrame({ type: "error", error: encoded })
+      new BridgeStreamErrorFrame({ type: "error", error: encoded })
     )
   })
 
 const completeFrame = (
   request: HostProtocolRequestEnvelope,
   streamId: string,
-  options: ResolvedApiStreamRuntimeOptions
+  options: ResolvedBridgeStreamRuntimeOptions
 ): Effect.Effect<HostProtocolStreamEnvelope, HostProtocolError, never> =>
-  streamFrame(request, streamId, options, new ApiStreamCompleteFrame({ type: "complete" }))
+  streamFrame(request, streamId, options, new BridgeStreamCompleteFrame({ type: "complete" }))
 
 const closedFrame = (
   request: HostProtocolRequestEnvelope,
   streamId: string,
-  options: ResolvedApiStreamRuntimeOptions
+  options: ResolvedBridgeStreamRuntimeOptions
 ): Effect.Effect<HostProtocolStreamEnvelope, HostProtocolError, never> =>
-  streamFrame(request, streamId, options, new ApiStreamClosedFrame({ type: "closed" }))
+  streamFrame(request, streamId, options, new BridgeStreamClosedFrame({ type: "closed" }))
 
 const streamFrame = (
   request: HostProtocolRequestEnvelope,
   streamId: string,
-  options: ResolvedApiStreamRuntimeOptions,
-  frame: ApiStreamFrame
+  options: ResolvedBridgeStreamRuntimeOptions,
+  frame: BridgeStreamFrame
 ): Effect.Effect<HostProtocolStreamEnvelope, HostProtocolError, never> =>
   Effect.gen(function* () {
     const timestamp = yield* validateHostProtocolTimestamp(options.now(), request.method)
@@ -662,7 +666,7 @@ const streamFrame = (
 const protocolErrorFrame = (
   request: HostProtocolRequestEnvelope,
   streamId: string,
-  options: ResolvedApiStreamRuntimeOptions,
+  options: ResolvedBridgeStreamRuntimeOptions,
   error: HostProtocolError
 ): Effect.Effect<HostProtocolStreamEnvelope, HostProtocolError, never> =>
   Effect.gen(function* () {
@@ -689,7 +693,7 @@ const decodeHostProtocolError = (
 
 const decodeInput = (
   operation: string,
-  spec: ApiMethodSpec,
+  spec: BridgeRpcMethodSpec,
   payload: unknown
 ): Effect.Effect<unknown, HostProtocolError, never> =>
   Effect.mapError(
@@ -703,7 +707,7 @@ const decodeInput = (
 
 const encodeStreamChunk = (
   operation: string,
-  spec: ApiStreamSpec,
+  spec: BridgeRpcStreamSpec,
   chunk: unknown
 ): Effect.Effect<unknown, HostProtocolError, never> =>
   Effect.mapError(
@@ -717,7 +721,7 @@ const encodeStreamChunk = (
 
 const encodeStreamError = (
   operation: string,
-  spec: ApiStreamSpec,
+  spec: BridgeRpcStreamSpec,
   error: unknown
 ): Effect.Effect<unknown, HostProtocolError, never> =>
   Effect.mapError(
@@ -729,7 +733,9 @@ const encodeStreamError = (
     (schemaError) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(schemaError))
   )
 
-const resolveOptions = (options: ApiStreamRuntimeOptions): ResolvedApiStreamRuntimeOptions => ({
+const resolveOptions = (
+  options: BridgeStreamRuntimeOptions
+): ResolvedBridgeStreamRuntimeOptions => ({
   cleanupGraceMs: options.cleanupGraceMs ?? 30_000,
   now: options.now ?? Date.now,
   nextStreamId: options.nextStreamId ?? (() => `stream-${globalThis.crypto.randomUUID()}`),

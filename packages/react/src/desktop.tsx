@@ -22,9 +22,9 @@ import {
   stream,
   type MutationEndpoint,
   type QueryEndpoint,
-  type ReactApiEndpoint,
+  type ReactEndpoint,
   type StreamEndpoint
-} from "./api.js"
+} from "./endpoints.js"
 
 type EndpointName<Tag extends string> = Tag extends `${string}.${infer Rest}`
   ? EndpointName<Rest>
@@ -139,8 +139,8 @@ export const ReactDesktop = Object.freeze({
 const makeEndpoints = (
   descriptors: ReturnType<typeof describeRpcs>,
   client: ReactDesktopRpcClient
-): Readonly<Record<string, ReactApiEndpoint>> => {
-  const endpoints = Object.create(null) as Record<string, ReactApiEndpoint>
+): Readonly<Record<string, ReactEndpoint>> => {
+  const endpoints = Object.create(null) as Record<string, ReactEndpoint>
 
   for (const descriptor of descriptors) {
     const invoke = (input: unknown): ReturnType<ReactDesktopRpcClientMethod> => {
@@ -168,7 +168,7 @@ const makeEndpoints = (
   return Object.freeze(endpoints)
 }
 
-const withSupport = <Endpoint extends ReactApiEndpoint>(
+const withSupport = <Endpoint extends ReactEndpoint>(
   endpoint: Endpoint,
   support: RpcSupportMetadata
 ): Endpoint & ReactDesktopSupport =>

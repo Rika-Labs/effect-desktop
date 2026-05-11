@@ -1,5 +1,5 @@
 import type { WindowCreateOptions } from "@effect-desktop/native"
-import { defineDesktopApi, useDesktopClient, useWindow } from "@effect-desktop/react"
+import { useWindow, windows } from "@effect-desktop/react"
 import { Option } from "effect"
 
 import { DEFAULT_TEMPLATE_LOCALE, resolveTemplateLocale, type TemplateLocale } from "./messages.js"
@@ -21,30 +21,24 @@ export interface AppProps {
 export function App(props: AppProps = {}) {
   const selectedLocale = resolveTemplateLocale(props.locale ?? DEFAULT_TEMPLATE_LOCALE)
   const copy = selectedLocale.copy
-  const desktop = useDesktopClient()
   const currentWindow = useWindow()
-  const windowApi = defineDesktopApi(desktop.window)
-  const createWindow = windowApi.create.useAction()
+  const createWindow = windows.create.useMutation()
 
-  const canOpenWindow = createWindow.state._tag !== "Running"
+  const canOpenWindow = !createWindow.isRunning
   const statusText = (() => {
     if (Option.isSome(currentWindow)) {
       return copy.currentWindow(currentWindow.value.id)
     }
 
-    switch (createWindow.state._tag) {
-      case "Idle":
+    switch (createWindow.state.status) {
+      case "idle":
         return copy.ready
-      case "Running":
+      case "running":
         return copy.running
-      case "Success":
+      case "success":
         return copy.opened(createWindow.state.value.id)
-      case "Failure":
-        return createWindow.state.message
-      case "Canceled":
-        return copy.ready
-      case "Unavailable":
-        return createWindow.state.message
+      case "failure":
+        return "Could not open window."
     }
   })()
 

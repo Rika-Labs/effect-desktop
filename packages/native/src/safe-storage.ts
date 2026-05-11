@@ -1,19 +1,18 @@
 import {
-  Api,
+  BridgeRpc,
   Client,
-  type ApiClientExchange,
-  type ApiClientOptions,
-  type ApiContractClass,
-  type ApiContractError,
-  type ApiContractSpec,
-  type ApiHandlers,
-  type ApiLayer,
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeRpcGroup,
+  type BridgeRpcSpec,
+  type BridgeRpcHandlers,
+  type BridgeRpcLayer,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Schema } from "effect"
+import { Context, Effect, Layer, Schema } from "effect"
 
 import {
   SafeStorageAvailabilityResult,
@@ -71,7 +70,7 @@ export class SecretValue {
   }
 }
 
-export const SafeStorageApiSpec = Object.freeze({
+export const SafeStorageRpcSpec = Object.freeze({
   set: safeStorageMethodSpec(SafeStorageSetInput, "native.invoke:SafeStorage.set"),
   get: {
     input: SafeStorageKeyInput,
@@ -92,53 +91,22 @@ export const SafeStorageApiSpec = Object.freeze({
     error: HostProtocolErrorSchema,
     permission: "none"
   }
-}) satisfies ApiContractSpec
+}) satisfies BridgeRpcSpec
 
-export type SafeStorageApiSpec = typeof SafeStorageApiSpec
+export type SafeStorageRpcSpec = typeof SafeStorageRpcSpec
 
-export const SafeStorageApiEvents = Object.freeze({})
+export const SafeStorageRpcEvents = Object.freeze({})
 
-export type SafeStorageApiEvents = typeof SafeStorageApiEvents
+export type SafeStorageRpcEvents = typeof SafeStorageRpcEvents
 
-export const SafeStorageApi: ApiContractClass<
+export const SafeStorageRpcs: BridgeRpcGroup<
   "SafeStorage",
-  SafeStorageApiSpec,
-  SafeStorageApiEvents
-> = (() => {
-  const contract = class {
-    static readonly tag = "SafeStorage"
-    static readonly spec = SafeStorageApiSpec
-    static readonly events = SafeStorageApiEvents
-
-    static layer<Handlers extends ApiHandlers<SafeStorageApiSpec>>(
-      handlers: Handlers
-    ): ApiLayer<"SafeStorage", SafeStorageApiSpec, Handlers, SafeStorageApiEvents> {
-      return Object.freeze({ contract, handlers: Object.freeze(handlers) })
-    }
-  } as ApiContractClass<"SafeStorage", SafeStorageApiSpec, SafeStorageApiEvents>
-
-  return Object.freeze(contract)
-})()
-
-export const registerSafeStorageApi = (): Effect.Effect<
-  ApiContractClass<"SafeStorage", SafeStorageApiSpec, SafeStorageApiEvents>,
-  ApiContractError,
-  never
-> =>
-  Effect.gen(function* () {
-    const existing = yield* Api.get("SafeStorage")
-    if (Option.isSome(existing)) {
-      return existing.value as ApiContractClass<
-        "SafeStorage",
-        SafeStorageApiSpec,
-        SafeStorageApiEvents
-      >
-    }
-    return yield* Api.Tag("SafeStorage")<unknown>()(SafeStorageApiSpec, SafeStorageApiEvents)
-  })
+  SafeStorageRpcSpec,
+  SafeStorageRpcEvents
+> = BridgeRpc.group("SafeStorage", SafeStorageRpcSpec, SafeStorageRpcEvents)
 
 export const SafeStorageMethodNames = Object.freeze(
-  Object.keys(SafeStorageApiSpec) as ReadonlyArray<keyof SafeStorageApiSpec>
+  Object.keys(SafeStorageRpcSpec) as ReadonlyArray<keyof SafeStorageRpcSpec>
 )
 
 export interface SafeStorageClientApi {
@@ -181,21 +149,23 @@ export const makeSafeStorageServiceLayer = (
 ): Layer.Layer<SafeStorage> => Layer.provide(SafeStorageLive, makeSafeStorageClientLayer(client))
 
 export const makeSafeStorageBridgeClientLayer = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions = {}
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
 ): Layer.Layer<SafeStorageClient> =>
   Layer.succeed(SafeStorageClient)(makeSafeStorageBridgeClient(exchange, options))
 
-export const makeHostSafeStorageApiLayer = <Handlers extends ApiHandlers<SafeStorageApiSpec>>(
+export const makeHostSafeStorageBridgeRpcLayer = <
+  Handlers extends BridgeRpcHandlers<SafeStorageRpcSpec>
+>(
   handlers: Handlers
-): ApiLayer<"SafeStorage", SafeStorageApiSpec, Handlers, SafeStorageApiEvents> =>
-  SafeStorageApi.layer(handlers)
+): BridgeRpcLayer<"SafeStorage", SafeStorageRpcSpec, Handlers, SafeStorageRpcEvents> =>
+  BridgeRpc.layer(SafeStorageRpcs)(handlers)
 
 const makeSafeStorageBridgeClient = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
 ): SafeStorageClientApi => {
-  const client = Client({ SafeStorage: SafeStorageApi }, exchange, options).SafeStorage
+  const client = Client({ SafeStorage: SafeStorageRpcs }, exchange, options).SafeStorage
   return Object.freeze({
     set: (key, value) =>
       decodeSafeStorageSetInput({ key, value: value.unsafeBytes() }).pipe(

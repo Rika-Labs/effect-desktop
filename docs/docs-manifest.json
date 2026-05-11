@@ -37,11 +37,6 @@
       "path": "docs/user/troubleshooting.md"
     },
     {
-      "id": "pre-1-migration",
-      "title": "Migration Within Pre-1.0 APIs",
-      "path": "docs/user/pre-1-migration.md"
-    },
-    {
       "id": "contribution-guide",
       "title": "Contribution Guide",
       "path": "docs/user/contribution-guide.md"

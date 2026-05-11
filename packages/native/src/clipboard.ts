@@ -1,20 +1,19 @@
 import {
-  Api,
+  BridgeRpc,
   Client,
-  type ApiClientExchange,
-  type ApiClientOptions,
-  type ApiContractClass,
-  type ApiContractError,
-  type ApiContractSpec,
-  type ApiHandlers,
-  type ApiLayer,
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeRpcGroup,
+  type BridgeRpcSpec,
+  type BridgeRpcHandlers,
+  type BridgeRpcLayer,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Schema } from "effect"
+import { Context, Effect, Layer, Schema } from "effect"
 
 import {
   type ClipboardCapability,
@@ -30,7 +29,7 @@ const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export type ClipboardError = HostProtocolError
 
-export const ClipboardApiSpec = Object.freeze({
+export const ClipboardRpcSpec = Object.freeze({
   readText: {
     input: Schema.Void,
     output: ClipboardText,
@@ -67,50 +66,19 @@ export const ClipboardApiSpec = Object.freeze({
     error: HostProtocolErrorSchema,
     permission: "none"
   }
-}) satisfies ApiContractSpec
+}) satisfies BridgeRpcSpec
 
-export type ClipboardApiSpec = typeof ClipboardApiSpec
+export type ClipboardRpcSpec = typeof ClipboardRpcSpec
 
-export const ClipboardApiEvents = Object.freeze({})
+export const ClipboardRpcEvents = Object.freeze({})
 
-export type ClipboardApiEvents = typeof ClipboardApiEvents
+export type ClipboardRpcEvents = typeof ClipboardRpcEvents
 
-export const ClipboardApi: ApiContractClass<"Clipboard", ClipboardApiSpec, ClipboardApiEvents> =
-  (() => {
-    const contract = class {
-      static readonly tag = "Clipboard"
-      static readonly spec = ClipboardApiSpec
-      static readonly events = ClipboardApiEvents
-
-      static layer<Handlers extends ApiHandlers<ClipboardApiSpec>>(
-        handlers: Handlers
-      ): ApiLayer<"Clipboard", ClipboardApiSpec, Handlers, ClipboardApiEvents> {
-        return Object.freeze({
-          contract,
-          handlers: Object.freeze(handlers)
-        })
-      }
-    } as ApiContractClass<"Clipboard", ClipboardApiSpec, ClipboardApiEvents>
-
-    return Object.freeze(contract)
-  })()
-
-export const registerClipboardApi = (): Effect.Effect<
-  ApiContractClass<"Clipboard", ClipboardApiSpec, ClipboardApiEvents>,
-  ApiContractError,
-  never
-> =>
-  Effect.gen(function* () {
-    const existing = yield* Api.get("Clipboard")
-    if (Option.isSome(existing)) {
-      return existing.value as ApiContractClass<"Clipboard", ClipboardApiSpec, ClipboardApiEvents>
-    }
-
-    return yield* Api.Tag("Clipboard")<unknown>()(ClipboardApiSpec, ClipboardApiEvents)
-  })
+export const ClipboardRpcs: BridgeRpcGroup<"Clipboard", ClipboardRpcSpec, ClipboardRpcEvents> =
+  BridgeRpc.group("Clipboard", ClipboardRpcSpec, ClipboardRpcEvents)
 
 export const ClipboardMethodNames = Object.freeze(
-  Object.keys(ClipboardApiSpec) as ReadonlyArray<keyof ClipboardApiSpec>
+  Object.keys(ClipboardRpcSpec) as ReadonlyArray<keyof ClipboardRpcSpec>
 )
 
 export interface ClipboardClientApi {
@@ -158,15 +126,17 @@ export const makeClipboardServiceLayer = (client: ClipboardClientApi): Layer.Lay
   Layer.provide(ClipboardLive, makeClipboardClientLayer(client))
 
 export const makeClipboardBridgeClientLayer = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions = {}
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
 ): Layer.Layer<ClipboardClient> =>
   Layer.succeed(ClipboardClient)(makeClipboardBridgeClient(exchange, options))
 
-export const makeHostClipboardApiLayer = <Handlers extends ApiHandlers<ClipboardApiSpec>>(
+export const makeHostClipboardBridgeRpcLayer = <
+  Handlers extends BridgeRpcHandlers<ClipboardRpcSpec>
+>(
   handlers: Handlers
-): ApiLayer<"Clipboard", ClipboardApiSpec, Handlers, ClipboardApiEvents> =>
-  ClipboardApi.layer(handlers)
+): BridgeRpcLayer<"Clipboard", ClipboardRpcSpec, Handlers, ClipboardRpcEvents> =>
+  BridgeRpc.layer(ClipboardRpcs)(handlers)
 
 const makeClipboardService = (client: ClipboardClientApi): ClipboardServiceApi => {
   const service: ClipboardServiceApi = {
@@ -183,10 +153,10 @@ const makeClipboardService = (client: ClipboardClientApi): ClipboardServiceApi =
 }
 
 const makeClipboardBridgeClient = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
 ): ClipboardClientApi => {
-  const client = Client({ Clipboard: ClipboardApi }, exchange, options).Clipboard
+  const client = Client({ Clipboard: ClipboardRpcs }, exchange, options).Clipboard
 
   const clipboardClient: ClipboardClientApi = {
     readText: () => client.readText(),

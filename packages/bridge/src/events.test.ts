@@ -2,10 +2,8 @@ import { expect, test } from "bun:test"
 import { Cause, Effect, Exit, Fiber, Option, Schema, Stream } from "effect"
 
 import {
-  apiContractToRpcGroup,
-  type ApiContractClass,
-  type ApiHandlers,
-  type ApiLayer,
+  BridgeRpc,
+  type BridgeRpcGroup,
   Client,
   EventHub,
   HostProtocolEventEnvelope,
@@ -30,24 +28,36 @@ class ProjectOpenError extends Schema.Class<ProjectOpenError>("EventProjectOpenE
 }) {}
 
 test("EventHub publishes contract events to typed client streams in order", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.EventsOrdered")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EventsOrdered")
   const values = await Effect.runPromise(
     Effect.gen(function* () {
-      const hub = yield* EventHub([ProjectApi], {
+      const hub = yield* EventHub([ProjectRpcs], {
         now: () => 42,
         nextTraceId: () => "trace-event",
         windowId: "window-1"
       })
-      const client = Client({ project: ProjectApi }, { request: missingRequest, ...hub.exchange })
+      const client = Client({ project: ProjectRpcs }, { request: missingRequest, ...hub.exchange })
       const fiber = yield* client.project.events.changed.pipe(
         Stream.take(3),
         Stream.runCollect,
         Effect.forkChild({ startImmediately: true })
       )
 
-      yield* hub.publish(ProjectApi, "changed", new ProjectChangedEvent({ sequence: 1, path: "a" }))
-      yield* hub.publish(ProjectApi, "changed", new ProjectChangedEvent({ sequence: 2, path: "b" }))
-      yield* hub.publish(ProjectApi, "changed", new ProjectChangedEvent({ sequence: 3, path: "c" }))
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 1, path: "a" })
+      )
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 2, path: "b" })
+      )
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 3, path: "c" })
+      )
 
       return yield* Fiber.join(fiber)
     })
@@ -57,19 +67,23 @@ test("EventHub publishes contract events to typed client streams in order", asyn
 })
 
 test("EventHub encodes payloads before fanout", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.EventsEncoded")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EventsEncoded")
   const envelopes = await Effect.runPromise(
     Effect.gen(function* () {
-      const hub = yield* EventHub([ProjectApi], {
+      const hub = yield* EventHub([ProjectRpcs], {
         now: () => 42,
         nextTraceId: () => "trace-event",
         windowId: "window-1"
       })
       const fiber = yield* hub.exchange
-        .subscribe("ProjectApi.EventsEncoded.changed")
+        .subscribe("ProjectRpcs.EventsEncoded.changed")
         .pipe(Stream.take(1), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
 
-      yield* hub.publish(ProjectApi, "changed", new ProjectChangedEvent({ sequence: 1, path: "a" }))
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 1, path: "a" })
+      )
 
       return yield* Fiber.join(fiber)
     })
@@ -78,7 +92,7 @@ test("EventHub encodes payloads before fanout", async () => {
   expect(Array.from(envelopes)).toEqual([
     new HostProtocolEventEnvelope({
       kind: "event",
-      method: "ProjectApi.EventsEncoded.changed",
+      method: "ProjectRpcs.EventsEncoded.changed",
       timestamp: 42,
       traceId: "trace-event",
       windowId: "window-1",
@@ -91,12 +105,12 @@ test("EventHub encodes payloads before fanout", async () => {
 })
 
 test("EventHub rejects malformed publish payloads as typed Effect failures", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.EventsInvalidPublish")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EventsInvalidPublish")
   const exit = await Effect.runPromiseExit(
     Effect.gen(function* () {
-      const hub = yield* EventHub([ProjectApi])
+      const hub = yield* EventHub([ProjectRpcs])
 
-      return yield* hub.publish(ProjectApi, "changed", {
+      return yield* hub.publish(ProjectRpcs, "changed", {
         sequence: Number.NaN,
         path: "a"
       } as unknown as ProjectChangedEvent)
@@ -107,13 +121,13 @@ test("EventHub rejects malformed publish payloads as typed Effect failures", asy
 })
 
 test("EventHub rejects invalid generated timestamps as typed Effect failures", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.EventsInvalidTimestamp")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EventsInvalidTimestamp")
   const exit = await Effect.runPromiseExit(
     Effect.gen(function* () {
-      const hub = yield* EventHub([ProjectApi], { now: () => Number.NaN })
+      const hub = yield* EventHub([ProjectRpcs], { now: () => Number.NaN })
 
       return yield* hub.publish(
-        ProjectApi,
+        ProjectRpcs,
         "changed",
         new ProjectChangedEvent({ sequence: 1, path: "a" })
       )
@@ -124,16 +138,16 @@ test("EventHub rejects invalid generated timestamps as typed Effect failures", a
 })
 
 test("client event streams reject malformed event envelopes as typed failures", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.EventsInvalidEnvelope")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EventsInvalidEnvelope")
   const client = Client(
-    { project: ProjectApi },
+    { project: ProjectRpcs },
     {
       request: missingRequest,
       subscribe: () =>
         Stream.make(
           new HostProtocolEventEnvelope({
             kind: "event",
-            method: "ProjectApi.EventsInvalidEnvelope.changed",
+            method: "ProjectRpcs.EventsInvalidEnvelope.changed",
             timestamp: 42,
             traceId: "trace-event",
             payload: { sequence: Number.NaN, path: "a" }
@@ -150,16 +164,16 @@ test("client event streams reject malformed event envelopes as typed failures", 
 })
 
 test("client event streams reject envelopes for the wrong method", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.EventsWrongMethod")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EventsWrongMethod")
   const client = Client(
-    { project: ProjectApi },
+    { project: ProjectRpcs },
     {
       request: missingRequest,
       subscribe: () =>
         Stream.make(
           new HostProtocolEventEnvelope({
             kind: "event",
-            method: "ProjectApi.EventsWrongMethod.other",
+            method: "ProjectRpcs.EventsWrongMethod.other",
             timestamp: 42,
             traceId: "trace-event",
             payload: { sequence: "1", path: "a" }
@@ -176,19 +190,31 @@ test("client event streams reject envelopes for the wrong method", async () => {
 })
 
 test("EventHub honors dropNewest event overflow without failing publishers", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.EventsDropNewest")
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EventsDropNewest")
   const exit = await Effect.runPromiseExit(
     Effect.gen(function* () {
-      const hub = yield* EventHub([ProjectApi])
-      const fiber = yield* hub.exchange.subscribe("ProjectApi.EventsDropNewest.changed").pipe(
+      const hub = yield* EventHub([ProjectRpcs])
+      const fiber = yield* hub.exchange.subscribe("ProjectRpcs.EventsDropNewest.changed").pipe(
         Stream.tap(() => Effect.sleep("1 second")),
         Stream.runDrain,
         Effect.forkChild({ startImmediately: true })
       )
 
-      yield* hub.publish(ProjectApi, "changed", new ProjectChangedEvent({ sequence: 1, path: "a" }))
-      yield* hub.publish(ProjectApi, "changed", new ProjectChangedEvent({ sequence: 2, path: "b" }))
-      yield* hub.publish(ProjectApi, "changed", new ProjectChangedEvent({ sequence: 3, path: "c" }))
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 1, path: "a" })
+      )
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 2, path: "b" })
+      )
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 3, path: "c" })
+      )
       yield* Fiber.interrupt(fiber)
     })
   )
@@ -197,23 +223,31 @@ test("EventHub honors dropNewest event overflow without failing publishers", asy
 })
 
 test("EventHub drop backpressure does not block publishers when overflow is omitted", async () => {
-  const ProjectApi = makeProjectApi("ProjectApi.EventsDropDefault", {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EventsDropDefault", {
     includeOverflow: false,
     queueSize: 1
   })
   const result = await Effect.runPromise(
     Effect.gen(function* () {
-      const hub = yield* EventHub([ProjectApi])
-      const fiber = yield* hub.exchange.subscribe("ProjectApi.EventsDropDefault.changed").pipe(
+      const hub = yield* EventHub([ProjectRpcs])
+      const fiber = yield* hub.exchange.subscribe("ProjectRpcs.EventsDropDefault.changed").pipe(
         Stream.tap(() => Effect.sleep("1 second")),
         Stream.runDrain,
         Effect.forkChild({ startImmediately: true })
       )
 
-      yield* hub.publish(ProjectApi, "changed", new ProjectChangedEvent({ sequence: 1, path: "a" }))
-      yield* hub.publish(ProjectApi, "changed", new ProjectChangedEvent({ sequence: 2, path: "b" }))
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 1, path: "a" })
+      )
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 2, path: "b" })
+      )
       const third = yield* hub
-        .publish(ProjectApi, "changed", new ProjectChangedEvent({ sequence: 3, path: "c" }))
+        .publish(ProjectRpcs, "changed", new ProjectChangedEvent({ sequence: 3, path: "c" }))
         .pipe(Effect.timeoutOption("50 millis"))
       yield* Fiber.interrupt(fiber)
       return third
@@ -223,7 +257,7 @@ test("EventHub drop backpressure does not block publishers when overflow is omit
   expect(Option.isSome(result)).toBe(true)
 })
 
-type ProjectApiSpec = {
+type ProjectRpcSpec = {
   readonly open: {
     readonly input: typeof ProjectOpenInput
     readonly output: typeof ProjectOpenOutput
@@ -231,53 +265,36 @@ type ProjectApiSpec = {
   }
 }
 
-type ProjectApiEvents = {
+type ProjectRpcsEvents = {
   readonly changed: {
     readonly payload: typeof ProjectChangedEvent
-    readonly backpressure: { readonly strategy: "drop"; readonly size: 16 }
+    readonly backpressure: { readonly strategy: "drop"; readonly size: number }
   }
 }
 
-const makeProjectApi = <Tag extends string>(
+const makeProjectRpcs = <Tag extends string>(
   tag: Tag,
   options: { readonly includeOverflow?: boolean; readonly queueSize?: number } = {}
-): ApiContractClass<Tag, ProjectApiSpec, ProjectApiEvents> => {
+): BridgeRpcGroup<Tag, ProjectRpcSpec, ProjectRpcsEvents> => {
   const includeOverflow = options.includeOverflow ?? true
-  const contract = class {
-    static readonly tag = tag
-    static readonly spec = Object.freeze({
-      open: Object.freeze({
-        input: ProjectOpenInput,
-        output: ProjectOpenOutput,
-        error: ProjectOpenError
-      })
+  const spec = Object.freeze({
+    open: Object.freeze({
+      input: ProjectOpenInput,
+      output: ProjectOpenOutput,
+      error: ProjectOpenError
     })
-    static readonly events = Object.freeze({
-      changed: Object.freeze({
-        payload: ProjectChangedEvent,
-        backpressure: Object.freeze({
-          strategy: "drop",
-          size: options.queueSize ?? (tag === "ProjectApi.EventsDropNewest" ? 1 : 16),
-          ...(includeOverflow ? { overflow: "dropNewest" } : {})
-        } as const)
-      })
+  })
+  const events = Object.freeze({
+    changed: Object.freeze({
+      payload: ProjectChangedEvent,
+      backpressure: Object.freeze({
+        strategy: "drop",
+        size: options.queueSize ?? (tag === "ProjectRpcs.EventsDropNewest" ? 1 : 16),
+        ...(includeOverflow ? { overflow: "dropNewest" } : {})
+      } as const)
     })
-
-    static toRpcGroup() {
-      return apiContractToRpcGroup(contract.tag, contract.spec, contract.events)
-    }
-
-    static layer<Handlers extends ApiHandlers<ProjectApiSpec>>(
-      handlers: Handlers
-    ): ApiLayer<Tag, ProjectApiSpec, Handlers, ProjectApiEvents> {
-      return Object.freeze({
-        contract,
-        handlers: Object.freeze(handlers)
-      })
-    }
-  } as ApiContractClass<Tag, ProjectApiSpec, ProjectApiEvents>
-
-  return Object.freeze(contract)
+  })
+  return BridgeRpc.group(tag, spec, events)
 }
 
 const missingRequest = () => Effect.fail(makeHostProtocolInvalidOutputError("test", "unused"))

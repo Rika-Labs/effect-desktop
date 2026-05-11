@@ -636,7 +636,7 @@
     {
       "name": "SemverPolicyManifest",
       "kind": "interface",
-      "signature": "export interface SemverPolicyManifest { readonly schemaVersion: 1 readonly source: string readonly release: string readonly releaseKind: SemverReleaseKind readonly publicApiSnapshots: string readonly verificationMatrix: string readonly appendixCRows: readonly string[] readonly bridgeEnvelopePolicy: { readonly source: string readonly frozenBetweenMajors: boolean readonly allowedChange: string } readonly deprecationPolicy: { readonly minimumMinorReleases: number readonly requiresJSDocDeprecated: boolean } }"
+      "signature": "export interface SemverPolicyManifest { readonly schemaVersion: 1 readonly source: string readonly release: string readonly releaseKind: SemverReleaseKind readonly publicApiSnapshots: string readonly verificationMatrix: string readonly appendixCRows: readonly string[] readonly bridgeEnvelopePolicy: { readonly source: string readonly frozenBetweenMajors: boolean readonly allowedChange: string } }"
     },
     {
       "name": "SemverReleaseKind",

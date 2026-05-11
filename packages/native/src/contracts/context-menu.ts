@@ -1,10 +1,10 @@
-import { Api } from "@effect-desktop/bridge"
+import { BridgeRpc } from "@effect-desktop/bridge"
 import { Schema } from "effect"
 
 import { MenuTemplate } from "./menu.js"
 import { PrintableNonEmptyString } from "./strings.js"
 
-const WindowResource = Api.Resource("window", "open")
+const WindowResource = BridgeRpc.Resource("window", "open")
 const ContextMenuCoordinate = Schema.Number.check(
   Schema.isFinite(),
   Schema.isGreaterThanOrEqualTo(0)

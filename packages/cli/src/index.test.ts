@@ -374,7 +374,7 @@ test("desktop check --production exits zero and reports acknowledged weakenings"
         "    csp: {",
         "      policy: \"script-src 'self' 'unsafe-inline'\",",
         "      acknowledgeWeakening: true,",
-        "      justification: 'legacy provider migration'",
+        "      justification: 'inline bootstrap script exception'",
         "    }",
         "  }",
         "}"
@@ -1614,7 +1614,7 @@ test("desktop check --docs rejects non-string page paths as typed manifest error
   }
 })
 
-test("desktop check --docs rejects an incomplete spec manifest even with 24 rows", async () => {
+test("desktop check --docs rejects an incomplete spec manifest even with the required row count", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
   try {
     await mkdir(join(directory, "docs"), { recursive: true })
@@ -1624,7 +1624,7 @@ test("desktop check --docs rejects an incomplete spec manifest even with 24 rows
         {
           schemaVersion: 1,
           source: "docs/SPEC.md §25.3",
-          pages: Array.from({ length: 24 }, (_, index) => ({
+          pages: Array.from({ length: 23 }, (_, index) => ({
             id: `page-${index}`,
             title: `Page ${index}`,
             path: `docs/user/page-${index}.md`
@@ -1703,13 +1703,13 @@ test("desktop check --docs rejects placeholder examples on required pages", asyn
     await writeDocsManifest(directory, sourceManifest.pages, "docs/SPEC.md §25.3")
     const coverageTokens = [
       "runCli",
-      "useDesktopClient",
+      "ReactDesktop",
       "Desktop",
       "defineDesktopConfig",
-      "WindowApi",
+      "WindowRpcs",
       "RpcGroup",
       "HostProtocolEnvelope",
-      "ClipboardApi",
+      "ClipboardRpcs",
       "ResourceRegistry",
       "Process",
       "PTY",
@@ -2396,31 +2396,6 @@ test("semver guard rejects manifest with missing bridgeEnvelopePolicy", async ()
 
     expect((error as { readonly _tag: string })._tag).toBe("SemverGuardManifestError")
     expect((error as { readonly message: string }).message).toContain("bridgeEnvelopePolicy")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("semver guard rejects manifest with missing deprecationPolicy", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
-  try {
-    const manifest = semverManifestFixture()
-    if (!isSemverManifestFixture(manifest)) {
-      throw new Error("invalid semver manifest fixture")
-    }
-    await writeSemverFixture(directory, {
-      packageVersion: "1.1.0",
-      manifest: { ...manifest, deprecationPolicy: undefined }
-    })
-    const error = await Effect.runPromise(
-      runSemverGuard({
-        cwd: directory,
-        publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
-      }).pipe(Effect.flip)
-    )
-
-    expect((error as { readonly _tag: string })._tag).toBe("SemverGuardManifestError")
-    expect((error as { readonly message: string }).message).toContain("deprecationPolicy")
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -4981,7 +4956,7 @@ test("desktop build stages renderer runtime host bridge manifests and report", a
       target: "linux-x64"
     })
     expect(bridgeManifest).toMatchObject({
-      apiContracts: []
+      rpcGroups: []
     })
     expect(report).toMatchObject({
       appId: "dev.effect-desktop.playground",
@@ -6810,10 +6785,6 @@ const semverManifestFixture = (): unknown => ({
     source: "docs/SPEC.md §9.3",
     frozenBetweenMajors: true,
     allowedChange: "fields may be added with defaults; fields may not be removed or reordered"
-  },
-  deprecationPolicy: {
-    minimumMinorReleases: 3,
-    requiresJSDocDeprecated: true
   }
 })
 

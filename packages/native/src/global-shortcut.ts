@@ -8,23 +8,22 @@ import {
   type ResourceId
 } from "@effect-desktop/core"
 import {
-  Api,
+  BridgeRpc,
   Client,
-  type ApiClientExchange,
-  type ApiClientOptions,
-  type ApiContractClass,
-  type ApiContractError,
-  type ApiContractSpec,
-  type ApiHandlers,
-  type ApiLayer,
-  ApiResourceHandleShape,
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeRpcGroup,
+  type BridgeRpcSpec,
+  type BridgeRpcHandlers,
+  type BridgeRpcLayer,
+  BridgeResourceHandleShape,
   HostProtocolAlreadyExistsError,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Fiber, Layer, Option, Schema, Stream } from "effect"
+import { Context, Effect, Fiber, Layer, Schema, Stream } from "effect"
 
 import {
   GlobalShortcutAcceleratorInput,
@@ -44,7 +43,7 @@ export type GlobalShortcutError = HostProtocolError
 export type GlobalShortcutWindowHandle = WindowHandle
 export type GlobalShortcutCommandBindingError = GlobalShortcutError | CommandRegistryError
 
-export const GlobalShortcutApiSpec = Object.freeze({
+export const GlobalShortcutRpcSpec = Object.freeze({
   register: shortcutMethodSpec(
     GlobalShortcutRegisterInput,
     "native.invoke:GlobalShortcut.register"
@@ -71,58 +70,24 @@ export const GlobalShortcutApiSpec = Object.freeze({
     error: HostProtocolErrorSchema,
     permission: "none"
   }
-}) satisfies ApiContractSpec
+}) satisfies BridgeRpcSpec
 
-export type GlobalShortcutApiSpec = typeof GlobalShortcutApiSpec
+export type GlobalShortcutRpcSpec = typeof GlobalShortcutRpcSpec
 
-export const GlobalShortcutApiEvents = Object.freeze({
+export const GlobalShortcutRpcEvents = Object.freeze({
   Pressed: { payload: GlobalShortcutPressedEvent }
 })
 
-export type GlobalShortcutApiEvents = typeof GlobalShortcutApiEvents
+export type GlobalShortcutRpcEvents = typeof GlobalShortcutRpcEvents
 
-export const GlobalShortcutApi: ApiContractClass<
+export const GlobalShortcutRpcs: BridgeRpcGroup<
   "GlobalShortcut",
-  GlobalShortcutApiSpec,
-  GlobalShortcutApiEvents
-> = (() => {
-  const contract = class {
-    static readonly tag = "GlobalShortcut"
-    static readonly spec = GlobalShortcutApiSpec
-    static readonly events = GlobalShortcutApiEvents
-
-    static layer<Handlers extends ApiHandlers<GlobalShortcutApiSpec>>(
-      handlers: Handlers
-    ): ApiLayer<"GlobalShortcut", GlobalShortcutApiSpec, Handlers, GlobalShortcutApiEvents> {
-      return Object.freeze({ contract, handlers: Object.freeze(handlers) })
-    }
-  } as ApiContractClass<"GlobalShortcut", GlobalShortcutApiSpec, GlobalShortcutApiEvents>
-
-  return Object.freeze(contract)
-})()
-
-export const registerGlobalShortcutApi = (): Effect.Effect<
-  ApiContractClass<"GlobalShortcut", GlobalShortcutApiSpec, GlobalShortcutApiEvents>,
-  ApiContractError,
-  never
-> =>
-  Effect.gen(function* () {
-    const existing = yield* Api.get("GlobalShortcut")
-    if (Option.isSome(existing)) {
-      return existing.value as ApiContractClass<
-        "GlobalShortcut",
-        GlobalShortcutApiSpec,
-        GlobalShortcutApiEvents
-      >
-    }
-    return yield* Api.Tag("GlobalShortcut")<unknown>()(
-      GlobalShortcutApiSpec,
-      GlobalShortcutApiEvents
-    )
-  })
+  GlobalShortcutRpcSpec,
+  GlobalShortcutRpcEvents
+> = BridgeRpc.group("GlobalShortcut", GlobalShortcutRpcSpec, GlobalShortcutRpcEvents)
 
 export const GlobalShortcutMethodNames = Object.freeze(
-  Object.keys(GlobalShortcutApiSpec) as ReadonlyArray<keyof GlobalShortcutApiSpec>
+  Object.keys(GlobalShortcutRpcSpec) as ReadonlyArray<keyof GlobalShortcutRpcSpec>
 )
 
 export interface GlobalShortcutClientApi {
@@ -313,21 +278,23 @@ export const makeGlobalShortcutServiceLayer = (
   Layer.provide(GlobalShortcutLive, makeGlobalShortcutClientLayer(client))
 
 export const makeGlobalShortcutBridgeClientLayer = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions = {}
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
 ): Layer.Layer<GlobalShortcutClient> =>
   Layer.succeed(GlobalShortcutClient)(makeGlobalShortcutBridgeClient(exchange, options))
 
-export const makeHostGlobalShortcutApiLayer = <Handlers extends ApiHandlers<GlobalShortcutApiSpec>>(
+export const makeHostGlobalShortcutBridgeRpcLayer = <
+  Handlers extends BridgeRpcHandlers<GlobalShortcutRpcSpec>
+>(
   handlers: Handlers
-): ApiLayer<"GlobalShortcut", GlobalShortcutApiSpec, Handlers, GlobalShortcutApiEvents> =>
-  GlobalShortcutApi.layer(handlers)
+): BridgeRpcLayer<"GlobalShortcut", GlobalShortcutRpcSpec, Handlers, GlobalShortcutRpcEvents> =>
+  BridgeRpc.layer(GlobalShortcutRpcs)(handlers)
 
 const makeGlobalShortcutBridgeClient = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
 ): GlobalShortcutClientApi => {
-  const client = Client({ GlobalShortcut: GlobalShortcutApi }, exchange, options).GlobalShortcut
+  const client = Client({ GlobalShortcut: GlobalShortcutRpcs }, exchange, options).GlobalShortcut
   return Object.freeze({
     register: (accelerator, registrarWindow) =>
       decodeGlobalShortcutRegisterInput({
@@ -434,7 +401,7 @@ const globalShortcutCommandResourceId = (windowId: string, accelerator: string):
   `global-shortcut-command:${windowId}:${accelerator}` as ResourceId
 
 const toWindowHandle = (handle: GlobalShortcutWindowHandle): GlobalShortcutWindowHandle =>
-  new ApiResourceHandleShape({
+  new BridgeResourceHandleShape({
     kind: handle.kind,
     id: handle.id,
     generation: handle.generation,

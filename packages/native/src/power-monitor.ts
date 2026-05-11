@@ -1,18 +1,17 @@
 import {
-  Api,
+  BridgeRpc,
   Client,
-  type ApiClientExchange,
-  type ApiClientOptions,
-  type ApiContractClass,
-  type ApiContractError,
-  type ApiContractSpec,
-  type ApiHandlers,
-  type ApiLayer,
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeRpcGroup,
+  type BridgeRpcSpec,
+  type BridgeRpcHandlers,
+  type BridgeRpcLayer,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Stream } from "effect"
+import { Context, Effect, Layer, Stream } from "effect"
 
 import {
   PowerMonitorIsSupportedInput,
@@ -26,65 +25,34 @@ import {
 
 export type PowerMonitorError = HostProtocolError
 
-export const PowerMonitorApiSpec = Object.freeze({
+export const PowerMonitorRpcSpec = Object.freeze({
   isSupported: {
     input: PowerMonitorIsSupportedInput,
     output: PowerMonitorSupportedResult,
     error: HostProtocolErrorSchema,
     permission: "none"
   }
-}) satisfies ApiContractSpec
+}) satisfies BridgeRpcSpec
 
-export type PowerMonitorApiSpec = typeof PowerMonitorApiSpec
+export type PowerMonitorRpcSpec = typeof PowerMonitorRpcSpec
 
-export const PowerMonitorApiEvents = Object.freeze({
+export const PowerMonitorRpcEvents = Object.freeze({
   Suspend: { payload: PowerMonitorSuspendEvent },
   Resume: { payload: PowerMonitorResumeEvent },
   Shutdown: { payload: PowerMonitorShutdownEvent },
   PowerSourceChanged: { payload: PowerMonitorSourceChangedEvent }
 })
 
-export type PowerMonitorApiEvents = typeof PowerMonitorApiEvents
+export type PowerMonitorRpcEvents = typeof PowerMonitorRpcEvents
 
-export const PowerMonitorApi: ApiContractClass<
+export const PowerMonitorRpcs: BridgeRpcGroup<
   "PowerMonitor",
-  PowerMonitorApiSpec,
-  PowerMonitorApiEvents
-> = (() => {
-  const contract = class {
-    static readonly tag = "PowerMonitor"
-    static readonly spec = PowerMonitorApiSpec
-    static readonly events = PowerMonitorApiEvents
-
-    static layer<Handlers extends ApiHandlers<PowerMonitorApiSpec>>(
-      handlers: Handlers
-    ): ApiLayer<"PowerMonitor", PowerMonitorApiSpec, Handlers, PowerMonitorApiEvents> {
-      return Object.freeze({ contract, handlers: Object.freeze(handlers) })
-    }
-  } as ApiContractClass<"PowerMonitor", PowerMonitorApiSpec, PowerMonitorApiEvents>
-
-  return Object.freeze(contract)
-})()
-
-export const registerPowerMonitorApi = (): Effect.Effect<
-  ApiContractClass<"PowerMonitor", PowerMonitorApiSpec, PowerMonitorApiEvents>,
-  ApiContractError,
-  never
-> =>
-  Effect.gen(function* () {
-    const existing = yield* Api.get("PowerMonitor")
-    if (Option.isSome(existing)) {
-      return existing.value as ApiContractClass<
-        "PowerMonitor",
-        PowerMonitorApiSpec,
-        PowerMonitorApiEvents
-      >
-    }
-    return yield* Api.Tag("PowerMonitor")<unknown>()(PowerMonitorApiSpec, PowerMonitorApiEvents)
-  })
+  PowerMonitorRpcSpec,
+  PowerMonitorRpcEvents
+> = BridgeRpc.group("PowerMonitor", PowerMonitorRpcSpec, PowerMonitorRpcEvents)
 
 export const PowerMonitorMethodNames = Object.freeze(
-  Object.keys(PowerMonitorApiSpec) as ReadonlyArray<keyof PowerMonitorApiSpec>
+  Object.keys(PowerMonitorRpcSpec) as ReadonlyArray<keyof PowerMonitorRpcSpec>
 )
 
 export interface PowerMonitorClientApi {
@@ -139,21 +107,23 @@ export const makePowerMonitorServiceLayer = (
 ): Layer.Layer<PowerMonitor> => Layer.provide(PowerMonitorLive, makePowerMonitorClientLayer(client))
 
 export const makePowerMonitorBridgeClientLayer = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions = {}
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
 ): Layer.Layer<PowerMonitorClient> =>
   Layer.succeed(PowerMonitorClient)(makePowerMonitorBridgeClient(exchange, options))
 
-export const makeHostPowerMonitorApiLayer = <Handlers extends ApiHandlers<PowerMonitorApiSpec>>(
+export const makeHostPowerMonitorBridgeRpcLayer = <
+  Handlers extends BridgeRpcHandlers<PowerMonitorRpcSpec>
+>(
   handlers: Handlers
-): ApiLayer<"PowerMonitor", PowerMonitorApiSpec, Handlers, PowerMonitorApiEvents> =>
-  PowerMonitorApi.layer(handlers)
+): BridgeRpcLayer<"PowerMonitor", PowerMonitorRpcSpec, Handlers, PowerMonitorRpcEvents> =>
+  BridgeRpc.layer(PowerMonitorRpcs)(handlers)
 
 const makePowerMonitorBridgeClient = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
 ): PowerMonitorClientApi => {
-  const client = Client({ PowerMonitor: PowerMonitorApi }, exchange, options).PowerMonitor
+  const client = Client({ PowerMonitor: PowerMonitorRpcs }, exchange, options).PowerMonitor
   return Object.freeze({
     onSuspend: () => client.events.Suspend,
     onResume: () => client.events.Resume,
