@@ -436,6 +436,69 @@ test("ProductionChecker ignores raw bridge names inside comments", async () => {
   expect(report.failures).toEqual([])
 })
 
+test("ProductionChecker blocks host protocol symbols imported from the bridge barrel", async () => {
+  const report = await Effect.runPromise(
+    runProductionCheck({
+      config: {},
+      rendererFiles: [
+        {
+          path: "src/renderer/main.ts",
+          content: [
+            "import { HostProtocolRequestEnvelope } from '@effect-desktop/bridge'",
+            "new HostProtocolRequestEnvelope({ id: '1' })"
+          ].join("\n")
+        }
+      ]
+    })
+  )
+
+  expect(report.passed).toBe(false)
+  expect(report.failures).toMatchObject([
+    {
+      rule: "renderer-native-host-protocol",
+      location: {
+        path: "src/renderer/main.ts",
+        line: 1
+      }
+    }
+  ])
+})
+
+test("ProductionChecker still blocks bridge protocol subpath imports", async () => {
+  const report = await Effect.runPromise(
+    runProductionCheck({
+      config: {},
+      rendererFiles: [
+        {
+          path: "src/renderer/main.ts",
+          content: "import { HostProtocolRequestEnvelope } from '@effect-desktop/bridge/protocol'"
+        }
+      ]
+    })
+  )
+
+  expect(report.passed).toBe(false)
+  expect(report.failures.map((violation) => violation.rule)).toEqual([
+    "renderer-native-host-protocol"
+  ])
+})
+
+test("ProductionChecker allows renderer-safe bridge barrel imports", async () => {
+  const report = await Effect.runPromise(
+    runProductionCheck({
+      config: {},
+      rendererFiles: [
+        {
+          path: "src/renderer/main.ts",
+          content: "import { Client } from '@effect-desktop/bridge'"
+        }
+      ]
+    })
+  )
+
+  expect(report.passed).toBe(true)
+})
+
 test("ProductionChecker fails unguarded source native capability usage", async () => {
   const report = await Effect.runPromise(
     runProductionCheck({

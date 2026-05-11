@@ -466,7 +466,7 @@ const rendererNativeHostProtocolRule: Rule = ({ config, configPath, rendererFile
       ]
     : []),
   ...rendererFiles.flatMap((file) =>
-    scanLines(file, /\bHostProtocol\b|@effect-desktop\/bridge\/protocol/u).map((location) =>
+    scanForbiddenBridgeProtocolImports(file).map((location) =>
       violation({
         rule: "renderer-native-host-protocol",
         location,
@@ -767,6 +767,55 @@ const scanLines = (
           ]
         : []
     )
+
+const BRIDGE_BARREL_IMPORT_PATTERN =
+  /import\s+(?:type\s+)?(?:(?:[^{}\n]+,\s*)?\{(?<names>[^}]*)\}|(?<namespace>\*\s+as\s+[A-Za-z_$][\w$]*))\s+from\s+["']@effect-desktop\/bridge["']/u
+
+const scanForbiddenBridgeProtocolImports = (
+  file: ProductionCheckFile
+): readonly ProductionCheckLocation[] =>
+  maskComments(file.content)
+    .split("\n")
+    .flatMap((line, index) => {
+      if (/@effect-desktop\/bridge\/protocol/u.test(line)) {
+        return [
+          new ProductionCheckLocation({
+            path: file.path,
+            line: index + 1,
+            column: Math.max(1, line.search(/@effect-desktop\/bridge\/protocol/u) + 1)
+          })
+        ]
+      }
+
+      const match = BRIDGE_BARREL_IMPORT_PATTERN.exec(line)
+      const names = match?.groups?.["names"]
+      if (
+        match?.groups?.["namespace"] === undefined &&
+        (names === undefined || !hasForbiddenBridgeProtocolImport(names))
+      ) {
+        return []
+      }
+
+      return [
+        new ProductionCheckLocation({
+          path: file.path,
+          line: index + 1,
+          column: Math.max(1, line.search(/@effect-desktop\/bridge/u) + 1)
+        })
+      ]
+    })
+
+const hasForbiddenBridgeProtocolImport = (names: string): boolean =>
+  names
+    .split(",")
+    .map((name) =>
+      name
+        .trim()
+        .replace(/^type\s+/u, "")
+        .split(/\s+as\s+/iu)[0]
+        ?.trim()
+    )
+    .some((name) => name !== undefined && /(^HOST_PROTOCOL_|HostProtocol)/u.test(name))
 
 const maskComments = (source: string): string => {
   let result = ""

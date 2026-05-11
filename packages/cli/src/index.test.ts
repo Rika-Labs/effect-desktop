@@ -424,6 +424,54 @@ test("desktop check --production fails when an explicit renderer scan file is un
   }
 })
 
+test("desktop check --production reports bridge protocol barrel imports in renderer files", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-"))
+  try {
+    await writeFile(
+      join(directory, "desktop.config.ts"),
+      [
+        "export default {",
+        "  app: {",
+        "    id: 'dev.effect-desktop.production-check',",
+        "    name: 'Production Check',",
+        "    version: '1.0.0'",
+        "  }",
+        "}"
+      ].join("\n")
+    )
+    await mkdir(join(directory, "src", "renderer"), { recursive: true })
+    await writeFile(
+      join(directory, "src", "renderer", "main.ts"),
+      "import { HostProtocolRequestEnvelope } from '@effect-desktop/bridge'\n"
+    )
+
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: [
+          "check",
+          "--production",
+          "--renderer",
+          "src/renderer/main.ts",
+          "--config",
+          "desktop.config.ts"
+        ],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("renderer-native-host-protocol")
+    expect(stderr.join("")).toContain("src/renderer/main.ts:1")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop check --production treats missing renderer path as a usage error", async () => {
   const stderr: string[] = []
   const exitCode = await Effect.runPromise(
