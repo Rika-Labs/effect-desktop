@@ -363,9 +363,7 @@ export const makePermissionRegistry = (
             "PermissionRegistry.check",
             "grantSource"
           )
-          const granted = yield* issueGrant(
-            grants,
-            options.audit,
+          const tracked = yield* prepareGrant(
             nextToken,
             now,
             decodedCapability,
@@ -382,9 +380,11 @@ export const makePermissionRegistry = (
             ...(decodedContext.resource === undefined ? {} : { resource: decodedContext.resource }),
             traceId: id
           })
+          yield* auditGrantLifecycle(options.audit, tracked)
           yield* auditDecision(options.audit, decision)
           yield* recordPermissionDecision(decisionRows, decisions, decision)
-          return granted
+          yield* publishGrant(grants, tracked)
+          return tracked.grant
         }).pipe(
           Effect.withSpan("PermissionRegistry.check", {
             attributes: { kind: capability.kind }
@@ -596,6 +596,30 @@ const issueGrant = (
   options: PermissionGrantOptions
 ): Effect.Effect<GrantedCapability, PermissionRegistryError, never> =>
   Effect.gen(function* () {
+    const tracked = yield* prepareGrant(
+      nextToken,
+      now,
+      capability,
+      context,
+      traceId,
+      operation,
+      options
+    )
+    yield* auditGrantLifecycle(audit, tracked)
+    yield* publishGrant(grants, tracked)
+    return tracked.grant
+  })
+
+const prepareGrant = (
+  nextToken: () => string,
+  now: () => number,
+  capability: NormalizedCapability,
+  context: PermissionContext,
+  traceId: string,
+  operation: string,
+  options: PermissionGrantOptions
+): Effect.Effect<TrackedGrant, PermissionRegistryError, never> =>
+  Effect.gen(function* () {
     const token = yield* resolveGeneratedIdentifier(operation, "token", nextToken())
     const grantedAt = now()
     const grant = new GrantedCapability({
@@ -609,20 +633,31 @@ const issueGrant = (
       ...(options.expiresAt === undefined ? {} : { expiresAt: options.expiresAt }),
       ...(options.oneTime === undefined ? {} : { oneTime: options.oneTime })
     })
-    const tracked: TrackedGrant = {
+
+    return {
       grant,
       status: grant.expiresAt !== undefined && grant.expiresAt <= grantedAt ? "expired" : "active",
       updatedAt: grantedAt,
       waiters: []
     }
+  })
 
+const auditGrantLifecycle = (
+  audit: AuditEventsApi | undefined,
+  tracked: TrackedGrant
+): Effect.Effect<void, PermissionRegistryError, never> =>
+  Effect.gen(function* () {
     yield* auditLifecycle(audit, "grant", tracked)
     if (tracked.status === "expired") {
       yield* auditLifecycle(audit, "expire", tracked)
     }
-    yield* Ref.update(grants, (current) => withTracked(current, tracked))
-    return grant
   })
+
+const publishGrant = (
+  grants: Ref.Ref<ReadonlyMap<string, TrackedGrant>>,
+  tracked: TrackedGrant
+): Effect.Effect<void, never, never> =>
+  Ref.update(grants, (current) => withTracked(current, tracked))
 
 const inspectGrant = (
   grants: Ref.Ref<ReadonlyMap<string, TrackedGrant>>,

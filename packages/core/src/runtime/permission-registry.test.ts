@@ -323,6 +323,29 @@ test("PermissionRegistry does not retain a new grant when initial lifecycle audi
   expectFailure(inspectExit, PermissionGrantNotFoundError)
 })
 
+test("PermissionRegistry does not retain a check grant when decision audit fails", async () => {
+  const rows: AuditEvent[] = []
+  const registry = await Effect.runPromise(
+    makePermissionRegistry({
+      audit: failingPermissionDecisionAudit(rows),
+      traceId: () => "trace-1",
+      nextToken: () => "grant-1",
+      now: () => 1_000
+    })
+  )
+  await Effect.runPromise(registry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" }))
+
+  const checkExit = await Effect.runPromiseExit(
+    registry.check(filesystemWrite(["/tmp/app"]), context("window-main"))
+  )
+  const inspectExit = await Effect.runPromiseExit(registry.inspect("grant-1"))
+
+  expectFailure(checkExit, PermissionAuditFailedError)
+  expectFailure(inspectExit, PermissionGrantNotFoundError)
+  expect(rows.map((row) => row.kind)).toContain("permission-granted")
+  expect(await Effect.runPromise(registry.listDecisions())).toEqual([])
+})
+
 test("PermissionRegistry expires grants as typed revocation values and audits the transition", async () => {
   const rows: unknown[] = []
   let currentTime = 1_000
@@ -449,6 +472,20 @@ const failingAudit = (): AuditEventsApi => ({
         cause: new Error("journal full")
       })
     )
+})
+
+const failingPermissionDecisionAudit = (rows: AuditEvent[]): AuditEventsApi => ({
+  emit: (event: AuditEvent) =>
+    event.outcome === "granted"
+      ? Effect.fail(
+          new EventJournal.EventJournalError({
+            method: "EventJournal.write",
+            cause: new Error("journal full")
+          })
+        )
+      : Effect.sync(() => {
+          rows.push(event)
+        })
 })
 
 const expectDenied = (
