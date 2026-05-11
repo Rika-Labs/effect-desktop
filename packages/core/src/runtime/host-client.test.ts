@@ -153,6 +153,34 @@ test("host protocol exchange preserves semantic response mismatches as InvalidOu
   })
 })
 
+test("host protocol exchange rejects response trace id mismatches", async () => {
+  const exchange = createHostProtocolExchange(
+    transport({
+      recv: async () =>
+        new TextEncoder().encode(
+          JSON.stringify(
+            encodeHostProtocolEnvelope(
+              new HostProtocolResponseEnvelope({
+                kind: "response",
+                id: "request-1",
+                timestamp: 1,
+                traceId: "trace-other"
+              })
+            )
+          )
+        )
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(exchange.request(request()))
+
+  expectFailure(exit, HostProtocolInvalidOutputError)
+  expect(getFailure(exit)).toMatchObject({
+    method: "host.ping",
+    tag: "InvalidOutput"
+  })
+})
+
 test("host protocol exchange auto-mints missing host response trace IDs and audits", async () => {
   const rows: AuditEvent[] = []
   const exchange = createHostProtocolExchange(

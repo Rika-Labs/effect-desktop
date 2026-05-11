@@ -85,7 +85,7 @@ const decodeResponseFrame = (
     const repaired = yield* ensureTraceId(parsed, request, options)
 
     const envelope = yield* Effect.try({
-      try: () => decodeHostProtocolEnvelope(repaired),
+      try: () => decodeHostProtocolEnvelope(repaired.value),
       catch: (error) =>
         makeHostProtocolInvalidOutputError(request.method, formatUnknownError(error))
     })
@@ -108,6 +108,15 @@ const decodeResponseFrame = (
       )
     }
 
+    if (!repaired.traceIdWasMissing && envelope.traceId !== request.traceId) {
+      return yield* Effect.fail(
+        makeHostProtocolInvalidOutputError(
+          request.method,
+          `expected response traceId ${request.traceId} for ${request.method}; got ${envelope.traceId}`
+        )
+      )
+    }
+
     return envelope
   })
 
@@ -115,18 +124,25 @@ const ensureTraceId = (
   parsed: unknown,
   request: HostProtocolRequestEnvelope,
   options: ResolvedHostProtocolExchangeOptions
-): Effect.Effect<unknown, HostProtocolError, never> =>
+): Effect.Effect<
+  { readonly value: unknown; readonly traceIdWasMissing: boolean },
+  HostProtocolError,
+  never
+> =>
   Effect.gen(function* () {
     if (!isHostProtocolObject(parsed) || typeof parsed.traceId === "string") {
-      return parsed
+      return { value: parsed, traceIdWasMissing: false }
     }
 
     const traceId = options.nextTraceId()
     yield* emitTraceIdMissing(options.audit, traceId, request, parsed.kind)
 
     return {
-      ...parsed,
-      traceId
+      value: {
+        ...parsed,
+        traceId
+      },
+      traceIdWasMissing: true
     }
   })
 
