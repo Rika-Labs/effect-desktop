@@ -310,6 +310,7 @@ const MAX_PROTOCOL_CONCURRENT_STREAMS_PER_WINDOW = 1024
 const DEFAULT_PROTOCOL_QUEUED_EVENTS_PER_SUBSCRIPTION = 1024
 const MAX_PROTOCOL_QUEUED_EVENTS_PER_SUBSCRIPTION = 65_536
 const PROTOCOL_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*$/u
+type BuildExternalNavigationPolicy = "deny" | "ask"
 const ROOT_HELP = [
   "Usage: desktop <command> [options]",
   "",
@@ -416,6 +417,10 @@ interface BuildPlan {
         readonly maxQueuedEventsPerSubscription: number | undefined
       }
     | undefined
+  readonly security: {
+    readonly externalNavigation: BuildExternalNavigationPolicy
+    readonly devtoolsInProd: boolean
+  }
   readonly protocols: readonly { readonly scheme: string; readonly handler: string | undefined }[]
   readonly windows: unknown
   readonly updateManifestInput:
@@ -992,6 +997,7 @@ const normalizeBuildPlan = (
     const profileEnv = yield* readProfileEnv(config.env, profile)
     const protocolEntries = yield* readProtocols(config.protocols)
     const protocolLimits = yield* readProtocolLimits(config.protocol?.limits)
+    const security = yield* readBuildSecurity(config.security)
     const buildTargets = yield* readBuildTargets(
       config.build?.targets,
       options.target,
@@ -1024,6 +1030,7 @@ const normalizeBuildPlan = (
       rendererEntryPath,
       targetEnv: profileEnv,
       runtimeProtocolLimits: protocolLimits,
+      security,
       protocols: protocolEntries,
       windows: config.windows,
       buildTargets,
@@ -1213,7 +1220,8 @@ const writeAppManifest = (plan: BuildPlan): Effect.Effect<BuildStepReport, Build
         entry: plan.rendererEntry,
         assetBaseUrl: "app://localhost/",
         csp: {},
-        navigationPolicy: "deny"
+        navigationPolicy: plan.security.externalNavigation,
+        devtoolsInProd: plan.security.devtoolsInProd
       },
       renderer: {
         assetBaseUrl: "app://localhost/",
@@ -1692,7 +1700,7 @@ const readProtocols = (
         return yield* Effect.fail(
           new BuildConfigError({
             field: `${field}.handler`,
-            message: `${field}.handler must be \"open\" or \"view\"`
+            message: `${field}.handler must be "open" or "view"`
           })
         )
       }
@@ -1786,6 +1794,53 @@ const readProtocolLimit = (
     )
   }
   return Effect.succeed(raw)
+}
+
+const readBuildSecurity = (
+  value: AppConfig["security"]
+): Effect.Effect<
+  { readonly externalNavigation: BuildExternalNavigationPolicy; readonly devtoolsInProd: boolean },
+  BuildConfigError,
+  never
+> =>
+  Effect.gen(function* () {
+    const externalNavigation = yield* readExternalNavigation(value?.externalNavigation)
+    const devtoolsInProd = yield* readOptionalBoolean(
+      value?.devtoolsInProd,
+      "security.devtoolsInProd",
+      false
+    )
+    return { externalNavigation, devtoolsInProd }
+  })
+
+const readExternalNavigation = (
+  value: unknown
+): Effect.Effect<BuildExternalNavigationPolicy, BuildConfigError, never> => {
+  if (value === undefined) {
+    return Effect.succeed("deny")
+  }
+  if (value === "deny" || value === "ask") {
+    return Effect.succeed(value)
+  }
+  return Effect.fail(
+    new BuildConfigError({
+      field: "security.externalNavigation",
+      message: 'security.externalNavigation must be "deny" or "ask"'
+    })
+  )
+}
+
+const readOptionalBoolean = (
+  value: unknown,
+  field: string,
+  defaultValue: boolean
+): Effect.Effect<boolean, BuildConfigError, never> => {
+  if (value === undefined) {
+    return Effect.succeed(defaultValue)
+  }
+  return typeof value === "boolean"
+    ? Effect.succeed(value)
+    : Effect.fail(new BuildConfigError({ field, message: `${field} must be a boolean` }))
 }
 
 const readBuildTargets = (

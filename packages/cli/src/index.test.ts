@@ -466,6 +466,92 @@ test("desktop doctor suppresses signing warning when signing config is present",
   }
 })
 
+test("desktop doctor rejects invalid security config", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      security: { externalNavigation: "teleport", devtoolsInProd: "sometimes" }
+    })
+    await writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
+    await writeFile(join(directory, "bun.lock"), "")
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["doctor", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        platform: "darwin",
+        arch: "arm64",
+        bunVersion: "1.3.13",
+        doctorCommandRunner: doctorRunner({
+          cargo: true,
+          rustc: true,
+          "xcode-select": true,
+          hdiutil: true
+        }),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const report = JSON.parse(stderr.join("")) as {
+      readonly passed: boolean
+      readonly probes: ReadonlyArray<{ readonly name: string; readonly status: string }>
+    }
+    expect(exitCode).toBe(1)
+    expect(report.passed).toBe(false)
+    expect(report.probes.find((probe) => probe.name === "config")?.status).toBe("missing")
+    expect(stderr.join("")).toContain("security.externalNavigation")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop doctor rejects protocol limits above caps", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      protocol: {
+        limits: {
+          maxFrameBytes: 999_999_999,
+          maxConcurrentRequestsPerWindow: 999_999,
+          maxConcurrentStreamsPerWindow: 999_999
+        }
+      }
+    })
+    await writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
+    await writeFile(join(directory, "bun.lock"), "")
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["doctor", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        platform: "darwin",
+        arch: "arm64",
+        bunVersion: "1.3.13",
+        doctorCommandRunner: doctorRunner({
+          cargo: true,
+          rustc: true,
+          "xcode-select": true,
+          hdiutil: true
+        }),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("protocol.limits.maxFrameBytes")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop doctor fails when package manager state is not Bun-pinned", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
   try {
@@ -3877,6 +3963,108 @@ test("desktop build rejects invalid reverse-DNS app.id", async () => {
     expect(exitCode).toBe(1)
     expect(stderr.join("")).toContain("BuildConfigError")
     expect(stderr.join("")).toContain("app.id must be a reverse-DNS ASCII identifier")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop build rejects invalid security config before running build steps", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-security-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      security: { externalNavigation: "teleport", devtoolsInProd: "sometimes" }
+    })
+    const stderr: string[] = []
+    const calls: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["build", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        commandRunner: (invocation) =>
+          Effect.sync(() => {
+            calls.push(invocation.step)
+          }),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("BuildConfigError")
+    expect(stderr.join("")).toContain("security.externalNavigation")
+    expect(calls).toEqual([])
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop build emits validated renderer security policy", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-security-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      security: { externalNavigation: "ask", devtoolsInProd: true }
+    })
+    const runner: CommandRunner = (invocation) =>
+      Effect.gen(function* () {
+        if (invocation.step === "renderer") {
+          yield* Effect.promise(() => mkdir(join(invocation.cwd, "dist"), { recursive: true }))
+          yield* Effect.promise(() =>
+            writeFile(join(invocation.cwd, "dist", "index.html"), "<h1>ok</h1>")
+          )
+        }
+        if (invocation.step === "runtime") {
+          const outdir = invocation.args[invocation.args.indexOf("--outdir") + 1]
+          if (outdir !== undefined) {
+            yield* Effect.promise(() => mkdir(outdir, { recursive: true }))
+            yield* Effect.promise(() => writeFile(join(outdir, "runtime.js"), "runtime"))
+          }
+        }
+        if (invocation.step === "native-host") {
+          yield* Effect.promise(() =>
+            mkdir(join(invocation.cwd, "target", "release"), { recursive: true })
+          )
+          yield* Effect.promise(() =>
+            writeFile(join(invocation.cwd, "target", "release", "host"), "host")
+          )
+        }
+      })
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["build", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        commandRunner: runner,
+        writeStdout: () => {},
+        writeStderr: () => {}
+      })
+    )
+
+    const manifest = JSON.parse(
+      await readFile(
+        join(
+          directory,
+          "apps",
+          "playground",
+          "build",
+          "effect-desktop",
+          "linux-x64",
+          "app-manifest.json"
+        ),
+        "utf8"
+      )
+    ) as {
+      readonly rendererManifest: {
+        readonly navigationPolicy: string
+        readonly devtoolsInProd: boolean
+      }
+    }
+
+    expect(exitCode).toBe(0)
+    expect(manifest.rendererManifest.navigationPolicy).toBe("ask")
+    expect(manifest.rendererManifest.devtoolsInProd).toBe(true)
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

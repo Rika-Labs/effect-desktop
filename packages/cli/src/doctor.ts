@@ -107,9 +107,20 @@ interface AppConfig {
       readonly gpgKey?: unknown
     }
   }
+  readonly security?: {
+    readonly externalNavigation?: unknown
+    readonly devtoolsInProd?: unknown
+  }
+  readonly protocol?: {
+    readonly limits?: unknown
+  }
 }
 
 const DOCS_URL = "https://github.com/Rika-Labs/effect-desktop/blob/main/docs/SPEC.md"
+const MAX_PROTOCOL_FRAME_BYTES = 16 * 1024 * 1024
+const MAX_PROTOCOL_CONCURRENT_REQUESTS_PER_WINDOW = 4096
+const MAX_PROTOCOL_CONCURRENT_STREAMS_PER_WINDOW = 1024
+const MAX_PROTOCOL_QUEUED_EVENTS_PER_SUBSCRIPTION = 65_536
 
 export const runDesktopDoctor = (
   options: DesktopDoctorOptions
@@ -416,6 +427,16 @@ const probeConfig = (
       typeof config.app.name === "string" &&
       typeof config.app.version === "string"
     ) {
+      const invalidSecurity = invalidSecurityConfig(config)
+      if (invalidSecurity !== undefined) {
+        return configMissing(options, invalidSecurity.field, invalidSecurity.message)
+      }
+
+      const invalidProtocolLimit = invalidProtocolLimits(config)
+      if (invalidProtocolLimit !== undefined) {
+        return configMissing(options, invalidProtocolLimit.field, invalidProtocolLimit.message)
+      }
+
       if (typeof config.update?.channel === "string") {
         if (typeof config.update.publicKey !== "string" || config.update.publicKey.length === 0) {
           return missingResult(
@@ -459,6 +480,98 @@ const probeConfig = (
       })
     )
   })
+
+const configMissing = (
+  options: DesktopDoctorOptions,
+  field: string,
+  message: string
+): DoctorProbeResult =>
+  missingResult(
+    missing({
+      probe: "config",
+      component: field,
+      platform: options.platform,
+      message,
+      remediation: `Fix ${field} in desktop.config.ts.`,
+      installHint: "desktop doctor --config apps/playground/desktop.config.ts",
+      docsUrl: DOCS_URL
+    })
+  )
+
+const invalidSecurityConfig = (
+  config: AppConfig
+): { readonly field: string; readonly message: string } | undefined => {
+  const externalNavigation = config.security?.externalNavigation
+  if (
+    externalNavigation !== undefined &&
+    externalNavigation !== "deny" &&
+    externalNavigation !== "ask"
+  ) {
+    return {
+      field: "security.externalNavigation",
+      message: 'security.externalNavigation must be "deny" or "ask"'
+    }
+  }
+
+  const devtoolsInProd = config.security?.devtoolsInProd
+  if (devtoolsInProd !== undefined && typeof devtoolsInProd !== "boolean") {
+    return {
+      field: "security.devtoolsInProd",
+      message: "security.devtoolsInProd must be a boolean"
+    }
+  }
+
+  return undefined
+}
+
+const invalidProtocolLimits = (
+  config: AppConfig
+): { readonly field: string; readonly message: string } | undefined => {
+  const limits = config.protocol?.limits
+  if (!isRecord(limits)) {
+    return limits === undefined
+      ? undefined
+      : { field: "protocol.limits", message: "protocol.limits must be an object" }
+  }
+
+  return (
+    invalidProtocolLimit(limits, "protocol.limits.maxFrameBytes", MAX_PROTOCOL_FRAME_BYTES) ??
+    invalidProtocolLimit(
+      limits,
+      "protocol.limits.maxConcurrentRequestsPerWindow",
+      MAX_PROTOCOL_CONCURRENT_REQUESTS_PER_WINDOW
+    ) ??
+    invalidProtocolLimit(
+      limits,
+      "protocol.limits.maxConcurrentStreamsPerWindow",
+      MAX_PROTOCOL_CONCURRENT_STREAMS_PER_WINDOW
+    ) ??
+    invalidProtocolLimit(
+      limits,
+      "protocol.limits.maxQueuedEventsPerSubscription",
+      MAX_PROTOCOL_QUEUED_EVENTS_PER_SUBSCRIPTION
+    )
+  )
+}
+
+const invalidProtocolLimit = (
+  limits: Record<string, unknown>,
+  field: string,
+  cap: number
+): { readonly field: string; readonly message: string } | undefined => {
+  const key = field.substring(field.lastIndexOf(".") + 1)
+  const raw = limits[key]
+  if (raw === undefined) {
+    return undefined
+  }
+  if (typeof raw !== "number" || !Number.isSafeInteger(raw) || raw <= 0) {
+    return { field, message: `${field} must be a positive integer` }
+  }
+  if (raw > cap) {
+    return { field, message: `${field} cannot exceed ${cap}` }
+  }
+  return undefined
+}
 
 const commandProbe = (
   options: DesktopDoctorOptions,
