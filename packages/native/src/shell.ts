@@ -27,6 +27,7 @@ import {
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 const DefaultExternalSchemes = Object.freeze(["http", "https", "mailto", "tel"])
+const ReservedExternalSchemes = Object.freeze(["file", "javascript"])
 const ExecutableExtensions = Object.freeze([
   ".exe",
   ".bat",
@@ -209,14 +210,18 @@ const validateExternalUrl = (
 
     const parsed = yield* parseUrl(input.url, "Shell.openExternal")
     const scheme = parsed.protocol.replace(/:$/u, "").toLowerCase()
+    const allowedSchemes = new Set([
+      ...DefaultExternalSchemes,
+      ...(input.allowedSchemes?.map(normalizeScheme) ?? [])
+    ])
 
-    if (parsed.protocol === "file:") {
+    if (ReservedExternalSchemes.includes(scheme)) {
       return yield* Effect.fail(
         permissionDenied("native.invoke:Shell.openExternal", input.url, "Shell.openExternal")
       )
     }
 
-    if (!DefaultExternalSchemes.includes(scheme)) {
+    if (!allowedSchemes.has(scheme)) {
       return yield* Effect.fail(
         permissionDenied("native.invoke:Shell.openExternal", scheme, "Shell.openExternal")
       )
@@ -294,8 +299,9 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
   })
 
 const normalizeOpenExternalOptions = (
-  _options: Omit<ShellOpenExternalOptions, "url"> | undefined
-): Omit<ShellOpenExternalOptions, "url"> => ({})
+  options: Omit<ShellOpenExternalOptions, "url"> | undefined
+): Omit<ShellOpenExternalOptions, "url"> =>
+  options?.allowedSchemes === undefined ? {} : { allowedSchemes: options.allowedSchemes }
 
 const normalizeOpenPathOptions = (
   options: Omit<ShellOpenPathOptions, "path"> | undefined
@@ -306,6 +312,8 @@ const isExecutablePath = (path: string): boolean => {
   const lower = path.toLowerCase()
   return ExecutableExtensions.some((extension) => lower.endsWith(extension))
 }
+
+const normalizeScheme = (scheme: string): string => scheme.replace(/:$/u, "").toLowerCase()
 
 const decodeShellOpenExternalInput = (
   input: unknown

@@ -3927,13 +3927,16 @@ test("Shell bridge client validates external URL schemes", async () => {
   )
 
   const denied = await Effect.runPromiseExit(client.openExternal("myapp://callback"))
+  await Effect.runPromise(client.openExternal("myapp://callback", { allowedSchemes: ["MyApp"] }))
   const javascriptDenied = await Effect.runPromiseExit(
     client.openExternal("javascript:alert(1)", { allowedSchemes: ["javascript"] } as never)
   )
 
   expectExitFailure(denied, (error) => hasErrorTag(error, "PermissionDenied"))
   expectExitFailure(javascriptDenied, (error) => hasErrorTag(error, "PermissionDenied"))
-  expect(requests).toEqual([])
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["Shell.openExternal", { url: "myapp://callback", allowedSchemes: ["MyApp"] }]
+  ])
 })
 
 test("Shell bridge client rejects control characters in external URLs before transport", async () => {
