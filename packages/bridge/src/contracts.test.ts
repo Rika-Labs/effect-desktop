@@ -167,6 +167,86 @@ test("BridgeRpc.group validates specs before producing a group", () => {
   ).toThrow(InvalidBridgeRpcSpec)
 })
 
+test("BridgeRpc.group rejects empty contract tags", () => {
+  expect(() => BridgeRpc.group("", { call: validMethodSpec() }, {})).toThrow(InvalidBridgeRpcSpec)
+  expect(() => BridgeRpc.group(" ", { call: validMethodSpec() }, {})).toThrow(InvalidBridgeRpcSpec)
+})
+
+test("BridgeRpc.group rejects empty method names", () => {
+  expect(() => BridgeRpc.group("Test.EmptyMethod", { "": validMethodSpec() }, {})).toThrow(
+    InvalidBridgeRpcSpec
+  )
+  expect(() =>
+    BridgeRpc.group("Test.EmptyMethodWhitespace", { " ": validMethodSpec() }, {})
+  ).toThrow(InvalidBridgeRpcSpec)
+})
+
+test("BridgeRpc.group rejects empty event names", () => {
+  expect(() =>
+    BridgeRpc.group(
+      "Test.EmptyEvent",
+      { call: validMethodSpec() },
+      { "": { payload: Schema.String } }
+    )
+  ).toThrow(InvalidBridgeRpcSpec)
+  expect(() =>
+    BridgeRpc.group(
+      "Test.EmptyEventWhitespace",
+      { call: validMethodSpec() },
+      { " ": { payload: Schema.String } }
+    )
+  ).toThrow(InvalidBridgeRpcSpec)
+})
+
+test("BridgeRpc.group rejects empty permissions", () => {
+  for (const [index, permission] of ["", " "].entries()) {
+    expect(() =>
+      BridgeRpc.group(
+        `Test.EmptyPermission.${index}`,
+        {
+          call: {
+            ...validMethodSpec(),
+            permission
+          }
+        },
+        {}
+      )
+    ).toThrow(InvalidBridgeRpcSpec)
+  }
+})
+
+test("BridgeRpc.group rejects resource outputs without a handle schema", () => {
+  expect(() =>
+    BridgeRpc.group(
+      "Test.IncompleteResource",
+      {
+        call: {
+          ...validMethodSpec(),
+          output: {
+            _tag: "BridgeRpcResourceSpec",
+            kind: "project",
+            state: "open"
+          }
+        }
+      } as never,
+      {}
+    )
+  ).toThrow(InvalidBridgeRpcSpec)
+
+  expect(() =>
+    BridgeRpc.group(
+      "Test.ValidResource",
+      {
+        call: {
+          ...validMethodSpec(),
+          output: BridgeRpc.Resource("project", "open")
+        }
+      },
+      {}
+    )
+  ).not.toThrow()
+})
+
 test("BridgeRpc.layer binds handlers to a RpcGroup descriptor", async () => {
   const ProjectRpcs = BridgeRpc.group("Test.Layered", { call: validMethodSpec() }, {})
   const layer = BridgeRpc.layer(ProjectRpcs)({
@@ -177,6 +257,27 @@ test("BridgeRpc.layer binds handlers to a RpcGroup descriptor", async () => {
   expect(await Effect.runPromise(layer.handlers.call("request"))).toBe("REQUEST")
   expect(Object.isFrozen(layer)).toBe(true)
   expect(Object.isFrozen(layer.handlers)).toBe(true)
+})
+
+test("BridgeRpc.layer rejects missing handlers", () => {
+  const ProjectRpcs = BridgeRpc.group("Test.MissingHandler", { call: validMethodSpec() }, {})
+
+  expect(() => BridgeRpc.layer(ProjectRpcs)({} as never)).toThrow(InvalidBridgeRpcSpec)
+  expect(() => BridgeRpc.layer(ProjectRpcs)({ call: "not callable" } as never)).toThrow(
+    InvalidBridgeRpcSpec
+  )
+})
+
+test("BridgeRpc.layer accepts prototype handlers", async () => {
+  const ProjectRpcs = BridgeRpc.group("Test.PrototypeHandler", { call: validMethodSpec() }, {})
+  class Handlers {
+    call(input: string): Effect.Effect<string, never, never> {
+      return Effect.succeed(input.toUpperCase())
+    }
+  }
+  const layer = BridgeRpc.layer(ProjectRpcs)(new Handlers())
+
+  expect(await Effect.runPromise(layer.handlers.call("request"))).toBe("REQUEST")
 })
 
 test("BridgeRpc.group carries endpoint, capability, support, stream, and event metadata", () => {

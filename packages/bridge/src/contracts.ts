@@ -150,11 +150,13 @@ export const BridgeRpc = Object.freeze({
     ) =>
     <Handlers extends BridgeRpcHandlers<Spec>>(
       handlers: Handlers
-    ): BridgeRpcLayer<Tag, Spec, Handlers, Events> =>
-      Object.freeze({
+    ): BridgeRpcLayer<Tag, Spec, Handlers, Events> => {
+      validateHandlers(group.tag, group.spec, handlers)
+      return Object.freeze({
         group,
         handlers: Object.freeze(handlers)
       })
+    }
 })
 
 export const makeBridgeRpcGroup = <
@@ -166,6 +168,9 @@ export const makeBridgeRpcGroup = <
   spec: Spec,
   events: Events
 ): BridgeRpcGroup<Tag, Spec, Events> => {
+  if (tag.trim().length === 0) {
+    throw invalidSpec(tag, "<group>", "tag must be non-empty")
+  }
   validateBridgeRpcSpec(tag, spec)
   validateBridgeRpcEvents(tag, events)
   const frozenSpec = freezeRpcSpec(spec)
@@ -197,6 +202,9 @@ const validateBridgeRpcSpec = (tag: string, spec: BridgeRpcSpec): void => {
     if (method === "events") {
       throw invalidSpec(tag, method, "events is a reserved method name")
     }
+    if (method.trim().length === 0) {
+      throw invalidSpec(tag, method, "method name must be non-empty")
+    }
     validateMethodSpec(tag, method, methodSpec)
   }
 }
@@ -220,6 +228,9 @@ const validateMethodSpec = (tag: string, method: string, spec: BridgeRpcMethodSp
   }
   if (spec.permission !== undefined && typeof spec.permission !== "string") {
     throw invalidSpec(tag, method, "permission must be a string")
+  }
+  if (typeof spec.permission === "string" && spec.permission.trim().length === 0) {
+    throw invalidSpec(tag, method, "permission must be non-empty")
   }
   if (spec.timeoutMs !== undefined && (!Number.isInteger(spec.timeoutMs) || spec.timeoutMs < 0)) {
     throw invalidSpec(tag, method, "timeoutMs must be a non-negative integer")
@@ -256,6 +267,9 @@ const validateBridgeRpcEvents = (tag: string, events: BridgeRpcEvents): void => 
   }
 
   for (const [event, eventSpec] of Object.entries(events)) {
+    if (event.trim().length === 0) {
+      throw invalidSpec(tag, event, "event name must be non-empty")
+    }
     validateEventSpec(tag, event, eventSpec)
   }
 }
@@ -317,6 +331,22 @@ const validateSupportSpec = (tag: string, method: string, spec: RpcSupportMetada
 const validateResourceSpec = (tag: string, method: string, spec: BridgeRpcResourceSpec): void => {
   if (spec.kind.trim().length === 0 || spec.state.trim().length === 0) {
     throw invalidSpec(tag, method, "resource kind and state must be non-empty")
+  }
+}
+
+const validateHandlers = <Spec extends BridgeRpcSpec>(
+  tag: string,
+  spec: Spec,
+  handlers: unknown
+): void => {
+  if (typeof handlers !== "object" || handlers === null) {
+    throw invalidSpec(tag, "<handlers>", "handlers must be an object")
+  }
+
+  for (const method of Object.keys(spec)) {
+    if (typeof Reflect.get(handlers, method) !== "function") {
+      throw invalidSpec(tag, method, "handler must be a function")
+    }
   }
 }
 
@@ -437,8 +467,10 @@ export const isResourceSpec = (value: unknown): value is BridgeRpcResourceSpec =
   (value as { readonly _tag?: unknown })._tag === "BridgeRpcResourceSpec" &&
   "kind" in value &&
   "state" in value &&
+  "schema" in value &&
   typeof (value as { readonly kind?: unknown }).kind === "string" &&
-  typeof (value as { readonly state?: unknown }).state === "string"
+  typeof (value as { readonly state?: unknown }).state === "string" &&
+  isSchema((value as { readonly schema?: unknown }).schema)
 
 const backpressureStrategies = new Set<BackpressureSpec["strategy"]>(["buffer", "drop", "block"])
 const backpressureOverflows = new Set<NonNullable<BackpressureSpec["overflow"]>>([
