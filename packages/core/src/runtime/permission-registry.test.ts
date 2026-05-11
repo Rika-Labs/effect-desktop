@@ -126,6 +126,27 @@ test("PermissionRegistry does not let weaker secret audit policy cover stronger 
   }
 })
 
+test("PermissionRegistry does not let narrower network policy cover ask-unknown requests", async () => {
+  const registry = await Effect.runPromise(
+    makePermissionRegistry({ traceId: () => "trace-1", nextToken: () => "grant-1" })
+  )
+
+  await Effect.runPromise(
+    registry.declare(networkConnect(["api.example.com"], false), { source: "manifest" })
+  )
+  const denied = await Effect.runPromiseExit(
+    registry.check(networkConnect(["api.example.com"], true), context("window-main"))
+  )
+  const granted = await Effect.runPromise(
+    registry.check(networkConnect(["api.example.com"], false), context("window-main"))
+  )
+
+  expectDenied(denied, (error) => {
+    expect(error.reason).toBe("default-deny")
+  })
+  expect(granted.token).toBe("grant-1")
+})
+
 test("PermissionRegistry exposes decision history and live decision events for devtools", async () => {
   const registry = await Effect.runPromise(
     makePermissionRegistry({ traceId: () => "trace-devtools", nextToken: () => "grant-1" })
@@ -499,10 +520,13 @@ const sqliteOpen = (roots: readonly string[]): NormalizedCapability => ({
   audit: "always"
 })
 
-const networkConnect = (hosts: readonly string[]): NormalizedCapability => ({
+const networkConnect = (
+  hosts: readonly string[],
+  askUnknownHosts = false
+): NormalizedCapability => ({
   kind: "network.connect",
   hosts,
-  askUnknownHosts: false,
+  askUnknownHosts,
   audit: "always"
 })
 

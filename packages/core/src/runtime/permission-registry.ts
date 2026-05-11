@@ -560,6 +560,7 @@ export const capabilityCovers = (
     case "network.connect":
       return (
         declared.kind === requested.kind &&
+        declared.askUnknownHosts === requested.askUnknownHosts &&
         requested.hosts.every((host) => declared.hosts.includes(host))
       )
     case "secrets.read":
