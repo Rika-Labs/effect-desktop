@@ -56,13 +56,13 @@ export class WindowCreatePayload extends Schema.Class<WindowCreatePayload>("Wind
 export class WindowCreateResponse extends Schema.Class<WindowCreateResponse>(
   "WindowCreateResponse"
 )({
-  windowId: Schema.String
+  windowId: Schema.NonEmptyString
 }) {}
 
 export class WindowDestroyPayload extends Schema.Class<WindowDestroyPayload>(
   "WindowDestroyPayload"
 )({
-  windowId: Schema.String
+  windowId: Schema.NonEmptyString
 }) {}
 
 export interface WindowCreateInput {

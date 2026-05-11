@@ -115,6 +115,17 @@ test("host window client rejects invalid create bounds before crossing the host 
   }
 })
 
+test("host window client rejects empty destroy window ids before crossing the host boundary", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = makeHostWindowClient(windowExchange(requests))
+
+  await expectEffectFailure(
+    client.destroy(""),
+    (error) => error instanceof HostProtocolInvalidArgumentError
+  )
+  expect(requests).toEqual([])
+})
+
 test("host window client propagates destroy response errors", async () => {
   const client = makeHostWindowClient(notFoundExchange(), {
     nextRequestId: () => "request-window-destroy",
@@ -130,6 +141,15 @@ test("host window client propagates destroy response errors", async () => {
 
 test("host window client rejects malformed create output", async () => {
   const client = makeHostWindowClient(malformedCreateExchange())
+
+  await expectEffectFailure(
+    client.create(),
+    (error) => error instanceof HostProtocolInvalidOutputError
+  )
+})
+
+test("host window client rejects empty create response window ids", async () => {
+  const client = makeHostWindowClient(emptyWindowIdExchange())
 
   await expectEffectFailure(
     client.create(),
@@ -215,6 +235,19 @@ const malformedCreateExchange = (): HostWindowExchange => ({
         timestamp: request.timestamp + 1,
         traceId: request.traceId,
         payload: {}
+      })
+    )
+})
+
+const emptyWindowIdExchange = (): HostWindowExchange => ({
+  request: (request) =>
+    Effect.succeed(
+      new HostProtocolResponseEnvelope({
+        kind: "response",
+        id: request.id,
+        timestamp: request.timestamp + 1,
+        traceId: request.traceId,
+        payload: { windowId: "" }
       })
     )
 })
