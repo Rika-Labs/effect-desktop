@@ -401,14 +401,44 @@ const probeConfig = (
         })
       )
     }
-    const module = yield* Effect.promise(async () => {
+    const imported = yield* Effect.promise(async () => {
       try {
-        return (await import(pathToFileUrl(configPath))) as { readonly default?: unknown }
-      } catch {
-        return undefined
+        return {
+          ok: true as const,
+          module: (await import(pathToFileUrl(configPath))) as { readonly default?: unknown }
+        }
+      } catch (cause) {
+        return { ok: false as const, cause }
       }
     })
-    if (!isRecord(module?.default)) {
+    if (!imported.ok) {
+      return missingResult(
+        missing({
+          probe: "config",
+          component: "desktop.config.ts",
+          platform: options.platform,
+          message: `desktop config import failed: ${formatUnknownCause(imported.cause)}`,
+          remediation: "Fix the syntax or runtime error thrown while importing desktop.config.ts.",
+          installHint: "bun desktop doctor --config apps/playground/desktop.config.ts",
+          docsUrl: DOCS_URL
+        })
+      )
+    }
+    const defaultExport = readModuleDefault(imported.module)
+    if (!defaultExport.ok) {
+      return missingResult(
+        missing({
+          probe: "config",
+          component: "desktop.config.ts",
+          platform: options.platform,
+          message: `desktop config import failed: ${formatUnknownCause(defaultExport.cause)}`,
+          remediation: "Fix the syntax or runtime error thrown while importing desktop.config.ts.",
+          installHint: "bun desktop doctor --config apps/playground/desktop.config.ts",
+          docsUrl: DOCS_URL
+        })
+      )
+    }
+    if (!isRecord(defaultExport.value)) {
       return missingResult(
         missing({
           probe: "config",
@@ -421,7 +451,7 @@ const probeConfig = (
         })
       )
     }
-    const config = module.default as AppConfig
+    const config = defaultExport.value as AppConfig
     if (
       typeof config.app?.id === "string" &&
       typeof config.app.name === "string" &&
@@ -803,6 +833,28 @@ const signingHint = (platform: NodeJS.Platform): string => {
 }
 
 const pathToFileUrl = (path: string): string => pathToFileURL(path).href
+
+const readModuleDefault = (module: {
+  readonly default?: unknown
+}):
+  | { readonly ok: true; readonly value: unknown }
+  | { readonly ok: false; readonly cause: unknown } => {
+  try {
+    return { ok: true, value: module.default }
+  } catch (cause) {
+    return { ok: false, cause }
+  }
+}
+
+const formatUnknownCause = (cause: unknown): string => {
+  if (cause instanceof Error && cause.message.length > 0) {
+    return cause.message
+  }
+  if (typeof cause === "string" && cause.length > 0) {
+    return cause
+  }
+  return "unknown import error"
+}
 
 const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
   typeof value === "object" && value !== null

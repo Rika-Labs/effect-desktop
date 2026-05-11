@@ -674,6 +674,49 @@ test("desktop doctor suppresses signing warning when signing config is present",
   }
 })
 
+test("desktop doctor reports config import failures with the import cause", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-config-import-"))
+  try {
+    await writePlaygroundFixture(directory)
+    await writeFile(
+      join(directory, "apps", "playground", "desktop.config.ts"),
+      'throw new Error("config exploded")\nexport default {}\n'
+    )
+    await writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
+    await writeFile(join(directory, "bun.lock"), "")
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["doctor", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        platform: "darwin",
+        arch: "arm64",
+        bunVersion: "1.3.13",
+        doctorCommandRunner: doctorRunner({
+          cargo: true,
+          rustc: true,
+          "xcode-select": true,
+          hdiutil: true
+        }),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const output = stderr.join("")
+    expect(exitCode).toBe(1)
+    expect(output).toContain("MISSING  config")
+    expect(output).toContain("desktop config import failed")
+    expect(output).toContain("Cannot access")
+    expect(output).not.toContain("desktop config must export a default object")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop doctor rejects invalid security config", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
   try {
