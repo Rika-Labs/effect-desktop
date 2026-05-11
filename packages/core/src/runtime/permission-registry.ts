@@ -11,6 +11,7 @@ const PermissionMetadataText = Schema.NonEmptyString.check(
 )
 const AuditPolicy = Schema.Literals(["always", "on-deny", "never"])
 export type AuditPolicy = typeof AuditPolicy.Type
+const PermissionTimestamp = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const CapabilityKind = Schema.Literals([
   "filesystem.read",
   "filesystem.write",
@@ -133,7 +134,7 @@ export class GrantedCapability extends Schema.Class<GrantedCapability>("GrantedC
   resource: Schema.optionalKey(PermissionMetadataText),
   source: PermissionMetadataText,
   traceId: PermissionMetadataText,
-  grantedAt: Schema.Number,
+  grantedAt: PermissionTimestamp,
   expiresAt: Schema.optionalKey(Schema.Number),
   oneTime: Schema.optionalKey(Schema.Boolean)
 }) {}
@@ -165,7 +166,7 @@ export class PermissionGrantSnapshot extends Schema.Class<PermissionGrantSnapsho
 )({
   grant: GrantedCapability,
   status: GrantStatus,
-  updatedAt: Schema.Number
+  updatedAt: PermissionTimestamp
 }) {}
 
 export class PermissionInvalidArgumentError extends Data.TaggedError("InvalidArgument")<{
@@ -425,16 +426,19 @@ export const makePermissionRegistry = (
           })
         ),
       revoke: (token) =>
-        transitionGrant(grants, options.audit, token, "revoked", now()).pipe(
-          Effect.withSpan("PermissionRegistry.revoke")
-        ),
+        Effect.gen(function* () {
+          const updatedAt = yield* resolveClockTimestamp("PermissionRegistry.revoke", now())
+          return yield* transitionGrant(grants, options.audit, token, "revoked", updatedAt)
+        }).pipe(Effect.withSpan("PermissionRegistry.revoke")),
       inspect: (token) =>
-        inspectGrant(grants, options.audit, token, now()).pipe(
-          Effect.withSpan("PermissionRegistry.inspect")
-        ),
+        Effect.gen(function* () {
+          const inspectedAt = yield* resolveClockTimestamp("PermissionRegistry.inspect", now())
+          return yield* inspectGrant(grants, options.audit, token, inspectedAt)
+        }).pipe(Effect.withSpan("PermissionRegistry.inspect")),
       use: (grant, effect) =>
         Effect.gen(function* () {
-          const prepared = yield* prepareGrantUse(grants, options.audit, grant.token, now())
+          const usedAt = yield* resolveClockTimestamp("PermissionRegistry.use", now())
+          const prepared = yield* prepareGrantUse(grants, options.audit, grant.token, usedAt)
           if (!prepared.track) {
             return yield* effect
           }
@@ -624,7 +628,7 @@ const prepareGrant = (
 ): Effect.Effect<TrackedGrant, PermissionRegistryError, never> =>
   Effect.gen(function* () {
     const token = yield* resolveGeneratedIdentifier(operation, "token", nextToken())
-    const grantedAt = now()
+    const grantedAt = yield* resolveClockTimestamp(operation, now())
     const grant = new GrantedCapability({
       token,
       capability,
@@ -980,6 +984,14 @@ const resolveGeneratedIdentifier = (
 ): Effect.Effect<string, PermissionInvalidArgumentError, never> =>
   Schema.decodeUnknownEffect(PermissionMetadataText)(value).pipe(
     Effect.mapError((cause) => invalidArgument(operation, field, cause))
+  )
+
+const resolveClockTimestamp = (
+  operation: string,
+  value: number
+): Effect.Effect<number, PermissionInvalidArgumentError, never> =>
+  Schema.decodeUnknownEffect(PermissionTimestamp)(value).pipe(
+    Effect.mapError((cause) => invalidArgument(operation, "now", cause))
   )
 
 const decodeOptionalAttribution = (

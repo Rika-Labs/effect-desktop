@@ -375,6 +375,94 @@ test("PermissionRegistry rejects empty token returned by the nextToken callback 
   expect(await Effect.runPromise(registry.listDecisions())).toEqual([])
 })
 
+test("PermissionRegistry rejects invalid clock timestamps before grant state changes", async () => {
+  for (const now of invalidTimestamps) {
+    let currentTime = now
+    const grantRows: unknown[] = []
+    const grantRegistry = await Effect.runPromise(
+      makePermissionRegistry({
+        audit: memoryAudit(grantRows),
+        now: () => currentTime,
+        nextToken: () => "grant-1",
+        traceId: () => "trace-1"
+      })
+    )
+    const grantExit = await Effect.runPromiseExit(
+      grantRegistry.grant(filesystemWrite(["/tmp/app"]), context("window-main"))
+    )
+
+    expectInvalid(grantExit)
+    expect(grantRows).toEqual([])
+    currentTime = 1_000
+    expectFailure(
+      await Effect.runPromiseExit(grantRegistry.inspect("grant-1")),
+      PermissionGrantNotFoundError
+    )
+
+    const checkRows: AuditEvent[] = []
+    const checkRegistry = await Effect.runPromise(
+      makePermissionRegistry({
+        audit: memoryAudit(checkRows),
+        now: () => now,
+        nextToken: () => "grant-1",
+        traceId: () => "trace-1"
+      })
+    )
+    await Effect.runPromise(
+      checkRegistry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" })
+    )
+    const checkExit = await Effect.runPromiseExit(
+      checkRegistry.check(filesystemWrite(["/tmp/app"]), context("window-main"))
+    )
+
+    expectInvalid(checkExit)
+    expect(checkRows).toEqual([])
+    expect(await Effect.runPromise(checkRegistry.listDecisions())).toEqual([])
+  }
+})
+
+test("PermissionRegistry rejects invalid clock timestamps before lifecycle transitions", async () => {
+  for (const now of invalidTimestamps) {
+    for (const operation of ["inspect", "revoke", "use"] as const) {
+      let currentTime = 1_000
+      const rows: AuditEvent[] = []
+      const registry = await Effect.runPromise(
+        makePermissionRegistry({
+          audit: memoryAudit(rows),
+          now: () => currentTime,
+          nextToken: () => "grant-1",
+          traceId: () => "trace-1"
+        })
+      )
+      const grant = await Effect.runPromise(
+        registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"), { oneTime: true })
+      )
+      currentTime = now
+
+      let effectRuns = 0
+      const exit = await Effect.runPromiseExit(
+        operation === "inspect"
+          ? registry.inspect(grant.token)
+          : operation === "revoke"
+            ? registry.revoke(grant.token)
+            : registry.use(
+                grant,
+                Effect.sync(() => {
+                  effectRuns += 1
+                })
+              )
+      )
+
+      expectInvalid(exit)
+      expect(effectRuns).toBe(0)
+      expect(rows.map((row) => row.kind)).toEqual(["permission-granted"])
+      currentTime = 1_010
+      const snapshot = await Effect.runPromise(registry.inspect(grant.token))
+      expect(snapshot.status).toBe("active")
+    }
+  }
+})
+
 test("PermissionRegistry does not retain a new grant when initial lifecycle audit fails", async () => {
   const registry = await Effect.runPromise(
     makePermissionRegistry({
@@ -507,6 +595,8 @@ test("PermissionRegistry revokes in-flight grant users through the lifecycle bus
 const actor = (id: string): PermissionActor => new PermissionActor({ kind: "window", id })
 
 const context = (id: string) => ({ actor: actor(id) })
+
+const invalidTimestamps = [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -1, 1.5]
 
 const filesystemWrite = (roots: readonly string[]): NormalizedCapability => ({
   kind: "filesystem.write",
