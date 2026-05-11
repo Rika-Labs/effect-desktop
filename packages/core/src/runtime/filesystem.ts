@@ -28,11 +28,13 @@ import { Cause, Context, Effect, Exit, Layer, Queue, Schema, Stream } from "effe
 
 import { ResourceRegistry, type ResourceRegistryApi } from "./resources.js"
 
+// eslint-disable-next-line no-control-regex -- Native filesystem paths cannot contain NUL.
+const FilesystemPathString = Schema.NonEmptyString.check(Schema.isPattern(/^[^\x00]+$/u))
 const NonEmptyPath = Schema.NonEmptyString
 const WatchEventFilename = Schema.String.check(Schema.isPattern(/^[^\x00-\x1f\x7f]*$/u))
 
 export class FilesystemPathInput extends Schema.Class<FilesystemPathInput>("FilesystemPathInput")({
-  path: NonEmptyPath
+  path: FilesystemPathString
 }) {}
 
 export const FilesystemPathCapability = Schema.Literals(["filesystem.read", "filesystem.write"])
@@ -41,35 +43,35 @@ export type FilesystemPathCapability = typeof FilesystemPathCapability.Type
 export class FilesystemRealpathInput extends Schema.Class<FilesystemRealpathInput>(
   "FilesystemRealpathInput"
 )({
-  path: NonEmptyPath,
+  path: FilesystemPathString,
   capability: Schema.optionalKey(FilesystemPathCapability)
 }) {}
 
 export class FilesystemWriteInput extends Schema.Class<FilesystemWriteInput>(
   "FilesystemWriteInput"
 )({
-  path: NonEmptyPath,
+  path: FilesystemPathString,
   bytes: Schema.Uint8Array
 }) {}
 
 export class FilesystemMkdirInput extends Schema.Class<FilesystemMkdirInput>(
   "FilesystemMkdirInput"
 )({
-  path: NonEmptyPath,
+  path: FilesystemPathString,
   recursive: Schema.optionalKey(Schema.Boolean)
 }) {}
 
 export class FilesystemRemoveInput extends Schema.Class<FilesystemRemoveInput>(
   "FilesystemRemoveInput"
 )({
-  path: NonEmptyPath,
+  path: FilesystemPathString,
   recursive: Schema.optionalKey(Schema.Boolean)
 }) {}
 
 export class FilesystemWatchInput extends Schema.Class<FilesystemWatchInput>(
   "FilesystemWatchInput"
 )({
-  path: NonEmptyPath,
+  path: FilesystemPathString,
   ownerScope: NonEmptyPath,
   bufferSize: Schema.optionalKey(
     Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(65_536))

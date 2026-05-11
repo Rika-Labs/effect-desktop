@@ -242,6 +242,31 @@ test("Filesystem validates input before disk activity", async () => {
   expectFailureTag(exit, "InvalidArgument")
 })
 
+test("Filesystem rejects NUL path bytes before adapter calls", async () => {
+  const calls: string[] = []
+  const service = await makeTestFilesystem({
+    adapter: recordingFilesystemAdapter(calls),
+    permissions: allowFilesystemRoot("/tmp")
+  })
+  const path = "/tmp/a\u0000b"
+
+  const exits = await Promise.all([
+    Effect.runPromiseExit(service.read(path)),
+    Effect.runPromiseExit(service.realpath(path)),
+    Effect.runPromiseExit(service.write(path, new Uint8Array([1]))),
+    Effect.runPromiseExit(service.writeAtomic(path, new Uint8Array([1]))),
+    Effect.runPromiseExit(service.stat(path)),
+    Effect.runPromiseExit(service.mkdir(path)),
+    Effect.runPromiseExit(service.remove(path)),
+    Effect.runPromiseExit(service.watch(path, { ownerScope: "scope-main" }).pipe(Stream.runDrain))
+  ])
+
+  for (const exit of exits) {
+    expectFailureTag(exit, "InvalidArgument")
+  }
+  expect(calls).toEqual([])
+})
+
 test("Filesystem maps adapter permission failures to PermissionDenied", async () => {
   const service = await makeTestFilesystem({ adapter: permissionDeniedAdapter })
 
@@ -574,6 +599,47 @@ function makeFailingAdapter(code: string): FilesystemAdapter {
       Effect.fail(Object.assign(new Error(code), { code }) as never) as ReturnType<
         FilesystemAdapter["watch"]
       >
+  }
+}
+
+function recordingFilesystemAdapter(calls: string[]): FilesystemAdapter {
+  return {
+    readFile: ((path, options) => {
+      calls.push(`readFile:${path}`)
+      return NodeTestFilesystemAdapter.readFile(path, options as never)
+    }) as FilesystemAdapter["readFile"],
+    realpath: ((path, options) => {
+      calls.push(`realpath:${path}`)
+      return NodeTestFilesystemAdapter.realpath(path, options as never)
+    }) as FilesystemAdapter["realpath"],
+    rename: (from, to) => {
+      calls.push(`rename:${from}:${to}`)
+      return NodeTestFilesystemAdapter.rename(from, to)
+    },
+    writeFile: (path, bytes) => {
+      calls.push(`writeFile:${path}`)
+      return NodeTestFilesystemAdapter.writeFile(path, bytes)
+    },
+    writeFileSynced: (path, bytes) => {
+      calls.push(`writeFileSynced:${path}`)
+      return NodeTestFilesystemAdapter.writeFileSynced(path, bytes)
+    },
+    stat: ((path, options) => {
+      calls.push(`stat:${path}`)
+      return NodeTestFilesystemAdapter.stat(path, options as never)
+    }) as FilesystemAdapter["stat"],
+    mkdir: (path, options) => {
+      calls.push(`mkdir:${path}`)
+      return NodeTestFilesystemAdapter.mkdir(path, options)
+    },
+    remove: (path, options) => {
+      calls.push(`remove:${path}`)
+      return NodeTestFilesystemAdapter.remove(path, options)
+    },
+    watch: (path, listener, onError) => {
+      calls.push(`watch:${path}`)
+      return NodeTestFilesystemAdapter.watch(path, listener, onError)
+    }
   }
 }
 
