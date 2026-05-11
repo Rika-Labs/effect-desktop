@@ -311,6 +311,13 @@ const DEFAULT_PROTOCOL_QUEUED_EVENTS_PER_SUBSCRIPTION = 1024
 const MAX_PROTOCOL_QUEUED_EVENTS_PER_SUBSCRIPTION = 65_536
 const PROTOCOL_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*$/u
 type BuildExternalNavigationPolicy = "deny" | "ask"
+const WINDOW_TITLE_BAR_STYLES = new Set([
+  "default",
+  "hidden",
+  "hiddenInset",
+  "customButtonsOnHover"
+])
+const CSS_HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?$/u
 const ROOT_HELP = [
   "Usage: desktop <command> [options]",
   "",
@@ -998,6 +1005,7 @@ const normalizeBuildPlan = (
     const protocolEntries = yield* readProtocols(config.protocols)
     const protocolLimits = yield* readProtocolLimits(config.protocol?.limits)
     const security = yield* readBuildSecurity(config.security)
+    const windows = yield* readWindowsConfig(config.windows)
     const buildTargets = yield* readBuildTargets(
       config.build?.targets,
       options.target,
@@ -1032,7 +1040,7 @@ const normalizeBuildPlan = (
       runtimeProtocolLimits: protocolLimits,
       security,
       protocols: protocolEntries,
-      windows: config.windows,
+      windows,
       buildTargets,
       updateManifestInput,
       layoutPath: resolvePath(appRoot, join("build", "effect-desktop", options.target)),
@@ -1876,6 +1884,123 @@ const readBuildTargets = (
     }
   }
   return Effect.succeed(targets)
+}
+
+const readWindowsConfig = (value: unknown): Effect.Effect<unknown, BuildConfigError, never> => {
+  if (value === undefined) {
+    return Effect.succeed(undefined)
+  }
+  if (!isRecord(value)) {
+    return Effect.fail(
+      new BuildConfigError({ field: "windows", message: "windows must be an object" })
+    )
+  }
+
+  const defaults = value["defaults"]
+  if (defaults !== undefined) {
+    const validatedDefaults = validateWindowOptions(defaults, "windows.defaults")
+    if (validatedDefaults !== undefined) {
+      return Effect.fail(validatedDefaults)
+    }
+  }
+
+  for (const key of Object.keys(value)) {
+    if (key === "defaults") {
+      continue
+    }
+    const field = `windows.${key}`
+    const declaration = value[key]
+    if (!isRecord(declaration)) {
+      return Effect.fail(new BuildConfigError({ field, message: `${field} must be an object` }))
+    }
+    const validationError = validateWindowOptions(declaration, field)
+    if (validationError !== undefined) {
+      return Effect.fail(validationError)
+    }
+  }
+
+  return Effect.succeed(value)
+}
+
+const validateWindowOptions = (value: unknown, field: string): BuildConfigError | undefined => {
+  if (!isRecord(value)) {
+    return new BuildConfigError({ field, message: `${field} must be an object` })
+  }
+
+  const titleBarStyle = value["titleBarStyle"]
+  if (titleBarStyle !== undefined && !WINDOW_TITLE_BAR_STYLES.has(String(titleBarStyle))) {
+    return new BuildConfigError({
+      field: `${field}.titleBarStyle`,
+      message: `${field}.titleBarStyle must be default, hidden, hiddenInset, or customButtonsOnHover`
+    })
+  }
+
+  const trafficLights = value["trafficLights"]
+  if (trafficLights !== undefined) {
+    const trafficLightsError = validateTrafficLights(trafficLights, `${field}.trafficLights`)
+    if (trafficLightsError !== undefined) {
+      return trafficLightsError
+    }
+  }
+
+  const hasShadow = value["hasShadow"]
+  if (hasShadow !== undefined && typeof hasShadow !== "boolean") {
+    return new BuildConfigError({
+      field: `${field}.hasShadow`,
+      message: `${field}.hasShadow must be a boolean`
+    })
+  }
+
+  const backgroundColor = value["backgroundColor"]
+  if (
+    backgroundColor !== undefined &&
+    (typeof backgroundColor !== "string" || !CSS_HEX_COLOR_PATTERN.test(backgroundColor))
+  ) {
+    return new BuildConfigError({
+      field: `${field}.backgroundColor`,
+      message: `${field}.backgroundColor must be a #RRGGBB or #RRGGBBAA color`
+    })
+  }
+
+  const widthError = validatePositiveNumber(value["width"], `${field}.width`)
+  if (widthError !== undefined) {
+    return widthError
+  }
+  const heightError = validatePositiveNumber(value["height"], `${field}.height`)
+  if (heightError !== undefined) {
+    return heightError
+  }
+
+  return undefined
+}
+
+const validateTrafficLights = (value: unknown, field: string): BuildConfigError | undefined => {
+  if (!isRecord(value)) {
+    return new BuildConfigError({ field, message: `${field} must be an object` })
+  }
+
+  return (
+    validateNonNegativeNumber(value["x"], `${field}.x`) ??
+    validateNonNegativeNumber(value["y"], `${field}.y`)
+  )
+}
+
+const validatePositiveNumber = (value: unknown, field: string): BuildConfigError | undefined => {
+  if (value === undefined) {
+    return undefined
+  }
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? undefined
+    : new BuildConfigError({ field, message: `${field} must be a positive finite number` })
+}
+
+const validateNonNegativeNumber = (value: unknown, field: string): BuildConfigError | undefined => {
+  if (value === undefined) {
+    return undefined
+  }
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? undefined
+    : new BuildConfigError({ field, message: `${field} must be a non-negative finite number` })
 }
 
 const readProfileEnv = (

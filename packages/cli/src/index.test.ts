@@ -4070,6 +4070,130 @@ test("desktop build emits validated renderer security policy", async () => {
   }
 })
 
+test("desktop build rejects invalid window config before running build steps", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-windows-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      windows: {
+        defaults: {
+          titleBarStyle: "floating-space-station",
+          trafficLights: { x: -10, y: -20 },
+          hasShadow: "yes",
+          backgroundColor: "not-a-color"
+        },
+        main: {
+          route: "/",
+          width: 0,
+          height: -1
+        }
+      }
+    })
+    const stderr: string[] = []
+    const calls: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["build", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        commandRunner: (invocation) =>
+          Effect.sync(() => {
+            calls.push(invocation.step)
+          }),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("BuildConfigError")
+    expect(stderr.join("")).toContain("windows.defaults.titleBarStyle")
+    expect(calls).toEqual([])
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop build emits validated window config in host manifest", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-windows-"))
+  try {
+    const windows = {
+      defaults: {
+        titleBarStyle: "hiddenInset",
+        trafficLights: { x: 12, y: 12 },
+        hasShadow: true,
+        backgroundColor: "#ffffff"
+      },
+      main: {
+        route: "/",
+        width: 1200,
+        height: 800
+      }
+    }
+    await writePlaygroundFixture(directory, { windows })
+    const runner: CommandRunner = (invocation) =>
+      Effect.gen(function* () {
+        if (invocation.step === "renderer") {
+          yield* Effect.promise(() => mkdir(join(invocation.cwd, "dist"), { recursive: true }))
+          yield* Effect.promise(() =>
+            writeFile(join(invocation.cwd, "dist", "index.html"), "<h1>ok</h1>")
+          )
+        }
+        if (invocation.step === "runtime") {
+          const outdir = invocation.args[invocation.args.indexOf("--outdir") + 1]
+          if (outdir !== undefined) {
+            yield* Effect.promise(() => mkdir(outdir, { recursive: true }))
+            yield* Effect.promise(() => writeFile(join(outdir, "runtime.js"), "runtime"))
+          }
+        }
+        if (invocation.step === "native-host") {
+          yield* Effect.promise(() =>
+            mkdir(join(invocation.cwd, "target", "release"), { recursive: true })
+          )
+          yield* Effect.promise(() =>
+            writeFile(join(invocation.cwd, "target", "release", "host"), "host")
+          )
+        }
+      })
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["build", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        commandRunner: runner,
+        writeStdout: () => {},
+        writeStderr: () => {}
+      })
+    )
+
+    const manifest = JSON.parse(
+      await readFile(
+        join(
+          directory,
+          "apps",
+          "playground",
+          "build",
+          "effect-desktop",
+          "linux-x64",
+          "app-manifest.json"
+        ),
+        "utf8"
+      )
+    ) as {
+      readonly hostManifest: {
+        readonly windows: unknown
+      }
+    }
+
+    expect(exitCode).toBe(0)
+    expect(manifest.hostManifest.windows).toEqual(windows)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop package --help exits zero with usage", async () => {
   const stdout: string[] = []
   const exitCode = await Effect.runPromise(
