@@ -86,7 +86,7 @@
         },
         {
           "file": "templates/basic-react-tailwind/src/App.tsx",
-          "token": "templateMessages"
+          "token": "resolveTemplateLocale"
         },
         {
           "file": "templates/basic-react-tailwind/src/messages.ts",

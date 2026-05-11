@@ -84,6 +84,7 @@ export type AccessibilityGateError =
   | AccessibilityGateEvidenceError
 
 interface AxeAudit {
+  readonly url?: string
   readonly testEngine?: { readonly name?: string }
   readonly violations?: readonly unknown[]
   readonly incomplete?: readonly unknown[]
@@ -239,6 +240,12 @@ const validateAuditModes = (
       if ((axe.passes ?? []).length === 0) {
         return yield* evidenceError(template, `${mode.axe} has no axe pass evidence`)
       }
+      if (!auditUrlMatchesMode(axe.url, mode)) {
+        return yield* evidenceError(
+          template,
+          `${mode.axe} must target ${mode.direction}/${mode.colorScheme} rendered template state`
+        )
+      }
 
       const pa11y = yield* readJson<Pa11yAudit>(join(cwd, mode.pa11y))
       if (pa11y.runner !== "pa11y") {
@@ -335,6 +342,19 @@ const stripSourceComments = (body: string): string =>
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
+const auditUrlMatchesMode = (url: string | undefined, mode: AccessibilityAuditMode): boolean => {
+  if (url === undefined || url.length === 0) {
+    return false
+  }
+  if (!url.includes(`dir=${mode.direction}`)) {
+    return false
+  }
+  if (!url.includes(`color-scheme=${mode.colorScheme}`)) {
+    return false
+  }
+  return mode.direction === "rtl" ? url.includes("lang=ar") : true
+}
+
 const validateContrast = (
   template: AccessibilityTemplate
 ): Effect.Effect<void, AccessibilityGateEvidenceError, never> => {
@@ -360,6 +380,9 @@ const evidenceError = (
 
 const isUserVisibleEnglish = (body: string, index: number, value: string): boolean => {
   if (value.length < 4) {
+    return false
+  }
+  if (value.includes("\n")) {
     return false
   }
   const prefix = body.slice(Math.max(0, index - 24), index)

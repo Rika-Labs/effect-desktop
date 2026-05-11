@@ -1,4 +1,7 @@
 export type TemplateLocale = "en" | "ar"
+export type TemplateDirection = "ltr" | "rtl"
+
+export const DEFAULT_TEMPLATE_LOCALE: TemplateLocale = "en"
 
 export interface TemplateCopy {
   readonly windowTitle: string
@@ -41,3 +44,22 @@ export const templateMessages: Record<TemplateLocale, TemplateCopy> = {
     currentWindow: (windowId) => `النافذة الحالية: ${windowId}`
   }
 }
+
+export interface ResolvedTemplateLocale {
+  readonly locale: TemplateLocale
+  readonly direction: TemplateDirection
+  readonly copy: TemplateCopy
+}
+
+export const templateLocaleDirections: Record<TemplateLocale, TemplateDirection> = {
+  en: "ltr",
+  ar: "rtl"
+}
+
+export const resolveTemplateLocale = (
+  locale: TemplateLocale = DEFAULT_TEMPLATE_LOCALE
+): ResolvedTemplateLocale => ({
+  locale,
+  direction: templateLocaleDirections[locale],
+  copy: templateMessages[locale]
+})

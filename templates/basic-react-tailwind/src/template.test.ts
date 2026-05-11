@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url"
 import { join, relative } from "node:path"
 
 import { TEMPLATE_WINDOW_TITLE } from "./App.js"
+import { resolveTemplateLocale } from "./messages.js"
 
 const templateRoot = fileURLToPath(new URL("..", import.meta.url))
 
@@ -81,6 +82,14 @@ test("renderer uses desktop action hooks instead of manual Effect runners", () =
   expect(app).not.toContain("runPromiseExit")
   expect(main).not.toContain("unavailableWindow")
   expect(main).not.toContain("desktopClient")
+})
+
+test("template resolves Arabic RTL locale state", () => {
+  const rtl = resolveTemplateLocale("ar")
+
+  expect(rtl.locale).toBe("ar")
+  expect(rtl.direction).toBe("rtl")
+  expect(rtl.copy.openWindow).toContain("افتح")
 })
 
 function privateImportViolations(text: string, file: string): readonly string[] {

@@ -2,19 +2,25 @@ import type { WindowCreateOptions } from "@effect-desktop/native"
 import { defineDesktopApi, useDesktopClient, useWindow } from "@effect-desktop/react"
 import { Option } from "effect"
 
-import { templateMessages } from "./messages.js"
+import { DEFAULT_TEMPLATE_LOCALE, resolveTemplateLocale, type TemplateLocale } from "./messages.js"
 
-const copy = templateMessages.en
+const defaultLocale = resolveTemplateLocale("en")
 
 const windowRequest: WindowCreateOptions = Object.freeze({
-  title: copy.windowTitle,
+  title: defaultLocale.copy.windowTitle,
   width: 960,
   height: 640
 })
 
-export const TEMPLATE_WINDOW_TITLE = copy.windowTitle
+export const TEMPLATE_WINDOW_TITLE = defaultLocale.copy.windowTitle
 
-export function App() {
+export interface AppProps {
+  readonly locale?: TemplateLocale
+}
+
+export function App(props: AppProps = {}) {
+  const selectedLocale = resolveTemplateLocale(props.locale ?? DEFAULT_TEMPLATE_LOCALE)
+  const copy = selectedLocale.copy
   const desktop = useDesktopClient()
   const currentWindow = useWindow()
   const windowApi = defineDesktopApi(desktop.window)
@@ -43,7 +49,11 @@ export function App() {
   })()
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-950 dark:bg-zinc-950 dark:text-zinc-50">
+    <main
+      className="min-h-screen bg-slate-50 text-slate-950 dark:bg-zinc-950 dark:text-zinc-50"
+      dir={selectedLocale.direction}
+      lang={selectedLocale.locale}
+    >
       <section className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center px-6 py-10">
         <p className="text-sm font-semibold uppercase tracking-normal text-emerald-700 dark:text-emerald-300">
           {copy.eyebrow}

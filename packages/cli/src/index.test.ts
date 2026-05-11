@@ -1873,6 +1873,41 @@ test("desktop check --a11y rejects comment-only required tokens", async () => {
   }
 })
 
+test("desktop check --a11y binds RTL audit modes to Arabic rendered state", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+  try {
+    await writeAccessibilityFixture(directory, {
+      axeUrlForMode: (mode) =>
+        mode.endsWith("rtl")
+          ? `fixture:${mode}?dir=rtl&color-scheme=${mode.startsWith("dark") ? "dark" : "light"}`
+          : defaultAxeUrlForMode(mode)
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--a11y", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("AccessibilityGateEvidenceError")
+    expect(payload.message).toContain("rtl")
+    expect(payload.message).toContain("rendered template state")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop check --a11y rejects contrast below the WCAG floor", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
   try {
@@ -5397,6 +5432,7 @@ const writeAccessibilityFixture = async (
     readonly messages?: string
     readonly manualAudit?: string
     readonly axePasses?: readonly unknown[]
+    readonly axeUrlForMode?: (mode: string) => string
   } = {}
 ): Promise<void> => {
   const auditRoot = join(root, "docs", "audits", "v1.0.0", "basic-react-tailwind")
@@ -5422,7 +5458,7 @@ const writeAccessibilityFixture = async (
   for (const mode of ["light-ltr", "dark-ltr", "light-rtl", "dark-rtl"]) {
     await writeFile(
       join(auditRoot, `axe.${mode}.json`),
-      JSON.stringify(axeAuditFixture(mode, overrides.axePasses), null, 2)
+      JSON.stringify(axeAuditFixture(mode, overrides.axePasses, overrides.axeUrlForMode), null, 2)
     )
     await writeFile(
       join(auditRoot, `pa11y.${mode}.json`),
@@ -5482,7 +5518,7 @@ const accessibilityManifestFixture = (): unknown => ({
       requiredTokens: [
         { file: "templates/basic-react-tailwind/src/styles.css", token: "prefers-reduced-motion" },
         { file: "templates/basic-react-tailwind/src/styles.css", token: "prefers-color-scheme" },
-        { file: "templates/basic-react-tailwind/src/App.tsx", token: "templateMessages" },
+        { file: "templates/basic-react-tailwind/src/App.tsx", token: "resolveTemplateLocale" },
         { file: "templates/basic-react-tailwind/src/messages.ts", token: "ar" }
       ]
     }
@@ -5503,10 +5539,10 @@ const isAccessibilityManifestFixture = (
 
 const accessibilityAppFixture = (): string =>
   [
-    "import { templateMessages } from './messages'",
-    "const copy = templateMessages.en",
+    "import { resolveTemplateLocale } from './messages'",
+    "const { copy, direction, locale } = resolveTemplateLocale('en')",
     "export function App() {",
-    "  return <button>{copy.openWindow}</button>",
+    "  return <main dir={direction} lang={locale}><button>{copy.openWindow}</button></main>",
     "}"
   ].join("\n")
 
@@ -5535,14 +5571,18 @@ const accessibilityManualAuditFixture = (): string =>
 
 const axeAuditFixture = (
   mode: string,
-  passes: readonly unknown[] = [{ id: "color-contrast" }]
+  passes: readonly unknown[] = [{ id: "color-contrast" }],
+  urlForMode: (mode: string) => string = defaultAxeUrlForMode
 ): unknown => ({
-  url: `fixture:${mode}`,
+  url: urlForMode(mode),
   testEngine: { name: "axe-core", version: "4.x" },
   violations: [],
   incomplete: [],
   passes
 })
+
+const defaultAxeUrlForMode = (mode: string): string =>
+  `fixture:${mode}?dir=${mode.endsWith("rtl") ? "rtl&lang=ar" : "ltr"}&color-scheme=${mode.startsWith("dark") ? "dark" : "light"}`
 
 const pa11yAuditFixture = (mode: string): unknown => ({
   url: `fixture:${mode}`,
