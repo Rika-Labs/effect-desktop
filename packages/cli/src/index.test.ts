@@ -838,6 +838,97 @@ test("desktop doctor reports config import failures with the import cause", asyn
   }
 })
 
+test("desktop doctor rejects empty app metadata strings", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-empty-metadata-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      app: {
+        id: "",
+        name: "",
+        version: ""
+      }
+    })
+    await writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
+    await writeFile(join(directory, "bun.lock"), "")
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["doctor", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        platform: "darwin",
+        arch: "arm64",
+        bunVersion: "1.3.13",
+        doctorCommandRunner: doctorRunner({
+          cargo: true,
+          rustc: true,
+          "xcode-select": true,
+          hdiutil: true
+        }),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const report = JSON.parse(stderr.join("")) as {
+      readonly passed: boolean
+      readonly probes: ReadonlyArray<{ readonly name: string; readonly status: string }>
+    }
+    expect(exitCode).toBe(1)
+    expect(report.passed).toBe(false)
+    expect(report.probes.find((probe) => probe.name === "config")?.status).toBe("missing")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop doctor rejects config paths outside the workspace", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-contained-"))
+  const outsideDirectory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-outside-"))
+  try {
+    await writePlaygroundFixture(directory)
+    await writePlaygroundFixture(outsideDirectory)
+    await writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
+    await writeFile(join(directory, "bun.lock"), "")
+    const outsideConfig = join(outsideDirectory, "apps", "playground", "desktop.config.ts")
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["doctor", "--config", relative(directory, outsideConfig), "--json"],
+        cwd: directory,
+        platform: "darwin",
+        arch: "arm64",
+        bunVersion: "1.3.13",
+        doctorCommandRunner: doctorRunner({
+          cargo: true,
+          rustc: true,
+          "xcode-select": true,
+          hdiutil: true
+        }),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const report = JSON.parse(stderr.join("")) as {
+      readonly passed: boolean
+      readonly probes: ReadonlyArray<{ readonly name: string; readonly status: string }>
+    }
+    expect(exitCode).toBe(1)
+    expect(report.passed).toBe(false)
+    expect(report.probes.find((probe) => probe.name === "config")?.status).toBe("missing")
+    expect(stderr.join("")).toContain("inside the workspace")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+    await rm(outsideDirectory, { recursive: true, force: true })
+  }
+})
+
 test("desktop doctor rejects invalid security config", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
   try {
@@ -6797,6 +6888,50 @@ test("desktop package rejects app.name that resolves to reserved basenames", asy
       expect(exitCode).toBe(1)
       expect(output).toContain("PackageConfigError")
       expect(output).toContain("app.name must not sanitize to . or ..")
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  }
+})
+
+test("desktop package rejects control characters in package metadata", async () => {
+  for (const [label, appName] of [
+    ["newline", "Effect Desktop\nInjected=Value"],
+    ["carriage-return", "Effect Desktop\rInjected=Value"],
+    ["nul", `Effect Desktop${String.fromCharCode(0)}Injected=Value`],
+    ["del", `Effect Desktop${String.fromCharCode(127)}Injected=Value`]
+  ] as const) {
+    const directory = await mkdtemp(join(tmpdir(), `effect-desktop-cli-package-${label}-`))
+    try {
+      await writePlaygroundFixture(directory, {
+        app: { id: "dev.effect-desktop.playground", name: appName, version: "0.0.0" }
+      })
+      const stderr: string[] = []
+
+      const exitCode = await Effect.runPromise(
+        runCli({
+          argv: [
+            "package",
+            "--config",
+            "apps/playground/desktop.config.ts",
+            "--artifact",
+            "appimage"
+          ],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          packageCommandRunner: () =>
+            Effect.die("package commands should not run for invalid package metadata"),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+      )
+
+      const output = stderr.join("")
+      expect(exitCode).toBe(1)
+      expect(output).toContain("PackageConfigError")
+      expect(output).toContain("app.name must not contain control characters")
     } finally {
       await rm(directory, { recursive: true, force: true })
     }

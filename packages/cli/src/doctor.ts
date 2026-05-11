@@ -1,5 +1,5 @@
 import { access, readFile } from "node:fs/promises"
-import { join, resolve } from "node:path"
+import { isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import { Data, Effect } from "effect"
@@ -387,6 +387,19 @@ const probeConfig = (
 ): Effect.Effect<DoctorProbeResult, never, never> =>
   Effect.gen(function* () {
     const configPath = resolve(options.cwd, options.configPath ?? "desktop.config.ts")
+    if (!isWorkspaceContainedPath(options.cwd, configPath)) {
+      return missingResult(
+        missing({
+          probe: "config",
+          component: "desktop.config.ts",
+          platform: options.platform,
+          message: `desktop config path must stay inside the workspace: ${configPath}`,
+          remediation: "Run doctor from the workspace root or pass an in-workspace config path.",
+          installHint: "desktop doctor --config apps/playground/desktop.config.ts",
+          docsUrl: DOCS_URL
+        })
+      )
+    }
     const exists = yield* pathExists(configPath)
     if (!exists) {
       return missingResult(
@@ -454,8 +467,11 @@ const probeConfig = (
     const config = defaultExport.value as AppConfig
     if (
       typeof config.app?.id === "string" &&
+      config.app.id.length > 0 &&
       typeof config.app.name === "string" &&
-      typeof config.app.version === "string"
+      config.app.name.length > 0 &&
+      typeof config.app.version === "string" &&
+      config.app.version.length > 0
     ) {
       const invalidSecurity = invalidSecurityConfig(config)
       if (invalidSecurity !== undefined) {
@@ -510,6 +526,13 @@ const probeConfig = (
       })
     )
   })
+
+const isWorkspaceContainedPath = (cwd: string, path: string): boolean => {
+  const root = resolve(cwd)
+  const candidate = resolve(path)
+  const relativePath = relative(root, candidate)
+  return relativePath.length === 0 || (!relativePath.startsWith("..") && !isAbsolute(relativePath))
+}
 
 const configMissing = (
   options: DesktopDoctorOptions,

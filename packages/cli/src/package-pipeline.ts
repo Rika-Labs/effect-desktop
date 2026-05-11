@@ -312,7 +312,7 @@ const normalizePackagePlan = (
     const config = yield* readConfigObject(rawConfig)
     const appRoot = dirname(options.configPath)
     const appId = yield* readSafeAppId(config.app?.id, "app.id")
-    const appName = yield* readRequiredString(config.app?.name, "app.name")
+    const appName = yield* readLineSafeString(config.app?.name, "app.name")
     const appVersion = yield* readSemverString(config.app?.version, "app.version")
     const platform = platformFromTarget(options.target)
     const artifactKinds = yield* resolveArtifactKinds(options.artifact, options.target)
@@ -1114,6 +1114,33 @@ const readRequiredString = (
     return Effect.succeed(value)
   }
   return Effect.fail(new PackageConfigError({ field, message: `${field} is required` }))
+}
+
+const readLineSafeString = (
+  value: unknown,
+  field: string
+): Effect.Effect<string, PackageConfigError, never> =>
+  readRequiredString(value, field).pipe(
+    Effect.flatMap((text) =>
+      isLineSafeText(text)
+        ? Effect.succeed(text)
+        : Effect.fail(
+            new PackageConfigError({
+              field,
+              message: `${field} must not contain control characters`
+            })
+          )
+    )
+  )
+
+const isLineSafeText = (value: string): boolean => {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    if (code < 0x20 || code === 0x7f) {
+      return false
+    }
+  }
+  return true
 }
 
 const isContainedFileName = (value: string): boolean => {
