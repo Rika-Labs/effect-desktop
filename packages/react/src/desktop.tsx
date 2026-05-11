@@ -137,7 +137,7 @@ const makeEndpoints = (
   descriptors: ReturnType<typeof describeRpcs>,
   client: ReactDesktopRpcClient
 ): Readonly<Record<string, ReactApiEndpoint>> => {
-  const endpoints: Record<string, ReactApiEndpoint> = {}
+  const endpoints = Object.create(null) as Record<string, ReactApiEndpoint>
 
   for (const descriptor of descriptors) {
     const invoke = (input: unknown): ReturnType<ReactDesktopRpcClientMethod> => {

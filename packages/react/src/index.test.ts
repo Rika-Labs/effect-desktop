@@ -212,6 +212,40 @@ test("ReactDesktop.from exposes app-scoped RPC hooks from provided groups", () =
   ).toBe("<span>initial:idle</span>")
 })
 
+test("ReactDesktop.useDesktop keeps reserved endpoint names as own properties", () => {
+  const Reserved = Rpc.make("Notes.__proto__", { success: Schema.String }).pipe(RpcEndpoint.query)
+  const NotesRpcs = RpcGroup.make(Reserved)
+  const NotesApp = Desktop.make({
+    windows: {
+      main: {
+        title: "Notes"
+      }
+    }
+  }).pipe(
+    Desktop.provide(
+      Desktop.Rpcs.layer(
+        NotesRpcs,
+        NotesRpcs.toLayer({
+          "Notes.__proto__": () => Effect.succeed("ok")
+        })
+      )
+    )
+  )
+  const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
+  const transport = makeRpcTransport({
+    "Notes.__proto__": () => Effect.succeed("ok")
+  })
+  const Probe = () => {
+    const notes = NotesReact.useDesktop(NotesRpcs) as unknown as Record<string, unknown>
+    const hasReserved = Object.prototype.hasOwnProperty.call(notes, "__proto__")
+    return createElement("span", null, `${Object.getPrototypeOf(notes) === null}:${hasReserved}`)
+  }
+
+  expect(
+    renderToStaticMarkup(createElement(NotesReact.DesktopRoot, { transport }, createElement(Probe)))
+  ).toBe("<span>true:true</span>")
+})
+
 test("ReactDesktop.useDesktop rejects colliding endpoint names", () => {
   const ProjectList = Rpc.make("Projects.List", { success: Schema.Array(Schema.String) })
   const TaskList = Rpc.make("Tasks.List", { success: Schema.Array(Schema.String) })

@@ -75,6 +75,43 @@ test("VueDesktop.from exposes app-scoped composables from provided groups", () =
   })
 })
 
+test("VueDesktop.useDesktop keeps reserved endpoint names as own properties", () => {
+  const Reserved = Rpc.make("Notes.__proto__", { success: Schema.String }).pipe(RpcEndpoint.query)
+  const NotesRpcs = RpcGroup.make(Reserved)
+  const NotesApp = Desktop.make({
+    windows: {
+      main: {
+        title: "Notes"
+      }
+    }
+  }).pipe(
+    Desktop.provide(
+      Desktop.Rpcs.layer(
+        NotesRpcs,
+        NotesRpcs.toLayer({
+          "Notes.__proto__": () => Effect.succeed("ok")
+        })
+      )
+    )
+  )
+  const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
+  const transport = makeRpcTransport({
+    "Notes.__proto__": () => Effect.succeed("ok")
+  })
+  const app = NotesVue.createApp(Root, { transport })
+  app.config.warnHandler = () => undefined
+
+  app.runWithContext(() => {
+    const scope = effectScope()
+    scope.run(() => {
+      const notes = NotesVue.useDesktop(NotesRpcs) as unknown as Record<string, unknown>
+      expect(Object.getPrototypeOf(notes)).toBeNull()
+      expect(Object.prototype.hasOwnProperty.call(notes, "__proto__")).toBe(true)
+    })
+    scope.stop()
+  })
+})
+
 test("VueDesktop query effects are interrupted when the scope is disposed", async () => {
   const interrupted = await Effect.runPromise(Deferred.make<void>())
   const Slow = Rpc.make("Notes.Slow", { success: Schema.String }).pipe(RpcEndpoint.query)

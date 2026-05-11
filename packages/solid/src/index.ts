@@ -203,7 +203,12 @@ const makeEndpoints = (
     | SolidMutationEndpoint<unknown, unknown, unknown>
     | SolidQueryEndpoint<unknown, unknown, unknown>
     | SolidStreamEndpoint<unknown, unknown, unknown>
-  > = {}
+  > = Object.create(null) as Record<
+    string,
+    | SolidMutationEndpoint<unknown, unknown, unknown>
+    | SolidQueryEndpoint<unknown, unknown, unknown>
+    | SolidStreamEndpoint<unknown, unknown, unknown>
+  >
 
   for (const descriptor of descriptors) {
     const invoke = (input: unknown): ReturnType<SolidDesktopRpcClientMethod> => {

@@ -188,7 +188,12 @@ const makeEndpoints = (
     | VueMutationEndpoint<unknown, unknown, unknown>
     | VueQueryEndpoint<unknown, unknown, unknown>
     | VueStreamEndpoint<unknown, unknown, unknown>
-  > = {}
+  > = Object.create(null) as Record<
+    string,
+    | VueMutationEndpoint<unknown, unknown, unknown>
+    | VueQueryEndpoint<unknown, unknown, unknown>
+    | VueStreamEndpoint<unknown, unknown, unknown>
+  >
 
   for (const descriptor of descriptors) {
     const invoke = (input: unknown): ReturnType<VueDesktopRpcClientMethod> => {
