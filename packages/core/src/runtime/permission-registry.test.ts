@@ -98,6 +98,34 @@ test("PermissionRegistry does not let weaker native audit policy cover stronger 
   expect(granted.token).toBe("grant-1")
 })
 
+test("PermissionRegistry does not let weaker secret audit policy cover stronger requests", async () => {
+  for (const kind of [
+    "secrets.read",
+    "secrets.write",
+    "safeStorage.read",
+    "safeStorage.write"
+  ] as const) {
+    const registry = await Effect.runPromise(
+      makePermissionRegistry({ traceId: () => "trace-1", nextToken: () => "grant-1" })
+    )
+
+    await Effect.runPromise(
+      registry.declare(secretCapability(kind, ["auth"], "on-deny"), { source: "manifest" })
+    )
+    const denied = await Effect.runPromiseExit(
+      registry.check(secretCapability(kind, ["auth"], "always"), context("window-main"))
+    )
+    const granted = await Effect.runPromise(
+      registry.check(secretCapability(kind, ["auth"], "on-deny"), context("window-main"))
+    )
+
+    expectDenied(denied, (error) => {
+      expect(error.reason).toBe("default-deny")
+    })
+    expect(granted.token).toBe("grant-1")
+  }
+})
+
 test("PermissionRegistry exposes decision history and live decision events for devtools", async () => {
   const registry = await Effect.runPromise(
     makePermissionRegistry({ traceId: () => "trace-devtools", nextToken: () => "grant-1" })
@@ -485,6 +513,16 @@ const nativeInvoke = (
   kind: "native.invoke",
   primitive: "Dialog",
   methods,
+  audit
+})
+
+const secretCapability = (
+  kind: "secrets.read" | "secrets.write" | "safeStorage.read" | "safeStorage.write",
+  namespaces: readonly string[],
+  audit: "always" | "on-deny"
+): NormalizedCapability => ({
+  kind,
+  namespaces,
   audit
 })
 

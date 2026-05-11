@@ -568,6 +568,7 @@ export const capabilityCovers = (
     case "safeStorage.write":
       return (
         declared.kind === requested.kind &&
+        declared.audit === requested.audit &&
         requested.namespaces.every((namespace) => declared.namespaces.includes(namespace))
       )
     case "native.invoke":
