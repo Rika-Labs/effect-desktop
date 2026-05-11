@@ -538,6 +538,38 @@ test("host protocol envelopes reject excess top-level fields", () => {
   ).toThrow()
 })
 
+test("response envelopes reject mixed payload and error outcomes", () => {
+  expect(() =>
+    decodeHostProtocolEnvelope({
+      kind: "response",
+      id: "request-2",
+      timestamp: 1710000000005,
+      traceId: "trace-mixed-response",
+      payload: { ok: true },
+      error: makeHostProtocolInvalidOutputError("fixture.operation", "bad")
+    })
+  ).toThrow()
+
+  expect(() =>
+    decodeHostProtocolEnvelope({
+      kind: "response",
+      id: "request-2",
+      timestamp: 1710000000005,
+      traceId: "trace-success-response",
+      payload: { ok: true }
+    })
+  ).not.toThrow()
+  expect(() =>
+    decodeHostProtocolEnvelope({
+      kind: "response",
+      id: "request-2",
+      timestamp: 1710000000005,
+      traceId: "trace-error-response",
+      error: makeHostProtocolInvalidOutputError("fixture.operation", "bad")
+    })
+  ).not.toThrow()
+})
+
 test("host protocol errors reject excess detail fields", () => {
   expect(() =>
     decodeHostProtocolEnvelope({

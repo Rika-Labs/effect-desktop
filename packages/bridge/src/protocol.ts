@@ -938,6 +938,14 @@ export const encodeHostProtocolEnvelope = (input: HostProtocolEnvelope) =>
 const validateDecodedHostProtocolEnvelope = (
   envelope: HostProtocolEnvelope
 ): HostProtocolEnvelope => {
+  if (
+    envelope.kind === "response" &&
+    Object.hasOwn(envelope, "payload") &&
+    Object.hasOwn(envelope, "error")
+  ) {
+    throw new Error("response envelope must not contain both payload and error")
+  }
+
   if (envelope.kind !== "stream" && envelope.kind !== "cancel") {
     return envelope
   }

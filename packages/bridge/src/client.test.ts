@@ -92,6 +92,22 @@ test("Client rejects invalid generated timestamps as typed Effect failures befor
   expect(requests).toEqual([])
 })
 
+test("Client rejects empty generated request IDs before transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EmptyRequestId")
+  const client = Client({ project: ProjectRpcs }, responseExchange(requests, { id: "project-1" }), {
+    nextRequestId: () => ""
+  })
+
+  const exit = await Effect.runPromiseExit(
+    client.project.open(new ProjectOpenInput({ path: "/tmp/project" }))
+  )
+
+  expectFailureTag(exit, "InvalidArgument")
+  expectFailureField(exit, "field", "id")
+  expect(requests).toEqual([])
+})
+
 test("Client rejects empty generated trace IDs as typed Effect failures before transport", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EmptyTrace")
@@ -228,6 +244,26 @@ test("Client reports malformed contract error responses as InvalidOutput", async
         tag: "ProjectOpenError"
       }
     })
+  )
+
+  const exit = await Effect.runPromiseExit(
+    client.project.open(new ProjectOpenInput({ path: "/tmp/project" }))
+  )
+
+  expectFailureTag(exit, "InvalidOutput")
+})
+
+test("Client rejects unknown response kinds as InvalidOutput", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.UnknownResponseKind")
+  const client = Client(
+    { project: ProjectRpcs },
+    {
+      request: () =>
+        Effect.succeed({
+          kind: "nonsense",
+          payload: { id: "accepted" }
+        } as never)
+    }
   )
 
   const exit = await Effect.runPromiseExit(

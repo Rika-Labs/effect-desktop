@@ -247,16 +247,30 @@ const requestContractMethod = <Spec extends BridgeRpcMethodSpec>(
       operation,
       options.now
     )
+    const responseKind = (response as { readonly kind?: unknown }).kind
 
-    if (response.kind === "failure") {
-      return yield* decodeContractError(operation, spec, response.error)
+    if (responseKind === "failure") {
+      const failureResponse = response as Extract<
+        BridgeClientResponse,
+        { readonly kind: "failure" }
+      >
+      return yield* decodeContractError(operation, spec, failureResponse.error)
     }
+    if (responseKind !== "success") {
+      return yield* Effect.fail(
+        makeHostProtocolInvalidOutputError(
+          operation,
+          `unknown response kind: ${String(responseKind)}`
+        )
+      )
+    }
+    const successResponse = response as Extract<BridgeClientResponse, { readonly kind: "success" }>
 
     if (isResourceSpec(spec.output)) {
-      return yield* decodeResourceOutput(operation, spec.output, response.payload, exchange)
+      return yield* decodeResourceOutput(operation, spec.output, successResponse.payload, exchange)
     }
 
-    return yield* decodeOutput(operation, spec, response.payload)
+    return yield* decodeOutput(operation, spec, successResponse.payload)
   })
 
 const encodeInput = <Spec extends BridgeRpcMethodSpec>(
@@ -743,9 +757,14 @@ const makeRequest = (
       options.originToken,
       method
     )
+    const requestId = yield* validateHostProtocolNonEmptyString(
+      "id",
+      options.nextRequestId(),
+      method
+    )
     const request = {
       kind: "request",
-      id: options.nextRequestId(),
+      id: requestId,
       method,
       timestamp,
       traceId
