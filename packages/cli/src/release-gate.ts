@@ -105,11 +105,80 @@ const CI_WORKFLOW_TOKENS: ReadonlyMap<string, readonly string[]> = new Map([
   ["branch-protection", ["bun packages/cli/src/bin.ts check --release"]]
 ])
 
+const RELEASE_GATE_EVIDENCE: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ["spdx-sbom", new Set([".github/workflows/release.yml#Generate SPDX SBOM"])],
+  [
+    "cvss-scan",
+    new Set([
+      ".github/workflows/release.yml#Scan release SBOM for high vulnerabilities",
+      "docs/security/release-settings.md#docs/security/exemptions"
+    ])
+  ],
+  ["reproducible-build", new Set([".github/workflows/release.yml#Reproducible build gate"])],
+  ["slsa-provenance", new Set([".github/workflows/release.yml#Attest release provenance"])],
+  [
+    "hsm-signing",
+    new Set([
+      "docs/security/key-management.md#HSM-backed",
+      "docs/security/key-management.md#runner-local keys are forbidden"
+    ])
+  ],
+  [
+    "secret-scanning",
+    new Set(["docs/security/release-settings.md#Secret scanning is enabled for every branch"])
+  ],
+  [
+    "ephemeral-runners",
+    new Set([
+      "docs/security/release-settings.md#GitHub-hosted runners",
+      "docs/security/release-settings.md#persistent self-hosted runners are forbidden"
+    ])
+  ],
+  [
+    "branch-protection",
+    new Set([
+      "docs/security/release-settings.md#main requires at least one review",
+      "docs/security/release-settings.md#release branches require at least two reviews"
+    ])
+  ]
+])
+
+const RELEASE_EVIDENCE_SOURCES = [
+  {
+    prefix: `${RELEASE_WORKFLOW_PATH}#`,
+    name: "release workflow",
+    read: (files: ReleaseEvidenceFiles): string => files.releaseWorkflow
+  },
+  {
+    prefix: `${CI_WORKFLOW_PATH}#`,
+    name: "CI workflow",
+    read: (files: ReleaseEvidenceFiles): string => files.ciWorkflow
+  },
+  {
+    prefix: `${KEY_MANAGEMENT_PATH}#`,
+    name: "key-management",
+    read: (files: ReleaseEvidenceFiles): string => files.keyManagement
+  },
+  {
+    prefix: `${RELEASE_SETTINGS_PATH}#`,
+    name: "release-settings",
+    read: (files: ReleaseEvidenceFiles): string => files.releaseSettings
+  }
+] as const
+
+interface ReleaseEvidenceFiles {
+  readonly ciWorkflow: string
+  readonly releaseWorkflow: string
+  readonly keyManagement: string
+  readonly releaseSettings: string
+}
+
 export const runReleaseGate = (
   options: ReleaseGateOptions
 ): Effect.Effect<ReleaseGateReport, ReleaseGateError, never> =>
   Effect.gen(function* () {
-    const checklist = yield* readJson<ReleaseChecklist>(join(options.cwd, CHECKLIST_PATH))
+    const rawChecklist = yield* readJson<unknown>(join(options.cwd, CHECKLIST_PATH))
+    const checklist = yield* decodeReleaseChecklist(rawChecklist)
     yield* validateChecklist(checklist)
 
     const ciWorkflow = yield* readText(join(options.cwd, CI_WORKFLOW_PATH))
@@ -217,14 +286,96 @@ const validateChecklist = (
   return Effect.void
 }
 
+const decodeReleaseChecklist = (
+  value: unknown
+): Effect.Effect<ReleaseChecklist, ReleaseGateManifestError, never> => {
+  if (!isRecord(value)) {
+    return releaseManifestError("release checklist must be an object")
+  }
+  const rawGates = value["gates"]
+  if (!Array.isArray(rawGates)) {
+    return releaseManifestError("release checklist gates must be an array")
+  }
+  if (value["schemaVersion"] !== 1) {
+    return releaseManifestError("release checklist schemaVersion must be 1")
+  }
+  if (typeof value["source"] !== "string") {
+    return releaseManifestError("release checklist source must be a string")
+  }
+  const gates: ReleaseChecklistGate[] = []
+  for (const [index, gate] of rawGates.entries()) {
+    if (!isRecord(gate)) {
+      return releaseManifestError(`release checklist gates[${index}] must be an object`)
+    }
+    const decoded = decodeReleaseChecklistGate(gate, index)
+    if (decoded._tag === "Left") {
+      return Effect.fail(decoded.error)
+    }
+    gates.push(decoded.value)
+  }
+  return Effect.succeed({
+    schemaVersion: 1,
+    source: value["source"],
+    gates
+  })
+}
+
+const decodeReleaseChecklistGate = (
+  gate: Readonly<Record<string, unknown>>,
+  index: number
+):
+  | { readonly _tag: "Right"; readonly value: ReleaseChecklistGate }
+  | { readonly _tag: "Left"; readonly error: ReleaseGateManifestError } => {
+  const id = gate["id"]
+  if (typeof id !== "string") {
+    return releaseDecodeError(`release checklist gates[${index}].id must be a string`)
+  }
+  const title = gate["title"]
+  if (typeof title !== "string") {
+    return releaseDecodeError(`release checklist gates[${index}].title must be a string`)
+  }
+  const kind = gate["kind"]
+  if (!isReleaseGateEvidenceKind(kind)) {
+    return releaseDecodeError(`release checklist gates[${index}].kind is invalid`)
+  }
+  const evidence = gate["evidence"]
+  if (!Array.isArray(evidence) || !evidence.every((entry) => typeof entry === "string")) {
+    return releaseDecodeError(
+      `release checklist gates[${index}].evidence must be an array of strings`
+    )
+  }
+  return { _tag: "Right", value: { id, title, kind, evidence } }
+}
+
+const releaseDecodeError = (
+  message: string
+): { readonly _tag: "Left"; readonly error: ReleaseGateManifestError } => ({
+  _tag: "Left",
+  error: new ReleaseGateManifestError({ message })
+})
+
+const releaseManifestError = (
+  message: string
+): Effect.Effect<never, ReleaseGateManifestError, never> =>
+  Effect.fail(new ReleaseGateManifestError({ message }))
+
+const releaseEvidenceError = (
+  gate: ReleaseChecklistGate,
+  message: string
+): { readonly _tag: "Left"; readonly error: ReleaseGateEvidenceError } => ({
+  _tag: "Left",
+  error: new ReleaseGateEvidenceError({ gate: gate.id, message })
+})
+
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+
+const isReleaseGateEvidenceKind = (value: unknown): value is ReleaseGateEvidenceKind =>
+  value === "workflow-step" || value === "policy-document" || value === "repository-setting"
+
 const validateGateEvidence = (
   gate: ReleaseChecklistGate,
-  files: {
-    readonly ciWorkflow: string
-    readonly releaseWorkflow: string
-    readonly keyManagement: string
-    readonly releaseSettings: string
-  }
+  files: ReleaseEvidenceFiles
 ): Effect.Effect<void, ReleaseGateEvidenceError, never> => {
   const workflowTokens = [
     ...(RELEASE_WORKFLOW_TOKENS.get(gate.id) ?? []),
@@ -241,76 +392,99 @@ const validateGateEvidence = (
     }
   }
   for (const evidence of gate.evidence) {
-    if (evidence.startsWith(".github/workflows/release.yml#")) {
-      if (
-        !files.releaseWorkflow.includes(evidence.slice(".github/workflows/release.yml#".length))
-      ) {
-        return Effect.fail(
-          new ReleaseGateEvidenceError({
-            gate: gate.id,
-            message: `release gate ${gate.id} is missing release workflow evidence ${evidence}`
-          })
-        )
-      }
+    const parsed = parseReleaseEvidence(gate, evidence)
+    if (parsed._tag === "Left") {
+      return Effect.fail(parsed.error)
     }
-    if (evidence.startsWith(".github/workflows/ci.yml#")) {
-      if (!files.ciWorkflow.includes(evidence.slice(".github/workflows/ci.yml#".length))) {
-        return Effect.fail(
-          new ReleaseGateEvidenceError({
-            gate: gate.id,
-            message: `release gate ${gate.id} is missing CI workflow evidence ${evidence}`
-          })
-        )
-      }
-    }
-    if (evidence.startsWith("docs/security/key-management.md#")) {
-      if (
-        !files.keyManagement.includes(evidence.slice("docs/security/key-management.md#".length))
-      ) {
-        return Effect.fail(
-          new ReleaseGateEvidenceError({
-            gate: gate.id,
-            message: `release gate ${gate.id} is missing key-management evidence ${evidence}`
-          })
-        )
-      }
-    }
-    if (evidence.startsWith("docs/security/release-settings.md#")) {
-      if (
-        !files.releaseSettings.includes(evidence.slice("docs/security/release-settings.md#".length))
-      ) {
-        return Effect.fail(
-          new ReleaseGateEvidenceError({
-            gate: gate.id,
-            message: `release gate ${gate.id} is missing release-settings evidence ${evidence}`
-          })
-        )
-      }
-    }
-  }
-  return Effect.void
-}
-
-const validateWorkflowActionPins = (
-  path: string,
-  body: string
-): Effect.Effect<void, ReleaseGateEvidenceError, never> => {
-  for (const line of body.split("\n")) {
-    const match = line.match(/uses:\s+([^@\s]+)@([a-f0-9]{40})(?:\s+#\s+(.+))?/)
-    if (!line.includes("uses:")) {
-      continue
-    }
-    if (match === null || match[3] === undefined || match[3].trim().length === 0) {
+    const allowed = RELEASE_GATE_EVIDENCE.get(gate.id)
+    if (allowed === undefined || !allowed.has(evidence)) {
       return Effect.fail(
         new ReleaseGateEvidenceError({
-          gate: "workflow-action-pins",
-          message: `${path} contains an unpinned or uncommented action reference: ${line.trim()}`
+          gate: gate.id,
+          message: `release gate ${gate.id} does not accept evidence ${evidence}`
+        })
+      )
+    }
+    if (!parsed.source.read(files).includes(parsed.anchor)) {
+      return Effect.fail(
+        new ReleaseGateEvidenceError({
+          gate: gate.id,
+          message: `release gate ${gate.id} is missing ${parsed.source.name} evidence ${evidence}`
         })
       )
     }
   }
   return Effect.void
 }
+
+const parseReleaseEvidence = (
+  gate: ReleaseChecklistGate,
+  evidence: string
+):
+  | {
+      readonly _tag: "Right"
+      readonly source: (typeof RELEASE_EVIDENCE_SOURCES)[number]
+      readonly anchor: string
+    }
+  | { readonly _tag: "Left"; readonly error: ReleaseGateEvidenceError } => {
+  for (const source of RELEASE_EVIDENCE_SOURCES) {
+    if (evidence.startsWith(source.prefix)) {
+      const anchor = evidence.slice(source.prefix.length)
+      if (anchor.trim().length === 0) {
+        return releaseEvidenceError(
+          gate,
+          `release gate ${gate.id} has empty evidence anchor ${evidence}`
+        )
+      }
+      return { _tag: "Right", source, anchor }
+    }
+  }
+  return releaseEvidenceError(gate, `release gate ${gate.id} uses unsupported evidence ${evidence}`)
+}
+
+const validateWorkflowActionPins = (
+  path: string,
+  body: string
+): Effect.Effect<void, ReleaseGateEvidenceError, never> => {
+  for (const reference of workflowActionReferences(body)) {
+    const match = reference.match(/^([^@\s]+)@([a-f0-9]{40})(?:\s+#\s+(.+))?$/)
+    if (match === null || match[3] === undefined || match[3].trim().length === 0) {
+      return Effect.fail(
+        new ReleaseGateEvidenceError({
+          gate: "workflow-action-pins",
+          message: `${path} contains an unpinned or uncommented action reference: uses: ${reference}`
+        })
+      )
+    }
+  }
+  return Effect.void
+}
+
+const workflowActionReferences = (body: string): readonly string[] => {
+  const references: string[] = []
+  let scalarIndent: number | undefined
+  for (const line of body.split("\n")) {
+    const indent = leadingSpaces(line)
+    const trimmed = line.trim()
+    if (scalarIndent !== undefined) {
+      if (trimmed.length === 0 || indent > scalarIndent) {
+        continue
+      }
+      scalarIndent = undefined
+    }
+    if (/^-?\s*run:\s*[>|]/.test(trimmed)) {
+      scalarIndent = indent
+      continue
+    }
+    const match = trimmed.match(/^-?\s*uses:\s+(.+)$/)
+    if (match?.[1] !== undefined) {
+      references.push(match[1])
+    }
+  }
+  return references
+}
+
+const leadingSpaces = (line: string): number => line.length - line.trimStart().length
 
 const validateReleaseRunnerPosture = (
   body: string

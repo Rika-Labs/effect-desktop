@@ -1976,6 +1976,40 @@ test("desktop check --release rejects incomplete spec gate identities", async ()
   }
 })
 
+test("desktop check --release rejects malformed checklist shape", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+  try {
+    await writeReleaseFixture(directory, {
+      checklist: {
+        schemaVersion: 1,
+        source: "docs/SPEC.md §25.4"
+      }
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--release", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("ReleaseGateManifestError")
+    expect(payload.message).toContain("gates")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop check --release rejects runner-local release signing policy", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
   try {
@@ -1998,6 +2032,130 @@ test("desktop check --release rejects runner-local release signing policy", asyn
     expect(exitCode).toBe(1)
     expect(stderr.join("")).toContain("ReleaseGateEvidenceError")
     expect(stderr.join("")).toContain("runner-local keys are forbidden")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --release rejects unknown evidence sources", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+  try {
+    const checklist = releaseChecklistFixture()
+    if (!isReleaseChecklistFixture(checklist)) {
+      throw new Error("invalid release checklist fixture")
+    }
+    await writeReleaseFixture(directory, {
+      checklist: {
+        ...checklist,
+        gates: checklist.gates.map((gate) =>
+          gate.id === "spdx-sbom"
+            ? { ...gate, evidence: ["docs/security/unknown.md#Imaginary Evidence"] }
+            : gate
+        )
+      }
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--release", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("ReleaseGateEvidenceError")
+    expect(payload.message).toContain("unsupported evidence")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --release rejects empty evidence anchors", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+  try {
+    const checklist = releaseChecklistFixture()
+    if (!isReleaseChecklistFixture(checklist)) {
+      throw new Error("invalid release checklist fixture")
+    }
+    await writeReleaseFixture(directory, {
+      checklist: {
+        ...checklist,
+        gates: checklist.gates.map((gate) =>
+          gate.id === "spdx-sbom" ? { ...gate, evidence: [".github/workflows/release.yml#"] } : gate
+        )
+      }
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--release", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("ReleaseGateEvidenceError")
+    expect(payload.message).toContain("empty evidence anchor")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --release rejects evidence from another gate", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+  try {
+    const checklist = releaseChecklistFixture()
+    if (!isReleaseChecklistFixture(checklist)) {
+      throw new Error("invalid release checklist fixture")
+    }
+    await writeReleaseFixture(directory, {
+      checklist: {
+        ...checklist,
+        gates: checklist.gates.map((gate) =>
+          gate.id === "secret-scanning"
+            ? { ...gate, evidence: ["docs/security/release-settings.md#GitHub-hosted runners"] }
+            : gate
+        )
+      }
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--release", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("ReleaseGateEvidenceError")
+    expect(payload.message).toContain("does not accept evidence")
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -2066,6 +2224,38 @@ test("desktop check --release rejects unpinned release workflow actions", async 
     expect(exitCode).toBe(1)
     expect(stderr.join("")).toContain("ReleaseGateEvidenceError")
     expect(stderr.join("")).toContain("unpinned or uncommented action reference")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --release ignores uses text inside run scripts", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+  try {
+    await writeReleaseFixture(directory, {
+      releaseWorkflow: [
+        releaseWorkflowFixture(),
+        "      - name: Document action syntax",
+        "        run: |",
+        "          # uses: actions/checkout@v6",
+        "          echo done"
+      ].join("\n")
+    })
+    const stdout: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--release"],
+        cwd: directory,
+        writeStdout: (text) => {
+          stdout.push(text)
+        },
+        writeStderr: () => {}
+      })
+    )
+
+    expect(exitCode).toBe(0)
+    expect(stdout.join("")).toContain("gates             8")
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
