@@ -4435,6 +4435,56 @@ test("desktop build rejects invalid reverse-DNS app.id", async () => {
   }
 })
 
+test("desktop build rejects renderer.dist outside the app root before running build steps", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-renderer-dist-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      renderer: {
+        entry: "src/renderer/main.tsx",
+        dist: "../../outside-dist"
+      }
+    })
+    await mkdir(join(directory, "outside-dist"), { recursive: true })
+    await writeFile(join(directory, "outside-dist", "index.html"), "<h1>outside</h1>")
+    let calls = 0
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["build", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        commandRunner: () =>
+          Effect.sync(() => {
+            calls += 1
+          }),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const stagedRenderer = join(
+      directory,
+      "apps",
+      "playground",
+      "build",
+      "effect-desktop",
+      "linux-x64",
+      "renderer",
+      "index.html"
+    )
+    expect(exitCode).toBe(1)
+    expect(calls).toBe(0)
+    expect(stderr.join("")).toContain("BuildConfigError")
+    expect(stderr.join("")).toContain("renderer.dist")
+    await expect(stat(stagedRenderer)).rejects.toThrow()
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop build rejects invalid security config before running build steps", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-security-"))
   try {

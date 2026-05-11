@@ -1,5 +1,5 @@
 import { mkdir, readdir, rm, stat, writeFile, copyFile } from "node:fs/promises"
-import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path"
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import { HOST_PROTOCOL_VERSION } from "@effect-desktop/bridge"
@@ -1005,6 +1005,7 @@ const normalizeBuildPlan = (
         : runtimeEntryName
     const rendererDist =
       (yield* readOptionalString(config.renderer?.dist, "renderer.dist")) ?? "dist"
+    const rendererDistPath = yield* readContainedAppPath(appRoot, rendererDist, "renderer.dist")
     const profile = yield* readRequiredString(options.profile, "profile")
     const profileEnv = yield* readProfileEnv(config.env, profile)
     const protocolEntries = yield* readProtocols(config.protocols)
@@ -1038,7 +1039,7 @@ const normalizeBuildPlan = (
       configPath: options.configPath,
       runtimeEngine,
       runtimeEntry: `runtime/${runtimeEntryOutputName}`,
-      rendererDistPath: resolvePath(appRoot, rendererDist),
+      rendererDistPath,
       runtimeEntryPath,
       rendererEntryPath,
       targetEnv: profileEnv,
@@ -1698,6 +1699,28 @@ const readRequiredExistingFile = (
       )
     )
   )
+
+const readContainedAppPath = (
+  root: string,
+  path: string,
+  field: string
+): Effect.Effect<string, BuildConfigError, never> => {
+  if (isAbsolute(path)) {
+    return Effect.fail(
+      new BuildConfigError({ field, message: `${field} must be relative to the app root` })
+    )
+  }
+
+  const resolvedPath = resolve(root, path)
+  const relativePath = relative(root, resolvedPath)
+  if (relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath))) {
+    return Effect.succeed(resolvedPath)
+  }
+
+  return Effect.fail(
+    new BuildConfigError({ field, message: `${field} must stay inside the app root` })
+  )
+}
 
 const readProtocols = (
   value: unknown
