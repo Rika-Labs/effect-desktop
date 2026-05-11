@@ -748,10 +748,15 @@ const copyBytes = (bytes: Uint8Array): Uint8Array => {
 }
 
 const parseContentLength = (headerText: string): number => {
-  const line = headerText
+  const lines = headerText
     .split("\r\n")
-    .find((candidate) => candidate.toLowerCase().startsWith("content-length:"))
-  const value = line?.slice("content-length:".length).trim()
+    .filter((candidate) => candidate.toLowerCase().startsWith("content-length:"))
+  if (lines.length !== 1) {
+    throw new JsonRpcFrameHeaderError(headerText)
+  }
+
+  const line = lines[0]
+  const value = line === undefined ? undefined : line.slice("content-length:".length).trim()
   if (value === undefined || !DECIMAL_CONTENT_LENGTH.test(value)) {
     throw new JsonRpcFrameHeaderError(headerText)
   }
