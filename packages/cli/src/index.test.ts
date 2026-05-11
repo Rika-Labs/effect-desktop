@@ -4431,6 +4431,81 @@ test("desktop publish signs macOS app directory artifacts with deterministic dir
   }
 })
 
+test("desktop publish rejects symbolic links inside directory artifacts", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-artifact-link-"))
+  const key = testEd25519Key()
+  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+  const previousPrivateKey = process.env[privateKeyEnv]
+  process.env[privateKeyEnv] = key.privateKeyPem
+  try {
+    await writePlaygroundFixture(directory, {
+      update: {
+        channel: "stable",
+        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+        publicKey: key.publicKey,
+        privateKeyEnv,
+        keyVersion: 5
+      }
+    })
+    const artifactPath = await writePackagedArtifactFixture(directory, "macos-arm64", "app")
+    const artifactRoot = dirname(artifactPath)
+    const externalPayload = join(directory, "external-payload.txt")
+    await writeFile(externalPayload, "outside artifact bytes")
+    await symlink(
+      externalPayload,
+      join(artifactPath, "Contents", "Resources", "effect-desktop", "runtime", "outside.txt")
+    )
+    const digest = await digestArtifactFixture(artifactPath)
+    const artifactJsonPath = join(artifactRoot, "artifact.json")
+    const artifactJson = JSON.parse(await readFile(artifactJsonPath, "utf8")) as Record<
+      string,
+      unknown
+    >
+    artifactJson["sizeBytes"] = digest.sizeBytes
+    artifactJson["sha256"] = digest.sha256
+    await writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
+
+    const manifestPath = join(
+      directory,
+      "apps",
+      "playground",
+      "dist",
+      "desktop",
+      "update-manifest.json"
+    )
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: [
+          "publish",
+          "--config",
+          "apps/playground/desktop.config.ts",
+          "--platform",
+          "macos-arm64"
+        ],
+        cwd: directory,
+        now: () => 1_772_923_200_000,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("PublishFileError")
+    expect(stderr.join("")).toContain("symbolic links")
+    await expect(stat(manifestPath)).rejects.toThrow()
+  } finally {
+    if (previousPrivateKey === undefined) {
+      delete process.env[privateKeyEnv]
+    } else {
+      process.env[privateKeyEnv] = previousPrivateKey
+    }
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop build stages renderer runtime host bridge manifests and report", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-"))
   try {
@@ -4614,6 +4689,39 @@ test("desktop build rejects missing runtime.entry", async () => {
     )
     expect(exitCode).toBe(1)
     expect(stderr.join("")).toContain("runtime.entry is required")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop build rejects runtime.entry outside the app root before running build steps", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-runtime-entry-"))
+  try {
+    await writePlaygroundFixture(directory, { runtime: { entry: "../../../outside-runtime.ts" } })
+    await writeFile(join(directory, "outside-runtime.ts"), "console.log('outside')\n")
+    const calls: string[] = []
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["build", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        commandRunner: (invocation) =>
+          Effect.sync(() => {
+            calls.push(invocation.step)
+          }),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(calls).toEqual([])
+    expect(stderr.join("")).toContain("BuildConfigError")
+    expect(stderr.join("")).toContain("runtime.entry")
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -5385,6 +5493,45 @@ test("desktop package rejects non-SemVer app.version", async () => {
     expect(exitCode).toBe(1)
     expect(stderr.join("")).toContain("PackageConfigError")
     expect(stderr.join("")).toContain("app.version must be a SemVer X.Y.Z string")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop package rejects path-shaped app.id before staging Linux sidecars", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-invalid-appid-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      app: {
+        id: "../../../escaped",
+        name: "Effect Desktop Playground",
+        version: "0.0.0"
+      }
+    })
+    await writeBuildLayoutFixture(directory, "linux-x64")
+    const calls: string[] = []
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["package", "--config", "apps/playground/desktop.config.ts", "--artifact", "deb"],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        packageCommandRunner: (invocation) =>
+          Effect.sync(() => {
+            calls.push(invocation.step)
+          }),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(calls).toEqual([])
+    expect(stderr.join("")).toContain("PackageConfigError")
+    expect(stderr.join("")).toContain("app.id must be a reverse-DNS ASCII identifier")
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

@@ -5,7 +5,7 @@ import {
   sign as cryptoSign,
   verify as cryptoVerify
 } from "node:crypto"
-import { readdir, readFile, stat, writeFile } from "node:fs/promises"
+import { lstat, readdir, readFile, stat, writeFile } from "node:fs/promises"
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { pathToFileURL } from "node:url"
 
@@ -513,7 +513,17 @@ const readArtifactPayload = (
   never
 > =>
   Effect.gen(function* () {
-    const pathStat = yield* statPath(path)
+    const pathStat = yield* lstatPath(path)
+    if (pathStat.isSymbolicLink()) {
+      return yield* Effect.fail(
+        new PublishFileError({
+          operation: "lstat",
+          path,
+          message: "publish artifacts must not be symbolic links",
+          cause: undefined
+        })
+      )
+    }
     if (!pathStat.isDirectory()) {
       const bytes = yield* readBytes(path)
       return { digest: digestBytes(bytes), signingBytes: bytes }
@@ -1090,7 +1100,17 @@ const listFiles = (path: string): Effect.Effect<readonly string[], PublishFileEr
     const files: string[] = []
     for (const entry of entries.toSorted()) {
       const child = join(path, entry)
-      const childStat = yield* statPath(child)
+      const childStat = yield* lstatPath(child)
+      if (childStat.isSymbolicLink()) {
+        return yield* Effect.fail(
+          new PublishFileError({
+            operation: "lstat",
+            path: child,
+            message: "publish directory artifacts must not contain symbolic links",
+            cause: undefined
+          })
+        )
+      }
       if (childStat.isDirectory()) {
         files.push(...(yield* listFiles(child)))
       } else {
@@ -1110,6 +1130,20 @@ const statPath = (
         operation: "stat",
         path,
         message: `failed to stat ${path}`,
+        cause
+      })
+  })
+
+const lstatPath = (
+  path: string
+): Effect.Effect<Awaited<ReturnType<typeof lstat>>, PublishFileError, never> =>
+  Effect.tryPromise({
+    try: () => lstat(path),
+    catch: (cause) =>
+      new PublishFileError({
+        operation: "lstat",
+        path,
+        message: `failed to lstat ${path}`,
         cause
       })
   })

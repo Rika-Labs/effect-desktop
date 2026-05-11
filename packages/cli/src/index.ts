@@ -1740,7 +1740,8 @@ const readRequiredExistingFile = (
 ): Effect.Effect<string, BuildConfigError, never> =>
   readRequiredString(value, field).pipe(
     Effect.flatMap((path) =>
-      statPath(resolvePath(root, path)).pipe(
+      readContainedAppPath(root, path, field).pipe(
+        Effect.flatMap((containedPath) => statPath(containedPath)),
         Effect.flatMap((stats) =>
           stats.isDirectory()
             ? Effect.fail(
