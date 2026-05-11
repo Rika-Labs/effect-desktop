@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises"
-import { join } from "node:path"
+import { isAbsolute, join, normalize } from "node:path"
 
 import { Data, Effect } from "effect"
 
@@ -14,7 +14,8 @@ import {
 export interface SemverGuardOptions {
   readonly cwd: string
   readonly publicApiCheck?: (
-    cwd: string
+    cwd: string,
+    snapshotRoot: string
   ) => Effect.Effect<PublicApiSnapshotReport, PublicApiSnapshotError, never>
 }
 
@@ -95,7 +96,7 @@ export const runSemverGuard = (
     yield* validateManifest(manifest)
     yield* validateAppendixCRows(options.cwd, manifest)
 
-    const apiReport = yield* readPublicApiReport(options)
+    const apiReport = yield* readPublicApiReport(options, manifest.publicApiSnapshots)
     const apiChanges = apiReport.changes.map(classifyApiChange)
     const report: SemverGuardReport = {
       passed: apiChanges.every((change) => isAllowedChange(manifest.releaseKind, change)),
@@ -142,10 +143,12 @@ export const formatSemverGuardError = (
 }
 
 const readPublicApiReport = (
-  options: SemverGuardOptions
+  options: SemverGuardOptions,
+  snapshotRoot: string
 ): Effect.Effect<PublicApiSnapshotReport, PublicApiSnapshotError, never> => {
-  const check = options.publicApiCheck ?? ((cwd) => runPublicApiCheck({ cwd }))
-  return check(options.cwd).pipe(
+  const check =
+    options.publicApiCheck ?? ((cwd, root) => runPublicApiCheck({ cwd, snapshotRoot: root }))
+  return check(options.cwd, snapshotRoot).pipe(
     Effect.catch((error) =>
       error instanceof PublicApiSnapshotMismatchError
         ? Effect.succeed(error.report)
@@ -296,6 +299,13 @@ const parseSemverPolicyManifest = (
       new SemverGuardManifestError({ message: "semver publicApiSnapshots must be a string" })
     )
   }
+  if (!isWorkspaceRelativePath(value["publicApiSnapshots"])) {
+    return Effect.fail(
+      new SemverGuardManifestError({
+        message: "semver publicApiSnapshots must be a workspace-contained relative path"
+      })
+    )
+  }
   if (typeof value["verificationMatrix"] !== "string") {
     return Effect.fail(
       new SemverGuardManifestError({ message: "semver verificationMatrix must be a string" })
@@ -381,6 +391,17 @@ const isSemverRecord = (value: unknown): value is Record<string, unknown> =>
 
 const isSemverReleaseKind = (value: unknown): value is SemverReleaseKind =>
   value === "patch" || value === "minor" || value === "major"
+
+const isWorkspaceRelativePath = (value: string): boolean => {
+  const normalized = normalize(value)
+  return (
+    value.length > 0 &&
+    !isAbsolute(value) &&
+    normalized !== ".." &&
+    !normalized.startsWith(`..${"/"}`) &&
+    !normalized.startsWith(`..${"\\"}`)
+  )
+}
 
 const readText = (path: string): Effect.Effect<string, SemverGuardFileError, never> =>
   Effect.tryPromise({

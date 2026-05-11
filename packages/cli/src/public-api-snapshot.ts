@@ -8,6 +8,7 @@ export type PublicApiSymbolKind = "class" | "function" | "interface" | "type" | 
 
 export interface PublicApiSnapshotOptions {
   readonly cwd: string
+  readonly snapshotRoot?: string
   readonly updateSnapshots?: boolean
 }
 
@@ -97,11 +98,12 @@ export const runPublicApiCheck = (
     const packages = yield* discoverPublicPackages(options.cwd)
     const snapshots: PublicApiPackageSnapshot[] = []
     const changes: PublicApiChange[] = []
+    const snapshotRoot = options.snapshotRoot ?? SNAPSHOT_ROOT
 
     for (const workspacePackage of packages) {
       const snapshot = yield* snapshotPackage(workspacePackage)
       snapshots.push(snapshot)
-      const snapshotPath = snapshotFilePath(options.cwd, workspacePackage.name)
+      const snapshotPath = snapshotFilePath(options.cwd, snapshotRoot, workspacePackage.name)
 
       if (options.updateSnapshots === true) {
         yield* writeSnapshot(snapshotPath, toSnapshotFile(snapshot))
@@ -472,8 +474,8 @@ const makeDirectory = (path: string): Effect.Effect<void, PublicApiFileError, ne
       })
   }).pipe(Effect.asVoid)
 
-const snapshotFilePath = (cwd: string, packageName: string): string =>
-  join(cwd, SNAPSHOT_ROOT, `${packageName.replaceAll("/", "__")}.snapshot.json`)
+const snapshotFilePath = (cwd: string, snapshotRoot: string, packageName: string): string =>
+  join(cwd, snapshotRoot, `${packageName.replaceAll("/", "__")}.snapshot.json`)
 
 const formatChange = (change: PublicApiChange): string => {
   if (change.kind === "added") {

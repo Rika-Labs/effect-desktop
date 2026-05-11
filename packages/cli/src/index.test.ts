@@ -1664,6 +1664,59 @@ test("semver guard rejects manifest with missing deprecationPolicy", async () =>
   }
 })
 
+test("semver guard passes manifest publicApiSnapshots to the API checker", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+  try {
+    const manifest = semverManifestFixture()
+    if (!isSemverManifestFixture(manifest)) {
+      throw new Error("invalid semver manifest fixture")
+    }
+    await writeSemverFixture(directory, {
+      manifest: { ...manifest, publicApiSnapshots: "api/custom-snapshots" }
+    })
+    let observedSnapshotRoot = ""
+
+    await Effect.runPromise(
+      runSemverGuard({
+        cwd: directory,
+        publicApiCheck: (_cwd, snapshotRoot) => {
+          observedSnapshotRoot = snapshotRoot
+          return Effect.succeed(publicApiReportFixture("added"))
+        }
+      })
+    )
+
+    expect(observedSnapshotRoot).toBe("api/custom-snapshots")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("semver guard rejects escaping publicApiSnapshots roots", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+  try {
+    const manifest = semverManifestFixture()
+    if (!isSemverManifestFixture(manifest)) {
+      throw new Error("invalid semver manifest fixture")
+    }
+    await writeSemverFixture(directory, {
+      manifest: { ...manifest, publicApiSnapshots: "../api/snapshots" }
+    })
+
+    const error = await Effect.runPromise(
+      runSemverGuard({
+        cwd: directory,
+        publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+      }).pipe(Effect.flip)
+    )
+
+    expect((error as { readonly _tag: string })._tag).toBe("SemverGuardManifestError")
+    expect((error as { readonly message: string }).message).toContain("publicApiSnapshots")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("semver guard rejects missing Appendix C rows", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
   try {
