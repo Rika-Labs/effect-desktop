@@ -190,7 +190,7 @@ test("host protocol exchange auto-mints missing host response trace IDs and audi
           JSON.stringify({
             kind: "response",
             id: "request-1",
-            timestamp: 1
+            timestamp: 9
           })
         )
     }),
@@ -209,6 +209,11 @@ test("host protocol exchange auto-mints missing host response trace IDs and audi
   expect(rows[0]?.source).toBe("HostProtocol")
   expect(rows[0]?.traceId).toBe("trace-auto")
   expect(rows[0]?.outcome).toBe("auto-minted")
+  expect(rows[0]?.timestamp).toBe(9)
+  expect(rows[0]?.details).toMatchObject({
+    method: "host.ping",
+    requestId: "request-1"
+  })
 })
 
 test("host protocol exchange maps oversized outbound frames to FrameTooLarge", async () => {

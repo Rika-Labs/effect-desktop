@@ -135,7 +135,8 @@ const ensureTraceId = (
     }
 
     const traceId = options.nextTraceId()
-    yield* emitTraceIdMissing(options.audit, traceId, request, parsed.kind)
+    const timestamp = yield* hostProtocolObjectTimestamp(parsed, request.method)
+    yield* emitTraceIdMissing(options.audit, traceId, timestamp, request, parsed.kind)
 
     return {
       value: {
@@ -149,6 +150,7 @@ const ensureTraceId = (
 const emitTraceIdMissing = (
   audit: AuditEventsApi | undefined,
   traceId: string,
+  timestamp: number,
   request: HostProtocolRequestEnvelope,
   boundaryKind: string
 ): Effect.Effect<void, HostProtocolError, never> =>
@@ -159,7 +161,7 @@ const emitTraceIdMissing = (
       source: "HostProtocol",
       traceId,
       outcome: "auto-minted",
-      timestamp: request.timestamp,
+      timestamp,
       details: {
         boundary: "host-runtime",
         envelopeKind: boundaryKind,
@@ -183,6 +185,16 @@ const isHostProtocolObject = (
   value !== null &&
   "kind" in value &&
   typeof Reflect.get(value, "kind") === "string"
+
+const hostProtocolObjectTimestamp = (
+  value: { readonly kind: string },
+  operation: string
+): Effect.Effect<number, HostProtocolError, never> => {
+  const timestamp = Reflect.get(value, "timestamp")
+  return Number.isSafeInteger(timestamp) && timestamp >= 0
+    ? Effect.succeed(timestamp)
+    : Effect.fail(makeHostProtocolInvalidOutputError(operation, "invalid host envelope timestamp"))
+}
 
 const resolveOptions = (
   options: HostProtocolExchangeOptions
