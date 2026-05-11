@@ -128,6 +128,14 @@ test("CommandRegistry reports missing commands as typed values", async () => {
   expectFailure(exit, CommandRegistryCommandNotFoundError)
 })
 
+test("CommandRegistry reports missing unregisters as typed values", async () => {
+  const { registry } = await makeTestRegistry()
+
+  const exit = await Effect.runPromiseExit(registry.unregister("missing"))
+
+  expectFailure(exit, CommandRegistryCommandNotFoundError)
+})
+
 test("CommandRegistry validates input before permission and handler side effects", async () => {
   const rows: AuditEvent[] = []
   const { registry, permissions } = await makeTestRegistry(rows)

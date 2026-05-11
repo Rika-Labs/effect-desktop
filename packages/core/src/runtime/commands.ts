@@ -188,16 +188,17 @@ export const makeCommandRegistry = (
           const decodedId = yield* decodeCommandId(id, "CommandRegistry.unregister")
           const command = yield* remove(decodedId)
 
-          if (command !== undefined) {
-            yield* resources.dispose(command.resourceId)
-            yield* auditCommand(
-              options.audit,
-              "command-unregistered",
-              decodedId,
-              "unregistered",
-              now
+          if (command === undefined) {
+            return yield* Effect.fail(
+              new CommandRegistryCommandNotFoundError({
+                operation: "CommandRegistry.unregister",
+                commandId: decodedId
+              })
             )
           }
+
+          yield* resources.dispose(command.resourceId)
+          yield* auditCommand(options.audit, "command-unregistered", decodedId, "unregistered", now)
         }).pipe(Effect.withSpan("CommandRegistry.unregister")),
       invoke: (id, input, context) =>
         invokeCommand(commands, invocations, permissions, options.audit, now, id, input, context),
