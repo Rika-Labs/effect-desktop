@@ -16,6 +16,7 @@ import {
 } from "@effect-desktop/bridge"
 import {
   AuditEvent,
+  CommandRegistryHandlerFailureError,
   CommandRegistry,
   ResourceRegistry,
   makeCommandRegistry,
@@ -252,6 +253,7 @@ import {
   type WindowCreateOptions,
   type WindowHandle
 } from "./index.js"
+import { commandBindingWarningError } from "./command-binding-log.js"
 
 const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = [
   "create",
@@ -4683,6 +4685,35 @@ test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar 
   expect(calls).toEqual(["register:CmdOrCtrl+K:window-1", "unregister:CmdOrCtrl+K"])
   expect(rows.map((row) => row.kind)).toContain("permission-granted")
   expect(rows.map((row) => row.kind)).toContain("command-invoked")
+})
+
+test("command binding warning errors expose bounded attributes only", () => {
+  const handlerFailure = new CommandRegistryHandlerFailureError({
+    operation: "CommandRegistry.invoke",
+    commandId: "openProject",
+    cause: new Error("secret handler payload")
+  })
+  const nativeFailure = new HostProtocolNotFoundError({
+    tag: "NotFound",
+    resource: "global-shortcut",
+    message: "secret native payload",
+    operation: "GlobalShortcut.unregister",
+    recoverable: false,
+    cause: { stack: "secret stack" }
+  })
+
+  expect(commandBindingWarningError(handlerFailure)).toEqual({
+    tag: "HandlerFailure",
+    operation: "CommandRegistry.invoke",
+    commandId: "openProject"
+  })
+  expect(commandBindingWarningError(nativeFailure)).toEqual({
+    tag: "NotFound",
+    operation: "GlobalShortcut.unregister",
+    recoverable: false
+  })
+  expect(JSON.stringify(commandBindingWarningError(handlerFailure))).not.toContain("secret")
+  expect(JSON.stringify(commandBindingWarningError(nativeFailure))).not.toContain("secret")
 })
 
 test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar events and unregisters on scope close", async () => {

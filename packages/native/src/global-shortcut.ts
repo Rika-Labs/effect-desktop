@@ -35,6 +35,7 @@ import {
   GlobalShortcutSupportedOutput,
   GlobalShortcutSupportedResult
 } from "./contracts/global-shortcut.js"
+import { commandBindingWarningError } from "./command-binding-log.js"
 import type { WindowHandle } from "./window.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
@@ -266,7 +267,7 @@ const invokeGlobalShortcutCommand = (
         Effect.logWarning("GlobalShortcut command invocation failed", {
           accelerator,
           commandId,
-          error,
+          error: commandBindingWarningError(error),
           windowId
         })
       )
@@ -296,8 +297,8 @@ const logGlobalShortcutCleanupFailure =
       Effect.catch((error: GlobalShortcutError) =>
         Effect.logWarning("GlobalShortcut cleanup failed", {
           accelerator,
-          phase,
-          error
+          error: commandBindingWarningError(error),
+          phase
         })
       )
     )

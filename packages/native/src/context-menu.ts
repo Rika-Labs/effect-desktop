@@ -26,6 +26,7 @@ import {
 } from "@effect-desktop/bridge"
 import { Context, Effect, Fiber, Layer, Option, Schema, Stream } from "effect"
 
+import { commandBindingWarningError } from "./command-binding-log.js"
 import {
   ContextMenuActivatedEvent,
   ContextMenuBindCommandInput,
@@ -217,7 +218,7 @@ const invokeContextMenuCommand = (
       Effect.catch((error: CommandRegistryError) =>
         Effect.logWarning("ContextMenu command invocation failed", {
           commandId,
-          error,
+          error: commandBindingWarningError(error),
           itemId,
           windowId
         })

@@ -26,6 +26,7 @@ import {
 import { Context, Effect, Fiber, Layer, Option, Schema, Stream } from "effect"
 
 export * from "./contracts/menu.js"
+import { commandBindingWarningError } from "./command-binding-log.js"
 import {
   type MenuCapabilityName,
   type MenuClearOptions,
@@ -265,7 +266,7 @@ const invokeMenuCommand = (
       Effect.catch((error: CommandRegistryError) =>
         Effect.logWarning("Menu command invocation failed", {
           commandId,
-          error,
+          error: commandBindingWarningError(error),
           itemId,
           windowId
         })
