@@ -37,6 +37,16 @@ impl LinuxSession {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DockMethod {
+    SetBadgeCount,
+    SetBadgeText,
+    SetProgress,
+    SetMenu,
+    SetJumpList,
+    RequestAttention,
+}
+
 pub(crate) fn global_shortcut_is_supported() -> Result<Option<Value>, HostProtocolError> {
     Ok(Some(global_shortcut_support_payload()))
 }
@@ -69,7 +79,7 @@ fn decode_method(payload: Option<Value>) -> Result<String, HostProtocolError> {
         ));
     };
     match payload.get("method") {
-        Some(Value::String(method)) => Ok(method.clone()),
+        Some(Value::String(method)) => parse_dock_method(method).map(|_| method.clone()),
         Some(_) => Err(HostProtocolError::invalid_argument(
             "method",
             "must be a string",
@@ -78,6 +88,22 @@ fn decode_method(payload: Option<Value>) -> Result<String, HostProtocolError> {
         None => Err(HostProtocolError::invalid_argument(
             "method",
             "is required",
+            host_protocol::DOCK_IS_SUPPORTED_METHOD,
+        )),
+    }
+}
+
+fn parse_dock_method(method: &str) -> Result<DockMethod, HostProtocolError> {
+    match method {
+        "setBadgeCount" => Ok(DockMethod::SetBadgeCount),
+        "setBadgeText" => Ok(DockMethod::SetBadgeText),
+        "setProgress" => Ok(DockMethod::SetProgress),
+        "setMenu" => Ok(DockMethod::SetMenu),
+        "setJumpList" => Ok(DockMethod::SetJumpList),
+        "requestAttention" => Ok(DockMethod::RequestAttention),
+        _ => Err(HostProtocolError::invalid_argument(
+            "method",
+            "must be a known Dock method",
             host_protocol::DOCK_IS_SUPPORTED_METHOD,
         )),
     }
@@ -168,7 +194,8 @@ fn platform_dock_method_supported(method: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{dock_method_supported, LinuxSession};
+    use super::{decode_method, dock_method_supported, LinuxSession};
+    use serde_json::json;
 
     #[test]
     fn detects_wayland_sessions() {
@@ -224,5 +251,15 @@ mod tests {
             assert!(!dock_method_supported("setMenu"));
             assert!(!dock_method_supported("setJumpList"));
         }
+    }
+
+    #[test]
+    fn dock_support_rejects_blank_and_unknown_methods() {
+        assert!(decode_method(Some(json!({ "method": "" }))).is_err());
+        assert!(decode_method(Some(json!({ "method": "missing" }))).is_err());
+        assert_eq!(
+            decode_method(Some(json!({ "method": "setBadgeCount" }))).expect("method"),
+            "setBadgeCount"
+        );
     }
 }

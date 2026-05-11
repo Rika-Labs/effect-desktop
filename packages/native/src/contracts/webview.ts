@@ -21,7 +21,8 @@ export type WebViewPlatform = Schema.Schema.Type<typeof WebViewPlatform>
 export type WebViewRuntimeMode = Schema.Schema.Type<typeof WebViewRuntimeMode>
 export type WebViewCapabilityName = Schema.Schema.Type<typeof WebViewCapabilityName>
 const WebViewNavigationUrl = BridgeSafeNonEmptyString.check(
-  Schema.isPattern(/^(?!javascript:|data:|vbscript:|blob:|file:)[\s\S]*$/iu)
+  Schema.isPattern(/^(?!javascript:|data:|vbscript:|blob:|file:)[\s\S]*$/iu),
+  Schema.makeFilter((value) => isAbsoluteUrl(value) || "must be an absolute URL")
 )
 const WebViewNavigationBlockedReason = BridgeSafeString
 const WebViewOrigin = BridgeSafeNonEmptyString.check(
@@ -99,6 +100,15 @@ export class WebViewNavigationBlockedEvent extends Schema.Class<WebViewNavigatio
   "WebViewNavigationBlockedEvent"
 )({
   webview: WebViewResource.schema,
-  url: Schema.String,
+  url: WebViewNavigationUrl,
   reason: WebViewNavigationBlockedReason
 }) {}
+
+const isAbsoluteUrl = (value: string): boolean => {
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol.length > 1
+  } catch {
+    return false
+  }
+}

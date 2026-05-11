@@ -1110,6 +1110,52 @@ test("WebView bridge client rejects control-byte navigation-blocked reasons", as
   expect(Exit.isFailure(exit)).toBe(true)
 })
 
+test("WebView bridge client rejects invalid navigation-blocked event URLs", async () => {
+  const exchange: ApiClientExchange = {
+    request: (request) =>
+      Effect.succeed(
+        request.method === "WebView.create"
+          ? { kind: "success", payload: webviewHandle }
+          : { kind: "success", payload: undefined }
+      ),
+    subscribe: (method) =>
+      method === "WebView.NavigationBlocked"
+        ? Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              timestamp: 1710000000201,
+              traceId: "event-trace",
+              method,
+              payload: {
+                webview: webviewHandle,
+                url: "not a url",
+                reason: "origin not allowed"
+              }
+            })
+          )
+        : Stream.empty,
+    resource: {
+      dispose: () => Effect.void
+    }
+  }
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.create()
+      return yield* webview.onNavigationBlocked().pipe(Stream.take(1), Stream.runCollect)
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          WebViewLive,
+          makeWebViewBridgeClientLayer(exchange, { nextTraceId: () => "trace" })
+        )
+      )
+    )
+  )
+
+  expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+})
+
 test("WebView bridge client rejects unsafe navigation inputs before transport", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const exchange = webViewExchange(requests, () => ({
@@ -3038,6 +3084,26 @@ test("Path bridge client rejects NUL-bearing host output as InvalidOutput", asyn
   }
 })
 
+test("Path bridge client rejects relative canonical paths from host as InvalidOutput", async () => {
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Path
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          PathLive,
+          makePathBridgeClientLayer(
+            pathExchange([], () => ({ kind: "success", payload: { path: "relative/path" } }))
+          )
+        )
+      )
+    )
+  )
+
+  const exit = await Effect.runPromiseExit(client.home())
+  expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+})
+
 test("ProtocolApi declares the Phase 8 Protocol method surface", () => {
   expect(ProtocolApi.tag).toBe("Protocol")
   expect([...ProtocolMethodNames]).toEqual(expectedProtocolMethods)
@@ -4199,6 +4265,54 @@ test("PowerMonitor bridge client decodes power event streams", async () => {
     new PowerMonitorSourceChangedEvent({ source: "battery" })
   ])
   expect(result.sourceSupported).toBe(true)
+})
+
+test("PowerMonitor bridge client rejects blank event reasons as InvalidOutput", async () => {
+  const cases: ReadonlyArray<{
+    readonly method: "PowerMonitor.Suspend" | "PowerMonitor.Resume" | "PowerMonitor.Shutdown"
+  }> = [
+    { method: "PowerMonitor.Suspend" },
+    { method: "PowerMonitor.Resume" },
+    { method: "PowerMonitor.Shutdown" }
+  ]
+
+  for (const { method } of cases) {
+    const exchange: ApiClientExchange = {
+      request: (request) =>
+        request.method === "PowerMonitor.isSupported"
+          ? Effect.succeed({ kind: "success" as const, payload: { supported: true } })
+          : Effect.die(`unexpected PowerMonitor request: ${request.method}`),
+      subscribe: (eventMethod) =>
+        eventMethod === method
+          ? Stream.make(
+              new HostProtocolEventEnvelope({
+                kind: "event",
+                timestamp: 1710000000610,
+                traceId: "event-trace",
+                method: eventMethod,
+                payload: { reason: "" }
+              })
+            )
+          : Stream.empty,
+      resource: { dispose: () => Effect.void }
+    }
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const power = yield* PowerMonitor
+        return yield* Effect.exit(
+          method === "PowerMonitor.Suspend"
+            ? power.onSuspend().pipe(Stream.take(1), Stream.runCollect)
+            : method === "PowerMonitor.Resume"
+              ? power.onResume().pipe(Stream.take(1), Stream.runCollect)
+              : power.onShutdown().pipe(Stream.take(1), Stream.runCollect)
+        )
+      }).pipe(
+        Effect.provide(Layer.provide(PowerMonitorLive, makePowerMonitorBridgeClientLayer(exchange)))
+      )
+    )
+
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+  }
 })
 
 test("unsupported PowerMonitor client exposes support checks and typed event stream failures", async () => {

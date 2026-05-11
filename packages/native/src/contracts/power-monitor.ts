@@ -12,22 +12,24 @@ export const PowerMonitorSource = Schema.Literals(["ac", "battery", "unknown"])
 export type PowerMonitorMethod = Schema.Schema.Type<typeof PowerMonitorMethod>
 export type PowerMonitorSource = Schema.Schema.Type<typeof PowerMonitorSource>
 
+const PowerMonitorReason = Schema.NonEmptyString
+
 export class PowerMonitorSuspendEvent extends Schema.Class<PowerMonitorSuspendEvent>(
   "PowerMonitorSuspendEvent"
 )({
-  reason: Schema.optionalKey(Schema.String)
+  reason: Schema.optionalKey(PowerMonitorReason)
 }) {}
 
 export class PowerMonitorResumeEvent extends Schema.Class<PowerMonitorResumeEvent>(
   "PowerMonitorResumeEvent"
 )({
-  reason: Schema.optionalKey(Schema.String)
+  reason: Schema.optionalKey(PowerMonitorReason)
 }) {}
 
 export class PowerMonitorShutdownEvent extends Schema.Class<PowerMonitorShutdownEvent>(
   "PowerMonitorShutdownEvent"
 )({
-  reason: Schema.optionalKey(Schema.String)
+  reason: Schema.optionalKey(PowerMonitorReason)
 }) {}
 
 export class PowerMonitorSourceChangedEvent extends Schema.Class<PowerMonitorSourceChangedEvent>(
