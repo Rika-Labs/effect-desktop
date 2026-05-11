@@ -260,6 +260,46 @@ test("desktop check --production --json emits structured config-loading failures
   }
 })
 
+test("desktop check --production rejects duplicate config flags before loading config", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-"))
+  try {
+    const stdout: string[] = []
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: [
+          "check",
+          "--production",
+          "--config",
+          "first.config.ts",
+          "--config",
+          "second.config.ts"
+        ],
+        cwd: directory,
+        writeStdout: (text) => {
+          stdout.push(text)
+        },
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(stdout.join("")).toBe("")
+    expect(payload.tag).toBe("CliUsageError")
+    expect(payload.message).toContain("--config")
+    expect(payload.message).toContain("at most once")
+    expect(stderr.join("")).not.toContain("missing.config")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop check --production rejects missing app metadata before security checks", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-"))
   try {
@@ -2765,6 +2805,47 @@ test("desktop sign Authenticode-signs Windows MSI with RFC 3161 timestamp", asyn
     expect(calls[1]).toContain(
       "/tr http://timestamp.digicert.com /td SHA256 /sha1 A1B2C3D4E5F60718293A4B5C6D7E8F9012345678"
     )
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop sign rejects invalid Windows timestamp URLs before signtool", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      signing: {
+        windows: {
+          thumbprint: "A1B2C3D4E5F60718293A4B5C6D7E8F9012345678",
+          timestampUrl: "not a url"
+        }
+      }
+    })
+    await writePackagedArtifactFixture(directory, "windows-x64", "msi")
+    const calls: string[] = []
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["sign", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        hostTarget: "windows-x64",
+        signCommandRunner: (invocation) =>
+          Effect.sync(() => {
+            calls.push(invocation.step)
+          }),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const error = JSON.parse(stderr.join("")) as { readonly tag: string; readonly message: string }
+    expect(exitCode).toBe(1)
+    expect(calls).toEqual([])
+    expect(error.tag).toBe("SignConfigError")
+    expect(error.message).toContain("signing.windows.timestampUrl")
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

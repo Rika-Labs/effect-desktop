@@ -381,9 +381,7 @@ const signWindowsArtifact = (
 > =>
   Effect.gen(function* () {
     const windows = plan.config.signing?.windows
-    const timestampUrl =
-      (yield* readOptionalString(windows?.timestampUrl, "signing.windows.timestampUrl")) ??
-      DEFAULT_TIMESTAMP_URL
+    const timestampUrl = yield* readWindowsTimestampUrl(windows?.timestampUrl)
     const credential = yield* windowsCredentialArgs(windows)
     const steps: SignStepReport[] = []
     const unblockStep = yield* runToolStep(
@@ -786,6 +784,37 @@ const windowsCredentialArgs = (
       })
     )
   })
+
+const readWindowsTimestampUrl = (value: unknown): Effect.Effect<string, SignConfigError, never> =>
+  readOptionalString(value, "signing.windows.timestampUrl").pipe(
+    Effect.flatMap((timestampUrl) =>
+      timestampUrl === undefined
+        ? Effect.succeed(DEFAULT_TIMESTAMP_URL)
+        : validateWindowsTimestampUrl(timestampUrl)
+    )
+  )
+
+const validateWindowsTimestampUrl = (
+  timestampUrl: string
+): Effect.Effect<string, SignConfigError, never> => {
+  try {
+    const parsed = new URL(timestampUrl)
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return Effect.succeed(timestampUrl)
+    }
+  } catch {
+    // Fall through to the typed config error below.
+  }
+
+  return Effect.fail(
+    new SignConfigError({
+      field: "signing.windows.timestampUrl",
+      message: "signing.windows.timestampUrl must be an http or https URL",
+      remediation:
+        "Remove signing.windows.timestampUrl to use the default timestamp service, or set it to an http or https RFC 3161 timestamp URL."
+    })
+  )
+}
 
 const WINDOWS_SHA1_THUMBPRINT_PATTERN = /^[0-9a-fA-F]{40}$/u
 

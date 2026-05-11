@@ -527,7 +527,7 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
       return 0
     }
 
-    const usageError = findJsonValueFlagUsageError(options.argv)
+    const usageError = findValueFlagUsageError(options.argv)
     if (usageError !== undefined) {
       options.writeStderr(`${JSON.stringify(formatCliUsageError(usageError), null, 2)}\n`)
       return 1
@@ -899,20 +899,27 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
 const isRootHelp = (argv: readonly string[]): boolean =>
   argv.length === 1 && (argv[0] === "--help" || argv[0] === "-h")
 
-const findJsonValueFlagUsageError = (argv: readonly string[]): CliUsageError | undefined => {
-  if (!argv.includes("--json")) {
-    return undefined
-  }
-
+const findValueFlagUsageError = (argv: readonly string[]): CliUsageError | undefined => {
+  const occurrences = new Map<string, number>()
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
     if (arg === undefined || !JSON_VALUE_FLAGS.has(arg)) {
       continue
     }
 
+    occurrences.set(arg, (occurrences.get(arg) ?? 0) + 1)
     const value = argv[index + 1]
-    if (value === undefined || value.startsWith("--")) {
+    if (argv.includes("--json") && (value === undefined || value.startsWith("--"))) {
       return new CliUsageError(`${arg} requires a value`)
+    }
+    if (value !== undefined && !value.startsWith("--")) {
+      index += 1
+    }
+  }
+
+  for (const [flag, count] of occurrences) {
+    if (count > 1) {
+      return new CliUsageError(`${flag} must be provided at most once`)
     }
   }
 
