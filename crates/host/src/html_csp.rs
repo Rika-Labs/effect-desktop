@@ -59,7 +59,11 @@ pub(crate) fn rewrite_with_nonce(
                         styles.fetch_add(1, Ordering::Relaxed);
                         Ok(())
                     }),
-                    element!("link[rel=stylesheet]", |el| {
+                    element!("link[rel]", |el| {
+                        if !is_stylesheet_rel(&el.get_attribute("rel")) {
+                            return Ok(());
+                        }
+
                         el.set_attribute("nonce", &nonce_value)?;
                         links.fetch_add(1, Ordering::Relaxed);
                         Ok(())
@@ -80,6 +84,16 @@ pub(crate) fn rewrite_with_nonce(
         style_count: styles.load(Ordering::Relaxed),
         link_count: links.load(Ordering::Relaxed),
     })
+}
+
+fn is_stylesheet_rel(rel: &Option<String>) -> bool {
+    rel.as_deref()
+        .map(|value| {
+            value
+                .split_ascii_whitespace()
+                .any(|token| token.eq_ignore_ascii_case("stylesheet"))
+        })
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -143,6 +157,17 @@ mod tests {
     #[test]
     fn stylesheet_link_receives_nonce() {
         let input = br#"<link rel="stylesheet" href="/_next/static/x.css">"#;
+        let outcome = rewrite_with_nonce(input, &nonce()).expect("rewrite should succeed");
+
+        let body = std::str::from_utf8(&outcome.bytes).expect("utf-8");
+        assert!(body.contains(r#"href="/_next/static/x.css""#));
+        assert!(body.contains(r#"nonce="nonce-x""#));
+        assert_eq!(outcome.link_count, 1);
+    }
+
+    #[test]
+    fn stylesheet_link_token_list_receives_nonce() {
+        let input = br#"<link rel="preload stylesheet" href="/_next/static/x.css">"#;
         let outcome = rewrite_with_nonce(input, &nonce()).expect("rewrite should succeed");
 
         let body = std::str::from_utf8(&outcome.bytes).expect("utf-8");
