@@ -1,6 +1,6 @@
 {
   "name": "@effect-desktop/solid",
-  "version": "0.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "Solid primitives for Effect Desktop app-scoped RPC clients.",
   "license": "MIT OR Apache-2.0",

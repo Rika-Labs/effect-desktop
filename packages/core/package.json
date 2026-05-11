@@ -1,6 +1,6 @@
 {
   "name": "@effect-desktop/core",
-  "version": "0.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "Effect-first runtime primitives, services, resources, permissions, telemetry, and storage for Effect Desktop.",
   "license": "MIT OR Apache-2.0",

@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises"
+import { readdir, readFile } from "node:fs/promises"
 import { isAbsolute, join, normalize } from "node:path"
 
 import { Data, Effect } from "effect"
@@ -47,6 +47,7 @@ export interface SemverGuardReport {
   readonly releaseKind: SemverReleaseKind
   readonly apiChanges: readonly SemverApiChange[]
   readonly appendixCRows: readonly string[]
+  readonly packageVersions: readonly SemverPackageVersion[]
 }
 
 export interface SemverApiChange {
@@ -54,6 +55,12 @@ export interface SemverApiChange {
   readonly symbol: string
   readonly kind: PublicApiChange["kind"]
   readonly classification: SemverChangeClassification
+}
+
+export interface SemverPackageVersion {
+  readonly name: string
+  readonly version: string
+  readonly path: string
 }
 
 export class SemverGuardFileError extends Data.TaggedError("SemverGuardFileError")<{
@@ -95,6 +102,8 @@ export const runSemverGuard = (
     )
     yield* validateManifest(manifest)
     yield* validateAppendixCRows(options.cwd, manifest)
+    const packageVersions = yield* readPackageVersions(options.cwd)
+    yield* validatePackageVersions(manifest, packageVersions)
 
     const apiReport = yield* readPublicApiReport(options, manifest.publicApiSnapshots)
     const apiChanges = apiReport.changes.map(classifyApiChange)
@@ -103,7 +112,8 @@ export const runSemverGuard = (
       release: manifest.release,
       releaseKind: manifest.releaseKind,
       apiChanges,
-      appendixCRows: manifest.appendixCRows
+      appendixCRows: manifest.appendixCRows,
+      packageVersions
     }
 
     if (!report.passed) {
@@ -124,6 +134,7 @@ export const formatSemverGuardReport = (report: SemverGuardReport): string =>
     `status            ${report.passed ? "passed" : "failed"}`,
     `release           ${report.release}`,
     `kind              ${report.releaseKind}`,
+    `packages          ${report.packageVersions.length}`,
     `api changes       ${report.apiChanges.length}`,
     `appendix C rows   ${report.appendixCRows.length}`,
     ...report.apiChanges.map(
@@ -219,6 +230,64 @@ const validateAppendixCRows = (
       }
     }
   })
+
+const validatePackageVersions = (
+  manifest: SemverPolicyManifest,
+  packageVersions: readonly SemverPackageVersion[]
+): Effect.Effect<void, SemverGuardManifestError, never> => {
+  const mismatches = packageVersions.filter((pkg) => pkg.version !== manifest.release)
+  if (mismatches.length === 0) {
+    return Effect.void
+  }
+  return Effect.fail(
+    new SemverGuardManifestError({
+      message: `semver release ${manifest.release} does not match package versions: ${mismatches
+        .map((pkg) => `${pkg.name}@${pkg.version}`)
+        .join(", ")}`
+    })
+  )
+}
+
+const readPackageVersions = (
+  cwd: string
+): Effect.Effect<readonly SemverPackageVersion[], SemverGuardError, never> =>
+  Effect.gen(function* () {
+    const packageRoot = join(cwd, "packages")
+    const entries = yield* readDirectory(packageRoot)
+    const versions: SemverPackageVersion[] = []
+    for (const entry of entries.toSorted()) {
+      const path = `packages/${entry}/package.json`
+      const manifest = yield* readJson<unknown>(join(cwd, path)).pipe(
+        Effect.flatMap((value) => parsePackageManifest(value, path))
+      )
+      versions.push(manifest)
+    }
+    return versions
+  })
+
+const parsePackageManifest = (
+  value: unknown,
+  path: string
+): Effect.Effect<SemverPackageVersion, SemverGuardManifestError, never> => {
+  if (!isSemverRecord(value)) {
+    return Effect.fail(new SemverGuardManifestError({ message: `${path} must be a JSON object` }))
+  }
+  if (typeof value["name"] !== "string" || value["name"].length === 0) {
+    return Effect.fail(
+      new SemverGuardManifestError({ message: `${path} must declare a package name` })
+    )
+  }
+  if (typeof value["version"] !== "string" || !/^\d+\.\d+\.\d+$/.test(value["version"])) {
+    return Effect.fail(
+      new SemverGuardManifestError({ message: `${path} must declare a semantic version` })
+    )
+  }
+  return Effect.succeed({
+    name: value["name"],
+    version: value["version"],
+    path
+  })
+}
 
 const classifyApiChange = (change: PublicApiChange): SemverApiChange => ({
   packageName: change.packageName,
@@ -411,6 +480,20 @@ const readText = (path: string): Effect.Effect<string, SemverGuardFileError, nev
         operation: "read",
         path,
         message: `failed to read ${path}`,
+        cause
+      })
+  })
+
+const readDirectory = (
+  path: string
+): Effect.Effect<readonly string[], SemverGuardFileError, never> =>
+  Effect.tryPromise({
+    try: () => readdir(path),
+    catch: (cause) =>
+      new SemverGuardFileError({
+        operation: "readdir",
+        path,
+        message: `failed to read directory ${path}`,
         cause
       })
   })

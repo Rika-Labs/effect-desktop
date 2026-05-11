@@ -1,6 +1,6 @@
 {
   "name": "@effect-desktop/vite",
-  "version": "0.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "Vite plugin for Effect Desktop: splits app.ts into renderer and runtime chunks, spawns the runtime as a child process during vite dev, and pipes effect/unstable/socket frames over the Vite HMR WebSocket.",
   "license": "MIT OR Apache-2.0",

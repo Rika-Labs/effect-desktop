@@ -1,6 +1,6 @@
 {
   "name": "@effect-desktop/native",
-  "version": "0.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "TypeScript-facing native desktop services backed by the Effect Desktop host.",
   "license": "MIT OR Apache-2.0",

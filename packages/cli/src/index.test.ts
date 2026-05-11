@@ -1955,7 +1955,7 @@ test("desktop check --a11y rejects contrast below the WCAG floor", async () => {
 test("semver guard verifies additive release posture", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
   try {
-    await writeSemverFixture(directory)
+    await writeSemverFixture(directory, { packageVersion: "1.1.0" })
     const report = await Effect.runPromise(
       runSemverGuard({
         cwd: directory,
@@ -1965,6 +1965,26 @@ test("semver guard verifies additive release posture", async () => {
 
     expect(report.passed).toBe(true)
     expect(report.appendixCRows).toHaveLength(4)
+    expect(report.packageVersions.map((pkg) => pkg.version)).toEqual(["1.1.0", "1.1.0"])
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("semver guard rejects package version drift from the release manifest", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+  try {
+    await writeSemverFixture(directory, { packageVersion: "0.0.0" })
+    const error = await Effect.runPromise(
+      runSemverGuard({
+        cwd: directory,
+        publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+      }).pipe(Effect.flip)
+    )
+
+    expect((error as { readonly _tag: string })._tag).toBe("SemverGuardManifestError")
+    expect((error as { readonly message: string }).message).toContain("@effect-desktop/core@0.0.0")
+    expect((error as { readonly message: string }).message).toContain("create-effect-desktop@0.0.0")
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -1978,6 +1998,7 @@ test("semver guard rejects manifest with missing bridgeEnvelopePolicy", async ()
       throw new Error("invalid semver manifest fixture")
     }
     await writeSemverFixture(directory, {
+      packageVersion: "1.1.0",
       manifest: { ...manifest, bridgeEnvelopePolicy: undefined }
     })
     const error = await Effect.runPromise(
@@ -2002,6 +2023,7 @@ test("semver guard rejects manifest with missing deprecationPolicy", async () =>
       throw new Error("invalid semver manifest fixture")
     }
     await writeSemverFixture(directory, {
+      packageVersion: "1.1.0",
       manifest: { ...manifest, deprecationPolicy: undefined }
     })
     const error = await Effect.runPromise(
@@ -2026,6 +2048,7 @@ test("semver guard passes manifest publicApiSnapshots to the API checker", async
       throw new Error("invalid semver manifest fixture")
     }
     await writeSemverFixture(directory, {
+      packageVersion: "1.1.0",
       manifest: { ...manifest, publicApiSnapshots: "api/custom-snapshots" }
     })
     let observedSnapshotRoot = ""
@@ -2054,6 +2077,7 @@ test("semver guard rejects escaping publicApiSnapshots roots", async () => {
       throw new Error("invalid semver manifest fixture")
     }
     await writeSemverFixture(directory, {
+      packageVersion: "1.1.0",
       manifest: { ...manifest, publicApiSnapshots: "../api/snapshots" }
     })
 
@@ -2079,6 +2103,7 @@ test("semver guard rejects missing Appendix C rows", async () => {
       throw new Error("invalid semver manifest fixture")
     }
     await writeSemverFixture(directory, {
+      packageVersion: "1.1.0",
       manifest: { ...manifest, appendixCRows: ["C.54", "C.404"] }
     })
     const exit = await Effect.runPromiseExit(
@@ -2097,7 +2122,7 @@ test("semver guard rejects missing Appendix C rows", async () => {
 test("semver guard allows additive public API changes and blocks removals", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
   try {
-    await writeSemverFixture(directory)
+    await writeSemverFixture(directory, { packageVersion: "1.1.0" })
     const additive = await Effect.runPromise(
       runSemverGuard({
         cwd: directory,
@@ -2126,6 +2151,7 @@ test("semver guard rejects additive public API changes in patch releases", async
       throw new Error("invalid semver manifest fixture")
     }
     await writeSemverFixture(directory, {
+      packageVersion: "1.1.1",
       manifest: { ...manifest, release: "1.1.1", releaseKind: "patch" }
     })
 
@@ -2150,6 +2176,7 @@ test("semver guard rejects release kind drift from the semantic version", async 
       throw new Error("invalid semver manifest fixture")
     }
     await writeSemverFixture(directory, {
+      packageVersion: "1.1.1",
       manifest: { ...manifest, release: "1.1.1", releaseKind: "minor" }
     })
 
@@ -5596,10 +5623,13 @@ const writeSemverFixture = async (
   overrides: {
     readonly manifest?: unknown
     readonly matrix?: unknown
+    readonly packageVersion?: string
   } = {}
 ): Promise<void> => {
   await mkdir(join(root, "release"), { recursive: true })
   await mkdir(join(root, "docs"), { recursive: true })
+  await mkdir(join(root, "packages", "core"), { recursive: true })
+  await mkdir(join(root, "packages", "create-effect-desktop"), { recursive: true })
   await writeFile(
     join(root, "release", "semver.json"),
     JSON.stringify(overrides.manifest ?? semverManifestFixture(), null, 2)
@@ -5607,6 +5637,15 @@ const writeSemverFixture = async (
   await writeFile(
     join(root, "docs", "verification-matrix.json"),
     JSON.stringify(overrides.matrix ?? semverMatrixFixture(), null, 2)
+  )
+  const packageVersion = overrides.packageVersion ?? "0.0.0"
+  await writeFile(
+    join(root, "packages", "core", "package.json"),
+    JSON.stringify({ name: "@effect-desktop/core", version: packageVersion }, null, 2)
+  )
+  await writeFile(
+    join(root, "packages", "create-effect-desktop", "package.json"),
+    JSON.stringify({ name: "create-effect-desktop", version: packageVersion }, null, 2)
   )
 }
 

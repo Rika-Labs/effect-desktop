@@ -1,6 +1,6 @@
 {
   "name": "@effect-desktop/test",
-  "version": "0.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "Headless runtime, mock host, mock bridge, and in-memory adapters for Effect Desktop tests.",
   "license": "MIT OR Apache-2.0",

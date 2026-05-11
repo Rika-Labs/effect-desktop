@@ -235,6 +235,7 @@ export {
   type SemverGuardFileError,
   type SemverGuardManifestError,
   type SemverGuardOptions,
+  type SemverPackageVersion,
   type SemverGuardPolicyError,
   type SemverGuardReport,
   type SemverPolicyManifest,
