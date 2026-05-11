@@ -25,7 +25,8 @@ import {
   rpcCapability,
   rpcEndpointKind,
   rpcEndpointName,
-  rpcSupport
+  rpcSupport,
+  makeHostProtocolInvalidOutputError
 } from "./index.js"
 
 const FIXTURE_DIR = fileURLToPath(
@@ -119,6 +120,56 @@ test("host protocol errors reject recoverability values that contradict tag poli
       })
     ).toThrow()
   }
+})
+
+test("stream envelopes reject mixed payload and errors", () => {
+  const error = makeHostProtocolInvalidOutputError("Project.stream", "bad")
+  const streamTargets: ReadonlyArray<unknown> = [
+    {
+      kind: "stream",
+      id: "request-1",
+      resourceId: "stream-1",
+      timestamp: 1710000000000,
+      traceId: "trace-mixed-stream",
+      payload: { frame: "data" }
+    },
+    {
+      kind: "stream",
+      id: "request-1",
+      resourceId: "stream-1",
+      timestamp: 1710000000000,
+      traceId: "trace-mixed-stream",
+      error
+    },
+    {
+      kind: "stream",
+      id: "request-1",
+      resourceId: "stream-1",
+      timestamp: 1710000000000,
+      traceId: "trace-mixed-stream",
+      payload: { frame: "data" },
+      error
+    },
+    {
+      kind: "stream",
+      resourceId: "stream-1",
+      timestamp: 1710000000000,
+      traceId: "trace-mixed-stream",
+      payload: { frame: "data" },
+      error
+    }
+  ]
+
+  expect(decodeHostProtocolEnvelope(streamTargets[0])).toMatchObject({
+    kind: "stream",
+    payload: { frame: "data" }
+  })
+  expect(decodeHostProtocolEnvelope(streamTargets[1])).toMatchObject({
+    kind: "stream",
+    error
+  })
+  expect(() => decodeHostProtocolEnvelope(streamTargets[2])).toThrow()
+  expect(() => decodeHostProtocolEnvelope(streamTargets[3])).toThrow()
 })
 
 test("renderer reconnect payload schemas decode canonical shapes", () => {

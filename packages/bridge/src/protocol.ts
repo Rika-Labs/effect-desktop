@@ -894,6 +894,22 @@ export class HostProtocolStreamByResourceEnvelope extends Schema.Class<HostProto
   error: Schema.optionalKey(HostProtocolError)
 }) {}
 
+const StreamByRequestEnvelope = HostProtocolStreamByRequestEnvelope.check(
+  Schema.makeFilter<HostProtocolStreamByRequestEnvelope>((value) =>
+    Object.hasOwn(value, "payload") && Object.hasOwn(value, "error")
+      ? "stream envelope must not contain both payload and error"
+      : true
+  )
+)
+
+const StreamByResourceEnvelope = HostProtocolStreamByResourceEnvelope.check(
+  Schema.makeFilter<HostProtocolStreamByResourceEnvelope>((value) =>
+    Object.hasOwn(value, "payload") && Object.hasOwn(value, "error")
+      ? "stream envelope must not contain both payload and error"
+      : true
+  )
+)
+
 export class HostProtocolCancelByRequestEnvelope extends Schema.Class<HostProtocolCancelByRequestEnvelope>(
   "HostProtocolCancelByRequestEnvelope"
 )({
@@ -918,8 +934,8 @@ export const HostProtocolEnvelope = Schema.Union([
   HostProtocolRequestEnvelope,
   HostProtocolResponseEnvelope,
   HostProtocolEventEnvelope,
-  HostProtocolStreamByRequestEnvelope,
-  HostProtocolStreamByResourceEnvelope,
+  StreamByRequestEnvelope,
+  StreamByResourceEnvelope,
   HostProtocolCancelByRequestEnvelope,
   HostProtocolCancelByResourceEnvelope
 ])

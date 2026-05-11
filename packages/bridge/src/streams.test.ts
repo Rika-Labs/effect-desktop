@@ -162,6 +162,29 @@ test("Streams rejects duplicate active request ids", async () => {
   expectFailureTag(firstExit, "StreamClosed")
 })
 
+test("Streams rejects empty generated stream ids before registry state is created", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamEmptyId")
+  const registry = makeBridgeStreamRegistry()
+  const runtime = Streams.withOptions(
+    {
+      nextStreamId: () => "",
+      registry
+    },
+    BridgeRpc.layer(ProjectRpcs)({
+      watch: () => Stream.make(new WatchEvent({ sequence: 1, path: "a" }))
+    })
+  )
+  const client = Client({ project: ProjectRpcs }, streamExchange(runtime, []))
+
+  const exit = await Effect.runPromiseExit(
+    client.project.watch(new WatchInput({ projectId: "project-1" })).pipe(Stream.runCollect)
+  )
+  const snapshot = await Effect.runPromise(registry.snapshot())
+
+  expectFailureTag(exit, "InvalidArgument")
+  expect(snapshot).toEqual([])
+})
+
 test("Streams carries typed stream errors as values in the error channel", async () => {
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamError")
   const runtime = Streams(

@@ -330,6 +330,15 @@ const streamDispatch = (
 
       yield* options.registry.gcExpired(options.now())
       const streamId = options.nextStreamId()
+      if (typeof streamId !== "string" || streamId.length === 0) {
+        return Stream.fail(
+          makeHostProtocolInvalidArgumentError(
+            "streamId",
+            "stream id must be non-empty",
+            request.method
+          )
+        )
+      }
       yield* options.registry.register(streamId)
       const queue = yield* makeStreamQueue(bound.spec)
       yield* syncBackpressureMetrics(options.registry, streamId, queue)

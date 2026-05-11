@@ -843,22 +843,35 @@ const decodeUnframeStreamInput = (
   input: TransportUnframeStreamInput,
   operation: string
 ): Effect.Effect<TransportUnframeStreamInput, TransportInvalidArgumentError, never> =>
-  Schema.decodeUnknownEffect(
-    Schema.Struct({
-      scheme: TransportScheme,
-      maxFrameBytes: Schema.optionalKey(PositiveInt),
-      frameQueueCapacity: Schema.optionalKey(PositiveInt)
-    })
-  )({
-    scheme: input.scheme,
-    ...(input.maxFrameBytes === undefined ? {} : { maxFrameBytes: input.maxFrameBytes }),
-    ...(input.frameQueueCapacity === undefined
-      ? {}
-      : { frameQueueCapacity: input.frameQueueCapacity })
-  }).pipe(
-    Effect.as(input),
-    Effect.mapError((error) => invalidArgument(operation, "input", error))
-  )
+  Effect.gen(function* () {
+    const decoded = yield* Schema.decodeUnknownEffect(
+      Schema.Struct({
+        scheme: TransportScheme,
+        maxFrameBytes: Schema.optionalKey(PositiveInt),
+        frameQueueCapacity: Schema.optionalKey(PositiveInt)
+      })
+    )({
+      scheme: input?.scheme,
+      ...(input?.maxFrameBytes === undefined ? {} : { maxFrameBytes: input.maxFrameBytes }),
+      ...(input?.frameQueueCapacity === undefined
+        ? {}
+        : { frameQueueCapacity: input.frameQueueCapacity })
+    }).pipe(Effect.mapError((error) => invalidArgument(operation, "input", error)))
+
+    if (!isStreamLike(input?.chunks)) {
+      return yield* Effect.fail(
+        invalidArgument(operation, "chunks", "chunks must be an Effect Stream")
+      )
+    }
+
+    return {
+      ...decoded,
+      chunks: input.chunks
+    } satisfies TransportUnframeStreamInput
+  })
+
+const isStreamLike = (value: unknown): value is Stream.Stream<Uint8Array, TransportError, never> =>
+  typeof value === "object" && value !== null && "pipe" in value && typeof value.pipe === "function"
 
 const invalidArgument = (
   operation: string,

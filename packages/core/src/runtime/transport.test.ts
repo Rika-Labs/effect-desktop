@@ -184,6 +184,28 @@ test("unframeStream validates frameQueueCapacity", async () => {
   expectFailure(invalid, TransportInvalidArgumentError)
 })
 
+test("Transport service validates unframeStream chunks input", async () => {
+  const transport = await Effect.runPromise(makeTransport())
+  const missing = await Effect.runPromiseExit(
+    transport
+      .unframeStream({ scheme: "length-prefixed" } as unknown as Parameters<
+        typeof transport.unframeStream
+      >[0])
+      .pipe(Stream.take(1), Stream.runCollect)
+  )
+  const malformed = await Effect.runPromiseExit(
+    transport
+      .unframeStream({
+        scheme: "length-prefixed",
+        chunks: { pipe: "not a function" }
+      } as unknown as Parameters<typeof transport.unframeStream>[0])
+      .pipe(Stream.take(1), Stream.runCollect)
+  )
+
+  expectFailure(missing, TransportInvalidArgumentError)
+  expectFailure(malformed, TransportInvalidArgumentError)
+})
+
 test("Transport service returns typed failures for invalid input and bad frames", async () => {
   const transport = await Effect.runPromise(makeTransport())
 
