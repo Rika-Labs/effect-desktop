@@ -11,6 +11,7 @@ import {
   HOST_VERSION_METHOD,
   HostProtocolCancelByRequestEnvelope,
   HostProtocolNotFoundError,
+  HostProtocolRequestEnvelope,
   HostProtocolResponseEnvelope,
   HostProtocolStreamByRequestEnvelope,
   HostProtocolUnsupportedError,
@@ -33,7 +34,6 @@ import {
   type HostHandshakeClient,
   type HostProtocolError,
   type HostProtocolInvalidArgumentError,
-  type HostProtocolRequestEnvelope,
   type HostProtocolStreamEnvelope,
   type HostWindowClient,
   type WindowCreateInput
@@ -160,13 +160,19 @@ export const makeMockHost = (options: MockHostOptions = {}): MockHostApi => {
   }
 
   return Object.freeze({
-    calls: () => calls.slice(),
+    calls: () =>
+      calls.map((call) =>
+        freezeJsonSnapshot({
+          method: call.method,
+          request: cloneHostRequest(call.request)
+        })
+      ),
     windows: () => new Map(windows),
     request: (request) =>
       Effect.gen(function* () {
         calls.push({
           method: request.method,
-          request
+          request: cloneHostRequest(request)
         })
 
         const fixture = options.fixtures?.[request.method] ?? defaultFixture(request.method)
@@ -322,7 +328,15 @@ export const makeMockBridge = (options: MockBridgeOptions = {}): MockBridgeApi =
   return Object.freeze({
     exchange,
     client: (contracts, clientOptions = {}) => Client(contracts, exchange, clientOptions),
-    calls: () => calls.slice(),
+    calls: () =>
+      calls.map((call) =>
+        freezeJsonSnapshot({
+          method: call.method,
+          payload: cloneJsonPayload(call.payload),
+          traceId: call.traceId,
+          timestamp: call.timestamp
+        })
+      ),
     cancels: () => cancels.slice(),
     disposedResources: () => disposedResources.slice(),
     succeed: (method, payload) =>
@@ -892,10 +906,39 @@ const validateJsonPayload = (
         )
       )
 
+const cloneJsonPayload = (payload: unknown): HeadlessFixturePayload =>
+  structuredClone(payload) as HeadlessFixturePayload
+
+const freezeJsonSnapshot = <Value>(value: Value): Value => {
+  if (value === null || typeof value !== "object") {
+    return value
+  }
+
+  if (ArrayBuffer.isView(value)) {
+    return value
+  }
+
+  for (const child of Object.values(value)) {
+    freezeJsonSnapshot(child)
+  }
+
+  return Object.freeze(value)
+}
+
+const cloneHostRequest = (request: HostProtocolRequestEnvelope): HostProtocolRequestEnvelope =>
+  new HostProtocolRequestEnvelope({
+    kind: request.kind,
+    id: request.id,
+    timestamp: request.timestamp,
+    traceId: request.traceId,
+    method: request.method,
+    payload: cloneJsonPayload(request.payload)
+  })
+
 const recordCall = (calls: MockBridgeCall[], request: HostProtocolRequestEnvelope): void => {
   calls.push({
     method: request.method,
-    payload: request.payload,
+    payload: cloneJsonPayload(request.payload),
     traceId: request.traceId,
     timestamp: request.timestamp
   })
@@ -998,9 +1041,9 @@ const makeMockProcessChild = (
   }
 
   if (fixture.exit !== false) {
-    queueMicrotask(() => {
+    setTimeout(() => {
       finish(processExitStatus(fixture.exit))
-    })
+    }, 0)
   }
 
   return Object.freeze({
@@ -1008,14 +1051,22 @@ const makeMockProcessChild = (
     stdout: readableBytes(fixture.stdout ?? []),
     stderr: readableBytes(fixture.stderr ?? []),
     exited,
-    writeStdin: (chunk: Uint8Array) =>
-      Promise.resolve().then(() => {
-        record.stdin.push(copyBytes(chunk))
-      }),
-    closeStdin: () =>
-      Promise.resolve().then(() => {
-        record.stdinClosed = true
-      }),
+    writeStdin: async (chunk: Uint8Array) => {
+      await Promise.resolve()
+      if (!running) {
+        throw mockNodeError("EINVAL", `MockProcess ${record.input.command} is not running`)
+      }
+
+      record.stdin.push(copyBytes(chunk))
+    },
+    closeStdin: async () => {
+      await Promise.resolve()
+      if (!running) {
+        return
+      }
+
+      record.stdinClosed = true
+    },
     isRunning: () => running,
     terminateTree: () =>
       Promise.resolve().then(() => {
@@ -1126,23 +1177,31 @@ const makeMockPtyChild = (fixture: MockPtyFixture, record: MutableMockPtyOpenRec
   }
 
   if (fixture.exit !== false) {
-    queueMicrotask(() => {
+    setTimeout(() => {
       finish(ptyExitStatus(fixture.exit))
-    })
+    }, 0)
   }
 
   return Object.freeze({
     pid: record.pid === undefined ? Option.none() : Option.some(record.pid),
     output: readableBytes(fixture.output ?? []),
     exited,
-    write: (chunk: Uint8Array) =>
-      Promise.resolve().then(() => {
-        record.writes.push(copyBytes(chunk))
-      }),
-    resize: (size: PtyResizeInput) =>
-      Promise.resolve().then(() => {
-        record.resizes.push(size)
-      }),
+    write: async (chunk: Uint8Array) => {
+      await Promise.resolve()
+      if (!running) {
+        throw mockNodeError("EINVAL", `MockPTY ${record.input.command} is not running`)
+      }
+
+      record.writes.push(copyBytes(chunk))
+    },
+    resize: async (size: PtyResizeInput) => {
+      await Promise.resolve()
+      if (!running) {
+        throw mockNodeError("EINVAL", `MockPTY ${record.input.command} is not running`)
+      }
+
+      record.resizes.push({ rows: size.rows, cols: size.cols })
+    },
     isRunning: () => running,
     terminateTree: () =>
       Promise.resolve().then(() => {
@@ -1185,7 +1244,7 @@ const clonePtyCalls = (calls: readonly MutableMockPtyOpenRecord[]): readonly Moc
     input: call.input,
     pid: call.pid,
     writes: call.writes.map(copyBytes),
-    resizes: call.resizes.slice(),
+    resizes: call.resizes.map((resize) => ({ rows: resize.rows, cols: resize.cols })),
     killedWith: call.killedWith,
     terminateTreeCalls: call.terminateTreeCalls,
     forceKillTreeCalls: call.forceKillTreeCalls

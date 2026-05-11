@@ -6,6 +6,7 @@ import {
   HOST_PING_METHOD,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
+  HostProtocolRequestEnvelope,
   HostProtocolInvalidOutputError,
   HostProtocolNotFoundError,
   makeHostHandshakeClient,
@@ -37,6 +38,7 @@ import {
   makeMemorySecretsSafeStorage,
   makeMemoryFilesystem,
   makeMockBridge,
+  makeMockHost,
   makeMockProcess,
   makeMockPty,
   MemoryFilesystemLive,
@@ -243,6 +245,33 @@ test("MockHost reports unknown window destroy as a typed host error", async () =
   }
 })
 
+test("MockHost calls returns immutable request snapshots", async () => {
+  const host = makeMockHost({ now: () => 1710000000200 })
+  const request = new HostProtocolRequestEnvelope({
+    kind: "request",
+    id: "request-immutable-host",
+    timestamp: 1710000000200,
+    traceId: "trace-immutable-host",
+    method: HOST_PING_METHOD,
+    payload: { path: "before" }
+  })
+
+  await Effect.runPromise(host.request(request))
+  const first = host.calls()
+  const firstCall = first[0]
+  if (firstCall === undefined) {
+    throw new Error("expected MockHost call")
+  }
+  expect(() => {
+    ;(firstCall.request.payload as any).path = "after"
+  }).toThrow()
+  const storedCall = host.calls()[0]
+  if (storedCall === undefined) {
+    throw new Error("expected stored MockHost call")
+  }
+  expect((storedCall.request.payload as any).path).toBe("before")
+})
+
 test("MockHost rejects non-JSON fixture payloads", async () => {
   const exit = await Effect.runPromise(
     Effect.gen(function* () {
@@ -301,6 +330,36 @@ test("MockBridge records typed client calls and returns pinned successes", async
       timestamp: 1710000000400
     }
   ])
+})
+
+test("MockBridge calls returns immutable payload snapshots", async () => {
+  const bridge = makeMockBridge({ now: () => 1710000000401 })
+  await Effect.runPromise(bridge.succeed("Test.method", { ok: true }))
+  await Effect.runPromise(
+    bridge.exchange.request(
+      new HostProtocolRequestEnvelope({
+        kind: "request",
+        id: "request-immutable-bridge",
+        timestamp: 1710000000401,
+        traceId: "trace-immutable-bridge",
+        method: "Test.method",
+        payload: { path: "before" }
+      })
+    )
+  )
+  const first = bridge.calls()
+  const firstCall = first[0]
+  if (firstCall === undefined) {
+    throw new Error("expected MockBridge call")
+  }
+  expect(() => {
+    ;(firstCall.payload as any).path = "after"
+  }).toThrow()
+  const storedCall = bridge.calls()[0]
+  if (storedCall === undefined) {
+    throw new Error("expected stored MockBridge call")
+  }
+  expect((storedCall.payload as any).path).toBe("before")
 })
 
 test("MockBridge rejects pinned success payloads that are not JSON-serializable", async () => {
@@ -790,6 +849,27 @@ test("MockProcess fails loudly when a command has no fixture", async () => {
   }
 })
 
+test("MockProcess rejects stdin writes after process exit", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const process = await Effect.runPromise(
+    makeMockProcess(registry, {
+      processes: [{ command: "cat", exit: { code: 0 } }],
+      permissions: { spawn: ["cat"] }
+    })
+  )
+  const handle = await Effect.runPromise(
+    process.spawn("cat", [], { ownerScope: "stale-process-stdin" })
+  )
+  await Effect.runPromise(handle.exit)
+
+  const exit = await Effect.runPromiseExit(
+    Stream.make(bytes("late")).pipe(Stream.run(handle.stdin))
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  expect(process.calls()[0]?.stdin.map(text)).toEqual([])
+})
+
 test("MockPTY layer emits output, records writes and resizes, and exits", async () => {
   const layerResult = await Effect.runPromise(
     Effect.gen(function* () {
@@ -892,6 +972,29 @@ test("MockPTY fails loudly when a command has no fixture", async () => {
   if (Exit.isFailure(exit)) {
     expect(JSON.stringify(exit.cause.toJSON())).toContain("InvalidArgument")
   }
+})
+
+test("MockPTY rejects writes and resizes after exit", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const pty = await Effect.runPromise(
+    makeMockPty(registry, {
+      ptys: [{ command: "bash", exit: { code: 0 } }],
+      permissions: { spawn: ["bash"] },
+      budgets: { outputCoalesceBytes: 1024, outputCoalesceMs: 1 }
+    })
+  )
+  const handle = await Effect.runPromise(
+    pty.open({ argv: ["bash"], ownerScope: "stale-pty", rows: 24, cols: 80 })
+  )
+  await Effect.runPromise(handle.onExit)
+
+  const writeExit = await Effect.runPromiseExit(handle.write(bytes("late")))
+  const resizeExit = await Effect.runPromiseExit(handle.resize({ rows: 40, cols: 120 }))
+
+  expect(Exit.isFailure(writeExit)).toBe(true)
+  expect(Exit.isFailure(resizeExit)).toBe(true)
+  expect(pty.calls()[0]?.writes.map(text)).toEqual([])
+  expect(pty.calls()[0]?.resizes).toEqual([])
 })
 
 test("HeadlessRuntime layer composes mocks with real registry telemetry and permissions", async () => {
