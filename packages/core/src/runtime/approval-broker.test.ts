@@ -322,6 +322,40 @@ test("ApprovalBroker ask rejects prompt outcomes containing control bytes", asyn
   expectFailure(exit, ApprovalBrokerInvalidArgumentError)
 })
 
+test("ApprovalBroker ask rejects prompt outcomes with invalid decidedAt before decision audit", async () => {
+  const invalidTimestamps = [
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    -1,
+    1.5
+  ]
+
+  for (const decidedAt of invalidTimestamps) {
+    const rows: AuditEvent[] = []
+    const prompt: ApprovalPromptPort = {
+      prompt: (request) =>
+        Effect.succeed({
+          requestId: request.id,
+          outcome: "approved-once",
+          traceId: request.traceId ?? "trace-1",
+          decidedAt,
+          source: "host"
+        } as ApprovalOutcome)
+    }
+    const broker = await Effect.runPromise(
+      makeApprovalBroker({ prompt, audit: memoryAudit(rows), now: () => 1_000 })
+    )
+
+    const exit = await Effect.runPromiseExit(
+      broker.ask(approvalRequest("request-1", "operation", "window-main", "/tmp/app"))
+    )
+
+    expectFailure(exit, ApprovalBrokerInvalidArgumentError)
+    expect(rows.map((row) => row.kind)).toEqual(["approval-requested"])
+  }
+})
+
 const approvalRequest = (
   id: string,
   operation: string,

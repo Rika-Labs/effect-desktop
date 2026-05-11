@@ -10,6 +10,7 @@ const ApprovalMetadataText = Schema.NonEmptyString.check(
   Schema.isPattern(/^[^\x00-\x1F\x7F]+$/)
 )
 const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0))
+const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const ApprovalRisk = Schema.Literals(["low", "medium", "high", "critical"])
 export type ApprovalRisk = typeof ApprovalRisk.Type
 
@@ -40,7 +41,7 @@ export class ApprovalOutcome extends Schema.Class<ApprovalOutcome>("ApprovalOutc
   requestId: ApprovalMetadataText,
   outcome: ApprovalOutcomeKind,
   traceId: ApprovalMetadataText,
-  decidedAt: Schema.Number,
+  decidedAt: NonNegativeInt,
   source: ApprovalMetadataText
 }) {}
 
