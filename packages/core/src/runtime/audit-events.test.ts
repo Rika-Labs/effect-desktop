@@ -6,8 +6,10 @@ import {
   AuditEvent,
   AuditGroupLayer,
   AuditReactivityLayer,
+  approvalAuditEvent,
   makeAuditEvents,
   permissionAuditEvent,
+  secretsAuditEvent,
   type AuditEventsApi
 } from "./audit-events.js"
 import { PermissionActor, type NormalizedCapability } from "./permission-registry.js"
@@ -153,4 +155,57 @@ test("AuditEvents emit is a no-op when audit is undefined", async () => {
     )
   )
   expect(result).toBeUndefined()
+})
+
+test("AuditEvent constructors reject invalid payload timestamps before append", async () => {
+  const invalidTimestamps = [
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    -1
+  ] as const
+
+  for (const timestamp of invalidTimestamps) {
+    expect(() =>
+      permissionAuditEvent({
+        kind: "permission-granted",
+        source: "test",
+        traceId: "trace-1",
+        outcome: "granted",
+        normalizedCapability: filesystemWrite(["/tmp/app"]),
+        actor: new PermissionActor({ kind: "window", id: "window-main" }),
+        timestamp
+      })
+    ).toThrow()
+    expect(() =>
+      approvalAuditEvent({
+        kind: "approval-requested",
+        source: "test",
+        traceId: "trace-1",
+        outcome: "requested",
+        actor: "window-main",
+        timestamp
+      })
+    ).toThrow()
+    expect(() =>
+      secretsAuditEvent({
+        source: "test",
+        traceId: "trace-1",
+        outcome: "accessed",
+        operation: "get",
+        namespace: "default",
+        timestamp
+      })
+    ).toThrow()
+    expect(
+      () =>
+        new AuditEvent({
+          kind: "command-invoked",
+          source: "test",
+          traceId: "trace-1",
+          outcome: "ok",
+          timestamp
+        })
+    ).toThrow()
+  }
 })

@@ -135,6 +135,14 @@ const ensureTraceId = (
     }
 
     const traceId = options.nextTraceId()
+    if (traceId.length === 0) {
+      return yield* Effect.fail(
+        makeHostProtocolInvalidOutputError(
+          request.method,
+          "invalid generated host protocol traceId"
+        )
+      )
+    }
     const timestamp = yield* hostProtocolObjectTimestamp(parsed, request.method)
     yield* emitTraceIdMissing(options.audit, traceId, timestamp, request, parsed.kind)
 

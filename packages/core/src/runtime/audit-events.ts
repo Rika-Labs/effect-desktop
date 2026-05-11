@@ -6,6 +6,7 @@ import { EventGroup, EventJournal, EventLog } from "effect/unstable/eventlog"
 import type { NormalizedCapability, PermissionActor } from "./permission-registry.js"
 
 const NonEmptyString = Schema.NonEmptyString
+const AuditTimestamp = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0))
 
 export const AuditEventKind = Schema.Literals([
   "permission-granted",
@@ -31,7 +32,7 @@ export class AuditEvent extends Schema.Class<AuditEvent>("AuditEvent")({
   source: NonEmptyString,
   traceId: NonEmptyString,
   outcome: NonEmptyString,
-  timestamp: Schema.optionalKey(Schema.Number),
+  timestamp: Schema.optionalKey(AuditTimestamp),
   normalizedCapability: Schema.optionalKey(Schema.Unknown),
   actor: Schema.optionalKey(Schema.Unknown),
   resource: Schema.optionalKey(Schema.String),

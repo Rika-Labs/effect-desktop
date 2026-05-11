@@ -216,6 +216,35 @@ test("host protocol exchange auto-mints missing host response trace IDs and audi
   })
 })
 
+test("host protocol exchange rejects invalid minted trace IDs before auditing", async () => {
+  const rows: AuditEvent[] = []
+  const exchange = createHostProtocolExchange(
+    transport({
+      recv: async () =>
+        new TextEncoder().encode(
+          JSON.stringify({
+            kind: "response",
+            id: "request-1",
+            timestamp: 9
+          })
+        )
+    }),
+    {
+      audit: memoryAudit(rows),
+      nextTraceId: () => ""
+    }
+  )
+
+  const exit = await Effect.runPromiseExit(exchange.request(request()))
+
+  expectFailure(exit, HostProtocolInvalidOutputError)
+  expect(getFailure(exit)).toMatchObject({
+    method: "host.ping",
+    tag: "InvalidOutput"
+  })
+  expect(rows).toEqual([])
+})
+
 test("host protocol exchange maps oversized outbound frames to FrameTooLarge", async () => {
   const exchange = createHostProtocolExchange(
     transport({
