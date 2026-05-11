@@ -323,6 +323,12 @@ export const createFramedTransport = (
   const decoder = new FrameDecoder(options)
   const inputIterator = input[Symbol.asyncIterator]()
   const pendingFrames: Uint8Array[] = []
+  let releaseClosed: () => void = () => {
+    return
+  }
+  const closedSignal = new Promise<"closed">((resolve) => {
+    releaseClosed = () => resolve("closed")
+  })
 
   let inputEnded = false
   let closed = false
@@ -345,7 +351,10 @@ export const createFramedTransport = (
       }
 
       while (!inputEnded && !closed) {
-        const next = await inputIterator.next()
+        const next = await Promise.race([inputIterator.next(), closedSignal])
+        if (next === "closed") {
+          return null
+        }
         if (next.done === true) {
           inputEnded = true
           decoder.finish()
@@ -362,7 +371,11 @@ export const createFramedTransport = (
       return null
     },
     close: async () => {
+      if (closed) {
+        return
+      }
       closed = true
+      releaseClosed()
       await inputIterator.return?.()
     }
   }
@@ -430,25 +443,37 @@ const makeQueuedConnection = (
   inbound: Queue.Queue<Uint8Array, TransportError>,
   outbound: Queue.Queue<Uint8Array, TransportError>,
   operation: string
-): TransportConnection =>
-  Object.freeze({
+): TransportConnection => {
+  let closed = false
+
+  return Object.freeze({
     send: (payload: Uint8Array) =>
-      Queue.offer(outbound, payload.slice()).pipe(
-        Effect.mapError(
-          (error) =>
-            new TransportWriteError({
-              operation: `${operation}.send`,
-              cause: Option.some(error)
-            })
+      Effect.gen(function* () {
+        if (closed) {
+          return yield* Effect.fail(new TransportClosedError({ operation: `${operation}.send` }))
+        }
+        yield* Queue.offer(outbound, payload.slice()).pipe(
+          Effect.mapError(
+            (error) =>
+              new TransportWriteError({
+                operation: `${operation}.send`,
+                cause: Option.some(error)
+              })
+          )
         )
-      ),
+      }),
     receive: Stream.fromQueue(inbound),
     close: () =>
       Effect.gen(function* () {
+        if (closed) {
+          return
+        }
+        closed = true
         yield* Queue.shutdown(inbound)
         yield* Queue.shutdown(outbound)
       })
   })
+}
 
 const readableStreamToAsyncIterable = (
   stream: ReadableStream<Uint8Array>
@@ -737,7 +762,7 @@ const parseContentLength = (headerText: string): number => {
 const decodeHeaderText = (headerBytes: Uint8Array): string => {
   try {
     return UTF8_TEXT_DECODER.decode(headerBytes)
-  } catch (error) {
+  } catch {
     throw new JsonRpcFrameHeaderError("invalid utf-8")
   }
 }

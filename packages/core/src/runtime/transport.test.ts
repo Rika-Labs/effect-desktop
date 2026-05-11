@@ -107,6 +107,21 @@ test("createFramedTransport sends encoded frames and receives decoded frames", a
   expect(await transport.recv()).toBeNull()
 })
 
+test("createFramedTransport close releases an already pending recv", async () => {
+  const transport = createFramedTransport(blockedChunks(), () => {
+    return
+  })
+  const pending = transport.recv()
+
+  await transport.close()
+  const result = await Promise.race([
+    pending.then((value) => ({ tag: "received" as const, value })),
+    Bun.sleep(50).then(() => ({ tag: "timeout" as const }))
+  ])
+
+  expect(result).toEqual({ tag: "received", value: null })
+})
+
 test("Transport service frames and unframes length-prefixed payloads", async () => {
   const transport = await Effect.runPromise(makeTransport())
   const framed = await Effect.runPromise(
@@ -263,6 +278,16 @@ test("in-memory transport pair substitutes a scoped host protocol transport", as
   await Effect.runPromise(right.close())
 })
 
+test("in-memory transport rejects sends after close", async () => {
+  const [left, right] = await Effect.runPromise(makeInMemoryTransportPair())
+
+  await Effect.runPromise(left.close())
+  const exit = await Effect.runPromiseExit(left.send(new Uint8Array([0x68])))
+
+  expectFailure(exit, TransportClosedError)
+  await Effect.runPromise(right.close())
+})
+
 test("connection close stops receives with a typed closed failure", async () => {
   const transport = createFramedTransport(chunks(), () => {
     return
@@ -302,6 +327,16 @@ async function* chunks(...values: Uint8Array[]): AsyncIterable<Uint8Array> {
     yield value
   }
 }
+
+const blockedChunks = (): AsyncIterable<Uint8Array> => ({
+  [Symbol.asyncIterator]: () => ({
+    next: () =>
+      new Promise<IteratorResult<Uint8Array>>(() => {
+        return
+      }),
+    return: () => Promise.resolve({ done: true, value: undefined })
+  })
+})
 
 function expectFailure<E>(
   exit: Exit.Exit<unknown, E>,
