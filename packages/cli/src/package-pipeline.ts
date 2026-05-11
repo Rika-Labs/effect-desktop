@@ -357,12 +357,16 @@ const validateBuildLayout = (
       )
     }
     const manifest = yield* readJson<AppManifest>(manifestPath)
-    if (manifest.id !== plan.appId || manifest.version !== plan.appVersion) {
+    if (
+      manifest.id !== plan.appId ||
+      manifest.name !== plan.appName ||
+      manifest.version !== plan.appVersion
+    ) {
       return yield* Effect.fail(
         new PackageFileError({
           operation: "validate",
           path: manifestPath,
-          message: `build manifest does not match ${plan.appId}@${plan.appVersion}`,
+          message: `app-manifest.json does not match ${plan.appName} ${plan.appId}@${plan.appVersion}`,
           cause: undefined
         })
       )

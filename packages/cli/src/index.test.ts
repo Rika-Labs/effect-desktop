@@ -5613,6 +5613,40 @@ test("desktop package rejects path-shaped app.id before staging Linux sidecars",
   }
 })
 
+test("desktop package rejects build manifest app name drift", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-name-drift-"))
+  try {
+    await writePlaygroundFixture(directory)
+    await writeBuildLayoutFixture(directory, "macos-arm64")
+    const layout = join(directory, "apps", "playground", "build", "effect-desktop", "macos-arm64")
+    const manifestPath = join(layout, "app-manifest.json")
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown>
+    manifest["name"] = "Different App"
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["package", "--config", "apps/playground/desktop.config.ts", "--artifact", "app"],
+        cwd: directory,
+        hostTarget: "macos-arm64",
+        packageCommandRunner: () => Effect.die("package commands should not run for name drift"),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("PackageFileError")
+    expect(stderr.join("")).toContain("app-manifest.json")
+    expect(stderr.join("")).toContain("Effect Desktop Playground")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop package emits Linux AppImage deb rpm artifacts with metadata", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-"))
   try {
