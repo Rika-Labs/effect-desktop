@@ -521,7 +521,7 @@
     {
       "name": "ReproDifference",
       "kind": "interface",
-      "signature": "export interface ReproDifference { readonly relativePath: string readonly kind: | \"missing-in-first\" | \"missing-in-second\" | \"content\" | \"entry-type\" | \"symlink-target\" | \"mode\" readonly firstDifferenceOffset: number | undefined readonly firstSizeBytes: number | undefined readonly secondSizeBytes: number | undefined readonly firstSha256: string | undefined readonly secondSha256: string | undefined readonly firstEntryKind: ReproEntryKind | undefined readonly secondEntryKind: ReproEntryKind | undefined readonly firstSymlinkTarget: string | undefined readonly secondSymlinkTarget: string | undefined readonly firstMode: number | undefined readonly secondMode: number | undefined }"
+      "signature": "export interface ReproDifference { readonly relativePath: string readonly kind: | \"missing-in-first\" | \"missing-in-second\" | \"content\" | \"entry-type\" | \"symlink-target\" | \"mode\" | \"target\" readonly firstDifferenceOffset: number | undefined readonly firstSizeBytes: number | undefined readonly secondSizeBytes: number | undefined readonly firstSha256: string | undefined readonly secondSha256: string | undefined readonly firstEntryKind: ReproEntryKind | undefined readonly secondEntryKind: ReproEntryKind | undefined readonly firstSymlinkTarget: string | undefined readonly secondSymlinkTarget: string | undefined readonly firstMode: number | undefined readonly secondMode: number | undefined readonly firstTarget: string | undefined readonly secondTarget: string | undefined }"
     },
     {
       "name": "runAccessibilityGate",
@@ -636,7 +636,7 @@
     {
       "name": "SemverPolicyManifest",
       "kind": "interface",
-      "signature": "export interface SemverPolicyManifest { readonly schemaVersion: 1 readonly source: string readonly release: string readonly releaseKind: SemverReleaseKind readonly publicApiSnapshots: string readonly verificationMatrix: string readonly appendixCRows: readonly string[] readonly bridgeEnvelopePolicy: { readonly source: string readonly frozenBetweenMajors: boolean readonly allowedChange: string } }"
+      "signature": "export interface SemverPolicyManifest { readonly schemaVersion: 1 readonly source: string readonly release: string readonly releaseKind: SemverReleaseKind readonly publicApiSnapshots: string readonly verificationMatrix: string readonly appendixCRows: readonly string[] readonly bridgeEnvelopePolicy: { readonly source: string readonly frozenBetweenMajors: boolean readonly allowedChange: string } readonly deprecationPolicy: { readonly minimumMinorReleases: number readonly requiresJSDocDeprecated: boolean } }"
     },
     {
       "name": "SemverReleaseKind",

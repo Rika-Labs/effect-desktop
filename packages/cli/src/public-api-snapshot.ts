@@ -110,6 +110,7 @@ export const runPublicApiCheck = (
         yield* writeSnapshot(snapshotPath, toSnapshotFile(snapshot))
       } else {
         const expected = yield* readSnapshot(snapshotPath)
+        yield* validateSnapshotIdentity(snapshotPath, workspacePackage, expected)
         changes.push(...diffSnapshot(expected, snapshot))
       }
     }
@@ -427,6 +428,39 @@ const toSnapshotFile = (snapshot: PublicApiPackageSnapshot): PublicApiSnapshotFi
 const readSnapshot = (
   path: string
 ): Effect.Effect<PublicApiSnapshotFile, PublicApiFileError, never> => readJson(path)
+
+const validateSnapshotIdentity = (
+  path: string,
+  workspacePackage: WorkspacePackage,
+  snapshot: PublicApiSnapshotFile
+): Effect.Effect<void, PublicApiFileError, never> => {
+  if (snapshot.packageName !== workspacePackage.name) {
+    return Effect.fail(
+      new PublicApiFileError({
+        operation: "validate",
+        path,
+        message: `snapshot packageName ${snapshot.packageName} does not match ${workspacePackage.name}`,
+        cause: { expected: workspacePackage.name, actual: snapshot.packageName }
+      })
+    )
+  }
+  if (
+    normalizeEntrypoint(snapshot.entrypoint) !== normalizeEntrypoint(workspacePackage.entrypoint)
+  ) {
+    return Effect.fail(
+      new PublicApiFileError({
+        operation: "validate",
+        path,
+        message: `snapshot entrypoint ${snapshot.entrypoint} does not match ${workspacePackage.entrypoint}`,
+        cause: { expected: workspacePackage.entrypoint, actual: snapshot.entrypoint }
+      })
+    )
+  }
+  return Effect.void
+}
+
+const normalizeEntrypoint = (entrypoint: string): string =>
+  entrypoint.startsWith("./") ? entrypoint.slice(2) : entrypoint
 
 const writeSnapshot = (
   path: string,

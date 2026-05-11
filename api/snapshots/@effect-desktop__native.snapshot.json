@@ -216,7 +216,7 @@
     {
       "name": "AppSingleInstanceResult",
       "kind": "class",
-      "signature": "export class AppSingleInstanceResult extends Schema.Class<AppSingleInstanceResult>( \"AppSingleInstanceResult\" )({ acquired: Schema.Boolean, primaryPid: Schema.optionalKey(NonNegativeInteger) }) {}"
+      "signature": "export class AppSingleInstanceResult extends Schema.Class<AppSingleInstanceResult>( \"AppSingleInstanceResult\" )({ acquired: Schema.Boolean, primaryPid: Schema.optionalKey(PositiveInteger) }) {}"
     },
     {
       "name": "broadcastRoute",
@@ -1696,7 +1696,7 @@
     {
       "name": "NotificationShowInput",
       "kind": "class",
-      "signature": "export class NotificationShowInput extends Schema.Class<NotificationShowInput>( \"NotificationShowInput\" )({ title: PrintableString, body: PrintableString, actions: Schema.optionalKey(Schema.Array(NotificationAction)), ownerWindow: Schema.optionalKey(WindowResource.schema) }) {}"
+      "signature": "export class NotificationShowInput extends Schema.Class<NotificationShowInput>( \"NotificationShowInput\" )({ title: PrintableNonEmptyString, body: PrintableNonEmptyString, actions: Schema.optionalKey(Schema.Array(NotificationAction)), ownerWindow: Schema.optionalKey(WindowResource.schema) }) {}"
     },
     {
       "name": "NotificationShowOptions",

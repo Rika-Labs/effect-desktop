@@ -1532,6 +1532,54 @@ test("desktop check --api writes and verifies public API snapshots", async () =>
   }
 })
 
+test("desktop check --api rejects snapshots for the wrong package", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
+  try {
+    await writeApiFixturePackage(directory, "export interface Widget { readonly id: string }\n")
+    await Effect.runPromise(
+      runCli({
+        argv: ["check", "--api", "--write"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: () => {}
+      })
+    )
+    const snapshotPath = join(
+      directory,
+      "api",
+      "snapshots",
+      "@effect-desktop__fixture.snapshot.json"
+    )
+    const snapshot = JSON.parse(await readFile(snapshotPath, "utf8")) as Record<string, unknown>
+    await writeFile(
+      snapshotPath,
+      `${JSON.stringify({ ...snapshot, packageName: "@effect-desktop/other" }, null, 2)}\n`
+    )
+
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--api", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("PublicApiFileError")
+    expect(payload.message).toContain("packageName")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop check --api ignores non-package directories", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
   try {
@@ -3118,6 +3166,65 @@ test("semver guard rejects escaping publicApiSnapshots roots", async () => {
   }
 })
 
+test("semver guard rejects empty public API snapshot paths", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+  try {
+    const manifest = semverManifestFixture()
+    if (!isSemverManifestFixture(manifest)) {
+      throw new Error("invalid semver manifest fixture")
+    }
+    await writeSemverFixture(directory, {
+      packageVersion: "1.1.0",
+      manifest: { ...manifest, publicApiSnapshots: "" }
+    })
+
+    const error = await Effect.runPromise(
+      runSemverGuard({
+        cwd: directory,
+        publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+      }).pipe(Effect.flip)
+    )
+
+    expect((error as { readonly _tag: string })._tag).toBe("SemverGuardManifestError")
+    expect((error as { readonly message: string }).message).toContain("publicApiSnapshots")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("semver guard rejects verification matrices outside the repo", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+  const outsideDirectory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-outside-"))
+  try {
+    const manifest = semverManifestFixture()
+    if (!isSemverManifestFixture(manifest)) {
+      throw new Error("invalid semver manifest fixture")
+    }
+    const outsideMatrix = join(outsideDirectory, "verification-matrix.json")
+    await writeFile(outsideMatrix, JSON.stringify(semverMatrixFixture(), null, 2))
+    await writeSemverFixture(directory, {
+      packageVersion: "1.1.0",
+      manifest: {
+        ...manifest,
+        verificationMatrix: relative(directory, outsideMatrix)
+      }
+    })
+
+    const error = await Effect.runPromise(
+      runSemverGuard({
+        cwd: directory,
+        publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+      }).pipe(Effect.flip)
+    )
+
+    expect((error as { readonly _tag: string })._tag).toBe("SemverGuardManifestError")
+    expect((error as { readonly message: string }).message).toContain("verificationMatrix")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+    await rm(outsideDirectory, { recursive: true, force: true })
+  }
+})
+
 test("semver guard rejects missing Appendix C rows", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
   try {
@@ -3139,6 +3246,107 @@ test("semver guard rejects missing Appendix C rows", async () => {
     expect(exit._tag).toBe("Failure")
   } finally {
     await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("semver guard rejects malformed Appendix C matrix coverage", async () => {
+  const cases: ReadonlyArray<{
+    readonly label: string
+    readonly manifestPatch?: Record<string, unknown>
+    readonly matrix: unknown
+  }> = [
+    { label: "empty rows", manifestPatch: { appendixCRows: [] }, matrix: semverMatrixFixture() },
+    { label: "missing rows", matrix: {} },
+    { label: "array rows", matrix: { rows: [] } },
+    { label: "string rows", matrix: { rows: "not rows" } }
+  ]
+
+  for (const testCase of cases) {
+    const directory = await mkdtemp(join(tmpdir(), `effect-desktop-cli-semver-${testCase.label}-`))
+    try {
+      const manifest = semverManifestFixture()
+      if (!isSemverManifestFixture(manifest)) {
+        throw new Error("invalid semver manifest fixture")
+      }
+      await writeSemverFixture(directory, {
+        packageVersion: "1.1.0",
+        manifest: { ...manifest, ...testCase.manifestPatch },
+        matrix: testCase.matrix
+      })
+
+      const error = await Effect.runPromise(
+        runSemverGuard({
+          cwd: directory,
+          publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+        }).pipe(Effect.flip)
+      )
+
+      expect((error as { readonly _tag: string })._tag).toBe("SemverGuardManifestError")
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  }
+})
+
+test("semver guard rejects weakened semver policy fields", async () => {
+  const cases: ReadonlyArray<{
+    readonly label: string
+    readonly manifestPatch: Record<string, unknown>
+  }> = [
+    {
+      label: "deprecated-jsdoc-disabled",
+      manifestPatch: {
+        deprecationPolicy: {
+          minimumMinorReleases: 3,
+          requiresJSDocDeprecated: false
+        }
+      }
+    },
+    {
+      label: "empty-bridge-allowed-change",
+      manifestPatch: {
+        bridgeEnvelopePolicy: {
+          source: "docs/SPEC.md §9.3",
+          frozenBetweenMajors: true,
+          allowedChange: ""
+        }
+      }
+    },
+    {
+      label: "permissive-bridge-allowed-change",
+      manifestPatch: {
+        bridgeEnvelopePolicy: {
+          source: "docs/SPEC.md §9.3",
+          frozenBetweenMajors: true,
+          allowedChange: "anything may change between minor releases"
+        }
+      }
+    }
+  ]
+
+  for (const testCase of cases) {
+    const directory = await mkdtemp(join(tmpdir(), `effect-desktop-cli-semver-${testCase.label}-`))
+    try {
+      const manifest = semverManifestFixture()
+      if (!isSemverManifestFixture(manifest)) {
+        throw new Error("invalid semver manifest fixture")
+      }
+      await writeSemverFixture(directory, {
+        packageVersion: "1.1.0",
+        manifest: { ...manifest, ...testCase.manifestPatch }
+      })
+
+      const error = await Effect.runPromise(
+        runSemverGuard({
+          cwd: directory,
+          publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+        }).pipe(Effect.flip)
+      )
+
+      expect((error as { readonly _tag: string })._tag).toBe("SemverGuardManifestError")
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
   }
 })
 
@@ -7554,6 +7762,10 @@ const semverManifestFixture = (): unknown => ({
     source: "docs/SPEC.md §9.3",
     frozenBetweenMajors: true,
     allowedChange: "fields may be added with defaults; fields may not be removed or reordered"
+  },
+  deprecationPolicy: {
+    minimumMinorReleases: 3,
+    requiresJSDocDeprecated: true
   }
 })
 

@@ -1,5 +1,5 @@
 import { readdir, readFile } from "node:fs/promises"
-import { isAbsolute, join, normalize } from "node:path"
+import { isAbsolute, join, normalize, resolve } from "node:path"
 
 import { Data, Effect } from "effect"
 
@@ -34,6 +34,10 @@ export interface SemverPolicyManifest {
     readonly source: string
     readonly frozenBetweenMajors: boolean
     readonly allowedChange: string
+  }
+  readonly deprecationPolicy: {
+    readonly minimumMinorReleases: number
+    readonly requiresJSDocDeprecated: boolean
   }
 }
 
@@ -88,6 +92,8 @@ interface VerificationMatrix {
 const MANIFEST_PATH = "release/semver.json"
 const SPEC_SOURCE = "docs/SPEC.md §25.6"
 const BRIDGE_SOURCE = "docs/SPEC.md §9.3"
+const BRIDGE_ALLOWED_CHANGE =
+  "fields may be added with defaults; fields may not be removed or reordered"
 const CANONICAL_RELEASE_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u
 
 export const runSemverGuard = (
@@ -199,6 +205,20 @@ const validateManifest = (
       })
     )
   }
+  if (manifest.bridgeEnvelopePolicy.allowedChange !== BRIDGE_ALLOWED_CHANGE) {
+    return Effect.fail(
+      new SemverGuardManifestError({
+        message: `bridge envelope allowedChange must be ${BRIDGE_ALLOWED_CHANGE}`
+      })
+    )
+  }
+  if (!manifest.deprecationPolicy.requiresJSDocDeprecated) {
+    return Effect.fail(
+      new SemverGuardManifestError({
+        message: "deprecation policy must require @deprecated JSDoc"
+      })
+    )
+  }
   return Effect.void
 }
 
@@ -207,8 +227,20 @@ const validateAppendixCRows = (
   manifest: SemverPolicyManifest
 ): Effect.Effect<void, SemverGuardError, never> =>
   Effect.gen(function* () {
-    const matrix = yield* readJson<VerificationMatrix>(join(cwd, manifest.verificationMatrix))
-    const rows = Object.keys(matrix.rows ?? {})
+    if (manifest.appendixCRows.length === 0) {
+      return yield* Effect.fail(
+        new SemverGuardManifestError({
+          message: "semver appendixCRows must contain at least one row"
+        })
+      )
+    }
+    const matrixPath = yield* resolveWorkspacePath(
+      cwd,
+      manifest.verificationMatrix,
+      "verificationMatrix"
+    )
+    const matrix = yield* readJson<VerificationMatrix>(matrixPath)
+    const rows = yield* decodeVerificationMatrixRows(matrix)
     const rowSet = new Set(rows)
     for (const row of manifest.appendixCRows) {
       if (!rowSet.has(row)) {
@@ -220,6 +252,20 @@ const validateAppendixCRows = (
       }
     }
   })
+
+const decodeVerificationMatrixRows = (
+  matrix: VerificationMatrix
+): Effect.Effect<readonly string[], SemverGuardManifestError, never> => {
+  if (!isSemverRecord(matrix.rows) || Array.isArray(matrix.rows)) {
+    return Effect.fail(
+      new SemverGuardManifestError({
+        message: "semver verificationMatrix rows must be a JSON object"
+      })
+    )
+  }
+
+  return Effect.succeed(Object.keys(matrix.rows))
+}
 
 const validatePackageVersions = (
   manifest: SemverPolicyManifest,
@@ -370,12 +416,21 @@ const parseSemverPolicyManifest = (
       new SemverGuardManifestError({ message: "semver verificationMatrix must be a string" })
     )
   }
+  if (!isWorkspaceRelativePath(value["verificationMatrix"])) {
+    return Effect.fail(
+      new SemverGuardManifestError({
+        message: "semver verificationMatrix must be a workspace-contained relative path"
+      })
+    )
+  }
   if (
     !Array.isArray(value["appendixCRows"]) ||
-    !value["appendixCRows"].every((row) => typeof row === "string")
+    !value["appendixCRows"].every((row) => typeof row === "string" && row.length > 0)
   ) {
     return Effect.fail(
-      new SemverGuardManifestError({ message: "semver appendixCRows must be an array of strings" })
+      new SemverGuardManifestError({
+        message: "semver appendixCRows must be an array of non-empty strings"
+      })
     )
   }
   const bridge = value["bridgeEnvelopePolicy"]
@@ -405,6 +460,30 @@ const parseSemverPolicyManifest = (
       })
     )
   }
+  const deprecation = value["deprecationPolicy"]
+  if (!isSemverRecord(deprecation)) {
+    return Effect.fail(
+      new SemverGuardManifestError({ message: "semver deprecationPolicy must be an object" })
+    )
+  }
+  if (
+    typeof deprecation["minimumMinorReleases"] !== "number" ||
+    !Number.isInteger(deprecation["minimumMinorReleases"]) ||
+    deprecation["minimumMinorReleases"] < 0
+  ) {
+    return Effect.fail(
+      new SemverGuardManifestError({
+        message: "semver deprecationPolicy.minimumMinorReleases must be a non-negative integer"
+      })
+    )
+  }
+  if (typeof deprecation["requiresJSDocDeprecated"] !== "boolean") {
+    return Effect.fail(
+      new SemverGuardManifestError({
+        message: "semver deprecationPolicy.requiresJSDocDeprecated must be a boolean"
+      })
+    )
+  }
   return Effect.succeed({
     schemaVersion: 1,
     source: value["source"],
@@ -417,6 +496,10 @@ const parseSemverPolicyManifest = (
       source: bridge["source"],
       frozenBetweenMajors: bridge["frozenBetweenMajors"],
       allowedChange: bridge["allowedChange"]
+    },
+    deprecationPolicy: {
+      minimumMinorReleases: deprecation["minimumMinorReleases"],
+      requiresJSDocDeprecated: deprecation["requiresJSDocDeprecated"]
     }
   })
 }
@@ -436,6 +519,26 @@ const isWorkspaceRelativePath = (value: string): boolean => {
     !normalized.startsWith(`..${"/"}`) &&
     !normalized.startsWith(`..${"\\"}`)
   )
+}
+
+const resolveWorkspacePath = (
+  cwd: string,
+  path: string,
+  field: string
+): Effect.Effect<string, SemverGuardManifestError, never> => {
+  const root = resolve(cwd)
+  const resolved = resolve(root, path)
+  const relativePath = normalize(resolved.slice(root.length))
+
+  return resolved === root ||
+    relativePath.startsWith(`${"/"}`) ||
+    relativePath.startsWith(`${"\\"}`)
+    ? Effect.succeed(resolved)
+    : Effect.fail(
+        new SemverGuardManifestError({
+          message: `semver ${field} must resolve inside the workspace`
+        })
+      )
 }
 
 const readText = (path: string): Effect.Effect<string, SemverGuardFileError, never> =>

@@ -894,26 +894,6 @@ export class HostProtocolStreamByResourceEnvelope extends Schema.Class<HostProto
   error: Schema.optionalKey(HostProtocolError)
 }) {}
 
-const StreamByRequestEnvelope = HostProtocolStreamByRequestEnvelope.check(
-  Schema.makeFilter<HostProtocolStreamByRequestEnvelope>((value) =>
-    Object.hasOwn(value, "resourceId")
-      ? "request-targeted stream envelope must not contain resourceId"
-      : Object.hasOwn(value, "payload") && Object.hasOwn(value, "error")
-        ? "stream envelope must not contain both payload and error"
-        : true
-  )
-)
-
-const StreamByResourceEnvelope = HostProtocolStreamByResourceEnvelope.check(
-  Schema.makeFilter<HostProtocolStreamByResourceEnvelope>((value) =>
-    Object.hasOwn(value, "id")
-      ? "resource-targeted stream envelope must not contain id"
-      : Object.hasOwn(value, "payload") && Object.hasOwn(value, "error")
-        ? "stream envelope must not contain both payload and error"
-        : true
-  )
-)
-
 export class HostProtocolCancelByRequestEnvelope extends Schema.Class<HostProtocolCancelByRequestEnvelope>(
   "HostProtocolCancelByRequestEnvelope"
 )({
@@ -934,28 +914,14 @@ export class HostProtocolCancelByResourceEnvelope extends Schema.Class<HostProto
   traceId: HostProtocolNonEmptyString
 }) {}
 
-const CancelByRequestEnvelope = HostProtocolCancelByRequestEnvelope.check(
-  Schema.makeFilter<HostProtocolCancelByRequestEnvelope>((value) =>
-    Object.hasOwn(value, "resourceId")
-      ? "request-targeted cancel envelope must not contain resourceId"
-      : true
-  )
-)
-
-const CancelByResourceEnvelope = HostProtocolCancelByResourceEnvelope.check(
-  Schema.makeFilter<HostProtocolCancelByResourceEnvelope>((value) =>
-    Object.hasOwn(value, "id") ? "resource-targeted cancel envelope must not contain id" : true
-  )
-)
-
 export const HostProtocolEnvelope = Schema.Union([
   HostProtocolRequestEnvelope,
   HostProtocolResponseEnvelope,
   HostProtocolEventEnvelope,
-  StreamByRequestEnvelope,
-  StreamByResourceEnvelope,
-  CancelByRequestEnvelope,
-  CancelByResourceEnvelope
+  HostProtocolStreamByRequestEnvelope,
+  HostProtocolStreamByResourceEnvelope,
+  HostProtocolCancelByRequestEnvelope,
+  HostProtocolCancelByResourceEnvelope
 ])
 
 export type HostProtocolEnvelope = typeof HostProtocolEnvelope.Type
@@ -964,10 +930,34 @@ const decodeUnknownHostProtocolEnvelope = Schema.decodeUnknownSync(HostProtocolE
 const encodeHostProtocolEnvelopeSync = Schema.encodeSync(HostProtocolEnvelope)
 
 export const decodeHostProtocolEnvelope = (input: unknown): HostProtocolEnvelope =>
-  decodeUnknownHostProtocolEnvelope(input, StrictParseOptions)
+  validateDecodedHostProtocolEnvelope(decodeUnknownHostProtocolEnvelope(input, StrictParseOptions))
 
 export const encodeHostProtocolEnvelope = (input: HostProtocolEnvelope) =>
   encodeHostProtocolEnvelopeSync(input, StrictParseOptions)
+
+const validateDecodedHostProtocolEnvelope = (
+  envelope: HostProtocolEnvelope
+): HostProtocolEnvelope => {
+  if (envelope.kind !== "stream" && envelope.kind !== "cancel") {
+    return envelope
+  }
+
+  const hasRequestTarget = Object.hasOwn(envelope, "id")
+  const hasResourceTarget = Object.hasOwn(envelope, "resourceId")
+  if (hasRequestTarget && hasResourceTarget) {
+    throw new Error(`${envelope.kind} envelope must not contain both id and resourceId`)
+  }
+
+  if (
+    envelope.kind === "stream" &&
+    Object.hasOwn(envelope, "payload") &&
+    Object.hasOwn(envelope, "error")
+  ) {
+    throw new Error("stream envelope must not contain both payload and error")
+  }
+
+  return envelope
+}
 
 export interface DesktopTransportSend {
   readonly send: (envelope: HostProtocolEnvelope) => Effect.Effect<void>
