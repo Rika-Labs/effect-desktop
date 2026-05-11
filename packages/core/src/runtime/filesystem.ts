@@ -225,7 +225,7 @@ export const makeFilesystem = (
             input.path,
             "filesystem.write",
             "Filesystem.writeAtomic",
-            "leaf-may-be-missing"
+            "directory-entry"
           )
           yield* writeAtomicFile(adapter, authorizedPath, input.bytes)
         }).pipe(Effect.withSpan("Filesystem.writeAtomic", { attributes: { path } })),

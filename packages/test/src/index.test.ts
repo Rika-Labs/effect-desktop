@@ -680,6 +680,30 @@ test("MemoryFilesystem preserves symlink stat identity", async () => {
   expect(text(output)).toBe("target content")
 })
 
+test("MemoryFilesystem writeAtomic replaces symlink without changing target", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const filesystem = await Effect.runPromise(
+    makeMemoryFilesystem(registry, {
+      directories: ["/workspace"],
+      files: [{ path: "/workspace/target.txt", bytes: bytes("target") }],
+      symlinks: [{ path: "/workspace/link.txt", target: "target.txt" }],
+      permissions: {
+        readRoots: ["/workspace"],
+        writeRoots: ["/workspace"]
+      }
+    })
+  )
+
+  await Effect.runPromise(filesystem.writeAtomic("/workspace/link.txt", bytes("replacement")))
+  const target = await Effect.runPromise(filesystem.read("/workspace/target.txt"))
+  const link = await Effect.runPromise(filesystem.read("/workspace/link.txt"))
+  const linkStat = await Effect.runPromise(filesystem.stat("/workspace/link.txt"))
+
+  expect(text(target)).toBe("target")
+  expect(text(link)).toBe("replacement")
+  expect(linkStat.kind).toBe("file")
+})
+
 test("MemoryFilesystem rejects directory targets for writes and atomic renames", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   const filesystem = await Effect.runPromise(
