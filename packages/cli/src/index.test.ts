@@ -1583,6 +1583,45 @@ test("desktop check --release rejects unpinned release workflow actions", async 
   }
 })
 
+test("desktop check --release rejects playground package before build", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+  try {
+    await writeReleaseFixture(directory, {
+      releaseWorkflow: releaseWorkflowFixture().replace(
+        [
+          "      - name: Build desktop app",
+          "        run: bun packages/cli/src/bin.ts build --config apps/playground/desktop.config.ts",
+          ""
+        ].join("\n"),
+        ""
+      )
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--release", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("ReleaseGateEvidenceError")
+    expect(payload.message).toContain("desktop build")
+    expect(payload.message).toContain("before desktop package")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop check --a11y verifies template accessibility evidence", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
   try {
@@ -5508,6 +5547,10 @@ const releaseWorkflowFixture = (): string =>
     "    steps:",
     "      - name: Checkout",
     "        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2",
+    "      - name: Build desktop app",
+    "        run: bun packages/cli/src/bin.ts build --config apps/playground/desktop.config.ts",
+    "      - name: Package release artifact",
+    "        run: bun packages/cli/src/bin.ts package --config apps/playground/desktop.config.ts",
     "      - name: Reproducible build gate",
     "        run: bun packages/cli/src/bin.ts check --repro --config apps/playground/desktop.config.ts",
     "      - name: Sign release artifacts with HSM backend",

@@ -43,7 +43,10 @@ jobs:
       - name: Release posture gate
         run: bun packages/cli/src/bin.ts check --release
 
-      - name: Build release artifact
+      - name: Build desktop app
+        run: bun packages/cli/src/bin.ts build --config apps/playground/desktop.config.ts
+
+      - name: Package release artifact
         run: bun packages/cli/src/bin.ts package --config apps/playground/desktop.config.ts
 
       - name: Reproducible build gate

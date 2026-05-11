@@ -62,6 +62,10 @@ const KEY_MANAGEMENT_PATH = "docs/security/key-management.md"
 const RELEASE_SETTINGS_PATH = "docs/security/release-settings.md"
 const EXEMPTIONS_PATH = "docs/security/exemptions"
 const SPEC_SOURCE = "docs/SPEC.md §25.4"
+const PLAYGROUND_BUILD_COMMAND =
+  "bun packages/cli/src/bin.ts build --config apps/playground/desktop.config.ts"
+const PLAYGROUND_PACKAGE_COMMAND =
+  "bun packages/cli/src/bin.ts package --config apps/playground/desktop.config.ts"
 
 const REQUIRED_GATES: ReadonlyMap<string, ReleaseGateEvidenceKind> = new Map([
   ["spdx-sbom", "workflow-step"],
@@ -77,7 +81,14 @@ const REQUIRED_GATES: ReadonlyMap<string, ReleaseGateEvidenceKind> = new Map([
 const RELEASE_WORKFLOW_TOKENS: ReadonlyMap<string, readonly string[]> = new Map([
   ["spdx-sbom", ["anchore/sbom-action", "format: spdx-json", "sbom-artifacts", "sbom-path"]],
   ["cvss-scan", ["anchore/scan-action", "severity-cutoff: high", "docs/security/exemptions"]],
-  ["reproducible-build", ["bun packages/cli/src/bin.ts check --repro"]],
+  [
+    "reproducible-build",
+    [
+      PLAYGROUND_BUILD_COMMAND,
+      PLAYGROUND_PACKAGE_COMMAND,
+      "bun packages/cli/src/bin.ts check --repro"
+    ]
+  ],
   [
     "slsa-provenance",
     ["actions/attest", "subject-path", "dist/desktop", "attestations: write", "id-token: write"]
@@ -109,6 +120,7 @@ export const runReleaseGate = (
     yield* validateWorkflowActionPins(RELEASE_WORKFLOW_PATH, releaseWorkflow)
     yield* validateWorkflowActionPins(CI_WORKFLOW_PATH, ciWorkflow)
     yield* validateReleaseRunnerPosture(releaseWorkflow)
+    yield* validatePlaygroundBuildBeforePackage(releaseWorkflow)
     yield* validatePolicyDocuments({ keyManagement, releaseSettings })
     yield* validateExemptions(join(options.cwd, EXEMPTIONS_PATH))
 
@@ -320,6 +332,27 @@ const validateReleaseRunnerPosture = (
     )
   }
   return Effect.void
+}
+
+const validatePlaygroundBuildBeforePackage = (
+  body: string
+): Effect.Effect<void, ReleaseGateEvidenceError, never> => {
+  const packageIndex = body.indexOf(PLAYGROUND_PACKAGE_COMMAND)
+  if (packageIndex === -1) {
+    return Effect.void
+  }
+
+  const buildIndex = body.indexOf(PLAYGROUND_BUILD_COMMAND)
+  if (buildIndex !== -1 && buildIndex < packageIndex) {
+    return Effect.void
+  }
+
+  return Effect.fail(
+    new ReleaseGateEvidenceError({
+      gate: "reproducible-build",
+      message: "release workflow must run desktop build for apps/playground before desktop package"
+    })
+  )
 }
 
 const validatePolicyDocuments = (files: {
