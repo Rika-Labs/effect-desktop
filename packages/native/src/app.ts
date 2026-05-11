@@ -30,6 +30,7 @@ import {
   AppRestartInput,
   type AppRestartOptions,
   AppSecondInstanceEvent,
+  AppSingleInstanceOutput,
   AppSingleInstanceResult,
   AppOpenUrlEvent
 } from "./contracts/app.js"
@@ -69,7 +70,7 @@ export const AppApiSpec = Object.freeze({
   },
   requestSingleInstanceLock: {
     input: Schema.Void,
-    output: AppSingleInstanceResult,
+    output: AppSingleInstanceOutput,
     error: HostProtocolErrorSchema,
     permission: "none"
   },

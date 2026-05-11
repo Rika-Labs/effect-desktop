@@ -698,6 +698,35 @@ test("App bridge client rejects malformed App.getInfo and App.getCommandLine out
   ])
 })
 
+test("App single-instance lock rejects acquired results with primary pids", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* App
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          AppLive,
+          makeAppBridgeClientLayer(
+            appExchange(requests, (request) =>
+              request.method === "App.requestSingleInstanceLock"
+                ? { kind: "success", payload: { acquired: true, primaryPid: 1234 } }
+                : { kind: "success", payload: undefined }
+            )
+          )
+        )
+      )
+    )
+  )
+
+  const exit = await Effect.runPromiseExit(client.requestSingleInstanceLock())
+
+  expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["App.requestSingleInstanceLock", undefined]
+  ])
+})
+
 test("App bridge client rejects malformed App lifecycle event payloads as InvalidOutput", async () => {
   const invalidUrlExchange: ApiClientExchange = {
     request: () => Effect.succeed({ kind: "success", payload: undefined }),
@@ -1061,6 +1090,47 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
     ],
     ["WebView.captureScreenshot", { webview: webviewHandle }],
     ["WebView.capability", { name: "devtools open", platform: "windows" }]
+  ])
+})
+
+test("WebView captureScreenshot rejects empty byte payloads", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* WebView
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          WebViewLive,
+          makeWebViewBridgeClientLayer(
+            webViewExchange(requests, (request) => ({
+              kind: "success",
+              payload:
+                request.method === "WebView.create"
+                  ? webviewHandle
+                  : request.method === "WebView.captureScreenshot"
+                    ? { mime: "image/png", bytes: new Uint8Array() }
+                    : undefined
+            }))
+          )
+        )
+      )
+    )
+  )
+
+  const created = await Effect.runPromise(client.create())
+  const exit = await Effect.runPromiseExit(client.captureScreenshot(created))
+
+  expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    [
+      "WebView.create",
+      {
+        url: "app://localhost/",
+        originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" }
+      }
+    ],
+    ["WebView.captureScreenshot", { webview: webviewHandle }]
   ])
 })
 

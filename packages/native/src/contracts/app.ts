@@ -64,6 +64,14 @@ export class AppSingleInstanceResult extends Schema.Class<AppSingleInstanceResul
   primaryPid: Schema.optionalKey(NonNegativeInteger)
 }) {}
 
+export const AppSingleInstanceOutput = AppSingleInstanceResult.check(
+  Schema.makeFilter<AppSingleInstanceResult>((value) =>
+    value.acquired && value.primaryPid !== undefined
+      ? "primaryPid must be absent when acquired is true"
+      : true
+  )
+)
+
 export class AppOpenAtLoginInput extends Schema.Class<AppOpenAtLoginInput>("AppOpenAtLoginInput")({
   enabled: Schema.Boolean,
   args: Schema.optionalKey(Schema.Array(ArgString))

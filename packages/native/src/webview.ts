@@ -368,14 +368,27 @@ const decodeWebViewCapabilityInput = (
 const validateWebViewScreenshot = (
   screenshot: WebViewScreenshot
 ): Effect.Effect<WebViewScreenshot, WebViewError, never> =>
-  isSupportedImageHeader(screenshot.mime, screenshot.bytes)
-    ? Effect.succeed(screenshot)
-    : Effect.fail(
+  Effect.gen(function* () {
+    if (screenshot.bytes.length === 0) {
+      return yield* Effect.fail(
+        makeHostProtocolInvalidOutputError(
+          "WebView.captureScreenshot",
+          "screenshot bytes must not be empty"
+        )
+      )
+    }
+
+    if (!isSupportedImageHeader(screenshot.mime, screenshot.bytes)) {
+      return yield* Effect.fail(
         makeHostProtocolInvalidOutputError(
           "WebView.captureScreenshot",
           `declared ${screenshot.mime} does not match image header`
         )
       )
+    }
+
+    return screenshot
+  })
 
 const decodeInput = (
   schema: Schema.Schema<unknown>,
