@@ -407,7 +407,26 @@ processTest(
 )
 
 processTest(
-  "Process stdout fails with BackpressureOverflow when cumulative chunks exceed budget",
+  "Process stdout allows cumulative output beyond budget when the consumer drains",
+  async () => {
+    const fixture = await makeFixture(
+      makeFakeAdapter(() =>
+        makeFakeChild({ stdout: ["ab", "cd"], exit: { code: 0 }, stdoutChunkDelayMs: 5 })
+      ),
+      { budgets: { stdoutBufferBytes: 3 } }
+    )
+    const handle = await Effect.runPromise(
+      fixture.service.spawn("echo", ["abcd"], { ownerScope: "scope-main" })
+    )
+
+    const chunks = await Effect.runPromise(handle.stdout.pipe(Stream.runCollect))
+
+    expect(decodeChunks(Array.from(chunks))).toBe("abcd")
+  }
+)
+
+processTest(
+  "Process stdout fails with BackpressureOverflow when queued chunks exceed budget",
   async () => {
     const fixture = await makeFixture(
       makeFakeAdapter(() => makeFakeChild({ stdout: ["ab", "cd"], exit: { code: 0 } })),
@@ -417,7 +436,12 @@ processTest(
       fixture.service.spawn("echo", ["abcd"], { ownerScope: "scope-main" })
     )
 
-    const exit = await Effect.runPromiseExit(handle.stdout.pipe(Stream.runCollect))
+    const exit = await Effect.runPromiseExit(
+      handle.stdout.pipe(
+        Stream.tap(() => Effect.sleep("25 millis")),
+        Stream.runDrain
+      )
+    )
 
     expectFailure(exit, HostProtocolBackpressureOverflowError)
   }
@@ -437,6 +461,30 @@ processTest(
     const exit = await Effect.runPromiseExit(handle.stderr.pipe(Stream.runCollect))
 
     expectFailure(exit, HostProtocolBackpressureOverflowError)
+  }
+)
+
+processTest(
+  "Process stderr allows cumulative output beyond budget when the consumer drains",
+  async () => {
+    const fixture = await makeFixture(
+      makeFakeAdapter(() =>
+        makeFakeChild({
+          stdout: [],
+          stderr: ["ab", "cd"],
+          exit: { code: 0 },
+          stderrChunkDelayMs: 5
+        })
+      ),
+      { budgets: { stderrBufferBytes: 3 } }
+    )
+    const handle = await Effect.runPromise(
+      fixture.service.spawn("echo", ["abcd"], { ownerScope: "scope-main" })
+    )
+
+    const chunks = await Effect.runPromise(handle.stderr.pipe(Stream.runCollect))
+
+    expect(decodeChunks(Array.from(chunks))).toBe("abcd")
   }
 )
 
@@ -650,6 +698,8 @@ const makeFakeChild = (options: {
   readonly childPids?: readonly number[]
   readonly naturalExitDelayMs?: number
   readonly ignoreTerminate?: boolean
+  readonly stdoutChunkDelayMs?: number
+  readonly stderrChunkDelayMs?: number
 }): FakeChild => {
   const stdinWrites: Uint8Array[] = []
   let stdinClosed = false
@@ -686,8 +736,8 @@ const makeFakeChild = (options: {
   const child: FakeChild = {
     pid: 42,
     childPids: options.childPids ?? [],
-    stdout: readableFromStrings(options.stdout),
-    stderr: readableFromStrings(options.stderr ?? []),
+    stdout: readableFromStrings(options.stdout, options.stdoutChunkDelayMs),
+    stderr: readableFromStrings(options.stderr ?? [], options.stderrChunkDelayMs),
     exited,
     stdinWrites,
     get stdinClosed() {
@@ -728,10 +778,16 @@ const makeFakeChild = (options: {
   return child
 }
 
-const readableFromStrings = (chunks: readonly string[]): ReadableStream<Uint8Array> =>
+const readableFromStrings = (
+  chunks: readonly string[],
+  chunkDelayMs?: number
+): ReadableStream<Uint8Array> =>
   new ReadableStream<Uint8Array>({
-    start(controller) {
+    async start(controller) {
       for (const chunk of chunks) {
+        if (chunkDelayMs !== undefined) {
+          await Bun.sleep(chunkDelayMs)
+        }
         controller.enqueue(textEncoder.encode(chunk))
       }
       controller.close()

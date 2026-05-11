@@ -9,7 +9,21 @@ import {
   type HostProtocolError,
   type HostProtocolErrorTag
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Ref, Schema, Sink, Stream, SubscriptionRef } from "effect"
+import {
+  Cause,
+  Context,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  Option,
+  Queue,
+  Ref,
+  Schema,
+  Sink,
+  Stream,
+  SubscriptionRef
+} from "effect"
 
 import {
   ResourceRegistry,
@@ -317,22 +331,89 @@ const boundedOutputStream = (
   streamName: "stdout" | "stderr",
   command: string,
   limitBytes: number
-): Stream.Stream<Uint8Array, ProcessError, never> => {
-  let bufferedBytes = 0
-  return stream.pipe(
-    Stream.mapEffect((chunk) =>
-      Effect.gen(function* () {
-        const nextBytes = bufferedBytes + chunk.byteLength
-        if (nextBytes > limitBytes) {
-          return yield* Effect.fail(makeBackpressureOverflow(streamName, command, limitBytes, 1))
-        }
+): Stream.Stream<Uint8Array, ProcessError, never> =>
+  Stream.unwrap(
+    Effect.gen(function* () {
+      const queue = yield* Queue.bounded<Uint8Array, ProcessError | Cause.Done>(
+        Math.max(1, limitBytes)
+      )
+      const queuedBytes = yield* Ref.make(0)
+      const producer = yield* runOutputProducer(
+        stream,
+        queue,
+        queuedBytes,
+        streamName,
+        command,
+        limitBytes
+      ).pipe(Effect.forkScoped)
 
-        bufferedBytes = nextBytes
-        return chunk
-      })
+      return Stream.fromQueue(queue).pipe(
+        Stream.mapEffect((chunk) =>
+          Ref.update(queuedBytes, (bytes) => Math.max(0, bytes - chunk.byteLength)).pipe(
+            Effect.as(chunk)
+          )
+        ),
+        Stream.ensuring(
+          Effect.gen(function* () {
+            yield* Fiber.interrupt(producer)
+            yield* Queue.shutdown(queue)
+          })
+        )
+      )
+    })
+  )
+
+const runOutputProducer = (
+  stream: Stream.Stream<Uint8Array, ProcessError, never>,
+  queue: Queue.Queue<Uint8Array, ProcessError | Cause.Done>,
+  queuedBytes: Ref.Ref<number>,
+  streamName: "stdout" | "stderr",
+  command: string,
+  limitBytes: number
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const exit = yield* Effect.exit(
+      stream.pipe(
+        Stream.runForEach((chunk) =>
+          offerOutputChunk(queue, queuedBytes, streamName, command, limitBytes, chunk)
+        )
+      )
+    )
+    if (Exit.isFailure(exit)) {
+      yield* Queue.fail(queue, mapCauseToProcessError(exit.cause, command, `Process.${streamName}`))
+      return
+    }
+
+    yield* Queue.end(queue)
+  }).pipe(
+    Effect.catchCause((cause) =>
+      Queue.fail(queue, mapCauseToProcessError(cause, command, `Process.${streamName}`)).pipe(
+        Effect.asVoid
+      )
     )
   )
-}
+
+const offerOutputChunk = (
+  queue: Queue.Queue<Uint8Array, ProcessError | Cause.Done>,
+  queuedBytes: Ref.Ref<number>,
+  streamName: "stdout" | "stderr",
+  command: string,
+  limitBytes: number,
+  chunk: Uint8Array
+): Effect.Effect<void, ProcessError, never> =>
+  Effect.gen(function* () {
+    const currentBytes = yield* Ref.get(queuedBytes)
+    if (currentBytes + chunk.byteLength > limitBytes) {
+      return yield* Effect.fail(makeBackpressureOverflow(streamName, command, limitBytes, 1))
+    }
+
+    yield* Ref.update(queuedBytes, (bytes) => bytes + chunk.byteLength)
+    const offered = Queue.offerUnsafe(queue, chunk)
+    if (!offered) {
+      yield* Ref.update(queuedBytes, (bytes) => Math.max(0, bytes - chunk.byteLength))
+      return yield* Effect.fail(makeBackpressureOverflow(streamName, command, limitBytes, 1))
+    }
+  })
 
 const makeBackpressureOverflow = (
   streamName: "stdout" | "stderr",
@@ -350,6 +431,20 @@ const makeBackpressureOverflow = (
       `Process.${streamName}`
     )
   })
+
+const mapCauseToProcessError = (
+  cause: Cause.Cause<ProcessError>,
+  command: string,
+  operation: string
+): ProcessError => {
+  const failure = Cause.findErrorOption(cause)
+  if (Option.isSome(failure)) {
+    return failure.value
+  }
+
+  const squashed = Cause.squash(cause)
+  return mapProcessError(squashed, command, operation)
+}
 
 const observeChildExit = (
   exitStatus: Effect.Effect<ProcessExitStatus, ProcessError, never>,
