@@ -588,6 +588,86 @@ test("desktop check --production treats missing renderer path as a usage error",
   expect(stderr.join("").length).toBeGreaterThan(0)
 })
 
+test("desktop check rejects mixed mode flags before dispatch", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-check-modes-"))
+  try {
+    await writeReleaseFixture(directory)
+    await writeFile(
+      join(directory, "desktop.config.ts"),
+      [
+        "export default {",
+        "  app: {",
+        "    id: 'dev.effect-desktop.mixed-check',",
+        "    name: 'Mixed Check',",
+        "    version: '0.0.0'",
+        "  },",
+        "  runtime: { engine: 'bun', entry: 'src/main.ts' },",
+        "  renderer: { framework: 'react', entry: 'src/App.tsx', dist: 'dist/renderer' },",
+        "  security: { csp: { policy: \"script-src 'self' 'unsafe-inline'\" } }",
+        "}"
+      ].join("\n")
+    )
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--release", "--production", "--config", "desktop.config.ts", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("CliUsageError")
+    expect(payload.message).toContain("mutually exclusive")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop commands reject unknown flags before execution", async () => {
+  const cases: readonly (readonly string[])[] = [
+    ["package", "--platfrom", "linux-x64", "--help"],
+    ["build", "--help", "--jsno"],
+    ["doctor", "--definitely-unknown"]
+  ]
+  for (const argv of cases) {
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv,
+        cwd: process.cwd(),
+        doctorCommandRunner: doctorRunner({
+          cargo: true,
+          rustc: true,
+          "xcode-select": true,
+          hdiutil: true
+        }),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("CliUsageError")
+    expect(payload.message).toContain("unknown flag")
+  }
+})
+
 test("desktop doctor reports typed missing Rust toolchain failures", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
   try {

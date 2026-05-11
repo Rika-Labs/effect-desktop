@@ -369,6 +369,76 @@ const JSON_VALUE_FLAGS = new Set([
   "--renderer",
   "--target"
 ])
+const CHECK_MODE_FLAGS = new Set([
+  "--production",
+  "--repro",
+  "--api",
+  "--docs",
+  "--release",
+  "--a11y",
+  "--semver"
+])
+
+interface CliFlagSpec {
+  readonly boolean: ReadonlySet<string>
+  readonly value: ReadonlySet<string>
+}
+
+const CLI_FLAG_SPECS: ReadonlyMap<string, CliFlagSpec> = new Map([
+  [
+    "build",
+    {
+      boolean: new Set(["--json", "--help", "-h"]),
+      value: new Set(["--config", "--platform", "--profile"])
+    }
+  ],
+  [
+    "package",
+    {
+      boolean: new Set(["--json", "--help", "-h"]),
+      value: new Set(["--config", "--platform", "--artifact"])
+    }
+  ],
+  [
+    "sign",
+    {
+      boolean: new Set(["--json", "--help", "-h"]),
+      value: new Set(["--config", "--platform"])
+    }
+  ],
+  [
+    "notarize",
+    {
+      boolean: new Set(["--json", "--help", "-h"]),
+      value: new Set(["--config", "--platform"])
+    }
+  ],
+  [
+    "publish",
+    {
+      boolean: new Set(["--json", "--help", "-h"]),
+      value: new Set(["--config", "--platform"])
+    }
+  ],
+  [
+    "doctor",
+    {
+      boolean: new Set(["--ci", "--json", "--help", "-h"]),
+      value: new Set(["--config"])
+    }
+  ],
+  [
+    "check",
+    {
+      boolean: new Set([...CHECK_MODE_FLAGS, "--write", "--json", "--help", "-h"]),
+      value: new Set(["--config", "--renderer", "--platform", "--artifact"])
+    }
+  ],
+  ...DEFERRED_COMMANDS.map((command): readonly [string, CliFlagSpec] => [
+    command,
+    { boolean: new Set(["--json", "--help", "-h"]), value: new Set() }
+  ])
+])
 
 export interface CliRunOptions {
   readonly argv: readonly string[]
@@ -527,7 +597,7 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
       return 0
     }
 
-    const usageError = findValueFlagUsageError(options.argv)
+    const usageError = findCliUsageError(options.argv)
     if (usageError !== undefined) {
       options.writeStderr(`${JSON.stringify(formatCliUsageError(usageError), null, 2)}\n`)
       return 1
@@ -898,6 +968,53 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
 
 const isRootHelp = (argv: readonly string[]): boolean =>
   argv.length === 1 && (argv[0] === "--help" || argv[0] === "-h")
+
+const findCliUsageError = (argv: readonly string[]): CliUsageError | undefined =>
+  findUnknownFlagUsageError(argv) ??
+  findMixedCheckModeUsageError(argv) ??
+  findValueFlagUsageError(argv)
+
+const findUnknownFlagUsageError = (argv: readonly string[]): CliUsageError | undefined => {
+  const command = argv[0]
+  if (command === undefined) {
+    return undefined
+  }
+  const spec = CLI_FLAG_SPECS.get(command)
+  if (spec === undefined) {
+    return undefined
+  }
+  for (let index = 1; index < argv.length; index += 1) {
+    const arg = argv[index]
+    if (arg === undefined || !arg.startsWith("-")) {
+      continue
+    }
+    const flag = arg.includes("=") ? arg.slice(0, arg.indexOf("=")) : arg
+    if (spec.boolean.has(flag)) {
+      continue
+    }
+    if (spec.value.has(flag)) {
+      if (!arg.includes("=")) {
+        index += 1
+      }
+      continue
+    }
+    return new CliUsageError(`unknown flag ${flag} for desktop ${command}`)
+  }
+  return undefined
+}
+
+const findMixedCheckModeUsageError = (argv: readonly string[]): CliUsageError | undefined => {
+  if (argv[0] !== "check") {
+    return undefined
+  }
+  const modes = argv
+    .map((arg) => (arg.includes("=") ? arg.slice(0, arg.indexOf("=")) : arg))
+    .filter((arg) => CHECK_MODE_FLAGS.has(arg))
+  if (modes.length <= 1) {
+    return undefined
+  }
+  return new CliUsageError(`desktop check modes are mutually exclusive: ${modes.join(", ")}`)
+}
 
 const findValueFlagUsageError = (argv: readonly string[]): CliUsageError | undefined => {
   const occurrences = new Map<string, number>()
