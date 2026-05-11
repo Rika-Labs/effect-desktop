@@ -21,6 +21,10 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./renderer": {
+      "types": "./src/runtime/renderer.ts",
+      "default": "./src/runtime/renderer.ts"
     }
   },
   "scripts": {

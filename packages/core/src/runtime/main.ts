@@ -10,6 +10,7 @@ import { Config, Effect, Option } from "effect"
 import packageJson from "../../package.json" with { type: "json" }
 import { createHostProtocolExchange } from "./host-client.js"
 import { createBunStdioTransport } from "./transport.js"
+import { openDeclaredWindows, readStartupWindows } from "./window-supervisor.js"
 
 const readyEvent = {
   event: "runtime.ready",
@@ -34,17 +35,21 @@ await Bun.write(Bun.stdout, `${JSON.stringify(readyEvent)}\n`)
 const hostExchange = createHostProtocolExchange(createBunStdioTransport())
 const handshake = makeHostHandshakeClient(hostExchange)
 const windows = makeHostWindowClient(hostExchange)
+const smokeTestWindows = Object.freeze({
+  smoke: Object.freeze({
+    title: "Effect Desktop"
+  })
+})
 
 await Effect.runPromise(
   Effect.gen(function* () {
     const isSmokeTest = yield* windowSmokeTest
+    const startupWindows = yield* readStartupWindows(process.env)
+    const declaredWindows =
+      Object.keys(startupWindows).length === 0 ? smokeTestWindows : startupWindows
     yield* negotiateHostVersion(handshake, HOST_PROTOCOL_VERSION)
     yield* handshake.ping()
-    const window = yield* windows.create()
-    if (isSmokeTest) {
-      yield* windows.destroy(window.windowId)
-      return
-    }
+    yield* openDeclaredWindows(windows, declaredWindows, { smokeTest: isSmokeTest })
   })
 )
 

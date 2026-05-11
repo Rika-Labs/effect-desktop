@@ -29,6 +29,14 @@ test("contract defines four RPCs in AppRpc group", async () => {
   expect(TODO_REACTIVITY_KEY).toBe("todos")
 })
 
+test("template spine declares startup windows and provided RPCs", async () => {
+  const { AppRpc } = await import("./contract.js")
+  const { TodoApp } = await import("./spine.js")
+
+  expect(TodoApp.windows["main"]?.title).toBe("Todos")
+  expect(TodoApp.rpcLayers[0]?.group).toBe(AppRpc)
+})
+
 test("renderer provider owns unavailable host state", () => {
   const main = readFileSync(join(templateRoot, "src", "main.tsx"), "utf8")
 

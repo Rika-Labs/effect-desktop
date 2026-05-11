@@ -87,10 +87,18 @@ const sqlLayer = SqlClientLive({ filename: "todos.db", ownerScope: "main" }).pip
   Layer.provide(registryLayer)
 )
 
-const todoLayer: Layer.Layer<never, never, never> = Layer.unwrap(
-  repoEffect.pipe(Effect.provide(sqlLayer))
-) as Layer.Layer<never, never, never>
+const todoLayer = Layer.unwrap(repoEffect.pipe(Effect.provide(sqlLayer)))
 
-export const MainLayer: Layer.Layer<never, never, never> = Desktop.app().pipe(
-  Layer.merge(todoLayer)
-)
+export const TodoApp = Desktop.make({
+  id: "todo-sqlite",
+  windows: {
+    main: {
+      title: "Todos",
+      width: 960,
+      height: 640,
+      renderer: "/"
+    }
+  }
+}).pipe(Desktop.provide(Desktop.Rpcs.layer(AppRpc, todoLayer)))
+
+export const MainLayer = Desktop.toLayer(TodoApp)

@@ -2496,7 +2496,7 @@ test("desktop notarize ignores zip sidecars that stapler cannot staple", async (
     await writePlaygroundFixture(directory, {
       signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
     })
-    await writePackagedArtifactFixture(directory, "macos-arm64", "app")
+    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
     await writePackagedArtifactFixture(directory, "macos-arm64", "zip")
     const calls: string[] = []
     const runner: NotarizeCommandRunner = (invocation) => {

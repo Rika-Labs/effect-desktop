@@ -25,6 +25,14 @@ test("contract defines Ping in AppRpc group", async () => {
   expect(AppRpc.requests.has("Ping")).toBe(true)
 })
 
+test("template spine declares startup windows and provided RPCs", async () => {
+  const { AppRpc } = await import("./contract.js")
+  const { MultiWindowApp } = await import("./spine.js")
+
+  expect(MultiWindowApp.windows["main"]?.title).toBe("Multi-window")
+  expect(MultiWindowApp.rpcLayers[0]?.group).toBe(AppRpc)
+})
+
 test("renderer provider owns unavailable host state", () => {
   const main = readFileSync(join(templateRoot, "src", "main.tsx"), "utf8")
 

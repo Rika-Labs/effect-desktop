@@ -9,5 +9,6 @@ crates/host-protocol/fixtures/*.json
 bun.lock
 *.lockb
 .next/
+.astro/
 .source/
 next-env.d.ts

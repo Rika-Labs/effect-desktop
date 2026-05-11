@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import { Cause, Effect, Exit, Fiber, Schema, Stream } from "effect"
 
 import {
+  apiContractToRpcGroup,
   type ApiContractClass,
   type ApiHandlers,
   type ApiLayer,
@@ -189,6 +190,10 @@ const makeProjectApi = <Tag extends string>(
         } as const)
       })
     })
+
+    static toRpcGroup() {
+      return apiContractToRpcGroup(contract.tag, contract.spec, contract.events)
+    }
 
     static layer<Handlers extends ApiHandlers<ProjectApiSpec>>(
       handlers: Handlers

@@ -568,7 +568,12 @@ effect-desktop/
     core/
     bridge/
     native/
+    vite/
     react/
+    vue/
+    solid/
+    next/
+    astro/
     cli/
     devtools/
     test/
@@ -4581,9 +4586,78 @@ Requirements:
 - streaming methods declare backpressure;
 - binary methods declare transport preferences.
 
+### 18.3.1 Canonical RPC boundary
+
+New renderer-callable APIs use Effect `RpcGroup` as the canonical contract model. `Desktop.Api.Tag` is a compatibility surface and must lower into `RpcGroup`; it is not a second source of truth.
+
+```ts
+import { Schema } from "effect"
+import { Rpc, RpcGroup } from "effect/unstable/rpc"
+import { Desktop } from "@effect-desktop/core"
+
+export class Project extends Schema.Class<Project>("Project")({
+  id: Schema.String,
+  path: Schema.String,
+  name: Schema.String
+}) {}
+
+export const ProjectList = Rpc.make("project.list", {
+  success: Schema.Array(Project),
+  error: Schema.Never
+}).pipe(Desktop.RpcEndpoint.query)
+
+export const ProjectOpen = Rpc.make("project.open", {
+  payload: Schema.Struct({ path: Schema.String }),
+  success: Project,
+  error: Schema.Union(
+    Desktop.Errors.PermissionDenied,
+    Desktop.Errors.FileNotFound
+  )
+}).pipe(
+  Desktop.RpcEndpoint.mutation,
+  Desktop.RpcCapability({ kind: "project:open" })
+)
+
+export const ProjectRpcs = RpcGroup.make(ProjectList, ProjectOpen)
+```
+
+Requirements:
+
+- `RpcGroup` is the canonical renderer-callable API boundary;
+- `Desktop.Api.Tag(...).toRpcGroup()` preserves legacy methods, streams, events, permissions, endpoint intent, and support metadata;
+- permissions and native support state are annotations on the RPC value, not duplicated in framework adapters;
+- app code imports the contract value and passes it to framework adapters; string API lookup is not a public contract path.
+
 ## 18.4 Service implementation
 
 Two equivalent shapes are supported. Apps choose the form that fits their dependency graph; both compose under Effect v4 layers.
+
+The canonical implementation shape for renderer-callable APIs is `RpcGroup.toLayer`. `Api.layer(...)` remains for compatibility with legacy `Desktop.Api.Tag` contracts.
+
+```ts
+import { Effect } from "effect"
+
+export const ProjectRpcsLive = ProjectRpcs.toLayer({
+  "project.list": () =>
+    Effect.gen(function* () {
+      const store = yield* ProjectStore
+      return yield* store.list()
+    }),
+
+  "project.open": ({ path }) =>
+    Effect.gen(function* () {
+      yield* Desktop.Permissions.require("project:open", { path })
+      const store = yield* ProjectStore
+      return yield* store.open(path)
+    })
+})
+
+export const App = Desktop.make({
+  windows: {
+    main: { title: "Example App", renderer: "/" }
+  }
+}).pipe(Desktop.provide(Desktop.Rpcs.layer(ProjectRpcs, ProjectRpcsLive)))
+```
 
 ### 18.4.1 Contract-driven (`Api.layer(...)`)
 
@@ -4662,6 +4736,16 @@ Requirements:
 - output is typed;
 - errors are typed;
 - no raw bridge API is required.
+
+Framework adapters derive from the assembled desktop app:
+
+- React exposes hooks from `ReactDesktop.from(Desktop.manifest(App)).useDesktop(ProjectRpcs)`;
+- Vue exposes composables and refs from `VueDesktop.from(Desktop.manifest(App)).useDesktop(ProjectRpcs)`;
+- Solid exposes resources, accessors, signals, mutations, and owner-scoped cleanup from `SolidDesktop.from(Desktop.manifest(App)).useDesktop(ProjectRpcs)`;
+- Next uses the React adapter from a client component boundary;
+- Astro uses hydrated React, Vue, or Solid islands; `.astro` files do not expose fake desktop hooks.
+
+Startup windows are opened from the `Desktop.make({ windows })` declaration after runtime/host protocol readiness. Renderer components do not open the initial window as a side effect.
 
 ## 18.6 Public method contract matrix
 
@@ -6706,6 +6790,23 @@ Each ADR must include:
 **Reason:** Security and correctness require that privileged work happen through generated APIs.
 
 **ADR file:** `docs/decisions/adr-0010-renderer-remains-unprivileged.md`
+
+Each ADR must include:
+
+- Context;
+- Decision;
+- Alternatives considered;
+- Consequences;
+- Migration notes;
+- Validation requirements.
+
+## 27.11 ADR-0022: RpcGroup is the desktop app boundary
+
+**Decision:** `RpcGroup` is the canonical renderer-callable API boundary; `Desktop.Api.Tag` lowers into `RpcGroup` for compatibility.
+
+**Reason:** One contract value must drive runtime implementation, app assembly, framework adapters, permissions, support metadata, and examples.
+
+**ADR file:** `docs/decisions/adr-0022-rpcgroup-desktop-app-boundary.md`
 
 Each ADR must include:
 
