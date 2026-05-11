@@ -37,6 +37,19 @@ describe("SQLite (bespoke)", () => {
     expect(snapshot.entries).toHaveLength(0)
   })
 
+  test("rejects NUL bytes in SQLite paths before opening a database", async () => {
+    const registry = await Effect.runPromise(makeResourceRegistry())
+    const service = await Effect.runPromise(makeSQLite(registry))
+
+    const exit = await Effect.runPromiseExit(
+      service.connect({ path: ":memory:\u0000shadow", ownerScope: "scope-main" })
+    )
+    const snapshot = await Effect.runPromise(registry.list())
+
+    expectFailure(exit, SqliteInvalidArgumentError)
+    expect(snapshot.entries).toHaveLength(0)
+  })
+
   test("exec returns change counts", async () => {
     const { connection } = await makeFixture()
 

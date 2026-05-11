@@ -19,6 +19,8 @@ export { UpstreamSqliteClient as SqliteClient }
 export type { SqliteClientConfig } from "@effect/sql-sqlite-bun/SqliteClient"
 
 const NonEmptyString = Schema.NonEmptyString
+// eslint-disable-next-line no-control-regex -- SQLite paths cannot contain NUL bytes.
+const SqlitePathString = NonEmptyString.check(Schema.isPattern(/^[^\u0000]+$/))
 
 export interface SqlClientLayerConfig {
   readonly filename: string
@@ -56,7 +58,7 @@ export const SqlClientLive = (
   )
 
 export class SqliteConnectInput extends Schema.Class<SqliteConnectInput>("SqliteConnectInput")({
-  path: NonEmptyString,
+  path: SqlitePathString,
   ownerScope: NonEmptyString,
   readonly: Schema.optionalKey(Schema.Boolean),
   create: Schema.optionalKey(Schema.Boolean),
