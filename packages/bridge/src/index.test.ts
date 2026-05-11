@@ -83,6 +83,38 @@ test("host protocol error recoverable defaults come from specs", () => {
   }
 })
 
+test("host protocol errors reject recoverability values that contradict tag policy", () => {
+  const mismatches: ReadonlyArray<unknown> = [
+    {
+      tag: "FileNotFound",
+      path: "/tmp/missing.txt",
+      message: "not found",
+      operation: "fixture.operation",
+      recoverable: true
+    },
+    {
+      tag: "Timeout",
+      timeoutMs: 1_000,
+      message: "timed out",
+      operation: "fixture.operation",
+      recoverable: false
+    }
+  ]
+
+  for (const error of mismatches) {
+    expect(() => decodeUnknownHostProtocolError(error, StrictParseOptions)).toThrow()
+    expect(() =>
+      decodeHostProtocolEnvelope({
+        kind: "response",
+        id: "request-1",
+        timestamp: 1710000000000,
+        traceId: "trace-recoverability",
+        error
+      })
+    ).toThrow()
+  }
+})
+
 test("renderer reconnect payload schemas decode canonical shapes", () => {
   const decodeResumeTicket = Schema.decodeUnknownSync(ResumeTicket)
   const decodeResume = Schema.decodeUnknownSync(RendererResumePayload)

@@ -644,7 +644,13 @@ export const HostProtocolError = Schema.Union([
   HostProtocolEventLogSegmentCorruptError,
   HostProtocolPtyForceKillTimeoutError,
   HostProtocolInternalError
-])
+]).check(
+  Schema.makeFilter(
+    (error) =>
+      error.recoverable === hostProtocolErrorRecoverableDefault(error.tag) ||
+      `recoverable must match tag policy for ${error.tag}`
+  )
+)
 
 export type HostProtocolError = typeof HostProtocolError.Type
 

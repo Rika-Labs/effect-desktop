@@ -527,6 +527,38 @@ ptyTest("PTY output dropOldest keeps the queue bounded and records evictions", a
   })
 })
 
+ptyTest("PTY rejects invalid output overflow policies before adapter open", async () => {
+  let openCalls = 0
+  const fixture = await makeFixture(
+    {
+      open: () => {
+        openCalls += 1
+        return makeFakeChild({ output: [], exit: { code: 0 } })
+      }
+    },
+    {
+      budgets: {
+        outputBufferBytes: 4,
+        outputCoalesceBytes: 2,
+        outputCoalesceMs: 1_000,
+        outputOverflow: "surprise"
+      } as unknown as PtyBudgetPolicy
+    }
+  )
+
+  const exit = await Effect.runPromiseExit(
+    fixture.service.open({
+      argv: ["bash"],
+      ownerScope: "scope-main",
+      rows: 24,
+      cols: 80
+    })
+  )
+
+  expectFailure(exit, HostProtocolInvalidArgumentError)
+  expect(openCalls).toBe(0)
+})
+
 ptyTest("PTY handle writes, resizes, kills, and preserves exit signal", async () => {
   const child = makeFakeChild({ output: [], exit: { code: 0 }, naturalExitDelayMs: 60_000 })
   const fixture = await makeFixture(makeFakeAdapter(() => child))

@@ -152,6 +152,12 @@ const DEFAULT_PTY_BUDGETS: Required<PtyBudgetPolicy> = Object.freeze({
   outputCoalesceMs: 4,
   outputOverflow: "dropOldest"
 })
+const PTY_OUTPUT_OVERFLOWS = new Set<PtyOutputOverflow>([
+  "block",
+  "dropNewest",
+  "dropOldest",
+  "error"
+])
 const DEFAULT_GRACEFUL_SHUTDOWN_MS = 5_000
 const EMPTY_PTY_PERMISSIONS: PtyPermissionPolicy = Object.freeze({})
 
@@ -877,6 +883,15 @@ const validatePtyBudgets = (
       operation
     )
     yield* validatePositiveIntegerBudget("outputCoalesceMs", budgets.outputCoalesceMs, operation)
+    if (!PTY_OUTPUT_OVERFLOWS.has(budgets.outputOverflow)) {
+      return yield* Effect.fail(
+        makeHostProtocolInvalidArgumentError(
+          "outputOverflow",
+          "must be block, dropNewest, dropOldest, or error",
+          operation
+        )
+      )
+    }
   })
 
 const validatePositiveIntegerBudget = (

@@ -300,6 +300,9 @@ const validateMethodSpec = (
         invalidSpec(tag, method, "output schema, stream, or resource is required")
       )
     }
+    if (isResourceSpec(spec.output)) {
+      yield* validateResourceSpec(tag, method, spec.output)
+    }
     if (!isSchema(spec.error)) {
       return yield* Effect.fail(invalidSpec(tag, method, "error schema is required"))
     }
@@ -435,6 +438,15 @@ const validateSupportSpec = (
       )
     }
   })
+
+const validateResourceSpec = (
+  tag: string,
+  method: string,
+  spec: ApiResourceSpec
+): Effect.Effect<void, InvalidApiContractSpec, never> =>
+  spec.kind.trim().length === 0 || spec.state.trim().length === 0
+    ? Effect.fail(invalidSpec(tag, method, "resource kind and state must be non-empty"))
+    : Effect.void
 
 const freezeContractSpec = <Spec extends ApiContractSpec>(spec: Spec): Spec => {
   for (const methodSpec of Object.values(spec)) {

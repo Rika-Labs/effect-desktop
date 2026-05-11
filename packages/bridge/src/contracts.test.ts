@@ -132,6 +132,28 @@ test("Api.Tag rejects missing required schemas as a typed Effect failure", async
   expectFailure(exit, InvalidApiContractSpec)
 })
 
+test("Api.Tag rejects empty resource spec names as a typed Effect failure", async () => {
+  const cases = [
+    Api.Resource("", "running"),
+    Api.Resource("process", ""),
+    Api.Resource(" ", "running"),
+    Api.Resource("process", " ")
+  ]
+
+  for (const [index, output] of cases.entries()) {
+    const exit = await Effect.runPromiseExit(
+      Api.Tag(`Test.InvalidResource.${index}`)<unknown>()({
+        call: {
+          ...validMethodSpec(),
+          output
+        }
+      })
+    )
+
+    expectFailure(exit, InvalidApiContractSpec)
+  }
+})
+
 test("Api.Tag rejects invalid timeout values as a typed Effect failure", async () => {
   const exit = await Effect.runPromiseExit(
     Api.Tag("Test.InvalidTimeout")<unknown>()({
