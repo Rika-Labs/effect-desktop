@@ -16,7 +16,17 @@
     {
       "name": "scaffold",
       "kind": "value",
-      "signature": "const scaffold: (options: ScaffoldOptions) => ScaffoldResult"
+      "signature": "const scaffold: (options: ScaffoldOptions) => Effect.Effect<ScaffoldResult, ScaffoldError, FileSystem.FileSystem>"
+    },
+    {
+      "name": "ScaffoldError",
+      "kind": "type",
+      "signature": "export type ScaffoldError = | ScaffoldTemplateError | ScaffoldTargetError | ScaffoldPackageJsonError | ScaffoldFileError"
+    },
+    {
+      "name": "ScaffoldFileError",
+      "kind": "class",
+      "signature": "export class ScaffoldFileError extends Data.TaggedError(\"ScaffoldFileError\")<{ readonly operation: string readonly path: string readonly message: string readonly cause: PlatformError }> {}"
     },
     {
       "name": "ScaffoldOptions",
@@ -24,9 +34,24 @@
       "signature": "export interface ScaffoldOptions { readonly name: string readonly template: TemplateName readonly rendererStorage: RendererStorage readonly includeWorkflows: boolean readonly includeCluster: boolean readonly outDir: string }"
     },
     {
+      "name": "ScaffoldPackageJsonError",
+      "kind": "class",
+      "signature": "export class ScaffoldPackageJsonError extends Data.TaggedError(\"ScaffoldPackageJsonError\")<{ readonly path: string readonly message: string readonly cause: unknown }> {}"
+    },
+    {
       "name": "ScaffoldResult",
       "kind": "interface",
       "signature": "export interface ScaffoldResult { readonly path: string readonly template: TemplateName readonly stubs: readonly string[] }"
+    },
+    {
+      "name": "ScaffoldTargetError",
+      "kind": "class",
+      "signature": "export class ScaffoldTargetError extends Data.TaggedError(\"ScaffoldTargetError\")<{ readonly path: string readonly message: string }> {}"
+    },
+    {
+      "name": "ScaffoldTemplateError",
+      "kind": "class",
+      "signature": "export class ScaffoldTemplateError extends Data.TaggedError(\"ScaffoldTemplateError\")<{ readonly template: string readonly message: string }> {}"
     },
     {
       "name": "TEMPLATE_NAMES",

@@ -336,7 +336,7 @@
     {
       "name": "HOST_PROTOCOL_VERSION",
       "kind": "value",
-      "signature": "const HOST_PROTOCOL_VERSION: string"
+      "signature": "const HOST_PROTOCOL_VERSION: \"0.0.0\""
     },
     {
       "name": "HOST_VERSION_METHOD",
@@ -981,12 +981,12 @@
     {
       "name": "WindowCreateResponse",
       "kind": "class",
-      "signature": "export class WindowCreateResponse extends Schema.Class<WindowCreateResponse>( \"WindowCreateResponse\" )({ windowId: Schema.String }) {}"
+      "signature": "export class WindowCreateResponse extends Schema.Class<WindowCreateResponse>( \"WindowCreateResponse\" )({ windowId: Schema.NonEmptyString }) {}"
     },
     {
       "name": "WindowDestroyPayload",
       "kind": "class",
-      "signature": "export class WindowDestroyPayload extends Schema.Class<WindowDestroyPayload>( \"WindowDestroyPayload\" )({ windowId: Schema.String }) {}"
+      "signature": "export class WindowDestroyPayload extends Schema.Class<WindowDestroyPayload>( \"WindowDestroyPayload\" )({ windowId: Schema.NonEmptyString }) {}"
     },
     {
       "name": "WithRpcCapability",

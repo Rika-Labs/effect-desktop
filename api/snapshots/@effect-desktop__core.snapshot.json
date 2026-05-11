@@ -284,6 +284,11 @@
       "signature": "export type CapabilityKind = typeof CapabilityKind.Type"
     },
     {
+      "name": "ChildProcessSpawner",
+      "kind": "value",
+      "signature": "import * as Brand from \"../../Brand.ts\"; import * as Context from \"../../Context.ts\"; import * as Effect from \"../../Effect.ts\"; import type * as PlatformError from \"../../PlatformError.ts\"; import type * as Scope from \"../../Scope.ts\"; import type * as Sink from \"../../Sink.ts\"; import * as Stream from \"../../Stream.ts\"; import type { Command, KillOptions } from \"./ChildProcess.ts\"; /** * @since 4.0.0 * @category Models */ export type ExitCode = Brand.Branded<number, \"ExitCode\">; /** * @since 4.0.0 * @category Constructors */ export declare const ExitCode: Brand.Constructor<ExitCode>; /** * @since 4.0.0 * @category Models */ export type ProcessId = Brand.Branded<number, \"ProcessId\">; /** * @since 4.0.0 * @category Constructors */ export declare const ProcessId: Brand.Constructor<ProcessId>; /** * An `Effect` that adds an unrefed child process back into the parent * process's reference count. * * This value is returned by `ChildProcessHandle.unref` and can be run later to * restore the default behavior where the child process keeps the parent * process alive. * * @since 4.0.0 * @category Models */ export type Reref = Effect.Effect<void, PlatformError.PlatformError>; declare const HandleTypeId = \"~effect/ChildProcessSpawner/ChildProcessHandle\"; /** * A handle to a running child process. * * @since 4.0.0 * @category Models */ export interface ChildProcessHandle { readonly [HandleTypeId]: typeof HandleTypeId; /** * The child process process identifier. */ readonly pid: ProcessId; /** * Waits for the child process to exit and returns the `ExitCode` of the * command that was run. */ readonly exitCode: Effect.Effect<ExitCode, PlatformError.PlatformError>; /** * Returns `true` if the child process is still running, otherwise returns * `false`. */ readonly isRunning: Effect.Effect<boolean, PlatformError.PlatformError>; /** * Kills the child process with the provided signal. * * If no signal option is provided, the signal defaults to `SIGTERM`. */ readonly kill: (options?: KillOptions | undefined) => Effect.Effect<void, PlatformError.PlatformError>; /** * The standard input sink for the child process. */ readonly stdin: Sink.Sink<void, Uint8Array, never, PlatformError.PlatformError>; /** * The standard output stream for the child process. * * Note: Using alongside `all` may cause interleaving of output and unexpected * results. */ readonly stdout: Stream.Stream<Uint8Array, PlatformError.PlatformError>; /** * The standard error stream for the child process. * * Note: Using alongside `all` may cause interleaving of output and unexpected * results. */ readonly stderr: Stream.Stream<Uint8Array, PlatformError.PlatformError>; /** * A stream which combines and interleaves all messages output by the child * process `stdout` and `stderr` streams. */ readonly all: Stream.Stream<Uint8Array, PlatformError.PlatformError>; /** * Get an input `Sink` for writing to a file descriptor configured via * `ChildProcessOptions.additionalFds`. * * If a file descriptor is accessed that was not configured, returns a drain * `Sink`. */ readonly getInputFd: (fd: number) => Sink.Sink<void, Uint8Array, never, PlatformError.PlatformError>; /** * Get an output `Stream` for reading from a file descriptor configured via * `ChildProcessOptions.additionalFds`. * * If a file descriptor is accessed that was not configured, returns an empty * `Stream`. */ readonly getOutputFd: (fd: number) => Stream.Stream<Uint8Array, PlatformError.PlatformError>; /** * Allows the parent process to exit independently of this child process. * * Running this `Effect` removes this child process from the parent process's * reference count, so the parent process is allowed to exit without waiting * for the child process to finish. * * The returned `Reref` effect adds the child process back into the parent * process's reference count when run, restoring the default behavior. * * This is the only supported way to re-reference a child process after it * has been unrefed. * * @example * ```ts * import { NodeServices } from \"@effect/platform-node\" * import { Effect } from \"effect\" * import { ChildProcess } from \"effect/unstable/process\" * * const program = Effect.gen(function*() { * const handle = yield* ChildProcess.make`./server` * const reref = yield* handle.unref * * yield* Effect.sleep(\"1 second\") * * yield* reref * return yield* handle.exitCode * }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)) * ``` */ readonly unref: Effect.Effect<Reref, PlatformError.PlatformError>; } /** * Constructs a new `ChildProcessHandle`. * * @since 4.0.0 * @category Constructors */ export declare const makeHandle: (params: Omit<ChildProcessHandle, typeof HandleTypeId>) => ChildProcessHandle; /** * Create a new `ChildProcessSpawner` service from a `spawn` funciton * * @since 4.0.0 * @category Models */ export declare const make: (spawn: ChildProcessSpawner[\"Service\"][\"spawn\"]) => ChildProcessSpawner[\"Service\"]; declare const ChildProcessSpawner_base: Context.ServiceClass<ChildProcessSpawner, \"effect/process/ChildProcessSpawner\", { /** * Spawn a command and return a handle for interaction. */ spawn(command: Command): Effect.Effect<ChildProcessHandle, PlatformError.PlatformError, Scope.Scope>; /** * Run a command and return its exit code. */ exitCode(command: Command): Effect.Effect<ExitCode, PlatformError.PlatformError>; /** * Stream the output of a command as strings. Optionally include stderr output * interleaved with stdout. */ streamString(command: Command, options?: { readonly includeStderr?: boolean | undefined; }): Stream.Stream<string, PlatformError.PlatformError>; /** * Stream the output of a command as lines. Optionally include stderr output * interleaved with stdout. */ streamLines(command: Command, options?: { readonly includeStderr?: boolean | undefined; }): Stream.Stream<string, PlatformError.PlatformError>; /** * Run a command and return the lines of its output as an array of strings. */ lines(command: Command, options?: { readonly includeStderr?: boolean | undefined; }): Effect.Effect<Array<string>, PlatformError.PlatformError>; /** * Run a command and return its output as a string. */ string(command: Command, options?: { readonly includeStderr?: boolean | undefined; }): Effect.Effect<string, PlatformError.PlatformError>; }>; /** * Service tag for child process spawning. * * @since 4.0.0 * @category Service */ export declare class ChildProcessSpawner extends ChildProcessSpawner_base { } export {}; //# sourceMappingURL=ChildProcessSpawner.d.ts.map"
+    },
+    {
       "name": "Client",
       "kind": "value",
       "signature": "const Client: <Contracts extends Readonly<Record<string, ApiContractClass>>>(contracts: Contracts, exchange: ApiClientExchange, options?: ApiClientOptions) => ApiClient<Contracts>"
@@ -291,7 +296,7 @@
     {
       "name": "CommandInvocationRecord",
       "kind": "class",
-      "signature": "export class CommandInvocationRecord extends Schema.Class<CommandInvocationRecord>( \"CommandInvocationRecord\" )({ commandId: Schema.String, actor: Schema.Unknown, traceId: NonEmptyString, outcome: Schema.Literals([\"success\", \"failure\"]), timestamp: NonNegativeInt, durationMs: NonNegativeInt, errorTag: Schema.optionalKey(NonEmptyString) }) {}"
+      "signature": "export class CommandInvocationRecord extends Schema.Class<CommandInvocationRecord>( \"CommandInvocationRecord\" )({ commandId: Schema.String, actor: Schema.Unknown, traceId: NonEmptyString, outcome: Schema.Literals([\"success\", \"failure\", \"committed-audit-failure\"]), timestamp: NonNegativeInt, durationMs: NonNegativeInt, errorTag: Schema.optionalKey(NonEmptyString) }) {}"
     },
     {
       "name": "CommandRegistration",
@@ -324,9 +329,14 @@
       "signature": "export class CommandRegistryCommandNotFoundError extends Data.TaggedError(\"CommandNotFound\")<{ readonly operation: string readonly commandId: string }> {}"
     },
     {
+      "name": "CommandRegistryCommittedAuditFailedError",
+      "kind": "class",
+      "signature": "export class CommandRegistryCommittedAuditFailedError extends Data.TaggedError( \"CommandCommittedAuditFailed\" )<{ readonly operation: string readonly commandId: string readonly cause: CommandRegistryAuditFailedError }> {}"
+    },
+    {
       "name": "CommandRegistryError",
       "kind": "type",
-      "signature": "export type CommandRegistryError = | CommandRegistryInvalidInputError | CommandRegistryInvalidOutputError | CommandRegistryCommandNotFoundError | CommandRegistryCommandAlreadyRegisteredError | CommandRegistryRegistrationLostError | CommandRegistryHandlerFailureError | CommandRegistryAuditFailedError | PermissionRegistryError"
+      "signature": "export type CommandRegistryError = | CommandRegistryInvalidInputError | CommandRegistryInvalidOutputError | CommandRegistryCommandNotFoundError | CommandRegistryCommandAlreadyRegisteredError | CommandRegistryRegistrationLostError | CommandRegistryHandlerFailureError | CommandRegistryAuditFailedError | CommandRegistryCommittedAuditFailedError | PermissionRegistryError"
     },
     {
       "name": "CommandRegistryHandlerFailureError",
@@ -846,7 +856,7 @@
     {
       "name": "makePty",
       "kind": "value",
-      "signature": "const makePty: (registry: ResourceRegistryApi, options?: PtyOptions) => Effect.Effect<PtyApi, never, never>"
+      "signature": "const makePty: (registry: ResourceRegistryApi, options?: PtyOptions) => Effect.Effect<PtyApi, HostProtocolInvalidArgumentError, never>"
     },
     {
       "name": "makeResourceRegistry",
@@ -1226,7 +1236,7 @@
     {
       "name": "PtyLayer",
       "kind": "value",
-      "signature": "const PtyLayer: (options?: PtyOptions) => Layer.Layer<PTY, never, ResourceRegistry>"
+      "signature": "const PtyLayer: (options?: PtyOptions) => Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceRegistry>"
     },
     {
       "name": "PtyLive",
@@ -2186,7 +2196,7 @@
     {
       "name": "WorkerError",
       "kind": "type",
-      "signature": "export type WorkerError = | WorkerChannelError | WorkerCapabilityNotHeldError | WorkerCrashedError | WorkerInvalidArgumentError | WorkerResourceBusyError | WorkerUnsupportedError"
+      "signature": "export type WorkerError = | WorkerChannelError | WorkerCapabilityNotHeldError | WorkerCrashedError | WorkerInvalidArgumentError | WorkerResourceBusyError | WorkerStaleHandleError | WorkerUnsupportedError"
     },
     {
       "name": "WorkerHandle",
@@ -2237,6 +2247,11 @@
       "name": "WorkerSpawnOptions",
       "kind": "interface",
       "signature": "export interface WorkerSpawnOptions<In, Out> { readonly script: string readonly ownerScope: string readonly inputSchema: Schema.Schema<In> readonly outputSchema: Schema.Schema<Out> readonly context: PermissionContext readonly capabilities?: readonly NormalizedCapability[] }"
+    },
+    {
+      "name": "WorkerStaleHandleError",
+      "kind": "class",
+      "signature": "export class WorkerStaleHandleError extends Data.TaggedError(\"StaleHandle\")<{ readonly operation: string readonly kind: string readonly id: string readonly expectedGeneration: number readonly actualGeneration: number }> {}"
     },
     {
       "name": "WorkerUnsupportedError",
