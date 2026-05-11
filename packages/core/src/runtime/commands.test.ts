@@ -1,10 +1,12 @@
 import { expect, test } from "bun:test"
 import { Cause, Deferred, Effect, Exit, Fiber, Option, Schema, Stream } from "effect"
+import { EventJournal } from "effect/unstable/eventlog"
 
 import { AuditEvent, type AuditEventsApi } from "./audit-events.js"
 import {
   CommandRegistryCommandAlreadyRegisteredError,
   CommandRegistryCommandNotFoundError,
+  CommandRegistryCommittedAuditFailedError,
   CommandRegistryHandlerFailureError,
   CommandRegistryInvalidInputError,
   CommandRegistryInvalidOutputError,
@@ -240,6 +242,45 @@ test("CommandRegistry command invocation audit uses the permission grant trace i
 
   expect(auditTraceIds(rows, "permission-used")).toEqual(["trace-1"])
   expect(auditTraceIds(rows, "command-invoked")).toEqual(["trace-1"])
+})
+
+test("CommandRegistry distinguishes committed handler runs from post-handler audit failures", async () => {
+  const rows: AuditEvent[] = []
+  const audit = failingCommandInvokedAudit(rows)
+  const resources = await Effect.runPromise(makeResourceRegistry())
+  const permissions = await Effect.runPromise(
+    makePermissionRegistry({ audit, traceId: () => "trace-1", nextToken: () => "grant-1" })
+  )
+  const registry = await Effect.runPromise(makeCommandRegistry(resources, permissions, { audit }))
+  await Effect.runPromise(permissions.declare(commandCapability, { source: "test" }))
+  let handlerCalls = 0
+  await Effect.runPromise(
+    registry.register({
+      id: "openProject",
+      inputSchema: OpenInput,
+      outputSchema: OpenOutput,
+      capability: commandCapability,
+      ownerScope: "window-1",
+      handler: () =>
+        Effect.sync(() => {
+          handlerCalls += 1
+          return new OpenOutput({ opened: true })
+        })
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(
+    registry.invoke("openProject", { path: "/tmp/project" }, context)
+  )
+  const snapshots = await Effect.runPromise(registry.list())
+
+  expectFailure(exit, CommandRegistryCommittedAuditFailedError)
+  expect(handlerCalls).toBe(1)
+  expect(rows.map((row) => row.kind)).toContain("command-registered")
+  expect(rows.map((row) => row.kind)).not.toContain("command-invoked")
+  expect(snapshots[0]?.invocationCount).toBe(1)
+  expect(snapshots[0]?.lastInvocation?.outcome).toBe("committed-audit-failure")
+  expect(snapshots[0]?.lastError?.errorTag).toBe("CommandCommittedAuditFailed")
 })
 
 test("CommandRegistry accepts empty trace ids in context and falls back in invocation history", async () => {
@@ -518,6 +559,20 @@ const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
     Effect.sync(() => {
       rows.push(event)
     })
+})
+
+const failingCommandInvokedAudit = (rows: AuditEvent[]): AuditEventsApi => ({
+  emit: (event: AuditEvent) =>
+    event.kind === "command-invoked"
+      ? Effect.fail(
+          new EventJournal.EventJournalError({
+            method: "EventJournal.write",
+            cause: new Error("journal full")
+          })
+        )
+      : Effect.sync(() => {
+          rows.push(event)
+        })
 })
 
 const delayedCleanupResourceRegistry = (

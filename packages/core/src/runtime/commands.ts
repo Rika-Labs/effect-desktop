@@ -67,6 +67,14 @@ export class CommandRegistryAuditFailedError extends Data.TaggedError("CommandAu
   readonly cause: unknown
 }> {}
 
+export class CommandRegistryCommittedAuditFailedError extends Data.TaggedError(
+  "CommandCommittedAuditFailed"
+)<{
+  readonly operation: string
+  readonly commandId: string
+  readonly cause: CommandRegistryAuditFailedError
+}> {}
+
 export type CommandRegistryError =
   | CommandRegistryInvalidInputError
   | CommandRegistryInvalidOutputError
@@ -75,6 +83,7 @@ export type CommandRegistryError =
   | CommandRegistryRegistrationLostError
   | CommandRegistryHandlerFailureError
   | CommandRegistryAuditFailedError
+  | CommandRegistryCommittedAuditFailedError
   | PermissionRegistryError
 
 export interface CommandRegistration<I, O> {
@@ -92,7 +101,7 @@ export class CommandInvocationRecord extends Schema.Class<CommandInvocationRecor
   commandId: Schema.String,
   actor: Schema.Unknown,
   traceId: NonEmptyString,
-  outcome: Schema.Literals(["success", "failure"]),
+  outcome: Schema.Literals(["success", "failure", "committed-audit-failure"]),
   timestamp: NonNegativeInt,
   durationMs: NonNegativeInt,
   errorTag: Schema.optionalKey(NonEmptyString)
@@ -259,7 +268,16 @@ const invokeCommand = (
     })
     const output = yield* permissions.use(grant, invokeCommandHandler(command, decodedInput))
     const decodedOutput = yield* decodeCommandOutput(command, output)
-    yield* auditCommand(audit, "command-invoked", decodedId, "success", now, grant.traceId)
+    yield* auditCommand(audit, "command-invoked", decodedId, "success", now, grant.traceId).pipe(
+      Effect.mapError(
+        (error) =>
+          new CommandRegistryCommittedAuditFailedError({
+            operation: "CommandRegistry.invoke",
+            commandId: decodedId,
+            cause: error
+          })
+      )
+    )
     return decodedOutput
   }).pipe(
     Effect.tap(() =>
@@ -273,7 +291,9 @@ const invokeCommand = (
         startedAt,
         id,
         context,
-        "failure",
+        error instanceof CommandRegistryCommittedAuditFailedError
+          ? "committed-audit-failure"
+          : "failure",
         errorTag(error)
       )
     ),
@@ -288,7 +308,7 @@ const recordCommandInvocation = (
   startedAt: number,
   commandId: string,
   context: PermissionContext,
-  outcome: "success" | "failure",
+  outcome: "success" | "failure" | "committed-audit-failure",
   errorTag?: string
 ): Effect.Effect<void, never, never> =>
   Effect.gen(function* () {
@@ -318,7 +338,7 @@ const recordCommandInvocation = (
         ...command,
         invocationCount: command.invocationCount + 1,
         lastInvocation: record,
-        ...(outcome === "failure" ? { lastError: record } : {})
+        ...(outcome === "success" ? {} : { lastError: record })
       })
       return next
     })
