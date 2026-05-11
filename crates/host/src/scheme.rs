@@ -25,18 +25,24 @@ type Rewriter =
 
 pub(crate) fn register_app_scheme<'a>(builder: WebViewBuilder<'a>) -> WebViewBuilder<'a> {
     builder.with_custom_protocol(APP_SCHEME.into(), |_webview_id, request| {
-        app_scheme_response_with(&request, html_csp::rewrite_with_nonce)
+        let csp_template = csp::configured_template();
+        app_scheme_response_with(
+            &request,
+            html_csp::rewrite_with_nonce,
+            csp_template.as_deref(),
+        )
     })
 }
 
 #[cfg(test)]
 fn app_scheme_response(request: &Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
-    app_scheme_response_with(request, html_csp::rewrite_with_nonce)
+    app_scheme_response_with(request, html_csp::rewrite_with_nonce, None)
 }
 
 fn app_scheme_response_with(
     request: &Request<Vec<u8>>,
     rewriter: Rewriter,
+    csp_template: Option<&str>,
 ) -> Response<Cow<'static, [u8]>> {
     let nonce = csp::CspNonce::mint();
     let trace_id = request_trace_id(request);
@@ -44,21 +50,21 @@ fn app_scheme_response_with(
     let method = request.method();
 
     if request.uri().host() != Some(APP_HOST) {
-        return app_not_found_response(&nonce, &trace_id);
+        return app_not_found_response(&nonce, &trace_id, csp_template);
     }
     if request
         .uri()
         .authority()
         .is_none_or(|authority| authority.as_str() != APP_HOST)
     {
-        return app_not_found_response(&nonce, &trace_id);
+        return app_not_found_response(&nonce, &trace_id, csp_template);
     }
     if method != Method::GET && method != Method::HEAD {
-        return app_method_not_allowed_response(&nonce, &trace_id);
+        return app_method_not_allowed_response(&nonce, &trace_id, csp_template);
     }
 
     let Some(asset) = assets::resolve(&path) else {
-        return app_not_found_response(&nonce, &trace_id);
+        return app_not_found_response(&nonce, &trace_id, csp_template);
     };
 
     let body = if method == Method::HEAD {
@@ -68,7 +74,14 @@ fn app_scheme_response_with(
     };
 
     if !asset.content_type.starts_with("text/html") {
-        return app_response(StatusCode::OK, asset.content_type, body, &nonce, &trace_id);
+        return app_response(
+            StatusCode::OK,
+            asset.content_type,
+            body,
+            &nonce,
+            &trace_id,
+            csp_template,
+        );
     }
 
     match rewriter(asset.bytes, &nonce) {
@@ -100,6 +113,7 @@ fn app_scheme_response_with(
                 },
                 &nonce,
                 &trace_id,
+                csp_template,
             )
         }
         Err(rewrite_error) => {
@@ -110,7 +124,7 @@ fn app_scheme_response_with(
                 error = %rewrite_error,
                 "html rewrite failed"
             );
-            app_rewrite_error_response(&trace_id, &nonce)
+            app_rewrite_error_response(&trace_id, &nonce, csp_template)
         }
     }
 }
@@ -118,6 +132,7 @@ fn app_scheme_response_with(
 fn app_not_found_response(
     nonce: &csp::CspNonce,
     trace_id: &HeaderValue,
+    csp_template: Option<&str>,
 ) -> Response<Cow<'static, [u8]>> {
     app_response(
         StatusCode::NOT_FOUND,
@@ -125,12 +140,14 @@ fn app_not_found_response(
         Cow::Borrowed(NOT_FOUND_BODY.as_bytes()),
         nonce,
         trace_id,
+        csp_template,
     )
 }
 
 fn app_method_not_allowed_response(
     nonce: &csp::CspNonce,
     trace_id: &HeaderValue,
+    csp_template: Option<&str>,
 ) -> Response<Cow<'static, [u8]>> {
     app_response(
         StatusCode::METHOD_NOT_ALLOWED,
@@ -138,12 +155,14 @@ fn app_method_not_allowed_response(
         Cow::Borrowed(b"app protocol supports only GET and HEAD requests"),
         nonce,
         trace_id,
+        csp_template,
     )
 }
 
 fn app_rewrite_error_response(
     trace_id: &HeaderValue,
     nonce: &csp::CspNonce,
+    csp_template: Option<&str>,
 ) -> Response<Cow<'static, [u8]>> {
     let trace_str = trace_id.to_str().unwrap_or("unknown");
     let body = format!("{REWRITE_FAILED_BODY_PREFIX}{trace_str}").into_bytes();
@@ -153,6 +172,7 @@ fn app_rewrite_error_response(
         Cow::Owned(body),
         nonce,
         trace_id,
+        csp_template,
     )
 }
 
@@ -162,8 +182,12 @@ fn app_response(
     body: Cow<'static, [u8]>,
     nonce: &csp::CspNonce,
     trace_id: &HeaderValue,
+    csp_template: Option<&str>,
 ) -> Response<Cow<'static, [u8]>> {
-    let policy = csp::CspPolicy::default_for_nonce(nonce);
+    let policy = csp_template.map_or_else(
+        || csp::CspPolicy::default_for_nonce(nonce),
+        |template| csp::CspPolicy::from_template(template, nonce),
+    );
     let mut response = Response::new(body);
     *response.status_mut() = status;
     response
@@ -293,6 +317,33 @@ mod tests {
     }
 
     #[test]
+    fn app_scheme_response_uses_configured_csp_template_when_supplied() {
+        let request = Request::builder()
+            .uri(APP_URL)
+            .body(Vec::new())
+            .expect("test request should build");
+        let response = app_scheme_response_with(
+            &request,
+            crate::html_csp::rewrite_with_nonce,
+            Some("default-src 'self'; connect-src 'self'; script-src 'nonce-{N}'"),
+        );
+
+        let header_nonce = csp_nonce_from_header(&response);
+        assert_eq!(
+            response.headers().get(CONTENT_SECURITY_POLICY),
+            Some(
+                &HeaderValue::from_str(
+                    format!(
+                        "default-src 'self'; connect-src 'self'; script-src 'nonce-{header_nonce}'"
+                    )
+                    .as_str(),
+                )
+                .expect("configured CSP should be a valid header")
+            )
+        );
+    }
+
+    #[test]
     fn app_scheme_response_mints_trace_id_when_request_header_is_missing() {
         let request = Request::builder()
             .uri(APP_URL)
@@ -398,7 +449,7 @@ mod tests {
             .body(Vec::new())
             .expect("test request should build");
 
-        let response = app_scheme_response_with(&request, faulty_rewriter);
+        let response = app_scheme_response_with(&request, faulty_rewriter, None);
 
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(
