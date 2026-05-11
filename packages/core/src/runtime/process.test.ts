@@ -138,6 +138,14 @@ test("Process accepts the default graceful shutdown window when omitted", async 
   expect(Exit.isSuccess(exit)).toBe(true)
 })
 
+test("Process rejects invalid snapshot capacities", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  for (const value of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    const exit = await Effect.runPromiseExit(makeProcess(registry, { maxSnapshots: value }))
+    expectFailure(exit, HostProtocolInvalidArgumentError)
+  }
+})
+
 processTest("Process spawn validates required owner scope before adapter activity", async () => {
   let spawnCalls = 0
   const fixture = await makeFixture(
@@ -244,6 +252,27 @@ processTest("Process spawn rejects NUL bytes in environment names", async () => 
     fixture.service.spawn("echo", ["hi"], {
       ownerScope: "scope-main",
       env: { [`key${nul}`]: "value" }
+    })
+  )
+
+  expect(spawnCalls).toBe(0)
+  expectFailure(exit, HostProtocolInvalidArgumentError)
+})
+
+processTest("Process spawn rejects empty environment names before adapter activity", async () => {
+  let spawnCalls = 0
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => {
+      spawnCalls += 1
+      return makeFakeChild({ stdout: [], exit: { code: 0 } })
+    }),
+    { permissions: { spawn: ["echo"] } }
+  )
+
+  const exit = await Effect.runPromiseExit(
+    fixture.service.spawn("echo", ["hi"], {
+      ownerScope: "scope-main",
+      env: { "": "value" }
     })
   )
 
@@ -525,6 +554,22 @@ processTest("Process stdin sink writes chunks and closes when the sink completes
   expect(child.stdinClosed).toBe(true)
 })
 
+processTest("Process stdin rejects non-byte chunks before adapter activity", async () => {
+  const child = makeFakeChild({ stdout: [], exit: { code: 0 } })
+  const fixture = await makeFixture(makeFakeAdapter(() => child))
+  const handle = await Effect.runPromise(
+    fixture.service.spawn("cat", [], { ownerScope: "scope-main" })
+  )
+
+  const exit = await Effect.runPromiseExit(
+    Stream.make("abc" as never).pipe(Stream.run(handle.stdin))
+  )
+
+  expect(child.stdinWrites).toEqual([])
+  expect(child.stdinClosed).toBe(true)
+  expectFailure(exit, HostProtocolInvalidArgumentError)
+})
+
 processTest("Process kill returns a typed effect and exit preserves the signal", async () => {
   const child = makeFakeChild({ stdout: [], exit: { code: 0 } })
   const fixture = await makeFixture(makeFakeAdapter(() => child))
@@ -647,6 +692,7 @@ const makeFixture = async (
   options: {
     readonly budgets?: ProcessBudgetPolicy
     readonly gracefulShutdownMs?: number
+    readonly maxSnapshots?: number
     readonly permissions?: ProcessPermissionPolicy
   } = {}
 ): Promise<{ readonly registry: ResourceRegistryApi; readonly service: ProcessApi }> => {
@@ -661,6 +707,7 @@ const makeService = (
   options: {
     readonly budgets?: ProcessBudgetPolicy
     readonly gracefulShutdownMs?: number
+    readonly maxSnapshots?: number
     readonly permissions?: ProcessPermissionPolicy
   } = {}
 ) =>
@@ -671,7 +718,8 @@ const makeService = (
       permissions: options.permissions ?? ALLOW_TEST_PROCESS_PERMISSIONS,
       ...(options.gracefulShutdownMs === undefined
         ? {}
-        : { gracefulShutdownMs: options.gracefulShutdownMs })
+        : { gracefulShutdownMs: options.gracefulShutdownMs }),
+      ...(options.maxSnapshots === undefined ? {} : { maxSnapshots: options.maxSnapshots })
     })
   )
 

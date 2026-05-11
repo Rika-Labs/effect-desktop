@@ -167,6 +167,15 @@ export const makeProcess = (
       )
     }
     const maxSnapshots = options.maxSnapshots ?? DEFAULT_MAX_PROCESS_SNAPSHOTS
+    if (!Number.isSafeInteger(maxSnapshots) || maxSnapshots <= 0) {
+      return yield* Effect.fail(
+        makeHostProtocolInvalidArgumentError(
+          "maxSnapshots",
+          "must be a positive safe integer",
+          "Process.make"
+        )
+      )
+    }
     const permissions = options.permissions ?? EMPTY_PROCESS_PERMISSIONS
     const now = options.now ?? Date.now
     const processBudgets = yield* Ref.make(new Map<string, number>())
@@ -292,9 +301,12 @@ const makeHandle = (
     catch: (error) => mapProcessError(error, command, "Process.stdin.close")
   })
   const stdin = Sink.forEach((chunk: Uint8Array) =>
-    Effect.tryPromise({
-      try: () => child.writeStdin(chunk),
-      catch: (error) => mapProcessError(error, command, "Process.stdin.write")
+    Effect.gen(function* () {
+      const bytes = yield* decodeStdinChunk(chunk, "Process.stdin.write")
+      yield* Effect.tryPromise({
+        try: () => child.writeStdin(bytes),
+        catch: (error) => mapProcessError(error, command, "Process.stdin.write")
+      })
     })
   ).pipe(Sink.ensuring(closeStdin))
   const exitStatus = Effect.tryPromise({
@@ -576,6 +588,14 @@ const decodeSignalInput = (
       makeHostProtocolInvalidArgumentError("signal", formatUnknownError(error), operation)
     )
   )
+
+const decodeStdinChunk = (
+  input: unknown,
+  operation: string
+): Effect.Effect<Uint8Array, HostProtocolInvalidArgumentError, never> =>
+  input instanceof Uint8Array
+    ? Effect.succeed(input)
+    : Effect.fail(makeHostProtocolInvalidArgumentError("chunk", "must be a Uint8Array", operation))
 
 const authorizeProcessSpawn = (
   permissions: ProcessPermissionPolicy,
