@@ -244,6 +244,25 @@ test("Streams rejects malformed chunks as typed HostProtocol failures", async ()
   expectFailureTag(exit, "InvalidOutput")
 })
 
+test("Streams rejects invalid generated timestamps as typed Effect failures", async () => {
+  const ProjectApi = makeProjectApi("ProjectApi.StreamInvalidTimestamp")
+  const runtime = Streams.withOptions(
+    {
+      now: () => Number.NaN
+    },
+    ProjectApi.layer({
+      watch: () => Stream.make(new WatchEvent({ sequence: 1, path: "a" }))
+    })
+  )
+  const client = Client({ project: ProjectApi }, streamExchange(runtime, []))
+
+  const exit = await Effect.runPromiseExit(
+    client.project.watch(new WatchInput({ projectId: "project-1" })).pipe(Stream.runCollect)
+  )
+
+  expectFailureTag(exit, "InvalidArgument")
+})
+
 test("Streams applies error overflow as a BackpressureOverflow terminal frame", async () => {
   const registry = makeBridgeStreamRegistry()
   const ProjectApi = makeProjectApi("ProjectApi.StreamOverflow", {

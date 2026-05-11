@@ -9,6 +9,7 @@ import {
 import {
   HostProtocolEventEnvelope,
   makeHostProtocolInvalidArgumentError,
+  validateHostProtocolTimestamp,
   type HostProtocolError
 } from "./protocol.js"
 
@@ -136,10 +137,11 @@ const publish = <Events extends ApiContractEvents, Event extends keyof Events>(
     }
 
     const encodedPayload = yield* encodeEventPayload(method, channel.spec, payload)
+    const timestamp = yield* validateHostProtocolTimestamp(options.now(), method)
     const envelope = new HostProtocolEventEnvelope({
       kind: "event",
       method,
-      timestamp: options.now(),
+      timestamp,
       traceId: options.nextTraceId(),
       ...(options.windowId === undefined ? {} : { windowId: options.windowId }),
       ...(encodedPayload === undefined ? {} : { payload: encodedPayload })

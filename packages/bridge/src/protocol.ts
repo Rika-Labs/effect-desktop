@@ -662,6 +662,20 @@ export const makeHostProtocolInvalidArgumentError = (
     )
   })
 
+export const validateHostProtocolTimestamp = (
+  timestamp: number,
+  operation: string
+): Effect.Effect<number, HostProtocolInvalidArgumentError, never> =>
+  Number.isInteger(timestamp) && timestamp >= 0
+    ? Effect.succeed(timestamp)
+    : Effect.fail(
+        makeHostProtocolInvalidArgumentError(
+          "timestamp",
+          "must be a finite non-negative integer",
+          operation
+        )
+      )
+
 export const makeHostProtocolInvalidOutputError = (
   method: string,
   reason: string

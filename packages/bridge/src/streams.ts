@@ -19,6 +19,7 @@ import {
   HostProtocolStreamByRequestEnvelope,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
+  validateHostProtocolTimestamp,
   type HostProtocolError
 } from "./protocol.js"
 
@@ -108,7 +109,7 @@ type StreamQueue = {
   readonly capacity: number
   readonly evictedFrames: Ref.Ref<number>
   readonly overflow: NonNullable<BackpressureSpec["overflow"]>
-  readonly queue: Queue.Queue<HostProtocolStreamEnvelope, Cause.Done>
+  readonly queue: Queue.Queue<HostProtocolStreamEnvelope, HostProtocolError | Cause.Done>
 }
 
 type ActiveStream = {
@@ -377,12 +378,11 @@ const cancelStream = (
       return
     }
 
-    yield* offerTerminalFrame(
-      stream.queue,
-      closedFrame(stream.request, stream.streamId, stream.options),
-      stream.options,
-      "closed"
-    )
+    const frame = yield* Effect.option(closedFrame(stream.request, stream.streamId, stream.options))
+    if (Option.isNone(frame)) {
+      return
+    }
+    yield* offerTerminalFrame(stream.queue, frame.value, stream.options, "closed")
     yield* Queue.end(stream.queue.queue)
     yield* stream.interrupt
     yield* Effect.sync(() => {
@@ -410,27 +410,34 @@ const runProducer = (
     )
 
     if (Exit.isFailure(exit)) {
-      yield* offerTerminalFrame(
-        streamQueue,
-        yield* encodeErrorFrame(request, streamId, bound.spec.output, exit.cause, options),
-        options,
-        "error"
+      const frameExit = yield* Effect.exit(
+        encodeErrorFrame(request, streamId, bound.spec.output, exit.cause, options)
       )
+      if (Exit.isFailure(frameExit)) {
+        const fail = frameExit.cause.reasons.find(Cause.isFailReason)
+        if (fail !== undefined) {
+          yield* Queue.fail(streamQueue.queue, fail.error).pipe(Effect.catch(() => Effect.void))
+        }
+      } else {
+        yield* offerTerminalFrame(streamQueue, frameExit.value, options, "error")
+      }
     } else {
-      yield* offerTerminalFrame(
-        streamQueue,
-        completeFrame(request, streamId, options),
-        options,
-        "complete"
-      )
+      const frameExit = yield* Effect.exit(completeFrame(request, streamId, options))
+      if (Exit.isFailure(frameExit)) {
+        const fail = frameExit.cause.reasons.find(Cause.isFailReason)
+        if (fail !== undefined) {
+          yield* Queue.fail(streamQueue.queue, fail.error).pipe(Effect.catch(() => Effect.void))
+        }
+      } else {
+        yield* offerTerminalFrame(streamQueue, frameExit.value, options, "complete")
+      }
     }
 
     yield* Queue.end(streamQueue.queue)
   }).pipe(
     Effect.catchCause((cause) =>
       Effect.gen(function* () {
-        yield* offerTerminalFrame(
-          streamQueue,
+        const frame = yield* Effect.exit(
           protocolErrorFrame(
             request,
             streamId,
@@ -442,10 +449,16 @@ const runProducer = (
               cause,
               recoverable: false
             })
-          ),
-          options,
-          "error"
+          )
         )
+        if (Exit.isFailure(frame)) {
+          const fail = frame.cause.reasons.find(Cause.isFailReason)
+          if (fail !== undefined) {
+            yield* Queue.fail(streamQueue.queue, fail.error).pipe(Effect.catch(() => Effect.void))
+          }
+        } else {
+          yield* offerTerminalFrame(streamQueue, frame.value, options, "error")
+        }
         yield* Queue.end(streamQueue.queue)
       })
     )
@@ -459,10 +472,14 @@ const makeStreamQueue = (spec: BoundStream["spec"]): Effect.Effect<StreamQueue, 
     const evictedFrames = yield* Ref.make(0)
     const queue =
       overflow === "dropOldest"
-        ? yield* Queue.sliding<HostProtocolStreamEnvelope, Cause.Done>(capacity)
+        ? yield* Queue.sliding<HostProtocolStreamEnvelope, HostProtocolError | Cause.Done>(capacity)
         : overflow === "block"
-          ? yield* Queue.bounded<HostProtocolStreamEnvelope, Cause.Done>(capacity)
-          : yield* Queue.dropping<HostProtocolStreamEnvelope, Cause.Done>(capacity)
+          ? yield* Queue.bounded<HostProtocolStreamEnvelope, HostProtocolError | Cause.Done>(
+              capacity
+            )
+          : yield* Queue.dropping<HostProtocolStreamEnvelope, HostProtocolError | Cause.Done>(
+              capacity
+            )
 
     return { capacity, evictedFrames, overflow, queue }
   })
@@ -568,7 +585,7 @@ const encodeChunkFrame = (
   Effect.gen(function* () {
     const encodedChunk = yield* encodeStreamChunk(request.method, spec, chunk)
 
-    return streamFrame(
+    return yield* streamFrame(
       request,
       streamId,
       options,
@@ -582,18 +599,18 @@ const encodeErrorFrame = (
   spec: ApiStreamSpec,
   cause: Cause.Cause<unknown>,
   options: ResolvedApiStreamRuntimeOptions
-): Effect.Effect<HostProtocolStreamEnvelope, never, never> =>
+): Effect.Effect<HostProtocolStreamEnvelope, HostProtocolError, never> =>
   Effect.gen(function* () {
     const fail = cause.reasons.find(Cause.isFailReason)
     const error = fail === undefined ? formatUnknownError(cause) : fail.error
     const protocolError = yield* Effect.option(decodeHostProtocolError(error))
     if (Option.isSome(protocolError)) {
-      return protocolErrorFrame(request, streamId, options, protocolError.value)
+      return yield* protocolErrorFrame(request, streamId, options, protocolError.value)
     }
 
     const encoded = yield* encodeStreamError(request.method, spec, error).pipe(
       Effect.catch((hostProtocolError: HostProtocolError) =>
-        Effect.succeed(protocolErrorFrame(request, streamId, options, hostProtocolError))
+        protocolErrorFrame(request, streamId, options, hostProtocolError)
       )
     )
 
@@ -601,7 +618,7 @@ const encodeErrorFrame = (
       return encoded
     }
 
-    return streamFrame(
+    return yield* streamFrame(
       request,
       streamId,
       options,
@@ -613,14 +630,14 @@ const completeFrame = (
   request: HostProtocolRequestEnvelope,
   streamId: string,
   options: ResolvedApiStreamRuntimeOptions
-): HostProtocolStreamEnvelope =>
+): Effect.Effect<HostProtocolStreamEnvelope, HostProtocolError, never> =>
   streamFrame(request, streamId, options, new ApiStreamCompleteFrame({ type: "complete" }))
 
 const closedFrame = (
   request: HostProtocolRequestEnvelope,
   streamId: string,
   options: ResolvedApiStreamRuntimeOptions
-): HostProtocolStreamEnvelope =>
+): Effect.Effect<HostProtocolStreamEnvelope, HostProtocolError, never> =>
   streamFrame(request, streamId, options, new ApiStreamClosedFrame({ type: "closed" }))
 
 const streamFrame = (
@@ -628,14 +645,18 @@ const streamFrame = (
   streamId: string,
   options: ResolvedApiStreamRuntimeOptions,
   frame: ApiStreamFrame
-): HostProtocolStreamEnvelope =>
-  new HostProtocolStreamByRequestEnvelope({
-    kind: "stream",
-    id: request.id,
-    resourceId: streamId,
-    timestamp: options.now(),
-    traceId: request.traceId,
-    payload: frame
+): Effect.Effect<HostProtocolStreamEnvelope, HostProtocolError, never> =>
+  Effect.gen(function* () {
+    const timestamp = yield* validateHostProtocolTimestamp(options.now(), request.method)
+
+    return new HostProtocolStreamByRequestEnvelope({
+      kind: "stream",
+      id: request.id,
+      resourceId: streamId,
+      timestamp,
+      traceId: request.traceId,
+      payload: frame
+    })
   })
 
 const protocolErrorFrame = (
@@ -643,14 +664,18 @@ const protocolErrorFrame = (
   streamId: string,
   options: ResolvedApiStreamRuntimeOptions,
   error: HostProtocolError
-): HostProtocolStreamEnvelope =>
-  new HostProtocolStreamByRequestEnvelope({
-    kind: "stream",
-    id: request.id,
-    resourceId: streamId,
-    timestamp: options.now(),
-    traceId: request.traceId,
-    error
+): Effect.Effect<HostProtocolStreamEnvelope, HostProtocolError, never> =>
+  Effect.gen(function* () {
+    const timestamp = yield* validateHostProtocolTimestamp(options.now(), request.method)
+
+    return new HostProtocolStreamByRequestEnvelope({
+      kind: "stream",
+      id: request.id,
+      resourceId: streamId,
+      timestamp,
+      traceId: request.traceId,
+      error
+    })
   })
 
 const decodeHostProtocolError = (

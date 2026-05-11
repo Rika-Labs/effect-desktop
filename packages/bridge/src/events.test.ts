@@ -106,6 +106,23 @@ test("EventHub rejects malformed publish payloads as typed Effect failures", asy
   expectFailureTag(exit, "InvalidArgument")
 })
 
+test("EventHub rejects invalid generated timestamps as typed Effect failures", async () => {
+  const ProjectApi = makeProjectApi("ProjectApi.EventsInvalidTimestamp")
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const hub = yield* EventHub([ProjectApi], { now: () => Number.NaN })
+
+      return yield* hub.publish(
+        ProjectApi,
+        "changed",
+        new ProjectChangedEvent({ sequence: 1, path: "a" })
+      )
+    })
+  )
+
+  expectFailureTag(exit, "InvalidArgument")
+})
+
 test("client event streams reject malformed event envelopes as typed failures", async () => {
   const ProjectApi = makeProjectApi("ProjectApi.EventsInvalidEnvelope")
   const client = Client(

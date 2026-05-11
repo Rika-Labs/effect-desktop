@@ -20,6 +20,7 @@ import {
   HostProtocolStreamClosedError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
+  validateHostProtocolTimestamp,
   type HostProtocolError
 } from "./protocol.js"
 import { type ApiResourceExchange, type ApiResourceProxy, makeResourceProxy } from "./resources.js"
@@ -231,7 +232,7 @@ const requestContractMethod = <Spec extends ApiMethodSpec>(
   Effect.gen(function* () {
     const operation = methodName(tag, method)
     const payload = yield* encodeInput(operation, spec, input)
-    const request = makeRequest(operation, payload, options)
+    const request = yield* makeRequest(operation, payload, options)
     const response = yield* runRequestWithCancellation(
       exchange,
       request,
@@ -386,7 +387,7 @@ const streamContractMethod = <Spec extends ApiMethodSpec & { readonly output: Ap
   return Stream.unwrap(
     Effect.gen(function* () {
       const payload = yield* encodeInput(operation, spec, input)
-      const request = makeRequest(operation, payload, options)
+      const request = yield* makeRequest(operation, payload, options)
       yield* failIfAlreadyAborted(request, callOptions)
       let terminal = false
       const removeAbortListener = yield* installAbortCancellation(
@@ -401,7 +402,9 @@ const streamContractMethod = <Spec extends ApiMethodSpec & { readonly output: Ap
           return
         }
         cancelSent = true
-        Effect.runFork(exchange.cancel(makeCancelRequest(request, options.now)))
+        Effect.runFork(
+          makeCancelRequest(request, options.now).pipe(Effect.flatMap(exchange.cancel))
+        )
       }
 
       return stream(request).pipe(
@@ -565,7 +568,7 @@ const runRequestWithCancellation = (
       if (exchange.cancel === undefined) {
         return
       }
-      Effect.runFork(exchange.cancel(makeCancelRequest(request, now)))
+      Effect.runFork(makeCancelRequest(request, now).pipe(Effect.flatMap(exchange.cancel)))
     }
 
     const failWithCancel = makeCancelledError(operation)
@@ -623,7 +626,7 @@ const installAbortCancellation = (
     const signal = options.signal
     const cancelRequest = exchange.cancel
     const cancel = (): void => {
-      Effect.runFork(cancelRequest(makeCancelRequest(request, now)))
+      Effect.runFork(makeCancelRequest(request, now).pipe(Effect.flatMap(cancelRequest)))
     }
 
     if (signal.aborted) {
@@ -642,12 +645,16 @@ const installAbortCancellation = (
 const makeCancelRequest = (
   request: HostProtocolRequestEnvelope,
   now: () => number
-): HostProtocolCancelByRequestEnvelope =>
-  new HostProtocolCancelByRequestEnvelope({
-    kind: "cancel",
-    id: request.id,
-    timestamp: now(),
-    traceId: request.traceId
+): Effect.Effect<HostProtocolCancelByRequestEnvelope, HostProtocolError, never> =>
+  Effect.gen(function* () {
+    const timestamp = yield* validateHostProtocolTimestamp(now(), request.method)
+
+    return new HostProtocolCancelByRequestEnvelope({
+      kind: "cancel",
+      id: request.id,
+      timestamp,
+      traceId: request.traceId
+    })
   })
 
 const makeCancelledError = (operation: string): HostProtocolCancelledError =>
@@ -663,22 +670,24 @@ const makeRequest = (
   method: string,
   payload: unknown,
   options: ResolvedApiClientOptions
-): HostProtocolRequestEnvelope => {
-  const request = {
-    kind: "request",
-    id: options.nextRequestId(),
-    method,
-    timestamp: options.now(),
-    traceId: options.nextTraceId()
-  } as const
+): Effect.Effect<HostProtocolRequestEnvelope, HostProtocolError, never> =>
+  Effect.gen(function* () {
+    const timestamp = yield* validateHostProtocolTimestamp(options.now(), method)
+    const request = {
+      kind: "request",
+      id: options.nextRequestId(),
+      method,
+      timestamp,
+      traceId: options.nextTraceId()
+    } as const
 
-  return new HostProtocolRequestEnvelope({
-    ...request,
-    ...(payload === undefined ? {} : { payload }),
-    ...(options.windowId === undefined ? {} : { windowId: options.windowId }),
-    ...(options.originToken === undefined ? {} : { originToken: options.originToken })
+    return new HostProtocolRequestEnvelope({
+      ...request,
+      ...(payload === undefined ? {} : { payload }),
+      ...(options.windowId === undefined ? {} : { windowId: options.windowId }),
+      ...(options.originToken === undefined ? {} : { originToken: options.originToken })
+    })
   })
-}
 
 const resolveOptions = (options: ApiClientOptions): ResolvedApiClientOptions => ({
   nextRequestId: options.nextRequestId ?? (() => `request-${globalThis.crypto.randomUUID()}`),

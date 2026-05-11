@@ -79,6 +79,22 @@ test("Client rejects malformed input as a typed Effect failure before transport"
   expect(requests).toEqual([])
 })
 
+test("Client rejects invalid generated timestamps as typed Effect failures before transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const ProjectApi = makeProjectApi("ProjectApi.InvalidTimestamp")
+  const client = Client({ project: ProjectApi }, responseExchange(requests, { id: "project-1" }), {
+    now: () => Number.NaN
+  })
+
+  const exit = await Effect.runPromiseExit(
+    client.project.open(new ProjectOpenInput({ path: "/tmp/project" }))
+  )
+
+  expectFailureTag(exit, "InvalidArgument")
+  expectFailureField(exit, "field", "timestamp")
+  expect(requests).toEqual([])
+})
+
 test("Client allows zero-argument calls for void-input methods", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const VoidApi = makeVoidApi("ProjectApi.VoidInput")
