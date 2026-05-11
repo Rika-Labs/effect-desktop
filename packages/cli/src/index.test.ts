@@ -2347,9 +2347,7 @@ test("desktop sign signs macOS app bundle with hardened runtime entitlements", a
       signing: {
         macos: { identity: "Developer ID Application: Example Inc.", teamId: "ABCD1234" }
       },
-      security: {
-        permissions: ["device.camera", "network.client"]
-      }
+      permissions: ["device.camera", "network.client"]
     })
     await writePackagedArtifactFixture(directory, "macos-arm64", "app")
     const calls: string[] = []
@@ -2386,11 +2384,45 @@ test("desktop sign signs macOS app bundle with hardened runtime entitlements", a
     expect(exitCode).toBe(0)
     expect(stdout.join("")).toContain("Effect Desktop sign")
     expect(entitlements).toContain("<key>com.apple.security.cs.allow-jit</key>")
-    expect(entitlements).toContain("<key>com.apple.security.device.camera</key>")
+    expect(entitlements).toContain("<key>com.apple.security.device.camera</key>\n  <true/>")
     expect(entitlements).toContain("<key>com.apple.security.device.microphone</key>\n  <false/>")
+    expect(entitlements).toContain("<key>com.apple.security.network.client</key>\n  <true/>")
     expect(calls.at(-1)).toContain("codesign --force --sign Developer ID Application: Example Inc.")
     expect(calls.at(-1)).toContain("--options runtime --entitlements")
     expect(report.artifacts[0]?.signedPaths).toHaveLength(4)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop sign rejects malformed permission entries before macOS codesign", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      signing: {
+        macos: { identity: "Developer ID Application: Example Inc.", teamId: "ABCD1234" }
+      },
+      permissions: [42]
+    })
+    await writePackagedArtifactFixture(directory, "macos-arm64", "app")
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["sign", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        hostTarget: "macos-arm64",
+        signCommandRunner: () => Effect.die("codesign must not run with malformed permissions"),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const error = JSON.parse(stderr.join("")) as { readonly tag: string; readonly message: string }
+    expect(exitCode).toBe(1)
+    expect(error.tag).toBe("SignConfigError")
+    expect(error.message).toContain("permissions[0]")
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

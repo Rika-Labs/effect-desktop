@@ -116,6 +116,7 @@ interface AppConfig {
   readonly security?: {
     readonly permissions?: unknown
   }
+  readonly permissions?: unknown
   readonly signing?: {
     readonly macos?: {
       readonly identity?: unknown
@@ -297,7 +298,8 @@ const signMacosApp = (
     )
     const entitlementsPath = join(artifact.rootPath, "effect-desktop-entitlements.plist")
     const entitlementStart = options.now()
-    yield* writeFileEffect(entitlementsPath, macosEntitlementsPlist(plan.config))
+    const entitlements = yield* macosEntitlementsPlist(plan.config)
+    yield* writeFileEffect(entitlementsPath, entitlements)
     const steps: SignStepReport[] = [
       {
         name: "macos-entitlements",
@@ -762,38 +764,62 @@ const windowsCredentialArgs = (
     )
   })
 
-const macosEntitlementsPlist = (config: AppConfig): string => {
-  const permissions = permissionNames(config)
-  return plist({
-    "com.apple.security.cs.allow-jit": true,
-    "com.apple.security.allow-dylib-injection": false,
-    "com.apple.security.cs.allow-unsigned-executable-memory": false,
-    "com.apple.security.cs.disable-library-validation": false,
-    "com.apple.security.device.camera": permissions.has("device.camera"),
-    "com.apple.security.device.microphone": permissions.has("device.microphone"),
-    "com.apple.security.network.client":
-      permissions.has("network.client") || permissions.has("network")
+const macosEntitlementsPlist = (config: AppConfig): Effect.Effect<string, SignConfigError, never> =>
+  Effect.gen(function* () {
+    const permissions = yield* permissionNames(config)
+    return plist({
+      "com.apple.security.cs.allow-jit": true,
+      "com.apple.security.allow-dylib-injection": false,
+      "com.apple.security.cs.allow-unsigned-executable-memory": false,
+      "com.apple.security.cs.disable-library-validation": false,
+      "com.apple.security.device.camera": permissions.has("device.camera"),
+      "com.apple.security.device.microphone": permissions.has("device.microphone"),
+      "com.apple.security.network.client":
+        permissions.has("network.client") || permissions.has("network")
+    })
   })
-}
 
-const permissionNames = (config: AppConfig): ReadonlySet<string> => {
-  const permissions = config.security?.permissions
-  if (!Array.isArray(permissions)) {
-    return new Set()
+const permissionNames = (
+  config: AppConfig
+): Effect.Effect<ReadonlySet<string>, SignConfigError, never> => {
+  const permissions = config.permissions ?? config.security?.permissions
+  if (permissions === undefined) {
+    return Effect.succeed(new Set())
   }
-  const names = permissions.flatMap((permission) => {
-    if (typeof permission === "string") {
-      return [permission]
+  if (!Array.isArray(permissions)) {
+    return Effect.fail(
+      new SignConfigError({
+        field: "permissions",
+        message: "permissions must be an array",
+        remediation: "Declare permissions as an array of capability strings or objects."
+      })
+    )
+  }
+
+  const names = new Set<string>()
+  for (const [index, permission] of permissions.entries()) {
+    if (typeof permission === "string" && permission.length > 0) {
+      names.add(permission)
+      continue
     }
     if (isRecord(permission) && typeof permission["name"] === "string") {
-      return [permission["name"]]
+      names.add(permission["name"])
+      continue
     }
     if (isRecord(permission) && typeof permission["capability"] === "string") {
-      return [permission["capability"]]
+      names.add(permission["capability"])
+      continue
     }
-    return []
-  })
-  return new Set(names)
+    return Effect.fail(
+      new SignConfigError({
+        field: `permissions[${index}]`,
+        message: `permissions[${index}] must be a string or object with name/capability`,
+        remediation: "Use documented permission capability names such as device.camera."
+      })
+    )
+  }
+
+  return Effect.succeed(names)
 }
 
 const appstreamMetainfo = (
