@@ -401,20 +401,22 @@ const registerCommand = <I, O>(
       )
     }
 
-    const registeredHandle = yield* resources.register({
-      kind: "command",
-      id: resourceId,
-      ownerScope: registration.ownerScope,
-      state: "registered",
-      dispose: Effect.suspend(() =>
-        remove(
-          decodedId,
-          registeredResourceId,
-          registeredResourceGeneration,
-          registrationToken
-        ).pipe(Effect.asVoid)
-      )
-    })
+    const registeredHandle = yield* resources
+      .register({
+        kind: "command",
+        id: resourceId,
+        ownerScope: registration.ownerScope,
+        state: "registered",
+        dispose: Effect.suspend(() =>
+          remove(
+            decodedId,
+            registeredResourceId,
+            registeredResourceGeneration,
+            registrationToken
+          ).pipe(Effect.asVoid)
+        )
+      })
+      .pipe(Effect.orDie)
     handle = registeredHandle
     registeredResourceId = registeredHandle.id
     registeredResourceGeneration = registeredHandle.generation

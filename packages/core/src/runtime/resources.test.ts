@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test"
-import { Deferred, Effect, Fiber, Option, Schema, Stream } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Option, Schema, Stream } from "effect"
 
 import {
   generateUuidV7,
   makeResourceRegistry,
+  ResourceInvalidArgumentError,
   ResourceRegistry,
   ResourceRegistryLive,
   ResourceHandleShape,
@@ -42,6 +43,25 @@ test("register returns handles and list enumerates live resources", async () => 
     result.snapshot.entries[0]!.handle.id
   ])
   expect(result.snapshot.entries[0]?.createdAt).toBe(1710000000000)
+})
+
+test("register rejects invalid registry timestamps before allocating ids", async () => {
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const registry = yield* makeResourceRegistry({
+        now: () => Number.NaN,
+        nextId: () => id("018e2f36-5800-7000-8000-0000000000ff")
+      })
+
+      yield* registry.register({
+        kind: "window",
+        ownerScope: "scope-test",
+        state: "open"
+      })
+    })
+  )
+
+  expectFailure(exit, ResourceInvalidArgumentError)
 })
 
 test("get returns the matching live resource", async () => {
@@ -622,6 +642,17 @@ test("uuidv7 embeds sortable millisecond time and version bits", () => {
   expect(uuid.charAt(14)).toBe("7")
   expect(["8", "9", "a", "b"]).toContain(uuid.charAt(19))
 })
+
+function expectFailure<E>(
+  exit: Exit.Exit<unknown, E>,
+  errorClass: abstract new (...args: never[]) => E
+): void {
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(errorClass)
+  }
+}
 
 const stubCryptoRandomValuesWithZeroes = (): void => {
   globalThis.crypto.getRandomValues = (<T extends ArrayBufferView | null>(array: T): T => {

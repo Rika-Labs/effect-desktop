@@ -184,14 +184,16 @@ export const makePty = (
                 try: () => adapter.open(input),
                 catch: (error) => mapPtyError(error, input.command, "PTY.open")
               }).pipe(Effect.tapError(() => releasePtyBudget(ptyBudgets, input.ownerScope)))
-              const resource = yield* registry.register({
-                kind: "pty",
-                ownerScope: input.ownerScope,
-                state: "running",
-                dispose: disposeChild(child, input.command, gracefulShutdownMs).pipe(
-                  Effect.andThen(releasePtyBudget(ptyBudgets, input.ownerScope))
-                )
-              })
+              const resource = yield* registry
+                .register({
+                  kind: "pty",
+                  ownerScope: input.ownerScope,
+                  state: "running",
+                  dispose: disposeChild(child, input.command, gracefulShutdownMs).pipe(
+                    Effect.andThen(releasePtyBudget(ptyBudgets, input.ownerScope))
+                  )
+                })
+                .pipe(Effect.orDie)
 
               return { child, resource }
             })

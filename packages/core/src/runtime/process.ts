@@ -194,14 +194,16 @@ export const makeProcess = (
                 try: () => adapter.spawn(input),
                 catch: (error) => mapProcessError(error, input.command, "Process.spawn")
               }).pipe(Effect.tapError(() => releaseProcessBudget(processBudgets, input.ownerScope)))
-              const resource = yield* registry.register({
-                kind: "process",
-                ownerScope: input.ownerScope,
-                state: "running",
-                dispose: disposeChild(child, input.command, gracefulShutdownMs).pipe(
-                  Effect.andThen(releaseProcessBudget(processBudgets, input.ownerScope))
-                )
-              })
+              const resource = yield* registry
+                .register({
+                  kind: "process",
+                  ownerScope: input.ownerScope,
+                  state: "running",
+                  dispose: disposeChild(child, input.command, gracefulShutdownMs).pipe(
+                    Effect.andThen(releaseProcessBudget(processBudgets, input.ownerScope))
+                  )
+                })
+                .pipe(Effect.orDie)
               const startedAt = now()
               yield* upsertProcessSnapshot(
                 snapshots,

@@ -199,15 +199,17 @@ export const makeWorker = (
                 })
                 .pipe(Effect.tapError(() => releaseWorkerBudget(workerBudgets, input.ownerScope)))
               let registeredResourceId: string | undefined
-              const resource = yield* registry.register({
-                kind: "worker",
-                ownerScope: input.ownerScope,
-                state: "running",
-                dispose: runtime.shutdown.pipe(
-                  Effect.andThen(removeWorker(workers, () => registeredResourceId)),
-                  Effect.andThen(releaseWorkerBudget(workerBudgets, input.ownerScope))
-                )
-              })
+              const resource = yield* registry
+                .register({
+                  kind: "worker",
+                  ownerScope: input.ownerScope,
+                  state: "running",
+                  dispose: runtime.shutdown.pipe(
+                    Effect.andThen(removeWorker(workers, () => registeredResourceId)),
+                    Effect.andThen(releaseWorkerBudget(workerBudgets, input.ownerScope))
+                  )
+                })
+                .pipe(Effect.orDie)
               if (resource.id.length === 0) {
                 yield* resource.dispose().pipe(
                   Effect.andThen(

@@ -331,15 +331,17 @@ export const makeFilesystem = (
                   Effect.runFork(Queue.fail(queue, error))
                 }
               )
-              const handle = yield* registry.register({
-                kind: "filesystem-watch",
-                ownerScope: input.ownerScope,
-                state: "open",
-                dispose: Effect.gen(function* () {
-                  yield* Effect.sync(() => watcher.close())
-                  yield* Queue.end(queue)
+              const handle = yield* registry
+                .register({
+                  kind: "filesystem-watch",
+                  ownerScope: input.ownerScope,
+                  state: "open",
+                  dispose: Effect.gen(function* () {
+                    yield* Effect.sync(() => watcher.close())
+                    yield* Queue.end(queue)
+                  })
                 })
-              })
+                .pipe(Effect.orDie)
 
               return { queue, handle }
             }),

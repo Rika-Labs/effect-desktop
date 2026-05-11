@@ -35,11 +35,13 @@ export const SqlClientLive = (
   Layer.effectDiscard(
     Effect.gen(function* () {
       const registry = yield* ResourceRegistry
-      yield* registry.register({
-        kind: "sqlite",
-        ownerScope: config.ownerScope,
-        state: "open"
-      })
+      yield* registry
+        .register({
+          kind: "sqlite",
+          ownerScope: config.ownerScope,
+          state: "open"
+        })
+        .pipe(Effect.orDie)
     })
   ).pipe(
     Layer.provideMerge(
@@ -156,12 +158,14 @@ export const makeSQLite = (registry: ResourceRegistryApi): Effect.Effect<SqliteA
           })
           const mutex = yield* Semaphore.make(1)
           const transactionOwner = yield* Ref.make<Option.Option<number>>(Option.none())
-          const resource = yield* registry.register({
-            kind: "sqlite",
-            ownerScope: input.ownerScope,
-            state: "open",
-            dispose: closeDatabase(database, input.path)
-          })
+          const resource = yield* registry
+            .register({
+              kind: "sqlite",
+              ownerScope: input.ownerScope,
+              state: "open",
+              dispose: closeDatabase(database, input.path)
+            })
+            .pipe(Effect.orDie)
 
           return makeConnection(database, registry, resource, mutex, transactionOwner)
         }).pipe(
@@ -221,12 +225,14 @@ const makeConnection = (
             try: () => database.prepare(sql),
             catch: (error) => mapSqliteError(error, resource.id, "SQLite.prepare")
           })
-          const statementResource = yield* registry.register({
-            kind: "sqlite-statement",
-            ownerScope: resource.ownerScope,
-            state: "open",
-            dispose: finalizeStatement(statement, resource.id)
-          })
+          const statementResource = yield* registry
+            .register({
+              kind: "sqlite-statement",
+              ownerScope: resource.ownerScope,
+              state: "open",
+              dispose: finalizeStatement(statement, resource.id)
+            })
+            .pipe(Effect.orDie)
 
           return makePreparedStatement(statement, statementResource, mutex, transactionOwner)
         })

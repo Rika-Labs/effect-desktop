@@ -1,5 +1,6 @@
 import {
   Context,
+  Data,
   Deferred,
   Effect,
   Exit,
@@ -72,10 +73,16 @@ export class StaleHandle extends Schema.Class<StaleHandle>("StaleHandle")({
   }
 }
 
+export class ResourceInvalidArgumentError extends Data.TaggedError("InvalidArgument")<{
+  readonly operation: string
+  readonly field: string
+  readonly message: string
+}> {}
+
 export interface ResourceRegistryApi {
   readonly register: <Kind extends ResourceKind, State extends ResourceState>(
     input: RegisterResourceInput<Kind, State>
-  ) => Effect.Effect<ResourceHandle<Kind, State>, never, never>
+  ) => Effect.Effect<ResourceHandle<Kind, State>, ResourceInvalidArgumentError, never>
   readonly get: (id: ResourceId) => Effect.Effect<Option.Option<ResourceEntry>, never, never>
   readonly list: () => Effect.Effect<RegistrySnapshot, never, never>
   readonly dispose: (id: ResourceId) => Effect.Effect<void, never, never>
@@ -85,7 +92,7 @@ export interface ResourceRegistryApi {
   readonly share: <Kind extends ResourceKind, State extends ResourceState>(
     handle: ResourceHandle<Kind, State>,
     targetScope: ScopeId
-  ) => Effect.Effect<ResourceHandle<Kind, State>, StaleHandle, never>
+  ) => Effect.Effect<ResourceHandle<Kind, State>, ResourceInvalidArgumentError | StaleHandle, never>
   readonly assertFresh: <Kind extends ResourceKind, State extends ResourceState>(
     handle: ResourceHandle<Kind, State>
   ) => Effect.Effect<ResourceEntry<Kind, State>, StaleHandle, never>
@@ -211,17 +218,25 @@ export const makeResourceRegistry = (
 
     const register = <Kind extends ResourceKind, State extends ResourceState>(
       input: RegisterResourceInput<Kind, State>
-    ): Effect.Effect<ResourceHandle<Kind, State>, never, never> => {
-      return registerWithCleanupGroup(input, undefined, input.dispose ?? Effect.void)
+    ): Effect.Effect<ResourceHandle<Kind, State>, ResourceInvalidArgumentError, never> => {
+      return Effect.gen(function* () {
+        const createdAt = yield* validateTimestamp(now(), "ResourceRegistry.register")
+        return yield* registerWithCleanupGroup(
+          input,
+          undefined,
+          input.dispose ?? Effect.void,
+          createdAt
+        )
+      })
     }
 
     const registerWithCleanupGroup = <Kind extends ResourceKind, State extends ResourceState>(
       input: RegisterResourceInput<Kind, State>,
       existingCleanupGroupId: ResourceId | undefined,
-      cleanup: Effect.Effect<void, never, never>
+      cleanup: Effect.Effect<void, never, never>,
+      createdAt: number
     ): Effect.Effect<ResourceHandle<Kind, State>, never, never> =>
       Effect.gen(function* () {
-        const createdAt = now()
         const handle = yield* SubscriptionRef.modify(entries, (current) => {
           const id = availableRegistrationId(input.id, createdAt, nextId, current)
           const cleanupGroupId = existingCleanupGroupId ?? id
@@ -325,7 +340,11 @@ export const makeResourceRegistry = (
     const share = <Kind extends ResourceKind, State extends ResourceState>(
       handle: ResourceHandle<Kind, State>,
       targetScope: ScopeId
-    ): Effect.Effect<ResourceHandle<Kind, State>, StaleHandle, never> =>
+    ): Effect.Effect<
+      ResourceHandle<Kind, State>,
+      ResourceInvalidArgumentError | StaleHandle,
+      never
+    > =>
       Effect.gen(function* () {
         yield* assertFresh(handle)
         const current = yield* SubscriptionRef.get(entries)
@@ -341,6 +360,7 @@ export const makeResourceRegistry = (
             })
           )
         }
+        const createdAt = yield* validateTimestamp(now(), "ResourceRegistry.share")
         incrementCleanup(stored.cleanupGroupId, cleanupGroups)
 
         return yield* registerWithCleanupGroup(
@@ -351,7 +371,8 @@ export const makeResourceRegistry = (
             reusableId: false
           },
           stored.cleanupGroupId,
-          Effect.void
+          Effect.void,
+          createdAt
         )
       })
 
@@ -467,6 +488,20 @@ const availableRegistrationId = (
     attempt += 1
   }
 }
+
+const validateTimestamp = (
+  timestamp: number,
+  operation: string
+): Effect.Effect<number, ResourceInvalidArgumentError, never> =>
+  Number.isInteger(timestamp) && timestamp >= 0
+    ? Effect.succeed(timestamp)
+    : Effect.fail(
+        new ResourceInvalidArgumentError({
+          operation,
+          field: "createdAt",
+          message: "must be a finite non-negative integer"
+        })
+      )
 
 const publicEntry = (entry: StoredResourceEntry): ResourceEntry => ({
   handle: entry.handle,
