@@ -35,6 +35,7 @@ import {
   PackageCommandFailedError,
   PackageConfigError,
   PackageFileError,
+  PackageMissingBuildArtifactError,
   PackageUnsupportedArtifactError,
   PackageUnsupportedHostError,
   PackageUnsupportedTargetError
@@ -1364,6 +1365,9 @@ const formatPackageError = (
     return { tag: error._tag, message: error.message, remediation: error.remediation }
   }
   if (error instanceof PackageUnsupportedArtifactError) {
+    return { tag: error._tag, message: error.message, remediation: error.remediation }
+  }
+  if (error instanceof PackageMissingBuildArtifactError) {
     return { tag: error._tag, message: error.message, remediation: error.remediation }
   }
   if (error instanceof PackageCommandFailedError) {

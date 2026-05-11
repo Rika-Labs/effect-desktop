@@ -4285,6 +4285,40 @@ test("desktop package --help exits zero with usage", async () => {
   expect(stdout.join("")).toContain("desktop package")
 })
 
+test("desktop package reports missing build output before reading manifests", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-missing-build-"))
+  try {
+    await writePlaygroundFixture(directory)
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["package", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        hostTarget: "macos-arm64",
+        packageCommandRunner: () => Effect.void,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const error = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+      readonly remediation: string
+    }
+    expect(exitCode).toBe(1)
+    expect(error.tag).toBe("PackageMissingBuildArtifactError")
+    expect(error.message).toContain("app-manifest.json")
+    expect(error.message).toContain("run desktop build first")
+    expect(error.remediation).toContain("bun desktop build")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop package emits macOS app dmg zip artifacts with metadata", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-"))
   try {

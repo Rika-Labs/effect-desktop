@@ -71,6 +71,14 @@ export class PackageCommandFailedError extends Data.TaggedError("PackageCommandF
   readonly stderr?: string
 }> {}
 
+export class PackageMissingBuildArtifactError extends Data.TaggedError(
+  "PackageMissingBuildArtifactError"
+)<{
+  readonly path: string
+  readonly message: string
+  readonly remediation: string
+}> {}
+
 export class PackageFileError extends Data.TaggedError("PackageFileError")<{
   readonly operation: string
   readonly path: string
@@ -84,6 +92,7 @@ export type PackagePipelineError =
   | PackageUnsupportedTargetError
   | PackageUnsupportedArtifactError
   | PackageCommandFailedError
+  | PackageMissingBuildArtifactError
   | PackageFileError
 
 export interface PackageCommandInvocation {
@@ -332,9 +341,21 @@ const normalizePackagePlan = (
     }
   })
 
-const validateBuildLayout = (plan: PackagePlan): Effect.Effect<void, PackageFileError, never> =>
+const validateBuildLayout = (
+  plan: PackagePlan
+): Effect.Effect<void, PackageFileError | PackageMissingBuildArtifactError, never> =>
   Effect.gen(function* () {
     const manifestPath = join(plan.layoutPath, "app-manifest.json")
+    const manifestExists = yield* pathExists(manifestPath)
+    if (!manifestExists) {
+      return yield* Effect.fail(
+        new PackageMissingBuildArtifactError({
+          path: manifestPath,
+          message: `missing build artifact ${manifestPath}; run desktop build first`,
+          remediation: "Run `bun desktop build` with the active config before packaging."
+        })
+      )
+    }
     const manifest = yield* readJson<AppManifest>(manifestPath)
     if (manifest.id !== plan.appId || manifest.version !== plan.appVersion) {
       return yield* Effect.fail(
@@ -1305,6 +1326,16 @@ const statPath = (
         message: `failed to stat ${path}`,
         cause
       })
+  })
+
+const pathExists = (path: string): Effect.Effect<boolean, never, never> =>
+  Effect.promise(async () => {
+    try {
+      await stat(path)
+      return true
+    } catch {
+      return false
+    }
   })
 
 const lstatPath = (
