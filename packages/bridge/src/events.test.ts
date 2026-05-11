@@ -149,6 +149,32 @@ test("client event streams reject malformed event envelopes as typed failures", 
   expectFailureTag(exit, "InvalidOutput")
 })
 
+test("client event streams reject envelopes for the wrong method", async () => {
+  const ProjectApi = makeProjectApi("ProjectApi.EventsWrongMethod")
+  const client = Client(
+    { project: ProjectApi },
+    {
+      request: missingRequest,
+      subscribe: () =>
+        Stream.make(
+          new HostProtocolEventEnvelope({
+            kind: "event",
+            method: "ProjectApi.EventsWrongMethod.other",
+            timestamp: 42,
+            traceId: "trace-event",
+            payload: { sequence: "1", path: "a" }
+          })
+        )
+    }
+  )
+
+  const exit = await Effect.runPromiseExit(
+    client.project.events.changed.pipe(Stream.take(1), Stream.runCollect)
+  )
+
+  expectFailureTag(exit, "InvalidOutput")
+})
+
 test("EventHub honors dropNewest event overflow without failing publishers", async () => {
   const ProjectApi = makeProjectApi("ProjectApi.EventsDropNewest")
   const exit = await Effect.runPromiseExit(

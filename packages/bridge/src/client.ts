@@ -361,7 +361,7 @@ const subscribeContractEvent = <Spec extends ApiEventSpec>(
 
   return exchange
     .subscribe(operation)
-    .pipe(Stream.mapEffect((envelope) => decodeEventPayload(operation, spec, envelope.payload)))
+    .pipe(Stream.mapEffect((envelope) => decodeEventEnvelope(operation, spec, envelope)))
 }
 
 const streamContractMethod = <Spec extends ApiMethodSpec & { readonly output: ApiStreamSpec }>(
@@ -410,9 +410,11 @@ const streamContractMethod = <Spec extends ApiMethodSpec & { readonly output: Ap
       }
 
       return stream(request).pipe(
-        Stream.takeUntilEffect((envelope) => isTerminalStreamEnvelope(operation, envelope)),
+        Stream.takeUntilEffect((envelope) =>
+          isTerminalStreamEnvelope(operation, request.id, envelope)
+        ),
         Stream.flatMap((envelope) =>
-          decodeStreamEnvelope(operation, spec.output, envelope, () => {
+          decodeStreamEnvelope(operation, request.id, spec.output, envelope, () => {
             terminal = true
           })
         ),
@@ -435,8 +437,14 @@ const streamContractMethod = <Spec extends ApiMethodSpec & { readonly output: Ap
 
 const isTerminalStreamEnvelope = (
   operation: string,
+  requestId: string,
   envelope: HostProtocolStreamEnvelope
 ): Effect.Effect<boolean, HostProtocolError, never> => {
+  const routeFailure = validateStreamEnvelopeRequestId(operation, requestId, envelope)
+  if (routeFailure !== undefined) {
+    return Effect.fail(routeFailure)
+  }
+
   if (envelope.error !== undefined) {
     return Effect.succeed(true)
   }
@@ -453,6 +461,7 @@ const isTerminalStreamEnvelope = (
 
 const decodeStreamEnvelope = <Spec extends ApiStreamSpec>(
   operation: string,
+  requestId: string,
   spec: Spec,
   envelope: HostProtocolStreamEnvelope,
   onTerminal: () => void = () => {}
@@ -461,6 +470,11 @@ const decodeStreamEnvelope = <Spec extends ApiStreamSpec>(
   Schema.Schema.Type<Spec["error"]> | HostProtocolError,
   never
 > => {
+  const routeFailure = validateStreamEnvelopeRequestId(operation, requestId, envelope)
+  if (routeFailure !== undefined) {
+    return Stream.fail(routeFailure)
+  }
+
   if (envelope.error !== undefined) {
     onTerminal()
     return Stream.fail(envelope.error)
@@ -492,6 +506,38 @@ const decodeStreamEnvelope = <Spec extends ApiStreamSpec>(
       )
     })
   )
+}
+
+const validateStreamEnvelopeRequestId = (
+  operation: string,
+  requestId: string,
+  envelope: HostProtocolStreamEnvelope
+): HostProtocolError | undefined => {
+  if (envelope.id === requestId) {
+    return undefined
+  }
+
+  return makeHostProtocolInvalidOutputError(
+    operation,
+    `expected stream request id ${requestId}; got ${envelope.id ?? "<missing>"}`
+  )
+}
+
+const decodeEventEnvelope = <Spec extends ApiEventSpec>(
+  operation: string,
+  spec: Spec,
+  envelope: HostProtocolEventEnvelope
+): Effect.Effect<Schema.Schema.Type<Spec["payload"]>, HostProtocolError, never> => {
+  if (envelope.method !== operation) {
+    return Effect.fail(
+      makeHostProtocolInvalidOutputError(
+        operation,
+        `expected event method ${operation}; got ${envelope.method}`
+      )
+    )
+  }
+
+  return decodeEventPayload(operation, spec, envelope.payload)
 }
 
 const decodeEventPayload = <Spec extends ApiEventSpec>(

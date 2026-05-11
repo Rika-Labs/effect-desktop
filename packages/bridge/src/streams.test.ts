@@ -79,6 +79,41 @@ test("Streams carries typed chunks from handler to client in order", async () =>
   ])
 })
 
+test("Client rejects stream envelopes for the wrong request id", async () => {
+  const ProjectApi = makeProjectApi("ProjectApi.StreamWrongRequest")
+  const client = Client(
+    { project: ProjectApi },
+    {
+      request: () => Effect.fail(makeHostProtocolInvalidOutputError("test", "unused")),
+      stream: () =>
+        Stream.make(
+          new HostProtocolStreamByRequestEnvelope({
+            kind: "stream",
+            id: "different-request",
+            resourceId: "stream-wrong-request",
+            timestamp: 42,
+            traceId: "trace-stream",
+            payload: new ApiStreamDataFrame({
+              type: "data",
+              chunk: { sequence: "1", path: "a" }
+            })
+          })
+        )
+    },
+    {
+      nextRequestId: () => "request-watch",
+      nextTraceId: () => "trace-watch",
+      now: () => 41
+    }
+  )
+
+  const exit = await Effect.runPromiseExit(
+    client.project.watch(new WatchInput({ projectId: "project-1" })).pipe(Stream.runCollect)
+  )
+
+  expectFailureTag(exit, "InvalidOutput")
+})
+
 test("Streams rejects duplicate active request ids", async () => {
   const ProjectApi = makeProjectApi("ProjectApi.StreamDuplicateRequest")
   const lifecycle: string[] = []
