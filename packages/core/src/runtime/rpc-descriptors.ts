@@ -9,6 +9,7 @@ import {
 import { Option, Schema } from "effect"
 import { Rpc, RpcGroup, RpcSchema } from "effect/unstable/rpc"
 
+import { servedRpcGroup } from "./desktop-app.js"
 import type {
   AnyDesktopRpcLayer,
   DesktopAppDefinition,
@@ -96,17 +97,17 @@ const providedRpcLayer = <Group extends RpcGroupWithRequests>(
   layers: readonly AnyDesktopRpcLayer[],
   group: Group
 ): AnyDesktopRpcLayer | undefined =>
-  layers.find((layer) => layer.group === group || layer.servedGroup === group)
+  layers.find((layer) => layer.group === group || servedRpcGroup(layer) === group)
 
 const providedRpcGroupDescriptor = <Group extends RpcGroupWithRequests>(
   groups: readonly DesktopRpcGroupDescriptor[],
   group: Group
 ): DesktopRpcGroupDescriptor | undefined =>
-  groups.find((descriptor) => descriptor.group === group || descriptor.servedGroup === group)
+  groups.find((descriptor) => descriptor.group === group || servedRpcGroup(descriptor) === group)
 
 const descriptorGroup = (
   descriptor: AnyDesktopRpcLayer | DesktopRpcGroupDescriptor
-): RpcGroupWithRequests => descriptor.servedGroup ?? descriptor.group
+): RpcGroupWithRequests => servedRpcGroup(descriptor)
 
 const endpointKind = (rpc: Rpc.Any): RpcEndpointDescriptorKind =>
   RpcSchema.isStreamSchema(successSchema(rpc)) ? "stream" : rpcEndpointKind(rpc)

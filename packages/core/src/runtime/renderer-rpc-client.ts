@@ -7,6 +7,7 @@ import {
 import { Effect, Exit, Scope, Stream } from "effect"
 import { Rpc, RpcClient, RpcGroup } from "effect/unstable/rpc"
 
+import { servedRpcGroup } from "./desktop-app.js"
 import type { DesktopAppManifest } from "./desktop-app.js"
 import { makeMissingDesktopRpcClientError, type DesktopFramework } from "./desktop-errors.js"
 import type { RpcGroupWithRequests } from "./rpc-descriptors.js"
@@ -67,7 +68,7 @@ export const makeDesktopRendererRpcRuntime = (
   )
   const clients = new Map<RpcGroup.Any, DesktopRendererRpcClient>()
   for (const descriptor of app.rpcGroups) {
-    const servedGroup = descriptor.servedGroup ?? descriptor.group
+    const servedGroup = servedRpcGroup(descriptor)
     const client = makeGroupClient(servedGroup, protocol, scope, options.framework)
     clients.set(descriptor.group, client)
     if (servedGroup !== descriptor.group) {

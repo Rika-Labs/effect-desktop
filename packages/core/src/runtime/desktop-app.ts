@@ -18,6 +18,8 @@ import { Telemetry, makeTelemetry } from "./telemetry.js"
 import { WorkflowEngineLive } from "./workflow.js"
 import type { WorkflowLayer } from "./workflow.js"
 
+type RpcGroupWithRequests = RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> }
+
 export interface WindowSpec {
   readonly title: string
   readonly width?: number
@@ -64,7 +66,6 @@ export interface DesktopAppDefinition<E = never, R = never> {
 export interface DesktopRpcGroupDescriptor {
   readonly _tag: "DesktopRpcGroup"
   readonly group: RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> }
-  readonly servedGroup?: RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> }
 }
 
 export interface DesktopAppManifest {
@@ -77,14 +78,12 @@ export interface DesktopAppManifest {
 export interface DesktopRpcLayer<Rpcs extends Rpc.Any = Rpc.Any, E = never, R = never> {
   readonly _tag: "DesktopRpcsLayer"
   readonly group: RpcGroup.RpcGroup<Rpcs>
-  readonly servedGroup?: RpcGroup.RpcGroup<Rpcs>
   readonly layer: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
 }
 
 export interface AnyDesktopRpcLayer {
   readonly _tag: "DesktopRpcsLayer"
   readonly group: RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> }
-  readonly servedGroup?: RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> }
   readonly layer: Layer.Layer<unknown, unknown, unknown>
 }
 
@@ -110,6 +109,12 @@ const NormalizedCapabilityKinds = new Set<NormalizedCapability["kind"]>([
   "safeStorage.write",
   "native.invoke"
 ])
+
+const ServedRpcGroupKey: unique symbol = Symbol("@effect-desktop/core/servedRpcGroup")
+
+type WithServedRpcGroup = {
+  readonly [ServedRpcGroupKey]?: RpcGroupWithRequests
+}
 
 const legacyRpcCapabilities = new WeakMap<AnyDesktopRpcLayer, ReadonlyMap<string, string>>()
 
@@ -159,7 +164,7 @@ export const manifest = <E, R>(definition: DesktopAppDefinition<E, R>): DesktopA
         return Object.freeze({
           _tag: "DesktopRpcGroup" as const,
           group: rpcLayer.group,
-          ...(servedGroup === rpcLayer.group ? {} : { servedGroup })
+          ...servedRpcGroupProperties(rpcLayer.group, servedGroup)
         })
       })
     )
@@ -296,7 +301,7 @@ const apiLayerToRpcLayer = (apiLayer: AnyApiLayer): AnyDesktopRpcLayer => {
   const rpcLayer = Object.freeze({
     _tag: "DesktopRpcsLayer" as const,
     group: fullGroup,
-    ...(servedGroup === fullGroup ? {} : { servedGroup }),
+    ...servedRpcGroupProperties(fullGroup, servedGroup),
     layer: servedGroup.toLayer(Object.freeze(handlers) as never)
   }) as unknown as AnyDesktopRpcLayer
 
@@ -477,10 +482,14 @@ const bindRpcLayer = <E, R>(rpcLayer: AnyDesktopRpcLayer): Layer.Layer<never, E,
     rpcLayer.layer as Layer.Layer<unknown, E, R>
   ) as unknown as Layer.Layer<never, E, R>
 
-const servedRpcGroup = (
-  rpcLayer: AnyDesktopRpcLayer
-): RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> } =>
-  rpcLayer.servedGroup ?? rpcLayer.group
+export const servedRpcGroup = (provider: {
+  readonly group: RpcGroupWithRequests
+}): RpcGroupWithRequests => (provider as WithServedRpcGroup)[ServedRpcGroupKey] ?? provider.group
+
+const servedRpcGroupProperties = (
+  group: RpcGroupWithRequests,
+  servedGroup: RpcGroupWithRequests
+): WithServedRpcGroup => (servedGroup === group ? {} : { [ServedRpcGroupKey]: servedGroup })
 
 const makeDefinition = <E, R>(definition: {
   readonly id: string

@@ -222,31 +222,27 @@ test("Desktop.app lowers legacy Api layers into the RpcGroup registry", async ()
   const rpcLayer = app.rpcLayers[0]
   expect(rpcLayer).toBeDefined()
   if (rpcLayer !== undefined) {
-    const servedGroup = rpcLayer.servedGroup ?? rpcLayer.group
-    expect(servedGroup.requests.has("Legacy.Notes.list")).toBe(true)
-    expect(servedGroup.requests.has("Legacy.Notes.events.changed")).toBe(false)
     expect(core.Desktop.describeRpcs({ rpcLayers: app.rpcLayers }, LegacyRpcs)).toEqual([
       expect.objectContaining({ tag: "Legacy.Notes.list" })
     ])
 
-    const renderer = core.makeDesktopRendererRpcRuntime(
-      {
-        _tag: "DesktopAppManifest",
-        id: "legacy-notes",
-        windows: {},
-        rpcGroups: [
-          {
-            _tag: "DesktopRpcGroup",
-            group: LegacyRpcs,
-            servedGroup
-          }
-        ]
-      },
-      {
-        framework: "react",
-        transport
+    const legacyDefinition = {
+      _tag: "DesktopAppDefinition" as const,
+      id: "legacy-notes",
+      windows: {},
+      layers: [],
+      rpcLayers: app.rpcLayers,
+      permissions: [],
+      workflows: [],
+      pipe() {
+        return legacyDefinition
       }
-    )
+    }
+    const manifest = core.Desktop.manifest(legacyDefinition as never)
+    const renderer = core.makeDesktopRendererRpcRuntime(manifest, {
+      framework: "react",
+      transport
+    })
     expect(renderer.clients.get(LegacyRpcs)?.["Legacy.Notes.list"]).toBeFunction()
     expect(renderer.clients.get(LegacyRpcs)?.["Legacy.Notes.events.changed"]).toBeUndefined()
     await Effect.runPromise(renderer.dispose())
