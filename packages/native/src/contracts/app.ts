@@ -2,7 +2,7 @@ import { Schema } from "effect"
 import { BridgeSafeNonEmptyString, PrintableNonEmptyString } from "./strings.js"
 import { ProtocolScheme } from "./protocol.js"
 
-const NonNegativeInteger = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+const PositiveInteger = Schema.Int.check(Schema.isGreaterThan(0))
 const PortableExitCode = Schema.Int.check(
   Schema.isGreaterThanOrEqualTo(0),
   Schema.isLessThanOrEqualTo(255)
@@ -11,7 +11,7 @@ const AppVersion = Schema.NonEmptyString.check(
   Schema.isPattern(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u)
 )
 // eslint-disable-next-line no-control-regex -- App launch args must reject NUL.
-const ArgString = Schema.String.check(Schema.isPattern(/^[^\u0000]*$/))
+const ArgString = Schema.NonEmptyString.check(Schema.isPattern(/^[^\u0000]*$/))
 const isAppUrl = (value: string): boolean => {
   if (value.length === 0) {
     return false
@@ -61,7 +61,7 @@ export class AppSingleInstanceResult extends Schema.Class<AppSingleInstanceResul
   "AppSingleInstanceResult"
 )({
   acquired: Schema.Boolean,
-  primaryPid: Schema.optionalKey(NonNegativeInteger)
+  primaryPid: Schema.optionalKey(PositiveInteger)
 }) {}
 
 export const AppSingleInstanceOutput = AppSingleInstanceResult.check(

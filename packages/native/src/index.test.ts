@@ -697,33 +697,40 @@ test("App bridge client rejects malformed App.getInfo and App.getCommandLine out
   ])
 })
 
-test("App single-instance lock rejects acquired results with primary pids", async () => {
-  const requests: HostProtocolRequestEnvelope[] = []
-  const client = await Effect.runPromise(
-    Effect.gen(function* () {
-      return yield* App
-    }).pipe(
-      Effect.provide(
-        Layer.provide(
-          AppLive,
-          makeAppBridgeClientLayer(
-            appExchange(requests, (request) =>
-              request.method === "App.requestSingleInstanceLock"
-                ? { kind: "success", payload: { acquired: true, primaryPid: 1234 } }
-                : { kind: "success", payload: undefined }
+test("App single-instance lock rejects invalid primary pid results", async () => {
+  const cases: ReadonlyArray<unknown> = [
+    { acquired: true, primaryPid: 1234 },
+    { acquired: false, primaryPid: 0 }
+  ]
+
+  for (const payload of cases) {
+    const requests: HostProtocolRequestEnvelope[] = []
+    const client = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* App
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            AppLive,
+            makeAppBridgeClientLayer(
+              appExchange(requests, (request) =>
+                request.method === "App.requestSingleInstanceLock"
+                  ? { kind: "success", payload }
+                  : { kind: "success", payload: undefined }
+              )
             )
           )
         )
       )
     )
-  )
 
-  const exit = await Effect.runPromiseExit(client.requestSingleInstanceLock())
+    const exit = await Effect.runPromiseExit(client.requestSingleInstanceLock())
 
-  expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
-  expect(requests.map((request) => [request.method, request.payload])).toEqual([
-    ["App.requestSingleInstanceLock", undefined]
-  ])
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+    expect(requests.map((request) => [request.method, request.payload])).toEqual([
+      ["App.requestSingleInstanceLock", undefined]
+    ])
+  }
 })
 
 test("App bridge client rejects malformed App lifecycle event payloads as InvalidOutput", async () => {
@@ -880,7 +887,7 @@ test("App bridge client rejects empty or NUL-bearing onOpenFile paths as Invalid
   }
 })
 
-test("App bridge client rejects NUL bytes in restart args as InvalidArgument", async () => {
+test("App bridge client rejects empty or NUL-bearing lifecycle args as InvalidArgument", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const client = await Effect.runPromise(
     Effect.gen(function* () {
@@ -897,10 +904,16 @@ test("App bridge client rejects NUL bytes in restart args as InvalidArgument", a
     )
   )
 
-  const restartExit = await Effect.runPromiseExit(
-    client.restart({ args: ["--flag", "value\u0000broken"] })
-  )
-  expectExitFailure(restartExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  const exits = await Promise.all([
+    Effect.runPromiseExit(client.restart({ args: [""] })),
+    Effect.runPromiseExit(client.restart({ args: ["--flag", "value\u0000broken"] })),
+    Effect.runPromiseExit(client.setOpenAtLogin({ enabled: true, args: [""] })),
+    Effect.runPromiseExit(client.setOpenAtLogin({ enabled: true, args: ["bad\u0000arg"] }))
+  ])
+
+  for (const exit of exits) {
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+  }
   expect(requests).toEqual([])
 })
 
