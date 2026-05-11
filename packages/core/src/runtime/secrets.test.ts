@@ -114,6 +114,35 @@ test("Secrets writes audit rows without secret values", async () => {
   expect(rows[0]?.traceId).toBe("trace-1")
 })
 
+test("Secrets rejects empty generated audit trace ids before side effects", async () => {
+  const calls: string[] = []
+  const rows: AuditEvent[] = []
+  const secrets = await Effect.runPromise(
+    makeSecrets(memorySafeStorage(calls), {
+      appId: "com.rika.test",
+      permissions: { read: ["auth"], write: ["auth"] },
+      audit: memoryAudit(rows),
+      traceId: () => ""
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(
+    secrets.set("auth", "token", SecretValue.fromUtf8("refresh-token"))
+  )
+
+  expectFailure(exit, SecretsInvalidArgumentError)
+  expect(calls).toEqual([])
+  expect(rows).toEqual([])
+})
+
+test("SecretValue rejects non-byte fromBytes input", () => {
+  expect(() => SecretValue.fromBytes("refresh-token" as never)).toThrow(TypeError)
+  const bytes = new Uint8Array([1, 2, 3])
+  const secret = SecretValue.fromBytes(bytes)
+  bytes.fill(0)
+  expect(Array.from(secret.unsafeBytes())).toEqual([1, 2, 3])
+})
+
 test("Secrets returns typed audit failures for successful audit writes", async () => {
   const secrets = await Effect.runPromise(
     makeSecrets(memorySafeStorage(), {

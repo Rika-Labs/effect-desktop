@@ -38,6 +38,9 @@ export class SecretValue {
   }
 
   static fromBytes(bytes: Uint8Array): SecretValue {
+    if (!(bytes instanceof Uint8Array)) {
+      throw new TypeError("SecretValue.fromBytes requires a Uint8Array")
+    }
     return new SecretValue(bytes)
   }
 

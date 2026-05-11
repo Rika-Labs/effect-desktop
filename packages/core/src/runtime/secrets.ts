@@ -20,6 +20,9 @@ export class SecretValue {
   }
 
   static fromBytes(bytes: Uint8Array): SecretValue {
+    if (!(bytes instanceof Uint8Array)) {
+      throw new TypeError("SecretValue.fromBytes requires a Uint8Array")
+    }
     return new SecretValue(bytes)
   }
 
@@ -89,7 +92,7 @@ export class SecretsPermissionDeniedError extends Data.TaggedError("PermissionDe
 
 export class SecretsInvalidArgumentError extends Data.TaggedError("InvalidArgument")<{
   readonly operation: string
-  readonly field: "appId" | "namespace" | "key"
+  readonly field: "appId" | "namespace" | "key" | "traceId"
   readonly message: string
   readonly cause: Option.Option<unknown>
 }> {}
@@ -165,9 +168,10 @@ export const makeSecrets = (
             namespace: decoded.namespace,
             key: Option.some(decoded.key)
           } as const
+          const auditTraceId = yield* resolveAuditTraceId(traceId, "Secrets.set")
           yield* authorize(permissions, "secrets.write", decoded.namespace, "Secrets.set").pipe(
             Effect.tapError(() =>
-              auditSecretAccessOrWarn(options.audit, traceId(), { ...audit, outcome: "denied" })
+              auditSecretAccessOrWarn(options.audit, auditTraceId, { ...audit, outcome: "denied" })
             )
           )
           yield* ensureAvailable(safeStorage, "Secrets.set").pipe(
@@ -181,10 +185,10 @@ export const makeSecrets = (
                 )
             ),
             Effect.tapError(() =>
-              auditSecretAccessOrWarn(options.audit, traceId(), { ...audit, outcome: "error" })
+              auditSecretAccessOrWarn(options.audit, auditTraceId, { ...audit, outcome: "error" })
             )
           )
-          yield* auditSecretAccess(options.audit, traceId(), { ...audit, outcome: "ok" })
+          yield* auditSecretAccess(options.audit, auditTraceId, { ...audit, outcome: "ok" })
         }).pipe(Effect.withSpan("Secrets.set", { attributes: { namespace, key } })),
       get: (namespace, key) =>
         Effect.gen(function* () {
@@ -194,9 +198,10 @@ export const makeSecrets = (
             namespace: decoded.namespace,
             key: Option.some(decoded.key)
           } as const
+          const auditTraceId = yield* resolveAuditTraceId(traceId, "Secrets.get")
           yield* authorize(permissions, "secrets.read", decoded.namespace, "Secrets.get").pipe(
             Effect.tapError(() =>
-              auditSecretAccessOrWarn(options.audit, traceId(), { ...audit, outcome: "denied" })
+              auditSecretAccessOrWarn(options.audit, auditTraceId, { ...audit, outcome: "denied" })
             )
           )
           const secret = yield* ensureAvailable(safeStorage, "Secrets.get").pipe(
@@ -210,10 +215,10 @@ export const makeSecrets = (
                 )
             ),
             Effect.tapError(() =>
-              auditSecretAccessOrWarn(options.audit, traceId(), { ...audit, outcome: "error" })
+              auditSecretAccessOrWarn(options.audit, auditTraceId, { ...audit, outcome: "error" })
             )
           )
-          yield* auditSecretAccess(options.audit, traceId(), { ...audit, outcome: "ok" })
+          yield* auditSecretAccess(options.audit, auditTraceId, { ...audit, outcome: "ok" })
           return secret
         }).pipe(Effect.withSpan("Secrets.get", { attributes: { namespace, key } })),
       delete: (namespace, key) =>
@@ -224,9 +229,10 @@ export const makeSecrets = (
             namespace: decoded.namespace,
             key: Option.some(decoded.key)
           } as const
+          const auditTraceId = yield* resolveAuditTraceId(traceId, "Secrets.delete")
           yield* authorize(permissions, "secrets.write", decoded.namespace, "Secrets.delete").pipe(
             Effect.tapError(() =>
-              auditSecretAccessOrWarn(options.audit, traceId(), { ...audit, outcome: "denied" })
+              auditSecretAccessOrWarn(options.audit, auditTraceId, { ...audit, outcome: "denied" })
             )
           )
           yield* ensureAvailable(safeStorage, "Secrets.delete").pipe(
@@ -240,10 +246,10 @@ export const makeSecrets = (
                 )
             ),
             Effect.tapError(() =>
-              auditSecretAccessOrWarn(options.audit, traceId(), { ...audit, outcome: "error" })
+              auditSecretAccessOrWarn(options.audit, auditTraceId, { ...audit, outcome: "error" })
             )
           )
-          yield* auditSecretAccess(options.audit, traceId(), { ...audit, outcome: "ok" })
+          yield* auditSecretAccess(options.audit, auditTraceId, { ...audit, outcome: "ok" })
         }).pipe(Effect.withSpan("Secrets.delete", { attributes: { namespace, key } })),
       list: (namespace) =>
         Effect.gen(function* () {
@@ -253,9 +259,10 @@ export const makeSecrets = (
             namespace: decoded.namespace,
             key: Option.none<string>()
           } as const
+          const auditTraceId = yield* resolveAuditTraceId(traceId, "Secrets.list")
           yield* authorize(permissions, "secrets.read", decoded.namespace, "Secrets.list").pipe(
             Effect.tapError(() =>
-              auditSecretAccessOrWarn(options.audit, traceId(), { ...audit, outcome: "denied" })
+              auditSecretAccessOrWarn(options.audit, auditTraceId, { ...audit, outcome: "denied" })
             )
           )
           const keys = yield* ensureAvailable(safeStorage, "Secrets.list").pipe(
@@ -267,10 +274,10 @@ export const makeSecrets = (
                 )
             ),
             Effect.tapError(() =>
-              auditSecretAccessOrWarn(options.audit, traceId(), { ...audit, outcome: "error" })
+              auditSecretAccessOrWarn(options.audit, auditTraceId, { ...audit, outcome: "error" })
             )
           )
-          yield* auditSecretAccess(options.audit, traceId(), { ...audit, outcome: "ok" })
+          yield* auditSecretAccess(options.audit, auditTraceId, { ...audit, outcome: "ok" })
           return keys
             .flatMap((storageKey) => namespaceKey(input.appId, decoded.namespace, storageKey))
             .sort((left, right) => left.localeCompare(right))
@@ -375,6 +382,23 @@ const auditSecretAccess = (
         })
     )
   )
+
+const resolveAuditTraceId = (
+  traceId: () => string,
+  operation: string
+): Effect.Effect<string, SecretsInvalidArgumentError, never> => {
+  const id = traceId()
+  return id.length > 0
+    ? Effect.succeed(id)
+    : Effect.fail(
+        new SecretsInvalidArgumentError({
+          operation,
+          field: "traceId",
+          message: "traceId must be non-empty",
+          cause: Option.none()
+        })
+      )
+}
 
 const auditSecretAccessOrWarn = (
   audit: AuditEventsApi | undefined,

@@ -3135,6 +3135,14 @@ test("SecretValue redacts string and JSON formatting while exposing explicit byt
   )
 })
 
+test("SecretValue rejects non-byte fromBytes input", () => {
+  expect(() => SecretValue.fromBytes("refresh-token" as never)).toThrow(TypeError)
+  const bytes = new Uint8Array([1, 2, 3])
+  const secret = SecretValue.fromBytes(bytes)
+  bytes.fill(0)
+  expect(Array.from(secret.unsafeBytes())).toEqual([1, 2, 3])
+})
+
 test("SafeStorage service delegates through a substitutable SafeStorageClient port", async () => {
   const calls: string[] = []
   const result = await Effect.runPromise(
