@@ -6,7 +6,7 @@ Close small release-gate validation gaps in semver evidence and accessibility st
 
 ## Shipped
 
-Semver releases now require canonical `X.Y.Z` numeric identifiers without leading-zero padding. The existing semver manifest decoder is covered by a wrong-type regression for `deprecationPolicy.minimumMinorReleases`. Accessibility scanning now treats single capitalized JSX text labels as hardcoded user-visible English instead of ignoring them as identifier-like noise.
+Semver releases now require canonical `X.Y.Z` numeric identifiers without leading-zero padding. The existing semver manifest decoder is covered by a wrong-type regression for `deprecationPolicy.minimumMinorReleases`. Accessibility scanning now treats single capitalized JSX text labels as hardcoded user-visible English instead of ignoring them as identifier-like noise. CVSS exemptions must now include non-empty `Justification` and `Re-review` section bodies, not just headings.
 
 ## Lesson
 

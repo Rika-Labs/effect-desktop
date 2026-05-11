@@ -2070,6 +2070,40 @@ test("desktop check --release rejects playground package before build", async ()
   }
 })
 
+test("desktop check --release rejects empty CVSS exemption sections", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+  try {
+    await writeReleaseFixture(directory)
+    await mkdir(join(directory, "docs", "security", "exemptions"), { recursive: true })
+    await writeFile(
+      join(directory, "docs", "security", "exemptions", "empty.md"),
+      ["# Empty exemption", "", "## Justification", "", "## Re-review", ""].join("\n")
+    )
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--release", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("ReleaseGateEvidenceError")
+    expect(payload.message).toContain("non-empty Justification")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop check --a11y verifies template accessibility evidence", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
   try {

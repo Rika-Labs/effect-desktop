@@ -392,16 +392,33 @@ const validateExemptions = (path: string): Effect.Effect<void, ReleaseGateError,
     for (const entry of entries.filter((value) => value.endsWith(".md"))) {
       const file = join(path, entry)
       const body = yield* readText(file)
-      if (!body.includes("## Justification") || !body.includes("## Re-review")) {
+      if (
+        sectionBody(body, "Justification").length === 0 ||
+        sectionBody(body, "Re-review").length === 0
+      ) {
         return yield* Effect.fail(
           new ReleaseGateEvidenceError({
             gate: "cvss-scan",
-            message: `CVSS exemption ${entry} must include Justification and Re-review sections`
+            message: `CVSS exemption ${entry} must include non-empty Justification and Re-review sections`
           })
         )
       }
     }
   })
+
+const sectionBody = (body: string, section: string): string => {
+  const pattern = new RegExp(`^##\\s+${escapeRegExp(section)}\\s*$`, "im")
+  const match = pattern.exec(body)
+  if (match?.index === undefined) {
+    return ""
+  }
+  const start = match.index + match[0].length
+  const rest = body.slice(start)
+  const nextHeading = /^##\s+/im.exec(rest)
+  return rest.slice(0, nextHeading?.index ?? rest.length).trim()
+}
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
 const readJson = <A>(path: string): Effect.Effect<A, ReleaseGateFileError, never> =>
   Effect.gen(function* () {
