@@ -1230,17 +1230,30 @@ const copyDirectory = (
   source: string,
   destination: string
 ): Effect.Effect<void, PackageFileError, never> =>
+  copyContainedDirectory(source, destination, source)
+
+const copyContainedDirectory = (
+  root: string,
+  destination: string,
+  source: string
+): Effect.Effect<void, PackageFileError, never> =>
   Effect.gen(function* () {
     yield* makeDirectory(destination)
     const entries = yield* readDirectory(source)
     for (const entry of entries) {
       const sourcePath = join(source, entry)
       const destinationPath = join(destination, entry)
-      const entryStat = yield* statPath(sourcePath)
-      if (entryStat.isDirectory()) {
-        yield* copyDirectory(sourcePath, destinationPath)
+      const entryStat = yield* lstatPath(sourcePath)
+      const copySourcePath = entryStat.isSymbolicLink()
+        ? yield* resolveContainedSymlink(root, sourcePath)
+        : sourcePath
+      const copySourceStat = entryStat.isSymbolicLink()
+        ? yield* statPath(copySourcePath)
+        : entryStat
+      if (copySourceStat.isDirectory()) {
+        yield* copyContainedDirectory(root, destinationPath, copySourcePath)
       } else {
-        yield* copyFileEffect(sourcePath, destinationPath)
+        yield* copyFileEffect(copySourcePath, destinationPath)
       }
     }
   })
@@ -1363,6 +1376,31 @@ const readlinkPath = (path: string): Effect.Effect<string, PackageFileError, nev
         cause
       })
   })
+
+const resolveContainedSymlink = (
+  root: string,
+  symlinkPath: string
+): Effect.Effect<string, PackageFileError, never> =>
+  Effect.gen(function* () {
+    const target = yield* readlinkPath(symlinkPath)
+    const resolvedTarget = resolve(dirname(symlinkPath), target)
+    if (isPathInside(root, resolvedTarget)) {
+      return resolvedTarget
+    }
+    return yield* Effect.fail(
+      new PackageFileError({
+        operation: "copy",
+        path: symlinkPath,
+        message: `symlink ${symlinkPath} points outside ${root}`,
+        cause: target
+      })
+    )
+  })
+
+const isPathInside = (root: string, path: string): boolean => {
+  const relativePath = relative(root, path)
+  return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath))
+}
 
 const copyFileEffect = (
   source: string,

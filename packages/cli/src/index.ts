@@ -1,4 +1,4 @@
-import { mkdir, readdir, rm, stat, writeFile, copyFile } from "node:fs/promises"
+import { copyFile, lstat, mkdir, readlink, readdir, rm, stat, writeFile } from "node:fs/promises"
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
@@ -2462,6 +2462,12 @@ const loadRendererFiles = (
 const copyDirectory = (
   source: string,
   destination: string
+): Effect.Effect<void, BuildFileError, never> => copyContainedDirectory(source, destination, source)
+
+const copyContainedDirectory = (
+  root: string,
+  destination: string,
+  source: string
 ): Effect.Effect<void, BuildFileError, never> =>
   Effect.gen(function* () {
     yield* makeDirectory(destination)
@@ -2469,11 +2475,17 @@ const copyDirectory = (
     for (const entry of entries) {
       const sourcePath = join(source, entry)
       const destinationPath = join(destination, entry)
-      const entryStat = yield* statPath(sourcePath)
-      if (entryStat.isDirectory()) {
-        yield* copyDirectory(sourcePath, destinationPath)
+      const entryStat = yield* lstatPath(sourcePath)
+      const copySourcePath = entryStat.isSymbolicLink()
+        ? yield* resolveContainedSymlink(root, sourcePath)
+        : sourcePath
+      const copySourceStat = entryStat.isSymbolicLink()
+        ? yield* statPath(copySourcePath)
+        : entryStat
+      if (copySourceStat.isDirectory()) {
+        yield* copyContainedDirectory(root, destinationPath, copySourcePath)
       } else {
-        yield* copyFileEffect(sourcePath, destinationPath)
+        yield* copyFileEffect(copySourcePath, destinationPath)
       }
     }
   })
@@ -2543,6 +2555,52 @@ const statPath = (
       })
   })
 
+const lstatPath = (
+  path: string
+): Effect.Effect<Awaited<ReturnType<typeof lstat>>, BuildFileError, never> =>
+  Effect.tryPromise({
+    try: () => lstat(path),
+    catch: (cause) =>
+      new BuildFileError({
+        operation: "lstat",
+        path,
+        message: `failed to lstat ${path}`,
+        cause
+      })
+  })
+
+const readlinkPath = (path: string): Effect.Effect<string, BuildFileError, never> =>
+  Effect.tryPromise({
+    try: () => readlink(path),
+    catch: (cause) =>
+      new BuildFileError({
+        operation: "readlink",
+        path,
+        message: `failed to readlink ${path}`,
+        cause
+      })
+  })
+
+const resolveContainedSymlink = (
+  root: string,
+  symlinkPath: string
+): Effect.Effect<string, BuildFileError, never> =>
+  Effect.gen(function* () {
+    const target = yield* readlinkPath(symlinkPath)
+    const resolvedTarget = resolve(dirname(symlinkPath), target)
+    if (isPathInside(root, resolvedTarget)) {
+      return resolvedTarget
+    }
+    return yield* Effect.fail(
+      new BuildFileError({
+        operation: "copy",
+        path: symlinkPath,
+        message: `symlink ${symlinkPath} points outside ${root}`,
+        cause: target
+      })
+    )
+  })
+
 const copyFileEffect = (
   source: string,
   destination: string
@@ -2563,6 +2621,11 @@ const copyFileEffect = (
 
 const resolvePath = (cwd: string, path: string): string =>
   isAbsolute(path) ? path : resolve(cwd, path)
+
+const isPathInside = (root: string, path: string): boolean => {
+  const relativePath = relative(root, path)
+  return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath))
+}
 
 const hostBuildOutputPath = (repoRoot: string, target: BuildTarget): string =>
   join(repoRoot, "target", "release", hostBinaryName(target))

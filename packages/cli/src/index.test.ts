@@ -4622,6 +4622,53 @@ test("desktop build rejects renderer.dist outside the app root before running bu
   }
 })
 
+test("desktop build refuses renderer dist symlinks that escape dist", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-renderer-link-"))
+  try {
+    await writePlaygroundFixture(directory)
+    const appRoot = join(directory, "apps", "playground")
+    await writeFile(join(appRoot, "secret.txt"), "external")
+    const runner: CommandRunner = (invocation) =>
+      Effect.gen(function* () {
+        if (invocation.step === "renderer") {
+          yield* Effect.promise(() => mkdir(join(invocation.cwd, "dist"), { recursive: true }))
+          yield* Effect.promise(() =>
+            symlink("../secret.txt", join(invocation.cwd, "dist", "secret.txt"))
+          )
+        }
+      })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["build", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        commandRunner: runner,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const stagedSecret = join(
+      appRoot,
+      "build",
+      "effect-desktop",
+      "linux-x64",
+      "renderer",
+      "secret.txt"
+    )
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("BuildFileError")
+    expect(stderr.join("")).toContain("points outside")
+    await expect(stat(stagedSecret)).rejects.toThrow()
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop build rejects invalid security config before running build steps", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-security-"))
   try {
@@ -5305,6 +5352,57 @@ test("desktop package emits Linux AppImage deb rpm artifacts with metadata", asy
         "utf8"
       )
     ).toContain(".rpm")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop package rejects build layout symlinks that escape the layout", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-link-"))
+  try {
+    await writePlaygroundFixture(directory)
+    await writeBuildLayoutFixture(directory, "linux-x64")
+    const appRoot = join(directory, "apps", "playground")
+    const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
+    await writeFile(join(appRoot, "secret.txt"), "external")
+    await symlink("../../../../secret.txt", join(layout, "renderer", "secret.txt"))
+    const calls: string[] = []
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["package", "--config", "apps/playground/desktop.config.ts", "--artifact", "deb"],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        packageCommandRunner: (invocation) =>
+          Effect.sync(() => {
+            calls.push(invocation.step)
+          }),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const stagedSecret = join(
+      appRoot,
+      "dist",
+      "desktop",
+      "linux",
+      "Effect-Desktop-Playground-0.0.0-linux-x64.deb",
+      "root",
+      "usr",
+      "lib",
+      "effect-desktop-playground",
+      "renderer",
+      "secret.txt"
+    )
+    expect(exitCode).toBe(1)
+    expect(calls).toEqual([])
+    expect(stderr.join("")).toContain("PackageFileError")
+    expect(stderr.join("")).toContain("points outside")
+    await expect(stat(stagedSecret)).rejects.toThrow()
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
