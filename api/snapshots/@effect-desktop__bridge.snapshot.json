@@ -944,11 +944,6 @@
       "signature": "const validateHostProtocolNonEmptyString: (field: string, value: string, operation: string) => Effect.Effect<string, HostProtocolInvalidArgumentError, never>"
     },
     {
-      "name": "validateHostProtocolNonEmptyString",
-      "kind": "value",
-      "signature": "const validateHostProtocolNonEmptyString: (field: string, value: string, operation: string) => Effect.Effect<string, HostProtocolInvalidArgumentError, never>"
-    },
-    {
       "name": "validateHostProtocolTimestamp",
       "kind": "value",
       "signature": "const validateHostProtocolTimestamp: (timestamp: number, operation: string) => Effect.Effect<number, HostProtocolInvalidArgumentError, never>"
