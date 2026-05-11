@@ -233,18 +233,22 @@ export const makeTelemetry = (
       observeTraces: () => SubscriptionRef.changes(traces),
       incrementCounter: (input) =>
         Effect.gen(function* () {
-          yield* validateMetricMetadata(input.name, input.tags, "Telemetry.incrementCounter")
+          const operation = "Telemetry.incrementCounter"
+          yield* validateMetricMetadata(input.name, input.tags, operation)
+          const timestamp = yield* metricTimestamp(input.timestamp, now, operation)
           yield* SubscriptionRef.update(metrics, (current) =>
-            upsertMetric(current, toCounterSnapshot(input, now()), maxMetrics)
+            upsertMetric(current, toCounterSnapshot(input, timestamp), maxMetrics)
           )
         }),
       recordHistogram: (input) =>
         Effect.gen(function* () {
-          yield* validateMetricMetadata(input.name, input.tags, "Telemetry.recordHistogram")
+          const operation = "Telemetry.recordHistogram"
+          yield* validateMetricMetadata(input.name, input.tags, operation)
+          const timestamp = yield* metricTimestamp(input.timestamp, now, operation)
           yield* SubscriptionRef.update(metrics, (current) =>
             upsertMetric(
               current,
-              toHistogramSnapshot(input, now(), maxHistogramSamples),
+              toHistogramSnapshot(input, timestamp, maxHistogramSamples),
               maxMetrics,
               maxHistogramSamples
             )
@@ -357,6 +361,34 @@ const metricKey = (name: string, tags: Readonly<Record<string, string>>): string
     .map(([key, value]) => `${key}=${value}`)
     .join("\u0000")}`
 
+const metricTimestamp = (
+  inputTimestamp: number | undefined,
+  now: () => number,
+  operation: string
+): Effect.Effect<number, TelemetryInvalidArgumentError, never> =>
+  Effect.sync(() => inputTimestamp ?? now()).pipe(
+    Effect.flatMap((timestamp) =>
+      Number.isSafeInteger(timestamp) && timestamp >= 0
+        ? Effect.succeed(timestamp)
+        : Effect.fail(
+            new TelemetryInvalidArgumentError({
+              operation,
+              field: "timestamp",
+              message: "must be a finite non-negative safe integer"
+            })
+          )
+    ),
+    Effect.catchDefect(() =>
+      Effect.fail(
+        new TelemetryInvalidArgumentError({
+          operation,
+          field: "timestamp",
+          message: "timestamp clock failed"
+        })
+      )
+    )
+  )
+
 const toCounterSnapshot = (
   input: TelemetryCounterInput,
   timestamp: number
@@ -364,7 +396,7 @@ const toCounterSnapshot = (
   kind: "counter",
   name: input.name,
   tags: input.tags ?? {},
-  updatedAt: input.timestamp ?? timestamp,
+  updatedAt: timestamp,
   value: input.by ?? 1
 })
 
@@ -376,7 +408,7 @@ const toHistogramSnapshot = (
   kind: "histogram",
   name: input.name,
   tags: input.tags ?? {},
-  updatedAt: input.timestamp ?? timestamp,
+  updatedAt: timestamp,
   count: 1,
   sum: input.value,
   min: input.value,

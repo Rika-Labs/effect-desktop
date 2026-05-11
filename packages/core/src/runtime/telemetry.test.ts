@@ -177,6 +177,50 @@ test("Telemetry histogram percentiles use nearest-rank raw samples", async () =>
   })
 })
 
+test("Telemetry rejects invalid metric timestamps before mutating bounded metrics", async () => {
+  const invalidTimestamps = [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -1]
+
+  for (const timestamp of invalidTimestamps) {
+    const telemetry = await Effect.runPromise(
+      makeTelemetry({ maxMetrics: 2, now: () => timestamp })
+    )
+
+    expectInvalid(
+      await Effect.runPromiseExit(telemetry.incrementCounter({ name: "first" })),
+      "timestamp"
+    )
+    expectInvalid(
+      await Effect.runPromiseExit(telemetry.incrementCounter({ name: "second" })),
+      "timestamp"
+    )
+    expectInvalid(
+      await Effect.runPromiseExit(telemetry.incrementCounter({ name: "third" })),
+      "timestamp"
+    )
+
+    expect(await Effect.runPromise(telemetry.listMetrics())).toEqual([])
+  }
+})
+
+test("Telemetry rejects explicit invalid metric timestamps before mutating bounded metrics", async () => {
+  const telemetry = await Effect.runPromise(makeTelemetry({ maxMetrics: 2, now: () => 1 }))
+
+  expectInvalid(
+    await Effect.runPromiseExit(
+      telemetry.incrementCounter({ name: "first", timestamp: Number.NaN })
+    ),
+    "timestamp"
+  )
+  expectInvalid(
+    await Effect.runPromiseExit(
+      telemetry.recordHistogram({ name: "latency", value: 1, timestamp: Number.POSITIVE_INFINITY })
+    ),
+    "timestamp"
+  )
+
+  expect(await Effect.runPromise(telemetry.listMetrics())).toEqual([])
+})
+
 test("Telemetry rejects invalid buffer sizes as typed values", async () => {
   const error = await Effect.runPromise(Effect.flip(makeTelemetry({ traceRingSize: 0 })))
 
