@@ -1,4 +1,7 @@
 import { Data, Effect, Option, Schema, Stream } from "effect"
+import { Rpc, RpcGroup } from "effect/unstable/rpc"
+
+import { RpcCapability, RpcEndpoint, RpcSupport, type RpcSupportMetadata } from "./rpc-endpoint.js"
 
 export interface ApiMethodSpec {
   readonly input: Schema.Schema<unknown>
@@ -10,6 +13,7 @@ export interface ApiMethodSpec {
   readonly idempotent?: boolean
   readonly cancellable?: boolean
   readonly backpressure?: BackpressureSpec
+  readonly support?: RpcSupportMetadata
 }
 
 export interface ApiEventSpec {
@@ -75,6 +79,7 @@ export interface ApiContractClass<
   readonly tag: Tag
   readonly spec: Spec
   readonly events: Events
+  readonly toRpcGroup: () => RpcGroup.RpcGroup<Rpc.Any>
   readonly layer: <Handlers extends ApiHandlers<Spec>>(
     handlers: Handlers
   ) => ApiLayer<Tag, Spec, Handlers, Events>
@@ -178,6 +183,27 @@ export const Api = Object.freeze({
 export const apiContractEntries = (): readonly ApiContractClass[] =>
   Object.freeze(Array.from(apiContracts.values()))
 
+export const apiContractToRpcGroup = <
+  Tag extends string,
+  Spec extends ApiContractSpec,
+  Events extends ApiContractEvents
+>(
+  tag: Tag,
+  spec: Spec,
+  events: Events
+): RpcGroup.RpcGroup<Rpc.Any> => {
+  const rpcs: Rpc.Any[] = []
+
+  for (const [method, methodSpec] of Object.entries(spec)) {
+    rpcs.push(apiMethodToRpc(tag, method, methodSpec))
+  }
+  for (const [event, eventSpec] of Object.entries(events)) {
+    rpcs.push(apiEventToRpc(tag, event, eventSpec))
+  }
+
+  return RpcGroup.make(...rpcs)
+}
+
 const registerApiContract = <
   Tag extends string,
   Spec extends ApiContractSpec,
@@ -211,10 +237,15 @@ const registerApiContract = <
 
     const frozenSpec = freezeContractSpec(spec)
     const frozenEvents = freezeContractEvents(events)
+    const rpcGroup = apiContractToRpcGroup(tag, frozenSpec, frozenEvents)
     const contract = class {
       static readonly tag = tag
       static readonly spec = frozenSpec
       static readonly events = frozenEvents
+
+      static toRpcGroup(): RpcGroup.RpcGroup<Rpc.Any> {
+        return rpcGroup
+      }
 
       static layer<Handlers extends ApiHandlers<Spec>>(
         handlers: Handlers
@@ -302,6 +333,9 @@ const validateMethodSpec = (
     if (spec.backpressure !== undefined) {
       yield* validateBackpressureSpec(tag, method, spec.backpressure)
     }
+    if (spec.support !== undefined) {
+      yield* validateSupportSpec(tag, method, spec.support)
+    }
   })
 
 const validateContractEvents = (
@@ -367,10 +401,45 @@ const validateBackpressureSpec = (
     }
   })
 
+const validateSupportSpec = (
+  tag: string,
+  method: string,
+  spec: RpcSupportMetadata
+): Effect.Effect<void, InvalidApiContractSpec, never> =>
+  Effect.gen(function* () {
+    if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
+      return yield* Effect.fail(invalidSpec(tag, method, "support must be an object"))
+    }
+
+    if (!supportStatuses.has(spec.status)) {
+      return yield* Effect.fail(
+        invalidSpec(tag, method, "support.status must be supported or unsupported")
+      )
+    }
+
+    if (spec.status === "supported") {
+      if ("reason" in spec && spec.reason !== undefined) {
+        return yield* Effect.fail(
+          invalidSpec(tag, method, "support.reason is only allowed when status is unsupported")
+        )
+      }
+      return
+    }
+
+    if (typeof spec.reason !== "string" || spec.reason.length === 0) {
+      return yield* Effect.fail(
+        invalidSpec(tag, method, "unsupported methods must declare a non-empty support.reason")
+      )
+    }
+  })
+
 const freezeContractSpec = <Spec extends ApiContractSpec>(spec: Spec): Spec => {
   for (const methodSpec of Object.values(spec)) {
     if (methodSpec.backpressure !== undefined) {
       Object.freeze(methodSpec.backpressure)
+    }
+    if (methodSpec.support !== undefined) {
+      Object.freeze(methodSpec.support)
     }
     if (isStreamSpec(methodSpec.output) && methodSpec.output.backpressure !== undefined) {
       Object.freeze(methodSpec.output.backpressure)
@@ -406,6 +475,58 @@ const invalidSpec = (tag: string, method: string, reason: string): InvalidApiCon
     message: `Invalid API contract ${tag}.${method}: ${reason}`
   })
 
+const apiMethodToRpc = (tag: string, method: string, spec: ApiMethodSpec): Rpc.Any => {
+  const rpc = isStreamSpec(spec.output)
+    ? Rpc.make(`${tag}.${method}`, {
+        payload: spec.input,
+        success: spec.output.chunk,
+        error: spec.output.error,
+        stream: true
+      })
+    : Rpc.make(`${tag}.${method}`, {
+        payload: spec.input,
+        success: apiMethodSuccessSchema(spec.output),
+        error: spec.error
+      })
+
+  return annotateApiMethodRpc(rpc, spec)
+}
+
+const apiEventToRpc = (tag: string, event: string, spec: ApiEventSpec): Rpc.Any =>
+  Rpc.make(`${tag}.events.${event}`, {
+    success: spec.payload,
+    error: Schema.Never,
+    stream: true
+  })
+
+const apiMethodSuccessSchema = (
+  output: Schema.Schema<unknown> | ApiStreamSpec | ApiResourceSpec
+): Schema.Schema<unknown> => {
+  if (isResourceSpec(output)) {
+    return output.schema
+  }
+  if (isStreamSpec(output)) {
+    return output.chunk
+  }
+  return output
+}
+
+const annotateApiMethodRpc = (rpc: Rpc.Any, spec: ApiMethodSpec): Rpc.Any => {
+  const endpointRpc = spec.idempotent === true ? RpcEndpoint.query(rpc) : RpcEndpoint.mutation(rpc)
+  const capabilityRpc =
+    spec.permission === undefined
+      ? endpointRpc
+      : RpcCapability({ kind: spec.permission })(endpointRpc)
+
+  if (spec.support === undefined) {
+    return capabilityRpc
+  }
+
+  return spec.support.status === "supported"
+    ? RpcSupport.supported(capabilityRpc)
+    : RpcSupport.unsupported(spec.support.reason)(capabilityRpc)
+}
+
 const isSchema = (value: unknown): value is Schema.Schema<unknown> => {
   return (
     (typeof value === "object" || typeof value === "function") && value !== null && "ast" in value
@@ -440,4 +561,5 @@ const backpressureOverflows = new Set<NonNullable<BackpressureSpec["overflow"]>>
   "dropNewest",
   "block"
 ])
+const supportStatuses = new Set<RpcSupportMetadata["status"]>(["supported", "unsupported"])
 let registryFrozen = false

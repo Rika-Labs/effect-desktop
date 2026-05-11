@@ -3,6 +3,7 @@ import { Cause, Effect, Exit, Fiber, Schema, Stream } from "effect"
 
 import {
   Api,
+  apiContractToRpcGroup,
   type ApiContractClass,
   type ApiHandlers,
   type ApiLayer,
@@ -637,6 +638,10 @@ const makeProjectApi = <Tag extends string>(
       })
     })
     static readonly events = Object.freeze({})
+
+    static toRpcGroup() {
+      return apiContractToRpcGroup(contract.tag, contract.spec, contract.events)
+    }
 
     static layer<Handlers extends ApiHandlers<ProjectApiSpec>>(
       handlers: Handlers

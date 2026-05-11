@@ -22,6 +22,18 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./api": {
+      "types": "./src/api.ts",
+      "default": "./src/api.ts"
+    },
+    "./current-window": {
+      "types": "./src/current-window.ts",
+      "default": "./src/current-window.ts"
+    },
+    "./desktop": {
+      "types": "./src/desktop.tsx",
+      "default": "./src/desktop.tsx"
+    },
     "./sql-pglite": {
       "types": "./src/sql-pglite.ts",
       "default": "./src/sql-pglite.ts"
@@ -33,6 +45,10 @@
     "./storage/kv": {
       "types": "./src/storage/kv.ts",
       "default": "./src/storage/kv.ts"
+    },
+    "./windows": {
+      "types": "./src/windows.ts",
+      "default": "./src/windows.ts"
     }
   },
   "scripts": {
@@ -43,6 +59,7 @@
   },
   "dependencies": {
     "@effect-desktop/bridge": "workspace:*",
+    "@effect-desktop/core": "workspace:*",
     "@effect-desktop/native": "workspace:*",
     "@effect/platform-browser": "4.0.0-beta.60",
     "@effect/sql-sqlite-wasm": "4.0.0-beta.60",

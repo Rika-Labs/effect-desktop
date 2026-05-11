@@ -3,19 +3,27 @@ import { readdirSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { Effect, Schema } from "effect"
+import { Effect, Option, Schema } from "effect"
+import { Rpc } from "effect/unstable/rpc"
 
 import {
   HOST_PROTOCOL_ERROR_SPECS,
   HostProtocolEnvelope,
   HostProtocolError,
+  RpcCapability,
+  RpcEndpoint,
+  RpcSupport,
   RendererResumeDeniedPayload,
   RendererResumePayload,
   RendererResumedPayload,
   ResumeTicket,
   decodeHostProtocolEnvelope,
   encodeHostProtocolEnvelope,
-  hostProtocolErrorRecoverableDefault
+  hostProtocolErrorRecoverableDefault,
+  rpcCapability,
+  rpcEndpointKind,
+  rpcEndpointName,
+  rpcSupport
 } from "./index.js"
 
 const FIXTURE_DIR = fileURLToPath(
@@ -179,6 +187,39 @@ test("renderer reconnect payload schemas reject empty identity fields", () => {
       StrictParseOptions
     )
   ).toThrow()
+})
+
+test("RpcEndpoint annotates query and mutation intent on Effect RPC contracts", () => {
+  const List = Rpc.make("Terminal.List").pipe(RpcEndpoint.query)
+  const Create = Rpc.make("Terminal.Create").pipe(RpcEndpoint.mutation)
+
+  expect(rpcEndpointKind(List)).toBe("query")
+  expect(rpcEndpointKind(Create)).toBe("mutation")
+  expect(rpcEndpointKind(Rpc.make("Terminal.Default"))).toBe("mutation")
+})
+
+test("RpcCapability and RpcSupport keep boundary metadata on Effect RPC contracts", () => {
+  const Open = Rpc.make("Filesystem.Open").pipe(
+    RpcEndpoint.mutation,
+    RpcCapability({ kind: "filesystem:read", path: "/notes" }),
+    RpcSupport.unsupported("host method is not implemented")
+  )
+  const capability = rpcCapability(Open)
+
+  expect(Option.isSome(capability)).toBe(true)
+  if (Option.isSome(capability)) {
+    expect(capability.value).toEqual({ kind: "filesystem:read", path: "/notes" })
+  }
+  expect(rpcSupport(Open)).toEqual({
+    status: "unsupported",
+    reason: "host method is not implemented"
+  })
+  expect(rpcSupport(Rpc.make("Filesystem.Stat"))).toEqual({ status: "supported" })
+})
+
+test("rpcEndpointName derives renderer method names from Effect RPC tags", () => {
+  expect(rpcEndpointName("Terminal.List")).toBe("list")
+  expect(rpcEndpointName("Create")).toBe("create")
 })
 
 test("host protocol error type supports Effect catchTag", async () => {

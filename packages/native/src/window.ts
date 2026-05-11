@@ -1,6 +1,7 @@
 import {
   Api,
   Client,
+  apiContractToRpcGroup,
   type ApiContractError,
   type ApiContractClass,
   type ApiContractSpec,
@@ -17,6 +18,7 @@ import {
   makeHostProtocolNotFoundError,
   makeHostWindowClient,
   makeStaleHandleError,
+  type RpcSupportMetadata,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { ResourceRegistry, type ResourceId } from "@effect-desktop/core"
@@ -42,6 +44,10 @@ import {
   WindowFullScreenChanged
 } from "./contracts/window.js"
 const StrictParseOptions = { onExcessProperty: "error" } as const
+const UnsupportedWindowMethodSupport = Object.freeze({
+  status: "unsupported",
+  reason: "host Window adapter does not implement this method yet"
+}) satisfies RpcSupportMetadata
 export type WindowError = HostProtocolError
 
 export const WindowApiSpec = Object.freeze({
@@ -51,82 +57,97 @@ export const WindowApiSpec = Object.freeze({
     error: HostProtocolErrorSchema,
     permission: "native.invoke:Window.create"
   },
-  show: handleMethodSpec(WindowHandleInput, "native.invoke:Window.show"),
-  hide: handleMethodSpec(WindowHandleInput, "native.invoke:Window.hide"),
-  focus: handleMethodSpec(WindowHandleInput, "native.invoke:Window.focus"),
+  show: unsupportedMethodSpec(WindowHandleInput, "native.invoke:Window.show"),
+  hide: unsupportedMethodSpec(WindowHandleInput, "native.invoke:Window.hide"),
+  focus: unsupportedMethodSpec(WindowHandleInput, "native.invoke:Window.focus"),
   close: handleMethodSpec(WindowHandleInput, "native.invoke:Window.close"),
   setTitle: {
     input: WindowTitleInput,
     output: Schema.Void,
     error: HostProtocolErrorSchema,
-    permission: "native.invoke:Window.setTitle"
+    permission: "native.invoke:Window.setTitle",
+    support: UnsupportedWindowMethodSupport
   },
   setSize: {
     input: WindowSizeInput,
     output: Schema.Void,
     error: HostProtocolErrorSchema,
-    permission: "native.invoke:Window.setSize"
+    permission: "native.invoke:Window.setSize",
+    support: UnsupportedWindowMethodSupport
   },
   setPosition: {
     input: WindowPositionInput,
     output: Schema.Void,
     error: HostProtocolErrorSchema,
-    permission: "native.invoke:Window.setPosition"
+    permission: "native.invoke:Window.setPosition",
+    support: UnsupportedWindowMethodSupport
   },
   setBackgroundColor: {
     input: WindowBackgroundColorInput,
     output: Schema.Void,
     error: HostProtocolErrorSchema,
-    permission: "native.invoke:Window.setBackgroundColor"
+    permission: "native.invoke:Window.setBackgroundColor",
+    support: UnsupportedWindowMethodSupport
   },
   setVibrancy: {
     input: WindowVibrancyInput,
     output: Schema.Void,
     error: HostProtocolErrorSchema,
-    permission: "native.invoke:Window.setVibrancy"
+    permission: "native.invoke:Window.setVibrancy",
+    support: UnsupportedWindowMethodSupport
   },
   setHasShadow: {
     input: WindowShadowInput,
     output: Schema.Void,
     error: HostProtocolErrorSchema,
-    permission: "native.invoke:Window.setHasShadow"
+    permission: "native.invoke:Window.setHasShadow",
+    support: UnsupportedWindowMethodSupport
   },
   setFullscreen: {
     input: WindowFullscreenInput,
     output: Schema.Void,
     error: HostProtocolErrorSchema,
-    permission: "native.invoke:Window.setFullscreen"
+    permission: "native.invoke:Window.setFullscreen",
+    support: UnsupportedWindowMethodSupport
   },
-  enterFullScreen: handleMethodSpec(WindowHandleInput, "native.invoke:Window.enterFullScreen"),
-  exitFullScreen: handleMethodSpec(WindowHandleInput, "native.invoke:Window.exitFullScreen"),
+  enterFullScreen: unsupportedMethodSpec(WindowHandleInput, "native.invoke:Window.enterFullScreen"),
+  exitFullScreen: unsupportedMethodSpec(WindowHandleInput, "native.invoke:Window.exitFullScreen"),
   onFullScreenChanged: {
     input: WindowHandleInput,
     output: Api.Stream(WindowFullScreenChanged, HostProtocolErrorSchema),
     error: HostProtocolErrorSchema,
-    permission: "native.invoke:Window.onFullScreenChanged"
+    permission: "native.invoke:Window.onFullScreenChanged",
+    support: UnsupportedWindowMethodSupport
   },
   getScaleFactor: {
     input: WindowHandleInput,
     output: WindowScaleFactorOutput,
     error: HostProtocolErrorSchema,
-    permission: "native.invoke:Window.getScaleFactor"
+    permission: "native.invoke:Window.getScaleFactor",
+    support: UnsupportedWindowMethodSupport
   },
   onScaleChanged: {
     input: WindowHandleInput,
     output: Api.Stream(WindowScaleChanged, HostProtocolErrorSchema),
     error: HostProtocolErrorSchema,
-    permission: "native.invoke:Window.onScaleChanged"
+    permission: "native.invoke:Window.onScaleChanged",
+    support: UnsupportedWindowMethodSupport
   },
-  persistState: handleMethodSpec(WindowHandleInput, "native.invoke:Window.persistState")
+  persistState: unsupportedMethodSpec(WindowHandleInput, "native.invoke:Window.persistState")
 }) satisfies ApiContractSpec
 
 export type WindowApiSpec = typeof WindowApiSpec
 
 export const WindowApi: ApiContractClass<"Window", WindowApiSpec> = (() => {
+  const rpcGroup = apiContractToRpcGroup("Window", WindowApiSpec, {})
   const contract = class {
     static readonly tag = "Window"
     static readonly spec = WindowApiSpec
     static readonly events = Object.freeze({})
+
+    static toRpcGroup() {
+      return rpcGroup
+    }
 
     static layer<Handlers extends ApiHandlers<WindowApiSpec>>(
       handlers: Handlers
@@ -494,5 +515,15 @@ function handleMethodSpec<Input extends Schema.Schema<unknown>>(input: Input, pe
     output: Schema.Void,
     error: HostProtocolErrorSchema,
     permission
+  } as const
+}
+
+function unsupportedMethodSpec<Input extends Schema.Schema<unknown>>(
+  input: Input,
+  permission: string
+) {
+  return {
+    ...handleMethodSpec(input, permission),
+    support: UnsupportedWindowMethodSupport
   } as const
 }

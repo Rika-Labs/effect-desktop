@@ -8,7 +8,13 @@ import {
   DuplicateApiContractTag,
   HostProtocolRequestEnvelope,
   InvalidApiContractSpec,
+  Rpc,
+  RpcGroup,
+  RpcSchema,
   makeHostProtocolInvalidOutputError,
+  rpcCapability,
+  rpcEndpointKind,
+  rpcSupport,
   type ApiContractSpec,
   type HostProtocolError
 } from "./index.js"
@@ -248,6 +254,22 @@ test("Api.Tag rejects invalid backpressure values as a typed Effect failure", as
   expectFailure(exit, InvalidApiContractSpec)
 })
 
+test("Api.Tag rejects invalid support metadata as a typed Effect failure", async () => {
+  const exit = await Effect.runPromiseExit(
+    Api.Tag("Test.InvalidSupport")<unknown>()({
+      call: {
+        ...validMethodSpec(),
+        support: {
+          status: "unsupported",
+          reason: ""
+        }
+      }
+    })
+  )
+
+  expectFailure(exit, InvalidApiContractSpec)
+})
+
 test("Api.Tag rejects invalid event specs as a typed Effect failure", async () => {
   const exit = await Effect.runPromiseExit(
     Api.Tag("Test.InvalidEvent")<unknown>()(
@@ -342,6 +364,69 @@ test("contract layer handlers can depend on an Effect environment", async () => 
   expect(descriptor.contract).toBe(DependentApi)
 })
 
+test("Api.Tag lowers methods, streams, permissions, and events into RpcGroup", async () => {
+  const LegacyApi = await Effect.runPromise(
+    Api.Tag("Test.LegacyRpcLowering")<unknown>()(
+      {
+        list: {
+          input: Schema.Void,
+          output: Schema.Array(Schema.String),
+          error: Schema.Never,
+          cachedResultMs: 1_000,
+          idempotent: true
+        },
+        open: {
+          input: Schema.Struct({ id: Schema.String }),
+          output: Schema.Struct({ ok: Schema.Boolean }),
+          error: Schema.Never,
+          permission: "notes:open",
+          support: {
+            status: "unsupported",
+            reason: "host adapter does not implement open yet"
+          }
+        },
+        watch: {
+          input: Schema.Void,
+          output: Api.Stream(Schema.String, Schema.Never),
+          error: Schema.Never
+        }
+      },
+      {
+        changed: {
+          payload: Schema.Struct({ id: Schema.String })
+        }
+      }
+    )
+  )
+  const group = LegacyApi.toRpcGroup()
+
+  expect(Array.from(group.requests.keys()).sort()).toEqual([
+    "Test.LegacyRpcLowering.events.changed",
+    "Test.LegacyRpcLowering.list",
+    "Test.LegacyRpcLowering.open",
+    "Test.LegacyRpcLowering.watch"
+  ])
+  expect(rpcEndpointKind(request(group, "Test.LegacyRpcLowering.list"))).toBe("query")
+  expect(rpcEndpointKind(request(group, "Test.LegacyRpcLowering.open"))).toBe("mutation")
+  expect(
+    Option.match(rpcCapability(request(group, "Test.LegacyRpcLowering.open")), {
+      onNone: () => undefined,
+      onSome: (capability) => capability
+    })
+  ).toEqual({ kind: "notes:open" })
+  expect(rpcSupport(request(group, "Test.LegacyRpcLowering.open"))).toEqual({
+    status: "unsupported",
+    reason: "host adapter does not implement open yet"
+  })
+  expect(Object.isFrozen(LegacyApi.spec.open.support)).toBe(true)
+  expect(
+    RpcSchema.isStreamSchema(successSchema(request(group, "Test.LegacyRpcLowering.watch")))
+  ).toBe(true)
+  expect(
+    RpcSchema.isStreamSchema(successSchema(request(group, "Test.LegacyRpcLowering.events.changed")))
+  ).toBe(true)
+})
+
 test("zz Api.freeze rejects later registrations as a typed Effect failure", async () => {
   await Effect.runPromise(Api.freeze())
 
@@ -359,6 +444,23 @@ const validMethodSpec = () => ({
   output: Schema.String,
   error: Schema.Never
 })
+
+interface RpcWithSuccessSchema extends Rpc.Any {
+  readonly successSchema: Schema.Top
+}
+
+const request = (group: RpcGroup.RpcGroup<Rpc.Any>, tag: string): Rpc.Any => {
+  const rpc = group.requests.get(tag)
+
+  expect(rpc, tag).toBeDefined()
+  if (rpc === undefined) {
+    throw new Error(`missing rpc ${tag}`)
+  }
+
+  return rpc
+}
+
+const successSchema = (rpc: Rpc.Any): Schema.Top => (rpc as RpcWithSuccessSchema).successSchema
 
 const expectFailure = (
   exit: Exit.Exit<unknown, unknown>,

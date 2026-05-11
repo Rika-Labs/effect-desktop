@@ -1,20 +1,49 @@
-import { Api, Client, Handlers, RedactionFilter } from "@effect-desktop/bridge"
+import {
+  Api,
+  Client,
+  Handlers,
+  RedactionFilter,
+  RpcCapability,
+  RpcEndpoint,
+  RpcSupport
+} from "@effect-desktop/bridge"
 import { Effect, Layer } from "effect"
 
-import { app as desktopApp, launch } from "./runtime/desktop-app.js"
+import {
+  Rpcs,
+  app as desktopApp,
+  launch,
+  make,
+  manifest,
+  provide,
+  toLayer
+} from "./runtime/desktop-app.js"
 import type { DesktopApp, DesktopConfig, DesktopConfigError } from "./runtime/desktop-app.js"
 import type { NormalizedCapability } from "./runtime/permission-registry.js"
 import { PermissionRegistry } from "./runtime/permission-registry.js"
+import { describeRpcs } from "./runtime/rpc-descriptors.js"
 import type { WorkflowLayer } from "./runtime/workflow.js"
 import { WorkflowEngine, WorkflowEngineLive } from "./runtime/workflow.js"
 
-export { Api, Client, Handlers, RedactionFilter, redact } from "@effect-desktop/bridge"
+export {
+  Api,
+  Client,
+  Handlers,
+  RedactionFilter,
+  RpcCapability,
+  RpcEndpoint,
+  RpcSupport,
+  redact
+} from "@effect-desktop/bridge"
 export { makeBridgeCallRegistry, makeBridgeStreamRegistry } from "@effect-desktop/bridge"
 export type {
   BridgeCallRegistry,
   BridgeCallState,
   BridgeStreamRegistry,
-  BridgeStreamRegistryEntry
+  BridgeStreamRegistryEntry,
+  RpcCapabilityMetadata,
+  RpcEndpointKind,
+  RpcSupportMetadata
 } from "@effect-desktop/bridge"
 export * from "./runtime/desktop-env-config.js"
 export * from "./runtime/logger.js"
@@ -43,14 +72,29 @@ export * from "./runtime/telemetry.js"
 export * from "./runtime/telemetry-otel.js"
 export * from "./runtime/framework-metrics.js"
 export * from "./runtime/window-state.js"
+export * from "./runtime/window-supervisor.js"
+export * from "./runtime/desktop-errors.js"
 export * from "./runtime/reactivity.js"
+export * from "./runtime/rpc-descriptors.js"
+export * from "./runtime/renderer-rpc-client.js"
 export {
   DesktopApp,
   app as desktopApp,
   launch,
+  make,
+  manifest,
+  provide,
+  Rpcs,
+  toLayer,
   type AnyApiLayer,
+  type AnyDesktopRpcLayer,
   type DesktopAppApi,
+  type DesktopAppDefinition,
+  type DesktopAppManifest,
   type DesktopConfig,
+  type DesktopMakeConfig,
+  type DesktopRpcGroupDescriptor,
+  type DesktopRpcLayer,
   type WindowSpec
 } from "./runtime/desktop-app.js"
 export { DesktopConfigError as DesktopSpineConfigError } from "./runtime/desktop-app.js"
@@ -117,6 +161,15 @@ export const Desktop = Object.freeze({
   Client,
   Handlers,
   RedactionFilter,
+  RpcCapability,
+  RpcEndpoint,
+  RpcSupport,
   app,
-  launch
+  launch,
+  make,
+  manifest,
+  provide,
+  Rpcs,
+  toLayer,
+  describeRpcs
 })

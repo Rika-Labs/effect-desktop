@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import { Cause, Deferred, Effect, Exit, Schema } from "effect"
 
 import {
+  apiContractToRpcGroup,
   type ApiContractClass,
   type ApiClientResponse,
   type ApiHandlers,
@@ -355,6 +356,10 @@ test("Handlers redacts secret-shaped contract failure fields before renderer emi
     })
     static readonly events = Object.freeze({})
 
+    static toRpcGroup() {
+      return apiContractToRpcGroup(contract.tag, contract.spec, contract.events)
+    }
+
     static layer<HandlersShape extends ApiHandlers<SecretErrorApiSpec>>(
       handlers: HandlersShape
     ): ApiLayer<string, SecretErrorApiSpec, HandlersShape> {
@@ -569,6 +574,10 @@ test("Handlers does not confuse domain _tag collisions with Effect timeout error
     })
     static readonly events = Object.freeze({})
 
+    static toRpcGroup() {
+      return apiContractToRpcGroup(contract.tag, contract.spec, contract.events)
+    }
+
     static layer<HandlersShape extends ApiHandlers<TimeoutCollisionApiSpec>>(
       handlers: HandlersShape
     ): ApiLayer<string, TimeoutCollisionApiSpec, HandlersShape> {
@@ -729,6 +738,10 @@ const makeProjectApi = (
     })
     static readonly events = Object.freeze({})
 
+    static toRpcGroup() {
+      return apiContractToRpcGroup(contract.tag, contract.spec, contract.events)
+    }
+
     static layer<HandlersShape extends ApiHandlers<ProjectApiSpec>>(
       handlers: HandlersShape
     ): ApiLayer<string, ProjectApiSpec, HandlersShape> {
@@ -763,6 +776,10 @@ const makeEncodedInputApi = <Tag extends string>(
       })
     })
     static readonly events = Object.freeze({})
+
+    static toRpcGroup() {
+      return apiContractToRpcGroup(contract.tag, contract.spec, contract.events)
+    }
 
     static layer<HandlersShape extends ApiHandlers<EncodedInputApiSpec>>(
       handlers: HandlersShape

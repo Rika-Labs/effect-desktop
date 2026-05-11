@@ -14,8 +14,10 @@ bun test
 
 ## What It Shows
 
-- `DesktopProvider` and `useDesktop` from `@effect-desktop/react`.
-- One typed `Window.create` call represented as an Effect value.
+- `Rpc.make` + `RpcGroup.make` as the renderer-callable contract.
+- `Desktop.make({ windows })` for startup windows.
+- `Desktop.Rpcs.layer(AppRpc, AppRpc.toLayer(...))` for app assembly.
+- React renderer wiring that uses public `@effect-desktop/*` APIs only.
 - Tailwind styling through the Vite plugin.
 - A valid `desktop.config.ts` shape for the template app.
 
@@ -33,7 +35,7 @@ This template is ready for optional, opt-in browser storage wiring:
 
 3. If migrations are needed, build the storage layer before host/runtime layers that consume it, so schema upgrades run during startup.
 
-The template `spine.ts` currently defines only the minimal `MainLayer`; storage layers can be merged into it when you add storage-backed state:
+The template `spine.ts` owns app assembly. Storage layers should be provided beside the RPC layer:
 
 ```ts
 import { indexedDbStorage } from "@effect-desktop/react/storage/idb.js"
@@ -42,9 +44,13 @@ const table = indexedDbStorage.makeTable({...})
 const version = indexedDbStorage.makeVersion(table)
 const migration = indexedDbStorage.makeMigration(version, (tx) => Effect.void)
 
-export const MainLayer = Desktop.app().pipe(
-  Layer.merge(greetLayer),
-  Layer.merge(migration.layer)
+export const TemplateApp = Desktop.make({
+  windows: {
+    main: { title: "Effect Desktop", renderer: "/" }
+  }
+}).pipe(
+  Desktop.provide(Desktop.Rpcs.layer(AppRpc, greetLayer)),
+  Desktop.provide(migration.layer)
 )
 ```
 
