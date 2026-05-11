@@ -282,8 +282,8 @@ test("cli rejects invalid arguments before scaffolding", async () => {
     { args: ["one", "two"], message: "unexpected positional argument" }
   ]
 
-  for (const entry of cases) {
-    const cwd = join(tmpdir(), `create-effect-desktop-cli-invalid-${entry.message}`)
+  for (const [index, entry] of cases.entries()) {
+    const cwd = join(tmpdir(), `create-effect-desktop-cli-invalid-${index}`)
     if (existsSync(cwd)) {
       rmSync(cwd, { recursive: true })
     }

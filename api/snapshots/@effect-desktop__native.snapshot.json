@@ -221,7 +221,7 @@
     {
       "name": "CanonicalPath",
       "kind": "class",
-      "signature": "export class CanonicalPath extends Schema.Class<CanonicalPath>(\"CanonicalPath\")({ // eslint-disable-next-line no-control-regex -- Canonical paths must reject NUL. path: Schema.NonEmptyString.check(Schema.isPattern(/^[^\\u0000]*$/)) }) {}"
+      "signature": "export class CanonicalPath extends Schema.Class<CanonicalPath>(\"CanonicalPath\")({ path: Schema.NonEmptyString.check( // eslint-disable-next-line no-control-regex -- Canonical paths must reject NUL. Schema.isPattern(/^[^\\u0000]*$/), Schema.makeFilter((value) => isAbsolutePlatformPath(value) || \"must be an absolute path\") ) }) {}"
     },
     {
       "name": "Clipboard",
@@ -1616,7 +1616,7 @@
     {
       "name": "NotificationActionEvent",
       "kind": "class",
-      "signature": "export class NotificationActionEvent extends Schema.Class<NotificationActionEvent>( \"NotificationActionEvent\" )({ notification: NotificationResource.schema, actionId: PrintableNonEmptyString, ownerWindowId: Schema.optionalKey(Schema.String) }) {}"
+      "signature": "export class NotificationActionEvent extends Schema.Class<NotificationActionEvent>( \"NotificationActionEvent\" )({ notification: NotificationResource.schema, actionId: PrintableNonEmptyString, ownerWindowId: Schema.optionalKey(OwnerWindowId) }) {}"
     },
     {
       "name": "NotificationApi",
@@ -1636,7 +1636,7 @@
     {
       "name": "NotificationClickEvent",
       "kind": "class",
-      "signature": "export class NotificationClickEvent extends Schema.Class<NotificationClickEvent>( \"NotificationClickEvent\" )({ notification: NotificationResource.schema, ownerWindowId: Schema.optionalKey(Schema.String) }) {}"
+      "signature": "export class NotificationClickEvent extends Schema.Class<NotificationClickEvent>( \"NotificationClickEvent\" )({ notification: NotificationResource.schema, ownerWindowId: Schema.optionalKey(OwnerWindowId) }) {}"
     },
     {
       "name": "NotificationClient",
@@ -1816,7 +1816,7 @@
     {
       "name": "PowerMonitorResumeEvent",
       "kind": "class",
-      "signature": "export class PowerMonitorResumeEvent extends Schema.Class<PowerMonitorResumeEvent>( \"PowerMonitorResumeEvent\" )({ reason: Schema.optionalKey(Schema.String) }) {}"
+      "signature": "export class PowerMonitorResumeEvent extends Schema.Class<PowerMonitorResumeEvent>( \"PowerMonitorResumeEvent\" )({ reason: Schema.optionalKey(PowerMonitorReason) }) {}"
     },
     {
       "name": "PowerMonitorServiceApi",
@@ -1826,7 +1826,7 @@
     {
       "name": "PowerMonitorShutdownEvent",
       "kind": "class",
-      "signature": "export class PowerMonitorShutdownEvent extends Schema.Class<PowerMonitorShutdownEvent>( \"PowerMonitorShutdownEvent\" )({ reason: Schema.optionalKey(Schema.String) }) {}"
+      "signature": "export class PowerMonitorShutdownEvent extends Schema.Class<PowerMonitorShutdownEvent>( \"PowerMonitorShutdownEvent\" )({ reason: Schema.optionalKey(PowerMonitorReason) }) {}"
     },
     {
       "name": "PowerMonitorSource",
@@ -1846,7 +1846,7 @@
     {
       "name": "PowerMonitorSuspendEvent",
       "kind": "class",
-      "signature": "export class PowerMonitorSuspendEvent extends Schema.Class<PowerMonitorSuspendEvent>( \"PowerMonitorSuspendEvent\" )({ reason: Schema.optionalKey(Schema.String) }) {}"
+      "signature": "export class PowerMonitorSuspendEvent extends Schema.Class<PowerMonitorSuspendEvent>( \"PowerMonitorSuspendEvent\" )({ reason: Schema.optionalKey(PowerMonitorReason) }) {}"
     },
     {
       "name": "Protocol",
@@ -2231,7 +2231,7 @@
     {
       "name": "SecretValue",
       "kind": "class",
-      "signature": "export class SecretValue { readonly _tag = \"SecretValue\" #bytes: Uint8Array private constructor(bytes: Uint8Array) { this.#bytes = new Uint8Array(bytes) } static fromBytes(bytes: Uint8Array): SecretValue { return new SecretValue(bytes) } static fromUtf8(value: string): SecretValue { return new SecretValue(new TextEncoder().encode(value)) } unsafeBytes(): Uint8Array { return new Uint8Array(this.#bytes) } dispose(): Effect.Effect<void, never, never> { return Effect.sync(() => { this.#bytes.fill(0) }) } toString(): string { return Redacted } toJSON(): string { return Redacted } [NodeInspectCustom](): string { return Redacted } }"
+      "signature": "export class SecretValue { readonly _tag = \"SecretValue\" #bytes: Uint8Array private constructor(bytes: Uint8Array) { this.#bytes = new Uint8Array(bytes) } static fromBytes(bytes: Uint8Array): SecretValue { if (!(bytes instanceof Uint8Array)) { throw new TypeError(\"SecretValue.fromBytes requires a Uint8Array\") } return new SecretValue(bytes) } static fromUtf8(value: string): SecretValue { return new SecretValue(new TextEncoder().encode(value)) } unsafeBytes(): Uint8Array { return new Uint8Array(this.#bytes) } dispose(): Effect.Effect<void, never, never> { return Effect.sync(() => { this.#bytes.fill(0) }) } toString(): string { return Redacted } toJSON(): string { return Redacted } [NodeInspectCustom](): string { return Redacted } }"
     },
     {
       "name": "Shell",
@@ -2746,7 +2746,7 @@
     {
       "name": "WebViewNavigationBlockedEvent",
       "kind": "class",
-      "signature": "export class WebViewNavigationBlockedEvent extends Schema.Class<WebViewNavigationBlockedEvent>( \"WebViewNavigationBlockedEvent\" )({ webview: WebViewResource.schema, url: Schema.String, reason: WebViewNavigationBlockedReason }) {}"
+      "signature": "export class WebViewNavigationBlockedEvent extends Schema.Class<WebViewNavigationBlockedEvent>( \"WebViewNavigationBlockedEvent\" )({ webview: WebViewResource.schema, url: WebViewNavigationUrl, reason: WebViewNavigationBlockedReason }) {}"
     },
     {
       "name": "WebViewNavigationPolicy",

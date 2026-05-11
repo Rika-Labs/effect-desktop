@@ -1521,7 +1521,7 @@
     {
       "name": "SecretsInvalidArgumentError",
       "kind": "class",
-      "signature": "export class SecretsInvalidArgumentError extends Data.TaggedError(\"InvalidArgument\")<{ readonly operation: string readonly field: \"appId\" | \"namespace\" | \"key\" readonly message: string readonly cause: Option.Option<unknown> }> {}"
+      "signature": "export class SecretsInvalidArgumentError extends Data.TaggedError(\"InvalidArgument\")<{ readonly operation: string readonly field: \"appId\" | \"namespace\" | \"key\" | \"traceId\" readonly message: string readonly cause: Option.Option<unknown> }> {}"
     },
     {
       "name": "SecretsKeyInput",
@@ -1606,7 +1606,7 @@
     {
       "name": "SecretValue",
       "kind": "class",
-      "signature": "export class SecretValue { readonly _tag = \"SecretValue\" #bytes: Uint8Array private constructor(bytes: Uint8Array) { this.#bytes = new Uint8Array(bytes) } static fromBytes(bytes: Uint8Array): SecretValue { return new SecretValue(bytes) } static fromUtf8(value: string): SecretValue { return new SecretValue(new TextEncoder().encode(value)) } unsafeBytes(): Uint8Array { return new Uint8Array(this.#bytes) } dispose(): Effect.Effect<void, never, never> { return Effect.sync(() => { this.#bytes.fill(0) }) } toString(): string { return Redacted } toJSON(): string { return Redacted } [NodeInspectCustom](): string { return Redacted } }"
+      "signature": "export class SecretValue { readonly _tag = \"SecretValue\" #bytes: Uint8Array private constructor(bytes: Uint8Array) { this.#bytes = new Uint8Array(bytes) } static fromBytes(bytes: Uint8Array): SecretValue { if (!(bytes instanceof Uint8Array)) { throw new TypeError(\"SecretValue.fromBytes requires a Uint8Array\") } return new SecretValue(bytes) } static fromUtf8(value: string): SecretValue { return new SecretValue(new TextEncoder().encode(value)) } unsafeBytes(): Uint8Array { return new Uint8Array(this.#bytes) } dispose(): Effect.Effect<void, never, never> { return Effect.sync(() => { this.#bytes.fill(0) }) } toString(): string { return Redacted } toJSON(): string { return Redacted } [NodeInspectCustom](): string { return Redacted } }"
     },
     {
       "name": "SecretVerificationMismatchError",

@@ -587,9 +587,13 @@ export const capabilityCovers = (
 }
 
 const rootCovers = (declaredRoot: string, requestedRoot: string): boolean => {
-  const prefix = declaredRoot.endsWith("/") ? declaredRoot : `${declaredRoot}/`
-  return requestedRoot === declaredRoot || requestedRoot.startsWith(prefix)
+  const declared = normalizeRootPath(declaredRoot)
+  const requested = normalizeRootPath(requestedRoot)
+  const prefix = declared.endsWith("/") ? declared : `${declared}/`
+  return requested === declared || requested.startsWith(prefix)
 }
+
+const normalizeRootPath = (path: string): string => path.replaceAll("\\", "/")
 
 const issueGrant = (
   grants: Ref.Ref<ReadonlyMap<string, TrackedGrant>>,

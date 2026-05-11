@@ -77,6 +77,30 @@ test("PermissionRegistry allows sqlite opens inside declared database roots and 
   })
 })
 
+test("PermissionRegistry matches Windows-style roots by path segment", async () => {
+  const registry = await Effect.runPromise(
+    makePermissionRegistry({ traceId: () => "trace-1", nextToken: () => "grant-1" })
+  )
+
+  await Effect.runPromise(
+    registry.declare(sqliteOpen(["C:\\Temp\\app\\databases"]), { source: "manifest" })
+  )
+  const granted = await Effect.runPromise(
+    registry.check(sqliteOpen(["C:\\Temp\\app\\databases\\main.sqlite"]), context("window-main"))
+  )
+  const denied = await Effect.runPromiseExit(
+    registry.check(
+      sqliteOpen(["C:\\Temp\\app\\database-shadow\\main.sqlite"]),
+      context("window-main")
+    )
+  )
+
+  expect(granted.token).toBe("grant-1")
+  expectDenied(denied, (error) => {
+    expect(error.reason).toBe("default-deny")
+  })
+})
+
 test("PermissionRegistry does not let weaker native audit policy cover stronger requests", async () => {
   const registry = await Effect.runPromise(
     makePermissionRegistry({ traceId: () => "trace-1", nextToken: () => "grant-1" })
