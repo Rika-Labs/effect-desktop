@@ -10,7 +10,7 @@ import { AuditEvent, type AuditEventsApi } from "./audit-events.js"
 import {
   SecretNotFoundError,
   SecretValue,
-  SecretsAuditFailedError,
+  SecretsCommittedAuditFailedError,
   SecretsInvalidArgumentError,
   SecretsPermissionDeniedError,
   type SecretsSafeStorageApi,
@@ -143,7 +143,7 @@ test("SecretValue rejects non-byte fromBytes input", () => {
   expect(Array.from(secret.unsafeBytes())).toEqual([1, 2, 3])
 })
 
-test("Secrets returns typed audit failures for successful audit writes", async () => {
+test("Secrets reports committed audit failures for successful writes", async () => {
   const secrets = await Effect.runPromise(
     makeSecrets(memorySafeStorage(), {
       appId: "com.rika.test",
@@ -156,7 +156,56 @@ test("Secrets returns typed audit failures for successful audit writes", async (
     secrets.set("auth", "token", SecretValue.fromUtf8("refresh-token"))
   )
 
-  expectFailure(exit, SecretsAuditFailedError)
+  expectFailure(exit, SecretsCommittedAuditFailedError)
+})
+
+test("Secrets reports committed set when post-write audit fails", async () => {
+  const storage = memorySafeStorage()
+  const secrets = await Effect.runPromise(
+    makeSecrets(storage, {
+      appId: "com.rika.test",
+      permissions: { read: ["auth"], write: ["auth"] },
+      audit: failingAudit()
+    })
+  )
+  const verifier = await Effect.runPromise(
+    makeSecrets(storage, {
+      appId: "com.rika.test",
+      permissions: { read: ["auth"], write: ["auth"] }
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(
+    secrets.set("auth", "token", SecretValue.fromUtf8("refresh-token"))
+  )
+  const stored = await Effect.runPromise(verifier.get("auth", "token"))
+
+  expectFailure(exit, SecretsCommittedAuditFailedError)
+  expect(new TextDecoder().decode(stored.unsafeBytes())).toBe("refresh-token")
+})
+
+test("Secrets reports committed delete when post-delete audit fails", async () => {
+  const storage = memorySafeStorage()
+  const seed = await Effect.runPromise(
+    makeSecrets(storage, {
+      appId: "com.rika.test",
+      permissions: { read: ["auth"], write: ["auth"] }
+    })
+  )
+  const secrets = await Effect.runPromise(
+    makeSecrets(storage, {
+      appId: "com.rika.test",
+      permissions: { read: ["auth"], write: ["auth"] },
+      audit: failingAudit()
+    })
+  )
+  await Effect.runPromise(seed.set("auth", "token", SecretValue.fromUtf8("refresh-token")))
+
+  const exit = await Effect.runPromiseExit(secrets.delete("auth", "token"))
+  const afterDelete = await Effect.runPromiseExit(seed.get("auth", "token"))
+
+  expectFailure(exit, SecretsCommittedAuditFailedError)
+  expectFailure(afterDelete, SecretNotFoundError)
 })
 
 test("Secrets preserves denied errors when deny-audit write fails", async () => {

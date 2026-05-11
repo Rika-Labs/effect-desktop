@@ -104,12 +104,22 @@ export class SecretsAuditFailedError extends Data.TaggedError("SecretsAuditFaile
   readonly cause: unknown
 }> {}
 
+export class SecretsCommittedAuditFailedError extends Data.TaggedError(
+  "SecretsCommittedAuditFailed"
+)<{
+  readonly operation: "Secrets.set" | "Secrets.delete"
+  readonly namespace: string
+  readonly key: string
+  readonly cause: SecretsAuditFailedError
+}> {}
+
 export type SecretsError =
   | SecretNotFoundError
   | SecretsSafeStorageUnavailableError
   | SecretsPermissionDeniedError
   | SecretsInvalidArgumentError
   | SecretsAuditFailedError
+  | SecretsCommittedAuditFailedError
   | HostProtocolError
 
 export interface SecretsApi {
@@ -188,7 +198,11 @@ export const makeSecrets = (
               auditSecretAccessOrWarn(options.audit, auditTraceId, { ...audit, outcome: "error" })
             )
           )
-          yield* auditSecretAccess(options.audit, auditTraceId, { ...audit, outcome: "ok" })
+          yield* auditSecretAccess(options.audit, auditTraceId, { ...audit, outcome: "ok" }).pipe(
+            Effect.mapError((cause) =>
+              committedAuditFailed("Secrets.set", decoded.namespace, decoded.key, cause)
+            )
+          )
         }).pipe(Effect.withSpan("Secrets.set", { attributes: { namespace, key } })),
       get: (namespace, key) =>
         Effect.gen(function* () {
@@ -249,7 +263,11 @@ export const makeSecrets = (
               auditSecretAccessOrWarn(options.audit, auditTraceId, { ...audit, outcome: "error" })
             )
           )
-          yield* auditSecretAccess(options.audit, auditTraceId, { ...audit, outcome: "ok" })
+          yield* auditSecretAccess(options.audit, auditTraceId, { ...audit, outcome: "ok" }).pipe(
+            Effect.mapError((cause) =>
+              committedAuditFailed("Secrets.delete", decoded.namespace, decoded.key, cause)
+            )
+          )
         }).pipe(Effect.withSpan("Secrets.delete", { attributes: { namespace, key } })),
       list: (namespace) =>
         Effect.gen(function* () {
@@ -382,6 +400,19 @@ const auditSecretAccess = (
         })
     )
   )
+
+const committedAuditFailed = (
+  operation: "Secrets.set" | "Secrets.delete",
+  namespace: string,
+  key: string,
+  cause: SecretsAuditFailedError
+): SecretsCommittedAuditFailedError =>
+  new SecretsCommittedAuditFailedError({
+    operation,
+    namespace,
+    key,
+    cause
+  })
 
 const resolveAuditTraceId = (
   traceId: () => string,
