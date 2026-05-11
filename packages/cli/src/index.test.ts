@@ -6,10 +6,12 @@ import {
 } from "node:crypto"
 import {
   chmod,
+  lstat,
   mkdir,
   mkdtemp,
   readdir,
   readFile,
+  readlink,
   rm,
   stat,
   symlink,
@@ -2700,6 +2702,40 @@ test("desktop sign GPG-signs Linux AppImage and writes Linux metadata", async ()
   }
 })
 
+test("desktop sign rejects tampered package artifacts before signing", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-tampered-"))
+  try {
+    await writePlaygroundFixture(directory, { signing: { linux: { gpgKey: "ABCD1234" } } })
+    const artifactPath = await writePackagedArtifactFixture(directory, "linux-x64", "appimage")
+    await writeFile(artifactPath, "tampered")
+    const calls: string[] = []
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["sign", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        signCommandRunner: (invocation) =>
+          Effect.sync(() => {
+            calls.push(invocation.step)
+          }),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(calls).toEqual([])
+    expect(stderr.join("")).toContain("SignFileError")
+    expect(stderr.join("")).toContain("does not match package artifact metadata")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop sign rejects Linux signable artifacts without linuxIntegration metadata", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-no-linux-int-"))
   try {
@@ -3069,6 +3105,43 @@ test("desktop notarize submits staples and assesses unstapled macOS artifacts", 
   }
 })
 
+test("desktop notarize rejects tampered package artifacts before submission", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-tampered-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+    })
+    const appPath = await writePackagedArtifactFixture(directory, "macos-arm64", "app")
+    await writeFile(join(appPath, "Contents", "MacOS", "Effect-Desktop-Playground"), "tampered")
+    const calls: string[] = []
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["notarize", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "macos-arm64",
+        notarizeCommandRunner: (invocation) =>
+          Effect.sync(() => {
+            calls.push(invocation.step)
+            return { stdout: "", stderr: "", exitCode: 0 }
+          }),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(calls).toEqual([])
+    expect(stderr.join("")).toContain("NotarizeFileError")
+    expect(stderr.join("")).toContain("does not match package artifact metadata")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop notarize is a no-op submit when staple validation already passes", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
   try {
@@ -3208,8 +3281,10 @@ test("desktop notarize accepts contained artifact file names with consecutive do
     const outputRoot = join(directory, "apps", "playground", "dist", "desktop", "macos")
     const artifactRoot = join(outputRoot, "artifact-root")
     const fileName = "Effect..Desktop-0.0.0-macos-arm64.dmg"
+    const artifactPath = join(artifactRoot, fileName)
     await mkdir(artifactRoot, { recursive: true })
-    await writeFile(join(artifactRoot, fileName), "dmg")
+    await writeFile(artifactPath, "dmg")
+    const digest = await digestArtifactFixture(artifactPath)
     await writeFile(
       join(artifactRoot, "artifact.json"),
       `${JSON.stringify(
@@ -3219,7 +3294,8 @@ test("desktop notarize accepts contained artifact file names with consecutive do
           appVersion: "0.0.0",
           kind: "dmg",
           target: "macos-arm64",
-          fileName
+          fileName,
+          ...digest
         },
         null,
         2
@@ -5980,28 +6056,76 @@ const digestArtifactFixture = async (
   const files = await listFixtureFiles(path)
   const hash = createHash("sha256")
   let sizeBytes = 0
-  for (const file of files) {
-    const rel = relative(path, file)
-    const content = await readFile(file)
-    sizeBytes += content.byteLength
-    hash.update(rel)
+  for (const file of files.toSorted((left, right) =>
+    left.relativePath.localeCompare(right.relativePath)
+  )) {
+    hash.update(file.kind)
     hash.update("\0")
+    hash.update(file.relativePath)
+    hash.update("\0")
+    hash.update((file.mode & 0o777).toString(8))
+    hash.update("\0")
+    if (file.kind !== "file") {
+      hash.update(file.target)
+      hash.update("\0")
+      continue
+    }
+    const content = await readFile(file.absolutePath)
+    sizeBytes += content.byteLength
     hash.update(content)
     hash.update("\0")
   }
   return { sizeBytes, sha256: hash.digest("hex") }
 }
 
-const listFixtureFiles = async (path: string): Promise<readonly string[]> => {
-  const entries = await readdir(path)
-  const files: string[] = []
+type FixtureDirectoryEntryKind = "directory" | "file" | "symlink"
+
+interface FixtureDirectoryEntry {
+  readonly absolutePath: string
+  readonly kind: FixtureDirectoryEntryKind
+  readonly relativePath: string
+  readonly mode: number
+  readonly target: string
+}
+
+const listFixtureFiles = async (path: string): Promise<readonly FixtureDirectoryEntry[]> =>
+  walkFixtureFiles(path, path)
+
+const walkFixtureFiles = async (
+  rootPath: string,
+  currentPath: string
+): Promise<readonly FixtureDirectoryEntry[]> => {
+  const entries = await readdir(currentPath)
+  const files: FixtureDirectoryEntry[] = []
   for (const entry of entries.toSorted()) {
-    const child = join(path, entry)
-    const childStat = await stat(child)
+    const child = join(currentPath, entry)
+    const childStat = await lstat(child)
+    const childRelativePath = relative(rootPath, child)
     if (childStat.isDirectory()) {
-      files.push(...(await listFixtureFiles(child)))
+      files.push({
+        absolutePath: child,
+        kind: "directory",
+        relativePath: childRelativePath,
+        mode: Number(childStat.mode),
+        target: ""
+      })
+      files.push(...(await walkFixtureFiles(rootPath, child)))
+    } else if (childStat.isSymbolicLink()) {
+      files.push({
+        absolutePath: child,
+        kind: "symlink",
+        relativePath: childRelativePath,
+        mode: Number(childStat.mode),
+        target: await readlink(child)
+      })
     } else {
-      files.push(child)
+      files.push({
+        absolutePath: child,
+        kind: "file",
+        relativePath: childRelativePath,
+        mode: Number(childStat.mode),
+        target: ""
+      })
     }
   }
   return files

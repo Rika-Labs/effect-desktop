@@ -532,12 +532,21 @@ const readArtifactPayload = (
     const files = yield* listFiles(path)
     const hash = createHash("sha256")
     let sizeBytes = 0
-    for (const file of files) {
-      const rel = relative(path, file)
-      const content = yield* readBytes(file)
-      sizeBytes += content.byteLength
-      hash.update(rel)
+    for (const file of files.toSorted((left, right) =>
+      left.relativePath.localeCompare(right.relativePath)
+    )) {
+      hash.update(file.kind)
       hash.update("\0")
+      hash.update(file.relativePath)
+      hash.update("\0")
+      hash.update((file.mode & 0o777).toString(8))
+      hash.update("\0")
+      if (file.kind !== "file") {
+        hash.update("\0")
+        continue
+      }
+      const content = yield* readBytes(file.absolutePath)
+      sizeBytes += content.byteLength
       hash.update(content)
       hash.update("\0")
     }
@@ -1094,12 +1103,29 @@ const readDirectory = (path: string): Effect.Effect<readonly string[], PublishFi
       })
   })
 
-const listFiles = (path: string): Effect.Effect<readonly string[], PublishFileError, never> =>
+type DirectoryEntryKind = "directory" | "file"
+
+interface DirectoryEntry {
+  readonly absolutePath: string
+  readonly kind: DirectoryEntryKind
+  readonly relativePath: string
+  readonly mode: number
+}
+
+const listFiles = (
+  path: string
+): Effect.Effect<readonly DirectoryEntry[], PublishFileError, never> =>
+  walkDirectoryEntries(path, path)
+
+const walkDirectoryEntries = (
+  rootPath: string,
+  currentPath: string
+): Effect.Effect<readonly DirectoryEntry[], PublishFileError, never> =>
   Effect.gen(function* () {
-    const entries = yield* readDirectory(path)
-    const files: string[] = []
+    const entries = yield* readDirectory(currentPath)
+    const files: DirectoryEntry[] = []
     for (const entry of entries.toSorted()) {
-      const child = join(path, entry)
+      const child = join(currentPath, entry)
       const childStat = yield* lstatPath(child)
       if (childStat.isSymbolicLink()) {
         return yield* Effect.fail(
@@ -1111,10 +1137,22 @@ const listFiles = (path: string): Effect.Effect<readonly string[], PublishFileEr
           })
         )
       }
+      const childRelativePath = relative(rootPath, child)
       if (childStat.isDirectory()) {
-        files.push(...(yield* listFiles(child)))
+        files.push({
+          absolutePath: child,
+          kind: "directory",
+          relativePath: childRelativePath,
+          mode: Number(childStat.mode)
+        })
+        files.push(...(yield* walkDirectoryEntries(rootPath, child)))
       } else {
-        files.push(child)
+        files.push({
+          absolutePath: child,
+          kind: "file",
+          relativePath: childRelativePath,
+          mode: Number(childStat.mode)
+        })
       }
     }
     return files

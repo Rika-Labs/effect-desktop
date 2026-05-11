@@ -1,4 +1,5 @@
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises"
+import { createHash } from "node:crypto"
+import { lstat, mkdir, readdir, readFile, readlink, stat, writeFile } from "node:fs/promises"
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
@@ -525,6 +526,8 @@ const readPackagedArtifacts = (
         readonly kind?: unknown
         readonly target?: unknown
         readonly fileName?: unknown
+        readonly sizeBytes?: unknown
+        readonly sha256?: unknown
         readonly appId?: unknown
         readonly appName?: unknown
         readonly appVersion?: unknown
@@ -592,6 +595,25 @@ const readPackagedArtifacts = (
       )
       const artifactPath = yield* resolveArtifactPath(rootPath, fileName, metadataPath)
       yield* statPath(artifactPath)
+      const sizeBytes = yield* readNonNegativeInteger(
+        metadata.sizeBytes,
+        `${relative(plan.outputPath, metadataPath)}#sizeBytes`
+      )
+      const sha256 = yield* readSha256(
+        metadata.sha256,
+        `${relative(plan.outputPath, metadataPath)}#sha256`
+      )
+      const digest = yield* digestPath(artifactPath)
+      if (digest.sizeBytes !== sizeBytes || digest.sha256 !== sha256) {
+        return yield* Effect.fail(
+          new NotarizeFileError({
+            operation: "verify",
+            path: artifactPath,
+            message: `${relative(plan.outputPath, artifactPath)} does not match package artifact metadata`,
+            cause: undefined
+          })
+        )
+      }
       artifacts.push({ kind, rootPath, artifactPath, appId, appName, appVersion })
     }
     if (artifacts.length === 0) {
@@ -678,6 +700,34 @@ const readTarget = (
           field,
           message: `${field} must be a supported notarize target`,
           remediation: "Regenerate macOS artifacts with `bun desktop package`."
+        })
+      )
+
+const readNonNegativeInteger = (
+  value: unknown,
+  field: string
+): Effect.Effect<number, NotarizeConfigError, never> =>
+  Number.isSafeInteger(value) && typeof value === "number" && value >= 0
+    ? Effect.succeed(value)
+    : Effect.fail(
+        new NotarizeConfigError({
+          field,
+          message: `${field} must be a non-negative integer`,
+          remediation: "Regenerate package metadata with `bun desktop package`."
+        })
+      )
+
+const readSha256 = (
+  value: unknown,
+  field: string
+): Effect.Effect<string, NotarizeConfigError, never> =>
+  typeof value === "string" && /^[a-f0-9]{64}$/u.test(value)
+    ? Effect.succeed(value)
+    : Effect.fail(
+        new NotarizeConfigError({
+          field,
+          message: `${field} must be a lowercase SHA-256 hex digest`,
+          remediation: "Regenerate package metadata with `bun desktop package`."
         })
       )
 
@@ -858,6 +908,18 @@ const readDirectory = (path: string): Effect.Effect<readonly string[], NotarizeF
       })
   })
 
+const readBytes = (path: string): Effect.Effect<Buffer, NotarizeFileError, never> =>
+  Effect.tryPromise({
+    try: () => readFile(path),
+    catch: (cause) =>
+      new NotarizeFileError({
+        operation: "read",
+        path,
+        message: `failed to read ${path}`,
+        cause
+      })
+  })
+
 const statPath = (
   path: string
 ): Effect.Effect<Awaited<ReturnType<typeof stat>>, NotarizeFileError, never> =>
@@ -868,6 +930,130 @@ const statPath = (
         operation: "stat",
         path,
         message: `failed to stat ${path}`,
+        cause
+      })
+  })
+
+const digestPath = (
+  path: string
+): Effect.Effect<
+  { readonly sizeBytes: number; readonly sha256: string },
+  NotarizeFileError,
+  never
+> =>
+  Effect.gen(function* () {
+    const pathStat = yield* statPath(path)
+    if (!pathStat.isDirectory()) {
+      const content = yield* readBytes(path)
+      return {
+        sizeBytes: content.byteLength,
+        sha256: createHash("sha256").update(content).digest("hex")
+      }
+    }
+
+    const entries = yield* listDigestEntries(path)
+    const hash = createHash("sha256")
+    let sizeBytes = 0
+    for (const entry of entries.toSorted((left, right) =>
+      left.relativePath.localeCompare(right.relativePath)
+    )) {
+      hash.update(entry.kind)
+      hash.update("\0")
+      hash.update(entry.relativePath)
+      hash.update("\0")
+      hash.update((entry.mode & 0o777).toString(8))
+      hash.update("\0")
+      if (entry.kind !== "file") {
+        hash.update(entry.target)
+        hash.update("\0")
+        continue
+      }
+      const content = yield* readBytes(entry.absolutePath)
+      sizeBytes += content.byteLength
+      hash.update(content)
+      hash.update("\0")
+    }
+    return { sizeBytes, sha256: hash.digest("hex") }
+  })
+
+type DigestEntryKind = "directory" | "file" | "symlink"
+
+interface DigestEntry {
+  readonly absolutePath: string
+  readonly kind: DigestEntryKind
+  readonly relativePath: string
+  readonly mode: number
+  readonly target: string
+}
+
+const listDigestEntries = (
+  path: string
+): Effect.Effect<readonly DigestEntry[], NotarizeFileError, never> => walkDigestEntries(path, path)
+
+const walkDigestEntries = (
+  rootPath: string,
+  currentPath: string
+): Effect.Effect<readonly DigestEntry[], NotarizeFileError, never> =>
+  Effect.gen(function* () {
+    const entries = yield* readDirectory(currentPath)
+    const files: DigestEntry[] = []
+    for (const entry of entries.toSorted()) {
+      const childPath = join(currentPath, entry)
+      const childStat = yield* lstatPath(childPath)
+      const childRelativePath = relative(rootPath, childPath)
+      if (childStat.isDirectory()) {
+        files.push({
+          absolutePath: childPath,
+          kind: "directory",
+          relativePath: childRelativePath,
+          mode: Number(childStat.mode),
+          target: ""
+        })
+        files.push(...(yield* walkDigestEntries(rootPath, childPath)))
+      } else if (childStat.isSymbolicLink()) {
+        const target = yield* readlinkPath(childPath)
+        files.push({
+          absolutePath: childPath,
+          kind: "symlink",
+          relativePath: childRelativePath,
+          mode: Number(childStat.mode),
+          target
+        })
+      } else {
+        files.push({
+          absolutePath: childPath,
+          kind: "file",
+          relativePath: childRelativePath,
+          mode: Number(childStat.mode),
+          target: ""
+        })
+      }
+    }
+    return files
+  })
+
+const lstatPath = (
+  path: string
+): Effect.Effect<Awaited<ReturnType<typeof lstat>>, NotarizeFileError, never> =>
+  Effect.tryPromise({
+    try: () => lstat(path),
+    catch: (cause) =>
+      new NotarizeFileError({
+        operation: "lstat",
+        path,
+        message: `failed to lstat ${path}`,
+        cause
+      })
+  })
+
+const readlinkPath = (path: string): Effect.Effect<string, NotarizeFileError, never> =>
+  Effect.tryPromise({
+    try: () => readlink(path),
+    catch: (cause) =>
+      new NotarizeFileError({
+        operation: "readlink",
+        path,
+        message: `failed to read symlink ${path}`,
         cause
       })
   })
