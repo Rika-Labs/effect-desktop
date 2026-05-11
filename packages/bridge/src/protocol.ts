@@ -1010,7 +1010,13 @@ export const makeDesktopClientProtocol = (
     const resolved = resolveProtocolOptions(options)
 
     let writeToClient: ClientWriteFn = (_clientId, _response) => Effect.void
-    const requestClients = new Map<string, number>()
+    const requestClients = new Map<
+      string,
+      {
+        readonly clientId: number
+        readonly requestId: string
+      }
+    >()
 
     const protocol = yield* RpcClient.Protocol.make((write, _clientIds) => {
       writeToClient = write
@@ -1021,7 +1027,8 @@ export const makeDesktopClientProtocol = (
         ): Effect.Effect<void, RpcClientError.RpcClientError> => {
           if (request._tag === "Request") {
             const requestId = String(request.id)
-            requestClients.set(requestId, _clientId)
+            const transportRequestId = clientRequestId(_clientId, requestId)
+            requestClients.set(transportRequestId, { clientId: _clientId, requestId })
             const fields: {
               kind: "request"
               id: string
@@ -1033,7 +1040,7 @@ export const makeDesktopClientProtocol = (
               payload?: unknown
             } = {
               kind: "request",
-              id: requestId,
+              id: transportRequestId,
               method: request.tag,
               timestamp: resolved.now(),
               traceId: request.traceId ?? resolved.nextTraceId()
@@ -1048,11 +1055,12 @@ export const makeDesktopClientProtocol = (
           }
           if (request._tag === "Interrupt") {
             const requestId = String(request.requestId)
-            requestClients.delete(requestId)
+            const transportRequestId = clientRequestId(_clientId, requestId)
+            requestClients.delete(transportRequestId)
             return transport.send(
               new HostProtocolCancelByRequestEnvelope({
                 kind: "cancel",
-                id: requestId,
+                id: transportRequestId,
                 timestamp: resolved.now(),
                 traceId: resolved.nextTraceId()
               })
@@ -1068,8 +1076,8 @@ export const makeDesktopClientProtocol = (
     yield* Effect.forkScoped(
       transport.run((envelope) => {
         if (envelope.kind === "response") {
-          const clientId = requestClients.get(envelope.id)
-          if (clientId === undefined) {
+          const pending = requestClients.get(envelope.id)
+          if (pending === undefined) {
             return Effect.void
           }
           requestClients.delete(envelope.id)
@@ -1077,39 +1085,39 @@ export const makeDesktopClientProtocol = (
             envelope.error !== undefined
               ? {
                   _tag: "Exit",
-                  requestId: envelope.id,
+                  requestId: pending.requestId,
                   exit: { _tag: "Failure", cause: [{ _tag: "Fail", error: envelope.error }] }
                 }
               : {
                   _tag: "Exit",
-                  requestId: envelope.id,
+                  requestId: pending.requestId,
                   exit: { _tag: "Success", value: envelope.payload }
                 }
-          return writeToClient(clientId, msg)
+          return writeToClient(pending.clientId, msg)
         }
         if (envelope.kind === "stream" && envelope.id !== undefined) {
-          const clientId = requestClients.get(envelope.id)
-          if (clientId === undefined) {
+          const pending = requestClients.get(envelope.id)
+          if (pending === undefined) {
             return Effect.void
           }
           if (envelope.error !== undefined) {
             requestClients.delete(envelope.id)
             const failure: RpcMessage.FromServerEncoded = {
               _tag: "Exit",
-              requestId: envelope.id,
+              requestId: pending.requestId,
               exit: {
                 _tag: "Failure",
                 cause: [{ _tag: "Fail", error: envelope.error }]
               }
             }
-            return writeToClient(clientId, failure)
+            return writeToClient(pending.clientId, failure)
           }
           const chunk: RpcMessage.FromServerEncoded = {
             _tag: "Chunk",
-            requestId: envelope.id,
+            requestId: pending.requestId,
             values: [envelope.payload] as readonly [unknown]
           }
-          return writeToClient(clientId, chunk)
+          return writeToClient(pending.clientId, chunk)
         }
         return Effect.void
       })
@@ -1117,6 +1125,8 @@ export const makeDesktopClientProtocol = (
 
     return protocol
   })
+
+const clientRequestId = (clientId: number, requestId: string): string => `${clientId}:${requestId}`
 
 export const makeDesktopServerProtocol = (
   transport: DesktopTransportSend & DesktopTransportRun,

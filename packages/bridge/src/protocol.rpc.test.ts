@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Effect, Layer, Queue, Schema } from "effect"
+import { Deferred, Effect, Layer, Queue, Schema } from "effect"
 import { Rpc, RpcClient, RpcGroup, RpcServer } from "effect/unstable/rpc"
 
 import {
@@ -93,7 +93,7 @@ test("makeDesktopClientProtocol send translates Request to HostProtocolRequestEn
   const envelope = sent[0]
   expect(envelope?.kind).toBe("request")
   if (envelope?.kind === "request") {
-    expect(envelope.id).toBe("req-1")
+    expect(envelope.id).toBe("0:req-1")
     expect(envelope.method).toBe("Ping")
     expect(envelope.traceId).toBe("trace-rpc-test")
   }
@@ -124,7 +124,11 @@ test("makeDesktopClientProtocol send translates Interrupt to HostProtocolCancelB
   )
 
   expect(sent).toHaveLength(1)
-  expect(sent[0]?.kind).toBe("cancel")
+  const envelope = sent[0]
+  expect(envelope?.kind).toBe("cancel")
+  if (envelope?.kind === "cancel") {
+    expect(envelope.id).toBe("0:req-1")
+  }
 })
 
 test("makeDesktopClientProtocol routes responses to the client id that sent each request", async () => {
@@ -165,6 +169,136 @@ test("makeDesktopClientProtocol routes responses to the client id that sent each
   )
 
   expect(replies).toEqual(["pong:one", "pong:two"])
+})
+
+test("makeDesktopClientProtocol namespaces duplicate request ids by client id", async () => {
+  const queue = Effect.runSync(Queue.unbounded<HostProtocolEnvelope>())
+  const sentBoth = Effect.runSync(Deferred.make<void>())
+  const receivedBoth = Effect.runSync(Deferred.make<void>())
+  const requests: HostProtocolEnvelope[] = []
+  const received: Array<{ readonly clientId: number; readonly payload: unknown }> = []
+  const transport: DesktopTransportSend & DesktopTransportRun = {
+    send: (envelope) => {
+      if (envelope.kind !== "request") {
+        return Effect.void
+      }
+      return Effect.sync(() => {
+        requests.push(envelope)
+        return requests.length
+      }).pipe(
+        Effect.flatMap((requestCount) =>
+          requestCount === 2 ? Deferred.succeed(sentBoth, undefined) : Effect.void
+        )
+      )
+    },
+    run: (onEnvelope) => Effect.forever(Queue.take(queue).pipe(Effect.flatMap(onEnvelope)))
+  }
+
+  const replies = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const protocol = yield* makeDesktopClientProtocol(transport)
+        yield* protocol
+          .run(1, (message) =>
+            Effect.sync(() => {
+              received.push({
+                clientId: 1,
+                payload: message._tag === "Exit" ? message.exit : undefined
+              })
+              return received.length
+            }).pipe(
+              Effect.flatMap((receivedCount) =>
+                receivedCount === 2 ? Deferred.succeed(receivedBoth, undefined) : Effect.void
+              )
+            )
+          )
+          .pipe(Effect.forkScoped)
+        yield* protocol
+          .run(2, (message) =>
+            Effect.sync(() => {
+              received.push({
+                clientId: 2,
+                payload: message._tag === "Exit" ? message.exit : undefined
+              })
+              return received.length
+            }).pipe(
+              Effect.flatMap((receivedCount) =>
+                receivedCount === 2 ? Deferred.succeed(receivedBoth, undefined) : Effect.void
+              )
+            )
+          )
+          .pipe(Effect.forkScoped)
+
+        yield* protocol.send(1, {
+          _tag: "Request",
+          id: "1",
+          tag: "Ping",
+          payload: { message: "one" },
+          headers: [],
+          traceId: "trace-one"
+        })
+        yield* protocol.send(2, {
+          _tag: "Request",
+          id: "1",
+          tag: "Ping",
+          payload: { message: "two" },
+          headers: [],
+          traceId: "trace-two"
+        })
+
+        yield* Deferred.await(sentBoth)
+        const firstRequest = requests[0]
+        const secondRequest = requests[1]
+        if (firstRequest?.kind !== "request" || secondRequest?.kind !== "request") {
+          return yield* Effect.die("expected two request envelopes")
+        }
+        expect(firstRequest.id).not.toBe(secondRequest.id)
+        expect(firstRequest.id.endsWith(":1")).toBe(true)
+        expect(secondRequest.id.endsWith(":1")).toBe(true)
+
+        yield* Queue.offer(
+          queue,
+          new HostProtocolResponseEnvelope({
+            kind: "response",
+            id: secondRequest.id,
+            timestamp: 0,
+            traceId: secondRequest.traceId,
+            payload: "pong:two"
+          })
+        )
+        yield* Queue.offer(
+          queue,
+          new HostProtocolResponseEnvelope({
+            kind: "response",
+            id: firstRequest.id,
+            timestamp: 0,
+            traceId: firstRequest.traceId,
+            payload: "pong:one"
+          })
+        )
+
+        yield* Deferred.await(receivedBoth)
+        return received
+      })
+    )
+  )
+
+  expect(replies).toEqual([
+    {
+      clientId: 2,
+      payload: {
+        _tag: "Success",
+        value: "pong:two"
+      }
+    },
+    {
+      clientId: 1,
+      payload: {
+        _tag: "Success",
+        value: "pong:one"
+      }
+    }
+  ])
 })
 
 test("makeDesktopServerProtocol returns a Protocol service with disconnects and send", async () => {
