@@ -4,6 +4,8 @@ build/
 target/
 .turbo/
 coverage/
+.context/
+apps/docs/out/
 docs/SPEC.md
 crates/host-protocol/fixtures/*.json
 bun.lock
