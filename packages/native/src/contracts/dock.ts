@@ -25,7 +25,7 @@ const FiniteZeroToOne = Schema.Number.check(
 )
 
 // eslint-disable-next-line no-control-regex -- Dock badge text must reject ASCII control bytes.
-const DockBadgeText = Schema.String.check(Schema.isPattern(/^[^\u0000-\u001f\u007f]*$/))
+const DockBadgeText = Schema.NonEmptyString.check(Schema.isPattern(/^[^\u0000-\u001f\u007f]*$/))
 const DockJumpListItemId = PrintableNonEmptyString
 const DockJumpListItemText = PrintableNonEmptyString
 

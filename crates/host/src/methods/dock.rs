@@ -110,6 +110,13 @@ fn decode_text(payload: Option<Value>) -> Result<Option<String>, HostProtocolErr
     match payload.get("text") {
         Some(Value::Null) => Ok(None),
         Some(Value::String(text)) => {
+            if text.is_empty() {
+                return Err(HostProtocolError::invalid_argument(
+                    "text",
+                    "must not be empty",
+                    host_protocol::DOCK_SET_BADGE_TEXT_METHOD,
+                ));
+            }
             if has_ascii_control_characters(text) {
                 return Err(HostProtocolError::invalid_argument(
                     "text",
@@ -176,6 +183,11 @@ mod tests {
             decode_text(Some(json!({ "text": null }))).expect("text"),
             None
         );
+    }
+
+    #[test]
+    fn text_rejects_empty_string() {
+        assert!(decode_text(Some(json!({ "text": "" }))).is_err());
     }
 
     #[test]

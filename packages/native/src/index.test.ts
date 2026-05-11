@@ -2777,6 +2777,51 @@ test("Notification action stream rejects malformed actionId payloads as InvalidO
   }
 })
 
+test("Notification interaction streams reject blank ownerWindowId payloads as InvalidOutput", async () => {
+  const cases: ReadonlyArray<{ readonly method: "Notification.Click" | "Notification.Action" }> = [
+    { method: "Notification.Click" },
+    { method: "Notification.Action" }
+  ]
+
+  for (const { method } of cases) {
+    const exchange: ApiClientExchange = {
+      request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
+      subscribe: (eventMethod) =>
+        eventMethod === method
+          ? Stream.make(
+              new HostProtocolEventEnvelope({
+                kind: "event",
+                timestamp: 1710000000421,
+                traceId: "event-trace",
+                method: eventMethod,
+                payload: {
+                  notification: notificationHandle,
+                  ...(method === "Notification.Action" ? { actionId: "open" } : {}),
+                  ownerWindowId: ""
+                }
+              })
+            )
+          : Stream.empty,
+      resource: { dispose: () => Effect.void }
+    }
+
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const notification = yield* Notification
+        return yield* Effect.exit(
+          method === "Notification.Click"
+            ? notification.onClick().pipe(Stream.take(1), Stream.runCollect)
+            : notification.onAction().pipe(Stream.take(1), Stream.runCollect)
+        )
+      }).pipe(
+        Effect.provide(Layer.provide(NotificationLive, makeNotificationBridgeClientLayer(exchange)))
+      )
+    )
+
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+  }
+})
+
 test("unsupported Notification client reports deferred host methods as Effect values", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
@@ -4254,8 +4299,9 @@ test("Dock bridge client rejects invalid badge text before transport", async () 
   const nulExit = await Effect.runPromiseExit(dock.setBadgeText("bad\u0000text"))
   const newlineExit = await Effect.runPromiseExit(dock.setBadgeText("line\nbreak"))
   const tabExit = await Effect.runPromiseExit(dock.setBadgeText("badge\ttext"))
+  const emptyExit = await Effect.runPromiseExit(dock.setBadgeText(""))
 
-  for (const exit of [nulExit, newlineExit, tabExit]) {
+  for (const exit of [nulExit, newlineExit, tabExit, emptyExit]) {
     expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
   }
   expect(requests).toEqual([])

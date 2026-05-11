@@ -4,6 +4,7 @@ import { Schema } from "effect"
 import { PrintableNonEmptyString, PrintableString } from "./strings.js"
 
 const WindowResource = Api.Resource("window", "open")
+const OwnerWindowId = Schema.NonEmptyString
 export const NotificationResource = Api.Resource("notification", "open")
 export const PermissionState = Schema.Literals(["granted", "denied", "default"])
 
@@ -48,7 +49,7 @@ export class NotificationClickEvent extends Schema.Class<NotificationClickEvent>
   "NotificationClickEvent"
 )({
   notification: NotificationResource.schema,
-  ownerWindowId: Schema.optionalKey(Schema.String)
+  ownerWindowId: Schema.optionalKey(OwnerWindowId)
 }) {}
 
 export class NotificationActionEvent extends Schema.Class<NotificationActionEvent>(
@@ -56,5 +57,5 @@ export class NotificationActionEvent extends Schema.Class<NotificationActionEven
 )({
   notification: NotificationResource.schema,
   actionId: PrintableNonEmptyString,
-  ownerWindowId: Schema.optionalKey(Schema.String)
+  ownerWindowId: Schema.optionalKey(OwnerWindowId)
 }) {}
