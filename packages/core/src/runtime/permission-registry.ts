@@ -574,6 +574,7 @@ export const capabilityCovers = (
       return (
         declared.kind === requested.kind &&
         declared.primitive === requested.primitive &&
+        declared.audit === requested.audit &&
         requested.methods.every((method) => declared.methods.includes(method))
       )
   }

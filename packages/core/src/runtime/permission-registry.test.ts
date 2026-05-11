@@ -77,6 +77,27 @@ test("PermissionRegistry allows sqlite opens inside declared database roots and 
   })
 })
 
+test("PermissionRegistry does not let weaker native audit policy cover stronger requests", async () => {
+  const registry = await Effect.runPromise(
+    makePermissionRegistry({ traceId: () => "trace-1", nextToken: () => "grant-1" })
+  )
+
+  await Effect.runPromise(
+    registry.declare(nativeInvoke(["Dialog.openFile"], "never"), { source: "manifest" })
+  )
+  const denied = await Effect.runPromiseExit(
+    registry.check(nativeInvoke(["Dialog.openFile"], "always"), context("window-main"))
+  )
+  const granted = await Effect.runPromise(
+    registry.check(nativeInvoke(["Dialog.openFile"], "never"), context("window-main"))
+  )
+
+  expectDenied(denied, (error) => {
+    expect(error.reason).toBe("default-deny")
+  })
+  expect(granted.token).toBe("grant-1")
+})
+
 test("PermissionRegistry exposes decision history and live decision events for devtools", async () => {
   const registry = await Effect.runPromise(
     makePermissionRegistry({ traceId: () => "trace-devtools", nextToken: () => "grant-1" })
@@ -455,6 +476,16 @@ const networkConnect = (hosts: readonly string[]): NormalizedCapability => ({
   hosts,
   askUnknownHosts: false,
   audit: "always"
+})
+
+const nativeInvoke = (
+  methods: readonly string[],
+  audit: "always" | "on-deny" | "never"
+): NormalizedCapability => ({
+  kind: "native.invoke",
+  primitive: "Dialog",
+  methods,
+  audit
 })
 
 const memoryAudit = (rows: unknown[]): AuditEventsApi => ({
