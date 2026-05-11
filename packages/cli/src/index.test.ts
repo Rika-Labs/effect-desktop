@@ -1346,6 +1346,77 @@ test("desktop check --api writes and verifies public API snapshots", async () =>
   }
 })
 
+test("desktop check --api ignores non-package directories", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
+  try {
+    await writeApiFixturePackage(directory, "export interface Widget { readonly id: string }\n")
+    await mkdir(join(directory, "packages", ".cache"), { recursive: true })
+    const stdout: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--api", "--write"],
+        cwd: directory,
+        writeStdout: (text) => {
+          stdout.push(text)
+        },
+        writeStderr: () => {}
+      })
+    )
+
+    expect(exitCode).toBe(0)
+    expect(stdout.join("")).toContain("@effect-desktop/fixture")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --api rejects invalid package names", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
+  try {
+    await writeApiFixturePackage(directory, "export interface Widget { readonly id: string }\n")
+    await writeFile(
+      join(directory, "packages", "fixture", "package.json"),
+      JSON.stringify(
+        {
+          name: "../../escape",
+          type: "module",
+          exports: {
+            ".": {
+              types: "./src/index.ts",
+              default: "./src/index.ts"
+            }
+          }
+        },
+        null,
+        2
+      )
+    )
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--api", "--write", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("PublicApiPackageError")
+    expect(payload.message).toContain("invalid package name")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop check --api fails when the public API changes without a snapshot update", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
   try {

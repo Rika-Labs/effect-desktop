@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises"
+import { access, mkdir, readdir, readFile, writeFile } from "node:fs/promises"
 import { dirname, join, relative, resolve } from "node:path"
 
 import { Data, Effect } from "effect"
@@ -90,6 +90,7 @@ interface PackageJson {
 }
 
 const SNAPSHOT_ROOT = "api/snapshots"
+const PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/u
 
 export const runPublicApiCheck = (
   options: PublicApiSnapshotOptions
@@ -181,6 +182,9 @@ const discoverPublicPackages = (
     for (const entry of entries) {
       const packagePath = join(packagesRoot, entry)
       const packageJsonPath = join(packagePath, "package.json")
+      if (!(yield* fileExists(packageJsonPath))) {
+        continue
+      }
       const packageJson = yield* readJson<PackageJson>(packageJsonPath)
       const packageName = yield* readPackageName(packageJson, packageJsonPath)
       const entrypoint = readRootExportEntrypoint(packageJson)
@@ -200,9 +204,16 @@ const readPackageName = (
   packageJson: PackageJson,
   path: string
 ): Effect.Effect<string, PublicApiPackageError, never> =>
-  typeof packageJson.name === "string" && packageJson.name.length > 0
-    ? Effect.succeed(packageJson.name)
-    : Effect.fail(new PublicApiPackageError({ packagePath: path, message: "missing package name" }))
+  typeof packageJson.name !== "string" || packageJson.name.length === 0
+    ? Effect.fail(new PublicApiPackageError({ packagePath: path, message: "missing package name" }))
+    : PACKAGE_NAME_PATTERN.test(packageJson.name)
+      ? Effect.succeed(packageJson.name)
+      : Effect.fail(
+          new PublicApiPackageError({
+            packagePath: path,
+            message: `invalid package name: ${packageJson.name}`
+          })
+        )
 
 const readRootExportEntrypoint = (packageJson: PackageJson): string | undefined => {
   if (!isRecord(packageJson.exports)) {
@@ -215,6 +226,15 @@ const readRootExportEntrypoint = (packageJson: PackageJson): string | undefined 
   const types = rootExport["types"]
   return typeof types === "string" ? types : undefined
 }
+
+const fileExists = (path: string): Effect.Effect<boolean, never, never> =>
+  Effect.tryPromise({
+    try: () => access(path),
+    catch: () => undefined
+  }).pipe(
+    Effect.as(true),
+    Effect.catch(() => Effect.succeed(false))
+  )
 
 const snapshotPackage = (
   workspacePackage: WorkspacePackage
