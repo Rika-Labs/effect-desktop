@@ -323,6 +323,43 @@ test("CommandRegistry rolls back a reserved command when registration is interru
   expect(snapshots).toEqual([])
 })
 
+test("CommandRegistry does not invoke commands before resource registration commits", async () => {
+  const registerStarted = await Effect.runPromise(Deferred.make<void>())
+  const allowRegister = await Effect.runPromise(Deferred.make<void>())
+  const resources = stalledRegisterResourceRegistry(registerStarted, allowRegister)
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  const registry = await Effect.runPromise(makeCommandRegistry(resources, permissions))
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      yield* permissions.declare(commandCapability, { source: "test" })
+      const registerFiber = yield* registry
+        .register(registration("openProject"))
+        .pipe(Effect.forkChild({ startImmediately: true }))
+      yield* Deferred.await(registerStarted)
+      const pendingList = yield* registry.list()
+      const pendingInvoke = yield* Effect.exit(
+        registry.invoke("openProject", { path: "/tmp/project" }, context)
+      )
+      yield* Deferred.succeed(allowRegister, undefined)
+      const handle = yield* Fiber.join(registerFiber)
+      const committedList = yield* registry.list()
+      const committedInvoke = yield* registry.invoke(
+        "openProject",
+        { path: "/tmp/project" },
+        context
+      )
+      return { pendingList, pendingInvoke, handle, committedList, committedInvoke }
+    })
+  )
+
+  expect(result.pendingList).toEqual([])
+  expectFailure(result.pendingInvoke, CommandRegistryCommandNotFoundError)
+  expect(result.handle.kind).toBe("command")
+  expect(result.committedList.map((snapshot) => snapshot.id)).toEqual(["openProject"])
+  expect(result.committedInvoke).toEqual(new OpenOutput({ opened: true }))
+})
+
 test("CommandRegistry resource cleanup does not remove a newer registration", async () => {
   const disposeStarted = await Effect.runPromise(Deferred.make<void>())
   const allowDispose = await Effect.runPromise(Deferred.make<void>())

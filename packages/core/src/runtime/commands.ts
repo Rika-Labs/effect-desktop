@@ -135,6 +135,7 @@ interface StoredCommand {
   readonly resourceId: ResourceId
   readonly resourceGeneration: number
   readonly registrationToken: symbol
+  readonly committed: boolean
   readonly handler: (input: unknown) => Effect.Effect<unknown, unknown, never>
   readonly invocationCount: number
   readonly lastInvocation?: CommandInvocationRecord
@@ -204,6 +205,7 @@ export const makeCommandRegistry = (
         Ref.get(commands).pipe(
           Effect.map((current) =>
             [...current.values()]
+              .filter((command) => command.committed)
               .map(
                 (command) =>
                   new CommandSnapshot({
@@ -373,6 +375,7 @@ const registerCommand = <I, O>(
       resourceId,
       resourceGeneration: registeredResourceGeneration,
       registrationToken,
+      committed: false,
       handler: registration.handler as (input: unknown) => Effect.Effect<unknown, unknown, never>,
       invocationCount: 0
     }
@@ -419,7 +422,8 @@ const registerCommand = <I, O>(
       if (
         command === undefined ||
         command.registrationToken !== registrationToken ||
-        (command.resourceId === registeredHandle.id &&
+        (command.committed &&
+          command.resourceId === registeredHandle.id &&
           command.resourceGeneration === registeredHandle.generation)
       ) {
         return [command !== undefined && command.registrationToken === registrationToken, current]
@@ -428,6 +432,7 @@ const registerCommand = <I, O>(
       const next = new Map(current)
       next.set(decodedId, {
         ...command,
+        committed: true,
         resourceId: registeredHandle.id,
         resourceGeneration: registeredHandle.generation
       })
@@ -457,7 +462,7 @@ const getCommand = (
   Effect.gen(function* () {
     const current = yield* Ref.get(commands)
     const command = current.get(id)
-    if (command === undefined) {
+    if (command === undefined || !command.committed) {
       return yield* Effect.fail(
         new CommandRegistryCommandNotFoundError({ operation, commandId: id })
       )
