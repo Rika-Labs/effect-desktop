@@ -95,6 +95,50 @@ test("Client rejects invalid generated timestamps as typed Effect failures befor
   expect(requests).toEqual([])
 })
 
+test("Client rejects empty generated trace IDs as typed Effect failures before transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const ProjectApi = makeProjectApi("ProjectApi.EmptyTrace")
+  const client = Client({ project: ProjectApi }, responseExchange(requests, { id: "project-1" }), {
+    nextTraceId: () => ""
+  })
+
+  const exit = await Effect.runPromiseExit(
+    client.project.open(new ProjectOpenInput({ path: "/tmp/project" }))
+  )
+
+  expectFailureTag(exit, "InvalidArgument")
+  expectFailureField(exit, "field", "traceId")
+  expect(requests).toEqual([])
+})
+
+test("Client rejects empty renderer origin fields as typed Effect failures before transport", async () => {
+  const cases: ReadonlyArray<{
+    readonly field: "windowId" | "originToken"
+    readonly options: { readonly windowId?: string; readonly originToken?: string }
+  }> = [
+    { field: "windowId", options: { windowId: "" } },
+    { field: "originToken", options: { originToken: "" } }
+  ]
+
+  for (const { field, options } of cases) {
+    const requests: HostProtocolRequestEnvelope[] = []
+    const ProjectApi = makeProjectApi(`ProjectApi.Empty${field}`)
+    const client = Client(
+      { project: ProjectApi },
+      responseExchange(requests, { id: "project-1" }),
+      options
+    )
+
+    const exit = await Effect.runPromiseExit(
+      client.project.open(new ProjectOpenInput({ path: "/tmp/project" }))
+    )
+
+    expectFailureTag(exit, "InvalidArgument")
+    expectFailureField(exit, "field", field)
+    expect(requests).toEqual([])
+  }
+})
+
 test("Client allows zero-argument calls for void-input methods", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const VoidApi = makeVoidApi("ProjectApi.VoidInput")

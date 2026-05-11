@@ -23,7 +23,9 @@ export const DEFAULT_MAX_BACKFILL_EVENTS = 1_024
 
 const UInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const UInt32 = UInt.check(Schema.isLessThanOrEqualTo(4_294_967_295))
+const HostProtocolNonEmptyString = Schema.NonEmptyString
 const OptionalString = Schema.optionalKey(Schema.String)
+const OptionalNonEmptyString = Schema.optionalKey(HostProtocolNonEmptyString)
 const OptionalUnknown = Schema.optionalKey(Schema.Unknown)
 const StringRecord = Schema.Record(Schema.String, Schema.String)
 const HostIdentityString = Schema.NonEmptyString.check(Schema.isPattern(/^[^\x00-\x1f\x7f]+$/u))
@@ -676,6 +678,24 @@ export const validateHostProtocolTimestamp = (
         )
       )
 
+export const validateHostProtocolNonEmptyString = (
+  field: string,
+  value: string,
+  operation: string
+): Effect.Effect<string, HostProtocolInvalidArgumentError, never> =>
+  value.length > 0
+    ? Effect.succeed(value)
+    : Effect.fail(makeHostProtocolInvalidArgumentError(field, "must be non-empty", operation))
+
+export const validateOptionalHostProtocolNonEmptyString = (
+  field: string,
+  value: string | undefined,
+  operation: string
+): Effect.Effect<string | undefined, HostProtocolInvalidArgumentError, never> =>
+  value === undefined
+    ? Effect.succeed(undefined)
+    : validateHostProtocolNonEmptyString(field, value, operation)
+
 export const makeHostProtocolInvalidOutputError = (
   method: string,
   reason: string
@@ -816,11 +836,11 @@ export class HostProtocolRequestEnvelope extends Schema.Class<HostProtocolReques
 )({
   kind: Schema.Literal("request"),
   id: Schema.String,
-  method: Schema.String,
+  method: HostProtocolNonEmptyString,
   timestamp: UInt,
-  traceId: Schema.String,
-  windowId: OptionalString,
-  originToken: OptionalString,
+  traceId: HostProtocolNonEmptyString,
+  windowId: OptionalNonEmptyString,
+  originToken: OptionalNonEmptyString,
   payload: OptionalUnknown
 }) {}
 
@@ -830,7 +850,7 @@ export class HostProtocolResponseEnvelope extends Schema.Class<HostProtocolRespo
   kind: Schema.Literal("response"),
   id: Schema.String,
   timestamp: UInt,
-  traceId: Schema.String,
+  traceId: HostProtocolNonEmptyString,
   payload: OptionalUnknown,
   error: Schema.optionalKey(HostProtocolError)
 }) {}
@@ -839,10 +859,10 @@ export class HostProtocolEventEnvelope extends Schema.Class<HostProtocolEventEnv
   "HostProtocolEventEnvelope"
 )({
   kind: Schema.Literal("event"),
-  method: Schema.String,
+  method: HostProtocolNonEmptyString,
   timestamp: UInt,
-  traceId: Schema.String,
-  windowId: OptionalString,
+  traceId: HostProtocolNonEmptyString,
+  windowId: OptionalNonEmptyString,
   payload: OptionalUnknown
 }) {}
 
@@ -851,9 +871,9 @@ export class HostProtocolStreamByRequestEnvelope extends Schema.Class<HostProtoc
 )({
   kind: Schema.Literal("stream"),
   id: Schema.String,
-  resourceId: OptionalString,
+  resourceId: OptionalNonEmptyString,
   timestamp: UInt,
-  traceId: Schema.String,
+  traceId: HostProtocolNonEmptyString,
   payload: OptionalUnknown,
   error: Schema.optionalKey(HostProtocolError)
 }) {}
@@ -863,9 +883,9 @@ export class HostProtocolStreamByResourceEnvelope extends Schema.Class<HostProto
 )({
   kind: Schema.Literal("stream"),
   id: OptionalString,
-  resourceId: Schema.String,
+  resourceId: HostProtocolNonEmptyString,
   timestamp: UInt,
-  traceId: Schema.String,
+  traceId: HostProtocolNonEmptyString,
   payload: OptionalUnknown,
   error: Schema.optionalKey(HostProtocolError)
 }) {}
@@ -875,9 +895,9 @@ export class HostProtocolCancelByRequestEnvelope extends Schema.Class<HostProtoc
 )({
   kind: Schema.Literal("cancel"),
   id: Schema.String,
-  resourceId: OptionalString,
+  resourceId: OptionalNonEmptyString,
   timestamp: UInt,
-  traceId: Schema.String
+  traceId: HostProtocolNonEmptyString
 }) {}
 
 export class HostProtocolCancelByResourceEnvelope extends Schema.Class<HostProtocolCancelByResourceEnvelope>(
@@ -885,9 +905,9 @@ export class HostProtocolCancelByResourceEnvelope extends Schema.Class<HostProto
 )({
   kind: Schema.Literal("cancel"),
   id: OptionalString,
-  resourceId: Schema.String,
+  resourceId: HostProtocolNonEmptyString,
   timestamp: UInt,
-  traceId: Schema.String
+  traceId: HostProtocolNonEmptyString
 }) {}
 
 export const HostProtocolEnvelope = Schema.Union([

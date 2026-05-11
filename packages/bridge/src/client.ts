@@ -20,6 +20,8 @@ import {
   HostProtocolStreamClosedError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
+  validateHostProtocolNonEmptyString,
+  validateOptionalHostProtocolNonEmptyString,
   validateHostProtocolTimestamp,
   type HostProtocolError
 } from "./protocol.js"
@@ -673,19 +675,34 @@ const makeRequest = (
 ): Effect.Effect<HostProtocolRequestEnvelope, HostProtocolError, never> =>
   Effect.gen(function* () {
     const timestamp = yield* validateHostProtocolTimestamp(options.now(), method)
+    const traceId = yield* validateHostProtocolNonEmptyString(
+      "traceId",
+      options.nextTraceId(),
+      method
+    )
+    const windowId = yield* validateOptionalHostProtocolNonEmptyString(
+      "windowId",
+      options.windowId,
+      method
+    )
+    const originToken = yield* validateOptionalHostProtocolNonEmptyString(
+      "originToken",
+      options.originToken,
+      method
+    )
     const request = {
       kind: "request",
       id: options.nextRequestId(),
       method,
       timestamp,
-      traceId: options.nextTraceId()
+      traceId
     } as const
 
     return new HostProtocolRequestEnvelope({
       ...request,
       ...(payload === undefined ? {} : { payload }),
-      ...(options.windowId === undefined ? {} : { windowId: options.windowId }),
-      ...(options.originToken === undefined ? {} : { originToken: options.originToken })
+      ...(windowId === undefined ? {} : { windowId }),
+      ...(originToken === undefined ? {} : { originToken })
     })
   })
 

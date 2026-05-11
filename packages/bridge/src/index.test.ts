@@ -273,6 +273,89 @@ test("cancel envelopes require a request or resource target", () => {
   ).toThrow()
 })
 
+test("host protocol envelopes reject empty trace IDs", () => {
+  const envelopes: ReadonlyArray<unknown> = [
+    {
+      kind: "request",
+      id: "request-1",
+      method: "host.ping",
+      timestamp: 1710000000000,
+      traceId: ""
+    },
+    {
+      kind: "response",
+      id: "request-1",
+      timestamp: 1710000000001,
+      traceId: ""
+    },
+    {
+      kind: "event",
+      method: "host.ready",
+      timestamp: 1710000000002,
+      traceId: ""
+    },
+    {
+      kind: "stream",
+      id: "request-1",
+      timestamp: 1710000000003,
+      traceId: ""
+    },
+    {
+      kind: "cancel",
+      id: "request-1",
+      timestamp: 1710000000004,
+      traceId: ""
+    }
+  ]
+
+  for (const envelope of envelopes) {
+    expect(() => decodeHostProtocolEnvelope(envelope)).toThrow()
+  }
+})
+
+test("host protocol envelopes reject empty routing fields", () => {
+  const envelopes: ReadonlyArray<unknown> = [
+    {
+      kind: "request",
+      id: "request-1",
+      method: "",
+      timestamp: 1710000000000,
+      traceId: "trace-1"
+    },
+    {
+      kind: "event",
+      method: "",
+      timestamp: 1710000000001,
+      traceId: "trace-1"
+    },
+    {
+      kind: "stream",
+      resourceId: "",
+      timestamp: 1710000000002,
+      traceId: "trace-1"
+    },
+    {
+      kind: "cancel",
+      resourceId: "",
+      timestamp: 1710000000003,
+      traceId: "trace-1"
+    },
+    {
+      kind: "request",
+      id: "request-1",
+      method: "host.ping",
+      timestamp: 1710000000004,
+      traceId: "trace-1",
+      windowId: "",
+      originToken: ""
+    }
+  ]
+
+  for (const envelope of envelopes) {
+    expect(() => decodeHostProtocolEnvelope(envelope)).toThrow()
+  }
+})
+
 test("host protocol error tags are closed", () => {
   expect(() =>
     decodeHostProtocolEnvelope({
