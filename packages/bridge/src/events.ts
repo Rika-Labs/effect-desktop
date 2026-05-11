@@ -9,6 +9,7 @@ import {
 import {
   HostProtocolEventEnvelope,
   makeHostProtocolInvalidArgumentError,
+  validateHostProtocolNonEmptyString,
   validateHostProtocolTimestamp,
   type HostProtocolError
 } from "./protocol.js"
@@ -140,11 +141,16 @@ const publish = <Events extends BridgeRpcEvents, Event extends keyof Events>(
 
     const encodedPayload = yield* encodeEventPayload(method, channel.spec, payload)
     const timestamp = yield* validateHostProtocolTimestamp(options.now(), method)
+    const traceId = yield* validateHostProtocolNonEmptyString(
+      "traceId",
+      options.nextTraceId(),
+      method
+    )
     const envelope = new HostProtocolEventEnvelope({
       kind: "event",
       method,
       timestamp,
-      traceId: options.nextTraceId(),
+      traceId,
       ...(options.windowId === undefined ? {} : { windowId: options.windowId }),
       ...(encodedPayload === undefined ? {} : { payload: encodedPayload })
     })

@@ -210,6 +210,9 @@ export const makeTelemetry = (
       recordSpan: (input) =>
         Effect.gen(function* () {
           yield* validateMetadataField(input.traceId, "Telemetry.recordSpan", "traceId")
+          yield* validateMetadataField(input.subsystem, "Telemetry.recordSpan", "subsystem")
+          yield* validateMetadataField(input.operation, "Telemetry.recordSpan", "operation")
+          yield* validateMetadataField(input.name, "Telemetry.recordSpan", "name")
           yield* validateOptionalMetadataField(input.spanId, "Telemetry.recordSpan", "spanId")
           yield* validateOptionalMetadataField(
             input.parentSpanId,

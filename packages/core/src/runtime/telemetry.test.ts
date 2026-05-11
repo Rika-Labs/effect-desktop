@@ -309,6 +309,33 @@ test("Telemetry recordSpan rejects control bytes in span identifiers", async () 
   expect(await Effect.runPromise(generated.listTraces())).toEqual([])
 })
 
+test("Telemetry rejects empty trace span identifiers", async () => {
+  const telemetry = await Effect.runPromise(makeTelemetry())
+  const baseInput = {
+    traceId: "trace-1",
+    subsystem: "bridge",
+    operation: "Bridge.call",
+    name: "call",
+    startedAt: 1
+  }
+
+  for (const [field, patch] of [
+    ["traceId", { traceId: "" }],
+    ["spanId", { spanId: "" }],
+    ["parentSpanId", { parentSpanId: "" }],
+    ["subsystem", { subsystem: "" }],
+    ["operation", { operation: "" }],
+    ["name", { name: "" }]
+  ] as const) {
+    expectInvalid(
+      await Effect.runPromiseExit(telemetry.recordSpan({ ...baseInput, ...patch })),
+      field
+    )
+  }
+
+  expect(await Effect.runPromise(telemetry.listTraces())).toEqual([])
+})
+
 test("Telemetry counter rejects control bytes in metric name and tag entries", async () => {
   const telemetry = await Effect.runPromise(makeTelemetry())
 

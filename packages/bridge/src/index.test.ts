@@ -128,14 +128,12 @@ test("stream envelopes reject mixed payload and errors", () => {
     {
       kind: "stream",
       id: "request-1",
-      resourceId: "stream-1",
       timestamp: 1710000000000,
       traceId: "trace-mixed-stream",
       payload: { frame: "data" }
     },
     {
       kind: "stream",
-      id: "request-1",
       resourceId: "stream-1",
       timestamp: 1710000000000,
       traceId: "trace-mixed-stream",
@@ -170,6 +168,66 @@ test("stream envelopes reject mixed payload and errors", () => {
   })
   expect(() => decodeHostProtocolEnvelope(streamTargets[2])).toThrow()
   expect(() => decodeHostProtocolEnvelope(streamTargets[3])).toThrow()
+})
+
+test("stream envelopes reject mixed request and resource targets", () => {
+  const requestTargeted = {
+    kind: "stream",
+    id: "request-1",
+    timestamp: 1710000000000,
+    traceId: "trace-stream-target"
+  }
+  const resourceTargeted = {
+    kind: "stream",
+    resourceId: "resource-1",
+    timestamp: 1710000000000,
+    traceId: "trace-stream-target"
+  }
+
+  expect(decodeHostProtocolEnvelope(requestTargeted)).toMatchObject({
+    kind: "stream",
+    id: "request-1"
+  })
+  expect(decodeHostProtocolEnvelope(resourceTargeted)).toMatchObject({
+    kind: "stream",
+    resourceId: "resource-1"
+  })
+  expect(() =>
+    decodeHostProtocolEnvelope({
+      ...requestTargeted,
+      resourceId: "resource-1"
+    })
+  ).toThrow()
+})
+
+test("cancel envelopes reject mixed request and resource targets", () => {
+  const requestTargeted = {
+    kind: "cancel",
+    id: "request-1",
+    timestamp: 1710000000000,
+    traceId: "trace-cancel-target"
+  }
+  const resourceTargeted = {
+    kind: "cancel",
+    resourceId: "resource-1",
+    timestamp: 1710000000000,
+    traceId: "trace-cancel-target"
+  }
+
+  expect(decodeHostProtocolEnvelope(requestTargeted)).toMatchObject({
+    kind: "cancel",
+    id: "request-1"
+  })
+  expect(decodeHostProtocolEnvelope(resourceTargeted)).toMatchObject({
+    kind: "cancel",
+    resourceId: "resource-1"
+  })
+  expect(() =>
+    decodeHostProtocolEnvelope({
+      ...requestTargeted,
+      resourceId: "resource-1"
+    })
+  ).toThrow()
 })
 
 test("renderer reconnect payload schemas decode canonical shapes", () => {

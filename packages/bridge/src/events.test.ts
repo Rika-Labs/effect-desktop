@@ -137,6 +137,28 @@ test("EventHub rejects invalid generated timestamps as typed Effect failures", a
   expectFailureTag(exit, "InvalidArgument")
 })
 
+test("EventHub rejects empty generated trace IDs before publishing envelopes", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EventsEmptyTrace")
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const hub = yield* EventHub([ProjectRpcs], { nextTraceId: () => "" })
+      const fiber = yield* hub.exchange
+        .subscribe("ProjectRpcs.EventsEmptyTrace.changed")
+        .pipe(Stream.take(1), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 1, path: "a" })
+      )
+
+      return yield* Fiber.join(fiber)
+    })
+  )
+
+  expectFailureTag(exit, "InvalidArgument")
+})
+
 test("client event streams reject malformed event envelopes as typed failures", async () => {
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EventsInvalidEnvelope")
   const client = Client(

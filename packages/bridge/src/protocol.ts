@@ -896,17 +896,21 @@ export class HostProtocolStreamByResourceEnvelope extends Schema.Class<HostProto
 
 const StreamByRequestEnvelope = HostProtocolStreamByRequestEnvelope.check(
   Schema.makeFilter<HostProtocolStreamByRequestEnvelope>((value) =>
-    Object.hasOwn(value, "payload") && Object.hasOwn(value, "error")
-      ? "stream envelope must not contain both payload and error"
-      : true
+    Object.hasOwn(value, "resourceId")
+      ? "request-targeted stream envelope must not contain resourceId"
+      : Object.hasOwn(value, "payload") && Object.hasOwn(value, "error")
+        ? "stream envelope must not contain both payload and error"
+        : true
   )
 )
 
 const StreamByResourceEnvelope = HostProtocolStreamByResourceEnvelope.check(
   Schema.makeFilter<HostProtocolStreamByResourceEnvelope>((value) =>
-    Object.hasOwn(value, "payload") && Object.hasOwn(value, "error")
-      ? "stream envelope must not contain both payload and error"
-      : true
+    Object.hasOwn(value, "id")
+      ? "resource-targeted stream envelope must not contain id"
+      : Object.hasOwn(value, "payload") && Object.hasOwn(value, "error")
+        ? "stream envelope must not contain both payload and error"
+        : true
   )
 )
 
@@ -930,14 +934,28 @@ export class HostProtocolCancelByResourceEnvelope extends Schema.Class<HostProto
   traceId: HostProtocolNonEmptyString
 }) {}
 
+const CancelByRequestEnvelope = HostProtocolCancelByRequestEnvelope.check(
+  Schema.makeFilter<HostProtocolCancelByRequestEnvelope>((value) =>
+    Object.hasOwn(value, "resourceId")
+      ? "request-targeted cancel envelope must not contain resourceId"
+      : true
+  )
+)
+
+const CancelByResourceEnvelope = HostProtocolCancelByResourceEnvelope.check(
+  Schema.makeFilter<HostProtocolCancelByResourceEnvelope>((value) =>
+    Object.hasOwn(value, "id") ? "resource-targeted cancel envelope must not contain id" : true
+  )
+)
+
 export const HostProtocolEnvelope = Schema.Union([
   HostProtocolRequestEnvelope,
   HostProtocolResponseEnvelope,
   HostProtocolEventEnvelope,
   StreamByRequestEnvelope,
   StreamByResourceEnvelope,
-  HostProtocolCancelByRequestEnvelope,
-  HostProtocolCancelByResourceEnvelope
+  CancelByRequestEnvelope,
+  CancelByResourceEnvelope
 ])
 
 export type HostProtocolEnvelope = typeof HostProtocolEnvelope.Type
