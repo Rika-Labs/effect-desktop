@@ -101,7 +101,7 @@
     {
       "name": "ApprovalOutcome",
       "kind": "class",
-      "signature": "export class ApprovalOutcome extends Schema.Class<ApprovalOutcome>(\"ApprovalOutcome\")({ requestId: ApprovalMetadataText, outcome: ApprovalOutcomeKind, traceId: ApprovalMetadataText, decidedAt: Schema.Number, source: ApprovalMetadataText }) {}"
+      "signature": "export class ApprovalOutcome extends Schema.Class<ApprovalOutcome>(\"ApprovalOutcome\")({ requestId: ApprovalMetadataText, outcome: ApprovalOutcomeKind, traceId: ApprovalMetadataText, decidedAt: NonNegativeInt, source: ApprovalMetadataText }) {}"
     },
     {
       "name": "ApprovalOutcomeKind",
@@ -621,7 +621,7 @@
     {
       "name": "FilesystemMkdirInput",
       "kind": "class",
-      "signature": "export class FilesystemMkdirInput extends Schema.Class<FilesystemMkdirInput>( \"FilesystemMkdirInput\" )({ path: NonEmptyPath, recursive: Schema.optionalKey(Schema.Boolean) }) {}"
+      "signature": "export class FilesystemMkdirInput extends Schema.Class<FilesystemMkdirInput>( \"FilesystemMkdirInput\" )({ path: FilesystemPathString, recursive: Schema.optionalKey(Schema.Boolean) }) {}"
     },
     {
       "name": "FilesystemOptions",
@@ -636,7 +636,7 @@
     {
       "name": "FilesystemPathInput",
       "kind": "class",
-      "signature": "export class FilesystemPathInput extends Schema.Class<FilesystemPathInput>(\"FilesystemPathInput\")({ path: NonEmptyPath }) {}"
+      "signature": "export class FilesystemPathInput extends Schema.Class<FilesystemPathInput>(\"FilesystemPathInput\")({ path: FilesystemPathString }) {}"
     },
     {
       "name": "FilesystemPermissionPolicy",
@@ -646,12 +646,12 @@
     {
       "name": "FilesystemRealpathInput",
       "kind": "class",
-      "signature": "export class FilesystemRealpathInput extends Schema.Class<FilesystemRealpathInput>( \"FilesystemRealpathInput\" )({ path: NonEmptyPath, capability: Schema.optionalKey(FilesystemPathCapability) }) {}"
+      "signature": "export class FilesystemRealpathInput extends Schema.Class<FilesystemRealpathInput>( \"FilesystemRealpathInput\" )({ path: FilesystemPathString, capability: Schema.optionalKey(FilesystemPathCapability) }) {}"
     },
     {
       "name": "FilesystemRemoveInput",
       "kind": "class",
-      "signature": "export class FilesystemRemoveInput extends Schema.Class<FilesystemRemoveInput>( \"FilesystemRemoveInput\" )({ path: NonEmptyPath, recursive: Schema.optionalKey(Schema.Boolean) }) {}"
+      "signature": "export class FilesystemRemoveInput extends Schema.Class<FilesystemRemoveInput>( \"FilesystemRemoveInput\" )({ path: FilesystemPathString, recursive: Schema.optionalKey(Schema.Boolean) }) {}"
     },
     {
       "name": "FilesystemStatResult",
@@ -671,12 +671,12 @@
     {
       "name": "FilesystemWatchInput",
       "kind": "class",
-      "signature": "export class FilesystemWatchInput extends Schema.Class<FilesystemWatchInput>( \"FilesystemWatchInput\" )({ path: NonEmptyPath, ownerScope: NonEmptyPath, bufferSize: Schema.optionalKey( Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(65_536)) ) }) {}"
+      "signature": "export class FilesystemWatchInput extends Schema.Class<FilesystemWatchInput>( \"FilesystemWatchInput\" )({ path: FilesystemPathString, ownerScope: NonEmptyPath, bufferSize: Schema.optionalKey( Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(65_536)) ) }) {}"
     },
     {
       "name": "FilesystemWriteInput",
       "kind": "class",
-      "signature": "export class FilesystemWriteInput extends Schema.Class<FilesystemWriteInput>( \"FilesystemWriteInput\" )({ path: NonEmptyPath, bytes: Schema.Uint8Array }) {}"
+      "signature": "export class FilesystemWriteInput extends Schema.Class<FilesystemWriteInput>( \"FilesystemWriteInput\" )({ path: FilesystemPathString, bytes: Schema.Uint8Array }) {}"
     },
     {
       "name": "FrameDecoder",
@@ -716,7 +716,7 @@
     {
       "name": "GrantedCapability",
       "kind": "class",
-      "signature": "export class GrantedCapability extends Schema.Class<GrantedCapability>(\"GrantedCapability\")({ token: NonEmptyString, capability: NormalizedCapability, actor: PermissionActor, resource: Schema.optionalKey(PermissionMetadataText), source: PermissionMetadataText, traceId: PermissionMetadataText, grantedAt: Schema.Number, expiresAt: Schema.optionalKey(Schema.Number), oneTime: Schema.optionalKey(Schema.Boolean) }) {}"
+      "signature": "export class GrantedCapability extends Schema.Class<GrantedCapability>(\"GrantedCapability\")({ token: NonEmptyString, capability: NormalizedCapability, actor: PermissionActor, resource: Schema.optionalKey(PermissionMetadataText), source: PermissionMetadataText, traceId: PermissionMetadataText, grantedAt: PermissionTimestamp, expiresAt: Schema.optionalKey(Schema.Number), oneTime: Schema.optionalKey(Schema.Boolean) }) {}"
     },
     {
       "name": "GrantStatus",
@@ -1046,7 +1046,7 @@
     {
       "name": "PermissionGrantSnapshot",
       "kind": "class",
-      "signature": "export class PermissionGrantSnapshot extends Schema.Class<PermissionGrantSnapshot>( \"PermissionGrantSnapshot\" )({ grant: GrantedCapability, status: GrantStatus, updatedAt: Schema.Number }) {}"
+      "signature": "export class PermissionGrantSnapshot extends Schema.Class<PermissionGrantSnapshot>( \"PermissionGrantSnapshot\" )({ grant: GrantedCapability, status: GrantStatus, updatedAt: PermissionTimestamp }) {}"
     },
     {
       "name": "PermissionInterceptor",
