@@ -117,6 +117,43 @@ describe("Settings", () => {
     ])
   })
 
+  test("close terminates open changes streams", async () => {
+    const { store } = await makeFixture()
+    const fiber = Effect.runFork(store.changes().pipe(Stream.runCollect))
+
+    await Effect.runPromise(store.close())
+    const result = await Effect.runPromise(
+      Fiber.join(fiber).pipe(Effect.timeoutOption("10 millis"))
+    )
+
+    expect(Option.isSome(result)).toBe(true)
+    if (Option.isSome(result)) {
+      expect(Array.from(result.value)).toEqual([])
+    }
+  })
+
+  test("close terminates open migration streams", async () => {
+    const { store } = await makeFixture()
+    const fiber = Effect.runFork(store.migrated().pipe(Stream.runCollect))
+
+    await Effect.runPromise(store.close())
+    const result = await Effect.runPromise(
+      Fiber.join(fiber).pipe(Effect.timeoutOption("10 millis"))
+    )
+
+    expect(Option.isSome(result)).toBe(true)
+    if (Option.isSome(result)) {
+      expect(Array.from(result.value)).toEqual([])
+    }
+  })
+
+  test("close is idempotent", async () => {
+    const { store } = await makeFixture()
+
+    await Effect.runPromise(store.close())
+    await Effect.runPromise(store.close())
+  })
+
   test("registered migration runs and emits migration event", async () => {
     const directory = await mkdtemp(join(tmpdir(), "effect-desktop-settings-"))
     const path = join(directory, "settings.sqlite")

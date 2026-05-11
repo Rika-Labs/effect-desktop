@@ -415,7 +415,11 @@ const makeStore = (
       }).pipe(Effect.withSpan("Settings.update", { attributes: { namespace, key } })),
     changes: () => Stream.fromPubSub(changes),
     migrated: () => Stream.fromPubSub(migrations),
-    close: () => Effect.void
+    close: () =>
+      Effect.gen(function* () {
+        yield* PubSub.shutdown(changes)
+        yield* PubSub.shutdown(migrations)
+      })
   })
 }
 
