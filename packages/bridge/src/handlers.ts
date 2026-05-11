@@ -203,7 +203,6 @@ const dispatch = (
   Effect.gen(function* () {
     const now = options.now()
     purgeExpiredTerminalStates(terminalStates, now, options.terminalStateTtlMs)
-    yield* options.originAuth.verify(request)
 
     const priorTerminalState = terminalStates.get(request.id)?.state
     if (priorTerminalState !== undefined) {
@@ -224,6 +223,13 @@ const dispatch = (
       traceId: request.traceId,
       startedAt: now
     })
+
+    const originExit = yield* Effect.exit(options.originAuth.verify(request))
+    if (Exit.isFailure(originExit)) {
+      const error = yield* hostProtocolErrorFromCause(request.method, originExit.cause)
+      yield* failCall(terminalStates, options, request.id, error)
+      return yield* Effect.fail(error)
+    }
 
     const bound = table.get(request.method)
 

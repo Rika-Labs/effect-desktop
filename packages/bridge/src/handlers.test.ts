@@ -159,10 +159,15 @@ test("Handlers rejects missing renderer origin before handler lookup", async () 
 })
 
 test("Handlers rejects forged renderer origin tokens", async () => {
+  const states: string[] = []
   const ProjectApi = makeProjectApi("ProjectApi.OriginForged")
   const runtime = Handlers.withOptions(
     {
-      originAuth: RendererOriginAuth.fromCurrentTokens(new Map([["window-1", "origin-1"]]))
+      originAuth: RendererOriginAuth.fromCurrentTokens(new Map([["window-1", "origin-1"]])),
+      onState: (state) =>
+        Effect.sync(() => {
+          states.push(state.tag)
+        })
     },
     ProjectApi.layer({
       open: () => Effect.succeed(new ProjectOpenOutput({ id: 1 }))
@@ -181,6 +186,7 @@ test("Handlers rejects forged renderer origin tokens", async () => {
   )
 
   expectFailureTag(exit, "OriginInvalid")
+  expect(states).toEqual(["Pending", "Failed"])
 })
 
 test("Handlers rejects stale origin tokens after rotation", async () => {
