@@ -171,7 +171,8 @@ const makeTrayBridgeClient = (
       decodeTraySetMenuInput({ tray: toTrayHandle(tray), menu }).pipe(
         Effect.flatMap(client.setMenu)
       ),
-    destroy: (tray) => client.destroy(new TrayDestroyInput({ tray: toTrayHandle(tray) })),
+    destroy: (tray) =>
+      decodeTrayDestroyInput({ tray: toTrayHandle(tray) }).pipe(Effect.flatMap(client.destroy)),
     onActivated: () => client.events.Activated,
     isSupported: () => client.isSupported()
   }
@@ -249,6 +250,26 @@ const decodeTraySetMenuInput = (
     TrayError,
     never
   >
+
+const decodeTrayDestroyInput = (
+  input: unknown
+): Effect.Effect<TrayDestroyInput, TrayError, never> =>
+  (
+    decodeInput(TrayDestroyInput, input, "Tray.destroy") as Effect.Effect<
+      TrayDestroyInput,
+      TrayError,
+      never
+    >
+  ).pipe(Effect.flatMap(validateDestroyTrayHandle))
+
+const validateDestroyTrayHandle = (
+  input: TrayDestroyInput
+): Effect.Effect<TrayDestroyInput, TrayError, never> =>
+  input.tray.kind === TrayResource.kind && input.tray.state === TrayResource.state
+    ? Effect.succeed(input)
+    : Effect.fail(
+        makeHostProtocolInvalidArgumentError("tray", "must be an open tray handle", "Tray.destroy")
+      )
 
 const decodeInput = (
   schema: Schema.Schema<unknown>,

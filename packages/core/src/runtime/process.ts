@@ -4,6 +4,7 @@ import {
   HostProtocolInvalidArgumentError,
   HostProtocolPermissionDeniedError,
   HostProtocolResourceBusyError,
+  HostProtocolStaleHandleError,
   hostProtocolErrorRecoverableDefault,
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError,
@@ -29,7 +30,8 @@ import {
   ResourceRegistry,
   type ResourceHandle,
   type ResourceId,
-  type ResourceRegistryApi
+  type ResourceRegistryApi,
+  type StaleHandle
 } from "./resources.js"
 
 const NonEmptyString = Schema.NonEmptyString
@@ -236,7 +238,7 @@ export const makeProcess = (
             })
           )
 
-          return makeHandle(child, resource, input.command, budgets, snapshots, now)
+          return makeHandle(child, resource, input.command, budgets, snapshots, now, registry)
         }).pipe(
           Effect.withSpan("Process.spawn", {
             attributes: { command, argc: args.length, ownerScope: options?.ownerScope ?? "" }
@@ -274,7 +276,8 @@ const makeHandle = (
   command: string,
   budgets: Required<ProcessBudgetPolicy>,
   snapshots: SubscriptionRef.SubscriptionRef<Map<ResourceId, ProcessSnapshot>>,
-  now: () => number
+  now: () => number,
+  registry: ResourceRegistryApi
 ): ProcessHandle => {
   const stdout = boundedOutputStream(
     Stream.fromReadableStream({
@@ -332,6 +335,7 @@ const makeHandle = (
       Effect.gen(function* () {
         const decodedSignal =
           signal === undefined ? undefined : yield* decodeSignalInput(signal, "Process.kill")
+        yield* assertProcessHandleFresh(registry, resource, "Process.kill")
         yield* Effect.try({
           try: () => child.kill(decodedSignal),
           catch: (error) => mapProcessError(error, command, "Process.kill")
@@ -596,6 +600,31 @@ const decodeStdinChunk = (
   input instanceof Uint8Array
     ? Effect.succeed(input)
     : Effect.fail(makeHostProtocolInvalidArgumentError("chunk", "must be a Uint8Array", operation))
+
+const assertProcessHandleFresh = (
+  registry: ResourceRegistryApi,
+  resource: ResourceHandle<"process", "running">,
+  operation: string
+): Effect.Effect<void, HostProtocolStaleHandleError, never> =>
+  registry.assertFresh(resource).pipe(
+    Effect.asVoid,
+    Effect.mapError((error) => makeProcessStaleHandleError(error, operation))
+  )
+
+const makeProcessStaleHandleError = (
+  error: StaleHandle,
+  operation: string
+): HostProtocolStaleHandleError =>
+  new HostProtocolStaleHandleError({
+    tag: "StaleHandle",
+    kind: error.kind,
+    id: error.id,
+    expectedGeneration: error.expectedGeneration,
+    actualGeneration: Math.max(0, error.actualGeneration),
+    message: `stale resource handle: ${error.kind}:${error.id}`,
+    operation,
+    recoverable: false
+  })
 
 const authorizeProcessSpawn = (
   permissions: ProcessPermissionPolicy,

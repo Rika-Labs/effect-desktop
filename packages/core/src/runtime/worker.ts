@@ -21,7 +21,12 @@ import {
   type PermissionRegistryApi,
   type PermissionRegistryError
 } from "./permission-registry.js"
-import { ResourceRegistry, type ResourceHandle, type ResourceRegistryApi } from "./resources.js"
+import {
+  ResourceRegistry,
+  type ResourceHandle,
+  type ResourceRegistryApi,
+  type StaleHandle
+} from "./resources.js"
 
 const NonEmptyString = Schema.NonEmptyString
 const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
@@ -83,6 +88,14 @@ export class WorkerResourceBusyError extends Data.TaggedError("ResourceBusy")<{
   readonly maxConcurrent: number
 }> {}
 
+export class WorkerStaleHandleError extends Data.TaggedError("StaleHandle")<{
+  readonly operation: string
+  readonly kind: string
+  readonly id: string
+  readonly expectedGeneration: number
+  readonly actualGeneration: number
+}> {}
+
 export class WorkerUnsupportedError extends Data.TaggedError("Unsupported")<{
   readonly operation: string
   readonly script: string
@@ -96,6 +109,7 @@ export type WorkerError =
   | WorkerCrashedError
   | WorkerInvalidArgumentError
   | WorkerResourceBusyError
+  | WorkerStaleHandleError
   | WorkerUnsupportedError
 
 export interface WorkerSpawnOptions<In, Out> {
@@ -246,7 +260,8 @@ export const makeWorker = (
             resource,
             input.script,
             options.inputSchema,
-            options.outputSchema
+            options.outputSchema,
+            registry
           )
         }).pipe(
           Effect.withSpan("Worker.spawn", {
@@ -308,7 +323,8 @@ const makeHandle = <In, Out>(
   resource: ResourceHandle<"worker", "running">,
   script: string,
   inputSchema: Schema.Schema<In>,
-  outputSchema: Schema.Schema<Out>
+  outputSchema: Schema.Schema<Out>,
+  registry: ResourceRegistryApi
 ): WorkerHandle<In, Out> => {
   const messages = runtime.messages.pipe(
     Stream.mapError((error) => attachWorkerResourceId(error, resource.id)),
@@ -320,12 +336,35 @@ const makeHandle = <In, Out>(
     send: (message: In) =>
       Effect.gen(function* () {
         const decoded = yield* decodeInput(message, inputSchema, script)
+        yield* assertWorkerHandleFresh(registry, resource, "Worker.send")
         yield* runtime.send(decoded)
       }).pipe(Effect.withSpan("Worker.send", { attributes: { script, resourceId: resource.id } })),
     messages,
     close: resource.dispose()
   })
 }
+
+const assertWorkerHandleFresh = (
+  registry: ResourceRegistryApi,
+  resource: ResourceHandle<"worker", "running">,
+  operation: string
+): Effect.Effect<void, WorkerStaleHandleError, never> =>
+  registry.assertFresh(resource).pipe(
+    Effect.asVoid,
+    Effect.mapError((error) => makeWorkerStaleHandleError(error, operation))
+  )
+
+const makeWorkerStaleHandleError = (
+  error: StaleHandle,
+  operation: string
+): WorkerStaleHandleError =>
+  new WorkerStaleHandleError({
+    operation,
+    kind: error.kind,
+    id: error.id,
+    expectedGeneration: error.expectedGeneration,
+    actualGeneration: error.actualGeneration
+  })
 
 const attachWorkerResourceId = (error: WorkerError, resourceId: string): WorkerError => {
   if (error._tag !== "WorkerCrashed") {

@@ -7,7 +7,8 @@ import {
   HostProtocolFileNotFoundError,
   HostProtocolInvalidArgumentError,
   HostProtocolPermissionDeniedError,
-  HostProtocolResourceBusyError
+  HostProtocolResourceBusyError,
+  HostProtocolStaleHandleError
 } from "@effect-desktop/bridge"
 import { Cause, Effect, Exit, Fiber, Option, Stream } from "effect"
 
@@ -598,6 +599,39 @@ processTest("Process kill rejects control bytes in signal names", async () => {
   expect(child.killedWith).toBeUndefined()
 })
 
+processTest("Process kill rejects handles after process exit", async () => {
+  const child = makeFakeChild({ stdout: [], exit: { code: 0 } })
+  const fixture = await makeFixture(makeFakeAdapter(() => child))
+  const handle = await Effect.runPromise(
+    fixture.service.spawn("sleep", ["10"], { ownerScope: "scope-main" })
+  )
+  await Effect.runPromise(handle.exit)
+
+  const exit = await Effect.runPromiseExit(handle.kill("SIGTERM"))
+
+  expect(child.kills).toEqual([])
+  expectFailure(exit, HostProtocolStaleHandleError)
+})
+
+processTest("Process kill rejects handles after scope close", async () => {
+  const child = makeFakeChild({
+    stdout: [],
+    exit: { code: 0 },
+    naturalExitDelayMs: 60_000
+  })
+  const fixture = await makeFixture(makeFakeAdapter(() => child))
+  const handle = await Effect.runPromise(
+    fixture.service.spawn("sleep", ["10"], { ownerScope: "scope-main" })
+  )
+  await Effect.runPromise(fixture.registry.closeScope("scope-main"))
+
+  const exit = await Effect.runPromiseExit(handle.kill("SIGKILL"))
+
+  expect(child.kills).toEqual([])
+  expect(child.treeTerminated).toBe(true)
+  expectFailure(exit, HostProtocolStaleHandleError)
+})
+
 if (process.platform !== "win32") {
   processTest(
     "Process scope close asks the process tree to terminate and waits for exit",
@@ -735,6 +769,7 @@ interface FakeChild extends ProcessChild {
   readonly stdinWrites: Uint8Array[]
   readonly stdinClosed: boolean
   readonly killedWith: ProcessSignalInput | undefined
+  readonly kills: ProcessSignalInput[]
   readonly treeTerminated: boolean
   readonly treeForceKilled: boolean
 }
@@ -752,6 +787,7 @@ const makeFakeChild = (options: {
   const stdinWrites: Uint8Array[] = []
   let stdinClosed = false
   let killedWith: ProcessSignalInput | undefined
+  const kills: ProcessSignalInput[] = []
   let treeTerminated = false
   let treeForceKilled = false
   let running = true
@@ -794,6 +830,7 @@ const makeFakeChild = (options: {
     get killedWith() {
       return killedWith
     },
+    kills,
     get treeTerminated() {
       return treeTerminated
     },
@@ -819,6 +856,7 @@ const makeFakeChild = (options: {
     },
     kill: (signal) => {
       killedWith = signal ?? "SIGTERM"
+      kills.push(killedWith)
       finish(String(killedWith))
     }
   }

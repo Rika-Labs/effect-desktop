@@ -2146,6 +2146,31 @@ test("Tray bridge client rejects invalid icon and tooltip metadata before transp
   expect(requests).toEqual([])
 })
 
+test("Tray bridge client rejects stale destroy handles before host transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Tray
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          TrayLive,
+          makeTrayBridgeClientLayer(
+            trayExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const exit = await Effect.runPromiseExit(
+    client.destroy({ ...trayHandle, state: "closed" } as unknown as TrayHandle)
+  )
+
+  expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
 test("DialogApi declares the Phase 7 Dialog method surface", () => {
   expect(DialogApi.tag).toBe("Dialog")
   expect([...DialogMethodNames]).toEqual(expectedDialogMethods)

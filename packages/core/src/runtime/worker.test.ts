@@ -14,6 +14,7 @@ import {
   WorkerChannelError,
   WorkerCrashedError,
   WorkerInvalidArgumentError,
+  WorkerStaleHandleError,
   type WorkerAdapter,
   type WorkerApi,
   type WorkerError,
@@ -273,6 +274,73 @@ test("Worker validates malformed sends before transmission", async () => {
 
   expect(runtime.sent).toEqual([])
   expectFailure(exit, WorkerChannelError)
+})
+
+test("Worker send rejects handles after close", async () => {
+  const runtime = await makeFakeRuntime()
+  const fixture = await makeFixture(makeFakeAdapter(runtime), [filesystemReadCapability])
+  const handle = await Effect.runPromise(
+    fixture.service.spawn({
+      script: "./worker.ts",
+      ownerScope: "scope-main",
+      inputSchema: EchoIn,
+      outputSchema: EchoOut,
+      context,
+      capabilities: [filesystemReadCapability]
+    })
+  )
+  await Effect.runPromise(handle.close)
+
+  const exit = await Effect.runPromiseExit(handle.send({ text: "after-close" }))
+
+  expect(runtime.sent).toEqual([])
+  expectFailure(exit, WorkerStaleHandleError)
+})
+
+test("Worker send rejects handles after owner scope close", async () => {
+  const runtime = await makeFakeRuntime()
+  const fixture = await makeFixture(makeFakeAdapter(runtime), [filesystemReadCapability])
+  const handle = await Effect.runPromise(
+    fixture.service.spawn({
+      script: "./worker.ts",
+      ownerScope: "scope-main",
+      inputSchema: EchoIn,
+      outputSchema: EchoOut,
+      context,
+      capabilities: [filesystemReadCapability]
+    })
+  )
+  await Effect.runPromise(fixture.registry.closeScope("scope-main"))
+
+  const exit = await Effect.runPromiseExit(handle.send({ text: "after-close" }))
+
+  expect(runtime.sent).toEqual([])
+  expectFailure(exit, WorkerStaleHandleError)
+})
+
+test("Worker send rejects handles after runtime exit", async () => {
+  const runtime = await makeFakeRuntime()
+  const fixture = await makeFixture(makeFakeAdapter(runtime), [filesystemReadCapability])
+  const handle = await Effect.runPromise(
+    fixture.service.spawn({
+      script: "./worker.ts",
+      ownerScope: "scope-main",
+      inputSchema: EchoIn,
+      outputSchema: EchoOut,
+      context,
+      capabilities: [filesystemReadCapability]
+    })
+  )
+  await Effect.runPromise(runtime.complete())
+  await waitUntil(async () => {
+    const snapshot = await Effect.runPromise(fixture.registry.list())
+    return snapshot.entries.length === 0
+  })
+
+  const exit = await Effect.runPromiseExit(handle.send({ text: "after-close" }))
+
+  expect(runtime.sent).toEqual([])
+  expectFailure(exit, WorkerStaleHandleError)
 })
 
 test("Worker validates malformed outputs on the messages stream", async () => {
