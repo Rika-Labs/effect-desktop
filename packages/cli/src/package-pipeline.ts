@@ -356,7 +356,8 @@ const validateBuildLayout = (
         })
       )
     }
-    const manifest = yield* readJson<AppManifest>(manifestPath)
+    const rawManifest = yield* readJson<unknown>(manifestPath)
+    const manifest = yield* decodeAppManifest(rawManifest, manifestPath)
     if (
       manifest.id !== plan.appId ||
       manifest.name !== plan.appName ||
@@ -385,6 +386,79 @@ const validateBuildLayout = (
     yield* statPath(join(plan.layoutPath, manifest.runtime.entry))
     yield* statPath(join(plan.layoutPath, manifest.nativeHost.binary))
   })
+
+const decodeAppManifest = (
+  value: unknown,
+  path: string
+): Effect.Effect<AppManifest, PackageFileError, never> => {
+  if (!isRecord(value)) {
+    return packageManifestError(path, "app-manifest.json must be an object")
+  }
+  const id = readManifestString(value, "id", path)
+  const name = readManifestString(value, "name", path)
+  const version = readManifestString(value, "version", path)
+  const target = readManifestTarget(value, path)
+  const renderer = readNestedManifestString(value, "renderer", "path", path)
+  const runtime = readNestedManifestString(value, "runtime", "entry", path)
+  const nativeHost = readNestedManifestString(value, "nativeHost", "binary", path)
+  return Effect.all({ id, name, version, target, renderer, runtime, nativeHost }).pipe(
+    Effect.map((manifest) => ({
+      id: manifest.id,
+      name: manifest.name,
+      version: manifest.version,
+      target: manifest.target,
+      renderer: { path: manifest.renderer },
+      runtime: { entry: manifest.runtime },
+      nativeHost: { binary: manifest.nativeHost }
+    }))
+  )
+}
+
+const readManifestString = (
+  record: Readonly<Record<PropertyKey, unknown>>,
+  field: string,
+  path: string
+): Effect.Effect<string, PackageFileError, never> => {
+  const value = record[field]
+  return typeof value === "string"
+    ? Effect.succeed(value)
+    : packageManifestError(path, `app-manifest.json field ${field} must be a string`)
+}
+
+const readManifestTarget = (
+  record: Readonly<Record<PropertyKey, unknown>>,
+  path: string
+): Effect.Effect<PackageTarget, PackageFileError, never> => {
+  const value = record["target"]
+  return typeof value === "string" && isPackageTarget(value)
+    ? Effect.succeed(value)
+    : packageManifestError(path, "app-manifest.json field target must be a package target")
+}
+
+const readNestedManifestString = (
+  record: Readonly<Record<PropertyKey, unknown>>,
+  objectField: string,
+  stringField: string,
+  path: string
+): Effect.Effect<string, PackageFileError, never> => {
+  const nested = record[objectField]
+  if (!isRecord(nested)) {
+    return packageManifestError(path, `app-manifest.json field ${objectField} must be an object`)
+  }
+  const value = nested[stringField]
+  return typeof value === "string"
+    ? Effect.succeed(value)
+    : packageManifestError(
+        path,
+        `app-manifest.json field ${objectField}.${stringField} must be a string`
+      )
+}
+
+const packageManifestError = (
+  path: string,
+  message: string
+): Effect.Effect<never, PackageFileError, never> =>
+  Effect.fail(new PackageFileError({ operation: "validate", path, message, cause: undefined }))
 
 const produceArtifact = (
   options: DesktopPackageOptions,

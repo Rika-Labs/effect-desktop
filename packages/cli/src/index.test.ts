@@ -29,6 +29,7 @@ import {
   runCli,
   runDocsReleaseGate,
   runDesktopPackage,
+  runDesktopReproCheck,
   runSemverGuard,
   type CommandRunner,
   type DocsExampleRunner,
@@ -1086,6 +1087,71 @@ test("desktop check --repro --json returns structured diff reports", async () =>
     expect(exitCode).toBe(1)
     expect(report.tag).toBe("ReproDiffError")
     expect(report.report.differences[0]?.firstDifferenceOffset).toBe(4)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --repro rejects target drift between passes", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-target-"))
+  try {
+    const buildRoot = join(directory, "build")
+    const packageRoot = join(directory, "package")
+    await mkdir(buildRoot, { recursive: true })
+    await mkdir(packageRoot, { recursive: true })
+    await writeFile(join(buildRoot, "app.txt"), "identical\n")
+    await writeFile(join(packageRoot, "app.deb"), "identical\n")
+    let pass = 0
+
+    const exit = await Effect.runPromiseExit(
+      runDesktopReproCheck({
+        buildRunner: () =>
+          Effect.sync(() => {
+            pass += 1
+            return {
+              target: pass === 1 ? "linux-x64" : "macos-arm64",
+              layoutPath: buildRoot
+            }
+          }),
+        packageRunner: () =>
+          Effect.gen(function* () {
+            yield* Effect.promise(() => mkdir(packageRoot, { recursive: true }))
+            yield* Effect.promise(() => writeFile(join(packageRoot, "app.deb"), "identical\n"))
+            return {
+              outputPath: packageRoot
+            }
+          })
+      })
+    )
+
+    expect(Exit.isFailure(exit)).toBe(true)
+    if (Exit.isFailure(exit)) {
+      const failReason = exit.cause.reasons.find((reason) => reason._tag === "Fail")
+      const error = failReason?.error as
+        | {
+            readonly _tag?: string
+            readonly report?: {
+              readonly passed: boolean
+              readonly differences: readonly [
+                {
+                  readonly kind: string
+                  readonly firstTarget?: string
+                  readonly secondTarget?: string
+                }
+              ]
+            }
+          }
+        | undefined
+      expect(error).toBeDefined()
+      if (error === undefined) {
+        throw new Error("expected repro diff error")
+      }
+      expect(error._tag).toBe("ReproDiffError")
+      expect(error.report?.passed).toBe(false)
+      expect(error.report?.differences[0]?.kind).toBe("target")
+      expect(error.report?.differences[0]?.firstTarget).toBe("linux-x64")
+      expect(error.report?.differences[0]?.secondTarget).toBe("macos-arm64")
+    }
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -6198,6 +6264,60 @@ test("desktop package reports missing build output before reading manifests", as
     expect(error.message).toContain("app-manifest.json")
     expect(error.message).toContain("run desktop build first")
     expect(error.remediation).toContain("bun desktop build")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop package rejects malformed build manifests as typed package errors", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-manifest-"))
+  try {
+    await writePlaygroundFixture(directory)
+    await writeBuildLayoutFixture(directory, "macos-arm64")
+    const layout = join(directory, "apps", "playground", "build", "effect-desktop", "macos-arm64")
+    await writeFile(
+      join(layout, "app-manifest.json"),
+      JSON.stringify(
+        {
+          id: "dev.effect-desktop.playground",
+          name: "Effect Desktop Playground",
+          version: "0.0.0",
+          target: "macos-arm64"
+        },
+        null,
+        2
+      )
+    )
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: [
+          "package",
+          "--config",
+          "apps/playground/desktop.config.ts",
+          "--artifact",
+          "app",
+          "--json"
+        ],
+        cwd: directory,
+        hostTarget: "macos-arm64",
+        packageCommandRunner: () => Effect.die("package commands should not run for bad manifest"),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("PackageFileError")
+    expect(payload.message).toContain("app-manifest.json")
+    expect(payload.message).toContain("renderer")
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

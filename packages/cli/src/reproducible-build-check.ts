@@ -85,6 +85,7 @@ export interface ReproDifference {
     | "entry-type"
     | "symlink-target"
     | "mode"
+    | "target"
   readonly firstDifferenceOffset: number | undefined
   readonly firstSizeBytes: number | undefined
   readonly secondSizeBytes: number | undefined
@@ -96,6 +97,8 @@ export interface ReproDifference {
   readonly secondSymlinkTarget: string | undefined
   readonly firstMode: number | undefined
   readonly secondMode: number | undefined
+  readonly firstTarget: string | undefined
+  readonly secondTarget: string | undefined
 }
 
 export interface DesktopReproReport {
@@ -256,6 +259,25 @@ const diffSnapshots = (
     const secondByPath = new Map(secondEntries.map((entry) => [entry.relativePath, entry]))
     const relativePaths = [...new Set([...firstByPath.keys(), ...secondByPath.keys()])].toSorted()
     const differences: ReproDifference[] = []
+    if (first.target !== second.target) {
+      differences.push({
+        relativePath: "target",
+        kind: "target",
+        firstDifferenceOffset: undefined,
+        firstSizeBytes: undefined,
+        secondSizeBytes: undefined,
+        firstSha256: undefined,
+        secondSha256: undefined,
+        firstEntryKind: undefined,
+        secondEntryKind: undefined,
+        firstSymlinkTarget: undefined,
+        secondSymlinkTarget: undefined,
+        firstMode: undefined,
+        secondMode: undefined,
+        firstTarget: first.target,
+        secondTarget: second.target
+      })
+    }
 
     for (const relativePath of relativePaths) {
       const firstEntry = firstByPath.get(relativePath)
@@ -297,7 +319,9 @@ const diffSnapshots = (
           firstMode:
             firstEntry !== undefined && firstEntry.kind === "file" ? firstEntry.mode : undefined,
           secondMode:
-            secondEntry !== undefined && secondEntry.kind === "file" ? secondEntry.mode : undefined
+            secondEntry !== undefined && secondEntry.kind === "file" ? secondEntry.mode : undefined,
+          firstTarget: undefined,
+          secondTarget: undefined
         })
         continue
       }
@@ -316,7 +340,9 @@ const diffSnapshots = (
           firstSymlinkTarget: firstEntry.kind === "symlink" ? firstEntry.target : undefined,
           secondSymlinkTarget: secondEntry.kind === "symlink" ? secondEntry.target : undefined,
           firstMode: firstEntry.kind === "file" ? firstEntry.mode : undefined,
-          secondMode: secondEntry.kind === "file" ? secondEntry.mode : undefined
+          secondMode: secondEntry.kind === "file" ? secondEntry.mode : undefined,
+          firstTarget: undefined,
+          secondTarget: undefined
         })
         continue
       }
@@ -336,7 +362,9 @@ const diffSnapshots = (
             firstSymlinkTarget: firstEntry.target,
             secondSymlinkTarget: secondEntry.target,
             firstMode: undefined,
-            secondMode: undefined
+            secondMode: undefined,
+            firstTarget: undefined,
+            secondTarget: undefined
           })
         }
         continue
@@ -359,7 +387,9 @@ const diffSnapshots = (
             firstSymlinkTarget: undefined,
             secondSymlinkTarget: undefined,
             firstMode: firstEntry.mode,
-            secondMode: secondEntry.mode
+            secondMode: secondEntry.mode,
+            firstTarget: undefined,
+            secondTarget: undefined
           })
         } else if (
           process.platform !== "win32" &&
@@ -378,7 +408,9 @@ const diffSnapshots = (
             firstSymlinkTarget: undefined,
             secondSymlinkTarget: undefined,
             firstMode: firstEntry.mode,
-            secondMode: secondEntry.mode
+            secondMode: secondEntry.mode,
+            firstTarget: undefined,
+            secondTarget: undefined
           })
         }
         continue
@@ -516,6 +548,11 @@ const formatDifference = (difference: ReproDifference): string => {
   if (difference.kind === "mode") {
     lines.push(`  first mode      ${formatMode(difference.firstMode)}`)
     lines.push(`  second mode     ${formatMode(difference.secondMode)}`)
+    return lines.join("\n")
+  }
+  if (difference.kind === "target") {
+    lines.push(`  first target    ${difference.firstTarget ?? "missing"}`)
+    lines.push(`  second target   ${difference.secondTarget ?? "missing"}`)
     return lines.join("\n")
   }
   const offset =
