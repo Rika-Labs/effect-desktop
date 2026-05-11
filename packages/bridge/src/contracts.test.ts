@@ -254,6 +254,24 @@ test("Api.Tag rejects invalid backpressure values as a typed Effect failure", as
   expectFailure(exit, InvalidApiContractSpec)
 })
 
+test("Api.Tag rejects invalid nested stream backpressure values", async () => {
+  const exit = await Effect.runPromiseExit(
+    Api.Tag("Test.InvalidStreamBackpressure")<unknown>()({
+      call: {
+        input: Schema.String,
+        output: Api.Stream(Schema.String, Schema.Never, {
+          strategy: "buffer",
+          size: 1.5,
+          overflow: "drop-oldest"
+        } as never),
+        error: Schema.Never
+      }
+    })
+  )
+
+  expectFailure(exit, InvalidApiContractSpec)
+})
+
 test("Api.Tag rejects invalid support metadata as a typed Effect failure", async () => {
   const exit = await Effect.runPromiseExit(
     Api.Tag("Test.InvalidSupport")<unknown>()({

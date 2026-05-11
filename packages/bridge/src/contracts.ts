@@ -333,6 +333,9 @@ const validateMethodSpec = (
     if (spec.backpressure !== undefined) {
       yield* validateBackpressureSpec(tag, method, spec.backpressure)
     }
+    if (isStreamSpec(spec.output) && spec.output.backpressure !== undefined) {
+      yield* validateBackpressureSpec(tag, method, spec.output.backpressure)
+    }
     if (spec.support !== undefined) {
       yield* validateSupportSpec(tag, method, spec.support)
     }
