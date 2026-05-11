@@ -105,11 +105,26 @@ test("BridgeRpc.group validates specs before producing a group", () => {
       {}
     )
   ).toThrow(InvalidBridgeRpcSpec)
+  expect(() =>
+    BridgeRpc.group(
+      "Test.ZeroCache",
+      {
+        call: {
+          ...validMethodSpec(),
+          cachedResultMs: 0,
+          idempotent: true
+        }
+      },
+      {}
+    )
+  ).toThrow(InvalidBridgeRpcSpec)
   for (const [index, output] of [
     BridgeRpc.Resource("", "running"),
     BridgeRpc.Resource("process", ""),
     BridgeRpc.Resource(" ", "running"),
-    BridgeRpc.Resource("process", " ")
+    BridgeRpc.Resource("process", " "),
+    BridgeRpc.Resource("bad\nkind", "running"),
+    BridgeRpc.Resource("process", "bad\nstate")
   ].entries()) {
     expect(() =>
       BridgeRpc.group(
@@ -187,6 +202,9 @@ test("BridgeRpc.group validates specs before producing a group", () => {
 test("BridgeRpc.group rejects empty contract tags", () => {
   expect(() => BridgeRpc.group("", { call: validMethodSpec() }, {})).toThrow(InvalidBridgeRpcSpec)
   expect(() => BridgeRpc.group(" ", { call: validMethodSpec() }, {})).toThrow(InvalidBridgeRpcSpec)
+  expect(() => BridgeRpc.group("Bad\nTag", { call: validMethodSpec() }, {})).toThrow(
+    InvalidBridgeRpcSpec
+  )
 })
 
 test("BridgeRpc.group rejects empty method names", () => {
@@ -195,6 +213,12 @@ test("BridgeRpc.group rejects empty method names", () => {
   )
   expect(() =>
     BridgeRpc.group("Test.EmptyMethodWhitespace", { " ": validMethodSpec() }, {})
+  ).toThrow(InvalidBridgeRpcSpec)
+  expect(() =>
+    BridgeRpc.group("Test.BadMethodControl", { "bad\nmethod": validMethodSpec() }, {})
+  ).toThrow(InvalidBridgeRpcSpec)
+  expect(() =>
+    BridgeRpc.group("Test.BadMethodDot", { "bad.method": validMethodSpec() }, {})
   ).toThrow(InvalidBridgeRpcSpec)
 })
 
@@ -211,6 +235,20 @@ test("BridgeRpc.group rejects empty event names", () => {
       "Test.EmptyEventWhitespace",
       { call: validMethodSpec() },
       { " ": { payload: Schema.String } }
+    )
+  ).toThrow(InvalidBridgeRpcSpec)
+  expect(() =>
+    BridgeRpc.group(
+      "Test.BadEventControl",
+      { call: validMethodSpec() },
+      { "bad\nevent": { payload: Schema.String } }
+    )
+  ).toThrow(InvalidBridgeRpcSpec)
+  expect(() =>
+    BridgeRpc.group(
+      "Test.BadEventDot",
+      { call: validMethodSpec() },
+      { "bad.event": { payload: Schema.String } }
     )
   ).toThrow(InvalidBridgeRpcSpec)
 })

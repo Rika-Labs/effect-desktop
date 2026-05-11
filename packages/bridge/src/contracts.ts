@@ -168,8 +168,8 @@ export const makeBridgeRpcGroup = <
   spec: Spec,
   events: Events
 ): BridgeRpcGroup<Tag, Spec, Events> => {
-  if (tag.trim().length === 0) {
-    throw invalidSpec(tag, "<group>", "tag must be non-empty")
+  if (!isPrintableName(tag)) {
+    throw invalidSpec(tag, "<group>", "tag must be non-empty printable text")
   }
   validateBridgeRpcSpec(tag, spec)
   validateBridgeRpcEvents(tag, events)
@@ -202,8 +202,8 @@ const validateBridgeRpcSpec = (tag: string, spec: BridgeRpcSpec): void => {
     if (method === "events") {
       throw invalidSpec(tag, method, "events is a reserved method name")
     }
-    if (method.trim().length === 0) {
-      throw invalidSpec(tag, method, "method name must be non-empty")
+    if (!isWireSegmentName(method)) {
+      throw invalidSpec(tag, method, "method name must be non-empty printable text without dots")
     }
     validateMethodSpec(tag, method, methodSpec)
   }
@@ -247,6 +247,9 @@ const validateMethodSpec = (tag: string, method: string, spec: BridgeRpcMethodSp
   if (spec.idempotent === true && spec.cachedResultMs === undefined) {
     throw invalidSpec(tag, method, "idempotent methods must declare cachedResultMs")
   }
+  if (spec.idempotent === true && spec.cachedResultMs === 0) {
+    throw invalidSpec(tag, method, "idempotent methods must declare positive cachedResultMs")
+  }
   if (spec.cancellable !== undefined && typeof spec.cancellable !== "boolean") {
     throw invalidSpec(tag, method, "cancellable must be a boolean")
   }
@@ -267,8 +270,8 @@ const validateBridgeRpcEvents = (tag: string, events: BridgeRpcEvents): void => 
   }
 
   for (const [event, eventSpec] of Object.entries(events)) {
-    if (event.trim().length === 0) {
-      throw invalidSpec(tag, event, "event name must be non-empty")
+    if (!isWireSegmentName(event)) {
+      throw invalidSpec(tag, event, "event name must be non-empty printable text without dots")
     }
     validateEventSpec(tag, event, eventSpec)
   }
@@ -337,8 +340,8 @@ const validateSupportSpec = (tag: string, method: string, spec: RpcSupportMetada
 }
 
 const validateResourceSpec = (tag: string, method: string, spec: BridgeRpcResourceSpec): void => {
-  if (spec.kind.trim().length === 0 || spec.state.trim().length === 0) {
-    throw invalidSpec(tag, method, "resource kind and state must be non-empty")
+  if (!isPrintableName(spec.kind) || !isPrintableName(spec.state)) {
+    throw invalidSpec(tag, method, "resource kind and state must be non-empty printable text")
   }
 }
 
@@ -399,6 +402,21 @@ const invalidSpec = (tag: string, method: string, reason: string): InvalidBridge
     reason,
     message: `Invalid RPC group ${tag}.${method}: ${reason}`
   })
+
+const isWireSegmentName = (value: string): boolean => isPrintableName(value) && !value.includes(".")
+
+const isPrintableName = (value: string): boolean => {
+  if (value.trim().length === 0) {
+    return false
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    if (code < 0x20 || code === 0x7f) {
+      return false
+    }
+  }
+  return true
+}
 
 const bridgeMethodToRpc = (tag: string, method: string, spec: BridgeRpcMethodSpec): Rpc.Any => {
   const rpc = isStreamSpec(spec.output)
