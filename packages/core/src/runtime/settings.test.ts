@@ -84,6 +84,20 @@ describe("Settings", () => {
     expect(Option.isNone(stored)).toBe(true)
   })
 
+  test("unserializable set values return typed InvalidArgument before writing", async () => {
+    const { store } = await makeFixture()
+
+    for (const value of [() => undefined, Symbol("bad")]) {
+      const exit = await Effect.runPromiseExit(store.set("bad", Schema.Unknown, value))
+      const stored = await Effect.runPromise(store.get("bad", Schema.Unknown))
+      const keys = await Effect.runPromise(store.keys())
+
+      expectFailure(exit, SettingsInvalidArgumentError)
+      expect(Option.isNone(stored)).toBe(true)
+      expect(keys).toEqual([])
+    }
+  })
+
   test("update serializes concurrent read-modify-write calls", async () => {
     const { store } = await makeFixture()
 

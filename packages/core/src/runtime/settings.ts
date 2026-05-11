@@ -166,20 +166,40 @@ const kvSet = (
   value: unknown,
   operation: string
 ): Effect.Effect<void, SettingsError, never> =>
+  encodeJsonText(value, storeKey, operation).pipe(
+    Effect.flatMap((json) =>
+      kv
+        .set(storeKey, json)
+        .pipe(Effect.mapError((cause) => new SettingsKvError({ operation, cause })))
+    )
+  )
+
+const encodeJsonText = (
+  value: unknown,
+  field: string,
+  operation: string
+): Effect.Effect<string, SettingsInvalidArgumentError, never> =>
   Effect.try({
     try: () => JSON.stringify(value),
     catch: (error) =>
       new SettingsInvalidArgumentError({
         operation,
-        field: storeKey,
+        field,
         message: formatUnknownError(error),
         cause: Option.some(error)
       })
   }).pipe(
     Effect.flatMap((json) =>
-      kv
-        .set(storeKey, json)
-        .pipe(Effect.mapError((cause) => new SettingsKvError({ operation, cause })))
+      typeof json === "string"
+        ? Effect.succeed(json)
+        : Effect.fail(
+            new SettingsInvalidArgumentError({
+              operation,
+              field,
+              message: "value is not JSON-serializable",
+              cause: Option.none()
+            })
+          )
     )
   )
 
