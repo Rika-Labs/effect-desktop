@@ -131,7 +131,7 @@
     {
       "name": "AuditEvent",
       "kind": "class",
-      "signature": "export class AuditEvent extends Schema.Class<AuditEvent>(\"AuditEvent\")({ kind: AuditEventKind, source: NonEmptyString, traceId: NonEmptyString, outcome: NonEmptyString, timestamp: Schema.optionalKey(Schema.Number), normalizedCapability: Schema.optionalKey(Schema.Unknown), actor: Schema.optionalKey(Schema.Unknown), resource: Schema.optionalKey(Schema.String), details: Schema.optionalKey(Schema.Unknown) }) {}"
+      "signature": "export class AuditEvent extends Schema.Class<AuditEvent>(\"AuditEvent\")({ kind: AuditEventKind, source: NonEmptyString, traceId: NonEmptyString, outcome: NonEmptyString, timestamp: Schema.optionalKey(AuditTimestamp), normalizedCapability: Schema.optionalKey(Schema.Unknown), actor: Schema.optionalKey(Schema.Unknown), resource: Schema.optionalKey(Schema.String), details: Schema.optionalKey(Schema.Unknown) }) {}"
     },
     {
       "name": "AuditEventKind",
@@ -1514,9 +1514,14 @@
       "signature": "export class SecretsAuditFailedError extends Data.TaggedError(\"SecretsAuditFailed\")<{ readonly operation: string readonly namespace: string readonly key: Option.Option<string> readonly cause: unknown }> {}"
     },
     {
+      "name": "SecretsCommittedAuditFailedError",
+      "kind": "class",
+      "signature": "export class SecretsCommittedAuditFailedError extends Data.TaggedError( \"SecretsCommittedAuditFailed\" )<{ readonly operation: \"Secrets.set\" | \"Secrets.delete\" readonly namespace: string readonly key: string readonly cause: SecretsAuditFailedError }> {}"
+    },
+    {
       "name": "SecretsError",
       "kind": "type",
-      "signature": "export type SecretsError = | SecretNotFoundError | SecretsSafeStorageUnavailableError | SecretsPermissionDeniedError | SecretsInvalidArgumentError | SecretsAuditFailedError | HostProtocolError"
+      "signature": "export type SecretsError = | SecretNotFoundError | SecretsSafeStorageUnavailableError | SecretsPermissionDeniedError | SecretsInvalidArgumentError | SecretsAuditFailedError | SecretsCommittedAuditFailedError | HostProtocolError"
     },
     {
       "name": "SecretsInvalidArgumentError",
