@@ -126,7 +126,7 @@ export interface ProductionSecurityConfig {
     readonly requirePermissions?: boolean
     readonly externalNavigation?: "deny" | "ask"
     readonly devtoolsInProd?: boolean
-    readonly csp?: CspPolicy
+    readonly csp?: CspPolicy | undefined
     readonly redaction?: RedactionPolicy
   }
   readonly permissions?: {
@@ -144,6 +144,62 @@ export interface ProductionSecurityConfig {
   readonly appProtocol?: AppProtocolPolicy
   readonly resources?: ResourcePolicy
   readonly contracts?: readonly ContractCapabilityRequirement[]
+}
+
+export interface DesktopConfig extends ProductionSecurityConfig {
+  readonly app?: {
+    readonly id?: string
+    readonly name?: string
+    readonly version?: string
+  }
+  readonly runtime?: {
+    readonly engine?: "bun"
+    readonly entry?: string
+  }
+  readonly renderer?: {
+    readonly framework?: "react"
+    readonly styling?: "tailwind"
+    readonly entry?: string
+    readonly dist?: string
+  }
+  readonly native?: {
+    readonly host?: string
+    readonly renderer?: string
+  }
+  readonly windows?: unknown
+  readonly protocols?: readonly {
+    readonly scheme: string
+    readonly handler?: string
+  }[]
+  readonly build?: {
+    readonly targets?: readonly string[]
+  }
+  readonly signing?: unknown
+  readonly update?: ProductionSecurityConfig["update"] & {
+    readonly channel?: "stable" | "beta" | "canary"
+    readonly publicKey?: string
+    readonly feedUrl?: string
+    readonly minVersion?: string
+    readonly maxVersion?: string | undefined
+    readonly keyVersion?: number
+    readonly rollback?: boolean
+  }
+  readonly telemetry?: {
+    readonly enabled?: boolean
+    readonly redactSensitive?: boolean
+    readonly endpoint?: string
+  }
+  readonly protocol?: {
+    readonly limits?: {
+      readonly maxFrameBytes?: number
+      readonly maxConcurrentRequestsPerWindow?: number
+      readonly maxConcurrentStreamsPerWindow?: number
+    }
+  }
+  readonly env?: Record<string, Record<string, string>>
+  readonly workspace?: {
+    readonly sharedConfigPath?: string
+  }
 }
 
 export interface ProductionCheckInput {
@@ -173,9 +229,7 @@ interface ParsedCspPolicy {
   readonly duplicates: readonly string[]
 }
 
-export const defineDesktopConfig = <Config extends ProductionSecurityConfig>(
-  config: Config
-): Config => config
+export const defineDesktopConfig = <Config extends DesktopConfig>(config: Config): Config => config
 
 export const DEFAULT_CSP_NONCE_PLACEHOLDER = "{N}"
 

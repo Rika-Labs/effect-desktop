@@ -4,6 +4,7 @@ import { Effect, Exit } from "effect"
 import {
   cspWeakenings,
   DEFAULT_CSP_DIRECTIVES,
+  defineDesktopConfig,
   formatProductionCheckReport,
   ProductionCheckInvalidInput,
   renderDefaultCsp,
@@ -31,6 +32,91 @@ const HOST_DEFAULT_CSP_FOR_NONCE = (nonce: string): string =>
 
 test("CSP defaults render the spec policy with a nonce", () => {
   expect(renderDefaultCsp("abc123")).toBe(HOST_DEFAULT_CSP_FOR_NONCE("abc123"))
+})
+
+test("defineDesktopConfig accepts the documented app config shape", () => {
+  const config = defineDesktopConfig({
+    app: {
+      id: "dev.example.app",
+      name: "Example App",
+      version: "1.0.0"
+    },
+    runtime: {
+      engine: "bun",
+      entry: "src/app.ts"
+    },
+    renderer: {
+      framework: "react",
+      styling: "tailwind",
+      entry: "src/renderer/main.tsx"
+    },
+    native: {
+      host: "rust-wry-tao",
+      renderer: "system-webview"
+    },
+    windows: {
+      defaults: {
+        titleBarStyle: "default"
+      }
+    },
+    security: {
+      requireTypedBridge: true,
+      rendererNativeAccess: false,
+      requirePermissions: true,
+      csp: undefined,
+      externalNavigation: "deny",
+      devtoolsInProd: false
+    },
+    protocols: [{ scheme: "myapp", handler: "open" }],
+    build: {
+      targets: ["macos-arm64", "linux-x64"]
+    },
+    signing: {
+      macos: {
+        identity: "Developer ID Application: Example Inc."
+      }
+    },
+    update: {
+      channel: "stable",
+      publicKey: "ed25519:abc",
+      feedUrl: "https://updates.example.dev/{platform}/{channel}.json",
+      maxVersion: undefined,
+      keyVersion: 2
+    },
+    telemetry: {
+      enabled: true,
+      redactSensitive: true,
+      endpoint: "https://telemetry.example.dev"
+    },
+    protocol: {
+      limits: {
+        maxFrameBytes: 4 * 1024 * 1024,
+        maxConcurrentRequestsPerWindow: 256,
+        maxConcurrentStreamsPerWindow: 64
+      }
+    },
+    env: {
+      dev: { LOG_LEVEL: "debug" }
+    },
+    workspace: {
+      sharedConfigPath: "../../desktop.shared.ts"
+    }
+  })
+
+  expect(config.app.version).toBe("1.0.0")
+})
+
+test("defineDesktopConfig rejects invalid app metadata types at compile time", () => {
+  const config = defineDesktopConfig({
+    app: {
+      id: "dev.example.app",
+      name: "Example App",
+      // @ts-expect-error app.version must be a string when present.
+      version: 1
+    }
+  })
+
+  expect(config.app?.id).toBe("dev.example.app")
 })
 
 test("CSP rendering rejects nonce tokens that can alter header structure", () => {
