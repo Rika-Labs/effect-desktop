@@ -1,7 +1,7 @@
 import { BridgeRpc, type BridgeResourceHandle } from "@effect-desktop/bridge"
 import { Schema } from "effect"
 
-import { PrintableNonEmptyString, PrintableString } from "./strings.js"
+import { PrintableNonEmptyString } from "./strings.js"
 
 const WindowResource = BridgeRpc.Resource("window", "open")
 const OwnerWindowId = Schema.NonEmptyString
@@ -19,8 +19,8 @@ export class NotificationAction extends Schema.Class<NotificationAction>("Notifi
 export class NotificationShowInput extends Schema.Class<NotificationShowInput>(
   "NotificationShowInput"
 )({
-  title: PrintableString,
-  body: PrintableString,
+  title: PrintableNonEmptyString,
+  body: PrintableNonEmptyString,
   actions: Schema.optionalKey(Schema.Array(NotificationAction)),
   ownerWindow: Schema.optionalKey(WindowResource.schema)
 }) {}

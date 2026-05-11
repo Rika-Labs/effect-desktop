@@ -2823,6 +2823,8 @@ test("Notification bridge client sends typed host envelopes and decodes events",
 
 test("Notification bridge client returns invalid input as typed Effect failures", async () => {
   const cases: ReadonlyArray<{ readonly label: string; readonly input: Record<string, string> }> = [
+    { label: "empty title", input: { title: "", body: "Open results" } },
+    { label: "empty body", input: { title: "Build finished", body: "" } },
     { label: "missing body", input: { title: "Missing body" } },
     { label: "control char in title", input: { title: "Build\nfinished", body: "Open results" } },
     { label: "control char in body", input: { title: "Build finished", body: "Open\nresults" } },
