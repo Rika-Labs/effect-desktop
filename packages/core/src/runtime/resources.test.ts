@@ -307,6 +307,45 @@ test("register does not overwrite a live entry with a duplicate explicit id", as
   expect(result.snapshot.entries.map((entry) => entry.handle.id)).toEqual([result.second.id])
 })
 
+test("register retries generated ids until the id is live-unique", async () => {
+  const originalGetRandomValues = globalThis.crypto.getRandomValues.bind(globalThis.crypto)
+
+  try {
+    stubCryptoRandomValuesWithZeroes()
+    const now = 1710000000000
+    const collidingFallbackId = generateUuidV7(now)
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const registry = yield* makeResourceRegistry({
+          now: () => now,
+          nextId: () => collidingFallbackId
+        })
+        const first = yield* registry.register({
+          kind: "process",
+          id: collidingFallbackId,
+          ownerScope: "scope-process",
+          state: "running"
+        })
+        const second = yield* registry.register({
+          kind: "worker",
+          ownerScope: "scope-worker",
+          state: "ready"
+        })
+        const snapshot = yield* registry.list()
+        return { first, second, snapshot }
+      })
+    )
+
+    expect(result.first.id).toBe(collidingFallbackId)
+    expect(result.second.id).not.toBe(collidingFallbackId)
+    expect(result.snapshot.entries.map((entry) => entry.handle.id).sort()).toEqual(
+      [result.first.id, result.second.id].sort()
+    )
+  } finally {
+    globalThis.crypto.getRandomValues = originalGetRandomValues
+  }
+})
+
 test("closeScope disposes transitively owned resources child scopes first", async () => {
   const disposalOrder = await Effect.runPromise(
     Effect.gen(function* () {
@@ -583,3 +622,12 @@ test("uuidv7 embeds sortable millisecond time and version bits", () => {
   expect(uuid.charAt(14)).toBe("7")
   expect(["8", "9", "a", "b"]).toContain(uuid.charAt(19))
 })
+
+const stubCryptoRandomValuesWithZeroes = (): void => {
+  globalThis.crypto.getRandomValues = (<T extends ArrayBufferView | null>(array: T): T => {
+    if (array instanceof Uint8Array) {
+      array.fill(0)
+    }
+    return array
+  }) as Crypto["getRandomValues"]
+}

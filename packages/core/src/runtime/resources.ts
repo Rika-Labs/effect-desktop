@@ -454,7 +454,18 @@ const availableRegistrationId = (
   }
 
   const candidate = nextId(createdAt)
-  return current.has(candidate) ? generateUuidV7(createdAt) : candidate
+  if (!current.has(candidate)) {
+    return candidate
+  }
+
+  let attempt = 0
+  while (true) {
+    const fallback = generateUuidV7(createdAt + attempt)
+    if (!current.has(fallback)) {
+      return fallback
+    }
+    attempt += 1
+  }
 }
 
 const publicEntry = (entry: StoredResourceEntry): ResourceEntry => ({
