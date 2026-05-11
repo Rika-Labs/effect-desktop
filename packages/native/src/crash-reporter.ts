@@ -1,13 +1,12 @@
 import {
-  Api,
+  BridgeRpc,
   Client,
-  type ApiClientExchange,
-  type ApiClientOptions,
-  type ApiContractClass,
-  type ApiContractError,
-  type ApiContractSpec,
-  type ApiHandlers,
-  type ApiLayer,
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeRpcGroup,
+  type BridgeRpcSpec,
+  type BridgeRpcHandlers,
+  type BridgeRpcLayer,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
@@ -35,7 +34,7 @@ export type CrashReportUploadHandler = (
   breadcrumbs: ReadonlyArray<CrashReporterBreadcrumb>
 ) => Effect.Effect<void, CrashReporterError, never>
 
-export const CrashReporterApiSpec = Object.freeze({
+export const CrashReporterRpcSpec = Object.freeze({
   start: crashReporterMethodSpec(CrashReporterStartInput, "native.invoke:CrashReporter.start"),
   recordBreadcrumb: crashReporterMethodSpec(
     CrashReporterBreadcrumbInput,
@@ -53,53 +52,22 @@ export const CrashReporterApiSpec = Object.freeze({
     error: HostProtocolErrorSchema,
     permission: "native.invoke:CrashReporter.setUploadHandler"
   }
-}) satisfies ApiContractSpec
+}) satisfies BridgeRpcSpec
 
-export type CrashReporterApiSpec = typeof CrashReporterApiSpec
+export type CrashReporterRpcSpec = typeof CrashReporterRpcSpec
 
-export const CrashReporterApiEvents = Object.freeze({})
+export const CrashReporterRpcEvents = Object.freeze({})
 
-export type CrashReporterApiEvents = typeof CrashReporterApiEvents
+export type CrashReporterRpcEvents = typeof CrashReporterRpcEvents
 
-export const CrashReporterApi: ApiContractClass<
+export const CrashReporterRpcs: BridgeRpcGroup<
   "CrashReporter",
-  CrashReporterApiSpec,
-  CrashReporterApiEvents
-> = (() => {
-  const contract = class {
-    static readonly tag = "CrashReporter"
-    static readonly spec = CrashReporterApiSpec
-    static readonly events = CrashReporterApiEvents
-
-    static layer<Handlers extends ApiHandlers<CrashReporterApiSpec>>(
-      handlers: Handlers
-    ): ApiLayer<"CrashReporter", CrashReporterApiSpec, Handlers, CrashReporterApiEvents> {
-      return Object.freeze({ contract, handlers: Object.freeze(handlers) })
-    }
-  } as ApiContractClass<"CrashReporter", CrashReporterApiSpec, CrashReporterApiEvents>
-
-  return Object.freeze(contract)
-})()
-
-export const registerCrashReporterApi = (): Effect.Effect<
-  ApiContractClass<"CrashReporter", CrashReporterApiSpec, CrashReporterApiEvents>,
-  ApiContractError,
-  never
-> =>
-  Effect.gen(function* () {
-    const existing = yield* Api.get("CrashReporter")
-    if (Option.isSome(existing)) {
-      return existing.value as ApiContractClass<
-        "CrashReporter",
-        CrashReporterApiSpec,
-        CrashReporterApiEvents
-      >
-    }
-    return yield* Api.Tag("CrashReporter")<unknown>()(CrashReporterApiSpec, CrashReporterApiEvents)
-  })
+  CrashReporterRpcSpec,
+  CrashReporterRpcEvents
+> = BridgeRpc.group("CrashReporter", CrashReporterRpcSpec, CrashReporterRpcEvents)
 
 export const CrashReporterMethodNames = Object.freeze(
-  Object.keys(CrashReporterApiSpec) as ReadonlyArray<keyof CrashReporterApiSpec>
+  Object.keys(CrashReporterRpcSpec) as ReadonlyArray<keyof CrashReporterRpcSpec>
 )
 
 export interface CrashReporterClientApi {
@@ -148,15 +116,17 @@ export const makeCrashReporterServiceLayer = (
   Layer.provide(CrashReporterLive, makeCrashReporterClientLayer(client))
 
 export const makeCrashReporterBridgeClientLayer = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions = {}
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
 ): Layer.Layer<CrashReporterClient> =>
   Layer.succeed(CrashReporterClient)(makeCrashReporterBridgeClient(exchange, options))
 
-export const makeHostCrashReporterApiLayer = <Handlers extends ApiHandlers<CrashReporterApiSpec>>(
+export const makeHostCrashReporterBridgeRpcLayer = <
+  Handlers extends BridgeRpcHandlers<CrashReporterRpcSpec>
+>(
   handlers: Handlers
-): ApiLayer<"CrashReporter", CrashReporterApiSpec, Handlers, CrashReporterApiEvents> =>
-  CrashReporterApi.layer(handlers)
+): BridgeRpcLayer<"CrashReporter", CrashReporterRpcSpec, Handlers, CrashReporterRpcEvents> =>
+  BridgeRpc.layer(CrashReporterRpcs)(handlers)
 
 export const makeCrashReporterMemoryClient = (): Effect.Effect<
   CrashReporterClientApi,
@@ -225,10 +195,10 @@ export const makeCrashReporterMemoryClient = (): Effect.Effect<
   })
 
 const makeCrashReporterBridgeClient = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
 ): CrashReporterClientApi => {
-  const client = Client({ CrashReporter: CrashReporterApi }, exchange, options).CrashReporter
+  const client = Client({ CrashReporter: CrashReporterRpcs }, exchange, options).CrashReporter
   return Object.freeze({
     start: (input = {}) =>
       input.uploadHandler !== undefined

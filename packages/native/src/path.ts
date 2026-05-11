@@ -1,73 +1,45 @@
 import {
-  Api,
+  BridgeRpc,
   Client,
-  type ApiClientExchange,
-  type ApiClientOptions,
-  type ApiContractClass,
-  type ApiContractError,
-  type ApiContractSpec,
-  type ApiHandlers,
-  type ApiLayer,
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeRpcGroup,
+  type BridgeRpcSpec,
+  type BridgeRpcHandlers,
+  type BridgeRpcLayer,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Schema } from "effect"
+import { Context, Effect, Layer, Schema } from "effect"
 
 import { CanonicalPath } from "./contracts/path.js"
 
 export type PathError = HostProtocolError
 
-export const PathApiSpec = Object.freeze({
+export const PathRpcSpec = Object.freeze({
   appData: pathMethodSpec("native.invoke:Path.appData"),
   cache: pathMethodSpec("native.invoke:Path.cache"),
   logs: pathMethodSpec("native.invoke:Path.logs"),
   temp: pathMethodSpec("native.invoke:Path.temp"),
   home: pathMethodSpec("native.invoke:Path.home"),
   downloads: pathMethodSpec("native.invoke:Path.downloads")
-}) satisfies ApiContractSpec
+}) satisfies BridgeRpcSpec
 
-export type PathApiSpec = typeof PathApiSpec
+export type PathRpcSpec = typeof PathRpcSpec
 
-export const PathApiEvents = Object.freeze({})
+export const PathRpcEvents = Object.freeze({})
 
-export type PathApiEvents = typeof PathApiEvents
+export type PathRpcEvents = typeof PathRpcEvents
 
-export const PathApi: ApiContractClass<"Path", PathApiSpec, PathApiEvents> = (() => {
-  const contract = class {
-    static readonly tag = "Path"
-    static readonly spec = PathApiSpec
-    static readonly events = PathApiEvents
-
-    static layer<Handlers extends ApiHandlers<PathApiSpec>>(
-      handlers: Handlers
-    ): ApiLayer<"Path", PathApiSpec, Handlers, PathApiEvents> {
-      return Object.freeze({
-        contract,
-        handlers: Object.freeze(handlers)
-      })
-    }
-  } as ApiContractClass<"Path", PathApiSpec, PathApiEvents>
-
-  return Object.freeze(contract)
-})()
-
-export const registerPathApi = (): Effect.Effect<
-  ApiContractClass<"Path", PathApiSpec, PathApiEvents>,
-  ApiContractError,
-  never
-> =>
-  Effect.gen(function* () {
-    const existing = yield* Api.get("Path")
-    if (Option.isSome(existing)) {
-      return existing.value as ApiContractClass<"Path", PathApiSpec, PathApiEvents>
-    }
-
-    return yield* Api.Tag("Path")<unknown>()(PathApiSpec, PathApiEvents)
-  })
+export const PathRpcs: BridgeRpcGroup<"Path", PathRpcSpec, PathRpcEvents> = BridgeRpc.group(
+  "Path",
+  PathRpcSpec,
+  PathRpcEvents
+)
 
 export const PathMethodNames = Object.freeze(
-  Object.keys(PathApiSpec) as ReadonlyArray<keyof PathApiSpec>
+  Object.keys(PathRpcSpec) as ReadonlyArray<keyof PathRpcSpec>
 )
 
 export interface PathClientApi {
@@ -108,13 +80,14 @@ export const makePathServiceLayer = (client: PathClientApi): Layer.Layer<Path> =
   Layer.provide(PathLive, makePathClientLayer(client))
 
 export const makePathBridgeClientLayer = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions = {}
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
 ): Layer.Layer<PathClient> => Layer.succeed(PathClient)(makePathBridgeClient(exchange, options))
 
-export const makeHostPathApiLayer = <Handlers extends ApiHandlers<PathApiSpec>>(
+export const makeHostPathBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<PathRpcSpec>>(
   handlers: Handlers
-): ApiLayer<"Path", PathApiSpec, Handlers, PathApiEvents> => PathApi.layer(handlers)
+): BridgeRpcLayer<"Path", PathRpcSpec, Handlers, PathRpcEvents> =>
+  BridgeRpc.layer(PathRpcs)(handlers)
 
 const makePathService = (client: PathClientApi): PathServiceApi => {
   const toStringPath = (effect: Effect.Effect<CanonicalPath, PathError, never>) =>
@@ -133,10 +106,10 @@ const makePathService = (client: PathClientApi): PathServiceApi => {
 }
 
 const makePathBridgeClient = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
 ): PathClientApi => {
-  const client = Client({ Path: PathApi }, exchange, options).Path
+  const client = Client({ Path: PathRpcs }, exchange, options).Path
 
   const pathClient: PathClientApi = {
     appData: () => client.appData(),

@@ -6,9 +6,8 @@ Accepted
 
 ## Context
 
-Effect Desktop had three competing concepts for renderer-callable APIs:
+Effect Desktop had competing concepts for renderer-callable APIs:
 
-- legacy `Api.Tag` contract specs in `@effect-desktop/bridge`;
 - raw Effect `RpcGroup` values from `effect/unstable/rpc`;
 - framework-level provider and hook APIs that could drift from either contract model.
 
@@ -20,7 +19,7 @@ Effect v4 already gives the right primitive: `RpcGroup` is a pure contract value
 
 ## Decision
 
-`RpcGroup` is the canonical boundary for every new renderer-callable desktop API.
+`RpcGroup` is the boundary for every renderer-callable desktop API.
 
 - New app APIs define one or more `Rpc.make(...)` values and collect them with `RpcGroup.make(...)`.
 - Runtime implementations use `RpcGroup.toLayer({ ...handlers })`.
@@ -28,8 +27,6 @@ Effect v4 already gives the right primitive: `RpcGroup` is a pure contract value
 - `Desktop.make({ windows })` owns declared startup windows and app shape.
 - `Desktop.provide(...)` composes ordinary Effect layers and desktop RPC layers.
 - Framework adapters derive their public client shape from the assembled desktop app and the provided `RpcGroup`.
-
-`Api.Tag` remains as a compatibility surface, but it is no longer a second authoritative model. `Api.Tag(...)(spec)` lowers methods, stream specs, events, permissions, endpoint intent, and support metadata into an Effect `RpcGroup`. Existing native and bridge contracts can keep their current declarations while downstream code consumes the same descriptor model as new `RpcGroup` APIs.
 
 Endpoint metadata is carried on the RPC value through Effect annotations:
 
@@ -55,13 +52,13 @@ Startup windows are host-owned. Renderer components must not open the initial wi
 
 ## Alternatives considered
 
-**Keep `Api.Tag` as the main app API**: it preserves existing examples, but keeps a custom contract language beside Effect's own RPC model. Every framework adapter would have to understand the legacy spec directly or depend on a generated intermediate representation. Rejected.
+**Keep a custom desktop API spec as the main app API**: it preserves early examples, but keeps a custom contract language beside Effect's own RPC model. Every framework adapter would have to understand that spec directly or depend on a generated intermediate representation. Rejected.
 
 **Expose `DesktopProvider` as the normal app assembly path**: it is easy for React users but wrong as the framework boundary. Providers are renderer-local wiring, not the source of app capabilities. They also do not translate cleanly to Vue, Solid, Next, or Astro. Rejected.
 
 **Require separate `apis` and `layers` arrays**: this makes drift easy. A contract can be declared without its implementation, or an implementation can be provided without the adapter seeing the contract. Rejected.
 
-**Use string lookups such as `useDesktopApi(\"terminal\")`**: strings are easy to demo and poor under refactor. They sever the type link between the imported contract and the adapter surface. Rejected.
+**Use string lookups such as `useDesktop(\"terminal\")`**: strings are easy to demo and poor under refactor. They sever the type link between the imported contract and the adapter surface. Rejected.
 
 **Give Astro a hook API**: Astro files do not have a hook lifecycle. Desktop access must live in hydrated framework islands where state and cleanup semantics are real. Rejected.
 
@@ -72,19 +69,17 @@ Startup windows are host-owned. Renderer components must not open the initial wi
 - One imported `RpcGroup` value identifies the renderer contract everywhere: runtime layer, app assembly, framework adapter, docs, tests, and examples.
 - App authors can use ordinary Effect v4 composition instead of framework-specific provider plumbing.
 - Adapter behavior stays honest to each frontend framework's state model.
-- Legacy contracts migrate without requiring a flag day.
 - Unsupported native methods become observable metadata rather than looking complete until invoked.
 - Missing providers, missing clients, and missing `RpcGroup`s fail with explicit typed errors.
 
 **Negative**
 
 - The framework now depends more directly on `effect/unstable/rpc` API stability.
-- `Api.Tag` compatibility code must remain until existing native contracts and templates are fully migrated.
 - Framework adapters need separate implementations rather than one shared React-shaped facade.
 
 **Neutral**
 
-- Existing low-level React provider hooks remain compatibility APIs, but new docs and templates use `ReactDesktop.from(Desktop.manifest(App))`.
+- Existing low-level React provider hooks remain available, but new docs and templates use `ReactDesktop.from(Desktop.manifest(App))`.
 - Native host support remains partial. This ADR only makes support visible; it does not implement missing host methods.
 
 ## Dependency note
@@ -130,8 +125,6 @@ export const App = Desktop.make({
 }).pipe(Desktop.provide(Desktop.Rpcs.layer(NotesRpcs, NotesLive)))
 ```
 
-Legacy `Api.Tag` contracts may continue to exist when the package already owns that shape. They must expose `toRpcGroup()` and support metadata through the lowerer so adapters and descriptors see the same model as new APIs.
-
 Renderer code should import the framework adapter, not raw bridge clients:
 
 ```tsx
@@ -149,8 +142,7 @@ function NotesView() {
 ## Validation
 
 - A new `RpcGroup` app API can be implemented with `toLayer`, provided with `Desktop.Rpcs.layer`, and consumed from React, Vue, and Solid adapters.
-- A legacy `Api.Tag` contract lowers to a `RpcGroup` with method, event, stream, permission, endpoint-kind, and support metadata intact.
 - `Desktop.describeRpcs(app, group)` rejects unprovided groups with `MissingDesktopRpcsError`.
 - React, Vue, and Solid adapters reject absent provider context and missing clients with typed framework errors.
 - Startup window declarations are opened by the runtime/host path after protocol readiness.
-- Native `WindowApi` reports implemented and unsupported methods through `RpcSupport` metadata.
+- Native `WindowRpcs` reports implemented and unsupported methods through `RpcSupport` metadata.

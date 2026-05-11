@@ -1,19 +1,18 @@
 import {
-  Api,
+  BridgeRpc,
   Client,
-  type ApiClientExchange,
-  type ApiClientOptions,
-  type ApiContractClass,
-  type ApiContractError,
-  type ApiContractSpec,
-  type ApiHandlers,
-  type ApiLayer,
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeRpcGroup,
+  type BridgeRpcSpec,
+  type BridgeRpcHandlers,
+  type BridgeRpcLayer,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Schema, Stream } from "effect"
+import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import {
   UpdaterCheckInput,
@@ -32,7 +31,7 @@ export type UpdaterDownloadOptions = Schema.Schema.Type<typeof UpdaterDownloadIn
 
 export type UpdaterInstallOptions = Schema.Schema.Type<typeof UpdaterInstallInput>
 
-export const UpdaterApiSpec = Object.freeze({
+export const UpdaterRpcSpec = Object.freeze({
   check: {
     input: UpdaterCheckInput,
     output: UpdaterCheckResult,
@@ -69,47 +68,21 @@ export const UpdaterApiSpec = Object.freeze({
     error: HostProtocolErrorSchema,
     permission: "native.invoke:Updater.readyForRestart"
   }
-}) satisfies ApiContractSpec
+}) satisfies BridgeRpcSpec
 
-export type UpdaterApiSpec = typeof UpdaterApiSpec
+export type UpdaterRpcSpec = typeof UpdaterRpcSpec
 
-export const UpdaterApiEvents = Object.freeze({
+export const UpdaterRpcEvents = Object.freeze({
   PreparingRestart: { payload: UpdaterPreparingRestartEvent }
 })
 
-export type UpdaterApiEvents = typeof UpdaterApiEvents
+export type UpdaterRpcEvents = typeof UpdaterRpcEvents
 
-export const UpdaterApi: ApiContractClass<"Updater", UpdaterApiSpec, UpdaterApiEvents> = (() => {
-  const contract = class {
-    static readonly tag = "Updater"
-    static readonly spec = UpdaterApiSpec
-    static readonly events = UpdaterApiEvents
-
-    static layer<Handlers extends ApiHandlers<UpdaterApiSpec>>(
-      handlers: Handlers
-    ): ApiLayer<"Updater", UpdaterApiSpec, Handlers, UpdaterApiEvents> {
-      return Object.freeze({ contract, handlers: Object.freeze(handlers) })
-    }
-  } as ApiContractClass<"Updater", UpdaterApiSpec, UpdaterApiEvents>
-
-  return Object.freeze(contract)
-})()
-
-export const registerUpdaterApi = (): Effect.Effect<
-  ApiContractClass<"Updater", UpdaterApiSpec, UpdaterApiEvents>,
-  ApiContractError,
-  never
-> =>
-  Effect.gen(function* () {
-    const existing = yield* Api.get("Updater")
-    if (Option.isSome(existing)) {
-      return existing.value as ApiContractClass<"Updater", UpdaterApiSpec, UpdaterApiEvents>
-    }
-    return yield* Api.Tag("Updater")<unknown>()(UpdaterApiSpec, UpdaterApiEvents)
-  })
+export const UpdaterRpcs: BridgeRpcGroup<"Updater", UpdaterRpcSpec, UpdaterRpcEvents> =
+  BridgeRpc.group("Updater", UpdaterRpcSpec, UpdaterRpcEvents)
 
 export const UpdaterMethodNames = Object.freeze(
-  Object.keys(UpdaterApiSpec) as ReadonlyArray<keyof UpdaterApiSpec>
+  Object.keys(UpdaterRpcSpec) as ReadonlyArray<keyof UpdaterRpcSpec>
 )
 
 export interface UpdaterClientApi {
@@ -166,22 +139,23 @@ export const makeUpdaterServiceLayer = (client: UpdaterClientApi): Layer.Layer<U
   Layer.provide(UpdaterLive, makeUpdaterClientLayer(client))
 
 export const makeUpdaterBridgeClientLayer = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions = {}
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
 ): Layer.Layer<UpdaterClient> =>
   Layer.succeed(UpdaterClient)(makeUpdaterBridgeClient(exchange, options))
 
-export const makeHostUpdaterApiLayer = <Handlers extends ApiHandlers<UpdaterApiSpec>>(
+export const makeHostUpdaterBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<UpdaterRpcSpec>>(
   handlers: Handlers
-): ApiLayer<"Updater", UpdaterApiSpec, Handlers, UpdaterApiEvents> => UpdaterApi.layer(handlers)
+): BridgeRpcLayer<"Updater", UpdaterRpcSpec, Handlers, UpdaterRpcEvents> =>
+  BridgeRpc.layer(UpdaterRpcs)(handlers)
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
 const makeUpdaterBridgeClient = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
 ): UpdaterClientApi => {
-  const client = Client({ Updater: UpdaterApi }, exchange, options).Updater
+  const client = Client({ Updater: UpdaterRpcs }, exchange, options).Updater
   return Object.freeze({
     check: (input = {}) =>
       decodeUpdaterCheckInput(input, "Updater.check").pipe(Effect.flatMap(client.check)),

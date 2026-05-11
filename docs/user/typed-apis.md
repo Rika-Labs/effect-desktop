@@ -1,6 +1,6 @@
-# Typed APIs
+# Typed RPCs
 
-Typed APIs are declared once as Effect RPC contracts and consumed from runtime handlers and React hooks.
+Typed RPCs are declared once as Effect RPC groups and consumed from runtime handlers and React hooks.
 
 ## Contract
 
@@ -8,7 +8,7 @@ Typed APIs are declared once as Effect RPC contracts and consumed from runtime h
 import { Handlers, RpcGroup } from "../packages/bridge/src/index.js"
 
 if (typeof RpcGroup.make !== "function" || typeof Handlers !== "function") {
-  throw new Error("typed API contract helpers are unavailable")
+  throw new Error("typed RPC helpers are unavailable")
 }
 ```
 
@@ -21,13 +21,13 @@ export const CreateNote = Rpc.make("CreateNote", {
   success: Schema.Struct({ id: Schema.String, title: Schema.String })
 })
 
-export const NotesApi = RpcGroup.make(CreateNote)
+export const NotesRpcs = RpcGroup.make(CreateNote)
 ```
 
 ## Runtime handler
 
 ```ts
-export const NotesLive = NotesApi.toLayer({
+export const NotesLive = NotesRpcs.toLayer({
   CreateNote: ({ title }) =>
     Effect.gen(function* () {
       const notes = yield* Notes

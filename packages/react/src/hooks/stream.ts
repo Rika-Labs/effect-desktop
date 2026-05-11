@@ -78,8 +78,6 @@ export const useDesktopStream = <A, E>(
   return state
 }
 
-export const useStream = useDesktopStream
-
 export const useSubscribable = <A>(ref: SubscriptionRef.SubscriptionRef<A>): A | undefined => {
   const [value, setValue] = useState<A | undefined>(undefined)
   const refRef = useRef<SubscriptionRef.SubscriptionRef<A>>(ref)

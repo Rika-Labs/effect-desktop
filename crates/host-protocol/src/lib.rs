@@ -13,7 +13,7 @@ use serde_json::Value;
 
 pub const HOST_PING_METHOD: &str = "host.ping";
 pub const HOST_VERSION_METHOD: &str = "host.version";
-pub const PROTOCOL_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const PROTOCOL_VERSION: &str = env!("EFFECT_DESKTOP_HOST_PROTOCOL_VERSION");
 pub const WINDOW_CREATE_METHOD: &str = "Window.create";
 pub const WINDOW_DESTROY_METHOD: &str = "Window.destroy";
 pub const DOCK_SET_BADGE_COUNT_METHOD: &str = "Dock.setBadgeCount";

@@ -1,19 +1,18 @@
 import {
-  Api,
+  BridgeRpc,
   Client,
-  type ApiClientExchange,
-  type ApiClientOptions,
-  type ApiContractClass,
-  type ApiContractError,
-  type ApiContractSpec,
-  type ApiHandlers,
-  type ApiLayer,
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeRpcGroup,
+  type BridgeRpcSpec,
+  type BridgeRpcHandlers,
+  type BridgeRpcLayer,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Schema, Stream } from "effect"
+import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 export * from "./contracts/app.js"
 import {
@@ -37,7 +36,7 @@ import {
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
-export const AppApiSpec = Object.freeze({
+export const AppRpcSpec = Object.freeze({
   getInfo: {
     input: Schema.Void,
     output: AppInfo,
@@ -86,54 +85,27 @@ export const AppApiSpec = Object.freeze({
     error: HostProtocolErrorSchema,
     permission: "native.invoke:App.registerProtocol"
   }
-}) satisfies ApiContractSpec
+}) satisfies BridgeRpcSpec
 
-export type AppApiSpec = typeof AppApiSpec
+export type AppRpcSpec = typeof AppRpcSpec
 
-export const AppApiEvents = Object.freeze({
+export const AppRpcEvents = Object.freeze({
   onSecondInstance: { payload: AppSecondInstanceEvent },
   onOpenFile: { payload: AppOpenFileEvent },
   onOpenUrl: { payload: AppOpenUrlEvent },
   onBeforeQuit: { payload: AppBeforeQuitEvent }
 })
 
-export type AppApiEvents = typeof AppApiEvents
+export type AppRpcEvents = typeof AppRpcEvents
 
-export const AppApi: ApiContractClass<"App", AppApiSpec, AppApiEvents> = (() => {
-  const contract = class {
-    static readonly tag = "App"
-    static readonly spec = AppApiSpec
-    static readonly events = AppApiEvents
-
-    static layer<Handlers extends ApiHandlers<AppApiSpec>>(
-      handlers: Handlers
-    ): ApiLayer<"App", AppApiSpec, Handlers, AppApiEvents> {
-      return Object.freeze({
-        contract,
-        handlers: Object.freeze(handlers)
-      })
-    }
-  } as ApiContractClass<"App", AppApiSpec, AppApiEvents>
-
-  return Object.freeze(contract)
-})()
-
-export const registerAppApi = (): Effect.Effect<
-  ApiContractClass<"App", AppApiSpec, AppApiEvents>,
-  ApiContractError,
-  never
-> =>
-  Effect.gen(function* () {
-    const existing = yield* Api.get("App")
-    if (Option.isSome(existing)) {
-      return existing.value as ApiContractClass<"App", AppApiSpec, AppApiEvents>
-    }
-
-    return yield* Api.Tag("App")<unknown>()(AppApiSpec, AppApiEvents)
-  })
+export const AppRpcs: BridgeRpcGroup<"App", AppRpcSpec, AppRpcEvents> = BridgeRpc.group(
+  "App",
+  AppRpcSpec,
+  AppRpcEvents
+)
 
 export const AppMethodNames = Object.freeze(
-  Object.keys(AppApiSpec) as ReadonlyArray<keyof AppApiSpec>
+  Object.keys(AppRpcSpec) as ReadonlyArray<keyof AppRpcSpec>
 )
 
 export type AppError = HostProtocolError
@@ -160,7 +132,6 @@ export class AppClient extends Context.Service<AppClient, AppClientApi>()(
 export interface AppServiceApi extends Omit<AppClientApi, "quit" | "restart"> {
   readonly quit: (input?: AppQuitOptions) => Effect.Effect<void, AppError, never>
   readonly restart: (input?: AppRestartOptions) => Effect.Effect<void, AppError, never>
-  readonly onProtocolUrl: () => Stream.Stream<AppOpenUrlEvent, AppError, never>
 }
 
 export class App extends Context.Service<App, AppServiceApi>()("@effect-desktop/native/App") {}
@@ -179,13 +150,13 @@ export const makeAppServiceLayer = (client: AppClientApi): Layer.Layer<App> =>
   Layer.provide(AppLive, makeAppClientLayer(client))
 
 export const makeAppBridgeClientLayer = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions = {}
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
 ): Layer.Layer<AppClient> => Layer.succeed(AppClient)(makeAppBridgeClient(exchange, options))
 
-export const makeHostAppApiLayer = <Handlers extends ApiHandlers<AppApiSpec>>(
+export const makeHostAppBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<AppRpcSpec>>(
   handlers: Handlers
-): ApiLayer<"App", AppApiSpec, Handlers, AppApiEvents> => AppApi.layer(handlers)
+): BridgeRpcLayer<"App", AppRpcSpec, Handlers, AppRpcEvents> => BridgeRpc.layer(AppRpcs)(handlers)
 
 const makeAppService = (client: AppClientApi): AppServiceApi => {
   const service: AppServiceApi = {
@@ -200,7 +171,6 @@ const makeAppService = (client: AppClientApi): AppServiceApi => {
     onSecondInstance: () => client.onSecondInstance(),
     onOpenFile: () => client.onOpenFile(),
     onOpenUrl: () => client.onOpenUrl(),
-    onProtocolUrl: () => client.onOpenUrl(),
     onBeforeQuit: () => client.onBeforeQuit()
   }
 
@@ -208,10 +178,10 @@ const makeAppService = (client: AppClientApi): AppServiceApi => {
 }
 
 const makeAppBridgeClient = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
 ): AppClientApi => {
-  const client = Client({ App: AppApi }, exchange, options).App
+  const client = Client({ App: AppRpcs }, exchange, options).App
 
   const appClient: AppClientApi = {
     getInfo: () => client.getInfo(),

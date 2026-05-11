@@ -1,19 +1,18 @@
 import {
-  Api,
+  BridgeRpc,
   Client,
-  type ApiClientExchange,
-  type ApiClientOptions,
-  type ApiContractClass,
-  type ApiContractError,
-  type ApiContractSpec,
-  type ApiHandlers,
-  type ApiLayer,
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeRpcGroup,
+  type BridgeRpcSpec,
+  type BridgeRpcHandlers,
+  type BridgeRpcLayer,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Schema } from "effect"
+import { Context, Effect, Layer, Schema } from "effect"
 import * as nodePath from "node:path"
 
 import {
@@ -31,7 +30,7 @@ import {
 const StrictParseOptions = { onExcessProperty: "error" } as const
 export type ProtocolError = HostProtocolError
 
-export const ProtocolApiSpec = Object.freeze({
+export const ProtocolRpcSpec = Object.freeze({
   registerAppProtocol: protocolMethodSpec(
     ProtocolRegisterAppProtocolInput,
     "native.invoke:Protocol.registerAppProtocol"
@@ -39,46 +38,19 @@ export const ProtocolApiSpec = Object.freeze({
   serveAsset: protocolMethodSpec(ProtocolServeAssetInput, "native.invoke:Protocol.serveAsset"),
   serveRoute: protocolMethodSpec(ProtocolServeRouteInput, "native.invoke:Protocol.serveRoute"),
   deny: protocolMethodSpec(ProtocolDenyInput, "native.invoke:Protocol.deny")
-}) satisfies ApiContractSpec
+}) satisfies BridgeRpcSpec
 
-export type ProtocolApiSpec = typeof ProtocolApiSpec
+export type ProtocolRpcSpec = typeof ProtocolRpcSpec
 
-export const ProtocolApiEvents = Object.freeze({})
+export const ProtocolRpcEvents = Object.freeze({})
 
-export type ProtocolApiEvents = typeof ProtocolApiEvents
+export type ProtocolRpcEvents = typeof ProtocolRpcEvents
 
-export const ProtocolApi: ApiContractClass<"Protocol", ProtocolApiSpec, ProtocolApiEvents> =
-  (() => {
-    const contract = class {
-      static readonly tag = "Protocol"
-      static readonly spec = ProtocolApiSpec
-      static readonly events = ProtocolApiEvents
-
-      static layer<Handlers extends ApiHandlers<ProtocolApiSpec>>(
-        handlers: Handlers
-      ): ApiLayer<"Protocol", ProtocolApiSpec, Handlers, ProtocolApiEvents> {
-        return Object.freeze({ contract, handlers: Object.freeze(handlers) })
-      }
-    } as ApiContractClass<"Protocol", ProtocolApiSpec, ProtocolApiEvents>
-
-    return Object.freeze(contract)
-  })()
-
-export const registerProtocolApi = (): Effect.Effect<
-  ApiContractClass<"Protocol", ProtocolApiSpec, ProtocolApiEvents>,
-  ApiContractError,
-  never
-> =>
-  Effect.gen(function* () {
-    const existing = yield* Api.get("Protocol")
-    if (Option.isSome(existing)) {
-      return existing.value as ApiContractClass<"Protocol", ProtocolApiSpec, ProtocolApiEvents>
-    }
-    return yield* Api.Tag("Protocol")<unknown>()(ProtocolApiSpec, ProtocolApiEvents)
-  })
+export const ProtocolRpcs: BridgeRpcGroup<"Protocol", ProtocolRpcSpec, ProtocolRpcEvents> =
+  BridgeRpc.group("Protocol", ProtocolRpcSpec, ProtocolRpcEvents)
 
 export const ProtocolMethodNames = Object.freeze(
-  Object.keys(ProtocolApiSpec) as ReadonlyArray<keyof ProtocolApiSpec>
+  Object.keys(ProtocolRpcSpec) as ReadonlyArray<keyof ProtocolRpcSpec>
 )
 
 export interface ProtocolClientApi {
@@ -123,20 +95,21 @@ export const makeProtocolServiceLayer = (client: ProtocolClientApi): Layer.Layer
   Layer.provide(ProtocolLive, makeProtocolClientLayer(client))
 
 export const makeProtocolBridgeClientLayer = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions = {}
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
 ): Layer.Layer<ProtocolClient> =>
   Layer.succeed(ProtocolClient)(makeProtocolBridgeClient(exchange, options))
 
-export const makeHostProtocolApiLayer = <Handlers extends ApiHandlers<ProtocolApiSpec>>(
+export const makeHostProtocolBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<ProtocolRpcSpec>>(
   handlers: Handlers
-): ApiLayer<"Protocol", ProtocolApiSpec, Handlers, ProtocolApiEvents> => ProtocolApi.layer(handlers)
+): BridgeRpcLayer<"Protocol", ProtocolRpcSpec, Handlers, ProtocolRpcEvents> =>
+  BridgeRpc.layer(ProtocolRpcs)(handlers)
 
 const makeProtocolBridgeClient = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
 ): ProtocolClientApi => {
-  const client = Client({ Protocol: ProtocolApi }, exchange, options).Protocol
+  const client = Client({ Protocol: ProtocolRpcs }, exchange, options).Protocol
   return Object.freeze({
     registerAppProtocol: (input) =>
       decodeProtocolRegisterAppProtocolInput(input).pipe(

@@ -1,20 +1,19 @@
 import {
-  Api,
+  BridgeRpc,
   Client,
-  type ApiClientExchange,
-  type ApiClientOptions,
-  type ApiContractClass,
-  type ApiContractError,
-  type ApiContractSpec,
-  type ApiHandlers,
-  type ApiLayer,
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeRpcGroup,
+  type BridgeRpcSpec,
+  type BridgeRpcHandlers,
+  type BridgeRpcLayer,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Schema } from "effect"
+import { Context, Effect, Layer, Schema } from "effect"
 
 import {
   ShellOpenExternalInput,
@@ -45,7 +44,7 @@ const ShellUrlControlCharacters = /[\u0000-\u001f\u007f]/u
 
 export type ShellError = HostProtocolError
 
-export const ShellApiSpec = Object.freeze({
+export const ShellRpcSpec = Object.freeze({
   openExternal: shellMethodSpec(ShellOpenExternalInput, "native.invoke:Shell.openExternal"),
   showItemInFolder: shellMethodSpec(
     ShellShowItemInFolderInput,
@@ -53,49 +52,22 @@ export const ShellApiSpec = Object.freeze({
   ),
   openPath: shellMethodSpec(ShellOpenPathInput, "native.invoke:Shell.openPath"),
   trashItem: shellMethodSpec(ShellTrashItemInput, "native.invoke:Shell.trashItem")
-}) satisfies ApiContractSpec
+}) satisfies BridgeRpcSpec
 
-export type ShellApiSpec = typeof ShellApiSpec
+export type ShellRpcSpec = typeof ShellRpcSpec
 
-export const ShellApiEvents = Object.freeze({})
+export const ShellRpcEvents = Object.freeze({})
 
-export type ShellApiEvents = typeof ShellApiEvents
+export type ShellRpcEvents = typeof ShellRpcEvents
 
-export const ShellApi: ApiContractClass<"Shell", ShellApiSpec, ShellApiEvents> = (() => {
-  const contract = class {
-    static readonly tag = "Shell"
-    static readonly spec = ShellApiSpec
-    static readonly events = ShellApiEvents
-
-    static layer<Handlers extends ApiHandlers<ShellApiSpec>>(
-      handlers: Handlers
-    ): ApiLayer<"Shell", ShellApiSpec, Handlers, ShellApiEvents> {
-      return Object.freeze({
-        contract,
-        handlers: Object.freeze(handlers)
-      })
-    }
-  } as ApiContractClass<"Shell", ShellApiSpec, ShellApiEvents>
-
-  return Object.freeze(contract)
-})()
-
-export const registerShellApi = (): Effect.Effect<
-  ApiContractClass<"Shell", ShellApiSpec, ShellApiEvents>,
-  ApiContractError,
-  never
-> =>
-  Effect.gen(function* () {
-    const existing = yield* Api.get("Shell")
-    if (Option.isSome(existing)) {
-      return existing.value as ApiContractClass<"Shell", ShellApiSpec, ShellApiEvents>
-    }
-
-    return yield* Api.Tag("Shell")<unknown>()(ShellApiSpec, ShellApiEvents)
-  })
+export const ShellRpcs: BridgeRpcGroup<"Shell", ShellRpcSpec, ShellRpcEvents> = BridgeRpc.group(
+  "Shell",
+  ShellRpcSpec,
+  ShellRpcEvents
+)
 
 export const ShellMethodNames = Object.freeze(
-  Object.keys(ShellApiSpec) as ReadonlyArray<keyof ShellApiSpec>
+  Object.keys(ShellRpcSpec) as ReadonlyArray<keyof ShellRpcSpec>
 )
 
 export interface ShellClientApi {
@@ -140,19 +112,20 @@ export const makeShellServiceLayer = (client: ShellClientApi): Layer.Layer<Shell
   Layer.provide(ShellLive, makeShellClientLayer(client))
 
 export const makeShellBridgeClientLayer = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions = {}
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
 ): Layer.Layer<ShellClient> => Layer.succeed(ShellClient)(makeShellBridgeClient(exchange, options))
 
-export const makeHostShellApiLayer = <Handlers extends ApiHandlers<ShellApiSpec>>(
+export const makeHostShellBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<ShellRpcSpec>>(
   handlers: Handlers
-): ApiLayer<"Shell", ShellApiSpec, Handlers, ShellApiEvents> => ShellApi.layer(handlers)
+): BridgeRpcLayer<"Shell", ShellRpcSpec, Handlers, ShellRpcEvents> =>
+  BridgeRpc.layer(ShellRpcs)(handlers)
 
 const makeShellBridgeClient = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
 ): ShellClientApi => {
-  const client = Client({ Shell: ShellApi }, exchange, options).Shell
+  const client = Client({ Shell: ShellRpcs }, exchange, options).Shell
 
   const shellClient: ShellClientApi = {
     openExternal: (url, options) =>

@@ -69,7 +69,9 @@ describe("workspaces", () => {
     expect(stderr).not.toContain('Script not found "desktop"')
     const helpText = stdout + stderr
     expect(helpText).toContain("USAGE\n  desktop <subcommand> [flags]")
-    expect(helpText).toContain("build             Build renderer, runtime, native host")
+    expect(helpText).toContain(
+      "build             Build renderer, runtime, native host, bridge manifest, and app manifest"
+    )
   })
 })
 

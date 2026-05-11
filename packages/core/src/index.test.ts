@@ -5,9 +5,8 @@ import {
   RpcEndpoint,
   RpcSupport
 } from "@effect-desktop/bridge"
-import { Cause, Context, Effect, Exit, Layer, Schema } from "effect"
+import { Cause, Effect, Exit, Layer, Schema } from "effect"
 import { Rpc, RpcGroup, RpcServer } from "effect/unstable/rpc"
-import type { AnyApiLayer } from "./index.js"
 
 test("public barrel exports the ResourceRegistry factory", async () => {
   const core = await import("./index.js")
@@ -20,14 +19,9 @@ test("public barrel exports the ResourceRegistry factory", async () => {
   expect(core.makeCommandRegistry).toBeFunction()
 })
 
-test("public Desktop facade exposes the API contract registry", async () => {
+test("public Desktop facade exposes Rpc metadata helpers", async () => {
   const core = await import("./index.js")
 
-  expect(core.Client).toBeFunction()
-  expect(core.Handlers).toBeFunction()
-  expect(core.Desktop.Api.Tag).toBeFunction()
-  expect(core.Desktop.Client).toBeFunction()
-  expect(core.Desktop.Handlers).toBeFunction()
   expect(core.Desktop.RpcEndpoint.query).toBeFunction()
   expect(core.Desktop.RpcCapability).toBeFunction()
   expect(core.Desktop.RpcSupport.unsupported).toBeFunction()
@@ -140,199 +134,6 @@ test("Desktop.toLayer binds RpcGroups into the runtime RpcServer protocol", asyn
 
   expect(Exit.isSuccess(exit)).toBe(true)
   expect(acquired).toBe(1)
-})
-
-test("Desktop.app lowers legacy Api layers into the RpcGroup registry", async () => {
-  const core = await import("./index.js")
-  const List = Rpc.make("Legacy.Notes.list", {
-    payload: Schema.Void,
-    success: Schema.Array(Schema.String),
-    error: Schema.Never
-  })
-  const Changed = Rpc.make("Legacy.Notes.events.changed", {
-    payload: Schema.String,
-    success: Schema.Void,
-    error: Schema.Never
-  })
-  const LegacyRpcs = RpcGroup.make(List, Changed)
-  class LegacyNotes {
-    static readonly tag = "Legacy.Notes"
-    static readonly spec = {
-      list: {
-        input: Schema.Void,
-        output: Schema.Array(Schema.String),
-        error: Schema.Never
-      }
-    }
-    static readonly events = {
-      changed: {
-        payload: Schema.String
-      }
-    }
-    static toRpcGroup(): typeof LegacyRpcs {
-      return LegacyRpcs
-    }
-    static layer(handlers: {
-      readonly prefix: string
-      readonly list: () => Effect.Effect<readonly string[], never, never>
-    }) {
-      return Object.freeze({
-        contract: LegacyNotes,
-        handlers: Object.freeze(handlers)
-      })
-    }
-  }
-  const legacyLayer = LegacyNotes.layer({
-    prefix: "inbox",
-    list(this: { readonly prefix: string }) {
-      return Effect.succeed([this.prefix])
-    }
-  }) as unknown as AnyApiLayer
-  const transport = {
-    send: () => Effect.void,
-    run: () => Effect.never
-  }
-  const protocolLayer = Layer.effect(RpcServer.Protocol)(makeDesktopServerProtocol(transport))
-  const app = await Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const context = yield* Layer.build(
-          core
-            .desktopApp({
-              id: "legacy-notes",
-              windows: {
-                main: {
-                  title: "Notes"
-                }
-              },
-              handlers: [legacyLayer]
-            })
-            .pipe(Layer.provide(protocolLayer))
-        )
-        return Context.get(context, core.DesktopApp)
-      })
-    )
-  )
-
-  expect(app.rpcLayers).toHaveLength(1)
-  expect(app.rpcLayers[0]?.group).toBe(LegacyRpcs)
-  expect(app.rpcLayers[0]?.group.requests.has("Legacy.Notes.list")).toBe(true)
-  expect(app.rpcLayers[0]?.group.requests.has("Legacy.Notes.events.changed")).toBe(true)
-
-  const rpcLayer = app.rpcLayers[0]
-  expect(rpcLayer).toBeDefined()
-  if (rpcLayer !== undefined) {
-    expect(core.Desktop.describeRpcs({ rpcLayers: app.rpcLayers }, LegacyRpcs)).toEqual([
-      expect.objectContaining({ tag: "Legacy.Notes.list" })
-    ])
-
-    const legacyDefinition = {
-      _tag: "DesktopAppDefinition" as const,
-      id: "legacy-notes",
-      windows: {},
-      layers: [],
-      rpcLayers: app.rpcLayers,
-      permissions: [],
-      workflows: [],
-      pipe() {
-        return legacyDefinition
-      }
-    }
-    const manifest = core.Desktop.manifest(legacyDefinition as never)
-    const renderer = core.makeDesktopRendererRpcRuntime(manifest, {
-      framework: "react",
-      transport
-    })
-    expect(renderer.clients.get(LegacyRpcs)?.["Legacy.Notes.list"]).toBeFunction()
-    expect(renderer.clients.get(LegacyRpcs)?.["Legacy.Notes.events.changed"]).toBeUndefined()
-    await Effect.runPromise(renderer.dispose())
-
-    const result = await Effect.runPromise(
-      Effect.provide(
-        Effect.gen(function* () {
-          const handler = yield* LegacyRpcs.accessHandler("Legacy.Notes.list")
-          const value = handler(undefined, {
-            client: new Rpc.ServerClient(0),
-            requestId: "legacy-request" as never,
-            headers: [] as never
-          })
-          return yield* value
-        }),
-        rpcLayer.layer as unknown as Layer.Layer<Rpc.Handler<"Legacy.Notes.list">, never, never>
-      )
-    )
-    expect(result).toEqual(["inbox"])
-  }
-})
-
-test("Desktop.app accepts legacy Api permission kinds when declared by normalized capability", async () => {
-  const core = await import("./index.js")
-  const Connect = Rpc.make("Legacy.Network.connect", {
-    payload: Schema.Void,
-    success: Schema.Void,
-    error: Schema.Never
-  }).pipe(
-    RpcCapability({
-      kind: "network.connect"
-    })
-  )
-  const LegacyNetworkRpcs = RpcGroup.make(Connect)
-  class LegacyNetwork {
-    static readonly tag = "Legacy.Network"
-    static readonly spec = {
-      connect: {
-        input: Schema.Void,
-        output: Schema.Void,
-        error: Schema.Never,
-        permission: "network.connect"
-      }
-    }
-    static readonly events = {}
-    static toRpcGroup(): typeof LegacyNetworkRpcs {
-      return LegacyNetworkRpcs
-    }
-    static layer(handlers: { readonly connect: () => Effect.Effect<void, never, never> }) {
-      return Object.freeze({
-        contract: LegacyNetwork,
-        handlers: Object.freeze(handlers)
-      })
-    }
-  }
-  const legacyLayer = LegacyNetwork.layer({
-    connect: () => Effect.void
-  }) as unknown as AnyApiLayer
-  const transport = {
-    send: () => Effect.void,
-    run: () => Effect.never
-  }
-  const protocolLayer = Layer.effect(RpcServer.Protocol)(makeDesktopServerProtocol(transport))
-  const exit = await Effect.runPromiseExit(
-    Effect.scoped(
-      Layer.build(
-        core
-          .desktopApp({
-            id: "legacy-network",
-            windows: {
-              main: {
-                title: "Network"
-              }
-            },
-            handlers: [legacyLayer],
-            permissions: [
-              {
-                kind: "network.connect",
-                hosts: ["api.example.com"],
-                askUnknownHosts: false,
-                audit: "on-deny"
-              }
-            ]
-          })
-          .pipe(Layer.provide(protocolLayer))
-      )
-    )
-  )
-
-  expect(Exit.isSuccess(exit)).toBe(true)
 })
 
 test("Desktop.toLayer rejects RpcGroup methods that declare known capability kinds without scoped fields", async () => {

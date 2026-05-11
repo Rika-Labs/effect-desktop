@@ -1,19 +1,18 @@
 import {
-  Api,
+  BridgeRpc,
   Client,
-  type ApiClientExchange,
-  type ApiClientOptions,
-  type ApiContractClass,
-  type ApiContractError,
-  type ApiContractSpec,
-  type ApiHandlers,
-  type ApiLayer,
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeRpcGroup,
+  type BridgeRpcSpec,
+  type BridgeRpcHandlers,
+  type BridgeRpcLayer,
   makeHostProtocolInvalidOutputError,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Schema } from "effect"
+import { Context, Effect, Layer, Schema } from "effect"
 
 import {
   ScreenDisplay,
@@ -26,7 +25,7 @@ import {
 
 export type ScreenError = HostProtocolError
 
-export const ScreenApiSpec = Object.freeze({
+export const ScreenRpcSpec = Object.freeze({
   getDisplays: screenMethodSpec(
     Schema.Void,
     ScreenDisplaysResult,
@@ -48,45 +47,22 @@ export const ScreenApiSpec = Object.freeze({
     error: HostProtocolErrorSchema,
     permission: "none"
   }
-}) satisfies ApiContractSpec
+}) satisfies BridgeRpcSpec
 
-export type ScreenApiSpec = typeof ScreenApiSpec
+export type ScreenRpcSpec = typeof ScreenRpcSpec
 
-export const ScreenApiEvents = Object.freeze({})
+export const ScreenRpcEvents = Object.freeze({})
 
-export type ScreenApiEvents = typeof ScreenApiEvents
+export type ScreenRpcEvents = typeof ScreenRpcEvents
 
-export const ScreenApi: ApiContractClass<"Screen", ScreenApiSpec, ScreenApiEvents> = (() => {
-  const contract = class {
-    static readonly tag = "Screen"
-    static readonly spec = ScreenApiSpec
-    static readonly events = ScreenApiEvents
-
-    static layer<Handlers extends ApiHandlers<ScreenApiSpec>>(
-      handlers: Handlers
-    ): ApiLayer<"Screen", ScreenApiSpec, Handlers, ScreenApiEvents> {
-      return Object.freeze({ contract, handlers: Object.freeze(handlers) })
-    }
-  } as ApiContractClass<"Screen", ScreenApiSpec, ScreenApiEvents>
-
-  return Object.freeze(contract)
-})()
-
-export const registerScreenApi = (): Effect.Effect<
-  ApiContractClass<"Screen", ScreenApiSpec, ScreenApiEvents>,
-  ApiContractError,
-  never
-> =>
-  Effect.gen(function* () {
-    const existing = yield* Api.get("Screen")
-    if (Option.isSome(existing)) {
-      return existing.value as ApiContractClass<"Screen", ScreenApiSpec, ScreenApiEvents>
-    }
-    return yield* Api.Tag("Screen")<unknown>()(ScreenApiSpec, ScreenApiEvents)
-  })
+export const ScreenRpcs: BridgeRpcGroup<"Screen", ScreenRpcSpec, ScreenRpcEvents> = BridgeRpc.group(
+  "Screen",
+  ScreenRpcSpec,
+  ScreenRpcEvents
+)
 
 export const ScreenMethodNames = Object.freeze(
-  Object.keys(ScreenApiSpec) as ReadonlyArray<keyof ScreenApiSpec>
+  Object.keys(ScreenRpcSpec) as ReadonlyArray<keyof ScreenRpcSpec>
 )
 
 export interface ScreenClientApi {
@@ -133,20 +109,21 @@ export const makeScreenServiceLayer = (client: ScreenClientApi): Layer.Layer<Scr
   Layer.provide(ScreenLive, makeScreenClientLayer(client))
 
 export const makeScreenBridgeClientLayer = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions = {}
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
 ): Layer.Layer<ScreenClient> =>
   Layer.succeed(ScreenClient)(makeScreenBridgeClient(exchange, options))
 
-export const makeHostScreenApiLayer = <Handlers extends ApiHandlers<ScreenApiSpec>>(
+export const makeHostScreenBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<ScreenRpcSpec>>(
   handlers: Handlers
-): ApiLayer<"Screen", ScreenApiSpec, Handlers, ScreenApiEvents> => ScreenApi.layer(handlers)
+): BridgeRpcLayer<"Screen", ScreenRpcSpec, Handlers, ScreenRpcEvents> =>
+  BridgeRpc.layer(ScreenRpcs)(handlers)
 
 const makeScreenBridgeClient = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
 ): ScreenClientApi => {
-  const client = Client({ Screen: ScreenApi }, exchange, options).Screen
+  const client = Client({ Screen: ScreenRpcs }, exchange, options).Screen
   return Object.freeze({
     getDisplays: () => client.getDisplays().pipe(Effect.flatMap(validateScreenDisplays)),
     getPrimaryDisplay: () => client.getPrimaryDisplay(),

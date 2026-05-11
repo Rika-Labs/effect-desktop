@@ -1,12 +1,4 @@
-import {
-  Api,
-  Client,
-  Handlers,
-  RedactionFilter,
-  RpcCapability,
-  RpcEndpoint,
-  RpcSupport
-} from "@effect-desktop/bridge"
+import { RedactionFilter, RpcCapability, RpcEndpoint, RpcSupport } from "@effect-desktop/bridge"
 import { Effect, Layer } from "effect"
 
 import {
@@ -26,9 +18,6 @@ import type { WorkflowLayer } from "./runtime/workflow.js"
 import { WorkflowEngine, WorkflowEngineLive } from "./runtime/workflow.js"
 
 export {
-  Api,
-  Client,
-  Handlers,
   RedactionFilter,
   RpcCapability,
   RpcEndpoint,
@@ -62,7 +51,6 @@ export * from "./runtime/permission-registry.js"
 export * from "./runtime/permission-interceptor.js"
 export * from "./runtime/permission-approval-workflow.js"
 export * from "./runtime/secrets.js"
-export * from "./runtime/secrets-migration.js"
 export * from "./runtime/settings.js"
 export * from "./runtime/sqlite.js"
 export * from "./runtime/transport.js"
@@ -87,7 +75,6 @@ export {
   provide,
   Rpcs,
   toLayer,
-  type AnyApiLayer,
   type AnyDesktopRpcLayer,
   type DesktopAppApi,
   type DesktopAppDefinition,
@@ -158,9 +145,6 @@ function app<RIn = never, E = never>(
 }
 
 export const Desktop = Object.freeze({
-  Api,
-  Client,
-  Handlers,
   RedactionFilter,
   RpcCapability,
   RpcEndpoint,

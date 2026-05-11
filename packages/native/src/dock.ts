@@ -1,19 +1,18 @@
 import {
-  Api,
+  BridgeRpc,
   Client,
-  type ApiClientExchange,
-  type ApiClientOptions,
-  type ApiContractClass,
-  type ApiContractError,
-  type ApiContractSpec,
-  type ApiHandlers,
-  type ApiLayer,
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeRpcGroup,
+  type BridgeRpcSpec,
+  type BridgeRpcHandlers,
+  type BridgeRpcLayer,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Schema } from "effect"
+import { Context, Effect, Layer, Schema } from "effect"
 
 import {
   type DockMethod,
@@ -32,7 +31,7 @@ const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export type DockError = HostProtocolError
 
-export const DockApiSpec = Object.freeze({
+export const DockRpcSpec = Object.freeze({
   setBadgeCount: dockMethodSpec(DockSetBadgeCountInput, "native.invoke:Dock.setBadgeCount"),
   setBadgeText: dockMethodSpec(DockSetBadgeTextInput, "native.invoke:Dock.setBadgeText"),
   setProgress: dockMethodSpec(DockSetProgressInput, "native.invoke:Dock.setProgress"),
@@ -48,45 +47,22 @@ export const DockApiSpec = Object.freeze({
     error: HostProtocolErrorSchema,
     permission: "none"
   }
-}) satisfies ApiContractSpec
+}) satisfies BridgeRpcSpec
 
-export type DockApiSpec = typeof DockApiSpec
+export type DockRpcSpec = typeof DockRpcSpec
 
-export const DockApiEvents = Object.freeze({})
+export const DockRpcEvents = Object.freeze({})
 
-export type DockApiEvents = typeof DockApiEvents
+export type DockRpcEvents = typeof DockRpcEvents
 
-export const DockApi: ApiContractClass<"Dock", DockApiSpec, DockApiEvents> = (() => {
-  const contract = class {
-    static readonly tag = "Dock"
-    static readonly spec = DockApiSpec
-    static readonly events = DockApiEvents
-
-    static layer<Handlers extends ApiHandlers<DockApiSpec>>(
-      handlers: Handlers
-    ): ApiLayer<"Dock", DockApiSpec, Handlers, DockApiEvents> {
-      return Object.freeze({ contract, handlers: Object.freeze(handlers) })
-    }
-  } as ApiContractClass<"Dock", DockApiSpec, DockApiEvents>
-
-  return Object.freeze(contract)
-})()
-
-export const registerDockApi = (): Effect.Effect<
-  ApiContractClass<"Dock", DockApiSpec, DockApiEvents>,
-  ApiContractError,
-  never
-> =>
-  Effect.gen(function* () {
-    const existing = yield* Api.get("Dock")
-    if (Option.isSome(existing)) {
-      return existing.value as ApiContractClass<"Dock", DockApiSpec, DockApiEvents>
-    }
-    return yield* Api.Tag("Dock")<unknown>()(DockApiSpec, DockApiEvents)
-  })
+export const DockRpcs: BridgeRpcGroup<"Dock", DockRpcSpec, DockRpcEvents> = BridgeRpc.group(
+  "Dock",
+  DockRpcSpec,
+  DockRpcEvents
+)
 
 export const DockMethodNames = Object.freeze(
-  Object.keys(DockApiSpec) as ReadonlyArray<keyof DockApiSpec>
+  Object.keys(DockRpcSpec) as ReadonlyArray<keyof DockRpcSpec>
 )
 
 export interface DockClientApi {
@@ -143,19 +119,20 @@ export const makeDockServiceLayer = (client: DockClientApi): Layer.Layer<Dock> =
   Layer.provide(DockLive, makeDockClientLayer(client))
 
 export const makeDockBridgeClientLayer = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions = {}
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
 ): Layer.Layer<DockClient> => Layer.succeed(DockClient)(makeDockBridgeClient(exchange, options))
 
-export const makeHostDockApiLayer = <Handlers extends ApiHandlers<DockApiSpec>>(
+export const makeHostDockBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<DockRpcSpec>>(
   handlers: Handlers
-): ApiLayer<"Dock", DockApiSpec, Handlers, DockApiEvents> => DockApi.layer(handlers)
+): BridgeRpcLayer<"Dock", DockRpcSpec, Handlers, DockRpcEvents> =>
+  BridgeRpc.layer(DockRpcs)(handlers)
 
 const makeDockBridgeClient = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
 ): DockClientApi => {
-  const client = Client({ Dock: DockApi }, exchange, options).Dock
+  const client = Client({ Dock: DockRpcs }, exchange, options).Dock
   return Object.freeze({
     setBadgeCount: (count) =>
       decodeDockSetBadgeCountInput({ count }).pipe(Effect.flatMap(client.setBadgeCount)),

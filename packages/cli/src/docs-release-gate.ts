@@ -121,19 +121,18 @@ const REQUIRED_SPEC_PAGES: ReadonlyMap<string, string> = new Map([
   ["signing", "docs/user/signing.md"],
   ["updating", "docs/user/updating.md"],
   ["troubleshooting", "docs/user/troubleshooting.md"],
-  ["pre-1-migration", "docs/user/pre-1-migration.md"],
   ["contribution-guide", "docs/user/contribution-guide.md"]
 ])
 const REQUIRED_PAGE_COVERAGE_TOKENS: ReadonlyMap<string, readonly string[]> = new Map([
   ["installation", ["runCli", "desktop --help"]],
-  ["quickstart", ["useDesktopClient", "defineDesktopApi"]],
+  ["quickstart", ["ReactDesktop", "WindowRpcs"]],
   ["concepts", ["Desktop", "HostProtocolEnvelope"]],
   ["architecture-overview", ["HostProtocolRequestEnvelope", "Desktop"]],
   ["app-config", ["defineDesktopConfig"]],
-  ["windows", ["WindowApi", "WindowMethodNames"]],
+  ["windows", ["WindowRpcs", "WindowMethodNames"]],
   ["typed-apis", ["RpcGroup", "Handlers"]],
   ["bridge", ["HostProtocolEnvelope", "Client"]],
-  ["native-services", ["ClipboardApi", "DialogApi", "WindowApi"]],
+  ["native-services", ["ClipboardRpcs", "DialogRpcs", "WindowRpcs"]],
   ["resources", ["ResourceRegistry", "ManagedResource"]],
   ["processes", ["Process", "MockProcess"]],
   ["ptys", ["PTY", "MockPTY"]],
@@ -147,7 +146,6 @@ const REQUIRED_PAGE_COVERAGE_TOKENS: ReadonlyMap<string, readonly string[]> = ne
   ["signing", ["runDesktopSign", "desktop sign"]],
   ["updating", ["runDesktopPublish", "UpdateManifest"]],
   ["troubleshooting", ["DoctorMissing", "runDesktopDoctor"]],
-  ["pre-1-migration", ["runSemverGuard", "bridgeEnvelopePolicy"]],
   ["contribution-guide", ["check --docs", "runDocsReleaseGate"]]
 ])
 

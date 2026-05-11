@@ -5,9 +5,9 @@ Native services expose platform capabilities as typed Effect services and preser
 ## Runnable Example
 
 ```ts run
-import { ClipboardApi, DialogApi, WindowApi } from "../packages/native/src/index.js"
+import { ClipboardRpcs, DialogRpcs, WindowRpcs } from "../packages/native/src/index.js"
 
-if (ClipboardApi === undefined || DialogApi === undefined || WindowApi === undefined) {
-  throw new Error("native service contracts are unavailable")
+if (ClipboardRpcs === undefined || DialogRpcs === undefined || WindowRpcs === undefined) {
+  throw new Error("native service RPC groups are unavailable")
 }
 ```

@@ -35,10 +35,6 @@ export interface SemverPolicyManifest {
     readonly frozenBetweenMajors: boolean
     readonly allowedChange: string
   }
-  readonly deprecationPolicy: {
-    readonly minimumMinorReleases: number
-    readonly requiresJSDocDeprecated: boolean
-  }
 }
 
 export interface SemverGuardReport {
@@ -200,13 +196,6 @@ const validateManifest = (
     return Effect.fail(
       new SemverGuardManifestError({
         message: "bridge envelope policy must freeze shapes between majors"
-      })
-    )
-  }
-  if (manifest.deprecationPolicy.minimumMinorReleases < 3) {
-    return Effect.fail(
-      new SemverGuardManifestError({
-        message: "deprecation policy must retain symbols for at least 3 minor releases"
       })
     )
   }
@@ -416,26 +405,6 @@ const parseSemverPolicyManifest = (
       })
     )
   }
-  const deprecationPolicy = value["deprecationPolicy"]
-  if (!isSemverRecord(deprecationPolicy)) {
-    return Effect.fail(
-      new SemverGuardManifestError({ message: "semver deprecationPolicy must be an object" })
-    )
-  }
-  if (typeof deprecationPolicy["minimumMinorReleases"] !== "number") {
-    return Effect.fail(
-      new SemverGuardManifestError({
-        message: "semver deprecationPolicy.minimumMinorReleases must be a number"
-      })
-    )
-  }
-  if (typeof deprecationPolicy["requiresJSDocDeprecated"] !== "boolean") {
-    return Effect.fail(
-      new SemverGuardManifestError({
-        message: "semver deprecationPolicy.requiresJSDocDeprecated must be a boolean"
-      })
-    )
-  }
   return Effect.succeed({
     schemaVersion: 1,
     source: value["source"],
@@ -448,10 +417,6 @@ const parseSemverPolicyManifest = (
       source: bridge["source"],
       frozenBetweenMajors: bridge["frozenBetweenMajors"],
       allowedChange: bridge["allowedChange"]
-    },
-    deprecationPolicy: {
-      minimumMinorReleases: deprecationPolicy["minimumMinorReleases"],
-      requiresJSDocDeprecated: deprecationPolicy["requiresJSDocDeprecated"]
     }
   })
 }

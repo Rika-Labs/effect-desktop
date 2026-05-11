@@ -2,7 +2,7 @@ import { Effect, Stream } from "effect"
 import type { AsyncResult } from "effect/unstable/reactivity"
 import { useMemo } from "react"
 
-import { useStream as useEffectStream, useEffectResult, type StreamState } from "./hooks/stream.js"
+import { useDesktopStream, useEffectResult, type StreamState } from "./hooks/stream.js"
 import { useMutation, type MutationResult } from "./mutation.js"
 
 export type QueryResult<A, E> = AsyncResult.AsyncResult<A, E>
@@ -31,13 +31,10 @@ export interface StreamEndpoint<I, A, E> {
   readonly useStream: StreamHook<I, A, E>
 }
 
-export type ReactApiEndpoint =
+export type ReactEndpoint =
   | QueryEndpoint<unknown, unknown, unknown>
   | MutationEndpoint<unknown, unknown, unknown>
   | StreamEndpoint<unknown, unknown, unknown>
-
-export const defineApi = <const Api extends Readonly<Record<string, unknown>>>(api: Api): Api =>
-  Object.freeze({ ...api }) as Api
 
 export const query = <I, A, E>(
   makeEffect: (input: I) => Effect.Effect<A, E, never>
@@ -62,6 +59,6 @@ export const stream = <I, A, E>(
   Object.freeze({
     useStream: ((input?: I) => {
       const effectStream = useMemo(() => makeStream(input as I), [input, makeStream])
-      return useEffectStream(effectStream)
+      return useDesktopStream(effectStream)
     }) as StreamHook<I, A, E>
   })

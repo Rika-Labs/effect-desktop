@@ -1,10 +1,10 @@
-import { Api, type ApiResourceHandle } from "@effect-desktop/bridge"
+import { BridgeRpc, type BridgeResourceHandle } from "@effect-desktop/bridge"
 import { Schema } from "effect"
 
 import { BridgeSafeNonEmptyString, BridgeSafeString } from "./strings.js"
 import { ImageMime } from "./image.js"
 
-export const WebViewResource = Api.Resource("webview", "open")
+export const WebViewResource = BridgeRpc.Resource("webview", "open")
 const WebViewPlatform = Schema.Literals(["macos", "windows", "linux"])
 const WebViewRuntimeMode = Schema.Literals(["dev", "prod"])
 const WebViewCapabilityName = Schema.Literals([
@@ -31,7 +31,7 @@ const WebViewOrigin = BridgeSafeNonEmptyString.check(
 const WebViewRoute = BridgeSafeNonEmptyString.check(
   Schema.isPattern(/^\/(?!.*(?:^|\/)\.\.(?:\/|$))[^?#]*$/u)
 )
-export type WebViewHandle = ApiResourceHandle<"webview", "open">
+export type WebViewHandle = BridgeResourceHandle<"webview", "open">
 
 export class WebViewNavigationPolicy extends Schema.Class<WebViewNavigationPolicy>(
   "WebViewNavigationPolicy"

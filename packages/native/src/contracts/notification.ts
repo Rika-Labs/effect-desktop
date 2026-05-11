@@ -1,14 +1,14 @@
-import { Api, type ApiResourceHandle } from "@effect-desktop/bridge"
+import { BridgeRpc, type BridgeResourceHandle } from "@effect-desktop/bridge"
 import { Schema } from "effect"
 
 import { PrintableNonEmptyString, PrintableString } from "./strings.js"
 
-const WindowResource = Api.Resource("window", "open")
+const WindowResource = BridgeRpc.Resource("window", "open")
 const OwnerWindowId = Schema.NonEmptyString
-export const NotificationResource = Api.Resource("notification", "open")
+export const NotificationResource = BridgeRpc.Resource("notification", "open")
 export const PermissionState = Schema.Literals(["granted", "denied", "default"])
 
-export type NotificationHandle = ApiResourceHandle<"notification", "open">
+export type NotificationHandle = BridgeResourceHandle<"notification", "open">
 export type PermissionState = Schema.Schema.Type<typeof PermissionState>
 
 export class NotificationAction extends Schema.Class<NotificationAction>("NotificationAction")({

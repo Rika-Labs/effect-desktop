@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-`packages/bridge/` re-implements typed RPC end-to-end across roughly ten files: contract registration, request/response lifecycle, origin auth, redaction, streams, resources, and handshake. The bespoke `Api.Tag("X")<unknown>()(spec)` pattern returns `Effect<Contract>`, which forces every contract module to use top-level `await Effect.runPromise(...)` — non-idiomatic in Effect v4.
+`packages/bridge/` re-implements typed RPC end-to-end across roughly ten files: request/response lifecycle, origin auth, redaction, streams, resources, and handshake. Earlier drafts used a bespoke contract registration surface, which forced contract modules toward effectful module initialization.
 
 Effect v4 ships `effect/unstable/rpc` with the same surface: `Schema.TaggedRequest`, `RpcGroup.make`, `Rpc.fromTaggedRequest`, `RpcServer.layer`, `RpcClient.make`, and `RpcSerialization.msgPack`. Contracts become plain values rather than effectful computations. Registration becomes a `Layer`. No `runPromise` is needed at the module level.
 
@@ -24,7 +24,7 @@ Delete the bespoke RPC implementation. Adopt `effect/unstable/rpc` as the bridge
 - The renderer holds a typed `RpcClient.make(group)` consuming the same protocol.
 - The host protocol envelope schema (`HostProtocolRequestEnvelope`, response, stream frame) becomes the sole wire-format truth. Only the adapter reads or writes it.
 - Re-export `RpcGroup`, `Rpc`, `RpcClient`, `RpcServer`, and `RpcSerialization` from `@effect-desktop/core` so contract authors have one import root.
-- Transitional shims keep `Api` / `Client` / `Handlers` as deprecated type-aliases for one release.
+- No transitional contract shim is kept before v1.0. The only contract value is a `RpcGroup`.
 
 Cross-links: [ADR-0006](adr-0006-socket-transport.md) (transport the Protocol adapter sits on), [ADR-0007](adr-0007-opentelemetry.md) (spans emitted per RPC call), [ADR-0018](adr-0018-cluster-multi-window.md) (cluster entities communicate over the same RPC groups).
 
@@ -48,7 +48,6 @@ Cross-links: [ADR-0006](adr-0006-socket-transport.md) (transport the Protocol ad
 **Negative**
 
 - `effect/unstable/rpc` API may change before stable. The `DesktopProtocolAdapter` isolates breakage to one file; contract definitions using `Schema.TaggedRequest` are stable by schema contract.
-- One-release shim maintenance cost for existing callers of the old `Api` surface.
 
 **Neutral**
 
@@ -60,8 +59,7 @@ A `Schema.TaggedRequest` defined in shared code round-trips renderer to runtime 
 
 ## Migration notes
 
-1. Delete `packages/bridge/src/{contracts,client,handlers,protocol,resources,streams,events,handshake,redaction,window}.ts`.
-2. Add `DesktopProtocolAdapter` wrapping the existing host envelope schema.
+1. Keep the host envelope modules that own desktop protocol concerns.
+2. Make `RpcGroup` the only contract model at the app, bridge, and native boundaries.
 3. Add re-exports of `RpcGroup`, `Rpc`, `RpcClient`, `RpcServer` from `@effect-desktop/core`.
-4. Add deprecated shim re-exports for `Api`, `Client`, `Handlers`.
-5. Remove shims in the following release once all call sites are migrated.
+4. Delete pre-release contract shims instead of deprecating them.

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import {
-  type ApiClientExchange,
-  type ApiClientResponse,
+  type BridgeClientExchange,
+  type BridgeClientResponse,
   HostProtocolRequestEnvelope
 } from "@effect-desktop/bridge"
 import { Cause, Effect, Exit, Layer } from "effect"
@@ -31,8 +31,8 @@ const hasErrorTag = (error: unknown, tag: string): boolean =>
 
 const protocolExchange = (
   requests: HostProtocolRequestEnvelope[],
-  respond: (request: HostProtocolRequestEnvelope) => ApiClientResponse
-): ApiClientExchange => ({
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+): BridgeClientExchange => ({
   request: (request) => {
     requests.push(request)
     return Effect.succeed(respond(request))

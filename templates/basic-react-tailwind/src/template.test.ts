@@ -77,8 +77,7 @@ test("renderer uses desktop action hooks instead of manual Effect runners", () =
   const app = readFileSync(join(templateRoot, "src", "App.tsx"), "utf8")
   const main = readFileSync(join(templateRoot, "src", "main.tsx"), "utf8")
 
-  expect(app).toContain("defineDesktopApi")
-  expect(app).toContain("windowApi.create.useAction")
+  expect(app).toContain("windows.create.useMutation")
   expect(app).not.toContain("runPromiseExit")
   expect(main).not.toContain("unavailableWindow")
   expect(main).not.toContain("desktopClient")

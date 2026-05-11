@@ -1,14 +1,14 @@
 import { Effect, Schema, Stream } from "effect"
 
 import {
-  type ApiContractClass,
-  type ApiContractEvents,
-  type ApiContractSpec,
-  type ApiEventSpec,
-  type ApiMethodSpec,
-  type ApiResourceHandle,
-  type ApiResourceSpec,
-  type ApiStreamSpec,
+  type BridgeRpcGroup,
+  type BridgeRpcEvents,
+  type BridgeRpcSpec,
+  type BridgeRpcEventSpec,
+  type BridgeRpcMethodSpec,
+  type BridgeResourceHandle,
+  type BridgeRpcResourceSpec,
+  type BridgeRpcStreamSpec,
   isResourceSpec,
   isStreamSpec
 } from "./contracts.js"
@@ -25,22 +25,26 @@ import {
   validateHostProtocolTimestamp,
   type HostProtocolError
 } from "./protocol.js"
-import { type ApiResourceExchange, type ApiResourceProxy, makeResourceProxy } from "./resources.js"
 import {
-  ApiStreamClosedFrame,
-  ApiStreamCompleteFrame,
-  ApiStreamDataFrame,
-  ApiStreamErrorFrame,
-  ApiStreamFrame,
+  type BridgeResourceExchange,
+  type BridgeResourceProxy,
+  makeResourceProxy
+} from "./resources.js"
+import {
+  BridgeStreamClosedFrame,
+  BridgeStreamCompleteFrame,
+  BridgeStreamDataFrame,
+  BridgeStreamErrorFrame,
+  BridgeStreamFrame,
   type HostProtocolStreamEnvelope
 } from "./streams.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
-export interface ApiClientExchange {
+export interface BridgeClientExchange {
   readonly request: (
     request: HostProtocolRequestEnvelope
-  ) => Effect.Effect<ApiClientResponse, HostProtocolError, never>
+  ) => Effect.Effect<BridgeClientResponse, HostProtocolError, never>
   readonly subscribe?: (
     method: string
   ) => Stream.Stream<HostProtocolEventEnvelope, HostProtocolError, never>
@@ -50,22 +54,22 @@ export interface ApiClientExchange {
   readonly cancel?: (
     request: HostProtocolCancelByRequestEnvelope
   ) => Effect.Effect<void, HostProtocolError, never>
-  readonly resource?: ApiResourceExchange
+  readonly resource?: BridgeResourceExchange
 }
 
-export type ApiClientResponse = ApiClientSuccessResponse | ApiClientErrorResponse
+export type BridgeClientResponse = BridgeClientSuccessResponse | BridgeClientErrorResponse
 
-export interface ApiClientSuccessResponse {
+export interface BridgeClientSuccessResponse {
   readonly kind: "success"
   readonly payload: unknown
 }
 
-export interface ApiClientErrorResponse {
+export interface BridgeClientErrorResponse {
   readonly kind: "failure"
   readonly error: unknown
 }
 
-export interface ApiClientOptions {
+export interface BridgeClientOptions {
   readonly nextRequestId?: () => string
   readonly nextTraceId?: () => string
   readonly now?: () => number
@@ -73,11 +77,11 @@ export interface ApiClientOptions {
   readonly originToken?: string
 }
 
-export interface ApiClientCallOptions {
+export interface BridgeClientCallOptions {
   readonly signal?: AbortSignal
 }
 
-interface ResolvedApiClientOptions {
+interface ResolvedBridgeClientOptions {
   readonly nextRequestId: () => string
   readonly nextTraceId: () => string
   readonly now: () => number
@@ -85,112 +89,113 @@ interface ResolvedApiClientOptions {
   readonly originToken: string | undefined
 }
 
-export type ApiClientMethod<Spec extends ApiMethodSpec> = Spec["output"] extends ApiStreamSpec
-  ? undefined extends Schema.Schema.Type<Spec["input"]>
-    ? (
-        input?: Schema.Schema.Type<Spec["input"]>,
-        options?: ApiClientCallOptions
-      ) => Stream.Stream<
-        Schema.Schema.Type<Spec["output"]["chunk"]>,
-        Schema.Schema.Type<Spec["output"]["error"]> | HostProtocolError,
-        never
-      >
-    : (
-        input: Schema.Schema.Type<Spec["input"]>,
-        options?: ApiClientCallOptions
-      ) => Stream.Stream<
-        Schema.Schema.Type<Spec["output"]["chunk"]>,
-        Schema.Schema.Type<Spec["output"]["error"]> | HostProtocolError,
-        never
-      >
-  : Spec["output"] extends ApiResourceSpec
+export type BridgeClientMethod<Spec extends BridgeRpcMethodSpec> =
+  Spec["output"] extends BridgeRpcStreamSpec
     ? undefined extends Schema.Schema.Type<Spec["input"]>
       ? (
           input?: Schema.Schema.Type<Spec["input"]>,
-          options?: ApiClientCallOptions
-        ) => Effect.Effect<
-          ApiResourceProxy<Spec["output"]["kind"], Spec["output"]["state"]>,
-          Schema.Schema.Type<Spec["error"]> | HostProtocolError,
+          options?: BridgeClientCallOptions
+        ) => Stream.Stream<
+          Schema.Schema.Type<Spec["output"]["chunk"]>,
+          Schema.Schema.Type<Spec["output"]["error"]> | HostProtocolError,
           never
         >
       : (
           input: Schema.Schema.Type<Spec["input"]>,
-          options?: ApiClientCallOptions
-        ) => Effect.Effect<
-          ApiResourceProxy<Spec["output"]["kind"], Spec["output"]["state"]>,
-          Schema.Schema.Type<Spec["error"]> | HostProtocolError,
+          options?: BridgeClientCallOptions
+        ) => Stream.Stream<
+          Schema.Schema.Type<Spec["output"]["chunk"]>,
+          Schema.Schema.Type<Spec["output"]["error"]> | HostProtocolError,
           never
         >
-    : undefined extends Schema.Schema.Type<Spec["input"]>
-      ? (
-          input?: Schema.Schema.Type<Spec["input"]>,
-          options?: ApiClientCallOptions
-        ) => Effect.Effect<
-          Schema.Schema.Type<Extract<Spec["output"], Schema.Schema<unknown>>>,
-          Schema.Schema.Type<Spec["error"]> | HostProtocolError,
-          never
-        >
-      : (
-          input: Schema.Schema.Type<Spec["input"]>,
-          options?: ApiClientCallOptions
-        ) => Effect.Effect<
-          Schema.Schema.Type<Extract<Spec["output"], Schema.Schema<unknown>>>,
-          Schema.Schema.Type<Spec["error"]> | HostProtocolError,
-          never
-        >
+    : Spec["output"] extends BridgeRpcResourceSpec
+      ? undefined extends Schema.Schema.Type<Spec["input"]>
+        ? (
+            input?: Schema.Schema.Type<Spec["input"]>,
+            options?: BridgeClientCallOptions
+          ) => Effect.Effect<
+            BridgeResourceProxy<Spec["output"]["kind"], Spec["output"]["state"]>,
+            Schema.Schema.Type<Spec["error"]> | HostProtocolError,
+            never
+          >
+        : (
+            input: Schema.Schema.Type<Spec["input"]>,
+            options?: BridgeClientCallOptions
+          ) => Effect.Effect<
+            BridgeResourceProxy<Spec["output"]["kind"], Spec["output"]["state"]>,
+            Schema.Schema.Type<Spec["error"]> | HostProtocolError,
+            never
+          >
+      : undefined extends Schema.Schema.Type<Spec["input"]>
+        ? (
+            input?: Schema.Schema.Type<Spec["input"]>,
+            options?: BridgeClientCallOptions
+          ) => Effect.Effect<
+            Schema.Schema.Type<Extract<Spec["output"], Schema.Schema<unknown>>>,
+            Schema.Schema.Type<Spec["error"]> | HostProtocolError,
+            never
+          >
+        : (
+            input: Schema.Schema.Type<Spec["input"]>,
+            options?: BridgeClientCallOptions
+          ) => Effect.Effect<
+            Schema.Schema.Type<Extract<Spec["output"], Schema.Schema<unknown>>>,
+            Schema.Schema.Type<Spec["error"]> | HostProtocolError,
+            never
+          >
 
-export type ApiClientEvent<Spec extends ApiEventSpec> = Stream.Stream<
+export type BridgeClientEvent<Spec extends BridgeRpcEventSpec> = Stream.Stream<
   Schema.Schema.Type<Spec["payload"]>,
   HostProtocolError,
   never
 >
 
-export type ApiClientFor<Contract extends ApiContractClass> =
-  Contract extends ApiContractClass<string, infer Spec, infer Events>
-    ? { readonly [Method in keyof Spec]: ApiClientMethod<Spec[Method]> } & {
-        readonly events: { readonly [Event in keyof Events]: ApiClientEvent<Events[Event]> }
+export type BridgeClientFor<Contract extends BridgeRpcGroup> =
+  Contract extends BridgeRpcGroup<string, infer Spec, infer Events>
+    ? { readonly [Method in keyof Spec]: BridgeClientMethod<Spec[Method]> } & {
+        readonly events: { readonly [Event in keyof Events]: BridgeClientEvent<Events[Event]> }
       }
     : never
 
-export type ApiClient<Contracts extends Readonly<Record<string, ApiContractClass>>> = {
-  readonly [Namespace in keyof Contracts]: ApiClientFor<Contracts[Namespace]>
+export type BridgeClient<Contracts extends Readonly<Record<string, BridgeRpcGroup>>> = {
+  readonly [Namespace in keyof Contracts]: BridgeClientFor<Contracts[Namespace]>
 }
 
-export const Client = <Contracts extends Readonly<Record<string, ApiContractClass>>>(
+export const Client = <Contracts extends Readonly<Record<string, BridgeRpcGroup>>>(
   contracts: Contracts,
-  exchange: ApiClientExchange,
-  options: ApiClientOptions = {}
-): ApiClient<Contracts> => {
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
+): BridgeClient<Contracts> => {
   const resolved = resolveOptions(options)
   const namespaces = Object.entries(contracts).map(([namespace, contract]) => [
     namespace,
     makeContractClient(contract, exchange, resolved)
   ])
 
-  return Object.freeze(Object.fromEntries(namespaces)) as ApiClient<Contracts>
+  return Object.freeze(Object.fromEntries(namespaces)) as BridgeClient<Contracts>
 }
 
-const makeContractClient = <Tag extends string, Spec extends ApiContractSpec>(
-  contract: ApiContractClass<Tag, Spec>,
-  exchange: ApiClientExchange,
-  options: ResolvedApiClientOptions
-): ApiClientFor<ApiContractClass<Tag, Spec>> => {
-  const methods = {} as { [Method in keyof Spec]?: ApiClientMethod<Spec[Method]> }
-  const contractEvents = (contract.events ?? {}) as ApiContractEvents
-  const events = {} as Record<string, ApiClientEvent<ApiEventSpec>>
+const makeContractClient = <Tag extends string, Spec extends BridgeRpcSpec>(
+  contract: BridgeRpcGroup<Tag, Spec>,
+  exchange: BridgeClientExchange,
+  options: ResolvedBridgeClientOptions
+): BridgeClientFor<BridgeRpcGroup<Tag, Spec>> => {
+  const methods = {} as { [Method in keyof Spec]?: BridgeClientMethod<Spec[Method]> }
+  const contractEvents = (contract.events ?? {}) as BridgeRpcEvents
+  const events = {} as Record<string, BridgeClientEvent<BridgeRpcEventSpec>>
 
   for (const [method, methodSpec] of Object.entries(contract.spec) as Array<
     [Extract<keyof Spec, string>, Spec[Extract<keyof Spec, string>]]
   >) {
     methods[method] = ((
       input: Schema.Schema.Type<Spec[typeof method]["input"]>,
-      callOptions?: ApiClientCallOptions
+      callOptions?: BridgeClientCallOptions
     ): Effect.Effect<unknown, unknown, never> | Stream.Stream<unknown, unknown, never> =>
       isStreamSpec(methodSpec.output)
         ? streamContractMethod(
             contract.tag,
             method,
-            methodSpec as Spec[typeof method] & { readonly output: ApiStreamSpec },
+            methodSpec as Spec[typeof method] & { readonly output: BridgeRpcStreamSpec },
             input,
             exchange,
             options,
@@ -204,7 +209,7 @@ const makeContractClient = <Tag extends string, Spec extends ApiContractSpec>(
             exchange,
             options,
             callOptions
-          )) as ApiClientMethod<Spec[typeof method]> | undefined
+          )) as BridgeClientMethod<Spec[typeof method]> | undefined
   }
 
   for (const [event, eventSpec] of Object.entries(contractEvents) as Array<
@@ -219,17 +224,17 @@ const makeContractClient = <Tag extends string, Spec extends ApiContractSpec>(
   return Object.freeze({
     ...methods,
     events: Object.freeze(events)
-  }) as ApiClientFor<ApiContractClass<Tag, Spec, typeof contractEvents>>
+  }) as BridgeClientFor<BridgeRpcGroup<Tag, Spec, typeof contractEvents>>
 }
 
-const requestContractMethod = <Spec extends ApiMethodSpec>(
+const requestContractMethod = <Spec extends BridgeRpcMethodSpec>(
   tag: string,
   method: string,
   spec: Spec,
   input: Schema.Schema.Type<Spec["input"]>,
-  exchange: ApiClientExchange,
-  options: ResolvedApiClientOptions,
-  callOptions: ApiClientCallOptions = {}
+  exchange: BridgeClientExchange,
+  options: ResolvedBridgeClientOptions,
+  callOptions: BridgeClientCallOptions = {}
 ): Effect.Effect<unknown, Schema.Schema.Type<Spec["error"]> | HostProtocolError, never> =>
   Effect.gen(function* () {
     const operation = methodName(tag, method)
@@ -254,7 +259,7 @@ const requestContractMethod = <Spec extends ApiMethodSpec>(
     return yield* decodeOutput(operation, spec, response.payload)
   })
 
-const encodeInput = <Spec extends ApiMethodSpec>(
+const encodeInput = <Spec extends BridgeRpcMethodSpec>(
   operation: string,
   spec: Spec,
   input: Schema.Schema.Type<Spec["input"]>
@@ -268,7 +273,7 @@ const encodeInput = <Spec extends ApiMethodSpec>(
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
 
-const decodeOutput = <Spec extends ApiMethodSpec>(
+const decodeOutput = <Spec extends BridgeRpcMethodSpec>(
   operation: string,
   spec: Spec,
   payload: unknown
@@ -289,12 +294,12 @@ const decodeOutput = <Spec extends ApiMethodSpec>(
     (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
   )
 
-const decodeResourceOutput = <Spec extends ApiResourceSpec>(
+const decodeResourceOutput = <Spec extends BridgeRpcResourceSpec>(
   operation: string,
   spec: Spec,
   payload: unknown,
-  exchange: ApiClientExchange
-): Effect.Effect<ApiResourceProxy<Spec["kind"], Spec["state"]>, HostProtocolError, never> =>
+  exchange: BridgeClientExchange
+): Effect.Effect<BridgeResourceProxy<Spec["kind"], Spec["state"]>, HostProtocolError, never> =>
   Effect.gen(function* () {
     if (exchange.resource === undefined) {
       return yield* Effect.fail(
@@ -304,7 +309,7 @@ const decodeResourceOutput = <Spec extends ApiResourceSpec>(
 
     const handle = yield* Effect.mapError(
       Schema.decodeUnknownEffect(spec.schema)(payload, StrictParseOptions) as Effect.Effect<
-        ApiResourceHandle,
+        BridgeResourceHandle,
         unknown,
         never
       >,
@@ -322,12 +327,12 @@ const decodeResourceOutput = <Spec extends ApiResourceSpec>(
 
     return makeResourceProxy(
       spec,
-      handle as ApiResourceHandle<Spec["kind"], Spec["state"]>,
+      handle as BridgeResourceHandle<Spec["kind"], Spec["state"]>,
       exchange.resource
     )
   })
 
-const decodeContractError = <Spec extends ApiMethodSpec>(
+const decodeContractError = <Spec extends BridgeRpcMethodSpec>(
   operation: string,
   spec: Spec,
   error: unknown
@@ -345,12 +350,12 @@ const decodeContractError = <Spec extends ApiMethodSpec>(
     (decoded) => Effect.fail(decoded)
   )
 
-const subscribeContractEvent = <Spec extends ApiEventSpec>(
+const subscribeContractEvent = <Spec extends BridgeRpcEventSpec>(
   tag: string,
   event: string,
   spec: Spec,
-  exchange: ApiClientExchange
-): ApiClientEvent<Spec> => {
+  exchange: BridgeClientExchange
+): BridgeClientEvent<Spec> => {
   const operation = eventName(tag, event)
 
   if (exchange.subscribe === undefined) {
@@ -364,14 +369,16 @@ const subscribeContractEvent = <Spec extends ApiEventSpec>(
     .pipe(Stream.mapEffect((envelope) => decodeEventEnvelope(operation, spec, envelope)))
 }
 
-const streamContractMethod = <Spec extends ApiMethodSpec & { readonly output: ApiStreamSpec }>(
+const streamContractMethod = <
+  Spec extends BridgeRpcMethodSpec & { readonly output: BridgeRpcStreamSpec }
+>(
   tag: string,
   method: string,
   spec: Spec,
   input: Schema.Schema.Type<Spec["input"]>,
-  exchange: ApiClientExchange,
-  options: ResolvedApiClientOptions,
-  callOptions: ApiClientCallOptions = {}
+  exchange: BridgeClientExchange,
+  options: ResolvedBridgeClientOptions,
+  callOptions: BridgeClientCallOptions = {}
 ): Stream.Stream<
   Schema.Schema.Type<Spec["output"]["chunk"]>,
   Schema.Schema.Type<Spec["output"]["error"]> | HostProtocolError,
@@ -452,14 +459,14 @@ const isTerminalStreamEnvelope = (
   return decodeStreamFrame(operation, envelope.payload).pipe(
     Effect.map(
       (frame) =>
-        frame instanceof ApiStreamErrorFrame ||
-        frame instanceof ApiStreamCompleteFrame ||
-        frame instanceof ApiStreamClosedFrame
+        frame instanceof BridgeStreamErrorFrame ||
+        frame instanceof BridgeStreamCompleteFrame ||
+        frame instanceof BridgeStreamClosedFrame
     )
   )
 }
 
-const decodeStreamEnvelope = <Spec extends ApiStreamSpec>(
+const decodeStreamEnvelope = <Spec extends BridgeRpcStreamSpec>(
   operation: string,
   requestId: string,
   spec: Spec,
@@ -482,14 +489,14 @@ const decodeStreamEnvelope = <Spec extends ApiStreamSpec>(
 
   return Stream.fromEffect(decodeStreamFrame(operation, envelope.payload)).pipe(
     Stream.flatMap((frame) => {
-      if (frame instanceof ApiStreamDataFrame) {
+      if (frame instanceof BridgeStreamDataFrame) {
         return Stream.fromEffect(decodeStreamChunk(operation, spec, frame.chunk))
       }
-      if (frame instanceof ApiStreamErrorFrame) {
+      if (frame instanceof BridgeStreamErrorFrame) {
         onTerminal()
         return Stream.fromEffect(decodeStreamError(operation, spec, frame.error))
       }
-      if (frame instanceof ApiStreamCompleteFrame) {
+      if (frame instanceof BridgeStreamCompleteFrame) {
         onTerminal()
         return Stream.empty
       }
@@ -523,7 +530,7 @@ const validateStreamEnvelopeRequestId = (
   )
 }
 
-const decodeEventEnvelope = <Spec extends ApiEventSpec>(
+const decodeEventEnvelope = <Spec extends BridgeRpcEventSpec>(
   operation: string,
   spec: Spec,
   envelope: HostProtocolEventEnvelope
@@ -540,7 +547,7 @@ const decodeEventEnvelope = <Spec extends ApiEventSpec>(
   return decodeEventPayload(operation, spec, envelope.payload)
 }
 
-const decodeEventPayload = <Spec extends ApiEventSpec>(
+const decodeEventPayload = <Spec extends BridgeRpcEventSpec>(
   operation: string,
   spec: Spec,
   payload: unknown
@@ -557,17 +564,17 @@ const decodeEventPayload = <Spec extends ApiEventSpec>(
 const decodeStreamFrame = (
   operation: string,
   payload: unknown
-): Effect.Effect<ApiStreamFrame, HostProtocolError, never> =>
+): Effect.Effect<BridgeStreamFrame, HostProtocolError, never> =>
   Effect.mapError(
-    Schema.decodeUnknownEffect(ApiStreamFrame)(payload, StrictParseOptions) as Effect.Effect<
-      ApiStreamFrame,
+    Schema.decodeUnknownEffect(BridgeStreamFrame)(payload, StrictParseOptions) as Effect.Effect<
+      BridgeStreamFrame,
       unknown,
       never
     >,
     (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
   )
 
-const decodeStreamChunk = <Spec extends ApiStreamSpec>(
+const decodeStreamChunk = <Spec extends BridgeRpcStreamSpec>(
   operation: string,
   spec: Spec,
   chunk: unknown
@@ -581,7 +588,7 @@ const decodeStreamChunk = <Spec extends ApiStreamSpec>(
     (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
   )
 
-const decodeStreamError = <Spec extends ApiStreamSpec>(
+const decodeStreamError = <Spec extends BridgeRpcStreamSpec>(
   operation: string,
   spec: Spec,
   error: unknown
@@ -600,12 +607,12 @@ const decodeStreamError = <Spec extends ApiStreamSpec>(
   )
 
 const runRequestWithCancellation = (
-  exchange: ApiClientExchange,
+  exchange: BridgeClientExchange,
   request: HostProtocolRequestEnvelope,
-  options: ApiClientCallOptions,
+  options: BridgeClientCallOptions,
   operation: string,
   now: () => number
-): Effect.Effect<ApiClientResponse, HostProtocolError, never> =>
+): Effect.Effect<BridgeClientResponse, HostProtocolError, never> =>
   Effect.gen(function* () {
     yield* failIfAlreadyAborted(request, options)
     if (options.signal === undefined) {
@@ -650,7 +657,7 @@ const runRequestWithCancellation = (
 
 const failIfAlreadyAborted = (
   request: HostProtocolRequestEnvelope,
-  options: ApiClientCallOptions
+  options: BridgeClientCallOptions
 ): Effect.Effect<void, HostProtocolError, never> =>
   Effect.sync(() => {
     return options.signal?.aborted === true
@@ -659,9 +666,9 @@ const failIfAlreadyAborted = (
   }).pipe(Effect.flatten)
 
 const installAbortCancellation = (
-  exchange: ApiClientExchange,
+  exchange: BridgeClientExchange,
   request: HostProtocolRequestEnvelope,
-  options: ApiClientCallOptions,
+  options: BridgeClientCallOptions,
   now: () => number
 ): Effect.Effect<() => void, HostProtocolError, never> =>
   Effect.sync(() => {
@@ -717,7 +724,7 @@ const makeCancelledError = (operation: string): HostProtocolCancelledError =>
 const makeRequest = (
   method: string,
   payload: unknown,
-  options: ResolvedApiClientOptions
+  options: ResolvedBridgeClientOptions
 ): Effect.Effect<HostProtocolRequestEnvelope, HostProtocolError, never> =>
   Effect.gen(function* () {
     const timestamp = yield* validateHostProtocolTimestamp(options.now(), method)
@@ -752,7 +759,7 @@ const makeRequest = (
     })
   })
 
-const resolveOptions = (options: ApiClientOptions): ResolvedApiClientOptions => ({
+const resolveOptions = (options: BridgeClientOptions): ResolvedBridgeClientOptions => ({
   nextRequestId: options.nextRequestId ?? (() => `request-${globalThis.crypto.randomUUID()}`),
   nextTraceId: options.nextTraceId ?? (() => `trace-${globalThis.crypto.randomUUID()}`),
   now: options.now ?? Date.now,

@@ -2,9 +2,9 @@ import { expect, test } from "bun:test"
 import { Effect, Exit, Fiber, Layer, Schema, Stream } from "effect"
 
 import {
-  Api,
-  HOST_PROTOCOL_VERSION,
+  BridgeRpc,
   HOST_PING_METHOD,
+  HOST_PROTOCOL_VERSION,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
   HostProtocolRequestEnvelope,
@@ -13,10 +13,8 @@ import {
   makeHostHandshakeClient,
   makeHostProtocolNotFoundError,
   makeHostWindowClient,
-  type ApiContractClass,
-  type ApiContractSpec,
-  type ApiHandlers,
-  type ApiLayer
+  type BridgeRpcGroup,
+  type BridgeRpcSpec
 } from "@effect-desktop/bridge"
 import {
   Filesystem,
@@ -302,7 +300,7 @@ test("MockHost rejects non-JSON fixture payloads", async () => {
 })
 
 test("MockBridge records typed client calls and returns pinned successes", async () => {
-  const ProjectApi = testContract("Test.MockBridge.Success", {
+  const ProjectRpcs = testContract("Test.MockBridge.Success", {
     open: {
       input: Schema.Struct({ path: Schema.String }),
       output: Schema.Struct({ id: Schema.String }),
@@ -312,7 +310,7 @@ test("MockBridge records typed client calls and returns pinned successes", async
   const bridge = makeMockBridge({ now: () => 1710000000400 })
   await Effect.runPromise(bridge.succeed("Test.MockBridge.Success.open", { id: "project-1" }))
   const client = bridge.client(
-    { project: ProjectApi },
+    { project: ProjectRpcs },
     {
       nextRequestId: nextSequence("request"),
       nextTraceId: nextSequence("trace"),
@@ -377,10 +375,10 @@ test("MockBridge rejects pinned success payloads that are not JSON-serializable"
 })
 
 test("MockBridge rejects pinned stream chunks that are not JSON-serializable", async () => {
-  const ProjectApi = testContract("Test.MockBridge.Stream", {
+  const ProjectRpcs = testContract("Test.MockBridge.Stream", {
     watch: {
       input: Schema.Void,
-      output: Api.Stream(Schema.String, Schema.Never),
+      output: BridgeRpc.Stream(Schema.String, Schema.Never),
       error: Schema.Never
     }
   })
@@ -396,7 +394,7 @@ test("MockBridge rejects pinned stream chunks that are not JSON-serializable", a
   }
 
   const client = bridge.client(
-    { project: ProjectApi },
+    { project: ProjectRpcs },
     {
       nextRequestId: nextSequence("request"),
       nextTraceId: nextSequence("trace")
@@ -408,7 +406,7 @@ test("MockBridge rejects pinned stream chunks that are not JSON-serializable", a
 
 test("MockBridge returns pinned contract errors through the typed error channel", async () => {
   const Failure = Schema.Struct({ tag: Schema.Literal("Denied"), reason: Schema.String })
-  const ProjectApi = testContract("Test.MockBridge.Failure", {
+  const ProjectRpcs = testContract("Test.MockBridge.Failure", {
     open: {
       input: Schema.Struct({ path: Schema.String }),
       output: Schema.Struct({ id: Schema.String }),
@@ -420,7 +418,7 @@ test("MockBridge returns pinned contract errors through the typed error channel"
     bridge.fail("Test.MockBridge.Failure.open", { tag: "Denied", reason: "not allowed" })
   )
   const client = bridge.client(
-    { project: ProjectApi },
+    { project: ProjectRpcs },
     {
       nextRequestId: nextSequence("request"),
       nextTraceId: nextSequence("trace")
@@ -437,17 +435,17 @@ test("MockBridge returns pinned contract errors through the typed error channel"
 })
 
 test("MockBridge replays pinned stream chunks in order", async () => {
-  const ProjectApi = testContract("Test.MockBridge.Stream", {
+  const ProjectRpcs = testContract("Test.MockBridge.Stream", {
     watch: {
       input: Schema.Struct({ path: Schema.String }),
-      output: Api.Stream(Schema.String, Schema.Never),
+      output: BridgeRpc.Stream(Schema.String, Schema.Never),
       error: Schema.Never
     }
   })
   const bridge = makeMockBridge({ now: () => 1710000000500 })
   await Effect.runPromise(bridge.streamChunks("Test.MockBridge.Stream.watch", ["a", "b"]))
   const client = bridge.client(
-    { project: ProjectApi },
+    { project: ProjectRpcs },
     {
       nextRequestId: nextSequence("request"),
       nextTraceId: nextSequence("trace"),
@@ -467,7 +465,7 @@ test("MockBridge returns disposable resource proxies through the registry", asyn
   const ProcessApi = testContract("Test.MockBridge.Resource", {
     spawn: {
       input: Schema.Void,
-      output: Api.Resource("process", "running"),
+      output: BridgeRpc.Resource("process", "running"),
       error: Schema.Never
     }
   })
@@ -1023,7 +1021,7 @@ test("MockPTY rejects writes and resizes after exit", async () => {
 })
 
 test("HeadlessRuntime layer composes mocks with real registry telemetry and permissions", async () => {
-  const ProjectApi = testContract("Test.HeadlessRuntime.Project", {
+  const ProjectRpcs = testContract("Test.HeadlessRuntime.Project", {
     open: {
       input: Schema.Struct({ path: Schema.String }),
       output: Schema.Struct({ id: Schema.String }),
@@ -1042,7 +1040,7 @@ test("HeadlessRuntime layer composes mocks with real registry telemetry and perm
       const bridge = yield* MockBridge
 
       yield* bridge.succeed("Test.HeadlessRuntime.Project.open", { id: "project-1" })
-      const client = bridge.client({ project: ProjectApi })
+      const client = bridge.client({ project: ProjectRpcs })
       const opened = yield* client.project.open({ path: "/workspace/project" })
 
       yield* filesystem.write("/workspace/out.txt", bytes("file"))
@@ -1257,24 +1255,7 @@ const bytes = (value: string): Uint8Array => new TextEncoder().encode(value)
 
 const text = (value: Uint8Array): string => new TextDecoder().decode(value)
 
-const testContract = <Tag extends string, Spec extends ApiContractSpec>(
+const testContract = <Tag extends string, Spec extends BridgeRpcSpec>(
   tag: Tag,
   spec: Spec
-): ApiContractClass<Tag, Spec> => {
-  const contract = class {
-    static readonly tag = tag
-    static readonly spec = Object.freeze(spec)
-    static readonly events = Object.freeze({})
-
-    static layer<Handlers extends ApiHandlers<Spec>>(
-      handlers: Handlers
-    ): ApiLayer<Tag, Spec, Handlers> {
-      return Object.freeze({
-        contract,
-        handlers: Object.freeze(handlers)
-      })
-    }
-  } as ApiContractClass<Tag, Spec>
-
-  return Object.freeze(contract)
-}
+): BridgeRpcGroup<Tag, Spec> => BridgeRpc.group(tag, spec, Object.freeze({}))

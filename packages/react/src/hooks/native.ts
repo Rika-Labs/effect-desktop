@@ -13,7 +13,7 @@ import type {
 import { Effect, Stream } from "effect"
 import { AsyncResult } from "effect/unstable/reactivity"
 
-import { type StreamState, useEffectResult, useStream } from "./stream.js"
+import { type StreamState, useDesktopStream, useEffectResult } from "./stream.js"
 
 export type ThemeState = StreamState<SystemAppearanceChangedEvent, SystemAppearanceError>
 
@@ -23,7 +23,7 @@ export const useTheme = (
     SystemAppearanceError,
     never
   >
-): ThemeState => useStream(onAppearanceChanged())
+): ThemeState => useDesktopStream(onAppearanceChanged())
 
 export type PowerEvent =
   | PowerMonitorSuspendEvent
@@ -47,7 +47,7 @@ export const usePower = (streams: {
     s: Stream.Stream<T, PowerMonitorError, never>
   ): Stream.Stream<PowerEvent, PowerMonitorError, never> =>
     s as Stream.Stream<PowerEvent, PowerMonitorError, never>
-  return useStream(
+  return useDesktopStream(
     Stream.mergeAll(
       [
         asEvent(streams.onSuspend()),

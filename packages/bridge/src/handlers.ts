@@ -1,14 +1,14 @@
 import { Cause, Effect, Exit, Fiber, Schema, Stream, SubscriptionRef } from "effect"
 
 import {
-  type ApiContractClass,
-  type ApiContractSpec,
-  type ApiLayer,
-  type ApiMethodSpec,
+  type BridgeRpcGroup,
+  type BridgeRpcSpec,
+  type BridgeRpcLayer,
+  type BridgeRpcMethodSpec,
   isResourceSpec,
   isStreamSpec
 } from "./contracts.js"
-import { type ApiClientResponse } from "./client.js"
+import { type BridgeClientResponse } from "./client.js"
 import {
   HostProtocolMethodNotFoundError,
   HostProtocolCancelByRequestEnvelope,
@@ -28,10 +28,10 @@ const StrictParseOptions = { onExcessProperty: "error" } as const
 const DEFAULT_TIMEOUT_MS = 30_000
 const DEFAULT_TERMINAL_STATE_TTL_MS = 30_000
 
-export interface ApiHandlerRuntime<Env = never> {
+export interface BridgeHandlerRuntime<Env = never> {
   readonly dispatch: (
     request: HostProtocolRequestEnvelope
-  ) => Effect.Effect<ApiClientResponse, HostProtocolError, Env>
+  ) => Effect.Effect<BridgeClientResponse, HostProtocolError, Env>
   readonly cancel: (
     request: HostProtocolCancelByRequestEnvelope
   ) => Effect.Effect<void, HostProtocolError, never>
@@ -83,7 +83,7 @@ export const makeBridgeCallRegistry = (
     } satisfies BridgeCallRegistry)
   })
 
-export interface ApiHandlerRuntimeOptions {
+export interface BridgeHandlerRuntimeOptions {
   readonly now?: () => number
   readonly onState?: (state: BridgeCallState) => Effect.Effect<void, never, never>
   readonly originAuth?: RendererOriginAuth
@@ -91,7 +91,7 @@ export interface ApiHandlerRuntimeOptions {
   readonly terminalStateTtlMs?: number
 }
 
-interface ResolvedApiHandlerRuntimeOptions {
+interface ResolvedBridgeHandlerRuntimeOptions {
   readonly now: () => number
   readonly onState: (state: BridgeCallState) => Effect.Effect<void, never, never>
   readonly originAuth: RendererOriginAuth
@@ -115,8 +115,8 @@ export const RendererOriginAuth = {
   }) satisfies RendererOriginAuth
 } as const
 
-export type ApiLayerEnvironment<Layer> =
-  Layer extends ApiLayer<string, infer Spec, infer Handlers>
+export type BridgeRpcLayerEnvironment<Layer> =
+  Layer extends BridgeRpcLayer<string, infer Spec, infer Handlers>
     ? {
         readonly [Method in keyof Spec]: HandlerEnvironment<Handlers[Method]>
       }[keyof Spec]
@@ -128,13 +128,13 @@ type HandlerEnvironment<Handler> = Handler extends (
   ? Env
   : never
 
-type AnyApiLayer = {
-  readonly contract: ApiContractClass<string, ApiContractSpec>
+type AnyBridgeRpcLayer = {
+  readonly group: BridgeRpcGroup<string, BridgeRpcSpec>
   readonly handlers: object
 }
 
 type BoundHandler = {
-  readonly spec: ApiMethodSpec
+  readonly spec: BridgeRpcMethodSpec
   readonly handler: (input: unknown) => Effect.Effect<unknown, unknown, unknown>
 }
 
@@ -149,22 +149,23 @@ type PendingCall = {
   cancelledBy: "renderer" | "runtime" | "host" | undefined
 }
 
-const makeHandlers = <Layers extends readonly AnyApiLayer[]>(
+const makeHandlers = <Layers extends readonly AnyBridgeRpcLayer[]>(
   ...layers: Layers
-): ApiHandlerRuntime<ApiLayerEnvironment<Layers[number]>> => makeHandlersWithOptions({}, ...layers)
+): BridgeHandlerRuntime<BridgeRpcLayerEnvironment<Layers[number]>> =>
+  makeHandlersWithOptions({}, ...layers)
 
-const makeHandlersWithOptions = <Layers extends readonly AnyApiLayer[]>(
-  options: ApiHandlerRuntimeOptions,
+const makeHandlersWithOptions = <Layers extends readonly AnyBridgeRpcLayer[]>(
+  options: BridgeHandlerRuntimeOptions,
   ...layers: Layers
-): ApiHandlerRuntime<ApiLayerEnvironment<Layers[number]>> => {
+): BridgeHandlerRuntime<BridgeRpcLayerEnvironment<Layers[number]>> => {
   const table = new Map<string, BoundHandler>()
   const terminalStates = new Map<string, TerminalStateEntry>()
   const pendingCalls = new Map<string, PendingCall>()
   const resolved = resolveOptions(options)
 
   for (const layer of layers) {
-    for (const [method, spec] of Object.entries(layer.contract.spec)) {
-      const operation = methodName(layer.contract.tag, method)
+    for (const [method, spec] of Object.entries(layer.group.spec)) {
+      const operation = methodName(layer.group.tag, method)
       const handler = Reflect.get(layer.handlers, method) as (
         this: object,
         input: unknown
@@ -180,13 +181,13 @@ const makeHandlersWithOptions = <Layers extends readonly AnyApiLayer[]>(
   return Object.freeze({
     dispatch: (request: HostProtocolRequestEnvelope) =>
       dispatch(table, terminalStates, pendingCalls, resolved, request) as Effect.Effect<
-        ApiClientResponse,
+        BridgeClientResponse,
         HostProtocolError,
-        ApiLayerEnvironment<Layers[number]>
+        BridgeRpcLayerEnvironment<Layers[number]>
       >,
     cancel: (request: HostProtocolCancelByRequestEnvelope) =>
       cancel(pendingCalls, resolved, request)
-  }) as ApiHandlerRuntime<ApiLayerEnvironment<Layers[number]>>
+  }) as BridgeHandlerRuntime<BridgeRpcLayerEnvironment<Layers[number]>>
 }
 
 export const Handlers = Object.assign(makeHandlers, {
@@ -197,9 +198,9 @@ const dispatch = (
   table: ReadonlyMap<string, BoundHandler>,
   terminalStates: Map<string, TerminalStateEntry>,
   pendingCalls: Map<string, PendingCall>,
-  options: ResolvedApiHandlerRuntimeOptions,
+  options: ResolvedBridgeHandlerRuntimeOptions,
   request: HostProtocolRequestEnvelope
-): Effect.Effect<ApiClientResponse, HostProtocolError, unknown> =>
+): Effect.Effect<BridgeClientResponse, HostProtocolError, unknown> =>
   Effect.gen(function* () {
     const now = options.now()
     purgeExpiredTerminalStates(terminalStates, now, options.terminalStateTtlMs)
@@ -347,7 +348,7 @@ const dispatch = (
 
 const cancel = (
   pendingCalls: Map<string, PendingCall>,
-  _options: ResolvedApiHandlerRuntimeOptions,
+  _options: ResolvedBridgeHandlerRuntimeOptions,
   request: HostProtocolCancelByRequestEnvelope
 ): Effect.Effect<void, HostProtocolError, never> =>
   Effect.gen(function* () {
@@ -383,7 +384,7 @@ const runWithTimeout = (
   )
 }
 
-const decodeInput = <Spec extends ApiMethodSpec>(
+const decodeInput = <Spec extends BridgeRpcMethodSpec>(
   operation: string,
   spec: Spec,
   payload: unknown
@@ -397,7 +398,7 @@ const decodeInput = <Spec extends ApiMethodSpec>(
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
 
-const encodeOutput = <Spec extends ApiMethodSpec>(
+const encodeOutput = <Spec extends BridgeRpcMethodSpec>(
   operation: string,
   spec: Spec,
   output: unknown
@@ -429,7 +430,7 @@ const encodeOutput = <Spec extends ApiMethodSpec>(
   )
 }
 
-const encodeContractError = <Spec extends ApiMethodSpec>(
+const encodeContractError = <Spec extends BridgeRpcMethodSpec>(
   operation: string,
   spec: Spec,
   cause: Cause.Cause<unknown>
@@ -484,7 +485,7 @@ const makeCancelledError = (
 
 const failCall = (
   terminalStates: Map<string, TerminalStateEntry>,
-  options: ResolvedApiHandlerRuntimeOptions,
+  options: ResolvedBridgeHandlerRuntimeOptions,
   id: string,
   error: HostProtocolError
 ): Effect.Effect<void, never, never> =>
@@ -502,7 +503,7 @@ const recordTerminalState = (
   terminalStates: Map<string, TerminalStateEntry>,
   id: string,
   state: BridgeCallTerminalState,
-  options: ResolvedApiHandlerRuntimeOptions
+  options: ResolvedBridgeHandlerRuntimeOptions
 ): void => {
   terminalStates.set(id, {
     state,
@@ -561,7 +562,9 @@ const isEffectTimeoutError = (error: unknown): boolean => Cause.isTimeoutError(e
 const isHostProtocolTimeoutError = (error: unknown): error is HostProtocolTimeoutError =>
   typeof error === "object" && error !== null && "tag" in error && error.tag === "Timeout"
 
-const resolveOptions = (options: ApiHandlerRuntimeOptions): ResolvedApiHandlerRuntimeOptions => ({
+const resolveOptions = (
+  options: BridgeHandlerRuntimeOptions
+): ResolvedBridgeHandlerRuntimeOptions => ({
   now: options.now ?? Date.now,
   onState: options.onState ?? (() => Effect.void),
   originAuth: options.originAuth ?? defaultRendererOriginAuth,
@@ -569,7 +572,7 @@ const resolveOptions = (options: ApiHandlerRuntimeOptions): ResolvedApiHandlerRu
   terminalStateTtlMs: options.terminalStateTtlMs ?? DEFAULT_TERMINAL_STATE_TTL_MS
 })
 
-const redactForEmission = <A>(value: A, options: ResolvedApiHandlerRuntimeOptions): A =>
+const redactForEmission = <A>(value: A, options: ResolvedBridgeHandlerRuntimeOptions): A =>
   redact(value, options.redaction)
 
 const defaultRendererOriginAuth: RendererOriginAuth = Object.freeze({

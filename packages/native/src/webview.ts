@@ -1,21 +1,20 @@
 import {
-  Api,
+  BridgeRpc,
   Client,
-  type ApiClientExchange,
-  type ApiClientOptions,
-  type ApiContractClass,
-  type ApiContractError,
-  type ApiContractSpec,
-  type ApiHandlers,
-  type ApiLayer,
-  ApiResourceHandleShape,
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeRpcGroup,
+  type BridgeRpcSpec,
+  type BridgeRpcHandlers,
+  type BridgeRpcLayer,
+  BridgeResourceHandleShape,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidOutputError,
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Schema, Stream } from "effect"
+import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 export * from "./contracts/webview.js"
 import {
@@ -41,7 +40,7 @@ import { isSupportedImageHeader } from "./contracts/image.js"
 const StrictParseOptions = { onExcessProperty: "error" } as const
 type WebViewError = HostProtocolError
 
-export const WebViewApiSpec = Object.freeze({
+export const WebViewRpcSpec = Object.freeze({
   create: {
     input: WebViewCreateInput,
     output: WebViewResource,
@@ -70,51 +69,21 @@ export const WebViewApiSpec = Object.freeze({
     permission: "none"
   },
   destroy: webviewMethodSpec(WebViewHandleInput, "native.invoke:WebView.destroy")
-}) satisfies ApiContractSpec
+}) satisfies BridgeRpcSpec
 
-export type WebViewApiSpec = typeof WebViewApiSpec
+export type WebViewRpcSpec = typeof WebViewRpcSpec
 
-export const WebViewApiEvents = Object.freeze({
+export const WebViewRpcEvents = Object.freeze({
   NavigationBlocked: { payload: WebViewNavigationBlockedEvent }
 })
 
-export type WebViewApiEvents = typeof WebViewApiEvents
+export type WebViewRpcEvents = typeof WebViewRpcEvents
 
-export const WebViewApi: ApiContractClass<"WebView", WebViewApiSpec, WebViewApiEvents> = (() => {
-  const contract = class {
-    static readonly tag = "WebView"
-    static readonly spec = WebViewApiSpec
-    static readonly events = WebViewApiEvents
-
-    static layer<Handlers extends ApiHandlers<WebViewApiSpec>>(
-      handlers: Handlers
-    ): ApiLayer<"WebView", WebViewApiSpec, Handlers, WebViewApiEvents> {
-      return Object.freeze({
-        contract,
-        handlers: Object.freeze(handlers)
-      })
-    }
-  } as ApiContractClass<"WebView", WebViewApiSpec, WebViewApiEvents>
-
-  return Object.freeze(contract)
-})()
-
-export const registerWebViewApi = (): Effect.Effect<
-  ApiContractClass<"WebView", WebViewApiSpec, WebViewApiEvents>,
-  ApiContractError,
-  never
-> =>
-  Effect.gen(function* () {
-    const existing = yield* Api.get("WebView")
-    if (Option.isSome(existing)) {
-      return existing.value as ApiContractClass<"WebView", WebViewApiSpec, WebViewApiEvents>
-    }
-
-    return yield* Api.Tag("WebView")<unknown>()(WebViewApiSpec, WebViewApiEvents)
-  })
+export const WebViewRpcs: BridgeRpcGroup<"WebView", WebViewRpcSpec, WebViewRpcEvents> =
+  BridgeRpc.group("WebView", WebViewRpcSpec, WebViewRpcEvents)
 
 export const WebViewMethodNames = Object.freeze(
-  Object.keys(WebViewApiSpec) as ReadonlyArray<keyof WebViewApiSpec>
+  Object.keys(WebViewRpcSpec) as ReadonlyArray<keyof WebViewRpcSpec>
 )
 
 export interface WebViewClientApi {
@@ -182,14 +151,15 @@ export const makeWebViewServiceLayer = (client: WebViewClientApi): Layer.Layer<W
   Layer.provide(WebViewLive, makeWebViewClientLayer(client))
 
 export const makeWebViewBridgeClientLayer = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions = {}
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
 ): Layer.Layer<WebViewClient> =>
   Layer.succeed(WebViewClient)(makeWebViewBridgeClient(exchange, options))
 
-export const makeHostWebViewApiLayer = <Handlers extends ApiHandlers<WebViewApiSpec>>(
+export const makeHostWebViewBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<WebViewRpcSpec>>(
   handlers: Handlers
-): ApiLayer<"WebView", WebViewApiSpec, Handlers, WebViewApiEvents> => WebViewApi.layer(handlers)
+): BridgeRpcLayer<"WebView", WebViewRpcSpec, Handlers, WebViewRpcEvents> =>
+  BridgeRpc.layer(WebViewRpcs)(handlers)
 
 export const webViewCapability = (
   name: WebViewCapabilityName,
@@ -226,10 +196,10 @@ const makeWebViewService = (client: WebViewClientApi): WebViewServiceApi => {
 }
 
 const makeWebViewBridgeClient = (
-  exchange: ApiClientExchange,
-  options: ApiClientOptions
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
 ): WebViewClientApi => {
-  const client = Client({ WebView: WebViewApi }, exchange, options).WebView
+  const client = Client({ WebView: WebViewRpcs }, exchange, options).WebView
 
   const webViewClient: WebViewClientApi = {
     create: (input) => decodeWebViewCreateInput(input).pipe(Effect.flatMap(client.create)),
@@ -312,7 +282,7 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
   })
 
 const toWebViewHandle = (handle: WebViewHandle): WebViewHandle =>
-  new ApiResourceHandleShape({
+  new BridgeResourceHandleShape({
     kind: handle.kind,
     id: handle.id,
     generation: handle.generation,

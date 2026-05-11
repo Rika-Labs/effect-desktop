@@ -1,9 +1,9 @@
-import { Api, type ApiResourceHandle } from "@effect-desktop/bridge"
+import { BridgeRpc, type BridgeResourceHandle } from "@effect-desktop/bridge"
 import { Schema } from "effect"
 
 import { PrintableNonEmptyString } from "./strings.js"
 
-const WindowResource = Api.Resource("window", "open")
+const WindowResource = BridgeRpc.Resource("window", "open")
 const MenuPlatform = Schema.Literals(["macos", "windows", "linux"])
 const MenuCapabilityName = Schema.Literals(["application menu", "window menu", "command binding"])
 
@@ -18,7 +18,7 @@ const MenuItemBase = {
 
 export type MenuPlatform = Schema.Schema.Type<typeof MenuPlatform>
 export type MenuCapabilityName = Schema.Schema.Type<typeof MenuCapabilityName>
-export type MenuWindowHandle = ApiResourceHandle<"window", "open">
+export type MenuWindowHandle = BridgeResourceHandle<"window", "open">
 
 export const MenuItem = Schema.Struct({
   type: Schema.Literal("item"),
