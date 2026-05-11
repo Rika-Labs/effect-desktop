@@ -221,13 +221,15 @@ const bindGlobalShortcutCommand = (
 
     const cleanup = cleanupGlobalShortcutCommandBinding(client, fiber, accelerator)
 
-    const handle = yield* resources.register({
-      kind: "global-shortcut-command",
-      id: globalShortcutCommandResourceId(registrar.id, accelerator),
-      ownerScope: registrar.ownerScope,
-      state: "registered",
-      dispose: cleanup
-    })
+    const handle = yield* resources
+      .register({
+        kind: "global-shortcut-command",
+        id: globalShortcutCommandResourceId(registrar.id, accelerator),
+        ownerScope: registrar.ownerScope,
+        state: "registered",
+        dispose: cleanup
+      })
+      .pipe(Effect.orDie)
     completed = true
     return handle
   }).pipe(

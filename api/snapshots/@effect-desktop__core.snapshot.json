@@ -154,6 +154,11 @@
       "signature": "const AuditEventsLayer: Layer.Layer<AuditEvents, never, EventLog.Registry | EventLog.EventLog>"
     },
     {
+      "name": "AuditEventsOptions",
+      "kind": "interface",
+      "signature": "export interface AuditEventsOptions { readonly redaction?: RedactionFilterOptions }"
+    },
+    {
       "name": "AuditGroup",
       "kind": "value",
       "signature": "const AuditGroup: EventGroup.EventGroup<import(\"effect/unstable/eventlog/Event\").Event<\"permission-granted\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"permission-denied\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"permission-revoked\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"permission-expired\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"permission-consumed\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"permission-used\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"approval-requested\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"approval-granted\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"approval-denied\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"command-registered\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"command-unregistered\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"command-invoked\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"job-retrying\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"secrets-accessed\", Schema.Unknown, Schema.Void, Schema.Never> | import(\"effect/unstable/eventlog/Event\").Event<\"trace-id-missing\", Schema.Unknown, Schema.Void, Schema.Never>>"
@@ -266,7 +271,7 @@
     {
       "name": "CapabilityAnnotation",
       "kind": "value",
-      "signature": "const CapabilityAnnotation: Context.Service<{ readonly kind: \"filesystem.read\" | \"filesystem.write\" | \"filesystem.delete\"; readonly roots: readonly string[]; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly deny?: readonly string[]; readonly allowCreate?: boolean; readonly allowOverwrite?: boolean; } | { readonly kind: \"process.spawn\" | \"pty.spawn\"; readonly audit: \"always\" | \"on-deny\"; readonly commands: readonly string[]; readonly environment: \"allowlist\" | \"none\"; readonly shell: false | \"requires-explicit-approval\"; readonly cwd?: readonly string[]; } | { readonly kind: \"network.connect\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly hosts: readonly string[]; readonly askUnknownHosts: boolean; } | { readonly kind: \"secrets.read\" | \"secrets.write\" | \"safeStorage.read\" | \"safeStorage.write\"; readonly audit: \"always\" | \"on-deny\"; readonly namespaces: readonly string[]; } | { readonly kind: \"native.invoke\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly methods: readonly string[]; readonly primitive: string; }, { readonly kind: \"filesystem.read\" | \"filesystem.write\" | \"filesystem.delete\"; readonly roots: readonly string[]; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly deny?: readonly string[]; readonly allowCreate?: boolean; readonly allowOverwrite?: boolean; } | { readonly kind: \"process.spawn\" | \"pty.spawn\"; readonly audit: \"always\" | \"on-deny\"; readonly commands: readonly string[]; readonly environment: \"allowlist\" | \"none\"; readonly shell: false | \"requires-explicit-approval\"; readonly cwd?: readonly string[]; } | { readonly kind: \"network.connect\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly hosts: readonly string[]; readonly askUnknownHosts: boolean; } | { readonly kind: \"secrets.read\" | \"secrets.write\" | \"safeStorage.read\" | \"safeStorage.write\"; readonly audit: \"always\" | \"on-deny\"; readonly namespaces: readonly string[]; } | { readonly kind: \"native.invoke\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly methods: readonly string[]; readonly primitive: string; }>"
+      "signature": "const CapabilityAnnotation: Context.Service<{ readonly kind: \"filesystem.read\" | \"filesystem.write\" | \"filesystem.delete\"; readonly roots: readonly string[]; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly deny?: readonly string[]; readonly allowCreate?: boolean; readonly allowOverwrite?: boolean; } | { readonly kind: \"sqlite.open\"; readonly roots: readonly string[]; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly deny?: readonly string[]; } | { readonly kind: \"process.spawn\" | \"pty.spawn\"; readonly audit: \"always\" | \"on-deny\"; readonly commands: readonly string[]; readonly environment: \"allowlist\" | \"none\"; readonly shell: false | \"requires-explicit-approval\"; readonly cwd?: readonly string[]; } | { readonly kind: \"network.connect\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly hosts: readonly string[]; readonly askUnknownHosts: boolean; } | { readonly kind: \"secrets.read\" | \"secrets.write\" | \"safeStorage.read\" | \"safeStorage.write\"; readonly audit: \"always\" | \"on-deny\"; readonly namespaces: readonly string[]; } | { readonly kind: \"native.invoke\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly methods: readonly string[]; readonly primitive: string; }, { readonly kind: \"filesystem.read\" | \"filesystem.write\" | \"filesystem.delete\"; readonly roots: readonly string[]; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly deny?: readonly string[]; readonly allowCreate?: boolean; readonly allowOverwrite?: boolean; } | { readonly kind: \"sqlite.open\"; readonly roots: readonly string[]; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly deny?: readonly string[]; } | { readonly kind: \"process.spawn\" | \"pty.spawn\"; readonly audit: \"always\" | \"on-deny\"; readonly commands: readonly string[]; readonly environment: \"allowlist\" | \"none\"; readonly shell: false | \"requires-explicit-approval\"; readonly cwd?: readonly string[]; } | { readonly kind: \"network.connect\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly hosts: readonly string[]; readonly askUnknownHosts: boolean; } | { readonly kind: \"secrets.read\" | \"secrets.write\" | \"safeStorage.read\" | \"safeStorage.write\"; readonly audit: \"always\" | \"on-deny\"; readonly namespaces: readonly string[]; } | { readonly kind: \"native.invoke\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly methods: readonly string[]; readonly primitive: string; }>"
     },
     {
       "name": "capabilityCovers",
@@ -756,7 +761,7 @@
     {
       "name": "makeAuditEvents",
       "kind": "value",
-      "signature": "const makeAuditEvents: (log: EventLog.EventLog[\"Service\"]) => AuditEventsApi"
+      "signature": "const makeAuditEvents: (log: EventLog.EventLog[\"Service\"], options?: AuditEventsOptions) => AuditEventsApi"
     },
     {
       "name": "makeBridgeCallRegistry",
@@ -876,7 +881,7 @@
     {
       "name": "makeSQLite",
       "kind": "value",
-      "signature": "const makeSQLite: (registry: ResourceRegistryApi) => Effect.Effect<SqliteApi, never, never>"
+      "signature": "const makeSQLite: (registry: ResourceRegistryApi, serviceOptions?: SQLiteOptions) => Effect.Effect<SqliteApi, never, never>"
     },
     {
       "name": "makeTelemetry",
@@ -931,7 +936,7 @@
     {
       "name": "NormalizedCapability",
       "kind": "type",
-      "signature": "const NormalizedCapability: Schema.Union<readonly [Schema.Struct<{ readonly kind: Schema.Literals<readonly [\"filesystem.read\", \"filesystem.write\", \"filesystem.delete\"]>; readonly roots: Schema.$Array<Schema.NonEmptyString>; readonly deny: Schema.optionalKey<Schema.$Array<Schema.NonEmptyString>>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; readonly allowCreate: Schema.optionalKey<Schema.Boolean>; readonly allowOverwrite: Schema.optionalKey<Schema.Boolean>; }>, Schema.Struct<{ readonly kind: Schema.Literals<readonly [\"process.spawn\", \"pty.spawn\"]>; readonly commands: Schema.$Array<Schema.NonEmptyString>; readonly cwd: Schema.optionalKey<Schema.$Array<Schema.NonEmptyString>>; readonly environment: Schema.Literals<readonly [\"none\", \"allowlist\"]>; readonly shell: Schema.Union<readonly [Schema.Literal<false>, Schema.Literal<\"requires-explicit-approval\">]>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literal<\"network.connect\">; readonly hosts: Schema.$Array<Schema.NonEmptyString>; readonly askUnknownHosts: Schema.Boolean; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literals<readonly [\"secrets.read\", \"secrets.write\", \"safeStorage.read\", \"safeStorage.write\"]>; readonly namespaces: Schema.$Array<Schema.NonEmptyString>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literal<\"native.invoke\">; readonly primitive: Schema.NonEmptyString; readonly methods: Schema.$Array<Schema.NonEmptyString>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; }>]>"
+      "signature": "const NormalizedCapability: Schema.Union<readonly [Schema.Struct<{ readonly kind: Schema.Literals<readonly [\"filesystem.read\", \"filesystem.write\", \"filesystem.delete\"]>; readonly roots: Schema.$Array<Schema.NonEmptyString>; readonly deny: Schema.optionalKey<Schema.$Array<Schema.NonEmptyString>>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; readonly allowCreate: Schema.optionalKey<Schema.Boolean>; readonly allowOverwrite: Schema.optionalKey<Schema.Boolean>; }>, Schema.Struct<{ readonly kind: Schema.Literal<\"sqlite.open\">; readonly roots: Schema.$Array<Schema.NonEmptyString>; readonly deny: Schema.optionalKey<Schema.$Array<Schema.NonEmptyString>>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literals<readonly [\"process.spawn\", \"pty.spawn\"]>; readonly commands: Schema.$Array<Schema.NonEmptyString>; readonly cwd: Schema.optionalKey<Schema.$Array<Schema.NonEmptyString>>; readonly environment: Schema.Literals<readonly [\"none\", \"allowlist\"]>; readonly shell: Schema.Union<readonly [Schema.Literal<false>, Schema.Literal<\"requires-explicit-approval\">]>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literal<\"network.connect\">; readonly hosts: Schema.$Array<Schema.NonEmptyString>; readonly askUnknownHosts: Schema.Boolean; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literals<readonly [\"secrets.read\", \"secrets.write\", \"safeStorage.read\", \"safeStorage.write\"]>; readonly namespaces: Schema.$Array<Schema.NonEmptyString>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literal<\"native.invoke\">; readonly primitive: Schema.NonEmptyString; readonly methods: Schema.$Array<Schema.NonEmptyString>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; }>]>"
     },
     {
       "name": "openDeclaredWindows",
@@ -1344,6 +1349,11 @@
       "signature": "export type ResourceId = string & { readonly ResourceId: unique symbol }"
     },
     {
+      "name": "ResourceInvalidArgumentError",
+      "kind": "class",
+      "signature": "export class ResourceInvalidArgumentError extends Data.TaggedError(\"InvalidArgument\")<{ readonly operation: string readonly field: string readonly message: string }> {}"
+    },
+    {
       "name": "ResourceKind",
       "kind": "type",
       "signature": "export type ResourceKind = string"
@@ -1356,7 +1366,7 @@
     {
       "name": "ResourceRegistryApi",
       "kind": "interface",
-      "signature": "export interface ResourceRegistryApi { readonly register: <Kind extends ResourceKind, State extends ResourceState>( input: RegisterResourceInput<Kind, State> ) => Effect.Effect<ResourceHandle<Kind, State>, never, never> readonly get: (id: ResourceId) => Effect.Effect<Option.Option<ResourceEntry>, never, never> readonly list: () => Effect.Effect<RegistrySnapshot, never, never> readonly dispose: (id: ResourceId) => Effect.Effect<void, never, never> readonly observe: () => Stream.Stream<RegistrySnapshot, never, never> readonly declareScope: (scope: ScopeId, parent?: ScopeId) => Effect.Effect<void, never, never> readonly closeScope: (scope: ScopeId) => Effect.Effect<void, never, never> readonly share: <Kind extends ResourceKind, State extends ResourceState>( handle: ResourceHandle<Kind, State>, targetScope: ScopeId ) => Effect.Effect<ResourceHandle<Kind, State>, StaleHandle, never> readonly assertFresh: <Kind extends ResourceKind, State extends ResourceState>( handle: ResourceHandle<Kind, State> ) => Effect.Effect<ResourceEntry<Kind, State>, StaleHandle, never> }"
+      "signature": "export interface ResourceRegistryApi { readonly register: <Kind extends ResourceKind, State extends ResourceState>( input: RegisterResourceInput<Kind, State> ) => Effect.Effect<ResourceHandle<Kind, State>, ResourceInvalidArgumentError, never> readonly get: (id: ResourceId) => Effect.Effect<Option.Option<ResourceEntry>, never, never> readonly list: () => Effect.Effect<RegistrySnapshot, never, never> readonly dispose: (id: ResourceId) => Effect.Effect<void, never, never> readonly observe: () => Stream.Stream<RegistrySnapshot, never, never> readonly declareScope: ( scope: ScopeId, parent?: ScopeId ) => Effect.Effect<void, ResourceInvalidArgumentError, never> readonly closeScope: (scope: ScopeId) => Effect.Effect<void, never, never> readonly share: <Kind extends ResourceKind, State extends ResourceState>( handle: ResourceHandle<Kind, State>, targetScope: ScopeId ) => Effect.Effect<ResourceHandle<Kind, State>, ResourceInvalidArgumentError | StaleHandle, never> readonly assertFresh: <Kind extends ResourceKind, State extends ResourceState>( handle: ResourceHandle<Kind, State> ) => Effect.Effect<ResourceEntry<Kind, State>, StaleHandle, never> }"
     },
     {
       "name": "ResourceRegistryLive",
@@ -1716,7 +1726,7 @@
     {
       "name": "SqliteApi",
       "kind": "interface",
-      "signature": "export interface SqliteApi { readonly connect: ( options: SqliteConnectOptions ) => Effect.Effect<SqliteConnection, SqliteError, never> }"
+      "signature": "export interface SqliteApi { readonly connect: ( options: SqliteConnectOptions ) => Effect.Effect<SqliteConnection, SqliteError | PermissionRegistryError, never> }"
     },
     {
       "name": "SqliteBusyError",
@@ -1741,7 +1751,7 @@
     {
       "name": "SqliteConnectInput",
       "kind": "class",
-      "signature": "export class SqliteConnectInput extends Schema.Class<SqliteConnectInput>(\"SqliteConnectInput\")({ path: NonEmptyString, ownerScope: NonEmptyString, readonly: Schema.optionalKey(Schema.Boolean), create: Schema.optionalKey(Schema.Boolean), readwrite: Schema.optionalKey(Schema.Boolean), safeIntegers: Schema.optionalKey(Schema.Boolean), strict: Schema.optionalKey(Schema.Boolean) }) {}"
+      "signature": "export class SqliteConnectInput extends Schema.Class<SqliteConnectInput>(\"SqliteConnectInput\")({ path: SqlitePathString, ownerScope: NonEmptyString, readonly: Schema.optionalKey(Schema.Boolean), create: Schema.optionalKey(Schema.Boolean), readwrite: Schema.optionalKey(Schema.Boolean), safeIntegers: Schema.optionalKey(Schema.Boolean), strict: Schema.optionalKey(Schema.Boolean) }) {}"
     },
     {
       "name": "SqliteConnection",
@@ -1791,12 +1801,17 @@
     {
       "name": "SQLiteLive",
       "kind": "value",
-      "signature": "const SQLiteLive: Layer.Layer<SQLite, never, ResourceRegistry>"
+      "signature": "const SQLiteLive: Layer.Layer<SQLite, never, PermissionRegistry | ResourceRegistry>"
     },
     {
       "name": "SqliteLockedError",
       "kind": "class",
       "signature": "export class SqliteLockedError extends Data.TaggedError(\"Locked\")<SqliteErrorFields> {}"
+    },
+    {
+      "name": "SQLiteOptions",
+      "kind": "interface",
+      "signature": "export interface SQLiteOptions { readonly permissions?: PermissionRegistryApi }"
     },
     {
       "name": "SqliteParams",
@@ -1921,7 +1936,7 @@
     {
       "name": "TelemetryOptions",
       "kind": "interface",
-      "signature": "export interface TelemetryOptions { readonly maxLogs?: number readonly maxMetrics?: number readonly maxHistogramSamples?: number readonly traceRingSize?: number readonly tracingEnabled?: boolean readonly now?: () => number readonly nextSpanId?: () => string }"
+      "signature": "export interface TelemetryOptions { readonly maxLogs?: number readonly maxMetrics?: number readonly maxHistogramSamples?: number readonly redaction?: RedactionFilterOptions readonly traceRingSize?: number readonly tracingEnabled?: boolean readonly now?: () => number readonly nextSpanId?: () => string }"
     },
     {
       "name": "TelemetrySnapshot",

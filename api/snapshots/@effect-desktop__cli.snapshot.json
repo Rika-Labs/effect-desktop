@@ -421,7 +421,7 @@
     {
       "name": "PublicApiSnapshotOptions",
       "kind": "interface",
-      "signature": "export interface PublicApiSnapshotOptions { readonly cwd: string readonly updateSnapshots?: boolean }"
+      "signature": "export interface PublicApiSnapshotOptions { readonly cwd: string readonly snapshotRoot?: string readonly updateSnapshots?: boolean }"
     },
     {
       "name": "PublicApiSnapshotReport",
@@ -611,7 +611,7 @@
     {
       "name": "SemverGuardOptions",
       "kind": "interface",
-      "signature": "export interface SemverGuardOptions { readonly cwd: string readonly publicApiCheck?: ( cwd: string ) => Effect.Effect<PublicApiSnapshotReport, PublicApiSnapshotError, never> }"
+      "signature": "export interface SemverGuardOptions { readonly cwd: string readonly publicApiCheck?: ( cwd: string, snapshotRoot: string ) => Effect.Effect<PublicApiSnapshotReport, PublicApiSnapshotError, never> }"
     },
     {
       "name": "SemverGuardPolicyError",

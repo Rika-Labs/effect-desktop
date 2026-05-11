@@ -116,7 +116,7 @@
     {
       "name": "ApiHandlerRuntimeOptions",
       "kind": "interface",
-      "signature": "export interface ApiHandlerRuntimeOptions { readonly now?: () => number readonly onState?: (state: BridgeCallState) => Effect.Effect<void, never, never> readonly originAuth?: RendererOriginAuth readonly terminalStateTtlMs?: number }"
+      "signature": "export interface ApiHandlerRuntimeOptions { readonly now?: () => number readonly onState?: (state: BridgeCallState) => Effect.Effect<void, never, never> readonly originAuth?: RendererOriginAuth readonly redaction?: RedactionFilterOptions readonly terminalStateTtlMs?: number }"
     },
     {
       "name": "ApiHandlers",
@@ -766,7 +766,7 @@
     {
       "name": "RedactionFilterOptions",
       "kind": "interface",
-      "signature": "export interface RedactionFilterOptions { readonly additionalPatterns?: readonly (RegExp | string)[] readonly allowlist?: readonly string[] }"
+      "signature": "export interface RedactionFilterOptions { readonly defaultPatternEnabled?: boolean readonly additionalPatterns?: readonly (RegExp | string)[] readonly allowlist?: readonly string[] }"
     },
     {
       "name": "RENDERER_DISCONNECTED_EVENT",
@@ -952,6 +952,11 @@
       "name": "Streams",
       "kind": "value",
       "signature": "const Streams: (<Layers extends readonly AnyApiLayer[]>(...layers: Layers) => ApiStreamRuntime<ApiStreamLayerEnvironment<Layers[number]>>) & { withOptions: <Layers extends readonly AnyApiLayer[]>(options: ApiStreamRuntimeOptions, ...layers: Layers) => ApiStreamRuntime<ApiStreamLayerEnvironment<Layers[number]>>; }"
+    },
+    {
+      "name": "validateHostProtocolTimestamp",
+      "kind": "value",
+      "signature": "const validateHostProtocolTimestamp: (timestamp: number, operation: string) => Effect.Effect<number, HostProtocolInvalidArgumentError, never>"
     },
     {
       "name": "WINDOW_CREATE_METHOD",

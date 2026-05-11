@@ -355,13 +355,15 @@ export const makeMockBridge = (options: MockBridgeOptions = {}): MockBridgeApi =
           return
         }
 
-        const registered = yield* options.registry.register({
-          kind: handle.kind,
-          id: handle.id as ResourceId,
-          ownerScope: handle.ownerScope,
-          state: handle.state,
-          reusableId: true
-        })
+        const registered = yield* options.registry
+          .register({
+            kind: handle.kind,
+            id: handle.id as ResourceId,
+            ownerScope: handle.ownerScope,
+            state: handle.state,
+            reusableId: true
+          })
+          .pipe(Effect.orDie)
         const payload = coreHandleToBridgeHandle(registered)
         yield* validateJsonPayload(method, payload)
         yield* enqueue(method, { kind: "success", payload })
@@ -726,12 +728,14 @@ export const runHeadless = <A, E, R>(
         create: (input = {}) =>
           Effect.gen(function* () {
             const response = yield* rawWindow.create(input)
-            const handle = yield* registry.register({
-              kind: "window",
-              ownerScope: options.ownerScope ?? DEFAULT_HEADLESS_SCOPE,
-              state: "open",
-              dispose: Effect.void
-            })
+            const handle = yield* registry
+              .register({
+                kind: "window",
+                ownerScope: options.ownerScope ?? DEFAULT_HEADLESS_SCOPE,
+                state: "open",
+                dispose: Effect.void
+              })
+              .pipe(Effect.orDie)
             windowResources.set(response.windowId, handle)
 
             return response

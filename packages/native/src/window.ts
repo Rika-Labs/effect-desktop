@@ -371,13 +371,15 @@ const makeHostWindowHandlers = (
         const created = yield* host.create(toHostWindowCreateInput(input))
         knownWindowIds.add(created.windowId)
         const ownerScope = windowScope(created.windowId)
-        yield* registry.declareScope(ownerScope, "app")
-        const handle = yield* registry.register({
-          kind: "window",
-          id: created.windowId as ResourceId,
-          ownerScope,
-          state: "open"
-        })
+        yield* registry.declareScope(ownerScope, "app").pipe(Effect.orDie)
+        const handle = yield* registry
+          .register({
+            kind: "window",
+            id: created.windowId as ResourceId,
+            ownerScope,
+            state: "open"
+          })
+          .pipe(Effect.orDie)
         const window = toWindowHandle(handle)
         if (options.appEventRouter !== undefined) {
           yield* options.appEventRouter.windowOpened(window)

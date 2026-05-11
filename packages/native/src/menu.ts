@@ -218,13 +218,15 @@ const bindMenuCommand = (
     )
     listener = fiber
 
-    const handle = yield* resources.register({
-      kind: "menu-command",
-      id: menuCommandResourceId(itemId, commandId),
-      ownerScope: "app",
-      state: "registered",
-      dispose: Fiber.interrupt(fiber).pipe(Effect.asVoid)
-    })
+    const handle = yield* resources
+      .register({
+        kind: "menu-command",
+        id: menuCommandResourceId(itemId, commandId),
+        ownerScope: "app",
+        state: "registered",
+        dispose: Fiber.interrupt(fiber).pipe(Effect.asVoid)
+      })
+      .pipe(Effect.orDie)
     completed = true
     return handle
   }).pipe(
