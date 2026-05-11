@@ -2,7 +2,7 @@ import { dirname, join } from "node:path"
 import { mkdir, open, readFile, rename, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 
-import { Context, Data, Effect, Layer, Option, PubSub, Schema, Stream } from "effect"
+import { Context, Data, Effect, Layer, Option, PubSub, Schema, Semaphore, Stream } from "effect"
 
 export class WindowStateRecord extends Schema.Class<WindowStateRecord>("WindowStateRecord")({
   x: Schema.Number.check(Schema.isFinite()),
@@ -130,6 +130,7 @@ export const makeWindowState = (
     const validateBounds = (state: WindowStateRecord) =>
       snapToVisibleDisplay(options.validateBounds?.(state) ?? state, options.displays)
     const events = yield* PubSub.sliding<WindowStateEvent>({ capacity: 128, replay: 0 })
+    const mutationGate = yield* Semaphore.make(1)
     const read = readStore(path, now)
     const publishReadEvent = (result: WindowStateReadResult): Effect.Effect<void, never, never> =>
       result.event === undefined
@@ -158,47 +159,56 @@ export const makeWindowState = (
           )
         }),
       persist: (windowId: string, state: WindowStateRecord) =>
-        Effect.gen(function* () {
-          yield* decodeWindowId(windowId, "WindowState.persist")
-          const result = yield* read
-          yield* publishReadEvent(result)
-          const current = result.store
-          const next = new WindowStateStore({
-            windows: {
-              ...current.windows,
-              [windowId]: state
-            }
-          })
-
-          yield* writeStore(path, next)
-          yield* PubSub.publish(events, new WindowStateEvent({ kind: "persisted", path, windowId }))
-        }),
-      clear: (windowId?: string) =>
-        Effect.gen(function* () {
-          if (windowId !== undefined) {
-            yield* decodeWindowId(windowId, "WindowState.clear")
-          }
-          const result = yield* read
-          yield* publishReadEvent(result)
-          const next =
-            windowId === undefined
-              ? new WindowStateStore({ windows: {} })
-              : new WindowStateStore({
-                  windows: Object.fromEntries(
-                    Object.entries(result.store.windows).filter(([id]) => id !== windowId)
-                  )
-                })
-
-          yield* writeStore(path, next)
-          yield* PubSub.publish(
-            events,
-            new WindowStateEvent({
-              kind: "cleared",
-              path,
-              ...(windowId === undefined ? {} : { windowId })
+        Semaphore.withPermit(
+          mutationGate,
+          Effect.gen(function* () {
+            yield* decodeWindowId(windowId, "WindowState.persist")
+            const result = yield* read
+            yield* publishReadEvent(result)
+            const current = result.store
+            const next = new WindowStateStore({
+              windows: {
+                ...current.windows,
+                [windowId]: state
+              }
             })
-          )
-        }),
+
+            yield* writeStore(path, next)
+            yield* PubSub.publish(
+              events,
+              new WindowStateEvent({ kind: "persisted", path, windowId })
+            )
+          })
+        ),
+      clear: (windowId?: string) =>
+        Semaphore.withPermit(
+          mutationGate,
+          Effect.gen(function* () {
+            if (windowId !== undefined) {
+              yield* decodeWindowId(windowId, "WindowState.clear")
+            }
+            const result = yield* read
+            yield* publishReadEvent(result)
+            const next =
+              windowId === undefined
+                ? new WindowStateStore({ windows: {} })
+                : new WindowStateStore({
+                    windows: Object.fromEntries(
+                      Object.entries(result.store.windows).filter(([id]) => id !== windowId)
+                    )
+                  })
+
+            yield* writeStore(path, next)
+            yield* PubSub.publish(
+              events,
+              new WindowStateEvent({
+                kind: "cleared",
+                path,
+                ...(windowId === undefined ? {} : { windowId })
+              })
+            )
+          })
+        ),
       observe: () => Stream.fromPubSub(events)
     })
   })

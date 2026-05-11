@@ -245,6 +245,26 @@ test("WindowState restores all windows independently", async () => {
   expect(restored["palette"]?.x).toBe(900)
 })
 
+test("WindowState concurrent persists keep independent records", async () => {
+  const path = await tempWindowStatePath()
+  const service = await Effect.runPromise(makeWindowState({ path }))
+
+  await Effect.runPromise(
+    Effect.all(
+      [
+        service.persist("main", makeWindowStateRecord({ x: 10 })),
+        service.persist("palette", makeWindowStateRecord({ x: 900 }))
+      ],
+      { concurrency: "unbounded" }
+    )
+  )
+  const restored = await Effect.runPromise(service.restoreAll())
+
+  expect(Object.keys(restored).sort()).toEqual(["main", "palette"])
+  expect(restored["main"]?.x).toBe(10)
+  expect(restored["palette"]?.x).toBe(900)
+})
+
 test("WindowState snaps off-screen windows to the primary display", async () => {
   const path = await tempWindowStatePath()
   const service = await Effect.runPromise(
