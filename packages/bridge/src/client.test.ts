@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Cause, Deferred, Effect, Exit, Schema } from "effect"
+import { Cause, Deferred, Effect, Exit, Option, Schema } from "effect"
 
 import {
   Api,
@@ -341,6 +341,50 @@ test("Client abort signals propagate as typed bridge cancellation", async () => 
     })
   ])
   expect(states).toEqual(["Pending", "Authorized", "Running", "Canceled"])
+})
+
+test("Client abort signals release callers when the exchange does not answer", async () => {
+  const ProjectApi = makeProjectApi("ProjectApi.ClientCancelNever")
+  const cancelRequests: HostProtocolCancelByRequestEnvelope[] = []
+  const controller = new AbortController()
+  const client = Client(
+    { project: ProjectApi },
+    {
+      request: () => Effect.never,
+      cancel: (request) =>
+        Effect.sync(() => {
+          cancelRequests.push(request)
+        })
+    },
+    {
+      nextRequestId: () => "request-client-cancel-never",
+      nextTraceId: () => "trace-client-cancel-never",
+      now: () => 42
+    }
+  )
+
+  const exitPromise = Effect.runPromise(
+    client.project
+      .open(new ProjectOpenInput({ path: "/tmp/project" }), { signal: controller.signal })
+      .pipe(Effect.exit, Effect.timeoutOption("50 millis"))
+  )
+
+  controller.abort()
+  const result = await exitPromise
+
+  expect(Option.isSome(result)).toBe(true)
+  if (Option.isSome(result)) {
+    expectFailureTag(result.value, "Cancelled")
+    expectFailureField(result.value, "source", "renderer")
+  }
+  expect(cancelRequests).toEqual([
+    new HostProtocolCancelByRequestEnvelope({
+      kind: "cancel",
+      id: "request-client-cancel-never",
+      timestamp: 42,
+      traceId: "trace-client-cancel-never"
+    })
+  ])
 })
 
 test("Client pre-aborted signals fail typed without dispatching requests", async () => {
