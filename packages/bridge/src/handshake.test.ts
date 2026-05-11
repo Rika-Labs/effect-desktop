@@ -87,6 +87,19 @@ test("host version response rejects control bytes", async () => {
   )
 })
 
+test("host handshake client rejects mismatched response ids", async () => {
+  const client = makeHostHandshakeClient(mismatchedVersionExchange(), {
+    nextRequestId: () => "request-version",
+    nextTraceId: () => "trace-version",
+    now: () => 1710000000005
+  })
+
+  await expectEffectFailure(
+    client.version(),
+    (error) => error instanceof HostProtocolInvalidOutputError
+  )
+})
+
 test("host handshake client propagates response errors", async () => {
   const client = makeHostHandshakeClient(errorExchange(), {
     nextRequestId: () => "request-version",
@@ -134,6 +147,21 @@ const pingExchange = (requests: HostProtocolRequestEnvelope[]): HostHandshakeExc
       })
     )
   }
+})
+
+const mismatchedVersionExchange = (): HostHandshakeExchange => ({
+  request: (request) =>
+    Effect.succeed(
+      new HostProtocolResponseEnvelope({
+        kind: "response",
+        id: "other-request",
+        timestamp: request.timestamp + 1,
+        traceId: request.traceId,
+        payload: {
+          protocolVersion: HOST_PROTOCOL_VERSION
+        }
+      })
+    )
 })
 
 const errorExchange = (): HostHandshakeExchange => ({

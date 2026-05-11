@@ -50,12 +50,16 @@ export const makeHostHandshakeClient = (
   return {
     ping: () =>
       Effect.gen(function* () {
-        yield* requireSuccess(yield* exchange.request(makeRequest(HOST_PING_METHOD, resolved)))
+        const request = makeRequest(HOST_PING_METHOD, resolved)
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
       }),
     version: () =>
       Effect.gen(function* () {
+        const request = makeRequest(HOST_VERSION_METHOD, resolved)
         const response = yield* requireSuccess(
-          yield* exchange.request(makeRequest(HOST_VERSION_METHOD, resolved))
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
 
         return yield* decodeVersionPayload(response.payload)
@@ -81,6 +85,21 @@ export const negotiateHostVersion = (
 
     return version
   })
+
+const requireMatchingResponse = (
+  request: HostProtocolRequestEnvelope,
+  response: HostProtocolResponseEnvelope
+): Effect.Effect<HostProtocolResponseEnvelope, HostProtocolError, never> => {
+  if (response.id !== request.id) {
+    return Effect.fail(
+      makeHostProtocolInvalidOutputError(
+        request.method,
+        `response id ${response.id} does not match request id ${request.id}`
+      )
+    )
+  }
+  return Effect.succeed(response)
+}
 
 const requireSuccess = (
   response: HostProtocolResponseEnvelope
