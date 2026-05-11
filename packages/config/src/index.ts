@@ -188,12 +188,13 @@ export const DEFAULT_CSP_DIRECTIVES: readonly [directive: string, values: readon
 ]
 
 export const renderDefaultCsp = (nonce: string = DEFAULT_CSP_NONCE_PLACEHOLDER): string =>
-  renderCspDirectives(DEFAULT_CSP_DIRECTIVES, nonce)
+  renderCspDirectives(DEFAULT_CSP_DIRECTIVES, validateCspNonce(nonce))
 
 export const renderEffectiveCsp = (
   csp: CspPolicy | undefined,
   nonce: string = DEFAULT_CSP_NONCE_PLACEHOLDER
 ): string => {
+  const validatedNonce = validateCspNonce(nonce)
   if (csp?.disabled === true) {
     return ""
   }
@@ -210,7 +211,7 @@ export const renderEffectiveCsp = (
     ([directive]) => !defaultDirectives.has(directive)
   )
 
-  return renderCspDirectives([...directives, ...extraDirectives], nonce)
+  return renderCspDirectives([...directives, ...extraDirectives], validatedNonce)
 }
 
 export const cspWeakenings = (csp: CspPolicy): readonly CspWeakening[] => {
@@ -721,6 +722,14 @@ const renderCspDirectives = (
       ].join(" ")
     )
     .join("; ")
+
+const validateCspNonce = (nonce: string): string => {
+  if (nonce === DEFAULT_CSP_NONCE_PLACEHOLDER || /^[A-Za-z0-9+/_=-]+$/u.test(nonce)) {
+    return nonce
+  }
+
+  throw new TypeError("CSP nonce must be a non-empty header-safe token")
+}
 
 const parseCspPolicy = (policy: string | undefined): ParsedCspPolicy => {
   if (policy === undefined) {

@@ -33,6 +33,13 @@ test("CSP defaults render the spec policy with a nonce", () => {
   expect(renderDefaultCsp("abc123")).toBe(HOST_DEFAULT_CSP_FOR_NONCE("abc123"))
 })
 
+test("CSP rendering rejects nonce tokens that can alter header structure", () => {
+  for (const nonce of ["", "abc def", "abc'; default-src *; x='y", "abc\nx", 'abc"x']) {
+    expect(() => renderDefaultCsp(nonce)).toThrow(TypeError)
+    expect(() => renderEffectiveCsp({}, nonce)).toThrow(TypeError)
+  }
+})
+
 test("CSP disabled config renders no effective CSP policy", () => {
   expect(renderEffectiveCsp({ disabled: true })).toBe("")
 })
@@ -107,6 +114,14 @@ test("CSP config can tighten a default directive", () => {
   expect(renderEffectiveCsp(csp, "abc123")).not.toContain("connect-src 'self' app:")
 })
 
+test("CSP config normalizes mixed-case directive names", () => {
+  const csp = { policy: "CONNECT-SRC 'self'" }
+
+  expect(cspWeakenings(csp)).toEqual([])
+  expect(renderEffectiveCsp(csp, "abc123")).toContain("connect-src 'self';")
+  expect(renderEffectiveCsp(csp, "abc123")).not.toContain("CONNECT-SRC")
+})
+
 test("CSP config treats source-list overrides set to none as hardening", () => {
   expect(cspWeakenings({ policy: "script-src 'none'" })).toEqual([])
   expect(renderEffectiveCsp({ policy: "script-src 'none'" }, "abc123")).toContain(
@@ -142,6 +157,15 @@ test("CSP config flags unknown directives that add sources", () => {
 
 test("CSP config flags duplicate directives", () => {
   expect(cspWeakenings({ policy: "script-src 'unsafe-inline'; script-src 'self'" })).toEqual([
+    {
+      directive: "script-src",
+      reason: "script-src appears more than once"
+    }
+  ])
+})
+
+test("CSP config detects mixed-case duplicate directives", () => {
+  expect(cspWeakenings({ policy: "SCRIPT-SRC 'self'; script-src 'self'" })).toEqual([
     {
       directive: "script-src",
       reason: "script-src appears more than once"
