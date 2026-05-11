@@ -152,11 +152,20 @@ const EMPTY_PTY_PERMISSIONS: PtyPermissionPolicy = Object.freeze({})
 export const makePty = (
   registry: ResourceRegistryApi,
   options: PtyOptions = {}
-): Effect.Effect<PtyApi, never, never> =>
+): Effect.Effect<PtyApi, HostProtocolInvalidArgumentError, never> =>
   Effect.gen(function* () {
     const adapter = options.adapter ?? UnsupportedPtyAdapter
     const budgets = { ...DEFAULT_PTY_BUDGETS, ...options.budgets }
     const gracefulShutdownMs = options.gracefulShutdownMs ?? DEFAULT_GRACEFUL_SHUTDOWN_MS
+    if (!Number.isFinite(gracefulShutdownMs) || gracefulShutdownMs <= 0) {
+      return yield* Effect.fail(
+        makeHostProtocolInvalidArgumentError(
+          "gracefulShutdownMs",
+          "must be a finite positive number",
+          "PTY.make"
+        )
+      )
+    }
     const permissions = options.permissions ?? EMPTY_PTY_PERMISSIONS
     const ptyBudgets = yield* Ref.make(new Map<string, number>())
 
@@ -221,11 +230,13 @@ export const PtyLive = Layer.effect(
   PTY,
   Effect.gen(function* () {
     const registry = yield* ResourceRegistry
-    return yield* makePty(registry)
+    return yield* makePty(registry).pipe(Effect.orDie)
   })
 )
 
-export const PtyLayer = (options: PtyOptions = {}): Layer.Layer<PTY, never, ResourceRegistry> =>
+export const PtyLayer = (
+  options: PtyOptions = {}
+): Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceRegistry> =>
   Layer.effect(
     PTY,
     Effect.gen(function* () {

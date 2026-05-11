@@ -164,6 +164,34 @@ ptyTest("PTY open validates size before adapter activity", async () => {
   expectFailure(exit, HostProtocolInvalidArgumentError)
 })
 
+test("PTY rejects non-finite graceful shutdown windows", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    const exit = await Effect.runPromiseExit(makePty(registry, { gracefulShutdownMs: value }))
+    expectFailure(exit, HostProtocolInvalidArgumentError)
+  }
+})
+
+test("PTY rejects non-positive graceful shutdown windows before adapter activity", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  for (const value of [0, -1, -5000]) {
+    let openCalls = 0
+    const exit = await Effect.runPromiseExit(
+      makePty(registry, {
+        gracefulShutdownMs: value,
+        adapter: {
+          open: () => {
+            openCalls += 1
+            return makeFakeChild({ output: [], exit: { code: 0 } })
+          }
+        }
+      })
+    )
+    expect(openCalls).toBe(0)
+    expectFailure(exit, HostProtocolInvalidArgumentError)
+  }
+})
+
 ptyTest("PTY open denies commands by default before adapter activity", async () => {
   let openCalls = 0
   const registry = await Effect.runPromise(makeResourceRegistry())
@@ -229,6 +257,30 @@ ptyTest("PTY open rejects argv0 shell metacharacters before permission lookup", 
       ownerScope: "scope-main",
       rows: 24,
       cols: 80
+    })
+  )
+
+  expect(openCalls).toBe(0)
+  expectFailure(exit, HostProtocolInvalidArgumentError)
+})
+
+ptyTest("PTY open rejects empty environment names before adapter activity", async () => {
+  let openCalls = 0
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => {
+      openCalls += 1
+      return makeFakeChild({ output: [], exit: { code: 0 } })
+    }),
+    { permissions: { spawn: ["bash"] } }
+  )
+
+  const exit = await Effect.runPromiseExit(
+    fixture.service.open({
+      argv: ["bash"],
+      ownerScope: "scope-main",
+      rows: 24,
+      cols: 80,
+      env: { "": "bad" }
     })
   )
 
