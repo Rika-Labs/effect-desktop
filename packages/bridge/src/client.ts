@@ -24,6 +24,7 @@ import {
 } from "./protocol.js"
 import { type ApiResourceExchange, type ApiResourceProxy, makeResourceProxy } from "./resources.js"
 import {
+  ApiStreamClosedFrame,
   ApiStreamCompleteFrame,
   ApiStreamDataFrame,
   ApiStreamErrorFrame,
@@ -404,6 +405,7 @@ const streamContractMethod = <Spec extends ApiMethodSpec & { readonly output: Ap
       }
 
       return stream(request).pipe(
+        Stream.takeUntilEffect((envelope) => isTerminalStreamEnvelope(operation, envelope)),
         Stream.flatMap((envelope) =>
           decodeStreamEnvelope(operation, spec.output, envelope, () => {
             terminal = true
@@ -426,6 +428,24 @@ const streamContractMethod = <Spec extends ApiMethodSpec & { readonly output: Ap
   >
 }
 
+const isTerminalStreamEnvelope = (
+  operation: string,
+  envelope: HostProtocolStreamEnvelope
+): Effect.Effect<boolean, HostProtocolError, never> => {
+  if (envelope.error !== undefined) {
+    return Effect.succeed(true)
+  }
+
+  return decodeStreamFrame(operation, envelope.payload).pipe(
+    Effect.map(
+      (frame) =>
+        frame instanceof ApiStreamErrorFrame ||
+        frame instanceof ApiStreamCompleteFrame ||
+        frame instanceof ApiStreamClosedFrame
+    )
+  )
+}
+
 const decodeStreamEnvelope = <Spec extends ApiStreamSpec>(
   operation: string,
   spec: Spec,
@@ -437,6 +457,7 @@ const decodeStreamEnvelope = <Spec extends ApiStreamSpec>(
   never
 > => {
   if (envelope.error !== undefined) {
+    onTerminal()
     return Stream.fail(envelope.error)
   }
 

@@ -3,6 +3,8 @@ import { Cause, Effect, Exit, Fiber, Schema, Stream } from "effect"
 
 import {
   Api,
+  ApiStreamCompleteFrame,
+  ApiStreamDataFrame,
   apiContractToRpcGroup,
   type ApiContractClass,
   type ApiHandlers,
@@ -11,6 +13,7 @@ import {
   HostProtocolCancelByRequestEnvelope,
   HostProtocolCancelByResourceEnvelope,
   HostProtocolRequestEnvelope,
+  HostProtocolStreamByRequestEnvelope,
   Streams,
   type HostProtocolError,
   type HostProtocolStreamEnvelope,
@@ -151,6 +154,74 @@ test("Streams carries typed stream errors as values in the error channel", async
   )
 
   expectFailureTag(exit, "WatchError")
+})
+
+test("Client stops bridge streams at complete frames", async () => {
+  const ProjectApi = makeProjectApi("ProjectApi.StreamCompleteTerminal")
+  const requests: HostProtocolRequestEnvelope[] = []
+  const cancelRequests: HostProtocolCancelByRequestEnvelope[] = []
+  const client = Client(
+    { project: ProjectApi },
+    {
+      request: () =>
+        Effect.fail(
+          makeHostProtocolInvalidOutputError(
+            "ProjectApi.StreamCompleteTerminal.watch",
+            "unexpected unary request"
+          )
+        ),
+      stream: (request) => {
+        requests.push(request)
+        return Stream.fromIterable([
+          new HostProtocolStreamByRequestEnvelope({
+            kind: "stream",
+            id: request.id,
+            resourceId: "stream-terminal",
+            timestamp: 42,
+            traceId: request.traceId,
+            payload: new ApiStreamCompleteFrame({ type: "complete" })
+          }),
+          new HostProtocolStreamByRequestEnvelope({
+            kind: "stream",
+            id: request.id,
+            resourceId: "stream-terminal",
+            timestamp: 43,
+            traceId: request.traceId,
+            payload: new ApiStreamDataFrame({
+              type: "data",
+              chunk: { sequence: "1", path: "late" }
+            })
+          })
+        ])
+      },
+      cancel: (request) =>
+        Effect.sync(() => {
+          cancelRequests.push(request)
+        })
+    },
+    {
+      nextRequestId: () => "request-stream-complete",
+      nextTraceId: () => "trace-stream-complete",
+      now: () => 41
+    }
+  )
+
+  const events = await Effect.runPromise(
+    client.project.watch(new WatchInput({ projectId: "project-1" })).pipe(Stream.runCollect)
+  )
+
+  expect(Array.from(events)).toEqual([])
+  expect(requests).toEqual([
+    new HostProtocolRequestEnvelope({
+      kind: "request",
+      id: "request-stream-complete",
+      method: "ProjectApi.StreamCompleteTerminal.watch",
+      timestamp: 41,
+      traceId: "trace-stream-complete",
+      payload: new WatchInput({ projectId: "project-1" })
+    })
+  ])
+  expect(cancelRequests).toEqual([])
 })
 
 test("Streams rejects malformed chunks as typed HostProtocol failures", async () => {
