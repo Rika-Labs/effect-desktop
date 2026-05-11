@@ -160,6 +160,14 @@ interface RuleContext {
 
 type Rule = (context: RuleContext) => readonly ProductionCheckViolation[]
 
+interface SourceCapabilityUse {
+  readonly primitive: string
+  readonly method: string
+  readonly support: ContractCapabilityRequirement["support"]
+  readonly location: ProductionCheckLocation
+  readonly guarded: boolean
+}
+
 interface ParsedCspPolicy {
   readonly directives: ReadonlyMap<string, readonly string[]>
   readonly duplicates: readonly string[]
@@ -577,6 +585,20 @@ const unsupportedCapabilityRule: Rule = ({ config, configPath }) =>
       : []
   )
 
+const sourceUnsupportedCapabilityRule: Rule = ({ rendererFiles }) =>
+  sourceCapabilityUses(rendererFiles).flatMap((use) =>
+    use.support !== "supported" && !use.guarded
+      ? [
+          violation({
+            rule: "unsupported-capability-without-guard",
+            location: use.location,
+            message: `${use.primitive}.${use.method} requires an isSupported guard`,
+            fix: `Call ${use.primitive}.isSupported("${use.method}") before invoking ${use.primitive}.${use.method}.`
+          })
+        ]
+      : []
+  )
+
 const redactionDefaultRule: Rule = ({ config, configPath }) =>
   config.security?.redaction?.defaultPatternEnabled === false
     ? [
@@ -588,6 +610,77 @@ const redactionDefaultRule: Rule = ({ config, configPath }) =>
         })
       ]
     : []
+
+const sourceCapabilityUses = (
+  files: readonly ProductionCheckFile[]
+): readonly SourceCapabilityUse[] =>
+  files.flatMap((file) => {
+    const masked = maskComments(file.content)
+    return APPENDIX_K_SOURCE_CAPABILITIES.flatMap((capability) =>
+      scanSourceCapabilityUse(file, masked, capability)
+    )
+  })
+
+const scanSourceCapabilityUse = (
+  file: ProductionCheckFile,
+  masked: string,
+  capability: SourceCapability
+): readonly SourceCapabilityUse[] => {
+  const uses: SourceCapabilityUse[] = []
+  const guardOffsets = matchOffsets(masked, supportGuardPattern(capability))
+  const callPattern = methodCallPattern(capability)
+
+  for (const match of masked.matchAll(callPattern)) {
+    if (match.index === undefined) {
+      continue
+    }
+    const offset = match.index
+    uses.push({
+      primitive: capability.primitive,
+      method: capability.method,
+      support: capability.support,
+      location: offsetLocation(file, masked, offset),
+      guarded: guardOffsets.some((guardOffset) => guardOffset < offset)
+    })
+  }
+
+  return uses
+}
+
+const matchOffsets = (source: string, pattern: RegExp): readonly number[] =>
+  Array.from(source.matchAll(pattern))
+    .map((match) => match.index)
+    .filter((index): index is number => index !== undefined)
+
+const methodCallPattern = (capability: SourceCapability): RegExp =>
+  new RegExp(
+    `\\b${escapeRegExp(capability.primitive)}\\s*\\.\\s*${escapeRegExp(capability.method)}\\s*\\(`,
+    "gu"
+  )
+
+const supportGuardPattern = (capability: SourceCapability): RegExp =>
+  new RegExp(
+    `\\b${escapeRegExp(capability.primitive)}\\s*\\.\\s*isSupported\\s*\\(\\s*["']${escapeRegExp(capability.method)}["']\\s*\\)`,
+    "gu"
+  )
+
+const offsetLocation = (
+  file: ProductionCheckFile,
+  source: string,
+  offset: number
+): ProductionCheckLocation => {
+  const before = source.slice(0, offset)
+  const lines = before.split("\n")
+  const line = lines.length
+  const lastLine = lines[lines.length - 1] ?? ""
+  return new ProductionCheckLocation({
+    path: file.path,
+    line,
+    column: lastLine.length + 1
+  })
+}
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")
 
 const scanLines = (
   file: ProductionCheckFile,
@@ -779,6 +872,20 @@ const NO_VALUE_HARDENING_CSP_DIRECTIVES = new Set([
   "upgrade-insecure-requests"
 ])
 
+interface SourceCapability {
+  readonly primitive: string
+  readonly method: string
+  readonly support: ContractCapabilityRequirement["support"]
+}
+
+const APPENDIX_K_SOURCE_CAPABILITIES: readonly SourceCapability[] = [
+  { primitive: "Dock", method: "setBadgeText", support: "unsupported" },
+  { primitive: "Dock", method: "setProgress", support: "partial" },
+  { primitive: "Dock", method: "setMenu", support: "unsupported" },
+  { primitive: "Dock", method: "setJumpList", support: "unsupported" },
+  { primitive: "Dock", method: "requestAttention", support: "partial" }
+]
+
 const formatLocation = (location: ProductionCheckLocation): string => {
   const line = location.line === undefined ? "" : `:${location.line}`
   const column = location.column === undefined ? "" : `:${location.column}`
@@ -798,6 +905,7 @@ const PRODUCTION_RULES: readonly Rule[] = [
   externalNavigationRule,
   devtoolsInProdRule,
   unscopedResourceRule,
+  sourceUnsupportedCapabilityRule,
   unsupportedCapabilityRule,
   redactionDefaultRule
 ]

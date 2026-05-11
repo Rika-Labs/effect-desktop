@@ -350,6 +350,74 @@ test("ProductionChecker ignores raw bridge names inside comments", async () => {
   expect(report.failures).toEqual([])
 })
 
+test("ProductionChecker fails unguarded source native capability usage", async () => {
+  const report = await Effect.runPromise(
+    runProductionCheck({
+      config: {},
+      rendererFiles: [
+        {
+          path: "src/renderer/dock.ts",
+          content: "Dock.setJumpList([{ title: 'Recent', path: '/tmp/a' }])"
+        }
+      ]
+    })
+  )
+
+  expect(report.passed).toBe(false)
+  expect(report.failures).toMatchObject([
+    {
+      rule: "unsupported-capability-without-guard",
+      location: {
+        path: "src/renderer/dock.ts",
+        line: 1,
+        column: 1
+      }
+    }
+  ])
+})
+
+test("ProductionChecker accepts guarded source native capability usage", async () => {
+  const report = await Effect.runPromise(
+    runProductionCheck({
+      config: {},
+      rendererFiles: [
+        {
+          path: "src/renderer/dock.ts",
+          content: ['if (Dock.isSupported("setJumpList")) {', "  Dock.setJumpList([])", "}"].join(
+            "\n"
+          )
+        }
+      ]
+    })
+  )
+
+  expect(report.failures.map((violation) => violation.rule)).not.toContain(
+    "unsupported-capability-without-guard"
+  )
+  expect(report.passed).toBe(true)
+})
+
+test("ProductionChecker ignores source native capability usage inside comments", async () => {
+  const report = await Effect.runPromise(
+    runProductionCheck({
+      config: {},
+      rendererFiles: [
+        {
+          path: "src/renderer/dock.ts",
+          content: [
+            "// Dock.setJumpList([{ title: 'Recent', path: '/tmp/a' }])",
+            "/* Dock.requestAttention() */",
+            "const dockState = 'idle'"
+          ].join("\n")
+        }
+      ]
+    })
+  )
+
+  expect(report.passed).toBe(true)
+  expect(report.failures).toEqual([])
+})
+
 test("ProductionChecker fails filesystem writes without scoped roots", async () => {
   const report = await Effect.runPromise(
     runProductionCheck({
