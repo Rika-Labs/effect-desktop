@@ -1,5 +1,7 @@
 import { Context, Effect, Layer, Logger, LogLevel, Ref, Stream } from "effect"
 
+import { positiveFrameInterval, positiveRowLimit } from "./panel-options.js"
+
 export type LogsPanelLevel = "Trace" | "Debug" | "Info" | "Warning" | "Error" | "Fatal"
 
 export interface LogsPanelRecord {
@@ -39,8 +41,8 @@ export const makeLogsPanel = (
   options: LogsPanelOptions = {}
 ): Effect.Effect<LogsPanelApi, never, never> =>
   Effect.gen(function* () {
-    const maxRows = options.maxRows ?? 1_024
-    const frameInterval = options.frameInterval ?? "16 millis"
+    const maxRows = positiveRowLimit(options.maxRows, 1_024)
+    const frameInterval = positiveFrameInterval(options.frameInterval, "16 millis")
     const levelRef = yield* Ref.make<LogsPanelLevel>(options.levelFilter ?? "Debug")
     const buffer: LogsPanelRecord[] = []
 

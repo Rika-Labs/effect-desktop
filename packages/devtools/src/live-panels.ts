@@ -14,6 +14,8 @@ import {
 } from "@effect-desktop/core"
 import { Context, Effect, Layer, Match, Option, Stream } from "effect"
 
+import { positiveFrameInterval, positiveRowLimit } from "./panel-options.js"
+
 export interface BridgeCallPanelRow {
   readonly id: string
   readonly state: BridgeCallState["tag"]
@@ -103,9 +105,9 @@ export const makeLiveRuntimePanels = (
     const permissions = yield* PermissionRegistry
     const processes = yield* Process
     const resources = yield* ResourceRegistry
-    const maxRows = options.maxRows ?? 256
+    const maxRows = positiveRowLimit(options.maxRows, 256)
     const now = options.now ?? Date.now
-    const frameInterval = options.frameInterval ?? "16 millis"
+    const frameInterval = positiveFrameInterval(options.frameInterval, "16 millis")
 
     const list = (): Effect.Effect<LiveRuntimePanelsSnapshot, never, never> =>
       Effect.gen(function* () {

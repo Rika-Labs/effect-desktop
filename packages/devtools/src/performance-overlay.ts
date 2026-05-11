@@ -1,6 +1,8 @@
 import { redact, Telemetry, type TelemetryHistogramSnapshot } from "@effect-desktop/core"
 import { Context, Effect, Layer, Option, Stream } from "effect"
 
+import { positiveFrameInterval } from "./panel-options.js"
+
 export type PerformanceBudgetMode = "development" | "production"
 export type PerformanceOverlayStatus = "missing" | "within-budget" | "over-budget"
 
@@ -57,7 +59,7 @@ export const makePerformanceOverlay = (
   Effect.gen(function* () {
     const telemetry = yield* Telemetry
     const mode = options.mode ?? "development"
-    const frameInterval = options.frameInterval ?? "16 millis"
+    const frameInterval = positiveFrameInterval(options.frameInterval, "16 millis")
 
     const list = (): Effect.Effect<PerformanceOverlaySnapshot, never, never> =>
       Effect.gen(function* () {

@@ -147,6 +147,57 @@ test("denies a resume when stream backfill is exhausted", () => {
   })
 })
 
+test("denies renderer resume decisions with invalid backfill counts", () => {
+  for (const availableBackfillEvents of [
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    -1,
+    1.5
+  ]) {
+    expect(
+      evaluateRendererResume({
+        ticket,
+        resume,
+        now: 999,
+        originTokenHash: "sha256:origin",
+        availableBackfillEventsByStream: {
+          "stream-1": availableBackfillEvents
+        }
+      })
+    ).toMatchObject({
+      _tag: "Denied",
+      reason: "backfillExhausted",
+      errorTag: "ReconnectBackfillExhausted"
+    })
+  }
+
+  for (const maxBackfillEvents of [
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    -1,
+    1.5
+  ]) {
+    expect(
+      evaluateRendererResume({
+        ticket,
+        resume,
+        now: 999,
+        originTokenHash: "sha256:origin",
+        availableBackfillEventsByStream: {
+          "stream-1": 1
+        },
+        maxBackfillEvents
+      })
+    ).toMatchObject({
+      _tag: "Denied",
+      reason: "backfillExhausted",
+      errorTag: "ReconnectBackfillExhausted"
+    })
+  }
+})
+
 test("denies a resume when a cursor does not match the ticket snapshot", () => {
   expect(
     evaluateRendererResume({

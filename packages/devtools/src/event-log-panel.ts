@@ -1,6 +1,8 @@
 import { Context, Effect, Layer, Stream } from "effect"
 import { EventJournal, EventLog as EventLogNS } from "effect/unstable/eventlog"
 
+import { positiveFrameInterval, positiveRowLimit } from "./panel-options.js"
+
 export interface EventLogPanelRow {
   readonly id: string
   readonly event: string
@@ -40,8 +42,8 @@ export const makeEventLogPanel = (
 ): Effect.Effect<EventLogPanelApi, never, EventLogNS.EventLog> =>
   Effect.gen(function* () {
     const eventLog = yield* EventLogNS.EventLog
-    const maxRows = options.maxRows ?? 256
-    const frameInterval = options.frameInterval ?? "16 millis"
+    const maxRows = positiveRowLimit(options.maxRows, 256)
+    const frameInterval = positiveFrameInterval(options.frameInterval, "16 millis")
 
     const list = (): Effect.Effect<EventLogPanelSnapshot, EventLogPanelError, never> =>
       eventLog.entries.pipe(

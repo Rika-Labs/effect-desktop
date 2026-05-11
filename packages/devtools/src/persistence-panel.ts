@@ -1,6 +1,8 @@
 import { Context, Effect, Layer, Option, Stream } from "effect"
 import { KeyValueStore } from "effect/unstable/persistence"
 
+import { positiveFrameInterval } from "./panel-options.js"
+
 export interface PersistencePanelSnapshot {
   readonly kvSize: Option.Option<number>
   readonly kvHealthy: boolean
@@ -30,7 +32,7 @@ export const makePersistencePanel = (
 ): Effect.Effect<PersistencePanelApi, never, KeyValueStore.KeyValueStore> =>
   Effect.gen(function* () {
     const kv = yield* KeyValueStore.KeyValueStore
-    const frameInterval = options.frameInterval ?? "16 millis"
+    const frameInterval = positiveFrameInterval(options.frameInterval, "16 millis")
 
     const list = (): Effect.Effect<PersistencePanelSnapshot, never, never> =>
       kv.size.pipe(

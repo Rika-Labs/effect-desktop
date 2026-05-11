@@ -7,6 +7,8 @@ import {
 } from "@effect-desktop/core"
 import { Context, Effect, Layer, Option, Stream } from "effect"
 
+import { positiveFrameInterval, positiveRowLimit } from "./panel-options.js"
+
 export interface TraceGroup {
   readonly traceId: string
   readonly spans: readonly TelemetryTraceSpan[]
@@ -42,8 +44,8 @@ export const makeDiagnosticsPanels = (
 ): Effect.Effect<DiagnosticsPanelsApi, never, Telemetry> =>
   Effect.gen(function* () {
     const telemetry = yield* Telemetry
-    const maxRows = options.maxRows ?? 256
-    const frameInterval = options.frameInterval ?? "16 millis"
+    const maxRows = positiveRowLimit(options.maxRows, 256)
+    const frameInterval = positiveFrameInterval(options.frameInterval, "16 millis")
 
     const list = (): Effect.Effect<DiagnosticsPanelsSnapshot, never, never> =>
       Effect.gen(function* () {

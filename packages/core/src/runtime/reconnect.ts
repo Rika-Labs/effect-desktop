@@ -35,6 +35,9 @@ export const evaluateRendererResume = (
   input: RendererResumePolicyInput
 ): RendererResumeDecision => {
   const maxBackfillEvents = input.maxBackfillEvents ?? DEFAULT_MAX_BACKFILL_EVENTS
+  if (!Number.isInteger(maxBackfillEvents) || maxBackfillEvents < 0) {
+    return deny(input.resume.windowId, "backfillExhausted", "reconnect backfill exhausted")
+  }
 
   if (input.ticket.windowId !== input.resume.windowId) {
     return deny(input.resume.windowId, "windowMismatch", "resume ticket belongs to another window")
@@ -64,6 +67,7 @@ export const evaluateRendererResume = (
     const availableBackfillEvents = input.availableBackfillEventsByStream[streamId]
     if (
       availableBackfillEvents === undefined ||
+      !Number.isInteger(availableBackfillEvents) ||
       availableBackfillEvents < 0 ||
       availableBackfillEvents > maxBackfillEvents
     ) {

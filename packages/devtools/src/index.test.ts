@@ -42,6 +42,7 @@ import {
   WorkersDevtoolsLive,
   type WorkersSnapshot
 } from "./index.js"
+import { DevtoolsInvalidOptionError } from "./panel-options.js"
 
 const commandCapability: NormalizedCapability = {
   kind: "native.invoke",
@@ -243,6 +244,41 @@ test("LiveRuntimePanels projects bridge, stream, resource, permission, and proce
   })
 })
 
+test("LiveRuntimePanels rejects invalid row caps and refresh intervals", async () => {
+  const bridgeCalls = await Effect.runPromise(makeBridgeCallRegistry())
+  const streams = makeBridgeStreamRegistry()
+  const resources = await Effect.runPromise(makeResourceRegistry())
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  const processes = await makeProcessService(resources)
+  const run = (options: {
+    readonly maxRows?: number
+    readonly frameInterval?: `${number} millis`
+  }) =>
+    Effect.runSync(
+      Effect.gen(function* () {
+        return yield* LiveRuntimePanels
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            LiveRuntimePanelsLive({ bridgeCalls, streams }, options),
+            Layer.mergeAll(
+              Layer.succeed(ResourceRegistry)(resources),
+              Layer.succeed(PermissionRegistry)(permissions),
+              Layer.succeed(Process)(processes)
+            )
+          )
+        )
+      )
+    )
+
+  expect(() => run({ maxRows: 0 })).toThrow(DevtoolsInvalidOptionError)
+  expect(() => run({ maxRows: -1 })).toThrow(DevtoolsInvalidOptionError)
+  expect(() => run({ maxRows: 1.5 })).toThrow(DevtoolsInvalidOptionError)
+  expect(() => run({ frameInterval: "0 millis" })).toThrow(DevtoolsInvalidOptionError)
+  expect(() => run({ frameInterval: "-1 millis" })).toThrow(DevtoolsInvalidOptionError)
+  expect(() => run({ maxRows: 1, frameInterval: "16 millis" })).not.toThrow()
+})
+
 test("DiagnosticsPanels projects redacted logs, grouped traces, and metrics", async () => {
   const telemetry = await Effect.runPromise(
     makeTelemetry({ now: () => 1_000, nextSpanId: () => "span-generated" })
@@ -338,6 +374,30 @@ test("DiagnosticsPanels projects redacted logs, grouped traces, and metrics", as
     )
   )
   expect(disabledSnapshot.traces).toEqual([])
+})
+
+test("DiagnosticsPanels rejects invalid row caps and refresh intervals", async () => {
+  const telemetry = await Effect.runPromise(makeTelemetry())
+  const run = (options: {
+    readonly maxRows?: number
+    readonly frameInterval?: `${number} millis`
+  }) =>
+    Effect.runSync(
+      Effect.gen(function* () {
+        return yield* DiagnosticsPanels
+      }).pipe(
+        Effect.provide(
+          Layer.provide(DiagnosticsPanelsLive(options), Layer.succeed(Telemetry)(telemetry))
+        )
+      )
+    )
+
+  expect(() => run({ maxRows: 0 })).toThrow(DevtoolsInvalidOptionError)
+  expect(() => run({ maxRows: -1 })).toThrow(DevtoolsInvalidOptionError)
+  expect(() => run({ maxRows: 1.5 })).toThrow(DevtoolsInvalidOptionError)
+  expect(() => run({ frameInterval: "0 millis" })).toThrow(DevtoolsInvalidOptionError)
+  expect(() => run({ frameInterval: "-1 millis" })).toThrow(DevtoolsInvalidOptionError)
+  expect(() => run({ maxRows: 1, frameInterval: "16 millis" })).not.toThrow()
 })
 
 test("DiagnosticsPanels keeps trace groups internally consistent under row caps", async () => {

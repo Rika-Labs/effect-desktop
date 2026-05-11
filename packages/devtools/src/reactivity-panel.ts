@@ -1,5 +1,7 @@
 import { Context, Effect, Layer, Stream, SubscriptionRef } from "effect"
 
+import { positiveRowLimit } from "./panel-options.js"
+
 export interface ReactivityInvalidationRecord {
   readonly keys: readonly string[]
   readonly timestampMs: number
@@ -33,7 +35,7 @@ export const makeReactivityTracker = (
   options: { readonly maxRows?: number; readonly now?: () => number } = {}
 ): Effect.Effect<ReactivityTrackerApi, never, never> =>
   Effect.gen(function* () {
-    const maxRows = options.maxRows ?? 512
+    const maxRows = positiveRowLimit(options.maxRows, 512)
     const now = options.now ?? Date.now
     const ref = yield* SubscriptionRef.make<readonly ReactivityInvalidationRecord[]>([])
 
@@ -82,7 +84,7 @@ export const makeReactivityPanel = (
 ): Effect.Effect<ReactivityPanelApi, never, ReactivityTracker> =>
   Effect.gen(function* () {
     const tracker = yield* ReactivityTracker
-    const maxRows = options.maxRows ?? 256
+    const maxRows = positiveRowLimit(options.maxRows, 256)
 
     const list = (): Effect.Effect<ReactivityPanelSnapshot, never, never> =>
       Effect.gen(function* () {
