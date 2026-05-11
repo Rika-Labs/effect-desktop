@@ -6,8 +6,10 @@ import { fileURLToPath } from "node:url"
 import { Effect, Option, Schema } from "effect"
 import { Rpc } from "effect/unstable/rpc"
 
+import packageJson from "../package.json" with { type: "json" }
 import {
   HOST_PROTOCOL_ERROR_SPECS,
+  HOST_PROTOCOL_VERSION,
   HostProtocolEnvelope,
   HostProtocolError,
   RpcCapability,
@@ -32,6 +34,10 @@ const FIXTURE_DIR = fileURLToPath(
 const StrictParseOptions = { onExcessProperty: "error" } as const
 const decodeUnknownHostProtocolError = Schema.decodeUnknownSync(HostProtocolError)
 const encodeHostProtocolError = Schema.encodeSync(HostProtocolError)
+
+test("host protocol version matches the bridge package version", () => {
+  expect(HOST_PROTOCOL_VERSION).toBe(packageJson.version)
+})
 
 test("shared host-protocol fixtures decode and encode canonically", async () => {
   const fixtureNames = readdirSync(FIXTURE_DIR)
