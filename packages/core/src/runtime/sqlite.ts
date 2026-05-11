@@ -260,26 +260,30 @@ const makeConnection = (
       effect: Effect.Effect<A, E, R>,
       options?: SqliteTransactionOptions
     ): Effect.Effect<A, E | SqliteError, R> =>
-      mutex.withPermits(1)(
-        Effect.gen(function* () {
-          const owner = yield* Effect.fiberId
-          yield* Ref.set(transactionOwner, Option.some(owner))
-          yield* beginTransaction(database, resource, options?.mode ?? "deferred")
-          const exit = yield* Effect.exit(effect)
-          yield* Ref.set(transactionOwner, Option.none())
-          if (Exit.isSuccess(exit)) {
-            yield* commitTransaction(database, resource)
-            return exit.value
-          }
+      Effect.flatMap(
+        decodeTransactionMode(options, resource.id, "SQLite.transaction"),
+        (mode): Effect.Effect<A, E | SqliteError, R> =>
+          mutex.withPermits(1)(
+            Effect.gen(function* () {
+              const owner = yield* Effect.fiberId
+              yield* Ref.set(transactionOwner, Option.some(owner))
+              yield* beginTransaction(database, resource, mode)
+              const exit = yield* Effect.exit(effect)
+              yield* Ref.set(transactionOwner, Option.none())
+              if (Exit.isSuccess(exit)) {
+                yield* commitTransaction(database, resource)
+                return exit.value
+              }
 
-          yield* rollbackTransaction(database, resource)
-          return yield* Effect.failCause(exit.cause)
-        }).pipe(
-          Effect.onExit(() => Ref.set(transactionOwner, Option.none())),
-          Effect.withSpan("SQLite.transaction", {
-            attributes: { resource: resource.id, mode: options?.mode ?? "deferred" }
-          })
-        )
+              yield* rollbackTransaction(database, resource)
+              return yield* Effect.failCause(exit.cause)
+            }).pipe(
+              Effect.onExit(() => Ref.set(transactionOwner, Option.none())),
+              Effect.withSpan("SQLite.transaction", {
+                attributes: { resource: resource.id, mode }
+              })
+            )
+          )
       ),
     close: () => resource.dispose()
   })
@@ -293,16 +297,31 @@ const makePreparedStatement = (
   Object.freeze({
     resource,
     all: (params?: SqliteParams) =>
-      withStatement(resource, mutex, transactionOwner, "SQLite.PreparedStatement.all", () =>
-        statement.all(...bindings(params)).map(row)
+      withStatement(
+        resource,
+        mutex,
+        transactionOwner,
+        "SQLite.PreparedStatement.all",
+        params,
+        (b) => statement.all(...b).map(row)
       ),
     get: (params?: SqliteParams) =>
-      withStatement(resource, mutex, transactionOwner, "SQLite.PreparedStatement.get", () =>
-        optionalRow(statement.get(...bindings(params)))
+      withStatement(
+        resource,
+        mutex,
+        transactionOwner,
+        "SQLite.PreparedStatement.get",
+        params,
+        (b) => optionalRow(statement.get(...b))
       ),
     run: (params?: SqliteParams) =>
-      withStatement(resource, mutex, transactionOwner, "SQLite.PreparedStatement.run", () =>
-        changes(statement.run(...bindings(params)))
+      withStatement(
+        resource,
+        mutex,
+        transactionOwner,
+        "SQLite.PreparedStatement.run",
+        params,
+        (b) => changes(statement.run(...b))
       ),
     dispose: () => resource.dispose()
   })
@@ -330,13 +349,17 @@ const withStatement = <A>(
   mutex: Semaphore.Semaphore,
   transactionOwner: Ref.Ref<Option.Option<number>>,
   operation: string,
-  run: () => A
+  params: SqliteParams | undefined,
+  run: (bindings: SQLQueryBindings[]) => A
 ): Effect.Effect<A, SqliteError, never> =>
   Effect.gen(function* () {
     const owner = yield* Ref.get(transactionOwner)
-    const effect = Effect.try({
-      try: run,
-      catch: (error) => mapSqliteError(error, resource.id, operation)
+    const effect = Effect.gen(function* () {
+      const validated = yield* bindings(params, resource.id, operation)
+      return yield* Effect.try({
+        try: () => run(validated),
+        catch: (error) => mapSqliteError(error, resource.id, operation)
+      })
     }).pipe(Effect.withSpan(operation, { attributes: { resource: resource.id } }))
 
     const ownsTransaction = yield* isTransactionOwner(owner)
@@ -358,16 +381,19 @@ const queryRows = (
   sql: string,
   params: SqliteParams | undefined
 ): Effect.Effect<readonly SqliteRow[], SqliteError, never> =>
-  Effect.try({
-    try: () => {
-      const statement = database.prepare(sql)
-      try {
-        return statement.all(...bindings(params)).map(row)
-      } finally {
-        statement.finalize()
-      }
-    },
-    catch: (error) => mapSqliteError(error, sql, "SQLite.query")
+  Effect.gen(function* () {
+    const validated = yield* bindings(params, sql, "SQLite.query")
+    return yield* Effect.try({
+      try: () => {
+        const statement = database.prepare(sql)
+        try {
+          return statement.all(...validated).map(row)
+        } finally {
+          statement.finalize()
+        }
+      },
+      catch: (error) => mapSqliteError(error, sql, "SQLite.query")
+    })
   })
 
 const runStatement = (
@@ -375,16 +401,19 @@ const runStatement = (
   sql: string,
   params: SqliteParams | undefined
 ): Effect.Effect<SqliteChanges, SqliteError, never> =>
-  Effect.try({
-    try: () => {
-      const statement = database.prepare(sql)
-      try {
-        return changes(statement.run(...bindings(params)))
-      } finally {
-        statement.finalize()
-      }
-    },
-    catch: (error) => mapSqliteError(error, sql, "SQLite.exec")
+  Effect.gen(function* () {
+    const validated = yield* bindings(params, sql, "SQLite.exec")
+    return yield* Effect.try({
+      try: () => {
+        const statement = database.prepare(sql)
+        try {
+          return changes(statement.run(...validated))
+        } finally {
+          statement.finalize()
+        }
+      },
+      catch: (error) => mapSqliteError(error, sql, "SQLite.exec")
+    })
   })
 
 const beginTransaction = (
@@ -534,13 +563,84 @@ const databaseOptions = (input: SqliteConnectInput): DatabaseOptions => ({
   ...(input.strict === undefined ? {} : { strict: input.strict })
 })
 
-const bindings = (params: SqliteParams | undefined): SQLQueryBindings[] => {
-  if (params === undefined) {
-    return []
+const decodeTransactionMode = (
+  options: SqliteTransactionOptions | undefined,
+  resource: string,
+  operation: string
+): Effect.Effect<SqliteTransactionMode, SqliteInvalidArgumentError, never> => {
+  const mode = options?.mode ?? "deferred"
+  if (mode === "deferred" || mode === "immediate" || mode === "exclusive") {
+    return Effect.succeed(mode)
   }
 
-  return Array.isArray(params) ? [...params] : [params as Record<string, SqliteValue>]
+  return Effect.fail(
+    new SqliteInvalidArgumentError({
+      field: "mode",
+      operation,
+      resource,
+      message: `unsupported transaction mode: ${String(mode)}`,
+      code: Option.none(),
+      cause: Option.none()
+    })
+  )
 }
+
+const bindings = (
+  params: SqliteParams | undefined,
+  resource: string,
+  operation: string
+): Effect.Effect<SQLQueryBindings[], SqliteInvalidArgumentError, never> => {
+  if (params === undefined) {
+    return Effect.succeed([])
+  }
+
+  if (Array.isArray(params)) {
+    for (const [index, value] of params.entries()) {
+      if (!isSqliteValue(value)) {
+        return Effect.fail(invalidBinding(resource, operation, `params[${index}]`, value))
+      }
+    }
+    return Effect.succeed([...params])
+  }
+
+  if (typeof params !== "object" || params === null || params instanceof Uint8Array) {
+    return Effect.fail(invalidBinding(resource, operation, "params", params))
+  }
+
+  for (const [key, value] of Object.entries(params)) {
+    if (!isSqliteValue(value)) {
+      return Effect.fail(invalidBinding(resource, operation, `params.${key}`, value))
+    }
+  }
+
+  return Effect.succeed([params as Record<string, SqliteValue>])
+}
+
+const isSqliteValue = (value: unknown): value is SqliteValue =>
+  value === null ||
+  typeof value === "string" ||
+  typeof value === "number" ||
+  typeof value === "bigint" ||
+  typeof value === "boolean" ||
+  value instanceof Uint8Array
+
+const invalidBinding = (
+  resource: string,
+  operation: string,
+  field: string,
+  value: unknown
+): SqliteInvalidArgumentError =>
+  new SqliteInvalidArgumentError({
+    field,
+    operation,
+    resource,
+    message: `unsupported SQLite bind value: ${formatValueType(value)}`,
+    code: Option.none(),
+    cause: Option.some(value)
+  })
+
+const formatValueType = (value: unknown): string =>
+  value === null ? "null" : Array.isArray(value) ? "array" : typeof value
 
 const row = (value: unknown): SqliteRow => value as SqliteRow
 

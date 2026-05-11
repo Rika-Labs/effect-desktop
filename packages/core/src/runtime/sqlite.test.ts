@@ -115,6 +115,32 @@ describe("SQLite (bespoke)", () => {
     expect(changes.lastInsertRowid).toBe(1)
   })
 
+  test("SQLite rejects undefined parameters before the driver boundary", async () => {
+    const { connection } = await makeFixture()
+
+    await Effect.runPromise(connection.exec("CREATE TABLE users (name TEXT)"))
+    const statement = await Effect.runPromise(
+      connection.prepare("INSERT INTO users (name) VALUES ($name)")
+    )
+    const queryExit = await Effect.runPromiseExit(
+      connection.query("SELECT $name AS name", { name: undefined } as never)
+    )
+    const execExit = await Effect.runPromiseExit(
+      connection.exec("INSERT INTO users (name) VALUES ($name)", { name: undefined } as never)
+    )
+    const statementExit = await Effect.runPromiseExit(statement.run({ name: undefined } as never))
+    const nullExit = await Effect.runPromiseExit(
+      connection.exec("INSERT INTO users (name) VALUES ($name)", { name: null })
+    )
+    const rows = await Effect.runPromise(connection.query("SELECT name FROM users"))
+
+    expectFailure(queryExit, SqliteInvalidArgumentError)
+    expectFailure(execExit, SqliteInvalidArgumentError)
+    expectFailure(statementExit, SqliteInvalidArgumentError)
+    expect(Exit.isSuccess(nullExit)).toBe(true)
+    expect(rows).toEqual([{ name: null }])
+  })
+
   test("successful transaction commits", async () => {
     const { connection } = await makeFixture()
 
@@ -130,6 +156,26 @@ describe("SQLite (bespoke)", () => {
 
     const rows = await Effect.runPromise(connection.query("SELECT name FROM users ORDER BY name"))
     expect(rows).toEqual([{ name: "Ada" }, { name: "Grace" }])
+  })
+
+  test("SQLite rejects unknown transaction modes before issuing SQL", async () => {
+    const { connection } = await makeFixture()
+
+    await Effect.runPromise(connection.exec("CREATE TABLE users (name TEXT)"))
+    const invalidExit = await Effect.runPromiseExit(
+      connection.transaction(Effect.void, { mode: "bogus" } as never)
+    )
+    for (const mode of ["deferred", "immediate", "exclusive"] as const) {
+      await Effect.runPromise(
+        connection.transaction(connection.exec("INSERT INTO users (name) VALUES (?)", [mode]), {
+          mode
+        })
+      )
+    }
+    const rows = await Effect.runPromise(connection.query("SELECT name FROM users ORDER BY rowid"))
+
+    expectFailure(invalidExit, SqliteInvalidArgumentError)
+    expect(rows).toEqual([{ name: "deferred" }, { name: "immediate" }, { name: "exclusive" }])
   })
 
   test("failed transaction rolls back without throwing", async () => {
