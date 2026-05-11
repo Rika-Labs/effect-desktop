@@ -3657,6 +3657,104 @@ test("desktop publish rejects stale package metadata before signing the manifest
   }
 })
 
+test("desktop publish rejects invalid app ids before writing manifests", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-invalid-appid-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      app: {
+        id: "not a reverse dns id",
+        name: "Effect Desktop Playground",
+        version: "0.0.0"
+      }
+    })
+    const manifestPath = join(
+      directory,
+      "apps",
+      "playground",
+      "dist",
+      "desktop",
+      "update-manifest.json"
+    )
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["publish", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const error = JSON.parse(stderr.join("")) as { readonly tag: string; readonly message: string }
+    expect(exitCode).toBe(1)
+    expect(error.tag).toBe("PublishConfigError")
+    expect(error.message).toContain("app.id must be a reverse-DNS ASCII identifier")
+    await expect(stat(manifestPath)).rejects.toThrow()
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop publish rejects non-SemVer app versions before writing manifests", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-invalid-version-"))
+  const key = testEd25519Key()
+  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+  const previousPrivateKey = process.env[privateKeyEnv]
+  process.env[privateKeyEnv] = key.privateKeyPem
+  try {
+    await writePlaygroundFixture(directory, {
+      app: {
+        id: "dev.effect-desktop.playground",
+        name: "Effect Desktop Playground",
+        version: "not-semver"
+      },
+      update: {
+        channel: "stable",
+        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+        publicKey: key.publicKey,
+        privateKeyEnv,
+        keyVersion: 5
+      }
+    })
+    const manifestPath = join(
+      directory,
+      "apps",
+      "playground",
+      "dist",
+      "desktop",
+      "update-manifest.json"
+    )
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["publish", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const error = JSON.parse(stderr.join("")) as { readonly tag: string; readonly message: string }
+    expect(exitCode).toBe(1)
+    expect(error.tag).toBe("PublishConfigError")
+    expect(error.message).toContain("app.version must be a SemVer X.Y.Z string")
+    await expect(stat(manifestPath)).rejects.toThrow()
+  } finally {
+    if (previousPrivateKey === undefined) {
+      delete process.env[privateKeyEnv]
+    } else {
+      process.env[privateKeyEnv] = previousPrivateKey
+    }
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop publish rejects invalid feedUrl", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-invalid-feed-url-"))
   const key = testEd25519Key()

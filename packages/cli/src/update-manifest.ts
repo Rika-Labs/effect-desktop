@@ -215,7 +215,7 @@ const normalizePublishPlan = (
   Effect.gen(function* () {
     const config = yield* readConfigObject(rawConfig)
     const appRoot = dirname(options.configPath)
-    const appId = yield* readRequiredString(config.app?.id, "app.id", "Set app.id.")
+    const appId = yield* readAppId(config.app?.id, "app.id")
     const appName = yield* readRequiredString(config.app?.name, "app.name", "Set app.name.")
     const version = yield* readRequiredString(
       config.app?.version,
@@ -695,6 +695,27 @@ const readRequiredString = (
   typeof value === "string" && value.length > 0
     ? Effect.succeed(value)
     : Effect.fail(new PublishConfigError({ field, message: `${field} is required`, remediation }))
+
+const readAppId = (
+  value: unknown,
+  field: string
+): Effect.Effect<string, PublishConfigError, never> =>
+  readRequiredString(value, field, "Set app.id to a reverse-DNS ASCII identifier.").pipe(
+    Effect.flatMap((appId) =>
+      appIdMatch(appId)
+        ? Effect.succeed(appId)
+        : Effect.fail(
+            new PublishConfigError({
+              field,
+              message: `${field} must be a reverse-DNS ASCII identifier`,
+              remediation: "Set app.id to a value such as dev.example.app."
+            })
+          )
+    )
+  )
+
+const appIdMatch = (value: string): boolean =>
+  /^([a-zA-Z][a-zA-Z0-9-]*)(\.[a-zA-Z][a-zA-Z0-9-]*)+$/u.test(value) && isContainedFileName(value)
 
 interface Semver {
   readonly major: number
