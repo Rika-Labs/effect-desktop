@@ -1,4 +1,5 @@
 import { redact } from "@effect-desktop/bridge"
+import type { RedactionFilterOptions } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Schema } from "effect"
 import { EventGroup, EventJournal, EventLog } from "effect/unstable/eventlog"
 
@@ -80,6 +81,10 @@ export interface AuditEventsApi {
   readonly emit: (event: AuditEvent) => Effect.Effect<void, EventJournal.EventJournalError, never>
 }
 
+export interface AuditEventsOptions {
+  readonly redaction?: RedactionFilterOptions
+}
+
 const auditPrimaryKey = (p: unknown): string => {
   const payload = p as { readonly traceId?: string }
   return payload.traceId ?? ""
@@ -139,30 +144,36 @@ export const AuditEventsLayer: Layer.Layer<
   AuditEvents,
   Effect.gen(function* () {
     const log = yield* EventLog.EventLog
-    return { emit: makeEmit(log) }
+    return makeAuditEvents(log)
   })
 )
 
-export const makeAuditEvents = (log: EventLog.EventLog["Service"]): AuditEventsApi => ({
-  emit: makeEmit(log)
+export const makeAuditEvents = (
+  log: EventLog.EventLog["Service"],
+  options: AuditEventsOptions = {}
+): AuditEventsApi => ({
+  emit: makeEmit(log, options.redaction ?? {})
 })
 
 const makeEmit =
-  (log: EventLog.EventLog["Service"]) =>
+  (log: EventLog.EventLog["Service"], redaction: RedactionFilterOptions) =>
   (event: AuditEvent): Effect.Effect<void, EventJournal.EventJournalError, never> => {
-    const payload = redact({
-      kind: event.kind,
-      source: event.source,
-      traceId: event.traceId,
-      outcome: event.outcome,
-      ...(event.timestamp === undefined ? {} : { timestamp: event.timestamp }),
-      ...(event.normalizedCapability === undefined
-        ? {}
-        : { normalizedCapability: event.normalizedCapability }),
-      ...(event.actor === undefined ? {} : { actor: event.actor }),
-      ...(event.resource === undefined ? {} : { resource: event.resource }),
-      ...(event.details === undefined ? {} : { details: event.details })
-    })
+    const payload = redact(
+      {
+        kind: event.kind,
+        source: event.source,
+        traceId: event.traceId,
+        outcome: event.outcome,
+        ...(event.timestamp === undefined ? {} : { timestamp: event.timestamp }),
+        ...(event.normalizedCapability === undefined
+          ? {}
+          : { normalizedCapability: event.normalizedCapability }),
+        ...(event.actor === undefined ? {} : { actor: event.actor }),
+        ...(event.resource === undefined ? {} : { resource: event.resource }),
+        ...(event.details === undefined ? {} : { details: event.details })
+      },
+      redaction
+    )
     return log.write({
       schema: AuditSchema,
       event: event.kind,

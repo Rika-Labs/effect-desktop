@@ -332,6 +332,7 @@ test("Handlers redacts secret-shaped contract failure fields before renderer emi
   class ProjectSecretError extends Schema.Class<ProjectSecretError>("HandlerProjectSecretError")({
     tag: Schema.Literal("ProjectSecretError"),
     authorization: Schema.String,
+    customerSsn: Schema.String,
     details: Schema.Struct({
       refresh_token: Schema.String,
       safe: Schema.String
@@ -369,6 +370,10 @@ test("Handlers redacts secret-shaped contract failure fields before renderer emi
   const runtime = Handlers.withOptions(
     {
       ...testOriginAuthDisabled,
+      redaction: {
+        additionalPatterns: ["customerSsn"],
+        allowlist: ["details.safe"]
+      },
       onState: (state) =>
         Effect.sync(() => {
           states.push(state)
@@ -380,6 +385,7 @@ test("Handlers redacts secret-shaped contract failure fields before renderer emi
           new ProjectSecretError({
             tag: "ProjectSecretError",
             authorization: "Bearer abc",
+            customerSsn: "123-45-6789",
             details: { refresh_token: "refresh", safe: "visible" }
           })
         )
@@ -395,10 +401,12 @@ test("Handlers redacts secret-shaped contract failure fields before renderer emi
     error: {
       tag: "ProjectSecretError",
       authorization: "[REDACTED]",
+      customerSsn: "[REDACTED]",
       details: { refresh_token: "[REDACTED]", safe: "visible" }
     }
   })
   expect(JSON.stringify(states)).not.toContain("Bearer abc")
+  expect(JSON.stringify(states)).not.toContain("123-45-6789")
   expect(JSON.stringify(states)).not.toContain(':"refresh"')
 })
 

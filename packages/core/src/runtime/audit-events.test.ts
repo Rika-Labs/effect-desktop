@@ -63,6 +63,43 @@ test("AuditEvents writes audit events with redacted secret-shaped details", asyn
   )
 })
 
+test("AuditEvents applies configured redaction policy before writing events", async () => {
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const log = yield* EL.EventLog
+      const audit = makeAuditEvents(log, {
+        redaction: {
+          additionalPatterns: ["customerSsn"],
+          allowlist: ["details.sessionLabel"]
+        }
+      })
+
+      yield* audit.emit(
+        permissionAuditEvent({
+          kind: "permission-denied",
+          source: "test",
+          traceId: "trace-1",
+          outcome: "denied",
+          normalizedCapability: filesystemWrite(["/tmp/app"]),
+          actor: new PermissionActor({ kind: "window", id: "window-main" }),
+          details: {
+            customerSsn: "123-45-6789",
+            sessionLabel: "safe-session"
+          }
+        })
+      )
+
+      const entries = yield* log.entries
+      const payload = entries[0]?.payload
+      const encodedPayload =
+        payload instanceof Uint8Array ? Buffer.from(payload).toString("utf8") : ""
+      expect(encodedPayload).toContain("[REDACTED]")
+      expect(encodedPayload).toContain("safe-session")
+      expect(encodedPayload).not.toContain("123-45-6789")
+    }).pipe(Effect.provide(eventLogLayer))
+  )
+})
+
 test("AuditEvents emits without error for all AuditEventKind values", async () => {
   await Effect.runPromise(
     Effect.gen(function* () {

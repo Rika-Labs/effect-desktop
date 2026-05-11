@@ -3,6 +3,7 @@ const DefaultSecretPattern =
   /api[_-]?key|token|password|secret|bearer|authorization|cookie|session[_-]?id|refresh[_-]?token|client[_-]?secret|private[_-]?key/i
 
 export interface RedactionFilterOptions {
+  readonly defaultPatternEnabled?: boolean
   readonly additionalPatterns?: readonly (RegExp | string)[]
   readonly allowlist?: readonly string[]
 }
@@ -136,7 +137,10 @@ const shouldRedact = (
 
 const resolveOptions = (options: RedactionFilterOptions): ResolvedRedactionFilterOptions =>
   Object.freeze({
-    patterns: [DefaultSecretPattern, ...(options.additionalPatterns ?? []).map(toRegExp)],
+    patterns: [
+      ...(options.defaultPatternEnabled === false ? [] : [DefaultSecretPattern]),
+      ...(options.additionalPatterns ?? []).map(toRegExp)
+    ],
     allowlist: new Set(options.allowlist ?? [])
   })
 

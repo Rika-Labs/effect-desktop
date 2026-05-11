@@ -22,6 +22,7 @@ import {
   type HostProtocolError
 } from "./protocol.js"
 import { redact } from "./redaction.js"
+import type { RedactionFilterOptions } from "./redaction.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 const DEFAULT_TIMEOUT_MS = 30_000
@@ -86,6 +87,7 @@ export interface ApiHandlerRuntimeOptions {
   readonly now?: () => number
   readonly onState?: (state: BridgeCallState) => Effect.Effect<void, never, never>
   readonly originAuth?: RendererOriginAuth
+  readonly redaction?: RedactionFilterOptions
   readonly terminalStateTtlMs?: number
 }
 
@@ -93,6 +95,7 @@ interface ResolvedApiHandlerRuntimeOptions {
   readonly now: () => number
   readonly onState: (state: BridgeCallState) => Effect.Effect<void, never, never>
   readonly originAuth: RendererOriginAuth
+  readonly redaction: RedactionFilterOptions
   readonly terminalStateTtlMs: number
 }
 
@@ -297,14 +300,15 @@ const dispatch = (
 
       const error = yield* encodeContractError(request.method, bound.spec, exit.cause)
       recordTerminalState(terminalStates, request.id, "Failed", options)
+      const redactedError = redactForEmission(error, options)
       yield* options.onState({
         tag: "Failed",
         id: request.id,
-        error: redact(error)
+        error: redactedError
       })
       return {
         kind: "failure",
-        error: redact(error)
+        error: redactedError
       } as const
     }
 
@@ -439,7 +443,7 @@ const encodeContractError = <Spec extends ApiMethodSpec>(
       >,
       (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
     )
-    return redact(encoded)
+    return encoded
   })
 
 const makeMethodNotFoundError = (method: string): HostProtocolMethodNotFoundError =>
@@ -480,10 +484,11 @@ const failCall = (
 ): Effect.Effect<void, never, never> =>
   Effect.gen(function* () {
     recordTerminalState(terminalStates, id, "Failed", options)
+    const redactedError = redactForEmission(error, options)
     yield* options.onState({
       tag: "Failed",
       id,
-      error: redact(error)
+      error: redactedError
     })
   })
 
@@ -554,8 +559,12 @@ const resolveOptions = (options: ApiHandlerRuntimeOptions): ResolvedApiHandlerRu
   now: options.now ?? Date.now,
   onState: options.onState ?? (() => Effect.void),
   originAuth: options.originAuth ?? defaultRendererOriginAuth,
+  redaction: options.redaction ?? {},
   terminalStateTtlMs: options.terminalStateTtlMs ?? DEFAULT_TERMINAL_STATE_TTL_MS
 })
+
+const redactForEmission = <A>(value: A, options: ResolvedApiHandlerRuntimeOptions): A =>
+  redact(value, options.redaction)
 
 const defaultRendererOriginAuth: RendererOriginAuth = Object.freeze({
   verify: (request: HostProtocolRequestEnvelope) =>

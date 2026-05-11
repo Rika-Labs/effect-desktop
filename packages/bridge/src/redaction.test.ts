@@ -44,6 +44,15 @@ test("redact supports additional patterns and allowlisted paths", () => {
   })
 })
 
+test("redact can disable the default pattern while keeping additional patterns", () => {
+  expect(
+    redact(
+      { token: "visible", customerSsn: "123-45-6789" },
+      { defaultPatternEnabled: false, additionalPatterns: ["customerSsn"] }
+    )
+  ).toEqual({ token: "visible", customerSsn: "[REDACTED]" })
+})
+
 test("redact handles arrays and cycles", () => {
   const input: { readonly items: unknown[]; self?: unknown } = {
     items: [{ refresh_token: "abc" }]

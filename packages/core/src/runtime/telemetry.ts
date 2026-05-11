@@ -1,4 +1,5 @@
 import { redact } from "@effect-desktop/bridge"
+import type { RedactionFilterOptions } from "@effect-desktop/bridge"
 import { Context, Data, Effect, Option, Ref, Schema, Stream, SubscriptionRef } from "effect"
 
 const TelemetryMetadataText = Schema.NonEmptyString.check(
@@ -135,6 +136,7 @@ export interface TelemetryOptions {
   readonly maxLogs?: number
   readonly maxMetrics?: number
   readonly maxHistogramSamples?: number
+  readonly redaction?: RedactionFilterOptions
   readonly traceRingSize?: number
   readonly tracingEnabled?: boolean
   readonly now?: () => number
@@ -186,18 +188,21 @@ export const makeTelemetry = (
           yield* validateOptionalMetadataField(input.resourceId, "Telemetry.log", "resourceId")
           yield* validateOptionalMetadataField(input.windowId, "Telemetry.log", "windowId")
           const id = yield* Ref.getAndUpdate(nextLogId, (current) => current + 1)
-          const record = redact({
-            id,
-            level: input.level,
-            timestamp: input.timestamp ?? now(),
-            subsystem: input.subsystem,
-            operation: input.operation,
-            traceId: input.traceId,
-            resourceId: optionFrom(input.resourceId),
-            windowId: optionFrom(input.windowId),
-            message: input.message,
-            fields: optionFrom(input.fields)
-          } satisfies TelemetryLogRecord)
+          const record = redact(
+            {
+              id,
+              level: input.level,
+              timestamp: input.timestamp ?? now(),
+              subsystem: input.subsystem,
+              operation: input.operation,
+              traceId: input.traceId,
+              resourceId: optionFrom(input.resourceId),
+              windowId: optionFrom(input.windowId),
+              message: input.message,
+              fields: optionFrom(input.fields)
+            } satisfies TelemetryLogRecord,
+            options.redaction
+          )
           yield* SubscriptionRef.update(logs, (current) => appendBounded(current, record, maxLogs))
         }),
       listLogs: () => SubscriptionRef.get(logs),

@@ -38,6 +38,40 @@ test("Telemetry records redacted structured logs and publishes bounded snapshots
   expect(snapshots.at(-1)?.[0]?.fields).toEqual(Option.some({ token: "[REDACTED]", safe: "value" }))
 })
 
+test("Telemetry applies configured redaction policy to structured logs", async () => {
+  const telemetry = await Effect.runPromise(
+    makeTelemetry({
+      now: () => 100,
+      redaction: {
+        additionalPatterns: ["customerSsn"],
+        allowlist: ["sessionLabel"]
+      }
+    })
+  )
+
+  await Effect.runPromise(
+    telemetry.log({
+      level: "info",
+      subsystem: "bridge",
+      operation: "Bridge.call",
+      traceId: "trace-1",
+      message: "called bridge",
+      fields: {
+        customerSsn: "123-45-6789",
+        sessionLabel: "safe-session"
+      }
+    })
+  )
+
+  const logs = await Effect.runPromise(telemetry.listLogs())
+  expect(logs[0]?.fields).toEqual(
+    Option.some({
+      customerSsn: "[REDACTED]",
+      sessionLabel: "safe-session"
+    })
+  )
+})
+
 test("Telemetry records trace spans in a bounded ring and can disable tracing explicitly", async () => {
   const telemetry = await Effect.runPromise(
     makeTelemetry({ traceRingSize: 1, nextSpanId: () => "generated-span" })
