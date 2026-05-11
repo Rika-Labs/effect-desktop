@@ -3851,6 +3851,79 @@ test("desktop build stages renderer runtime host bridge manifests and report", a
   }
 })
 
+test("desktop build preserves renderer stderr on command failure", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-stderr-"))
+  try {
+    await writePlaygroundFixture(directory)
+    const appRoot = join(directory, "apps", "playground")
+    await writeFile(
+      join(appRoot, "package.json"),
+      '{"type":"module","scripts":{"build":"bun fail-renderer.ts"}}\n'
+    )
+    await writeFile(
+      join(appRoot, "fail-renderer.ts"),
+      "console.error('renderer dependency missing: @types/node'); process.exit(1)\n"
+    )
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["build", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("BuildCommandFailedError")
+    expect(stderr.join("")).toContain("renderer command exited with 1")
+    expect(stderr.join("")).toContain("renderer dependency missing: @types/node")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --repro preserves nested build stderr", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-stderr-"))
+  try {
+    await writePlaygroundFixture(directory)
+    const appRoot = join(directory, "apps", "playground")
+    await writeFile(
+      join(appRoot, "package.json"),
+      '{"type":"module","scripts":{"build":"bun fail-renderer.ts"}}\n'
+    )
+    await writeFile(
+      join(appRoot, "fail-renderer.ts"),
+      "console.error('renderer dependency missing: @types/node'); process.exit(1)\n"
+    )
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--repro", "--config", "apps/playground/desktop.config.ts", "--json"],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as { readonly message: string }
+    expect(exitCode).toBe(1)
+    expect(payload.message).toContain("first build failed")
+    expect(payload.message).toContain("renderer command exited with 1")
+    expect(payload.message).toContain("renderer dependency missing: @types/node")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop build rejects missing runtime.entry", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-missing-runtime-entry-"))
   try {

@@ -193,7 +193,10 @@ export const formatReproError = (
     return { tag: error._tag, message: error.message, report: error.report }
   }
   if (error instanceof ReproBuildRunError) {
-    return { tag: error._tag, message: `${error.pass} build failed: ${error.message}` }
+    return {
+      tag: error._tag,
+      message: `${error.pass} build failed: ${formatNestedRunError(error.message, error.cause)}`
+    }
   }
   if (error instanceof ReproPackageRunError) {
     return { tag: error._tag, message: `${error.pass} package failed: ${error.message}` }
@@ -646,3 +649,16 @@ const copyFileEffect = (
 
 const formatUnknownError = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause)
+
+const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
+  typeof value === "object" && value !== null
+
+const formatNestedRunError = (message: string, cause: unknown): string => {
+  if (!isRecord(cause)) {
+    return message
+  }
+  const output = [cause["stderr"], cause["stdout"]].filter(
+    (text): text is string => typeof text === "string" && text.length > 0
+  )
+  return output.length === 0 ? message : `${message}\n${output.join("\n")}`
+}

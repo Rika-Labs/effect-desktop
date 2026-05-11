@@ -268,6 +268,8 @@ export class BuildCommandFailedError extends Data.TaggedError("BuildCommandFaile
   readonly cwd: string
   readonly exitCode: number | undefined
   readonly message: string
+  readonly stdout?: string
+  readonly stderr?: string
 }> {}
 
 export class BuildFileError extends Data.TaggedError("BuildFileError")<{
@@ -1145,17 +1147,23 @@ const runCommand: CommandRunner = (invocation) =>
     try: async () => {
       const process = Bun.spawn([invocation.command, ...invocation.args], {
         cwd: invocation.cwd,
-        stdout: "ignore",
-        stderr: "ignore"
+        stdout: "pipe",
+        stderr: "pipe"
       })
-      const exitCode = await process.exited
+      const [stdout, stderr, exitCode] = await Promise.all([
+        readBoundedStreamText(process.stdout),
+        readBoundedStreamText(process.stderr),
+        process.exited
+      ])
       if (exitCode !== 0) {
         throw new BuildCommandFailedError({
           step: invocation.step,
           command: [invocation.command, ...invocation.args],
           cwd: invocation.cwd,
           exitCode,
-          message: `${invocation.step} command exited with ${exitCode}`
+          message: `${invocation.step} command exited with ${exitCode}`,
+          ...(stdout.length === 0 ? {} : { stdout }),
+          ...(stderr.length === 0 ? {} : { stderr })
         })
       }
     },
@@ -1307,7 +1315,7 @@ const formatBuildError = (
     return { tag: error._tag, message: error.message, remediation: error.remediation }
   }
   if (error instanceof BuildCommandFailedError) {
-    return { tag: error._tag, message: error.message }
+    return { tag: error._tag, message: formatBuildCommandErrorMessage(error) }
   }
   if (error instanceof BuildFileError) {
     return { tag: error._tag, message: error.message }
@@ -1317,6 +1325,13 @@ const formatBuildError = (
   }
 
   return { tag: "UnknownBuildError", message: "unknown build error" }
+}
+
+const formatBuildCommandErrorMessage = (error: BuildCommandFailedError): string => {
+  const output = [error.stderr, error.stdout].filter(
+    (text): text is string => text !== undefined && text.length > 0
+  )
+  return output.length === 0 ? error.message : `${error.message}\n${output.join("\n")}`
 }
 
 const formatBuildErrorText = (error: BuildPipelineError): string => {
@@ -2463,6 +2478,38 @@ const pathToFileUrl = (path: string): string => pathToFileURL(path).href
 
 const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
   typeof value === "object" && value !== null
+
+const MAX_COMMAND_OUTPUT_CHARS = 16_384
+
+const readBoundedStreamText = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
+  const reader = stream.getReader()
+  const decoder = new TextDecoder()
+  let result = ""
+  let truncated = false
+
+  try {
+    while (true) {
+      const chunk = await reader.read()
+      if (chunk.done) {
+        break
+      }
+      if (result.length < MAX_COMMAND_OUTPUT_CHARS) {
+        result += decoder.decode(chunk.value, { stream: true })
+        if (result.length > MAX_COMMAND_OUTPUT_CHARS) {
+          result = result.slice(0, MAX_COMMAND_OUTPUT_CHARS)
+          truncated = true
+        }
+      } else {
+        truncated = true
+      }
+    }
+    result += decoder.decode()
+  } finally {
+    reader.releaseLock()
+  }
+
+  return truncated ? `${result}\n[output truncated]` : result
+}
 
 const formatUnknownError = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause)
