@@ -46,7 +46,7 @@ await Effect.runPromise(
     const isSmokeTest = yield* windowSmokeTest
     const startupWindows = yield* readStartupWindows(process.env)
     const declaredWindows =
-      isSmokeTest && Object.keys(startupWindows).length === 0 ? smokeTestWindows : startupWindows
+      Object.keys(startupWindows).length === 0 ? smokeTestWindows : startupWindows
     yield* negotiateHostVersion(handshake, HOST_PROTOCOL_VERSION)
     yield* handshake.ping()
     yield* openDeclaredWindows(windows, declaredWindows, { smokeTest: isSmokeTest })

@@ -109,6 +109,15 @@ test("runtime smoke mode opens a fallback window when no startup windows are dec
   ])
 })
 
+test("runtime normal launch opens a fallback window when no startup windows are declared", async () => {
+  const result = await runRuntimeWithFakeHost({ windowSmokeTest: false })
+
+  expect(result.exitCode).toBe(0)
+  expect(result.stderr).toBe("")
+  expect(result.trailingStdoutBytes).toBe(0)
+  expect(result.methods).toEqual([HOST_VERSION_METHOD, HOST_PING_METHOD, WINDOW_CREATE_METHOD])
+})
+
 test("runtime entry can open startup windows from the Desktop app module", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-runtime-"))
   const modulePath = join(directory, "app.ts")
@@ -148,13 +157,18 @@ test("runtime entry can open startup windows from the Desktop app module", async
 interface RuntimeHostOptions {
   readonly appModule?: string
   readonly startupWindows?: unknown
+  readonly windowSmokeTest?: boolean
 }
 
 const runRuntimeWithFakeHost = (options: RuntimeHostOptions = {}): Promise<RuntimeHostResult> =>
   new Promise((resolvePromise, rejectPromise) => {
     const env: NodeJS.ProcessEnv = {
-      ...process.env,
-      EFFECT_DESKTOP_WINDOW_SMOKE_TEST: "1"
+      ...process.env
+    }
+    if (options.windowSmokeTest !== false) {
+      env["EFFECT_DESKTOP_WINDOW_SMOKE_TEST"] = "1"
+    } else {
+      delete env["EFFECT_DESKTOP_WINDOW_SMOKE_TEST"]
     }
     delete env[STARTUP_WINDOWS_ENV]
     delete env[APP_MODULE_ENV]
