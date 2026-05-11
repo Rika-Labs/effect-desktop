@@ -163,13 +163,14 @@ export const runDesktopPublish = (
         signature: signEd25519(payload.signingBytes, privateKey)
       })
     }
+    const publishedAt = yield* readPublishedAt(options.now)
     const unsigned: Omit<UpdateManifest, "signature"> = {
       schemaVersion: 1,
       appId: plan.appId,
       version: plan.version,
       channel: plan.channel,
       keyVersion: plan.keyVersion,
-      publishedAt: new Date(options.now()).toISOString(),
+      publishedAt,
       ...(plan.rollback === undefined ? {} : { rollback: plan.rollback }),
       ...(plan.minVersion === undefined ? {} : { minVersion: plan.minVersion }),
       ...(plan.maxVersion === undefined ? {} : { maxVersion: plan.maxVersion }),
@@ -200,6 +201,29 @@ export const runDesktopPublish = (
       artifacts: manifestArtifacts
     }
   })
+
+const readPublishedAt = (now: () => number): Effect.Effect<string, PublishConfigError, never> =>
+  Effect.gen(function* () {
+    const timestamp = now()
+    if (!Number.isFinite(timestamp)) {
+      return yield* invalidPublishTimestamp()
+    }
+    const date = new Date(timestamp)
+    const time = date.getTime()
+    if (!Number.isFinite(time)) {
+      return yield* invalidPublishTimestamp()
+    }
+    return date.toISOString()
+  })
+
+const invalidPublishTimestamp = (): Effect.Effect<never, PublishConfigError, never> =>
+  Effect.fail(
+    new PublishConfigError({
+      field: "publishedAt",
+      message: "publish timestamp must be a finite valid JavaScript timestamp",
+      remediation: "Use a finite publish clock value before publishing."
+    })
+  )
 
 export const canonicalUpdateManifestBytes = (
   manifest: UpdateManifest | Record<string, unknown>

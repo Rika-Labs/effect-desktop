@@ -3822,6 +3822,73 @@ test("desktop publish writes a byte-stable Ed25519-signed update manifest", asyn
   }
 })
 
+test("desktop publish rejects invalid publish timestamps before writing manifests", async () => {
+  const invalidTimestamps = [
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    8.64e15 + 1
+  ] as const
+
+  for (const timestamp of invalidTimestamps) {
+    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-clock-"))
+    const key = testEd25519Key()
+    const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+    const previousPrivateKey = process.env[privateKeyEnv]
+    process.env[privateKeyEnv] = key.privateKeyPem
+    try {
+      await writePlaygroundFixture(directory, {
+        update: {
+          channel: "stable",
+          feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+          publicKey: key.publicKey,
+          privateKeyEnv,
+          keyVersion: 5,
+          minVersion: "0.0.0"
+        }
+      })
+      await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+      const manifestPath = join(
+        directory,
+        "apps",
+        "playground",
+        "dist",
+        "desktop",
+        "update-manifest.json"
+      )
+      const stderr: string[] = []
+
+      const exitCode = await Effect.runPromise(
+        runCli({
+          argv: ["publish", "--config", "apps/playground/desktop.config.ts", "--json"],
+          cwd: directory,
+          now: () => timestamp,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+      )
+
+      const payload = JSON.parse(stderr.join("")) as {
+        readonly tag: string
+        readonly message: string
+      }
+      expect(exitCode).toBe(1)
+      expect(payload.tag).toBe("PublishConfigError")
+      expect(payload.message).toContain("publish timestamp")
+      await expect(readFile(manifestPath, "utf8")).rejects.toThrow()
+    } finally {
+      if (previousPrivateKey === undefined) {
+        delete process.env[privateKeyEnv]
+      } else {
+        process.env[privateKeyEnv] = previousPrivateKey
+      }
+      await rm(directory, { recursive: true, force: true })
+    }
+  }
+})
+
 test("desktop publish canonical bytes ignore object insertion order", async () => {
   const manifest = {
     signature: "ed25519:signature",
