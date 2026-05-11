@@ -87,7 +87,10 @@ export interface ResourceRegistryApi {
   readonly list: () => Effect.Effect<RegistrySnapshot, never, never>
   readonly dispose: (id: ResourceId) => Effect.Effect<void, never, never>
   readonly observe: () => Stream.Stream<RegistrySnapshot, never, never>
-  readonly declareScope: (scope: ScopeId, parent?: ScopeId) => Effect.Effect<void, never, never>
+  readonly declareScope: (
+    scope: ScopeId,
+    parent?: ScopeId
+  ) => Effect.Effect<void, ResourceInvalidArgumentError, never>
   readonly closeScope: (scope: ScopeId) => Effect.Effect<void, never, never>
   readonly share: <Kind extends ResourceKind, State extends ResourceState>(
     handle: ResourceHandle<Kind, State>,
@@ -220,9 +223,24 @@ export const makeResourceRegistry = (
       input: RegisterResourceInput<Kind, State>
     ): Effect.Effect<ResourceHandle<Kind, State>, ResourceInvalidArgumentError, never> => {
       return Effect.gen(function* () {
+        const kind = (yield* validateIdentity(
+          input.kind,
+          "kind",
+          "ResourceRegistry.register"
+        )) as Kind
+        const ownerScope = (yield* validateIdentity(
+          input.ownerScope,
+          "ownerScope",
+          "ResourceRegistry.register"
+        )) as ScopeId
+        const state = (yield* validateIdentity(
+          input.state,
+          "state",
+          "ResourceRegistry.register"
+        )) as State
         const createdAt = yield* validateTimestamp(now(), "ResourceRegistry.register")
         return yield* registerWithCleanupGroup(
-          input,
+          { ...input, kind, ownerScope, state },
           undefined,
           input.dispose ?? Effect.void,
           createdAt
@@ -302,12 +320,29 @@ export const makeResourceRegistry = (
         )
       })
 
-    const declareScope = (scope: ScopeId, parent?: ScopeId): Effect.Effect<void, never, never> =>
-      Effect.sync(() => {
-        if (parent === undefined) {
-          scopeParents.delete(scope)
+    const declareScope = (
+      scope: ScopeId,
+      parent?: ScopeId
+    ): Effect.Effect<void, ResourceInvalidArgumentError, never> =>
+      Effect.gen(function* () {
+        const validScope = (yield* validateIdentity(
+          scope,
+          "scope",
+          "ResourceRegistry.declareScope"
+        )) as ScopeId
+        const validParent =
+          parent === undefined
+            ? undefined
+            : ((yield* validateIdentity(
+                parent,
+                "parent",
+                "ResourceRegistry.declareScope"
+              )) as ScopeId)
+
+        if (validParent === undefined) {
+          scopeParents.delete(validScope)
         } else {
-          scopeParents.set(scope, parent)
+          scopeParents.set(validScope, validParent)
         }
       })
 
@@ -346,6 +381,11 @@ export const makeResourceRegistry = (
       never
     > =>
       Effect.gen(function* () {
+        const validTargetScope = (yield* validateIdentity(
+          targetScope,
+          "targetScope",
+          "ResourceRegistry.share"
+        )) as ScopeId
         yield* assertFresh(handle)
         const current = yield* SubscriptionRef.get(entries)
         const stored = current.get(handle.id)
@@ -366,7 +406,7 @@ export const makeResourceRegistry = (
         return yield* registerWithCleanupGroup(
           {
             kind: handle.kind,
-            ownerScope: targetScope,
+            ownerScope: validTargetScope,
             state: handle.state,
             reusableId: false
           },
@@ -500,6 +540,21 @@ const validateTimestamp = (
           operation,
           field: "createdAt",
           message: "must be a finite non-negative integer"
+        })
+      )
+
+const validateIdentity = (
+  value: string,
+  field: string,
+  operation: string
+): Effect.Effect<string, ResourceInvalidArgumentError, never> =>
+  value.trim().length > 0
+    ? Effect.succeed(value)
+    : Effect.fail(
+        new ResourceInvalidArgumentError({
+          operation,
+          field,
+          message: "must be a non-empty string"
         })
       )
 

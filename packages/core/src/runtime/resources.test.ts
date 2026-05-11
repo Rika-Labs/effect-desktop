@@ -64,6 +64,29 @@ test("register rejects invalid registry timestamps before allocating ids", async
   expectFailure(exit, ResourceInvalidArgumentError)
 })
 
+test("register rejects empty resource identity fields before allocating ids", async () => {
+  for (const input of [
+    { kind: "", ownerScope: "scope-test", state: "open" },
+    { kind: "window", ownerScope: "   ", state: "open" },
+    { kind: "window", ownerScope: "scope-test", state: "" }
+  ]) {
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const registry = yield* makeResourceRegistry({
+          nextId: () => id("018e2f36-5800-7000-8000-0000000000aa")
+        })
+        const exit = yield* Effect.exit(registry.register(input))
+        const snapshot = yield* registry.list()
+
+        return { exit, snapshot }
+      })
+    )
+
+    expectFailure(result.exit, ResourceInvalidArgumentError)
+    expect(result.snapshot.entries).toEqual([])
+  }
+})
+
 test("get returns the matching live resource", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
@@ -538,6 +561,34 @@ test("closeScope handles cyclic scope declarations without hanging", async () =>
   )
 
   expect(snapshot.entries).toEqual([])
+})
+
+test("declareScope rejects blank scope declarations before mutating parents", async () => {
+  for (const input of [
+    { scope: "", parent: "parent-scope" },
+    { scope: "   ", parent: "parent-scope" },
+    { scope: "child-scope", parent: "" }
+  ]) {
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const registry = yield* makeResourceRegistry()
+        const exit = yield* Effect.exit(registry.declareScope(input.scope, input.parent))
+        yield* registry.register({
+          kind: "worker",
+          id: id("018e2f36-5800-7000-8000-000000000022"),
+          ownerScope: "child-scope",
+          state: "ready"
+        })
+        yield* registry.closeScope("parent-scope")
+        const snapshot = yield* registry.list()
+
+        return { exit, snapshot }
+      })
+    )
+
+    expectFailure(result.exit, ResourceInvalidArgumentError)
+    expect(result.snapshot.entries.map((entry) => entry.handle.ownerScope)).toEqual(["child-scope"])
+  }
 })
 
 test("handle dispose delegates to the registry", async () => {
