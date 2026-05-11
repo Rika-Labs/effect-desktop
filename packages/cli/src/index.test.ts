@@ -59,6 +59,63 @@ test("desktop --help exits zero with root usage on stdout", async () => {
   expect(stderr.join("")).toBe("")
 })
 
+test("desktop exposes every spec-required deferred command explicitly", async () => {
+  const commands = [
+    "init",
+    "dev",
+    "typecheck",
+    "lint",
+    "test",
+    "info",
+    "generate-types",
+    "migrate",
+    "clean",
+    "inspect",
+    "replay"
+  ] as const
+
+  for (const command of commands) {
+    const helpStdout: string[] = []
+    const helpExitCode = await Effect.runPromise(
+      runCli({
+        argv: [command, "--help"],
+        cwd: process.cwd(),
+        writeStdout: (text) => {
+          helpStdout.push(text)
+        },
+        writeStderr: () => {}
+      })
+    )
+
+    const stdout: string[] = []
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: [command, "--json"],
+        cwd: process.cwd(),
+        writeStdout: (text) => {
+          stdout.push(text)
+        },
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+    const error = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly command: string
+      readonly message: string
+    }
+
+    expect(helpExitCode).toBe(0)
+    expect(helpStdout.join("")).toContain(`desktop ${command}`)
+    expect(exitCode).toBe(1)
+    expect(stdout.join("")).toBe("")
+    expect(error.tag).toBe("CliDeferredCommand")
+    expect(error.command).toBe(command)
+  }
+})
+
 test("desktop value-flag usage errors honor --json", async () => {
   const stdout: string[] = []
   const stderr: string[] = []

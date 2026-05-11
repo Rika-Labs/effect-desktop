@@ -327,15 +327,39 @@ const ROOT_HELP = [
   "Usage: desktop <command> [options]",
   "",
   "Commands:",
+  "  init",
+  "  dev",
   "  build",
   "  package",
   "  sign",
   "  notarize",
   "  publish",
+  "  typecheck",
+  "  lint",
+  "  test",
   "  doctor",
+  "  info",
+  "  generate-types",
+  "  migrate",
+  "  clean",
+  "  inspect",
+  "  replay",
   "  check",
   ""
 ].join("\n")
+const DEFERRED_COMMANDS = [
+  "init",
+  "dev",
+  "typecheck",
+  "lint",
+  "test",
+  "info",
+  "generate-types",
+  "migrate",
+  "clean",
+  "inspect",
+  "replay"
+] as const
 const JSON_VALUE_FLAGS = new Set([
   "--artifact",
   "--config",
@@ -830,8 +854,28 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
       )
     )
 
+    const deferredCommands = DEFERRED_COMMANDS.map((name) =>
+      Command.make(
+        name,
+        {
+          json: Flag.boolean("json").pipe(Flag.withDefault(false))
+        },
+        (flags) =>
+          Effect.gen(function* () {
+            const error = deferredCommandError(name)
+            if (flags.json) {
+              options.writeStderr(`${JSON.stringify(error, null, 2)}\n`)
+            } else {
+              options.writeStderr(`${error.tag}: ${error.message}\nNext: ${error.remediation}\n`)
+            }
+            yield* fail(1)
+          })
+      ).pipe(Command.withDescription(`Deferred desktop ${name} command.`))
+    )
+
     const desktopCmd = Command.make("desktop").pipe(
       Command.withSubcommands([
+        ...deferredCommands,
         buildCmd,
         packageCmd,
         signCmd,
@@ -880,6 +924,20 @@ const formatCliUsageError = (
 ): { readonly tag: "CliUsageError"; readonly message: string } => ({
   tag: "CliUsageError",
   message: error.message
+})
+
+const deferredCommandError = (
+  command: (typeof DEFERRED_COMMANDS)[number]
+): {
+  readonly tag: "CliDeferredCommand"
+  readonly command: string
+  readonly message: string
+  readonly remediation: string
+} => ({
+  tag: "CliDeferredCommand",
+  command,
+  message: `desktop ${command} is declared but not implemented in this milestone`,
+  remediation: "Use the implemented build/package/sign/notarize/publish/doctor/check commands."
 })
 
 export const runDesktopBuild = (
