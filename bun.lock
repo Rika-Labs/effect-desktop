@@ -146,7 +146,7 @@
     },
     "packages/astro": {
       "name": "@effect-desktop/astro",
-      "version": "0.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@effect-desktop/core": "workspace:*",
         "effect": "4.0.0-beta.60",
@@ -154,34 +154,35 @@
     },
     "packages/bridge": {
       "name": "@effect-desktop/bridge",
-      "version": "0.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "effect": "4.0.0-beta.60",
       },
     },
     "packages/cli": {
       "name": "@effect-desktop/cli",
-      "version": "0.0.0",
+      "version": "2.0.0",
       "bin": {
         "desktop": "src/bin.ts",
       },
       "dependencies": {
         "@effect-desktop/bridge": "workspace:*",
         "@effect-desktop/config": "workspace:*",
+        "@effect/platform-bun": "4.0.0-beta.60",
         "effect": "4.0.0-beta.60",
         "typescript": "6.0.3",
       },
     },
     "packages/config": {
       "name": "@effect-desktop/config",
-      "version": "0.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "effect": "4.0.0-beta.60",
       },
     },
     "packages/core": {
       "name": "@effect-desktop/core",
-      "version": "0.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@effect-desktop/bridge": "workspace:*",
         "@effect/opentelemetry": "4.0.0-beta.60",
@@ -199,14 +200,18 @@
     },
     "packages/create-effect-desktop": {
       "name": "create-effect-desktop",
-      "version": "0.0.0",
+      "version": "2.0.0",
       "bin": {
         "create-effect-desktop": "src/bin.ts",
+      },
+      "dependencies": {
+        "@effect/platform-bun": "4.0.0-beta.60",
+        "effect": "4.0.0-beta.60",
       },
     },
     "packages/devtools": {
       "name": "@effect-desktop/devtools",
-      "version": "0.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@effect-desktop/core": "workspace:*",
         "effect": "4.0.0-beta.60",
@@ -214,7 +219,7 @@
     },
     "packages/native": {
       "name": "@effect-desktop/native",
-      "version": "0.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@effect-desktop/bridge": "workspace:*",
         "@effect-desktop/core": "workspace:*",
@@ -223,7 +228,7 @@
     },
     "packages/next": {
       "name": "@effect-desktop/next",
-      "version": "0.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@effect-desktop/core": "workspace:*",
         "@effect-desktop/react": "workspace:*",
@@ -238,7 +243,7 @@
     },
     "packages/react": {
       "name": "@effect-desktop/react",
-      "version": "0.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@effect-desktop/bridge": "workspace:*",
         "@effect-desktop/core": "workspace:*",
@@ -264,7 +269,7 @@
     },
     "packages/solid": {
       "name": "@effect-desktop/solid",
-      "version": "0.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@effect-desktop/bridge": "workspace:*",
         "@effect-desktop/core": "workspace:*",
@@ -279,7 +284,7 @@
     },
     "packages/test": {
       "name": "@effect-desktop/test",
-      "version": "0.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@effect-desktop/bridge": "workspace:*",
         "@effect-desktop/core": "workspace:*",
@@ -289,7 +294,7 @@
     },
     "packages/vite": {
       "name": "@effect-desktop/vite",
-      "version": "0.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@effect-desktop/core": "workspace:*",
         "effect": "4.0.0-beta.60",
@@ -304,7 +309,7 @@
     },
     "packages/vue": {
       "name": "@effect-desktop/vue",
-      "version": "0.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@effect-desktop/bridge": "workspace:*",
         "@effect-desktop/core": "workspace:*",

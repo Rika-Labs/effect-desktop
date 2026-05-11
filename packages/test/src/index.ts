@@ -514,7 +514,7 @@ export interface MockPtyApi extends PtyApi {
 export const makeMockPty = (
   registry: ResourceRegistryApi,
   options: MockPtyOptions = {}
-): Effect.Effect<MockPtyApi, never, never> => {
+): Effect.Effect<MockPtyApi, HostProtocolInvalidArgumentError, never> => {
   const calls: MutableMockPtyOpenRecord[] = []
   return makePty(registry, {
     adapter: makeMockPtyAdapter(options, calls),
@@ -528,7 +528,7 @@ export const makeMockPty = (
 
 export const MockPtyLive = (
   options: MockPtyOptions = {}
-): Layer.Layer<PTY, never, ResourceRegistry> =>
+): Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceRegistry> =>
   Layer.effect(
     PTY,
     Effect.gen(function* () {

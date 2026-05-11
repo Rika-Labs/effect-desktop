@@ -8,5 +8,6 @@ export { Terminal } from "effect/Terminal"
 export type { Terminal as TerminalTag } from "effect/Terminal"
 export { Stdio } from "effect/Stdio"
 export type { PlatformError } from "effect/PlatformError"
+export { ChildProcessSpawner } from "effect/unstable/process"
 
 export const BunServicesLayer = BunServices.layer
