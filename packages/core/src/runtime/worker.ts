@@ -190,6 +190,17 @@ export const makeWorker = (
     return Object.freeze({
       spawn: <In, Out>(options: WorkerSpawnOptions<In, Out>) =>
         Effect.gen(function* () {
+          yield* validateGracefulShutdownMs(gracefulShutdownMs, "Worker.spawn")
+          const inputSchema = yield* validateChannelSchema(
+            options.inputSchema,
+            "inputSchema",
+            "Worker.spawn"
+          )
+          const outputSchema = yield* validateChannelSchema(
+            options.outputSchema,
+            "outputSchema",
+            "Worker.spawn"
+          )
           const input = yield* decodeSpawnInput(
             {
               script: options.script,
@@ -259,8 +270,8 @@ export const makeWorker = (
             runtime,
             resource,
             input.script,
-            options.inputSchema,
-            options.outputSchema,
+            inputSchema as Schema.Schema<In>,
+            outputSchema as Schema.Schema<Out>,
             registry
           )
         }).pipe(
@@ -458,6 +469,40 @@ const decodeSpawnInput = (
         })
     )
   )
+
+const validateGracefulShutdownMs = (
+  value: number,
+  operation: string
+): Effect.Effect<void, WorkerInvalidArgumentError, never> =>
+  Number.isSafeInteger(value) && value >= 0
+    ? Effect.void
+    : Effect.fail(
+        new WorkerInvalidArgumentError({
+          operation,
+          field: "gracefulShutdownMs",
+          message: "must be a non-negative safe integer",
+          cause: Option.none()
+        })
+      )
+
+const validateChannelSchema = (
+  schema: unknown,
+  field: "inputSchema" | "outputSchema",
+  operation: string
+): Effect.Effect<Schema.Schema<unknown>, WorkerInvalidArgumentError, never> =>
+  isEffectSchema(schema)
+    ? Effect.succeed(schema)
+    : Effect.fail(
+        new WorkerInvalidArgumentError({
+          operation,
+          field,
+          message: "must be an Effect schema",
+          cause: Option.none()
+        })
+      )
+
+const isEffectSchema = (schema: unknown): schema is Schema.Schema<unknown> =>
+  (typeof schema === "object" || typeof schema === "function") && schema !== null && "ast" in schema
 
 const decodeInput = <In>(
   input: unknown,

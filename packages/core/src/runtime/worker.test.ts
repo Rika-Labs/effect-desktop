@@ -276,6 +276,72 @@ test("Worker validates malformed sends before transmission", async () => {
   expectFailure(exit, WorkerChannelError)
 })
 
+test("Worker rejects negative graceful shutdown durations before adapter spawn", async () => {
+  let spawnCalls = 0
+  const runtime = await makeFakeRuntime()
+  const fixture = await makeFixture(
+    {
+      spawn: () => {
+        spawnCalls += 1
+        return Effect.succeed(runtime)
+      }
+    },
+    [],
+    { gracefulShutdownMs: -1 }
+  )
+
+  const exit = await Effect.runPromiseExit(
+    fixture.service.spawn({
+      script: "./worker.ts",
+      ownerScope: "scope-main",
+      inputSchema: EchoIn,
+      outputSchema: EchoOut,
+      context
+    })
+  )
+  const snapshot = await Effect.runPromise(fixture.registry.list())
+
+  expect(spawnCalls).toBe(0)
+  expect(snapshot.entries).toEqual([])
+  expectFailure(exit, WorkerInvalidArgumentError)
+})
+
+test("Worker rejects malformed channel schemas before adapter spawn", async () => {
+  const cases: ReadonlyArray<{
+    readonly inputSchema: Schema.Schema<{ readonly text: string }>
+    readonly outputSchema: Schema.Schema<{ readonly echoed: string }>
+  }> = [
+    { inputSchema: undefined as never, outputSchema: EchoOut },
+    { inputSchema: EchoIn, outputSchema: undefined as never }
+  ]
+
+  for (const workerOptions of cases) {
+    let spawnCalls = 0
+    const runtime = await makeFakeRuntime()
+    const fixture = await makeFixture({
+      spawn: () => {
+        spawnCalls += 1
+        return Effect.succeed(runtime)
+      }
+    })
+
+    const exit = await Effect.runPromiseExit(
+      fixture.service.spawn({
+        script: "./worker.ts",
+        ownerScope: "scope-main",
+        inputSchema: workerOptions.inputSchema,
+        outputSchema: workerOptions.outputSchema,
+        context
+      })
+    )
+    const snapshot = await Effect.runPromise(fixture.registry.list())
+
+    expect(spawnCalls).toBe(0)
+    expect(snapshot.entries).toEqual([])
+    expectFailure(exit, WorkerInvalidArgumentError)
+  }
+})
+
 test("Worker send rejects handles after close", async () => {
   const runtime = await makeFakeRuntime()
   const fixture = await makeFixture(makeFakeAdapter(runtime), [filesystemReadCapability])
