@@ -257,10 +257,22 @@ const invokeCommand = (
   input: unknown,
   context: PermissionContext
 ): Effect.Effect<unknown, CommandRegistryError, never> => {
-  const startedAt = now()
+  let invocationStart:
+    | {
+        readonly decodedId: string
+        readonly startedAt: number
+      }
+    | undefined
 
   return Effect.gen(function* () {
     const decodedId = yield* decodeCommandId(id, "CommandRegistry.invoke")
+    const startedAt = yield* readCommandTimestamp(
+      now,
+      "CommandRegistry.invoke",
+      decodedId,
+      "startedAt"
+    )
+    invocationStart = { decodedId, startedAt }
     const command = yield* getCommand(commands, decodedId, "CommandRegistry.invoke")
     const decodedInput = yield* decodeCommandInput(command, input)
     const grant = yield* permissions.check(command.capability, context, {
@@ -269,34 +281,50 @@ const invokeCommand = (
     const output = yield* permissions.use(grant, invokeCommandHandler(command, decodedInput))
     const decodedOutput = yield* decodeCommandOutput(command, output)
     yield* auditCommand(audit, "command-invoked", decodedId, "success", now, grant.traceId).pipe(
-      Effect.mapError(
-        (error) =>
-          new CommandRegistryCommittedAuditFailedError({
-            operation: "CommandRegistry.invoke",
-            commandId: decodedId,
-            cause: error
-          })
-      )
+      Effect.mapError((error) => {
+        if (error instanceof CommandRegistryInvalidInputError) {
+          return error
+        }
+
+        return new CommandRegistryCommittedAuditFailedError({
+          operation: "CommandRegistry.invoke",
+          commandId: decodedId,
+          cause: error
+        })
+      })
     )
-    return decodedOutput
+    return { decodedId, output: decodedOutput, startedAt }
   }).pipe(
-    Effect.tap(() =>
-      recordCommandInvocation(commands, invocations, now, startedAt, id, context, "success")
+    Effect.tap(({ decodedId, startedAt }) =>
+      recordCommandInvocation(commands, invocations, now, startedAt, decodedId, context, "success")
     ),
     Effect.tapError((error: CommandRegistryError) =>
-      recordCommandInvocation(
-        commands,
-        invocations,
-        now,
-        startedAt,
-        id,
-        context,
-        error instanceof CommandRegistryCommittedAuditFailedError
-          ? "committed-audit-failure"
-          : "failure",
-        errorTag(error)
-      )
+      Effect.gen(function* () {
+        const start =
+          invocationStart ??
+          (yield* decodeCommandId(id, "CommandRegistry.invoke").pipe(
+            Effect.flatMap((decodedId) =>
+              readCommandTimestamp(now, "CommandRegistry.invoke", decodedId, "startedAt").pipe(
+                Effect.map((startedAt) => ({ decodedId, startedAt }))
+              )
+            )
+          ))
+
+        yield* recordCommandInvocation(
+          commands,
+          invocations,
+          now,
+          start.startedAt,
+          start.decodedId,
+          context,
+          error instanceof CommandRegistryCommittedAuditFailedError
+            ? "committed-audit-failure"
+            : "failure",
+          errorTag(error)
+        )
+      })
     ),
+    Effect.map(({ output }) => output),
     Effect.withSpan("CommandRegistry.invoke", { attributes: { commandId: id } })
   )
 }
@@ -310,9 +338,14 @@ const recordCommandInvocation = (
   context: PermissionContext,
   outcome: "success" | "failure" | "committed-audit-failure",
   errorTag?: string
-): Effect.Effect<void, never, never> =>
+): Effect.Effect<void, CommandRegistryInvalidInputError, never> =>
   Effect.gen(function* () {
-    const timestamp = now()
+    const timestamp = yield* readCommandTimestamp(
+      now,
+      "CommandRegistry.invoke",
+      commandId,
+      "timestamp"
+    )
     const traceId =
       context.traceId === undefined || context.traceId.length === 0
         ? fallbackTraceId(commandId)
@@ -350,6 +383,39 @@ const fallbackTraceId = (commandId: string): string =>
 
 const errorTag = (error: CommandRegistryError): string =>
   "_tag" in error && typeof error._tag === "string" ? error._tag : "PermissionRegistryError"
+
+const readCommandTimestamp = (
+  now: () => number,
+  operation: string,
+  commandId: string,
+  field: string
+): Effect.Effect<number, CommandRegistryInvalidInputError, never> =>
+  Effect.sync(now).pipe(
+    Effect.flatMap((timestamp) =>
+      Number.isSafeInteger(timestamp) && timestamp >= 0
+        ? Effect.succeed(timestamp)
+        : Effect.fail(
+            new CommandRegistryInvalidInputError({
+              operation,
+              commandId: Option.some(commandId),
+              field,
+              message: "command clock must return a finite non-negative safe integer",
+              cause: Option.some(timestamp)
+            })
+          )
+    ),
+    Effect.catchDefect((cause) =>
+      Effect.fail(
+        new CommandRegistryInvalidInputError({
+          operation,
+          commandId: Option.some(commandId),
+          field,
+          message: "command clock failed while reading a timestamp",
+          cause: Option.some(cause)
+        })
+      )
+    )
+  )
 
 const registerCommand = <I, O>(
   commands: Ref.Ref<ReadonlyMap<string, StoredCommand>>,
@@ -576,24 +642,39 @@ const auditCommand = (
   outcome: string,
   now: () => number,
   traceId: string = `command:${commandId}`
-): Effect.Effect<void, CommandRegistryAuditFailedError, never> =>
-  emitAuditEvent(
-    audit,
-    new AuditEvent({
-      kind,
-      source: "CommandRegistry",
-      traceId,
-      outcome,
-      timestamp: now(),
-      details: { commandId }
-    })
-  ).pipe(
-    Effect.mapError(
-      (cause) =>
-        new CommandRegistryAuditFailedError({
-          operation: "CommandRegistry.audit",
+): Effect.Effect<
+  void,
+  CommandRegistryAuditFailedError | CommandRegistryInvalidInputError,
+  never
+> =>
+  audit === undefined
+    ? Effect.void
+    : Effect.gen(function* () {
+        const timestamp = yield* readCommandTimestamp(
+          now,
+          "CommandRegistry.audit",
           commandId,
-          cause
-        })
-    )
-  )
+          "timestamp"
+        )
+
+        yield* emitAuditEvent(
+          audit,
+          new AuditEvent({
+            kind,
+            source: "CommandRegistry",
+            traceId,
+            outcome,
+            timestamp,
+            details: { commandId }
+          })
+        ).pipe(
+          Effect.mapError(
+            (cause) =>
+              new CommandRegistryAuditFailedError({
+                operation: "CommandRegistry.audit",
+                commandId,
+                cause
+              })
+          )
+        )
+      })

@@ -244,6 +244,73 @@ test("CommandRegistry command invocation audit uses the permission grant trace i
   expect(auditTraceIds(rows, "command-invoked")).toEqual(["trace-1"])
 })
 
+test("CommandRegistry rejects invalid starting clock timestamps without recording invocations", async () => {
+  const invalidTimestamps = [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -1]
+
+  for (const timestamp of invalidTimestamps) {
+    const resources = await Effect.runPromise(makeResourceRegistry())
+    const permissions = await Effect.runPromise(makePermissionRegistry())
+    const registry = await Effect.runPromise(
+      makeCommandRegistry(resources, permissions, { now: () => timestamp })
+    )
+    let handlerCalls = 0
+    await Effect.runPromise(permissions.declare(commandCapability, { source: "test" }))
+    await Effect.runPromise(
+      registry.register({
+        ...registration("openProject"),
+        handler: () =>
+          Effect.sync(() => {
+            handlerCalls += 1
+            return new OpenOutput({ opened: true })
+          })
+      })
+    )
+
+    const exit = await Effect.runPromiseExit(
+      registry.invoke("openProject", { path: "/tmp/project" }, context)
+    )
+    const snapshots = await Effect.runPromise(registry.list())
+
+    expectFailure(exit, CommandRegistryInvalidInputError)
+    expect(handlerCalls).toBe(0)
+    expect(snapshots[0]?.invocationCount).toBe(0)
+    expect(snapshots[0]?.lastInvocation).toBeUndefined()
+  }
+})
+
+test("CommandRegistry rejects invalid completion clock timestamps without malformed records", async () => {
+  const timestamps = [100, Number.NaN]
+  const resources = await Effect.runPromise(makeResourceRegistry())
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  const registry = await Effect.runPromise(
+    makeCommandRegistry(resources, permissions, {
+      now: () => timestamps.shift() ?? Number.NaN
+    })
+  )
+  let handlerCalls = 0
+  await Effect.runPromise(permissions.declare(commandCapability, { source: "test" }))
+  await Effect.runPromise(
+    registry.register({
+      ...registration("openProject"),
+      handler: () =>
+        Effect.sync(() => {
+          handlerCalls += 1
+          return new OpenOutput({ opened: true })
+        })
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(
+    registry.invoke("openProject", { path: "/tmp/project" }, context)
+  )
+  const snapshots = await Effect.runPromise(registry.list())
+
+  expectFailure(exit, CommandRegistryInvalidInputError)
+  expect(handlerCalls).toBe(1)
+  expect(snapshots[0]?.invocationCount).toBe(0)
+  expect(snapshots[0]?.lastInvocation).toBeUndefined()
+})
+
 test("CommandRegistry distinguishes committed handler runs from post-handler audit failures", async () => {
   const rows: AuditEvent[] = []
   const audit = failingCommandInvokedAudit(rows)
