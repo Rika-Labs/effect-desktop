@@ -255,6 +255,43 @@ test("ApprovalBroker ask rejects control bytes returned by the trace id callback
   expectFailure(exit, ApprovalBrokerInvalidArgumentError)
 })
 
+test("ApprovalBroker ask rejects empty trace ids returned by the trace id callback", async () => {
+  let promptCalls = 0
+  const rows: AuditEvent[] = []
+  const prompt: ApprovalPromptPort = {
+    prompt: (request) =>
+      Effect.sync(() => {
+        promptCalls += 1
+        return outcome(request, "approved-once", 1_100)
+      })
+  }
+  const broker = await Effect.runPromise(
+    makeApprovalBroker({
+      prompt,
+      audit: memoryAudit(rows),
+      now: () => 1_000,
+      traceId: () => ""
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(
+    broker.ask(
+      new ApprovalRequest({
+        id: "request-1",
+        operation: "operation",
+        actor: "window-main",
+        risk: "low",
+        summary: "test",
+        details: {}
+      })
+    )
+  )
+
+  expectFailure(exit, ApprovalBrokerInvalidArgumentError)
+  expect(promptCalls).toBe(0)
+  expect(rows).toEqual([])
+})
+
 test("ApprovalBroker ask rejects prompt outcomes containing control bytes", async () => {
   const prompt: ApprovalPromptPort = {
     prompt: (request) =>

@@ -158,6 +158,7 @@ export const makeProcess = (
   Effect.gen(function* () {
     const adapter = options.adapter ?? BunProcessAdapter
     const budgets = { ...DEFAULT_PROCESS_BUDGETS, ...options.budgets }
+    yield* validateProcessBudgets(budgets, "Process.make")
     const gracefulShutdownMs = options.gracefulShutdownMs ?? DEFAULT_GRACEFUL_SHUTDOWN_MS
     if (!Number.isFinite(gracefulShutdownMs) || gracefulShutdownMs <= 0) {
       return yield* Effect.fail(
@@ -758,6 +759,27 @@ const markProcessExited = (
     })
     return next
   })
+
+const validateProcessBudgets = (
+  budgets: Required<ProcessBudgetPolicy>,
+  operation: string
+): Effect.Effect<void, HostProtocolInvalidArgumentError, never> =>
+  Effect.gen(function* () {
+    yield* validatePositiveIntegerBudget("maxConcurrent", budgets.maxConcurrent, operation)
+    yield* validatePositiveIntegerBudget("stdoutBufferBytes", budgets.stdoutBufferBytes, operation)
+    yield* validatePositiveIntegerBudget("stderrBufferBytes", budgets.stderrBufferBytes, operation)
+  })
+
+const validatePositiveIntegerBudget = (
+  field: keyof Required<ProcessBudgetPolicy>,
+  value: number,
+  operation: string
+): Effect.Effect<void, HostProtocolInvalidArgumentError, never> =>
+  Number.isSafeInteger(value) && value > 0
+    ? Effect.void
+    : Effect.fail(
+        makeHostProtocolInvalidArgumentError(field, "must be a positive safe integer", operation)
+      )
 
 const makeProcessResourceBusy = (
   ownerScope: string,

@@ -147,6 +147,25 @@ test("Process rejects invalid snapshot capacities", async () => {
   }
 })
 
+test("Process rejects invalid budget options at service construction", async () => {
+  const cases: ReadonlyArray<ProcessBudgetPolicy> = [
+    { maxConcurrent: 0 },
+    { maxConcurrent: -1 },
+    { maxConcurrent: 1.5 },
+    { maxConcurrent: Number.NaN },
+    { stdoutBufferBytes: 0 },
+    { stdoutBufferBytes: Number.POSITIVE_INFINITY },
+    { stderrBufferBytes: 0 },
+    { stderrBufferBytes: Number.NaN }
+  ]
+
+  for (const budgets of cases) {
+    const registry = await Effect.runPromise(makeResourceRegistry())
+    const exit = await Effect.runPromiseExit(makeProcess(registry, { budgets }))
+    expectFailure(exit, HostProtocolInvalidArgumentError)
+  }
+})
+
 processTest("Process spawn validates required owner scope before adapter activity", async () => {
   let spawnCalls = 0
   const fixture = await makeFixture(
