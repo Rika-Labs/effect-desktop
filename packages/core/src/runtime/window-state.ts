@@ -305,19 +305,22 @@ const renameCorruptFile = (
   path: string,
   now: () => number,
   reason: string
-): Effect.Effect<WindowStateReadResult, WindowStateCorruptRenamed, never> => {
-  const corruptPath = corruptWindowStatePath(path, now())
+): Effect.Effect<WindowStateReadResult, WindowStateCorruptRenamed | WindowStateReadFailed, never> =>
+  Effect.gen(function* () {
+    const timestamp = yield* readRecoveryTimestamp(path, now)
+    const corruptPath = corruptWindowStatePath(path, timestamp)
 
-  return Effect.tryPromise({
-    try: () => rename(path, corruptPath),
-    catch: (error) =>
-      new WindowStateCorruptRenamed({
-        path,
-        corruptPath,
-        reason: `${reason}; corrupt-file rename failed: ${formatUnknownError(error)}`
-      })
-  }).pipe(
-    Effect.as({
+    yield* Effect.tryPromise({
+      try: () => rename(path, corruptPath),
+      catch: (error) =>
+        new WindowStateCorruptRenamed({
+          path,
+          corruptPath,
+          reason: `${reason}; corrupt-file rename failed: ${formatUnknownError(error)}`
+        })
+    })
+
+    return {
       store: new WindowStateStore({ windows: {} }),
       event: new WindowStateEvent({
         kind: "corrupt-renamed",
@@ -325,9 +328,33 @@ const renameCorruptFile = (
         corruptPath,
         reason
       })
-    })
+    }
+  })
+
+const readRecoveryTimestamp = (
+  path: string,
+  now: () => number
+): Effect.Effect<number, WindowStateReadFailed, never> =>
+  Effect.sync(now).pipe(
+    Effect.flatMap((timestamp) =>
+      Number.isSafeInteger(timestamp) && timestamp >= 0
+        ? Effect.succeed(timestamp)
+        : Effect.fail(
+            new WindowStateReadFailed({
+              path,
+              reason: `corrupt-file recovery timestamp must be a finite non-negative safe integer: ${String(timestamp)}`
+            })
+          )
+    ),
+    Effect.catchDefect((error) =>
+      Effect.fail(
+        new WindowStateReadFailed({
+          path,
+          reason: `corrupt-file recovery timestamp failed: ${formatUnknownError(error)}`
+        })
+      )
+    )
   )
-}
 
 const snapToVisibleDisplay = (
   state: WindowStateRecord,

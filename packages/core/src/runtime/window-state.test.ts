@@ -142,6 +142,28 @@ test("WindowState renames corrupt state files and continues with defaults", asyn
   expect(files).toContain("window-state.corrupt.1710000000000.json")
 })
 
+test("WindowState rejects invalid corrupt recovery timestamps without invalid filenames", async () => {
+  const invalidTimestamps = [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -1]
+
+  for (const timestamp of invalidTimestamps) {
+    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-window-state-"))
+    const path = join(directory, "window-state.json")
+    await writeFile(path, "{", "utf8")
+    const service = await Effect.runPromise(makeWindowState({ path, now: () => timestamp }))
+
+    const exit = await Effect.runPromiseExit(service.restore("main"))
+    const files = await readdir(directory)
+
+    expect(Exit.isFailure(exit)).toBe(true)
+    if (Exit.isFailure(exit)) {
+      const fail = exit.cause.reasons.find((reason) => reason._tag === "Fail")
+      expect(fail?.error).toBeInstanceOf(WindowStateReadFailed)
+    }
+    expect(files).toEqual(["window-state.json"])
+    expect(files.some((file) => file.includes(String(timestamp)))).toBe(false)
+  }
+})
+
 test("WindowState returns read failures without rotating healthy files", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-window-state-"))
   const service = await Effect.runPromise(makeWindowState({ path: directory }))
