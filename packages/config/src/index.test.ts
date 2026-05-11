@@ -305,6 +305,27 @@ test("ProductionChecker fails renderer raw bridge calls with file and line", asy
   ])
 })
 
+test("ProductionChecker ignores raw bridge names inside comments", async () => {
+  const report = await Effect.runPromise(
+    runProductionCheck({
+      config: {},
+      rendererFiles: [
+        {
+          path: "src/renderer/main.ts",
+          content: [
+            "// Do not call sendRaw({}) from renderer code.",
+            "/* rawBridge.send({}) and HostProtocol.send({}) are forbidden. */",
+            "const client = makeClient()"
+          ].join("\n")
+        }
+      ]
+    })
+  )
+
+  expect(report.passed).toBe(true)
+  expect(report.failures).toEqual([])
+})
+
 test("ProductionChecker fails filesystem writes without scoped roots", async () => {
   const report = await Effect.runPromise(
     runProductionCheck({

@@ -592,17 +592,93 @@ const scanLines = (
   file: ProductionCheckFile,
   pattern: RegExp
 ): readonly ProductionCheckLocation[] =>
-  file.content.split("\n").flatMap((line, index) =>
-    pattern.test(line)
-      ? [
-          new ProductionCheckLocation({
-            path: file.path,
-            line: index + 1,
-            column: Math.max(1, line.search(pattern) + 1)
-          })
-        ]
-      : []
-  )
+  maskComments(file.content)
+    .split("\n")
+    .flatMap((line, index) =>
+      pattern.test(line)
+        ? [
+            new ProductionCheckLocation({
+              path: file.path,
+              line: index + 1,
+              column: Math.max(1, line.search(pattern) + 1)
+            })
+          ]
+        : []
+    )
+
+const maskComments = (source: string): string => {
+  let result = ""
+  let state: "code" | "line-comment" | "block-comment" | "single" | "double" | "template" = "code"
+  let escaped = false
+
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index] ?? ""
+    const next = source[index + 1]
+
+    if (state === "line-comment") {
+      if (char === "\n") {
+        state = "code"
+        result += char
+      } else {
+        result += " "
+      }
+      continue
+    }
+
+    if (state === "block-comment") {
+      if (char === "*" && next === "/") {
+        result += "  "
+        index += 1
+        state = "code"
+      } else {
+        result += char === "\n" ? char : " "
+      }
+      continue
+    }
+
+    if (state === "single" || state === "double" || state === "template") {
+      result += char
+      if (escaped) {
+        escaped = false
+      } else if (char === "\\") {
+        escaped = true
+      } else if (
+        (state === "single" && char === "'") ||
+        (state === "double" && char === '"') ||
+        (state === "template" && char === "`")
+      ) {
+        state = "code"
+      }
+      continue
+    }
+
+    if (char === "/" && next === "/") {
+      result += "  "
+      index += 1
+      state = "line-comment"
+      continue
+    }
+
+    if (char === "/" && next === "*") {
+      result += "  "
+      index += 1
+      state = "block-comment"
+      continue
+    }
+
+    if (char === "'") {
+      state = "single"
+    } else if (char === '"') {
+      state = "double"
+    } else if (char === "`") {
+      state = "template"
+    }
+
+    result += char
+  }
+
+  return result
+}
 
 const violation = (input: {
   readonly rule: ProductionRuleId
