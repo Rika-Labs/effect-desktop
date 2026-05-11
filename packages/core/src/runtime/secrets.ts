@@ -271,9 +271,9 @@ export const makeSecrets = (
             )
           )
           yield* auditSecretAccess(options.audit, traceId(), { ...audit, outcome: "ok" })
-          return keys.flatMap((storageKey) =>
-            namespaceKey(input.appId, decoded.namespace, storageKey)
-          )
+          return keys
+            .flatMap((storageKey) => namespaceKey(input.appId, decoded.namespace, storageKey))
+            .sort((left, right) => left.localeCompare(right))
         }).pipe(Effect.withSpan("Secrets.list", { attributes: { namespace } }))
     } satisfies SecretsApi)
   })

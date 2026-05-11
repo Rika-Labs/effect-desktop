@@ -47,6 +47,15 @@ test("Secrets list returns only keys in the requested namespace", async () => {
   expect(await Effect.runPromise(secrets.list("auth"))).toEqual(["token"])
 })
 
+test("Secrets list returns namespace keys in sorted order", async () => {
+  const secrets = await makeSecretsService()
+
+  await Effect.runPromise(secrets.set("auth", "zeta", SecretValue.fromUtf8("z")))
+  await Effect.runPromise(secrets.set("auth", "alpha", SecretValue.fromUtf8("a")))
+
+  expect(await Effect.runPromise(secrets.list("auth"))).toEqual(["alpha", "zeta"])
+})
+
 test("Secrets validates namespace and key before safe storage calls", async () => {
   const calls: string[] = []
   const secrets = await makeSecretsService(calls)
