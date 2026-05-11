@@ -238,6 +238,30 @@ test("JSON-RPC unframe rejects invalid UTF-8 in headers", async () => {
   })
 })
 
+test("JSON-RPC unframe requires decimal digit Content-Length values", async () => {
+  const transport = await Effect.runPromise(makeTransport())
+
+  for (const value of ["+2", "-2", "2.0", "2e0", "NaN", "Infinity", ""]) {
+    const exit = await Effect.runPromiseExit(
+      transport.unframe({
+        scheme: "json-rpc",
+        bytes: new TextEncoder().encode(`Content-Length: ${value}\r\n\r\n{}`)
+      })
+    )
+
+    expectFailure(exit, TransportInvalidArgumentError)
+    expect(getFailure(exit)).toMatchObject({ field: "header" })
+  }
+
+  const decoded = await Effect.runPromise(
+    transport.unframe({
+      scheme: "json-rpc",
+      bytes: new TextEncoder().encode("Content-Length:  2 \r\n\r\n{}")
+    })
+  )
+  expect(decoded.map((frame) => new TextDecoder().decode(frame))).toEqual(["{}"])
+})
+
 test("in-memory transport pair accepts bounded queue capacity", async () => {
   const [left, right] = await Effect.runPromise(makeInMemoryTransportPair({ queueCapacity: 1 }))
 

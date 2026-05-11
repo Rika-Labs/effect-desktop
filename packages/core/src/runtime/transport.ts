@@ -11,6 +11,7 @@ const UTF8_TEXT_DECODER = new TextDecoder("utf-8", { fatal: true })
 const JSON_RPC_HEADER_END = "\r\n\r\n"
 const JSON_RPC_HEADER_END_BYTES = new TextEncoder().encode(JSON_RPC_HEADER_END)
 const JSON_RPC_HEADER_END_BYTE_LENGTH = JSON_RPC_HEADER_END_BYTES.byteLength
+const DECIMAL_CONTENT_LENGTH = /^[0-9]+$/
 
 const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(U32_MAX))
 
@@ -751,7 +752,10 @@ const parseContentLength = (headerText: string): number => {
     .split("\r\n")
     .find((candidate) => candidate.toLowerCase().startsWith("content-length:"))
   const value = line?.slice("content-length:".length).trim()
-  const length = value === undefined ? Number.NaN : Number(value)
+  if (value === undefined || !DECIMAL_CONTENT_LENGTH.test(value)) {
+    throw new JsonRpcFrameHeaderError(headerText)
+  }
+  const length = Number.parseInt(value, 10)
   if (!Number.isSafeInteger(length) || length < 0 || length > U32_MAX) {
     throw new JsonRpcFrameHeaderError(headerText)
   }
