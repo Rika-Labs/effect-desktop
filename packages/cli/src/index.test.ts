@@ -19,15 +19,17 @@ import { basename, dirname, join, relative } from "node:path"
 import { tmpdir } from "node:os"
 
 import { expect, test } from "bun:test"
-import { Effect } from "effect"
+import { Effect, Exit, Option } from "effect"
 
 import {
   canonicalUpdateManifestBytes,
   DoctorMissing,
   runCli,
+  runDocsReleaseGate,
   runDesktopPackage,
   runSemverGuard,
   type CommandRunner,
+  type DocsExampleRunner,
   type DoctorCommandRunner,
   type NotarizeCommandRunner,
   type PublicApiSnapshotReport,
@@ -1361,6 +1363,132 @@ test("desktop check --docs reports failing runnable examples", async () => {
     expect(exitCode).toBe(1)
     expect(stderr.join("")).toContain("DocsGateExampleFailedError")
     expect(stderr.join("")).toContain("installation.md#1")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --docs rejects placeholder examples on required pages", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
+  try {
+    const sourceManifest = JSON.parse(
+      await readFile(join(process.cwd(), "docs", "docs-manifest.json"), "utf8")
+    ) as {
+      readonly pages: readonly {
+        readonly id: string
+        readonly title: string
+        readonly path: string
+      }[]
+    }
+    await writeDocsManifest(directory, sourceManifest.pages, "docs/SPEC.md §25.3")
+    const coverageTokens = [
+      "runCli",
+      "useDesktopClient",
+      "Desktop",
+      "defineDesktopConfig",
+      "WindowApi",
+      "RpcGroup",
+      "HostProtocolEnvelope",
+      "ClipboardApi",
+      "ResourceRegistry",
+      "Process",
+      "PTY",
+      "MemoryFilesystem",
+      "Settings",
+      "PermissionRegistry",
+      "CommandRegistry",
+      "DevtoolsShell",
+      "runHeadless",
+      "runDesktopPackage",
+      "runDesktopSign",
+      "runDesktopPublish",
+      "DoctorMissing",
+      "runSemverGuard",
+      "runDocsReleaseGate"
+    ].join(" ")
+    for (const page of sourceManifest.pages) {
+      const body =
+        page.id === "filesystem"
+          ? [
+              "# Filesystem",
+              "",
+              "```ts run",
+              "import { CliUsageError } from '../packages/cli/src/index.js'",
+              "new CliUsageError('docs')",
+              "```"
+            ].join("\n")
+          : [
+              "# Page",
+              "",
+              "```ts run",
+              `const coverage = ${JSON.stringify(coverageTokens)}`,
+              "void coverage",
+              "```"
+            ].join("\n")
+      await mkdir(dirname(join(directory, page.path)), { recursive: true })
+      await writeFile(join(directory, page.path), body)
+    }
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--docs", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("DocsGateCoverageError")
+    expect(payload.message).toContain("docs/user/filesystem.md")
+    expect(payload.message).toContain("MemoryFilesystem")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --docs times out hanging runnable examples", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
+  try {
+    await writeDocsFixture(directory, {
+      "docs/user/installation.md": [
+        "# Installation",
+        "",
+        "```ts run",
+        "await new Promise(() => {})",
+        "```"
+      ].join("\n")
+    })
+    const hangingRunner: DocsExampleRunner = () => Effect.never
+
+    const result = await Effect.runPromise(
+      Effect.exit(
+        runDocsReleaseGate({
+          cwd: directory,
+          commandRunner: hangingRunner,
+          exampleTimeoutMillis: 10
+        })
+      ).pipe(Effect.timeoutOption("50 millis"))
+    )
+
+    expect(Option.isSome(result)).toBe(true)
+    if (Option.isNone(result)) {
+      throw new Error("docs release gate did not complete before the outer timeout")
+    }
+    expect(Exit.isFailure(result.value)).toBe(true)
+    if (Exit.isFailure(result.value)) {
+      const failReason = result.value.cause.reasons.find((reason) => reason._tag === "Fail")
+      expect(failReason?.error._tag).toBe("DocsGateExampleFailedError")
+      expect(failReason?.error.message).toContain("timed out")
+      expect(failReason?.error.message).toContain("installation.md#1")
+    }
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -5141,7 +5269,8 @@ const writeDocsFixture = async (
 
 const writeDocsManifest = async (
   root: string,
-  pages: readonly { readonly id: string; readonly title: string; readonly path: string }[]
+  pages: readonly { readonly id: string; readonly title: string; readonly path: string }[],
+  source = "test"
 ): Promise<void> => {
   await mkdir(join(root, "docs"), { recursive: true })
   await writeFile(
@@ -5149,7 +5278,7 @@ const writeDocsManifest = async (
     JSON.stringify(
       {
         schemaVersion: 1,
-        source: "test",
+        source,
         pages
       },
       null,

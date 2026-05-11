@@ -5,10 +5,9 @@ Install dependencies with Bun and keep the repo on the pinned toolchain before r
 ## Runnable Example
 
 ```ts run
-import { CliUsageError } from "../packages/cli/src/index.js"
+import { runCli } from "../packages/cli/src/index.js"
 
-const error = new CliUsageError("docs")
-if (error.name !== "CliUsageError") {
-  throw new Error("unexpected CLI error name")
+if (typeof runCli !== "function") {
+  throw new Error("desktop --help runner is unavailable")
 }
 ```

@@ -5,10 +5,10 @@ Commands validate input, enforce permission, record invocation state, and report
 ## Runnable Example
 
 ```ts run
-import { CliUsageError } from "../packages/cli/src/index.js"
+import { CommandRegistry } from "../packages/core/src/index.js"
+import { CommandsDevtools } from "../packages/devtools/src/index.js"
 
-const error = new CliUsageError("docs")
-if (error.name !== "CliUsageError") {
-  throw new Error("unexpected CLI error name")
+if (CommandRegistry === undefined || CommandsDevtools === undefined) {
+  throw new Error("command registry or command devtools surface is unavailable")
 }
 ```

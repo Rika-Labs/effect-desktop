@@ -5,10 +5,9 @@ Testing uses the headless harness, mock host, mock bridge, memory filesystem, an
 ## Runnable Example
 
 ```ts run
-import { CliUsageError } from "../packages/cli/src/index.js"
+import { MockBridge, runHeadless } from "../packages/test/src/index.js"
 
-const error = new CliUsageError("docs")
-if (error.name !== "CliUsageError") {
-  throw new Error("unexpected CLI error name")
+if (MockBridge === undefined || typeof runHeadless !== "function") {
+  throw new Error("headless test runtime helpers are unavailable")
 }
 ```

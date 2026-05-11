@@ -5,10 +5,9 @@ Native services expose platform capabilities as typed Effect services and preser
 ## Runnable Example
 
 ```ts run
-import { CliUsageError } from "../packages/cli/src/index.js"
+import { ClipboardApi, DialogApi, WindowApi } from "../packages/native/src/index.js"
 
-const error = new CliUsageError("docs")
-if (error.name !== "CliUsageError") {
-  throw new Error("unexpected CLI error name")
+if (ClipboardApi === undefined || DialogApi === undefined || WindowApi === undefined) {
+  throw new Error("native service contracts are unavailable")
 }
 ```

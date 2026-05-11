@@ -5,10 +5,10 @@ Storage covers settings, SQLite, event log, and safe storage boundaries with typ
 ## Runnable Example
 
 ```ts run
-import { CliUsageError } from "../packages/cli/src/index.js"
+import { Settings } from "../packages/core/src/index.js"
+import { makeMemorySecretsSafeStorage } from "../packages/test/src/index.js"
 
-const error = new CliUsageError("docs")
-if (error.name !== "CliUsageError") {
-  throw new Error("unexpected CLI error name")
+if (Settings === undefined || typeof makeMemorySecretsSafeStorage !== "function") {
+  throw new Error("storage settings or memory secrets surface is unavailable")
 }
 ```

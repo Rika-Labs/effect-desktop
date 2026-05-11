@@ -5,10 +5,9 @@ Troubleshooting starts from typed error tags, doctor probes, logs, traces, and r
 ## Runnable Example
 
 ```ts run
-import { CliUsageError } from "../packages/cli/src/index.js"
+import { DoctorMissing, runDesktopDoctor } from "../packages/cli/src/index.js"
 
-const error = new CliUsageError("docs")
-if (error.name !== "CliUsageError") {
-  throw new Error("unexpected CLI error name")
+if (DoctorMissing === undefined || typeof runDesktopDoctor !== "function") {
+  throw new Error("doctor troubleshooting surface is unavailable")
 }
 ```

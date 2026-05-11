@@ -187,6 +187,7 @@ export {
   type DocsExampleInvocation,
   type DocsExampleReport,
   type DocsExampleRunner,
+  type DocsGateCoverageError,
   type DocsGateExampleFailedError,
   type DocsGateFileError,
   type DocsGateManifestError,

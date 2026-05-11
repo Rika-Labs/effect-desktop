@@ -5,10 +5,9 @@ Resources are generation-stamped handles owned by scopes so cleanup is observabl
 ## Runnable Example
 
 ```ts run
-import { CliUsageError } from "../packages/cli/src/index.js"
+import { ResourceRegistry, makeResourceRegistry } from "../packages/core/src/index.js"
 
-const error = new CliUsageError("docs")
-if (error.name !== "CliUsageError") {
-  throw new Error("unexpected CLI error name")
+if (ResourceRegistry === undefined || typeof makeResourceRegistry !== "function") {
+  throw new Error("resource registry surface is unavailable")
 }
 ```

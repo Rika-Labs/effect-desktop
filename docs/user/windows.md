@@ -5,10 +5,9 @@ Window operations are typed native-service calls that return Effect values rathe
 ## Runnable Example
 
 ```ts run
-import { CliUsageError } from "../packages/cli/src/index.js"
+import { WindowApi, WindowMethodNames } from "../packages/native/src/index.js"
 
-const error = new CliUsageError("docs")
-if (error.name !== "CliUsageError") {
-  throw new Error("unexpected CLI error name")
+if (WindowApi === undefined || !WindowMethodNames.includes("create")) {
+  throw new Error("window API contract is unavailable")
 }
 ```

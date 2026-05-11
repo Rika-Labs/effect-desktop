@@ -5,10 +5,10 @@ Before v1.0, migration notes explain API movement and point users at the current
 ## Runnable Example
 
 ```ts run
-import { CliUsageError } from "../packages/cli/src/index.js"
+import { runSemverGuard } from "../packages/cli/src/index.js"
 
-const error = new CliUsageError("docs")
-if (error.name !== "CliUsageError") {
-  throw new Error("unexpected CLI error name")
+const migrationPolicy = "bridgeEnvelopePolicy"
+if (typeof runSemverGuard !== "function" || migrationPolicy.length === 0) {
+  throw new Error("pre-1 migration semver guard is unavailable")
 }
 ```

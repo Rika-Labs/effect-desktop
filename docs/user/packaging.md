@@ -5,10 +5,10 @@ Packaging emits the spec artifact set for the host platform and writes metadata 
 ## Runnable Example
 
 ```ts run
-import { CliUsageError } from "../packages/cli/src/index.js"
+import { runDesktopPackage } from "../packages/cli/src/index.js"
 
-const error = new CliUsageError("docs")
-if (error.name !== "CliUsageError") {
-  throw new Error("unexpected CLI error name")
+const command = "desktop package"
+if (typeof runDesktopPackage !== "function" || !command.includes("package")) {
+  throw new Error("desktop package surface is unavailable")
 }
 ```

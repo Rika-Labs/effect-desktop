@@ -5,10 +5,10 @@ PTY primitives expose terminal I/O through typed Effect services with explicit r
 ## Runnable Example
 
 ```ts run
-import { CliUsageError } from "../packages/cli/src/index.js"
+import { PTY } from "../packages/core/src/index.js"
+import { MockPTY } from "../packages/test/src/index.js"
 
-const error = new CliUsageError("docs")
-if (error.name !== "CliUsageError") {
-  throw new Error("unexpected CLI error name")
+if (PTY === undefined || MockPTY === undefined) {
+  throw new Error("PTY runtime or test double is unavailable")
 }
 ```

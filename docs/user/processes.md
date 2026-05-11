@@ -5,10 +5,10 @@ Process primitives validate permissions, stream output with backpressure, and te
 ## Runnable Example
 
 ```ts run
-import { CliUsageError } from "../packages/cli/src/index.js"
+import { Process } from "../packages/core/src/index.js"
+import { MockProcess } from "../packages/test/src/index.js"
 
-const error = new CliUsageError("docs")
-if (error.name !== "CliUsageError") {
-  throw new Error("unexpected CLI error name")
+if (Process === undefined || MockProcess === undefined) {
+  throw new Error("process runtime or test double is unavailable")
 }
 ```

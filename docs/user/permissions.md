@@ -5,10 +5,9 @@ Permissions are explicit grants with audit records, revocation, and scoped autho
 ## Runnable Example
 
 ```ts run
-import { CliUsageError } from "../packages/cli/src/index.js"
+import { PermissionApprovalWorkflow, PermissionRegistry } from "../packages/core/src/index.js"
 
-const error = new CliUsageError("docs")
-if (error.name !== "CliUsageError") {
-  throw new Error("unexpected CLI error name")
+if (PermissionRegistry === undefined || PermissionApprovalWorkflow === undefined) {
+  throw new Error("permission registry or approval workflow is unavailable")
 }
 ```

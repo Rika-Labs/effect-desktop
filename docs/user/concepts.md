@@ -5,10 +5,10 @@ The core concepts are a Rust host, a Bun runtime, typed bridge contracts, Effect
 ## Runnable Example
 
 ```ts run
-import { CliUsageError } from "../packages/cli/src/index.js"
+import { Desktop } from "../packages/core/src/index.js"
+import { HostProtocolEnvelope } from "../packages/bridge/src/index.js"
 
-const error = new CliUsageError("docs")
-if (error.name !== "CliUsageError") {
-  throw new Error("unexpected CLI error name")
+if (typeof Desktop !== "object" || HostProtocolEnvelope === undefined) {
+  throw new Error("core desktop or bridge protocol exports are unavailable")
 }
 ```

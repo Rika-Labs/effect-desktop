@@ -1,11 +1,12 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { isAbsolute, join, relative } from "node:path"
 
-import { Data, Effect } from "effect"
+import { Data, Effect, Option } from "effect"
 
 export interface DocsReleaseGateOptions {
   readonly cwd: string
   readonly commandRunner?: DocsExampleRunner
+  readonly exampleTimeoutMillis?: number
 }
 
 export interface DocsExampleInvocation {
@@ -74,11 +75,18 @@ export class DocsGateExampleFailedError extends Data.TaggedError("DocsGateExampl
   readonly cause?: unknown
 }> {}
 
+export class DocsGateCoverageError extends Data.TaggedError("DocsGateCoverageError")<{
+  readonly page: DocsManifestPage
+  readonly expectedTokens: readonly string[]
+  readonly message: string
+}> {}
+
 export type DocsReleaseGateError =
   | DocsGateFileError
   | DocsGateManifestError
   | DocsGateMissingPageError
   | DocsGateExampleFailedError
+  | DocsGateCoverageError
 
 interface RunnableBlock {
   readonly file: string
@@ -89,6 +97,7 @@ interface RunnableBlock {
 const MANIFEST_PATH = "docs/docs-manifest.json"
 const RUNNABLE_BLOCK_PATTERN = /```([^\n`]*)\n([\s\S]*?)```/g
 const SPEC_SOURCE = "docs/SPEC.md §25.3"
+const DEFAULT_EXAMPLE_TIMEOUT_MILLIS = 10_000
 const REQUIRED_SPEC_PAGES: ReadonlyMap<string, string> = new Map([
   ["installation", "docs/user/installation.md"],
   ["quickstart", "docs/user/quickstart.md"],
@@ -115,6 +124,32 @@ const REQUIRED_SPEC_PAGES: ReadonlyMap<string, string> = new Map([
   ["pre-1-migration", "docs/user/pre-1-migration.md"],
   ["contribution-guide", "docs/user/contribution-guide.md"]
 ])
+const REQUIRED_PAGE_COVERAGE_TOKENS: ReadonlyMap<string, readonly string[]> = new Map([
+  ["installation", ["runCli", "desktop --help"]],
+  ["quickstart", ["useDesktopClient", "defineDesktopApi"]],
+  ["concepts", ["Desktop", "HostProtocolEnvelope"]],
+  ["architecture-overview", ["HostProtocolRequestEnvelope", "Desktop"]],
+  ["app-config", ["defineDesktopConfig"]],
+  ["windows", ["WindowApi", "WindowMethodNames"]],
+  ["typed-apis", ["RpcGroup", "Handlers"]],
+  ["bridge", ["HostProtocolEnvelope", "Client"]],
+  ["native-services", ["ClipboardApi", "DialogApi", "WindowApi"]],
+  ["resources", ["ResourceRegistry", "ManagedResource"]],
+  ["processes", ["Process", "MockProcess"]],
+  ["ptys", ["PTY", "MockPTY"]],
+  ["filesystem", ["MemoryFilesystem", "Filesystem"]],
+  ["storage", ["MemorySecretsSafeStorage", "Settings"]],
+  ["permissions", ["PermissionRegistry", "PermissionApprovalWorkflow"]],
+  ["commands", ["CommandRegistry", "CommandsDevtools"]],
+  ["devtools", ["DevtoolsShell", "DevtoolsSnapshotClient"]],
+  ["testing", ["runHeadless", "MockBridge"]],
+  ["packaging", ["runDesktopPackage", "desktop package"]],
+  ["signing", ["runDesktopSign", "desktop sign"]],
+  ["updating", ["runDesktopPublish", "UpdateManifest"]],
+  ["troubleshooting", ["DoctorMissing", "runDesktopDoctor"]],
+  ["pre-1-migration", ["runSemverGuard", "bridgeEnvelopePolicy"]],
+  ["contribution-guide", ["check --docs", "runDocsReleaseGate"]]
+])
 
 export const runDocsReleaseGate = (
   options: DocsReleaseGateOptions
@@ -128,6 +163,7 @@ export const runDocsReleaseGate = (
     const pageReports: DocsPageReport[] = []
     const examples: DocsExampleReport[] = []
     const runner = options.commandRunner ?? runDocsExample
+    const exampleTimeoutMillis = options.exampleTimeoutMillis ?? DEFAULT_EXAMPLE_TIMEOUT_MILLIS
 
     for (const page of manifest.pages) {
       const absolutePath = join(options.cwd, page.path)
@@ -162,8 +198,15 @@ export const runDocsReleaseGate = (
       }
 
       const blocks = extractRunnableBlocks(page.path, body)
+      if (manifest.source === SPEC_SOURCE) {
+        yield* validateRequiredPageCoverage(page, blocks)
+      }
       for (const block of blocks) {
-        yield* runner({ ...block, cwd: options.cwd })
+        yield* runDocsExampleWithTimeout(
+          runner,
+          { ...block, cwd: options.cwd },
+          exampleTimeoutMillis
+        )
         examples.push({ file: block.file, blockIndex: block.blockIndex })
       }
       pageReports.push({
@@ -311,6 +354,26 @@ const validateRequiredSpecPages = (pages: readonly DocsManifestPage[]): string |
   return undefined
 }
 
+const validateRequiredPageCoverage = (
+  page: DocsManifestPage,
+  blocks: readonly RunnableBlock[]
+): Effect.Effect<void, DocsGateCoverageError, never> => {
+  const expectedTokens = REQUIRED_PAGE_COVERAGE_TOKENS.get(page.id)
+  if (expectedTokens === undefined) {
+    return Effect.void
+  }
+  if (blocks.some((block) => expectedTokens.some((token) => block.code.includes(token)))) {
+    return Effect.void
+  }
+  return Effect.fail(
+    new DocsGateCoverageError({
+      page,
+      expectedTokens,
+      message: `required docs page ${page.path} has no runnable example covering ${expectedTokens.join(" or ")}`
+    })
+  )
+}
+
 const extractRunnableBlocks = (file: string, body: string): readonly RunnableBlock[] => {
   const blocks: RunnableBlock[] = []
   let blockIndex = 0
@@ -326,13 +389,33 @@ const extractRunnableBlocks = (file: string, body: string): readonly RunnableBlo
   return blocks
 }
 
+const runDocsExampleWithTimeout = (
+  runner: DocsExampleRunner,
+  invocation: DocsExampleInvocation,
+  timeoutMillis: number
+): Effect.Effect<void, DocsGateExampleFailedError | DocsGateFileError, never> =>
+  Effect.gen(function* () {
+    const result = yield* runner(invocation).pipe(Effect.timeoutOption(`${timeoutMillis} millis`))
+    if (Option.isSome(result)) {
+      return result.value
+    }
+    return yield* Effect.fail(
+      new DocsGateExampleFailedError({
+        file: invocation.file,
+        blockIndex: invocation.blockIndex,
+        message: `docs example ${invocation.file}#${invocation.blockIndex} timed out after ${timeoutMillis}ms`
+      })
+    )
+  })
+
 const runDocsExample: DocsExampleRunner = (invocation) =>
   Effect.gen(function* () {
     const directory = yield* makeTempDirectory(invocation.cwd)
+    let child: ReturnType<typeof Bun.spawn> | undefined
     const effect = Effect.gen(function* () {
       const file = join(directory, `docs-example-${invocation.blockIndex}.ts`)
       yield* writeText(file, invocation.code)
-      const child = yield* Effect.try({
+      const runningChild = yield* Effect.try({
         try: () =>
           Bun.spawn(["bun", file], {
             cwd: invocation.cwd,
@@ -347,18 +430,10 @@ const runDocsExample: DocsExampleRunner = (invocation) =>
             cause
           })
       })
-      const exitCode = yield* Effect.tryPromise({
-        try: () => child.exited,
-        catch: (cause) =>
-          new DocsGateExampleFailedError({
-            file: invocation.file,
-            blockIndex: invocation.blockIndex,
-            message: `failed while waiting for docs example ${invocation.file}#${invocation.blockIndex}`,
-            cause
-          })
-      })
+      child = runningChild
+      const exitCode = yield* waitForDocsExampleExit(runningChild, invocation)
       const stderr = yield* Effect.tryPromise({
-        try: () => new Response(child.stderr).text(),
+        try: () => new Response(runningChild.stderr).text(),
         catch: (cause) =>
           new DocsGateExampleFailedError({
             file: invocation.file,
@@ -379,8 +454,44 @@ const runDocsExample: DocsExampleRunner = (invocation) =>
         )
       }
     })
-    yield* effect.pipe(Effect.ensuring(removePath(directory).pipe(Effect.ignore)))
+    yield* effect.pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          child?.kill()
+        }).pipe(Effect.ignore)
+      ),
+      Effect.ensuring(removePath(directory).pipe(Effect.ignore))
+    )
   })
+
+const waitForDocsExampleExit = (
+  child: ReturnType<typeof Bun.spawn>,
+  invocation: DocsExampleInvocation
+): Effect.Effect<number, DocsGateExampleFailedError, never> =>
+  Effect.tryPromise({
+    try: () => child.exited,
+    catch: (cause) =>
+      new DocsGateExampleFailedError({
+        file: invocation.file,
+        blockIndex: invocation.blockIndex,
+        message: `failed while waiting for docs example ${invocation.file}#${invocation.blockIndex}`,
+        cause
+      })
+  }).pipe(
+    Effect.timeoutOption(`${DEFAULT_EXAMPLE_TIMEOUT_MILLIS} millis`),
+    Effect.flatMap((result) => {
+      if (Option.isSome(result)) {
+        return Effect.succeed(result.value)
+      }
+      return Effect.fail(
+        new DocsGateExampleFailedError({
+          file: invocation.file,
+          blockIndex: invocation.blockIndex,
+          message: `docs example ${invocation.file}#${invocation.blockIndex} timed out after ${DEFAULT_EXAMPLE_TIMEOUT_MILLIS}ms`
+        })
+      )
+    })
+  )
 
 const readJson = <A>(path: string): Effect.Effect<A, DocsGateFileError, never> =>
   Effect.gen(function* () {

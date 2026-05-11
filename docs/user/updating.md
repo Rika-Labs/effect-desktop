@@ -5,10 +5,11 @@ Updating uses signed manifests, channel policy, staged installs, and rollback me
 ## Runnable Example
 
 ```ts run
-import { CliUsageError } from "../packages/cli/src/index.js"
+import { runDesktopPublish } from "../packages/cli/src/index.js"
+import type { UpdateManifest } from "../packages/cli/src/index.js"
 
-const error = new CliUsageError("docs")
-if (error.name !== "CliUsageError") {
-  throw new Error("unexpected CLI error name")
+const manifest = undefined as UpdateManifest | undefined
+if (typeof runDesktopPublish !== "function" || manifest !== undefined) {
+  throw new Error("update publish surface is unavailable")
 }
 ```

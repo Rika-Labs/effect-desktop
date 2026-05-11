@@ -5,10 +5,10 @@ Contributions follow issue-scoped branches, Effect-first error handling, validat
 ## Runnable Example
 
 ```ts run
-import { CliUsageError } from "../packages/cli/src/index.js"
+import { runDocsReleaseGate } from "../packages/cli/src/index.js"
 
-const error = new CliUsageError("docs")
-if (error.name !== "CliUsageError") {
-  throw new Error("unexpected CLI error name")
+const gate = "check --docs"
+if (typeof runDocsReleaseGate !== "function" || !gate.includes("--docs")) {
+  throw new Error("docs contribution gate is unavailable")
 }
 ```

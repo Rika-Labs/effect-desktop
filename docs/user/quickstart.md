@@ -12,6 +12,16 @@ bun run dev
 
 The current development loop uses Vite. `desktop dev` is not implemented yet.
 
+## Runnable Example
+
+```ts run
+import { defineDesktopApi, useDesktopClient } from "../packages/react/src/index.js"
+
+if (typeof defineDesktopApi !== "function" || typeof useDesktopClient !== "function") {
+  throw new Error("React desktop client helpers are unavailable")
+}
+```
+
 ## First renderer action
 
 ```tsx

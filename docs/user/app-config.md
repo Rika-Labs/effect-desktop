@@ -5,10 +5,14 @@ Application config declares app identity, renderer output, runtime entry, permis
 ## Runnable Example
 
 ```ts run
-import { CliUsageError } from "../packages/cli/src/index.js"
+import { defineDesktopConfig } from "../packages/config/src/index.js"
 
-const error = new CliUsageError("docs")
-if (error.name !== "CliUsageError") {
-  throw new Error("unexpected CLI error name")
+const config = defineDesktopConfig({
+  files: [],
+  security: {}
+})
+
+if (config.security === undefined) {
+  throw new Error("desktop config helper did not preserve security config")
 }
 ```

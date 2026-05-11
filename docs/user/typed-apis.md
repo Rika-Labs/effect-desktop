@@ -4,6 +4,14 @@ Typed APIs are declared once as Effect RPC contracts and consumed from runtime h
 
 ## Contract
 
+```ts run
+import { Handlers, RpcGroup } from "../packages/bridge/src/index.js"
+
+if (typeof RpcGroup.make !== "function" || typeof Handlers !== "function") {
+  throw new Error("typed API contract helpers are unavailable")
+}
+```
+
 ```ts
 import { Rpc, RpcGroup } from "@effect-desktop/bridge"
 import { Schema } from "effect"

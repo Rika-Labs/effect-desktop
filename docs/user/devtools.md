@@ -5,10 +5,9 @@ Devtools read runtime snapshots and streams without owning the production state 
 ## Runnable Example
 
 ```ts run
-import { CliUsageError } from "../packages/cli/src/index.js"
+import { DevtoolsShell, DevtoolsSnapshotClient } from "../packages/devtools/src/index.js"
 
-const error = new CliUsageError("docs")
-if (error.name !== "CliUsageError") {
-  throw new Error("unexpected CLI error name")
+if (DevtoolsShell === undefined || DevtoolsSnapshotClient === undefined) {
+  throw new Error("devtools shell or snapshot client is unavailable")
 }
 ```

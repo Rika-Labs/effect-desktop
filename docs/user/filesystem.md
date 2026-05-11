@@ -5,10 +5,10 @@ Filesystem primitives authorize requested paths, resolve symlinks safely, and re
 ## Runnable Example
 
 ```ts run
-import { CliUsageError } from "../packages/cli/src/index.js"
+import { Filesystem } from "../packages/core/src/index.js"
+import { MemoryFilesystem } from "../packages/test/src/index.js"
 
-const error = new CliUsageError("docs")
-if (error.name !== "CliUsageError") {
-  throw new Error("unexpected CLI error name")
+if (Filesystem === undefined || MemoryFilesystem === undefined) {
+  throw new Error("filesystem runtime or memory test adapter is unavailable")
 }
 ```
