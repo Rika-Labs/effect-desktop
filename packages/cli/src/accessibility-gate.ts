@@ -1,4 +1,4 @@
-import { readdir, readFile } from "node:fs/promises"
+import { readdir, readFile, stat } from "node:fs/promises"
 import { join } from "node:path"
 
 import { Data, Effect } from "effect"
@@ -279,7 +279,13 @@ const validateManualAudit = (
         return yield* evidenceError(template, `manual keyboard audit is missing ${token}`)
       }
     }
-    if (!auditFiles.some((file) => file.endsWith(".webm") || file.endsWith(".mp4"))) {
+    const screencastFiles = auditFiles.filter(
+      (file) => file.endsWith(".webm") || file.endsWith(".mp4")
+    )
+    const hasScreencastFile = yield* hasRegularFile(
+      screencastFiles.map((file) => join(cwd, template.auditDir, file))
+    )
+    if (!hasScreencastFile) {
       return yield* evidenceError(template, "manual keyboard audit is missing a screencast file")
     }
   })
@@ -359,6 +365,14 @@ const validateContrast = (
   template: AccessibilityTemplate
 ): Effect.Effect<void, AccessibilityGateEvidenceError, never> => {
   for (const pair of template.contrastPairs) {
+    if (!Number.isFinite(pair.minimumRatio) || pair.minimumRatio <= 0 || pair.minimumRatio > 21) {
+      return Effect.fail(
+        new AccessibilityGateEvidenceError({
+          template: template.id,
+          message: `${pair.id} minimumRatio must be greater than 0 and no more than 21`
+        })
+      )
+    }
     const ratio = contrastRatio(pair.foreground, pair.background)
     if (ratio < pair.minimumRatio) {
       return Effect.fail(
@@ -462,4 +476,26 @@ const listDirectory = (
         message: `failed to read directory ${path}`,
         cause
       })
+  })
+
+const hasRegularFile = (
+  paths: readonly string[]
+): Effect.Effect<boolean, AccessibilityGateFileError, never> =>
+  Effect.gen(function* () {
+    for (const path of paths) {
+      const entry = yield* Effect.tryPromise({
+        try: () => stat(path),
+        catch: (cause) =>
+          new AccessibilityGateFileError({
+            operation: "stat",
+            path,
+            message: `failed to stat ${path}`,
+            cause
+          })
+      })
+      if (entry.isFile()) {
+        return true
+      }
+    }
+    return false
   })

@@ -2378,6 +2378,93 @@ test("desktop check --a11y rejects contrast below the WCAG floor", async () => {
   }
 })
 
+test("desktop check --a11y rejects invalid contrast minimums", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+  try {
+    const manifest = accessibilityManifestFixture()
+    if (!isAccessibilityManifestFixture(manifest)) {
+      throw new Error("invalid accessibility manifest fixture")
+    }
+    await writeAccessibilityFixture(directory, {
+      manifest: {
+        ...manifest,
+        templates: manifest.templates.map((template) => ({
+          ...template,
+          contrastPairs: [
+            {
+              id: "bad-minimum",
+              foreground: "#020617",
+              background: "#f8fafc",
+              minimumRatio: -1
+            }
+          ]
+        }))
+      }
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--a11y", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("AccessibilityGateEvidenceError")
+    expect(payload.message).toContain("minimumRatio")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --a11y rejects screencast directories", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+  try {
+    await writeAccessibilityFixture(directory)
+    const screencastPath = join(
+      directory,
+      "docs",
+      "audits",
+      "v1.0.0",
+      "basic-react-tailwind",
+      "keyboard-walkthrough.webm"
+    )
+    await rm(screencastPath)
+    await mkdir(screencastPath)
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--a11y", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("AccessibilityGateEvidenceError")
+    expect(payload.message).toContain("screencast file")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("semver guard verifies additive release posture", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
   try {
