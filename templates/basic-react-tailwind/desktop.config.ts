@@ -1,7 +1,8 @@
 export default {
   app: {
     id: "dev.effect-desktop.basic-react-tailwind",
-    name: "Basic React Tailwind"
+    name: "Basic React Tailwind",
+    version: "2.0.0"
   },
   windows: [
     {

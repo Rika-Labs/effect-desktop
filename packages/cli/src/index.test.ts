@@ -91,6 +91,11 @@ test("desktop check --production exits non-zero for unacknowledged CSP weakening
       join(directory, "desktop.config.ts"),
       [
         "export default {",
+        "  app: {",
+        "    id: 'dev.effect-desktop.production-check',",
+        "    name: 'Production Check',",
+        "    version: '1.0.0'",
+        "  },",
         "  security: {",
         "    csp: { policy: \"script-src 'self' 'unsafe-inline'\" }",
         "  }",
@@ -124,6 +129,11 @@ test("desktop check --production --json writes failed reports to stderr", async 
       join(directory, "desktop.config.ts"),
       [
         "export default {",
+        "  app: {",
+        "    id: 'dev.effect-desktop.production-check',",
+        "    name: 'Production Check',",
+        "    version: '1.0.0'",
+        "  },",
         "  security: {",
         "    csp: { policy: \"script-src 'self' 'unsafe-inline'\" }",
         "  }",
@@ -191,10 +201,72 @@ test("desktop check --production --json emits structured config-loading failures
   }
 })
 
+test("desktop check --production rejects missing app metadata before security checks", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-"))
+  try {
+    await writeFile(
+      join(directory, "desktop.config.ts"),
+      [
+        "export default {",
+        "  app: {",
+        "    id: 'dev.effect-desktop.production-check',",
+        "    name: 'Production Check'",
+        "  },",
+        "  security: {",
+        "    csp: { policy: \"script-src 'self' 'unsafe-inline'\" }",
+        "  }",
+        "}"
+      ].join("\n")
+    )
+
+    const stdout: string[] = []
+    const stderr: string[] = []
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--production", "--config", "desktop.config.ts", "--json"],
+        cwd: directory,
+        writeStdout: (text) => {
+          stdout.push(text)
+        },
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+      readonly field?: string
+    }
+    expect(exitCode).toBe(1)
+    expect(stdout.join("")).toBe("")
+    expect(payload).toEqual({
+      tag: "BuildConfigError",
+      message: "app.version is required",
+      field: "app.version"
+    })
+    expect(stderr.join("")).not.toContain("weakened-csp")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop check --production --json emits structured renderer-loading failures", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-"))
   try {
-    await writeFile(join(directory, "desktop.config.ts"), "export default {}\n")
+    await writeFile(
+      join(directory, "desktop.config.ts"),
+      [
+        "export default {",
+        "  app: {",
+        "    id: 'dev.effect-desktop.production-check',",
+        "    name: 'Production Check',",
+        "    version: '1.0.0'",
+        "  }",
+        "}"
+      ].join("\n")
+    )
     const stderr: string[] = []
     const exitCode = await Effect.runPromise(
       runCli({
@@ -234,6 +306,11 @@ test("desktop check --production exits zero and reports acknowledged weakenings"
       join(directory, "desktop.config.ts"),
       [
         "export default {",
+        "  app: {",
+        "    id: 'dev.effect-desktop.production-check',",
+        "    name: 'Production Check',",
+        "    version: '1.0.0'",
+        "  },",
         "  security: {",
         "    csp: {",
         "      policy: \"script-src 'self' 'unsafe-inline'\",",
@@ -267,7 +344,18 @@ test("desktop check --production exits zero and reports acknowledged weakenings"
 test("desktop check --production --json writes passed reports to stdout", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-"))
   try {
-    await writeFile(join(directory, "desktop.config.ts"), "export default {}\n")
+    await writeFile(
+      join(directory, "desktop.config.ts"),
+      [
+        "export default {",
+        "  app: {",
+        "    id: 'dev.effect-desktop.production-check',",
+        "    name: 'Production Check',",
+        "    version: '1.0.0'",
+        "  }",
+        "}"
+      ].join("\n")
+    )
 
     const stdout: string[] = []
     const stderr: string[] = []
@@ -304,7 +392,18 @@ test("desktop check --production --json writes passed reports to stdout", async 
 test("desktop check --production fails when an explicit renderer scan file is unreadable", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-"))
   try {
-    await writeFile(join(directory, "desktop.config.ts"), "export default {}\n")
+    await writeFile(
+      join(directory, "desktop.config.ts"),
+      [
+        "export default {",
+        "  app: {",
+        "    id: 'dev.effect-desktop.production-check',",
+        "    name: 'Production Check',",
+        "    version: '1.0.0'",
+        "  }",
+        "}"
+      ].join("\n")
+    )
 
     const stderr: string[] = []
     const exitCode = await Effect.runPromise(

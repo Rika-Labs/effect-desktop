@@ -1452,6 +1452,15 @@ const readSemverString = (
     )
   )
 
+const validateProductionConfigBaseline = (
+  config: AppConfig
+): Effect.Effect<void, BuildConfigError, never> =>
+  Effect.gen(function* () {
+    yield* readSafeAppId(config.app?.id, "app.id")
+    yield* readRequiredString(config.app?.name, "app.name")
+    yield* readSemverString(config.app?.version, "app.version")
+  })
+
 const parseSemver = (value: string): Semver | undefined => {
   const match = SEMVER_PATTERN.exec(value)
   if (match === undefined || match === null) {
@@ -2545,7 +2554,7 @@ const runProductionCheckHandler = (
     const configPath = Option.getOrElse(flags.config, () => "desktop.config.ts")
     const absoluteConfigPath = resolvePath(options.cwd, configPath)
     const config = yield* loadConfig(absoluteConfigPath).pipe(
-      Effect.map((value) => value as ProductionSecurityConfig),
+      Effect.map((value) => value as AppConfig & ProductionSecurityConfig),
       Effect.catch((error) =>
         Effect.sync(() => {
           const output = flags.json
@@ -2557,6 +2566,23 @@ const runProductionCheckHandler = (
       )
     )
     if (config === undefined) {
+      yield* fail(1)
+      return
+    }
+
+    const baselinePassed = yield* validateProductionConfigBaseline(config).pipe(
+      Effect.as(true),
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          const output = flags.json
+            ? `${formatProductionCheckError(error)}\n`
+            : `${error.name}: ${error.message}\n`
+          options.writeStderr(output)
+          return false
+        })
+      )
+    )
+    if (!baselinePassed) {
       yield* fail(1)
       return
     }
