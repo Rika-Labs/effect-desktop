@@ -150,6 +150,47 @@ test("Worker list normalizes fractional uptime before snapshot construction", as
   expect(listed[0]?.uptimeMs).toBe(1)
 })
 
+test("Worker list normalizes invalid uptime before snapshot construction", async () => {
+  const invalidTimestamps = [
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    -1,
+    Number.MAX_SAFE_INTEGER + 1000
+  ]
+
+  for (const timestamp of invalidTimestamps) {
+    const runtime = await makeFakeRuntime()
+    const registry = await Effect.runPromise(
+      makeResourceRegistry({
+        now: () => 1,
+        nextId: () => id(`worker-${String(timestamp)}`)
+      })
+    )
+    const permissions = await Effect.runPromise(makePermissionRegistry({ traceId: () => "trace" }))
+    const workerNow = [100, timestamp]
+    const service = await Effect.runPromise(
+      makeWorker(registry, permissions, {
+        adapter: makeFakeAdapter(runtime),
+        now: () => workerNow.shift() ?? timestamp
+      })
+    )
+    await Effect.runPromise(
+      service.spawn({
+        script: "./invalid-clock-worker.ts",
+        ownerScope: "scope-main",
+        inputSchema: EchoIn,
+        outputSchema: EchoOut,
+        context
+      })
+    )
+
+    const listed = await Effect.runPromise(service.list())
+
+    expect(listed[0]?.uptimeMs).toBe(0)
+  }
+})
+
 test("Worker rejects missing capabilities as CapabilityNotHeld before adapter spawn", async () => {
   let spawnCalls = 0
   const runtime = await makeFakeRuntime()
@@ -585,10 +626,11 @@ const makeFixture = async (
     readonly nowStart?: number
   } = {}
 ): Promise<Fixture> => {
-  let now = options.nowStart ?? 1
+  let resourceNow = 1
+  let workerNow = options.nowStart ?? 1
   const registry = await Effect.runPromise(
     makeResourceRegistry({
-      now: () => now++,
+      now: () => resourceNow++,
       nextId: (timestamp) => `resource-${timestamp}` as never
     })
   )
@@ -600,7 +642,7 @@ const makeFixture = async (
   }
   const service = await Effect.runPromise(
     makeWorker(registry, permissions, {
-      now: () => now++,
+      now: () => workerNow++,
       ...(adapter === undefined ? {} : { adapter }),
       ...(options.maxConcurrent === undefined
         ? {}

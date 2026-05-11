@@ -295,7 +295,7 @@ export const makeWorker = (
                     ownerScope: worker.ownerScope,
                     resourceId: worker.resourceId,
                     status: "running",
-                    uptimeMs: Math.max(0, Math.floor(now() - worker.startedAt)),
+                    uptimeMs: workerUptimeMs(worker.startedAt, now()),
                     capabilities: [...worker.capabilities],
                     ...(worker.lastError === undefined ? {} : { lastError: worker.lastError })
                   })
@@ -424,6 +424,15 @@ interface StoredWorker {
   readonly startedAt: number
   readonly capabilities: readonly unknown[]
   readonly lastError?: unknown
+}
+
+const workerUptimeMs = (startedAt: number, currentTimestamp: number): number => {
+  if (!Number.isFinite(startedAt) || !Number.isFinite(currentTimestamp)) {
+    return 0
+  }
+
+  const uptimeMs = Math.floor(currentTimestamp - startedAt)
+  return Number.isSafeInteger(uptimeMs) && uptimeMs >= 0 ? uptimeMs : 0
 }
 
 const removeWorker = (
