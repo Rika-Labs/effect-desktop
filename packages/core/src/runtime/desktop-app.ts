@@ -14,11 +14,10 @@ import {
 import type { NormalizedCapability } from "./permission-registry.js"
 import { ReactivityLayer } from "./reactivity.js"
 import { ResourceRegistryLive } from "./resources.js"
+import { servedRpcGroup, servedRpcGroupProperties } from "./rpc-group-metadata.js"
 import { Telemetry, makeTelemetry } from "./telemetry.js"
 import { WorkflowEngineLive } from "./workflow.js"
 import type { WorkflowLayer } from "./workflow.js"
-
-type RpcGroupWithRequests = RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> }
 
 export interface WindowSpec {
   readonly title: string
@@ -109,12 +108,6 @@ const NormalizedCapabilityKinds = new Set<NormalizedCapability["kind"]>([
   "safeStorage.write",
   "native.invoke"
 ])
-
-const ServedRpcGroupKey: unique symbol = Symbol("@effect-desktop/core/servedRpcGroup")
-
-type WithServedRpcGroup = {
-  readonly [ServedRpcGroupKey]?: RpcGroupWithRequests
-}
 
 const legacyRpcCapabilities = new WeakMap<AnyDesktopRpcLayer, ReadonlyMap<string, string>>()
 
@@ -481,15 +474,6 @@ const bindRpcLayer = <E, R>(rpcLayer: AnyDesktopRpcLayer): Layer.Layer<never, E,
     RpcServer.layer(servedRpcGroup(rpcLayer) as RpcGroup.RpcGroup<Rpc.Any>),
     rpcLayer.layer as Layer.Layer<unknown, E, R>
   ) as unknown as Layer.Layer<never, E, R>
-
-export const servedRpcGroup = (provider: {
-  readonly group: RpcGroupWithRequests
-}): RpcGroupWithRequests => (provider as WithServedRpcGroup)[ServedRpcGroupKey] ?? provider.group
-
-const servedRpcGroupProperties = (
-  group: RpcGroupWithRequests,
-  servedGroup: RpcGroupWithRequests
-): WithServedRpcGroup => (servedGroup === group ? {} : { [ServedRpcGroupKey]: servedGroup })
 
 const makeDefinition = <E, R>(definition: {
   readonly id: string

@@ -12,7 +12,7 @@ import {
   type DesktopRendererRpcClientMethod,
   type DesktopRendererRpcTransport,
   type RpcGroupWithRequests
-} from "@effect-desktop/core"
+} from "@effect-desktop/core/renderer"
 import { Cause, Effect, Exit, Fiber, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import {
@@ -111,7 +111,10 @@ export interface SolidDesktopAdapter<App extends DesktopAppManifest> {
   readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => SolidDesktopRpcs<Group>
 }
 
-export { MissingDesktopContextError, MissingDesktopRpcClientError } from "@effect-desktop/core"
+export {
+  MissingDesktopContextError,
+  MissingDesktopRpcClientError
+} from "@effect-desktop/core/renderer"
 
 interface SolidDesktopContextValue {
   readonly clients: SolidDesktopClientMap

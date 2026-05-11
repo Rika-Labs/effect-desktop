@@ -10,7 +10,7 @@ import {
   type DesktopRendererRpcClientMethod,
   type DesktopRendererRpcTransport,
   type RpcGroupWithRequests
-} from "@effect-desktop/core"
+} from "@effect-desktop/core/renderer"
 import type { RpcSupportMetadata, WithRpcEndpointKind } from "@effect-desktop/bridge"
 import { Cause, Effect, Exit, Fiber, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
@@ -103,7 +103,10 @@ export interface VueDesktopAdapter<App extends DesktopAppManifest> {
   readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => VueDesktopRpcs<Group>
 }
 
-export { MissingDesktopContextError, MissingDesktopRpcClientError } from "@effect-desktop/core"
+export {
+  MissingDesktopContextError,
+  MissingDesktopRpcClientError
+} from "@effect-desktop/core/renderer"
 
 interface VueDesktopContext {
   readonly clients: VueDesktopClientMap

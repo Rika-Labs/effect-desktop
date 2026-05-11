@@ -1,0 +1,35 @@
+{
+  "name": "@effect-desktop/example-notes-solid",
+  "private": true,
+  "description": "Solid Notes example for Effect Desktop app-scoped RPC primitives.",
+  "license": "MIT OR Apache-2.0",
+  "author": "Rika Labs, LLC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Rika-Labs/effect-desktop.git",
+    "directory": "apps/examples/notes-solid"
+  },
+  "homepage": "https://github.com/Rika-Labs/effect-desktop#readme",
+  "bugs": {
+    "url": "https://github.com/Rika-Labs/effect-desktop/issues"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5212 --strictPort",
+    "build": "vite build",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "oxlint . --ignore-pattern 'dist/**'"
+  },
+  "dependencies": {
+    "@effect-desktop/example-notes-common": "workspace:*",
+    "@effect-desktop/solid": "workspace:*",
+    "effect": "4.0.0-beta.60",
+    "solid-js": "^1.9.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vite": "^8.0.10",
+    "vite-plugin-solid": "^2.11.8"
+  }
+}

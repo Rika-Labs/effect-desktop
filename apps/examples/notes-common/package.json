@@ -1,14 +1,13 @@
 {
-  "name": "@effect-desktop/core",
-  "version": "0.0.0",
+  "name": "@effect-desktop/example-notes-common",
   "private": true,
-  "description": "Effect-first runtime primitives, services, resources, permissions, telemetry, and storage for Effect Desktop.",
+  "description": "Shared Effect Desktop Notes example contract, app definition, and demo transport.",
   "license": "MIT OR Apache-2.0",
   "author": "Rika Labs, LLC",
   "repository": {
     "type": "git",
     "url": "https://github.com/Rika-Labs/effect-desktop.git",
-    "directory": "packages/core"
+    "directory": "apps/examples/notes-common"
   },
   "homepage": "https://github.com/Rika-Labs/effect-desktop#readme",
   "bugs": {
@@ -22,9 +21,9 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
-    "./renderer": {
-      "types": "./src/runtime/renderer.ts",
-      "default": "./src/runtime/renderer.ts"
+    "./host": {
+      "types": "./src/host.ts",
+      "default": "./src/host.ts"
     }
   },
   "scripts": {
@@ -35,16 +34,10 @@
   },
   "dependencies": {
     "@effect-desktop/bridge": "workspace:*",
-    "@effect/opentelemetry": "4.0.0-beta.60",
-    "@effect/platform-bun": "4.0.0-beta.60",
-    "@effect/sql-sqlite-bun": "4.0.0-beta.60",
-    "@opentelemetry/api": "^1.9",
-    "@opentelemetry/resources": "^2.0.0",
-    "@opentelemetry/sdk-logs": "^0.203.0",
-    "@opentelemetry/sdk-metrics": "^2.0.0",
-    "@opentelemetry/sdk-trace-base": "^2.0.0",
-    "@opentelemetry/sdk-trace-node": "^2.0.0",
-    "@opentelemetry/sdk-trace-web": "^2.0.0",
+    "@effect-desktop/core": "workspace:*",
     "effect": "4.0.0-beta.60"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
   }
 }

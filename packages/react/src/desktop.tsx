@@ -8,9 +8,9 @@ import {
   type DesktopRendererRpcClient,
   type DesktopRendererRpcClientMap,
   type DesktopRendererRpcClientMethod,
-  type DesktopRendererRpcTransport
-} from "@effect-desktop/core"
-import type { RpcGroupWithRequests } from "@effect-desktop/core"
+  type DesktopRendererRpcTransport,
+  type RpcGroupWithRequests
+} from "@effect-desktop/core/renderer"
 import type { RpcSupportMetadata, WithRpcEndpointKind } from "@effect-desktop/bridge"
 import { Effect, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
@@ -70,7 +70,10 @@ export interface ReactDesktopAdapter<App extends DesktopAppManifest> {
   readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => ReactDesktopRpcs<Group>
 }
 
-export { MissingDesktopContextError, MissingDesktopRpcClientError } from "@effect-desktop/core"
+export {
+  MissingDesktopContextError,
+  MissingDesktopRpcClientError
+} from "@effect-desktop/core/renderer"
 
 interface ReactDesktopContextValue {
   readonly clients: ReactDesktopClientMap

@@ -1,6 +1,6 @@
 "use client"
 
-import type { DesktopAppManifest } from "@effect-desktop/core"
+import type { DesktopAppManifest } from "@effect-desktop/core/renderer"
 import {
   ReactDesktop,
   type ReactDesktopAdapter,

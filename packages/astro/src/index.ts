@@ -1,4 +1,4 @@
-import type { DesktopAppManifest } from "@effect-desktop/core"
+import type { DesktopAppManifest } from "@effect-desktop/core/renderer"
 import { Data } from "effect"
 
 export type AstroHydrationDirective = "load" | "idle" | "visible" | "media" | "only"

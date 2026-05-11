@@ -7,9 +7,8 @@ import {
   type RpcSupportMetadata
 } from "@effect-desktop/bridge"
 import { Option, Schema } from "effect"
-import { Rpc, RpcGroup, RpcSchema } from "effect/unstable/rpc"
+import { Rpc, RpcSchema } from "effect/unstable/rpc"
 
-import { servedRpcGroup } from "./desktop-app.js"
 import type {
   AnyDesktopRpcLayer,
   DesktopAppDefinition,
@@ -17,12 +16,9 @@ import type {
   DesktopRpcGroupDescriptor
 } from "./desktop-app.js"
 import { makeDuplicateDesktopRpcNameError, makeMissingDesktopRpcsError } from "./desktop-errors.js"
+import { servedRpcGroup, type RpcGroupWithRequests } from "./rpc-group-metadata.js"
 
 export type RpcEndpointDescriptorKind = "query" | "mutation" | "stream"
-export type RpcGroupWithRequests = RpcGroup.Any & {
-  readonly requests: ReadonlyMap<string, Rpc.Any>
-}
-
 export interface RpcEndpointDescriptor {
   readonly name: string
   readonly tag: string

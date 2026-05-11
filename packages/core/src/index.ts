@@ -77,6 +77,7 @@ export * from "./runtime/desktop-errors.js"
 export * from "./runtime/reactivity.js"
 export * from "./runtime/rpc-descriptors.js"
 export * from "./runtime/renderer-rpc-client.js"
+export * from "./runtime/rpc-group-metadata.js"
 export {
   DesktopApp,
   app as desktopApp,

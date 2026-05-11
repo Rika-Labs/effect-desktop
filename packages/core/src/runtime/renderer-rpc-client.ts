@@ -7,10 +7,9 @@ import {
 import { Effect, Exit, Scope, Stream } from "effect"
 import { Rpc, RpcClient, RpcGroup } from "effect/unstable/rpc"
 
-import { servedRpcGroup } from "./desktop-app.js"
 import type { DesktopAppManifest } from "./desktop-app.js"
 import { makeMissingDesktopRpcClientError, type DesktopFramework } from "./desktop-errors.js"
-import type { RpcGroupWithRequests } from "./rpc-descriptors.js"
+import { servedRpcGroup, type RpcGroupWithRequests } from "./rpc-group-metadata.js"
 
 export type DesktopRendererRpcTransport = DesktopTransportSend & DesktopTransportRun
 
