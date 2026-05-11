@@ -119,9 +119,13 @@ export interface WindowStateOptions {
 
 export const makeWindowState = (
   options: WindowStateOptions = {}
-): Effect.Effect<WindowStateApi, never, never> =>
+): Effect.Effect<WindowStateApi, WindowStateInvalidArgumentError, never> =>
   Effect.gen(function* () {
-    const path = options.path ?? defaultWindowStatePath(options.bundleId ?? "effect-desktop")
+    const path =
+      options.path ??
+      buildDefaultWindowStatePath(
+        yield* validateBundleId(options.bundleId ?? "effect-desktop", "WindowState.make")
+      )
     const now = options.now ?? Date.now
     const validateBounds = (state: WindowStateRecord) =>
       snapToVisibleDisplay(options.validateBounds?.(state) ?? state, options.displays)
@@ -201,7 +205,7 @@ export const makeWindowState = (
 
 export class WindowState extends Context.Service<WindowState, WindowStateApi>()("WindowState") {}
 
-export const WindowStateLive = Layer.effect(WindowState)(makeWindowState())
+export const WindowStateLive = Layer.effect(WindowState)(makeWindowState().pipe(Effect.orDie))
 
 const readStore = (
   path: string,
@@ -394,7 +398,10 @@ const intersectsAnyDisplay = (
       state.y + state.height > display.y
   )
 
-export const defaultWindowStatePath = (bundleId: string): string => {
+export const defaultWindowStatePath = (bundleId: string): string =>
+  buildDefaultWindowStatePath(assertBundleId(bundleId))
+
+const buildDefaultWindowStatePath = (bundleId: string): string => {
   switch (process.platform) {
     case "darwin":
       return join(homeDirectory(), "Library", "Application Support", bundleId, "window-state.json")
@@ -408,6 +415,38 @@ export const defaultWindowStatePath = (bundleId: string): string => {
       )
   }
 }
+
+const validateBundleId = (
+  bundleId: string,
+  operation: string
+): Effect.Effect<string, WindowStateInvalidArgumentError, never> =>
+  isSafeBundleId(bundleId)
+    ? Effect.succeed(bundleId)
+    : Effect.fail(invalidBundleId(bundleId, operation))
+
+const assertBundleId = (bundleId: string): string => {
+  if (isSafeBundleId(bundleId)) {
+    return bundleId
+  }
+
+  throw invalidBundleId(bundleId, "defaultWindowStatePath")
+}
+
+const isSafeBundleId = (bundleId: string): boolean =>
+  bundleId.length > 0 &&
+  bundleId !== "." &&
+  bundleId !== ".." &&
+  !bundleId.includes("..") &&
+  // eslint-disable-next-line no-control-regex
+  /^[^\x00-\x1F\x7F/\\:]+$/.test(bundleId)
+
+const invalidBundleId = (bundleId: string, operation: string): WindowStateInvalidArgumentError =>
+  new WindowStateInvalidArgumentError({
+    operation,
+    field: "bundleId",
+    message: `invalid window-state bundle id: ${bundleId}`,
+    cause: Option.none()
+  })
 
 const corruptWindowStatePath = (path: string, timestamp: number): string =>
   join(dirname(path), `window-state.corrupt.${timestamp}.json`)

@@ -10,6 +10,7 @@ import {
   WindowStateInvalidArgumentError,
   WindowStateReadFailed,
   WindowStateRecord,
+  defaultWindowStatePath,
   makeWindowState
 } from "./window-state.js"
 
@@ -107,6 +108,31 @@ test("WindowState rejects every C0 control byte and DEL in window ids", async ()
   expectInvalidArgument(await Effect.runPromiseExit(service.clear(delId)), "WindowState.clear")
 
   expect(await readdir(directory)).toEqual([])
+})
+
+test("WindowState default path rejects bundle ids with path traversal", async () => {
+  for (const bundleId of [
+    "",
+    ".",
+    "..",
+    "../escape",
+    "escape/child",
+    "escape\\child",
+    "/absolute",
+    "C:escape",
+    "com..example"
+  ]) {
+    expect(() => defaultWindowStatePath(bundleId)).toThrow(WindowStateInvalidArgumentError)
+    const exit = await Effect.runPromiseExit(makeWindowState({ bundleId }))
+    expectInvalidBundleId(exit, "WindowState.make")
+  }
+})
+
+test("WindowState default path accepts bundle ids as namespaces", () => {
+  const path = defaultWindowStatePath("com.example.effect-desktop")
+
+  expect(path).toContain("com.example.effect-desktop")
+  expect(path.endsWith("window-state.json")).toBe(true)
 })
 
 test("WindowState clear with no argument wipes the full store", async () => {
@@ -292,6 +318,17 @@ function expectInvalidArgument(exit: Exit.Exit<unknown, unknown>, expectedOperat
     const error = fail?.error as WindowStateInvalidArgumentError
     expect(error.operation).toBe(expectedOperation)
     expect(error.field).toBe("windowId")
+  }
+}
+
+function expectInvalidBundleId(exit: Exit.Exit<unknown, unknown>, expectedOperation: string): void {
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const fail = exit.cause.reasons.find((reason) => reason._tag === "Fail")
+    expect(fail?.error).toBeInstanceOf(WindowStateInvalidArgumentError)
+    const error = fail?.error as WindowStateInvalidArgumentError
+    expect(error.operation).toBe(expectedOperation)
+    expect(error.field).toBe("bundleId")
   }
 }
 
