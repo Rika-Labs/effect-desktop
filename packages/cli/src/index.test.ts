@@ -2334,6 +2334,116 @@ test("desktop check --a11y binds RTL audit modes to Arabic rendered state", asyn
   }
 })
 
+test("desktop check --a11y rejects missing manifest template arrays", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+  try {
+    await writeAccessibilityFixture(directory, {
+      manifest: {
+        schemaVersion: 1,
+        source: "docs/SPEC.md §25.5",
+        release: "v1.0.0"
+      }
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--a11y", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("AccessibilityGateManifestError")
+    expect(payload.message).toContain("templates")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --a11y binds audit mode IDs to semantics", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+  try {
+    const manifest = accessibilityManifestFixture()
+    if (!isAccessibilityManifestFixture(manifest)) {
+      throw new Error("invalid accessibility manifest fixture")
+    }
+    await writeAccessibilityFixture(directory, {
+      manifest: {
+        ...manifest,
+        templates: manifest.templates.map((template) => ({
+          ...template,
+          auditModes: template.auditModes.map((mode) =>
+            mode.id === "light-ltr" ? { ...mode, direction: "rtl" } : mode
+          )
+        }))
+      }
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--a11y", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("AccessibilityGateEvidenceError")
+    expect(payload.message).toContain("light-ltr direction")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --a11y binds Pa11y audit files to modes", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+  try {
+    await writeAccessibilityFixture(directory, {
+      pa11yUrlForMode: () => defaultAxeUrlForMode("light-ltr")
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--a11y", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("AccessibilityGateEvidenceError")
+    expect(payload.message).toContain("pa11y.dark-ltr.json")
+    expect(payload.message).toContain("rendered template state")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop check --a11y rejects contrast below the WCAG floor", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
   try {
@@ -2373,6 +2483,54 @@ test("desktop check --a11y rejects contrast below the WCAG floor", async () => {
     expect(exitCode).toBe(1)
     expect(stderr.join("")).toContain("AccessibilityGateEvidenceError")
     expect(stderr.join("")).toContain("contrast ratio")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --a11y rejects invalid contrast colors", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+  try {
+    const manifest = accessibilityManifestFixture()
+    if (!isAccessibilityManifestFixture(manifest)) {
+      throw new Error("invalid accessibility manifest fixture")
+    }
+    await writeAccessibilityFixture(directory, {
+      manifest: {
+        ...manifest,
+        templates: manifest.templates.map((template) => ({
+          ...template,
+          contrastPairs: [
+            {
+              id: "bad-color",
+              foreground: "not-a-color",
+              background: "#ffffff",
+              minimumRatio: 4.5
+            }
+          ]
+        }))
+      }
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--a11y", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("AccessibilityGateEvidenceError")
+    expect(payload.message).toContain("foreground")
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -2421,6 +2579,47 @@ test("desktop check --a11y rejects invalid contrast minimums", async () => {
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("AccessibilityGateEvidenceError")
     expect(payload.message).toContain("minimumRatio")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --a11y rejects paths outside the workspace", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+  try {
+    const manifest = accessibilityManifestFixture()
+    if (!isAccessibilityManifestFixture(manifest)) {
+      throw new Error("invalid accessibility manifest fixture")
+    }
+    await writeAccessibilityFixture(directory, {
+      manifest: {
+        ...manifest,
+        templates: manifest.templates.map((template) => ({
+          ...template,
+          requiredTokens: [{ file: "../outside-token.txt", token: "resolveTemplateLocale" }]
+        }))
+      }
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--a11y", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("AccessibilityGateEvidenceError")
+    expect(payload.message).toContain("must stay inside")
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -6752,6 +6951,7 @@ const writeAccessibilityFixture = async (
     readonly manualAudit?: string
     readonly axePasses?: readonly unknown[]
     readonly axeUrlForMode?: (mode: string) => string
+    readonly pa11yUrlForMode?: (mode: string) => string
   } = {}
 ): Promise<void> => {
   const auditRoot = join(root, "docs", "audits", "v1.0.0", "basic-react-tailwind")
@@ -6781,7 +6981,7 @@ const writeAccessibilityFixture = async (
     )
     await writeFile(
       join(auditRoot, `pa11y.${mode}.json`),
-      JSON.stringify(pa11yAuditFixture(mode), null, 2)
+      JSON.stringify(pa11yAuditFixture(mode, overrides.pa11yUrlForMode), null, 2)
     )
   }
 }
@@ -6848,7 +7048,15 @@ const isAccessibilityManifestFixture = (
   value: unknown
 ): value is {
   readonly templates: readonly {
+    readonly auditModes: readonly {
+      readonly id: string
+      readonly direction: string
+      readonly colorScheme: string
+      readonly axe: string
+      readonly pa11y: string
+    }[]
     readonly contrastPairs: readonly unknown[]
+    readonly requiredTokens: readonly unknown[]
   }[]
 } =>
   typeof value === "object" &&
@@ -6903,8 +7111,11 @@ const axeAuditFixture = (
 const defaultAxeUrlForMode = (mode: string): string =>
   `fixture:${mode}?dir=${mode.endsWith("rtl") ? "rtl&lang=ar" : "ltr"}&color-scheme=${mode.startsWith("dark") ? "dark" : "light"}`
 
-const pa11yAuditFixture = (mode: string): unknown => ({
-  url: `fixture:${mode}`,
+const pa11yAuditFixture = (
+  mode: string,
+  urlForMode: (mode: string) => string = defaultAxeUrlForMode
+): unknown => ({
+  url: urlForMode(mode),
   runner: "pa11y",
   standard: "WCAG2AA",
   issues: []
