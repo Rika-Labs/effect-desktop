@@ -2127,6 +2127,38 @@ test("desktop check --a11y rejects hardcoded template English outside i18n files
   }
 })
 
+test("desktop check --a11y rejects single-word hardcoded template labels", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+  try {
+    await writeAccessibilityFixture(directory, {
+      appSource: [
+        "import { templateMessages } from './messages'",
+        "export function App() {",
+        "  return <button>Settings</button>",
+        "}"
+      ].join("\n")
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--a11y"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("AccessibilityGateEvidenceError")
+    expect(stderr.join("")).toContain("Settings")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop check --a11y rejects zero-pass axe reports", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
   try {
@@ -2498,6 +2530,64 @@ test("semver guard rejects release kind drift from the semantic version", async 
     await writeSemverFixture(directory, {
       packageVersion: "1.1.1",
       manifest: { ...manifest, release: "1.1.1", releaseKind: "minor" }
+    })
+
+    const exit = await Effect.runPromiseExit(
+      runSemverGuard({
+        cwd: directory,
+        publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+      })
+    )
+
+    expect(exit._tag).toBe("Failure")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("semver guard rejects padded release versions", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+  try {
+    const manifest = semverManifestFixture()
+    if (!isSemverManifestFixture(manifest)) {
+      throw new Error("invalid semver manifest fixture")
+    }
+    await writeSemverFixture(directory, {
+      packageVersion: "01.02.03",
+      manifest: { ...manifest, release: "01.02.03", releaseKind: "patch" }
+    })
+
+    const exit = await Effect.runPromiseExit(
+      runSemverGuard({
+        cwd: directory,
+        publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+      })
+    )
+
+    expect(exit._tag).toBe("Failure")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("semver guard rejects wrong-typed manifest fields", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+  try {
+    const manifest = semverManifestFixture()
+    if (!isSemverManifestFixture(manifest)) {
+      throw new Error("invalid semver manifest fixture")
+    }
+    const manifestRecord = manifest as unknown as {
+      readonly deprecationPolicy: Readonly<Record<string, unknown>>
+    }
+    await writeSemverFixture(directory, {
+      manifest: {
+        ...manifest,
+        deprecationPolicy: {
+          ...manifestRecord.deprecationPolicy,
+          minimumMinorReleases: "3"
+        }
+      }
     })
 
     const exit = await Effect.runPromiseExit(

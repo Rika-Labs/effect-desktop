@@ -395,9 +395,6 @@ const isUserVisibleEnglish = (body: string, index: number, value: string): boole
   if (/^(Idle|Running|Succeeded|Failed|Unavailable|button|main|section|div|p|h1)$/.test(value)) {
     return false
   }
-  if (/^[A-Z][A-Za-z]+$/.test(value)) {
-    return false
-  }
   return /[A-Za-z]{4,}/.test(value)
 }
 

@@ -92,6 +92,7 @@ interface VerificationMatrix {
 const MANIFEST_PATH = "release/semver.json"
 const SPEC_SOURCE = "docs/SPEC.md §25.6"
 const BRIDGE_SOURCE = "docs/SPEC.md §9.3"
+const CANONICAL_RELEASE_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u
 
 export const runSemverGuard = (
   options: SemverGuardOptions
@@ -179,7 +180,7 @@ const validateManifest = (
       new SemverGuardManifestError({ message: `semver source must be ${SPEC_SOURCE}` })
     )
   }
-  if (!/^\d+\.\d+\.\d+$/.test(manifest.release)) {
+  if (!CANONICAL_RELEASE_PATTERN.test(manifest.release)) {
     return Effect.fail(new SemverGuardManifestError({ message: "semver release must be X.Y.Z" }))
   }
   const expectedReleaseKind = releaseKindForVersion(manifest.release)
