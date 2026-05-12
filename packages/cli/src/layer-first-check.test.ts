@@ -160,6 +160,37 @@ test("Layer-first check rejects filesystem authority variants in library source"
   expectViolation(exit, "forbidden-runtime-global")
 })
 
+test("Layer-first check ignores type-only filesystem imports", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      import type { Stats } from "node:fs"
+      import { type PathLike } from "node:fs"
+      export type FileStats = Stats
+      export type FilePath = PathLike
+    `)
+  )
+
+  const report = await Effect.runPromise(runLayerFirstCheck(options))
+
+  expect(report.passed).toBe(true)
+  expect(report.violations).toEqual([])
+})
+
+test("Layer-first check ignores forbidden spellings in comments and strings", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      // Effect.runPromise(program) and process.env are documentation text here.
+      export const help = "Do not call Effect.runPromise or process.env in library internals."
+      export const example = "Bun.file(\\"config.json\\")"
+    `)
+  )
+
+  const report = await Effect.runPromise(runLayerFirstCheck(options))
+
+  expect(report.passed).toBe(true)
+  expect(report.violations).toEqual([])
+})
+
 test("Layer-first check rejects public Promise-returning API signatures", async () => {
   const options = await makeFixture(
     packageFiles(`

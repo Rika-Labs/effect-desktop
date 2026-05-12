@@ -270,37 +270,135 @@ const scanSourceFile = (
 
 const scanForbiddenPatterns = (path: string, text: string): readonly LayerFirstViolation[] => {
   const violations: LayerFirstViolation[] = []
-  for (const match of text.matchAll(/\bEffect\s*\.\s*run[A-Za-z0-9_]*/gu)) {
+  const sourceFile = parseSource(path, text)
+  const pushEffectRun = (node: ts.Node): void => {
     violations.push({
       kind: "forbidden-effect-run",
       path,
-      line: lineForOffset(text, match.index),
+      line: lineForOffset(text, node.getStart(sourceFile)),
       message: "Effect.run* belongs at composition edges, not library internals."
     })
   }
-  const runtimeGlobalPatterns = [
-    /\bprocess\s*\.\s*env\b/gu,
-    /\bBun\s*\.\s*env\b/gu,
-    /\bDate\s*\.\s*now\s*\(/gu,
-    /\bMath\s*\.\s*random\s*\(/gu,
-    /\b(?:globalThis\s*\.\s*)?crypto\s*\.\s*randomUUID\s*\(/gu,
-    /from\s+["'](?:node:)?fs(?:\/promises)?["']/gu,
-    /import\s*\(\s*["'](?:node:)?fs(?:\/promises)?["']\s*\)/gu,
-    /require\s*\(\s*["'](?:node:)?fs(?:\/promises)?["']\s*\)/gu,
-    /\bBun\s*\.\s*(?:file|write)\s*\(/gu
-  ] as const
-  for (const pattern of runtimeGlobalPatterns) {
-    for (const match of text.matchAll(pattern)) {
-      violations.push({
-        kind: "forbidden-runtime-global",
-        path,
-        line: lineForOffset(text, match.index),
-        message: "Runtime globals and host adapters must enter through services or edge files."
-      })
-    }
+  const pushRuntimeGlobal = (node: ts.Node): void => {
+    violations.push({
+      kind: "forbidden-runtime-global",
+      path,
+      line: lineForOffset(text, node.getStart(sourceFile)),
+      message: "Runtime globals and host adapters must enter through services or edge files."
+    })
   }
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) && importDeclarationUsesRuntimeFs(node)) {
+      pushRuntimeGlobal(node)
+    } else if (ts.isCallExpression(node)) {
+      if (callExpressionImportsRuntimeFs(node)) {
+        pushRuntimeGlobal(node)
+      } else if (callExpressionUsesRuntimeGlobal(node)) {
+        pushRuntimeGlobal(node)
+      }
+    } else if (ts.isPropertyAccessExpression(node)) {
+      if (isEffectRunAccess(node)) {
+        pushEffectRun(node)
+      } else if (propertyAccessUsesRuntimeGlobal(node)) {
+        pushRuntimeGlobal(node)
+      }
+    }
+    ts.forEachChild(node, visit)
+  }
+  ts.forEachChild(sourceFile, visit)
   return violations
 }
+
+const importDeclarationUsesRuntimeFs = (node: ts.ImportDeclaration): boolean => {
+  if (!isFsModuleSpecifier(node.moduleSpecifier)) {
+    return false
+  }
+  const clause = node.importClause
+  if (clause === undefined) {
+    return true
+  }
+  if (clause.isTypeOnly) {
+    return false
+  }
+  if (clause.name !== undefined) {
+    return true
+  }
+  const bindings = clause.namedBindings
+  if (bindings === undefined) {
+    return false
+  }
+  if (ts.isNamespaceImport(bindings)) {
+    return true
+  }
+  return bindings.elements.some((element) => !element.isTypeOnly)
+}
+
+const callExpressionImportsRuntimeFs = (node: ts.CallExpression): boolean => {
+  const [firstArgument] = node.arguments
+  if (!isFsModuleSpecifier(firstArgument)) {
+    return false
+  }
+  if (node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+    return true
+  }
+  return ts.isIdentifier(node.expression) && node.expression.text === "require"
+}
+
+const callExpressionUsesRuntimeGlobal = (node: ts.CallExpression): boolean => {
+  const expression = node.expression
+  if (!ts.isPropertyAccessExpression(expression)) {
+    return false
+  }
+  if (
+    isIdentifierPropertyAccess(expression, "Date", "now") ||
+    isIdentifierPropertyAccess(expression, "Math", "random") ||
+    isCryptoRandomUuidAccess(expression)
+  ) {
+    return true
+  }
+  return (
+    (expression.name.text === "file" || expression.name.text === "write") &&
+    ts.isIdentifier(expression.expression) &&
+    expression.expression.text === "Bun"
+  )
+}
+
+const propertyAccessUsesRuntimeGlobal = (node: ts.PropertyAccessExpression): boolean =>
+  isIdentifierPropertyAccess(node, "process", "env") ||
+  isIdentifierPropertyAccess(node, "Bun", "env")
+
+const isEffectRunAccess = (node: ts.PropertyAccessExpression): boolean =>
+  ts.isIdentifier(node.expression) &&
+  node.expression.text === "Effect" &&
+  node.name.text.startsWith("run")
+
+const isIdentifierPropertyAccess = (
+  node: ts.PropertyAccessExpression,
+  objectName: string,
+  propertyName: string
+): boolean =>
+  ts.isIdentifier(node.expression) &&
+  node.expression.text === objectName &&
+  node.name.text === propertyName
+
+const isCryptoRandomUuidAccess = (node: ts.PropertyAccessExpression): boolean => {
+  if (node.name.text !== "randomUUID") {
+    return false
+  }
+  const expression = node.expression
+  if (ts.isIdentifier(expression)) {
+    return expression.text === "crypto"
+  }
+  return (
+    ts.isPropertyAccessExpression(expression) &&
+    expression.name.text === "crypto" &&
+    ts.isIdentifier(expression.expression) &&
+    expression.expression.text === "globalThis"
+  )
+}
+
+const isFsModuleSpecifier = (node: ts.Node | undefined): node is ts.StringLiteral =>
+  node !== undefined && ts.isStringLiteral(node) && /^(?:node:)?fs(?:\/promises)?$/u.test(node.text)
 
 const scanPublicPromiseSource = (
   path: string,
