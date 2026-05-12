@@ -100,6 +100,11 @@ import {
   runAccessibilityGate
 } from "./accessibility-gate.js"
 import { formatSemverGuardError, formatSemverGuardReport, runSemverGuard } from "./semver-guard.js"
+import {
+  formatLayerFirstError,
+  formatLayerFirstReport,
+  runLayerFirstCheck
+} from "./layer-first-check.js"
 
 export {
   runDesktopPackage,
@@ -241,6 +246,16 @@ export {
   type SemverPolicyManifest,
   type SemverReleaseKind
 } from "./semver-guard.js"
+export {
+  runLayerFirstCheck,
+  type LayerFirstCheckError,
+  type LayerFirstCheckOptions,
+  type LayerFirstCheckReport,
+  type LayerFirstFileError,
+  type LayerFirstViolation,
+  type LayerFirstViolationError,
+  type LayerFirstViolationKind
+} from "./layer-first-check.js"
 
 export class CliUsageError extends Error {
   public override readonly name = "CliUsageError"
@@ -376,7 +391,8 @@ const CHECK_MODE_FLAGS = new Set([
   "--docs",
   "--release",
   "--a11y",
-  "--semver"
+  "--semver",
+  "--layer-first"
 ])
 
 interface CliFlagSpec {
@@ -882,6 +898,7 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
         release: Flag.boolean("release").pipe(Flag.withDefault(false)),
         a11y: Flag.boolean("a11y").pipe(Flag.withDefault(false)),
         semver: Flag.boolean("semver").pipe(Flag.withDefault(false)),
+        layerFirst: Flag.boolean("layer-first").pipe(Flag.withDefault(false)),
         config: Flag.optional(Flag.string("config")),
         renderer: Flag.optional(Flag.string("renderer")),
         platform: Flag.optional(Flag.string("platform")),
@@ -903,6 +920,8 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
             yield* runA11yCheckHandler(flags, options, fail)
           } else if (flags.semver) {
             yield* runSemverCheckHandler(flags, options, fail)
+          } else if (flags.layerFirst) {
+            yield* runLayerFirstCheckHandler(flags, options, fail)
           } else if (flags.production) {
             yield* runProductionCheckHandler(flags, options, fail)
           } else {
@@ -913,14 +932,15 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
                 "       desktop check --docs\n" +
                 "       desktop check --release\n" +
                 "       desktop check --a11y\n" +
-                "       desktop check --semver\n"
+                "       desktop check --semver\n" +
+                "       desktop check --layer-first\n"
             )
             yield* fail(1)
           }
         })
     ).pipe(
       Command.withDescription(
-        "Run production security, reproducibility, public API, docs, release, accessibility, or semver checks."
+        "Run production security, reproducibility, public API, docs, release, accessibility, semver, or Layer-first checks."
       )
     )
 
@@ -2806,6 +2826,7 @@ type CheckFlags = {
   readonly release: boolean
   readonly a11y: boolean
   readonly semver: boolean
+  readonly layerFirst: boolean
   readonly config: Option.Option<string>
   readonly renderer: Option.Option<string>
   readonly platform: Option.Option<string>
@@ -3121,6 +3142,38 @@ const runSemverCheckHandler = (
       options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
     } else {
       options.writeStdout(formatSemverGuardReport(report))
+    }
+  })
+
+const runLayerFirstCheckHandler = (
+  flags: CheckFlags,
+  options: CliRunOptions,
+  fail: (code: number) => Effect.Effect<void, never, never>
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const report = yield* runLayerFirstCheck({ cwd: options.cwd }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          const formatted = formatLayerFirstError(error)
+          if (flags.json) {
+            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+          } else if (formatted.report === undefined) {
+            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+          } else {
+            options.writeStderr(formatLayerFirstReport(formatted.report))
+          }
+          return undefined
+        })
+      )
+    )
+    if (report === undefined) {
+      yield* fail(1)
+      return
+    }
+    if (flags.json) {
+      options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+    } else {
+      options.writeStdout(formatLayerFirstReport(report))
     }
   })
 

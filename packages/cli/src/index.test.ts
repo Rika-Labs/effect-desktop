@@ -633,6 +633,51 @@ test("desktop check rejects mixed mode flags before dispatch", async () => {
   }
 })
 
+test("desktop check --layer-first reports hidden runtime shortcuts", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-layer-first-"))
+  try {
+    await mkdir(join(directory, "packages", "fixture", "src"), { recursive: true })
+    await writeFile(
+      join(directory, "packages", "fixture", "package.json"),
+      JSON.stringify(
+        {
+          name: "@effect-desktop/fixture",
+          type: "module",
+          exports: { ".": { types: "./src/index.ts", default: "./src/index.ts" } }
+        },
+        null,
+        2
+      )
+    )
+    await writeFile(
+      join(directory, "packages", "fixture", "src", "index.ts"),
+      [
+        'import { Effect } from "effect"',
+        "export const run = (program: Effect.Effect<void, never, never>) =>",
+        "  Effect.runPromise(program)"
+      ].join("\n")
+    )
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--layer-first"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(stderr.join("")).toContain("forbidden-effect-run")
+    expect(stderr.join("")).toContain("packages/fixture/src/index.ts")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop commands reject unknown flags before execution", async () => {
   const cases: readonly (readonly string[])[] = [
     ["package", "--platfrom", "linux-x64", "--help"],

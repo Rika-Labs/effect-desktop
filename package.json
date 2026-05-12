@@ -23,7 +23,7 @@
     "dev": "turbo dev",
     "desktop": "bun packages/cli/src/bin.ts",
     "build": "turbo build",
-    "check": "turbo check",
+    "check": "turbo check && bun packages/cli/src/bin.ts check --layer-first",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "lint": "turbo lint",
