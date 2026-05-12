@@ -1850,7 +1850,7 @@ export const ProjectWatch = Rpc.make("project.watch", {
 |---|---|---|---|
 | `timeoutMs` | `number` | `30_000` | Typed milliseconds. Strings such as `"30 seconds"` are not accepted. `0` disables the timeout (rare; must be justified per contract). |
 | `idempotent` | `boolean` | `false` | If `true`, the renderer client may auto-replay on reconnect (§9.7). Handler must produce the same result for the same input within `cachedResultMs`. |
-| `cancellable` | `boolean` | `true` | If `false`, neither timeout nor renderer-side `AbortController` interrupts the handler; the result is delivered or dropped. |
+| `cancellable` | `boolean` | `true` | If `false`, neither timeout nor renderer-side Effect interruption interrupts the handler; the result is delivered or dropped. |
 | `backpressure.overflow` | `"error" \| "dropOldest" \| "dropNewest" \| "block"` | `"error"` | Behavior when the per-stream queue exceeds `size`. `"block"` applies upstream backpressure; `"error"` terminates the stream with `BackpressureOverflow`. |
 
 A contract whose `idempotent` is `true` must declare a `cachedResultMs` (default `60_000`). The bridge generator emits a compile-time error on a contract that omits required fields.
@@ -1896,23 +1896,25 @@ Required call lifecycle rules:
 
 ### Interrupt and grace contract
 
-Cancellation propagates from three sources: the renderer (via `AbortController`), the runtime (timeout or scope close), and the host (window close). On cancellation:
+Cancellation propagates from three sources: the renderer (via Effect fiber interruption, including runtime-edge `AbortSignal` run options), the runtime (timeout or scope close), and the host (window close). On cancellation:
 
 1. The handler's owning Effect receives an interrupt within 50 ms of the cancellation signal.
 2. The handler has up to 5 seconds (the **grace window**, configurable per contract via `interruptGraceMs`) to release resources and emit a final state.
 3. If the handler has not reached a terminal state within the grace window, the runtime forces abort and emits an `BridgeCallAborted` audit event with the call ID, traceId, and grace exceedance metric.
-4. The renderer client surfaces the cancellation as either a typed `Cancelled` error or as a resolved `null`/`Option.none` depending on contract metadata.
+4. Renderer-initiated cancellation remains Effect interruption for the caller. A typed `Cancelled` error is reserved for cancellation reported by the host/runtime protocol, not for the renderer client's local cancellation API.
+
+Renderer cancel dispatch is best-effort protocol cleanup. Transport implementations must keep cancel sends bounded and interruption-friendly; an uninterruptible cancel send is a broken transport edge, not a supported cancellation mode.
 
 Non-cancellable contracts (`cancellable: false`) skip steps 1–3; the result is delivered or dropped at the discretion of the runtime.
 
 ### Cancellation propagation
 
 ```
-renderer abort()  ─┐
-runtime timeout   ─┤── any cancellation signal
-host window close ─┤
-                   ▼
-            handler.interrupt()
+renderer Effect interrupt ─┐
+runtime timeout            ─┤── any cancellation signal
+host window close          ─┤
+                            ▼
+                     handler.interrupt()
                    ▼
             ≤5s grace window
                    ▼

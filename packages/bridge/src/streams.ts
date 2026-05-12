@@ -521,7 +521,7 @@ const streamDispatch = (
 
       return Stream.fromQueue(queue.queue).pipe(
         Stream.tap(() => syncBackpressureMetrics(options.registry, streamId, queue)),
-        Stream.ensuring(interruptActiveStream(active, request.id, streamId))
+        Stream.ensuring(closeActiveStream(active, stream))
       )
     })
   )

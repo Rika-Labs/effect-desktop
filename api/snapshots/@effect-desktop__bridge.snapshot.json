@@ -29,11 +29,6 @@
       "signature": "export type BridgeClient<Contracts extends Readonly<Record<string, BridgeRpcGroup>>> = { readonly [Namespace in keyof Contracts]: BridgeClientFor<Contracts[Namespace]> }"
     },
     {
-      "name": "BridgeClientCallOptions",
-      "kind": "interface",
-      "signature": "export interface BridgeClientCallOptions { readonly signal?: AbortSignal }"
-    },
-    {
       "name": "BridgeClientErrorResponse",
       "kind": "interface",
       "signature": "export interface BridgeClientErrorResponse { readonly kind: \"failure\" readonly error: unknown }"
@@ -46,7 +41,7 @@
     {
       "name": "BridgeClientExchange",
       "kind": "interface",
-      "signature": "export interface BridgeClientExchange { readonly request: ( request: HostProtocolRequestEnvelope ) => Effect.Effect<BridgeClientResponse, HostProtocolError, never> readonly subscribe?: ( method: string ) => Stream.Stream<HostProtocolEventEnvelope, HostProtocolError, never> readonly stream?: ( request: HostProtocolRequestEnvelope ) => Stream.Stream<HostProtocolStreamEnvelope, HostProtocolError, never> readonly cancel?: ( request: HostProtocolCancelByRequestEnvelope ) => Effect.Effect<void, HostProtocolError, never> }"
+      "signature": "export interface BridgeClientExchange { readonly request: ( request: HostProtocolRequestEnvelope ) => Effect.Effect<BridgeClientResponse, HostProtocolError, never> readonly subscribe?: ( method: string ) => Stream.Stream<HostProtocolEventEnvelope, HostProtocolError, never> readonly stream?: ( request: HostProtocolRequestEnvelope ) => Stream.Stream<HostProtocolStreamEnvelope, HostProtocolError, never> /** * Sends a best-effort protocol cancel envelope. Implementations must stay bounded and * interruption-friendly; cancellation cleanup starts this effect in the background. */ readonly cancel?: ( request: HostProtocolCancelByRequestEnvelope ) => Effect.Effect<void, HostProtocolError, never> }"
     },
     {
       "name": "BridgeClientFor",
@@ -56,7 +51,7 @@
     {
       "name": "BridgeClientMethod",
       "kind": "type",
-      "signature": "export type BridgeClientMethod<Spec extends BridgeRpcMethodSpec> = Spec[\"output\"] extends BridgeRpcStreamSpec ? undefined extends Schema.Schema.Type<Spec[\"input\"]> ? ( input?: Schema.Schema.Type<Spec[\"input\"]>, options?: BridgeClientCallOptions ) => Stream.Stream< Schema.Schema.Type<Spec[\"output\"][\"chunk\"]>, Schema.Schema.Type<Spec[\"output\"][\"error\"]> | HostProtocolError, never > : ( input: Schema.Schema.Type<Spec[\"input\"]>, options?: BridgeClientCallOptions ) => Stream.Stream< Schema.Schema.Type<Spec[\"output\"][\"chunk\"]>, Schema.Schema.Type<Spec[\"output\"][\"error\"]> | HostProtocolError, never > : undefined extends Schema.Schema.Type<Spec[\"input\"]> ? ( input?: Schema.Schema.Type<Spec[\"input\"]>, options?: BridgeClientCallOptions ) => Effect.Effect< Schema.Schema.Type<Extract<Spec[\"output\"], Schema.Schema<unknown>>>, Schema.Schema.Type<Spec[\"error\"]> | HostProtocolError, never > : ( input: Schema.Schema.Type<Spec[\"input\"]>, options?: BridgeClientCallOptions ) => Effect.Effect< Schema.Schema.Type<Extract<Spec[\"output\"], Schema.Schema<unknown>>>, Schema.Schema.Type<Spec[\"error\"]> | HostProtocolError, never >"
+      "signature": "export type BridgeClientMethod<Spec extends BridgeRpcMethodSpec> = Spec[\"output\"] extends BridgeRpcStreamSpec ? undefined extends Schema.Schema.Type<Spec[\"input\"]> ? ( input?: Schema.Schema.Type<Spec[\"input\"]> ) => Stream.Stream< Schema.Schema.Type<Spec[\"output\"][\"chunk\"]>, Schema.Schema.Type<Spec[\"output\"][\"error\"]> | HostProtocolError, never > : ( input: Schema.Schema.Type<Spec[\"input\"]> ) => Stream.Stream< Schema.Schema.Type<Spec[\"output\"][\"chunk\"]>, Schema.Schema.Type<Spec[\"output\"][\"error\"]> | HostProtocolError, never > : undefined extends Schema.Schema.Type<Spec[\"input\"]> ? ( input?: Schema.Schema.Type<Spec[\"input\"]> ) => Effect.Effect< Schema.Schema.Type<Extract<Spec[\"output\"], Schema.Schema<unknown>>>, Schema.Schema.Type<Spec[\"error\"]> | HostProtocolError, never > : ( input: Schema.Schema.Type<Spec[\"input\"]> ) => Effect.Effect< Schema.Schema.Type<Extract<Spec[\"output\"], Schema.Schema<unknown>>>, Schema.Schema.Type<Spec[\"error\"]> | HostProtocolError, never >"
     },
     {
       "name": "BridgeClientOptions",

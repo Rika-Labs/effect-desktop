@@ -128,6 +128,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 | #1184 Use Effect serialization for host protocol frames      | Implemented | The host protocol codec module centralizes host frame bytes on Schema JSON transformations, and `host-client` no longer parses or stringifies protocol frames inline                |
 | #1161 Shape framed transport as Effect socket stream         | Implemented | `makeFramedSocketConnection` binds frame codecs to Effect `Socket`/`Stream`/`Scope`, and the runtime entry provides `layerStdioSocket` instead of a Promise `FramedTransport`       |
 | #1182 Rebase bridge stream state on Effect primitives        | Implemented | `BridgeStreamRegistry` now uses `SubscriptionRef`, active producers are owned by `FiberMap`, and runtime disposal closes active streams through typed terminal state                |
+| #1155 Move bridge cancellation to Effect interruption        | Implemented | Bridge client methods no longer expose `AbortSignal` call options; unary interruption and early stream finalization send protocol cancel envelopes from Effect finalizers           |
 | #1264 Replace BridgeRpc runtime DSL with Effect RPC adapters | Implemented | Native capability `*Rpcs` values are plain `RpcGroup`s, host runtimes use `RpcGroup.toLayer(...)` through `makeDesktopRpcHandlerRuntime(...)`, and bridge/native focused tests pass |
 
 ## Design-Debt Follow-ups

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Cause, Deferred, Effect, Exit, Layer, Option, Schema } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Layer, Option, Schema } from "effect"
 
 import {
   BridgeRpc,
@@ -374,8 +374,8 @@ test("Client rejects resource outputs with empty owner scopes", async () => {
   expectFailureTag(exit, "InvalidOutput")
 })
 
-test("Client abort signals propagate as typed bridge cancellation", async () => {
-  const ProcessRpcs = makeProjectRpcs("ProjectRpcs.ClientCancel")
+test("Client interruption sends bridge cancellation", async () => {
+  const ProcessRpcs = makeProjectRpcs("ProjectRpcs.ClientInterrupt")
   const started = await Effect.runPromise(Deferred.make<void>())
   const states: string[] = []
   const runtime = Handlers.withOptions(
@@ -396,7 +396,6 @@ test("Client abort signals propagate as typed bridge cancellation", async () => 
     })
   )
   const cancelRequests: HostProtocolCancelByRequestEnvelope[] = []
-  const controller = new AbortController()
   const client = Client(
     { project: ProcessRpcs },
     {
@@ -414,18 +413,14 @@ test("Client abort signals propagate as typed bridge cancellation", async () => 
     }
   )
 
-  const exitPromise = Effect.runPromiseExit(
-    client.project.open(new ProjectOpenInput({ path: "/tmp/project" }), {
-      signal: controller.signal
-    })
-  )
+  const fiber = Effect.runFork(client.project.open(new ProjectOpenInput({ path: "/tmp/project" })))
 
   await Effect.runPromise(Deferred.await(started))
-  controller.abort()
-  const exit = await exitPromise
+  await Effect.runPromise(Fiber.interrupt(fiber))
+  const exit = await Effect.runPromiseExit(Fiber.join(fiber))
+  await waitFor(() => states.includes("Canceled"))
 
-  expectFailureTag(exit, "Cancelled")
-  expectFailureField(exit, "source", "renderer")
+  expectInterrupted(exit)
   expect(cancelRequests).toEqual([
     new HostProtocolCancelByRequestEnvelope({
       kind: "cancel",
@@ -437,14 +432,15 @@ test("Client abort signals propagate as typed bridge cancellation", async () => 
   expect(states).toEqual(["Pending", "Authorized", "Running", "Canceled"])
 })
 
-test("Client abort signals release callers when the exchange does not answer", async () => {
-  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.ClientCancelNever")
+test("Client runtime AbortSignal interruption sends bridge cancellation", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.ClientRuntimeSignal")
+  const started = await Effect.runPromise(Deferred.make<void>())
   const cancelRequests: HostProtocolCancelByRequestEnvelope[] = []
   const controller = new AbortController()
   const client = Client(
     { project: ProjectRpcs },
     {
-      request: () => Effect.never,
+      request: () => Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
       cancel: (request) =>
         Effect.sync(() => {
           cancelRequests.push(request)
@@ -457,20 +453,16 @@ test("Client abort signals release callers when the exchange does not answer", a
     }
   )
 
-  const exitPromise = Effect.runPromise(
-    client.project
-      .open(new ProjectOpenInput({ path: "/tmp/project" }), { signal: controller.signal })
-      .pipe(Effect.exit, Effect.timeoutOption("50 millis"))
+  const fiber = Effect.runFork(
+    client.project.open(new ProjectOpenInput({ path: "/tmp/project" })),
+    { signal: controller.signal }
   )
 
+  await Effect.runPromise(Deferred.await(started))
   controller.abort()
-  const result = await exitPromise
+  const exit = await Effect.runPromiseExit(Fiber.join(fiber))
 
-  expect(Option.isSome(result)).toBe(true)
-  if (Option.isSome(result)) {
-    expectFailureTag(result.value, "Cancelled")
-    expectFailureField(result.value, "source", "renderer")
-  }
+  expectInterrupted(exit)
   expect(cancelRequests).toEqual([
     new HostProtocolCancelByRequestEnvelope({
       kind: "cancel",
@@ -481,10 +473,84 @@ test("Client abort signals release callers when the exchange does not answer", a
   ])
 })
 
-test("Client abort ignores invalid cancel timestamps without throwing from listeners", async () => {
-  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.ClientCancelInvalidTimestamp")
+test("Client interruption releases callers when the exchange does not answer", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.ClientInterruptNever")
   const cancelRequests: HostProtocolCancelByRequestEnvelope[] = []
-  const controller = new AbortController()
+  const finalizers: string[] = []
+  const client = Client(
+    { project: ProjectRpcs },
+    {
+      request: () =>
+        Effect.never.pipe(Effect.ensuring(Effect.sync(() => finalizers.push("request")))),
+      cancel: (request) =>
+        Effect.sync(() => {
+          cancelRequests.push(request)
+        })
+    },
+    {
+      nextRequestId: () => "request-client-interrupt-never",
+      nextTraceId: () => "trace-client-interrupt-never",
+      now: () => 42
+    }
+  )
+
+  const fiber = Effect.runFork(client.project.open(new ProjectOpenInput({ path: "/tmp/project" })))
+
+  await Effect.runPromise(Fiber.interrupt(fiber))
+  const result = await Effect.runPromise(
+    Fiber.join(fiber).pipe(Effect.exit, Effect.timeoutOption("50 millis"))
+  )
+
+  expect(Option.isSome(result)).toBe(true)
+  if (Option.isSome(result)) {
+    expectInterrupted(result.value)
+  }
+  expect(cancelRequests).toEqual([
+    new HostProtocolCancelByRequestEnvelope({
+      kind: "cancel",
+      id: "request-client-interrupt-never",
+      timestamp: 42,
+      traceId: "trace-client-interrupt-never"
+    })
+  ])
+  await waitFor(() => finalizers.includes("request"))
+})
+
+test("Client interruption releases callers when cancel dispatch does not answer", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.ClientInterruptCancelNever")
+  const finalizers: string[] = []
+  const client = Client(
+    { project: ProjectRpcs },
+    {
+      request: () =>
+        Effect.never.pipe(Effect.ensuring(Effect.sync(() => finalizers.push("request")))),
+      cancel: () => Effect.never.pipe(Effect.ensuring(Effect.sync(() => finalizers.push("cancel"))))
+    },
+    {
+      nextRequestId: () => "request-client-interrupt-cancel-never",
+      nextTraceId: () => "trace-client-interrupt-cancel-never",
+      now: () => 42
+    }
+  )
+
+  const fiber = Effect.runFork(client.project.open(new ProjectOpenInput({ path: "/tmp/project" })))
+
+  await Effect.runPromise(Fiber.interrupt(fiber))
+  const result = await Effect.runPromise(
+    Fiber.join(fiber).pipe(Effect.exit, Effect.timeoutOption("50 millis"))
+  )
+
+  expect(Option.isSome(result)).toBe(true)
+  if (Option.isSome(result)) {
+    expectInterrupted(result.value)
+  }
+  await waitFor(() => finalizers.includes("request"))
+  await waitFor(() => finalizers.includes("cancel"))
+})
+
+test("Client interruption ignores invalid cancel timestamps without masking interruption", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.ClientInterruptInvalidTimestamp")
+  const cancelRequests: HostProtocolCancelByRequestEnvelope[] = []
   const timestamps = [42, Number.NaN]
   const client = Client(
     { project: ProjectRpcs },
@@ -496,65 +562,23 @@ test("Client abort ignores invalid cancel timestamps without throwing from liste
         })
     },
     {
-      nextRequestId: () => "request-client-cancel-invalid-timestamp",
-      nextTraceId: () => "trace-client-cancel-invalid-timestamp",
+      nextRequestId: () => "request-client-interrupt-invalid-timestamp",
+      nextTraceId: () => "trace-client-interrupt-invalid-timestamp",
       now: () => timestamps.shift() ?? Number.NaN
     }
   )
 
-  const exitPromise = Effect.runPromise(
-    client.project
-      .open(new ProjectOpenInput({ path: "/tmp/project" }), { signal: controller.signal })
-      .pipe(Effect.exit, Effect.timeoutOption("50 millis"))
-  )
+  const fiber = Effect.runFork(client.project.open(new ProjectOpenInput({ path: "/tmp/project" })))
 
-  expect(() => controller.abort()).not.toThrow()
-  const result = await exitPromise
+  await Effect.runPromise(Fiber.interrupt(fiber))
+  const result = await Effect.runPromise(
+    Fiber.join(fiber).pipe(Effect.exit, Effect.timeoutOption("50 millis"))
+  )
 
   expect(Option.isSome(result)).toBe(true)
   if (Option.isSome(result)) {
-    expectFailureTag(result.value, "Cancelled")
+    expectInterrupted(result.value)
   }
-  expect(cancelRequests).toEqual([])
-})
-
-test("Client pre-aborted signals fail typed without dispatching requests", async () => {
-  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.ClientPreCancel")
-  const requests: HostProtocolRequestEnvelope[] = []
-  const cancelRequests: HostProtocolCancelByRequestEnvelope[] = []
-  const controller = new AbortController()
-  controller.abort()
-  const client = Client(
-    { project: ProjectRpcs },
-    {
-      request: (request) => {
-        requests.push(request)
-        return Effect.succeed({
-          kind: "success",
-          payload: { id: "project-1" }
-        })
-      },
-      cancel: (request) =>
-        Effect.sync(() => {
-          cancelRequests.push(request)
-        })
-    },
-    {
-      nextRequestId: () => "request-client-pre-cancel",
-      nextTraceId: () => "trace-client-pre-cancel",
-      now: () => 42
-    }
-  )
-
-  const exit = await Effect.runPromiseExit(
-    client.project.open(new ProjectOpenInput({ path: "/tmp/project" }), {
-      signal: controller.signal
-    })
-  )
-
-  expectFailureTag(exit, "Cancelled")
-  expectFailureField(exit, "source", "renderer")
-  expect(requests).toEqual([])
   expect(cancelRequests).toEqual([])
 })
 
@@ -679,6 +703,14 @@ const expectFailureTag = (exit: Exit.Exit<unknown, unknown>, tag: string): void 
   }
 }
 
+const expectInterrupted = (exit: Exit.Exit<unknown, unknown>): void => {
+  expect(Exit.isFailure(exit)).toBe(true)
+
+  if (Exit.isFailure(exit)) {
+    expect(Cause.hasInterrupts(exit.cause)).toBe(true)
+  }
+}
+
 const expectFailureField = (
   exit: Exit.Exit<unknown, unknown>,
   field: string,
@@ -694,4 +726,14 @@ const expectFailureField = (
       expect((fail.error as Record<string, unknown>)[field]).toBe(value)
     }
   }
+}
+
+const waitFor = async (predicate: () => boolean): Promise<void> => {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) {
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1))
+  }
+  expect(predicate()).toBe(true)
 }

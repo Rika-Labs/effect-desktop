@@ -1,4 +1,4 @@
-import { Effect, Queue, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Fiber, Queue, Schema, Stream } from "effect"
 
 import {
   type BridgeRpcGroup,
@@ -11,7 +11,6 @@ import {
 } from "./contracts.js"
 import {
   HostProtocolCancelByRequestEnvelope,
-  HostProtocolCancelledError,
   HostProtocolEventEnvelope,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolRequestEnvelope,
@@ -38,6 +37,7 @@ import {
 } from "./streams.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
+const CancelDispatchGrace = "50 millis" as const
 
 export interface BridgeClientExchange {
   readonly request: (
@@ -49,6 +49,10 @@ export interface BridgeClientExchange {
   readonly stream?: (
     request: HostProtocolRequestEnvelope
   ) => Stream.Stream<HostProtocolStreamEnvelope, HostProtocolError, never>
+  /**
+   * Sends a best-effort protocol cancel envelope. Implementations must stay bounded and
+   * interruption-friendly; cancellation cleanup starts this effect in the background.
+   */
   readonly cancel?: (
     request: HostProtocolCancelByRequestEnvelope
   ) => Effect.Effect<void, HostProtocolError, never>
@@ -130,10 +134,6 @@ export const makeUnaryDesktopTransportFromBridgeClientExchange = (
     } satisfies DesktopTransportSend & DesktopTransportRun)
   })
 
-export interface BridgeClientCallOptions {
-  readonly signal?: AbortSignal
-}
-
 interface ResolvedBridgeClientOptions {
   readonly nextRequestId: () => string
   readonly nextTraceId: () => string
@@ -183,16 +183,14 @@ export type BridgeClientMethod<Spec extends BridgeRpcMethodSpec> =
   Spec["output"] extends BridgeRpcStreamSpec
     ? undefined extends Schema.Schema.Type<Spec["input"]>
       ? (
-          input?: Schema.Schema.Type<Spec["input"]>,
-          options?: BridgeClientCallOptions
+          input?: Schema.Schema.Type<Spec["input"]>
         ) => Stream.Stream<
           Schema.Schema.Type<Spec["output"]["chunk"]>,
           Schema.Schema.Type<Spec["output"]["error"]> | HostProtocolError,
           never
         >
       : (
-          input: Schema.Schema.Type<Spec["input"]>,
-          options?: BridgeClientCallOptions
+          input: Schema.Schema.Type<Spec["input"]>
         ) => Stream.Stream<
           Schema.Schema.Type<Spec["output"]["chunk"]>,
           Schema.Schema.Type<Spec["output"]["error"]> | HostProtocolError,
@@ -200,16 +198,14 @@ export type BridgeClientMethod<Spec extends BridgeRpcMethodSpec> =
         >
     : undefined extends Schema.Schema.Type<Spec["input"]>
       ? (
-          input?: Schema.Schema.Type<Spec["input"]>,
-          options?: BridgeClientCallOptions
+          input?: Schema.Schema.Type<Spec["input"]>
         ) => Effect.Effect<
           Schema.Schema.Type<Extract<Spec["output"], Schema.Schema<unknown>>>,
           Schema.Schema.Type<Spec["error"]> | HostProtocolError,
           never
         >
       : (
-          input: Schema.Schema.Type<Spec["input"]>,
-          options?: BridgeClientCallOptions
+          input: Schema.Schema.Type<Spec["input"]>
         ) => Effect.Effect<
           Schema.Schema.Type<Extract<Spec["output"], Schema.Schema<unknown>>>,
           Schema.Schema.Type<Spec["error"]> | HostProtocolError,
@@ -260,8 +256,7 @@ const makeContractClient = <Tag extends string, Spec extends BridgeRpcSpec>(
     [Extract<keyof Spec, string>, Spec[Extract<keyof Spec, string>]]
   >) {
     methods[method] = ((
-      input: Schema.Schema.Type<Spec[typeof method]["input"]>,
-      callOptions?: BridgeClientCallOptions
+      input: Schema.Schema.Type<Spec[typeof method]["input"]>
     ): Effect.Effect<unknown, unknown, never> | Stream.Stream<unknown, unknown, never> =>
       isStreamSpec(methodSpec.output)
         ? streamContractMethod(
@@ -270,18 +265,11 @@ const makeContractClient = <Tag extends string, Spec extends BridgeRpcSpec>(
             methodSpec as Spec[typeof method] & { readonly output: BridgeRpcStreamSpec },
             input,
             exchange,
-            options,
-            callOptions
+            options
           )
-        : requestContractMethod(
-            contract.tag,
-            method,
-            methodSpec,
-            input,
-            exchange,
-            options,
-            callOptions
-          )) as BridgeClientMethod<Spec[typeof method]> | undefined
+        : requestContractMethod(contract.tag, method, methodSpec, input, exchange, options)) as
+      | BridgeClientMethod<Spec[typeof method]>
+      | undefined
   }
 
   for (const [event, eventSpec] of Object.entries(contractEvents) as Array<
@@ -305,20 +293,13 @@ const requestContractMethod = <Spec extends BridgeRpcMethodSpec>(
   spec: Spec,
   input: Schema.Schema.Type<Spec["input"]>,
   exchange: BridgeClientExchange,
-  options: ResolvedBridgeClientOptions,
-  callOptions: BridgeClientCallOptions = {}
+  options: ResolvedBridgeClientOptions
 ): Effect.Effect<unknown, Schema.Schema.Type<Spec["error"]> | HostProtocolError, never> =>
   Effect.gen(function* () {
     const operation = methodName(tag, method)
     const payload = yield* encodeInput(operation, spec, input)
     const request = yield* makeRequest(operation, payload, options)
-    const response = yield* runRequestWithCancellation(
-      exchange,
-      request,
-      callOptions,
-      operation,
-      options.now
-    )
+    const response = yield* runRequestWithInterruption(exchange, request, options.now)
     const responseKind = (response as { readonly kind?: unknown }).kind
 
     if (responseKind === "failure") {
@@ -421,8 +402,7 @@ const streamContractMethod = <
   spec: Spec,
   input: Schema.Schema.Type<Spec["input"]>,
   exchange: BridgeClientExchange,
-  options: ResolvedBridgeClientOptions,
-  callOptions: BridgeClientCallOptions = {}
+  options: ResolvedBridgeClientOptions
 ): Stream.Stream<
   Schema.Schema.Type<Spec["output"]["chunk"]>,
   Schema.Schema.Type<Spec["output"]["error"]> | HostProtocolError,
@@ -441,24 +421,7 @@ const streamContractMethod = <
     Effect.gen(function* () {
       const payload = yield* encodeInput(operation, spec, input)
       const request = yield* makeRequest(operation, payload, options)
-      yield* failIfAlreadyAborted(request, callOptions)
       let terminal = false
-      const removeAbortListener = yield* installAbortCancellation(
-        exchange,
-        request,
-        callOptions,
-        options.now
-      )
-      let cancelSent = false
-      const cancelRequest = () => {
-        if (cancelSent || exchange.cancel === undefined) {
-          return
-        }
-        cancelSent = true
-        Effect.runFork(
-          makeCancelRequest(request, options.now).pipe(Effect.flatMap(exchange.cancel))
-        )
-      }
 
       return stream(request).pipe(
         Stream.takeUntilEffect((envelope) =>
@@ -470,12 +433,9 @@ const streamContractMethod = <
           })
         ),
         Stream.ensuring(
-          Effect.sync(() => {
-            removeAbortListener()
-            if (!terminal) {
-              cancelRequest()
-            }
-          })
+          Effect.suspend(() =>
+            terminal ? Effect.void : startCancelByRequest(exchange, request, options.now)
+          )
         )
       )
     })
@@ -650,96 +610,49 @@ const decodeStreamError = <Spec extends BridgeRpcStreamSpec>(
     (decoded) => Effect.fail(decoded)
   )
 
-const runRequestWithCancellation = (
+const sendCancelByRequest = (
   exchange: BridgeClientExchange,
   request: HostProtocolRequestEnvelope,
-  options: BridgeClientCallOptions,
-  operation: string,
+  now: () => number
+): Effect.Effect<void, never, never> =>
+  exchange.cancel === undefined
+    ? Effect.void
+    : makeCancelRequest(request, now).pipe(Effect.flatMap(exchange.cancel), Effect.ignore)
+
+const startCancelByRequest = (
+  exchange: BridgeClientExchange,
+  request: HostProtocolRequestEnvelope,
+  now: () => number
+): Effect.Effect<void, never, never> =>
+  sendCancelByRequest(exchange, request, now).pipe(
+    Effect.timeoutOption(CancelDispatchGrace),
+    Effect.ignore,
+    Effect.forkDetach({ startImmediately: true }),
+    Effect.asVoid
+  )
+
+const runRequestWithInterruption = (
+  exchange: BridgeClientExchange,
+  request: HostProtocolRequestEnvelope,
   now: () => number
 ): Effect.Effect<BridgeClientResponse, HostProtocolError, never> =>
-  Effect.gen(function* () {
-    yield* failIfAlreadyAborted(request, options)
-    if (options.signal === undefined) {
-      return yield* exchange.request(request)
-    }
-
-    const cancelRequest = () => {
-      if (exchange.cancel === undefined) {
-        return
-      }
-      Effect.runFork(makeCancelRequest(request, now).pipe(Effect.flatMap(exchange.cancel)))
-    }
-
-    const failWithCancel = makeCancelledError(operation)
-    const signal = options.signal
-    let removeAbortListener = () => {}
-    const abortEffect = Effect.callback<never, HostProtocolError, never>((resume) => {
-      const cancelInFlight = () => {
-        cancelRequest()
-        resume(Effect.fail(failWithCancel))
-      }
-
-      if (signal.aborted) {
-        cancelInFlight()
-        return Effect.void
-      }
-
-      const onAbort = () => {
-        cancelInFlight()
-        removeAbortListener()
-      }
-
-      signal.addEventListener("abort", onAbort, { once: true })
-      removeAbortListener = () => signal.removeEventListener("abort", onAbort)
-      return Effect.sync(removeAbortListener)
-    })
-
-    return yield* Effect.raceFirst(exchange.request(request), abortEffect).pipe(
-      Effect.ensuring(Effect.sync(removeAbortListener))
-    )
-  })
-
-const failIfAlreadyAborted = (
-  request: HostProtocolRequestEnvelope,
-  options: BridgeClientCallOptions
-): Effect.Effect<void, HostProtocolError, never> =>
-  Effect.sync(() => {
-    return options.signal?.aborted === true
-      ? Effect.fail(makeCancelledError(request.method))
-      : Effect.void
-  }).pipe(Effect.flatten)
-
-const installAbortCancellation = (
-  exchange: BridgeClientExchange,
-  request: HostProtocolRequestEnvelope,
-  options: BridgeClientCallOptions,
-  now: () => number
-): Effect.Effect<() => void, HostProtocolError, never> =>
-  Effect.sync(() => {
-    if (options.signal === undefined || exchange.cancel === undefined) {
-      return () => {
-        return
-      }
-    }
-
-    const signal = options.signal
-    const cancelRequest = exchange.cancel
-    const cancel = (): void => {
-      Effect.runFork(makeCancelRequest(request, now).pipe(Effect.flatMap(cancelRequest)))
-    }
-
-    if (signal.aborted) {
-      cancel()
-      return () => {
-        return
-      }
-    }
-
-    signal.addEventListener("abort", cancel, { once: true })
-    return () => {
-      signal.removeEventListener("abort", cancel)
-    }
-  })
+  Effect.acquireUseRelease(
+    exchange.request(request).pipe(Effect.forkDetach({ startImmediately: true })),
+    (requestFiber) => Fiber.join(requestFiber),
+    (requestFiber, exit) =>
+      Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)
+        ? startCancelByRequest(exchange, request, now).pipe(
+            Effect.andThen(
+              (exchange.cancel === undefined
+                ? Fiber.interrupt(requestFiber)
+                : Effect.sleep(CancelDispatchGrace).pipe(
+                    Effect.andThen(Fiber.interrupt(requestFiber))
+                  )
+              ).pipe(Effect.ignore, Effect.forkDetach({ startImmediately: true }), Effect.asVoid)
+            )
+          )
+        : Effect.void
+  )
 
 const makeCancelRequest = (
   request: HostProtocolRequestEnvelope,
@@ -754,15 +667,6 @@ const makeCancelRequest = (
       timestamp,
       traceId: request.traceId
     })
-  })
-
-const makeCancelledError = (operation: string): HostProtocolCancelledError =>
-  new HostProtocolCancelledError({
-    tag: "Cancelled",
-    source: "renderer",
-    message: "bridge call canceled by renderer",
-    operation,
-    recoverable: true
   })
 
 const makeRequest = (

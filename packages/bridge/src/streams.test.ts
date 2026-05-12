@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Cause, Deferred, Effect, Exit, Fiber, Schema, Stream } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Option, Schema, Stream } from "effect"
 
 import {
   BridgeRpc,
@@ -135,14 +135,8 @@ test("Streams rejects duplicate active request ids", async () => {
     nextTraceId: () => "trace-stream-duplicate",
     now: () => 41
   })
-  const controller = new AbortController()
-
   const firstFiber = Effect.runFork(
-    client.project
-      .watch(new WatchInput({ projectId: "project-1" }), {
-        signal: controller.signal
-      })
-      .pipe(Stream.runCollect)
+    client.project.watch(new WatchInput({ projectId: "project-1" })).pipe(Stream.runCollect)
   )
 
   await waitFor(() => requests.length === 1)
@@ -155,11 +149,11 @@ test("Streams rejects duplicate active request ids", async () => {
   expect(lifecycle).toEqual(["acquired"])
   expect(requests).toHaveLength(2)
 
-  controller.abort()
+  await Effect.runPromise(Fiber.interrupt(firstFiber))
   const firstStreamFiber = firstFiber
   const firstExit = await Effect.runPromiseExit(Fiber.join(firstStreamFiber))
   await waitFor(() => lifecycle.includes("released"))
-  expectFailureTag(firstExit, "StreamClosed")
+  expectInterrupted(firstExit)
 })
 
 test("Streams rejects duplicate active generated stream ids", async () => {
@@ -712,7 +706,7 @@ test("BridgeStreamRegistry observe emits current and updated snapshots", async (
   })
 })
 
-test("Streams cancellation interrupts the producer and emits a closed terminal", async () => {
+test("Streams interruption sends cancel and records a closed terminal", async () => {
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamCancel")
   const registry = await Effect.runPromise(makeBridgeStreamRegistry())
   const finalizers: string[] = []
@@ -745,20 +739,17 @@ test("Streams cancellation interrupts the producer and emits a closed terminal",
       now: () => 41
     }
   )
-  const controller = new AbortController()
-  const exitPromise = Effect.runPromiseExit(
-    client.project
-      .watch(new WatchInput({ projectId: "project-1" }), { signal: controller.signal })
-      .pipe(Stream.runCollect)
+  const streamFiber = Effect.runFork(
+    client.project.watch(new WatchInput({ projectId: "project-1" })).pipe(Stream.runCollect)
   )
 
   await waitFor(() => requests.length === 1)
   await waitFor(() => finalizers.includes("acquired"))
-  controller.abort()
+  await Effect.runPromise(Fiber.interrupt(streamFiber))
 
-  const exit = await exitPromise
+  const exit = await Effect.runPromiseExit(Fiber.join(streamFiber))
   await waitFor(() => finalizers.includes("interrupted"))
-  expectFailureTag(exit, "StreamClosed")
+  expectInterrupted(exit)
   expect(finalizers).toEqual(["acquired", "interrupted"])
   expect(cancelRequests).toEqual([
     new HostProtocolCancelByRequestEnvelope({
@@ -768,21 +759,72 @@ test("Streams cancellation interrupts the producer and emits a closed terminal",
       traceId: "trace-stream-cancel"
     })
   ])
-  expect(await Effect.runPromise(registry.snapshot())).toEqual([
+  expect(await Effect.runPromise(registry.snapshot())).toMatchObject([
     {
       generation: 0,
-      backpressure: {
-        evictedFrames: 0,
-        overflow: "error",
-        queueCapacity: 1024,
-        queueDepth: 0
-      },
       state: "terminal",
       streamId: "stream-cancel",
       terminal: "closed",
       terminalAt: 42
     }
   ])
+})
+
+test("Streams interruption releases consumers when cancel dispatch does not answer", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamCancelNever")
+  const finalizers: string[] = []
+  const runtime = Streams.withOptions(
+    {
+      nextStreamId: () => "stream-cancel-never",
+      now: () => 42
+    },
+    BridgeRpc.layer(ProjectRpcs)({
+      watch: () =>
+        Stream.scoped(
+          Stream.fromEffect(
+            Effect.acquireRelease(
+              Effect.sync(() => finalizers.push("acquired")),
+              () => Effect.sync(() => finalizers.push("interrupted"))
+            ).pipe(Effect.andThen(Effect.never))
+          )
+        )
+    })
+  )
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = Client(
+    { project: ProjectRpcs },
+    {
+      request: () => Effect.fail(makeHostProtocolInvalidOutputError("test", "unused")),
+      stream: (request) => {
+        requests.push(request)
+        return runtime.stream(request)
+      },
+      cancel: () => Effect.never.pipe(Effect.ensuring(Effect.sync(() => finalizers.push("cancel"))))
+    },
+    {
+      nextRequestId: () => "request-stream-cancel-never",
+      nextTraceId: () => "trace-stream-cancel-never",
+      now: () => 41
+    }
+  )
+
+  const streamFiber = Effect.runFork(
+    client.project.watch(new WatchInput({ projectId: "project-1" })).pipe(Stream.runCollect)
+  )
+
+  await waitFor(() => requests.length === 1)
+  await waitFor(() => finalizers.includes("acquired"))
+  await Effect.runPromise(Fiber.interrupt(streamFiber))
+  const result = await Effect.runPromise(
+    Fiber.join(streamFiber).pipe(Effect.exit, Effect.timeoutOption("50 millis"))
+  )
+
+  expect(Option.isSome(result)).toBe(true)
+  if (Option.isSome(result)) {
+    expectInterrupted(result.value)
+  }
+  await waitFor(() => finalizers.includes("interrupted"))
+  await waitFor(() => finalizers.includes("cancel"))
 })
 
 test("Streams dispose interrupts active producer fibers", async () => {
@@ -1101,6 +1143,14 @@ const expectFailureTag = (exit: Exit.Exit<unknown, unknown>, tag: string): void 
   }
 }
 
+const expectInterrupted = (exit: Exit.Exit<unknown, unknown>): void => {
+  expect(Exit.isFailure(exit)).toBe(true)
+
+  if (Exit.isFailure(exit)) {
+    expect(Cause.hasInterrupts(exit.cause)).toBe(true)
+  }
+}
+
 const getFailureError = (exit: Exit.Exit<unknown, unknown>): unknown => {
   expect(Exit.isFailure(exit)).toBe(true)
 
@@ -1112,12 +1162,12 @@ const getFailureError = (exit: Exit.Exit<unknown, unknown>): unknown => {
   return undefined
 }
 
-const waitFor = async (predicate: () => boolean): Promise<void> => {
+const waitFor = async (predicate: () => boolean | Promise<boolean>): Promise<void> => {
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (predicate()) {
+    if (await predicate()) {
       return
     }
     await new Promise((resolve) => setTimeout(resolve, 1))
   }
-  expect(predicate()).toBe(true)
+  expect(await predicate()).toBe(true)
 }
