@@ -9,7 +9,8 @@ import { Config, Effect, Option } from "effect"
 
 import packageJson from "../../package.json" with { type: "json" }
 import { createHostProtocolExchange } from "./host-client.js"
-import { createBunStdioTransport } from "./transport.js"
+import { layerStdioSocket } from "./stdio-socket.js"
+import { makeTransport } from "./transport.js"
 import { openDeclaredWindows, readStartupWindows } from "./window-supervisor.js"
 
 const readyEvent = {
@@ -30,9 +31,6 @@ const windowSmokeTest: Config.Config<boolean> = Config.option(
   )
 )
 
-const hostExchange = createHostProtocolExchange(createBunStdioTransport())
-const handshake = makeHostHandshakeClient(hostExchange)
-const windows = makeHostWindowClient(hostExchange)
 const smokeTestWindows = Object.freeze({
   smoke: Object.freeze({
     title: "Effect Desktop"
@@ -43,6 +41,11 @@ await Effect.runPromise(
   Effect.gen(function* () {
     yield* Effect.tryPromise(() => Bun.write(Bun.stdout, `${JSON.stringify(readyEvent)}\n`))
 
+    const transport = yield* makeTransport()
+    const connection = yield* transport.connect({ target: "stdio" })
+    const hostExchange = createHostProtocolExchange(connection)
+    const handshake = makeHostHandshakeClient(hostExchange)
+    const windows = makeHostWindowClient(hostExchange)
     const isSmokeTest = yield* windowSmokeTest
     const startupWindows = yield* readStartupWindows(process.env)
     const declaredWindows =
@@ -50,7 +53,7 @@ await Effect.runPromise(
     yield* negotiateHostVersion(handshake, HOST_PROTOCOL_VERSION)
     yield* handshake.ping()
     yield* openDeclaredWindows(windows, declaredWindows, { smokeTest: isSmokeTest })
-  })
+  }).pipe(Effect.scoped, Effect.provide(layerStdioSocket))
 )
 
 process.exit(0)

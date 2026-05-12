@@ -9,9 +9,31 @@ import {
   type HostProtocolEnvelope
 } from "@effect-desktop/bridge"
 import { Cause, Context, Effect, Exit, FileSystem, Layer, Path, Queue, Schema } from "effect"
+import type { Scope } from "effect"
 import { Rpc, RpcClient, RpcGroup, RpcServer } from "effect/unstable/rpc"
+import type { Socket } from "effect/unstable/socket"
+import type * as RuntimeTransport from "@effect-desktop/core/runtime/transport"
 import type { DesktopRpcClient, SupportedDesktopRpcClient } from "./runtime/desktop-rpc-surface.js"
 import type { WorkflowLayer } from "./runtime/workflow.js"
+
+type IsEqual<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false
+type Assert<T extends true> = T
+type TransportConnectContract = Assert<
+  IsEqual<
+    ReturnType<RuntimeTransport.TransportApi["connect"]>,
+    Effect.Effect<
+      RuntimeTransport.TransportConnection,
+      RuntimeTransport.TransportError,
+      Socket.Socket | Scope.Scope
+    >
+  >
+>
+const transportConnectContract: TransportConnectContract = true
+// @ts-expect-error FramedTransport was removed from the public runtime transport subpath.
+type _RemovedFramedTransport = RuntimeTransport.FramedTransport
+// @ts-expect-error FramedTransportOptions was replaced by the narrower FrameCodecOptions name.
+type _RemovedFramedTransportOptions = RuntimeTransport.FramedTransportOptions
 
 test("public barrel exports the ResourceRegistry factory", async () => {
   const core = await import("./index.js")
@@ -39,6 +61,11 @@ test("runtime transport subpath exposes framed transport helpers", async () => {
 
   expect(transport.FrameDecoder).toBeFunction()
   expect(transport.encodeFrame).toBeFunction()
+  expect(transport.makeFramedSocketConnection).toBeFunction()
+  expect(transportConnectContract).toBe(true)
+  expect("createFramedTransport" in transport).toBe(false)
+  expect("createBunStdioTransport" in transport).toBe(false)
+  expect("makeConnection" in transport).toBe(false)
 })
 
 test("public Desktop facade exposes Rpc metadata helpers", async () => {

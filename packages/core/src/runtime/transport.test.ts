@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 
-import { Cause, Effect, Exit, Fiber, Stream } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Stream } from "effect"
+import { Socket } from "effect/unstable/socket"
 
 import {
   FrameDecoder,
@@ -8,14 +9,15 @@ import {
   FrameTruncatedError,
   MAX_FRAME_BYTES,
   TransportCloseError,
+  TransportReadError,
   TransportFrameTooLargeError,
   TransportFrameTruncatedError,
   TransportInvalidArgumentError,
   TransportClosedError,
-  createFramedTransport,
-  encodeFrame
+  encodeFrame,
+  makeFramedSocketConnection
 } from "./transport.js"
-import { makeConnection, makeInMemoryTransportPair, makeTransport } from "./transport.js"
+import { makeInMemoryTransportPair, makeTransport } from "./transport.js"
 
 test("encodeFrame emits a big-endian length prefix", () => {
   const frame = encodeFrame(new Uint8Array([0x68, 0x69]))
@@ -86,40 +88,137 @@ test("encodeFrame rejects oversized payloads without writing", () => {
   )
 })
 
-test("createFramedTransport sends encoded frames and receives decoded frames", async () => {
-  const written: Uint8Array[] = []
-  const transport = createFramedTransport(
-    chunks(
-      new Uint8Array([0, 0]),
-      new Uint8Array([0, 2, 0x6f, 0x6b, 0, 0, 0, 5, 0x68]),
-      new Uint8Array([0x65, 0x6c, 0x6c, 0x6f])
-    ),
-    (chunk) => {
-      written.push(chunk)
-    }
+test("makeFramedSocketConnection sends encoded frames and receives decoded frames", async () => {
+  const result = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const test = yield* makeTestSocket([
+          new Uint8Array([0, 0]),
+          new Uint8Array([0, 2, 0x6f, 0x6b, 0, 0, 0, 5, 0x68]),
+          new Uint8Array([0x65, 0x6c, 0x6c, 0x6f])
+        ])
+        const connection = yield* makeFramedSocketConnection(test.socket)
+
+        yield* connection.send(new Uint8Array([0x68, 0x69]))
+        const received = yield* connection.receive.pipe(Stream.take(2), Stream.runCollect)
+
+        return {
+          written: test.written.map((frame) => Array.from(frame)),
+          received: Array.from(received).map((frame) => Array.from(frame))
+        }
+      })
+    )
   )
 
-  await transport.send(new Uint8Array([0x68, 0x69]))
-
-  expect(written.map((frame) => Array.from(frame))).toEqual([[0, 0, 0, 2, 0x68, 0x69]])
-  expect(Array.from((await transport.recv()) ?? [])).toEqual([0x6f, 0x6b])
-  expect(Array.from((await transport.recv()) ?? [])).toEqual([0x68, 0x65, 0x6c, 0x6c, 0x6f])
-  expect(await transport.recv()).toBeNull()
+  expect(result.written).toEqual([[0, 0, 0, 2, 0x68, 0x69]])
+  expect(result.received).toEqual([
+    [0x6f, 0x6b],
+    [0x68, 0x65, 0x6c, 0x6c, 0x6f]
+  ])
 })
 
-test("createFramedTransport close releases an already pending recv", async () => {
-  const transport = createFramedTransport(blockedChunks(), () => {
-    return
-  })
-  const pending = transport.recv()
+test("makeFramedSocketConnection uses the provided Socket service through Transport.connect", async () => {
+  const result = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const test = yield* makeTestSocket([encodeFrame(new Uint8Array([0x6f, 0x6b]))])
+        const transport = yield* makeTransport()
+        const connection = yield* transport
+          .connect({ target: "stdio" })
+          .pipe(Effect.provideService(Socket.Socket, test.socket))
+        const received = yield* connection.receive.pipe(Stream.take(1), Stream.runCollect)
 
-  await transport.close()
-  const result = await Promise.race([
-    pending.then((value) => ({ tag: "received" as const, value })),
-    Bun.sleep(50).then(() => ({ tag: "timeout" as const }))
-  ])
+        return Array.from(received).map((frame) => Array.from(frame))
+      })
+    )
+  )
 
-  expect(result).toEqual({ tag: "received", value: null })
+  expect(result).toEqual([[0x6f, 0x6b]])
+})
+
+test("makeFramedSocketConnection close stops receives with a typed closed failure", async () => {
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const test = yield* makeTestSocket([], { waitForClose: true })
+        const connection = yield* makeFramedSocketConnection(test.socket)
+
+        yield* connection.close()
+        return yield* connection.receive.pipe(Stream.take(1), Stream.runCollect)
+      })
+    )
+  )
+
+  expectFailure(exit, TransportClosedError)
+})
+
+test("makeFramedSocketConnection reports socket read failures as typed read failures", async () => {
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const test = yield* makeTestSocket([], { failRead: true })
+        const connection = yield* makeFramedSocketConnection(test.socket, {}, "test")
+
+        return yield* connection.receive.pipe(Stream.take(1), Stream.runCollect)
+      })
+    )
+  )
+
+  expectFailure(exit, TransportReadError)
+  expect(getFailure(exit)).toMatchObject({ operation: "test.receive" })
+})
+
+test("makeFramedSocketConnection preserves frame validation failures from reads", async () => {
+  const oversizedPrefix = new Uint8Array(4)
+  new DataView(oversizedPrefix.buffer).setUint32(0, MAX_FRAME_BYTES + 1, false)
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const test = yield* makeTestSocket([oversizedPrefix])
+        const connection = yield* makeFramedSocketConnection(test.socket, {}, "test")
+
+        return yield* connection.receive.pipe(Stream.take(1), Stream.runCollect)
+      })
+    )
+  )
+
+  expectFailure(exit, TransportFrameTooLargeError)
+  expect(getFailure(exit)).toMatchObject({ operation: "test.receive" })
+})
+
+test("makeFramedSocketConnection finalizes partial frames on clean socket close", async () => {
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const test = yield* makeTestSocket([new Uint8Array([0, 0])], {
+          cleanCloseAfterChunks: true
+        })
+        const connection = yield* makeFramedSocketConnection(test.socket, {}, "test")
+
+        return yield* connection.receive.pipe(Stream.runCollect)
+      })
+    )
+  )
+
+  expectFailure(exit, TransportFrameTruncatedError)
+  expect(getFailure(exit)).toMatchObject({ operation: "test.receive" })
+})
+
+test("makeFramedSocketConnection fails connect when the socket fails before opening", async () => {
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const test = yield* makeTestSocket([], { failOpen: true })
+
+        return yield* makeFramedSocketConnection(test.socket, {}, "test").pipe(
+          Effect.timeout("50 millis")
+        )
+      })
+    )
+  )
+
+  expectFailure(exit, TransportReadError)
+  expect(getFailure(exit)).toMatchObject({ operation: "test.receive" })
 })
 
 test("Transport service frames and unframes length-prefixed payloads", async () => {
@@ -307,7 +406,7 @@ test("in-memory transport pair accepts bounded queue capacity", async () => {
   const [left, right] = await Effect.runPromise(makeInMemoryTransportPair({ queueCapacity: 1 }))
 
   await Effect.runPromise(left.send(new Uint8Array([0x68, 0x69])))
-  const blockedSecond = await Effect.runFork(left.send(new Uint8Array([0x6f, 0x6b])))
+  const blockedSecond = Effect.runFork(left.send(new Uint8Array([0x6f, 0x6b])))
   const isStillBlocked = await Promise.race([
     Effect.runPromise(Fiber.join(blockedSecond)).then(() => false),
     new Promise<boolean>((resolve) => {
@@ -353,55 +452,97 @@ test("in-memory transport rejects sends after close", async () => {
   await Effect.runPromise(right.close())
 })
 
-test("connection close stops receives with a typed closed failure", async () => {
-  const transport = createFramedTransport(chunks(), () => {
-    return
-  })
-  const connection = makeConnection(transport, "test")
-
-  await Effect.runPromise(connection.close())
-  const exit = await Effect.runPromiseExit(
-    connection.receive.pipe(Stream.take(1), Stream.runCollect)
-  )
-
-  expectFailure(exit, TransportClosedError)
-})
-
 test("connection close reports adapter close failures", async () => {
-  const connection = makeConnection(
-    {
-      send: async () => {
-        return
-      },
-      recv: async () => null,
-      close: async () => {
-        throw new Error("close failed")
-      }
-    },
-    "test"
-  )
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const test = yield* makeTestSocket([], { waitForClose: true, failClose: true })
+        const connection = yield* makeFramedSocketConnection(test.socket, {}, "test")
 
-  const exit = await Effect.runPromiseExit(connection.close())
+        yield* connection.close()
+      })
+    )
+  )
 
   expectFailure(exit, TransportCloseError)
   expect(getFailure(exit)).toMatchObject({ operation: "test.close" })
 })
 
-async function* chunks(...values: Uint8Array[]): AsyncIterable<Uint8Array> {
-  for (const value of values) {
-    yield value
-  }
-}
+const makeTestSocket = (
+  inputChunks: ReadonlyArray<Uint8Array>,
+  options: {
+    readonly waitForClose?: boolean
+    readonly failClose?: boolean
+    readonly failRead?: boolean
+    readonly failOpen?: boolean
+    readonly cleanCloseAfterChunks?: boolean
+  } = {}
+): Effect.Effect<{ readonly socket: Socket.Socket; readonly written: Uint8Array[] }> =>
+  Effect.gen(function* () {
+    const closeSignal = yield* Deferred.make<void>()
+    const written: Uint8Array[] = []
+    const socket = Socket.make({
+      runRaw: (handler, runOptions) =>
+        Effect.gen(function* () {
+          if (options.failOpen === true) {
+            return yield* Effect.fail(
+              new Socket.SocketError({
+                reason: new Socket.SocketOpenError({
+                  kind: "Unknown",
+                  cause: new Error("open failed")
+                })
+              })
+            )
+          }
+          if (runOptions?.onOpen) {
+            yield* runOptions.onOpen
+          }
+          if (options.failRead === true) {
+            return yield* Effect.fail(
+              new Socket.SocketError({
+                reason: new Socket.SocketReadError({ cause: new Error("read failed") })
+              })
+            )
+          }
+          for (const chunk of inputChunks) {
+            const result = handler(chunk)
+            if (Effect.isEffect(result)) {
+              yield* result
+            }
+          }
+          if (options.cleanCloseAfterChunks === true) {
+            return yield* Effect.fail(
+              new Socket.SocketError({
+                reason: new Socket.SocketCloseError({ code: 1000 })
+              })
+            )
+          }
+          if (options.waitForClose === true) {
+            yield* Deferred.await(closeSignal)
+          }
+        }),
+      writer: Effect.acquireRelease(
+        Effect.succeed((chunk: Uint8Array | string | Socket.CloseEvent) => {
+          if (Socket.isCloseEvent(chunk)) {
+            if (options.failClose === true) {
+              return Effect.fail(
+                new Socket.SocketError({
+                  reason: new Socket.SocketWriteError({ cause: new Error("close failed") })
+                })
+              )
+            }
+            return Deferred.succeed(closeSignal, undefined).pipe(Effect.asVoid)
+          }
+          return Effect.sync(() => {
+            written.push(typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk)
+          })
+        }),
+        () => Effect.void
+      )
+    })
 
-const blockedChunks = (): AsyncIterable<Uint8Array> => ({
-  [Symbol.asyncIterator]: () => ({
-    next: () =>
-      new Promise<IteratorResult<Uint8Array>>(() => {
-        return
-      }),
-    return: () => Promise.resolve({ done: true, value: undefined })
+    return { socket, written }
   })
-})
 
 function expectFailure<E>(
   exit: Exit.Exit<unknown, E>,

@@ -13,10 +13,15 @@ import type {
   HostProtocolRequestEnvelope,
   HostProtocolResponseEnvelope
 } from "@effect-desktop/bridge"
-import { Effect } from "effect"
+import { Effect, Option, Stream } from "effect"
 
 import { AuditEvent, emitAuditEvent, type AuditEventsApi } from "./audit-events.js"
-import { FrameTooLargeError, FrameTruncatedError, type FramedTransport } from "./transport.js"
+import {
+  TransportFrameTooLargeError,
+  TransportFrameTruncatedError,
+  type TransportConnection,
+  type TransportError
+} from "./transport.js"
 
 export interface HostProtocolExchangeOptions {
   readonly audit?: AuditEventsApi
@@ -29,7 +34,7 @@ interface ResolvedHostProtocolExchangeOptions {
 }
 
 export const createHostProtocolExchange = (
-  transport: FramedTransport,
+  transport: TransportConnection,
   options: HostProtocolExchangeOptions = {}
 ): HostHandshakeExchange => ({
   request: (request) =>
@@ -42,29 +47,25 @@ export const createHostProtocolExchange = (
 })
 
 const sendRequest = (
-  transport: FramedTransport,
+  transport: TransportConnection,
   request: HostProtocolRequestEnvelope
 ): Effect.Effect<void, HostProtocolError, never> =>
   encodeHostProtocolFrame(request, request.method).pipe(
-    Effect.flatMap((frame) =>
-      Effect.tryPromise({
-        try: () => transport.send(frame),
-        catch: (error) => classifyTransportError(error, "FramedTransport.send")
-      })
-    )
+    Effect.flatMap((frame) => transport.send(frame).pipe(Effect.mapError(classifyTransportError)))
   )
 
 const receiveResponseFrame = (
-  transport: FramedTransport
+  transport: TransportConnection
 ): Effect.Effect<Uint8Array, HostProtocolError, never> =>
-  Effect.tryPromise({
-    try: () => transport.recv(),
-    catch: (error) => classifyTransportError(error, "FramedTransport.recv")
-  }).pipe(
-    Effect.flatMap((frame) =>
-      frame === null
-        ? Effect.fail(makeHostProtocolHostUnavailableError("FramedTransport.recv"))
-        : Effect.succeed(frame)
+  transport.receive.pipe(
+    Stream.runHead,
+    Effect.mapError(classifyTransportError),
+    Effect.flatMap(
+      Option.match({
+        onNone: () =>
+          Effect.fail(makeHostProtocolHostUnavailableError("TransportConnection.receive")),
+        onSome: Effect.succeed
+      })
     )
   )
 
@@ -199,16 +200,16 @@ const resolveOptions = (
   nextTraceId: options.nextTraceId ?? (() => `trace-${globalThis.crypto.randomUUID()}`)
 })
 
-const classifyTransportError = (error: unknown, operation: string): HostProtocolError => {
-  if (error instanceof FrameTooLargeError) {
-    return makeHostProtocolFrameTooLargeError(error.size, error.max, operation)
+const classifyTransportError = (error: TransportError): HostProtocolError => {
+  if (error instanceof TransportFrameTooLargeError) {
+    return makeHostProtocolFrameTooLargeError(error.size, error.max, error.operation)
   }
 
-  if (error instanceof FrameTruncatedError) {
-    return makeHostProtocolBinaryDecodeError(error.message, operation)
+  if (error instanceof TransportFrameTruncatedError) {
+    return makeHostProtocolBinaryDecodeError(error.message, error.operation)
   }
 
-  return makeHostProtocolHostUnavailableError(operation)
+  return makeHostProtocolHostUnavailableError(error.operation)
 }
 
 const formatUnknownError = (error: unknown): string => {

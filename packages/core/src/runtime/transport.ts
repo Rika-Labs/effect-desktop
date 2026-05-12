@@ -1,4 +1,17 @@
-import { Cause, Context, Data, Effect, Fiber, Option, Queue, Schema, Stream } from "effect"
+import {
+  Cause,
+  Context,
+  Data,
+  Deferred,
+  Effect,
+  Fiber,
+  Option,
+  Queue,
+  Schema,
+  Scope,
+  Stream
+} from "effect"
+import { Socket } from "effect/unstable/socket"
 
 export const MAX_FRAME_BYTES = 4 * 1024 * 1024
 const DEFAULT_IN_MEMORY_TRANSPORT_QUEUE_CAPACITY = 16
@@ -71,6 +84,11 @@ export class TransportWriteError extends Data.TaggedError("TransportWriteFailed"
   readonly cause: Option.Option<unknown>
 }> {}
 
+export class TransportReadError extends Data.TaggedError("TransportReadFailed")<{
+  readonly operation: string
+  readonly cause: Option.Option<unknown>
+}> {}
+
 export class TransportCloseError extends Data.TaggedError("TransportCloseFailed")<{
   readonly operation: string
   readonly cause: Option.Option<unknown>
@@ -82,6 +100,7 @@ export type TransportError =
   | TransportFrameTruncatedError
   | TransportClosedError
   | TransportWriteError
+  | TransportReadError
   | TransportCloseError
 
 export interface TransportConnection {
@@ -111,7 +130,7 @@ export interface TransportApi {
   ) => Stream.Stream<Uint8Array, TransportError, never>
   readonly connect: (
     input: TransportConnectInput
-  ) => Effect.Effect<TransportConnection, TransportError, never>
+  ) => Effect.Effect<TransportConnection, TransportError, Socket.Socket | Scope.Scope>
 }
 
 export class FrameTooLargeError extends Error {
@@ -150,14 +169,8 @@ export class InvalidFrameLimitError extends Error {
   }
 }
 
-export interface FramedTransportOptions {
+export interface FrameCodecOptions {
   readonly maxFrameBytes?: number
-}
-
-export interface FramedTransport {
-  readonly send: (payload: Uint8Array) => Promise<void>
-  readonly recv: () => Promise<Uint8Array | null>
-  readonly close: () => Promise<void>
 }
 
 export const makeTransport = (): Effect.Effect<TransportApi, never, never> =>
@@ -178,7 +191,8 @@ export const makeTransport = (): Effect.Effect<TransportApi, never, never> =>
       connect: (input: TransportConnectInput) =>
         Effect.gen(function* () {
           const decoded = yield* decodeConnectInput(input, "Transport.connect")
-          return makeConnection(createBunStdioTransport(decoded), "Transport.connect")
+          const socket = yield* Socket.Socket.asEffect()
+          return yield* makeFramedSocketConnection(socket, decoded, "Transport.connect")
         }).pipe(Effect.withSpan("Transport.connect"))
     })
   )
@@ -187,10 +201,7 @@ export class Transport extends Context.Service<Transport, TransportApi>()("Trans
   make: makeTransport()
 }) {}
 
-export const encodeFrame = (
-  payload: Uint8Array,
-  options: FramedTransportOptions = {}
-): Uint8Array => {
+export const encodeFrame = (payload: Uint8Array, options: FrameCodecOptions = {}): Uint8Array => {
   const maxFrameBytes = resolveMaxFrameBytes(options)
   if (payload.byteLength > maxFrameBytes) {
     throw new FrameTooLargeError(payload.byteLength, maxFrameBytes)
@@ -215,7 +226,7 @@ export class FrameDecoder {
   #headChunkIndex = 0
   #headChunkOffset = 0
 
-  constructor(options: FramedTransportOptions = {}) {
+  constructor(options: FrameCodecOptions = {}) {
     this.#maxFrameBytes = resolveMaxFrameBytes(options)
   }
 
@@ -316,112 +327,89 @@ export class FrameDecoder {
   }
 }
 
-export const createFramedTransport = (
-  input: AsyncIterable<Uint8Array>,
-  write: (chunk: Uint8Array) => Promise<void> | void,
-  options: FramedTransportOptions = {}
-): FramedTransport => {
-  const decoder = new FrameDecoder(options)
-  const inputIterator = input[Symbol.asyncIterator]()
-  const pendingFrames: Uint8Array[] = []
-  let releaseClosed: () => void = () => {
-    return
-  }
-  const closedSignal = new Promise<"closed">((resolve) => {
-    releaseClosed = () => resolve("closed")
-  })
-
-  let inputEnded = false
-  let closed = false
-
-  return {
-    send: async (payload) => {
-      if (closed) {
-        throw new Error("framed transport is closed")
+export const makeFramedSocketConnection = (
+  socket: Socket.Socket,
+  options: FrameCodecOptions = {},
+  operation = "Transport.socket"
+): Effect.Effect<TransportConnection, TransportError, Scope.Scope> =>
+  Effect.gen(function* () {
+    const write = yield* socket.writer
+    const opened = yield* Deferred.make<void, TransportError>()
+    const queue = yield* Queue.bounded<Uint8Array, TransportError | Cause.Done>(
+      DEFAULT_UNFRAME_STREAM_QUEUE_CAPACITY
+    )
+    const receiveOperation = `${operation}.receive`
+    const decoder = makeLengthPrefixedStreamingDecoder(options, receiveOperation)
+    let closed = false
+    const finishAndEndQueue = Effect.gen(function* () {
+      const frames = yield* decoder.finish()
+      for (const frame of frames) {
+        yield* Queue.offer(queue, frame)
       }
-      await write(encodeFrame(payload, options))
-    },
-    recv: async () => {
-      if (closed) {
-        return null
-      }
-
-      const pending = pendingFrames.shift()
-      if (pending !== undefined) {
-        return pending
-      }
-
-      while (!inputEnded && !closed) {
-        const next = await Promise.race([inputIterator.next(), closedSignal])
-        if (next === "closed") {
-          return null
-        }
-        if (next.done === true) {
-          inputEnded = true
-          decoder.finish()
-          return pendingFrames.shift() ?? null
-        }
-
-        pendingFrames.push(...decoder.push(next.value))
-        const decoded = pendingFrames.shift()
-        if (decoded !== undefined) {
-          return decoded
-        }
-      }
-
-      return null
-    },
-    close: async () => {
-      if (closed) {
-        return
-      }
-      closed = true
-      releaseClosed()
-      await inputIterator.return?.()
-    }
-  }
-}
-
-export const createBunStdioTransport = (options: FramedTransportOptions = {}): FramedTransport =>
-  createFramedTransport(
-    readableStreamToAsyncIterable(Bun.stdin.stream()),
-    async (chunk) => {
-      await Bun.write(Bun.stdout, chunk)
-    },
-    options
-  )
-
-export const makeConnection = (
-  transport: FramedTransport,
-  operation: string
-): TransportConnection =>
-  Object.freeze({
-    send: (payload: Uint8Array) =>
-      Effect.tryPromise({
-        try: () => transport.send(payload),
-        catch: (error) => mapTransportError(error, `${operation}.send`)
-      }),
-    receive: Stream.fromEffectRepeat(
-      Effect.tryPromise({
-        try: () => transport.recv(),
-        catch: (error) => mapTransportError(error, `${operation}.receive`)
-      }).pipe(
-        Effect.flatMap((frame) =>
-          frame === null
-            ? Effect.fail(new TransportClosedError({ operation: `${operation}.receive` }))
-            : Effect.succeed(frame)
-        )
+      yield* Deferred.complete(
+        opened,
+        Effect.fail(new TransportClosedError({ operation: receiveOperation }))
       )
-    ),
-    close: () =>
-      Effect.tryPromise({
-        try: () => transport.close(),
-        catch: (error) =>
-          new TransportCloseError({
-            operation: `${operation}.close`,
-            cause: Option.some(error)
-          })
-      })
+      yield* Queue.end(queue)
+    }).pipe(Effect.catch((error: TransportError) => failOpenAndQueue(opened, queue, error)))
+
+    const reader = yield* socket
+      .run<void, TransportError, never>(
+        (chunk) =>
+          decoder
+            .push(chunk)
+            .pipe(
+              Effect.flatMap((frames) =>
+                Effect.forEach(frames, (frame) => Queue.offer(queue, frame), { discard: true })
+              )
+            ),
+        { onOpen: Deferred.succeed(opened, undefined).pipe(Effect.asVoid) }
+      )
+      .pipe(
+        Effect.andThen(finishAndEndQueue),
+        Effect.catch((error: Socket.SocketError | TransportError) =>
+          isCleanSocketClose(error)
+            ? finishAndEndQueue
+            : failOpenAndQueue(opened, queue, mapSocketReadError(error, receiveOperation))
+        ),
+        Effect.forkScoped
+      )
+
+    yield* Deferred.await(opened)
+
+    return Object.freeze({
+      send: (payload: Uint8Array) =>
+        Effect.gen(function* () {
+          if (closed) {
+            return yield* Effect.fail(new TransportClosedError({ operation: `${operation}.send` }))
+          }
+          const frame = yield* framePayload(
+            "length-prefixed",
+            payload,
+            options,
+            `${operation}.send`
+          )
+          yield* write(frame).pipe(
+            Effect.mapError((error) => mapSocketWriteError(error, `${operation}.send`))
+          )
+        }),
+      receive: Stream.fromQueue(queue),
+      close: () =>
+        Effect.gen(function* () {
+          if (closed) {
+            return
+          }
+          closed = true
+          yield* Queue.fail(queue, new TransportClosedError({ operation: receiveOperation }))
+          yield* write(new Socket.CloseEvent(1000)).pipe(
+            Effect.mapError((error) => mapSocketCloseError(error, `${operation}.close`)),
+            Effect.catchTag("TransportCloseFailed", (error) =>
+              Fiber.interrupt(reader).pipe(Effect.andThen(Effect.fail(error)))
+            )
+          )
+          yield* Fiber.interrupt(reader)
+        })
+    })
   })
 
 export const makeInMemoryTransportPair = (
@@ -476,28 +464,7 @@ const makeQueuedConnection = (
   })
 }
 
-const readableStreamToAsyncIterable = (
-  stream: ReadableStream<Uint8Array>
-): AsyncIterable<Uint8Array> => ({
-  async *[Symbol.asyncIterator]() {
-    const reader = stream.getReader()
-
-    try {
-      while (true) {
-        const result = await reader.read()
-        if (result.done === true) {
-          return
-        }
-
-        yield result.value
-      }
-    } finally {
-      reader.releaseLock()
-    }
-  }
-})
-
-const resolveMaxFrameBytes = (options: FramedTransportOptions): number => {
+const resolveMaxFrameBytes = (options: FrameCodecOptions): number => {
   const maxFrameBytes = options.maxFrameBytes ?? MAX_FRAME_BYTES
   if (!Number.isSafeInteger(maxFrameBytes) || maxFrameBytes < 0 || maxFrameBytes > U32_MAX) {
     throw new InvalidFrameLimitError(maxFrameBytes)
@@ -512,7 +479,7 @@ const resolveQueueCapacity = (value: number | undefined, fallback: number): numb
 const framePayload = (
   scheme: TransportScheme,
   payload: Uint8Array,
-  options: FramedTransportOptions,
+  options: FrameCodecOptions,
   operation: string
 ): Effect.Effect<Uint8Array, TransportError, never> =>
   Effect.try({
@@ -526,7 +493,7 @@ const framePayload = (
 const unframeBytes = (
   scheme: TransportScheme,
   bytes: Uint8Array,
-  options: FramedTransportOptions,
+  options: FrameCodecOptions,
   operation: string
 ): Effect.Effect<readonly Uint8Array[], TransportError, never> =>
   Effect.try({
@@ -586,7 +553,7 @@ const makeUnframeStream = (
 
 const decodeLengthPrefixedBytes = (
   bytes: Uint8Array,
-  options: FramedTransportOptions
+  options: FrameCodecOptions
 ): readonly Uint8Array[] => {
   const decoder = new FrameDecoder(options)
   const frames = decoder.push(bytes)
@@ -600,14 +567,15 @@ interface StreamingFrameDecoder {
 }
 
 const makeLengthPrefixedStreamingDecoder = (
-  options: FramedTransportOptions
+  options: FrameCodecOptions,
+  operation = "Transport.unframeStream"
 ): StreamingFrameDecoder => {
   const decoder = new FrameDecoder(options)
   return {
     push: (chunk) =>
       Effect.try({
         try: () => decoder.push(chunk),
-        catch: (error) => mapTransportError(error, "Transport.unframeStream")
+        catch: (error) => mapTransportError(error, operation)
       }),
     finish: () =>
       Effect.try({
@@ -615,18 +583,21 @@ const makeLengthPrefixedStreamingDecoder = (
           decoder.finish()
           return []
         },
-        catch: (error) => mapTransportError(error, "Transport.unframeStream")
+        catch: (error) => mapTransportError(error, operation)
       })
   }
 }
 
-const makeJsonRpcStreamingDecoder = (options: FramedTransportOptions): StreamingFrameDecoder => {
+const makeJsonRpcStreamingDecoder = (
+  options: FrameCodecOptions,
+  operation = "Transport.unframeStream"
+): StreamingFrameDecoder => {
   const decoder = new JsonRpcFrameDecoder(options)
   return {
     push: (chunk) =>
       Effect.try({
         try: () => decoder.push(chunk),
-        catch: (error) => mapTransportError(error, "Transport.unframeStream")
+        catch: (error) => mapTransportError(error, operation)
       }),
     finish: () =>
       Effect.try({
@@ -634,15 +605,12 @@ const makeJsonRpcStreamingDecoder = (options: FramedTransportOptions): Streaming
           decoder.finish()
           return []
         },
-        catch: (error) => mapTransportError(error, "Transport.unframeStream")
+        catch: (error) => mapTransportError(error, operation)
       })
   }
 }
 
-const encodeJsonRpcFrame = (
-  payload: Uint8Array,
-  options: FramedTransportOptions = {}
-): Uint8Array => {
+const encodeJsonRpcFrame = (payload: Uint8Array, options: FrameCodecOptions = {}): Uint8Array => {
   const maxFrameBytes = resolveMaxFrameBytes(options)
   if (payload.byteLength > maxFrameBytes) {
     throw new FrameTooLargeError(payload.byteLength, maxFrameBytes)
@@ -657,7 +625,7 @@ const encodeJsonRpcFrame = (
 
 const decodeJsonRpcFrames = (
   bytes: Uint8Array,
-  options: FramedTransportOptions = {}
+  options: FrameCodecOptions = {}
 ): readonly Uint8Array[] => {
   const decoder = new JsonRpcFrameDecoder(options)
   const frames = decoder.push(bytes)
@@ -669,7 +637,7 @@ class JsonRpcFrameDecoder {
   readonly #maxFrameBytes: number
   #buffer: Uint8Array<ArrayBufferLike> = new Uint8Array()
 
-  constructor(options: FramedTransportOptions = {}) {
+  constructor(options: FrameCodecOptions = {}) {
     this.#maxFrameBytes = resolveMaxFrameBytes(options)
   }
 
@@ -918,6 +886,45 @@ const mapTransportError = (error: unknown, operation: string): TransportError =>
 
   return new TransportWriteError({ operation, cause: Option.some(error) })
 }
+
+const isCleanSocketClose = (error: unknown): boolean =>
+  Socket.SocketError.is(error) &&
+  error.reason._tag === "SocketCloseError" &&
+  error.reason.code === 1000
+
+const isTransportError = (error: unknown): error is TransportError =>
+  error instanceof TransportInvalidArgumentError ||
+  error instanceof TransportFrameTooLargeError ||
+  error instanceof TransportFrameTruncatedError ||
+  error instanceof TransportClosedError ||
+  error instanceof TransportWriteError ||
+  error instanceof TransportReadError ||
+  error instanceof TransportCloseError
+
+const failOpenAndQueue = (
+  opened: Deferred.Deferred<void, TransportError>,
+  queue: Queue.Queue<Uint8Array, TransportError | Cause.Done>,
+  error: TransportError
+): Effect.Effect<void> =>
+  Deferred.complete(opened, Effect.fail(error)).pipe(Effect.andThen(Queue.fail(queue, error)))
+
+const mapSocketReadError = (error: unknown, operation: string): TransportError =>
+  isTransportError(error)
+    ? error
+    : isCleanSocketClose(error)
+      ? new TransportClosedError({ operation })
+      : new TransportReadError({ operation, cause: Option.some(error) })
+
+const mapSocketWriteError = (error: unknown, operation: string): TransportError =>
+  isCleanSocketClose(error)
+    ? new TransportClosedError({ operation })
+    : new TransportWriteError({ operation, cause: Option.some(error) })
+
+const mapSocketCloseError = (error: unknown, operation: string): TransportCloseError =>
+  new TransportCloseError({
+    operation,
+    cause: Option.some(error)
+  })
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {

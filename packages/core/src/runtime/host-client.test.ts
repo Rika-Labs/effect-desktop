@@ -8,18 +8,26 @@ import {
   HostProtocolResponseEnvelope,
   encodeHostProtocolEnvelope
 } from "@effect-desktop/bridge"
-import { Effect, Exit } from "effect"
+import { Effect, Exit, Stream } from "effect"
 
 import { AuditEvent, type AuditEventsApi } from "./audit-events.js"
 import { createHostProtocolExchange } from "./host-client.js"
-import { FrameTooLargeError, FrameTruncatedError, type FramedTransport } from "./transport.js"
+import {
+  TransportFrameTooLargeError,
+  TransportFrameTruncatedError,
+  type TransportConnection
+} from "./transport.js"
 
 test("host protocol exchange maps oversized received frames to FrameTooLarge", async () => {
   const exchange = createHostProtocolExchange(
     transport({
-      recv: async () => {
-        throw new FrameTooLargeError(5, 4)
-      }
+      receive: Stream.fail(
+        new TransportFrameTooLargeError({
+          operation: "TransportConnection.receive",
+          size: 5,
+          max: 4
+        })
+      )
     })
   )
 
@@ -28,7 +36,7 @@ test("host protocol exchange maps oversized received frames to FrameTooLarge", a
   expectFailure(exit, HostProtocolFrameTooLargeError)
   expect(getFailure(exit)).toMatchObject({
     limitBytes: 4,
-    operation: "FramedTransport.recv",
+    operation: "TransportConnection.receive",
     sizeBytes: 5,
     tag: "FrameTooLarge"
   })
@@ -37,9 +45,14 @@ test("host protocol exchange maps oversized received frames to FrameTooLarge", a
 test("host protocol exchange maps truncated received frames to BinaryDecodeError", async () => {
   const exchange = createHostProtocolExchange(
     transport({
-      recv: async () => {
-        throw new FrameTruncatedError("body", 8, 2)
-      }
+      receive: Stream.fail(
+        new TransportFrameTruncatedError({
+          operation: "TransportConnection.receive",
+          stage: "body",
+          expected: 8,
+          read: 2
+        })
+      )
     })
   )
 
@@ -47,7 +60,7 @@ test("host protocol exchange maps truncated received frames to BinaryDecodeError
 
   expectFailure(exit, HostProtocolBinaryDecodeError)
   expect(getFailure(exit)).toMatchObject({
-    operation: "FramedTransport.recv",
+    operation: "TransportConnection.receive",
     tag: "BinaryDecodeError"
   })
 })
@@ -55,7 +68,7 @@ test("host protocol exchange maps truncated received frames to BinaryDecodeError
 test("host protocol exchange maps closed host transport to HostUnavailable", async () => {
   const exchange = createHostProtocolExchange(
     transport({
-      recv: async () => null
+      receive: Stream.empty
     })
   )
 
@@ -63,7 +76,7 @@ test("host protocol exchange maps closed host transport to HostUnavailable", asy
 
   expectFailure(exit, HostProtocolHostUnavailableError)
   expect(getFailure(exit)).toMatchObject({
-    operation: "FramedTransport.recv",
+    operation: "TransportConnection.receive",
     tag: "HostUnavailable"
   })
 })
@@ -71,7 +84,7 @@ test("host protocol exchange maps closed host transport to HostUnavailable", asy
 test("host protocol exchange maps malformed JSON frames to BinaryDecodeError", async () => {
   const exchange = createHostProtocolExchange(
     transport({
-      recv: async () => new TextEncoder().encode("{")
+      receive: Stream.make(new TextEncoder().encode("{"))
     })
   )
 
@@ -96,7 +109,7 @@ test("host protocol exchange rejects invalid UTF-8 in response frames", async ()
 
   const exchange = createHostProtocolExchange(
     transport({
-      recv: async () => frame
+      receive: Stream.make(frame)
     })
   )
 
@@ -112,7 +125,7 @@ test("host protocol exchange rejects invalid UTF-8 in response frames", async ()
 test("host protocol exchange preserves decoded envelope shape failures as InvalidOutput", async () => {
   const exchange = createHostProtocolExchange(
     transport({
-      recv: async () => new TextEncoder().encode(JSON.stringify({ kind: "response" }))
+      receive: Stream.make(new TextEncoder().encode(JSON.stringify({ kind: "response" })))
     })
   )
 
@@ -128,7 +141,7 @@ test("host protocol exchange preserves decoded envelope shape failures as Invali
 test("host protocol exchange preserves semantic response mismatches as InvalidOutput", async () => {
   const exchange = createHostProtocolExchange(
     transport({
-      recv: async () =>
+      receive: Stream.make(
         new TextEncoder().encode(
           JSON.stringify(
             encodeHostProtocolEnvelope(
@@ -141,6 +154,7 @@ test("host protocol exchange preserves semantic response mismatches as InvalidOu
             )
           )
         )
+      )
     })
   )
 
@@ -156,7 +170,7 @@ test("host protocol exchange preserves semantic response mismatches as InvalidOu
 test("host protocol exchange rejects response trace id mismatches", async () => {
   const exchange = createHostProtocolExchange(
     transport({
-      recv: async () =>
+      receive: Stream.make(
         new TextEncoder().encode(
           JSON.stringify(
             encodeHostProtocolEnvelope(
@@ -169,6 +183,7 @@ test("host protocol exchange rejects response trace id mismatches", async () => 
             )
           )
         )
+      )
     })
   )
 
@@ -185,7 +200,7 @@ test("host protocol exchange auto-mints missing host response trace IDs and audi
   const rows: AuditEvent[] = []
   const exchange = createHostProtocolExchange(
     transport({
-      recv: async () =>
+      receive: Stream.make(
         new TextEncoder().encode(
           JSON.stringify({
             kind: "response",
@@ -193,6 +208,7 @@ test("host protocol exchange auto-mints missing host response trace IDs and audi
             timestamp: 9
           })
         )
+      )
     }),
     {
       audit: memoryAudit(rows),
@@ -220,7 +236,7 @@ test("host protocol exchange rejects invalid minted trace IDs before auditing", 
   const rows: AuditEvent[] = []
   const exchange = createHostProtocolExchange(
     transport({
-      recv: async () =>
+      receive: Stream.make(
         new TextEncoder().encode(
           JSON.stringify({
             kind: "response",
@@ -228,6 +244,7 @@ test("host protocol exchange rejects invalid minted trace IDs before auditing", 
             timestamp: 9
           })
         )
+      )
     }),
     {
       audit: memoryAudit(rows),
@@ -248,9 +265,14 @@ test("host protocol exchange rejects invalid minted trace IDs before auditing", 
 test("host protocol exchange maps oversized outbound frames to FrameTooLarge", async () => {
   const exchange = createHostProtocolExchange(
     transport({
-      send: async () => {
-        throw new FrameTooLargeError(9, 8)
-      }
+      send: () =>
+        Effect.fail(
+          new TransportFrameTooLargeError({
+            operation: "TransportConnection.send",
+            size: 9,
+            max: 8
+          })
+        )
     })
   )
 
@@ -259,7 +281,7 @@ test("host protocol exchange maps oversized outbound frames to FrameTooLarge", a
   expectFailure(exit, HostProtocolFrameTooLargeError)
   expect(getFailure(exit)).toMatchObject({
     limitBytes: 8,
-    operation: "FramedTransport.send",
+    operation: "TransportConnection.send",
     sizeBytes: 9,
     tag: "FrameTooLarge"
   })
@@ -274,11 +296,9 @@ const request = (): HostProtocolRequestEnvelope =>
     traceId: "trace-1"
   })
 
-const transport = (overrides: Partial<FramedTransport>): FramedTransport => ({
-  send: async () => {
-    return
-  },
-  recv: async () =>
+const transport = (overrides: Partial<TransportConnection>): TransportConnection => ({
+  send: () => Effect.void,
+  receive: Stream.make(
     new TextEncoder().encode(
       JSON.stringify(
         encodeHostProtocolEnvelope(
@@ -290,10 +310,9 @@ const transport = (overrides: Partial<FramedTransport>): FramedTransport => ({
           })
         )
       )
-    ),
-  close: async () => {
-    return
-  },
+    )
+  ),
+  close: () => Effect.void,
   ...overrides
 })
 
