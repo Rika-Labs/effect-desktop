@@ -1,5 +1,10 @@
 import { access, readdir, readFile } from "node:fs/promises"
 import { join, relative, sep } from "node:path"
+import {
+  dirname as posixDirname,
+  join as posixJoin,
+  normalize as posixNormalize
+} from "node:path/posix"
 
 import { Data, Effect } from "effect"
 import ts from "typescript"
@@ -151,14 +156,31 @@ export const runLayerFirstCheck = (
       options.publicBoundaryAllowlist ?? DEFAULT_PUBLIC_BOUNDARY_ALLOWLIST
     )
     const files = yield* discoverSourceFiles(options.cwd, sourceRoots)
+    const sourceTexts = new Map<string, string>()
     const violations: LayerFirstViolation[] = []
 
     for (const path of files) {
       const text = yield* readText(path)
       const relativePath = toRepoPath(options.cwd, path)
+      sourceTexts.set(relativePath, text)
+    }
+
+    for (const path of files) {
+      const relativePath = toRepoPath(options.cwd, path)
+      const text = sourceTexts.get(relativePath)
+      if (text === undefined) {
+        continue
+      }
       const isAllowedEdge = allowedEdges.has(relativePath)
       violations.push(
-        ...scanSourceFile(relativePath, text, isAllowedEdge, promiseAllowlist, boundaryAllowlist)
+        ...scanSourceFile(
+          relativePath,
+          text,
+          sourceTexts,
+          isAllowedEdge,
+          promiseAllowlist,
+          boundaryAllowlist
+        )
       )
     }
 
@@ -219,6 +241,7 @@ export const formatLayerFirstError = (
 const scanSourceFile = (
   path: string,
   text: string,
+  sourceTexts: ReadonlyMap<string, string>,
   isAllowedEdge: boolean,
   promiseAllowlist: ReadonlySet<string>,
   boundaryAllowlist: ReadonlySet<string>
@@ -228,7 +251,7 @@ const scanSourceFile = (
     violations.push(...scanForbiddenPatterns(path, text))
   }
   violations.push(...scanPublicBoundaryClasses(path, text, boundaryAllowlist))
-  violations.push(...scanPublicPromiseSource(path, text, promiseAllowlist))
+  violations.push(...scanPublicPromiseSource(path, text, sourceTexts, promiseAllowlist))
   return violations
 }
 
@@ -269,6 +292,7 @@ const scanForbiddenPatterns = (path: string, text: string): readonly LayerFirstV
 const scanPublicPromiseSource = (
   path: string,
   text: string,
+  sourceTexts: ReadonlyMap<string, string>,
   allowlist: ReadonlySet<string>
 ): readonly LayerFirstViolation[] => {
   if (!path.endsWith("/src/index.ts") && !path.endsWith("/src/index.tsx")) {
@@ -279,22 +303,20 @@ const scanPublicPromiseSource = (
     return []
   }
   const violations: LayerFirstViolation[] = []
-  const sourceFile = parseSource(path, text)
-  const exports = exportedNames(sourceFile)
-  for (const statement of sourceFile.statements) {
-    for (const symbol of promiseReturningExportedSymbols(statement, sourceFile, exports)) {
-      const key = `${packageName}:${symbol.name}`
-      if (allowlist.has(key)) {
-        continue
-      }
-      violations.push({
-        kind: "public-promise-api",
-        path,
-        line: lineForOffset(text, symbol.offset),
-        symbol: key,
-        message: "Public effectful APIs should return Effect.Effect<A, E, R>, not Promise<A>."
-      })
+  const reportedSymbols = new Set<string>()
+  for (const symbol of collectPromiseExports(path, text, sourceTexts, new Set())) {
+    const key = `${packageName}:${symbol.name}`
+    if (allowlist.has(key) || reportedSymbols.has(key)) {
+      continue
     }
+    reportedSymbols.add(key)
+    violations.push({
+      kind: "public-promise-api",
+      path: symbol.path,
+      line: lineForOffset(sourceTexts.get(symbol.path) ?? text, symbol.offset),
+      symbol: key,
+      message: "Public effectful APIs should return Effect.Effect<A, E, R>, not Promise<A>."
+    })
   }
   return violations
 }
@@ -399,6 +421,7 @@ const parseSnapshot = (
 
 interface ExportedPromiseSymbol {
   readonly name: string
+  readonly path: string
   readonly offset: number
 }
 
@@ -412,6 +435,7 @@ const parseSource = (path: string, text: string): ts.SourceFile =>
   )
 
 const promiseReturningExportedSymbols = (
+  path: string,
   statement: ts.Statement,
   sourceFile: ts.SourceFile,
   exports: ReadonlySet<string>
@@ -427,6 +451,7 @@ const promiseReturningExportedSymbols = (
     return [
       {
         name,
+        path,
         offset: statement.getStart(sourceFile)
       }
     ]
@@ -447,6 +472,7 @@ const promiseReturningExportedSymbols = (
       ) {
         symbols.push({
           name: declaration.name.text,
+          path,
           offset: declaration.getStart(sourceFile)
         })
       }
@@ -454,6 +480,103 @@ const promiseReturningExportedSymbols = (
     return symbols
   }
   return []
+}
+
+const collectPromiseExports = (
+  path: string,
+  text: string,
+  sourceTexts: ReadonlyMap<string, string>,
+  visited: Set<string>
+): readonly ExportedPromiseSymbol[] => {
+  if (visited.has(path)) {
+    return []
+  }
+  visited.add(path)
+
+  const sourceFile = parseSource(path, text)
+  const exports = exportedNames(sourceFile)
+  const symbols: ExportedPromiseSymbol[] = []
+
+  for (const statement of sourceFile.statements) {
+    symbols.push(...promiseReturningExportedSymbols(path, statement, sourceFile, exports))
+    symbols.push(
+      ...promiseExportsFromReExportDeclaration(path, statement, sourceFile, sourceTexts, visited)
+    )
+  }
+
+  visited.delete(path)
+  return symbols
+}
+
+const promiseExportsFromReExportDeclaration = (
+  path: string,
+  statement: ts.Statement,
+  sourceFile: ts.SourceFile,
+  sourceTexts: ReadonlyMap<string, string>,
+  visited: Set<string>
+): readonly ExportedPromiseSymbol[] => {
+  if (
+    !ts.isExportDeclaration(statement) ||
+    statement.moduleSpecifier === undefined ||
+    !ts.isStringLiteral(statement.moduleSpecifier)
+  ) {
+    return []
+  }
+
+  const targetPath = resolveLocalModulePath(path, statement.moduleSpecifier.text, sourceTexts)
+  if (targetPath === undefined) {
+    return []
+  }
+  const targetText = sourceTexts.get(targetPath)
+  if (targetText === undefined) {
+    return []
+  }
+
+  const targetSymbols = collectPromiseExports(targetPath, targetText, sourceTexts, visited)
+  if (statement.exportClause === undefined) {
+    return targetSymbols
+      .filter((symbol) => symbol.name !== "default")
+      .map((symbol) => ({
+        ...symbol,
+        path,
+        offset: statement.getStart(sourceFile)
+      }))
+  }
+  if (!ts.isNamedExports(statement.exportClause)) {
+    return []
+  }
+
+  const symbols: ExportedPromiseSymbol[] = []
+  for (const element of statement.exportClause.elements) {
+    const importedName = element.propertyName?.text ?? element.name.text
+    const exportedName = element.name.text
+    const targetSymbol = targetSymbols.find((symbol) => symbol.name === importedName)
+    if (targetSymbol !== undefined) {
+      symbols.push({
+        name: exportedName,
+        path,
+        offset: statement.getStart(sourceFile)
+      })
+    }
+  }
+  return symbols
+}
+
+const resolveLocalModulePath = (
+  fromPath: string,
+  moduleSpecifier: string,
+  sourceTexts: ReadonlyMap<string, string>
+): string | undefined => {
+  if (!moduleSpecifier.startsWith(".")) {
+    return undefined
+  }
+
+  const base = posixNormalize(posixJoin(posixDirname(fromPath), moduleSpecifier))
+  const candidates = SOURCE_EXTENSIONS.flatMap((extension) => [
+    `${base}${extension}`,
+    posixJoin(base, `index${extension}`)
+  ])
+  return candidates.find((candidate) => sourceTexts.has(candidate))
 }
 
 const exportedNames = (sourceFile: ts.SourceFile): ReadonlySet<string> => {

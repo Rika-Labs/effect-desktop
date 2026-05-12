@@ -199,6 +199,36 @@ test("Layer-first check rejects re-exported public Promise API signatures", asyn
   expectViolation(exit, "public-promise-api")
 })
 
+test("Layer-first check rejects public Promise APIs re-exported from local modules", async () => {
+  const options = await makeFixture({
+    ...packageFiles(`
+      export { loadUser } from "./api"
+    `),
+    "packages/fixture/src/api.ts": `
+      export const loadUser = async () => "user"
+    `
+  })
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-promise-api")
+})
+
+test("Layer-first check rejects public Promise APIs re-exported from export-star barrels", async () => {
+  const options = await makeFixture({
+    ...packageFiles(`
+      export * from "./api"
+    `),
+    "packages/fixture/src/api.ts": `
+      export const loadUser = async () => "user"
+    `
+  })
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-promise-api")
+})
+
 test("Layer-first check rejects public Promise signatures in API snapshots", async () => {
   const options = await makeFixture({
     ...packageFiles("export {}"),
