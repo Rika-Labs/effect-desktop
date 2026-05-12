@@ -25,8 +25,8 @@ import {
 import { makePermissionRegistry } from "./permission-registry.js"
 import {
   makeResourceRegistry,
+  type ManagedResourceHandle,
   type RegisterResourceInput,
-  type ResourceHandle,
   type ResourceId,
   type ResourceRegistryApi
 } from "./resources.js"
@@ -760,7 +760,7 @@ const firstRegisterStalledResourceRegistry = (
 
   const registerNow = <Kind extends string, State extends string>(
     input: RegisterResourceInput<Kind, State>
-  ): Effect.Effect<ResourceHandle<Kind, State>, never, never> =>
+  ): Effect.Effect<ManagedResourceHandle<Kind, State>, never, never> =>
     Effect.sync(() => {
       const id = input.id ?? ("generated-1" as ResourceId)
       const generation = generationById.get(id) ?? 0

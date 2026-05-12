@@ -3,7 +3,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  BridgeResourceHandleShape,
   type HostProtocolEventEnvelope,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
@@ -42,7 +41,7 @@ export type TrayError = HostProtocolError
 export const TrayCreate = trayRpc(
   "create",
   TrayCreateInput,
-  TrayResource.schema,
+  TrayResource,
   "native.invoke:Tray.create"
 )
 export const TraySetIcon = trayRpc(
@@ -298,7 +297,7 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
   })
 
 const toTrayHandle = (handle: TrayHandle): TrayHandle =>
-  new BridgeResourceHandleShape({
+  Object.freeze({
     kind: handle.kind,
     id: handle.id,
     generation: handle.generation,
@@ -354,7 +353,7 @@ const decodeTrayDestroyInput = (
 const validateDestroyTrayHandle = (
   input: TrayDestroyInput
 ): Effect.Effect<TrayDestroyInput, TrayError, never> =>
-  input.tray.kind === TrayResource.kind && input.tray.state === TrayResource.state
+  input.tray.kind === "tray" && input.tray.state === "open"
     ? Effect.succeed(input)
     : Effect.fail(
         makeHostProtocolInvalidArgumentError("tray", "must be an open tray handle", "Tray.destroy")

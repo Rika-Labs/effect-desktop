@@ -27,7 +27,8 @@ import {
   makePermissionRegistry,
   makeResourceRegistry,
   type AuditEventsApi,
-  type NormalizedCapability
+  type NormalizedCapability,
+  type ResourceId
 } from "@effect-desktop/core"
 import { Cause, Deferred, Effect, Exit, Fiber, Layer, Option, Queue, Schema, Stream } from "effect"
 
@@ -495,9 +496,11 @@ const expectedTrayMethods: Array<(typeof TrayMethodNames)[number]> = [
   "isSupported"
 ]
 
+const resourceId = (value: string): ResourceId => value as ResourceId
+
 const windowHandle: WindowHandle = {
   kind: "window",
-  id: "window-1",
+  id: resourceId("window-1"),
   generation: 0,
   ownerScope: "scope-1",
   state: "open"
@@ -519,7 +522,7 @@ const menuCommandCapability: NormalizedCapability = {
 
 const webviewHandle: WebViewHandle = {
   kind: "webview",
-  id: "webview-1",
+  id: resourceId("webview-1"),
   generation: 0,
   ownerScope: "window:window-1",
   state: "open"
@@ -556,7 +559,7 @@ const jpegBytesJson = "/9j/AQ=="
 
 const notificationHandle: NotificationHandle = {
   kind: "notification",
-  id: "notification-1",
+  id: resourceId("notification-1"),
   generation: 0,
   ownerScope: "window:window-1",
   state: "open"
@@ -564,7 +567,7 @@ const notificationHandle: NotificationHandle = {
 
 const trayHandle: TrayHandle = {
   kind: "tray",
-  id: "tray-1",
+  id: resourceId("tray-1"),
   generation: 0,
   ownerScope: "app",
   state: "open"
@@ -1199,10 +1202,7 @@ test("WebView bridge client rejects control-byte navigation-blocked reasons", as
               }
             })
           )
-        : Stream.empty,
-    resource: {
-      dispose: () => Effect.void
-    }
+        : Stream.empty
   }
   const exit = await Effect.runPromiseExit(
     Effect.gen(function* () {
@@ -1245,10 +1245,7 @@ test("WebView bridge client rejects invalid navigation-blocked event URLs", asyn
               }
             })
           )
-        : Stream.empty,
-    resource: {
-      dispose: () => Effect.void
-    }
+        : Stream.empty
   }
   const exit = await Effect.runPromiseExit(
     Effect.gen(function* () {
@@ -1477,7 +1474,13 @@ test("Menu bindCommand does not duplicate listeners for identical bindings", asy
   )
   await Effect.runPromise(Effect.sleep("10 millis"))
 
-  expect(result.second).toEqual(result.first)
+  expect(result.second).toEqual({
+    kind: result.first.kind,
+    id: result.first.id,
+    generation: result.first.generation,
+    ownerScope: result.first.ownerScope,
+    state: result.first.state
+  })
   expect(commandCalls).toEqual([{ itemId: "file.open", windowId: "window-1" }])
   expect(calls).toEqual(["bindCommand:file.open:app.file.open"])
 })
@@ -1906,7 +1909,13 @@ test("ContextMenu bindCommand does not duplicate listeners for identical binding
   )
   await Effect.runPromise(Effect.sleep("10 millis"))
 
-  expect(result.second).toEqual(result.first)
+  expect(result.second).toEqual({
+    kind: result.first.kind,
+    id: result.first.id,
+    generation: result.first.generation,
+    ownerScope: result.first.ownerScope,
+    state: result.first.state
+  })
   expect(commandCalls).toEqual([{ itemId: "file.open", windowId: "window-1" }])
   expect(calls).toEqual(["bindCommand:file.open:app.file.open"])
 })
@@ -2173,8 +2182,7 @@ test("Tray bridge client rejects empty activation event identifiers as InvalidOu
                 payload
               })
             )
-          : Stream.empty,
-      resource: { dispose: () => Effect.void }
+          : Stream.empty
     }
 
     const exit = await Effect.runPromise(
@@ -2202,8 +2210,7 @@ test("Tray bridge client decodes activation events with no ownerWindowId field",
               payload: { tray: trayHandle }
             })
           )
-        : Stream.empty,
-    resource: { dispose: () => Effect.void }
+        : Stream.empty
   }
 
   const events = await Effect.runPromise(
@@ -2808,8 +2815,7 @@ test("Notification action stream rejects malformed actionId payloads as InvalidO
                 }
               })
             )
-          : Stream.empty,
-      resource: { dispose: () => Effect.void }
+          : Stream.empty
     }
 
     const exit = await Effect.runPromise(
@@ -4393,8 +4399,7 @@ test("PowerMonitor bridge client rejects blank event reasons as InvalidOutput", 
                 payload: { reason: "" }
               })
             )
-          : Stream.empty,
-      resource: { dispose: () => Effect.void }
+          : Stream.empty
     }
     const exit = await Effect.runPromise(
       Effect.gen(function* () {
@@ -5295,7 +5300,7 @@ test("Window service can be composed from a separately provided WindowClient", a
     }).pipe(Effect.provide(Layer.provide(WindowLive, Layer.succeed(WindowClient)(client))))
   )
 
-  expect(created.id).toBe("window-1")
+  expect(created.id).toBe(resourceId("window-1"))
   expect(calls).toEqual(["create:0"])
 })
 
@@ -5659,7 +5664,7 @@ test("host WindowClient adapter returns typed failures for invalid input and bad
       const malformedInputExit = yield* Effect.exit(
         client.close({
           ...windowHandle,
-          id: ""
+          id: resourceId("")
         })
       )
       const unknownExit = yield* Effect.exit(client.close(windowHandle))
@@ -5697,16 +5702,10 @@ test("host WindowClient adapter returns typed failures for invalid input and bad
 
 test("host WindowClient adapter maps malformed generated RPC successes to typed invalid output", async () => {
   const invalidCreateExchange: BridgeClientExchange = {
-    request: () => Effect.succeed({ kind: "success", payload: { windowId: "" } }),
-    resource: {
-      dispose: () => Effect.void
-    }
+    request: () => Effect.succeed({ kind: "success", payload: { windowId: "" } })
   }
   const invalidCloseExchange: BridgeClientExchange = {
-    request: () => Effect.succeed({ kind: "success", payload: { unexpected: true } }),
-    resource: {
-      dispose: () => Effect.void
-    }
+    request: () => Effect.succeed({ kind: "success", payload: { unexpected: true } })
   }
 
   const createExit = await Effect.runPromiseExit(
@@ -6692,7 +6691,7 @@ const noopWindowClient: WindowClientApi = {
 
 const handleFor = (id: string): WindowHandle => ({
   kind: "window",
-  id,
+  id: resourceId(id),
   generation: 0,
   ownerScope: windowScope(id),
   state: "open"
@@ -6760,10 +6759,7 @@ const webViewExchange = (
             }
           })
         )
-      : Stream.empty,
-  resource: {
-    dispose: () => Effect.void
-  }
+      : Stream.empty
 })
 
 const menuExchange = (
@@ -6840,10 +6836,7 @@ const trayExchange = (
             }
           })
         )
-      : Stream.empty,
-  resource: {
-    dispose: () => Effect.void
-  }
+      : Stream.empty
 })
 
 const dialogExchange = (
@@ -6902,10 +6895,7 @@ const notificationExchange = (
               }
             })
           )
-        : Stream.empty,
-  resource: {
-    dispose: () => Effect.void
-  }
+        : Stream.empty
 })
 
 const pathExchange = (
@@ -7105,10 +7095,7 @@ const makeWindowRpcExchange = (
     >
 
   return {
-    request,
-    resource: {
-      dispose: () => Effect.void
-    }
+    request
   }
 }
 

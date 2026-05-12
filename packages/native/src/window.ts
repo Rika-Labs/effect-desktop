@@ -3,7 +3,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  BridgeResourceHandleShape,
   type HostWindowClientOptions,
   type HostWindowExchange,
   HostProtocolError as HostProtocolErrorSchema,
@@ -57,7 +56,7 @@ export type WindowError = HostProtocolError
 export const WindowCreate = windowRpc(
   "create",
   WindowCreateInput,
-  WindowResource.schema,
+  WindowResource,
   "native.invoke:Window.create"
 )
 export const WindowShow = unsupportedWindowRpc(
@@ -342,7 +341,7 @@ const decodeWindowHandle = (
   input: unknown,
   operation: string
 ): Effect.Effect<WindowHandle, WindowError, never> =>
-  Schema.decodeUnknownEffect(WindowResource.schema)(input, StrictParseOptions).pipe(
+  Schema.decodeUnknownEffect(WindowResource)(input, StrictParseOptions).pipe(
     Effect.map((handle) => handle as WindowHandle),
     Effect.mapError((error) =>
       makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
@@ -427,8 +426,7 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
             generation: window.generation,
             ownerScope: window.ownerScope,
             state: window.state,
-            id: resourceId,
-            dispose: () => registry.dispose(resourceId)
+            id: resourceId
           })
           .pipe(
             Effect.mapError((error) =>
@@ -489,7 +487,7 @@ const toHostWindowCreateInput = (input: WindowCreateOptions): WindowCreateOption
 }
 
 const toWindowHandle = (handle: WindowHandle): WindowHandle =>
-  new BridgeResourceHandleShape({
+  Object.freeze({
     kind: handle.kind,
     id: handle.id,
     generation: handle.generation,

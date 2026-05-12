@@ -5,7 +5,6 @@ import {
   type BridgeRpcSpec,
   type BridgeRpcLayer,
   type BridgeRpcMethodSpec,
-  isResourceSpec,
   isStreamSpec
 } from "./contracts.js"
 import { type BridgeClientResponse } from "./client.js"
@@ -406,17 +405,6 @@ const encodeOutput = <Spec extends BridgeRpcMethodSpec>(
   if (isStreamSpec(spec.output)) {
     return Effect.fail(
       makeHostProtocolInvalidOutputError(operation, "stream output is not a response")
-    )
-  }
-
-  if (isResourceSpec(spec.output)) {
-    return Effect.mapError(
-      Schema.encodeUnknownEffect(spec.output.schema)(output, StrictParseOptions) as Effect.Effect<
-        unknown,
-        unknown,
-        never
-      >,
-      (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
     )
   }
 

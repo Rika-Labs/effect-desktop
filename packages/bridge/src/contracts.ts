@@ -12,7 +12,7 @@ import {
 
 export interface BridgeRpcMethodSpec {
   readonly input: Schema.Schema<unknown>
-  readonly output: Schema.Schema<unknown> | BridgeRpcStreamSpec | BridgeRpcResourceSpec
+  readonly output: Schema.Schema<unknown> | BridgeRpcStreamSpec
   readonly error: Schema.Schema<unknown>
   readonly permission?: string
   readonly timeoutMs?: number
@@ -35,41 +35,11 @@ export interface BridgeRpcStreamSpec {
   readonly backpressure?: BackpressureSpec
 }
 
-export interface BridgeResourceHandle<Kind extends string = string, State extends string = string> {
-  readonly kind: Kind
-  readonly id: string
-  readonly generation: number
-  readonly ownerScope: string
-  readonly state: State
-}
-
-export class BridgeResourceHandleShape extends Schema.Class<BridgeResourceHandleShape>(
-  "BridgeResourceHandle"
-)({
-  kind: Schema.NonEmptyString,
-  id: Schema.NonEmptyString,
-  generation: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-  ownerScope: Schema.NonEmptyString,
-  state: Schema.String
-}) {}
-
-export interface BridgeRpcResourceSpec<
-  Kind extends string = string,
-  State extends string = string
-> {
-  readonly _tag: "BridgeRpcResourceSpec"
-  readonly kind: Kind
-  readonly state: State
-  readonly schema: typeof BridgeResourceHandleShape
-}
-
 type BridgeRpcOutputType<Output> = Output extends BridgeRpcStreamSpec
   ? Stream.Stream<Schema.Schema.Type<Output["chunk"]>, Schema.Schema.Type<Output["error"]>, unknown>
-  : Output extends BridgeRpcResourceSpec<infer Kind, infer State>
-    ? BridgeResourceHandle<Kind, State>
-    : Output extends Schema.Schema<unknown>
-      ? Schema.Schema.Type<Output>
-      : never
+  : Output extends Schema.Schema<unknown>
+    ? Schema.Schema.Type<Output>
+    : never
 
 export interface BackpressureSpec {
   readonly strategy: "buffer" | "drop" | "block"
@@ -126,16 +96,6 @@ export class InvalidBridgeRpcSpec extends Data.TaggedError("InvalidBridgeRpcSpec
 export type BridgeRpcSpecError = InvalidBridgeRpcSpec
 
 export const BridgeRpc = Object.freeze({
-  Resource: <Kind extends string, State extends string>(
-    kind: Kind,
-    state: State
-  ): BridgeRpcResourceSpec<Kind, State> =>
-    Object.freeze({
-      _tag: "BridgeRpcResourceSpec",
-      kind,
-      state,
-      schema: BridgeResourceHandleShape
-    }),
   Stream: <Chunk extends Schema.Schema<unknown>, Error extends Schema.Schema<unknown>>(
     chunk: Chunk,
     error: Error,
@@ -283,11 +243,8 @@ const validateMethodSpec = (tag: string, method: string, spec: BridgeRpcMethodSp
   if (!isSchema(spec.input)) {
     throw invalidSpec(tag, method, "input schema is required")
   }
-  if (!isSchema(spec.output) && !isStreamSpec(spec.output) && !isResourceSpec(spec.output)) {
-    throw invalidSpec(tag, method, "output schema, stream, or resource is required")
-  }
-  if (isResourceSpec(spec.output)) {
-    validateResourceSpec(tag, method, spec.output)
+  if (!isSchema(spec.output) && !isStreamSpec(spec.output)) {
+    throw invalidSpec(tag, method, "output schema or stream is required")
   }
   if (!isSchema(spec.error)) {
     throw invalidSpec(tag, method, "error schema is required")
@@ -405,12 +362,6 @@ const validateSupportSpec = (tag: string, method: string, spec: RpcSupportMetada
   }
 }
 
-const validateResourceSpec = (tag: string, method: string, spec: BridgeRpcResourceSpec): void => {
-  if (!isPrintableName(spec.kind) || !isPrintableName(spec.state)) {
-    throw invalidSpec(tag, method, "resource kind and state must be non-empty printable text")
-  }
-}
-
 const validateHandlers = <Spec extends BridgeRpcSpec>(
   tag: string,
   spec: Spec,
@@ -439,9 +390,6 @@ const freezeRpcSpec = <Spec extends BridgeRpcSpec>(spec: Spec): Spec => {
       Object.freeze(methodSpec.output.backpressure)
     }
     if (isStreamSpec(methodSpec.output)) {
-      Object.freeze(methodSpec.output)
-    }
-    if (isResourceSpec(methodSpec.output)) {
       Object.freeze(methodSpec.output)
     }
     Object.freeze(methodSpec)
@@ -551,11 +499,8 @@ const bridgeEventToRpc = (tag: string, event: string, spec: BridgeRpcEventSpec):
   })
 
 const bridgeMethodSuccessSchema = (
-  output: Schema.Schema<unknown> | BridgeRpcStreamSpec | BridgeRpcResourceSpec
+  output: Schema.Schema<unknown> | BridgeRpcStreamSpec
 ): Schema.Schema<unknown> => {
-  if (isResourceSpec(output)) {
-    return output.schema
-  }
   if (isStreamSpec(output)) {
     return output.chunk
   }
@@ -593,18 +538,6 @@ export const isStreamSpec = (value: unknown): value is BridgeRpcStreamSpec =>
   "error" in value &&
   isSchema((value as { readonly chunk?: unknown }).chunk) &&
   isSchema((value as { readonly error?: unknown }).error)
-
-export const isResourceSpec = (value: unknown): value is BridgeRpcResourceSpec =>
-  typeof value === "object" &&
-  value !== null &&
-  "_tag" in value &&
-  (value as { readonly _tag?: unknown })._tag === "BridgeRpcResourceSpec" &&
-  "kind" in value &&
-  "state" in value &&
-  "schema" in value &&
-  typeof (value as { readonly kind?: unknown }).kind === "string" &&
-  typeof (value as { readonly state?: unknown }).state === "string" &&
-  isSchema((value as { readonly schema?: unknown }).schema)
 
 const backpressureStrategies = new Set<BackpressureSpec["strategy"]>(["buffer", "drop", "block"])
 const backpressureOverflows = new Set<NonNullable<BackpressureSpec["overflow"]>>([

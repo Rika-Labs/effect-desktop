@@ -3,8 +3,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  type BridgeResourceHandle,
-  BridgeResourceHandleShape,
   type HostProtocolEventEnvelope,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
@@ -43,7 +41,7 @@ export type NotificationError = HostProtocolError
 export const NotificationShow = notificationRpc(
   "show",
   NotificationShowInput,
-  NotificationResource.schema,
+  NotificationResource,
   "native.invoke:Notification.show"
 )
 export const NotificationClose = notificationRpc(
@@ -338,17 +336,17 @@ const toNotificationShowInput = (input: NotificationShowOptions): unknown => ({
     : { ownerWindow: toWindowHandle(input.ownerWindow as WindowHandle) })
 })
 
-const toWindowHandle = (handle: WindowHandle): BridgeResourceHandle<"window", "open"> =>
-  new BridgeResourceHandleShape({
+const toWindowHandle = (handle: WindowHandle): WindowHandle =>
+  Object.freeze({
     kind: handle.kind,
     id: handle.id,
     generation: handle.generation,
     ownerScope: handle.ownerScope,
     state: handle.state
-  }) as BridgeResourceHandle<"window", "open">
+  }) as WindowHandle
 
 const toNotificationHandle = (handle: NotificationHandle): NotificationHandle =>
-  new BridgeResourceHandleShape({
+  Object.freeze({
     kind: handle.kind,
     id: handle.id,
     generation: handle.generation,

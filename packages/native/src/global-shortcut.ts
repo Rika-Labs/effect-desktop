@@ -12,7 +12,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  BridgeResourceHandleShape,
   type HostProtocolEventEnvelope,
   HostProtocolAlreadyExistsError,
   HostProtocolError as HostProtocolErrorSchema,
@@ -516,7 +515,7 @@ const globalShortcutCommandResourceId = (windowId: string, accelerator: string):
   `global-shortcut-command:${windowId}:${accelerator}` as ResourceId
 
 const toWindowHandle = (handle: GlobalShortcutWindowHandle): GlobalShortcutWindowHandle =>
-  new BridgeResourceHandleShape({
+  Object.freeze({
     kind: handle.kind,
     id: handle.id,
     generation: handle.generation,

@@ -14,7 +14,11 @@ import { SqlError } from "effect/unstable/sql/SqlError"
 import * as SqlModel from "effect/unstable/sql/SqlModel"
 import * as UpstreamSqliteClient from "@effect/sql-sqlite-bun/SqliteClient"
 
-import { ResourceRegistry, type ResourceHandle, type ResourceRegistryApi } from "./resources.js"
+import {
+  ResourceRegistry,
+  type ManagedResourceHandle,
+  type ResourceRegistryApi
+} from "./resources.js"
 import {
   PermissionActor,
   PermissionRegistry,
@@ -90,7 +94,7 @@ export interface SqliteConnectOptions extends DatabaseOptions {
 }
 
 export interface SqlitePreparedStatement {
-  readonly resource: ResourceHandle<"sqlite-statement", "open">
+  readonly resource: ManagedResourceHandle<"sqlite-statement", "open">
   readonly all: (params?: SqliteParams) => Effect.Effect<readonly SqliteRow[], SqliteError, never>
   readonly get: (
     params?: SqliteParams
@@ -100,7 +104,7 @@ export interface SqlitePreparedStatement {
 }
 
 export interface SqliteConnection {
-  readonly resource: ResourceHandle<"sqlite", "open">
+  readonly resource: ManagedResourceHandle<"sqlite", "open">
   readonly query: (
     sql: string,
     params?: SqliteParams
@@ -208,7 +212,7 @@ export const SQLiteLive = Layer.effect(
 const makeConnection = (
   database: Database,
   registry: ResourceRegistryApi,
-  resource: ResourceHandle<"sqlite", "open">,
+  resource: ManagedResourceHandle<"sqlite", "open">,
   mutex: Semaphore.Semaphore,
   transactionOwner: Ref.Ref<Option.Option<number>>
 ): SqliteConnection =>
@@ -290,7 +294,7 @@ const makeConnection = (
 
 const makePreparedStatement = (
   statement: Statement,
-  resource: ResourceHandle<"sqlite-statement", "open">,
+  resource: ManagedResourceHandle<"sqlite-statement", "open">,
   mutex: Semaphore.Semaphore,
   transactionOwner: Ref.Ref<Option.Option<number>>
 ): SqlitePreparedStatement =>
@@ -327,7 +331,7 @@ const makePreparedStatement = (
   })
 
 const withConnection = <A>(
-  resource: ResourceHandle<"sqlite", "open">,
+  resource: ManagedResourceHandle<"sqlite", "open">,
   mutex: Semaphore.Semaphore,
   transactionOwner: Ref.Ref<Option.Option<number>>,
   operation: string,
@@ -345,7 +349,7 @@ const withConnection = <A>(
   })
 
 const withStatement = <A>(
-  resource: ResourceHandle<"sqlite-statement", "open">,
+  resource: ManagedResourceHandle<"sqlite-statement", "open">,
   mutex: Semaphore.Semaphore,
   transactionOwner: Ref.Ref<Option.Option<number>>,
   operation: string,
@@ -418,7 +422,7 @@ const runStatement = (
 
 const beginTransaction = (
   database: Database,
-  resource: ResourceHandle<"sqlite", "open">,
+  resource: ManagedResourceHandle<"sqlite", "open">,
   mode: SqliteTransactionMode
 ): Effect.Effect<void, SqliteError, never> =>
   Effect.try({
@@ -430,7 +434,7 @@ const beginTransaction = (
 
 const commitTransaction = (
   database: Database,
-  resource: ResourceHandle<"sqlite", "open">
+  resource: ManagedResourceHandle<"sqlite", "open">
 ): Effect.Effect<void, SqliteError, never> =>
   Effect.try({
     try: () => {
@@ -441,7 +445,7 @@ const commitTransaction = (
 
 const rollbackTransaction = (
   database: Database,
-  resource: ResourceHandle<"sqlite", "open">
+  resource: ManagedResourceHandle<"sqlite", "open">
 ): Effect.Effect<void, SqliteError, never> =>
   Effect.try({
     try: () => {

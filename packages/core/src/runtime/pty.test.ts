@@ -63,7 +63,13 @@ ptyTest("PTY open registers a scoped running resource", async () => {
 
   expect(handle.resource.kind).toBe("pty")
   expect(handle.resource.ownerScope).toBe("scope-main")
-  expect(snapshot.entries.map((entry) => entry.handle)).toContainEqual(handle.resource)
+  expect(snapshot.entries.map((entry) => entry.handle)).toContainEqual({
+    kind: handle.resource.kind,
+    id: handle.resource.id,
+    generation: handle.resource.generation,
+    ownerScope: handle.resource.ownerScope,
+    state: handle.resource.state
+  })
 })
 
 ptyTest("PTY removes the resource when a child exits without awaiting onExit", async () => {

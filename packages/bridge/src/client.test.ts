@@ -5,8 +5,6 @@ import {
   BridgeRpc,
   type BridgeRpcGroup,
   type BridgeClientResponse,
-  type BridgeResourceHandle,
-  type BridgeRpcResourceSpec,
   Client,
   Handlers,
   HostProtocolCancelByRequestEnvelope,
@@ -18,7 +16,6 @@ import {
   makeDesktopClientProtocol,
   makeUnaryDesktopTransportFromBridgeClientExchange,
   makeHostProtocolInvalidOutputError,
-  makeStaleHandleError,
   type HostProtocolError,
   type BridgeClientExchange
 } from "./index.js"
@@ -35,6 +32,14 @@ class ProjectOpenError extends Schema.Class<ProjectOpenError>("ProjectOpenError"
   tag: Schema.Literal("ProjectOpenError"),
   message: Schema.String
 }) {}
+
+const ProcessHandle = Schema.Struct({
+  kind: Schema.Literal("process"),
+  id: Schema.NonEmptyString,
+  generation: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  ownerScope: Schema.NonEmptyString,
+  state: Schema.Literal("running")
+})
 
 test("makeUnaryDesktopTransportFromBridgeClientExchange adapts unary bridge exchange to Effect RpcClient protocol", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
@@ -335,9 +340,8 @@ test("Client propagates exchange failures", async () => {
   expectFailureTag(exit, "InvalidOutput")
 })
 
-test("Client decodes resource outputs into disposable renderer proxies", async () => {
-  const ProcessRpcs = makeProcessRpcs("ProjectRpcs.ResourceProxy")
-  const disposed: BridgeResourceHandle[] = []
+test("Client decodes resource outputs through the method schema", async () => {
+  const ProcessRpcs = makeProcessRpcs("ProjectRpcs.ResourceHandle")
   const handle = {
     kind: "process",
     id: "process-1",
@@ -345,25 +349,11 @@ test("Client decodes resource outputs into disposable renderer proxies", async (
     ownerScope: "window-1",
     state: "running"
   } as const
-  const client = Client(
-    { process: ProcessRpcs },
-    {
-      ...responseExchange([], handle),
-      resource: {
-        dispose: (resource) =>
-          Effect.sync(() => {
-            disposed.push(resource)
-          })
-      }
-    }
-  )
+  const client = Client({ process: ProcessRpcs }, responseExchange([], handle))
 
-  const proxy = await Effect.runPromise(client.process.spawn())
-  await Effect.runPromise(proxy.dispose())
+  const decoded = await Effect.runPromise(client.process.spawn())
 
-  expect(proxy.kind).toBe("process")
-  expect(proxy.state).toBe("running")
-  expect(disposed).toEqual([handle])
+  expect(decoded).toEqual(handle)
 })
 
 test("Client rejects resource outputs with empty owner scopes", async () => {
@@ -382,61 +372,6 @@ test("Client rejects resource outputs with empty owner scopes", async () => {
   const exit = await Effect.runPromiseExit(client.process.spawn())
 
   expectFailureTag(exit, "InvalidOutput")
-})
-
-test("Client resource proxies return stale-handle disposal failures as values", async () => {
-  const ProcessRpcs = makeProcessRpcs("ProjectRpcs.ResourceProxyStale")
-  const handle = {
-    kind: "process",
-    id: "process-stale",
-    generation: 0,
-    ownerScope: "window-1",
-    state: "running"
-  } as const
-  const client = Client(
-    { process: ProcessRpcs },
-    {
-      ...responseExchange([], handle),
-      resource: {
-        dispose: (resource) => Effect.fail(makeStaleHandleError("Resource.dispose", resource, 1))
-      }
-    }
-  )
-
-  const proxy = await Effect.runPromise(client.process.spawn())
-  const exit = await Effect.runPromiseExit(proxy.dispose())
-
-  expectFailureTag(exit, "StaleHandle")
-})
-
-test("Client resource proxies dispose only once", async () => {
-  const ProcessRpcs = makeProcessRpcs("ProjectRpcs.ResourceProxyIdempotent")
-  const disposed: BridgeResourceHandle[] = []
-  const handle = {
-    kind: "process",
-    id: "process-once",
-    generation: 0,
-    ownerScope: "window-1",
-    state: "running"
-  } as const
-  const client = Client(
-    { process: ProcessRpcs },
-    {
-      ...responseExchange([], handle),
-      resource: {
-        dispose: (resource) =>
-          Effect.sync(() => {
-            disposed.push(resource)
-          })
-      }
-    }
-  )
-
-  const proxy = await Effect.runPromise(client.process.spawn())
-  await Effect.runPromise(proxy.dispose())
-  await Effect.runPromise(proxy.dispose())
-
-  expect(disposed).toEqual([handle])
 })
 
 test("Client abort signals propagate as typed bridge cancellation", async () => {
@@ -634,7 +569,7 @@ type ProjectRpcSpec = {
 type ProcessRpcSpec = {
   readonly spawn: {
     readonly input: typeof Schema.Void
-    readonly output: BridgeRpcResourceSpec<"process", "running">
+    readonly output: typeof ProcessHandle
     readonly error: typeof ProjectOpenError
   }
 }
@@ -643,7 +578,7 @@ const makeProcessRpcs = <Tag extends string>(tag: Tag): BridgeRpcGroup<Tag, Proc
   const spec = Object.freeze({
     spawn: Object.freeze({
       input: Schema.Void,
-      output: BridgeRpc.Resource("process", "running"),
+      output: ProcessHandle,
       error: ProjectOpenError
     })
   })

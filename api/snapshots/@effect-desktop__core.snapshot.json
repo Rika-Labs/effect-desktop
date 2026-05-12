@@ -724,6 +724,11 @@
       "signature": "const makeWorker: (registry: ResourceRegistryApi, permissions: PermissionRegistryApi, options?: WorkerOptions) => Effect.Effect<WorkerApi, never, never>"
     },
     {
+      "name": "ManagedResourceHandle",
+      "kind": "interface",
+      "signature": "export interface ManagedResourceHandle< Kind extends ResourceKind = ResourceKind, State extends ResourceState = ResourceState > extends ResourceHandle<Kind, State> { readonly dispose: () => Effect.Effect<void, never, never> }"
+    },
+    {
       "name": "manifest",
       "kind": "value",
       "signature": "const manifest: <E, R>(definition: DesktopAppDefinition<E, R>) => DesktopAppManifest"
@@ -936,7 +941,7 @@
     {
       "name": "ProcessHandle",
       "kind": "interface",
-      "signature": "export interface ProcessHandle { readonly resource: ResourceHandle<\"process\", \"running\"> readonly pid: number readonly stdin: Sink.Sink<void, Uint8Array, never, ProcessError, never> readonly stdout: Stream.Stream<Uint8Array, ProcessError, never> readonly stderr: Stream.Stream<Uint8Array, ProcessError, never> readonly exit: Effect.Effect<ProcessExitStatus, ProcessError, never> readonly kill: (signal?: ProcessSignalInput) => Effect.Effect<void, ProcessError, never> }"
+      "signature": "export interface ProcessHandle { readonly resource: ManagedResourceHandle<\"process\", \"running\"> readonly pid: number readonly stdin: Sink.Sink<void, Uint8Array, never, ProcessError, never> readonly stdout: Stream.Stream<Uint8Array, ProcessError, never> readonly stderr: Stream.Stream<Uint8Array, ProcessError, never> readonly exit: Effect.Effect<ProcessExitStatus, ProcessError, never> readonly kill: (signal?: ProcessSignalInput) => Effect.Effect<void, ProcessError, never> }"
     },
     {
       "name": "ProcessLayer",
@@ -1021,7 +1026,7 @@
     {
       "name": "PtyHandle",
       "kind": "interface",
-      "signature": "export interface PtyHandle { readonly resource: ResourceHandle<\"pty\", \"running\"> readonly pid: Option.Option<number> readonly output: Stream.Stream<Uint8Array, PtyError, never> readonly outputMetrics: Effect.Effect<PtyOutputMetrics, never, never> readonly onExit: Effect.Effect<PtyExitStatus, PtyError, never> readonly write: (chunk: Uint8Array) => Effect.Effect<void, PtyError, never> readonly resize: (size: PtyResizeInput) => Effect.Effect<void, PtyError, never> readonly kill: (signal?: PtySignalInput) => Effect.Effect<void, PtyError, never> }"
+      "signature": "export interface PtyHandle { readonly resource: ManagedResourceHandle<\"pty\", \"running\"> readonly pid: Option.Option<number> readonly output: Stream.Stream<Uint8Array, PtyError, never> readonly outputMetrics: Effect.Effect<PtyOutputMetrics, never, never> readonly onExit: Effect.Effect<PtyExitStatus, PtyError, never> readonly write: (chunk: Uint8Array) => Effect.Effect<void, PtyError, never> readonly resize: (size: PtyResizeInput) => Effect.Effect<void, PtyError, never> readonly kill: (signal?: PtySignalInput) => Effect.Effect<void, PtyError, never> }"
     },
     {
       "name": "PtyLayer",
@@ -1121,17 +1126,27 @@
     {
       "name": "ResourceHandle",
       "kind": "interface",
-      "signature": "export interface ResourceHandle< Kind extends ResourceKind = ResourceKind, State extends ResourceState = ResourceState > { readonly kind: Kind readonly id: ResourceId readonly generation: number readonly ownerScope: ScopeId readonly state: State readonly dispose: () => Effect.Effect<void, never, never> }"
+      "signature": "export interface ResourceHandle< Kind extends ResourceKind = ResourceKind, State extends ResourceState = ResourceState > { readonly kind: Kind readonly id: ResourceId readonly generation: number readonly ownerScope: ScopeId readonly state: State }"
+    },
+    {
+      "name": "ResourceHandleSchema",
+      "kind": "value",
+      "signature": "const ResourceHandleSchema: <Kind extends string, State extends string>(kind: Kind, state: State) => Schema.Schema<ResourceHandle<Kind, State>> & Schema.Decoder<ResourceHandle<Kind, State>, never>"
     },
     {
       "name": "ResourceHandleShape",
       "kind": "class",
-      "signature": "export class ResourceHandleShape extends Schema.Class<ResourceHandleShape>(\"ResourceHandle\")({ kind: Schema.String, id: Schema.String, generation: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)), ownerScope: Schema.String, state: Schema.String }) {}"
+      "signature": "export class ResourceHandleShape extends Schema.Class<ResourceHandleShape>(\"ResourceHandle\")({ kind: Schema.NonEmptyString, id: ResourceIdSchema, generation: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)), ownerScope: Schema.NonEmptyString, state: Schema.NonEmptyString }) {}"
     },
     {
       "name": "ResourceId",
       "kind": "type",
-      "signature": "export type ResourceId = string & { readonly ResourceId: unique symbol }"
+      "signature": "export type ResourceId = Schema.Schema.Type<typeof ResourceIdSchema>"
+    },
+    {
+      "name": "ResourceIdSchema",
+      "kind": "value",
+      "signature": "const ResourceIdSchema: Schema.brand<Schema.NonEmptyString, \"ResourceId\">"
     },
     {
       "name": "ResourceInvalidArgumentError",
@@ -1151,7 +1166,7 @@
     {
       "name": "ResourceRegistryApi",
       "kind": "interface",
-      "signature": "export interface ResourceRegistryApi { readonly register: <Kind extends ResourceKind, State extends ResourceState>( input: RegisterResourceInput<Kind, State> ) => Effect.Effect<ResourceHandle<Kind, State>, ResourceInvalidArgumentError, never> readonly get: (id: ResourceId) => Effect.Effect<Option.Option<ResourceEntry>, never, never> readonly list: () => Effect.Effect<RegistrySnapshot, never, never> readonly dispose: (id: ResourceId) => Effect.Effect<void, never, never> readonly observe: () => Stream.Stream<RegistrySnapshot, never, never> readonly declareScope: ( scope: ScopeId, parent?: ScopeId ) => Effect.Effect<void, ResourceInvalidArgumentError, never> readonly closeScope: (scope: ScopeId) => Effect.Effect<void, never, never> readonly share: <Kind extends ResourceKind, State extends ResourceState>( handle: ResourceHandle<Kind, State>, targetScope: ScopeId ) => Effect.Effect<ResourceHandle<Kind, State>, ResourceInvalidArgumentError | StaleHandle, never> readonly assertFresh: <Kind extends ResourceKind, State extends ResourceState>( handle: ResourceHandle<Kind, State> ) => Effect.Effect<ResourceEntry<Kind, State>, StaleHandle, never> }"
+      "signature": "export interface ResourceRegistryApi { readonly register: <Kind extends ResourceKind, State extends ResourceState>( input: RegisterResourceInput<Kind, State> ) => Effect.Effect<ManagedResourceHandle<Kind, State>, ResourceInvalidArgumentError, never> readonly get: (id: ResourceId) => Effect.Effect<Option.Option<ResourceEntry>, never, never> readonly list: () => Effect.Effect<RegistrySnapshot, never, never> readonly dispose: (id: ResourceId) => Effect.Effect<void, never, never> readonly observe: () => Stream.Stream<RegistrySnapshot, never, never> readonly declareScope: ( scope: ScopeId, parent?: ScopeId ) => Effect.Effect<void, ResourceInvalidArgumentError, never> readonly closeScope: (scope: ScopeId) => Effect.Effect<void, never, never> readonly share: <Kind extends ResourceKind, State extends ResourceState>( handle: ResourceHandle<Kind, State>, targetScope: ScopeId ) => Effect.Effect< ManagedResourceHandle<Kind, State>, ResourceInvalidArgumentError | StaleHandle, never > readonly assertFresh: <Kind extends ResourceKind, State extends ResourceState>( handle: ResourceHandle<Kind, State> ) => Effect.Effect<ResourceEntry<Kind, State>, StaleHandle, never> }"
     },
     {
       "name": "ResourceRegistryLive",
@@ -1451,7 +1466,7 @@
     {
       "name": "SqliteConnection",
       "kind": "interface",
-      "signature": "export interface SqliteConnection { readonly resource: ResourceHandle<\"sqlite\", \"open\"> readonly query: ( sql: string, params?: SqliteParams ) => Effect.Effect<readonly SqliteRow[], SqliteError, never> readonly exec: ( sql: string, params?: SqliteParams ) => Effect.Effect<SqliteChanges, SqliteError, never> readonly prepare: (sql: string) => Effect.Effect<SqlitePreparedStatement, SqliteError, never> readonly transaction: <A, E, R>( effect: Effect.Effect<A, E, R>, options?: SqliteTransactionOptions ) => Effect.Effect<A, E | SqliteError, R> readonly close: () => Effect.Effect<void, never, never> }"
+      "signature": "export interface SqliteConnection { readonly resource: ManagedResourceHandle<\"sqlite\", \"open\"> readonly query: ( sql: string, params?: SqliteParams ) => Effect.Effect<readonly SqliteRow[], SqliteError, never> readonly exec: ( sql: string, params?: SqliteParams ) => Effect.Effect<SqliteChanges, SqliteError, never> readonly prepare: (sql: string) => Effect.Effect<SqlitePreparedStatement, SqliteError, never> readonly transaction: <A, E, R>( effect: Effect.Effect<A, E, R>, options?: SqliteTransactionOptions ) => Effect.Effect<A, E | SqliteError, R> readonly close: () => Effect.Effect<void, never, never> }"
     },
     {
       "name": "SqliteConnectOptions",
@@ -1516,7 +1531,7 @@
     {
       "name": "SqlitePreparedStatement",
       "kind": "interface",
-      "signature": "export interface SqlitePreparedStatement { readonly resource: ResourceHandle<\"sqlite-statement\", \"open\"> readonly all: (params?: SqliteParams) => Effect.Effect<readonly SqliteRow[], SqliteError, never> readonly get: ( params?: SqliteParams ) => Effect.Effect<Option.Option<SqliteRow>, SqliteError, never> readonly run: (params?: SqliteParams) => Effect.Effect<SqliteChanges, SqliteError, never> readonly dispose: () => Effect.Effect<void, never, never> }"
+      "signature": "export interface SqlitePreparedStatement { readonly resource: ManagedResourceHandle<\"sqlite-statement\", \"open\"> readonly all: (params?: SqliteParams) => Effect.Effect<readonly SqliteRow[], SqliteError, never> readonly get: ( params?: SqliteParams ) => Effect.Effect<Option.Option<SqliteRow>, SqliteError, never> readonly run: (params?: SqliteParams) => Effect.Effect<SqliteChanges, SqliteError, never> readonly dispose: () => Effect.Effect<void, never, never> }"
     },
     {
       "name": "SqliteRow",
@@ -1736,7 +1751,7 @@
     {
       "name": "WorkerHandle",
       "kind": "interface",
-      "signature": "export interface WorkerHandle<In, Out> { readonly resource: ResourceHandle<\"worker\", \"running\"> readonly send: (message: In) => Effect.Effect<void, WorkerError, never> readonly messages: Stream.Stream<Out, WorkerError, never> readonly close: Effect.Effect<void, never, never> }"
+      "signature": "export interface WorkerHandle<In, Out> { readonly resource: ManagedResourceHandle<\"worker\", \"running\"> readonly send: (message: In) => Effect.Effect<void, WorkerError, never> readonly messages: Stream.Stream<Out, WorkerError, never> readonly close: Effect.Effect<void, never, never> }"
     },
     {
       "name": "WorkerInvalidArgumentError",

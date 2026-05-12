@@ -28,7 +28,7 @@ import {
 
 import {
   ResourceRegistry,
-  type ResourceHandle,
+  type ManagedResourceHandle,
   type ResourceId,
   type ResourceRegistryApi,
   type StaleHandle
@@ -73,7 +73,7 @@ export interface ProcessSpawnOptions {
 }
 
 export interface ProcessHandle {
-  readonly resource: ResourceHandle<"process", "running">
+  readonly resource: ManagedResourceHandle<"process", "running">
   readonly pid: number
   readonly stdin: Sink.Sink<void, Uint8Array, never, ProcessError, never>
   readonly stdout: Stream.Stream<Uint8Array, ProcessError, never>
@@ -274,7 +274,7 @@ export const ProcessLayer = (
 
 const makeHandle = (
   child: ProcessChild,
-  resource: ResourceHandle<"process", "running">,
+  resource: ManagedResourceHandle<"process", "running">,
   command: string,
   budgets: Required<ProcessBudgetPolicy>,
   snapshots: SubscriptionRef.SubscriptionRef<Map<ResourceId, ProcessSnapshot>>,
@@ -468,7 +468,7 @@ const mapCauseToProcessError = (
 
 const observeChildExit = (
   exitStatus: Effect.Effect<ProcessExitStatus, ProcessError, never>,
-  resource: ResourceHandle<"process", "running">,
+  resource: ManagedResourceHandle<"process", "running">,
   command: string,
   recordExit: (status: ProcessExitStatus) => Effect.Effect<void, ProcessError, never>
 ): void => {
@@ -615,7 +615,7 @@ const decodeProcessTimestamp = (
 
 const assertProcessHandleFresh = (
   registry: ResourceRegistryApi,
-  resource: ResourceHandle<"process", "running">,
+  resource: ManagedResourceHandle<"process", "running">,
   operation: string
 ): Effect.Effect<void, HostProtocolStaleHandleError, never> =>
   registry.assertFresh(resource).pipe(

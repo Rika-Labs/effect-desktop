@@ -27,7 +27,7 @@ import {
 
 import {
   ResourceRegistry,
-  type ResourceHandle,
+  type ManagedResourceHandle,
   type ResourceRegistryApi,
   type StaleHandle
 } from "./resources.js"
@@ -77,7 +77,7 @@ export interface PtyOpenOptions {
 }
 
 export interface PtyHandle {
-  readonly resource: ResourceHandle<"pty", "running">
+  readonly resource: ManagedResourceHandle<"pty", "running">
   readonly pid: Option.Option<number>
   readonly output: Stream.Stream<Uint8Array, PtyError, never>
   readonly outputMetrics: Effect.Effect<PtyOutputMetrics, never, never>
@@ -259,7 +259,7 @@ export const PtyLayer = (
 
 const makeHandle = (
   child: PtyChild,
-  resource: ResourceHandle<"pty", "running">,
+  resource: ManagedResourceHandle<"pty", "running">,
   command: string,
   budgets: Required<PtyBudgetPolicy>,
   registry: ResourceRegistryApi
@@ -696,7 +696,7 @@ const outputQueueCapacity = (policy: Required<PtyBudgetPolicy>): number =>
 
 const observeChildExit = (
   exitStatus: Effect.Effect<PtyExitStatus, PtyError, never>,
-  resource: ResourceHandle<"pty", "running">,
+  resource: ManagedResourceHandle<"pty", "running">,
   command: string
 ): void => {
   Effect.runFork(
@@ -825,7 +825,7 @@ const decodeWriteInput = (
 
 const assertPtyHandleFresh = (
   registry: ResourceRegistryApi,
-  resource: ResourceHandle<"pty", "running">,
+  resource: ManagedResourceHandle<"pty", "running">,
   operation: string
 ): Effect.Effect<void, HostProtocolStaleHandleError, never> =>
   registry.assertFresh(resource).pipe(

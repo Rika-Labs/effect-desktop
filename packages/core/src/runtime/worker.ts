@@ -23,7 +23,7 @@ import {
 } from "./permission-registry.js"
 import {
   ResourceRegistry,
-  type ResourceHandle,
+  type ManagedResourceHandle,
   type ResourceRegistryApi,
   type StaleHandle
 } from "./resources.js"
@@ -122,7 +122,7 @@ export interface WorkerSpawnOptions<In, Out> {
 }
 
 export interface WorkerHandle<In, Out> {
-  readonly resource: ResourceHandle<"worker", "running">
+  readonly resource: ManagedResourceHandle<"worker", "running">
   readonly send: (message: In) => Effect.Effect<void, WorkerError, never>
   readonly messages: Stream.Stream<Out, WorkerError, never>
   readonly close: Effect.Effect<void, never, never>
@@ -331,7 +331,7 @@ export const WorkerLayer = (
 
 const makeHandle = <In, Out>(
   runtime: WorkerRuntime,
-  resource: ResourceHandle<"worker", "running">,
+  resource: ManagedResourceHandle<"worker", "running">,
   script: string,
   inputSchema: Schema.Schema<In>,
   outputSchema: Schema.Schema<Out>,
@@ -357,7 +357,7 @@ const makeHandle = <In, Out>(
 
 const assertWorkerHandleFresh = (
   registry: ResourceRegistryApi,
-  resource: ResourceHandle<"worker", "running">,
+  resource: ManagedResourceHandle<"worker", "running">,
   operation: string
 ): Effect.Effect<void, WorkerStaleHandleError, never> =>
   registry.assertFresh(resource).pipe(
@@ -394,7 +394,7 @@ const attachWorkerResourceId = (error: WorkerError, resourceId: string): WorkerE
 
 const observeWorkerExit = (
   exit: Effect.Effect<void, WorkerError, never>,
-  resource: ResourceHandle<"worker", "running">,
+  resource: ManagedResourceHandle<"worker", "running">,
   script: string
 ): void => {
   Effect.runFork(

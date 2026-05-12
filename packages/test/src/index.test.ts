@@ -26,6 +26,7 @@ import {
   Telemetry,
   makeSecrets,
   makeResourceRegistry,
+  ResourceHandleSchema,
   type ResourceId
 } from "@effect-desktop/core"
 import {
@@ -476,18 +477,17 @@ test("MockBridge replays pinned stream chunks in order", async () => {
   expect(bridge.calls().map((call) => call.method)).toEqual(["Test.MockBridge.Stream.watch"])
 })
 
-test("MockBridge returns disposable resource proxies through the registry", async () => {
+test("MockBridge returns resource handles through the method schema", async () => {
   const ProcessApi = testContract("Test.MockBridge.Resource", {
     spawn: {
       input: Schema.Void,
-      output: BridgeRpc.Resource("process", "running"),
+      output: ResourceHandleSchema("process", "running"),
       error: Schema.Never
     }
   })
-  const registry = await Effect.runPromise(makeResourceRegistry({ nextId: () => id("process-1") }))
-  const bridge = makeMockBridge({ registry })
+  const bridge = makeMockBridge()
   await Effect.runPromise(
-    bridge.resource("Test.MockBridge.Resource.spawn", {
+    bridge.succeed("Test.MockBridge.Resource.spawn", {
       kind: "process",
       id: "process-1",
       generation: 0,
@@ -503,23 +503,15 @@ test("MockBridge returns disposable resource proxies through the registry", asyn
     }
   )
 
-  const proxy = await Effect.runPromise(client.process.spawn())
-  const beforeDispose = await Effect.runPromise(registry.list())
-  await Effect.runPromise(proxy.dispose())
-  const afterDispose = await Effect.runPromise(registry.list())
+  const handle = await Effect.runPromise(client.process.spawn())
 
-  expect(proxy.kind).toBe("process")
-  expect(beforeDispose.entries.map((entry) => entry.handle.id)).toEqual([id("process-1")])
-  expect(afterDispose.entries).toEqual([])
-  expect(bridge.disposedResources()).toEqual([
-    {
-      kind: "process",
-      id: "process-1",
-      generation: 0,
-      ownerScope: "window-1",
-      state: "running"
-    }
-  ])
+  expect(handle).toEqual({
+    kind: "process",
+    id: id("process-1"),
+    generation: 0,
+    ownerScope: "window-1",
+    state: "running"
+  })
 })
 
 test("MemoryFilesystem layer reads, writes, stats, and atomically replaces files", async () => {

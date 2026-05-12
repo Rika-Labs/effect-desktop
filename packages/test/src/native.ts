@@ -1,5 +1,4 @@
 import {
-  BridgeResourceHandleShape,
   HostProtocolNotFoundError,
   hostProtocolErrorRecoverableDefault
 } from "@effect-desktop/bridge"
@@ -173,7 +172,7 @@ export const makeTestWindowClient = (): TestWindowRpcs => {
   }
 
   const makeHandle = (id: string): WindowHandle =>
-    new BridgeResourceHandleShape({
+    Object.freeze({
       kind: "window",
       id,
       generation: 0,
@@ -302,7 +301,7 @@ export const makeTestTrayClient = (): TestTrayRpcs => {
       Effect.sync(() => {
         const id = `test-tray-${nextId++}`
         record("Tray.create", [input])
-        const handle = new BridgeResourceHandleShape({
+        const handle = Object.freeze({
           kind: "tray",
           id,
           generation: 0,
@@ -508,7 +507,7 @@ export const makeTestNotificationClient = (): TestNotificationRpcs => {
     ): Effect.Effect<NotificationHandle, NotificationError, never> =>
       Effect.sync(() => {
         record("Notification.show", [input])
-        const handle = new BridgeResourceHandleShape({
+        const handle = Object.freeze({
           kind: "notification",
           id: `test-notification-${nextId++}`,
           generation: 0,

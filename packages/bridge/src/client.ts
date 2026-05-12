@@ -6,10 +6,7 @@ import {
   type BridgeRpcSpec,
   type BridgeRpcEventSpec,
   type BridgeRpcMethodSpec,
-  type BridgeResourceHandle,
-  type BridgeRpcResourceSpec,
   type BridgeRpcStreamSpec,
-  isResourceSpec,
   isStreamSpec
 } from "./contracts.js"
 import {
@@ -31,11 +28,6 @@ import {
   type HostProtocolEnvelope,
   type HostProtocolError
 } from "./protocol.js"
-import {
-  type BridgeResourceExchange,
-  type BridgeResourceProxy,
-  makeResourceProxy
-} from "./resources.js"
 import {
   BridgeStreamClosedFrame,
   BridgeStreamCompleteFrame,
@@ -60,7 +52,6 @@ export interface BridgeClientExchange {
   readonly cancel?: (
     request: HostProtocolCancelByRequestEnvelope
   ) => Effect.Effect<void, HostProtocolError, never>
-  readonly resource?: BridgeResourceExchange
 }
 
 export type BridgeClientResponse = BridgeClientSuccessResponse | BridgeClientErrorResponse
@@ -207,41 +198,23 @@ export type BridgeClientMethod<Spec extends BridgeRpcMethodSpec> =
           Schema.Schema.Type<Spec["output"]["error"]> | HostProtocolError,
           never
         >
-    : Spec["output"] extends BridgeRpcResourceSpec
-      ? undefined extends Schema.Schema.Type<Spec["input"]>
-        ? (
-            input?: Schema.Schema.Type<Spec["input"]>,
-            options?: BridgeClientCallOptions
-          ) => Effect.Effect<
-            BridgeResourceProxy<Spec["output"]["kind"], Spec["output"]["state"]>,
-            Schema.Schema.Type<Spec["error"]> | HostProtocolError,
-            never
-          >
-        : (
-            input: Schema.Schema.Type<Spec["input"]>,
-            options?: BridgeClientCallOptions
-          ) => Effect.Effect<
-            BridgeResourceProxy<Spec["output"]["kind"], Spec["output"]["state"]>,
-            Schema.Schema.Type<Spec["error"]> | HostProtocolError,
-            never
-          >
-      : undefined extends Schema.Schema.Type<Spec["input"]>
-        ? (
-            input?: Schema.Schema.Type<Spec["input"]>,
-            options?: BridgeClientCallOptions
-          ) => Effect.Effect<
-            Schema.Schema.Type<Extract<Spec["output"], Schema.Schema<unknown>>>,
-            Schema.Schema.Type<Spec["error"]> | HostProtocolError,
-            never
-          >
-        : (
-            input: Schema.Schema.Type<Spec["input"]>,
-            options?: BridgeClientCallOptions
-          ) => Effect.Effect<
-            Schema.Schema.Type<Extract<Spec["output"], Schema.Schema<unknown>>>,
-            Schema.Schema.Type<Spec["error"]> | HostProtocolError,
-            never
-          >
+    : undefined extends Schema.Schema.Type<Spec["input"]>
+      ? (
+          input?: Schema.Schema.Type<Spec["input"]>,
+          options?: BridgeClientCallOptions
+        ) => Effect.Effect<
+          Schema.Schema.Type<Extract<Spec["output"], Schema.Schema<unknown>>>,
+          Schema.Schema.Type<Spec["error"]> | HostProtocolError,
+          never
+        >
+      : (
+          input: Schema.Schema.Type<Spec["input"]>,
+          options?: BridgeClientCallOptions
+        ) => Effect.Effect<
+          Schema.Schema.Type<Extract<Spec["output"], Schema.Schema<unknown>>>,
+          Schema.Schema.Type<Spec["error"]> | HostProtocolError,
+          never
+        >
 
 export type BridgeClientEvent<Spec extends BridgeRpcEventSpec> = Stream.Stream<
   Schema.Schema.Type<Spec["payload"]>,
@@ -365,10 +338,6 @@ const requestContractMethod = <Spec extends BridgeRpcMethodSpec>(
     }
     const successResponse = response as Extract<BridgeClientResponse, { readonly kind: "success" }>
 
-    if (isResourceSpec(spec.output)) {
-      return yield* decodeResourceOutput(operation, spec.output, successResponse.payload, exchange)
-    }
-
     return yield* decodeOutput(operation, spec, successResponse.payload)
   })
 
@@ -406,44 +375,6 @@ const decodeOutput = <Spec extends BridgeRpcMethodSpec>(
     >,
     (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
   )
-
-const decodeResourceOutput = <Spec extends BridgeRpcResourceSpec>(
-  operation: string,
-  spec: Spec,
-  payload: unknown,
-  exchange: BridgeClientExchange
-): Effect.Effect<BridgeResourceProxy<Spec["kind"], Spec["state"]>, HostProtocolError, never> =>
-  Effect.gen(function* () {
-    if (exchange.resource === undefined) {
-      return yield* Effect.fail(
-        makeHostProtocolInvalidOutputError(operation, "resource exchange does not support handles")
-      )
-    }
-
-    const handle = yield* Effect.mapError(
-      Schema.decodeUnknownEffect(spec.schema)(payload, StrictParseOptions) as Effect.Effect<
-        BridgeResourceHandle,
-        unknown,
-        never
-      >,
-      (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
-    )
-
-    if (handle.kind !== spec.kind || handle.state !== spec.state) {
-      return yield* Effect.fail(
-        makeHostProtocolInvalidOutputError(
-          operation,
-          `resource handle kind/state mismatch: expected ${spec.kind}:${spec.state}, received ${handle.kind}:${handle.state}`
-        )
-      )
-    }
-
-    return makeResourceProxy(
-      spec,
-      handle as BridgeResourceHandle<Spec["kind"], Spec["state"]>,
-      exchange.resource
-    )
-  })
 
 const decodeContractError = <Spec extends BridgeRpcMethodSpec>(
   operation: string,

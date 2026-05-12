@@ -23,14 +23,12 @@ import {
   makeHostHandshakeClient,
   makeHostProtocolInvalidOutputError,
   makeHostProtocolNotFoundError,
-  makeStaleHandleError,
   makeHostWindowClient,
   type BridgeClient,
   type BridgeClientExchange,
   type BridgeClientOptions,
   type BridgeClientResponse,
   type BridgeRpcGroup,
-  type BridgeResourceHandle,
   type HostHandshakeClient,
   type HostProtocolError,
   type HostProtocolInvalidArgumentError,
@@ -78,7 +76,7 @@ import {
   type RawFilesystemEvent,
   type RegistrySnapshot,
   type ResourceEntry,
-  type ResourceHandle,
+  type ManagedResourceHandle,
   type ResourceRegistryApi,
   type ResourceId,
   type ResourceKind,
@@ -219,16 +217,11 @@ export interface MockBridgeApi {
   ) => BridgeClient<Contracts>
   readonly calls: () => readonly MockBridgeCall[]
   readonly cancels: () => readonly HostProtocolCancelByRequestEnvelope[]
-  readonly disposedResources: () => readonly BridgeResourceHandle[]
   readonly succeed: (
     method: string,
     payload: unknown
   ) => Effect.Effect<void, HostProtocolError, never>
   readonly fail: (method: string, error: unknown) => Effect.Effect<void, HostProtocolError, never>
-  readonly resource: (
-    method: string,
-    handle: BridgeResourceHandle
-  ) => Effect.Effect<void, HostProtocolError, never>
   readonly streamChunks: (
     method: string,
     chunks: readonly unknown[]
@@ -241,13 +234,11 @@ export class MockBridge extends Context.Service<MockBridge, MockBridgeApi>()(
 
 export interface MockBridgeOptions {
   readonly now?: () => number
-  readonly registry?: ResourceRegistryApi
 }
 
 export const makeMockBridge = (options: MockBridgeOptions = {}): MockBridgeApi => {
   const calls: MockBridgeCall[] = []
   const cancels: HostProtocolCancelByRequestEnvelope[] = []
-  const disposedResources: BridgeResourceHandle[] = []
   const responses = new Map<string, BridgeClientResponse[]>()
   const streams = new Map<string, readonly unknown[]>()
   const now = options.now ?? Date.now
@@ -305,24 +296,7 @@ export const makeMockBridge = (options: MockBridgeOptions = {}): MockBridgeApi =
     cancel: (request: HostProtocolCancelByRequestEnvelope) =>
       Effect.sync(() => {
         cancels.push(request)
-      }),
-    resource: {
-      dispose: (handle: BridgeResourceHandle) =>
-        Effect.gen(function* () {
-          disposedResources.push(handle)
-
-          if (options.registry === undefined) {
-            return
-          }
-
-          const coreHandle = bridgeHandleToCoreHandle(handle)
-          const entry = yield* Effect.mapError(options.registry.assertFresh(coreHandle), (error) =>
-            makeStaleHandleError("Resource.dispose", handle, error.actualGeneration)
-          )
-
-          yield* entry.handle.dispose()
-        })
-    }
+      })
   })
 
   return Object.freeze({
@@ -338,7 +312,6 @@ export const makeMockBridge = (options: MockBridgeOptions = {}): MockBridgeApi =
         })
       ),
     cancels: () => cancels.slice(),
-    disposedResources: () => disposedResources.slice(),
     succeed: (method, payload) =>
       validateJsonPayload(method, payload).pipe(
         Effect.flatMap((validated) => enqueue(method, { kind: "success", payload: validated }))
@@ -347,27 +320,6 @@ export const makeMockBridge = (options: MockBridgeOptions = {}): MockBridgeApi =
       validateJsonPayload(method, error).pipe(
         Effect.flatMap((validated) => enqueue(method, { kind: "failure", error: validated }))
       ),
-    resource: (method, handle) =>
-      Effect.gen(function* () {
-        if (options.registry === undefined) {
-          yield* validateJsonPayload(method, handle)
-          yield* enqueue(method, { kind: "success", payload: handle })
-          return
-        }
-
-        const registered = yield* options.registry
-          .register({
-            kind: handle.kind,
-            id: handle.id as ResourceId,
-            ownerScope: handle.ownerScope,
-            state: handle.state,
-            reusableId: true
-          })
-          .pipe(Effect.orDie)
-        const payload = coreHandleToBridgeHandle(registered)
-        yield* validateJsonPayload(method, payload)
-        yield* enqueue(method, { kind: "success", payload })
-      }),
     streamChunks: (method, chunks) =>
       Effect.gen(function* () {
         yield* Effect.forEach(chunks, (chunk) => validateJsonPayload(method, chunk))
@@ -609,7 +561,7 @@ const makeHeadlessRuntimeContext = (
     const telemetry = yield* makeTelemetry(options.telemetry)
     const permissions = yield* makePermissionRegistry(options.permissions)
     const host = makeMockHost(options.host)
-    const bridge = makeMockBridge({ ...options.bridge, registry })
+    const bridge = makeMockBridge(options.bridge)
     const filesystem = yield* makeMemoryFilesystem(registry, options.filesystem)
     const process = yield* makeMockProcess(registry, options.process)
     const pty = yield* makeMockPty(registry, options.pty)
@@ -717,7 +669,7 @@ export const runHeadless = <A, E, R>(
   Effect.gen(function* () {
     const registry = yield* makeResourceRegistry()
     const host = makeMockHost(options)
-    const windowResources = new Map<string, ResourceHandle<"window", "open">>()
+    const windowResources = new Map<string, ManagedResourceHandle<"window", "open">>()
     const rawWindow = makeHostWindowClient(host, hostClientOptions(options))
     const runtime: HeadlessRuntime = {
       calls: host.calls,
@@ -959,22 +911,6 @@ const streamEnvelope = (
     timestamp,
     traceId: request.traceId,
     payload
-  })
-
-const bridgeHandleToCoreHandle = (handle: BridgeResourceHandle): ResourceHandle =>
-  Object.freeze({
-    ...handle,
-    id: handle.id as ResourceId,
-    dispose: () => Effect.void
-  })
-
-const coreHandleToBridgeHandle = (handle: ResourceHandle): BridgeResourceHandle =>
-  Object.freeze({
-    kind: handle.kind,
-    id: handle.id,
-    generation: handle.generation,
-    ownerScope: handle.ownerScope,
-    state: handle.state
   })
 
 interface MutableMockProcessSpawnRecord {

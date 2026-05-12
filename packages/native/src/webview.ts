@@ -3,7 +3,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  BridgeResourceHandleShape,
   type HostProtocolEventEnvelope,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
@@ -48,7 +47,7 @@ type WebViewError = HostProtocolError
 export const WebViewCreate = webviewRpc(
   "create",
   WebViewCreateInput,
-  WebViewResource.schema,
+  WebViewResource,
   "native.invoke:WebView.create"
 )
 export const WebViewLoadRoute = webviewRpc(
@@ -454,7 +453,7 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
   })
 
 const toWebViewHandle = (handle: WebViewHandle): WebViewHandle =>
-  new BridgeResourceHandleShape({
+  Object.freeze({
     kind: handle.kind,
     id: handle.id,
     generation: handle.generation,

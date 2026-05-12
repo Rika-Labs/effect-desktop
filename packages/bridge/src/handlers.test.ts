@@ -25,6 +25,14 @@ class ProjectOpenError extends Schema.Class<ProjectOpenError>("HandlerProjectOpe
   code: Schema.NumberFromString
 }) {}
 
+const ProcessHandle = Schema.Struct({
+  kind: Schema.Literal("process"),
+  id: Schema.NonEmptyString,
+  generation: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  ownerScope: Schema.NonEmptyString,
+  state: Schema.Literal("running")
+})
+
 test("Handlers fails closed when renderer origin verification is not configured", async () => {
   let handled = false
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.HandlerDefaultOrigin")
@@ -72,6 +80,48 @@ test("Handlers binds contract layers into a request dispatcher", async () => {
     kind: "success",
     payload: {
       id: "12"
+    }
+  })
+})
+
+test("Handlers encodes handle-shaped outputs through the method schema", async () => {
+  const ProcessRpcs = BridgeRpc.group(
+    "ProcessRpcs.HandlerResourceHandle",
+    {
+      spawn: {
+        input: Schema.Void,
+        output: ProcessHandle,
+        error: Schema.Never
+      }
+    },
+    {}
+  )
+  const runtime = Handlers.withOptions(
+    testOriginAuthDisabled,
+    BridgeRpc.layer(ProcessRpcs)({
+      spawn: () =>
+        Effect.succeed({
+          kind: "process",
+          id: "process-1",
+          generation: 0,
+          ownerScope: "window-1",
+          state: "running"
+        } as const)
+    })
+  )
+
+  const response = await Effect.runPromise(
+    runtime.dispatch(request("ProcessRpcs.HandlerResourceHandle.spawn", undefined))
+  )
+
+  expect(response).toEqual({
+    kind: "success",
+    payload: {
+      kind: "process",
+      id: "process-1",
+      generation: 0,
+      ownerScope: "window-1",
+      state: "running"
     }
   })
 })

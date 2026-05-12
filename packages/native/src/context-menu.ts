@@ -10,10 +10,8 @@ import {
 import {
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeResourceHandle,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  BridgeResourceHandleShape,
   type HostProtocolEventEnvelope,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
@@ -365,14 +363,14 @@ const toContextMenuShowInput = (input: ContextMenuShowOptions): unknown => ({
   position: input.position
 })
 
-const toWindowHandle = (handle: WindowHandle): BridgeResourceHandle<"window", "open"> =>
-  new BridgeResourceHandleShape({
+const toWindowHandle = (handle: WindowHandle): WindowHandle =>
+  Object.freeze({
     kind: handle.kind,
     id: handle.id,
     generation: handle.generation,
     ownerScope: handle.ownerScope,
     state: handle.state
-  }) as BridgeResourceHandle<"window", "open">
+  }) as WindowHandle
 
 const decodeContextMenuShowInput = (
   input: unknown

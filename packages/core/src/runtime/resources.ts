@@ -11,7 +11,8 @@ import {
   SubscriptionRef
 } from "effect"
 
-export type ResourceId = string & { readonly ResourceId: unique symbol }
+export const ResourceIdSchema = Schema.NonEmptyString.pipe(Schema.brand("ResourceId"))
+export type ResourceId = Schema.Schema.Type<typeof ResourceIdSchema>
 export type ResourceKind = string
 export type ResourceState = string
 export type ScopeId = string
@@ -25,16 +26,35 @@ export interface ResourceHandle<
   readonly generation: number
   readonly ownerScope: ScopeId
   readonly state: State
+}
+
+export interface ManagedResourceHandle<
+  Kind extends ResourceKind = ResourceKind,
+  State extends ResourceState = ResourceState
+> extends ResourceHandle<Kind, State> {
   readonly dispose: () => Effect.Effect<void, never, never>
 }
 
 export class ResourceHandleShape extends Schema.Class<ResourceHandleShape>("ResourceHandle")({
-  kind: Schema.String,
-  id: Schema.String,
+  kind: Schema.NonEmptyString,
+  id: ResourceIdSchema,
   generation: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-  ownerScope: Schema.String,
-  state: Schema.String
+  ownerScope: Schema.NonEmptyString,
+  state: Schema.NonEmptyString
 }) {}
+
+export const ResourceHandleSchema = <Kind extends string, State extends string>(
+  kind: Kind,
+  state: State
+): Schema.Schema<ResourceHandle<Kind, State>> &
+  Schema.Decoder<ResourceHandle<Kind, State>, never> =>
+  Schema.Struct({
+    kind: Schema.Literal(kind),
+    id: ResourceIdSchema,
+    generation: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+    ownerScope: Schema.NonEmptyString,
+    state: Schema.Literal(state)
+  })
 
 export interface ResourceEntry<
   Kind extends ResourceKind = ResourceKind,
@@ -82,7 +102,7 @@ export class ResourceInvalidArgumentError extends Data.TaggedError("InvalidArgum
 export interface ResourceRegistryApi {
   readonly register: <Kind extends ResourceKind, State extends ResourceState>(
     input: RegisterResourceInput<Kind, State>
-  ) => Effect.Effect<ResourceHandle<Kind, State>, ResourceInvalidArgumentError, never>
+  ) => Effect.Effect<ManagedResourceHandle<Kind, State>, ResourceInvalidArgumentError, never>
   readonly get: (id: ResourceId) => Effect.Effect<Option.Option<ResourceEntry>, never, never>
   readonly list: () => Effect.Effect<RegistrySnapshot, never, never>
   readonly dispose: (id: ResourceId) => Effect.Effect<void, never, never>
@@ -95,7 +115,11 @@ export interface ResourceRegistryApi {
   readonly share: <Kind extends ResourceKind, State extends ResourceState>(
     handle: ResourceHandle<Kind, State>,
     targetScope: ScopeId
-  ) => Effect.Effect<ResourceHandle<Kind, State>, ResourceInvalidArgumentError | StaleHandle, never>
+  ) => Effect.Effect<
+    ManagedResourceHandle<Kind, State>,
+    ResourceInvalidArgumentError | StaleHandle,
+    never
+  >
   readonly assertFresh: <Kind extends ResourceKind, State extends ResourceState>(
     handle: ResourceHandle<Kind, State>
   ) => Effect.Effect<ResourceEntry<Kind, State>, StaleHandle, never>
@@ -221,7 +245,7 @@ export const makeResourceRegistry = (
 
     const register = <Kind extends ResourceKind, State extends ResourceState>(
       input: RegisterResourceInput<Kind, State>
-    ): Effect.Effect<ResourceHandle<Kind, State>, ResourceInvalidArgumentError, never> => {
+    ): Effect.Effect<ManagedResourceHandle<Kind, State>, ResourceInvalidArgumentError, never> => {
       return Effect.gen(function* () {
         const kind = (yield* validateIdentity(
           input.kind,
@@ -253,7 +277,7 @@ export const makeResourceRegistry = (
       existingCleanupGroupId: ResourceId | undefined,
       cleanup: Effect.Effect<void, never, never>,
       createdAt: number
-    ): Effect.Effect<ResourceHandle<Kind, State>, never, never> =>
+    ): Effect.Effect<ManagedResourceHandle<Kind, State>, never, never> =>
       Effect.gen(function* () {
         const handle = yield* SubscriptionRef.modify(entries, (current) => {
           const id = availableRegistrationId(input.id, createdAt, nextId, current)
@@ -270,7 +294,7 @@ export const makeResourceRegistry = (
             input.reusableId,
             disposedGenerations
           )
-          const handle: ResourceHandle<Kind, State> = {
+          const handle: ManagedResourceHandle<Kind, State> = {
             kind: input.kind,
             id,
             generation,
@@ -298,10 +322,11 @@ export const makeResourceRegistry = (
       handle: ResourceHandle<Kind, State>
     ): Effect.Effect<ResourceEntry<Kind, State>, StaleHandle, never> =>
       Effect.flatMap(SubscriptionRef.get(entries), (current) => {
-        const entry = current.get(handle.id)
+        const entry = current.get(handle.id as ResourceId)
         if (
           entry !== undefined &&
           entry.handle.kind === handle.kind &&
+          entry.handle.state === handle.state &&
           entry.handle.generation === handle.generation &&
           !entry.disposing
         ) {
@@ -376,7 +401,7 @@ export const makeResourceRegistry = (
       handle: ResourceHandle<Kind, State>,
       targetScope: ScopeId
     ): Effect.Effect<
-      ResourceHandle<Kind, State>,
+      ManagedResourceHandle<Kind, State>,
       ResourceInvalidArgumentError | StaleHandle,
       never
     > =>
@@ -386,34 +411,67 @@ export const makeResourceRegistry = (
           "targetScope",
           "ResourceRegistry.share"
         )) as ScopeId
-        yield* assertFresh(handle)
-        const current = yield* SubscriptionRef.get(entries)
-        const stored = current.get(handle.id)
-        if (stored === undefined) {
-          return yield* Effect.fail(
-            new StaleHandle({
-              tag: "StaleHandle",
-              kind: handle.kind,
-              id: handle.id,
-              expectedGeneration: handle.generation,
-              actualGeneration: -1
-            })
-          )
-        }
         const createdAt = yield* validateTimestamp(now(), "ResourceRegistry.share")
-        incrementCleanup(stored.cleanupGroupId, cleanupGroups)
+        type ShareResult =
+          | { readonly _tag: "stale"; readonly stale: StaleHandle }
+          | { readonly _tag: "shared"; readonly handle: ManagedResourceHandle<Kind, State> }
+        const result = yield* SubscriptionRef.modify(
+          entries,
+          (current): readonly [ShareResult, Map<ResourceId, StoredResourceEntry>] => {
+            const stored = current.get(handle.id as ResourceId)
+            if (
+              stored === undefined ||
+              stored.handle.kind !== handle.kind ||
+              stored.handle.state !== handle.state ||
+              stored.handle.generation !== handle.generation ||
+              stored.disposing
+            ) {
+              const stale = new StaleHandle({
+                tag: "StaleHandle",
+                kind: handle.kind,
+                id: handle.id,
+                expectedGeneration: handle.generation,
+                actualGeneration:
+                  disposedGenerations.get(handle.id)?.generation ?? stored?.handle.generation ?? -1
+              })
+              return [{ _tag: "stale" as const, stale }, current] as const
+            }
 
-        return yield* registerWithCleanupGroup(
-          {
-            kind: handle.kind,
-            ownerScope: validTargetScope,
-            state: handle.state,
-            reusableId: false
-          },
-          stored.cleanupGroupId,
-          Effect.void,
-          createdAt
+            const id = availableRegistrationId(undefined, createdAt, nextId, current)
+            const generation = generationForRegistration(
+              id,
+              stored.handle.kind,
+              false,
+              disposedGenerations
+            )
+            const cleanupGroupId = stored.cleanupGroupId
+            incrementCleanup(cleanupGroupId, cleanupGroups)
+            const sharedHandle: ManagedResourceHandle<Kind, State> = {
+              kind: stored.handle.kind as Kind,
+              id,
+              generation,
+              ownerScope: validTargetScope,
+              state: stored.handle.state as State,
+              dispose: () => dispose(id)
+            }
+            const next = new Map(current)
+            next.set(id, {
+              handle: sharedHandle,
+              createdAt,
+              reusableId: false,
+              disposalGraceMs: DEFAULT_DISPOSAL_GRACE_MS,
+              cleanupGroupId,
+              disposing: false
+            })
+            return [{ _tag: "shared" as const, handle: sharedHandle }, next] as const
+          }
         )
+
+        if (result._tag === "stale") {
+          return yield* Effect.fail(result.stale)
+        }
+
+        return result.handle
       })
 
     return {
@@ -437,6 +495,7 @@ export class ResourceRegistry extends Context.Service<ResourceRegistry, Resource
 export const ResourceRegistryLive = Layer.effect(ResourceRegistry)(makeResourceRegistry())
 
 interface StoredResourceEntry extends ResourceEntry {
+  readonly handle: ManagedResourceHandle
   readonly reusableId: boolean
   readonly disposalGraceMs: number
   readonly cleanupGroupId: ResourceId
@@ -558,8 +617,16 @@ const validateIdentity = (
         })
       )
 
+const publicHandle = (handle: ResourceHandle): ResourceHandle => ({
+  kind: handle.kind,
+  id: handle.id,
+  generation: handle.generation,
+  ownerScope: handle.ownerScope,
+  state: handle.state
+})
+
 const publicEntry = (entry: StoredResourceEntry): ResourceEntry => ({
-  handle: entry.handle,
+  handle: publicHandle(entry.handle),
   createdAt: entry.createdAt
 })
 
@@ -628,10 +695,7 @@ const snapshotFromMap = (
   entries: ReadonlyMap<ResourceId, StoredResourceEntry>
 ): RegistrySnapshot => {
   return {
-    entries: Array.from(entries.values()).map((entry) => ({
-      handle: entry.handle,
-      createdAt: entry.createdAt
-    }))
+    entries: Array.from(entries.values()).map(publicEntry)
   }
 }
 

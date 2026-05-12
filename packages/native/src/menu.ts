@@ -12,7 +12,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  BridgeResourceHandleShape,
   type HostProtocolEventEnvelope,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
@@ -423,7 +422,7 @@ const menuCommandResourceId = (itemId: string, commandId: string): ResourceId =>
   `menu-command:${itemId}:${commandId}` as ResourceId
 
 const toWindowHandle = (handle: WindowHandle): MenuWindowHandle =>
-  new BridgeResourceHandleShape({
+  Object.freeze({
     kind: handle.kind,
     id: handle.id,
     generation: handle.generation,

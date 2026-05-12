@@ -1,4 +1,4 @@
-import { BridgeRpc, type BridgeResourceHandle } from "@effect-desktop/bridge"
+import { ResourceHandleSchema, type ResourceHandle } from "@effect-desktop/core"
 import { Schema } from "effect"
 
 const PositiveFiniteNumber = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0))
@@ -30,8 +30,8 @@ const WindowVibrancyMaterial = Schema.Literals([
   "window-background"
 ])
 
-export const WindowResource = BridgeRpc.Resource("window", "open")
-export type WindowHandle = BridgeResourceHandle<"window", "open">
+export const WindowResource = ResourceHandleSchema("window", "open")
+export type WindowHandle = ResourceHandle<"window", "open">
 
 export class WindowTrafficLights extends Schema.Class<WindowTrafficLights>("WindowTrafficLights")({
   x: NonNegativeFiniteNumber,
@@ -51,22 +51,22 @@ export class WindowCreateInput extends Schema.Class<WindowCreateInput>("WindowCr
 export type WindowCreateOptions = Schema.Schema.Type<typeof WindowCreateInput>
 
 export class WindowHandleInput extends Schema.Class<WindowHandleInput>("WindowHandleInput")({
-  window: WindowResource.schema
+  window: WindowResource
 }) {}
 
 export class WindowTitleInput extends Schema.Class<WindowTitleInput>("WindowTitleInput")({
-  window: WindowResource.schema,
+  window: WindowResource,
   title: Schema.String
 }) {}
 
 export class WindowSizeInput extends Schema.Class<WindowSizeInput>("WindowSizeInput")({
-  window: WindowResource.schema,
+  window: WindowResource,
   width: PositiveFiniteNumber,
   height: PositiveFiniteNumber
 }) {}
 
 export class WindowPositionInput extends Schema.Class<WindowPositionInput>("WindowPositionInput")({
-  window: WindowResource.schema,
+  window: WindowResource,
   x: Schema.Number.check(Schema.isFinite()),
   y: Schema.Number.check(Schema.isFinite())
 }) {}
@@ -74,17 +74,17 @@ export class WindowPositionInput extends Schema.Class<WindowPositionInput>("Wind
 export class WindowBackgroundColorInput extends Schema.Class<WindowBackgroundColorInput>(
   "WindowBackgroundColorInput"
 )({
-  window: WindowResource.schema,
+  window: WindowResource,
   color: Schema.String
 }) {}
 
 export class WindowVibrancyInput extends Schema.Class<WindowVibrancyInput>("WindowVibrancyInput")({
-  window: WindowResource.schema,
+  window: WindowResource,
   material: Schema.String
 }) {}
 
 export class WindowShadowInput extends Schema.Class<WindowShadowInput>("WindowShadowInput")({
-  window: WindowResource.schema,
+  window: WindowResource,
   hasShadow: Schema.Boolean
 }) {}
 
@@ -97,11 +97,11 @@ export class WindowScaleFactorOutput extends Schema.Class<WindowScaleFactorOutpu
 export class WindowFullScreenChanged extends Schema.Class<WindowFullScreenChanged>(
   "WindowFullScreenChanged"
 )({
-  window: WindowResource.schema,
+  window: WindowResource,
   fullscreen: Schema.Boolean
 }) {}
 
 export class WindowScaleChanged extends Schema.Class<WindowScaleChanged>("WindowScaleChanged")({
-  window: WindowResource.schema,
+  window: WindowResource,
   scaleFactor: PositiveFiniteNumber
 }) {}

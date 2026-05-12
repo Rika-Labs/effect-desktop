@@ -1,10 +1,10 @@
-import { BridgeRpc, type BridgeResourceHandle } from "@effect-desktop/bridge"
+import { ResourceHandleSchema, type ResourceHandle } from "@effect-desktop/core"
 import { Schema } from "effect"
 
 import { BridgeSafeNonEmptyString, BridgeSafeString } from "./strings.js"
 import { ImageMime } from "./image.js"
 
-export const WebViewResource = BridgeRpc.Resource("webview", "open")
+export const WebViewResource = ResourceHandleSchema("webview", "open")
 const WebViewPlatform = Schema.Literals(["macos", "windows", "linux"])
 const WebViewRuntimeMode = Schema.Literals(["dev", "prod"])
 const WebViewCapabilityName = Schema.Literals([
@@ -31,7 +31,7 @@ const WebViewOrigin = BridgeSafeNonEmptyString.check(
 const WebViewRoute = BridgeSafeNonEmptyString.check(
   Schema.isPattern(/^\/(?!.*(?:^|\/)\.\.(?:\/|$))[^?#]*$/u)
 )
-export type WebViewHandle = BridgeResourceHandle<"webview", "open">
+export type WebViewHandle = ResourceHandle<"webview", "open">
 
 export class WebViewNavigationPolicy extends Schema.Class<WebViewNavigationPolicy>(
   "WebViewNavigationPolicy"
@@ -50,25 +50,25 @@ export class WebViewCreateInput extends Schema.Class<WebViewCreateInput>("WebVie
 export type WebViewCreateOptions = Schema.Schema.Type<typeof WebViewCreateInput>
 
 export class WebViewHandleInput extends Schema.Class<WebViewHandleInput>("WebViewHandleInput")({
-  webview: WebViewResource.schema
+  webview: WebViewResource
 }) {}
 
 export class WebViewLoadRouteInput extends Schema.Class<WebViewLoadRouteInput>(
   "WebViewLoadRouteInput"
 )({
-  webview: WebViewResource.schema,
+  webview: WebViewResource,
   route: WebViewRoute
 }) {}
 
 export class WebViewLoadUrlInput extends Schema.Class<WebViewLoadUrlInput>("WebViewLoadUrlInput")({
-  webview: WebViewResource.schema,
+  webview: WebViewResource,
   url: WebViewNavigationUrl
 }) {}
 
 export class WebViewSetNavigationPolicyInput extends Schema.Class<WebViewSetNavigationPolicyInput>(
   "WebViewSetNavigationPolicyInput"
 )({
-  webview: WebViewResource.schema,
+  webview: WebViewResource,
   policy: WebViewNavigationPolicy
 }) {}
 
@@ -99,7 +99,7 @@ export class WebViewScreenshot extends Schema.Class<WebViewScreenshot>("WebViewS
 export class WebViewNavigationBlockedEvent extends Schema.Class<WebViewNavigationBlockedEvent>(
   "WebViewNavigationBlockedEvent"
 )({
-  webview: WebViewResource.schema,
+  webview: WebViewResource,
   url: WebViewNavigationUrl,
   reason: WebViewNavigationBlockedReason
 }) {}

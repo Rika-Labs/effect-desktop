@@ -516,7 +516,7 @@
     {
       "name": "WindowHandle",
       "kind": "type",
-      "signature": "export type WindowHandle = BridgeResourceHandle<\"window\", \"open\">"
+      "signature": "export type WindowHandle = ResourceHandle<\"window\", \"open\">"
     },
     {
       "name": "windows",

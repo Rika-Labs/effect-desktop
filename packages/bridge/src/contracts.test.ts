@@ -121,27 +121,23 @@ test("BridgeRpc.group validates specs before producing a group", () => {
       {}
     )
   ).toThrow(InvalidBridgeRpcSpec)
-  for (const [index, output] of [
-    BridgeRpc.Resource("", "running"),
-    BridgeRpc.Resource("process", ""),
-    BridgeRpc.Resource(" ", "running"),
-    BridgeRpc.Resource("process", " "),
-    BridgeRpc.Resource("bad\nkind", "running"),
-    BridgeRpc.Resource("process", "bad\nstate")
-  ].entries()) {
-    expect(() =>
-      BridgeRpc.group(
-        `Test.InvalidResource.${index}`,
-        {
-          call: {
-            ...validMethodSpec(),
-            output
+  expect(() =>
+    BridgeRpc.group(
+      "Test.LegacyResourceSpec",
+      {
+        call: {
+          ...validMethodSpec(),
+          output: {
+            _tag: "BridgeRpcResourceSpec",
+            kind: "project",
+            state: "open",
+            schema: Schema.String
           }
-        },
-        {}
-      )
-    ).toThrow(InvalidBridgeRpcSpec)
-  }
+        }
+      } as never,
+      {}
+    )
+  ).toThrow(InvalidBridgeRpcSpec)
   expect(() =>
     BridgeRpc.group(
       "Test.InvalidStreamBackpressure",
@@ -273,38 +269,6 @@ test("BridgeRpc.group rejects empty permissions", () => {
   }
 })
 
-test("BridgeRpc.group rejects resource outputs without a handle schema", () => {
-  expect(() =>
-    BridgeRpc.group(
-      "Test.IncompleteResource",
-      {
-        call: {
-          ...validMethodSpec(),
-          output: {
-            _tag: "BridgeRpcResourceSpec",
-            kind: "project",
-            state: "open"
-          }
-        }
-      } as never,
-      {}
-    )
-  ).toThrow(InvalidBridgeRpcSpec)
-
-  expect(() =>
-    BridgeRpc.group(
-      "Test.ValidResource",
-      {
-        call: {
-          ...validMethodSpec(),
-          output: BridgeRpc.Resource("project", "open")
-        }
-      },
-      {}
-    )
-  ).not.toThrow()
-})
-
 test("BridgeRpc.layer binds handlers to a RpcGroup descriptor", async () => {
   const ProjectRpcs = BridgeRpc.group("Test.Layered", { call: validMethodSpec() }, {})
   const layer = BridgeRpc.layer(ProjectRpcs)({
@@ -418,7 +382,13 @@ test("BridgeRpc.fromGroup derives bridge runtime metadata from RpcGroup contract
   })
   const Process = Rpc.make("Test.FromGroup.process", {
     payload: Schema.Struct({ path: Schema.String }),
-    success: BridgeRpc.Resource("process", "running") as unknown as Schema.Schema<unknown>,
+    success: Schema.Struct({
+      kind: Schema.Literal("process"),
+      id: Schema.NonEmptyString,
+      generation: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+      ownerScope: Schema.NonEmptyString,
+      state: Schema.Literal("running")
+    }),
     error: Schema.Never
   })
   const NotesRpcs = BridgeRpc.fromGroup(
@@ -435,11 +405,9 @@ test("BridgeRpc.fromGroup derives bridge runtime metadata from RpcGroup contract
   ])
   expect(Object.keys(NotesRpcs.spec).sort()).toEqual(["list", "open", "process", "watch"])
   expect(NotesRpcs.spec["open"]?.permission).toBe("notes:open")
-  expect(NotesRpcs.spec["process"]?.output).toMatchObject({
-    _tag: "BridgeRpcResourceSpec",
-    kind: "process",
-    state: "running"
-  })
+  expect(NotesRpcs.spec["process"]?.output).toBe(
+    successSchema(request(NotesRpcs, "Test.FromGroup.process"))
+  )
   expect(NotesRpcs.spec["open"]?.support).toEqual({
     status: "unsupported",
     reason: "host adapter does not implement open yet"
