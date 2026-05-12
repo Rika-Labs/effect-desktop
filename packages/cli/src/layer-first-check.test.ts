@@ -12,6 +12,7 @@ import {
   type LayerFirstCheckOptions,
   type LayerFirstCheckReport,
   type LayerFirstViolationKind,
+  LayerFirstFileError,
   LayerFirstViolationError
 } from "./layer-first-check.js"
 
@@ -75,12 +76,42 @@ const expectViolation = (
   }
 }
 
+const expectFileError = (
+  exit: Exit.Exit<LayerFirstCheckReport, LayerFirstCheckError>,
+  operation: string
+): void => {
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    const error = failure?.error
+    expect(error).toBeInstanceOf(LayerFirstFileError)
+    if (error instanceof LayerFirstFileError) {
+      expect(error.operation).toBe(operation)
+    }
+  }
+}
+
 test("Layer-first check rejects hidden Effect.run calls in library source", async () => {
   const options = await makeFixture(
     packageFiles(`
       import { Effect } from "effect"
       export const leak = (program: Effect.Effect<void, never, never>) =>
         Effect.runPromise(program)
+    `)
+  )
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "forbidden-effect-run")
+})
+
+test("Layer-first check rejects split hidden Effect.run calls in library source", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      import { Effect } from "effect"
+      export const leak = (program: Effect.Effect<void, never, never>) =>
+        Effect
+          .runPromise(program)
     `)
   )
 
@@ -101,10 +132,52 @@ test("Layer-first check rejects direct runtime globals in library source", async
   expectViolation(exit, "forbidden-runtime-global")
 })
 
+test("Layer-first check rejects split runtime globals in library source", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      export const configHome = process
+        .env["XDG_CONFIG_HOME"] ?? ".config"
+    `)
+  )
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "forbidden-runtime-global")
+})
+
+test("Layer-first check rejects filesystem authority variants in library source", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      import { readFile } from "fs/promises"
+      export const load = (path: string) => readFile(path, "utf8")
+      export const remove = (path: string) => import("node:fs/promises").then((fs) => fs.unlink(path))
+      export const bytes = (path: string) => Bun.file(path)
+    `)
+  )
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "forbidden-runtime-global")
+})
+
 test("Layer-first check rejects public Promise-returning API signatures", async () => {
   const options = await makeFixture(
     packageFiles(`
       export const loadUser = async (): Promise<string> => "user"
+    `)
+  )
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-promise-api")
+})
+
+test("Layer-first check rejects public async function API signatures", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      export async function loadUser() {
+        return "user"
+      }
     `)
   )
 
@@ -147,10 +220,68 @@ test("Layer-first check allows explicit public Promise API snapshot symbols", as
   expect(report.violations).toEqual([])
 })
 
+test("Layer-first check allows explicit public Promise API source symbols", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      export const loadUser = (): Promise<string> => Promise.resolve("user")
+    `),
+    {
+      publicPromiseAllowlist: ["@effect-desktop/fixture:loadUser"]
+    }
+  )
+
+  const report = await Effect.runPromise(runLayerFirstCheck(options))
+
+  expect(report.passed).toBe(true)
+  expect(report.violations).toEqual([])
+})
+
+test("Layer-first check rejects malformed API snapshot JSON", async () => {
+  const options = await makeFixture({
+    ...packageFiles("export {}"),
+    "api/snapshots/fixture.snapshot.json": "{"
+  })
+
+  const exit = await runExit(options)
+
+  expectFileError(exit, "parseJson")
+})
+
 test("Layer-first check rejects public boundary classes without Schema.Class", async () => {
   const options = await makeFixture(
     packageFiles(`
       export class UserInput {
+        constructor(readonly name: string) {}
+      }
+    `)
+  )
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-boundary-without-schema")
+})
+
+test("Layer-first check rejects default-exported public boundary classes without Schema.Class", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      export default class UserInput {
+        constructor(readonly name: string) {}
+      }
+    `)
+  )
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-boundary-without-schema")
+})
+
+test("Layer-first check rejects Request and Response boundary classes without Schema.Class", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      export class UserRequest {
+        constructor(readonly name: string) {}
+      }
+      export class UserResponse {
         constructor(readonly name: string) {}
       }
     `)

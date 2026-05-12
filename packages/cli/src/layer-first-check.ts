@@ -2,6 +2,7 @@ import { access, readdir, readFile } from "node:fs/promises"
 import { join, relative, sep } from "node:path"
 
 import { Data, Effect } from "effect"
+import ts from "typescript"
 
 export type LayerFirstViolationKind =
   | "forbidden-effect-run"
@@ -89,7 +90,9 @@ const DEFAULT_ALLOWED_EDGES = [
   "packages/core/src/runtime/pty.ts",
   "packages/core/src/runtime/renderer-rpc-client.ts",
   "packages/core/src/runtime/sqlite.ts",
+  "packages/core/src/runtime/stdio-socket.ts",
   "packages/core/src/runtime/telemetry.ts",
+  "packages/core/src/runtime/transport.ts",
   "packages/core/src/runtime/window-state.ts",
   "packages/core/src/runtime/worker.ts",
   "packages/core/src/runtime/workflows/backup.ts",
@@ -98,6 +101,7 @@ const DEFAULT_ALLOWED_EDGES = [
   "packages/native/src/crash-reporter.ts",
   "packages/native/src/crash-report-workflow.ts",
   "packages/native/src/global-shortcut.ts",
+  "packages/native/src/updater-workflow.ts",
   "packages/react/src/desktop.tsx",
   "packages/react/src/hooks/desktop.ts",
   "packages/react/src/hooks/stream.ts",
@@ -131,7 +135,8 @@ const DEFAULT_PUBLIC_BOUNDARY_ALLOWLIST = [
 
 const SOURCE_EXTENSIONS = [".ts", ".tsx"] as const
 const GENERATED_SEGMENTS = new Set(["dist", ".next", ".astro", ".source", "node_modules"])
-const BOUNDARY_SUFFIX_PATTERN = /(Input|Output|Payload|Event|Result|Options|Config)$/u
+const BOUNDARY_SUFFIX_PATTERN =
+  /(Input|Output|Payload|Event|Result|Options|Config|Request|Response)$/u
 
 export const runLayerFirstCheck = (
   options: LayerFirstCheckOptions
@@ -152,14 +157,16 @@ export const runLayerFirstCheck = (
       const text = yield* readText(path)
       const relativePath = toRepoPath(options.cwd, path)
       const isAllowedEdge = allowedEdges.has(relativePath)
-      violations.push(...scanSourceFile(relativePath, text, isAllowedEdge, boundaryAllowlist))
+      violations.push(
+        ...scanSourceFile(relativePath, text, isAllowedEdge, promiseAllowlist, boundaryAllowlist)
+      )
     }
 
     const snapshotFiles = yield* discoverSnapshotFiles(options.cwd)
     for (const path of snapshotFiles) {
       const text = yield* readText(path)
       const relativePath = toRepoPath(options.cwd, path)
-      violations.push(...scanPublicApiSnapshot(relativePath, text, promiseAllowlist))
+      violations.push(...(yield* scanPublicApiSnapshot(relativePath, text, promiseAllowlist)))
     }
 
     const report: LayerFirstCheckReport = {
@@ -213,6 +220,7 @@ const scanSourceFile = (
   path: string,
   text: string,
   isAllowedEdge: boolean,
+  promiseAllowlist: ReadonlySet<string>,
   boundaryAllowlist: ReadonlySet<string>
 ): readonly LayerFirstViolation[] => {
   const violations: LayerFirstViolation[] = []
@@ -220,36 +228,37 @@ const scanSourceFile = (
     violations.push(...scanForbiddenPatterns(path, text))
   }
   violations.push(...scanPublicBoundaryClasses(path, text, boundaryAllowlist))
-  violations.push(...scanPublicPromiseSource(path, text))
+  violations.push(...scanPublicPromiseSource(path, text, promiseAllowlist))
   return violations
 }
 
 const scanForbiddenPatterns = (path: string, text: string): readonly LayerFirstViolation[] => {
   const violations: LayerFirstViolation[] = []
-  const lines = text.split(/\r?\n/u)
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index] ?? ""
-    const lineNumber = index + 1
-    if (/\bEffect\.run[A-Za-z0-9_]*/u.test(line)) {
-      violations.push({
-        kind: "forbidden-effect-run",
-        path,
-        line: lineNumber,
-        message: "Effect.run* belongs at composition edges, not library internals."
-      })
-    }
-    if (
-      /\bprocess\.env\b/u.test(line) ||
-      /\bBun\.env\b/u.test(line) ||
-      /\bDate\.now\s*\(/u.test(line) ||
-      /\bMath\.random\s*\(/u.test(line) ||
-      /\b(?:globalThis\.)?crypto\.randomUUID\s*\(/u.test(line) ||
-      /from\s+["']node:fs(?:\/promises)?["']/u.test(line)
-    ) {
+  for (const match of text.matchAll(/\bEffect\s*\.\s*run[A-Za-z0-9_]*/gu)) {
+    violations.push({
+      kind: "forbidden-effect-run",
+      path,
+      line: lineForOffset(text, match.index),
+      message: "Effect.run* belongs at composition edges, not library internals."
+    })
+  }
+  const runtimeGlobalPatterns = [
+    /\bprocess\s*\.\s*env\b/gu,
+    /\bBun\s*\.\s*env\b/gu,
+    /\bDate\s*\.\s*now\s*\(/gu,
+    /\bMath\s*\.\s*random\s*\(/gu,
+    /\b(?:globalThis\s*\.\s*)?crypto\s*\.\s*randomUUID\s*\(/gu,
+    /from\s+["'](?:node:)?fs(?:\/promises)?["']/gu,
+    /import\s*\(\s*["'](?:node:)?fs(?:\/promises)?["']\s*\)/gu,
+    /require\s*\(\s*["'](?:node:)?fs(?:\/promises)?["']\s*\)/gu,
+    /\bBun\s*\.\s*(?:file|write)\s*\(/gu
+  ] as const
+  for (const pattern of runtimeGlobalPatterns) {
+    for (const match of text.matchAll(pattern)) {
       violations.push({
         kind: "forbidden-runtime-global",
         path,
-        line: lineNumber,
+        line: lineForOffset(text, match.index),
         message: "Runtime globals and host adapters must enter through services or edge files."
       })
     }
@@ -257,19 +266,31 @@ const scanForbiddenPatterns = (path: string, text: string): readonly LayerFirstV
   return violations
 }
 
-const scanPublicPromiseSource = (path: string, text: string): readonly LayerFirstViolation[] => {
+const scanPublicPromiseSource = (
+  path: string,
+  text: string,
+  allowlist: ReadonlySet<string>
+): readonly LayerFirstViolation[] => {
   if (!path.endsWith("/src/index.ts") && !path.endsWith("/src/index.tsx")) {
     return []
   }
+  const packageName = packageNameFromPath(path)
+  if (packageName === undefined) {
+    return []
+  }
   const violations: LayerFirstViolation[] = []
-  const lines = text.split(/\r?\n/u)
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index] ?? ""
-    if (/\bexport\b/u.test(line) && /\bPromise\s*</u.test(line)) {
+  const sourceFile = parseSource(path, text)
+  for (const statement of sourceFile.statements) {
+    for (const symbol of promiseReturningExportedSymbols(statement, sourceFile)) {
+      const key = `${packageName}:${symbol.name}`
+      if (allowlist.has(key)) {
+        continue
+      }
       violations.push({
         kind: "public-promise-api",
         path,
-        line: index + 1,
+        line: lineForOffset(text, symbol.offset),
+        symbol: key,
         message: "Public effectful APIs should return Effect.Effect<A, E, R>, not Promise<A>."
       })
     }
@@ -287,25 +308,30 @@ const scanPublicBoundaryClasses = (
     return []
   }
   const violations: LayerFirstViolation[] = []
-  const classPattern = /export\s+class\s+([A-Za-z0-9_]+)([^{]*)\{/gu
-  for (const match of text.matchAll(classPattern)) {
-    const name = match[1]
-    const heritage = match[2] ?? ""
-    if (name === undefined || !BOUNDARY_SUFFIX_PATTERN.test(name)) {
+  const sourceFile = parseSource(path, text)
+  for (const statement of sourceFile.statements) {
+    if (!ts.isClassDeclaration(statement) || !isExported(statement)) {
+      continue
+    }
+    const name = statement.name?.text ?? "default"
+    if (!BOUNDARY_SUFFIX_PATTERN.test(name)) {
       continue
     }
     const symbol = `${packageName}:${name}`
     if (allowlist.has(symbol)) {
       continue
     }
-    if (heritage.includes("Data.TaggedError")) {
+    const heritage = statement.heritageClauses
+      ?.flatMap((clause) => clause.types.map((type) => type.expression.getText(sourceFile)))
+      .join(" ")
+    if (heritage?.includes("Data.TaggedError")) {
       continue
     }
-    if (!heritage.includes("Schema.Class")) {
+    if (heritage?.includes("Schema.Class") !== true) {
       violations.push({
         kind: "public-boundary-without-schema",
         path,
-        line: lineForOffset(text, match.index ?? 0),
+        line: lineForOffset(text, statement.getStart(sourceFile)),
         symbol,
         message: "Public boundary classes must extend Schema.Class."
       })
@@ -318,42 +344,148 @@ const scanPublicApiSnapshot = (
   path: string,
   text: string,
   allowlist: ReadonlySet<string>
-): readonly LayerFirstViolation[] => {
-  const snapshot = parseSnapshot(text)
-  if (snapshot === undefined || typeof snapshot.packageName !== "string") {
-    return []
-  }
-  const symbols = Array.isArray(snapshot.symbols) ? snapshot.symbols : []
-  const violations: LayerFirstViolation[] = []
-  for (const symbol of symbols) {
-    if (!isPublicApiSymbolSnapshot(symbol)) {
-      continue
+): Effect.Effect<readonly LayerFirstViolation[], LayerFirstFileError, never> =>
+  Effect.gen(function* () {
+    const snapshot = yield* parseSnapshot(path, text)
+    if (typeof snapshot.packageName !== "string") {
+      return []
     }
-    const key = `${snapshot.packageName}:${symbol.name}`
-    if (allowlist.has(key)) {
-      continue
+    const symbols = Array.isArray(snapshot.symbols) ? snapshot.symbols : []
+    const violations: LayerFirstViolation[] = []
+    for (const symbol of symbols) {
+      if (!isPublicApiSymbolSnapshot(symbol)) {
+        continue
+      }
+      const key = `${snapshot.packageName}:${symbol.name}`
+      if (allowlist.has(key)) {
+        continue
+      }
+      if (symbol.signature.includes("Promise<")) {
+        violations.push({
+          kind: "public-promise-api",
+          path,
+          line: 1,
+          symbol: key,
+          message:
+            "Public API snapshot exposes Promise; use Effect.Effect or add an explicit edge allowlist."
+        })
+      }
     }
-    if (symbol.signature.includes("Promise<")) {
-      violations.push({
-        kind: "public-promise-api",
+    return violations
+  })
+
+const parseSnapshot = (
+  path: string,
+  text: string
+): Effect.Effect<PublicApiSnapshotFile, LayerFirstFileError, never> => {
+  try {
+    return Effect.succeed(JSON.parse(text) as PublicApiSnapshotFile)
+  } catch (cause) {
+    return Effect.fail(
+      new LayerFirstFileError({
+        operation: "parseJson",
         path,
-        line: 1,
-        symbol: key,
-        message:
-          "Public API snapshot exposes Promise; use Effect.Effect or add an explicit edge allowlist."
+        message: `failed to parse JSON file ${path}`,
+        cause
       })
-    }
+    )
   }
-  return violations
 }
 
-const parseSnapshot = (text: string): PublicApiSnapshotFile | undefined => {
-  try {
-    return JSON.parse(text) as PublicApiSnapshotFile
-  } catch {
-    return undefined
-  }
+interface ExportedPromiseSymbol {
+  readonly name: string
+  readonly offset: number
 }
+
+const parseSource = (path: string, text: string): ts.SourceFile =>
+  ts.createSourceFile(
+    path,
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+    path.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+  )
+
+const promiseReturningExportedSymbols = (
+  statement: ts.Statement,
+  sourceFile: ts.SourceFile
+): readonly ExportedPromiseSymbol[] => {
+  if (!isExported(statement)) {
+    return []
+  }
+  if (ts.isFunctionDeclaration(statement)) {
+    if (!hasAsyncModifier(statement) && !typeIncludesPromise(statement.type, sourceFile)) {
+      return []
+    }
+    return [
+      {
+        name: statement.name?.text ?? "default",
+        offset: statement.getStart(sourceFile)
+      }
+    ]
+  }
+  if (ts.isVariableStatement(statement)) {
+    const symbols: ExportedPromiseSymbol[] = []
+    for (const declaration of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(declaration.name)) {
+        continue
+      }
+      if (
+        typeIncludesPromise(declaration.type, sourceFile) ||
+        initializerIsAsync(declaration.initializer) ||
+        initializerReturnsPromise(declaration.initializer, sourceFile)
+      ) {
+        symbols.push({
+          name: declaration.name.text,
+          offset: declaration.getStart(sourceFile)
+        })
+      }
+    }
+    return symbols
+  }
+  return []
+}
+
+const initializerIsAsync = (initializer: ts.Expression | undefined): boolean => {
+  if (initializer === undefined) {
+    return false
+  }
+  const expression = ts.isParenthesizedExpression(initializer)
+    ? initializer.expression
+    : initializer
+  return (
+    (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) &&
+    hasAsyncModifier(expression)
+  )
+}
+
+const initializerReturnsPromise = (
+  initializer: ts.Expression | undefined,
+  sourceFile: ts.SourceFile
+): boolean => {
+  if (initializer === undefined) {
+    return false
+  }
+  const expression = ts.isParenthesizedExpression(initializer)
+    ? initializer.expression
+    : initializer
+  return (
+    (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) &&
+    typeIncludesPromise(expression.type, sourceFile)
+  )
+}
+
+const typeIncludesPromise = (node: ts.Node | undefined, sourceFile: ts.SourceFile): boolean =>
+  node?.getText(sourceFile).includes("Promise<") === true
+
+const isExported = (node: ts.Node): boolean =>
+  hasModifier(node, ts.SyntaxKind.ExportKeyword) || hasModifier(node, ts.SyntaxKind.DefaultKeyword)
+
+const hasAsyncModifier = (node: ts.Node): boolean => hasModifier(node, ts.SyntaxKind.AsyncKeyword)
+
+const hasModifier = (node: ts.Node, kind: ts.SyntaxKind): boolean =>
+  ts.canHaveModifiers(node) &&
+  (ts.getModifiers(node)?.some((modifier) => modifier.kind === kind) ?? false)
 
 const isPublicApiSymbolSnapshot = (value: unknown): value is PublicApiSymbolSnapshot =>
   isRecord(value) && typeof value["name"] === "string" && typeof value["signature"] === "string"
@@ -447,13 +579,24 @@ const readText = (path: string): Effect.Effect<string, LayerFirstFileError, neve
       })
   })
 
-const fileExists = (path: string): Effect.Effect<boolean, never, never> =>
+const fileExists = (path: string): Effect.Effect<boolean, LayerFirstFileError, never> =>
   Effect.tryPromise({
     try: () => access(path),
-    catch: () => undefined
+    catch: (cause) => cause
   }).pipe(
     Effect.as(true),
-    Effect.catch(() => Effect.succeed(false))
+    Effect.catch((cause) =>
+      isMissingPathError(cause)
+        ? Effect.succeed(false)
+        : Effect.fail(
+            new LayerFirstFileError({
+              operation: "access",
+              path,
+              message: `failed to access path ${path}`,
+              cause
+            })
+          )
+    )
   )
 
 const isSourceFile = (path: string): boolean =>
@@ -489,3 +632,6 @@ const formatViolation = (violation: LayerFirstViolation): string => {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null
+
+const isMissingPathError = (value: unknown): boolean =>
+  isRecord(value) && (value["code"] === "ENOENT" || value["code"] === "ENOTDIR")
