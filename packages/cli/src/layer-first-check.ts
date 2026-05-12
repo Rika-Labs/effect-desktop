@@ -280,8 +280,9 @@ const scanPublicPromiseSource = (
   }
   const violations: LayerFirstViolation[] = []
   const sourceFile = parseSource(path, text)
+  const exports = exportedNames(sourceFile)
   for (const statement of sourceFile.statements) {
-    for (const symbol of promiseReturningExportedSymbols(statement, sourceFile)) {
+    for (const symbol of promiseReturningExportedSymbols(statement, sourceFile, exports)) {
       const key = `${packageName}:${symbol.name}`
       if (allowlist.has(key)) {
         continue
@@ -309,11 +310,15 @@ const scanPublicBoundaryClasses = (
   }
   const violations: LayerFirstViolation[] = []
   const sourceFile = parseSource(path, text)
+  const exports = exportedNames(sourceFile)
   for (const statement of sourceFile.statements) {
-    if (!ts.isClassDeclaration(statement) || !isExported(statement)) {
+    if (!ts.isClassDeclaration(statement)) {
       continue
     }
     const name = statement.name?.text ?? "default"
+    if (!isExported(statement) && !exports.has(name)) {
+      continue
+    }
     if (!BOUNDARY_SUFFIX_PATTERN.test(name)) {
       continue
     }
@@ -408,18 +413,20 @@ const parseSource = (path: string, text: string): ts.SourceFile =>
 
 const promiseReturningExportedSymbols = (
   statement: ts.Statement,
-  sourceFile: ts.SourceFile
+  sourceFile: ts.SourceFile,
+  exports: ReadonlySet<string>
 ): readonly ExportedPromiseSymbol[] => {
-  if (!isExported(statement)) {
-    return []
-  }
   if (ts.isFunctionDeclaration(statement)) {
+    const name = statement.name?.text ?? "default"
+    if (!isExported(statement) && !exports.has(name)) {
+      return []
+    }
     if (!hasAsyncModifier(statement) && !typeIncludesPromise(statement.type, sourceFile)) {
       return []
     }
     return [
       {
-        name: statement.name?.text ?? "default",
+        name,
         offset: statement.getStart(sourceFile)
       }
     ]
@@ -428,6 +435,9 @@ const promiseReturningExportedSymbols = (
     const symbols: ExportedPromiseSymbol[] = []
     for (const declaration of statement.declarationList.declarations) {
       if (!ts.isIdentifier(declaration.name)) {
+        continue
+      }
+      if (!isExported(statement) && !exports.has(declaration.name.text)) {
         continue
       }
       if (
@@ -444,6 +454,24 @@ const promiseReturningExportedSymbols = (
     return symbols
   }
   return []
+}
+
+const exportedNames = (sourceFile: ts.SourceFile): ReadonlySet<string> => {
+  const names = new Set<string>()
+  for (const statement of sourceFile.statements) {
+    if (
+      ts.isExportDeclaration(statement) &&
+      statement.exportClause !== undefined &&
+      ts.isNamedExports(statement.exportClause)
+    ) {
+      for (const element of statement.exportClause.elements) {
+        names.add(element.propertyName?.text ?? element.name.text)
+      }
+    } else if (ts.isExportAssignment(statement) && ts.isIdentifier(statement.expression)) {
+      names.add(statement.expression.text)
+    }
+  }
+  return names
 }
 
 const initializerIsAsync = (initializer: ts.Expression | undefined): boolean => {

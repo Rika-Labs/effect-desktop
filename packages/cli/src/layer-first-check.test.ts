@@ -186,6 +186,19 @@ test("Layer-first check rejects public async function API signatures", async () 
   expectViolation(exit, "public-promise-api")
 })
 
+test("Layer-first check rejects re-exported public Promise API signatures", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      const loadUser = async () => "user"
+      export { loadUser }
+    `)
+  )
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-promise-api")
+})
+
 test("Layer-first check rejects public Promise signatures in API snapshots", async () => {
   const options = await makeFixture({
     ...packageFiles("export {}"),
@@ -284,6 +297,21 @@ test("Layer-first check rejects Request and Response boundary classes without Sc
       export class UserResponse {
         constructor(readonly name: string) {}
       }
+    `)
+  )
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-boundary-without-schema")
+})
+
+test("Layer-first check rejects re-exported public boundary classes without Schema.Class", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      class UserInput {
+        constructor(readonly name: string) {}
+      }
+      export { UserInput }
     `)
   )
 
