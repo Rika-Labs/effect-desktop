@@ -119,6 +119,20 @@ test("Layer-first check rejects aliased Effect.run calls in library source", asy
   expectViolation(exit, "forbidden-effect-run")
 })
 
+test("Layer-first check rejects namespace-imported Effect.run calls in library source", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      import * as Fx from "effect"
+      export const leak = (program: Fx.Effect.Effect<void, never, never>) =>
+        Fx.runPromise(program)
+    `)
+  )
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "forbidden-effect-run")
+})
+
 test("Layer-first check rejects split hidden Effect.run calls in library source", async () => {
   const options = await makeFixture(
     packageFiles(`

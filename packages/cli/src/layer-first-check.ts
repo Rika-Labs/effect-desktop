@@ -338,7 +338,14 @@ const effectRunReceiverNames = (sourceFile: ts.SourceFile): ReadonlySet<string> 
       continue
     }
     const bindings = statement.importClause?.namedBindings
-    if (bindings === undefined || !ts.isNamedImports(bindings)) {
+    if (bindings === undefined) {
+      continue
+    }
+    if (ts.isNamespaceImport(bindings)) {
+      names.add(bindings.name.text)
+      continue
+    }
+    if (!ts.isNamedImports(bindings)) {
       continue
     }
     for (const element of bindings.elements) {
