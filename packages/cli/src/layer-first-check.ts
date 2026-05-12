@@ -1839,9 +1839,48 @@ const addPackageEntrypoint = (
 ): void => {
   const normalizedTarget = target.startsWith("./") ? target.slice(2) : target
   const entrypoint = posixNormalize(posixJoin(root, normalizedTarget))
-  if (isSourceFile(entrypoint) && !entrypoint.endsWith(".d.ts") && sourceTexts.has(entrypoint)) {
-    entrypoints.add(entrypoint)
+  for (const candidate of packageTargetSourceCandidates(root, entrypoint)) {
+    if (sourceTexts.has(candidate)) {
+      entrypoints.add(candidate)
+    }
   }
+}
+
+const packageTargetSourceCandidates = (root: string, entrypoint: string): readonly string[] => {
+  const base = packageTargetSourceBase(entrypoint)
+  const rootPrefix = `${root}/`
+  const rootRelativeBase = base.startsWith(rootPrefix) ? base.slice(rootPrefix.length) : undefined
+  const sourceBase =
+    rootRelativeBase === undefined || rootRelativeBase.startsWith("src/")
+      ? undefined
+      : posixJoin(
+          root,
+          "src",
+          rootRelativeBase.startsWith("dist/")
+            ? rootRelativeBase.slice("dist/".length)
+            : rootRelativeBase
+        )
+  return uniqueStrings([base, ...(sourceBase === undefined ? [] : [sourceBase])]).flatMap(
+    sourceCandidatesForBase
+  )
+}
+
+const packageTargetSourceBase = (entrypoint: string): string => {
+  const declarationBase = entrypoint.replace(/\.d\.ts$/u, "")
+  if (declarationBase !== entrypoint) {
+    return declarationBase
+  }
+  return entrypoint.replace(/\.(?:cjs|js|jsx|mjs)$/u, "")
+}
+
+const sourceCandidatesForBase = (base: string): readonly string[] => {
+  if (isSourceFile(base) && !base.endsWith(".d.ts")) {
+    return [base]
+  }
+  return SOURCE_EXTENSIONS.flatMap((extension) => [
+    `${base}${extension}`,
+    posixJoin(base, `index${extension}`)
+  ])
 }
 
 const addFallbackEntrypoints = (

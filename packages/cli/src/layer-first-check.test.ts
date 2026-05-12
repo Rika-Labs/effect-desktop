@@ -540,6 +540,32 @@ test("Layer-first check rejects public Promise APIs from package subpath entrypo
   expectViolation(exit, "public-promise-api")
 })
 
+test("Layer-first check resolves JavaScript package export targets to source entrypoints", async () => {
+  const options = await makeFixture({
+    ...packageFiles("export {}"),
+    "packages/fixture/package.json": JSON.stringify(
+      {
+        name: "@effect-desktop/fixture",
+        type: "module",
+        exports: {
+          ".": { types: "./dist/index.d.ts", default: "./dist/index.js" },
+          "./api": { types: "./dist/api.d.ts", default: "./dist/api.js" }
+        }
+      },
+      null,
+      2
+    ),
+    "packages/fixture/src/index.ts": "export {}",
+    "packages/fixture/src/api.ts": `
+      export const loadUser = async () => "user"
+    `
+  })
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-promise-api")
+})
+
 test("Layer-first check resolves default Promise APIs re-exported from local modules", async () => {
   const options = await makeFixture({
     ...packageFiles(`
