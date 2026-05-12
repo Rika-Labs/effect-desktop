@@ -105,6 +105,20 @@ test("Layer-first check rejects hidden Effect.run calls in library source", asyn
   expectViolation(exit, "forbidden-effect-run")
 })
 
+test("Layer-first check rejects aliased Effect.run calls in library source", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      import { Effect as Fx } from "effect"
+      export const leak = (program: Fx.Effect<void, never, never>) =>
+        Fx.runPromise(program)
+    `)
+  )
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "forbidden-effect-run")
+})
+
 test("Layer-first check rejects split hidden Effect.run calls in library source", async () => {
   const options = await makeFixture(
     packageFiles(`
@@ -169,6 +183,25 @@ test("Layer-first check rejects runtime global method references in library sour
       export const random = Math.random
       export const uuid = globalThis.crypto.randomUUID
       export const file = Bun.file
+    `)
+  )
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "forbidden-runtime-global")
+})
+
+test("Layer-first check rejects aliased runtime globals in library source", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      const runtimeProcess = process
+      const RuntimeMath = Math
+      const RuntimeBun = Bun
+      const RuntimeCrypto = crypto
+      export const configHome = runtimeProcess.env["XDG_CONFIG_HOME"] ?? ".config"
+      export const random = RuntimeMath.random()
+      export const file = RuntimeBun.file("config.json")
+      export const secret = RuntimeCrypto.randomUUID()
     `)
   )
 

@@ -154,6 +154,7 @@ const SOURCE_EXTENSIONS = [".ts", ".tsx"] as const
 const GENERATED_SEGMENTS = new Set(["dist", ".next", ".astro", ".source", "node_modules"])
 const BOUNDARY_SUFFIX_PATTERN =
   /(Input|Output|Payload|Event|Result|Options|Config|Request|Response)$/u
+const EMPTY_RUNTIME_OBJECT_ALIASES = new Map<string, string>()
 const PROCESS_FORBIDDEN_PROPERTIES = new Set(["env"])
 const BUN_FORBIDDEN_PROPERTIES = new Set(["env", "file", "write"])
 const DATE_FORBIDDEN_PROPERTIES = new Set(["now"])
@@ -283,6 +284,8 @@ const scanSourceFile = (
 const scanForbiddenPatterns = (path: string, text: string): readonly LayerFirstViolation[] => {
   const violations: LayerFirstViolation[] = []
   const sourceFile = parseSource(path, text)
+  const effectRunReceivers = effectRunReceiverNames(sourceFile)
+  const runtimeObjectAliases = collectRuntimeObjectAliases(sourceFile)
   const pushEffectRun = (node: ts.Node): void => {
     violations.push({
       kind: "forbidden-effect-run",
@@ -307,18 +310,69 @@ const scanForbiddenPatterns = (path: string, text: string): readonly LayerFirstV
         pushRuntimeGlobal(node)
       }
     } else if (isStaticAccessExpression(node)) {
-      if (isEffectRunAccess(node)) {
+      if (isEffectRunAccess(node, effectRunReceivers)) {
         pushEffectRun(node)
-      } else if (propertyAccessUsesRuntimeGlobal(node)) {
+      } else if (propertyAccessUsesRuntimeGlobal(node, runtimeObjectAliases)) {
         pushRuntimeGlobal(node)
       }
-    } else if (ts.isVariableDeclaration(node) && destructuringUsesRuntimeGlobal(node)) {
+    } else if (
+      ts.isVariableDeclaration(node) &&
+      destructuringUsesRuntimeGlobal(node, runtimeObjectAliases)
+    ) {
       pushRuntimeGlobal(node)
     }
     ts.forEachChild(node, visit)
   }
   ts.forEachChild(sourceFile, visit)
   return violations
+}
+
+const effectRunReceiverNames = (sourceFile: ts.SourceFile): ReadonlySet<string> => {
+  const names = new Set(["Effect"])
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier) ||
+      statement.moduleSpecifier.text !== "effect"
+    ) {
+      continue
+    }
+    const bindings = statement.importClause?.namedBindings
+    if (bindings === undefined || !ts.isNamedImports(bindings)) {
+      continue
+    }
+    for (const element of bindings.elements) {
+      const importedName = element.propertyName?.text ?? element.name.text
+      if (importedName === "Effect") {
+        names.add(element.name.text)
+      }
+    }
+  }
+  return names
+}
+
+const collectRuntimeObjectAliases = (sourceFile: ts.SourceFile): ReadonlyMap<string, string> => {
+  const aliases = new Map<string, string>()
+  let changed = true
+  while (changed) {
+    changed = false
+    const visit = (node: ts.Node): void => {
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        node.initializer !== undefined
+      ) {
+        const objectName = runtimeObjectName(node.initializer, aliases)
+        if (objectName !== undefined && aliases.get(node.name.text) !== objectName) {
+          aliases.set(node.name.text, objectName)
+          changed = true
+        }
+      }
+      ts.forEachChild(node, visit)
+    }
+    ts.forEachChild(sourceFile, visit)
+  }
+  return aliases
 }
 
 const importDeclarationUsesRuntimeFs = (node: ts.ImportDeclaration): boolean => {
@@ -356,23 +410,30 @@ const callExpressionImportsRuntimeFs = (node: ts.CallExpression): boolean => {
   return ts.isIdentifier(node.expression) && node.expression.text === "require"
 }
 
-const propertyAccessUsesRuntimeGlobal = (node: StaticAccessExpression): boolean =>
-  isRuntimeObjectPropertyAccess(node, "process", "env") ||
-  isRuntimeObjectPropertyAccess(node, "Bun", "env") ||
-  isRuntimeMethodAccess(node)
+const propertyAccessUsesRuntimeGlobal = (
+  node: StaticAccessExpression,
+  aliases: ReadonlyMap<string, string>
+): boolean =>
+  isRuntimeObjectPropertyAccess(node, "process", "env", aliases) ||
+  isRuntimeObjectPropertyAccess(node, "Bun", "env", aliases) ||
+  isRuntimeMethodAccess(node, aliases)
 
-const destructuringUsesRuntimeGlobal = (node: ts.VariableDeclaration): boolean =>
+const destructuringUsesRuntimeGlobal = (
+  node: ts.VariableDeclaration,
+  aliases: ReadonlyMap<string, string>
+): boolean =>
   ts.isObjectBindingPattern(node.name) &&
-  objectBindingPatternUsesRuntimeGlobal(node.name, node.initializer)
+  objectBindingPatternUsesRuntimeGlobal(node.name, node.initializer, aliases)
 
 const objectBindingPatternUsesRuntimeGlobal = (
   pattern: ts.ObjectBindingPattern,
-  initializer: ts.Expression | undefined
+  initializer: ts.Expression | undefined,
+  aliases: ReadonlyMap<string, string>
 ): boolean => {
   if (initializer === undefined) {
     return false
   }
-  const objectName = runtimeObjectName(initializer)
+  const objectName = runtimeObjectName(initializer, aliases)
   if (objectName === undefined) {
     return false
   }
@@ -428,9 +489,16 @@ const propertyNameText = (node: ts.PropertyName): string | undefined => {
   return undefined
 }
 
-const runtimeObjectName = (node: ts.Expression): string | undefined => {
+const runtimeObjectName = (
+  node: ts.Expression,
+  aliases: ReadonlyMap<string, string> = EMPTY_RUNTIME_OBJECT_ALIASES
+): string | undefined => {
   const expression = unwrapExpression(node)
   if (ts.isIdentifier(expression)) {
+    const aliasedName = aliases.get(expression.text)
+    if (aliasedName !== undefined) {
+      return aliasedName
+    }
     return isRuntimeObjectName(expression.text) || expression.text === "globalThis"
       ? expression.text
       : undefined
@@ -462,13 +530,17 @@ const runtimeObjectForbiddenProperties = (objectName: string): ReadonlySet<strin
   }
 }
 
-const isRuntimeMethodAccess = (node: StaticAccessExpression): boolean => {
+const isRuntimeMethodAccess = (
+  node: StaticAccessExpression,
+  aliases: ReadonlyMap<string, string>
+): boolean => {
   const name = staticAccessName(node)
   return (
-    isRuntimeObjectPropertyAccess(node, "Date", "now") ||
-    isRuntimeObjectPropertyAccess(node, "Math", "random") ||
-    isCryptoRandomUuidAccess(node) ||
-    ((name === "file" || name === "write") && isRuntimeObjectExpression(node.expression, "Bun"))
+    isRuntimeObjectPropertyAccess(node, "Date", "now", aliases) ||
+    isRuntimeObjectPropertyAccess(node, "Math", "random", aliases) ||
+    isCryptoRandomUuidAccess(node, aliases) ||
+    ((name === "file" || name === "write") &&
+      isRuntimeObjectExpression(node.expression, "Bun", aliases))
   )
 }
 
@@ -477,42 +549,37 @@ type StaticAccessExpression = ts.PropertyAccessExpression | ts.ElementAccessExpr
 const isStaticAccessExpression = (node: ts.Node): node is StaticAccessExpression =>
   ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)
 
-const isEffectRunAccess = (node: StaticAccessExpression): boolean =>
+const isEffectRunAccess = (
+  node: StaticAccessExpression,
+  effectRunReceivers: ReadonlySet<string>
+): boolean =>
   ts.isIdentifier(node.expression) &&
-  node.expression.text === "Effect" &&
+  effectRunReceivers.has(node.expression.text) &&
   (staticAccessName(node)?.startsWith("run") ?? false)
 
 const isRuntimeObjectPropertyAccess = (
   node: StaticAccessExpression,
   objectName: string,
-  propertyName: string
+  propertyName: string,
+  aliases: ReadonlyMap<string, string>
 ): boolean =>
-  staticAccessName(node) === propertyName && isRuntimeObjectExpression(node.expression, objectName)
+  staticAccessName(node) === propertyName &&
+  isRuntimeObjectExpression(node.expression, objectName, aliases)
 
-const isRuntimeObjectExpression = (node: ts.Expression, objectName: string): boolean => {
-  if (ts.isIdentifier(node)) {
-    return node.text === objectName
-  }
-  return (
-    isStaticAccessExpression(node) &&
-    staticAccessName(node) === objectName &&
-    isGlobalThisExpression(node.expression)
-  )
-}
+const isRuntimeObjectExpression = (
+  node: ts.Expression,
+  objectName: string,
+  aliases: ReadonlyMap<string, string>
+): boolean => runtimeObjectName(node, aliases) === objectName
 
-const isCryptoRandomUuidAccess = (node: StaticAccessExpression): boolean => {
+const isCryptoRandomUuidAccess = (
+  node: StaticAccessExpression,
+  aliases: ReadonlyMap<string, string>
+): boolean => {
   if (staticAccessName(node) !== "randomUUID") {
     return false
   }
-  const expression = node.expression
-  if (ts.isIdentifier(expression)) {
-    return expression.text === "crypto"
-  }
-  return (
-    isStaticAccessExpression(expression) &&
-    staticAccessName(expression) === "crypto" &&
-    isGlobalThisExpression(expression.expression)
-  )
+  return isRuntimeObjectExpression(node.expression, "crypto", aliases)
 }
 
 const staticAccessName = (node: StaticAccessExpression): string | undefined => {
