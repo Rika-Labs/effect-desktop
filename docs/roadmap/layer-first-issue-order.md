@@ -125,6 +125,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 | #1179 Generate supported native client surfaces              | Implemented | `DesktopRpc.supportedGroup`, `WindowSupportedRpcs`, and the narrowed Window/React/Test client surfaces prove unsupported descriptor methods are not callable client methods         |
 | #1194 Expose native capability facts as data                 | Implemented | `NativeCapabilities` derives runtime support facts and explicit `UnsupportedCapability` failures from native `RpcSupport` annotations                                               |
 | #1177 Remove generated @effect/cluster dependency            | Implemented | `create-effect-desktop --include-cluster` keeps cluster APIs on the pinned `effect` package and no longer emits a phantom `@effect/cluster` dependency                              |
+| #1184 Use Effect serialization for host protocol frames      | Implemented | The host protocol codec module centralizes host frame bytes on Schema JSON transformations, and `host-client` no longer parses or stringifies protocol frames inline                |
 | #1264 Replace BridgeRpc runtime DSL with Effect RPC adapters | Implemented | Native capability `*Rpcs` values are plain `RpcGroup`s, host runtimes use `RpcGroup.toLayer(...)` through `makeDesktopRpcHandlerRuntime(...)`, and bridge/native focused tests pass |
 
 ## Design-Debt Follow-ups

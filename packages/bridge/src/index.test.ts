@@ -3,15 +3,17 @@ import { readdirSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { Effect, Option, Schema } from "effect"
+import { Effect, Exit, Option, Schema } from "effect"
 import { Rpc } from "effect/unstable/rpc"
 
 import packageJson from "../package.json" with { type: "json" }
 import {
   HOST_PROTOCOL_ERROR_SPECS,
   HOST_PROTOCOL_VERSION,
+  HostProtocolBinaryDecodeError,
   HostProtocolEnvelope,
   HostProtocolError,
+  HostProtocolInvalidOutputError,
   RpcCapability,
   RpcEndpoint,
   RpcSupport,
@@ -19,14 +21,18 @@ import {
   RendererResumePayload,
   RendererResumedPayload,
   ResumeTicket,
+  WindowCreatePayload,
+  decodeHostProtocolFrame,
   decodeHostProtocolEnvelope,
   encodeHostProtocolEnvelope,
+  encodeHostProtocolFrame,
   hostProtocolErrorRecoverableDefault,
   rpcCapability,
   rpcEndpointKind,
   rpcEndpointName,
   rpcSupport,
-  makeHostProtocolInvalidOutputError
+  makeHostProtocolInvalidOutputError,
+  parseHostProtocolFrameJson
 } from "./index.js"
 
 const FIXTURE_DIR = fileURLToPath(
@@ -65,6 +71,197 @@ test("shared host-protocol fixtures decode and encode canonically", async () => 
 
     expect(JSON.stringify(encoded), fixtureName).toBe(source)
   }
+})
+
+test("host protocol codec round-trips shared fixtures as canonical JSON bytes", async () => {
+  const fixtureNames = readdirSync(FIXTURE_DIR)
+    .filter((name) => name.endsWith(".json") && name !== "errors.json")
+    .sort()
+  const decoder = new TextDecoder("utf-8", { fatal: true })
+
+  for (const fixtureName of fixtureNames) {
+    const source = (await readFile(join(FIXTURE_DIR, fixtureName), "utf8")).trim()
+    const decoded = decodeHostProtocolEnvelope(JSON.parse(source))
+    const frame = await Effect.runPromise(encodeHostProtocolFrame(decoded, fixtureName))
+    const fromFrame = await Effect.runPromise(decodeHostProtocolFrame(frame, fixtureName))
+
+    expect(decoder.decode(frame), fixtureName).toBe(source)
+    expect(JSON.stringify(encodeHostProtocolEnvelope(fromFrame)), fixtureName).toBe(source)
+  }
+})
+
+test("host protocol codec reports malformed JSON as BinaryDecodeError", async () => {
+  const exit = await Effect.runPromiseExit(
+    parseHostProtocolFrameJson(new TextEncoder().encode("{"), "fixture.operation")
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const error = exit.cause.reasons.find((reason) => reason._tag === "Fail")?.error
+    expect(error).toBeInstanceOf(HostProtocolBinaryDecodeError)
+    expect(error).toMatchObject({
+      operation: "fixture.operation",
+      tag: "BinaryDecodeError"
+    })
+  }
+})
+
+test("host protocol codec reports invalid UTF-8 as BinaryDecodeError", async () => {
+  const exit = await Effect.runPromiseExit(
+    parseHostProtocolFrameJson(Uint8Array.of(0xff), "fixture.operation")
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const error = exit.cause.reasons.find((reason) => reason._tag === "Fail")?.error
+    expect(error).toBeInstanceOf(HostProtocolBinaryDecodeError)
+    expect(error).toMatchObject({
+      operation: "fixture.operation",
+      tag: "BinaryDecodeError"
+    })
+  }
+})
+
+test("host protocol codec reports concatenated JSON messages as BinaryDecodeError", async () => {
+  const exit = await Effect.runPromiseExit(
+    parseHostProtocolFrameJson(new TextEncoder().encode("{}{}"), "fixture.operation")
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const error = exit.cause.reasons.find((reason) => reason._tag === "Fail")?.error
+    expect(error).toBeInstanceOf(HostProtocolBinaryDecodeError)
+    expect(error).toMatchObject({
+      operation: "fixture.operation",
+      tag: "BinaryDecodeError"
+    })
+  }
+})
+
+test("host protocol codec reports schema-invalid frames as InvalidOutput", async () => {
+  const exit = await Effect.runPromiseExit(
+    decodeHostProtocolFrame(new TextEncoder().encode('{"kind":"response"}'), "fixture.operation")
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const error = exit.cause.reasons.find((reason) => reason._tag === "Fail")?.error
+    expect(error).toBeInstanceOf(HostProtocolInvalidOutputError)
+    expect(error).toMatchObject({
+      method: "fixture.operation",
+      tag: "InvalidOutput"
+    })
+  }
+})
+
+test("host protocol codec rejects JSON values that are not envelopes", async () => {
+  const exit = await Effect.runPromiseExit(
+    decodeHostProtocolFrame(new TextEncoder().encode("[]"), "fixture.operation")
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const error = exit.cause.reasons.find((reason) => reason._tag === "Fail")?.error
+    expect(error).toBeInstanceOf(HostProtocolInvalidOutputError)
+    expect(error).toMatchObject({
+      method: "fixture.operation",
+      tag: "InvalidOutput"
+    })
+  }
+})
+
+test("host protocol codec rejects mixed response outcomes on encode", async () => {
+  const envelope = {
+    kind: "response",
+    id: "request-2",
+    timestamp: 1710000000005,
+    traceId: "trace-mixed-response",
+    payload: { ok: true },
+    error: makeHostProtocolInvalidOutputError("fixture.operation", "bad")
+  } as const
+
+  const exit = await Effect.runPromiseExit(encodeHostProtocolFrame(envelope, "fixture.operation"))
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const error = exit.cause.reasons.find((reason) => reason._tag === "Fail")?.error
+    expect(error).toBeInstanceOf(HostProtocolInvalidOutputError)
+    expect(error).toMatchObject({
+      method: "fixture.operation",
+      tag: "InvalidOutput"
+    })
+  }
+})
+
+test("host protocol codec rejects non-JSON payloads on encode", async () => {
+  const payloads = [1n, () => undefined, Symbol("not-json"), { dropped: () => undefined }]
+
+  for (const payload of payloads) {
+    const envelope = {
+      kind: "response",
+      id: "request-2",
+      timestamp: 1710000000005,
+      traceId: "trace-non-json-payload",
+      payload
+    } as const
+
+    const exit = await Effect.runPromiseExit(encodeHostProtocolFrame(envelope, "fixture.operation"))
+
+    expect(Exit.isFailure(exit), typeof payload).toBe(true)
+    if (Exit.isFailure(exit)) {
+      const error = exit.cause.reasons.find((reason) => reason._tag === "Fail")?.error
+      expect(error).toBeInstanceOf(HostProtocolInvalidOutputError)
+      expect(error).toMatchObject({
+        method: "fixture.operation",
+        tag: "InvalidOutput"
+      })
+    }
+  }
+})
+
+test("host protocol codec allows undefined object payload fields on encode", async () => {
+  const frame = await Effect.runPromise(
+    encodeHostProtocolFrame(
+      {
+        kind: "request",
+        id: "request-1",
+        method: "Window.create",
+        timestamp: 1710000000005,
+        traceId: "trace-window-create",
+        payload: {
+          title: "Notes",
+          width: undefined
+        }
+      },
+      "Window.create"
+    )
+  )
+
+  expect(new TextDecoder().decode(frame)).toBe(
+    '{"kind":"request","id":"request-1","method":"Window.create","timestamp":1710000000005,"traceId":"trace-window-create","payload":{"title":"Notes"}}'
+  )
+})
+
+test("host protocol codec encodes schema class payload instances", async () => {
+  const frame = await Effect.runPromise(
+    encodeHostProtocolFrame(
+      {
+        kind: "request",
+        id: "request-1",
+        method: "Window.create",
+        timestamp: 1710000000005,
+        traceId: "trace-window-create",
+        payload: new WindowCreatePayload({
+          title: "Notes"
+        })
+      },
+      "Window.create"
+    )
+  )
+
+  expect(new TextDecoder().decode(frame)).toBe(
+    '{"kind":"request","id":"request-1","method":"Window.create","timestamp":1710000000005,"traceId":"trace-window-create","payload":{"title":"Notes"}}'
+  )
 })
 
 test("shared host-protocol error fixtures decode and encode canonically", async () => {

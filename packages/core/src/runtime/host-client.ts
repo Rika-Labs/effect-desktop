@@ -1,10 +1,11 @@
 import {
-  decodeHostProtocolEnvelope,
-  encodeHostProtocolEnvelope,
+  decodeHostProtocolFrameJson,
   makeHostProtocolBinaryDecodeError,
   makeHostProtocolFrameTooLargeError,
   makeHostProtocolHostUnavailableError,
-  makeHostProtocolInvalidOutputError
+  makeHostProtocolInvalidOutputError,
+  encodeHostProtocolFrame,
+  parseHostProtocolFrameJson
 } from "@effect-desktop/bridge"
 import type {
   HostHandshakeExchange,
@@ -16,10 +17,6 @@ import { Effect } from "effect"
 
 import { AuditEvent, emitAuditEvent, type AuditEventsApi } from "./audit-events.js"
 import { FrameTooLargeError, FrameTruncatedError, type FramedTransport } from "./transport.js"
-
-const TextEncoderCtor = globalThis.TextEncoder
-const TextDecoderCtor = globalThis.TextDecoder
-const TextDecoderUtf8 = new TextDecoderCtor("utf-8", { fatal: true })
 
 export interface HostProtocolExchangeOptions {
   readonly audit?: AuditEventsApi
@@ -48,13 +45,14 @@ const sendRequest = (
   transport: FramedTransport,
   request: HostProtocolRequestEnvelope
 ): Effect.Effect<void, HostProtocolError, never> =>
-  Effect.tryPromise({
-    try: async () => {
-      const encoded = encodeHostProtocolEnvelope(request)
-      await transport.send(new TextEncoderCtor().encode(JSON.stringify(encoded)))
-    },
-    catch: (error) => classifyTransportError(error, "FramedTransport.send")
-  })
+  encodeHostProtocolFrame(request, request.method).pipe(
+    Effect.flatMap((frame) =>
+      Effect.tryPromise({
+        try: () => transport.send(frame),
+        catch: (error) => classifyTransportError(error, "FramedTransport.send")
+      })
+    )
+  )
 
 const receiveResponseFrame = (
   transport: FramedTransport
@@ -76,19 +74,9 @@ const decodeResponseFrame = (
   options: ResolvedHostProtocolExchangeOptions
 ): Effect.Effect<HostProtocolResponseEnvelope, HostProtocolError, never> =>
   Effect.gen(function* () {
-    const parsed = yield* Effect.try({
-      try: () => {
-        return JSON.parse(TextDecoderUtf8.decode(frame)) as unknown
-      },
-      catch: (error) => makeHostProtocolBinaryDecodeError(formatUnknownError(error), request.method)
-    })
+    const parsed = yield* parseHostProtocolFrameJson(frame, request.method)
     const repaired = yield* ensureTraceId(parsed, request, options)
-
-    const envelope = yield* Effect.try({
-      try: () => decodeHostProtocolEnvelope(repaired.value),
-      catch: (error) =>
-        makeHostProtocolInvalidOutputError(request.method, formatUnknownError(error))
-    })
+    const envelope = yield* decodeHostProtocolFrameJson(repaired.value, request.method)
 
     if (envelope.kind !== "response") {
       return yield* Effect.fail(
