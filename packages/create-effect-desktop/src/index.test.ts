@@ -218,7 +218,21 @@ test("scaffold adds optional companion dependencies only for selected options", 
   const clusterPkg = JSON.parse(readFileSync(join(clusterDir, "package.json"), "utf8")) as {
     dependencies: Record<string, string>
   }
-  expect(clusterPkg.dependencies["@effect/cluster"]).toBeDefined()
+  expect(clusterPkg.dependencies["effect"]).toBe("4.0.0-beta.60")
+  expect(clusterPkg.dependencies["@effect/cluster"]).toBeUndefined()
+})
+
+test("scaffold keeps cluster APIs on the canonical effect package boundary", async () => {
+  await runScaffold(makeOptions({ template: "multi-window", includeCluster: true }))
+
+  const pkg = JSON.parse(readFileSync(join(testDir, "package.json"), "utf8")) as {
+    dependencies: Record<string, string>
+  }
+  const dependencies = Object.keys(pkg.dependencies)
+
+  expect(pkg.dependencies["effect"]).toBe("4.0.0-beta.60")
+  expect(dependencies).not.toContain("@effect/cluster")
+  expect(dependencies).toContain("effect")
 })
 
 test("cli skips valued flag operands when defaulting the project name", async () => {

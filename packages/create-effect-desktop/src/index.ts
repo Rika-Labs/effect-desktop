@@ -153,10 +153,6 @@ export const scaffold = (
     if (options.includeWorkflows) {
       Object.assign(deps, COMPANION_VERSIONS)
     }
-    if (options.includeCluster) {
-      deps["@effect/cluster"] = EFFECT_VERSION
-    }
-
     pkg["dependencies"] = deps
 
     for (const [pkgName, version] of Object.entries(COMPANION_VERSIONS)) {
