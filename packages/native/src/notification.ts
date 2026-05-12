@@ -1,17 +1,21 @@
 import {
-  BridgeRpc,
-  Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcHandlers,
-  type BridgeRpcLayer,
-  type BridgeRpcResourceSpec,
+  type BridgeHandlerRuntime,
+  type BridgeHandlerRuntimeOptions,
   type BridgeResourceHandle,
   BridgeResourceHandleShape,
+  type HostProtocolEventEnvelope,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
+  makeDesktopClientProtocol,
+  makeDesktopRpcHandlerRuntime,
+  makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
+  makeHostProtocolInvalidOutputError,
+  makeUnaryDesktopTransportFromBridgeClientExchange,
   Rpc,
+  RpcClient,
   RpcCapability,
   RpcGroup,
   type HostProtocolError
@@ -39,7 +43,7 @@ export type NotificationError = HostProtocolError
 export const NotificationShow = notificationRpc(
   "show",
   NotificationShowInput,
-  NotificationResource,
+  NotificationResource.schema,
   "native.invoke:Notification.show"
 )
 export const NotificationClose = notificationRpc(
@@ -82,11 +86,7 @@ const NotificationRpcGroup = RpcGroup.make(
   NotificationGetPermissionStatus
 )
 
-export const NotificationRpcs = BridgeRpc.fromGroup(
-  "Notification",
-  NotificationRpcGroup,
-  NotificationRpcEvents
-)
+export const NotificationRpcs: RpcGroup.RpcGroup<NotificationRpc> = NotificationRpcGroup
 
 export const NotificationMethodNames = Object.freeze([
   "show",
@@ -162,14 +162,19 @@ export const makeNotificationBridgeClientLayer = (
 ): Layer.Layer<NotificationClient> =>
   Layer.succeed(NotificationClient)(makeNotificationBridgeClient(exchange, options))
 
-export type NotificationRpcSpec = (typeof NotificationRpcs)["spec"]
+export type NotificationRpc = RpcGroup.Rpcs<typeof NotificationRpcGroup>
 
-export const makeHostNotificationBridgeRpcLayer = <
-  Handlers extends BridgeRpcHandlers<NotificationRpcSpec>
->(
-  handlers: Handlers
-): BridgeRpcLayer<"Notification", NotificationRpcSpec, Handlers, NotificationRpcEvents> =>
-  BridgeRpc.layer(NotificationRpcs)(handlers)
+export type NotificationRpcHandlers = Parameters<typeof NotificationRpcGroup.toLayer>[0]
+
+export const makeHostNotificationRpcRuntime = (
+  handlers: NotificationRpcHandlers,
+  runtimeOptions: BridgeHandlerRuntimeOptions = {}
+): BridgeHandlerRuntime<unknown> =>
+  makeDesktopRpcHandlerRuntime(
+    NotificationRpcGroup,
+    NotificationRpcGroup.toLayer(handlers),
+    runtimeOptions
+  )
 
 const makeNotificationService = (client: NotificationClientApi): NotificationServiceApi => {
   const service: NotificationServiceApi = {
@@ -190,49 +195,108 @@ const makeNotificationBridgeClient = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions
 ): NotificationClientApi => {
-  const client = Client(
-    {
-      Notification: NotificationRpcs
-    },
-    exchange,
-    options
-  ).Notification as unknown as {
-    readonly show: (
-      input: NotificationShowInput
-    ) => Effect.Effect<NotificationHandle, NotificationError, never>
-    readonly close: (input: NotificationCloseInput) => Effect.Effect<void, NotificationError, never>
-    readonly isSupported: () => Effect.Effect<NotificationSupportedResult, NotificationError, never>
-    readonly requestPermission: () => Effect.Effect<
-      NotificationPermissionResult,
-      NotificationError,
-      never
-    >
-    readonly getPermissionStatus: () => Effect.Effect<
-      NotificationPermissionResult,
-      NotificationError,
-      never
-    >
-    readonly events: {
-      readonly Click: Stream.Stream<NotificationClickEvent, NotificationError, never>
-      readonly Action: Stream.Stream<NotificationActionEvent, NotificationError, never>
-    }
-  }
-
   const notificationClient: NotificationClientApi = {
     show: (input) =>
-      decodeNotificationShowInput(toNotificationShowInput(input)).pipe(Effect.flatMap(client.show)),
-    close: (notification) =>
-      client.close(
-        new NotificationCloseInput({ notification: toNotificationHandle(notification) })
+      decodeNotificationShowInput(toNotificationShowInput(input)).pipe(
+        Effect.flatMap((decoded) =>
+          withNotificationRpcClient(exchange, options, (client) =>
+            runNotificationRpc(client["Notification.show"](decoded), "Notification.show")
+          )
+        )
       ),
-    isSupported: () => client.isSupported(),
-    requestPermission: () => client.requestPermission(),
-    getPermissionStatus: () => client.getPermissionStatus(),
-    onClick: () => client.events.Click,
-    onAction: () => client.events.Action
+    close: (notification) =>
+      withNotificationRpcClient(exchange, options, (client) =>
+        runNotificationRpc(
+          client["Notification.close"](
+            new NotificationCloseInput({ notification: toNotificationHandle(notification) })
+          ),
+          "Notification.close"
+        )
+      ),
+    isSupported: () =>
+      withNotificationRpcClient(exchange, options, (client) =>
+        runNotificationRpc(
+          client["Notification.isSupported"](undefined),
+          "Notification.isSupported"
+        )
+      ),
+    requestPermission: () =>
+      withNotificationRpcClient(exchange, options, (client) =>
+        runNotificationRpc(
+          client["Notification.requestPermission"](undefined),
+          "Notification.requestPermission"
+        )
+      ),
+    getPermissionStatus: () =>
+      withNotificationRpcClient(exchange, options, (client) =>
+        runNotificationRpc(
+          client["Notification.getPermissionStatus"](undefined),
+          "Notification.getPermissionStatus"
+        )
+      ),
+    onClick: () =>
+      subscribeNotificationEvent(exchange, "Notification.Click", NotificationClickEvent),
+    onAction: () =>
+      subscribeNotificationEvent(exchange, "Notification.Action", NotificationActionEvent)
   }
 
   return Object.freeze(notificationClient)
+}
+
+const makeNotificationBridgeProtocolLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
+): Layer.Layer<RpcClient.Protocol> =>
+  Layer.effect(RpcClient.Protocol)(
+    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
+      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
+    )
+  )
+
+const withNotificationRpcClient = <A>(
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions,
+  use: (client: NotificationGeneratedClient) => Effect.Effect<A, NotificationError, never>
+): Effect.Effect<A, NotificationError, never> =>
+  Effect.scoped(
+    RpcClient.make(NotificationRpcGroup).pipe(
+      Effect.map((client) => client as unknown as NotificationGeneratedClient),
+      Effect.flatMap(use),
+      Effect.provide(makeNotificationBridgeProtocolLayer(exchange, options))
+    )
+  )
+
+const subscribeNotificationEvent = <A>(
+  exchange: BridgeClientExchange,
+  method: string,
+  schema: Schema.Schema<A>
+): Stream.Stream<A, NotificationError, never> => {
+  if (exchange.subscribe === undefined) {
+    return Stream.fail(
+      makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
+    )
+  }
+
+  return exchange
+    .subscribe(method)
+    .pipe(Stream.mapEffect((envelope) => decodeNotificationEventEnvelope(method, schema, envelope)))
+}
+
+const decodeNotificationEventEnvelope = <A>(
+  operation: string,
+  schema: Schema.Schema<A>,
+  envelope: HostProtocolEventEnvelope
+): Effect.Effect<A, NotificationError, never> => {
+  if (envelope.method !== operation) {
+    return Effect.fail(
+      makeHostProtocolInvalidOutputError(operation, `unexpected event method: ${envelope.method}`)
+    )
+  }
+
+  return Effect.mapError(
+    Schema.decodeUnknownEffect(schema)(envelope.payload) as Effect.Effect<A, unknown, never>,
+    (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+  )
 }
 
 export const makeUnsupportedNotificationClient = (): NotificationClientApi => {
@@ -317,14 +381,55 @@ const decodeInput = (
 
 function notificationRpc<
   Payload extends Schema.Schema<unknown>,
-  Success extends Schema.Schema<unknown> | BridgeRpcResourceSpec
+  Success extends Schema.Schema<unknown>
 >(method: string, payload: Payload, success: Success, capability: string) {
   return Rpc.make(`Notification.${method}`, {
     payload,
-    success: success as Schema.Schema<unknown>,
+    success,
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability({ kind: capability }))
 }
+
+interface NotificationGeneratedClient {
+  readonly "Notification.show": (
+    input: NotificationShowInput
+  ) => Effect.Effect<NotificationHandle, unknown, never>
+  readonly "Notification.close": (
+    input: NotificationCloseInput
+  ) => Effect.Effect<void, unknown, never>
+  readonly "Notification.isSupported": (
+    input: void
+  ) => Effect.Effect<NotificationSupportedResult, unknown, never>
+  readonly "Notification.requestPermission": (
+    input: void
+  ) => Effect.Effect<NotificationPermissionResult, unknown, never>
+  readonly "Notification.getPermissionStatus": (
+    input: void
+  ) => Effect.Effect<NotificationPermissionResult, unknown, never>
+}
+
+const runNotificationRpc = <A, E>(
+  effect: Effect.Effect<A, E, never>,
+  operation: string
+): Effect.Effect<A, NotificationError, never> =>
+  effect.pipe(
+    Effect.mapError(mapNotificationRpcClientError),
+    Effect.catchDefect((defect) =>
+      Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
+    )
+  )
+
+const mapNotificationRpcClientError = (error: unknown): NotificationError =>
+  isNotificationError(error)
+    ? error
+    : makeHostProtocolInternalError("Notification RPC client failed", "Notification")
+
+const isNotificationError = (error: unknown): error is NotificationError =>
+  typeof error === "object" &&
+  error !== null &&
+  "tag" in error &&
+  "operation" in error &&
+  "recoverable" in error
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {

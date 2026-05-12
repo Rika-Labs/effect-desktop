@@ -8,10 +8,12 @@ export {
   makeAppBridgeClientLayer,
   makeAppClientLayer,
   makeAppServiceLayer,
-  makeHostAppBridgeRpcLayer,
+  makeHostAppRpcRuntime,
   makeUnsupportedAppClient,
   type AppClientApi,
   type AppError,
+  type AppRpc,
+  type AppRpcHandlers,
   type AppServiceApi
 } from "./app.js"
 export {
@@ -24,10 +26,12 @@ export {
   makeClipboardBridgeClientLayer,
   makeClipboardClientLayer,
   makeClipboardServiceLayer,
-  makeHostClipboardBridgeRpcLayer,
+  makeHostClipboardRpcRuntime,
   makeUnsupportedClipboardClient,
   type ClipboardClientApi,
   type ClipboardError,
+  type ClipboardRpc,
+  type ClipboardRpcHandlers,
   type ClipboardServiceApi
 } from "./clipboard.js"
 export {
@@ -40,11 +44,13 @@ export {
   makeContextMenuBridgeClientLayer,
   makeContextMenuClientLayer,
   makeContextMenuServiceLayer,
-  makeHostContextMenuBridgeRpcLayer,
+  makeHostContextMenuRpcRuntime,
   makeUnsupportedContextMenuClient,
   type ContextMenuClientApi,
   type ContextMenuCommandBindingError,
   type ContextMenuError,
+  type ContextMenuRpc,
+  type ContextMenuRpcHandlers,
   type ContextMenuServiceApi
 } from "./context-menu.js"
 export {
@@ -58,11 +64,13 @@ export {
   makeCrashReporterClientLayer,
   makeCrashReporterMemoryClient,
   makeCrashReporterServiceLayer,
-  makeHostCrashReporterBridgeRpcLayer,
+  makeHostCrashReporterRpcRuntime,
   makeUnsupportedCrashReporterClient,
   type CrashReporterBreadcrumb,
   type CrashReporterClientApi,
   type CrashReporterError,
+  type CrashReporterRpc,
+  type CrashReporterRpcHandlers,
   type CrashReporterServiceApi,
   type CrashReporterStartOptions,
   type CrashReportUploadHandler
@@ -77,10 +85,12 @@ export {
   makeDialogBridgeClientLayer,
   makeDialogClientLayer,
   makeDialogServiceLayer,
-  makeHostDialogBridgeRpcLayer,
+  makeHostDialogRpcRuntime,
   makeUnsupportedDialogClient,
   type DialogClientApi,
   type DialogError,
+  type DialogRpc,
+  type DialogRpcHandlers,
   type DialogServiceApi
 } from "./dialog.js"
 export {
@@ -93,11 +103,13 @@ export {
   makeDockBridgeClientLayer,
   makeDockClientLayer,
   makeDockServiceLayer,
-  makeHostDockBridgeRpcLayer,
+  makeHostDockRpcRuntime,
   makeLinuxDockClient,
   makeUnsupportedDockClient,
   type DockClientApi,
   type DockError,
+  type DockRpc,
+  type DockRpcHandlers,
   type DockServiceApi
 } from "./dock.js"
 export {
@@ -111,12 +123,14 @@ export {
   makeGlobalShortcutBridgeClientLayer,
   makeGlobalShortcutClientLayer,
   makeGlobalShortcutServiceLayer,
-  makeHostGlobalShortcutBridgeRpcLayer,
+  makeHostGlobalShortcutRpcRuntime,
   makeLinuxGlobalShortcutClient,
   makeUnsupportedGlobalShortcutClient,
   type GlobalShortcutClientApi,
   type GlobalShortcutCommandBindingError,
   type GlobalShortcutError,
+  type GlobalShortcutRpc,
+  type GlobalShortcutRpcHandlers,
   type GlobalShortcutServiceApi,
   type GlobalShortcutWindowHandle
 } from "./global-shortcut.js"
@@ -127,7 +141,7 @@ export {
   MenuMethodNames,
   MenuRpcEvents,
   MenuRpcs,
-  makeHostMenuBridgeRpcLayer,
+  makeHostMenuRpcRuntime,
   makeMenuBridgeClientLayer,
   makeMenuClientLayer,
   makeMenuServiceLayer,
@@ -137,6 +151,8 @@ export {
   type MenuClientApi,
   type MenuCommandBindingError,
   type MenuError,
+  type MenuRpc,
+  type MenuRpcHandlers,
   type MenuServiceApi
 } from "./menu.js"
 export {
@@ -146,13 +162,15 @@ export {
   NotificationMethodNames,
   NotificationRpcEvents,
   NotificationRpcs,
-  makeHostNotificationBridgeRpcLayer,
+  makeHostNotificationRpcRuntime,
   makeNotificationBridgeClientLayer,
   makeNotificationClientLayer,
   makeNotificationServiceLayer,
   makeUnsupportedNotificationClient,
   type NotificationClientApi,
   type NotificationError,
+  type NotificationRpc,
+  type NotificationRpcHandlers,
   type NotificationServiceApi
 } from "./notification.js"
 export {
@@ -162,13 +180,15 @@ export {
   PathMethodNames,
   PathRpcEvents,
   PathRpcs,
-  makeHostPathBridgeRpcLayer,
+  makeHostPathRpcRuntime,
   makePathBridgeClientLayer,
   makePathClientLayer,
   makePathServiceLayer,
   makeUnsupportedPathClient,
   type PathClientApi,
   type PathError,
+  type PathRpc,
+  type PathRpcHandlers,
   type PathServiceApi
 } from "./path.js"
 export {
@@ -178,13 +198,15 @@ export {
   ProtocolMethodNames,
   ProtocolRpcEvents,
   ProtocolRpcs,
-  makeHostProtocolBridgeRpcLayer,
+  makeHostProtocolRpcRuntime,
   makeProtocolBridgeClientLayer,
   makeProtocolClientLayer,
   makeProtocolServiceLayer,
   makeUnsupportedProtocolClient,
   type ProtocolClientApi,
   type ProtocolError,
+  type ProtocolRpc,
+  type ProtocolRpcHandlers,
   type ProtocolServiceApi
 } from "./protocol.js"
 export {
@@ -194,13 +216,15 @@ export {
   PowerMonitorMethodNames,
   PowerMonitorRpcEvents,
   PowerMonitorRpcs,
-  makeHostPowerMonitorBridgeRpcLayer,
+  makeHostPowerMonitorRpcRuntime,
   makePowerMonitorBridgeClientLayer,
   makePowerMonitorClientLayer,
   makePowerMonitorServiceLayer,
   makeUnsupportedPowerMonitorClient,
   type PowerMonitorClientApi,
   type PowerMonitorError,
+  type PowerMonitorRpc,
+  type PowerMonitorRpcHandlers,
   type PowerMonitorServiceApi
 } from "./power-monitor.js"
 export {
@@ -211,7 +235,7 @@ export {
   SafeStorageRpcEvents,
   SafeStorageRpcs,
   SecretValue,
-  makeHostSafeStorageBridgeRpcLayer,
+  makeHostSafeStorageRpcRuntime,
   makeLinuxSafeStorageClient,
   makeSafeStorageBridgeClientLayer,
   makeSafeStorageClientLayer,
@@ -219,6 +243,8 @@ export {
   makeUnsupportedSafeStorageClient,
   type SafeStorageClientApi,
   type SafeStorageError,
+  type SafeStorageRpc,
+  type SafeStorageRpcHandlers,
   type SafeStorageServiceApi
 } from "./safe-storage.js"
 export {
@@ -227,10 +253,9 @@ export {
   ScreenHandlersLive,
   ScreenLive,
   ScreenMethodNames,
-  ScreenRpcEvents,
   ScreenRpcs,
   ScreenSurface,
-  makeHostScreenBridgeRpcLayer,
+  makeHostScreenRpcRuntime,
   makeScreenBridgeClientLayer,
   makeScreenClientLayer,
   makeScreenServiceLayer,
@@ -239,6 +264,7 @@ export {
   type ScreenClientApi,
   type ScreenError,
   type ScreenRpc,
+  type ScreenRpcHandlers,
   type ScreenServiceApi
 } from "./screen.js"
 export {
@@ -248,13 +274,15 @@ export {
   ShellMethodNames,
   ShellRpcEvents,
   ShellRpcs,
-  makeHostShellBridgeRpcLayer,
+  makeHostShellRpcRuntime,
   makeShellBridgeClientLayer,
   makeShellClientLayer,
   makeShellServiceLayer,
   makeUnsupportedShellClient,
   type ShellClientApi,
   type ShellError,
+  type ShellRpc,
+  type ShellRpcHandlers,
   type ShellServiceApi
 } from "./shell.js"
 export {
@@ -264,13 +292,15 @@ export {
   SystemAppearanceMethodNames,
   SystemAppearanceRpcEvents,
   SystemAppearanceRpcs,
-  makeHostSystemAppearanceBridgeRpcLayer,
+  makeHostSystemAppearanceRpcRuntime,
   makeSystemAppearanceBridgeClientLayer,
   makeSystemAppearanceClientLayer,
   makeSystemAppearanceServiceLayer,
   makeUnsupportedSystemAppearanceClient,
   type SystemAppearanceClientApi,
   type SystemAppearanceError,
+  type SystemAppearanceRpc,
+  type SystemAppearanceRpcHandlers,
   type SystemAppearanceServiceApi
 } from "./system-appearance.js"
 export {
@@ -280,13 +310,15 @@ export {
   TrayMethodNames,
   TrayRpcEvents,
   TrayRpcs,
-  makeHostTrayBridgeRpcLayer,
+  makeHostTrayRpcRuntime,
   makeTrayBridgeClientLayer,
   makeTrayClientLayer,
   makeTrayServiceLayer,
   makeUnsupportedTrayClient,
   type TrayClientApi,
   type TrayError,
+  type TrayRpc,
+  type TrayRpcHandlers,
   type TrayServiceApi
 } from "./tray.js"
 export {
@@ -296,7 +328,7 @@ export {
   UpdaterMethodNames,
   UpdaterRpcEvents,
   UpdaterRpcs,
-  makeHostUpdaterBridgeRpcLayer,
+  makeHostUpdaterRpcRuntime,
   makeUnsupportedUpdaterClient,
   makeUpdaterBridgeClientLayer,
   makeUpdaterClientLayer,
@@ -306,6 +338,8 @@ export {
   type UpdaterDownloadOptions,
   type UpdaterError,
   type UpdaterInstallOptions,
+  type UpdaterRpc,
+  type UpdaterRpcHandlers,
   type UpdaterServiceApi
 } from "./updater.js"
 export {
@@ -315,13 +349,15 @@ export {
   WebViewMethodNames,
   WebViewRpcEvents,
   WebViewRpcs,
-  makeHostWebViewBridgeRpcLayer,
+  makeHostWebViewRpcRuntime,
   makeUnsupportedWebViewClient,
   makeWebViewBridgeClientLayer,
   makeWebViewClientLayer,
   makeWebViewServiceLayer,
   webViewCapability,
   type WebViewClientApi,
+  type WebViewRpc,
+  type WebViewRpcHandlers,
   type WebViewServiceApi
 } from "./webview.js"
 export {
@@ -331,7 +367,7 @@ export {
   WindowMethodNames,
   WindowRpcs,
   WindowSupportedRpcs,
-  makeHostWindowBridgeRpcLayer,
+  makeHostWindowRpcRuntime,
   makeUnsupportedWindowClient,
   makeWindowBridgeClientLayer,
   makeWindowClientLayer,
@@ -341,6 +377,7 @@ export {
   type WindowClientApi,
   type WindowError,
   type WindowPosition,
+  type WindowRpcHandlers,
   type WindowServiceApi,
   type WindowSize
 } from "./window.js"

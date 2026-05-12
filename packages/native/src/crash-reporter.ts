@@ -1,16 +1,20 @@
 import {
-  BridgeRpc,
-  Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcHandlers,
-  type BridgeRpcLayer,
+  type BridgeHandlerRuntime,
+  type BridgeHandlerRuntimeOptions,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
+  makeDesktopClientProtocol,
+  makeDesktopRpcHandlerRuntime,
+  makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
+  makeHostProtocolInvalidOutputError,
   makeHostProtocolInvalidStateError,
+  makeUnaryDesktopTransportFromBridgeClientExchange,
   redact,
   Rpc,
+  RpcClient,
   RpcCapability,
   RpcGroup,
   type HostProtocolError
@@ -71,11 +75,7 @@ const CrashReporterRpcGroup = RpcGroup.make(
   CrashReporterSetUploadHandler
 )
 
-export const CrashReporterRpcs = BridgeRpc.fromGroup(
-  "CrashReporter",
-  CrashReporterRpcGroup,
-  CrashReporterRpcEvents
-)
+export const CrashReporterRpcs: RpcGroup.RpcGroup<CrashReporterRpc> = CrashReporterRpcGroup
 
 export const CrashReporterMethodNames = Object.freeze([
   "start",
@@ -135,14 +135,19 @@ export const makeCrashReporterBridgeClientLayer = (
 ): Layer.Layer<CrashReporterClient> =>
   Layer.succeed(CrashReporterClient)(makeCrashReporterBridgeClient(exchange, options))
 
-export type CrashReporterRpcSpec = (typeof CrashReporterRpcs)["spec"]
+export type CrashReporterRpc = RpcGroup.Rpcs<typeof CrashReporterRpcGroup>
 
-export const makeHostCrashReporterBridgeRpcLayer = <
-  Handlers extends BridgeRpcHandlers<CrashReporterRpcSpec>
->(
-  handlers: Handlers
-): BridgeRpcLayer<"CrashReporter", CrashReporterRpcSpec, Handlers, CrashReporterRpcEvents> =>
-  BridgeRpc.layer(CrashReporterRpcs)(handlers)
+export type CrashReporterRpcHandlers = Parameters<typeof CrashReporterRpcGroup.toLayer>[0]
+
+export const makeHostCrashReporterRpcRuntime = (
+  handlers: CrashReporterRpcHandlers,
+  runtimeOptions: BridgeHandlerRuntimeOptions = {}
+): BridgeHandlerRuntime<unknown> =>
+  makeDesktopRpcHandlerRuntime(
+    CrashReporterRpcGroup,
+    CrashReporterRpcGroup.toLayer(handlers),
+    runtimeOptions
+  )
 
 export const makeCrashReporterMemoryClient = (): Effect.Effect<
   CrashReporterClientApi,
@@ -214,37 +219,67 @@ const makeCrashReporterBridgeClient = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions
 ): CrashReporterClientApi => {
-  const client = Client(
-    {
-      CrashReporter: CrashReporterRpcs
-    },
-    exchange,
-    options
-  ).CrashReporter as unknown as {
-    readonly start: (
-      input: CrashReporterStartInput
-    ) => Effect.Effect<void, CrashReporterError, never>
-    readonly recordBreadcrumb: (
-      input: CrashReporterBreadcrumbInput
-    ) => Effect.Effect<void, CrashReporterError, never>
-    readonly flush: () => Effect.Effect<CrashReporterFlushResult, CrashReporterError, never>
-  }
   return Object.freeze({
     start: (input = {}) =>
       input.uploadHandler !== undefined
         ? Effect.fail(unsupportedError("CrashReporter.start", "phase-22"))
         : input.enabled === undefined
-          ? client.start(new CrashReporterStartInput({}))
-          : client.start(new CrashReporterStartInput({ enabled: input.enabled })),
+          ? withCrashReporterRpcClient(exchange, options, (client) =>
+              runCrashReporterRpc(
+                client["CrashReporter.start"](new CrashReporterStartInput({})),
+                "CrashReporter.start"
+              )
+            )
+          : withCrashReporterRpcClient(exchange, options, (client) =>
+              runCrashReporterRpc(
+                client["CrashReporter.start"](
+                  new CrashReporterStartInput({ enabled: Boolean(input.enabled) })
+                ),
+                "CrashReporter.start"
+              )
+            ),
     recordBreadcrumb: (input) =>
       validateBreadcrumb(input).pipe(
-        Effect.flatMap((validated) => client.recordBreadcrumb(makeBreadcrumbInput(validated)))
+        Effect.flatMap((validated) =>
+          withCrashReporterRpcClient(exchange, options, (client) =>
+            runCrashReporterRpc(
+              client["CrashReporter.recordBreadcrumb"](makeBreadcrumbInput(validated)),
+              "CrashReporter.recordBreadcrumb"
+            )
+          )
+        )
       ),
-    flush: () => client.flush(),
+    flush: () =>
+      withCrashReporterRpcClient(exchange, options, (client) =>
+        runCrashReporterRpc(client["CrashReporter.flush"](undefined), "CrashReporter.flush")
+      ),
     setUploadHandler: () =>
       Effect.fail(unsupportedError("CrashReporter.setUploadHandler", "phase-22"))
   } satisfies CrashReporterClientApi)
 }
+
+const makeCrashReporterBridgeProtocolLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
+): Layer.Layer<RpcClient.Protocol> =>
+  Layer.effect(RpcClient.Protocol)(
+    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
+      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
+    )
+  )
+
+const withCrashReporterRpcClient = <A>(
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions,
+  use: (client: CrashReporterGeneratedClient) => Effect.Effect<A, CrashReporterError, never>
+): Effect.Effect<A, CrashReporterError, never> =>
+  Effect.scoped(
+    RpcClient.make(CrashReporterRpcGroup).pipe(
+      Effect.map((client) => client as unknown as CrashReporterGeneratedClient),
+      Effect.flatMap(use),
+      Effect.provide(makeCrashReporterBridgeProtocolLayer(exchange, options))
+    )
+  )
 
 export const makeUnsupportedCrashReporterClient = (): CrashReporterClientApi => {
   const unsupportedEffect = <A>(method: string): Effect.Effect<A, CrashReporterError, never> =>
@@ -280,6 +315,42 @@ function crashReporterRpc<
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability({ kind: capability }))
 }
+
+interface CrashReporterGeneratedClient {
+  readonly "CrashReporter.start": (
+    input: CrashReporterStartInput
+  ) => Effect.Effect<void, unknown, never>
+  readonly "CrashReporter.recordBreadcrumb": (
+    input: CrashReporterBreadcrumbInput
+  ) => Effect.Effect<void, unknown, never>
+  readonly "CrashReporter.flush": (
+    input: void
+  ) => Effect.Effect<CrashReporterFlushResult, unknown, never>
+  readonly "CrashReporter.setUploadHandler": (input: void) => Effect.Effect<void, unknown, never>
+}
+
+const runCrashReporterRpc = <A, E>(
+  effect: Effect.Effect<A, E, never>,
+  operation: string
+): Effect.Effect<A, CrashReporterError, never> =>
+  effect.pipe(
+    Effect.mapError(mapCrashReporterRpcClientError),
+    Effect.catchDefect((defect) =>
+      Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
+    )
+  )
+
+const mapCrashReporterRpcClientError = (error: unknown): CrashReporterError =>
+  isCrashReporterError(error)
+    ? error
+    : makeHostProtocolInternalError("CrashReporter RPC client failed", "CrashReporter")
+
+const isCrashReporterError = (error: unknown): error is CrashReporterError =>
+  typeof error === "object" &&
+  error !== null &&
+  "tag" in error &&
+  "operation" in error &&
+  "recoverable" in error
 
 const validateBreadcrumb = (
   breadcrumb: CrashReporterBreadcrumb
@@ -357,3 +428,8 @@ const unsupportedError = (method: string, reason: string): HostProtocolUnsupport
     operation: method,
     recoverable: false
   })
+
+const formatUnknownError = (error: unknown): string => {
+  if (error instanceof Error) return error.message
+  return String(error)
+}

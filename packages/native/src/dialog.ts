@@ -1,14 +1,18 @@
 import {
-  BridgeRpc,
-  Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcHandlers,
-  type BridgeRpcLayer,
+  type BridgeHandlerRuntime,
+  type BridgeHandlerRuntimeOptions,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
+  makeDesktopClientProtocol,
+  makeDesktopRpcHandlerRuntime,
+  makeUnaryDesktopTransportFromBridgeClientExchange,
+  makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
+  makeHostProtocolInvalidOutputError,
   Rpc,
+  RpcClient,
   RpcCapability,
   RpcGroup,
   type HostProtocolError
@@ -78,7 +82,9 @@ const DialogRpcGroup = RpcGroup.make(
   DialogConfirm
 )
 
-export const DialogRpcs = BridgeRpc.fromGroup("Dialog", DialogRpcGroup, DialogRpcEvents)
+export const DialogRpcs: RpcGroup.RpcGroup<DialogRpc> = DialogRpcGroup
+
+export type DialogRpc = RpcGroup.Rpcs<typeof DialogRpcGroup>
 
 export const DialogMethodNames = Object.freeze([
   "openFile",
@@ -143,12 +149,13 @@ export const makeDialogBridgeClientLayer = (
 ): Layer.Layer<DialogClient> =>
   Layer.succeed(DialogClient)(makeDialogBridgeClient(exchange, options))
 
-export type DialogRpcSpec = (typeof DialogRpcs)["spec"]
+export type DialogRpcHandlers = Parameters<typeof DialogRpcGroup.toLayer>[0]
 
-export const makeHostDialogBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<DialogRpcSpec>>(
-  handlers: Handlers
-): BridgeRpcLayer<"Dialog", DialogRpcSpec, Handlers, DialogRpcEvents> =>
-  BridgeRpc.layer(DialogRpcs)(handlers)
+export const makeHostDialogRpcRuntime = (
+  handlers: DialogRpcHandlers,
+  runtimeOptions: BridgeHandlerRuntimeOptions = {}
+): BridgeHandlerRuntime<unknown> =>
+  makeDesktopRpcHandlerRuntime(DialogRpcGroup, DialogRpcGroup.toLayer(handlers), runtimeOptions)
 
 const makeDialogService = (client: DialogClientApi): DialogServiceApi => {
   const service: DialogServiceApi = {
@@ -163,39 +170,78 @@ const makeDialogService = (client: DialogClientApi): DialogServiceApi => {
   return Object.freeze(service)
 }
 
+const makeDialogBridgeProtocolLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
+): Layer.Layer<RpcClient.Protocol> =>
+  Layer.effect(RpcClient.Protocol)(
+    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
+      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
+    )
+  )
+
 const makeDialogBridgeClient = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions
 ): DialogClientApi => {
-  const client = Client({ Dialog: DialogRpcs }, exchange, options).Dialog as unknown as {
-    readonly openFile: (
-      input: DialogOpenFileInput
-    ) => Effect.Effect<DialogOpenResult, DialogError, never>
-    readonly openDirectory: (
-      input: DialogOpenDirectoryInput
-    ) => Effect.Effect<DialogOpenResult, DialogError, never>
-    readonly saveFile: (
-      input: DialogSaveFileInput
-    ) => Effect.Effect<DialogSaveResult, DialogError, never>
-    readonly message: (input: DialogMessageInput) => Effect.Effect<void, DialogError, never>
-    readonly confirm: (
-      input: DialogConfirmInput
-    ) => Effect.Effect<DialogConfirmResult, DialogError, never>
-  }
-
   const dialogClient: DialogClientApi = {
     openFile: (input = {}) =>
-      decodeDialogOpenFileInput(input).pipe(Effect.flatMap(client.openFile)),
+      decodeDialogOpenFileInput(input).pipe(
+        Effect.flatMap((decoded) =>
+          withDialogRpcClient(exchange, options, (client) =>
+            runDialogRpc(client["Dialog.openFile"](decoded), "Dialog.openFile")
+          )
+        )
+      ),
     openDirectory: (input = {}) =>
-      decodeDialogOpenDirectoryInput(input).pipe(Effect.flatMap(client.openDirectory)),
+      decodeDialogOpenDirectoryInput(input).pipe(
+        Effect.flatMap((decoded) =>
+          withDialogRpcClient(exchange, options, (client) =>
+            runDialogRpc(client["Dialog.openDirectory"](decoded), "Dialog.openDirectory")
+          )
+        )
+      ),
     saveFile: (input = {}) =>
-      decodeDialogSaveFileInput(input).pipe(Effect.flatMap(client.saveFile)),
-    message: (input) => decodeDialogMessageInput(input).pipe(Effect.flatMap(client.message)),
-    confirm: (input) => decodeDialogConfirmInput(input).pipe(Effect.flatMap(client.confirm))
+      decodeDialogSaveFileInput(input).pipe(
+        Effect.flatMap((decoded) =>
+          withDialogRpcClient(exchange, options, (client) =>
+            runDialogRpc(client["Dialog.saveFile"](decoded), "Dialog.saveFile")
+          )
+        )
+      ),
+    message: (input) =>
+      decodeDialogMessageInput(input).pipe(
+        Effect.flatMap((decoded) =>
+          withDialogRpcClient(exchange, options, (client) =>
+            runDialogRpc(client["Dialog.message"](decoded), "Dialog.message")
+          )
+        )
+      ),
+    confirm: (input) =>
+      decodeDialogConfirmInput(input).pipe(
+        Effect.flatMap((decoded) =>
+          withDialogRpcClient(exchange, options, (client) =>
+            runDialogRpc(client["Dialog.confirm"](decoded), "Dialog.confirm")
+          )
+        )
+      )
   }
 
   return Object.freeze(dialogClient)
 }
+
+const withDialogRpcClient = <A>(
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions,
+  use: (client: DialogGeneratedClient) => Effect.Effect<A, DialogError, never>
+): Effect.Effect<A, DialogError, never> =>
+  Effect.scoped(
+    RpcClient.make(DialogRpcGroup).pipe(
+      Effect.map((client) => client as unknown as DialogGeneratedClient),
+      Effect.flatMap(use),
+      Effect.provide(makeDialogBridgeProtocolLayer(exchange, options))
+    )
+  )
 
 export const makeUnsupportedDialogClient = (): DialogClientApi => {
   const unsupportedEffect = <A>(method: string): Effect.Effect<A, DialogError, never> =>
@@ -279,6 +325,43 @@ const decodeInput = (
     >,
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
+
+interface DialogGeneratedClient {
+  readonly "Dialog.openFile": (
+    input: DialogOpenFileInput
+  ) => Effect.Effect<DialogOpenResult, unknown, never>
+  readonly "Dialog.openDirectory": (
+    input: DialogOpenDirectoryInput
+  ) => Effect.Effect<DialogOpenResult, unknown, never>
+  readonly "Dialog.saveFile": (
+    input: DialogSaveFileInput
+  ) => Effect.Effect<DialogSaveResult, unknown, never>
+  readonly "Dialog.message": (input: DialogMessageInput) => Effect.Effect<void, unknown, never>
+  readonly "Dialog.confirm": (
+    input: DialogConfirmInput
+  ) => Effect.Effect<DialogConfirmResult, unknown, never>
+}
+
+const runDialogRpc = <A, E>(
+  effect: Effect.Effect<A, E, never>,
+  operation: string
+): Effect.Effect<A, DialogError, never> =>
+  effect.pipe(
+    Effect.mapError(mapDialogRpcClientError),
+    Effect.catchDefect((defect) =>
+      Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
+    )
+  )
+
+const mapDialogRpcClientError = (error: unknown): DialogError =>
+  isDialogError(error) ? error : makeHostProtocolInternalError("Dialog RPC client failed", "Dialog")
+
+const isDialogError = (error: unknown): error is DialogError =>
+  typeof error === "object" &&
+  error !== null &&
+  "tag" in error &&
+  "operation" in error &&
+  "recoverable" in error
 
 function dialogRpc<Payload extends Schema.Schema<unknown>, Success extends Schema.Schema<unknown>>(
   method: string,

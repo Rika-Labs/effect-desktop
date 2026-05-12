@@ -8,6 +8,7 @@ export * from "./protocol.js"
 export * from "./redaction.js"
 export * from "./resources.js"
 export * from "./rpc-endpoint.js"
+export * from "./rpc-handlers.js"
 export * from "./window.js"
 
 export {

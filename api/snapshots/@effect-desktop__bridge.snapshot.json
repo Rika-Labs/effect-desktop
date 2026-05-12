@@ -256,7 +256,7 @@
     {
       "name": "DesktopProtocolOptions",
       "kind": "interface",
-      "signature": "export interface DesktopProtocolOptions { readonly windowId?: string readonly originToken?: string readonly now?: () => number readonly nextTraceId?: () => string }"
+      "signature": "export interface DesktopProtocolOptions { readonly windowId?: string readonly originToken?: string readonly now?: () => number readonly nextRequestId?: () => string readonly nextTraceId?: () => string }"
     },
     {
       "name": "DesktopTransportRun",
@@ -652,6 +652,11 @@
       "name": "makeDesktopClientProtocol",
       "kind": "value",
       "signature": "const makeDesktopClientProtocol: (transport: DesktopTransportSend & DesktopTransportRun, options?: DesktopProtocolOptions) => Effect.Effect<RpcClient.Protocol[\"Service\"], never, Scope.Scope>"
+    },
+    {
+      "name": "makeDesktopRpcHandlerRuntime",
+      "kind": "value",
+      "signature": "const makeDesktopRpcHandlerRuntime: <Rpcs extends Rpc.Any, E = never, R = never>(group: RpcGroupWithRequests<Rpcs>, handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>, options?: BridgeHandlerRuntimeOptions & { readonly nextTraceId?: () => string; }) => BridgeHandlerRuntime<R>"
     },
     {
       "name": "makeDesktopServerProtocol",

@@ -1,13 +1,19 @@
 import { expect, test } from "bun:test"
-import { Deferred, Effect, Layer, Queue, Schema } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema } from "effect"
 import { Rpc, RpcClient, RpcGroup, RpcServer } from "effect/unstable/rpc"
 
 import {
   type DesktopTransportRun,
   type DesktopTransportSend,
   type HostProtocolEnvelope,
+  HostProtocolCancelByRequestEnvelope,
+  HostProtocolCancelledError,
+  HostProtocolMethodNotFoundError,
+  HostProtocolRequestEnvelope,
   HostProtocolResponseEnvelope,
+  RendererOriginAuth,
   makeDesktopClientProtocol,
+  makeDesktopRpcHandlerRuntime,
   makeDesktopServerProtocol
 } from "./index.js"
 
@@ -17,6 +23,13 @@ const PingRpc = Rpc.make("Ping", {
 })
 
 const group = RpcGroup.make(PingRpc)
+
+const VoidPingRpc = Rpc.make("VoidPing", {
+  payload: Schema.Void,
+  success: Schema.String
+})
+
+const voidGroup = RpcGroup.make(VoidPingRpc)
 
 test("Rpc.make produces an rpc with the correct tag", () => {
   expect(PingRpc._tag).toBe("Ping")
@@ -33,6 +46,177 @@ test("group.toLayer produces a Layer from a handler record", async () => {
 
   expect(handlerLayer).toBeDefined()
   expect(Layer.isLayer(handlerLayer)).toBe(true)
+})
+
+test("makeDesktopRpcHandlerRuntime dispatches host requests through RpcServer", async () => {
+  const runtime = makeDesktopRpcHandlerRuntime(
+    group,
+    group.toLayer({
+      Ping: ({ message }) => Effect.succeed(`pong: ${message}`)
+    }),
+    {
+      originAuth: RendererOriginAuth.unsafeDisabledForTests,
+      now: () => 1710000000000,
+      nextTraceId: () => "trace-response"
+    }
+  )
+
+  const response = await Effect.runPromise(
+    runtime.dispatch(
+      new HostProtocolRequestEnvelope({
+        kind: "request",
+        id: "request-1",
+        method: "Ping",
+        timestamp: 1710000000000,
+        traceId: "trace-request",
+        payload: { message: "hello" }
+      })
+    )
+  )
+
+  expect(response).toEqual({ kind: "success", payload: "pong: hello" })
+})
+
+test("makeDesktopRpcHandlerRuntime rejects unknown host methods before RpcServer dispatch", async () => {
+  const runtime = makeDesktopRpcHandlerRuntime(
+    group,
+    group.toLayer({
+      Ping: ({ message }) => Effect.succeed(`pong: ${message}`)
+    }),
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+
+  const exit = await Effect.runPromiseExit(
+    runtime.dispatch(
+      new HostProtocolRequestEnvelope({
+        kind: "request",
+        id: "request-1",
+        method: "Missing",
+        timestamp: 1710000000000,
+        traceId: "trace-request",
+        payload: { message: "hello" }
+      })
+    )
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const error = Cause.squash(exit.cause)
+    expect(error).toBeInstanceOf(HostProtocolMethodNotFoundError)
+  }
+})
+
+test("makeDesktopRpcHandlerRuntime treats omitted host payloads as Effect void payloads", async () => {
+  const runtime = makeDesktopRpcHandlerRuntime(
+    voidGroup,
+    voidGroup.toLayer({
+      VoidPing: () => Effect.succeed("pong")
+    }),
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+
+  const response = await Effect.runPromise(
+    runtime.dispatch(
+      new HostProtocolRequestEnvelope({
+        kind: "request",
+        id: "request-void",
+        method: "VoidPing",
+        timestamp: 1710000000000,
+        traceId: "trace-request"
+      })
+    )
+  )
+
+  expect(response).toEqual({ kind: "success", payload: "pong" })
+})
+
+test("makeDesktopRpcHandlerRuntime interrupts pending dispatches on cancel", async () => {
+  const started = Effect.runSync(Deferred.make<void>())
+  const interrupted = Effect.runSync(Deferred.make<void>())
+  const runtime = makeDesktopRpcHandlerRuntime(
+    group,
+    group.toLayer({
+      Ping: () =>
+        Deferred.succeed(started, undefined).pipe(
+          Effect.flatMap(() => Effect.never as Effect.Effect<string, never, never>),
+          Effect.ensuring(Deferred.succeed(interrupted, undefined))
+        )
+    }),
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+
+  const fiber = Effect.runFork(
+    runtime.dispatch(
+      new HostProtocolRequestEnvelope({
+        kind: "request",
+        id: "request-cancel",
+        method: "Ping",
+        timestamp: 1710000000000,
+        traceId: "trace-request",
+        payload: { message: "hello" }
+      })
+    ) as Effect.Effect<unknown, unknown, never>
+  )
+
+  await Effect.runPromise(Deferred.await(started))
+  await Effect.runPromise(
+    runtime.cancel(
+      new HostProtocolCancelByRequestEnvelope({
+        kind: "cancel",
+        id: "request-cancel",
+        timestamp: 1710000000001,
+        traceId: "trace-cancel"
+      })
+    )
+  )
+  await Effect.runPromise(Deferred.await(interrupted))
+
+  const exit = await Effect.runPromiseExit(Fiber.join(fiber))
+  expectExitFailure(exit, (error) => error instanceof HostProtocolCancelledError)
+})
+
+test("makeDesktopRpcHandlerRuntime rejects duplicate late request ids", async () => {
+  let calls = 0
+  const states: unknown[] = []
+  const runtime = makeDesktopRpcHandlerRuntime(
+    group,
+    group.toLayer({
+      Ping: ({ message }) =>
+        Effect.sync(() => {
+          calls += 1
+          return `pong: ${message}`
+        })
+    }),
+    {
+      originAuth: RendererOriginAuth.unsafeDisabledForTests,
+      onState: (state) =>
+        Effect.sync(() => {
+          states.push(state)
+        })
+    }
+  )
+  const request = new HostProtocolRequestEnvelope({
+    kind: "request",
+    id: "request-duplicate",
+    method: "Ping",
+    timestamp: 1710000000000,
+    traceId: "trace-request",
+    payload: { message: "hello" }
+  })
+
+  const first = await Effect.runPromise(runtime.dispatch(request))
+  const second = await Effect.runPromiseExit(runtime.dispatch(request))
+
+  expect(first).toEqual({ kind: "success", payload: "pong: hello" })
+  expectExitFailure(second, (error) => hasErrorTag(error, "InvalidState"))
+  expect(calls).toBe(1)
+  expect(states).toContainEqual(
+    expect.objectContaining({
+      tag: "RejectedLateFrame",
+      id: "request-duplicate",
+      terminalState: "Completed"
+    })
+  )
 })
 
 test("makeDesktopClientProtocol returns a Protocol service with send and supportsAck", async () => {
@@ -129,6 +313,51 @@ test("makeDesktopClientProtocol send translates Interrupt to HostProtocolCancelB
   if (envelope?.kind === "cancel") {
     expect(envelope.id).toBe("0:req-1")
   }
+})
+
+test("makeDesktopClientProtocol preserves caller supplied host request ids", async () => {
+  const sent: HostProtocolEnvelope[] = []
+  const transport: DesktopTransportSend & DesktopTransportRun = {
+    send: (envelope) =>
+      Effect.sync(() => {
+        sent.push(envelope)
+      }),
+    run: (_onEnvelope) => Effect.never
+  }
+
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const protocol = yield* makeDesktopClientProtocol(transport, {
+          nextRequestId: () => "request-from-options",
+          nextTraceId: () => "trace-rpc-test"
+        })
+
+        yield* protocol.send(0, {
+          _tag: "Request",
+          id: "req-1",
+          tag: "Ping",
+          payload: { message: "hello" },
+          headers: [],
+          traceId: "trace-rpc-test"
+        })
+        yield* protocol.send(0, {
+          _tag: "Interrupt",
+          requestId: "req-1"
+        })
+      })
+    )
+  )
+
+  expect(
+    sent.map((envelope) => [
+      envelope.kind,
+      envelope.kind === "request" || envelope.kind === "cancel" ? envelope.id : undefined
+    ])
+  ).toEqual([
+    ["request", "request-from-options"],
+    ["cancel", "request-from-options"]
+  ])
 })
 
 test("makeDesktopClientProtocol routes responses to the client id that sent each request", async () => {
@@ -421,6 +650,155 @@ test("makeDesktopServerProtocol clientIds resolves to singleton set with 0", asy
   expect(clientIds.size).toBe(1)
   expect(clientIds.has(0)).toBe(true)
 })
+
+test("makeDesktopServerProtocol translates server defects to host protocol failures", async () => {
+  const queue = Effect.runSync(Queue.unbounded<HostProtocolEnvelope>())
+  const requestObserved = Effect.runSync(Deferred.make<void>())
+  const sent: HostProtocolEnvelope[] = []
+  const transport: DesktopTransportSend & DesktopTransportRun = {
+    send: (envelope) =>
+      Effect.sync(() => {
+        sent.push(envelope)
+      }),
+    run: (onEnvelope): Effect.Effect<never> =>
+      Effect.forever(
+        Queue.take(queue).pipe(
+          Effect.flatMap((envelope) =>
+            onEnvelope(envelope).pipe(
+              Effect.flatMap(() => Deferred.succeed(requestObserved, undefined))
+            )
+          )
+        )
+      )
+  }
+
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const protocol = yield* makeDesktopServerProtocol(transport, {
+          nextTraceId: () => "trace-defect-response",
+          now: () => 1710000000002
+        })
+        yield* Queue.offer(
+          queue,
+          new HostProtocolRequestEnvelope({
+            kind: "request",
+            id: "host-request-1",
+            method: "Ping",
+            timestamp: 1710000000000,
+            traceId: "trace-request",
+            payload: { message: "hello" }
+          })
+        )
+        yield* Deferred.await(requestObserved)
+        yield* protocol.send(0, {
+          _tag: "Defect",
+          defect: "server decode failed"
+        })
+      })
+    )
+  )
+
+  expect(sent).toHaveLength(1)
+  const envelope = sent[0]
+  expect(envelope?.kind).toBe("response")
+  if (envelope?.kind === "response") {
+    expect(envelope.id).toBe("host-request-1")
+    expect(envelope.error?.tag).toBe("Internal")
+    expect(envelope.traceId).toBe("trace-defect-response")
+  }
+})
+
+test("makeDesktopServerProtocol fails every pending host request for client defects", async () => {
+  const queue = Effect.runSync(Queue.unbounded<HostProtocolEnvelope>())
+  const observedBoth = Effect.runSync(Deferred.make<void>())
+  const sent: HostProtocolEnvelope[] = []
+  let observedCount = 0
+  const transport: DesktopTransportSend & DesktopTransportRun = {
+    send: (envelope) =>
+      Effect.sync(() => {
+        sent.push(envelope)
+      }),
+    run: (onEnvelope): Effect.Effect<never> =>
+      Effect.forever(
+        Queue.take(queue).pipe(
+          Effect.flatMap((envelope) =>
+            onEnvelope(envelope).pipe(
+              Effect.flatMap(() =>
+                Effect.sync(() => {
+                  observedCount += 1
+                  return observedCount
+                })
+              ),
+              Effect.flatMap((count) =>
+                count === 2 ? Deferred.succeed(observedBoth, undefined) : Effect.void
+              )
+            )
+          )
+        )
+      )
+  }
+
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const protocol = yield* makeDesktopServerProtocol(transport, {
+          nextTraceId: () => "trace-defect-response",
+          now: () => 1710000000002
+        })
+        yield* Queue.offer(
+          queue,
+          new HostProtocolRequestEnvelope({
+            kind: "request",
+            id: "host-request-1",
+            method: "Ping",
+            timestamp: 1710000000000,
+            traceId: "trace-request-1",
+            payload: { message: "one" }
+          })
+        )
+        yield* Queue.offer(
+          queue,
+          new HostProtocolRequestEnvelope({
+            kind: "request",
+            id: "host-request-2",
+            method: "Ping",
+            timestamp: 1710000000001,
+            traceId: "trace-request-2",
+            payload: { message: "two" }
+          })
+        )
+        yield* Deferred.await(observedBoth)
+        yield* protocol.send(0, {
+          _tag: "Defect",
+          defect: "server decode failed"
+        })
+      })
+    )
+  )
+
+  expect(
+    sent.map((envelope) =>
+      envelope.kind === "response" ? [envelope.id, envelope.error?.tag] : [envelope.kind]
+    )
+  ).toEqual([
+    ["host-request-1", "Internal"],
+    ["host-request-2", "Internal"]
+  ])
+})
+
+const expectExitFailure = <E>(
+  exit: Exit.Exit<unknown, E>,
+  predicate: (error: unknown) => boolean
+): void => {
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    expect(predicate(Cause.squash(exit.cause))).toBe(true)
+  }
+}
+
+const hasErrorTag = (error: unknown, tag: string): boolean =>
+  typeof error === "object" && error !== null && "tag" in error && error.tag === tag
 
 test("RpcClient.Protocol and RpcServer.Protocol are exported from bridge index", () => {
   expect(RpcClient.Protocol).toBeDefined()

@@ -1,18 +1,23 @@
 import {
-  BridgeRpc,
-  Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcHandlers,
-  type BridgeRpcLayer,
+  type BridgeHandlerRuntime,
+  type BridgeHandlerRuntimeOptions,
+  type HostProtocolEventEnvelope,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
+  makeDesktopClientProtocol,
+  makeDesktopRpcHandlerRuntime,
+  makeHostProtocolInternalError,
+  makeHostProtocolInvalidOutputError,
+  makeUnaryDesktopTransportFromBridgeClientExchange,
   Rpc,
+  RpcClient,
   RpcCapability,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Stream } from "effect"
+import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import {
   PowerMonitorIsSupportedInput,
@@ -43,11 +48,7 @@ export type PowerMonitorRpcEvents = typeof PowerMonitorRpcEvents
 
 const PowerMonitorRpcGroup = RpcGroup.make(PowerMonitorIsSupported)
 
-export const PowerMonitorRpcs = BridgeRpc.fromGroup(
-  "PowerMonitor",
-  PowerMonitorRpcGroup,
-  PowerMonitorRpcEvents
-)
+export const PowerMonitorRpcs: RpcGroup.RpcGroup<PowerMonitorRpc> = PowerMonitorRpcGroup
 
 export const PowerMonitorMethodNames = Object.freeze(["isSupported"] as const)
 
@@ -108,32 +109,101 @@ export const makePowerMonitorBridgeClientLayer = (
 ): Layer.Layer<PowerMonitorClient> =>
   Layer.succeed(PowerMonitorClient)(makePowerMonitorBridgeClient(exchange, options))
 
-export type PowerMonitorRpcSpec = (typeof PowerMonitorRpcs)["spec"]
+export type PowerMonitorRpc = RpcGroup.Rpcs<typeof PowerMonitorRpcGroup>
 
-export const makeHostPowerMonitorBridgeRpcLayer = <
-  Handlers extends BridgeRpcHandlers<PowerMonitorRpcSpec>
->(
-  handlers: Handlers
-): BridgeRpcLayer<"PowerMonitor", PowerMonitorRpcSpec, Handlers, PowerMonitorRpcEvents> =>
-  BridgeRpc.layer(PowerMonitorRpcs)(handlers)
+export type PowerMonitorRpcHandlers = Parameters<typeof PowerMonitorRpcGroup.toLayer>[0]
+
+export const makeHostPowerMonitorRpcRuntime = (
+  handlers: PowerMonitorRpcHandlers,
+  runtimeOptions: BridgeHandlerRuntimeOptions = {}
+): BridgeHandlerRuntime<unknown> =>
+  makeDesktopRpcHandlerRuntime(
+    PowerMonitorRpcGroup,
+    PowerMonitorRpcGroup.toLayer(handlers),
+    runtimeOptions
+  )
 
 const makePowerMonitorBridgeClient = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions
 ): PowerMonitorClientApi => {
-  const client = Client({ PowerMonitor: PowerMonitorRpcs }, exchange, options).PowerMonitor
-  const methodClient = client as unknown as {
-    readonly isSupported: (
-      input: PowerMonitorIsSupportedInput
-    ) => Effect.Effect<PowerMonitorSupportedResult, PowerMonitorError, never>
-  }
   return Object.freeze({
-    onSuspend: () => client.events.Suspend,
-    onResume: () => client.events.Resume,
-    onShutdown: () => client.events.Shutdown,
-    onPowerSourceChanged: () => client.events.PowerSourceChanged,
-    isSupported: (method) => methodClient.isSupported(new PowerMonitorIsSupportedInput({ method }))
+    onSuspend: () =>
+      subscribePowerMonitorEvent(exchange, "PowerMonitor.Suspend", PowerMonitorSuspendEvent),
+    onResume: () =>
+      subscribePowerMonitorEvent(exchange, "PowerMonitor.Resume", PowerMonitorResumeEvent),
+    onShutdown: () =>
+      subscribePowerMonitorEvent(exchange, "PowerMonitor.Shutdown", PowerMonitorShutdownEvent),
+    onPowerSourceChanged: () =>
+      subscribePowerMonitorEvent(
+        exchange,
+        "PowerMonitor.PowerSourceChanged",
+        PowerMonitorSourceChangedEvent
+      ),
+    isSupported: (method) =>
+      withPowerMonitorRpcClient(exchange, options, (client) =>
+        runPowerMonitorRpc(
+          client["PowerMonitor.isSupported"](new PowerMonitorIsSupportedInput({ method })),
+          "PowerMonitor.isSupported"
+        )
+      )
   } satisfies PowerMonitorClientApi)
+}
+
+const makePowerMonitorBridgeProtocolLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
+): Layer.Layer<RpcClient.Protocol> =>
+  Layer.effect(RpcClient.Protocol)(
+    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
+      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
+    )
+  )
+
+const withPowerMonitorRpcClient = <A>(
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions,
+  use: (client: PowerMonitorGeneratedClient) => Effect.Effect<A, PowerMonitorError, never>
+): Effect.Effect<A, PowerMonitorError, never> =>
+  Effect.scoped(
+    RpcClient.make(PowerMonitorRpcGroup).pipe(
+      Effect.map((client) => client as unknown as PowerMonitorGeneratedClient),
+      Effect.flatMap(use),
+      Effect.provide(makePowerMonitorBridgeProtocolLayer(exchange, options))
+    )
+  )
+
+const subscribePowerMonitorEvent = <A>(
+  exchange: BridgeClientExchange,
+  method: string,
+  schema: Schema.Schema<A>
+): Stream.Stream<A, PowerMonitorError, never> => {
+  if (exchange.subscribe === undefined) {
+    return Stream.fail(
+      makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
+    )
+  }
+
+  return exchange
+    .subscribe(method)
+    .pipe(Stream.mapEffect((envelope) => decodePowerMonitorEventEnvelope(method, schema, envelope)))
+}
+
+const decodePowerMonitorEventEnvelope = <A>(
+  operation: string,
+  schema: Schema.Schema<A>,
+  envelope: HostProtocolEventEnvelope
+): Effect.Effect<A, PowerMonitorError, never> => {
+  if (envelope.method !== operation) {
+    return Effect.fail(
+      makeHostProtocolInvalidOutputError(operation, `unexpected event method: ${envelope.method}`)
+    )
+  }
+
+  return Effect.mapError(
+    Schema.decodeUnknownEffect(schema)(envelope.payload) as Effect.Effect<A, unknown, never>,
+    (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+  )
 }
 
 export const makeUnsupportedPowerMonitorClient = (): PowerMonitorClientApi => {
@@ -157,3 +227,37 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
     operation: method,
     recoverable: false
   })
+
+interface PowerMonitorGeneratedClient {
+  readonly "PowerMonitor.isSupported": (
+    input: PowerMonitorIsSupportedInput
+  ) => Effect.Effect<PowerMonitorSupportedResult, unknown, never>
+}
+
+const runPowerMonitorRpc = <A, E>(
+  effect: Effect.Effect<A, E, never>,
+  operation: string
+): Effect.Effect<A, PowerMonitorError, never> =>
+  effect.pipe(
+    Effect.mapError(mapPowerMonitorRpcClientError),
+    Effect.catchDefect((defect) =>
+      Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
+    )
+  )
+
+const mapPowerMonitorRpcClientError = (error: unknown): PowerMonitorError =>
+  isPowerMonitorError(error)
+    ? error
+    : makeHostProtocolInternalError("PowerMonitor RPC client failed", "PowerMonitor")
+
+const isPowerMonitorError = (error: unknown): error is PowerMonitorError =>
+  typeof error === "object" &&
+  error !== null &&
+  "tag" in error &&
+  "operation" in error &&
+  "recoverable" in error
+
+const formatUnknownError = (error: unknown): string => {
+  if (error instanceof Error) return error.message
+  return String(error)
+}

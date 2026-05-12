@@ -1,14 +1,18 @@
 import {
-  BridgeRpc,
-  Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcHandlers,
-  type BridgeRpcLayer,
+  type BridgeHandlerRuntime,
+  type BridgeHandlerRuntimeOptions,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
+  makeDesktopClientProtocol,
+  makeDesktopRpcHandlerRuntime,
+  makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
+  makeHostProtocolInvalidOutputError,
+  makeUnaryDesktopTransportFromBridgeClientExchange,
   Rpc,
+  RpcClient,
   RpcCapability,
   RpcGroup,
   type HostProtocolError
@@ -59,7 +63,7 @@ const ProtocolRpcGroup = RpcGroup.make(
   ProtocolDeny
 )
 
-export const ProtocolRpcs = BridgeRpc.fromGroup("Protocol", ProtocolRpcGroup, ProtocolRpcEvents)
+export const ProtocolRpcs: RpcGroup.RpcGroup<ProtocolRpc> = ProtocolRpcGroup
 
 export const ProtocolMethodNames = Object.freeze([
   "registerAppProtocol",
@@ -115,42 +119,85 @@ export const makeProtocolBridgeClientLayer = (
 ): Layer.Layer<ProtocolClient> =>
   Layer.succeed(ProtocolClient)(makeProtocolBridgeClient(exchange, options))
 
-export type ProtocolRpcSpec = (typeof ProtocolRpcs)["spec"]
+export type ProtocolRpc = RpcGroup.Rpcs<typeof ProtocolRpcGroup>
 
-export const makeHostProtocolBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<ProtocolRpcSpec>>(
-  handlers: Handlers
-): BridgeRpcLayer<"Protocol", ProtocolRpcSpec, Handlers, ProtocolRpcEvents> =>
-  BridgeRpc.layer(ProtocolRpcs)(handlers)
+export type ProtocolRpcHandlers = Parameters<typeof ProtocolRpcGroup.toLayer>[0]
+
+export const makeHostProtocolRpcRuntime = (
+  handlers: ProtocolRpcHandlers,
+  runtimeOptions: BridgeHandlerRuntimeOptions = {}
+): BridgeHandlerRuntime<unknown> =>
+  makeDesktopRpcHandlerRuntime(ProtocolRpcGroup, ProtocolRpcGroup.toLayer(handlers), runtimeOptions)
 
 const makeProtocolBridgeClient = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions
 ): ProtocolClientApi => {
-  const client = Client({ Protocol: ProtocolRpcs }, exchange, options)
-    .Protocol as unknown as ProtocolClientApi
   return Object.freeze({
     registerAppProtocol: (input) =>
       decodeProtocolRegisterAppProtocolInput(input).pipe(
         Effect.flatMap(validateRegisterAppProtocolInput),
-        Effect.flatMap(client.registerAppProtocol)
+        Effect.flatMap((decoded) =>
+          withProtocolRpcClient(exchange, options, (client) =>
+            runProtocolRpc(
+              client["Protocol.registerAppProtocol"](decoded),
+              "Protocol.registerAppProtocol"
+            )
+          )
+        )
       ),
     serveAsset: (input) =>
       decodeProtocolServeAssetInput(input).pipe(
         Effect.flatMap(validateServeAssetInput),
-        Effect.flatMap(client.serveAsset)
+        Effect.flatMap((decoded) =>
+          withProtocolRpcClient(exchange, options, (client) =>
+            runProtocolRpc(client["Protocol.serveAsset"](decoded), "Protocol.serveAsset")
+          )
+        )
       ),
     serveRoute: (input) =>
       decodeProtocolServeRouteInput(input).pipe(
         Effect.flatMap(validateServeRouteInput),
-        Effect.flatMap(client.serveRoute)
+        Effect.flatMap((decoded) =>
+          withProtocolRpcClient(exchange, options, (client) =>
+            runProtocolRpc(client["Protocol.serveRoute"](decoded), "Protocol.serveRoute")
+          )
+        )
       ),
     deny: (input) =>
       decodeProtocolDenyInput(input).pipe(
         Effect.flatMap(validateDenyInput),
-        Effect.flatMap(client.deny)
+        Effect.flatMap((decoded) =>
+          withProtocolRpcClient(exchange, options, (client) =>
+            runProtocolRpc(client["Protocol.deny"](decoded), "Protocol.deny")
+          )
+        )
       )
   } satisfies ProtocolClientApi)
 }
+
+const makeProtocolBridgeProtocolLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
+): Layer.Layer<RpcClient.Protocol> =>
+  Layer.effect(RpcClient.Protocol)(
+    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
+      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
+    )
+  )
+
+const withProtocolRpcClient = <A>(
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions,
+  use: (client: ProtocolGeneratedClient) => Effect.Effect<A, ProtocolError, never>
+): Effect.Effect<A, ProtocolError, never> =>
+  Effect.scoped(
+    RpcClient.make(ProtocolRpcGroup).pipe(
+      Effect.map((client) => client as unknown as ProtocolGeneratedClient),
+      Effect.flatMap(use),
+      Effect.provide(makeProtocolBridgeProtocolLayer(exchange, options))
+    )
+  )
 
 export const makeUnsupportedProtocolClient = (): ProtocolClientApi => {
   const unsupportedEffect = <A>(method: string): Effect.Effect<A, ProtocolError, never> =>
@@ -332,6 +379,42 @@ function protocolRpc<Input extends Schema.Schema<unknown>>(
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability({ kind: permission }))
 }
+
+interface ProtocolGeneratedClient {
+  readonly "Protocol.registerAppProtocol": (
+    input: ProtocolRegisterAppProtocolInput
+  ) => Effect.Effect<void, unknown, never>
+  readonly "Protocol.serveAsset": (
+    input: ProtocolServeAssetInput
+  ) => Effect.Effect<void, unknown, never>
+  readonly "Protocol.serveRoute": (
+    input: ProtocolServeRouteInput
+  ) => Effect.Effect<void, unknown, never>
+  readonly "Protocol.deny": (input: ProtocolDenyInput) => Effect.Effect<void, unknown, never>
+}
+
+const runProtocolRpc = <A, E>(
+  effect: Effect.Effect<A, E, never>,
+  operation: string
+): Effect.Effect<A, ProtocolError, never> =>
+  effect.pipe(
+    Effect.mapError(mapProtocolRpcClientError),
+    Effect.catchDefect((defect) =>
+      Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
+    )
+  )
+
+const mapProtocolRpcClientError = (error: unknown): ProtocolError =>
+  isProtocolError(error)
+    ? error
+    : makeHostProtocolInternalError("Protocol RPC client failed", "Protocol")
+
+const isProtocolError = (error: unknown): error is ProtocolError =>
+  typeof error === "object" &&
+  error !== null &&
+  "tag" in error &&
+  "operation" in error &&
+  "recoverable" in error
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) return error.message

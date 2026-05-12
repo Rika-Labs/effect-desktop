@@ -8,18 +8,23 @@ import {
   type ResourceId
 } from "@effect-desktop/core"
 import {
-  BridgeRpc,
-  Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcHandlers,
-  type BridgeRpcLayer,
+  type BridgeHandlerRuntime,
+  type BridgeHandlerRuntimeOptions,
   BridgeResourceHandleShape,
+  type HostProtocolEventEnvelope,
   HostProtocolAlreadyExistsError,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
+  makeDesktopClientProtocol,
+  makeDesktopRpcHandlerRuntime,
+  makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
+  makeHostProtocolInvalidOutputError,
+  makeUnaryDesktopTransportFromBridgeClientExchange,
   Rpc,
+  RpcClient,
   RpcCapability,
   RpcGroup,
   type HostProtocolError
@@ -89,11 +94,7 @@ const GlobalShortcutRpcGroup = RpcGroup.make(
   GlobalShortcutIsSupported
 )
 
-export const GlobalShortcutRpcs = BridgeRpc.fromGroup(
-  "GlobalShortcut",
-  GlobalShortcutRpcGroup,
-  GlobalShortcutRpcEvents
-)
+export const GlobalShortcutRpcs: RpcGroup.RpcGroup<GlobalShortcutRpc> = GlobalShortcutRpcGroup
 
 export const GlobalShortcutMethodNames = Object.freeze([
   "register",
@@ -296,56 +297,135 @@ export const makeGlobalShortcutBridgeClientLayer = (
 ): Layer.Layer<GlobalShortcutClient> =>
   Layer.succeed(GlobalShortcutClient)(makeGlobalShortcutBridgeClient(exchange, options))
 
-export type GlobalShortcutRpcSpec = (typeof GlobalShortcutRpcs)["spec"]
+export type GlobalShortcutRpc = RpcGroup.Rpcs<typeof GlobalShortcutRpcGroup>
 
-export const makeHostGlobalShortcutBridgeRpcLayer = <
-  Handlers extends BridgeRpcHandlers<GlobalShortcutRpcSpec>
->(
-  handlers: Handlers
-): BridgeRpcLayer<"GlobalShortcut", GlobalShortcutRpcSpec, Handlers, GlobalShortcutRpcEvents> =>
-  BridgeRpc.layer(GlobalShortcutRpcs)(handlers)
+export type GlobalShortcutRpcHandlers = Parameters<typeof GlobalShortcutRpcGroup.toLayer>[0]
+
+export const makeHostGlobalShortcutRpcRuntime = (
+  handlers: GlobalShortcutRpcHandlers,
+  runtimeOptions: BridgeHandlerRuntimeOptions = {}
+): BridgeHandlerRuntime<unknown> =>
+  makeDesktopRpcHandlerRuntime(
+    GlobalShortcutRpcGroup,
+    GlobalShortcutRpcGroup.toLayer(handlers),
+    runtimeOptions
+  )
 
 const makeGlobalShortcutBridgeClient = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions
 ): GlobalShortcutClientApi => {
-  const client = Client({ GlobalShortcut: GlobalShortcutRpcs }, exchange, options)
-    .GlobalShortcut as unknown as {
-    readonly register: (
-      input: GlobalShortcutRegisterInput
-    ) => Effect.Effect<void, GlobalShortcutError, never>
-    readonly unregister: (
-      input: GlobalShortcutAcceleratorInput
-    ) => Effect.Effect<void, GlobalShortcutError, never>
-    readonly unregisterAll: () => Effect.Effect<void, GlobalShortcutError, never>
-    readonly isRegistered: (
-      input: GlobalShortcutAcceleratorInput
-    ) => Effect.Effect<GlobalShortcutRegisteredResult, GlobalShortcutError, never>
-    readonly isSupported: () => Effect.Effect<
-      GlobalShortcutSupportedResult,
-      GlobalShortcutError,
-      never
-    >
-    readonly events: {
-      readonly Pressed: Stream.Stream<GlobalShortcutPressedEvent, GlobalShortcutError, never>
-    }
-  }
   return Object.freeze({
     register: (accelerator, registrarWindow) =>
       decodeGlobalShortcutRegisterInput({
         accelerator,
         registrarWindow: toWindowHandle(registrarWindow)
-      }).pipe(Effect.flatMap(client.register)),
+      }).pipe(
+        Effect.flatMap((decoded) =>
+          withGlobalShortcutRpcClient(exchange, options, (client) =>
+            runGlobalShortcutRpc(
+              client["GlobalShortcut.register"](decoded),
+              "GlobalShortcut.register"
+            )
+          )
+        )
+      ),
     unregister: (accelerator) =>
-      decodeGlobalShortcutAcceleratorInput({ accelerator }).pipe(Effect.flatMap(client.unregister)),
-    unregisterAll: () => client.unregisterAll(),
+      decodeGlobalShortcutAcceleratorInput({ accelerator }).pipe(
+        Effect.flatMap((decoded) =>
+          withGlobalShortcutRpcClient(exchange, options, (client) =>
+            runGlobalShortcutRpc(
+              client["GlobalShortcut.unregister"](decoded),
+              "GlobalShortcut.unregister"
+            )
+          )
+        )
+      ),
+    unregisterAll: () =>
+      withGlobalShortcutRpcClient(exchange, options, (client) =>
+        runGlobalShortcutRpc(
+          client["GlobalShortcut.unregisterAll"](undefined),
+          "GlobalShortcut.unregisterAll"
+        )
+      ),
     isRegistered: (accelerator) =>
       decodeGlobalShortcutAcceleratorInput({ accelerator }).pipe(
-        Effect.flatMap(client.isRegistered)
+        Effect.flatMap((decoded) =>
+          withGlobalShortcutRpcClient(exchange, options, (client) =>
+            runGlobalShortcutRpc(
+              client["GlobalShortcut.isRegistered"](decoded),
+              "GlobalShortcut.isRegistered"
+            )
+          )
+        )
       ),
-    isSupported: () => client.isSupported(),
-    onPressed: () => client.events.Pressed
+    isSupported: () =>
+      withGlobalShortcutRpcClient(exchange, options, (client) =>
+        runGlobalShortcutRpc(
+          client["GlobalShortcut.isSupported"](undefined),
+          "GlobalShortcut.isSupported"
+        )
+      ),
+    onPressed: () => subscribeGlobalShortcutEvent(exchange, "GlobalShortcut.Pressed")
   } satisfies GlobalShortcutClientApi)
+}
+
+const makeGlobalShortcutBridgeProtocolLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
+): Layer.Layer<RpcClient.Protocol> =>
+  Layer.effect(RpcClient.Protocol)(
+    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
+      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
+    )
+  )
+
+const withGlobalShortcutRpcClient = <A>(
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions,
+  use: (client: GlobalShortcutGeneratedClient) => Effect.Effect<A, GlobalShortcutError, never>
+): Effect.Effect<A, GlobalShortcutError, never> =>
+  Effect.scoped(
+    RpcClient.make(GlobalShortcutRpcGroup).pipe(
+      Effect.map((client) => client as unknown as GlobalShortcutGeneratedClient),
+      Effect.flatMap(use),
+      Effect.provide(makeGlobalShortcutBridgeProtocolLayer(exchange, options))
+    )
+  )
+
+const subscribeGlobalShortcutEvent = (
+  exchange: BridgeClientExchange,
+  method: "GlobalShortcut.Pressed"
+): Stream.Stream<GlobalShortcutPressedEvent, GlobalShortcutError, never> => {
+  if (exchange.subscribe === undefined) {
+    return Stream.fail(
+      makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
+    )
+  }
+
+  return exchange
+    .subscribe(method)
+    .pipe(Stream.mapEffect((envelope) => decodeGlobalShortcutEventEnvelope(method, envelope)))
+}
+
+const decodeGlobalShortcutEventEnvelope = (
+  operation: string,
+  envelope: HostProtocolEventEnvelope
+): Effect.Effect<GlobalShortcutPressedEvent, GlobalShortcutError, never> => {
+  if (envelope.method !== operation) {
+    return Effect.fail(
+      makeHostProtocolInvalidOutputError(operation, `unexpected event method: ${envelope.method}`)
+    )
+  }
+
+  return Effect.mapError(
+    Schema.decodeUnknownEffect(GlobalShortcutPressedEvent)(envelope.payload) as Effect.Effect<
+      GlobalShortcutPressedEvent,
+      unknown,
+      never
+    >,
+    (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+  )
 }
 
 export const makeUnsupportedGlobalShortcutClient = (): GlobalShortcutClientApi => {
@@ -486,6 +566,45 @@ function shortcutRpc<
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability({ kind: capability }))
 }
+
+interface GlobalShortcutGeneratedClient {
+  readonly "GlobalShortcut.register": (
+    input: GlobalShortcutRegisterInput
+  ) => Effect.Effect<void, unknown, never>
+  readonly "GlobalShortcut.unregister": (
+    input: GlobalShortcutAcceleratorInput
+  ) => Effect.Effect<void, unknown, never>
+  readonly "GlobalShortcut.unregisterAll": (input: void) => Effect.Effect<void, unknown, never>
+  readonly "GlobalShortcut.isRegistered": (
+    input: GlobalShortcutAcceleratorInput
+  ) => Effect.Effect<GlobalShortcutRegisteredResult, unknown, never>
+  readonly "GlobalShortcut.isSupported": (
+    input: void
+  ) => Effect.Effect<GlobalShortcutSupportedResult, unknown, never>
+}
+
+const runGlobalShortcutRpc = <A, E>(
+  effect: Effect.Effect<A, E, never>,
+  operation: string
+): Effect.Effect<A, GlobalShortcutError, never> =>
+  effect.pipe(
+    Effect.mapError(mapGlobalShortcutRpcClientError),
+    Effect.catchDefect((defect) =>
+      Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
+    )
+  )
+
+const mapGlobalShortcutRpcClientError = (error: unknown): GlobalShortcutError =>
+  isGlobalShortcutError(error)
+    ? error
+    : makeHostProtocolInternalError("GlobalShortcut RPC client failed", "GlobalShortcut")
+
+const isGlobalShortcutError = (error: unknown): error is GlobalShortcutError =>
+  typeof error === "object" &&
+  error !== null &&
+  "tag" in error &&
+  "operation" in error &&
+  "recoverable" in error
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) return error.message

@@ -1,13 +1,17 @@
 import {
-  BridgeRpc,
-  Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcHandlers,
-  type BridgeRpcLayer,
+  type BridgeHandlerRuntime,
+  type BridgeHandlerRuntimeOptions,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
+  makeDesktopClientProtocol,
+  makeDesktopRpcHandlerRuntime,
+  makeHostProtocolInternalError,
+  makeHostProtocolInvalidOutputError,
+  makeUnaryDesktopTransportFromBridgeClientExchange,
   Rpc,
+  RpcClient,
   RpcCapability,
   RpcGroup,
   type HostProtocolError
@@ -38,7 +42,7 @@ const PathRpcGroup = RpcGroup.make(
   PathDownloads
 )
 
-export const PathRpcs = BridgeRpc.fromGroup("Path", PathRpcGroup, PathRpcEvents)
+export const PathRpcs: RpcGroup.RpcGroup<PathRpc> = PathRpcGroup
 
 export const PathMethodNames = Object.freeze([
   "appData",
@@ -91,12 +95,15 @@ export const makePathBridgeClientLayer = (
   options: BridgeClientOptions = {}
 ): Layer.Layer<PathClient> => Layer.succeed(PathClient)(makePathBridgeClient(exchange, options))
 
-export type PathRpcSpec = (typeof PathRpcs)["spec"]
+export type PathRpc = RpcGroup.Rpcs<typeof PathRpcGroup>
 
-export const makeHostPathBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<PathRpcSpec>>(
-  handlers: Handlers
-): BridgeRpcLayer<"Path", PathRpcSpec, Handlers, PathRpcEvents> =>
-  BridgeRpc.layer(PathRpcs)(handlers)
+export type PathRpcHandlers = Parameters<typeof PathRpcGroup.toLayer>[0]
+
+export const makeHostPathRpcRuntime = (
+  handlers: PathRpcHandlers,
+  runtimeOptions: BridgeHandlerRuntimeOptions = {}
+): BridgeHandlerRuntime<unknown> =>
+  makeDesktopRpcHandlerRuntime(PathRpcGroup, PathRpcGroup.toLayer(handlers), runtimeOptions)
 
 const makePathService = (client: PathClientApi): PathServiceApi => {
   const toStringPath = (effect: Effect.Effect<CanonicalPath, PathError, never>) =>
@@ -118,19 +125,58 @@ const makePathBridgeClient = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions
 ): PathClientApi => {
-  const client = Client({ Path: PathRpcs }, exchange, options).Path as unknown as PathClientApi
-
   const pathClient: PathClientApi = {
-    appData: () => client.appData(),
-    cache: () => client.cache(),
-    logs: () => client.logs(),
-    temp: () => client.temp(),
-    home: () => client.home(),
-    downloads: () => client.downloads()
+    appData: () =>
+      withPathRpcClient(exchange, options, (client) =>
+        runPathRpc(client["Path.appData"](undefined), "Path.appData")
+      ),
+    cache: () =>
+      withPathRpcClient(exchange, options, (client) =>
+        runPathRpc(client["Path.cache"](undefined), "Path.cache")
+      ),
+    logs: () =>
+      withPathRpcClient(exchange, options, (client) =>
+        runPathRpc(client["Path.logs"](undefined), "Path.logs")
+      ),
+    temp: () =>
+      withPathRpcClient(exchange, options, (client) =>
+        runPathRpc(client["Path.temp"](undefined), "Path.temp")
+      ),
+    home: () =>
+      withPathRpcClient(exchange, options, (client) =>
+        runPathRpc(client["Path.home"](undefined), "Path.home")
+      ),
+    downloads: () =>
+      withPathRpcClient(exchange, options, (client) =>
+        runPathRpc(client["Path.downloads"](undefined), "Path.downloads")
+      )
   }
 
   return Object.freeze(pathClient)
 }
+
+const makePathBridgeProtocolLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
+): Layer.Layer<RpcClient.Protocol> =>
+  Layer.effect(RpcClient.Protocol)(
+    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
+      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
+    )
+  )
+
+const withPathRpcClient = <A>(
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions,
+  use: (client: PathGeneratedClient) => Effect.Effect<A, PathError, never>
+): Effect.Effect<A, PathError, never> =>
+  Effect.scoped(
+    RpcClient.make(PathRpcGroup).pipe(
+      Effect.map((client) => client as unknown as PathGeneratedClient),
+      Effect.flatMap(use),
+      Effect.provide(makePathBridgeProtocolLayer(exchange, options))
+    )
+  )
 
 export const makeUnsupportedPathClient = (): PathClientApi => {
   const unsupportedEffect = <A>(method: string): Effect.Effect<A, PathError, never> =>
@@ -162,4 +208,39 @@ function pathRpc(method: (typeof PathMethodNames)[number], permission: string) {
     success: CanonicalPath,
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability({ kind: permission }))
+}
+
+interface PathGeneratedClient {
+  readonly "Path.appData": (input: void) => Effect.Effect<CanonicalPath, unknown, never>
+  readonly "Path.cache": (input: void) => Effect.Effect<CanonicalPath, unknown, never>
+  readonly "Path.logs": (input: void) => Effect.Effect<CanonicalPath, unknown, never>
+  readonly "Path.temp": (input: void) => Effect.Effect<CanonicalPath, unknown, never>
+  readonly "Path.home": (input: void) => Effect.Effect<CanonicalPath, unknown, never>
+  readonly "Path.downloads": (input: void) => Effect.Effect<CanonicalPath, unknown, never>
+}
+
+const runPathRpc = <A, E>(
+  effect: Effect.Effect<A, E, never>,
+  operation: string
+): Effect.Effect<A, PathError, never> =>
+  effect.pipe(
+    Effect.mapError(mapPathRpcClientError),
+    Effect.catchDefect((defect) =>
+      Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
+    )
+  )
+
+const mapPathRpcClientError = (error: unknown): PathError =>
+  isPathError(error) ? error : makeHostProtocolInternalError("Path RPC client failed", "Path")
+
+const isPathError = (error: unknown): error is PathError =>
+  typeof error === "object" &&
+  error !== null &&
+  "tag" in error &&
+  "operation" in error &&
+  "recoverable" in error
+
+const formatUnknownError = (error: unknown): string => {
+  if (error instanceof Error) return error.message
+  return String(error)
 }

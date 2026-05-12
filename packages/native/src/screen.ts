@@ -1,10 +1,10 @@
 import {
-  BridgeRpc,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcHandlers,
-  type BridgeRpcLayer,
+  type BridgeHandlerRuntime,
+  type BridgeHandlerRuntimeOptions,
   makeDesktopClientProtocol,
+  makeDesktopRpcHandlerRuntime,
   makeUnaryDesktopTransportFromBridgeClientExchange,
   Rpc,
   RpcClient,
@@ -55,10 +55,6 @@ export const ScreenIsSupported = Rpc.make("Screen.isSupported", {
   error: HostProtocolErrorSchema
 }).pipe(RpcCapability({ kind: "none" }))
 
-export const ScreenRpcEvents = Object.freeze({})
-
-export type ScreenRpcEvents = typeof ScreenRpcEvents
-
 const makeScreenRpcGroup = () =>
   RpcGroup.make(
     ScreenGetDisplays,
@@ -69,9 +65,7 @@ const makeScreenRpcGroup = () =>
 
 const ScreenRpcGroup = makeScreenRpcGroup()
 
-const ScreenBridgeRpcs = BridgeRpc.fromGroup("Screen", makeScreenRpcGroup(), ScreenRpcEvents)
-
-export const ScreenRpcs = ScreenRpcGroup
+export const ScreenRpcs: RpcGroup.RpcGroup<ScreenRpc> = ScreenRpcGroup
 
 export type ScreenRpc = RpcGroup.Rpcs<typeof ScreenRpcGroup>
 
@@ -164,12 +158,13 @@ export const makeScreenBridgeClientLayer = (
 ): Layer.Layer<ScreenClient> =>
   Layer.provide(ScreenSurface.clientLayer, makeScreenBridgeProtocolLayer(exchange, options))
 
-export type ScreenRpcSpec = (typeof ScreenBridgeRpcs)["spec"]
+export type ScreenRpcHandlers = Parameters<typeof ScreenRpcGroup.toLayer>[0]
 
-export const makeHostScreenBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<ScreenRpcSpec>>(
-  handlers: Handlers
-): BridgeRpcLayer<"Screen", ScreenRpcSpec, Handlers, ScreenRpcEvents> =>
-  BridgeRpc.layer(ScreenBridgeRpcs)(handlers)
+export const makeHostScreenRpcRuntime = (
+  handlers: ScreenRpcHandlers,
+  runtimeOptions: BridgeHandlerRuntimeOptions = {}
+): BridgeHandlerRuntime<unknown> =>
+  makeDesktopRpcHandlerRuntime(ScreenRpcGroup, ScreenRpcGroup.toLayer(handlers), runtimeOptions)
 
 const makeScreenBridgeProtocolLayer = (
   exchange: BridgeClientExchange,

@@ -6,7 +6,6 @@ import {
   HostProtocolNotFoundError,
   HostProtocolResponseEnvelope,
   HostProtocolStaleHandleError,
-  Handlers,
   RendererOriginAuth,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
@@ -35,22 +34,27 @@ import { Cause, Deferred, Effect, Exit, Fiber, Layer, Option, Queue, Schema, Str
 import {
   App,
   AppRpcs,
+  AppRpcEvents,
   AppLive,
   AppMethodNames,
   Clipboard,
   ClipboardRpcs,
+  ClipboardRpcEvents,
   ClipboardLive,
   ClipboardMethodNames,
   ContextMenu,
   ContextMenuRpcs,
+  ContextMenuRpcEvents,
   ContextMenuLive,
   ContextMenuMethodNames,
   CrashReporter,
   CrashReporterRpcs,
+  CrashReporterRpcEvents,
   CrashReporterLive,
   CrashReporterMethodNames,
   Dialog,
   DialogRpcs,
+  DialogRpcEvents,
   DialogLive,
   DialogMethodNames,
   Dock,
@@ -59,14 +63,17 @@ import {
   DockMethodNames,
   GlobalShortcut,
   GlobalShortcutRpcs,
+  GlobalShortcutRpcEvents,
   GlobalShortcutLive,
   GlobalShortcutMethodNames,
   Menu,
   MenuRpcs,
+  MenuRpcEvents,
   MenuLive,
   MenuMethodNames,
   Notification,
   NotificationRpcs,
+  NotificationRpcEvents,
   NotificationLive,
   NotificationMethodNames,
   Path,
@@ -79,10 +86,12 @@ import {
   ProtocolMethodNames,
   PowerMonitor,
   PowerMonitorRpcs,
+  PowerMonitorRpcEvents,
   PowerMonitorLive,
   PowerMonitorMethodNames,
   SafeStorage,
   SafeStorageRpcs,
+  SafeStorageRpcEvents,
   SafeStorageLive,
   SafeStorageMethodNames,
   SecretValue,
@@ -99,18 +108,22 @@ import {
   ShellMethodNames,
   SystemAppearance,
   SystemAppearanceRpcs,
+  SystemAppearanceRpcEvents,
   SystemAppearanceLive,
   SystemAppearanceMethodNames,
   Tray,
   TrayRpcs,
+  TrayRpcEvents,
   TrayLive,
   TrayMethodNames,
   Updater,
   UpdaterRpcs,
+  UpdaterRpcEvents,
   UpdaterLive,
   UpdaterMethodNames,
   WebView,
   WebViewRpcs,
+  WebViewRpcEvents,
   WebViewLive,
   WebViewMethodNames,
   Window,
@@ -119,7 +132,7 @@ import {
   WindowClient,
   WindowLive,
   WindowMethodNames,
-  makeHostWindowBridgeRpcLayer,
+  makeHostWindowRpcRuntime,
   makeAppBridgeClientLayer,
   makeAppServiceLayer,
   makeClipboardBridgeClientLayer,
@@ -537,7 +550,9 @@ const applicationMenuTemplate = new MenuTemplate({
 })
 
 const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1])
+const pngBytesJson = "iVBORw0KGgoB"
 const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 1])
+const jpegBytesJson = "/9j/AQ=="
 
 const notificationHandle: NotificationHandle = {
   kind: "notification",
@@ -566,10 +581,9 @@ const primaryDisplay = new ScreenDisplay({
 const accentColor = new SystemAppearanceColor({ r: 0.1, g: 0.2, b: 0.3, a: 1 })
 
 test("AppRpcs declares the Phase 7 App method and event surface", () => {
-  expect(AppRpcs.tag).toBe("App")
   expect([...AppMethodNames]).toEqual(expectedAppMethods)
-  expect(Object.keys(AppRpcs.spec)).toEqual(expectedAppMethods)
-  expect(Object.keys(AppRpcs.events)).toEqual([
+  expect(rpcMethodNames("App", AppRpcs)).toEqual(expectedAppMethods)
+  expect(Object.keys(AppRpcEvents)).toEqual([
     "onSecondInstance",
     "onOpenFile",
     "onOpenUrl",
@@ -639,18 +653,7 @@ test("App bridge client sends typed host envelopes and decodes event streams", a
       const openFiles = yield* app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
 
       return { info, openFiles }
-    }).pipe(
-      Effect.provide(
-        Layer.provide(
-          AppLive,
-          makeAppBridgeClientLayer(exchange, {
-            nextRequestId: nextId(["info-request", "protocol-request"]),
-            nextTraceId: nextId(["info-trace", "protocol-trace"]),
-            now: nextNumber([1710000000000, 1710000000001])
-          })
-        )
-      )
-    )
+    }).pipe(Effect.provide(Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))))
   )
 
   expect(result.info).toEqual(
@@ -662,7 +665,7 @@ test("App bridge client sends typed host envelopes and decodes event streams", a
   )
   expect(Array.from(result.openFiles)).toEqual([new AppOpenFileEvent({ path: "README.md" })])
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
-    ["App.getInfo", undefined],
+    ["App.getInfo", null],
     ["App.registerProtocol", { scheme: "effect-desktop" }]
   ])
 })
@@ -745,8 +748,8 @@ test("App bridge client rejects malformed App.getInfo and App.getCommandLine out
   expectExitFailure(infoExit, (error) => hasErrorTag(error, "InvalidOutput"))
   expectExitFailure(commandLineExit, (error) => hasErrorTag(error, "InvalidOutput"))
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
-    ["App.getInfo", undefined],
-    ["App.getCommandLine", undefined]
+    ["App.getInfo", null],
+    ["App.getCommandLine", null]
   ])
 })
 
@@ -781,7 +784,7 @@ test("App single-instance lock rejects invalid primary pid results", async () =>
 
     expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
     expect(requests.map((request) => [request.method, request.payload])).toEqual([
-      ["App.requestSingleInstanceLock", undefined]
+      ["App.requestSingleInstanceLock", null]
     ])
   }
 })
@@ -1012,10 +1015,9 @@ test("App bridge client rejects non-portable quit exit codes as InvalidArgument"
 })
 
 test("WebViewRpcs declares the Phase 7 WebView method and event surface", () => {
-  expect(WebViewRpcs.tag).toBe("WebView")
   expect([...WebViewMethodNames]).toEqual(expectedWebViewMethods)
-  expect(Object.keys(WebViewRpcs.spec)).toEqual(expectedWebViewMethods)
-  expect(Object.keys(WebViewRpcs.events)).toEqual(["NavigationBlocked"])
+  expect(rpcMethodNames("WebView", WebViewRpcs)).toEqual(expectedWebViewMethods)
+  expect(Object.keys(WebViewRpcEvents)).toEqual(["NavigationBlocked"])
 })
 
 test("WebView service delegates through a substitutable WebViewClient port", async () => {
@@ -1073,7 +1075,7 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
       request.method === "WebView.create"
         ? webviewHandle
         : request.method === "WebView.captureScreenshot"
-          ? { mime: "image/png", bytes: pngBytes }
+          ? { mime: "image/png", bytes: pngBytesJson }
           : request.method === "WebView.capability"
             ? { supported: true }
             : undefined
@@ -1096,32 +1098,7 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
       const blocked = yield* webview.onNavigationBlocked().pipe(Stream.take(1), Stream.runCollect)
 
       return { blocked, canOpenDevtools, created, screenshot }
-    }).pipe(
-      Effect.provide(
-        Layer.provide(
-          WebViewLive,
-          makeWebViewBridgeClientLayer(exchange, {
-            nextRequestId: nextId([
-              "create-request",
-              "route-request",
-              "policy-request",
-              "screenshot-request",
-              "capability-request"
-            ]),
-            nextTraceId: nextId([
-              "create-trace",
-              "route-trace",
-              "policy-trace",
-              "screenshot-trace",
-              "capability-trace"
-            ]),
-            now: nextNumber([
-              1710000000000, 1710000000001, 1710000000002, 1710000000003, 1710000000004
-            ])
-          })
-        )
-      )
-    )
+    }).pipe(Effect.provide(Layer.provide(WebViewLive, makeWebViewBridgeClientLayer(exchange))))
   )
 
   expect(result.created).toMatchObject(webviewHandle)
@@ -1443,10 +1420,9 @@ test("WebView capability matrix reports spec-partial features as unsupported", a
 })
 
 test("MenuRpcs declares the Phase 7 Menu method and event surface", () => {
-  expect(MenuRpcs.tag).toBe("Menu")
   expect([...MenuMethodNames]).toEqual(expectedMenuMethods)
-  expect(Object.keys(MenuRpcs.spec)).toEqual(expectedMenuMethods)
-  expect(Object.keys(MenuRpcs.events)).toEqual(["Activated"])
+  expect(rpcMethodNames("Menu", MenuRpcs)).toEqual(expectedMenuMethods)
+  expect(Object.keys(MenuRpcEvents)).toEqual(["Activated"])
 })
 
 test("Menu service delegates through a substitutable MenuClient port", async () => {
@@ -1523,27 +1499,7 @@ test("Menu bridge client validates templates, sends host envelopes, and decodes 
       return { activated }
     }).pipe(
       Effect.provide(
-        Layer.mergeAll(
-          Layer.provide(
-            MenuLive,
-            makeMenuBridgeClientLayer(exchange, {
-              nextRequestId: nextId([
-                "app-menu-request",
-                "window-menu-request",
-                "bind-request",
-                "clear-request"
-              ]),
-              nextTraceId: nextId([
-                "app-menu-trace",
-                "window-menu-trace",
-                "bind-trace",
-                "clear-trace"
-              ]),
-              now: nextNumber([1710000000000, 1710000000001, 1710000000002, 1710000000003])
-            })
-          ),
-          commandLayer
-        )
+        Layer.mergeAll(Layer.provide(MenuLive, makeMenuBridgeClientLayer(exchange)), commandLayer)
       )
     )
   )
@@ -1887,10 +1843,9 @@ test("unsupported Menu client reports capabilities as unavailable and methods as
 })
 
 test("ContextMenuRpcs declares the Phase 8 ContextMenu method and event surface", () => {
-  expect(ContextMenuRpcs.tag).toBe("ContextMenu")
   expect([...ContextMenuMethodNames]).toEqual(expectedContextMenuMethods)
-  expect(Object.keys(ContextMenuRpcs.spec)).toEqual(expectedContextMenuMethods)
-  expect(Object.keys(ContextMenuRpcs.events)).toEqual(["Activated"])
+  expect(rpcMethodNames("ContextMenu", ContextMenuRpcs)).toEqual(expectedContextMenuMethods)
+  expect(Object.keys(ContextMenuRpcEvents)).toEqual(["Activated"])
 })
 
 test("ContextMenu service delegates through a substitutable ContextMenuClient port", async () => {
@@ -1976,14 +1931,7 @@ test("ContextMenu bridge client validates window menu inputs and decodes activat
     }).pipe(
       Effect.provide(
         Layer.mergeAll(
-          Layer.provide(
-            ContextMenuLive,
-            makeContextMenuBridgeClientLayer(exchange, {
-              nextRequestId: nextId(["show-request", "bind-request"]),
-              nextTraceId: nextId(["show-trace", "bind-trace"]),
-              now: nextNumber([1710000000000, 1710000000001])
-            })
-          ),
+          Layer.provide(ContextMenuLive, makeContextMenuBridgeClientLayer(exchange)),
           commandLayer
         )
       )
@@ -2124,10 +2072,9 @@ test("unsupported ContextMenu client reports deferred host methods as Effect val
 })
 
 test("TrayRpcs declares the Phase 8 Tray method and event surface", () => {
-  expect(TrayRpcs.tag).toBe("Tray")
   expect([...TrayMethodNames]).toEqual(expectedTrayMethods)
-  expect(Object.keys(TrayRpcs.spec)).toEqual(expectedTrayMethods)
-  expect(Object.keys(TrayRpcs.events)).toEqual(["Activated"])
+  expect(rpcMethodNames("Tray", TrayRpcs)).toEqual(expectedTrayMethods)
+  expect(Object.keys(TrayRpcEvents)).toEqual(["Activated"])
 })
 
 test("Tray service delegates through a substitutable TrayClient port", async () => {
@@ -2185,32 +2132,7 @@ test("Tray bridge client sends typed host envelopes and decodes activation event
       yield* tray.destroy(created)
 
       return { activated, created }
-    }).pipe(
-      Effect.provide(
-        Layer.provide(
-          TrayLive,
-          makeTrayBridgeClientLayer(exchange, {
-            nextRequestId: nextId([
-              "create-request",
-              "set-icon-request",
-              "set-tooltip-request",
-              "set-menu-request",
-              "destroy-request"
-            ]),
-            nextTraceId: nextId([
-              "create-trace",
-              "set-icon-trace",
-              "set-tooltip-trace",
-              "set-menu-trace",
-              "destroy-trace"
-            ]),
-            now: nextNumber([
-              1710000000000, 1710000000001, 1710000000002, 1710000000003, 1710000000004
-            ])
-          })
-        )
-      )
-    )
+    }).pipe(Effect.provide(Layer.provide(TrayLive, makeTrayBridgeClientLayer(exchange))))
   )
 
   expect(result.created).toMatchObject(trayHandle)
@@ -2259,18 +2181,7 @@ test("Tray bridge client rejects empty activation event identifiers as InvalidOu
       Effect.gen(function* () {
         const tray = yield* Tray
         return yield* Effect.exit(tray.onActivated().pipe(Stream.take(1), Stream.runCollect))
-      }).pipe(
-        Effect.provide(
-          Layer.provide(
-            TrayLive,
-            makeTrayBridgeClientLayer(exchange, {
-              nextRequestId: nextId(["unused"]),
-              nextTraceId: nextId(["unused"]),
-              now: nextNumber([1710000000000])
-            })
-          )
-        )
-      )
+      }).pipe(Effect.provide(Layer.provide(TrayLive, makeTrayBridgeClientLayer(exchange))))
     )
 
     expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -2299,18 +2210,7 @@ test("Tray bridge client decodes activation events with no ownerWindowId field",
     Effect.gen(function* () {
       const tray = yield* Tray
       return yield* tray.onActivated().pipe(Stream.take(1), Stream.runCollect)
-    }).pipe(
-      Effect.provide(
-        Layer.provide(
-          TrayLive,
-          makeTrayBridgeClientLayer(exchange, {
-            nextRequestId: nextId(["unused"]),
-            nextTraceId: nextId(["unused"]),
-            now: nextNumber([1710000000000])
-          })
-        )
-      )
-    )
+    }).pipe(Effect.provide(Layer.provide(TrayLive, makeTrayBridgeClientLayer(exchange))))
   )
 
   expect(Array.from(events)).toEqual([new TrayActivatedEvent({ tray: trayHandle })])
@@ -2395,10 +2295,9 @@ test("Tray bridge client rejects stale destroy handles before host transport", a
 })
 
 test("DialogRpcs declares the Phase 7 Dialog method surface", () => {
-  expect(DialogRpcs.tag).toBe("Dialog")
   expect([...DialogMethodNames]).toEqual(expectedDialogMethods)
-  expect(Object.keys(DialogRpcs.spec)).toEqual(expectedDialogMethods)
-  expect(Object.keys(DialogRpcs.events)).toEqual([])
+  expect(rpcMethodNames("Dialog", DialogRpcs)).toEqual(expectedDialogMethods)
+  expect(Object.keys(DialogRpcEvents)).toEqual([])
 })
 
 test("Dialog service delegates through a substitutable DialogClient port", async () => {
@@ -2461,32 +2360,7 @@ test("Dialog bridge client sends typed host envelopes and decodes outputs", asyn
       const confirmed = yield* dialog.confirm({ message: "Proceed?", confirmLabel: "Yes" })
 
       return { confirmed, directories, files, savePath }
-    }).pipe(
-      Effect.provide(
-        Layer.provide(
-          DialogLive,
-          makeDialogBridgeClientLayer(exchange, {
-            nextRequestId: nextId([
-              "open-file-request",
-              "open-directory-request",
-              "save-file-request",
-              "message-request",
-              "confirm-request"
-            ]),
-            nextTraceId: nextId([
-              "open-file-trace",
-              "open-directory-trace",
-              "save-file-trace",
-              "message-trace",
-              "confirm-trace"
-            ]),
-            now: nextNumber([
-              1710000000000, 1710000000001, 1710000000002, 1710000000003, 1710000000004
-            ])
-          })
-        )
-      )
-    )
+    }).pipe(Effect.provide(Layer.provide(DialogLive, makeDialogBridgeClientLayer(exchange))))
   )
 
   expect(result.files).toEqual(["/canonical/file.txt"])
@@ -2547,10 +2421,9 @@ test("unsupported Dialog client reports deferred host methods as Effect values",
 })
 
 test("ClipboardRpcs declares the Phase 7 Clipboard method surface", () => {
-  expect(ClipboardRpcs.tag).toBe("Clipboard")
   expect([...ClipboardMethodNames]).toEqual(expectedClipboardMethods)
-  expect(Object.keys(ClipboardRpcs.spec)).toEqual(expectedClipboardMethods)
-  expect(Object.keys(ClipboardRpcs.events)).toEqual([])
+  expect(rpcMethodNames("Clipboard", ClipboardRpcs)).toEqual(expectedClipboardMethods)
+  expect(Object.keys(ClipboardRpcEvents)).toEqual([])
 })
 
 test("Clipboard service delegates through a substitutable ClipboardClient port", async () => {
@@ -2587,7 +2460,7 @@ test("Clipboard bridge client sends typed host envelopes and decodes outputs", a
       request.method === "Clipboard.readText"
         ? { text: "from host" }
         : request.method === "Clipboard.readImage"
-          ? { mime: "image/jpeg", bytes: jpegBytes }
+          ? { mime: "image/jpeg", bytes: jpegBytesJson }
           : undefined
   }))
 
@@ -2601,42 +2474,17 @@ test("Clipboard bridge client sends typed host envelopes and decodes outputs", a
       yield* clipboard.clear()
 
       return { image, text }
-    }).pipe(
-      Effect.provide(
-        Layer.provide(
-          ClipboardLive,
-          makeClipboardBridgeClientLayer(exchange, {
-            nextRequestId: nextId([
-              "write-text-request",
-              "read-text-request",
-              "write-image-request",
-              "read-image-request",
-              "clear-request"
-            ]),
-            nextTraceId: nextId([
-              "write-text-trace",
-              "read-text-trace",
-              "write-image-trace",
-              "read-image-trace",
-              "clear-trace"
-            ]),
-            now: nextNumber([
-              1710000000000, 1710000000001, 1710000000002, 1710000000003, 1710000000004
-            ])
-          })
-        )
-      )
-    )
+    }).pipe(Effect.provide(Layer.provide(ClipboardLive, makeClipboardBridgeClientLayer(exchange))))
   )
 
   expect(result.text).toBe("from host")
   expect(result.image).toEqual(new ClipboardImage({ mime: "image/jpeg", bytes: jpegBytes }))
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     ["Clipboard.writeText", { text: "to host" }],
-    ["Clipboard.readText", undefined],
-    ["Clipboard.writeImage", { mime: "image/jpeg", bytes: jpegBytes }],
-    ["Clipboard.readImage", undefined],
-    ["Clipboard.clear", undefined]
+    ["Clipboard.readText", null],
+    ["Clipboard.writeImage", { mime: "image/jpeg", bytes: jpegBytesJson }],
+    ["Clipboard.readImage", null],
+    ["Clipboard.clear", null]
   ])
 })
 
@@ -2748,10 +2596,9 @@ test("unsupported Clipboard client reports deferred host methods as Effect value
 })
 
 test("NotificationRpcs declares the Phase 7 Notification method and event surface", () => {
-  expect(NotificationRpcs.tag).toBe("Notification")
   expect([...NotificationMethodNames]).toEqual(expectedNotificationMethods)
-  expect(Object.keys(NotificationRpcs.spec)).toEqual(expectedNotificationMethods)
-  expect(Object.keys(NotificationRpcs.events)).toEqual(["Click", "Action"])
+  expect(rpcMethodNames("Notification", NotificationRpcs)).toEqual(expectedNotificationMethods)
+  expect(Object.keys(NotificationRpcEvents)).toEqual(["Click", "Action"])
 })
 
 test("Notification service delegates through a substitutable NotificationClient port", async () => {
@@ -2832,30 +2679,7 @@ test("Notification bridge client sends typed host envelopes and decodes events",
 
       return { action, requested, shown, status, supported }
     }).pipe(
-      Effect.provide(
-        Layer.provide(
-          NotificationLive,
-          makeNotificationBridgeClientLayer(exchange, {
-            nextRequestId: nextId([
-              "supported-request",
-              "status-request",
-              "permission-request",
-              "show-request",
-              "close-request"
-            ]),
-            nextTraceId: nextId([
-              "supported-trace",
-              "status-trace",
-              "permission-trace",
-              "show-trace",
-              "close-trace"
-            ]),
-            now: nextNumber([
-              1710000000000, 1710000000001, 1710000000002, 1710000000003, 1710000000004
-            ])
-          })
-        )
-      )
+      Effect.provide(Layer.provide(NotificationLive, makeNotificationBridgeClientLayer(exchange)))
     )
   )
 
@@ -2871,9 +2695,9 @@ test("Notification bridge client sends typed host envelopes and decodes events",
     })
   ])
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
-    ["Notification.isSupported", undefined],
-    ["Notification.getPermissionStatus", undefined],
-    ["Notification.requestPermission", undefined],
+    ["Notification.isSupported", null],
+    ["Notification.getPermissionStatus", null],
+    ["Notification.requestPermission", null],
     [
       "Notification.show",
       {
@@ -3048,7 +2872,6 @@ test("unsupported Notification client reports deferred host methods as Effect va
 })
 
 test("PathRpcs declares the Phase 7 Path method surface", () => {
-  expect(PathRpcs.tag).toBe("Path")
   expect([...PathMethodNames]).toEqual(expectedPathMethods)
   expect(Array.from(PathRpcs.requests.keys())).toEqual([
     "Path.appData",
@@ -3058,7 +2881,7 @@ test("PathRpcs declares the Phase 7 Path method surface", () => {
     "Path.home",
     "Path.downloads"
   ])
-  expect(Object.keys(PathRpcs.events)).toEqual([])
+  expect(rpcMethodNames("Path", PathRpcs)).toEqual(expectedPathMethods)
 })
 
 test("Path service delegates through a substitutable PathClient port", async () => {
@@ -3106,35 +2929,7 @@ test("Path bridge client sends typed host envelopes and decodes canonical paths"
         home: yield* path.home(),
         downloads: yield* path.downloads()
       }
-    }).pipe(
-      Effect.provide(
-        Layer.provide(
-          PathLive,
-          makePathBridgeClientLayer(exchange, {
-            nextRequestId: nextId([
-              "app-data-request",
-              "cache-request",
-              "logs-request",
-              "temp-request",
-              "home-request",
-              "downloads-request"
-            ]),
-            nextTraceId: nextId([
-              "app-data-trace",
-              "cache-trace",
-              "logs-trace",
-              "temp-trace",
-              "home-trace",
-              "downloads-trace"
-            ]),
-            now: nextNumber([
-              1710000000000, 1710000000001, 1710000000002, 1710000000003, 1710000000004,
-              1710000000005
-            ])
-          })
-        )
-      )
-    )
+    }).pipe(Effect.provide(Layer.provide(PathLive, makePathBridgeClientLayer(exchange))))
   )
 
   expect(result).toEqual({
@@ -3146,12 +2941,12 @@ test("Path bridge client sends typed host envelopes and decodes canonical paths"
     downloads: "/host/downloads"
   })
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
-    ["Path.appData", undefined],
-    ["Path.cache", undefined],
-    ["Path.logs", undefined],
-    ["Path.temp", undefined],
-    ["Path.home", undefined],
-    ["Path.downloads", undefined]
+    ["Path.appData", null],
+    ["Path.cache", null],
+    ["Path.logs", null],
+    ["Path.temp", null],
+    ["Path.home", null],
+    ["Path.downloads", null]
   ])
 })
 
@@ -3246,7 +3041,6 @@ test("Path bridge client rejects relative canonical paths from host as InvalidOu
 })
 
 test("ProtocolRpcs declares the Phase 8 Protocol method surface", () => {
-  expect(ProtocolRpcs.tag).toBe("Protocol")
   expect([...ProtocolMethodNames]).toEqual(expectedProtocolMethods)
   expect(Array.from(ProtocolRpcs.requests.keys())).toEqual([
     "Protocol.registerAppProtocol",
@@ -3254,7 +3048,7 @@ test("ProtocolRpcs declares the Phase 8 Protocol method surface", () => {
     "Protocol.serveRoute",
     "Protocol.deny"
   ])
-  expect(Object.keys(ProtocolRpcs.events)).toEqual([])
+  expect(rpcMethodNames("Protocol", ProtocolRpcs)).toEqual(expectedProtocolMethods)
 })
 
 test("Protocol service delegates through a substitutable ProtocolClient port", async () => {
@@ -3372,10 +3166,9 @@ test("unsupported Protocol client reports deferred host methods as Effect values
 })
 
 test("SafeStorageRpcs declares the Phase 8 SafeStorage method surface", () => {
-  expect(SafeStorageRpcs.tag).toBe("SafeStorage")
   expect([...SafeStorageMethodNames]).toEqual(expectedSafeStorageMethods)
-  expect(Object.keys(SafeStorageRpcs.spec)).toEqual(expectedSafeStorageMethods)
-  expect(Object.keys(SafeStorageRpcs.events)).toEqual([])
+  expect(rpcMethodNames("SafeStorage", SafeStorageRpcs)).toEqual(expectedSafeStorageMethods)
+  expect(Object.keys(SafeStorageRpcEvents)).toEqual([])
 })
 
 test("SecretValue redacts string and JSON formatting while exposing explicit byte copies", async () => {
@@ -3419,7 +3212,7 @@ test("SafeStorage bridge client validates keys and redacts decoded values", asyn
     kind: "success",
     payload:
       request.method === "SafeStorage.get"
-        ? { value: new TextEncoder().encode("refresh-token") }
+        ? { value: "cmVmcmVzaC10b2tlbg==" }
         : request.method === "SafeStorage.list"
           ? { keys: ["token"] }
           : request.method === "SafeStorage.isAvailable"
@@ -3450,10 +3243,10 @@ test("SafeStorage bridge client validates keys and redacts decoded values", asyn
   expect(available).toBe(true)
   expectExitFailure(emptyKeyExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
-    ["SafeStorage.set", { key: "token", value: new TextEncoder().encode("refresh-token") }],
+    ["SafeStorage.set", { key: "token", value: "cmVmcmVzaC10b2tlbg==" }],
     ["SafeStorage.get", { key: "token" }],
-    ["SafeStorage.list", undefined],
-    ["SafeStorage.isAvailable", undefined],
+    ["SafeStorage.list", null],
+    ["SafeStorage.isAvailable", null],
     ["SafeStorage.delete", { key: "token" }]
   ])
 })
@@ -3590,10 +3383,9 @@ test("Linux SafeStorage client reports unimplemented adapter as unavailable with
 })
 
 test("UpdaterRpcs declares the Phase 8 Updater method surface", () => {
-  expect(UpdaterRpcs.tag).toBe("Updater")
   expect([...UpdaterMethodNames]).toEqual(expectedUpdaterMethods)
-  expect(Object.keys(UpdaterRpcs.spec)).toEqual(expectedUpdaterMethods)
-  expect(Object.keys(UpdaterRpcs.events)).toEqual(["PreparingRestart"])
+  expect(rpcMethodNames("Updater", UpdaterRpcs)).toEqual(expectedUpdaterMethods)
+  expect(Object.keys(UpdaterRpcEvents)).toEqual(["PreparingRestart"])
 })
 
 test("Updater service delegates through a substitutable UpdaterClient port", async () => {
@@ -3653,7 +3445,7 @@ test("Updater bridge client sends typed host envelopes and decodes status values
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     ["Updater.check", { currentVersion: "1.0.0" }],
     ["Updater.download", { version: "1.1.0" }],
-    ["Updater.getStatus", undefined]
+    ["Updater.getStatus", null]
   ])
 })
 
@@ -3715,10 +3507,9 @@ test("Updater service exposes the restart readiness handshake", async () => {
 })
 
 test("CrashReporterRpcs declares the Phase 8 CrashReporter method surface", () => {
-  expect(CrashReporterRpcs.tag).toBe("CrashReporter")
   expect([...CrashReporterMethodNames]).toEqual(expectedCrashReporterMethods)
-  expect(Object.keys(CrashReporterRpcs.spec)).toEqual(expectedCrashReporterMethods)
-  expect(Object.keys(CrashReporterRpcs.events)).toEqual([])
+  expect(rpcMethodNames("CrashReporter", CrashReporterRpcs)).toEqual(expectedCrashReporterMethods)
+  expect(Object.keys(CrashReporterRpcEvents)).toEqual([])
 })
 
 test("CrashReporter memory client requires start and flushes breadcrumbs to an Effect handler", async () => {
@@ -3904,7 +3695,7 @@ test("CrashReporter bridge client records breadcrumbs and defers upload handlers
         details: { authorization: "[REDACTED]" }
       }
     ],
-    ["CrashReporter.flush", undefined]
+    ["CrashReporter.flush", null]
   ])
 })
 
@@ -3985,10 +3776,8 @@ test("unsupported CrashReporter client reports every command as a typed Effect f
 })
 
 test("ShellRpcs declares the Phase 8 Shell method surface", () => {
-  expect(ShellRpcs.tag).toBe("Shell")
   expect([...ShellMethodNames]).toEqual(expectedShellMethods)
-  expect(Object.keys(ShellRpcs.spec)).toEqual(expectedShellMethods)
-  expect(Object.keys(ShellRpcs.events)).toEqual([])
+  expect(rpcMethodNames("Shell", ShellRpcs)).toEqual(expectedShellMethods)
 })
 
 test("Shell service delegates through a substitutable ShellClient port", async () => {
@@ -4369,8 +4158,20 @@ test("Screen bridge client rejects empty display lists as InvalidOutput", async 
 test("Screen bridge client rejects invalid primary display topologies as InvalidOutput", async () => {
   const multiplePrimary = {
     displays: [
-      { ...primaryDisplay, id: "secondary-1", primary: true },
-      { ...primaryDisplay, id: "secondary-2", primary: true }
+      new ScreenDisplay({
+        id: "secondary-1",
+        bounds: screenBounds,
+        workArea: new ScreenBounds({ x: 0, y: 24, width: 1920, height: 1056 }),
+        scaleFactor: 2,
+        primary: true
+      }),
+      new ScreenDisplay({
+        id: "secondary-2",
+        bounds: screenBounds,
+        workArea: new ScreenBounds({ x: 0, y: 24, width: 1920, height: 1056 }),
+        scaleFactor: 2,
+        primary: true
+      })
     ]
   }
   const exchange = screenExchange([], (request) => ({
@@ -4402,10 +4203,11 @@ test("unsupported Screen client exposes support checks and typed method failures
 })
 
 test("SystemAppearanceRpcs declares the Phase 8 SystemAppearance method and event surface", () => {
-  expect(SystemAppearanceRpcs.tag).toBe("SystemAppearance")
   expect([...SystemAppearanceMethodNames]).toEqual(expectedSystemAppearanceMethods)
-  expect(Object.keys(SystemAppearanceRpcs.spec)).toEqual(expectedSystemAppearanceMethods)
-  expect(Object.keys(SystemAppearanceRpcs.events)).toEqual(["AppearanceChanged"])
+  expect(rpcMethodNames("SystemAppearance", SystemAppearanceRpcs)).toEqual(
+    expectedSystemAppearanceMethods
+  )
+  expect(Object.keys(SystemAppearanceRpcEvents)).toEqual(["AppearanceChanged"])
 })
 
 test("SystemAppearance service maps result wrappers to public values", async () => {
@@ -4528,10 +4330,9 @@ test("unsupported SystemAppearance client fails reads and event stream as Unsupp
 })
 
 test("PowerMonitorRpcs declares the Phase 8 event-only surface", () => {
-  expect(PowerMonitorRpcs.tag).toBe("PowerMonitor")
   expect([...PowerMonitorMethodNames]).toEqual(expectedPowerMonitorMethods)
   expect(Array.from(PowerMonitorRpcs.requests.keys())).toEqual(["PowerMonitor.isSupported"])
-  expect(Object.keys(PowerMonitorRpcs.events)).toEqual([
+  expect(Object.keys(PowerMonitorRpcEvents)).toEqual([
     "Suspend",
     "Resume",
     "Shutdown",
@@ -4629,10 +4430,8 @@ test("unsupported PowerMonitor client exposes support checks and typed event str
 })
 
 test("DockRpcs declares the Phase 8 Dock method surface", () => {
-  expect(DockRpcs.tag).toBe("Dock")
   expect([...DockMethodNames]).toEqual(expectedDockMethods)
-  expect(Object.keys(DockRpcs.spec)).toEqual(expectedDockMethods)
-  expect(Object.keys(DockRpcs.events)).toEqual([])
+  expect(rpcMethodNames("Dock", DockRpcs)).toEqual(expectedDockMethods)
 })
 
 test("Dock service delegates through a substitutable DockClient port", async () => {
@@ -4846,10 +4645,11 @@ test("Linux Dock client reports unimplemented partial methods as unsupported", a
 })
 
 test("GlobalShortcutRpcs declares the Phase 8 GlobalShortcut method and event surface", () => {
-  expect(GlobalShortcutRpcs.tag).toBe("GlobalShortcut")
   expect([...GlobalShortcutMethodNames]).toEqual(expectedGlobalShortcutMethods)
-  expect(Object.keys(GlobalShortcutRpcs.spec)).toEqual(expectedGlobalShortcutMethods)
-  expect(Object.keys(GlobalShortcutRpcs.events)).toEqual(["Pressed"])
+  expect(rpcMethodNames("GlobalShortcut", GlobalShortcutRpcs)).toEqual(
+    expectedGlobalShortcutMethods
+  )
+  expect(Object.keys(GlobalShortcutRpcEvents)).toEqual(["Pressed"])
 })
 
 test("GlobalShortcut service delegates through a substitutable GlobalShortcutClient port", async () => {
@@ -4924,11 +4724,11 @@ test("GlobalShortcut bridge client sends typed host envelopes and decodes presse
     })
   ])
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
-    ["GlobalShortcut.isSupported", undefined],
+    ["GlobalShortcut.isSupported", null],
     ["GlobalShortcut.register", { accelerator: "CmdOrCtrl+K", registrarWindow: windowHandle }],
     ["GlobalShortcut.isRegistered", { accelerator: "CmdOrCtrl+K" }],
     ["GlobalShortcut.unregister", { accelerator: "CmdOrCtrl+K" }],
-    ["GlobalShortcut.unregisterAll", undefined]
+    ["GlobalShortcut.unregisterAll", null]
   ])
 })
 
@@ -7290,12 +7090,13 @@ const makeWindowRpcExchange = (
   options: HostWindowClientOptions = {},
   appEventRouter?: AppEventRouter["Service"]
 ): BridgeClientExchange => {
-  const runtime = Handlers.withOptions(
-    { originAuth: RendererOriginAuth.unsafeDisabledForTests },
-    makeHostWindowBridgeRpcLayer(hostExchange, {
+  const runtime = makeHostWindowRpcRuntime(
+    hostExchange,
+    {
       ...options,
       ...(appEventRouter === undefined ? {} : { appEventRouter })
-    })
+    },
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
   )
   const registryLayer = Layer.succeed(ResourceRegistry)(registry)
   const request: BridgeClientExchange["request"] = (request) =>
@@ -7310,6 +7111,14 @@ const makeWindowRpcExchange = (
     }
   }
 }
+
+const rpcMethodNames = (
+  namespace: string,
+  group: { readonly requests: ReadonlyMap<string, unknown> }
+): string[] =>
+  Array.from(group.requests.keys()).map((tag) =>
+    tag.startsWith(`${namespace}.`) ? tag.slice(namespace.length + 1) : tag
+  )
 
 const nextId = (ids: readonly string[]) => {
   let index = 0

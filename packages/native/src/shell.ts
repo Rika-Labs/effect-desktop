@@ -1,15 +1,19 @@
 import {
-  BridgeRpc,
-  Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcHandlers,
-  type BridgeRpcLayer,
+  type BridgeHandlerRuntime,
+  type BridgeHandlerRuntimeOptions,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
+  makeDesktopClientProtocol,
+  makeDesktopRpcHandlerRuntime,
+  makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
+  makeHostProtocolInvalidOutputError,
+  makeUnaryDesktopTransportFromBridgeClientExchange,
   Rpc,
+  RpcClient,
   RpcCapability,
   RpcGroup,
   type HostProtocolError
@@ -77,7 +81,7 @@ const ShellRpcGroup = RpcGroup.make(
   ShellTrashItem
 )
 
-export const ShellRpcs = BridgeRpc.fromGroup("Shell", ShellRpcGroup, ShellRpcEvents)
+export const ShellRpcs: RpcGroup.RpcGroup<ShellRpc> = ShellRpcGroup
 
 export const ShellMethodNames = Object.freeze([
   "openExternal",
@@ -132,51 +136,84 @@ export const makeShellBridgeClientLayer = (
   options: BridgeClientOptions = {}
 ): Layer.Layer<ShellClient> => Layer.succeed(ShellClient)(makeShellBridgeClient(exchange, options))
 
-export type ShellRpcSpec = (typeof ShellRpcs)["spec"]
+export type ShellRpc = RpcGroup.Rpcs<typeof ShellRpcGroup>
 
-export const makeHostShellBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<ShellRpcSpec>>(
-  handlers: Handlers
-): BridgeRpcLayer<"Shell", ShellRpcSpec, Handlers, ShellRpcEvents> =>
-  BridgeRpc.layer(ShellRpcs)(handlers)
+export type ShellRpcHandlers = Parameters<typeof ShellRpcGroup.toLayer>[0]
+
+export const makeHostShellRpcRuntime = (
+  handlers: ShellRpcHandlers,
+  runtimeOptions: BridgeHandlerRuntimeOptions = {}
+): BridgeHandlerRuntime<unknown> =>
+  makeDesktopRpcHandlerRuntime(ShellRpcGroup, ShellRpcGroup.toLayer(handlers), runtimeOptions)
 
 const makeShellBridgeClient = (
   exchange: BridgeClientExchange,
-  options: BridgeClientOptions
+  bridgeOptions: BridgeClientOptions
 ): ShellClientApi => {
-  const client = Client({ Shell: ShellRpcs }, exchange, options).Shell as unknown as {
-    readonly openExternal: (input: ShellOpenExternalInput) => Effect.Effect<void, ShellError, never>
-    readonly showItemInFolder: (
-      input: ShellShowItemInFolderInput
-    ) => Effect.Effect<void, ShellError, never>
-    readonly openPath: (input: ShellOpenPathInput) => Effect.Effect<void, ShellError, never>
-    readonly trashItem: (input: ShellTrashItemInput) => Effect.Effect<void, ShellError, never>
-  }
-
   const shellClient: ShellClientApi = {
     openExternal: (url, options) =>
       decodeShellOpenExternalInput({ url, ...normalizeOpenExternalOptions(options) }).pipe(
         Effect.flatMap(validateExternalUrl),
-        Effect.flatMap(client.openExternal)
+        Effect.flatMap((decoded) =>
+          withShellRpcClient(exchange, bridgeOptions, (client) =>
+            runShellRpc(client["Shell.openExternal"](decoded), "Shell.openExternal")
+          )
+        )
       ),
     showItemInFolder: (path) =>
       decodeShellShowItemInFolderInput({ path }).pipe(
         Effect.flatMap((input) => validatePathInput(input, "Shell.showItemInFolder")),
-        Effect.flatMap(client.showItemInFolder)
+        Effect.flatMap((decoded) =>
+          withShellRpcClient(exchange, bridgeOptions, (client) =>
+            runShellRpc(client["Shell.showItemInFolder"](decoded), "Shell.showItemInFolder")
+          )
+        )
       ),
     openPath: (path, options) =>
       decodeShellOpenPathInput({ path, ...normalizeOpenPathOptions(options) }).pipe(
         Effect.flatMap(validateOpenPathInput),
-        Effect.flatMap(client.openPath)
+        Effect.flatMap((decoded) =>
+          withShellRpcClient(exchange, bridgeOptions, (client) =>
+            runShellRpc(client["Shell.openPath"](decoded), "Shell.openPath")
+          )
+        )
       ),
     trashItem: (path) =>
       decodeShellTrashItemInput({ path }).pipe(
         Effect.flatMap((input) => validatePathInput(input, "Shell.trashItem")),
-        Effect.flatMap(client.trashItem)
+        Effect.flatMap((decoded) =>
+          withShellRpcClient(exchange, bridgeOptions, (client) =>
+            runShellRpc(client["Shell.trashItem"](decoded), "Shell.trashItem")
+          )
+        )
       )
   }
 
   return Object.freeze(shellClient)
 }
+
+const makeShellBridgeProtocolLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
+): Layer.Layer<RpcClient.Protocol> =>
+  Layer.effect(RpcClient.Protocol)(
+    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
+      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
+    )
+  )
+
+const withShellRpcClient = <A>(
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions,
+  use: (client: ShellGeneratedClient) => Effect.Effect<A, ShellError, never>
+): Effect.Effect<A, ShellError, never> =>
+  Effect.scoped(
+    RpcClient.make(ShellRpcGroup).pipe(
+      Effect.map((client) => client as unknown as ShellGeneratedClient),
+      Effect.flatMap(use),
+      Effect.provide(makeShellBridgeProtocolLayer(exchange, options))
+    )
+  )
 
 export const makeUnsupportedShellClient = (): ShellClientApi => {
   const unsupportedEffect = <A>(method: string): Effect.Effect<A, ShellError, never> =>
@@ -374,6 +411,38 @@ function shellRpc<Payload extends Schema.Schema<unknown>>(
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability({ kind: capability }))
 }
+
+interface ShellGeneratedClient {
+  readonly "Shell.openExternal": (
+    input: ShellOpenExternalInput
+  ) => Effect.Effect<void, unknown, never>
+  readonly "Shell.showItemInFolder": (
+    input: ShellShowItemInFolderInput
+  ) => Effect.Effect<void, unknown, never>
+  readonly "Shell.openPath": (input: ShellOpenPathInput) => Effect.Effect<void, unknown, never>
+  readonly "Shell.trashItem": (input: ShellTrashItemInput) => Effect.Effect<void, unknown, never>
+}
+
+const runShellRpc = <A, E>(
+  effect: Effect.Effect<A, E, never>,
+  operation: string
+): Effect.Effect<A, ShellError, never> =>
+  effect.pipe(
+    Effect.mapError(mapShellRpcClientError),
+    Effect.catchDefect((defect) =>
+      Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
+    )
+  )
+
+const mapShellRpcClientError = (error: unknown): ShellError =>
+  isShellError(error) ? error : makeHostProtocolInternalError("Shell RPC client failed", "Shell")
+
+const isShellError = (error: unknown): error is ShellError =>
+  typeof error === "object" &&
+  error !== null &&
+  "tag" in error &&
+  "operation" in error &&
+  "recoverable" in error
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {

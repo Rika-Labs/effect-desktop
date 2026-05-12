@@ -1,14 +1,19 @@
 import {
-  BridgeRpc,
-  Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcHandlers,
-  type BridgeRpcLayer,
+  type BridgeHandlerRuntime,
+  type BridgeHandlerRuntimeOptions,
+  type HostProtocolEventEnvelope,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
+  makeDesktopClientProtocol,
+  makeDesktopRpcHandlerRuntime,
+  makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
+  makeHostProtocolInvalidOutputError,
+  makeUnaryDesktopTransportFromBridgeClientExchange,
   Rpc,
+  RpcClient,
   RpcCapability,
   RpcGroup,
   type HostProtocolError
@@ -84,7 +89,7 @@ const UpdaterRpcGroup = RpcGroup.make(
   UpdaterReadyForRestart
 )
 
-export const UpdaterRpcs = BridgeRpc.fromGroup("Updater", UpdaterRpcGroup, UpdaterRpcEvents)
+export const UpdaterRpcs: RpcGroup.RpcGroup<UpdaterRpc> = UpdaterRpcGroup
 
 export const UpdaterMethodNames = Object.freeze([
   "check",
@@ -154,12 +159,15 @@ export const makeUpdaterBridgeClientLayer = (
 ): Layer.Layer<UpdaterClient> =>
   Layer.succeed(UpdaterClient)(makeUpdaterBridgeClient(exchange, options))
 
-export type UpdaterRpcSpec = (typeof UpdaterRpcs)["spec"]
+export type UpdaterRpc = RpcGroup.Rpcs<typeof UpdaterRpcGroup>
 
-export const makeHostUpdaterBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<UpdaterRpcSpec>>(
-  handlers: Handlers
-): BridgeRpcLayer<"Updater", UpdaterRpcSpec, Handlers, UpdaterRpcEvents> =>
-  BridgeRpc.layer(UpdaterRpcs)(handlers)
+export type UpdaterRpcHandlers = Parameters<typeof UpdaterRpcGroup.toLayer>[0]
+
+export const makeHostUpdaterRpcRuntime = (
+  handlers: UpdaterRpcHandlers,
+  runtimeOptions: BridgeHandlerRuntimeOptions = {}
+): BridgeHandlerRuntime<unknown> =>
+  makeDesktopRpcHandlerRuntime(UpdaterRpcGroup, UpdaterRpcGroup.toLayer(handlers), runtimeOptions)
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
@@ -167,40 +175,103 @@ const makeUpdaterBridgeClient = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions
 ): UpdaterClientApi => {
-  const client = Client({ Updater: UpdaterRpcs }, exchange, options).Updater as unknown as {
-    readonly check: (
-      input: UpdaterCheckInput
-    ) => Effect.Effect<UpdaterCheckResult, UpdaterError, never>
-    readonly download: (
-      input: UpdaterDownloadInput
-    ) => Effect.Effect<UpdaterStatusResult, UpdaterError, never>
-    readonly install: (
-      input: UpdaterInstallInput
-    ) => Effect.Effect<UpdaterStatusResult, UpdaterError, never>
-    readonly installAndRestart: (
-      input: UpdaterInstallInput
-    ) => Effect.Effect<UpdaterStatusResult, UpdaterError, never>
-    readonly getStatus: () => Effect.Effect<UpdaterStatusResult, UpdaterError, never>
-    readonly readyForRestart: () => Effect.Effect<void, UpdaterError, never>
-    readonly events: {
-      readonly PreparingRestart: Stream.Stream<UpdaterPreparingRestartEvent, UpdaterError, never>
-    }
-  }
   return Object.freeze({
     check: (input = {}) =>
-      decodeUpdaterCheckInput(input, "Updater.check").pipe(Effect.flatMap(client.check)),
+      decodeUpdaterCheckInput(input, "Updater.check").pipe(
+        Effect.flatMap((decoded) =>
+          withUpdaterRpcClient(exchange, options, (client) =>
+            runUpdaterRpc(client["Updater.check"](decoded), "Updater.check")
+          )
+        )
+      ),
     download: (input = {}) =>
-      decodeUpdaterDownloadInput(input, "Updater.download").pipe(Effect.flatMap(client.download)),
+      decodeUpdaterDownloadInput(input, "Updater.download").pipe(
+        Effect.flatMap((decoded) =>
+          withUpdaterRpcClient(exchange, options, (client) =>
+            runUpdaterRpc(client["Updater.download"](decoded), "Updater.download")
+          )
+        )
+      ),
     install: (input = {}) =>
-      decodeUpdaterInstallInput(input, "Updater.install").pipe(Effect.flatMap(client.install)),
+      decodeUpdaterInstallInput(input, "Updater.install").pipe(
+        Effect.flatMap((decoded) =>
+          withUpdaterRpcClient(exchange, options, (client) =>
+            runUpdaterRpc(client["Updater.install"](decoded), "Updater.install")
+          )
+        )
+      ),
     installAndRestart: (input = {}) =>
       decodeUpdaterInstallInput(input, "Updater.installAndRestart").pipe(
-        Effect.flatMap(client.installAndRestart)
+        Effect.flatMap((decoded) =>
+          withUpdaterRpcClient(exchange, options, (client) =>
+            runUpdaterRpc(client["Updater.installAndRestart"](decoded), "Updater.installAndRestart")
+          )
+        )
       ),
-    getStatus: () => client.getStatus(),
-    readyForRestart: () => client.readyForRestart(),
-    onPreparingRestart: () => client.events.PreparingRestart
+    getStatus: () =>
+      withUpdaterRpcClient(exchange, options, (client) =>
+        runUpdaterRpc(client["Updater.getStatus"](undefined), "Updater.getStatus")
+      ),
+    readyForRestart: () =>
+      withUpdaterRpcClient(exchange, options, (client) =>
+        runUpdaterRpc(client["Updater.readyForRestart"](undefined), "Updater.readyForRestart")
+      ),
+    onPreparingRestart: () => subscribeUpdaterEvent(exchange, "Updater.PreparingRestart")
   } satisfies UpdaterClientApi)
+}
+
+const makeUpdaterBridgeProtocolLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
+): Layer.Layer<RpcClient.Protocol> =>
+  Layer.effect(RpcClient.Protocol)(
+    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
+      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
+    )
+  )
+
+const withUpdaterRpcClient = <A>(
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions,
+  use: (client: UpdaterGeneratedClient) => Effect.Effect<A, UpdaterError, never>
+): Effect.Effect<A, UpdaterError, never> =>
+  Effect.scoped(
+    RpcClient.make(UpdaterRpcGroup).pipe(
+      Effect.map((client) => client as unknown as UpdaterGeneratedClient),
+      Effect.flatMap(use),
+      Effect.provide(makeUpdaterBridgeProtocolLayer(exchange, options))
+    )
+  )
+
+const subscribeUpdaterEvent = (
+  exchange: BridgeClientExchange,
+  method: "Updater.PreparingRestart"
+): Stream.Stream<UpdaterPreparingRestartEvent, UpdaterError, never> => {
+  if (exchange.subscribe === undefined) {
+    return Stream.fail(
+      makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
+    )
+  }
+
+  return exchange
+    .subscribe(method)
+    .pipe(Stream.mapEffect((envelope) => decodeUpdaterEventEnvelope(method, envelope)))
+}
+
+const decodeUpdaterEventEnvelope = (
+  operation: string,
+  envelope: HostProtocolEventEnvelope
+): Effect.Effect<UpdaterPreparingRestartEvent, UpdaterError, never> => {
+  if (envelope.method !== operation) {
+    return Effect.fail(
+      makeHostProtocolInvalidOutputError(operation, `unexpected event method: ${envelope.method}`)
+    )
+  }
+
+  return Effect.mapError(
+    Schema.decodeUnknownEffect(UpdaterPreparingRestartEvent)(envelope.payload, StrictParseOptions),
+    (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+  )
 }
 
 const decodeUpdaterCheckInput = (
@@ -259,6 +330,46 @@ function updaterRpc<Payload extends Schema.Schema<unknown>, Success extends Sche
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability({ kind: capability }))
 }
+
+interface UpdaterGeneratedClient {
+  readonly "Updater.check": (
+    input: UpdaterCheckInput
+  ) => Effect.Effect<UpdaterCheckResult, unknown, never>
+  readonly "Updater.download": (
+    input: UpdaterDownloadInput
+  ) => Effect.Effect<UpdaterStatusResult, unknown, never>
+  readonly "Updater.install": (
+    input: UpdaterInstallInput
+  ) => Effect.Effect<UpdaterStatusResult, unknown, never>
+  readonly "Updater.installAndRestart": (
+    input: UpdaterInstallInput
+  ) => Effect.Effect<UpdaterStatusResult, unknown, never>
+  readonly "Updater.getStatus": (input: void) => Effect.Effect<UpdaterStatusResult, unknown, never>
+  readonly "Updater.readyForRestart": (input: void) => Effect.Effect<void, unknown, never>
+}
+
+const runUpdaterRpc = <A, E>(
+  effect: Effect.Effect<A, E, never>,
+  operation: string
+): Effect.Effect<A, UpdaterError, never> =>
+  effect.pipe(
+    Effect.mapError(mapUpdaterRpcClientError),
+    Effect.catchDefect((defect) =>
+      Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
+    )
+  )
+
+const mapUpdaterRpcClientError = (error: unknown): UpdaterError =>
+  isUpdaterError(error)
+    ? error
+    : makeHostProtocolInternalError("Updater RPC client failed", "Updater")
+
+const isUpdaterError = (error: unknown): error is UpdaterError =>
+  typeof error === "object" &&
+  error !== null &&
+  "tag" in error &&
+  "operation" in error &&
+  "recoverable" in error
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {
