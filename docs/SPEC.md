@@ -438,10 +438,10 @@ The framework targets **Effect v4** as its baseline runtime. v3 patterns are for
 - The canonical class-based service shape is:
 
   ```ts
-  class UserRepository extends Effect.Service<UserRepository>()(
+  class UserRepository extends Context.Service<UserRepository, UserRepositoryApi>()(
     "UserRepository",
     {
-      effect: Effect.gen(function* () {
+      make: Effect.gen(function* () {
         const ref = yield* Ref.make<Array<User>>([])
         return {
           findMany: () => Ref.get(ref),
@@ -465,7 +465,7 @@ The framework targets **Effect v4** as its baseline runtime. v3 patterns are for
   ```
 
 - `Effect.gen(function* () { ... yield* effect })` is used **without** the `$` adapter. The adapter form `Effect.gen(function* ($) { yield* $(effect) })` was a v3 workaround for TypeScript ≤ 5.4 type inference and is forbidden in v1.0.0 source.
-- Service tags use `Context.Tag(...)` for ad-hoc shapes; the class-style `Effect.Service` is preferred when the service has a default layer.
+- Service tags use `Context.Tag(...)` for ad-hoc shapes; the class-style `Context.Service` is preferred when the service has a default layer.
 - Schemas decode and encode with `Schema.decodeUnknown(schema)(value)` returning an `Effect`; `Schema.decodeUnknownPromise` is allowed only at imperative boundaries.
 - Layer composition uses `Layer.provide`, `Layer.provideMerge`, `Layer.succeed`, `Layer.effect`. Layer order in tests follows v4 semantics: dependencies are provided right-to-left in the pipe.
 - `Stream` is a first-class part of core; the bridge's stream contracts compile to `Stream.Stream<A, E, R>` on the runtime side.
@@ -4613,17 +4613,17 @@ export const App = Desktop.make({
 }).pipe(Desktop.provide(Desktop.Rpcs.layer(ProjectRpcs, ProjectRpcsLive)))
 ```
 
-### 18.4.2 Class-based service (`Effect.Service`)
+### 18.4.2 Class-based service (`Context.Service`)
 
 For services that are not bound to a public bridge contract — internal stores, caches, indexers — apps use the canonical Effect v4 class-based service:
 
 ```ts
-import { Effect, Ref } from "effect"
+import { Context, Effect, Ref } from "effect"
 
-export class ProjectStore extends Effect.Service<ProjectStore>()(
+export class ProjectStore extends Context.Service<ProjectStore, ProjectStoreApi>()(
   "ProjectStore",
   {
-    effect: Effect.gen(function* () {
+    make: Effect.gen(function* () {
       const ref = yield* Ref.make<ReadonlyArray<Project>>([])
       return {
         list: () => Ref.get(ref),
@@ -6800,7 +6800,7 @@ An implementation agent must not:
 
 - Import every Effect-related symbol from `effect` (not `@effect/schema`, not legacy v3-only sub-packages).
 - Use `Effect.Effect<A, E, R>` in every public type signature; never elide `R`.
-- Define services with `class X extends Effect.Service<X>()("X", { effect: Effect.gen(...) }) {}` when the service has a default layer; use `Context.Tag(...)` only for ad-hoc shapes.
+- Define services with `class X extends Context.Service<X, XApi>()("X", { make: Effect.gen(...) }) {}` when the service has a default layer; use `Context.Tag(...)` only for ad-hoc shapes.
 - Define schema classes with `class T extends Schema.Class<T>("T")({...}) {}`.
 - Use `Effect.gen(function* () { ... yield* effect })` without the `$` adapter.
 - Compose layers with `Layer.provide` / `Layer.provideMerge` / `Layer.succeed` / `Layer.effect`.
@@ -6922,12 +6922,12 @@ Proposed | Accepted | Rejected | Superseded
 These sketches are non-normative implementation notes. The normative public contracts live in §18.6 and Appendix K. A v1.0.0 public method must not ship with `unknown` input or output types, even though this appendix uses `unknown` to keep historical sketches short.
 
 ```ts
-import { Effect, Schema } from "effect"
+import { Context, Effect, Schema } from "effect"
 
-export class App extends Effect.Service<App>()(
+export class App extends Context.Service<App, AppApi>()(
   "App",
   {
-    effect: Effect.gen(function* () {
+    make: Effect.gen(function* () {
       // dependencies acquired here
       return {
         getInfo: (input: AppGetInfoInput) => Effect.succeed(/* ... */),

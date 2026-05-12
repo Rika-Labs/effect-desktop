@@ -109,3 +109,9 @@ Pick these first as one foundation batch:
 6. #1232 Add capability contract test suites
 
 This batch creates the invariant. The rest of the roadmap should be implemented against it.
+
+## Execution Progress
+
+| Issue                                           | Status      | Evidence                                                                                                                                                                     |
+| ----------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| #1227 Codify the Layer-first framework contract | Implemented | `docs/architecture/layer-first-contract.md`, `tests/layer-first-contract.test.ts`, and the `Screen` Live/Client/Test substitution proof in `packages/test/src/index.test.ts` |

@@ -38,6 +38,10 @@ resource cleanup in the production core service path.
 detection as a typed failure by default; pass `leakDetection: false` to disable
 that final check.
 
+`TestScreen.layer(options)` is the current Layer-first contract proof for native
+services. The same `Screen` program runs through `ScreenLive` with a direct
+client, `ScreenLive` with an RPC client layer, and this deterministic test layer.
+
 `runHeadless(body, options)` runs host-protocol clients against `MockHost` and
 fails with a typed `ResourceLeakError` if non-app resources remain open.
 

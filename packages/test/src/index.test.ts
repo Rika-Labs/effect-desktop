@@ -28,6 +28,18 @@ import {
   makeResourceRegistry,
   type ResourceId
 } from "@effect-desktop/core"
+import {
+  Screen,
+  ScreenDisplay,
+  ScreenDisplaysResult,
+  ScreenLive,
+  ScreenPoint,
+  ScreenSupportedResult,
+  makeScreenBridgeClientLayer,
+  makeScreenClientLayer,
+  type ScreenClientApi,
+  type ScreenError
+} from "@effect-desktop/native"
 
 import {
   assertNoOpenResourcesIn,
@@ -48,7 +60,8 @@ import {
   MockBridge,
   registerLeakMatchers,
   runHeadless,
-  ResourceLeakError
+  ResourceLeakError,
+  TestScreen
 } from "./index.js"
 
 const id = (value: string): ResourceId => value as ResourceId
@@ -1243,6 +1256,56 @@ test("makeMemorySecretsSafeStorage models unavailable platform storage as typed 
   if (Exit.isFailure(unavailable)) {
     expect(JSON.stringify(unavailable.cause.toJSON())).toContain("SafeStorageUnavailable")
   }
+})
+
+test("Screen programs run unchanged through live, client, and test layers", async () => {
+  const program: Effect.Effect<string, ScreenError, Screen> = Effect.gen(function* () {
+    const screen = yield* Screen
+    const display = yield* screen.getPrimaryDisplay()
+    return display.id
+  })
+  const displayPayload = {
+    id: "primary",
+    bounds: { x: 0, y: 0, width: 1440, height: 900 },
+    workArea: { x: 0, y: 24, width: 1440, height: 876 },
+    scaleFactor: 2,
+    primary: true
+  } as const
+  const display = new ScreenDisplay(displayPayload)
+  const liveClient: ScreenClientApi = Object.freeze({
+    getDisplays: () => Effect.succeed(new ScreenDisplaysResult({ displays: [display] })),
+    getPrimaryDisplay: () => Effect.succeed(display),
+    getPointerPoint: () => Effect.succeed(new ScreenPoint({ x: 10, y: 20 })),
+    isSupported: () => Effect.succeed(new ScreenSupportedResult({ supported: true }))
+  })
+  const liveLayer = Layer.provide(ScreenLive, makeScreenClientLayer(liveClient))
+  const bridge = makeMockBridge()
+  await Effect.runPromise(bridge.succeed("Screen.getPrimaryDisplay", displayPayload))
+  const clientLayer = Layer.provide(ScreenLive, makeScreenBridgeClientLayer(bridge.exchange))
+  const testLayer = TestScreen.layer({
+    displays: [
+      {
+        id: "primary",
+        bounds: { width: 1440, height: 900 },
+        workArea: { y: 24, width: 1440, height: 876 },
+        scaleFactor: 2,
+        primary: true
+      }
+    ]
+  })
+
+  const [live, client, test] = await Promise.all([
+    Effect.runPromise(program.pipe(Effect.provide(liveLayer))),
+    Effect.runPromise(program.pipe(Effect.provide(clientLayer))),
+    Effect.runPromise(program.pipe(Effect.provide(testLayer)))
+  ])
+
+  expect({ live, client, test }).toEqual({
+    live: "primary",
+    client: "primary",
+    test: "primary"
+  })
+  expect(bridge.calls().map((call) => call.method)).toEqual(["Screen.getPrimaryDisplay"])
 })
 
 const nextSequence = (prefix: string): (() => string) => {

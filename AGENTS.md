@@ -34,7 +34,7 @@ Per `docs/SPEC.md` §4.4.1, the framework targets Effect v4. v3 patterns are for
 
 - import every Effect symbol from `effect` (never `@effect/schema`);
 - use `Effect.Effect<A, E, R>` (three params, never elide `R`);
-- define services with `class X extends Effect.Service<X>()("X", { effect: Effect.gen(...) }) {}`;
+- define services with `class X extends Context.Service<X, XApi>()("X", { make: Effect.gen(...) }) {}`;
 - define schema classes with `class T extends Schema.Class<T>("T")({...}) {}`;
 - use `Effect.gen(function* () { ... yield* effect })` (no `$` adapter);
 - compose layers with `Layer.provide` / `Layer.provideMerge` / `Layer.succeed` / `Layer.effect`.
@@ -42,6 +42,8 @@ Per `docs/SPEC.md` §4.4.1, the framework targets Effect v4. v3 patterns are for
 ## Layer-first framework contract
 
 Effect Desktop exists because Effect lets the framework make native desktop authority type-safe, testable, and replaceable. Treat this as the governing implementation contract:
+
+The concrete review checklist lives in `docs/architecture/layer-first-contract.md`. Keep this section and that document aligned; `docs/SPEC.md` remains the source of truth when they disagree.
 
 - every effectful public capability is an Effect service requirement with a stable service tag;
 - every capability exposes a live layer and a deterministic test layer before it is considered complete;
@@ -131,6 +133,8 @@ Because most code is authored by agents, both the TypeScript compiler and oxlint
 `oxlint.json` enables type-aware mode (`oxlint-tsgolint` plugin) so promise-related rules — `no-floating-promises`, `no-misused-promises`, `await-thenable`, `switch-exhaustiveness-check`, the `no-unsafe-*` family, `no-unnecessary-type-assertion` — fire on real semantic violations, not just syntax. Categories `correctness`, `suspicious`, and `perf` are all `error` (never `warn`); per `@nkzw/oxlint-config` philosophy, warnings get ignored by agents and the only useful state is "fail at the gate or pass clean". `no-explicit-any` is `error` (test files override to `off` for fixture flexibility); `no-console` is `error` outside `bin.ts` and `scripts/**`.
 
 If a rule produces a false positive, prefer fixing the code over disabling the rule. If the rule must be disabled, do it at the smallest scope possible — line-level or file-level — with a comment that says why. Disabling at the config level requires a real reason and an entry in this section.
+
+The repo-level type-aware lint gate runs against explicit Effect Desktop source paths, ignores generated app outputs, ignores `vendor/effect/**`, and disables nested oxlint config loading. `vendor/effect` is vendored upstream source with its own oxlint plugin configuration, not Effect Desktop-authored code, and loading its config from this workspace breaks the root gate before repo code is checked. The root `bun test` gate uses `bunfig.toml` to ignore the same vendored and generated paths for the same reason.
 
 ## Forbidden behavior
 
