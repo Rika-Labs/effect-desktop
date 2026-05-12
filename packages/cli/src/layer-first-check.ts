@@ -350,36 +350,45 @@ const callExpressionUsesRuntimeGlobal = (node: ts.CallExpression): boolean => {
     return false
   }
   if (
-    isIdentifierPropertyAccess(expression, "Date", "now") ||
-    isIdentifierPropertyAccess(expression, "Math", "random") ||
+    isRuntimeObjectPropertyAccess(expression, "Date", "now") ||
+    isRuntimeObjectPropertyAccess(expression, "Math", "random") ||
     isCryptoRandomUuidAccess(expression)
   ) {
     return true
   }
   return (
     (expression.name.text === "file" || expression.name.text === "write") &&
-    ts.isIdentifier(expression.expression) &&
-    expression.expression.text === "Bun"
+    isRuntimeObjectExpression(expression.expression, "Bun")
   )
 }
 
 const propertyAccessUsesRuntimeGlobal = (node: ts.PropertyAccessExpression): boolean =>
-  isIdentifierPropertyAccess(node, "process", "env") ||
-  isIdentifierPropertyAccess(node, "Bun", "env")
+  isRuntimeObjectPropertyAccess(node, "process", "env") ||
+  isRuntimeObjectPropertyAccess(node, "Bun", "env")
 
 const isEffectRunAccess = (node: ts.PropertyAccessExpression): boolean =>
   ts.isIdentifier(node.expression) &&
   node.expression.text === "Effect" &&
   node.name.text.startsWith("run")
 
-const isIdentifierPropertyAccess = (
+const isRuntimeObjectPropertyAccess = (
   node: ts.PropertyAccessExpression,
   objectName: string,
   propertyName: string
 ): boolean =>
-  ts.isIdentifier(node.expression) &&
-  node.expression.text === objectName &&
-  node.name.text === propertyName
+  node.name.text === propertyName && isRuntimeObjectExpression(node.expression, objectName)
+
+const isRuntimeObjectExpression = (node: ts.Expression, objectName: string): boolean => {
+  if (ts.isIdentifier(node)) {
+    return node.text === objectName
+  }
+  return (
+    ts.isPropertyAccessExpression(node) &&
+    node.name.text === objectName &&
+    ts.isIdentifier(node.expression) &&
+    node.expression.text === "globalThis"
+  )
+}
 
 const isCryptoRandomUuidAccess = (node: ts.PropertyAccessExpression): boolean => {
   if (node.name.text !== "randomUUID") {
@@ -459,7 +468,7 @@ const scanPublicBoundaryClasses = (
   }
   const violations: LayerFirstViolation[] = []
   for (const boundary of collectBoundaryClassExports(path, text, sourceTexts, new Set())) {
-    if (boundary.heritage?.includes("Data.TaggedError")) {
+    if (boundary.extendsTaggedError) {
       continue
     }
     if (!BOUNDARY_SUFFIX_PATTERN.test(boundary.name)) {
@@ -469,7 +478,7 @@ const scanPublicBoundaryClasses = (
     if (allowlist.has(symbol)) {
       continue
     }
-    if (boundary.heritage?.includes("Schema.Class") !== true) {
+    if (!boundary.extendsSchemaClass) {
       violations.push({
         kind: "public-boundary-without-schema",
         path: boundary.path,
@@ -550,7 +559,8 @@ interface ExportedBoundaryClass {
   readonly name: string
   readonly path: string
   readonly offset: number
-  readonly heritage?: string
+  readonly extendsSchemaClass: boolean
+  readonly extendsTaggedError: boolean
 }
 
 const parseSource = (path: string, text: string): ts.SourceFile =>
@@ -764,15 +774,47 @@ const boundaryClassesFromLocalDeclaration = (
   if (boundaryNames.length === 0) {
     return []
   }
-  const heritage = statement.heritageClauses
-    ?.flatMap((clause) => clause.types.map((type) => type.expression.getText(sourceFile)))
-    .join(" ")
+  const heritage = classBoundaryHeritage(statement)
   return boundaryNames.map((exportedName) => ({
     name: exportedName,
     path,
     offset: statement.getStart(sourceFile),
-    ...(heritage === undefined ? {} : { heritage })
+    extendsSchemaClass: heritage.extendsSchemaClass,
+    extendsTaggedError: heritage.extendsTaggedError
   }))
+}
+
+const classBoundaryHeritage = (
+  statement: ts.ClassDeclaration
+): Pick<ExportedBoundaryClass, "extendsSchemaClass" | "extendsTaggedError"> => {
+  let extendsSchemaClass = false
+  let extendsTaggedError = false
+  for (const clause of statement.heritageClauses ?? []) {
+    if (clause.token !== ts.SyntaxKind.ExtendsKeyword) {
+      continue
+    }
+    for (const type of clause.types) {
+      extendsSchemaClass ||= heritageExpressionCalls(type.expression, "Schema", "Class")
+      extendsTaggedError ||= heritageExpressionCalls(type.expression, "Data", "TaggedError")
+    }
+  }
+  return { extendsSchemaClass, extendsTaggedError }
+}
+
+const heritageExpressionCalls = (
+  node: ts.LeftHandSideExpression,
+  objectName: string,
+  propertyName: string
+): boolean => {
+  if (ts.isCallExpression(node)) {
+    return heritageExpressionCalls(node.expression, objectName, propertyName)
+  }
+  return (
+    ts.isPropertyAccessExpression(node) &&
+    node.name.text === propertyName &&
+    ts.isIdentifier(node.expression) &&
+    node.expression.text === objectName
+  )
 }
 
 const promiseExportsFromReExportDeclaration = (

@@ -145,6 +145,22 @@ test("Layer-first check rejects split runtime globals in library source", async 
   expectViolation(exit, "forbidden-runtime-global")
 })
 
+test("Layer-first check rejects runtime globals accessed through globalThis", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      export const configHome = globalThis.process.env["XDG_CONFIG_HOME"] ?? ".config"
+      export const stamp = globalThis.Date.now()
+      export const random = globalThis.Math.random()
+      export const secret = globalThis.crypto.randomUUID()
+      export const file = globalThis.Bun.file("config.json")
+    `)
+  )
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "forbidden-runtime-global")
+})
+
 test("Layer-first check rejects filesystem authority variants in library source", async () => {
   const options = await makeFixture(
     packageFiles(`
@@ -529,6 +545,38 @@ test("Layer-first check rejects public boundary classes without Schema.Class", a
   const exit = await runExit(options)
 
   expectViolation(exit, "public-boundary-without-schema")
+})
+
+test("Layer-first check rejects public boundary classes extending non-Schema Class properties", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      import { Schema } from "effect"
+      declare const NotSchema: typeof Schema
+      export class UserInput extends NotSchema.Class<UserInput>("UserInput")({
+        name: Schema.String
+      }) {}
+    `)
+  )
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-boundary-without-schema")
+})
+
+test("Layer-first check allows public boundary classes extending Schema.Class", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      import { Schema } from "effect"
+      export class UserInput extends Schema.Class<UserInput>("UserInput")({
+        name: Schema.String
+      }) {}
+    `)
+  )
+
+  const report = await Effect.runPromise(runLayerFirstCheck(options))
+
+  expect(report.passed).toBe(true)
+  expect(report.violations).toEqual([])
 })
 
 test("Layer-first check rejects default-exported public boundary classes without Schema.Class", async () => {
