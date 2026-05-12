@@ -3,13 +3,14 @@ import {
   Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcGroup,
-  type BridgeRpcSpec,
   type BridgeRpcHandlers,
   type BridgeRpcLayer,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
+  Rpc,
+  RpcCapability,
+  RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Schema } from "effect"
@@ -70,44 +71,62 @@ export class SecretValue {
   }
 }
 
-export const SafeStorageRpcSpec = Object.freeze({
-  set: safeStorageMethodSpec(SafeStorageSetInput, "native.invoke:SafeStorage.set"),
-  get: {
-    input: SafeStorageKeyInput,
-    output: SafeStorageSecretPayload,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:SafeStorage.get"
-  },
-  delete: safeStorageMethodSpec(SafeStorageKeyInput, "native.invoke:SafeStorage.delete"),
-  list: {
-    input: Schema.Void,
-    output: SafeStorageListResult,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:SafeStorage.list"
-  },
-  isAvailable: {
-    input: Schema.Void,
-    output: SafeStorageAvailabilityResult,
-    error: HostProtocolErrorSchema,
-    permission: "none"
-  }
-}) satisfies BridgeRpcSpec
-
-export type SafeStorageRpcSpec = typeof SafeStorageRpcSpec
+export const SafeStorageSet = safeStorageRpc(
+  "set",
+  SafeStorageSetInput,
+  Schema.Void,
+  "native.invoke:SafeStorage.set"
+)
+export const SafeStorageGet = safeStorageRpc(
+  "get",
+  SafeStorageKeyInput,
+  SafeStorageSecretPayload,
+  "native.invoke:SafeStorage.get"
+)
+export const SafeStorageDelete = safeStorageRpc(
+  "delete",
+  SafeStorageKeyInput,
+  Schema.Void,
+  "native.invoke:SafeStorage.delete"
+)
+export const SafeStorageList = safeStorageRpc(
+  "list",
+  Schema.Void,
+  SafeStorageListResult,
+  "native.invoke:SafeStorage.list"
+)
+export const SafeStorageIsAvailable = safeStorageRpc(
+  "isAvailable",
+  Schema.Void,
+  SafeStorageAvailabilityResult,
+  "none"
+)
 
 export const SafeStorageRpcEvents = Object.freeze({})
 
 export type SafeStorageRpcEvents = typeof SafeStorageRpcEvents
 
-export const SafeStorageRpcs: BridgeRpcGroup<
-  "SafeStorage",
-  SafeStorageRpcSpec,
-  SafeStorageRpcEvents
-> = BridgeRpc.group("SafeStorage", SafeStorageRpcSpec, SafeStorageRpcEvents)
-
-export const SafeStorageMethodNames = Object.freeze(
-  Object.keys(SafeStorageRpcSpec) as ReadonlyArray<keyof SafeStorageRpcSpec>
+const SafeStorageRpcGroup = RpcGroup.make(
+  SafeStorageSet,
+  SafeStorageGet,
+  SafeStorageDelete,
+  SafeStorageList,
+  SafeStorageIsAvailable
 )
+
+export const SafeStorageRpcs = BridgeRpc.fromGroup(
+  "SafeStorage",
+  SafeStorageRpcGroup,
+  SafeStorageRpcEvents
+)
+
+export const SafeStorageMethodNames = Object.freeze([
+  "set",
+  "get",
+  "delete",
+  "list",
+  "isAvailable"
+] as const)
 
 export interface SafeStorageClientApi {
   readonly set: (key: string, value: SecretValue) => Effect.Effect<void, SafeStorageError, never>
@@ -154,6 +173,8 @@ export const makeSafeStorageBridgeClientLayer = (
 ): Layer.Layer<SafeStorageClient> =>
   Layer.succeed(SafeStorageClient)(makeSafeStorageBridgeClient(exchange, options))
 
+export type SafeStorageRpcSpec = (typeof SafeStorageRpcs)["spec"]
+
 export const makeHostSafeStorageBridgeRpcLayer = <
   Handlers extends BridgeRpcHandlers<SafeStorageRpcSpec>
 >(
@@ -165,7 +186,20 @@ const makeSafeStorageBridgeClient = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions
 ): SafeStorageClientApi => {
-  const client = Client({ SafeStorage: SafeStorageRpcs }, exchange, options).SafeStorage
+  const client = Client({ SafeStorage: SafeStorageRpcs }, exchange, options)
+    .SafeStorage as unknown as {
+    readonly set: (input: SafeStorageSetInput) => Effect.Effect<void, SafeStorageError, never>
+    readonly get: (
+      input: SafeStorageKeyInput
+    ) => Effect.Effect<SafeStorageSecretPayload, SafeStorageError, never>
+    readonly delete: (input: SafeStorageKeyInput) => Effect.Effect<void, SafeStorageError, never>
+    readonly list: () => Effect.Effect<SafeStorageListResult, SafeStorageError, never>
+    readonly isAvailable: () => Effect.Effect<
+      SafeStorageAvailabilityResult,
+      SafeStorageError,
+      never
+    >
+  }
   return Object.freeze({
     set: (key, value) =>
       decodeSafeStorageSetInput({ key, value: value.unsafeBytes() }).pipe(
@@ -282,11 +316,15 @@ const decodeInput = (
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
 
-function safeStorageMethodSpec<Input extends Schema.Schema<unknown>>(
-  input: Input,
-  permission: string
-) {
-  return { input, output: Schema.Void, error: HostProtocolErrorSchema, permission } as const
+function safeStorageRpc<
+  Payload extends Schema.Schema<unknown>,
+  Success extends Schema.Schema<unknown>
+>(method: string, payload: Payload, success: Success, capability: string) {
+  return Rpc.make(`SafeStorage.${method}`, {
+    payload,
+    success,
+    error: HostProtocolErrorSchema
+  }).pipe(RpcCapability({ kind: capability }))
 }
 
 const formatUnknownError = (error: unknown): string => {

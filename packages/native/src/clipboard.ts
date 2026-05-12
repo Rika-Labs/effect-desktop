@@ -3,14 +3,15 @@ import {
   Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcGroup,
-  type BridgeRpcSpec,
   type BridgeRpcHandlers,
   type BridgeRpcLayer,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
+  Rpc,
+  RpcCapability,
+  RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Schema } from "effect"
@@ -29,57 +30,66 @@ const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export type ClipboardError = HostProtocolError
 
-export const ClipboardRpcSpec = Object.freeze({
-  readText: {
-    input: Schema.Void,
-    output: ClipboardText,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Clipboard.readText"
-  },
-  writeText: {
-    input: ClipboardText,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Clipboard.writeText"
-  },
-  readImage: {
-    input: Schema.Void,
-    output: ClipboardImage,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Clipboard.readImage"
-  },
-  writeImage: {
-    input: ClipboardImage,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Clipboard.writeImage"
-  },
-  clear: {
-    input: Schema.Void,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Clipboard.clear"
-  },
-  isSupported: {
-    input: ClipboardIsSupportedInput,
-    output: ClipboardSupportedResult,
-    error: HostProtocolErrorSchema,
-    permission: "none"
-  }
-}) satisfies BridgeRpcSpec
-
-export type ClipboardRpcSpec = typeof ClipboardRpcSpec
+export const ClipboardReadText = clipboardRpc(
+  "readText",
+  Schema.Void,
+  ClipboardText,
+  "native.invoke:Clipboard.readText"
+)
+export const ClipboardWriteText = clipboardRpc(
+  "writeText",
+  ClipboardText,
+  Schema.Void,
+  "native.invoke:Clipboard.writeText"
+)
+export const ClipboardReadImage = clipboardRpc(
+  "readImage",
+  Schema.Void,
+  ClipboardImage,
+  "native.invoke:Clipboard.readImage"
+)
+export const ClipboardWriteImage = clipboardRpc(
+  "writeImage",
+  ClipboardImage,
+  Schema.Void,
+  "native.invoke:Clipboard.writeImage"
+)
+export const ClipboardClear = clipboardRpc(
+  "clear",
+  Schema.Void,
+  Schema.Void,
+  "native.invoke:Clipboard.clear"
+)
+export const ClipboardIsSupported = clipboardRpc(
+  "isSupported",
+  ClipboardIsSupportedInput,
+  ClipboardSupportedResult,
+  "none"
+)
 
 export const ClipboardRpcEvents = Object.freeze({})
 
 export type ClipboardRpcEvents = typeof ClipboardRpcEvents
 
-export const ClipboardRpcs: BridgeRpcGroup<"Clipboard", ClipboardRpcSpec, ClipboardRpcEvents> =
-  BridgeRpc.group("Clipboard", ClipboardRpcSpec, ClipboardRpcEvents)
-
-export const ClipboardMethodNames = Object.freeze(
-  Object.keys(ClipboardRpcSpec) as ReadonlyArray<keyof ClipboardRpcSpec>
+const ClipboardRpcGroup = RpcGroup.make(
+  ClipboardReadText,
+  ClipboardWriteText,
+  ClipboardReadImage,
+  ClipboardWriteImage,
+  ClipboardClear,
+  ClipboardIsSupported
 )
+
+export const ClipboardRpcs = BridgeRpc.fromGroup("Clipboard", ClipboardRpcGroup, ClipboardRpcEvents)
+
+export const ClipboardMethodNames = Object.freeze([
+  "readText",
+  "writeText",
+  "readImage",
+  "writeImage",
+  "clear",
+  "isSupported"
+] as const)
 
 export interface ClipboardClientApi {
   readonly readText: () => Effect.Effect<ClipboardText, ClipboardError, never>
@@ -131,6 +141,8 @@ export const makeClipboardBridgeClientLayer = (
 ): Layer.Layer<ClipboardClient> =>
   Layer.succeed(ClipboardClient)(makeClipboardBridgeClient(exchange, options))
 
+export type ClipboardRpcSpec = (typeof ClipboardRpcs)["spec"]
+
 export const makeHostClipboardBridgeRpcLayer = <
   Handlers extends BridgeRpcHandlers<ClipboardRpcSpec>
 >(
@@ -156,7 +168,16 @@ const makeClipboardBridgeClient = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions
 ): ClipboardClientApi => {
-  const client = Client({ Clipboard: ClipboardRpcs }, exchange, options).Clipboard
+  const client = Client({ Clipboard: ClipboardRpcs }, exchange, options).Clipboard as unknown as {
+    readonly readText: () => Effect.Effect<ClipboardText, ClipboardError, never>
+    readonly writeText: (input: ClipboardText) => Effect.Effect<void, ClipboardError, never>
+    readonly readImage: () => Effect.Effect<ClipboardImage, ClipboardError, never>
+    readonly writeImage: (input: ClipboardImage) => Effect.Effect<void, ClipboardError, never>
+    readonly clear: () => Effect.Effect<void, ClipboardError, never>
+    readonly isSupported: (
+      input: ClipboardIsSupportedInput
+    ) => Effect.Effect<ClipboardSupportedResult, ClipboardError, never>
+  }
 
   const clipboardClient: ClipboardClientApi = {
     readText: () => client.readText(),
@@ -252,6 +273,17 @@ const decodeInput = (
     >,
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
+
+function clipboardRpc<
+  Payload extends Schema.Schema<unknown>,
+  Success extends Schema.Schema<unknown>
+>(method: string, payload: Payload, success: Success, capability: string) {
+  return Rpc.make(`Clipboard.${method}`, {
+    payload,
+    success,
+    error: HostProtocolErrorSchema
+  }).pipe(RpcCapability({ kind: capability }))
+}
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {

@@ -7,8 +7,11 @@ import {
   HostProtocolRequestEnvelope,
   InvalidBridgeRpcSpec,
   Rpc,
+  RpcCapability,
+  RpcEndpoint,
   RpcGroup,
   RpcSchema,
+  RpcSupport,
   makeHostProtocolInvalidOutputError,
   rpcCapability,
   rpcEndpointKind,
@@ -394,6 +397,83 @@ test("BridgeRpc.group carries endpoint, capability, support, stream, and event m
   expect(
     RpcSchema.isStreamSchema(successSchema(request(NotesRpcs, "Test.Metadata.events.changed")))
   ).toBe(true)
+})
+
+test("BridgeRpc.fromGroup derives bridge runtime metadata from RpcGroup contracts", () => {
+  const List = Rpc.make("Test.FromGroup.list", {
+    success: Schema.Array(Schema.String)
+  }).pipe(RpcEndpoint.query)
+  const Open = Rpc.make("Test.FromGroup.open", {
+    payload: Schema.Struct({ id: Schema.String }),
+    success: Schema.Struct({ ok: Schema.Boolean }),
+    error: Schema.Never
+  }).pipe(
+    RpcCapability({ kind: "notes:open" }),
+    RpcSupport.unsupported("host adapter does not implement open yet")
+  )
+  const Watch = Rpc.make("Test.FromGroup.watch", {
+    success: Schema.String,
+    error: Schema.Never,
+    stream: true
+  })
+  const Process = Rpc.make("Test.FromGroup.process", {
+    payload: Schema.Struct({ path: Schema.String }),
+    success: BridgeRpc.Resource("process", "running") as unknown as Schema.Schema<unknown>,
+    error: Schema.Never
+  })
+  const NotesRpcs = BridgeRpc.fromGroup(
+    "Test.FromGroup",
+    RpcGroup.make(List, Open, Watch, Process),
+    {}
+  )
+
+  expect(Array.from(NotesRpcs.requests.keys()).sort()).toEqual([
+    "Test.FromGroup.list",
+    "Test.FromGroup.open",
+    "Test.FromGroup.process",
+    "Test.FromGroup.watch"
+  ])
+  expect(Object.keys(NotesRpcs.spec).sort()).toEqual(["list", "open", "process", "watch"])
+  expect(NotesRpcs.spec["open"]?.permission).toBe("notes:open")
+  expect(NotesRpcs.spec["process"]?.output).toMatchObject({
+    _tag: "BridgeRpcResourceSpec",
+    kind: "process",
+    state: "running"
+  })
+  expect(NotesRpcs.spec["open"]?.support).toEqual({
+    status: "unsupported",
+    reason: "host adapter does not implement open yet"
+  })
+  expect(rpcEndpointKind(request(NotesRpcs, "Test.FromGroup.list"))).toBe("query")
+  expect(RpcSchema.isStreamSchema(successSchema(request(NotesRpcs, "Test.FromGroup.watch")))).toBe(
+    true
+  )
+})
+
+test("BridgeRpc.fromGroup rejects RpcGroups with mismatched tags", () => {
+  const Other = Rpc.make("Other.list", {
+    success: Schema.Array(Schema.String)
+  })
+
+  expect(() => BridgeRpc.fromGroup("Test.FromGroup", RpcGroup.make(Other), {})).toThrow(
+    InvalidBridgeRpcSpec
+  )
+})
+
+test("BridgeRpc.fromGroup validates annotation-derived bridge metadata", () => {
+  const EmptyCapability = Rpc.make("Test.FromGroup.open", {
+    success: Schema.String
+  }).pipe(RpcCapability({ kind: "" }))
+  const EmptySupportReason = Rpc.make("Test.FromGroup.unsupported", {
+    success: Schema.String
+  }).pipe(RpcSupport.unsupported(""))
+
+  expect(() => BridgeRpc.fromGroup("Test.FromGroup", RpcGroup.make(EmptyCapability), {})).toThrow(
+    InvalidBridgeRpcSpec
+  )
+  expect(() =>
+    BridgeRpc.fromGroup("Test.FromGroup", RpcGroup.make(EmptySupportReason), {})
+  ).toThrow(InvalidBridgeRpcSpec)
 })
 
 const validMethodSpec = () => ({

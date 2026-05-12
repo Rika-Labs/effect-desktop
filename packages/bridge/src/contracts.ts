@@ -1,7 +1,14 @@
-import { Data, Effect, Schema, Stream } from "effect"
-import { Rpc, RpcGroup } from "effect/unstable/rpc"
+import { Data, Effect, Option, Schema, Stream } from "effect"
+import { Rpc, RpcGroup, RpcSchema } from "effect/unstable/rpc"
 
-import { RpcCapability, RpcEndpoint, RpcSupport, type RpcSupportMetadata } from "./rpc-endpoint.js"
+import {
+  RpcCapability,
+  RpcEndpoint,
+  RpcSupport,
+  rpcCapability,
+  rpcSupport,
+  type RpcSupportMetadata
+} from "./rpc-endpoint.js"
 
 export interface BridgeRpcMethodSpec {
   readonly input: Schema.Schema<unknown>
@@ -83,6 +90,10 @@ export interface BridgeRpcGroup<
   readonly events: Events
 }
 
+type RpcGroupWithRequests = RpcGroup.Any & {
+  readonly requests: ReadonlyMap<string, Rpc.Any>
+}
+
 export type BridgeRpcHandlers<Spec extends BridgeRpcSpec> = {
   readonly [Method in keyof Spec]: (
     input: Schema.Schema.Type<Spec[Method]["input"]>
@@ -144,6 +155,15 @@ export const BridgeRpc = Object.freeze({
     spec: Spec,
     events: Events
   ): BridgeRpcGroup<Tag, Spec, Events> => makeBridgeRpcGroup(tag, spec, events),
+  fromGroup: <
+    Tag extends string,
+    Group extends RpcGroupWithRequests,
+    Events extends BridgeRpcEvents
+  >(
+    tag: Tag,
+    group: Group,
+    events: Events
+  ): BridgeRpcGroup<Tag, BridgeRpcSpec, Events> => bridgeRpcGroupFromRpcGroup(tag, group, events),
   layer:
     <Tag extends string, Spec extends BridgeRpcSpec, Events extends BridgeRpcEvents>(
       group: BridgeRpcGroup<Tag, Spec, Events>
@@ -158,6 +178,52 @@ export const BridgeRpc = Object.freeze({
       })
     }
 })
+
+const bridgeRpcGroupFromRpcGroup = <
+  Tag extends string,
+  Group extends RpcGroupWithRequests,
+  Events extends BridgeRpcEvents
+>(
+  tag: Tag,
+  group: Group,
+  events: Events
+): BridgeRpcGroup<Tag, BridgeRpcSpec, Events> => {
+  if (!isPrintableName(tag)) {
+    throw invalidSpec(tag, "<group>", "tag must be non-empty printable text")
+  }
+  const spec = bridgeRpcSpecFromRpcGroup(tag, group)
+  validateBridgeRpcSpec(tag, spec)
+  validateBridgeRpcEvents(tag, events)
+  const frozenSpec = freezeRpcSpec(spec)
+  const frozenEvents = freezeRpcEvents(events)
+
+  return Object.freeze(
+    Object.assign(group, {
+      tag,
+      spec: frozenSpec,
+      events: frozenEvents
+    })
+  ) as unknown as BridgeRpcGroup<Tag, BridgeRpcSpec, Events>
+}
+
+const bridgeRpcSpecFromRpcGroup = (tag: string, group: RpcGroupWithRequests): BridgeRpcSpec => {
+  const entries: Array<readonly [string, BridgeRpcMethodSpec]> = []
+  for (const [rpcTag, rpc] of group.requests.entries()) {
+    if (!rpcTag.startsWith(`${tag}.`)) {
+      throw invalidSpec(tag, rpcTag, "RpcGroup request tag must start with the bridge group tag")
+    }
+    if (rpcTag.startsWith(`${tag}.events.`)) {
+      continue
+    }
+    const method = rpcTag.slice(tag.length + 1)
+    if (!isWireSegmentName(method)) {
+      throw invalidSpec(tag, method, "method name must be non-empty printable text without dots")
+    }
+    entries.push([method, rpcToBridgeMethodSpec(rpc)])
+  }
+
+  return Object.freeze(Object.fromEntries(entries))
+}
 
 export const makeBridgeRpcGroup = <
   Tag extends string,
@@ -433,6 +499,48 @@ const bridgeMethodToRpc = (tag: string, method: string, spec: BridgeRpcMethodSpe
       })
 
   return annotateBridgeMethodRpc(rpc, spec)
+}
+
+interface RpcWithSchemas extends Rpc.Any {
+  readonly payloadSchema: Schema.Schema<unknown>
+  readonly successSchema: Schema.Schema<unknown>
+  readonly errorSchema: Schema.Schema<unknown>
+}
+
+const rpcToBridgeMethodSpec = (rpc: Rpc.Any): BridgeRpcMethodSpec => {
+  const rpcWithSchemas = rpc as RpcWithSchemas
+  const streamSchemas = streamSchemasFromRpcSuccess(rpcWithSchemas.successSchema)
+  const capability = rpcCapability(rpc)
+  const support = rpcSupport(rpc)
+  const output = Option.isSome(streamSchemas)
+    ? BridgeRpc.Stream(streamSchemas.value.success, streamSchemas.value.error)
+    : rpcWithSchemas.successSchema
+
+  return Object.freeze({
+    input: rpcWithSchemas.payloadSchema,
+    output,
+    error: Option.isSome(streamSchemas) ? streamSchemas.value.error : rpcWithSchemas.errorSchema,
+    ...(Option.isSome(capability) ? { permission: capability.value.kind } : {}),
+    ...(support.status === "supported" ? {} : { support })
+  })
+}
+
+interface RpcStreamSchema extends Schema.Schema<unknown> {
+  readonly success: Schema.Schema<unknown>
+  readonly error: Schema.Schema<unknown>
+}
+
+const streamSchemasFromRpcSuccess = (
+  schema: Schema.Schema<unknown>
+): Option.Option<{
+  readonly success: Schema.Schema<unknown>
+  readonly error: Schema.Schema<unknown>
+}> => {
+  if (!RpcSchema.isStreamSchema(schema)) {
+    return Option.none()
+  }
+  const stream = schema as RpcStreamSchema
+  return Option.some({ success: stream.success, error: stream.error })
 }
 
 const bridgeEventToRpc = (tag: string, event: string, spec: BridgeRpcEventSpec): Rpc.Any =>

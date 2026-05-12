@@ -3,13 +3,14 @@ import {
   Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcGroup,
-  type BridgeRpcSpec,
   type BridgeRpcHandlers,
   type BridgeRpcLayer,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
+  Rpc,
+  RpcCapability,
+  RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Schema } from "effect"
@@ -31,39 +32,74 @@ const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export type DockError = HostProtocolError
 
-export const DockRpcSpec = Object.freeze({
-  setBadgeCount: dockMethodSpec(DockSetBadgeCountInput, "native.invoke:Dock.setBadgeCount"),
-  setBadgeText: dockMethodSpec(DockSetBadgeTextInput, "native.invoke:Dock.setBadgeText"),
-  setProgress: dockMethodSpec(DockSetProgressInput, "native.invoke:Dock.setProgress"),
-  setMenu: dockMethodSpec(DockSetMenuInput, "native.invoke:Dock.setMenu"),
-  setJumpList: dockMethodSpec(DockSetJumpListInput, "native.invoke:Dock.setJumpList"),
-  requestAttention: dockMethodSpec(
-    DockRequestAttentionInput,
-    "native.invoke:Dock.requestAttention"
-  ),
-  isSupported: {
-    input: DockIsSupportedInput,
-    output: DockSupportedResult,
-    error: HostProtocolErrorSchema,
-    permission: "none"
-  }
-}) satisfies BridgeRpcSpec
-
-export type DockRpcSpec = typeof DockRpcSpec
+export const DockSetBadgeCount = dockRpc(
+  "setBadgeCount",
+  DockSetBadgeCountInput,
+  Schema.Void,
+  "native.invoke:Dock.setBadgeCount"
+)
+export const DockSetBadgeText = dockRpc(
+  "setBadgeText",
+  DockSetBadgeTextInput,
+  Schema.Void,
+  "native.invoke:Dock.setBadgeText"
+)
+export const DockSetProgress = dockRpc(
+  "setProgress",
+  DockSetProgressInput,
+  Schema.Void,
+  "native.invoke:Dock.setProgress"
+)
+export const DockSetMenu = dockRpc(
+  "setMenu",
+  DockSetMenuInput,
+  Schema.Void,
+  "native.invoke:Dock.setMenu"
+)
+export const DockSetJumpList = dockRpc(
+  "setJumpList",
+  DockSetJumpListInput,
+  Schema.Void,
+  "native.invoke:Dock.setJumpList"
+)
+export const DockRequestAttention = dockRpc(
+  "requestAttention",
+  DockRequestAttentionInput,
+  Schema.Void,
+  "native.invoke:Dock.requestAttention"
+)
+export const DockIsSupported = dockRpc(
+  "isSupported",
+  DockIsSupportedInput,
+  DockSupportedResult,
+  "none"
+)
 
 export const DockRpcEvents = Object.freeze({})
 
 export type DockRpcEvents = typeof DockRpcEvents
 
-export const DockRpcs: BridgeRpcGroup<"Dock", DockRpcSpec, DockRpcEvents> = BridgeRpc.group(
-  "Dock",
-  DockRpcSpec,
-  DockRpcEvents
+const DockRpcGroup = RpcGroup.make(
+  DockSetBadgeCount,
+  DockSetBadgeText,
+  DockSetProgress,
+  DockSetMenu,
+  DockSetJumpList,
+  DockRequestAttention,
+  DockIsSupported
 )
 
-export const DockMethodNames = Object.freeze(
-  Object.keys(DockRpcSpec) as ReadonlyArray<keyof DockRpcSpec>
-)
+export const DockRpcs = BridgeRpc.fromGroup("Dock", DockRpcGroup, DockRpcEvents)
+
+export const DockMethodNames = Object.freeze([
+  "setBadgeCount",
+  "setBadgeText",
+  "setProgress",
+  "setMenu",
+  "setJumpList",
+  "requestAttention",
+  "isSupported"
+] as const)
 
 export interface DockClientApi {
   readonly setBadgeCount: (count: number) => Effect.Effect<void, DockError, never>
@@ -123,6 +159,8 @@ export const makeDockBridgeClientLayer = (
   options: BridgeClientOptions = {}
 ): Layer.Layer<DockClient> => Layer.succeed(DockClient)(makeDockBridgeClient(exchange, options))
 
+export type DockRpcSpec = (typeof DockRpcs)["spec"]
+
 export const makeHostDockBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<DockRpcSpec>>(
   handlers: Handlers
 ): BridgeRpcLayer<"Dock", DockRpcSpec, Handlers, DockRpcEvents> =>
@@ -132,7 +170,19 @@ const makeDockBridgeClient = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions
 ): DockClientApi => {
-  const client = Client({ Dock: DockRpcs }, exchange, options).Dock
+  const client = Client({ Dock: DockRpcs }, exchange, options).Dock as unknown as {
+    readonly setBadgeCount: (input: DockSetBadgeCountInput) => Effect.Effect<void, DockError, never>
+    readonly setBadgeText: (input: DockSetBadgeTextInput) => Effect.Effect<void, DockError, never>
+    readonly setProgress: (input: DockSetProgressInput) => Effect.Effect<void, DockError, never>
+    readonly setMenu: (input: DockSetMenuInput) => Effect.Effect<void, DockError, never>
+    readonly setJumpList: (input: DockSetJumpListInput) => Effect.Effect<void, DockError, never>
+    readonly requestAttention: (
+      input: DockRequestAttentionInput
+    ) => Effect.Effect<void, DockError, never>
+    readonly isSupported: (
+      input: DockIsSupportedInput
+    ) => Effect.Effect<DockSupportedResult, DockError, never>
+  }
   return Object.freeze({
     setBadgeCount: (count) =>
       decodeDockSetBadgeCountInput({ count }).pipe(Effect.flatMap(client.setBadgeCount)),
@@ -279,8 +329,17 @@ const decodeInput = (
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
 
-function dockMethodSpec<Input extends Schema.Schema<unknown>>(input: Input, permission: string) {
-  return { input, output: Schema.Void, error: HostProtocolErrorSchema, permission } as const
+function dockRpc<Payload extends Schema.Schema<unknown>, Success extends Schema.Schema<unknown>>(
+  method: string,
+  payload: Payload,
+  success: Success,
+  capability: string
+) {
+  return Rpc.make(`Dock.${method}`, {
+    payload,
+    success,
+    error: HostProtocolErrorSchema
+  }).pipe(RpcCapability({ kind: capability }))
 }
 
 const formatUnknownError = (error: unknown): string => {

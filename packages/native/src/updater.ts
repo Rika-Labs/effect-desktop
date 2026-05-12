@@ -3,13 +3,14 @@ import {
   Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcGroup,
-  type BridgeRpcSpec,
   type BridgeRpcHandlers,
   type BridgeRpcLayer,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
+  Rpc,
+  RpcCapability,
+  RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
@@ -31,46 +32,42 @@ export type UpdaterDownloadOptions = Schema.Schema.Type<typeof UpdaterDownloadIn
 
 export type UpdaterInstallOptions = Schema.Schema.Type<typeof UpdaterInstallInput>
 
-export const UpdaterRpcSpec = Object.freeze({
-  check: {
-    input: UpdaterCheckInput,
-    output: UpdaterCheckResult,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Updater.check"
-  },
-  download: {
-    input: UpdaterDownloadInput,
-    output: UpdaterStatusResult,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Updater.download"
-  },
-  install: {
-    input: UpdaterInstallInput,
-    output: UpdaterStatusResult,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Updater.install"
-  },
-  installAndRestart: {
-    input: UpdaterInstallInput,
-    output: UpdaterStatusResult,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Updater.installAndRestart"
-  },
-  getStatus: {
-    input: Schema.Void,
-    output: UpdaterStatusResult,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Updater.getStatus"
-  },
-  readyForRestart: {
-    input: Schema.Void,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Updater.readyForRestart"
-  }
-}) satisfies BridgeRpcSpec
-
-export type UpdaterRpcSpec = typeof UpdaterRpcSpec
+export const UpdaterCheck = updaterRpc(
+  "check",
+  UpdaterCheckInput,
+  UpdaterCheckResult,
+  "native.invoke:Updater.check"
+)
+export const UpdaterDownload = updaterRpc(
+  "download",
+  UpdaterDownloadInput,
+  UpdaterStatusResult,
+  "native.invoke:Updater.download"
+)
+export const UpdaterInstall = updaterRpc(
+  "install",
+  UpdaterInstallInput,
+  UpdaterStatusResult,
+  "native.invoke:Updater.install"
+)
+export const UpdaterInstallAndRestart = updaterRpc(
+  "installAndRestart",
+  UpdaterInstallInput,
+  UpdaterStatusResult,
+  "native.invoke:Updater.installAndRestart"
+)
+export const UpdaterGetStatus = updaterRpc(
+  "getStatus",
+  Schema.Void,
+  UpdaterStatusResult,
+  "native.invoke:Updater.getStatus"
+)
+export const UpdaterReadyForRestart = updaterRpc(
+  "readyForRestart",
+  Schema.Void,
+  Schema.Void,
+  "native.invoke:Updater.readyForRestart"
+)
 
 export const UpdaterRpcEvents = Object.freeze({
   PreparingRestart: { payload: UpdaterPreparingRestartEvent }
@@ -78,12 +75,25 @@ export const UpdaterRpcEvents = Object.freeze({
 
 export type UpdaterRpcEvents = typeof UpdaterRpcEvents
 
-export const UpdaterRpcs: BridgeRpcGroup<"Updater", UpdaterRpcSpec, UpdaterRpcEvents> =
-  BridgeRpc.group("Updater", UpdaterRpcSpec, UpdaterRpcEvents)
-
-export const UpdaterMethodNames = Object.freeze(
-  Object.keys(UpdaterRpcSpec) as ReadonlyArray<keyof UpdaterRpcSpec>
+const UpdaterRpcGroup = RpcGroup.make(
+  UpdaterCheck,
+  UpdaterDownload,
+  UpdaterInstall,
+  UpdaterInstallAndRestart,
+  UpdaterGetStatus,
+  UpdaterReadyForRestart
 )
+
+export const UpdaterRpcs = BridgeRpc.fromGroup("Updater", UpdaterRpcGroup, UpdaterRpcEvents)
+
+export const UpdaterMethodNames = Object.freeze([
+  "check",
+  "download",
+  "install",
+  "installAndRestart",
+  "getStatus",
+  "readyForRestart"
+] as const)
 
 export interface UpdaterClientApi {
   readonly check: (
@@ -144,6 +154,8 @@ export const makeUpdaterBridgeClientLayer = (
 ): Layer.Layer<UpdaterClient> =>
   Layer.succeed(UpdaterClient)(makeUpdaterBridgeClient(exchange, options))
 
+export type UpdaterRpcSpec = (typeof UpdaterRpcs)["spec"]
+
 export const makeHostUpdaterBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<UpdaterRpcSpec>>(
   handlers: Handlers
 ): BridgeRpcLayer<"Updater", UpdaterRpcSpec, Handlers, UpdaterRpcEvents> =>
@@ -155,7 +167,25 @@ const makeUpdaterBridgeClient = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions
 ): UpdaterClientApi => {
-  const client = Client({ Updater: UpdaterRpcs }, exchange, options).Updater
+  const client = Client({ Updater: UpdaterRpcs }, exchange, options).Updater as unknown as {
+    readonly check: (
+      input: UpdaterCheckInput
+    ) => Effect.Effect<UpdaterCheckResult, UpdaterError, never>
+    readonly download: (
+      input: UpdaterDownloadInput
+    ) => Effect.Effect<UpdaterStatusResult, UpdaterError, never>
+    readonly install: (
+      input: UpdaterInstallInput
+    ) => Effect.Effect<UpdaterStatusResult, UpdaterError, never>
+    readonly installAndRestart: (
+      input: UpdaterInstallInput
+    ) => Effect.Effect<UpdaterStatusResult, UpdaterError, never>
+    readonly getStatus: () => Effect.Effect<UpdaterStatusResult, UpdaterError, never>
+    readonly readyForRestart: () => Effect.Effect<void, UpdaterError, never>
+    readonly events: {
+      readonly PreparingRestart: Stream.Stream<UpdaterPreparingRestartEvent, UpdaterError, never>
+    }
+  }
   return Object.freeze({
     check: (input = {}) =>
       decodeUpdaterCheckInput(input, "Updater.check").pipe(Effect.flatMap(client.check)),
@@ -216,6 +246,19 @@ const decodeInput = (
     >,
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
+
+function updaterRpc<Payload extends Schema.Schema<unknown>, Success extends Schema.Schema<unknown>>(
+  method: string,
+  payload: Payload,
+  success: Success,
+  capability: string
+) {
+  return Rpc.make(`Updater.${method}`, {
+    payload,
+    success,
+    error: HostProtocolErrorSchema
+  }).pipe(RpcCapability({ kind: capability }))
+}
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {

@@ -3,14 +3,15 @@ import {
   Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcGroup,
-  type BridgeRpcSpec,
   type BridgeRpcHandlers,
   type BridgeRpcLayer,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
+  Rpc,
+  RpcCapability,
+  RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Schema } from "effect"
@@ -44,31 +45,46 @@ const ShellUrlControlCharacters = /[\u0000-\u001f\u007f]/u
 
 export type ShellError = HostProtocolError
 
-export const ShellRpcSpec = Object.freeze({
-  openExternal: shellMethodSpec(ShellOpenExternalInput, "native.invoke:Shell.openExternal"),
-  showItemInFolder: shellMethodSpec(
-    ShellShowItemInFolderInput,
-    "native.invoke:Shell.showItemInFolder"
-  ),
-  openPath: shellMethodSpec(ShellOpenPathInput, "native.invoke:Shell.openPath"),
-  trashItem: shellMethodSpec(ShellTrashItemInput, "native.invoke:Shell.trashItem")
-}) satisfies BridgeRpcSpec
-
-export type ShellRpcSpec = typeof ShellRpcSpec
+export const ShellOpenExternal = shellRpc(
+  "openExternal",
+  ShellOpenExternalInput,
+  "native.invoke:Shell.openExternal"
+)
+export const ShellShowItemInFolder = shellRpc(
+  "showItemInFolder",
+  ShellShowItemInFolderInput,
+  "native.invoke:Shell.showItemInFolder"
+)
+export const ShellOpenPath = shellRpc(
+  "openPath",
+  ShellOpenPathInput,
+  "native.invoke:Shell.openPath"
+)
+export const ShellTrashItem = shellRpc(
+  "trashItem",
+  ShellTrashItemInput,
+  "native.invoke:Shell.trashItem"
+)
 
 export const ShellRpcEvents = Object.freeze({})
 
 export type ShellRpcEvents = typeof ShellRpcEvents
 
-export const ShellRpcs: BridgeRpcGroup<"Shell", ShellRpcSpec, ShellRpcEvents> = BridgeRpc.group(
-  "Shell",
-  ShellRpcSpec,
-  ShellRpcEvents
+const ShellRpcGroup = RpcGroup.make(
+  ShellOpenExternal,
+  ShellShowItemInFolder,
+  ShellOpenPath,
+  ShellTrashItem
 )
 
-export const ShellMethodNames = Object.freeze(
-  Object.keys(ShellRpcSpec) as ReadonlyArray<keyof ShellRpcSpec>
-)
+export const ShellRpcs = BridgeRpc.fromGroup("Shell", ShellRpcGroup, ShellRpcEvents)
+
+export const ShellMethodNames = Object.freeze([
+  "openExternal",
+  "showItemInFolder",
+  "openPath",
+  "trashItem"
+] as const)
 
 export interface ShellClientApi {
   readonly openExternal: (
@@ -116,6 +132,8 @@ export const makeShellBridgeClientLayer = (
   options: BridgeClientOptions = {}
 ): Layer.Layer<ShellClient> => Layer.succeed(ShellClient)(makeShellBridgeClient(exchange, options))
 
+export type ShellRpcSpec = (typeof ShellRpcs)["spec"]
+
 export const makeHostShellBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<ShellRpcSpec>>(
   handlers: Handlers
 ): BridgeRpcLayer<"Shell", ShellRpcSpec, Handlers, ShellRpcEvents> =>
@@ -125,7 +143,14 @@ const makeShellBridgeClient = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions
 ): ShellClientApi => {
-  const client = Client({ Shell: ShellRpcs }, exchange, options).Shell
+  const client = Client({ Shell: ShellRpcs }, exchange, options).Shell as unknown as {
+    readonly openExternal: (input: ShellOpenExternalInput) => Effect.Effect<void, ShellError, never>
+    readonly showItemInFolder: (
+      input: ShellShowItemInFolderInput
+    ) => Effect.Effect<void, ShellError, never>
+    readonly openPath: (input: ShellOpenPathInput) => Effect.Effect<void, ShellError, never>
+    readonly trashItem: (input: ShellTrashItemInput) => Effect.Effect<void, ShellError, never>
+  }
 
   const shellClient: ShellClientApi = {
     openExternal: (url, options) =>
@@ -338,13 +363,16 @@ const decodeInput = (
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
 
-function shellMethodSpec<Input extends Schema.Schema<unknown>>(input: Input, permission: string) {
-  return {
-    input,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission
-  } as const
+function shellRpc<Payload extends Schema.Schema<unknown>>(
+  method: string,
+  payload: Payload,
+  capability: string
+) {
+  return Rpc.make(`Shell.${method}`, {
+    payload,
+    success: Schema.Void,
+    error: HostProtocolErrorSchema
+  }).pipe(RpcCapability({ kind: capability }))
 }
 
 const formatUnknownError = (error: unknown): string => {

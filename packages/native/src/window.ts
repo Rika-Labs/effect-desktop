@@ -1,10 +1,10 @@
 import {
   BridgeRpc,
   Client,
-  type BridgeRpcGroup,
-  type BridgeRpcSpec,
   type BridgeRpcHandlers,
   type BridgeRpcLayer,
+  type BridgeRpcResourceSpec,
+  type BridgeRpcStreamSpec,
   type BridgeClientExchange,
   type BridgeClientOptions,
   BridgeResourceHandleShape,
@@ -16,6 +16,10 @@ import {
   makeHostProtocolNotFoundError,
   makeHostWindowClient,
   makeStaleHandleError,
+  Rpc,
+  RpcCapability,
+  RpcGroup,
+  RpcSupport,
   type RpcSupportMetadata,
   type HostProtocolError
 } from "@effect-desktop/bridge"
@@ -47,96 +51,140 @@ const UnsupportedWindowMethodSupport = Object.freeze({
 }) satisfies RpcSupportMetadata
 export type WindowError = HostProtocolError
 
-export const WindowRpcSpec = Object.freeze({
-  create: {
-    input: WindowCreateInput,
-    output: WindowResource,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Window.create"
-  },
-  show: unsupportedMethodSpec(WindowHandleInput, "native.invoke:Window.show"),
-  hide: unsupportedMethodSpec(WindowHandleInput, "native.invoke:Window.hide"),
-  focus: unsupportedMethodSpec(WindowHandleInput, "native.invoke:Window.focus"),
-  close: handleMethodSpec(WindowHandleInput, "native.invoke:Window.close"),
-  setTitle: {
-    input: WindowTitleInput,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Window.setTitle",
-    support: UnsupportedWindowMethodSupport
-  },
-  setSize: {
-    input: WindowSizeInput,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Window.setSize",
-    support: UnsupportedWindowMethodSupport
-  },
-  setPosition: {
-    input: WindowPositionInput,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Window.setPosition",
-    support: UnsupportedWindowMethodSupport
-  },
-  setBackgroundColor: {
-    input: WindowBackgroundColorInput,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Window.setBackgroundColor",
-    support: UnsupportedWindowMethodSupport
-  },
-  setVibrancy: {
-    input: WindowVibrancyInput,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Window.setVibrancy",
-    support: UnsupportedWindowMethodSupport
-  },
-  setHasShadow: {
-    input: WindowShadowInput,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Window.setHasShadow",
-    support: UnsupportedWindowMethodSupport
-  },
-  enterFullScreen: unsupportedMethodSpec(WindowHandleInput, "native.invoke:Window.enterFullScreen"),
-  exitFullScreen: unsupportedMethodSpec(WindowHandleInput, "native.invoke:Window.exitFullScreen"),
-  onFullScreenChanged: {
-    input: WindowHandleInput,
-    output: BridgeRpc.Stream(WindowFullScreenChanged, HostProtocolErrorSchema),
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Window.onFullScreenChanged",
-    support: UnsupportedWindowMethodSupport
-  },
-  getScaleFactor: {
-    input: WindowHandleInput,
-    output: WindowScaleFactorOutput,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Window.getScaleFactor",
-    support: UnsupportedWindowMethodSupport
-  },
-  onScaleChanged: {
-    input: WindowHandleInput,
-    output: BridgeRpc.Stream(WindowScaleChanged, HostProtocolErrorSchema),
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Window.onScaleChanged",
-    support: UnsupportedWindowMethodSupport
-  },
-  persistState: unsupportedMethodSpec(WindowHandleInput, "native.invoke:Window.persistState")
-}) satisfies BridgeRpcSpec
-
-export type WindowRpcSpec = typeof WindowRpcSpec
-
-export const WindowRpcs: BridgeRpcGroup<"Window", WindowRpcSpec> = BridgeRpc.group(
-  "Window",
-  WindowRpcSpec,
-  Object.freeze({})
+export const WindowCreate = windowRpc(
+  "create",
+  WindowCreateInput,
+  WindowResource,
+  "native.invoke:Window.create"
+)
+export const WindowShow = unsupportedWindowRpc(
+  "show",
+  WindowHandleInput,
+  "native.invoke:Window.show"
+)
+export const WindowHide = unsupportedWindowRpc(
+  "hide",
+  WindowHandleInput,
+  "native.invoke:Window.hide"
+)
+export const WindowFocus = unsupportedWindowRpc(
+  "focus",
+  WindowHandleInput,
+  "native.invoke:Window.focus"
+)
+export const WindowClose = windowRpc(
+  "close",
+  WindowHandleInput,
+  Schema.Void,
+  "native.invoke:Window.close"
+)
+export const WindowSetTitle = unsupportedWindowRpc(
+  "setTitle",
+  WindowTitleInput,
+  "native.invoke:Window.setTitle"
+)
+export const WindowSetSize = unsupportedWindowRpc(
+  "setSize",
+  WindowSizeInput,
+  "native.invoke:Window.setSize"
+)
+export const WindowSetPosition = unsupportedWindowRpc(
+  "setPosition",
+  WindowPositionInput,
+  "native.invoke:Window.setPosition"
+)
+export const WindowSetBackgroundColor = unsupportedWindowRpc(
+  "setBackgroundColor",
+  WindowBackgroundColorInput,
+  "native.invoke:Window.setBackgroundColor"
+)
+export const WindowSetVibrancy = unsupportedWindowRpc(
+  "setVibrancy",
+  WindowVibrancyInput,
+  "native.invoke:Window.setVibrancy"
+)
+export const WindowSetHasShadow = unsupportedWindowRpc(
+  "setHasShadow",
+  WindowShadowInput,
+  "native.invoke:Window.setHasShadow"
+)
+export const WindowEnterFullScreen = unsupportedWindowRpc(
+  "enterFullScreen",
+  WindowHandleInput,
+  "native.invoke:Window.enterFullScreen"
+)
+export const WindowExitFullScreen = unsupportedWindowRpc(
+  "exitFullScreen",
+  WindowHandleInput,
+  "native.invoke:Window.exitFullScreen"
+)
+export const WindowOnFullScreenChanged = unsupportedWindowRpc(
+  "onFullScreenChanged",
+  WindowHandleInput,
+  BridgeRpc.Stream(WindowFullScreenChanged, HostProtocolErrorSchema),
+  "native.invoke:Window.onFullScreenChanged"
+)
+export const WindowGetScaleFactor = unsupportedWindowRpc(
+  "getScaleFactor",
+  WindowHandleInput,
+  WindowScaleFactorOutput,
+  "native.invoke:Window.getScaleFactor"
+)
+export const WindowOnScaleChanged = unsupportedWindowRpc(
+  "onScaleChanged",
+  WindowHandleInput,
+  BridgeRpc.Stream(WindowScaleChanged, HostProtocolErrorSchema),
+  "native.invoke:Window.onScaleChanged"
+)
+export const WindowPersistState = unsupportedWindowRpc(
+  "persistState",
+  WindowHandleInput,
+  "native.invoke:Window.persistState"
 )
 
-export const WindowMethodNames = Object.freeze(
-  Object.keys(WindowRpcSpec) as ReadonlyArray<keyof WindowRpcSpec>
+const WindowRpcEvents = Object.freeze({})
+
+const WindowRpcGroup = RpcGroup.make(
+  WindowCreate,
+  WindowShow,
+  WindowHide,
+  WindowFocus,
+  WindowClose,
+  WindowSetTitle,
+  WindowSetSize,
+  WindowSetPosition,
+  WindowSetBackgroundColor,
+  WindowSetVibrancy,
+  WindowSetHasShadow,
+  WindowEnterFullScreen,
+  WindowExitFullScreen,
+  WindowOnFullScreenChanged,
+  WindowGetScaleFactor,
+  WindowOnScaleChanged,
+  WindowPersistState
 )
+
+export const WindowRpcs = BridgeRpc.fromGroup("Window", WindowRpcGroup, WindowRpcEvents)
+
+export const WindowMethodNames = Object.freeze([
+  "create",
+  "show",
+  "hide",
+  "focus",
+  "close",
+  "setTitle",
+  "setSize",
+  "setPosition",
+  "setBackgroundColor",
+  "setVibrancy",
+  "setHasShadow",
+  "enterFullScreen",
+  "exitFullScreen",
+  "onFullScreenChanged",
+  "getScaleFactor",
+  "onScaleChanged",
+  "persistState"
+] as const)
 
 export interface WindowClientApi {
   readonly create: (input: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never>
@@ -213,6 +261,8 @@ export const makeWindowBridgeClientLayer = (
 ): Layer.Layer<WindowClient> =>
   Layer.succeed(WindowClient)(makeWindowBridgeClient(exchange, options))
 
+export type WindowRpcSpec = (typeof WindowRpcs)["spec"]
+
 export const makeHostWindowBridgeRpcLayer = (
   exchange: HostWindowExchange,
   options: HostWindowRpcOptions = {}
@@ -261,7 +311,10 @@ const makeWindowBridgeClient = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions
 ): WindowClientApi => {
-  const client = Client({ Window: WindowRpcs }, exchange, options).Window
+  const client = Client({ Window: WindowRpcs }, exchange, options).Window as unknown as {
+    readonly create: (input: WindowCreateInput) => Effect.Effect<WindowHandle, WindowError, never>
+    readonly close: (input: WindowHandleInput) => Effect.Effect<void, WindowError, never>
+  }
   const unsupported = (method: string) => Effect.fail(unsupportedError(method))
 
   const windowClient: WindowClientApi = {
@@ -313,8 +366,8 @@ const makeHostWindowHandlers = (
   const knownWindowIds = new Set<string>()
   const unsupported = (method: string) => Effect.fail(unsupportedError(method))
 
-  return {
-    create: (input) =>
+  const handlers = {
+    create: (input: WindowCreateInput) =>
       Effect.gen(function* () {
         if (input.persistState === true) {
           return yield* Effect.fail(unsupportedError("Window.create persistState"))
@@ -341,7 +394,7 @@ const makeHostWindowHandlers = (
     show: () => unsupported("Window.show"),
     hide: () => unsupported("Window.hide"),
     focus: () => unsupported("Window.focus"),
-    close: (input) =>
+    close: (input: WindowHandleInput) =>
       Effect.gen(function* () {
         const registry = yield* ResourceRegistry
         const { window } = input
@@ -392,6 +445,7 @@ const makeHostWindowHandlers = (
     onScaleChanged: () => Stream.fail(unsupportedError("Window.onScaleChanged")),
     persistState: () => unsupported("Window.persistState")
   }
+  return handlers as unknown as BridgeRpcHandlers<WindowRpcSpec>
 }
 
 export const makeUnsupportedWindowClient = (): WindowClientApi => {
@@ -461,21 +515,43 @@ const formatUnknownError = (error: unknown): string => {
   return String(error)
 }
 
-function handleMethodSpec<Input extends Schema.Schema<unknown>>(input: Input, permission: string) {
-  return {
-    input,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission
-  } as const
+type WindowRpcSuccess = Schema.Schema<unknown> | BridgeRpcResourceSpec | BridgeRpcStreamSpec
+
+function windowRpc<Payload extends Schema.Schema<unknown>, Success extends WindowRpcSuccess>(
+  method: string,
+  payload: Payload,
+  success: Success,
+  capability: string
+) {
+  return Rpc.make(`Window.${method}`, {
+    payload,
+    success: success as Schema.Schema<unknown>,
+    error: HostProtocolErrorSchema
+  }).pipe(RpcCapability({ kind: capability }))
 }
 
-function unsupportedMethodSpec<Input extends Schema.Schema<unknown>>(
-  input: Input,
-  permission: string
-) {
-  return {
-    ...handleMethodSpec(input, permission),
-    support: UnsupportedWindowMethodSupport
-  } as const
+function unsupportedWindowRpc<Payload extends Schema.Schema<unknown>>(
+  method: string,
+  payload: Payload,
+  capability: string
+): Rpc.Any
+function unsupportedWindowRpc<
+  Payload extends Schema.Schema<unknown>,
+  Success extends WindowRpcSuccess
+>(method: string, payload: Payload, success: Success, capability: string): Rpc.Any
+function unsupportedWindowRpc<
+  Payload extends Schema.Schema<unknown>,
+  Success extends WindowRpcSuccess
+>(
+  method: string,
+  payload: Payload,
+  successOrCapability: Success | string,
+  capability?: string
+): Rpc.Any {
+  const success = typeof successOrCapability === "string" ? Schema.Void : successOrCapability
+  const resolvedCapability =
+    typeof successOrCapability === "string" ? successOrCapability : capability
+  return windowRpc(method, payload, success, resolvedCapability!).pipe(
+    RpcSupport.unsupported(UnsupportedWindowMethodSupport.reason)
+  )
 }

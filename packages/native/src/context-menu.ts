@@ -12,8 +12,6 @@ import {
   Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcGroup,
-  type BridgeRpcSpec,
   type BridgeRpcHandlers,
   type BridgeRpcLayer,
   type BridgeResourceHandle,
@@ -21,6 +19,9 @@ import {
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
+  Rpc,
+  RpcCapability,
+  RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { Context, Effect, Fiber, Layer, Option, Schema, Stream } from "effect"
@@ -41,19 +42,21 @@ const StrictParseOptions = { onExcessProperty: "error" } as const
 export type ContextMenuError = HostProtocolError
 export type ContextMenuCommandBindingError = ContextMenuError | CommandRegistryError
 
-export const ContextMenuRpcSpec = Object.freeze({
-  show: contextMenuMethodSpec(ContextMenuShowInput, "native.invoke:ContextMenu.show"),
-  buildFromTemplate: contextMenuMethodSpec(
-    ContextMenuBuildFromTemplateInput,
-    "native.invoke:ContextMenu.buildFromTemplate"
-  ),
-  bindCommand: contextMenuMethodSpec(
-    ContextMenuBindCommandInput,
-    "native.invoke:ContextMenu.bindCommand"
-  )
-}) satisfies BridgeRpcSpec
-
-export type ContextMenuRpcSpec = typeof ContextMenuRpcSpec
+export const ContextMenuShow = contextMenuRpc(
+  "show",
+  ContextMenuShowInput,
+  "native.invoke:ContextMenu.show"
+)
+export const ContextMenuBuildFromTemplate = contextMenuRpc(
+  "buildFromTemplate",
+  ContextMenuBuildFromTemplateInput,
+  "native.invoke:ContextMenu.buildFromTemplate"
+)
+export const ContextMenuBindCommand = contextMenuRpc(
+  "bindCommand",
+  ContextMenuBindCommandInput,
+  "native.invoke:ContextMenu.bindCommand"
+)
 
 export const ContextMenuRpcEvents = Object.freeze({
   Activated: { payload: ContextMenuActivatedEvent }
@@ -61,15 +64,23 @@ export const ContextMenuRpcEvents = Object.freeze({
 
 export type ContextMenuRpcEvents = typeof ContextMenuRpcEvents
 
-export const ContextMenuRpcs: BridgeRpcGroup<
-  "ContextMenu",
-  ContextMenuRpcSpec,
-  ContextMenuRpcEvents
-> = BridgeRpc.group("ContextMenu", ContextMenuRpcSpec, ContextMenuRpcEvents)
-
-export const ContextMenuMethodNames = Object.freeze(
-  Object.keys(ContextMenuRpcSpec) as ReadonlyArray<keyof ContextMenuRpcSpec>
+const ContextMenuRpcGroup = RpcGroup.make(
+  ContextMenuShow,
+  ContextMenuBuildFromTemplate,
+  ContextMenuBindCommand
 )
+
+export const ContextMenuRpcs = BridgeRpc.fromGroup(
+  "ContextMenu",
+  ContextMenuRpcGroup,
+  ContextMenuRpcEvents
+)
+
+export const ContextMenuMethodNames = Object.freeze([
+  "show",
+  "buildFromTemplate",
+  "bindCommand"
+] as const)
 
 export interface ContextMenuClientApi {
   readonly show: (input: ContextMenuShowOptions) => Effect.Effect<void, ContextMenuError, never>
@@ -209,6 +220,8 @@ export const makeContextMenuBridgeClientLayer = (
 ): Layer.Layer<ContextMenuClient> =>
   Layer.succeed(ContextMenuClient)(makeContextMenuBridgeClient(exchange, options))
 
+export type ContextMenuRpcSpec = (typeof ContextMenuRpcs)["spec"]
+
 export const makeHostContextMenuBridgeRpcLayer = <
   Handlers extends BridgeRpcHandlers<ContextMenuRpcSpec>
 >(
@@ -220,7 +233,19 @@ const makeContextMenuBridgeClient = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions
 ): ContextMenuClientApi => {
-  const client = Client({ ContextMenu: ContextMenuRpcs }, exchange, options).ContextMenu
+  const client = Client({ ContextMenu: ContextMenuRpcs }, exchange, options)
+    .ContextMenu as unknown as {
+    readonly show: (input: ContextMenuShowInput) => Effect.Effect<void, ContextMenuError, never>
+    readonly buildFromTemplate: (
+      input: ContextMenuBuildFromTemplateInput
+    ) => Effect.Effect<void, ContextMenuError, never>
+    readonly bindCommand: (
+      input: ContextMenuBindCommandInput
+    ) => Effect.Effect<void, ContextMenuError, never>
+    readonly events: {
+      readonly Activated: Stream.Stream<ContextMenuActivatedEvent, ContextMenuError, never>
+    }
+  }
 
   const contextMenuClient: ContextMenuClientApi = {
     show: (input) =>
@@ -321,16 +346,16 @@ const decodeInput = (
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
 
-function contextMenuMethodSpec<Input extends Schema.Schema<unknown>>(
-  input: Input,
-  permission: string
+function contextMenuRpc<Payload extends Schema.Schema<unknown>>(
+  method: string,
+  payload: Payload,
+  capability: string
 ) {
-  return {
-    input,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission
-  } as const
+  return Rpc.make(`ContextMenu.${method}`, {
+    payload,
+    success: Schema.Void,
+    error: HostProtocolErrorSchema
+  }).pipe(RpcCapability({ kind: capability }))
 }
 
 const formatUnknownError = (error: unknown): string => {

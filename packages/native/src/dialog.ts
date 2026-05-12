@@ -3,13 +3,14 @@ import {
   Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcGroup,
-  type BridgeRpcSpec,
   type BridgeRpcHandlers,
   type BridgeRpcLayer,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
+  Rpc,
+  RpcCapability,
+  RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Schema } from "effect"
@@ -34,54 +35,58 @@ const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export type DialogError = HostProtocolError
 
-export const DialogRpcSpec = Object.freeze({
-  openFile: {
-    input: DialogOpenFileInput,
-    output: DialogOpenResult,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Dialog.openFile"
-  },
-  openDirectory: {
-    input: DialogOpenDirectoryInput,
-    output: DialogOpenResult,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Dialog.openDirectory"
-  },
-  saveFile: {
-    input: DialogSaveFileInput,
-    output: DialogSaveResult,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Dialog.saveFile"
-  },
-  message: {
-    input: DialogMessageInput,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Dialog.message"
-  },
-  confirm: {
-    input: DialogConfirmInput,
-    output: DialogConfirmResult,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Dialog.confirm"
-  }
-}) satisfies BridgeRpcSpec
-
-export type DialogRpcSpec = typeof DialogRpcSpec
+export const DialogOpenFile = dialogRpc(
+  "openFile",
+  DialogOpenFileInput,
+  DialogOpenResult,
+  "native.invoke:Dialog.openFile"
+)
+export const DialogOpenDirectory = dialogRpc(
+  "openDirectory",
+  DialogOpenDirectoryInput,
+  DialogOpenResult,
+  "native.invoke:Dialog.openDirectory"
+)
+export const DialogSaveFile = dialogRpc(
+  "saveFile",
+  DialogSaveFileInput,
+  DialogSaveResult,
+  "native.invoke:Dialog.saveFile"
+)
+export const DialogMessage = dialogRpc(
+  "message",
+  DialogMessageInput,
+  Schema.Void,
+  "native.invoke:Dialog.message"
+)
+export const DialogConfirm = dialogRpc(
+  "confirm",
+  DialogConfirmInput,
+  DialogConfirmResult,
+  "native.invoke:Dialog.confirm"
+)
 
 export const DialogRpcEvents = Object.freeze({})
 
 export type DialogRpcEvents = typeof DialogRpcEvents
 
-export const DialogRpcs: BridgeRpcGroup<"Dialog", DialogRpcSpec, DialogRpcEvents> = BridgeRpc.group(
-  "Dialog",
-  DialogRpcSpec,
-  DialogRpcEvents
+const DialogRpcGroup = RpcGroup.make(
+  DialogOpenFile,
+  DialogOpenDirectory,
+  DialogSaveFile,
+  DialogMessage,
+  DialogConfirm
 )
 
-export const DialogMethodNames = Object.freeze(
-  Object.keys(DialogRpcSpec) as ReadonlyArray<keyof DialogRpcSpec>
-)
+export const DialogRpcs = BridgeRpc.fromGroup("Dialog", DialogRpcGroup, DialogRpcEvents)
+
+export const DialogMethodNames = Object.freeze([
+  "openFile",
+  "openDirectory",
+  "saveFile",
+  "message",
+  "confirm"
+] as const)
 
 export interface DialogClientApi {
   readonly openFile: (
@@ -138,6 +143,8 @@ export const makeDialogBridgeClientLayer = (
 ): Layer.Layer<DialogClient> =>
   Layer.succeed(DialogClient)(makeDialogBridgeClient(exchange, options))
 
+export type DialogRpcSpec = (typeof DialogRpcs)["spec"]
+
 export const makeHostDialogBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<DialogRpcSpec>>(
   handlers: Handlers
 ): BridgeRpcLayer<"Dialog", DialogRpcSpec, Handlers, DialogRpcEvents> =>
@@ -160,7 +167,21 @@ const makeDialogBridgeClient = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions
 ): DialogClientApi => {
-  const client = Client({ Dialog: DialogRpcs }, exchange, options).Dialog
+  const client = Client({ Dialog: DialogRpcs }, exchange, options).Dialog as unknown as {
+    readonly openFile: (
+      input: DialogOpenFileInput
+    ) => Effect.Effect<DialogOpenResult, DialogError, never>
+    readonly openDirectory: (
+      input: DialogOpenDirectoryInput
+    ) => Effect.Effect<DialogOpenResult, DialogError, never>
+    readonly saveFile: (
+      input: DialogSaveFileInput
+    ) => Effect.Effect<DialogSaveResult, DialogError, never>
+    readonly message: (input: DialogMessageInput) => Effect.Effect<void, DialogError, never>
+    readonly confirm: (
+      input: DialogConfirmInput
+    ) => Effect.Effect<DialogConfirmResult, DialogError, never>
+  }
 
   const dialogClient: DialogClientApi = {
     openFile: (input = {}) =>
@@ -258,6 +279,19 @@ const decodeInput = (
     >,
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
+
+function dialogRpc<Payload extends Schema.Schema<unknown>, Success extends Schema.Schema<unknown>>(
+  method: string,
+  payload: Payload,
+  success: Success,
+  capability: string
+) {
+  return Rpc.make(`Dialog.${method}`, {
+    payload,
+    success,
+    error: HostProtocolErrorSchema
+  }).pipe(RpcCapability({ kind: capability }))
+}
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {

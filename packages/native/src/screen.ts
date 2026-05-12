@@ -3,10 +3,11 @@ import {
   Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcGroup,
-  type BridgeRpcSpec,
   type BridgeRpcHandlers,
   type BridgeRpcLayer,
+  Rpc,
+  RpcCapability,
+  RpcGroup,
   makeHostProtocolInvalidOutputError,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
@@ -25,45 +26,49 @@ import {
 
 export type ScreenError = HostProtocolError
 
-export const ScreenRpcSpec = Object.freeze({
-  getDisplays: screenMethodSpec(
-    Schema.Void,
-    ScreenDisplaysResult,
-    "native.invoke:Screen.getDisplays"
-  ),
-  getPrimaryDisplay: screenMethodSpec(
-    Schema.Void,
-    ScreenDisplay,
-    "native.invoke:Screen.getPrimaryDisplay"
-  ),
-  getPointerPoint: screenMethodSpec(
-    Schema.Void,
-    ScreenPoint,
-    "native.invoke:Screen.getPointerPoint"
-  ),
-  isSupported: {
-    input: ScreenIsSupportedInput,
-    output: ScreenSupportedResult,
-    error: HostProtocolErrorSchema,
-    permission: "none"
-  }
-}) satisfies BridgeRpcSpec
+export const ScreenGetDisplays = Rpc.make("Screen.getDisplays", {
+  payload: Schema.Void,
+  success: ScreenDisplaysResult,
+  error: HostProtocolErrorSchema
+}).pipe(RpcCapability({ kind: "native.invoke:Screen.getDisplays" }))
 
-export type ScreenRpcSpec = typeof ScreenRpcSpec
+export const ScreenGetPrimaryDisplay = Rpc.make("Screen.getPrimaryDisplay", {
+  payload: Schema.Void,
+  success: ScreenDisplay,
+  error: HostProtocolErrorSchema
+}).pipe(RpcCapability({ kind: "native.invoke:Screen.getPrimaryDisplay" }))
+
+export const ScreenGetPointerPoint = Rpc.make("Screen.getPointerPoint", {
+  payload: Schema.Void,
+  success: ScreenPoint,
+  error: HostProtocolErrorSchema
+}).pipe(RpcCapability({ kind: "native.invoke:Screen.getPointerPoint" }))
+
+export const ScreenIsSupported = Rpc.make("Screen.isSupported", {
+  payload: ScreenIsSupportedInput,
+  success: ScreenSupportedResult,
+  error: HostProtocolErrorSchema
+}).pipe(RpcCapability({ kind: "none" }))
 
 export const ScreenRpcEvents = Object.freeze({})
 
 export type ScreenRpcEvents = typeof ScreenRpcEvents
 
-export const ScreenRpcs: BridgeRpcGroup<"Screen", ScreenRpcSpec, ScreenRpcEvents> = BridgeRpc.group(
-  "Screen",
-  ScreenRpcSpec,
-  ScreenRpcEvents
+const ScreenRpcGroup = RpcGroup.make(
+  ScreenGetDisplays,
+  ScreenGetPrimaryDisplay,
+  ScreenGetPointerPoint,
+  ScreenIsSupported
 )
 
-export const ScreenMethodNames = Object.freeze(
-  Object.keys(ScreenRpcSpec) as ReadonlyArray<keyof ScreenRpcSpec>
-)
+export const ScreenRpcs = BridgeRpc.fromGroup("Screen", ScreenRpcGroup, ScreenRpcEvents)
+
+export const ScreenMethodNames = Object.freeze([
+  "getDisplays",
+  "getPrimaryDisplay",
+  "getPointerPoint",
+  "isSupported"
+] as const)
 
 export interface ScreenClientApi {
   readonly getDisplays: () => Effect.Effect<ScreenDisplaysResult, ScreenError, never>
@@ -114,6 +119,8 @@ export const makeScreenBridgeClientLayer = (
 ): Layer.Layer<ScreenClient> =>
   Layer.succeed(ScreenClient)(makeScreenBridgeClient(exchange, options))
 
+export type ScreenRpcSpec = (typeof ScreenRpcs)["spec"]
+
 export const makeHostScreenBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<ScreenRpcSpec>>(
   handlers: Handlers
 ): BridgeRpcLayer<"Screen", ScreenRpcSpec, Handlers, ScreenRpcEvents> =>
@@ -123,7 +130,14 @@ const makeScreenBridgeClient = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions
 ): ScreenClientApi => {
-  const client = Client({ Screen: ScreenRpcs }, exchange, options).Screen
+  const client = Client({ Screen: ScreenRpcs }, exchange, options).Screen as unknown as {
+    readonly getDisplays: () => Effect.Effect<ScreenDisplaysResult, ScreenError, never>
+    readonly getPrimaryDisplay: () => Effect.Effect<ScreenDisplay, ScreenError, never>
+    readonly getPointerPoint: () => Effect.Effect<ScreenPoint, ScreenError, never>
+    readonly isSupported: (
+      input: ScreenIsSupportedInput
+    ) => Effect.Effect<ScreenSupportedResult, ScreenError, never>
+  }
   return Object.freeze({
     getDisplays: () => client.getDisplays().pipe(Effect.flatMap(validateScreenDisplays)),
     getPrimaryDisplay: () => client.getPrimaryDisplay(),
@@ -174,10 +188,3 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
     operation: method,
     recoverable: false
   })
-
-function screenMethodSpec<
-  Input extends Schema.Schema<unknown>,
-  Output extends Schema.Schema<unknown>
->(input: Input, output: Output, permission: string) {
-  return { input, output, error: HostProtocolErrorSchema, permission } as const
-}

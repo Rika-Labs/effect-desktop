@@ -3,13 +3,14 @@ import {
   Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcGroup,
-  type BridgeRpcSpec,
   type BridgeRpcHandlers,
   type BridgeRpcLayer,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
+  Rpc,
+  RpcCapability,
+  RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
@@ -36,58 +37,34 @@ import {
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
-export const AppRpcSpec = Object.freeze({
-  getInfo: {
-    input: Schema.Void,
-    output: AppInfo,
-    error: HostProtocolErrorSchema,
-    permission: "none"
-  },
-  getCommandLine: {
-    input: Schema.Void,
-    output: AppCommandLine,
-    error: HostProtocolErrorSchema,
-    permission: "none"
-  },
-  quit: {
-    input: AppQuitInput,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:App.quit"
-  },
-  restart: {
-    input: AppRestartInput,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:App.restart"
-  },
-  focus: {
-    input: Schema.Void,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:App.focus"
-  },
-  requestSingleInstanceLock: {
-    input: Schema.Void,
-    output: AppSingleInstanceOutput,
-    error: HostProtocolErrorSchema,
-    permission: "none"
-  },
-  setOpenAtLogin: {
-    input: AppOpenAtLoginInput,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:App.setOpenAtLogin"
-  },
-  registerProtocol: {
-    input: AppProtocolInput,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:App.registerProtocol"
-  }
-}) satisfies BridgeRpcSpec
-
-export type AppRpcSpec = typeof AppRpcSpec
+export const AppGetInfo = appRpc("getInfo", Schema.Void, AppInfo, "none")
+export const AppGetCommandLine = appRpc("getCommandLine", Schema.Void, AppCommandLine, "none")
+export const AppQuit = appRpc("quit", AppQuitInput, Schema.Void, "native.invoke:App.quit")
+export const AppRestart = appRpc(
+  "restart",
+  AppRestartInput,
+  Schema.Void,
+  "native.invoke:App.restart"
+)
+export const AppFocus = appRpc("focus", Schema.Void, Schema.Void, "native.invoke:App.focus")
+export const AppRequestSingleInstanceLock = appRpc(
+  "requestSingleInstanceLock",
+  Schema.Void,
+  AppSingleInstanceOutput,
+  "none"
+)
+export const AppSetOpenAtLogin = appRpc(
+  "setOpenAtLogin",
+  AppOpenAtLoginInput,
+  Schema.Void,
+  "native.invoke:App.setOpenAtLogin"
+)
+export const AppRegisterProtocol = appRpc(
+  "registerProtocol",
+  AppProtocolInput,
+  Schema.Void,
+  "native.invoke:App.registerProtocol"
+)
 
 export const AppRpcEvents = Object.freeze({
   onSecondInstance: { payload: AppSecondInstanceEvent },
@@ -98,15 +75,29 @@ export const AppRpcEvents = Object.freeze({
 
 export type AppRpcEvents = typeof AppRpcEvents
 
-export const AppRpcs: BridgeRpcGroup<"App", AppRpcSpec, AppRpcEvents> = BridgeRpc.group(
-  "App",
-  AppRpcSpec,
-  AppRpcEvents
+const AppRpcGroup = RpcGroup.make(
+  AppGetInfo,
+  AppGetCommandLine,
+  AppQuit,
+  AppRestart,
+  AppFocus,
+  AppRequestSingleInstanceLock,
+  AppSetOpenAtLogin,
+  AppRegisterProtocol
 )
 
-export const AppMethodNames = Object.freeze(
-  Object.keys(AppRpcSpec) as ReadonlyArray<keyof AppRpcSpec>
-)
+export const AppRpcs = BridgeRpc.fromGroup("App", AppRpcGroup, AppRpcEvents)
+
+export const AppMethodNames = Object.freeze([
+  "getInfo",
+  "getCommandLine",
+  "quit",
+  "restart",
+  "focus",
+  "requestSingleInstanceLock",
+  "setOpenAtLogin",
+  "registerProtocol"
+] as const)
 
 export type AppError = HostProtocolError
 
@@ -154,6 +145,8 @@ export const makeAppBridgeClientLayer = (
   options: BridgeClientOptions = {}
 ): Layer.Layer<AppClient> => Layer.succeed(AppClient)(makeAppBridgeClient(exchange, options))
 
+export type AppRpcSpec = (typeof AppRpcs)["spec"]
+
 export const makeHostAppBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<AppRpcSpec>>(
   handlers: Handlers
 ): BridgeRpcLayer<"App", AppRpcSpec, Handlers, AppRpcEvents> => BridgeRpc.layer(AppRpcs)(handlers)
@@ -181,7 +174,26 @@ const makeAppBridgeClient = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions
 ): AppClientApi => {
-  const client = Client({ App: AppRpcs }, exchange, options).App
+  const client = Client({ App: AppRpcs }, exchange, options).App as unknown as {
+    readonly getInfo: () => Effect.Effect<AppInfo, AppError, never>
+    readonly getCommandLine: () => Effect.Effect<AppCommandLine, AppError, never>
+    readonly quit: (input: AppQuitInput) => Effect.Effect<void, AppError, never>
+    readonly restart: (input: AppRestartInput) => Effect.Effect<void, AppError, never>
+    readonly focus: () => Effect.Effect<void, AppError, never>
+    readonly requestSingleInstanceLock: () => Effect.Effect<
+      AppSingleInstanceResult,
+      AppError,
+      never
+    >
+    readonly setOpenAtLogin: (input: AppOpenAtLoginInput) => Effect.Effect<void, AppError, never>
+    readonly registerProtocol: (input: AppProtocolInput) => Effect.Effect<void, AppError, never>
+    readonly events: {
+      readonly onSecondInstance: Stream.Stream<AppSecondInstanceEvent, AppError, never>
+      readonly onOpenFile: Stream.Stream<AppOpenFileEvent, AppError, never>
+      readonly onOpenUrl: Stream.Stream<AppOpenUrlEvent, AppError, never>
+      readonly onBeforeQuit: Stream.Stream<AppBeforeQuitEvent, AppError, never>
+    }
+  }
 
   const appClient: AppClientApi = {
     getInfo: () => client.getInfo(),
@@ -286,6 +298,19 @@ const decodeInput = (
     >,
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
+
+function appRpc<Payload extends Schema.Schema<unknown>, Success extends Schema.Schema<unknown>>(
+  method: string,
+  payload: Payload,
+  success: Success,
+  capability: string
+) {
+  return Rpc.make(`App.${method}`, {
+    payload,
+    success,
+    error: HostProtocolErrorSchema
+  }).pipe(RpcCapability({ kind: capability }))
+}
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {

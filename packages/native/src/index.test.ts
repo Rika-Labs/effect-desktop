@@ -3040,7 +3040,14 @@ test("unsupported Notification client reports deferred host methods as Effect va
 test("PathRpcs declares the Phase 7 Path method surface", () => {
   expect(PathRpcs.tag).toBe("Path")
   expect([...PathMethodNames]).toEqual(expectedPathMethods)
-  expect(Object.keys(PathRpcs.spec)).toEqual(expectedPathMethods)
+  expect(Array.from(PathRpcs.requests.keys())).toEqual([
+    "Path.appData",
+    "Path.cache",
+    "Path.logs",
+    "Path.temp",
+    "Path.home",
+    "Path.downloads"
+  ])
   expect(Object.keys(PathRpcs.events)).toEqual([])
 })
 
@@ -3231,7 +3238,12 @@ test("Path bridge client rejects relative canonical paths from host as InvalidOu
 test("ProtocolRpcs declares the Phase 8 Protocol method surface", () => {
   expect(ProtocolRpcs.tag).toBe("Protocol")
   expect([...ProtocolMethodNames]).toEqual(expectedProtocolMethods)
-  expect(Object.keys(ProtocolRpcs.spec)).toEqual(expectedProtocolMethods)
+  expect(Array.from(ProtocolRpcs.requests.keys())).toEqual([
+    "Protocol.registerAppProtocol",
+    "Protocol.serveAsset",
+    "Protocol.serveRoute",
+    "Protocol.deny"
+  ])
   expect(Object.keys(ProtocolRpcs.events)).toEqual([])
 })
 
@@ -4106,7 +4118,12 @@ test("unsupported Shell client reports deferred host methods as Effect values", 
 test("ScreenRpcs declares the Phase 8 Screen method surface", () => {
   expect(ScreenRpcs.tag).toBe("Screen")
   expect([...ScreenMethodNames]).toEqual(expectedScreenMethods)
-  expect(Object.keys(ScreenRpcs.spec)).toEqual(expectedScreenMethods)
+  expect(Array.from(ScreenRpcs.requests.keys())).toEqual([
+    "Screen.getDisplays",
+    "Screen.getPrimaryDisplay",
+    "Screen.getPointerPoint",
+    "Screen.isSupported"
+  ])
   expect(Object.keys(ScreenRpcs.events)).toEqual([])
 })
 
@@ -4350,7 +4367,7 @@ test("unsupported SystemAppearance client fails reads and event stream as Unsupp
 test("PowerMonitorRpcs declares the Phase 8 event-only surface", () => {
   expect(PowerMonitorRpcs.tag).toBe("PowerMonitor")
   expect([...PowerMonitorMethodNames]).toEqual(expectedPowerMonitorMethods)
-  expect(Object.keys(PowerMonitorRpcs.spec)).toEqual(expectedPowerMonitorMethods)
+  expect(Array.from(PowerMonitorRpcs.requests.keys())).toEqual(["PowerMonitor.isSupported"])
   expect(Object.keys(PowerMonitorRpcs.events)).toEqual([
     "Suspend",
     "Resume",
@@ -5262,7 +5279,7 @@ test("WindowRpcs declares the Phase 5 Window method surface", () => {
   expect(WindowRpcs.tag).toBe("Window")
   expect([...WindowMethodNames]).toEqual(expectedWindowMethods)
   expect(Object.keys(WindowRpcs.spec)).toEqual(expectedWindowMethods)
-  expect(WindowRpcs.spec.create.output).toMatchObject({
+  expect(WindowRpcs.spec["create"]?.output).toMatchObject({
     _tag: "BridgeRpcResourceSpec",
     kind: "window",
     state: "open"

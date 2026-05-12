@@ -12,8 +12,6 @@ import {
   Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcGroup,
-  type BridgeRpcSpec,
   type BridgeRpcHandlers,
   type BridgeRpcLayer,
   BridgeResourceHandleShape,
@@ -21,6 +19,9 @@ import {
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
+  Rpc,
+  RpcCapability,
+  RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { Context, Effect, Fiber, Layer, Schema, Stream } from "effect"
@@ -43,36 +44,36 @@ export type GlobalShortcutError = HostProtocolError
 export type GlobalShortcutWindowHandle = WindowHandle
 export type GlobalShortcutCommandBindingError = GlobalShortcutError | CommandRegistryError
 
-export const GlobalShortcutRpcSpec = Object.freeze({
-  register: shortcutMethodSpec(
-    GlobalShortcutRegisterInput,
-    "native.invoke:GlobalShortcut.register"
-  ),
-  unregister: shortcutMethodSpec(
-    GlobalShortcutAcceleratorInput,
-    "native.invoke:GlobalShortcut.unregister"
-  ),
-  unregisterAll: {
-    input: Schema.Void,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:GlobalShortcut.unregisterAll"
-  },
-  isRegistered: {
-    input: GlobalShortcutAcceleratorInput,
-    output: GlobalShortcutRegisteredResult,
-    error: HostProtocolErrorSchema,
-    permission: "none"
-  },
-  isSupported: {
-    input: Schema.Void,
-    output: GlobalShortcutSupportedOutput,
-    error: HostProtocolErrorSchema,
-    permission: "none"
-  }
-}) satisfies BridgeRpcSpec
-
-export type GlobalShortcutRpcSpec = typeof GlobalShortcutRpcSpec
+export const GlobalShortcutRegister = shortcutRpc(
+  "register",
+  GlobalShortcutRegisterInput,
+  Schema.Void,
+  "native.invoke:GlobalShortcut.register"
+)
+export const GlobalShortcutUnregister = shortcutRpc(
+  "unregister",
+  GlobalShortcutAcceleratorInput,
+  Schema.Void,
+  "native.invoke:GlobalShortcut.unregister"
+)
+export const GlobalShortcutUnregisterAll = shortcutRpc(
+  "unregisterAll",
+  Schema.Void,
+  Schema.Void,
+  "native.invoke:GlobalShortcut.unregisterAll"
+)
+export const GlobalShortcutIsRegistered = shortcutRpc(
+  "isRegistered",
+  GlobalShortcutAcceleratorInput,
+  GlobalShortcutRegisteredResult,
+  "none"
+)
+export const GlobalShortcutIsSupported = shortcutRpc(
+  "isSupported",
+  Schema.Void,
+  GlobalShortcutSupportedOutput,
+  "none"
+)
 
 export const GlobalShortcutRpcEvents = Object.freeze({
   Pressed: { payload: GlobalShortcutPressedEvent }
@@ -80,15 +81,27 @@ export const GlobalShortcutRpcEvents = Object.freeze({
 
 export type GlobalShortcutRpcEvents = typeof GlobalShortcutRpcEvents
 
-export const GlobalShortcutRpcs: BridgeRpcGroup<
-  "GlobalShortcut",
-  GlobalShortcutRpcSpec,
-  GlobalShortcutRpcEvents
-> = BridgeRpc.group("GlobalShortcut", GlobalShortcutRpcSpec, GlobalShortcutRpcEvents)
-
-export const GlobalShortcutMethodNames = Object.freeze(
-  Object.keys(GlobalShortcutRpcSpec) as ReadonlyArray<keyof GlobalShortcutRpcSpec>
+const GlobalShortcutRpcGroup = RpcGroup.make(
+  GlobalShortcutRegister,
+  GlobalShortcutUnregister,
+  GlobalShortcutUnregisterAll,
+  GlobalShortcutIsRegistered,
+  GlobalShortcutIsSupported
 )
+
+export const GlobalShortcutRpcs = BridgeRpc.fromGroup(
+  "GlobalShortcut",
+  GlobalShortcutRpcGroup,
+  GlobalShortcutRpcEvents
+)
+
+export const GlobalShortcutMethodNames = Object.freeze([
+  "register",
+  "unregister",
+  "unregisterAll",
+  "isRegistered",
+  "isSupported"
+] as const)
 
 export interface GlobalShortcutClientApi {
   readonly register: (
@@ -283,6 +296,8 @@ export const makeGlobalShortcutBridgeClientLayer = (
 ): Layer.Layer<GlobalShortcutClient> =>
   Layer.succeed(GlobalShortcutClient)(makeGlobalShortcutBridgeClient(exchange, options))
 
+export type GlobalShortcutRpcSpec = (typeof GlobalShortcutRpcs)["spec"]
+
 export const makeHostGlobalShortcutBridgeRpcLayer = <
   Handlers extends BridgeRpcHandlers<GlobalShortcutRpcSpec>
 >(
@@ -294,7 +309,27 @@ const makeGlobalShortcutBridgeClient = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions
 ): GlobalShortcutClientApi => {
-  const client = Client({ GlobalShortcut: GlobalShortcutRpcs }, exchange, options).GlobalShortcut
+  const client = Client({ GlobalShortcut: GlobalShortcutRpcs }, exchange, options)
+    .GlobalShortcut as unknown as {
+    readonly register: (
+      input: GlobalShortcutRegisterInput
+    ) => Effect.Effect<void, GlobalShortcutError, never>
+    readonly unregister: (
+      input: GlobalShortcutAcceleratorInput
+    ) => Effect.Effect<void, GlobalShortcutError, never>
+    readonly unregisterAll: () => Effect.Effect<void, GlobalShortcutError, never>
+    readonly isRegistered: (
+      input: GlobalShortcutAcceleratorInput
+    ) => Effect.Effect<GlobalShortcutRegisteredResult, GlobalShortcutError, never>
+    readonly isSupported: () => Effect.Effect<
+      GlobalShortcutSupportedResult,
+      GlobalShortcutError,
+      never
+    >
+    readonly events: {
+      readonly Pressed: Stream.Stream<GlobalShortcutPressedEvent, GlobalShortcutError, never>
+    }
+  }
   return Object.freeze({
     register: (accelerator, registrarWindow) =>
       decodeGlobalShortcutRegisterInput({
@@ -441,11 +476,15 @@ const decodeInput = (
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
 
-function shortcutMethodSpec<Input extends Schema.Schema<unknown>>(
-  input: Input,
-  permission: string
-) {
-  return { input, output: Schema.Void, error: HostProtocolErrorSchema, permission } as const
+function shortcutRpc<
+  Payload extends Schema.Schema<unknown>,
+  Success extends Schema.Schema<unknown>
+>(method: string, payload: Payload, success: Success, capability: string) {
+  return Rpc.make(`GlobalShortcut.${method}`, {
+    payload,
+    success,
+    error: HostProtocolErrorSchema
+  }).pipe(RpcCapability({ kind: capability }))
 }
 
 const formatUnknownError = (error: unknown): string => {

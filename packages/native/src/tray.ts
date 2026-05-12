@@ -3,14 +3,16 @@ import {
   Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcGroup,
-  type BridgeRpcSpec,
   type BridgeRpcHandlers,
   type BridgeRpcLayer,
+  type BridgeRpcResourceSpec,
   BridgeResourceHandleShape,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
+  Rpc,
+  RpcCapability,
+  RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
@@ -33,26 +35,37 @@ const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export type TrayError = HostProtocolError
 
-export const TrayRpcSpec = Object.freeze({
-  create: {
-    input: TrayCreateInput,
-    output: TrayResource,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Tray.create"
-  },
-  setIcon: trayMethodSpec(TraySetIconInput, "native.invoke:Tray.setIcon"),
-  setTooltip: trayMethodSpec(TraySetTooltipInput, "native.invoke:Tray.setTooltip"),
-  setMenu: trayMethodSpec(TraySetMenuInput, "native.invoke:Tray.setMenu"),
-  destroy: trayMethodSpec(TrayDestroyInput, "native.invoke:Tray.destroy"),
-  isSupported: {
-    input: Schema.Void,
-    output: TraySupportedResult,
-    error: HostProtocolErrorSchema,
-    permission: "none"
-  }
-}) satisfies BridgeRpcSpec
-
-export type TrayRpcSpec = typeof TrayRpcSpec
+export const TrayCreate = trayRpc(
+  "create",
+  TrayCreateInput,
+  TrayResource,
+  "native.invoke:Tray.create"
+)
+export const TraySetIcon = trayRpc(
+  "setIcon",
+  TraySetIconInput,
+  Schema.Void,
+  "native.invoke:Tray.setIcon"
+)
+export const TraySetTooltip = trayRpc(
+  "setTooltip",
+  TraySetTooltipInput,
+  Schema.Void,
+  "native.invoke:Tray.setTooltip"
+)
+export const TraySetMenu = trayRpc(
+  "setMenu",
+  TraySetMenuInput,
+  Schema.Void,
+  "native.invoke:Tray.setMenu"
+)
+export const TrayDestroy = trayRpc(
+  "destroy",
+  TrayDestroyInput,
+  Schema.Void,
+  "native.invoke:Tray.destroy"
+)
+export const TrayIsSupported = trayRpc("isSupported", Schema.Void, TraySupportedResult, "none")
 
 export const TrayRpcEvents = Object.freeze({
   Activated: { payload: TrayActivatedEvent }
@@ -60,15 +73,25 @@ export const TrayRpcEvents = Object.freeze({
 
 export type TrayRpcEvents = typeof TrayRpcEvents
 
-export const TrayRpcs: BridgeRpcGroup<"Tray", TrayRpcSpec, TrayRpcEvents> = BridgeRpc.group(
-  "Tray",
-  TrayRpcSpec,
-  TrayRpcEvents
+const TrayRpcGroup = RpcGroup.make(
+  TrayCreate,
+  TraySetIcon,
+  TraySetTooltip,
+  TraySetMenu,
+  TrayDestroy,
+  TrayIsSupported
 )
 
-export const TrayMethodNames = Object.freeze(
-  Object.keys(TrayRpcSpec) as ReadonlyArray<keyof TrayRpcSpec>
-)
+export const TrayRpcs = BridgeRpc.fromGroup("Tray", TrayRpcGroup, TrayRpcEvents)
+
+export const TrayMethodNames = Object.freeze([
+  "create",
+  "setIcon",
+  "setTooltip",
+  "setMenu",
+  "destroy",
+  "isSupported"
+] as const)
 
 export interface TrayClientApi {
   readonly create: (input: TrayCreateOptions) => Effect.Effect<TrayHandle, TrayError, never>
@@ -119,6 +142,8 @@ export const makeTrayBridgeClientLayer = (
   options: BridgeClientOptions = {}
 ): Layer.Layer<TrayClient> => Layer.succeed(TrayClient)(makeTrayBridgeClient(exchange, options))
 
+export type TrayRpcSpec = (typeof TrayRpcs)["spec"]
+
 export const makeHostTrayBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<TrayRpcSpec>>(
   handlers: Handlers
 ): BridgeRpcLayer<"Tray", TrayRpcSpec, Handlers, TrayRpcEvents> =>
@@ -128,7 +153,17 @@ const makeTrayBridgeClient = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions
 ): TrayClientApi => {
-  const client = Client({ Tray: TrayRpcs }, exchange, options).Tray
+  const client = Client({ Tray: TrayRpcs }, exchange, options).Tray as unknown as {
+    readonly create: (input: TrayCreateInput) => Effect.Effect<TrayHandle, TrayError, never>
+    readonly setIcon: (input: TraySetIconInput) => Effect.Effect<void, TrayError, never>
+    readonly setTooltip: (input: TraySetTooltipInput) => Effect.Effect<void, TrayError, never>
+    readonly setMenu: (input: TraySetMenuInput) => Effect.Effect<void, TrayError, never>
+    readonly destroy: (input: TrayDestroyInput) => Effect.Effect<void, TrayError, never>
+    readonly isSupported: () => Effect.Effect<TraySupportedResult, TrayError, never>
+    readonly events: {
+      readonly Activated: Stream.Stream<TrayActivatedEvent, TrayError, never>
+    }
+  }
 
   const trayClient: TrayClientApi = {
     create: (input) => decodeTrayCreateInput(input).pipe(Effect.flatMap(client.create)),
@@ -258,13 +293,15 @@ const decodeInput = (
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
 
-function trayMethodSpec<Input extends Schema.Schema<unknown>>(input: Input, permission: string) {
-  return {
-    input,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission
-  } as const
+function trayRpc<
+  Payload extends Schema.Schema<unknown>,
+  Success extends Schema.Schema<unknown> | BridgeRpcResourceSpec
+>(method: string, payload: Payload, success: Success, capability: string) {
+  return Rpc.make(`Tray.${method}`, {
+    payload,
+    success: success as Schema.Schema<unknown>,
+    error: HostProtocolErrorSchema
+  }).pipe(RpcCapability({ kind: capability }))
 }
 
 const formatUnknownError = (error: unknown): string => {

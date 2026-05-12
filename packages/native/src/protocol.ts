@@ -3,13 +3,14 @@ import {
   Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcGroup,
-  type BridgeRpcSpec,
   type BridgeRpcHandlers,
   type BridgeRpcLayer,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidArgumentError,
+  Rpc,
+  RpcCapability,
+  RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Schema } from "effect"
@@ -30,28 +31,42 @@ import {
 const StrictParseOptions = { onExcessProperty: "error" } as const
 export type ProtocolError = HostProtocolError
 
-export const ProtocolRpcSpec = Object.freeze({
-  registerAppProtocol: protocolMethodSpec(
-    ProtocolRegisterAppProtocolInput,
-    "native.invoke:Protocol.registerAppProtocol"
-  ),
-  serveAsset: protocolMethodSpec(ProtocolServeAssetInput, "native.invoke:Protocol.serveAsset"),
-  serveRoute: protocolMethodSpec(ProtocolServeRouteInput, "native.invoke:Protocol.serveRoute"),
-  deny: protocolMethodSpec(ProtocolDenyInput, "native.invoke:Protocol.deny")
-}) satisfies BridgeRpcSpec
-
-export type ProtocolRpcSpec = typeof ProtocolRpcSpec
+export const ProtocolRegisterAppProtocol = protocolRpc(
+  "registerAppProtocol",
+  ProtocolRegisterAppProtocolInput,
+  "native.invoke:Protocol.registerAppProtocol"
+)
+export const ProtocolServeAsset = protocolRpc(
+  "serveAsset",
+  ProtocolServeAssetInput,
+  "native.invoke:Protocol.serveAsset"
+)
+export const ProtocolServeRoute = protocolRpc(
+  "serveRoute",
+  ProtocolServeRouteInput,
+  "native.invoke:Protocol.serveRoute"
+)
+export const ProtocolDeny = protocolRpc("deny", ProtocolDenyInput, "native.invoke:Protocol.deny")
 
 export const ProtocolRpcEvents = Object.freeze({})
 
 export type ProtocolRpcEvents = typeof ProtocolRpcEvents
 
-export const ProtocolRpcs: BridgeRpcGroup<"Protocol", ProtocolRpcSpec, ProtocolRpcEvents> =
-  BridgeRpc.group("Protocol", ProtocolRpcSpec, ProtocolRpcEvents)
-
-export const ProtocolMethodNames = Object.freeze(
-  Object.keys(ProtocolRpcSpec) as ReadonlyArray<keyof ProtocolRpcSpec>
+const ProtocolRpcGroup = RpcGroup.make(
+  ProtocolRegisterAppProtocol,
+  ProtocolServeAsset,
+  ProtocolServeRoute,
+  ProtocolDeny
 )
+
+export const ProtocolRpcs = BridgeRpc.fromGroup("Protocol", ProtocolRpcGroup, ProtocolRpcEvents)
+
+export const ProtocolMethodNames = Object.freeze([
+  "registerAppProtocol",
+  "serveAsset",
+  "serveRoute",
+  "deny"
+] as const)
 
 export interface ProtocolClientApi {
   readonly registerAppProtocol: (
@@ -100,6 +115,8 @@ export const makeProtocolBridgeClientLayer = (
 ): Layer.Layer<ProtocolClient> =>
   Layer.succeed(ProtocolClient)(makeProtocolBridgeClient(exchange, options))
 
+export type ProtocolRpcSpec = (typeof ProtocolRpcs)["spec"]
+
 export const makeHostProtocolBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<ProtocolRpcSpec>>(
   handlers: Handlers
 ): BridgeRpcLayer<"Protocol", ProtocolRpcSpec, Handlers, ProtocolRpcEvents> =>
@@ -109,7 +126,8 @@ const makeProtocolBridgeClient = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions
 ): ProtocolClientApi => {
-  const client = Client({ Protocol: ProtocolRpcs }, exchange, options).Protocol
+  const client = Client({ Protocol: ProtocolRpcs }, exchange, options)
+    .Protocol as unknown as ProtocolClientApi
   return Object.freeze({
     registerAppProtocol: (input) =>
       decodeProtocolRegisterAppProtocolInput(input).pipe(
@@ -303,11 +321,16 @@ const decodeInput = (
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
 
-function protocolMethodSpec<Input extends Schema.Schema<unknown>>(
+function protocolRpc<Input extends Schema.Schema<unknown>>(
+  method: (typeof ProtocolMethodNames)[number],
   input: Input,
   permission: string
 ) {
-  return { input, output: Schema.Void, error: HostProtocolErrorSchema, permission } as const
+  return Rpc.make(`Protocol.${method}`, {
+    payload: input,
+    success: Schema.Void,
+    error: HostProtocolErrorSchema
+  }).pipe(RpcCapability({ kind: permission }))
 }
 
 const formatUnknownError = (error: unknown): string => {

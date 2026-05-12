@@ -3,12 +3,13 @@ import {
   Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcGroup,
-  type BridgeRpcSpec,
   type BridgeRpcHandlers,
   type BridgeRpcLayer,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
+  Rpc,
+  RpcCapability,
+  RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
@@ -27,36 +28,36 @@ import {
 
 export type SystemAppearanceError = HostProtocolError
 
-export const SystemAppearanceRpcSpec = Object.freeze({
-  getAppearance: systemAppearanceMethodSpec(
-    Schema.Void,
-    SystemAppearanceResult,
-    "native.invoke:SystemAppearance.getAppearance"
-  ),
-  getAccentColor: systemAppearanceMethodSpec(
-    Schema.Void,
-    SystemAppearanceAccentColorResult,
-    "native.invoke:SystemAppearance.getAccentColor"
-  ),
-  getReducedMotion: systemAppearanceMethodSpec(
-    Schema.Void,
-    SystemAppearanceBooleanResult,
-    "native.invoke:SystemAppearance.getReducedMotion"
-  ),
-  getReducedTransparency: systemAppearanceMethodSpec(
-    Schema.Void,
-    SystemAppearanceBooleanResult,
-    "native.invoke:SystemAppearance.getReducedTransparency"
-  ),
-  isSupported: {
-    input: SystemAppearanceIsSupportedInput,
-    output: SystemAppearanceSupportedResult,
-    error: HostProtocolErrorSchema,
-    permission: "none"
-  }
-}) satisfies BridgeRpcSpec
-
-export type SystemAppearanceRpcSpec = typeof SystemAppearanceRpcSpec
+export const SystemAppearanceGetAppearance = systemAppearanceRpc(
+  "getAppearance",
+  Schema.Void,
+  SystemAppearanceResult,
+  "native.invoke:SystemAppearance.getAppearance"
+)
+export const SystemAppearanceGetAccentColor = systemAppearanceRpc(
+  "getAccentColor",
+  Schema.Void,
+  SystemAppearanceAccentColorResult,
+  "native.invoke:SystemAppearance.getAccentColor"
+)
+export const SystemAppearanceGetReducedMotion = systemAppearanceRpc(
+  "getReducedMotion",
+  Schema.Void,
+  SystemAppearanceBooleanResult,
+  "native.invoke:SystemAppearance.getReducedMotion"
+)
+export const SystemAppearanceGetReducedTransparency = systemAppearanceRpc(
+  "getReducedTransparency",
+  Schema.Void,
+  SystemAppearanceBooleanResult,
+  "native.invoke:SystemAppearance.getReducedTransparency"
+)
+export const SystemAppearanceIsSupported = systemAppearanceRpc(
+  "isSupported",
+  SystemAppearanceIsSupportedInput,
+  SystemAppearanceSupportedResult,
+  "none"
+)
 
 export const SystemAppearanceRpcEvents = Object.freeze({
   AppearanceChanged: { payload: SystemAppearanceChangedEvent }
@@ -64,15 +65,27 @@ export const SystemAppearanceRpcEvents = Object.freeze({
 
 export type SystemAppearanceRpcEvents = typeof SystemAppearanceRpcEvents
 
-export const SystemAppearanceRpcs: BridgeRpcGroup<
-  "SystemAppearance",
-  SystemAppearanceRpcSpec,
-  SystemAppearanceRpcEvents
-> = BridgeRpc.group("SystemAppearance", SystemAppearanceRpcSpec, SystemAppearanceRpcEvents)
-
-export const SystemAppearanceMethodNames = Object.freeze(
-  Object.keys(SystemAppearanceRpcSpec) as ReadonlyArray<keyof SystemAppearanceRpcSpec>
+const SystemAppearanceRpcGroup = RpcGroup.make(
+  SystemAppearanceGetAppearance,
+  SystemAppearanceGetAccentColor,
+  SystemAppearanceGetReducedMotion,
+  SystemAppearanceGetReducedTransparency,
+  SystemAppearanceIsSupported
 )
+
+export const SystemAppearanceRpcs = BridgeRpc.fromGroup(
+  "SystemAppearance",
+  SystemAppearanceRpcGroup,
+  SystemAppearanceRpcEvents
+)
+
+export const SystemAppearanceMethodNames = Object.freeze([
+  "getAppearance",
+  "getAccentColor",
+  "getReducedMotion",
+  "getReducedTransparency",
+  "isSupported"
+] as const)
 
 export interface SystemAppearanceClientApi {
   readonly getAppearance: () => Effect.Effect<SystemAppearanceResult, SystemAppearanceError, never>
@@ -162,6 +175,8 @@ export const makeSystemAppearanceBridgeClientLayer = (
 ): Layer.Layer<SystemAppearanceClient> =>
   Layer.succeed(SystemAppearanceClient)(makeSystemAppearanceBridgeClient(exchange, options))
 
+export type SystemAppearanceRpcSpec = (typeof SystemAppearanceRpcs)["spec"]
+
 export const makeHostSystemAppearanceBridgeRpcLayer = <
   Handlers extends BridgeRpcHandlers<SystemAppearanceRpcSpec>
 >(
@@ -177,11 +192,39 @@ const makeSystemAppearanceBridgeClient = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions
 ): SystemAppearanceClientApi => {
-  const client = Client(
-    { SystemAppearance: SystemAppearanceRpcs },
-    exchange,
-    options
-  ).SystemAppearance
+  const client = Client({ SystemAppearance: SystemAppearanceRpcs }, exchange, options)
+    .SystemAppearance as unknown as {
+    readonly getAppearance: () => Effect.Effect<
+      SystemAppearanceResult,
+      SystemAppearanceError,
+      never
+    >
+    readonly getAccentColor: () => Effect.Effect<
+      SystemAppearanceAccentColorResult,
+      SystemAppearanceError,
+      never
+    >
+    readonly getReducedMotion: () => Effect.Effect<
+      SystemAppearanceBooleanResult,
+      SystemAppearanceError,
+      never
+    >
+    readonly getReducedTransparency: () => Effect.Effect<
+      SystemAppearanceBooleanResult,
+      SystemAppearanceError,
+      never
+    >
+    readonly isSupported: (
+      input: SystemAppearanceIsSupportedInput
+    ) => Effect.Effect<SystemAppearanceSupportedResult, SystemAppearanceError, never>
+    readonly events: {
+      readonly AppearanceChanged: Stream.Stream<
+        SystemAppearanceChangedEvent,
+        SystemAppearanceError,
+        never
+      >
+    }
+  }
   return Object.freeze({
     getAppearance: () => client.getAppearance(),
     getAccentColor: () => client.getAccentColor(),
@@ -216,9 +259,13 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
     recoverable: false
   })
 
-function systemAppearanceMethodSpec<
-  Input extends Schema.Schema<unknown>,
-  Output extends Schema.Schema<unknown>
->(input: Input, output: Output, permission: string) {
-  return { input, output, error: HostProtocolErrorSchema, permission } as const
+function systemAppearanceRpc<
+  Payload extends Schema.Schema<unknown>,
+  Success extends Schema.Schema<unknown>
+>(method: string, payload: Payload, success: Success, capability: string) {
+  return Rpc.make(`SystemAppearance.${method}`, {
+    payload,
+    success,
+    error: HostProtocolErrorSchema
+  }).pipe(RpcCapability({ kind: capability }))
 }

@@ -3,15 +3,17 @@ import {
   Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcGroup,
-  type BridgeRpcSpec,
   type BridgeRpcHandlers,
   type BridgeRpcLayer,
+  type BridgeRpcResourceSpec,
   BridgeResourceHandleShape,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeHostProtocolInvalidOutputError,
   makeHostProtocolInvalidArgumentError,
+  Rpc,
+  RpcCapability,
+  RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
@@ -40,38 +42,66 @@ import { isSupportedImageHeader } from "./contracts/image.js"
 const StrictParseOptions = { onExcessProperty: "error" } as const
 type WebViewError = HostProtocolError
 
-export const WebViewRpcSpec = Object.freeze({
-  create: {
-    input: WebViewCreateInput,
-    output: WebViewResource,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:WebView.create"
-  },
-  loadRoute: webviewMethodSpec(WebViewLoadRouteInput, "native.invoke:WebView.loadRoute"),
-  loadUrl: webviewMethodSpec(WebViewLoadUrlInput, "native.invoke:WebView.loadUrl"),
-  reload: webviewMethodSpec(WebViewHandleInput, "native.invoke:WebView.reload"),
-  goBack: webviewMethodSpec(WebViewHandleInput, "native.invoke:WebView.goBack"),
-  goForward: webviewMethodSpec(WebViewHandleInput, "native.invoke:WebView.goForward"),
-  captureScreenshot: {
-    input: WebViewHandleInput,
-    output: WebViewScreenshot,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:WebView.captureScreenshot"
-  },
-  setNavigationPolicy: webviewMethodSpec(
-    WebViewSetNavigationPolicyInput,
-    "native.invoke:WebView.setNavigationPolicy"
-  ),
-  capability: {
-    input: WebViewCapabilityInput,
-    output: WebViewCapabilityResult,
-    error: HostProtocolErrorSchema,
-    permission: "none"
-  },
-  destroy: webviewMethodSpec(WebViewHandleInput, "native.invoke:WebView.destroy")
-}) satisfies BridgeRpcSpec
-
-export type WebViewRpcSpec = typeof WebViewRpcSpec
+export const WebViewCreate = webviewRpc(
+  "create",
+  WebViewCreateInput,
+  WebViewResource,
+  "native.invoke:WebView.create"
+)
+export const WebViewLoadRoute = webviewRpc(
+  "loadRoute",
+  WebViewLoadRouteInput,
+  Schema.Void,
+  "native.invoke:WebView.loadRoute"
+)
+export const WebViewLoadUrl = webviewRpc(
+  "loadUrl",
+  WebViewLoadUrlInput,
+  Schema.Void,
+  "native.invoke:WebView.loadUrl"
+)
+export const WebViewReload = webviewRpc(
+  "reload",
+  WebViewHandleInput,
+  Schema.Void,
+  "native.invoke:WebView.reload"
+)
+export const WebViewGoBack = webviewRpc(
+  "goBack",
+  WebViewHandleInput,
+  Schema.Void,
+  "native.invoke:WebView.goBack"
+)
+export const WebViewGoForward = webviewRpc(
+  "goForward",
+  WebViewHandleInput,
+  Schema.Void,
+  "native.invoke:WebView.goForward"
+)
+export const WebViewCaptureScreenshot = webviewRpc(
+  "captureScreenshot",
+  WebViewHandleInput,
+  WebViewScreenshot,
+  "native.invoke:WebView.captureScreenshot"
+)
+export const WebViewSetNavigationPolicy = webviewRpc(
+  "setNavigationPolicy",
+  WebViewSetNavigationPolicyInput,
+  Schema.Void,
+  "native.invoke:WebView.setNavigationPolicy"
+)
+export const WebViewCapability = webviewRpc(
+  "capability",
+  WebViewCapabilityInput,
+  WebViewCapabilityResult,
+  "none"
+)
+export const WebViewDestroy = webviewRpc(
+  "destroy",
+  WebViewHandleInput,
+  Schema.Void,
+  "native.invoke:WebView.destroy"
+)
 
 export const WebViewRpcEvents = Object.freeze({
   NavigationBlocked: { payload: WebViewNavigationBlockedEvent }
@@ -79,12 +109,33 @@ export const WebViewRpcEvents = Object.freeze({
 
 export type WebViewRpcEvents = typeof WebViewRpcEvents
 
-export const WebViewRpcs: BridgeRpcGroup<"WebView", WebViewRpcSpec, WebViewRpcEvents> =
-  BridgeRpc.group("WebView", WebViewRpcSpec, WebViewRpcEvents)
-
-export const WebViewMethodNames = Object.freeze(
-  Object.keys(WebViewRpcSpec) as ReadonlyArray<keyof WebViewRpcSpec>
+const WebViewRpcGroup = RpcGroup.make(
+  WebViewCreate,
+  WebViewLoadRoute,
+  WebViewLoadUrl,
+  WebViewReload,
+  WebViewGoBack,
+  WebViewGoForward,
+  WebViewCaptureScreenshot,
+  WebViewSetNavigationPolicy,
+  WebViewCapability,
+  WebViewDestroy
 )
+
+export const WebViewRpcs = BridgeRpc.fromGroup("WebView", WebViewRpcGroup, WebViewRpcEvents)
+
+export const WebViewMethodNames = Object.freeze([
+  "create",
+  "loadRoute",
+  "loadUrl",
+  "reload",
+  "goBack",
+  "goForward",
+  "captureScreenshot",
+  "setNavigationPolicy",
+  "capability",
+  "destroy"
+] as const)
 
 export interface WebViewClientApi {
   readonly create: (
@@ -156,6 +207,8 @@ export const makeWebViewBridgeClientLayer = (
 ): Layer.Layer<WebViewClient> =>
   Layer.succeed(WebViewClient)(makeWebViewBridgeClient(exchange, options))
 
+export type WebViewRpcSpec = (typeof WebViewRpcs)["spec"]
+
 export const makeHostWebViewBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<WebViewRpcSpec>>(
   handlers: Handlers
 ): BridgeRpcLayer<"WebView", WebViewRpcSpec, Handlers, WebViewRpcEvents> =>
@@ -199,7 +252,29 @@ const makeWebViewBridgeClient = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions
 ): WebViewClientApi => {
-  const client = Client({ WebView: WebViewRpcs }, exchange, options).WebView
+  const client = Client({ WebView: WebViewRpcs }, exchange, options).WebView as unknown as {
+    readonly create: (
+      input: WebViewCreateInput
+    ) => Effect.Effect<WebViewHandle, WebViewError, never>
+    readonly loadRoute: (input: WebViewLoadRouteInput) => Effect.Effect<void, WebViewError, never>
+    readonly loadUrl: (input: WebViewLoadUrlInput) => Effect.Effect<void, WebViewError, never>
+    readonly reload: (input: WebViewHandleInput) => Effect.Effect<void, WebViewError, never>
+    readonly goBack: (input: WebViewHandleInput) => Effect.Effect<void, WebViewError, never>
+    readonly goForward: (input: WebViewHandleInput) => Effect.Effect<void, WebViewError, never>
+    readonly captureScreenshot: (
+      input: WebViewHandleInput
+    ) => Effect.Effect<WebViewScreenshot, WebViewError, never>
+    readonly setNavigationPolicy: (
+      input: WebViewSetNavigationPolicyInput
+    ) => Effect.Effect<void, WebViewError, never>
+    readonly capability: (
+      input: WebViewCapabilityInput
+    ) => Effect.Effect<WebViewCapabilityResult, WebViewError, never>
+    readonly destroy: (input: WebViewHandleInput) => Effect.Effect<void, WebViewError, never>
+    readonly events: {
+      readonly NavigationBlocked: Stream.Stream<WebViewNavigationBlockedEvent, WebViewError, never>
+    }
+  }
 
   const webViewClient: WebViewClientApi = {
     create: (input) => decodeWebViewCreateInput(input).pipe(Effect.flatMap(client.create)),
@@ -374,13 +449,15 @@ const decodeInput = (
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
 
-function webviewMethodSpec<Input extends Schema.Schema<unknown>>(input: Input, permission: string) {
-  return {
-    input,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission
-  } as const
+function webviewRpc<
+  Payload extends Schema.Schema<unknown>,
+  Success extends Schema.Schema<unknown> | BridgeRpcResourceSpec
+>(method: string, payload: Payload, success: Success, capability: string) {
+  return Rpc.make(`WebView.${method}`, {
+    payload,
+    success: success as Schema.Schema<unknown>,
+    error: HostProtocolErrorSchema
+  }).pipe(RpcCapability({ kind: capability }))
 }
 
 const currentWebViewPlatform = (): WebViewPlatform => {
