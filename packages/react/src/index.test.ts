@@ -13,9 +13,9 @@ import {
 import {
   Desktop,
   DuplicateDesktopRpcNameError,
-  MissingDesktopRpcClientError,
-  type DesktopRendererRpcTransport
+  MissingDesktopRpcClientError
 } from "@effect-desktop/core"
+import type { DesktopRendererRpcTransport } from "@effect-desktop/core/runtime/renderer-rpc-client"
 import { AsyncResult } from "effect/unstable/reactivity"
 import { Cause, Effect, Exit, Fiber, Option, Queue, Schema, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"

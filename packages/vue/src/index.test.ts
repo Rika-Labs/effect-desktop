@@ -7,11 +7,8 @@ import {
   type HostProtocolEnvelope,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import {
-  Desktop,
-  MissingDesktopRpcClientError,
-  type DesktopRendererRpcTransport
-} from "@effect-desktop/core"
+import { Desktop, MissingDesktopRpcClientError } from "@effect-desktop/core"
+import type { DesktopRendererRpcTransport } from "@effect-desktop/core/runtime/renderer-rpc-client"
 import { Cause, Deferred, Effect, Exit, Fiber, Queue, Schema, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { createApp, effectScope } from "vue"

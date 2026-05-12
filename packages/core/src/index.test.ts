@@ -19,6 +19,23 @@ test("public barrel exports the ResourceRegistry factory", async () => {
   expect(core.makeCommandRegistry).toBeFunction()
 })
 
+test("public barrel keeps low-level runtime plumbing behind subpaths", async () => {
+  const core = await import("./index.js")
+
+  expect("FrameDecoder" in core).toBe(false)
+  expect("encodeFrame" in core).toBe(false)
+  expect("layerStdioSocket" in core).toBe(false)
+  expect("makeDesktopRendererRpcRuntime" in core).toBe(false)
+  expect("describeRpcs" in core).toBe(false)
+})
+
+test("runtime transport subpath exposes framed transport helpers", async () => {
+  const transport = await import("@effect-desktop/core/runtime/transport")
+
+  expect(transport.FrameDecoder).toBeFunction()
+  expect(transport.encodeFrame).toBeFunction()
+})
+
 test("public Desktop facade exposes Rpc metadata helpers", async () => {
   const core = await import("./index.js")
 

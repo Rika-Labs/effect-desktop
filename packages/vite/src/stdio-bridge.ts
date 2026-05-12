@@ -1,4 +1,4 @@
-import { encodeFrame, FrameDecoder } from "@effect-desktop/core"
+import { encodeFrame, FrameDecoder } from "@effect-desktop/core/runtime/transport"
 import type { RuntimeChild } from "./child-process.js"
 
 export interface StdioBridge {

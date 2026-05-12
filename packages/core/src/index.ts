@@ -53,19 +53,9 @@ export * from "./runtime/permission-approval-workflow.js"
 export * from "./runtime/secrets.js"
 export * from "./runtime/settings.js"
 export * from "./runtime/sqlite.js"
-export * from "./runtime/transport.js"
-export * from "./runtime/stdio-socket.js"
-export * from "./runtime/postmessage-socket.js"
 export * from "./runtime/telemetry.js"
-export * from "./runtime/telemetry-otel.js"
-export * from "./runtime/framework-metrics.js"
-export * from "./runtime/window-state.js"
-export * from "./runtime/window-supervisor.js"
 export * from "./runtime/desktop-errors.js"
 export * from "./runtime/reactivity.js"
-export * from "./runtime/rpc-descriptors.js"
-export * from "./runtime/renderer-rpc-client.js"
-export * from "./runtime/rpc-group-metadata.js"
 export {
   DesktopApp,
   app as desktopApp,
@@ -86,9 +76,6 @@ export {
   type WindowSpec
 } from "./runtime/desktop-app.js"
 export { DesktopConfigError as DesktopSpineConfigError } from "./runtime/desktop-app.js"
-export * from "./runtime/workflows/auto-save.js"
-export * from "./runtime/workflows/backup.js"
-export * from "./runtime/workflows/restore.js"
 
 export interface DesktopAppOptions {
   readonly workflows?: readonly WorkflowLayer[]

@@ -4,16 +4,6 @@
   "entrypoint": "src/index.ts",
   "symbols": [
     {
-      "name": "ActiveFibers",
-      "kind": "value",
-      "signature": "const ActiveFibers: Metric.Gauge<number>"
-    },
-    {
-      "name": "ActiveWindows",
-      "kind": "value",
-      "signature": "const ActiveWindows: Metric.Gauge<number>"
-    },
-    {
       "name": "Activity",
       "kind": "value",
       "signature": "import type { NonEmptyReadonlyArray } from \"../../Array.ts\"; import * as Cause from \"../../Cause.ts\"; import * as Context from \"../../Context.ts\"; import * as Effect from \"../../Effect.ts\"; import * as Schedule from \"../../Schedule.ts\"; import * as Schema from \"../../Schema.ts\"; import type { Scope } from \"../../Scope.ts\"; import type * as Types from \"../../Types.ts\"; import type { WorkflowEngine, WorkflowInstance } from \"./WorkflowEngine.ts\"; declare const TypeId = \"~effect/workflow/Activity\"; /** * @since 4.0.0 * @category Models */ export interface Activity<Success extends Schema.Top = Schema.Void, Error extends Schema.Top = Schema.Never, R = never> extends Effect.Effect<Success[\"Type\"], Error[\"Type\"], Success[\"DecodingServices\"] | Error[\"DecodingServices\"] | R | WorkflowEngine | WorkflowInstance> { readonly [TypeId]: typeof TypeId; readonly name: string; readonly successSchema: Success; readonly errorSchema: Error; readonly exitSchema: Schema.Exit<Success, Error, Schema.Defect>; readonly annotations: Context.Context<never>; annotate<I, S>(key: Context.Key<I, S>, value: S): Activity<Success, Error, R>; annotateMerge<I>(annotations: Context.Context<I>): Activity<Success, Error, R>; readonly execute: Effect.Effect<Success[\"Type\"], Error[\"Type\"], Success[\"DecodingServices\"] | Success[\"EncodingServices\"] | Error[\"DecodingServices\"] | Error[\"EncodingServices\"] | R | Scope | WorkflowEngine | WorkflowInstance>; readonly executeEncoded: Effect.Effect<unknown, unknown, Success[\"DecodingServices\"] | Success[\"EncodingServices\"] | Error[\"DecodingServices\"] | Error[\"EncodingServices\"] | R | Scope | WorkflowEngine | WorkflowInstance>; } /** * @since 4.0.0 * @category Models */ export interface Any { readonly [TypeId]: typeof TypeId; readonly name: string; readonly executeEncoded: Effect.Effect<any, any, any>; readonly annotations: Context.Context<never>; } /** * @since 4.0.0 * @category Models */ export interface AnyWithProps { readonly [TypeId]: typeof TypeId; readonly name: string; readonly successSchema: Schema.Top; readonly errorSchema: Schema.Top; readonly executeEncoded: Effect.Effect<any, any, any>; } /** * @since 4.0.0 * @category Constructors */ export declare const make: <R, Success extends Schema.Top = Schema.Void, Error extends Schema.Top = Schema.Never>(options: { readonly name: string; readonly success?: Success | undefined; readonly error?: Error | undefined; readonly execute: Effect.Effect<Success[\"Type\"], Error[\"Type\"], R>; readonly interruptRetryPolicy?: Schedule.Schedule<any, Cause.Cause<unknown>> | undefined; readonly annotations?: Context.Context<never> | undefined; }) => Activity<Success, Error, Exclude<R, WorkflowInstance | WorkflowEngine | Scope>>; /** * @since 4.0.0 * @category Error handling */ export declare const retry: { /** * @since 4.0.0 * @category Error handling */ <E, O extends Types.NoExcessProperties<Omit<Effect.Retry.Options<E>, \"schedule\">, O>>(options: O): <A, R>(self: Effect.Effect<A, E, R>) => Effect.Retry.Return<R, E, A, O>; /** * @since 4.0.0 * @category Error handling */ <A, E, R, O extends Types.NoExcessProperties<Omit<Effect.Retry.Options<E>, \"schedule\">, O>>(self: Effect.Effect<A, E, R>, options: O): Effect.Retry.Return<R, E, A, O>; }; /** * @since 4.0.0 * @category Attempts */ export declare const CurrentAttempt: Context.Reference<number>; /** * @since 4.0.0 * @category Idempotency */ export declare const idempotencyKey: (name: string, options?: { readonly includeAttempt?: boolean | undefined; } | undefined) => Effect.Effect<string, never, WorkflowInstance>; /** * @since 4.0.0 * @category Racing */ export declare const raceAll: <const Activities extends NonEmptyReadonlyArray<Any>>(name: string, activities: Activities) => Effect.Effect<Activities[number] extends Activity<infer _A, infer _E, infer _R> ? _A[\"Type\"] : never, Activities[number] extends Activity<infer _A, infer _E_1, infer _R_1> ? _E_1[\"Type\"] : never, (Activities[number] extends Activity<infer Success, infer Error, infer R> ? Success[\"DecodingServices\"] | Error[\"DecodingServices\"] | R : never) | WorkflowEngine | WorkflowInstance>; export {}; //# sourceMappingURL=Activity.d.ts.map"
@@ -27,16 +17,6 @@
       "name": "AnyDesktopRpcLayer",
       "kind": "interface",
       "signature": "export interface AnyDesktopRpcLayer { readonly _tag: \"DesktopRpcsLayer\" readonly group: RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> } readonly layer: Layer.Layer<unknown, unknown, unknown> }"
-    },
-    {
-      "name": "APP_EXPORT_ENV",
-      "kind": "value",
-      "signature": "const APP_EXPORT_ENV: \"EFFECT_DESKTOP_APP_EXPORT\""
-    },
-    {
-      "name": "APP_MODULE_ENV",
-      "kind": "value",
-      "signature": "const APP_MODULE_ENV: \"EFFECT_DESKTOP_APP_MODULE\""
     },
     {
       "name": "approvalAuditEvent",
@@ -169,61 +149,6 @@
       "signature": "const AuditReactivityLayer: Layer.Layer<never, never, EventLog.Registry>"
     },
     {
-      "name": "AutoSaveError",
-      "kind": "class",
-      "signature": "export class AutoSaveError extends Data.TaggedError(\"AutoSaveError\")<{ readonly target: string readonly message: string readonly cause: unknown }> {}"
-    },
-    {
-      "name": "AutoSavePort",
-      "kind": "interface",
-      "signature": "export interface AutoSavePort { readonly flush: (target: string) => Effect.Effect<void, AutoSaveError, never> }"
-    },
-    {
-      "name": "AutoSaveService",
-      "kind": "class",
-      "signature": "export class AutoSaveService extends Context.Service<AutoSaveService, AutoSavePort>()( \"AutoSaveService\" ) {}"
-    },
-    {
-      "name": "AutoSaveWorkflow",
-      "kind": "value",
-      "signature": "const AutoSaveWorkflow: Workflow.Workflow<\"AutoSave\", Schema.Struct<{ target: Schema.NonEmptyString; }>, Schema.Void, Schema.TaggedStruct<\"AutoSaveError\", { readonly target: Schema.String; readonly message: Schema.String; readonly cause: Schema.Unknown; }>>"
-    },
-    {
-      "name": "AutoSaveWorkflowLayer",
-      "kind": "value",
-      "signature": "const AutoSaveWorkflowLayer: Layer.Layer<never, never, WorkflowEngine.WorkflowEngine | AutoSaveService>"
-    },
-    {
-      "name": "BackupConfig",
-      "kind": "interface",
-      "signature": "export interface BackupConfig { readonly userDataDir: string readonly outputDir: string }"
-    },
-    {
-      "name": "BackupConfigService",
-      "kind": "class",
-      "signature": "export class BackupConfigService extends Context.Service<BackupConfigService, BackupConfig>()( \"BackupConfigService\" ) {}"
-    },
-    {
-      "name": "BackupError",
-      "kind": "class",
-      "signature": "export class BackupError extends Data.TaggedError(\"BackupError\")<{ readonly phase: BackupPhase readonly message: string readonly cause: unknown }> {}"
-    },
-    {
-      "name": "BackupResult",
-      "kind": "type",
-      "signature": "export type BackupResult = typeof BackupResultSchema.Type"
-    },
-    {
-      "name": "BackupWorkflow",
-      "kind": "value",
-      "signature": "const BackupWorkflow: Workflow.Workflow<\"Backup\", Schema.Struct<{ label: Schema.NonEmptyString; }>, Schema.Struct<{ readonly archivePath: Schema.NonEmptyString; readonly dbBytes: Schema.Number; }>, Schema.TaggedStruct<\"BackupError\", { readonly phase: Schema.Literals<readonly [\"validate\", \"snapshot\", \"database\", \"archive\", \"cleanup\"]>; readonly message: Schema.String; readonly cause: Schema.Unknown; }>>"
-    },
-    {
-      "name": "BackupWorkflowLayer",
-      "kind": "value",
-      "signature": "const BackupWorkflowLayer: Layer.Layer<never, never, FileSystem | WorkflowEngine.WorkflowEngine | SqliteClient | BackupConfigService>"
-    },
-    {
       "name": "BridgeCallRegistry",
       "kind": "interface",
       "signature": "export interface BridgeCallRegistry { readonly record: (state: BridgeCallState) => Effect.Effect<void, never, never> readonly list: () => Effect.Effect<readonly BridgeCallState[], never, never> readonly observe: () => Stream.Stream<readonly BridgeCallState[], never, never> }"
@@ -252,11 +177,6 @@
       "name": "BunWorkerAdapter",
       "kind": "value",
       "signature": "const BunWorkerAdapter: WorkerAdapter"
-    },
-    {
-      "name": "CacheHitRate",
-      "kind": "value",
-      "signature": "const CacheHitRate: Metric.Frequency"
     },
     {
       "name": "CapabilityAnnotation",
@@ -354,26 +274,6 @@
       "signature": "export class CommandSnapshot extends Schema.Class<CommandSnapshot>(\"CommandSnapshot\")({ id: NonEmptyString, capability: Schema.Unknown, ownerScope: NonEmptyString, invocationCount: NonNegativeInt, lastInvocation: Schema.optionalKey(CommandInvocationRecord), lastError: Schema.optionalKey(CommandInvocationRecord) }) {}"
     },
     {
-      "name": "createBunStdioTransport",
-      "kind": "value",
-      "signature": "const createBunStdioTransport: (options?: FramedTransportOptions) => FramedTransport"
-    },
-    {
-      "name": "createFramedTransport",
-      "kind": "value",
-      "signature": "const createFramedTransport: (input: AsyncIterable<Uint8Array>, write: (chunk: Uint8Array) => Promise<void> | void, options?: FramedTransportOptions) => FramedTransport"
-    },
-    {
-      "name": "defaultWindowStatePath",
-      "kind": "value",
-      "signature": "const defaultWindowStatePath: (bundleId: string) => string"
-    },
-    {
-      "name": "describeRpcs",
-      "kind": "value",
-      "signature": "const describeRpcs: <Group extends RpcGroupWithRequests>(app: DesktopRpcDescriptorSource, group: Group) => readonly RpcEndpointDescriptor[]"
-    },
-    {
       "name": "Desktop",
       "kind": "value",
       "signature": "const Desktop: Readonly<{ RedactionFilter: Readonly<{ redact: <A>(record: A, options?: import(\"@effect-desktop/bridge\").RedactionFilterOptions) => A; redactedValue: \"[REDACTED]\"; defaultPattern: RegExp; }>; RpcCapability: <Capability extends import(\"@effect-desktop/bridge\").RpcCapabilityMetadata>(capability: Capability) => <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcCapability<R, Capability>; RpcEndpoint: Readonly<{ query: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcEndpointKind<R, \"query\">; mutation: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcEndpointKind<R, \"mutation\">; }>; RpcSupport: Readonly<{ supported: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcSupport<R, { readonly status: \"supported\"; }>; unsupported: (reason: string) => <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcSupport<R, { readonly status: \"unsupported\"; readonly reason: string; }>; }>; app: { (): Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>; (options: DesktopAppOptionsWithPermissions): Layer.Layer<WorkflowEngine.WorkflowEngine, never, PermissionRegistry>; <RIn = never, E = never>(config: DesktopConfig<RIn, E>): Layer.Layer<DesktopApp, DesktopConfigError | E, RIn>; }; launch: (layer: Layer.Layer<DesktopApp, DesktopConfigError, never>) => Effect.Effect<never, DesktopConfigError, never>; make: (config: import(\"./runtime/desktop-app.js\").DesktopMakeConfig) => import(\"./runtime/desktop-app.js\").DesktopAppDefinition<never, never>; manifest: <E, R>(definition: import(\"./runtime/desktop-app.js\").DesktopAppDefinition<E, R>) => import(\"./runtime/desktop-app.js\").DesktopAppManifest; provide: { <Provided, E, R>(layer: Layer.Layer<Provided, E, R>): <AppE, AppR>(definition: import(\"./runtime/desktop-app.js\").DesktopAppDefinition<AppE, AppR>) => import(\"./runtime/desktop-app.js\").DesktopAppDefinition<E | AppE, R | AppR>; <Rpcs extends import(\"effect/unstable/rpc/Rpc\").Any, E, R>(rpcLayer: import(\"./runtime/desktop-app.js\").DesktopRpcLayer<Rpcs, E, R>): <AppE, AppR>(definition: import(\"./runtime/desktop-app.js\").DesktopAppDefinition<AppE, AppR>) => import(\"./runtime/desktop-app.js\").DesktopAppDefinition<E | AppE, R | AppR>; }; Rpcs: Readonly<{ layer: <Rpcs extends import(\"effect/unstable/rpc/Rpc\").Any, E, R>(group: import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<Rpcs>, layer: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").ToHandler<Rpcs>, E, R>) => import(\"./runtime/desktop-app.js\").DesktopRpcLayer<Rpcs, E, R>; }>; toLayer: <E, R>(definition: import(\"./runtime/desktop-app.js\").DesktopAppDefinition<E, R>) => Layer.Layer<DesktopApp, DesktopConfigError | E, R>; describeRpcs: <Group extends import(\"./runtime/rpc-group-metadata.js\").RpcGroupWithRequests>(app: import(\"./runtime/rpc-descriptors.js\").DesktopRpcDescriptorSource, group: Group) => readonly import(\"./runtime/rpc-descriptors.js\").RpcEndpointDescriptor[]; }>"
@@ -449,41 +349,6 @@
       "signature": "export interface DesktopPublicErrorFields { readonly code: string readonly category: DesktopPublicErrorCategory readonly summary: string readonly details: Readonly<Record<string, unknown>> readonly actor: string readonly remediation: string readonly docsUrl: string }"
     },
     {
-      "name": "DesktopRendererRpcClient",
-      "kind": "type",
-      "signature": "export type DesktopRendererRpcClient = Readonly<Record<string, DesktopRendererRpcClientMethod>>"
-    },
-    {
-      "name": "DesktopRendererRpcClientMap",
-      "kind": "type",
-      "signature": "export type DesktopRendererRpcClientMap = ReadonlyMap<RpcGroup.Any, DesktopRendererRpcClient>"
-    },
-    {
-      "name": "DesktopRendererRpcClientMethod",
-      "kind": "type",
-      "signature": "export type DesktopRendererRpcClientMethod = ( input: unknown ) => Effect.Effect<unknown, unknown, never> | Stream.Stream<unknown, unknown, never>"
-    },
-    {
-      "name": "DesktopRendererRpcRuntime",
-      "kind": "interface",
-      "signature": "export interface DesktopRendererRpcRuntime { readonly clients: DesktopRendererRpcClientMap readonly dispose: () => Effect.Effect<void, never, never> }"
-    },
-    {
-      "name": "DesktopRendererRpcRuntimeOptions",
-      "kind": "interface",
-      "signature": "export interface DesktopRendererRpcRuntimeOptions extends DesktopProtocolOptions { readonly framework: DesktopFramework readonly transport?: DesktopRendererRpcTransport | undefined }"
-    },
-    {
-      "name": "DesktopRendererRpcTransport",
-      "kind": "type",
-      "signature": "export type DesktopRendererRpcTransport = DesktopTransportSend & DesktopTransportRun"
-    },
-    {
-      "name": "DesktopRpcDescriptorSource",
-      "kind": "type",
-      "signature": "export type DesktopRpcDescriptorSource = | Pick<DesktopAppDefinition<unknown, unknown>, \"rpcLayers\"> | Pick<DesktopAppManifest, \"rpcGroups\">"
-    },
-    {
       "name": "DesktopRpcGroupDescriptor",
       "kind": "interface",
       "signature": "export interface DesktopRpcGroupDescriptor { readonly _tag: \"DesktopRpcGroup\" readonly group: RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> } }"
@@ -522,11 +387,6 @@
       "name": "emitAuditEvent",
       "kind": "value",
       "signature": "const emitAuditEvent: (audit: AuditEventsApi | undefined, event: AuditEvent) => Effect.Effect<void, EventJournal.EventJournalError, never>"
-    },
-    {
-      "name": "encodeFrame",
-      "kind": "value",
-      "signature": "const encodeFrame: (payload: Uint8Array, options?: FramedTransportOptions) => Uint8Array"
     },
     {
       "name": "Event",
@@ -664,31 +524,6 @@
       "signature": "export class FilesystemWriteInput extends Schema.Class<FilesystemWriteInput>( \"FilesystemWriteInput\" )({ path: FilesystemPathString, bytes: Schema.Uint8Array }) {}"
     },
     {
-      "name": "FrameDecoder",
-      "kind": "class",
-      "signature": "export class FrameDecoder { readonly #maxFrameBytes: number readonly #chunks: Uint8Array[] = [] #bufferedBytes = 0 #expectedBodyBytes: number | null = null #headChunkIndex = 0 #headChunkOffset = 0 constructor(options: FramedTransportOptions = {}) { this.#maxFrameBytes = resolveMaxFrameBytes(options) } push(chunk: Uint8Array): Uint8Array[] { if (chunk.byteLength > 0) { this.#chunks.push(chunk) this.#bufferedBytes += chunk.byteLength } const frames: Uint8Array[] = [] while (true) { if (this.#expectedBodyBytes === null) { if (this.#bufferedBytes < LENGTH_PREFIX_BYTES) { return frames } const prefix = this.#readBytes(LENGTH_PREFIX_BYTES) const length = new DataView( prefix.buffer, prefix.byteOffset, LENGTH_PREFIX_BYTES ).getUint32(0, false) if (length > this.#maxFrameBytes) { throw new FrameTooLargeError(length, this.#maxFrameBytes) } this.#expectedBodyBytes = length } if (this.#bufferedBytes < this.#expectedBodyBytes) { return frames } frames.push(this.#readBytes(this.#expectedBodyBytes)) this.#expectedBodyBytes = null } } finish(): void { if (this.#expectedBodyBytes === null) { if (this.#bufferedBytes === 0) { return } throw new FrameTruncatedError(\"length\", LENGTH_PREFIX_BYTES, this.#bufferedBytes) } throw new FrameTruncatedError(\"body\", this.#expectedBodyBytes, this.#bufferedBytes) } #readBytes(byteLength: number): Uint8Array { const bytes = new Uint8Array(byteLength) let copied = 0 while (copied < byteLength) { const chunk = this.#chunks[this.#headChunkIndex] if (chunk === undefined) { throw new Error(\"frame decoder buffer underflow\") } const available = chunk.byteLength - this.#headChunkOffset const take = Math.min(byteLength - copied, available) bytes.set(chunk.subarray(this.#headChunkOffset, this.#headChunkOffset + take), copied) copied += take this.#bufferedBytes -= take this.#headChunkOffset += take if (this.#headChunkOffset === chunk.byteLength) { this.#headChunkIndex += 1 this.#headChunkOffset = 0 this.#compactConsumedChunks() } } return bytes } #compactConsumedChunks(): void { if (this.#headChunkIndex === 0) { return } if (this.#headChunkIndex === this.#chunks.length) { this.#chunks.length = 0 this.#headChunkIndex = 0 return } if (this.#headChunkIndex < 32 && this.#headChunkIndex * 2 < this.#chunks.length) { return } this.#chunks.splice(0, this.#headChunkIndex) this.#headChunkIndex = 0 } }"
-    },
-    {
-      "name": "FramedTransport",
-      "kind": "interface",
-      "signature": "export interface FramedTransport { readonly send: (payload: Uint8Array) => Promise<void> readonly recv: () => Promise<Uint8Array | null> readonly close: () => Promise<void> }"
-    },
-    {
-      "name": "FramedTransportOptions",
-      "kind": "interface",
-      "signature": "export interface FramedTransportOptions { readonly maxFrameBytes?: number }"
-    },
-    {
-      "name": "FrameTooLargeError",
-      "kind": "class",
-      "signature": "export class FrameTooLargeError extends Error { override readonly name = \"FrameTooLargeError\" readonly size: number readonly max: number constructor(size: number, max: number) { super(`frame size ${size} exceeds maxFrameBytes ${max}`) this.size = size this.max = max } }"
-    },
-    {
-      "name": "FrameTruncatedError",
-      "kind": "class",
-      "signature": "export class FrameTruncatedError extends Error { override readonly name = \"FrameTruncatedError\" readonly stage: \"length\" | \"body\" readonly expected: number readonly read: number constructor(stage: \"length\" | \"body\", expected: number, read: number) { super(`frame ${stage} truncated after ${read} of ${expected} bytes`) this.stage = stage this.expected = expected this.read = read } }"
-    },
-    {
       "name": "generateUuidV7",
       "kind": "value",
       "signature": "const generateUuidV7: (now: number) => ResourceId"
@@ -709,34 +544,14 @@
       "signature": "export type GrantStatus = typeof GrantStatus.Type"
     },
     {
-      "name": "InMemoryTransportPairOptions",
-      "kind": "interface",
-      "signature": "export interface InMemoryTransportPairOptions { readonly queueCapacity?: number }"
-    },
-    {
       "name": "invalidate",
       "kind": "value",
       "signature": "const invalidate: (keys: ReadonlyArray<unknown> | import(\"effect/Record\").ReadonlyRecord<string, ReadonlyArray<unknown>>) => import(\"effect/Effect\").Effect<void, never, ReactivityNS.Reactivity>"
     },
     {
-      "name": "InvalidFrameLimitError",
-      "kind": "class",
-      "signature": "export class InvalidFrameLimitError extends Error { override readonly name = \"InvalidFrameLimitError\" readonly maxFrameBytes: number constructor(maxFrameBytes: number) { super(`invalid maxFrameBytes ${maxFrameBytes}; expected an integer from 0 to ${U32_MAX}`) this.maxFrameBytes = maxFrameBytes } }"
-    },
-    {
       "name": "launch",
       "kind": "value",
       "signature": "const launch: (layer: Layer.Layer<DesktopApp, DesktopConfigError, never>) => Effect.Effect<never, DesktopConfigError, never>"
-    },
-    {
-      "name": "layerPostMessageSocket",
-      "kind": "value",
-      "signature": "const layerPostMessageSocket: Layer.Layer<Socket.Socket, never, never>"
-    },
-    {
-      "name": "layerStdioSocket",
-      "kind": "value",
-      "signature": "const layerStdioSocket: Layer.Layer<Socket.Socket, never, never>"
     },
     {
       "name": "make",
@@ -769,16 +584,6 @@
       "signature": "const makeCommandRegistry: (resources: ResourceRegistryApi, permissions: PermissionRegistryApi, options?: CommandRegistryOptions) => Effect.Effect<CommandRegistryApi, never, never>"
     },
     {
-      "name": "makeConnection",
-      "kind": "value",
-      "signature": "const makeConnection: (transport: FramedTransport, operation: string) => TransportConnection"
-    },
-    {
-      "name": "makeDesktopRendererRpcRuntime",
-      "kind": "value",
-      "signature": "const makeDesktopRendererRpcRuntime: (app: DesktopAppManifest, options: DesktopRendererRpcRuntimeOptions) => DesktopRendererRpcRuntime"
-    },
-    {
       "name": "makeDuplicateDesktopRpcNameError",
       "kind": "value",
       "signature": "const makeDuplicateDesktopRpcNameError: (name: string, tags: readonly string[], message: string) => DuplicateDesktopRpcNameError"
@@ -787,11 +592,6 @@
       "name": "makeFilesystem",
       "kind": "value",
       "signature": "const makeFilesystem: (registry: ResourceRegistryApi, options?: FilesystemOptions) => Effect.Effect<FilesystemApi, never, never>"
-    },
-    {
-      "name": "makeInMemoryTransportPair",
-      "kind": "value",
-      "signature": "const makeInMemoryTransportPair: (options?: InMemoryTransportPairOptions) => Effect.Effect<readonly [TransportConnection, TransportConnection], never, never>"
     },
     {
       "name": "makeMissingDesktopContextError",
@@ -807,11 +607,6 @@
       "name": "makeMissingDesktopRpcsError",
       "kind": "value",
       "signature": "const makeMissingDesktopRpcsError: (tags: readonly string[], message: string) => MissingDesktopRpcsError"
-    },
-    {
-      "name": "makeOtelLayer",
-      "kind": "value",
-      "signature": "const makeOtelLayer: (options: OtelPipelineOptions) => Layer.Layer<Resource.Resource>"
     },
     {
       "name": "makePermissionApprovalWorkflowLayer",
@@ -879,16 +674,6 @@
       "signature": "const makeTelemetry: (options?: TelemetryOptions) => Effect.Effect<TelemetryApi, TelemetryInvalidArgumentError, never>"
     },
     {
-      "name": "makeTransport",
-      "kind": "value",
-      "signature": "const makeTransport: () => Effect.Effect<TransportApi, never, never>"
-    },
-    {
-      "name": "makeWindowState",
-      "kind": "value",
-      "signature": "const makeWindowState: (options?: WindowStateOptions) => Effect.Effect<WindowStateApi, WindowStateInvalidArgumentError, never>"
-    },
-    {
       "name": "makeWorker",
       "kind": "value",
       "signature": "const makeWorker: (registry: ResourceRegistryApi, permissions: PermissionRegistryApi, options?: WorkerOptions) => Effect.Effect<WorkerApi, never, never>"
@@ -897,11 +682,6 @@
       "name": "manifest",
       "kind": "value",
       "signature": "const manifest: <E, R>(definition: DesktopAppDefinition<E, R>) => DesktopAppManifest"
-    },
-    {
-      "name": "MAX_FRAME_BYTES",
-      "kind": "value",
-      "signature": "const MAX_FRAME_BYTES: number"
     },
     {
       "name": "MissingDesktopContextError",
@@ -927,21 +707,6 @@
       "name": "NormalizedCapability",
       "kind": "type",
       "signature": "const NormalizedCapability: Schema.Union<readonly [Schema.Struct<{ readonly kind: Schema.Literals<readonly [\"filesystem.read\", \"filesystem.write\", \"filesystem.delete\"]>; readonly roots: Schema.$Array<Schema.NonEmptyString>; readonly deny: Schema.optionalKey<Schema.$Array<Schema.NonEmptyString>>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; readonly allowCreate: Schema.optionalKey<Schema.Boolean>; readonly allowOverwrite: Schema.optionalKey<Schema.Boolean>; }>, Schema.Struct<{ readonly kind: Schema.Literal<\"sqlite.open\">; readonly roots: Schema.$Array<Schema.NonEmptyString>; readonly deny: Schema.optionalKey<Schema.$Array<Schema.NonEmptyString>>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literals<readonly [\"process.spawn\", \"pty.spawn\"]>; readonly commands: Schema.$Array<Schema.NonEmptyString>; readonly cwd: Schema.optionalKey<Schema.$Array<Schema.NonEmptyString>>; readonly environment: Schema.Literals<readonly [\"none\", \"allowlist\"]>; readonly shell: Schema.Union<readonly [Schema.Literal<false>, Schema.Literal<\"requires-explicit-approval\">]>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literal<\"network.connect\">; readonly hosts: Schema.$Array<Schema.NonEmptyString>; readonly askUnknownHosts: Schema.Boolean; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literals<readonly [\"secrets.read\", \"secrets.write\", \"safeStorage.read\", \"safeStorage.write\"]>; readonly namespaces: Schema.$Array<Schema.NonEmptyString>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literal<\"native.invoke\">; readonly primitive: Schema.NonEmptyString; readonly methods: Schema.$Array<Schema.NonEmptyString>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; }>]>"
-    },
-    {
-      "name": "openDeclaredWindows",
-      "kind": "value",
-      "signature": "const openDeclaredWindows: (windows: HostWindowClient, declared: Readonly<Record<string, WindowSpec>>, options?: WindowSupervisorOptions) => Effect.Effect<ReadonlyArray<OpenedDeclaredWindow>, HostProtocolError, never>"
-    },
-    {
-      "name": "OpenedDeclaredWindow",
-      "kind": "interface",
-      "signature": "export interface OpenedDeclaredWindow { readonly name: string readonly windowId: string readonly spec: WindowSpec }"
-    },
-    {
-      "name": "OtelPipelineOptions",
-      "kind": "interface",
-      "signature": "export interface OtelPipelineOptions { readonly serviceName: string readonly serviceVersion?: string readonly spanExporter?: SpanExporter readonly metricReader?: MetricReader }"
     },
     {
       "name": "P",
@@ -1264,11 +1029,6 @@
       "signature": "const PtySignalInput: Schema.Union<readonly [Schema.NonEmptyString, Schema.Int]>"
     },
     {
-      "name": "QueueDepth",
-      "kind": "value",
-      "signature": "const QueueDepth: Metric.Counter<number>"
-    },
-    {
       "name": "RawFilesystemEvent",
       "kind": "interface",
       "signature": "export interface RawFilesystemEvent { readonly type: \"rename\" | \"change\" readonly filename?: string }"
@@ -1282,16 +1042,6 @@
       "name": "ReactivityLayer",
       "kind": "value",
       "signature": "const ReactivityLayer: Layer.Layer<ReactivityNS.Reactivity, never, never>"
-    },
-    {
-      "name": "readStartupWindows",
-      "kind": "value",
-      "signature": "const readStartupWindows: (env: Readonly<Record<string, string | undefined>>) => Effect.Effect<Readonly<Record<string, WindowSpec>>, StartupWindowConfigError, never>"
-    },
-    {
-      "name": "readStartupWindowsEnv",
-      "kind": "value",
-      "signature": "const readStartupWindowsEnv: (env: Readonly<Record<string, string | undefined>>) => Effect.Effect<Readonly<Record<string, WindowSpec>>, StartupWindowConfigError, never>"
     },
     {
       "name": "redact",
@@ -1374,31 +1124,6 @@
       "signature": "export type ResourceState = string"
     },
     {
-      "name": "RestoreConfig",
-      "kind": "interface",
-      "signature": "export interface RestoreConfig { readonly userDataDir: string readonly dbPath: string }"
-    },
-    {
-      "name": "RestoreConfigService",
-      "kind": "class",
-      "signature": "export class RestoreConfigService extends Context.Service<RestoreConfigService, RestoreConfig>()( \"RestoreConfigService\" ) {}"
-    },
-    {
-      "name": "RestoreError",
-      "kind": "class",
-      "signature": "export class RestoreError extends Data.TaggedError(\"RestoreError\")<{ readonly phase: RestorePhase readonly message: string readonly cause: unknown }> {}"
-    },
-    {
-      "name": "RestoreWorkflow",
-      "kind": "value",
-      "signature": "const RestoreWorkflow: Workflow.Workflow<\"Restore\", Schema.Struct<{ archivePath: Schema.NonEmptyString; }>, Schema.Void, Schema.TaggedStruct<\"RestoreError\", { readonly phase: Schema.Literals<readonly [\"validate\", \"quiesce\", \"database\", \"files\", \"rollback\"]>; readonly message: Schema.String; readonly cause: Schema.Unknown; }>>"
-    },
-    {
-      "name": "RestoreWorkflowLayer",
-      "kind": "value",
-      "signature": "const RestoreWorkflowLayer: Layer.Layer<never, never, FileSystem | WorkflowEngine.WorkflowEngine | RestoreConfigService | WriterQuiesceService>"
-    },
-    {
       "name": "RpcCapability",
       "kind": "value",
       "signature": "const RpcCapability: <Capability extends RpcCapabilityMetadata>(capability: Capability) => <R extends Rpc.Any>(rpc: R) => WithRpcCapability<R, Capability>"
@@ -1414,29 +1139,9 @@
       "signature": "const RpcEndpoint: Readonly<{ query: <R extends Rpc.Any>(rpc: R) => WithRpcEndpointKind<R, \"query\">; mutation: <R extends Rpc.Any>(rpc: R) => WithRpcEndpointKind<R, \"mutation\">; }>"
     },
     {
-      "name": "RpcEndpointDescriptor",
-      "kind": "interface",
-      "signature": "export interface RpcEndpointDescriptor { readonly name: string readonly tag: string readonly kind: RpcEndpointDescriptorKind readonly rpc: Rpc.Any readonly capability: Option.Option<RpcCapabilityMetadata> readonly support: RpcSupportMetadata }"
-    },
-    {
-      "name": "RpcEndpointDescriptorKind",
-      "kind": "type",
-      "signature": "export type RpcEndpointDescriptorKind = \"query\" | \"mutation\" | \"stream\""
-    },
-    {
       "name": "RpcEndpointKind",
       "kind": "type",
       "signature": "export type RpcEndpointKind = \"query\" | \"mutation\""
-    },
-    {
-      "name": "RpcGroupWithRequests",
-      "kind": "type",
-      "signature": "export type RpcGroupWithRequests = RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> }"
-    },
-    {
-      "name": "RpcLatency",
-      "kind": "value",
-      "signature": "const RpcLatency: Metric.Histogram<number>"
     },
     {
       "name": "Rpcs",
@@ -1562,21 +1267,6 @@
       "name": "SecretValue",
       "kind": "class",
       "signature": "export class SecretValue { readonly _tag = \"SecretValue\" #bytes: Uint8Array private constructor(bytes: Uint8Array) { this.#bytes = new Uint8Array(bytes) } static fromBytes(bytes: Uint8Array): SecretValue { if (!(bytes instanceof Uint8Array)) { throw new TypeError(\"SecretValue.fromBytes requires a Uint8Array\") } return new SecretValue(bytes) } static fromUtf8(value: string): SecretValue { return new SecretValue(new TextEncoder().encode(value)) } unsafeBytes(): Uint8Array { return new Uint8Array(this.#bytes) } dispose(): Effect.Effect<void, never, never> { return Effect.sync(() => { this.#bytes.fill(0) }) } toString(): string { return Redacted } toJSON(): string { return Redacted } [NodeInspectCustom](): string { return Redacted } }"
-    },
-    {
-      "name": "servedRpcGroup",
-      "kind": "value",
-      "signature": "const servedRpcGroup: (provider: { readonly group: RpcGroupWithRequests; }) => RpcGroupWithRequests"
-    },
-    {
-      "name": "servedRpcGroupProperties",
-      "kind": "value",
-      "signature": "const servedRpcGroupProperties: (group: RpcGroupWithRequests, servedGroup: RpcGroupWithRequests) => WithServedRpcGroup"
-    },
-    {
-      "name": "setGlobalDesktopRendererRpcTransport",
-      "kind": "value",
-      "signature": "const setGlobalDesktopRendererRpcTransport: (transport: DesktopRendererRpcTransport | undefined) => void"
     },
     {
       "name": "Settings",
@@ -1814,16 +1504,6 @@
       "signature": "export class StaleHandle extends Schema.Class<StaleHandle>(\"StaleHandle\")({ tag: Schema.Literal(\"StaleHandle\"), kind: Schema.String, id: Schema.String, expectedGeneration: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)), actualGeneration: Schema.Int }) { get _tag(): \"StaleHandle\" { return this.tag } }"
     },
     {
-      "name": "STARTUP_WINDOWS_ENV",
-      "kind": "value",
-      "signature": "const STARTUP_WINDOWS_ENV: \"EFFECT_DESKTOP_STARTUP_WINDOWS\""
-    },
-    {
-      "name": "StartupWindowConfigError",
-      "kind": "class",
-      "signature": "export class StartupWindowConfigError extends Data.TaggedError(\"StartupWindowConfigError\")<{ readonly message: string readonly env: string }> {}"
-    },
-    {
       "name": "Stdio",
       "kind": "interface",
       "signature": "export interface Stdio { readonly [TypeId]: TypeId; readonly args: Effect.Effect<ReadonlyArray<string>>; stdout(options?: { readonly endOnDone?: boolean | undefined; }): Sink.Sink<void, string | Uint8Array, never, PlatformError>; stderr(options?: { readonly endOnDone?: boolean | undefined; }): Sink.Sink<void, string | Uint8Array, never, PlatformError>; readonly stdin: Stream.Stream<Uint8Array, PlatformError>; }"
@@ -1929,179 +1609,14 @@
       "signature": "const toLayer: <E, R>(definition: DesktopAppDefinition<E, R>) => Layer.Layer<DesktopApp, DesktopConfigError | E, R>"
     },
     {
-      "name": "toStartupModuleSpecifier",
-      "kind": "value",
-      "signature": "const toStartupModuleSpecifier: (raw: string) => string"
-    },
-    {
-      "name": "toWindowCreateInput",
-      "kind": "value",
-      "signature": "const toWindowCreateInput: (spec: WindowSpec) => WindowCreateInput"
-    },
-    {
-      "name": "Transport",
-      "kind": "class",
-      "signature": "export class Transport extends Context.Service<Transport, TransportApi>()(\"Transport\", { make: makeTransport() }) {}"
-    },
-    {
-      "name": "TransportApi",
-      "kind": "interface",
-      "signature": "export interface TransportApi { readonly frame: (input: TransportFrameInput) => Effect.Effect<Uint8Array, TransportError, never> readonly unframe: ( input: TransportUnframeInput ) => Effect.Effect<readonly Uint8Array[], TransportError, never> readonly unframeStream: ( input: TransportUnframeStreamInput ) => Stream.Stream<Uint8Array, TransportError, never> readonly connect: ( input: TransportConnectInput ) => Effect.Effect<TransportConnection, TransportError, never> }"
-    },
-    {
-      "name": "TransportClosedError",
-      "kind": "class",
-      "signature": "export class TransportClosedError extends Data.TaggedError(\"TransportClosed\")<{ readonly operation: string }> {}"
-    },
-    {
-      "name": "TransportCloseError",
-      "kind": "class",
-      "signature": "export class TransportCloseError extends Data.TaggedError(\"TransportCloseFailed\")<{ readonly operation: string readonly cause: Option.Option<unknown> }> {}"
-    },
-    {
-      "name": "TransportConnectInput",
-      "kind": "class",
-      "signature": "export class TransportConnectInput extends Schema.Class<TransportConnectInput>( \"TransportConnectInput\" )({ target: TransportConnectTarget, maxFrameBytes: Schema.optionalKey(PositiveInt) }) {}"
-    },
-    {
-      "name": "TransportConnection",
-      "kind": "interface",
-      "signature": "export interface TransportConnection { readonly send: (payload: Uint8Array) => Effect.Effect<void, TransportError, never> readonly receive: Stream.Stream<Uint8Array, TransportError, never> readonly close: () => Effect.Effect<void, TransportError, never> }"
-    },
-    {
-      "name": "TransportConnectTarget",
-      "kind": "type",
-      "signature": "const TransportConnectTarget: Schema.Literals<readonly [\"stdio\"]>"
-    },
-    {
-      "name": "TransportError",
-      "kind": "type",
-      "signature": "export type TransportError = | TransportInvalidArgumentError | TransportFrameTooLargeError | TransportFrameTruncatedError | TransportClosedError | TransportWriteError | TransportCloseError"
-    },
-    {
-      "name": "TransportFrameInput",
-      "kind": "class",
-      "signature": "export class TransportFrameInput extends Schema.Class<TransportFrameInput>(\"TransportFrameInput\")({ scheme: TransportScheme, payload: Schema.Uint8Array, maxFrameBytes: Schema.optionalKey(PositiveInt) }) {}"
-    },
-    {
-      "name": "TransportFrameTooLargeError",
-      "kind": "class",
-      "signature": "export class TransportFrameTooLargeError extends Data.TaggedError(\"FrameTooLarge\")<{ readonly operation: string readonly size: number readonly max: number }> {}"
-    },
-    {
-      "name": "TransportFrameTruncatedError",
-      "kind": "class",
-      "signature": "export class TransportFrameTruncatedError extends Data.TaggedError(\"FrameTruncated\")<{ readonly operation: string readonly stage: \"length\" | \"body\" | \"header\" readonly expected: number readonly read: number }> {}"
-    },
-    {
-      "name": "TransportInvalidArgumentError",
-      "kind": "class",
-      "signature": "export class TransportInvalidArgumentError extends Data.TaggedError(\"InvalidArgument\")<{ readonly operation: string readonly field: string readonly message: string readonly cause: Option.Option<unknown> }> {}"
-    },
-    {
-      "name": "TransportScheme",
-      "kind": "type",
-      "signature": "const TransportScheme: Schema.Literals<readonly [\"length-prefixed\", \"json-rpc\"]>"
-    },
-    {
-      "name": "TransportUnframeInput",
-      "kind": "class",
-      "signature": "export class TransportUnframeInput extends Schema.Class<TransportUnframeInput>( \"TransportUnframeInput\" )({ scheme: TransportScheme, bytes: Schema.Uint8Array, maxFrameBytes: Schema.optionalKey(PositiveInt) }) {}"
-    },
-    {
-      "name": "TransportUnframeStreamInput",
-      "kind": "interface",
-      "signature": "export interface TransportUnframeStreamInput { readonly scheme: TransportScheme readonly chunks: Stream.Stream<Uint8Array, TransportError, never> readonly maxFrameBytes?: number readonly frameQueueCapacity?: number }"
-    },
-    {
-      "name": "TransportWriteError",
-      "kind": "class",
-      "signature": "export class TransportWriteError extends Data.TaggedError(\"TransportWriteFailed\")<{ readonly operation: string readonly cause: Option.Option<unknown> }> {}"
-    },
-    {
       "name": "validatePermissions",
       "kind": "value",
       "signature": "const validatePermissions: (declared: readonly NormalizedCapabilityType[], required: readonly NormalizedCapabilityType[]) => Effect.Effect<void, DesktopConfigError, never>"
     },
     {
-      "name": "WindowDisplayBounds",
-      "kind": "class",
-      "signature": "export class WindowDisplayBounds extends Schema.Class<WindowDisplayBounds>(\"WindowDisplayBounds\")({ x: Schema.Number.check(Schema.isFinite()), y: Schema.Number.check(Schema.isFinite()), width: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)), height: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)), primary: Schema.optionalKey(Schema.Boolean) }) {}"
-    },
-    {
       "name": "WindowSpec",
       "kind": "interface",
       "signature": "export interface WindowSpec { readonly title: string readonly width?: number readonly height?: number readonly renderer?: string }"
-    },
-    {
-      "name": "WindowState",
-      "kind": "class",
-      "signature": "export class WindowState extends Context.Service<WindowState, WindowStateApi>()(\"WindowState\") {}"
-    },
-    {
-      "name": "WindowStateApi",
-      "kind": "interface",
-      "signature": "export interface WindowStateApi { readonly restore: ( windowId: string ) => Effect.Effect<Option.Option<WindowStateRecord>, WindowStateError, never> readonly restoreAll: () => Effect.Effect< Readonly<Record<string, WindowStateRecord>>, WindowStateError, never > readonly persist: ( windowId: string, state: WindowStateRecord ) => Effect.Effect<void, WindowStateError, never> readonly clear: (windowId?: string) => Effect.Effect<void, WindowStateError, never> readonly observe: () => Stream.Stream<WindowStateEvent, never, never> }"
-    },
-    {
-      "name": "WindowStateCorruptRenamed",
-      "kind": "class",
-      "signature": "export class WindowStateCorruptRenamed extends Data.TaggedError(\"WindowStateCorruptRenamed\")<{ readonly path: string readonly corruptPath: string readonly reason: string }> {}"
-    },
-    {
-      "name": "WindowStateError",
-      "kind": "type",
-      "signature": "export type WindowStateError = | WindowStateReadFailed | WindowStateWriteFailed | WindowStateCorruptRenamed | WindowStateInvalidArgumentError"
-    },
-    {
-      "name": "WindowStateEvent",
-      "kind": "class",
-      "signature": "export class WindowStateEvent extends Schema.Class<WindowStateEvent>(\"WindowStateEvent\")({ kind: WindowStateEventKind, path: Schema.String, windowId: Schema.optionalKey(Schema.String), corruptPath: Schema.optionalKey(Schema.String), reason: Schema.optionalKey(Schema.String) }) {}"
-    },
-    {
-      "name": "WindowStateEventKind",
-      "kind": "type",
-      "signature": "const WindowStateEventKind: Schema.Literals<readonly [\"persisted\", \"cleared\", \"corrupt-renamed\"]>"
-    },
-    {
-      "name": "WindowStateInvalidArgumentError",
-      "kind": "class",
-      "signature": "export class WindowStateInvalidArgumentError extends Data.TaggedError(\"InvalidArgument\")<{ readonly operation: string readonly field: string readonly message: string readonly cause: Option.Option<unknown> }> {}"
-    },
-    {
-      "name": "WindowStateLive",
-      "kind": "value",
-      "signature": "const WindowStateLive: Layer.Layer<WindowState, never, never>"
-    },
-    {
-      "name": "WindowStateOptions",
-      "kind": "interface",
-      "signature": "export interface WindowStateOptions { readonly path?: string readonly bundleId?: string readonly now?: () => number readonly validateBounds?: (state: WindowStateRecord) => WindowStateRecord readonly displays?: readonly WindowDisplayBounds[] }"
-    },
-    {
-      "name": "WindowStateReadFailed",
-      "kind": "class",
-      "signature": "export class WindowStateReadFailed extends Data.TaggedError(\"WindowStateReadFailed\")<{ readonly path: string readonly reason: string }> {}"
-    },
-    {
-      "name": "WindowStateRecord",
-      "kind": "class",
-      "signature": "export class WindowStateRecord extends Schema.Class<WindowStateRecord>(\"WindowStateRecord\")({ x: Schema.Number.check(Schema.isFinite()), y: Schema.Number.check(Schema.isFinite()), width: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)), height: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)), isFullScreen: Schema.Boolean, scaleFactor: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)), zoom: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)), devtoolsPanel: Schema.optionalKey(Schema.String), scrollPositions: Schema.optionalKey( Schema.Record(Schema.String, Schema.Number.check(Schema.isFinite())) ) }) {}"
-    },
-    {
-      "name": "WindowStateStore",
-      "kind": "class",
-      "signature": "export class WindowStateStore extends Schema.Class<WindowStateStore>(\"WindowStateStore\")({ windows: Schema.Record(Schema.String, WindowStateRecord) }) {}"
-    },
-    {
-      "name": "WindowStateWriteFailed",
-      "kind": "class",
-      "signature": "export class WindowStateWriteFailed extends Data.TaggedError(\"WindowStateWriteFailed\")<{ readonly path: string readonly reason: string }> {}"
-    },
-    {
-      "name": "WindowSupervisorOptions",
-      "kind": "interface",
-      "signature": "export interface WindowSupervisorOptions { readonly smokeTest?: boolean }"
     },
     {
       "name": "Worker",
@@ -2227,16 +1742,6 @@
       "name": "WorkflowLayer",
       "kind": "type",
       "signature": "export type WorkflowLayer<RIn = never, E = never> = Layer.Layer< never, E, RIn | WorkflowEngine.WorkflowEngine >"
-    },
-    {
-      "name": "WriterQuiescePort",
-      "kind": "interface",
-      "signature": "export interface WriterQuiescePort { readonly stop: () => Effect.Effect<void, never, never> readonly resume: () => Effect.Effect<void, never, never> }"
-    },
-    {
-      "name": "WriterQuiesceService",
-      "kind": "class",
-      "signature": "export class WriterQuiesceService extends Context.Service< WriterQuiesceService, WriterQuiescePort >()(\"WriterQuiesceService\") {}"
     }
   ]
 }

@@ -25,6 +25,10 @@
     "./renderer": {
       "types": "./src/runtime/renderer.ts",
       "default": "./src/runtime/renderer.ts"
+    },
+    "./runtime/*": {
+      "types": "./src/runtime/*.ts",
+      "default": "./src/runtime/*.ts"
     }
   },
   "scripts": {

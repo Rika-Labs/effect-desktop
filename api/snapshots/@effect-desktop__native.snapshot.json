@@ -281,7 +281,7 @@
     {
       "name": "ClipboardMethodNames",
       "kind": "value",
-      "signature": "const ClipboardMethodNames: readonly (\"clear\" | \"readText\" | \"writeText\" | \"readImage\" | \"writeImage\" | \"isSupported\")[]"
+      "signature": "const ClipboardMethodNames: readonly (\"readText\" | \"writeText\" | \"readImage\" | \"writeImage\" | \"clear\" | \"isSupported\")[]"
     },
     {
       "name": "ClipboardRpcEvents",
@@ -461,7 +461,7 @@
     {
       "name": "CrashReporterMethodNames",
       "kind": "value",
-      "signature": "const CrashReporterMethodNames: readonly (\"flush\" | \"start\" | \"recordBreadcrumb\" | \"setUploadHandler\")[]"
+      "signature": "const CrashReporterMethodNames: readonly (\"start\" | \"recordBreadcrumb\" | \"flush\" | \"setUploadHandler\")[]"
     },
     {
       "name": "CrashReporterRpcEvents",
@@ -606,7 +606,7 @@
     {
       "name": "DialogMethodNames",
       "kind": "value",
-      "signature": "const DialogMethodNames: readonly (\"message\" | \"confirm\" | \"openFile\" | \"openDirectory\" | \"saveFile\")[]"
+      "signature": "const DialogMethodNames: readonly (\"message\" | \"openFile\" | \"openDirectory\" | \"saveFile\" | \"confirm\")[]"
     },
     {
       "name": "DialogOpenDirectoryInput",
