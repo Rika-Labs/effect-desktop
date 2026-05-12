@@ -314,6 +314,41 @@
       "signature": "export type DoctorProbeStatus = \"ok\" | \"missing\" | \"warning\""
     },
     {
+      "name": "LayerFirstCheckError",
+      "kind": "type",
+      "signature": "export type LayerFirstCheckError = LayerFirstFileError | LayerFirstViolationError"
+    },
+    {
+      "name": "LayerFirstCheckOptions",
+      "kind": "interface",
+      "signature": "export interface LayerFirstCheckOptions { readonly cwd: string readonly sourceRoots?: readonly string[] readonly allowedEdges?: readonly string[] readonly publicPromiseAllowlist?: readonly string[] readonly publicBoundaryAllowlist?: readonly string[] }"
+    },
+    {
+      "name": "LayerFirstCheckReport",
+      "kind": "interface",
+      "signature": "export interface LayerFirstCheckReport { readonly passed: boolean readonly filesScanned: number readonly snapshotFilesScanned: number readonly violations: readonly LayerFirstViolation[] }"
+    },
+    {
+      "name": "LayerFirstFileError",
+      "kind": "class",
+      "signature": "export class LayerFirstFileError extends Data.TaggedError(\"LayerFirstFileError\")<{ readonly operation: string readonly path: string readonly message: string readonly cause: unknown }> {}"
+    },
+    {
+      "name": "LayerFirstViolation",
+      "kind": "interface",
+      "signature": "export interface LayerFirstViolation { readonly kind: LayerFirstViolationKind readonly path: string readonly line: number readonly message: string readonly symbol?: string }"
+    },
+    {
+      "name": "LayerFirstViolationError",
+      "kind": "class",
+      "signature": "export class LayerFirstViolationError extends Data.TaggedError(\"LayerFirstViolationError\")<{ readonly report: LayerFirstCheckReport }> {}"
+    },
+    {
+      "name": "LayerFirstViolationKind",
+      "kind": "type",
+      "signature": "export type LayerFirstViolationKind = | \"forbidden-effect-run\" | \"forbidden-runtime-global\" | \"public-promise-api\" | \"public-boundary-without-schema\""
+    },
+    {
       "name": "NotarizeArtifactKind",
       "kind": "type",
       "signature": "export type NotarizeArtifactKind = \"app\" | \"dmg\""
@@ -572,6 +607,11 @@
       "name": "runDocsReleaseGate",
       "kind": "value",
       "signature": "const runDocsReleaseGate: (options: DocsReleaseGateOptions) => Effect.Effect<DocsReleaseGateReport, DocsReleaseGateError, never>"
+    },
+    {
+      "name": "runLayerFirstCheck",
+      "kind": "value",
+      "signature": "const runLayerFirstCheck: (options: LayerFirstCheckOptions) => Effect.Effect<LayerFirstCheckReport, LayerFirstCheckError, never>"
     },
     {
       "name": "runPublicApiCheck",
