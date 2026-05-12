@@ -56,6 +56,12 @@ interface PublicApiSnapshotFile {
   readonly symbols?: unknown
 }
 
+interface PackageJsonFile {
+  readonly exports?: unknown
+  readonly main?: unknown
+  readonly types?: unknown
+}
+
 interface PublicApiSymbolSnapshot {
   readonly name: string
   readonly signature: string
@@ -164,6 +170,7 @@ export const runLayerFirstCheck = (
       const relativePath = toRepoPath(options.cwd, path)
       sourceTexts.set(relativePath, text)
     }
+    const publicEntrypoints = yield* discoverPublicEntrypoints(options.cwd, sourceTexts)
 
     for (const path of files) {
       const relativePath = toRepoPath(options.cwd, path)
@@ -177,6 +184,7 @@ export const runLayerFirstCheck = (
           relativePath,
           text,
           sourceTexts,
+          publicEntrypoints,
           isAllowedEdge,
           promiseAllowlist,
           boundaryAllowlist
@@ -242,6 +250,7 @@ const scanSourceFile = (
   path: string,
   text: string,
   sourceTexts: ReadonlyMap<string, string>,
+  publicEntrypoints: ReadonlySet<string>,
   isAllowedEdge: boolean,
   promiseAllowlist: ReadonlySet<string>,
   boundaryAllowlist: ReadonlySet<string>
@@ -251,7 +260,9 @@ const scanSourceFile = (
     violations.push(...scanForbiddenPatterns(path, text))
   }
   violations.push(...scanPublicBoundaryClasses(path, text, boundaryAllowlist))
-  violations.push(...scanPublicPromiseSource(path, text, sourceTexts, promiseAllowlist))
+  violations.push(
+    ...scanPublicPromiseSource(path, text, sourceTexts, publicEntrypoints, promiseAllowlist)
+  )
   return violations
 }
 
@@ -293,9 +304,10 @@ const scanPublicPromiseSource = (
   path: string,
   text: string,
   sourceTexts: ReadonlyMap<string, string>,
+  publicEntrypoints: ReadonlySet<string>,
   allowlist: ReadonlySet<string>
 ): readonly LayerFirstViolation[] => {
-  if (!path.endsWith("/src/index.ts") && !path.endsWith("/src/index.tsx")) {
+  if (!publicEntrypoints.has(path)) {
     return []
   }
   const packageName = packageNameFromPath(path)
@@ -332,20 +344,14 @@ const scanPublicBoundaryClasses = (
   }
   const violations: LayerFirstViolation[] = []
   const sourceFile = parseSource(path, text)
-  const exports = exportedNames(sourceFile)
+  const exports = localExportNames(sourceFile)
   for (const statement of sourceFile.statements) {
     if (!ts.isClassDeclaration(statement)) {
       continue
     }
     const name = statement.name?.text ?? "default"
-    if (!isExported(statement) && !exports.has(name)) {
-      continue
-    }
-    if (!BOUNDARY_SUFFIX_PATTERN.test(name)) {
-      continue
-    }
-    const symbol = `${packageName}:${name}`
-    if (allowlist.has(symbol)) {
+    const exportedNames = exportedClassNames(statement, name, exports)
+    if (exportedNames.length === 0) {
       continue
     }
     const heritage = statement.heritageClauses
@@ -354,14 +360,23 @@ const scanPublicBoundaryClasses = (
     if (heritage?.includes("Data.TaggedError")) {
       continue
     }
-    if (heritage?.includes("Schema.Class") !== true) {
-      violations.push({
-        kind: "public-boundary-without-schema",
-        path,
-        line: lineForOffset(text, statement.getStart(sourceFile)),
-        symbol,
-        message: "Public boundary classes must extend Schema.Class."
-      })
+    for (const exportedName of exportedNames) {
+      if (!BOUNDARY_SUFFIX_PATTERN.test(exportedName)) {
+        continue
+      }
+      const symbol = `${packageName}:${exportedName}`
+      if (allowlist.has(symbol)) {
+        continue
+      }
+      if (heritage?.includes("Schema.Class") !== true) {
+        violations.push({
+          kind: "public-boundary-without-schema",
+          path,
+          line: lineForOffset(text, statement.getStart(sourceFile)),
+          symbol,
+          message: "Public boundary classes must extend Schema.Class."
+        })
+      }
     }
   }
   return violations
@@ -438,23 +453,18 @@ const promiseReturningExportedSymbols = (
   path: string,
   statement: ts.Statement,
   sourceFile: ts.SourceFile,
-  exports: ReadonlySet<string>
+  exports: LocalExportNames
 ): readonly ExportedPromiseSymbol[] => {
   if (ts.isFunctionDeclaration(statement)) {
     const name = statement.name?.text ?? "default"
-    if (!isExported(statement) && !exports.has(name)) {
-      return []
-    }
     if (!hasAsyncModifier(statement) && !typeIncludesPromise(statement.type, sourceFile)) {
       return []
     }
-    return [
-      {
-        name,
-        path,
-        offset: statement.getStart(sourceFile)
-      }
-    ]
+    return exportedPromiseNames(statement, name, exports).map((exportedName) => ({
+      name: exportedName,
+      path,
+      offset: statement.getStart(sourceFile)
+    }))
   }
   if (ts.isVariableStatement(statement)) {
     const symbols: ExportedPromiseSymbol[] = []
@@ -462,19 +472,20 @@ const promiseReturningExportedSymbols = (
       if (!ts.isIdentifier(declaration.name)) {
         continue
       }
-      if (!isExported(statement) && !exports.has(declaration.name.text)) {
-        continue
-      }
       if (
         typeIncludesPromise(declaration.type, sourceFile) ||
         initializerIsAsync(declaration.initializer) ||
         initializerReturnsPromise(declaration.initializer, sourceFile)
       ) {
-        symbols.push({
-          name: declaration.name.text,
-          path,
-          offset: declaration.getStart(sourceFile)
-        })
+        symbols.push(
+          ...exportedPromiseNames(statement, declaration.name.text, exports).map(
+            (exportedName) => ({
+              name: exportedName,
+              path,
+              offset: declaration.getStart(sourceFile)
+            })
+          )
+        )
       }
     }
     return symbols
@@ -494,7 +505,7 @@ const collectPromiseExports = (
   visited.add(path)
 
   const sourceFile = parseSource(path, text)
-  const exports = exportedNames(sourceFile)
+  const exports = localExportNames(sourceFile)
   const symbols: ExportedPromiseSymbol[] = []
 
   for (const statement of sourceFile.statements) {
@@ -562,6 +573,11 @@ const promiseExportsFromReExportDeclaration = (
   return symbols
 }
 
+interface LocalExportNames {
+  readonly byLocalName: ReadonlyMap<string, readonly string[]>
+  readonly defaultLocalName?: string
+}
+
 const resolveLocalModulePath = (
   fromPath: string,
   moduleSpecifier: string,
@@ -579,23 +595,69 @@ const resolveLocalModulePath = (
   return candidates.find((candidate) => sourceTexts.has(candidate))
 }
 
-const exportedNames = (sourceFile: ts.SourceFile): ReadonlySet<string> => {
-  const names = new Set<string>()
+const localExportNames = (sourceFile: ts.SourceFile): LocalExportNames => {
+  const names = new Map<string, string[]>()
+  let defaultLocalName: string | undefined
   for (const statement of sourceFile.statements) {
     if (
       ts.isExportDeclaration(statement) &&
+      statement.moduleSpecifier === undefined &&
       statement.exportClause !== undefined &&
       ts.isNamedExports(statement.exportClause)
     ) {
       for (const element of statement.exportClause.elements) {
-        names.add(element.propertyName?.text ?? element.name.text)
+        addExportedName(names, element.propertyName?.text ?? element.name.text, element.name.text)
       }
     } else if (ts.isExportAssignment(statement) && ts.isIdentifier(statement.expression)) {
-      names.add(statement.expression.text)
+      defaultLocalName = statement.expression.text
+      addExportedName(names, statement.expression.text, "default")
     }
   }
-  return names
+  return defaultLocalName === undefined
+    ? { byLocalName: names }
+    : { byLocalName: names, defaultLocalName }
 }
+
+const addExportedName = (
+  names: Map<string, string[]>,
+  localName: string,
+  exportedName: string
+): void => {
+  const existing = names.get(localName)
+  if (existing === undefined) {
+    names.set(localName, [exportedName])
+  } else {
+    existing.push(exportedName)
+  }
+}
+
+const exportedPromiseNames = (
+  node: ts.Node,
+  localName: string,
+  exports: LocalExportNames
+): readonly string[] => {
+  const names = [...(exports.byLocalName.get(localName) ?? [])]
+  if (hasModifier(node, ts.SyntaxKind.DefaultKeyword)) {
+    names.push("default")
+  } else if (hasModifier(node, ts.SyntaxKind.ExportKeyword)) {
+    names.push(localName)
+  }
+  return uniqueStrings(names)
+}
+
+const exportedClassNames = (
+  node: ts.Node,
+  localName: string,
+  exports: LocalExportNames
+): readonly string[] => {
+  const names = [...(exports.byLocalName.get(localName) ?? [])]
+  if (isExported(node) && localName !== "default") {
+    names.push(localName)
+  }
+  return uniqueStrings(names)
+}
+
+const uniqueStrings = (values: readonly string[]): readonly string[] => [...new Set(values)]
 
 const initializerIsAsync = (initializer: ts.Expression | undefined): boolean => {
   if (initializer === undefined) {
@@ -663,6 +725,124 @@ const discoverSnapshotFiles = (
     const root = join(cwd, "api", "snapshots")
     return (yield* fileExists(root)) ? yield* walkSnapshotFiles(root) : []
   })
+
+const discoverPublicEntrypoints = (
+  cwd: string,
+  sourceTexts: ReadonlyMap<string, string>
+): Effect.Effect<ReadonlySet<string>, LayerFirstFileError, never> =>
+  Effect.gen(function* () {
+    const entrypoints = new Set<string>()
+    for (const root of packageRoots(sourceTexts.keys())) {
+      const beforeCount = entrypoints.size
+      const packageJsonPath = join(cwd, root, "package.json")
+      if (yield* fileExists(packageJsonPath)) {
+        const text = yield* readText(packageJsonPath)
+        const packageJson = yield* parsePackageJson(toRepoPath(cwd, packageJsonPath), text)
+        addPackageEntrypoints(root, packageJson, sourceTexts, entrypoints)
+      }
+      if (entrypoints.size === beforeCount) {
+        addFallbackEntrypoints(root, sourceTexts, entrypoints)
+      }
+    }
+    return entrypoints
+  })
+
+const parsePackageJson = (
+  path: string,
+  text: string
+): Effect.Effect<PackageJsonFile, LayerFirstFileError, never> => {
+  try {
+    return Effect.succeed(JSON.parse(text) as PackageJsonFile)
+  } catch (cause) {
+    return Effect.fail(
+      new LayerFirstFileError({
+        operation: "parseJson",
+        path,
+        message: `failed to parse JSON file ${path}`,
+        cause
+      })
+    )
+  }
+}
+
+const packageRoots = (paths: Iterable<string>): readonly string[] => {
+  const roots = new Set<string>()
+  for (const path of paths) {
+    const root = packageRootFromPath(path)
+    if (root !== undefined) {
+      roots.add(root)
+    }
+  }
+  return [...roots].sort()
+}
+
+const packageRootFromPath = (path: string): string | undefined => {
+  const parts = path.split("/")
+  const packageIndex = parts.indexOf("packages")
+  if (packageIndex >= 0) {
+    const name = parts[packageIndex + 1]
+    return name === undefined ? undefined : `packages/${name}`
+  }
+  const templateIndex = parts.indexOf("templates")
+  if (templateIndex >= 0) {
+    const name = parts[templateIndex + 1]
+    return name === undefined ? undefined : `templates/${name}`
+  }
+  return undefined
+}
+
+const addPackageEntrypoints = (
+  root: string,
+  packageJson: PackageJsonFile,
+  sourceTexts: ReadonlyMap<string, string>,
+  entrypoints: Set<string>
+): void => {
+  for (const target of collectPackageTargets(packageJson.exports)) {
+    addPackageEntrypoint(root, target, sourceTexts, entrypoints)
+  }
+  if (typeof packageJson.main === "string") {
+    addPackageEntrypoint(root, packageJson.main, sourceTexts, entrypoints)
+  }
+  if (typeof packageJson.types === "string") {
+    addPackageEntrypoint(root, packageJson.types, sourceTexts, entrypoints)
+  }
+}
+
+const collectPackageTargets = (value: unknown): readonly string[] => {
+  if (typeof value === "string") {
+    return [value]
+  }
+  if (!isRecord(value)) {
+    return []
+  }
+  return Object.values(value).flatMap(collectPackageTargets)
+}
+
+const addPackageEntrypoint = (
+  root: string,
+  target: string,
+  sourceTexts: ReadonlyMap<string, string>,
+  entrypoints: Set<string>
+): void => {
+  const normalizedTarget = target.startsWith("./") ? target.slice(2) : target
+  const entrypoint = posixNormalize(posixJoin(root, normalizedTarget))
+  if (isSourceFile(entrypoint) && !entrypoint.endsWith(".d.ts") && sourceTexts.has(entrypoint)) {
+    entrypoints.add(entrypoint)
+  }
+}
+
+const addFallbackEntrypoints = (
+  root: string,
+  sourceTexts: ReadonlyMap<string, string>,
+  entrypoints: Set<string>
+): void => {
+  for (const extension of SOURCE_EXTENSIONS) {
+    const entrypoint = posixJoin(root, `src/index${extension}`)
+    if (sourceTexts.has(entrypoint)) {
+      entrypoints.add(entrypoint)
+    }
+  }
+}
 
 const walkSourceFiles = (
   root: string

@@ -229,6 +229,48 @@ test("Layer-first check rejects public Promise APIs re-exported from export-star
   expectViolation(exit, "public-promise-api")
 })
 
+test("Layer-first check rejects public Promise APIs from package subpath entrypoints", async () => {
+  const options = await makeFixture({
+    ...packageFiles("export {}"),
+    "packages/fixture/package.json": JSON.stringify(
+      {
+        name: "@effect-desktop/fixture",
+        type: "module",
+        exports: {
+          ".": { types: "./src/index.ts", default: "./src/index.ts" },
+          "./api": { types: "./src/api.ts", default: "./src/api.ts" }
+        }
+      },
+      null,
+      2
+    ),
+    "packages/fixture/src/api.ts": `
+      export const loadUser = async () => "user"
+    `
+  })
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-promise-api")
+})
+
+test("Layer-first check resolves default Promise APIs re-exported from local modules", async () => {
+  const options = await makeFixture({
+    ...packageFiles(`
+      export { default as loadUser } from "./api"
+    `),
+    "packages/fixture/src/api.ts": `
+      export default async function loadUser() {
+        return "user"
+      }
+    `
+  })
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-promise-api")
+})
+
 test("Layer-first check rejects public Promise signatures in API snapshots", async () => {
   const options = await makeFixture({
     ...packageFiles("export {}"),
@@ -342,6 +384,21 @@ test("Layer-first check rejects re-exported public boundary classes without Sche
         constructor(readonly name: string) {}
       }
       export { UserInput }
+    `)
+  )
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-boundary-without-schema")
+})
+
+test("Layer-first check rejects public boundary classes exported under boundary aliases", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      class InternalModel {
+        constructor(readonly name: string) {}
+      }
+      export { InternalModel as UserInput }
     `)
   )
 
