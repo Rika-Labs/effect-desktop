@@ -1,4 +1,4 @@
-import type { WindowCreateOptions } from "@effect-desktop/native"
+import type { WindowCreateOptions } from "@effect-desktop/native/contracts"
 import { useWindow, windows } from "@effect-desktop/react"
 import { Option } from "effect"
 

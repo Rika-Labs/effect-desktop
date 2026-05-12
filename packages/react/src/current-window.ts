@@ -1,5 +1,6 @@
 import { makeHostProtocolInvalidStateError, type HostProtocolError } from "@effect-desktop/bridge"
-import type { WindowError, WindowHandle } from "@effect-desktop/native"
+import type { WindowError } from "@effect-desktop/native"
+import type { WindowHandle } from "@effect-desktop/native/contracts"
 import { Effect, Option } from "effect"
 
 import { useMutation, type MutationResult } from "./mutation.js"

@@ -28,28 +28,16 @@ import {
 import { Cause, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect"
 
 import {
-  AppEventRouter,
   App,
   AppRpcs,
-  AppBeforeQuitEvent,
-  AppCommandLine,
-  AppInfo,
   AppLive,
   AppMethodNames,
-  AppOpenFileEvent,
-  AppOpenUrlEvent,
-  AppSecondInstanceEvent,
   Clipboard,
   ClipboardRpcs,
-  ClipboardImage,
   ClipboardLive,
   ClipboardMethodNames,
-  ClipboardSupportedResult,
-  ClipboardText,
   ContextMenu,
-  ContextMenuActivatedEvent,
   ContextMenuRpcs,
-  ContextMenuBindCommandInput,
   ContextMenuLive,
   ContextMenuMethodNames,
   CrashReporter,
@@ -58,42 +46,28 @@ import {
   CrashReporterMethodNames,
   Dialog,
   DialogRpcs,
-  DialogConfirmResult,
   DialogLive,
   DialogMethodNames,
-  DialogOpenResult,
-  DialogSaveResult,
   Dock,
   DockRpcs,
   DockLive,
   DockMethodNames,
-  DockSupportedResult,
   GlobalShortcut,
   GlobalShortcutRpcs,
   GlobalShortcutLive,
   GlobalShortcutMethodNames,
-  GlobalShortcutPressedEvent,
-  GlobalShortcutRegisteredResult,
-  GlobalShortcutSupportedResult,
   Menu,
-  MenuActivatedEvent,
   MenuRpcs,
   MenuLive,
   MenuMethodNames,
-  MenuTemplate,
   Notification,
-  NotificationActionEvent,
   NotificationRpcs,
-  NotificationClickEvent,
   NotificationLive,
   NotificationMethodNames,
-  NotificationPermissionResult,
-  NotificationSupportedResult,
   Path,
   PathRpcs,
   PathLive,
   PathMethodNames,
-  CanonicalPath,
   Protocol,
   ProtocolRpcs,
   ProtocolLive,
@@ -102,10 +76,6 @@ import {
   PowerMonitorRpcs,
   PowerMonitorLive,
   PowerMonitorMethodNames,
-  PowerMonitorResumeEvent,
-  PowerMonitorShutdownEvent,
-  PowerMonitorSourceChangedEvent,
-  PowerMonitorSuspendEvent,
   SafeStorage,
   SafeStorageRpcs,
   SafeStorageLive,
@@ -113,53 +83,34 @@ import {
   SecretValue,
   Screen,
   ScreenRpcs,
-  ScreenBounds,
-  ScreenDisplay,
-  ScreenDisplaysResult,
   ScreenLive,
   ScreenMethodNames,
-  ScreenPoint,
-  ScreenSupportedResult,
   Shell,
   ShellRpcs,
   ShellLive,
   ShellMethodNames,
   SystemAppearance,
-  SystemAppearanceAccentColorResult,
   SystemAppearanceRpcs,
-  SystemAppearanceBooleanResult,
-  SystemAppearanceChangedEvent,
-  SystemAppearanceColor,
   SystemAppearanceLive,
   SystemAppearanceMethodNames,
-  SystemAppearanceResult,
-  SystemAppearanceSupportedResult,
   Tray,
-  TrayActivatedEvent,
   TrayRpcs,
   TrayLive,
   TrayMethodNames,
-  TraySupportedResult,
   Updater,
   UpdaterRpcs,
   UpdaterLive,
   UpdaterMethodNames,
-  UpdaterPreparingRestartEvent,
-  UpdaterStatusState,
-  UpdaterStatusResult,
   WebView,
   WebViewRpcs,
   WebViewLive,
   WebViewMethodNames,
-  WebViewNavigationBlockedEvent,
-  WebViewScreenshot,
   Window,
   WindowRpcs,
   WindowClient,
   WindowLive,
   WindowMethodNames,
   makeHostWindowBridgeRpcLayer,
-  makeAppEventRouter,
   makeAppBridgeClientLayer,
   makeAppServiceLayer,
   makeClipboardBridgeClientLayer,
@@ -225,10 +176,6 @@ import {
   makeWindowBridgeClientLayer,
   makeWindowServiceLayer,
   makeUnsupportedWindowClient,
-  firstResponderRoute,
-  broadcastRoute,
-  targetedRoute,
-  windowScope,
   type AppClientApi,
   type ClipboardClientApi,
   type ContextMenuClientApi,
@@ -237,7 +184,6 @@ import {
   type GlobalShortcutClientApi,
   type MenuClientApi,
   type NotificationClientApi,
-  type NotificationHandle,
   type PathClientApi,
   type ProtocolClientApi,
   type SafeStorageClientApi,
@@ -245,15 +191,112 @@ import {
   type ShellClientApi,
   type SystemAppearanceClientApi,
   type TrayClientApi,
-  type TrayHandle,
   type UpdaterClientApi,
   type WebViewClientApi,
+  type WindowClientApi
+} from "./index.js"
+import {
+  AppBeforeQuitEvent,
+  AppCommandLine,
+  AppInfo,
+  AppOpenFileEvent,
+  AppOpenUrlEvent,
+  AppSecondInstanceEvent,
+  ClipboardImage,
+  ClipboardSupportedResult,
+  ClipboardText,
+  ContextMenuActivatedEvent,
+  ContextMenuBindCommandInput,
+  DialogConfirmResult,
+  DialogOpenResult,
+  DialogSaveResult,
+  DockSupportedResult,
+  GlobalShortcutPressedEvent,
+  GlobalShortcutRegisteredResult,
+  GlobalShortcutSupportedResult,
+  MenuActivatedEvent,
+  MenuTemplate,
+  NotificationActionEvent,
+  NotificationClickEvent,
+  NotificationPermissionResult,
+  NotificationSupportedResult,
+  CanonicalPath,
+  PowerMonitorResumeEvent,
+  PowerMonitorShutdownEvent,
+  PowerMonitorSourceChangedEvent,
+  PowerMonitorSuspendEvent,
+  ScreenBounds,
+  ScreenDisplay,
+  ScreenDisplaysResult,
+  ScreenPoint,
+  ScreenSupportedResult,
+  SystemAppearanceAccentColorResult,
+  SystemAppearanceBooleanResult,
+  SystemAppearanceChangedEvent,
+  SystemAppearanceColor,
+  SystemAppearanceResult,
+  SystemAppearanceSupportedResult,
+  TrayActivatedEvent,
+  TraySupportedResult,
+  UpdaterPreparingRestartEvent,
+  UpdaterStatusResult,
+  UpdaterStatusState,
+  WebViewNavigationBlockedEvent,
+  WebViewScreenshot,
+  type NotificationHandle,
+  type TrayHandle,
   type WebViewHandle,
-  type WindowClientApi,
   type WindowCreateOptions,
   type WindowHandle
-} from "./index.js"
+} from "./contracts/index.js"
+import {
+  AppEventRouter,
+  broadcastRoute,
+  firstResponderRoute,
+  makeAppEventRouter,
+  targetedRoute,
+  windowScope
+} from "./app-events.js"
 import { commandBindingWarningError } from "./command-binding-log.js"
+
+test("native package root keeps contracts and implementation helpers behind subpaths", async () => {
+  const native = await import("@effect-desktop/native")
+
+  expect(native.Window).toBeFunction()
+  expect(native.WindowLive).toBeDefined()
+  expect("WindowCreateInput" in native).toBe(false)
+  expect("ClipboardText" in native).toBe(false)
+  expect("DialogOpenResult" in native).toBe(false)
+  expect("AppEventRouter" in native).toBe(false)
+  expect("AppHttpServer" in native).toBe(false)
+  expect("UpdateWorkflow" in native).toBe(false)
+})
+
+test("native contracts subpath exposes schema-coded payload contracts", async () => {
+  const contracts = await import("@effect-desktop/native/contracts")
+
+  expect(contracts.WindowCreateInput).toBeFunction()
+  expect(contracts.ClipboardText).toBeFunction()
+  expect(contracts.DialogOpenResult).toBeFunction()
+})
+
+test("native package exports reject implementation-only subpaths", async () => {
+  const appHttpServerSpecifier = "@effect-desktop/native/" + "app-http-server"
+  const updaterWorkflowSpecifier = "@effect-desktop/native/" + "updater-workflow"
+
+  await expectImportRejected(appHttpServerSpecifier)
+  await expectImportRejected(updaterWorkflowSpecifier)
+})
+
+const expectImportRejected = async (specifier: string): Promise<void> => {
+  let rejected = false
+  try {
+    await import(specifier)
+  } catch {
+    rejected = true
+  }
+  expect(rejected).toBe(true)
+}
 
 const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = [
   "create",

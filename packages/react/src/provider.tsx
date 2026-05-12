@@ -1,5 +1,6 @@
 import { makeHostProtocolInvalidStateError } from "@effect-desktop/bridge"
-import type { WindowCreateOptions, WindowError, WindowHandle } from "@effect-desktop/native"
+import type { WindowError } from "@effect-desktop/native"
+import type { WindowCreateOptions, WindowHandle } from "@effect-desktop/native/contracts"
 import { Effect, Layer, ManagedRuntime, Option } from "effect"
 import { AtomRegistry, Reactivity } from "effect/unstable/reactivity"
 import { createContext, createElement, useContext, useEffect, useMemo, type ReactNode } from "react"

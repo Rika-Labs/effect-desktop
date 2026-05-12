@@ -30,16 +30,18 @@ import {
 } from "@effect-desktop/core"
 import {
   Screen,
-  ScreenDisplay,
-  ScreenDisplaysResult,
   ScreenLive,
-  ScreenPoint,
-  ScreenSupportedResult,
   makeScreenBridgeClientLayer,
   makeScreenClientLayer,
   type ScreenClientApi,
   type ScreenError
 } from "@effect-desktop/native"
+import {
+  ScreenDisplay,
+  ScreenDisplaysResult,
+  ScreenPoint,
+  ScreenSupportedResult
+} from "@effect-desktop/native/contracts"
 
 import {
   assertNoOpenResourcesIn,

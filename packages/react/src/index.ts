@@ -22,7 +22,8 @@ export {
 export * as indexedDbStorage from "./storage/idb.js"
 export * as keyValueStorage from "./storage/kv.js"
 export type { HostProtocolError } from "@effect-desktop/bridge"
-export type { WindowCreateOptions, WindowError, WindowHandle } from "@effect-desktop/native"
+export type { WindowError } from "@effect-desktop/native"
+export type { WindowCreateOptions, WindowHandle } from "@effect-desktop/native/contracts"
 
 export { AsyncResult, Atom } from "effect/unstable/reactivity"
 
