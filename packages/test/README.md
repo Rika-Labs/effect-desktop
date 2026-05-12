@@ -42,6 +42,12 @@ that final check.
 services. The same `Screen` program runs through `ScreenLive` with a direct
 client, `ScreenLive` with an RPC client layer, and this deterministic test layer.
 
+`TestWindow.layer()` provides the supported Window service surface for tests.
+`makeTestWindowClient()` records `Window.create` and `Window.close` calls and
+tracks open handles. Unsupported descriptor-only Window methods are intentionally
+absent from the test client so tests cannot depend on methods the generated
+runtime client cannot call.
+
 `runHeadless(body, options)` runs host-protocol clients against `MockHost` and
 fails with a typed `ResourceLeakError` if non-app resources remain open.
 

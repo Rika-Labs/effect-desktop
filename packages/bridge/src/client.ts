@@ -16,9 +16,11 @@ import {
   HostProtocolCancelByRequestEnvelope,
   HostProtocolCancelledError,
   HostProtocolEventEnvelope,
+  HostProtocolError as HostProtocolErrorSchema,
   HostProtocolRequestEnvelope,
   HostProtocolResponseEnvelope,
   HostProtocolStreamClosedError,
+  makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   validateHostProtocolNonEmptyString,
@@ -149,6 +151,8 @@ interface ResolvedBridgeClientOptions {
   readonly originToken: string | undefined
 }
 
+const decodeUnknownHostProtocolError = Schema.decodeUnknownSync(HostProtocolErrorSchema)
+
 const bridgeResponseEnvelope = (
   request: HostProtocolRequestEnvelope,
   response: BridgeClientResponse,
@@ -171,9 +175,17 @@ const bridgeResponseEnvelope = (
 
   return new HostProtocolResponseEnvelope(
     response.kind === "success"
-      ? { ...fields, payload: response.payload }
-      : { ...fields, error: response.error as HostProtocolError }
+      ? { ...fields, payload: response.payload === undefined ? null : response.payload }
+      : { ...fields, error: bridgeFailureError(response.error, request.method) }
   )
+}
+
+const bridgeFailureError = (error: unknown, operation: string): HostProtocolError => {
+  try {
+    return decodeUnknownHostProtocolError(error)
+  } catch {
+    return makeHostProtocolInternalError("bridge exchange failed", operation)
+  }
 }
 
 export type BridgeClientMethod<Spec extends BridgeRpcMethodSpec> =

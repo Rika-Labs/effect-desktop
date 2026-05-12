@@ -13,6 +13,8 @@ The renderer is ordinary React and web code. It renders UI and sends typed reque
 
 The runtime owns Effect services, resource scopes, long-running jobs, stream lifecycles, and telemetry.
 
+Layer replacement is the public composition model. User programs depend on service requirements; live, client, and test implementations are swapped by providing different layers.
+
 ## Host
 
 The host owns native windows, WebViews, protocol handling, packaging constraints, and OS-specific behavior.
@@ -20,3 +22,5 @@ The host owns native windows, WebViews, protocol handling, packaging constraints
 ## Bridge
 
 The bridge is the typed message boundary between renderer intent and runtime work. It carries requests, responses, stream frames, events, and structured errors.
+
+Renderer-callable APIs are authored as Effect `RpcGroup` values. `Desktop.Rpc.surface(...)` packages a group into server, client, test-client, schema-doc, and contract-law artifacts without making bridge metadata a second public contract.

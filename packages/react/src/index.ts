@@ -67,22 +67,16 @@ export {
   useCloseCurrentWindowMutation,
   useCurrentWindow,
   useCurrentWindowId,
-  useSetCurrentWindowTitleMutation,
-  type CurrentWindowCloseMutation,
-  type CurrentWindowSetTitleInput,
-  type CurrentWindowSetTitleMutation
+  type CurrentWindowCloseMutation
 } from "./current-window.js"
 
 export {
   windows,
   useCloseWindowMutation,
   useCreateWindowMutation,
-  useSetWindowTitleMutation,
   type WindowCloseInput,
   type WindowCloseMutation,
-  type WindowCreateMutation,
-  type WindowSetTitleInput,
-  type WindowSetTitleMutation
+  type WindowCreateMutation
 } from "./windows.js"
 
 export { useAtom, useAtomValue, useAtomSet } from "./atoms.js"

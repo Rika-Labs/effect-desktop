@@ -19,8 +19,12 @@ transport, and React owns component state and cleanup.
 - Mutation endpoints expose `useMutation()`.
 - Stream endpoints expose `useStream(input?, options?)`.
 - Every endpoint exposes `support` and `isSupported` metadata.
+- `windows.create.useMutation()` and `windows.close.useMutation()` are the supported built-in Window helpers.
+- `currentWindow.close.useMutation()` closes the current renderer window when a current handle is present.
 - `useDesktopStream`, `useResource`, `usePermission`, `useWindow`, and the low-level
   `DesktopProvider` remain explicit lower-level hooks for renderer clients that need them.
+
+Unsupported Window title mutation helpers are not exported. Use descriptor support metadata from the imported `RpcGroup` before presenting native window actions.
 
 `DesktopRoot` accepts an optional `transport` for tests and custom renderers. Normal
 desktop applications do not pass client maps by hand; the host installs the renderer

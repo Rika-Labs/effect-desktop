@@ -10,6 +10,8 @@ React hook -> typed RPC client -> bridge protocol adapter -> Effect handler -> n
 
 Electron applications often expose selected `ipcRenderer` calls through preload scripts. Effect Desktop replaces that manual bridge with typed RPC contracts, structured failures, cancellation, streams, and scoped resource disposal.
 
+Generated Effect RPC clients use the bridge protocol adapter rather than raw IPC. The adapter translates Effect RPC requests into host protocol envelopes, owns generated request identifiers, encodes host protocol failures into RPC failure exits, and keeps void success responses explicit on the JSON wire.
+
 ## Runnable Example
 
 ```ts run

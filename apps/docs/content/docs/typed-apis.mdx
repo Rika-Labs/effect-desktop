@@ -23,6 +23,21 @@ const program = Effect.gen(function* () {
 
 The shape is explicit: services are dependencies, native calls are effects, and failures are part of the type.
 
+## One contract
+
+Renderer-callable APIs start as Effect `RpcGroup` values. `Desktop.Rpc.surface(...)` packages that group into the layers and metadata the framework needs: server layer, generated client layer, deterministic test client layer, schema docs, and executable contract checks.
+
+```ts
+export const NotesSurface = Desktop.Rpc.surface("Notes", NotesRpcs, {
+  service: NotesClient,
+  handlers: NotesRpcs.toLayer({
+    "Notes.list": () => Effect.succeed([])
+  })
+})
+```
+
+The group remains the source of truth. Bridge adapters can translate at the host edge, but they should not become a second public contract.
+
 Renderer code should consume RPC groups through React desktop hooks instead of calling `Effect.runPromiseExit` in components:
 
 ```tsx
@@ -33,3 +48,5 @@ createWindow.run({ title: "Notes" })
 ```
 
 Generated app SDKs should use the same shape for domain RPCs: `notes.createNote.useMutation()`, not `notes.CreateNote.useMutation()`.
+
+Native endpoints also carry support metadata. Use `endpoint.isSupported` before presenting a renderer action when the host implementation may not support the method yet.

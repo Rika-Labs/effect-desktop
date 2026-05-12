@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test"
 import {
   HostProtocolError as HostProtocolErrorSchema,
+  HostProtocolInvalidArgumentError,
+  HostProtocolInvalidOutputError,
   HostProtocolNotFoundError,
   HostProtocolResponseEnvelope,
   HostProtocolStaleHandleError,
@@ -8,6 +10,7 @@ import {
   RendererOriginAuth,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
+  rpcSupport,
   type BridgeClientExchange,
   type BridgeClientResponse,
   type HostProtocolRequestEnvelope,
@@ -112,6 +115,7 @@ import {
   WebViewMethodNames,
   Window,
   WindowRpcs,
+  WindowSupportedRpcs,
   WindowClient,
   WindowLive,
   WindowMethodNames,
@@ -5435,14 +5439,17 @@ test("Linux GlobalShortcut client reports Wayland unsupported as a typed value",
 })
 
 test("WindowRpcs declares the Phase 5 Window method surface", () => {
-  expect(WindowRpcs.tag).toBe("Window")
   expect([...WindowMethodNames]).toEqual(expectedWindowMethods)
-  expect(Object.keys(WindowRpcs.spec)).toEqual(expectedWindowMethods)
-  expect(WindowRpcs.spec["create"]?.output).toMatchObject({
-    _tag: "BridgeRpcResourceSpec",
-    kind: "window",
-    state: "open"
+  expect(Array.from(WindowRpcs.requests.keys())).toEqual(
+    expectedWindowMethods.map((method) => `Window.${method}`)
+  )
+  expect(Array.from(WindowSupportedRpcs.requests.keys())).toEqual(["Window.create", "Window.close"])
+  expect(rpcSupport(WindowRpcs.requests.get("Window.show")!)).toEqual({
+    status: "unsupported",
+    reason: "host Window adapter does not implement this method yet"
   })
+  expect("spec" in WindowRpcs).toBe(false)
+  expect("events" in WindowRpcs).toBe(false)
 })
 
 test("Window service delegates through a substitutable WindowClient port", async () => {
@@ -5453,41 +5460,21 @@ test("Window service delegates through a substitutable WindowClient port", async
         calls.push(`create:${input?.title ?? ""}`)
         return windowHandle
       }),
-    show: () => recordVoid(calls, "show"),
-    hide: () => recordVoid(calls, "hide"),
-    focus: () => recordVoid(calls, "focus"),
-    close: () => recordVoid(calls, "close"),
-    setTitle: (_window, title) => recordVoid(calls, `setTitle:${title}`),
-    setSize: (_window, size) => recordVoid(calls, `setSize:${size.width}x${size.height}`),
-    setPosition: (_window, position) =>
-      recordVoid(calls, `setPosition:${position.x},${position.y}`),
-    setBackgroundColor: (_window, color) => recordVoid(calls, `setBackgroundColor:${color}`),
-    setVibrancy: (_window, material) => recordVoid(calls, `setVibrancy:${material}`),
-    setHasShadow: (_window, hasShadow) => recordVoid(calls, `setHasShadow:${hasShadow}`),
-    enterFullScreen: () => recordVoid(calls, "enterFullScreen"),
-    exitFullScreen: () => recordVoid(calls, "exitFullScreen"),
-    onFullScreenChanged: () => Stream.empty,
-    getScaleFactor: () => Effect.succeed({ scaleFactor: 2 }),
-    onScaleChanged: () => Stream.empty,
-    persistState: () => recordVoid(calls, "persistState")
+    close: () => recordVoid(calls, "close")
   }
 
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const window = yield* Window
       const created = yield* window.create({ title: "Main" })
-      yield* window.setTitle(created, "Renamed")
-      yield* window.setSize(created, { width: 800, height: 600 })
-      const scale = yield* window.getScaleFactor(created)
       yield* window.close(created)
 
-      return { created, scale }
+      return { created }
     }).pipe(Effect.provide(makeWindowServiceLayer(client)))
   )
 
   expect(result.created).toEqual(windowHandle)
-  expect(result.scale.scaleFactor).toBe(2)
-  expect(calls).toEqual(["create:Main", "setTitle:Renamed", "setSize:800x600", "close"])
+  expect(calls).toEqual(["create:Main", "close"])
 })
 
 test("Window service can be composed from a separately provided WindowClient", async () => {
@@ -5512,17 +5499,17 @@ test("Window service can be composed from a separately provided WindowClient", a
   expect(calls).toEqual(["create:0"])
 })
 
-test("makeUnsupportedWindowClient returns Unsupported for all methods", async () => {
+test("makeUnsupportedWindowClient returns Unsupported for supported callable methods", async () => {
   const client = makeUnsupportedWindowClient()
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const createError = yield* client.create({}).pipe(Effect.flip)
-      const showError = yield* client.show(windowHandle).pipe(Effect.flip)
-      return { createError, showError }
+      const closeError = yield* client.close(windowHandle).pipe(Effect.flip)
+      return { closeError, createError }
     })
   )
   expect(result.createError._tag).toBe("Unsupported")
-  expect(result.showError._tag).toBe("Unsupported")
+  expect(result.closeError._tag).toBe("Unsupported")
 })
 
 test("host WindowClient adapter opens and closes through host envelopes with registry lifetime", async () => {
@@ -5866,40 +5853,87 @@ test("host WindowClient adapter declares per-window scopes and closes scoped res
 test("host WindowClient adapter returns typed failures for invalid input and bad handles", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   const rpcExchange = makeWindowRpcExchange(windowExchange([]), registry)
-  const client = await Effect.runPromise(
+  const result = await Effect.runPromise(
     Effect.gen(function* () {
-      return yield* WindowClient
+      const client = yield* WindowClient
+      const malformedInputExit = yield* Effect.exit(
+        client.close({
+          ...windowHandle,
+          id: ""
+        })
+      )
+      const unknownExit = yield* Effect.exit(client.close(windowHandle))
+      const created = yield* client.create({})
+      const staleExit = yield* Effect.exit(
+        client.close({
+          ...created,
+          generation: created.generation + 1
+        })
+      )
+      yield* client.close(created)
+      const repeatedCloseExit = yield* Effect.exit(client.close(created))
+      return { malformedInputExit, repeatedCloseExit, staleExit, unknownExit }
     }).pipe(Effect.provide(makeWindowBridgeClientLayer(rpcExchange)))
   )
 
-  const invalidCreateExit = await Effect.runPromiseExit(client.create({ width: 0 }))
-  const unknownExit = await Effect.runPromiseExit(client.close(windowHandle))
-  const created = await Effect.runPromise(client.create({}))
-  const staleExit = await Effect.runPromiseExit(
-    client.close({
-      ...created,
-      generation: created.generation + 1
-    })
-  )
-  await Effect.runPromise(client.close(created))
-  const repeatedCloseExit = await Effect.runPromiseExit(client.close(created))
-
-  expectExitFailure(invalidCreateExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(
-    unknownExit,
+    result.malformedInputExit,
+    (error) =>
+      error instanceof HostProtocolInvalidArgumentError && error.operation === "Window.close"
+  )
+  expectExitFailure(
+    result.unknownExit,
     (error) => error instanceof HostProtocolNotFoundError && error.operation === "Window.close"
   )
   expectExitFailure(
-    staleExit,
+    result.staleExit,
     (error) => error instanceof HostProtocolStaleHandleError && error.operation === "Window.close"
   )
   expectExitFailure(
-    repeatedCloseExit,
+    result.repeatedCloseExit,
     (error) => error instanceof HostProtocolStaleHandleError && error.operation === "Window.close"
   )
 })
 
-test("host WindowClient adapter reports unimplemented public methods as Unsupported", async () => {
+test("host WindowClient adapter maps malformed generated RPC successes to typed invalid output", async () => {
+  const invalidCreateExchange: BridgeClientExchange = {
+    request: () => Effect.succeed({ kind: "success", payload: { windowId: "" } }),
+    resource: {
+      dispose: () => Effect.void
+    }
+  }
+  const invalidCloseExchange: BridgeClientExchange = {
+    request: () => Effect.succeed({ kind: "success", payload: { unexpected: true } }),
+    resource: {
+      dispose: () => Effect.void
+    }
+  }
+
+  const createExit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const client = yield* WindowClient
+      return yield* client.create({})
+    }).pipe(Effect.provide(makeWindowBridgeClientLayer(invalidCreateExchange)))
+  )
+  const closeExit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const client = yield* WindowClient
+      return yield* client.close(windowHandle)
+    }).pipe(Effect.provide(makeWindowBridgeClientLayer(invalidCloseExchange)))
+  )
+
+  expectExitFailure(
+    createExit,
+    (error) =>
+      error instanceof HostProtocolInvalidOutputError && error.operation === "Window.create"
+  )
+  expectExitFailure(
+    closeExit,
+    (error) => error instanceof HostProtocolInvalidOutputError && error.operation === "Window.close"
+  )
+})
+
+test("host WindowClient adapter exposes only supported callable methods", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   const rpcExchange = makeWindowRpcExchange(windowExchange([]), registry)
   const client = await Effect.runPromise(
@@ -5908,32 +5942,10 @@ test("host WindowClient adapter reports unimplemented public methods as Unsuppor
     }).pipe(Effect.provide(makeWindowBridgeClientLayer(rpcExchange)))
   )
 
-  const created = await Effect.runPromise(client.create({}))
-  const exits = await Effect.runPromise(
-    Effect.gen(function* () {
-      return {
-        show: yield* Effect.exit(client.show(created)),
-        hide: yield* Effect.exit(client.hide(created)),
-        focus: yield* Effect.exit(client.focus(created)),
-        setVibrancy: yield* Effect.exit(client.setVibrancy(created, "appearance-based")),
-        persistState: yield* Effect.exit(client.persistState(created))
-      }
-    })
-  )
-
-  expectExitFailure(
-    exits.show,
-    (error) =>
-      hasErrorTag(error, "Unsupported") &&
-      typeof error === "object" &&
-      error !== null &&
-      "operation" in error &&
-      error.operation === "Window.show"
-  )
-  expectExitFailure(exits.hide, (error) => hasErrorTag(error, "Unsupported"))
-  expectExitFailure(exits.focus, (error) => hasErrorTag(error, "Unsupported"))
-  expectExitFailure(exits.setVibrancy, (error) => hasErrorTag(error, "Unsupported"))
-  expectExitFailure(exits.persistState, (error) => hasErrorTag(error, "Unsupported"))
+  expect("create" in client).toBe(true)
+  expect("close" in client).toBe(true)
+  expect("show" in client).toBe(false)
+  expect("setVibrancy" in client).toBe(false)
 })
 
 test("Window bridge client rejects invalid chrome inputs before crossing the host boundary", async () => {
@@ -6875,22 +6887,7 @@ const dockClient = (calls: string[]): DockClientApi => ({
 
 const noopWindowClient: WindowClientApi = {
   create: () => Effect.succeed(windowHandle),
-  show: () => Effect.void,
-  hide: () => Effect.void,
-  focus: () => Effect.void,
-  close: () => Effect.void,
-  setTitle: () => Effect.void,
-  setSize: () => Effect.void,
-  setPosition: () => Effect.void,
-  setBackgroundColor: () => Effect.void,
-  setVibrancy: () => Effect.void,
-  setHasShadow: () => Effect.void,
-  enterFullScreen: () => Effect.void,
-  exitFullScreen: () => Effect.void,
-  onFullScreenChanged: () => Stream.empty,
-  getScaleFactor: () => Effect.succeed({ scaleFactor: 1 }),
-  onScaleChanged: () => Stream.empty,
-  persistState: () => Effect.void
+  close: () => Effect.void
 }
 
 const handleFor = (id: string): WindowHandle => ({

@@ -121,6 +121,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 | #1154 Make RpcGroup the only renderer contract       | Implemented | `BridgeRpc.fromGroup`, native capability `Rpc.make`/`RpcGroup.make` contracts, `packages/native/src/index.test.ts`, and API snapshots                                        |
 | #1233 Make generated RPC surfaces Layer-first        | Implemented | `DesktopRpc.surface`, `ScreenSurface`, generated server/client/test layers, schema docs, contract laws, and focused core/native tests                                        |
 | #1193 Generate desktop surfaces from Effect RpcGroup | Implemented | `ScreenRpcs` is a pure `RpcGroup`, `ScreenSurface` maps generated RPC clients to `ScreenClient`, and bridge exchange use is isolated in a unary protocol adapter             |
+| #1179 Generate supported native client surfaces      | Implemented | `DesktopRpc.supportedGroup`, `WindowSupportedRpcs`, and the narrowed Window/React/Test client surfaces prove unsupported descriptor methods are not callable client methods  |
 
 ## Design-Debt Follow-ups
 

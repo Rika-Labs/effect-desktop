@@ -10,6 +10,7 @@ import {
 } from "@effect-desktop/bridge"
 import { Cause, Context, Effect, Exit, Layer, Queue, Schema } from "effect"
 import { Rpc, RpcClient, RpcGroup, RpcServer } from "effect/unstable/rpc"
+import type { DesktopRpcClient, SupportedDesktopRpcClient } from "./runtime/desktop-rpc-surface.js"
 
 test("public barrel exports the ResourceRegistry factory", async () => {
   const core = await import("./index.js")
@@ -45,6 +46,7 @@ test("public Desktop facade exposes Rpc metadata helpers", async () => {
   expect(core.Desktop.RpcEndpoint.query).toBeFunction()
   expect(core.Desktop.RpcCapability).toBeFunction()
   expect(core.Desktop.RpcSupport.unsupported).toBeFunction()
+  expect(core.Desktop.Rpc.supportedGroup).toBeFunction()
   expect(core.Desktop.RedactionFilter.redact({ token: "abc" })).toEqual({ token: "[REDACTED]" })
 })
 
@@ -222,6 +224,48 @@ test("Desktop.Rpc.surface derives server, client, test, docs, and laws from one 
   expect(core.Desktop.manifest(app).rpcGroups[0]?.group).toBe(NotesRpcs)
   expect(core.Desktop.describeRpcs(app, NotesRpcs).map((descriptor) => descriptor.tag)).toEqual([
     "Notes.Ping"
+  ])
+})
+
+test("Desktop.Rpc.supportedGroup filters unsupported RPCs from generated clients", async () => {
+  const core = await import("./index.js")
+  const List = Rpc.make("Notes.List", {
+    success: Schema.Array(Schema.String)
+  }).pipe(RpcSupport.supported)
+  const Delete = Rpc.make("Notes.Delete", {
+    payload: Schema.Struct({ id: Schema.String }),
+    success: Schema.Void
+  }).pipe(RpcSupport.unsupported("host adapter does not implement delete yet"))
+  const NotesRpcs = RpcGroup.make(List, Delete)
+  const SupportedNotesRpcs = core.Desktop.Rpc.supportedGroup(NotesRpcs)
+  class NotesClient extends Context.Service<
+    NotesClient,
+    DesktopRpcClient<RpcGroup.Rpcs<typeof NotesRpcs>>
+  >()("NotesClient") {}
+  const assertSupportedClient = (
+    client: SupportedDesktopRpcClient<RpcGroup.Rpcs<typeof NotesRpcs>>
+  ): void => {
+    void client["Notes.List"]
+    // @ts-expect-error unsupported RPCs are absent from supported generated clients
+    void client["Notes.Delete"]
+  }
+  void assertSupportedClient
+
+  expect(Array.from(SupportedNotesRpcs.requests.keys())).toEqual(["Notes.List"])
+  expect(
+    core.Desktop.Rpc.surface("Notes", NotesRpcs, {
+      service: NotesClient,
+      handlers: NotesRpcs.toLayer({
+        "Notes.List": () => Effect.succeed(["one"]),
+        "Notes.Delete": () => Effect.void
+      })
+    }).schemaDocs.map((doc) => [doc.tag, doc.support])
+  ).toEqual([
+    ["Notes.List", { status: "supported" }],
+    [
+      "Notes.Delete",
+      { status: "unsupported", reason: "host adapter does not implement delete yet" }
+    ]
   ])
 })
 

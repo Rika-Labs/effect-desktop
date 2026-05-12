@@ -9,10 +9,6 @@ import { BrowserContext, type IndexedDb } from "./platform-browser.js"
 
 export interface DesktopWindowClient {
   readonly create: (input?: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never>
-  readonly setTitle: (
-    window: WindowHandle,
-    title: string
-  ) => Effect.Effect<void, WindowError, never>
   readonly close: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
 }
 
@@ -82,7 +78,6 @@ export const createUnavailableDesktopClient = (message = "missing host bridge"):
   return Object.freeze({
     window: Object.freeze({
       create: (_input?: WindowCreateOptions) => unavailable<WindowHandle>("window.create"),
-      setTitle: (_window: WindowHandle, _title: string) => unavailable<void>("window.setTitle"),
       close: (_window: WindowHandle) => unavailable<void>("window.close")
     })
   } satisfies DesktopClient)

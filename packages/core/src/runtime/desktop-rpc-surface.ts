@@ -4,6 +4,7 @@ import {
   rpcEndpointName,
   rpcSupport,
   type RpcCapabilityMetadata,
+  type RpcSupportMarker,
   type RpcSupportMetadata
 } from "@effect-desktop/bridge"
 import { Context, Data, Effect, Layer, Option, Schema } from "effect"
@@ -16,6 +17,20 @@ export type DesktopRpcClient<Rpcs extends Rpc.Any> = RpcClient.RpcClient<
   Rpcs,
   RpcClientError.RpcClientError
 >
+
+export type SupportedRpc<R extends Rpc.Any> =
+  R extends RpcSupportMarker<infer Support>
+    ? Support extends { readonly status: "unsupported" }
+      ? never
+      : R
+    : R
+
+export type SupportedDesktopRpcClient<Rpcs extends Rpc.Any> = DesktopRpcClient<SupportedRpc<Rpcs>>
+
+export type SupportedDesktopRpcGroup<Group extends RpcGroup.Any> = RpcGroup.RpcGroup<
+  SupportedRpc<RpcGroup.Rpcs<Group>>
+> &
+  RpcGroupWithRequests
 
 export interface DesktopRpcSchemaDoc {
   readonly name: string
@@ -160,8 +175,16 @@ export function surface<
   })
 }
 
+export const supportedGroup = <Group extends RpcGroup.Any & RpcGroupWithRequests>(
+  group: Group
+): SupportedDesktopRpcGroup<Group> =>
+  RpcGroup.make(
+    ...Array.from(group.requests.values()).filter((rpc) => rpcSupport(rpc).status === "supported")
+  ) as unknown as SupportedDesktopRpcGroup<Group>
+
 export const DesktopRpc = Object.freeze({
-  surface
+  surface,
+  supportedGroup
 })
 
 const schemaDocs = (group: RpcGroupWithRequests): readonly DesktopRpcSchemaDoc[] =>

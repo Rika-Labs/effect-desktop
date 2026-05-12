@@ -1,0 +1,24 @@
+---
+title: Bridge
+description: The bridge translates typed RPC calls into host protocol envelopes.
+---
+
+The bridge is the process boundary between renderer intent and runtime or host work. App code should not construct bridge envelopes directly.
+
+```txt
+React hook -> generated RPC client -> bridge protocol adapter -> Effect handler -> native service
+```
+
+## Contracts
+
+Renderer-callable APIs start as Effect `RpcGroup` values. The bridge attaches endpoint metadata, support metadata, request envelopes, response envelopes, cancellation, stream frames, and typed host protocol failures around that contract.
+
+## Protocol adapter
+
+Generated Effect RPC clients use `makeDesktopClientProtocol(...)` through a transport adapter. The adapter translates Effect RPC requests into host protocol envelopes and translates host protocol responses back into Effect RPC exits.
+
+The generated protocol owns request identifiers on this path. Host protocol failures are encoded before they enter the RPC failure channel. Void success responses remain explicit on the JSON wire by normalizing absent success payloads to `null`.
+
+## Rule
+
+Bridge compatibility belongs at the adapter boundary. Public services should depend on Effect services, layers, and `RpcGroup` contracts, not on host envelope details.

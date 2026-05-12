@@ -55,8 +55,6 @@ import {
   type UpdaterInstallOptions,
   type WindowClientApi,
   type WindowError,
-  type WindowPosition,
-  type WindowSize,
   makeAppServiceLayer,
   makeClipboardServiceLayer,
   makeCrashReporterMemoryClient,
@@ -133,9 +131,6 @@ import {
   type UpdaterCheckResult,
   UpdaterPreparingRestartEvent,
   type UpdaterStatusResult,
-  WindowFullScreenChanged,
-  WindowScaleChanged,
-  WindowScaleFactorOutput,
   type WindowCreateOptions,
   type WindowHandle
 } from "@effect-desktop/native/contracts"
@@ -208,20 +203,6 @@ export const makeTestWindowClient = (): TestWindowRpcs => {
         handles.set(id, handle)
         return handle
       }),
-    show: (window: WindowHandle) =>
-      assertHandle(window, "Window.show").pipe(
-        Effect.tap(() => Effect.sync(() => record("Window.show", [window])))
-      ),
-    hide: (window: WindowHandle) =>
-      assertHandle(window, "Window.hide").pipe(
-        Effect.tap(() => Effect.sync(() => record("Window.hide", [window]))),
-        Effect.asVoid
-      ),
-    focus: (window: WindowHandle) =>
-      assertHandle(window, "Window.focus").pipe(
-        Effect.tap(() => Effect.sync(() => record("Window.focus", [window]))),
-        Effect.asVoid
-      ),
     close: (window: WindowHandle) =>
       assertHandle(window, "Window.close").pipe(
         Effect.flatMap(() =>
@@ -230,64 +211,6 @@ export const makeTestWindowClient = (): TestWindowRpcs => {
             handles.delete(window.id)
           })
         )
-      ),
-    setTitle: (window: WindowHandle, title: string) =>
-      assertHandle(window, "Window.setTitle").pipe(
-        Effect.tap(() => Effect.sync(() => record("Window.setTitle", [window, title]))),
-        Effect.asVoid
-      ),
-    setSize: (window: WindowHandle, size: WindowSize) =>
-      assertHandle(window, "Window.setSize").pipe(
-        Effect.tap(() => Effect.sync(() => record("Window.setSize", [window, size]))),
-        Effect.asVoid
-      ),
-    setPosition: (window: WindowHandle, position: WindowPosition) =>
-      assertHandle(window, "Window.setPosition").pipe(
-        Effect.tap(() => Effect.sync(() => record("Window.setPosition", [window, position]))),
-        Effect.asVoid
-      ),
-    setBackgroundColor: (window: WindowHandle, color: string) =>
-      assertHandle(window, "Window.setBackgroundColor").pipe(
-        Effect.tap(() => Effect.sync(() => record("Window.setBackgroundColor", [window, color]))),
-        Effect.asVoid
-      ),
-    setVibrancy: (window: WindowHandle, material: string) =>
-      assertHandle(window, "Window.setVibrancy").pipe(
-        Effect.tap(() => Effect.sync(() => record("Window.setVibrancy", [window, material]))),
-        Effect.asVoid
-      ),
-    setHasShadow: (window: WindowHandle, hasShadow: boolean) =>
-      assertHandle(window, "Window.setHasShadow").pipe(
-        Effect.tap(() => Effect.sync(() => record("Window.setHasShadow", [window, hasShadow]))),
-        Effect.asVoid
-      ),
-    enterFullScreen: (window: WindowHandle) =>
-      assertHandle(window, "Window.enterFullScreen").pipe(
-        Effect.tap(() => Effect.sync(() => record("Window.enterFullScreen", [window]))),
-        Effect.asVoid
-      ),
-    exitFullScreen: (window: WindowHandle) =>
-      assertHandle(window, "Window.exitFullScreen").pipe(
-        Effect.tap(() => Effect.sync(() => record("Window.exitFullScreen", [window]))),
-        Effect.asVoid
-      ),
-    onFullScreenChanged: (
-      _window: WindowHandle
-    ): Stream.Stream<WindowFullScreenChanged, WindowError, never> => Stream.empty,
-    getScaleFactor: (
-      window: WindowHandle
-    ): Effect.Effect<WindowScaleFactorOutput, WindowError, never> =>
-      assertHandle(window, "Window.getScaleFactor").pipe(
-        Effect.tap(() => Effect.sync(() => record("Window.getScaleFactor", [window]))),
-        Effect.flatMap(() => Effect.succeed({ scaleFactor: 2 } as WindowScaleFactorOutput))
-      ),
-    onScaleChanged: (
-      _window: WindowHandle
-    ): Stream.Stream<WindowScaleChanged, WindowError, never> => Stream.empty,
-    persistState: (window: WindowHandle) =>
-      assertHandle(window, "Window.persistState").pipe(
-        Effect.tap(() => Effect.sync(() => record("Window.persistState", [window]))),
-        Effect.asVoid
       )
   } satisfies TestWindowRpcs)
 }

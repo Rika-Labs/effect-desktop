@@ -41,22 +41,12 @@
     {
       "name": "currentWindow",
       "kind": "value",
-      "signature": "const currentWindow: Readonly<{ handle: Readonly<{ useQuery: () => Option.Option<WindowHandle>; }>; id: Readonly<{ useQuery: () => Option.Option<string>; }>; setTitle: Readonly<{ useMutation: () => CurrentWindowSetTitleMutation; }>; close: Readonly<{ useMutation: () => CurrentWindowCloseMutation; }>; }>"
+      "signature": "const currentWindow: Readonly<{ handle: Readonly<{ useQuery: () => Option.Option<WindowHandle>; }>; id: Readonly<{ useQuery: () => Option.Option<string>; }>; close: Readonly<{ useMutation: () => CurrentWindowCloseMutation; }>; }>"
     },
     {
       "name": "CurrentWindowCloseMutation",
       "kind": "type",
       "signature": "export type CurrentWindowCloseMutation = MutationResult<void, void, WindowError>"
-    },
-    {
-      "name": "CurrentWindowSetTitleInput",
-      "kind": "interface",
-      "signature": "export interface CurrentWindowSetTitleInput { readonly title: string }"
-    },
-    {
-      "name": "CurrentWindowSetTitleMutation",
-      "kind": "type",
-      "signature": "export type CurrentWindowSetTitleMutation = MutationResult< CurrentWindowSetTitleInput, void, WindowError >"
     },
     {
       "name": "DesktopAction",
@@ -126,7 +116,7 @@
     {
       "name": "DesktopWindowClient",
       "kind": "interface",
-      "signature": "export interface DesktopWindowClient { readonly create: (input?: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never> readonly setTitle: ( window: WindowHandle, title: string ) => Effect.Effect<void, WindowError, never> readonly close: (window: WindowHandle) => Effect.Effect<void, WindowError, never> }"
+      "signature": "export interface DesktopWindowClient { readonly create: (input?: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never> readonly close: (window: WindowHandle) => Effect.Effect<void, WindowError, never> }"
     },
     {
       "name": "DisplaysResult",
@@ -479,16 +469,6 @@
       "signature": "const useResource: <E>(resource: DesktopDisposable<E> | undefined, deps?: DependencyList) => DesktopResourceState<E>"
     },
     {
-      "name": "useSetCurrentWindowTitleMutation",
-      "kind": "value",
-      "signature": "const useSetCurrentWindowTitleMutation: () => CurrentWindowSetTitleMutation"
-    },
-    {
-      "name": "useSetWindowTitleMutation",
-      "kind": "value",
-      "signature": "const useSetWindowTitleMutation: () => WindowSetTitleMutation"
-    },
-    {
       "name": "useSubscribable",
       "kind": "value",
       "signature": "const useSubscribable: <A>(ref: SubscriptionRef.SubscriptionRef<A>) => A | undefined"
@@ -541,17 +521,7 @@
     {
       "name": "windows",
       "kind": "value",
-      "signature": "const windows: Readonly<{ create: Readonly<{ useMutation: () => WindowCreateMutation; }>; setTitle: Readonly<{ useMutation: () => WindowSetTitleMutation; }>; close: Readonly<{ useMutation: () => WindowCloseMutation; }>; }>"
-    },
-    {
-      "name": "WindowSetTitleInput",
-      "kind": "interface",
-      "signature": "export interface WindowSetTitleInput { readonly window: WindowHandle readonly title: string }"
-    },
-    {
-      "name": "WindowSetTitleMutation",
-      "kind": "type",
-      "signature": "export type WindowSetTitleMutation = MutationResult<WindowSetTitleInput, void, WindowError>"
+      "signature": "const windows: Readonly<{ create: Readonly<{ useMutation: () => WindowCreateMutation; }>; close: Readonly<{ useMutation: () => WindowCloseMutation; }>; }>"
     }
   ]
 }

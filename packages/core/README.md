@@ -15,6 +15,16 @@ The package exports runtime primitives as they land by phase. Phase 16 adds the
 protocol transport, platform-backed credential storage, and human-visible
 emission safety.
 
+### Desktop RPC surfaces
+
+`Desktop.Rpc.surface(name, group, options)` packages one Effect `RpcGroup` into the Layer-first artifacts needed by a framework capability: server layer, generated client layer, deterministic test client layer, schema docs, and contract-law checks.
+
+The `RpcGroup` remains the source of truth for endpoint tags, schemas, endpoint kind metadata, capability metadata, and support metadata. Use the direct surface shape when the public service is the generated `DesktopRpcClient<Rpcs>`. Use the mapped shape when a capability already owns a durable service API and needs to hide generated RPC calls behind it.
+
+`Desktop.Rpc.supportedGroup(group)` filters a descriptor group to RPCs annotated as supported. Unsupported RPCs remain available to schema docs and descriptors, but they are absent from `SupportedDesktopRpcClient<Rpcs>`.
+
+`packages/native/src/screen.ts` is the current full surface proof. `packages/native/src/window.ts` is the supported-client proof: `WindowRpcs` keeps the full descriptor surface, while `WindowSupportedRpcs` generates only the callable `create` and `close` client methods.
+
 ### SQLite
 
 `SQLite` wraps `bun:sqlite` behind Effect values. `connect({ path, ownerScope })`

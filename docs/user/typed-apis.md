@@ -24,6 +24,44 @@ export const CreateNote = Rpc.make("CreateNote", {
 export const NotesRpcs = RpcGroup.make(CreateNote)
 ```
 
+## Generated surface
+
+Use `Desktop.Rpc.surface(...)` when a group is part of the framework capability surface. The group stays the contract; the surface packages the layers and metadata derived from it.
+
+```ts
+import { Desktop, type DesktopRpcClient } from "@effect-desktop/core"
+import { Context, Effect, Schema } from "effect"
+import { Rpc, RpcGroup } from "effect/unstable/rpc"
+
+const ListNotes = Rpc.make("Notes.list", {
+  success: Schema.Array(Schema.Struct({ id: Schema.String, title: Schema.String }))
+})
+
+const NotesRpcs = RpcGroup.make(ListNotes)
+
+const NotesClient =
+  Context.GenericTag<DesktopRpcClient<RpcGroup.Rpcs<typeof NotesRpcs>>>("NotesClient")
+
+export const NotesSurface = Desktop.Rpc.surface("Notes", NotesRpcs, {
+  service: NotesClient,
+  handlers: NotesRpcs.toLayer({
+    "Notes.list": () => Effect.succeed([])
+  })
+})
+```
+
+The surface exposes:
+
+- `serverLayer` for app/runtime composition;
+- `clientLayer` for a generated client backed by an Effect RPC protocol;
+- `testClientLayer` for deterministic tests against the same handlers;
+- `schemaDocs` for endpoint, schema, capability, and support metadata;
+- `contractLaws` for executable checks on tags, endpoint names, and schemas.
+
+Use a mapped surface when the public service is not the raw generated RPC client. `ScreenSurface` does this: generated RPC calls are mapped into the durable `ScreenClient` service.
+
+Use `Desktop.Rpc.supportedGroup(group)` when a descriptor group includes planned or platform-specific methods that are not callable in the current host. Unsupported methods stay visible in docs and descriptors, but the generated client type omits them.
+
 ## Runtime handler
 
 ```ts
@@ -43,9 +81,28 @@ React components should not run Effects manually. Use the React desktop hooks fo
 Generated renderer SDKs should expose domain nouns and lowerCamel operations:
 
 ```tsx
-const createNote = notes.createNote.useAction()
+const createNote = notes.createNote.useMutation()
 
 createNote.run({ title: "Draft" })
 ```
 
 `CreateNote` can remain the RPC tag and handler key. It should not be the property name React users type in the renderer.
+
+## Support metadata
+
+Native services can expose a larger planned RPC group than the host implements today. Unsupported methods must stay visible as metadata so docs, adapters, and tests can describe the full contract, but renderer-facing clients should prefer endpoints whose `support.status` is `"supported"`.
+
+`WindowRpcs` follows that rule: it describes the full Window method contract. `WindowSupportedRpcs` filters the callable generated client to the host-backed methods.
+
+React endpoint hooks expose `support` and `isSupported`:
+
+```tsx
+const screen = DesktopApp.useDesktop(ScreenRpcs)
+const pointer = screen.getPointerPoint.useMutation()
+
+return (
+  <button disabled={!pointer.isSupported} onClick={() => pointer.run()}>
+    Locate pointer
+  </button>
+)
+```

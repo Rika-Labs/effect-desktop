@@ -61,6 +61,22 @@ For every new public effectful capability, reviewers should be able to answer ye
 - Are optional providers behind explicit subpaths, package boundaries, or lazy layer selection?
 - Is any `Promise`, concrete global, or `Effect.run*` use confined to an integration edge?
 
+## Generated RPC surfaces
+
+`Desktop.Rpc.surface(name, group, options)` is the Layer-first packaging point for a renderer-callable `RpcGroup`.
+
+The `RpcGroup` remains the source of truth for endpoint tags, request and response schemas, endpoint kind metadata, capability metadata, and support metadata. The surface adds the artifacts a capability needs around that one contract:
+
+- `serverLayer` binds the handler layer into a desktop app.
+- `clientLayer` creates the service client from an Effect RPC protocol.
+- `testClientLayer` creates the same service client against the handler layer for deterministic tests.
+- `schemaDocs` exposes the documented endpoint shape without introducing another DSL.
+- `contractLaws` exposes executable checks for bridge-compatible tags, unique renderer endpoint names, and schema-backed endpoints.
+
+Use the direct surface shape when the public service is the generated `DesktopRpcClient<Rpcs>`. Use the mapped shape only when the capability already owns a durable service API, such as `ScreenClient`, and the mapper hides generated RPC details behind that service.
+
+Use `Desktop.Rpc.supportedGroup(group)` when a capability intentionally publishes a larger descriptor group than the host can call today. Unsupported RPCs remain in `schemaDocs` and renderer descriptors, but generated client services are built from the filtered supported group. That prevents unsupported methods from looking like ordinary callable service methods.
+
 ## Current proof
 
 `packages/test/src/index.test.ts` contains the `Screen programs run unchanged through live, client, and test layers` test. It defines one `Effect.Effect<string, ScreenError, Screen>` program and runs it through:
@@ -70,3 +86,7 @@ For every new public effectful capability, reviewers should be able to answer ye
 - `TestScreen.layer(...)`.
 
 That is the minimum substitution claim this contract requires: provider replacement changes layers, not user code.
+
+`packages/native/src/screen.ts` is the current generated native vertical slice. `ScreenRpcs` is the canonical Effect `RpcGroup`; `ScreenSurface` derives the server, client, test-client, schema-doc, and law artifacts; `makeScreenBridgeClientLayer(...)` adapts the existing bridge exchange into the generated RPC protocol instead of widening the public `Screen` contract.
+
+`packages/native/src/window.ts` proves the supported-client rule. `WindowRpcs` keeps the full Phase 5 descriptor surface and support metadata, while `WindowSupportedRpcs` filters the callable generated client to `Window.create` and `Window.close`.

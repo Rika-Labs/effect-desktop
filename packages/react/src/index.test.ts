@@ -92,8 +92,6 @@ test("React package exports point at checked-in source files", () => {
 const unavailableWindow: DesktopWindowClient = {
   create: () =>
     Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "window.create")),
-  setTitle: () =>
-    Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "window.setTitle")),
   close: () => Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "window.close"))
 }
 

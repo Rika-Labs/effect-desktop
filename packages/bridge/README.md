@@ -15,10 +15,14 @@ host method calls.
 
 ## Public API
 
-The current public surface is limited to host protocol Schema exports from
-`src/protocol.ts`, the Phase 3 handshake client in `src/handshake.ts`, and the
-Phase 3 window host-method client in `src/window.ts`. Renderer-facing bridge
-clients are still out of scope until Phase 4.
+The current public surface includes:
+
+- host protocol Schema exports from `src/protocol.ts`;
+- the handshake client in `src/handshake.ts`;
+- typed bridge contract helpers, RPC metadata helpers, and bridge client/runtime adapters;
+- the Effect RPC protocol adapter used by generated native clients.
+
+Generated Effect RPC clients send host protocol envelopes through `makeDesktopClientProtocol(...)`. Host protocol failures are encoded before they enter Effect RPC exits, and successful `undefined` payloads are normalized to `null` on the bridge response envelope so the wire outcome remains explicit JSON.
 
 ## Non-goals
 

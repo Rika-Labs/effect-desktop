@@ -7,6 +7,9 @@
     "architecture",
     "desktop-config",
     "typed-apis",
+    "bridge",
+    "native-services",
+    "windows",
     "---Operate---",
     "testing",
     "deployment"

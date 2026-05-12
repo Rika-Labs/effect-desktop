@@ -928,6 +928,7 @@ export type HostProtocolEnvelope = typeof HostProtocolEnvelope.Type
 
 const decodeUnknownHostProtocolEnvelope = Schema.decodeUnknownSync(HostProtocolEnvelope)
 const encodeHostProtocolEnvelopeSync = Schema.encodeSync(HostProtocolEnvelope)
+const encodeHostProtocolErrorSync = Schema.encodeSync(HostProtocolError)
 
 export const decodeHostProtocolEnvelope = (input: unknown): HostProtocolEnvelope =>
   validateDecodedHostProtocolEnvelope(decodeUnknownHostProtocolEnvelope(input, StrictParseOptions))
@@ -1170,7 +1171,10 @@ export const makeDesktopClientProtocol = (
               ? {
                   _tag: "Exit",
                   requestId: pending.requestId,
-                  exit: { _tag: "Failure", cause: [{ _tag: "Fail", error: envelope.error }] }
+                  exit: {
+                    _tag: "Failure",
+                    cause: [{ _tag: "Fail", error: encodeHostProtocolErrorSync(envelope.error) }]
+                  }
                 }
               : {
                   _tag: "Exit",
@@ -1191,7 +1195,7 @@ export const makeDesktopClientProtocol = (
               requestId: pending.requestId,
               exit: {
                 _tag: "Failure",
-                cause: [{ _tag: "Fail", error: envelope.error }]
+                cause: [{ _tag: "Fail", error: encodeHostProtocolErrorSync(envelope.error) }]
               }
             }
             return writeToClient(pending.clientId, failure)

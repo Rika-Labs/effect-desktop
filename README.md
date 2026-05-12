@@ -82,10 +82,13 @@ Supported templates are `basic-react-tailwind`, `todo-sqlite`, and `multi-window
 - Typed bridge contracts between renderer code and runtime services.
 - Effect services, schemas, layers, resources, streams, and typed failures around native authority.
 - A Layer-first architecture where live, client, and test implementations can satisfy the same service requirement.
+- Generated RPC surfaces through `Desktop.Rpc.surface(...)`, so one Effect `RpcGroup` can produce server, client, test, schema-doc, and contract-law artifacts.
 - React hooks and providers for renderer code.
 - CLI slices for build, package, sign, notarize, publish, doctor, and release checks.
 
 The renderer does not receive raw native authority. Privileged work crosses named services, typed contracts, permissions, and resource lifecycles.
+
+The current generated native proofs are `ScreenSurface` and the Window supported-client slice. `ScreenRpcs` and `WindowRpcs` remain canonical Effect `RpcGroup` descriptors, while generated client layers expose only the methods that are host-backed today.
 
 ## Templates
 
@@ -130,6 +133,9 @@ There is no `desktop dev` command today. Template development currently runs thr
 ## Documentation
 
 - [docs/SPEC.md](docs/SPEC.md) defines the framework behavior and milestone order.
+- [docs/user/typed-apis.md](docs/user/typed-apis.md) explains the `RpcGroup` and generated surface model.
+- [docs/user/native-services.md](docs/user/native-services.md) summarizes the current native service surfaces.
+- [docs/user/windows.md](docs/user/windows.md) documents the current Window contract and support metadata.
 - Package READMEs describe implemented package surfaces.
 - Milestone reports under [docs/milestones](docs/milestones) record completed phase work.
 - [CONTRIBUTING.md](CONTRIBUTING.md) describes contribution expectations.
