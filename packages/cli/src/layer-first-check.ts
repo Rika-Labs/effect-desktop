@@ -320,7 +320,7 @@ const scanPublicPromiseSource = (
   const reportedSymbols = new Set<string>()
   for (const symbol of collectPromiseExports(path, text, sourceTexts, new Set())) {
     const key = `${packageName}:${symbol.name}`
-    if (allowlist.has(key) || reportedSymbols.has(key)) {
+    if (isPromiseAllowlisted(key, allowlist) || reportedSymbols.has(key)) {
       continue
     }
     reportedSymbols.add(key)
@@ -333,6 +333,20 @@ const scanPublicPromiseSource = (
     })
   }
   return violations
+}
+
+const isPromiseAllowlisted = (symbol: string, allowlist: ReadonlySet<string>): boolean => {
+  if (allowlist.has(symbol)) {
+    return true
+  }
+  const [packageName, publicName] = symbol.split(":", 2)
+  if (packageName === undefined || publicName === undefined) {
+    return false
+  }
+  const memberStart = publicName.indexOf(".")
+  return memberStart === -1
+    ? false
+    : allowlist.has(`${packageName}:${publicName.slice(0, memberStart)}`)
 }
 
 const scanPublicBoundaryClasses = (
@@ -362,7 +376,13 @@ const scanPublicBoundaryClasses = (
     if (heritage?.includes("Data.TaggedError")) {
       continue
     }
-    for (const exportedName of exportedNames) {
+    const boundaryNames = uniqueStrings([
+      ...exportedNames,
+      ...(hasModifier(statement, ts.SyntaxKind.DefaultKeyword) && statement.name !== undefined
+        ? [statement.name.text]
+        : [])
+    ])
+    for (const exportedName of boundaryNames) {
       if (!BOUNDARY_SUFFIX_PATTERN.test(exportedName)) {
         continue
       }
@@ -520,6 +540,41 @@ const promiseReturningExportedSymbols = (
       }
     }
     return symbols
+  }
+  if (ts.isInterfaceDeclaration(statement)) {
+    const exportedNames = exportedPromiseNames(statement, statement.name.text, exports)
+    if (exportedNames.length === 0) {
+      return []
+    }
+
+    const symbols: ExportedPromiseSymbol[] = []
+    for (const member of statement.members) {
+      if (!typeElementReturnsPromise(member, sourceFile)) {
+        continue
+      }
+      const memberName = publicTypeMemberName(member)
+      for (const exportedName of exportedNames) {
+        symbols.push({
+          name: memberName === undefined ? exportedName : `${exportedName}.${memberName}`,
+          path,
+          offset: member.getStart(sourceFile)
+        })
+      }
+    }
+    return symbols
+  }
+  if (ts.isTypeAliasDeclaration(statement)) {
+    if (!typeIncludesPromise(statement.type, sourceFile)) {
+      return []
+    }
+    return exportedPromiseNames(statement, statement.name.text, exports).map((exportedName) => ({
+      name: exportedName,
+      path,
+      offset: statement.getStart(sourceFile)
+    }))
+  }
+  if (ts.isExportAssignment(statement) && statement.isExportEquals !== true) {
+    return promiseSymbolsFromDefaultExpression(path, statement, sourceFile)
   }
   return []
 }
@@ -704,7 +759,9 @@ const exportedClassNames = (
   exports: LocalExportNames
 ): readonly string[] => {
   const names = [...(exports.byLocalName.get(localName) ?? [])]
-  if (isExported(node) && localName !== "default") {
+  if (hasModifier(node, ts.SyntaxKind.DefaultKeyword)) {
+    names.push("default")
+  } else if (isExported(node) && localName !== "default") {
     names.push(localName)
   }
   return uniqueStrings(names)
@@ -716,9 +773,7 @@ const initializerIsAsync = (initializer: ts.Expression | undefined): boolean => 
   if (initializer === undefined) {
     return false
   }
-  const expression = ts.isParenthesizedExpression(initializer)
-    ? initializer.expression
-    : initializer
+  const expression = unwrapExpression(initializer)
   return (
     (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) &&
     hasAsyncModifier(expression)
@@ -732,9 +787,7 @@ const initializerReturnsPromise = (
   if (initializer === undefined) {
     return false
   }
-  const expression = ts.isParenthesizedExpression(initializer)
-    ? initializer.expression
-    : initializer
+  const expression = unwrapExpression(initializer)
   return (
     (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) &&
     (typeIncludesPromise(expression.type, sourceFile) || bodyReturnsPromise(expression, sourceFile))
@@ -771,6 +824,67 @@ const memberReturnsPromise = (
     ts.isGetAccessorDeclaration(member) &&
     (typeIncludesPromise(member.type, sourceFile) || bodyReturnsPromise(member, sourceFile))
   )
+}
+
+const promiseSymbolsFromDefaultExpression = (
+  path: string,
+  statement: ts.ExportAssignment,
+  sourceFile: ts.SourceFile
+): readonly ExportedPromiseSymbol[] => {
+  const expression = unwrapExpression(statement.expression)
+  if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) {
+    if (
+      hasAsyncModifier(expression) ||
+      typeIncludesPromise(expression.type, sourceFile) ||
+      bodyReturnsPromise(expression, sourceFile)
+    ) {
+      return [{ name: "default", path, offset: statement.getStart(sourceFile) }]
+    }
+    return []
+  }
+  if (ts.isClassExpression(expression)) {
+    const symbols: ExportedPromiseSymbol[] = []
+    for (const member of expression.members) {
+      const memberName = publicMemberName(member)
+      if (memberName !== undefined && memberReturnsPromise(member, sourceFile)) {
+        symbols.push({
+          name: `default.${memberName}`,
+          path,
+          offset: member.getStart(sourceFile)
+        })
+      }
+    }
+    return symbols
+  }
+  return expressionReturnsPromise(expression, sourceFile)
+    ? [{ name: "default", path, offset: statement.getStart(sourceFile) }]
+    : []
+}
+
+const typeElementReturnsPromise = (member: ts.TypeElement, sourceFile: ts.SourceFile): boolean => {
+  if (
+    ts.isMethodSignature(member) ||
+    ts.isPropertySignature(member) ||
+    ts.isCallSignatureDeclaration(member) ||
+    ts.isConstructSignatureDeclaration(member) ||
+    ts.isIndexSignatureDeclaration(member)
+  ) {
+    return typeIncludesPromise(member.type, sourceFile)
+  }
+  return false
+}
+
+const publicTypeMemberName = (member: ts.TypeElement): string | undefined => {
+  if (!ts.isMethodSignature(member) && !ts.isPropertySignature(member)) {
+    return undefined
+  }
+  if (member.name === undefined || ts.isPrivateIdentifier(member.name)) {
+    return undefined
+  }
+  if (ts.isIdentifier(member.name) || ts.isStringLiteral(member.name)) {
+    return member.name.text
+  }
+  return undefined
 }
 
 const bodyReturnsPromise = (
@@ -816,7 +930,7 @@ const expressionReturnsPromise = (
   expression: ts.Expression,
   sourceFile: ts.SourceFile
 ): boolean => {
-  const unwrapped = ts.isParenthesizedExpression(expression) ? expression.expression : expression
+  const unwrapped = unwrapExpression(expression)
   if (ts.isNewExpression(unwrapped) && unwrapped.expression.getText(sourceFile) === "Promise") {
     return true
   }
@@ -826,6 +940,9 @@ const expressionReturnsPromise = (
   const callee = unwrapped.expression.getText(sourceFile).replace(/\s+/gu, "")
   return callee === "Promise" || callee.startsWith("Promise.")
 }
+
+const unwrapExpression = (expression: ts.Expression): ts.Expression =>
+  ts.isParenthesizedExpression(expression) ? unwrapExpression(expression.expression) : expression
 
 const publicMemberName = (member: ts.ClassElement): string | undefined => {
   if (
