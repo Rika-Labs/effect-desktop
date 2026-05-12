@@ -724,6 +724,11 @@
       "signature": "const makeStaleHandleError: (operation: string, handle: BridgeResourceHandle, actualGeneration: number) => HostProtocolStaleHandleError"
     },
     {
+      "name": "makeUnaryDesktopTransportFromBridgeClientExchange",
+      "kind": "value",
+      "signature": "const makeUnaryDesktopTransportFromBridgeClientExchange: (exchange: BridgeClientExchange, options?: UnaryDesktopTransportFromBridgeClientExchangeOptions) => Effect.Effect<DesktopTransportSend & DesktopTransportRun>"
+    },
+    {
       "name": "MENU_SET_APPLICATION_MENU_METHOD",
       "kind": "value",
       "signature": "const MENU_SET_APPLICATION_MENU_METHOD: \"Menu.setApplicationMenu\""
@@ -937,6 +942,11 @@
       "name": "Streams",
       "kind": "value",
       "signature": "const Streams: (<Layers extends readonly AnyBridgeRpcLayer[]>(...layers: Layers) => BridgeStreamRuntime<BridgeStreamLayerEnvironment<Layers[number]>>) & { withOptions: <Layers extends readonly AnyBridgeRpcLayer[]>(options: BridgeStreamRuntimeOptions, ...layers: Layers) => BridgeStreamRuntime<BridgeStreamLayerEnvironment<Layers[number]>>; }"
+    },
+    {
+      "name": "UnaryDesktopTransportFromBridgeClientExchangeOptions",
+      "kind": "interface",
+      "signature": "export interface UnaryDesktopTransportFromBridgeClientExchangeOptions extends Pick< BridgeClientOptions, \"nextTraceId\" | \"now\" > { readonly normalizeRequest?: (request: HostProtocolRequestEnvelope) => HostProtocolRequestEnvelope }"
     },
     {
       "name": "validateHostProtocolNonEmptyString",

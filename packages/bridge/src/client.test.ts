@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Cause, Deferred, Effect, Exit, Option, Schema } from "effect"
+import { Cause, Deferred, Effect, Exit, Layer, Option, Schema } from "effect"
 
 import {
   BridgeRpc,
@@ -12,6 +12,11 @@ import {
   HostProtocolCancelByRequestEnvelope,
   HostProtocolRequestEnvelope,
   RendererOriginAuth,
+  Rpc,
+  RpcClient,
+  RpcGroup,
+  makeDesktopClientProtocol,
+  makeUnaryDesktopTransportFromBridgeClientExchange,
   makeHostProtocolInvalidOutputError,
   makeStaleHandleError,
   type HostProtocolError,
@@ -30,6 +35,49 @@ class ProjectOpenError extends Schema.Class<ProjectOpenError>("ProjectOpenError"
   tag: Schema.Literal("ProjectOpenError"),
   message: Schema.String
 }) {}
+
+test("makeUnaryDesktopTransportFromBridgeClientExchange adapts unary bridge exchange to Effect RpcClient protocol", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const Open = Rpc.make("ProjectRpcs.Transport.open", {
+    payload: ProjectOpenInput,
+    success: ProjectOpenOutput,
+    error: ProjectOpenError
+  })
+  const ProjectRpcs = RpcGroup.make(Open)
+  const transport = await Effect.runPromise(
+    makeUnaryDesktopTransportFromBridgeClientExchange(
+      responseExchange(requests, { id: "project-1" }),
+      {
+        now: () => 41,
+        nextTraceId: () => "trace-transport"
+      }
+    )
+  )
+  const protocolLayer = Layer.effect(RpcClient.Protocol)(
+    makeDesktopClientProtocol(transport, { now: () => 42, nextTraceId: () => "trace-rpc" })
+  )
+
+  const output = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const client = yield* RpcClient.make(ProjectRpcs)
+        return yield* client["ProjectRpcs.Transport.open"](
+          new ProjectOpenInput({ path: "/tmp/project" })
+        )
+      }).pipe(Effect.provide(protocolLayer))
+    )
+  )
+
+  expect(output).toEqual(new ProjectOpenOutput({ id: "project-1" }))
+  expect(requests).toHaveLength(1)
+  expect(requests[0]).toMatchObject({
+    kind: "request",
+    method: "ProjectRpcs.Transport.open",
+    timestamp: 42,
+    payload: { path: "/tmp/project" }
+  })
+  expect(requests[0]?.traceId).toBeString()
+})
 
 test("Client generates a typed namespace from contract entries", async () => {
   const requests: HostProtocolRequestEnvelope[] = []

@@ -1,15 +1,19 @@
 import {
   BridgeRpc,
-  Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
   type BridgeRpcHandlers,
   type BridgeRpcLayer,
+  makeDesktopClientProtocol,
+  makeUnaryDesktopTransportFromBridgeClientExchange,
   Rpc,
+  RpcClient,
   RpcCapability,
   RpcGroup,
+  makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   HostProtocolError as HostProtocolErrorSchema,
+  HostProtocolRequestEnvelope,
   HostProtocolUnsupportedError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
@@ -55,23 +59,23 @@ export const ScreenRpcEvents = Object.freeze({})
 
 export type ScreenRpcEvents = typeof ScreenRpcEvents
 
-const ScreenRpcGroup = RpcGroup.make(
-  ScreenGetDisplays,
-  ScreenGetPrimaryDisplay,
-  ScreenGetPointerPoint,
-  ScreenIsSupported
-)
+const makeScreenRpcGroup = () =>
+  RpcGroup.make(
+    ScreenGetDisplays,
+    ScreenGetPrimaryDisplay,
+    ScreenGetPointerPoint,
+    ScreenIsSupported
+  )
 
-const ScreenBridgeRpcs = BridgeRpc.fromGroup("Screen", ScreenRpcGroup, ScreenRpcEvents)
+const ScreenRpcGroup = makeScreenRpcGroup()
 
-export const ScreenRpcs = ScreenBridgeRpcs as typeof ScreenRpcGroup & typeof ScreenBridgeRpcs
+const ScreenBridgeRpcs = BridgeRpc.fromGroup("Screen", makeScreenRpcGroup(), ScreenRpcEvents)
+
+export const ScreenRpcs = ScreenRpcGroup
 
 export type ScreenRpc = RpcGroup.Rpcs<typeof ScreenRpcGroup>
 
-export class ScreenRpcClient extends Context.Service<
-  ScreenRpcClient,
-  DesktopRpcClient<ScreenRpc>
->()("@effect-desktop/native/ScreenRpcClient") {}
+export type ScreenBridgeClientOptions = Omit<BridgeClientOptions, "nextRequestId">
 
 export const ScreenMethodNames = Object.freeze([
   "getDisplays",
@@ -143,8 +147,9 @@ export const ScreenHandlersLive = ScreenRpcGroup.toLayer({
 })
 
 export const ScreenSurface = DesktopRpc.surface("Screen", ScreenRpcGroup, {
-  service: ScreenRpcClient,
-  handlers: ScreenHandlersLive
+  service: ScreenClient,
+  handlers: ScreenHandlersLive,
+  client: (client) => screenClientFromRpcClient(client)
 })
 
 export const makeScreenClientLayer = (client: ScreenClientApi): Layer.Layer<ScreenClient> =>
@@ -155,36 +160,75 @@ export const makeScreenServiceLayer = (client: ScreenClientApi): Layer.Layer<Scr
 
 export const makeScreenBridgeClientLayer = (
   exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
+  options: ScreenBridgeClientOptions = {}
 ): Layer.Layer<ScreenClient> =>
-  Layer.succeed(ScreenClient)(makeScreenBridgeClient(exchange, options))
+  Layer.provide(ScreenSurface.clientLayer, makeScreenBridgeProtocolLayer(exchange, options))
 
-export type ScreenRpcSpec = (typeof ScreenRpcs)["spec"]
+export type ScreenRpcSpec = (typeof ScreenBridgeRpcs)["spec"]
 
 export const makeHostScreenBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<ScreenRpcSpec>>(
   handlers: Handlers
 ): BridgeRpcLayer<"Screen", ScreenRpcSpec, Handlers, ScreenRpcEvents> =>
-  BridgeRpc.layer(ScreenRpcs)(handlers)
+  BridgeRpc.layer(ScreenBridgeRpcs)(handlers)
 
-const makeScreenBridgeClient = (
+const makeScreenBridgeProtocolLayer = (
   exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): ScreenClientApi => {
-  const client = Client({ Screen: ScreenRpcs }, exchange, options).Screen as unknown as {
-    readonly getDisplays: () => Effect.Effect<ScreenDisplaysResult, ScreenError, never>
-    readonly getPrimaryDisplay: () => Effect.Effect<ScreenDisplay, ScreenError, never>
-    readonly getPointerPoint: () => Effect.Effect<ScreenPoint, ScreenError, never>
-    readonly isSupported: (
-      input: ScreenIsSupportedInput
-    ) => Effect.Effect<ScreenSupportedResult, ScreenError, never>
+  options: ScreenBridgeClientOptions
+): Layer.Layer<RpcClient.Protocol> =>
+  Layer.effect(RpcClient.Protocol)(
+    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, {
+      ...options,
+      normalizeRequest: normalizeScreenBridgeRequest
+    }).pipe(Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options)))
+  )
+
+const normalizeScreenBridgeRequest = (
+  request: HostProtocolRequestEnvelope
+): HostProtocolRequestEnvelope => {
+  if (
+    request.payload !== null ||
+    (request.method !== "Screen.getDisplays" &&
+      request.method !== "Screen.getPrimaryDisplay" &&
+      request.method !== "Screen.getPointerPoint")
+  ) {
+    return request
   }
-  return Object.freeze({
-    getDisplays: () => client.getDisplays().pipe(Effect.flatMap(validateScreenDisplays)),
-    getPrimaryDisplay: () => client.getPrimaryDisplay(),
-    getPointerPoint: () => client.getPointerPoint(),
-    isSupported: (method) => client.isSupported(new ScreenIsSupportedInput({ method }))
-  } satisfies ScreenClientApi)
+  return new HostProtocolRequestEnvelope({
+    kind: "request",
+    id: request.id,
+    method: request.method,
+    timestamp: request.timestamp,
+    traceId: request.traceId,
+    ...(request.windowId === undefined ? {} : { windowId: request.windowId }),
+    ...(request.originToken === undefined ? {} : { originToken: request.originToken })
+  })
 }
+
+const screenClientFromRpcClient = (client: DesktopRpcClient<ScreenRpc>): ScreenClientApi =>
+  Object.freeze({
+    getDisplays: () =>
+      runScreenRpc(client["Screen.getDisplays"](undefined)).pipe(
+        Effect.flatMap(validateScreenDisplays)
+      ),
+    getPrimaryDisplay: () => runScreenRpc(client["Screen.getPrimaryDisplay"](undefined)),
+    getPointerPoint: () => runScreenRpc(client["Screen.getPointerPoint"](undefined)),
+    isSupported: (method) =>
+      runScreenRpc(client["Screen.isSupported"](new ScreenIsSupportedInput({ method })))
+  } satisfies ScreenClientApi)
+
+const runScreenRpc = <A, E>(
+  effect: Effect.Effect<A, E, never>
+): Effect.Effect<A, ScreenError, never> => effect.pipe(Effect.mapError(mapScreenRpcClientError))
+
+const mapScreenRpcClientError = (error: unknown): ScreenError =>
+  isScreenError(error) ? error : makeHostProtocolInternalError("Screen RPC client failed", "Screen")
+
+const isScreenError = (error: unknown): error is ScreenError =>
+  typeof error === "object" &&
+  error !== null &&
+  "tag" in error &&
+  "operation" in error &&
+  "recoverable" in error
 
 const validateScreenDisplays = (
   result: ScreenDisplaysResult

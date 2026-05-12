@@ -84,11 +84,11 @@ import {
   SafeStorageMethodNames,
   SecretValue,
   Screen,
+  ScreenClient,
   ScreenHandlersLive,
   ScreenRpcs,
   ScreenLive,
   ScreenMethodNames,
-  ScreenRpcClient,
   ScreenSurface,
   Shell,
   ShellRpcs,
@@ -4122,7 +4122,6 @@ test("unsupported Shell client reports deferred host methods as Effect values", 
 })
 
 test("ScreenRpcs declares the Phase 8 Screen method surface", () => {
-  expect(ScreenRpcs.tag).toBe("Screen")
   expect([...ScreenMethodNames]).toEqual(expectedScreenMethods)
   expect(Array.from(ScreenRpcs.requests.keys())).toEqual([
     "Screen.getDisplays",
@@ -4130,7 +4129,9 @@ test("ScreenRpcs declares the Phase 8 Screen method surface", () => {
     "Screen.getPointerPoint",
     "Screen.isSupported"
   ])
-  expect(Object.keys(ScreenRpcs.events)).toEqual([])
+  expect("tag" in ScreenRpcs).toBe(false)
+  expect("events" in ScreenRpcs).toBe(false)
+  expect("spec" in ScreenRpcs).toBe(false)
 })
 
 test("ScreenSurface derives server, client, test, and metadata surfaces from the RpcGroup", async () => {
@@ -4227,14 +4228,12 @@ test("ScreenSurface test client layer runs Screen RPCs through the generated ser
   )
   const result = await Effect.runPromise(
     Effect.gen(function* () {
-      const client = yield* ScreenRpcClient
+      const client = yield* ScreenClient
       return {
-        displays: yield* client["Screen.getDisplays"](undefined),
-        primary: yield* client["Screen.getPrimaryDisplay"](undefined),
-        pointer: yield* client["Screen.getPointerPoint"](undefined),
-        pointerSupported: yield* client["Screen.isSupported"](
-          new ScreenIsSupportedInput({ method: "getPointerPoint" })
-        )
+        displays: yield* client.getDisplays(),
+        primary: yield* client.getPrimaryDisplay(),
+        pointer: yield* client.getPointerPoint(),
+        pointerSupported: yield* client.isSupported("getPointerPoint")
       }
     }).pipe(Effect.provide(testLayer))
   )
@@ -4313,6 +4312,42 @@ test("Screen bridge client sends typed host envelopes and decodes values", async
     ["Screen.getPointerPoint", undefined],
     ["Screen.isSupported", { method: "getPointerPoint" }]
   ])
+})
+
+test("Screen bridge client validates generated protocol timestamps as typed failures", async () => {
+  const assertScreenBridgeClientOptionsRejectRequestId = (
+    makeLayer: typeof makeScreenBridgeClientLayer
+  ): void => {
+    makeLayer(
+      screenExchange([], () => ({ kind: "success", payload: {} })),
+      {
+        // @ts-expect-error Effect RPC owns request IDs for generated Screen clients
+        nextRequestId: () => "request-id"
+      }
+    )
+  }
+  void assertScreenBridgeClientOptionsRejectRequestId
+  const exchange = screenExchange([], () => ({ kind: "success", payload: { displays: [] } }))
+  const result = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const screen = yield* Screen
+      return yield* screen.getDisplays()
+    }).pipe(
+      Effect.provide(
+        Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange, { now: () => Number.NaN }))
+      )
+    )
+  )
+
+  expectExitFailure(
+    result,
+    (error) =>
+      hasErrorTag(error, "InvalidArgument") &&
+      typeof error === "object" &&
+      error !== null &&
+      "field" in error &&
+      error.field === "timestamp"
+  )
 })
 
 test("Screen bridge client rejects empty display lists as InvalidOutput", async () => {

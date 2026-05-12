@@ -112,14 +112,15 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 
 ## Execution Progress
 
-| Issue                                           | Status      | Evidence                                                                                                                                                                     |
-| ----------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| #1227 Codify the Layer-first framework contract | Implemented | `docs/architecture/layer-first-contract.md`, `tests/layer-first-contract.test.ts`, and the `Screen` Live/Client/Test substitution proof in `packages/test/src/index.test.ts` |
-| #1205 Fix the React API subpath export          | Implemented | `packages/react/package.json`, `packages/react/src/index.test.ts`, and `docs/learnings/2026-05-12-fix-react-api-subpath-export.md`                                           |
-| #1178 Narrow the core public root export        | Implemented | `packages/core/src/index.ts`, `packages/core/package.json`, `packages/core/src/index.test.ts`, and `docs/learnings/2026-05-12-narrow-core-root-export.md`                    |
-| #1219 Narrow the native public root export      | Implemented | `packages/native/src/index.ts`, `packages/native/src/contracts/index.ts`, `packages/native/src/index.test.ts`, and `api/snapshots/@effect-desktop__native.snapshot.json`     |
-| #1154 Make RpcGroup the only renderer contract  | Implemented | `BridgeRpc.fromGroup`, native capability `Rpc.make`/`RpcGroup.make` contracts, `packages/native/src/index.test.ts`, and API snapshots                                        |
-| #1233 Make generated RPC surfaces Layer-first   | Implemented | `DesktopRpc.surface`, `ScreenSurface`, generated server/client/test layers, schema docs, contract laws, and focused core/native tests                                        |
+| Issue                                                | Status      | Evidence                                                                                                                                                                     |
+| ---------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| #1227 Codify the Layer-first framework contract      | Implemented | `docs/architecture/layer-first-contract.md`, `tests/layer-first-contract.test.ts`, and the `Screen` Live/Client/Test substitution proof in `packages/test/src/index.test.ts` |
+| #1205 Fix the React API subpath export               | Implemented | `packages/react/package.json`, `packages/react/src/index.test.ts`, and `docs/learnings/2026-05-12-fix-react-api-subpath-export.md`                                           |
+| #1178 Narrow the core public root export             | Implemented | `packages/core/src/index.ts`, `packages/core/package.json`, `packages/core/src/index.test.ts`, and `docs/learnings/2026-05-12-narrow-core-root-export.md`                    |
+| #1219 Narrow the native public root export           | Implemented | `packages/native/src/index.ts`, `packages/native/src/contracts/index.ts`, `packages/native/src/index.test.ts`, and `api/snapshots/@effect-desktop__native.snapshot.json`     |
+| #1154 Make RpcGroup the only renderer contract       | Implemented | `BridgeRpc.fromGroup`, native capability `Rpc.make`/`RpcGroup.make` contracts, `packages/native/src/index.test.ts`, and API snapshots                                        |
+| #1233 Make generated RPC surfaces Layer-first        | Implemented | `DesktopRpc.surface`, `ScreenSurface`, generated server/client/test layers, schema docs, contract laws, and focused core/native tests                                        |
+| #1193 Generate desktop surfaces from Effect RpcGroup | Implemented | `ScreenRpcs` is a pure `RpcGroup`, `ScreenSurface` maps generated RPC clients to `ScreenClient`, and bridge exchange use is isolated in a unary protocol adapter             |
 
 ## Design-Debt Follow-ups
 

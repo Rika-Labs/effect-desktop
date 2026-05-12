@@ -1096,45 +1096,59 @@ export const makeDesktopClientProtocol = (
           request: RpcMessage.FromClientEncoded
         ): Effect.Effect<void, RpcClientError.RpcClientError> => {
           if (request._tag === "Request") {
-            const requestId = String(request.id)
-            const transportRequestId = clientRequestId(_clientId, requestId)
-            requestClients.set(transportRequestId, { clientId: _clientId, requestId })
-            const fields: {
-              kind: "request"
-              id: string
-              method: string
-              timestamp: number
-              traceId: string
-              windowId?: string
-              originToken?: string
-              payload?: unknown
-            } = {
-              kind: "request",
-              id: transportRequestId,
-              method: request.tag,
-              timestamp: resolved.now(),
-              traceId: request.traceId ?? resolved.nextTraceId()
-            }
-            if (resolved.windowId !== "") fields.windowId = resolved.windowId
-            if (resolved.originToken !== "") fields.originToken = resolved.originToken
-            if (request.payload !== undefined) fields.payload = request.payload
-            return transport.send(new HostProtocolRequestEnvelope(fields)) as Effect.Effect<
-              void,
-              RpcClientError.RpcClientError
-            >
+            return Effect.gen(function* () {
+              const requestId = String(request.id)
+              const transportRequestId = clientRequestId(_clientId, requestId)
+              const timestamp = yield* validateHostProtocolTimestamp(resolved.now(), request.tag)
+              const traceId = yield* validateHostProtocolNonEmptyString(
+                "traceId",
+                request.traceId ?? resolved.nextTraceId(),
+                request.tag
+              )
+              const fields: {
+                kind: "request"
+                id: string
+                method: string
+                timestamp: number
+                traceId: string
+                windowId?: string
+                originToken?: string
+                payload?: unknown
+              } = {
+                kind: "request",
+                id: transportRequestId,
+                method: request.tag,
+                timestamp,
+                traceId
+              }
+              if (resolved.windowId !== "") fields.windowId = resolved.windowId
+              if (resolved.originToken !== "") fields.originToken = resolved.originToken
+              if (request.payload !== undefined) fields.payload = request.payload
+              const envelope = new HostProtocolRequestEnvelope(fields)
+              requestClients.set(transportRequestId, { clientId: _clientId, requestId })
+              yield* transport.send(envelope)
+            }) as unknown as Effect.Effect<void, RpcClientError.RpcClientError>
           }
           if (request._tag === "Interrupt") {
-            const requestId = String(request.requestId)
-            const transportRequestId = clientRequestId(_clientId, requestId)
-            requestClients.delete(transportRequestId)
-            return transport.send(
-              new HostProtocolCancelByRequestEnvelope({
-                kind: "cancel",
-                id: transportRequestId,
-                timestamp: resolved.now(),
-                traceId: resolved.nextTraceId()
-              })
-            ) as Effect.Effect<void, RpcClientError.RpcClientError>
+            return Effect.gen(function* () {
+              const requestId = String(request.requestId)
+              const transportRequestId = clientRequestId(_clientId, requestId)
+              const timestamp = yield* validateHostProtocolTimestamp(resolved.now(), requestId)
+              const traceId = yield* validateHostProtocolNonEmptyString(
+                "traceId",
+                resolved.nextTraceId(),
+                requestId
+              )
+              requestClients.delete(transportRequestId)
+              yield* transport.send(
+                new HostProtocolCancelByRequestEnvelope({
+                  kind: "cancel",
+                  id: transportRequestId,
+                  timestamp,
+                  traceId
+                })
+              )
+            }) as unknown as Effect.Effect<void, RpcClientError.RpcClientError>
           }
           return Effect.void
         },

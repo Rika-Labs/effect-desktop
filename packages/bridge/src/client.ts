@@ -1,4 +1,4 @@
-import { Effect, Schema, Stream } from "effect"
+import { Effect, Queue, Schema, Stream } from "effect"
 
 import {
   type BridgeRpcGroup,
@@ -17,12 +17,16 @@ import {
   HostProtocolCancelledError,
   HostProtocolEventEnvelope,
   HostProtocolRequestEnvelope,
+  HostProtocolResponseEnvelope,
   HostProtocolStreamClosedError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   validateHostProtocolNonEmptyString,
   validateOptionalHostProtocolNonEmptyString,
   validateHostProtocolTimestamp,
+  type DesktopTransportRun,
+  type DesktopTransportSend,
+  type HostProtocolEnvelope,
   type HostProtocolError
 } from "./protocol.js"
 import {
@@ -77,6 +81,62 @@ export interface BridgeClientOptions {
   readonly originToken?: string
 }
 
+export interface UnaryDesktopTransportFromBridgeClientExchangeOptions extends Pick<
+  BridgeClientOptions,
+  "nextTraceId" | "now"
+> {
+  readonly normalizeRequest?: (request: HostProtocolRequestEnvelope) => HostProtocolRequestEnvelope
+}
+
+export const makeUnaryDesktopTransportFromBridgeClientExchange = (
+  exchange: BridgeClientExchange,
+  options: UnaryDesktopTransportFromBridgeClientExchangeOptions = {}
+): Effect.Effect<DesktopTransportSend & DesktopTransportRun> =>
+  Effect.gen(function* () {
+    const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+    const now = options.now ?? Date.now
+    const nextTraceId = options.nextTraceId ?? (() => `trace-${globalThis.crypto.randomUUID()}`)
+    const normalizeRequest = options.normalizeRequest ?? ((request) => request)
+
+    return Object.freeze({
+      send: (envelope) => {
+        if (envelope.kind === "request") {
+          return exchange.request(normalizeRequest(envelope)).pipe(
+            Effect.catch((error) =>
+              Effect.succeed({
+                kind: "failure" as const,
+                error
+              } satisfies BridgeClientResponse)
+            ),
+            Effect.flatMap((response) =>
+              Queue.offer(queue, bridgeResponseEnvelope(envelope, response, now, nextTraceId))
+            ),
+            Effect.asVoid
+          )
+        }
+        if (
+          envelope.kind === "cancel" &&
+          "id" in envelope &&
+          envelope.id !== undefined &&
+          exchange.cancel !== undefined
+        ) {
+          return exchange
+            .cancel(
+              new HostProtocolCancelByRequestEnvelope({
+                kind: "cancel",
+                id: envelope.id,
+                timestamp: envelope.timestamp,
+                traceId: envelope.traceId
+              })
+            )
+            .pipe(Effect.catch(() => Effect.void))
+        }
+        return Effect.void
+      },
+      run: (onEnvelope) => Effect.forever(Queue.take(queue).pipe(Effect.flatMap(onEnvelope)))
+    } satisfies DesktopTransportSend & DesktopTransportRun)
+  })
+
 export interface BridgeClientCallOptions {
   readonly signal?: AbortSignal
 }
@@ -87,6 +147,33 @@ interface ResolvedBridgeClientOptions {
   readonly now: () => number
   readonly windowId: string | undefined
   readonly originToken: string | undefined
+}
+
+const bridgeResponseEnvelope = (
+  request: HostProtocolRequestEnvelope,
+  response: BridgeClientResponse,
+  now: () => number,
+  nextTraceId: () => string
+): HostProtocolResponseEnvelope => {
+  const fields: {
+    readonly kind: "response"
+    readonly id: string
+    readonly timestamp: number
+    readonly traceId: string
+    readonly payload?: unknown
+    readonly error?: HostProtocolError
+  } = {
+    kind: "response",
+    id: request.id,
+    timestamp: now(),
+    traceId: request.traceId === "" ? nextTraceId() : request.traceId
+  }
+
+  return new HostProtocolResponseEnvelope(
+    response.kind === "success"
+      ? { ...fields, payload: response.payload }
+      : { ...fields, error: response.error as HostProtocolError }
+  )
 }
 
 export type BridgeClientMethod<Spec extends BridgeRpcMethodSpec> =
