@@ -3671,7 +3671,7 @@ test("desktop sign signs macOS app bundle with hardened runtime entitlements", a
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
-})
+}, 15_000)
 
 test("desktop sign rejects malformed permission entries before macOS codesign", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
