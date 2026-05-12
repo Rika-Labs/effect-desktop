@@ -38,6 +38,9 @@ import {
   AppRpcEvents,
   AppLive,
   AppMethodNames,
+  NativeCapabilities,
+  NativeCapabilitiesLive,
+  UnsupportedCapability,
   Clipboard,
   ClipboardRpcs,
   ClipboardRpcEvents,
@@ -288,6 +291,12 @@ test("native package root keeps contracts and implementation helpers behind subp
 
   expect(native.Window).toBeFunction()
   expect(native.WindowLive).toBeDefined()
+  expect(native.NativeCapabilities).toBeFunction()
+  expect(native.NativeCapabilitiesLive).toBeDefined()
+  expect(native.UnsupportedCapability).toBeFunction()
+  expect(NativeCapabilities).toBeFunction()
+  expect(NativeCapabilitiesLive).toBeDefined()
+  expect(UnsupportedCapability).toBeFunction()
   expect("WindowCreateInput" in native).toBe(false)
   expect("ClipboardText" in native).toBe(false)
   expect("DialogOpenResult" in native).toBe(false)

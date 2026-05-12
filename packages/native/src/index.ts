@@ -17,6 +17,19 @@ export {
   type AppServiceApi
 } from "./app.js"
 export {
+  NativeCapabilities,
+  NativeCapabilitiesLive,
+  NativeCapabilityLookupError,
+  NativeCapabilityManifestError,
+  makeNativeCapabilities,
+  makeNativeCapabilitiesLayer,
+  makeNativeCapabilityManifest,
+  UnsupportedCapability,
+  type NativeCapabilitiesApi,
+  type NativeCapabilityFact,
+  type NativeCapabilitySupport
+} from "./capabilities.js"
+export {
   Clipboard,
   ClipboardClient,
   ClipboardLive,

@@ -669,6 +669,21 @@
       "signature": "const makeMenuServiceLayer: (client: MenuClientApi) => Layer.Layer<Menu>"
     },
     {
+      "name": "makeNativeCapabilities",
+      "kind": "value",
+      "signature": "const makeNativeCapabilities: (groups: Iterable<RpcGroup.RpcGroup<any>>) => Effect.Effect<NativeCapabilitiesApi, NativeCapabilityManifestError, never>"
+    },
+    {
+      "name": "makeNativeCapabilitiesLayer",
+      "kind": "value",
+      "signature": "const makeNativeCapabilitiesLayer: (groups?: Iterable<RpcGroup.RpcGroup<any>>) => Layer.Layer<NativeCapabilities, NativeCapabilityManifestError, never>"
+    },
+    {
+      "name": "makeNativeCapabilityManifest",
+      "kind": "value",
+      "signature": "const makeNativeCapabilityManifest: (groups: Iterable<RpcGroup.RpcGroup<any>>) => Effect.Effect<readonly NativeCapabilityFact[], NativeCapabilityManifestError, never>"
+    },
+    {
       "name": "makeNotificationBridgeClientLayer",
       "kind": "value",
       "signature": "const makeNotificationBridgeClientLayer: (exchange: BridgeClientExchange, options?: BridgeClientOptions) => Layer.Layer<NotificationClient>"
@@ -1017,6 +1032,41 @@
       "name": "MenuServiceApi",
       "kind": "interface",
       "signature": "export interface MenuServiceApi extends Omit<MenuClientApi, \"bindCommand\" | \"capability\"> { readonly bindCommand: ( itemId: string, commandId: string ) => Effect.Effect< ResourceHandle<\"menu-command\", \"registered\">, MenuCommandBindingError, CommandRegistry | ResourceRegistry > readonly capability: ( name: MenuCapabilityName, options?: { readonly platform?: MenuPlatform } ) => Effect.Effect<boolean, MenuError, never> }"
+    },
+    {
+      "name": "NativeCapabilities",
+      "kind": "class",
+      "signature": "export class NativeCapabilities extends Context.Service< NativeCapabilities, NativeCapabilitiesApi >()(\"@effect-desktop/native/NativeCapabilities\") {}"
+    },
+    {
+      "name": "NativeCapabilitiesApi",
+      "kind": "interface",
+      "signature": "export interface NativeCapabilitiesApi { readonly manifest: readonly NativeCapabilityFact[] readonly support: ( tag: string ) => Effect.Effect<NativeCapabilitySupport, NativeCapabilityLookupError, never> readonly require: ( tag: string ) => Effect.Effect<void, NativeCapabilityLookupError | UnsupportedCapability, never> }"
+    },
+    {
+      "name": "NativeCapabilitiesLive",
+      "kind": "value",
+      "signature": "const NativeCapabilitiesLive: Layer.Layer<NativeCapabilities, NativeCapabilityManifestError, never>"
+    },
+    {
+      "name": "NativeCapabilityFact",
+      "kind": "interface",
+      "signature": "export interface NativeCapabilityFact { readonly tag: string readonly support: NativeCapabilitySupport }"
+    },
+    {
+      "name": "NativeCapabilityLookupError",
+      "kind": "class",
+      "signature": "export class NativeCapabilityLookupError extends Data.TaggedError(\"NativeCapabilityLookupError\")<{ readonly tag: string readonly message: string }> {}"
+    },
+    {
+      "name": "NativeCapabilityManifestError",
+      "kind": "class",
+      "signature": "export class NativeCapabilityManifestError extends Data.TaggedError( \"NativeCapabilityManifestError\" )<{ readonly tag: string readonly message: string }> {}"
+    },
+    {
+      "name": "NativeCapabilitySupport",
+      "kind": "type",
+      "signature": "export type NativeCapabilitySupport = RpcSupportMetadata"
     },
     {
       "name": "Notification",
@@ -1527,6 +1577,11 @@
       "name": "TrayServiceApi",
       "kind": "interface",
       "signature": "export interface TrayServiceApi extends Omit<TrayClientApi, \"isSupported\"> { readonly isSupported: () => Effect.Effect<boolean, TrayError, never> }"
+    },
+    {
+      "name": "UnsupportedCapability",
+      "kind": "class",
+      "signature": "export class UnsupportedCapability extends Data.TaggedError(\"UnsupportedCapability\")<{ readonly tag: string readonly reason: string readonly message: string }> {}"
     },
     {
       "name": "Updater",
