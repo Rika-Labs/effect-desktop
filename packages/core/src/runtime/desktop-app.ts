@@ -1,5 +1,10 @@
 import { Config, Context, Data, Effect, Layer, Option, Schema } from "effect"
+import * as FileSystemRuntime from "effect/FileSystem"
+import * as PathRuntime from "effect/Path"
+import * as StdioRuntime from "effect/Stdio"
+import * as TerminalRuntime from "effect/Terminal"
 import { Rpc, RpcGroup, RpcServer } from "effect/unstable/rpc"
+import { ChildProcessSpawner as ChildProcessSpawnerRuntime } from "effect/unstable/process"
 
 import { rpcCapability } from "@effect-desktop/bridge"
 
@@ -29,7 +34,8 @@ export interface WindowSpec {
 export interface DesktopConfig<RIn = never, E = never> {
   readonly id: string
   readonly windows: Readonly<Record<string, WindowSpec>>
-  readonly layers?: ReadonlyArray<Layer.Layer<unknown, E, RIn>>
+  readonly providers?: DesktopProviderSelection
+  readonly layers?: ReadonlyArray<Layer.Layer<never, E, RIn>>
   readonly rpcs?: ReadonlyArray<AnyDesktopRpcLayer>
   readonly permissions?: ReadonlyArray<NormalizedCapability>
   readonly workflows?: ReadonlyArray<WorkflowLayer>
@@ -38,6 +44,7 @@ export interface DesktopConfig<RIn = never, E = never> {
 export interface DesktopMakeConfig {
   readonly id?: string
   readonly windows: Readonly<Record<string, WindowSpec>>
+  readonly providers?: DesktopProviderSelection
   readonly permissions?: ReadonlyArray<NormalizedCapability>
   readonly workflows?: ReadonlyArray<WorkflowLayer>
 }
@@ -46,7 +53,8 @@ export interface DesktopAppDefinition<E = never, R = never> {
   readonly _tag: "DesktopAppDefinition"
   readonly id: string
   readonly windows: Readonly<Record<string, WindowSpec>>
-  readonly layers: ReadonlyArray<Layer.Layer<unknown, E, R>>
+  readonly providers: DesktopProviderSelection
+  readonly layers: ReadonlyArray<Layer.Layer<never, E, R>>
   readonly rpcLayers: ReadonlyArray<AnyDesktopRpcLayer>
   readonly permissions: ReadonlyArray<NormalizedCapability>
   readonly workflows: ReadonlyArray<WorkflowLayer>
@@ -77,16 +85,61 @@ export interface DesktopRpcLayer<Rpcs extends Rpc.Any = Rpc.Any, E = never, R = 
 export interface AnyDesktopRpcLayer {
   readonly _tag: "DesktopRpcsLayer"
   readonly group: RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> }
-  readonly layer: Layer.Layer<unknown, unknown, unknown>
+  readonly layer: Layer.Layer<never, unknown, unknown>
 }
+
+export type DesktopRuntimeProviderId = "bun" | "test" | (string & {})
+
+export interface DesktopProviderSelection {
+  readonly runtime?: DesktopRuntimeProviderId | undefined
+}
+
+export interface DesktopRuntimeSelectedProviders {
+  readonly runtime: DesktopRuntimeProviderId
+}
+
+export type DesktopRuntimeGraphNodeKind =
+  | "provider"
+  | "core-service"
+  | "user-layer"
+  | "rpc-layer"
+  | "workflow"
+  | "app-service"
+  | "runtime-service"
+
+export interface DesktopRuntimeGraphNode {
+  readonly id: string
+  readonly kind: DesktopRuntimeGraphNodeKind
+  readonly label: string
+  readonly provides: readonly string[]
+  readonly requires: readonly string[]
+}
+
+export interface DesktopRuntimeGraph {
+  readonly _tag: "DesktopRuntimeGraph"
+  readonly appId: string
+  readonly providers: DesktopRuntimeSelectedProviders
+  readonly nodes: readonly DesktopRuntimeGraphNode[]
+}
+
+export interface DesktopRuntimeApi {
+  readonly appId: string
+  readonly providers: DesktopRuntimeSelectedProviders
+  readonly graph: DesktopRuntimeGraph
+}
+
+export type DesktopRuntimeProviderServices = Layer.Success<typeof BunServicesLayer>
+
+export type DesktopRuntimeServices = DesktopApp | DesktopRuntime | DesktopRuntimeProviderServices
 
 export class DesktopConfigError extends Data.TaggedError("DesktopConfigError")<{
   readonly appId: string
-  readonly reason: "missing-permission" | "invalid-config" | "duplicate-rpc"
+  readonly reason: "missing-permission" | "missing-provider" | "invalid-config" | "duplicate-rpc"
   readonly message: string
   readonly contract?: string
   readonly method?: string
   readonly permission?: string
+  readonly provider?: string
 }> {}
 
 const NormalizedCapabilityKinds = new Set<NormalizedCapability["kind"]>([
@@ -111,6 +164,10 @@ export interface DesktopAppApi {
 
 export class DesktopApp extends Context.Service<DesktopApp, DesktopAppApi>()("DesktopApp") {}
 
+export class DesktopRuntime extends Context.Service<DesktopRuntime, DesktopRuntimeApi>()(
+  "DesktopRuntime"
+) {}
+
 const TelemetryLive: Layer.Layer<Telemetry, never, never> = Layer.effect(Telemetry)(
   makeTelemetry().pipe(Effect.orDie)
 )
@@ -124,14 +181,82 @@ const coreServicesLayer: Layer.Layer<never, Config.ConfigError, never> = Layer.m
   PermissionRegistryLive,
   ReactivityLayer,
   DesktopLoggerLayer,
-  BunServicesLayer,
   WorkflowEngineLive
 )
+
+const CoreServiceGraphNodes = Object.freeze([
+  graphNode("core:resources", "core-service", "ResourceRegistry", ["ResourceRegistry"], []),
+  graphNode("core:telemetry", "core-service", "Telemetry", ["Telemetry"], []),
+  graphNode("core:permissions", "core-service", "PermissionRegistry", ["PermissionRegistry"], []),
+  graphNode("core:reactivity", "core-service", "Reactivity", ["Reactivity"], []),
+  graphNode("core:logger", "core-service", "DesktopLogger", ["DesktopLogger"], []),
+  graphNode("core:workflow", "core-service", "WorkflowEngine", ["WorkflowEngine"], [])
+])
+
+const RuntimeProviderServiceNames = Object.freeze([
+  "FileSystem",
+  "Path",
+  "Terminal",
+  "Stdio",
+  "ChildProcessSpawner"
+])
+
+const TestRuntimeProviderLayer: Layer.Layer<DesktopRuntimeProviderServices, never, never> =
+  Layer.mergeAll(
+    FileSystemRuntime.layerNoop({}),
+    PathRuntime.layer,
+    Layer.succeed(
+      TerminalRuntime.Terminal,
+      TerminalRuntime.make({
+        columns: Effect.succeed(80),
+        readInput: Effect.die("readInput not supported by Desktop test runtime provider"),
+        readLine: Effect.die("readLine not supported by Desktop test runtime provider"),
+        display: () => Effect.void
+      })
+    ),
+    StdioRuntime.layerTest({}),
+    Layer.succeed(
+      ChildProcessSpawnerRuntime.ChildProcessSpawner,
+      ChildProcessSpawnerRuntime.make(() =>
+        Effect.die("spawn not supported by Desktop test runtime provider")
+      )
+    )
+  ) as Layer.Layer<DesktopRuntimeProviderServices, never, never>
+
+const RuntimeProviders = Object.freeze({
+  bun: Object.freeze({
+    id: "bun" as const,
+    layer: BunServicesLayer as Layer.Layer<
+      DesktopRuntimeProviderServices,
+      Config.ConfigError,
+      never
+    >,
+    node: graphNode(
+      "provider:runtime:bun",
+      "provider",
+      "Bun runtime provider",
+      RuntimeProviderServiceNames,
+      []
+    )
+  }),
+  test: Object.freeze({
+    id: "test" as const,
+    layer: TestRuntimeProviderLayer,
+    node: graphNode(
+      "provider:runtime:test",
+      "provider",
+      "Test runtime provider",
+      RuntimeProviderServiceNames,
+      []
+    )
+  })
+})
 
 export const make = (config: DesktopMakeConfig): DesktopAppDefinition<never, never> =>
   makeDefinition({
     id: config.id ?? "app",
     windows: freezeWindows(config.windows),
+    providers: freezeProviders(config.providers),
     layers: Object.freeze([]),
     rpcLayers: Object.freeze([]),
     permissions: freezeArray(config.permissions),
@@ -171,7 +296,7 @@ export function provide(
   return (definition) =>
     isDesktopRpcLayer(provided)
       ? appendRpcLayer(definition, provided)
-      : appendLayer(definition, provided as Layer.Layer<unknown, unknown, unknown>)
+      : appendLayer(definition, provided as Layer.Layer<never, unknown, unknown>)
 }
 
 export const Rpcs = Object.freeze({
@@ -188,15 +313,13 @@ export const Rpcs = Object.freeze({
 
 const appendLayer = <E, R, AppE, AppR>(
   definition: DesktopAppDefinition<AppE, AppR>,
-  layer: Layer.Layer<unknown, E, R>
+  layer: Layer.Layer<never, E, R>
 ): DesktopAppDefinition<E | AppE, R | AppR> =>
   makeDefinition({
     id: definition.id,
     windows: definition.windows,
-    layers: Object.freeze([
-      ...definition.layers,
-      layer as Layer.Layer<unknown, E | AppE, R | AppR>
-    ]),
+    providers: definition.providers,
+    layers: Object.freeze([...definition.layers, layer as Layer.Layer<never, E | AppE, R | AppR>]),
     rpcLayers: definition.rpcLayers,
     permissions: definition.permissions,
     workflows: definition.workflows
@@ -209,7 +332,8 @@ const appendRpcLayer = <E, R, AppE, AppR>(
   makeDefinition({
     id: definition.id,
     windows: definition.windows,
-    layers: definition.layers as ReadonlyArray<Layer.Layer<unknown, E | AppE, R | AppR>>,
+    providers: definition.providers,
+    layers: definition.layers as ReadonlyArray<Layer.Layer<never, E | AppE, R | AppR>>,
     rpcLayers: Object.freeze([...definition.rpcLayers, rpcLayer as unknown as AnyDesktopRpcLayer]),
     permissions: definition.permissions,
     workflows: definition.workflows
@@ -217,10 +341,11 @@ const appendRpcLayer = <E, R, AppE, AppR>(
 
 export const toLayer = <E, R>(
   definition: DesktopAppDefinition<E, R>
-): Layer.Layer<DesktopApp, DesktopConfigError | E, R> =>
+): Layer.Layer<DesktopApp, DesktopConfigError | E, Exclude<R, DesktopRuntimeProviderServices>> =>
   app({
     id: definition.id,
     windows: definition.windows,
+    providers: definition.providers,
     layers: definition.layers,
     rpcs: definition.rpcLayers,
     permissions: definition.permissions,
@@ -229,14 +354,79 @@ export const toLayer = <E, R>(
 
 export const app = <RIn = never, E = never>(
   config: DesktopConfig<RIn, E>
-): Layer.Layer<DesktopApp, DesktopConfigError | E, RIn> => {
+): Layer.Layer<DesktopApp, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices>> =>
+  runtime(config) as unknown as Layer.Layer<
+    DesktopApp,
+    DesktopConfigError | E,
+    Exclude<RIn, DesktopRuntimeProviderServices>
+  >
+
+export const runtime = <RIn = never, E = never>(
+  config: DesktopConfig<RIn, E>
+): Layer.Layer<
+  DesktopRuntimeServices,
+  DesktopConfigError | E,
+  Exclude<RIn, DesktopRuntimeProviderServices>
+> => {
   const validationLayer = Layer.effectDiscard(checkPermissions(config))
   const spine = buildSpine(config)
   return Layer.provideMerge(validationLayer, spine) as unknown as Layer.Layer<
-    DesktopApp,
+    DesktopRuntimeServices,
     DesktopConfigError | E,
-    RIn
+    Exclude<RIn, DesktopRuntimeProviderServices>
   >
+}
+
+export const DesktopRuntimeLive = runtime
+
+export const runtimeGraph = <RIn, E>(
+  config: DesktopConfig<RIn, E>
+): Effect.Effect<DesktopRuntimeGraph, DesktopConfigError, never> =>
+  resolveRuntimeProvider(config).pipe(Effect.map((provider) => makeRuntimeGraph(config, provider)))
+
+const makeRuntimeGraph = <RIn, E>(
+  config: DesktopConfig<RIn, E>,
+  provider: (typeof RuntimeProviders)[keyof typeof RuntimeProviders]
+): DesktopRuntimeGraph => {
+  const selected = Object.freeze({
+    runtime: provider.id
+  } satisfies DesktopRuntimeSelectedProviders)
+  const rpcLayers = config.rpcs ?? []
+  const nodes: DesktopRuntimeGraphNode[] = [
+    provider.node,
+    ...CoreServiceGraphNodes,
+    ...(config.layers ?? []).map((_, index) =>
+      graphNode(`user-layer:${index}`, "user-layer", `User layer ${index + 1}`, [], [])
+    ),
+    ...rpcLayers.map((rpcLayer, index) => {
+      const servedGroup = servedRpcGroup(rpcLayer)
+      return graphNode(
+        `rpc-layer:${index}`,
+        "rpc-layer",
+        `RPC layer ${Array.from(servedGroup.requests.keys()).join(", ")}`,
+        Array.from(servedGroup.requests.keys()),
+        ["RpcServer.Protocol"]
+      )
+    }),
+    ...(config.workflows ?? []).map((_, index) =>
+      graphNode(
+        `workflow:${index}`,
+        "workflow",
+        `Workflow layer ${index + 1}`,
+        [],
+        ["WorkflowEngine"]
+      )
+    ),
+    graphNode("service:DesktopApp", "app-service", "DesktopApp", ["DesktopApp"], []),
+    graphNode("service:DesktopRuntime", "runtime-service", "DesktopRuntime", ["DesktopRuntime"], [])
+  ]
+
+  return Object.freeze({
+    _tag: "DesktopRuntimeGraph" as const,
+    appId: config.id,
+    providers: selected,
+    nodes: Object.freeze(nodes)
+  })
 }
 
 export const launch = (
@@ -323,42 +513,101 @@ const decodeRpcCapability = (
   )
 }
 
-const buildSpine = <RIn, E>(config: DesktopConfig<RIn, E>): Layer.Layer<DesktopApp, E, RIn> => {
-  const wfs = config.workflows ?? []
-  const rpcLayers = (config.rpcs ?? []).map((rpcLayer) => bindRpcLayer<E, RIn>(rpcLayer))
-  const userLayers = [...(config.layers ?? []), ...rpcLayers]
+const buildSpine = <RIn, E>(
+  config: DesktopConfig<RIn, E>
+): Layer.Layer<
+  DesktopRuntimeServices,
+  E | DesktopConfigError,
+  Exclude<RIn, DesktopRuntimeProviderServices>
+> =>
+  Layer.unwrap(
+    resolveRuntimeProvider(config).pipe(
+      Effect.map((provider) => {
+        const graph = makeRuntimeGraph(config, provider)
+        const workflowLayers = config.workflows ?? []
+        const rpcLayers = (config.rpcs ?? []).map((rpcLayer) => bindRpcLayer<E, RIn>(rpcLayer))
+        const userLayers = [...(config.layers ?? []), ...rpcLayers]
 
-  const workflowLayer: Layer.Layer<never, never, never> =
-    wfs.length === 0
-      ? Layer.empty
-      : wfs.reduce<Layer.Layer<never, never, never>>(
-          (acc, wf) => Layer.merge(acc, wf as Layer.Layer<never, never, never>),
-          Layer.empty
+        const workflowLayer = mergeLayerArray(workflowLayers)
+        const userLayer = mergeLayerArray(userLayers)
+        const runtimeBase = Layer.merge(provider.layer, coreServicesLayer) as Layer.Layer<
+          DesktopRuntimeProviderServices,
+          Config.ConfigError,
+          never
+        >
+
+        const desktopAppLayer: Layer.Layer<DesktopApp, never, never> = Layer.effect(DesktopApp)(
+          Effect.succeed({
+            appId: config.id,
+            windows: config.windows,
+            rpcLayers: config.rpcs ?? []
+          })
         )
 
-  const baseServices: Layer.Layer<never, Config.ConfigError, never> = Layer.merge(
-    coreServicesLayer,
-    workflowLayer
+        const desktopRuntimeLayer: Layer.Layer<DesktopRuntime, never, never> = Layer.succeed(
+          DesktopRuntime
+        )(
+          Object.freeze({
+            appId: config.id,
+            providers: graph.providers,
+            graph
+          } satisfies DesktopRuntimeApi)
+        )
+
+        const dependentLayer = Layer.mergeAll(
+          workflowLayer,
+          userLayer,
+          desktopAppLayer,
+          desktopRuntimeLayer
+        ) as Layer.Layer<DesktopApp | DesktopRuntime, E, RIn | DesktopRuntimeProviderServices>
+
+        return Layer.provideMerge(dependentLayer, runtimeBase) as Layer.Layer<
+          DesktopRuntimeServices,
+          E | DesktopConfigError,
+          Exclude<RIn, DesktopRuntimeProviderServices>
+        >
+      })
+    )
   )
 
-  const services: Layer.Layer<never, E, RIn> =
-    userLayers.length === 0
-      ? (baseServices as unknown as Layer.Layer<never, E, RIn>)
-      : userLayers.reduce<Layer.Layer<never, E, RIn>>(
-          (acc, layer) => Layer.merge(acc, layer as Layer.Layer<never, E, RIn>),
-          baseServices as unknown as Layer.Layer<never, E, RIn>
-        )
-
-  const desktopAppLayer: Layer.Layer<DesktopApp, never, never> = Layer.effect(DesktopApp)(
-    Effect.succeed({
+const resolveRuntimeProvider = <RIn, E>(
+  config: DesktopConfig<RIn, E>
+): Effect.Effect<
+  (typeof RuntimeProviders)[keyof typeof RuntimeProviders],
+  DesktopConfigError,
+  never
+> => {
+  const provider = selectedProviders(config.providers).runtime
+  if (provider === "bun") {
+    return Effect.succeed(RuntimeProviders.bun)
+  }
+  if (provider === "test") {
+    return Effect.succeed(RuntimeProviders.test)
+  }
+  return Effect.fail(
+    new DesktopConfigError({
       appId: config.id,
-      windows: config.windows,
-      rpcLayers: config.rpcs ?? []
+      reason: "missing-provider",
+      message: `Runtime provider "${provider}" is not available`,
+      provider
     })
   )
-
-  return Layer.provideMerge(desktopAppLayer, services)
 }
+
+const selectedProviders = (
+  selection: DesktopProviderSelection | undefined
+): DesktopRuntimeSelectedProviders =>
+  Object.freeze({
+    runtime: selection?.runtime ?? "bun"
+  })
+
+const mergeLayerArray = <E, R>(
+  layers: ReadonlyArray<Layer.Layer<never, E, R>>
+): Layer.Layer<never, E, R> =>
+  layers.reduce<Layer.Layer<never, E, R>>(
+    (acc, layer) => Layer.merge(acc, layer),
+    Layer.empty as unknown as Layer.Layer<never, E, R>
+  )
 
 const bindRpcLayer = <E, R>(rpcLayer: AnyDesktopRpcLayer): Layer.Layer<never, E, R> =>
   Layer.provide(
@@ -369,7 +618,8 @@ const bindRpcLayer = <E, R>(rpcLayer: AnyDesktopRpcLayer): Layer.Layer<never, E,
 const makeDefinition = <E, R>(definition: {
   readonly id: string
   readonly windows: Readonly<Record<string, WindowSpec>>
-  readonly layers: ReadonlyArray<Layer.Layer<unknown, E, R>>
+  readonly providers: DesktopProviderSelection
+  readonly layers: ReadonlyArray<Layer.Layer<never, E, R>>
   readonly rpcLayers: ReadonlyArray<AnyDesktopRpcLayer>
   readonly permissions: ReadonlyArray<NormalizedCapability>
   readonly workflows: ReadonlyArray<WorkflowLayer>
@@ -378,6 +628,7 @@ const makeDefinition = <E, R>(definition: {
     _tag: "DesktopAppDefinition" as const,
     id: definition.id,
     windows: definition.windows,
+    providers: definition.providers,
     layers: definition.layers,
     rpcLayers: definition.rpcLayers,
     permissions: definition.permissions,
@@ -393,6 +644,11 @@ const makeDefinition = <E, R>(definition: {
 const freezeArray = <A>(values: ReadonlyArray<A> | undefined): ReadonlyArray<A> =>
   Object.freeze([...(values ?? [])])
 
+const freezeProviders = (
+  providers: DesktopProviderSelection | undefined
+): DesktopProviderSelection =>
+  providers === undefined ? Object.freeze({}) : Object.freeze({ ...providers })
+
 const freezeWindows = (
   windows: Readonly<Record<string, WindowSpec>>
 ): Readonly<Record<string, WindowSpec>> =>
@@ -405,3 +661,19 @@ const isDesktopRpcLayer = (value: unknown): value is AnyDesktopRpcLayer =>
   value !== null &&
   "_tag" in value &&
   (value as { readonly _tag?: unknown })._tag === "DesktopRpcsLayer"
+
+function graphNode(
+  id: string,
+  kind: DesktopRuntimeGraphNodeKind,
+  label: string,
+  provides: readonly string[],
+  requires: readonly string[]
+): DesktopRuntimeGraphNode {
+  return Object.freeze({
+    id,
+    kind,
+    label,
+    provides: Object.freeze([...provides]),
+    requires: Object.freeze([...requires])
+  })
+}

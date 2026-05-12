@@ -5,8 +5,10 @@ target/
 .turbo/
 coverage/
 .context/
+.agents/
 apps/docs/out/
 docs/SPEC.md
+repos/
 vendor/effect/
 crates/host-protocol/fixtures/*.json
 bun.lock

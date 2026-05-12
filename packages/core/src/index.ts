@@ -8,9 +8,16 @@ import {
   make,
   manifest,
   provide,
+  runtime,
+  runtimeGraph,
   toLayer
 } from "./runtime/desktop-app.js"
-import type { DesktopApp, DesktopConfig, DesktopConfigError } from "./runtime/desktop-app.js"
+import type {
+  DesktopApp,
+  DesktopConfig,
+  DesktopConfigError,
+  DesktopRuntimeProviderServices
+} from "./runtime/desktop-app.js"
 import { DesktopRpc } from "./runtime/desktop-rpc-surface.js"
 import type { NormalizedCapability } from "./runtime/permission-registry.js"
 import { PermissionRegistry } from "./runtime/permission-registry.js"
@@ -65,6 +72,8 @@ export {
   make,
   manifest,
   provide,
+  runtime,
+  runtimeGraph,
   Rpcs,
   toLayer,
   type AnyDesktopRpcLayer,
@@ -73,10 +82,20 @@ export {
   type DesktopAppManifest,
   type DesktopConfig,
   type DesktopMakeConfig,
+  type DesktopProviderSelection,
   type DesktopRpcGroupDescriptor,
   type DesktopRpcLayer,
+  type DesktopRuntimeApi,
+  type DesktopRuntimeGraph,
+  type DesktopRuntimeGraphNode,
+  type DesktopRuntimeGraphNodeKind,
+  type DesktopRuntimeProviderId,
+  type DesktopRuntimeProviderServices,
+  type DesktopRuntimeSelectedProviders,
+  type DesktopRuntimeServices,
   type WindowSpec
 } from "./runtime/desktop-app.js"
+export { DesktopRuntime, DesktopRuntimeLive } from "./runtime/desktop-app.js"
 export { DesktopConfigError as DesktopSpineConfigError } from "./runtime/desktop-app.js"
 
 export interface DesktopAppOptions {
@@ -94,13 +113,13 @@ function app(
 ): Layer.Layer<WorkflowEngine.WorkflowEngine, never, PermissionRegistry>
 function app<RIn = never, E = never>(
   config: DesktopConfig<RIn, E>
-): Layer.Layer<DesktopApp, DesktopConfigError | E, RIn>
+): Layer.Layer<DesktopApp, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices>>
 function app<RIn = never, E = never>(
   options: DesktopAppOptions | DesktopConfig<RIn, E> = {}
 ):
   | Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>
   | Layer.Layer<WorkflowEngine.WorkflowEngine, never, PermissionRegistry>
-  | Layer.Layer<DesktopApp, DesktopConfigError | E, RIn> {
+  | Layer.Layer<DesktopApp, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices>> {
   if ("id" in options) {
     return desktopApp(options as DesktopConfig)
   }
@@ -144,6 +163,8 @@ export const Desktop = Object.freeze({
   manifest,
   provide,
   Rpc: DesktopRpc,
+  runtime,
+  runtimeGraph,
   Rpcs,
   toLayer,
   describeRpcs
