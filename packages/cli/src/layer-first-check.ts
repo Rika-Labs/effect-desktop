@@ -582,6 +582,14 @@ const promiseExportsFromReExportDeclaration = (
         offset: statement.getStart(sourceFile)
       }))
   }
+  if (ts.isNamespaceExport(statement.exportClause)) {
+    const namespace = statement.exportClause.name.text
+    return targetSymbols.map((symbol) => ({
+      name: `${namespace}.${symbol.name}`,
+      path,
+      offset: statement.getStart(sourceFile)
+    }))
+  }
   if (!ts.isNamedExports(statement.exportClause)) {
     return []
   }
@@ -627,10 +635,14 @@ const resolveLocalModulePath = (
   }
 
   const base = posixNormalize(posixJoin(posixDirname(fromPath), moduleSpecifier))
-  const candidates = SOURCE_EXTENSIONS.flatMap((extension) => [
-    `${base}${extension}`,
-    posixJoin(base, `index${extension}`)
-  ])
+  const sourceBase = base.replace(/\.(?:cjs|js|jsx|mjs)$/u, "")
+  const candidates =
+    sourceBase === base
+      ? SOURCE_EXTENSIONS.flatMap((extension) => [
+          `${base}${extension}`,
+          posixJoin(base, `index${extension}`)
+        ])
+      : SOURCE_EXTENSIONS.map((extension) => `${sourceBase}${extension}`)
   return candidates.find((candidate) => sourceTexts.has(candidate))
 }
 
