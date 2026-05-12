@@ -1,12 +1,15 @@
 import { expect, test } from "bun:test"
 import {
+  HostProtocolResponseEnvelope,
+  makeDesktopClientProtocol,
   makeDesktopServerProtocol,
   RpcCapability,
   RpcEndpoint,
-  RpcSupport
+  RpcSupport,
+  type HostProtocolEnvelope
 } from "@effect-desktop/bridge"
-import { Cause, Effect, Exit, Layer, Schema } from "effect"
-import { Rpc, RpcGroup, RpcServer } from "effect/unstable/rpc"
+import { Cause, Context, Effect, Exit, Layer, Queue, Schema } from "effect"
+import { Rpc, RpcClient, RpcGroup, RpcServer } from "effect/unstable/rpc"
 
 test("public barrel exports the ResourceRegistry factory", async () => {
   const core = await import("./index.js")
@@ -114,6 +117,170 @@ test("Desktop.Rpcs.layer pairs an RpcGroup with its implementation for app adapt
         group: NotesRpcs
       }
     ]
+  })
+})
+
+test("Desktop.Rpc.surface derives server, client, test, docs, and laws from one RpcGroup", async () => {
+  const core = await import("./index.js")
+  const Ping = Rpc.make("Notes.Ping", { success: Schema.String }).pipe(RpcEndpoint.query)
+  const NotesRpcs = RpcGroup.make(Ping)
+  class NotesClient extends Context.Service<
+    NotesClient,
+    RpcClient.RpcClient<RpcGroup.Rpcs<typeof NotesRpcs>>
+  >()("NotesClient") {}
+  const NotesLive = NotesRpcs.toLayer({
+    "Notes.Ping": () => Effect.succeed("pong")
+  })
+  class NotesFacade extends Context.Service<
+    NotesFacade,
+    { readonly ping: () => Effect.Effect<string> }
+  >()("NotesFacade") {}
+  const assertSurfaceRequiresMappedCustomServices = (
+    makeSurface: typeof core.Desktop.Rpc.surface
+  ): void => {
+    // @ts-expect-error custom service shapes must explicitly map from the generated RPC client
+    makeSurface("Notes", NotesRpcs, {
+      service: NotesFacade,
+      handlers: NotesLive
+    })
+  }
+  void assertSurfaceRequiresMappedCustomServices
+  const surface = core.Desktop.Rpc.surface("Notes", NotesRpcs, {
+    service: NotesClient,
+    handlers: NotesLive
+  })
+  const app = core.Desktop.make({
+    id: "notes",
+    windows: {
+      main: {
+        title: "Notes"
+      }
+    }
+  }).pipe(core.Desktop.provide(surface.serverLayer))
+
+  for (const law of surface.contractLaws) {
+    await Effect.runPromise(law.check)
+  }
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* NotesClient
+      return yield* client["Notes.Ping"](undefined)
+    }).pipe(Effect.provide(surface.testClientLayer))
+  )
+  const queue = Effect.runSync(Queue.unbounded<HostProtocolEnvelope>())
+  const requests: HostProtocolEnvelope[] = []
+  const protocolLayer = Layer.effect(RpcClient.Protocol)(
+    makeDesktopClientProtocol(
+      {
+        send: (envelope) => {
+          requests.push(envelope)
+          if (envelope.kind !== "request") {
+            return Effect.void
+          }
+          return Queue.offer(
+            queue,
+            new HostProtocolResponseEnvelope({
+              kind: "response",
+              id: envelope.id,
+              timestamp: 0,
+              traceId: envelope.traceId,
+              payload: "pong-live"
+            })
+          ).pipe(Effect.asVoid)
+        },
+        run: (onEnvelope) => Effect.forever(Queue.take(queue).pipe(Effect.flatMap(onEnvelope)))
+      },
+      { nextTraceId: () => "trace-surface-client" }
+    )
+  )
+  const liveClientResult = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const client = yield* NotesClient
+        return yield* client["Notes.Ping"](undefined)
+      }).pipe(Effect.provide(Layer.provide(surface.clientLayer, protocolLayer)))
+    )
+  )
+
+  expect(result).toBe("pong")
+  expect(liveClientResult).toBe("pong-live")
+  expect(requests).toMatchObject([
+    {
+      kind: "request",
+      method: "Notes.Ping"
+    }
+  ])
+  expect(surface.group).toBe(NotesRpcs)
+  expect(surface.serverLayer.group).toBe(NotesRpcs)
+  expect(surface.serverLayer.layer).toBe(NotesLive)
+  expect(Layer.isLayer(surface.clientLayer)).toBe(true)
+  expect(Layer.isLayer(surface.testClientLayer)).toBe(true)
+  expect(surface.schemaDocs.map((doc) => [doc.name, doc.tag, doc.kind])).toEqual([
+    ["ping", "Notes.Ping", "query"]
+  ])
+  expect(core.Desktop.manifest(app).rpcGroups[0]?.group).toBe(NotesRpcs)
+  expect(core.Desktop.describeRpcs(app, NotesRpcs).map((descriptor) => descriptor.tag)).toEqual([
+    "Notes.Ping"
+  ])
+})
+
+test("Desktop.Rpc.surface laws reject groups that cannot lower to bridge metadata", async () => {
+  const core = await import("./index.js")
+  const Valid = Rpc.make("Notes.Ping", { success: Schema.String })
+  const InvalidNamespace = RpcGroup.make(Rpc.make("Other.Ping", { success: Schema.String }))
+  const DuplicateNames = RpcGroup.make(Valid, Rpc.make("Tasks.Ping", { success: Schema.String }))
+  const Broken = { _tag: "Notes.Broken", annotations: Context.empty() }
+  const BrokenGroup = Object.freeze({
+    ...RpcGroup.make(Valid),
+    requests: new Map([["Notes.Broken", Broken]])
+  }) as unknown as RpcGroup.Any & {
+    readonly requests: ReadonlyMap<string, Rpc.Any>
+  }
+
+  const invalidNamespace = core.Desktop.Rpc.surface("Notes", InvalidNamespace, {
+    service: Context.Service<{ readonly client: unknown }>("InvalidNamespaceClient"),
+    handlers: InvalidNamespace.toLayer({
+      "Other.Ping": () => Effect.succeed("pong")
+    }),
+    client: (client) => ({ client })
+  })
+  const duplicateNames = core.Desktop.Rpc.surface("Notes", DuplicateNames, {
+    service: Context.Service<{ readonly client: unknown }>("DuplicateNamesClient"),
+    handlers: DuplicateNames.toLayer({
+      "Notes.Ping": () => Effect.succeed("pong"),
+      "Tasks.Ping": () => Effect.succeed("pong")
+    }),
+    client: (client) => ({ client })
+  })
+  const brokenSchema = core.Desktop.Rpc.surface("Notes", BrokenGroup, {
+    service: Context.Service<{ readonly client: unknown }>("BrokenSchemaClient"),
+    handlers: Layer.empty as Layer.Layer<unknown>,
+    client: (client: unknown) => ({ client })
+  })
+
+  const expectLawFailure = async (
+    law: (typeof invalidNamespace.contractLaws)[number],
+    expected: Record<string, unknown>
+  ) => {
+    const exit = await Effect.runPromiseExit(law.check)
+    expect(Exit.isFailure(exit)).toBe(true)
+    if (Exit.isFailure(exit)) {
+      expect(exit.cause.reasons.find(Cause.isFailReason)?.error).toMatchObject(expected)
+    }
+  }
+
+  await expectLawFailure(invalidNamespace.contractLaws[0]!, {
+    reason: "invalid-tag",
+    tag: "Other.Ping"
+  })
+  await expectLawFailure(duplicateNames.contractLaws[1]!, {
+    reason: "duplicate-endpoint",
+    tag: "Tasks.Ping"
+  })
+  await expectLawFailure(brokenSchema.contractLaws[2]!, {
+    reason: "missing-schema",
+    tag: "Notes.Broken"
   })
 })
 

@@ -11,6 +11,7 @@ import {
   toLayer
 } from "./runtime/desktop-app.js"
 import type { DesktopApp, DesktopConfig, DesktopConfigError } from "./runtime/desktop-app.js"
+import { DesktopRpc } from "./runtime/desktop-rpc-surface.js"
 import type { NormalizedCapability } from "./runtime/permission-registry.js"
 import { PermissionRegistry } from "./runtime/permission-registry.js"
 import { describeRpcs } from "./runtime/rpc-descriptors.js"
@@ -56,6 +57,7 @@ export * from "./runtime/sqlite.js"
 export * from "./runtime/telemetry.js"
 export * from "./runtime/desktop-errors.js"
 export * from "./runtime/reactivity.js"
+export * from "./runtime/desktop-rpc-surface.js"
 export {
   DesktopApp,
   app as desktopApp,
@@ -141,6 +143,7 @@ export const Desktop = Object.freeze({
   make,
   manifest,
   provide,
+  Rpc: DesktopRpc,
   Rpcs,
   toLayer,
   describeRpcs

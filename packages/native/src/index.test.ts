@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import {
+  HostProtocolError as HostProtocolErrorSchema,
   HostProtocolNotFoundError,
   HostProtocolResponseEnvelope,
   HostProtocolStaleHandleError,
@@ -18,6 +19,7 @@ import {
   AuditEvent,
   CommandRegistryHandlerFailureError,
   CommandRegistry,
+  Desktop,
   ResourceRegistry,
   makeCommandRegistry,
   makePermissionRegistry,
@@ -25,7 +27,7 @@ import {
   type AuditEventsApi,
   type NormalizedCapability
 } from "@effect-desktop/core"
-import { Cause, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Layer, Option, Queue, Schema, Stream } from "effect"
 
 import {
   App,
@@ -82,9 +84,12 @@ import {
   SafeStorageMethodNames,
   SecretValue,
   Screen,
+  ScreenHandlersLive,
   ScreenRpcs,
   ScreenLive,
   ScreenMethodNames,
+  ScreenRpcClient,
+  ScreenSurface,
   Shell,
   ShellRpcs,
   ShellLive,
@@ -228,6 +233,7 @@ import {
   ScreenBounds,
   ScreenDisplay,
   ScreenDisplaysResult,
+  ScreenIsSupportedInput,
   ScreenPoint,
   ScreenSupportedResult,
   SystemAppearanceAccentColorResult,
@@ -4125,6 +4131,124 @@ test("ScreenRpcs declares the Phase 8 Screen method surface", () => {
     "Screen.isSupported"
   ])
   expect(Object.keys(ScreenRpcs.events)).toEqual([])
+})
+
+test("ScreenSurface derives server, client, test, and metadata surfaces from the RpcGroup", async () => {
+  const app = Desktop.make({
+    id: "screen-test",
+    windows: {
+      main: {
+        title: "Screen Test"
+      }
+    }
+  }).pipe(Desktop.provide(ScreenSurface.serverLayer))
+
+  for (const law of ScreenSurface.contractLaws) {
+    await Effect.runPromise(law.check)
+  }
+
+  expect(ScreenSurface.group).toBe(ScreenRpcs)
+  expect(ScreenSurface.serverLayer.group).toBe(ScreenRpcs)
+  expect(ScreenSurface.serverLayer.layer).toBe(ScreenHandlersLive)
+  expect(Layer.isLayer(ScreenSurface.clientLayer)).toBe(true)
+  expect(Layer.isLayer(ScreenSurface.testClientLayer)).toBe(true)
+  expect(Desktop.manifest(app).rpcGroups[0]?.group).toBe(ScreenRpcs)
+  expect(Desktop.describeRpcs(app, ScreenRpcs).map((descriptor) => descriptor.tag)).toEqual([
+    "Screen.getDisplays",
+    "Screen.getPrimaryDisplay",
+    "Screen.getPointerPoint",
+    "Screen.isSupported"
+  ])
+  expect(
+    ScreenSurface.schemaDocs.map((doc) => ({
+      name: doc.name,
+      tag: doc.tag,
+      kind: doc.kind,
+      payload: doc.payload,
+      success: doc.success,
+      error: doc.error,
+      stream: doc.stream,
+      support: doc.support,
+      capability: Option.isSome(doc.capability) ? doc.capability.value.kind : undefined
+    }))
+  ).toEqual([
+    {
+      name: "getDisplays",
+      tag: "Screen.getDisplays",
+      kind: "mutation",
+      payload: Schema.Void,
+      success: ScreenDisplaysResult,
+      error: HostProtocolErrorSchema,
+      stream: Option.none(),
+      support: { status: "supported" },
+      capability: "native.invoke:Screen.getDisplays"
+    },
+    {
+      name: "getPrimaryDisplay",
+      tag: "Screen.getPrimaryDisplay",
+      kind: "mutation",
+      payload: Schema.Void,
+      success: ScreenDisplay,
+      error: HostProtocolErrorSchema,
+      stream: Option.none(),
+      support: { status: "supported" },
+      capability: "native.invoke:Screen.getPrimaryDisplay"
+    },
+    {
+      name: "getPointerPoint",
+      tag: "Screen.getPointerPoint",
+      kind: "mutation",
+      payload: Schema.Void,
+      success: ScreenPoint,
+      error: HostProtocolErrorSchema,
+      stream: Option.none(),
+      support: { status: "supported" },
+      capability: "native.invoke:Screen.getPointerPoint"
+    },
+    {
+      name: "isSupported",
+      tag: "Screen.isSupported",
+      kind: "mutation",
+      payload: ScreenIsSupportedInput,
+      success: ScreenSupportedResult,
+      error: HostProtocolErrorSchema,
+      stream: Option.none(),
+      support: { status: "supported" },
+      capability: "none"
+    }
+  ])
+})
+
+test("ScreenSurface test client layer runs Screen RPCs through the generated service requirement", async () => {
+  const calls: string[] = []
+  const testLayer = Layer.provide(
+    ScreenSurface.testClientLayer,
+    makeScreenServiceLayer(screenClient(calls))
+  )
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* ScreenRpcClient
+      return {
+        displays: yield* client["Screen.getDisplays"](undefined),
+        primary: yield* client["Screen.getPrimaryDisplay"](undefined),
+        pointer: yield* client["Screen.getPointerPoint"](undefined),
+        pointerSupported: yield* client["Screen.isSupported"](
+          new ScreenIsSupportedInput({ method: "getPointerPoint" })
+        )
+      }
+    }).pipe(Effect.provide(testLayer))
+  )
+
+  expect(result.displays).toEqual(new ScreenDisplaysResult({ displays: [primaryDisplay] }))
+  expect(result.primary).toEqual(primaryDisplay)
+  expect(result.pointer).toEqual(new ScreenPoint({ x: 12, y: 34 }))
+  expect(result.pointerSupported).toEqual(new ScreenSupportedResult({ supported: true }))
+  expect(calls).toEqual([
+    "getDisplays",
+    "getPrimaryDisplay",
+    "getPointerPoint",
+    "isSupported:getPointerPoint"
+  ])
 })
 
 test("Screen service delegates through a substitutable ScreenClient port", async () => {

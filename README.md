@@ -10,6 +10,7 @@ Effect owns correctness.
 ```
 
 The framework specification is the source of truth: [docs/SPEC.md](docs/SPEC.md).
+Layer-first public capability design is governed by [docs/architecture/layer-first-contract.md](docs/architecture/layer-first-contract.md).
 
 ## Status
 

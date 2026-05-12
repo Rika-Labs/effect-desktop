@@ -13,6 +13,7 @@ import {
   HostProtocolUnsupportedError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
+import { DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import {
@@ -61,7 +62,16 @@ const ScreenRpcGroup = RpcGroup.make(
   ScreenIsSupported
 )
 
-export const ScreenRpcs = BridgeRpc.fromGroup("Screen", ScreenRpcGroup, ScreenRpcEvents)
+const ScreenBridgeRpcs = BridgeRpc.fromGroup("Screen", ScreenRpcGroup, ScreenRpcEvents)
+
+export const ScreenRpcs = ScreenBridgeRpcs as typeof ScreenRpcGroup & typeof ScreenBridgeRpcs
+
+export type ScreenRpc = RpcGroup.Rpcs<typeof ScreenRpcGroup>
+
+export class ScreenRpcClient extends Context.Service<
+  ScreenRpcClient,
+  DesktopRpcClient<ScreenRpc>
+>()("@effect-desktop/native/ScreenRpcClient") {}
 
 export const ScreenMethodNames = Object.freeze([
   "getDisplays",
@@ -106,6 +116,36 @@ export const ScreenLive = Layer.effect(Screen)(
     } satisfies ScreenServiceApi)
   })
 )
+
+export const ScreenHandlersLive = ScreenRpcGroup.toLayer({
+  "Screen.getDisplays": () =>
+    Effect.gen(function* () {
+      const screen = yield* Screen
+      const displays = yield* screen.getDisplays()
+      return new ScreenDisplaysResult({ displays })
+    }),
+  "Screen.getPrimaryDisplay": () =>
+    Effect.gen(function* () {
+      const screen = yield* Screen
+      return yield* screen.getPrimaryDisplay()
+    }),
+  "Screen.getPointerPoint": () =>
+    Effect.gen(function* () {
+      const screen = yield* Screen
+      return yield* screen.getPointerPoint()
+    }),
+  "Screen.isSupported": (input) =>
+    Effect.gen(function* () {
+      const screen = yield* Screen
+      const supported = yield* screen.isSupported(input.method)
+      return new ScreenSupportedResult({ supported })
+    })
+})
+
+export const ScreenSurface = DesktopRpc.surface("Screen", ScreenRpcGroup, {
+  service: ScreenRpcClient,
+  handlers: ScreenHandlersLive
+})
 
 export const makeScreenClientLayer = (client: ScreenClientApi): Layer.Layer<ScreenClient> =>
   Layer.succeed(ScreenClient)(client)

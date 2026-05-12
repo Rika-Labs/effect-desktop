@@ -1,5 +1,13 @@
 # Repository Guidelines
 
+## Hard Architectural Rules
+
+Effect primitives are the default architecture. Custom abstractions must justify themselves by owning durable desktop-specific policy, lifecycle, security, or protocol translation. If an abstraction only renames, mirrors, narrows, or partially reimplements Effect APIs, treat it as design debt.
+
+When working on any issue, inspect the touched area for adapters, thin wrapper layers, custom DSLs, or parallel abstractions over Effect. If the wrapper is not adding durable desktop-specific semantics, remove it as part of the current work. If removal is larger than the current issue, open a follow-up GitHub issue with a concrete before/after that shows the current custom abstraction and the desired Effect-native shape.
+
+Track follow-up issues in the roadmap when they unblock or simplify later work. Do not preserve legacy compatibility solely for prerelease APIs; prefer the simpler Effect-native interface and migrate call sites fully.
+
 ## Project Structure & Module Organization
 
 Effect Desktop is a Bun/TypeScript monorepo with Rust host crates. Framework packages live in `packages/*`, example and docs apps in `apps/*`, reusable starters in `templates/*`, Rust code in `crates/*`, repo-level tests in `tests/*`, and API snapshots in `api/snapshots`. Design notes, ADRs, milestones, and operational docs live under `docs/`. External reference repositories are vendored as read-only git subtrees under `repos/`; do not import from or edit them unless explicitly updating a subtree.
@@ -21,6 +29,8 @@ Use Bun 1.3.13, as pinned in `package.json`.
 ## Coding Style & Naming Conventions
 
 TypeScript uses strict compiler settings and type-aware oxlint. Keep public effectful APIs as `Effect.Effect<A, E, R>` except at explicit integration edges. Import Effect symbols from `effect`, use `Schema.Class` for boundary data, and model expected failures with stable tagged errors. Prefer small, explicit modules and avoid shallow wrappers. Formatting is Prettier-managed; do not hand-format vendored files.
+
+Public effectful capability design must follow the Layer-first contract in `docs/architecture/layer-first-contract.md`.
 
 ## Testing Guidelines
 

@@ -224,10 +224,13 @@ export {
 export {
   Screen,
   ScreenClient,
+  ScreenHandlersLive,
   ScreenLive,
   ScreenMethodNames,
+  ScreenRpcClient,
   ScreenRpcEvents,
   ScreenRpcs,
+  ScreenSurface,
   makeHostScreenBridgeRpcLayer,
   makeScreenBridgeClientLayer,
   makeScreenClientLayer,
@@ -235,6 +238,7 @@ export {
   makeUnsupportedScreenClient,
   type ScreenClientApi,
   type ScreenError,
+  type ScreenRpc,
   type ScreenServiceApi
 } from "./screen.js"
 export {
