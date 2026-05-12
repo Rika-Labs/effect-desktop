@@ -260,7 +260,7 @@ const scanSourceFile = (
     violations.push(...scanForbiddenPatterns(path, text))
   }
   if (publicEntrypoints.has(path)) {
-    violations.push(...scanPublicBoundaryClasses(path, text, boundaryAllowlist))
+    violations.push(...scanPublicBoundaryClasses(path, text, sourceTexts, boundaryAllowlist))
   }
   violations.push(
     ...scanPublicPromiseSource(path, text, sourceTexts, publicEntrypoints, promiseAllowlist)
@@ -352,6 +352,7 @@ const isPromiseAllowlisted = (symbol: string, allowlist: ReadonlySet<string>): b
 const scanPublicBoundaryClasses = (
   path: string,
   text: string,
+  sourceTexts: ReadonlyMap<string, string>,
   allowlist: ReadonlySet<string>
 ): readonly LayerFirstViolation[] => {
   const packageName = packageNameFromPath(path)
@@ -359,46 +360,25 @@ const scanPublicBoundaryClasses = (
     return []
   }
   const violations: LayerFirstViolation[] = []
-  const sourceFile = parseSource(path, text)
-  const exports = localExportNames(sourceFile)
-  for (const statement of sourceFile.statements) {
-    if (!ts.isClassDeclaration(statement)) {
+  for (const boundary of collectBoundaryClassExports(path, text, sourceTexts, new Set())) {
+    if (boundary.heritage?.includes("Data.TaggedError")) {
       continue
     }
-    const name = statement.name?.text ?? "default"
-    const exportedNames = exportedClassNames(statement, name, exports)
-    if (exportedNames.length === 0) {
+    if (!BOUNDARY_SUFFIX_PATTERN.test(boundary.name)) {
       continue
     }
-    const heritage = statement.heritageClauses
-      ?.flatMap((clause) => clause.types.map((type) => type.expression.getText(sourceFile)))
-      .join(" ")
-    if (heritage?.includes("Data.TaggedError")) {
+    const symbol = `${packageName}:${boundary.name}`
+    if (allowlist.has(symbol)) {
       continue
     }
-    const boundaryNames = uniqueStrings([
-      ...exportedNames,
-      ...(hasModifier(statement, ts.SyntaxKind.DefaultKeyword) && statement.name !== undefined
-        ? [statement.name.text]
-        : [])
-    ])
-    for (const exportedName of boundaryNames) {
-      if (!BOUNDARY_SUFFIX_PATTERN.test(exportedName)) {
-        continue
-      }
-      const symbol = `${packageName}:${exportedName}`
-      if (allowlist.has(symbol)) {
-        continue
-      }
-      if (heritage?.includes("Schema.Class") !== true) {
-        violations.push({
-          kind: "public-boundary-without-schema",
-          path,
-          line: lineForOffset(text, statement.getStart(sourceFile)),
-          symbol,
-          message: "Public boundary classes must extend Schema.Class."
-        })
-      }
+    if (boundary.heritage?.includes("Schema.Class") !== true) {
+      violations.push({
+        kind: "public-boundary-without-schema",
+        path: boundary.path,
+        line: lineForOffset(sourceTexts.get(boundary.path) ?? text, boundary.offset),
+        symbol,
+        message: "Public boundary classes must extend Schema.Class."
+      })
     }
   }
   return violations
@@ -460,6 +440,19 @@ interface ExportedPromiseSymbol {
   readonly name: string
   readonly path: string
   readonly offset: number
+}
+
+interface ImportedBinding {
+  readonly targetPath: string
+  readonly importedName: string
+  readonly namespace: boolean
+}
+
+interface ExportedBoundaryClass {
+  readonly name: string
+  readonly path: string
+  readonly offset: number
+  readonly heritage?: string
 }
 
 const parseSource = (path: string, text: string): ts.SourceFile =>
@@ -592,6 +585,7 @@ const collectPromiseExports = (
 
   const sourceFile = parseSource(path, text)
   const exports = localExportNames(sourceFile)
+  const imports = localImportBindings(path, sourceFile, sourceTexts)
   const symbols: ExportedPromiseSymbol[] = []
 
   for (const statement of sourceFile.statements) {
@@ -599,10 +593,88 @@ const collectPromiseExports = (
     symbols.push(
       ...promiseExportsFromReExportDeclaration(path, statement, sourceFile, sourceTexts, visited)
     )
+    symbols.push(
+      ...promiseExportsFromImportedLocalExportDeclaration(
+        path,
+        statement,
+        sourceFile,
+        sourceTexts,
+        visited,
+        imports
+      )
+    )
   }
 
   visited.delete(path)
   return symbols
+}
+
+const collectBoundaryClassExports = (
+  path: string,
+  text: string,
+  sourceTexts: ReadonlyMap<string, string>,
+  visited: Set<string>
+): readonly ExportedBoundaryClass[] => {
+  if (visited.has(path)) {
+    return []
+  }
+  visited.add(path)
+
+  const sourceFile = parseSource(path, text)
+  const exports = localExportNames(sourceFile)
+  const imports = localImportBindings(path, sourceFile, sourceTexts)
+  const symbols: ExportedBoundaryClass[] = []
+
+  for (const statement of sourceFile.statements) {
+    symbols.push(...boundaryClassesFromLocalDeclaration(path, statement, sourceFile, exports))
+    symbols.push(
+      ...boundaryClassesFromReExportDeclaration(path, statement, sourceFile, sourceTexts, visited)
+    )
+    symbols.push(
+      ...boundaryClassesFromImportedLocalExportDeclaration(
+        path,
+        statement,
+        sourceFile,
+        sourceTexts,
+        visited,
+        imports
+      )
+    )
+  }
+
+  visited.delete(path)
+  return symbols
+}
+
+const boundaryClassesFromLocalDeclaration = (
+  path: string,
+  statement: ts.Statement,
+  sourceFile: ts.SourceFile,
+  exports: LocalExportNames
+): readonly ExportedBoundaryClass[] => {
+  if (!ts.isClassDeclaration(statement)) {
+    return []
+  }
+  const name = statement.name?.text ?? "default"
+  const exportedNames = exportedClassNames(statement, name, exports)
+  const boundaryNames = uniqueStrings([
+    ...exportedNames,
+    ...(hasModifier(statement, ts.SyntaxKind.DefaultKeyword) && statement.name !== undefined
+      ? [statement.name.text]
+      : [])
+  ])
+  if (boundaryNames.length === 0) {
+    return []
+  }
+  const heritage = statement.heritageClauses
+    ?.flatMap((clause) => clause.types.map((type) => type.expression.getText(sourceFile)))
+    .join(" ")
+  return boundaryNames.map((exportedName) => ({
+    name: exportedName,
+    path,
+    offset: statement.getStart(sourceFile),
+    ...(heritage === undefined ? {} : { heritage })
+  }))
 }
 
 const promiseExportsFromReExportDeclaration = (
@@ -677,9 +749,266 @@ const promiseExportsFromReExportDeclaration = (
   return symbols
 }
 
+const promiseExportsFromImportedLocalExportDeclaration = (
+  path: string,
+  statement: ts.Statement,
+  sourceFile: ts.SourceFile,
+  sourceTexts: ReadonlyMap<string, string>,
+  visited: Set<string>,
+  imports: ReadonlyMap<string, ImportedBinding>
+): readonly ExportedPromiseSymbol[] => {
+  if (
+    !ts.isExportDeclaration(statement) ||
+    statement.moduleSpecifier !== undefined ||
+    statement.exportClause === undefined ||
+    !ts.isNamedExports(statement.exportClause)
+  ) {
+    return []
+  }
+
+  const symbols: ExportedPromiseSymbol[] = []
+  for (const element of statement.exportClause.elements) {
+    const localName = element.propertyName?.text ?? element.name.text
+    const binding = imports.get(localName)
+    if (binding === undefined) {
+      continue
+    }
+    const targetText = sourceTexts.get(binding.targetPath)
+    if (targetText === undefined) {
+      continue
+    }
+    const targetSymbols = collectPromiseExports(
+      binding.targetPath,
+      targetText,
+      sourceTexts,
+      visited
+    )
+    const exportedName = element.name.text
+    symbols.push(
+      ...mapImportedPromiseSymbols(
+        targetSymbols,
+        binding,
+        exportedName,
+        path,
+        statement.getStart(sourceFile)
+      )
+    )
+  }
+  return symbols
+}
+
+const mapImportedPromiseSymbols = (
+  targetSymbols: readonly ExportedPromiseSymbol[],
+  binding: ImportedBinding,
+  exportedName: string,
+  path: string,
+  offset: number
+): readonly ExportedPromiseSymbol[] => {
+  if (binding.namespace) {
+    return targetSymbols.map((symbol) => ({
+      name: `${exportedName}.${symbol.name}`,
+      path,
+      offset
+    }))
+  }
+  const symbols: ExportedPromiseSymbol[] = []
+  for (const targetSymbol of targetSymbols) {
+    if (targetSymbol.name === binding.importedName) {
+      symbols.push({ name: exportedName, path, offset })
+      continue
+    }
+    const memberPrefix = `${binding.importedName}.`
+    if (targetSymbol.name.startsWith(memberPrefix)) {
+      symbols.push({
+        name: `${exportedName}.${targetSymbol.name.slice(memberPrefix.length)}`,
+        path,
+        offset
+      })
+    }
+  }
+  return symbols
+}
+
+const boundaryClassesFromReExportDeclaration = (
+  path: string,
+  statement: ts.Statement,
+  sourceFile: ts.SourceFile,
+  sourceTexts: ReadonlyMap<string, string>,
+  visited: Set<string>
+): readonly ExportedBoundaryClass[] => {
+  if (
+    !ts.isExportDeclaration(statement) ||
+    statement.moduleSpecifier === undefined ||
+    !ts.isStringLiteral(statement.moduleSpecifier)
+  ) {
+    return []
+  }
+
+  const targetPath = resolveLocalModulePath(path, statement.moduleSpecifier.text, sourceTexts)
+  if (targetPath === undefined) {
+    return []
+  }
+  const targetText = sourceTexts.get(targetPath)
+  if (targetText === undefined) {
+    return []
+  }
+
+  const targetSymbols = collectBoundaryClassExports(targetPath, targetText, sourceTexts, visited)
+  if (statement.exportClause === undefined) {
+    return targetSymbols
+      .filter((symbol) => symbol.name !== "default")
+      .map((symbol) => ({
+        ...symbol,
+        path,
+        offset: statement.getStart(sourceFile)
+      }))
+  }
+  if (ts.isNamespaceExport(statement.exportClause)) {
+    const namespace = statement.exportClause.name.text
+    return targetSymbols.map((symbol) => ({
+      ...symbol,
+      name: `${namespace}.${symbol.name}`,
+      path,
+      offset: statement.getStart(sourceFile)
+    }))
+  }
+  if (!ts.isNamedExports(statement.exportClause)) {
+    return []
+  }
+
+  const symbols: ExportedBoundaryClass[] = []
+  for (const element of statement.exportClause.elements) {
+    const importedName = element.propertyName?.text ?? element.name.text
+    const exportedName = element.name.text
+    for (const targetSymbol of targetSymbols) {
+      if (targetSymbol.name === importedName) {
+        symbols.push({
+          ...targetSymbol,
+          name: exportedName,
+          path,
+          offset: statement.getStart(sourceFile)
+        })
+      }
+    }
+  }
+  return symbols
+}
+
+const boundaryClassesFromImportedLocalExportDeclaration = (
+  path: string,
+  statement: ts.Statement,
+  sourceFile: ts.SourceFile,
+  sourceTexts: ReadonlyMap<string, string>,
+  visited: Set<string>,
+  imports: ReadonlyMap<string, ImportedBinding>
+): readonly ExportedBoundaryClass[] => {
+  if (
+    !ts.isExportDeclaration(statement) ||
+    statement.moduleSpecifier !== undefined ||
+    statement.exportClause === undefined ||
+    !ts.isNamedExports(statement.exportClause)
+  ) {
+    return []
+  }
+
+  const symbols: ExportedBoundaryClass[] = []
+  for (const element of statement.exportClause.elements) {
+    const localName = element.propertyName?.text ?? element.name.text
+    const binding = imports.get(localName)
+    if (binding === undefined) {
+      continue
+    }
+    const targetText = sourceTexts.get(binding.targetPath)
+    if (targetText === undefined) {
+      continue
+    }
+    const targetSymbols = collectBoundaryClassExports(
+      binding.targetPath,
+      targetText,
+      sourceTexts,
+      visited
+    )
+    const exportedName = element.name.text
+    symbols.push(
+      ...mapImportedBoundaryClasses(
+        targetSymbols,
+        binding,
+        exportedName,
+        path,
+        statement.getStart(sourceFile)
+      )
+    )
+  }
+  return symbols
+}
+
+const mapImportedBoundaryClasses = (
+  targetSymbols: readonly ExportedBoundaryClass[],
+  binding: ImportedBinding,
+  exportedName: string,
+  path: string,
+  offset: number
+): readonly ExportedBoundaryClass[] => {
+  if (binding.namespace) {
+    return targetSymbols.map((symbol) => ({
+      ...symbol,
+      name: `${exportedName}.${symbol.name}`,
+      path,
+      offset
+    }))
+  }
+  return targetSymbols
+    .filter((symbol) => symbol.name === binding.importedName)
+    .map((symbol) => ({ ...symbol, name: exportedName, path, offset }))
+}
+
 interface LocalExportNames {
   readonly byLocalName: ReadonlyMap<string, readonly string[]>
   readonly defaultLocalName?: string
+}
+
+const localImportBindings = (
+  path: string,
+  sourceFile: ts.SourceFile,
+  sourceTexts: ReadonlyMap<string, string>
+): ReadonlyMap<string, ImportedBinding> => {
+  const imports = new Map<string, ImportedBinding>()
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      statement.importClause === undefined ||
+      !ts.isStringLiteral(statement.moduleSpecifier)
+    ) {
+      continue
+    }
+    const targetPath = resolveLocalModulePath(path, statement.moduleSpecifier.text, sourceTexts)
+    if (targetPath === undefined) {
+      continue
+    }
+    if (statement.importClause.name !== undefined) {
+      imports.set(statement.importClause.name.text, {
+        targetPath,
+        importedName: "default",
+        namespace: false
+      })
+    }
+    const namedBindings = statement.importClause.namedBindings
+    if (namedBindings === undefined) {
+      continue
+    }
+    if (ts.isNamespaceImport(namedBindings)) {
+      imports.set(namedBindings.name.text, { targetPath, importedName: "*", namespace: true })
+      continue
+    }
+    for (const element of namedBindings.elements) {
+      imports.set(element.name.text, {
+        targetPath,
+        importedName: element.propertyName?.text ?? element.name.text,
+        namespace: false
+      })
+    }
+  }
+  return imports
 }
 
 const resolveLocalModulePath = (

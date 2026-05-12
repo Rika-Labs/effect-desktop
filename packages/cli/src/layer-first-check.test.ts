@@ -228,6 +228,22 @@ test("Layer-first check rejects public Promise APIs re-exported from local modul
   expectViolation(exit, "public-promise-api")
 })
 
+test("Layer-first check rejects public Promise APIs imported then exported from local modules", async () => {
+  const options = await makeFixture({
+    ...packageFiles(`
+      import { loadUser } from "./api"
+      export { loadUser }
+    `),
+    "packages/fixture/src/api.ts": `
+      export const loadUser = async () => "user"
+    `
+  })
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-promise-api")
+})
+
 test("Layer-first check resolves JavaScript re-export specifiers to TypeScript source", async () => {
   const options = await makeFixture({
     ...packageFiles(`
@@ -524,6 +540,41 @@ test("Layer-first check rejects re-exported public boundary classes without Sche
       export { UserInput }
     `)
   )
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-boundary-without-schema")
+})
+
+test("Layer-first check rejects boundary classes re-exported from local modules", async () => {
+  const options = await makeFixture({
+    ...packageFiles(`
+      export { UserInput } from "./model"
+    `),
+    "packages/fixture/src/model.ts": `
+      export class UserInput {
+        constructor(readonly name: string) {}
+      }
+    `
+  })
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-boundary-without-schema")
+})
+
+test("Layer-first check rejects boundary classes imported then exported from local modules", async () => {
+  const options = await makeFixture({
+    ...packageFiles(`
+      import { UserInput } from "./model"
+      export { UserInput }
+    `),
+    "packages/fixture/src/model.ts": `
+      export class UserInput {
+        constructor(readonly name: string) {}
+      }
+    `
+  })
 
   const exit = await runExit(options)
 
