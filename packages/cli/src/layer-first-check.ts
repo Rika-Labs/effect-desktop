@@ -161,6 +161,7 @@ const DATE_FORBIDDEN_PROPERTIES = new Set(["now"])
 const MATH_FORBIDDEN_PROPERTIES = new Set(["random"])
 const CRYPTO_FORBIDDEN_PROPERTIES = new Set(["randomUUID"])
 const EMPTY_FORBIDDEN_PROPERTIES = new Set<string>()
+const EMPTY_PROMISE_RETURNING_LOCALS = new Set<string>()
 
 export const runLayerFirstCheck = (
   options: LayerFirstCheckOptions
@@ -309,7 +310,7 @@ const scanForbiddenPatterns = (path: string, text: string): readonly LayerFirstV
       if (callExpressionImportsRuntimeFs(node)) {
         pushRuntimeGlobal(node)
       }
-    } else if (isStaticAccessExpression(node)) {
+    } else if (isStaticAccessExpression(node) && !isInTypeOnlyExpressionContext(node)) {
       if (isEffectRunAccess(node, effectRunReceivers)) {
         pushEffectRun(node)
       } else if (propertyAccessUsesRuntimeGlobal(node, runtimeObjectAliases)) {
@@ -356,6 +357,17 @@ const effectRunReceiverNames = (sourceFile: ts.SourceFile): ReadonlySet<string> 
     }
   }
   return names
+}
+
+const isInTypeOnlyExpressionContext = (node: ts.Node): boolean => {
+  let current: ts.Node = node
+  while (current.parent !== undefined) {
+    if (ts.isTypeQueryNode(current.parent)) {
+      return true
+    }
+    current = current.parent
+  }
+  return false
 }
 
 const collectRuntimeObjectAliases = (sourceFile: ts.SourceFile): ReadonlyMap<string, string> => {
@@ -792,14 +804,15 @@ const promiseReturningExportedSymbols = (
   statement: ts.Statement,
   sourceFile: ts.SourceFile,
   exports: LocalExportNames,
-  promiseAliases: ReadonlySet<string>
+  promiseAliases: ReadonlySet<string>,
+  promiseReturningLocals: ReadonlySet<string>
 ): readonly ExportedPromiseSymbol[] => {
   if (ts.isFunctionDeclaration(statement)) {
     const name = statement.name?.text ?? "default"
     if (
       !hasAsyncModifier(statement) &&
       !typeIncludesPromise(statement.type, promiseAliases) &&
-      !bodyReturnsPromise(statement)
+      !bodyReturnsPromise(statement, promiseReturningLocals)
     ) {
       return []
     }
@@ -818,7 +831,7 @@ const promiseReturningExportedSymbols = (
       if (
         typeIncludesPromise(declaration.type, promiseAliases) ||
         initializerIsAsync(declaration.initializer) ||
-        initializerReturnsPromise(declaration.initializer, promiseAliases)
+        initializerReturnsPromise(declaration.initializer, promiseAliases, promiseReturningLocals)
       ) {
         symbols.push(
           ...exportedPromiseNames(statement, declaration.name.text, exports).map(
@@ -846,7 +859,7 @@ const promiseReturningExportedSymbols = (
       if (memberName === undefined) {
         continue
       }
-      if (memberReturnsPromise(member, promiseAliases)) {
+      if (memberReturnsPromise(member, promiseAliases, promiseReturningLocals)) {
         for (const exportedName of exportedNames) {
           symbols.push({
             name: `${exportedName}.${memberName}`,
@@ -891,7 +904,13 @@ const promiseReturningExportedSymbols = (
     }))
   }
   if (ts.isExportAssignment(statement) && statement.isExportEquals !== true) {
-    return promiseSymbolsFromDefaultExpression(path, statement, sourceFile, promiseAliases)
+    return promiseSymbolsFromDefaultExpression(
+      path,
+      statement,
+      sourceFile,
+      promiseAliases,
+      promiseReturningLocals
+    )
   }
   return []
 }
@@ -911,11 +930,19 @@ const collectPromiseExports = (
   const exports = localExportNames(sourceFile)
   const imports = localImportBindings(path, sourceFile, sourceTexts)
   const promiseAliases = collectPromiseTypeAliases(path, text, sourceTexts, new Set())
+  const promiseReturningLocals = collectPromiseReturningLocalNames(sourceFile, promiseAliases)
   const symbols: ExportedPromiseSymbol[] = []
 
   for (const statement of sourceFile.statements) {
     symbols.push(
-      ...promiseReturningExportedSymbols(path, statement, sourceFile, exports, promiseAliases)
+      ...promiseReturningExportedSymbols(
+        path,
+        statement,
+        sourceFile,
+        exports,
+        promiseAliases,
+        promiseReturningLocals
+      )
     )
     symbols.push(
       ...promiseExportsFromReExportDeclaration(path, statement, sourceFile, sourceTexts, visited)
@@ -944,6 +971,61 @@ const collectPromiseExports = (
 
   visited.delete(path)
   return symbols
+}
+
+const collectPromiseReturningLocalNames = (
+  sourceFile: ts.SourceFile,
+  promiseAliases: ReadonlySet<string>
+): ReadonlySet<string> => {
+  const names = new Set<string>()
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const statement of sourceFile.statements) {
+      for (const name of promiseReturningLocalNames(statement, promiseAliases, names)) {
+        if (names.has(name)) {
+          continue
+        }
+        names.add(name)
+        changed = true
+      }
+    }
+  }
+  return names
+}
+
+const promiseReturningLocalNames = (
+  statement: ts.Statement,
+  promiseAliases: ReadonlySet<string>,
+  promiseReturningLocals: ReadonlySet<string>
+): readonly string[] => {
+  if (ts.isFunctionDeclaration(statement) && statement.name !== undefined) {
+    if (
+      hasAsyncModifier(statement) ||
+      typeIncludesPromise(statement.type, promiseAliases) ||
+      bodyReturnsPromise(statement, promiseReturningLocals)
+    ) {
+      return [statement.name.text]
+    }
+    return []
+  }
+  if (!ts.isVariableStatement(statement)) {
+    return []
+  }
+  const names: string[] = []
+  for (const declaration of statement.declarationList.declarations) {
+    if (!ts.isIdentifier(declaration.name)) {
+      continue
+    }
+    if (
+      typeIncludesPromise(declaration.type, promiseAliases) ||
+      initializerIsAsync(declaration.initializer) ||
+      initializerReturnsPromise(declaration.initializer, promiseAliases, promiseReturningLocals)
+    ) {
+      names.push(declaration.name.text)
+    }
+  }
+  return names
 }
 
 const collectPromiseTypeAliases = (
@@ -1618,7 +1700,8 @@ const initializerIsAsync = (initializer: ts.Expression | undefined): boolean => 
 
 const initializerReturnsPromise = (
   initializer: ts.Expression | undefined,
-  promiseAliases: ReadonlySet<string>
+  promiseAliases: ReadonlySet<string>,
+  promiseReturningLocals: ReadonlySet<string> = EMPTY_PROMISE_RETURNING_LOCALS
 ): boolean => {
   if (initializer === undefined) {
     return false
@@ -1626,7 +1709,8 @@ const initializerReturnsPromise = (
   const expression = unwrapExpression(initializer)
   return (
     (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) &&
-    (typeIncludesPromise(expression.type, promiseAliases) || bodyReturnsPromise(expression))
+    (typeIncludesPromise(expression.type, promiseAliases) ||
+      bodyReturnsPromise(expression, promiseReturningLocals))
   )
 }
 
@@ -1660,7 +1744,8 @@ const entityNameText = (node: ts.EntityName): string =>
 
 const memberReturnsPromise = (
   member: ts.ClassElement,
-  promiseAliases: ReadonlySet<string>
+  promiseAliases: ReadonlySet<string>,
+  promiseReturningLocals: ReadonlySet<string> = EMPTY_PROMISE_RETURNING_LOCALS
 ): member is ts.MethodDeclaration | ts.PropertyDeclaration | ts.GetAccessorDeclaration => {
   if (hasModifier(member, ts.SyntaxKind.PrivateKeyword)) {
     return false
@@ -1672,18 +1757,19 @@ const memberReturnsPromise = (
     return (
       hasAsyncModifier(member) ||
       typeIncludesPromise(member.type, promiseAliases) ||
-      bodyReturnsPromise(member)
+      bodyReturnsPromise(member, promiseReturningLocals)
     )
   }
   if (ts.isPropertyDeclaration(member)) {
     return (
       typeIncludesPromise(member.type, promiseAliases) ||
-      initializerReturnsPromise(member.initializer, promiseAliases)
+      initializerReturnsPromise(member.initializer, promiseAliases, promiseReturningLocals)
     )
   }
   return (
     ts.isGetAccessorDeclaration(member) &&
-    (typeIncludesPromise(member.type, promiseAliases) || bodyReturnsPromise(member))
+    (typeIncludesPromise(member.type, promiseAliases) ||
+      bodyReturnsPromise(member, promiseReturningLocals))
   )
 }
 
@@ -1691,14 +1777,15 @@ const promiseSymbolsFromDefaultExpression = (
   path: string,
   statement: ts.ExportAssignment,
   sourceFile: ts.SourceFile,
-  promiseAliases: ReadonlySet<string>
+  promiseAliases: ReadonlySet<string>,
+  promiseReturningLocals: ReadonlySet<string> = EMPTY_PROMISE_RETURNING_LOCALS
 ): readonly ExportedPromiseSymbol[] => {
   const expression = unwrapExpression(statement.expression)
   if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) {
     if (
       hasAsyncModifier(expression) ||
       typeIncludesPromise(expression.type, promiseAliases) ||
-      bodyReturnsPromise(expression)
+      bodyReturnsPromise(expression, promiseReturningLocals)
     ) {
       return [{ name: "default", path, offset: statement.getStart(sourceFile) }]
     }
@@ -1708,7 +1795,10 @@ const promiseSymbolsFromDefaultExpression = (
     const symbols: ExportedPromiseSymbol[] = []
     for (const member of expression.members) {
       const memberName = publicMemberName(member)
-      if (memberName !== undefined && memberReturnsPromise(member, promiseAliases)) {
+      if (
+        memberName !== undefined &&
+        memberReturnsPromise(member, promiseAliases, promiseReturningLocals)
+      ) {
         symbols.push({
           name: `default.${memberName}`,
           path,
@@ -1718,7 +1808,7 @@ const promiseSymbolsFromDefaultExpression = (
     }
     return symbols
   }
-  return expressionReturnsPromise(expression)
+  return expressionReturnsPromise(expression, promiseReturningLocals)
     ? [{ name: "default", path, offset: statement.getStart(sourceFile) }]
     : []
 }
@@ -1752,9 +1842,12 @@ const publicTypeMemberName = (member: ts.TypeElement): string | undefined => {
   return undefined
 }
 
-const bodyReturnsPromise = (node: ts.FunctionLikeDeclaration): boolean => {
+const bodyReturnsPromise = (
+  node: ts.FunctionLikeDeclaration,
+  promiseReturningLocals: ReadonlySet<string> = EMPTY_PROMISE_RETURNING_LOCALS
+): boolean => {
   if (ts.isArrowFunction(node) && node.body !== undefined && !ts.isBlock(node.body)) {
-    return expressionReturnsPromise(node.body)
+    return expressionReturnsPromise(node.body, promiseReturningLocals)
   }
   const body = node.body
   if (body === undefined || !ts.isBlock(body)) {
@@ -1777,7 +1870,7 @@ const bodyReturnsPromise = (node: ts.FunctionLikeDeclaration): boolean => {
     if (
       ts.isReturnStatement(child) &&
       child.expression !== undefined &&
-      expressionReturnsPromise(child.expression)
+      expressionReturnsPromise(child.expression, promiseReturningLocals)
     ) {
       returnsPromise = true
       return
@@ -1788,7 +1881,10 @@ const bodyReturnsPromise = (node: ts.FunctionLikeDeclaration): boolean => {
   return returnsPromise
 }
 
-const expressionReturnsPromise = (expression: ts.Expression): boolean => {
+const expressionReturnsPromise = (
+  expression: ts.Expression,
+  promiseReturningLocals: ReadonlySet<string> = EMPTY_PROMISE_RETURNING_LOCALS
+): boolean => {
   const unwrapped = unwrapExpression(expression)
   if (ts.isNewExpression(unwrapped) && isPromiseExpression(unwrapped.expression)) {
     return true
@@ -1796,11 +1892,15 @@ const expressionReturnsPromise = (expression: ts.Expression): boolean => {
   if (!ts.isCallExpression(unwrapped)) {
     return false
   }
-  return isPromiseCallExpression(unwrapped.expression)
+  return isPromiseCallExpression(unwrapped.expression, promiseReturningLocals)
 }
 
-const isPromiseCallExpression = (node: ts.Expression): boolean =>
+const isPromiseCallExpression = (
+  node: ts.Expression,
+  promiseReturningLocals: ReadonlySet<string>
+): boolean =>
   isPromiseExpression(node) ||
+  (ts.isIdentifier(node) && promiseReturningLocals.has(node.text)) ||
   (isStaticAccessExpression(node) && isPromiseExpression(node.expression))
 
 const isPromiseExpression = (node: ts.Expression): boolean => {

@@ -305,6 +305,22 @@ test("Layer-first check ignores type-only filesystem imports", async () => {
   expect(report.violations).toEqual([])
 })
 
+test("Layer-first check ignores forbidden property accesses in type queries", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      import { Effect } from "effect"
+      type Env = typeof process.env
+      type Run = typeof Effect.runPromise
+      export type RuntimeTypes = Env | Run
+    `)
+  )
+
+  const report = await Effect.runPromise(runLayerFirstCheck(options))
+
+  expect(report.passed).toBe(true)
+  expect(report.violations).toEqual([])
+})
+
 test("Layer-first check ignores forbidden spellings in comments and strings", async () => {
   const options = await makeFixture(
     packageFiles(`
@@ -415,6 +431,19 @@ test("Layer-first check rejects public functions with inferred Promise returns",
       export function loadUser() {
         return Promise.resolve("user")
       }
+    `)
+  )
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-promise-api")
+})
+
+test("Layer-first check rejects public functions returning local Promise helpers", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      const loadUser = () => Promise.resolve("user")
+      export const run = () => loadUser()
     `)
   )
 
