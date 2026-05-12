@@ -259,7 +259,9 @@ const scanSourceFile = (
   if (!isAllowedEdge) {
     violations.push(...scanForbiddenPatterns(path, text))
   }
-  violations.push(...scanPublicBoundaryClasses(path, text, boundaryAllowlist))
+  if (publicEntrypoints.has(path)) {
+    violations.push(...scanPublicBoundaryClasses(path, text, boundaryAllowlist))
+  }
   violations.push(
     ...scanPublicPromiseSource(path, text, sourceTexts, publicEntrypoints, promiseAllowlist)
   )

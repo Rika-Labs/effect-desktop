@@ -500,6 +500,22 @@ test("Layer-first check rejects public boundary classes exported under boundary 
   expectViolation(exit, "public-boundary-without-schema")
 })
 
+test("Layer-first check ignores non-public boundary classes in internal modules", async () => {
+  const options = await makeFixture({
+    ...packageFiles("export {}"),
+    "packages/fixture/src/internal.ts": `
+      export class UserInput {
+        constructor(readonly name: string) {}
+      }
+    `
+  })
+
+  const report = await Effect.runPromise(runLayerFirstCheck(options))
+
+  expect(report.passed).toBe(true)
+  expect(report.violations).toEqual([])
+})
+
 test("Layer-first check allows explicit composition edges and test files", async () => {
   const options = await makeFixture(
     {
