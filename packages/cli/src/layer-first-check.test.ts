@@ -443,6 +443,26 @@ test("Layer-first check rejects public Promise APIs re-exported from export-star
   expectViolation(exit, "public-promise-api")
 })
 
+test("Layer-first check ignores default Promise members in export-star barrels", async () => {
+  const options = await makeFixture({
+    ...packageFiles(`
+      export * from "./api"
+    `),
+    "packages/fixture/src/api.ts": `
+      export default class Client {
+        loadUser(): Promise<string> {
+          return Promise.resolve("user")
+        }
+      }
+    `
+  })
+
+  const report = await Effect.runPromise(runLayerFirstCheck(options))
+
+  expect(report.passed).toBe(true)
+  expect(report.violations).toEqual([])
+})
+
 test("Layer-first check rejects public Promise APIs re-exported through namespaces", async () => {
   const options = await makeFixture({
     ...packageFiles(`
@@ -762,6 +782,24 @@ test("Layer-first check rejects boundary classes re-exported from local modules"
   const exit = await runExit(options)
 
   expectViolation(exit, "public-boundary-without-schema")
+})
+
+test("Layer-first check ignores default boundary classes in export-star barrels", async () => {
+  const options = await makeFixture({
+    ...packageFiles(`
+      export * from "./model"
+    `),
+    "packages/fixture/src/model.ts": `
+      export default class UserInput {
+        constructor(readonly name: string) {}
+      }
+    `
+  })
+
+  const report = await Effect.runPromise(runLayerFirstCheck(options))
+
+  expect(report.passed).toBe(true)
+  expect(report.violations).toEqual([])
 })
 
 test("Layer-first check rejects boundary classes imported then exported from local modules", async () => {

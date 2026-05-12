@@ -574,6 +574,7 @@ interface ExportedBoundaryClass {
   readonly offset: number
   readonly extendsSchemaClass: boolean
   readonly extendsTaggedError: boolean
+  readonly defaultDerived: boolean
 }
 
 const parseSource = (path: string, text: string): ts.SourceFile =>
@@ -845,11 +846,13 @@ const boundaryClassesFromLocalDeclaration = (
   }
   const name = statement.name?.text ?? "default"
   const exportedNames = exportedClassNames(statement, name, exports)
+  const defaultClassName =
+    hasModifier(statement, ts.SyntaxKind.DefaultKeyword) && statement.name !== undefined
+      ? statement.name.text
+      : undefined
   const boundaryNames = uniqueStrings([
     ...exportedNames,
-    ...(hasModifier(statement, ts.SyntaxKind.DefaultKeyword) && statement.name !== undefined
-      ? [statement.name.text]
-      : [])
+    ...(defaultClassName === undefined ? [] : [defaultClassName])
   ])
   if (boundaryNames.length === 0) {
     return []
@@ -860,7 +863,8 @@ const boundaryClassesFromLocalDeclaration = (
     path,
     offset: statement.getStart(sourceFile),
     extendsSchemaClass: heritage.extendsSchemaClass,
-    extendsTaggedError: heritage.extendsTaggedError
+    extendsTaggedError: heritage.extendsTaggedError,
+    defaultDerived: exportedName === "default" || exportedName === defaultClassName
   }))
 }
 
@@ -924,7 +928,7 @@ const promiseExportsFromReExportDeclaration = (
   const targetSymbols = collectPromiseExports(targetPath, targetText, sourceTexts, visited)
   if (statement.exportClause === undefined) {
     return targetSymbols
-      .filter((symbol) => symbol.name !== "default")
+      .filter((symbol) => symbol.name !== "default" && !symbol.name.startsWith("default."))
       .map((symbol) => ({
         ...symbol,
         path,
@@ -1108,7 +1112,7 @@ const boundaryClassesFromReExportDeclaration = (
   const targetSymbols = collectBoundaryClassExports(targetPath, targetText, sourceTexts, visited)
   if (statement.exportClause === undefined) {
     return targetSymbols
-      .filter((symbol) => symbol.name !== "default")
+      .filter((symbol) => !symbol.defaultDerived)
       .map((symbol) => ({
         ...symbol,
         path,
