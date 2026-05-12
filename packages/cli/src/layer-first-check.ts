@@ -525,6 +525,24 @@ const staticAccessName = (node: StaticAccessExpression): string | undefined => {
     : undefined
 }
 
+const staticAccessPath = (node: ts.Expression): readonly string[] | undefined => {
+  const parts: string[] = []
+  let current = unwrapExpression(node)
+  while (isStaticAccessExpression(current)) {
+    const name = staticAccessName(current)
+    if (name === undefined) {
+      return undefined
+    }
+    parts.unshift(name)
+    current = unwrapExpression(current.expression)
+  }
+  if (!ts.isIdentifier(current)) {
+    return undefined
+  }
+  parts.unshift(current.text)
+  return parts
+}
+
 const isGlobalThisExpression = (node: ts.Expression): boolean =>
   ts.isIdentifier(node) && node.text === "globalThis"
 
@@ -964,6 +982,7 @@ const boundaryClassesFromLocalDeclaration = (
       : undefined
   const boundaryNames = uniqueStrings([
     ...exportedNames,
+    ...(exports.defaultLocalName === name ? [name] : []),
     ...(defaultClassName === undefined ? [] : [defaultClassName])
   ])
   if (boundaryNames.length === 0) {
@@ -1177,24 +1196,70 @@ const promiseSymbolsFromImportedDefaultExportAssignment = (
     return []
   }
   const expression = unwrapExpression(statement.expression)
-  if (!ts.isIdentifier(expression)) {
+  if (ts.isIdentifier(expression)) {
+    const binding = imports.get(expression.text)
+    if (binding === undefined || binding.namespace) {
+      return []
+    }
+    const targetText = sourceTexts.get(binding.targetPath)
+    if (targetText === undefined) {
+      return []
+    }
+    return mapImportedPromiseSymbols(
+      collectPromiseExports(binding.targetPath, targetText, sourceTexts, visited),
+      binding,
+      "default",
+      path,
+      statement.getStart(sourceFile)
+    )
+  }
+
+  const accessPath = staticAccessPath(expression)
+  const namespace = accessPath?.[0]
+  const importedName = accessPath?.slice(1).join(".")
+  if (namespace === undefined || importedName === undefined || importedName.length === 0) {
     return []
   }
-  const binding = imports.get(expression.text)
-  if (binding === undefined || binding.namespace) {
+  const binding = imports.get(namespace)
+  if (binding === undefined || !binding.namespace) {
     return []
   }
   const targetText = sourceTexts.get(binding.targetPath)
   if (targetText === undefined) {
     return []
   }
-  return mapImportedPromiseSymbols(
+  return mapNamespaceMemberPromiseSymbols(
     collectPromiseExports(binding.targetPath, targetText, sourceTexts, visited),
-    binding,
+    importedName,
     "default",
     path,
     statement.getStart(sourceFile)
   )
+}
+
+const mapNamespaceMemberPromiseSymbols = (
+  targetSymbols: readonly ExportedPromiseSymbol[],
+  importedName: string,
+  exportedName: string,
+  path: string,
+  offset: number
+): readonly ExportedPromiseSymbol[] => {
+  const symbols: ExportedPromiseSymbol[] = []
+  for (const targetSymbol of targetSymbols) {
+    if (targetSymbol.name === importedName) {
+      symbols.push({ name: exportedName, path, offset })
+      continue
+    }
+    const memberPrefix = `${importedName}.`
+    if (targetSymbol.name.startsWith(memberPrefix)) {
+      symbols.push({
+        name: `${exportedName}.${targetSymbol.name.slice(memberPrefix.length)}`,
+        path,
+        offset
+      })
+    }
+  }
+  return symbols
 }
 
 const boundaryClassesFromReExportDeclaration = (

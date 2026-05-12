@@ -450,6 +450,22 @@ test("Layer-first check rejects default exports of imported public Promise APIs"
   expectViolation(exit, "public-promise-api")
 })
 
+test("Layer-first check rejects default exports of namespace-member public Promise APIs", async () => {
+  const options = await makeFixture({
+    ...packageFiles(`
+      import * as api from "./api"
+      export default api.loadUser
+    `),
+    "packages/fixture/src/api.ts": `
+      export const loadUser = async () => "user"
+    `
+  })
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-promise-api")
+})
+
 test("Layer-first check resolves JavaScript re-export specifiers to TypeScript source", async () => {
   const options = await makeFixture({
     ...packageFiles(`
@@ -790,6 +806,21 @@ test("Layer-first check rejects default-exported public boundary classes without
       export default class UserInput {
         constructor(readonly name: string) {}
       }
+    `)
+  )
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-boundary-without-schema")
+})
+
+test("Layer-first check rejects default-assigned public boundary classes without Schema.Class", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      class UserInput {
+        constructor(readonly name: string) {}
+      }
+      export default UserInput
     `)
   )
 
