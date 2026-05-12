@@ -94,12 +94,17 @@ const DEFAULT_ALLOWED_EDGES = [
   "packages/cli/src/signing-pipeline.ts",
   "packages/cli/src/update-manifest.ts",
   "packages/core/src/runtime/approval-broker.ts",
+  "packages/core/src/runtime/commands.ts",
   "packages/core/src/runtime/filesystem.ts",
   "packages/core/src/runtime/host-client.ts",
   "packages/core/src/runtime/main.ts",
+  "packages/core/src/runtime/permission-approval-workflow.ts",
+  "packages/core/src/runtime/permission-registry.ts",
   "packages/core/src/runtime/process.ts",
   "packages/core/src/runtime/pty.ts",
   "packages/core/src/runtime/renderer-rpc-client.ts",
+  "packages/core/src/runtime/resources.ts",
+  "packages/core/src/runtime/settings.ts",
   "packages/core/src/runtime/sqlite.ts",
   "packages/core/src/runtime/stdio-socket.ts",
   "packages/core/src/runtime/telemetry.ts",
@@ -107,6 +112,7 @@ const DEFAULT_ALLOWED_EDGES = [
   "packages/core/src/runtime/window-state.ts",
   "packages/core/src/runtime/worker.ts",
   "packages/core/src/runtime/workflows/backup.ts",
+  "packages/devtools/src/live-panels.ts",
   "packages/devtools/src/reactivity-panel.ts",
   "packages/devtools/src/shell.ts",
   "packages/native/src/crash-reporter.ts",
@@ -293,8 +299,6 @@ const scanForbiddenPatterns = (path: string, text: string): readonly LayerFirstV
     } else if (ts.isCallExpression(node)) {
       if (callExpressionImportsRuntimeFs(node)) {
         pushRuntimeGlobal(node)
-      } else if (callExpressionUsesRuntimeGlobal(node)) {
-        pushRuntimeGlobal(node)
       }
     } else if (isStaticAccessExpression(node)) {
       if (isEffectRunAccess(node)) {
@@ -344,27 +348,20 @@ const callExpressionImportsRuntimeFs = (node: ts.CallExpression): boolean => {
   return ts.isIdentifier(node.expression) && node.expression.text === "require"
 }
 
-const callExpressionUsesRuntimeGlobal = (node: ts.CallExpression): boolean => {
-  const expression = node.expression
-  if (!isStaticAccessExpression(expression)) {
-    return false
-  }
-  const name = staticAccessName(expression)
-  if (
-    isRuntimeObjectPropertyAccess(expression, "Date", "now") ||
-    isRuntimeObjectPropertyAccess(expression, "Math", "random") ||
-    isCryptoRandomUuidAccess(expression)
-  ) {
-    return true
-  }
-  return (
-    (name === "file" || name === "write") && isRuntimeObjectExpression(expression.expression, "Bun")
-  )
-}
-
 const propertyAccessUsesRuntimeGlobal = (node: StaticAccessExpression): boolean =>
   isRuntimeObjectPropertyAccess(node, "process", "env") ||
-  isRuntimeObjectPropertyAccess(node, "Bun", "env")
+  isRuntimeObjectPropertyAccess(node, "Bun", "env") ||
+  isRuntimeMethodAccess(node)
+
+const isRuntimeMethodAccess = (node: StaticAccessExpression): boolean => {
+  const name = staticAccessName(node)
+  return (
+    isRuntimeObjectPropertyAccess(node, "Date", "now") ||
+    isRuntimeObjectPropertyAccess(node, "Math", "random") ||
+    isCryptoRandomUuidAccess(node) ||
+    ((name === "file" || name === "write") && isRuntimeObjectExpression(node.expression, "Bun"))
+  )
+}
 
 type StaticAccessExpression = ts.PropertyAccessExpression | ts.ElementAccessExpression
 
@@ -592,13 +589,14 @@ const promiseReturningExportedSymbols = (
   path: string,
   statement: ts.Statement,
   sourceFile: ts.SourceFile,
-  exports: LocalExportNames
+  exports: LocalExportNames,
+  promiseAliases: ReadonlySet<string>
 ): readonly ExportedPromiseSymbol[] => {
   if (ts.isFunctionDeclaration(statement)) {
     const name = statement.name?.text ?? "default"
     if (
       !hasAsyncModifier(statement) &&
-      !typeIncludesPromise(statement.type) &&
+      !typeIncludesPromise(statement.type, promiseAliases) &&
       !bodyReturnsPromise(statement)
     ) {
       return []
@@ -616,9 +614,9 @@ const promiseReturningExportedSymbols = (
         continue
       }
       if (
-        typeIncludesPromise(declaration.type) ||
+        typeIncludesPromise(declaration.type, promiseAliases) ||
         initializerIsAsync(declaration.initializer) ||
-        initializerReturnsPromise(declaration.initializer)
+        initializerReturnsPromise(declaration.initializer, promiseAliases)
       ) {
         symbols.push(
           ...exportedPromiseNames(statement, declaration.name.text, exports).map(
@@ -646,7 +644,7 @@ const promiseReturningExportedSymbols = (
       if (memberName === undefined) {
         continue
       }
-      if (memberReturnsPromise(member)) {
+      if (memberReturnsPromise(member, promiseAliases)) {
         for (const exportedName of exportedNames) {
           symbols.push({
             name: `${exportedName}.${memberName}`,
@@ -666,7 +664,7 @@ const promiseReturningExportedSymbols = (
 
     const symbols: ExportedPromiseSymbol[] = []
     for (const member of statement.members) {
-      if (!typeElementReturnsPromise(member)) {
+      if (!typeElementReturnsPromise(member, promiseAliases)) {
         continue
       }
       const memberName = publicTypeMemberName(member)
@@ -681,7 +679,7 @@ const promiseReturningExportedSymbols = (
     return symbols
   }
   if (ts.isTypeAliasDeclaration(statement)) {
-    if (!typeIncludesPromise(statement.type)) {
+    if (!typeIncludesPromise(statement.type, promiseAliases)) {
       return []
     }
     return exportedPromiseNames(statement, statement.name.text, exports).map((exportedName) => ({
@@ -691,7 +689,7 @@ const promiseReturningExportedSymbols = (
     }))
   }
   if (ts.isExportAssignment(statement) && statement.isExportEquals !== true) {
-    return promiseSymbolsFromDefaultExpression(path, statement, sourceFile)
+    return promiseSymbolsFromDefaultExpression(path, statement, sourceFile, promiseAliases)
   }
   return []
 }
@@ -710,10 +708,13 @@ const collectPromiseExports = (
   const sourceFile = parseSource(path, text)
   const exports = localExportNames(sourceFile)
   const imports = localImportBindings(path, sourceFile, sourceTexts)
+  const promiseAliases = collectPromiseTypeAliases(path, text, sourceTexts, new Set())
   const symbols: ExportedPromiseSymbol[] = []
 
   for (const statement of sourceFile.statements) {
-    symbols.push(...promiseReturningExportedSymbols(path, statement, sourceFile, exports))
+    symbols.push(
+      ...promiseReturningExportedSymbols(path, statement, sourceFile, exports, promiseAliases)
+    )
     symbols.push(
       ...promiseExportsFromReExportDeclaration(path, statement, sourceFile, sourceTexts, visited)
     )
@@ -741,6 +742,59 @@ const collectPromiseExports = (
 
   visited.delete(path)
   return symbols
+}
+
+const collectPromiseTypeAliases = (
+  path: string,
+  text: string,
+  sourceTexts: ReadonlyMap<string, string>,
+  visited: Set<string>
+): ReadonlySet<string> => {
+  if (visited.has(path)) {
+    return new Set()
+  }
+  visited.add(path)
+
+  const sourceFile = parseSource(path, text)
+  const imports = localImportBindings(path, sourceFile, sourceTexts)
+  const aliases = new Set<string>()
+
+  for (const [localName, binding] of imports) {
+    if (binding.namespace) {
+      continue
+    }
+    const targetText = sourceTexts.get(binding.targetPath)
+    if (targetText === undefined) {
+      continue
+    }
+    const targetAliases = collectPromiseTypeAliases(
+      binding.targetPath,
+      targetText,
+      sourceTexts,
+      visited
+    )
+    if (targetAliases.has(binding.importedName)) {
+      aliases.add(localName)
+    }
+  }
+
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const statement of sourceFile.statements) {
+      if (
+        ts.isTypeAliasDeclaration(statement) &&
+        !aliases.has(statement.name.text) &&
+        typeIncludesPromise(statement.type, aliases)
+      ) {
+        aliases.add(statement.name.text)
+        changed = true
+      }
+    }
+  }
+
+  visited.delete(path)
+  return aliases
 }
 
 const collectBoundaryClassExports = (
@@ -1307,18 +1361,24 @@ const initializerIsAsync = (initializer: ts.Expression | undefined): boolean => 
   )
 }
 
-const initializerReturnsPromise = (initializer: ts.Expression | undefined): boolean => {
+const initializerReturnsPromise = (
+  initializer: ts.Expression | undefined,
+  promiseAliases: ReadonlySet<string>
+): boolean => {
   if (initializer === undefined) {
     return false
   }
   const expression = unwrapExpression(initializer)
   return (
     (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) &&
-    (typeIncludesPromise(expression.type) || bodyReturnsPromise(expression))
+    (typeIncludesPromise(expression.type, promiseAliases) || bodyReturnsPromise(expression))
   )
 }
 
-const typeIncludesPromise = (node: ts.Node | undefined): boolean => {
+const typeIncludesPromise = (
+  node: ts.Node | undefined,
+  promiseAliases: ReadonlySet<string>
+): boolean => {
   if (node === undefined) {
     return false
   }
@@ -1327,9 +1387,12 @@ const typeIncludesPromise = (node: ts.Node | undefined): boolean => {
     if (includesPromise) {
       return
     }
-    if (ts.isTypeReferenceNode(child) && entityNameText(child.typeName) === "Promise") {
-      includesPromise = true
-      return
+    if (ts.isTypeReferenceNode(child)) {
+      const name = entityNameText(child.typeName)
+      if (name === "Promise" || promiseAliases.has(name)) {
+        includesPromise = true
+        return
+      }
     }
     ts.forEachChild(child, visit)
   }
@@ -1341,7 +1404,8 @@ const entityNameText = (node: ts.EntityName): string =>
   ts.isIdentifier(node) ? node.text : `${entityNameText(node.left)}.${node.right.text}`
 
 const memberReturnsPromise = (
-  member: ts.ClassElement
+  member: ts.ClassElement,
+  promiseAliases: ReadonlySet<string>
 ): member is ts.MethodDeclaration | ts.PropertyDeclaration | ts.GetAccessorDeclaration => {
   if (hasModifier(member, ts.SyntaxKind.PrivateKeyword)) {
     return false
@@ -1351,28 +1415,34 @@ const memberReturnsPromise = (
   }
   if (ts.isMethodDeclaration(member)) {
     return (
-      hasAsyncModifier(member) || typeIncludesPromise(member.type) || bodyReturnsPromise(member)
+      hasAsyncModifier(member) ||
+      typeIncludesPromise(member.type, promiseAliases) ||
+      bodyReturnsPromise(member)
     )
   }
   if (ts.isPropertyDeclaration(member)) {
-    return typeIncludesPromise(member.type) || initializerReturnsPromise(member.initializer)
+    return (
+      typeIncludesPromise(member.type, promiseAliases) ||
+      initializerReturnsPromise(member.initializer, promiseAliases)
+    )
   }
   return (
     ts.isGetAccessorDeclaration(member) &&
-    (typeIncludesPromise(member.type) || bodyReturnsPromise(member))
+    (typeIncludesPromise(member.type, promiseAliases) || bodyReturnsPromise(member))
   )
 }
 
 const promiseSymbolsFromDefaultExpression = (
   path: string,
   statement: ts.ExportAssignment,
-  sourceFile: ts.SourceFile
+  sourceFile: ts.SourceFile,
+  promiseAliases: ReadonlySet<string>
 ): readonly ExportedPromiseSymbol[] => {
   const expression = unwrapExpression(statement.expression)
   if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) {
     if (
       hasAsyncModifier(expression) ||
-      typeIncludesPromise(expression.type) ||
+      typeIncludesPromise(expression.type, promiseAliases) ||
       bodyReturnsPromise(expression)
     ) {
       return [{ name: "default", path, offset: statement.getStart(sourceFile) }]
@@ -1383,7 +1453,7 @@ const promiseSymbolsFromDefaultExpression = (
     const symbols: ExportedPromiseSymbol[] = []
     for (const member of expression.members) {
       const memberName = publicMemberName(member)
-      if (memberName !== undefined && memberReturnsPromise(member)) {
+      if (memberName !== undefined && memberReturnsPromise(member, promiseAliases)) {
         symbols.push({
           name: `default.${memberName}`,
           path,
@@ -1398,7 +1468,10 @@ const promiseSymbolsFromDefaultExpression = (
     : []
 }
 
-const typeElementReturnsPromise = (member: ts.TypeElement): boolean => {
+const typeElementReturnsPromise = (
+  member: ts.TypeElement,
+  promiseAliases: ReadonlySet<string>
+): boolean => {
   if (
     ts.isMethodSignature(member) ||
     ts.isPropertySignature(member) ||
@@ -1406,7 +1479,7 @@ const typeElementReturnsPromise = (member: ts.TypeElement): boolean => {
     ts.isConstructSignatureDeclaration(member) ||
     ts.isIndexSignatureDeclaration(member)
   ) {
-    return typeIncludesPromise(member.type)
+    return typeIncludesPromise(member.type, promiseAliases)
   }
   return false
 }
