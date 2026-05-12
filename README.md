@@ -26,6 +26,8 @@ The goal is:
 - small defaults by keeping optional providers lazy and behind explicit package subpaths.
 
 The working order for the current roadmap is captured in [docs/roadmap/layer-first-issue-order.md](docs/roadmap/layer-first-issue-order.md).
+The concrete review contract for new public effectful APIs is
+[docs/architecture/layer-first-contract.md](docs/architecture/layer-first-contract.md).
 
 ## Status
 

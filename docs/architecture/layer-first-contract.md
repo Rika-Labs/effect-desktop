@@ -1,0 +1,72 @@
+# Layer-first framework contract
+
+`docs/SPEC.md` is normative. This document is the review checklist for the spec's Layer-first rule: user app code depends on Effect service requirements, and providers are swapped by replacing layers.
+
+## Capability shape
+
+Every new public effectful capability must expose one stable service requirement and provider layers with the same observable contract.
+
+```ts
+import { Context, Effect, Layer, Schema } from "effect"
+
+export class WindowOptions extends Schema.Class<WindowOptions>("WindowOptions")({
+  title: Schema.NonEmptyString
+}) {}
+
+export class WindowError extends Schema.TaggedError<WindowError>("WindowError")("WindowError", {
+  reason: Schema.Literals(["PermissionDenied", "HostUnavailable"])
+}) {}
+
+export class Window extends Context.Service<Window, WindowService>()("Window", {
+  make: Effect.gen(function* () {
+    return {
+      open: (options: WindowOptions): Effect.Effect<WindowHandle, WindowError, never> =>
+        openWindowThroughHost(options)
+    }
+  })
+}) {}
+
+export const WindowLive = Layer.effect(Window)(makeLiveWindow())
+export const WindowClientLive = Layer.effect(Window)(makeRpcWindow())
+export const WindowTest = Layer.succeed(Window)(makeTestWindow())
+```
+
+Use `Context.Tag` only for ad-hoc dependency records that are not a public framework capability.
+
+## Boundary rules
+
+- Public effectful APIs return `Effect.Effect<A, E, R>`, not `Promise<A>`.
+- Boundary input and output data uses `Schema.Class`.
+- Expected failures use stable tagged errors.
+- Live layer, Client layer, and Test layer satisfy the same service requirement.
+- A capability that crosses renderer, runtime, or host processes exposes a Client layer from the typed contract.
+- App code branches on typed provider facts, not on concrete provider names.
+- `ManagedRuntime` and `Effect.run*` stay at composition edges: CLI entrypoints, renderer hooks, Vite callbacks, tests, and host/bootstrap glue.
+- Concrete globals such as Bun, Node, filesystem, host, clock, random, environment, WebView, or network services stay inside provider implementations.
+
+## Review checklist
+
+For every new public effectful capability, reviewers should be able to answer yes to each item:
+
+- Does the API have one service requirement with a stable tag or class name?
+- Are all public effectful operations typed as `Effect.Effect<A, E, R>` with the environment preserved?
+- Are request, response, event, and persisted boundary shapes schema-coded with `Schema.Class`?
+- Are expected failures typed tagged errors rather than throws, booleans, or swallowed errors?
+- Does the capability expose a Live layer?
+- Does it expose a deterministic Test layer that requires no native host, OS prompt, real process, real filesystem mutation, or network service?
+- If it crosses a process or RPC boundary, does it expose a Client layer generated from the same typed contract?
+- Can the same user-level program run under Live, Client, and Test layers without changing code?
+- Are resources, streams, workers, processes, sockets, subscriptions, and handles owned by `Scope`, scoped layers, `Stream`, `Resource`, `RcMap`, `FiberSet`, or an equivalent Effect primitive?
+- Are provider choices selected by data and supplied as layers?
+- Are optional providers behind explicit subpaths, package boundaries, or lazy layer selection?
+- Is any `Promise`, concrete global, or `Effect.run*` use confined to an integration edge?
+
+## Current proof
+
+`packages/test/src/index.test.ts` contains the `Screen programs run unchanged through live, client, and test layers` test. It defines one `Effect.Effect<string, ScreenError, Screen>` program and runs it through:
+
+- `ScreenLive` with an explicit `ScreenClient` layer;
+- `ScreenLive` with `makeScreenBridgeClientLayer(...)`;
+- `TestScreen.layer(...)`.
+
+That is the minimum substitution claim this contract requires: provider replacement changes layers, not user code.

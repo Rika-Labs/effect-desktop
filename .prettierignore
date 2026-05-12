@@ -11,6 +11,7 @@ vendor/effect/
 crates/host-protocol/fixtures/*.json
 bun.lock
 *.lockb
+bunfig.toml
 .next/
 .astro/
 .source/

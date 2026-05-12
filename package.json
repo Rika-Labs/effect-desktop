@@ -27,7 +27,7 @@
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "lint": "turbo lint",
-    "lint:types": "oxlint --type-aware --ignore-pattern '**/dist/**'",
+    "lint:types": "oxlint --type-aware --disable-nested-config --ignore-pattern '**/dist/**' --ignore-pattern '**/.next/**' --ignore-pattern '**/.astro/**' --ignore-pattern '**/.source/**' packages apps templates tests scripts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "cargo:check": "cargo check --workspace",
