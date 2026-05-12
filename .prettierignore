@@ -7,6 +7,7 @@ coverage/
 .context/
 apps/docs/out/
 docs/SPEC.md
+vendor/effect/
 crates/host-protocol/fixtures/*.json
 bun.lock
 *.lockb

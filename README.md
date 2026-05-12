@@ -11,6 +11,22 @@ Effect owns correctness.
 
 The framework specification is the source of truth: [docs/SPEC.md](docs/SPEC.md).
 
+## Framework Thesis
+
+Effect Desktop is designed around one foundation: every effectful dependency should be supplied by an Effect `Layer`.
+
+That means app code should depend on typed service requirements, not concrete runtimes, WebViews, storage engines, native hosts, clocks, random sources, permission prompts, or test doubles. A capability should be swappable by replacing a layer. The same user-level program should run against live providers, client/RPC providers, and deterministic test providers.
+
+The goal is:
+
+- full-stack type safety through Effect Schema and typed RPC boundaries;
+- testability through public test layers and contract test suites;
+- switchable providers for runtime, WebView, storage, transport, native services, and packaging;
+- fast rebuilds by rebuilding only the selected provider graph;
+- small defaults by keeping optional providers lazy and behind explicit package subpaths.
+
+The working order for the current roadmap is captured in [docs/roadmap/layer-first-issue-order.md](docs/roadmap/layer-first-issue-order.md).
+
 ## Status
 
 Effect Desktop is not published to npm yet.
@@ -80,6 +96,7 @@ Supported templates are `basic-react-tailwind`, `todo-sqlite`, and `multi-window
 - A Bun runtime for TypeScript application services.
 - Typed bridge contracts between renderer code and runtime services.
 - Effect services, schemas, layers, resources, streams, and typed failures around native authority.
+- A Layer-first architecture where live, client, and test implementations can satisfy the same service requirement.
 - React hooks and providers for renderer code.
 - CLI slices for build, package, sign, notarize, publish, doctor, and release checks.
 

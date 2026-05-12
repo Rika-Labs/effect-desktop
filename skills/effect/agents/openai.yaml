@@ -1,0 +1,4 @@
+interface:
+  display_name: "Effect"
+  short_description: "Use Effect primitives first."
+  default_prompt: "Use this skill when writing or reviewing Effect Desktop TypeScript so the implementation uses the local Effect submodule and existing Effect services, layers, schemas, streams, resources, schedules, cluster, workflow, persistence, RPC, HTTP API, testing, and observability primitives before introducing custom abstractions."

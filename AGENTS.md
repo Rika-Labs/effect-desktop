@@ -39,6 +39,42 @@ Per `docs/SPEC.md` §4.4.1, the framework targets Effect v4. v3 patterns are for
 - use `Effect.gen(function* () { ... yield* effect })` (no `$` adapter);
 - compose layers with `Layer.provide` / `Layer.provideMerge` / `Layer.succeed` / `Layer.effect`.
 
+## Layer-first framework contract
+
+Effect Desktop exists because Effect lets the framework make native desktop authority type-safe, testable, and replaceable. Treat this as the governing implementation contract:
+
+- every effectful public capability is an Effect service requirement with a stable service tag;
+- every capability exposes a live layer and a deterministic test layer before it is considered complete;
+- capabilities that cross renderer/runtime/host boundaries also expose a client layer generated from the typed contract;
+- public effectful TypeScript APIs return `Effect.Effect<A, E, R>`, not `Promise<A>`, except at explicit integration edges;
+- public boundary data uses `Schema.Class`; expected failures use stable tagged errors;
+- streams, resources, background fibers, processes, workers, sockets, windows, subscriptions, and handles have explicit owners through `Scope`, scoped layers, `Stream`, `Resource`, `RcMap`, `FiberSet`, or equivalent Effect primitives;
+- concrete runtimes, WebViews, storage engines, transports, host adapters, and package providers are selected by data and supplied as layers;
+- app code must depend on service requirements, not on Bun, Node, WebView, host, filesystem, clock, random, environment, or test-double globals.
+
+When adding a framework abstraction, first identify the Effect primitive that already owns the concept. Add an Effect Desktop abstraction only when it hides real desktop-specific complexity or stabilizes a policy boundary.
+
+`ManagedRuntime` and `Effect.run*` belong at composition edges: CLI entrypoints, renderer framework hooks, Vite callbacks, tests, and host/bootstrap glue. Library internals should keep programs as `Effect` values and receive dependencies through layers.
+
+## Testability gate
+
+A public capability is not complete until a user can test application code against it without a native host, OS permission prompt, real process, real WebView, real filesystem mutation, or real network service unless the capability is explicitly an integration-only adapter.
+
+For each capability, prefer this shape:
+
+- `Capability` service tag or class;
+- `CapabilityLive`;
+- `CapabilityClientLive` when the capability crosses a process or RPC boundary;
+- `CapabilityTest` or a named test-layer constructor;
+- schema-coded request/response/error models;
+- shared contract tests that run against every implementation layer.
+
+If a live implementation cannot support the same behavior as the test/client layer, expose that difference as typed provider capability data rather than branching in user app code.
+
+## Fast and small provider rule
+
+Swappability must not force every provider into the default app. Optional providers must live behind explicit subpaths, lazy layer selection, or package boundaries so unused runtimes, WebView engines, storage engines, and native adapters do not inflate the default startup path or bundle.
+
 ## Tooling pinning
 
 - Bun version is pinned in `package.json#packageManager` and in `.github/workflows/ci.yml` (`bun-version`). Update both together.
