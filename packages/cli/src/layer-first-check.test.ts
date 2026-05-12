@@ -177,6 +177,27 @@ test("Layer-first check rejects runtime global method references in library sour
   expectViolation(exit, "forbidden-runtime-global")
 })
 
+test("Layer-first check rejects destructured runtime globals in library source", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      const { env } = process
+      const { random } = Math
+      const { randomUUID } = crypto
+      const { file } = Bun
+      const { process: runtimeProcess, Math: RuntimeMath } = globalThis
+      export const configHome = env["XDG_CONFIG_HOME"] ?? ".config"
+      export const stamp = RuntimeMath.random()
+      export const secret = randomUUID()
+      export const bytes = file("config.json")
+      export const cwd = runtimeProcess.cwd()
+    `)
+  )
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "forbidden-runtime-global")
+})
+
 test("Layer-first check rejects split runtime globals in library source", async () => {
   const options = await makeFixture(
     packageFiles(`
@@ -300,6 +321,22 @@ test("Layer-first check rejects public Promise APIs through imported type aliase
       export interface UserApi {
         load(): Async<string>
       }
+    `),
+    "packages/fixture/src/types.ts": `
+      export type Async<T> = Promise<T>
+    `
+  })
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-promise-api")
+})
+
+test("Layer-first check rejects public Promise APIs through namespace imported type aliases", async () => {
+  const options = await makeFixture({
+    ...packageFiles(`
+      import type * as Types from "./types"
+      export type LoadUser = () => Types.Async<string>
     `),
     "packages/fixture/src/types.ts": `
       export type Async<T> = Promise<T>

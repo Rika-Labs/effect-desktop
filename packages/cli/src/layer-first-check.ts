@@ -154,6 +154,12 @@ const SOURCE_EXTENSIONS = [".ts", ".tsx"] as const
 const GENERATED_SEGMENTS = new Set(["dist", ".next", ".astro", ".source", "node_modules"])
 const BOUNDARY_SUFFIX_PATTERN =
   /(Input|Output|Payload|Event|Result|Options|Config|Request|Response)$/u
+const PROCESS_FORBIDDEN_PROPERTIES = new Set(["env"])
+const BUN_FORBIDDEN_PROPERTIES = new Set(["env", "file", "write"])
+const DATE_FORBIDDEN_PROPERTIES = new Set(["now"])
+const MATH_FORBIDDEN_PROPERTIES = new Set(["random"])
+const CRYPTO_FORBIDDEN_PROPERTIES = new Set(["randomUUID"])
+const EMPTY_FORBIDDEN_PROPERTIES = new Set<string>()
 
 export const runLayerFirstCheck = (
   options: LayerFirstCheckOptions
@@ -306,6 +312,8 @@ const scanForbiddenPatterns = (path: string, text: string): readonly LayerFirstV
       } else if (propertyAccessUsesRuntimeGlobal(node)) {
         pushRuntimeGlobal(node)
       }
+    } else if (ts.isVariableDeclaration(node) && destructuringUsesRuntimeGlobal(node)) {
+      pushRuntimeGlobal(node)
     }
     ts.forEachChild(node, visit)
   }
@@ -352,6 +360,107 @@ const propertyAccessUsesRuntimeGlobal = (node: StaticAccessExpression): boolean 
   isRuntimeObjectPropertyAccess(node, "process", "env") ||
   isRuntimeObjectPropertyAccess(node, "Bun", "env") ||
   isRuntimeMethodAccess(node)
+
+const destructuringUsesRuntimeGlobal = (node: ts.VariableDeclaration): boolean =>
+  ts.isObjectBindingPattern(node.name) &&
+  objectBindingPatternUsesRuntimeGlobal(node.name, node.initializer)
+
+const objectBindingPatternUsesRuntimeGlobal = (
+  pattern: ts.ObjectBindingPattern,
+  initializer: ts.Expression | undefined
+): boolean => {
+  if (initializer === undefined) {
+    return false
+  }
+  const objectName = runtimeObjectName(initializer)
+  if (objectName === undefined) {
+    return false
+  }
+  return pattern.elements.some((element) => bindingElementUsesRuntimeGlobal(element, objectName))
+}
+
+const bindingElementUsesRuntimeGlobal = (
+  element: ts.BindingElement,
+  objectName: string
+): boolean => {
+  if (element.dotDotDotToken !== undefined) {
+    return objectName !== "globalThis"
+  }
+
+  const propertyName = bindingElementPropertyName(element)
+  if (propertyName === undefined) {
+    return false
+  }
+
+  if (objectName === "globalThis") {
+    if (ts.isObjectBindingPattern(element.name)) {
+      return element.name.elements.some((child) =>
+        bindingElementUsesRuntimeGlobal(child, propertyName)
+      )
+    }
+    return isRuntimeObjectName(propertyName)
+  }
+
+  return runtimeObjectForbiddenProperties(objectName).has(propertyName)
+}
+
+const bindingElementPropertyName = (element: ts.BindingElement): string | undefined => {
+  if (element.propertyName !== undefined) {
+    return propertyNameText(element.propertyName)
+  }
+  return ts.isIdentifier(element.name) ? element.name.text : undefined
+}
+
+const propertyNameText = (node: ts.PropertyName): string | undefined => {
+  if (
+    ts.isIdentifier(node) ||
+    ts.isStringLiteral(node) ||
+    ts.isNoSubstitutionTemplateLiteral(node)
+  ) {
+    return node.text
+  }
+  if (ts.isComputedPropertyName(node)) {
+    const expression = node.expression
+    return ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)
+      ? expression.text
+      : undefined
+  }
+  return undefined
+}
+
+const runtimeObjectName = (node: ts.Expression): string | undefined => {
+  const expression = unwrapExpression(node)
+  if (ts.isIdentifier(expression)) {
+    return isRuntimeObjectName(expression.text) || expression.text === "globalThis"
+      ? expression.text
+      : undefined
+  }
+  if (isStaticAccessExpression(expression) && isGlobalThisExpression(expression.expression)) {
+    const name = staticAccessName(expression)
+    return name !== undefined && isRuntimeObjectName(name) ? name : undefined
+  }
+  return undefined
+}
+
+const isRuntimeObjectName = (name: string): boolean =>
+  name === "process" || name === "Bun" || name === "Date" || name === "Math" || name === "crypto"
+
+const runtimeObjectForbiddenProperties = (objectName: string): ReadonlySet<string> => {
+  switch (objectName) {
+    case "process":
+      return PROCESS_FORBIDDEN_PROPERTIES
+    case "Bun":
+      return BUN_FORBIDDEN_PROPERTIES
+    case "Date":
+      return DATE_FORBIDDEN_PROPERTIES
+    case "Math":
+      return MATH_FORBIDDEN_PROPERTIES
+    case "crypto":
+      return CRYPTO_FORBIDDEN_PROPERTIES
+    default:
+      return EMPTY_FORBIDDEN_PROPERTIES
+  }
+}
 
 const isRuntimeMethodAccess = (node: StaticAccessExpression): boolean => {
   const name = staticAccessName(node)
@@ -761,9 +870,6 @@ const collectPromiseTypeAliases = (
   const aliases = new Set<string>()
 
   for (const [localName, binding] of imports) {
-    if (binding.namespace) {
-      continue
-    }
     const targetText = sourceTexts.get(binding.targetPath)
     if (targetText === undefined) {
       continue
@@ -774,6 +880,12 @@ const collectPromiseTypeAliases = (
       sourceTexts,
       visited
     )
+    if (binding.namespace) {
+      for (const targetAlias of targetAliases) {
+        aliases.add(`${localName}.${targetAlias}`)
+      }
+      continue
+    }
     if (targetAliases.has(binding.importedName)) {
       aliases.add(localName)
     }
