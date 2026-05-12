@@ -120,10 +120,40 @@ test("Layer-first check rejects split hidden Effect.run calls in library source"
   expectViolation(exit, "forbidden-effect-run")
 })
 
+test("Layer-first check rejects element-access Effect.run calls in library source", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      import { Effect } from "effect"
+      export const leak = (program: Effect.Effect<void, never, never>) =>
+        Effect["runPromise"](program)
+    `)
+  )
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "forbidden-effect-run")
+})
+
 test("Layer-first check rejects direct runtime globals in library source", async () => {
   const options = await makeFixture(
     packageFiles(`
       export const configHome = process.env["XDG_CONFIG_HOME"] ?? ".config"
+    `)
+  )
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "forbidden-runtime-global")
+})
+
+test("Layer-first check rejects element-access runtime globals in library source", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      export const configHome = process["env"]["XDG_CONFIG_HOME"] ?? ".config"
+      export const stamp = Date["now"]()
+      export const random = Math["random"]()
+      export const secret = globalThis["crypto"]["randomUUID"]()
+      export const file = globalThis["Bun"]["file"]("config.json")
     `)
   )
 
@@ -211,6 +241,22 @@ test("Layer-first check rejects public Promise-returning API signatures", async 
   const options = await makeFixture(
     packageFiles(`
       export const loadUser = async (): Promise<string> => "user"
+    `)
+  )
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-promise-api")
+})
+
+test("Layer-first check rejects public Promise API signatures with whitespace before type arguments", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      export interface UserApi {
+        load(): Promise <
+          string
+        >
+      }
     `)
   )
 

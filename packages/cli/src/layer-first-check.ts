@@ -296,7 +296,7 @@ const scanForbiddenPatterns = (path: string, text: string): readonly LayerFirstV
       } else if (callExpressionUsesRuntimeGlobal(node)) {
         pushRuntimeGlobal(node)
       }
-    } else if (ts.isPropertyAccessExpression(node)) {
+    } else if (isStaticAccessExpression(node)) {
       if (isEffectRunAccess(node)) {
         pushEffectRun(node)
       } else if (propertyAccessUsesRuntimeGlobal(node)) {
@@ -346,9 +346,10 @@ const callExpressionImportsRuntimeFs = (node: ts.CallExpression): boolean => {
 
 const callExpressionUsesRuntimeGlobal = (node: ts.CallExpression): boolean => {
   const expression = node.expression
-  if (!ts.isPropertyAccessExpression(expression)) {
+  if (!isStaticAccessExpression(expression)) {
     return false
   }
+  const name = staticAccessName(expression)
   if (
     isRuntimeObjectPropertyAccess(expression, "Date", "now") ||
     isRuntimeObjectPropertyAccess(expression, "Math", "random") ||
@@ -357,41 +358,44 @@ const callExpressionUsesRuntimeGlobal = (node: ts.CallExpression): boolean => {
     return true
   }
   return (
-    (expression.name.text === "file" || expression.name.text === "write") &&
-    isRuntimeObjectExpression(expression.expression, "Bun")
+    (name === "file" || name === "write") && isRuntimeObjectExpression(expression.expression, "Bun")
   )
 }
 
-const propertyAccessUsesRuntimeGlobal = (node: ts.PropertyAccessExpression): boolean =>
+const propertyAccessUsesRuntimeGlobal = (node: StaticAccessExpression): boolean =>
   isRuntimeObjectPropertyAccess(node, "process", "env") ||
   isRuntimeObjectPropertyAccess(node, "Bun", "env")
 
-const isEffectRunAccess = (node: ts.PropertyAccessExpression): boolean =>
+type StaticAccessExpression = ts.PropertyAccessExpression | ts.ElementAccessExpression
+
+const isStaticAccessExpression = (node: ts.Node): node is StaticAccessExpression =>
+  ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)
+
+const isEffectRunAccess = (node: StaticAccessExpression): boolean =>
   ts.isIdentifier(node.expression) &&
   node.expression.text === "Effect" &&
-  node.name.text.startsWith("run")
+  (staticAccessName(node)?.startsWith("run") ?? false)
 
 const isRuntimeObjectPropertyAccess = (
-  node: ts.PropertyAccessExpression,
+  node: StaticAccessExpression,
   objectName: string,
   propertyName: string
 ): boolean =>
-  node.name.text === propertyName && isRuntimeObjectExpression(node.expression, objectName)
+  staticAccessName(node) === propertyName && isRuntimeObjectExpression(node.expression, objectName)
 
 const isRuntimeObjectExpression = (node: ts.Expression, objectName: string): boolean => {
   if (ts.isIdentifier(node)) {
     return node.text === objectName
   }
   return (
-    ts.isPropertyAccessExpression(node) &&
-    node.name.text === objectName &&
-    ts.isIdentifier(node.expression) &&
-    node.expression.text === "globalThis"
+    isStaticAccessExpression(node) &&
+    staticAccessName(node) === objectName &&
+    isGlobalThisExpression(node.expression)
   )
 }
 
-const isCryptoRandomUuidAccess = (node: ts.PropertyAccessExpression): boolean => {
-  if (node.name.text !== "randomUUID") {
+const isCryptoRandomUuidAccess = (node: StaticAccessExpression): boolean => {
+  if (staticAccessName(node) !== "randomUUID") {
     return false
   }
   const expression = node.expression
@@ -399,12 +403,24 @@ const isCryptoRandomUuidAccess = (node: ts.PropertyAccessExpression): boolean =>
     return expression.text === "crypto"
   }
   return (
-    ts.isPropertyAccessExpression(expression) &&
-    expression.name.text === "crypto" &&
-    ts.isIdentifier(expression.expression) &&
-    expression.expression.text === "globalThis"
+    isStaticAccessExpression(expression) &&
+    staticAccessName(expression) === "crypto" &&
+    isGlobalThisExpression(expression.expression)
   )
 }
+
+const staticAccessName = (node: StaticAccessExpression): string | undefined => {
+  if (ts.isPropertyAccessExpression(node)) {
+    return node.name.text
+  }
+  const argument = node.argumentExpression
+  return ts.isStringLiteral(argument) || ts.isNoSubstitutionTemplateLiteral(argument)
+    ? argument.text
+    : undefined
+}
+
+const isGlobalThisExpression = (node: ts.Expression): boolean =>
+  ts.isIdentifier(node) && node.text === "globalThis"
 
 const isFsModuleSpecifier = (node: ts.Node | undefined): node is ts.StringLiteral =>
   node !== undefined && ts.isStringLiteral(node) && /^(?:node:)?fs(?:\/promises)?$/u.test(node.text)
@@ -582,7 +598,7 @@ const promiseReturningExportedSymbols = (
     const name = statement.name?.text ?? "default"
     if (
       !hasAsyncModifier(statement) &&
-      !typeIncludesPromise(statement.type, sourceFile) &&
+      !typeIncludesPromise(statement.type) &&
       !bodyReturnsPromise(statement, sourceFile)
     ) {
       return []
@@ -600,7 +616,7 @@ const promiseReturningExportedSymbols = (
         continue
       }
       if (
-        typeIncludesPromise(declaration.type, sourceFile) ||
+        typeIncludesPromise(declaration.type) ||
         initializerIsAsync(declaration.initializer) ||
         initializerReturnsPromise(declaration.initializer, sourceFile)
       ) {
@@ -650,7 +666,7 @@ const promiseReturningExportedSymbols = (
 
     const symbols: ExportedPromiseSymbol[] = []
     for (const member of statement.members) {
-      if (!typeElementReturnsPromise(member, sourceFile)) {
+      if (!typeElementReturnsPromise(member)) {
         continue
       }
       const memberName = publicTypeMemberName(member)
@@ -665,7 +681,7 @@ const promiseReturningExportedSymbols = (
     return symbols
   }
   if (ts.isTypeAliasDeclaration(statement)) {
-    if (!typeIncludesPromise(statement.type, sourceFile)) {
+    if (!typeIncludesPromise(statement.type)) {
       return []
     }
     return exportedPromiseNames(statement, statement.name.text, exports).map((exportedName) => ({
@@ -1259,12 +1275,31 @@ const initializerReturnsPromise = (
   const expression = unwrapExpression(initializer)
   return (
     (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) &&
-    (typeIncludesPromise(expression.type, sourceFile) || bodyReturnsPromise(expression, sourceFile))
+    (typeIncludesPromise(expression.type) || bodyReturnsPromise(expression, sourceFile))
   )
 }
 
-const typeIncludesPromise = (node: ts.Node | undefined, sourceFile: ts.SourceFile): boolean =>
-  node?.getText(sourceFile).includes("Promise<") === true
+const typeIncludesPromise = (node: ts.Node | undefined): boolean => {
+  if (node === undefined) {
+    return false
+  }
+  let includesPromise = false
+  const visit = (child: ts.Node): void => {
+    if (includesPromise) {
+      return
+    }
+    if (ts.isTypeReferenceNode(child) && entityNameText(child.typeName) === "Promise") {
+      includesPromise = true
+      return
+    }
+    ts.forEachChild(child, visit)
+  }
+  visit(node)
+  return includesPromise
+}
+
+const entityNameText = (node: ts.EntityName): string =>
+  ts.isIdentifier(node) ? node.text : `${entityNameText(node.left)}.${node.right.text}`
 
 const memberReturnsPromise = (
   member: ts.ClassElement,
@@ -1279,19 +1314,18 @@ const memberReturnsPromise = (
   if (ts.isMethodDeclaration(member)) {
     return (
       hasAsyncModifier(member) ||
-      typeIncludesPromise(member.type, sourceFile) ||
+      typeIncludesPromise(member.type) ||
       bodyReturnsPromise(member, sourceFile)
     )
   }
   if (ts.isPropertyDeclaration(member)) {
     return (
-      typeIncludesPromise(member.type, sourceFile) ||
-      initializerReturnsPromise(member.initializer, sourceFile)
+      typeIncludesPromise(member.type) || initializerReturnsPromise(member.initializer, sourceFile)
     )
   }
   return (
     ts.isGetAccessorDeclaration(member) &&
-    (typeIncludesPromise(member.type, sourceFile) || bodyReturnsPromise(member, sourceFile))
+    (typeIncludesPromise(member.type) || bodyReturnsPromise(member, sourceFile))
   )
 }
 
@@ -1304,7 +1338,7 @@ const promiseSymbolsFromDefaultExpression = (
   if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) {
     if (
       hasAsyncModifier(expression) ||
-      typeIncludesPromise(expression.type, sourceFile) ||
+      typeIncludesPromise(expression.type) ||
       bodyReturnsPromise(expression, sourceFile)
     ) {
       return [{ name: "default", path, offset: statement.getStart(sourceFile) }]
@@ -1330,7 +1364,7 @@ const promiseSymbolsFromDefaultExpression = (
     : []
 }
 
-const typeElementReturnsPromise = (member: ts.TypeElement, sourceFile: ts.SourceFile): boolean => {
+const typeElementReturnsPromise = (member: ts.TypeElement): boolean => {
   if (
     ts.isMethodSignature(member) ||
     ts.isPropertySignature(member) ||
@@ -1338,7 +1372,7 @@ const typeElementReturnsPromise = (member: ts.TypeElement, sourceFile: ts.Source
     ts.isConstructSignatureDeclaration(member) ||
     ts.isIndexSignatureDeclaration(member)
   ) {
-    return typeIncludesPromise(member.type, sourceFile)
+    return typeIncludesPromise(member.type)
   }
   return false
 }
