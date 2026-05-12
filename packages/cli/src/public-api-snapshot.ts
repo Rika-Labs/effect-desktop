@@ -270,7 +270,7 @@ const snapshotPackage = (
     if (moduleSymbol === undefined) {
       return {
         packageName: workspacePackage.name,
-        entrypoint: relative(workspacePackage.path, entrypoint),
+        entrypoint: snapshotEntrypoint(workspacePackage.path, entrypoint),
         symbols: []
       }
     }
@@ -282,10 +282,13 @@ const snapshotPackage = (
 
     return {
       packageName: workspacePackage.name,
-      entrypoint: relative(workspacePackage.path, entrypoint),
+      entrypoint: snapshotEntrypoint(workspacePackage.path, entrypoint),
       symbols
     }
   })
+
+const snapshotEntrypoint = (packagePath: string, entrypoint: string): string =>
+  relative(packagePath, entrypoint).replaceAll("\\", "/")
 
 const readTsConfig = (
   packageName: string,

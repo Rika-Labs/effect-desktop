@@ -16,10 +16,12 @@
   "type": "module",
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1 --port 3001",
-    "build": "next build",
+    "build": "fumadocs-mdx && next build",
     "check": "next typegen && fumadocs-mdx && tsc --noEmit -p tsconfig.json",
     "typecheck": "next typegen && fumadocs-mdx && tsc --noEmit -p tsconfig.json",
-    "lint": "oxlint . --ignore-pattern '.next/**' --ignore-pattern '.source/**'"
+    "lint": "oxlint . --ignore-pattern '.next/**' --ignore-pattern '.source/**'",
+    "deploy": "alchemy deploy",
+    "destroy": "alchemy destroy"
   },
   "dependencies": {
     "fumadocs-core": "16.8.8",
@@ -30,11 +32,15 @@
     "react-dom": "^19.2.3"
   },
   "devDependencies": {
+    "@effect/platform-bun": "4.0.0-beta.60",
+    "@effect/platform-node": "4.0.0-beta.60",
     "@tailwindcss/postcss": "^4.1.18",
     "@types/mdx": "^2.0.13",
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
+    "alchemy": "2.0.0-beta.36",
+    "effect": "4.0.0-beta.60",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3"
   }

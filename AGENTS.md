@@ -45,6 +45,27 @@ Per `docs/SPEC.md` §4.4.1, the framework targets Effect v4. v3 patterns are for
 - Rust toolchain is pinned in `rust-toolchain.toml`. CI honors the file via `dtolnay/rust-toolchain` with no `toolchain:` argument.
 - Every GitHub Action is SHA-pinned with the version tag in a trailing comment. Dependabot manages bumps via `.github/dependabot.yml`.
 
+## Docs deployment
+
+The deployable docs app lives in `apps/docs` and deploys through Alchemy v2 to Cloudflare Workers Static Assets. Production uses the `prod` stage and the `effect-desktop-docs` Worker. Pull request previews use disposable `pr-<number>` stages and must be destroyed after the PR closes.
+
+Run Alchemy commands from `apps/docs` after `bun install --frozen-lockfile`:
+
+```bash
+bun run deploy -- --stage prod
+bun run deploy -- --stage pr-123
+bun run destroy -- --stage pr-123
+```
+
+Local deploys should use Alchemy's OAuth credential flow for Cloudflare and the GitHub CLI credential flow for GitHub. The first Cloudflare deploy may also prompt to create the `alchemy-state-store` Worker; accept that prompt for this repo/account. CI deploys use environment variables from GitHub Actions secrets:
+
+```bash
+CLOUDFLARE_ACCOUNT_ID=<account-id>
+CLOUDFLARE_API_TOKEN=<token>
+```
+
+For local PR comment testing, also set `PULL_REQUEST` and `BUILD_SHA`; GitHub auth can come from `gh auth token`. Do not commit local Cloudflare credentials, Alchemy profiles, generated `.alchemy/` state/logs, or deploy output.
+
 ## Validation gate
 
 Before marking a phase complete, every command must exit clean from a fresh checkout:
