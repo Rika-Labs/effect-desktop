@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { readFileSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import {
   HostProtocolResponseEnvelope,
   HostProtocolStreamByRequestEnvelope,
@@ -49,6 +49,45 @@ import { disposeRuntime } from "./provider.js"
 
 // Regression coverage may mention the old placeholder marker:
 // "phase 0 stub compiles and runs" without triggering the repo-shape gate.
+
+interface ReactPackageJson {
+  readonly exports: Record<string, ReactPackageExportTarget>
+}
+
+type ReactPackageExportTarget =
+  | string
+  | {
+      readonly types?: string
+      readonly default?: string
+    }
+
+const reactPackageJsonUrl = new URL("../package.json", import.meta.url)
+const reactPackageRootUrl = new URL("../", import.meta.url)
+
+test("React package exports point at checked-in source files", () => {
+  const packageJson = JSON.parse(readFileSync(reactPackageJsonUrl, "utf8")) as ReactPackageJson
+  const missing: string[] = []
+
+  for (const [subpath, target] of Object.entries(packageJson.exports)) {
+    if (typeof target === "string") {
+      if (!existsSync(new URL(target, reactPackageRootUrl))) {
+        missing.push(`${subpath}:default:${target}`)
+      }
+      continue
+    }
+
+    for (const condition of ["types", "default"] as const) {
+      const relativePath = target[condition]
+      if (relativePath === undefined) {
+        missing.push(`${subpath}:${condition}:<missing condition>`)
+      } else if (!existsSync(new URL(relativePath, reactPackageRootUrl))) {
+        missing.push(`${subpath}:${condition}:${relativePath}`)
+      }
+    }
+  }
+
+  expect(missing).toEqual([])
+})
 
 const unavailableWindow: DesktopWindowClient = {
   create: () =>
