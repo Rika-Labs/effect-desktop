@@ -437,6 +437,20 @@ test("Layer-first check rejects public functions returning globalThis.Promise ca
   expectViolation(exit, "public-promise-api")
 })
 
+test("Layer-first check rejects public APIs typed with globalThis.Promise", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      export interface UserApi {
+        loadUser(): globalThis.Promise<string>
+      }
+    `)
+  )
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-promise-api")
+})
+
 test("Layer-first check rejects re-exported public Promise API signatures", async () => {
   const options = await makeFixture(
     packageFiles(`
@@ -620,6 +634,35 @@ test("Layer-first check resolves JavaScript package export targets to source ent
     ),
     "packages/fixture/src/index.ts": "export {}",
     "packages/fixture/src/api.ts": `
+      export const loadUser = async () => "user"
+    `
+  })
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-promise-api")
+})
+
+test("Layer-first check resolves wildcard package export targets to source entrypoints", async () => {
+  const options = await makeFixture({
+    ...packageFiles("export {}"),
+    "packages/fixture/package.json": JSON.stringify(
+      {
+        name: "@effect-desktop/fixture",
+        type: "module",
+        exports: {
+          ".": { types: "./dist/index.d.ts", default: "./dist/index.js" },
+          "./feature/*": {
+            types: "./dist/feature/*.d.ts",
+            default: "./dist/feature/*.js"
+          }
+        }
+      },
+      null,
+      2
+    ),
+    "packages/fixture/src/index.ts": "export {}",
+    "packages/fixture/src/feature/load-user.ts": `
       export const loadUser = async () => "user"
     `
   })

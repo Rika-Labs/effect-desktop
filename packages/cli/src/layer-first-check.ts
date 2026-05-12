@@ -1644,7 +1644,7 @@ const typeIncludesPromise = (
     }
     if (ts.isTypeReferenceNode(child)) {
       const name = entityNameText(child.typeName)
-      if (name === "Promise" || promiseAliases.has(name)) {
+      if (name === "Promise" || name === "globalThis.Promise" || promiseAliases.has(name)) {
         includesPromise = true
         return
       }
@@ -1978,7 +1978,18 @@ const addPackageEntrypoint = (
 ): void => {
   const normalizedTarget = target.startsWith("./") ? target.slice(2) : target
   const entrypoint = posixNormalize(posixJoin(root, normalizedTarget))
-  for (const candidate of packageTargetSourceCandidates(root, entrypoint)) {
+  const candidates = packageTargetSourceCandidates(root, entrypoint)
+  const wildcardCandidates = candidates.filter((candidate) => candidate.includes("*"))
+  if (wildcardCandidates.length > 0) {
+    const patterns = wildcardCandidates.map(wildcardPatternRegExp)
+    for (const sourcePath of sourceTexts.keys()) {
+      if (patterns.some((pattern) => pattern.test(sourcePath))) {
+        entrypoints.add(sourcePath)
+      }
+    }
+    return
+  }
+  for (const candidate of candidates) {
     if (sourceTexts.has(candidate)) {
       entrypoints.add(candidate)
     }
@@ -2021,6 +2032,9 @@ const sourceCandidatesForBase = (base: string): readonly string[] => {
     posixJoin(base, `index${extension}`)
   ])
 }
+
+const wildcardPatternRegExp = (pattern: string): RegExp =>
+  new RegExp(`^${pattern.replace(/[.+?^${}()|[\]\\]/gu, "\\$&").replace(/\*/gu, ".*")}$`, "u")
 
 const addFallbackEntrypoints = (
   root: string,
