@@ -293,6 +293,20 @@ test("Layer-first check rejects public functions with inferred Promise returns",
   expectViolation(exit, "public-promise-api")
 })
 
+test("Layer-first check rejects public functions returning globalThis.Promise calls", async () => {
+  const options = await makeFixture(
+    packageFiles(`
+      export function loadUser() {
+        return globalThis.Promise.resolve("user")
+      }
+    `)
+  )
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-promise-api")
+})
+
 test("Layer-first check rejects re-exported public Promise API signatures", async () => {
   const options = await makeFixture(
     packageFiles(`
@@ -326,6 +340,22 @@ test("Layer-first check rejects public Promise APIs imported then exported from 
     ...packageFiles(`
       import { loadUser } from "./api"
       export { loadUser }
+    `),
+    "packages/fixture/src/api.ts": `
+      export const loadUser = async () => "user"
+    `
+  })
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-promise-api")
+})
+
+test("Layer-first check rejects default exports of imported public Promise APIs", async () => {
+  const options = await makeFixture({
+    ...packageFiles(`
+      import { loadUser } from "./api"
+      export default loadUser
     `),
     "packages/fixture/src/api.ts": `
       export const loadUser = async () => "user"

@@ -599,7 +599,7 @@ const promiseReturningExportedSymbols = (
     if (
       !hasAsyncModifier(statement) &&
       !typeIncludesPromise(statement.type) &&
-      !bodyReturnsPromise(statement, sourceFile)
+      !bodyReturnsPromise(statement)
     ) {
       return []
     }
@@ -618,7 +618,7 @@ const promiseReturningExportedSymbols = (
       if (
         typeIncludesPromise(declaration.type) ||
         initializerIsAsync(declaration.initializer) ||
-        initializerReturnsPromise(declaration.initializer, sourceFile)
+        initializerReturnsPromise(declaration.initializer)
       ) {
         symbols.push(
           ...exportedPromiseNames(statement, declaration.name.text, exports).map(
@@ -646,7 +646,7 @@ const promiseReturningExportedSymbols = (
       if (memberName === undefined) {
         continue
       }
-      if (memberReturnsPromise(member, sourceFile)) {
+      if (memberReturnsPromise(member)) {
         for (const exportedName of exportedNames) {
           symbols.push({
             name: `${exportedName}.${memberName}`,
@@ -719,6 +719,16 @@ const collectPromiseExports = (
     )
     symbols.push(
       ...promiseExportsFromImportedLocalExportDeclaration(
+        path,
+        statement,
+        sourceFile,
+        sourceTexts,
+        visited,
+        imports
+      )
+    )
+    symbols.push(
+      ...promiseSymbolsFromImportedDefaultExportAssignment(
         path,
         statement,
         sourceFile,
@@ -983,6 +993,38 @@ const mapImportedPromiseSymbols = (
     }
   }
   return symbols
+}
+
+const promiseSymbolsFromImportedDefaultExportAssignment = (
+  path: string,
+  statement: ts.Statement,
+  sourceFile: ts.SourceFile,
+  sourceTexts: ReadonlyMap<string, string>,
+  visited: Set<string>,
+  imports: ReadonlyMap<string, ImportedBinding>
+): readonly ExportedPromiseSymbol[] => {
+  if (!ts.isExportAssignment(statement) || statement.isExportEquals === true) {
+    return []
+  }
+  const expression = unwrapExpression(statement.expression)
+  if (!ts.isIdentifier(expression)) {
+    return []
+  }
+  const binding = imports.get(expression.text)
+  if (binding === undefined || binding.namespace) {
+    return []
+  }
+  const targetText = sourceTexts.get(binding.targetPath)
+  if (targetText === undefined) {
+    return []
+  }
+  return mapImportedPromiseSymbols(
+    collectPromiseExports(binding.targetPath, targetText, sourceTexts, visited),
+    binding,
+    "default",
+    path,
+    statement.getStart(sourceFile)
+  )
 }
 
 const boundaryClassesFromReExportDeclaration = (
@@ -1265,17 +1307,14 @@ const initializerIsAsync = (initializer: ts.Expression | undefined): boolean => 
   )
 }
 
-const initializerReturnsPromise = (
-  initializer: ts.Expression | undefined,
-  sourceFile: ts.SourceFile
-): boolean => {
+const initializerReturnsPromise = (initializer: ts.Expression | undefined): boolean => {
   if (initializer === undefined) {
     return false
   }
   const expression = unwrapExpression(initializer)
   return (
     (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) &&
-    (typeIncludesPromise(expression.type) || bodyReturnsPromise(expression, sourceFile))
+    (typeIncludesPromise(expression.type) || bodyReturnsPromise(expression))
   )
 }
 
@@ -1302,8 +1341,7 @@ const entityNameText = (node: ts.EntityName): string =>
   ts.isIdentifier(node) ? node.text : `${entityNameText(node.left)}.${node.right.text}`
 
 const memberReturnsPromise = (
-  member: ts.ClassElement,
-  sourceFile: ts.SourceFile
+  member: ts.ClassElement
 ): member is ts.MethodDeclaration | ts.PropertyDeclaration | ts.GetAccessorDeclaration => {
   if (hasModifier(member, ts.SyntaxKind.PrivateKeyword)) {
     return false
@@ -1313,19 +1351,15 @@ const memberReturnsPromise = (
   }
   if (ts.isMethodDeclaration(member)) {
     return (
-      hasAsyncModifier(member) ||
-      typeIncludesPromise(member.type) ||
-      bodyReturnsPromise(member, sourceFile)
+      hasAsyncModifier(member) || typeIncludesPromise(member.type) || bodyReturnsPromise(member)
     )
   }
   if (ts.isPropertyDeclaration(member)) {
-    return (
-      typeIncludesPromise(member.type) || initializerReturnsPromise(member.initializer, sourceFile)
-    )
+    return typeIncludesPromise(member.type) || initializerReturnsPromise(member.initializer)
   }
   return (
     ts.isGetAccessorDeclaration(member) &&
-    (typeIncludesPromise(member.type) || bodyReturnsPromise(member, sourceFile))
+    (typeIncludesPromise(member.type) || bodyReturnsPromise(member))
   )
 }
 
@@ -1339,7 +1373,7 @@ const promiseSymbolsFromDefaultExpression = (
     if (
       hasAsyncModifier(expression) ||
       typeIncludesPromise(expression.type) ||
-      bodyReturnsPromise(expression, sourceFile)
+      bodyReturnsPromise(expression)
     ) {
       return [{ name: "default", path, offset: statement.getStart(sourceFile) }]
     }
@@ -1349,7 +1383,7 @@ const promiseSymbolsFromDefaultExpression = (
     const symbols: ExportedPromiseSymbol[] = []
     for (const member of expression.members) {
       const memberName = publicMemberName(member)
-      if (memberName !== undefined && memberReturnsPromise(member, sourceFile)) {
+      if (memberName !== undefined && memberReturnsPromise(member)) {
         symbols.push({
           name: `default.${memberName}`,
           path,
@@ -1359,7 +1393,7 @@ const promiseSymbolsFromDefaultExpression = (
     }
     return symbols
   }
-  return expressionReturnsPromise(expression, sourceFile)
+  return expressionReturnsPromise(expression)
     ? [{ name: "default", path, offset: statement.getStart(sourceFile) }]
     : []
 }
@@ -1390,12 +1424,9 @@ const publicTypeMemberName = (member: ts.TypeElement): string | undefined => {
   return undefined
 }
 
-const bodyReturnsPromise = (
-  node: ts.FunctionLikeDeclaration,
-  sourceFile: ts.SourceFile
-): boolean => {
+const bodyReturnsPromise = (node: ts.FunctionLikeDeclaration): boolean => {
   if (ts.isArrowFunction(node) && node.body !== undefined && !ts.isBlock(node.body)) {
-    return expressionReturnsPromise(node.body, sourceFile)
+    return expressionReturnsPromise(node.body)
   }
   const body = node.body
   if (body === undefined || !ts.isBlock(body)) {
@@ -1418,7 +1449,7 @@ const bodyReturnsPromise = (
     if (
       ts.isReturnStatement(child) &&
       child.expression !== undefined &&
-      expressionReturnsPromise(child.expression, sourceFile)
+      expressionReturnsPromise(child.expression)
     ) {
       returnsPromise = true
       return
@@ -1429,19 +1460,30 @@ const bodyReturnsPromise = (
   return returnsPromise
 }
 
-const expressionReturnsPromise = (
-  expression: ts.Expression,
-  sourceFile: ts.SourceFile
-): boolean => {
+const expressionReturnsPromise = (expression: ts.Expression): boolean => {
   const unwrapped = unwrapExpression(expression)
-  if (ts.isNewExpression(unwrapped) && unwrapped.expression.getText(sourceFile) === "Promise") {
+  if (ts.isNewExpression(unwrapped) && isPromiseExpression(unwrapped.expression)) {
     return true
   }
   if (!ts.isCallExpression(unwrapped)) {
     return false
   }
-  const callee = unwrapped.expression.getText(sourceFile).replace(/\s+/gu, "")
-  return callee === "Promise" || callee.startsWith("Promise.")
+  return isPromiseCallExpression(unwrapped.expression)
+}
+
+const isPromiseCallExpression = (node: ts.Expression): boolean =>
+  isPromiseExpression(node) ||
+  (isStaticAccessExpression(node) && isPromiseExpression(node.expression))
+
+const isPromiseExpression = (node: ts.Expression): boolean => {
+  if (ts.isIdentifier(node)) {
+    return node.text === "Promise"
+  }
+  return (
+    isStaticAccessExpression(node) &&
+    staticAccessName(node) === "Promise" &&
+    isGlobalThisExpression(node.expression)
+  )
 }
 
 const unwrapExpression = (expression: ts.Expression): ts.Expression =>
