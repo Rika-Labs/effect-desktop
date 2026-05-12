@@ -315,6 +315,25 @@ test("Layer-first check rejects public class fields with inferred Promise API si
   expectViolation(exit, "public-promise-api")
 })
 
+test("Layer-first check rejects Promise class members re-exported from local modules", async () => {
+  const options = await makeFixture({
+    ...packageFiles(`
+      export { Client as PublicClient } from "./client"
+    `),
+    "packages/fixture/src/client.ts": `
+      export class Client {
+        loadUser(): Promise<string> {
+          return Promise.resolve("user")
+        }
+      }
+    `
+  })
+
+  const exit = await runExit(options)
+
+  expectViolation(exit, "public-promise-api")
+})
+
 test("Layer-first check rejects public Promise signatures in API snapshots", async () => {
   const options = await makeFixture({
     ...packageFiles("export {}"),

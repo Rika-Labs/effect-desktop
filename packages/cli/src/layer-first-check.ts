@@ -590,13 +590,23 @@ const promiseExportsFromReExportDeclaration = (
   for (const element of statement.exportClause.elements) {
     const importedName = element.propertyName?.text ?? element.name.text
     const exportedName = element.name.text
-    const targetSymbol = targetSymbols.find((symbol) => symbol.name === importedName)
-    if (targetSymbol !== undefined) {
-      symbols.push({
-        name: exportedName,
-        path,
-        offset: statement.getStart(sourceFile)
-      })
+    for (const targetSymbol of targetSymbols) {
+      if (targetSymbol.name === importedName) {
+        symbols.push({
+          name: exportedName,
+          path,
+          offset: statement.getStart(sourceFile)
+        })
+        continue
+      }
+      const memberPrefix = `${importedName}.`
+      if (targetSymbol.name.startsWith(memberPrefix)) {
+        symbols.push({
+          name: `${exportedName}.${targetSymbol.name.slice(memberPrefix.length)}`,
+          path,
+          offset: statement.getStart(sourceFile)
+        })
+      }
     }
   }
   return symbols
