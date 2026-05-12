@@ -457,7 +457,11 @@ const promiseReturningExportedSymbols = (
 ): readonly ExportedPromiseSymbol[] => {
   if (ts.isFunctionDeclaration(statement)) {
     const name = statement.name?.text ?? "default"
-    if (!hasAsyncModifier(statement) && !typeIncludesPromise(statement.type, sourceFile)) {
+    if (
+      !hasAsyncModifier(statement) &&
+      !typeIncludesPromise(statement.type, sourceFile) &&
+      !bodyReturnsPromise(statement, sourceFile)
+    ) {
       return []
     }
     return exportedPromiseNames(statement, name, exports).map((exportedName) => ({
@@ -486,6 +490,31 @@ const promiseReturningExportedSymbols = (
             })
           )
         )
+      }
+    }
+    return symbols
+  }
+  if (ts.isClassDeclaration(statement)) {
+    const className = statement.name?.text ?? "default"
+    const exportedNames = exportedClassNames(statement, className, exports)
+    if (exportedNames.length === 0) {
+      return []
+    }
+
+    const symbols: ExportedPromiseSymbol[] = []
+    for (const member of statement.members) {
+      const memberName = publicMemberName(member)
+      if (memberName === undefined) {
+        continue
+      }
+      if (memberReturnsPromise(member, sourceFile)) {
+        for (const exportedName of exportedNames) {
+          symbols.push({
+            name: `${exportedName}.${memberName}`,
+            path,
+            offset: member.getStart(sourceFile)
+          })
+        }
       }
     }
     return symbols
@@ -684,12 +713,121 @@ const initializerReturnsPromise = (
     : initializer
   return (
     (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) &&
-    typeIncludesPromise(expression.type, sourceFile)
+    (typeIncludesPromise(expression.type, sourceFile) || bodyReturnsPromise(expression, sourceFile))
   )
 }
 
 const typeIncludesPromise = (node: ts.Node | undefined, sourceFile: ts.SourceFile): boolean =>
   node?.getText(sourceFile).includes("Promise<") === true
+
+const memberReturnsPromise = (
+  member: ts.ClassElement,
+  sourceFile: ts.SourceFile
+): member is ts.MethodDeclaration | ts.PropertyDeclaration | ts.GetAccessorDeclaration => {
+  if (hasModifier(member, ts.SyntaxKind.PrivateKeyword)) {
+    return false
+  }
+  if (hasModifier(member, ts.SyntaxKind.ProtectedKeyword)) {
+    return false
+  }
+  if (ts.isMethodDeclaration(member)) {
+    return (
+      hasAsyncModifier(member) ||
+      typeIncludesPromise(member.type, sourceFile) ||
+      bodyReturnsPromise(member, sourceFile)
+    )
+  }
+  if (ts.isPropertyDeclaration(member)) {
+    return (
+      typeIncludesPromise(member.type, sourceFile) ||
+      initializerReturnsPromise(member.initializer, sourceFile)
+    )
+  }
+  return (
+    ts.isGetAccessorDeclaration(member) &&
+    (typeIncludesPromise(member.type, sourceFile) || bodyReturnsPromise(member, sourceFile))
+  )
+}
+
+const bodyReturnsPromise = (
+  node: ts.FunctionLikeDeclaration,
+  sourceFile: ts.SourceFile
+): boolean => {
+  if (ts.isArrowFunction(node) && node.body !== undefined && !ts.isBlock(node.body)) {
+    return expressionReturnsPromise(node.body, sourceFile)
+  }
+  const body = node.body
+  if (body === undefined || !ts.isBlock(body)) {
+    return false
+  }
+  let returnsPromise = false
+  const visit = (child: ts.Node): void => {
+    if (returnsPromise) {
+      return
+    }
+    if (
+      child !== body &&
+      (ts.isFunctionDeclaration(child) ||
+        ts.isFunctionExpression(child) ||
+        ts.isArrowFunction(child) ||
+        ts.isMethodDeclaration(child))
+    ) {
+      return
+    }
+    if (
+      ts.isReturnStatement(child) &&
+      child.expression !== undefined &&
+      expressionReturnsPromise(child.expression, sourceFile)
+    ) {
+      returnsPromise = true
+      return
+    }
+    ts.forEachChild(child, visit)
+  }
+  ts.forEachChild(body, visit)
+  return returnsPromise
+}
+
+const expressionReturnsPromise = (
+  expression: ts.Expression,
+  sourceFile: ts.SourceFile
+): boolean => {
+  const unwrapped = ts.isParenthesizedExpression(expression) ? expression.expression : expression
+  if (ts.isNewExpression(unwrapped) && unwrapped.expression.getText(sourceFile) === "Promise") {
+    return true
+  }
+  if (!ts.isCallExpression(unwrapped)) {
+    return false
+  }
+  const callee = unwrapped.expression.getText(sourceFile).replace(/\s+/gu, "")
+  return callee === "Promise" || callee.startsWith("Promise.")
+}
+
+const publicMemberName = (member: ts.ClassElement): string | undefined => {
+  if (
+    !ts.isMethodDeclaration(member) &&
+    !ts.isPropertyDeclaration(member) &&
+    !ts.isGetAccessorDeclaration(member)
+  ) {
+    return undefined
+  }
+  if (hasModifier(member, ts.SyntaxKind.PrivateKeyword)) {
+    return undefined
+  }
+  if (hasModifier(member, ts.SyntaxKind.ProtectedKeyword)) {
+    return undefined
+  }
+  if (member.name === undefined) {
+    return undefined
+  }
+  if (ts.isPrivateIdentifier(member.name)) {
+    return undefined
+  }
+  if (ts.isIdentifier(member.name) || ts.isStringLiteral(member.name)) {
+    return member.name.text
+  }
+  return undefined
+}
 
 const isExported = (node: ts.Node): boolean =>
   hasModifier(node, ts.SyntaxKind.ExportKeyword) || hasModifier(node, ts.SyntaxKind.DefaultKeyword)
