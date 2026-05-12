@@ -84,7 +84,7 @@ Startup windows are host-owned. Renderer components must not open the initial wi
 
 ## Dependency note
 
-`vendor/effect` is a pinned upstream Effect v4 beta reference checkout for grounding `RpcGroup`, `RpcClient`, and `RpcServer` API behavior while this boundary uses `effect/unstable/rpc`. It is not runtime vendoring: packages must import Effect from the workspace dependency in `package.json`, not from `vendor/effect`. Update the submodule when the Effect beta changes RPC semantics, then verify the framework bridge and adapter tests against the pinned package version.
+`repos/effect-smol` is a pinned upstream Effect v4 smol reference checkout for grounding `RpcGroup`, `RpcClient`, and `RpcServer` API behavior while this boundary uses `effect/unstable/rpc`. It is not runtime vendoring: packages must import Effect from the workspace dependency in `package.json`, not from `repos/effect-smol`. Update the subtree when the Effect beta changes RPC semantics, then verify the framework bridge and adapter tests against the pinned package version.
 
 ## Migration notes
 
