@@ -1,5 +1,5 @@
 {
-  "url": "templates/basic-react-tailwind/dist/index.html?dir=rtl&lang=ar&color-scheme=light",
+  "url": "https://templates.effect-desktop.local/basic-react-tailwind/dist/index.html?dir=rtl&lang=ar&color-scheme=light",
   "testEngine": {
     "name": "axe-core",
     "version": "4.x"
