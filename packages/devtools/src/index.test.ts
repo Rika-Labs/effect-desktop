@@ -131,7 +131,7 @@ test("WorkersDevtools lists live workers with redacted scripts", async () => {
 test("LiveRuntimePanels projects bridge, stream, resource, permission, and process tables", async () => {
   let timestamp = 1_000
   const bridgeCalls = await Effect.runPromise(makeBridgeCallRegistry())
-  const streams = makeBridgeStreamRegistry()
+  const streams = await Effect.runPromise(makeBridgeStreamRegistry())
   const resources = await Effect.runPromise(
     makeResourceRegistry({
       now: () => timestamp++,
@@ -246,7 +246,7 @@ test("LiveRuntimePanels projects bridge, stream, resource, permission, and proce
 
 test("LiveRuntimePanels rejects invalid row caps and refresh intervals", async () => {
   const bridgeCalls = await Effect.runPromise(makeBridgeCallRegistry())
-  const streams = makeBridgeStreamRegistry()
+  const streams = await Effect.runPromise(makeBridgeStreamRegistry())
   const resources = await Effect.runPromise(makeResourceRegistry())
   const permissions = await Effect.runPromise(makePermissionRegistry())
   const processes = await makeProcessService(resources)

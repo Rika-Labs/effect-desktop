@@ -1,4 +1,16 @@
-import { Cause, Effect, Exit, Fiber, Option, Queue, Ref, Schema, Stream } from "effect"
+import {
+  Cause,
+  Effect,
+  Exit,
+  FiberMap,
+  Option,
+  Queue,
+  Ref,
+  Schema,
+  Scope,
+  Stream,
+  SubscriptionRef
+} from "effect"
 
 import {
   type BridgeRpcGroup,
@@ -18,6 +30,7 @@ import {
   HostProtocolRequestEnvelope,
   HostProtocolStreamByRequestEnvelope,
   makeHostProtocolInvalidArgumentError,
+  makeHostProtocolInvalidStateError,
   makeHostProtocolInvalidOutputError,
   validateHostProtocolTimestamp,
   type HostProtocolError
@@ -70,6 +83,7 @@ export interface BridgeStreamRuntime<Env = never> {
   readonly cancel: (
     request: HostProtocolCancelByRequestEnvelope | HostProtocolCancelByResourceEnvelope
   ) => Effect.Effect<void, never, never>
+  readonly dispose: () => Effect.Effect<void, never, never>
 }
 
 export interface BridgeStreamRuntimeOptions {
@@ -117,11 +131,32 @@ type StreamQueue = {
 }
 
 type ActiveStream = {
-  readonly interrupt: Effect.Effect<void, never, never>
   readonly options: ResolvedBridgeStreamRuntimeOptions
   readonly queue: StreamQueue
   readonly request: HostProtocolRequestEnvelope
   readonly streamId: string
+}
+
+type ActiveBridgeStreams = {
+  readonly state: SubscriptionRef.SubscriptionRef<ActiveBridgeStreamsState>
+  readonly fibers: FiberMap.FiberMap<string, void, never>
+  readonly scope: Scope.Scope
+}
+
+type ActiveBridgeStreamsState = {
+  readonly closed: boolean
+  readonly entries: ReadonlyMap<string, ActiveStream>
+}
+
+type ActiveStreamReservation =
+  | { readonly _tag: "Reserved" }
+  | { readonly _tag: "Disposed" }
+  | { readonly _tag: "DuplicateRequest"; readonly requestId: string }
+  | { readonly _tag: "DuplicateResource"; readonly streamId: string }
+
+type BridgeStreamRegistryState = {
+  readonly entries: ReadonlyMap<string, BridgeStreamRegistryEntry>
+  readonly generations: ReadonlyMap<string, number>
 }
 
 export type BridgeStreamTerminalType = "complete" | "error" | "closed"
@@ -159,96 +194,234 @@ export interface BridgeStreamRegistry {
   readonly observe: () => Stream.Stream<ReadonlyArray<BridgeStreamRegistryEntry>, never, never>
 }
 
-export const makeBridgeStreamRegistry = (cleanupGraceMs = 30_000): BridgeStreamRegistry => {
-  const entries = new Map<string, BridgeStreamRegistryEntry>()
-  const generations = new Map<string, number>()
-  const observers = new Set<Queue.Enqueue<ReadonlyArray<BridgeStreamRegistryEntry>, never>>()
-  const snapshot = (): ReadonlyArray<BridgeStreamRegistryEntry> => Array.from(entries.values())
-  const publish = (): void => {
-    const current = snapshot()
-    for (const observer of observers) {
-      Queue.offerUnsafe(observer, current)
-    }
-  }
+export const makeBridgeStreamRegistry = (
+  cleanupGraceMs = 30_000
+): Effect.Effect<BridgeStreamRegistry, never, never> =>
+  Effect.gen(function* () {
+    const state = yield* SubscriptionRef.make<BridgeStreamRegistryState>({
+      entries: new Map(),
+      generations: new Map()
+    })
 
-  const registry: BridgeStreamRegistry = {
-    register: (streamId) =>
-      Effect.sync(() => {
-        const previousGeneration = generations.get(streamId)
-        const generation = previousGeneration === undefined ? 0 : previousGeneration + 1
-        const entry = { streamId, generation, state: "open" } satisfies BridgeStreamRegistryEntry
-        entries.set(streamId, entry)
-        generations.set(streamId, generation)
-        publish()
-        return entry
-      }),
-    terminate: (streamId, terminal, now) =>
-      Effect.sync(() => {
-        const current = entries.get(streamId)
-        if (current?.state === "terminal") {
-          return false
-        }
-        entries.set(streamId, {
-          generation: current?.generation ?? 0,
-          state: "terminal",
-          streamId,
-          terminal,
-          terminalAt: now
-        })
-        generations.set(streamId, current?.generation ?? 0)
-        publish()
-        return true
-      }),
-    isTerminal: (streamId) => Effect.sync(() => entries.get(streamId)?.state === "terminal"),
-    updateBackpressure: (streamId, metrics) =>
-      Effect.sync(() => {
-        const current = entries.get(streamId)
-        if (current === undefined) {
-          return
-        }
-        entries.set(streamId, {
-          ...current,
-          backpressure: metrics
-        })
-        publish()
-      }),
-    gcExpired: (now) =>
-      Effect.sync(() => {
-        let removed = 0
-        for (const [streamId, entry] of entries) {
-          if (
-            entry.state === "terminal" &&
-            entry.terminalAt !== undefined &&
-            now - entry.terminalAt >= cleanupGraceMs
-          ) {
-            entries.delete(streamId)
-            removed += 1
+    const registry: BridgeStreamRegistry = {
+      register: (streamId) =>
+        SubscriptionRef.modify(state, (current) => {
+          const previousGeneration = current.generations.get(streamId)
+          const generation = previousGeneration === undefined ? 0 : previousGeneration + 1
+          const entry = { streamId, generation, state: "open" } satisfies BridgeStreamRegistryEntry
+          const entries = new Map(current.entries)
+          const generations = new Map(current.generations)
+          entries.set(streamId, entry)
+          generations.set(streamId, generation)
+          return [entry, { entries, generations }] as const
+        }),
+      terminate: (streamId, terminal, now) =>
+        SubscriptionRef.modifySome(state, (current) => {
+          const entry = current.entries.get(streamId)
+          if (entry?.state === "terminal") {
+            return [false, Option.none()] as const
           }
-        }
-        if (removed > 0) {
-          publish()
-        }
-        return removed
-      }),
-    snapshot: () => Effect.sync(snapshot),
-    observe: () =>
-      Stream.callback((queue) =>
-        Effect.sync(() => {
-          observers.add(queue)
-          Queue.offerUnsafe(queue, snapshot())
-        }).pipe(
-          Effect.andThen(
-            Effect.addFinalizer(() =>
-              Effect.sync(() => {
-                observers.delete(queue)
-              })
-            )
-          )
-        )
+          const generation = entry?.generation ?? 0
+          const entries = new Map(current.entries)
+          const generations = new Map(current.generations)
+          entries.set(streamId, {
+            generation,
+            state: "terminal",
+            streamId,
+            terminal,
+            terminalAt: now
+          })
+          generations.set(streamId, generation)
+          return [true, Option.some({ entries, generations })] as const
+        }),
+      isTerminal: (streamId) =>
+        SubscriptionRef.get(state).pipe(
+          Effect.map((current) => current.entries.get(streamId)?.state === "terminal")
+        ),
+      updateBackpressure: (streamId, metrics) =>
+        SubscriptionRef.modifySome(state, (current) => {
+          const entry = current.entries.get(streamId)
+          if (entry === undefined) {
+            return [undefined, Option.none()] as const
+          }
+          const entries = new Map(current.entries)
+          entries.set(streamId, {
+            ...entry,
+            backpressure: metrics
+          })
+          return [undefined, Option.some({ ...current, entries })] as const
+        }),
+      gcExpired: (now) =>
+        SubscriptionRef.modifySome(state, (current) => {
+          let removed = 0
+          const entries = new Map(current.entries)
+          for (const [streamId, entry] of current.entries) {
+            if (
+              entry.state === "terminal" &&
+              entry.terminalAt !== undefined &&
+              now - entry.terminalAt >= cleanupGraceMs
+            ) {
+              entries.delete(streamId)
+              removed += 1
+            }
+          }
+          if (removed === 0) {
+            return [0, Option.none()] as const
+          }
+          return [removed, Option.some({ ...current, entries })] as const
+        }),
+      snapshot: () => SubscriptionRef.get(state).pipe(Effect.map(registrySnapshot)),
+      observe: () => SubscriptionRef.changes(state).pipe(Stream.map(registrySnapshot))
+    }
+
+    return Object.freeze(registry)
+  })
+
+const registrySnapshot = (
+  state: BridgeStreamRegistryState
+): ReadonlyArray<BridgeStreamRegistryEntry> => Array.from(state.entries.values())
+
+const makeActiveBridgeStreams = (): ActiveBridgeStreams => {
+  const scope = Scope.makeUnsafe("sequential")
+  const fibers = Effect.runSync(Scope.provide(FiberMap.make<string, void, never>(), scope))
+  const state = Effect.runSync(
+    SubscriptionRef.make<ActiveBridgeStreamsState>({ closed: false, entries: new Map() })
+  )
+
+  return Object.freeze({ state, fibers, scope })
+}
+
+const openActiveStream = (
+  active: ActiveBridgeStreams,
+  stream: ActiveStream
+): Effect.Effect<ActiveStreamReservation, never, never> =>
+  SubscriptionRef.modifyEffect(
+    active.state,
+    (
+      state
+    ): Effect.Effect<
+      readonly [ActiveStreamReservation, ActiveBridgeStreamsState],
+      never,
+      never
+    > => {
+      if (state.closed) {
+        return Effect.succeed([{ _tag: "Disposed" }, state] as const)
+      }
+      if (state.entries.has(stream.request.id)) {
+        return Effect.succeed([
+          { _tag: "DuplicateRequest", requestId: stream.request.id },
+          state
+        ] satisfies readonly [ActiveStreamReservation, ActiveBridgeStreamsState])
+      }
+      if (Array.from(state.entries.values()).some((entry) => entry.streamId === stream.streamId)) {
+        return Effect.succeed([
+          { _tag: "DuplicateResource", streamId: stream.streamId },
+          state
+        ] satisfies readonly [ActiveStreamReservation, ActiveBridgeStreamsState])
+      }
+      return Effect.gen(function* () {
+        yield* stream.options.registry.register(stream.streamId)
+        yield* syncBackpressureMetrics(stream.options.registry, stream.streamId, stream.queue)
+        const entries = new Map(state.entries)
+        entries.set(stream.request.id, stream)
+        return [{ _tag: "Reserved" }, { ...state, entries }] as const
+      })
+    }
+  )
+
+const unregisterActiveStream = (
+  active: ActiveBridgeStreams,
+  requestId: string,
+  streamId: string
+): Effect.Effect<void, never, never> =>
+  SubscriptionRef.update(active.state, (state) => {
+    const next = new Map(state.entries)
+    const current = next.get(requestId)
+    if (current?.streamId === streamId) {
+      next.delete(requestId)
+    }
+    return { ...state, entries: next }
+  })
+
+const interruptActiveStream = (
+  active: ActiveBridgeStreams,
+  requestId: string,
+  streamId: string
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    yield* FiberMap.remove(active.fibers, streamId)
+    yield* unregisterActiveStream(active, requestId, streamId)
+  })
+
+const closeActiveStream = (
+  active: ActiveBridgeStreams,
+  stream: ActiveStream
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const frame = yield* Effect.exit(closedFrame(stream.request, stream.streamId, stream.options))
+    if (Exit.isSuccess(frame)) {
+      yield* offerTerminalFrame(stream.queue, frame.value, stream.options, "closed")
+    } else {
+      yield* stream.options.registry.terminate(
+        stream.streamId,
+        "closed",
+        safeTerminalNow(stream.options)
+      )
+    }
+    yield* Queue.end(stream.queue.queue)
+    yield* interruptActiveStream(active, stream.request.id, stream.streamId)
+  })
+
+const disposeActiveStreams = (active: ActiveBridgeStreams): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const streams = yield* SubscriptionRef.modify(active.state, (state) => [
+      Array.from(state.entries.values()),
+      { closed: true, entries: new Map() }
+    ])
+    for (const stream of streams) {
+      yield* closeActiveStream(active, stream)
+    }
+    yield* Scope.close(active.scope, Exit.void)
+  })
+
+const findActiveStream = (
+  active: ActiveBridgeStreams,
+  request: HostProtocolCancelByRequestEnvelope | HostProtocolCancelByResourceEnvelope
+): Effect.Effect<ActiveStream | undefined, never, never> =>
+  SubscriptionRef.get(active.state).pipe(
+    Effect.map((state) => {
+      const streamByRequest = request.id === undefined ? undefined : state.entries.get(request.id)
+      if (streamByRequest !== undefined) {
+        return streamByRequest
+      }
+
+      return Array.from(state.entries.values()).find(
+        (stream) =>
+          stream.streamId === request.resourceId || stream.request.id === request.resourceId
+      )
+    })
+  )
+
+const activeStreamReservationFailure = (
+  reservation: Exclude<ActiveStreamReservation, { readonly _tag: "Reserved" }>,
+  operation: string
+): HostProtocolError => {
+  switch (reservation._tag) {
+    case "Disposed":
+      return makeHostProtocolInvalidStateError("disposed", "stream", operation)
+    case "DuplicateRequest":
+      return makeHostProtocolInvalidArgumentError(
+        "id",
+        "request already active",
+        reservation.requestId
+      )
+    case "DuplicateResource":
+      return makeHostProtocolInvalidArgumentError(
+        "streamId",
+        "stream already active",
+        reservation.streamId
       )
   }
-
-  return Object.freeze(registry)
 }
 
 const makeStreams = <Layers extends readonly AnyBridgeRpcLayer[]>(
@@ -260,8 +433,7 @@ const makeStreamsWithOptions = <Layers extends readonly AnyBridgeRpcLayer[]>(
   options: BridgeStreamRuntimeOptions,
   ...layers: Layers
 ): BridgeStreamRuntime<BridgeStreamLayerEnvironment<Layers[number]>> => {
-  const active = new Map<string, ActiveStream>()
-  const activeByResource = new Map<string, ActiveStream>()
+  const active = makeActiveBridgeStreams()
   const table = new Map<string, BoundStream>()
   const resolved = resolveOptions(options)
 
@@ -289,12 +461,13 @@ const makeStreamsWithOptions = <Layers extends readonly AnyBridgeRpcLayer[]>(
 
   const runtime: BridgeStreamRuntime<BridgeStreamLayerEnvironment<Layers[number]>> = {
     stream: (request: HostProtocolRequestEnvelope) =>
-      streamDispatch(table, active, activeByResource, resolved, request) as Stream.Stream<
+      streamDispatch(table, active, resolved, request) as Stream.Stream<
         HostProtocolStreamEnvelope,
         HostProtocolError,
         BridgeStreamLayerEnvironment<Layers[number]>
       >,
-    cancel: (request) => cancelStream(active, activeByResource, request)
+    cancel: (request) => cancelStream(active, request),
+    dispose: () => disposeActiveStreams(active)
   }
 
   return Object.freeze(runtime)
@@ -306,8 +479,7 @@ export const Streams = Object.assign(makeStreams, {
 
 const streamDispatch = (
   table: ReadonlyMap<string, BoundStream>,
-  active: Map<string, ActiveStream>,
-  activeByResource: Map<string, ActiveStream>,
+  active: ActiveBridgeStreams,
   options: ResolvedBridgeStreamRuntimeOptions,
   request: HostProtocolRequestEnvelope
 ): Stream.Stream<HostProtocolStreamEnvelope, HostProtocolError, unknown> => {
@@ -322,12 +494,6 @@ const streamDispatch = (
   return Stream.unwrap(
     Effect.gen(function* () {
       const input = yield* decodeInput(request.method, bound.spec, request.payload)
-      if (active.has(request.id)) {
-        return Stream.fail(
-          makeHostProtocolInvalidArgumentError("id", "request already active", request.id)
-        )
-      }
-
       yield* options.registry.gcExpired(options.now())
       const streamId = options.nextStreamId()
       if (typeof streamId !== "string" || streamId.length === 0) {
@@ -339,69 +505,40 @@ const streamDispatch = (
           )
         )
       }
-      yield* options.registry.register(streamId)
       const queue = yield* makeStreamQueue(bound.spec)
-      yield* syncBackpressureMetrics(options.registry, streamId, queue)
-      const producer = runProducer(request, streamId, bound, queue, options, bound.handler(input))
-
-      const fiber = yield* Effect.forkScoped(producer)
-      const interrupt = Effect.gen(function* () {
-        yield* Fiber.interrupt(fiber)
-        yield* Effect.exit(Fiber.join(fiber))
-      })
-      const stream = { interrupt, options, queue, request, streamId }
-      active.set(request.id, stream)
-      activeByResource.set(streamId, stream)
+      const stream = { options, queue, request, streamId }
+      const reservation = yield* openActiveStream(active, stream)
+      if (reservation._tag !== "Reserved") {
+        return Stream.fail(activeStreamReservationFailure(reservation, request.method))
+      }
+      yield* FiberMap.run(
+        active.fibers,
+        streamId,
+        runProducer(request, streamId, bound, queue, options, bound.handler(input)).pipe(
+          Effect.ensuring(unregisterActiveStream(active, request.id, streamId))
+        )
+      )
 
       return Stream.fromQueue(queue.queue).pipe(
         Stream.tap(() => syncBackpressureMetrics(options.registry, streamId, queue)),
-        Stream.ensuring(
-          Effect.gen(function* () {
-            yield* interrupt
-            yield* Effect.sync(() => {
-              active.delete(request.id)
-              activeByResource.delete(streamId)
-            })
-          })
-        )
+        Stream.ensuring(interruptActiveStream(active, request.id, streamId))
       )
     })
   )
 }
 
 const cancelStream = (
-  active: Map<string, ActiveStream>,
-  activeByResource: Map<string, ActiveStream>,
+  active: ActiveBridgeStreams,
   request: HostProtocolCancelByRequestEnvelope | HostProtocolCancelByResourceEnvelope
 ): Effect.Effect<void, never, never> =>
   Effect.gen(function* () {
-    const streamByRequest = request.id === undefined ? undefined : active.get(request.id)
-    const streamByResource =
-      request.resourceId === undefined ? undefined : activeByResource.get(request.resourceId)
-    const stream =
-      streamByRequest ??
-      streamByResource ??
-      Array.from(active.values()).find(
-        (activeStream) =>
-          activeStream.streamId === request.resourceId ||
-          activeStream.request.id === request.resourceId
-      )
+    const stream = yield* findActiveStream(active, request)
 
     if (stream === undefined) {
       return
     }
 
-    const frame = yield* Effect.option(closedFrame(stream.request, stream.streamId, stream.options))
-    if (Option.isNone(frame)) {
-      return
-    }
-    yield* offerTerminalFrame(stream.queue, frame.value, stream.options, "closed")
-    yield* Queue.end(stream.queue.queue)
-    yield* stream.interrupt
-    yield* Effect.sync(() => {
-      active.delete(stream.request.id)
-      activeByResource.delete(stream.streamId)
-    })
+    yield* closeActiveStream(active, stream)
   })
 
 const runProducer = (
@@ -558,7 +695,10 @@ const offerTerminalFrame = (
       const terminalEvictions = yield* Effect.sync(() => {
         let evictions = 0
         while (!Queue.offerUnsafe(streamQueue.queue, frame)) {
-          Queue.takeUnsafe(streamQueue.queue)
+          const taken = Queue.takeUnsafe(streamQueue.queue)
+          if (taken === undefined || Exit.isFailure(taken)) {
+            return evictions
+          }
           evictions += 1
         }
         return evictions
@@ -748,8 +888,13 @@ const resolveOptions = (
   cleanupGraceMs: options.cleanupGraceMs ?? 30_000,
   now: options.now ?? Date.now,
   nextStreamId: options.nextStreamId ?? (() => `stream-${globalThis.crypto.randomUUID()}`),
-  registry: options.registry ?? makeBridgeStreamRegistry(options.cleanupGraceMs)
+  registry: options.registry ?? Effect.runSync(makeBridgeStreamRegistry(options.cleanupGraceMs))
 })
+
+const safeTerminalNow = (options: ResolvedBridgeStreamRuntimeOptions): number => {
+  const now = options.now()
+  return Number.isFinite(now) ? now : Date.now()
+}
 
 const methodName = (tag: string, method: string): string => `${tag}.${method}`
 

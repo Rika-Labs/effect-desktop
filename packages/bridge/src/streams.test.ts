@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Cause, Effect, Exit, Fiber, Schema, Stream } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Schema, Stream } from "effect"
 
 import {
   BridgeRpc,
@@ -156,15 +156,157 @@ test("Streams rejects duplicate active request ids", async () => {
   expect(requests).toHaveLength(2)
 
   controller.abort()
-  const firstStreamFiber = await firstFiber
+  const firstStreamFiber = firstFiber
   const firstExit = await Effect.runPromiseExit(Fiber.join(firstStreamFiber))
   await waitFor(() => lifecycle.includes("released"))
   expectFailureTag(firstExit, "StreamClosed")
 })
 
+test("Streams rejects duplicate active generated stream ids", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamDuplicateResource")
+  const lifecycle: string[] = []
+  const runtime = Streams.withOptions(
+    {
+      nextStreamId: () => "stream-duplicate-resource"
+    },
+    BridgeRpc.layer(ProjectRpcs)({
+      watch: () =>
+        Stream.scoped(
+          Stream.fromEffect(
+            Effect.acquireRelease(
+              Effect.sync(() => lifecycle.push("acquired")),
+              () => Effect.sync(() => lifecycle.push("released"))
+            ).pipe(Effect.andThen(Effect.never))
+          )
+        )
+    })
+  )
+
+  const firstFiber = Effect.runFork(
+    runtime
+      .stream(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "request-stream-resource-1",
+          method: "ProjectRpcs.StreamDuplicateResource.watch",
+          timestamp: 41,
+          traceId: "trace-stream-resource-1",
+          payload: new WatchInput({ projectId: "project-1" })
+        })
+      )
+      .pipe(Stream.runDrain)
+  )
+
+  await waitFor(() => lifecycle.includes("acquired"))
+
+  const duplicateExit = await Effect.runPromiseExit(
+    runtime
+      .stream(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "request-stream-resource-2",
+          method: "ProjectRpcs.StreamDuplicateResource.watch",
+          timestamp: 42,
+          traceId: "trace-stream-resource-2",
+          payload: new WatchInput({ projectId: "project-1" })
+        })
+      )
+      .pipe(Stream.runCollect)
+  )
+
+  expectFailureTag(duplicateExit, "InvalidArgument")
+  await Effect.runPromise(
+    runtime.cancel(
+      new HostProtocolCancelByResourceEnvelope({
+        kind: "cancel",
+        resourceId: "stream-duplicate-resource",
+        timestamp: 43,
+        traceId: "trace-stream-resource-cancel"
+      })
+    )
+  )
+  await waitFor(() => lifecycle.includes("released"))
+  const firstStreamFiber = firstFiber
+  const firstExit = await Effect.runPromiseExit(Fiber.join(firstStreamFiber))
+  expect(Exit.isSuccess(firstExit)).toBe(true)
+})
+
+test("Streams reserves duplicate generated stream ids atomically", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamDuplicateResourceRace")
+  const registry = await Effect.runPromise(makeBridgeStreamRegistry())
+  const release = Effect.runSync(Deferred.make<void>())
+  const runtime = Streams.withOptions(
+    {
+      nextStreamId: () => "stream-duplicate-resource-race",
+      registry
+    },
+    BridgeRpc.layer(ProjectRpcs)({
+      watch: () =>
+        Stream.fromEffect(
+          Deferred.await(release).pipe(Effect.as(new WatchEvent({ sequence: 1, path: "a" })))
+        ).pipe(Stream.concat(Stream.never))
+    })
+  )
+
+  const exitsFiber = Effect.runFork(
+    Effect.all(
+      [
+        Effect.exit(
+          runtime
+            .stream(
+              new HostProtocolRequestEnvelope({
+                kind: "request",
+                id: "request-stream-resource-race-1",
+                method: "ProjectRpcs.StreamDuplicateResourceRace.watch",
+                timestamp: 41,
+                traceId: "trace-stream-resource-race-1",
+                payload: new WatchInput({ projectId: "project-1" })
+              })
+            )
+            .pipe(Stream.take(1), Stream.runCollect)
+        ),
+        Effect.exit(
+          runtime
+            .stream(
+              new HostProtocolRequestEnvelope({
+                kind: "request",
+                id: "request-stream-resource-race-2",
+                method: "ProjectRpcs.StreamDuplicateResourceRace.watch",
+                timestamp: 42,
+                traceId: "trace-stream-resource-race-2",
+                payload: new WatchInput({ projectId: "project-1" })
+              })
+            )
+            .pipe(Stream.take(1), Stream.runCollect)
+        )
+      ],
+      { concurrency: "unbounded" }
+    )
+  )
+
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if ((await Effect.runPromise(registry.snapshot())).length === 1) {
+      break
+    }
+    await Bun.sleep(1)
+  }
+  expect(await Effect.runPromise(registry.snapshot())).toHaveLength(1)
+  await Effect.runPromise(Deferred.succeed(release, undefined))
+  const exits = await Effect.runPromise(Fiber.join(exitsFiber))
+
+  expect(exits.filter(Exit.isSuccess)).toHaveLength(1)
+  expect(exits.filter(Exit.isFailure)).toHaveLength(1)
+  const failure = exits.find(Exit.isFailure)
+  expect(failure).toBeDefined()
+  if (failure !== undefined) {
+    expectFailureTag(failure, "InvalidArgument")
+  }
+  await Effect.runPromise(runtime.dispose())
+})
+
 test("Streams rejects empty generated stream ids before registry state is created", async () => {
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamEmptyId")
-  const registry = makeBridgeStreamRegistry()
+  const registry = await Effect.runPromise(makeBridgeStreamRegistry())
   const runtime = Streams.withOptions(
     {
       nextStreamId: () => "",
@@ -319,7 +461,7 @@ test("Streams rejects invalid generated timestamps as typed Effect failures", as
 })
 
 test("Streams applies error overflow as a BackpressureOverflow terminal frame", async () => {
-  const registry = makeBridgeStreamRegistry()
+  const registry = await Effect.runPromise(makeBridgeStreamRegistry())
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamOverflow", {
     backpressure: { strategy: "buffer", size: 1, overflow: "error" }
   })
@@ -370,7 +512,7 @@ test("Streams applies error overflow as a BackpressureOverflow terminal frame", 
 })
 
 test("Streams records dropNewest overflow metrics without failing publishers", async () => {
-  const registry = makeBridgeStreamRegistry()
+  const registry = await Effect.runPromise(makeBridgeStreamRegistry())
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamDropNewest", {
     backpressure: { strategy: "drop", size: 2, overflow: "dropNewest" }
   })
@@ -418,7 +560,7 @@ test("Streams records dropNewest overflow metrics without failing publishers", a
 })
 
 test("Streams records dropOldest overflow metrics while keeping the stream successful", async () => {
-  const registry = makeBridgeStreamRegistry()
+  const registry = await Effect.runPromise(makeBridgeStreamRegistry())
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamDropOldest", {
     backpressure: { strategy: "drop", size: 2, overflow: "dropOldest" }
   })
@@ -467,7 +609,7 @@ test("Streams records dropOldest overflow metrics while keeping the stream succe
 
 test("Streams records one terminal state and expires it after cleanup grace", async () => {
   let now = 1_000
-  const registry = makeBridgeStreamRegistry(30_000)
+  const registry = await Effect.runPromise(makeBridgeStreamRegistry(30_000))
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamLifecycle")
   const runtime = Streams.withOptions(
     {
@@ -514,7 +656,7 @@ test("Streams records one terminal state and expires it after cleanup grace", as
 })
 
 test("BridgeStreamRegistry refuses duplicate terminal transitions", async () => {
-  const registry = makeBridgeStreamRegistry()
+  const registry = await Effect.runPromise(makeBridgeStreamRegistry())
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       yield* registry.register("stream-duplicate")
@@ -539,7 +681,7 @@ test("BridgeStreamRegistry refuses duplicate terminal transitions", async () => 
 })
 
 test("BridgeStreamRegistry observe emits current and updated snapshots", async () => {
-  const registry = makeBridgeStreamRegistry()
+  const registry = await Effect.runPromise(makeBridgeStreamRegistry())
   const observed = Effect.runFork(registry.observe().pipe(Stream.take(3), Stream.runCollect))
   await Bun.sleep(0)
 
@@ -572,7 +714,7 @@ test("BridgeStreamRegistry observe emits current and updated snapshots", async (
 
 test("Streams cancellation interrupts the producer and emits a closed terminal", async () => {
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamCancel")
-  const registry = makeBridgeStreamRegistry()
+  const registry = await Effect.runPromise(makeBridgeStreamRegistry())
   const finalizers: string[] = []
   const runtime = Streams.withOptions(
     {
@@ -643,9 +785,87 @@ test("Streams cancellation interrupts the producer and emits a closed terminal",
   ])
 })
 
+test("Streams dispose interrupts active producer fibers", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamRuntimeDispose")
+  const registry = await Effect.runPromise(makeBridgeStreamRegistry())
+  const finalizers: string[] = []
+  const runtime = Streams.withOptions(
+    {
+      nextStreamId: () => "stream-runtime-dispose",
+      now: () => 42,
+      registry
+    },
+    BridgeRpc.layer(ProjectRpcs)({
+      watch: () =>
+        Stream.scoped(
+          Stream.fromEffect(
+            Effect.acquireRelease(
+              Effect.sync(() => finalizers.push("acquired")),
+              () => Effect.sync(() => finalizers.push("interrupted"))
+            ).pipe(Effect.andThen(Effect.never))
+          )
+        )
+    })
+  )
+  const streamFiber = Effect.runFork(
+    runtime
+      .stream(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "request-stream-runtime-dispose",
+          method: "ProjectRpcs.StreamRuntimeDispose.watch",
+          timestamp: 41,
+          traceId: "trace-stream-runtime-dispose",
+          payload: new WatchInput({ projectId: "project-1" })
+        })
+      )
+      .pipe(Stream.runDrain)
+  )
+
+  await waitFor(() => finalizers.includes("acquired"))
+  await Effect.runPromise(runtime.dispose())
+  await waitFor(() => finalizers.includes("interrupted"))
+
+  const fiber = streamFiber
+  const exit = await Effect.runPromiseExit(Fiber.join(fiber))
+  expect(Exit.isSuccess(exit)).toBe(true)
+  expect(finalizers).toEqual(["acquired", "interrupted"])
+  expect(await Effect.runPromise(registry.snapshot())).toEqual([
+    {
+      generation: 0,
+      backpressure: {
+        evictedFrames: 0,
+        overflow: "error",
+        queueCapacity: 1024,
+        queueDepth: 0
+      },
+      state: "terminal",
+      streamId: "stream-runtime-dispose",
+      terminal: "closed",
+      terminalAt: 42
+    }
+  ])
+
+  const postDisposeExit = await Effect.runPromiseExit(
+    runtime
+      .stream(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "request-stream-runtime-after-dispose",
+          method: "ProjectRpcs.StreamRuntimeDispose.watch",
+          timestamp: 44,
+          traceId: "trace-stream-runtime-after-dispose",
+          payload: new WatchInput({ projectId: "project-1" })
+        })
+      )
+      .pipe(Stream.runDrain)
+  )
+  expectFailureTag(postDisposeExit, "InvalidState")
+})
+
 test("Streams cancellation by resource id interrupts the producer", async () => {
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamCancelByResource")
-  const registry = makeBridgeStreamRegistry()
+  const registry = await Effect.runPromise(makeBridgeStreamRegistry())
   const finalizers: string[] = []
   const runtime = Streams.withOptions(
     {
@@ -697,6 +917,68 @@ test("Streams cancellation by resource id interrupts the producer", async () => 
       streamId: "stream-resource-cancel",
       terminal: "closed",
       terminalAt: 42
+    }
+  ])
+})
+
+test("Streams cancellation cleanup survives invalid close frame timestamps", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamCancelInvalidTimestamp")
+  const registry = await Effect.runPromise(makeBridgeStreamRegistry())
+  const finalizers: string[] = []
+  let now = 42
+  const runtime = Streams.withOptions(
+    {
+      nextStreamId: () => "stream-invalid-cancel-time",
+      now: () => now,
+      registry
+    },
+    BridgeRpc.layer(ProjectRpcs)({
+      watch: () =>
+        Stream.scoped(
+          Stream.fromEffect(
+            Effect.acquireRelease(
+              Effect.sync(() => finalizers.push("acquired")),
+              () => Effect.sync(() => finalizers.push("interrupted"))
+            ).pipe(Effect.andThen(Effect.never))
+          )
+        )
+    })
+  )
+  const streamFiber = Effect.runFork(
+    runtime
+      .stream(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "request-stream-invalid-cancel-time",
+          method: "ProjectRpcs.StreamCancelInvalidTimestamp.watch",
+          timestamp: 41,
+          traceId: "trace-stream-invalid-cancel-time",
+          payload: new WatchInput({ projectId: "project-1" })
+        })
+      )
+      .pipe(Stream.runDrain)
+  )
+
+  await waitFor(() => finalizers.includes("acquired"))
+  now = Number.NaN
+  await Effect.runPromise(
+    runtime.cancel({
+      kind: "cancel",
+      resourceId: "stream-invalid-cancel-time",
+      timestamp: 43,
+      traceId: "trace-stream-invalid-cancel-time"
+    } satisfies HostProtocolCancelByResourceEnvelope)
+  )
+
+  const fiber = streamFiber
+  const exit = await Effect.runPromiseExit(Fiber.join(fiber))
+  expect(Exit.isSuccess(exit)).toBe(true)
+  await waitFor(() => finalizers.includes("interrupted"))
+  expect(await Effect.runPromise(registry.snapshot())).toMatchObject([
+    {
+      state: "terminal",
+      streamId: "stream-invalid-cancel-time",
+      terminal: "closed"
     }
   ])
 })

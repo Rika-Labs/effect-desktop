@@ -196,7 +196,7 @@
     {
       "name": "BridgeStreamRuntime",
       "kind": "interface",
-      "signature": "export interface BridgeStreamRuntime<Env = never> { readonly stream: ( request: HostProtocolRequestEnvelope ) => Stream.Stream<HostProtocolStreamEnvelope, HostProtocolError, Env> readonly cancel: ( request: HostProtocolCancelByRequestEnvelope | HostProtocolCancelByResourceEnvelope ) => Effect.Effect<void, never, never> }"
+      "signature": "export interface BridgeStreamRuntime<Env = never> { readonly stream: ( request: HostProtocolRequestEnvelope ) => Stream.Stream<HostProtocolStreamEnvelope, HostProtocolError, Env> readonly cancel: ( request: HostProtocolCancelByRequestEnvelope | HostProtocolCancelByResourceEnvelope ) => Effect.Effect<void, never, never> readonly dispose: () => Effect.Effect<void, never, never> }"
     },
     {
       "name": "BridgeStreamRuntimeOptions",
@@ -631,7 +631,7 @@
     {
       "name": "makeBridgeStreamRegistry",
       "kind": "value",
-      "signature": "const makeBridgeStreamRegistry: (cleanupGraceMs?: number) => BridgeStreamRegistry"
+      "signature": "const makeBridgeStreamRegistry: (cleanupGraceMs?: number) => Effect.Effect<BridgeStreamRegistry, never, never>"
     },
     {
       "name": "makeDesktopClientProtocol",
