@@ -1,8 +1,10 @@
 ## Hard Rules
 
+Every active goal includes an architecture-debt sweep. For each ticket or issue, look for adapters, thin wrapper layers, custom DSLs, bridge specs, or parallel abstractions over Effect in the area being touched.
+
 Effect primitives are the default architecture. Custom abstractions must justify themselves by owning durable desktop-specific policy, lifecycle, security, or protocol translation. If an abstraction only renames, mirrors, narrows, or partially reimplements Effect APIs, treat it as design debt.
 
-For every ticket or issue, inspect the touched area for adapters, thin wrapper layers, custom DSLs, or parallel abstractions over Effect. If the wrapper is not adding durable desktop-specific semantics, remove it as part of the current work.
+If a wrapper is not adding durable desktop-specific semantics, remove it as part of the current work.
 
 If removal is larger than the current ticket, open a follow-up GitHub issue with a concrete before/after that shows the current custom abstraction and the desired Effect-native shape. The issue must make the simplification legible enough that a future agent can remove the wrapper without rediscovering the whole design.
 
