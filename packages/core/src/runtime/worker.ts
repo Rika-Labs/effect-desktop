@@ -8,8 +8,10 @@ import {
   Layer,
   Option,
   Queue,
+  RcMap,
   Ref,
   Schema,
+  Semaphore,
   Scope,
   Stream
 } from "effect"
@@ -190,7 +192,10 @@ export const makeWorker = (
     const budgets = { ...DEFAULT_WORKER_BUDGETS, ...options.budgets }
     const gracefulShutdownMs = options.gracefulShutdownMs ?? DEFAULT_GRACEFUL_SHUTDOWN_MS
     const now = options.now ?? Date.now
-    const workerBudgets = yield* Ref.make(new Map<string, number>())
+    const workerBudgetScope = yield* Scope.make()
+    const workerBudgets = yield* RcMap.make({
+      lookup: (_ownerScope: string) => Semaphore.make(budgets.maxConcurrent)
+    }).pipe(Scope.provide(workerBudgetScope))
     const workers = yield* Ref.make<ReadonlyMap<string, StoredWorker>>(new Map())
 
     return Object.freeze({
@@ -220,8 +225,9 @@ export const makeWorker = (
           const { runtime, resource } = yield* Effect.uninterruptible(
             Effect.gen(function* () {
               const workerScope = yield* Scope.make()
-              yield* reserveWorkerBudget(
+              yield* holdWorkerBudgetPermit(
                 workerBudgets,
+                workerScope,
                 input.ownerScope,
                 budgets.maxConcurrent
               ).pipe(Effect.tapError(() => Scope.close(workerScope, Exit.void)))
@@ -233,13 +239,7 @@ export const makeWorker = (
                   messageBufferSize: budgets.messageBufferSize,
                   gracefulShutdownMs
                 })
-                .pipe(
-                  Effect.tapError(() =>
-                    releaseWorkerBudget(workerBudgets, input.ownerScope).pipe(
-                      Effect.andThen(Scope.close(workerScope, Exit.void))
-                    )
-                  )
-                )
+                .pipe(Effect.tapError(() => Scope.close(workerScope, Exit.void)))
               let registeredResourceId: string | undefined
               const disposalOrigin = yield* Ref.make<WorkerDisposalOrigin>("running")
               const resource = yield* registry
@@ -250,8 +250,6 @@ export const makeWorker = (
                   dispose: disposeWorkerRuntime(
                     runtime,
                     workerScope,
-                    input.ownerScope,
-                    workerBudgets,
                     workers,
                     () => registeredResourceId,
                     disposalOrigin
@@ -447,8 +445,6 @@ const observeWorkerExit = (
 const disposeWorkerRuntime = (
   runtime: WorkerRuntime,
   workerScope: Scope.Closeable,
-  ownerScope: string,
-  workerBudgets: Ref.Ref<Map<string, number>>,
   workers: Ref.Ref<ReadonlyMap<string, StoredWorker>>,
   resourceId: () => string | undefined,
   disposalOrigin: Ref.Ref<WorkerDisposalOrigin>
@@ -459,7 +455,6 @@ const disposeWorkerRuntime = (
       yield* runtime.shutdown
     }
     yield* removeWorker(workers, resourceId)
-    yield* releaseWorkerBudget(workerBudgets, ownerScope)
     if (origin !== "observer") {
       yield* Scope.close(workerScope, Exit.void)
     }
@@ -642,46 +637,40 @@ const authorizeWorkerCapabilities = (
     { discard: true }
   )
 
-const reserveWorkerBudget = (
-  workerBudgets: Ref.Ref<Map<string, number>>,
+const holdWorkerBudgetPermit = (
+  workerBudgets: RcMap.RcMap<string, Semaphore.Semaphore>,
+  workerScope: Scope.Closeable,
   ownerScope: string,
   maxConcurrent: number
 ): Effect.Effect<void, WorkerResourceBusyError, never> =>
   Effect.gen(function* () {
-    const reserved = yield* Ref.modify(workerBudgets, (current) => {
-      const runningWorkers = current.get(ownerScope) ?? 0
-      if (runningWorkers >= maxConcurrent) {
-        return [false, current] as const
-      }
-      const next = new Map(current)
-      next.set(ownerScope, runningWorkers + 1)
-      return [true, next] as const
-    })
-
-    if (!reserved) {
-      return yield* Effect.fail(
-        new WorkerResourceBusyError({
-          operation: "Worker.spawn",
-          ownerScope,
-          maxConcurrent
+    const semaphore = yield* RcMap.get(workerBudgets, ownerScope).pipe(Scope.provide(workerScope))
+    const acquired = yield* Deferred.make<boolean, never>()
+    const holder = semaphore.withPermitsIfAvailable(1)(
+      Deferred.succeed(acquired, true).pipe(Effect.andThen(Effect.never))
+    )
+    yield* holder.pipe(
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Deferred.succeed(acquired, false),
+          onSome: () => Effect.void
         })
-      )
+      ),
+      Effect.forkScoped({ startImmediately: true }),
+      Scope.provide(workerScope)
+    )
+    const reserved = yield* Deferred.await(acquired)
+    if (reserved) {
+      return
     }
-  })
 
-const releaseWorkerBudget = (
-  workerBudgets: Ref.Ref<Map<string, number>>,
-  ownerScope: string
-): Effect.Effect<void, never, never> =>
-  Ref.update(workerBudgets, (current) => {
-    const runningWorkers = current.get(ownerScope) ?? 0
-    const next = new Map(current)
-    if (runningWorkers <= 1) {
-      next.delete(ownerScope)
-    } else {
-      next.set(ownerScope, runningWorkers - 1)
-    }
-    return next
+    return yield* Effect.fail(
+      new WorkerResourceBusyError({
+        operation: "Worker.spawn",
+        ownerScope,
+        maxConcurrent
+      })
+    )
   })
 
 export const BunWorkerAdapter: WorkerAdapter = Object.freeze({

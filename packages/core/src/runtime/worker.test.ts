@@ -14,6 +14,7 @@ import {
   WorkerChannelError,
   WorkerCrashedError,
   WorkerInvalidArgumentError,
+  WorkerResourceBusyError,
   WorkerStaleHandleError,
   WorkerUnsupportedError,
   type WorkerAdapter,
@@ -320,6 +321,108 @@ test("Worker disposes resource and releases budget when runtime exits by itself"
   )
 
   expect(nextHandle.resource.id).not.toBe(handle.resource.id)
+})
+
+test("Worker enforces the per-scope concurrent worker budget", async () => {
+  const first = await makeFakeRuntime()
+  const second = await makeFakeRuntime()
+  const runtimes = [first, second]
+  let spawnCalls = 0
+  const fixture = await makeFixture(
+    {
+      spawn: () => {
+        spawnCalls += 1
+        return Effect.succeed(runtimes.shift() ?? second)
+      }
+    },
+    [filesystemReadCapability],
+    { maxConcurrent: 1 }
+  )
+
+  const handle = await Effect.runPromise(
+    fixture.service.spawn({
+      script: "./worker-one.ts",
+      ownerScope: "scope-main",
+      inputSchema: EchoIn,
+      outputSchema: EchoOut,
+      context,
+      capabilities: [filesystemReadCapability]
+    })
+  )
+  const busy = await Effect.runPromiseExit(
+    fixture.service.spawn({
+      script: "./worker-two.ts",
+      ownerScope: "scope-main",
+      inputSchema: EchoIn,
+      outputSchema: EchoOut,
+      context,
+      capabilities: [filesystemReadCapability]
+    })
+  )
+  const otherScope = await Effect.runPromise(
+    fixture.service.spawn({
+      script: "./worker-three.ts",
+      ownerScope: "scope-other",
+      inputSchema: EchoIn,
+      outputSchema: EchoOut,
+      context,
+      capabilities: [filesystemReadCapability]
+    })
+  )
+
+  expectFailure(busy, WorkerResourceBusyError)
+  expect(spawnCalls).toBe(2)
+  expect(otherScope.resource.id).not.toBe(handle.resource.id)
+})
+
+test("Worker releases the per-scope budget after adapter failure", async () => {
+  const replacement = await makeFakeRuntime()
+  let spawnCalls = 0
+  const fixture = await makeFixture(
+    {
+      spawn: () => {
+        spawnCalls += 1
+        return spawnCalls === 1
+          ? Effect.fail(
+              new WorkerChannelError({
+                operation: "Worker.spawn",
+                field: "transport",
+                script: "./worker.ts",
+                message: "adapter failed",
+                cause: Option.none()
+              })
+            )
+          : Effect.succeed(replacement)
+      }
+    },
+    [filesystemReadCapability],
+    { maxConcurrent: 1 }
+  )
+
+  const failed = await Effect.runPromiseExit(
+    fixture.service.spawn({
+      script: "./worker-one.ts",
+      ownerScope: "scope-main",
+      inputSchema: EchoIn,
+      outputSchema: EchoOut,
+      context,
+      capabilities: [filesystemReadCapability]
+    })
+  )
+  const handle = await Effect.runPromise(
+    fixture.service.spawn({
+      script: "./worker-two.ts",
+      ownerScope: "scope-main",
+      inputSchema: EchoIn,
+      outputSchema: EchoOut,
+      context,
+      capabilities: [filesystemReadCapability]
+    })
+  )
+
+  expectFailure(failed, WorkerChannelError)
+  expect(spawnCalls).toBe(2)
+  expect(handle.resource.id.length).toBeGreaterThan(0)
 })
 
 test("Worker validates malformed sends before transmission", async () => {
