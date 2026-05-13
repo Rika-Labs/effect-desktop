@@ -36,7 +36,7 @@
     {
       "name": "BridgeClientEvent",
       "kind": "type",
-      "signature": "export type BridgeClientEvent<Spec extends BridgeRpcEventSpec> = Stream.Stream< Schema.Schema.Type<Spec[\"payload\"]>, HostProtocolError, never >"
+      "signature": "export type BridgeClientEvent<Spec extends BridgeRpcEventSpec> = Stream.Stream< BridgeRpcCodecType<Spec[\"payload\"]>, HostProtocolError, never >"
     },
     {
       "name": "BridgeClientExchange",
@@ -51,7 +51,7 @@
     {
       "name": "BridgeClientMethod",
       "kind": "type",
-      "signature": "export type BridgeClientMethod<Spec extends BridgeRpcMethodSpec> = Spec[\"output\"] extends BridgeRpcStreamSpec ? undefined extends Schema.Schema.Type<Spec[\"input\"]> ? ( input?: Schema.Schema.Type<Spec[\"input\"]> ) => Stream.Stream< Schema.Schema.Type<Spec[\"output\"][\"chunk\"]>, Schema.Schema.Type<Spec[\"output\"][\"error\"]> | HostProtocolError, never > : ( input: Schema.Schema.Type<Spec[\"input\"]> ) => Stream.Stream< Schema.Schema.Type<Spec[\"output\"][\"chunk\"]>, Schema.Schema.Type<Spec[\"output\"][\"error\"]> | HostProtocolError, never > : undefined extends Schema.Schema.Type<Spec[\"input\"]> ? ( input?: Schema.Schema.Type<Spec[\"input\"]> ) => Effect.Effect< Schema.Schema.Type<Extract<Spec[\"output\"], Schema.Schema<unknown>>>, Schema.Schema.Type<Spec[\"error\"]> | HostProtocolError, never > : ( input: Schema.Schema.Type<Spec[\"input\"]> ) => Effect.Effect< Schema.Schema.Type<Extract<Spec[\"output\"], Schema.Schema<unknown>>>, Schema.Schema.Type<Spec[\"error\"]> | HostProtocolError, never >"
+      "signature": "export type BridgeClientMethod<Spec extends BridgeRpcMethodSpec> = Spec[\"output\"] extends BridgeRpcStreamSpec ? undefined extends BridgeRpcCodecType<Spec[\"input\"]> ? ( input?: BridgeRpcCodecType<Spec[\"input\"]> ) => Stream.Stream< BridgeRpcCodecType<Spec[\"output\"][\"chunk\"]>, BridgeRpcCodecType<Spec[\"output\"][\"error\"]> | HostProtocolError, never > : ( input: BridgeRpcCodecType<Spec[\"input\"]> ) => Stream.Stream< BridgeRpcCodecType<Spec[\"output\"][\"chunk\"]>, BridgeRpcCodecType<Spec[\"output\"][\"error\"]> | HostProtocolError, never > : undefined extends BridgeRpcCodecType<Spec[\"input\"]> ? ( input?: BridgeRpcCodecType<Spec[\"input\"]> ) => Effect.Effect< BridgeRpcCodecType<Extract<Spec[\"output\"], BridgeRpcCodec>>, BridgeRpcCodecType<Spec[\"error\"]> | HostProtocolError, never > : ( input: BridgeRpcCodecType<Spec[\"input\"]> ) => Effect.Effect< BridgeRpcCodecType<Extract<Spec[\"output\"], BridgeRpcCodec>>, BridgeRpcCodecType<Spec[\"error\"]> | HostProtocolError, never >"
     },
     {
       "name": "BridgeClientOptions",
@@ -71,7 +71,7 @@
     {
       "name": "BridgeEventHub",
       "kind": "interface",
-      "signature": "export interface BridgeEventHub { readonly exchange: { readonly subscribe: ( method: string ) => Stream.Stream<HostProtocolEventEnvelope, HostProtocolError, never> } readonly publish: < Events extends BridgeRpcEvents, Contract extends ContractWithEvents<Events>, Event extends keyof Events >( contract: Contract, event: Event, payload: Schema.Schema.Type<Events[Event][\"payload\"]> ) => Effect.Effect<void, HostProtocolError, never> }"
+      "signature": "export interface BridgeEventHub { readonly exchange: { readonly subscribe: ( method: string ) => Stream.Stream<HostProtocolEventEnvelope, HostProtocolError, never> } readonly publish: < Events extends BridgeRpcEvents, Contract extends ContractWithEvents<Events>, Event extends keyof Events >( contract: Contract, event: Event, payload: BridgeRpcCodecType<Events[Event][\"payload\"]> ) => Effect.Effect<void, HostProtocolError, never> }"
     },
     {
       "name": "BridgeEventHubOptions",
@@ -91,7 +91,17 @@
     {
       "name": "BridgeRpc",
       "kind": "value",
-      "signature": "const BridgeRpc: Readonly<{ Stream: <Chunk extends Schema.Schema<unknown>, Error extends Schema.Schema<unknown>>(chunk: Chunk, error: Error, backpressure?: BackpressureSpec) => BridgeRpcStreamSpec & { readonly chunk: Chunk; readonly error: Error; }; group: <Tag extends string, Spec extends BridgeRpcSpec, Events extends BridgeRpcEvents>(tag: Tag, spec: Spec, events: Events) => BridgeRpcGroup<Tag, Spec, Events>; fromGroup: <Tag extends string, Group extends RpcGroupWithRequests, Events extends BridgeRpcEvents>(tag: Tag, group: Group, events: Events) => BridgeRpcGroup<Tag, BridgeRpcSpec, Events>; layer: <Tag extends string, Spec extends BridgeRpcSpec, Events extends BridgeRpcEvents>(group: BridgeRpcGroup<Tag, Spec, Events>) => <Handlers extends BridgeRpcHandlers<Spec>>(handlers: Handlers) => BridgeRpcLayer<Tag, Spec, Handlers, Events>; }>"
+      "signature": "const BridgeRpc: Readonly<{ Stream: <Chunk extends BridgeRpcCodec, Error extends BridgeRpcCodec>(chunk: Chunk, error: Error, backpressure?: BackpressureSpec) => BridgeRpcStreamSpec<Chunk, Error> & { readonly chunk: Chunk; readonly error: Error; }; group: <Tag extends string, Spec extends BridgeRpcSpec, Events extends BridgeRpcEvents>(tag: Tag, spec: Spec, events: Events) => BridgeRpcGroup<Tag, Spec, Events>; fromGroup: <Tag extends string, Group extends RpcGroupWithRequests, Events extends BridgeRpcEvents>(tag: Tag, group: Group, events: Events) => BridgeRpcGroup<Tag, BridgeRpcSpec, Events>; layer: <Tag extends string, Spec extends BridgeRpcSpec, Events extends BridgeRpcEvents>(group: BridgeRpcGroup<Tag, Spec, Events>) => <Handlers extends BridgeRpcHandlers<Spec>>(handlers: Handlers) => BridgeRpcLayer<Tag, Spec, Handlers, Events>; }>"
+    },
+    {
+      "name": "BridgeRpcCodec",
+      "kind": "type",
+      "signature": "export type BridgeRpcCodec<Type = unknown, Encoded = unknown> = Schema.Codec< Type, Encoded, never, never >"
+    },
+    {
+      "name": "BridgeRpcCodecType",
+      "kind": "type",
+      "signature": "export type BridgeRpcCodecType<Codec extends BridgeRpcCodec> = Codec[\"Type\"]"
     },
     {
       "name": "BridgeRpcEvents",
@@ -101,7 +111,7 @@
     {
       "name": "BridgeRpcEventSpec",
       "kind": "interface",
-      "signature": "export interface BridgeRpcEventSpec { readonly payload: Schema.Schema<unknown> readonly backpressure?: BackpressureSpec }"
+      "signature": "export interface BridgeRpcEventSpec<Payload extends BridgeRpcCodec = BridgeRpcCodec> { readonly payload: Payload readonly backpressure?: BackpressureSpec }"
     },
     {
       "name": "BridgeRpcGroup",
@@ -111,7 +121,7 @@
     {
       "name": "BridgeRpcHandlers",
       "kind": "type",
-      "signature": "export type BridgeRpcHandlers<Spec extends BridgeRpcSpec> = { readonly [Method in keyof Spec]: ( input: Schema.Schema.Type<Spec[Method][\"input\"]> ) => Spec[Method][\"output\"] extends BridgeRpcStreamSpec ? BridgeRpcOutputType<Spec[Method][\"output\"]> : Effect.Effect< BridgeRpcOutputType<Spec[Method][\"output\"]>, Schema.Schema.Type<Spec[Method][\"error\"]>, unknown > }"
+      "signature": "export type BridgeRpcHandlers<Spec extends BridgeRpcSpec> = { readonly [Method in keyof Spec]: ( input: BridgeRpcCodecType<Spec[Method][\"input\"]> ) => Spec[Method][\"output\"] extends BridgeRpcStreamSpec ? BridgeRpcOutputType<Spec[Method][\"output\"]> : Effect.Effect< BridgeRpcOutputType<Spec[Method][\"output\"]>, BridgeRpcCodecType<Spec[Method][\"error\"]>, unknown > }"
     },
     {
       "name": "BridgeRpcLayer",
@@ -126,7 +136,7 @@
     {
       "name": "BridgeRpcMethodSpec",
       "kind": "interface",
-      "signature": "export interface BridgeRpcMethodSpec { readonly input: Schema.Schema<unknown> readonly output: Schema.Schema<unknown> | BridgeRpcStreamSpec readonly error: Schema.Schema<unknown> readonly permission?: string readonly timeoutMs?: number readonly cachedResultMs?: number readonly idempotent?: boolean readonly cancellable?: boolean readonly backpressure?: BackpressureSpec readonly support?: RpcSupportMetadata }"
+      "signature": "export interface BridgeRpcMethodSpec< Input extends BridgeRpcCodec = BridgeRpcCodec, Output extends BridgeRpcCodec | BridgeRpcStreamSpec = BridgeRpcCodec | BridgeRpcStreamSpec, Error extends BridgeRpcCodec = BridgeRpcCodec > { readonly input: Input readonly output: Output readonly error: Error readonly permission?: string readonly timeoutMs?: number readonly cachedResultMs?: number readonly idempotent?: boolean readonly cancellable?: boolean readonly backpressure?: BackpressureSpec readonly support?: RpcSupportMetadata }"
     },
     {
       "name": "BridgeRpcSpec",
@@ -141,7 +151,7 @@
     {
       "name": "BridgeRpcStreamSpec",
       "kind": "interface",
-      "signature": "export interface BridgeRpcStreamSpec { readonly _tag: \"BridgeRpcStreamSpec\" readonly chunk: Schema.Schema<unknown> readonly error: Schema.Schema<unknown> readonly backpressure?: BackpressureSpec }"
+      "signature": "export interface BridgeRpcStreamSpec< Chunk extends BridgeRpcCodec = BridgeRpcCodec, Error extends BridgeRpcCodec = BridgeRpcCodec > { readonly _tag: \"BridgeRpcStreamSpec\" readonly chunk: Chunk readonly error: Error readonly backpressure?: BackpressureSpec }"
     },
     {
       "name": "BridgeStreamBackpressureMetrics",

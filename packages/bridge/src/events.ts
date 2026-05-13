@@ -2,6 +2,8 @@ import { Effect, Queue, Schema, Stream } from "effect"
 
 import {
   type BridgeRpcGroup,
+  type BridgeRpcCodec,
+  type BridgeRpcCodecType,
   type BridgeRpcEvents,
   type BridgeRpcSpec,
   type BridgeRpcEventSpec
@@ -42,7 +44,7 @@ export interface BridgeEventHub {
   >(
     contract: Contract,
     event: Event,
-    payload: Schema.Schema.Type<Events[Event]["payload"]>
+    payload: BridgeRpcCodecType<Events[Event]["payload"]>
   ) => Effect.Effect<void, HostProtocolError, never>
 }
 
@@ -127,7 +129,7 @@ const publish = <Events extends BridgeRpcEvents, Event extends keyof Events>(
   options: ResolvedBridgeEventHubOptions,
   contract: ContractWithEvents<Events>,
   event: Event,
-  payload: Schema.Schema.Type<Events[Event]["payload"]>
+  payload: BridgeRpcCodecType<Events[Event]["payload"]>
 ): Effect.Effect<void, HostProtocolError, never> =>
   Effect.gen(function* () {
     const method = eventName(contract.tag, String(event))
@@ -139,7 +141,7 @@ const publish = <Events extends BridgeRpcEvents, Event extends keyof Events>(
       )
     }
 
-    const encodedPayload = yield* encodeEventPayload(method, channel.spec, payload)
+    const encodedPayload = yield* encodeEventPayload(method, channel.spec.payload, payload)
     const timestamp = yield* validateHostProtocolTimestamp(options.now(), method)
     const traceId = yield* validateHostProtocolNonEmptyString(
       "traceId",
@@ -192,18 +194,15 @@ const offerEvent = (
     yield* Queue.offer(eventQueue.queue, envelope)
   })
 
-const encodeEventPayload = <Spec extends BridgeRpcEventSpec>(
+const encodeEventPayload = <Type, Encoded>(
   operation: string,
-  spec: Spec,
-  payload: Schema.Schema.Type<Spec["payload"]>
-): Effect.Effect<Schema.Codec.Encoded<Spec["payload"]>, HostProtocolError, never> =>
-  Effect.mapError(
-    Schema.encodeEffect(spec.payload)(payload, StrictParseOptions) as Effect.Effect<
-      Schema.Codec.Encoded<Spec["payload"]>,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+  schema: BridgeRpcCodec<Type, Encoded>,
+  payload: Type
+): Effect.Effect<Encoded, HostProtocolError, never> =>
+  Schema.encodeEffect(schema)(payload, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
   )
 
 const resolveOptions = (options: BridgeEventHubOptions): ResolvedBridgeEventHubOptions => ({

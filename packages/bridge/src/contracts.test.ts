@@ -405,9 +405,12 @@ test("BridgeRpc.fromGroup derives bridge runtime metadata from RpcGroup contract
   ])
   expect(Object.keys(NotesRpcs.spec).sort()).toEqual(["list", "open", "process", "watch"])
   expect(NotesRpcs.spec["open"]?.permission).toBe("notes:open")
-  expect(NotesRpcs.spec["process"]?.output).toBe(
-    successSchema(request(NotesRpcs, "Test.FromGroup.process"))
-  )
+  expect(
+    Object.is(
+      NotesRpcs.spec["process"]?.output,
+      successSchema(request(NotesRpcs, "Test.FromGroup.process"))
+    )
+  ).toBe(true)
   expect(NotesRpcs.spec["open"]?.support).toEqual({
     status: "unsupported",
     reason: "host adapter does not implement open yet"
@@ -442,6 +445,23 @@ test("BridgeRpc.fromGroup validates annotation-derived bridge metadata", () => {
   expect(() =>
     BridgeRpc.fromGroup("Test.FromGroup", RpcGroup.make(EmptySupportReason), {})
   ).toThrow(InvalidBridgeRpcSpec)
+})
+
+test("BridgeRpc.fromGroup requires pure Rpc schemas", () => {
+  type DecodeService = { readonly _tag: "DecodeService" }
+  const ServicefulPayload = Schema.String as Schema.Codec<string, string, DecodeService, never>
+  const ServicefulRpc = Rpc.make("Test.FromGroup.serviceful", {
+    payload: ServicefulPayload,
+    success: Schema.String
+  })
+
+  const compileOnly = () => {
+    // @ts-expect-error bridge runtimes cannot provide schema services while decoding host payloads
+    BridgeRpc.fromGroup("Test.FromGroup", RpcGroup.make(ServicefulRpc), {})
+  }
+
+  expect(compileOnly).toBeFunction()
+  expect(ServicefulRpc._tag).toBe("Test.FromGroup.serviceful")
 })
 
 const validMethodSpec = () => ({

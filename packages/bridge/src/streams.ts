@@ -17,6 +17,7 @@ import {
   type BridgeRpcSpec,
   type BridgeRpcLayer,
   type BridgeRpcMethodSpec,
+  type BridgeRpcCodec,
   type BridgeRpcStreamSpec,
   type BackpressureSpec,
   isStreamSpec
@@ -493,7 +494,7 @@ const streamDispatch = (
 
   return Stream.unwrap(
     Effect.gen(function* () {
-      const input = yield* decodeInput(request.method, bound.spec, request.payload)
+      const input = yield* decodeInput(request.method, bound.spec.input, request.payload)
       yield* options.registry.gcExpired(options.now())
       const streamId = options.nextStreamId()
       if (typeof streamId !== "string" || streamId.length === 0) {
@@ -736,7 +737,7 @@ const encodeChunkFrame = (
   options: ResolvedBridgeStreamRuntimeOptions
 ): Effect.Effect<HostProtocolStreamEnvelope, HostProtocolError, never> =>
   Effect.gen(function* () {
-    const encodedChunk = yield* encodeStreamChunk(request.method, spec, chunk)
+    const encodedChunk = yield* encodeStreamChunk(request.method, spec.chunk, chunk)
 
     return yield* streamFrame(
       request,
@@ -761,7 +762,7 @@ const encodeErrorFrame = (
       return yield* protocolErrorFrame(request, streamId, options, protocolError.value)
     }
 
-    const encoded = yield* encodeStreamError(request.method, spec, error).pipe(
+    const encoded = yield* encodeStreamError(request.method, spec.error, error).pipe(
       Effect.catch((hostProtocolError: HostProtocolError) =>
         protocolErrorFrame(request, streamId, options, hostProtocolError)
       )
@@ -834,52 +835,39 @@ const protocolErrorFrame = (
 const decodeHostProtocolError = (
   error: unknown
 ): Effect.Effect<HostProtocolError, unknown, never> =>
-  Schema.decodeUnknownEffect(HostProtocolErrorSchema)(error, StrictParseOptions) as Effect.Effect<
-    HostProtocolError,
-    unknown,
-    never
-  >
+  Schema.decodeUnknownEffect(HostProtocolErrorSchema)(error, StrictParseOptions)
 
-const decodeInput = (
+const decodeInput = <Type, Encoded>(
   operation: string,
-  spec: BridgeRpcMethodSpec,
+  schema: BridgeRpcCodec<Type, Encoded>,
   payload: unknown
-): Effect.Effect<unknown, HostProtocolError, never> =>
-  Effect.mapError(
-    Schema.decodeUnknownEffect(spec.input)(payload, StrictParseOptions) as Effect.Effect<
-      unknown,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+): Effect.Effect<Type, HostProtocolError, never> =>
+  Schema.decodeUnknownEffect(schema)(payload, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
   )
 
-const encodeStreamChunk = (
+const encodeStreamChunk = <Type, Encoded>(
   operation: string,
-  spec: BridgeRpcStreamSpec,
+  schema: BridgeRpcCodec<Type, Encoded>,
   chunk: unknown
-): Effect.Effect<unknown, HostProtocolError, never> =>
-  Effect.mapError(
-    Schema.encodeEffect(spec.chunk)(chunk, StrictParseOptions) as Effect.Effect<
-      unknown,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+): Effect.Effect<Encoded, HostProtocolError, never> =>
+  Schema.encodeUnknownEffect(schema)(chunk, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+    )
   )
 
-const encodeStreamError = (
+const encodeStreamError = <Type, Encoded>(
   operation: string,
-  spec: BridgeRpcStreamSpec,
+  schema: BridgeRpcCodec<Type, Encoded>,
   error: unknown
-): Effect.Effect<unknown, HostProtocolError, never> =>
-  Effect.mapError(
-    Schema.encodeEffect(spec.error)(error, StrictParseOptions) as Effect.Effect<
-      unknown,
-      unknown,
-      never
-    >,
-    (schemaError) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(schemaError))
+): Effect.Effect<Encoded, HostProtocolError, never> =>
+  Schema.encodeUnknownEffect(schema)(error, StrictParseOptions).pipe(
+    Effect.mapError((schemaError) =>
+      makeHostProtocolInvalidOutputError(operation, formatUnknownError(schemaError))
+    )
   )
 
 const resolveOptions = (

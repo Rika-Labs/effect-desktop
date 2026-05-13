@@ -10,10 +10,22 @@ import {
   type RpcSupportMetadata
 } from "./rpc-endpoint.js"
 
-export interface BridgeRpcMethodSpec {
-  readonly input: Schema.Schema<unknown>
-  readonly output: Schema.Schema<unknown> | BridgeRpcStreamSpec
-  readonly error: Schema.Schema<unknown>
+export type BridgeRpcCodec<Type = unknown, Encoded = unknown> = Schema.Codec<
+  Type,
+  Encoded,
+  never,
+  never
+>
+export type BridgeRpcCodecType<Codec extends BridgeRpcCodec> = Codec["Type"]
+
+export interface BridgeRpcMethodSpec<
+  Input extends BridgeRpcCodec = BridgeRpcCodec,
+  Output extends BridgeRpcCodec | BridgeRpcStreamSpec = BridgeRpcCodec | BridgeRpcStreamSpec,
+  Error extends BridgeRpcCodec = BridgeRpcCodec
+> {
+  readonly input: Input
+  readonly output: Output
+  readonly error: Error
   readonly permission?: string
   readonly timeoutMs?: number
   readonly cachedResultMs?: number
@@ -23,28 +35,39 @@ export interface BridgeRpcMethodSpec {
   readonly support?: RpcSupportMetadata
 }
 
-export interface BridgeRpcEventSpec {
-  readonly payload: Schema.Schema<unknown>
+export interface BridgeRpcEventSpec<Payload extends BridgeRpcCodec = BridgeRpcCodec> {
+  readonly payload: Payload
   readonly backpressure?: BackpressureSpec
 }
 
-export interface BridgeRpcStreamSpec {
+export interface BridgeRpcStreamSpec<
+  Chunk extends BridgeRpcCodec = BridgeRpcCodec,
+  Error extends BridgeRpcCodec = BridgeRpcCodec
+> {
   readonly _tag: "BridgeRpcStreamSpec"
-  readonly chunk: Schema.Schema<unknown>
-  readonly error: Schema.Schema<unknown>
+  readonly chunk: Chunk
+  readonly error: Error
   readonly backpressure?: BackpressureSpec
 }
 
 type BridgeRpcOutputType<Output> = Output extends BridgeRpcStreamSpec
-  ? Stream.Stream<Schema.Schema.Type<Output["chunk"]>, Schema.Schema.Type<Output["error"]>, unknown>
-  : Output extends Schema.Schema<unknown>
-    ? Schema.Schema.Type<Output>
+  ? Stream.Stream<BridgeRpcCodecType<Output["chunk"]>, BridgeRpcCodecType<Output["error"]>, unknown>
+  : Output extends BridgeRpcCodec
+    ? BridgeRpcCodecType<Output>
     : never
 
 export interface BackpressureSpec {
   readonly strategy: "buffer" | "drop" | "block"
   readonly size?: number
   readonly overflow?: "error" | "dropOldest" | "dropNewest" | "block"
+}
+
+type BridgeRpcStreamSchema = RpcSchema.Stream<BridgeRpcCodec, BridgeRpcCodec>
+type BridgeRpcSuccessSchema = BridgeRpcCodec | BridgeRpcStreamSchema
+type BridgeRpcWithSchemas = Rpc.Any & {
+  readonly payloadSchema: BridgeRpcCodec
+  readonly successSchema: BridgeRpcSuccessSchema
+  readonly errorSchema: BridgeRpcCodec
 }
 
 export type BridgeRpcSpec = Readonly<Record<string, BridgeRpcMethodSpec>>
@@ -60,18 +83,19 @@ export interface BridgeRpcGroup<
   readonly events: Events
 }
 
-type RpcGroupWithRequests = RpcGroup.Any & {
-  readonly requests: ReadonlyMap<string, Rpc.Any>
-}
+type RpcGroupWithRequests<Rpcs extends BridgeRpcWithSchemas = BridgeRpcWithSchemas> =
+  RpcGroup.Any & {
+    readonly requests: ReadonlyMap<string, Rpcs>
+  }
 
 export type BridgeRpcHandlers<Spec extends BridgeRpcSpec> = {
   readonly [Method in keyof Spec]: (
-    input: Schema.Schema.Type<Spec[Method]["input"]>
+    input: BridgeRpcCodecType<Spec[Method]["input"]>
   ) => Spec[Method]["output"] extends BridgeRpcStreamSpec
     ? BridgeRpcOutputType<Spec[Method]["output"]>
     : Effect.Effect<
         BridgeRpcOutputType<Spec[Method]["output"]>,
-        Schema.Schema.Type<Spec[Method]["error"]>,
+        BridgeRpcCodecType<Spec[Method]["error"]>,
         unknown
       >
 }
@@ -96,11 +120,11 @@ export class InvalidBridgeRpcSpec extends Data.TaggedError("InvalidBridgeRpcSpec
 export type BridgeRpcSpecError = InvalidBridgeRpcSpec
 
 export const BridgeRpc = Object.freeze({
-  Stream: <Chunk extends Schema.Schema<unknown>, Error extends Schema.Schema<unknown>>(
+  Stream: <Chunk extends BridgeRpcCodec, Error extends BridgeRpcCodec>(
     chunk: Chunk,
     error: Error,
     backpressure?: BackpressureSpec
-  ): BridgeRpcStreamSpec & {
+  ): BridgeRpcStreamSpec<Chunk, Error> & {
     readonly chunk: Chunk
     readonly error: Error
   } =>
@@ -449,46 +473,36 @@ const bridgeMethodToRpc = (tag: string, method: string, spec: BridgeRpcMethodSpe
   return annotateBridgeMethodRpc(rpc, spec)
 }
 
-interface RpcWithSchemas extends Rpc.Any {
-  readonly payloadSchema: Schema.Schema<unknown>
-  readonly successSchema: Schema.Schema<unknown>
-  readonly errorSchema: Schema.Schema<unknown>
-}
-
-const rpcToBridgeMethodSpec = (rpc: Rpc.Any): BridgeRpcMethodSpec => {
-  const rpcWithSchemas = rpc as RpcWithSchemas
-  const streamSchemas = streamSchemasFromRpcSuccess(rpcWithSchemas.successSchema)
+const rpcToBridgeMethodSpec = (rpc: BridgeRpcWithSchemas): BridgeRpcMethodSpec => {
+  const streamSchemas = streamSchemasFromRpcSuccess(rpc.successSchema)
   const capability = rpcCapability(rpc)
   const support = rpcSupport(rpc)
   const output = Option.isSome(streamSchemas)
     ? BridgeRpc.Stream(streamSchemas.value.success, streamSchemas.value.error)
-    : rpcWithSchemas.successSchema
+    : rpc.successSchema
 
   return Object.freeze({
-    input: rpcWithSchemas.payloadSchema,
+    input: rpc.payloadSchema,
     output,
-    error: Option.isSome(streamSchemas) ? streamSchemas.value.error : rpcWithSchemas.errorSchema,
+    error: Option.isSome(streamSchemas) ? streamSchemas.value.error : rpc.errorSchema,
     ...(Option.isSome(capability) ? { permission: capability.value.kind } : {}),
     ...(support.status === "supported" ? {} : { support })
   })
 }
 
-interface RpcStreamSchema extends Schema.Schema<unknown> {
-  readonly success: Schema.Schema<unknown>
-  readonly error: Schema.Schema<unknown>
-}
+const isBridgeRpcStreamSchema = (schema: BridgeRpcSuccessSchema): schema is BridgeRpcStreamSchema =>
+  RpcSchema.isStreamSchema(schema)
 
 const streamSchemasFromRpcSuccess = (
-  schema: Schema.Schema<unknown>
+  schema: BridgeRpcSuccessSchema
 ): Option.Option<{
-  readonly success: Schema.Schema<unknown>
-  readonly error: Schema.Schema<unknown>
+  readonly success: BridgeRpcCodec
+  readonly error: BridgeRpcCodec
 }> => {
-  if (!RpcSchema.isStreamSchema(schema)) {
+  if (!isBridgeRpcStreamSchema(schema)) {
     return Option.none()
   }
-  const stream = schema as RpcStreamSchema
-  return Option.some({ success: stream.success, error: stream.error })
+  return Option.some({ success: schema.success, error: schema.error })
 }
 
 const bridgeEventToRpc = (tag: string, event: string, spec: BridgeRpcEventSpec): Rpc.Any =>
@@ -499,8 +513,8 @@ const bridgeEventToRpc = (tag: string, event: string, spec: BridgeRpcEventSpec):
   })
 
 const bridgeMethodSuccessSchema = (
-  output: Schema.Schema<unknown> | BridgeRpcStreamSpec
-): Schema.Schema<unknown> => {
+  output: BridgeRpcCodec | BridgeRpcStreamSpec
+): BridgeRpcCodec => {
   if (isStreamSpec(output)) {
     return output.chunk
   }
@@ -523,7 +537,7 @@ const annotateBridgeMethodRpc = (rpc: Rpc.Any, spec: BridgeRpcMethodSpec): Rpc.A
     : RpcSupport.unsupported(spec.support.reason)(capabilityRpc)
 }
 
-const isSchema = (value: unknown): value is Schema.Schema<unknown> => {
+const isSchema = (value: unknown): value is BridgeRpcCodec => {
   return (
     (typeof value === "object" || typeof value === "function") && value !== null && "ast" in value
   )
