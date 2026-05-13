@@ -9,6 +9,7 @@ import {
   RendererOriginAuth,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
+  RpcCapability,
   rpcSupport,
   type BridgeClientExchange,
   type BridgeClientResponse,
@@ -29,6 +30,7 @@ import {
   makePermissionRegistry,
   makeResourceRegistry,
   type AuditEventsApi,
+  type CommandRegistryApi,
   type DesktopRpcClient,
   type NormalizedCapability,
   type ResourceId
@@ -46,7 +48,7 @@ import {
   Scope,
   Stream
 } from "effect"
-import type { RpcGroup } from "effect/unstable/rpc"
+import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
 import {
   App,
@@ -1581,13 +1583,12 @@ test("Menu bindCommand closes the command listener with its resource scope", asy
   const commands = await Effect.runPromise(makeCommandRegistry(resources, permissions))
   await Effect.runPromise(permissions.declare(menuCommandCapability, { source: "test" }))
   await Effect.runPromise(
-    commands.register({
+    registerTestCommand(commands, {
       id: "app.file.open",
-      inputSchema: Schema.Struct({
+      payload: Schema.Struct({
         itemId: Schema.String,
         windowId: Schema.optionalKey(Schema.String)
       }),
-      outputSchema: Schema.Void,
       capability: menuCommandCapability,
       ownerScope: "app",
       handler: (input) =>
@@ -2090,13 +2091,12 @@ test("ContextMenu bindCommand closes the command listener with its resource scop
   const commands = await Effect.runPromise(makeCommandRegistry(resources, permissions))
   await Effect.runPromise(permissions.declare(menuCommandCapability, { source: "test" }))
   await Effect.runPromise(
-    commands.register({
+    registerTestCommand(commands, {
       id: "app.file.open",
-      inputSchema: Schema.Struct({
+      payload: Schema.Struct({
         itemId: Schema.String,
         windowId: Schema.String
       }),
-      outputSchema: Schema.Void,
       capability: menuCommandCapability,
       ownerScope: "app",
       handler: (input) =>
@@ -5325,10 +5325,9 @@ test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar 
   await Effect.runPromise(permissions.declare(globalShortcutCommandCapability, { source: "test" }))
   let handlerCalls = 0
   await Effect.runPromise(
-    commands.register({
+    registerTestCommand(commands, {
       id: "openProject",
-      inputSchema: Schema.Void,
-      outputSchema: Schema.Void,
+      payload: Schema.Void,
       capability: globalShortcutCommandCapability,
       ownerScope: windowHandle.ownerScope,
       handler: () => {
@@ -5467,10 +5466,9 @@ test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar 
   await Effect.runPromise(permissions.declare(globalShortcutCommandCapability, { source: "test" }))
   let handlerCalls = 0
   await Effect.runPromise(
-    commands.register({
+    registerTestCommand(commands, {
       id: "openProject",
-      inputSchema: Schema.Void,
-      outputSchema: Schema.Void,
+      payload: Schema.Void,
       capability: globalShortcutCommandCapability,
       ownerScope: windowHandle.ownerScope,
       handler: () =>
@@ -7084,19 +7082,43 @@ const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
     })
 })
 
+const registerTestCommand = <Input>(
+  commands: CommandRegistryApi,
+  options: {
+    readonly id: string
+    readonly payload: Schema.Schema<Input>
+    readonly capability: NormalizedCapability
+    readonly ownerScope: string
+    readonly handler: (input: Input) => Effect.Effect<void, unknown, never>
+  }
+) => {
+  const tag = options.id
+  const Command = Rpc.make(tag, {
+    payload: options.payload,
+    success: Schema.Void,
+    error: Schema.Unknown
+  }).pipe(RpcCapability(options.capability))
+  const group = RpcGroup.make(Command)
+
+  return commands.registerGroup({
+    group,
+    ownerScope: options.ownerScope,
+    handlers: group.toLayerHandler(tag, options.handler)
+  })
+}
+
 const makeCommandBindingLayer = async (calls: unknown[] = []) => {
   const resources = await Effect.runPromise(makeResourceRegistry())
   const permissions = await Effect.runPromise(makePermissionRegistry())
   const commands = await Effect.runPromise(makeCommandRegistry(resources, permissions))
   await Effect.runPromise(permissions.declare(menuCommandCapability, { source: "test" }))
   await Effect.runPromise(
-    commands.register({
+    registerTestCommand(commands, {
       id: "app.file.open",
-      inputSchema: Schema.Struct({
+      payload: Schema.Struct({
         itemId: Schema.String,
         windowId: Schema.optionalKey(Schema.String)
       }),
-      outputSchema: Schema.Void,
       capability: menuCommandCapability,
       ownerScope: "app",
       handler: (input) =>

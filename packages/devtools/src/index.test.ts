@@ -15,6 +15,7 @@ import {
   PermissionContext,
   Process,
   ResourceRegistry,
+  RpcCapability,
   Telemetry,
   Worker,
   type NormalizedCapability,
@@ -27,6 +28,7 @@ import {
 } from "@effect-desktop/core"
 import { Cause, Deferred, Effect, Fiber, Layer, Option, Queue, Schema, Sink, Stream } from "effect"
 import { ChildProcessSpawner } from "effect/unstable/process"
+import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
 import {
   CommandsDevtools,
@@ -60,14 +62,18 @@ test("CommandsDevtools lists registered commands and observes invocation telemet
     })
   )
   await Effect.runPromise(permissions.declare(commandCapability, { source: "test" }))
+  const commandId = "app.file.open" as const
+  const Command = Rpc.make(commandId, {
+    payload: Schema.Struct({ path: Schema.String }),
+    success: Schema.Void,
+    error: Schema.Unknown
+  }).pipe(RpcCapability(commandCapability))
+  const Commands = RpcGroup.make(Command)
   await Effect.runPromise(
-    commands.register({
-      id: "app.file.open",
-      inputSchema: Schema.Struct({ path: Schema.String }),
-      outputSchema: Schema.Void,
-      capability: commandCapability,
+    commands.registerGroup({
+      group: Commands,
       ownerScope: "app",
-      handler: () => Effect.void
+      handlers: Commands.toLayerHandler(commandId, () => Effect.void)
     })
   )
 

@@ -179,14 +179,14 @@
       "signature": "export type CapabilityKind = typeof CapabilityKind.Type"
     },
     {
+      "name": "CommandGroupRegistration",
+      "kind": "interface",
+      "signature": "export interface CommandGroupRegistration<Group extends RpcGroup.Any & RpcGroupWithRequests, E, R> { readonly group: Group readonly handlers: Layer.Layer<Rpc.ToHandler<RpcGroup.Rpcs<Group>>, E, R> readonly ownerScope: ScopeId }"
+    },
+    {
       "name": "CommandInvocationRecord",
       "kind": "class",
       "signature": "export class CommandInvocationRecord extends Schema.Class<CommandInvocationRecord>( \"CommandInvocationRecord\" )({ commandId: Schema.String, actor: Schema.Unknown, traceId: NonEmptyString, outcome: Schema.Literals([\"success\", \"failure\", \"committed-audit-failure\"]), timestamp: NonNegativeInt, durationMs: NonNegativeInt, errorTag: Schema.optionalKey(NonEmptyString) }) {}"
-    },
-    {
-      "name": "CommandRegistration",
-      "kind": "interface",
-      "signature": "export interface CommandRegistration<I, O> { readonly id: string readonly inputSchema: Schema.Schema<I> readonly outputSchema: Schema.Schema<O> readonly capability: NormalizedCapability readonly ownerScope: ScopeId readonly handler: (input: I) => Effect.Effect<O, unknown, never> }"
     },
     {
       "name": "CommandRegistry",
@@ -196,7 +196,7 @@
     {
       "name": "CommandRegistryApi",
       "kind": "interface",
-      "signature": "export interface CommandRegistryApi { readonly register: <I, O>( registration: CommandRegistration<I, O> ) => Effect.Effect<ResourceHandle<\"command\", \"registered\">, CommandRegistryError, never> readonly unregister: (id: string) => Effect.Effect<void, CommandRegistryError, never> readonly invoke: ( id: string, input: unknown, context: PermissionContext ) => Effect.Effect<unknown, CommandRegistryError, never> readonly list: () => Effect.Effect<readonly CommandSnapshot[], never, never> readonly observeInvocations: () => Stream.Stream<CommandInvocationRecord, never, never> }"
+      "signature": "export interface CommandRegistryApi { readonly registerGroup: <Group extends RpcGroup.Any & RpcGroupWithRequests, E, R>( registration: CommandGroupRegistration<Group, E, R> ) => Effect.Effect<ResourceHandle<\"command-group\", \"registered\">, CommandRegistryError | E, R> readonly unregister: (id: string) => Effect.Effect<void, CommandRegistryError, never> readonly invoke: ( id: string, input: unknown, context: PermissionContext ) => Effect.Effect<unknown, CommandRegistryError, never> readonly list: () => Effect.Effect<readonly CommandSnapshot[], never, never> readonly observeInvocations: () => Stream.Stream<CommandInvocationRecord, never, never> }"
     },
     {
       "name": "CommandRegistryAuditFailedError",
@@ -221,7 +221,7 @@
     {
       "name": "CommandRegistryError",
       "kind": "type",
-      "signature": "export type CommandRegistryError = | CommandRegistryInvalidInputError | CommandRegistryInvalidOutputError | CommandRegistryCommandNotFoundError | CommandRegistryCommandAlreadyRegisteredError | CommandRegistryRegistrationLostError | CommandRegistryHandlerFailureError | CommandRegistryAuditFailedError | CommandRegistryCommittedAuditFailedError | PermissionRegistryError"
+      "signature": "export type CommandRegistryError = | CommandRegistryInvalidInputError | CommandRegistryCommandNotFoundError | CommandRegistryCommandAlreadyRegisteredError | CommandRegistryRegistrationLostError | CommandRegistryHandlerFailureError | CommandRegistryAuditFailedError | CommandRegistryCommittedAuditFailedError | PermissionDenied"
     },
     {
       "name": "CommandRegistryHandlerFailureError",
@@ -232,11 +232,6 @@
       "name": "CommandRegistryInvalidInputError",
       "kind": "class",
       "signature": "export class CommandRegistryInvalidInputError extends Data.TaggedError(\"InvalidInput\")<{ readonly operation: string readonly commandId: Option.Option<string> readonly field: string readonly message: string readonly cause: Option.Option<unknown> }> {}"
-    },
-    {
-      "name": "CommandRegistryInvalidOutputError",
-      "kind": "class",
-      "signature": "export class CommandRegistryInvalidOutputError extends Data.TaggedError(\"InvalidOutput\")<{ readonly operation: string readonly commandId: string readonly message: string readonly cause: Option.Option<unknown> }> {}"
     },
     {
       "name": "CommandRegistryOptions",
@@ -287,6 +282,11 @@
       "name": "DesktopAppOptions",
       "kind": "interface",
       "signature": "export interface DesktopAppOptions { readonly workflows?: readonly DesktopWorkflowLayer[] readonly permissions?: readonly NormalizedCapability[] }"
+    },
+    {
+      "name": "DesktopCommands",
+      "kind": "value",
+      "signature": "const DesktopCommands: Readonly<{ layer: <Group extends RpcGroup.Any & RpcGroupWithRequests, E, R>(group: Group, handlers: Layer.Layer<Rpc.ToHandler<RpcGroup.Rpcs<Group>>, E, R>, options?: { readonly ownerScope?: ScopeId; }) => Layer.Layer<never, CommandRegistryError | E, CommandRegistry | ResourceRegistry | R>; }>"
     },
     {
       "name": "DesktopConfig",

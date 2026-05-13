@@ -12,8 +12,13 @@ import {
   NormalizedCapability as NormalizedCapabilitySchema,
   PermissionActor,
   PermissionContext,
+  PermissionAuditFailedError,
+  PermissionDeniedError,
+  PermissionGrantNotFoundError,
+  PermissionInvalidArgumentError,
+  PermissionRegistry,
   type PermissionRegistryError,
-  PermissionRegistry
+  PermissionRevokedError
 } from "./permission-registry.js"
 
 export class DesktopConfigError extends Data.TaggedError("DesktopConfigError")<{
@@ -176,6 +181,9 @@ export interface PermissionInterceptorOptions {
   readonly actorKind?: "app" | "window" | "resource" | "worker" | "process"
 }
 
+const ActorKind = Schema.Literals(["app", "window", "resource", "worker", "process"])
+type ActorKind = typeof ActorKind.Type
+
 export class PermissionInterceptor extends RpcMiddleware.Service<PermissionInterceptor>()<
   "PermissionInterceptor",
   typeof PermissionDeniedSchema
@@ -200,13 +208,11 @@ export const makePermissionInterceptorLayer = (
         }
 
         return Effect.gen(function* () {
-          const windowId = rpcHeader(headers, "x-effect-desktop-window-id")
-          const actorId = windowId ?? fallbackActorId
-          const actorKind = windowId === undefined ? fallbackActorKind : ("window" as const)
+          const actor = rpcActor(headers, fallbackActorKind, fallbackActorId)
           const deniedCapability = permissionDeniedCapability(capabilityDecision)
           const context = yield* decodePermissionContext(
             {
-              actor: { kind: actorKind, id: actorId },
+              actor,
               traceId: rpcHeader(headers, "x-effect-desktop-trace-id") ?? nextTraceId()
             },
             deniedCapability,
@@ -224,10 +230,16 @@ export const makePermissionInterceptorLayer = (
             )
           }
           const capability = capabilityDecision.capability
-          yield* registry
+          const grant = yield* registry
             .check(capability, context)
             .pipe(Effect.mapError((error) => toPermissionDenied(error, capability)))
-          return yield* effect
+          return yield* registry
+            .use(grant, effect)
+            .pipe(
+              Effect.mapError((error) =>
+                isPermissionRegistryError(error) ? toPermissionDenied(error, capability) : error
+              )
+            )
         })
       }
     })
@@ -257,6 +269,27 @@ const decodeRpcCapabilityForMiddleware = (rpc: Rpc.AnyWithProps): RpcCapabilityD
 const rpcHeader = (headers: Readonly<Record<string, string>>, name: string): string | undefined => {
   const value = headers[name]
   return typeof value === "string" && value.length > 0 ? value : undefined
+}
+
+const rpcActor = (
+  headers: Readonly<Record<string, string>>,
+  fallbackKind: ActorKind,
+  fallbackId: string
+): { readonly kind: ActorKind; readonly id: string } => {
+  const explicitKind = Schema.decodeUnknownOption(ActorKind)(
+    rpcHeader(headers, "x-effect-desktop-actor-kind")
+  )
+  const explicitId = rpcHeader(headers, "x-effect-desktop-actor-id")
+  if (Option.isSome(explicitKind) && explicitId !== undefined) {
+    return { kind: explicitKind.value, id: explicitId }
+  }
+
+  const windowId = rpcHeader(headers, "x-effect-desktop-window-id")
+  if (windowId !== undefined) {
+    return { kind: "window", id: windowId }
+  }
+
+  return { kind: fallbackKind, id: fallbackId }
 }
 
 const decodePermissionContext = (
@@ -301,6 +334,13 @@ const toPermissionDenied = (
     message: error instanceof Error ? error.message : String(error)
   })
 }
+
+const isPermissionRegistryError = (error: unknown): error is PermissionRegistryError =>
+  error instanceof PermissionInvalidArgumentError ||
+  error instanceof PermissionDeniedError ||
+  error instanceof PermissionAuditFailedError ||
+  error instanceof PermissionGrantNotFoundError ||
+  error instanceof PermissionRevokedError
 
 export const validatePermissions = (
   declared: readonly NormalizedCapabilityType[],
