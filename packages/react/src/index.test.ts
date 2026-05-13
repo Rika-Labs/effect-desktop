@@ -341,6 +341,11 @@ test("ReactDesktop.useDesktop fails loudly without a generated root or renderer 
 })
 
 test("ReactDesktop.useDesktop exposes RpcSupport metadata on generated endpoints", () => {
+  type SupportedQueryEndpoint = {
+    readonly useQuery: unknown
+    readonly support: { readonly status: string }
+    readonly isSupported: boolean
+  }
   const Unsupported = Rpc.make("Notes.Unsupported", { success: Schema.String }).pipe(
     RpcEndpoint.query,
     RpcSupport.unsupported("host method is unavailable")
@@ -364,10 +369,11 @@ test("ReactDesktop.useDesktop exposes RpcSupport metadata on generated endpoints
   const rpcLayers = [NotesLayer]
   const Probe = () => {
     const notes = NotesReact.useDesktop(NotesRpcs)
+    const endpoint: SupportedQueryEndpoint = notes.unsupported
     return createElement(
       "span",
       null,
-      `${notes.unsupported.isSupported}:${notes.unsupported.support.status}`
+      `${endpoint.isSupported}:${endpoint.support.status}`
     )
   }
 

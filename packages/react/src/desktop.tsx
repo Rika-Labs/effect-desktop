@@ -53,6 +53,7 @@ export interface ReactDesktopSupport {
 }
 
 type WithSupport<Endpoint> = Endpoint & ReactDesktopSupport
+type SupportedReactEndpoint<Endpoint extends ReactEndpoint> = Endpoint & ReactDesktopSupport
 
 export type ReactDesktopRpcClientMethod = DesktopRendererRpcClientMethod
 export type ReactDesktopRpcClient = DesktopRendererRpcClient
@@ -205,12 +206,15 @@ const makeEndpoints = (
 const withSupport = <Endpoint extends ReactEndpoint>(
   endpoint: Endpoint,
   support: RpcSupportMetadata
-): Endpoint & ReactDesktopSupport =>
-  Object.freeze({
+): SupportedReactEndpoint<Endpoint> => {
+  const supportedEndpoint = {
     ...endpoint,
     support,
     isSupported: support.status === "supported"
-  }) as unknown as Endpoint & ReactDesktopSupport
+  } satisfies SupportedReactEndpoint<Endpoint>
+
+  return Object.freeze(supportedEndpoint)
+}
 
 const asEffect = (
   value: ReturnType<ReactDesktopRpcClientMethod>,
