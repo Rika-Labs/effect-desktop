@@ -1,11 +1,10 @@
 import { makeHostProtocolInvalidStateError } from "@effect-desktop/bridge"
 import type { WindowError } from "@effect-desktop/native"
 import type { WindowCreateOptions, WindowHandle } from "@effect-desktop/native/contracts"
+import { BrowserContext, type IndexedDb } from "@effect-desktop/platform-browser"
 import { Effect, Layer, ManagedRuntime, Option } from "effect"
 import { AtomRegistry, Reactivity } from "effect/unstable/reactivity"
 import { createContext, createElement, useContext, useEffect, useMemo, type ReactNode } from "react"
-
-import { BrowserContext, type IndexedDb } from "./platform-browser.js"
 
 export interface DesktopWindowClient {
   readonly create: (input?: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never>

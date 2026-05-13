@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect"
-import { indexedDbStorage } from "@effect-desktop/react"
+import { makeMigration, makeTable, makeVersion } from "@effect-desktop/platform-browser/storage/idb"
 
 const Draft = Schema.Struct({
   id: Schema.Number,
@@ -7,16 +7,16 @@ const Draft = Schema.Struct({
   body: Schema.String
 })
 
-export const DraftTable = indexedDbStorage.makeTable({
+export const DraftTable = makeTable({
   name: "drafts",
   schema: Draft,
   keyPath: "id",
   autoIncrement: true
 })
 
-export const DraftVersion = indexedDbStorage.makeVersion(DraftTable)
+export const DraftVersion = makeVersion(DraftTable)
 
-export const DraftMigration = indexedDbStorage.makeMigration(DraftVersion, (tx) =>
+export const DraftMigration = makeMigration(DraftVersion, (tx) =>
   tx.createObjectStore("drafts").pipe(Effect.asVoid)
 )
 

@@ -1,14 +1,14 @@
 {
-  "name": "@effect-desktop/react",
+  "name": "@effect-desktop/platform-browser",
   "version": "2.0.0",
   "private": true,
-  "description": "React provider and hooks for Effect Desktop renderer clients.",
+  "description": "Browser renderer Effect layers for Effect Desktop.",
   "license": "MIT OR Apache-2.0",
   "author": "Rika Labs, LLC",
   "repository": {
     "type": "git",
     "url": "https://github.com/Rika-Labs/effect-desktop.git",
-    "directory": "packages/react"
+    "directory": "packages/platform-browser"
   },
   "homepage": "https://github.com/Rika-Labs/effect-desktop#readme",
   "bugs": {
@@ -21,18 +21,6 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
-    },
-    "./current-window": {
-      "types": "./src/current-window.ts",
-      "default": "./src/current-window.ts"
-    },
-    "./desktop": {
-      "types": "./src/desktop.tsx",
-      "default": "./src/desktop.tsx"
-    },
-    "./platform-browser": {
-      "types": "./src/platform-browser.ts",
-      "default": "./src/platform-browser.ts"
     },
     "./sql-pglite": {
       "types": "./src/sql-pglite.ts",
@@ -49,10 +37,6 @@
     "./storage/kv": {
       "types": "./src/storage/kv.ts",
       "default": "./src/storage/kv.ts"
-    },
-    "./windows": {
-      "types": "./src/windows.ts",
-      "default": "./src/windows.ts"
     }
   },
   "scripts": {
@@ -62,19 +46,13 @@
     "lint": "oxlint ."
   },
   "dependencies": {
-    "@effect-desktop/bridge": "workspace:*",
-    "@effect-desktop/core": "workspace:*",
-    "@effect-desktop/native": "workspace:*",
-    "@effect-desktop/platform-browser": "workspace:*",
+    "@effect/platform-browser": "4.0.0-beta.60",
+    "@effect/sql-sqlite-wasm": "4.0.0-beta.60",
+    "@effect/wa-sqlite": "^0.1.2",
     "effect": "4.0.0-beta.60"
   },
-  "peerDependencies": {
-    "react": "^19.0.0"
-  },
-  "devDependencies": {
-    "@types/react": "^19.2.7",
-    "@types/react-dom": "^19.2.3",
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3"
+  "optionalDependencies": {
+    "@effect/sql-pglite": "4.0.0-beta.60",
+    "@electric-sql/pglite": "^0.4.4"
   }
 }

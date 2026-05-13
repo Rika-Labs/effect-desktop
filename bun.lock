@@ -266,6 +266,20 @@
         "react": "^19.0.0",
       },
     },
+    "packages/platform-browser": {
+      "name": "@effect-desktop/platform-browser",
+      "version": "2.0.0",
+      "dependencies": {
+        "@effect/platform-browser": "4.0.0-beta.60",
+        "@effect/sql-sqlite-wasm": "4.0.0-beta.60",
+        "@effect/wa-sqlite": "^0.1.2",
+        "effect": "4.0.0-beta.60",
+      },
+      "optionalDependencies": {
+        "@effect/sql-pglite": "4.0.0-beta.60",
+        "@electric-sql/pglite": "^0.4.4",
+      },
+    },
     "packages/react": {
       "name": "@effect-desktop/react",
       "version": "2.0.0",
@@ -273,9 +287,7 @@
         "@effect-desktop/bridge": "workspace:*",
         "@effect-desktop/core": "workspace:*",
         "@effect-desktop/native": "workspace:*",
-        "@effect/platform-browser": "4.0.0-beta.60",
-        "@effect/sql-sqlite-wasm": "4.0.0-beta.60",
-        "@effect/wa-sqlite": "^0.1.2",
+        "@effect-desktop/platform-browser": "workspace:*",
         "effect": "4.0.0-beta.60",
       },
       "devDependencies": {
@@ -283,10 +295,6 @@
         "@types/react-dom": "^19.2.3",
         "react": "^19.2.3",
         "react-dom": "^19.2.3",
-      },
-      "optionalDependencies": {
-        "@effect/sql-pglite": "4.0.0-beta.60",
-        "@electric-sql/pglite": "^0.4.4",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -351,13 +359,11 @@
     "templates/basic-react-tailwind": {
       "name": "@effect-desktop/template-basic-react-tailwind",
       "dependencies": {
-        "@effect-desktop/bridge": "workspace:*",
         "@effect-desktop/cli": "workspace:*",
         "@effect-desktop/core": "workspace:*",
         "@effect-desktop/native": "workspace:*",
+        "@effect-desktop/platform-browser": "workspace:*",
         "@effect-desktop/react": "workspace:*",
-        "@effect-desktop/test": "workspace:*",
-        "@effect/platform-browser": "4.0.0-beta.60",
         "effect": "4.0.0-beta.60",
         "react": "^19.2.3",
         "react-dom": "^19.2.3",
@@ -625,6 +631,8 @@
     "@effect-desktop/native": ["@effect-desktop/native@workspace:packages/native"],
 
     "@effect-desktop/next": ["@effect-desktop/next@workspace:packages/next"],
+
+    "@effect-desktop/platform-browser": ["@effect-desktop/platform-browser@workspace:packages/platform-browser"],
 
     "@effect-desktop/playground": ["@effect-desktop/playground@workspace:apps/playground"],
 

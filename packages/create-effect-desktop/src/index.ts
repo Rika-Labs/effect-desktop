@@ -254,16 +254,10 @@ const rendererStorageDeps = (storage: RendererStorage): Record<string, string> =
     case "none":
       return {}
     case "indexeddb":
-      return { "@effect/platform-browser": EFFECT_VERSION }
+      return { "@effect-desktop/platform-browser": `workspace:^${EFFECT_DESKTOP_VERSION}` }
     case "sqlite-wasm":
-      return {
-        "@effect/platform-browser": EFFECT_VERSION,
-        "@effect/sql-sqlite-wasm": EFFECT_VERSION
-      }
+      return { "@effect-desktop/platform-browser": `workspace:^${EFFECT_DESKTOP_VERSION}` }
     case "pglite":
-      return {
-        "@effect/platform-browser": EFFECT_VERSION,
-        "@effect/sql-pglite": EFFECT_VERSION
-      }
+      return { "@effect-desktop/platform-browser": `workspace:^${EFFECT_DESKTOP_VERSION}` }
   }
 }

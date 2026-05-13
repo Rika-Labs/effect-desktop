@@ -93,8 +93,9 @@ test("scaffold adds sqlite-wasm deps when renderer-storage is sqlite-wasm", asyn
   const pkg = JSON.parse(readFileSync(join(testDir, "package.json"), "utf8")) as {
     dependencies: Record<string, string>
   }
-  expect(pkg.dependencies["@effect/sql-sqlite-wasm"]).toBeDefined()
-  expect(pkg.dependencies["@effect/platform-browser"]).toBeDefined()
+  expect(pkg.dependencies["@effect-desktop/platform-browser"]).toBeDefined()
+  expect(pkg.dependencies["@effect/sql-sqlite-wasm"]).toBeUndefined()
+  expect(pkg.dependencies["@effect/platform-browser"]).toBeUndefined()
 })
 
 test("scaffold adds pglite dep when renderer-storage is pglite", async () => {
@@ -103,7 +104,8 @@ test("scaffold adds pglite dep when renderer-storage is pglite", async () => {
   const pkg = JSON.parse(readFileSync(join(testDir, "package.json"), "utf8")) as {
     dependencies: Record<string, string>
   }
-  expect(pkg.dependencies["@effect/sql-pglite"]).toBeDefined()
+  expect(pkg.dependencies["@effect-desktop/platform-browser"]).toBeDefined()
+  expect(pkg.dependencies["@effect/sql-pglite"]).toBeUndefined()
 })
 
 test("scaffold copies todo-sqlite template", async () => {
@@ -158,23 +160,23 @@ test("scaffold renderer storage dependency matrix is exact", async () => {
   }> = [
     {
       storage: "none",
-      expected: ["@effect/platform-browser"],
-      absent: ["@effect/sql-sqlite-wasm", "@effect/sql-pglite"]
+      expected: ["@effect-desktop/platform-browser"],
+      absent: ["@effect/platform-browser", "@effect/sql-sqlite-wasm", "@effect/sql-pglite"]
     },
     {
       storage: "indexeddb",
-      expected: ["@effect/platform-browser"],
-      absent: ["@effect/sql-sqlite-wasm", "@effect/sql-pglite"]
+      expected: ["@effect-desktop/platform-browser"],
+      absent: ["@effect/platform-browser", "@effect/sql-sqlite-wasm", "@effect/sql-pglite"]
     },
     {
       storage: "sqlite-wasm",
-      expected: ["@effect/platform-browser", "@effect/sql-sqlite-wasm"],
-      absent: ["@effect/sql-pglite"]
+      expected: ["@effect-desktop/platform-browser"],
+      absent: ["@effect/platform-browser", "@effect/sql-sqlite-wasm", "@effect/sql-pglite"]
     },
     {
       storage: "pglite",
-      expected: ["@effect/platform-browser", "@effect/sql-pglite"],
-      absent: ["@effect/sql-sqlite-wasm"]
+      expected: ["@effect-desktop/platform-browser"],
+      absent: ["@effect/platform-browser", "@effect/sql-sqlite-wasm", "@effect/sql-pglite"]
     }
   ]
 

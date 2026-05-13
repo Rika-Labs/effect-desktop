@@ -13,14 +13,7 @@ import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 
 import {
-  BrowserHttpClient,
-  BrowserKeyValueStore,
   createUnavailableDesktopClient,
-  IndexedDb,
-  IndexedDbDatabase,
-  IndexedDbQueryBuilder,
-  IndexedDbTable,
-  IndexedDbVersion,
   DesktopProvider,
   MissingDesktopContextError,
   ReactDesktop,
@@ -53,6 +46,7 @@ type ReactPackageExportTarget =
 
 const reactPackageJsonUrl = new URL("../package.json", import.meta.url)
 const reactPackageRootUrl = new URL("../", import.meta.url)
+const reactPackageIndexUrl = new URL("index.ts", import.meta.url)
 
 test("React package exports point at checked-in source files", () => {
   const packageJson = JSON.parse(readFileSync(reactPackageJsonUrl, "utf8")) as ReactPackageJson
@@ -77,6 +71,16 @@ test("React package exports point at checked-in source files", () => {
   }
 
   expect(missing).toEqual([])
+})
+
+test("React package root does not export browser storage services", () => {
+  const source = readFileSync(reactPackageIndexUrl, "utf8")
+
+  expect(source).not.toContain("BrowserKeyValueStore")
+  expect(source).not.toContain("IndexedDb")
+  expect(source).not.toContain("RendererSqlite")
+  expect(source).not.toContain("indexedDbStorage")
+  expect(source).not.toContain("keyValueStorage")
 })
 
 const unavailableWindow: DesktopWindowClient = {
@@ -435,76 +439,8 @@ test("AsyncResult is re-exported from package index", () => {
   expect(typeof AsyncResult.isFailure).toBe("function")
 })
 
-test("platform-browser IndexedDbTable.make produces a typed table descriptor", () => {
-  const DraftTable = IndexedDbTable.make({
-    name: "drafts",
-    schema: Schema.Struct({
-      id: Schema.Number,
-      body: Schema.String
-    }),
-    keyPath: "id",
-    autoIncrement: true
-  })
-
-  expect(DraftTable.tableName).toBe("drafts")
-  expect(DraftTable.autoIncrement).toBe(true)
-  expect(DraftTable.keyPath).toBe("id")
-})
-
-test("platform-browser IndexedDbVersion.make accepts a table descriptor", () => {
-  const DraftTable = IndexedDbTable.make({
-    name: "drafts",
-    schema: Schema.Struct({
-      id: Schema.Number,
-      body: Schema.String
-    }),
-    keyPath: "id",
-    autoIncrement: true
-  })
-
-  const v1 = IndexedDbVersion.make(DraftTable)
-
-  expect(v1.tables.has("drafts")).toBe(true)
-  expect(v1.tables.size).toBe(1)
-})
-
 test("storage/idb exposes migration builder helper", () => {
   expect(typeof makeMigration).toBe("function")
-})
-
-test("platform-browser IndexedDbDatabase.make produces a schema builder", () => {
-  const DraftTable = IndexedDbTable.make({
-    name: "drafts",
-    schema: Schema.Struct({
-      id: Schema.Number,
-      body: Schema.String
-    }),
-    keyPath: "id",
-    autoIncrement: true
-  })
-
-  const v1 = IndexedDbVersion.make(DraftTable)
-
-  const schema = IndexedDbDatabase.make(v1, (tx) =>
-    tx.createObjectStore("drafts").pipe(Effect.asVoid)
-  )
-
-  expect(typeof schema.layer).toBe("function")
-  expect(schema.version).toBe(v1)
-})
-
-test("platform-browser BrowserKeyValueStore exports layerLocalStorage and layerSessionStorage", () => {
-  expect(typeof BrowserKeyValueStore.layerLocalStorage).toBe("object")
-  expect(typeof BrowserKeyValueStore.layerSessionStorage).toBe("object")
-})
-
-test("platform-browser BrowserHttpClient exports layerFetch and layerXMLHttpRequest", () => {
-  expect(typeof BrowserHttpClient.layerFetch).toBe("object")
-  expect(typeof BrowserHttpClient.layerXMLHttpRequest).toBe("object")
-})
-
-test("platform-browser IndexedDb exports layerWindow", () => {
-  expect(typeof IndexedDb.layerWindow).toBe("object")
 })
 
 test("storage/kv exposes key-value layers", () => {
@@ -516,8 +452,4 @@ test("storage/idb exposes schema constructor helpers", () => {
   expect(typeof makeTable).toBe("function")
   expect(typeof makeVersion).toBe("function")
   expect(typeof makeDatabase).toBe("function")
-})
-
-test("platform-browser IndexedDbQueryBuilder exports make", () => {
-  expect(typeof IndexedDbQueryBuilder.make).toBe("function")
 })

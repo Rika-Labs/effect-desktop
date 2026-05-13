@@ -38,11 +38,11 @@ This template is ready for optional, opt-in browser storage wiring:
 The template `spine.ts` owns app assembly. Storage layers should be provided beside the RPC layer:
 
 ```ts
-import { indexedDbStorage } from "@effect-desktop/react/storage/idb.js"
+import { makeMigration, makeTable, makeVersion } from "@effect-desktop/platform-browser/storage/idb"
 
-const table = indexedDbStorage.makeTable({...})
-const version = indexedDbStorage.makeVersion(table)
-const migration = indexedDbStorage.makeMigration(version, (tx) => Effect.void)
+const table = makeTable({...})
+const version = makeVersion(table)
+const migration = makeMigration(version, (tx) => Effect.void)
 
 export const TemplateApp = Desktop.make({
   windows: {
