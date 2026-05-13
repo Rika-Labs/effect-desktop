@@ -686,17 +686,12 @@
     {
       "name": "makeSettingsLayer",
       "kind": "value",
-      "signature": "const makeSettingsLayer: (path: string) => Layer.Layer<Settings, never, never>"
+      "signature": "const makeSettingsLayer: (path: string, ownerScope?: string) => Layer.Layer<Settings, SqlitePolicyError, PermissionRegistry | ResourceRegistry>"
     },
     {
       "name": "makeSettingsLayerMemory",
       "kind": "value",
       "signature": "const makeSettingsLayerMemory: Layer.Layer<Settings, never, never>"
-    },
-    {
-      "name": "makeSQLite",
-      "kind": "value",
-      "signature": "const makeSQLite: (registry: ResourceRegistryApi, serviceOptions?: SQLiteOptions) => Effect.Effect<SqliteApi, never, never>"
     },
     {
       "name": "makeTelemetry",
@@ -1371,37 +1366,17 @@
     {
       "name": "SqlClientLayerConfig",
       "kind": "interface",
-      "signature": "export interface SqlClientLayerConfig { readonly filename: string readonly ownerScope: string readonly readonly?: boolean | undefined readonly create?: boolean | undefined readonly readwrite?: boolean | undefined readonly disableWAL?: boolean | undefined }"
+      "signature": "export interface SqlClientLayerConfig extends Omit< UpstreamSqliteClient.SqliteClientConfig, \"filename\" > { readonly filename: string readonly ownerScope: string }"
     },
     {
       "name": "SqlClientLive",
       "kind": "value",
-      "signature": "const SqlClientLive: (config: SqlClientLayerConfig) => Layer.Layer<SqlClient, never, ResourceRegistry>"
+      "signature": "const SqlClientLive: (config: SqlClientLayerConfig) => Layer.Layer<SqlClient | UpstreamSqliteClient.SqliteClient, SqlitePolicyError, ResourceRegistry | PermissionRegistry>"
     },
     {
       "name": "SqlError",
       "kind": "class",
       "signature": "export declare class SqlError extends SqlError_base { /** * @since 4.0.0 */ readonly [TypeId]: \"~effect/sql/SqlError\"; /** * @since 4.0.0 */ readonly cause: ConnectionError | AuthenticationError | AuthorizationError | SqlSyntaxError | ConstraintError | DeadlockError | SerializationError | LockTimeoutError | StatementTimeoutError | UnknownError; /** * @since 4.0.0 */ get message(): string; /** * @since 4.0.0 */ get isRetryable(): boolean; }"
-    },
-    {
-      "name": "SQLite",
-      "kind": "class",
-      "signature": "export class SQLite extends Context.Service<SQLite, SqliteApi>()(\"SQLite\") {}"
-    },
-    {
-      "name": "SqliteApi",
-      "kind": "interface",
-      "signature": "export interface SqliteApi { readonly connect: ( options: SqliteConnectOptions ) => Effect.Effect<SqliteConnection, SqliteError | PermissionRegistryError, never> }"
-    },
-    {
-      "name": "SqliteBusyError",
-      "kind": "class",
-      "signature": "export class SqliteBusyError extends Data.TaggedError(\"Busy\")<SqliteErrorFields> {}"
-    },
-    {
-      "name": "SqliteChanges",
-      "kind": "interface",
-      "signature": "export interface SqliteChanges { readonly changes: number readonly lastInsertRowid: number | bigint }"
     },
     {
       "name": "SqliteClient",
@@ -1414,99 +1389,14 @@
       "signature": "export interface SqliteClientConfig { readonly filename: string; readonly readonly?: boolean | undefined; readonly create?: boolean | undefined; readonly readwrite?: boolean | undefined; readonly disableWAL?: boolean | undefined; readonly spanAttributes?: Record<string, unknown> | undefined; readonly transformResultNames?: ((str: string) => string) | undefined; readonly transformQueryNames?: ((str: string) => string) | undefined; }"
     },
     {
-      "name": "SqliteConnectInput",
-      "kind": "class",
-      "signature": "export class SqliteConnectInput extends Schema.Class<SqliteConnectInput>(\"SqliteConnectInput\")({ path: SqlitePathString, ownerScope: NonEmptyString, readonly: Schema.optionalKey(Schema.Boolean), create: Schema.optionalKey(Schema.Boolean), readwrite: Schema.optionalKey(Schema.Boolean), safeIntegers: Schema.optionalKey(Schema.Boolean), strict: Schema.optionalKey(Schema.Boolean) }) {}"
-    },
-    {
-      "name": "SqliteConnection",
-      "kind": "interface",
-      "signature": "export interface SqliteConnection { readonly resource: ManagedResourceHandle<\"sqlite\", \"open\"> readonly query: ( sql: string, params?: SqliteParams ) => Effect.Effect<readonly SqliteRow[], SqliteError, never> readonly exec: ( sql: string, params?: SqliteParams ) => Effect.Effect<SqliteChanges, SqliteError, never> readonly prepare: (sql: string) => Effect.Effect<SqlitePreparedStatement, SqliteError, never> readonly transaction: <A, E, R>( effect: Effect.Effect<A, E, R>, options?: SqliteTransactionOptions ) => Effect.Effect<A, E | SqliteError, R> readonly close: () => Effect.Effect<void, never, never> }"
-    },
-    {
-      "name": "SqliteConnectOptions",
-      "kind": "interface",
-      "signature": "export interface SqliteConnectOptions extends DatabaseOptions { readonly path: string readonly ownerScope: string }"
-    },
-    {
-      "name": "SqliteConstraintError",
-      "kind": "class",
-      "signature": "export class SqliteConstraintError extends Data.TaggedError(\"Constraint\")<SqliteErrorFields> {}"
-    },
-    {
-      "name": "SqliteCorruptError",
-      "kind": "class",
-      "signature": "export class SqliteCorruptError extends Data.TaggedError(\"Corrupt\")<SqliteErrorFields> {}"
-    },
-    {
-      "name": "SqliteError",
-      "kind": "type",
-      "signature": "export type SqliteError = | SqliteConstraintError | SqliteBusyError | SqliteLockedError | SqliteCorruptError | SqliteIoError | SqliteInvalidArgumentError | SqliteInvalidStateError"
-    },
-    {
-      "name": "SqliteErrorFields",
-      "kind": "interface",
-      "signature": "export interface SqliteErrorFields { readonly operation: string readonly resource: string readonly message: string readonly code: Option.Option<string> readonly cause: Option.Option<unknown> }"
-    },
-    {
       "name": "SqliteInvalidArgumentError",
       "kind": "class",
-      "signature": "export class SqliteInvalidArgumentError extends Data.TaggedError(\"InvalidArgument\")< SqliteErrorFields & { readonly field: string } > {}"
+      "signature": "export class SqliteInvalidArgumentError extends Data.TaggedError(\"InvalidArgument\")<{ readonly operation: string readonly field: \"filename\" | \"ownerScope\" readonly message: string readonly cause: Option.Option<unknown> }> {}"
     },
     {
-      "name": "SqliteInvalidStateError",
-      "kind": "class",
-      "signature": "export class SqliteInvalidStateError extends Data.TaggedError(\"InvalidState\")<SqliteErrorFields> {}"
-    },
-    {
-      "name": "SqliteIoError",
-      "kind": "class",
-      "signature": "export class SqliteIoError extends Data.TaggedError(\"IoError\")<SqliteErrorFields> {}"
-    },
-    {
-      "name": "SQLiteLive",
-      "kind": "value",
-      "signature": "const SQLiteLive: Layer.Layer<SQLite, never, PermissionRegistry | ResourceRegistry>"
-    },
-    {
-      "name": "SqliteLockedError",
-      "kind": "class",
-      "signature": "export class SqliteLockedError extends Data.TaggedError(\"Locked\")<SqliteErrorFields> {}"
-    },
-    {
-      "name": "SQLiteOptions",
-      "kind": "interface",
-      "signature": "export interface SQLiteOptions { readonly permissions?: PermissionRegistryApi }"
-    },
-    {
-      "name": "SqliteParams",
+      "name": "SqlitePolicyError",
       "kind": "type",
-      "signature": "export type SqliteParams = readonly SqliteValue[] | Readonly<Record<string, SqliteValue>>"
-    },
-    {
-      "name": "SqlitePreparedStatement",
-      "kind": "interface",
-      "signature": "export interface SqlitePreparedStatement { readonly resource: ManagedResourceHandle<\"sqlite-statement\", \"open\"> readonly all: (params?: SqliteParams) => Effect.Effect<readonly SqliteRow[], SqliteError, never> readonly get: ( params?: SqliteParams ) => Effect.Effect<Option.Option<SqliteRow>, SqliteError, never> readonly run: (params?: SqliteParams) => Effect.Effect<SqliteChanges, SqliteError, never> readonly dispose: () => Effect.Effect<void, never, never> }"
-    },
-    {
-      "name": "SqliteRow",
-      "kind": "type",
-      "signature": "export type SqliteRow = Readonly<Record<string, SqliteValue>>"
-    },
-    {
-      "name": "SqliteTransactionMode",
-      "kind": "type",
-      "signature": "export type SqliteTransactionMode = \"deferred\" | \"immediate\" | \"exclusive\""
-    },
-    {
-      "name": "SqliteTransactionOptions",
-      "kind": "interface",
-      "signature": "export interface SqliteTransactionOptions { readonly mode?: SqliteTransactionMode }"
-    },
-    {
-      "name": "SqliteValue",
-      "kind": "type",
-      "signature": "export type SqliteValue = string | bigint | number | boolean | Uint8Array | null"
+      "signature": "export type SqlitePolicyError = SqliteInvalidArgumentError | PermissionRegistryError"
     },
     {
       "name": "SqlModel",

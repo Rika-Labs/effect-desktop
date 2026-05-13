@@ -5,9 +5,9 @@ repo milestone convention and includes the §28.4 completion report.
 
 ## Goal
 
-Provide the core runtime storage primitives: `SQLite`, `Settings`, `EventLog`,
-`Transport`, and `WindowState`, with typed Effect APIs, recovery semantics,
-scope ownership, and replayable state where applicable.
+Provide the core runtime storage primitives: Effect SQL-backed runtime SQLite,
+`Settings`, `EventLog`, `Transport`, and `WindowState`, with typed Effect APIs,
+recovery semantics, scope ownership, and replayable state where applicable.
 
 ## Non-goals
 
@@ -38,12 +38,18 @@ the Phase 20 reusable testing harness.
 - `packages/core/src/index.ts` for the public core exports.
 - Learning records for issues #136, #137, #138, #140, and #142.
 
+Later architecture work removed the original bespoke `SQLite` connection and
+statement wrapper. `packages/core/src/runtime/sqlite.ts` now exposes Effect
+`SqlClient`, `SqlModel`, and `SqliteClient`, plus `SqlClientLive` as the
+desktop policy layer for path validation, `sqlite.open` authorization, and
+resource registration.
+
 ## Public APIs
 
 `@effect-desktop/core` exports:
 
-- `SQLite` / `SQLiteLive` / `makeSQLite` and related connection, statement, and
-  error types.
+- `SqlClient` / `SqlClientLive` / `SqlModel` / `SqliteClient` for runtime
+  SQLite backed by Effect SQL.
 - `Settings` / `SettingsLive` / `makeSettings` and `SettingsStore` for
   schema-validated key/value persistence.
 - Effect `EventLog` / `EventJournal` for append/query audit and replay streams.
@@ -61,7 +67,7 @@ From §24.14:
 
 Additional epic acceptance evidence:
 
-- [x] `SQLite.transaction` rolls back failed Effect programs.
+- [x] `SqlClient.withTransaction` rolls back failed Effect programs.
 - [x] `Settings.update` serializes concurrent calls.
 - [x] corrupt Settings storage can recover from a backup.
 - [x] `EventLog.query({ from })` returns events in monotonic order.
@@ -94,10 +100,10 @@ cargo test --workspace
 
 Specialized Phase 14 evidence:
 
-- `packages/core/src/runtime/sqlite.test.ts` covers in-memory connections,
-  invalid inputs before open, exec change counts, commit/rollback transaction
-  behavior, prepared statements, transaction serialization, scope-close cleanup,
-  and constraint error mapping.
+- `packages/core/src/runtime/sqlite.test.ts` covers in-memory `SqlClient`
+  access, invalid layer inputs before open, `sqlite.open` authorization,
+  transaction rollback, scope-close resource cleanup, and typed repository
+  round-trips through `SqlModel.makeRepository`.
 - `packages/core/src/runtime/settings.test.ts` covers schema-validated get/set,
   defaults, key listing, delete change events, invalid value rejection,
   serialized update, change streams, transactional migrations, missing migration
@@ -123,8 +129,8 @@ Files changed: core SQLite, Settings, EventLog, Transport, and WindowState
 services; tests; public exports; and Phase 14 learning records.
 Public APIs added at phase close: @effect-desktop/core SQLite, Settings,
 EventLog, Transport, WindowState services and their store/connection/framing/
-state helper types. The local EventLog wrapper was later removed in favor of
-direct `effect/unstable/eventlog` imports.
+state helper types. The local SQLite and EventLog wrappers were later removed
+in favor of Effect SQL and direct `effect/unstable/eventlog` imports.
 Tests added: storage runtime tests for SQLite transactions and scope cleanup,
 Settings migrations/recovery/change streams, EventLog retention/replay/live
 tail, Transport framing/in-memory pairs, and WindowState restore/recovery.
@@ -146,8 +152,9 @@ owns release documentation and API snapshot coverage.
 
 Phase 14 shipped as five implementation PRs plus this closure PR:
 
-- #214 added the `SQLite` Effect service over `bun:sqlite`, including scoped
-  connections, prepared statements, transactions, and typed SQLite errors.
+- #214 added the original `SQLite` Effect service over `bun:sqlite`; #1267
+  later replaced that bespoke wrapper with Effect SQL and kept only the
+  `SqlClientLive` desktop policy layer.
 - #215 added the typed `Settings` store on top of SQLite with schema validation,
   migrations, serialized update, change streams, delete/keys helpers, and backup
   recovery.

@@ -1145,7 +1145,7 @@ Every primitive in §11 (native) and §12 (runtime) maps to exactly one package 
 | `PTY` | `@effect-desktop/core` | `crates/native-pty` | runtime |
 | `Worker` | `@effect-desktop/core` | — | runtime |
 | `Job` | `@effect-desktop/core` | — | runtime |
-| `SQLite` | `@effect-desktop/core` | — | runtime |
+| `SqlClientLive` | `@effect-desktop/core` | — | runtime |
 | `Settings` | `@effect-desktop/core` | — | runtime |
 | `Secrets` | `@effect-desktop/core` | `crates/host` (SafeStorage backend) | runtime |
 | `EventLog` | `@effect-desktop/core` | — | runtime |
@@ -1217,7 +1217,7 @@ Clippy lints `clippy::unwrap_used`, `clippy::expect_used`, `clippy::indexing_sli
 - Host runtime is `tokio` multi-threaded for protocol I/O, runtime supervision, and non-UI work.
 - A dedicated single-threaded executor runs the OS event loop. On macOS this is the main thread; on Windows it is the message-pump thread; on Linux it is the GTK main loop.
 - Operations on `Window`, `Menu`, `Tray`, `Dialog`, `ContextMenu`, `Dock`, `WebView` (creation, navigation, focus) **must** be posted to the event-loop thread. Calling them from a tokio worker is undefined and forbidden.
-- Operations on `Filesystem`, `Process`, `PTY`, `SQLite`, `Settings`, `Secrets`, `Clipboard`, `Shell`, `Path`, `SafeStorage`, `EventLog` may run on tokio workers and must be `Send + Sync` where they cross await points.
+- Operations on `Filesystem`, `Process`, `PTY`, runtime SQLite, `Settings`, `Secrets`, `Clipboard`, `Shell`, `Path`, `SafeStorage`, `EventLog` may run on tokio workers and must be `Send + Sync` where they cross await points.
 - `host_call!` macro encodes the routing decision: any handler that targets an event-loop primitive automatically posts via the loop's message channel and awaits the result.
 - The runtime process itself runs in `bun` and communicates via the host protocol over the configured transport — no direct shared memory.
 
@@ -3211,13 +3211,15 @@ Runtime primitives are implemented in Bun and Effect. They are the framework's a
 - test examples;
 - performance considerations.
 
-## 12.6 `SQLite`
+## 12.6 Runtime SQLite
 
-**Purpose:** Open databases, run migrations, transactions, prepared statements, app and workspace stores.
+**Purpose:** Provide desktop policy for Effect SQL SQLite clients used by
+runtime databases, migrations, transactions, app stores, and workspace stores.
 
 ### Required properties
 
-- Exposed through an Effect service or generated bridge API.
+- Exposed through Effect `SqlClient` and the desktop `SqlClientLive` policy
+  layer.
 - Has typed inputs, outputs, and errors.
 - Supports deterministic cleanup where resources are involved.
 - Emits trace spans for important operations.
@@ -3228,11 +3230,11 @@ Runtime primitives are implemented in Bun and Effect. They are the framework's a
 
 ### Required failure handling
 
-- invalid input is rejected before side effects;
+- invalid layer input is rejected before side effects;
 - permission denial returns a typed error;
 - canceled operations release resources;
 - timeouts are explicit and configurable;
-- platform-specific unsupported behavior is represented as a typed error;
+- platform-specific driver behavior is represented by Effect SQL errors;
 - errors include operation names and resource IDs where available.
 
 ### Required documentation
@@ -4889,7 +4891,7 @@ type DesktopError = {
 - Processes are killed on scope close.
 - PTYs are killed on scope close.
 - File watchers are closed on scope close.
-- SQLite connections close on scope close.
+- Runtime SQLite clients close on scope close.
 - Settings changes emit streams.
 - Event log append and replay work.
 - Worker crashes trigger supervisor policies.
@@ -5926,11 +5928,11 @@ If this milestone touches packaging, native host behavior, security, or producti
 
 ## 24.14 Phase 14: Storage
 
-**Goal:** SQLite, settings, event log, migrations.
+**Goal:** Runtime SQLite, settings, event log, migrations.
 
 ### Deliverables
 
-- SQLite service.
+- Effect SQL-backed runtime SQLite policy layer.
 - Settings.
 - EventLog.
 - migration runner.
@@ -9776,14 +9778,15 @@ These references are used to anchor technology choices and implementation assump
 - The module's public API is included in the API snapshot.
 - The module's behavior is covered by at least one example or direct integration test.
 
-## H.37 `SQLite` acceptance matrix
+## H.37 Runtime SQLite acceptance matrix
 
 ### Build requirements
 
 - The module builds in isolation.
 - The module participates in the repository-level build.
 - The module has no forbidden imports.
-- The module exposes only intentional public symbols.
+- The module exposes only Effect SQL symbols plus intentional desktop policy
+  symbols.
 - The module includes a README or architecture note.
 
 ### Functional requirements
@@ -9801,7 +9804,8 @@ These references are used to anchor technology choices and implementation assump
 - Unit tests cover core behavior.
 - Integration tests cover cross-boundary behavior where applicable.
 - Mock tests exist for application usage.
-- Failure tests assert typed errors.
+- Failure tests assert typed policy errors at the desktop boundary and Effect SQL
+  errors at the driver boundary.
 - Leak tests assert no open resources after scope close.
 
 ### Documentation requirements
@@ -10481,9 +10485,9 @@ The `Jobs` documentation page must include:
 - platform notes where applicable;
 - links to example applications where applicable.
 
-## I.19 SQLite
+## I.19 Runtime SQLite
 
-The `SQLite` documentation page must include:
+The Runtime SQLite documentation page must include:
 
 - purpose;
 - prerequisites;

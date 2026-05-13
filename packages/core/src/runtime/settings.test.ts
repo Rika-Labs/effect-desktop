@@ -1,12 +1,14 @@
-import { mkdtemp } from "node:fs/promises"
-import { join } from "node:path"
+import { mkdtemp, realpath } from "node:fs/promises"
+import { dirname, join } from "node:path"
 import { tmpdir } from "node:os"
 
 import { describe, expect, test } from "bun:test"
 
-import { Cause, Effect, Exit, Fiber, Option, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Fiber, Layer, Option, Schema, Stream } from "effect"
 import { KeyValueStore } from "effect/unstable/persistence"
 
+import { makePermissionRegistry, PermissionRegistry } from "./permission-registry.js"
+import { makeResourceRegistry, ResourceRegistry } from "./resources.js"
 import {
   makeSettings,
   makeSettingsLayer,
@@ -28,6 +30,20 @@ const makeKvMemory = (): Promise<KeyValueStore.KeyValueStore> =>
       return yield* KeyValueStore.KeyValueStore
     }).pipe(Effect.provide(KeyValueStore.layerMemory))
   )
+
+const makePersistentSettingsLayer = async (path: string) => {
+  const root = await realpath(dirname(path))
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  await Effect.runPromise(
+    permissions.declare({ kind: "sqlite.open", roots: [root], audit: "always" })
+  )
+
+  return makeSettingsLayer(path).pipe(
+    Layer.provide(Layer.succeed(ResourceRegistry, registry)),
+    Layer.provide(Layer.succeed(PermissionRegistry, permissions))
+  )
+}
 
 describe("Settings", () => {
   test("set then get returns a schema-validated value", async () => {
@@ -171,7 +187,7 @@ describe("Settings", () => {
   test("registered migration runs and emits migration event", async () => {
     const directory = await mkdtemp(join(tmpdir(), "effect-desktop-settings-"))
     const path = join(directory, "settings.sqlite")
-    const layer = makeSettingsLayer(path)
+    const layer = await makePersistentSettingsLayer(path)
 
     const { value, migrated } = await Effect.runPromise(
       Effect.gen(function* () {
@@ -270,7 +286,7 @@ describe("Settings", () => {
   test("missing migration returns SettingsMigrationFailed", async () => {
     const directory = await mkdtemp(join(tmpdir(), "effect-desktop-settings-"))
     const path = join(directory, "settings.sqlite")
-    const layer = makeSettingsLayer(path)
+    const layer = await makePersistentSettingsLayer(path)
 
     const exit = await Effect.runPromiseExit(
       Effect.gen(function* () {
@@ -420,7 +436,7 @@ describe("Settings", () => {
       return yield* store.get("hello", UserName)
     })
 
-    const layer = makeSettingsLayer(path)
+    const layer = await makePersistentSettingsLayer(path)
     const result = await Effect.runPromise(Effect.provide(program, layer))
     expect(Option.getOrUndefined(result)).toBe("world")
   })

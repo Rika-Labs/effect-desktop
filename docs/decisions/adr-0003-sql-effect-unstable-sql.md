@@ -16,9 +16,14 @@ Carrying the bespoke surface means each internal storage call-site owns row deco
 
 Delete the bespoke SQLite implementation. Adopt `effect/unstable/sql` as the storage backbone with `@effect/sql-sqlite-bun` as the concrete driver.
 
-- `runtime/sqlite.ts` becomes a thin re-export of `SqlClient`, `Model`, and `SqliteClient.layer` from `@effect-desktop/core`.
+- `runtime/sqlite.ts` exposes `SqlClient`, `SqlModel`, and `SqliteClient` from
+  Effect SQL, plus one desktop policy layer: `SqlClientLive({ filename,
+ownerScope })`.
 - Internal storage (event log, audit, settings) migrates to `Model.Class` definitions with `Model.makeRepository` for typed CRUD and `Model.makeDataLoaders` for batched lookups.
-- The `SqlClient` connection is registered in `ResourceRegistry` so the open handle participates in scope-tracked disposal alongside other runtime resources.
+- `SqlClientLive` validates the desktop boundary, checks `sqlite.open` for
+  file-backed databases, and registers the scoped `SqlClient` connection in
+  `ResourceRegistry` so the open handle participates in scope-tracked disposal
+  alongside other runtime resources.
 - Migrations are declared via `Model` migrations adjacent to the schema, not via ad-hoc SQL strings.
 - The driver layer is `SqliteClient.layer({ filename })` resolved from `FileSystem` and `Path` provided by T03.
 
@@ -47,7 +52,8 @@ Cross-links: [ADR-0004](adr-0004-platform-bun.md) (driver depends on platform-bu
 
 **Neutral**
 
-- Migration cost is bounded to the bridge package's internal consumers (event log, audit, settings). Application storage schemas are authored by users and unaffected.
+- Migration cost is bounded to prerelease callers of the deleted local SQLite
+  wrapper. Application storage schemas are authored against Effect SQL.
 
 ## Validation
 
@@ -55,8 +61,10 @@ A `Model.Class` for the event log round-trips a row through `Model.makeRepositor
 
 ## Migration notes
 
-1. Delete `packages/core/src/runtime/sqlite.ts`.
-2. Add `@effect/sql-sqlite-bun` to `packages/core`.
-3. Add re-exports of `SqlClient`, `Model`, `SqliteClient` from `@effect-desktop/core`.
-4. Rewrite event log, audit, and settings storage as `Model.Class` + `Model.makeRepository`.
-5. Register the `SqlClient` layer in `ResourceRegistry` for scope-tracked disposal.
+1. Delete the bespoke `SQLite`, `SQLiteLive`, `makeSQLite`, connection,
+   statement, transaction, and local driver-error exports.
+2. Add re-exports of `SqlClient`, `SqlModel`, and `SqliteClient` from
+   `@effect-desktop/core`.
+3. Keep `SqlClientLive` only as a desktop policy layer over Effect SQL.
+4. Register the `SqlClient` layer in `ResourceRegistry` for scope-tracked
+   disposal and check `sqlite.open` before file-backed driver acquisition.

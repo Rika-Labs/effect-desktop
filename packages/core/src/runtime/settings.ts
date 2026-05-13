@@ -1,6 +1,9 @@
 import { Context, Data, Effect, Layer, Option, PubSub, Schema, Stream } from "effect"
-import { SqliteClient } from "@effect/sql-sqlite-bun"
 import { KeyValueStore } from "effect/unstable/persistence"
+
+import type { PermissionRegistry } from "./permission-registry.js"
+import type { ResourceRegistry } from "./resources.js"
+import { SqlClientLive, type SqlitePolicyError } from "./sqlite.js"
 
 const NonEmptyString = Schema.NonEmptyString
 const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
@@ -147,7 +150,10 @@ const kvGet = (
         return Effect.succeed(Option.none())
       }
       return Effect.try({
-        try: () => Option.some(JSON.parse(raw) as unknown),
+        try: (): Option.Option<unknown> => {
+          const parsed: unknown = JSON.parse(raw)
+          return Option.some(parsed)
+        },
         catch: (error) =>
           new SettingsInvalidArgumentError({
             operation,
@@ -338,10 +344,13 @@ const SettingsFromKv: Layer.Layer<Settings, never, KeyValueStore.KeyValueStore> 
   })
 )
 
-export const makeSettingsLayer = (path: string): Layer.Layer<Settings, never, never> =>
+export const makeSettingsLayer = (
+  path: string,
+  ownerScope = "settings"
+): Layer.Layer<Settings, SqlitePolicyError, PermissionRegistry | ResourceRegistry> =>
   SettingsFromKv.pipe(
     Layer.provide(KeyValueStore.layerSql()),
-    Layer.provide(SqliteClient.layer({ filename: path }))
+    Layer.provide(SqlClientLive({ filename: path, ownerScope }))
   )
 
 export const makeSettingsLayerMemory: Layer.Layer<Settings, never, never> = SettingsFromKv.pipe(

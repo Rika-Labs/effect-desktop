@@ -10,7 +10,7 @@ Public framework API and runtime contracts (`Desktop.run`, `Desktop.window`, `De
 
 The package exports runtime primitives as they land by phase. Phase 16 adds the
 `PermissionRegistry`, `ApprovalBroker`, and `AuditEvents` services to the Phase
-15 `SQLite`, `Settings`, `Transport`, `WindowState`, `Secrets`, and
+15 `SqlClientLive`, `Settings`, `Transport`, `WindowState`, `Secrets`, and
 `RedactionFilter` services/utilities for scope-bound local storage, app-owned
 protocol transport, platform-backed credential storage, and human-visible
 emission safety.
@@ -27,25 +27,23 @@ The `RpcGroup` remains the source of truth for endpoint tags, schemas, endpoint 
 
 ### SQLite
 
-`SQLite` wraps `bun:sqlite` behind Effect values. `connect({ path, ownerScope })`
-opens a database and registers the connection in `ResourceRegistry` under the
-given scope. `query`, `exec`, `prepare`, and prepared statement methods all
-return typed `Effect` values with `SqliteError` failures instead of throwing.
+SQLite uses Effect SQL directly. `SqlClientLive({ filename, ownerScope })`
+validates the desktop boundary, checks `sqlite.open` for file-backed databases,
+registers a scoped `sqlite` resource, and then delegates query execution,
+transactions, prepared statements, and driver errors to
+`@effect/sql-sqlite-bun`.
 
-Transactions are explicit Effect programs: `connection.transaction(effect)` runs
-`BEGIN`, executes the supplied Effect, commits on success, and rolls back when
-the Effect fails. Connections and prepared statements close when their owning
-scope closes.
-
-SQLite error codes are mapped to typed tags: `Constraint`, `Busy`, `Locked`,
-`Corrupt`, `IoError`, `InvalidArgument`, and `InvalidState`.
+Application code should depend on `SqlClient` and `SqlModel`, not on a local
+connection wrapper. Use `sql.withTransaction(effect)` for transactions and
+`SqlModel.makeRepository` for typed table access.
 
 ### Settings
 
-`Settings` is a typed key/value store built on `SQLite`. `open` validates the
-database path, owner scope, namespace, and schema version before opening the
-database. `get`, `set`, `delete`, `keys`, and `update` validate values through
-Effect Schema and return typed `SettingsError` values instead of throwing.
+`Settings` is a typed key/value store built on Effect `KeyValueStore`. `open`
+validates the database path, owner scope, namespace, and schema version before
+opening the store. `get`, `set`, `delete`, `keys`, and `update` validate values
+through Effect Schema and return typed `SettingsError` values instead of
+throwing.
 
 `set` is last-writer-wins. `update` runs inside a SQLite transaction, so
 read-modify-write calls for the same database connection serialize. Versioned
@@ -269,31 +267,53 @@ See `docs/SPEC.md` for the package's normative non-goals.
 ## Usage
 
 ```ts
-import { Effect } from "effect"
-import { ResourceRegistryLive, SQLite, SQLiteLive } from "@effect-desktop/core"
+import { Effect, Layer } from "effect"
+import {
+  PermissionRegistry,
+  ResourceRegistryLive,
+  SqlClient,
+  SqlClientLive,
+  makePermissionRegistry
+} from "@effect-desktop/core"
 
 const program = Effect.gen(function* () {
-  const sqlite = yield* SQLite
-  const connection = yield* sqlite.connect({ path: ":memory:", ownerScope: "window-main" })
-  yield* connection.exec("CREATE TABLE users (name TEXT UNIQUE)")
-  yield* connection.transaction(connection.exec("INSERT INTO users (name) VALUES (?)", ["Ada"]))
-  return yield* connection.query("SELECT name FROM users")
+  const sql = yield* SqlClient
+  yield* sql`CREATE TABLE users (name TEXT UNIQUE)`
+  yield* sql.withTransaction(sql`INSERT INTO users (name) VALUES (${"Ada"})`)
+  return yield* sql`SELECT name FROM users`
 })
 
+const PermissionRegistryLive = Layer.effect(PermissionRegistry)(makePermissionRegistry())
+const SqliteLive = SqlClientLive({ filename: ":memory:", ownerScope: "window-main" })
+
 await Effect.runPromise(
-  program.pipe(Effect.provide(SQLiteLive), Effect.provide(ResourceRegistryLive))
+  program.pipe(
+    Effect.provide(SqliteLive),
+    Effect.provide(PermissionRegistryLive),
+    Effect.provide(ResourceRegistryLive),
+    Effect.scoped
+  )
 )
 ```
 
 ```ts
-import { Effect, Schema } from "effect"
-import { ResourceRegistryLive, makeSettings, SQLite, SQLiteLive } from "@effect-desktop/core"
+import { realpath } from "node:fs/promises"
+
+import { Effect, Layer, Schema } from "effect"
+import {
+  PermissionRegistry,
+  ResourceRegistryLive,
+  Settings,
+  makePermissionRegistry,
+  makeSettingsLayer
+} from "@effect-desktop/core"
+
+const settingsPath = "settings.sqlite"
 
 const program = Effect.gen(function* () {
-  const sqlite = yield* SQLite
-  const settings = yield* makeSettings(sqlite)
+  const settings = yield* Settings
   const store = yield* settings.open({
-    path: "settings.sqlite",
+    path: settingsPath,
     ownerScope: "window-main",
     schemaVersion: 1
   })
@@ -301,8 +321,22 @@ const program = Effect.gen(function* () {
   return yield* store.getOrDefault("user.name", Schema.String, "anonymous")
 })
 
+const PermissionRegistryLive = Layer.unwrap(
+  Effect.gen(function* () {
+    const permissions = yield* makePermissionRegistry()
+    const root = yield* Effect.tryPromise(() => realpath(".")).pipe(Effect.orDie)
+    yield* permissions.declare({ kind: "sqlite.open", roots: [root], audit: "always" })
+    return Layer.succeed(PermissionRegistry, permissions)
+  })
+)
+
 await Effect.runPromise(
-  program.pipe(Effect.provide(SQLiteLive), Effect.provide(ResourceRegistryLive))
+  program.pipe(
+    Effect.provide(makeSettingsLayer(settingsPath, "window-main")),
+    Effect.provide(PermissionRegistryLive),
+    Effect.provide(ResourceRegistryLive),
+    Effect.scoped
+  )
 )
 ```
 

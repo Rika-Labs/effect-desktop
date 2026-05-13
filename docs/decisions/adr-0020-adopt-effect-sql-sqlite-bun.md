@@ -10,7 +10,14 @@ Accepted
 
 ## Decision
 
-Add `@effect/sql-sqlite-bun@4.0.0-beta.60` (matching the Effect `^4.0.0-beta.60` peer) as a production dependency of `@effect-desktop/core`. Expose `SqlClient`, `SqlError`, `SqlModel`, and the concrete `SqliteClient` namespace as re-exports from `runtime/sqlite.ts`. Provide `SqlClientLive(config)` as the canonical layer for new storage call-sites. The bespoke `SQLite` service and `SQLiteLive` layer remain in place until T04 (settings) and T07 (event log) migrate their call-sites to `Model.makeRepository`.
+Add `@effect/sql-sqlite-bun@4.0.0-beta.60` (matching the Effect `^4.0.0-beta.60` peer) as a production dependency of `@effect-desktop/core`. Expose `SqlClient`, `SqlError`, `SqlModel`, and the concrete `SqliteClient` namespace as re-exports from `runtime/sqlite.ts`. Provide `SqlClientLive(config)` as the canonical desktop policy layer for runtime SQLite call-sites.
+
+Issue #1267 completed the planned removal. The bespoke `SQLite` service,
+`SQLiteLive`, `makeSQLite`, connection, statement, transaction, and local driver
+error surfaces are gone. `SqlClientLive` remains only as the desktop policy
+layer over `@effect/sql-sqlite-bun`: it validates the filename and owner scope,
+checks `sqlite.open` for file-backed databases, registers a scoped
+`ResourceRegistry` handle, and delegates SQL execution to Effect.
 
 ## Alternatives considered
 
@@ -21,7 +28,7 @@ Add `@effect/sql-sqlite-bun@4.0.0-beta.60` (matching the Effect `^4.0.0-beta.60`
 
 - One new production dependency (`@effect/sql-sqlite-bun`), which itself has zero transitive npm deps (uses `bun:sqlite` built-in).
 - `SqlClientLive(config)` is the new canonical entry point for storage. It registers the connection in `ResourceRegistry` under `kind: "sqlite"`, `state: "open"`, so disposal participates in scope-tracked runtime shutdown.
-- The bespoke `SQLite` / `SQLiteLive` surface is frozen — no new features; existing call-sites migrate to `SqlClientLive` in T04 and T07.
+- The bespoke `SQLite` / `SQLiteLive` surface has been deleted; application and framework storage code uses `SqlClient` / `SqlModel`.
 - `Model.Class` + `Model.makeRepository` is now the authorized pattern for typed CRUD against any table.
 
 ## Validation
@@ -30,7 +37,7 @@ Add `@effect/sql-sqlite-bun@4.0.0-beta.60` (matching the Effect `^4.0.0-beta.60`
 
 ## Migration notes
 
-Call-sites that currently do `yield* SQLite` then `sqlite.connect(...)` should migrate to:
+Call-sites that used to do `yield* SQLite` then `sqlite.connect(...)` should migrate to:
 
 ```ts
 const sql = yield * SqlClient
