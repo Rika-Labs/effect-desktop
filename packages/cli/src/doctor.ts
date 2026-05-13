@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url"
 
 import { Data, Effect } from "effect"
 
-import { readCliStreamText } from "./cli-stream.js"
+import { runReleaseTool } from "./release-tool-runner.js"
 
 export class DoctorMissing extends Data.TaggedError("DoctorMissing")<{
   readonly probe: DoctorProbeName
@@ -64,6 +64,7 @@ export interface DesktopDoctorOptions {
   readonly arch: string
   readonly bunVersion: string
   readonly commandRunner: DoctorCommandRunner
+  readonly env?: Readonly<Record<string, string | undefined>>
 }
 
 export interface DesktopDoctorReport {
@@ -153,47 +154,34 @@ export const runDesktopDoctor = (
   })
 
 export const runDoctorCommand: DoctorCommandRunner = (invocation) =>
-  Effect.tryPromise({
-    try: async () => {
-      const child = Bun.spawn([invocation.command, ...invocation.args], {
-        cwd: invocation.cwd,
-        stdout: "pipe",
-        stderr: "pipe"
-      })
-      const [stdout, stderr, exitCode] = await Promise.all([
-        Effect.runPromise(
-          readCliStreamText(child.stdout, { operation: `${invocation.probe}.stdout` })
-        ),
-        Effect.runPromise(
-          readCliStreamText(child.stderr, { operation: `${invocation.probe}.stderr` })
-        ),
-        child.exited
-      ])
-      if (exitCode !== 0) {
-        throw missing({
-          probe: invocation.probe,
-          component: invocation.command,
-          platform: invocation.platform,
-          message: `${invocation.command} exited with ${exitCode.toString()}`,
-          remediation: remediationForCommand(invocation.command),
-          installHint: installHintForCommand(invocation.command),
-          docsUrl: DOCS_URL
-        })
-      }
-      return { stdout, stderr }
-    },
-    catch: (cause) =>
-      cause instanceof DoctorMissing
-        ? cause
-        : missing({
-            probe: invocation.probe,
-            component: invocation.command,
-            platform: invocation.platform,
-            message: `${invocation.command} is not available`,
-            remediation: remediationForCommand(invocation.command),
-            installHint: installHintForCommand(invocation.command),
-            docsUrl: DOCS_URL
-          })
+  Effect.gen(function* () {
+    const result = yield* runReleaseTool({
+      step: invocation.probe,
+      command: invocation.command,
+      args: invocation.args,
+      cwd: invocation.cwd,
+      stdout: "pipe",
+      stderr: "pipe"
+    }).pipe(
+      Effect.mapError(() => missingCommand(invocation, `${invocation.command} is not available`))
+    )
+    if (result.exitCode !== 0) {
+      return yield* Effect.fail(
+        missingCommand(invocation, `${invocation.command} exited with ${result.exitCode}`)
+      )
+    }
+    return { stdout: result.stdout, stderr: result.stderr }
+  })
+
+const missingCommand = (invocation: DoctorCommandInvocation, message: string): DoctorMissing =>
+  missing({
+    probe: invocation.probe,
+    component: invocation.command,
+    platform: invocation.platform,
+    message,
+    remediation: remediationForCommand(invocation.command),
+    installHint: installHintForCommand(invocation.command),
+    docsUrl: DOCS_URL
   })
 
 export const formatDoctorReport = (report: DesktopDoctorReport): string =>
@@ -290,7 +278,11 @@ const probeSigningCredentials = (
 ): Effect.Effect<DoctorProbeResult, never, never> =>
   Effect.gen(function* () {
     const config = yield* readDesktopConfigForDoctor(options)
-    const hasCredentials = probeSigningCredentialSupport(config, options.platform)
+    const hasCredentials = probeSigningCredentialSupport(
+      config,
+      options.platform,
+      options.env ?? {}
+    )
     if (hasCredentials) {
       return ok("signing-credentials", "signing", "signing credential configuration is present")
     }
@@ -751,17 +743,18 @@ const formatProbe = (probe: DoctorProbeResult): string => {
 
 const probeSigningCredentialSupport = (
   config: AppConfig | undefined,
-  platform: string
+  platform: string,
+  env: Readonly<Record<string, string | undefined>>
 ): boolean => {
   if (platform === "darwin") {
     const macos = config?.signing?.macos
     const identity = optionalString(macos?.identity)
     const notarytoolProfile =
-      optionalString(macos?.notarytoolProfile) ?? process.env["APPLE_NOTARYTOOL_PROFILE"]
-    const teamId = optionalString(macos?.teamId) ?? process.env["APPLE_TEAM_ID"]
-    const appleId = optionalString(macos?.appleId) ?? process.env["APPLE_ID"]
+      optionalString(macos?.notarytoolProfile) ?? env["APPLE_NOTARYTOOL_PROFILE"]
+    const teamId = optionalString(macos?.teamId) ?? env["APPLE_TEAM_ID"]
+    const appleId = optionalString(macos?.appleId) ?? env["APPLE_ID"]
     const passwordEnv = optionalString(macos?.passwordEnv) ?? "APPLE_APP_SPECIFIC_PASSWORD"
-    const password = process.env[passwordEnv]
+    const password = env[passwordEnv]
     return (
       identity !== undefined &&
       ((notarytoolProfile !== undefined && notarytoolProfile.length > 0) ||
@@ -783,16 +776,16 @@ const probeSigningCredentialSupport = (
     if (
       pfxPath !== undefined &&
       pfxPasswordEnv !== undefined &&
-      process.env[pfxPasswordEnv] !== undefined
+      env[pfxPasswordEnv] !== undefined
     ) {
       return true
     }
-    return process.env["WINDOWS_SIGNING_CERT"] !== undefined
+    return env["WINDOWS_SIGNING_CERT"] !== undefined
   }
   if (platform === "linux") {
     return (
       optionalString(config?.signing?.linux?.gpgKey) !== undefined ||
-      process.env["LINUX_GPG_KEY"] !== undefined
+      env["LINUX_GPG_KEY"] !== undefined
     )
   }
   return false

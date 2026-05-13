@@ -126,7 +126,7 @@
     {
       "name": "CliRunOptions",
       "kind": "interface",
-      "signature": "export interface CliRunOptions { readonly argv: readonly string[] readonly cwd: string readonly writeStdout: (text: string) => void readonly writeStderr: (text: string) => void readonly commandRunner?: CommandRunner readonly packageCommandRunner?: PackageCommandRunner readonly doctorCommandRunner?: DoctorCommandRunner readonly signCommandRunner?: SignCommandRunner readonly notarizeCommandRunner?: NotarizeCommandRunner readonly now?: () => number readonly hostTarget?: BuildTarget readonly platform?: NodeJS.Platform readonly arch?: string readonly bunVersion?: string }"
+      "signature": "export interface CliRunOptions { readonly argv: readonly string[] readonly cwd: string readonly writeStdout: (text: string) => void readonly writeStderr: (text: string) => void readonly commandRunner?: CommandRunner readonly packageCommandRunner?: PackageCommandRunner readonly doctorCommandRunner?: DoctorCommandRunner readonly signCommandRunner?: SignCommandRunner readonly notarizeCommandRunner?: NotarizeCommandRunner readonly now?: () => number readonly hostTarget?: BuildTarget readonly platform?: NodeJS.Platform readonly arch?: string readonly bunVersion?: string readonly env?: Readonly<Record<string, string | undefined>> }"
     },
     {
       "name": "CliUsageError",
@@ -196,7 +196,7 @@
     {
       "name": "DesktopNotarizeOptions",
       "kind": "interface",
-      "signature": "export interface DesktopNotarizeOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly commandRunner: NotarizeCommandRunner readonly now: () => number readonly hostTarget: NotarizeTarget | undefined }"
+      "signature": "export interface DesktopNotarizeOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly commandRunner: NotarizeCommandRunner readonly now: () => number readonly hostTarget: NotarizeTarget | undefined readonly env?: Readonly<Record<string, string | undefined>> }"
     },
     {
       "name": "DesktopNotarizeReport",
@@ -226,7 +226,7 @@
     {
       "name": "DesktopPublishOptions",
       "kind": "interface",
-      "signature": "export interface DesktopPublishOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly now: () => number }"
+      "signature": "export interface DesktopPublishOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly now: () => number readonly env?: Readonly<Record<string, string | undefined>> }"
     },
     {
       "name": "DesktopPublishReport",
@@ -241,7 +241,7 @@
     {
       "name": "DesktopSignOptions",
       "kind": "interface",
-      "signature": "export interface DesktopSignOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly commandRunner: SignCommandRunner readonly now: () => number readonly hostTarget: SignTarget | undefined }"
+      "signature": "export interface DesktopSignOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly commandRunner: SignCommandRunner readonly now: () => number readonly hostTarget: SignTarget | undefined readonly env?: Readonly<Record<string, string | undefined>> }"
     },
     {
       "name": "DesktopSignReport",
@@ -412,6 +412,11 @@
       "name": "MacosDesktopTargetId",
       "kind": "type",
       "signature": "const MacosDesktopTargetId: Schema.Literals<readonly [\"macos-arm64\", \"macos-x64\"]>"
+    },
+    {
+      "name": "makeReleaseToolRunner",
+      "kind": "value",
+      "signature": "const makeReleaseToolRunner: () => Effect.Effect<ReleaseToolRunnerApi, never, ChildProcessSpawner.ChildProcessSpawner>"
     },
     {
       "name": "NotarizeArtifactKind",
@@ -619,6 +624,21 @@
       "signature": "export interface ReleaseGateReport { readonly passed: boolean readonly gates: readonly ReleaseGateCheckReport[] }"
     },
     {
+      "name": "ReleaseToolRunner",
+      "kind": "class",
+      "signature": "export class ReleaseToolRunner extends Context.Service<ReleaseToolRunner, ReleaseToolRunnerApi>()( \"@effect-desktop/cli/ReleaseToolRunner\" ) {}"
+    },
+    {
+      "name": "ReleaseToolRunnerApi",
+      "kind": "interface",
+      "signature": "export interface ReleaseToolRunnerApi { readonly run: (invocation: ToolInvocation) => Effect.Effect<ToolResult, ToolError, never> }"
+    },
+    {
+      "name": "ReleaseToolRunnerLive",
+      "kind": "value",
+      "signature": "const ReleaseToolRunnerLive: Layer.Layer<ReleaseToolRunner, never, ChildProcessSpawner.ChildProcessSpawner>"
+    },
+    {
       "name": "ReproCheckError",
       "kind": "type",
       "signature": "export type ReproCheckError = | ReproBuildRunError | ReproPackageRunError | ReproFileError | ReproDiffError"
@@ -707,6 +727,11 @@
       "name": "runReleaseGate",
       "kind": "value",
       "signature": "const runReleaseGate: (options: ReleaseGateOptions) => Effect.Effect<ReleaseGateReport, ReleaseGateError, never>"
+    },
+    {
+      "name": "runReleaseTool",
+      "kind": "value",
+      "signature": "const runReleaseTool: (invocation: ToolInvocation) => Effect.Effect<ToolResult, ToolError, never>"
     },
     {
       "name": "runSemverGuard",
@@ -807,6 +832,26 @@
       "name": "SignTarget",
       "kind": "type",
       "signature": "export type SignTarget = DesktopTargetId"
+    },
+    {
+      "name": "ToolError",
+      "kind": "class",
+      "signature": "export class ToolError extends Data.TaggedError(\"ToolError\")<{ readonly invocation: ToolInvocation readonly message: string readonly cause: unknown }> {}"
+    },
+    {
+      "name": "ToolInvocation",
+      "kind": "interface",
+      "signature": "export interface ToolInvocation { readonly step: string readonly command: string readonly args: readonly string[] readonly cwd: string readonly env?: Readonly<Record<string, string | undefined>> readonly stdout?: ToolOutputMode readonly stderr?: ToolOutputMode readonly maxStdoutChars?: number readonly maxStderrChars?: number }"
+    },
+    {
+      "name": "ToolOutputMode",
+      "kind": "type",
+      "signature": "export type ToolOutputMode = \"ignore\" | \"pipe\""
+    },
+    {
+      "name": "ToolResult",
+      "kind": "interface",
+      "signature": "export interface ToolResult { readonly command: readonly string[] readonly cwd: string readonly exitCode: number readonly stdout: string readonly stderr: string }"
     },
     {
       "name": "UnsupportedDesktopHostTargetError",

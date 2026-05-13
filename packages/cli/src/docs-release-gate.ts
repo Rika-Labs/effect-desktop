@@ -3,6 +3,8 @@ import { isAbsolute, join, relative } from "node:path"
 
 import { Data, Effect, Option } from "effect"
 
+import { runReleaseTool } from "./release-tool-runner.js"
+
 export interface DocsReleaseGateOptions {
   readonly cwd: string
   readonly commandRunner?: DocsExampleRunner
@@ -409,87 +411,41 @@ const runDocsExampleWithTimeout = (
 const runDocsExample: DocsExampleRunner = (invocation) =>
   Effect.gen(function* () {
     const directory = yield* makeTempDirectory(invocation.cwd)
-    let child: ReturnType<typeof Bun.spawn> | undefined
     const effect = Effect.gen(function* () {
       const file = join(directory, `docs-example-${invocation.blockIndex}.ts`)
       yield* writeText(file, invocation.code)
-      const runningChild = yield* Effect.try({
-        try: () =>
-          Bun.spawn(["bun", file], {
-            cwd: invocation.cwd,
-            stdout: "ignore",
-            stderr: "pipe"
-          }),
-        catch: (cause) =>
-          new DocsGateExampleFailedError({
-            file: invocation.file,
-            blockIndex: invocation.blockIndex,
-            message: `failed to start docs example ${invocation.file}#${invocation.blockIndex}`,
-            cause
-          })
-      })
-      child = runningChild
-      const exitCode = yield* waitForDocsExampleExit(runningChild, invocation)
-      const stderr = yield* Effect.tryPromise({
-        try: () => new Response(runningChild.stderr).text(),
-        catch: (cause) =>
-          new DocsGateExampleFailedError({
-            file: invocation.file,
-            blockIndex: invocation.blockIndex,
-            message: `failed to read docs example stderr ${invocation.file}#${invocation.blockIndex}`,
-            cause
-          })
-      })
-      if (exitCode !== 0) {
+      const result = yield* runReleaseTool({
+        step: `docs-example-${invocation.blockIndex}`,
+        command: "bun",
+        args: [file],
+        cwd: invocation.cwd,
+        stdout: "ignore",
+        stderr: "pipe"
+      }).pipe(
+        Effect.mapError(
+          (cause) =>
+            new DocsGateExampleFailedError({
+              file: invocation.file,
+              blockIndex: invocation.blockIndex,
+              message: `failed to start docs example ${invocation.file}#${invocation.blockIndex}`,
+              cause
+            })
+        )
+      )
+      if (result.exitCode !== 0) {
         return yield* Effect.fail(
           new DocsGateExampleFailedError({
             file: invocation.file,
             blockIndex: invocation.blockIndex,
-            message: `docs example ${invocation.file}#${invocation.blockIndex} exited with ${exitCode}`,
-            exitCode,
-            stderr
+            message: `docs example ${invocation.file}#${invocation.blockIndex} exited with ${result.exitCode}`,
+            exitCode: result.exitCode,
+            stderr: result.stderr
           })
         )
       }
     })
-    yield* effect.pipe(
-      Effect.ensuring(
-        Effect.sync(() => {
-          child?.kill()
-        }).pipe(Effect.ignore)
-      ),
-      Effect.ensuring(removePath(directory).pipe(Effect.ignore))
-    )
+    yield* effect.pipe(Effect.ensuring(removePath(directory).pipe(Effect.ignore)))
   })
-
-const waitForDocsExampleExit = (
-  child: ReturnType<typeof Bun.spawn>,
-  invocation: DocsExampleInvocation
-): Effect.Effect<number, DocsGateExampleFailedError, never> =>
-  Effect.tryPromise({
-    try: () => child.exited,
-    catch: (cause) =>
-      new DocsGateExampleFailedError({
-        file: invocation.file,
-        blockIndex: invocation.blockIndex,
-        message: `failed while waiting for docs example ${invocation.file}#${invocation.blockIndex}`,
-        cause
-      })
-  }).pipe(
-    Effect.timeoutOption(`${DEFAULT_EXAMPLE_TIMEOUT_MILLIS} millis`),
-    Effect.flatMap((result) => {
-      if (Option.isSome(result)) {
-        return Effect.succeed(result.value)
-      }
-      return Effect.fail(
-        new DocsGateExampleFailedError({
-          file: invocation.file,
-          blockIndex: invocation.blockIndex,
-          message: `docs example ${invocation.file}#${invocation.blockIndex} timed out after ${DEFAULT_EXAMPLE_TIMEOUT_MILLIS}ms`
-        })
-      )
-    })
-  )
 
 const readJson = <A>(path: string): Effect.Effect<A, DocsGateFileError, never> =>
   Effect.gen(function* () {

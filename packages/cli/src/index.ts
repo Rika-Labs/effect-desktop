@@ -33,7 +33,6 @@ import {
   type RuntimeEngine
 } from "@effect-desktop/config"
 
-import { readCliStreamText } from "./cli-stream.js"
 import {
   runDesktopPackage,
   runPackageCommand,
@@ -224,6 +223,17 @@ export {
   wixArch
 } from "./targets.js"
 export {
+  ReleaseToolRunner,
+  ReleaseToolRunnerLive,
+  ToolError,
+  makeReleaseToolRunner,
+  runReleaseTool,
+  type ReleaseToolRunnerApi,
+  type ToolInvocation,
+  type ToolOutputMode,
+  type ToolResult
+} from "./release-tool-runner.js"
+export {
   runPublicApiCheck,
   type PublicApiChange,
   type PublicApiChangeKind,
@@ -294,6 +304,7 @@ export {
   type SemverPolicyManifest,
   type SemverReleaseKind
 } from "./semver-guard.js"
+import { runReleaseTool } from "./release-tool-runner.js"
 
 export class CliUsageError extends Error {
   public override readonly name = "CliUsageError"
@@ -507,6 +518,7 @@ export interface CliRunOptions {
   readonly platform?: NodeJS.Platform
   readonly arch?: string
   readonly bunVersion?: string
+  readonly env?: Readonly<Record<string, string | undefined>>
 }
 
 export interface CommandInvocation {
@@ -770,7 +782,8 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
             platform: Option.getOrUndefined(flags.platform),
             commandRunner: options.signCommandRunner ?? runSignCommand,
             now: options.now ?? Date.now,
-            hostTarget: options.hostTarget
+            hostTarget: options.hostTarget,
+            env: options.env ?? process.env
           }).pipe(
             Effect.catch((error) =>
               Effect.sync(() => {
@@ -818,7 +831,8 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
             platform: Option.getOrUndefined(flags.platform),
             commandRunner: options.notarizeCommandRunner ?? runNotarizeCommand,
             now: options.now ?? Date.now,
-            hostTarget: macosTarget
+            hostTarget: macosTarget,
+            env: options.env ?? process.env
           }).pipe(
             Effect.catch((error) =>
               Effect.sync(() => {
@@ -860,7 +874,8 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
             cwd: options.cwd,
             configPath: flags.config,
             platform: Option.getOrUndefined(flags.platform),
-            now: options.now ?? Date.now
+            now: options.now ?? Date.now,
+            env: options.env ?? process.env
           }).pipe(
             Effect.catch((error) =>
               Effect.sync(() => {
@@ -905,7 +920,8 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
             platform: options.platform ?? process.platform,
             arch: options.arch ?? process.arch,
             bunVersion: options.bunVersion ?? Bun.version,
-            commandRunner: options.doctorCommandRunner ?? runDoctorCommand
+            commandRunner: options.doctorCommandRunner ?? runDoctorCommand,
+            env: options.env ?? process.env
           })
           if (flags.json) {
             if (report.passed) {
@@ -1364,50 +1380,38 @@ const resolveHostTarget = (
   )
 
 const runCommand: CommandRunner = (invocation) =>
-  Effect.tryPromise({
-    try: async () => {
-      const process = Bun.spawn([invocation.command, ...invocation.args], {
-        cwd: invocation.cwd,
-        stdout: "pipe",
-        stderr: "pipe"
-      })
-      const [stdout, stderr, exitCode] = await Promise.all([
-        Effect.runPromise(
-          readCliStreamText(process.stdout, {
-            operation: `${invocation.step}.stdout`,
-            maxChars: MAX_COMMAND_OUTPUT_CHARS
-          })
-        ),
-        Effect.runPromise(
-          readCliStreamText(process.stderr, {
-            operation: `${invocation.step}.stderr`,
-            maxChars: MAX_COMMAND_OUTPUT_CHARS
-          })
-        ),
-        process.exited
-      ])
-      if (exitCode !== 0) {
-        throw new BuildCommandFailedError({
-          step: invocation.step,
-          command: [invocation.command, ...invocation.args],
-          cwd: invocation.cwd,
-          exitCode,
-          message: `${invocation.step} command exited with ${exitCode}`,
-          ...(stdout.length === 0 ? {} : { stdout }),
-          ...(stderr.length === 0 ? {} : { stderr })
-        })
-      }
-    },
-    catch: (cause) =>
-      cause instanceof BuildCommandFailedError
-        ? cause
-        : new BuildCommandFailedError({
+  Effect.gen(function* () {
+    const result = yield* runReleaseTool({
+      ...invocation,
+      stdout: "pipe",
+      stderr: "pipe",
+      maxStdoutChars: MAX_COMMAND_OUTPUT_CHARS,
+      maxStderrChars: MAX_COMMAND_OUTPUT_CHARS
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new BuildCommandFailedError({
             step: invocation.step,
             command: [invocation.command, ...invocation.args],
             cwd: invocation.cwd,
             exitCode: undefined,
             message: formatUnknownError(cause)
           })
+      )
+    )
+    if (result.exitCode !== 0) {
+      return yield* Effect.fail(
+        new BuildCommandFailedError({
+          step: invocation.step,
+          command: result.command,
+          cwd: result.cwd,
+          exitCode: result.exitCode,
+          message: `${invocation.step} command exited with ${result.exitCode}`,
+          ...(result.stdout.length === 0 ? {} : { stdout: result.stdout }),
+          ...(result.stderr.length === 0 ? {} : { stderr: result.stderr })
+        })
+      )
+    }
   })
 
 const writeBridgeManifest = (
@@ -3128,7 +3132,6 @@ const makeCliLayer = (options: CliRunOptions): Layer.Layer<CliEnvironment, never
       Effect.die("spawn not supported in non-interactive CLI")
     )
   )
-
   const format = (args: ReadonlyArray<unknown>): string =>
     args.map((a) => (typeof a === "string" ? a : String(a))).join(" ")
 

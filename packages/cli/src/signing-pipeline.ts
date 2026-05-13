@@ -8,7 +8,7 @@ import { Data, Effect } from "effect"
 import { makeSecretString, unsafeSecretString } from "@effect-desktop/bridge"
 import { decodeDesktopConfig } from "@effect-desktop/config"
 
-import { readCliStreamText } from "./cli-stream.js"
+import { runReleaseTool } from "./release-tool-runner.js"
 import {
   decodeDesktopTarget,
   desktopPlatformDirectory,
@@ -99,6 +99,7 @@ export interface DesktopSignOptions {
   readonly commandRunner: SignCommandRunner
   readonly now: () => number
   readonly hostTarget: SignTarget | undefined
+  readonly env?: Readonly<Record<string, string | undefined>>
 }
 
 export interface SignStepReport {
@@ -232,39 +233,33 @@ export const detectSignHostTarget = (): SignTarget | undefined => {
 }
 
 export const runSignCommand: SignCommandRunner = (invocation) =>
-  Effect.tryPromise({
-    try: async () => {
-      const spawned = Bun.spawn([invocation.command, ...invocation.args], {
-        cwd: invocation.cwd,
-        stdout: "ignore",
-        stderr: "pipe"
-      })
-      const stderr = await Effect.runPromise(
-        readCliStreamText(spawned.stderr, { operation: `${invocation.step}.stderr` })
-      )
-      const exitCode = await spawned.exited
-      if (exitCode !== 0) {
-        const failure = {
-          step: invocation.step,
-          command: [invocation.command, ...invocation.args],
-          cwd: invocation.cwd,
-          exitCode,
-          message: `${invocation.step} command exited with ${exitCode}`
-        }
-        throw new SignCommandFailedError(stderr.length === 0 ? failure : { ...failure, stderr })
-      }
-    },
-    catch: (cause) =>
-      cause instanceof SignCommandFailedError
-        ? cause
-        : new SignCommandFailedError({
-            step: invocation.step,
-            command: [invocation.command, ...invocation.args],
-            cwd: invocation.cwd,
-            exitCode: undefined,
-            message: formatUnknownError(cause)
-          })
+  Effect.gen(function* () {
+    const result = yield* runReleaseTool({ ...invocation, stdout: "ignore", stderr: "pipe" }).pipe(
+      Effect.mapError((cause) => signCommandError(invocation, undefined, cause))
+    )
+    if (result.exitCode !== 0) {
+      return yield* Effect.fail(signCommandError(invocation, result.exitCode, result.stderr))
+    }
   })
+
+const signCommandError = (
+  invocation: SignCommandInvocation,
+  exitCode: number | undefined,
+  cause: unknown
+): SignCommandFailedError => {
+  const stderr = typeof cause === "string" ? cause : undefined
+  return new SignCommandFailedError({
+    step: invocation.step,
+    command: [invocation.command, ...invocation.args],
+    cwd: invocation.cwd,
+    exitCode,
+    message:
+      exitCode === undefined
+        ? formatUnknownError(cause)
+        : `${invocation.step} command exited with ${exitCode}`,
+    ...(stderr === undefined || stderr.length === 0 ? {} : { stderr })
+  })
+}
 
 const signArtifact = (
   options: DesktopSignOptions,
@@ -397,7 +392,7 @@ const signWindowsArtifact = (
   Effect.gen(function* () {
     const windows = plan.config.signing?.windows
     const timestampUrl = yield* readWindowsTimestampUrl(windows?.timestampUrl)
-    const credential = yield* windowsCredentialArgs(windows)
+    const credential = yield* windowsCredentialArgs(windows, options.env ?? {})
     const steps: SignStepReport[] = []
     const unblockStep = yield* runToolStep(
       options,
@@ -765,7 +760,8 @@ const windowsCredentialArgs = (
     ? Signing extends { readonly windows?: infer Windows }
       ? Windows | undefined
       : never
-    : never
+    : never,
+  env: Readonly<Record<string, string | undefined>>
 ): Effect.Effect<
   { readonly args: readonly string[]; readonly reportArgs: readonly string[] },
   SignConfigError,
@@ -783,7 +779,7 @@ const windowsCredentialArgs = (
       "signing.windows.pfx.passwordEnv"
     )
     if (pfxPath !== undefined && passwordEnv !== undefined) {
-      const password = process.env[passwordEnv]
+      const password = env[passwordEnv]
       if (password === undefined || password.length === 0) {
         return yield* Effect.fail(
           new SignConfigError({

@@ -43,6 +43,7 @@ export interface DesktopPublishOptions {
   readonly configPath: string
   readonly platform: string | undefined
   readonly now: () => number
+  readonly env?: Readonly<Record<string, string | undefined>>
 }
 
 export interface UpdateArtifactManifest {
@@ -137,7 +138,7 @@ export const runDesktopPublish = (
       platform: options.platform
     })
     const artifacts = yield* readPackagedArtifacts(plan)
-    const privateKey = yield* resolvePrivateKey(plan.privateKeyEnv)
+    const privateKey = yield* resolvePrivateKey(plan.privateKeyEnv, options.env ?? {})
     const manifestArtifacts: UpdateArtifactManifest[] = []
     for (const artifact of artifacts) {
       const payload = yield* readArtifactPayload(artifact.artifactPath)
@@ -479,11 +480,12 @@ const readPackagedArtifacts = (
   })
 
 const resolvePrivateKey = (
-  envName: string
+  envName: string,
+  env: Readonly<Record<string, string | undefined>>
 ): Effect.Effect<ReturnType<typeof createPrivateKey>, PublishConfigError, never> =>
   Effect.try({
     try: () => {
-      const value = process.env[envName]
+      const value = env[envName]
       if (value === undefined || value.length === 0) {
         throw new Error(`${envName} is not set`)
       }

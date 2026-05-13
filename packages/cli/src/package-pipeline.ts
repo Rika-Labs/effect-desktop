@@ -16,7 +16,7 @@ import { pathToFileURL } from "node:url"
 
 import { Data, Effect } from "effect"
 
-import { readCliStreamText } from "./cli-stream.js"
+import { runReleaseTool } from "./release-tool-runner.js"
 import {
   appImageArch,
   artifactKindsForTarget,
@@ -283,49 +283,33 @@ export const detectPackageHostTarget = (): PackageTarget | undefined => {
 }
 
 export const runPackageCommand: PackageCommandRunner = (invocation) =>
-  Effect.tryPromise({
-    try: async () => {
-      const spawned =
-        invocation.env === undefined
-          ? Bun.spawn([invocation.command, ...invocation.args], {
-              cwd: invocation.cwd,
-              stdout: "ignore",
-              stderr: "pipe"
-            })
-          : Bun.spawn([invocation.command, ...invocation.args], {
-              cwd: invocation.cwd,
-              env: { ...globalThis.process.env, ...invocation.env },
-              stdout: "ignore",
-              stderr: "pipe"
-            })
-      const stderr = await Effect.runPromise(
-        readCliStreamText(spawned.stderr, { operation: `${invocation.step}.stderr` })
-      )
-      const exitCode = await spawned.exited
-      if (exitCode !== 0) {
-        const failure = {
-          step: invocation.step,
-          command: [invocation.command, ...invocation.args],
-          cwd: invocation.cwd,
-          exitCode,
-          message: `${invocation.step} command exited with ${exitCode}`
-        }
-        throw new PackageCommandFailedError({
-          ...(stderr.length === 0 ? failure : { ...failure, stderr })
-        })
-      }
-    },
-    catch: (cause) =>
-      cause instanceof PackageCommandFailedError
-        ? cause
-        : new PackageCommandFailedError({
-            step: invocation.step,
-            command: [invocation.command, ...invocation.args],
-            cwd: invocation.cwd,
-            exitCode: undefined,
-            message: formatUnknownError(cause)
-          })
+  Effect.gen(function* () {
+    const result = yield* runReleaseTool({ ...invocation, stdout: "ignore", stderr: "pipe" }).pipe(
+      Effect.mapError((cause) => packageCommandError(invocation, undefined, cause))
+    )
+    if (result.exitCode !== 0) {
+      return yield* Effect.fail(packageCommandError(invocation, result.exitCode, result.stderr))
+    }
   })
+
+const packageCommandError = (
+  invocation: PackageCommandInvocation,
+  exitCode: number | undefined,
+  cause: unknown
+): PackageCommandFailedError => {
+  const stderr = typeof cause === "string" ? cause : undefined
+  return new PackageCommandFailedError({
+    step: invocation.step,
+    command: [invocation.command, ...invocation.args],
+    cwd: invocation.cwd,
+    exitCode,
+    message:
+      exitCode === undefined
+        ? formatUnknownError(cause)
+        : `${invocation.step} command exited with ${exitCode}`,
+    ...(stderr === undefined || stderr.length === 0 ? {} : { stderr })
+  })
+}
 
 const normalizePackagePlan = (
   rawConfig: unknown,

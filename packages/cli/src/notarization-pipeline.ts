@@ -7,7 +7,7 @@ import { Data, Effect } from "effect"
 
 import { makeSecretString, unsafeSecretString } from "@effect-desktop/bridge"
 
-import { readCliStreamText } from "./cli-stream.js"
+import { runReleaseTool } from "./release-tool-runner.js"
 import {
   decodeDesktopTarget,
   detectDesktopHostTarget,
@@ -99,6 +99,7 @@ export interface DesktopNotarizeOptions {
   readonly commandRunner: NotarizeCommandRunner
   readonly now: () => number
   readonly hostTarget: NotarizeTarget | undefined
+  readonly env?: Readonly<Record<string, string | undefined>>
 }
 
 export interface NotarizeStepReport {
@@ -183,7 +184,7 @@ export const runDesktopNotarize = (
       target
     })
     const artifacts = yield* readPackagedArtifacts(plan)
-    const credentials = yield* resolveCredentials(plan.config)
+    const credentials = yield* resolveCredentials(plan.config, options.env ?? {})
     const steps: NotarizeStepReport[] = []
     const reports: NotarizeArtifactReport[] = []
 
@@ -214,32 +215,20 @@ export const detectNotarizeHostTarget = (): NotarizeTarget | undefined => {
 }
 
 export const runNotarizeCommand: NotarizeCommandRunner = (invocation) =>
-  Effect.tryPromise({
-    try: async () => {
-      const spawned = Bun.spawn([invocation.command, ...invocation.args], {
-        cwd: invocation.cwd,
-        stdout: "pipe",
-        stderr: "pipe"
-      })
-      const [stdout, stderr, exitCode] = await Promise.all([
-        Effect.runPromise(
-          readCliStreamText(spawned.stdout, { operation: `${invocation.step}.stdout` })
-        ),
-        Effect.runPromise(
-          readCliStreamText(spawned.stderr, { operation: `${invocation.step}.stderr` })
-        ),
-        spawned.exited
-      ])
-      return { stdout, stderr, exitCode }
-    },
-    catch: (cause) =>
-      new NotarizeCommandFailedError({
-        step: invocation.step,
-        command: [invocation.command, ...invocation.args],
-        cwd: invocation.cwd,
-        exitCode: undefined,
-        message: formatUnknownError(cause)
-      })
+  Effect.gen(function* () {
+    const result = yield* runReleaseTool({ ...invocation, stdout: "pipe", stderr: "pipe" }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new NotarizeCommandFailedError({
+            step: invocation.step,
+            command: [invocation.command, ...invocation.args],
+            cwd: invocation.cwd,
+            exitCode: undefined,
+            message: formatUnknownError(cause)
+          })
+      )
+    )
+    return { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode }
   })
 
 const notarizeArtifact = (
@@ -475,13 +464,14 @@ const normalizeNotarizePlan = (
   })
 
 const resolveCredentials = (
-  config: AppConfig
+  config: AppConfig,
+  env: Readonly<Record<string, string | undefined>>
 ): Effect.Effect<NotaryCredentials, NotarizeConfigError, never> =>
   Effect.gen(function* () {
     const macos = config.signing?.macos
     const profile =
       (yield* readOptionalString(macos?.notarytoolProfile, "signing.macos.notarytoolProfile")) ??
-      process.env["APPLE_NOTARYTOOL_PROFILE"]
+      env["APPLE_NOTARYTOOL_PROFILE"]
     if (profile !== undefined && profile.length > 0) {
       return {
         args: ["--keychain-profile", profile],
@@ -489,15 +479,13 @@ const resolveCredentials = (
       }
     }
     const appleId =
-      (yield* readOptionalString(macos?.appleId, "signing.macos.appleId")) ??
-      process.env["APPLE_ID"]
+      (yield* readOptionalString(macos?.appleId, "signing.macos.appleId")) ?? env["APPLE_ID"]
     const teamId =
-      (yield* readOptionalString(macos?.teamId, "signing.macos.teamId")) ??
-      process.env["APPLE_TEAM_ID"]
+      (yield* readOptionalString(macos?.teamId, "signing.macos.teamId")) ?? env["APPLE_TEAM_ID"]
     const passwordEnv =
       (yield* readOptionalString(macos?.passwordEnv, "signing.macos.passwordEnv")) ??
       "APPLE_APP_SPECIFIC_PASSWORD"
-    const password = process.env[passwordEnv]
+    const password = env[passwordEnv]
     if (
       appleId !== undefined &&
       teamId !== undefined &&
