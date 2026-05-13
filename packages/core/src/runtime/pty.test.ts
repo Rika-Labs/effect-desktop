@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import {
   HostProtocolBackpressureOverflowError,
+  HostProtocolFileNotFoundError,
   HostProtocolInvalidArgumentError,
   HostProtocolPermissionDeniedError,
   HostProtocolResourceBusyError,
@@ -399,6 +400,42 @@ ptyTest("PTY open enforces the per-scope concurrent budget", async () => {
   if (failure !== undefined) {
     expectFailure(failure, HostProtocolResourceBusyError)
   }
+})
+
+ptyTest("PTY open releases the per-scope budget after adapter failure", async () => {
+  let openCalls = 0
+  const notFound = new Error("missing pty")
+  Object.assign(notFound, { code: "ENOENT" })
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => {
+      openCalls += 1
+      if (openCalls === 1) {
+        throw notFound
+      }
+      return makeFakeChild({ output: [], exit: { code: 0 } })
+    }),
+    { budgets: { maxConcurrent: 1 } }
+  )
+
+  const failed = await Effect.runPromiseExit(
+    fixture.service.open({
+      argv: ["bash"],
+      ownerScope: "scope-main",
+      rows: 24,
+      cols: 80
+    })
+  )
+  await Effect.runPromise(
+    fixture.service.open({
+      argv: ["bash"],
+      ownerScope: "scope-main",
+      rows: 24,
+      cols: 80
+    })
+  )
+
+  expectFailure(failed, HostProtocolFileNotFoundError)
+  expect(openCalls).toBe(2)
 })
 
 ptyTest("PTY open validates output budget policy before adapter activity", async () => {

@@ -14,14 +14,17 @@ import {
 import {
   Cause,
   Context,
+  Deferred,
   Effect,
   Exit,
   Filter,
   Layer,
   Option,
   Pull,
+  RcMap,
   Ref,
   Schema,
+  Semaphore,
   Scope,
   Stream
 } from "effect"
@@ -180,7 +183,10 @@ export const makePty = (
       )
     }
     const permissions = options.permissions ?? EMPTY_PTY_PERMISSIONS
-    const ptyBudgets = yield* Ref.make(new Map<string, number>())
+    const ptyBudgetScope = yield* Scope.make()
+    const ptyBudgets = yield* RcMap.make({
+      lookup: (_ownerScope: string) => Semaphore.make(budgets.maxConcurrent)
+    }).pipe(Scope.provide(ptyBudgetScope))
 
     const api: PtyApi = Object.freeze({
       open: (options: PtyOpenOptions) =>
@@ -201,22 +207,17 @@ export const makePty = (
           yield* validatePtyBudgets(budgets, "PTY.open")
           const { child, disposalOrigin, ptyScope, resource } = yield* Effect.uninterruptible(
             Effect.gen(function* () {
-              yield* reservePtyBudget(ptyBudgets, input.ownerScope, budgets.maxConcurrent)
               const ptyScope = yield* Scope.make()
+              yield* holdPtyBudgetPermit(
+                ptyBudgets,
+                ptyScope,
+                input.ownerScope,
+                budgets.maxConcurrent
+              ).pipe(Effect.tapError(() => Scope.close(ptyScope, Exit.void)))
               const child = yield* Effect.try({
                 try: () => adapter.open(input),
                 catch: (error) => mapPtyError(error, input.command, "PTY.open")
-              }).pipe(
-                Effect.tapError(() =>
-                  Effect.all(
-                    [
-                      releasePtyBudget(ptyBudgets, input.ownerScope),
-                      Scope.close(ptyScope, Exit.void)
-                    ],
-                    { discard: true }
-                  )
-                )
-              )
+              }).pipe(Effect.tapError(() => Scope.close(ptyScope, Exit.void)))
               const disposalOrigin = yield* Ref.make<PtyDisposalOrigin>("running")
               const resource = yield* registry
                 .register({
@@ -229,7 +230,7 @@ export const makePty = (
                     input.command,
                     gracefulShutdownMs,
                     disposalOrigin
-                  ).pipe(Effect.andThen(releasePtyBudget(ptyBudgets, input.ownerScope)))
+                  )
                 })
                 .pipe(Effect.orDie)
 
@@ -885,44 +886,34 @@ const validatePositiveIntegerBudget = (
         makeHostProtocolInvalidArgumentError(field, "must be a positive safe integer", operation)
       )
 
-const reservePtyBudget = (
-  ptyBudgets: Ref.Ref<Map<string, number>>,
+const holdPtyBudgetPermit = (
+  ptyBudgets: RcMap.RcMap<string, Semaphore.Semaphore>,
+  ptyScope: Scope.Closeable,
   ownerScope: string,
   maxConcurrent: number
 ): Effect.Effect<void, HostProtocolResourceBusyError, never> =>
   Effect.gen(function* () {
-    const reserved = yield* Ref.modify(ptyBudgets, (current) => {
-      const runningPtys = current.get(ownerScope) ?? 0
-      if (runningPtys >= maxConcurrent) {
-        return [false, current] as const
-      }
-      const next = new Map(current)
-      next.set(ownerScope, runningPtys + 1)
-      return [true, next] as const
-    })
-
+    const semaphore = yield* RcMap.get(ptyBudgets, ownerScope).pipe(Scope.provide(ptyScope))
+    const acquired = yield* Deferred.make<boolean, never>()
+    const holder = semaphore.withPermitsIfAvailable(1)(
+      Deferred.succeed(acquired, true).pipe(Effect.andThen(Effect.never))
+    )
+    yield* holder.pipe(
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Deferred.succeed(acquired, false),
+          onSome: () => Effect.void
+        })
+      ),
+      Effect.forkScoped({ startImmediately: true }),
+      Scope.provide(ptyScope)
+    )
+    const reserved = yield* Deferred.await(acquired)
     if (reserved) {
       return
     }
 
     return yield* Effect.fail(makePtyResourceBusy(ownerScope, maxConcurrent, "PTY.open"))
-  })
-
-const releasePtyBudget = (
-  ptyBudgets: Ref.Ref<Map<string, number>>,
-  ownerScope: string
-): Effect.Effect<void, never, never> =>
-  Ref.update(ptyBudgets, (current) => {
-    const runningPtys = current.get(ownerScope) ?? 0
-    if (runningPtys <= 1) {
-      const next = new Map(current)
-      next.delete(ownerScope)
-      return next
-    }
-
-    const next = new Map(current)
-    next.set(ownerScope, runningPtys - 1)
-    return next
   })
 
 const makeBackpressureOverflow = (

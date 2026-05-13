@@ -154,6 +154,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 | #1171 Enforce process budgets with semaphores                  | Implemented | Process owner-scope concurrency now uses Effect `Semaphore` values keyed by `RcMap`, with permits held by the process scope instead of manual `Ref` counters                                         |
 | #1282 Shape PTY output as Effect Stream pipelines              | Implemented | PTY output now composes raw adapter bytes through Effect `Stream` stages for input metrics, coalescing, overflow filtering, buffering, and byte emission instead of a local queue producer           |
 | #1298 Own PTY exit observers with scopes                       | Implemented | PTY child-exit observers now run as `forkScoped` fibers in a per-PTY scope, with disposal-origin state preventing observer-initiated cleanup from interrupting itself                                |
+| #1183 Gate PTY concurrency with semaphores                     | Implemented | PTY owner-scope concurrency now uses Effect `Semaphore` values keyed by `RcMap`, with permits held by the PTY scope instead of manual `Ref` counters                                                 |
 
 ## Design-Debt Follow-ups
 
