@@ -266,7 +266,7 @@
     {
       "name": "MockBridgeApi",
       "kind": "interface",
-      "signature": "export interface MockBridgeApi { readonly exchange: BridgeClientExchange readonly client: <Contracts extends Readonly<Record<string, BridgeRpcGroup>>>( contracts: Contracts, options?: BridgeClientOptions ) => BridgeClient<Contracts> readonly calls: () => readonly MockBridgeCall[] readonly cancels: () => readonly HostProtocolCancelByRequestEnvelope[] readonly succeed: ( method: string, payload: unknown ) => Effect.Effect<void, HostProtocolError, never> readonly fail: (method: string, error: unknown) => Effect.Effect<void, HostProtocolError, never> readonly streamChunks: ( method: string, chunks: readonly unknown[] ) => Effect.Effect<void, HostProtocolError, never> }"
+      "signature": "export interface MockBridgeApi { readonly exchange: BridgeClientExchange readonly client: <Contracts extends Readonly<Record<string, BridgeContract>>>( contracts: Contracts, options?: BridgeClientOptions ) => BridgeClient<Contracts> readonly calls: () => readonly MockBridgeCall[] readonly cancels: () => readonly HostProtocolCancelByRequestEnvelope[] readonly succeed: ( method: string, payload: unknown ) => Effect.Effect<void, HostProtocolError, never> readonly fail: (method: string, error: unknown) => Effect.Effect<void, HostProtocolError, never> readonly streamChunks: ( method: string, chunks: readonly unknown[] ) => Effect.Effect<void, HostProtocolError, never> }"
     },
     {
       "name": "MockBridgeCall",

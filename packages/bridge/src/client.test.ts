@@ -2,8 +2,6 @@ import { expect, test } from "bun:test"
 import { Cause, Deferred, Effect, Exit, Fiber, Layer, Option, Schema } from "effect"
 
 import {
-  BridgeRpc,
-  type BridgeRpcGroup,
   type BridgeClientResponse,
   Client,
   Handlers,
@@ -13,6 +11,8 @@ import {
   Rpc,
   RpcClient,
   RpcGroup,
+  bridgeContractFromRpcGroup,
+  makeBridgeHandlerLayer,
   makeDesktopClientProtocol,
   makeUnaryDesktopTransportFromBridgeClientExchange,
   makeHostProtocolInvalidOutputError,
@@ -386,7 +386,7 @@ test("Client interruption sends bridge cancellation", async () => {
           states.push(state.tag)
         })
     },
-    BridgeRpc.layer(ProcessRpcs)({
+    makeBridgeHandlerLayer(ProcessRpcs)({
       open: () =>
         Effect.gen(function* () {
           yield* Deferred.succeed(started, undefined)
@@ -582,82 +582,40 @@ test("Client interruption ignores invalid cancel timestamps without masking inte
   expect(cancelRequests).toEqual([])
 })
 
-type ProjectRpcSpec = {
-  readonly open: {
-    readonly input: typeof ProjectOpenInput
-    readonly output: typeof ProjectOpenOutput
-    readonly error: typeof ProjectOpenError
-  }
-}
-
-type ProcessRpcSpec = {
-  readonly spawn: {
-    readonly input: typeof Schema.Void
-    readonly output: typeof ProcessHandle
-    readonly error: typeof ProjectOpenError
-  }
-}
-
-const makeProcessRpcs = <Tag extends string>(tag: Tag): BridgeRpcGroup<Tag, ProcessRpcSpec> => {
-  const spec = Object.freeze({
-    spawn: Object.freeze({
-      input: Schema.Void,
-      output: ProcessHandle,
-      error: ProjectOpenError
-    })
+const makeProcessRpcs = <Tag extends string>(tag: Tag) => {
+  const Spawn = Rpc.make(`${tag}.spawn`, {
+    payload: Schema.Void,
+    success: ProcessHandle,
+    error: ProjectOpenError
   })
-  return BridgeRpc.group(tag, spec, Object.freeze({}))
+  return bridgeContractFromRpcGroup(tag, RpcGroup.make(Spawn))
 }
 
-const makeProjectRpcs = <Tag extends string>(tag: Tag): BridgeRpcGroup<Tag, ProjectRpcSpec> => {
-  const spec = Object.freeze({
-    open: Object.freeze({
-      input: ProjectOpenInput,
-      output: ProjectOpenOutput,
-      error: ProjectOpenError
-    })
+const makeProjectRpcs = <Tag extends string>(tag: Tag) => {
+  const Open = Rpc.make(`${tag}.open`, {
+    payload: ProjectOpenInput,
+    success: ProjectOpenOutput,
+    error: ProjectOpenError
   })
-  return BridgeRpc.group(tag, spec, Object.freeze({}))
+  return bridgeContractFromRpcGroup(tag, RpcGroup.make(Open))
 }
 
-type VoidRpcSpec = {
-  readonly open: {
-    readonly input: typeof Schema.Void
-    readonly output: typeof ProjectOpenOutput
-    readonly error: typeof ProjectOpenError
-  }
-}
-
-const makeVoidRpcs = <Tag extends string>(tag: Tag): BridgeRpcGroup<Tag, VoidRpcSpec> => {
-  const spec = Object.freeze({
-    open: Object.freeze({
-      input: Schema.Void,
-      output: ProjectOpenOutput,
-      error: ProjectOpenError
-    })
+const makeVoidRpcs = <Tag extends string>(tag: Tag) => {
+  const Open = Rpc.make(`${tag}.open`, {
+    payload: Schema.Void,
+    success: ProjectOpenOutput,
+    error: ProjectOpenError
   })
-  return BridgeRpc.group(tag, spec, Object.freeze({}))
+  return bridgeContractFromRpcGroup(tag, RpcGroup.make(Open))
 }
 
-type EncodedInputRpcSpec = {
-  readonly open: {
-    readonly input: typeof Schema.NumberFromString
-    readonly output: typeof ProjectOpenOutput
-    readonly error: typeof ProjectOpenError
-  }
-}
-
-const makeEncodedInputRpcs = <Tag extends string>(
-  tag: Tag
-): BridgeRpcGroup<Tag, EncodedInputRpcSpec> => {
-  const spec = Object.freeze({
-    open: Object.freeze({
-      input: Schema.NumberFromString,
-      output: ProjectOpenOutput,
-      error: ProjectOpenError
-    })
+const makeEncodedInputRpcs = <Tag extends string>(tag: Tag) => {
+  const Open = Rpc.make(`${tag}.open`, {
+    payload: Schema.NumberFromString,
+    success: ProjectOpenOutput,
+    error: ProjectOpenError
   })
-  return BridgeRpc.group(tag, spec, Object.freeze({}))
+  return bridgeContractFromRpcGroup(tag, RpcGroup.make(Open))
 }
 
 const responseExchange = (

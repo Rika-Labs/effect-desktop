@@ -1,27 +1,24 @@
-import { Data, Effect, Option, Schema, Stream } from "effect"
+import { Context, Data, Effect, Option, Schema, Stream } from "effect"
 import { Rpc, RpcGroup, RpcSchema } from "effect/unstable/rpc"
 
-import {
-  RpcCapability,
-  RpcEndpoint,
-  RpcSupport,
-  rpcCapability,
-  rpcSupport,
-  type RpcSupportMetadata
-} from "./rpc-endpoint.js"
+import { rpcCapability, rpcSupport, type RpcSupportMetadata } from "./rpc-endpoint.js"
 
-export type BridgeRpcCodec<Type = unknown, Encoded = unknown> = Schema.Codec<
+interface AnnotatableRpc extends Rpc.Any {
+  annotate<I, S>(tag: Context.Key<I, S>, value: S): Rpc.Any
+}
+
+export type BridgeContractCodec<Type = unknown, Encoded = unknown> = Schema.Codec<
   Type,
   Encoded,
   never,
   never
 >
-export type BridgeRpcCodecType<Codec extends BridgeRpcCodec> = Codec["Type"]
+export type BridgeContractCodecType<Codec extends BridgeContractCodec> = Codec["Type"]
 
-export interface BridgeRpcMethodSpec<
-  Input extends BridgeRpcCodec = BridgeRpcCodec,
-  Output extends BridgeRpcCodec | BridgeRpcStreamSpec = BridgeRpcCodec | BridgeRpcStreamSpec,
-  Error extends BridgeRpcCodec = BridgeRpcCodec
+export interface BridgeMethodSpec<
+  Input extends BridgeContractCodec = BridgeContractCodec,
+  Output extends BridgeContractCodec | BridgeStreamSpec = BridgeContractCodec | BridgeStreamSpec,
+  Error extends BridgeContractCodec = BridgeContractCodec
 > {
   readonly input: Input
   readonly output: Output
@@ -29,31 +26,34 @@ export interface BridgeRpcMethodSpec<
   readonly permission?: string
   readonly timeoutMs?: number
   readonly cachedResultMs?: number
-  readonly idempotent?: boolean
   readonly cancellable?: boolean
   readonly backpressure?: BackpressureSpec
   readonly support?: RpcSupportMetadata
 }
 
-export interface BridgeRpcEventSpec<Payload extends BridgeRpcCodec = BridgeRpcCodec> {
+export interface BridgeEventSpec<Payload extends BridgeContractCodec = BridgeContractCodec> {
   readonly payload: Payload
   readonly backpressure?: BackpressureSpec
 }
 
-export interface BridgeRpcStreamSpec<
-  Chunk extends BridgeRpcCodec = BridgeRpcCodec,
-  Error extends BridgeRpcCodec = BridgeRpcCodec
+export interface BridgeStreamSpec<
+  Chunk extends BridgeContractCodec = BridgeContractCodec,
+  Error extends BridgeContractCodec = BridgeContractCodec
 > {
-  readonly _tag: "BridgeRpcStreamSpec"
+  readonly _tag: "BridgeStreamSpec"
   readonly chunk: Chunk
   readonly error: Error
   readonly backpressure?: BackpressureSpec
 }
 
-type BridgeRpcOutputType<Output> = Output extends BridgeRpcStreamSpec
-  ? Stream.Stream<BridgeRpcCodecType<Output["chunk"]>, BridgeRpcCodecType<Output["error"]>, unknown>
-  : Output extends BridgeRpcCodec
-    ? BridgeRpcCodecType<Output>
+type BridgeOutputType<Output> = Output extends BridgeStreamSpec
+  ? Stream.Stream<
+      BridgeContractCodecType<Output["chunk"]>,
+      BridgeContractCodecType<Output["error"]>,
+      unknown
+    >
+  : Output extends BridgeContractCodec
+    ? BridgeContractCodecType<Output>
     : never
 
 export interface BackpressureSpec {
@@ -62,188 +62,221 @@ export interface BackpressureSpec {
   readonly overflow?: "error" | "dropOldest" | "dropNewest" | "block"
 }
 
-type BridgeRpcStreamSchema = RpcSchema.Stream<BridgeRpcCodec, BridgeRpcCodec>
-type BridgeRpcSuccessSchema = BridgeRpcCodec | BridgeRpcStreamSchema
-type BridgeRpcWithSchemas = Rpc.Any & {
-  readonly payloadSchema: BridgeRpcCodec
-  readonly successSchema: BridgeRpcSuccessSchema
-  readonly errorSchema: BridgeRpcCodec
+export type BridgeStreamSchema = RpcSchema.Stream<BridgeContractCodec, BridgeContractCodec>
+export type BridgeSuccessSchema = BridgeContractCodec | BridgeStreamSchema
+export type BridgeContractRpc = Rpc.AnyWithProps & {
+  readonly payloadSchema: BridgeContractCodec
+  readonly successSchema: BridgeSuccessSchema
+  readonly errorSchema: BridgeContractCodec
 }
 
-export type BridgeRpcSpec = Readonly<Record<string, BridgeRpcMethodSpec>>
-export type BridgeRpcEvents = Readonly<Record<string, BridgeRpcEventSpec>>
+export type BridgeContractRpcGroup<Rpcs extends BridgeContractRpc = BridgeContractRpc> =
+  RpcGroup.Any & {
+    readonly requests: ReadonlyMap<string, Rpcs>
+  }
 
-export interface BridgeRpcGroup<
+export type BridgeContractSpec = Readonly<Record<string, BridgeMethodSpec>>
+export type BridgeContractEvents = Readonly<Record<string, BridgeEventSpec>>
+
+type BridgeContractOutput<Success extends BridgeSuccessSchema> =
+  Success extends RpcSchema.Stream<
+    infer Chunk extends BridgeContractCodec,
+    infer Error extends BridgeContractCodec
+  >
+    ? BridgeStreamSpec<Chunk, Error>
+    : Success
+
+type BridgeContractEvent<Success extends BridgeSuccessSchema> =
+  Success extends RpcSchema.Stream<infer Payload extends BridgeContractCodec, BridgeContractCodec>
+    ? BridgeEventSpec<Payload>
+    : never
+
+type LastSegment<Value extends string> = Value extends `${string}.${infer Tail}`
+  ? LastSegment<Tail>
+  : Value
+
+type BridgeMethodName<RpcTag extends string> = RpcTag extends `${string}.events.${string}`
+  ? never
+  : LastSegment<RpcTag>
+
+type BridgeEventName<RpcTag extends string> = RpcTag extends `${string}.events.${infer Event}`
+  ? LastSegment<Event>
+  : never
+
+export type BridgeContractSpecFromGroup<Group extends BridgeContractRpcGroup> =
+  Group extends BridgeContractRpcGroup<infer Rpcs>
+    ? {
+        readonly [RpcTag in Rpcs["_tag"] as BridgeMethodName<RpcTag>]: Extract<
+          Rpcs,
+          { readonly _tag: RpcTag }
+        > extends infer Current extends BridgeContractRpc
+          ? BridgeMethodSpec<
+              Current["payloadSchema"],
+              BridgeContractOutput<Current["successSchema"]>,
+              Current["errorSchema"]
+            >
+          : never
+      }
+    : BridgeContractSpec
+
+export type BridgeContractEventsFromGroup<Group extends BridgeContractRpcGroup> =
+  Group extends BridgeContractRpcGroup<infer Rpcs>
+    ? {
+        readonly [RpcTag in Rpcs["_tag"] as BridgeEventName<RpcTag>]: Extract<
+          Rpcs,
+          { readonly _tag: RpcTag }
+        > extends infer Current extends BridgeContractRpc
+          ? BridgeContractEvent<Current["successSchema"]>
+          : never
+      }
+    : BridgeContractEvents
+
+export type BridgeContract<
   Tag extends string = string,
-  Spec extends BridgeRpcSpec = BridgeRpcSpec,
-  Events extends BridgeRpcEvents = BridgeRpcEvents
-> extends RpcGroup.RpcGroup<Rpc.Any> {
+  Spec extends BridgeContractSpec = BridgeContractSpec,
+  Events extends BridgeContractEvents = BridgeContractEvents,
+  Group extends BridgeContractRpcGroup = BridgeContractRpcGroup
+> = Group & {
   readonly tag: Tag
   readonly spec: Spec
   readonly events: Events
 }
 
-type RpcGroupWithRequests<Rpcs extends BridgeRpcWithSchemas = BridgeRpcWithSchemas> =
-  RpcGroup.Any & {
-    readonly requests: ReadonlyMap<string, Rpcs>
-  }
-
-export type BridgeRpcHandlers<Spec extends BridgeRpcSpec> = {
+export type BridgeContractHandlers<Spec extends BridgeContractSpec> = {
   readonly [Method in keyof Spec]: (
-    input: BridgeRpcCodecType<Spec[Method]["input"]>
-  ) => Spec[Method]["output"] extends BridgeRpcStreamSpec
-    ? BridgeRpcOutputType<Spec[Method]["output"]>
+    input: BridgeContractCodecType<Spec[Method]["input"]>
+  ) => Spec[Method]["output"] extends BridgeStreamSpec
+    ? BridgeOutputType<Spec[Method]["output"]>
     : Effect.Effect<
-        BridgeRpcOutputType<Spec[Method]["output"]>,
-        BridgeRpcCodecType<Spec[Method]["error"]>,
+        BridgeOutputType<Spec[Method]["output"]>,
+        BridgeContractCodecType<Spec[Method]["error"]>,
         unknown
       >
 }
 
-export interface BridgeRpcLayer<
+export interface BridgeHandlerLayer<
   Tag extends string,
-  Spec extends BridgeRpcSpec,
-  Handlers extends BridgeRpcHandlers<Spec>,
-  Events extends BridgeRpcEvents = BridgeRpcEvents
+  Spec extends BridgeContractSpec,
+  Handlers extends BridgeContractHandlers<Spec>,
+  Events extends BridgeContractEvents = BridgeContractEvents
 > {
-  readonly group: BridgeRpcGroup<Tag, Spec, Events>
+  readonly group: BridgeContract<Tag, Spec, Events>
   readonly handlers: Handlers
 }
 
-export class InvalidBridgeRpcSpec extends Data.TaggedError("InvalidBridgeRpcSpec")<{
+export class InvalidBridgeMetadataError extends Data.TaggedError("InvalidBridgeMetadataError")<{
   readonly tag: string
   readonly method: string
   readonly reason: string
   readonly message: string
 }> {}
 
-export type BridgeRpcSpecError = InvalidBridgeRpcSpec
+export type BridgeContractSpecError = InvalidBridgeMetadataError
 
-export const BridgeRpc = Object.freeze({
-  Stream: <Chunk extends BridgeRpcCodec, Error extends BridgeRpcCodec>(
-    chunk: Chunk,
-    error: Error,
-    backpressure?: BackpressureSpec
-  ): BridgeRpcStreamSpec<Chunk, Error> & {
-    readonly chunk: Chunk
-    readonly error: Error
-  } =>
-    Object.freeze({
-      _tag: "BridgeRpcStreamSpec",
-      chunk,
-      error,
-      ...(backpressure === undefined ? {} : { backpressure: Object.freeze(backpressure) })
-    }),
-  group: <Tag extends string, Spec extends BridgeRpcSpec, Events extends BridgeRpcEvents>(
-    tag: Tag,
-    spec: Spec,
-    events: Events
-  ): BridgeRpcGroup<Tag, Spec, Events> => makeBridgeRpcGroup(tag, spec, events),
-  fromGroup: <
-    Tag extends string,
-    Group extends RpcGroupWithRequests,
-    Events extends BridgeRpcEvents
-  >(
-    tag: Tag,
-    group: Group,
-    events: Events
-  ): BridgeRpcGroup<Tag, BridgeRpcSpec, Events> => bridgeRpcGroupFromRpcGroup(tag, group, events),
-  layer:
-    <Tag extends string, Spec extends BridgeRpcSpec, Events extends BridgeRpcEvents>(
-      group: BridgeRpcGroup<Tag, Spec, Events>
-    ) =>
-    <Handlers extends BridgeRpcHandlers<Spec>>(
-      handlers: Handlers
-    ): BridgeRpcLayer<Tag, Spec, Handlers, Events> => {
-      validateHandlers(group.tag, group.spec, handlers)
-      return Object.freeze({
-        group,
-        handlers: Object.freeze(handlers)
-      })
-    }
-})
+export interface BridgeRuntimeMetadata {
+  readonly timeoutMs?: number
+  readonly cachedResultMs?: number
+  readonly cancellable?: boolean
+  readonly backpressure?: BackpressureSpec
+}
 
-const bridgeRpcGroupFromRpcGroup = <
+const BridgeRuntimeAnnotation = Context.Service<BridgeRuntimeMetadata>(
+  "@effect-desktop/bridge/BridgeRuntime"
+)
+
+export const BridgeRuntime =
+  (metadata: BridgeRuntimeMetadata) =>
+  <R extends Rpc.Any>(rpc: R): R =>
+    annotateRpc(rpc, BridgeRuntimeAnnotation, Object.freeze(metadata))
+
+export const bridgeRuntime = (rpc: Rpc.Any): Option.Option<BridgeRuntimeMetadata> =>
+  Context.getOption(rpc.annotations, BridgeRuntimeAnnotation)
+
+export const bridgeContractFromRpcGroup = <
   Tag extends string,
-  Group extends RpcGroupWithRequests,
-  Events extends BridgeRpcEvents
+  Group extends BridgeContractRpcGroup = BridgeContractRpcGroup
 >(
   tag: Tag,
-  group: Group,
-  events: Events
-): BridgeRpcGroup<Tag, BridgeRpcSpec, Events> => {
+  group: Group
+): BridgeContract<
+  Tag,
+  BridgeContractSpecFromGroup<Group>,
+  BridgeContractEventsFromGroup<Group>,
+  Group
+> => {
   if (!isPrintableName(tag)) {
     throw invalidSpec(tag, "<group>", "tag must be non-empty printable text")
   }
-  const spec = bridgeRpcSpecFromRpcGroup(tag, group)
-  validateBridgeRpcSpec(tag, spec)
-  validateBridgeRpcEvents(tag, events)
+  const { spec, events } = bridgeMetadataFromRpcGroup(tag, group)
+  validateBridgeContractSpec(tag, spec)
+  validateBridgeContractEvents(tag, events)
   const frozenSpec = freezeRpcSpec(spec)
   const frozenEvents = freezeRpcEvents(events)
 
-  return Object.freeze(
+  const contract: BridgeContract<Tag, BridgeContractSpec, BridgeContractEvents, Group> =
     Object.assign(group, {
       tag,
       spec: frozenSpec,
       events: frozenEvents
     })
-  ) as unknown as BridgeRpcGroup<Tag, BridgeRpcSpec, Events>
+
+  return Object.freeze(contract) as BridgeContract<
+    Tag,
+    BridgeContractSpecFromGroup<Group>,
+    BridgeContractEventsFromGroup<Group>,
+    Group
+  >
 }
 
-const bridgeRpcSpecFromRpcGroup = (tag: string, group: RpcGroupWithRequests): BridgeRpcSpec => {
-  const entries: Array<readonly [string, BridgeRpcMethodSpec]> = []
+export const makeBridgeHandlerLayer =
+  <Tag extends string, Spec extends BridgeContractSpec, Events extends BridgeContractEvents>(
+    group: BridgeContract<Tag, Spec, Events>
+  ) =>
+  <Handlers extends BridgeContractHandlers<Spec>>(
+    handlers: Handlers
+  ): BridgeHandlerLayer<Tag, Spec, Handlers, Events> => {
+    validateHandlers(group.tag, group.spec, handlers)
+    return Object.freeze({
+      group,
+      handlers: Object.freeze(handlers)
+    })
+  }
+
+const bridgeMetadataFromRpcGroup = (
+  tag: string,
+  group: BridgeContractRpcGroup
+): {
+  readonly spec: BridgeContractSpec
+  readonly events: BridgeContractEvents
+} => {
+  const methods: Array<readonly [string, BridgeMethodSpec]> = []
+  const events: Array<readonly [string, BridgeEventSpec]> = []
   for (const [rpcTag, rpc] of group.requests.entries()) {
     if (!rpcTag.startsWith(`${tag}.`)) {
       throw invalidSpec(tag, rpcTag, "RpcGroup request tag must start with the bridge group tag")
     }
     if (rpcTag.startsWith(`${tag}.events.`)) {
+      const event = rpcTag.slice(`${tag}.events.`.length)
+      if (!isWireSegmentName(event)) {
+        throw invalidSpec(tag, event, "event name must be non-empty printable text without dots")
+      }
+      events.push([event, rpcToBridgeEventSpec(tag, event, rpc)])
       continue
     }
     const method = rpcTag.slice(tag.length + 1)
     if (!isWireSegmentName(method)) {
       throw invalidSpec(tag, method, "method name must be non-empty printable text without dots")
     }
-    entries.push([method, rpcToBridgeMethodSpec(rpc)])
+    methods.push([method, rpcToBridgeMethodSpec(rpc)])
   }
 
-  return Object.freeze(Object.fromEntries(entries))
+  return Object.freeze({
+    spec: Object.freeze(Object.fromEntries(methods)),
+    events: Object.freeze(Object.fromEntries(events))
+  })
 }
 
-export const makeBridgeRpcGroup = <
-  Tag extends string,
-  Spec extends BridgeRpcSpec,
-  Events extends BridgeRpcEvents
->(
-  tag: Tag,
-  spec: Spec,
-  events: Events
-): BridgeRpcGroup<Tag, Spec, Events> => {
-  if (!isPrintableName(tag)) {
-    throw invalidSpec(tag, "<group>", "tag must be non-empty printable text")
-  }
-  validateBridgeRpcSpec(tag, spec)
-  validateBridgeRpcEvents(tag, events)
-  const frozenSpec = freezeRpcSpec(spec)
-  const frozenEvents = freezeRpcEvents(events)
-  const rpcs: Rpc.Any[] = []
-
-  for (const [method, methodSpec] of Object.entries(frozenSpec)) {
-    rpcs.push(bridgeMethodToRpc(tag, method, methodSpec))
-  }
-  for (const [event, eventSpec] of Object.entries(frozenEvents)) {
-    rpcs.push(bridgeEventToRpc(tag, event, eventSpec))
-  }
-
-  return Object.freeze(
-    Object.assign(RpcGroup.make(...rpcs), {
-      tag,
-      spec: frozenSpec,
-      events: frozenEvents
-    })
-  ) as BridgeRpcGroup<Tag, Spec, Events>
-}
-
-const validateBridgeRpcSpec = (tag: string, spec: BridgeRpcSpec): void => {
+const validateBridgeContractSpec = (tag: string, spec: BridgeContractSpec): void => {
   if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
     throw invalidSpec(tag, "<group>", "RPC spec must be an object")
   }
@@ -259,7 +292,7 @@ const validateBridgeRpcSpec = (tag: string, spec: BridgeRpcSpec): void => {
   }
 }
 
-const validateMethodSpec = (tag: string, method: string, spec: BridgeRpcMethodSpec): void => {
+const validateMethodSpec = (tag: string, method: string, spec: BridgeMethodSpec): void => {
   if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
     throw invalidSpec(tag, method, "method spec must be an object")
   }
@@ -288,15 +321,6 @@ const validateMethodSpec = (tag: string, method: string, spec: BridgeRpcMethodSp
   ) {
     throw invalidSpec(tag, method, "cachedResultMs must be a non-negative integer")
   }
-  if (spec.idempotent !== undefined && typeof spec.idempotent !== "boolean") {
-    throw invalidSpec(tag, method, "idempotent must be a boolean")
-  }
-  if (spec.idempotent === true && spec.cachedResultMs === undefined) {
-    throw invalidSpec(tag, method, "idempotent methods must declare cachedResultMs")
-  }
-  if (spec.idempotent === true && spec.cachedResultMs === 0) {
-    throw invalidSpec(tag, method, "idempotent methods must declare positive cachedResultMs")
-  }
   if (spec.cancellable !== undefined && typeof spec.cancellable !== "boolean") {
     throw invalidSpec(tag, method, "cancellable must be a boolean")
   }
@@ -311,7 +335,7 @@ const validateMethodSpec = (tag: string, method: string, spec: BridgeRpcMethodSp
   }
 }
 
-const validateBridgeRpcEvents = (tag: string, events: BridgeRpcEvents): void => {
+const validateBridgeContractEvents = (tag: string, events: BridgeContractEvents): void => {
   if (typeof events !== "object" || events === null || Array.isArray(events)) {
     throw invalidSpec(tag, "<events>", "events spec must be an object")
   }
@@ -324,7 +348,7 @@ const validateBridgeRpcEvents = (tag: string, events: BridgeRpcEvents): void => 
   }
 }
 
-const validateEventSpec = (tag: string, event: string, spec: BridgeRpcEventSpec): void => {
+const validateEventSpec = (tag: string, event: string, spec: BridgeEventSpec): void => {
   if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
     throw invalidSpec(tag, event, "event spec must be an object")
   }
@@ -386,7 +410,7 @@ const validateSupportSpec = (tag: string, method: string, spec: RpcSupportMetada
   }
 }
 
-const validateHandlers = <Spec extends BridgeRpcSpec>(
+const validateHandlers = <Spec extends BridgeContractSpec>(
   tag: string,
   spec: Spec,
   handlers: unknown
@@ -402,7 +426,7 @@ const validateHandlers = <Spec extends BridgeRpcSpec>(
   }
 }
 
-const freezeRpcSpec = <Spec extends BridgeRpcSpec>(spec: Spec): Spec => {
+const freezeRpcSpec = <Spec extends BridgeContractSpec>(spec: Spec): Spec => {
   for (const methodSpec of Object.values(spec)) {
     if (methodSpec.backpressure !== undefined) {
       Object.freeze(methodSpec.backpressure)
@@ -422,7 +446,7 @@ const freezeRpcSpec = <Spec extends BridgeRpcSpec>(spec: Spec): Spec => {
   return Object.freeze(spec)
 }
 
-const freezeRpcEvents = <Events extends BridgeRpcEvents>(events: Events): Events => {
+const freezeRpcEvents = <Events extends BridgeContractEvents>(events: Events): Events => {
   for (const eventSpec of Object.values(events)) {
     if (eventSpec.backpressure !== undefined) {
       Object.freeze(eventSpec.backpressure)
@@ -433,8 +457,8 @@ const freezeRpcEvents = <Events extends BridgeRpcEvents>(events: Events): Events
   return Object.freeze(events)
 }
 
-const invalidSpec = (tag: string, method: string, reason: string): InvalidBridgeRpcSpec =>
-  new InvalidBridgeRpcSpec({
+const invalidSpec = (tag: string, method: string, reason: string): InvalidBridgeMetadataError =>
+  new InvalidBridgeMetadataError({
     tag,
     method,
     reason,
@@ -456,29 +480,17 @@ const isPrintableName = (value: string): boolean => {
   return true
 }
 
-const bridgeMethodToRpc = (tag: string, method: string, spec: BridgeRpcMethodSpec): Rpc.Any => {
-  const rpc = isStreamSpec(spec.output)
-    ? Rpc.make(`${tag}.${method}`, {
-        payload: spec.input,
-        success: spec.output.chunk,
-        error: spec.output.error,
-        stream: true
-      })
-    : Rpc.make(`${tag}.${method}`, {
-        payload: spec.input,
-        success: bridgeMethodSuccessSchema(spec.output),
-        error: spec.error
-      })
-
-  return annotateBridgeMethodRpc(rpc, spec)
-}
-
-const rpcToBridgeMethodSpec = (rpc: BridgeRpcWithSchemas): BridgeRpcMethodSpec => {
+const rpcToBridgeMethodSpec = (rpc: BridgeContractRpc): BridgeMethodSpec => {
   const streamSchemas = streamSchemasFromRpcSuccess(rpc.successSchema)
   const capability = rpcCapability(rpc)
   const support = rpcSupport(rpc)
+  const runtime = bridgeRuntime(rpc)
   const output = Option.isSome(streamSchemas)
-    ? BridgeRpc.Stream(streamSchemas.value.success, streamSchemas.value.error)
+    ? makeBridgeStreamSpec(
+        streamSchemas.value.success,
+        streamSchemas.value.error,
+        Option.isSome(runtime) ? runtime.value.backpressure : undefined
+      )
     : rpc.successSchema
 
   return Object.freeze({
@@ -486,72 +498,85 @@ const rpcToBridgeMethodSpec = (rpc: BridgeRpcWithSchemas): BridgeRpcMethodSpec =
     output,
     error: Option.isSome(streamSchemas) ? streamSchemas.value.error : rpc.errorSchema,
     ...(Option.isSome(capability) ? { permission: capability.value.kind } : {}),
+    ...(Option.isSome(runtime) && runtime.value.timeoutMs !== undefined
+      ? { timeoutMs: runtime.value.timeoutMs }
+      : {}),
+    ...(Option.isSome(runtime) && runtime.value.cachedResultMs !== undefined
+      ? { cachedResultMs: runtime.value.cachedResultMs }
+      : {}),
+    ...(Option.isSome(runtime) && runtime.value.cancellable !== undefined
+      ? { cancellable: runtime.value.cancellable }
+      : {}),
+    ...(Option.isSome(runtime) && runtime.value.backpressure !== undefined
+      ? { backpressure: runtime.value.backpressure }
+      : {}),
     ...(support.status === "supported" ? {} : { support })
   })
 }
 
-const isBridgeRpcStreamSchema = (schema: BridgeRpcSuccessSchema): schema is BridgeRpcStreamSchema =>
+const rpcToBridgeEventSpec = (
+  tag: string,
+  event: string,
+  rpc: BridgeContractRpc
+): BridgeEventSpec => {
+  const streamSchemas = streamSchemasFromRpcSuccess(rpc.successSchema)
+  if (Option.isNone(streamSchemas)) {
+    throw invalidSpec(tag, event, "event RPC must be a stream")
+  }
+  const runtime = bridgeRuntime(rpc)
+  return Object.freeze({
+    payload: streamSchemas.value.success,
+    ...(Option.isSome(runtime) && runtime.value.backpressure !== undefined
+      ? { backpressure: runtime.value.backpressure }
+      : {})
+  })
+}
+
+const isBridgeStreamSchema = (schema: BridgeSuccessSchema): schema is BridgeStreamSchema =>
   RpcSchema.isStreamSchema(schema)
 
 const streamSchemasFromRpcSuccess = (
-  schema: BridgeRpcSuccessSchema
+  schema: BridgeSuccessSchema
 ): Option.Option<{
-  readonly success: BridgeRpcCodec
-  readonly error: BridgeRpcCodec
+  readonly success: BridgeContractCodec
+  readonly error: BridgeContractCodec
 }> => {
-  if (!isBridgeRpcStreamSchema(schema)) {
+  if (!isBridgeStreamSchema(schema)) {
     return Option.none()
   }
   return Option.some({ success: schema.success, error: schema.error })
 }
 
-const bridgeEventToRpc = (tag: string, event: string, spec: BridgeRpcEventSpec): Rpc.Any =>
-  Rpc.make(`${tag}.events.${event}`, {
-    success: spec.payload,
-    error: Schema.Never,
-    stream: true
-  })
-
-const bridgeMethodSuccessSchema = (
-  output: BridgeRpcCodec | BridgeRpcStreamSpec
-): BridgeRpcCodec => {
-  if (isStreamSpec(output)) {
-    return output.chunk
-  }
-  return output
-}
-
-const annotateBridgeMethodRpc = (rpc: Rpc.Any, spec: BridgeRpcMethodSpec): Rpc.Any => {
-  const endpointRpc = spec.idempotent === true ? RpcEndpoint.query(rpc) : RpcEndpoint.mutation(rpc)
-  const capabilityRpc =
-    spec.permission === undefined
-      ? endpointRpc
-      : RpcCapability({ kind: spec.permission })(endpointRpc)
-
-  if (spec.support === undefined) {
-    return capabilityRpc
-  }
-
-  return spec.support.status === "supported"
-    ? RpcSupport.supported(capabilityRpc)
-    : RpcSupport.unsupported(spec.support.reason)(capabilityRpc)
-}
-
-const isSchema = (value: unknown): value is BridgeRpcCodec => {
+const isSchema = (value: unknown): value is BridgeContractCodec => {
   return (
     (typeof value === "object" || typeof value === "function") && value !== null && "ast" in value
   )
 }
 
-export const isStreamSpec = (value: unknown): value is BridgeRpcStreamSpec =>
+export const isStreamSpec = (value: unknown): value is BridgeStreamSpec =>
   typeof value === "object" &&
   value !== null &&
   "_tag" in value &&
-  (value as { readonly _tag?: unknown })._tag === "BridgeRpcStreamSpec" &&
+  (value as { readonly _tag?: unknown })._tag === "BridgeStreamSpec" &&
   "chunk" in value &&
   "error" in value &&
   isSchema((value as { readonly chunk?: unknown }).chunk) &&
   isSchema((value as { readonly error?: unknown }).error)
+
+const makeBridgeStreamSpec = <Chunk extends BridgeContractCodec, Error extends BridgeContractCodec>(
+  chunk: Chunk,
+  error: Error,
+  backpressure?: BackpressureSpec
+): BridgeStreamSpec<Chunk, Error> =>
+  Object.freeze({
+    _tag: "BridgeStreamSpec",
+    chunk,
+    error,
+    ...(backpressure === undefined ? {} : { backpressure: Object.freeze(backpressure) })
+  })
+
+const annotateRpc = <R extends Rpc.Any, I, S>(rpc: R, tag: Context.Key<I, S>, value: S): R =>
+  (rpc as R & AnnotatableRpc).annotate(tag, value) as R
 
 const backpressureStrategies = new Set<BackpressureSpec["strategy"]>(["buffer", "drop", "block"])
 const backpressureOverflows = new Set<NonNullable<BackpressureSpec["overflow"]>>([

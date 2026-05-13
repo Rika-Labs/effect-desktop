@@ -1,11 +1,11 @@
 import { Cause, Effect, Exit, Fiber, Schema, Stream, SubscriptionRef } from "effect"
 
 import {
-  type BridgeRpcGroup,
-  type BridgeRpcSpec,
-  type BridgeRpcLayer,
-  type BridgeRpcMethodSpec,
-  type BridgeRpcCodec,
+  type BridgeContract,
+  type BridgeContractSpec,
+  type BridgeHandlerLayer,
+  type BridgeMethodSpec,
+  type BridgeContractCodec,
   isStreamSpec
 } from "./contracts.js"
 import { type BridgeClientResponse } from "./client.js"
@@ -115,8 +115,8 @@ export const RendererOriginAuth = {
   }) satisfies RendererOriginAuth
 } as const
 
-export type BridgeRpcLayerEnvironment<Layer> =
-  Layer extends BridgeRpcLayer<string, infer Spec, infer Handlers>
+export type BridgeHandlerLayerEnvironment<Layer> =
+  Layer extends BridgeHandlerLayer<string, infer Spec, infer Handlers>
     ? {
         readonly [Method in keyof Spec]: HandlerEnvironment<Handlers[Method]>
       }[keyof Spec]
@@ -128,13 +128,13 @@ type HandlerEnvironment<Handler> = Handler extends (
   ? Env
   : never
 
-type AnyBridgeRpcLayer = {
-  readonly group: BridgeRpcGroup<string, BridgeRpcSpec>
+type AnyBridgeHandlerLayer = {
+  readonly group: BridgeContract<string, BridgeContractSpec>
   readonly handlers: object
 }
 
 type BoundHandler = {
-  readonly spec: BridgeRpcMethodSpec
+  readonly spec: BridgeMethodSpec
   readonly handler: (input: unknown) => Effect.Effect<unknown, unknown, unknown>
 }
 
@@ -149,15 +149,15 @@ type PendingCall = {
   cancelledBy: "renderer" | "runtime" | "host" | undefined
 }
 
-const makeHandlers = <Layers extends readonly AnyBridgeRpcLayer[]>(
+const makeHandlers = <Layers extends readonly AnyBridgeHandlerLayer[]>(
   ...layers: Layers
-): BridgeHandlerRuntime<BridgeRpcLayerEnvironment<Layers[number]>> =>
+): BridgeHandlerRuntime<BridgeHandlerLayerEnvironment<Layers[number]>> =>
   makeHandlersWithOptions({}, ...layers)
 
-const makeHandlersWithOptions = <Layers extends readonly AnyBridgeRpcLayer[]>(
+const makeHandlersWithOptions = <Layers extends readonly AnyBridgeHandlerLayer[]>(
   options: BridgeHandlerRuntimeOptions,
   ...layers: Layers
-): BridgeHandlerRuntime<BridgeRpcLayerEnvironment<Layers[number]>> => {
+): BridgeHandlerRuntime<BridgeHandlerLayerEnvironment<Layers[number]>> => {
   const table = new Map<string, BoundHandler>()
   const terminalStates = new Map<string, TerminalStateEntry>()
   const pendingCalls = new Map<string, PendingCall>()
@@ -183,11 +183,11 @@ const makeHandlersWithOptions = <Layers extends readonly AnyBridgeRpcLayer[]>(
       dispatch(table, terminalStates, pendingCalls, resolved, request) as Effect.Effect<
         BridgeClientResponse,
         HostProtocolError,
-        BridgeRpcLayerEnvironment<Layers[number]>
+        BridgeHandlerLayerEnvironment<Layers[number]>
       >,
     cancel: (request: HostProtocolCancelByRequestEnvelope) =>
       cancel(pendingCalls, resolved, request)
-  }) as BridgeHandlerRuntime<BridgeRpcLayerEnvironment<Layers[number]>>
+  }) as BridgeHandlerRuntime<BridgeHandlerLayerEnvironment<Layers[number]>>
 }
 
 export const Handlers = Object.assign(makeHandlers, {
@@ -388,7 +388,7 @@ const runWithTimeout = (
 
 const decodeInput = <Type, Encoded>(
   operation: string,
-  schema: BridgeRpcCodec<Type, Encoded>,
+  schema: BridgeContractCodec<Type, Encoded>,
   payload: unknown
 ): Effect.Effect<Type, HostProtocolError, never> =>
   Schema.decodeUnknownEffect(schema)(payload, StrictParseOptions).pipe(
@@ -399,7 +399,7 @@ const decodeInput = <Type, Encoded>(
 
 const encodeOutputSchema = <Type, Encoded>(
   operation: string,
-  schema: BridgeRpcCodec<Type, Encoded>,
+  schema: BridgeContractCodec<Type, Encoded>,
   output: unknown
 ): Effect.Effect<Encoded, HostProtocolError, never> =>
   Schema.encodeUnknownEffect(schema)(output, StrictParseOptions).pipe(
@@ -408,7 +408,7 @@ const encodeOutputSchema = <Type, Encoded>(
     )
   )
 
-const encodeOutput = <Spec extends BridgeRpcMethodSpec>(
+const encodeOutput = <Spec extends BridgeMethodSpec>(
   operation: string,
   spec: Spec,
   output: unknown
@@ -422,7 +422,7 @@ const encodeOutput = <Spec extends BridgeRpcMethodSpec>(
   return encodeOutputSchema(operation, spec.output, output)
 }
 
-const encodeContractError = <Spec extends BridgeRpcMethodSpec>(
+const encodeContractError = <Spec extends BridgeMethodSpec>(
   operation: string,
   spec: Spec,
   cause: Cause.Cause<unknown>

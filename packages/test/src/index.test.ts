@@ -2,7 +2,6 @@ import { expect, test } from "bun:test"
 import { Effect, Exit, Fiber, Layer, Schema, Stream } from "effect"
 
 import {
-  BridgeRpc,
   HOST_PING_METHOD,
   HOST_PROTOCOL_VERSION,
   WINDOW_CREATE_METHOD,
@@ -13,8 +12,9 @@ import {
   makeHostHandshakeClient,
   makeHostProtocolNotFoundError,
   makeHostWindowClient,
-  type BridgeRpcGroup,
-  type BridgeRpcSpec
+  Rpc,
+  RpcGroup,
+  bridgeContractFromRpcGroup
 } from "@effect-desktop/bridge"
 import {
   Filesystem,
@@ -349,13 +349,16 @@ test("MockHost rejects non-JSON fixture payloads", async () => {
 })
 
 test("MockBridge records typed client calls and returns pinned successes", async () => {
-  const ProjectRpcs = testContract("Test.MockBridge.Success", {
-    open: {
-      input: Schema.Struct({ path: Schema.String }),
-      output: Schema.Struct({ id: Schema.String }),
-      error: Schema.Never
-    }
-  })
+  const ProjectRpcs = bridgeContractFromRpcGroup(
+    "Test.MockBridge.Success",
+    RpcGroup.make(
+      Rpc.make("Test.MockBridge.Success.open", {
+        payload: Schema.Struct({ path: Schema.String }),
+        success: Schema.Struct({ id: Schema.String }),
+        error: Schema.Never
+      })
+    )
+  )
   const bridge = makeMockBridge({ now: () => 1710000000400 })
   await Effect.runPromise(bridge.succeed("Test.MockBridge.Success.open", { id: "project-1" }))
   const client = bridge.client(
@@ -424,13 +427,17 @@ test("MockBridge rejects pinned success payloads that are not JSON-serializable"
 })
 
 test("MockBridge rejects pinned stream chunks that are not JSON-serializable", async () => {
-  const ProjectRpcs = testContract("Test.MockBridge.Stream", {
-    watch: {
-      input: Schema.Void,
-      output: BridgeRpc.Stream(Schema.String, Schema.Never),
-      error: Schema.Never
-    }
-  })
+  const ProjectRpcs = bridgeContractFromRpcGroup(
+    "Test.MockBridge.Stream",
+    RpcGroup.make(
+      Rpc.make("Test.MockBridge.Stream.watch", {
+        payload: Schema.Void,
+        success: Schema.String,
+        error: Schema.Never,
+        stream: true
+      })
+    )
+  )
   const bridge = makeMockBridge()
   const pin = await Effect.runPromiseExit(
     bridge.streamChunks("Test.MockBridge.Stream.watch", [Symbol("not-json")])
@@ -455,13 +462,16 @@ test("MockBridge rejects pinned stream chunks that are not JSON-serializable", a
 
 test("MockBridge returns pinned contract errors through the typed error channel", async () => {
   const Failure = Schema.Struct({ tag: Schema.Literal("Denied"), reason: Schema.String })
-  const ProjectRpcs = testContract("Test.MockBridge.Failure", {
-    open: {
-      input: Schema.Struct({ path: Schema.String }),
-      output: Schema.Struct({ id: Schema.String }),
-      error: Failure
-    }
-  })
+  const ProjectRpcs = bridgeContractFromRpcGroup(
+    "Test.MockBridge.Failure",
+    RpcGroup.make(
+      Rpc.make("Test.MockBridge.Failure.open", {
+        payload: Schema.Struct({ path: Schema.String }),
+        success: Schema.Struct({ id: Schema.String }),
+        error: Failure
+      })
+    )
+  )
   const bridge = makeMockBridge()
   await Effect.runPromise(
     bridge.fail("Test.MockBridge.Failure.open", { tag: "Denied", reason: "not allowed" })
@@ -484,13 +494,17 @@ test("MockBridge returns pinned contract errors through the typed error channel"
 })
 
 test("MockBridge replays pinned stream chunks in order", async () => {
-  const ProjectRpcs = testContract("Test.MockBridge.Stream", {
-    watch: {
-      input: Schema.Struct({ path: Schema.String }),
-      output: BridgeRpc.Stream(Schema.String, Schema.Never),
-      error: Schema.Never
-    }
-  })
+  const ProjectRpcs = bridgeContractFromRpcGroup(
+    "Test.MockBridge.Stream",
+    RpcGroup.make(
+      Rpc.make("Test.MockBridge.Stream.watch", {
+        payload: Schema.Struct({ path: Schema.String }),
+        success: Schema.String,
+        error: Schema.Never,
+        stream: true
+      })
+    )
+  )
   const bridge = makeMockBridge({ now: () => 1710000000500 })
   await Effect.runPromise(bridge.streamChunks("Test.MockBridge.Stream.watch", ["a", "b"]))
   const client = bridge.client(
@@ -511,13 +525,16 @@ test("MockBridge replays pinned stream chunks in order", async () => {
 })
 
 test("MockBridge returns resource handles through the method schema", async () => {
-  const ProcessApi = testContract("Test.MockBridge.Resource", {
-    spawn: {
-      input: Schema.Void,
-      output: ResourceHandleSchema("process", "running"),
-      error: Schema.Never
-    }
-  })
+  const ProcessApi = bridgeContractFromRpcGroup(
+    "Test.MockBridge.Resource",
+    RpcGroup.make(
+      Rpc.make("Test.MockBridge.Resource.spawn", {
+        payload: Schema.Void,
+        success: ResourceHandleSchema("process", "running"),
+        error: Schema.Never
+      })
+    )
+  )
   const bridge = makeMockBridge()
   await Effect.runPromise(
     bridge.succeed("Test.MockBridge.Resource.spawn", {
@@ -1062,13 +1079,16 @@ test("MockPTY rejects writes and resizes after exit", async () => {
 })
 
 test("HeadlessRuntime layer composes mocks with real registry telemetry and permissions", async () => {
-  const ProjectRpcs = testContract("Test.HeadlessRuntime.Project", {
-    open: {
-      input: Schema.Struct({ path: Schema.String }),
-      output: Schema.Struct({ id: Schema.String }),
-      error: Schema.Never
-    }
-  })
+  const ProjectRpcs = bridgeContractFromRpcGroup(
+    "Test.HeadlessRuntime.Project",
+    RpcGroup.make(
+      Rpc.make("Test.HeadlessRuntime.Project.open", {
+        payload: Schema.Struct({ path: Schema.String }),
+        success: Schema.Struct({ id: Schema.String }),
+        error: Schema.Never
+      })
+    )
+  )
 
   const result = await Effect.runPromise(
     Effect.gen(function* () {
@@ -1465,8 +1485,3 @@ const nextSequence = (prefix: string): (() => string) => {
 const bytes = (value: string): Uint8Array => new TextEncoder().encode(value)
 
 const text = (value: Uint8Array): string => new TextDecoder().decode(value)
-
-const testContract = <Tag extends string, Spec extends BridgeRpcSpec>(
-  tag: Tag,
-  spec: Spec
-): BridgeRpcGroup<Tag, Spec> => BridgeRpc.group(tag, spec, Object.freeze({}))

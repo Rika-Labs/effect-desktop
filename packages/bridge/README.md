@@ -19,10 +19,12 @@ The current public surface includes:
 
 - host protocol Schema exports from `src/protocol.ts`;
 - the handshake client in `src/handshake.ts`;
-- typed bridge contract helpers, RPC metadata helpers, and bridge client/runtime adapters;
+- typed bridge contract lowering helpers, RPC metadata annotations, and bridge client/runtime adapters;
 - the Effect RPC protocol adapter used by generated native clients.
 
 Generated Effect RPC clients send host protocol envelopes through `makeDesktopClientProtocol(...)`. Host protocol failures are encoded before they enter Effect RPC exits, and successful `undefined` payloads are normalized to `null` on the bridge response envelope so the wire outcome remains explicit JSON.
+
+Bridge contracts are authored as canonical Effect RPC groups. Bridge-specific helpers only derive native/web protocol metadata from the group and bind the resulting contract to client, handler, event, or stream runtimes.
 
 ## Non-goals
 
@@ -31,9 +33,25 @@ See `docs/SPEC.md` for the package's normative non-goals.
 ## Usage
 
 ```ts
-import { HostProtocolEnvelope, decodeHostProtocolEnvelope } from "@effect-desktop/bridge"
+import {
+  Client,
+  Rpc,
+  RpcGroup,
+  bridgeContractFromRpcGroup,
+  decodeHostProtocolEnvelope,
+  type HostProtocolEnvelope
+} from "@effect-desktop/bridge"
+import { Schema } from "effect"
+
+const OpenProject = Rpc.make("Project.open", {
+  payload: Schema.Struct({ path: Schema.String }),
+  success: Schema.Struct({ id: Schema.String })
+})
+
+const Project = bridgeContractFromRpcGroup("Project", RpcGroup.make(OpenProject))
 
 const envelope = decodeHostProtocolEnvelope(JSON.parse(line))
+const client = Client({ project: Project }, exchange)
 ```
 
 ## Testing

@@ -2,11 +2,13 @@ import { expect, test } from "bun:test"
 import { Cause, Effect, Exit, Fiber, Option, Schema, Stream } from "effect"
 
 import {
-  BridgeRpc,
-  type BridgeRpcGroup,
+  BridgeRuntime,
   Client,
   EventHub,
   HostProtocolEventEnvelope,
+  Rpc,
+  RpcGroup,
+  bridgeContractFromRpcGroup,
   makeHostProtocolInvalidOutputError
 } from "./index.js"
 
@@ -279,44 +281,30 @@ test("EventHub drop backpressure does not block publishers when overflow is omit
   expect(Option.isSome(result)).toBe(true)
 })
 
-type ProjectRpcSpec = {
-  readonly open: {
-    readonly input: typeof ProjectOpenInput
-    readonly output: typeof ProjectOpenOutput
-    readonly error: typeof ProjectOpenError
-  }
-}
-
-type ProjectRpcsEvents = {
-  readonly changed: {
-    readonly payload: typeof ProjectChangedEvent
-    readonly backpressure: { readonly strategy: "drop"; readonly size: number }
-  }
-}
-
 const makeProjectRpcs = <Tag extends string>(
   tag: Tag,
   options: { readonly includeOverflow?: boolean; readonly queueSize?: number } = {}
-): BridgeRpcGroup<Tag, ProjectRpcSpec, ProjectRpcsEvents> => {
+) => {
   const includeOverflow = options.includeOverflow ?? true
-  const spec = Object.freeze({
-    open: Object.freeze({
-      input: ProjectOpenInput,
-      output: ProjectOpenOutput,
-      error: ProjectOpenError
-    })
+  const Open = Rpc.make(`${tag}.open`, {
+    payload: ProjectOpenInput,
+    success: ProjectOpenOutput,
+    error: ProjectOpenError
   })
-  const events = Object.freeze({
-    changed: Object.freeze({
-      payload: ProjectChangedEvent,
-      backpressure: Object.freeze({
+  const Changed = Rpc.make(`${tag}.events.changed`, {
+    success: ProjectChangedEvent,
+    error: Schema.Never,
+    stream: true
+  }).pipe(
+    BridgeRuntime({
+      backpressure: {
         strategy: "drop",
         size: options.queueSize ?? (tag === "ProjectRpcs.EventsDropNewest" ? 1 : 16),
         ...(includeOverflow ? { overflow: "dropNewest" } : {})
-      } as const)
+      }
     })
-  })
-  return BridgeRpc.group(tag, spec, events)
+  )
+  return bridgeContractFromRpcGroup(tag, RpcGroup.make(Open, Changed))
 }
 
 const missingRequest = () => Effect.fail(makeHostProtocolInvalidOutputError("test", "unused"))

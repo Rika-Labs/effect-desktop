@@ -1,12 +1,12 @@
 import { Effect, Queue, Schema, Stream } from "effect"
 
 import {
-  type BridgeRpcGroup,
-  type BridgeRpcCodec,
-  type BridgeRpcCodecType,
-  type BridgeRpcEvents,
-  type BridgeRpcSpec,
-  type BridgeRpcEventSpec
+  type BridgeContract,
+  type BridgeContractCodec,
+  type BridgeContractCodecType,
+  type BridgeContractEvents,
+  type BridgeContractSpec,
+  type BridgeEventSpec
 } from "./contracts.js"
 import {
   HostProtocolEventEnvelope,
@@ -38,18 +38,18 @@ export interface BridgeEventHub {
     ) => Stream.Stream<HostProtocolEventEnvelope, HostProtocolError, never>
   }
   readonly publish: <
-    Events extends BridgeRpcEvents,
+    Events extends BridgeContractEvents,
     Contract extends ContractWithEvents<Events>,
     Event extends keyof Events
   >(
     contract: Contract,
     event: Event,
-    payload: BridgeRpcCodecType<Events[Event]["payload"]>
+    payload: BridgeContractCodecType<Events[Event]["payload"]>
   ) => Effect.Effect<void, HostProtocolError, never>
 }
 
 type EventChannel = {
-  readonly spec: BridgeRpcEventSpec
+  readonly spec: BridgeEventSpec
   readonly queues: Set<EventQueue>
 }
 
@@ -57,10 +57,10 @@ type EventQueue = {
   readonly queue: Queue.Queue<HostProtocolEventEnvelope>
 }
 
-type EventOverflow = NonNullable<NonNullable<BridgeRpcEventSpec["backpressure"]>["overflow"]>
+type EventOverflow = NonNullable<NonNullable<BridgeEventSpec["backpressure"]>["overflow"]>
 
 export const EventHub = (
-  contracts: Iterable<BridgeRpcGroup>,
+  contracts: Iterable<BridgeContract>,
   options: BridgeEventHubOptions = {}
 ): Effect.Effect<BridgeEventHub, never, never> =>
   Effect.sync(() => {
@@ -87,9 +87,9 @@ export const EventHub = (
     return Object.freeze(hub)
   })
 
-type ContractWithEvents<Events extends BridgeRpcEvents> = BridgeRpcGroup<
+type ContractWithEvents<Events extends BridgeContractEvents> = BridgeContract<
   string,
-  BridgeRpcSpec,
+  BridgeContractSpec,
   Events
 > & {
   readonly events: Events
@@ -124,12 +124,12 @@ const subscribe = (
   )
 }
 
-const publish = <Events extends BridgeRpcEvents, Event extends keyof Events>(
+const publish = <Events extends BridgeContractEvents, Event extends keyof Events>(
   channels: ReadonlyMap<string, EventChannel>,
   options: ResolvedBridgeEventHubOptions,
   contract: ContractWithEvents<Events>,
   event: Event,
-  payload: BridgeRpcCodecType<Events[Event]["payload"]>
+  payload: BridgeContractCodecType<Events[Event]["payload"]>
 ): Effect.Effect<void, HostProtocolError, never> =>
   Effect.gen(function* () {
     const method = eventName(contract.tag, String(event))
@@ -162,7 +162,7 @@ const publish = <Events extends BridgeRpcEvents, Event extends keyof Events>(
     })
   })
 
-const makeEventQueue = (spec: BridgeRpcEventSpec): Effect.Effect<EventQueue, never, never> =>
+const makeEventQueue = (spec: BridgeEventSpec): Effect.Effect<EventQueue, never, never> =>
   Effect.gen(function* () {
     const capacity = spec.backpressure?.size ?? DEFAULT_EVENT_QUEUE_SIZE
     const overflow = resolveEventOverflow(spec)
@@ -178,7 +178,7 @@ const makeEventQueue = (spec: BridgeRpcEventSpec): Effect.Effect<EventQueue, nev
     } as const
   })
 
-const resolveEventOverflow = (spec: BridgeRpcEventSpec): EventOverflow => {
+const resolveEventOverflow = (spec: BridgeEventSpec): EventOverflow => {
   if (spec.backpressure?.overflow !== undefined) {
     return spec.backpressure.overflow
   }
@@ -196,7 +196,7 @@ const offerEvent = (
 
 const encodeEventPayload = <Type, Encoded>(
   operation: string,
-  schema: BridgeRpcCodec<Type, Encoded>,
+  schema: BridgeContractCodec<Type, Encoded>,
   payload: Type
 ): Effect.Effect<Encoded, HostProtocolError, never> =>
   Schema.encodeEffect(schema)(payload, StrictParseOptions).pipe(

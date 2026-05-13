@@ -28,7 +28,7 @@ import {
   type BridgeClientExchange,
   type BridgeClientOptions,
   type BridgeClientResponse,
-  type BridgeRpcGroup,
+  type BridgeContract,
   type HostHandshakeClient,
   type HostProtocolError,
   type HostProtocolInvalidArgumentError,
@@ -209,7 +209,7 @@ export interface MockBridgeCall {
 
 export interface MockBridgeApi {
   readonly exchange: BridgeClientExchange
-  readonly client: <Contracts extends Readonly<Record<string, BridgeRpcGroup>>>(
+  readonly client: <Contracts extends Readonly<Record<string, BridgeContract>>>(
     contracts: Contracts,
     options?: BridgeClientOptions
   ) => BridgeClient<Contracts>

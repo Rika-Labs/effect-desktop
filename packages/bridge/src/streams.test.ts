@@ -2,17 +2,21 @@ import { afterEach, expect, test } from "bun:test"
 import { Cause, Deferred, Effect, Exit, Fiber, Option, Schema, Scope, Stream } from "effect"
 
 import {
-  BridgeRpc,
+  BridgeRuntime,
   BridgeStreamCompleteFrame,
   BridgeStreamDataFrame,
-  type BridgeRpcGroup,
+  type BridgeStreamSpec,
   type BridgeStreamRuntime,
   Client,
   HostProtocolCancelByRequestEnvelope,
   HostProtocolCancelByResourceEnvelope,
   HostProtocolRequestEnvelope,
   HostProtocolStreamByRequestEnvelope,
+  Rpc,
+  RpcGroup,
   Streams,
+  bridgeContractFromRpcGroup,
+  makeBridgeHandlerLayer,
   type HostProtocolError,
   type HostProtocolStreamEnvelope,
   makeBridgeStreamRegistry,
@@ -80,7 +84,7 @@ test("Streams carries typed chunks from handler to client in order", async () =>
         now: () => 42,
         nextStreamId: () => "stream-1"
       },
-      BridgeRpc.layer(ProjectRpcs)({
+      makeBridgeHandlerLayer(ProjectRpcs)({
         watch: () =>
           Stream.make(
             new WatchEvent({ sequence: 1, path: "a" }),
@@ -158,7 +162,7 @@ test("Streams rejects duplicate active request ids", async () => {
   const lifecycle: string[] = []
   const runtime = await acquireStreamRuntime(
     Streams.scoped(
-      BridgeRpc.layer(ProjectRpcs)({
+      makeBridgeHandlerLayer(ProjectRpcs)({
         watch: () =>
           Stream.scoped(
             Stream.fromEffect(
@@ -208,7 +212,7 @@ test("Streams rejects duplicate active generated stream ids", async () => {
       {
         nextStreamId: () => "stream-duplicate-resource"
       },
-      BridgeRpc.layer(ProjectRpcs)({
+      makeBridgeHandlerLayer(ProjectRpcs)({
         watch: () =>
           Stream.scoped(
             Stream.fromEffect(
@@ -281,7 +285,7 @@ test("Streams reserves duplicate generated stream ids atomically", async () => {
         nextStreamId: () => "stream-duplicate-resource-race",
         registry
       },
-      BridgeRpc.layer(ProjectRpcs)({
+      makeBridgeHandlerLayer(ProjectRpcs)({
         watch: () =>
           Stream.fromEffect(
             Deferred.await(release).pipe(Effect.as(new WatchEvent({ sequence: 1, path: "a" })))
@@ -355,7 +359,7 @@ test("Streams rejects empty generated stream ids before registry state is create
         nextStreamId: () => "",
         registry
       },
-      BridgeRpc.layer(ProjectRpcs)({
+      makeBridgeHandlerLayer(ProjectRpcs)({
         watch: () => Stream.make(new WatchEvent({ sequence: 1, path: "a" }))
       })
     )
@@ -375,7 +379,7 @@ test("Streams carries typed stream errors as values in the error channel", async
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamError")
   const runtime = await acquireStreamRuntime(
     Streams.scoped(
-      BridgeRpc.layer(ProjectRpcs)({
+      makeBridgeHandlerLayer(ProjectRpcs)({
         watch: () =>
           Stream.make(new WatchEvent({ sequence: 1, path: "a" })).pipe(
             Stream.concat(
@@ -471,7 +475,7 @@ test("Streams rejects malformed chunks as typed HostProtocol failures", async ()
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamInvalidChunk")
   const runtime = await acquireStreamRuntime(
     Streams.scoped(
-      BridgeRpc.layer(ProjectRpcs)({
+      makeBridgeHandlerLayer(ProjectRpcs)({
         watch: () =>
           Stream.make({
             sequence: Number.NaN,
@@ -496,7 +500,7 @@ test("Streams rejects invalid generated timestamps as typed Effect failures", as
       {
         now: () => Number.NaN
       },
-      BridgeRpc.layer(ProjectRpcs)({
+      makeBridgeHandlerLayer(ProjectRpcs)({
         watch: () => Stream.make(new WatchEvent({ sequence: 1, path: "a" }))
       })
     )
@@ -521,7 +525,7 @@ test("Streams applies error overflow as a BackpressureOverflow terminal frame", 
         nextStreamId: () => "stream-overflow",
         registry
       },
-      BridgeRpc.layer(ProjectRpcs)({
+      makeBridgeHandlerLayer(ProjectRpcs)({
         watch: () =>
           Stream.make(
             new WatchEvent({ sequence: 1, path: "a" }),
@@ -574,7 +578,7 @@ test("Streams records dropNewest overflow metrics without failing publishers", a
         nextStreamId: () => "stream-drop-newest",
         registry
       },
-      BridgeRpc.layer(ProjectRpcs)({
+      makeBridgeHandlerLayer(ProjectRpcs)({
         watch: () =>
           Stream.make(
             new WatchEvent({ sequence: 1, path: "a" }),
@@ -624,7 +628,7 @@ test("Streams records dropOldest overflow metrics while keeping the stream succe
         nextStreamId: () => "stream-drop-oldest",
         registry
       },
-      BridgeRpc.layer(ProjectRpcs)({
+      makeBridgeHandlerLayer(ProjectRpcs)({
         watch: () =>
           Stream.make(
             new WatchEvent({ sequence: 1, path: "a" }),
@@ -674,7 +678,7 @@ test("Streams records one terminal state and expires it after cleanup grace", as
         nextStreamId: () => "stream-lifecycle",
         registry
       },
-      BridgeRpc.layer(ProjectRpcs)({
+      makeBridgeHandlerLayer(ProjectRpcs)({
         watch: () => Stream.make(new WatchEvent({ sequence: 1, path: "a" }))
       })
     )
@@ -781,7 +785,7 @@ test("Streams interruption sends cancel and records a closed terminal", async ()
         now: () => 42,
         registry
       },
-      BridgeRpc.layer(ProjectRpcs)({
+      makeBridgeHandlerLayer(ProjectRpcs)({
         watch: () =>
           Stream.scoped(
             Stream.fromEffect(
@@ -845,7 +849,7 @@ test("Streams interruption releases consumers when cancel dispatch does not answ
         nextStreamId: () => "stream-cancel-never",
         now: () => 42
       },
-      BridgeRpc.layer(ProjectRpcs)({
+      makeBridgeHandlerLayer(ProjectRpcs)({
         watch: () =>
           Stream.scoped(
             Stream.fromEffect(
@@ -906,7 +910,7 @@ test("Streams dispose interrupts active producer fibers", async () => {
         now: () => 42,
         registry
       },
-      BridgeRpc.layer(ProjectRpcs)({
+      makeBridgeHandlerLayer(ProjectRpcs)({
         watch: () =>
           Stream.scoped(
             Stream.fromEffect(
@@ -986,7 +990,7 @@ test("Streams scope finalization interrupts active producer fibers", async () =>
         now: () => 42,
         registry
       },
-      BridgeRpc.layer(ProjectRpcs)({
+      makeBridgeHandlerLayer(ProjectRpcs)({
         watch: () =>
           Stream.scoped(
             Stream.fromEffect(
@@ -1066,7 +1070,7 @@ test("Streams dispose and scope finalization are idempotent", async () => {
         now: () => 42,
         registry
       },
-      BridgeRpc.layer(ProjectRpcs)({
+      makeBridgeHandlerLayer(ProjectRpcs)({
         watch: () =>
           Stream.scoped(
             Stream.fromEffect(
@@ -1109,7 +1113,7 @@ test("Streams dispose and scope finalization are idempotent", async () => {
         now: () => 43,
         registry
       },
-      BridgeRpc.layer(ProjectRpcs)({
+      makeBridgeHandlerLayer(ProjectRpcs)({
         watch: () =>
           Stream.scoped(
             Stream.fromEffect(
@@ -1191,7 +1195,7 @@ test("Streams cancellation by resource id interrupts the producer", async () => 
         now: () => 42,
         registry
       },
-      BridgeRpc.layer(ProjectRpcs)({
+      makeBridgeHandlerLayer(ProjectRpcs)({
         watch: () =>
           Stream.scoped(
             Stream.fromEffect(
@@ -1252,7 +1256,7 @@ test("Streams cancellation cleanup survives invalid close frame timestamps", asy
         now: () => now,
         registry
       },
-      BridgeRpc.layer(ProjectRpcs)({
+      makeBridgeHandlerLayer(ProjectRpcs)({
         watch: () =>
           Stream.scoped(
             Stream.fromEffect(
@@ -1314,7 +1318,7 @@ test("Streams sends cancel on early consumer finalization without abort signal",
         nextStreamId: () => "stream-take-without-signal",
         now: () => 42
       },
-      BridgeRpc.layer(ProjectRpcs)({
+      makeBridgeHandlerLayer(ProjectRpcs)({
         watch: () =>
           Stream.make(new WatchEvent({ sequence: 1, path: "a" })).pipe(Stream.concat(Stream.never))
       })
@@ -1361,7 +1365,7 @@ test("Streams sends cancel on early consumer finalization without abort signal",
 type ProjectRpcSpec = {
   readonly watch: {
     readonly input: typeof WatchInput
-    readonly output: ReturnType<typeof makeWatchStream>
+    readonly output: BridgeStreamSpec<typeof WatchEvent, typeof WatchError>
     readonly error: typeof WatchError
     readonly backpressure?: {
       readonly strategy: "buffer" | "drop"
@@ -1371,21 +1375,20 @@ type ProjectRpcSpec = {
   }
 }
 
-const makeWatchStream = () => BridgeRpc.Stream(WatchEvent, WatchError)
-
 const makeProjectRpcs = <Tag extends string>(
   tag: Tag,
   watchSpec: Pick<ProjectRpcSpec["watch"], "backpressure"> = {}
-): BridgeRpcGroup<Tag, ProjectRpcSpec> => {
-  const spec = Object.freeze({
-    watch: Object.freeze({
-      input: WatchInput,
-      output: makeWatchStream(),
-      error: WatchError,
-      ...watchSpec
-    })
+) => {
+  let Watch = Rpc.make(`${tag}.watch`, {
+    payload: WatchInput,
+    success: WatchEvent,
+    error: WatchError,
+    stream: true
   })
-  return BridgeRpc.group(tag, spec, Object.freeze({}))
+  if (watchSpec.backpressure !== undefined) {
+    Watch = BridgeRuntime({ backpressure: watchSpec.backpressure })(Watch)
+  }
+  return bridgeContractFromRpcGroup(tag, RpcGroup.make(Watch))
 }
 
 const streamExchange = (

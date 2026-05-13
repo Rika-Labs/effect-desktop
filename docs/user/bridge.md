@@ -12,6 +12,20 @@ Electron applications often expose selected `ipcRenderer` calls through preload 
 
 Generated Effect RPC clients use the bridge protocol adapter rather than raw IPC. The adapter translates Effect RPC requests into host protocol envelopes, owns generated request identifiers, encodes host protocol failures into RPC failure exits, and keeps void success responses explicit on the JSON wire.
 
+Renderer-callable contracts are authored with `Rpc.make(...)` and `RpcGroup.make(...)`. Bridge helpers derive protocol metadata from those Effect RPC groups; they do not define a separate contract DSL.
+
+```ts
+import { Rpc, RpcGroup, bridgeContractFromRpcGroup } from "@effect-desktop/bridge"
+import { Schema } from "effect"
+
+const OpenProject = Rpc.make("Project.open", {
+  payload: Schema.Struct({ path: Schema.String }),
+  success: Schema.Struct({ id: Schema.String })
+})
+
+export const ProjectContract = bridgeContractFromRpcGroup("Project", RpcGroup.make(OpenProject))
+```
+
 ## Runnable Example
 
 ```ts run

@@ -14,12 +14,12 @@ import {
 } from "effect"
 
 import {
-  type BridgeRpcGroup,
-  type BridgeRpcSpec,
-  type BridgeRpcLayer,
-  type BridgeRpcMethodSpec,
-  type BridgeRpcCodec,
-  type BridgeRpcStreamSpec,
+  type BridgeContract,
+  type BridgeContractSpec,
+  type BridgeHandlerLayer,
+  type BridgeMethodSpec,
+  type BridgeContractCodec,
+  type BridgeStreamSpec,
   type BackpressureSpec,
   isStreamSpec
 } from "./contracts.js"
@@ -103,7 +103,7 @@ interface ResolvedBridgeStreamRuntimeOptions {
 }
 
 export type BridgeStreamLayerEnvironment<Layer> =
-  Layer extends BridgeRpcLayer<string, infer Spec, infer Handlers>
+  Layer extends BridgeHandlerLayer<string, infer Spec, infer Handlers>
     ? {
         readonly [Method in keyof Spec]: HandlerEnvironment<Handlers[Method]>
       }[keyof Spec]
@@ -115,13 +115,13 @@ type HandlerEnvironment<Handler> = Handler extends (
   ? Env
   : never
 
-type AnyBridgeRpcLayer = {
-  readonly group: BridgeRpcGroup<string, BridgeRpcSpec>
+type AnyBridgeHandlerLayer = {
+  readonly group: BridgeContract<string, BridgeContractSpec>
   readonly handlers: object
 }
 
 type BoundStream = {
-  readonly spec: BridgeRpcMethodSpec & { readonly output: BridgeRpcStreamSpec }
+  readonly spec: BridgeMethodSpec & { readonly output: BridgeStreamSpec }
   readonly handler: (input: unknown) => Stream.Stream<unknown, unknown, unknown>
 }
 
@@ -432,7 +432,7 @@ const activeStreamReservationFailure = (
   }
 }
 
-const makeStreams = <Layers extends readonly AnyBridgeRpcLayer[]>(
+const makeStreams = <Layers extends readonly AnyBridgeHandlerLayer[]>(
   ...layers: Layers
 ): Effect.Effect<
   BridgeStreamRuntime<BridgeStreamLayerEnvironment<Layers[number]>>,
@@ -440,7 +440,7 @@ const makeStreams = <Layers extends readonly AnyBridgeRpcLayer[]>(
   Scope.Scope
 > => makeStreamsWithOptions({}, ...layers)
 
-const makeStreamsWithOptions = <Layers extends readonly AnyBridgeRpcLayer[]>(
+const makeStreamsWithOptions = <Layers extends readonly AnyBridgeHandlerLayer[]>(
   options: BridgeStreamRuntimeOptions,
   ...layers: Layers
 ): Effect.Effect<
@@ -758,7 +758,7 @@ const syncBackpressureMetrics = (
 const encodeChunkFrame = (
   request: HostProtocolRequestEnvelope,
   streamId: string,
-  spec: BridgeRpcStreamSpec,
+  spec: BridgeStreamSpec,
   chunk: unknown,
   options: ResolvedBridgeStreamRuntimeOptions
 ): Effect.Effect<HostProtocolStreamEnvelope, HostProtocolError, never> =>
@@ -776,7 +776,7 @@ const encodeChunkFrame = (
 const encodeErrorFrame = (
   request: HostProtocolRequestEnvelope,
   streamId: string,
-  spec: BridgeRpcStreamSpec,
+  spec: BridgeStreamSpec,
   cause: Cause.Cause<unknown>,
   options: ResolvedBridgeStreamRuntimeOptions
 ): Effect.Effect<HostProtocolStreamEnvelope, HostProtocolError, never> =>
@@ -865,7 +865,7 @@ const decodeHostProtocolError = (
 
 const decodeInput = <Type, Encoded>(
   operation: string,
-  schema: BridgeRpcCodec<Type, Encoded>,
+  schema: BridgeContractCodec<Type, Encoded>,
   payload: unknown
 ): Effect.Effect<Type, HostProtocolError, never> =>
   Schema.decodeUnknownEffect(schema)(payload, StrictParseOptions).pipe(
@@ -876,7 +876,7 @@ const decodeInput = <Type, Encoded>(
 
 const encodeStreamChunk = <Type, Encoded>(
   operation: string,
-  schema: BridgeRpcCodec<Type, Encoded>,
+  schema: BridgeContractCodec<Type, Encoded>,
   chunk: unknown
 ): Effect.Effect<Encoded, HostProtocolError, never> =>
   Schema.encodeUnknownEffect(schema)(chunk, StrictParseOptions).pipe(
@@ -887,7 +887,7 @@ const encodeStreamChunk = <Type, Encoded>(
 
 const encodeStreamError = <Type, Encoded>(
   operation: string,
-  schema: BridgeRpcCodec<Type, Encoded>,
+  schema: BridgeContractCodec<Type, Encoded>,
   error: unknown
 ): Effect.Effect<Encoded, HostProtocolError, never> =>
   Schema.encodeUnknownEffect(schema)(error, StrictParseOptions).pipe(

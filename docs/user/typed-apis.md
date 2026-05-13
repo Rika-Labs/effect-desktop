@@ -16,12 +16,20 @@ if (typeof RpcGroup.make !== "function" || typeof Handlers !== "function") {
 import { Rpc, RpcGroup } from "@effect-desktop/bridge"
 import { Schema } from "effect"
 
-export const CreateNote = Rpc.make("CreateNote", {
+export const CreateNote = Rpc.make("Notes.create", {
   payload: { title: Schema.NonEmptyString },
   success: Schema.Struct({ id: Schema.String, title: Schema.String })
 })
 
 export const NotesRpcs = RpcGroup.make(CreateNote)
+```
+
+When the group is exposed through the renderer bridge, keep the `RpcGroup` as the source of truth and lower it into bridge metadata at the boundary:
+
+```ts
+import { bridgeContractFromRpcGroup } from "@effect-desktop/bridge"
+
+export const NotesContract = bridgeContractFromRpcGroup("Notes", NotesRpcs)
 ```
 
 ## Generated surface

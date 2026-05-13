@@ -1,14 +1,14 @@
 import { Cause, Effect, Exit, Fiber, Queue, Schema, Stream } from "effect"
 
 import {
-  type BridgeRpcGroup,
-  type BridgeRpcEvents,
-  type BridgeRpcSpec,
-  type BridgeRpcCodec,
-  type BridgeRpcCodecType,
-  type BridgeRpcEventSpec,
-  type BridgeRpcMethodSpec,
-  type BridgeRpcStreamSpec,
+  type BridgeContract,
+  type BridgeContractEvents,
+  type BridgeContractSpec,
+  type BridgeContractCodec,
+  type BridgeContractCodecType,
+  type BridgeEventSpec,
+  type BridgeMethodSpec,
+  type BridgeStreamSpec,
   isStreamSpec
 } from "./contracts.js"
 import {
@@ -181,59 +181,63 @@ const bridgeFailureError = (error: unknown, operation: string): HostProtocolErro
   }
 }
 
-export type BridgeClientMethod<Spec extends BridgeRpcMethodSpec> =
-  Spec["output"] extends BridgeRpcStreamSpec
-    ? undefined extends BridgeRpcCodecType<Spec["input"]>
+export type BridgeClientMethod<Spec extends BridgeMethodSpec> =
+  Spec["output"] extends BridgeStreamSpec
+    ? undefined extends BridgeContractCodecType<Spec["input"]>
       ? (
-          input?: BridgeRpcCodecType<Spec["input"]>
+          input?: BridgeContractCodecType<Spec["input"]>
         ) => Stream.Stream<
-          BridgeRpcCodecType<Spec["output"]["chunk"]>,
-          BridgeRpcCodecType<Spec["output"]["error"]> | HostProtocolError,
+          BridgeContractCodecType<Spec["output"]["chunk"]>,
+          BridgeContractCodecType<Spec["output"]["error"]> | HostProtocolError,
           never
         >
       : (
-          input: BridgeRpcCodecType<Spec["input"]>
+          input: BridgeContractCodecType<Spec["input"]>
         ) => Stream.Stream<
-          BridgeRpcCodecType<Spec["output"]["chunk"]>,
-          BridgeRpcCodecType<Spec["output"]["error"]> | HostProtocolError,
+          BridgeContractCodecType<Spec["output"]["chunk"]>,
+          BridgeContractCodecType<Spec["output"]["error"]> | HostProtocolError,
           never
         >
-    : undefined extends BridgeRpcCodecType<Spec["input"]>
+    : undefined extends BridgeContractCodecType<Spec["input"]>
       ? (
-          input?: BridgeRpcCodecType<Spec["input"]>
+          input?: BridgeContractCodecType<Spec["input"]>
         ) => Effect.Effect<
-          BridgeRpcCodecType<Extract<Spec["output"], BridgeRpcCodec>>,
-          BridgeRpcCodecType<Spec["error"]> | HostProtocolError,
+          BridgeContractCodecType<Extract<Spec["output"], BridgeContractCodec>>,
+          BridgeContractCodecType<Spec["error"]> | HostProtocolError,
           never
         >
       : (
-          input: BridgeRpcCodecType<Spec["input"]>
+          input: BridgeContractCodecType<Spec["input"]>
         ) => Effect.Effect<
-          BridgeRpcCodecType<Extract<Spec["output"], BridgeRpcCodec>>,
-          BridgeRpcCodecType<Spec["error"]> | HostProtocolError,
+          BridgeContractCodecType<Extract<Spec["output"], BridgeContractCodec>>,
+          BridgeContractCodecType<Spec["error"]> | HostProtocolError,
           never
         >
 
-export type BridgeClientEvent<Spec extends BridgeRpcEventSpec> = Stream.Stream<
-  BridgeRpcCodecType<Spec["payload"]>,
+export type BridgeClientEvent<Spec extends BridgeEventSpec> = Stream.Stream<
+  BridgeContractCodecType<Spec["payload"]>,
   HostProtocolError,
   never
 >
 
-type BridgeRpcUnaryMethodSpec = BridgeRpcMethodSpec<BridgeRpcCodec, BridgeRpcCodec, BridgeRpcCodec>
+type BridgeUnaryMethodSpec = BridgeMethodSpec<
+  BridgeContractCodec,
+  BridgeContractCodec,
+  BridgeContractCodec
+>
 
-export type BridgeClientFor<Contract extends BridgeRpcGroup> =
-  Contract extends BridgeRpcGroup<string, infer Spec, infer Events>
+export type BridgeClientFor<Contract extends BridgeContract> =
+  Contract extends BridgeContract<string, infer Spec, infer Events>
     ? { readonly [Method in keyof Spec]: BridgeClientMethod<Spec[Method]> } & {
         readonly events: { readonly [Event in keyof Events]: BridgeClientEvent<Events[Event]> }
       }
     : never
 
-export type BridgeClient<Contracts extends Readonly<Record<string, BridgeRpcGroup>>> = {
+export type BridgeClient<Contracts extends Readonly<Record<string, BridgeContract>>> = {
   readonly [Namespace in keyof Contracts]: BridgeClientFor<Contracts[Namespace]>
 }
 
-export const Client = <Contracts extends Readonly<Record<string, BridgeRpcGroup>>>(
+export const Client = <Contracts extends Readonly<Record<string, BridgeContract>>>(
   contracts: Contracts,
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
@@ -247,26 +251,26 @@ export const Client = <Contracts extends Readonly<Record<string, BridgeRpcGroup>
   return Object.freeze(Object.fromEntries(namespaces)) as BridgeClient<Contracts>
 }
 
-const makeContractClient = <Tag extends string, Spec extends BridgeRpcSpec>(
-  contract: BridgeRpcGroup<Tag, Spec>,
+const makeContractClient = <Tag extends string, Spec extends BridgeContractSpec>(
+  contract: BridgeContract<Tag, Spec>,
   exchange: BridgeClientExchange,
   options: ResolvedBridgeClientOptions
-): BridgeClientFor<BridgeRpcGroup<Tag, Spec>> => {
+): BridgeClientFor<BridgeContract<Tag, Spec>> => {
   const methods = {} as { [Method in keyof Spec]?: BridgeClientMethod<Spec[Method]> }
-  const contractEvents = (contract.events ?? {}) as BridgeRpcEvents
-  const events = {} as Record<string, BridgeClientEvent<BridgeRpcEventSpec>>
+  const contractEvents = (contract.events ?? {}) as BridgeContractEvents
+  const events = {} as Record<string, BridgeClientEvent<BridgeEventSpec>>
 
   for (const [method, methodSpec] of Object.entries(contract.spec) as Array<
     [Extract<keyof Spec, string>, Spec[Extract<keyof Spec, string>]]
   >) {
     methods[method] = ((
-      input: BridgeRpcCodecType<Spec[typeof method]["input"]>
+      input: BridgeContractCodecType<Spec[typeof method]["input"]>
     ): Effect.Effect<unknown, unknown, never> | Stream.Stream<unknown, unknown, never> =>
       isStreamSpec(methodSpec.output)
         ? streamContractMethod(
             contract.tag,
             method,
-            methodSpec as Spec[typeof method] & { readonly output: BridgeRpcStreamSpec },
+            methodSpec as Spec[typeof method] & { readonly output: BridgeStreamSpec },
             input,
             exchange,
             options
@@ -274,7 +278,7 @@ const makeContractClient = <Tag extends string, Spec extends BridgeRpcSpec>(
         : requestContractMethod(
             contract.tag,
             method,
-            methodSpec as Extract<Spec[typeof method], BridgeRpcUnaryMethodSpec>,
+            methodSpec as Extract<Spec[typeof method], BridgeUnaryMethodSpec>,
             input,
             exchange,
             options
@@ -293,19 +297,19 @@ const makeContractClient = <Tag extends string, Spec extends BridgeRpcSpec>(
   return Object.freeze({
     ...methods,
     events: Object.freeze(events)
-  }) as BridgeClientFor<BridgeRpcGroup<Tag, Spec, typeof contractEvents>>
+  }) as BridgeClientFor<BridgeContract<Tag, Spec, typeof contractEvents>>
 }
 
-const requestContractMethod = <Spec extends BridgeRpcUnaryMethodSpec>(
+const requestContractMethod = <Spec extends BridgeUnaryMethodSpec>(
   tag: string,
   method: string,
   spec: Spec,
-  input: BridgeRpcCodecType<Spec["input"]>,
+  input: BridgeContractCodecType<Spec["input"]>,
   exchange: BridgeClientExchange,
   options: ResolvedBridgeClientOptions
 ): Effect.Effect<
-  BridgeRpcCodecType<Spec["output"]>,
-  BridgeRpcCodecType<Spec["error"]> | HostProtocolError,
+  BridgeContractCodecType<Spec["output"]>,
+  BridgeContractCodecType<Spec["error"]> | HostProtocolError,
   never
 > =>
   Effect.gen(function* () {
@@ -337,7 +341,7 @@ const requestContractMethod = <Spec extends BridgeRpcUnaryMethodSpec>(
 
 const encodeInput = <Type, Encoded>(
   operation: string,
-  schema: BridgeRpcCodec<Type, Encoded>,
+  schema: BridgeContractCodec<Type, Encoded>,
   input: Type
 ): Effect.Effect<Encoded, HostProtocolError, never> =>
   Schema.encodeEffect(schema)(input, StrictParseOptions).pipe(
@@ -348,7 +352,7 @@ const encodeInput = <Type, Encoded>(
 
 const decodeOutput = <Type, Encoded>(
   operation: string,
-  schema: BridgeRpcCodec<Type, Encoded>,
+  schema: BridgeContractCodec<Type, Encoded>,
   payload: unknown
 ): Effect.Effect<Type, HostProtocolError, never> =>
   Schema.decodeUnknownEffect(schema)(payload, StrictParseOptions).pipe(
@@ -359,7 +363,7 @@ const decodeOutput = <Type, Encoded>(
 
 const decodeContractError = <Type, Encoded>(
   operation: string,
-  schema: BridgeRpcCodec<Type, Encoded>,
+  schema: BridgeContractCodec<Type, Encoded>,
   error: unknown
 ): Effect.Effect<never, Type | HostProtocolError, never> =>
   Effect.flatMap(
@@ -371,7 +375,7 @@ const decodeContractError = <Type, Encoded>(
     (decoded) => Effect.fail(decoded)
   )
 
-const subscribeContractEvent = <Spec extends BridgeRpcEventSpec>(
+const subscribeContractEvent = <Spec extends BridgeEventSpec>(
   tag: string,
   event: string,
   spec: Spec,
@@ -391,17 +395,17 @@ const subscribeContractEvent = <Spec extends BridgeRpcEventSpec>(
 }
 
 const streamContractMethod = <
-  Spec extends BridgeRpcMethodSpec & { readonly output: BridgeRpcStreamSpec }
+  Spec extends BridgeMethodSpec & { readonly output: BridgeStreamSpec }
 >(
   tag: string,
   method: string,
   spec: Spec,
-  input: BridgeRpcCodecType<Spec["input"]>,
+  input: BridgeContractCodecType<Spec["input"]>,
   exchange: BridgeClientExchange,
   options: ResolvedBridgeClientOptions
 ): Stream.Stream<
-  BridgeRpcCodecType<Spec["output"]["chunk"]>,
-  BridgeRpcCodecType<Spec["output"]["error"]> | HostProtocolError,
+  BridgeContractCodecType<Spec["output"]["chunk"]>,
+  BridgeContractCodecType<Spec["output"]["error"]> | HostProtocolError,
   never
 > => {
   const operation = methodName(tag, method)
@@ -462,15 +466,15 @@ const isTerminalStreamEnvelope = (
   )
 }
 
-const decodeStreamEnvelope = <Spec extends BridgeRpcStreamSpec>(
+const decodeStreamEnvelope = <Spec extends BridgeStreamSpec>(
   operation: string,
   requestId: string,
   spec: Spec,
   envelope: HostProtocolStreamEnvelope,
   onTerminal: () => void = () => {}
 ): Stream.Stream<
-  BridgeRpcCodecType<Spec["chunk"]>,
-  BridgeRpcCodecType<Spec["error"]> | HostProtocolError,
+  BridgeContractCodecType<Spec["chunk"]>,
+  BridgeContractCodecType<Spec["error"]> | HostProtocolError,
   never
 > => {
   const routeFailure = validateStreamEnvelopeRequestId(operation, requestId, envelope)
@@ -526,11 +530,11 @@ const validateStreamEnvelopeRequestId = (
   )
 }
 
-const decodeEventEnvelope = <Spec extends BridgeRpcEventSpec>(
+const decodeEventEnvelope = <Spec extends BridgeEventSpec>(
   operation: string,
   spec: Spec,
   envelope: HostProtocolEventEnvelope
-): Effect.Effect<BridgeRpcCodecType<Spec["payload"]>, HostProtocolError, never> => {
+): Effect.Effect<BridgeContractCodecType<Spec["payload"]>, HostProtocolError, never> => {
   if (envelope.method !== operation) {
     return Effect.fail(
       makeHostProtocolInvalidOutputError(
@@ -545,7 +549,7 @@ const decodeEventEnvelope = <Spec extends BridgeRpcEventSpec>(
 
 const decodeEventPayload = <Type, Encoded>(
   operation: string,
-  schema: BridgeRpcCodec<Type, Encoded>,
+  schema: BridgeContractCodec<Type, Encoded>,
   payload: unknown
 ): Effect.Effect<Type, HostProtocolError, never> =>
   Schema.decodeUnknownEffect(schema)(payload, StrictParseOptions).pipe(
@@ -566,7 +570,7 @@ const decodeStreamFrame = (
 
 const decodeStreamChunk = <Type, Encoded>(
   operation: string,
-  schema: BridgeRpcCodec<Type, Encoded>,
+  schema: BridgeContractCodec<Type, Encoded>,
   chunk: unknown
 ): Effect.Effect<Type, HostProtocolError, never> =>
   Schema.decodeUnknownEffect(schema)(chunk, StrictParseOptions).pipe(
@@ -577,7 +581,7 @@ const decodeStreamChunk = <Type, Encoded>(
 
 const decodeStreamError = <Type, Encoded>(
   operation: string,
-  schema: BridgeRpcCodec<Type, Encoded>,
+  schema: BridgeContractCodec<Type, Encoded>,
   error: unknown
 ): Effect.Effect<never, Type | HostProtocolError, never> =>
   Effect.flatMap(

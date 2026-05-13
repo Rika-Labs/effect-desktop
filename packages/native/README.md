@@ -10,7 +10,7 @@ TypeScript-facing native services backed by the Rust host: `App`, `Window`, `Web
 
 `Screen` is the current generated Layer-first native proof. `ScreenRpcs` is the canonical Effect `RpcGroup`; `ScreenSurface` derives the server, client, test-client, schema-doc, and contract-law artifacts; and `makeScreenBridgeClientLayer()` adapts the existing bridge exchange into the generated Effect RPC protocol. `ScreenClient` remains the substitutable port used by tests and adapters.
 
-`Window` is exposed as an Effect service. `WindowRpcs` is the full Window method descriptor with support metadata, and `WindowSupportedRpcs` is the generated callable group used by the bridge client layer. `makeHostWindowBridgeRpcLayer()` still binds the runtime handler side to the existing host window envelopes. `WindowClient` remains the substitutable port used by tests and adapters, but its supported callable surface is `create` and `close`.
+`Window` is exposed as an Effect service. `WindowRpcs` is the full Window method descriptor with support metadata, and `WindowSupportedRpcs` is the generated callable group used by the bridge client layer. The host runtime binds handlers through canonical Effect RPC groups and bridge protocol adapters. `WindowClient` remains the substitutable port used by tests and adapters, but its supported callable surface is `create` and `close`.
 
 `WindowBridgeClientOptions` omits `nextRequestId` because the generated Effect RPC protocol owns request identifiers for `makeWindowBridgeClientLayer()`. Tests that need deterministic request ids should assert observed requests at the exchange boundary instead of injecting ids through the Window options object.
 

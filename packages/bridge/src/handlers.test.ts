@@ -2,13 +2,17 @@ import { expect, test } from "bun:test"
 import { Cause, Deferred, Effect, Exit, Schema } from "effect"
 
 import {
-  BridgeRpc,
-  type BridgeRpcGroup,
+  BridgeRuntime,
   type BridgeClientResponse,
   Handlers,
   HostProtocolCancelByRequestEnvelope,
   HostProtocolRequestEnvelope,
   RendererOriginAuth,
+  Rpc,
+  RpcCapability,
+  RpcGroup,
+  bridgeContractFromRpcGroup,
+  makeBridgeHandlerLayer,
   type HostProtocolError
 } from "./index.js"
 
@@ -37,7 +41,7 @@ test("Handlers fails closed when renderer origin verification is not configured"
   let handled = false
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.HandlerDefaultOrigin")
   const runtime = Handlers(
-    BridgeRpc.layer(ProjectRpcs)({
+    makeBridgeHandlerLayer(ProjectRpcs)({
       open: () =>
         Effect.sync(() => {
           handled = true
@@ -58,7 +62,7 @@ test("Handlers binds contract layers into a request dispatcher", async () => {
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.HandlerSuccess")
   const runtime = Handlers.withOptions(
     testOriginAuthDisabled,
-    BridgeRpc.layer(ProjectRpcs)({
+    makeBridgeHandlerLayer(ProjectRpcs)({
       open: (input) =>
         Effect.succeed(
           new ProjectOpenOutput({
@@ -85,20 +89,19 @@ test("Handlers binds contract layers into a request dispatcher", async () => {
 })
 
 test("Handlers encodes handle-shaped outputs through the method schema", async () => {
-  const ProcessRpcs = BridgeRpc.group(
+  const ProcessRpcs = bridgeContractFromRpcGroup(
     "ProcessRpcs.HandlerResourceHandle",
-    {
-      spawn: {
-        input: Schema.Void,
-        output: ProcessHandle,
+    RpcGroup.make(
+      Rpc.make("ProcessRpcs.HandlerResourceHandle.spawn", {
+        payload: Schema.Void,
+        success: ProcessHandle,
         error: Schema.Never
-      }
-    },
-    {}
+      })
+    )
   )
   const runtime = Handlers.withOptions(
     testOriginAuthDisabled,
-    BridgeRpc.layer(ProcessRpcs)({
+    makeBridgeHandlerLayer(ProcessRpcs)({
       spawn: () =>
         Effect.succeed({
           kind: "process",
@@ -138,7 +141,7 @@ test("Handlers emits the request lifecycle in order for successful calls", async
           states.push(state.tag)
         })
     },
-    BridgeRpc.layer(ProjectRpcs)({
+    makeBridgeHandlerLayer(ProjectRpcs)({
       open: () => Effect.succeed(new ProjectOpenOutput({ id: 1 }))
     })
   )
@@ -158,7 +161,7 @@ test("Handlers verifies renderer origin before dispatching", async () => {
     {
       originAuth: RendererOriginAuth.fromCurrentTokens(new Map([["window-1", "origin-1"]]))
     },
-    BridgeRpc.layer(ProjectRpcs)({
+    makeBridgeHandlerLayer(ProjectRpcs)({
       open: () =>
         Effect.sync(() => {
           handled = true
@@ -189,7 +192,7 @@ test("Handlers rejects missing renderer origin before handler lookup", async () 
     {
       originAuth: RendererOriginAuth.fromCurrentTokens(new Map([["window-1", "origin-1"]]))
     },
-    BridgeRpc.layer(ProjectRpcs)({
+    makeBridgeHandlerLayer(ProjectRpcs)({
       open: () =>
         Effect.sync(() => {
           handled = true
@@ -217,7 +220,7 @@ test("Handlers rejects forged renderer origin tokens", async () => {
           states.push(state.tag)
         })
     },
-    BridgeRpc.layer(ProjectRpcs)({
+    makeBridgeHandlerLayer(ProjectRpcs)({
       open: () => Effect.succeed(new ProjectOpenOutput({ id: 1 }))
     })
   )
@@ -243,7 +246,7 @@ test("Handlers rejects stale origin tokens after rotation", async () => {
     {
       originAuth: RendererOriginAuth.fromCurrentTokens(new Map([["window-1", "origin-2"]]))
     },
-    BridgeRpc.layer(ProjectRpcs)({
+    makeBridgeHandlerLayer(ProjectRpcs)({
       open: () => Effect.succeed(new ProjectOpenOutput({ id: 1 }))
     })
   )
@@ -279,7 +282,7 @@ test("Handlers preserves prototype handler receivers", async () => {
 
   const runtime = Handlers.withOptions(
     testOriginAuthDisabled,
-    BridgeRpc.layer(ProjectRpcs)(new ProjectHandlers())
+    makeBridgeHandlerLayer(ProjectRpcs)(new ProjectHandlers())
   )
 
   const response = await Effect.runPromise(
@@ -298,7 +301,7 @@ test("Handlers decodes transformed input payloads before calling handlers", asyn
   const EncodedInputRpcs = makeEncodedInputRpcs("ProjectRpcs.HandlerEncodedInput")
   const runtime = Handlers.withOptions(
     testOriginAuthDisabled,
-    BridgeRpc.layer(EncodedInputRpcs)({
+    makeBridgeHandlerLayer(EncodedInputRpcs)({
       open: (input) =>
         Effect.succeed(
           new ProjectOpenOutput({
@@ -324,7 +327,7 @@ test("Handlers encodes contract failures into failure responses", async () => {
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.HandlerFailure")
   const runtime = Handlers.withOptions(
     testOriginAuthDisabled,
-    BridgeRpc.layer(ProjectRpcs)({
+    makeBridgeHandlerLayer(ProjectRpcs)({
       open: () =>
         Effect.fail(
           new ProjectOpenError({
@@ -359,7 +362,7 @@ test("Handlers wraps synchronous handler throws into typed failure responses", a
           states.push(state.tag)
         })
     },
-    BridgeRpc.layer(ProjectRpcs)({
+    makeBridgeHandlerLayer(ProjectRpcs)({
       open: () => {
         throw new ProjectOpenError({ tag: "ProjectOpenError", code: 403 })
       }
@@ -392,25 +395,17 @@ test("Handlers redacts secret-shaped contract failure fields before renderer emi
       safe: Schema.String
     })
   }) {}
-  type SecretErrorRpcSpec = {
-    readonly open: {
-      readonly input: typeof ProjectOpenInput
-      readonly output: typeof ProjectOpenOutput
-      readonly error: typeof ProjectSecretError
-    }
-  }
   const states: unknown[] = []
-  const contract = BridgeRpc.group(
+  const contract = bridgeContractFromRpcGroup(
     "ProjectRpcs.HandlerRedactedFailure",
-    Object.freeze({
-      open: Object.freeze({
-        input: ProjectOpenInput,
-        output: ProjectOpenOutput,
+    RpcGroup.make(
+      Rpc.make("ProjectRpcs.HandlerRedactedFailure.open", {
+        payload: ProjectOpenInput,
+        success: ProjectOpenOutput,
         error: ProjectSecretError
       })
-    }),
-    Object.freeze({})
-  ) as BridgeRpcGroup<string, SecretErrorRpcSpec>
+    )
+  )
   const runtime = Handlers.withOptions(
     {
       ...testOriginAuthDisabled,
@@ -423,7 +418,7 @@ test("Handlers redacts secret-shaped contract failure fields before renderer emi
           states.push(state)
         })
     },
-    BridgeRpc.layer(contract)({
+    makeBridgeHandlerLayer(contract)({
       open: () =>
         Effect.fail(
           new ProjectSecretError({
@@ -469,7 +464,7 @@ test("Handlers rejects malformed input before calling handlers", async () => {
           states.push(state.tag)
         })
     },
-    BridgeRpc.layer(ProjectRpcs)({
+    makeBridgeHandlerLayer(ProjectRpcs)({
       open: (input) => {
         calls.push(input.path)
         return Effect.succeed(new ProjectOpenOutput({ id: 1 }))
@@ -490,7 +485,7 @@ test("Handlers reports malformed handler output as InvalidOutput", async () => {
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.HandlerInvalidOutput")
   const runtime = Handlers.withOptions(
     testOriginAuthDisabled,
-    BridgeRpc.layer(ProjectRpcs)({
+    makeBridgeHandlerLayer(ProjectRpcs)({
       open: () =>
         Effect.succeed({
           id: Number.NaN
@@ -509,7 +504,7 @@ test("Handlers reports malformed contract errors as InvalidOutput", async () => 
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.HandlerInvalidError")
   const runtime = Handlers.withOptions(
     testOriginAuthDisabled,
-    BridgeRpc.layer(ProjectRpcs)({
+    makeBridgeHandlerLayer(ProjectRpcs)({
       open: () =>
         Effect.fail({
           tag: "ProjectOpenError",
@@ -536,7 +531,7 @@ test("Handlers times out cancellable handlers and records a terminal state", asy
           states.push(state.tag)
         })
     },
-    BridgeRpc.layer(ProjectRpcs)({
+    makeBridgeHandlerLayer(ProjectRpcs)({
       open: () =>
         Effect.gen(function* () {
           yield* Effect.sleep(50)
@@ -570,7 +565,7 @@ test("Handlers ignore renderer cancel envelopes for non-cancellable methods", as
           states.push(state.tag)
         })
     },
-    BridgeRpc.layer(ProjectRpcs)({
+    makeBridgeHandlerLayer(ProjectRpcs)({
       open: () =>
         Effect.gen(function* () {
           yield* Deferred.succeed(started, undefined)
@@ -610,25 +605,16 @@ test("Handlers does not confuse domain _tag collisions with Effect timeout error
       code: Schema.NumberFromString
     }
   ) {}
-  type TimeoutCollisionRpcSpec = {
-    readonly open: {
-      readonly input: typeof ProjectOpenInput
-      readonly output: typeof ProjectOpenOutput
-      readonly error: typeof ProjectTimeoutError
-    }
-  }
-  const contract = BridgeRpc.group(
+  const contract = bridgeContractFromRpcGroup(
     "ProjectRpcs.HandlerTimeoutCollision",
-    Object.freeze({
-      open: Object.freeze({
-        input: ProjectOpenInput,
-        output: ProjectOpenOutput,
-        error: ProjectTimeoutError,
-        timeoutMs: 50
-      })
-    }),
-    Object.freeze({})
-  ) as BridgeRpcGroup<string, TimeoutCollisionRpcSpec>
+    RpcGroup.make(
+      Rpc.make("ProjectRpcs.HandlerTimeoutCollision.open", {
+        payload: ProjectOpenInput,
+        success: ProjectOpenOutput,
+        error: ProjectTimeoutError
+      }).pipe(BridgeRuntime({ timeoutMs: 50 }))
+    )
+  )
   const states: string[] = []
   const runtime = Handlers.withOptions(
     {
@@ -638,7 +624,7 @@ test("Handlers does not confuse domain _tag collisions with Effect timeout error
           states.push(state.tag)
         })
     },
-    BridgeRpc.layer(contract)({
+    makeBridgeHandlerLayer(contract)({
       open: () => Effect.fail(new ProjectTimeoutError({ _tag: "TimeoutError", code: 408 }))
     })
   )
@@ -672,7 +658,7 @@ test("Handlers rejects duplicate request ids after a terminal state", async () =
           states.push(state.tag)
         })
     },
-    BridgeRpc.layer(ProjectRpcs)({
+    makeBridgeHandlerLayer(ProjectRpcs)({
       open: () => Effect.succeed(new ProjectOpenOutput({ id: 1 }))
     })
   )
@@ -706,7 +692,7 @@ test("Handlers expires terminal request ids after the replay window", async () =
           states.push(state.tag)
         })
     },
-    BridgeRpc.layer(ProjectRpcs)({
+    makeBridgeHandlerLayer(ProjectRpcs)({
       open: () => Effect.succeed(new ProjectOpenOutput({ id: 1 }))
     })
   )
@@ -740,7 +726,7 @@ test("Handlers reports unknown methods as MethodNotFound", async () => {
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.HandlerUnknownMethod")
   const runtime = Handlers.withOptions(
     testOriginAuthDisabled,
-    BridgeRpc.layer(ProjectRpcs)({
+    makeBridgeHandlerLayer(ProjectRpcs)({
       open: () => Effect.succeed(new ProjectOpenOutput({ id: 1 }))
     })
   )
@@ -752,14 +738,6 @@ test("Handlers reports unknown methods as MethodNotFound", async () => {
   expectFailureTag(exit, "MethodNotFound")
 })
 
-type ProjectRpcSpec = {
-  readonly open: {
-    readonly input: typeof ProjectOpenInput
-    readonly output: typeof ProjectOpenOutput
-    readonly error: typeof ProjectOpenError
-  }
-}
-
 const makeProjectRpcs = (
   tag: string,
   metadata: {
@@ -767,37 +745,32 @@ const makeProjectRpcs = (
     readonly cancellable?: boolean
     readonly permission?: string
   } = {}
-): BridgeRpcGroup<string, ProjectRpcSpec> => {
-  const spec = Object.freeze({
-    open: Object.freeze({
-      input: ProjectOpenInput,
-      output: ProjectOpenOutput,
-      error: ProjectOpenError,
-      ...metadata
-    })
-  })
-  return BridgeRpc.group(tag, spec, Object.freeze({}))
-}
-
-type EncodedInputRpcSpec = {
-  readonly open: {
-    readonly input: typeof Schema.NumberFromString
-    readonly output: typeof ProjectOpenOutput
-    readonly error: typeof ProjectOpenError
+) => {
+  const runtime = {
+    ...(metadata.timeoutMs === undefined ? {} : { timeoutMs: metadata.timeoutMs }),
+    ...(metadata.cancellable === undefined ? {} : { cancellable: metadata.cancellable })
   }
+  let Open = Rpc.make(`${tag}.open`, {
+    payload: ProjectOpenInput,
+    success: ProjectOpenOutput,
+    error: ProjectOpenError
+  })
+  if (metadata.permission !== undefined) {
+    Open = RpcCapability({ kind: metadata.permission })(Open)
+  }
+  if (Object.keys(runtime).length > 0) {
+    Open = BridgeRuntime(runtime)(Open)
+  }
+  return bridgeContractFromRpcGroup(tag, RpcGroup.make(Open))
 }
 
-const makeEncodedInputRpcs = <Tag extends string>(
-  tag: Tag
-): BridgeRpcGroup<Tag, EncodedInputRpcSpec> => {
-  const spec = Object.freeze({
-    open: Object.freeze({
-      input: Schema.NumberFromString,
-      output: ProjectOpenOutput,
-      error: ProjectOpenError
-    })
+const makeEncodedInputRpcs = <Tag extends string>(tag: Tag) => {
+  const Open = Rpc.make(`${tag}.open`, {
+    payload: Schema.NumberFromString,
+    success: ProjectOpenOutput,
+    error: ProjectOpenError
   })
-  return BridgeRpc.group(tag, spec, Object.freeze({}))
+  return bridgeContractFromRpcGroup(tag, RpcGroup.make(Open))
 }
 
 const request = (method: string, payload: unknown): HostProtocolRequestEnvelope =>
