@@ -189,16 +189,6 @@
       "signature": "export class DevtoolsTokenError extends Data.TaggedError(\"TokenError\")<{ readonly operation: string readonly path: string readonly cause: unknown }> {}"
     },
     {
-      "name": "DevtoolsTracerLayerNoOp",
-      "kind": "value",
-      "signature": "const DevtoolsTracerLayerNoOp: Layer.Layer<never, never, never>"
-    },
-    {
-      "name": "DevtoolsTracerOptions",
-      "kind": "interface",
-      "signature": "export interface DevtoolsTracerOptions { readonly webSocketUrl?: string }"
-    },
-    {
       "name": "DevtoolsUnsafeProductionCaptureError",
       "kind": "class",
       "signature": "export class DevtoolsUnsafeProductionCaptureError extends Data.TaggedError( \"UnsafeProductionCapture\" )<{ readonly operation: string readonly message: string }> {}"
@@ -482,11 +472,6 @@
       "name": "makeDevtoolsShell",
       "kind": "value",
       "signature": "const makeDevtoolsShell: (options?: DevtoolsShellOptions) => Effect.Effect<DevtoolsShellApi, never, never>"
-    },
-    {
-      "name": "makeDevtoolsTracerLayer",
-      "kind": "value",
-      "signature": "const makeDevtoolsTracerLayer: (options?: DevtoolsTracerOptions) => Layer.Layer<never>"
     },
     {
       "name": "makeDiagnosticsPanels",

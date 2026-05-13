@@ -204,6 +204,31 @@
       "signature": "export class CauseReasonPayload extends Schema.Class<CauseReasonPayload>(\"CauseReasonPayload\")({ kind: CausePayloadKind, tag: Schema.optionalKey(Schema.String), message: Schema.optionalKey(Schema.String), value: Schema.optionalKey(Schema.Unknown), fiberId: Schema.optionalKey(Schema.Number) }) {}"
     },
     {
+      "name": "CollectorRegistrationInput",
+      "kind": "class",
+      "signature": "export class CollectorRegistrationInput extends Schema.Class<CollectorRegistrationInput>( \"CollectorRegistrationInput\" )({ id: Schema.NonEmptyString, surface: Schema.NonEmptyString }) {}"
+    },
+    {
+      "name": "CollectorRegistrationOptions",
+      "kind": "interface",
+      "signature": "export interface CollectorRegistrationOptions { readonly id: string readonly surface: string readonly start: Effect.Effect<void, never, never> }"
+    },
+    {
+      "name": "CollectorRegistrationRecord",
+      "kind": "interface",
+      "signature": "export interface CollectorRegistrationRecord { readonly id: string readonly surface: string readonly started: boolean }"
+    },
+    {
+      "name": "CollectorRegistry",
+      "kind": "class",
+      "signature": "export class CollectorRegistry extends Context.Service<CollectorRegistry, CollectorRegistryApi>()( \"CollectorRegistry\" ) {}"
+    },
+    {
+      "name": "CollectorRegistryApi",
+      "kind": "interface",
+      "signature": "export interface CollectorRegistryApi { readonly register: ( input: CollectorRegistrationOptions ) => Effect.Effect<void, DesktopObservabilityConfigError, never> readonly list: () => Effect.Effect<readonly CollectorRegistrationRecord[], never, never> }"
+    },
+    {
       "name": "CommandGroupRegistration",
       "kind": "interface",
       "signature": "export interface CommandGroupRegistration<Group extends RpcGroup.Any & RpcGroupWithRequests, E, R> { readonly group: Group readonly handlers: Layer.Layer<Rpc.ToHandler<RpcGroup.Rpcs<Group>>, E, R> readonly ownerScope: ScopeId }"
@@ -367,6 +392,41 @@
       "name": "DesktopManifestSource",
       "kind": "type",
       "signature": "export type DesktopManifestSource = Pick<DesktopConfig<any, any>, \"id\" | \"windows\" | \"rpcs\">"
+    },
+    {
+      "name": "DesktopObservability",
+      "kind": "class",
+      "signature": "export class DesktopObservability extends Context.Service< DesktopObservability, DesktopObservabilityApi >()(\"DesktopObservability\") {}"
+    },
+    {
+      "name": "DesktopObservabilityApi",
+      "kind": "interface",
+      "signature": "export interface DesktopObservabilityApi { readonly mode: DesktopObservabilityModeName readonly transport: Option.Option<DesktopObservabilityTransport> }"
+    },
+    {
+      "name": "DesktopObservabilityConfigError",
+      "kind": "class",
+      "signature": "export class DesktopObservabilityConfigError extends Data.TaggedError( \"DesktopObservabilityConfigError\" )<{ readonly field: string readonly message: string }> {}"
+    },
+    {
+      "name": "DesktopObservabilityLayerOptions",
+      "kind": "interface",
+      "signature": "export interface DesktopObservabilityLayerOptions { readonly mode: DesktopObservabilityModeName readonly webSocketUrl?: string | undefined readonly inspectorSafetyPolicy?: InspectorSafetyPolicyOptions }"
+    },
+    {
+      "name": "DesktopObservabilityLive",
+      "kind": "value",
+      "signature": "const DesktopObservabilityLive: (options: DesktopObservabilityLayerOptions) => Layer.Layer<DesktopObservability | CollectorRegistry | InspectorSafetyPolicy | Telemetry, DesktopObservabilityConfigError, never>"
+    },
+    {
+      "name": "DesktopObservabilityModeName",
+      "kind": "type",
+      "signature": "export type DesktopObservabilityModeName = | \"off\" | \"embedded-devtools\" | \"standalone-inspector\""
+    },
+    {
+      "name": "DesktopObservabilityTransport",
+      "kind": "interface",
+      "signature": "export interface DesktopObservabilityTransport { readonly kind: \"embedded-devtools\" | \"standalone-inspector\" readonly webSocketUrl: Option.Option<string> }"
     },
     {
       "name": "DesktopProviderSelection",
@@ -764,6 +824,11 @@
       "signature": "const makeBridgeStreamRegistry: (cleanupGraceMs?: number) => Effect.Effect<BridgeStreamRegistry, never, never>"
     },
     {
+      "name": "makeCollectorRegistry",
+      "kind": "value",
+      "signature": "const makeCollectorRegistry: (options: { readonly enabled: boolean; }) => Effect.Effect<CollectorRegistryApi, never, never>"
+    },
+    {
       "name": "makeCommandRegistry",
       "kind": "value",
       "signature": "const makeCommandRegistry: (resources: ResourceRegistryApi, permissions: PermissionRegistryApi, options?: CommandRegistryOptions) => Effect.Effect<CommandRegistryApi, never, never>"
@@ -912,6 +977,11 @@
       "name": "NormalizedCapability",
       "kind": "type",
       "signature": "const NormalizedCapability: Schema.Union<readonly [Schema.Struct<{ readonly kind: Schema.Literals<readonly [\"filesystem.read\", \"filesystem.write\", \"filesystem.delete\"]>; readonly roots: Schema.$Array<Schema.NonEmptyString>; readonly deny: Schema.optionalKey<Schema.$Array<Schema.NonEmptyString>>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; readonly allowCreate: Schema.optionalKey<Schema.Boolean>; readonly allowOverwrite: Schema.optionalKey<Schema.Boolean>; }>, Schema.Struct<{ readonly kind: Schema.Literal<\"sqlite.open\">; readonly roots: Schema.$Array<Schema.NonEmptyString>; readonly deny: Schema.optionalKey<Schema.$Array<Schema.NonEmptyString>>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literals<readonly [\"process.spawn\", \"pty.spawn\"]>; readonly commands: Schema.$Array<Schema.NonEmptyString>; readonly cwd: Schema.optionalKey<Schema.$Array<Schema.NonEmptyString>>; readonly environment: Schema.Literals<readonly [\"none\", \"allowlist\"]>; readonly shell: Schema.Union<readonly [Schema.Literal<false>, Schema.Literal<\"requires-explicit-approval\">]>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literal<\"network.connect\">; readonly hosts: Schema.$Array<Schema.NonEmptyString>; readonly askUnknownHosts: Schema.Boolean; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literals<readonly [\"secrets.read\", \"secrets.write\", \"safeStorage.read\", \"safeStorage.write\"]>; readonly namespaces: Schema.$Array<Schema.NonEmptyString>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literal<\"native.invoke\">; readonly primitive: Schema.NonEmptyString; readonly methods: Schema.$Array<Schema.NonEmptyString>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; }>]>"
+    },
+    {
+      "name": "ObservabilityMode",
+      "kind": "class",
+      "signature": "export class ObservabilityMode extends Schema.Class<ObservabilityMode>(\"ObservabilityMode\")({ mode: Schema.Literals([\"off\", \"embedded-devtools\", \"standalone-inspector\"]) }) {}"
     },
     {
       "name": "P",

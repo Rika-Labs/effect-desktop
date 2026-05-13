@@ -60,6 +60,7 @@ export * from "./runtime/sqlite.js"
 export * from "./runtime/telemetry.js"
 export * from "./runtime/inspector-safety-policy.js"
 export * from "./runtime/inspector-security-events.js"
+export * from "./runtime/desktop-observability.js"
 export * from "./runtime/desktop-errors.js"
 export * from "./runtime/desktop-rpc-surface.js"
 export {
