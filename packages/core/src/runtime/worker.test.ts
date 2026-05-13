@@ -105,6 +105,29 @@ test("Worker closes with the owning resource scope", async () => {
   expect(runtime.shutdowns).toBe(1)
 })
 
+test("Worker owner-scope close interrupts unfinished exit observers", async () => {
+  const runtime = await makeFakeRuntime(undefined, [], false)
+  const fixture = await makeFixture(makeFakeAdapter(runtime), [filesystemReadCapability])
+
+  await Effect.runPromise(
+    fixture.service.spawn({
+      script: "./hanging-exit-worker.ts",
+      ownerScope: "scope-main",
+      inputSchema: EchoIn,
+      outputSchema: EchoOut,
+      context,
+      capabilities: [filesystemReadCapability]
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(fixture.registry.closeScope("scope-main"))
+  const snapshot = await Effect.runPromise(fixture.registry.list())
+
+  expect(Exit.isSuccess(exit)).toBe(true)
+  expect(runtime.shutdowns).toBe(1)
+  expect(snapshot.entries).toEqual([])
+})
+
 test("Worker list returns live snapshots and removes closed workers", async () => {
   const runtime = await makeFakeRuntime()
   const fixture = await makeFixture(makeFakeAdapter(runtime), [filesystemReadCapability], {
@@ -699,7 +722,8 @@ interface FakeWorkerRuntime extends WorkerRuntime {
 
 const makeFakeRuntime = async (
   disposalName?: string,
-  disposals: string[] = []
+  disposals: string[] = [],
+  shutdownCompletesExit = true
 ): Promise<FakeWorkerRuntime> => {
   const queue = await Effect.runPromise(Queue.unbounded<unknown, WorkerError | Cause.Done>())
   const exit = await Effect.runPromise(Deferred.make<void, WorkerError>())
@@ -724,7 +748,7 @@ const makeFakeRuntime = async (
       }
     }).pipe(
       Effect.andThen(Queue.shutdown(queue)),
-      Effect.andThen(Deferred.succeed(exit, undefined)),
+      shutdownCompletesExit ? Effect.andThen(Deferred.succeed(exit, undefined)) : Effect.asVoid,
       Effect.asVoid
     ),
     complete: () => Queue.end(queue).pipe(Effect.andThen(Deferred.succeed(exit, undefined))),

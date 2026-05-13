@@ -219,7 +219,12 @@ export const makeWorker = (
 
           const { runtime, resource } = yield* Effect.uninterruptible(
             Effect.gen(function* () {
-              yield* reserveWorkerBudget(workerBudgets, input.ownerScope, budgets.maxConcurrent)
+              const workerScope = yield* Scope.make()
+              yield* reserveWorkerBudget(
+                workerBudgets,
+                input.ownerScope,
+                budgets.maxConcurrent
+              ).pipe(Effect.tapError(() => Scope.close(workerScope, Exit.void)))
               const runtime = yield* adapter
                 .spawn({
                   script: input.script,
@@ -228,16 +233,28 @@ export const makeWorker = (
                   messageBufferSize: budgets.messageBufferSize,
                   gracefulShutdownMs
                 })
-                .pipe(Effect.tapError(() => releaseWorkerBudget(workerBudgets, input.ownerScope)))
+                .pipe(
+                  Effect.tapError(() =>
+                    releaseWorkerBudget(workerBudgets, input.ownerScope).pipe(
+                      Effect.andThen(Scope.close(workerScope, Exit.void))
+                    )
+                  )
+                )
               let registeredResourceId: string | undefined
+              const disposalOrigin = yield* Ref.make<WorkerDisposalOrigin>("running")
               const resource = yield* registry
                 .register({
                   kind: "worker",
                   ownerScope: input.ownerScope,
                   state: "running",
-                  dispose: runtime.shutdown.pipe(
-                    Effect.andThen(removeWorker(workers, () => registeredResourceId)),
-                    Effect.andThen(releaseWorkerBudget(workerBudgets, input.ownerScope))
+                  dispose: disposeWorkerRuntime(
+                    runtime,
+                    workerScope,
+                    input.ownerScope,
+                    workerBudgets,
+                    workers,
+                    () => registeredResourceId,
+                    disposalOrigin
                   )
                 })
                 .pipe(Effect.orDie)
@@ -266,7 +283,13 @@ export const makeWorker = (
                   capabilities: input.capabilities
                 })
               )
-              observeWorkerExit(runtime.exit, resource, input.script)
+              yield* observeWorkerExit(
+                runtime.exit,
+                resource,
+                input.script,
+                workerScope,
+                disposalOrigin
+              ).pipe(Scope.provide(workerScope))
 
               return { runtime, resource }
             })
@@ -394,26 +417,69 @@ const attachWorkerResourceId = (error: WorkerError, resourceId: string): WorkerE
 const observeWorkerExit = (
   exit: Effect.Effect<void, WorkerError, never>,
   resource: ManagedResourceHandle<"worker", "running">,
-  script: string
-): void => {
-  Effect.runFork(
-    exit.pipe(
-      Effect.exit,
-      Effect.flatMap((result) =>
-        resource.dispose().pipe(
-          Effect.andThen(
-            Exit.isFailure(result)
-              ? Effect.logWarning("Worker.exit observer failed", {
-                  script,
-                  reason: formatWorkerExitFailure(result)
-                })
-              : Effect.void
-          )
-        )
-      )
-    )
+  script: string,
+  workerScope: Scope.Closeable,
+  disposalOrigin: Ref.Ref<WorkerDisposalOrigin>
+): Effect.Effect<void, never, Scope.Scope> =>
+  exit.pipe(
+    Effect.exit,
+    Effect.flatMap((result) =>
+      Effect.gen(function* () {
+        const origin = yield* claimWorkerObserverDisposal(disposalOrigin)
+        if (origin !== "registry") {
+          yield* resource.dispose()
+        }
+        if (Exit.isFailure(result)) {
+          yield* Effect.logWarning("Worker.exit observer failed", {
+            script,
+            reason: formatWorkerExitFailure(result)
+          })
+        }
+        if (origin !== "registry") {
+          yield* Scope.close(workerScope, Exit.void)
+        }
+      })
+    ),
+    Effect.forkScoped({ startImmediately: true }),
+    Effect.asVoid
   )
-}
+
+const disposeWorkerRuntime = (
+  runtime: WorkerRuntime,
+  workerScope: Scope.Closeable,
+  ownerScope: string,
+  workerBudgets: Ref.Ref<Map<string, number>>,
+  workers: Ref.Ref<ReadonlyMap<string, StoredWorker>>,
+  resourceId: () => string | undefined,
+  disposalOrigin: Ref.Ref<WorkerDisposalOrigin>
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const origin = yield* claimWorkerRegistryDisposal(disposalOrigin)
+    if (origin !== "observer") {
+      yield* runtime.shutdown
+    }
+    yield* removeWorker(workers, resourceId)
+    yield* releaseWorkerBudget(workerBudgets, ownerScope)
+    if (origin !== "observer") {
+      yield* Scope.close(workerScope, Exit.void)
+    }
+  })
+
+type WorkerDisposalOrigin = "running" | "observer" | "registry"
+
+const claimWorkerObserverDisposal = (
+  origin: Ref.Ref<WorkerDisposalOrigin>
+): Effect.Effect<WorkerDisposalOrigin, never, never> =>
+  Ref.modify(origin, (current) =>
+    current === "running" ? (["observer", "observer"] as const) : ([current, current] as const)
+  )
+
+const claimWorkerRegistryDisposal = (
+  origin: Ref.Ref<WorkerDisposalOrigin>
+): Effect.Effect<WorkerDisposalOrigin, never, never> =>
+  Ref.modify(origin, (current) =>
+    current === "running" ? (["registry", "registry"] as const) : ([current, current] as const)
+  )
 
 interface StoredWorker {
   readonly id: string
