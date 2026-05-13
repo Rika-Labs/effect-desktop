@@ -23,6 +23,7 @@ import {
 } from "./protocol.js"
 import { redactForJson } from "./redaction.js"
 import type { RedactionFilterOptions } from "./redaction.js"
+import type { BridgeInspector } from "./inspector.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 const DEFAULT_TIMEOUT_MS = 30_000
@@ -89,6 +90,7 @@ export interface BridgeHandlerRuntimeOptions {
   readonly originAuth?: RendererOriginAuth
   readonly redaction?: RedactionFilterOptions
   readonly terminalStateTtlMs?: number
+  readonly inspector?: BridgeInspector
 }
 
 interface ResolvedBridgeHandlerRuntimeOptions {

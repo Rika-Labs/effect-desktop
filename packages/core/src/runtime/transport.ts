@@ -1,4 +1,8 @@
 import {
+  BridgeInspectorEvent,
+  type BridgeInspector
+} from "@effect-desktop/bridge"
+import {
   Cause,
   Context,
   Data,
@@ -109,6 +113,12 @@ export interface TransportConnection {
   readonly close: () => Effect.Effect<void, TransportError, never>
 }
 
+export interface InstrumentTransportConnectionOptions {
+  readonly inspector?: BridgeInspector
+  readonly target: string
+  readonly now?: () => number
+}
+
 export interface TransportUnframeStreamInput {
   readonly scheme: TransportScheme
   readonly chunks: Stream.Stream<Uint8Array, TransportError, never>
@@ -200,6 +210,73 @@ export const makeTransport = (): Effect.Effect<TransportApi, never, never> =>
 export class Transport extends Context.Service<Transport, TransportApi>()("Transport", {
   make: makeTransport()
 }) {}
+
+export const instrumentTransportConnection = (
+  connection: TransportConnection,
+  options: InstrumentTransportConnectionOptions
+): TransportConnection => {
+  const now = options.now ?? Date.now
+
+  return Object.freeze({
+    send: (payload: Uint8Array) =>
+      connection.send(payload).pipe(
+        Effect.tap(() =>
+          emitTransportEvent(options.inspector, "transport.backpressure", options.target, now, {
+            bytes: payload.byteLength
+          })
+        )
+      ),
+    receive: connection.receive.pipe(
+      Stream.tap((payload) =>
+        emitTransportEvent(options.inspector, "transport.connect", options.target, now, {
+          bytes: payload.byteLength
+        })
+      ),
+      Stream.tapError((error) =>
+        emitTransportEvent(options.inspector, "transport.disconnect", options.target, now, {
+          errorTag: transportErrorTag(error)
+        })
+      )
+    ),
+    close: () =>
+      connection.close().pipe(
+        Effect.ensuring(
+          emitTransportEvent(options.inspector, "transport.disconnect", options.target, now, {})
+        )
+      )
+  })
+}
+
+const emitTransportEvent = (
+  inspector: BridgeInspector | undefined,
+  kind: "transport.connect" | "transport.backpressure" | "transport.disconnect",
+  target: string,
+  now: () => number,
+  details: { readonly bytes?: number; readonly errorTag?: string | undefined }
+): Effect.Effect<void, never, never> =>
+  inspector === undefined
+    ? Effect.void
+    : inspector.emit(
+        new BridgeInspectorEvent({
+          kind,
+          boundary: "host",
+          direction: kind === "transport.backpressure" ? "outbound" : "inbound",
+          method: target,
+          timestamp: now(),
+          frameKind: "transport",
+          errorTag: details.errorTag,
+          payload: details.bytes === undefined ? undefined : { bytes: details.bytes }
+        })
+      )
+
+const transportErrorTag = (error: unknown): string | undefined =>
+  typeof error === "object" && error !== null
+    ? "_tag" in error
+      ? String(Reflect.get(error, "_tag"))
+      : "tag" in error
+        ? String(Reflect.get(error, "tag"))
+        : undefined
+    : undefined
 
 export const encodeFrame = (payload: Uint8Array, options: FrameCodecOptions = {}): Uint8Array => {
   const maxFrameBytes = resolveMaxFrameBytes(options)

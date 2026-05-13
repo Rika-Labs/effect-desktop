@@ -37,6 +37,12 @@ import {
   validateHostProtocolTimestamp,
   type HostProtocolError
 } from "./protocol.js"
+import {
+  BridgeInspectorEvent,
+  type BridgeInspector,
+  emitBridgeInspectorEvent,
+  hostProtocolErrorTag
+} from "./inspector.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 const DEFAULT_STREAM_QUEUE_SIZE = 1_024
@@ -93,6 +99,7 @@ export interface BridgeStreamRuntimeOptions {
   readonly nextStreamId?: () => string
   readonly cleanupGraceMs?: number
   readonly registry?: BridgeStreamRegistry
+  readonly inspector?: BridgeInspector
 }
 
 interface ResolvedBridgeStreamRuntimeOptions {
@@ -100,6 +107,7 @@ interface ResolvedBridgeStreamRuntimeOptions {
   readonly nextStreamId: () => string
   readonly cleanupGraceMs: number
   readonly registry: BridgeStreamRegistry
+  readonly inspector: BridgeInspector | undefined
 }
 
 export type BridgeStreamLayerEnvironment<Layer> =
@@ -675,6 +683,7 @@ const offerStreamFrame = (
     if (streamQueue.overflow === "block") {
       yield* Queue.offer(streamQueue.queue, frame)
       yield* syncBackpressureMetrics(options.registry, frame.resourceId, streamQueue)
+      yield* emitStreamFrame(options.inspector, frame)
       return
     }
 
@@ -689,6 +698,7 @@ const offerStreamFrame = (
     }
 
     yield* syncBackpressureMetrics(options.registry, frame.resourceId, streamQueue)
+    yield* emitStreamFrame(options.inspector, frame)
 
     if (!offered && streamQueue.overflow === "error") {
       const lostFrames = yield* Ref.get(streamQueue.evictedFrames)
@@ -734,6 +744,7 @@ const offerTerminalFrame = (
         yield* Ref.update(streamQueue.evictedFrames, (count) => count + terminalEvictions)
       }
       yield* syncBackpressureMetrics(options.registry, streamId, streamQueue)
+      yield* emitStreamFrame(options.inspector, frame)
     }
   })
 
@@ -907,7 +918,8 @@ const resolveOptions = (
       cleanupGraceMs,
       now: options.now ?? Date.now,
       nextStreamId: options.nextStreamId ?? (() => `stream-${globalThis.crypto.randomUUID()}`),
-      registry
+      registry,
+      inspector: options.inspector
     }
   })
 
@@ -917,6 +929,26 @@ const safeTerminalNow = (options: ResolvedBridgeStreamRuntimeOptions): number =>
 }
 
 const methodName = (tag: string, method: string): string => `${tag}.${method}`
+
+const emitStreamFrame = (
+  inspector: BridgeInspector | undefined,
+  frame: HostProtocolStreamEnvelope
+): Effect.Effect<void, never, never> =>
+  emitBridgeInspectorEvent(
+    inspector,
+    new BridgeInspectorEvent({
+      kind: "bridge.frame",
+      boundary: "bridge",
+      direction: "outbound",
+      requestId: frame.id,
+      resourceId: frame.resourceId,
+      traceId: frame.traceId,
+      timestamp: frame.timestamp,
+      frameKind: "stream",
+      errorTag: hostProtocolErrorTag(frame.error),
+      payload: frame.payload
+    })
+  )
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {

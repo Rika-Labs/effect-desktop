@@ -12,6 +12,7 @@ import {
   HostProtocolRequestEnvelope,
   HostProtocolResponseEnvelope,
   RendererOriginAuth,
+  makeBridgeInspector,
   makeDesktopClientProtocol,
   makeDesktopRpcHandlerRuntime,
   makeDesktopServerProtocol
@@ -75,6 +76,60 @@ test("makeDesktopRpcHandlerRuntime dispatches host requests through RpcServer", 
   )
 
   expect(response).toEqual({ kind: "success", payload: "pong: hello" })
+})
+
+test("makeDesktopRpcHandlerRuntime emits inspector RPC events", async () => {
+  const events: unknown[] = []
+  const inspector = await Effect.runPromise(
+    makeBridgeInspector({
+      onEvent: (event) =>
+        Effect.sync(() => {
+          events.push(event)
+        })
+    })
+  )
+  const runtime = makeDesktopRpcHandlerRuntime(
+    group,
+    group.toLayer({
+      Ping: ({ message }) => Effect.succeed(`pong: ${message}`)
+    }),
+    {
+      originAuth: RendererOriginAuth.unsafeDisabledForTests,
+      now: () => 1710000000000,
+      inspector
+    }
+  )
+
+  await Effect.runPromise(
+    runtime.dispatch(
+      new HostProtocolRequestEnvelope({
+        kind: "request",
+        id: "request-inspector",
+        method: "Ping",
+        timestamp: 1710000000000,
+        traceId: "trace-inspector",
+        payload: { message: "hello" }
+      })
+    )
+  )
+
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      kind: "rpc.request",
+      boundary: "runtime",
+      method: "Ping",
+      requestId: "request-inspector",
+      traceId: "trace-inspector"
+    })
+  )
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      kind: "rpc.response",
+      boundary: "runtime",
+      method: "Ping",
+      requestId: "request-inspector"
+    })
+  )
 })
 
 test("makeDesktopRpcHandlerRuntime rejects unknown host methods before RpcServer dispatch", async () => {

@@ -13,6 +13,7 @@ import {
   RpcGroup,
   bridgeContractFromRpcGroup,
   makeBridgeHandlerLayer,
+  makeBridgeInspector,
   makeDesktopClientProtocol,
   makeUnaryDesktopTransportFromBridgeClientExchange,
   makeHostProtocolInvalidOutputError,
@@ -114,6 +115,51 @@ test("Client generates a typed namespace from contract entries", async () => {
   ])
   expect(Object.isFrozen(client)).toBe(true)
   expect(Object.isFrozen(client.project)).toBe(true)
+})
+
+test("Client emits typed inspector RPC and bridge frame events", async () => {
+  const events: unknown[] = []
+  const inspector = await Effect.runPromise(
+    makeBridgeInspector({
+      onEvent: (event) =>
+        Effect.sync(() => {
+          events.push(event)
+        })
+    })
+  )
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.Inspector")
+  const client = Client({ project: ProjectRpcs }, responseExchange([], { id: "project-1" }), {
+    nextRequestId: () => "request-inspector",
+    nextTraceId: () => "trace-inspector",
+    now: () => 42,
+    inspector
+  })
+
+  await Effect.runPromise(client.project.open(new ProjectOpenInput({ path: "/secret/project" })))
+
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      kind: "rpc.request",
+      method: "ProjectRpcs.Inspector.open",
+      requestId: "request-inspector",
+      traceId: "trace-inspector"
+    })
+  )
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      kind: "bridge.frame",
+      frameKind: "request",
+      payload: new ProjectOpenInput({ path: "/secret/project" })
+    })
+  )
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      kind: "rpc.response",
+      method: "ProjectRpcs.Inspector.open",
+      requestId: "request-inspector",
+      traceId: "trace-inspector"
+    })
+  )
 })
 
 test("Client rejects malformed input as a typed Effect failure before transport", async () => {
@@ -265,6 +311,41 @@ test("Client decodes malformed output as a typed Effect failure", async () => {
   )
 
   expectFailureTag(exit, "InvalidOutput")
+})
+
+test("Client emits inspector decode failures for malformed outputs", async () => {
+  const events: unknown[] = []
+  const inspector = await Effect.runPromise(
+    makeBridgeInspector({
+      onEvent: (event) =>
+        Effect.sync(() => {
+          events.push(event)
+        })
+    })
+  )
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.InvalidOutputInspector")
+  const client = Client({ project: ProjectRpcs }, responseExchange([], { id: 123 }), {
+    nextRequestId: () => "request-decode-failure",
+    nextTraceId: () => "trace-decode-failure",
+    now: () => 42,
+    inspector
+  })
+
+  const exit = await Effect.runPromiseExit(
+    client.project.open(new ProjectOpenInput({ path: "/tmp/project" }))
+  )
+
+  expectFailureTag(exit, "InvalidOutput")
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      kind: "bridge.decodeFailure",
+      method: "ProjectRpcs.InvalidOutputInspector.open",
+      requestId: "request-decode-failure",
+      traceId: "trace-decode-failure",
+      frameKind: "response",
+      errorTag: "InvalidOutput"
+    })
+  )
 })
 
 test("Client decodes contract error responses as typed Effect failures", async () => {

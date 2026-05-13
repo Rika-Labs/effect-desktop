@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 
 import { Cause, Deferred, Effect, Exit, Fiber, Stream } from "effect"
 import { Socket } from "effect/unstable/socket"
+import { makeBridgeInspector } from "@effect-desktop/bridge"
 
 import {
   FrameDecoder,
@@ -15,6 +16,7 @@ import {
   TransportInvalidArgumentError,
   TransportClosedError,
   encodeFrame,
+  instrumentTransportConnection,
   makeFramedSocketConnection
 } from "./transport.js"
 import { makeInMemoryTransportPair, makeTransport } from "./transport.js"
@@ -115,6 +117,43 @@ test("makeFramedSocketConnection sends encoded frames and receives decoded frame
     [0x6f, 0x6b],
     [0x68, 0x65, 0x6c, 0x6c, 0x6f]
   ])
+})
+
+test("instrumentTransportConnection emits typed transport inspector events", async () => {
+  const events: unknown[] = []
+  const inspector = await Effect.runPromise(
+    makeBridgeInspector({
+      onEvent: (event) =>
+        Effect.sync(() => {
+          events.push(event)
+        })
+    })
+  )
+  const [client] = await Effect.runPromise(makeInMemoryTransportPair())
+  const connection = instrumentTransportConnection(client, {
+    inspector,
+    target: "stdio",
+    now: () => 42
+  })
+
+  await Effect.runPromise(connection.send(new Uint8Array([1, 2, 3])))
+  await Effect.runPromise(connection.close())
+
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      kind: "transport.backpressure",
+      boundary: "host",
+      method: "stdio",
+      payload: { bytes: 3 }
+    })
+  )
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      kind: "transport.disconnect",
+      boundary: "host",
+      method: "stdio"
+    })
+  )
 })
 
 test("makeFramedSocketConnection uses the provided Socket service through Transport.connect", async () => {

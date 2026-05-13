@@ -5,6 +5,15 @@ export * from "./events.js"
 export * from "./streams.js"
 export * from "./handlers.js"
 export * from "./handshake.js"
+export {
+  BridgeInspectorBoundary,
+  BridgeInspectorDirection,
+  BridgeInspectorEvent,
+  BridgeInspectorEventKind,
+  makeBridgeInspector,
+  type BridgeInspector,
+  type BridgeInspectorOptions
+} from "./inspector.js"
 export * from "./protocol.js"
 export * from "./redaction.js"
 export * from "./resources.js"

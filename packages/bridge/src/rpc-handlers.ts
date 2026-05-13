@@ -20,6 +20,12 @@ import {
   makeHostProtocolInvalidStateError,
   makeHostProtocolOriginInvalidError
 } from "./protocol.js"
+import {
+  BridgeInspectorEvent,
+  type BridgeInspector,
+  emitBridgeInspectorEvent,
+  hostProtocolErrorTag
+} from "./inspector.js"
 
 const DEFAULT_TERMINAL_STATE_TTL_MS = 30_000
 
@@ -44,6 +50,7 @@ interface ResolvedDesktopRpcHandlerOptions {
   readonly originAuth: RendererOriginAuth
   readonly terminalStateTtlMs: number
   readonly nextTraceId?: (() => string) | undefined
+  readonly inspector: BridgeInspector | undefined
 }
 
 export const makeDesktopRpcHandlerRuntime = <Rpcs extends Rpc.Any, E = never, R = never>(
@@ -98,6 +105,18 @@ const dispatch = <Rpcs extends Rpc.Any, E, R>(
         traceId: request.traceId,
         startedAt
       })
+      yield* emitBridgeInspectorEvent(
+        options.inspector,
+        new BridgeInspectorEvent({
+          kind: "rpc.request",
+          boundary: "runtime",
+          direction: "inbound",
+          method: request.method,
+          requestId: request.id,
+          traceId: request.traceId,
+          timestamp: startedAt
+        })
+      )
 
       const originExit = yield* Effect.exit(options.originAuth.verify(request))
       if (originExit._tag === "Failure") {
@@ -214,6 +233,18 @@ const runDispatch = <Rpcs extends Rpc.Any, E, R>(
         id: request.id,
         completedAt: options.now()
       })
+      yield* emitBridgeInspectorEvent(
+        options.inspector,
+        new BridgeInspectorEvent({
+          kind: "rpc.response",
+          boundary: "runtime",
+          direction: "outbound",
+          method: request.method,
+          requestId: request.id,
+          traceId: request.traceId,
+          timestamp: options.now()
+        })
+      )
     } else {
       if (isHostProtocolCancelledError(result.error)) {
         recordTerminalState(terminalStates, request.id, "Canceled", options)
@@ -230,6 +261,19 @@ const runDispatch = <Rpcs extends Rpc.Any, E, R>(
         id: request.id,
         error: result.error
       })
+      yield* emitBridgeInspectorEvent(
+        options.inspector,
+        new BridgeInspectorEvent({
+          kind: "rpc.failure",
+          boundary: "runtime",
+          direction: "outbound",
+          method: request.method,
+          requestId: request.id,
+          traceId: request.traceId,
+          timestamp: options.now(),
+          errorTag: hostProtocolErrorTag(result.error)
+        })
+      )
     }
     return result
   })
@@ -368,7 +412,8 @@ const resolveOptions = (
   onState: options.onState ?? (() => Effect.void),
   originAuth: options.originAuth ?? defaultRendererOriginAuth,
   terminalStateTtlMs: options.terminalStateTtlMs ?? DEFAULT_TERMINAL_STATE_TTL_MS,
-  nextTraceId: options.nextTraceId
+  nextTraceId: options.nextTraceId,
+  inspector: options.inspector
 })
 
 const defaultRendererOriginAuth: RendererOriginAuth = Object.freeze({

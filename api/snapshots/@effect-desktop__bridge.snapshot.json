@@ -56,7 +56,7 @@
     {
       "name": "BridgeClientOptions",
       "kind": "interface",
-      "signature": "export interface BridgeClientOptions { readonly nextRequestId?: () => string readonly nextTraceId?: () => string readonly now?: () => number readonly windowId?: string readonly originToken?: string }"
+      "signature": "export interface BridgeClientOptions { readonly nextRequestId?: () => string readonly nextTraceId?: () => string readonly now?: () => number readonly windowId?: string readonly originToken?: string readonly inspector?: BridgeInspector }"
     },
     {
       "name": "BridgeClientResponse",
@@ -161,7 +161,37 @@
     {
       "name": "BridgeHandlerRuntimeOptions",
       "kind": "interface",
-      "signature": "export interface BridgeHandlerRuntimeOptions { readonly now?: () => number readonly onState?: (state: BridgeCallState) => Effect.Effect<void, never, never> readonly originAuth?: RendererOriginAuth readonly redaction?: RedactionFilterOptions readonly terminalStateTtlMs?: number }"
+      "signature": "export interface BridgeHandlerRuntimeOptions { readonly now?: () => number readonly onState?: (state: BridgeCallState) => Effect.Effect<void, never, never> readonly originAuth?: RendererOriginAuth readonly redaction?: RedactionFilterOptions readonly terminalStateTtlMs?: number readonly inspector?: BridgeInspector }"
+    },
+    {
+      "name": "BridgeInspector",
+      "kind": "interface",
+      "signature": "export interface BridgeInspector { readonly emit: (event: BridgeInspectorEvent) => Effect.Effect<void, never, never> readonly events: Stream.Stream<BridgeInspectorEvent, never, never> }"
+    },
+    {
+      "name": "BridgeInspectorBoundary",
+      "kind": "type",
+      "signature": "const BridgeInspectorBoundary: Schema.Literals<readonly [\"renderer\", \"bridge\", \"runtime\", \"host\"]>"
+    },
+    {
+      "name": "BridgeInspectorDirection",
+      "kind": "type",
+      "signature": "const BridgeInspectorDirection: Schema.Literals<readonly [\"inbound\", \"outbound\"]>"
+    },
+    {
+      "name": "BridgeInspectorEvent",
+      "kind": "class",
+      "signature": "export class BridgeInspectorEvent extends Schema.Class<BridgeInspectorEvent>( \"BridgeInspectorEvent\" )({ kind: BridgeInspectorEventKind, boundary: BridgeInspectorBoundary, direction: BridgeInspectorDirection, method: OptionalString, requestId: OptionalString, resourceId: OptionalString, traceId: OptionalString, timestamp: InspectorTimestamp, durationMs: Schema.optionalKey( Schema.Union([ Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)), Schema.Undefined ]) ), frameKind: OptionalString, errorTag: OptionalString, payload: OptionalUnknown }) {}"
+    },
+    {
+      "name": "BridgeInspectorEventKind",
+      "kind": "type",
+      "signature": "const BridgeInspectorEventKind: Schema.Literals<readonly [\"rpc.request\", \"rpc.response\", \"rpc.failure\", \"bridge.frame\", \"bridge.decodeFailure\", \"transport.connect\", \"transport.reconnect\", \"transport.backpressure\", \"transport.disconnect\"]>"
+    },
+    {
+      "name": "BridgeInspectorOptions",
+      "kind": "interface",
+      "signature": "export interface BridgeInspectorOptions { readonly capacity?: number readonly onEvent?: (event: BridgeInspectorEvent) => Effect.Effect<void, never, never> }"
     },
     {
       "name": "BridgeMethodSpec",
@@ -236,7 +266,7 @@
     {
       "name": "BridgeStreamRuntimeOptions",
       "kind": "interface",
-      "signature": "export interface BridgeStreamRuntimeOptions { readonly now?: () => number readonly nextStreamId?: () => string readonly cleanupGraceMs?: number readonly registry?: BridgeStreamRegistry }"
+      "signature": "export interface BridgeStreamRuntimeOptions { readonly now?: () => number readonly nextStreamId?: () => string readonly cleanupGraceMs?: number readonly registry?: BridgeStreamRegistry readonly inspector?: BridgeInspector }"
     },
     {
       "name": "BridgeStreamSchema",
@@ -677,6 +707,11 @@
       "name": "makeBridgeHandlerLayer",
       "kind": "value",
       "signature": "const makeBridgeHandlerLayer: <Tag extends string, Spec extends BridgeContractSpec, Events extends BridgeContractEvents>(group: BridgeContract<Tag, Spec, Events>) => <Handlers extends BridgeContractHandlers<Spec>>(handlers: Handlers) => BridgeHandlerLayer<Tag, Spec, Handlers, Events>"
+    },
+    {
+      "name": "makeBridgeInspector",
+      "kind": "value",
+      "signature": "const makeBridgeInspector: (options?: BridgeInspectorOptions) => Effect.Effect<BridgeInspector, never, never>"
     },
     {
       "name": "makeBridgeStreamRegistry",

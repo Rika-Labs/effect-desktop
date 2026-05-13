@@ -17,6 +17,7 @@ import {
   Streams,
   bridgeContractFromRpcGroup,
   makeBridgeHandlerLayer,
+  makeBridgeInspector,
   type HostProtocolError,
   type HostProtocolStreamEnvelope,
   makeBridgeStreamRegistry,
@@ -120,6 +121,51 @@ test("Streams carries typed chunks from handler to client in order", async () =>
       payload: new WatchInput({ projectId: "project-1" })
     })
   ])
+})
+
+test("Streams emits typed inspector stream frame events", async () => {
+  const inspectorEvents: unknown[] = []
+  const inspector = await Effect.runPromise(
+    makeBridgeInspector({
+      onEvent: (event) =>
+        Effect.sync(() => {
+          inspectorEvents.push(event)
+        })
+    })
+  )
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamInspector")
+  const runtime = await acquireStreamRuntime(
+    Streams.scopedWithOptions(
+      {
+        now: () => 42,
+        nextStreamId: () => "stream-inspector",
+        inspector
+      },
+      makeBridgeHandlerLayer(ProjectRpcs)({
+        watch: () => Stream.make(new WatchEvent({ sequence: 1, path: "a" }))
+      })
+    )
+  )
+  const client = Client({ project: ProjectRpcs }, streamExchange(runtime, []), {
+    nextRequestId: () => "request-stream-inspector",
+    nextTraceId: () => "trace-stream-inspector",
+    now: () => 41,
+    inspector
+  })
+
+  await Effect.runPromise(
+    client.project.watch(new WatchInput({ projectId: "project-1" })).pipe(Stream.runCollect)
+  )
+
+  expect(inspectorEvents).toContainEqual(
+    expect.objectContaining({
+      kind: "bridge.frame",
+      frameKind: "stream",
+      requestId: "request-stream-inspector",
+      resourceId: "stream-inspector",
+      traceId: "trace-stream-inspector"
+    })
+  )
 })
 
 test("Client rejects stream envelopes for the wrong request id", async () => {
