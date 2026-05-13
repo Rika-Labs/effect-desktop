@@ -719,6 +719,16 @@
       "signature": "export class InspectorCauseEvent extends Schema.Class<InspectorCauseEvent>(\"InspectorCauseEvent\")({ kind: Schema.Literal(\"cause\"), traceId: Schema.String, operation: Schema.String, timestamp: Schema.Number, cause: CausePayload }) {}"
     },
     {
+      "name": "InspectorEvent",
+      "kind": "class",
+      "signature": "export class InspectorEvent extends Schema.Class<InspectorEvent>(\"InspectorEvent\")({ sequence: Schema.Number, sessionId: Schema.NonEmptyString, timestampMs: Schema.Number, source: Schema.NonEmptyString, payload: Schema.Unknown }) {}"
+    },
+    {
+      "name": "InspectorEventInput",
+      "kind": "interface",
+      "signature": "export interface InspectorEventInput { readonly source: string readonly payload: unknown readonly timestampMs?: number }"
+    },
+    {
       "name": "InspectorLogEvent",
       "kind": "class",
       "signature": "export class InspectorLogEvent extends Schema.Class<InspectorLogEvent>(\"InspectorLogEvent\")({ kind: Schema.Literal(\"log\"), record: Schema.Unknown }) {}"
@@ -732,6 +742,11 @@
       "name": "InspectorProductionCapture",
       "kind": "type",
       "signature": "export type InspectorProductionCapture = \"disabled\" | \"safe\""
+    },
+    {
+      "name": "InspectorReplayRequest",
+      "kind": "interface",
+      "signature": "export interface InspectorReplayRequest { readonly afterSequence?: number readonly limit?: number }"
     },
     {
       "name": "InspectorSafetyAction",
@@ -784,6 +799,11 @@
       "signature": "export class InspectorSafetySummary extends Schema.Class<InspectorSafetySummary>( \"InspectorSafetySummary\" )({ evidence: Schema.Array(InspectorSafetyEvidence), redacted: Schema.Number, omitted: Schema.Number, truncated: Schema.Number, sampledOut: Schema.Number, productionDisabled: Schema.Number }) {}"
     },
     {
+      "name": "InspectorSession",
+      "kind": "class",
+      "signature": "export class InspectorSession extends Schema.Class<InspectorSession>(\"InspectorSession\")({ sessionId: Schema.NonEmptyString, startedAt: Schema.Number, label: Schema.optionalKey(Schema.String) }) {}"
+    },
+    {
       "name": "InspectorTelemetryEvent",
       "kind": "type",
       "signature": "const InspectorTelemetryEvent: Schema.Union<readonly [typeof InspectorLogEvent, typeof InspectorTraceEvent, typeof InspectorMetricEvent, typeof InspectorCauseEvent]>"
@@ -792,6 +812,36 @@
       "name": "InspectorTraceEvent",
       "kind": "class",
       "signature": "export class InspectorTraceEvent extends Schema.Class<InspectorTraceEvent>(\"InspectorTraceEvent\")({ kind: Schema.Literal(\"trace\"), span: Schema.Unknown, cause: Schema.optionalKey(CausePayload) }) {}"
+    },
+    {
+      "name": "InspectorTransport",
+      "kind": "class",
+      "signature": "export class InspectorTransport extends Context.Service< InspectorTransport, InspectorTransportApi >()(\"@effect-desktop/core/InspectorTransport\", { make: makeInspectorTransport() }) {}"
+    },
+    {
+      "name": "InspectorTransportApi",
+      "kind": "interface",
+      "signature": "export interface InspectorTransportApi { readonly session: InspectorSession readonly publish: ( input: InspectorEventInput ) => Effect.Effect<InspectorEvent, InspectorTransportInvalidArgumentError, never> readonly replay: ( request?: InspectorReplayRequest ) => Effect.Effect<readonly InspectorEvent[], InspectorTransportInvalidArgumentError, never> readonly subscribe: ( request?: InspectorReplayRequest ) => Stream.Stream<InspectorEvent, InspectorTransportInvalidArgumentError, never> readonly snapshot: () => Effect.Effect<InspectorTransportSnapshot, never, never> }"
+    },
+    {
+      "name": "InspectorTransportInvalidArgumentError",
+      "kind": "class",
+      "signature": "export class InspectorTransportInvalidArgumentError extends Data.TaggedError(\"InvalidArgument\")<{ readonly operation: string readonly field: string readonly message: string }> {}"
+    },
+    {
+      "name": "InspectorTransportLive",
+      "kind": "value",
+      "signature": "const InspectorTransportLive: (options?: InspectorTransportOptions) => Layer.Layer<InspectorTransport, InspectorTransportInvalidArgumentError, never>"
+    },
+    {
+      "name": "InspectorTransportOptions",
+      "kind": "interface",
+      "signature": "export interface InspectorTransportOptions { readonly sessionId?: string readonly sessionLabel?: string readonly retentionLimit?: number readonly subscriberBuffer?: number readonly now?: () => number }"
+    },
+    {
+      "name": "InspectorTransportSnapshot",
+      "kind": "class",
+      "signature": "export class InspectorTransportSnapshot extends Schema.Class<InspectorTransportSnapshot>( \"InspectorTransportSnapshot\" )({ session: InspectorSession, retainedEvents: Schema.Number, oldestSequence: Schema.optionalKey(Schema.Number), newestSequence: Schema.optionalKey(Schema.Number), droppedByRetention: Schema.Number, droppedBySubscribers: Schema.Number, activeSubscribers: Schema.Number }) {}"
     },
     {
       "name": "launch",
@@ -852,6 +902,11 @@
       "name": "makeInspectorSafetyPolicy",
       "kind": "value",
       "signature": "const makeInspectorSafetyPolicy: (options?: InspectorSafetyPolicyOptions) => Effect.Effect<InspectorSafetyPolicyApi, InspectorSafetyPolicyInvalidArgumentError, never>"
+    },
+    {
+      "name": "makeInspectorTransport",
+      "kind": "value",
+      "signature": "const makeInspectorTransport: (options?: InspectorTransportOptions) => Effect.Effect<InspectorTransportApi, InspectorTransportInvalidArgumentError, never>"
     },
     {
       "name": "makeMissingDesktopContextError",
