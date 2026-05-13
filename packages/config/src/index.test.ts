@@ -4,9 +4,13 @@ import { Effect, Exit } from "effect"
 import {
   cspWeakenings,
   DEFAULT_CSP_DIRECTIVES,
+  DEFAULT_CSP_POLICY,
   defineDesktopConfig,
+  effectiveCspPolicy,
   formatProductionCheckReport,
+  makeCspNonce,
   ProductionCheckInvalidInput,
+  renderCspPolicy,
   renderDefaultCsp,
   renderEffectiveCsp,
   runProductionCheck,
@@ -32,6 +36,15 @@ const HOST_DEFAULT_CSP_FOR_NONCE = (nonce: string): string =>
 
 test("CSP defaults render the spec policy with a nonce", () => {
   expect(renderDefaultCsp("abc123")).toBe(HOST_DEFAULT_CSP_FOR_NONCE("abc123"))
+})
+
+test("CSP defaults are schema-backed ordered policy data", () => {
+  expect(DEFAULT_CSP_POLICY.directives.map((directive) => directive.name)).toEqual(
+    DEFAULT_CSP_DIRECTIVES.map(([directive]) => directive)
+  )
+  expect(renderCspPolicy(DEFAULT_CSP_POLICY, makeCspNonce("abc123"))).toBe(
+    HOST_DEFAULT_CSP_FOR_NONCE("abc123")
+  )
 })
 
 test("defineDesktopConfig accepts the documented app config shape", () => {
@@ -198,6 +211,9 @@ test("CSP config can tighten a default directive", () => {
   expect(cspWeakenings(csp)).toEqual([])
   expect(renderEffectiveCsp(csp, "abc123")).toContain("connect-src 'self';")
   expect(renderEffectiveCsp(csp, "abc123")).not.toContain("connect-src 'self' app:")
+  expect(
+    effectiveCspPolicy(csp).directives.find((directive) => directive.name === "connect-src")
+  ).toMatchObject({ values: ["'self'"] })
 })
 
 test("CSP config normalizes mixed-case directive names", () => {

@@ -5953,6 +5953,18 @@ test("desktop build stages renderer runtime host bridge manifests and report", a
     expect(appManifest).toMatchObject({
       runtime: { entry: "runtime/runtime.js" }
     })
+    const rendererManifest = appManifest["rendererManifest"] as {
+      readonly csp: {
+        readonly directives: readonly {
+          readonly name: string
+          readonly values: readonly string[]
+        }[]
+      }
+    }
+    expect(rendererManifest.csp.directives.slice(0, 2)).toEqual([
+      { name: "default-src", values: ["'self'"] },
+      { name: "script-src", values: ["'self'", "'nonce-{N}'"] }
+    ])
     expect(await readFile(join(layout, "native", "host"), "utf8")).toBe("host")
     expect(appManifest).toMatchObject({
       id: "dev.effect-desktop.playground",
@@ -6329,7 +6341,13 @@ test("desktop build emits validated renderer security policy", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-security-"))
   try {
     await writePlaygroundFixture(directory, {
-      security: { externalNavigation: "ask", devtoolsInProd: true }
+      security: {
+        externalNavigation: "ask",
+        devtoolsInProd: true,
+        csp: {
+          policy: "connect-src 'self'; frame-src 'none'; upgrade-insecure-requests"
+        }
+      }
     })
     const runner: CommandRunner = (invocation) =>
       Effect.gen(function* () {
@@ -6383,12 +6401,104 @@ test("desktop build emits validated renderer security policy", async () => {
       readonly rendererManifest: {
         readonly navigationPolicy: string
         readonly devtoolsInProd: boolean
+        readonly csp: {
+          readonly directives: readonly {
+            readonly name: string
+            readonly values: readonly string[]
+          }[]
+        }
       }
     }
 
     expect(exitCode).toBe(0)
     expect(manifest.rendererManifest.navigationPolicy).toBe("ask")
     expect(manifest.rendererManifest.devtoolsInProd).toBe(true)
+    expect(
+      manifest.rendererManifest.csp.directives.find((directive) => directive.name === "connect-src")
+    ).toEqual({ name: "connect-src", values: ["'self'"] })
+    expect(
+      manifest.rendererManifest.csp.directives.find((directive) => directive.name === "frame-src")
+    ).toEqual({ name: "frame-src", values: ["'none'"] })
+    expect(
+      manifest.rendererManifest.csp.directives.find(
+        (directive) => directive.name === "upgrade-insecure-requests"
+      )
+    ).toEqual({ name: "upgrade-insecure-requests", values: [] })
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop build emits disabled renderer CSP policy when explicitly acknowledged", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-disabled-csp-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      security: {
+        csp: {
+          disabled: true,
+          acknowledgeWeakening: true,
+          justification: "test fixture verifies disabled CSP serialization"
+        }
+      }
+    })
+    const runner: CommandRunner = (invocation) =>
+      Effect.gen(function* () {
+        if (invocation.step === "renderer") {
+          yield* Effect.promise(() => mkdir(join(invocation.cwd, "dist"), { recursive: true }))
+          yield* Effect.promise(() =>
+            writeFile(join(invocation.cwd, "dist", "index.html"), "<h1>ok</h1>")
+          )
+        }
+        if (invocation.step === "runtime") {
+          const outdir = invocation.args[invocation.args.indexOf("--outdir") + 1]
+          if (outdir !== undefined) {
+            yield* Effect.promise(() => mkdir(outdir, { recursive: true }))
+            yield* Effect.promise(() => writeFile(join(outdir, "runtime.js"), "runtime"))
+          }
+        }
+        if (invocation.step === "native-host") {
+          yield* Effect.promise(() =>
+            mkdir(join(invocation.cwd, "target", "release"), { recursive: true })
+          )
+          yield* Effect.promise(() =>
+            writeFile(join(invocation.cwd, "target", "release", "host"), "host")
+          )
+        }
+      })
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["build", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        commandRunner: runner,
+        writeStdout: () => {},
+        writeStderr: () => {}
+      })
+    )
+
+    const manifest = JSON.parse(
+      await readFile(
+        join(
+          directory,
+          "apps",
+          "playground",
+          "build",
+          "effect-desktop",
+          "linux-x64",
+          "app-manifest.json"
+        ),
+        "utf8"
+      )
+    ) as {
+      readonly rendererManifest: {
+        readonly csp: {
+          readonly directives: readonly unknown[]
+        }
+      }
+    }
+
+    expect(exitCode).toBe(0)
+    expect(manifest.rendererManifest.csp.directives).toEqual([])
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

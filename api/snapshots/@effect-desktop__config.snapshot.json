@@ -14,9 +14,24 @@
       "signature": "export interface ContractCapabilityRequirement { readonly contract: string readonly capability: string readonly support: \"supported\" | \"partial\" | \"unsupported\" readonly isSupportedGuard?: boolean }"
     },
     {
-      "name": "CspPolicy",
+      "name": "CspConfig",
       "kind": "interface",
-      "signature": "export interface CspPolicy { readonly policy?: string readonly disabled?: boolean readonly acknowledgeWeakening?: boolean readonly justification?: string }"
+      "signature": "export interface CspConfig { readonly policy?: string readonly disabled?: boolean readonly acknowledgeWeakening?: boolean readonly justification?: string }"
+    },
+    {
+      "name": "CspDirective",
+      "kind": "class",
+      "signature": "export class CspDirective extends Schema.Class<CspDirective>(\"CspDirective\")({ name: NonEmptyString, values: Schema.Array(NonEmptyString) }) {}"
+    },
+    {
+      "name": "CspNonce",
+      "kind": "class",
+      "signature": "export class CspNonce extends Schema.Class<CspNonce>(\"CspNonce\")({ value: NonEmptyString }) {}"
+    },
+    {
+      "name": "CspPolicy",
+      "kind": "class",
+      "signature": "export class CspPolicy extends Schema.Class<CspPolicy>(\"CspPolicy\")({ directives: Schema.Array(CspDirective) }) {}"
     },
     {
       "name": "CspWeakening",
@@ -26,7 +41,7 @@
     {
       "name": "cspWeakenings",
       "kind": "value",
-      "signature": "const cspWeakenings: (csp: CspPolicy) => readonly CspWeakening[]"
+      "signature": "const cspWeakenings: (csp: CspConfig) => readonly CspWeakening[]"
     },
     {
       "name": "DEFAULT_CSP_DIRECTIVES",
@@ -39,6 +54,11 @@
       "signature": "const DEFAULT_CSP_NONCE_PLACEHOLDER: \"{N}\""
     },
     {
+      "name": "DEFAULT_CSP_POLICY",
+      "kind": "value",
+      "signature": "const DEFAULT_CSP_POLICY: CspPolicy"
+    },
+    {
       "name": "defineDesktopConfig",
       "kind": "value",
       "signature": "const defineDesktopConfig: <Config extends DesktopConfig>(config: Config) => Config"
@@ -49,6 +69,11 @@
       "signature": "export interface DesktopConfig extends ProductionSecurityConfig { readonly app?: { readonly id?: string readonly name?: string readonly version?: string } readonly runtime?: { readonly engine?: \"bun\" readonly entry?: string } readonly renderer?: { readonly framework?: \"react\" readonly styling?: \"tailwind\" readonly entry?: string readonly dist?: string } readonly native?: { readonly host?: string readonly renderer?: string } readonly windows?: unknown readonly protocols?: readonly { readonly scheme: string readonly handler?: string }[] readonly build?: { readonly targets?: readonly string[] } readonly signing?: unknown readonly update?: ProductionSecurityConfig[\"update\"] & { readonly channel?: \"stable\" | \"beta\" | \"canary\" readonly publicKey?: string readonly feedUrl?: string readonly minVersion?: string readonly maxVersion?: string | undefined readonly keyVersion?: number readonly rollback?: boolean } readonly telemetry?: { readonly enabled?: boolean readonly redactSensitive?: boolean readonly endpoint?: string } readonly protocol?: { readonly limits?: { readonly maxFrameBytes?: number readonly maxConcurrentRequestsPerWindow?: number readonly maxConcurrentStreamsPerWindow?: number } } readonly env?: Record<string, Record<string, string>> readonly workspace?: { readonly sharedConfigPath?: string } }"
     },
     {
+      "name": "effectiveCspPolicy",
+      "kind": "value",
+      "signature": "const effectiveCspPolicy: (csp: CspConfig | undefined) => CspPolicy"
+    },
+    {
       "name": "FilesystemWritePolicy",
       "kind": "interface",
       "signature": "export interface FilesystemWritePolicy { readonly enabled?: boolean readonly roots?: readonly string[] }"
@@ -57,6 +82,16 @@
       "name": "formatProductionCheckReport",
       "kind": "value",
       "signature": "const formatProductionCheckReport: (report: ProductionCheckReport) => string"
+    },
+    {
+      "name": "makeCspNonce",
+      "kind": "value",
+      "signature": "const makeCspNonce: (value: string) => CspNonce"
+    },
+    {
+      "name": "mintCspNonce",
+      "kind": "value",
+      "signature": "const mintCspNonce: Effect.Effect<CspNonce, never, never>"
     },
     {
       "name": "ProcessPermissionPolicy",
@@ -111,12 +146,17 @@
     {
       "name": "ProductionSecurityConfig",
       "kind": "interface",
-      "signature": "export interface ProductionSecurityConfig { readonly security?: { readonly requireTypedBridge?: boolean readonly rendererNativeAccess?: boolean readonly requirePermissions?: boolean readonly externalNavigation?: \"deny\" | \"ask\" readonly devtoolsInProd?: boolean readonly csp?: CspPolicy | undefined readonly redaction?: RedactionPolicy } readonly permissions?: { readonly filesystem?: { readonly write?: FilesystemWritePolicy } readonly process?: { readonly spawn?: ProcessPermissionPolicy } readonly secrets?: SecretPermissionPolicy } readonly update?: { readonly install?: UpdateInstallPolicy } readonly appProtocol?: AppProtocolPolicy readonly resources?: ResourcePolicy readonly contracts?: readonly ContractCapabilityRequirement[] }"
+      "signature": "export interface ProductionSecurityConfig { readonly security?: { readonly requireTypedBridge?: boolean readonly rendererNativeAccess?: boolean readonly requirePermissions?: boolean readonly externalNavigation?: \"deny\" | \"ask\" readonly devtoolsInProd?: boolean readonly csp?: CspConfig | undefined readonly redaction?: RedactionPolicy } readonly permissions?: { readonly filesystem?: { readonly write?: FilesystemWritePolicy } readonly process?: { readonly spawn?: ProcessPermissionPolicy } readonly secrets?: SecretPermissionPolicy } readonly update?: { readonly install?: UpdateInstallPolicy } readonly appProtocol?: AppProtocolPolicy readonly resources?: ResourcePolicy readonly contracts?: readonly ContractCapabilityRequirement[] }"
     },
     {
       "name": "RedactionPolicy",
       "kind": "interface",
       "signature": "export interface RedactionPolicy { readonly defaultPatternEnabled?: boolean readonly additionalPatterns?: readonly string[] readonly allowlist?: readonly string[] }"
+    },
+    {
+      "name": "renderCspPolicy",
+      "kind": "value",
+      "signature": "const renderCspPolicy: (policy: CspPolicy, nonce?: string | CspNonce) => string"
     },
     {
       "name": "renderDefaultCsp",
@@ -126,7 +166,7 @@
     {
       "name": "renderEffectiveCsp",
       "kind": "value",
-      "signature": "const renderEffectiveCsp: (csp: CspPolicy | undefined, nonce?: string) => string"
+      "signature": "const renderEffectiveCsp: (csp: CspConfig | undefined, nonce?: string) => string"
     },
     {
       "name": "ResourcePolicy",

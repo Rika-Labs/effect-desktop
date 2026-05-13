@@ -1,9 +1,11 @@
 import { expect, test } from "bun:test"
+import { CspPolicy } from "@effect-desktop/config"
 import { Effect, Layer } from "effect"
 import { HttpServerRequest } from "effect/unstable/http"
 
 import {
   AppAssetResolver,
+  AppCspPolicyDefault,
   AppHttpServer,
   AppHttpServerLive,
   makeAppHttpServerLayer,
@@ -31,7 +33,7 @@ const makeRequest = (
 
 const htmlAsset: ResolvedAsset = {
   bytes: TEXT_ENCODER.encode(
-    "<!doctype html><html><head></head><body><script src='/app.js'></script></body></html>"
+    "<!doctype html><html><head><link rel='stylesheet' href='/app.css'><link rel='preload' as='script' href='/preload.js'><style>body{margin:0}</style></head><body><script src='/app.js'></script></body></html>"
   ),
   contentType: "text/html; charset=utf-8"
 }
@@ -48,10 +50,10 @@ const staticResolver: AppAssetResolverApi = {
     )
 }
 
-const makeServer = (resolver: AppAssetResolverApi = staticResolver) =>
+const makeServer = (resolver: AppAssetResolverApi = staticResolver, policy?: CspPolicy) =>
   Effect.gen(function* () {
     return yield* AppHttpServer
-  }).pipe(Effect.provide(makeAppHttpServerLayer(resolver)))
+  }).pipe(Effect.provide(makeAppHttpServerLayer(resolver, policy)))
 
 test("serves HTML with nonce injected into script tags and CSP header set", async () => {
   const response = await Effect.runPromise(
@@ -106,6 +108,10 @@ test("injects matching nonce into script element in HTML body", async () => {
 
   const bodyText = new TextDecoder().decode(bodyBytes)
   expect(bodyText).toContain(`nonce="${nonce}"`)
+  expect(bodyText).toContain(`<style nonce="${nonce}">`)
+  expect(bodyText).toContain(`href='/app.css' nonce="${nonce}"`)
+  expect(bodyText).toContain("rel='preload' as='script' href='/preload.js'")
+  expect(bodyText).not.toContain(`href='/preload.js' nonce="${nonce}"`)
 })
 
 test("mints a fresh nonce on every response", async () => {
@@ -146,6 +152,31 @@ test("returns 304 for conditional GET with matching ETag", async () => {
     Effect.scoped(server.handle(makeRequest("/app.js", { "if-none-match": etag })))
   )
   expect(second.status).toBe(304)
+})
+
+test("does not return 304 for nonce-rewritten HTML", async () => {
+  const server = await Effect.runPromise(makeServer())
+
+  const first = await Effect.runPromise(Effect.scoped(server.handle(makeRequest("/"))))
+  const etag = (first.headers as Record<string, string>)["etag"]!
+  expect(first.status).toBe(200)
+
+  const second = await Effect.runPromise(
+    Effect.scoped(server.handle(makeRequest("/", { "if-none-match": etag })))
+  )
+  expect(second.status).toBe(200)
+  expect((second.headers as Record<string, string>)["cache-control"]).toBe("no-store")
+})
+
+test("omits CSP header when policy is disabled", async () => {
+  const server = await Effect.runPromise(
+    makeServer(staticResolver, new CspPolicy({ directives: [] }))
+  )
+
+  const response = await Effect.runPromise(Effect.scoped(server.handle(makeRequest("/app.js"))))
+
+  expect(response.status).toBe(200)
+  expect((response.headers as Record<string, string>)["content-security-policy"]).toBeUndefined()
 })
 
 test("returns 404 with CSP header for unknown paths", async () => {
@@ -200,7 +231,10 @@ test("AppHttpServerLive requires AppAssetResolver", async () => {
       return yield* AppHttpServer
     }).pipe(
       Effect.provide(
-        Layer.provide(AppHttpServerLive, Layer.succeed(AppAssetResolver)(staticResolver))
+        Layer.provide(
+          AppHttpServerLive,
+          Layer.mergeAll(Layer.succeed(AppAssetResolver)(staticResolver), AppCspPolicyDefault)
+        )
       )
     )
   )

@@ -1,5 +1,7 @@
 import { Data, Effect, Schema } from "effect"
 
+import defaultCspPolicySource from "./default-csp-policy.json" with { type: "json" }
+
 const NonEmptyString = Schema.NonEmptyString
 
 export const ProductionRuleId = Schema.Literals([
@@ -81,7 +83,7 @@ export interface SecretPermissionPolicy {
   readonly audit?: "always" | "never"
 }
 
-export interface CspPolicy {
+export interface CspConfig {
   readonly policy?: string
   readonly disabled?: boolean
   readonly acknowledgeWeakening?: boolean
@@ -126,7 +128,7 @@ export interface ProductionSecurityConfig {
     readonly requirePermissions?: boolean
     readonly externalNavigation?: "deny" | "ask"
     readonly devtoolsInProd?: boolean
-    readonly csp?: CspPolicy | undefined
+    readonly csp?: CspConfig | undefined
     readonly redaction?: RedactionPolicy
   }
   readonly permissions?: {
@@ -233,50 +235,83 @@ export const defineDesktopConfig = <Config extends DesktopConfig>(config: Config
 
 export const DEFAULT_CSP_NONCE_PLACEHOLDER = "{N}"
 
-export const DEFAULT_CSP_DIRECTIVES: readonly [directive: string, values: readonly string[]][] = [
-  ["default-src", ["'self'"]],
-  ["script-src", ["'self'", "'nonce-{N}'"]],
-  ["style-src", ["'self'", "'nonce-{N}'"]],
-  ["style-src-attr", ["'unsafe-inline'"]],
-  ["connect-src", ["'self'", "app:"]],
-  ["img-src", ["'self'", "app:", "data:", "https:"]],
-  ["font-src", ["'self'", "app:", "data:"]],
-  ["media-src", ["'self'", "app:"]],
-  ["object-src", ["'none'"]],
-  ["frame-ancestors", ["'none'"]],
-  ["base-uri", ["'self'"]],
-  ["form-action", ["'self'"]],
-  ["worker-src", ["'self'"]]
-]
+export class CspDirective extends Schema.Class<CspDirective>("CspDirective")({
+  name: NonEmptyString,
+  values: Schema.Array(NonEmptyString)
+}) {}
+
+export class CspPolicy extends Schema.Class<CspPolicy>("CspPolicy")({
+  directives: Schema.Array(CspDirective)
+}) {}
+
+export class CspNonce extends Schema.Class<CspNonce>("CspNonce")({
+  value: NonEmptyString
+}) {}
+
+export const DEFAULT_CSP_POLICY: CspPolicy =
+  Schema.decodeUnknownSync(CspPolicy)(defaultCspPolicySource)
+
+export const DEFAULT_CSP_DIRECTIVES: readonly [directive: string, values: readonly string[]][] =
+  DEFAULT_CSP_POLICY.directives.map((directive) => [directive.name, directive.values] as const)
+
+export const makeCspNonce = (value: string): CspNonce =>
+  new CspNonce({ value: validateCspNonce(value) })
+
+export const mintCspNonce: Effect.Effect<CspNonce> = Effect.sync(() => {
+  const bytes = new Uint8Array(16)
+  globalThis.crypto.getRandomValues(bytes)
+  return makeCspNonce([...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join(""))
+})
 
 export const renderDefaultCsp = (nonce: string = DEFAULT_CSP_NONCE_PLACEHOLDER): string =>
-  renderCspDirectives(DEFAULT_CSP_DIRECTIVES, validateCspNonce(nonce))
+  renderCspPolicy(DEFAULT_CSP_POLICY, nonce)
+
+export const renderCspPolicy = (
+  policy: CspPolicy,
+  nonce: string | CspNonce = DEFAULT_CSP_NONCE_PLACEHOLDER
+): string => {
+  const nonceValue = validateCspNonce(typeof nonce === "string" ? nonce : nonce.value)
+  return renderCspDirectives(
+    policy.directives.map((directive) => [directive.name, directive.values] as const),
+    nonceValue
+  )
+}
+
+export const effectiveCspPolicy = (csp: CspConfig | undefined): CspPolicy => {
+  if (csp?.disabled === true) {
+    return new CspPolicy({ directives: [] })
+  }
+
+  const overrides = parseCspPolicy(csp?.policy)
+  const defaultDirectives = new Set(
+    DEFAULT_CSP_POLICY.directives.map((directive) => directive.name)
+  )
+  const directives = DEFAULT_CSP_POLICY.directives.map(
+    (directive) =>
+      new CspDirective({
+        name: directive.name,
+        values: [...(overrides.directives.get(directive.name) ?? directive.values)]
+      })
+  )
+  const extraDirectives = [...overrides.directives.entries()]
+    .filter(([directive]) => !defaultDirectives.has(directive))
+    .map(([name, values]) => new CspDirective({ name, values: [...values] }))
+
+  return new CspPolicy({ directives: [...directives, ...extraDirectives] })
+}
 
 export const renderEffectiveCsp = (
-  csp: CspPolicy | undefined,
+  csp: CspConfig | undefined,
   nonce: string = DEFAULT_CSP_NONCE_PLACEHOLDER
 ): string => {
-  const validatedNonce = validateCspNonce(nonce)
   if (csp?.disabled === true) {
     return ""
   }
 
-  const overrides = parseCspPolicy(csp?.policy)
-  const defaultDirectives = new Set(DEFAULT_CSP_DIRECTIVES.map(([directive]) => directive))
-  const directives = DEFAULT_CSP_DIRECTIVES.map(
-    ([directive, defaultValues]): [string, readonly string[]] => [
-      directive,
-      overrides.directives.get(directive) ?? defaultValues
-    ]
-  )
-  const extraDirectives = [...overrides.directives.entries()].filter(
-    ([directive]) => !defaultDirectives.has(directive)
-  )
-
-  return renderCspDirectives([...directives, ...extraDirectives], validatedNonce)
+  return renderCspPolicy(effectiveCspPolicy(csp), nonce)
 }
 
-export const cspWeakenings = (csp: CspPolicy): readonly CspWeakening[] => {
+export const cspWeakenings = (csp: CspConfig): readonly CspWeakening[] => {
   const weakenings: CspWeakening[] = []
   if (csp.disabled === true) {
     return [

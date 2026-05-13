@@ -20,8 +20,11 @@ import { Command, Flag } from "effect/unstable/cli"
 import * as ChildProcessSpawnerModule from "effect/unstable/process"
 
 import {
+  effectiveCspPolicy,
   formatProductionCheckReport,
   runProductionCheck,
+  type CspConfig,
+  type CspPolicy,
   type ProductionCheckFile,
   type ProductionSecurityConfig
 } from "@effect-desktop/config"
@@ -569,6 +572,7 @@ interface BuildPlan {
   readonly security: {
     readonly externalNavigation: BuildExternalNavigationPolicy
     readonly devtoolsInProd: boolean
+    readonly csp: CspPolicy
   }
   readonly protocols: readonly { readonly scheme: string; readonly handler: string | undefined }[]
   readonly windows: unknown
@@ -608,6 +612,7 @@ interface AppConfig {
   readonly security?: {
     readonly externalNavigation?: unknown
     readonly devtoolsInProd?: unknown
+    readonly csp?: CspConfig
   }
   readonly env?: unknown
   readonly protocol?: {
@@ -1441,7 +1446,7 @@ const writeAppManifest = (plan: BuildPlan): Effect.Effect<BuildStepReport, Build
         framework: plan.rendererFramework,
         entry: plan.rendererEntry,
         assetBaseUrl: "app://localhost/",
-        csp: {},
+        csp: plan.security.csp,
         navigationPolicy: plan.security.externalNavigation,
         devtoolsInProd: plan.security.devtoolsInProd
       },
@@ -2063,7 +2068,11 @@ const readProtocolLimit = (
 const readBuildSecurity = (
   value: AppConfig["security"]
 ): Effect.Effect<
-  { readonly externalNavigation: BuildExternalNavigationPolicy; readonly devtoolsInProd: boolean },
+  {
+    readonly externalNavigation: BuildExternalNavigationPolicy
+    readonly devtoolsInProd: boolean
+    readonly csp: CspPolicy
+  },
   BuildConfigError,
   never
 > =>
@@ -2074,7 +2083,7 @@ const readBuildSecurity = (
       "security.devtoolsInProd",
       false
     )
-    return { externalNavigation, devtoolsInProd }
+    return { externalNavigation, devtoolsInProd, csp: effectiveCspPolicy(value?.csp) }
   })
 
 const readExternalNavigation = (
