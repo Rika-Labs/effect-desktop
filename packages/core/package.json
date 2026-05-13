@@ -27,6 +27,10 @@
       "types": "./src/runtime/renderer.ts",
       "default": "./src/runtime/renderer.ts"
     },
+    "./inspector-transport": {
+      "types": "./src/runtime/inspector-transport.ts",
+      "default": "./src/runtime/inspector-transport.ts"
+    },
     "./providers/bun": {
       "types": "./src/providers/bun.ts",
       "default": "./src/providers/bun.ts"

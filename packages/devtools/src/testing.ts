@@ -5,7 +5,7 @@ import {
   InspectorSafetySummary,
   type InspectorSafetyPolicyApi,
   type InspectorSafetyPolicyInvalidArgumentError
-} from "@effect-desktop/core"
+} from "@effect-desktop/core/runtime/inspector-safety-policy"
 import { Context, Data, Effect, Layer, Option, Queue, Schema, Stream } from "effect"
 
 export const InspectorSurface = Schema.Literals([

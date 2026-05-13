@@ -129,6 +129,23 @@
         "vite": "^8.0.10",
       },
     },
+    "apps/inspector": {
+      "name": "@effect-desktop/inspector",
+      "dependencies": {
+        "@effect-desktop/core": "workspace:*",
+        "@effect-desktop/devtools": "workspace:*",
+        "effect": "4.0.0-beta.60",
+        "react": "^19.2.3",
+        "react-dom": "^19.2.3",
+      },
+      "devDependencies": {
+        "@types/react": "^19.2.7",
+        "@types/react-dom": "^19.2.3",
+        "@vitejs/plugin-react": "^5.1.1",
+        "typescript": "^5.9.3",
+        "vite": "^8.0.10",
+      },
+    },
     "apps/playground": {
       "name": "@effect-desktop/playground",
       "dependencies": {
@@ -173,6 +190,7 @@
       "dependencies": {
         "@effect-desktop/bridge": "workspace:*",
         "@effect-desktop/config": "workspace:*",
+        "@effect-desktop/core": "workspace:*",
         "@effect/platform-bun": "4.0.0-beta.60",
         "effect": "4.0.0-beta.60",
         "typescript": "6.0.3",
@@ -601,6 +619,8 @@
     "@effect-desktop/example-notes-solid": ["@effect-desktop/example-notes-solid@workspace:apps/examples/notes-solid"],
 
     "@effect-desktop/example-notes-vue": ["@effect-desktop/example-notes-vue@workspace:apps/examples/notes-vue"],
+
+    "@effect-desktop/inspector": ["@effect-desktop/inspector@workspace:apps/inspector"],
 
     "@effect-desktop/native": ["@effect-desktop/native@workspace:packages/native"],
 
@@ -2445,6 +2465,8 @@
     "@effect-desktop/example-notes-solid/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "@effect-desktop/example-notes-vue/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
+    "@effect-desktop/inspector/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "@effect-desktop/playground/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
