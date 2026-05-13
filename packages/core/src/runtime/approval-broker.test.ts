@@ -134,6 +134,40 @@ test("ApprovalBroker continues coalesced prompts after starter fiber interruptio
   }
 })
 
+test("ApprovalBroker shutdown interrupts active prompt loops and fails waiters", async () => {
+  const promptStarted = await Effect.runPromise(Deferred.make<void>())
+  const promptInterrupted = await Effect.runPromise(Deferred.make<void>())
+  const prompt: ApprovalPromptPort = {
+    prompt: () =>
+      Effect.gen(function* () {
+        yield* Deferred.succeed(promptStarted, undefined)
+        return yield* Effect.never.pipe(
+          Effect.as(
+            new ApprovalOutcome({
+              requestId: "never",
+              outcome: "canceled",
+              traceId: "trace-never",
+              decidedAt: 1_000,
+              source: "never"
+            })
+          )
+        )
+      }).pipe(Effect.onInterrupt(() => Deferred.succeed(promptInterrupted, undefined)))
+  }
+  const broker = await Effect.runPromise(makeApprovalBroker({ prompt, now: () => 1_000 }))
+  const request = approvalRequest("request-1", "filesystem.write", "window-main", "/tmp/app")
+  const waiter = Effect.runFork(broker.ask(request))
+
+  await Effect.runPromise(Deferred.await(promptStarted))
+  await Effect.runPromise(broker.shutdown)
+  await Effect.runPromise(Deferred.await(promptInterrupted))
+  const exit = await Effect.runPromise(Fiber.await(waiter))
+
+  expectFailure(exit, ApprovalBrokerPromptFailedError, (error) => {
+    expect(error.operation).toBe("ApprovalBroker.shutdown")
+  })
+})
+
 test("ApprovalBroker dev bypass grants without touching the host prompt", async () => {
   const rows: AuditEvent[] = []
   let promptCount = 0

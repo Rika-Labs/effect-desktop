@@ -31,7 +31,7 @@
     {
       "name": "ApprovalBrokerApi",
       "kind": "interface",
-      "signature": "export interface ApprovalBrokerApi { readonly ask: ( request: ApprovalRequest ) => Effect.Effect<ApprovalOutcome, ApprovalBrokerError, never> }"
+      "signature": "export interface ApprovalBrokerApi { readonly ask: ( request: ApprovalRequest ) => Effect.Effect<ApprovalOutcome, ApprovalBrokerError, never> readonly shutdown: Effect.Effect<void, never, never> }"
     },
     {
       "name": "ApprovalBrokerAuditFailedError",
