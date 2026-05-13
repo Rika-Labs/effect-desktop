@@ -1,6 +1,7 @@
 import { isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
+import { DesktopSchedules } from "@effect-desktop/core"
 import { Data, Effect } from "effect"
 
 import { ReleaseFileSystem, runReleaseFileSystem } from "./release-file-system.js"
@@ -163,6 +164,7 @@ export const runDoctorCommand: DoctorCommandRunner = (invocation) =>
       stdout: "pipe",
       stderr: "pipe"
     }).pipe(
+      Effect.retry(DesktopSchedules.releaseToolProbe),
       Effect.mapError(() => missingCommand(invocation, `${invocation.command} is not available`))
     )
     if (result.exitCode !== 0) {

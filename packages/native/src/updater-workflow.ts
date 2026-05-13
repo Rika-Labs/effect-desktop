@@ -1,7 +1,8 @@
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { Cause, Effect, Schedule, Schema } from "effect"
+import { DesktopDurations, DesktopSchedules } from "@effect-desktop/core"
+import { Cause, Effect, Schema } from "effect"
 import { HttpClient as HttpClientNs } from "effect/unstable/http"
 import { Activity, DurableClock, DurableDeferred, Workflow } from "effect/unstable/workflow"
 
@@ -57,9 +58,6 @@ const checkUpdate = (manifestUrl: string) =>
     })
   })
 
-const downloadSchedule = Schedule.jittered(Schedule.exponential("500 millis")).pipe(
-  Schedule.andThen(Schedule.recurs(5))
-)
 const STAGED_VERSION_PATTERN = /^[A-Za-z0-9._-]+$/
 
 const downloadBundle = (url: string) =>
@@ -71,7 +69,7 @@ const downloadBundle = (url: string) =>
       const client = yield* HttpClientTag
       const buf = yield* client.get(url).pipe(
         Effect.flatMap((response) => response.arrayBuffer),
-        Effect.retry(downloadSchedule),
+        Effect.retry(DesktopSchedules.updateBundleDownload),
         Effect.mapError((e) => new UpdateError({ stage: "download", message: String(e) }))
       )
       return new Uint8Array(buf)
@@ -181,9 +179,9 @@ export const UpdateWorkflowLayer = UpdateWorkflow.toLayer((payload: UpdatePayloa
   })
 )
 
-export const scheduleUpdateChecks = (manifestUrl: string): Effect.Effect<never, never, never> =>
-  Effect.gen(function* () {
-    while (true) {
+export const scheduleUpdateChecks = (manifestUrl: string) =>
+  Effect.forever(
+    Effect.gen(function* () {
       const checkResult = yield* Effect.gen(function* () {
         const client = yield* HttpClientTag
         const response = yield* client.get(manifestUrl)
@@ -199,9 +197,9 @@ export const scheduleUpdateChecks = (manifestUrl: string): Effect.Effect<never, 
         )
       }
 
-      yield* DurableClock.sleep({ name: "weekly-poll", duration: "7 days" })
-    }
-  }) as Effect.Effect<never, never, never>
+      yield* DurableClock.sleep({ name: "weekly-poll", duration: DesktopDurations.updateCheckPoll })
+    })
+  )
 
 export const resolveUserPrompt = (token: DurableDeferred.Token, accepted: boolean) =>
   DurableDeferred.succeed(userPrompt, { token, value: accepted })

@@ -314,6 +314,11 @@
       "signature": "export class DesktopConfigError extends Data.TaggedError(\"DesktopConfigError\")<{ readonly reason: \"undeclared-capability\" readonly contract: string readonly capability: NormalizedCapabilityType readonly message: string }> {}"
     },
     {
+      "name": "DesktopDurations",
+      "kind": "value",
+      "signature": "const DesktopDurations: { readonly updateCheckPoll: \"7 days\"; }"
+    },
+    {
       "name": "DesktopEnvConfig",
       "kind": "interface",
       "signature": "export interface DesktopEnvConfig { readonly logLevel: Option.Option<LogLevel.LogLevel> readonly telemetryEndpoint: Option.Option<string> }"
@@ -459,9 +464,24 @@
       "signature": "export type DesktopRuntimeServices = DesktopApp | DesktopRuntime | DesktopRuntimeProviderServices"
     },
     {
+      "name": "DesktopScheduleLimits",
+      "kind": "value",
+      "signature": "const DesktopScheduleLimits: { readonly releaseToolProbeRetries: 2; readonly crashReportSubmissionRetries: 10; readonly updateBundleDownloadRetries: 5; }"
+    },
+    {
+      "name": "DesktopSchedules",
+      "kind": "value",
+      "signature": "const DesktopSchedules: { readonly hostReconnect: Schedule.Schedule<import(\"effect/Duration\").Duration, unknown, never, never>; readonly releaseToolProbe: Schedule.Schedule<number, unknown, never, never>; readonly crashReportSubmission: Schedule.Schedule<[import(\"effect/Duration\").Duration, number], unknown, never, never>; readonly updateBundleDownload: Schedule.Schedule<[import(\"effect/Duration\").Duration, number], unknown, never, never>; }"
+    },
+    {
       "name": "DesktopSpineConfigError",
       "kind": "class",
       "signature": "export class DesktopConfigError extends Data.TaggedError(\"DesktopConfigError\")<{ readonly appId: string readonly reason: \"missing-permission\" | \"missing-provider\" | \"invalid-config\" | \"duplicate-rpc\" readonly message: string readonly contract?: string readonly method?: string readonly permission?: string readonly provider?: string }> {}"
+    },
+    {
+      "name": "DesktopTimeouts",
+      "kind": "value",
+      "signature": "const DesktopTimeouts: { readonly docsExampleMillis: 10000; }"
     },
     {
       "name": "DesktopWorkflowLayer",

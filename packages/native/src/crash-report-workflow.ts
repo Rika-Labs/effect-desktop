@@ -1,5 +1,6 @@
 import { makeHostProtocolInvalidStateError } from "@effect-desktop/bridge"
-import { Clock, Effect, Layer, Random, Schedule, Schema } from "effect"
+import { DesktopSchedules } from "@effect-desktop/core"
+import { Clock, Effect, Layer, Random, Schema } from "effect"
 import { EventGroup, EventJournal, EventLog } from "effect/unstable/eventlog"
 import {
   FetchHttpClient,
@@ -65,11 +66,6 @@ export const CrashReportReactivityLayer = EventLog.groupReactivity(crashReportGr
   "crash-reports"
 ])
 
-const submissionRetrySchedule = Schedule.exponential("1 second").pipe(
-  Schedule.jittered,
-  Schedule.both(Schedule.recurs(10))
-)
-
 export const CrashSubmissionWorkflow = Workflow.make({
   name: "CrashSubmission",
   payload: CrashReport,
@@ -92,7 +88,7 @@ const makeCrashSubmitActivity = (report: CrashReport, endpointUrl: string) =>
       HttpClient.execute,
       Effect.flatMap(HttpClientResponse.filterStatusOk),
       Effect.asVoid,
-      Effect.retry({ schedule: submissionRetrySchedule }),
+      Effect.retry({ schedule: DesktopSchedules.crashReportSubmission }),
       Effect.catch((e: HttpClientError.HttpClientError) =>
         Effect.fail(
           submitError(

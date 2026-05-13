@@ -1,6 +1,7 @@
 import { isAbsolute, join, relative } from "node:path"
 
-import { Data, Effect, Option } from "effect"
+import { DesktopTimeouts } from "@effect-desktop/core"
+import { Data, Duration, Effect, Option } from "effect"
 
 import { ReleaseFileSystem, runReleaseFileSystem } from "./release-file-system.js"
 import { runReleaseTool } from "./release-tool-runner.js"
@@ -99,7 +100,6 @@ interface RunnableBlock {
 const MANIFEST_PATH = "docs/docs-manifest.json"
 const RUNNABLE_BLOCK_PATTERN = /```([^\n`]*)\n([\s\S]*?)```/g
 const SPEC_SOURCE = "docs/SPEC.md §25.3"
-const DEFAULT_EXAMPLE_TIMEOUT_MILLIS = 10_000
 const REQUIRED_SPEC_PAGES: ReadonlyMap<string, string> = new Map([
   ["installation", "docs/user/installation.md"],
   ["quickstart", "docs/user/quickstart.md"],
@@ -163,7 +163,7 @@ export const runDocsReleaseGate = (
     const pageReports: DocsPageReport[] = []
     const examples: DocsExampleReport[] = []
     const runner = options.commandRunner ?? runDocsExample
-    const exampleTimeoutMillis = options.exampleTimeoutMillis ?? DEFAULT_EXAMPLE_TIMEOUT_MILLIS
+    const exampleTimeoutMillis = options.exampleTimeoutMillis ?? DesktopTimeouts.docsExampleMillis
 
     for (const page of manifest.pages) {
       const absolutePath = join(options.cwd, page.path)
@@ -395,7 +395,9 @@ const runDocsExampleWithTimeout = (
   timeoutMillis: number
 ): Effect.Effect<void, DocsGateExampleFailedError | DocsGateFileError, never> =>
   Effect.gen(function* () {
-    const result = yield* runner(invocation).pipe(Effect.timeoutOption(`${timeoutMillis} millis`))
+    const result = yield* runner(invocation).pipe(
+      Effect.timeoutOption(Duration.millis(timeoutMillis))
+    )
     if (Option.isSome(result)) {
       return result.value
     }
