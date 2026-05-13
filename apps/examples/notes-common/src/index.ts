@@ -1,4 +1,6 @@
 import { RpcEndpoint } from "@effect-desktop/bridge"
+import type { DesktopRpcClient } from "@effect-desktop/core/runtime/desktop-rpc-surface"
+import { DesktopRpc } from "@effect-desktop/core/runtime/desktop-rpc-surface"
 import { type AnyDesktopRpcLayer, type DesktopAppManifest } from "@effect-desktop/core/renderer"
 import { Context, Effect, Layer, Ref, Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
@@ -58,6 +60,11 @@ export const DeleteNote = Rpc.make("Notes.Delete", {
 }).pipe(RpcEndpoint.mutation)
 
 export const NotesRpcs = RpcGroup.make(LoadNotes, CreateNote, SaveNote, DeleteNote)
+
+export class NotesClient extends Context.Service<
+  NotesClient,
+  DesktopRpcClient<RpcGroup.Rpcs<typeof NotesRpcs>>
+>()("@effect-desktop/example-notes-common/NotesClient") {}
 
 export interface NotesStoreApi {
   readonly load: Effect.Effect<NotesWorkspace, never, never>
@@ -153,21 +160,29 @@ export const NotesRpcsLive = NotesRpcs.toLayer({
     })
 })
 
+export const NotesSurface = DesktopRpc.surface("Notes", NotesRpcs, {
+  service: NotesClient,
+  handlers: NotesRpcsLive
+})
+
 export const makeNotesRpcsLayer = (
   initialWorkspace: NotesWorkspace = makeInitialWorkspace()
 ): Layer.Layer<Rpc.ToHandler<RpcGroup.Rpcs<typeof NotesRpcs>>, never, never> =>
-  Layer.provide(NotesRpcsLive, makeNotesStoreLayer(initialWorkspace))
+  Layer.provide(NotesSurface.serverLayer.layer, makeNotesStoreLayer(initialWorkspace))
+
+export const makeNotesDesktopRpcLayer = (
+  initialWorkspace: NotesWorkspace = makeInitialWorkspace()
+): AnyDesktopRpcLayer<never, never> =>
+  Object.freeze({
+    _tag: "DesktopRpcsLayer" as const,
+    group: NotesSurface.serverLayer.group,
+    layer: makeNotesRpcsLayer(initialWorkspace)
+  })
 
 export const makeNotesDemoRpcLayers = (
   initialWorkspace: NotesWorkspace = makeInitialWorkspace()
 ): readonly AnyDesktopRpcLayer<never, never>[] =>
-  Object.freeze([
-    Object.freeze({
-      _tag: "DesktopRpcsLayer" as const,
-      group: NotesRpcs,
-      layer: makeNotesRpcsLayer(initialWorkspace)
-    })
-  ])
+  Object.freeze([makeNotesDesktopRpcLayer(initialWorkspace)])
 
 const makeInitialState = (workspace: NotesWorkspace): NotesState =>
   Object.freeze({

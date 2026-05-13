@@ -1,6 +1,6 @@
 import { Desktop } from "@effect-desktop/core"
 
-import { NotesRpcs, makeNotesRpcsLayer } from "./index.js"
+import { makeNotesDesktopRpcLayer } from "./index.js"
 
 export const NotesApp = Desktop.make({
   id: "notes-example",
@@ -12,7 +12,7 @@ export const NotesApp = Desktop.make({
       renderer: "/"
     }
   },
-  rpcs: [Desktop.Rpcs.layer(NotesRpcs, makeNotesRpcsLayer())]
+  rpcs: [makeNotesDesktopRpcLayer()]
 })
 
 export const NotesLayer = Desktop.app(NotesApp)
