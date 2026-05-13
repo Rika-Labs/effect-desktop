@@ -25,8 +25,8 @@ same event twice.
 The fix was to make pending replay a state handoff, not a second publish path:
 
 ```ts
-const subscription = yield* PubSub.subscribe(channel)
-const pending = yield* takePendingEvents(windowId, event)
+const subscription = yield * PubSub.subscribe(channel)
+const pending = yield * takePendingEvents(windowId, event)
 
 return Stream.fromIterable(pending).pipe(Stream.concat(Stream.fromSubscription(subscription)))
 ```
