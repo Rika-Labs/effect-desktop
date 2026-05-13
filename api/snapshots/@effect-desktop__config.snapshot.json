@@ -86,7 +86,7 @@
     {
       "name": "DesktopConfig",
       "kind": "interface",
-      "signature": "export interface DesktopConfig extends Omit<ProductionSecurityConfig, \"permissions\" | \"security\"> { readonly app?: { readonly id?: string readonly name?: string readonly version?: string } readonly runtime?: { readonly engine?: RuntimeEngine readonly entry?: string } readonly renderer?: { readonly framework?: \"react\" readonly styling?: \"tailwind\" readonly entry?: string readonly dist?: string } readonly native?: { readonly host?: string readonly renderer?: string } readonly windows?: unknown readonly protocols?: readonly { readonly scheme: string readonly handler?: string }[] readonly build?: { readonly targets?: readonly string[] } readonly signing?: unknown readonly security?: DesktopSecurityConfig readonly permissions?: ProductionSecurityConfig[\"permissions\"] | readonly JsonValue[] readonly update?: ProductionSecurityConfig[\"update\"] & { readonly channel?: \"stable\" | \"beta\" | \"canary\" readonly publicKey?: string readonly feedUrl?: string readonly minVersion?: string readonly maxVersion?: string | undefined readonly keyVersion?: number readonly rollback?: boolean } readonly telemetry?: { readonly enabled?: boolean readonly redactSensitive?: boolean readonly endpoint?: string } readonly protocol?: { readonly limits?: { readonly maxFrameBytes?: number readonly maxConcurrentRequestsPerWindow?: number readonly maxConcurrentStreamsPerWindow?: number } } readonly env?: Record<string, Record<string, string>> readonly workspace?: { readonly sharedConfigPath?: string } }"
+      "signature": "export interface DesktopConfig extends Omit<ProductionSecurityConfig, \"permissions\" | \"security\"> { readonly app?: { readonly id?: string readonly name?: string readonly version?: string } readonly runtime?: { readonly engine?: RuntimeEngine readonly entry?: string } readonly renderer?: { readonly framework?: \"react\" readonly styling?: \"tailwind\" readonly entry?: string readonly dist?: string } readonly web?: { readonly engine?: WebEngine } readonly native?: { readonly host?: string readonly renderer?: string } readonly windows?: unknown readonly protocols?: readonly { readonly scheme: string readonly handler?: string }[] readonly build?: { readonly targets?: readonly string[] } readonly signing?: unknown readonly security?: DesktopSecurityConfig readonly permissions?: ProductionSecurityConfig[\"permissions\"] | readonly JsonValue[] readonly update?: ProductionSecurityConfig[\"update\"] & { readonly channel?: \"stable\" | \"beta\" | \"canary\" readonly publicKey?: string readonly feedUrl?: string readonly minVersion?: string readonly maxVersion?: string | undefined readonly keyVersion?: number readonly rollback?: boolean } readonly telemetry?: { readonly enabled?: boolean readonly redactSensitive?: boolean readonly endpoint?: string } readonly protocol?: { readonly limits?: { readonly maxFrameBytes?: number readonly maxConcurrentRequestsPerWindow?: number readonly maxConcurrentStreamsPerWindow?: number } } readonly env?: Record<string, Record<string, string>> readonly workspace?: { readonly sharedConfigPath?: string } }"
     },
     {
       "name": "DesktopConfigDecodeError",
@@ -96,7 +96,7 @@
     {
       "name": "DesktopConfigSchema",
       "kind": "class",
-      "signature": "export class DesktopConfigSchema extends Schema.Class<DesktopConfigSchema>(\"DesktopConfig\")({ app: Schema.optionalKey(DesktopAppConfig), runtime: Schema.optionalKey(DesktopRuntimeConfig), renderer: Schema.optionalKey(DesktopRendererConfig), native: Schema.optionalKey(DesktopNativeConfig), windows: Schema.optionalKey(DesktopWindowsConfig), protocols: Schema.optionalKey(Schema.Array(DesktopProtocolConfig)), build: Schema.optionalKey(DesktopBuildConfig), signing: Schema.optionalKey(DesktopSigningConfig), update: Schema.optionalKey(DesktopUpdateConfig), telemetry: Schema.optionalKey(DesktopTelemetryConfig), protocol: Schema.optionalKey(DesktopProtocolRuntimeConfig), env: Schema.optionalKey(NestedStringRecord), workspace: Schema.optionalKey(DesktopWorkspaceConfig), security: Schema.optionalKey(DesktopSecurityConfigSchema), permissions: Schema.optionalKey( Schema.Union([DesktopPermissionsConfig, Schema.Array(Schema.Json)]) ), appProtocol: Schema.optionalKey(DesktopAppProtocolConfig), resources: Schema.optionalKey(DesktopResourceConfig), contracts: Schema.optionalKey(Schema.Array(DesktopContractCapabilityRequirement)) }) {}"
+      "signature": "export class DesktopConfigSchema extends Schema.Class<DesktopConfigSchema>(\"DesktopConfig\")({ app: Schema.optionalKey(DesktopAppConfig), runtime: Schema.optionalKey(DesktopRuntimeConfig), renderer: Schema.optionalKey(DesktopRendererConfig), web: Schema.optionalKey(DesktopWebConfig), native: Schema.optionalKey(DesktopNativeConfig), windows: Schema.optionalKey(DesktopWindowsConfig), protocols: Schema.optionalKey(Schema.Array(DesktopProtocolConfig)), build: Schema.optionalKey(DesktopBuildConfig), signing: Schema.optionalKey(DesktopSigningConfig), update: Schema.optionalKey(DesktopUpdateConfig), telemetry: Schema.optionalKey(DesktopTelemetryConfig), protocol: Schema.optionalKey(DesktopProtocolRuntimeConfig), env: Schema.optionalKey(NestedStringRecord), workspace: Schema.optionalKey(DesktopWorkspaceConfig), security: Schema.optionalKey(DesktopSecurityConfigSchema), permissions: Schema.optionalKey( Schema.Union([DesktopPermissionsConfig, Schema.Array(Schema.Json)]) ), appProtocol: Schema.optionalKey(DesktopAppProtocolConfig), resources: Schema.optionalKey(DesktopResourceConfig), contracts: Schema.optionalKey(Schema.Array(DesktopContractCapabilityRequirement)) }) {}"
     },
     {
       "name": "DesktopContractCapabilityRequirement",
@@ -192,6 +192,11 @@
       "name": "DesktopUpdateInstallPolicy",
       "kind": "class",
       "signature": "export class DesktopUpdateInstallPolicy extends Schema.Class<DesktopUpdateInstallPolicy>( \"DesktopUpdateInstallPolicy\" )({ enabled: Schema.optionalKey(Schema.Boolean), signatureVerification: Schema.optionalKey(Schema.Boolean) }) {}"
+    },
+    {
+      "name": "DesktopWebConfig",
+      "kind": "class",
+      "signature": "export class DesktopWebConfig extends Schema.Class<DesktopWebConfig>(\"DesktopWebConfig\")({ engine: WebEngine.pipe(Schema.withDecodingDefaultTypeKey(Effect.succeed(\"system\" as const))) }) {}"
     },
     {
       "name": "DesktopWindowsConfig",
@@ -332,6 +337,11 @@
       "name": "UpdateInstallPolicy",
       "kind": "interface",
       "signature": "export interface UpdateInstallPolicy { readonly enabled?: boolean readonly signatureVerification?: boolean }"
+    },
+    {
+      "name": "WebEngine",
+      "kind": "type",
+      "signature": "const WebEngine: Schema.Literals<readonly [\"system\", \"chromium\"]>"
     }
   ]
 }

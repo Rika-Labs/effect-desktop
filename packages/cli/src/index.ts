@@ -37,7 +37,8 @@ import {
   type DesktopConfig,
   type ProductionCheckFile,
   type ProductionSecurityConfig,
-  type RuntimeEngine
+  type RuntimeEngine,
+  type WebEngine
 } from "@effect-desktop/config"
 
 import {
@@ -565,7 +566,7 @@ export interface DesktopBuildReport {
   readonly providers: {
     readonly runtime: RuntimeEngine
     readonly runtimePackaging: "source"
-    readonly webEngine: "system"
+    readonly webEngine: WebEngine
   }
   readonly providerBudgets: readonly DesktopProviderBudget[]
   readonly providerMeasurements: readonly ProviderMeasurementReport[]
@@ -578,7 +579,7 @@ export interface DesktopBuildReport {
 export interface ProviderMeasurementReport {
   readonly provider: DesktopProviderBudget
   readonly runtimePackaging: "source"
-  readonly webEngine: "system"
+  readonly webEngine: WebEngine
   readonly target: BuildTarget
   readonly runtimePayloadBytes: number
   readonly runtimeBuildMs: number
@@ -622,6 +623,7 @@ interface BuildPlan {
   readonly runtimeArgs: readonly string[]
   readonly rendererFramework: "react"
   readonly rendererStyling: "tailwind"
+  readonly webEngine: WebEngine
   readonly rendererEntry: string
   readonly rendererDistPath: string
   readonly runtimeEntryPath: string
@@ -688,6 +690,9 @@ interface AppConfig {
     readonly styling?: unknown
     readonly entry?: unknown
     readonly dist?: unknown
+  }
+  readonly web?: {
+    readonly engine?: unknown
   }
   readonly build?: {
     readonly targets?: unknown
@@ -1343,6 +1348,7 @@ const normalizeBuildPlan = (
     const runtimeEngine = yield* readRuntimeEngine(config.runtime?.engine)
     const rendererFramework = yield* readRendererFramework(config.renderer?.framework)
     const rendererStyling = yield* readRendererStyling(config.renderer?.styling)
+    const webEngine = yield* readWebEngine(config.web?.engine)
     const rendererEntry = yield* readRequiredExistingFile(
       config.renderer?.entry,
       "renderer.entry",
@@ -1397,6 +1403,7 @@ const normalizeBuildPlan = (
       profile,
       rendererFramework,
       rendererStyling,
+      webEngine,
       rendererEntry,
       appRoot,
       configPath: options.configPath,
@@ -1485,6 +1492,7 @@ const makeNativeHostBuildNode = (
 ): Effect.Effect<BuildNodePlan, BuildFileError, never> =>
   hashBuildInputs([
     ["native.host", "rust-wry-tao"],
+    ["web.engine", plan.webEngine],
     ["target", plan.target],
     [
       "host.sources.sha256",
@@ -1493,7 +1501,7 @@ const makeNativeHostBuildNode = (
   ]).pipe(
     Effect.map((cacheKey) => ({
       name: "native-host" as const,
-      provider: "webview:system-webview",
+      provider: `webview:${plan.webEngine}`,
       cacheKey,
       outputPath: join(plan.layoutPath, "native", hostBinaryName(plan.target))
     }))
@@ -1518,6 +1526,7 @@ const makeManifestBuildNode = (
     ["app.version", plan.appVersion],
     ["target", plan.target],
     ["provider.runtime", plan.layerGraph.providers.runtime],
+    ["web.engine", plan.webEngine],
     ["dependencies", dependencies.map((dependency) => [dependency.name, dependency.cacheKey])]
   ]),
   outputPath: join(plan.layoutPath, "app-manifest.json")
@@ -1717,6 +1726,7 @@ const writeAppManifest = (
       hostManifest: {
         nativeHost: "rust-wry-tao",
         systemWebView: "system-webview",
+        webEngine: plan.webEngine,
         windows: plan.windows,
         protocols: protocolSchemes,
         signingHints: {}
@@ -1860,7 +1870,7 @@ const newBuildReport = (
   providers: {
     runtime: plan.runtimeEngine,
     runtimePackaging: "source",
-    webEngine: "system"
+    webEngine: plan.webEngine
   },
   providerBudgets: providerMeasurements.map((measurement) => measurement.provider),
   providerMeasurements,
@@ -1879,6 +1889,7 @@ const measureBuildProvider = (
     const providerBudget = yield* providerBudgetForRuntime(plan)
     return providerMeasurementReport({
       providerBudget,
+      webEngine: plan.webEngine,
       target: plan.target,
       runtimePayloadBytes,
       runtimeBuildMs: runtimeStep.elapsedMs
@@ -1915,6 +1926,7 @@ const providerBudgetForRuntime = (
 
 const providerMeasurementReport = (options: {
   readonly providerBudget: DesktopProviderBudget
+  readonly webEngine: WebEngine
   readonly target: BuildTarget
   readonly runtimePayloadBytes: number
   readonly runtimeBuildMs: number
@@ -1923,7 +1935,7 @@ const providerMeasurementReport = (options: {
   return {
     provider: options.providerBudget,
     runtimePackaging: "source",
-    webEngine: "system",
+    webEngine: options.webEngine,
     target: options.target,
     runtimePayloadBytes: options.runtimePayloadBytes,
     runtimeBuildMs: options.runtimeBuildMs,
@@ -2244,6 +2256,9 @@ const formatBuildConfigDecodeMessage = (message: string): string => {
   if (message.includes('["runtime"]["engine"]')) {
     return `runtime.engine must be one of ${RUNTIME_ENGINES.join(", ")}`
   }
+  if (message.includes('["web"]["engine"]')) {
+    return "web.engine must be one of system, chromium"
+  }
   if (message.includes('["security"]["externalNavigation"]')) {
     return 'security.externalNavigation must be "deny" or "ask"'
   }
@@ -2267,6 +2282,21 @@ const readRuntimeEngine = (value: unknown): Effect.Effect<RuntimeEngine, BuildCo
 
 const isRuntimeEngine = (value: string): value is RuntimeEngine =>
   RUNTIME_ENGINES.some((engine) => engine === value)
+
+const readWebEngine = (value: unknown): Effect.Effect<WebEngine, BuildConfigError, never> =>
+  readOptionalString(value, "web.engine").pipe(
+    Effect.map((rawEngine) => rawEngine ?? "system"),
+    Effect.flatMap((webEngine) =>
+      webEngine === "system" || webEngine === "chromium"
+        ? Effect.succeed(webEngine)
+        : Effect.fail(
+            new BuildConfigError({
+              field: "web.engine",
+              message: "web.engine must be one of system, chromium"
+            })
+          )
+    )
+  )
 
 const readRendererFramework = (value: unknown): Effect.Effect<"react", BuildConfigError, never> =>
   readOptionalString(value, "renderer.framework").pipe(

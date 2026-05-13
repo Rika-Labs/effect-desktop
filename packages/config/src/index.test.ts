@@ -65,6 +65,9 @@ test("defineDesktopConfig accepts the documented app config shape", () => {
       styling: "tailwind",
       entry: "src/renderer/main.tsx"
     },
+    web: {
+      engine: "chromium"
+    },
     native: {
       host: "rust-wry-tao",
       renderer: "system-webview"
@@ -120,6 +123,7 @@ test("defineDesktopConfig accepts the documented app config shape", () => {
 
   expect(config.app.version).toBe("1.0.0")
   expect(config.runtime.engine).toBe("node")
+  expect(config.web.engine).toBe("chromium")
 })
 
 test("defineDesktopConfig rejects invalid app metadata types at compile time", () => {
@@ -163,6 +167,16 @@ test("decodeDesktopConfig accepts schema-coded windows and signing config", asyn
   })
 })
 
+test("decodeDesktopConfig defaults web engine to system when web config is present", async () => {
+  const config = await Effect.runPromise(
+    decodeDesktopConfig({
+      web: {}
+    })
+  )
+
+  expect(config.web?.engine).toBe("system")
+})
+
 test("decodeDesktopConfig rejects non-json windows and signing values", async () => {
   for (const invalid of [
     { windows: "main" },
@@ -180,6 +194,7 @@ test("mergeDesktopConfig combines decoded shared and app config by typed policy"
       app: { id: "shared", name: "Shared", version: "1.0.0" },
       env: { dev: { OVERRIDE: "shared", SHARED: "1" } },
       protocol: { limits: { maxFrameBytes: 1024 } },
+      web: { engine: "system" },
       signing: { macos: { identity: "shared" } },
       windows: { defaults: { titleBarStyle: "default" } }
     },
@@ -187,6 +202,7 @@ test("mergeDesktopConfig combines decoded shared and app config by typed policy"
       app: { id: "app" },
       env: { dev: { OVERRIDE: "app" } },
       protocol: { limits: { maxConcurrentRequestsPerWindow: 4 } },
+      web: { engine: "chromium" },
       windows: [{ id: "main" }]
     }
   )
@@ -197,6 +213,7 @@ test("mergeDesktopConfig combines decoded shared and app config by typed policy"
     maxConcurrentRequestsPerWindow: 4,
     maxFrameBytes: 1024
   })
+  expect(merged.web).toEqual({ engine: "chromium" })
   expect(merged.signing).toEqual({ macos: { identity: "shared" } })
   expect(merged.windows).toEqual([{ id: "main" }])
 })

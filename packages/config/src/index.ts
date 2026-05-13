@@ -190,6 +190,9 @@ export interface DesktopConfig extends Omit<ProductionSecurityConfig, "permissio
     readonly entry?: string
     readonly dist?: string
   }
+  readonly web?: {
+    readonly engine?: WebEngine
+  }
   readonly native?: {
     readonly host?: string
     readonly renderer?: string
@@ -235,6 +238,9 @@ export interface DesktopConfig extends Omit<ProductionSecurityConfig, "permissio
 export const RuntimeEngine = Schema.Literals(["bun", "node"])
 export type RuntimeEngine = typeof RuntimeEngine.Type
 
+export const WebEngine = Schema.Literals(["system", "chromium"])
+export type WebEngine = typeof WebEngine.Type
+
 const JsonRecord = Schema.Record(Schema.String, Schema.Json)
 const StringRecord = Schema.Record(Schema.String, Schema.String)
 const NestedStringRecord = Schema.Record(Schema.String, StringRecord)
@@ -259,6 +265,10 @@ export class DesktopRendererConfig extends Schema.Class<DesktopRendererConfig>(
   styling: Schema.optionalKey(Schema.Literal("tailwind")),
   entry: Schema.optionalKey(Schema.String),
   dist: Schema.optionalKey(Schema.String)
+}) {}
+
+export class DesktopWebConfig extends Schema.Class<DesktopWebConfig>("DesktopWebConfig")({
+  engine: WebEngine.pipe(Schema.withDecodingDefaultTypeKey(Effect.succeed("system" as const)))
 }) {}
 
 export class DesktopNativeConfig extends Schema.Class<DesktopNativeConfig>("DesktopNativeConfig")({
@@ -423,6 +433,7 @@ export class DesktopConfigSchema extends Schema.Class<DesktopConfigSchema>("Desk
   app: Schema.optionalKey(DesktopAppConfig),
   runtime: Schema.optionalKey(DesktopRuntimeConfig),
   renderer: Schema.optionalKey(DesktopRendererConfig),
+  web: Schema.optionalKey(DesktopWebConfig),
   native: Schema.optionalKey(DesktopNativeConfig),
   windows: Schema.optionalKey(DesktopWindowsConfig),
   protocols: Schema.optionalKey(Schema.Array(DesktopProtocolConfig)),
@@ -461,6 +472,7 @@ export const mergeDesktopConfig = (shared: DesktopConfig, app: DesktopConfig): D
   const appMetadata = mergeObjects(shared.app, app.app)
   const runtime = mergeObjects(shared.runtime, app.runtime)
   const renderer = mergeObjects(shared.renderer, app.renderer)
+  const web = mergeObjects(shared.web, app.web)
   const build = mergeObjects(shared.build, app.build)
   const security = mergeObjects(shared.security, app.security)
   const env = mergeRecordMap(shared.env, app.env)
@@ -482,6 +494,7 @@ export const mergeDesktopConfig = (shared: DesktopConfig, app: DesktopConfig): D
     ...(appMetadata === undefined ? {} : { app: appMetadata }),
     ...(runtime === undefined ? {} : { runtime }),
     ...(renderer === undefined ? {} : { renderer }),
+    ...(web === undefined ? {} : { web }),
     ...(build === undefined ? {} : { build }),
     ...(security === undefined ? {} : { security }),
     ...(env === undefined ? {} : { env }),

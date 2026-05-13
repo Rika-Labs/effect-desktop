@@ -186,7 +186,7 @@
     {
       "name": "DesktopBuildReport",
       "kind": "interface",
-      "signature": "export interface DesktopBuildReport { readonly appId: string readonly appName: string readonly appVersion: string readonly target: BuildTarget readonly providers: { readonly runtime: RuntimeEngine readonly runtimePackaging: \"source\" readonly webEngine: \"system\" } readonly providerBudgets: readonly DesktopProviderBudget[] readonly providerMeasurements: readonly ProviderMeasurementReport[] readonly layoutPath: string readonly appManifestPath: string readonly bridgeManifestPath: string readonly steps: readonly BuildStepReport[] }"
+      "signature": "export interface DesktopBuildReport { readonly appId: string readonly appName: string readonly appVersion: string readonly target: BuildTarget readonly providers: { readonly runtime: RuntimeEngine readonly runtimePackaging: \"source\" readonly webEngine: WebEngine } readonly providerBudgets: readonly DesktopProviderBudget[] readonly providerMeasurements: readonly ProviderMeasurementReport[] readonly layoutPath: string readonly appManifestPath: string readonly bridgeManifestPath: string readonly steps: readonly BuildStepReport[] }"
     },
     {
       "name": "DesktopDoctorReport",
@@ -541,7 +541,7 @@
     {
       "name": "ProviderMeasurementReport",
       "kind": "interface",
-      "signature": "export interface ProviderMeasurementReport { readonly provider: DesktopProviderBudget readonly runtimePackaging: \"source\" readonly webEngine: \"system\" readonly target: BuildTarget readonly runtimePayloadBytes: number readonly runtimeBuildMs: number readonly startup: { readonly runtimeBootMs: number | null readonly firstWindowVisibleMs: number | null readonly bridgeReadyMs: number | null } readonly checks: readonly ProviderBudgetCheckReport[] }"
+      "signature": "export interface ProviderMeasurementReport { readonly provider: DesktopProviderBudget readonly runtimePackaging: \"source\" readonly webEngine: WebEngine readonly target: BuildTarget readonly runtimePayloadBytes: number readonly runtimeBuildMs: number readonly startup: { readonly runtimeBootMs: number | null readonly firstWindowVisibleMs: number | null readonly bridgeReadyMs: number | null } readonly checks: readonly ProviderBudgetCheckReport[] }"
     },
     {
       "name": "PublicApiChange",

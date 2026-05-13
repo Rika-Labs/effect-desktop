@@ -6161,6 +6161,9 @@ test("desktop build stages renderer runtime host bridge manifests and report", a
     expect(await readFile(join(layout, "renderer", "index.html"), "utf8")).toBe("<h1>ok</h1>")
     expect(await readFile(join(layout, "runtime", "runtime.js"), "utf8")).toContain("ok")
     expect(appManifest).toMatchObject({
+      hostManifest: {
+        webEngine: "system"
+      },
       runtimeManifest: {
         engine: "bun",
         entry: "runtime/runtime.js",
@@ -6238,6 +6241,104 @@ test("desktop build stages renderer runtime host bridge manifests and report", a
         }
       ]
     })
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop build emits explicit chromium web engine selection in the host manifest", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-web-engine-"))
+  try {
+    await writePlaygroundFixture(directory, { web: { engine: "chromium" } })
+    const runner: CommandRunner = (invocation) =>
+      Effect.gen(function* () {
+        if (invocation.step === "renderer") {
+          yield* Effect.promise(() => mkdir(join(invocation.cwd, "dist"), { recursive: true }))
+          yield* Effect.promise(() =>
+            writeFile(join(invocation.cwd, "dist", "index.html"), "<h1>ok</h1>")
+          )
+        }
+        if (invocation.step === "runtime") {
+          const outdir = invocation.args[invocation.args.indexOf("--outdir") + 1]
+          if (outdir !== undefined) {
+            yield* Effect.promise(() => mkdir(outdir, { recursive: true }))
+            yield* Effect.promise(() =>
+              writeFile(join(outdir, "runtime.js"), "console.log('ok')\n")
+            )
+          }
+        }
+        if (invocation.step === "native-host") {
+          yield* Effect.promise(() =>
+            mkdir(join(invocation.cwd, "target", "release"), { recursive: true })
+          )
+          yield* Effect.promise(() =>
+            writeFile(join(invocation.cwd, "target", "release", "host"), "host")
+          )
+        }
+      })
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["build", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        commandRunner: runner,
+        writeStdout: () => {},
+        writeStderr: () => {}
+      })
+    )
+
+    const manifest = JSON.parse(
+      await readFile(
+        join(
+          directory,
+          "apps",
+          "playground",
+          "build",
+          "effect-desktop",
+          "linux-x64",
+          "app-manifest.json"
+        ),
+        "utf8"
+      )
+    ) as {
+      readonly hostManifest: {
+        readonly webEngine: string
+      }
+    }
+    const report = JSON.parse(
+      await readFile(
+        join(
+          directory,
+          "apps",
+          "playground",
+          "build",
+          "effect-desktop",
+          "linux-x64",
+          "build-report.json"
+        ),
+        "utf8"
+      )
+    ) as {
+      readonly providers: {
+        readonly webEngine: string
+      }
+      readonly providerMeasurements: readonly {
+        readonly webEngine: string
+      }[]
+      readonly steps: readonly {
+        readonly name: string
+        readonly provider?: string
+      }[]
+    }
+
+    expect(exitCode).toBe(0)
+    expect(manifest.hostManifest.webEngine).toBe("chromium")
+    expect(report.providers.webEngine).toBe("chromium")
+    expect(report.providerMeasurements[0]?.webEngine).toBe("chromium")
+    expect(report.steps.find((step) => step.name === "native-host")?.provider).toBe(
+      "webview:chromium"
+    )
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
