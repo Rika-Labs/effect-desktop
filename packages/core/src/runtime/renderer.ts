@@ -1,5 +1,6 @@
 export {
   makeDesktopRendererRpcRuntime,
+  makeDesktopRendererRpcTestRuntime,
   setGlobalDesktopRendererRpcTransport,
   type DesktopRendererRpcClient,
   type DesktopRendererRpcClientMap,
@@ -24,5 +25,5 @@ export {
   makeMissingDesktopRpcsError,
   type DesktopFramework
 } from "./desktop-errors.js"
-export type { DesktopAppManifest } from "./desktop-app.js"
+export type { AnyDesktopRpcLayer, DesktopAppManifest } from "./desktop-app.js"
 export type { RpcGroupWithRequests } from "./rpc-group-metadata.js"

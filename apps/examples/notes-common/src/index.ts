@@ -1,13 +1,6 @@
-import {
-  HostProtocolResponseEnvelope,
-  HostProtocolStreamByRequestEnvelope,
-  makeHostProtocolInvalidOutputError,
-  RpcEndpoint,
-  type HostProtocolEnvelope,
-  type HostProtocolError
-} from "@effect-desktop/bridge"
-import type { DesktopAppManifest, DesktopRendererRpcTransport } from "@effect-desktop/core/renderer"
-import { Cause, Effect, Exit, Fiber, Queue, Ref, Schema, Stream } from "effect"
+import { RpcEndpoint } from "@effect-desktop/bridge"
+import { type AnyDesktopRpcLayer, type DesktopAppManifest } from "@effect-desktop/core/renderer"
+import { Context, Effect, Layer, Ref, Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
 export const NoteId = Schema.String
@@ -73,6 +66,10 @@ export interface NotesStoreApi {
   readonly delete: (payload: DeleteNotePayload) => Effect.Effect<NotesWorkspace, never, never>
 }
 
+export class NotesStore extends Context.Service<NotesStore, NotesStoreApi>()(
+  "@effect-desktop/example-notes-common/NotesStore"
+) {}
+
 interface NotesState {
   readonly nextId: number
   readonly workspace: NotesWorkspace
@@ -111,27 +108,6 @@ export const NotesManifest: DesktopAppManifest = Object.freeze({
   ])
 })
 
-export const makeNotesDemoTransport = (
-  initialWorkspace: NotesWorkspace = makeInitialWorkspace()
-): DesktopRendererRpcTransport => {
-  const state = Effect.runSync(Ref.make(makeInitialState(initialWorkspace)))
-  return makeRpcTransport({
-    "Notes.Load": () => Ref.get(state).pipe(Effect.map((current) => current.workspace)),
-    "Notes.Create": (payload) =>
-      Schema.decodeUnknownEffect(CreateNotePayload)(payload).pipe(
-        Effect.flatMap((decoded) => Ref.modify(state, (current) => createInState(current, decoded)))
-      ),
-    "Notes.Save": (payload) =>
-      Schema.decodeUnknownEffect(SaveNotePayload)(payload).pipe(
-        Effect.flatMap((decoded) => Ref.modify(state, (current) => saveInState(current, decoded)))
-      ),
-    "Notes.Delete": (payload) =>
-      Schema.decodeUnknownEffect(DeleteNotePayload)(payload).pipe(
-        Effect.flatMap((decoded) => Ref.modify(state, (current) => deleteInState(current, decoded)))
-      )
-  })
-}
-
 export function makeNotesStore(
   initialWorkspace: NotesWorkspace
 ): Effect.Effect<NotesStoreApi, never, never> {
@@ -148,6 +124,50 @@ export function makeNotesStore(
     })
   })
 }
+
+export const makeNotesStoreLayer = (
+  initialWorkspace: NotesWorkspace = makeInitialWorkspace()
+): Layer.Layer<NotesStore, never, never> =>
+  Layer.effect(NotesStore)(makeNotesStore(initialWorkspace))
+
+export const NotesRpcsLive = NotesRpcs.toLayer({
+  "Notes.Load": () =>
+    Effect.gen(function* () {
+      const store = yield* NotesStore
+      return yield* store.load
+    }),
+  "Notes.Create": (payload: CreateNotePayload) =>
+    Effect.gen(function* () {
+      const store = yield* NotesStore
+      return yield* store.create(payload)
+    }),
+  "Notes.Save": (payload: SaveNotePayload) =>
+    Effect.gen(function* () {
+      const store = yield* NotesStore
+      return yield* store.save(payload)
+    }),
+  "Notes.Delete": (payload: DeleteNotePayload) =>
+    Effect.gen(function* () {
+      const store = yield* NotesStore
+      return yield* store.delete(payload)
+    })
+})
+
+export const makeNotesRpcsLayer = (
+  initialWorkspace: NotesWorkspace = makeInitialWorkspace()
+): Layer.Layer<Rpc.ToHandler<RpcGroup.Rpcs<typeof NotesRpcs>>, never, never> =>
+  Layer.provide(NotesRpcsLive, makeNotesStoreLayer(initialWorkspace))
+
+export const makeNotesDemoRpcLayers = (
+  initialWorkspace: NotesWorkspace = makeInitialWorkspace()
+): readonly AnyDesktopRpcLayer[] =>
+  Object.freeze([
+    Object.freeze({
+      _tag: "DesktopRpcsLayer" as const,
+      group: NotesRpcs,
+      layer: makeNotesRpcsLayer(initialWorkspace)
+    })
+  ])
 
 const makeInitialState = (workspace: NotesWorkspace): NotesState =>
   Object.freeze({
@@ -230,102 +250,4 @@ const makeNoteId = (nextId: number): NoteId => `note-${nextId.toString().padStar
 const normalizeTitle = (title: string): string => {
   const trimmed = title.trim()
   return trimmed.length === 0 ? "Untitled Note" : trimmed
-}
-
-type RpcTransportHandler = (
-  payload: unknown
-) => Effect.Effect<unknown, unknown, never> | Stream.Stream<unknown, unknown, never>
-
-const makeRpcTransport = (
-  handlers: Readonly<Record<string, RpcTransportHandler>>
-): DesktopRendererRpcTransport => {
-  const queue = Effect.runSync(Queue.unbounded<HostProtocolEnvelope>())
-  const fibers = new Map<string, Fiber.Fiber<void, unknown>>()
-  return {
-    send: (envelope) => {
-      if (envelope.kind === "cancel" && envelope.id !== undefined) {
-        const fiber = fibers.get(envelope.id)
-        if (fiber === undefined) {
-          return Effect.void
-        }
-        fibers.delete(envelope.id)
-        return Fiber.interrupt(fiber).pipe(Effect.asVoid)
-      }
-      if (envelope.kind !== "request") {
-        return Effect.void
-      }
-      const handler = handlers[envelope.method]
-      if (handler === undefined) {
-        return Queue.offer(
-          queue,
-          responseEnvelope(envelope, {
-            error: makeHostProtocolInvalidOutputError(envelope.method, "missing demo handler")
-          })
-        )
-      }
-      const result = handler(envelope.payload)
-      if (Stream.isStream(result)) {
-        return Effect.gen(function* () {
-          const fiber = yield* Effect.forkDetach(
-            Effect.exit(
-              Stream.runForEach(result, (item) =>
-                Queue.offer(queue, streamEnvelope(envelope, item))
-              )
-            ).pipe(
-              Effect.flatMap((exit) => Queue.offer(queue, responseFromExit(envelope, exit))),
-              Effect.asVoid
-            ),
-            { startImmediately: true }
-          )
-          fibers.set(envelope.id, fiber)
-        })
-      }
-      return Effect.exit(result).pipe(
-        Effect.flatMap((exit) => Queue.offer(queue, responseFromExit(envelope, exit)))
-      )
-    },
-    run: (onEnvelope) => Effect.forever(Queue.take(queue).pipe(Effect.flatMap(onEnvelope)))
-  }
-}
-
-const responseFromExit = (
-  request: Extract<HostProtocolEnvelope, { readonly kind: "request" }>,
-  exit: Exit.Exit<unknown, unknown>
-): HostProtocolResponseEnvelope =>
-  Exit.isSuccess(exit)
-    ? responseEnvelope(request, { payload: exit.value === undefined ? null : exit.value })
-    : responseEnvelope(request, { error: hostProtocolErrorFromCause(request.method, exit.cause) })
-
-const responseEnvelope = (
-  request: Extract<HostProtocolEnvelope, { readonly kind: "request" }>,
-  fields: { readonly payload?: unknown; readonly error?: HostProtocolError }
-): HostProtocolResponseEnvelope =>
-  new HostProtocolResponseEnvelope({
-    kind: "response",
-    id: request.id,
-    timestamp: Date.now(),
-    traceId: request.traceId,
-    ...fields
-  })
-
-const streamEnvelope = (
-  request: Extract<HostProtocolEnvelope, { readonly kind: "request" }>,
-  payload: unknown
-): HostProtocolStreamByRequestEnvelope =>
-  new HostProtocolStreamByRequestEnvelope({
-    kind: "stream",
-    id: request.id,
-    timestamp: Date.now(),
-    traceId: request.traceId,
-    payload
-  })
-
-const hostProtocolErrorFromCause = (
-  method: string,
-  cause: Cause.Cause<unknown>
-): HostProtocolError => {
-  const failure = cause.reasons.find(Cause.isFailReason)
-  return failure?.error instanceof Error || typeof failure?.error === "string"
-    ? makeHostProtocolInvalidOutputError(method, String(failure.error))
-    : makeHostProtocolInvalidOutputError(method, String(cause))
 }

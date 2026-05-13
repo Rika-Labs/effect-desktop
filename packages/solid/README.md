@@ -66,7 +66,7 @@ bun test packages/solid/src/index.test.ts
 bun run typecheck
 ```
 
-Tests can pass an in-memory renderer transport to `DesktopRoot` or `render`.
+Tests can pass `RpcTest`-backed RPC layers to `DesktopRoot` or `render`.
 Disposing the Solid owner closes the renderer RPC runtime and interrupts active
 streams.
 
@@ -78,7 +78,8 @@ own their Solid runtime version.
 
 ## Internal architecture
 
-The adapter builds a renderer RPC runtime from the desktop manifest, a transport,
-and `RpcClient.make(group)`. Solid context stores only the derived runtime client
-map. `useDesktop(group)` checks the imported `RpcGroup`, maps descriptors into
-Solid-native primitives, and attaches support metadata to each endpoint.
+The adapter builds a renderer RPC runtime from the desktop manifest and either a
+host transport with `RpcClient.make(group)` or test RPC layers with `RpcTest`.
+Solid context stores only the derived runtime client map. `useDesktop(group)`
+checks the imported `RpcGroup`, maps descriptors into Solid-native primitives,
+and attaches support metadata to each endpoint.

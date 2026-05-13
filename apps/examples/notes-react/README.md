@@ -8,7 +8,7 @@ const load = notes.load.useQuery()
 const create = notes.create.useMutation()
 ```
 
-The browser example installs `makeNotesDemoTransport()` so it can be run with Vite. A hosted desktop app supplies the real transport at runtime.
+The browser example installs `makeNotesDemoRpcLayers()` so it can be run with Vite without a fake host transport. A hosted desktop app supplies the real transport at runtime.
 
 ```bash
 bun --cwd apps/examples/notes-react run dev

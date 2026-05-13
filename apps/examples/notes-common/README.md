@@ -2,7 +2,7 @@
 
 Shared contract and runtime spine for the cross-framework Notes examples.
 
-The package owns the `NotesRpcs` `RpcGroup`, the `NotesApp` desktop manifest, the service-backed host layer, and the in-memory demo transport used by browser examples. Framework examples import this package instead of redefining RPCs locally.
+The package owns the `NotesRpcs` `RpcGroup`, the `NotesApp` desktop manifest, the service-backed host layer, and the `RpcTest` demo layers used by browser examples. Framework examples import this package instead of redefining RPCs locally.
 
 ## Dependency Note
 

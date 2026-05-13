@@ -6,11 +6,11 @@ import { Exit } from "effect"
 import { AsyncResult } from "effect/unstable/reactivity"
 import { useEffect, useMemo, useState } from "react"
 
-import { NotesNext, notesTransport } from "./desktop"
+import { NotesNext, notesRpcLayers } from "./desktop"
 
 export function NotesClient() {
   return (
-    <NotesNext.DesktopRoot transport={notesTransport}>
+    <NotesNext.DesktopRoot rpcLayers={notesRpcLayers}>
       <NotesView />
     </NotesNext.DesktopRoot>
   )

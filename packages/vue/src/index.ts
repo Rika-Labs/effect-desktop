@@ -1,6 +1,7 @@
 import {
   describeRpcs,
   makeDesktopRendererRpcRuntime,
+  type AnyDesktopRpcLayer,
   makeMissingDesktopContextError,
   makeMissingDesktopRpcClientError,
   makeMissingDesktopRpcsError,
@@ -94,6 +95,7 @@ export type VueDesktopClientMap = DesktopRendererRpcClientMap
 
 export interface VueDesktopOptions {
   readonly transport?: DesktopRendererRpcTransport | undefined
+  readonly rpcLayers?: ReadonlyArray<AnyDesktopRpcLayer> | undefined
 }
 
 export interface VueDesktopAdapter<App extends DesktopAppManifest> {
@@ -120,7 +122,8 @@ export const VueDesktop = Object.freeze({
     const provideDesktop = (options?: VueDesktopOptions): void => {
       const runtime = makeDesktopRendererRpcRuntime(app, {
         framework: "vue",
-        transport: options?.transport
+        transport: options?.transport,
+        rpcLayers: options?.rpcLayers
       })
       provide(VueDesktopKey, { clients: runtime.clients })
       onScopeDispose(() => {
@@ -159,7 +162,8 @@ export const VueDesktop = Object.freeze({
         const vueApp = createVueApp(rootComponent)
         const runtime = makeDesktopRendererRpcRuntime(app, {
           framework: "vue",
-          transport: options?.transport
+          transport: options?.transport,
+          rpcLayers: options?.rpcLayers
         })
         vueApp.provide(VueDesktopKey, { clients: runtime.clients })
         const unmount = vueApp.unmount.bind(vueApp)

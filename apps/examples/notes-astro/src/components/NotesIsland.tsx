@@ -4,11 +4,11 @@ import { Exit } from "effect"
 import { AsyncResult } from "effect/unstable/reactivity"
 import { useEffect, useMemo, useState } from "react"
 
-import { NotesReact, notesTransport } from "../desktop.js"
+import { NotesReact, notesRpcLayers } from "../desktop.js"
 
 export default function NotesIsland() {
   return (
-    <NotesReact.DesktopRoot transport={notesTransport}>
+    <NotesReact.DesktopRoot rpcLayers={notesRpcLayers}>
       <NotesView />
     </NotesReact.DesktopRoot>
   )

@@ -71,9 +71,9 @@ bun test packages/vue/src/index.test.ts
 bun run typecheck
 ```
 
-Tests can pass an in-memory renderer transport to `createApp` or
-`provideDesktop`. Unmounting the Vue app or disposing the Vue scope closes the
-renderer RPC runtime and interrupts active streams.
+Tests can pass `RpcTest`-backed RPC layers to `createApp` or `provideDesktop`.
+Unmounting the Vue app or disposing the Vue scope closes the renderer RPC runtime
+and interrupts active streams.
 
 ## Platform notes
 
@@ -83,7 +83,8 @@ their Vue runtime version.
 
 ## Internal architecture
 
-The adapter builds a renderer RPC runtime from the desktop manifest, a transport,
-and `RpcClient.make(group)`. Vue `provide` stores only the derived runtime client
-map. `useDesktop(group)` checks the imported `RpcGroup`, maps descriptors into
+The adapter builds a renderer RPC runtime from the desktop manifest and either a
+host transport with `RpcClient.make(group)` or test RPC layers with `RpcTest`.
+Vue `provide` stores only the derived runtime client map. `useDesktop(group)`
+checks the imported `RpcGroup`, maps descriptors into
 Vue-native composables, and attaches support metadata to each endpoint.

@@ -3,6 +3,7 @@ import type { RpcSupportMetadata } from "@effect-desktop/bridge"
 import {
   describeRpcs,
   makeDesktopRendererRpcRuntime,
+  type AnyDesktopRpcLayer,
   makeMissingDesktopContextError,
   makeMissingDesktopRpcClientError,
   makeMissingDesktopRpcsError,
@@ -93,11 +94,13 @@ export type SolidDesktopClientMap = DesktopRendererRpcClientMap
 
 export interface SolidDesktopRootProps {
   readonly transport?: DesktopRendererRpcTransport | undefined
+  readonly rpcLayers?: ReadonlyArray<AnyDesktopRpcLayer> | undefined
   readonly children?: JSX.Element
 }
 
 export interface SolidDesktopRenderOptions {
   readonly transport?: SolidDesktopRootProps["transport"]
+  readonly rpcLayers?: SolidDesktopRootProps["rpcLayers"]
 }
 
 export interface SolidDesktopAdapter<App extends DesktopAppManifest> {
@@ -127,7 +130,8 @@ export const SolidDesktop = Object.freeze({
     const DesktopRoot = (props: SolidDesktopRootProps): JSX.Element => {
       const runtime = makeDesktopRendererRpcRuntime(app, {
         framework: "solid",
-        transport: props.transport
+        transport: props.transport,
+        rpcLayers: props.rpcLayers
       })
       onCleanup(() => {
         void Effect.runPromiseExit(runtime.dispose())
@@ -171,7 +175,7 @@ export const SolidDesktop = Object.freeze({
         options?: SolidDesktopRenderOptions
       ) => {
         const rootProps =
-          options?.transport === undefined
+          options?.transport === undefined && options?.rpcLayers === undefined
             ? {
                 get children() {
                   return children()
@@ -179,6 +183,7 @@ export const SolidDesktop = Object.freeze({
               }
             : {
                 transport: options.transport,
+                rpcLayers: options.rpcLayers,
                 get children() {
                   return children()
                 }

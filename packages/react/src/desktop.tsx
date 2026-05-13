@@ -5,6 +5,7 @@ import {
   makeMissingDesktopRpcClientError,
   makeMissingDesktopRpcsError,
   type DesktopAppManifest,
+  type AnyDesktopRpcLayer,
   type DesktopRendererRpcClient,
   type DesktopRendererRpcClientMap,
   type DesktopRendererRpcClientMethod,
@@ -57,6 +58,7 @@ export type ReactDesktopClientMap = DesktopRendererRpcClientMap
 
 export interface ReactDesktopRootProps {
   readonly transport?: DesktopRendererRpcTransport | undefined
+  readonly rpcLayers?: ReadonlyArray<AnyDesktopRpcLayer> | undefined
   readonly children?: ReactNode | undefined
 }
 
@@ -83,10 +85,10 @@ const ReactDesktopContext = createContext<ReactDesktopContextValue | undefined>(
 
 export const ReactDesktop = Object.freeze({
   from: <App extends DesktopAppManifest>(app: App): ReactDesktopAdapter<App> => {
-    const DesktopRoot = ({ transport, children }: ReactDesktopRootProps): ReactNode => {
+    const DesktopRoot = ({ transport, rpcLayers, children }: ReactDesktopRootProps): ReactNode => {
       const runtime = useMemo(
-        () => makeDesktopRendererRpcRuntime(app, { framework: "react", transport }),
-        [app, transport]
+        () => makeDesktopRendererRpcRuntime(app, { framework: "react", transport, rpcLayers }),
+        [app, transport, rpcLayers]
       )
       useEffect(
         () => () => {

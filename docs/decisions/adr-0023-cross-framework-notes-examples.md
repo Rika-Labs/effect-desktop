@@ -14,7 +14,7 @@ Without examples, each framework user has to rediscover the same boundary: the a
 
 Add a first-party Notes example suite under `apps/examples`:
 
-- `notes-common` owns the renderer-safe `NotesRpcs` `RpcGroup`, the `NotesApp` manifest, the host-only service layer, seed state, and an in-memory demo transport.
+- `notes-common` owns the renderer-safe `NotesRpcs` `RpcGroup`, the `NotesApp` manifest, the host-only service layer, seed state, and `RpcTest` demo layers.
 - `notes-react` uses React hooks from `ReactDesktop.from(NotesManifest)`.
 - `notes-vue` uses Vue composables and refs from `VueDesktop.from(NotesManifest)`.
 - `notes-solid` uses Solid signals and primitives from `SolidDesktop.from(NotesManifest)`.
@@ -37,7 +37,7 @@ Astro hooks directly in `.astro`: rejected because Astro pages are not hook host
 
 The example workspace adds framework-demo dependencies: `vite-plugin-solid`, `astro`, `@astrojs/react`, and `@astrojs/check`. These dependencies are scoped to example apps and do not become runtime dependencies of the framework packages.
 
-The shared demo transport exists only for browser verification. Production desktop applications receive the real host transport.
+The shared demo layers exist only for browser verification. Production desktop applications receive the real host transport.
 
 The Next.js example uses webpack-backed `next dev` and `next build` scripts because Next 16's Turbopack path does not currently consume this workspace TypeScript package graph with NodeNext source imports reliably.
 

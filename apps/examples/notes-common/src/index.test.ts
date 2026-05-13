@@ -1,11 +1,10 @@
 import { expect, test } from "bun:test"
-import { makeDesktopServerProtocol } from "@effect-desktop/bridge"
 import { Desktop } from "@effect-desktop/core"
-import { Effect, Exit, Layer } from "effect"
-import { RpcServer } from "effect/unstable/rpc"
+import { makeDesktopRendererRpcTestRuntime } from "@effect-desktop/core/renderer"
+import { Effect } from "effect"
 
-import { NotesManifest, NotesRpcs, makeNotesDemoTransport } from "./index.js"
-import { NotesApp, NotesLayer } from "./host.js"
+import { NotesManifest, NotesRpcs, makeNotesDemoRpcLayers } from "./index.js"
+import { NotesApp } from "./host.js"
 
 test("NotesApp exposes the canonical Notes RpcGroup through its manifest", () => {
   expect(NotesManifest.id).toBe("notes-example")
@@ -14,12 +13,18 @@ test("NotesApp exposes the canonical Notes RpcGroup through its manifest", () =>
   expect(Desktop.manifest(NotesApp)).toEqual(NotesManifest)
 })
 
-test("NotesLayer binds the Notes RpcGroup into the desktop runtime", async () => {
-  const transport = makeNotesDemoTransport()
-  const protocolLayer = Layer.effect(RpcServer.Protocol)(makeDesktopServerProtocol(transport))
-  const exit = await Effect.runPromiseExit(
-    Effect.scoped(Layer.build(NotesLayer.pipe(Layer.provide(protocolLayer))))
-  )
+test("Notes demo RPC layers execute the Notes RpcGroup through RpcTest", async () => {
+  const runtime = makeDesktopRendererRpcTestRuntime(makeNotesDemoRpcLayers())
+  const notes = runtime.clients.get(NotesRpcs)
 
-  expect(Exit.isSuccess(exit)).toBe(true)
+  expect(notes).toBeDefined()
+  const load = notes?.["Notes.Load"]
+  expect(load).toBeDefined()
+  const workspace = await Effect.runPromise(load!(undefined) as Effect.Effect<unknown, unknown>)
+  await Effect.runPromise(runtime.dispose())
+
+  expect(workspace).toMatchObject({
+    selectedId: "note-001",
+    notes: expect.arrayContaining([expect.objectContaining({ id: "note-001" })])
+  })
 })

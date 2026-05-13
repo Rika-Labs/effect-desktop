@@ -1,7 +1,7 @@
 {
   "name": "@effect-desktop/example-notes-common",
   "private": true,
-  "description": "Shared Effect Desktop Notes example contract, app definition, and demo transport.",
+  "description": "Shared Effect Desktop Notes example contract, app definition, and RpcTest demo layers.",
   "license": "MIT OR Apache-2.0",
   "author": "Rika Labs, LLC",
   "repository": {

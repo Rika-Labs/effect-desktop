@@ -89,7 +89,7 @@ bun test packages/react/src/index.test.ts
 bun run typecheck
 ```
 
-Tests can pass an in-memory renderer transport to `DesktopRoot` or `createRoot`.
+Tests can pass `RpcTest`-backed RPC layers to `DesktopRoot` or `createRoot`.
 Production code should use the host-installed transport.
 
 ## Platform notes
@@ -99,8 +99,9 @@ Effect RPC handlers and permission checks.
 
 ## Internal architecture
 
-The adapter builds a renderer RPC runtime from the desktop manifest, a transport,
-and `RpcClient.make(group)`. React context stores only the derived runtime client
-map. `useDesktop(group)` checks the imported `RpcGroup`, maps descriptors into
-React-native hooks, and attaches support metadata to each endpoint. Provider
-unmount closes the runtime scope so stream clients are interrupted.
+The adapter builds a renderer RPC runtime from the desktop manifest and either a
+host transport with `RpcClient.make(group)` or test RPC layers with `RpcTest`.
+React context stores only the derived runtime client map. `useDesktop(group)`
+checks the imported `RpcGroup`, maps descriptors into React-native hooks, and
+attaches support metadata to each endpoint. Provider unmount closes the runtime
+scope so stream clients are interrupted.

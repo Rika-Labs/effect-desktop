@@ -4,10 +4,10 @@ import {
   type DesktopTransportRun,
   type DesktopTransportSend
 } from "@effect-desktop/bridge"
-import { Effect, Exit, Scope, Stream } from "effect"
-import { Rpc, RpcClient, RpcGroup } from "effect/unstable/rpc"
+import { Effect, Exit, Layer, Scope, Stream } from "effect"
+import { Rpc, RpcClient, RpcGroup, RpcTest } from "effect/unstable/rpc"
 
-import type { DesktopAppManifest } from "./desktop-app.js"
+import type { AnyDesktopRpcLayer, DesktopAppManifest } from "./desktop-app.js"
 import { makeMissingDesktopRpcClientError, type DesktopFramework } from "./desktop-errors.js"
 import { servedRpcGroup, type RpcGroupWithRequests } from "./rpc-group-metadata.js"
 
@@ -29,6 +29,7 @@ export interface DesktopRendererRpcRuntime {
 export interface DesktopRendererRpcRuntimeOptions extends DesktopProtocolOptions {
   readonly framework: DesktopFramework
   readonly transport?: DesktopRendererRpcTransport | undefined
+  readonly rpcLayers?: ReadonlyArray<AnyDesktopRpcLayer> | undefined
 }
 
 const GlobalTransportKey = "__EFFECT_DESKTOP_RPC_TRANSPORT__"
@@ -37,6 +38,10 @@ export const makeDesktopRendererRpcRuntime = (
   app: DesktopAppManifest,
   options: DesktopRendererRpcRuntimeOptions
 ): DesktopRendererRpcRuntime => {
+  if (options.rpcLayers !== undefined) {
+    return makeDesktopRendererRpcTestRuntime(options.rpcLayers)
+  }
+
   if (app.rpcGroups.length === 0) {
     return Object.freeze({
       clients: new Map<RpcGroup.Any, DesktopRendererRpcClient>(),
@@ -101,6 +106,41 @@ const globalRendererRpcTransport = (): DesktopRendererRpcTransport | undefined =
     }
   )[GlobalTransportKey]
 
+export const makeDesktopRendererRpcTestRuntime = (
+  rpcLayers: ReadonlyArray<AnyDesktopRpcLayer>
+): DesktopRendererRpcRuntime => {
+  const scope = Scope.makeUnsafe("sequential")
+  const clients = Effect.runSync(
+    Scope.provide(acquireDesktopRendererRpcTestClients(rpcLayers), scope)
+  )
+  return Object.freeze({
+    clients,
+    dispose: () => Scope.close(scope, Exit.void)
+  })
+}
+
+const acquireDesktopRendererRpcTestClients = (
+  rpcLayers: ReadonlyArray<AnyDesktopRpcLayer>
+): Effect.Effect<DesktopRendererRpcClientMap, never, Scope.Scope> =>
+  Effect.gen(function* () {
+    const clients = new Map<RpcGroup.Any, DesktopRendererRpcClient>()
+    for (const rpcLayer of rpcLayers) {
+      const group = servedRpcGroup(rpcLayer)
+      const rpcClient = yield* RpcTest.makeClient(group as RpcGroup.RpcGroup<Rpc.Any>).pipe(
+        Effect.provide(rpcLayer.layer as Layer.Layer<Rpc.ToHandler<Rpc.Any>, never, never>)
+      )
+      const client = makeRpcTestGroupClient(
+        group,
+        rpcClient as unknown as Readonly<Record<string, DesktopRendererRpcClientMethod | undefined>>
+      )
+      clients.set(rpcLayer.group, client)
+      if (group !== rpcLayer.group) {
+        clients.set(group, client)
+      }
+    }
+    return clients
+  })
+
 const makeGroupClient = (
   group: RpcGroupWithRequests,
   protocol: RpcClient.Protocol["Service"],
@@ -140,6 +180,27 @@ const makeGroupClient = (
             Scope.Scope,
             scope
           )
+    }
+  ])
+  return Object.freeze(Object.fromEntries(entries))
+}
+
+const makeRpcTestGroupClient = (
+  group: RpcGroupWithRequests,
+  rpcClient: Readonly<Record<string, DesktopRendererRpcClientMethod | undefined>>
+): DesktopRendererRpcClient => {
+  const entries = Array.from(group.requests.keys()).map((tag) => [
+    tag,
+    (input: unknown): ReturnType<DesktopRendererRpcClientMethod> => {
+      const method = rpcClient[tag]
+      if (method === undefined) {
+        throw makeMissingDesktopRpcClientError(
+          "unknown",
+          tag,
+          `No renderer RPC test client method is installed for ${tag}`
+        )
+      }
+      return method(input)
     }
   ])
   return Object.freeze(Object.fromEntries(entries))

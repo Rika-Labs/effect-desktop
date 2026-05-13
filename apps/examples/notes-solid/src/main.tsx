@@ -2,7 +2,7 @@ import { NotesRpcs, type Note, type NotesWorkspace } from "@effect-desktop/examp
 import { Exit } from "effect"
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js"
 
-import { NotesSolid, notesTransport } from "./desktop.js"
+import { NotesSolid, notesRpcLayers } from "./desktop.js"
 import "./styles.css"
 
 function App() {
@@ -171,5 +171,5 @@ const statusText = (
 const root = document.querySelector("#root")
 
 if (root instanceof HTMLElement) {
-  NotesSolid.render(() => <App />, root, { transport: notesTransport })
+  NotesSolid.render(() => <App />, root, { rpcLayers: notesRpcLayers })
 }

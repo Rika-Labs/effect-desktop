@@ -36,12 +36,12 @@
     {
       "name": "SolidDesktopRenderOptions",
       "kind": "interface",
-      "signature": "export interface SolidDesktopRenderOptions { readonly transport?: SolidDesktopRootProps[\"transport\"] }"
+      "signature": "export interface SolidDesktopRenderOptions { readonly transport?: SolidDesktopRootProps[\"transport\"] readonly rpcLayers?: SolidDesktopRootProps[\"rpcLayers\"] }"
     },
     {
       "name": "SolidDesktopRootProps",
       "kind": "interface",
-      "signature": "export interface SolidDesktopRootProps { readonly transport?: DesktopRendererRpcTransport | undefined readonly children?: JSX.Element }"
+      "signature": "export interface SolidDesktopRootProps { readonly transport?: DesktopRendererRpcTransport | undefined readonly rpcLayers?: ReadonlyArray<AnyDesktopRpcLayer> | undefined readonly children?: JSX.Element }"
     },
     {
       "name": "SolidDesktopRpcClient",

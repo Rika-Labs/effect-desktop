@@ -41,7 +41,7 @@
     {
       "name": "VueDesktopOptions",
       "kind": "interface",
-      "signature": "export interface VueDesktopOptions { readonly transport?: DesktopRendererRpcTransport | undefined }"
+      "signature": "export interface VueDesktopOptions { readonly transport?: DesktopRendererRpcTransport | undefined readonly rpcLayers?: ReadonlyArray<AnyDesktopRpcLayer> | undefined }"
     },
     {
       "name": "VueDesktopRpcClient",

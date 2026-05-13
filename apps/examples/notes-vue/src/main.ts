@@ -2,7 +2,7 @@ import { NotesRpcs, type Note, type NotesWorkspace } from "@effect-desktop/examp
 import { Exit } from "effect"
 import { computed, defineComponent, h, ref, watchEffect } from "vue"
 
-import { NotesVue, notesTransport } from "./desktop.js"
+import { NotesVue, notesRpcLayers } from "./desktop.js"
 import "./styles.css"
 
 const App = defineComponent({
@@ -190,4 +190,4 @@ const statusText = (
   return "Ready"
 }
 
-NotesVue.createApp(App, { transport: notesTransport }).mount("#root")
+NotesVue.createApp(App, { rpcLayers: notesRpcLayers }).mount("#root")
