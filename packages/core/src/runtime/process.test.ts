@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test"
 import { mkdtemp, readFile, rm } from "node:fs/promises"
-import { join } from "node:path"
 import { tmpdir } from "node:os"
+import { join } from "node:path"
+
 import {
   HostProtocolBackpressureOverflowError,
   HostProtocolFileNotFoundError,
@@ -10,19 +11,19 @@ import {
   HostProtocolResourceBusyError,
   HostProtocolStaleHandleError
 } from "@effect-desktop/bridge"
-import { Cause, Effect, Exit, Fiber, Option, Stream } from "effect"
+import { BunServices } from "@effect/platform-bun"
+import { Cause, Deferred, Effect, Exit, Fiber, Option, PlatformError, Sink, Stream } from "effect"
+import { ChildProcessSpawner } from "effect/unstable/process"
 
-import {
-  makeProcess,
-  ProcessExitStatus,
-  type ProcessAdapter,
-  type ProcessApi,
-  type ProcessBudgetPolicy,
-  type ProcessChild,
-  type ProcessPermissionPolicy,
-  type ProcessSignalInput
+import { makeProcess, ProcessExitStatus } from "./process.js"
+import type {
+  ProcessApi,
+  ProcessBudgetPolicy,
+  ProcessPermissionPolicy,
+  ProcessSignalInput
 } from "./process.js"
-import { makeResourceRegistry, type ResourceRegistryApi } from "./resources.js"
+import { makeResourceRegistry } from "./resources.js"
+import type { ResourceRegistryApi } from "./resources.js"
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
@@ -30,7 +31,7 @@ const processTest = process.platform === "win32" ? test.skip : test
 
 processTest("Process spawn exposes stdout and exit status", async () => {
   const fixture = await makeFixture(
-    makeFakeAdapter(() => makeFakeChild({ stdout: ["hi\n"], exit: { code: 0 } }))
+    makeFakeSpawner(() => makeFakeChild({ exit: { code: 0 }, stdout: ["hi\n"] }))
   )
 
   const handle = await Effect.runPromise(
@@ -39,13 +40,13 @@ processTest("Process spawn exposes stdout and exit status", async () => {
   const output = await Effect.runPromise(handle.stdout.pipe(Stream.runCollect))
   const status = await Effect.runPromise(handle.exit)
 
-  expect(decodeChunks(Array.from(output))).toBe("hi\n")
+  expect(decodeChunks([...output])).toBe("hi\n")
   expect(status).toEqual(new ProcessExitStatus({ code: 0 }))
 })
 
 processTest("Process spawn registers a scoped running resource", async () => {
   const fixture = await makeFixture(
-    makeFakeAdapter(() => makeFakeChild({ stdout: [], exit: { code: 0 } }))
+    makeFakeSpawner(() => makeFakeChild({ exit: { code: 0 }, stdout: [] }))
   )
 
   const handle = await Effect.runPromise(
@@ -56,55 +57,47 @@ processTest("Process spawn registers a scoped running resource", async () => {
   expect(handle.resource.kind).toBe("process")
   expect(handle.resource.ownerScope).toBe("scope-main")
   expect(snapshot.entries.map((entry) => entry.handle)).toContainEqual({
-    kind: handle.resource.kind,
-    id: handle.resource.id,
     generation: handle.resource.generation,
+    id: handle.resource.id,
+    kind: handle.resource.kind,
     ownerScope: handle.resource.ownerScope,
     state: handle.resource.state
   })
 })
 
-processTest(
-  "Process exposes live devtools snapshots with pid, command, children, and exit",
-  async () => {
-    const fixture = await makeFixture(
-      makeFakeAdapter(() =>
-        makeFakeChild({ stdout: [], exit: { code: 7 }, childPids: [1001, 1002] })
-      )
-    )
-    const observed = Effect.runFork(
-      fixture.service.observe().pipe(Stream.take(3), Stream.runCollect)
-    )
+processTest("Process exposes live devtools snapshots with pid, command, and exit", async () => {
+  const fixture = await makeFixture(
+    makeFakeSpawner(() => makeFakeChild({ exit: { code: 7 }, stdout: [] }))
+  )
+  const observed = Effect.runFork(fixture.service.observe().pipe(Stream.take(3), Stream.runCollect))
 
-    const handle = await Effect.runPromise(
-      fixture.service.spawn("echo", ["hi"], { ownerScope: "scope-main" })
-    )
-    await Effect.runPromise(handle.exit)
+  const handle = await Effect.runPromise(
+    fixture.service.spawn("echo", ["hi"], { ownerScope: "scope-main" })
+  )
+  await Effect.runPromise(handle.exit)
 
-    const listed = await Effect.runPromise(fixture.service.list())
-    const snapshots = Array.from(await Effect.runPromise(Fiber.join(observed)))
-    const terminal = listed[0]
+  const listed = await Effect.runPromise(fixture.service.list())
+  const snapshots = [...(await Effect.runPromise(Fiber.join(observed)))]
+  const terminal = listed[0]
 
-    expect(snapshots[0]).toEqual([])
-    expect(snapshots[1]?.[0]).toMatchObject({
-      pid: 42,
-      command: "echo",
-      args: ["hi"],
-      ownerScope: "scope-main",
-      childPids: [1001, 1002],
-      state: "running"
-    })
-    expect(terminal?.state).toBe("exited")
-    expect(Option.isSome(terminal?.lastExit ?? Option.none())).toBe(true)
-    expect(snapshots[2]?.[0]?.state).toBe("exited")
-  }
-)
+  expect(snapshots[0]).toEqual([])
+  expect(snapshots[1]?.[0]).toMatchObject({
+    args: ["hi"],
+    command: "echo",
+    ownerScope: "scope-main",
+    pid: 42,
+    state: "running"
+  })
+  expect(terminal?.state).toBe("exited")
+  expect(Option.isSome(terminal?.lastExit ?? Option.none())).toBe(true)
+  expect(snapshots[2]?.[0]?.state).toBe("exited")
+})
 
 processTest(
   "Process removes the resource when a child exits without awaiting handle.exit",
   async () => {
     const fixture = await makeFixture(
-      makeFakeAdapter(() => makeFakeChild({ stdout: [], exit: { code: 0 } }))
+      makeFakeSpawner(() => makeFakeChild({ exit: { code: 0 }, stdout: [] }))
     )
 
     await Effect.runPromise(fixture.service.spawn("echo", ["hi"], { ownerScope: "scope-main" }))
@@ -118,7 +111,9 @@ processTest(
 test("Process rejects non-finite graceful shutdown windows", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
-    const exit = await Effect.runPromiseExit(makeProcess(registry, { gracefulShutdownMs: value }))
+    const exit = await Effect.runPromiseExit(
+      makeProcess(registry, { gracefulShutdownMs: value }).pipe(provideFakeSpawner())
+    )
     expectFailure(exit, HostProtocolInvalidArgumentError)
   }
 })
@@ -126,35 +121,41 @@ test("Process rejects non-finite graceful shutdown windows", async () => {
 test("Process rejects non-positive graceful shutdown windows", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   for (const value of [0, -1, -5000]) {
-    const exit = await Effect.runPromiseExit(makeProcess(registry, { gracefulShutdownMs: value }))
+    const exit = await Effect.runPromiseExit(
+      makeProcess(registry, { gracefulShutdownMs: value }).pipe(provideFakeSpawner())
+    )
     expectFailure(exit, HostProtocolInvalidArgumentError)
   }
 })
 
 test("Process accepts a valid finite positive graceful shutdown window", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
-  for (const value of [1, 0.5, Number.MIN_VALUE, 5_000]) {
-    const exit = await Effect.runPromiseExit(makeProcess(registry, { gracefulShutdownMs: value }))
+  for (const value of [1, 0.5, Number.MIN_VALUE, 5000]) {
+    const exit = await Effect.runPromiseExit(
+      makeProcess(registry, { gracefulShutdownMs: value }).pipe(provideFakeSpawner())
+    )
     expect(Exit.isSuccess(exit)).toBe(true)
   }
 })
 
 test("Process accepts the default graceful shutdown window when omitted", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
-  const exit = await Effect.runPromiseExit(makeProcess(registry))
+  const exit = await Effect.runPromiseExit(makeProcess(registry).pipe(provideFakeSpawner()))
   expect(Exit.isSuccess(exit)).toBe(true)
 })
 
 test("Process rejects invalid snapshot capacities", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   for (const value of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
-    const exit = await Effect.runPromiseExit(makeProcess(registry, { maxSnapshots: value }))
+    const exit = await Effect.runPromiseExit(
+      makeProcess(registry, { maxSnapshots: value }).pipe(provideFakeSpawner())
+    )
     expectFailure(exit, HostProtocolInvalidArgumentError)
   }
 })
 
 test("Process rejects invalid budget options at service construction", async () => {
-  const cases: ReadonlyArray<ProcessBudgetPolicy> = [
+  const cases: readonly ProcessBudgetPolicy[] = [
     { maxConcurrent: 0 },
     { maxConcurrent: -1 },
     { maxConcurrent: 1.5 },
@@ -167,7 +168,9 @@ test("Process rejects invalid budget options at service construction", async () 
 
   for (const budgets of cases) {
     const registry = await Effect.runPromise(makeResourceRegistry())
-    const exit = await Effect.runPromiseExit(makeProcess(registry, { budgets }))
+    const exit = await Effect.runPromiseExit(
+      makeProcess(registry, { budgets }).pipe(provideFakeSpawner())
+    )
     expectFailure(exit, HostProtocolInvalidArgumentError)
   }
 })
@@ -175,9 +178,9 @@ test("Process rejects invalid budget options at service construction", async () 
 processTest("Process spawn validates required owner scope before adapter activity", async () => {
   let spawnCalls = 0
   const fixture = await makeFixture(
-    makeFakeAdapter(() => {
+    makeFakeSpawner(() => {
       spawnCalls += 1
-      return makeFakeChild({ stdout: [], exit: { code: 0 } })
+      return makeFakeChild({ exit: { code: 0 }, stdout: [] })
     })
   )
 
@@ -193,9 +196,9 @@ processTest(
     for (const now of invalidTimestamps) {
       let spawnCalls = 0
       const fixture = await makeFixture(
-        makeFakeAdapter(() => {
+        makeFakeSpawner(() => {
           spawnCalls += 1
-          return makeFakeChild({ stdout: [], exit: { code: 0 } })
+          return makeFakeChild({ exit: { code: 0 }, stdout: [] })
         }),
         { now: () => now }
       )
@@ -216,14 +219,15 @@ processTest("Process spawn denies binaries by default before adapter activity", 
   let spawnCalls = 0
   const registry = await Effect.runPromise(makeResourceRegistry())
   const service = await Effect.runPromise(
-    makeProcess(registry, {
-      adapter: {
-        spawn: () => {
+    makeProcess(registry).pipe(
+      Effect.provideService(
+        ChildProcessSpawner.ChildProcessSpawner,
+        makeFakeSpawner(() => {
           spawnCalls += 1
-          return makeFakeChild({ stdout: [], exit: { code: 0 } })
-        }
-      }
-    })
+          return makeFakeChild({ exit: { code: 0 }, stdout: [] })
+        })
+      )
+    )
   )
 
   const exit = await Effect.runPromiseExit(
@@ -237,9 +241,9 @@ processTest("Process spawn denies binaries by default before adapter activity", 
 processTest("Process spawn allows binaries declared in the process.spawn policy", async () => {
   let spawnCalls = 0
   const fixture = await makeFixture(
-    makeFakeAdapter(() => {
+    makeFakeSpawner(() => {
       spawnCalls += 1
-      return makeFakeChild({ stdout: [], exit: { code: 0 } })
+      return makeFakeChild({ exit: { code: 0 }, stdout: [] })
     }),
     { permissions: { spawn: ["git"] } }
   )
@@ -252,15 +256,17 @@ processTest("Process spawn allows binaries declared in the process.spawn policy"
 processTest("Process spawn denies binaries outside the process.spawn policy", async () => {
   let spawnCalls = 0
   const fixture = await makeFixture(
-    makeFakeAdapter(() => {
+    makeFakeSpawner(() => {
       spawnCalls += 1
-      return makeFakeChild({ stdout: [], exit: { code: 0 } })
+      return makeFakeChild({ exit: { code: 0 }, stdout: [] })
     }),
     { permissions: { spawn: ["git"] } }
   )
 
   const exit = await Effect.runPromiseExit(
-    fixture.service.spawn("rm", ["-rf", "/tmp/project"], { ownerScope: "scope-main" })
+    fixture.service.spawn("rm", ["-rf", "/tmp/project"], {
+      ownerScope: "scope-main"
+    })
   )
 
   expect(spawnCalls).toBe(0)
@@ -272,9 +278,9 @@ processTest(
   async () => {
     let spawnCalls = 0
     const fixture = await makeFixture(
-      makeFakeAdapter(() => {
+      makeFakeSpawner(() => {
         spawnCalls += 1
-        return makeFakeChild({ stdout: [], exit: { code: 0 } })
+        return makeFakeChild({ exit: { code: 0 }, stdout: [] })
       }),
       { permissions: { spawn: ["git;ls"] } }
     )
@@ -291,18 +297,18 @@ processTest(
 processTest("Process spawn rejects NUL bytes in environment names", async () => {
   let spawnCalls = 0
   const fixture = await makeFixture(
-    makeFakeAdapter(() => {
+    makeFakeSpawner(() => {
       spawnCalls += 1
-      return makeFakeChild({ stdout: [], exit: { code: 0 } })
+      return makeFakeChild({ exit: { code: 0 }, stdout: [] })
     }),
     { permissions: { spawn: ["echo"] } }
   )
-  const nul = String.fromCharCode(0)
+  const nul = String.fromCodePoint(0)
 
   const exit = await Effect.runPromiseExit(
     fixture.service.spawn("echo", ["hi"], {
-      ownerScope: "scope-main",
-      env: { [`key${nul}`]: "value" }
+      env: { [`key${nul}`]: "value" },
+      ownerScope: "scope-main"
     })
   )
 
@@ -313,17 +319,17 @@ processTest("Process spawn rejects NUL bytes in environment names", async () => 
 processTest("Process spawn rejects empty environment names before adapter activity", async () => {
   let spawnCalls = 0
   const fixture = await makeFixture(
-    makeFakeAdapter(() => {
+    makeFakeSpawner(() => {
       spawnCalls += 1
-      return makeFakeChild({ stdout: [], exit: { code: 0 } })
+      return makeFakeChild({ exit: { code: 0 }, stdout: [] })
     }),
     { permissions: { spawn: ["echo"] } }
   )
 
   const exit = await Effect.runPromiseExit(
     fixture.service.spawn("echo", ["hi"], {
-      ownerScope: "scope-main",
-      env: { "": "value" }
+      env: { "": "value" },
+      ownerScope: "scope-main"
     })
   )
 
@@ -334,18 +340,18 @@ processTest("Process spawn rejects empty environment names before adapter activi
 processTest("Process spawn rejects NUL bytes in environment values", async () => {
   let spawnCalls = 0
   const fixture = await makeFixture(
-    makeFakeAdapter(() => {
+    makeFakeSpawner(() => {
       spawnCalls += 1
-      return makeFakeChild({ stdout: [], exit: { code: 0 } })
+      return makeFakeChild({ exit: { code: 0 }, stdout: [] })
     }),
     { permissions: { spawn: ["echo"] } }
   )
-  const nul = String.fromCharCode(0)
+  const nul = String.fromCodePoint(0)
 
   const exit = await Effect.runPromiseExit(
     fixture.service.spawn("echo", ["hi"], {
-      ownerScope: "scope-main",
-      env: { key: `value${nul}` }
+      env: { key: `value${nul}` },
+      ownerScope: "scope-main"
     })
   )
 
@@ -356,15 +362,18 @@ processTest("Process spawn rejects NUL bytes in environment values", async () =>
 processTest("Process spawn requires process.shell when shell mode is requested", async () => {
   let spawnCalls = 0
   const fixture = await makeFixture(
-    makeFakeAdapter(() => {
+    makeFakeSpawner(() => {
       spawnCalls += 1
-      return makeFakeChild({ stdout: [], exit: { code: 0 } })
+      return makeFakeChild({ exit: { code: 0 }, stdout: [] })
     }),
     { permissions: { spawn: ["sh"] } }
   )
 
   const exit = await Effect.runPromiseExit(
-    fixture.service.spawn("sh", ["-c", "echo hi"], { ownerScope: "scope-main", shell: true })
+    fixture.service.spawn("sh", ["-c", "echo hi"], {
+      ownerScope: "scope-main",
+      shell: true
+    })
   )
 
   expect(spawnCalls).toBe(0)
@@ -374,15 +383,18 @@ processTest("Process spawn requires process.shell when shell mode is requested",
 processTest("Process spawn allows shell mode with process.shell permission", async () => {
   let spawnCalls = 0
   const fixture = await makeFixture(
-    makeFakeAdapter(() => {
+    makeFakeSpawner(() => {
       spawnCalls += 1
-      return makeFakeChild({ stdout: [], exit: { code: 0 } })
+      return makeFakeChild({ exit: { code: 0 }, stdout: [] })
     }),
-    { permissions: { spawn: ["sh"], shell: true } }
+    { permissions: { shell: true, spawn: ["sh"] } }
   )
 
   await Effect.runPromise(
-    fixture.service.spawn("sh", ["-c", "echo hi"], { ownerScope: "scope-main", shell: true })
+    fixture.service.spawn("sh", ["-c", "echo hi"], {
+      ownerScope: "scope-main",
+      shell: true
+    })
   )
 
   expect(spawnCalls).toBe(1)
@@ -391,13 +403,13 @@ processTest("Process spawn allows shell mode with process.shell permission", asy
 processTest("Process spawn enforces the per-scope concurrent process budget", async () => {
   let spawnCalls = 0
   const fixture = await makeFixture(
-    makeFakeAdapter(() => {
+    makeFakeSpawner(() => {
       spawnCalls += 1
       return makeFakeChild({
-        stdout: [],
         exit: { code: 0 },
+        ignoreTerminate: true,
         naturalExitDelayMs: 60_000,
-        ignoreTerminate: true
+        stdout: []
       })
     }),
     { budgets: { maxConcurrent: 2 }, gracefulShutdownMs: 1 }
@@ -417,13 +429,13 @@ processTest("Process spawn enforces the per-scope concurrent process budget", as
 processTest("Process spawn reserves budget across parallel spawns", async () => {
   let spawnCalls = 0
   const fixture = await makeFixture(
-    makeFakeAdapter(() => {
+    makeFakeSpawner(() => {
       spawnCalls += 1
       return makeFakeChild({
-        stdout: [],
         exit: { code: 0 },
+        ignoreTerminate: true,
         naturalExitDelayMs: 60_000,
-        ignoreTerminate: true
+        stdout: []
       })
     }),
     { budgets: { maxConcurrent: 1 }, gracefulShutdownMs: 1 }
@@ -452,9 +464,9 @@ processTest("Process spawn reserves budget across parallel spawns", async () => 
 processTest("Process spawn releases budget after child exit", async () => {
   let spawnCalls = 0
   const fixture = await makeFixture(
-    makeFakeAdapter(() => {
+    makeFakeSpawner(() => {
       spawnCalls += 1
-      return makeFakeChild({ stdout: [], exit: { code: 0 } })
+      return makeFakeChild({ exit: { code: 0 }, stdout: [] })
     }),
     { budgets: { maxConcurrent: 1 } }
   )
@@ -473,7 +485,7 @@ processTest(
   "Process stdout fails with BackpressureOverflow when a chunk exceeds budget",
   async () => {
     const fixture = await makeFixture(
-      makeFakeAdapter(() => makeFakeChild({ stdout: ["abcd"], exit: { code: 0 } })),
+      makeFakeSpawner(() => makeFakeChild({ exit: { code: 0 }, stdout: ["abcd"] })),
       { budgets: { stdoutBufferBytes: 3 } }
     )
     const handle = await Effect.runPromise(
@@ -490,8 +502,12 @@ processTest(
   "Process stdout allows cumulative output beyond budget when the consumer drains",
   async () => {
     const fixture = await makeFixture(
-      makeFakeAdapter(() =>
-        makeFakeChild({ stdout: ["ab", "cd"], exit: { code: 0 }, stdoutChunkDelayMs: 5 })
+      makeFakeSpawner(() =>
+        makeFakeChild({
+          exit: { code: 0 },
+          stdout: ["ab", "cd"],
+          stdoutChunkDelayMs: 5
+        })
       ),
       { budgets: { stdoutBufferBytes: 3 } }
     )
@@ -501,7 +517,7 @@ processTest(
 
     const chunks = await Effect.runPromise(handle.stdout.pipe(Stream.runCollect))
 
-    expect(decodeChunks(Array.from(chunks))).toBe("abcd")
+    expect(decodeChunks([...chunks])).toBe("abcd")
   }
 )
 
@@ -509,7 +525,7 @@ processTest(
   "Process stdout fails with BackpressureOverflow when queued chunks exceed budget",
   async () => {
     const fixture = await makeFixture(
-      makeFakeAdapter(() => makeFakeChild({ stdout: ["ab", "cd"], exit: { code: 0 } })),
+      makeFakeSpawner(() => makeFakeChild({ exit: { code: 0 }, stdout: ["ab", "cd"] })),
       { budgets: { stdoutBufferBytes: 3 } }
     )
     const handle = await Effect.runPromise(
@@ -531,7 +547,7 @@ processTest(
   "Process stderr fails with BackpressureOverflow when a chunk exceeds budget",
   async () => {
     const fixture = await makeFixture(
-      makeFakeAdapter(() => makeFakeChild({ stdout: [], stderr: ["abcd"], exit: { code: 0 } })),
+      makeFakeSpawner(() => makeFakeChild({ exit: { code: 0 }, stderr: ["abcd"], stdout: [] })),
       { budgets: { stderrBufferBytes: 3 } }
     )
     const handle = await Effect.runPromise(
@@ -548,12 +564,12 @@ processTest(
   "Process stderr allows cumulative output beyond budget when the consumer drains",
   async () => {
     const fixture = await makeFixture(
-      makeFakeAdapter(() =>
+      makeFakeSpawner(() =>
         makeFakeChild({
-          stdout: [],
-          stderr: ["ab", "cd"],
           exit: { code: 0 },
-          stderrChunkDelayMs: 5
+          stderr: ["ab", "cd"],
+          stderrChunkDelayMs: 5,
+          stdout: []
         })
       ),
       { budgets: { stderrBufferBytes: 3 } }
@@ -564,13 +580,13 @@ processTest(
 
     const chunks = await Effect.runPromise(handle.stderr.pipe(Stream.runCollect))
 
-    expect(decodeChunks(Array.from(chunks))).toBe("abcd")
+    expect(decodeChunks([...chunks])).toBe("abcd")
   }
 )
 
 processTest("Process spawn reports missing options as a typed failure", async () => {
   const fixture = await makeFixture(
-    makeFakeAdapter(() => makeFakeChild({ stdout: [], exit: { code: 0 } }))
+    makeFakeSpawner(() => makeFakeChild({ exit: { code: 0 }, stdout: [] }))
   )
 
   const exit = await Effect.runPromiseExit(fixture.service.spawn("echo"))
@@ -579,22 +595,20 @@ processTest("Process spawn reports missing options as a typed failure", async ()
 })
 
 processTest("Process spawn maps missing executable to FileNotFound", async () => {
-  const fixture = await makeFixture({
-    spawn: () => {
-      throw Object.assign(new Error("not found"), { code: "ENOENT" })
-    }
-  })
+  const fixture = await makeFixture(makeFailingSpawner("NotFound"))
 
   const exit = await Effect.runPromiseExit(
-    fixture.service.spawn("definitely-missing", [], { ownerScope: "scope-main" })
+    fixture.service.spawn("definitely-missing", [], {
+      ownerScope: "scope-main"
+    })
   )
 
   expectFailure(exit, HostProtocolFileNotFoundError)
 })
 
 processTest("Process stdin sink writes chunks and closes when the sink completes", async () => {
-  const child = makeFakeChild({ stdout: [], exit: { code: 0 } })
-  const fixture = await makeFixture(makeFakeAdapter(() => child))
+  const child = makeFakeChild({ exit: { code: 0 }, stdout: [] })
+  const fixture = await makeFixture(makeFakeSpawner(() => child))
   const handle = await Effect.runPromise(
     fixture.service.spawn("cat", [], { ownerScope: "scope-main" })
   )
@@ -605,9 +619,25 @@ processTest("Process stdin sink writes chunks and closes when the sink completes
   expect(child.stdinClosed).toBe(true)
 })
 
-processTest("Process stdin rejects non-byte chunks before adapter activity", async () => {
-  const child = makeFakeChild({ stdout: [], exit: { code: 0 } })
-  const fixture = await makeFixture(makeFakeAdapter(() => child))
+processTest("Process stdin sink keeps child stdin open across chunks", async () => {
+  const child = makeFakeChild({ exit: { code: 0 }, stdout: [] })
+  const fixture = await makeFixture(makeFakeSpawner(() => child))
+  const handle = await Effect.runPromise(
+    fixture.service.spawn("cat", [], { ownerScope: "scope-main" })
+  )
+
+  await Effect.runPromise(
+    Stream.make(textEncoder.encode("abc"), textEncoder.encode("def")).pipe(Stream.run(handle.stdin))
+  )
+
+  expect(decodeChunks(child.stdinWrites)).toBe("abcdef")
+  expect(child.stdinCloseCount).toBe(1)
+  expect(child.stdinClosed).toBe(true)
+})
+
+processTest("Process stdin rejects non-byte chunks without writing bytes", async () => {
+  const child = makeFakeChild({ exit: { code: 0 }, stdout: [] })
+  const fixture = await makeFixture(makeFakeSpawner(() => child))
   const handle = await Effect.runPromise(
     fixture.service.spawn("cat", [], { ownerScope: "scope-main" })
   )
@@ -617,13 +647,12 @@ processTest("Process stdin rejects non-byte chunks before adapter activity", asy
   )
 
   expect(child.stdinWrites).toEqual([])
-  expect(child.stdinClosed).toBe(true)
   expectFailure(exit, HostProtocolInvalidArgumentError)
 })
 
 processTest("Process kill returns a typed effect and exit preserves the signal", async () => {
-  const child = makeFakeChild({ stdout: [], exit: { code: 0 } })
-  const fixture = await makeFixture(makeFakeAdapter(() => child))
+  const child = makeFakeChild({ exit: { code: 0 }, stdout: [] })
+  const fixture = await makeFixture(makeFakeSpawner(() => child))
   const handle = await Effect.runPromise(
     fixture.service.spawn("sleep", ["10"], { ownerScope: "scope-main" })
   )
@@ -635,23 +664,41 @@ processTest("Process kill returns a typed effect and exit preserves the signal",
   expect(status).toEqual(new ProcessExitStatus({ code: 0, signal: "SIGTERM" }))
 })
 
-processTest("Process kill rejects control bytes in signal names", async () => {
-  const child = makeFakeChild({ stdout: [], exit: { code: 0 } })
-  const fixture = await makeFixture(makeFakeAdapter(() => child))
+processTest("Process kill preserves the actual child exit result", async () => {
+  const child = makeFakeChild({
+    exit: { code: 143, signal: "SIGTERM" },
+    killExit: { code: 0 },
+    stdout: []
+  })
+  const fixture = await makeFixture(makeFakeSpawner(() => child))
   const handle = await Effect.runPromise(
     fixture.service.spawn("sleep", ["10"], { ownerScope: "scope-main" })
   )
-  const nul = String.fromCharCode(0)
 
-  const exit = await Effect.runPromiseExit(handle.kill(`SIG${nul}TERM`))
+  await Effect.runPromise(handle.kill("SIGTERM"))
+  const status = await Effect.runPromise(handle.exit)
+
+  expect(child.killedWith).toBe("SIGTERM")
+  expect(status).toEqual(new ProcessExitStatus({ code: 0 }))
+})
+
+processTest("Process kill rejects control bytes in signal names", async () => {
+  const child = makeFakeChild({ exit: { code: 0 }, stdout: [] })
+  const fixture = await makeFixture(makeFakeSpawner(() => child))
+  const handle = await Effect.runPromise(
+    fixture.service.spawn("sleep", ["10"], { ownerScope: "scope-main" })
+  )
+  const nul = String.fromCodePoint(0)
+
+  const exit = await Effect.runPromiseExit(handle.kill(`SIG${nul}TERM` as never))
 
   expectFailure(exit, HostProtocolInvalidArgumentError)
   expect(child.killedWith).toBeUndefined()
 })
 
 processTest("Process kill rejects handles after process exit", async () => {
-  const child = makeFakeChild({ stdout: [], exit: { code: 0 } })
-  const fixture = await makeFixture(makeFakeAdapter(() => child))
+  const child = makeFakeChild({ exit: { code: 0 }, stdout: [] })
+  const fixture = await makeFixture(makeFakeSpawner(() => child))
   const handle = await Effect.runPromise(
     fixture.service.spawn("sleep", ["10"], { ownerScope: "scope-main" })
   )
@@ -667,10 +714,14 @@ processTest(
   "Process exit rejects invalid snapshot timestamps before publishing exit state",
   async () => {
     for (const now of invalidTimestamps) {
-      let currentTime = 1_000
+      let currentTime = 1000
       const fixture = await makeFixture(
-        makeFakeAdapter(() =>
-          makeFakeChild({ stdout: [], exit: { code: 0 }, naturalExitDelayMs: 10 })
+        makeFakeSpawner(() =>
+          makeFakeChild({
+            exit: { code: 0 },
+            naturalExitDelayMs: 10,
+            stdout: []
+          })
         ),
         { now: () => currentTime }
       )
@@ -684,24 +735,24 @@ processTest(
 
       const exit = await Effect.runPromiseExit(handle.exit)
       const listed = await Effect.runPromise(fixture.service.list())
-      const snapshots = Array.from(await Effect.runPromise(Fiber.join(observed)))
+      const snapshots = [...(await Effect.runPromise(Fiber.join(observed)))]
 
       expectFailure(exit, HostProtocolInvalidArgumentError)
       expect(listed[0]?.state).toBe("running")
-      expect(listed[0]?.updatedAt).toBe(1_000)
+      expect(listed[0]?.updatedAt).toBe(1000)
       expect(snapshots.at(-1)?.[0]?.state).toBe("running")
-      expect(snapshots.at(-1)?.[0]?.updatedAt).toBe(1_000)
+      expect(snapshots.at(-1)?.[0]?.updatedAt).toBe(1000)
     }
   }
 )
 
 processTest("Process kill rejects handles after scope close", async () => {
   const child = makeFakeChild({
-    stdout: [],
     exit: { code: 0 },
-    naturalExitDelayMs: 60_000
+    naturalExitDelayMs: 60_000,
+    stdout: []
   })
-  const fixture = await makeFixture(makeFakeAdapter(() => child))
+  const fixture = await makeFixture(makeFakeSpawner(() => child))
   const handle = await Effect.runPromise(
     fixture.service.spawn("sleep", ["10"], { ownerScope: "scope-main" })
   )
@@ -709,7 +760,7 @@ processTest("Process kill rejects handles after scope close", async () => {
 
   const exit = await Effect.runPromiseExit(handle.kill("SIGKILL"))
 
-  expect(child.kills).toEqual([])
+  expect(child.kills).toEqual(["SIGTERM"])
   expect(child.treeTerminated).toBe(true)
   expectFailure(exit, HostProtocolStaleHandleError)
 })
@@ -718,9 +769,13 @@ if (process.platform !== "win32") {
   processTest(
     "Process scope close asks the process tree to terminate and waits for exit",
     async () => {
-      const child = makeFakeChild({ stdout: [], exit: { code: 0 }, naturalExitDelayMs: 60_000 })
+      const child = makeFakeChild({
+        exit: { code: 0 },
+        naturalExitDelayMs: 60_000,
+        stdout: []
+      })
       const fixture = await makeFixture(
-        makeFakeAdapter(() => child),
+        makeFakeSpawner(() => child),
         { gracefulShutdownMs: 50 }
       )
 
@@ -734,13 +789,13 @@ if (process.platform !== "win32") {
 
   processTest("Process scope close force-kills the tree after the grace window", async () => {
     const child = makeFakeChild({
-      stdout: [],
       exit: { code: 0 },
+      ignoreTerminate: true,
       naturalExitDelayMs: 60_000,
-      ignoreTerminate: true
+      stdout: []
     })
     const fixture = await makeFixture(
-      makeFakeAdapter(() => child),
+      makeFakeSpawner(() => child),
       { gracefulShutdownMs: 1 }
     )
 
@@ -764,7 +819,7 @@ if (process.platform !== "win32") {
       const output = await Effect.runPromise(handle.stdout.pipe(Stream.runCollect))
       const status = await Effect.runPromise(handle.exit)
 
-      expect(decodeChunks(Array.from(output))).toBe("hi\n")
+      expect(decodeChunks([...output])).toBe("hi\n")
       expect(status.code).toBe(0)
     } finally {
       await Effect.runPromise(fixture.registry.closeScope("scope-main"))
@@ -793,18 +848,18 @@ if (process.platform !== "win32") {
         const childPids = await waitForChildPids(pidFile)
 
         await Effect.runPromise(fixture.registry.closeScope("scope-main"))
-        await waitUntil(async () => childPids.every((pid) => !isProcessAlive(pid)))
+        await waitUntil(() => Promise.resolve(childPids.every((pid) => !isProcessAlive(pid))))
 
         expect(childPids).toHaveLength(2)
       } finally {
-        await rm(directory, { recursive: true, force: true })
+        await rm(directory, { force: true, recursive: true })
       }
     }
   )
 }
 
 const makeFixture = async (
-  adapter?: ProcessAdapter,
+  spawner?: ChildProcessSpawner.ChildProcessSpawner["Service"],
   options: {
     readonly budgets?: ProcessBudgetPolicy
     readonly gracefulShutdownMs?: number
@@ -812,15 +867,18 @@ const makeFixture = async (
     readonly now?: () => number
     readonly permissions?: ProcessPermissionPolicy
   } = {}
-): Promise<{ readonly registry: ResourceRegistryApi; readonly service: ProcessApi }> => {
+): Promise<{
+  readonly registry: ResourceRegistryApi
+  readonly service: ProcessApi
+}> => {
   const registry = await Effect.runPromise(makeResourceRegistry())
-  const service = await makeService(registry, adapter, options)
+  const service = await makeService(registry, spawner, options)
   return { registry, service }
 }
 
 const makeService = (
   registry: ResourceRegistryApi,
-  adapter?: ProcessAdapter,
+  spawner?: ChildProcessSpawner.ChildProcessSpawner["Service"],
   options: {
     readonly budgets?: ProcessBudgetPolicy
     readonly gracefulShutdownMs?: number
@@ -831,7 +889,6 @@ const makeService = (
 ) =>
   Effect.runPromise(
     makeProcess(registry, {
-      ...(adapter === undefined ? {} : { adapter }),
       ...(options.budgets === undefined ? {} : { budgets: options.budgets }),
       permissions: options.permissions ?? ALLOW_TEST_PROCESS_PERMISSIONS,
       ...(options.gracefulShutdownMs === undefined
@@ -839,7 +896,11 @@ const makeService = (
         : { gracefulShutdownMs: options.gracefulShutdownMs }),
       ...(options.maxSnapshots === undefined ? {} : { maxSnapshots: options.maxSnapshots }),
       ...(options.now === undefined ? {} : { now: options.now })
-    })
+    }).pipe(
+      spawner === undefined
+        ? Effect.provide(BunServices.layer)
+        : Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner)
+    )
   )
 
 const ALLOW_TEST_PROCESS_PERMISSIONS: ProcessPermissionPolicy = {
@@ -848,13 +909,34 @@ const ALLOW_TEST_PROCESS_PERMISSIONS: ProcessPermissionPolicy = {
 
 const invalidTimestamps = [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -1, 1.5]
 
-const makeFakeAdapter = (makeChild: () => ProcessChild): ProcessAdapter => ({
-  spawn: () => makeChild()
-})
+const provideFakeSpawner = () =>
+  Effect.provideService(
+    ChildProcessSpawner.ChildProcessSpawner,
+    makeFakeSpawner(() => makeFakeChild({ exit: { code: 0 }, stdout: [] }))
+  )
 
-interface FakeChild extends ProcessChild {
+const makeFakeSpawner = (
+  makeChild: () => FakeChild
+): ChildProcessSpawner.ChildProcessSpawner["Service"] =>
+  ChildProcessSpawner.make(() => Effect.succeed(makeChild()))
+
+const makeFailingSpawner = (
+  tag: PlatformError.SystemErrorTag
+): ChildProcessSpawner.ChildProcessSpawner["Service"] =>
+  ChildProcessSpawner.make(() =>
+    Effect.fail(
+      PlatformError.systemError({
+        _tag: tag,
+        method: "spawn",
+        module: "ChildProcessSpawner"
+      })
+    )
+  )
+
+interface FakeChild extends ChildProcessSpawner.ChildProcessHandle {
   readonly stdinWrites: Uint8Array[]
   readonly stdinClosed: boolean
+  readonly stdinCloseCount: number
   readonly killedWith: ProcessSignalInput | undefined
   readonly kills: ProcessSignalInput[]
   readonly treeTerminated: boolean
@@ -865,7 +947,7 @@ const makeFakeChild = (options: {
   readonly stdout: readonly string[]
   readonly stderr?: readonly string[]
   readonly exit: { readonly code: number; readonly signal?: string }
-  readonly childPids?: readonly number[]
+  readonly killExit?: { readonly code: number; readonly signal?: string }
   readonly naturalExitDelayMs?: number
   readonly ignoreTerminate?: boolean
   readonly stdoutChunkDelayMs?: number
@@ -873,99 +955,119 @@ const makeFakeChild = (options: {
 }): FakeChild => {
   const stdinWrites: Uint8Array[] = []
   let stdinClosed = false
+  let stdinCloseCount = 0
   let killedWith: ProcessSignalInput | undefined
   const kills: ProcessSignalInput[] = []
   let treeTerminated = false
   let treeForceKilled = false
   let running = true
   let settled = false
-  let resolveExit: (status: ProcessExitStatus) => void
-  const exited = new Promise<ProcessExitStatus>((resolve) => {
-    resolveExit = resolve
-  })
-  const finish = (signal?: string): void => {
-    if (settled) {
+  const exitState = Effect.runSync(Deferred.make<ProcessExitStatus>())
+  const finish = (
+    status: { readonly code: number; readonly signal?: string } = options.exit
+  ): Effect.Effect<void> =>
+    Effect.sync(() => {
+      if (settled) {
+        return
+      }
+      settled = true
+      clearTimeout(naturalExitTimer)
+      running = false
       return
-    }
-    settled = true
-    clearTimeout(naturalExitTimer)
-    running = false
-    resolveExit(
-      new ProcessExitStatus({
-        code: options.exit.code,
-        ...(signal === undefined
-          ? options.exit.signal === undefined
-            ? {}
-            : { signal: options.exit.signal }
-          : { signal })
-      })
+    }).pipe(
+      Effect.andThen(Deferred.succeed(exitState, new ProcessExitStatus(status))),
+      Effect.asVoid
     )
-  }
-  const naturalExitTimer = setTimeout(() => finish(), options.naturalExitDelayMs ?? 0)
+  const naturalExitTimer = setTimeout(() => {
+    Effect.runFork(finish())
+  }, options.naturalExitDelayMs ?? 0)
   naturalExitTimer.unref()
 
-  const child: FakeChild = {
-    pid: 42,
-    childPids: options.childPids ?? [],
-    stdout: readableFromStrings(options.stdout, options.stdoutChunkDelayMs),
-    stderr: readableFromStrings(options.stderr ?? [], options.stderrChunkDelayMs),
-    exited,
-    stdinWrites,
-    get stdinClosed() {
-      return stdinClosed
-    },
-    get killedWith() {
-      return killedWith
-    },
-    kills,
-    get treeTerminated() {
-      return treeTerminated
-    },
-    get treeForceKilled() {
-      return treeForceKilled
-    },
-    writeStdin: async (chunk) => {
-      stdinWrites.push(chunk)
-    },
-    closeStdin: async () => {
-      stdinClosed = true
-    },
-    isRunning: () => running,
-    terminateTree: async () => {
-      treeTerminated = true
-      if (options.ignoreTerminate !== true) {
-        finish("SIGTERM")
+  const child = ChildProcessSpawner.makeHandle({
+    all: streamBytes(options.stdout, options.stdoutChunkDelayMs),
+    exitCode: Deferred.await(exitState).pipe(
+      Effect.flatMap((status) =>
+        status.signal === undefined
+          ? Effect.succeed(ChildProcessSpawner.ExitCode(status.code))
+          : Effect.fail(
+              PlatformError.systemError({
+                _tag: "Unknown",
+                description: `Process interrupted due to receipt of signal: '${status.signal}'`,
+                method: "exitCode",
+                module: "ChildProcessSpawner"
+              })
+            )
+      )
+    ),
+    getInputFd: () => Sink.drain,
+    getOutputFd: () => Stream.empty,
+    isRunning: Effect.sync(() => running),
+    kill: (killOptions) => {
+      const signal = killOptions?.killSignal ?? "SIGTERM"
+      killedWith = signal
+      kills.push(signal)
+      if (signal === "SIGTERM") {
+        treeTerminated = true
       }
+      if (options.ignoreTerminate === true && signal === "SIGTERM") {
+        if (killOptions?.forceKillAfter === undefined) {
+          return Effect.never
+        }
+        treeForceKilled = true
+        killedWith = "SIGKILL"
+        kills.push("SIGKILL")
+        return finish({ code: options.exit.code, signal: "SIGKILL" })
+      }
+      return finish(options.killExit ?? { code: options.exit.code, signal })
     },
-    forceKillTree: async () => {
-      treeForceKilled = true
-      finish("SIGKILL")
-    },
-    kill: (signal) => {
-      killedWith = signal ?? "SIGTERM"
-      kills.push(killedWith)
-      finish(String(killedWith))
-    }
-  }
+    pid: ChildProcessSpawner.ProcessId(42),
+    stderr: streamBytes(options.stderr ?? [], options.stderrChunkDelayMs),
+    stdin: Sink.forEach((chunk: Uint8Array) =>
+      Effect.gen(function* writeStdinChunk() {
+        if (stdinClosed) {
+          return yield* Effect.fail(
+            PlatformError.systemError({
+              _tag: "Unknown",
+              description: "stdin was written after close",
+              method: "stdin",
+              module: "ChildProcessSpawner"
+            })
+          )
+        }
+        stdinWrites.push(chunk)
+      })
+    ).pipe(
+      Sink.ensuring(
+        Effect.sync(() => {
+          stdinClosed = true
+          stdinCloseCount += 1
+        })
+      )
+    ),
+    stdout: streamBytes(options.stdout, options.stdoutChunkDelayMs),
+    unref: Effect.succeed(Effect.void)
+  }) as FakeChild
+
+  Object.defineProperties(child, {
+    killedWith: { get: () => killedWith },
+    kills: { value: kills },
+    stdinCloseCount: { get: () => stdinCloseCount },
+    stdinClosed: { get: () => stdinClosed },
+    stdinWrites: { value: stdinWrites },
+    treeForceKilled: { get: () => treeForceKilled },
+    treeTerminated: { get: () => treeTerminated }
+  })
 
   return child
 }
 
-const readableFromStrings = (
-  chunks: readonly string[],
-  chunkDelayMs?: number
-): ReadableStream<Uint8Array> =>
-  new ReadableStream<Uint8Array>({
-    async start(controller) {
-      for (const chunk of chunks) {
-        if (chunkDelayMs !== undefined) {
-          await Bun.sleep(chunkDelayMs)
-        }
-        controller.enqueue(textEncoder.encode(chunk))
-      }
-      controller.close()
-    }
-  })
+const streamBytes = (chunks: readonly string[], chunkDelayMs?: number): Stream.Stream<Uint8Array> =>
+  Stream.fromIterable(chunks).pipe(
+    Stream.tap(() =>
+      chunkDelayMs === undefined ? Effect.void : Effect.sleep(`${chunkDelayMs} millis`)
+    ),
+    Stream.map((chunk) => textEncoder.encode(chunk))
+  )
 
 const decodeChunks = (chunks: readonly Uint8Array[]): string => {
   const totalLength = chunks.reduce((total, chunk) => total + chunk.byteLength, 0)
@@ -983,7 +1085,9 @@ const waitUntil = async (predicate: () => Promise<boolean>): Promise<void> => {
     if (await predicate()) {
       return
     }
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 10)
+    })
   }
   throw new Error("condition was not met")
 }
@@ -992,7 +1096,7 @@ const waitForChildPids = async (path: string): Promise<readonly number[]> => {
   let pids: readonly number[] = []
   await waitUntil(async () => {
     try {
-      const contents = await readFile(path, "utf8")
+      const contents = await readFile(path, "utf-8")
       pids = contents
         .trim()
         .split("\n")
@@ -1028,7 +1132,7 @@ const isNodeErrorCode = (error: unknown, code: string): boolean =>
 
 const expectFailure = <E>(
   exit: Exit.Exit<unknown, E>,
-  constructor: abstract new (...args: ReadonlyArray<never>) => E
+  constructor: abstract new (...args: readonly never[]) => E
 ): void => {
   expect(Exit.isFailure(exit)).toBe(true)
   if (Exit.isFailure(exit)) {

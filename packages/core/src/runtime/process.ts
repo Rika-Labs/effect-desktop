@@ -1,18 +1,18 @@
+import type { HostProtocolInvalidArgumentError } from "@effect-desktop/bridge"
 import {
   HostProtocolBackpressureOverflowError,
   HostProtocolFileNotFoundError,
-  HostProtocolInvalidArgumentError,
   HostProtocolPermissionDeniedError,
   HostProtocolResourceBusyError,
   HostProtocolStaleHandleError,
   hostProtocolErrorRecoverableDefault,
-  makeHostProtocolInvalidArgumentError,
-  type HostProtocolError,
-  type HostProtocolErrorTag
+  makeHostProtocolInvalidArgumentError
 } from "@effect-desktop/bridge"
+import type { HostProtocolError, HostProtocolErrorTag } from "@effect-desktop/bridge"
 import {
   Cause,
   Context,
+  Deferred,
   Effect,
   Exit,
   Fiber,
@@ -22,40 +22,76 @@ import {
   Ref,
   Schema,
   Sink,
+  Scope,
   Stream,
   SubscriptionRef
 } from "effect"
+import type { PlatformError } from "effect/PlatformError"
+import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 
-import {
-  ResourceRegistry,
-  type ManagedResourceHandle,
-  type ResourceId,
-  type ResourceRegistryApi,
-  type StaleHandle
+import { ResourceRegistry } from "./resources.js"
+import type {
+  ManagedResourceHandle,
+  ResourceId,
+  ResourceRegistryApi,
+  StaleHandle
 } from "./resources.js"
 
-const NonEmptyString = Schema.NonEmptyString
+const { NonEmptyString } = Schema
 // eslint-disable-next-line no-control-regex -- Process signals and env values must not contain control bytes or NUL.
-const ProcessSignalString = Schema.NonEmptyString.check(
-  Schema.isPattern(/^[^\u0000-\u001F\u007F]+$/)
-)
 const EnvironmentVariableName = Schema.NonEmptyString.check(Schema.isPattern(/^[^\u0000]+$/))
 const EnvironmentVariableValue = Schema.String.check(Schema.isPattern(/^[^\u0000]*$/))
 const ProcessTimestamp = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+const PROCESS_SIGNALS = [
+  "SIGABRT",
+  "SIGALRM",
+  "SIGBUS",
+  "SIGCHLD",
+  "SIGCONT",
+  "SIGFPE",
+  "SIGHUP",
+  "SIGILL",
+  "SIGINT",
+  "SIGIO",
+  "SIGIOT",
+  "SIGKILL",
+  "SIGPIPE",
+  "SIGPOLL",
+  "SIGPROF",
+  "SIGPWR",
+  "SIGQUIT",
+  "SIGSEGV",
+  "SIGSTKFLT",
+  "SIGSTOP",
+  "SIGSYS",
+  "SIGTERM",
+  "SIGTRAP",
+  "SIGTSTP",
+  "SIGTTIN",
+  "SIGTTOU",
+  "SIGUNUSED",
+  "SIGURG",
+  "SIGUSR1",
+  "SIGUSR2",
+  "SIGVTALRM",
+  "SIGWINCH",
+  "SIGXCPU",
+  "SIGXFSZ",
+  "SIGBREAK",
+  "SIGLOST",
+  "SIGINFO"
+] as const satisfies readonly ChildProcess.Signal[]
 
 export class ProcessSpawnInput extends Schema.Class<ProcessSpawnInput>("ProcessSpawnInput")({
-  command: NonEmptyString,
   args: Schema.Array(Schema.String),
-  ownerScope: NonEmptyString,
-  shell: Schema.optionalKey(Schema.Boolean),
+  command: NonEmptyString,
   cwd: Schema.optionalKey(NonEmptyString),
-  env: Schema.optionalKey(Schema.Record(EnvironmentVariableName, EnvironmentVariableValue))
+  env: Schema.optionalKey(Schema.Record(EnvironmentVariableName, EnvironmentVariableValue)),
+  ownerScope: NonEmptyString,
+  shell: Schema.optionalKey(Schema.Boolean)
 }) {}
 
-export const ProcessSignalInput = Schema.Union([
-  ProcessSignalString,
-  Schema.Int.check(Schema.isGreaterThan(0))
-])
+export const ProcessSignalInput = Schema.Literals(PROCESS_SIGNALS)
 export type ProcessSignalInput = typeof ProcessSignalInput.Type
 
 export class ProcessExitStatus extends Schema.Class<ProcessExitStatus>("ProcessExitStatus")({
@@ -88,7 +124,6 @@ export interface ProcessSnapshot {
   readonly command: string
   readonly args: readonly string[]
   readonly ownerScope: string
-  readonly childPids: readonly number[]
   readonly state: "running" | "exited"
   readonly startedAt: number
   readonly updatedAt: number
@@ -105,26 +140,7 @@ export interface ProcessApi {
   readonly observe: () => Stream.Stream<readonly ProcessSnapshot[], never, never>
 }
 
-export interface ProcessAdapter {
-  readonly spawn: (input: ProcessSpawnInput) => ProcessChild
-}
-
-export interface ProcessChild {
-  readonly pid: number
-  readonly stdout: ReadableStream<Uint8Array>
-  readonly stderr: ReadableStream<Uint8Array>
-  readonly exited: Promise<ProcessExitStatus>
-  readonly writeStdin: (chunk: Uint8Array) => Promise<void>
-  readonly closeStdin: () => Promise<void>
-  readonly isRunning: () => boolean
-  readonly terminateTree: () => Promise<void>
-  readonly forceKillTree: () => Promise<void>
-  readonly kill: (signal?: ProcessSignalInput) => void
-  readonly childPids?: readonly number[]
-}
-
 export interface ProcessOptions {
-  readonly adapter?: ProcessAdapter
   readonly budgets?: ProcessBudgetPolicy
   readonly gracefulShutdownMs?: number
   readonly maxSnapshots?: number
@@ -148,16 +164,20 @@ const DEFAULT_PROCESS_BUDGETS: Required<ProcessBudgetPolicy> = Object.freeze({
   stderrBufferBytes: 262_144,
   stdoutBufferBytes: 1_048_576
 })
-const DEFAULT_GRACEFUL_SHUTDOWN_MS = 5_000
-const DEFAULT_MAX_PROCESS_SNAPSHOTS = 1_024
+const DEFAULT_GRACEFUL_SHUTDOWN_MS = 5000
+const DEFAULT_MAX_PROCESS_SNAPSHOTS = 1024
 const EMPTY_PROCESS_PERMISSIONS: ProcessPermissionPolicy = Object.freeze({})
 
 export const makeProcess = (
   registry: ResourceRegistryApi,
   options: ProcessOptions = {}
-): Effect.Effect<ProcessApi, HostProtocolInvalidArgumentError, never> =>
-  Effect.gen(function* () {
-    const adapter = options.adapter ?? BunProcessAdapter
+): Effect.Effect<
+  ProcessApi,
+  HostProtocolInvalidArgumentError,
+  ChildProcessSpawner.ChildProcessSpawner
+> =>
+  Effect.gen(function* makeProcess() {
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
     const budgets = { ...DEFAULT_PROCESS_BUDGETS, ...options.budgets }
     yield* validateProcessBudgets(budgets, "Process.make")
     const gracefulShutdownMs = options.gracefulShutdownMs ?? DEFAULT_GRACEFUL_SHUTDOWN_MS
@@ -186,12 +206,14 @@ export const makeProcess = (
     const snapshots = yield* SubscriptionRef.make(new Map<ResourceId, ProcessSnapshot>())
 
     return Object.freeze({
+      list: () => SubscriptionRef.get(snapshots).pipe(Effect.map(processSnapshotList)),
+      observe: () => SubscriptionRef.changes(snapshots).pipe(Stream.map(processSnapshotList)),
       spawn: (command: string, args: readonly string[] = [], options?: ProcessSpawnOptions) =>
-        Effect.gen(function* () {
+        Effect.gen(function* spawn() {
           const input = yield* decodeSpawnInput(
             {
+              args: [...args],
               command,
-              args: Array.from(args),
               ownerScope: options?.ownerScope,
               ...(options?.shell === undefined ? {} : { shell: options.shell }),
               ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
@@ -201,53 +223,78 @@ export const makeProcess = (
           )
           yield* authorizeProcessSpawn(permissions, input)
           const startedAt = yield* decodeProcessTimestamp(now(), "Process.spawn")
-          const { child, resource } = yield* Effect.uninterruptible(
+          const { child, exitState, resource } = yield* Effect.uninterruptible(
             Effect.gen(function* () {
               yield* reserveProcessBudget(processBudgets, input.ownerScope, budgets.maxConcurrent)
-              const child = yield* Effect.try({
-                try: () => adapter.spawn(input),
-                catch: (error) => mapProcessError(error, input.command, "Process.spawn")
-              }).pipe(Effect.tapError(() => releaseProcessBudget(processBudgets, input.ownerScope)))
+              const processScope = yield* Scope.make()
+              const command = makeChildProcessCommand(input, gracefulShutdownMs)
+              const child = yield* spawner.spawn(command).pipe(
+                Scope.provide(processScope),
+                Effect.mapError((error) => mapPlatformError(error, input.command, "Process.spawn")),
+                Effect.tapError(() =>
+                  Effect.all(
+                    [
+                      releaseProcessBudget(processBudgets, input.ownerScope),
+                      Scope.close(processScope, Exit.void)
+                    ],
+                    { discard: true }
+                  )
+                )
+              )
+              const exitState = yield* Deferred.make<ProcessExitStatus, ProcessError>()
               const resource = yield* registry
                 .register({
+                  dispose: disposeChild(
+                    child,
+                    processScope,
+                    input.command,
+                    gracefulShutdownMs
+                  ).pipe(Effect.andThen(releaseProcessBudget(processBudgets, input.ownerScope))),
                   kind: "process",
                   ownerScope: input.ownerScope,
-                  state: "running",
-                  dispose: disposeChild(child, input.command, gracefulShutdownMs).pipe(
-                    Effect.andThen(releaseProcessBudget(processBudgets, input.ownerScope))
-                  )
+                  state: "running"
                 })
                 .pipe(Effect.orDie)
               yield* upsertProcessSnapshot(
                 snapshots,
                 resource.id,
                 {
-                  resourceId: resource.id,
-                  pid: child.pid,
-                  command: input.command,
                   args: input.args,
+                  command: input.command,
+                  lastExit: Option.none(),
                   ownerScope: input.ownerScope,
-                  childPids: child.childPids ?? [],
-                  state: "running",
+                  pid: Number(child.pid),
+                  resourceId: resource.id,
                   startedAt,
-                  updatedAt: startedAt,
-                  lastExit: Option.none()
+                  state: "running",
+                  updatedAt: startedAt
                 },
                 maxSnapshots
               )
 
-              return { child, resource }
+              return { child, exitState, processScope, resource }
             })
           )
 
-          return makeHandle(child, resource, input.command, budgets, snapshots, now, registry)
+          return makeHandle(
+            child,
+            resource,
+            exitState,
+            input.command,
+            budgets,
+            snapshots,
+            now,
+            registry
+          )
         }).pipe(
           Effect.withSpan("Process.spawn", {
-            attributes: { command, argc: args.length, ownerScope: options?.ownerScope ?? "" }
+            attributes: {
+              argc: args.length,
+              command,
+              ownerScope: options?.ownerScope ?? ""
+            }
           })
-        ),
-      list: () => SubscriptionRef.get(snapshots).pipe(Effect.map(processSnapshotList)),
-      observe: () => SubscriptionRef.changes(snapshots).pipe(Stream.map(processSnapshotList))
+        )
     })
   })
 
@@ -255,7 +302,7 @@ export class Process extends Context.Service<Process, ProcessApi>()("Process") {
 
 export const ProcessLive = Layer.effect(
   Process,
-  Effect.gen(function* () {
+  Effect.gen(function* ProcessLive() {
     const registry = yield* ResourceRegistry
     return yield* makeProcess(registry).pipe(Effect.orDie)
   })
@@ -263,18 +310,23 @@ export const ProcessLive = Layer.effect(
 
 export const ProcessLayer = (
   options: ProcessOptions = {}
-): Layer.Layer<Process, HostProtocolInvalidArgumentError, ResourceRegistry> =>
+): Layer.Layer<
+  Process,
+  HostProtocolInvalidArgumentError,
+  ResourceRegistry | ChildProcessSpawner.ChildProcessSpawner
+> =>
   Layer.effect(
     Process,
-    Effect.gen(function* () {
+    Effect.gen(function* ProcessLayer() {
       const registry = yield* ResourceRegistry
       return yield* makeProcess(registry, options)
     })
   )
 
 const makeHandle = (
-  child: ProcessChild,
+  child: ChildProcessSpawner.ChildProcessHandle,
   resource: ManagedResourceHandle<"process", "running">,
+  exitState: Deferred.Deferred<ProcessExitStatus, ProcessError>,
   command: string,
   budgets: Required<ProcessBudgetPolicy>,
   snapshots: SubscriptionRef.SubscriptionRef<Map<ResourceId, ProcessSnapshot>>,
@@ -282,67 +334,65 @@ const makeHandle = (
   registry: ResourceRegistryApi
 ): ProcessHandle => {
   const stdout = boundedOutputStream(
-    Stream.fromReadableStream({
-      evaluate: () => child.stdout,
-      onError: (error) => mapProcessError(error, command, "Process.stdout"),
-      releaseLockOnEnd: true
-    }),
+    child.stdout.pipe(
+      Stream.mapError((error) => mapPlatformError(error, command, "Process.stdout"))
+    ),
     "stdout",
     command,
     budgets.stdoutBufferBytes
   )
   const stderr = boundedOutputStream(
-    Stream.fromReadableStream({
-      evaluate: () => child.stderr,
-      onError: (error) => mapProcessError(error, command, "Process.stderr"),
-      releaseLockOnEnd: true
-    }),
+    child.stderr.pipe(
+      Stream.mapError((error) => mapPlatformError(error, command, "Process.stderr"))
+    ),
     "stderr",
     command,
     budgets.stderrBufferBytes
   )
-  const closeStdin = Effect.tryPromise({
-    try: () => child.closeStdin(),
-    catch: (error) => mapProcessError(error, command, "Process.stdin.close")
-  })
-  const stdin = Sink.forEach((chunk: Uint8Array) =>
-    Effect.gen(function* () {
-      const bytes = yield* decodeStdinChunk(chunk, "Process.stdin.write")
-      yield* Effect.tryPromise({
-        try: () => child.writeStdin(bytes),
-        catch: (error) => mapProcessError(error, command, "Process.stdin.write")
-      })
-    })
-  ).pipe(Sink.ensuring(closeStdin))
-  const exitStatus = Effect.tryPromise({
-    try: () => child.exited,
-    catch: (error) => mapProcessError(error, command, "Process.exit")
-  })
-  const recordExit = (status: ProcessExitStatus): Effect.Effect<void, ProcessError, never> =>
-    markProcessExited(snapshots, resource.id, status, now(), "Process.exit")
-  observeChildExit(exitStatus, resource, command, recordExit)
-  const exit = exitStatus.pipe(
-    Effect.tap((status) => recordExit(status)),
-    Effect.tap(() => resource.dispose())
+  const stdin = child.stdin.pipe(
+    Sink.mapError((error) => mapPlatformError(error, command, "Process.stdin.write")),
+    Sink.mapInputEffect((chunk: Uint8Array) => decodeStdinChunk(chunk, "Process.stdin.write"))
   )
+  const childExitStatus = child.exitCode.pipe(
+    Effect.map((code) => new ProcessExitStatus({ code: Number(code) })),
+    Effect.catch((error: PlatformError) => {
+      const signal = platformErrorSignal(error)
+      if (signal !== undefined) {
+        return Effect.succeed(new ProcessExitStatus({ code: 0, signal }))
+      }
+      return Effect.fail(mapPlatformError(error, command, "Process.exit"))
+    })
+  )
+  const completeExit = (status: ProcessExitStatus): Effect.Effect<void, ProcessError, never> =>
+    markProcessExited(snapshots, resource.id, status, now(), "Process.exit").pipe(
+      Effect.flatMap(() => Deferred.succeed(exitState, status)),
+      Effect.flatMap(() => resource.dispose())
+    )
+  observeChildExit(childExitStatus, exitState, resource, command, completeExit)
+  const exit = Deferred.await(exitState)
 
   return Object.freeze({
-    resource,
-    pid: child.pid,
-    stdin,
-    stdout,
-    stderr,
     exit,
     kill: (signal?: ProcessSignalInput) =>
-      Effect.gen(function* () {
+      Effect.gen(function* kill() {
         const decodedSignal =
           signal === undefined ? undefined : yield* decodeSignalInput(signal, "Process.kill")
         yield* assertProcessHandleFresh(registry, resource, "Process.kill")
-        yield* Effect.try({
-          try: () => child.kill(decodedSignal),
-          catch: (error) => mapProcessError(error, command, "Process.kill")
+        const killSignal = decodedSignal ?? "SIGTERM"
+        yield* child
+          .kill({ killSignal })
+          .pipe(Effect.mapError((error) => mapPlatformError(error, command, "Process.kill")))
+        yield* exit
+      }).pipe(
+        Effect.withSpan("Process.kill", {
+          attributes: { command, pid: Number(child.pid) }
         })
-      }).pipe(Effect.withSpan("Process.kill", { attributes: { command, pid: child.pid } }))
+      ),
+    pid: Number(child.pid),
+    resource,
+    stderr,
+    stdin,
+    stdout
   })
 }
 
@@ -353,7 +403,7 @@ const boundedOutputStream = (
   limitBytes: number
 ): Stream.Stream<Uint8Array, ProcessError, never> =>
   Stream.unwrap(
-    Effect.gen(function* () {
+    Effect.gen(function* boundedOutputStream() {
       const queue = yield* Queue.bounded<Uint8Array, ProcessError | Cause.Done>(
         Math.max(1, limitBytes)
       )
@@ -374,7 +424,7 @@ const boundedOutputStream = (
           )
         ),
         Stream.ensuring(
-          Effect.gen(function* () {
+          Effect.gen(function* boundedOutputStream() {
             yield* Fiber.interrupt(producer)
             yield* Queue.shutdown(queue)
           })
@@ -391,7 +441,7 @@ const runOutputProducer = (
   command: string,
   limitBytes: number
 ): Effect.Effect<void, never, never> =>
-  Effect.gen(function* () {
+  Effect.gen(function* runOutputProducer() {
     const exit = yield* Effect.exit(
       stream.pipe(
         Stream.runForEach((chunk) =>
@@ -421,7 +471,7 @@ const offerOutputChunk = (
   limitBytes: number,
   chunk: Uint8Array
 ): Effect.Effect<void, ProcessError, never> =>
-  Effect.gen(function* () {
+  Effect.gen(function* offerOutputChunk() {
     const currentBytes = yield* Ref.get(queuedBytes)
     if (currentBytes + chunk.byteLength > limitBytes) {
       return yield* Effect.fail(makeBackpressureOverflow(streamName, command, limitBytes, 1))
@@ -442,9 +492,9 @@ const makeBackpressureOverflow = (
   lostFrames: number
 ): HostProtocolBackpressureOverflowError =>
   new HostProtocolBackpressureOverflowError({
-    tag: "BackpressureOverflow",
-    policy: "error",
     lostFrames,
+    policy: "error",
+    tag: "BackpressureOverflow",
     ...makeProcessErrorCommon(
       "BackpressureOverflow",
       `${streamName} exceeded process buffer budget (${limitBytes} bytes): ${command}`,
@@ -454,7 +504,7 @@ const makeBackpressureOverflow = (
 
 const mapCauseToProcessError = (
   cause: Cause.Cause<ProcessError>,
-  command: string,
+  _command: string,
   operation: string
 ): ProcessError => {
   const failure = Cause.findErrorOption(cause)
@@ -463,117 +513,69 @@ const mapCauseToProcessError = (
   }
 
   const squashed = Cause.squash(cause)
-  return mapProcessError(squashed, command, operation)
+  return makeHostProtocolInvalidArgumentError("command", formatUnknownError(squashed), operation)
 }
 
 const observeChildExit = (
   exitStatus: Effect.Effect<ProcessExitStatus, ProcessError, never>,
+  exitState: Deferred.Deferred<ProcessExitStatus, ProcessError>,
   resource: ManagedResourceHandle<"process", "running">,
   command: string,
-  recordExit: (status: ProcessExitStatus) => Effect.Effect<void, ProcessError, never>
+  completeExit: (status: ProcessExitStatus) => Effect.Effect<void, ProcessError, never>
 ): void => {
   Effect.runFork(
     exitStatus.pipe(
-      Effect.tap((status) => recordExit(status)),
-      Effect.flatMap(() => resource.dispose()),
+      Effect.flatMap((status) => completeExit(status)),
       Effect.catch((error: HostProtocolError) =>
-        Effect.logWarning("Process.exit observer failed", {
-          command,
-          reason: error.message
-        })
+        Deferred.fail(exitState, error).pipe(
+          Effect.andThen(resource.dispose()),
+          Effect.andThen(
+            Effect.logWarning("Process.exit observer failed", {
+              command,
+              reason: error.message
+            })
+          )
+        )
       )
     )
   )
 }
 
 const disposeChild = (
-  child: ProcessChild,
+  child: ChildProcessSpawner.ChildProcessHandle,
+  processScope: Scope.Closeable,
   command: string,
   gracefulShutdownMs: number
 ): Effect.Effect<void, never, never> =>
-  Effect.gen(function* () {
-    if (child.isRunning()) {
-      yield* requestTreeShutdown(child, command)
-      const gracefulExit = yield* waitForChildExit(child, command, gracefulShutdownMs)
-
-      if (Option.isNone(gracefulExit) && child.isRunning()) {
-        yield* forceTreeShutdown(child, command)
-        const forcedExit = yield* waitForChildExit(child, command, gracefulShutdownMs)
-        if (Option.isNone(forcedExit) && child.isRunning()) {
-          yield* Effect.logWarning("Process.dispose.forceKill timed out", {
-            command,
-            gracefulShutdownMs
-          })
-        }
-      }
-    }
-
-    yield* Effect.tryPromise({
-      try: () => child.closeStdin(),
-      catch: (error) => mapProcessError(error, command, "Process.dispose.stdin")
-    }).pipe(
+  Effect.gen(function* disposeChild() {
+    const running = yield* child.isRunning.pipe(
+      Effect.mapError((error) => mapPlatformError(error, command, "Process.dispose.running")),
       Effect.catch((error: HostProtocolError) =>
-        Effect.logWarning("Process.dispose.stdin failed", {
+        Effect.logWarning("Process.dispose.running failed", {
           command,
           reason: error.message
-        })
+        }).pipe(Effect.as(false))
       )
     )
-  })
-
-const requestTreeShutdown = (
-  child: ProcessChild,
-  command: string
-): Effect.Effect<void, never, never> =>
-  Effect.tryPromise({
-    try: () => child.terminateTree(),
-    catch: (error) => mapProcessError(error, command, "Process.dispose.terminateTree")
-  }).pipe(
-    Effect.catch((error: HostProtocolError) =>
-      Effect.logWarning("Process.dispose.terminateTree failed", {
-        command,
-        reason: error.message
-      })
-    )
-  )
-
-const forceTreeShutdown = (
-  child: ProcessChild,
-  command: string
-): Effect.Effect<void, never, never> =>
-  Effect.tryPromise({
-    try: () => child.forceKillTree(),
-    catch: (error) => mapProcessError(error, command, "Process.dispose.forceKillTree")
-  }).pipe(
-    Effect.catch((error: HostProtocolError) =>
-      Effect.logWarning("Process.dispose.forceKillTree failed", {
-        command,
-        reason: error.message
-      })
-    )
-  )
-
-const waitForChildExit = (
-  child: ProcessChild,
-  command: string,
-  gracefulShutdownMs: number
-): Effect.Effect<Option.Option<ProcessExitStatus>, never, never> =>
-  Effect.gen(function* () {
-    return yield* Effect.tryPromise({
-      try: () => child.exited,
-      catch: (error) => mapProcessError(error, command, "Process.dispose.wait")
-    }).pipe(Effect.timeoutOption(`${gracefulShutdownMs} millis`))
-  }).pipe(
-    Effect.catch((error: HostProtocolError) =>
-      Effect.gen(function* () {
-        yield* Effect.logWarning("Process.dispose.wait failed", {
-          command,
-          reason: error.message
+    if (running) {
+      yield* child
+        .kill({
+          forceKillAfter: `${gracefulShutdownMs} millis`,
+          killSignal: "SIGTERM"
         })
-        return Option.none<ProcessExitStatus>()
-      })
-    )
-  )
+        .pipe(
+          Effect.mapError((error) => mapPlatformError(error, command, "Process.dispose.kill")),
+          Effect.catch((error: HostProtocolError) =>
+            Effect.logWarning("Process.dispose.kill failed", {
+              command,
+              reason: error.message
+            })
+          )
+        )
+    }
+
+    yield* Scope.close(processScope, Exit.void)
+  })
 
 const decodeSpawnInput = (
   input: unknown,
@@ -628,14 +630,14 @@ const makeProcessStaleHandleError = (
   operation: string
 ): HostProtocolStaleHandleError =>
   new HostProtocolStaleHandleError({
-    tag: "StaleHandle",
-    kind: error.kind,
-    id: error.id,
-    expectedGeneration: error.expectedGeneration,
     actualGeneration: Math.max(0, error.actualGeneration),
+    expectedGeneration: error.expectedGeneration,
+    id: error.id,
+    kind: error.kind,
     message: `stale resource handle: ${error.kind}:${error.id}`,
     operation,
-    recoverable: false
+    recoverable: false,
+    tag: "StaleHandle"
   })
 
 const authorizeProcessSpawn = (
@@ -646,7 +648,7 @@ const authorizeProcessSpawn = (
   HostProtocolInvalidArgumentError | HostProtocolPermissionDeniedError,
   never
 > =>
-  Effect.gen(function* () {
+  Effect.gen(function* authorizeProcessSpawn() {
     if (containsShellMetacharacter(input.command)) {
       return yield* Effect.fail(
         makeHostProtocolInvalidArgumentError(
@@ -677,7 +679,7 @@ const reserveProcessBudget = (
   ownerScope: string,
   maxConcurrent: number
 ): Effect.Effect<void, HostProtocolResourceBusyError, never> =>
-  Effect.gen(function* () {
+  Effect.gen(function* reserveProcessBudget() {
     const reserved = yield* Ref.modify(processBudgets, (current) => {
       const runningProcesses = current.get(ownerScope) ?? 0
       if (runningProcesses >= maxConcurrent) {
@@ -715,7 +717,7 @@ const releaseProcessBudget = (
 const processSnapshotList = (
   snapshots: ReadonlyMap<ResourceId, ProcessSnapshot>
 ): readonly ProcessSnapshot[] =>
-  Array.from(snapshots.values()).sort((left, right) => left.startedAt - right.startedAt)
+  [...snapshots.values()].toSorted((left, right) => left.startedAt - right.startedAt)
 
 const upsertProcessSnapshot = (
   snapshots: SubscriptionRef.SubscriptionRef<Map<ResourceId, ProcessSnapshot>>,
@@ -757,7 +759,7 @@ const markProcessExited = (
   updatedAt: number,
   operation: string
 ): Effect.Effect<void, HostProtocolInvalidArgumentError, never> =>
-  Effect.gen(function* () {
+  Effect.gen(function* markProcessExited() {
     const decodedUpdatedAt = yield* decodeProcessTimestamp(updatedAt, operation)
     yield* SubscriptionRef.update(snapshots, (current) => {
       const existing = current.get(id)
@@ -767,9 +769,9 @@ const markProcessExited = (
       const next = new Map(current)
       next.set(id, {
         ...existing,
+        lastExit: Option.some(status),
         state: "exited",
-        updatedAt: decodedUpdatedAt,
-        lastExit: Option.some(status)
+        updatedAt: decodedUpdatedAt
       })
       return next
     })
@@ -779,7 +781,7 @@ const validateProcessBudgets = (
   budgets: Required<ProcessBudgetPolicy>,
   operation: string
 ): Effect.Effect<void, HostProtocolInvalidArgumentError, never> =>
-  Effect.gen(function* () {
+  Effect.gen(function* validateProcessBudgets() {
     yield* validatePositiveIntegerBudget("maxConcurrent", budgets.maxConcurrent, operation)
     yield* validatePositiveIntegerBudget("stdoutBufferBytes", budgets.stdoutBufferBytes, operation)
     yield* validatePositiveIntegerBudget("stderrBufferBytes", budgets.stderrBufferBytes, operation)
@@ -802,8 +804,8 @@ const makeProcessResourceBusy = (
   operation: string
 ): HostProtocolResourceBusyError =>
   new HostProtocolResourceBusyError({
-    tag: "ResourceBusy",
     resource: `process:${ownerScope}`,
+    tag: "ResourceBusy",
     ...makeProcessErrorCommon(
       "ResourceBusy",
       `process budget exceeded for scope ${ownerScope}: limit ${maxConcurrent}`,
@@ -821,146 +823,60 @@ const makeProcessPermissionDenied = (
   operation: string
 ): HostProtocolPermissionDeniedError =>
   new HostProtocolPermissionDeniedError({
-    tag: "PermissionDenied",
     capability,
     resource,
+    tag: "PermissionDenied",
     ...makeProcessErrorCommon("PermissionDenied", `permission denied: ${resource}`, operation)
   })
 
-const BunProcessAdapter: ProcessAdapter = {
-  spawn: (input) => {
-    let resolveExit: (status: ProcessExitStatus) => void
-    let rejectExit: (error: unknown) => void
-    const exited = new Promise<ProcessExitStatus>((resolve, reject) => {
-      resolveExit = resolve
-      rejectExit = reject
-    })
-
-    const subprocess = Bun.spawn({
-      cmd: [input.command, ...input.args],
-      // POSIX detached children get their own process group. Windows tree
-      // cleanup uses taskkill /T at the adapter boundary.
-      detached: process.platform !== "win32",
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe",
-      ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
-      ...(input.env === undefined ? {} : { env: input.env }),
-      onExit: (_subprocess, code, signal, error) => {
-        if (error !== undefined) {
-          rejectExit(error)
-          return
-        }
-
-        resolveExit(
-          new ProcessExitStatus({
-            code: code ?? 0,
-            ...(signal === null ? {} : { signal: signalName(signal) })
-          })
-        )
-      }
-    })
-
-    return Object.freeze({
-      pid: subprocess.pid,
-      stdout: subprocess.stdout,
-      stderr: subprocess.stderr,
-      exited,
-      writeStdin: async (chunk: Uint8Array) => {
-        await subprocess.stdin.write(chunk)
-      },
-      closeStdin: async () => {
-        await subprocess.stdin.end()
-      },
-      isRunning: () => subprocess.exitCode === null && !subprocess.killed,
-      terminateTree: async () => {
-        terminateProcessTree(subprocess.pid, "SIGTERM")
-      },
-      forceKillTree: async () => {
-        await forceKillProcessTree(subprocess.pid)
-      },
-      kill: (signal?: ProcessSignalInput) => {
-        subprocess.kill(signal as number | NodeJS.Signals | undefined)
-      }
-    })
-  }
-}
-
-const signalName = (signal: number): string => SIGNAL_NAMES[signal] ?? String(signal)
-
-const SIGNAL_NAMES: Readonly<Record<number, string>> = {
-  1: "SIGHUP",
-  2: "SIGINT",
-  3: "SIGQUIT",
-  6: "SIGABRT",
-  9: "SIGKILL",
-  15: "SIGTERM"
-}
-
-const terminateProcessTree = (pid: number, signal: NodeJS.Signals): void => {
-  if (process.platform === "win32") {
-    process.kill(pid, signal)
-    return
-  }
-
-  process.kill(-pid, signal)
-}
-
-const forceKillProcessTree = async (pid: number): Promise<void> => {
-  if (process.platform === "win32") {
-    await runTaskkill(pid)
-    return
-  }
-
-  process.kill(-pid, "SIGKILL")
-}
-
-const runTaskkill = async (pid: number): Promise<void> => {
-  const subprocess = Bun.spawn({
-    cmd: ["taskkill", "/PID", String(pid), "/T", "/F"],
-    stdin: "ignore",
-    stdout: "ignore",
-    stderr: "ignore"
+const makeChildProcessCommand = (
+  input: ProcessSpawnInput,
+  gracefulShutdownMs: number
+): ChildProcess.StandardCommand =>
+  ChildProcess.make(input.command, input.args, {
+    detached: process.platform !== "win32",
+    forceKillAfter: `${gracefulShutdownMs} millis`,
+    killSignal: "SIGTERM",
+    stderr: "pipe",
+    stdin: { stream: "pipe" },
+    stdout: "pipe",
+    ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
+    ...(input.env === undefined ? {} : { env: input.env }),
+    ...(input.shell === undefined ? {} : { shell: input.shell })
   })
-  const code = await subprocess.exited
-  if (code !== 0) {
-    throw new Error(`taskkill exited with code ${code}`)
+
+const mapPlatformError = (
+  error: PlatformError,
+  command: string,
+  operation: string
+): HostProtocolError => {
+  if (error.reason._tag === "NotFound") {
+    return new HostProtocolFileNotFoundError({
+      path: command,
+      tag: "FileNotFound",
+      ...makeProcessErrorCommon("FileNotFound", `process command not found: ${command}`, operation)
+    })
   }
+
+  if (error.reason._tag === "PermissionDenied") {
+    return new HostProtocolPermissionDeniedError({
+      capability: "process.spawn",
+      resource: command,
+      tag: "PermissionDenied",
+      ...makeProcessErrorCommon(
+        "PermissionDenied",
+        `process command permission denied: ${command}`,
+        operation
+      )
+    })
+  }
+
+  return makeHostProtocolInvalidArgumentError("command", error.message, operation)
 }
 
-const mapProcessError = (error: unknown, command: string, operation: string): HostProtocolError => {
-  if (isNodeError(error)) {
-    switch (error.code) {
-      case "ENOENT":
-        return new HostProtocolFileNotFoundError({
-          tag: "FileNotFound",
-          path: command,
-          ...makeProcessErrorCommon(
-            "FileNotFound",
-            `process command not found: ${command}`,
-            operation
-          )
-        })
-      case "EACCES":
-      case "EPERM":
-        return new HostProtocolPermissionDeniedError({
-          tag: "PermissionDenied",
-          capability: "process.spawn",
-          resource: command,
-          ...makeProcessErrorCommon(
-            "PermissionDenied",
-            `process command permission denied: ${command}`,
-            operation
-          )
-        })
-      case "EINVAL":
-        return makeHostProtocolInvalidArgumentError("command", error.message, operation)
-      default:
-        return makeHostProtocolInvalidArgumentError("command", error.message, operation)
-    }
-  }
-
-  return makeHostProtocolInvalidArgumentError("command", formatUnknownError(error), operation)
+const platformErrorSignal = (error: PlatformError): ProcessSignalInput | undefined => {
+  const message = `${error.message} ${String(error.cause ?? "")}`
+  return PROCESS_SIGNALS.find((signal) => message.includes(signal))
 }
 
 const makeProcessErrorCommon = (
@@ -972,9 +888,6 @@ const makeProcessErrorCommon = (
   operation,
   recoverable: hostProtocolErrorRecoverableDefault(tag)
 })
-
-const isNodeError = (error: unknown): error is NodeJS.ErrnoException =>
-  typeof error === "object" && error !== null && "code" in error && "message" in error
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {

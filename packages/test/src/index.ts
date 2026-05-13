@@ -1,7 +1,20 @@
 import { afterEach, expect } from "bun:test"
 import { posix, sep } from "node:path"
-import { Context, Data, Effect, Exit, FileSystem, Layer, Option, Queue, Stream } from "effect"
+import {
+  Context,
+  Data,
+  Deferred,
+  Effect,
+  Exit,
+  FileSystem,
+  Layer,
+  Option,
+  Queue,
+  Sink,
+  Stream
+} from "effect"
 import * as PlatformError from "effect/PlatformError"
+import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 
 import {
   BridgeStreamCompleteFrame,
@@ -42,6 +55,7 @@ import {
   PermissionRegistry,
   Process,
   ProcessExitStatus,
+  ProcessSpawnInput,
   PTY,
   PtyExitStatus,
   Telemetry,
@@ -56,13 +70,10 @@ import {
   type FilesystemOptions,
   type FilesystemPermissionPolicy,
   type PermissionRegistryOptions,
-  type ProcessAdapter,
   type ProcessApi,
   type ProcessBudgetPolicy,
-  type ProcessChild,
   type ProcessPermissionPolicy,
   type ProcessSignalInput,
-  type ProcessSpawnInput,
   unsafeSecretBytes,
   type PtyAdapter,
   type PtyApi,
@@ -376,7 +387,6 @@ export interface MockProcessFixture {
   readonly command?: string
   readonly args?: readonly string[]
   readonly pid?: number
-  readonly childPids?: readonly number[]
   readonly stdout?: readonly Uint8Array[]
   readonly stderr?: readonly Uint8Array[]
   readonly exit?: ProcessExitStatus | { readonly code: number; readonly signal?: string } | false
@@ -410,14 +420,19 @@ export const makeMockProcess = (
 ): Effect.Effect<MockProcessApi, HostProtocolInvalidArgumentError, never> => {
   const calls: MutableMockProcessSpawnRecord[] = []
   return makeProcess(registry, {
-    adapter: makeMockProcessAdapter(options, calls),
     ...(options.budgets === undefined ? {} : { budgets: options.budgets }),
     ...(options.gracefulShutdownMs === undefined
       ? {}
       : { gracefulShutdownMs: options.gracefulShutdownMs }),
     ...(options.permissions === undefined ? {} : { permissions: options.permissions }),
     ...(options.now === undefined ? {} : { now: options.now })
-  }).pipe(Effect.map((api) => Object.freeze({ ...api, calls: () => cloneProcessCalls(calls) })))
+  }).pipe(
+    Effect.provideService(
+      ChildProcessSpawner.ChildProcessSpawner,
+      makeMockProcessSpawner(options, calls)
+    ),
+    Effect.map((api) => Object.freeze({ ...api, calls: () => cloneProcessCalls(calls) }))
+  )
 }
 
 export const MockProcessLive = (
@@ -934,18 +949,25 @@ interface MutableMockPtyOpenRecord {
   forceKillTreeCalls: number
 }
 
-const makeMockProcessAdapter = (
+const makeMockProcessSpawner = (
   options: MockProcessOptions,
   calls: MutableMockProcessSpawnRecord[]
-): ProcessAdapter => {
+): ChildProcessSpawner.ChildProcessSpawner["Service"] => {
   let nextPid = 10_000
   const fixtures = [...(options.processes ?? [])]
 
-  return {
-    spawn: (input) => {
+  return ChildProcessSpawner.make((command) =>
+    Effect.gen(function* () {
+      const input = processSpawnInputFromCommand(command)
       const fixture = takeProcessFixture(fixtures, input)
       if (fixture === undefined) {
-        throw mockNodeError("EINVAL", `missing MockProcess fixture for ${input.command}`)
+        return yield* Effect.fail(
+          PlatformError.badArgument({
+            description: `missing MockProcess fixture for ${input.command}`,
+            method: "spawn",
+            module: "MockProcess"
+          })
+        )
       }
       const pid = fixture.pid ?? nextPid++
       const record: MutableMockProcessSpawnRecord = {
@@ -960,73 +982,113 @@ const makeMockProcessAdapter = (
       calls.push(record)
 
       return makeMockProcessChild(fixture, record)
-    }
-  }
+    })
+  )
 }
 
 const makeMockProcessChild = (
   fixture: MockProcessFixture,
   record: MutableMockProcessSpawnRecord
-): ProcessChild => {
+): ChildProcessSpawner.ChildProcessHandle => {
   let running = true
-  let resolveExit: (status: ProcessExitStatus) => void
-  const exited = new Promise<ProcessExitStatus>((resolve) => {
-    resolveExit = resolve
-  })
-  const finish = (status: ProcessExitStatus): void => {
-    if (!running) {
-      return
-    }
-    running = false
-    resolveExit(status)
-  }
-
-  if (fixture.exit !== false) {
-    setTimeout(() => {
-      finish(processExitStatus(fixture.exit))
-    }, 0)
-  }
-
-  return Object.freeze({
-    pid: record.pid,
-    stdout: readableBytes(fixture.stdout ?? []),
-    stderr: readableBytes(fixture.stderr ?? []),
-    exited,
-    writeStdin: async (chunk: Uint8Array) => {
-      await Promise.resolve()
-      if (!running) {
-        throw mockNodeError("EINVAL", `MockProcess ${record.input.command} is not running`)
-      }
-
-      record.stdin.push(copyBytes(chunk))
-    },
-    closeStdin: async () => {
-      await Promise.resolve()
+  const exitState = Effect.runSync(Deferred.make<ProcessExitStatus, never>())
+  const finish = (status: ProcessExitStatus): Effect.Effect<void, never, never> =>
+    Effect.sync(() => {
       if (!running) {
         return
       }
+      running = false
+    }).pipe(Effect.andThen(Deferred.succeed(exitState, status)), Effect.asVoid)
 
-      record.stdinClosed = true
-    },
-    isRunning: () => running,
-    terminateTree: () =>
-      Promise.resolve().then(() => {
+  if (fixture.exit !== false) {
+    setTimeout(() => {
+      Effect.runFork(finish(processExitStatus(fixture.exit)))
+    }, 0)
+  }
+
+  return ChildProcessSpawner.makeHandle({
+    all: streamBytes(fixture.stdout ?? []),
+    exitCode: Deferred.await(exitState).pipe(
+      Effect.flatMap((status) =>
+        status.signal === undefined
+          ? Effect.succeed(ChildProcessSpawner.ExitCode(status.code))
+          : Effect.fail(
+              PlatformError.systemError({
+                _tag: "Unknown",
+                description: `Process interrupted due to receipt of signal: '${status.signal}'`,
+                method: "exitCode",
+                module: "MockProcess"
+              })
+            )
+      )
+    ),
+    getInputFd: () => Sink.drain,
+    getOutputFd: () => Stream.empty,
+    isRunning: Effect.sync(() => running),
+    kill: (options) => {
+      const signal = options?.killSignal ?? "SIGTERM"
+      if (signal === "SIGTERM") {
         record.terminateTreeCalls += 1
-        record.killedWith = "SIGTERM"
-        finish(processExitStatus(undefined, "SIGTERM"))
-      }),
-    forceKillTree: () =>
-      Promise.resolve().then(() => {
+      }
+      if (signal === "SIGKILL") {
         record.forceKillTreeCalls += 1
-        record.killedWith = "SIGKILL"
-        finish(processExitStatus(undefined, "SIGKILL"))
-      }),
-    kill: (signal?: ProcessSignalInput) => {
+      }
       record.killedWith = signal
-      finish(processExitStatus(undefined, signalNameForMock(signal)))
+      return finish(processExitStatus(undefined, signal))
     },
-    childPids: fixture.childPids ?? []
+    pid: ChildProcessSpawner.ProcessId(record.pid),
+    stderr: streamBytes(fixture.stderr ?? []),
+    stdin: Sink.forEach((chunk: Uint8Array) =>
+      running
+        ? Effect.sync(() => {
+            record.stdin.push(copyBytes(chunk))
+          })
+        : Effect.fail(
+            PlatformError.badArgument({
+              description: `MockProcess ${record.input.command} is not running`,
+              method: "stdin",
+              module: "MockProcess"
+            })
+          )
+    ).pipe(
+      Sink.ensuring(
+        Effect.sync(() => {
+          record.stdinClosed = true
+        })
+      )
+    ),
+    stdout: streamBytes(fixture.stdout ?? []),
+    unref: Effect.succeed(Effect.void)
   })
+}
+
+const processSpawnInputFromCommand = (command: ChildProcess.Command): ProcessSpawnInput => {
+  if (!ChildProcess.isStandardCommand(command)) {
+    return new ProcessSpawnInput({
+      args: [],
+      command: "mock-piped-process",
+      ownerScope: "mock-process"
+    })
+  }
+
+  return new ProcessSpawnInput({
+    args: [...command.args],
+    command: command.command,
+    ownerScope: "mock-process",
+    ...(command.options.cwd === undefined ? {} : { cwd: command.options.cwd }),
+    ...(command.options.env === undefined ? {} : { env: definedEnv(command.options.env) }),
+    ...(typeof command.options.shell === "boolean" ? { shell: command.options.shell } : {})
+  })
+}
+
+const definedEnv = (env: Readonly<Record<string, string | undefined>>): Record<string, string> => {
+  const defined: Record<string, string> = {}
+  for (const [key, value] of Object.entries(env)) {
+    if (value !== undefined) {
+      defined[key] = value
+    }
+  }
+  return defined
 }
 
 const takeProcessFixture = (
@@ -1072,6 +1134,9 @@ const processExitStatus = (
             : {}
           : { signal: fallbackSignal })
       })
+
+const streamBytes = (chunks: readonly Uint8Array[]): Stream.Stream<Uint8Array> =>
+  Stream.fromIterable(chunks).pipe(Stream.map(copyBytes))
 
 const makeMockPtyAdapter = (
   options: MockPtyOptions,
@@ -1219,7 +1284,7 @@ const readableBytes = (chunks: readonly Uint8Array[]): ReadableStream<Uint8Array
 const stringArraysEqual = (left: readonly string[], right: readonly string[]): boolean =>
   left.length === right.length && left.every((value, index) => value === right[index])
 
-const signalNameForMock = (signal: ProcessSignalInput | undefined): string =>
+const signalNameForMock = (signal: ProcessSignalInput | PtySignalInput | undefined): string =>
   typeof signal === "string" ? signal : signal === undefined ? "SIGTERM" : String(signal)
 
 const mockNodeError = (code: string, message: string): NodeJS.ErrnoException =>

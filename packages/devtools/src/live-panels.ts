@@ -60,7 +60,6 @@ export interface ProcessPanelRow {
   readonly pid: number
   readonly command: string
   readonly ownerScope: string
-  readonly childPids: readonly number[]
   readonly lastExit: Option.Option<ProcessExitStatus>
   readonly state: ProcessSnapshot["state"]
 }
@@ -298,7 +297,6 @@ const toProcessRow = (snapshot: ProcessSnapshot): ProcessPanelRow => ({
   pid: snapshot.pid,
   command: snapshot.command,
   ownerScope: snapshot.ownerScope,
-  childPids: snapshot.childPids,
   lastExit: snapshot.lastExit,
   state: snapshot.state
 })

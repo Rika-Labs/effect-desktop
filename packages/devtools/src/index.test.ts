@@ -14,21 +14,19 @@ import {
   PermissionActor,
   PermissionContext,
   Process,
-  ProcessExitStatus,
   ResourceRegistry,
   Telemetry,
   Worker,
   type NormalizedCapability,
-  type ProcessAdapter,
   type ProcessApi,
-  type ProcessChild,
   type ResourceRegistryApi,
   type WorkerApi,
   type WorkerAdapter,
   type WorkerError,
   type WorkerRuntime
 } from "@effect-desktop/core"
-import { Cause, Deferred, Effect, Fiber, Layer, Option, Queue, Schema, Stream } from "effect"
+import { Cause, Deferred, Effect, Fiber, Layer, Option, Queue, Schema, Sink, Stream } from "effect"
+import { ChildProcessSpawner } from "effect/unstable/process"
 
 import {
   CommandsDevtools,
@@ -241,7 +239,6 @@ test("LiveRuntimePanels projects bridge, stream, resource, permission, and proce
   expect(snapshot.processes[0]).toMatchObject({
     pid: 55,
     command: "echo",
-    childPids: [56],
     state: "exited"
   })
 })
@@ -587,36 +584,27 @@ interface WorkersFixture {
 const makeProcessService = (registry: ResourceRegistryApi): Promise<ProcessApi> =>
   Effect.runPromise(
     makeProcess(registry, {
-      adapter: fakeProcessAdapter,
       permissions: { spawn: ["echo"] }
-    })
+    }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, fakeProcessSpawner))
   )
 
-const fakeProcessAdapter: ProcessAdapter = {
-  spawn: () => fakeProcessChild()
-}
-
-const fakeProcessChild = (): ProcessChild => ({
-  pid: 55,
-  childPids: [56],
-  stdout: new ReadableStream<Uint8Array>({
-    start(controller) {
-      controller.close()
-    }
-  }),
-  stderr: new ReadableStream<Uint8Array>({
-    start(controller) {
-      controller.close()
-    }
-  }),
-  exited: Promise.resolve(new ProcessExitStatus({ code: 0 })),
-  writeStdin: () => Promise.resolve(),
-  closeStdin: () => Promise.resolve(),
-  isRunning: () => false,
-  terminateTree: () => Promise.resolve(),
-  forceKillTree: () => Promise.resolve(),
-  kill: () => undefined
-})
+const fakeProcessSpawner = ChildProcessSpawner.make(() =>
+  Effect.succeed(
+    ChildProcessSpawner.makeHandle({
+      all: Stream.empty,
+      exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)),
+      getInputFd: () => Sink.drain,
+      getOutputFd: () => Stream.empty,
+      isRunning: Effect.succeed(false),
+      kill: () => Effect.void,
+      pid: ChildProcessSpawner.ProcessId(55),
+      stderr: Stream.empty,
+      stdin: Sink.drain,
+      stdout: Stream.empty,
+      unref: Effect.succeed(Effect.void)
+    })
+  )
+)
 
 const makeWorkersFixture = async (): Promise<WorkersFixture> => {
   let timestamp = 1_000

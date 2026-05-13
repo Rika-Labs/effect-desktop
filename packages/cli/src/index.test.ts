@@ -43,6 +43,8 @@ import type { PackageCommandRunner } from "./package-pipeline.js"
 import { desktopArtifactExtension, desktopPlatformDirectory, hostBinaryName } from "./targets.js"
 import type { DesktopArtifactKind, DesktopTargetId } from "./targets.js"
 
+const REPO_ROOT = join(import.meta.dir, "../../..")
+
 test("desktop --help exits zero with root usage on stdout", async () => {
   const stdout: string[] = []
   const stderr: string[] = []
@@ -2019,7 +2021,7 @@ test("desktop check --docs rejects placeholder examples on required pages", asyn
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
   try {
     const sourceManifest = JSON.parse(
-      await readFile(join(process.cwd(), "docs", "docs-manifest.json"), "utf8")
+      await readFile(join(REPO_ROOT, "docs", "docs-manifest.json"), "utf8")
     ) as {
       readonly pages: readonly {
         readonly id: string
