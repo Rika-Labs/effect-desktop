@@ -4,6 +4,7 @@ import { Context, Effect, Exit, Fiber, Layer, Option, Schema, Stream } from "eff
 import {
   HOST_PING_METHOD,
   HOST_PROTOCOL_VERSION,
+  HOST_VERSION_METHOD,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
   HostProtocolRequestEnvelope,
@@ -91,6 +92,14 @@ import {
   TestNativeSurfaces,
   ScreenTest
 } from "./index.js"
+import {
+  makeMockBridge as makeSubpathMockBridge,
+  MockHost as SubpathMockHost,
+  MockHostLive as SubpathMockHostLive
+} from "@effect-desktop/test/bridge"
+import { MemoryFilesystemLive as SubpathMemoryFilesystemLive } from "@effect-desktop/test/core"
+import { ClipboardTest as SubpathClipboardTest } from "@effect-desktop/test/native"
+import { CapabilityLaws as SubpathCapabilityLaws } from "@effect-desktop/test/renderer"
 
 const id = (value: string): ResourceId => value as ResourceId
 const waitForRegistryEntries = (
@@ -181,6 +190,71 @@ const makeClipboardBridgeLawLayer = (lawName: string): Layer.Layer<Clipboard> =>
 
   return Layer.provide(ClipboardLive, makeClipboardBridgeClientLayer(bridge.exchange))
 }
+
+test("public bridge subpath exposes host and bridge fixtures", async () => {
+  const bridge = makeSubpathMockBridge({ now: () => 1710000000050 })
+  await Effect.runPromise(bridge.succeed("Test.Subpath.open", { id: "project-1" }))
+
+  const response = await Effect.runPromise(
+    Effect.gen(function* () {
+      const host = yield* SubpathMockHost
+      return yield* host.request(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "request-1",
+          timestamp: 1710000000051,
+          traceId: "trace-1",
+          method: HOST_VERSION_METHOD,
+          payload: undefined
+        })
+      )
+    }).pipe(Effect.provide(SubpathMockHostLive({ now: () => 1710000000052 })))
+  )
+
+  expect(bridge.calls()).toEqual([])
+  expect(response.payload).toEqual({ protocolVersion: HOST_PROTOCOL_VERSION })
+})
+
+test("public core subpath exposes composable core fixture layers", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const filesystem = yield* Filesystem
+      yield* filesystem.write("/workspace/subpath.txt", bytes("core"))
+      const file = yield* filesystem.read("/workspace/subpath.txt")
+
+      return text(file)
+    }).pipe(
+      Effect.provide(
+        SubpathMemoryFilesystemLive({
+          directories: ["/workspace"],
+          permissions: {
+            readRoots: ["/workspace"],
+            writeRoots: ["/workspace"]
+          }
+        }).pipe(Layer.provide(ResourceRegistryLive))
+      )
+    )
+  )
+
+  expect(result).toBe("core")
+})
+
+test("public native subpath exposes deterministic native service layers", async () => {
+  const textValue = await Effect.runPromise(
+    Effect.gen(function* () {
+      const clipboard = yield* Clipboard
+      yield* clipboard.writeText("native")
+      return yield* clipboard.readText()
+    }).pipe(Effect.provide(SubpathClipboardTest()))
+  )
+
+  expect(textValue).toBe("native")
+})
+
+test("public renderer subpath exposes shared capability law helpers", () => {
+  expect(typeof SubpathCapabilityLaws.make).toBe("function")
+  expect(typeof SubpathCapabilityLaws.run).toBe("function")
+})
 
 test("assertNoOpenResourcesIn fails with a leaked-handle report", async () => {
   let error: unknown

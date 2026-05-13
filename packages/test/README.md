@@ -10,6 +10,11 @@ permissions, mock process, mock PTY, headless runtime, and memory secrets.
 
 ## Public API
 
+The root `@effect-desktop/test` export remains the aggregate compatibility
+surface. New tests should prefer explicit fixture-family subpaths:
+`@effect-desktop/test/core`, `@effect-desktop/test/bridge`,
+`@effect-desktop/test/native`, and `@effect-desktop/test/renderer`.
+
 `MockHostLive(options)` provides `MockHost`, an in-process host-protocol
 substitute that accepts real host-protocol request envelopes, preserves trace
 IDs on responses, records calls, and maintains an in-memory window registry for
