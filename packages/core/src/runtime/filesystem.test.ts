@@ -3,35 +3,31 @@ import {
   lstat as nodeLstat,
   mkdir as mkdirOnDisk,
   mkdtemp,
-  readdir,
   readFile,
   realpath,
-  rename as nodeRename,
-  rm,
   stat as nodeStat,
-  symlink,
-  writeFile
+  symlink
 } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 
+import { BunFileSystem } from "@effect/platform-bun"
 import {
   HostProtocolPermissionDeniedError,
   type HostProtocolSymlinkEscapesRootError
 } from "@effect-desktop/bridge"
 import { expect, test } from "bun:test"
-import { Effect, Exit, Fiber, Stream } from "effect"
+import { Effect, Exit, Fiber, FileSystem, Layer, Option, Queue, Stream } from "effect"
+import * as PlatformError from "effect/PlatformError"
 
 import {
   FilesystemStatResult,
   makeFilesystem,
   type FilesystemEvent,
   type FilesystemError,
-  type FilesystemAdapter,
   type FilesystemApi,
   type FilesystemOptions,
-  type FilesystemPermissionPolicy,
-  type RawFilesystemEvent
+  type FilesystemPermissionPolicy
 } from "./filesystem.js"
 import { makeResourceRegistry, type ResourceRegistryApi } from "./resources.js"
 
@@ -60,75 +56,59 @@ test("Filesystem writeAtomic roundtrips a large payload", async () => {
 })
 
 test("Filesystem writeAtomic preserves destination and removes temp on write failure", async () => {
-  const directory = await tempDirectory()
-  const path = join(directory, "config.json")
-  await Bun.write(path, "old")
-  const service = await makeTestFilesystem({
-    adapter: {
-      ...NodeTestFilesystemAdapter,
-      writeFileSynced: async (tempPath, bytes) => {
-        await Bun.write(tempPath, bytes.slice(0, 1))
-        throw Object.assign(new Error("disk full"), { code: "ENOSPC" })
-      }
+  const calls: string[] = []
+  const path = "/workspace/config.json"
+  const service = await makeTestFilesystem(
+    {
+      permissions: allowFilesystemRoot("/workspace")
     },
-    permissions: allowFilesystemRoot(directory)
-  })
+    failingOpenFileSystem(calls, "ENOSPC")
+  )
 
   const exit = await Effect.runPromiseExit(
     service.writeAtomic(path, new TextEncoder().encode("new"))
   )
 
   expectFailureTag(exit, "DiskFull")
-  expect(await readFile(path, "utf8")).toBe("old")
-  expect((await readdir(directory)).filter((entry) => entry.includes(".tmp."))).toEqual([])
+  expect(calls.some((call) => call.startsWith("open:/workspace/config.json.tmp."))).toBe(true)
+  expect(calls.some((call) => call.startsWith("remove:/workspace/config.json.tmp."))).toBe(true)
 })
 
 test("Filesystem writeAtomic preserves destination and removes temp on rename failure", async () => {
-  const directory = await tempDirectory()
-  const path = join(directory, "config.json")
-  await Bun.write(path, "old")
-  const service = await makeTestFilesystem({
-    adapter: {
-      ...NodeTestFilesystemAdapter,
-      rename: () => Promise.reject(Object.assign(new Error("denied"), { code: "EACCES" }))
+  const calls: string[] = []
+  const path = "/workspace/config.json"
+  const service = await makeTestFilesystem(
+    {
+      permissions: allowFilesystemRoot("/workspace")
     },
-    permissions: allowFilesystemRoot(directory)
-  })
+    failingRenameFileSystem(calls, "EACCES")
+  )
 
   const exit = await Effect.runPromiseExit(
     service.writeAtomic(path, new TextEncoder().encode("new"))
   )
 
   expectFailureTag(exit, "PermissionDenied")
-  expect(await readFile(path, "utf8")).toBe("old")
-  expect((await readdir(directory)).filter((entry) => entry.includes(".tmp."))).toEqual([])
+  expect(calls.some((call) => call.startsWith("rename:/workspace/config.json.tmp."))).toBe(true)
+  expect(calls.some((call) => call.startsWith("remove:/workspace/config.json.tmp."))).toBe(true)
 })
 
 test("Filesystem writeAtomic preserves destination when temp cleanup fails", async () => {
-  const directory = await tempDirectory()
-  const path = join(directory, "config.json")
-  await Bun.write(path, "old")
-  const service = await makeTestFilesystem({
-    adapter: {
-      ...NodeTestFilesystemAdapter,
-      rename: () => Promise.reject(Object.assign(new Error("denied"), { code: "EACCES" })),
-      remove: async (pathToRemove) => {
-        if (pathToRemove.includes(".tmp.")) {
-          throw Object.assign(new Error("busy"), { code: "EPERM" })
-        }
-        return undefined
-      }
+  const calls: string[] = []
+  const path = "/workspace/config.json"
+  const service = await makeTestFilesystem(
+    {
+      permissions: allowFilesystemRoot("/workspace")
     },
-    permissions: allowFilesystemRoot(directory)
-  })
+    failingRenameAndCleanupFileSystem(calls)
+  )
 
   const exit = await Effect.runPromiseExit(
     service.writeAtomic(path, new TextEncoder().encode("new"))
   )
 
   expectFailureTag(exit, "PermissionDenied")
-  expect(await readFile(path, "utf8")).toBe("old")
-  expect((await readdir(directory)).filter((entry) => entry.includes(".tmp.")).length).toBe(1)
+  expect(calls.some((call) => call.startsWith("remove:/workspace/config.json.tmp."))).toBe(true)
 })
 
 test("Filesystem writeAtomic consumes the write capability", async () => {
@@ -169,6 +149,23 @@ test("Filesystem stat preserves symlink identity", async () => {
 
   expect(result.path).toMatch(/link$/)
   expect(result.kind).toBe("symlink")
+})
+
+test("Filesystem stat does not follow symlink targets outside the root", async () => {
+  const allowed = await tempDirectory()
+  const denied = await tempDirectory()
+  const target = join(denied, "target.txt")
+  const link = join(allowed, "link")
+  const service = await makeTestFilesystem({ permissions: { readRoots: [allowed] } })
+
+  await Bun.write(target, "outside-target")
+  await symlink(target, link)
+  const result = await Effect.runPromise(service.stat(link))
+
+  expect(result.path).toMatch(/link$/)
+  expect(result.kind).toBe("symlink")
+  expect(result.sizeBytes).toBe(0)
+  expect(result.modifiedAtMs).toBe(0)
 })
 
 test("Filesystem mkdir and remove perform basic directory operations", async () => {
@@ -242,12 +239,14 @@ test("Filesystem validates input before disk activity", async () => {
   expectFailureTag(exit, "InvalidArgument")
 })
 
-test("Filesystem rejects NUL path bytes before adapter calls", async () => {
+test("Filesystem rejects NUL path bytes before FileSystem calls", async () => {
   const calls: string[] = []
-  const service = await makeTestFilesystem({
-    adapter: recordingFilesystemAdapter(calls),
-    permissions: allowFilesystemRoot("/tmp")
-  })
+  const service = await makeTestFilesystem(
+    {
+      permissions: allowFilesystemRoot("/tmp")
+    },
+    recordingFileSystem(calls)
+  )
   const path = "/tmp/a\u0000b"
 
   const exits = await Promise.all([
@@ -267,26 +266,40 @@ test("Filesystem rejects NUL path bytes before adapter calls", async () => {
   expect(calls).toEqual([])
 })
 
-test("Filesystem maps adapter permission failures to PermissionDenied", async () => {
-  const service = await makeTestFilesystem({ adapter: permissionDeniedAdapter })
+test("Filesystem maps Effect FileSystem permission failures to PermissionDenied", async () => {
+  const service = await makeTestFilesystem(
+    { permissions: allowFilesystemRoot("/workspace") },
+    failingWriteFileSystem("EACCES")
+  )
 
-  const exit = await Effect.runPromiseExit(service.write("/denied.txt", new Uint8Array([1])))
+  const exit = await Effect.runPromiseExit(
+    service.write("/workspace/denied.txt", new Uint8Array([1]))
+  )
+
+  expectFailureTag(exit, "PermissionDenied")
+})
+
+test("Filesystem maps Effect FileSystem unknown EPERM failures to PermissionDenied", async () => {
+  const service = await makeTestFilesystem(
+    { permissions: allowFilesystemRoot("/workspace") },
+    failingWriteFileSystem("EPERM")
+  )
+
+  const exit = await Effect.runPromiseExit(
+    service.write("/workspace/denied.txt", new Uint8Array([1]))
+  )
 
   expectFailureTag(exit, "PermissionDenied")
 })
 
 test("Filesystem maps remove EACCES to filesystem.delete", async () => {
   const directory = await tempDirectory()
-  const service = await makeTestFilesystem({
-    permissions: { deleteRoots: [directory], allowRecursiveRemove: false },
-    adapter: {
-      ...NodeTestFilesystemAdapter,
-      remove: () => {
-        const error = Object.assign(new Error("permission denied"), { code: "EACCES" })
-        return Promise.reject(error)
-      }
-    }
-  })
+  const service = await makeTestFilesystem(
+    {
+      permissions: { deleteRoots: [directory], allowRecursiveRemove: false }
+    },
+    failingRemoveFileSystem(directory, "EACCES")
+  )
 
   const exit = await Effect.runPromiseExit(service.remove(join(directory, "remove-target.txt")))
   const error = expectFailurePermissionDenied(exit)
@@ -296,16 +309,12 @@ test("Filesystem maps remove EACCES to filesystem.delete", async () => {
 
 test("Filesystem maps recursive remove EACCES to filesystem.delete.recursive", async () => {
   const directory = await tempDirectory()
-  const service = await makeTestFilesystem({
-    permissions: { deleteRoots: [directory], allowRecursiveRemove: true },
-    adapter: {
-      ...NodeTestFilesystemAdapter,
-      remove: () => {
-        const error = Object.assign(new Error("permission denied"), { code: "EACCES" })
-        return Promise.reject(error)
-      }
-    }
-  })
+  const service = await makeTestFilesystem(
+    {
+      permissions: { deleteRoots: [directory], allowRecursiveRemove: true }
+    },
+    failingRemoveFileSystem(directory, "EACCES")
+  )
 
   const exit = await Effect.runPromiseExit(
     service.remove(join(directory, "remove-target.txt"), { recursive: true })
@@ -315,10 +324,15 @@ test("Filesystem maps recursive remove EACCES to filesystem.delete.recursive", a
   expect(error.capability).toBe("filesystem.delete.recursive")
 })
 
-test("Filesystem maps adapter disk-full failures to DiskFull", async () => {
-  const service = await makeTestFilesystem({ adapter: diskFullAdapter })
+test("Filesystem maps Effect FileSystem disk-full failures to DiskFull", async () => {
+  const service = await makeTestFilesystem(
+    { permissions: allowFilesystemRoot("/workspace") },
+    failingWriteFileSystem("ENOSPC")
+  )
 
-  const exit = await Effect.runPromiseExit(service.write("/full.txt", new Uint8Array([1])))
+  const exit = await Effect.runPromiseExit(
+    service.write("/workspace/full.txt", new Uint8Array([1]))
+  )
 
   expectFailureTag(exit, "DiskFull")
 })
@@ -476,7 +490,7 @@ test("Filesystem denies hard-linked files with SymlinkEscapesRoot", async () => 
   expectFailureTag(exit, "SymlinkEscapesRoot")
 })
 
-test("Filesystem watch emits typed events from the adapter", async () => {
+test("Filesystem watch emits typed events from Effect FileSystem", async () => {
   const fixture = await makeWatchFixture()
   const fiber = Effect.runFork(
     fixture.service
@@ -484,8 +498,8 @@ test("Filesystem watch emits typed events from the adapter", async () => {
       .pipe(Stream.take(1), Stream.runCollect)
   )
 
-  await waitUntil(() => fixture.listener !== undefined)
-  fixture.listener?.({ type: "change", filename: "a.txt" })
+  await waitUntil(() => fixture.watchStarted)
+  await fixture.emit({ _tag: "Update", path: "/tmp/project/a.txt" })
   const events = await Effect.runPromise(Fiber.join(fiber))
   const afterStreamEnd = await Effect.runPromise(fixture.registry.list())
 
@@ -501,22 +515,28 @@ test("Filesystem watch emits typed events from the adapter", async () => {
   expect(afterStreamEnd.entries).toEqual([])
 })
 
-test("Filesystem watch classifies rename events as created or deleted", async () => {
-  const created = await collectOneWatchEvent({ existingPaths: new Set(["/tmp/project/a.txt"]) })
-  const deleted = await collectOneWatchEvent({ existingPaths: new Set() })
+test("Filesystem watch reclassifies Effect create and remove events from current path state", async () => {
+  const created = await collectOneWatchEvent({
+    existingPaths: new Set(["/tmp/project/a.txt"]),
+    event: { _tag: "Remove", path: "/tmp/project/a.txt" }
+  })
+  const deleted = await collectOneWatchEvent({
+    existingPaths: new Set(),
+    event: { _tag: "Remove", path: "/tmp/project/a.txt" }
+  })
 
   expect(created.kind).toBe("created")
   expect(deleted.kind).toBe("deleted")
 })
 
-test("Filesystem watch rejects control-byte filenames in adapter events", async () => {
+test("Filesystem watch rejects control-byte filenames in FileSystem events", async () => {
   const fixture = await makeWatchFixture()
   const fiber = Effect.runFork(
     fixture.service.watch("/tmp/project", { ownerScope: "scope-main" }).pipe(Stream.runCollect)
   )
 
-  await waitUntil(() => fixture.listener !== undefined)
-  fixture.listener?.({ type: "change", filename: "audit\nlog.txt" })
+  await waitUntil(() => fixture.watchStarted)
+  await fixture.emit({ _tag: "Update", path: "/tmp/project/audit\nlog.txt" })
   const exit = await Effect.runPromiseExit(Fiber.join(fiber))
 
   expectFailureTag(exit, "InvalidArgument")
@@ -532,14 +552,14 @@ test("Filesystem watch reports missing options as typed invalid input", async ()
   expectFailureTag(exit, "InvalidArgument")
 })
 
-test("Filesystem watch maps asynchronous adapter errors into the stream failure channel", async () => {
+test("Filesystem watch maps FileSystem errors into the stream failure channel", async () => {
   const fixture = await makeWatchFixture()
   const fiber = Effect.runFork(
     fixture.service.watch("/tmp/project", { ownerScope: "scope-main" }).pipe(Stream.runDrain)
   )
 
-  await waitUntil(() => fixture.fail !== undefined)
-  fixture.fail?.(makePermissionDeniedError())
+  await waitUntil(() => fixture.watchStarted)
+  await fixture.fail(makePermissionDeniedError())
   const exit = await Effect.runPromiseExit(Fiber.join(fiber))
 
   expectFailureTag(exit, "PermissionDenied")
@@ -551,7 +571,7 @@ test("Filesystem watch registers a scope-bound resource and closes on scope clos
     fixture.service.watch("/tmp/project", { ownerScope: "scope-main" }).pipe(Stream.runDrain)
   )
 
-  await waitUntil(() => fixture.listener !== undefined)
+  await waitUntil(() => fixture.watchStarted)
   const registered = await Effect.runPromise(fixture.registry.list())
   expect(registered.entries.map((entry) => entry.handle.kind)).toEqual(["filesystem-watch"])
 
@@ -565,88 +585,227 @@ test("Filesystem watch registers a scope-bound resource and closes on scope clos
 
 const tempDirectory = (): Promise<string> => mkdtemp(join(tmpdir(), "effect-desktop-fs-"))
 
-const permissionDeniedAdapter: FilesystemAdapter = makeFailingAdapter("EACCES")
-const diskFullAdapter: FilesystemAdapter = makeFailingAdapter("ENOSPC")
+const BunFileSystemLayer: Layer.Layer<FileSystem.FileSystem> = BunFileSystem.layer
 
-const NodeTestFilesystemAdapter: FilesystemAdapter = {
-  readFile,
-  realpath,
-  rename: nodeRename,
-  writeFile,
-  writeFileSynced: (path, bytes) => Bun.write(path, bytes).then(() => undefined),
-  stat: nodeLstat,
-  mkdir: (path, options) => mkdirOnDisk(path, options).then(() => undefined),
-  remove: (path, options) =>
-    options?.recursive === true
-      ? rm(path, { recursive: true }).then(() => undefined)
-      : rm(path).then(() => undefined),
-  watch: () => Effect.fail(makePermissionDeniedError()) as ReturnType<FilesystemAdapter["watch"]>
-}
-
-function makeFailingAdapter(code: string): FilesystemAdapter {
-  const fail = () => Promise.reject(Object.assign(new Error(code), { code }))
-
-  return {
-    readFile: fail as FilesystemAdapter["readFile"],
-    realpath: fail as FilesystemAdapter["realpath"],
-    rename: fail as FilesystemAdapter["rename"],
-    writeFile: fail as FilesystemAdapter["writeFile"],
-    writeFileSynced: fail as FilesystemAdapter["writeFileSynced"],
-    stat: fail as FilesystemAdapter["stat"],
-    mkdir: fail as FilesystemAdapter["mkdir"],
-    remove: fail as FilesystemAdapter["remove"],
-    watch: () =>
-      Effect.fail(Object.assign(new Error(code), { code }) as never) as ReturnType<
-        FilesystemAdapter["watch"]
-      >
-  }
-}
-
-function recordingFilesystemAdapter(calls: string[]): FilesystemAdapter {
-  return {
-    readFile: ((path, options) => {
-      calls.push(`readFile:${path}`)
-      return NodeTestFilesystemAdapter.readFile(path, options as never)
-    }) as FilesystemAdapter["readFile"],
-    realpath: ((path, options) => {
-      calls.push(`realpath:${path}`)
-      return NodeTestFilesystemAdapter.realpath(path, options as never)
-    }) as FilesystemAdapter["realpath"],
-    rename: (from, to) => {
-      calls.push(`rename:${from}:${to}`)
-      return NodeTestFilesystemAdapter.rename(from, to)
-    },
-    writeFile: (path, bytes) => {
-      calls.push(`writeFile:${path}`)
-      return NodeTestFilesystemAdapter.writeFile(path, bytes)
-    },
-    writeFileSynced: (path, bytes) => {
-      calls.push(`writeFileSynced:${path}`)
-      return NodeTestFilesystemAdapter.writeFileSynced(path, bytes)
-    },
-    stat: ((path, options) => {
-      calls.push(`stat:${path}`)
-      return NodeTestFilesystemAdapter.stat(path, options as never)
-    }) as FilesystemAdapter["stat"],
-    mkdir: (path, options) => {
-      calls.push(`mkdir:${path}`)
-      return NodeTestFilesystemAdapter.mkdir(path, options)
-    },
-    remove: (path, options) => {
-      calls.push(`remove:${path}`)
-      return NodeTestFilesystemAdapter.remove(path, options)
-    },
-    watch: (path, listener, onError) => {
-      calls.push(`watch:${path}`)
-      return NodeTestFilesystemAdapter.watch(path, listener, onError)
-    }
-  }
-}
-
-async function makeTestFilesystem(options: FilesystemOptions = {}): Promise<FilesystemApi> {
+async function makeTestFilesystem(
+  options: FilesystemOptions = {},
+  fileSystemLayer: Layer.Layer<FileSystem.FileSystem> = BunFileSystemLayer
+): Promise<FilesystemApi> {
   const registry = await Effect.runPromise(makeResourceRegistry())
-  return await Effect.runPromise(makeFilesystem(registry, options))
+  return await Effect.runPromise(
+    makeFilesystem(registry, options).pipe(Effect.provide(fileSystemLayer))
+  )
 }
+
+const recordingFileSystem = (calls: string[]): Layer.Layer<FileSystem.FileSystem> =>
+  FileSystem.layerNoop({
+    readFile: (path) =>
+      Effect.sync(() => {
+        calls.push(`readFile:${path}`)
+        return new Uint8Array()
+      }),
+    realPath: (path) =>
+      Effect.sync(() => {
+        calls.push(`realPath:${path}`)
+        return path
+      }),
+    writeFile: (path) =>
+      Effect.sync(() => {
+        calls.push(`writeFile:${path}`)
+      }),
+    open: (path) =>
+      Effect.sync(() => {
+        calls.push(`open:${path}`)
+        return testFile(calls)
+      }),
+    stat: (path) =>
+      Effect.sync(() => {
+        calls.push(`stat:${path}`)
+        return testFileInfo()
+      }),
+    makeDirectory: (path) =>
+      Effect.sync(() => {
+        calls.push(`makeDirectory:${path}`)
+      }),
+    remove: (path) =>
+      Effect.sync(() => {
+        calls.push(`remove:${path}`)
+      }),
+    rename: (from, to) =>
+      Effect.sync(() => {
+        calls.push(`rename:${from}:${to}`)
+      }),
+    readLink: (path) =>
+      Effect.sync(() => {
+        calls.push(`readLink:${path}`)
+        return path
+      }),
+    watch: (path) =>
+      Stream.sync(() => {
+        calls.push(`watch:${path}`)
+        return { _tag: "Update" as const, path }
+      })
+  })
+
+const failingOpenFileSystem = (calls: string[], code: string): Layer.Layer<FileSystem.FileSystem> =>
+  FileSystem.layerNoop({
+    realPath: (path) => Effect.succeed(path),
+    stat: (path) => Effect.fail(platformError("NotFound", "stat", path, "ENOENT")),
+    open: (path) =>
+      Effect.sync(() => {
+        calls.push(`open:${path}`)
+      }).pipe(Effect.andThen(Effect.fail(platformError("Unknown", "open", path, code)))),
+    remove: (path) =>
+      Effect.sync(() => {
+        calls.push(`remove:${path}`)
+      })
+  })
+
+const failingRenameFileSystem = (
+  calls: string[],
+  code: string
+): Layer.Layer<FileSystem.FileSystem> =>
+  FileSystem.layerNoop({
+    realPath: (path) => Effect.succeed(path),
+    stat: (path) => Effect.fail(platformError("NotFound", "stat", path, "ENOENT")),
+    open: (path) =>
+      Effect.sync(() => {
+        calls.push(`open:${path}`)
+        return testFile(calls)
+      }),
+    rename: (from, to) =>
+      Effect.sync(() => {
+        calls.push(`rename:${from}:${to}`)
+      }).pipe(Effect.andThen(Effect.fail(platformError("PermissionDenied", "rename", to, code)))),
+    remove: (path) =>
+      Effect.sync(() => {
+        calls.push(`remove:${path}`)
+      })
+  })
+
+const failingRenameAndCleanupFileSystem = (calls: string[]): Layer.Layer<FileSystem.FileSystem> =>
+  FileSystem.layerNoop({
+    realPath: (path) => Effect.succeed(path),
+    stat: (path) => Effect.fail(platformError("NotFound", "stat", path, "ENOENT")),
+    open: (path) =>
+      Effect.sync(() => {
+        calls.push(`open:${path}`)
+        return testFile(calls)
+      }),
+    rename: (from, to) =>
+      Effect.sync(() => {
+        calls.push(`rename:${from}:${to}`)
+      }).pipe(
+        Effect.andThen(Effect.fail(platformError("PermissionDenied", "rename", to, "EACCES")))
+      ),
+    remove: (path) =>
+      Effect.sync(() => {
+        calls.push(`remove:${path}`)
+      }).pipe(Effect.andThen(Effect.fail(platformError("Busy", "remove", path, "EBUSY"))))
+  })
+
+const failingWriteFileSystem = (code: string): Layer.Layer<FileSystem.FileSystem> =>
+  FileSystem.layerNoop({
+    realPath: (path) => Effect.succeed(path),
+    stat: (path) => Effect.fail(platformError("NotFound", "stat", path, "ENOENT")),
+    writeFile: (path) =>
+      Effect.fail(
+        platformError(
+          code === "ENOSPC" || code === "EPERM" ? "Unknown" : "PermissionDenied",
+          "writeFile",
+          path,
+          code
+        )
+      )
+  })
+
+const failingRemoveFileSystem = (root: string, code: string): Layer.Layer<FileSystem.FileSystem> =>
+  FileSystem.layerNoop({
+    realPath: (path) => Effect.succeed(path),
+    stat: (path) =>
+      path === root
+        ? Effect.succeed(testFileInfo({ type: "Directory" }))
+        : Effect.fail(platformError("NotFound", "stat", path, "ENOENT")),
+    remove: (path) => Effect.fail(platformError("PermissionDenied", "remove", path, code))
+  })
+
+const watchFixtureFileSystem = (
+  queue: Queue.Queue<FileSystem.WatchEvent, PlatformError.PlatformError>,
+  existingPaths: ReadonlySet<string>,
+  onStart: () => void,
+  onClose: () => void
+): Layer.Layer<FileSystem.FileSystem> =>
+  FileSystem.layerNoop({
+    realPath: (path) => Effect.succeed(path),
+    stat: (path) =>
+      path === "/tmp/project" || existingPaths.has(path)
+        ? Effect.succeed(testFileInfo({ type: path === "/tmp/project" ? "Directory" : "File" }))
+        : Effect.fail(platformError("NotFound", "stat", path, "ENOENT")),
+    readLink: (path) => Effect.fail(platformError("BadResource", "readLink", path, "EINVAL")),
+    watch: () =>
+      Stream.suspend(() => {
+        onStart()
+        return Stream.fromQueue(queue).pipe(Stream.ensuring(Effect.sync(onClose)))
+      })
+  })
+
+const testFile = (calls: string[]): FileSystem.File => ({
+  [FileSystem.FileTypeId]: FileSystem.FileTypeId,
+  fd: FileSystem.FileDescriptor(1),
+  stat: Effect.succeed(testFileInfo()),
+  seek: () => Effect.void,
+  sync: Effect.sync(() => {
+    calls.push("sync")
+  }),
+  read: () => Effect.succeed(FileSystem.Size(0)),
+  readAlloc: () => Effect.succeed(Option.none()),
+  truncate: () => Effect.void,
+  write: (buffer) => Effect.succeed(FileSystem.Size(buffer.byteLength)),
+  writeAll: (buffer) =>
+    Effect.sync(() => {
+      calls.push(`writeAll:${buffer.byteLength}`)
+    })
+})
+
+const testFileInfo = (overrides: Partial<FileSystem.File.Info> = {}): FileSystem.File.Info => ({
+  type: "File",
+  mtime: Option.some(new Date(1)),
+  atime: Option.none(),
+  birthtime: Option.none(),
+  dev: 1,
+  ino: Option.some(1),
+  mode: 0o644,
+  nlink: Option.some(1),
+  uid: Option.none(),
+  gid: Option.none(),
+  rdev: Option.none(),
+  size: FileSystem.Size(1),
+  blksize: Option.none(),
+  blocks: Option.none(),
+  ...overrides
+})
+
+const platformError = (
+  tag:
+    | "AlreadyExists"
+    | "BadResource"
+    | "Busy"
+    | "InvalidData"
+    | "NotFound"
+    | "PermissionDenied"
+    | "Unknown",
+  method: string,
+  path: string,
+  code: string
+): PlatformError.PlatformError =>
+  PlatformError.systemError({
+    _tag: tag,
+    module: "FileSystem",
+    method,
+    pathOrDescriptor: path,
+    description: `${code}: ${path}`,
+    cause: Object.assign(new Error(`${code}: ${path}`), { code, path })
+  })
 
 function allowFilesystemRoot(root: string): FilesystemPermissionPolicy {
   return {
@@ -659,16 +818,17 @@ function allowFilesystemRoot(root: string): FilesystemPermissionPolicy {
 
 async function collectOneWatchEvent(options: {
   readonly existingPaths: ReadonlySet<string>
+  readonly event: FileSystem.WatchEvent
 }): Promise<FilesystemEvent> {
-  const fixture = await makeWatchFixture(options)
+  const fixture = await makeWatchFixture({ existingPaths: options.existingPaths })
   const fiber = Effect.runFork(
     fixture.service
       .watch("/tmp/project", { ownerScope: "scope-main" })
       .pipe(Stream.take(1), Stream.runCollect)
   )
 
-  await waitUntil(() => fixture.listener !== undefined)
-  fixture.listener?.({ type: "rename", filename: "a.txt" })
+  await waitUntil(() => fixture.watchStarted)
+  await fixture.emit(options.event)
   const events = await Effect.runPromise(Fiber.join(fiber))
 
   const event = Array.from(events)[0]
@@ -685,55 +845,43 @@ async function makeWatchFixture(
 ): Promise<{
   readonly service: FilesystemApi
   readonly registry: ResourceRegistryApi
-  readonly listener: ((event: RawFilesystemEvent) => void) | undefined
-  readonly fail: ((error: FilesystemError) => void) | undefined
+  readonly emit: (event: FileSystem.WatchEvent) => Promise<void>
+  readonly fail: (error: PlatformError.PlatformError) => Promise<void>
+  readonly watchStarted: boolean
   readonly closeCount: number
 }> {
-  let listener: ((event: RawFilesystemEvent) => void) | undefined
-  let fail: ((error: FilesystemError) => void) | undefined
+  const watchQueue = await Effect.runPromise(
+    Queue.unbounded<FileSystem.WatchEvent, PlatformError.PlatformError>()
+  )
+  let watchStarted = false
   let closeCount = 0
   const registry = await Effect.runPromise(makeResourceRegistry())
   const service = await Effect.runPromise(
     makeFilesystem(registry, {
-      permissions: { readRoots: ["/tmp/project"] },
-      adapter: {
-        readFile: (() => Promise.reject(new Error("not used"))) as FilesystemAdapter["readFile"],
-        realpath: ((path) => Promise.resolve(path.toString())) as FilesystemAdapter["realpath"],
-        rename: (() => Promise.reject(new Error("not used"))) as FilesystemAdapter["rename"],
-        writeFile: () =>
-          Promise.reject(new Error("not used")) as ReturnType<FilesystemAdapter["writeFile"]>,
-        writeFileSynced: () =>
-          Promise.reject(new Error("not used")) as ReturnType<FilesystemAdapter["writeFileSynced"]>,
-        stat: ((path) =>
-          options.existingPaths?.has(path.toString()) === true
-            ? Promise.resolve(fakeStats())
-            : Promise.reject(
-                Object.assign(new Error("missing"), { code: "ENOENT" })
-              )) as FilesystemAdapter["stat"],
-        mkdir: () => Promise.reject(new Error("not used")),
-        remove: () => Promise.reject(new Error("not used")),
-        watch: (_path, next, onError) =>
-          Effect.sync(() => {
-            listener = next
-            fail = onError
-            return {
-              close: () => {
-                closeCount += 1
-              }
-            }
-          })
-      }
-    })
+      permissions: { readRoots: ["/tmp/project"] }
+    }).pipe(
+      Effect.provide(
+        watchFixtureFileSystem(
+          watchQueue,
+          options.existingPaths ?? new Set(),
+          () => {
+            watchStarted = true
+          },
+          () => {
+            closeCount += 1
+          }
+        )
+      )
+    )
   )
 
   return {
     service,
     registry,
-    get listener() {
-      return listener
-    },
-    get fail() {
-      return fail
+    emit: (event) => Effect.runPromise(Queue.offer(watchQueue, event).pipe(Effect.asVoid)),
+    fail: (error) => Effect.runPromise(Queue.fail(watchQueue, error).pipe(Effect.asVoid)),
+    get watchStarted() {
+      return watchStarted
     },
     get closeCount() {
       return closeCount
@@ -741,25 +889,18 @@ async function makeWatchFixture(
   }
 }
 
-function makePermissionDeniedError(): FilesystemError {
-  return new HostProtocolPermissionDeniedError({
-    tag: "PermissionDenied",
-    capability: "filesystem.watch",
-    resource: "/tmp/project",
-    message: "permission denied: /tmp/project",
-    operation: "Filesystem.watch",
-    recoverable: false
+function makePermissionDeniedError(): PlatformError.PlatformError {
+  return PlatformError.systemError({
+    _tag: "PermissionDenied",
+    module: "FileSystem",
+    method: "watch",
+    pathOrDescriptor: "/tmp/project",
+    description: "permission denied: /tmp/project",
+    cause: Object.assign(new Error("EACCES: /tmp/project"), {
+      code: "EACCES",
+      path: "/tmp/project"
+    })
   })
-}
-
-function fakeStats(): Awaited<ReturnType<FilesystemAdapter["stat"]>> {
-  return {
-    isFile: () => true,
-    isDirectory: () => false,
-    isSymbolicLink: () => false,
-    size: 1,
-    mtimeMs: 1
-  } as Awaited<ReturnType<FilesystemAdapter["stat"]>>
 }
 
 async function waitUntil(predicate: () => boolean): Promise<void> {

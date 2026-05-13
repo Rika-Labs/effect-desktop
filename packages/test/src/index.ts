@@ -1,6 +1,7 @@
 import { afterEach, expect } from "bun:test"
 import { posix, sep } from "node:path"
-import { Context, Data, Effect, Exit, Layer, Option, Stream } from "effect"
+import { Context, Data, Effect, Exit, FileSystem, Layer, Option, Queue, Stream } from "effect"
+import * as PlatformError from "effect/PlatformError"
 
 import {
   BridgeStreamCompleteFrame,
@@ -18,7 +19,6 @@ import {
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
   hostProtocolErrorRecoverableDefault,
-  makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidStateError,
   makeHostHandshakeClient,
   makeHostProtocolInvalidOutputError,
@@ -52,11 +52,9 @@ import {
   makeProcess,
   makePty,
   makeTelemetry,
-  type FilesystemAdapter,
   type FilesystemApi,
   type FilesystemOptions,
   type FilesystemPermissionPolicy,
-  type FilesystemWatcher,
   type PermissionRegistryOptions,
   type ProcessAdapter,
   type ProcessApi,
@@ -73,7 +71,6 @@ import {
   type PtyPermissionPolicy,
   type PtyResizeInput,
   type PtySignalInput,
-  type RawFilesystemEvent,
   type RegistrySnapshot,
   type ResourceEntry,
   type ManagedResourceHandle,
@@ -354,7 +351,10 @@ export const makeMemoryFilesystem = (
   registry: ResourceRegistryApi,
   options: MemoryFilesystemOptions = {}
 ): Effect.Effect<FilesystemApi, never, never> =>
-  makeFilesystem(registry, memoryFilesystemOptions(options))
+  Effect.gen(function* () {
+    const memory = makeMemoryFilesystemRuntime(options)
+    return yield* makeFilesystem(registry, memory.options).pipe(Effect.provide(memory.fileSystem))
+  })
 
 export const MemoryFilesystemLive = (
   options: MemoryFilesystemOptions = {}
@@ -1245,18 +1245,20 @@ interface MemorySymlink {
 
 interface MemoryWatchRegistration {
   readonly directory: string
-  readonly listener: (event: RawFilesystemEvent) => void
+  readonly listener: (event: FileSystem.WatchEvent) => void
   closed: boolean
 }
 
 const ROOT_PATH = "/"
 
-const memoryFilesystemOptions = (options: MemoryFilesystemOptions): FilesystemOptions => ({
-  adapter: makeMemoryFilesystemAdapter(options),
-  ...(options.permissions === undefined ? {} : { permissions: options.permissions })
-})
+interface MemoryFilesystemRuntime {
+  readonly fileSystem: Layer.Layer<FileSystem.FileSystem>
+  readonly options: FilesystemOptions
+}
 
-const makeMemoryFilesystemAdapter = (options: MemoryFilesystemOptions = {}): FilesystemAdapter => {
+const makeMemoryFilesystemRuntime = (
+  options: MemoryFilesystemOptions = {}
+): MemoryFilesystemRuntime => {
   const now = options.now ?? Date.now
   const nodes = new Map<string, MemoryNode>([
     [ROOT_PATH, { kind: "directory", modifiedAtMs: now() }]
@@ -1281,145 +1283,205 @@ const makeMemoryFilesystemAdapter = (options: MemoryFilesystemOptions = {}): Fil
     })
   }
 
-  const adapter: FilesystemAdapter = {
-    readFile: ((path) =>
-      Promise.resolve().then(() => {
-        const canonicalPath = resolveExistingPath(nodes, memoryPathLikeToString(path))
-        const node = nodes.get(canonicalPath)
-        if (node?.kind !== "file") {
-          return Promise.reject(nodeError("EISDIR", canonicalPath))
-        }
-        return Buffer.from(copyBytes(node.bytes))
-      })) as FilesystemAdapter["readFile"],
-    realpath: ((path) =>
-      Promise.resolve(
-        toPlatformMemoryPath(resolveExistingPath(nodes, memoryPathLikeToString(path)))
-      )) as FilesystemAdapter["realpath"],
-    rename: (from, to) => {
-      const fromPath = resolveExistingPath(nodes, memoryPathLikeToString(from))
-      const toPath = normalizeMemoryPath(memoryPathLikeToString(to))
-      const node = nodes.get(fromPath)
-      if (node === undefined) {
-        return Promise.reject(nodeError("ENOENT", fromPath))
-      }
-      const parentPath = posix.dirname(toPath)
-      const parent = nodes.get(parentPath)
-      if (parent?.kind !== "directory") {
-        return Promise.reject(nodeError("ENOENT", parentPath))
-      }
-      const destination = nodes.get(toPath)
-      if (destination?.kind === "directory") {
-        return Promise.reject(nodeError("EISDIR", toPath))
-      }
-      const descendants = childPaths(nodes, toPath)
-      if (descendants.length > 0) {
-        return Promise.reject(nodeError("ENOTEMPTY", toPath))
-      }
-      if (node.kind === "directory" && isDescendant(toPath, fromPath)) {
-        return Promise.reject(nodeError("EINVAL", toPath))
-      }
-
-      nodes.delete(fromPath)
-      nodes.set(toPath, cloneNode(node))
-      if (node.kind === "directory") {
-        for (const childPath of childPaths(nodes, fromPath)) {
-          const child = nodes.get(childPath)
-          if (child !== undefined) {
-            nodes.delete(childPath)
-            nodes.set(`${toPath}${childPath.slice(fromPath.length)}`, cloneNode(child))
-          }
-        }
-      }
-      emitMemoryWatch(watchers, fromPath, "rename")
-      emitMemoryWatch(watchers, toPath, "rename")
-      return Promise.resolve()
-    },
-    writeFile: ((path, bytes) =>
-      writeMemoryFile(
-        nodes,
-        watchers,
-        memoryPathLikeToString(path),
-        normalizeWriteBytes(bytes),
-        now()
-      )) as FilesystemAdapter["writeFile"],
-    writeFileSynced: (path, bytes) => writeMemoryFile(nodes, watchers, path, bytes, now()),
-    stat: ((path) => {
-      const canonicalPath = lookupPath(nodes, memoryPathLikeToString(path), "nofollow")
-      const node = nodes.get(canonicalPath)
-      if (node === undefined) {
-        return Promise.reject(nodeError("ENOENT", canonicalPath))
-      }
-      return Promise.resolve(memoryStats(node, canonicalPath))
-    }) as FilesystemAdapter["stat"],
-    mkdir: (path, mkdirOptions) => {
-      const target = normalizeMemoryPath(path)
-      const parent = nodes.get(posix.dirname(target))
-      if (parent?.kind !== "directory" && mkdirOptions?.recursive !== true) {
-        return Promise.reject(nodeError("ENOENT", posix.dirname(target)))
-      }
-
-      if (mkdirOptions?.recursive === true) {
-        return createDirectoryRecursive(nodes, watchers, target, now())
-      } else {
-        if (nodes.has(target)) {
-          return Promise.reject(nodeError("EEXIST", target))
-        }
-        nodes.set(target, { kind: "directory", modifiedAtMs: now() })
-      }
-      emitMemoryWatch(watchers, target, "rename")
-      return Promise.resolve()
-    },
-    remove: (path, removeOptions) => {
-      const target = normalizeMemoryPath(path)
-      const node = nodes.get(target)
-      if (node === undefined) {
-        return Promise.reject(nodeError("ENOENT", target))
-      }
-      if (node.kind === "directory") {
-        const children = childPaths(nodes, target)
-        if (children.length > 0 && removeOptions?.recursive !== true) {
-          return Promise.reject(nodeError("ENOTEMPTY", target))
-        }
-        for (const child of children) {
-          nodes.delete(child)
-        }
-      }
-      nodes.delete(target)
-      emitMemoryWatch(watchers, target, "rename")
-      return Promise.resolve()
-    },
-    watch: (path, listener) =>
+  const fileSystem = FileSystem.layerNoop({
+    readFile: (path) =>
       Effect.try({
         try: () => {
-          const directory = resolveExistingPath(nodes, path)
-          const node = nodes.get(directory)
-          if (node?.kind !== "directory") {
-            throw nodeError("ENOTDIR", directory)
+          const canonicalPath = resolveExistingPath(nodes, memoryPathLikeToString(path))
+          const node = nodes.get(canonicalPath)
+          if (node?.kind !== "file") {
+            throw nodeError("EISDIR", canonicalPath)
           }
-
-          const registration: MemoryWatchRegistration = {
-            directory,
-            listener,
-            closed: false
-          }
-          watchers.push(registration)
-
-          return {
-            close: () => {
-              registration.closed = true
-            }
-          } satisfies FilesystemWatcher
+          return copyBytes(node.bytes)
         },
-        catch: (error) =>
-          makeHostProtocolInvalidArgumentError(
-            "path",
-            formatMemoryFilesystemError(error),
-            "Filesystem.watch"
-          )
-      })
-  }
+        catch: (error) => memoryPlatformError("readFile", error)
+      }),
+    realPath: (path) =>
+      Effect.try({
+        try: () => toPlatformMemoryPath(resolveExistingPath(nodes, memoryPathLikeToString(path))),
+        catch: (error) => memoryPlatformError("realPath", error)
+      }),
+    rename: (from, to) =>
+      Effect.try({
+        try: () => {
+          const fromPath = resolveExistingPath(nodes, memoryPathLikeToString(from))
+          const toPath = normalizeMemoryPath(memoryPathLikeToString(to))
+          const node = nodes.get(fromPath)
+          if (node === undefined) {
+            throw nodeError("ENOENT", fromPath)
+          }
+          const parentPath = posix.dirname(toPath)
+          const parent = nodes.get(parentPath)
+          if (parent?.kind !== "directory") {
+            throw nodeError("ENOENT", parentPath)
+          }
+          const destination = nodes.get(toPath)
+          if (destination?.kind === "directory") {
+            throw nodeError("EISDIR", toPath)
+          }
+          const descendants = childPaths(nodes, toPath)
+          if (descendants.length > 0) {
+            throw nodeError("ENOTEMPTY", toPath)
+          }
+          if (node.kind === "directory" && isDescendant(toPath, fromPath)) {
+            throw nodeError("EINVAL", toPath)
+          }
 
-  return adapter
+          nodes.delete(fromPath)
+          nodes.set(toPath, cloneNode(node))
+          if (node.kind === "directory") {
+            for (const childPath of childPaths(nodes, fromPath)) {
+              const child = nodes.get(childPath)
+              if (child !== undefined) {
+                nodes.delete(childPath)
+                nodes.set(`${toPath}${childPath.slice(fromPath.length)}`, cloneNode(child))
+              }
+            }
+          }
+          emitMemoryWatch(watchers, fromPath, "remove")
+          emitMemoryWatch(watchers, toPath, "create")
+        },
+        catch: (error) => memoryPlatformError("rename", error)
+      }),
+    writeFile: (path, bytes) =>
+      Effect.tryPromise({
+        try: () =>
+          writeMemoryFile(
+            nodes,
+            watchers,
+            memoryPathLikeToString(path),
+            normalizeWriteBytes(bytes),
+            now()
+          ),
+        catch: (error) => memoryPlatformError("writeFile", error)
+      }),
+    open: (path) =>
+      Effect.try({
+        try: () => {
+          const target = normalizeMemoryPath(memoryPathLikeToString(path))
+          const parentPath = posix.dirname(target)
+          const parent = nodes.get(parentPath)
+          if (parent?.kind !== "directory") {
+            throw nodeError("ENOENT", parentPath)
+          }
+          if (nodes.get(target)?.kind === "directory") {
+            throw nodeError("EISDIR", target)
+          }
+          return memoryFile(target, (bytes) =>
+            writeMemoryFile(nodes, watchers, target, bytes, now())
+          )
+        },
+        catch: (error) => memoryPlatformError("open", error)
+      }),
+    stat: (path) =>
+      Effect.try({
+        try: () => {
+          const canonicalPath = resolveExistingPath(nodes, memoryPathLikeToString(path))
+          const node = nodes.get(canonicalPath)
+          if (node === undefined) {
+            throw nodeError("ENOENT", canonicalPath)
+          }
+          return memoryStats(node)
+        },
+        catch: (error) => memoryPlatformError("stat", error)
+      }),
+    readLink: (path) =>
+      Effect.try({
+        try: () => {
+          const canonicalPath = lookupPath(nodes, memoryPathLikeToString(path), "nofollow")
+          const node = nodes.get(canonicalPath)
+          if (node === undefined) {
+            throw nodeError("ENOENT", canonicalPath)
+          }
+          if (node.kind !== "symlink") {
+            throw nodeError("EINVAL", canonicalPath)
+          }
+          return node.target
+        },
+        catch: (error) => memoryPlatformError("readLink", error)
+      }),
+    makeDirectory: (path, mkdirOptions) =>
+      Effect.tryPromise({
+        try: () => {
+          const target = normalizeMemoryPath(path)
+          const parent = nodes.get(posix.dirname(target))
+          if (parent?.kind !== "directory" && mkdirOptions?.recursive !== true) {
+            throw nodeError("ENOENT", posix.dirname(target))
+          }
+
+          if (mkdirOptions?.recursive === true) {
+            return createDirectoryRecursive(nodes, watchers, target, now())
+          }
+          if (nodes.has(target)) {
+            throw nodeError("EEXIST", target)
+          }
+          nodes.set(target, { kind: "directory", modifiedAtMs: now() })
+          emitMemoryWatch(watchers, target, "create")
+          return Promise.resolve()
+        },
+        catch: (error) => memoryPlatformError("makeDirectory", error)
+      }),
+    remove: (path, removeOptions) =>
+      Effect.try({
+        try: () => {
+          const target = normalizeMemoryPath(path)
+          const node = nodes.get(target)
+          if (node === undefined) {
+            if (removeOptions?.force === true) {
+              return
+            }
+            throw nodeError("ENOENT", target)
+          }
+          if (node.kind === "directory") {
+            const children = childPaths(nodes, target)
+            if (children.length > 0 && removeOptions?.recursive !== true) {
+              throw nodeError("ENOTEMPTY", target)
+            }
+            for (const child of children) {
+              nodes.delete(child)
+            }
+          }
+          nodes.delete(target)
+          emitMemoryWatch(watchers, target, "remove")
+        },
+        catch: (error) => memoryPlatformError("remove", error)
+      }),
+    watch: (path) =>
+      Stream.callback<FileSystem.WatchEvent, PlatformError.PlatformError>((queue) =>
+        Effect.acquireRelease(
+          Effect.try({
+            try: () => {
+              const directory = resolveExistingPath(nodes, path)
+              const node = nodes.get(directory)
+              if (node?.kind !== "directory") {
+                throw nodeError("ENOTDIR", directory)
+              }
+
+              const registration: MemoryWatchRegistration = {
+                directory,
+                listener: (event) => {
+                  Queue.offerUnsafe(queue, event)
+                },
+                closed: false
+              }
+              watchers.push(registration)
+
+              return registration
+            },
+            catch: (error) => memoryPlatformError("watch", error)
+          }),
+          (registration) =>
+            Effect.sync(() => {
+              registration.closed = true
+            })
+        )
+      )
+  })
+
+  return {
+    fileSystem,
+    options: options.permissions === undefined ? {} : { permissions: options.permissions }
+  }
 }
 
 const writeMemoryFile = (
@@ -1442,7 +1504,7 @@ const writeMemoryFile = (
 
   const existed = nodes.has(target)
   nodes.set(target, { kind: "file", bytes: copyBytes(bytes), modifiedAtMs })
-  emitMemoryWatch(watchers, target, existed ? "change" : "rename")
+  emitMemoryWatch(watchers, target, existed ? "update" : "create")
   return Promise.resolve()
 }
 
@@ -1479,7 +1541,7 @@ const createDirectoryRecursive = (
     }
 
     nodes.set(current, { kind: "directory", modifiedAtMs })
-    emitMemoryWatch(watchers, current, "rename")
+    emitMemoryWatch(watchers, current, "create")
   }
 
   return Promise.resolve()
@@ -1574,30 +1636,70 @@ const isDescendant = (candidate: string, parent: string): boolean =>
 const emitMemoryWatch = (
   watchers: readonly MemoryWatchRegistration[],
   path: string,
-  type: RawFilesystemEvent["type"]
+  type: "create" | "remove" | "update"
 ): void => {
   const directory = posix.dirname(path)
-  const filename = path.slice(directory.length + (directory.endsWith("/") ? 0 : 1))
   for (const watcher of watchers) {
     if (!watcher.closed && watcher.directory === directory) {
-      watcher.listener({ type, filename })
+      watcher.listener(memoryWatchEvent(type, path))
     }
   }
 }
 
-const memoryStats = (
-  node: MemoryNode,
+const memoryWatchEvent = (
+  type: "create" | "remove" | "update",
   path: string
-): Awaited<ReturnType<FilesystemAdapter["stat"]>> =>
-  ({
-    size: node.kind === "file" ? node.bytes.byteLength : 0,
-    mtimeMs: node.modifiedAtMs,
-    nlink: 1,
-    isFile: () => node.kind === "file",
-    isDirectory: () => node.kind === "directory",
-    isSymbolicLink: () => node.kind === "symlink",
-    path
-  }) as unknown as Awaited<ReturnType<FilesystemAdapter["stat"]>>
+): FileSystem.WatchEvent => {
+  switch (type) {
+    case "create":
+      return { _tag: "Create", path }
+    case "remove":
+      return { _tag: "Remove", path }
+    case "update":
+      return { _tag: "Update", path }
+  }
+}
+
+const memoryFile = (
+  path: string,
+  writeAllBytes: (bytes: Uint8Array) => Promise<void>
+): FileSystem.File => ({
+  [FileSystem.FileTypeId]: FileSystem.FileTypeId,
+  fd: FileSystem.FileDescriptor(1),
+  stat: Effect.fail(memoryPlatformError("stat", nodeError("ENOENT", path))),
+  seek: () => Effect.void,
+  sync: Effect.void,
+  read: () => Effect.succeed(FileSystem.Size(0)),
+  readAlloc: () => Effect.succeed(Option.none()),
+  truncate: () => Effect.void,
+  write: (buffer) =>
+    Effect.tryPromise({
+      try: () => writeAllBytes(buffer).then(() => FileSystem.Size(buffer.byteLength)),
+      catch: (error) => memoryPlatformError("write", error)
+    }),
+  writeAll: (buffer) =>
+    Effect.tryPromise({
+      try: () => writeAllBytes(buffer),
+      catch: (error) => memoryPlatformError("writeAll", error)
+    })
+})
+
+const memoryStats = (node: MemoryNode): FileSystem.File.Info => ({
+  type: node.kind === "file" ? "File" : node.kind === "directory" ? "Directory" : "SymbolicLink",
+  mtime: Option.some(new Date(node.modifiedAtMs)),
+  atime: Option.none(),
+  birthtime: Option.none(),
+  dev: 1,
+  ino: Option.some(1),
+  mode: node.kind === "directory" ? 0o755 : 0o644,
+  nlink: Option.some(1),
+  uid: Option.none(),
+  gid: Option.none(),
+  rdev: Option.none(),
+  size: FileSystem.Size(node.kind === "file" ? node.bytes.byteLength : 0),
+  blksize: Option.none(),
+  blocks: Option.none()
+})
 
 const cloneNode = (node: MemoryNode): MemoryNode => {
   switch (node.kind) {
@@ -1627,6 +1729,43 @@ const nodeError = (code: string, path: string): NodeJS.ErrnoException =>
     code,
     path
   })
+
+const memoryPlatformError = (method: string, error: unknown): PlatformError.PlatformError => {
+  const node = isNodeError(error) ? error : nodeError("EINVAL", formatMemoryFilesystemError(error))
+  return PlatformError.systemError({
+    _tag: memoryPlatformErrorTag(node.code),
+    module: "FileSystem",
+    method,
+    pathOrDescriptor: typeof node.path === "string" ? node.path : undefined,
+    description: node.message,
+    cause: node
+  })
+}
+
+const isNodeError = (error: unknown): error is NodeJS.ErrnoException =>
+  typeof error === "object" && error !== null && "code" in error
+
+const memoryPlatformErrorTag = (code: string | undefined): PlatformError.SystemErrorTag => {
+  switch (code) {
+    case "EEXIST":
+      return "AlreadyExists"
+    case "ENOENT":
+      return "NotFound"
+    case "EACCES":
+    case "EPERM":
+      return "PermissionDenied"
+    case "EBUSY":
+      return "Busy"
+    case "EINVAL":
+    case "EISDIR":
+    case "ELOOP":
+    case "ENOTDIR":
+    case "ENOTEMPTY":
+      return "BadResource"
+    default:
+      return "Unknown"
+  }
+}
 
 const formatMemoryFilesystemError = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)

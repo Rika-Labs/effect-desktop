@@ -469,11 +469,6 @@
       "signature": "export class Filesystem extends Context.Service<Filesystem, FilesystemApi>()(\"Filesystem\") {}"
     },
     {
-      "name": "FilesystemAdapter",
-      "kind": "interface",
-      "signature": "export interface FilesystemAdapter { readonly readFile: typeof readFile readonly realpath: typeof realpath readonly rename: typeof nodeRename readonly writeFile: typeof writeFile readonly writeFileSynced: (path: string, bytes: Uint8Array) => Promise<void> readonly stat: typeof nodeStat readonly mkdir: (path: string, options?: { readonly recursive: true }) => Promise<void> readonly remove: (path: string, options?: { readonly recursive: true }) => Promise<void> readonly watch: ( path: string, listener: (event: RawFilesystemEvent) => void, onError: (error: FilesystemError) => void ) => Effect.Effect<FilesystemWatcher, FilesystemError, never> }"
-    },
-    {
       "name": "FilesystemApi",
       "kind": "interface",
       "signature": "export interface FilesystemApi { readonly read: (path: string) => Effect.Effect<Uint8Array, FilesystemError, never> readonly realpath: ( path: string, capability?: FilesystemPathCapability ) => Effect.Effect<string, FilesystemError, never> readonly write: (path: string, bytes: Uint8Array) => Effect.Effect<void, FilesystemError, never> readonly writeAtomic: ( path: string, bytes: Uint8Array ) => Effect.Effect<void, FilesystemError, never> readonly stat: (path: string) => Effect.Effect<FilesystemStatResult, FilesystemError, never> readonly mkdir: ( path: string, options?: { readonly recursive?: boolean } ) => Effect.Effect<void, FilesystemError, never> readonly remove: ( path: string, options?: { readonly recursive?: boolean } ) => Effect.Effect<void, FilesystemError, never> readonly watch: ( path: string, options?: { readonly ownerScope: string; readonly bufferSize?: number } ) => Stream.Stream<FilesystemEvent, FilesystemError, never> }"
@@ -501,7 +496,7 @@
     {
       "name": "FilesystemLive",
       "kind": "value",
-      "signature": "const FilesystemLive: Layer.Layer<Filesystem, never, ResourceRegistry>"
+      "signature": "const FilesystemLive: Layer.Layer<Filesystem, never, ResourceRegistry | EffectFileSystem.FileSystem>"
     },
     {
       "name": "FilesystemMkdirInput",
@@ -511,7 +506,7 @@
     {
       "name": "FilesystemOptions",
       "kind": "interface",
-      "signature": "export interface FilesystemOptions { readonly adapter?: FilesystemAdapter readonly permissions?: FilesystemPermissionPolicy }"
+      "signature": "export interface FilesystemOptions { readonly permissions?: FilesystemPermissionPolicy }"
     },
     {
       "name": "FilesystemPathCapability",
@@ -542,11 +537,6 @@
       "name": "FilesystemStatResult",
       "kind": "class",
       "signature": "export class FilesystemStatResult extends Schema.Class<FilesystemStatResult>( \"FilesystemStatResult\" )({ path: Schema.String, kind: FilesystemEntryKind, sizeBytes: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)), modifiedAtMs: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)) }) {}"
-    },
-    {
-      "name": "FilesystemWatcher",
-      "kind": "interface",
-      "signature": "export interface FilesystemWatcher { readonly close: () => void }"
     },
     {
       "name": "FilesystemWatchInput",
@@ -621,7 +611,7 @@
     {
       "name": "makeFilesystem",
       "kind": "value",
-      "signature": "const makeFilesystem: (registry: ResourceRegistryApi, options?: FilesystemOptions) => Effect.Effect<FilesystemApi, never, never>"
+      "signature": "const makeFilesystem: (registry: ResourceRegistryApi, options?: FilesystemOptions) => Effect.Effect<FilesystemApi, never, EffectFileSystem.FileSystem>"
     },
     {
       "name": "makeMissingDesktopContextError",
@@ -1042,11 +1032,6 @@
       "name": "PtySignalInput",
       "kind": "type",
       "signature": "const PtySignalInput: Schema.Union<readonly [Schema.NonEmptyString, Schema.Int]>"
-    },
-    {
-      "name": "RawFilesystemEvent",
-      "kind": "interface",
-      "signature": "export interface RawFilesystemEvent { readonly type: \"rename\" | \"change\" readonly filename?: string }"
     },
     {
       "name": "redact",
