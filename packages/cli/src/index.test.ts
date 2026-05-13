@@ -731,11 +731,19 @@ test("desktop doctor reports typed missing Rust toolchain failures", async () =>
 
     const report = JSON.parse(stderr.join("")) as {
       readonly passed: boolean
-      readonly probes: readonly [{ readonly name: string; readonly status: string }]
+      readonly probes: ReadonlyArray<{
+        readonly name: string
+        readonly status: string
+        readonly installCommand?: string
+        readonly installHint?: string
+      }>
     }
+    const rustProbe = report.probes.find((probe) => probe.name === "rust-toolchain")
     expect(exitCode).toBe(1)
     expect(report.passed).toBe(false)
-    expect(report.probes.find((probe) => probe.name === "rust-toolchain")?.status).toBe("missing")
+    expect(rustProbe?.status).toBe("missing")
+    expect(rustProbe?.installCommand).toBe("install cargo")
+    expect(rustProbe?.installHint).toBeUndefined()
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -821,6 +829,52 @@ test("desktop doctor suppresses signing warning when signing config is present",
     expect(exitCode).toBe(0)
     expect(output).toContain("WARN")
     expect(output).not.toContain("signing credentials are not configured")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop doctor reads signing credentials from injected environment", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-env-"))
+  try {
+    await writePlaygroundFixture(directory, {
+      signing: {
+        macos: {
+          identity: "Developer ID Application: Example"
+        }
+      }
+    })
+    await writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
+    await writeFile(join(directory, "bun.lock"), "")
+    const stdout: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["doctor", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        platform: "darwin",
+        arch: "arm64",
+        bunVersion: "1.3.13",
+        doctorCommandRunner: doctorRunner({
+          cargo: true,
+          rustc: true,
+          "xcode-select": true,
+          hdiutil: true
+        }),
+        env: {
+          APPLE_TEAM_ID: "ABCD1234",
+          APPLE_ID: "release@example.invalid",
+          APPLE_APP_SPECIFIC_PASSWORD: "secret"
+        },
+        writeStdout: (text) => {
+          stdout.push(text)
+        },
+        writeStderr: () => {}
+      })
+    )
+
+    expect(exitCode).toBe(0)
+    expect(stdout.join("")).not.toContain("signing credentials are not configured")
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -954,6 +1008,9 @@ test("desktop doctor rejects config paths outside the workspace", async () => {
     expect(report.passed).toBe(false)
     expect(report.probes.find((probe) => probe.name === "config")?.status).toBe("missing")
     expect(stderr.join("")).toContain("inside the workspace")
+    expect(stderr.join("")).not.toContain(
+      "desktop doctor --config apps/playground/desktop.config.ts"
+    )
   } finally {
     await rm(directory, { recursive: true, force: true })
     await rm(outsideDirectory, { recursive: true, force: true })

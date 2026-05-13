@@ -135,12 +135,16 @@ export {
   type PackageTarget
 } from "./package-pipeline.js"
 export {
+  DoctorDiagnostic,
+  DoctorEnvironment,
+  DoctorEvidence,
   DoctorMissing,
   formatDoctorReport,
   runDesktopDoctor,
   type DesktopDoctorReport,
   type DoctorCommandInvocation,
   type DoctorCommandOutput,
+  type DoctorEnvironmentApi,
   type DoctorCommandRunner,
   type DoctorProbeName,
   type DoctorProbeResult,

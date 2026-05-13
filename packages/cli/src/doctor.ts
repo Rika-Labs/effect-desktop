@@ -2,7 +2,7 @@ import { isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import { DesktopSchedules, type LayerGraphSnapshot } from "@effect-desktop/core"
-import { Data, Effect } from "effect"
+import { Context, Data, Effect, Option, Schema } from "effect"
 
 import { ReleaseFileSystem, runReleaseFileSystem } from "./release-file-system.js"
 import { runReleaseTool } from "./release-tool-runner.js"
@@ -30,6 +30,40 @@ export type DoctorProbeName =
 
 export type DoctorProbeStatus = "ok" | "missing" | "warning"
 
+export class DoctorEvidence extends Schema.Class<DoctorEvidence>("DoctorEvidence")({
+  key: Schema.NonEmptyString,
+  value: Schema.String
+}) {}
+
+export class DoctorDiagnostic extends Schema.Class<DoctorDiagnostic>("DoctorDiagnostic")({
+  name: Schema.Literals([
+    "bun-version",
+    "rust-toolchain",
+    "platform-sdk",
+    "webview-runtime",
+    "signing-credentials",
+    "build-tools",
+    "package-manager-state",
+    "native-host-cache",
+    "config"
+  ]),
+  status: Schema.Literals(["ok", "missing", "warning"]),
+  component: Schema.NonEmptyString,
+  message: Schema.NonEmptyString,
+  remediation: Schema.optionalKey(Schema.NonEmptyString),
+  installCommand: Schema.optionalKey(Schema.NonEmptyString),
+  docsUrl: Schema.optionalKey(Schema.NonEmptyString),
+  evidence: Schema.Array(DoctorEvidence)
+}) {}
+
+export interface DoctorEnvironmentApi {
+  readonly get: (name: string) => Effect.Effect<Option.Option<string>, never, never>
+}
+
+export class DoctorEnvironment extends Context.Service<DoctorEnvironment, DoctorEnvironmentApi>()(
+  "effect-desktop/cli/DoctorEnvironment"
+) {}
+
 export interface DoctorCommandInvocation {
   readonly probe: DoctorProbeName
   readonly command: string
@@ -47,15 +81,7 @@ export type DoctorCommandRunner = (
   invocation: DoctorCommandInvocation
 ) => Effect.Effect<DoctorCommandOutput, DoctorMissing, never>
 
-export interface DoctorProbeResult {
-  readonly name: DoctorProbeName
-  readonly status: DoctorProbeStatus
-  readonly component: string
-  readonly message: string
-  readonly remediation: string | undefined
-  readonly installHint: string | undefined
-  readonly docsUrl: string | undefined
-}
+export type DoctorProbeResult = DoctorDiagnostic
 
 export interface DesktopDoctorOptions {
   readonly cwd: string
@@ -74,7 +100,7 @@ export interface DesktopDoctorReport {
   readonly ci: boolean
   readonly platform: string
   readonly arch: string
-  readonly probes: readonly DoctorProbeResult[]
+  readonly probes: readonly DoctorDiagnostic[]
   readonly layerGraph: LayerGraphSnapshot | undefined
 }
 
@@ -155,7 +181,7 @@ export const runDesktopDoctor = (
       probes,
       layerGraph: options.layerGraph
     }
-  })
+  }).pipe(Effect.provideService(DoctorEnvironment, makeDoctorEnvironment(options.env ?? {})))
 
 export const runDoctorCommand: DoctorCommandRunner = (invocation) =>
   Effect.gen(function* () {
@@ -300,14 +326,10 @@ const probeWebviewRuntime = (
 
 const probeSigningCredentials = (
   options: DesktopDoctorOptions
-): Effect.Effect<DoctorProbeResult, never, never> =>
+): Effect.Effect<DoctorProbeResult, never, DoctorEnvironment> =>
   Effect.gen(function* () {
     const config = yield* readDesktopConfigForDoctor(options)
-    const hasCredentials = probeSigningCredentialSupport(
-      config,
-      options.platform,
-      options.env ?? {}
-    )
+    const hasCredentials = yield* probeSigningCredentialSupport(config, options.platform)
     if (hasCredentials) {
       return ok("signing-credentials", "signing", "signing credential configuration is present")
     }
@@ -418,7 +440,7 @@ const probeConfig = (
           platform: options.platform,
           message: `desktop config path must stay inside the workspace: ${configPath}`,
           remediation: "Run doctor from the workspace root or pass an in-workspace config path.",
-          installHint: "desktop doctor --config apps/playground/desktop.config.ts",
+          installHint: `desktop doctor --config ${relativeConfigHint(options)}`,
           docsUrl: DOCS_URL
         })
       )
@@ -432,7 +454,7 @@ const probeConfig = (
           platform: options.platform,
           message: `desktop config is missing at ${configPath}`,
           remediation: "Pass --config <path> or create desktop.config.ts.",
-          installHint: "desktop doctor --config apps/playground/desktop.config.ts",
+          installHint: `desktop doctor --config ${relativeConfigHint(options)}`,
           docsUrl: DOCS_URL
         })
       )
@@ -455,7 +477,7 @@ const probeConfig = (
           platform: options.platform,
           message: `desktop config import failed: ${formatUnknownCause(imported.cause)}`,
           remediation: "Fix the syntax or runtime error thrown while importing desktop.config.ts.",
-          installHint: "bun desktop doctor --config apps/playground/desktop.config.ts",
+          installHint: `bun desktop doctor --config ${relativeConfigHint(options)}`,
           docsUrl: DOCS_URL
         })
       )
@@ -469,7 +491,7 @@ const probeConfig = (
           platform: options.platform,
           message: `desktop config import failed: ${formatUnknownCause(defaultExport.cause)}`,
           remediation: "Fix the syntax or runtime error thrown while importing desktop.config.ts.",
-          installHint: "bun desktop doctor --config apps/playground/desktop.config.ts",
+          installHint: `bun desktop doctor --config ${relativeConfigHint(options)}`,
           docsUrl: DOCS_URL
         })
       )
@@ -557,6 +579,9 @@ const isWorkspaceContainedPath = (cwd: string, path: string): boolean => {
   return relativePath.length === 0 || (!relativePath.startsWith("..") && !isAbsolute(relativePath))
 }
 
+const relativeConfigHint = (options: DesktopDoctorOptions): string =>
+  options.configPath ?? "desktop.config.ts"
+
 const configMissing = (
   options: DesktopDoctorOptions,
   field: string,
@@ -569,7 +594,7 @@ const configMissing = (
       platform: options.platform,
       message,
       remediation: `Fix ${field} in desktop.config.ts.`,
-      installHint: "desktop doctor --config apps/playground/desktop.config.ts",
+      installHint: `desktop doctor --config ${relativeConfigHint(options)}`,
       docsUrl: DOCS_URL
     })
   )
@@ -662,15 +687,14 @@ const commandProbe = (
       Effect.catch((error) => Effect.succeed(missingResult(error)))
     )
 
-const ok = (name: DoctorProbeName, component: string, message: string): DoctorProbeResult => ({
-  name,
-  status: "ok",
-  component,
-  message,
-  remediation: undefined,
-  installHint: undefined,
-  docsUrl: undefined
-})
+const ok = (name: DoctorProbeName, component: string, message: string): DoctorProbeResult =>
+  new DoctorDiagnostic({
+    name,
+    status: "ok",
+    component,
+    message,
+    evidence: []
+  })
 
 const warning = (
   name: DoctorProbeName,
@@ -678,25 +702,29 @@ const warning = (
   message: string,
   remediation: string,
   installHint: string
-): DoctorProbeResult => ({
-  name,
-  status: "warning",
-  component,
-  message,
-  remediation,
-  installHint,
-  docsUrl: DOCS_URL
-})
+): DoctorProbeResult =>
+  new DoctorDiagnostic({
+    name,
+    status: "warning",
+    component,
+    message,
+    remediation,
+    installCommand: installHint,
+    docsUrl: DOCS_URL,
+    evidence: []
+  })
 
-const missingResult = (error: DoctorMissing): DoctorProbeResult => ({
-  name: error.probe,
-  status: "missing",
-  component: error.component,
-  message: error.message,
-  remediation: error.remediation,
-  installHint: error.installHint,
-  docsUrl: error.docsUrl
-})
+const missingResult = (error: DoctorMissing): DoctorProbeResult =>
+  new DoctorDiagnostic({
+    name: error.probe,
+    status: "missing",
+    component: error.component,
+    message: error.message,
+    remediation: error.remediation,
+    installCommand: error.installHint,
+    docsUrl: error.docsUrl,
+    evidence: []
+  })
 
 const missing = (input: ConstructorParameters<typeof DoctorMissing>[0]): DoctorMissing =>
   new DoctorMissing(input)
@@ -755,63 +783,78 @@ const parseVersion = (version: string): readonly number[] =>
 const formatProbe = (probe: DoctorProbeResult): string => {
   const prefix = probe.status === "ok" ? "OK" : probe.status === "warning" ? "WARN" : "MISSING"
   const remediation = probe.remediation === undefined ? [] : [`  next ${probe.remediation}`]
-  const installHint = probe.installHint === undefined ? [] : [`  install ${probe.installHint}`]
+  const installCommand =
+    probe.installCommand === undefined ? [] : [`  install ${probe.installCommand}`]
   return [
     `${prefix.padEnd(8)} ${probe.name} ${probe.message}`,
     ...remediation,
-    ...installHint
+    ...installCommand
   ].join("\n")
 }
 
 const probeSigningCredentialSupport = (
   config: AppConfig | undefined,
-  platform: string,
+  platform: string
+): Effect.Effect<boolean, never, DoctorEnvironment> =>
+  Effect.gen(function* () {
+    const environment = yield* DoctorEnvironment
+    if (platform === "darwin") {
+      const macos = config?.signing?.macos
+      const identity = optionalString(macos?.identity)
+      const notarytoolProfile =
+        optionalString(macos?.notarytoolProfile) ??
+        Option.getOrUndefined(yield* environment.get("APPLE_NOTARYTOOL_PROFILE"))
+      const teamId =
+        optionalString(macos?.teamId) ??
+        Option.getOrUndefined(yield* environment.get("APPLE_TEAM_ID"))
+      const appleId =
+        optionalString(macos?.appleId) ?? Option.getOrUndefined(yield* environment.get("APPLE_ID"))
+      const passwordEnv = optionalString(macos?.passwordEnv) ?? "APPLE_APP_SPECIFIC_PASSWORD"
+      const password = Option.getOrUndefined(yield* environment.get(passwordEnv))
+      return (
+        identity !== undefined &&
+        ((notarytoolProfile !== undefined && notarytoolProfile.length > 0) ||
+          (teamId !== undefined &&
+            appleId !== undefined &&
+            password !== undefined &&
+            teamId.length > 0 &&
+            appleId.length > 0 &&
+            password.length > 0))
+      )
+    }
+
+    if (platform === "win32") {
+      const windows = config?.signing?.windows
+      if (optionalString(windows?.thumbprint) !== undefined) {
+        return true
+      }
+      const pfxPath = optionalString(windows?.pfx?.path)
+      const pfxPasswordEnv = optionalString(windows?.pfx?.passwordEnv)
+      if (
+        pfxPath !== undefined &&
+        pfxPasswordEnv !== undefined &&
+        Option.isSome(yield* environment.get(pfxPasswordEnv))
+      ) {
+        return true
+      }
+      return Option.isSome(yield* environment.get("WINDOWS_SIGNING_CERT"))
+    }
+
+    if (platform === "linux") {
+      return (
+        optionalString(config?.signing?.linux?.gpgKey) !== undefined ||
+        Option.isSome(yield* environment.get("LINUX_GPG_KEY"))
+      )
+    }
+
+    return false
+  })
+
+const makeDoctorEnvironment = (
   env: Readonly<Record<string, string | undefined>>
-): boolean => {
-  if (platform === "darwin") {
-    const macos = config?.signing?.macos
-    const identity = optionalString(macos?.identity)
-    const notarytoolProfile =
-      optionalString(macos?.notarytoolProfile) ?? env["APPLE_NOTARYTOOL_PROFILE"]
-    const teamId = optionalString(macos?.teamId) ?? env["APPLE_TEAM_ID"]
-    const appleId = optionalString(macos?.appleId) ?? env["APPLE_ID"]
-    const passwordEnv = optionalString(macos?.passwordEnv) ?? "APPLE_APP_SPECIFIC_PASSWORD"
-    const password = env[passwordEnv]
-    return (
-      identity !== undefined &&
-      ((notarytoolProfile !== undefined && notarytoolProfile.length > 0) ||
-        (teamId !== undefined &&
-          appleId !== undefined &&
-          password !== undefined &&
-          teamId.length > 0 &&
-          appleId.length > 0 &&
-          password.length > 0))
-    )
-  }
-  if (platform === "win32") {
-    const windows = config?.signing?.windows
-    if (optionalString(windows?.thumbprint) !== undefined) {
-      return true
-    }
-    const pfxPath = optionalString(windows?.pfx?.path)
-    const pfxPasswordEnv = optionalString(windows?.pfx?.passwordEnv)
-    if (
-      pfxPath !== undefined &&
-      pfxPasswordEnv !== undefined &&
-      env[pfxPasswordEnv] !== undefined
-    ) {
-      return true
-    }
-    return env["WINDOWS_SIGNING_CERT"] !== undefined
-  }
-  if (platform === "linux") {
-    return (
-      optionalString(config?.signing?.linux?.gpgKey) !== undefined ||
-      env["LINUX_GPG_KEY"] !== undefined
-    )
-  }
-  return false
-}
+): DoctorEnvironmentApi => ({
+  get: (name) => Effect.succeed(Option.fromUndefinedOr(env[name]))
+})
 
 const optionalString = (value: unknown): string | undefined =>
   typeof value === "string" && value.length > 0 ? value : undefined

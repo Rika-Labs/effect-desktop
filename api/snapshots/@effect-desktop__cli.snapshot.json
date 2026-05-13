@@ -191,7 +191,7 @@
     {
       "name": "DesktopDoctorReport",
       "kind": "interface",
-      "signature": "export interface DesktopDoctorReport { readonly passed: boolean readonly ci: boolean readonly platform: string readonly arch: string readonly probes: readonly DoctorProbeResult[] readonly layerGraph: LayerGraphSnapshot | undefined }"
+      "signature": "export interface DesktopDoctorReport { readonly passed: boolean readonly ci: boolean readonly platform: string readonly arch: string readonly probes: readonly DoctorDiagnostic[] readonly layerGraph: LayerGraphSnapshot | undefined }"
     },
     {
       "name": "DesktopNotarizeOptions",
@@ -364,6 +364,26 @@
       "signature": "export type DoctorCommandRunner = ( invocation: DoctorCommandInvocation ) => Effect.Effect<DoctorCommandOutput, DoctorMissing, never>"
     },
     {
+      "name": "DoctorDiagnostic",
+      "kind": "class",
+      "signature": "export class DoctorDiagnostic extends Schema.Class<DoctorDiagnostic>(\"DoctorDiagnostic\")({ name: Schema.Literals([ \"bun-version\", \"rust-toolchain\", \"platform-sdk\", \"webview-runtime\", \"signing-credentials\", \"build-tools\", \"package-manager-state\", \"native-host-cache\", \"config\" ]), status: Schema.Literals([\"ok\", \"missing\", \"warning\"]), component: Schema.NonEmptyString, message: Schema.NonEmptyString, remediation: Schema.optionalKey(Schema.NonEmptyString), installCommand: Schema.optionalKey(Schema.NonEmptyString), docsUrl: Schema.optionalKey(Schema.NonEmptyString), evidence: Schema.Array(DoctorEvidence) }) {}"
+    },
+    {
+      "name": "DoctorEnvironment",
+      "kind": "class",
+      "signature": "export class DoctorEnvironment extends Context.Service<DoctorEnvironment, DoctorEnvironmentApi>()( \"effect-desktop/cli/DoctorEnvironment\" ) {}"
+    },
+    {
+      "name": "DoctorEnvironmentApi",
+      "kind": "interface",
+      "signature": "export interface DoctorEnvironmentApi { readonly get: (name: string) => Effect.Effect<Option.Option<string>, never, never> }"
+    },
+    {
+      "name": "DoctorEvidence",
+      "kind": "class",
+      "signature": "export class DoctorEvidence extends Schema.Class<DoctorEvidence>(\"DoctorEvidence\")({ key: Schema.NonEmptyString, value: Schema.String }) {}"
+    },
+    {
       "name": "DoctorMissing",
       "kind": "class",
       "signature": "export class DoctorMissing extends Data.TaggedError(\"DoctorMissing\")<{ readonly probe: DoctorProbeName readonly component: string readonly platform: string readonly message: string readonly remediation: string readonly installHint: string readonly docsUrl: string }> {}"
@@ -375,8 +395,8 @@
     },
     {
       "name": "DoctorProbeResult",
-      "kind": "interface",
-      "signature": "export interface DoctorProbeResult { readonly name: DoctorProbeName readonly status: DoctorProbeStatus readonly component: string readonly message: string readonly remediation: string | undefined readonly installHint: string | undefined readonly docsUrl: string | undefined }"
+      "kind": "type",
+      "signature": "export type DoctorProbeResult = DoctorDiagnostic"
     },
     {
       "name": "DoctorProbeStatus",
