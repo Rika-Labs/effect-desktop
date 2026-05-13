@@ -14,7 +14,8 @@ The runtime tier persists via the SQL adapter from T02 (`SqlClient`); the render
 
 ## Decision
 
-Delete `event-log.ts` and `audit-events.ts`. Adopt `effect/unstable/eventlog`.
+Delete the bespoke `event-log.ts` implementation/wrapper. Adopt
+`effect/unstable/eventlog` directly.
 
 - Audit is reframed as a typed `EventGroup` defined once in `packages/core/src/runtime/audit-events.ts` (file stays but its content changes from bespoke to an `EventGroup` value).
 - `EventLog` is composed from `EventJournal` plus the audit `EventGroup`. Journal selection (SQL vs IndexedDB) is the only configuration point.
@@ -52,7 +53,7 @@ Cross-links: [ADR-0003](adr-0003-sql-effect-unstable-sql.md) (SQL journal backen
 
 ## Validation
 
-Journal entries persist across restart via the SQL adapter; a renderer-side live query subscribed via Reactivity invalidates within one tick of a publish in another window; compaction reduces journal size under a synthetic workload; no reference to the deleted `event-log.ts` / `audit-events.ts` internals remains. `bun run typecheck` and `bun test` pass.
+Journal entries persist across restart via the SQL adapter; a renderer-side live query subscribed via Reactivity invalidates within one tick of a publish in another window; compaction reduces journal size under a synthetic workload; no public `@effect-desktop/core` wrapper re-export remains for upstream EventLog primitives. `bun run typecheck` and `bun test` pass.
 
 ## Migration notes
 

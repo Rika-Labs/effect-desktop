@@ -7,6 +7,8 @@ import * as StdioRuntime from "effect/Stdio"
 import * as TerminalRuntime from "effect/Terminal"
 import { Rpc, RpcGroup, RpcServer } from "effect/unstable/rpc"
 import { ChildProcessSpawner as ChildProcessSpawnerRuntime } from "effect/unstable/process"
+import { Reactivity } from "effect/unstable/reactivity"
+import { WorkflowEngine } from "effect/unstable/workflow"
 
 import { rpcCapability } from "@effect-desktop/bridge"
 
@@ -18,12 +20,9 @@ import {
   makePermissionRegistry
 } from "./permission-registry.js"
 import type { NormalizedCapability } from "./permission-registry.js"
-import { ReactivityLayer } from "./reactivity.js"
 import { ResourceRegistryLive } from "./resources.js"
 import { servedRpcGroup, servedRpcGroupProperties } from "./rpc-group-metadata.js"
 import { Telemetry, makeTelemetry } from "./telemetry.js"
-import { WorkflowEngineLive } from "./workflow.js"
-import type { WorkflowLayer } from "./workflow.js"
 
 export interface WindowSpec {
   readonly title: string
@@ -39,7 +38,7 @@ export interface DesktopConfig<RIn = never, E = never> {
   readonly layers?: ReadonlyArray<Layer.Layer<never, E, RIn>>
   readonly rpcs?: ReadonlyArray<AnyDesktopRpcLayer>
   readonly permissions?: ReadonlyArray<NormalizedCapability>
-  readonly workflows?: ReadonlyArray<WorkflowLayer>
+  readonly workflows?: ReadonlyArray<DesktopWorkflowLayer>
 }
 
 export interface DesktopMakeConfig {
@@ -47,8 +46,14 @@ export interface DesktopMakeConfig {
   readonly windows: Readonly<Record<string, WindowSpec>>
   readonly providers?: DesktopProviderSelection
   readonly permissions?: ReadonlyArray<NormalizedCapability>
-  readonly workflows?: ReadonlyArray<WorkflowLayer>
+  readonly workflows?: ReadonlyArray<DesktopWorkflowLayer>
 }
+
+export type DesktopWorkflowLayer<RIn = never, E = never> = Layer.Layer<
+  never,
+  E,
+  RIn | WorkflowEngine.WorkflowEngine
+>
 
 export interface DesktopAppDefinition<E = never, R = never> {
   readonly _tag: "DesktopAppDefinition"
@@ -58,7 +63,7 @@ export interface DesktopAppDefinition<E = never, R = never> {
   readonly layers: ReadonlyArray<Layer.Layer<never, E, R>>
   readonly rpcLayers: ReadonlyArray<AnyDesktopRpcLayer>
   readonly permissions: ReadonlyArray<NormalizedCapability>
-  readonly workflows: ReadonlyArray<WorkflowLayer>
+  readonly workflows: ReadonlyArray<DesktopWorkflowLayer>
   pipe(): DesktopAppDefinition<E, R>
   pipe<A>(ab: (self: DesktopAppDefinition<E, R>) => A): A
   pipe<A, B>(ab: (self: DesktopAppDefinition<E, R>) => A, bc: (a: A) => B): B
@@ -185,9 +190,9 @@ const coreServicesLayer: Layer.Layer<never, Config.ConfigError, never> = Layer.m
   ResourceRegistryLive,
   TelemetryLive,
   PermissionRegistryLive,
-  ReactivityLayer,
+  Reactivity.layer,
   DesktopLoggerLayer,
-  WorkflowEngineLive
+  WorkflowEngine.layerMemory
 )
 
 const CoreServiceGraphNodes = Object.freeze([
@@ -646,7 +651,7 @@ const makeDefinition = <E, R>(definition: {
   readonly layers: ReadonlyArray<Layer.Layer<never, E, R>>
   readonly rpcLayers: ReadonlyArray<AnyDesktopRpcLayer>
   readonly permissions: ReadonlyArray<NormalizedCapability>
-  readonly workflows: ReadonlyArray<WorkflowLayer>
+  readonly workflows: ReadonlyArray<DesktopWorkflowLayer>
 }): DesktopAppDefinition<E, R> =>
   Object.freeze({
     _tag: "DesktopAppDefinition" as const,

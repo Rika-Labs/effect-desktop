@@ -26,6 +26,9 @@
       "types": "./src/runtime/renderer.ts",
       "default": "./src/runtime/renderer.ts"
     },
+    "./runtime/event-log": null,
+    "./runtime/reactivity": null,
+    "./runtime/workflow": null,
     "./runtime/*": {
       "types": "./src/runtime/*.ts",
       "default": "./src/runtime/*.ts"

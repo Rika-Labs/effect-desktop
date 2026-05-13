@@ -15,9 +15,8 @@ import type { Scope } from "effect"
 import { Rpc, RpcClient, RpcGroup, RpcServer } from "effect/unstable/rpc"
 import type { Socket } from "effect/unstable/socket"
 import type * as RuntimeTransport from "@effect-desktop/core/runtime/transport"
-import type { DesktopRuntimeProviderServices } from "./runtime/desktop-app.js"
+import type { DesktopRuntimeProviderServices, DesktopWorkflowLayer } from "./runtime/desktop-app.js"
 import type { DesktopRpcClient, SupportedDesktopRpcClient } from "./runtime/desktop-rpc-surface.js"
-import type { WorkflowLayer } from "./runtime/workflow.js"
 
 type IsEqual<A, B> =
   (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false
@@ -70,6 +69,16 @@ test("public barrel keeps low-level runtime plumbing behind subpaths", async () 
   expect("layerStdioSocket" in core).toBe(false)
   expect("makeDesktopRendererRpcRuntime" in core).toBe(false)
   expect("describeRpcs" in core).toBe(false)
+  expect("EventJournalMemoryLive" in core).toBe(false)
+  expect("EventJournalSqlLive" in core).toBe(false)
+  expect("ReactivityLayer" in core).toBe(false)
+  expect("mutation" in core).toBe(false)
+  expect("WorkflowEngineLive" in core).toBe(false)
+  expect("WorkflowLayer" in core).toBe(false)
+  expect("Activity" in core).toBe(false)
+  expect("DurableClock" in core).toBe(false)
+  expect("DurableDeferred" in core).toBe(false)
+  expect("Workflow" in core).toBe(false)
 })
 
 test("runtime transport subpath exposes framed transport helpers", async () => {
@@ -82,6 +91,17 @@ test("runtime transport subpath exposes framed transport helpers", async () => {
   expect("createFramedTransport" in transport).toBe(false)
   expect("createBunStdioTransport" in transport).toBe(false)
   expect("makeConnection" in transport).toBe(false)
+})
+
+test("deleted zero-policy runtime wrapper subpaths are not exported", async () => {
+  for (const module of ["event-log", "reactivity", "workflow"]) {
+    const specifier = "@effect-desktop/core/runtime/" + module
+    const rejected = await import(specifier).then(
+      () => false,
+      () => true
+    )
+    expect(rejected).toBe(true)
+  }
 })
 
 test("public Desktop facade exposes Rpc metadata helpers", async () => {
@@ -174,7 +194,7 @@ test("Desktop.runtimeGraph exposes selected providers and composition nodes with
           })
         )
       ],
-      workflows: [Layer.empty as WorkflowLayer]
+      workflows: [Layer.empty as DesktopWorkflowLayer]
     })
   )
 

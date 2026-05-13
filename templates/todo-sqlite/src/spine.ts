@@ -1,5 +1,6 @@
-import { Desktop, mutation, ReactivityLayer, SqlClientLive } from "@effect-desktop/core"
+import { Desktop, SqlClientLive } from "@effect-desktop/core"
 import { Effect, Layer, Schema } from "effect"
+import { Reactivity } from "effect/unstable/reactivity"
 import { Model } from "effect/unstable/schema"
 import { SqlClient } from "effect/unstable/sql/SqlClient"
 import * as SqlModel from "effect/unstable/sql/SqlModel"
@@ -41,7 +42,7 @@ const repoEffect = Effect.gen(function* () {
 
   const handlerLayer = AppRpc.toLayer({
     CreateTodo: ({ title }) =>
-      mutation(
+      Reactivity.mutation(
         Effect.gen(function* () {
           const id = globalThis.crypto.randomUUID()
           const row = yield* repo
@@ -61,20 +62,20 @@ const repoEffect = Effect.gen(function* () {
       }),
 
     CompleteTodo: ({ id }) =>
-      mutation(
+      Reactivity.mutation(
         sql`UPDATE todos SET done = 1 WHERE id = ${id as string}`.pipe(Effect.asVoid, Effect.orDie),
         [TODO_REACTIVITY_KEY]
       ),
 
     DeleteTodo: ({ id }) =>
-      mutation(
+      Reactivity.mutation(
         sql`DELETE FROM todos WHERE id = ${id as string}`.pipe(Effect.asVoid, Effect.orDie),
         [TODO_REACTIVITY_KEY]
       )
   })
 
   return handlerLayer.pipe(
-    Layer.provide(ReactivityLayer),
+    Layer.provide(Reactivity.layer),
     Layer.provide(Layer.succeed(SqlClient, sql))
   )
 }).pipe(Effect.orDie)

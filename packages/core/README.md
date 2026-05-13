@@ -10,7 +10,7 @@ Public framework API and runtime contracts (`Desktop.run`, `Desktop.window`, `De
 
 The package exports runtime primitives as they land by phase. Phase 16 adds the
 `PermissionRegistry`, `ApprovalBroker`, and `AuditEvents` services to the Phase
-15 `SQLite`, `Settings`, `EventLog`, `Transport`, `WindowState`, `Secrets`, and
+15 `SQLite`, `Settings`, `Transport`, `WindowState`, `Secrets`, and
 `RedactionFilter` services/utilities for scope-bound local storage, app-owned
 protocol transport, platform-backed credential storage, and human-visible
 emission safety.
@@ -61,29 +61,16 @@ after open.
 
 ### EventLog
 
-`EventLog` is a SQLite-backed append-only event stream for audit, replay,
-debugging, and recovery. `append({ type, payload })` validates input, writes the
-event in a SQLite transaction, applies the configured retention ring, publishes
-to the live tail after commit, and returns the assigned monotonic event id.
-
-`query({ from, to, type, limit })` returns events in event-id order. `subscribe`
-first replays from the requested cursor, then follows committed live events
-through a bounded PubSub stream. `maxEvents` bounds the stored ring by deleting
-the oldest committed rows after each append.
-
-SQLite is configured with `PRAGMA synchronous = FULL` when the log opens, so
-committed appends use SQLite's durability path. Underlying `SQLITE_FULL` errors
-map to `EventLogFull`; once a log is read-only, appends fail while query and
-subscribe continue.
+Effect Desktop uses `effect/unstable/eventlog` directly for append-only event
+journals. The core package does not re-export a local `EventLog` wrapper;
+callers compose `EventLog`, `EventJournal`, and journal backends from Effect.
 
 ### AuditEvents
 
 `AuditEvents` is the typed audit surface for permission-relevant runtime
-transitions. `emit(event)` writes closed `audit/<kind>` rows into `EventLog`
-after running the shared redaction filter, so secret-shaped fields in structured
-details are replaced before persistence. `query(options)` and
-`subscribe(options)` expose the same redacted rows through the underlying
-`EventLog` export and live-tail APIs.
+transitions. `emit(event)` writes closed `audit/<kind>` rows through the Effect
+`EventLog` service after running the shared redaction filter, so secret-shaped
+fields in structured details are replaced before persistence.
 
 Permission and approval services emit structured audit rows for grants, denials,
 revocations, expiry, one-time consumption, use, approval requests, approval
@@ -106,12 +93,12 @@ broker has approved a request. Callers execute privileged work through
 Decision order is fixed: explicit deny, revoked/expired/consumed,
 approval-denied, approval, allow, then default deny. Filesystem roots authorize
 descendant paths, while process commands, network hosts, secret namespaces, and
-native invoke methods match explicit declared entries. When an `EventLogStore`
-is supplied, every check writes a structured `AuditEvents` row with the
-normalized capability, actor, resource, source, and trace id. Grant lifecycle
-transitions write typed audit rows for grant, use, revoke, expire, and one-time
-consumption. Revoked, expired, and consumed grants fail as typed Effect values
-instead of thrown exceptions.
+native invoke methods match explicit declared entries. When an `AuditEventsApi`
+is supplied, every check writes a structured audit row with the normalized
+capability, actor, resource, source, and trace id. Grant lifecycle transitions
+write typed audit rows for grant, use, revoke, expire, and one-time consumption.
+Revoked, expired, and consumed grants fail as typed Effect values instead of
+thrown exceptions.
 
 `listDecisions()` and `observeDecisions()` expose the registry-owned permission
 decision history for devtools. This keeps denial reasons and remediation hints
@@ -243,10 +230,10 @@ permissions, and maps missing keys or unavailable safe storage into typed
 `SecretsError` values.
 
 Secret bytes stay in `SecretValue`, whose string and JSON forms are redacted.
-When an `EventLogStore` is supplied, each successful operation writes a
-`secret accessed` audit event with namespace, key, outcome, and trace id, never
-the secret value. There are no long-lived handles; cleanup is the caller's
-explicit disposal of returned `SecretValue` copies.
+When an `AuditEventsApi` is supplied, each successful operation writes a `secret
+accessed` audit event with namespace, key, outcome, and trace id, never the
+secret value. There are no long-lived handles; cleanup is the caller's explicit
+disposal of returned `SecretValue` copies.
 
 ### RedactionFilter
 
@@ -311,27 +298,6 @@ const program = Effect.gen(function* () {
   })
   yield* store.set("user.name", Schema.String, "alice")
   return yield* store.getOrDefault("user.name", Schema.String, "anonymous")
-})
-
-await Effect.runPromise(
-  program.pipe(Effect.provide(SQLiteLive), Effect.provide(ResourceRegistryLive))
-)
-```
-
-```ts
-import { Effect } from "effect"
-import { makeEventLog, ResourceRegistryLive, SQLite, SQLiteLive } from "@effect-desktop/core"
-
-const program = Effect.gen(function* () {
-  const sqlite = yield* SQLite
-  const eventLog = yield* makeEventLog(sqlite)
-  const log = yield* eventLog.open({
-    path: "events.sqlite",
-    ownerScope: "window-main",
-    maxEvents: 10_000
-  })
-  const id = yield* log.append({ type: "user.created", payload: { name: "alice" } })
-  return yield* log.query({ from: id })
 })
 
 await Effect.runPromise(

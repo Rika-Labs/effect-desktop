@@ -28,8 +28,9 @@ the Phase 20 reusable testing harness.
   `packages/core/src/runtime/sqlite.test.ts`.
 - `packages/core/src/runtime/settings.ts` and
   `packages/core/src/runtime/settings.test.ts`.
-- `packages/core/src/runtime/event-log.ts` and
-  `packages/core/src/runtime/event-log.test.ts`.
+- `effect/unstable/eventlog` for the append-only event journal. The former
+  `packages/core/src/runtime/event-log.ts` wrapper was deleted after the
+  upstream Effect primitive became the canonical API.
 - `packages/core/src/runtime/transport.ts` and
   `packages/core/src/runtime/transport.test.ts`.
 - `packages/core/src/runtime/window-state.ts` and
@@ -45,8 +46,7 @@ the Phase 20 reusable testing harness.
   error types.
 - `Settings` / `SettingsLive` / `makeSettings` and `SettingsStore` for
   schema-validated key/value persistence.
-- `EventLog` / `makeEventLog` and `EventLogStore` for append/query/subscribe
-  audit and replay streams.
+- Effect `EventLog` / `EventJournal` for append/query audit and replay streams.
 - `Transport` / `TransportLive` / `makeTransport`, framing helpers, and
   in-memory transport pair helpers.
 - `WindowState` / `makeWindowState` and structured window-state records/events.
@@ -102,10 +102,9 @@ Specialized Phase 14 evidence:
   defaults, key listing, delete change events, invalid value rejection,
   serialized update, change streams, transactional migrations, missing migration
   failures, and corrupt database recovery from backup.
-- `packages/core/src/runtime/event-log.test.ts` covers monotonic append/query,
-  cursor/type filtering, explicit null replay, concurrent append id allocation,
-  persistence across reopen, replay-then-live subscribe, retention, invalid
-  append validation, and read-only `EventLogFull` behavior.
+- `packages/core/src/runtime/audit-events.test.ts` covers the desktop audit
+  policy layered on top of Effect `EventLog`, including redaction, invalid
+  payload rejection, and all audit event kinds.
 - `packages/core/src/runtime/transport.test.ts` covers length-prefixed framing,
   JSON-RPC `Content-Length` framing, split stream unframing, invalid frame
   failures, in-memory transport pairs, and closed-connection failures.
@@ -122,8 +121,10 @@ Specialized Phase 14 evidence:
 Milestone: Phase 14 - Storage
 Files changed: core SQLite, Settings, EventLog, Transport, and WindowState
 services; tests; public exports; and Phase 14 learning records.
-Public APIs added: @effect-desktop/core SQLite, Settings, EventLog, Transport,
-WindowState services and their store/connection/framing/state helper types.
+Public APIs added at phase close: @effect-desktop/core SQLite, Settings,
+EventLog, Transport, WindowState services and their store/connection/framing/
+state helper types. The local EventLog wrapper was later removed in favor of
+direct `effect/unstable/eventlog` imports.
 Tests added: storage runtime tests for SQLite transactions and scope cleanup,
 Settings migrations/recovery/change streams, EventLog retention/replay/live
 tail, Transport framing/in-memory pairs, and WindowState restore/recovery.

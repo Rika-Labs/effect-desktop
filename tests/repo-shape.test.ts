@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { readFileSync, readdirSync, statSync } from "node:fs"
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs"
 import { join } from "node:path"
 
 const REPO_ROOT = join(import.meta.dir, "..")
@@ -163,4 +163,19 @@ describe("crates/*", () => {
       expect(cargoToml).toContain(`"crates/${crate}"`)
     }
   })
+})
+
+describe("architecture debt guardrails", () => {
+  const removedEffectWrapperModules = [
+    "packages/core/src/runtime/event-log.ts",
+    "packages/core/src/runtime/platform.ts",
+    "packages/core/src/runtime/reactivity.ts",
+    "packages/core/src/runtime/workflow.ts"
+  ] as const
+
+  for (const path of removedEffectWrapperModules) {
+    test(`${path} does not reappear as a zero-policy Effect wrapper`, () => {
+      expect(existsSync(join(REPO_ROOT, path))).toBe(false)
+    })
+  }
 })

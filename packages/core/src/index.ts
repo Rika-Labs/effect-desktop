@@ -1,5 +1,6 @@
 import { RedactionFilter, RpcCapability, RpcEndpoint, RpcSupport } from "@effect-desktop/bridge"
 import { Effect, Layer } from "effect"
+import { WorkflowEngine } from "effect/unstable/workflow"
 
 import {
   Rpcs,
@@ -16,14 +17,13 @@ import type {
   DesktopApp,
   DesktopConfig,
   DesktopConfigError,
-  DesktopRuntimeProviderServices
+  DesktopRuntimeProviderServices,
+  DesktopWorkflowLayer
 } from "./runtime/desktop-app.js"
 import { DesktopRpc } from "./runtime/desktop-rpc-surface.js"
 import type { NormalizedCapability } from "./runtime/permission-registry.js"
 import { PermissionRegistry } from "./runtime/permission-registry.js"
 import { describeRpcs } from "./runtime/rpc-descriptors.js"
-import type { WorkflowLayer } from "./runtime/workflow.js"
-import { WorkflowEngine, WorkflowEngineLive } from "./runtime/workflow.js"
 
 export {
   RedactionFilter,
@@ -46,14 +46,12 @@ export * from "./runtime/desktop-env-config.js"
 export * from "./runtime/logger.js"
 export * from "./runtime/resources.js"
 export * from "./runtime/filesystem.js"
-export * from "./runtime/event-log.js"
 export * from "./runtime/audit-events.js"
 export * from "./runtime/approval-broker.js"
 export * from "./runtime/commands.js"
 export * from "./runtime/process.js"
 export * from "./runtime/pty.js"
 export * from "./runtime/worker.js"
-export * from "./runtime/workflow.js"
 export * from "./runtime/permission-registry.js"
 export * from "./runtime/permission-interceptor.js"
 export * from "./runtime/permission-approval-workflow.js"
@@ -62,7 +60,6 @@ export * from "./runtime/settings.js"
 export * from "./runtime/sqlite.js"
 export * from "./runtime/telemetry.js"
 export * from "./runtime/desktop-errors.js"
-export * from "./runtime/reactivity.js"
 export * from "./runtime/desktop-rpc-surface.js"
 export {
   DesktopApp,
@@ -92,13 +89,14 @@ export {
   type DesktopRuntimeProviderServices,
   type DesktopRuntimeSelectedProviders,
   type DesktopRuntimeServices,
+  type DesktopWorkflowLayer,
   type WindowSpec
 } from "./runtime/desktop-app.js"
 export { DesktopRuntime, DesktopRuntimeLive } from "./runtime/desktop-app.js"
 export { DesktopConfigError as DesktopSpineConfigError } from "./runtime/desktop-app.js"
 
 export interface DesktopAppOptions {
-  readonly workflows?: readonly WorkflowLayer[]
+  readonly workflows?: readonly DesktopWorkflowLayer[]
   readonly permissions?: readonly NormalizedCapability[]
 }
 
@@ -141,14 +139,14 @@ function app<RIn = never, E = never>(
         )
 
   if (wfs.length === 0) {
-    return Layer.merge(WorkflowEngineLive, declareLayer)
+    return Layer.merge(WorkflowEngine.layerMemory, declareLayer)
   }
 
   const merged = wfs.reduce<Layer.Layer<never, never, WorkflowEngine.WorkflowEngine>>(
     (acc, wf) => Layer.merge(acc, wf),
     Layer.empty as Layer.Layer<never, never, WorkflowEngine.WorkflowEngine>
   )
-  return Layer.merge(Layer.provideMerge(merged, WorkflowEngineLive), declareLayer)
+  return Layer.merge(Layer.provideMerge(merged, WorkflowEngine.layerMemory), declareLayer)
 }
 
 export const Desktop = Object.freeze({
