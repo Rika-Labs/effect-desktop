@@ -381,13 +381,10 @@ const decodeMenuEventEnvelope = (
     )
   }
 
-  return Effect.mapError(
-    Schema.decodeUnknownEffect(MenuActivatedEvent)(envelope.payload) as Effect.Effect<
-      MenuActivatedEvent,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+  return Schema.decodeUnknownEffect(MenuActivatedEvent)(envelope.payload).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+    )
   )
 }
 
@@ -433,45 +430,25 @@ const toWindowHandle = (handle: WindowHandle): MenuWindowHandle =>
 const decodeMenuSetApplicationMenuInput = (
   input: unknown
 ): Effect.Effect<MenuSetApplicationMenuInput, MenuError, never> =>
-  decodeInput(MenuSetApplicationMenuInput, input, "Menu.setApplicationMenu") as Effect.Effect<
-    MenuSetApplicationMenuInput,
-    MenuError,
-    never
-  >
+  decodeInput(MenuSetApplicationMenuInput, input, "Menu.setApplicationMenu")
 
 const decodeMenuSetWindowMenuInput = (
   input: unknown
 ): Effect.Effect<MenuSetWindowMenuInput, MenuError, never> =>
-  decodeInput(MenuSetWindowMenuInput, input, "Menu.setWindowMenu") as Effect.Effect<
-    MenuSetWindowMenuInput,
-    MenuError,
-    never
-  >
+  decodeInput(MenuSetWindowMenuInput, input, "Menu.setWindowMenu")
 
 const decodeMenuClearInput = (input: unknown): Effect.Effect<MenuClearInput, MenuError, never> =>
-  decodeInput(MenuClearInput, input, "Menu.clear") as Effect.Effect<
-    MenuClearInput,
-    MenuError,
-    never
-  >
+  decodeInput(MenuClearInput, input, "Menu.clear")
 
 const decodeMenuBindCommandInput = (
   input: unknown
 ): Effect.Effect<MenuBindCommandInput, MenuError, never> =>
-  decodeInput(MenuBindCommandInput, input, "Menu.bindCommand") as Effect.Effect<
-    MenuBindCommandInput,
-    MenuError,
-    never
-  >
+  decodeInput(MenuBindCommandInput, input, "Menu.bindCommand")
 
 const decodeMenuCapabilityInput = (
   input: unknown
 ): Effect.Effect<MenuCapabilityInput, MenuError, never> =>
-  decodeInput(MenuCapabilityInput, input, "Menu.capability") as Effect.Effect<
-    MenuCapabilityInput,
-    MenuError,
-    never
-  >
+  decodeInput(MenuCapabilityInput, input, "Menu.capability")
 
 const validateApplicationMenuRoots = (
   input: MenuSetApplicationMenuInput
@@ -489,18 +466,15 @@ const validateApplicationMenuRoots = (
   return Effect.succeed(input)
 }
 
-const decodeInput = (
-  schema: Schema.Schema<unknown>,
+const decodeInput = <A>(
+  schema: Schema.Codec<A, unknown, never, never>,
   input: unknown,
   operation: string
-): Effect.Effect<unknown, MenuError, never> =>
-  Effect.mapError(
-    Schema.decodeUnknownEffect(schema)(input, StrictParseOptions) as Effect.Effect<
-      unknown,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+): Effect.Effect<A, MenuError, never> =>
+  Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
   )
 
 function menuRpc<

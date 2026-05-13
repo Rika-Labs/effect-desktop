@@ -353,51 +353,32 @@ const normalizeScheme = (scheme: string): string => scheme.replace(/:$/u, "").to
 const decodeShellOpenExternalInput = (
   input: unknown
 ): Effect.Effect<ShellOpenExternalInput, ShellError, never> =>
-  decodeInput(ShellOpenExternalInput, input, "Shell.openExternal") as Effect.Effect<
-    ShellOpenExternalInput,
-    ShellError,
-    never
-  >
+  decodeInput(ShellOpenExternalInput, input, "Shell.openExternal")
 
 const decodeShellShowItemInFolderInput = (
   input: unknown
 ): Effect.Effect<ShellShowItemInFolderInput, ShellError, never> =>
-  decodeInput(ShellShowItemInFolderInput, input, "Shell.showItemInFolder") as Effect.Effect<
-    ShellShowItemInFolderInput,
-    ShellError,
-    never
-  >
+  decodeInput(ShellShowItemInFolderInput, input, "Shell.showItemInFolder")
 
 const decodeShellOpenPathInput = (
   input: unknown
 ): Effect.Effect<ShellOpenPathInput, ShellError, never> =>
-  decodeInput(ShellOpenPathInput, input, "Shell.openPath") as Effect.Effect<
-    ShellOpenPathInput,
-    ShellError,
-    never
-  >
+  decodeInput(ShellOpenPathInput, input, "Shell.openPath")
 
 const decodeShellTrashItemInput = (
   input: unknown
 ): Effect.Effect<ShellTrashItemInput, ShellError, never> =>
-  decodeInput(ShellTrashItemInput, input, "Shell.trashItem") as Effect.Effect<
-    ShellTrashItemInput,
-    ShellError,
-    never
-  >
+  decodeInput(ShellTrashItemInput, input, "Shell.trashItem")
 
-const decodeInput = (
-  schema: Schema.Schema<unknown>,
+const decodeInput = <A>(
+  schema: Schema.Codec<A, unknown, never, never>,
   input: unknown,
   operation: string
-): Effect.Effect<unknown, ShellError, never> =>
-  Effect.mapError(
-    Schema.decodeUnknownEffect(schema)(input, StrictParseOptions) as Effect.Effect<
-      unknown,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+): Effect.Effect<A, ShellError, never> =>
+  Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
   )
 
 function shellRpc<

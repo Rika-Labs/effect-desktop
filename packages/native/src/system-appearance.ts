@@ -283,13 +283,10 @@ const decodeSystemAppearanceEventEnvelope = (
     )
   }
 
-  return Effect.mapError(
-    Schema.decodeUnknownEffect(SystemAppearanceChangedEvent)(envelope.payload) as Effect.Effect<
-      SystemAppearanceChangedEvent,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+  return Schema.decodeUnknownEffect(SystemAppearanceChangedEvent)(envelope.payload).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+    )
   )
 }
 

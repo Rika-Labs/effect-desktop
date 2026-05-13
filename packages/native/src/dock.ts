@@ -315,78 +315,47 @@ const unsupportedError = (
 const decodeDockSetBadgeCountInput = (
   input: unknown
 ): Effect.Effect<DockSetBadgeCountInput, DockError, never> =>
-  decodeInput(DockSetBadgeCountInput, input, "Dock.setBadgeCount") as Effect.Effect<
-    DockSetBadgeCountInput,
-    DockError,
-    never
-  >
+  decodeInput(DockSetBadgeCountInput, input, "Dock.setBadgeCount")
 
 const decodeDockSetBadgeTextInput = (
   input: unknown
 ): Effect.Effect<DockSetBadgeTextInput, DockError, never> =>
-  decodeInput(DockSetBadgeTextInput, input, "Dock.setBadgeText") as Effect.Effect<
-    DockSetBadgeTextInput,
-    DockError,
-    never
-  >
+  decodeInput(DockSetBadgeTextInput, input, "Dock.setBadgeText")
 
 const decodeDockSetProgressInput = (
   input: unknown
 ): Effect.Effect<DockSetProgressInput, DockError, never> =>
-  decodeInput(DockSetProgressInput, input, "Dock.setProgress") as Effect.Effect<
-    DockSetProgressInput,
-    DockError,
-    never
-  >
+  decodeInput(DockSetProgressInput, input, "Dock.setProgress")
 
 const decodeDockSetMenuInput = (
   input: unknown
 ): Effect.Effect<DockSetMenuInput, DockError, never> =>
-  decodeInput(DockSetMenuInput, input, "Dock.setMenu") as Effect.Effect<
-    DockSetMenuInput,
-    DockError,
-    never
-  >
+  decodeInput(DockSetMenuInput, input, "Dock.setMenu")
 
 const decodeDockSetJumpListInput = (
   input: unknown
 ): Effect.Effect<DockSetJumpListInput, DockError, never> =>
-  decodeInput(DockSetJumpListInput, input, "Dock.setJumpList") as Effect.Effect<
-    DockSetJumpListInput,
-    DockError,
-    never
-  >
+  decodeInput(DockSetJumpListInput, input, "Dock.setJumpList")
 
 const decodeDockRequestAttentionInput = (
   input: unknown
 ): Effect.Effect<DockRequestAttentionInput, DockError, never> =>
-  decodeInput(DockRequestAttentionInput, input, "Dock.requestAttention") as Effect.Effect<
-    DockRequestAttentionInput,
-    DockError,
-    never
-  >
+  decodeInput(DockRequestAttentionInput, input, "Dock.requestAttention")
 
 const decodeDockIsSupportedInput = (
   input: unknown
 ): Effect.Effect<DockIsSupportedInput, DockError, never> =>
-  decodeInput(DockIsSupportedInput, input, "Dock.isSupported") as Effect.Effect<
-    DockIsSupportedInput,
-    DockError,
-    never
-  >
+  decodeInput(DockIsSupportedInput, input, "Dock.isSupported")
 
-const decodeInput = (
-  schema: Schema.Schema<unknown>,
+const decodeInput = <A>(
+  schema: Schema.Codec<A, unknown, never, never>,
   input: unknown,
   operation: string
-): Effect.Effect<unknown, DockError, never> =>
-  Effect.mapError(
-    Schema.decodeUnknownEffect(schema)(input, StrictParseOptions) as Effect.Effect<
-      unknown,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+): Effect.Effect<A, DockError, never> =>
+  Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
   )
 
 function dockRpc<

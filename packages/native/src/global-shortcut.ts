@@ -417,13 +417,10 @@ const decodeGlobalShortcutEventEnvelope = (
     )
   }
 
-  return Effect.mapError(
-    Schema.decodeUnknownEffect(GlobalShortcutPressedEvent)(envelope.payload) as Effect.Effect<
-      GlobalShortcutPressedEvent,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+  return Schema.decodeUnknownEffect(GlobalShortcutPressedEvent)(envelope.payload).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+    )
   )
 }
 
@@ -526,33 +523,22 @@ const toWindowHandle = (handle: GlobalShortcutWindowHandle): GlobalShortcutWindo
 const decodeGlobalShortcutRegisterInput = (
   input: unknown
 ): Effect.Effect<GlobalShortcutRegisterInput, GlobalShortcutError, never> =>
-  decodeInput(GlobalShortcutRegisterInput, input, "GlobalShortcut.register") as Effect.Effect<
-    GlobalShortcutRegisterInput,
-    GlobalShortcutError,
-    never
-  >
+  decodeInput(GlobalShortcutRegisterInput, input, "GlobalShortcut.register")
 
 const decodeGlobalShortcutAcceleratorInput = (
   input: unknown
 ): Effect.Effect<GlobalShortcutAcceleratorInput, GlobalShortcutError, never> =>
-  decodeInput(GlobalShortcutAcceleratorInput, input, "GlobalShortcut.accelerator") as Effect.Effect<
-    GlobalShortcutAcceleratorInput,
-    GlobalShortcutError,
-    never
-  >
+  decodeInput(GlobalShortcutAcceleratorInput, input, "GlobalShortcut.accelerator")
 
-const decodeInput = (
-  schema: Schema.Schema<unknown>,
+const decodeInput = <A>(
+  schema: Schema.Codec<A, unknown, never, never>,
   input: unknown,
   operation: string
-): Effect.Effect<unknown, GlobalShortcutError, never> =>
-  Effect.mapError(
-    Schema.decodeUnknownEffect(schema)(input, StrictParseOptions) as Effect.Effect<
-      unknown,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+): Effect.Effect<A, GlobalShortcutError, never> =>
+  Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
   )
 
 function shortcutRpc<

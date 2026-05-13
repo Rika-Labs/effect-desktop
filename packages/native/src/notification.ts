@@ -267,7 +267,7 @@ const withNotificationRpcClient = <A>(
 const subscribeNotificationEvent = <A>(
   exchange: BridgeClientExchange,
   method: string,
-  schema: Schema.Schema<A>
+  schema: Schema.Codec<A, unknown, never, never>
 ): Stream.Stream<A, NotificationError, never> => {
   if (exchange.subscribe === undefined) {
     return Stream.fail(
@@ -282,7 +282,7 @@ const subscribeNotificationEvent = <A>(
 
 const decodeNotificationEventEnvelope = <A>(
   operation: string,
-  schema: Schema.Schema<A>,
+  schema: Schema.Codec<A, unknown, never, never>,
   envelope: HostProtocolEventEnvelope
 ): Effect.Effect<A, NotificationError, never> => {
   if (envelope.method !== operation) {
@@ -291,9 +291,10 @@ const decodeNotificationEventEnvelope = <A>(
     )
   }
 
-  return Effect.mapError(
-    Schema.decodeUnknownEffect(schema)(envelope.payload) as Effect.Effect<A, unknown, never>,
-    (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+  return Schema.decodeUnknownEffect(schema)(envelope.payload).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+    )
   )
 }
 
@@ -357,24 +358,17 @@ const toNotificationHandle = (handle: NotificationHandle): NotificationHandle =>
 const decodeNotificationShowInput = (
   input: unknown
 ): Effect.Effect<NotificationShowInput, NotificationError, never> =>
-  decodeInput(NotificationShowInput, input, "Notification.show") as Effect.Effect<
-    NotificationShowInput,
-    NotificationError,
-    never
-  >
+  decodeInput(NotificationShowInput, input, "Notification.show")
 
-const decodeInput = (
-  schema: Schema.Schema<unknown>,
+const decodeInput = <A>(
+  schema: Schema.Codec<A, unknown, never, never>,
   input: unknown,
   operation: string
-): Effect.Effect<unknown, NotificationError, never> =>
-  Effect.mapError(
-    Schema.decodeUnknownEffect(schema)(input, StrictParseOptions) as Effect.Effect<
-      unknown,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+): Effect.Effect<A, NotificationError, never> =>
+  Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
   )
 
 function notificationRpc<

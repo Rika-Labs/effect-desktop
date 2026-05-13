@@ -318,34 +318,23 @@ const unsupportedError = (
 const decodeSafeStorageSetInput = (
   input: unknown
 ): Effect.Effect<SafeStorageSetInput, SafeStorageError, never> =>
-  decodeInput(SafeStorageSetInput, input, "SafeStorage.set") as Effect.Effect<
-    SafeStorageSetInput,
-    SafeStorageError,
-    never
-  >
+  decodeInput(SafeStorageSetInput, input, "SafeStorage.set")
 
 const decodeSafeStorageKeyInput = (
   input: unknown,
   operation: string
 ): Effect.Effect<SafeStorageKeyInput, SafeStorageError, never> =>
-  decodeInput(SafeStorageKeyInput, input, operation) as Effect.Effect<
-    SafeStorageKeyInput,
-    SafeStorageError,
-    never
-  >
+  decodeInput(SafeStorageKeyInput, input, operation)
 
-const decodeInput = (
-  schema: Schema.Schema<unknown>,
+const decodeInput = <A>(
+  schema: Schema.Codec<A, unknown, never, never>,
   input: unknown,
   operation: string
-): Effect.Effect<unknown, SafeStorageError, never> =>
-  Effect.mapError(
-    Schema.decodeUnknownEffect(schema)(input, StrictParseOptions) as Effect.Effect<
-      unknown,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+): Effect.Effect<A, SafeStorageError, never> =>
+  Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
   )
 
 function safeStorageRpc<

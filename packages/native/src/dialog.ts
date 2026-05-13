@@ -270,60 +270,37 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
 const decodeDialogOpenFileInput = (
   input: unknown
 ): Effect.Effect<DialogOpenFileInput, DialogError, never> =>
-  decodeInput(DialogOpenFileInput, input, "Dialog.openFile") as Effect.Effect<
-    DialogOpenFileInput,
-    DialogError,
-    never
-  >
+  decodeInput(DialogOpenFileInput, input, "Dialog.openFile")
 
 const decodeDialogOpenDirectoryInput = (
   input: unknown
 ): Effect.Effect<DialogOpenDirectoryInput, DialogError, never> =>
-  decodeInput(DialogOpenDirectoryInput, input, "Dialog.openDirectory") as Effect.Effect<
-    DialogOpenDirectoryInput,
-    DialogError,
-    never
-  >
+  decodeInput(DialogOpenDirectoryInput, input, "Dialog.openDirectory")
 
 const decodeDialogSaveFileInput = (
   input: unknown
 ): Effect.Effect<DialogSaveFileInput, DialogError, never> =>
-  decodeInput(DialogSaveFileInput, input, "Dialog.saveFile") as Effect.Effect<
-    DialogSaveFileInput,
-    DialogError,
-    never
-  >
+  decodeInput(DialogSaveFileInput, input, "Dialog.saveFile")
 
 const decodeDialogMessageInput = (
   input: unknown
 ): Effect.Effect<DialogMessageInput, DialogError, never> =>
-  decodeInput(DialogMessageInput, input, "Dialog.message") as Effect.Effect<
-    DialogMessageInput,
-    DialogError,
-    never
-  >
+  decodeInput(DialogMessageInput, input, "Dialog.message")
 
 const decodeDialogConfirmInput = (
   input: unknown
 ): Effect.Effect<DialogConfirmInput, DialogError, never> =>
-  decodeInput(DialogConfirmInput, input, "Dialog.confirm") as Effect.Effect<
-    DialogConfirmInput,
-    DialogError,
-    never
-  >
+  decodeInput(DialogConfirmInput, input, "Dialog.confirm")
 
-const decodeInput = (
-  schema: Schema.Schema<unknown>,
+const decodeInput = <A>(
+  schema: Schema.Codec<A, unknown, never, never>,
   input: unknown,
   operation: string
-): Effect.Effect<unknown, DialogError, never> =>
-  Effect.mapError(
-    Schema.decodeUnknownEffect(schema)(input, StrictParseOptions) as Effect.Effect<
-      unknown,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+): Effect.Effect<A, DialogError, never> =>
+  Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
   )
 
 type DialogRpcClient = DesktopRpcClient<DialogRpc>

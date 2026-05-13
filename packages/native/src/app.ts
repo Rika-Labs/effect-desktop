@@ -271,7 +271,7 @@ const withAppRpcClient = <A>(
 const subscribeAppEvent = <A>(
   exchange: BridgeClientExchange,
   method: "App.onSecondInstance" | "App.onOpenFile" | "App.onOpenUrl" | "App.onBeforeQuit",
-  schema: Schema.Schema<A>
+  schema: Schema.Codec<A, unknown, never, never>
 ): Stream.Stream<A, AppError, never> => {
   if (exchange.subscribe === undefined) {
     return Stream.fail(
@@ -286,7 +286,7 @@ const subscribeAppEvent = <A>(
 
 const decodeAppEventEnvelope = <A>(
   operation: string,
-  schema: Schema.Schema<A>,
+  schema: Schema.Codec<A, unknown, never, never>,
   envelope: HostProtocolEventEnvelope
 ): Effect.Effect<A, AppError, never> => {
   if (envelope.method !== operation) {
@@ -295,9 +295,10 @@ const decodeAppEventEnvelope = <A>(
     )
   }
 
-  return Effect.mapError(
-    Schema.decodeUnknownEffect(schema)(envelope.payload) as Effect.Effect<A, unknown, never>,
-    (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+  return Schema.decodeUnknownEffect(schema)(envelope.payload).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+    )
   )
 }
 
@@ -338,51 +339,32 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
 const decodeAppQuitInput = (
   input: unknown
 ): Effect.Effect<AppQuitInput, HostProtocolError, never> =>
-  decodeInput(AppQuitInput, input, "App.quit") as Effect.Effect<
-    AppQuitInput,
-    HostProtocolError,
-    never
-  >
+  decodeInput(AppQuitInput, input, "App.quit")
 
 const decodeAppRestartInput = (
   input: unknown
 ): Effect.Effect<AppRestartInput, HostProtocolError, never> =>
-  decodeInput(AppRestartInput, input, "App.restart") as Effect.Effect<
-    AppRestartInput,
-    HostProtocolError,
-    never
-  >
+  decodeInput(AppRestartInput, input, "App.restart")
 
 const decodeAppOpenAtLoginInput = (
   input: unknown
 ): Effect.Effect<AppOpenAtLoginInput, HostProtocolError, never> =>
-  decodeInput(AppOpenAtLoginInput, input, "App.setOpenAtLogin") as Effect.Effect<
-    AppOpenAtLoginInput,
-    HostProtocolError,
-    never
-  >
+  decodeInput(AppOpenAtLoginInput, input, "App.setOpenAtLogin")
 
 const decodeAppProtocolInput = (
   input: unknown
 ): Effect.Effect<AppProtocolInput, HostProtocolError, never> =>
-  decodeInput(AppProtocolInput, input, "App.registerProtocol") as Effect.Effect<
-    AppProtocolInput,
-    HostProtocolError,
-    never
-  >
+  decodeInput(AppProtocolInput, input, "App.registerProtocol")
 
-const decodeInput = (
-  schema: Schema.Schema<unknown>,
+const decodeInput = <A>(
+  schema: Schema.Codec<A, unknown, never, never>,
   input: unknown,
   operation: string
-): Effect.Effect<unknown, HostProtocolError, never> =>
-  Effect.mapError(
-    Schema.decodeUnknownEffect(schema)(input, StrictParseOptions) as Effect.Effect<
-      unknown,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+): Effect.Effect<A, HostProtocolError, never> =>
+  Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
   )
 
 function appRpc<

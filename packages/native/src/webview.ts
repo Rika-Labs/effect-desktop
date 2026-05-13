@@ -396,13 +396,10 @@ const decodeWebViewEventEnvelope = (
     )
   }
 
-  return Effect.mapError(
-    Schema.decodeUnknownEffect(WebViewNavigationBlockedEvent)(envelope.payload) as Effect.Effect<
-      WebViewNavigationBlockedEvent,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+  return Schema.decodeUnknownEffect(WebViewNavigationBlockedEvent)(envelope.payload).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+    )
   )
 }
 
@@ -464,56 +461,32 @@ const toWebViewHandle = (handle: WebViewHandle): WebViewHandle =>
 const decodeWebViewCreateInput = (
   input: unknown
 ): Effect.Effect<WebViewCreateInput, WebViewError, never> =>
-  decodeInput(WebViewCreateInput, input, "WebView.create") as Effect.Effect<
-    WebViewCreateInput,
-    WebViewError,
-    never
-  >
+  decodeInput(WebViewCreateInput, input, "WebView.create")
 
 const decodeWebViewLoadRouteInput = (
   input: unknown
 ): Effect.Effect<WebViewLoadRouteInput, WebViewError, never> =>
-  decodeInput(WebViewLoadRouteInput, input, "WebView.loadRoute") as Effect.Effect<
-    WebViewLoadRouteInput,
-    WebViewError,
-    never
-  >
+  decodeInput(WebViewLoadRouteInput, input, "WebView.loadRoute")
 
 const decodeWebViewLoadUrlInput = (
   input: unknown
 ): Effect.Effect<WebViewLoadUrlInput, WebViewError, never> =>
-  decodeInput(WebViewLoadUrlInput, input, "WebView.loadUrl") as Effect.Effect<
-    WebViewLoadUrlInput,
-    WebViewError,
-    never
-  >
+  decodeInput(WebViewLoadUrlInput, input, "WebView.loadUrl")
 
 const decodeWebViewHandleInput = (
   input: unknown
 ): Effect.Effect<WebViewHandleInput, WebViewError, never> =>
-  decodeInput(WebViewHandleInput, input, "WebView.handle") as Effect.Effect<
-    WebViewHandleInput,
-    WebViewError,
-    never
-  >
+  decodeInput(WebViewHandleInput, input, "WebView.handle")
 
 const decodeWebViewSetNavigationPolicyInput = (
   input: unknown
 ): Effect.Effect<WebViewSetNavigationPolicyInput, WebViewError, never> =>
-  decodeInput(
-    WebViewSetNavigationPolicyInput,
-    input,
-    "WebView.setNavigationPolicy"
-  ) as Effect.Effect<WebViewSetNavigationPolicyInput, WebViewError, never>
+  decodeInput(WebViewSetNavigationPolicyInput, input, "WebView.setNavigationPolicy")
 
 const decodeWebViewCapabilityInput = (
   input: unknown
 ): Effect.Effect<WebViewCapabilityInput, WebViewError, never> =>
-  decodeInput(WebViewCapabilityInput, input, "WebView.capability") as Effect.Effect<
-    WebViewCapabilityInput,
-    WebViewError,
-    never
-  >
+  decodeInput(WebViewCapabilityInput, input, "WebView.capability")
 
 const validateWebViewScreenshot = (
   screenshot: WebViewScreenshot
@@ -540,18 +513,15 @@ const validateWebViewScreenshot = (
     return screenshot
   })
 
-const decodeInput = (
-  schema: Schema.Schema<unknown>,
+const decodeInput = <A>(
+  schema: Schema.Codec<A, unknown, never, never>,
   input: unknown,
   operation: string
-): Effect.Effect<unknown, WebViewError, never> =>
-  Effect.mapError(
-    Schema.decodeUnknownEffect(schema)(input, StrictParseOptions) as Effect.Effect<
-      unknown,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+): Effect.Effect<A, WebViewError, never> =>
+  Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
   )
 
 function webviewRpc<

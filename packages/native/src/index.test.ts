@@ -682,6 +682,44 @@ test("App bridge client sends typed host envelopes and decodes event streams", a
   ])
 })
 
+test("App bridge client keeps input decoding strict while event decoding remains tolerant", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange: BridgeClientExchange = {
+    request: (request) => {
+      requests.push(request)
+      return Effect.succeed({ kind: "success" as const, payload: undefined })
+    },
+    subscribe: (method) =>
+      method === "App.onOpenFile"
+        ? Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              timestamp: 1710000000400,
+              traceId: "event-trace",
+              method,
+              payload: { path: "README.md", ignoredByRenderer: true }
+            })
+          )
+        : Stream.empty
+  }
+
+  const app = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* App
+    }).pipe(Effect.provide(Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))))
+  )
+
+  const invalidInput = { scheme: "effect-desktop", ignoredByHost: true }
+  const inputExit = await Effect.runPromiseExit(app.registerProtocol(invalidInput))
+  const eventResult = await Effect.runPromise(
+    app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
+  )
+
+  expectExitFailure(inputExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(Array.from(eventResult)).toEqual([new AppOpenFileEvent({ path: "README.md" })])
+  expect(requests).toEqual([])
+})
+
 test("App bridge client validates protocol registration scheme before host requests", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const client = await Effect.runPromise(

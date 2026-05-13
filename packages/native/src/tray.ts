@@ -258,13 +258,10 @@ const decodeTrayEventEnvelope = (
     )
   }
 
-  return Effect.mapError(
-    Schema.decodeUnknownEffect(TrayActivatedEvent)(envelope.payload) as Effect.Effect<
-      TrayActivatedEvent,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+  return Schema.decodeUnknownEffect(TrayActivatedEvent)(envelope.payload).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+    )
   )
 }
 
@@ -306,49 +303,29 @@ const toTrayHandle = (handle: TrayHandle): TrayHandle =>
   }) as TrayHandle
 
 const decodeTrayCreateInput = (input: unknown): Effect.Effect<TrayCreateInput, TrayError, never> =>
-  decodeInput(TrayCreateInput, input, "Tray.create") as Effect.Effect<
-    TrayCreateInput,
-    TrayError,
-    never
-  >
+  decodeInput(TrayCreateInput, input, "Tray.create")
 
 const decodeTraySetIconInput = (
   input: unknown
 ): Effect.Effect<TraySetIconInput, TrayError, never> =>
-  decodeInput(TraySetIconInput, input, "Tray.setIcon") as Effect.Effect<
-    TraySetIconInput,
-    TrayError,
-    never
-  >
+  decodeInput(TraySetIconInput, input, "Tray.setIcon")
 
 const decodeTraySetTooltipInput = (
   input: unknown
 ): Effect.Effect<TraySetTooltipInput, TrayError, never> =>
-  decodeInput(TraySetTooltipInput, input, "Tray.setTooltip") as Effect.Effect<
-    TraySetTooltipInput,
-    TrayError,
-    never
-  >
+  decodeInput(TraySetTooltipInput, input, "Tray.setTooltip")
 
 const decodeTraySetMenuInput = (
   input: unknown
 ): Effect.Effect<TraySetMenuInput, TrayError, never> =>
-  decodeInput(TraySetMenuInput, input, "Tray.setMenu") as Effect.Effect<
-    TraySetMenuInput,
-    TrayError,
-    never
-  >
+  decodeInput(TraySetMenuInput, input, "Tray.setMenu")
 
 const decodeTrayDestroyInput = (
   input: unknown
 ): Effect.Effect<TrayDestroyInput, TrayError, never> =>
-  (
-    decodeInput(TrayDestroyInput, input, "Tray.destroy") as Effect.Effect<
-      TrayDestroyInput,
-      TrayError,
-      never
-    >
-  ).pipe(Effect.flatMap(validateDestroyTrayHandle))
+  decodeInput(TrayDestroyInput, input, "Tray.destroy").pipe(
+    Effect.flatMap(validateDestroyTrayHandle)
+  )
 
 const validateDestroyTrayHandle = (
   input: TrayDestroyInput
@@ -359,18 +336,15 @@ const validateDestroyTrayHandle = (
         makeHostProtocolInvalidArgumentError("tray", "must be an open tray handle", "Tray.destroy")
       )
 
-const decodeInput = (
-  schema: Schema.Schema<unknown>,
+const decodeInput = <A>(
+  schema: Schema.Codec<A, unknown, never, never>,
   input: unknown,
   operation: string
-): Effect.Effect<unknown, TrayError, never> =>
-  Effect.mapError(
-    Schema.decodeUnknownEffect(schema)(input, StrictParseOptions) as Effect.Effect<
-      unknown,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+): Effect.Effect<A, TrayError, never> =>
+  Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
   )
 
 function trayRpc<

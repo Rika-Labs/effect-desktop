@@ -176,7 +176,7 @@ const withPowerMonitorRpcClient = <A>(
 const subscribePowerMonitorEvent = <A>(
   exchange: BridgeClientExchange,
   method: string,
-  schema: Schema.Schema<A>
+  schema: Schema.Codec<A, unknown, never, never>
 ): Stream.Stream<A, PowerMonitorError, never> => {
   if (exchange.subscribe === undefined) {
     return Stream.fail(
@@ -191,7 +191,7 @@ const subscribePowerMonitorEvent = <A>(
 
 const decodePowerMonitorEventEnvelope = <A>(
   operation: string,
-  schema: Schema.Schema<A>,
+  schema: Schema.Codec<A, unknown, never, never>,
   envelope: HostProtocolEventEnvelope
 ): Effect.Effect<A, PowerMonitorError, never> => {
   if (envelope.method !== operation) {
@@ -200,9 +200,10 @@ const decodePowerMonitorEventEnvelope = <A>(
     )
   }
 
-  return Effect.mapError(
-    Schema.decodeUnknownEffect(schema)(envelope.payload) as Effect.Effect<A, unknown, never>,
-    (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+  return Schema.decodeUnknownEffect(schema)(envelope.payload).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+    )
   )
 }
 

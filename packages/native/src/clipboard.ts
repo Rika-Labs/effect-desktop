@@ -293,33 +293,22 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
   })
 
 const decodeClipboardText = (input: unknown): Effect.Effect<ClipboardText, ClipboardError, never> =>
-  decodeInput(ClipboardText, input, "Clipboard.writeText") as Effect.Effect<
-    ClipboardText,
-    ClipboardError,
-    never
-  >
+  decodeInput(ClipboardText, input, "Clipboard.writeText")
 
 const decodeClipboardImage = (
   input: unknown
 ): Effect.Effect<ClipboardImage, ClipboardError, never> =>
-  decodeInput(ClipboardImage, input, "Clipboard.writeImage") as Effect.Effect<
-    ClipboardImage,
-    ClipboardError,
-    never
-  >
+  decodeInput(ClipboardImage, input, "Clipboard.writeImage")
 
-const decodeInput = (
-  schema: Schema.Schema<unknown>,
+const decodeInput = <A>(
+  schema: Schema.Codec<A, unknown, never, never>,
   input: unknown,
   operation: string
-): Effect.Effect<unknown, ClipboardError, never> =>
-  Effect.mapError(
-    Schema.decodeUnknownEffect(schema)(input, StrictParseOptions) as Effect.Effect<
-      unknown,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+): Effect.Effect<A, ClipboardError, never> =>
+  Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
   )
 
 type ClipboardRpcClient = DesktopRpcClient<ClipboardRpc>

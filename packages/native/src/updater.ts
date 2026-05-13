@@ -278,44 +278,29 @@ const decodeUpdaterCheckInput = (
   input: unknown,
   operation: string
 ): Effect.Effect<UpdaterCheckInput, UpdaterError, never> =>
-  decodeInput(UpdaterCheckInput, input, operation) as Effect.Effect<
-    UpdaterCheckInput,
-    UpdaterError,
-    never
-  >
+  decodeInput(UpdaterCheckInput, input, operation)
 
 const decodeUpdaterDownloadInput = (
   input: unknown,
   operation: string
 ): Effect.Effect<UpdaterDownloadInput, UpdaterError, never> =>
-  decodeInput(UpdaterDownloadInput, input, operation) as Effect.Effect<
-    UpdaterDownloadInput,
-    UpdaterError,
-    never
-  >
+  decodeInput(UpdaterDownloadInput, input, operation)
 
 const decodeUpdaterInstallInput = (
   input: unknown,
   operation: string
 ): Effect.Effect<UpdaterInstallInput, UpdaterError, never> =>
-  decodeInput(UpdaterInstallInput, input, operation) as Effect.Effect<
-    UpdaterInstallInput,
-    UpdaterError,
-    never
-  >
+  decodeInput(UpdaterInstallInput, input, operation)
 
-const decodeInput = (
-  schema: Schema.Schema<unknown>,
+const decodeInput = <A>(
+  schema: Schema.Codec<A, unknown, never, never>,
   input: unknown,
   operation: string
-): Effect.Effect<unknown, UpdaterError, never> =>
-  Effect.mapError(
-    Schema.decodeUnknownEffect(schema)(input, StrictParseOptions) as Effect.Effect<
-      unknown,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+): Effect.Effect<A, UpdaterError, never> =>
+  Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
   )
 
 function updaterRpc<

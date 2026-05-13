@@ -243,11 +243,7 @@ const validateScheme = (
   scheme: string,
   operation: string
 ): Effect.Effect<string, ProtocolError, never> => {
-  return decodeInput(ProtocolScheme, scheme, operation) as Effect.Effect<
-    string,
-    ProtocolError,
-    never
-  >
+  return decodeInput(ProtocolScheme, scheme, operation)
 }
 
 const TraversalSegmentPattern = /(?:^|[\\/])\.\.(?:$|[\\/])/
@@ -321,51 +317,32 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
 const decodeProtocolRegisterAppProtocolInput = (
   input: unknown
 ): Effect.Effect<ProtocolRegisterAppProtocolInput, ProtocolError, never> =>
-  decodeInput(
-    ProtocolRegisterAppProtocolInput,
-    input,
-    "Protocol.registerAppProtocol"
-  ) as Effect.Effect<ProtocolRegisterAppProtocolInput, ProtocolError, never>
+  decodeInput(ProtocolRegisterAppProtocolInput, input, "Protocol.registerAppProtocol")
 
 const decodeProtocolServeAssetInput = (
   input: unknown
 ): Effect.Effect<ProtocolServeAssetInput, ProtocolError, never> =>
-  decodeInput(ProtocolServeAssetInput, input, "Protocol.serveAsset") as Effect.Effect<
-    ProtocolServeAssetInput,
-    ProtocolError,
-    never
-  >
+  decodeInput(ProtocolServeAssetInput, input, "Protocol.serveAsset")
 
 const decodeProtocolServeRouteInput = (
   input: unknown
 ): Effect.Effect<ProtocolServeRouteInput, ProtocolError, never> =>
-  decodeInput(ProtocolServeRouteInput, input, "Protocol.serveRoute") as Effect.Effect<
-    ProtocolServeRouteInput,
-    ProtocolError,
-    never
-  >
+  decodeInput(ProtocolServeRouteInput, input, "Protocol.serveRoute")
 
 const decodeProtocolDenyInput = (
   input: unknown
 ): Effect.Effect<ProtocolDenyInput, ProtocolError, never> =>
-  decodeInput(ProtocolDenyInput, input, "Protocol.deny") as Effect.Effect<
-    ProtocolDenyInput,
-    ProtocolError,
-    never
-  >
+  decodeInput(ProtocolDenyInput, input, "Protocol.deny")
 
-const decodeInput = (
-  schema: Schema.Schema<unknown>,
+const decodeInput = <A>(
+  schema: Schema.Codec<A, unknown, never, never>,
   input: unknown,
   operation: string
-): Effect.Effect<unknown, ProtocolError, never> =>
-  Effect.mapError(
-    Schema.decodeUnknownEffect(schema)(input, StrictParseOptions) as Effect.Effect<
-      unknown,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+): Effect.Effect<A, ProtocolError, never> =>
+  Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
   )
 
 function protocolRpc<

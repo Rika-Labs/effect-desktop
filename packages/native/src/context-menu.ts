@@ -319,13 +319,10 @@ const decodeContextMenuEventEnvelope = (
     )
   }
 
-  return Effect.mapError(
-    Schema.decodeUnknownEffect(ContextMenuActivatedEvent)(envelope.payload) as Effect.Effect<
-      ContextMenuActivatedEvent,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+  return Schema.decodeUnknownEffect(ContextMenuActivatedEvent)(envelope.payload).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+    )
   )
 }
 
@@ -375,42 +372,27 @@ const toWindowHandle = (handle: WindowHandle): WindowHandle =>
 const decodeContextMenuShowInput = (
   input: unknown
 ): Effect.Effect<ContextMenuShowInput, ContextMenuError, never> =>
-  decodeInput(ContextMenuShowInput, input, "ContextMenu.show") as Effect.Effect<
-    ContextMenuShowInput,
-    ContextMenuError,
-    never
-  >
+  decodeInput(ContextMenuShowInput, input, "ContextMenu.show")
 
 const decodeContextMenuBuildFromTemplateInput = (
   input: unknown
 ): Effect.Effect<ContextMenuBuildFromTemplateInput, ContextMenuError, never> =>
-  decodeInput(
-    ContextMenuBuildFromTemplateInput,
-    input,
-    "ContextMenu.buildFromTemplate"
-  ) as Effect.Effect<ContextMenuBuildFromTemplateInput, ContextMenuError, never>
+  decodeInput(ContextMenuBuildFromTemplateInput, input, "ContextMenu.buildFromTemplate")
 
 const decodeContextMenuBindCommandInput = (
   input: unknown
 ): Effect.Effect<ContextMenuBindCommandInput, ContextMenuError, never> =>
-  decodeInput(ContextMenuBindCommandInput, input, "ContextMenu.bindCommand") as Effect.Effect<
-    ContextMenuBindCommandInput,
-    ContextMenuError,
-    never
-  >
+  decodeInput(ContextMenuBindCommandInput, input, "ContextMenu.bindCommand")
 
-const decodeInput = (
-  schema: Schema.Schema<unknown>,
+const decodeInput = <A>(
+  schema: Schema.Codec<A, unknown, never, never>,
   input: unknown,
   operation: string
-): Effect.Effect<unknown, ContextMenuError, never> =>
-  Effect.mapError(
-    Schema.decodeUnknownEffect(schema)(input, StrictParseOptions) as Effect.Effect<
-      unknown,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+): Effect.Effect<A, ContextMenuError, never> =>
+  Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
   )
 
 function contextMenuRpc<
