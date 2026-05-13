@@ -257,7 +257,8 @@ The runtime entry emits exactly one newline-terminated JSON ready event to stdou
 
 After the ready line, the runtime uses the framed stdio transport to call the
 required `host.version` and `host.ping` handshake methods, then calls
-`Window.create`. When `EFFECT_DESKTOP_WINDOW_SMOKE_TEST=1`, it also calls
+`Window.create`. When `EFFECT_DESKTOP_WINDOW_SMOKE_TEST` is an Effect Config
+boolean true value such as `1`, `true`, `yes`, or `on`, it also calls
 `Window.destroy` for the returned `WindowId` before exiting.
 
 ## Non-goals

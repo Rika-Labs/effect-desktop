@@ -14,7 +14,12 @@ import {
   WINDOW_DESTROY_METHOD
 } from "@effect-desktop/bridge"
 import packageJson from "../../package.json" with { type: "json" }
-import { APP_MODULE_ENV, STARTUP_WINDOWS_ENV } from "./window-supervisor.js"
+import {
+  APP_EXPORT_ENV,
+  APP_MODULE_ENV,
+  STARTUP_WINDOWS_ENV,
+  WINDOW_SMOKE_TEST_ENV
+} from "./window-supervisor.js"
 
 const PACKAGE_ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)))
 
@@ -199,12 +204,13 @@ const runRuntimeWithFakeHost = (options: RuntimeHostOptions = {}): Promise<Runti
       ...process.env
     }
     if (options.windowSmokeTest !== false) {
-      env["EFFECT_DESKTOP_WINDOW_SMOKE_TEST"] = "1"
+      env[WINDOW_SMOKE_TEST_ENV] = "1"
     } else {
-      delete env["EFFECT_DESKTOP_WINDOW_SMOKE_TEST"]
+      delete env[WINDOW_SMOKE_TEST_ENV]
     }
     delete env[STARTUP_WINDOWS_ENV]
     delete env[APP_MODULE_ENV]
+    delete env[APP_EXPORT_ENV]
     if (options.appModule !== undefined) {
       env[APP_MODULE_ENV] = options.appModule
     }
@@ -220,11 +226,9 @@ const runRuntimeWithFakeHost = (options: RuntimeHostOptions = {}): Promise<Runti
         env,
         stdio: ["pipe", "pipe", "pipe"]
       }
-    ) as unknown as NodeJS.EventEmitter & {
-      stdin: NodeJS.WritableStream
-      stdout: NodeJS.ReadableStream
-      stderr: NodeJS.ReadableStream
-      kill: () => void
+    )
+    if (!hasChildEventEmitter(child)) {
+      throw new TypeError("spawned runtime process did not expose EventEmitter methods")
     }
     const readyEvents: RuntimeReadyEvent[] = []
     const methods: string[] = []
@@ -255,7 +259,11 @@ const runRuntimeWithFakeHost = (options: RuntimeHostOptions = {}): Promise<Runti
       stderrChunks.push(chunk)
     })
     child.on("error", reject)
-    child.on("close", (exitCode: number | null) => {
+    child.on("close", (exitCode) => {
+      if (exitCode !== null && typeof exitCode !== "number") {
+        reject(new Error("runtime process closed with invalid exit code"))
+        return
+      }
       if (settled) {
         return
       }
@@ -314,8 +322,9 @@ const runCommand = (command: string, args: readonly string[]): Promise<void> =>
     const child = spawn(command, Array.from(args), {
       cwd: PACKAGE_ROOT,
       stdio: ["ignore", "ignore", "pipe"]
-    }) as unknown as NodeJS.EventEmitter & {
-      stderr: NodeJS.ReadableStream
+    })
+    if (!hasChildEventEmitter(child)) {
+      throw new TypeError("spawned command process did not expose EventEmitter methods")
     }
     const stderrChunks: Buffer[] = []
 
@@ -324,6 +333,10 @@ const runCommand = (command: string, args: readonly string[]): Promise<void> =>
     })
     child.on("error", rejectPromise)
     child.on("close", (exitCode) => {
+      if (exitCode !== null && typeof exitCode !== "number") {
+        rejectPromise(new Error(`${command} ${args.join(" ")} closed with invalid exit code`))
+        return
+      }
       if (exitCode === 0) {
         resolvePromise()
       } else {
@@ -335,6 +348,13 @@ const runCommand = (command: string, args: readonly string[]): Promise<void> =>
       }
     })
   })
+
+interface ChildEventEmitter {
+  readonly on: (event: string, listener: (...args: readonly unknown[]) => void) => void
+}
+
+const hasChildEventEmitter = (value: object): value is ChildEventEmitter =>
+  "on" in value && typeof value.on === "function"
 
 const responseFor = (request: HostProtocolRequest): unknown => {
   const base = {

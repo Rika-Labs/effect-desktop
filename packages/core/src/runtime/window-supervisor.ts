@@ -2,15 +2,37 @@ import path from "node:path"
 import { pathToFileURL } from "node:url"
 
 import type { HostProtocolError, HostWindowClient, WindowCreateInput } from "@effect-desktop/bridge"
-import { Data, Effect } from "effect"
+import { Config, ConfigProvider, Data, Effect, Option, Schema } from "effect"
 
-import type { DesktopAppDescriptor, WindowSpec } from "./desktop-app.js"
+import type { WindowSpec } from "./desktop-app.js"
 
 export const APP_MODULE_ENV = "EFFECT_DESKTOP_APP_MODULE"
 export const APP_EXPORT_ENV = "EFFECT_DESKTOP_APP_EXPORT"
 export const STARTUP_WINDOWS_ENV = "EFFECT_DESKTOP_STARTUP_WINDOWS"
+export const WINDOW_SMOKE_TEST_ENV = "EFFECT_DESKTOP_WINDOW_SMOKE_TEST"
 const DEFAULT_APP_EXPORT = "default"
 const RESERVED_WINDOW_NAMES = new Set(["__proto__", "constructor", "prototype"])
+const PositiveFiniteNumber = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0))
+const WindowSpecSchema = Schema.Struct({
+  title: Schema.NonEmptyString,
+  width: Schema.optionalKey(PositiveFiniteNumber),
+  height: Schema.optionalKey(PositiveFiniteNumber),
+  renderer: Schema.optionalKey(Schema.String)
+})
+const StartupWindowsSchema = Schema.Record(Schema.String, WindowSpecSchema)
+const StartupWindowsJsonSchema = Schema.fromJsonString(StartupWindowsSchema)
+const DesktopAppDescriptorSchema = Schema.Struct({
+  _tag: Schema.Literal("DesktopAppDescriptor"),
+  windows: StartupWindowsSchema
+})
+
+type DecodedStartupWindows = Schema.Schema.Type<typeof StartupWindowsSchema>
+type StartupEnvironmentSource = {
+  readonly appModule: Option.Option<string>
+  readonly appExport: string
+  readonly startupWindows: Option.Option<string>
+  readonly smokeTest: Option.Option<string>
+}
 
 export interface OpenedDeclaredWindow {
   readonly name: string
@@ -27,54 +49,76 @@ export class StartupWindowConfigError extends Data.TaggedError("StartupWindowCon
   readonly env: string
 }> {}
 
-type WindowSpecValidation =
-  | { readonly _tag: "Success"; readonly value: WindowSpec }
-  | { readonly _tag: "Failure"; readonly error: StartupWindowConfigError }
-
-export const readStartupWindowsEnv = (
-  env: Readonly<Record<string, string | undefined>>
-): Effect.Effect<Readonly<Record<string, WindowSpec>>, StartupWindowConfigError, never> => {
-  const raw = env[STARTUP_WINDOWS_ENV]
-  if (raw === undefined || raw.trim() === "") {
-    return Effect.succeed(Object.freeze({}))
-  }
-
-  return Effect.try({
-    try: () => JSON.parse(raw) as unknown,
-    catch: (error) =>
-      new StartupWindowConfigError({
-        env: STARTUP_WINDOWS_ENV,
-        message: `Invalid ${STARTUP_WINDOWS_ENV}: ${formatUnknownError(error)}`
-      })
-  }).pipe(Effect.flatMap(validateStartupWindows))
+export interface StartupEnvironmentConfig {
+  readonly appModule: Option.Option<string>
+  readonly appExport: string
+  readonly startupWindows: Readonly<Record<string, WindowSpec>>
+  readonly smokeTest: boolean
 }
 
+export const StartupEnvironmentConfigSource: Config.Config<StartupEnvironmentSource> = Config.all({
+  appModule: Config.option(Config.string(APP_MODULE_ENV)).pipe(Config.map(trimmedOption)),
+  appExport: Config.option(Config.string(APP_EXPORT_ENV)).pipe(
+    Config.map(
+      Option.match({
+        onNone: () => DEFAULT_APP_EXPORT,
+        onSome: (value) => {
+          const trimmed = value.trim()
+          return trimmed === "" ? DEFAULT_APP_EXPORT : trimmed
+        }
+      })
+    )
+  ),
+  startupWindows: Config.option(Config.string(STARTUP_WINDOWS_ENV)),
+  smokeTest: Config.option(Config.string(WINDOW_SMOKE_TEST_ENV))
+})
+
+export const readStartupEnvironment = (
+  provider: ConfigProvider.ConfigProvider = ConfigProvider.fromEnv()
+): Effect.Effect<StartupEnvironmentConfig, StartupWindowConfigError, never> =>
+  StartupEnvironmentConfigSource.parse(provider).pipe(
+    Effect.mapError(toStartupEnvironmentConfigError),
+    Effect.flatMap((config) =>
+      Effect.all({
+        startupWindows: Option.isSome(config.appModule)
+          ? Effect.succeed(Object.freeze({}))
+          : Option.match(config.startupWindows, {
+              onNone: () => Effect.succeed(Object.freeze({})),
+              onSome: decodeStartupWindowsJson
+            }),
+        smokeTest: decodeSmokeTest(config.smokeTest)
+      }).pipe(
+        Effect.map(({ smokeTest, startupWindows }) => ({
+          appModule: config.appModule,
+          appExport: config.appExport,
+          startupWindows,
+          smokeTest
+        }))
+      )
+    )
+  )
+
 export const readStartupWindows = (
-  env: Readonly<Record<string, string | undefined>>
+  config: StartupEnvironmentConfig
 ): Effect.Effect<Readonly<Record<string, WindowSpec>>, StartupWindowConfigError, never> => {
-  const rawModule = env[APP_MODULE_ENV]
-  if (rawModule === undefined || rawModule.trim() === "") {
-    return readStartupWindowsEnv(env)
+  if (Option.isNone(config.appModule)) {
+    return Effect.succeed(config.startupWindows)
   }
 
-  const exportName = normalizedAppExport(env)
+  const rawModule = config.appModule.value
+  const exportName = config.appExport
   return Effect.tryPromise({
     try: async () => {
-      const module = (await import(toStartupModuleSpecifier(rawModule))) as Readonly<
-        Record<string, unknown>
-      >
+      const module = await import(toStartupModuleSpecifier(rawModule))
       const app = module[exportName]
-      if (!isDesktopAppConfig(app)) {
-        throw new Error(`export "${exportName}" is not a Desktop app config`)
-      }
-      return app.windows
+      return app
     },
     catch: (error) =>
       new StartupWindowConfigError({
         env: APP_MODULE_ENV,
         message: `Invalid ${APP_MODULE_ENV}: ${formatUnknownError(error)}`
       })
-  }).pipe(Effect.flatMap(validateStartupWindows))
+  }).pipe(Effect.flatMap((app) => decodeDesktopAppDescriptor(app, exportName)))
 }
 
 export const openDeclaredWindows = (
@@ -115,97 +159,88 @@ export const toWindowCreateInput = (spec: WindowSpec): WindowCreateInput => {
   return input
 }
 
-const validateStartupWindows = (
-  value: unknown
+const decodeStartupWindowsJson = (
+  value: string
 ): Effect.Effect<Readonly<Record<string, WindowSpec>>, StartupWindowConfigError, never> => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return invalidStartupWindows("expected a JSON object keyed by window name")
+  if (value.trim() === "") {
+    return Effect.succeed(Object.freeze({}))
   }
 
-  const windows: Array<readonly [string, WindowSpec]> = []
-  for (const [name, spec] of Object.entries(value)) {
-    if (!isSafeWindowName(name)) {
-      return invalidStartupWindows(`reserved window name "${name}" is not allowed`)
-    }
-
-    const validated = validateWindowSpec(name, spec)
-    if (validated._tag === "Failure") {
-      return Effect.fail(validated.error)
-    }
-    windows.push([name, validated.value])
-  }
-
-  return Effect.succeed(Object.freeze(Object.fromEntries(windows)))
+  return Schema.decodeUnknownEffect(StartupWindowsJsonSchema)(value).pipe(
+    Effect.mapError(
+      (error) =>
+        new StartupWindowConfigError({
+          env: STARTUP_WINDOWS_ENV,
+          message: `Invalid ${STARTUP_WINDOWS_ENV}: ${formatUnknownError(error)}`
+        })
+    ),
+    Effect.flatMap((windows) => validateWindowNames(windows, STARTUP_WINDOWS_ENV))
+  )
 }
 
-const validateWindowSpec = (name: string, value: unknown): WindowSpecValidation => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return validationFailure(makeInvalidWindow(name, "expected an object"))
-  }
+const decodeDesktopAppDescriptor = (
+  value: unknown,
+  exportName: string
+): Effect.Effect<Readonly<Record<string, WindowSpec>>, StartupWindowConfigError, never> =>
+  Schema.decodeUnknownEffect(DesktopAppDescriptorSchema)(value).pipe(
+    Effect.mapError(
+      (error) =>
+        new StartupWindowConfigError({
+          env: APP_MODULE_ENV,
+          message: `Invalid ${APP_MODULE_ENV}: export "${exportName}" is not a Desktop app config: ${formatUnknownError(error)}`
+        })
+    ),
+    Effect.flatMap((app) => validateWindowNames(app.windows, APP_MODULE_ENV))
+  )
 
-  const record = value as Readonly<Record<string, unknown>>
-  const title = record["title"]
-  if (typeof title !== "string" || title.length === 0) {
-    return validationFailure(makeInvalidWindow(name, "title must be a non-empty string"))
-  }
+const decodeSmokeTest = (
+  value: Option.Option<string>
+): Effect.Effect<boolean, StartupWindowConfigError, never> =>
+  Option.match(value, {
+    onNone: () => Effect.succeed(false),
+    onSome: (raw) =>
+      Schema.decodeUnknownEffect(Config.Boolean)(raw).pipe(
+        Effect.mapError(
+          (error) =>
+            new StartupWindowConfigError({
+              env: WINDOW_SMOKE_TEST_ENV,
+              message: `Invalid ${WINDOW_SMOKE_TEST_ENV}: ${formatUnknownError(error)}`
+            })
+        )
+      )
+  })
 
-  const spec: {
-    title: string
-    width?: number
-    height?: number
-    renderer?: string
-  } = { title }
-
-  const width = record["width"]
-  if (width !== undefined) {
-    if (!isPositiveFiniteNumber(width)) {
-      return validationFailure(makeInvalidWindow(name, "width must be a positive finite number"))
+const validateWindowNames = (
+  windows: DecodedStartupWindows,
+  env: string
+): Effect.Effect<Readonly<Record<string, WindowSpec>>, StartupWindowConfigError, never> => {
+  const entries: Array<readonly [string, WindowSpec]> = []
+  for (const [name, spec] of Object.entries(windows)) {
+    if (!isSafeWindowName(name)) {
+      return invalidStartupWindows(env, `reserved window name "${name}" is not allowed`)
     }
-    spec.width = width
+    entries.push([name, Object.freeze({ ...spec })])
   }
 
-  const height = record["height"]
-  if (height !== undefined) {
-    if (!isPositiveFiniteNumber(height)) {
-      return validationFailure(makeInvalidWindow(name, "height must be a positive finite number"))
-    }
-    spec.height = height
-  }
-
-  const renderer = record["renderer"]
-  if (renderer !== undefined) {
-    if (typeof renderer !== "string") {
-      return validationFailure(makeInvalidWindow(name, "renderer must be a string"))
-    }
-    spec.renderer = renderer
-  }
-
-  return { _tag: "Success", value: Object.freeze(spec) }
+  return Effect.succeed(Object.freeze(Object.fromEntries(entries)))
 }
 
 const invalidStartupWindows = (
+  env: string,
   reason: string
 ): Effect.Effect<never, StartupWindowConfigError, never> =>
   Effect.fail(
     new StartupWindowConfigError({
-      env: STARTUP_WINDOWS_ENV,
-      message: `Invalid ${STARTUP_WINDOWS_ENV}: ${reason}`
+      env,
+      message: `Invalid ${env}: ${reason}`
     })
   )
 
-const makeInvalidWindow = (name: string, reason: string): StartupWindowConfigError =>
+const toStartupEnvironmentConfigError = (error: Config.ConfigError): StartupWindowConfigError =>
   new StartupWindowConfigError({
-    env: STARTUP_WINDOWS_ENV,
-    message: `Invalid ${STARTUP_WINDOWS_ENV} entry "${name}": ${reason}`
+    env: "startup environment",
+    message: `Invalid startup environment: ${formatUnknownError(error)}`
   })
-
-const validationFailure = (error: StartupWindowConfigError): WindowSpecValidation => ({
-  _tag: "Failure",
-  error
-})
-
-const isPositiveFiniteNumber = (value: unknown): value is number =>
-  typeof value === "number" && Number.isFinite(value) && value > 0
 
 const isSafeWindowName = (name: string): boolean =>
   name.length > 0 && !RESERVED_WINDOW_NAMES.has(name)
@@ -218,12 +253,11 @@ const formatUnknownError = (error: unknown): string => {
   return String(error)
 }
 
-const normalizedAppExport = (env: Readonly<Record<string, string | undefined>>): string => {
-  const exportName = env[APP_EXPORT_ENV]
-  if (exportName === undefined || exportName.trim() === "") {
-    return DEFAULT_APP_EXPORT
-  }
-  return exportName.trim()
+function trimmedOption(option: Option.Option<string>): Option.Option<string> {
+  return Option.flatMap(option, (value) => {
+    const trimmed = value.trim()
+    return trimmed === "" ? Option.none() : Option.some(trimmed)
+  })
 }
 
 export const toStartupModuleSpecifier = (raw: string): string => {
@@ -285,12 +319,3 @@ const windowsUncPathToFileUrl = (value: string): string => {
 
 const encodePathSegments = (segments: ReadonlyArray<string>): string =>
   segments.map((segment) => encodeURIComponent(segment)).join("/")
-
-const isDesktopAppConfig = (value: unknown): value is Pick<DesktopAppDescriptor, "windows"> =>
-  typeof value === "object" &&
-  value !== null &&
-  "_tag" in value &&
-  (value as { readonly _tag?: unknown })._tag === "DesktopAppDescriptor" &&
-  "windows" in value &&
-  typeof (value as { readonly windows?: unknown }).windows === "object" &&
-  (value as { readonly windows?: unknown }).windows !== null

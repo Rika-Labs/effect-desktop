@@ -1,12 +1,20 @@
 import { expect, test } from "bun:test"
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { pathToFileURL } from "node:url"
 import type { HostWindowClient, WindowCreateInput } from "@effect-desktop/bridge"
-import { Cause, Effect, Exit } from "effect"
+import { Cause, ConfigProvider, Effect, Exit } from "effect"
 
 import {
+  APP_EXPORT_ENV,
+  APP_MODULE_ENV,
   STARTUP_WINDOWS_ENV,
   StartupWindowConfigError,
+  WINDOW_SMOKE_TEST_ENV,
   openDeclaredWindows,
-  readStartupWindowsEnv,
+  readStartupEnvironment,
+  readStartupWindows,
   toStartupModuleSpecifier
 } from "./window-supervisor.js"
 
@@ -60,20 +68,25 @@ test("openDeclaredWindows opens declared windows and smoke-test destroys them", 
   expect(destroyed).toEqual(["window-1", "window-2"])
 })
 
-test("readStartupWindowsEnv parses declared window specs from the runtime environment", async () => {
-  const windows = await Effect.runPromise(
-    readStartupWindowsEnv({
-      [STARTUP_WINDOWS_ENV]: JSON.stringify({
-        main: {
-          title: "Terminal",
-          width: 1024,
-          height: 768,
-          renderer: "/terminal"
-        }
+test("startup environment decodes declared window specs through Effect Config and Schema", async () => {
+  const config = await Effect.runPromise(
+    readStartupEnvironment(
+      provider({
+        [WINDOW_SMOKE_TEST_ENV]: "yes",
+        [STARTUP_WINDOWS_ENV]: JSON.stringify({
+          main: {
+            title: "Terminal",
+            width: 1024,
+            height: 768,
+            renderer: "/terminal"
+          }
+        })
       })
-    })
+    )
   )
+  const windows = await Effect.runPromise(readStartupWindows(config))
 
+  expect(config.smokeTest).toBe(true)
   expect(windows).toEqual({
     main: {
       title: "Terminal",
@@ -84,34 +97,196 @@ test("readStartupWindowsEnv parses declared window specs from the runtime enviro
   })
 })
 
-test("readStartupWindowsEnv rejects invalid declared window specs with a typed error", async () => {
+test("startup environment treats missing and blank startup windows as empty declarations", async () => {
+  const missing = await Effect.runPromise(readStartupEnvironment(provider({})))
+  const blank = await Effect.runPromise(
+    readStartupEnvironment(provider({ [STARTUP_WINDOWS_ENV]: "   " }))
+  )
+
+  expect(await Effect.runPromise(readStartupWindows(missing))).toEqual({})
+  expect(await Effect.runPromise(readStartupWindows(blank))).toEqual({})
+})
+
+test("startup environment rejects invalid declared window specs with a typed error", async () => {
   const exit = await Effect.runPromiseExit(
-    readStartupWindowsEnv({
-      [STARTUP_WINDOWS_ENV]: JSON.stringify({
-        main: {
-          title: "",
-          width: -1
-        }
+    readStartupEnvironment(
+      provider({
+        [STARTUP_WINDOWS_ENV]: JSON.stringify({
+          main: {
+            title: "",
+            width: -1
+          }
+        })
       })
-    })
+    )
   )
 
   const error = getFailure(exit)
   expect(error).toBeInstanceOf(StartupWindowConfigError)
-  expect(error?.message).toContain('entry "main"')
+  expect(error?.message).toContain(STARTUP_WINDOWS_ENV)
 })
 
-test("readStartupWindowsEnv rejects reserved object names before building the windows map", async () => {
+test("startup environment rejects invalid JSON with a typed error", async () => {
   const exit = await Effect.runPromiseExit(
-    readStartupWindowsEnv({
-      [STARTUP_WINDOWS_ENV]: '{"__proto__":{"title":"Polluted"}}'
-    })
+    readStartupEnvironment(provider({ [STARTUP_WINDOWS_ENV]: "not-json" }))
+  )
+
+  const error = getFailure(exit)
+  expect(error).toBeInstanceOf(StartupWindowConfigError)
+  expect(error?.message).toContain(STARTUP_WINDOWS_ENV)
+})
+
+test("startup environment rejects reserved object names before building the windows map", async () => {
+  const exit = await Effect.runPromiseExit(
+    readStartupEnvironment(
+      provider({ [STARTUP_WINDOWS_ENV]: '{"__proto__":{"title":"Polluted"}}' })
+    )
   )
 
   const error = getFailure(exit)
   expect(error).toBeInstanceOf(StartupWindowConfigError)
   expect(error?.message).toContain("reserved window name")
-  expect(({} as { readonly title?: unknown }).title).toBeUndefined()
+  expect("title" in {}).toBe(false)
+})
+
+test("startup environment rejects empty window names", async () => {
+  const exit = await Effect.runPromiseExit(
+    readStartupEnvironment(
+      provider({
+        [STARTUP_WINDOWS_ENV]: JSON.stringify({
+          "": {
+            title: "Untitled"
+          }
+        })
+      })
+    )
+  )
+
+  const error = getFailure(exit)
+  expect(error).toBeInstanceOf(StartupWindowConfigError)
+  expect(error?.message).toContain("reserved window name")
+})
+
+test("startup environment decodes module exports and gives app modules precedence", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-startup-"))
+  const modulePath = join(directory, "app.ts")
+  await writeFile(
+    modulePath,
+    [
+      "export const named = {",
+      '  _tag: "DesktopAppDescriptor",',
+      "  windows: {",
+      '    module: { title: "Module", width: 800 }',
+      "  }",
+      "}"
+    ].join("\n"),
+    "utf8"
+  )
+
+  try {
+    const config = await Effect.runPromise(
+      readStartupEnvironment(
+        provider({
+          [APP_MODULE_ENV]: pathToFileURL(modulePath).href,
+          [APP_EXPORT_ENV]: "named",
+          [STARTUP_WINDOWS_ENV]: "not-json"
+        })
+      )
+    )
+    const windows = await Effect.runPromise(readStartupWindows(config))
+
+    expect(windows).toEqual({
+      module: {
+        title: "Module",
+        width: 800
+      }
+    })
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("startup environment defaults blank module export to default", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-startup-default-"))
+  const modulePath = join(directory, "app.ts")
+  await writeFile(
+    modulePath,
+    [
+      "export default {",
+      '  _tag: "DesktopAppDescriptor",',
+      "  windows: {",
+      '    main: { title: "Default Export" }',
+      "  }",
+      "}"
+    ].join("\n"),
+    "utf8"
+  )
+
+  try {
+    const config = await Effect.runPromise(
+      readStartupEnvironment(
+        provider({
+          [APP_MODULE_ENV]: pathToFileURL(modulePath).href,
+          [APP_EXPORT_ENV]: "   "
+        })
+      )
+    )
+    const windows = await Effect.runPromise(readStartupWindows(config))
+
+    expect(windows).toEqual({
+      main: {
+        title: "Default Export"
+      }
+    })
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("startup environment rejects non-file URL app modules with a typed error", async () => {
+  const config = await Effect.runPromise(
+    readStartupEnvironment(provider({ [APP_MODULE_ENV]: "data:text/javascript,export default {}" }))
+  )
+  const exit = await Effect.runPromiseExit(readStartupWindows(config))
+
+  const error = getFailure(exit)
+  expect(error).toBeInstanceOf(StartupWindowConfigError)
+  expect(error?.message).toContain("only accepts file URLs")
+})
+
+test("startup environment rejects missing or invalid app exports with a typed error", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-startup-invalid-"))
+  const modulePath = join(directory, "app.ts")
+  await writeFile(modulePath, "export const wrong = {}", "utf8")
+
+  try {
+    const config = await Effect.runPromise(
+      readStartupEnvironment(provider({ [APP_MODULE_ENV]: pathToFileURL(modulePath).href }))
+    )
+    const exit = await Effect.runPromiseExit(readStartupWindows(config))
+
+    const error = getFailure(exit)
+    expect(error).toBeInstanceOf(StartupWindowConfigError)
+    expect(error?.message).toContain(APP_MODULE_ENV)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("startup environment uses Effect Config boolean parsing for smoke-test mode", async () => {
+  const enabled = await Effect.runPromise(
+    readStartupEnvironment(provider({ [WINDOW_SMOKE_TEST_ENV]: "on" }))
+  )
+  const disabled = await Effect.runPromise(
+    readStartupEnvironment(provider({ [WINDOW_SMOKE_TEST_ENV]: "off" }))
+  )
+  const invalid = await Effect.runPromiseExit(
+    readStartupEnvironment(provider({ [WINDOW_SMOKE_TEST_ENV]: "sometimes" }))
+  )
+
+  expect(enabled.smokeTest).toBe(true)
+  expect(disabled.smokeTest).toBe(false)
+  expect(getFailure(invalid)).toBeInstanceOf(StartupWindowConfigError)
 })
 
 test("toStartupModuleSpecifier classifies paths, package specifiers, and URL schemes explicitly", () => {
@@ -130,6 +305,9 @@ test("toStartupModuleSpecifier classifies paths, package specifiers, and URL sch
     "only accepts file URLs"
   )
 })
+
+const provider = (env: Readonly<Record<string, string>>): ConfigProvider.ConfigProvider =>
+  ConfigProvider.fromEnv({ env })
 
 const getFailure = <E>(exit: Exit.Exit<unknown, E>): E | undefined => {
   expect(Exit.isFailure(exit)).toBe(true)
