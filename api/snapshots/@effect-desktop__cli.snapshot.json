@@ -101,7 +101,7 @@
     {
       "name": "BuildStepReport",
       "kind": "interface",
-      "signature": "export interface BuildStepReport { readonly name: BuildStepName readonly command?: readonly string[] readonly cwd?: string readonly elapsedMs: number readonly outputPath: string }"
+      "signature": "export interface BuildStepReport { readonly name: BuildStepName readonly command?: readonly string[] readonly cwd?: string readonly elapsedMs: number readonly outputPath: string readonly provider?: string readonly cacheKey: string readonly status: \"rebuilt\" | \"reused\" readonly reason: string }"
     },
     {
       "name": "BuildTarget",

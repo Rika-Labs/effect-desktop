@@ -1,8 +1,15 @@
-import { copyFile, lstat, mkdir, readlink, readdir, rm, stat, writeFile } from "node:fs/promises"
+import { createHash } from "node:crypto"
+import { copyFile, lstat, mkdir, readFile, readlink, readdir, rm, stat, writeFile } from "node:fs/promises"
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import { HOST_PROTOCOL_VERSION } from "@effect-desktop/bridge"
+import {
+  runtimeGraph,
+  runtimeGraphSnapshot,
+  type DesktopProviderBudget,
+  type LayerGraphSnapshot
+} from "@effect-desktop/core"
 import {
   Console,
   Data,
@@ -32,7 +39,6 @@ import {
   type ProductionSecurityConfig,
   type RuntimeEngine
 } from "@effect-desktop/config"
-import { runtimeGraph, type DesktopProviderBudget } from "@effect-desktop/core"
 
 import {
   runDesktopPackage,
@@ -545,6 +551,10 @@ export interface BuildStepReport {
   readonly cwd?: string
   readonly elapsedMs: number
   readonly outputPath: string
+  readonly provider?: string
+  readonly cacheKey: string
+  readonly status: "rebuilt" | "reused"
+  readonly reason: string
 }
 
 export interface DesktopBuildReport {
@@ -645,6 +655,22 @@ interface BuildPlan {
       }
     | undefined
   readonly target: BuildTarget
+  readonly layerGraph: LayerGraphSnapshot
+}
+
+interface BuildCacheManifest {
+  readonly nodes?: Readonly<Record<string, BuildCacheNode | undefined>>
+}
+
+interface BuildCacheNode {
+  readonly cacheKey?: string
+}
+
+interface BuildNodePlan {
+  readonly name: BuildStepName
+  readonly provider?: string
+  readonly cacheKey: string
+  readonly outputPath: string
 }
 
 interface AppConfig {
@@ -1188,19 +1214,23 @@ export const runDesktopBuild = (
       target
     })
 
-    yield* removePath(plan.layoutPath)
     yield* makeDirectory(plan.layoutPath)
+    const cache = yield* readBuildCache(plan)
 
-    const renderer = yield* runStep(options, plan, {
+    const rendererNode = yield* makeRendererBuildNode(plan)
+    const renderer = yield* runBuildNode(options, cache, rendererNode, {
       name: "renderer",
       command: "bun",
       args: ["run", "build"],
-      cwd: plan.appRoot,
-      outputPath: join(plan.layoutPath, "renderer")
+      cwd: plan.appRoot
     })
-    yield* copyDirectory(plan.rendererDistPath, renderer.outputPath)
+    if (renderer.status === "rebuilt") {
+      yield* removePath(renderer.outputPath)
+      yield* copyDirectory(plan.rendererDistPath, renderer.outputPath)
+    }
 
-    const runtime = yield* runStep(options, plan, {
+    const runtimeNode = yield* makeRuntimeBuildNode(plan)
+    const runtime = yield* runBuildNode(options, cache, runtimeNode, {
       name: "runtime",
       command: "bun",
       args: [
@@ -1210,11 +1240,10 @@ export const runDesktopBuild = (
         "--outdir",
         join(plan.layoutPath, "runtime")
       ],
-      cwd: options.cwd,
-      outputPath: join(plan.layoutPath, "runtime")
+      cwd: options.cwd
     })
-
-    const nativeHost = yield* runStep(options, plan, {
+    const nativeHostNode = yield* makeNativeHostBuildNode(plan, options.cwd)
+    const nativeHost = yield* runBuildNode(options, cache, nativeHostNode, {
       name: "native-host",
       command: "cargo",
       args: ["build", "-p", "host", "--release"],
@@ -1222,37 +1251,59 @@ export const runDesktopBuild = (
       env: {
         ...(options.env ?? process.env),
         EFFECT_DESKTOP_EMBED_DIST: plan.rendererDistPath
-      },
-      outputPath: join(plan.layoutPath, "native", hostBinaryName(target))
+      }
     })
-    yield* makeDirectory(dirname(nativeHost.outputPath))
-    yield* copyFileEffect(hostBuildOutputPath(options.cwd, target), nativeHost.outputPath)
+    if (nativeHost.status === "rebuilt") {
+      yield* makeDirectory(dirname(nativeHost.outputPath))
+      yield* copyFileEffect(hostBuildOutputPath(options.cwd, target), nativeHost.outputPath)
+    }
 
+    const bridgeNode = makeBridgeBuildNode(plan)
+    const bridge = yield* writeBridgeManifest(plan, options.now, cache, bridgeNode)
+    const manifestNode = makeManifestBuildNode(plan, [renderer, runtime, nativeHost, bridge])
+    const manifest = yield* writeAppManifest(plan, cache, manifestNode)
     const providerMeasurement = yield* measureBuildProvider(plan, runtime)
-    const bridge = yield* writeBridgeManifest(plan, options.now)
-    const manifest = yield* writeAppManifest(plan)
     const report = newBuildReport(plan, [renderer, runtime, nativeHost, bridge, manifest], [
       providerMeasurement
     ])
     yield* writeJson(join(plan.layoutPath, "build-report.json"), report)
+    yield* writeBuildCache(plan, report)
 
     return report
   })
 
-const runStep = (
+const runBuildNode = (
   options: DesktopBuildOptions,
-  _plan: BuildPlan,
-  step: Omit<BuildStepReport, "elapsedMs" | "command" | "cwd"> & {
+  cache: BuildCacheManifest,
+  node: BuildNodePlan,
+  step: {
+    readonly name: BuildStepName
     readonly command: string
     readonly args: readonly string[]
     readonly cwd: string
     readonly env?: Readonly<Record<string, string | undefined>>
   }
-): Effect.Effect<BuildStepReport, BuildCommandFailedError, never> =>
+): Effect.Effect<BuildStepReport, BuildCommandFailedError | BuildFileError, never> =>
   Effect.gen(function* () {
+    const cached = yield* canReuseBuildNode(cache, node)
+    if (cached) {
+      return {
+        name: node.name,
+        command: [step.command, ...step.args],
+        cwd: step.cwd,
+        elapsedMs: 0,
+        outputPath: node.outputPath,
+        ...(node.provider === undefined ? {} : { provider: node.provider }),
+        cacheKey: node.cacheKey,
+        status: "reused",
+        reason: "cache key matched existing output"
+      }
+    }
+
+    yield* removePath(node.outputPath)
     const start = options.now()
     yield* options.commandRunner({
-      step: step.name,
+      step: node.name,
       command: step.command,
       args: step.args,
       cwd: step.cwd,
@@ -1260,11 +1311,18 @@ const runStep = (
     })
     const elapsedMs = Math.max(0, options.now() - start)
     return {
-      name: step.name,
+      name: node.name,
       command: [step.command, ...step.args],
       cwd: step.cwd,
       elapsedMs,
-      outputPath: step.outputPath
+      outputPath: node.outputPath,
+      ...(node.provider === undefined ? {} : { provider: node.provider }),
+      cacheKey: node.cacheKey,
+      status: "rebuilt",
+      reason:
+        cache.nodes?.[node.name]?.cacheKey === undefined
+          ? "no prior cache key"
+          : "cache key changed or output missing"
     }
   })
 
@@ -1326,6 +1384,11 @@ const normalizeBuildPlan = (
       )
     }
     const updateManifestInput = yield* readUpdateFields(config.update, appVersion)
+    const layerGraph = yield* runtimeGraphSnapshot({
+      id: appId,
+      windows: {},
+      providers: { runtime: runtimeEngine }
+    })
 
     return {
       appId,
@@ -1352,7 +1415,8 @@ const normalizeBuildPlan = (
       buildTargets,
       updateManifestInput,
       layoutPath: resolvePath(appRoot, join("build", "effect-desktop", options.target)),
-      target: options.target
+      target: options.target,
+      layerGraph
     }
   })
 
@@ -1381,6 +1445,142 @@ const readOptionalString = (
     new BuildConfigError({ field, message: `${field} must be a non-empty string` })
   )
 }
+
+const makeRendererBuildNode = (
+  plan: BuildPlan
+): Effect.Effect<BuildNodePlan, BuildFileError, never> =>
+  hashBuildInputs([
+    ["renderer.framework", plan.rendererFramework],
+    ["renderer.entry", plan.rendererEntry],
+    ["renderer.entry.sha256", yieldableFileDigest(plan.rendererEntryPath)]
+  ]).pipe(
+    Effect.map((cacheKey) => ({
+      name: "renderer" as const,
+      provider: `renderer:${plan.rendererFramework}`,
+      cacheKey,
+      outputPath: join(plan.layoutPath, "renderer")
+    }))
+  )
+
+const makeRuntimeBuildNode = (
+  plan: BuildPlan
+): Effect.Effect<BuildNodePlan, BuildFileError, never> =>
+  hashBuildInputs([
+    ["provider.runtime", plan.layerGraph.providers.runtime],
+    ["runtime.entry", plan.runtimeEntry],
+    ["runtime.entry.sha256", yieldableFileDigest(plan.runtimeEntryPath)],
+    ["bridge.protocol", HOST_PROTOCOL_VERSION]
+  ]).pipe(
+    Effect.map((cacheKey) => ({
+      name: "runtime" as const,
+      provider: `runtime:${plan.layerGraph.providers.runtime}`,
+      cacheKey,
+      outputPath: join(plan.layoutPath, "runtime")
+    }))
+  )
+
+const makeNativeHostBuildNode = (
+  plan: BuildPlan,
+  repoRoot: string
+): Effect.Effect<BuildNodePlan, BuildFileError, never> =>
+  hashBuildInputs([
+    ["native.host", "rust-wry-tao"],
+    ["target", plan.target],
+    [
+      "host.sources.sha256",
+      hashExistingTrees([join(repoRoot, "crates", "host"), join(repoRoot, "crates", "host-protocol")])
+    ]
+  ]).pipe(
+    Effect.map((cacheKey) => ({
+      name: "native-host" as const,
+      provider: "webview:system-webview",
+      cacheKey,
+      outputPath: join(plan.layoutPath, "native", hostBinaryName(plan.target))
+    }))
+  )
+
+const makeBridgeBuildNode = (plan: BuildPlan): BuildNodePlan => ({
+  name: "bridge",
+  cacheKey: stableHash([
+    ["bridge.protocol", HOST_PROTOCOL_VERSION],
+    ["provider.runtime", plan.layerGraph.providers.runtime]
+  ]),
+  outputPath: join(plan.layoutPath, "bridge", "bridge-manifest.json")
+})
+
+const makeManifestBuildNode = (
+  plan: BuildPlan,
+  dependencies: readonly BuildStepReport[]
+): BuildNodePlan => ({
+  name: "manifest",
+  cacheKey: stableHash([
+    ["app.id", plan.appId],
+    ["app.version", plan.appVersion],
+    ["target", plan.target],
+    ["provider.runtime", plan.layerGraph.providers.runtime],
+    ["dependencies", dependencies.map((dependency) => [dependency.name, dependency.cacheKey])]
+  ]),
+  outputPath: join(plan.layoutPath, "app-manifest.json")
+})
+
+const hashBuildInputs = (
+  inputs: readonly (readonly [string, string | Effect.Effect<string, BuildFileError, never>])[]
+): Effect.Effect<string, BuildFileError, never> =>
+  Effect.gen(function* () {
+    const resolved: Array<readonly [string, string]> = []
+    for (const [key, value] of inputs) {
+      resolved.push([key, Effect.isEffect(value) ? yield* value : value])
+    }
+    return stableHash(resolved)
+  })
+
+const yieldableFileDigest = (path: string): Effect.Effect<string, BuildFileError, never> =>
+  Effect.tryPromise({
+    try: async () => createHash("sha256").update(await readFile(path)).digest("hex"),
+    catch: (cause) =>
+      new BuildFileError({
+        operation: "read",
+        path,
+        message: `failed to hash ${path}`,
+        cause
+      })
+  })
+
+const hashExistingTrees = (roots: readonly string[]): Effect.Effect<string, BuildFileError, never> =>
+  Effect.gen(function* () {
+    const entries: Array<readonly [string, string]> = []
+    for (const root of roots) {
+      const exists = yield* pathExists(root)
+      if (!exists) {
+        continue
+      }
+      const files = yield* listRegularFiles(root)
+      for (const file of files) {
+        const digest = yield* yieldableFileDigest(file)
+        entries.push([relative(root, file), digest])
+      }
+    }
+    return stableHash(entries)
+  })
+
+const listRegularFiles = (root: string): Effect.Effect<readonly string[], BuildFileError, never> =>
+  Effect.gen(function* () {
+    const result: string[] = []
+    const entries = yield* readDirectory(root)
+    for (const entry of entries) {
+      const path = join(root, entry)
+      const entryStat = yield* lstatPath(path)
+      if (entryStat.isDirectory()) {
+        result.push(...(yield* listRegularFiles(path)))
+      } else if (entryStat.isFile()) {
+        result.push(path)
+      }
+    }
+    return result.sort()
+  })
+
+const stableHash = (value: unknown): string =>
+  createHash("sha256").update(JSON.stringify(value)).digest("hex")
 
 const resolveBuildTarget = (
   requested: string | undefined,
@@ -1461,13 +1661,19 @@ const runCommand: CommandRunner = (invocation) =>
   })
 
 const writeBridgeManifest = (
-  plan: BuildPlan,
-  now: () => number
+  _plan: BuildPlan,
+  now: () => number,
+  cache: BuildCacheManifest,
+  node: BuildNodePlan
 ): Effect.Effect<BuildStepReport, BuildFileError, never> =>
   Effect.gen(function* () {
+    const cached = yield* canReuseBuildNode(cache, node)
+    if (cached) {
+      return reusedBuildStep(node)
+    }
+
     const start = now()
-    const path = join(plan.layoutPath, "bridge", "bridge-manifest.json")
-    yield* writeJson(path, {
+    yield* writeJson(node.outputPath, {
       protocolVersion: HOST_PROTOCOL_VERSION,
       generatedAt: new Date(0).toISOString(),
       rpcGroups: [],
@@ -1476,15 +1682,26 @@ const writeBridgeManifest = (
     return {
       name: "bridge",
       elapsedMs: Math.max(0, now() - start),
-      outputPath: path
+      outputPath: node.outputPath,
+      cacheKey: node.cacheKey,
+      status: "rebuilt",
+      reason: buildNodeRebuildReason(cache, node)
     }
   })
 
-const writeAppManifest = (plan: BuildPlan): Effect.Effect<BuildStepReport, BuildFileError, never> =>
+const writeAppManifest = (
+  plan: BuildPlan,
+  cache: BuildCacheManifest,
+  node: BuildNodePlan
+): Effect.Effect<BuildStepReport, BuildFileError, never> =>
   Effect.gen(function* () {
-    const path = join(plan.layoutPath, "app-manifest.json")
+    const cached = yield* canReuseBuildNode(cache, node)
+    if (cached) {
+      return reusedBuildStep(node)
+    }
+
     const protocolSchemes = plan.protocols.map((protocol) => protocol.scheme)
-    yield* writeJson(path, {
+    yield* writeJson(node.outputPath, {
       id: plan.appId,
       name: plan.appName,
       version: plan.appVersion,
@@ -1553,9 +1770,83 @@ const writeAppManifest = (plan: BuildPlan): Effect.Effect<BuildStepReport, Build
     return {
       name: "manifest",
       elapsedMs: 0,
-      outputPath: path
+      outputPath: node.outputPath,
+      cacheKey: node.cacheKey,
+      status: "rebuilt",
+      reason: buildNodeRebuildReason(cache, node)
     }
   })
+
+const readBuildCache = (plan: BuildPlan): Effect.Effect<BuildCacheManifest, BuildFileError, never> =>
+  Effect.gen(function* () {
+    const path = buildCachePath(plan)
+    const exists = yield* pathExists(path)
+    if (!exists) {
+      return {}
+    }
+    const content = yield* readTextFile(path)
+    const parsed = yield* parseBuildCache(path, content)
+    if (isBuildCacheManifest(parsed)) {
+      return parsed
+    }
+    return {}
+  }).pipe(Effect.catch(() => Effect.succeed({})))
+
+const writeBuildCache = (
+  plan: BuildPlan,
+  report: DesktopBuildReport
+): Effect.Effect<void, BuildFileError, never> =>
+  writeJson(buildCachePath(plan), {
+    nodes: Object.fromEntries(
+      report.steps.map((step) => [step.name, { cacheKey: step.cacheKey }])
+    )
+  })
+
+const buildCachePath = (plan: BuildPlan): string => join(plan.layoutPath, ".build-cache.json")
+
+const parseBuildCache = (
+  path: string,
+  content: string
+): Effect.Effect<unknown, BuildFileError, never> =>
+  Effect.try({
+    try: () => JSON.parse(content) as unknown,
+    catch: (cause) =>
+      new BuildFileError({
+        operation: "read",
+        path,
+        message: `failed to parse ${path}`,
+        cause
+      })
+  })
+
+const canReuseBuildNode = (
+  cache: BuildCacheManifest,
+  node: BuildNodePlan
+): Effect.Effect<boolean, BuildFileError, never> =>
+  Effect.gen(function* () {
+    if (cache.nodes?.[node.name]?.cacheKey !== node.cacheKey) {
+      return false
+    }
+    return yield* pathExists(node.outputPath)
+  })
+
+const reusedBuildStep = (node: BuildNodePlan): BuildStepReport => ({
+  name: node.name,
+  elapsedMs: 0,
+  outputPath: node.outputPath,
+  ...(node.provider === undefined ? {} : { provider: node.provider }),
+  cacheKey: node.cacheKey,
+  status: "reused",
+  reason: "cache key matched existing output"
+})
+
+const buildNodeRebuildReason = (cache: BuildCacheManifest, node: BuildNodePlan): string =>
+  cache.nodes?.[node.name]?.cacheKey === undefined
+    ? "no prior cache key"
+    : "cache key changed or output missing"
+
+const isBuildCacheManifest = (value: unknown): value is BuildCacheManifest =>
+  typeof value === "object" && value !== null
 
 const newBuildReport = (
   plan: BuildPlan,
@@ -1681,7 +1972,9 @@ const formatBuildReport = (report: DesktopBuildReport): string =>
     ),
     ...report.steps.map(
       (step) =>
-        `${step.name.padEnd(17)} ${step.elapsedMs.toString().padStart(4)}ms ${step.outputPath}`
+        `${step.name.padEnd(17)} ${step.status.padEnd(7)} ${step.elapsedMs
+          .toString()
+          .padStart(4)}ms ${step.provider ?? "provider:none"} ${step.reason} ${step.outputPath}`
     ),
     ""
   ].join("\n")
@@ -2823,6 +3116,26 @@ const removePath = (path: string): Effect.Effect<void, BuildFileError, never> =>
       })
   })
 
+const readTextFile = (path: string): Effect.Effect<string, BuildFileError, never> =>
+  Effect.tryPromise({
+    try: () => readFile(path, "utf8"),
+    catch: (cause) =>
+      new BuildFileError({
+        operation: "read",
+        path,
+        message: `failed to read ${path}`,
+        cause
+      })
+  })
+
+const pathExists = (path: string): Effect.Effect<boolean, BuildFileError, never> =>
+  lstatPath(path).pipe(
+    Effect.as(true),
+    Effect.catch((error) =>
+      isNotFoundError(error.cause) ? Effect.succeed(false) : Effect.fail(error)
+    )
+  )
+
 const readDirectory = (path: string): Effect.Effect<readonly string[], BuildFileError, never> =>
   Effect.tryPromise({
     try: () => readdir(path),
@@ -2925,6 +3238,9 @@ const pathToFileUrl = (path: string): string => pathToFileURL(path).href
 
 const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
   typeof value === "object" && value !== null
+
+const isNotFoundError = (cause: unknown): boolean =>
+  isRecord(cause) && cause["code"] === "ENOENT"
 
 const MAX_COMMAND_OUTPUT_CHARS = 16_384
 

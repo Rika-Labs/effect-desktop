@@ -6310,6 +6310,83 @@ test("desktop build emits node runtime launch manifest for node runtime config",
   }
 })
 
+test("desktop build reuses provider-owned nodes when only runtime source changes", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-provider-cache-"))
+  try {
+    await writePlaygroundFixture(directory)
+    const appRoot = join(directory, "apps", "playground")
+    const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
+    const calls: string[] = []
+    const runner: CommandRunner = (invocation) =>
+      Effect.gen(function* () {
+        calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+        if (invocation.step === "renderer") {
+          yield* Effect.promise(() => mkdir(join(invocation.cwd, "dist"), { recursive: true }))
+          yield* Effect.promise(() =>
+            writeFile(join(invocation.cwd, "dist", "index.html"), "<h1>ok</h1>")
+          )
+        }
+        if (invocation.step === "runtime") {
+          const outdir = invocation.args[invocation.args.indexOf("--outdir") + 1]
+          if (outdir !== undefined) {
+            yield* Effect.promise(() => mkdir(outdir, { recursive: true }))
+            yield* Effect.promise(() =>
+              writeFile(join(outdir, "runtime.js"), "console.log('runtime')\n")
+            )
+          }
+        }
+        if (invocation.step === "native-host") {
+          yield* Effect.promise(() =>
+            mkdir(join(invocation.cwd, "target", "release"), { recursive: true })
+          )
+          yield* Effect.promise(() =>
+            writeFile(join(invocation.cwd, "target", "release", "host"), "host")
+          )
+        }
+      })
+
+    const runBuild = () =>
+      Effect.runPromise(
+        runCli({
+          argv: ["build", "--config", "apps/playground/desktop.config.ts", "--json"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+      )
+
+    expect(await runBuild()).toBe(0)
+    calls.length = 0
+    await writeFile(join(appRoot, "runtime.ts"), "console.log('runtime changed')\n")
+
+    expect(await runBuild()).toBe(0)
+
+    const report = JSON.parse(await readFile(join(layout, "build-report.json"), "utf8")) as {
+      readonly steps: readonly {
+        readonly name: string
+        readonly provider?: string
+        readonly status: string
+        readonly reason: string
+      }[]
+    }
+    expect(calls).toEqual([
+      `runtime:bun build ${join(appRoot, "runtime.ts")} --target=bun --outdir ${join(layout, "runtime")}`
+    ])
+    expect(report.steps.map((step) => [step.name, step.status, step.provider])).toEqual([
+      ["renderer", "reused", "renderer:react"],
+      ["runtime", "rebuilt", "runtime:bun"],
+      ["native-host", "reused", "webview:system-webview"],
+      ["bridge", "reused", undefined],
+      ["manifest", "rebuilt", undefined]
+    ])
+    expect(report.steps.find((step) => step.name === "runtime")?.reason).toContain("cache key")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("desktop build preserves renderer stderr on command failure", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-stderr-"))
   try {
