@@ -26,6 +26,7 @@ import { Effect, Exit, Option } from "effect"
 import {
   canonicalUpdateManifestBytes,
   DoctorMissing,
+  formatDoctorReport,
   runCli,
   runDocsReleaseGate,
   runDesktopPackage,
@@ -44,6 +45,32 @@ import { desktopArtifactExtension, desktopPlatformDirectory, hostBinaryName } fr
 import type { DesktopArtifactKind, DesktopTargetId } from "./targets.js"
 
 const REPO_ROOT = join(import.meta.dir, "../../..")
+
+test("doctor report renders selected layer providers", () => {
+  const output = formatDoctorReport({
+    passed: true,
+    ci: false,
+    platform: "darwin",
+    arch: "arm64",
+    probes: [],
+    layerGraph: {
+      appId: "notes",
+      providers: { runtime: "test" },
+      nodes: [],
+      providerFacts: [
+        {
+          id: "test",
+          kind: "runtime",
+          capabilities: ["FileSystem"]
+        }
+      ],
+      failures: []
+    }
+  })
+
+  expect(output).toContain("layer providers   runtime:test")
+  expect(output).toContain("layer failures    0")
+})
 
 test("desktop --help exits zero with root usage on stdout", async () => {
   const stdout: string[] = []

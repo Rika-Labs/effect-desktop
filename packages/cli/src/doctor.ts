@@ -1,7 +1,7 @@
 import { isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
-import { DesktopSchedules } from "@effect-desktop/core"
+import { DesktopSchedules, type LayerGraphSnapshot } from "@effect-desktop/core"
 import { Data, Effect } from "effect"
 
 import { ReleaseFileSystem, runReleaseFileSystem } from "./release-file-system.js"
@@ -66,6 +66,7 @@ export interface DesktopDoctorOptions {
   readonly bunVersion: string
   readonly commandRunner: DoctorCommandRunner
   readonly env?: Readonly<Record<string, string | undefined>>
+  readonly layerGraph?: LayerGraphSnapshot
 }
 
 export interface DesktopDoctorReport {
@@ -74,6 +75,7 @@ export interface DesktopDoctorReport {
   readonly platform: string
   readonly arch: string
   readonly probes: readonly DoctorProbeResult[]
+  readonly layerGraph: LayerGraphSnapshot | undefined
 }
 
 interface AppConfig {
@@ -150,7 +152,8 @@ export const runDesktopDoctor = (
       ci: options.ci,
       platform: options.platform,
       arch: options.arch,
-      probes
+      probes,
+      layerGraph: options.layerGraph
     }
   })
 
@@ -192,9 +195,29 @@ export const formatDoctorReport = (report: DesktopDoctorReport): string =>
     `platform          ${report.platform}-${report.arch}`,
     `ci                ${report.ci ? "yes" : "no"}`,
     `result            ${report.passed ? "ok" : "missing required components"}`,
+    ...formatLayerGraph(report.layerGraph),
     ...report.probes.map(formatProbe),
     ""
   ].join("\n")
+
+const formatLayerGraph = (graph: LayerGraphSnapshot | undefined): readonly string[] => {
+  if (graph === undefined) {
+    return []
+  }
+
+  const selected = graph.providerFacts
+    .filter((provider) => provider.id === graph.providers.runtime)
+    .map((provider) => `${provider.kind}:${provider.id}`)
+    .join(", ")
+
+  return [
+    `layer providers   ${selected.length === 0 ? "none selected" : selected}`,
+    `layer failures    ${graph.failures.length}`,
+    ...graph.failures.map(
+      (failure) => `  ${failure.reason} ${failure.requirement}: ${failure.message}`
+    )
+  ]
+}
 
 const probeBunVersion = (
   options: DesktopDoctorOptions

@@ -251,6 +251,15 @@ test("Desktop.runtimeGraph exposes selected providers and composition nodes with
     provides: [],
     requires: ["WorkflowEngine"]
   })
+  expect(graph.providerFacts.find((provider) => provider.id === "test")).toMatchObject({
+    kind: "runtime",
+    capabilities: ["FileSystem", "Path", "Terminal", "Stdio", "ChildProcessSpawner"]
+  })
+  expect(core.layerGraphSnapshotFromGraph(graph).nodes.find((node) => node.id === "rpc-layer:0"))
+    .toMatchObject({
+      provides: ["Notes.Graph.Ping"],
+      requires: ["RpcServer.Protocol"]
+    })
 })
 
 test("Desktop.runtimeGraph exposes node runtime provider selection", async () => {
@@ -390,6 +399,7 @@ test("Desktop.runtime rejects unknown runtime providers as typed startup errors"
     providers: { runtime: "missing-runtime" }
   }
   const graphExit = await Effect.runPromiseExit(core.Desktop.runtimeGraph(badConfig))
+  const diagnostics = await Effect.runPromise(core.Desktop.runtimeGraphSnapshot(badConfig))
   const exit = await Effect.runPromiseExit(
     Effect.scoped(
       Effect.gen(function* () {
@@ -408,6 +418,12 @@ test("Desktop.runtime rejects unknown runtime providers as typed startup errors"
       provider: "missing-runtime"
     })
   }
+  expect(diagnostics.failures[0]).toMatchObject({
+    reason: "missing-provider",
+    requirement: "DesktopRuntimeProviderServices",
+    providerPath: ["provider:runtime:missing-runtime"],
+    message: 'Runtime provider "missing-runtime" is not available'
+  })
 
   expect(Exit.isFailure(exit)).toBe(true)
   if (Exit.isFailure(exit)) {

@@ -136,6 +136,7 @@ export {
 } from "./package-pipeline.js"
 export {
   DoctorMissing,
+  formatDoctorReport,
   runDesktopDoctor,
   type DesktopDoctorReport,
   type DoctorCommandInvocation,

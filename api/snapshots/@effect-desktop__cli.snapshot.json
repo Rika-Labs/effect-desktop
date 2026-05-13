@@ -191,7 +191,7 @@
     {
       "name": "DesktopDoctorReport",
       "kind": "interface",
-      "signature": "export interface DesktopDoctorReport { readonly passed: boolean readonly ci: boolean readonly platform: string readonly arch: string readonly probes: readonly DoctorProbeResult[] }"
+      "signature": "export interface DesktopDoctorReport { readonly passed: boolean readonly ci: boolean readonly platform: string readonly arch: string readonly probes: readonly DoctorProbeResult[] readonly layerGraph: LayerGraphSnapshot | undefined }"
     },
     {
       "name": "DesktopNotarizeOptions",
@@ -382,6 +382,11 @@
       "name": "DoctorProbeStatus",
       "kind": "type",
       "signature": "export type DoctorProbeStatus = \"ok\" | \"missing\" | \"warning\""
+    },
+    {
+      "name": "formatDoctorReport",
+      "kind": "value",
+      "signature": "const formatDoctorReport: (report: DesktopDoctorReport) => string"
     },
     {
       "name": "hostBinaryName",
