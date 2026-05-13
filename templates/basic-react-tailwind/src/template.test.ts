@@ -1,13 +1,11 @@
 import { expect, test } from "bun:test"
-import { WINDOW_CREATE_METHOD, WINDOW_DESTROY_METHOD } from "@effect-desktop/bridge"
-import { runHeadless } from "@effect-desktop/test"
-import { Effect } from "effect"
+import { Effect, Layer } from "effect"
 import { readdirSync, readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { join, relative } from "node:path"
 
-import { TEMPLATE_WINDOW_TITLE } from "./App.js"
 import { resolveTemplateLocale } from "./messages.js"
+import { AppTest, OpenTemplateWindow } from "./spine.js"
 
 const templateRoot = fileURLToPath(new URL("..", import.meta.url))
 
@@ -16,19 +14,14 @@ interface TemplatePackageJson {
   readonly dependencies?: Record<string, string>
 }
 
-test("template smoke exercises one typed window call", async () => {
-  const calls = await Effect.runPromise(
-    runHeadless((runtime) =>
-      Effect.gen(function* () {
-        const created = yield* runtime.window.create({ title: TEMPLATE_WINDOW_TITLE })
-        yield* runtime.window.destroy(created.windowId)
+test("template program opens a window through a host-free layer graph", async () => {
+  const handle = await Effect.runPromise(OpenTemplateWindow.pipe(Effect.provide(AppTest)))
 
-        return runtime.calls().map((call) => call.method)
-      })
-    )
-  )
-
-  expect(calls).toEqual([WINDOW_CREATE_METHOD, WINDOW_DESTROY_METHOD])
+  expect(handle.kind).toBe("window")
+  expect(String(handle.id)).toBe("template-window-001")
+  expect(handle.generation).toBe(0)
+  expect(handle.ownerScope).toBe("template-test")
+  expect(handle.state).toBe("open")
 })
 
 test("template source imports only public package surfaces", () => {
@@ -65,12 +58,18 @@ test("template contract uses Rpc.make + RpcGroup.make", async () => {
   expect(AppRpc.requests.has("Greet")).toBe(true)
 })
 
-test("template spine assembles the app with Desktop.make metadata and Desktop.Rpcs.layer", async () => {
+test("template spine assembles app metadata and layer graphs", async () => {
   const { AppRpc } = await import("./contract.js")
-  const { TemplateApp } = await import("./spine.js")
+  const { AppLive, AppTest, OpenTemplateWindow, TemplateApp, makeTemplateProductionLayer } =
+    await import("./spine.js")
 
   expect(TemplateApp.windows["main"]?.renderer).toBe("/")
   expect(TemplateApp.rpcs[0]?.group).toBe(AppRpc)
+  expect(Layer.isLayer(AppLive)).toBe(true)
+  expect(await Effect.runPromise(OpenTemplateWindow.pipe(Effect.provide(AppTest)))).toMatchObject({
+    id: "template-window-001"
+  })
+  expect(typeof makeTemplateProductionLayer).toBe("function")
 })
 
 test("renderer uses desktop action hooks instead of manual Effect runners", () => {
