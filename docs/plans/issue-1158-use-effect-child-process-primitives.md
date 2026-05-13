@@ -56,4 +56,4 @@ Removed now: `ProcessAdapter`, `ProcessChild`, `BunProcessAdapter`, direct `Bun.
 
 Kept now: `ProcessApi` and `ProcessHandle`, because they carry durable desktop semantics: permissions, resource handles, owner scopes, budgets, snapshots, and host-protocol errors.
 
-Follow-ups: #1159 should own exit observer fibers with scopes; #1171 should replace manual per-owner process counters with Effect concurrency primitives; #1297 should remove the remaining `BridgeRpc` contract adapter once the bridge protocol descriptors can be derived directly from Effect `RpcGroup` metadata.
+Follow-ups: #1159 should own exit observer fibers with scopes; #1171 should replace manual per-owner process counters with Effect concurrency primitives. The bridge contract sweep was rechecked after #1292, and #1297 was closed as already superseded because package source no longer contains the public `BridgeRpc` adapter.

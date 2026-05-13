@@ -8,6 +8,6 @@ The main trap was signal exits. Effect's `exitCode` fails when a child terminate
 
 The architecture-debt sweep removed `ProcessAdapter`, `ProcessChild`, `BunProcessAdapter`, direct `Bun.spawn`, and the `childPids` public snapshot field. `childPids` had become misleading once the code stopped owning process-tree enumeration. Process-tree cleanup remains behavior owned through Effect child-process kill semantics, not public snapshot data.
 
-The sweep also found remaining `BridgeRpc` contract-adapter debt while touching process-adjacent native capability contracts. The current adapter still carries a documented `as unknown as BridgeRpcGroup` invariant and can drift events away from Effect RPC event endpoints. Follow-up #1297 captures the before/after for removing that adapter and deriving bridge protocol descriptors directly from `RpcGroup`.
+The sweep rechecked the nearby bridge contract surface after the process work. Current `main` has already removed the public `BridgeRpc` adapter through #1292, so the stale #1297 follow-up was closed as superseded instead of becoming new work.
 
 The incentive correction is that tests now mock `ChildProcessSpawner`, not a local process DSL. Future process work should start from Effect's process handle and add only desktop-specific semantics around it.
