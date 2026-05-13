@@ -336,7 +336,7 @@
     {
       "name": "TestNativeSurface",
       "kind": "interface",
-      "signature": "export interface TestNativeSurface { readonly tag: \"Clipboard\" | \"Dialog\" | \"Screen\" readonly contractLaws: readonly DesktopRpcContractLaw[] }"
+      "signature": "export interface TestNativeSurface { readonly tag: string readonly contractLaws: readonly DesktopRpcContractLaw[] }"
     },
     {
       "name": "TestNativeSurfaces",

@@ -19,7 +19,7 @@ import {
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import type { PermissionRegistry } from "@effect-desktop/core"
-import { P, type DesktopRpcClient } from "@effect-desktop/core"
+import { P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
@@ -148,11 +148,57 @@ export const makeTrayServiceLayer = (client: TrayClientApi): Layer.Layer<Tray> =
 export const makeTrayBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<TrayClient> => Layer.succeed(TrayClient)(makeTrayBridgeClient(exchange, options))
+): Layer.Layer<TrayClient> =>
+  Layer.effect(
+    TrayClient,
+    RpcClient.make(TrayRpcGroup).pipe(
+      Effect.map((client) => trayClientFromRpcClient(client, exchange))
+    )
+  ).pipe(Layer.provide(makeTrayBridgeProtocolLayer(exchange, options)))
 
 export type TrayRpc = RpcGroup.Rpcs<typeof TrayRpcGroup>
 
 export type TrayRpcHandlers = Parameters<typeof TrayRpcGroup.toLayer>[0]
+
+export const TrayHandlersLive = TrayRpcGroup.toLayer({
+  "Tray.create": (input) =>
+    Effect.gen(function* () {
+      const tray = yield* Tray
+      return yield* tray.create(input)
+    }),
+  "Tray.setIcon": (input) =>
+    Effect.gen(function* () {
+      const tray = yield* Tray
+      yield* tray.setIcon(input.tray, input.icon)
+    }),
+  "Tray.setTooltip": (input) =>
+    Effect.gen(function* () {
+      const tray = yield* Tray
+      yield* tray.setTooltip(input.tray, input.tooltip)
+    }),
+  "Tray.setMenu": (input) =>
+    Effect.gen(function* () {
+      const tray = yield* Tray
+      yield* tray.setMenu(input.tray, input.menu)
+    }),
+  "Tray.destroy": (input) =>
+    Effect.gen(function* () {
+      const tray = yield* Tray
+      yield* tray.destroy(input.tray)
+    }),
+  "Tray.isSupported": () =>
+    Effect.gen(function* () {
+      const tray = yield* Tray
+      const supported = yield* tray.isSupported()
+      return new TraySupportedResult({ supported })
+    })
+})
+
+export const TraySurface = DesktopRpc.surface("Tray", TrayRpcGroup, {
+  service: TrayClient,
+  handlers: TrayHandlersLive,
+  client: (client) => trayClientFromRpcClient(client, undefined)
+})
 
 export const makeHostTrayRpcRuntime = (
   handlers: TrayRpcHandlers,
@@ -160,56 +206,35 @@ export const makeHostTrayRpcRuntime = (
 ): BridgeHandlerRuntime<PermissionRegistry> =>
   makeNativeHostRpcRuntime(TrayRpcGroup, TrayRpcGroup.toLayer(handlers), runtimeOptions)
 
-const makeTrayBridgeClient = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
+const trayClientFromRpcClient = (
+  client: DesktopRpcClient<TrayRpc>,
+  exchange: BridgeClientExchange | undefined
 ): TrayClientApi => {
   const trayClient: TrayClientApi = {
     create: (input) =>
       decodeTrayCreateInput(input).pipe(
-        Effect.flatMap((decoded) =>
-          withTrayRpcClient(exchange, options, (client) =>
-            runTrayRpc(client["Tray.create"](decoded), "Tray.create")
-          )
-        )
+        Effect.flatMap((decoded) => runTrayRpc(client["Tray.create"](decoded), "Tray.create"))
       ),
     setIcon: (tray, icon) =>
       decodeTraySetIconInput({ tray: toTrayHandle(tray), icon }).pipe(
-        Effect.flatMap((decoded) =>
-          withTrayRpcClient(exchange, options, (client) =>
-            runTrayRpc(client["Tray.setIcon"](decoded), "Tray.setIcon")
-          )
-        )
+        Effect.flatMap((decoded) => runTrayRpc(client["Tray.setIcon"](decoded), "Tray.setIcon"))
       ),
     setTooltip: (tray, tooltip) =>
       decodeTraySetTooltipInput({ tray: toTrayHandle(tray), tooltip }).pipe(
         Effect.flatMap((decoded) =>
-          withTrayRpcClient(exchange, options, (client) =>
-            runTrayRpc(client["Tray.setTooltip"](decoded), "Tray.setTooltip")
-          )
+          runTrayRpc(client["Tray.setTooltip"](decoded), "Tray.setTooltip")
         )
       ),
     setMenu: (tray, menu) =>
       decodeTraySetMenuInput({ tray: toTrayHandle(tray), menu }).pipe(
-        Effect.flatMap((decoded) =>
-          withTrayRpcClient(exchange, options, (client) =>
-            runTrayRpc(client["Tray.setMenu"](decoded), "Tray.setMenu")
-          )
-        )
+        Effect.flatMap((decoded) => runTrayRpc(client["Tray.setMenu"](decoded), "Tray.setMenu"))
       ),
     destroy: (tray) =>
       decodeTrayDestroyInput({ tray: toTrayHandle(tray) }).pipe(
-        Effect.flatMap((decoded) =>
-          withTrayRpcClient(exchange, options, (client) =>
-            runTrayRpc(client["Tray.destroy"](decoded), "Tray.destroy")
-          )
-        )
+        Effect.flatMap((decoded) => runTrayRpc(client["Tray.destroy"](decoded), "Tray.destroy"))
       ),
     onActivated: () => subscribeTrayEvent(exchange, "Tray.Activated"),
-    isSupported: () =>
-      withTrayRpcClient(exchange, options, (client) =>
-        runTrayRpc(client["Tray.isSupported"](undefined), "Tray.isSupported")
-      )
+    isSupported: () => runTrayRpc(client["Tray.isSupported"](undefined), "Tray.isSupported")
   }
 
   return Object.freeze(trayClient)
@@ -225,23 +250,11 @@ const makeTrayBridgeProtocolLayer = (
     )
   )
 
-const withTrayRpcClient = <A>(
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions,
-  use: (client: TrayRpcClient) => Effect.Effect<A, TrayError, never>
-): Effect.Effect<A, TrayError, never> =>
-  Effect.scoped(
-    RpcClient.make(TrayRpcGroup).pipe(
-      Effect.flatMap(use),
-      Effect.provide(makeTrayBridgeProtocolLayer(exchange, options))
-    )
-  )
-
 const subscribeTrayEvent = (
-  exchange: BridgeClientExchange,
+  exchange: BridgeClientExchange | undefined,
   method: "Tray.Activated"
 ): Stream.Stream<TrayActivatedEvent, TrayError, never> => {
-  if (exchange.subscribe === undefined) {
+  if (exchange?.subscribe === undefined) {
     return Stream.fail(
       makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
     )
@@ -362,8 +375,6 @@ function trayRpc<
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability(capability))
 }
-
-type TrayRpcClient = DesktopRpcClient<TrayRpc>
 
 const runTrayRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

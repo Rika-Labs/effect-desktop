@@ -1,5 +1,6 @@
 import {
   P,
+  DesktopRpc,
   type DesktopRpcClient,
   CommandRegistry,
   PermissionActor,
@@ -163,11 +164,50 @@ export const makeMenuServiceLayer = (client: MenuClientApi): Layer.Layer<Menu> =
 export const makeMenuBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<MenuClient> => Layer.succeed(MenuClient)(makeMenuBridgeClient(exchange, options))
+): Layer.Layer<MenuClient> =>
+  Layer.effect(
+    MenuClient,
+    RpcClient.make(MenuRpcGroup).pipe(
+      Effect.map((client) => menuClientFromRpcClient(client, exchange))
+    )
+  ).pipe(Layer.provide(makeMenuBridgeProtocolLayer(exchange, options)))
 
 export type MenuRpc = RpcGroup.Rpcs<typeof MenuRpcGroup>
 
 export type MenuRpcHandlers = Parameters<typeof MenuRpcGroup.toLayer>[0]
+
+export const MenuHandlersLive = MenuRpcGroup.toLayer({
+  "Menu.setApplicationMenu": (input) =>
+    Effect.gen(function* () {
+      const menu = yield* Menu
+      yield* menu.setApplicationMenu(input.template)
+    }),
+  "Menu.setWindowMenu": (input) =>
+    Effect.gen(function* () {
+      const menu = yield* Menu
+      yield* menu.setWindowMenu(input.window, input.template)
+    }),
+  "Menu.clear": (input) =>
+    Effect.gen(function* () {
+      const menu = yield* Menu
+      yield* menu.clear(input)
+    }),
+  "Menu.bindCommand": () => Effect.fail(unsupportedError("Menu.bindCommand")),
+  "Menu.capability": (input) =>
+    Effect.gen(function* () {
+      const menu = yield* Menu
+      const supported = yield* menu.capability(input.name, {
+        ...(input.platform === undefined ? {} : { platform: input.platform })
+      })
+      return new MenuCapabilityResult({ supported })
+    })
+})
+
+export const MenuSurface = DesktopRpc.surface("Menu", MenuRpcGroup, {
+  service: MenuClient,
+  handlers: MenuHandlersLive,
+  client: (client) => menuClientFromRpcClient(client, undefined)
+})
 
 export const makeHostMenuRpcRuntime = (
   handlers: MenuRpcHandlers,
@@ -257,52 +297,38 @@ const invokeMenuCommand = (
     )
 }
 
-const makeMenuBridgeClient = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
+const menuClientFromRpcClient = (
+  client: DesktopRpcClient<MenuRpc>,
+  exchange: BridgeClientExchange | undefined
 ): MenuClientApi => {
   const menuClient: MenuClientApi = {
     setApplicationMenu: (template) =>
       decodeMenuSetApplicationMenuInput({ template }).pipe(
         Effect.flatMap(validateApplicationMenuRoots),
         Effect.flatMap((decoded) =>
-          withMenuRpcClient(exchange, options, (client) =>
-            runMenuRpc(client["Menu.setApplicationMenu"](decoded), "Menu.setApplicationMenu")
-          )
+          runMenuRpc(client["Menu.setApplicationMenu"](decoded), "Menu.setApplicationMenu")
         )
       ),
     setWindowMenu: (window, template) =>
       decodeMenuSetWindowMenuInput({ window: toWindowHandle(window), template }).pipe(
         Effect.flatMap((decoded) =>
-          withMenuRpcClient(exchange, options, (client) =>
-            runMenuRpc(client["Menu.setWindowMenu"](decoded), "Menu.setWindowMenu")
-          )
+          runMenuRpc(client["Menu.setWindowMenu"](decoded), "Menu.setWindowMenu")
         )
       ),
     clear: (input = {}) =>
       decodeMenuClearInput(
         input.window === undefined ? {} : { window: toWindowHandle(input.window as WindowHandle) }
-      ).pipe(
-        Effect.flatMap((decoded) =>
-          withMenuRpcClient(exchange, options, (client) =>
-            runMenuRpc(client["Menu.clear"](decoded), "Menu.clear")
-          )
-        )
-      ),
+      ).pipe(Effect.flatMap((decoded) => runMenuRpc(client["Menu.clear"](decoded), "Menu.clear"))),
     bindCommand: (itemId, commandId) =>
       decodeMenuBindCommandInput({ itemId, commandId }).pipe(
         Effect.flatMap((decoded) =>
-          withMenuRpcClient(exchange, options, (client) =>
-            runMenuRpc(client["Menu.bindCommand"](decoded), "Menu.bindCommand")
-          )
+          runMenuRpc(client["Menu.bindCommand"](decoded), "Menu.bindCommand")
         )
       ),
     capability: (input) =>
       decodeMenuCapabilityInput(input).pipe(
         Effect.flatMap((decoded) =>
-          withMenuRpcClient(exchange, options, (client) =>
-            runMenuRpc(client["Menu.capability"](decoded), "Menu.capability")
-          )
+          runMenuRpc(client["Menu.capability"](decoded), "Menu.capability")
         )
       ),
     onActivated: () => subscribeMenuEvent(exchange, "Menu.Activated")
@@ -321,23 +347,11 @@ const makeMenuBridgeProtocolLayer = (
     )
   )
 
-const withMenuRpcClient = <A>(
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions,
-  use: (client: MenuRpcClient) => Effect.Effect<A, MenuError, never>
-): Effect.Effect<A, MenuError, never> =>
-  Effect.scoped(
-    RpcClient.make(MenuRpcGroup).pipe(
-      Effect.flatMap(use),
-      Effect.provide(makeMenuBridgeProtocolLayer(exchange, options))
-    )
-  )
-
 const subscribeMenuEvent = (
-  exchange: BridgeClientExchange,
+  exchange: BridgeClientExchange | undefined,
   method: "Menu.Activated"
 ): Stream.Stream<MenuActivatedEvent, MenuError, never> => {
-  if (exchange.subscribe === undefined) {
+  if (exchange?.subscribe === undefined) {
     return Stream.fail(
       makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
     )
@@ -465,8 +479,6 @@ function menuRpc<
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability(capability))
 }
-
-type MenuRpcClient = DesktopRpcClient<MenuRpc>
 
 const runMenuRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

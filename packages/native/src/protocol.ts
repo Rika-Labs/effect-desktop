@@ -18,7 +18,7 @@ import {
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import type { PermissionRegistry } from "@effect-desktop/core"
-import { P, type DesktopRpcClient } from "@effect-desktop/core"
+import { P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 import * as nodePath from "node:path"
 
@@ -124,11 +124,40 @@ export const makeProtocolBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
 ): Layer.Layer<ProtocolClient> =>
-  Layer.succeed(ProtocolClient)(makeProtocolBridgeClient(exchange, options))
+  Layer.provide(ProtocolSurface.clientLayer, makeProtocolBridgeProtocolLayer(exchange, options))
 
 export type ProtocolRpc = RpcGroup.Rpcs<typeof ProtocolRpcGroup>
 
 export type ProtocolRpcHandlers = Parameters<typeof ProtocolRpcGroup.toLayer>[0]
+
+export const ProtocolHandlersLive = ProtocolRpcGroup.toLayer({
+  "Protocol.registerAppProtocol": (input) =>
+    Effect.gen(function* () {
+      const protocol = yield* Protocol
+      yield* protocol.registerAppProtocol(input)
+    }),
+  "Protocol.serveAsset": (input) =>
+    Effect.gen(function* () {
+      const protocol = yield* Protocol
+      yield* protocol.serveAsset(input)
+    }),
+  "Protocol.serveRoute": (input) =>
+    Effect.gen(function* () {
+      const protocol = yield* Protocol
+      yield* protocol.serveRoute(input)
+    }),
+  "Protocol.deny": (input) =>
+    Effect.gen(function* () {
+      const protocol = yield* Protocol
+      yield* protocol.deny(input)
+    })
+})
+
+export const ProtocolSurface = DesktopRpc.surface("Protocol", ProtocolRpcGroup, {
+  service: ProtocolClient,
+  handlers: ProtocolHandlersLive,
+  client: (client) => protocolClientFromRpcClient(client)
+})
 
 export const makeHostProtocolRpcRuntime = (
   handlers: ProtocolRpcHandlers,
@@ -136,20 +165,15 @@ export const makeHostProtocolRpcRuntime = (
 ): BridgeHandlerRuntime<PermissionRegistry> =>
   makeNativeHostRpcRuntime(ProtocolRpcGroup, ProtocolRpcGroup.toLayer(handlers), runtimeOptions)
 
-const makeProtocolBridgeClient = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): ProtocolClientApi => {
+const protocolClientFromRpcClient = (client: DesktopRpcClient<ProtocolRpc>): ProtocolClientApi => {
   return Object.freeze({
     registerAppProtocol: (input) =>
       decodeProtocolRegisterAppProtocolInput(input).pipe(
         Effect.flatMap(validateRegisterAppProtocolInput),
         Effect.flatMap((decoded) =>
-          withProtocolRpcClient(exchange, options, (client) =>
-            runProtocolRpc(
-              client["Protocol.registerAppProtocol"](decoded),
-              "Protocol.registerAppProtocol"
-            )
+          runProtocolRpc(
+            client["Protocol.registerAppProtocol"](decoded),
+            "Protocol.registerAppProtocol"
           )
         )
       ),
@@ -157,27 +181,21 @@ const makeProtocolBridgeClient = (
       decodeProtocolServeAssetInput(input).pipe(
         Effect.flatMap(validateServeAssetInput),
         Effect.flatMap((decoded) =>
-          withProtocolRpcClient(exchange, options, (client) =>
-            runProtocolRpc(client["Protocol.serveAsset"](decoded), "Protocol.serveAsset")
-          )
+          runProtocolRpc(client["Protocol.serveAsset"](decoded), "Protocol.serveAsset")
         )
       ),
     serveRoute: (input) =>
       decodeProtocolServeRouteInput(input).pipe(
         Effect.flatMap(validateServeRouteInput),
         Effect.flatMap((decoded) =>
-          withProtocolRpcClient(exchange, options, (client) =>
-            runProtocolRpc(client["Protocol.serveRoute"](decoded), "Protocol.serveRoute")
-          )
+          runProtocolRpc(client["Protocol.serveRoute"](decoded), "Protocol.serveRoute")
         )
       ),
     deny: (input) =>
       decodeProtocolDenyInput(input).pipe(
         Effect.flatMap(validateDenyInput),
         Effect.flatMap((decoded) =>
-          withProtocolRpcClient(exchange, options, (client) =>
-            runProtocolRpc(client["Protocol.deny"](decoded), "Protocol.deny")
-          )
+          runProtocolRpc(client["Protocol.deny"](decoded), "Protocol.deny")
         )
       )
   } satisfies ProtocolClientApi)
@@ -190,18 +208,6 @@ const makeProtocolBridgeProtocolLayer = (
   Layer.effect(RpcClient.Protocol)(
     makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
       Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
-
-const withProtocolRpcClient = <A>(
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions,
-  use: (client: ProtocolRpcClient) => Effect.Effect<A, ProtocolError, never>
-): Effect.Effect<A, ProtocolError, never> =>
-  Effect.scoped(
-    RpcClient.make(ProtocolRpcGroup).pipe(
-      Effect.flatMap(use),
-      Effect.provide(makeProtocolBridgeProtocolLayer(exchange, options))
     )
   )
 
@@ -361,8 +367,6 @@ function protocolRpc<
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability(permission))
 }
-
-type ProtocolRpcClient = DesktopRpcClient<ProtocolRpc>
 
 const runProtocolRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

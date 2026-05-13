@@ -19,7 +19,7 @@ import {
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import type { PermissionRegistry } from "@effect-desktop/core"
-import { P, type DesktopRpcClient } from "@effect-desktop/core"
+import { P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
@@ -137,11 +137,47 @@ export const makeShellServiceLayer = (client: ShellClientApi): Layer.Layer<Shell
 export const makeShellBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<ShellClient> => Layer.succeed(ShellClient)(makeShellBridgeClient(exchange, options))
+): Layer.Layer<ShellClient> =>
+  Layer.provide(ShellSurface.clientLayer, makeShellBridgeProtocolLayer(exchange, options))
 
 export type ShellRpc = RpcGroup.Rpcs<typeof ShellRpcGroup>
 
 export type ShellRpcHandlers = Parameters<typeof ShellRpcGroup.toLayer>[0]
+
+export const ShellHandlersLive = ShellRpcGroup.toLayer({
+  "Shell.openExternal": (input) =>
+    Effect.gen(function* () {
+      const shell = yield* Shell
+      yield* shell.openExternal(
+        input.url,
+        input.allowedSchemes === undefined ? undefined : { allowedSchemes: input.allowedSchemes }
+      )
+    }),
+  "Shell.showItemInFolder": (input) =>
+    Effect.gen(function* () {
+      const shell = yield* Shell
+      yield* shell.showItemInFolder(input.path)
+    }),
+  "Shell.openPath": (input) =>
+    Effect.gen(function* () {
+      const shell = yield* Shell
+      yield* shell.openPath(
+        input.path,
+        input.allowExecutable === undefined ? undefined : { allowExecutable: input.allowExecutable }
+      )
+    }),
+  "Shell.trashItem": (input) =>
+    Effect.gen(function* () {
+      const shell = yield* Shell
+      yield* shell.trashItem(input.path)
+    })
+})
+
+export const ShellSurface = DesktopRpc.surface("Shell", ShellRpcGroup, {
+  service: ShellClient,
+  handlers: ShellHandlersLive,
+  client: (client) => shellClientFromRpcClient(client)
+})
 
 export const makeHostShellRpcRuntime = (
   handlers: ShellRpcHandlers,
@@ -149,45 +185,34 @@ export const makeHostShellRpcRuntime = (
 ): BridgeHandlerRuntime<PermissionRegistry> =>
   makeNativeHostRpcRuntime(ShellRpcGroup, ShellRpcGroup.toLayer(handlers), runtimeOptions)
 
-const makeShellBridgeClient = (
-  exchange: BridgeClientExchange,
-  bridgeOptions: BridgeClientOptions
-): ShellClientApi => {
+const shellClientFromRpcClient = (client: DesktopRpcClient<ShellRpc>): ShellClientApi => {
   const shellClient: ShellClientApi = {
     openExternal: (url, options) =>
       decodeShellOpenExternalInput({ url, ...normalizeOpenExternalOptions(options) }).pipe(
         Effect.flatMap(validateExternalUrl),
         Effect.flatMap((decoded) =>
-          withShellRpcClient(exchange, bridgeOptions, (client) =>
-            runShellRpc(client["Shell.openExternal"](decoded), "Shell.openExternal")
-          )
+          runShellRpc(client["Shell.openExternal"](decoded), "Shell.openExternal")
         )
       ),
     showItemInFolder: (path) =>
       decodeShellShowItemInFolderInput({ path }).pipe(
         Effect.flatMap((input) => validatePathInput(input, "Shell.showItemInFolder")),
         Effect.flatMap((decoded) =>
-          withShellRpcClient(exchange, bridgeOptions, (client) =>
-            runShellRpc(client["Shell.showItemInFolder"](decoded), "Shell.showItemInFolder")
-          )
+          runShellRpc(client["Shell.showItemInFolder"](decoded), "Shell.showItemInFolder")
         )
       ),
     openPath: (path, options) =>
       decodeShellOpenPathInput({ path, ...normalizeOpenPathOptions(options) }).pipe(
         Effect.flatMap(validateOpenPathInput),
         Effect.flatMap((decoded) =>
-          withShellRpcClient(exchange, bridgeOptions, (client) =>
-            runShellRpc(client["Shell.openPath"](decoded), "Shell.openPath")
-          )
+          runShellRpc(client["Shell.openPath"](decoded), "Shell.openPath")
         )
       ),
     trashItem: (path) =>
       decodeShellTrashItemInput({ path }).pipe(
         Effect.flatMap((input) => validatePathInput(input, "Shell.trashItem")),
         Effect.flatMap((decoded) =>
-          withShellRpcClient(exchange, bridgeOptions, (client) =>
-            runShellRpc(client["Shell.trashItem"](decoded), "Shell.trashItem")
-          )
+          runShellRpc(client["Shell.trashItem"](decoded), "Shell.trashItem")
         )
       )
   }
@@ -202,18 +227,6 @@ const makeShellBridgeProtocolLayer = (
   Layer.effect(RpcClient.Protocol)(
     makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
       Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
-
-const withShellRpcClient = <A>(
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions,
-  use: (client: ShellRpcClient) => Effect.Effect<A, ShellError, never>
-): Effect.Effect<A, ShellError, never> =>
-  Effect.scoped(
-    RpcClient.make(ShellRpcGroup).pipe(
-      Effect.flatMap(use),
-      Effect.provide(makeShellBridgeProtocolLayer(exchange, options))
     )
   )
 
@@ -405,8 +418,6 @@ function shellRpc<
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability(capability))
 }
-
-type ShellRpcClient = DesktopRpcClient<ShellRpc>
 
 const runShellRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

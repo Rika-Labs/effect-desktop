@@ -19,7 +19,7 @@ import {
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import type { PermissionRegistry } from "@effect-desktop/core"
-import { P, type DesktopRpcClient } from "@effect-desktop/core"
+import { P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
@@ -210,11 +210,79 @@ export const makeWebViewBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
 ): Layer.Layer<WebViewClient> =>
-  Layer.succeed(WebViewClient)(makeWebViewBridgeClient(exchange, options))
+  Layer.effect(
+    WebViewClient,
+    RpcClient.make(WebViewRpcGroup).pipe(
+      Effect.map((client) => webViewClientFromRpcClient(client, exchange))
+    )
+  ).pipe(Layer.provide(makeWebViewBridgeProtocolLayer(exchange, options)))
 
 export type WebViewRpc = RpcGroup.Rpcs<typeof WebViewRpcGroup>
 
 export type WebViewRpcHandlers = Parameters<typeof WebViewRpcGroup.toLayer>[0]
+
+export const WebViewHandlersLive = WebViewRpcGroup.toLayer({
+  "WebView.create": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      return yield* webview.create(input)
+    }),
+  "WebView.loadRoute": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.loadRoute(input.webview, input.route)
+    }),
+  "WebView.loadUrl": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.loadUrl(input.webview, input.url)
+    }),
+  "WebView.reload": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.reload(input.webview)
+    }),
+  "WebView.goBack": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.goBack(input.webview)
+    }),
+  "WebView.goForward": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.goForward(input.webview)
+    }),
+  "WebView.captureScreenshot": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      return yield* webview.captureScreenshot(input.webview)
+    }),
+  "WebView.setNavigationPolicy": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.setNavigationPolicy(input.webview, input.policy)
+    }),
+  "WebView.capability": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      const supported = yield* webview.capability(input.name, {
+        ...(input.mode === undefined ? {} : { mode: input.mode }),
+        ...(input.platform === undefined ? {} : { platform: input.platform })
+      })
+      return new WebViewCapabilityResult({ supported })
+    }),
+  "WebView.destroy": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.destroy(input.webview)
+    })
+})
+
+export const WebViewSurface = DesktopRpc.surface("WebView", WebViewRpcGroup, {
+  service: WebViewClient,
+  handlers: WebViewHandlersLive,
+  client: (client) => webViewClientFromRpcClient(client, undefined)
+})
 
 export const makeHostWebViewRpcRuntime = (
   handlers: WebViewRpcHandlers,
@@ -256,93 +324,73 @@ const makeWebViewService = (client: WebViewClientApi): WebViewServiceApi => {
   return Object.freeze(service)
 }
 
-const makeWebViewBridgeClient = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
+const webViewClientFromRpcClient = (
+  client: DesktopRpcClient<WebViewRpc>,
+  exchange: BridgeClientExchange | undefined
 ): WebViewClientApi => {
   const webViewClient: WebViewClientApi = {
     create: (input) =>
       decodeWebViewCreateInput(input).pipe(
         Effect.flatMap((decoded) =>
-          withWebViewRpcClient(exchange, options, (client) =>
-            runWebViewRpc(client["WebView.create"](decoded), "WebView.create")
-          )
+          runWebViewRpc(client["WebView.create"](decoded), "WebView.create")
         )
       ),
     loadRoute: (webview, route) =>
       decodeWebViewLoadRouteInput({ webview: toWebViewHandle(webview), route }).pipe(
         Effect.flatMap((decoded) =>
-          withWebViewRpcClient(exchange, options, (client) =>
-            runWebViewRpc(client["WebView.loadRoute"](decoded), "WebView.loadRoute")
-          )
+          runWebViewRpc(client["WebView.loadRoute"](decoded), "WebView.loadRoute")
         )
       ),
     loadUrl: (webview, url) =>
       decodeWebViewLoadUrlInput({ webview: toWebViewHandle(webview), url }).pipe(
         Effect.flatMap((decoded) =>
-          withWebViewRpcClient(exchange, options, (client) =>
-            runWebViewRpc(client["WebView.loadUrl"](decoded), "WebView.loadUrl")
-          )
+          runWebViewRpc(client["WebView.loadUrl"](decoded), "WebView.loadUrl")
         )
       ),
     reload: (webview) =>
       decodeWebViewHandleInput({ webview: toWebViewHandle(webview) }).pipe(
         Effect.flatMap((decoded) =>
-          withWebViewRpcClient(exchange, options, (client) =>
-            runWebViewRpc(client["WebView.reload"](decoded), "WebView.reload")
-          )
+          runWebViewRpc(client["WebView.reload"](decoded), "WebView.reload")
         )
       ),
     goBack: (webview) =>
       decodeWebViewHandleInput({ webview: toWebViewHandle(webview) }).pipe(
         Effect.flatMap((decoded) =>
-          withWebViewRpcClient(exchange, options, (client) =>
-            runWebViewRpc(client["WebView.goBack"](decoded), "WebView.goBack")
-          )
+          runWebViewRpc(client["WebView.goBack"](decoded), "WebView.goBack")
         )
       ),
     goForward: (webview) =>
       decodeWebViewHandleInput({ webview: toWebViewHandle(webview) }).pipe(
         Effect.flatMap((decoded) =>
-          withWebViewRpcClient(exchange, options, (client) =>
-            runWebViewRpc(client["WebView.goForward"](decoded), "WebView.goForward")
-          )
+          runWebViewRpc(client["WebView.goForward"](decoded), "WebView.goForward")
         )
       ),
     captureScreenshot: (webview) =>
       decodeWebViewHandleInput({ webview: toWebViewHandle(webview) }).pipe(
         Effect.flatMap((decoded) =>
-          withWebViewRpcClient(exchange, options, (client) =>
-            runWebViewRpc(client["WebView.captureScreenshot"](decoded), "WebView.captureScreenshot")
-          )
+          runWebViewRpc(client["WebView.captureScreenshot"](decoded), "WebView.captureScreenshot")
         ),
         Effect.flatMap(validateWebViewScreenshot)
       ),
     setNavigationPolicy: (webview, policy) =>
       decodeWebViewSetNavigationPolicyInput({ webview: toWebViewHandle(webview), policy }).pipe(
         Effect.flatMap((decoded) =>
-          withWebViewRpcClient(exchange, options, (client) =>
-            runWebViewRpc(
-              client["WebView.setNavigationPolicy"](decoded),
-              "WebView.setNavigationPolicy"
-            )
+          runWebViewRpc(
+            client["WebView.setNavigationPolicy"](decoded),
+            "WebView.setNavigationPolicy"
           )
         )
       ),
     capability: (input) =>
       decodeWebViewCapabilityInput(input).pipe(
         Effect.flatMap((decoded) =>
-          withWebViewRpcClient(exchange, options, (client) =>
-            runWebViewRpc(client["WebView.capability"](decoded), "WebView.capability")
-          )
+          runWebViewRpc(client["WebView.capability"](decoded), "WebView.capability")
         )
       ),
     destroy: (webview) =>
       decodeWebViewHandleInput({ webview: toWebViewHandle(webview) }).pipe(
         Effect.flatMap((decoded) =>
-          withWebViewRpcClient(exchange, options, (client) =>
-            runWebViewRpc(client["WebView.destroy"](decoded), "WebView.destroy")
-          )
+          runWebViewRpc(client["WebView.destroy"](decoded), "WebView.destroy")
         )
       ),
     onNavigationBlocked: () => subscribeWebViewEvent(exchange, "WebView.NavigationBlocked")
@@ -361,23 +409,11 @@ const makeWebViewBridgeProtocolLayer = (
     )
   )
 
-const withWebViewRpcClient = <A>(
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions,
-  use: (client: WebViewRpcClient) => Effect.Effect<A, WebViewError, never>
-): Effect.Effect<A, WebViewError, never> =>
-  Effect.scoped(
-    RpcClient.make(WebViewRpcGroup).pipe(
-      Effect.flatMap(use),
-      Effect.provide(makeWebViewBridgeProtocolLayer(exchange, options))
-    )
-  )
-
 const subscribeWebViewEvent = (
-  exchange: BridgeClientExchange,
+  exchange: BridgeClientExchange | undefined,
   method: "WebView.NavigationBlocked"
 ): Stream.Stream<WebViewNavigationBlockedEvent, WebViewError, never> => {
-  if (exchange.subscribe === undefined) {
+  if (exchange?.subscribe === undefined) {
     return Stream.fail(
       makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
     )
@@ -537,8 +573,6 @@ function webviewRpc<
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability(capability))
 }
-
-type WebViewRpcClient = DesktopRpcClient<WebViewRpc>
 
 const runWebViewRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

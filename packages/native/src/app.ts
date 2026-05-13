@@ -19,7 +19,7 @@ import {
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import type { PermissionRegistry } from "@effect-desktop/core"
-import { P, type DesktopRpcClient } from "@effect-desktop/core"
+import { P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
@@ -163,11 +163,66 @@ export const makeAppServiceLayer = (client: AppClientApi): Layer.Layer<App> =>
 export const makeAppBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<AppClient> => Layer.succeed(AppClient)(makeAppBridgeClient(exchange, options))
+): Layer.Layer<AppClient> =>
+  Layer.effect(
+    AppClient,
+    RpcClient.make(AppRpcGroup).pipe(
+      Effect.map((client) => appClientFromRpcClient(client, exchange))
+    )
+  ).pipe(Layer.provide(makeAppBridgeProtocolLayer(exchange, options)))
 
 export type AppRpc = RpcGroup.Rpcs<typeof AppRpcGroup>
 
 export type AppRpcHandlers = Parameters<typeof AppRpcGroup.toLayer>[0]
+
+export const AppHandlersLive = AppRpcGroup.toLayer({
+  "App.getInfo": () =>
+    Effect.gen(function* () {
+      const app = yield* App
+      return yield* app.getInfo()
+    }),
+  "App.getCommandLine": () =>
+    Effect.gen(function* () {
+      const app = yield* App
+      return yield* app.getCommandLine()
+    }),
+  "App.quit": (input) =>
+    Effect.gen(function* () {
+      const app = yield* App
+      yield* app.quit(input)
+    }),
+  "App.restart": (input) =>
+    Effect.gen(function* () {
+      const app = yield* App
+      yield* app.restart(input)
+    }),
+  "App.focus": () =>
+    Effect.gen(function* () {
+      const app = yield* App
+      yield* app.focus()
+    }),
+  "App.requestSingleInstanceLock": () =>
+    Effect.gen(function* () {
+      const app = yield* App
+      return yield* app.requestSingleInstanceLock()
+    }),
+  "App.setOpenAtLogin": (input) =>
+    Effect.gen(function* () {
+      const app = yield* App
+      yield* app.setOpenAtLogin(input)
+    }),
+  "App.registerProtocol": (input) =>
+    Effect.gen(function* () {
+      const app = yield* App
+      yield* app.registerProtocol(input)
+    })
+})
+
+export const AppSurface = DesktopRpc.surface("App", AppRpcGroup, {
+  service: AppClient,
+  handlers: AppHandlersLive,
+  client: (client) => appClientFromRpcClient(client, undefined)
+})
 
 export const makeHostAppRpcRuntime = (
   handlers: AppRpcHandlers,
@@ -194,60 +249,37 @@ const makeAppService = (client: AppClientApi): AppServiceApi => {
   return Object.freeze(service)
 }
 
-const makeAppBridgeClient = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
+const appClientFromRpcClient = (
+  client: DesktopRpcClient<AppRpc>,
+  exchange: BridgeClientExchange | undefined
 ): AppClientApi => {
   const appClient: AppClientApi = {
-    getInfo: () =>
-      withAppRpcClient(exchange, options, (client) =>
-        runAppRpc(client["App.getInfo"](undefined), "App.getInfo")
-      ),
-    getCommandLine: () =>
-      withAppRpcClient(exchange, options, (client) =>
-        runAppRpc(client["App.getCommandLine"](undefined), "App.getCommandLine")
-      ),
+    getInfo: () => runAppRpc(client["App.getInfo"](undefined), "App.getInfo"),
+    getCommandLine: () => runAppRpc(client["App.getCommandLine"](undefined), "App.getCommandLine"),
     quit: (input) =>
       decodeAppQuitInput(input).pipe(
-        Effect.flatMap((decoded) =>
-          withAppRpcClient(exchange, options, (client) =>
-            runAppRpc(client["App.quit"](decoded), "App.quit")
-          )
-        )
+        Effect.flatMap((decoded) => runAppRpc(client["App.quit"](decoded), "App.quit"))
       ),
     restart: (input) =>
       decodeAppRestartInput(input).pipe(
-        Effect.flatMap((decoded) =>
-          withAppRpcClient(exchange, options, (client) =>
-            runAppRpc(client["App.restart"](decoded), "App.restart")
-          )
-        )
+        Effect.flatMap((decoded) => runAppRpc(client["App.restart"](decoded), "App.restart"))
       ),
-    focus: () =>
-      withAppRpcClient(exchange, options, (client) =>
-        runAppRpc(client["App.focus"](undefined), "App.focus")
-      ),
+    focus: () => runAppRpc(client["App.focus"](undefined), "App.focus"),
     requestSingleInstanceLock: () =>
-      withAppRpcClient(exchange, options, (client) =>
-        runAppRpc(
-          client["App.requestSingleInstanceLock"](undefined),
-          "App.requestSingleInstanceLock"
-        )
+      runAppRpc(
+        client["App.requestSingleInstanceLock"](undefined),
+        "App.requestSingleInstanceLock"
       ),
     setOpenAtLogin: (input) =>
       decodeAppOpenAtLoginInput(input).pipe(
         Effect.flatMap((decoded) =>
-          withAppRpcClient(exchange, options, (client) =>
-            runAppRpc(client["App.setOpenAtLogin"](decoded), "App.setOpenAtLogin")
-          )
+          runAppRpc(client["App.setOpenAtLogin"](decoded), "App.setOpenAtLogin")
         )
       ),
     registerProtocol: (input) =>
       decodeAppProtocolInput(input).pipe(
         Effect.flatMap((decoded) =>
-          withAppRpcClient(exchange, options, (client) =>
-            runAppRpc(client["App.registerProtocol"](decoded), "App.registerProtocol")
-          )
+          runAppRpc(client["App.registerProtocol"](decoded), "App.registerProtocol")
         )
       ),
     onSecondInstance: () =>
@@ -270,24 +302,12 @@ const makeAppBridgeProtocolLayer = (
     )
   )
 
-const withAppRpcClient = <A>(
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions,
-  use: (client: AppRpcClient) => Effect.Effect<A, AppError, never>
-): Effect.Effect<A, AppError, never> =>
-  Effect.scoped(
-    RpcClient.make(AppRpcGroup).pipe(
-      Effect.flatMap(use),
-      Effect.provide(makeAppBridgeProtocolLayer(exchange, options))
-    )
-  )
-
 const subscribeAppEvent = <A>(
-  exchange: BridgeClientExchange,
+  exchange: BridgeClientExchange | undefined,
   method: "App.onSecondInstance" | "App.onOpenFile" | "App.onOpenUrl" | "App.onBeforeQuit",
   schema: Schema.Codec<A, unknown, never, never>
 ): Stream.Stream<A, AppError, never> => {
-  if (exchange.subscribe === undefined) {
+  if (exchange?.subscribe === undefined) {
     return Stream.fail(
       makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
     )
@@ -392,8 +412,6 @@ function appRpc<
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability(capability))
 }
-
-type AppRpcClient = DesktopRpcClient<AppRpc>
 
 const runAppRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

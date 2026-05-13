@@ -252,6 +252,40 @@ export const makeWindowBridgeClientLayer = (
 
 export type WindowRpcHandlers = ReturnType<typeof makeHostWindowHandlers>
 
+export const WindowHandlersLive = WindowRpcGroup.toLayer({
+  "Window.create": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      return yield* window.create(input)
+    }),
+  "Window.show": () => Effect.fail(unsupportedError("Window.show")),
+  "Window.hide": () => Effect.fail(unsupportedError("Window.hide")),
+  "Window.focus": () => Effect.fail(unsupportedError("Window.focus")),
+  "Window.close": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.close(input.window)
+    }),
+  "Window.setTitle": () => Effect.fail(unsupportedError("Window.setTitle")),
+  "Window.setSize": () => Effect.fail(unsupportedError("Window.setSize")),
+  "Window.setPosition": () => Effect.fail(unsupportedError("Window.setPosition")),
+  "Window.setBackgroundColor": () => Effect.fail(unsupportedError("Window.setBackgroundColor")),
+  "Window.setVibrancy": () => Effect.fail(unsupportedError("Window.setVibrancy")),
+  "Window.setHasShadow": () => Effect.fail(unsupportedError("Window.setHasShadow")),
+  "Window.enterFullScreen": () => Effect.fail(unsupportedError("Window.enterFullScreen")),
+  "Window.exitFullScreen": () => Effect.fail(unsupportedError("Window.exitFullScreen")),
+  "Window.onFullScreenChanged": () => Effect.fail(unsupportedError("Window.onFullScreenChanged")),
+  "Window.getScaleFactor": () => Effect.fail(unsupportedError("Window.getScaleFactor")),
+  "Window.onScaleChanged": () => Effect.fail(unsupportedError("Window.onScaleChanged")),
+  "Window.persistState": () => Effect.fail(unsupportedError("Window.persistState"))
+})
+
+export const WindowSurface = DesktopRpc.surface("Window", WindowRpcGroup, {
+  service: WindowClient,
+  handlers: WindowHandlersLive,
+  client: windowClientFromRpcClient
+})
+
 export const makeHostWindowRpcRuntime = (
   exchange: HostWindowExchange,
   options: HostWindowRpcOptions = {},
@@ -300,8 +334,8 @@ const makeWindowBridgeProtocolLayer = (
     )
   )
 
-const windowClientFromRpcClient = (client: WindowRpcClient): WindowClientApi =>
-  Object.freeze({
+function windowClientFromRpcClient(client: WindowRpcClient): WindowClientApi {
+  return Object.freeze({
     create: (input) =>
       Effect.gen(function* () {
         const decoded = yield* Schema.decodeUnknownEffect(WindowCreateInput)(
@@ -339,6 +373,7 @@ const windowClientFromRpcClient = (client: WindowRpcClient): WindowClientApi =>
         yield* runWindowRpc(client["Window.close"](decoded), "Window.close")
       })
   } satisfies WindowClientApi)
+}
 
 const decodeWindowHandle = (
   input: unknown,

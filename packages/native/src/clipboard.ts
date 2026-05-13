@@ -147,7 +147,7 @@ export const makeClipboardBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
 ): Layer.Layer<ClipboardClient> =>
-  Layer.succeed(ClipboardClient)(makeClipboardBridgeClient(exchange, options))
+  Layer.provide(ClipboardSurface.clientLayer, makeClipboardBridgeProtocolLayer(exchange, options))
 
 export type ClipboardRpcHandlers = Parameters<typeof ClipboardRpcGroup.toLayer>[0]
 
@@ -221,33 +221,6 @@ const makeClipboardBridgeProtocolLayer = (
       Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
     )
   )
-
-const makeClipboardBridgeClient = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): ClipboardClientApi => {
-  const useClient = <A>(
-    use: (client: ClipboardClientApi) => Effect.Effect<A, ClipboardError, never>
-  ): Effect.Effect<A, ClipboardError, never> =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const client = yield* ClipboardClient
-        return yield* use(client)
-      }).pipe(
-        Effect.provide(ClipboardSurface.clientLayer),
-        Effect.provide(makeClipboardBridgeProtocolLayer(exchange, options))
-      )
-    )
-
-  return Object.freeze({
-    readText: () => useClient((client) => client.readText()),
-    writeText: (text) => useClient((client) => client.writeText(text)),
-    readImage: () => useClient((client) => client.readImage()),
-    writeImage: (input) => useClient((client) => client.writeImage(input)),
-    clear: () => useClient((client) => client.clear()),
-    isSupported: (capability) => useClient((client) => client.isSupported(capability))
-  } satisfies ClipboardClientApi)
-}
 
 const clipboardClientFromRpcClient = (
   client: DesktopRpcClient<ClipboardRpc>

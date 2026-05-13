@@ -2,12 +2,29 @@ import { Effect, Layer } from "effect"
 
 import type { DesktopRpcContractLaw } from "@effect-desktop/core"
 import {
+  AppSurface,
   Clipboard,
   ClipboardSurface,
+  ContextMenuSurface,
+  CrashReporterSurface,
   Dialog,
   DialogSurface,
+  DockSurface,
+  GlobalShortcutSurface,
+  MenuSurface,
+  NotificationSurface,
+  PathSurface,
+  PowerMonitorSurface,
+  ProtocolSurface,
+  SafeStorageSurface,
   Screen,
   ScreenSurface,
+  ShellSurface,
+  SystemAppearanceSurface,
+  TraySurface,
+  UpdaterSurface,
+  WebViewSurface,
+  WindowSurface,
   type ClipboardClient,
   type ClipboardError,
   type ClipboardServiceApi,
@@ -65,14 +82,31 @@ export interface TestScreenOptions {
 }
 
 export interface TestNativeSurface {
-  readonly tag: "Clipboard" | "Dialog" | "Screen"
+  readonly tag: string
   readonly contractLaws: readonly DesktopRpcContractLaw[]
 }
 
 export const TestNativeSurfaces: readonly TestNativeSurface[] = Object.freeze([
+  { tag: AppSurface.tag, contractLaws: AppSurface.contractLaws },
   { tag: ClipboardSurface.tag, contractLaws: ClipboardSurface.contractLaws },
+  { tag: ContextMenuSurface.tag, contractLaws: ContextMenuSurface.contractLaws },
+  { tag: CrashReporterSurface.tag, contractLaws: CrashReporterSurface.contractLaws },
   { tag: DialogSurface.tag, contractLaws: DialogSurface.contractLaws },
-  { tag: ScreenSurface.tag, contractLaws: ScreenSurface.contractLaws }
+  { tag: DockSurface.tag, contractLaws: DockSurface.contractLaws },
+  { tag: GlobalShortcutSurface.tag, contractLaws: GlobalShortcutSurface.contractLaws },
+  { tag: MenuSurface.tag, contractLaws: MenuSurface.contractLaws },
+  { tag: NotificationSurface.tag, contractLaws: NotificationSurface.contractLaws },
+  { tag: PathSurface.tag, contractLaws: PathSurface.contractLaws },
+  { tag: PowerMonitorSurface.tag, contractLaws: PowerMonitorSurface.contractLaws },
+  { tag: ProtocolSurface.tag, contractLaws: ProtocolSurface.contractLaws },
+  { tag: SafeStorageSurface.tag, contractLaws: SafeStorageSurface.contractLaws },
+  { tag: ScreenSurface.tag, contractLaws: ScreenSurface.contractLaws },
+  { tag: ShellSurface.tag, contractLaws: ShellSurface.contractLaws },
+  { tag: SystemAppearanceSurface.tag, contractLaws: SystemAppearanceSurface.contractLaws },
+  { tag: TraySurface.tag, contractLaws: TraySurface.contractLaws },
+  { tag: UpdaterSurface.tag, contractLaws: UpdaterSurface.contractLaws },
+  { tag: WebViewSurface.tag, contractLaws: WebViewSurface.contractLaws },
+  { tag: WindowSurface.tag, contractLaws: WindowSurface.contractLaws }
 ])
 
 export const ClipboardTest = (options: TestClipboardOptions = {}): Layer.Layer<Clipboard> =>

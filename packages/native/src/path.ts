@@ -17,7 +17,7 @@ import {
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import type { PermissionRegistry } from "@effect-desktop/core"
-import { P, type DesktopRpcClient } from "@effect-desktop/core"
+import { P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer } from "effect"
 
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
@@ -102,11 +102,57 @@ export const makePathServiceLayer = (client: PathClientApi): Layer.Layer<Path> =
 export const makePathBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<PathClient> => Layer.succeed(PathClient)(makePathBridgeClient(exchange, options))
+): Layer.Layer<PathClient> =>
+  Layer.provide(PathSurface.clientLayer, makePathBridgeProtocolLayer(exchange, options))
 
 export type PathRpc = RpcGroup.Rpcs<typeof PathRpcGroup>
 
 export type PathRpcHandlers = Parameters<typeof PathRpcGroup.toLayer>[0]
+
+export const PathHandlersLive = PathRpcGroup.toLayer({
+  "Path.appData": () =>
+    Effect.gen(function* () {
+      const path = yield* Path
+      const value = yield* path.appData()
+      return new CanonicalPath({ path: value })
+    }),
+  "Path.cache": () =>
+    Effect.gen(function* () {
+      const path = yield* Path
+      const value = yield* path.cache()
+      return new CanonicalPath({ path: value })
+    }),
+  "Path.logs": () =>
+    Effect.gen(function* () {
+      const path = yield* Path
+      const value = yield* path.logs()
+      return new CanonicalPath({ path: value })
+    }),
+  "Path.temp": () =>
+    Effect.gen(function* () {
+      const path = yield* Path
+      const value = yield* path.temp()
+      return new CanonicalPath({ path: value })
+    }),
+  "Path.home": () =>
+    Effect.gen(function* () {
+      const path = yield* Path
+      const value = yield* path.home()
+      return new CanonicalPath({ path: value })
+    }),
+  "Path.downloads": () =>
+    Effect.gen(function* () {
+      const path = yield* Path
+      const value = yield* path.downloads()
+      return new CanonicalPath({ path: value })
+    })
+})
+
+export const PathSurface = DesktopRpc.surface("Path", PathRpcGroup, {
+  service: PathClient,
+  handlers: PathHandlersLive,
+  client: (client) => pathClientFromRpcClient(client)
+})
 
 export const makeHostPathRpcRuntime = (
   handlers: PathRpcHandlers,
@@ -130,35 +176,14 @@ const makePathService = (client: PathClientApi): PathServiceApi => {
   return Object.freeze(service)
 }
 
-const makePathBridgeClient = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): PathClientApi => {
+const pathClientFromRpcClient = (client: DesktopRpcClient<PathRpc>): PathClientApi => {
   const pathClient: PathClientApi = {
-    appData: () =>
-      withPathRpcClient(exchange, options, (client) =>
-        runPathRpc(client["Path.appData"](undefined), "Path.appData")
-      ),
-    cache: () =>
-      withPathRpcClient(exchange, options, (client) =>
-        runPathRpc(client["Path.cache"](undefined), "Path.cache")
-      ),
-    logs: () =>
-      withPathRpcClient(exchange, options, (client) =>
-        runPathRpc(client["Path.logs"](undefined), "Path.logs")
-      ),
-    temp: () =>
-      withPathRpcClient(exchange, options, (client) =>
-        runPathRpc(client["Path.temp"](undefined), "Path.temp")
-      ),
-    home: () =>
-      withPathRpcClient(exchange, options, (client) =>
-        runPathRpc(client["Path.home"](undefined), "Path.home")
-      ),
-    downloads: () =>
-      withPathRpcClient(exchange, options, (client) =>
-        runPathRpc(client["Path.downloads"](undefined), "Path.downloads")
-      )
+    appData: () => runPathRpc(client["Path.appData"](undefined), "Path.appData"),
+    cache: () => runPathRpc(client["Path.cache"](undefined), "Path.cache"),
+    logs: () => runPathRpc(client["Path.logs"](undefined), "Path.logs"),
+    temp: () => runPathRpc(client["Path.temp"](undefined), "Path.temp"),
+    home: () => runPathRpc(client["Path.home"](undefined), "Path.home"),
+    downloads: () => runPathRpc(client["Path.downloads"](undefined), "Path.downloads")
   }
 
   return Object.freeze(pathClient)
@@ -171,18 +196,6 @@ const makePathBridgeProtocolLayer = (
   Layer.effect(RpcClient.Protocol)(
     makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
       Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
-
-const withPathRpcClient = <A>(
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions,
-  use: (client: PathRpcClient) => Effect.Effect<A, PathError, never>
-): Effect.Effect<A, PathError, never> =>
-  Effect.scoped(
-    RpcClient.make(PathRpcGroup).pipe(
-      Effect.flatMap(use),
-      Effect.provide(makePathBridgeProtocolLayer(exchange, options))
     )
   )
 
@@ -220,8 +233,6 @@ function pathRpc<const Method extends (typeof PathMethodNames)[number]>(
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability(permission))
 }
-
-type PathRpcClient = DesktopRpcClient<PathRpc>
 
 const runPathRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

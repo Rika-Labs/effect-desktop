@@ -1526,9 +1526,26 @@ test("native capability programs run unchanged through Live, Client, and Test la
 
 test("native test layers are derived from DesktopRpc surfaces", async () => {
   expect(TestNativeSurfaces.map((surface) => surface.tag)).toEqual([
+    "App",
     "Clipboard",
+    "ContextMenu",
+    "CrashReporter",
     "Dialog",
-    "Screen"
+    "Dock",
+    "GlobalShortcut",
+    "Menu",
+    "Notification",
+    "Path",
+    "PowerMonitor",
+    "Protocol",
+    "SafeStorage",
+    "Screen",
+    "Shell",
+    "SystemAppearance",
+    "Tray",
+    "Updater",
+    "WebView",
+    "Window"
   ])
 
   for (const surface of TestNativeSurfaces) {

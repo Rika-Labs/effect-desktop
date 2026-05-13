@@ -150,7 +150,7 @@ export const makeDialogBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
 ): Layer.Layer<DialogClient> =>
-  Layer.succeed(DialogClient)(makeDialogBridgeClient(exchange, options))
+  Layer.provide(DialogSurface.clientLayer, makeDialogBridgeProtocolLayer(exchange, options))
 
 export type DialogRpcHandlers = Parameters<typeof DialogRpcGroup.toLayer>[0]
 
@@ -220,32 +220,6 @@ const makeDialogBridgeProtocolLayer = (
       Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
     )
   )
-
-const makeDialogBridgeClient = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): DialogClientApi => {
-  const useClient = <A>(
-    use: (client: DialogClientApi) => Effect.Effect<A, DialogError, never>
-  ): Effect.Effect<A, DialogError, never> =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const client = yield* DialogClient
-        return yield* use(client)
-      }).pipe(
-        Effect.provide(DialogSurface.clientLayer),
-        Effect.provide(makeDialogBridgeProtocolLayer(exchange, options))
-      )
-    )
-
-  return Object.freeze({
-    openFile: (input) => useClient((client) => client.openFile(input)),
-    openDirectory: (input) => useClient((client) => client.openDirectory(input)),
-    saveFile: (input) => useClient((client) => client.saveFile(input)),
-    message: (input) => useClient((client) => client.message(input)),
-    confirm: (input) => useClient((client) => client.confirm(input))
-  } satisfies DialogClientApi)
-}
 
 const dialogClientFromRpcClient = (client: DesktopRpcClient<DialogRpc>): DialogClientApi => {
   const dialogClient: DialogClientApi = {

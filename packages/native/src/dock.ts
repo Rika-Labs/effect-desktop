@@ -18,7 +18,7 @@ import {
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import type { PermissionRegistry } from "@effect-desktop/core"
-import { P, type DesktopRpcClient } from "@effect-desktop/core"
+import { P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
@@ -161,11 +161,57 @@ export const makeDockServiceLayer = (client: DockClientApi): Layer.Layer<Dock> =
 export const makeDockBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<DockClient> => Layer.succeed(DockClient)(makeDockBridgeClient(exchange, options))
+): Layer.Layer<DockClient> =>
+  Layer.provide(DockSurface.clientLayer, makeDockBridgeProtocolLayer(exchange, options))
 
 export type DockRpc = RpcGroup.Rpcs<typeof DockRpcGroup>
 
 export type DockRpcHandlers = Parameters<typeof DockRpcGroup.toLayer>[0]
+
+export const DockHandlersLive = DockRpcGroup.toLayer({
+  "Dock.setBadgeCount": (input) =>
+    Effect.gen(function* () {
+      const dock = yield* Dock
+      yield* dock.setBadgeCount(input.count)
+    }),
+  "Dock.setBadgeText": (input) =>
+    Effect.gen(function* () {
+      const dock = yield* Dock
+      yield* dock.setBadgeText(input.text)
+    }),
+  "Dock.setProgress": (input) =>
+    Effect.gen(function* () {
+      const dock = yield* Dock
+      yield* dock.setProgress(input.value, input.options)
+    }),
+  "Dock.setMenu": (input) =>
+    Effect.gen(function* () {
+      const dock = yield* Dock
+      yield* dock.setMenu(input.menu)
+    }),
+  "Dock.setJumpList": (input) =>
+    Effect.gen(function* () {
+      const dock = yield* Dock
+      yield* dock.setJumpList(input.items)
+    }),
+  "Dock.requestAttention": (input) =>
+    Effect.gen(function* () {
+      const dock = yield* Dock
+      yield* dock.requestAttention(input)
+    }),
+  "Dock.isSupported": (input) =>
+    Effect.gen(function* () {
+      const dock = yield* Dock
+      const supported = yield* dock.isSupported(input.method)
+      return new DockSupportedResult({ supported })
+    })
+})
+
+export const DockSurface = DesktopRpc.surface("Dock", DockRpcGroup, {
+  service: DockClient,
+  handlers: DockHandlersLive,
+  client: (client) => dockClientFromRpcClient(client)
+})
 
 export const makeHostDockRpcRuntime = (
   handlers: DockRpcHandlers,
@@ -173,25 +219,18 @@ export const makeHostDockRpcRuntime = (
 ): BridgeHandlerRuntime<PermissionRegistry> =>
   makeNativeHostRpcRuntime(DockRpcGroup, DockRpcGroup.toLayer(handlers), runtimeOptions)
 
-const makeDockBridgeClient = (
-  exchange: BridgeClientExchange,
-  bridgeOptions: BridgeClientOptions
-): DockClientApi => {
+const dockClientFromRpcClient = (client: DesktopRpcClient<DockRpc>): DockClientApi => {
   return Object.freeze({
     setBadgeCount: (count) =>
       decodeDockSetBadgeCountInput({ count }).pipe(
         Effect.flatMap((decoded) =>
-          withDockRpcClient(exchange, bridgeOptions, (client) =>
-            runDockRpc(client["Dock.setBadgeCount"](decoded), "Dock.setBadgeCount")
-          )
+          runDockRpc(client["Dock.setBadgeCount"](decoded), "Dock.setBadgeCount")
         )
       ),
     setBadgeText: (text) =>
       decodeDockSetBadgeTextInput({ text }).pipe(
         Effect.flatMap((decoded) =>
-          withDockRpcClient(exchange, bridgeOptions, (client) =>
-            runDockRpc(client["Dock.setBadgeText"](decoded), "Dock.setBadgeText")
-          )
+          runDockRpc(client["Dock.setBadgeText"](decoded), "Dock.setBadgeText")
         )
       ),
     setProgress: (value, options) =>
@@ -200,41 +239,29 @@ const makeDockBridgeClient = (
         ...(options?.state === undefined ? {} : { options })
       }).pipe(
         Effect.flatMap((decoded) =>
-          withDockRpcClient(exchange, bridgeOptions, (client) =>
-            runDockRpc(client["Dock.setProgress"](decoded), "Dock.setProgress")
-          )
+          runDockRpc(client["Dock.setProgress"](decoded), "Dock.setProgress")
         )
       ),
     setMenu: (menu) =>
       decodeDockSetMenuInput({ menu }).pipe(
-        Effect.flatMap((decoded) =>
-          withDockRpcClient(exchange, bridgeOptions, (client) =>
-            runDockRpc(client["Dock.setMenu"](decoded), "Dock.setMenu")
-          )
-        )
+        Effect.flatMap((decoded) => runDockRpc(client["Dock.setMenu"](decoded), "Dock.setMenu"))
       ),
     setJumpList: (items) =>
       decodeDockSetJumpListInput({ items }).pipe(
         Effect.flatMap((decoded) =>
-          withDockRpcClient(exchange, bridgeOptions, (client) =>
-            runDockRpc(client["Dock.setJumpList"](decoded), "Dock.setJumpList")
-          )
+          runDockRpc(client["Dock.setJumpList"](decoded), "Dock.setJumpList")
         )
       ),
     requestAttention: (options) =>
       decodeDockRequestAttentionInput(options ?? {}).pipe(
         Effect.flatMap((decoded) =>
-          withDockRpcClient(exchange, bridgeOptions, (client) =>
-            runDockRpc(client["Dock.requestAttention"](decoded), "Dock.requestAttention")
-          )
+          runDockRpc(client["Dock.requestAttention"](decoded), "Dock.requestAttention")
         )
       ),
     isSupported: (method) =>
       decodeDockIsSupportedInput({ method }).pipe(
         Effect.flatMap((decoded) =>
-          withDockRpcClient(exchange, bridgeOptions, (client) =>
-            runDockRpc(client["Dock.isSupported"](decoded), "Dock.isSupported")
-          )
+          runDockRpc(client["Dock.isSupported"](decoded), "Dock.isSupported")
         )
       )
   } satisfies DockClientApi)
@@ -247,18 +274,6 @@ const makeDockBridgeProtocolLayer = (
   Layer.effect(RpcClient.Protocol)(
     makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
       Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
-
-const withDockRpcClient = <A>(
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions,
-  use: (client: DockRpcClient) => Effect.Effect<A, DockError, never>
-): Effect.Effect<A, DockError, never> =>
-  Effect.scoped(
-    RpcClient.make(DockRpcGroup).pipe(
-      Effect.flatMap(use),
-      Effect.provide(makeDockBridgeProtocolLayer(exchange, options))
     )
   )
 
@@ -368,8 +383,6 @@ function dockRpc<
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability(capability))
 }
-
-type DockRpcClient = DesktopRpcClient<DockRpc>
 
 const runDockRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

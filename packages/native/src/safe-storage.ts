@@ -21,7 +21,7 @@ import {
   unsafeSecretBytes
 } from "@effect-desktop/bridge"
 import type { PermissionRegistry } from "@effect-desktop/core"
-import { P, type DesktopRpcClient } from "@effect-desktop/core"
+import { P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
@@ -141,11 +141,51 @@ export const makeSafeStorageBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
 ): Layer.Layer<SafeStorageClient> =>
-  Layer.succeed(SafeStorageClient)(makeSafeStorageBridgeClient(exchange, options))
+  Layer.provide(
+    SafeStorageSurface.clientLayer,
+    makeSafeStorageBridgeProtocolLayer(exchange, options)
+  )
 
 export type SafeStorageRpc = RpcGroup.Rpcs<typeof SafeStorageRpcGroup>
 
 export type SafeStorageRpcHandlers = Parameters<typeof SafeStorageRpcGroup.toLayer>[0]
+
+export const SafeStorageHandlersLive = SafeStorageRpcGroup.toLayer({
+  "SafeStorage.set": (input) =>
+    Effect.gen(function* () {
+      const storage = yield* SafeStorage
+      yield* storage.set(input.key, makeSecretBytes(input.value))
+    }),
+  "SafeStorage.get": (input) =>
+    Effect.gen(function* () {
+      const storage = yield* SafeStorage
+      const value = yield* storage.get(input.key)
+      return new SafeStorageSecretPayload({ value: unsafeSecretBytes(value) })
+    }),
+  "SafeStorage.delete": (input) =>
+    Effect.gen(function* () {
+      const storage = yield* SafeStorage
+      yield* storage.delete(input.key)
+    }),
+  "SafeStorage.list": () =>
+    Effect.gen(function* () {
+      const storage = yield* SafeStorage
+      const keys = yield* storage.list()
+      return new SafeStorageListResult({ keys })
+    }),
+  "SafeStorage.isAvailable": () =>
+    Effect.gen(function* () {
+      const storage = yield* SafeStorage
+      const available = yield* storage.isAvailable()
+      return new SafeStorageAvailabilityResult({ available })
+    })
+})
+
+export const SafeStorageSurface = DesktopRpc.surface("SafeStorage", SafeStorageRpcGroup, {
+  service: SafeStorageClient,
+  handlers: SafeStorageHandlersLive,
+  client: (client) => safeStorageClientFromRpcClient(client)
+})
 
 export const makeHostSafeStorageRpcRuntime = (
   handlers: SafeStorageRpcHandlers,
@@ -157,27 +197,22 @@ export const makeHostSafeStorageRpcRuntime = (
     runtimeOptions
   )
 
-const makeSafeStorageBridgeClient = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
+const safeStorageClientFromRpcClient = (
+  client: DesktopRpcClient<SafeStorageRpc>
 ): SafeStorageClientApi => {
   return Object.freeze({
     set: (key, value) =>
       decodeSafeStorageSetInput({ key, value: unsafeSecretBytes(value) }).pipe(
         Effect.flatMap(validateSafeStorageSetInput),
         Effect.flatMap((decoded) =>
-          withSafeStorageRpcClient(exchange, options, (client) =>
-            runSafeStorageRpc(client["SafeStorage.set"](decoded), "SafeStorage.set")
-          )
+          runSafeStorageRpc(client["SafeStorage.set"](decoded), "SafeStorage.set")
         )
       ),
     get: (key) =>
       decodeSafeStorageKeyInput({ key }, "SafeStorage.get").pipe(
         Effect.flatMap(validateSafeStorageKeyInput("SafeStorage.get")),
         Effect.flatMap((decoded) =>
-          withSafeStorageRpcClient(exchange, options, (client) =>
-            runSafeStorageRpc(client["SafeStorage.get"](decoded), "SafeStorage.get")
-          )
+          runSafeStorageRpc(client["SafeStorage.get"](decoded), "SafeStorage.get")
         ),
         Effect.map((result) => makeSecretBytes(result.value))
       ),
@@ -185,18 +220,17 @@ const makeSafeStorageBridgeClient = (
       decodeSafeStorageKeyInput({ key }, "SafeStorage.delete").pipe(
         Effect.flatMap(validateSafeStorageKeyInput("SafeStorage.delete")),
         Effect.flatMap((decoded) =>
-          withSafeStorageRpcClient(exchange, options, (client) =>
-            runSafeStorageRpc(client["SafeStorage.delete"](decoded), "SafeStorage.delete")
-          )
+          runSafeStorageRpc(client["SafeStorage.delete"](decoded), "SafeStorage.delete")
         )
       ),
     list: () =>
-      withSafeStorageRpcClient(exchange, options, (client) =>
-        runSafeStorageRpc(client["SafeStorage.list"](undefined), "SafeStorage.list")
-      ).pipe(Effect.map((result) => result.keys)),
+      runSafeStorageRpc(client["SafeStorage.list"](undefined), "SafeStorage.list").pipe(
+        Effect.map((result) => result.keys)
+      ),
     isAvailable: () =>
-      withSafeStorageRpcClient(exchange, options, (client) =>
-        runSafeStorageRpc(client["SafeStorage.isAvailable"](undefined), "SafeStorage.isAvailable")
+      runSafeStorageRpc(
+        client["SafeStorage.isAvailable"](undefined),
+        "SafeStorage.isAvailable"
       ).pipe(Effect.map((result) => result.available))
   } satisfies SafeStorageClientApi)
 }
@@ -208,18 +242,6 @@ const makeSafeStorageBridgeProtocolLayer = (
   Layer.effect(RpcClient.Protocol)(
     makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
       Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
-
-const withSafeStorageRpcClient = <A>(
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions,
-  use: (client: SafeStorageRpcClient) => Effect.Effect<A, SafeStorageError, never>
-): Effect.Effect<A, SafeStorageError, never> =>
-  Effect.scoped(
-    RpcClient.make(SafeStorageRpcGroup).pipe(
-      Effect.flatMap(use),
-      Effect.provide(makeSafeStorageBridgeProtocolLayer(exchange, options))
     )
   )
 
@@ -317,8 +339,6 @@ function safeStorageRpc<
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability(capability))
 }
-
-type SafeStorageRpcClient = DesktopRpcClient<SafeStorageRpc>
 
 const runSafeStorageRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
