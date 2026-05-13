@@ -241,12 +241,12 @@
     {
       "name": "ReactDesktopRpcs",
       "kind": "type",
-      "signature": "export type ReactDesktopRpcs<Group extends RpcGroup.Any> = { readonly [Current in RpcGroup.Rpcs<Group> as EndpointName< Current[\"_tag\"] >]: ReactRpcEndpoint<Current> }"
+      "signature": "export type ReactDesktopRpcs<Group extends RpcGroup.Any> = Readonly< Record<string, ReactEndpoint & ReactDesktopSupport> > & { readonly [Current in RpcGroup.Rpcs<Group> as EndpointName< Current[\"_tag\"] >]: ReactRpcEndpoint<Current> }"
     },
     {
       "name": "ReactDesktopSupport",
       "kind": "interface",
-      "signature": "export interface ReactDesktopSupport { readonly support: RpcSupportMetadata readonly isSupported: boolean }"
+      "signature": "export interface ReactDesktopSupport extends DesktopEndpointSupport {}"
     },
     {
       "name": "statusOf",

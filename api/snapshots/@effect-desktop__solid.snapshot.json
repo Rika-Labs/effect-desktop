@@ -51,12 +51,12 @@
     {
       "name": "SolidDesktopRpcs",
       "kind": "type",
-      "signature": "export type SolidDesktopRpcs<Group extends RpcGroup.Any> = { readonly [Current in RpcGroup.Rpcs<Group> as EndpointName< Current[\"_tag\"] >]: SolidRpcEndpoint<Current> }"
+      "signature": "export type SolidDesktopRpcs<Group extends RpcGroup.Any> = Readonly< Record<string, SolidEndpoint & SolidDesktopSupport> > & { readonly [Current in RpcGroup.Rpcs<Group> as EndpointName< Current[\"_tag\"] >]: SolidRpcEndpoint<Current> }"
     },
     {
       "name": "SolidDesktopSupport",
       "kind": "interface",
-      "signature": "export interface SolidDesktopSupport { readonly support: RpcSupportMetadata readonly isSupported: boolean }"
+      "signature": "export interface SolidDesktopSupport extends DesktopEndpointSupport {}"
     },
     {
       "name": "SolidMutation",

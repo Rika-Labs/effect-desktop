@@ -15,6 +15,11 @@ export {
   type DesktopRendererRpcTransport
 } from "./renderer-rpc-client.js"
 export {
+  bindRendererEndpoints,
+  type DesktopEndpointSupport,
+  type RendererEndpointBinders
+} from "./renderer-endpoint-binder.js"
+export {
   RendererInspectorCollector,
   RendererInspectorCollectorLive,
   RendererInspectorEvent,

@@ -76,12 +76,12 @@
     {
       "name": "VueDesktopRpcs",
       "kind": "type",
-      "signature": "export type VueDesktopRpcs<Group extends RpcGroup.Any> = { readonly [Current in RpcGroup.Rpcs<Group> as EndpointName< Current[\"_tag\"] >]: VueRpcEndpoint<Current> }"
+      "signature": "export type VueDesktopRpcs<Group extends RpcGroup.Any> = Readonly< Record<string, VueEndpoint & VueDesktopSupport> > & { readonly [Current in RpcGroup.Rpcs<Group> as EndpointName< Current[\"_tag\"] >]: VueRpcEndpoint<Current> }"
     },
     {
       "name": "VueDesktopSupport",
       "kind": "interface",
-      "signature": "export interface VueDesktopSupport { readonly support: RpcSupportMetadata readonly isSupported: boolean }"
+      "signature": "export interface VueDesktopSupport extends DesktopEndpointSupport {}"
     },
     {
       "name": "VueMutation",

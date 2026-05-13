@@ -1,18 +1,16 @@
 import type { WithRpcEndpointKind } from "@effect-desktop/bridge"
-import type { RpcSupportMetadata } from "@effect-desktop/bridge"
 import {
+  bindRendererEndpoints,
   describeRpcs,
   getGlobalDesktopRendererRpcTransport,
   makeDesktopRendererRpcLayer,
   type AnyDesktopRpcLayer,
   makeMissingDesktopContextError,
-  makeMissingDesktopRpcClientError,
   makeMissingDesktopRpcsError,
   RendererRpcClients,
   type DesktopAppManifest,
-  type DesktopRendererRpcClient,
+  type DesktopEndpointSupport,
   type DesktopRendererRpcClientMap,
-  type DesktopRendererRpcClientMethod,
   type DesktopRendererRpcTransport,
   type RpcGroupWithRequests
 } from "@effect-desktop/core/renderer"
@@ -56,7 +54,9 @@ type SolidRpcEndpoint<R extends Rpc.Any> = WithSupport<
       : SolidMutationEndpoint<Rpc.PayloadConstructor<R>, Rpc.Success<R>, Rpc.Error<R>>
 >
 
-export type SolidDesktopRpcs<Group extends RpcGroup.Any> = {
+export type SolidDesktopRpcs<Group extends RpcGroup.Any> = Readonly<
+  Record<string, SolidEndpoint & SolidDesktopSupport>
+> & {
   readonly [Current in RpcGroup.Rpcs<Group> as EndpointName<
     Current["_tag"]
   >]: SolidRpcEndpoint<Current>
@@ -99,18 +99,14 @@ export interface SolidStreamEndpoint<I, A, E> {
   readonly createStream: SolidPrimitive<I, Accessor<SolidStreamState<A, E>>>
 }
 
+export interface SolidDesktopSupport extends DesktopEndpointSupport {}
+
+type WithSupport<Endpoint> = Endpoint & SolidDesktopSupport
+
 type SolidEndpoint =
   | SolidMutationEndpoint<unknown, unknown, unknown>
   | SolidQueryEndpoint<unknown, unknown, unknown>
   | SolidStreamEndpoint<unknown, unknown, unknown>
-
-export interface SolidDesktopSupport {
-  readonly support: RpcSupportMetadata
-  readonly isSupported: boolean
-}
-
-type WithSupport<Endpoint> = Endpoint & SolidDesktopSupport
-type SupportedSolidEndpoint<Endpoint extends SolidEndpoint> = Endpoint & SolidDesktopSupport
 
 export interface SolidDesktopRootProps {
   readonly transport?: DesktopRendererRpcTransport | undefined
@@ -184,7 +180,23 @@ export const SolidDesktop = Object.freeze({
         )
       }
 
-      return makeEndpoints(describeRpcs(app, group), client) as SolidDesktopRpcs<Group>
+      return bindRendererEndpoints<SolidEndpoint>(describeRpcs(app, group), client, "solid", {
+        query: (run) => ({
+          createQuery: ((input?: unknown) => createQueryState(run(input))) as SolidPrimitive<
+            unknown,
+            Accessor<SolidAsyncState<unknown, unknown>>
+          >
+        }),
+        mutation: (run) => ({
+          createMutation: () => createMutationState((input) => run(input))
+        }),
+        stream: (run) => ({
+          createStream: ((input?: unknown) => createStreamState(run(input))) as SolidPrimitive<
+            unknown,
+            Accessor<SolidStreamState<unknown, unknown>>
+          >
+        })
+      }) as SolidDesktopRpcs<Group>
     }
 
     return Object.freeze({
@@ -239,68 +251,6 @@ const makeSolidDesktopRuntime = (
     clients,
     dispose: runtime.dispose
   })
-}
-
-const makeEndpoints = (
-  descriptors: ReturnType<typeof describeRpcs>,
-  client: DesktopRendererRpcClient
-): Readonly<Record<string, SolidEndpoint>> => {
-  const endpoints = Object.create(null) as Record<string, SolidEndpoint>
-
-  for (const descriptor of descriptors) {
-    const invoke = (input: unknown): ReturnType<DesktopRendererRpcClientMethod> => {
-      const method = client[descriptor.tag]
-      if (method === undefined) {
-        throw makeMissingDesktopRpcClientError(
-          "solid",
-          descriptor.tag,
-          `No renderer RPC client method is installed for ${descriptor.tag}`
-        )
-      }
-      return method(input)
-    }
-
-    const endpoint =
-      descriptor.kind === "stream"
-        ? {
-            createStream: ((input?: unknown) =>
-              createStreamState(asStream(invoke(input), descriptor.tag))) as SolidPrimitive<
-              unknown,
-              Accessor<SolidStreamState<unknown, unknown>>
-            >
-          }
-        : descriptor.kind === "query"
-          ? {
-              createQuery: ((input?: unknown) =>
-                createQueryState(asEffect(invoke(input), descriptor.tag))) as SolidPrimitive<
-                unknown,
-                Accessor<SolidAsyncState<unknown, unknown>>
-              >
-            }
-          : {
-              createMutation: () =>
-                createMutationState((input) => asEffect(invoke(input), descriptor.tag))
-            }
-
-    endpoints[descriptor.name] = withSupport(endpoint, descriptor.support)
-  }
-
-  return Object.freeze(endpoints)
-}
-
-const withSupport = <
-  Endpoint extends SolidEndpoint
->(
-  endpoint: Endpoint,
-  support: RpcSupportMetadata
-): SupportedSolidEndpoint<Endpoint> => {
-  const supportedEndpoint = {
-    ...endpoint,
-    support,
-    isSupported: support.status === "supported"
-  } satisfies SupportedSolidEndpoint<Endpoint>
-
-  return Object.freeze(supportedEndpoint)
 }
 
 const createMutationState = <I, A, E>(
@@ -409,32 +359,4 @@ const createStreamState = <A, E>(
   })
 
   return state
-}
-
-const asEffect = (
-  value: ReturnType<DesktopRendererRpcClientMethod>,
-  tag: string
-): Effect.Effect<unknown, unknown, never> => {
-  if (Effect.isEffect(value)) {
-    return value as Effect.Effect<unknown, unknown, never>
-  }
-  throw makeMissingDesktopRpcClientError(
-    "solid",
-    tag,
-    `Renderer RPC client method ${tag} returned a Stream where an Effect was expected`
-  )
-}
-
-const asStream = (
-  value: ReturnType<DesktopRendererRpcClientMethod>,
-  tag: string
-): Stream.Stream<unknown, unknown, never> => {
-  if (Stream.isStream(value)) {
-    return value as Stream.Stream<unknown, unknown, never>
-  }
-  throw makeMissingDesktopRpcClientError(
-    "solid",
-    tag,
-    `Renderer RPC client method ${tag} returned an Effect where a Stream was expected`
-  )
 }

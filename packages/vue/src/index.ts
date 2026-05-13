@@ -1,20 +1,19 @@
 import {
+  bindRendererEndpoints,
   describeRpcs,
   getGlobalDesktopRendererRpcTransport,
   makeDesktopRendererRpcLayer,
   type AnyDesktopRpcLayer,
   makeMissingDesktopContextError,
-  makeMissingDesktopRpcClientError,
   makeMissingDesktopRpcsError,
   RendererRpcClients,
   type DesktopAppManifest,
-  type DesktopRendererRpcClient,
+  type DesktopEndpointSupport,
   type DesktopRendererRpcClientMap,
-  type DesktopRendererRpcClientMethod,
   type DesktopRendererRpcTransport,
   type RpcGroupWithRequests
 } from "@effect-desktop/core/renderer"
-import type { RpcSupportMetadata, WithRpcEndpointKind } from "@effect-desktop/bridge"
+import type { WithRpcEndpointKind } from "@effect-desktop/bridge"
 import { Cause, Effect, Exit, Fiber, ManagedRuntime, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import {
@@ -51,7 +50,9 @@ type VueRpcEndpoint<R extends Rpc.Any> = WithSupport<
       : VueMutationEndpoint<Rpc.PayloadConstructor<R>, Rpc.Success<R>, Rpc.Error<R>>
 >
 
-export type VueDesktopRpcs<Group extends RpcGroup.Any> = {
+export type VueDesktopRpcs<Group extends RpcGroup.Any> = Readonly<
+  Record<string, VueEndpoint & VueDesktopSupport>
+> & {
   readonly [Current in RpcGroup.Rpcs<Group> as EndpointName<
     Current["_tag"]
   >]: VueRpcEndpoint<Current>
@@ -94,18 +95,14 @@ export interface VueStreamEndpoint<I, A, E> {
   readonly useStream: VueComposable<I, Readonly<Ref<VueStreamState<A, E>>>>
 }
 
+export interface VueDesktopSupport extends DesktopEndpointSupport {}
+
+type WithSupport<Endpoint> = Endpoint & VueDesktopSupport
+
 type VueEndpoint =
   | VueMutationEndpoint<unknown, unknown, unknown>
   | VueQueryEndpoint<unknown, unknown, unknown>
   | VueStreamEndpoint<unknown, unknown, unknown>
-
-export interface VueDesktopSupport {
-  readonly support: RpcSupportMetadata
-  readonly isSupported: boolean
-}
-
-type WithSupport<Endpoint> = Endpoint & VueDesktopSupport
-type SupportedVueEndpoint<Endpoint extends VueEndpoint> = Endpoint & VueDesktopSupport
 
 export interface VueDesktopOptions {
   readonly transport?: DesktopRendererRpcTransport | undefined
@@ -168,7 +165,23 @@ export const VueDesktop = Object.freeze({
         )
       }
 
-      return makeEndpoints(describeRpcs(app, group), client) as VueDesktopRpcs<Group>
+      return bindRendererEndpoints<VueEndpoint>(describeRpcs(app, group), client, "vue", {
+        query: (run) => ({
+          useQuery: ((input?: unknown) => runQuery(run(input))) as VueComposable<
+            unknown,
+            Readonly<Ref<VueAsyncState<unknown, unknown>>>
+          >
+        }),
+        mutation: (run) => ({
+          useMutation: () => useMutation((input) => run(input))
+        }),
+        stream: (run) => ({
+          useStream: ((input?: unknown) => runStream(run(input))) as VueComposable<
+            unknown,
+            Readonly<Ref<VueStreamState<unknown, unknown>>>
+          >
+        })
+      }) as VueDesktopRpcs<Group>
     }
 
     return Object.freeze({
@@ -213,67 +226,6 @@ const makeVueDesktopRuntime = (
     clients,
     dispose: runtime.dispose
   })
-}
-
-const makeEndpoints = (
-  descriptors: ReturnType<typeof describeRpcs>,
-  client: DesktopRendererRpcClient
-): Readonly<Record<string, VueEndpoint>> => {
-  const endpoints = Object.create(null) as Record<string, VueEndpoint>
-
-  for (const descriptor of descriptors) {
-    const invoke = (input: unknown): ReturnType<DesktopRendererRpcClientMethod> => {
-      const method = client[descriptor.tag]
-      if (method === undefined) {
-        throw makeMissingDesktopRpcClientError(
-          "vue",
-          descriptor.tag,
-          `No renderer RPC client method is installed for ${descriptor.tag}`
-        )
-      }
-      return method(input)
-    }
-
-    const endpoint =
-      descriptor.kind === "stream"
-        ? {
-            useStream: ((input?: unknown) =>
-              runStream(asStream(invoke(input), descriptor.tag))) as VueComposable<
-              unknown,
-              Readonly<Ref<VueStreamState<unknown, unknown>>>
-            >
-          }
-        : descriptor.kind === "query"
-          ? {
-              useQuery: ((input?: unknown) =>
-                runQuery(asEffect(invoke(input), descriptor.tag))) as VueComposable<
-                unknown,
-                Readonly<Ref<VueAsyncState<unknown, unknown>>>
-              >
-            }
-          : {
-              useMutation: () => useMutation((input) => asEffect(invoke(input), descriptor.tag))
-            }
-
-    endpoints[descriptor.name] = withSupport(endpoint, descriptor.support)
-  }
-
-  return Object.freeze(endpoints)
-}
-
-const withSupport = <
-  Endpoint extends VueEndpoint
->(
-  endpoint: Endpoint,
-  support: RpcSupportMetadata
-): SupportedVueEndpoint<Endpoint> => {
-  const supportedEndpoint = {
-    ...endpoint,
-    support,
-    isSupported: support.status === "supported"
-  } satisfies SupportedVueEndpoint<Endpoint>
-
-  return Object.freeze(supportedEndpoint)
 }
 
 const useMutation = <I, A, E>(
@@ -374,32 +326,4 @@ const runStream = <A, E>(
   })
 
   return state
-}
-
-const asEffect = (
-  value: ReturnType<DesktopRendererRpcClientMethod>,
-  tag: string
-): Effect.Effect<unknown, unknown, never> => {
-  if (Effect.isEffect(value)) {
-    return value as Effect.Effect<unknown, unknown, never>
-  }
-  throw makeMissingDesktopRpcClientError(
-    "vue",
-    tag,
-    `Renderer RPC client method ${tag} returned a Stream where an Effect was expected`
-  )
-}
-
-const asStream = (
-  value: ReturnType<DesktopRendererRpcClientMethod>,
-  tag: string
-): Stream.Stream<unknown, unknown, never> => {
-  if (Stream.isStream(value)) {
-    return value as Stream.Stream<unknown, unknown, never>
-  }
-  throw makeMissingDesktopRpcClientError(
-    "vue",
-    tag,
-    `Renderer RPC client method ${tag} returned an Effect where a Stream was expected`
-  )
 }
