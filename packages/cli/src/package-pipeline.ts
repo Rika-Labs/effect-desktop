@@ -16,11 +16,32 @@ import { pathToFileURL } from "node:url"
 
 import { Data, Effect } from "effect"
 
-export type PackageOs = "linux" | "macos" | "windows"
-export type PackageArch = "arm64" | "x64"
-export type PackageTarget = `${PackageOs}-${PackageArch}`
-export type PackagePlatform = "linux" | "macos" | "windows"
-export type PackageArtifactKind = "app" | "dmg" | "zip" | "msi" | "appimage" | "deb" | "rpm"
+import {
+  appImageArch,
+  artifactKindsForTarget,
+  debArch,
+  decodeDesktopTarget,
+  desktopArtifactExtension,
+  desktopPlatformDirectory,
+  detectDesktopHostTarget,
+  hostBinaryName,
+  isDesktopArtifactKind,
+  resolveDesktopHostTarget,
+  resolveDesktopTarget,
+  rpmArch,
+  wixArch
+} from "./targets.js"
+import type {
+  DesktopArtifactKind,
+  DesktopOs,
+  DesktopTarget,
+  DesktopTargetId,
+  UnsupportedDesktopHostTargetError
+} from "./targets.js"
+
+export type PackageTarget = DesktopTargetId
+export type PackagePlatform = DesktopOs
+export type PackageArtifactKind = DesktopArtifactKind
 export type PackageStepName =
   | "macos-app"
   | "macos-dmg"
@@ -249,12 +270,7 @@ export const runDesktopPackage = (
   })
 
 export const detectPackageHostTarget = (): PackageTarget | undefined => {
-  const os = process.platform === "darwin" ? "macos" : process.platform
-  const arch = process.arch === "x64" ? "x64" : process.arch === "arm64" ? "arm64" : undefined
-  if ((os === "linux" || os === "macos" || os === "win32") && arch !== undefined) {
-    return `${os === "win32" ? "windows" : os}-${arch}` as PackageTarget
-  }
-  return undefined
+  return detectDesktopHostTarget()
 }
 
 export const runPackageCommand: PackageCommandRunner = (invocation) =>
@@ -314,7 +330,7 @@ const normalizePackagePlan = (
     const appId = yield* readSafeAppId(config.app?.id, "app.id")
     const appName = yield* readLineSafeString(config.app?.name, "app.name")
     const appVersion = yield* readSemverString(config.app?.version, "app.version")
-    const platform = platformFromTarget(options.target)
+    const platform = desktopPlatformDirectory(options.target)
     const artifactKinds = yield* resolveArtifactKinds(options.artifact, options.target)
     const safeAppName = safeArtifactName(appName)
     if (safeAppName === "." || safeAppName === "..") {
@@ -430,9 +446,18 @@ const readManifestTarget = (
   path: string
 ): Effect.Effect<PackageTarget, PackageFileError, never> => {
   const value = record["target"]
-  return typeof value === "string" && isPackageTarget(value)
-    ? Effect.succeed(value)
-    : packageManifestError(path, "app-manifest.json field target must be a package target")
+  return decodeDesktopTarget(value).pipe(
+    Effect.map((target) => target.id),
+    Effect.mapError(
+      () =>
+        new PackageFileError({
+          operation: "validate",
+          path,
+          message: "app-manifest.json field target must be a package target",
+          cause: undefined
+        })
+    )
+  )
 }
 
 const readNestedManifestString = (
@@ -711,7 +736,7 @@ const writeArtifactMetadata = (
   })
 
 const plannedArtifact = (plan: PackagePlan, kind: PackageArtifactKind): PlannedArtifact => {
-  const extension = artifactExtension(kind)
+  const extension = desktopArtifactExtension(kind)
   const name = `${plan.safeAppName}-${plan.appVersion}-${plan.target}.${extension}`
   const rootPath = join(plan.outputPath, name)
   return {
@@ -739,7 +764,7 @@ const resolveArtifactKinds = (
       })
     )
   }
-  if (isPackageArtifactKind(requested) && platformKinds.includes(requested)) {
+  if (isDesktopArtifactKind(requested) && platformKinds.includes(requested)) {
     return Effect.succeed([requested])
   }
   return Effect.fail(
@@ -752,92 +777,44 @@ const resolveArtifactKinds = (
   )
 }
 
-const artifactKindsForTarget = (target: PackageTarget): readonly PackageArtifactKind[] => {
-  if (target.startsWith("macos-")) {
-    return ["app", "dmg", "zip"]
-  }
-  if (target.startsWith("windows-")) {
-    return ["msi"]
-  }
-  return ["appimage", "deb", "rpm"]
-}
-
-const isPackageArtifactKind = (value: string): value is PackageArtifactKind =>
-  value === "app" ||
-  value === "dmg" ||
-  value === "zip" ||
-  value === "msi" ||
-  value === "appimage" ||
-  value === "deb" ||
-  value === "rpm"
-
 const resolvePackageTarget = (
   requested: string | undefined,
-  hostTarget: PackageTarget
+  hostTarget: DesktopTarget
 ): Effect.Effect<PackageTarget, PackageUnsupportedTargetError, never> => {
-  const target = requested ?? hostTarget
-  if (!isPackageTarget(target)) {
-    return Effect.fail(
-      new PackageUnsupportedTargetError({
-        target,
-        hostTarget,
-        message: `unsupported package target ${target}`,
-        remediation:
-          "Run `bun desktop doctor` on a supported host and choose the matching --platform."
-      })
+  return resolveDesktopTarget(requested, hostTarget).pipe(
+    Effect.map((target) => target.id),
+    Effect.mapError(
+      (error) =>
+        new PackageUnsupportedTargetError({
+          target: error.target,
+          hostTarget: error.hostTarget,
+          message:
+            error.reason === "unsupported"
+              ? `unsupported package target ${error.target}`
+              : `target ${error.target} does not match host ${error.hostTarget}`,
+          remediation:
+            error.reason === "unsupported"
+              ? "Run `bun desktop doctor` on a supported host and choose the matching --platform."
+              : "Cross-platform package artifacts are out of scope. Package on the matching host."
+        })
     )
-  }
-  if (target !== hostTarget) {
-    return Effect.fail(
-      new PackageUnsupportedTargetError({
-        target,
-        hostTarget,
-        message: `target ${target} does not match host ${hostTarget}`,
-        remediation:
-          "Cross-platform package artifacts are out of scope. Package on the matching host."
-      })
-    )
-  }
-  return Effect.succeed(target)
+  )
 }
 
 const resolveHostTarget = (
   override: PackageTarget | undefined
-): Effect.Effect<PackageTarget, PackageUnsupportedHostError, never> => {
-  const hostTarget = override ?? detectPackageHostTarget()
-  if (hostTarget !== undefined) {
-    return Effect.succeed(hostTarget)
-  }
-  return Effect.fail(
-    new PackageUnsupportedHostError({
-      platform: process.platform,
-      arch: process.arch,
-      message: `unsupported host ${process.platform}-${process.arch}`,
-      remediation: "Run `bun desktop doctor` on linux, macOS, or Windows with x64 or arm64."
-    })
+): Effect.Effect<DesktopTarget, PackageUnsupportedHostError, never> =>
+  resolveDesktopHostTarget(override).pipe(
+    Effect.mapError(
+      (error: UnsupportedDesktopHostTargetError) =>
+        new PackageUnsupportedHostError({
+          platform: error.platform,
+          arch: error.arch,
+          message: `unsupported host ${error.platform}-${error.arch}`,
+          remediation: "Run `bun desktop doctor` on linux, macOS, or Windows with x64 or arm64."
+        })
+    )
   )
-}
-
-const isPackageTarget = (value: string): value is PackageTarget =>
-  value === "linux-x64" ||
-  value === "linux-arm64" ||
-  value === "macos-x64" ||
-  value === "macos-arm64" ||
-  value === "windows-x64" ||
-  value === "windows-arm64"
-
-const platformFromTarget = (target: PackageTarget): PackagePlatform => {
-  if (target.startsWith("macos-")) {
-    return "macos"
-  }
-  if (target.startsWith("windows-")) {
-    return "windows"
-  }
-  return "linux"
-}
-
-const artifactExtension = (kind: PackageArtifactKind): string =>
-  kind === "appimage" ? "AppImage" : kind
 
 const safeArtifactName = (name: string): string => name.replace(/[^A-Za-z0-9._-]+/g, "-")
 
@@ -847,20 +824,6 @@ const linuxPackageName = (appId: string, appName: string): string => {
 }
 
 const macosAppBundlePath = (plan: PackagePlan): string => plannedArtifact(plan, "app").artifactPath
-
-const hostBinaryName = (target: PackageTarget): string =>
-  target.startsWith("windows-") ? "host.exe" : "host"
-
-const wixArch = (target: PackageTarget): string => (target.endsWith("-arm64") ? "arm64" : "x64")
-
-const appImageArch = (target: PackageTarget): string =>
-  target.endsWith("-arm64") ? "aarch64" : "x86_64"
-
-const packageArch = (target: PackageTarget): string =>
-  target.endsWith("-arm64") ? "arm64" : "amd64"
-
-const rpmArch = (target: PackageTarget): string =>
-  target.endsWith("-arm64") ? "aarch64" : "x86_64"
 
 const appUpgradeCode = (appId: string): string => {
   const bytes = createHash("sha256").update(`effect-desktop:msi-upgrade:${appId}`).digest()
@@ -980,7 +943,7 @@ const stageDebRoot = (
         `Version: ${plan.appVersion}`,
         "Section: utils",
         "Priority: optional",
-        `Architecture: ${packageArch(plan.target)}`,
+        `Architecture: ${debArch(plan.target)}`,
         "Maintainer: Effect Desktop <maintainers@example.invalid>",
         `Description: ${plan.appName}`,
         ""

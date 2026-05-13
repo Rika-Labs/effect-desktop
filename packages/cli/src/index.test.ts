@@ -40,6 +40,8 @@ import {
 } from "./index.js"
 import type { UpdateManifest } from "./update-manifest.js"
 import type { PackageCommandRunner } from "./package-pipeline.js"
+import { desktopArtifactExtension, desktopPlatformDirectory, hostBinaryName } from "./targets.js"
+import type { DesktopArtifactKind, DesktopTargetId } from "./targets.js"
 
 test("desktop --help exits zero with root usage on stdout", async () => {
   const stdout: string[] = []
@@ -7364,10 +7366,10 @@ const writePlaygroundFixture = async (
 
 const writeBuildLayoutFixture = async (
   directory: string,
-  target: "linux-arm64" | "linux-x64" | "macos-arm64" | "windows-x64"
+  target: Extract<DesktopTargetId, "linux-arm64" | "linux-x64" | "macos-arm64" | "windows-x64">
 ): Promise<void> => {
   const layout = join(directory, "apps", "playground", "build", "effect-desktop", target)
-  const hostBinary = target.startsWith("windows-") ? "host.exe" : "host"
+  const hostBinary = hostBinaryName(target)
   await mkdir(join(layout, "renderer"), { recursive: true })
   await mkdir(join(layout, "runtime"), { recursive: true })
   await mkdir(join(layout, "native"), { recursive: true })
@@ -7394,15 +7396,11 @@ const writeBuildLayoutFixture = async (
 
 const writePackagedArtifactFixture = async (
   directory: string,
-  target: "linux-x64" | "macos-arm64" | "windows-x64",
-  kind: "app" | "appimage" | "dmg" | "msi" | "zip"
+  target: Extract<DesktopTargetId, "linux-x64" | "macos-arm64" | "windows-x64">,
+  kind: Extract<DesktopArtifactKind, "app" | "appimage" | "dmg" | "msi" | "zip">
 ): Promise<string> => {
-  const platform = target.startsWith("macos-")
-    ? "macos"
-    : target.startsWith("windows-")
-      ? "windows"
-      : "linux"
-  const extension = kind === "appimage" ? "AppImage" : kind
+  const platform = desktopPlatformDirectory(target)
+  const extension = desktopArtifactExtension(kind)
   const root = join(
     directory,
     "apps",

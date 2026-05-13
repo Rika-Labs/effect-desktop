@@ -5,11 +5,25 @@ import { pathToFileURL } from "node:url"
 
 import { Data, Effect } from "effect"
 
-export type SignOs = "linux" | "macos" | "windows"
-export type SignArch = "arm64" | "x64"
-export type SignTarget = `${SignOs}-${SignArch}`
-export type SignPlatform = "linux" | "macos" | "windows"
-export type SignArtifactKind = "app" | "dmg" | "zip" | "msi" | "appimage" | "deb" | "rpm"
+import {
+  decodeDesktopTarget,
+  desktopPlatformDirectory,
+  detectDesktopHostTarget,
+  isDesktopArtifactKind,
+  resolveDesktopHostTarget,
+  resolveDesktopTarget
+} from "./targets.js"
+import type {
+  DesktopArtifactKind,
+  DesktopOs,
+  DesktopTarget,
+  DesktopTargetId,
+  UnsupportedDesktopHostTargetError
+} from "./targets.js"
+
+export type SignTarget = DesktopTargetId
+export type SignPlatform = DesktopOs
+export type SignArtifactKind = DesktopArtifactKind
 export type SignStepName =
   | "macos-entitlements"
   | "macos-codesign"
@@ -210,12 +224,7 @@ export const runDesktopSign = (
   })
 
 export const detectSignHostTarget = (): SignTarget | undefined => {
-  const os = process.platform === "darwin" ? "macos" : process.platform
-  const arch = process.arch === "x64" ? "x64" : process.arch === "arm64" ? "arm64" : undefined
-  if ((os === "linux" || os === "macos" || os === "win32") && arch !== undefined) {
-    return `${os === "win32" ? "windows" : os}-${arch}` as SignTarget
-  }
-  return undefined
+  return detectDesktopHostTarget()
 }
 
 export const runSignCommand: SignCommandRunner = (invocation) =>
@@ -559,7 +568,7 @@ const normalizeSignPlan = (
       "app.version",
       "Set app.version in desktop.config.ts."
     )
-    const platform = platformFromTarget(options.target)
+    const platform = desktopPlatformDirectory(options.target)
     const safeAppName = safeArtifactName(appName)
     if (safeAppName === "." || safeAppName === "..") {
       return yield* Effect.fail(
@@ -1101,7 +1110,7 @@ const readArtifactKind = (
   value: unknown,
   path: string
 ): Effect.Effect<SignArtifactKind, SignConfigError, never> => {
-  if (isSignArtifactKind(value)) {
+  if (isDesktopArtifactKind(value)) {
     return Effect.succeed(value)
   }
   return Effect.fail(
@@ -1117,15 +1126,17 @@ const readTarget = (
   value: unknown,
   field: string
 ): Effect.Effect<SignTarget, SignConfigError, never> =>
-  isSignTarget(value)
-    ? Effect.succeed(value)
-    : Effect.fail(
+  decodeDesktopTarget(value).pipe(
+    Effect.map((target) => target.id),
+    Effect.mapError(
+      () =>
         new SignConfigError({
           field,
           message: `${field} must be a supported sign target`,
           remediation: "Regenerate package artifacts with `bun desktop package`."
         })
-      )
+    )
+  )
 
 const readNonNegativeInteger = (
   value: unknown,
@@ -1180,49 +1191,41 @@ const loadConfig = (path: string): Effect.Effect<unknown, SignConfigError, never
 
 const resolveSignTarget = (
   requested: string | undefined,
-  hostTarget: SignTarget
-): Effect.Effect<SignTarget, SignUnsupportedTargetError, never> => {
-  const target = requested ?? hostTarget
-  if (!isSignTarget(target)) {
-    return Effect.fail(
-      new SignUnsupportedTargetError({
-        target,
-        hostTarget,
-        message: `unsupported sign target ${target}`,
-        remediation:
-          "Run `bun desktop doctor` on a supported host and choose the matching --platform."
-      })
+  hostTarget: DesktopTarget
+): Effect.Effect<SignTarget, SignUnsupportedTargetError, never> =>
+  resolveDesktopTarget(requested, hostTarget).pipe(
+    Effect.map((target) => target.id),
+    Effect.mapError(
+      (error) =>
+        new SignUnsupportedTargetError({
+          target: error.target,
+          hostTarget: error.hostTarget,
+          message:
+            error.reason === "unsupported"
+              ? `unsupported sign target ${error.target}`
+              : `target ${error.target} does not match host ${error.hostTarget}`,
+          remediation:
+            error.reason === "unsupported"
+              ? "Run `bun desktop doctor` on a supported host and choose the matching --platform."
+              : "Cross-platform signing is out of scope. Sign on the matching host."
+        })
     )
-  }
-  if (target !== hostTarget) {
-    return Effect.fail(
-      new SignUnsupportedTargetError({
-        target,
-        hostTarget,
-        message: `target ${target} does not match host ${hostTarget}`,
-        remediation: "Cross-platform signing is out of scope. Sign on the matching host."
-      })
-    )
-  }
-  return Effect.succeed(target)
-}
+  )
 
 const resolveHostTarget = (
   override: SignTarget | undefined
-): Effect.Effect<SignTarget, SignUnsupportedHostError, never> => {
-  const hostTarget = override ?? detectSignHostTarget()
-  if (hostTarget !== undefined) {
-    return Effect.succeed(hostTarget)
-  }
-  return Effect.fail(
-    new SignUnsupportedHostError({
-      platform: process.platform,
-      arch: process.arch,
-      message: `unsupported host ${process.platform}-${process.arch}`,
-      remediation: "Run `bun desktop doctor` on linux, macOS, or Windows with x64 or arm64."
-    })
+): Effect.Effect<DesktopTarget, SignUnsupportedHostError, never> =>
+  resolveDesktopHostTarget(override).pipe(
+    Effect.mapError(
+      (error: UnsupportedDesktopHostTargetError) =>
+        new SignUnsupportedHostError({
+          platform: error.platform,
+          arch: error.arch,
+          message: `unsupported host ${error.platform}-${error.arch}`,
+          remediation: "Run `bun desktop doctor` on linux, macOS, or Windows with x64 or arm64."
+        })
+    )
   )
-}
 
 const readJson = <A>(path: string): Effect.Effect<A, SignFileError, never> =>
   Effect.tryPromise({
@@ -1443,38 +1446,11 @@ const readlinkPath = (path: string): Effect.Effect<string, SignFileError, never>
       })
   })
 
-const isSignTarget = (value: unknown): value is SignTarget =>
-  value === "linux-x64" ||
-  value === "linux-arm64" ||
-  value === "macos-x64" ||
-  value === "macos-arm64" ||
-  value === "windows-x64" ||
-  value === "windows-arm64"
-
-const isSignArtifactKind = (value: unknown): value is SignArtifactKind =>
-  value === "app" ||
-  value === "dmg" ||
-  value === "zip" ||
-  value === "msi" ||
-  value === "appimage" ||
-  value === "deb" ||
-  value === "rpm"
-
 const isSignableArtifact = (artifact: PackagedArtifact): boolean =>
   artifact.kind === "app" ||
   artifact.kind === "dmg" ||
   artifact.kind === "msi" ||
   artifact.kind === "appimage"
-
-const platformFromTarget = (target: SignTarget): SignPlatform => {
-  if (target.startsWith("macos-")) {
-    return "macos"
-  }
-  if (target.startsWith("windows-")) {
-    return "windows"
-  }
-  return "linux"
-}
 
 const artifactPlatform = (kind: SignArtifactKind): SignPlatform =>
   kind === "app" || kind === "dmg" || kind === "zip"

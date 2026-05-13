@@ -131,6 +131,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 | #1155 Move bridge cancellation to Effect interruption        | Implemented | Bridge client methods no longer expose `AbortSignal` call options; unary interruption and early stream finalization send protocol cancel envelopes from Effect finalizers             |
 | #1166 Use RpcTest for demo RPC transports                    | Implemented | Browser examples and adapter tests now use `RpcTest`-backed renderer RPC layers instead of fake queue/fiber host transports                                                           |
 | #1281 Make renderer RPC runtime a scoped layer               | Implemented | Core renderer RPC now exposes `RendererRpcClients`/`RendererRpcTransport` scoped layers, and framework adapters own `ManagedRuntime` disposal instead of a core unsafe runtime object |
+| #1220 Centralize release target modeling                     | Implemented | CLI build, package, sign, notarize, and publish pipelines now consume `DesktopTargetId`/`DesktopArtifactKind` plus canonical target policy helpers from `packages/cli/src/targets.ts` |
 | #1264 Replace BridgeRpc runtime DSL with Effect RPC adapters | Implemented | Native capability `*Rpcs` values are plain `RpcGroup`s, host runtimes use `RpcGroup.toLayer(...)` through `makeDesktopRpcHandlerRuntime(...)`, and bridge/native focused tests pass   |
 
 ## Design-Debt Follow-ups

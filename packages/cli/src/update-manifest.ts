@@ -11,15 +11,12 @@ import { pathToFileURL } from "node:url"
 
 import { Data, Effect } from "effect"
 
+import { decodeDesktopTarget, desktopPlatformDirectory, isDesktopArtifactKind } from "./targets.js"
+import type { DesktopArtifactKind, DesktopTargetId } from "./targets.js"
+
 export type PublishChannel = "stable" | "beta" | "canary"
-export type PublishTarget =
-  | "macos-arm64"
-  | "macos-x64"
-  | "windows-x64"
-  | "linux-x64"
-  | "windows-arm64"
-  | "linux-arm64"
-export type PublishArtifactKind = "app" | "dmg" | "zip" | "msi" | "appimage" | "deb" | "rpm"
+export type PublishTarget = DesktopTargetId
+export type PublishArtifactKind = DesktopArtifactKind
 
 export class PublishConfigError extends Data.TaggedError("PublishConfigError")<{
   readonly field: string
@@ -339,7 +336,7 @@ const readPackagedArtifacts = (
     const platforms =
       plan.target === undefined
         ? yield* readDirectory(plan.outputPath)
-        : [platformDirectory(plan.target)]
+        : [desktopPlatformDirectory(plan.target)]
     const artifacts: PackagedArtifact[] = []
     for (const platform of platforms.toSorted()) {
       const platformPath = join(plan.outputPath, platform)
@@ -427,7 +424,7 @@ const readPackagedArtifacts = (
           metadata.target,
           `${relative(plan.outputPath, metadataPath)}#target`
         )
-        if (platformDirectory(target) !== platform) {
+        if (desktopPlatformDirectory(target) !== platform) {
           return yield* Effect.fail(
             new PublishConfigError({
               field: `${relative(plan.outputPath, metadataPath)}#target`,
@@ -989,37 +986,41 @@ const readOptionalTarget = (
   if (value === undefined) {
     return Effect.succeed(undefined)
   }
-  return isPublishTarget(value)
-    ? Effect.succeed(value)
-    : Effect.fail(
+  return decodeDesktopTarget(value).pipe(
+    Effect.map((target) => target.id),
+    Effect.mapError(
+      () =>
         new PublishConfigError({
           field: "--platform",
           message: `unsupported publish target ${value}`,
           remediation:
             "Use macos-arm64, macos-x64, windows-x64, windows-arm64, linux-x64, or linux-arm64."
         })
-      )
+    )
+  )
 }
 
 const readTarget = (
   value: unknown,
   field: string
 ): Effect.Effect<PublishTarget, PublishConfigError, never> =>
-  typeof value === "string" && isPublishTarget(value)
-    ? Effect.succeed(value)
-    : Effect.fail(
+  decodeDesktopTarget(value).pipe(
+    Effect.map((target) => target.id),
+    Effect.mapError(
+      () =>
         new PublishConfigError({
           field,
           message: `${field} must be a supported publish target`,
           remediation: "Regenerate package metadata."
         })
-      )
+    )
+  )
 
 const readArtifactKind = (
   value: unknown,
   field: string
 ): Effect.Effect<PublishArtifactKind, PublishConfigError, never> =>
-  typeof value === "string" && isPublishArtifactKind(value)
+  isDesktopArtifactKind(value)
     ? Effect.succeed(value)
     : Effect.fail(
         new PublishConfigError({
@@ -1028,33 +1029,6 @@ const readArtifactKind = (
           remediation: "Regenerate package metadata."
         })
       )
-
-const isPublishTarget = (value: string): value is PublishTarget =>
-  value === "macos-arm64" ||
-  value === "macos-x64" ||
-  value === "windows-x64" ||
-  value === "linux-x64" ||
-  value === "windows-arm64" ||
-  value === "linux-arm64"
-
-const isPublishArtifactKind = (value: string): value is PublishArtifactKind =>
-  value === "app" ||
-  value === "dmg" ||
-  value === "zip" ||
-  value === "msi" ||
-  value === "appimage" ||
-  value === "deb" ||
-  value === "rpm"
-
-const platformDirectory = (target: PublishTarget): "linux" | "macos" | "windows" => {
-  if (target.startsWith("macos-")) {
-    return "macos"
-  }
-  if (target.startsWith("windows-")) {
-    return "windows"
-  }
-  return "linux"
-}
 
 const loadConfig = (path: string): Effect.Effect<unknown, PublishConfigError, never> =>
   Effect.gen(function* () {

@@ -5,7 +5,19 @@ import { pathToFileURL } from "node:url"
 
 import { Data, Effect } from "effect"
 
-export type NotarizeTarget = "macos-arm64" | "macos-x64"
+import {
+  decodeDesktopTarget,
+  detectDesktopHostTarget,
+  isMacosDesktopTargetId,
+  resolveMacosDesktopHostTarget
+} from "./targets.js"
+import type {
+  DesktopTarget,
+  MacosDesktopTargetId,
+  UnsupportedDesktopHostTargetError
+} from "./targets.js"
+
+export type NotarizeTarget = MacosDesktopTargetId
 export type NotarizeArtifactKind = "app" | "dmg"
 export type NotarizeStepName =
   | "stapler-validate"
@@ -194,13 +206,8 @@ export const runDesktopNotarize = (
   })
 
 export const detectNotarizeHostTarget = (): NotarizeTarget | undefined => {
-  if (process.platform !== "darwin") {
-    return undefined
-  }
-  if (process.arch === "arm64" || process.arch === "x64") {
-    return `macos-${process.arch}` as NotarizeTarget
-  }
-  return undefined
+  const target = detectDesktopHostTarget()
+  return isMacosDesktopTargetId(target) ? target : undefined
 }
 
 export const runNotarizeCommand: NotarizeCommandRunner = (invocation) =>
@@ -693,15 +700,28 @@ const readTarget = (
   value: unknown,
   field: string
 ): Effect.Effect<NotarizeTarget, NotarizeConfigError, never> =>
-  isNotarizeTarget(value)
-    ? Effect.succeed(value)
-    : Effect.fail(
-        new NotarizeConfigError({
-          field,
-          message: `${field} must be a supported notarize target`,
-          remediation: "Regenerate macOS artifacts with `bun desktop package`."
-        })
-      )
+  decodeDesktopTarget(value).pipe(
+    Effect.flatMap((target) =>
+      isMacosDesktopTargetId(target.id)
+        ? Effect.succeed(target.id)
+        : Effect.fail(
+            new NotarizeConfigError({
+              field,
+              message: `${field} must be a supported notarize target`,
+              remediation: "Regenerate macOS artifacts with `bun desktop package`."
+            })
+          )
+    ),
+    Effect.mapError((error) =>
+      error instanceof NotarizeConfigError
+        ? error
+        : new NotarizeConfigError({
+            field,
+            message: `${field} must be a supported notarize target`,
+            remediation: "Regenerate macOS artifacts with `bun desktop package`."
+          })
+    )
+  )
 
 const readNonNegativeInteger = (
   value: unknown,
@@ -804,52 +824,60 @@ const loadConfig = (path: string): Effect.Effect<unknown, NotarizeConfigError, n
 
 const resolveNotarizeTarget = (
   requested: string | undefined,
-  hostTarget: NotarizeTarget
+  hostTarget: DesktopTarget
 ): Effect.Effect<NotarizeTarget, NotarizeUnsupportedTargetError, never> => {
-  const target = requested ?? hostTarget
-  if (target !== "macos-arm64" && target !== "macos-x64") {
-    return Effect.fail(
-      new NotarizeUnsupportedTargetError({
-        target,
-        hostTarget,
-        message: `unsupported notarize target ${target}`,
-        remediation: "Notarization is macOS-only. Run on a macOS host."
-      })
-    )
-  }
-  if (target !== hostTarget) {
-    return Effect.fail(
-      new NotarizeUnsupportedTargetError({
-        target,
-        hostTarget,
-        message: `target ${target} does not match host ${hostTarget}`,
-        remediation:
-          "Cross-platform notarization is out of scope. Notarize on the matching macOS host."
-      })
-    )
-  }
-  return Effect.succeed(target)
-}
-
-const isNotarizeTarget = (value: unknown): value is NotarizeTarget =>
-  value === "macos-arm64" || value === "macos-x64"
-
-const resolveHostTarget = (
-  override: NotarizeTarget | undefined
-): Effect.Effect<NotarizeTarget, NotarizeUnsupportedHostError, never> => {
-  const hostTarget = override ?? detectNotarizeHostTarget()
-  if (hostTarget !== undefined) {
-    return Effect.succeed(hostTarget)
-  }
-  return Effect.fail(
-    new NotarizeUnsupportedHostError({
-      platform: process.platform,
-      arch: process.arch,
-      message: `unsupported notarize host ${process.platform}-${process.arch}`,
-      remediation: "Run notarization on macOS x64 or arm64."
+  const target = requested ?? hostTarget.id
+  return decodeDesktopTarget(target).pipe(
+    Effect.mapError(
+      () =>
+        new NotarizeUnsupportedTargetError({
+          target: String(target),
+          hostTarget: hostTarget.id as NotarizeTarget,
+          message: `unsupported notarize target ${String(target)}`,
+          remediation: "Notarization is macOS-only. Run on a macOS host."
+        })
+    ),
+    Effect.flatMap((decoded) => {
+      if (!isMacosDesktopTargetId(decoded.id)) {
+        return Effect.fail(
+          new NotarizeUnsupportedTargetError({
+            target: decoded.id,
+            hostTarget: hostTarget.id as NotarizeTarget,
+            message: `unsupported notarize target ${decoded.id}`,
+            remediation: "Notarization is macOS-only. Run on a macOS host."
+          })
+        )
+      }
+      if (decoded.id !== hostTarget.id) {
+        return Effect.fail(
+          new NotarizeUnsupportedTargetError({
+            target: decoded.id,
+            hostTarget: hostTarget.id as NotarizeTarget,
+            message: `target ${decoded.id} does not match host ${hostTarget.id}`,
+            remediation:
+              "Cross-platform notarization is out of scope. Notarize on the matching macOS host."
+          })
+        )
+      }
+      return Effect.succeed(decoded.id)
     })
   )
 }
+
+const resolveHostTarget = (
+  override: NotarizeTarget | undefined
+): Effect.Effect<DesktopTarget, NotarizeUnsupportedHostError, never> =>
+  resolveMacosDesktopHostTarget(override).pipe(
+    Effect.mapError(
+      (error: UnsupportedDesktopHostTargetError) =>
+        new NotarizeUnsupportedHostError({
+          platform: error.platform,
+          arch: error.arch,
+          message: `unsupported notarize host ${error.platform}-${error.arch}`,
+          remediation: "Run notarization on macOS x64 or arm64."
+        })
+    )
+  )
 
 const readJson = <A>(path: string): Effect.Effect<A, NotarizeFileError, never> =>
   Effect.tryPromise({

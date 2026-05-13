@@ -100,6 +100,19 @@ import {
   runAccessibilityGate
 } from "./accessibility-gate.js"
 import { formatSemverGuardError, formatSemverGuardReport, runSemverGuard } from "./semver-guard.js"
+import {
+  decodeDesktopTarget,
+  detectDesktopHostTarget,
+  hostBinaryName,
+  hostBuildOutputPath,
+  resolveDesktopHostTarget,
+  resolveDesktopTarget
+} from "./targets.js"
+import type {
+  DesktopTarget,
+  DesktopTargetId,
+  UnsupportedDesktopHostTargetError
+} from "./targets.js"
 
 export {
   runDesktopPackage,
@@ -170,6 +183,38 @@ export {
   type UpdateArtifactManifest,
   type UpdateManifest
 } from "./update-manifest.js"
+export {
+  DesktopArch,
+  DesktopArtifact,
+  DesktopArtifactKind,
+  DesktopOs,
+  DesktopTarget,
+  DesktopTargetId,
+  DesktopTargetIds,
+  MacosDesktopTargetId,
+  UnsupportedDesktopHostTargetError,
+  UnsupportedDesktopTargetError,
+  appImageArch,
+  artifactKindsForTarget,
+  debArch,
+  decodeDesktopTarget,
+  desktopArtifactExtension,
+  desktopArtifactsForTarget,
+  desktopPlatformDirectory,
+  desktopTargetId,
+  detectDesktopHostTarget,
+  hostBinaryName,
+  hostBuildOutputPath,
+  isDesktopArtifactKind,
+  isDesktopTargetId,
+  isMacosDesktopTargetId,
+  parseDesktopTargetId,
+  resolveDesktopHostTarget,
+  resolveMacosDesktopHostTarget,
+  resolveDesktopTarget,
+  rpmArch,
+  wixArch
+} from "./targets.js"
 export {
   runPublicApiCheck,
   type PublicApiChange,
@@ -289,9 +334,7 @@ export type BuildPipelineError =
   | BuildCommandFailedError
   | BuildFileError
 
-export type BuildOs = "linux" | "macos" | "windows"
-export type BuildArch = "arm64" | "x64"
-export type BuildTarget = `${BuildOs}-${BuildArch}`
+export type BuildTarget = DesktopTargetId
 export type BuildStepName = "renderer" | "runtime" | "native-host" | "bridge" | "manifest"
 const DEFAULT_RUNTIME_ENGINE = "bun"
 const DEFAULT_RENDERER_FRAMEWORK = "react"
@@ -1075,7 +1118,7 @@ export const runDesktopBuild = (
     const plan = yield* normalizeBuildPlan(config, {
       profile: options.profile,
       configPath: absoluteConfigPath,
-      hostTarget,
+      hostTarget: hostTarget.id,
       target
     })
 
@@ -1264,69 +1307,46 @@ const readOptionalString = (
 
 const resolveBuildTarget = (
   requested: string | undefined,
-  hostTarget: BuildTarget
+  hostTarget: DesktopTarget
 ): Effect.Effect<BuildTarget, BuildUnsupportedTargetError, never> => {
-  const target = requested ?? hostTarget
-  if (!isBuildTarget(target)) {
-    return Effect.fail(
-      new BuildUnsupportedTargetError({
-        target,
-        hostTarget,
-        message: `unsupported build target ${target}`,
-        remediation:
-          "Run `bun desktop doctor` on a supported host and choose the matching --platform."
-      })
+  return resolveDesktopTarget(requested, hostTarget).pipe(
+    Effect.map((target) => target.id),
+    Effect.mapError(
+      (error) =>
+        new BuildUnsupportedTargetError({
+          target: error.target,
+          hostTarget: error.hostTarget,
+          message:
+            error.reason === "unsupported"
+              ? `unsupported build target ${error.target}`
+              : `target ${error.target} does not match host ${error.hostTarget}`,
+          remediation:
+            error.reason === "unsupported"
+              ? "Run `bun desktop doctor` on a supported host and choose the matching --platform."
+              : "Cross-platform outputs are out of scope for this build slice. Run `bun desktop doctor` on the matching host or use the default target."
+        })
     )
-  }
-  if (target !== hostTarget) {
-    return Effect.fail(
-      new BuildUnsupportedTargetError({
-        target,
-        hostTarget,
-        message: `target ${target} does not match host ${hostTarget}`,
-        remediation:
-          "Cross-platform outputs are out of scope for this build slice. Run `bun desktop doctor` on the matching host or use the default target."
-      })
-    )
-  }
-
-  return Effect.succeed(target)
+  )
 }
 
 export const detectHostTarget = (): BuildTarget | undefined => {
-  const os = process.platform === "darwin" ? "macos" : process.platform
-  const arch = process.arch === "x64" ? "x64" : process.arch === "arm64" ? "arm64" : undefined
-  if ((os === "linux" || os === "macos" || os === "win32") && arch !== undefined) {
-    return `${os === "win32" ? "windows" : os}-${arch}` as BuildTarget
-  }
-  return undefined
+  return detectDesktopHostTarget()
 }
 
 const resolveHostTarget = (
   override: BuildTarget | undefined
-): Effect.Effect<BuildTarget, BuildUnsupportedHostError, never> => {
-  const hostTarget = override ?? detectHostTarget()
-  if (hostTarget !== undefined) {
-    return Effect.succeed(hostTarget)
-  }
-
-  return Effect.fail(
-    new BuildUnsupportedHostError({
-      platform: process.platform,
-      arch: process.arch,
-      message: `unsupported host ${process.platform}-${process.arch}`,
-      remediation: "Run `bun desktop doctor` on linux, macOS, or Windows with x64 or arm64."
-    })
+): Effect.Effect<DesktopTarget, BuildUnsupportedHostError, never> =>
+  resolveDesktopHostTarget(override).pipe(
+    Effect.mapError(
+      (error: UnsupportedDesktopHostTargetError) =>
+        new BuildUnsupportedHostError({
+          platform: error.platform,
+          arch: error.arch,
+          message: `unsupported host ${error.platform}-${error.arch}`,
+          remediation: "Run `bun desktop doctor` on linux, macOS, or Windows with x64 or arm64."
+        })
+    )
   )
-}
-
-const isBuildTarget = (value: string): value is BuildTarget =>
-  value === "linux-x64" ||
-  value === "linux-arm64" ||
-  value === "macos-x64" ||
-  value === "macos-arm64" ||
-  value === "windows-x64" ||
-  value === "windows-arm64"
 
 const runCommand: CommandRunner = (invocation) =>
   Effect.tryPromise({
@@ -2091,36 +2111,39 @@ const readBuildTargets = (
   value: unknown,
   defaultTarget: BuildTarget,
   field: string
-): Effect.Effect<readonly BuildTarget[], BuildConfigError, never> => {
-  if (value === undefined) {
-    return Effect.succeed([defaultTarget])
-  }
-  if (!Array.isArray(value)) {
-    return Effect.fail(
-      new BuildConfigError({ field, message: `${field} must be an array of build targets` })
-    )
-  }
-  const targets: BuildTarget[] = []
-  for (const raw of value) {
-    if (typeof raw !== "string") {
-      return Effect.fail(
+): Effect.Effect<readonly BuildTarget[], BuildConfigError, never> =>
+  Effect.gen(function* () {
+    if (value === undefined) {
+      return [defaultTarget]
+    }
+    if (!Array.isArray(value)) {
+      return yield* Effect.fail(
         new BuildConfigError({ field, message: `${field} must be an array of build targets` })
       )
     }
-    if (!isBuildTarget(raw)) {
-      return Effect.fail(
-        new BuildConfigError({
-          field,
-          message: `${field} must include only known targets, not ${raw}`
-        })
+    const targets: BuildTarget[] = []
+    for (const raw of value) {
+      if (typeof raw !== "string") {
+        return yield* Effect.fail(
+          new BuildConfigError({ field, message: `${field} must be an array of build targets` })
+        )
+      }
+      const target = yield* decodeDesktopTarget(raw).pipe(
+        Effect.map((target) => target.id),
+        Effect.mapError(
+          () =>
+            new BuildConfigError({
+              field,
+              message: `${field} must include only known targets, not ${raw}`
+            })
+        )
       )
+      if (!targets.includes(target)) {
+        targets.push(target)
+      }
     }
-    if (!targets.includes(raw)) {
-      targets.push(raw)
-    }
-  }
-  return Effect.succeed(targets)
-}
+    return targets
+  })
 
 const readWindowsConfig = (value: unknown): Effect.Effect<unknown, BuildConfigError, never> => {
   if (value === undefined) {
@@ -2751,12 +2774,6 @@ const isPathInside = (root: string, path: string): boolean => {
   const relativePath = relative(root, path)
   return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath))
 }
-
-const hostBuildOutputPath = (repoRoot: string, target: BuildTarget): string =>
-  join(repoRoot, "target", "release", hostBinaryName(target))
-
-const hostBinaryName = (target: BuildTarget): string =>
-  target.startsWith("windows-") ? "host.exe" : "host"
 
 const pathToFileUrl = (path: string): string => pathToFileURL(path).href
 

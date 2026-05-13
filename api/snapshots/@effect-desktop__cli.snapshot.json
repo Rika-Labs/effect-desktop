@@ -64,9 +64,14 @@
       "signature": "export interface AccessibilityTemplateReport { readonly id: string readonly auditModes: number readonly contrastPairs: number readonly scannedFiles: number }"
     },
     {
-      "name": "BuildArch",
-      "kind": "type",
-      "signature": "export type BuildArch = \"arm64\" | \"x64\""
+      "name": "appImageArch",
+      "kind": "value",
+      "signature": "const appImageArch: (target: DesktopTargetId) => string"
+    },
+    {
+      "name": "artifactKindsForTarget",
+      "kind": "value",
+      "signature": "const artifactKindsForTarget: (target: DesktopTargetId) => readonly DesktopArtifactKind[]"
     },
     {
       "name": "BuildCommandFailedError",
@@ -82,11 +87,6 @@
       "name": "BuildFileError",
       "kind": "class",
       "signature": "export class BuildFileError extends Data.TaggedError(\"BuildFileError\")<{ readonly operation: string readonly path: string readonly message: string readonly cause: unknown }> {}"
-    },
-    {
-      "name": "BuildOs",
-      "kind": "type",
-      "signature": "export type BuildOs = \"linux\" | \"macos\" | \"windows\""
     },
     {
       "name": "BuildPipelineError",
@@ -106,7 +106,7 @@
     {
       "name": "BuildTarget",
       "kind": "type",
-      "signature": "export type BuildTarget = `${BuildOs}-${BuildArch}`"
+      "signature": "export type BuildTarget = DesktopTargetId"
     },
     {
       "name": "BuildUnsupportedHostError",
@@ -144,6 +144,41 @@
       "signature": "export type CommandRunner = ( invocation: CommandInvocation ) => Effect.Effect<void, BuildCommandFailedError, never>"
     },
     {
+      "name": "debArch",
+      "kind": "value",
+      "signature": "const debArch: (target: DesktopTargetId) => string"
+    },
+    {
+      "name": "decodeDesktopTarget",
+      "kind": "value",
+      "signature": "const decodeDesktopTarget: (value: unknown) => Effect.Effect<DesktopTarget, Schema.SchemaError, never>"
+    },
+    {
+      "name": "DesktopArch",
+      "kind": "type",
+      "signature": "const DesktopArch: Schema.Literals<readonly [\"arm64\", \"x64\"]>"
+    },
+    {
+      "name": "DesktopArtifact",
+      "kind": "class",
+      "signature": "export class DesktopArtifact extends Schema.Class<DesktopArtifact>(\"DesktopArtifact\")({ kind: DesktopArtifactKind, target: DesktopTarget }) {}"
+    },
+    {
+      "name": "desktopArtifactExtension",
+      "kind": "value",
+      "signature": "const desktopArtifactExtension: (kind: DesktopArtifactKind) => string"
+    },
+    {
+      "name": "DesktopArtifactKind",
+      "kind": "type",
+      "signature": "const DesktopArtifactKind: Schema.Literals<readonly [\"app\", \"appimage\", \"deb\", \"dmg\", \"msi\", \"rpm\", \"zip\"]>"
+    },
+    {
+      "name": "desktopArtifactsForTarget",
+      "kind": "value",
+      "signature": "const desktopArtifactsForTarget: (target: DesktopTargetId) => readonly DesktopArtifact[]"
+    },
+    {
       "name": "DesktopBuildOptions",
       "kind": "interface",
       "signature": "export interface DesktopBuildOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly profile: string readonly commandRunner: CommandRunner readonly now: () => number readonly hostTarget: BuildTarget | undefined }"
@@ -169,6 +204,11 @@
       "signature": "export interface DesktopNotarizeReport { readonly appId: string readonly appName: string readonly appVersion: string readonly target: NotarizeTarget readonly outputPath: string readonly artifacts: readonly NotarizeArtifactReport[] readonly steps: readonly NotarizeStepReport[] }"
     },
     {
+      "name": "DesktopOs",
+      "kind": "type",
+      "signature": "const DesktopOs: Schema.Literals<readonly [\"linux\", \"macos\", \"windows\"]>"
+    },
+    {
       "name": "DesktopPackageOptions",
       "kind": "interface",
       "signature": "export interface DesktopPackageOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly artifact: string | undefined readonly commandRunner: PackageCommandRunner readonly now: () => number readonly hostTarget: PackageTarget | undefined }"
@@ -177,6 +217,11 @@
       "name": "DesktopPackageReport",
       "kind": "interface",
       "signature": "export interface DesktopPackageReport { readonly appId: string readonly appName: string readonly appVersion: string readonly target: PackageTarget readonly layoutPath: string readonly outputPath: string readonly artifacts: readonly PackageArtifactReport[] readonly steps: readonly PackageStepReport[] }"
+    },
+    {
+      "name": "desktopPlatformDirectory",
+      "kind": "value",
+      "signature": "const desktopPlatformDirectory: (target: DesktopTargetId) => DesktopOs"
     },
     {
       "name": "DesktopPublishOptions",
@@ -202,6 +247,31 @@
       "name": "DesktopSignReport",
       "kind": "interface",
       "signature": "export interface DesktopSignReport { readonly appId: string readonly appName: string readonly appVersion: string readonly target: SignTarget readonly outputPath: string readonly artifacts: readonly SignArtifactReport[] readonly steps: readonly SignStepReport[] }"
+    },
+    {
+      "name": "DesktopTarget",
+      "kind": "class",
+      "signature": "export class DesktopTarget extends Schema.Class<DesktopTarget>(\"DesktopTarget\")({ arch: DesktopArch, os: DesktopOs }) { get id(): DesktopTargetId { return desktopTargetId(this) } }"
+    },
+    {
+      "name": "desktopTargetId",
+      "kind": "value",
+      "signature": "const desktopTargetId: (target: { readonly os: DesktopOs; readonly arch: DesktopArch; }) => DesktopTargetId"
+    },
+    {
+      "name": "DesktopTargetId",
+      "kind": "type",
+      "signature": "const DesktopTargetId: Schema.Literals<readonly [\"linux-arm64\", \"linux-x64\", \"macos-arm64\", \"macos-x64\", \"windows-arm64\", \"windows-x64\"]>"
+    },
+    {
+      "name": "DesktopTargetIds",
+      "kind": "value",
+      "signature": "const DesktopTargetIds: readonly (\"linux-arm64\" | \"linux-x64\" | \"macos-arm64\" | \"macos-x64\" | \"windows-arm64\" | \"windows-x64\")[]"
+    },
+    {
+      "name": "detectDesktopHostTarget",
+      "kind": "value",
+      "signature": "const detectDesktopHostTarget: (platform?: NodeJS.Platform, arch?: string) => DesktopTargetId | undefined"
     },
     {
       "name": "detectHostTarget",
@@ -314,6 +384,36 @@
       "signature": "export type DoctorProbeStatus = \"ok\" | \"missing\" | \"warning\""
     },
     {
+      "name": "hostBinaryName",
+      "kind": "value",
+      "signature": "const hostBinaryName: (target: DesktopTargetId) => string"
+    },
+    {
+      "name": "hostBuildOutputPath",
+      "kind": "value",
+      "signature": "const hostBuildOutputPath: (repoRoot: string, target: DesktopTargetId) => string"
+    },
+    {
+      "name": "isDesktopArtifactKind",
+      "kind": "value",
+      "signature": "const isDesktopArtifactKind: <I>(input: I) => input is I & (\"app\" | \"appimage\" | \"deb\" | \"dmg\" | \"msi\" | \"rpm\" | \"zip\")"
+    },
+    {
+      "name": "isDesktopTargetId",
+      "kind": "value",
+      "signature": "const isDesktopTargetId: <I>(input: I) => input is I & (\"linux-arm64\" | \"linux-x64\" | \"macos-arm64\" | \"macos-x64\" | \"windows-arm64\" | \"windows-x64\")"
+    },
+    {
+      "name": "isMacosDesktopTargetId",
+      "kind": "value",
+      "signature": "const isMacosDesktopTargetId: <I>(input: I) => input is I & (\"macos-arm64\" | \"macos-x64\")"
+    },
+    {
+      "name": "MacosDesktopTargetId",
+      "kind": "type",
+      "signature": "const MacosDesktopTargetId: Schema.Literals<readonly [\"macos-arm64\", \"macos-x64\"]>"
+    },
+    {
       "name": "NotarizeArtifactKind",
       "kind": "type",
       "signature": "export type NotarizeArtifactKind = \"app\" | \"dmg\""
@@ -356,12 +456,12 @@
     {
       "name": "NotarizeTarget",
       "kind": "type",
-      "signature": "export type NotarizeTarget = \"macos-arm64\" | \"macos-x64\""
+      "signature": "export type NotarizeTarget = MacosDesktopTargetId"
     },
     {
       "name": "PackageArtifactKind",
       "kind": "type",
-      "signature": "export type PackageArtifactKind = \"app\" | \"dmg\" | \"zip\" | \"msi\" | \"appimage\" | \"deb\" | \"rpm\""
+      "signature": "export type PackageArtifactKind = DesktopArtifactKind"
     },
     {
       "name": "PackageArtifactReport",
@@ -396,7 +496,12 @@
     {
       "name": "PackageTarget",
       "kind": "type",
-      "signature": "export type PackageTarget = `${PackageOs}-${PackageArch}`"
+      "signature": "export type PackageTarget = DesktopTargetId"
+    },
+    {
+      "name": "parseDesktopTargetId",
+      "kind": "value",
+      "signature": "const parseDesktopTargetId: (id: DesktopTargetId) => DesktopTarget"
     },
     {
       "name": "PublicApiChange",
@@ -446,7 +551,7 @@
     {
       "name": "PublishArtifactKind",
       "kind": "type",
-      "signature": "export type PublishArtifactKind = \"app\" | \"dmg\" | \"zip\" | \"msi\" | \"appimage\" | \"deb\" | \"rpm\""
+      "signature": "export type PublishArtifactKind = DesktopArtifactKind"
     },
     {
       "name": "PublishChannel",
@@ -461,7 +566,7 @@
     {
       "name": "PublishTarget",
       "kind": "type",
-      "signature": "export type PublishTarget = | \"macos-arm64\" | \"macos-x64\" | \"windows-x64\" | \"linux-x64\" | \"windows-arm64\" | \"linux-arm64\""
+      "signature": "export type PublishTarget = DesktopTargetId"
     },
     {
       "name": "ReleaseChecklist",
@@ -522,6 +627,26 @@
       "name": "ReproDifference",
       "kind": "interface",
       "signature": "export interface ReproDifference { readonly relativePath: string readonly kind: | \"missing-in-first\" | \"missing-in-second\" | \"content\" | \"entry-type\" | \"symlink-target\" | \"mode\" | \"target\" readonly firstDifferenceOffset: number | undefined readonly firstSizeBytes: number | undefined readonly secondSizeBytes: number | undefined readonly firstSha256: string | undefined readonly secondSha256: string | undefined readonly firstEntryKind: ReproEntryKind | undefined readonly secondEntryKind: ReproEntryKind | undefined readonly firstSymlinkTarget: string | undefined readonly secondSymlinkTarget: string | undefined readonly firstMode: number | undefined readonly secondMode: number | undefined readonly firstTarget: string | undefined readonly secondTarget: string | undefined }"
+    },
+    {
+      "name": "resolveDesktopHostTarget",
+      "kind": "value",
+      "signature": "const resolveDesktopHostTarget: (override: DesktopTargetId | undefined, platform?: NodeJS.Platform, arch?: string) => Effect.Effect<DesktopTarget, UnsupportedDesktopHostTargetError, never>"
+    },
+    {
+      "name": "resolveDesktopTarget",
+      "kind": "value",
+      "signature": "const resolveDesktopTarget: (requested: string | undefined, hostTarget: DesktopTarget) => Effect.Effect<DesktopTarget, UnsupportedDesktopTargetError, never>"
+    },
+    {
+      "name": "resolveMacosDesktopHostTarget",
+      "kind": "value",
+      "signature": "const resolveMacosDesktopHostTarget: (override: MacosDesktopTargetId | undefined, platform?: NodeJS.Platform, arch?: string) => Effect.Effect<DesktopTarget, UnsupportedDesktopHostTargetError, never>"
+    },
+    {
+      "name": "rpmArch",
+      "kind": "value",
+      "signature": "const rpmArch: (target: DesktopTargetId) => string"
     },
     {
       "name": "runAccessibilityGate",
@@ -646,7 +771,7 @@
     {
       "name": "SignArtifactKind",
       "kind": "type",
-      "signature": "export type SignArtifactKind = \"app\" | \"dmg\" | \"zip\" | \"msi\" | \"appimage\" | \"deb\" | \"rpm\""
+      "signature": "export type SignArtifactKind = DesktopArtifactKind"
     },
     {
       "name": "SignArtifactReport",
@@ -681,7 +806,17 @@
     {
       "name": "SignTarget",
       "kind": "type",
-      "signature": "export type SignTarget = `${SignOs}-${SignArch}`"
+      "signature": "export type SignTarget = DesktopTargetId"
+    },
+    {
+      "name": "UnsupportedDesktopHostTargetError",
+      "kind": "class",
+      "signature": "export class UnsupportedDesktopHostTargetError extends Data.TaggedError( \"UnsupportedDesktopHostTargetError\" )<{ readonly platform: string readonly arch: string }> {}"
+    },
+    {
+      "name": "UnsupportedDesktopTargetError",
+      "kind": "class",
+      "signature": "export class UnsupportedDesktopTargetError extends Data.TaggedError( \"UnsupportedDesktopTargetError\" )<{ readonly target: string readonly hostTarget: DesktopTargetId readonly reason: \"unsupported\" | \"mismatch\" }> {}"
     },
     {
       "name": "UpdateArtifactManifest",
@@ -692,6 +827,11 @@
       "name": "UpdateManifest",
       "kind": "interface",
       "signature": "export interface UpdateManifest { readonly schemaVersion: 1 readonly appId: string readonly version: string readonly channel: PublishChannel readonly keyVersion: number readonly publishedAt: string readonly rollback?: boolean readonly minVersion?: string readonly maxVersion?: string readonly artifacts: readonly UpdateArtifactManifest[] readonly signature: string }"
+    },
+    {
+      "name": "wixArch",
+      "kind": "value",
+      "signature": "const wixArch: (target: DesktopTargetId) => string"
     }
   ]
 }
