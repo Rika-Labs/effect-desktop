@@ -357,7 +357,10 @@ const validateEventSpec = (tag: string, event: string, spec: BridgeEventSpec): v
     throw invalidSpec(tag, event, "event payload schema is required")
   }
   if (spec.backpressure !== undefined) {
-    validateBackpressureSpec(tag, event, spec.backpressure, { requirePositiveSize: false })
+    validateBackpressureSpec(tag, event, spec.backpressure, {
+      requirePositiveSize: true,
+      allowOverflowError: false
+    })
   }
 }
 
@@ -365,7 +368,7 @@ const validateBackpressureSpec = (
   tag: string,
   method: string,
   spec: BackpressureSpec,
-  options: { readonly requirePositiveSize: boolean }
+  options: { readonly requirePositiveSize: boolean; readonly allowOverflowError?: boolean }
 ): void => {
   if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
     throw invalidSpec(tag, method, "backpressure must be an object")
@@ -379,6 +382,9 @@ const validateBackpressureSpec = (
   }
   if (options.requirePositiveSize && spec.size === 0) {
     throw invalidSpec(tag, method, "backpressure.size must be a positive integer")
+  }
+  if (options.allowOverflowError === false && spec.overflow === "error") {
+    throw invalidSpec(tag, method, "backpressure.overflow error is not supported here")
   }
   if (spec.overflow !== undefined && !backpressureOverflows.has(spec.overflow)) {
     throw invalidSpec(

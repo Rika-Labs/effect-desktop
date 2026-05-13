@@ -133,6 +133,30 @@ test("bridge metadata validation rejects invalid RpcGroup lowering inputs", () =
       )
     )
   ).toThrow(InvalidBridgeMetadataError)
+  expect(() =>
+    bridgeContractFromRpcGroup(
+      "Test.Valid",
+      RpcGroup.make(
+        Rpc.make("Test.Valid.events.changed", {
+          success: Schema.String,
+          error: Schema.Never,
+          stream: true
+        }).pipe(BridgeRuntime({ backpressure: { strategy: "drop", size: 0 } }))
+      )
+    )
+  ).toThrow(InvalidBridgeMetadataError)
+  expect(() =>
+    bridgeContractFromRpcGroup(
+      "Test.Valid",
+      RpcGroup.make(
+        Rpc.make("Test.Valid.events.changed", {
+          success: Schema.String,
+          error: Schema.Never,
+          stream: true
+        }).pipe(BridgeRuntime({ backpressure: { strategy: "drop", size: 1, overflow: "error" } }))
+      )
+    )
+  ).toThrow(InvalidBridgeMetadataError)
 })
 
 test("bridge metadata validation rejects invalid annotations", () => {

@@ -1,4 +1,4 @@
-import { Effect, Queue, Schema, Stream } from "effect"
+import { Effect, PubSub, Schema, Stream } from "effect"
 
 import {
   type BridgeContract,
@@ -50,28 +50,29 @@ export interface BridgeEventHub {
 
 type EventChannel = {
   readonly spec: BridgeEventSpec
-  readonly queues: Set<EventQueue>
+  readonly pubsub: PubSub.PubSub<HostProtocolEventEnvelope>
 }
 
-type EventQueue = {
-  readonly queue: Queue.Queue<HostProtocolEventEnvelope>
-}
-
-type EventOverflow = NonNullable<NonNullable<BridgeEventSpec["backpressure"]>["overflow"]>
+type EventOverflow = Exclude<
+  NonNullable<NonNullable<BridgeEventSpec["backpressure"]>["overflow"]>,
+  "error"
+>
 
 export const EventHub = (
   contracts: Iterable<BridgeContract>,
   options: BridgeEventHubOptions = {}
-): Effect.Effect<BridgeEventHub, never, never> =>
-  Effect.sync(() => {
+): Effect.Effect<BridgeEventHub, HostProtocolError, never> =>
+  Effect.gen(function* () {
     const resolved = resolveOptions(options)
     const channels = new Map<string, EventChannel>()
 
     for (const contract of contracts) {
       for (const [event, spec] of Object.entries(contract.events ?? {})) {
-        channels.set(eventName(contract.tag, event), {
+        const method = eventName(contract.tag, event)
+        const pubsub = yield* makeEventPubSub(method, spec)
+        channels.set(method, {
           spec,
-          queues: new Set()
+          pubsub
         })
       }
     }
@@ -105,23 +106,7 @@ const subscribe = (
     return Stream.fail(makeHostProtocolInvalidArgumentError("method", "unknown event", method))
   }
 
-  return Stream.unwrap(
-    Effect.gen(function* () {
-      const eventQueue = yield* makeEventQueue(channel.spec)
-      channel.queues.add(eventQueue)
-
-      return Stream.fromQueue(eventQueue.queue).pipe(
-        Stream.ensuring(
-          Effect.andThen(
-            Effect.sync(() => {
-              channel.queues.delete(eventQueue)
-            }),
-            Queue.interrupt(eventQueue.queue)
-          )
-        )
-      )
-    })
-  )
+  return Stream.fromPubSub(channel.pubsub)
 }
 
 const publish = <Events extends BridgeContractEvents, Event extends keyof Events>(
@@ -157,42 +142,49 @@ const publish = <Events extends BridgeContractEvents, Event extends keyof Events
       ...(encodedPayload === undefined ? {} : { payload: encodedPayload })
     })
 
-    yield* Effect.forEach(channel.queues, (eventQueue) => offerEvent(eventQueue, envelope), {
-      discard: true
-    })
+    yield* PubSub.publish(channel.pubsub, envelope).pipe(Effect.asVoid)
   })
 
-const makeEventQueue = (spec: BridgeEventSpec): Effect.Effect<EventQueue, never, never> =>
+const makeEventPubSub = (
+  method: string,
+  spec: BridgeEventSpec
+): Effect.Effect<PubSub.PubSub<HostProtocolEventEnvelope>, HostProtocolError, never> =>
   Effect.gen(function* () {
     const capacity = spec.backpressure?.size ?? DEFAULT_EVENT_QUEUE_SIZE
+    if (capacity <= 0) {
+      return yield* Effect.fail(
+        makeHostProtocolInvalidArgumentError(
+          "backpressure.size",
+          "event backpressure size must be a positive integer",
+          method
+        )
+      )
+    }
+    if (spec.backpressure?.overflow === "error") {
+      return yield* Effect.fail(
+        makeHostProtocolInvalidArgumentError(
+          "backpressure.overflow",
+          "event overflow error is not supported",
+          method
+        )
+      )
+    }
     const overflow = resolveEventOverflow(spec)
-    const queue =
-      overflow === "dropOldest"
-        ? yield* Queue.sliding<HostProtocolEventEnvelope>(capacity)
-        : overflow === "dropNewest"
-          ? yield* Queue.dropping<HostProtocolEventEnvelope>(capacity)
-          : yield* Queue.bounded<HostProtocolEventEnvelope>(capacity)
 
-    return {
-      queue
-    } as const
+    return overflow === "dropOldest"
+      ? yield* PubSub.sliding<HostProtocolEventEnvelope>({ capacity, replay: 0 })
+      : overflow === "dropNewest"
+        ? yield* PubSub.dropping<HostProtocolEventEnvelope>({ capacity, replay: 0 })
+        : yield* PubSub.bounded<HostProtocolEventEnvelope>({ capacity, replay: 0 })
   })
 
 const resolveEventOverflow = (spec: BridgeEventSpec): EventOverflow => {
-  if (spec.backpressure?.overflow !== undefined) {
+  if (spec.backpressure?.overflow !== undefined && spec.backpressure.overflow !== "error") {
     return spec.backpressure.overflow
   }
 
   return spec.backpressure?.strategy === "drop" ? "dropNewest" : "block"
 }
-
-const offerEvent = (
-  eventQueue: EventQueue,
-  envelope: HostProtocolEventEnvelope
-): Effect.Effect<void, HostProtocolError, never> =>
-  Effect.gen(function* () {
-    yield* Queue.offer(eventQueue.queue, envelope)
-  })
 
 const encodeEventPayload = <Type, Encoded>(
   operation: string,

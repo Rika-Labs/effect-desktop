@@ -336,7 +336,7 @@
     {
       "name": "EventHub",
       "kind": "value",
-      "signature": "const EventHub: (contracts: Iterable<BridgeContract>, options?: BridgeEventHubOptions) => Effect.Effect<BridgeEventHub, never, never>"
+      "signature": "const EventHub: (contracts: Iterable<BridgeContract>, options?: BridgeEventHubOptions) => Effect.Effect<BridgeEventHub, HostProtocolError, never>"
     },
     {
       "name": "Handlers",

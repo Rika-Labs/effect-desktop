@@ -3,6 +3,7 @@ import { Cause, Effect, Exit, Fiber, Option, Schema, Stream } from "effect"
 
 import {
   BridgeRuntime,
+  type BridgeContract,
   Client,
   EventHub,
   HostProtocolEventEnvelope,
@@ -61,7 +62,7 @@ test("EventHub publishes contract events to typed client streams in order", asyn
         new ProjectChangedEvent({ sequence: 3, path: "c" })
       )
 
-      return yield* Fiber.join(fiber)
+      return yield* Fiber.join(fiber).pipe(Effect.timeout("2 seconds"))
     })
   )
 
@@ -87,7 +88,7 @@ test("EventHub encodes payloads before fanout", async () => {
         new ProjectChangedEvent({ sequence: 1, path: "a" })
       )
 
-      return yield* Fiber.join(fiber)
+      return yield* Fiber.join(fiber).pipe(Effect.timeout("2 seconds"))
     })
   )
 
@@ -111,11 +112,13 @@ test("EventHub rejects malformed publish payloads as typed Effect failures", asy
   const exit = await Effect.runPromiseExit(
     Effect.gen(function* () {
       const hub = yield* EventHub([ProjectRpcs])
-
-      return yield* hub.publish(ProjectRpcs, "changed", {
-        sequence: Number.NaN,
+      const payload = new ProjectChangedEvent({
+        sequence: 1,
         path: "a"
-      } as unknown as ProjectChangedEvent)
+      })
+      Object.defineProperty(payload, "path", { value: 1 })
+
+      return yield* hub.publish(ProjectRpcs, "changed", payload)
     })
   )
 
@@ -157,6 +160,26 @@ test("EventHub rejects empty generated trace IDs before publishing envelopes", a
       return yield* Fiber.join(fiber)
     })
   )
+
+  expectFailureTag(exit, "InvalidArgument")
+})
+
+test("EventHub rejects unchecked zero-sized event backpressure as typed setup failure", async () => {
+  const ProjectRpcs = makeUncheckedEventBackpressure(
+    makeProjectRpcs("ProjectRpcs.EventsUncheckedZero"),
+    { strategy: "drop", size: 0 }
+  )
+  const exit = await Effect.runPromiseExit(EventHub([ProjectRpcs]))
+
+  expectFailureTag(exit, "InvalidArgument")
+})
+
+test("EventHub rejects unchecked event overflow error as typed setup failure", async () => {
+  const ProjectRpcs = makeUncheckedEventBackpressure(
+    makeProjectRpcs("ProjectRpcs.EventsUncheckedError"),
+    { strategy: "drop", size: 1, overflow: "error" }
+  )
+  const exit = await Effect.runPromiseExit(EventHub([ProjectRpcs]))
 
   expectFailureTag(exit, "InvalidArgument")
 })
@@ -213,17 +236,89 @@ test("client event streams reject envelopes for the wrong method", async () => {
   expectFailureTag(exit, "InvalidOutput")
 })
 
-test("EventHub honors dropNewest event overflow without failing publishers", async () => {
-  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EventsDropNewest")
+test("EventHub fans out published events to multiple subscribers", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EventsFanout")
+  const values = await Effect.runPromise(
+    Effect.gen(function* () {
+      const hub = yield* EventHub([ProjectRpcs])
+      const first = yield* hub.exchange
+        .subscribe("ProjectRpcs.EventsFanout.changed")
+        .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+      const second = yield* hub.exchange
+        .subscribe("ProjectRpcs.EventsFanout.changed")
+        .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+
+      yield* Effect.sleep("10 millis")
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 1, path: "a" })
+      )
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 2, path: "b" })
+      )
+
+      return [
+        yield* Fiber.join(first).pipe(Effect.timeout("2 seconds")),
+        yield* Fiber.join(second).pipe(Effect.timeout("2 seconds"))
+      ] as const
+    })
+  )
+
+  expect(values.map((chunk) => Array.from(chunk).map(readEnvelopeSequence))).toEqual([
+    [1, 2],
+    [1, 2]
+  ])
+})
+
+test("EventHub rejects unknown event subscriptions as typed failures", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EventsUnknownSubscribe")
   const exit = await Effect.runPromiseExit(
     Effect.gen(function* () {
       const hub = yield* EventHub([ProjectRpcs])
+
+      return yield* hub.exchange
+        .subscribe("ProjectRpcs.EventsUnknownSubscribe.missing")
+        .pipe(Stream.take(1), Stream.runDrain)
+    })
+  )
+
+  expectFailureTag(exit, "InvalidArgument")
+})
+
+test("EventHub rejects unknown event publishes as typed failures", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EventsUnknownPublish")
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const hub = yield* EventHub([ProjectRpcs])
+      const event = "missing" as keyof typeof ProjectRpcs.events
+
+      return yield* hub.publish(
+        ProjectRpcs,
+        event,
+        new ProjectChangedEvent({ sequence: 1, path: "a" })
+      )
+    })
+  )
+
+  expectFailureTag(exit, "InvalidArgument")
+})
+
+test("EventHub honors dropNewest event overflow without failing publishers", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EventsDropNewest")
+  const values = await Effect.runPromise(
+    Effect.gen(function* () {
+      const hub = yield* EventHub([ProjectRpcs])
       const fiber = yield* hub.exchange.subscribe("ProjectRpcs.EventsDropNewest.changed").pipe(
-        Stream.tap(() => Effect.sleep("1 second")),
-        Stream.runDrain,
+        Stream.take(2),
+        Stream.tap(() => Effect.sleep("50 millis")),
+        Stream.runCollect,
         Effect.forkChild({ startImmediately: true })
       )
 
+      yield* Effect.sleep("10 millis")
       yield* hub.publish(
         ProjectRpcs,
         "changed",
@@ -239,11 +334,143 @@ test("EventHub honors dropNewest event overflow without failing publishers", asy
         "changed",
         new ProjectChangedEvent({ sequence: 3, path: "c" })
       )
-      yield* Fiber.interrupt(fiber)
+      return yield* Fiber.join(fiber).pipe(Effect.timeout("2 seconds"))
     })
   )
 
-  expect(Exit.isSuccess(exit)).toBe(true)
+  expect(Array.from(values).map(readEnvelopeSequence)).toEqual([1, 2])
+})
+
+test("EventHub dropNewest uses shared PubSub backpressure across fast and slow subscribers", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EventsDropNewestShared", {
+    overflow: "dropNewest",
+    queueSize: 1
+  })
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const hub = yield* EventHub([ProjectRpcs])
+      const slow = yield* hub.exchange.subscribe("ProjectRpcs.EventsDropNewestShared.changed").pipe(
+        Stream.take(2),
+        Stream.tap(() => Effect.sleep("50 millis")),
+        Stream.runCollect,
+        Effect.forkChild({ startImmediately: true })
+      )
+      const fast = yield* hub.exchange
+        .subscribe("ProjectRpcs.EventsDropNewestShared.changed")
+        .pipe(Stream.take(3), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+
+      yield* Effect.sleep("10 millis")
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 1, path: "a" })
+      )
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 2, path: "b" })
+      )
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 3, path: "c" })
+      )
+      const fastResult = yield* Fiber.join(fast).pipe(Effect.timeoutOption("100 millis"))
+      yield* Fiber.interrupt(fast)
+
+      return {
+        slow: yield* Fiber.join(slow).pipe(Effect.timeout("2 seconds")),
+        fastResult
+      }
+    })
+  )
+
+  expect(Array.from(result.slow).map(readEnvelopeSequence)).toEqual([1, 2])
+  expect(Option.isNone(result.fastResult)).toBe(true)
+})
+
+test("EventHub honors dropOldest event overflow with Effect PubSub sliding semantics", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EventsDropOldest", {
+    overflow: "dropOldest",
+    queueSize: 1
+  })
+  const values = await Effect.runPromise(
+    Effect.gen(function* () {
+      const hub = yield* EventHub([ProjectRpcs])
+      const fiber = yield* hub.exchange.subscribe("ProjectRpcs.EventsDropOldest.changed").pipe(
+        Stream.take(2),
+        Stream.tap(() => Effect.sleep("50 millis")),
+        Stream.runCollect,
+        Effect.forkChild({ startImmediately: true })
+      )
+
+      yield* Effect.sleep("10 millis")
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 1, path: "a" })
+      )
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 2, path: "b" })
+      )
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 3, path: "c" })
+      )
+      return yield* Fiber.join(fiber).pipe(Effect.timeout("2 seconds"))
+    })
+  )
+
+  expect(Array.from(values).map(readEnvelopeSequence)).toEqual([1, 3])
+})
+
+test("EventHub dropOldest uses shared PubSub sliding while fast subscribers can drain", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EventsDropOldestShared", {
+    overflow: "dropOldest",
+    queueSize: 1
+  })
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const hub = yield* EventHub([ProjectRpcs])
+      const slow = yield* hub.exchange.subscribe("ProjectRpcs.EventsDropOldestShared.changed").pipe(
+        Stream.take(2),
+        Stream.tap(() => Effect.sleep("50 millis")),
+        Stream.runCollect,
+        Effect.forkChild({ startImmediately: true })
+      )
+      const fast = yield* hub.exchange
+        .subscribe("ProjectRpcs.EventsDropOldestShared.changed")
+        .pipe(Stream.take(3), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+
+      yield* Effect.sleep("10 millis")
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 1, path: "a" })
+      )
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 2, path: "b" })
+      )
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 3, path: "c" })
+      )
+
+      return {
+        slow: yield* Fiber.join(slow).pipe(Effect.timeout("2 seconds")),
+        fast: yield* Fiber.join(fast).pipe(Effect.timeout("2 seconds"))
+      }
+    })
+  )
+
+  expect(Array.from(result.slow).map(readEnvelopeSequence)).toEqual([1, 3])
+  expect(Array.from(result.fast).map(readEnvelopeSequence)).toEqual([1, 2, 3])
 })
 
 test("EventHub drop backpressure does not block publishers when overflow is omitted", async () => {
@@ -260,6 +487,7 @@ test("EventHub drop backpressure does not block publishers when overflow is omit
         Effect.forkChild({ startImmediately: true })
       )
 
+      yield* Effect.sleep("10 millis")
       yield* hub.publish(
         ProjectRpcs,
         "changed",
@@ -281,9 +509,133 @@ test("EventHub drop backpressure does not block publishers when overflow is omit
   expect(Option.isSome(result)).toBe(true)
 })
 
+test("EventHub block overflow applies PubSub backpressure until subscribers drain", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EventsBlock", {
+    overflow: "block",
+    queueSize: 1,
+    strategy: "block"
+  })
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const hub = yield* EventHub([ProjectRpcs])
+      const fiber = yield* hub.exchange.subscribe("ProjectRpcs.EventsBlock.changed").pipe(
+        Stream.take(3),
+        Stream.tap(() => Effect.sleep("50 millis")),
+        Stream.runDrain,
+        Effect.forkChild({ startImmediately: true })
+      )
+
+      yield* Effect.sleep("10 millis")
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 1, path: "a" })
+      )
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 2, path: "b" })
+      )
+      const thirdFiber = yield* hub
+        .publish(ProjectRpcs, "changed", new ProjectChangedEvent({ sequence: 3, path: "c" }))
+        .pipe(Effect.forkChild({ startImmediately: true }))
+      const third = yield* Fiber.join(thirdFiber).pipe(Effect.timeoutOption("10 millis"))
+      yield* Fiber.join(thirdFiber).pipe(Effect.timeout("2 seconds"))
+      yield* Fiber.join(fiber).pipe(Effect.timeout("2 seconds"))
+      return third
+    })
+  )
+
+  expect(Option.isNone(result)).toBe(true)
+})
+
+test("EventHub block overflow shares backpressure across fast and slow subscribers", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EventsBlockShared", {
+    overflow: "block",
+    queueSize: 1,
+    strategy: "block"
+  })
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const hub = yield* EventHub([ProjectRpcs])
+      const slow = yield* hub.exchange.subscribe("ProjectRpcs.EventsBlockShared.changed").pipe(
+        Stream.take(3),
+        Stream.tap(() => Effect.sleep("50 millis")),
+        Stream.runDrain,
+        Effect.forkChild({ startImmediately: true })
+      )
+      const fast = yield* hub.exchange
+        .subscribe("ProjectRpcs.EventsBlockShared.changed")
+        .pipe(Stream.take(3), Stream.runDrain, Effect.forkChild({ startImmediately: true }))
+
+      yield* Effect.sleep("10 millis")
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 1, path: "a" })
+      )
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 2, path: "b" })
+      )
+      const thirdFiber = yield* hub
+        .publish(ProjectRpcs, "changed", new ProjectChangedEvent({ sequence: 3, path: "c" }))
+        .pipe(Effect.forkChild({ startImmediately: true }))
+      const third = yield* Fiber.join(thirdFiber).pipe(Effect.timeoutOption("10 millis"))
+
+      yield* Fiber.join(thirdFiber).pipe(Effect.timeout("2 seconds"))
+      yield* Fiber.join(slow).pipe(Effect.timeout("2 seconds"))
+      yield* Fiber.join(fast).pipe(Effect.timeout("2 seconds"))
+      return third
+    })
+  )
+
+  expect(Option.isNone(result)).toBe(true)
+})
+
+test("EventHub subscription finalization removes backpressure after Stream.take completes", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EventsFinalize", {
+    overflow: "block",
+    queueSize: 1,
+    strategy: "block"
+  })
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const hub = yield* EventHub([ProjectRpcs])
+      const fiber = yield* hub.exchange
+        .subscribe("ProjectRpcs.EventsFinalize.changed")
+        .pipe(Stream.take(1), Stream.runDrain, Effect.forkChild({ startImmediately: true }))
+
+      yield* Effect.sleep("10 millis")
+      yield* hub.publish(
+        ProjectRpcs,
+        "changed",
+        new ProjectChangedEvent({ sequence: 1, path: "a" })
+      )
+      yield* Fiber.join(fiber).pipe(Effect.timeout("2 seconds"))
+      const second = yield* hub
+        .publish(ProjectRpcs, "changed", new ProjectChangedEvent({ sequence: 2, path: "b" }))
+        .pipe(Effect.timeoutOption("10 millis"))
+      const third = yield* hub
+        .publish(ProjectRpcs, "changed", new ProjectChangedEvent({ sequence: 3, path: "c" }))
+        .pipe(Effect.timeoutOption("10 millis"))
+
+      return [second, third] as const
+    })
+  )
+
+  expect(result.every(Option.isSome)).toBe(true)
+})
+
 const makeProjectRpcs = <Tag extends string>(
   tag: Tag,
-  options: { readonly includeOverflow?: boolean; readonly queueSize?: number } = {}
+  options: {
+    readonly includeOverflow?: boolean
+    readonly overflow?: "dropOldest" | "dropNewest" | "block"
+    readonly queueSize?: number
+    readonly strategy?: "buffer" | "drop" | "block"
+  } = {}
 ) => {
   const includeOverflow = options.includeOverflow ?? true
   const Open = Rpc.make(`${tag}.open`, {
@@ -298,16 +650,42 @@ const makeProjectRpcs = <Tag extends string>(
   }).pipe(
     BridgeRuntime({
       backpressure: {
-        strategy: "drop",
+        strategy: options.strategy ?? "drop",
         size: options.queueSize ?? (tag === "ProjectRpcs.EventsDropNewest" ? 1 : 16),
-        ...(includeOverflow ? { overflow: "dropNewest" } : {})
+        ...(includeOverflow ? { overflow: options.overflow ?? "dropNewest" } : {})
       }
     })
   )
   return bridgeContractFromRpcGroup(tag, RpcGroup.make(Open, Changed))
 }
 
+const makeUncheckedEventBackpressure = <Contract extends BridgeContract>(
+  contract: Contract,
+  backpressure: NonNullable<Contract["events"][keyof Contract["events"]]["backpressure"]>
+): Contract => ({
+  ...contract,
+  events: {
+    ...contract.events,
+    changed: {
+      ...contract.events["changed"],
+      backpressure
+    }
+  }
+})
+
 const missingRequest = () => Effect.fail(makeHostProtocolInvalidOutputError("test", "unused"))
+
+const readEnvelopeSequence = (envelope: HostProtocolEventEnvelope): number => {
+  const payload = envelope.payload
+  if (typeof payload === "object" && payload !== null && "sequence" in payload) {
+    const sequence = payload.sequence
+    if (typeof sequence === "string") {
+      return Number(sequence)
+    }
+  }
+
+  throw new Error("missing encoded sequence")
+}
 
 const expectFailureTag = (exit: Exit.Exit<unknown, unknown>, tag: string): void => {
   expect(Exit.isFailure(exit)).toBe(true)
