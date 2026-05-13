@@ -16,7 +16,7 @@ TypeScript-facing native services backed by the Rust host: `App`, `Window`, `Web
 
 The generated Window client validates caller input before transport and validates host success payloads before returning app values. Invalid caller input fails as `HostProtocolInvalidArgumentError`; malformed create or close success payloads fail as `HostProtocolInvalidOutputError`.
 
-`AppEventRouter` is the in-process §8.8 routing primitive for App-level events. It tracks open and focused windows, routes `firstResponder`, `broadcast`, and `targeted(windowId)` events, emits typed audit rows for buffer eviction and closed targets, and keeps host-created windows in per-window resource scopes.
+`AppEventRouter` is the in-process §8.8 routing primitive for App-level events. It tracks open and focused windows with `SubscriptionRef`, routes `firstResponder`, `broadcast`, and `targeted(windowId)` events through per-window/per-event `PubSub` channels, emits typed audit rows from a replaying sliding `PubSub`, and keeps host-created windows in per-window resource scopes.
 
 ## Non-goals
 
@@ -46,7 +46,7 @@ bun run typecheck
 
 ## Dependency notes
 
-This package depends on `effect` for services/layers, streams, queues, refs, and typed failures; on `@effect-desktop/bridge` for `RpcGroup` bridge helpers and host protocol error schemas; and on `@effect-desktop/core` for the runtime resource registry used by the live Window adapter. These are framework-internal dependencies required by the Phase 5 Window service boundary.
+This package depends on `effect` for services/layers, streams, `PubSub`, `SubscriptionRef`, and typed failures; on `@effect-desktop/bridge` for `RpcGroup` bridge helpers and host protocol error schemas; and on `@effect-desktop/core` for the runtime resource registry used by the live Window adapter. These are framework-internal dependencies required by the Phase 5 Window service boundary.
 
 ## Platform notes
 

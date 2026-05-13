@@ -147,6 +147,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 | #1278 Remove the custom DesktopAppDefinition builder DSL       | Implemented | `Desktop.make` now returns metadata-only descriptors, runtime lowering is `Desktop.app(App)`, and the custom `pipe`/`provide`/`toLayer` composition path is gone                                   |
 | #1274 Rebase bridge EventHub on Effect PubSub                  | Implemented | Bridge event channels now use Effect `PubSub` and `Stream.fromPubSub`; bridge keeps only contract routing, Schema encoding, host event envelopes, and event backpressure mapping                   |
 | #1277 Decode startup environment with Effect Config and Schema | Implemented | Runtime startup reads env through Effect `Config`, decodes startup windows and app descriptors with `Schema`, and keeps only dynamic import/window-opening policy in the supervisor                |
+| #1222 Rebase native app events on Effect PubSub                | Implemented | Native app event routing now stores windows/focus/pending replay in `SubscriptionRef`, delivers events through per-window/per-event `PubSub` channels, and exposes state/audit streams directly    |
 
 ## Design-Debt Follow-ups
 
