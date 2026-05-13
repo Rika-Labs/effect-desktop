@@ -25,7 +25,13 @@ import {
   type WithRpcSupport,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { ResourceRegistry, type DesktopRpcClient, type ResourceId } from "@effect-desktop/core"
+import {
+  DesktopRpc,
+  ResourceRegistry,
+  type DesktopRpcClient,
+  type ResourceId,
+  type SupportedRpc
+} from "@effect-desktop/core"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 
 import { type AppEventRouterApi, windowScope } from "./app-events.js"
@@ -171,12 +177,10 @@ type WindowRpcUnion = RpcGroup.Rpcs<typeof WindowRpcGroup>
 
 export const WindowRpcs: RpcGroup.RpcGroup<WindowRpcUnion> = WindowRpcGroup
 
-export type WindowSupportedRpc = typeof WindowCreate | typeof WindowClose
+export type WindowSupportedRpc = SupportedRpc<WindowRpcUnion>
 
-export const WindowSupportedRpcs: RpcGroup.RpcGroup<WindowSupportedRpc> = RpcGroup.make(
-  WindowCreate,
-  WindowClose
-)
+export const WindowSupportedRpcs: RpcGroup.RpcGroup<WindowSupportedRpc> =
+  DesktopRpc.supportedGroup(WindowRpcs)
 
 export type WindowBridgeClientOptions = Omit<BridgeClientOptions, "nextRequestId">
 

@@ -824,11 +824,6 @@
       "signature": "const RpcCapability: <Capability extends RpcCapabilityMetadata>(capability: Capability) => <R extends Rpc.Any>(rpc: R) => WithRpcCapability<R, Capability>"
     },
     {
-      "name": "RpcCapabilityAnnotation",
-      "kind": "value",
-      "signature": "const RpcCapabilityAnnotation: Context.Service<RpcCapabilityMetadata, RpcCapabilityMetadata>"
-    },
-    {
       "name": "RpcCapabilityMarker",
       "kind": "interface",
       "signature": "export interface RpcCapabilityMarker<Capability extends RpcCapabilityMetadata> { readonly [RpcCapabilityTypeId]: Capability }"
@@ -862,11 +857,6 @@
       "name": "RpcEndpointKind",
       "kind": "type",
       "signature": "export type RpcEndpointKind = \"query\" | \"mutation\""
-    },
-    {
-      "name": "RpcEndpointKindAnnotation",
-      "kind": "value",
-      "signature": "const RpcEndpointKindAnnotation: Context.Service<RpcEndpointKind, RpcEndpointKind>"
     },
     {
       "name": "RpcEndpointKindMarker",
@@ -917,11 +907,6 @@
       "name": "RpcSupport",
       "kind": "value",
       "signature": "const RpcSupport: Readonly<{ supported: <R extends Rpc.Any>(rpc: R) => WithRpcSupport<R, { readonly status: \"supported\"; }>; unsupported: (reason: string) => <R extends Rpc.Any>(rpc: R) => WithRpcSupport<R, { readonly status: \"unsupported\"; readonly reason: string; }>; }>"
-    },
-    {
-      "name": "RpcSupportAnnotation",
-      "kind": "value",
-      "signature": "const RpcSupportAnnotation: Context.Service<RpcSupportMetadata, RpcSupportMetadata>"
     },
     {
       "name": "RpcSupportMarker",

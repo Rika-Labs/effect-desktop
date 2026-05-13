@@ -537,6 +537,10 @@ test("Desktop.Rpc.supportedGroup filters unsupported RPCs from generated clients
   }).pipe(RpcSupport.unsupported("host adapter does not implement delete yet"))
   const NotesRpcs = RpcGroup.make(List, Delete)
   const SupportedNotesRpcs = core.Desktop.Rpc.supportedGroup(NotesRpcs)
+  type SupportedNotesRpcContract = Assert<
+    IsEqual<RpcGroup.Rpcs<typeof SupportedNotesRpcs>, typeof List>
+  >
+  const supportedNotesRpcContract: SupportedNotesRpcContract = true
   class NotesClient extends Context.Service<
     NotesClient,
     DesktopRpcClient<RpcGroup.Rpcs<typeof NotesRpcs>>
@@ -549,6 +553,7 @@ test("Desktop.Rpc.supportedGroup filters unsupported RPCs from generated clients
     void client["Notes.Delete"]
   }
   void assertSupportedClient
+  void supportedNotesRpcContract
 
   expect(Array.from(SupportedNotesRpcs.requests.keys())).toEqual(["Notes.List"])
   expect(

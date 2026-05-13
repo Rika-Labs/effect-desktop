@@ -29,8 +29,7 @@ export type SupportedDesktopRpcClient<Rpcs extends Rpc.Any> = DesktopRpcClient<S
 
 export type SupportedDesktopRpcGroup<Group extends RpcGroup.Any> = RpcGroup.RpcGroup<
   SupportedRpc<RpcGroup.Rpcs<Group>>
-> &
-  RpcGroupWithRequests
+>
 
 export interface DesktopRpcSchemaDoc {
   readonly name: string
@@ -175,17 +174,18 @@ export function surface<
   })
 }
 
-export const supportedGroup = <Group extends RpcGroup.Any & RpcGroupWithRequests>(
-  group: Group
-): SupportedDesktopRpcGroup<Group> =>
-  RpcGroup.make(
-    ...Array.from(group.requests.values()).filter((rpc) => rpcSupport(rpc).status === "supported")
-  ) as unknown as SupportedDesktopRpcGroup<Group>
+export const supportedGroup = <Rpcs extends Rpc.Any>(
+  group: RpcGroup.RpcGroup<Rpcs>
+): RpcGroup.RpcGroup<SupportedRpc<Rpcs>> =>
+  RpcGroup.make(...Array.from(group.requests.values()).filter(isSupportedRpc))
 
 export const DesktopRpc = Object.freeze({
   surface,
   supportedGroup
 })
+
+const isSupportedRpc = <R extends Rpc.Any>(rpc: R): rpc is SupportedRpc<R> =>
+  rpcSupport(rpc).status === "supported"
 
 const schemaDocs = (group: RpcGroupWithRequests): readonly DesktopRpcSchemaDoc[] =>
   Object.freeze(

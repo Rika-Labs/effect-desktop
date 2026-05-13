@@ -27,10 +27,12 @@ import {
   makePermissionRegistry,
   makeResourceRegistry,
   type AuditEventsApi,
+  type DesktopRpcClient,
   type NormalizedCapability,
   type ResourceId
 } from "@effect-desktop/core"
 import { Cause, Deferred, Effect, Exit, Fiber, Layer, Option, Queue, Schema, Stream } from "effect"
+import type { RpcGroup } from "effect/unstable/rpc"
 
 import {
   App,
@@ -5300,6 +5302,15 @@ test("WindowRpcs declares the Phase 5 Window method surface", () => {
     expectedWindowMethods.map((method) => `Window.${method}`)
   )
   expect(Array.from(WindowSupportedRpcs.requests.keys())).toEqual(supportedWindowMethods)
+  const assertSupportedWindowClient = (
+    client: DesktopRpcClient<RpcGroup.Rpcs<typeof WindowSupportedRpcs>>
+  ): void => {
+    void client["Window.create"]
+    void client["Window.close"]
+    // @ts-expect-error unsupported RPCs are absent from supported Window clients
+    void client["Window.show"]
+  }
+  void assertSupportedWindowClient
   expect(supportedWindowMethods).toEqual(["Window.create", "Window.close"])
   expect(rpcSupport(WindowRpcs.requests.get("Window.show")!)).toEqual({
     status: "unsupported",

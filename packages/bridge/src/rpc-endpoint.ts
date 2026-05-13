@@ -46,15 +46,15 @@ export type WithRpcCapability<R extends Rpc.Any, Capability extends RpcCapabilit
 export type WithRpcSupport<R extends Rpc.Any, Support extends RpcSupportMetadata> = R &
   RpcSupportMarker<Support>
 
-export const RpcEndpointKindAnnotation = Context.Service<RpcEndpointKind>(
+const RpcEndpointKindAnnotation = Context.Service<RpcEndpointKind>(
   "@effect-desktop/bridge/RpcEndpointKind"
 )
 
-export const RpcCapabilityAnnotation = Context.Service<RpcCapabilityMetadata>(
+const RpcCapabilityAnnotation = Context.Service<RpcCapabilityMetadata>(
   "@effect-desktop/bridge/RpcCapability"
 )
 
-export const RpcSupportAnnotation = Context.Service<RpcSupportMetadata>(
+const RpcSupportAnnotation = Context.Service<RpcSupportMetadata>(
   "@effect-desktop/bridge/RpcSupport"
 )
 
