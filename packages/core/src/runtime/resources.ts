@@ -5,6 +5,7 @@ import {
   Exit,
   Layer,
   Option,
+  PubSub,
   RcMap,
   Schema,
   Semaphore,
@@ -69,6 +70,41 @@ export interface RegistrySnapshot {
   readonly entries: readonly ResourceEntry[]
 }
 
+export type ResourceLifecycleEvent =
+  | {
+      readonly _tag: "ResourceRegistered"
+      readonly entry: ResourceEntry
+    }
+  | {
+      readonly _tag: "ResourceShared"
+      readonly source: ResourceHandle
+      readonly entry: ResourceEntry
+    }
+  | {
+      readonly _tag: "ResourceDisposed"
+      readonly handle: ResourceHandle
+    }
+  | {
+      readonly _tag: "ResourceStale"
+      readonly handle: ResourceHandle
+      readonly actualGeneration: number
+    }
+  | {
+      readonly _tag: "ScopeDeclared"
+      readonly scope: ScopeId
+      readonly parent: Option.Option<ScopeId>
+    }
+  | {
+      readonly _tag: "ScopeClosing"
+      readonly scope: ScopeId
+      readonly descendants: readonly ScopeId[]
+      readonly resources: readonly ResourceHandle[]
+    }
+  | {
+      readonly _tag: "ScopeClosed"
+      readonly scope: ScopeId
+    }
+
 export interface RegisterResourceInput<
   Kind extends ResourceKind = ResourceKind,
   State extends ResourceState = ResourceState
@@ -108,6 +144,7 @@ export interface ResourceRegistryApi {
   readonly list: () => Effect.Effect<RegistrySnapshot, never, never>
   readonly dispose: (id: ResourceId) => Effect.Effect<void, never, never>
   readonly observe: () => Stream.Stream<RegistrySnapshot, never, never>
+  readonly observeLifecycle: () => Stream.Stream<ResourceLifecycleEvent, never, never>
   readonly declareScope: (
     scope: ScopeId,
     parent?: ScopeId
@@ -144,6 +181,7 @@ const makeResourceRegistryInstance = (
     const now = options.now ?? Date.now
     const nextId = options.nextId ?? generateUuidV7
     const entries = yield* SubscriptionRef.make(new Map<ResourceId, StoredResourceEntry>())
+    const events = yield* PubSub.unbounded<ResourceLifecycleEvent>()
     const disposedGenerations = new Map<ResourceId, DisposedGeneration>()
     const scopeParents = new Map<ScopeId, ScopeId>()
     const registryScope = yield* Scope.make()
@@ -212,6 +250,10 @@ const makeResourceRegistryInstance = (
         }
 
         yield* clearEntry(entry.handle.id)
+        yield* publishEvent(events, {
+          _tag: "ResourceDisposed",
+          handle: publicHandle(entry.handle)
+        })
       }).pipe(
         Effect.catchDefect((cause) => reportDisposalFailure(cleanupFailureContext(entry), cause)),
         Effect.catch((cause) => reportDisposalFailure(cleanupFailureContext(entry), cause))
@@ -346,6 +388,13 @@ const makeResourceRegistryInstance = (
           yield* RcMap.get(cleanupResources, allocation.cleanupGroupId).pipe(
             Scope.provide(handleScope)
           )
+          yield* publishEvent(events, {
+            _tag: "ResourceRegistered",
+            entry: {
+              handle: publicHandle(allocation.handle),
+              createdAt
+            }
+          })
 
           return allocation.handle
         })
@@ -367,14 +416,23 @@ const makeResourceRegistryInstance = (
         }
 
         const disposed = disposedGenerations.get(handle.id)
-        return Effect.fail(
-          new StaleHandle({
-            tag: "StaleHandle",
-            kind: handle.kind,
-            id: handle.id,
-            expectedGeneration: handle.generation,
-            actualGeneration: disposed?.generation ?? entry?.handle.generation ?? -1
-          })
+        const actualGeneration = disposed?.generation ?? entry?.handle.generation ?? -1
+        return publishEvent(events, {
+          _tag: "ResourceStale",
+          handle: publicHandle(handle),
+          actualGeneration
+        }).pipe(
+          Effect.andThen(
+            Effect.fail(
+              new StaleHandle({
+                tag: "StaleHandle",
+                kind: handle.kind,
+                id: handle.id,
+                expectedGeneration: handle.generation,
+                actualGeneration
+              })
+            )
+          )
         )
       })
 
@@ -404,6 +462,11 @@ const makeResourceRegistryInstance = (
               scopeParents.delete(validScope)
             })
           )
+          yield* publishEvent(events, {
+            _tag: "ScopeDeclared",
+            scope: validScope,
+            parent: Option.none()
+          })
         } else {
           yield* Semaphore.withPermit(
             lifecycle,
@@ -411,6 +474,11 @@ const makeResourceRegistryInstance = (
               scopeParents.set(validScope, validParent)
             })
           )
+          yield* publishEvent(events, {
+            _tag: "ScopeDeclared",
+            scope: validScope,
+            parent: Option.some(validParent)
+          })
         }
       })
 
@@ -422,6 +490,12 @@ const makeResourceRegistryInstance = (
             const current = yield* SubscriptionRef.get(entries)
             const scopes = descendantScopes(scope, scopeParents)
             const entriesToDispose = entriesInDependencyOrder(current, scopes, scopeParents)
+            yield* publishEvent(events, {
+              _tag: "ScopeClosing",
+              scope,
+              descendants: Array.from(scopes),
+              resources: entriesToDispose.map((entry) => publicHandle(entry.handle))
+            })
 
             for (const entry of entriesToDispose) {
               yield* disposeForScopeClose(entry).pipe(
@@ -441,6 +515,10 @@ const makeResourceRegistryInstance = (
                 )
               )
             }
+            yield* publishEvent(events, {
+              _tag: "ScopeClosed",
+              scope
+            })
           })
         )
       )
@@ -537,6 +615,14 @@ const makeResourceRegistryInstance = (
               yield* RcMap.get(cleanupResources, result.cleanupGroupId).pipe(
                 Scope.provide(handleScope)
               )
+              yield* publishEvent(events, {
+                _tag: "ResourceShared",
+                source: publicHandle(handle),
+                entry: {
+                  handle: publicHandle(result.handle),
+                  createdAt
+                }
+              })
 
               return result.handle
             })
@@ -569,6 +655,7 @@ const makeResourceRegistryInstance = (
         list: snapshot,
         dispose,
         observe: () => SubscriptionRef.changes(entries).pipe(Stream.map(snapshotFromMap)),
+        observeLifecycle: () => Stream.fromPubSub(events),
         declareScope,
         closeScope,
         share,
@@ -615,6 +702,11 @@ interface CleanupFailureContext {
 }
 
 const DEFAULT_DISPOSAL_GRACE_MS = 5_000
+
+const publishEvent = (
+  events: PubSub.PubSub<ResourceLifecycleEvent>,
+  event: ResourceLifecycleEvent
+): Effect.Effect<void, never, never> => PubSub.publish(events, event).pipe(Effect.asVoid)
 
 const finalizeCleanup =
   (cleanupPlans: Map<ResourceId, CleanupPlan>) =>

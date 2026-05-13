@@ -1549,6 +1549,11 @@
       "signature": "export type ResourceKind = string"
     },
     {
+      "name": "ResourceLifecycleEvent",
+      "kind": "type",
+      "signature": "export type ResourceLifecycleEvent = | { readonly _tag: \"ResourceRegistered\" readonly entry: ResourceEntry } | { readonly _tag: \"ResourceShared\" readonly source: ResourceHandle readonly entry: ResourceEntry } | { readonly _tag: \"ResourceDisposed\" readonly handle: ResourceHandle } | { readonly _tag: \"ResourceStale\" readonly handle: ResourceHandle readonly actualGeneration: number } | { readonly _tag: \"ScopeDeclared\" readonly scope: ScopeId readonly parent: Option.Option<ScopeId> } | { readonly _tag: \"ScopeClosing\" readonly scope: ScopeId readonly descendants: readonly ScopeId[] readonly resources: readonly ResourceHandle[] } | { readonly _tag: \"ScopeClosed\" readonly scope: ScopeId }"
+    },
+    {
       "name": "ResourceRegistry",
       "kind": "class",
       "signature": "export class ResourceRegistry extends Context.Service<ResourceRegistry, ResourceRegistryApi>()( \"ResourceRegistry\" ) {}"
@@ -1556,7 +1561,7 @@
     {
       "name": "ResourceRegistryApi",
       "kind": "interface",
-      "signature": "export interface ResourceRegistryApi { readonly register: <Kind extends ResourceKind, State extends ResourceState>( input: RegisterResourceInput<Kind, State> ) => Effect.Effect<ManagedResourceHandle<Kind, State>, ResourceInvalidArgumentError, never> readonly get: (id: ResourceId) => Effect.Effect<Option.Option<ResourceEntry>, never, never> readonly list: () => Effect.Effect<RegistrySnapshot, never, never> readonly dispose: (id: ResourceId) => Effect.Effect<void, never, never> readonly observe: () => Stream.Stream<RegistrySnapshot, never, never> readonly declareScope: ( scope: ScopeId, parent?: ScopeId ) => Effect.Effect<void, ResourceInvalidArgumentError, never> readonly closeScope: (scope: ScopeId) => Effect.Effect<void, never, never> readonly share: <Kind extends ResourceKind, State extends ResourceState>( handle: ResourceHandle<Kind, State>, targetScope: ScopeId ) => Effect.Effect< ManagedResourceHandle<Kind, State>, ResourceInvalidArgumentError | StaleHandle, never > readonly assertFresh: <Kind extends ResourceKind, State extends ResourceState>( handle: ResourceHandle<Kind, State> ) => Effect.Effect<ResourceEntry<Kind, State>, StaleHandle, never> readonly close: () => Effect.Effect<void, never, never> }"
+      "signature": "export interface ResourceRegistryApi { readonly register: <Kind extends ResourceKind, State extends ResourceState>( input: RegisterResourceInput<Kind, State> ) => Effect.Effect<ManagedResourceHandle<Kind, State>, ResourceInvalidArgumentError, never> readonly get: (id: ResourceId) => Effect.Effect<Option.Option<ResourceEntry>, never, never> readonly list: () => Effect.Effect<RegistrySnapshot, never, never> readonly dispose: (id: ResourceId) => Effect.Effect<void, never, never> readonly observe: () => Stream.Stream<RegistrySnapshot, never, never> readonly observeLifecycle: () => Stream.Stream<ResourceLifecycleEvent, never, never> readonly declareScope: ( scope: ScopeId, parent?: ScopeId ) => Effect.Effect<void, ResourceInvalidArgumentError, never> readonly closeScope: (scope: ScopeId) => Effect.Effect<void, never, never> readonly share: <Kind extends ResourceKind, State extends ResourceState>( handle: ResourceHandle<Kind, State>, targetScope: ScopeId ) => Effect.Effect< ManagedResourceHandle<Kind, State>, ResourceInvalidArgumentError | StaleHandle, never > readonly assertFresh: <Kind extends ResourceKind, State extends ResourceState>( handle: ResourceHandle<Kind, State> ) => Effect.Effect<ResourceEntry<Kind, State>, StaleHandle, never> readonly close: () => Effect.Effect<void, never, never> }"
     },
     {
       "name": "ResourceRegistryLive",

@@ -35,10 +35,18 @@ import {
   CommandsDevtoolsLive,
   DiagnosticsPanels,
   DiagnosticsPanelsLive,
+  FiberInspectorCollector,
+  FiberInspectorCollectorLive,
   LiveRuntimePanels,
   LiveRuntimePanelsLive,
   PerformanceOverlay,
   PerformanceOverlayLive,
+  ResourceInspectorCollector,
+  ResourceInspectorCollectorLive,
+  ScopeInspectorCollector,
+  ScopeInspectorCollectorLive,
+  StreamInspectorCollector,
+  StreamInspectorCollectorLive,
   WorkersDevtools,
   WorkersDevtoolsLive,
   type WorkersSnapshot
@@ -247,6 +255,94 @@ test("LiveRuntimePanels projects bridge, stream, resource, permission, and proce
     command: "echo",
     state: "exited"
   })
+})
+
+test("Inspector collectors stream resource, scope, fiber, and stream lifecycle events", async () => {
+  const resources = await Effect.runPromise(
+    makeResourceRegistry({
+      nextId: () => "resource-collector" as never
+    })
+  )
+  const streams = await Effect.runPromise(makeBridgeStreamRegistry())
+
+  const result = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const resourceCollector = yield* ResourceInspectorCollector
+        const scopeCollector = yield* ScopeInspectorCollector
+        const fiberCollector = yield* FiberInspectorCollector
+        const streamCollector = yield* StreamInspectorCollector
+
+        const resourceEvents = yield* resourceCollector
+          .events()
+          .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+        const scopeEvents = yield* scopeCollector
+          .events()
+          .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+        const fiberEvents = yield* fiberCollector
+          .events()
+          .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+        const streamEvents = yield* streamCollector
+          .events()
+          .pipe(Stream.take(3), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+
+        yield* resources.declareScope("scope-main")
+        yield* resources.register({
+          kind: "window",
+          ownerScope: "scope-main",
+          state: "open"
+        })
+        yield* resources.closeScope("scope-main")
+
+        yield* fiberCollector.run("collector-fiber", Effect.void)
+
+        yield* streams.register("stream-collector")
+        yield* streams.updateBackpressure("stream-collector", {
+          evictedFrames: 0,
+          overflow: "dropOldest",
+          queueCapacity: 8,
+          queueDepth: 2
+        })
+        yield* streams.terminate("stream-collector", "complete", 1_000)
+
+        return {
+          resourceEvents: yield* Fiber.join(resourceEvents),
+          scopeEvents: yield* Fiber.join(scopeEvents),
+          fiberEvents: yield* Fiber.join(fiberEvents),
+          streamEvents: yield* Fiber.join(streamEvents)
+        }
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            Layer.provide(
+              Layer.mergeAll(ResourceInspectorCollectorLive, ScopeInspectorCollectorLive),
+              Layer.succeed(ResourceRegistry)(resources)
+            ),
+            FiberInspectorCollectorLive,
+            StreamInspectorCollectorLive(streams)
+          )
+        )
+      )
+    )
+  )
+
+  expect(Array.from(result.resourceEvents).map((event) => event._tag)).toEqual([
+    "ResourceRegistered",
+    "ResourceDisposed"
+  ])
+  expect(Array.from(result.scopeEvents).map((event) => event._tag)).toEqual([
+    "ScopeDeclared",
+    "ScopeClosing"
+  ])
+  expect(Array.from(result.fiberEvents).map((event) => event._tag)).toEqual([
+    "FiberStarted",
+    "FiberCompleted"
+  ])
+  expect(Array.from(result.streamEvents).map((event) => event._tag)).toEqual([
+    "StreamOpened",
+    "StreamBackpressureChanged",
+    "StreamTerminated"
+  ])
 })
 
 test("LiveRuntimePanels rejects invalid row caps and refresh intervals", async () => {

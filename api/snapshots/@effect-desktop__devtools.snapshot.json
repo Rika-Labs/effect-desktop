@@ -269,6 +269,26 @@
       "signature": "export interface EventLogPanelSnapshot { readonly entries: readonly EventLogPanelRow[] readonly totalCount: number }"
     },
     {
+      "name": "FiberEvent",
+      "kind": "type",
+      "signature": "export type FiberEvent = | { readonly _tag: \"FiberStarted\" readonly key: string readonly fiberId: number } | { readonly _tag: \"FiberCompleted\" readonly key: string readonly fiberId: number readonly exit: \"success\" | \"failure\" }"
+    },
+    {
+      "name": "FiberInspectorCollector",
+      "kind": "class",
+      "signature": "export class FiberInspectorCollector extends Context.Service< FiberInspectorCollector, FiberInspectorCollectorApi >()(\"@effect-desktop/devtools/FiberInspectorCollector\") {}"
+    },
+    {
+      "name": "FiberInspectorCollectorApi",
+      "kind": "interface",
+      "signature": "export interface FiberInspectorCollectorApi { readonly run: <A, E, R>( key: string, effect: Effect.Effect<A, E, R> ) => Effect.Effect<Fiber.Fiber<void, never>, never, R> readonly events: () => Stream.Stream<FiberEvent, never, never> }"
+    },
+    {
+      "name": "FiberInspectorCollectorLive",
+      "kind": "value",
+      "signature": "const FiberInspectorCollectorLive: Layer.Layer<FiberInspectorCollector, never, never>"
+    },
+    {
       "name": "InspectorBridgeFramePayload",
       "kind": "class",
       "signature": "export class InspectorBridgeFramePayload extends Schema.Class<InspectorBridgeFramePayload>( \"InspectorBridgeFramePayload\" )({ ...InspectorPayloadBase, tag: Schema.Literal(\"bridge-frame\"), direction: Schema.Literals([\"renderer-to-host\", \"host-to-renderer\"]), frameKind: NonEmptyString, requestId: Schema.optionalKey(NonEmptyString), payloadBytes: NonNegativeNumber }) {}"
@@ -694,14 +714,74 @@
       "signature": "const ReplayTransportFromSession: (session: RecordedSession) => Layer.Layer<ReplayTransport, InspectorFixtureError, never>"
     },
     {
+      "name": "ResourceEvent",
+      "kind": "type",
+      "signature": "export type ResourceEvent = Extract< ResourceLifecycleEvent, | { readonly _tag: \"ResourceRegistered\" } | { readonly _tag: \"ResourceShared\" } | { readonly _tag: \"ResourceDisposed\" } | { readonly _tag: \"ResourceStale\" } >"
+    },
+    {
+      "name": "ResourceInspectorCollector",
+      "kind": "class",
+      "signature": "export class ResourceInspectorCollector extends Context.Service< ResourceInspectorCollector, ResourceInspectorCollectorApi >()(\"@effect-desktop/devtools/ResourceInspectorCollector\") {}"
+    },
+    {
+      "name": "ResourceInspectorCollectorApi",
+      "kind": "interface",
+      "signature": "export interface ResourceInspectorCollectorApi { readonly events: () => Stream.Stream<ResourceEvent, never, never> }"
+    },
+    {
+      "name": "ResourceInspectorCollectorLive",
+      "kind": "value",
+      "signature": "const ResourceInspectorCollectorLive: Layer.Layer<ResourceInspectorCollector, never, ResourceRegistry>"
+    },
+    {
       "name": "ResourcePanelRow",
       "kind": "interface",
       "signature": "export interface ResourcePanelRow { readonly id: string readonly kind: string readonly scope: string readonly state: string readonly ageMs: number readonly stale: boolean readonly owner: Option.Option<string> }"
     },
     {
+      "name": "ScopeEvent",
+      "kind": "type",
+      "signature": "export type ScopeEvent = Extract< ResourceLifecycleEvent, | { readonly _tag: \"ScopeDeclared\" } | { readonly _tag: \"ScopeClosing\" } | { readonly _tag: \"ScopeClosed\" } >"
+    },
+    {
+      "name": "ScopeInspectorCollector",
+      "kind": "class",
+      "signature": "export class ScopeInspectorCollector extends Context.Service< ScopeInspectorCollector, ScopeInspectorCollectorApi >()(\"@effect-desktop/devtools/ScopeInspectorCollector\") {}"
+    },
+    {
+      "name": "ScopeInspectorCollectorApi",
+      "kind": "interface",
+      "signature": "export interface ScopeInspectorCollectorApi { readonly events: () => Stream.Stream<ScopeEvent, never, never> }"
+    },
+    {
+      "name": "ScopeInspectorCollectorLive",
+      "kind": "value",
+      "signature": "const ScopeInspectorCollectorLive: Layer.Layer<ScopeInspectorCollector, never, ResourceRegistry>"
+    },
+    {
       "name": "shouldStartDevtools",
       "kind": "value",
       "signature": "const shouldStartDevtools: (input: typeof DevtoolsStartInput.Type) => boolean"
+    },
+    {
+      "name": "StreamEvent",
+      "kind": "type",
+      "signature": "export type StreamEvent = | { readonly _tag: \"StreamOpened\" readonly streamId: string readonly generation: number } | { readonly _tag: \"StreamBackpressureChanged\" readonly streamId: string readonly generation: number readonly queueDepth: number readonly queueCapacity: number readonly overflow: string } | { readonly _tag: \"StreamTerminated\" readonly streamId: string readonly generation: number readonly terminal: string }"
+    },
+    {
+      "name": "StreamInspectorCollector",
+      "kind": "class",
+      "signature": "export class StreamInspectorCollector extends Context.Service< StreamInspectorCollector, StreamInspectorCollectorApi >()(\"@effect-desktop/devtools/StreamInspectorCollector\") {}"
+    },
+    {
+      "name": "StreamInspectorCollectorApi",
+      "kind": "interface",
+      "signature": "export interface StreamInspectorCollectorApi { readonly events: () => Stream.Stream<StreamEvent, never, never> }"
+    },
+    {
+      "name": "StreamInspectorCollectorLive",
+      "kind": "value",
+      "signature": "const StreamInspectorCollectorLive: (registry: BridgeStreamRegistry) => Layer.Layer<StreamInspectorCollector, never, never>"
     },
     {
       "name": "StreamPanelRow",

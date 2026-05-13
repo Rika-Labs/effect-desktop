@@ -733,6 +733,7 @@ const delayedCleanupResourceRegistry = (
         }
       }),
     observe: () => Stream.empty,
+    observeLifecycle: () => Stream.empty,
     declareScope: () => Effect.void,
     closeScope: () => Effect.void,
     share: () => Effect.die("unused"),
@@ -775,6 +776,7 @@ const stalledRegisterResourceRegistry = (
         }
       }),
     observe: () => Stream.empty,
+    observeLifecycle: () => Stream.empty,
     declareScope: () => Effect.void,
     closeScope: () => Effect.void,
     share: () => Effect.die("unused"),
@@ -832,6 +834,7 @@ const firstRegisterStalledResourceRegistry = (
         }
       }),
     observe: () => Stream.empty,
+    observeLifecycle: () => Stream.empty,
     declareScope: () => Effect.void,
     closeScope: () => Effect.void,
     share: () => Effect.die("unused"),

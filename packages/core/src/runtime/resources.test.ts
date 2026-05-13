@@ -825,6 +825,41 @@ test("observe emits subsequent registry changes", async () => {
   expect(Array.from(snapshots).map((snapshot) => snapshot.entries.length)).toEqual([0, 1])
 })
 
+test("observeLifecycle streams resource, scope, and stale-handle events", async () => {
+  const events = await Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makeResourceRegistry({
+        nextId: () => id("018e2f36-5800-7000-8000-0000000000af")
+      })
+      const fiber = yield* registry
+        .observeLifecycle()
+        .pipe(Stream.take(7), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+
+      yield* registry.declareScope("scope-parent")
+      yield* registry.declareScope("scope-child", "scope-parent")
+      const handle = yield* registry.register({
+        kind: "window",
+        ownerScope: "scope-child",
+        state: "open"
+      })
+      yield* registry.closeScope("scope-parent")
+      yield* Effect.exit(registry.assertFresh(handle))
+
+      return yield* Fiber.join(fiber)
+    })
+  )
+
+  expect(Array.from(events).map((event) => event._tag)).toEqual([
+    "ScopeDeclared",
+    "ScopeDeclared",
+    "ResourceRegistered",
+    "ScopeClosing",
+    "ResourceDisposed",
+    "ScopeClosed",
+    "ResourceStale"
+  ])
+})
+
 test("live layer provides the resource registry service", async () => {
   const snapshot = await Effect.runPromise(
     Effect.gen(function* () {
