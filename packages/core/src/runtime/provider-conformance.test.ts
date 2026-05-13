@@ -5,6 +5,7 @@ import * as Path from "effect/Path"
 import { ChildProcess } from "effect/unstable/process"
 
 import { Desktop, DesktopRuntime } from "../index.js"
+import { ProviderCapability, makeProviderRegistry } from "./provider-registry.js"
 
 type RuntimeProviderEngine = "bun" | "node"
 
@@ -95,6 +96,38 @@ test("runtime provider conformance has no experimental Deno cell", async () => {
       _tag: "DesktopConfigError",
       reason: "missing-provider",
       provider: "deno"
+    })
+  }
+})
+
+test("provider registry exposes capabilities and rejects duplicate provider ids", async () => {
+  const runtimeCapability = new ProviderCapability({
+    name: "FileSystem",
+    description: "Provides Effect FileSystem service for desktop runtime programs"
+  })
+  const runtimeProvider = {
+    kind: "runtime",
+    id: "test-runtime",
+    capabilities: [runtimeCapability]
+  } as const
+
+  const registry = await Effect.runPromise(makeProviderRegistry([runtimeProvider]))
+  const provider = await Effect.runPromise(registry.get("runtime", "test-runtime"))
+  const capabilities = await Effect.runPromise(registry.capabilitiesFor("runtime", "test-runtime"))
+  const duplicateExit = await Effect.runPromiseExit(
+    makeProviderRegistry([runtimeProvider, runtimeProvider])
+  )
+
+  expect(provider.id).toBe("test-runtime")
+  expect(capabilities).toEqual([runtimeCapability])
+  expect(Exit.isFailure(duplicateExit)).toBe(true)
+  if (Exit.isFailure(duplicateExit)) {
+    const failure = duplicateExit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toMatchObject({
+      _tag: "ProviderRegistryError",
+      reason: "duplicate-provider",
+      kind: "runtime",
+      provider: "test-runtime"
     })
   }
 })

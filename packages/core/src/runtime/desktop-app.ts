@@ -19,6 +19,12 @@ import {
 } from "./permission-registry.js"
 import { PermissionInterceptor, makePermissionInterceptorLayer } from "./permission-interceptor.js"
 import type { NormalizedCapability } from "./permission-registry.js"
+import {
+  ProviderCapability,
+  ProviderRegistryError,
+  makeProviderRegistry,
+  type Provider
+} from "./provider-registry.js"
 import { ResourceRegistryLive } from "./resources.js"
 import { servedRpcGroup, servedRpcGroupProperties } from "./rpc-group-metadata.js"
 import { Telemetry, makeTelemetry } from "./telemetry.js"
@@ -253,16 +259,36 @@ const RuntimeProviderServiceNames = Object.freeze([
   "ChildProcessSpawner"
 ])
 
-interface RuntimeProviderDescriptor {
+const RuntimeProviderCapabilities = Object.freeze(
+  RuntimeProviderServiceNames.map(
+    (name) =>
+      new ProviderCapability({
+        name,
+        description: `Provides Effect ${name} service for desktop runtime programs`
+      })
+  )
+)
+
+interface RuntimeProviderDescriptor extends Provider<"runtime", DesktopRuntimeProviderId> {
   readonly id: DesktopRuntimeProviderId
   readonly node: DesktopRuntimeGraphNode
   readonly budget: DesktopProviderBudget
+  readonly layer: Effect.Effect<
+    Layer.Layer<DesktopRuntimeProviderServices, Config.ConfigError, never>,
+    never,
+    never
+  >
 }
 
-const RuntimeProviders = Object.freeze({
-  bun: Object.freeze({
+const RuntimeProviders = [
+  Object.freeze({
+    kind: "runtime" as const,
     id: "bun" as const,
+    capabilities: RuntimeProviderCapabilities,
     budget: providerBudget("bun", "@effect/platform-bun", "@effect-desktop/core/providers/bun"),
+    layer: Effect.promise(() =>
+      import("../providers/bun.js").then((module) => module.BunRuntimeProviderLayer)
+    ),
     node: graphNode(
       "provider:runtime:bun",
       "provider",
@@ -271,12 +297,13 @@ const RuntimeProviders = Object.freeze({
       []
     )
   }),
-  node: Object.freeze({
+  Object.freeze({
+    kind: "runtime" as const,
     id: "node" as const,
-    budget: providerBudget(
-      "node",
-      "@effect/platform-node",
-      "@effect-desktop/core/providers/node"
+    capabilities: RuntimeProviderCapabilities,
+    budget: providerBudget("node", "@effect/platform-node", "@effect-desktop/core/providers/node"),
+    layer: Effect.promise(() =>
+      import("../providers/node.js").then((module) => module.NodeRuntimeProviderLayer)
     ),
     node: graphNode(
       "provider:runtime:node",
@@ -286,9 +313,14 @@ const RuntimeProviders = Object.freeze({
       []
     )
   }),
-  test: Object.freeze({
+  Object.freeze({
+    kind: "runtime" as const,
     id: "test" as const,
+    capabilities: RuntimeProviderCapabilities,
     budget: providerBudget("test", "@effect-desktop/core", "@effect-desktop/core/providers/test"),
+    layer: Effect.promise(() =>
+      import("../providers/test.js").then((module) => module.TestRuntimeProviderLayer)
+    ),
     node: graphNode(
       "provider:runtime:test",
       "provider",
@@ -297,7 +329,9 @@ const RuntimeProviders = Object.freeze({
       []
     )
   })
-}) satisfies Record<"bun" | "node" | "test", RuntimeProviderDescriptor>
+] as const satisfies readonly RuntimeProviderDescriptor[]
+
+const RuntimeProviderRegistry = makeProviderRegistry(RuntimeProviders)
 
 export const make = <RIn = never, E = never>(
   config: DesktopMakeConfig<RIn, E>
@@ -617,28 +651,11 @@ const buildSpine = <RIn, E>(
 
 const resolveRuntimeProvider = <RIn, E>(
   config: DesktopConfig<RIn, E>
-): Effect.Effect<
-  RuntimeProviderDescriptor,
-  DesktopConfigError,
-  never
-> => {
+): Effect.Effect<RuntimeProviderDescriptor, DesktopConfigError, never> => {
   const provider = selectedProviders(config.providers).runtime
-  if (provider === "bun") {
-    return Effect.succeed(RuntimeProviders.bun)
-  }
-  if (provider === "node") {
-    return Effect.succeed(RuntimeProviders.node)
-  }
-  if (provider === "test") {
-    return Effect.succeed(RuntimeProviders.test)
-  }
-  return Effect.fail(
-    new DesktopConfigError({
-      appId: config.id,
-      reason: "missing-provider",
-      message: `Runtime provider "${provider}" is not available`,
-      provider
-    })
+  return RuntimeProviderRegistry.pipe(
+    Effect.flatMap((registry) => registry.get("runtime", provider)),
+    Effect.mapError((error) => providerRegistryErrorToConfigError(config.id, error))
   )
 }
 
@@ -646,33 +663,23 @@ export const providerLayerFor = (
   choice: DesktopRuntimeSelectedProviders
 ): Layer.Layer<DesktopRuntimeProviderServices, Config.ConfigError | DesktopConfigError, never> =>
   Layer.unwrap(
-    Effect.gen(function* () {
-      const provider = choice.runtime
-      switch (provider) {
-        case "bun": {
-          const module = yield* Effect.promise(() => import("../providers/bun.js"))
-          return module.BunRuntimeProviderLayer
-        }
-        case "node": {
-          const module = yield* Effect.promise(() => import("../providers/node.js"))
-          return module.NodeRuntimeProviderLayer
-        }
-        case "test": {
-          const module = yield* Effect.promise(() => import("../providers/test.js"))
-          return module.TestRuntimeProviderLayer
-        }
-        default:
-          return yield* Effect.fail(
-            new DesktopConfigError({
-              appId: "provider-loader",
-              reason: "missing-provider",
-              message: `Runtime provider "${provider}" is not available`,
-              provider
-            })
-          )
-      }
-    })
+    RuntimeProviderRegistry.pipe(
+      Effect.flatMap((registry) => registry.get("runtime", choice.runtime)),
+      Effect.mapError((error) => providerRegistryErrorToConfigError("provider-loader", error)),
+      Effect.flatMap((provider) => provider.layer)
+    )
   )
+
+const providerRegistryErrorToConfigError = (
+  appId: string,
+  error: ProviderRegistryError
+): DesktopConfigError =>
+  new DesktopConfigError({
+    appId,
+    reason: error.reason === "missing-provider" ? "missing-provider" : "invalid-config",
+    message: error.message,
+    provider: error.provider
+  })
 
 const makePermissionServicesLayer = <RIn, E>(
   config: DesktopConfig<RIn, E>
@@ -730,9 +737,7 @@ const mergeLayerArray = <E, R>(
     Layer.empty as Layer.Layer<never, E, R>
   )
 
-const bindRpcLayer = <E, R>(
-  rpcLayer: AnyDesktopRpcLayer<E, R>
-): Layer.Layer<never, E, R> =>
+const bindRpcLayer = <E, R>(rpcLayer: AnyDesktopRpcLayer<E, R>): Layer.Layer<never, E, R> =>
   Layer.provide(
     RpcServer.layer(
       (servedRpcGroup(rpcLayer) as RpcGroup.RpcGroup<Rpc.Any>).middleware(PermissionInterceptor)

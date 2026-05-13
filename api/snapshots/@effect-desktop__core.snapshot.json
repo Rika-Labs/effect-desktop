@@ -14,6 +14,11 @@
       "signature": "export interface AnyDesktopRpcLayer<E = unknown, R = unknown> { readonly _tag: \"DesktopRpcsLayer\" readonly group: RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> } readonly layer: Layer.Layer<any, E, R> }"
     },
     {
+      "name": "AnyProvider",
+      "kind": "interface",
+      "signature": "export interface AnyProvider { readonly kind: ProviderKind readonly id: string readonly capabilities: readonly ProviderCapability[] }"
+    },
+    {
       "name": "approvalAuditEvent",
       "kind": "value",
       "signature": "const approvalAuditEvent: (input: ApprovalAuditEventInput) => AuditEvent"
@@ -1094,6 +1099,11 @@
       "signature": "const makeProcess: (registry: ResourceRegistryApi, options?: ProcessOptions) => Effect.Effect<ProcessApi, HostProtocolInvalidArgumentError, ChildProcessSpawner.ChildProcessSpawner>"
     },
     {
+      "name": "makeProviderRegistry",
+      "kind": "value",
+      "signature": "const makeProviderRegistry: <const Providers extends readonly AnyProvider[]>(providers: Providers) => Effect.Effect<ProviderRegistry<Providers>, ProviderRegistryError, never>"
+    },
+    {
       "name": "makePty",
       "kind": "value",
       "signature": "const makePty: (registry: ResourceRegistryApi, options?: PtyOptions) => Effect.Effect<PtyApi, HostProtocolInvalidArgumentError, never>"
@@ -1419,14 +1429,39 @@
       "signature": "export interface ProcessSpawnOptions { readonly ownerScope: string readonly shell?: boolean readonly cwd?: string readonly env?: Readonly<Record<string, string>> }"
     },
     {
+      "name": "Provider",
+      "kind": "interface",
+      "signature": "export interface Provider<Kind extends ProviderKind, Id extends string> { readonly kind: Kind readonly id: Id readonly capabilities: readonly ProviderCapability[] }"
+    },
+    {
+      "name": "ProviderCapability",
+      "kind": "class",
+      "signature": "export class ProviderCapability extends Schema.Class<ProviderCapability>(\"ProviderCapability\")({ name: Schema.NonEmptyString, description: Schema.String }) {}"
+    },
+    {
       "name": "ProviderFact",
       "kind": "class",
       "signature": "export class ProviderFact extends Schema.Class<ProviderFact>(\"ProviderFact\")({ id: Schema.String, kind: Schema.Literal(\"runtime\"), capabilities: Schema.Array(Schema.String) }) {}"
     },
     {
+      "name": "ProviderKind",
+      "kind": "type",
+      "signature": "const ProviderKind: Schema.Literals<readonly [\"runtime\", \"webview\", \"storage\", \"transport\", \"updater\", \"packaging\", \"native\"]>"
+    },
+    {
       "name": "providerLayerFor",
       "kind": "value",
       "signature": "const providerLayerFor: (choice: DesktopRuntimeSelectedProviders) => Layer.Layer<DesktopRuntimeProviderServices, Config.ConfigError | DesktopConfigError, never>"
+    },
+    {
+      "name": "ProviderRegistry",
+      "kind": "interface",
+      "signature": "export interface ProviderRegistry< Providers extends readonly AnyProvider[] = readonly AnyProvider[] > { readonly providers: ReadonlyArray<Providers[number]> readonly get: ( kind: Providers[number][\"kind\"], provider: string ) => Effect.Effect<Providers[number], ProviderRegistryError, never> readonly capabilitiesFor: ( kind: Providers[number][\"kind\"], provider: string ) => Effect.Effect<readonly ProviderCapability[], ProviderRegistryError, never> }"
+    },
+    {
+      "name": "ProviderRegistryError",
+      "kind": "class",
+      "signature": "export class ProviderRegistryError extends Data.TaggedError(\"ProviderRegistryError\")<{ readonly reason: \"duplicate-provider\" | \"missing-provider\" readonly kind: ProviderKind readonly provider: string readonly message: string }> {}"
     },
     {
       "name": "PTY",
