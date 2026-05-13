@@ -14,6 +14,16 @@
       "signature": "const assertNoOpenResourcesIn: (registry: ResourceRegistryApi, options?: LeakDetectionOptions) => Effect.Effect<void, ResourceLeakError, never>"
     },
     {
+      "name": "ClipboardTest",
+      "kind": "value",
+      "signature": "const ClipboardTest: () => Layer.Layer<Clipboard>"
+    },
+    {
+      "name": "DialogTest",
+      "kind": "value",
+      "signature": "const DialogTest: (options?: TestDialogOptions) => Layer.Layer<Dialog>"
+    },
+    {
       "name": "expectAppearance",
       "kind": "value",
       "signature": "const expectAppearance: (client: TestSystemAppearanceRpcs, method: string, count?: number) => void"
@@ -374,6 +384,11 @@
       "signature": "const runHeadlessRuntime: <A, E, R>(effect: Effect.Effect<A, E, R>, options?: HeadlessRuntimeLayerOptions) => Effect.Effect<A, HostProtocolInvalidArgumentError | TelemetryInvalidArgumentError | ResourceLeakError | E, Exclude<R, HeadlessRuntimeServices>>"
     },
     {
+      "name": "ScreenTest",
+      "kind": "value",
+      "signature": "const ScreenTest: (options?: TestScreenOptions) => Layer.Layer<Screen>"
+    },
+    {
       "name": "TestApp",
       "kind": "value",
       "signature": "const TestApp: Readonly<{ layer: (options?: TestAppOptions) => Layer.Layer<App>; }>"
@@ -392,11 +407,6 @@
       "name": "TestAppRpcs",
       "kind": "interface",
       "signature": "export interface TestAppRpcs extends AppClientApi { readonly calls: () => readonly TestAppCall[] }"
-    },
-    {
-      "name": "TestClipboard",
-      "kind": "value",
-      "signature": "const TestClipboard: Readonly<{ layer: () => Layer.Layer<Clipboard>; }>"
     },
     {
       "name": "TestClipboardCall",
@@ -442,11 +452,6 @@
       "name": "TestDesktopServices",
       "kind": "type",
       "signature": "export type TestDesktopServices = | App | Clipboard | CrashReporter | Dialog | Menu | Notification | PowerMonitor | SafeStorage | Screen | Shell | SystemAppearance | Tray | Updater | Window"
-    },
-    {
-      "name": "TestDialog",
-      "kind": "value",
-      "signature": "const TestDialog: Readonly<{ layer: (options?: TestDialogOptions) => Layer.Layer<Dialog>; }>"
     },
     {
       "name": "TestDialogCall",
@@ -522,11 +527,6 @@
       "name": "TestSafeStorageRpcs",
       "kind": "interface",
       "signature": "export interface TestSafeStorageRpcs extends SafeStorageClientApi { readonly calls: () => readonly TestSafeStorageCall[] readonly snapshot: () => ReadonlyMap<string, Uint8Array> }"
-    },
-    {
-      "name": "TestScreen",
-      "kind": "value",
-      "signature": "const TestScreen: Readonly<{ layer: (options?: TestScreenOptions) => Layer.Layer<Screen>; }>"
     },
     {
       "name": "TestScreenCall",

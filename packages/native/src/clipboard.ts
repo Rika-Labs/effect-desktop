@@ -17,7 +17,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import type { DesktopRpcClient } from "@effect-desktop/core"
+import { DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import {
@@ -149,6 +149,47 @@ export const makeClipboardBridgeClientLayer = (
 
 export type ClipboardRpcHandlers = Parameters<typeof ClipboardRpcGroup.toLayer>[0]
 
+export const ClipboardHandlersLive = ClipboardRpcGroup.toLayer({
+  "Clipboard.readText": () =>
+    Effect.gen(function* () {
+      const clipboard = yield* Clipboard
+      const text = yield* clipboard.readText()
+      return new ClipboardText({ text })
+    }),
+  "Clipboard.writeText": (input) =>
+    Effect.gen(function* () {
+      const clipboard = yield* Clipboard
+      yield* clipboard.writeText(input.text)
+    }),
+  "Clipboard.readImage": () =>
+    Effect.gen(function* () {
+      const clipboard = yield* Clipboard
+      return yield* clipboard.readImage()
+    }),
+  "Clipboard.writeImage": (input) =>
+    Effect.gen(function* () {
+      const clipboard = yield* Clipboard
+      yield* clipboard.writeImage(input)
+    }),
+  "Clipboard.clear": () =>
+    Effect.gen(function* () {
+      const clipboard = yield* Clipboard
+      yield* clipboard.clear()
+    }),
+  "Clipboard.isSupported": (input) =>
+    Effect.gen(function* () {
+      const clipboard = yield* Clipboard
+      const supported = yield* clipboard.isSupported(input.capability)
+      return new ClipboardSupportedResult({ supported })
+    })
+})
+
+export const ClipboardSurface = DesktopRpc.surface("Clipboard", ClipboardRpcGroup, {
+  service: ClipboardClient,
+  handlers: ClipboardHandlersLive,
+  client: (client) => clipboardClientFromRpcClient(client)
+})
+
 export const makeHostClipboardRpcRuntime = (
   handlers: ClipboardRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
@@ -187,60 +228,62 @@ const makeClipboardBridgeClient = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions
 ): ClipboardClientApi => {
+  const useClient = <A>(
+    use: (client: ClipboardClientApi) => Effect.Effect<A, ClipboardError, never>
+  ): Effect.Effect<A, ClipboardError, never> =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const client = yield* ClipboardClient
+        return yield* use(client)
+      }).pipe(
+        Effect.provide(ClipboardSurface.clientLayer),
+        Effect.provide(makeClipboardBridgeProtocolLayer(exchange, options))
+      )
+    )
+
+  return Object.freeze({
+    readText: () => useClient((client) => client.readText()),
+    writeText: (text) => useClient((client) => client.writeText(text)),
+    readImage: () => useClient((client) => client.readImage()),
+    writeImage: (input) => useClient((client) => client.writeImage(input)),
+    clear: () => useClient((client) => client.clear()),
+    isSupported: (capability) => useClient((client) => client.isSupported(capability))
+  } satisfies ClipboardClientApi)
+}
+
+const clipboardClientFromRpcClient = (
+  client: DesktopRpcClient<ClipboardRpc>
+): ClipboardClientApi => {
   const clipboardClient: ClipboardClientApi = {
-    readText: () =>
-      withClipboardRpcClient(exchange, options, (client) =>
-        runClipboardRpc(client["Clipboard.readText"](undefined), "Clipboard.readText")
-      ),
+    readText: () => runClipboardRpc(client["Clipboard.readText"](undefined), "Clipboard.readText"),
     writeText: (text) =>
       decodeClipboardText({ text }).pipe(
         Effect.flatMap((decoded) =>
-          withClipboardRpcClient(exchange, options, (client) =>
-            runClipboardRpc(client["Clipboard.writeText"](decoded), "Clipboard.writeText")
-          )
+          runClipboardRpc(client["Clipboard.writeText"](decoded), "Clipboard.writeText")
         )
       ),
     readImage: () =>
-      withClipboardRpcClient(exchange, options, (client) =>
-        runClipboardRpc(client["Clipboard.readImage"](undefined), "Clipboard.readImage")
-      ).pipe(Effect.flatMap(validateClipboardImageOutput)),
+      runClipboardRpc(client["Clipboard.readImage"](undefined), "Clipboard.readImage").pipe(
+        Effect.flatMap(validateClipboardImageOutput)
+      ),
     writeImage: (input) =>
       decodeClipboardImage(input)
         .pipe(Effect.flatMap(validateClipboardImageInput))
         .pipe(
           Effect.flatMap((decoded) =>
-            withClipboardRpcClient(exchange, options, (client) =>
-              runClipboardRpc(client["Clipboard.writeImage"](decoded), "Clipboard.writeImage")
-            )
+            runClipboardRpc(client["Clipboard.writeImage"](decoded), "Clipboard.writeImage")
           )
         ),
-    clear: () =>
-      withClipboardRpcClient(exchange, options, (client) =>
-        runClipboardRpc(client["Clipboard.clear"](undefined), "Clipboard.clear")
-      ),
+    clear: () => runClipboardRpc(client["Clipboard.clear"](undefined), "Clipboard.clear"),
     isSupported: (capability) =>
-      withClipboardRpcClient(exchange, options, (client) =>
-        runClipboardRpc(
-          client["Clipboard.isSupported"](new ClipboardIsSupportedInput({ capability })),
-          "Clipboard.isSupported"
-        )
+      runClipboardRpc(
+        client["Clipboard.isSupported"](new ClipboardIsSupportedInput({ capability })),
+        "Clipboard.isSupported"
       )
   }
 
   return Object.freeze(clipboardClient)
 }
-
-const withClipboardRpcClient = <A>(
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions,
-  use: (client: ClipboardRpcClient) => Effect.Effect<A, ClipboardError, never>
-): Effect.Effect<A, ClipboardError, never> =>
-  Effect.scoped(
-    RpcClient.make(ClipboardRpcGroup).pipe(
-      Effect.flatMap(use),
-      Effect.provide(makeClipboardBridgeProtocolLayer(exchange, options))
-    )
-  )
 
 export const makeUnsupportedClipboardClient = (): ClipboardClientApi => {
   const unsupportedEffect = <A>(method: string): Effect.Effect<A, ClipboardError, never> =>
@@ -310,8 +353,6 @@ const decodeInput = <A>(
       makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
     )
   )
-
-type ClipboardRpcClient = DesktopRpcClient<ClipboardRpc>
 
 const runClipboardRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

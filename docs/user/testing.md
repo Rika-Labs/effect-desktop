@@ -16,6 +16,6 @@ if (MockBridge === undefined || typeof runHeadless !== "function") {
 
 Use native test layers for service-level tests instead of constructing bridge envelopes by hand.
 
-`TestScreen.layer()` is the current Layer-first proof for native services. The same `Screen` program can run against live, bridge-client, and deterministic test providers by swapping layers.
+`ScreenTest()`, `ClipboardTest()`, and `DialogTest()` are the current Layer-first proof for native services. The same service program can run against live, bridge-client, and deterministic test providers by swapping layers.
 
 `TestWindow.layer()` follows the supported Window client surface. It records `Window.create` and `Window.close` calls and tracks open handles. Descriptor-only unsupported Window methods are not present on the test client.

@@ -44,10 +44,13 @@ import {
   NativeCapabilitiesLive,
   UnsupportedCapability,
   Clipboard,
+  ClipboardClient,
+  ClipboardHandlersLive,
   ClipboardRpcs,
   ClipboardRpcEvents,
   ClipboardLive,
   ClipboardMethodNames,
+  ClipboardSurface,
   ContextMenu,
   ContextMenuRpcs,
   ContextMenuRpcEvents,
@@ -59,10 +62,13 @@ import {
   CrashReporterLive,
   CrashReporterMethodNames,
   Dialog,
+  DialogClient,
+  DialogHandlersLive,
   DialogRpcs,
   DialogRpcEvents,
   DialogLive,
   DialogMethodNames,
+  DialogSurface,
   Dock,
   DockRpcs,
   DockLive,
@@ -295,6 +301,8 @@ test("native package root keeps contracts and implementation helpers behind subp
 
   expect(native.Window).toBeFunction()
   expect(native.WindowLive).toBeDefined()
+  expect(native.ClipboardSurface).toBeDefined()
+  expect(native.DialogSurface).toBeDefined()
   expect(native.NativeCapabilities).toBeFunction()
   expect(native.NativeCapabilitiesLive).toBeDefined()
   expect(native.UnsupportedCapability).toBeFunction()
@@ -2579,9 +2587,10 @@ test("Clipboard bridge client rejects malformed image headers from host as Inval
 
   for (const payload of invalidOutputs) {
     const requests: HostProtocolRequestEnvelope[] = []
-    const client = await Effect.runPromise(
+    const exit = await Effect.runPromise(
       Effect.gen(function* () {
-        return yield* Clipboard
+        const clipboard = yield* Clipboard
+        return yield* Effect.exit(clipboard.readImage())
       }).pipe(
         Effect.provide(
           Layer.provide(
@@ -2597,8 +2606,6 @@ test("Clipboard bridge client rejects malformed image headers from host as Inval
       )
     )
 
-    const exit = await Effect.runPromiseExit(client.readImage())
-
     expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
     expect(requests).toEqual([expect.objectContaining({ method: "Clipboard.readImage" })])
   }
@@ -2606,9 +2613,10 @@ test("Clipboard bridge client rejects malformed image headers from host as Inval
 
 test("Clipboard bridge client rejects NUL bytes in writeText as InvalidArgument", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = await Effect.runPromise(
+  const exit = await Effect.runPromise(
     Effect.gen(function* () {
-      return yield* Clipboard
+      const clipboard = yield* Clipboard
+      return yield* Effect.exit(clipboard.writeText("hello\u0000world"))
     }).pipe(
       Effect.provide(
         Layer.provide(
@@ -2620,13 +2628,51 @@ test("Clipboard bridge client rejects NUL bytes in writeText as InvalidArgument"
       )
     )
   )
-
-  const exit = await Effect.runPromiseExit(client.writeText("hello\u0000world"))
   expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(requests).toEqual([])
 
-  await Effect.runPromise(client.writeText("valid text"))
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const clipboard = yield* Clipboard
+      yield* clipboard.writeText("valid text")
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          ClipboardLive,
+          makeClipboardBridgeClientLayer(
+            clipboardExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
   expect(requests.length).toBe(1)
+})
+
+test("Clipboard bridge client keeps extracted methods scoped for valid calls", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Clipboard
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          ClipboardLive,
+          makeClipboardBridgeClientLayer(
+            clipboardExchange(requests, (request) => ({
+              kind: "success",
+              payload: request.method === "Clipboard.readText" ? { text: "after scope" } : undefined
+            }))
+          )
+        )
+      )
+    )
+  )
+
+  const text = await Effect.runPromise(client.readText())
+
+  expect(text).toBe("after scope")
+  expect(requests).toEqual([expect.objectContaining({ method: "Clipboard.readText" })])
 })
 
 test("unsupported Clipboard client reports deferred host methods as Effect values", async () => {
@@ -4064,6 +4110,104 @@ test("ScreenSurface derives server, client, test, and metadata surfaces from the
       support: { status: "supported" },
       capability: "none"
     }
+  ])
+})
+
+test("ClipboardSurface and DialogSurface derive Live-compatible client and test layers", async () => {
+  const surfaces = [
+    {
+      name: "Clipboard",
+      surface: ClipboardSurface,
+      group: ClipboardRpcs,
+      handlers: ClipboardHandlersLive,
+      tags: [
+        "Clipboard.readText",
+        "Clipboard.writeText",
+        "Clipboard.readImage",
+        "Clipboard.writeImage",
+        "Clipboard.clear",
+        "Clipboard.isSupported"
+      ]
+    },
+    {
+      name: "Dialog",
+      surface: DialogSurface,
+      group: DialogRpcs,
+      handlers: DialogHandlersLive,
+      tags: [
+        "Dialog.openFile",
+        "Dialog.openDirectory",
+        "Dialog.saveFile",
+        "Dialog.message",
+        "Dialog.confirm"
+      ]
+    }
+  ] as const
+
+  for (const { name, surface, group, handlers, tags } of surfaces) {
+    for (const law of surface.contractLaws) {
+      await Effect.runPromise(law.check)
+    }
+
+    expect(name).toBe(surface.tag)
+    expect(surface.group).toBe(group)
+    expect(surface.serverLayer.group).toBe(group)
+    expect(surface.serverLayer.layer).toBe(handlers)
+    expect(Layer.isLayer(surface.clientLayer)).toBe(true)
+    expect(Layer.isLayer(surface.testClientLayer)).toBe(true)
+    expect(surface.schemaDocs.map((doc) => doc.tag)).toEqual(Array.from(tags))
+  }
+})
+
+test("ClipboardSurface test client layer runs Clipboard RPCs through the generated service requirement", async () => {
+  const calls: string[] = []
+  const testLayer = Layer.provide(
+    ClipboardSurface.testClientLayer,
+    makeClipboardServiceLayer(clipboardClient(calls))
+  )
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* ClipboardClient
+      yield* client.writeText("hello")
+      const text = yield* client.readText()
+      yield* client.clear()
+      const supported = yield* client.isSupported("text")
+      return { supported, text }
+    }).pipe(Effect.provide(testLayer))
+  )
+
+  expect(result.text).toEqual(new ClipboardText({ text: "hello" }))
+  expect(result.supported).toEqual(new ClipboardSupportedResult({ supported: true }))
+  expect(calls).toEqual(["writeText:hello", "readText", "clear", "isSupported:text"])
+})
+
+test("DialogSurface test client layer runs Dialog RPCs through the generated service requirement", async () => {
+  const calls: string[] = []
+  const testLayer = Layer.provide(
+    DialogSurface.testClientLayer,
+    makeDialogServiceLayer(dialogClient(calls))
+  )
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* DialogClient
+      const files = yield* client.openFile({ title: "Open" })
+      const path = yield* client.saveFile({ defaultPath: "/tmp/report.txt" })
+      yield* client.message({ level: "info", message: "Done" })
+      const confirmed = yield* client.confirm({ message: "Continue?" })
+      return { confirmed, files, path }
+    }).pipe(Effect.provide(testLayer))
+  )
+
+  expect(result.files).toEqual(
+    new DialogOpenResult({ paths: ["/canonical/file-a.txt", "/canonical/file-b.txt"] })
+  )
+  expect(result.path).toEqual(new DialogSaveResult({ path: "/canonical/report.txt" }))
+  expect(result.confirmed).toEqual(new DialogConfirmResult({ confirmed: true }))
+  expect(calls).toEqual([
+    "openFile:Open::false",
+    "saveFile:/tmp/report.txt",
+    "message:info:Done",
+    "confirm:Continue?"
   ])
 })
 
@@ -6218,18 +6362,18 @@ test("Dialog bridge client rejects malformed host output paths as InvalidOutput"
         return { kind: "success", payload: { paths: ["/tmp/good.txt", badPath] } }
       })
 
-      const client = await Effect.runPromise(
+      const exit = await Effect.runPromise(
         Effect.gen(function* () {
-          return yield* Dialog
+          const dialog = yield* Dialog
+          if (method === "saveFile") {
+            return yield* Effect.exit(dialog.saveFile({ defaultPath: "/tmp/seed.txt" }))
+          }
+          if (method === "openFile") {
+            return yield* Effect.exit(dialog.openFile({ defaultPath: "/tmp/seed.txt" }))
+          }
+          return yield* Effect.exit(dialog.openDirectory({ defaultPath: "/tmp/seed.txt" }))
         }).pipe(Effect.provide(Layer.provide(DialogLive, makeDialogBridgeClientLayer(exchange))))
       )
-
-      const exit =
-        method === "saveFile"
-          ? await Effect.runPromiseExit(client.saveFile({ defaultPath: "/tmp/seed.txt" }))
-          : method === "openFile"
-            ? await Effect.runPromiseExit(client.openFile({ defaultPath: "/tmp/seed.txt" }))
-            : await Effect.runPromiseExit(client.openDirectory({ defaultPath: "/tmp/seed.txt" }))
 
       expectExitFailure(
         exit,
@@ -6247,6 +6391,32 @@ test("Dialog bridge client rejects malformed host output paths as InvalidOutput"
       ])
     }
   }
+})
+
+test("Dialog bridge client keeps extracted methods scoped for valid calls", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Dialog
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          DialogLive,
+          makeDialogBridgeClientLayer(
+            dialogExchange(requests, (request) => ({
+              kind: "success",
+              payload: request.method === "Dialog.confirm" ? { confirmed: true } : undefined
+            }))
+          )
+        )
+      )
+    )
+  )
+
+  const confirmed = await Effect.runPromise(client.confirm({ message: "Continue?" }))
+
+  expect(confirmed).toBe(true)
+  expect(requests).toEqual([expect.objectContaining({ method: "Dialog.confirm" })])
 })
 
 test("Dialog bridge client rejects invalid native UI text before transport", async () => {

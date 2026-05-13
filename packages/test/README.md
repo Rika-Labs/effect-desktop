@@ -38,9 +38,10 @@ resource cleanup in the production core service path.
 detection as a typed failure by default; pass `leakDetection: false` to disable
 that final check.
 
-`TestScreen.layer(options)` is the current Layer-first contract proof for native
-services. The same `Screen` program runs through `ScreenLive` with a direct
-client, `ScreenLive` with an RPC client layer, and this deterministic test layer.
+`ScreenTest(options)`, `ClipboardTest()`, and `DialogTest(options)` are the
+current Layer-first contract proof for native services. The same service program
+runs through the capability `Live` layer with a direct client, the `Live` layer
+with an RPC client layer, and the deterministic test layer.
 
 `TestWindow.layer()` provides the supported Window service surface for tests.
 `makeTestWindowClient()` records `Window.create` and `Window.close` calls and

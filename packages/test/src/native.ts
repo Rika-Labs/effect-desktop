@@ -407,10 +407,8 @@ export const makeTestDialogClient = (options: TestDialogOptions = {}): TestDialo
   } satisfies TestDialogRpcs)
 }
 
-export const TestDialog = Object.freeze({
-  layer: (options?: TestDialogOptions): Layer.Layer<Dialog> =>
-    makeDialogServiceLayer(makeTestDialogClient(options))
-})
+export const DialogTest = (options?: TestDialogOptions): Layer.Layer<Dialog> =>
+  makeDialogServiceLayer(makeTestDialogClient(options))
 
 // ---------------------------------------------------------------------------
 // TestClipboard
@@ -472,9 +470,8 @@ export const makeTestClipboardClient = (): TestClipboardRpcs => {
   } satisfies TestClipboardRpcs)
 }
 
-export const TestClipboard = Object.freeze({
-  layer: (): Layer.Layer<Clipboard> => makeClipboardServiceLayer(makeTestClipboardClient())
-})
+export const ClipboardTest = (): Layer.Layer<Clipboard> =>
+  makeClipboardServiceLayer(makeTestClipboardClient())
 
 // ---------------------------------------------------------------------------
 // TestNotification
@@ -990,10 +987,8 @@ export const makeTestScreenClient = (_options: TestScreenOptions = {}): TestScre
   } satisfies TestScreenRpcs)
 }
 
-export const TestScreen = Object.freeze({
-  layer: (options?: TestScreenOptions): Layer.Layer<Screen> =>
-    makeScreenServiceLayer(makeTestScreenClient(options))
-})
+export const ScreenTest = (options?: TestScreenOptions): Layer.Layer<Screen> =>
+  makeScreenServiceLayer(makeTestScreenClient(options))
 
 // ---------------------------------------------------------------------------
 // TestShell
@@ -1139,14 +1134,14 @@ export const TestDesktopLive = (
 ): Layer.Layer<TestDesktopServices> =>
   Layer.mergeAll(
     TestApp.layer(options.app),
-    TestClipboard.layer(),
+    ClipboardTest(),
     TestCrashReporter.layer(),
-    TestDialog.layer(options.dialog),
+    DialogTest(options.dialog),
     TestMenu.layer(),
     TestNotification.layer(),
     TestPowerMonitor.layer(),
     TestSafeStorage.layer(),
-    TestScreen.layer(options.screen),
+    ScreenTest(options.screen),
     TestShell.layer(),
     TestSystemAppearance.layer(options.systemAppearance),
     TestTray.layer(),

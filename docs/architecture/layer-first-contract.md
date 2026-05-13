@@ -79,14 +79,14 @@ Use `Desktop.Rpc.supportedGroup(group)` when a capability intentionally publishe
 
 ## Current proof
 
-`packages/test/src/index.test.ts` contains the `Screen programs run unchanged through live, client, and test layers` test. It defines one `Effect.Effect<string, ScreenError, Screen>` program and runs it through:
+`packages/test/src/index.test.ts` contains the `native capability programs run unchanged through Live, Client, and Test layers` test. It defines user-level `Effect` programs for `Screen`, `Clipboard`, and `Dialog` and runs each through:
 
-- `ScreenLive` with an explicit `ScreenClient` layer;
-- `ScreenLive` with `makeScreenBridgeClientLayer(...)`;
-- `TestScreen.layer(...)`.
+- the capability `*Live` layer with an explicit deterministic `*Client` layer;
+- the capability `*Live` layer with `make*BridgeClientLayer(...)`;
+- the matching deterministic `*Test(...)` layer from `@effect-desktop/test`.
 
 That is the minimum substitution claim this contract requires: provider replacement changes layers, not user code.
 
-`packages/native/src/screen.ts` is the current generated native vertical slice. `ScreenRpcs` is the canonical Effect `RpcGroup`; `ScreenSurface` derives the server, client, test-client, schema-doc, and law artifacts; `makeScreenBridgeClientLayer(...)` adapts the existing bridge exchange into the generated RPC protocol instead of widening the public `Screen` contract.
+`packages/native/src/screen.ts`, `packages/native/src/clipboard.ts`, and `packages/native/src/dialog.ts` are the current generated native vertical slices. Their `*Rpcs` values are canonical Effect `RpcGroup`s; their `*Surface` values derive server, client, test-client, schema-doc, and law artifacts; their `make*BridgeClientLayer(...)` functions adapt the existing bridge exchange into the generated RPC protocol instead of widening the public service contract.
 
 `packages/native/src/window.ts` proves the supported-client rule. `WindowRpcs` keeps the full Phase 5 descriptor surface and support metadata, while `WindowSupportedRpcs` filters the callable generated client to `Window.create` and `Window.close`.

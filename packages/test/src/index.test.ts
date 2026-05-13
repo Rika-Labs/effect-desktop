@@ -32,10 +32,20 @@ import {
   wipeSecretBytes
 } from "@effect-desktop/core"
 import {
+  Clipboard,
+  ClipboardLive,
+  Dialog,
+  DialogLive,
   Screen,
   ScreenLive,
+  makeClipboardBridgeClientLayer,
+  makeClipboardServiceLayer,
+  makeDialogBridgeClientLayer,
+  makeDialogServiceLayer,
   makeScreenBridgeClientLayer,
   makeScreenClientLayer,
+  type ClipboardError,
+  type DialogError,
   type ScreenClientApi,
   type ScreenError
 } from "@effect-desktop/native"
@@ -66,7 +76,11 @@ import {
   registerLeakMatchers,
   runHeadless,
   ResourceLeakError,
-  TestScreen
+  ClipboardTest,
+  DialogTest,
+  makeTestClipboardClient,
+  makeTestDialogClient,
+  ScreenTest
 } from "./index.js"
 
 const id = (value: string): ResourceId => value as ResourceId
@@ -1272,54 +1286,174 @@ test("makeMemorySecretsSafeStorage models unavailable platform storage as typed 
   }
 })
 
-test("Screen programs run unchanged through live, client, and test layers", async () => {
-  const program: Effect.Effect<string, ScreenError, Screen> = Effect.gen(function* () {
+test("native capability programs run unchanged through Live, Client, and Test layers", async () => {
+  const screenProgram: Effect.Effect<string, ScreenError, Screen> = Effect.gen(function* () {
     const screen = yield* Screen
     const display = yield* screen.getPrimaryDisplay()
     return display.id
   })
-  const displayPayload = {
+  const screenDisplayPayload = {
     id: "primary",
     bounds: { x: 0, y: 0, width: 1440, height: 900 },
     workArea: { x: 0, y: 24, width: 1440, height: 876 },
     scaleFactor: 2,
     primary: true
   } as const
-  const display = new ScreenDisplay(displayPayload)
-  const liveClient: ScreenClientApi = Object.freeze({
-    getDisplays: () => Effect.succeed(new ScreenDisplaysResult({ displays: [display] })),
-    getPrimaryDisplay: () => Effect.succeed(display),
+  const screenDisplay = new ScreenDisplay(screenDisplayPayload)
+  const screenLiveClient: ScreenClientApi = Object.freeze({
+    getDisplays: () => Effect.succeed(new ScreenDisplaysResult({ displays: [screenDisplay] })),
+    getPrimaryDisplay: () => Effect.succeed(screenDisplay),
     getPointerPoint: () => Effect.succeed(new ScreenPoint({ x: 10, y: 20 })),
     isSupported: () => Effect.succeed(new ScreenSupportedResult({ supported: true }))
   })
-  const liveLayer = Layer.provide(ScreenLive, makeScreenClientLayer(liveClient))
-  const bridge = makeMockBridge()
-  await Effect.runPromise(bridge.succeed("Screen.getPrimaryDisplay", displayPayload))
-  const clientLayer = Layer.provide(ScreenLive, makeScreenBridgeClientLayer(bridge.exchange))
-  const testLayer = TestScreen.layer({
-    displays: [
-      {
-        id: "primary",
-        bounds: { width: 1440, height: 900 },
-        workArea: { y: 24, width: 1440, height: 876 },
-        scaleFactor: 2,
-        primary: true
-      }
-    ]
-  })
+  const screenBridge = makeMockBridge()
+  await Effect.runPromise(screenBridge.succeed("Screen.getPrimaryDisplay", screenDisplayPayload))
 
-  const [live, client, test] = await Promise.all([
-    Effect.runPromise(program.pipe(Effect.provide(liveLayer))),
-    Effect.runPromise(program.pipe(Effect.provide(clientLayer))),
-    Effect.runPromise(program.pipe(Effect.provide(testLayer)))
-  ])
+  const clipboardProgram: Effect.Effect<string, ClipboardError, Clipboard> = Effect.gen(
+    function* () {
+      const clipboard = yield* Clipboard
+      yield* clipboard.writeText("shared text")
+      const afterWrite = yield* clipboard.readText()
+      yield* clipboard.clear()
+      const afterClear = yield* clipboard.readText()
+      return `${afterWrite}:${afterClear}`
+    }
+  )
+  const clipboardLiveClient = makeTestClipboardClient()
+  const clipboardBridge = makeMockBridge()
+  await Effect.runPromise(
+    Effect.all([
+      clipboardBridge.succeed("Clipboard.writeText", undefined),
+      clipboardBridge.succeed("Clipboard.readText", { text: "shared text" }),
+      clipboardBridge.succeed("Clipboard.clear", undefined),
+      clipboardBridge.succeed("Clipboard.readText", { text: "" })
+    ])
+  )
 
-  expect({ live, client, test }).toEqual({
-    live: "primary",
-    client: "primary",
-    test: "primary"
+  const dialogProgram: Effect.Effect<string, DialogError, Dialog> = Effect.gen(function* () {
+    const dialog = yield* Dialog
+    const openPaths = yield* dialog.openFile({ defaultPath: "/tmp/input.txt" })
+    const savePath = yield* dialog.saveFile({ defaultPath: "/tmp/output.txt" })
+    yield* dialog.message({ level: "info", message: "Saved", detail: "details" })
+    const confirmed = yield* dialog.confirm({ message: "Proceed?", confirmLabel: "Yes" })
+    return `${openPaths.join(",")}:${savePath}:${confirmed ? "confirmed" : "cancelled"}`
   })
-  expect(bridge.calls().map((call) => call.method)).toEqual(["Screen.getPrimaryDisplay"])
+  const dialogOptions = {
+    openFilePaths: ["/tmp/input.txt"],
+    saveFilePath: "/tmp/output.txt",
+    confirmResult: true
+  } as const
+  const dialogLiveClient = makeTestDialogClient(dialogOptions)
+  const dialogBridge = makeMockBridge()
+  await Effect.runPromise(
+    Effect.all([
+      dialogBridge.succeed("Dialog.openFile", { paths: ["/tmp/input.txt"] }),
+      dialogBridge.succeed("Dialog.saveFile", { path: "/tmp/output.txt" }),
+      dialogBridge.succeed("Dialog.message", undefined),
+      dialogBridge.succeed("Dialog.confirm", { confirmed: true })
+    ])
+  )
+
+  const cases = [
+    {
+      name: "Screen",
+      expected: "primary",
+      calls: () => screenBridge.calls().map((call) => call.method),
+      expectedCalls: ["Screen.getPrimaryDisplay"],
+      runLive: () =>
+        Effect.runPromise(
+          screenProgram.pipe(
+            Effect.provide(Layer.provide(ScreenLive, makeScreenClientLayer(screenLiveClient)))
+          )
+        ),
+      runClient: () =>
+        Effect.runPromise(
+          screenProgram.pipe(
+            Effect.provide(
+              Layer.provide(ScreenLive, makeScreenBridgeClientLayer(screenBridge.exchange))
+            )
+          )
+        ),
+      runTest: () =>
+        Effect.runPromise(
+          screenProgram.pipe(
+            Effect.provide(
+              ScreenTest({
+                displays: [
+                  {
+                    id: "primary",
+                    bounds: { width: 1440, height: 900 },
+                    workArea: { y: 24, width: 1440, height: 876 },
+                    scaleFactor: 2,
+                    primary: true
+                  }
+                ]
+              })
+            )
+          )
+        )
+    },
+    {
+      name: "Clipboard",
+      expected: "shared text:",
+      calls: () => clipboardBridge.calls().map((call) => call.method),
+      expectedCalls: [
+        "Clipboard.writeText",
+        "Clipboard.readText",
+        "Clipboard.clear",
+        "Clipboard.readText"
+      ],
+      runLive: () =>
+        Effect.runPromise(
+          clipboardProgram.pipe(Effect.provide(makeClipboardServiceLayer(clipboardLiveClient)))
+        ),
+      runClient: () =>
+        Effect.runPromise(
+          clipboardProgram.pipe(
+            Effect.provide(
+              Layer.provide(ClipboardLive, makeClipboardBridgeClientLayer(clipboardBridge.exchange))
+            )
+          )
+        ),
+      runTest: () => Effect.runPromise(clipboardProgram.pipe(Effect.provide(ClipboardTest())))
+    },
+    {
+      name: "Dialog",
+      expected: "/tmp/input.txt:/tmp/output.txt:confirmed",
+      calls: () => dialogBridge.calls().map((call) => call.method),
+      expectedCalls: ["Dialog.openFile", "Dialog.saveFile", "Dialog.message", "Dialog.confirm"],
+      runLive: () =>
+        Effect.runPromise(
+          dialogProgram.pipe(Effect.provide(makeDialogServiceLayer(dialogLiveClient)))
+        ),
+      runClient: () =>
+        Effect.runPromise(
+          dialogProgram.pipe(
+            Effect.provide(
+              Layer.provide(DialogLive, makeDialogBridgeClientLayer(dialogBridge.exchange))
+            )
+          )
+        ),
+      runTest: () =>
+        Effect.runPromise(dialogProgram.pipe(Effect.provide(DialogTest(dialogOptions))))
+    }
+  ] as const
+
+  for (const capability of cases) {
+    const [live, client, test] = await Promise.all([
+      capability.runLive(),
+      capability.runClient(),
+      capability.runTest()
+    ])
+
+    expect({ name: capability.name, live, client, test }).toEqual({
+      name: capability.name,
+      live: capability.expected,
+      client: capability.expected,
+      test: capability.expected
+    })
+    expect(capability.calls()).toEqual(Array.from(capability.expectedCalls))
+  }
 })
 
 const nextSequence = (prefix: string): (() => string) => {
