@@ -29,6 +29,16 @@ import {
   type Ref
 } from "vue"
 
+export {
+  defaultRegistry as desktopAtomDefaultRegistry,
+  injectRegistry as injectDesktopAtomRegistry,
+  registryKey as desktopAtomRegistryKey,
+  useAtom,
+  useAtomRef,
+  useAtomSet,
+  useAtomValue
+} from "@effect/atom-vue"
+
 type EndpointName<Tag extends string> = Tag extends `${string}.${infer Rest}`
   ? EndpointName<Rest>
   : Uncapitalize<Tag>

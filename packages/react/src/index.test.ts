@@ -6,7 +6,7 @@ import {
   DuplicateDesktopRpcNameError,
   MissingDesktopRpcClientError
 } from "@effect-desktop/core"
-import { AsyncResult } from "effect/unstable/reactivity"
+import { AsyncResult, Atom } from "effect/unstable/reactivity"
 import { Cause, Effect, Exit, Option, Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { createElement } from "react"
@@ -23,6 +23,7 @@ import {
   windows,
   type PermissionState,
   useDesktop,
+  useAtomValue,
   usePermission,
   useWindow
 } from "./index.js"
@@ -114,6 +115,15 @@ test("DesktopProvider renders children without crashing (SSR)", () => {
     createElement(DesktopProvider, { client: desktop }, createElement(Child))
   )
   expect(html).toBe("<span>child</span>")
+})
+
+test("DesktopProvider exposes the upstream Effect atom registry", () => {
+  const count = Atom.make(42)
+  const Probe = () => createElement("span", null, useAtomValue(count))
+
+  expect(
+    renderToStaticMarkup(createElement(DesktopProvider, { client: desktop }, createElement(Probe)))
+  ).toBe("<span>42</span>")
 })
 
 test("hooks model a missing provider without throwing", () => {

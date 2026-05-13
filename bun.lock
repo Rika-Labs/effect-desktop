@@ -288,6 +288,7 @@
         "@effect-desktop/core": "workspace:*",
         "@effect-desktop/native": "workspace:*",
         "@effect-desktop/platform-browser": "workspace:*",
+        "@effect/atom-react": "4.0.0-beta.60",
         "effect": "4.0.0-beta.60",
       },
       "devDependencies": {
@@ -306,6 +307,7 @@
       "dependencies": {
         "@effect-desktop/bridge": "workspace:*",
         "@effect-desktop/core": "workspace:*",
+        "@effect/atom-solid": "4.0.0-beta.60",
         "effect": "4.0.0-beta.60",
       },
       "devDependencies": {
@@ -347,6 +349,7 @@
       "dependencies": {
         "@effect-desktop/bridge": "workspace:*",
         "@effect-desktop/core": "workspace:*",
+        "@effect/atom-vue": "4.0.0-beta.60",
         "effect": "4.0.0-beta.60",
       },
       "devDependencies": {
@@ -651,6 +654,12 @@
     "@effect-desktop/vite": ["@effect-desktop/vite@workspace:packages/vite"],
 
     "@effect-desktop/vue": ["@effect-desktop/vue@workspace:packages/vue"],
+
+    "@effect/atom-react": ["@effect/atom-react@4.0.0-beta.60", "", { "peerDependencies": { "effect": "^4.0.0-beta.60", "react": "^19.2.4", "scheduler": "*" } }, "sha512-AxP9Wotmu2pW4XNQhMskOwC+Fjo117I5OQlTamJwrqlG1ISM+IZPbm7etWgEb5V4rVHafcd2jJXJHuK0ZKCivQ=="],
+
+    "@effect/atom-solid": ["@effect/atom-solid@4.0.0-beta.60", "", { "peerDependencies": { "effect": "^4.0.0-beta.60", "solid-js": ">=1 <2" } }, "sha512-HHXjXXgFQUC6jG09IlQMQfa4McfTNWPTFP7AX28vx5ux/5b6TvPxOrneqHw+Ydo3KacLGTUvV10jwa+dQm/ibw=="],
+
+    "@effect/atom-vue": ["@effect/atom-vue@4.0.0-beta.60", "", { "peerDependencies": { "effect": "^4.0.0-beta.60", "vue": "^3.5.0" } }, "sha512-rnp1bcfXUVzYWzL9b9Sb5dsdYEQmY4LlYC+ZkLZDj5b/IB1dDVHmMQAqZELQexhV+zBiLwcsPZSMTj9Ex7DKIQ=="],
 
     "@effect/opentelemetry": ["@effect/opentelemetry@4.0.0-beta.60", "", { "peerDependencies": { "@opentelemetry/api": "^1.9", "@opentelemetry/resources": "^2.0.0", "@opentelemetry/sdk-logs": ">=0.203.0 <0.300.0", "@opentelemetry/sdk-metrics": "^2.0.0", "@opentelemetry/sdk-trace-base": "^2.0.0", "@opentelemetry/sdk-trace-node": "^2.0.0", "@opentelemetry/sdk-trace-web": "^2.0.0", "@opentelemetry/semantic-conventions": "^1.33.0", "effect": "^4.0.0-beta.60" }, "optionalPeers": ["@opentelemetry/api", "@opentelemetry/resources", "@opentelemetry/sdk-logs", "@opentelemetry/sdk-metrics", "@opentelemetry/sdk-trace-base", "@opentelemetry/sdk-trace-node", "@opentelemetry/sdk-trace-web"] }, "sha512-yQCo/T6divTcg09VGJpi2/vDOqUNFwxkgGWT1groQdKgy9A/NlHDMk9B75ALhT/NeNzqsYAhhIlu6Xrv+Ghj+A=="],
 

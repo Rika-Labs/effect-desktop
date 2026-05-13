@@ -2,6 +2,7 @@ import { makeHostProtocolInvalidStateError } from "@effect-desktop/bridge"
 import type { WindowError } from "@effect-desktop/native"
 import type { WindowCreateOptions, WindowHandle } from "@effect-desktop/native/contracts"
 import { BrowserContext, type IndexedDb } from "@effect-desktop/platform-browser"
+import { RegistryContext as DesktopAtomRegistryContext } from "@effect/atom-react"
 import { Effect, Layer, ManagedRuntime, Option } from "effect"
 import { AtomRegistry, Reactivity } from "effect/unstable/reactivity"
 import { createContext, createElement, useContext, useEffect, useMemo, type ReactNode } from "react"
@@ -100,7 +101,11 @@ export const DesktopProvider = ({
   }, [ctx, onCleanupError])
 
   const value = Option.some(ctx)
-  return createElement(DesktopContext.Provider, { value }, children)
+  return createElement(
+    DesktopContext.Provider,
+    { value },
+    createElement(DesktopAtomRegistryContext.Provider, { value: ctx.registry }, children)
+  )
 }
 
 export const useDesktopContext = (): Option.Option<DesktopRuntimeContext> =>

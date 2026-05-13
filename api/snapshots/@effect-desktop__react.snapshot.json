@@ -64,6 +64,16 @@
       "signature": "export type DesktopAsyncStatus = | \"idle\" | \"running\" | \"success\" | \"failure\" | \"canceled\" | \"unavailable\""
     },
     {
+      "name": "DesktopAtomRegistryContext",
+      "kind": "value",
+      "signature": "const RegistryContext: React.Context<AtomRegistry.AtomRegistry>"
+    },
+    {
+      "name": "DesktopAtomRegistryProvider",
+      "kind": "value",
+      "signature": "const RegistryProvider: (options: { readonly children?: React.ReactNode | undefined; readonly initialValues?: Iterable<readonly [Atom.Atom<any>, any]> | undefined; readonly scheduleTask?: ((f: () => void) => () => void) | undefined; readonly timeoutResolution?: number | undefined; readonly defaultIdleTTL?: number | undefined; }) => React.FunctionComponentElement<React.ProviderProps<AtomRegistry.AtomRegistry>>"
+    },
+    {
       "name": "DesktopClient",
       "kind": "interface",
       "signature": "export interface DesktopClient { readonly window: DesktopWindowClient }"
@@ -271,17 +281,42 @@
     {
       "name": "useAtom",
       "kind": "value",
-      "signature": "const useAtom: <R, W>(atom: Atom.Writable<R, W>) => [R | undefined, (value: W) => void]"
+      "signature": "const useAtom: <R, W, const Mode extends \"value\" | \"promise\" | \"promiseExit\" = never>(atom: Atom.Writable<R, W>, options?: { readonly mode?: ([R] extends [AsyncResult.AsyncResult<any, any>] ? Mode : \"value\") | undefined; }) => readonly [value: R, write: \"promise\" extends Mode ? ((value: W) => Promise<AsyncResult.AsyncResult.Success<R>>) : \"promiseExit\" extends Mode ? ((value: W) => Promise<Exit.Exit<AsyncResult.AsyncResult.Success<R>, AsyncResult.AsyncResult.Failure<R>>>) : ((value: W | ((value: R) => W)) => void)]"
+    },
+    {
+      "name": "useAtomInitialValues",
+      "kind": "value",
+      "signature": "const useAtomInitialValues: (initialValues: Iterable<readonly [Atom.Atom<any>, any]>) => void"
+    },
+    {
+      "name": "useAtomMount",
+      "kind": "value",
+      "signature": "const useAtomMount: <A>(atom: Atom.Atom<A>) => void"
+    },
+    {
+      "name": "useAtomRefresh",
+      "kind": "value",
+      "signature": "const useAtomRefresh: <A>(atom: Atom.Atom<A>) => () => void"
     },
     {
       "name": "useAtomSet",
       "kind": "value",
-      "signature": "const useAtomSet: <R, W>(atom: Atom.Writable<R, W>) => ((value: W) => void)"
+      "signature": "const useAtomSet: <R, W, Mode extends \"value\" | \"promise\" | \"promiseExit\" = never>(atom: Atom.Writable<R, W>, options?: { readonly mode?: ([R] extends [AsyncResult.AsyncResult<any, any>] ? Mode : \"value\") | undefined; }) => \"promise\" extends Mode ? ((value: W) => Promise<AsyncResult.AsyncResult.Success<R>>) : \"promiseExit\" extends Mode ? ((value: W) => Promise<Exit.Exit<AsyncResult.AsyncResult.Success<R>, AsyncResult.AsyncResult.Failure<R>>>) : ((value: W | ((value: R) => W)) => void)"
+    },
+    {
+      "name": "useAtomSubscribe",
+      "kind": "value",
+      "signature": "const useAtomSubscribe: <A>(atom: Atom.Atom<A>, f: (_: A) => void, options?: { readonly immediate?: boolean; }) => void"
+    },
+    {
+      "name": "useAtomSuspense",
+      "kind": "value",
+      "signature": "const useAtomSuspense: <A, E, const IncludeFailure extends boolean = false>(atom: Atom.Atom<AsyncResult.AsyncResult<A, E>>, options?: { readonly suspendOnWaiting?: boolean | undefined; readonly includeFailure?: IncludeFailure | undefined; }) => AsyncResult.Success<A, E> | (IncludeFailure extends true ? AsyncResult.Failure<A, E> : never)"
     },
     {
       "name": "useAtomValue",
       "kind": "value",
-      "signature": "const useAtomValue: <A>(atom: Atom.Atom<A>) => A | undefined"
+      "signature": "const useAtomValue: { <A>(atom: Atom.Atom<A>): A; <A, B>(atom: Atom.Atom<A>, f: (_: A) => B): B; }"
     },
     {
       "name": "useCloseCurrentWindowMutation",

@@ -56,7 +56,18 @@ export {
   type WindowCreateMutation
 } from "./windows.js"
 
-export { useAtom, useAtomValue, useAtomSet } from "./atoms.js"
+export {
+  RegistryContext as DesktopAtomRegistryContext,
+  RegistryProvider as DesktopAtomRegistryProvider,
+  useAtom,
+  useAtomInitialValues,
+  useAtomMount,
+  useAtomRefresh,
+  useAtomSet,
+  useAtomSubscribe,
+  useAtomSuspense,
+  useAtomValue
+} from "@effect/atom-react"
 
 export {
   useDesktopStream,

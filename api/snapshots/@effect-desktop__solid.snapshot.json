@@ -4,6 +4,16 @@
   "entrypoint": "src/index.ts",
   "symbols": [
     {
+      "name": "DesktopAtomRegistryContext",
+      "kind": "value",
+      "signature": "const RegistryContext: import(\"solid-js\").Context<AtomRegistry.AtomRegistry>"
+    },
+    {
+      "name": "DesktopAtomRegistryProvider",
+      "kind": "value",
+      "signature": "const RegistryProvider: (options: { readonly children?: JSX.Element | undefined; readonly initialValues?: Iterable<readonly [Atom.Atom<any>, any]> | undefined; readonly scheduleTask?: ((f: () => void) => () => void) | undefined; readonly timeoutResolution?: number | undefined; readonly defaultIdleTTL?: number | undefined; }) => JSX.Element"
+    },
+    {
       "name": "MissingDesktopContextError",
       "kind": "class",
       "signature": "export class MissingDesktopContextError extends Data.TaggedError(\"MissingDesktopContextError\")<{ readonly framework: DesktopFramework readonly message: string readonly code: string readonly category: DesktopPublicErrorCategory readonly summary: string readonly details: Readonly<Record<string, unknown>> readonly actor: string readonly remediation: string readonly docsUrl: string }> {}"
@@ -77,6 +87,61 @@
       "name": "SolidStreamState",
       "kind": "interface",
       "signature": "export interface SolidStreamState<A, E> { readonly status: \"idle\" | \"running\" | \"closed\" | \"failure\" readonly data: readonly A[] readonly cause: Cause.Cause<E> | undefined }"
+    },
+    {
+      "name": "useAtom",
+      "kind": "value",
+      "signature": "const useAtom: <R, W, const Mode extends \"value\" | \"promise\" | \"promiseExit\" = never>(atom: () => Atom.Writable<R, W>, options?: { readonly mode?: ([R] extends [AsyncResult.AsyncResult<any, any>] ? Mode : \"value\") | undefined; }) => readonly [value: Accessor<R>, write: \"promise\" extends Mode ? ((value: W) => Promise<AsyncResult.AsyncResult.Success<R>>) : \"promiseExit\" extends Mode ? ((value: W) => Promise<Exit.Exit<AsyncResult.AsyncResult.Success<R>, AsyncResult.AsyncResult.Failure<R>>>) : ((value: W | ((value: R) => W)) => void)]"
+    },
+    {
+      "name": "useAtomInitialValues",
+      "kind": "value",
+      "signature": "const useAtomInitialValues: (initialValues: Iterable<readonly [Atom.Atom<any>, any]>) => void"
+    },
+    {
+      "name": "useAtomMount",
+      "kind": "value",
+      "signature": "const useAtomMount: <A>(atom: () => Atom.Atom<A>) => void"
+    },
+    {
+      "name": "useAtomRef",
+      "kind": "value",
+      "signature": "const useAtomRef: <A>(ref: () => AtomRef.ReadonlyRef<A>) => Accessor<A>"
+    },
+    {
+      "name": "useAtomRefProp",
+      "kind": "value",
+      "signature": "const useAtomRefProp: <A, K extends keyof A>(ref: () => AtomRef.AtomRef<A>, prop: K) => Accessor<AtomRef.AtomRef<A[K]>>"
+    },
+    {
+      "name": "useAtomRefPropValue",
+      "kind": "value",
+      "signature": "const useAtomRefPropValue: <A, K extends keyof A>(ref: () => AtomRef.AtomRef<A>, prop: K) => Accessor<A[K]>"
+    },
+    {
+      "name": "useAtomRefresh",
+      "kind": "value",
+      "signature": "const useAtomRefresh: <A>(atom: () => Atom.Atom<A>) => () => void"
+    },
+    {
+      "name": "useAtomResource",
+      "kind": "value",
+      "signature": "const useAtomResource: <A, E>(atom: () => Atom.Atom<AsyncResult.AsyncResult<A, E>>, options?: ResourceOptions<A> & { readonly suspendOnWaiting?: boolean | undefined; }) => ResourceReturn<A, void>"
+    },
+    {
+      "name": "useAtomSet",
+      "kind": "value",
+      "signature": "const useAtomSet: <R, W, Mode extends \"value\" | \"promise\" | \"promiseExit\" = never>(atom: () => Atom.Writable<R, W>, options?: { readonly mode?: ([R] extends [AsyncResult.AsyncResult<any, any>] ? Mode : \"value\") | undefined; }) => \"promise\" extends Mode ? ((value: W) => Promise<AsyncResult.AsyncResult.Success<R>>) : \"promiseExit\" extends Mode ? ((value: W) => Promise<Exit.Exit<AsyncResult.AsyncResult.Success<R>, AsyncResult.AsyncResult.Failure<R>>>) : ((value: W | ((value: R) => W)) => void)"
+    },
+    {
+      "name": "useAtomSubscribe",
+      "kind": "value",
+      "signature": "const useAtomSubscribe: <A>(atom: () => Atom.Atom<A>, f: (_: A) => void, options?: { readonly immediate?: boolean; }) => void"
+    },
+    {
+      "name": "useAtomValue",
+      "kind": "value",
+      "signature": "const useAtomValue: { <A>(atom: () => Atom.Atom<A>): Accessor<A>; <A, B>(atom: () => Atom.Atom<A>, f: (_: A) => B): Accessor<B>; }"
     }
   ]
 }

@@ -28,6 +28,22 @@ import {
 } from "solid-js"
 import { createComponent, render as solidRender } from "solid-js/web"
 
+export {
+  RegistryContext as DesktopAtomRegistryContext,
+  RegistryProvider as DesktopAtomRegistryProvider,
+  useAtom,
+  useAtomInitialValues,
+  useAtomMount,
+  useAtomRef,
+  useAtomRefProp,
+  useAtomRefPropValue,
+  useAtomRefresh,
+  useAtomResource,
+  useAtomSet,
+  useAtomSubscribe,
+  useAtomValue
+} from "@effect/atom-solid"
+
 type EndpointName<Tag extends string> = Tag extends `${string}.${infer Rest}`
   ? EndpointName<Rest>
   : Uncapitalize<Tag>
