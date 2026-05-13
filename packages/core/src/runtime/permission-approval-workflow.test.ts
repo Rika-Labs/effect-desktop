@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import { Cause, Effect, Exit, Fiber, Option } from "effect"
 import { WorkflowEngine } from "effect/unstable/workflow"
 
+import { type AuditEventsApi, type AuditEvent } from "./audit-events.js"
 import {
   Grant,
   makePermissionApprovalWorkflowLayer,
@@ -29,11 +30,13 @@ test("PermissionApproval workflow grants when user approves", async () => {
   }
   const actor = { kind: "app" as const, id: "test-app" }
   const traceId = "trace-approve-1"
+  const auditRows: AuditEvent[] = []
 
   let capturedToken: string | undefined
 
   const layer = makePermissionApprovalWorkflowLayer({
     registry,
+    audit: memoryAudit(auditRows),
     notify: (token, _traceId) =>
       Effect.sync(() => {
         capturedToken = token
@@ -58,6 +61,10 @@ test("PermissionApproval workflow grants when user approves", async () => {
   expect(result.traceId).toBe(traceId)
   expect(result.token).toBeDefined()
   expect(result.grantedAt).toBeGreaterThan(0)
+  expect(auditRows.map((row) => row.kind)).toContain("approval-requested")
+  expect(auditRows.map((row) => row.kind)).toContain("approval-granted")
+  expect(auditRows[0]?.actor).toMatchObject(actor)
+  expect(JSON.stringify(auditRows[0]?.actor)).toBe(JSON.stringify(actor))
 })
 
 test("PermissionApproval workflow fails with PermissionDenied when user denies", async () => {
@@ -104,6 +111,13 @@ test("PermissionApproval workflow fails with PermissionDenied when user denies",
       expect((failReason.error as { _tag: string })._tag).toBe("PermissionDenied")
     }
   }
+})
+
+const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
+  emit: (event: AuditEvent) =>
+    Effect.sync(() => {
+      rows.push(event)
+    })
 })
 
 test("resolveApprovalDeferred constructs an Effect for the branded token", () => {

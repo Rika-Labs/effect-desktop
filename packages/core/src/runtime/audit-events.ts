@@ -6,10 +6,103 @@ import {
   makeInspectorSafetyPolicy,
   type InspectorSafetyPolicyApi
 } from "./inspector-safety-policy.js"
-import type { NormalizedCapability, PermissionActor } from "./permission-registry.js"
+import {
+  NormalizedCapability,
+  PermissionActor,
+  PermissionActorPayload,
+  PermissionMetadataText
+} from "./permission-contracts.js"
 
 const NonEmptyString = Schema.NonEmptyString
 const AuditTimestamp = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0))
+const AuditPayloadBase = {
+  source: NonEmptyString,
+  traceId: NonEmptyString,
+  outcome: NonEmptyString,
+  timestamp: Schema.optionalKey(AuditTimestamp)
+}
+const ApprovalAuditActor = Schema.Union([PermissionActorPayload, PermissionMetadataText])
+
+const PermissionAuditPayload = Schema.Struct({
+  ...AuditPayloadBase,
+  kind: Schema.Literals([
+    "permission-granted",
+    "permission-denied",
+    "permission-revoked",
+    "permission-expired",
+    "permission-consumed",
+    "permission-used"
+  ]),
+  normalizedCapability: NormalizedCapability,
+  actor: PermissionActorPayload,
+  resource: Schema.optionalKey(Schema.String),
+  details: Schema.optionalKey(Schema.Unknown)
+})
+type PermissionAuditPayload = typeof PermissionAuditPayload.Type
+
+const ApprovalAuditPayload = Schema.Struct({
+  ...AuditPayloadBase,
+  kind: Schema.Literals(["approval-requested", "approval-granted", "approval-denied"]),
+  actor: ApprovalAuditActor,
+  resource: Schema.optionalKey(Schema.String),
+  details: Schema.optionalKey(Schema.Unknown)
+})
+type ApprovalAuditPayload = typeof ApprovalAuditPayload.Type
+
+const CommandAuditDetails = Schema.Struct({
+  commandId: NonEmptyString
+})
+type CommandAuditDetails = typeof CommandAuditDetails.Type
+
+const CommandAuditPayload = Schema.Struct({
+  ...AuditPayloadBase,
+  kind: Schema.Literals(["command-registered", "command-unregistered", "command-invoked"]),
+  details: CommandAuditDetails
+})
+type CommandAuditPayload = typeof CommandAuditPayload.Type
+
+const JobRetryingAuditPayload = Schema.Struct({
+  ...AuditPayloadBase,
+  kind: Schema.Literal("job-retrying"),
+  details: Schema.optionalKey(Schema.Unknown)
+})
+type JobRetryingAuditPayload = typeof JobRetryingAuditPayload.Type
+
+const SecretsAuditDetails = Schema.Struct({
+  namespace: NonEmptyString,
+  operation: NonEmptyString,
+  key: Schema.optionalKey(NonEmptyString)
+})
+type SecretsAuditDetails = typeof SecretsAuditDetails.Type
+
+const SecretsAuditPayload = Schema.Struct({
+  ...AuditPayloadBase,
+  kind: Schema.Literal("secrets-accessed"),
+  details: SecretsAuditDetails
+})
+type SecretsAuditPayload = typeof SecretsAuditPayload.Type
+
+const TraceIdMissingAuditDetails = Schema.Struct({
+  boundary: NonEmptyString,
+  envelopeKind: NonEmptyString,
+  requestId: Schema.Union([Schema.String, Schema.Number]),
+  method: NonEmptyString
+})
+type TraceIdMissingAuditDetails = typeof TraceIdMissingAuditDetails.Type
+
+const TraceIdMissingAuditPayload = Schema.Struct({
+  ...AuditPayloadBase,
+  kind: Schema.Literal("trace-id-missing"),
+  details: TraceIdMissingAuditDetails
+})
+type TraceIdMissingAuditPayload = typeof TraceIdMissingAuditPayload.Type
+type AuditPayload =
+  | PermissionAuditPayload
+  | ApprovalAuditPayload
+  | CommandAuditPayload
+  | JobRetryingAuditPayload
+  | SecretsAuditPayload
+  | TraceIdMissingAuditPayload
 
 export const AuditEventKind = Schema.Literals([
   "permission-granted",
@@ -75,7 +168,7 @@ export interface ApprovalAuditEventInput {
   readonly source: string
   readonly traceId: string
   readonly outcome: string
-  readonly actor: string
+  readonly actor: string | PermissionActor
   readonly resource?: string
   readonly timestamp?: number
   readonly details?: unknown
@@ -90,27 +183,28 @@ export interface AuditEventsOptions {
   readonly inspectorSafety?: InspectorSafetyPolicyApi
 }
 
-const auditPrimaryKey = (p: unknown): string => {
-  const payload = p as { readonly traceId?: string }
-  return payload.traceId ?? ""
-}
+const auditPrimaryKey = (payload: { readonly traceId: string }): string => payload.traceId
 
 export const AuditGroup = EventGroup.empty
-  .add({ tag: "permission-granted", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
-  .add({ tag: "permission-denied", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
-  .add({ tag: "permission-revoked", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
-  .add({ tag: "permission-expired", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
-  .add({ tag: "permission-consumed", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
-  .add({ tag: "permission-used", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
-  .add({ tag: "approval-requested", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
-  .add({ tag: "approval-granted", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
-  .add({ tag: "approval-denied", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
-  .add({ tag: "command-registered", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
-  .add({ tag: "command-unregistered", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
-  .add({ tag: "command-invoked", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
-  .add({ tag: "job-retrying", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
-  .add({ tag: "secrets-accessed", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
-  .add({ tag: "trace-id-missing", primaryKey: auditPrimaryKey, payload: Schema.Unknown })
+  .add({ tag: "permission-granted", primaryKey: auditPrimaryKey, payload: PermissionAuditPayload })
+  .add({ tag: "permission-denied", primaryKey: auditPrimaryKey, payload: PermissionAuditPayload })
+  .add({ tag: "permission-revoked", primaryKey: auditPrimaryKey, payload: PermissionAuditPayload })
+  .add({ tag: "permission-expired", primaryKey: auditPrimaryKey, payload: PermissionAuditPayload })
+  .add({ tag: "permission-consumed", primaryKey: auditPrimaryKey, payload: PermissionAuditPayload })
+  .add({ tag: "permission-used", primaryKey: auditPrimaryKey, payload: PermissionAuditPayload })
+  .add({ tag: "approval-requested", primaryKey: auditPrimaryKey, payload: ApprovalAuditPayload })
+  .add({ tag: "approval-granted", primaryKey: auditPrimaryKey, payload: ApprovalAuditPayload })
+  .add({ tag: "approval-denied", primaryKey: auditPrimaryKey, payload: ApprovalAuditPayload })
+  .add({ tag: "command-registered", primaryKey: auditPrimaryKey, payload: CommandAuditPayload })
+  .add({ tag: "command-unregistered", primaryKey: auditPrimaryKey, payload: CommandAuditPayload })
+  .add({ tag: "command-invoked", primaryKey: auditPrimaryKey, payload: CommandAuditPayload })
+  .add({ tag: "job-retrying", primaryKey: auditPrimaryKey, payload: JobRetryingAuditPayload })
+  .add({ tag: "secrets-accessed", primaryKey: auditPrimaryKey, payload: SecretsAuditPayload })
+  .add({
+    tag: "trace-id-missing",
+    primaryKey: auditPrimaryKey,
+    payload: TraceIdMissingAuditPayload
+  })
 
 const AuditSchema = EventLog.schema(AuditGroup)
 
@@ -188,12 +282,62 @@ const makeEmit =
       if (Option.isNone(decision.value)) {
         return
       }
-      yield* log.write({
-        schema: AuditSchema,
-        event: event.kind,
-        payload: decision.value.value
-      }) as Effect.Effect<void, EventJournal.EventJournalError, never>
+      yield* writeAuditPayload(log, event.kind, decision.value.value)
     })
+
+const writeAuditPayload = (
+  log: EventLog.EventLog["Service"],
+  kind: AuditEventKind,
+  payload: unknown
+): Effect.Effect<void, EventJournal.EventJournalError, never> => {
+  switch (kind) {
+    case "permission-granted":
+    case "permission-denied":
+    case "permission-revoked":
+    case "permission-expired":
+    case "permission-consumed":
+    case "permission-used":
+      return writePayload(log, kind, PermissionAuditPayload, payload)
+    case "approval-requested":
+    case "approval-granted":
+    case "approval-denied":
+      return writePayload(log, kind, ApprovalAuditPayload, payload)
+    case "command-registered":
+    case "command-unregistered":
+    case "command-invoked":
+      return writePayload(log, kind, CommandAuditPayload, payload)
+    case "job-retrying":
+      return writePayload(log, kind, JobRetryingAuditPayload, payload)
+    case "secrets-accessed":
+      return writePayload(log, kind, SecretsAuditPayload, payload)
+    case "trace-id-missing":
+      return writePayload(log, kind, TraceIdMissingAuditPayload, payload)
+  }
+}
+
+const writePayload = (
+  log: EventLog.EventLog["Service"],
+  kind: AuditEventKind,
+  schema:
+    | typeof PermissionAuditPayload
+    | typeof ApprovalAuditPayload
+    | typeof CommandAuditPayload
+    | typeof JobRetryingAuditPayload
+    | typeof SecretsAuditPayload
+    | typeof TraceIdMissingAuditPayload,
+  payload: unknown
+): Effect.Effect<void, EventJournal.EventJournalError, never> =>
+  Schema.decodeUnknownEffect(schema)(payload).pipe(
+    Effect.orDie,
+    Effect.flatMap((decoded) =>
+      log.write({
+        schema: AuditSchema,
+        event: kind,
+        // Dynamic audit dispatch narrows the event and schema together above.
+        payload: decoded as AuditPayload
+      })
+    )
+  ) as Effect.Effect<void, EventJournal.EventJournalError, never>
 
 export const emitAuditEvent = (
   audit: AuditEventsApi | undefined,

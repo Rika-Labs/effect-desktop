@@ -3,171 +3,46 @@ import { randomUUID } from "node:crypto"
 import { Context, Data, Deferred, Effect, Option, PubSub, Ref, Schema, Stream } from "effect"
 
 import { emitAuditEvent, permissionAuditEvent, type AuditEventsApi } from "./audit-events.js"
+import {
+  ActorKind as ActorKindSchema,
+  AuditPolicy as AuditPolicySchema,
+  CapabilityKind as CapabilityKindSchema,
+  GrantedCapability,
+  NormalizedCapability,
+  PermissionActor,
+  PermissionContext,
+  PermissionDeclaration,
+  PermissionDecision,
+  PermissionEffect as PermissionEffectSchema,
+  PermissionGrantSnapshot,
+  PermissionMetadataText,
+  PermissionQuery,
+  PermissionRule,
+  PermissionTimestamp,
+  type GrantStatus
+} from "./permission-contracts.js"
 
-const NonEmptyString = Schema.NonEmptyString
-const PermissionMetadataText = Schema.NonEmptyString.check(
-  // eslint-disable-next-line no-control-regex
-  Schema.isPattern(/^[^\x00-\x1F\x7F]+$/)
-)
-const AuditPolicy = Schema.Literals(["always", "on-deny", "never"])
-export type AuditPolicy = typeof AuditPolicy.Type
-const PermissionTimestamp = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
-const CapabilityKind = Schema.Literals([
-  "filesystem.read",
-  "filesystem.write",
-  "filesystem.delete",
-  "sqlite.open",
-  "process.spawn",
-  "pty.spawn",
-  "network.connect",
-  "secrets.read",
-  "secrets.write",
-  "safeStorage.read",
-  "safeStorage.write",
-  "native.invoke"
-])
-export type CapabilityKind = typeof CapabilityKind.Type
-const PermissionEffect = Schema.Literals([
-  "allow",
-  "deny",
-  "approval",
-  "approval-denied",
-  "revoked",
-  "expired",
-  "consumed"
-])
-export type PermissionEffect = typeof PermissionEffect.Type
-const ActorKind = Schema.Literals(["app", "window", "resource", "worker", "process"])
+const ActorKind = ActorKindSchema
+const AuditPolicy = AuditPolicySchema
+const CapabilityKind = CapabilityKindSchema
+const PermissionEffect = PermissionEffectSchema
+
+export {
+  GrantedCapability,
+  NormalizedCapability,
+  PermissionActor,
+  PermissionContext,
+  PermissionDeclaration,
+  PermissionDecision,
+  PermissionGrantSnapshot,
+  PermissionQuery,
+  PermissionRule
+} from "./permission-contracts.js"
 export type ActorKind = typeof ActorKind.Type
-
-const FilesystemCapability = Schema.Struct({
-  kind: Schema.Literals(["filesystem.read", "filesystem.write", "filesystem.delete"]),
-  roots: Schema.Array(NonEmptyString),
-  deny: Schema.optionalKey(Schema.Array(NonEmptyString)),
-  audit: AuditPolicy,
-  allowCreate: Schema.optionalKey(Schema.Boolean),
-  allowOverwrite: Schema.optionalKey(Schema.Boolean)
-})
-
-const SqliteCapability = Schema.Struct({
-  kind: Schema.Literal("sqlite.open"),
-  roots: Schema.Array(NonEmptyString),
-  deny: Schema.optionalKey(Schema.Array(NonEmptyString)),
-  audit: AuditPolicy
-})
-
-const ProcessCapability = Schema.Struct({
-  kind: Schema.Literals(["process.spawn", "pty.spawn"]),
-  commands: Schema.Array(NonEmptyString),
-  cwd: Schema.optionalKey(Schema.Array(NonEmptyString)),
-  environment: Schema.Literals(["none", "allowlist"]),
-  shell: Schema.Union([Schema.Literal(false), Schema.Literal("requires-explicit-approval")]),
-  audit: Schema.Literals(["always", "on-deny"])
-})
-
-const NetworkCapability = Schema.Struct({
-  kind: Schema.Literal("network.connect"),
-  hosts: Schema.Array(NonEmptyString),
-  askUnknownHosts: Schema.Boolean,
-  audit: AuditPolicy
-})
-
-const SecretsCapability = Schema.Struct({
-  kind: Schema.Literals(["secrets.read", "secrets.write", "safeStorage.read", "safeStorage.write"]),
-  namespaces: Schema.Array(NonEmptyString),
-  audit: Schema.Literals(["always", "on-deny"])
-})
-
-const NativeInvokeCapability = Schema.Struct({
-  kind: Schema.Literal("native.invoke"),
-  primitive: NonEmptyString,
-  methods: Schema.Array(NonEmptyString),
-  audit: AuditPolicy
-})
-
-export const NormalizedCapability = Schema.Union([
-  FilesystemCapability,
-  SqliteCapability,
-  ProcessCapability,
-  NetworkCapability,
-  SecretsCapability,
-  NativeInvokeCapability
-])
-export type NormalizedCapability = typeof NormalizedCapability.Type
-
-export class PermissionActor extends Schema.Class<PermissionActor>("PermissionActor")({
-  kind: ActorKind,
-  id: PermissionMetadataText
-}) {}
-
-export class PermissionContext extends Schema.Class<PermissionContext>("PermissionContext")({
-  actor: PermissionActor,
-  resource: Schema.optionalKey(PermissionMetadataText),
-  traceId: Schema.optionalKey(PermissionMetadataText)
-}) {}
-
-export class PermissionDeclaration extends Schema.Class<PermissionDeclaration>(
-  "PermissionDeclaration"
-)({
-  capability: NormalizedCapability,
-  effect: PermissionEffect,
-  actor: Schema.optionalKey(PermissionActor),
-  source: Schema.optionalKey(PermissionMetadataText)
-}) {}
-
-export class PermissionQuery extends Schema.Class<PermissionQuery>("PermissionQuery")({
-  kind: CapabilityKind,
-  actor: PermissionActor
-}) {}
-
-export class PermissionRule extends Schema.Class<PermissionRule>("PermissionRule")({
-  capability: NormalizedCapability,
-  effect: PermissionEffect,
-  actor: Schema.optionalKey(PermissionActor),
-  source: PermissionMetadataText
-}) {}
-
-export class GrantedCapability extends Schema.Class<GrantedCapability>("GrantedCapability")({
-  token: NonEmptyString,
-  capability: NormalizedCapability,
-  actor: PermissionActor,
-  resource: Schema.optionalKey(PermissionMetadataText),
-  source: PermissionMetadataText,
-  traceId: PermissionMetadataText,
-  grantedAt: PermissionTimestamp,
-  expiresAt: Schema.optionalKey(Schema.Number),
-  oneTime: Schema.optionalKey(Schema.Boolean)
-}) {}
-
-export class PermissionDecision extends Schema.Class<PermissionDecision>("PermissionDecision")({
-  outcome: Schema.Literals(["granted", "denied"]),
-  reason: Schema.optionalKey(
-    Schema.Literals([
-      "explicit-deny",
-      "approval-denied",
-      "revoked",
-      "expired",
-      "consumed",
-      "default-deny"
-    ])
-  ),
-  source: PermissionMetadataText,
-  capability: NormalizedCapability,
-  actor: PermissionActor,
-  resource: Schema.optionalKey(PermissionMetadataText),
-  traceId: PermissionMetadataText
-}) {}
-
-const GrantStatus = Schema.Literals(["active", "revoked", "expired", "consumed"])
-export type GrantStatus = typeof GrantStatus.Type
-
-export class PermissionGrantSnapshot extends Schema.Class<PermissionGrantSnapshot>(
-  "PermissionGrantSnapshot"
-)({
-  grant: GrantedCapability,
-  status: GrantStatus,
-  updatedAt: PermissionTimestamp
-}) {}
+export type AuditPolicy = typeof AuditPolicy.Type
+export type CapabilityKind = typeof CapabilityKind.Type
+export type PermissionEffect = typeof PermissionEffect.Type
+export type { GrantStatus } from "./permission-contracts.js"
 
 export class PermissionInvalidArgumentError extends Data.TaggedError("InvalidArgument")<{
   readonly operation: string

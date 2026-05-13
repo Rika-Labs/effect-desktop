@@ -78,7 +78,7 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
           source: "PermissionApprovalWorkflow",
           traceId: payload.traceId,
           outcome: "requested",
-          actor: JSON.stringify(actor),
+          actor,
           ...(payload.resource === undefined ? {} : { resource: payload.resource }),
           details: { capability }
         })
@@ -100,7 +100,7 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
             source: "PermissionApprovalWorkflow",
             traceId: payload.traceId,
             outcome: "denied",
-            actor: JSON.stringify(actor),
+            actor,
             ...(payload.resource === undefined ? {} : { resource: payload.resource })
           })
         ).pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "audit", cause)))
@@ -137,7 +137,7 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
           source: "PermissionApprovalWorkflow",
           traceId: payload.traceId,
           outcome: "granted",
-          actor: JSON.stringify(actor),
+          actor,
           ...(payload.resource === undefined ? {} : { resource: payload.resource }),
           details: { token: grant.token, grantedAt, expiresAt }
         })
@@ -160,7 +160,7 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
             source: "PermissionApprovalWorkflow",
             traceId: payload.traceId,
             outcome: "expired",
-            actor: JSON.stringify(actor),
+            actor,
             ...(payload.resource === undefined ? {} : { resource: payload.resource }),
             details: { token: grant.token, expiredAt: expiresAt }
           })
