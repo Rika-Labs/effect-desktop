@@ -65,6 +65,22 @@ describe("Settings", () => {
     expect(Option.isNone(stored)).toBe(true)
   })
 
+  test("typed setting keys carry name schema and default together", async () => {
+    const { store } = await makeFixture()
+    const Theme = store.key({
+      name: "theme",
+      schema: Schema.Literals(["light", "dark", "system"]),
+      defaultValue: "system"
+    })
+
+    const defaultTheme = await Effect.runPromise(store.getOrDefault(Theme))
+    await Effect.runPromise(store.set(Theme, "dark"))
+    const stored = await Effect.runPromise(store.get(Theme))
+
+    expect(defaultTheme).toBe("system")
+    expect(Option.getOrUndefined(stored)).toBe("dark")
+  })
+
   test("keys returns namespace-local keys in stable order", async () => {
     const { store } = await makeFixture()
 

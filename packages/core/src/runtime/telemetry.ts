@@ -1,5 +1,16 @@
 import type { RedactionFilterOptions } from "@effect-desktop/bridge"
-import { Context, Data, Effect, Option, Ref, Schema, Stream, SubscriptionRef } from "effect"
+import {
+  Clock,
+  Context,
+  Data,
+  Effect,
+  Option,
+  Random,
+  Ref,
+  Schema,
+  Stream,
+  SubscriptionRef
+} from "effect"
 
 import {
   emptyInspectorSafetySummary,
@@ -182,8 +193,24 @@ export const makeTelemetry = (
       "traceRingSize"
     )
     const tracingEnabled = options.tracingEnabled ?? true
-    const now = options.now ?? Date.now
-    const nextSpanId = options.nextSpanId ?? (() => `span-${globalThis.crypto.randomUUID()}`)
+    const now =
+      options.now === undefined
+        ? Clock.currentTimeMillis
+        : Effect.sync(options.now).pipe(
+            Effect.catchDefect(() =>
+              Effect.fail(
+                new TelemetryInvalidArgumentError({
+                  operation: "Telemetry.clock",
+                  field: "timestamp",
+                  message: "clock callback failed"
+                })
+              )
+            )
+          )
+    const nextSpanId =
+      options.nextSpanId === undefined
+        ? Random.nextUUIDv4.pipe(Effect.map((uuid) => `span-${uuid}`))
+        : Effect.sync(options.nextSpanId)
     const redaction = options.inspectorSafetyPolicy?.redaction ?? options.redaction
     const safetyOptions: InspectorSafetyPolicyOptions =
       redaction === undefined
@@ -234,7 +261,7 @@ export const makeTelemetry = (
             payload: {
               id,
               level: input.level,
-              timestamp: input.timestamp ?? now(),
+              timestamp: input.timestamp ?? (yield* now),
               subsystem: input.subsystem,
               operation: input.operation,
               traceId: input.traceId,
@@ -270,7 +297,7 @@ export const makeTelemetry = (
             "Telemetry.recordSpan",
             "parentSpanId"
           )
-          const resolvedSpanId = input.spanId ?? nextSpanId()
+          const resolvedSpanId = input.spanId ?? (yield* nextSpanId)
           yield* validateMetadataField(resolvedSpanId, "Telemetry.recordSpan", "spanId")
           if (!tracingEnabled) {
             return
@@ -292,7 +319,7 @@ export const makeTelemetry = (
                     ? undefined
                     : attributesDecision.value.value
               },
-              () => resolvedSpanId
+              resolvedSpanId
             )
           })
           if (Option.isNone(decision.value)) {
@@ -434,12 +461,9 @@ const appendBounded = <A>(current: readonly A[], value: A, maxRows: number): rea
 const optionFrom = <A>(value: A | undefined): Option.Option<A> =>
   value === undefined ? Option.none() : Option.some(value)
 
-const toTraceSpan = (
-  input: TelemetryTraceSpanInput,
-  nextSpanId: () => string
-): TelemetryTraceSpan => ({
+const toTraceSpan = (input: TelemetryTraceSpanInput, spanId: string): TelemetryTraceSpan => ({
   traceId: input.traceId,
-  spanId: input.spanId ?? nextSpanId(),
+  spanId,
   parentSpanId: optionFrom(input.parentSpanId),
   subsystem: input.subsystem,
   operation: input.operation,
@@ -462,10 +486,10 @@ const metricKey = (name: string, tags: Readonly<Record<string, string>>): string
 
 const metricTimestamp = (
   inputTimestamp: number | undefined,
-  now: () => number,
+  now: Effect.Effect<number, TelemetryInvalidArgumentError, never>,
   operation: string
 ): Effect.Effect<number, TelemetryInvalidArgumentError, never> =>
-  Effect.sync(() => inputTimestamp ?? now()).pipe(
+  (inputTimestamp === undefined ? now : Effect.succeed(inputTimestamp)).pipe(
     Effect.flatMap((timestamp) =>
       Number.isSafeInteger(timestamp) && timestamp >= 0
         ? Effect.succeed(timestamp)

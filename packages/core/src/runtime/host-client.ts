@@ -13,7 +13,7 @@ import type {
   HostProtocolRequestEnvelope,
   HostProtocolResponseEnvelope
 } from "@effect-desktop/bridge"
-import { Effect, Option, Stream } from "effect"
+import { Effect, Option, Random, Stream } from "effect"
 
 import { AuditEvent, emitAuditEvent, type AuditEventsApi } from "./audit-events.js"
 import {
@@ -30,7 +30,7 @@ export interface HostProtocolExchangeOptions {
 
 interface ResolvedHostProtocolExchangeOptions {
   readonly audit: AuditEventsApi | undefined
-  readonly nextTraceId: () => string
+  readonly nextTraceId: (() => string) | undefined
 }
 
 export const createHostProtocolExchange = (
@@ -123,7 +123,7 @@ const ensureTraceId = (
       return { value: parsed, traceIdWasMissing: false }
     }
 
-    const traceId = options.nextTraceId()
+    const traceId = yield* nextTraceId(options)
     if (traceId.length === 0) {
       return yield* Effect.fail(
         makeHostProtocolInvalidOutputError(
@@ -197,8 +197,15 @@ const resolveOptions = (
   options: HostProtocolExchangeOptions
 ): ResolvedHostProtocolExchangeOptions => ({
   audit: options.audit,
-  nextTraceId: options.nextTraceId ?? (() => `trace-${globalThis.crypto.randomUUID()}`)
+  nextTraceId: options.nextTraceId
 })
+
+const nextTraceId = (
+  options: ResolvedHostProtocolExchangeOptions
+): Effect.Effect<string, never, never> =>
+  options.nextTraceId === undefined
+    ? Random.nextUUIDv4.pipe(Effect.map((uuid) => `trace-${uuid}`))
+    : Effect.sync(options.nextTraceId)
 
 const classifyTransportError = (error: TransportError): HostProtocolError => {
   if (error instanceof TransportFrameTooLargeError) {

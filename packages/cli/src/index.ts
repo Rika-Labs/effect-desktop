@@ -20,11 +20,14 @@ import { Command, Flag } from "effect/unstable/cli"
 import * as ChildProcessSpawnerModule from "effect/unstable/process"
 
 import {
+  decodeDesktopConfig,
   effectiveCspPolicy,
   formatProductionCheckReport,
+  mergeDesktopConfig,
   runProductionCheck,
   type CspConfig,
   type CspPolicy,
+  type DesktopConfig,
   type ProductionCheckFile,
   type ProductionSecurityConfig,
   type RuntimeEngine
@@ -1737,8 +1740,8 @@ const readOptionalSemver = (
 
 const loadAndMergeBuildConfig = (path: string): Effect.Effect<AppConfig, BuildConfigError, never> =>
   Effect.gen(function* () {
-    const rawConfig = yield* loadConfig(path).pipe(Effect.map((value) => value as AppConfig))
-    const appConfig = normalizeBuildConfig(rawConfig)
+    const rawConfig = yield* loadConfig(path)
+    const appConfig = yield* decodeBuildConfig(rawConfig, path)
     const sharedConfigPath = yield* readOptionalString(
       appConfig.workspace?.sharedConfigPath,
       "workspace.sharedConfigPath"
@@ -1747,99 +1750,39 @@ const loadAndMergeBuildConfig = (path: string): Effect.Effect<AppConfig, BuildCo
       return appConfig
     }
     const workspaceRoot = dirname(path)
-    const rawSharedConfig = yield* loadConfig(resolvePath(workspaceRoot, sharedConfigPath)).pipe(
-      Effect.map((value) => value as AppConfig)
-    )
-    const sharedConfig = normalizeBuildConfig(rawSharedConfig)
-    return mergeBuildConfig(sharedConfig, appConfig)
+    const resolvedSharedConfigPath = resolvePath(workspaceRoot, sharedConfigPath)
+    const rawSharedConfig = yield* loadConfig(resolvedSharedConfigPath)
+    const sharedConfig = yield* decodeBuildConfig(rawSharedConfig, resolvedSharedConfigPath)
+    return mergeDesktopConfig(
+      sharedConfig as DesktopConfig,
+      appConfig as DesktopConfig
+    ) as AppConfig
   })
 
-const normalizeBuildConfig = (rawConfig: unknown): AppConfig =>
-  isRecord(rawConfig) ? (rawConfig as AppConfig) : {}
+const decodeBuildConfig = (
+  rawConfig: unknown,
+  path: string
+): Effect.Effect<AppConfig, BuildConfigError, never> =>
+  decodeDesktopConfig(rawConfig, `desktop build config ${path}`).pipe(
+    Effect.map((config) => config as AppConfig),
+    Effect.mapError(
+      (error) =>
+        new BuildConfigError({
+          field: "default",
+          message: formatBuildConfigDecodeMessage(error.message)
+        })
+    )
+  )
 
-const mergeBuildConfig = (shared: AppConfig, app: AppConfig): AppConfig => {
-  const env = mergeRecordMap(shared.env, app.env)
-  const protocols =
-    Array.isArray(app.protocols) && app.protocols.length > 0
-      ? app.protocols
-      : Array.isArray(shared.protocols)
-        ? shared.protocols
-        : undefined
-  const workspace = app.workspace ?? shared.workspace
-  const windows = app.windows ?? shared.windows
-
-  return {
-    app: {
-      ...shared.app,
-      ...app.app
-    },
-    runtime: {
-      ...shared.runtime,
-      ...app.runtime
-    },
-    renderer: {
-      ...shared.renderer,
-      ...app.renderer
-    },
-    build: {
-      ...shared.build,
-      ...app.build
-    },
-    security: {
-      ...shared.security,
-      ...app.security
-    },
-    ...(env === undefined ? {} : { env }),
-    protocol: {
-      limits: {
-        ...extractRecord(shared.protocol?.limits),
-        ...extractRecord(app.protocol?.limits)
-      }
-    },
-    ...(protocols === undefined ? {} : { protocols }),
-    native: {
-      ...shared.native,
-      ...app.native
-    },
-    ...(workspace === undefined ? {} : { workspace }),
-    update: {
-      ...shared.update,
-      ...app.update
-    },
-    ...(windows === undefined ? {} : { windows })
+const formatBuildConfigDecodeMessage = (message: string): string => {
+  if (message.includes('["runtime"]["engine"]')) {
+    return `runtime.engine must be one of ${RUNTIME_ENGINES.join(", ")}`
   }
+  if (message.includes('["security"]["externalNavigation"]')) {
+    return 'security.externalNavigation must be "deny" or "ask"'
+  }
+  return message
 }
-
-const mergeRecordMap = (shared: unknown, local: unknown): Record<string, unknown> | undefined => {
-  if (shared === undefined && local === undefined) {
-    return undefined
-  }
-  const merged: Record<string, unknown> = {}
-  if (isRecord(shared)) {
-    for (const key of Object.keys(shared)) {
-      const value = shared[key]
-      if (isRecord(value)) {
-        merged[key] = mergeRecordMap(merged[key], value)
-      } else {
-        merged[key] = value
-      }
-    }
-  }
-  if (isRecord(local)) {
-    for (const key of Object.keys(local)) {
-      const value = local[key]
-      const existing = merged[key]
-      if (isRecord(existing) && isRecord(value)) {
-        merged[key] = mergeRecordMap(existing, value)
-      } else {
-        merged[key] = value
-      }
-    }
-  }
-  return merged
-}
-
-const extractRecord = (value: unknown): Record<string, unknown> => (isRecord(value) ? value : {})
 
 const readRuntimeEngine = (value: unknown): Effect.Effect<RuntimeEngine, BuildConfigError, never> =>
   readOptionalString(value, "runtime.engine").pipe(

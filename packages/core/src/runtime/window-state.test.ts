@@ -1,84 +1,76 @@
-import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises"
-import { dirname, join } from "node:path"
-import { tmpdir } from "node:os"
-
 import { expect, test } from "bun:test"
 import { Effect, Exit, Fiber, Option, Stream } from "effect"
+import { KeyValueStore } from "effect/unstable/persistence"
 
 import {
   WindowDisplayBounds,
   WindowStateInvalidArgumentError,
   WindowStateReadFailed,
   WindowStateRecord,
+  type WindowStateApi,
   defaultWindowStatePath,
   makeWindowState
 } from "./window-state.js"
 
 const state = makeWindowStateRecord()
+let nextPath = 0
 
 test("WindowState persists and restores a validated window record", async () => {
   const path = await tempWindowStatePath()
-  const service = await Effect.runPromise(makeWindowState({ path }))
+  const { kv, service } = await makeFixture({ path })
 
   await Effect.runPromise(service.persist("main", state))
   const restored = await Effect.runPromise(service.restore("main"))
 
   expect(Option.getOrUndefined(restored)).toEqual(state)
-  expect(await readFile(path, "utf8")).toContain('"main"')
+  expect(await Effect.runPromise(kv.get(path))).toContain('"main"')
 })
 
-test("WindowState persists without leaving temporary files", async () => {
+test("WindowState persists through KeyValueStore without touching the filesystem", async () => {
   const path = await tempWindowStatePath()
-  const service = await Effect.runPromise(makeWindowState({ path }))
+  const { kv, service } = await makeFixture({ path })
 
   await Effect.runPromise(service.persist("main", state))
 
-  const files = await readdir(dirname(path))
-  expect(files).toEqual(["window-state.json"])
+  expect(await Effect.runPromise(kv.has(path))).toBe(true)
 })
 
 test("WindowState rejects empty window ids on persist before reading durable state", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-window-state-"))
-  const path = join(directory, "window-state.json")
-  await writeFile(path, "{", "utf8")
-  const service = await Effect.runPromise(makeWindowState({ path, now: () => 1710000000000 }))
+  const path = await tempWindowStatePath()
+  const { kv, service } = await makeFixture({ path, now: () => 1710000000000 })
+  await Effect.runPromise(kv.set(path, "{"))
 
   const exit = await Effect.runPromiseExit(service.persist("", state))
 
   expectInvalidArgument(exit, "WindowState.persist")
-  expect(await readdir(directory)).toEqual(["window-state.json"])
-  expect(await readFile(path, "utf8")).toBe("{")
+  expect(await Effect.runPromise(kv.get(path))).toBe("{")
 })
 
 test("WindowState rejects empty window ids on restore before reading durable state", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-window-state-"))
-  const path = join(directory, "window-state.json")
-  await writeFile(path, "{", "utf8")
-  const service = await Effect.runPromise(makeWindowState({ path, now: () => 1710000000000 }))
+  const path = await tempWindowStatePath()
+  const { kv, service } = await makeFixture({ path, now: () => 1710000000000 })
+  await Effect.runPromise(kv.set(path, "{"))
 
   const exit = await Effect.runPromiseExit(service.restore(""))
 
   expectInvalidArgument(exit, "WindowState.restore")
-  expect(await readdir(directory)).toEqual(["window-state.json"])
-  expect(await readFile(path, "utf8")).toBe("{")
+  expect(await Effect.runPromise(kv.get(path))).toBe("{")
 })
 
 test("WindowState rejects empty window ids on clear before reading durable state", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-window-state-"))
-  const path = join(directory, "window-state.json")
-  await writeFile(path, "{", "utf8")
-  const service = await Effect.runPromise(makeWindowState({ path, now: () => 1710000000000 }))
+  const path = await tempWindowStatePath()
+  const { kv, service } = await makeFixture({ path, now: () => 1710000000000 })
+  await Effect.runPromise(kv.set(path, "{"))
 
   const exit = await Effect.runPromiseExit(service.clear(""))
 
   expectInvalidArgument(exit, "WindowState.clear")
-  expect(await readdir(directory)).toEqual(["window-state.json"])
-  expect(await readFile(path, "utf8")).toBe("{")
+  expect(await Effect.runPromise(kv.get(path))).toBe("{")
 })
 
 test("WindowState rejects whitespace-only window ids", async () => {
   const path = await tempWindowStatePath()
-  const service = await Effect.runPromise(makeWindowState({ path }))
+  const { service } = await makeFixture({ path })
 
   const exit = await Effect.runPromiseExit(service.restore("   "))
 
@@ -86,9 +78,8 @@ test("WindowState rejects whitespace-only window ids", async () => {
 })
 
 test("WindowState rejects every C0 control byte and DEL in window ids", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-window-state-"))
-  const path = join(directory, "window-state.json")
-  const service = await Effect.runPromise(makeWindowState({ path }))
+  const path = await tempWindowStatePath()
+  const { kv, service } = await makeFixture({ path })
 
   for (let codePoint = 0; codePoint <= 31; codePoint += 1) {
     const windowId = `main${String.fromCharCode(codePoint)}forged`
@@ -107,7 +98,7 @@ test("WindowState rejects every C0 control byte and DEL in window ids", async ()
   expectInvalidArgument(await Effect.runPromiseExit(service.restore(delId)), "WindowState.restore")
   expectInvalidArgument(await Effect.runPromiseExit(service.clear(delId)), "WindowState.clear")
 
-  expect(await readdir(directory)).toEqual([])
+  expect(await Effect.runPromise(kv.has(path))).toBe(false)
 })
 
 test("WindowState default path rejects bundle ids with path traversal", async () => {
@@ -123,7 +114,9 @@ test("WindowState default path rejects bundle ids with path traversal", async ()
     "com..example"
   ]) {
     expect(() => defaultWindowStatePath(bundleId)).toThrow(WindowStateInvalidArgumentError)
-    const exit = await Effect.runPromiseExit(makeWindowState({ bundleId }))
+    const exit = await Effect.runPromiseExit(
+      Effect.provide(makeWindowState({ bundleId }), KeyValueStore.layerMemory)
+    )
     expectInvalidBundleId(exit, "WindowState.make")
   }
 })
@@ -137,86 +130,65 @@ test("WindowState default path accepts bundle ids as namespaces", () => {
 
 test("WindowState clear with no argument wipes the full store", async () => {
   const path = await tempWindowStatePath()
-  const service = await Effect.runPromise(makeWindowState({ path }))
+  const { kv, service } = await makeFixture({ path })
 
   await Effect.runPromise(service.persist("main", state))
   await Effect.runPromise(service.persist("aux", state))
   await Effect.runPromise(service.clear())
 
-  expect(await readFile(path, "utf8")).not.toContain('"main"')
-  expect(await readFile(path, "utf8")).not.toContain('"aux"')
+  expect(await Effect.runPromise(kv.get(path))).not.toContain('"main"')
+  expect(await Effect.runPromise(kv.get(path))).not.toContain('"aux"')
 })
 
 test("WindowState restore returns none for a missing window id", async () => {
   const path = await tempWindowStatePath()
-  const service = await Effect.runPromise(makeWindowState({ path }))
+  const { service } = await makeFixture({ path })
 
   const restored = await Effect.runPromise(service.restore("missing"))
 
   expect(Option.isNone(restored)).toBe(true)
 })
 
-test("WindowState renames corrupt state files and continues with defaults", async () => {
+test("WindowState clears corrupt state and continues with defaults", async () => {
   const path = await tempWindowStatePath()
-  await writeFile(path, "{", "utf8")
-  const service = await Effect.runPromise(makeWindowState({ path, now: () => 1710000000000 }))
+  const { kv, service } = await makeFixture({ path, now: () => 1710000000000 })
+  await Effect.runPromise(kv.set(path, "{"))
 
   const restored = await Effect.runPromise(service.restore("main"))
 
   expect(Option.isNone(restored)).toBe(true)
-  const files = await readdir(join(path, ".."))
-  expect(files).toContain("window-state.corrupt.1710000000000.json")
+  expect(await Effect.runPromise(kv.has(path))).toBe(false)
 })
 
-test("WindowState rejects invalid corrupt recovery timestamps without invalid filenames", async () => {
+test("WindowState rejects invalid corrupt recovery timestamps without removing corrupt state", async () => {
   const invalidTimestamps = [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -1]
 
   for (const timestamp of invalidTimestamps) {
-    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-window-state-"))
-    const path = join(directory, "window-state.json")
-    await writeFile(path, "{", "utf8")
-    const service = await Effect.runPromise(makeWindowState({ path, now: () => timestamp }))
+    const path = await tempWindowStatePath()
+    const { kv, service } = await makeFixture({ path, now: () => timestamp })
+    await Effect.runPromise(kv.set(path, "{"))
 
     const exit = await Effect.runPromiseExit(service.restore("main"))
-    const files = await readdir(directory)
 
     expect(Exit.isFailure(exit)).toBe(true)
     if (Exit.isFailure(exit)) {
       const fail = exit.cause.reasons.find((reason) => reason._tag === "Fail")
       expect(fail?.error).toBeInstanceOf(WindowStateReadFailed)
     }
-    expect(files).toEqual(["window-state.json"])
-    expect(files.some((file) => file.includes(String(timestamp)))).toBe(false)
+    expect(await Effect.runPromise(kv.get(path))).toBe("{")
   }
-})
-
-test("WindowState returns read failures without rotating healthy files", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-window-state-"))
-  const service = await Effect.runPromise(makeWindowState({ path: directory }))
-
-  const exit = await Effect.runPromiseExit(service.restore("main"))
-
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const fail = exit.cause.reasons.find((reason) => reason._tag === "Fail")
-    expect(fail?.error).toBeInstanceOf(WindowStateReadFailed)
-  }
-  const files = await readdir(directory)
-  expect(files.some((file) => file.startsWith("window-state.corrupt."))).toBe(false)
 })
 
 test("WindowState applies injected bounds validation on restore", async () => {
   const path = await tempWindowStatePath()
-  const service = await Effect.runPromise(
-    makeWindowState({
-      path,
-      validateBounds: (record) =>
-        makeWindowStateRecord({
-          x: Math.max(0, record.x),
-          y: Math.max(0, record.y)
-        })
-    })
-  )
+  const { service } = await makeFixture({
+    path,
+    validateBounds: (record) =>
+      makeWindowStateRecord({
+        x: Math.max(0, record.x),
+        y: Math.max(0, record.y)
+      })
+  })
 
   await Effect.runPromise(
     service.persist(
@@ -235,7 +207,7 @@ test("WindowState applies injected bounds validation on restore", async () => {
 
 test("WindowState restores all windows independently", async () => {
   const path = await tempWindowStatePath()
-  const service = await Effect.runPromise(makeWindowState({ path }))
+  const { service } = await makeFixture({ path })
 
   await Effect.runPromise(service.persist("main", makeWindowStateRecord({ x: 10 })))
   await Effect.runPromise(service.persist("palette", makeWindowStateRecord({ x: 900 })))
@@ -247,7 +219,7 @@ test("WindowState restores all windows independently", async () => {
 
 test("WindowState concurrent persists keep independent records", async () => {
   const path = await tempWindowStatePath()
-  const service = await Effect.runPromise(makeWindowState({ path }))
+  const { service } = await makeFixture({ path })
 
   await Effect.runPromise(
     Effect.all(
@@ -267,15 +239,13 @@ test("WindowState concurrent persists keep independent records", async () => {
 
 test("WindowState snaps off-screen windows to the primary display", async () => {
   const path = await tempWindowStatePath()
-  const service = await Effect.runPromise(
-    makeWindowState({
-      path,
-      displays: [
-        new WindowDisplayBounds({ x: 0, y: 0, width: 1024, height: 768, primary: true }),
-        new WindowDisplayBounds({ x: 1024, y: 0, width: 1024, height: 768 })
-      ]
-    })
-  )
+  const { service } = await makeFixture({
+    path,
+    displays: [
+      new WindowDisplayBounds({ x: 0, y: 0, width: 1024, height: 768, primary: true }),
+      new WindowDisplayBounds({ x: 1024, y: 0, width: 1024, height: 768 })
+    ]
+  })
 
   await Effect.runPromise(service.persist("main", makeWindowStateRecord({ x: 5000, y: 5000 })))
   const restored = await Effect.runPromise(service.restore("main"))
@@ -286,7 +256,7 @@ test("WindowState snaps off-screen windows to the primary display", async () => 
 
 test("WindowState clear removes one window or the full store", async () => {
   const path = await tempWindowStatePath()
-  const service = await Effect.runPromise(makeWindowState({ path }))
+  const { service } = await makeFixture({ path })
 
   await Effect.runPromise(service.persist("main", makeWindowStateRecord({ x: 10 })))
   await Effect.runPromise(service.persist("palette", makeWindowStateRecord({ x: 900 })))
@@ -299,12 +269,12 @@ test("WindowState clear removes one window or the full store", async () => {
 
 test("WindowState observe emits persist, clear, and corrupt recovery events", async () => {
   const path = await tempWindowStatePath()
-  const service = await Effect.runPromise(makeWindowState({ path, now: () => 1710000000000 }))
+  const { kv, service } = await makeFixture({ path, now: () => 1710000000000 })
   const fiber = Effect.runFork(service.observe().pipe(Stream.take(3), Stream.runCollect))
 
   await Effect.runPromise(service.persist("main", state))
   await Effect.runPromise(service.clear("main"))
-  await writeFile(path, "{", "utf8")
+  await Effect.runPromise(kv.set(path, "{"))
   await Effect.runPromise(service.restore("main"))
   const events = Array.from(await Effect.runPromise(Fiber.join(fiber)))
 
@@ -326,9 +296,23 @@ test("WindowState rejects non-finite scroll positions", async () => {
 })
 
 const tempWindowStatePath = async (): Promise<string> => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-window-state-"))
-  return join(directory, "window-state.json")
+  nextPath += 1
+  return `window-state-${String(nextPath)}.json`
 }
+
+const makeFixture = (
+  options: Parameters<typeof makeWindowState>[0] = {}
+): Promise<{
+  readonly kv: KeyValueStore.KeyValueStore
+  readonly service: WindowStateApi
+}> =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const kv = yield* KeyValueStore.KeyValueStore
+      const service = yield* makeWindowState(options)
+      return { kv, service }
+    }).pipe(Effect.provide(KeyValueStore.layerMemory))
+  )
 
 function expectInvalidArgument(exit: Exit.Exit<unknown, unknown>, expectedOperation: string): void {
   expect(Exit.isFailure(exit)).toBe(true)

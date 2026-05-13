@@ -60,6 +60,19 @@ export class ProductionCheckInvalidInput extends Data.TaggedError("InvalidInput"
 
 export type ProductionCheckError = ProductionCheckInvalidInput
 
+export class DesktopConfigDecodeError extends Data.TaggedError("DesktopConfigDecodeError")<{
+  readonly operation: string
+  readonly message: string
+  readonly cause: unknown
+}> {}
+
+const formatUnknownError = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message
+  }
+  return String(error)
+}
+
 export interface ProductionCheckFile {
   readonly path: string
   readonly content: string
@@ -121,6 +134,8 @@ export interface ContractCapabilityRequirement {
   readonly isSupportedGuard?: boolean
 }
 
+type JsonValue = typeof Schema.Json.Type
+
 export interface ProductionSecurityConfig {
   readonly security?: {
     readonly requireTypedBridge?: boolean
@@ -148,7 +163,18 @@ export interface ProductionSecurityConfig {
   readonly contracts?: readonly ContractCapabilityRequirement[]
 }
 
-export interface DesktopConfig extends ProductionSecurityConfig {
+interface DesktopSecurityConfig {
+  readonly requireTypedBridge?: boolean
+  readonly rendererNativeAccess?: boolean
+  readonly requirePermissions?: boolean
+  readonly externalNavigation?: "deny" | "ask"
+  readonly devtoolsInProd?: boolean
+  readonly csp?: CspConfig | undefined
+  readonly redaction?: RedactionPolicy
+  readonly permissions?: readonly JsonValue[]
+}
+
+export interface DesktopConfig extends Omit<ProductionSecurityConfig, "permissions" | "security"> {
   readonly app?: {
     readonly id?: string
     readonly name?: string
@@ -177,6 +203,8 @@ export interface DesktopConfig extends ProductionSecurityConfig {
     readonly targets?: readonly string[]
   }
   readonly signing?: unknown
+  readonly security?: DesktopSecurityConfig
+  readonly permissions?: ProductionSecurityConfig["permissions"] | readonly JsonValue[]
   readonly update?: ProductionSecurityConfig["update"] & {
     readonly channel?: "stable" | "beta" | "canary"
     readonly publicKey?: string
@@ -206,6 +234,298 @@ export interface DesktopConfig extends ProductionSecurityConfig {
 
 export const RuntimeEngine = Schema.Literals(["bun", "node"])
 export type RuntimeEngine = typeof RuntimeEngine.Type
+
+const JsonRecord = Schema.Record(Schema.String, Schema.Json)
+const StringRecord = Schema.Record(Schema.String, Schema.String)
+const NestedStringRecord = Schema.Record(Schema.String, StringRecord)
+
+export class DesktopAppConfig extends Schema.Class<DesktopAppConfig>("DesktopAppConfig")({
+  id: Schema.optionalKey(Schema.String),
+  name: Schema.optionalKey(Schema.String),
+  version: Schema.optionalKey(Schema.String)
+}) {}
+
+export class DesktopRuntimeConfig extends Schema.Class<DesktopRuntimeConfig>(
+  "DesktopRuntimeConfig"
+)({
+  engine: Schema.optionalKey(RuntimeEngine),
+  entry: Schema.optionalKey(Schema.String)
+}) {}
+
+export class DesktopRendererConfig extends Schema.Class<DesktopRendererConfig>(
+  "DesktopRendererConfig"
+)({
+  framework: Schema.optionalKey(Schema.Literal("react")),
+  styling: Schema.optionalKey(Schema.Literal("tailwind")),
+  entry: Schema.optionalKey(Schema.String),
+  dist: Schema.optionalKey(Schema.String)
+}) {}
+
+export class DesktopNativeConfig extends Schema.Class<DesktopNativeConfig>("DesktopNativeConfig")({
+  host: Schema.optionalKey(Schema.String),
+  renderer: Schema.optionalKey(Schema.String)
+}) {}
+
+export class DesktopProtocolConfig extends Schema.Class<DesktopProtocolConfig>(
+  "DesktopProtocolConfig"
+)({
+  scheme: Schema.String,
+  handler: Schema.optionalKey(Schema.String)
+}) {}
+
+export class DesktopBuildConfig extends Schema.Class<DesktopBuildConfig>("DesktopBuildConfig")({
+  targets: Schema.optionalKey(Schema.Array(Schema.String))
+}) {}
+
+export class DesktopProtocolLimitsConfig extends Schema.Class<DesktopProtocolLimitsConfig>(
+  "DesktopProtocolLimitsConfig"
+)({
+  maxFrameBytes: Schema.optionalKey(Schema.Number),
+  maxConcurrentRequestsPerWindow: Schema.optionalKey(Schema.Number),
+  maxConcurrentStreamsPerWindow: Schema.optionalKey(Schema.Number),
+  maxQueuedEventsPerSubscription: Schema.optionalKey(Schema.Number)
+}) {}
+
+export class DesktopProtocolRuntimeConfig extends Schema.Class<DesktopProtocolRuntimeConfig>(
+  "DesktopProtocolRuntimeConfig"
+)({
+  limits: Schema.optionalKey(DesktopProtocolLimitsConfig)
+}) {}
+
+export class DesktopCspConfig extends Schema.Class<DesktopCspConfig>("DesktopCspConfig")({
+  policy: Schema.optionalKey(Schema.String),
+  disabled: Schema.optionalKey(Schema.Boolean),
+  acknowledgeWeakening: Schema.optionalKey(Schema.Boolean),
+  justification: Schema.optionalKey(Schema.String)
+}) {}
+
+export class DesktopRedactionPolicy extends Schema.Class<DesktopRedactionPolicy>(
+  "DesktopRedactionPolicy"
+)({
+  defaultPatternEnabled: Schema.optionalKey(Schema.Boolean),
+  additionalPatterns: Schema.optionalKey(Schema.Array(Schema.String)),
+  allowlist: Schema.optionalKey(Schema.Array(Schema.String))
+}) {}
+
+export class DesktopSecurityConfigSchema extends Schema.Class<DesktopSecurityConfigSchema>(
+  "DesktopSecurityConfig"
+)({
+  requireTypedBridge: Schema.optionalKey(Schema.Boolean),
+  rendererNativeAccess: Schema.optionalKey(Schema.Boolean),
+  requirePermissions: Schema.optionalKey(Schema.Boolean),
+  externalNavigation: Schema.optionalKey(Schema.Literals(["deny", "ask"])),
+  devtoolsInProd: Schema.optionalKey(Schema.Boolean),
+  csp: Schema.optionalKey(Schema.Union([DesktopCspConfig, Schema.Undefined])),
+  redaction: Schema.optionalKey(DesktopRedactionPolicy),
+  permissions: Schema.optionalKey(Schema.Array(Schema.Json))
+}) {}
+
+export class DesktopFilesystemWritePolicy extends Schema.Class<DesktopFilesystemWritePolicy>(
+  "DesktopFilesystemWritePolicy"
+)({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  roots: Schema.optionalKey(Schema.Array(Schema.String))
+}) {}
+
+export class DesktopProcessPermissionPolicy extends Schema.Class<DesktopProcessPermissionPolicy>(
+  "DesktopProcessPermissionPolicy"
+)({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  allow: Schema.optionalKey(Schema.Array(Schema.String)),
+  ask: Schema.optionalKey(Schema.Array(Schema.String)),
+  deny: Schema.optionalKey(Schema.Array(Schema.String))
+}) {}
+
+export class DesktopSecretPermissionPolicy extends Schema.Class<DesktopSecretPermissionPolicy>(
+  "DesktopSecretPermissionPolicy"
+)({
+  read: Schema.optionalKey(Schema.Array(Schema.String)),
+  write: Schema.optionalKey(Schema.Array(Schema.String)),
+  audit: Schema.optionalKey(Schema.Literals(["always", "never"]))
+}) {}
+
+export class DesktopPermissionsConfig extends Schema.Class<DesktopPermissionsConfig>(
+  "DesktopPermissionsConfig"
+)({
+  filesystem: Schema.optionalKey(
+    Schema.Struct({
+      write: Schema.optionalKey(DesktopFilesystemWritePolicy)
+    })
+  ),
+  process: Schema.optionalKey(
+    Schema.Struct({
+      spawn: Schema.optionalKey(DesktopProcessPermissionPolicy)
+    })
+  ),
+  secrets: Schema.optionalKey(DesktopSecretPermissionPolicy)
+}) {}
+
+export class DesktopWorkspaceConfig extends Schema.Class<DesktopWorkspaceConfig>(
+  "DesktopWorkspaceConfig"
+)({
+  sharedConfigPath: Schema.optionalKey(Schema.String)
+}) {}
+
+export class DesktopUpdateInstallPolicy extends Schema.Class<DesktopUpdateInstallPolicy>(
+  "DesktopUpdateInstallPolicy"
+)({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  signatureVerification: Schema.optionalKey(Schema.Boolean)
+}) {}
+
+export class DesktopUpdateConfig extends Schema.Class<DesktopUpdateConfig>("DesktopUpdateConfig")({
+  install: Schema.optionalKey(DesktopUpdateInstallPolicy),
+  channel: Schema.optionalKey(Schema.Literals(["stable", "beta", "canary"])),
+  publicKey: Schema.optionalKey(Schema.String),
+  feedUrl: Schema.optionalKey(Schema.String),
+  minVersion: Schema.optionalKey(Schema.String),
+  maxVersion: Schema.optionalKey(Schema.Union([Schema.String, Schema.Undefined])),
+  keyVersion: Schema.optionalKey(Schema.Number),
+  rollback: Schema.optionalKey(Schema.Boolean)
+}) {}
+
+export class DesktopTelemetryConfig extends Schema.Class<DesktopTelemetryConfig>(
+  "DesktopTelemetryConfig"
+)({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  redactSensitive: Schema.optionalKey(Schema.Boolean),
+  endpoint: Schema.optionalKey(Schema.String)
+}) {}
+
+export const DesktopWindowsConfig = Schema.Union([Schema.Array(JsonRecord), JsonRecord])
+export type DesktopWindowsConfig = typeof DesktopWindowsConfig.Type
+
+export const DesktopSigningConfig = JsonRecord
+export type DesktopSigningConfig = typeof DesktopSigningConfig.Type
+
+export class DesktopAppProtocolConfig extends Schema.Class<DesktopAppProtocolConfig>(
+  "DesktopAppProtocolConfig"
+)({
+  allowPathTraversal: Schema.optionalKey(Schema.Boolean)
+}) {}
+
+export class DesktopResourceConfig extends Schema.Class<DesktopResourceConfig>(
+  "DesktopResourceConfig"
+)({
+  allowUnscoped: Schema.optionalKey(Schema.Boolean)
+}) {}
+
+export class DesktopContractCapabilityRequirement extends Schema.Class<DesktopContractCapabilityRequirement>(
+  "DesktopContractCapabilityRequirement"
+)({
+  contract: Schema.String,
+  capability: Schema.String,
+  support: Schema.Literals(["supported", "partial", "unsupported"]),
+  isSupportedGuard: Schema.optionalKey(Schema.Boolean)
+}) {}
+
+export class DesktopConfigSchema extends Schema.Class<DesktopConfigSchema>("DesktopConfig")({
+  app: Schema.optionalKey(DesktopAppConfig),
+  runtime: Schema.optionalKey(DesktopRuntimeConfig),
+  renderer: Schema.optionalKey(DesktopRendererConfig),
+  native: Schema.optionalKey(DesktopNativeConfig),
+  windows: Schema.optionalKey(DesktopWindowsConfig),
+  protocols: Schema.optionalKey(Schema.Array(DesktopProtocolConfig)),
+  build: Schema.optionalKey(DesktopBuildConfig),
+  signing: Schema.optionalKey(DesktopSigningConfig),
+  update: Schema.optionalKey(DesktopUpdateConfig),
+  telemetry: Schema.optionalKey(DesktopTelemetryConfig),
+  protocol: Schema.optionalKey(DesktopProtocolRuntimeConfig),
+  env: Schema.optionalKey(NestedStringRecord),
+  workspace: Schema.optionalKey(DesktopWorkspaceConfig),
+  security: Schema.optionalKey(DesktopSecurityConfigSchema),
+  permissions: Schema.optionalKey(
+    Schema.Union([DesktopPermissionsConfig, Schema.Array(Schema.Json)])
+  ),
+  appProtocol: Schema.optionalKey(DesktopAppProtocolConfig),
+  resources: Schema.optionalKey(DesktopResourceConfig),
+  contracts: Schema.optionalKey(Schema.Array(DesktopContractCapabilityRequirement))
+}) {}
+
+export const decodeDesktopConfig = (
+  input: unknown,
+  operation = "DesktopConfig.decode"
+): Effect.Effect<DesktopConfig, DesktopConfigDecodeError, never> =>
+  Schema.decodeUnknownEffect(DesktopConfigSchema)(input).pipe(
+    Effect.mapError(
+      (error) =>
+        new DesktopConfigDecodeError({
+          operation,
+          message: formatUnknownError(error),
+          cause: error
+        })
+    )
+  )
+
+export const mergeDesktopConfig = (shared: DesktopConfig, app: DesktopConfig): DesktopConfig => {
+  const appMetadata = mergeObjects(shared.app, app.app)
+  const runtime = mergeObjects(shared.runtime, app.runtime)
+  const renderer = mergeObjects(shared.renderer, app.renderer)
+  const build = mergeObjects(shared.build, app.build)
+  const security = mergeObjects(shared.security, app.security)
+  const env = mergeRecordMap(shared.env, app.env)
+  const limits = mergeObjects(shared.protocol?.limits, app.protocol?.limits)
+  const protocols =
+    app.protocols !== undefined && app.protocols.length > 0 ? app.protocols : shared.protocols
+  const workspace = app.workspace ?? shared.workspace
+  const windows = app.windows ?? shared.windows
+  const signing = app.signing ?? shared.signing
+  const permissions = app.permissions ?? shared.permissions
+  const contracts = app.contracts ?? shared.contracts
+  const native = mergeObjects(shared.native, app.native)
+  const update = mergeObjects(shared.update, app.update)
+  const telemetry = mergeObjects(shared.telemetry, app.telemetry)
+  const appProtocol = mergeObjects(shared.appProtocol, app.appProtocol)
+  const resources = mergeObjects(shared.resources, app.resources)
+
+  return {
+    ...(appMetadata === undefined ? {} : { app: appMetadata }),
+    ...(runtime === undefined ? {} : { runtime }),
+    ...(renderer === undefined ? {} : { renderer }),
+    ...(build === undefined ? {} : { build }),
+    ...(security === undefined ? {} : { security }),
+    ...(env === undefined ? {} : { env }),
+    ...(limits === undefined ? {} : { protocol: { limits } }),
+    ...(protocols === undefined ? {} : { protocols }),
+    ...(native === undefined ? {} : { native }),
+    ...(workspace === undefined ? {} : { workspace }),
+    ...(update === undefined ? {} : { update }),
+    ...(windows === undefined ? {} : { windows }),
+    ...(signing === undefined ? {} : { signing }),
+    ...(telemetry === undefined ? {} : { telemetry }),
+    ...(permissions === undefined ? {} : { permissions }),
+    ...(appProtocol === undefined ? {} : { appProtocol }),
+    ...(resources === undefined ? {} : { resources }),
+    ...(contracts === undefined ? {} : { contracts })
+  }
+}
+
+const mergeObjects = <A extends object>(
+  shared: A | undefined,
+  app: A | undefined
+): A | undefined => {
+  if (shared === undefined && app === undefined) {
+    return undefined
+  }
+  return { ...shared, ...app } as A
+}
+
+const mergeRecordMap = (
+  shared: Readonly<Record<string, Readonly<Record<string, string>>>> | undefined,
+  local: Readonly<Record<string, Readonly<Record<string, string>>>> | undefined
+): Record<string, Record<string, string>> | undefined => {
+  if (shared === undefined && local === undefined) {
+    return undefined
+  }
+  const merged: Record<string, Record<string, string>> = {}
+  for (const [profile, values] of Object.entries(shared ?? {})) {
+    merged[profile] = { ...values }
+  }
+  for (const [profile, values] of Object.entries(local ?? {})) {
+    merged[profile] = { ...merged[profile], ...values }
+  }
+  return merged
+}
 
 export interface ProductionCheckInput {
   readonly config: ProductionSecurityConfig

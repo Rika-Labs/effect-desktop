@@ -5,10 +5,12 @@ import {
   cspWeakenings,
   DEFAULT_CSP_DIRECTIVES,
   DEFAULT_CSP_POLICY,
+  decodeDesktopConfig,
   defineDesktopConfig,
   effectiveCspPolicy,
   formatProductionCheckReport,
   makeCspNonce,
+  mergeDesktopConfig,
   ProductionCheckInvalidInput,
   renderCspPolicy,
   renderDefaultCsp,
@@ -131,6 +133,72 @@ test("defineDesktopConfig rejects invalid app metadata types at compile time", (
   })
 
   expect(config.app?.id).toBe("dev.example.app")
+})
+
+test("decodeDesktopConfig accepts schema-coded windows and signing config", async () => {
+  const config = await Effect.runPromise(
+    decodeDesktopConfig({
+      app: { id: "dev.example.app", name: "Example", version: "1.0.0" },
+      signing: {
+        macos: {
+          identity: "Developer ID Application: Example Inc."
+        }
+      },
+      windows: [
+        {
+          height: 768,
+          id: "main",
+          title: "Main",
+          width: 1024
+        }
+      ]
+    })
+  )
+
+  expect(Array.isArray(config.windows)).toBe(true)
+  expect(config.signing).toEqual({
+    macos: {
+      identity: "Developer ID Application: Example Inc."
+    }
+  })
+})
+
+test("decodeDesktopConfig rejects non-json windows and signing values", async () => {
+  for (const invalid of [
+    { windows: "main" },
+    { signing: "Developer ID Application: Example Inc." },
+    { windows: [{ id: "main", onOpen: () => undefined }] }
+  ]) {
+    const exit = await Effect.runPromiseExit(decodeDesktopConfig(invalid))
+    expect(Exit.isFailure(exit)).toBe(true)
+  }
+})
+
+test("mergeDesktopConfig combines decoded shared and app config by typed policy", () => {
+  const merged = mergeDesktopConfig(
+    {
+      app: { id: "shared", name: "Shared", version: "1.0.0" },
+      env: { dev: { OVERRIDE: "shared", SHARED: "1" } },
+      protocol: { limits: { maxFrameBytes: 1024 } },
+      signing: { macos: { identity: "shared" } },
+      windows: { defaults: { titleBarStyle: "default" } }
+    },
+    {
+      app: { id: "app" },
+      env: { dev: { OVERRIDE: "app" } },
+      protocol: { limits: { maxConcurrentRequestsPerWindow: 4 } },
+      windows: [{ id: "main" }]
+    }
+  )
+
+  expect(merged.app).toEqual({ id: "app", name: "Shared", version: "1.0.0" })
+  expect(merged.env).toEqual({ dev: { OVERRIDE: "app", SHARED: "1" } })
+  expect(merged.protocol?.limits).toEqual({
+    maxConcurrentRequestsPerWindow: 4,
+    maxFrameBytes: 1024
+  })
+  expect(merged.signing).toEqual({ macos: { identity: "shared" } })
+  expect(merged.windows).toEqual([{ id: "main" }])
 })
 
 test("CSP rendering rejects nonce tokens that can alter header structure", () => {

@@ -1,5 +1,5 @@
 import { makeHostProtocolInvalidStateError } from "@effect-desktop/bridge"
-import { Effect, Layer, Schedule, Schema } from "effect"
+import { Clock, Effect, Layer, Random, Schedule, Schema } from "effect"
 import { EventGroup, EventJournal, EventLog } from "effect/unstable/eventlog"
 import {
   FetchHttpClient,
@@ -132,30 +132,33 @@ export const makeCrashReportQueueUploadHandler = (
 ): Effect.Effect<CrashReportUploadHandler, never, PersistedQueue.PersistedQueueFactory> =>
   Effect.gen(function* () {
     const queue = yield* makeCrashReportQueue
-    const now = options.now ?? Date.now
-    const nextId =
-      options.id ?? (() => `crash-${String(now())}-${Math.random().toString(36).slice(2)}`)
+    const now = options.now === undefined ? Clock.currentTimeMillis : Effect.sync(options.now)
 
-    return (breadcrumbs) => {
-      const id = nextId()
-      const report = new CrashReport({
-        id,
-        breadcrumbs,
-        capturedAt: now(),
-        ...(options.appVersion === undefined ? {} : { appVersion: options.appVersion }),
-        ...(options.platform === undefined ? {} : { platform: options.platform })
-      })
-      return queue.offer(report, { id }).pipe(
-        Effect.asVoid,
-        Effect.mapError((error) =>
-          makeHostProtocolInvalidStateError(
-            "queue-offer-failed",
-            error instanceof Error ? error.message : String(error),
-            "CrashReporter.flush"
+    return (breadcrumbs) =>
+      Effect.gen(function* () {
+        const capturedAt = yield* now
+        const id =
+          options.id === undefined
+            ? `crash-${String(capturedAt)}-${yield* Random.nextUUIDv4}`
+            : options.id()
+        const report = new CrashReport({
+          id,
+          breadcrumbs,
+          capturedAt,
+          ...(options.appVersion === undefined ? {} : { appVersion: options.appVersion }),
+          ...(options.platform === undefined ? {} : { platform: options.platform })
+        })
+        yield* queue.offer(report, { id }).pipe(
+          Effect.asVoid,
+          Effect.mapError((error) =>
+            makeHostProtocolInvalidStateError(
+              "queue-offer-failed",
+              error instanceof Error ? error.message : String(error),
+              "CrashReporter.flush"
+            )
           )
         )
-      )
-    }
+      })
   })
 
 export const makeCrashSubmissionWorkflowLayer = (endpointUrl: string) =>

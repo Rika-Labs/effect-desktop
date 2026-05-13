@@ -5,6 +5,8 @@ import { pathToFileURL } from "node:url"
 
 import { Data, Effect } from "effect"
 
+import { decodeDesktopConfig } from "@effect-desktop/config"
+
 import {
   decodeDesktopTarget,
   desktopPlatformDirectory,
@@ -941,15 +943,17 @@ ${entries}
 }
 
 const readConfigObject = (rawConfig: unknown): Effect.Effect<AppConfig, SignConfigError, never> =>
-  isRecord(rawConfig)
-    ? Effect.succeed(rawConfig as AppConfig)
-    : Effect.fail(
+  decodeDesktopConfig(rawConfig, "desktop sign config").pipe(
+    Effect.map((config) => config as AppConfig),
+    Effect.mapError(
+      (error) =>
         new SignConfigError({
           field: "default",
-          message: "desktop config must export an object",
-          remediation: "Export a default object from desktop.config.ts."
+          message: error.message,
+          remediation: "Fix desktop.config.ts before signing."
         })
-      )
+    )
+  )
 
 const readRequiredString = (
   value: unknown,
