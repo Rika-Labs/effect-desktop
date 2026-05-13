@@ -15,6 +15,14 @@ export {
   type DesktopRendererRpcTransport
 } from "./renderer-rpc-client.js"
 export {
+  RendererInspectorCollector,
+  RendererInspectorCollectorLive,
+  RendererInspectorEvent,
+  disabledRendererInspectorCollector,
+  makeRendererInspectorCollector,
+  type RendererInspectorCollectorApi
+} from "./inspector-events.js"
+export {
   describeRpcs,
   type DesktopRpcDescriptorSource,
   type RpcEndpointDescriptor,

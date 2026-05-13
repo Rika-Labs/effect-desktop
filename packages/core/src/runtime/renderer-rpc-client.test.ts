@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { HostProtocolResponseEnvelope, type HostProtocolEnvelope } from "@effect-desktop/bridge"
-import { Effect, Layer, Schema, Stream } from "effect"
+import { Effect, Fiber, Layer, Schema, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
 import { Desktop } from "../index.js"
@@ -14,6 +14,7 @@ import {
   makeDesktopRendererRpcTransportLayer,
   type DesktopRendererRpcTransport
 } from "./renderer-rpc-client.js"
+import { makeRendererInspectorCollector } from "./inspector-events.js"
 
 const Ping = Rpc.make("Notes.Ping", { success: Schema.String })
 
@@ -153,6 +154,87 @@ test("RendererRpcClients test layer executes RpcTest clients and interrupts scop
   )
 
   await interrupted
+})
+
+test("RendererRpcClients test layer publishes renderer RPC lifecycle events", async () => {
+  const inspector = await Effect.runPromise(makeRendererInspectorCollector())
+  const NotesRpcs = RpcGroup.make(Ping)
+  const NotesLayer = Desktop.Rpcs.layer(
+    NotesRpcs,
+    NotesRpcs.toLayer({
+      "Notes.Ping": () => Effect.succeed("pong")
+    })
+  )
+
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const clients = yield* Effect.service(RendererRpcClients)
+        const notes = clients.clients.get(NotesRpcs)
+        const ping = notes?.["Notes.Ping"]
+        expect(ping).toBeDefined()
+        const result = yield* ping!(undefined) as Effect.Effect<unknown, unknown>
+        expect(result).toBe("pong")
+      }).pipe(Effect.provide(makeDesktopRendererRpcTestLayer([NotesLayer], { inspector })))
+    )
+  )
+
+  const events = await Effect.runPromise(Stream.runCollect(Stream.take(inspector.events, 2)))
+
+  expect(
+    Array.from(events).map(({ kind, operation, status }) => ({ kind, operation, status }))
+  ).toEqual([
+    { kind: "rpc", operation: "Notes.Ping", status: "start" },
+    { kind: "rpc", operation: "Notes.Ping", status: "success" }
+  ])
+})
+
+test("RendererRpcClients test layer publishes renderer stream interruption events", async () => {
+  const inspector = await Effect.runPromise(makeRendererInspectorCollector())
+  let markStarted: (() => void) | undefined
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve
+  })
+  const Tail = Rpc.make("Notes.Tail", {
+    success: Schema.String,
+    stream: true
+  })
+  const NotesRpcs = RpcGroup.make(Tail)
+  const NotesLayer = Desktop.Rpcs.layer(
+    NotesRpcs,
+    NotesRpcs.toLayer({
+      "Notes.Tail": () =>
+        Stream.make("start").pipe(
+          Stream.tap(() => Effect.sync(() => markStarted?.())),
+          Stream.concat(Stream.never)
+        )
+    })
+  )
+
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const clients = yield* Effect.service(RendererRpcClients)
+        const notes = clients.clients.get(NotesRpcs)
+        const tail = notes?.["Notes.Tail"]
+        expect(tail).toBeDefined()
+        const fiber = yield* Effect.forkScoped(
+          Stream.runDrain(tail!(undefined) as Stream.Stream<unknown>)
+        )
+        yield* Effect.promise(() => started)
+        yield* Fiber.interrupt(fiber)
+      }).pipe(Effect.provide(makeDesktopRendererRpcTestLayer([NotesLayer], { inspector })))
+    )
+  )
+
+  const events = await Effect.runPromise(Stream.runCollect(Stream.take(inspector.events, 2)))
+
+  expect(
+    Array.from(events).map(({ kind, operation, status }) => ({ kind, operation, status }))
+  ).toEqual([
+    { kind: "stream", operation: "Notes.Tail", status: "start" },
+    { kind: "stream", operation: "Notes.Tail", status: "interruption" }
+  ])
 })
 
 const manifestFor = (

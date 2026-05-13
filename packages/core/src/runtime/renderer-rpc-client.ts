@@ -4,7 +4,7 @@ import {
   type DesktopTransportRun,
   type DesktopTransportSend
 } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Scope, Stream } from "effect"
+import { Context, Effect, Exit, Layer, Scope, Stream } from "effect"
 import { Rpc, RpcClient, RpcGroup, RpcTest } from "effect/unstable/rpc"
 
 import type { AnyDesktopRpcLayer, DesktopAppManifest } from "./desktop-app.js"
@@ -13,6 +13,11 @@ import {
   type DesktopFramework,
   type MissingDesktopRpcClientError
 } from "./desktop-errors.js"
+import {
+  disabledRendererInspectorCollector,
+  RendererInspectorEvent,
+  type RendererInspectorCollectorApi
+} from "./inspector-events.js"
 import { servedRpcGroup, type RpcGroupWithRequests } from "./rpc-group-metadata.js"
 
 export type DesktopRendererRpcTransport = DesktopTransportSend & DesktopTransportRun
@@ -41,6 +46,7 @@ export class RendererRpcTransport extends Context.Service<
 
 export interface DesktopRendererRpcClientLayerOptions extends DesktopProtocolOptions {
   readonly framework: DesktopFramework
+  readonly inspector?: RendererInspectorCollectorApi | undefined
 }
 
 export interface DesktopRendererRpcLayerOptions extends DesktopRendererRpcClientLayerOptions {
@@ -55,7 +61,10 @@ export const makeDesktopRendererRpcLayer = (
   options: DesktopRendererRpcLayerOptions
 ): Layer.Layer<RendererRpcClients, MissingDesktopRpcClientError, never> => {
   if (options.rpcLayers !== undefined) {
-    return makeDesktopRendererRpcTestLayer(options.rpcLayers, { framework: options.framework })
+    return makeDesktopRendererRpcTestLayer(options.rpcLayers, {
+      framework: options.framework,
+      inspector: options.inspector
+    })
   }
 
   if (app.rpcGroups.length === 0) {
@@ -112,10 +121,17 @@ export const makeDesktopRendererRpcTransportLayer = (
 
 export const makeDesktopRendererRpcTestLayer = (
   rpcLayers: ReadonlyArray<AnyDesktopRpcLayer<never, never>>,
-  options: { readonly framework?: DesktopFramework | undefined } = {}
+  options: {
+    readonly framework?: DesktopFramework | undefined
+    readonly inspector?: RendererInspectorCollectorApi | undefined
+  } = {}
 ): Layer.Layer<RendererRpcClients, never, never> =>
   Layer.effect(RendererRpcClients)(
-    acquireDesktopRendererRpcTestClients(rpcLayers, options.framework ?? "unknown")
+    acquireDesktopRendererRpcTestClients(
+      rpcLayers,
+      options.framework ?? "unknown",
+      options.inspector
+    )
   )
 
 const missingRendererRpcTransportLayer = (
@@ -146,7 +162,7 @@ const acquireDesktopRendererRpcClients = (
     const clients = new Map<RpcGroup.Any, DesktopRendererRpcClient>()
     for (const descriptor of app.rpcGroups) {
       const servedGroup = servedRpcGroup(descriptor)
-      const client = yield* makeGroupClient(servedGroup, protocol, options.framework)
+      const client = yield* makeGroupClient(servedGroup, protocol, options)
       clients.set(descriptor.group, client)
       if (servedGroup !== descriptor.group) {
         clients.set(servedGroup, client)
@@ -157,7 +173,8 @@ const acquireDesktopRendererRpcClients = (
 
 const acquireDesktopRendererRpcTestClients = (
   rpcLayers: ReadonlyArray<AnyDesktopRpcLayer<never, never>>,
-  framework: DesktopFramework
+  framework: DesktopFramework,
+  inspector: RendererInspectorCollectorApi | undefined
 ): Effect.Effect<RendererRpcClientsApi, never, Scope.Scope> =>
   Effect.gen(function* () {
     const scope = yield* Effect.scope
@@ -173,7 +190,8 @@ const acquireDesktopRendererRpcTestClients = (
           Record<string, DesktopRendererRpcClientMethod | undefined>
         >,
         scope,
-        framework
+        framework,
+        inspector ?? disabledRendererInspectorCollector
       )
       clients.set(rpcLayer.group, client)
       if (group !== rpcLayer.group) {
@@ -186,7 +204,7 @@ const acquireDesktopRendererRpcTestClients = (
 const makeGroupClient = (
   group: RpcGroupWithRequests,
   protocol: RpcClient.Protocol["Service"],
-  framework: DesktopFramework
+  options: DesktopRendererRpcClientLayerOptions
 ): Effect.Effect<DesktopRendererRpcClient, never, Scope.Scope> =>
   Effect.gen(function* () {
     const scope = yield* Effect.scope
@@ -205,12 +223,18 @@ const makeGroupClient = (
         const method = rpcClient[tag]
         if (method === undefined) {
           throw makeMissingDesktopRpcClientError(
-            framework,
+            options.framework,
             tag,
             `No renderer RPC client method is installed for ${tag}`
           )
         }
-        return provideRendererRpcMethodScope(method(input), scope)
+        return instrumentRendererRpcMethod(
+          provideRendererRpcMethodScope(method(input), scope),
+          tag,
+          options.framework,
+          options.inspector ?? disabledRendererInspectorCollector,
+          options.now
+        )
       }
     ])
     return Object.freeze(Object.fromEntries(entries))
@@ -220,7 +244,8 @@ const makeRpcTestGroupClient = (
   group: RpcGroupWithRequests,
   rpcClient: Readonly<Record<string, DesktopRendererRpcClientMethod | undefined>>,
   scope: Scope.Scope,
-  framework: DesktopFramework
+  framework: DesktopFramework,
+  inspector: RendererInspectorCollectorApi
 ): DesktopRendererRpcClient => {
   const entries = Array.from(group.requests.keys()).map((tag) => [
     tag,
@@ -233,7 +258,12 @@ const makeRpcTestGroupClient = (
           `No renderer RPC test client method is installed for ${tag}`
         )
       }
-      return provideRendererRpcMethodScope(method(input), scope)
+      return instrumentRendererRpcMethod(
+        provideRendererRpcMethodScope(method(input), scope),
+        tag,
+        framework,
+        inspector
+      )
     }
   ])
   return Object.freeze(Object.fromEntries(entries))
@@ -250,3 +280,80 @@ const provideRendererRpcMethodScope = (
         Scope.Scope,
         scope
       )
+
+const instrumentRendererRpcMethod = (
+  result: ReturnType<DesktopRendererRpcClientMethod>,
+  operation: string,
+  framework: DesktopFramework,
+  inspector: RendererInspectorCollectorApi,
+  now: (() => number) | undefined = undefined
+): ReturnType<DesktopRendererRpcClientMethod> =>
+  Effect.isEffect(result)
+    ? instrumentRendererRpcEffect(result, operation, framework, inspector, now)
+    : instrumentRendererRpcStream(result, operation, framework, inspector, now)
+
+const instrumentRendererRpcEffect = (
+  effect: Effect.Effect<unknown, unknown, never>,
+  operation: string,
+  framework: DesktopFramework,
+  inspector: RendererInspectorCollectorApi,
+  now: (() => number) | undefined
+): Effect.Effect<unknown, unknown, never> =>
+  publishRendererRpcEvent(inspector, "rpc", "start", operation, framework, now).pipe(
+    Effect.andThen(effect),
+    Effect.onExit((exit) =>
+      publishRendererRpcEvent(
+        inspector,
+        "rpc",
+        Exit.isSuccess(exit) ? "success" : Exit.hasInterrupts(exit) ? "interruption" : "failure",
+        operation,
+        framework,
+        now
+      )
+    )
+  )
+
+const instrumentRendererRpcStream = (
+  stream: Stream.Stream<unknown, unknown, never>,
+  operation: string,
+  framework: DesktopFramework,
+  inspector: RendererInspectorCollectorApi,
+  now: (() => number) | undefined
+): Stream.Stream<unknown, unknown, never> =>
+  Stream.concat(
+    Stream.drain(
+      Stream.fromEffect(
+        publishRendererRpcEvent(inspector, "stream", "start", operation, framework, now)
+      )
+    ),
+    stream.pipe(
+      Stream.onExit((exit) =>
+        publishRendererRpcEvent(
+          inspector,
+          "stream",
+          Exit.isSuccess(exit) ? "success" : Exit.hasInterrupts(exit) ? "interruption" : "failure",
+          operation,
+          framework,
+          now
+        )
+      )
+    )
+  )
+
+const publishRendererRpcEvent = (
+  inspector: RendererInspectorCollectorApi,
+  kind: "rpc" | "stream",
+  status: "start" | "success" | "failure" | "interruption",
+  operation: string,
+  framework: DesktopFramework,
+  now: (() => number) | undefined
+): Effect.Effect<void, never, never> =>
+  inspector.publish(
+    new RendererInspectorEvent({
+      kind,
+      status,
+      operation,
+      framework,
+      timestamp: now?.() ?? Date.now()
+    })
+  )

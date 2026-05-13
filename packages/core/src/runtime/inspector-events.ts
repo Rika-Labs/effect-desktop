@@ -125,6 +125,21 @@ export class EventLogInspectorEvent extends Schema.Class<EventLogInspectorEvent>
   timestamp: NonNegativeNumber
 }) {}
 
+export class RendererInspectorEvent extends Schema.Class<RendererInspectorEvent>(
+  "RendererInspectorEvent"
+)({
+  kind: Schema.Literals(["rpc", "stream", "hook", "provider", "storage"]),
+  status: InspectorEventStatus,
+  operation: Schema.String,
+  framework: OptionalString,
+  traceId: OptionalString,
+  resourceId: OptionalString,
+  ownerScope: OptionalString,
+  errorTag: OptionalString,
+  message: OptionalString,
+  timestamp: NonNegativeNumber
+}) {}
+
 export class InspectorEvent extends Schema.Class<InspectorEvent>("InspectorEvent")({
   channel: Schema.Literals([
     "execution",
@@ -132,14 +147,16 @@ export class InspectorEvent extends Schema.Class<InspectorEvent>("InspectorEvent
     "native-host",
     "persistence",
     "workflow",
-    "event-log"
+    "event-log",
+    "renderer"
   ]),
   execution: Schema.optionalKey(ExecutionEvent),
   filesystem: Schema.optionalKey(FilesystemInspectorEvent),
   nativeHost: Schema.optionalKey(NativeHostEvent),
   persistence: Schema.optionalKey(PersistenceInspectorEvent),
   workflow: Schema.optionalKey(WorkflowInspectorEvent),
-  eventLog: Schema.optionalKey(EventLogInspectorEvent)
+  eventLog: Schema.optionalKey(EventLogInspectorEvent),
+  renderer: Schema.optionalKey(RendererInspectorEvent)
 }) {}
 
 export interface ExecutionInspectorCollectorApi {
@@ -172,6 +189,11 @@ export interface EventLogInspectorCollectorApi {
   readonly events: Stream.Stream<EventLogInspectorEvent, never, never>
 }
 
+export interface RendererInspectorCollectorApi {
+  readonly publish: (event: RendererInspectorEvent) => Effect.Effect<void, never, never>
+  readonly events: Stream.Stream<RendererInspectorEvent, never, never>
+}
+
 export class ExecutionInspectorCollector extends Context.Service<
   ExecutionInspectorCollector,
   ExecutionInspectorCollectorApi
@@ -202,6 +224,11 @@ export class EventLogInspectorCollector extends Context.Service<
   EventLogInspectorCollectorApi
 >()("EventLogInspectorCollector") {}
 
+export class RendererInspectorCollector extends Context.Service<
+  RendererInspectorCollector,
+  RendererInspectorCollectorApi
+>()("RendererInspectorCollector") {}
+
 export interface InspectorCollectorsApi {
   readonly execution: ExecutionInspectorCollectorApi
   readonly filesystem: FilesystemInspectorCollectorApi
@@ -209,6 +236,7 @@ export interface InspectorCollectorsApi {
   readonly persistence: PersistenceInspectorCollectorApi
   readonly workflow: WorkflowInspectorCollectorApi
   readonly eventLog: EventLogInspectorCollectorApi
+  readonly renderer: RendererInspectorCollectorApi
   readonly events: Stream.Stream<InspectorEvent, never, never>
 }
 
@@ -269,6 +297,12 @@ export const makeEventLogInspectorCollector = (): Effect.Effect<
   never
 > => makeCollector<EventLogInspectorEvent>()
 
+export const makeRendererInspectorCollector = (): Effect.Effect<
+  RendererInspectorCollectorApi,
+  never,
+  never
+> => makeCollector<RendererInspectorEvent>()
+
 export const makeInspectorCollectors = (): Effect.Effect<InspectorCollectorsApi, never, never> =>
   Effect.gen(function* () {
     const execution = yield* makeExecutionInspectorCollector()
@@ -277,6 +311,7 @@ export const makeInspectorCollectors = (): Effect.Effect<InspectorCollectorsApi,
     const persistence = yield* makePersistenceInspectorCollector()
     const workflow = yield* makeWorkflowInspectorCollector()
     const eventLog = yield* makeEventLogInspectorCollector()
+    const renderer = yield* makeRendererInspectorCollector()
 
     return Object.freeze({
       execution,
@@ -285,6 +320,7 @@ export const makeInspectorCollectors = (): Effect.Effect<InspectorCollectorsApi,
       persistence,
       workflow,
       eventLog,
+      renderer,
       events: Stream.mergeAll(
         [
           execution.events.pipe(
@@ -306,9 +342,12 @@ export const makeInspectorCollectors = (): Effect.Effect<InspectorCollectorsApi,
           ),
           eventLog.events.pipe(
             Stream.map((event) => new InspectorEvent({ channel: "event-log", eventLog: event }))
+          ),
+          renderer.events.pipe(
+            Stream.map((event) => new InspectorEvent({ channel: "renderer", renderer: event }))
           )
         ],
-        { concurrency: 6 }
+        { concurrency: 7 }
       )
     } satisfies InspectorCollectorsApi)
   })
@@ -342,6 +381,9 @@ export const WorkflowInspectorCollectorLive: Layer.Layer<WorkflowInspectorCollec
 
 export const EventLogInspectorCollectorLive: Layer.Layer<EventLogInspectorCollector, never, never> =
   Layer.effect(EventLogInspectorCollector, makeEventLogInspectorCollector())
+
+export const RendererInspectorCollectorLive: Layer.Layer<RendererInspectorCollector, never, never> =
+  Layer.effect(RendererInspectorCollector, makeRendererInspectorCollector())
 
 export const InspectorCollectorsLive: Layer.Layer<InspectorCollectors, never, never> = Layer.effect(
   InspectorCollectors,
@@ -384,13 +426,20 @@ export const InspectorEventLogEvents = Rpc.make("Inspector.events.eventLog", {
   stream: true
 }).pipe(BridgeRuntime({ backpressure: { strategy: "drop", size: 1024 } }))
 
+export const InspectorRendererEvents = Rpc.make("Inspector.events.renderer", {
+  success: RendererInspectorEvent,
+  error: Schema.Never,
+  stream: true
+}).pipe(BridgeRuntime({ backpressure: { strategy: "drop", size: 1024 } }))
+
 export const InspectorEventRpcs = RpcGroup.make(
   InspectorExecutionEvents,
   InspectorFilesystemEvents,
   InspectorNativeHostEvents,
   InspectorPersistenceEvents,
   InspectorWorkflowEvents,
-  InspectorEventLogEvents
+  InspectorEventLogEvents,
+  InspectorRendererEvents
 )
 
 export type InspectorEventRpc = RpcGroup.Rpcs<typeof InspectorEventRpcs>
@@ -422,6 +471,11 @@ export const disabledWorkflowInspectorCollector: WorkflowInspectorCollectorApi =
 })
 
 export const disabledEventLogInspectorCollector: EventLogInspectorCollectorApi = Object.freeze({
+  publish: () => Effect.void,
+  events: Stream.empty
+})
+
+export const disabledRendererInspectorCollector: RendererInspectorCollectorApi = Object.freeze({
   publish: () => Effect.void,
   events: Stream.empty
 })

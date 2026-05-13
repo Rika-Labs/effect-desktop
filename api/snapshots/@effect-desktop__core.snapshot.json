@@ -609,6 +609,11 @@
       "signature": "const disabledPersistenceInspectorCollector: PersistenceInspectorCollectorApi"
     },
     {
+      "name": "disabledRendererInspectorCollector",
+      "kind": "value",
+      "signature": "const disabledRendererInspectorCollector: RendererInspectorCollectorApi"
+    },
+    {
       "name": "disabledWorkflowInspectorCollector",
       "kind": "value",
       "signature": "const disabledWorkflowInspectorCollector: WorkflowInspectorCollectorApi"
@@ -826,7 +831,7 @@
     {
       "name": "InspectorCollectorsApi",
       "kind": "interface",
-      "signature": "export interface InspectorCollectorsApi { readonly execution: ExecutionInspectorCollectorApi readonly filesystem: FilesystemInspectorCollectorApi readonly nativeHost: NativeHostInspectorCollectorApi readonly persistence: PersistenceInspectorCollectorApi readonly workflow: WorkflowInspectorCollectorApi readonly eventLog: EventLogInspectorCollectorApi readonly events: Stream.Stream<InspectorEvent, never, never> }"
+      "signature": "export interface InspectorCollectorsApi { readonly execution: ExecutionInspectorCollectorApi readonly filesystem: FilesystemInspectorCollectorApi readonly nativeHost: NativeHostInspectorCollectorApi readonly persistence: PersistenceInspectorCollectorApi readonly workflow: WorkflowInspectorCollectorApi readonly eventLog: EventLogInspectorCollectorApi readonly renderer: RendererInspectorCollectorApi readonly events: Stream.Stream<InspectorEvent, never, never> }"
     },
     {
       "name": "InspectorCollectorsLive",
@@ -836,7 +841,7 @@
     {
       "name": "InspectorEvent",
       "kind": "class",
-      "signature": "export class InspectorEvent extends Schema.Class<InspectorEvent>(\"InspectorEvent\")({ channel: Schema.Literals([ \"execution\", \"filesystem\", \"native-host\", \"persistence\", \"workflow\", \"event-log\" ]), execution: Schema.optionalKey(ExecutionEvent), filesystem: Schema.optionalKey(FilesystemInspectorEvent), nativeHost: Schema.optionalKey(NativeHostEvent), persistence: Schema.optionalKey(PersistenceInspectorEvent), workflow: Schema.optionalKey(WorkflowInspectorEvent), eventLog: Schema.optionalKey(EventLogInspectorEvent) }) {}"
+      "signature": "export class InspectorEvent extends Schema.Class<InspectorEvent>(\"InspectorEvent\")({ channel: Schema.Literals([ \"execution\", \"filesystem\", \"native-host\", \"persistence\", \"workflow\", \"event-log\", \"renderer\" ]), execution: Schema.optionalKey(ExecutionEvent), filesystem: Schema.optionalKey(FilesystemInspectorEvent), nativeHost: Schema.optionalKey(NativeHostEvent), persistence: Schema.optionalKey(PersistenceInspectorEvent), workflow: Schema.optionalKey(WorkflowInspectorEvent), eventLog: Schema.optionalKey(EventLogInspectorEvent), renderer: Schema.optionalKey(RendererInspectorEvent) }) {}"
     },
     {
       "name": "InspectorEventInput",
@@ -856,7 +861,7 @@
     {
       "name": "InspectorEventRpcs",
       "kind": "value",
-      "signature": "const InspectorEventRpcs: RpcGroup.RpcGroup<Rpc.Rpc<\"Inspector.events.execution\", Schema.Void, import(\"effect/unstable/rpc/RpcSchema\").Stream<typeof ExecutionEvent, Schema.Never>, Schema.Never, never, never> | Rpc.Rpc<\"Inspector.events.filesystem\", Schema.Void, import(\"effect/unstable/rpc/RpcSchema\").Stream<typeof FilesystemInspectorEvent, Schema.Never>, Schema.Never, never, never> | Rpc.Rpc<\"Inspector.events.nativeHost\", Schema.Void, import(\"effect/unstable/rpc/RpcSchema\").Stream<typeof NativeHostEvent, Schema.Never>, Schema.Never, never, never> | Rpc.Rpc<\"Inspector.events.persistence\", Schema.Void, import(\"effect/unstable/rpc/RpcSchema\").Stream<typeof PersistenceInspectorEvent, Schema.Never>, Schema.Never, never, never> | Rpc.Rpc<\"Inspector.events.workflow\", Schema.Void, import(\"effect/unstable/rpc/RpcSchema\").Stream<typeof WorkflowInspectorEvent, Schema.Never>, Schema.Never, never, never> | Rpc.Rpc<\"Inspector.events.eventLog\", Schema.Void, import(\"effect/unstable/rpc/RpcSchema\").Stream<typeof EventLogInspectorEvent, Schema.Never>, Schema.Never, never, never>>"
+      "signature": "const InspectorEventRpcs: RpcGroup.RpcGroup<Rpc.Rpc<\"Inspector.events.execution\", Schema.Void, import(\"effect/unstable/rpc/RpcSchema\").Stream<typeof ExecutionEvent, Schema.Never>, Schema.Never, never, never> | Rpc.Rpc<\"Inspector.events.filesystem\", Schema.Void, import(\"effect/unstable/rpc/RpcSchema\").Stream<typeof FilesystemInspectorEvent, Schema.Never>, Schema.Never, never, never> | Rpc.Rpc<\"Inspector.events.nativeHost\", Schema.Void, import(\"effect/unstable/rpc/RpcSchema\").Stream<typeof NativeHostEvent, Schema.Never>, Schema.Never, never, never> | Rpc.Rpc<\"Inspector.events.persistence\", Schema.Void, import(\"effect/unstable/rpc/RpcSchema\").Stream<typeof PersistenceInspectorEvent, Schema.Never>, Schema.Never, never, never> | Rpc.Rpc<\"Inspector.events.workflow\", Schema.Void, import(\"effect/unstable/rpc/RpcSchema\").Stream<typeof WorkflowInspectorEvent, Schema.Never>, Schema.Never, never, never> | Rpc.Rpc<\"Inspector.events.eventLog\", Schema.Void, import(\"effect/unstable/rpc/RpcSchema\").Stream<typeof EventLogInspectorEvent, Schema.Never>, Schema.Never, never, never> | Rpc.Rpc<\"Inspector.events.renderer\", Schema.Void, import(\"effect/unstable/rpc/RpcSchema\").Stream<typeof RendererInspectorEvent, Schema.Never>, Schema.Never, never, never>>"
     },
     {
       "name": "InspectorEventStatus",
@@ -897,6 +902,11 @@
       "name": "InspectorProductionCapture",
       "kind": "type",
       "signature": "export type InspectorProductionCapture = \"disabled\" | \"safe\""
+    },
+    {
+      "name": "InspectorRendererEvents",
+      "kind": "value",
+      "signature": "const InspectorRendererEvents: Rpc.Rpc<\"Inspector.events.renderer\", Schema.Void, import(\"effect/unstable/rpc/RpcSchema\").Stream<typeof RendererInspectorEvent, Schema.Never>, Schema.Never, never, never>"
     },
     {
       "name": "InspectorReplayRequest",
@@ -1167,6 +1177,11 @@
       "name": "makePty",
       "kind": "value",
       "signature": "const makePty: (registry: ResourceRegistryApi, options?: PtyOptions) => Effect.Effect<PtyApi, HostProtocolInvalidArgumentError, never>"
+    },
+    {
+      "name": "makeRendererInspectorCollector",
+      "kind": "value",
+      "signature": "const makeRendererInspectorCollector: () => Effect.Effect<RendererInspectorCollectorApi, never, never>"
     },
     {
       "name": "makeResourceRegistry",
@@ -1657,6 +1672,26 @@
       "name": "RegistrySnapshot",
       "kind": "interface",
       "signature": "export interface RegistrySnapshot { readonly entries: readonly ResourceEntry[] }"
+    },
+    {
+      "name": "RendererInspectorCollector",
+      "kind": "class",
+      "signature": "export class RendererInspectorCollector extends Context.Service< RendererInspectorCollector, RendererInspectorCollectorApi >()(\"RendererInspectorCollector\") {}"
+    },
+    {
+      "name": "RendererInspectorCollectorApi",
+      "kind": "interface",
+      "signature": "export interface RendererInspectorCollectorApi { readonly publish: (event: RendererInspectorEvent) => Effect.Effect<void, never, never> readonly events: Stream.Stream<RendererInspectorEvent, never, never> }"
+    },
+    {
+      "name": "RendererInspectorCollectorLive",
+      "kind": "value",
+      "signature": "const RendererInspectorCollectorLive: Layer.Layer<RendererInspectorCollector, never, never>"
+    },
+    {
+      "name": "RendererInspectorEvent",
+      "kind": "class",
+      "signature": "export class RendererInspectorEvent extends Schema.Class<RendererInspectorEvent>( \"RendererInspectorEvent\" )({ kind: Schema.Literals([\"rpc\", \"stream\", \"hook\", \"provider\", \"storage\"]), status: InspectorEventStatus, operation: Schema.String, framework: OptionalString, traceId: OptionalString, resourceId: OptionalString, ownerScope: OptionalString, errorTag: OptionalString, message: OptionalString, timestamp: NonNegativeNumber }) {}"
     },
     {
       "name": "resolveApprovalDeferred",
