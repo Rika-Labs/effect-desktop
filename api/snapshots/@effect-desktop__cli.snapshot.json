@@ -186,7 +186,7 @@
     {
       "name": "DesktopBuildReport",
       "kind": "interface",
-      "signature": "export interface DesktopBuildReport { readonly appId: string readonly appName: string readonly appVersion: string readonly target: BuildTarget readonly layoutPath: string readonly appManifestPath: string readonly bridgeManifestPath: string readonly steps: readonly BuildStepReport[] }"
+      "signature": "export interface DesktopBuildReport { readonly appId: string readonly appName: string readonly appVersion: string readonly target: BuildTarget readonly providers: { readonly runtime: RuntimeEngine readonly runtimePackaging: \"source\" readonly webEngine: \"system\" } readonly providerBudgets: readonly DesktopProviderBudget[] readonly providerMeasurements: readonly ProviderMeasurementReport[] readonly layoutPath: string readonly appManifestPath: string readonly bridgeManifestPath: string readonly steps: readonly BuildStepReport[] }"
     },
     {
       "name": "DesktopDoctorReport",
@@ -216,7 +216,7 @@
     {
       "name": "DesktopPackageReport",
       "kind": "interface",
-      "signature": "export interface DesktopPackageReport { readonly appId: string readonly appName: string readonly appVersion: string readonly target: PackageTarget readonly layoutPath: string readonly outputPath: string readonly artifacts: readonly PackageArtifactReport[] readonly steps: readonly PackageStepReport[] }"
+      "signature": "export interface DesktopPackageReport { readonly appId: string readonly appName: string readonly appVersion: string readonly target: PackageTarget readonly layoutPath: string readonly outputPath: string readonly providers: PackageProviderReport | undefined readonly artifacts: readonly PackageArtifactReport[] readonly steps: readonly PackageStepReport[] }"
     },
     {
       "name": "desktopPlatformDirectory",
@@ -496,7 +496,7 @@
     {
       "name": "PackageArtifactReport",
       "kind": "interface",
-      "signature": "export interface PackageArtifactReport { readonly kind: PackageArtifactKind readonly target: PackageTarget readonly artifactPath: string readonly artifactJsonPath: string readonly checksumsPath: string readonly appId: string readonly appName: string readonly appVersion: string readonly sizeBytes: number readonly sha256: string readonly linuxIntegration?: { readonly desktopFile: string readonly appStreamId: string readonly flatpakAppId: string readonly snapName: string } }"
+      "signature": "export interface PackageArtifactReport { readonly kind: PackageArtifactKind readonly target: PackageTarget readonly artifactPath: string readonly artifactJsonPath: string readonly checksumsPath: string readonly appId: string readonly appName: string readonly appVersion: string readonly sizeBytes: number readonly sha256: string readonly providerBudgetChecks: readonly PackageProviderBudgetCheckReport[] readonly linuxIntegration?: { readonly desktopFile: string readonly appStreamId: string readonly flatpakAppId: string readonly snapName: string } }"
     },
     {
       "name": "PackageCommandInvocation",
@@ -532,6 +532,16 @@
       "name": "parseDesktopTargetId",
       "kind": "value",
       "signature": "const parseDesktopTargetId: (id: DesktopTargetId) => DesktopTarget"
+    },
+    {
+      "name": "ProviderBudgetCheckReport",
+      "kind": "interface",
+      "signature": "export interface ProviderBudgetCheckReport { readonly metric: \"runtime-payload-bytes\" | \"runtime-boot-ms\" readonly budget: number readonly actual: number | null readonly status: \"pass\" | \"fail\" | \"unmeasured\" }"
+    },
+    {
+      "name": "ProviderMeasurementReport",
+      "kind": "interface",
+      "signature": "export interface ProviderMeasurementReport { readonly provider: DesktopProviderBudget readonly runtimePackaging: \"source\" readonly webEngine: \"system\" readonly target: BuildTarget readonly runtimePayloadBytes: number readonly runtimeBuildMs: number readonly startup: { readonly runtimeBootMs: number | null readonly firstWindowVisibleMs: number | null readonly bridgeReadyMs: number | null } readonly checks: readonly ProviderBudgetCheckReport[] }"
     },
     {
       "name": "PublicApiChange",

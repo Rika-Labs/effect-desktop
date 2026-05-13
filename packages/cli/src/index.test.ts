@@ -6193,7 +6193,50 @@ test("desktop build stages renderer runtime host bridge manifests and report", a
     expect(report).toMatchObject({
       appId: "dev.effect-desktop.playground",
       target: "linux-x64",
-      layoutPath: layout
+      layoutPath: layout,
+      providers: {
+        runtime: "bun",
+        runtimePackaging: "source",
+        webEngine: "system"
+      },
+      providerBudgets: [
+        {
+          id: "bun",
+          kind: "runtime",
+          package: "@effect/platform-bun",
+          importPath: "@effect-desktop/core/providers/bun",
+          startupBudgetMs: 25,
+          bundleBudgetKb: 64
+        }
+      ],
+      providerMeasurements: [
+        {
+          runtimePackaging: "source",
+          webEngine: "system",
+          target: "linux-x64",
+          runtimePayloadBytes: 18,
+          runtimeBuildMs: 60,
+          startup: {
+            runtimeBootMs: null,
+            firstWindowVisibleMs: null,
+            bridgeReadyMs: null
+          },
+          checks: [
+            {
+              metric: "runtime-payload-bytes",
+              budget: 65_536,
+              actual: 18,
+              status: "pass"
+            },
+            {
+              metric: "runtime-boot-ms",
+              budget: 25,
+              actual: null,
+              status: "unmeasured"
+            }
+          ]
+        }
+      ]
     })
   } finally {
     await rm(directory, { recursive: true, force: true })
@@ -7290,7 +7333,15 @@ test("desktop package emits macOS app dmg zip artifacts with metadata", async ()
     const appMetadata = JSON.parse(await readFile(join(appRoot, "artifact.json"), "utf8")) as {
       readonly kind: string
       readonly sha256: string
+      readonly providerBudgetChecks: readonly {
+        readonly metric: string
+        readonly budget: number
+        readonly status: string
+      }[]
     }
+    const packageReport = JSON.parse(
+      await readFile(join(outputRoot, "package-report.json"), "utf8")
+    ) as Record<string, unknown>
 
     expect(exitCode).toBe(0)
     expect(stdout.join("")).toContain("Effect Desktop package")
@@ -7306,6 +7357,20 @@ test("desktop package emits macOS app dmg zip artifacts with metadata", async ()
     ).toContain("dev.effect-desktop.playground")
     expect(appMetadata.kind).toBe("app")
     expect(appMetadata.sha256).toHaveLength(64)
+    expect(appMetadata.providerBudgetChecks).toEqual([
+      expect.objectContaining({
+        metric: "artifact-bytes",
+        budget: 65_536,
+        status: "pass"
+      })
+    ])
+    expect(packageReport).toMatchObject({
+      providers: {
+        runtime: "bun",
+        runtimePackaging: "source",
+        webEngine: "system"
+      }
+    })
     expect(await readFile(join(dmgRoot, "checksums.txt"), "utf8")).toContain(".dmg")
     expect(await readFile(join(zipRoot, "checksums.txt"), "utf8")).toContain(".zip")
   } finally {
@@ -8023,6 +8088,35 @@ const writeBuildLayoutFixture = async (
           env: {}
         },
         nativeHost: { binary: `native/${hostBinary}` }
+      },
+      null,
+      2
+    )}\n`
+  )
+  await writeFile(
+    join(layout, "build-report.json"),
+    `${JSON.stringify(
+      {
+        appId: "dev.effect-desktop.playground",
+        appName: "Effect Desktop Playground",
+        appVersion: "0.0.0",
+        target,
+        providers: {
+          runtime: runtimeEngine,
+          runtimePackaging: "source",
+          webEngine: "system"
+        },
+        providerBudgets: [
+          {
+            id: runtimeEngine,
+            kind: "runtime",
+            package: runtimeEngine === "bun" ? "@effect/platform-bun" : "@effect/platform-node",
+            importPath: `@effect-desktop/core/providers/${runtimeEngine}`,
+            startupBudgetMs: 25,
+            bundleBudgetKb: 64
+          }
+        ],
+        providerMeasurements: []
       },
       null,
       2

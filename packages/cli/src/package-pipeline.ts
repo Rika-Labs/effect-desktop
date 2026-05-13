@@ -4,6 +4,8 @@ import { pathToFileURL } from "node:url"
 
 import { Data, Effect } from "effect"
 
+import type { DesktopProviderBudget } from "@effect-desktop/core"
+
 import {
   ReleaseFileSystem,
   runReleaseFileSystem,
@@ -143,12 +145,21 @@ export interface PackageArtifactReport {
   readonly appVersion: string
   readonly sizeBytes: number
   readonly sha256: string
+  readonly providerBudgetChecks: readonly PackageProviderBudgetCheckReport[]
   readonly linuxIntegration?: {
     readonly desktopFile: string
     readonly appStreamId: string
     readonly flatpakAppId: string
     readonly snapName: string
   }
+}
+
+export interface PackageProviderBudgetCheckReport {
+  readonly provider: DesktopProviderBudget
+  readonly metric: "artifact-bytes"
+  readonly budget: number
+  readonly actual: number
+  readonly status: "pass" | "fail"
 }
 
 export interface PackageStepReport {
@@ -166,8 +177,16 @@ export interface DesktopPackageReport {
   readonly target: PackageTarget
   readonly layoutPath: string
   readonly outputPath: string
+  readonly providers: PackageProviderReport | undefined
   readonly artifacts: readonly PackageArtifactReport[]
   readonly steps: readonly PackageStepReport[]
+}
+
+export interface PackageProviderReport {
+  readonly runtime: AppManifest["runtimeManifest"]["engine"]
+  readonly runtimePackaging: "source"
+  readonly webEngine: "system"
+  readonly providerBudgets: readonly DesktopProviderBudget[]
 }
 
 interface PackagePlan {
@@ -182,6 +201,7 @@ interface PackagePlan {
   readonly artifactKinds: readonly PackageArtifactKind[]
   readonly safeAppName: string
   readonly linuxPackageName: string
+  readonly providers: PackageProviderReport | undefined
 }
 
 interface AppConfig {
@@ -264,6 +284,7 @@ export const runDesktopPackage = (
       target: plan.target,
       layoutPath: plan.layoutPath,
       outputPath: plan.outputPath,
+      providers: plan.providers,
       artifacts,
       steps
     }
@@ -311,7 +332,11 @@ const normalizePackagePlan = (
     readonly target: PackageTarget
     readonly artifact: string | undefined
   }
-): Effect.Effect<PackagePlan, PackageConfigError | PackageUnsupportedArtifactError, never> =>
+): Effect.Effect<
+  PackagePlan,
+  PackageConfigError | PackageFileError | PackageUnsupportedArtifactError,
+  never
+> =>
   Effect.gen(function* () {
     const config = yield* readConfigObject(rawConfig)
     const appRoot = dirname(options.configPath)
@@ -319,6 +344,7 @@ const normalizePackagePlan = (
     const appName = yield* readLineSafeString(config.app?.name, "app.name")
     const appVersion = yield* readSemverString(config.app?.version, "app.version")
     const platform = desktopPlatformDirectory(options.target)
+    const layoutPath = resolvePath(appRoot, join("build", "effect-desktop", options.target))
     const artifactKinds = yield* resolveArtifactKinds(options.artifact, options.target)
     const safeAppName = safeArtifactName(appName)
     if (safeAppName === "." || safeAppName === "..") {
@@ -335,15 +361,60 @@ const normalizePackagePlan = (
       appName,
       appVersion,
       appRoot,
-      layoutPath: resolvePath(appRoot, join("build", "effect-desktop", options.target)),
+      layoutPath,
       outputPath: resolvePath(appRoot, join("dist", "desktop", platform)),
       target: options.target,
       platform,
       artifactKinds,
       safeAppName,
-      linuxPackageName: linuxPackageName(appId, appName)
+      linuxPackageName: linuxPackageName(appId, appName),
+      providers: yield* readBuildProviderReport(layoutPath)
     }
   })
+
+const readBuildProviderReport = (
+  layoutPath: string
+): Effect.Effect<PackageProviderReport | undefined, PackageFileError, never> =>
+  Effect.gen(function* () {
+    const reportPath = join(layoutPath, "build-report.json")
+    if (!(yield* pathExists(reportPath))) {
+      return undefined
+    }
+    const report = yield* readJson<unknown>(reportPath)
+    if (
+      !isRecord(report) ||
+      !isRecord(report["providers"]) ||
+      !Array.isArray(report["providerBudgets"])
+    ) {
+      return undefined
+    }
+    const providers = report["providers"]
+    const runtime = providers["runtime"]
+    const runtimePackaging = providers["runtimePackaging"]
+    const webEngine = providers["webEngine"]
+    if (
+      (runtime !== "bun" && runtime !== "node") ||
+      runtimePackaging !== "source" ||
+      webEngine !== "system"
+    ) {
+      return undefined
+    }
+    return {
+      runtime,
+      runtimePackaging,
+      webEngine,
+      providerBudgets: report["providerBudgets"].filter(isProviderBudget)
+    }
+  })
+
+const isProviderBudget = (value: unknown): value is DesktopProviderBudget =>
+  isRecord(value) &&
+  typeof value["id"] === "string" &&
+  value["kind"] === "runtime" &&
+  typeof value["package"] === "string" &&
+  typeof value["importPath"] === "string" &&
+  typeof value["startupBudgetMs"] === "number" &&
+  typeof value["bundleBudgetKb"] === "number"
 
 const validateBuildLayout = (
   plan: PackagePlan
@@ -841,6 +912,7 @@ const writeArtifactMetadata = (
       fileName: basename(artifactPath),
       sizeBytes: digest.sizeBytes,
       sha256: digest.sha256,
+      providerBudgetChecks: packageProviderBudgetChecks(plan, digest.sizeBytes),
       ...(plan.platform === "linux"
         ? {
             linuxIntegration: {
@@ -864,7 +936,23 @@ const writeArtifactMetadata = (
       appName: plan.appName,
       appVersion: plan.appVersion,
       sizeBytes: digest.sizeBytes,
-      sha256: digest.sha256
+      sha256: digest.sha256,
+      providerBudgetChecks: packageProviderBudgetChecks(plan, digest.sizeBytes)
+    }
+  })
+
+const packageProviderBudgetChecks = (
+  plan: PackagePlan,
+  artifactBytes: number
+): readonly PackageProviderBudgetCheckReport[] =>
+  (plan.providers?.providerBudgets ?? []).map((provider) => {
+    const budget = provider.bundleBudgetKb * 1024
+    return {
+      provider,
+      metric: "artifact-bytes",
+      budget,
+      actual: artifactBytes,
+      status: artifactBytes <= budget ? "pass" : "fail"
     }
   })
 

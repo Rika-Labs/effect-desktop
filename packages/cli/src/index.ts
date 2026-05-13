@@ -32,6 +32,7 @@ import {
   type ProductionSecurityConfig,
   type RuntimeEngine
 } from "@effect-desktop/config"
+import { runtimeGraph, type DesktopProviderBudget } from "@effect-desktop/core"
 
 import {
   runDesktopPackage,
@@ -551,10 +552,39 @@ export interface DesktopBuildReport {
   readonly appName: string
   readonly appVersion: string
   readonly target: BuildTarget
+  readonly providers: {
+    readonly runtime: RuntimeEngine
+    readonly runtimePackaging: "source"
+    readonly webEngine: "system"
+  }
+  readonly providerBudgets: readonly DesktopProviderBudget[]
+  readonly providerMeasurements: readonly ProviderMeasurementReport[]
   readonly layoutPath: string
   readonly appManifestPath: string
   readonly bridgeManifestPath: string
   readonly steps: readonly BuildStepReport[]
+}
+
+export interface ProviderMeasurementReport {
+  readonly provider: DesktopProviderBudget
+  readonly runtimePackaging: "source"
+  readonly webEngine: "system"
+  readonly target: BuildTarget
+  readonly runtimePayloadBytes: number
+  readonly runtimeBuildMs: number
+  readonly startup: {
+    readonly runtimeBootMs: number | null
+    readonly firstWindowVisibleMs: number | null
+    readonly bridgeReadyMs: number | null
+  }
+  readonly checks: readonly ProviderBudgetCheckReport[]
+}
+
+export interface ProviderBudgetCheckReport {
+  readonly metric: "runtime-payload-bytes" | "runtime-boot-ms"
+  readonly budget: number
+  readonly actual: number | null
+  readonly status: "pass" | "fail" | "unmeasured"
 }
 
 export interface DesktopBuildOptions {
@@ -1198,9 +1228,12 @@ export const runDesktopBuild = (
     yield* makeDirectory(dirname(nativeHost.outputPath))
     yield* copyFileEffect(hostBuildOutputPath(options.cwd, target), nativeHost.outputPath)
 
+    const providerMeasurement = yield* measureBuildProvider(plan, runtime)
     const bridge = yield* writeBridgeManifest(plan, options.now)
     const manifest = yield* writeAppManifest(plan)
-    const report = newBuildReport(plan, [renderer, runtime, nativeHost, bridge, manifest])
+    const report = newBuildReport(plan, [renderer, runtime, nativeHost, bridge, manifest], [
+      providerMeasurement
+    ])
     yield* writeJson(join(plan.layoutPath, "build-report.json"), report)
 
     return report
@@ -1526,24 +1559,126 @@ const writeAppManifest = (plan: BuildPlan): Effect.Effect<BuildStepReport, Build
 
 const newBuildReport = (
   plan: BuildPlan,
-  steps: readonly BuildStepReport[]
+  steps: readonly BuildStepReport[],
+  providerMeasurements: readonly ProviderMeasurementReport[]
 ): DesktopBuildReport => ({
   appId: plan.appId,
   appName: plan.appName,
   appVersion: plan.appVersion,
   target: plan.target,
+  providers: {
+    runtime: plan.runtimeEngine,
+    runtimePackaging: "source",
+    webEngine: "system"
+  },
+  providerBudgets: providerMeasurements.map((measurement) => measurement.provider),
+  providerMeasurements,
   layoutPath: plan.layoutPath,
   appManifestPath: join(plan.layoutPath, "app-manifest.json"),
   bridgeManifestPath: join(plan.layoutPath, "bridge", "bridge-manifest.json"),
   steps
 })
 
+const measureBuildProvider = (
+  plan: BuildPlan,
+  runtimeStep: BuildStepReport
+): Effect.Effect<ProviderMeasurementReport, BuildFileError | BuildConfigError, never> =>
+  Effect.gen(function* () {
+    const runtimePayloadBytes = yield* directoryPayloadBytes(runtimeStep.outputPath)
+    const providerBudget = yield* providerBudgetForRuntime(plan)
+    return providerMeasurementReport({
+      providerBudget,
+      target: plan.target,
+      runtimePayloadBytes,
+      runtimeBuildMs: runtimeStep.elapsedMs
+    })
+  })
+
+const providerBudgetForRuntime = (
+  plan: Pick<BuildPlan, "appId" | "runtimeEngine">
+): Effect.Effect<DesktopProviderBudget, BuildConfigError, never> =>
+  runtimeGraph({
+    id: plan.appId,
+    windows: {},
+    providers: { runtime: plan.runtimeEngine }
+  }).pipe(
+    Effect.map((graph) => graph.providerBudgets[0]),
+    Effect.flatMap((budget) =>
+      budget === undefined
+        ? Effect.fail(
+            new BuildConfigError({
+              field: "runtime.engine",
+              message: `runtime provider ${plan.runtimeEngine} did not expose a provider budget`
+            })
+          )
+        : Effect.succeed(budget)
+    ),
+    Effect.mapError(
+      (error) =>
+        new BuildConfigError({
+          field: "runtime.engine",
+          message: error.message
+        })
+    )
+  )
+
+const providerMeasurementReport = (options: {
+  readonly providerBudget: DesktopProviderBudget
+  readonly target: BuildTarget
+  readonly runtimePayloadBytes: number
+  readonly runtimeBuildMs: number
+}): ProviderMeasurementReport => {
+  const runtimePayloadBudget = options.providerBudget.bundleBudgetKb * 1024
+  return {
+    provider: options.providerBudget,
+    runtimePackaging: "source",
+    webEngine: "system",
+    target: options.target,
+    runtimePayloadBytes: options.runtimePayloadBytes,
+    runtimeBuildMs: options.runtimeBuildMs,
+    startup: {
+      runtimeBootMs: null,
+      firstWindowVisibleMs: null,
+      bridgeReadyMs: null
+    },
+    checks: [
+      {
+        metric: "runtime-payload-bytes",
+        budget: runtimePayloadBudget,
+        actual: options.runtimePayloadBytes,
+        status: options.runtimePayloadBytes <= runtimePayloadBudget ? "pass" : "fail"
+      },
+      {
+        metric: "runtime-boot-ms",
+        budget: options.providerBudget.startupBudgetMs,
+        actual: null,
+        status: "unmeasured"
+      }
+    ]
+  }
+}
+
 const formatBuildReport = (report: DesktopBuildReport): string =>
   [
     "Effect Desktop build",
     `app               ${report.appId}`,
     `target            ${report.target}`,
+    [
+      "providers",
+      `runtime:${report.providers.runtime}`,
+      `packaging:${report.providers.runtimePackaging}`,
+      `web:${report.providers.webEngine}`
+    ].join("         "),
     `layout            ${report.layoutPath}`,
+    ...report.providerMeasurements.map(
+      (measurement) =>
+        [
+          "provider budget",
+          `${measurement.provider.id}`,
+          `runtime=${measurement.runtimePayloadBytes}b/${measurement.provider.bundleBudgetKb}kb`,
+          `startup=unmeasured/${measurement.provider.startupBudgetMs}ms`
+        ].join("   ")
+    ),
     ...report.steps.map(
       (step) =>
         `${step.name.padEnd(17)} ${step.elapsedMs.toString().padStart(4)}ms ${step.outputPath}`
@@ -1592,6 +1727,16 @@ const formatPackageReport = (report: DesktopPackageReport): string =>
     "Effect Desktop package",
     `app               ${report.appId}`,
     `target            ${report.target}`,
+    ...(report.providers === undefined
+      ? []
+      : [
+          [
+            "providers",
+            `runtime:${report.providers.runtime}`,
+            `packaging:${report.providers.runtimePackaging}`,
+            `web:${report.providers.webEngine}`
+          ].join("         ")
+        ]),
     `output            ${report.outputPath}`,
     ...report.artifacts.map(
       (artifact) =>
@@ -2598,6 +2743,20 @@ const copyDirectory = (
   source: string,
   destination: string
 ): Effect.Effect<void, BuildFileError, never> => copyContainedDirectory(source, destination, source)
+
+const directoryPayloadBytes = (path: string): Effect.Effect<number, BuildFileError, never> =>
+  Effect.gen(function* () {
+    const pathStat = yield* statPath(path)
+    if (!pathStat.isDirectory()) {
+      return Number(pathStat.size)
+    }
+    const entries = yield* readDirectory(path)
+    let total = 0
+    for (const entry of entries) {
+      total += yield* directoryPayloadBytes(join(path, entry))
+    }
+    return total
+  })
 
 const copyContainedDirectory = (
   root: string,
