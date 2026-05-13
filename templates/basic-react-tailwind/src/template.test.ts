@@ -65,12 +65,12 @@ test("template contract uses Rpc.make + RpcGroup.make", async () => {
   expect(AppRpc.requests.has("Greet")).toBe(true)
 })
 
-test("template spine assembles the app with Desktop.make and Desktop.Rpcs.layer", async () => {
+test("template spine assembles the app with Desktop.make metadata and Desktop.Rpcs.layer", async () => {
   const { AppRpc } = await import("./contract.js")
   const { TemplateApp } = await import("./spine.js")
 
   expect(TemplateApp.windows["main"]?.renderer).toBe("/")
-  expect(TemplateApp.rpcLayers[0]?.group).toBe(AppRpc)
+  expect(TemplateApp.rpcs[0]?.group).toBe(AppRpc)
 })
 
 test("renderer uses desktop action hooks instead of manual Effect runners", () => {

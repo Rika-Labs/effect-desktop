@@ -36,18 +36,18 @@ export interface DesktopConfig<RIn = never, E = never> {
   readonly id: string
   readonly windows: Readonly<Record<string, WindowSpec>>
   readonly providers?: DesktopProviderSelection
-  readonly layers?: ReadonlyArray<Layer.Layer<never, E, RIn>>
-  readonly rpcs?: ReadonlyArray<AnyDesktopRpcLayer>
+  readonly rpcs?: ReadonlyArray<AnyDesktopRpcLayer<E, RIn>>
   readonly permissions?: ReadonlyArray<NormalizedCapability>
-  readonly workflows?: ReadonlyArray<DesktopWorkflowLayer>
+  readonly workflows?: ReadonlyArray<DesktopWorkflowLayer<RIn, E>>
 }
 
-export interface DesktopMakeConfig {
+export interface DesktopMakeConfig<RIn = never, E = never> {
   readonly id?: string
   readonly windows: Readonly<Record<string, WindowSpec>>
   readonly providers?: DesktopProviderSelection
+  readonly rpcs?: ReadonlyArray<AnyDesktopRpcLayer<E, RIn>>
   readonly permissions?: ReadonlyArray<NormalizedCapability>
-  readonly workflows?: ReadonlyArray<DesktopWorkflowLayer>
+  readonly workflows?: ReadonlyArray<DesktopWorkflowLayer<RIn, E>>
 }
 
 export type DesktopWorkflowLayer<RIn = never, E = never> = Layer.Layer<
@@ -56,19 +56,11 @@ export type DesktopWorkflowLayer<RIn = never, E = never> = Layer.Layer<
   RIn | WorkflowEngine.WorkflowEngine
 >
 
-export interface DesktopAppDefinition<E = never, R = never> {
-  readonly _tag: "DesktopAppDefinition"
-  readonly id: string
-  readonly windows: Readonly<Record<string, WindowSpec>>
-  readonly providers: DesktopProviderSelection
-  readonly layers: ReadonlyArray<Layer.Layer<never, E, R>>
-  readonly rpcLayers: ReadonlyArray<AnyDesktopRpcLayer>
+export interface DesktopAppDescriptor<RIn = never, E = never> extends DesktopConfig<RIn, E> {
+  readonly _tag: "DesktopAppDescriptor"
+  readonly rpcs: ReadonlyArray<AnyDesktopRpcLayer<E, RIn>>
   readonly permissions: ReadonlyArray<NormalizedCapability>
-  readonly workflows: ReadonlyArray<DesktopWorkflowLayer>
-  pipe(): DesktopAppDefinition<E, R>
-  pipe<A>(ab: (self: DesktopAppDefinition<E, R>) => A): A
-  pipe<A, B>(ab: (self: DesktopAppDefinition<E, R>) => A, bc: (a: A) => B): B
-  pipe<A, B, C>(ab: (self: DesktopAppDefinition<E, R>) => A, bc: (a: A) => B, cd: (b: B) => C): C
+  readonly workflows: ReadonlyArray<DesktopWorkflowLayer<RIn, E>>
 }
 
 export interface DesktopRpcGroupDescriptor {
@@ -89,11 +81,13 @@ export interface DesktopRpcLayer<Rpcs extends Rpc.Any = Rpc.Any, E = never, R = 
   readonly layer: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
 }
 
-export interface AnyDesktopRpcLayer {
+export interface AnyDesktopRpcLayer<E = unknown, R = unknown> {
   readonly _tag: "DesktopRpcsLayer"
   readonly group: RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> }
-  readonly layer: Layer.Layer<never, unknown, unknown>
+  readonly layer: Layer.Layer<any, E, R>
 }
+
+export type DesktopManifestSource = Pick<DesktopConfig<any, any>, "id" | "windows" | "rpcs">
 
 export type DesktopRuntimeProviderId = "bun" | "node" | "test" | (string & {})
 
@@ -108,7 +102,6 @@ export interface DesktopRuntimeSelectedProviders {
 export type DesktopRuntimeGraphNodeKind =
   | "provider"
   | "core-service"
-  | "user-layer"
   | "rpc-layer"
   | "workflow"
   | "app-service"
@@ -171,7 +164,7 @@ const NormalizedCapabilityKinds = new Set<NormalizedCapability["kind"]>([
 export interface DesktopAppApi {
   readonly appId: string
   readonly windows: Readonly<Record<string, WindowSpec>>
-  readonly rpcLayers: ReadonlyArray<AnyDesktopRpcLayer>
+  readonly rpcLayers: ReadonlyArray<AnyDesktopRpcLayer<any, any>>
 }
 
 export class DesktopApp extends Context.Service<DesktopApp, DesktopAppApi>()("DesktopApp") {}
@@ -275,24 +268,26 @@ const RuntimeProviders = Object.freeze({
   })
 })
 
-export const make = (config: DesktopMakeConfig): DesktopAppDefinition<never, never> =>
-  makeDefinition({
+export const make = <RIn = never, E = never>(
+  config: DesktopMakeConfig<RIn, E>
+): DesktopAppDescriptor<RIn, E> =>
+  Object.freeze({
+    _tag: "DesktopAppDescriptor" as const,
     id: config.id ?? "app",
     windows: freezeWindows(config.windows),
-    providers: freezeProviders(config.providers),
-    layers: Object.freeze([]),
-    rpcLayers: Object.freeze([]),
+    rpcs: freezeArray(config.rpcs),
     permissions: freezeArray(config.permissions),
-    workflows: freezeArray(config.workflows)
+    workflows: freezeArray(config.workflows),
+    ...(config.providers === undefined ? {} : { providers: freezeObject(config.providers) })
   })
 
-export const manifest = <E, R>(definition: DesktopAppDefinition<E, R>): DesktopAppManifest =>
+export const manifest = (config: DesktopManifestSource): DesktopAppManifest =>
   Object.freeze({
     _tag: "DesktopAppManifest" as const,
-    id: definition.id,
-    windows: definition.windows,
+    id: config.id,
+    windows: config.windows,
     rpcGroups: Object.freeze(
-      definition.rpcLayers.map((rpcLayer) => {
+      (config.rpcs ?? []).map((rpcLayer) => {
         const servedGroup = servedRpcGroup(rpcLayer)
         return Object.freeze({
           _tag: "DesktopRpcGroup" as const,
@@ -302,25 +297,6 @@ export const manifest = <E, R>(definition: DesktopAppDefinition<E, R>): DesktopA
       })
     )
   })
-
-export function provide<Provided, E, R>(
-  layer: Layer.Layer<Provided, E, R>
-): <AppE, AppR>(
-  definition: DesktopAppDefinition<AppE, AppR>
-) => DesktopAppDefinition<E | AppE, R | AppR>
-export function provide<Rpcs extends Rpc.Any, E, R>(
-  rpcLayer: DesktopRpcLayer<Rpcs, E, R>
-): <AppE, AppR>(
-  definition: DesktopAppDefinition<AppE, AppR>
-) => DesktopAppDefinition<E | AppE, R | AppR>
-export function provide(
-  provided: unknown
-): (definition: DesktopAppDefinition<unknown, unknown>) => DesktopAppDefinition<unknown, unknown> {
-  return (definition) =>
-    isDesktopRpcLayer(provided)
-      ? appendRpcLayer(definition, provided)
-      : appendLayer(definition, provided as Layer.Layer<never, unknown, unknown>)
-}
 
 export const Rpcs = Object.freeze({
   layer: <Rpcs extends Rpc.Any, E, R>(
@@ -333,47 +309,6 @@ export const Rpcs = Object.freeze({
       layer
     })
 })
-
-const appendLayer = <E, R, AppE, AppR>(
-  definition: DesktopAppDefinition<AppE, AppR>,
-  layer: Layer.Layer<never, E, R>
-): DesktopAppDefinition<E | AppE, R | AppR> =>
-  makeDefinition({
-    id: definition.id,
-    windows: definition.windows,
-    providers: definition.providers,
-    layers: Object.freeze([...definition.layers, layer as Layer.Layer<never, E | AppE, R | AppR>]),
-    rpcLayers: definition.rpcLayers,
-    permissions: definition.permissions,
-    workflows: definition.workflows
-  })
-
-const appendRpcLayer = <E, R, AppE, AppR>(
-  definition: DesktopAppDefinition<AppE, AppR>,
-  rpcLayer: AnyDesktopRpcLayer
-): DesktopAppDefinition<E | AppE, R | AppR> =>
-  makeDefinition({
-    id: definition.id,
-    windows: definition.windows,
-    providers: definition.providers,
-    layers: definition.layers as ReadonlyArray<Layer.Layer<never, E | AppE, R | AppR>>,
-    rpcLayers: Object.freeze([...definition.rpcLayers, rpcLayer as unknown as AnyDesktopRpcLayer]),
-    permissions: definition.permissions,
-    workflows: definition.workflows
-  })
-
-export const toLayer = <E, R>(
-  definition: DesktopAppDefinition<E, R>
-): Layer.Layer<DesktopApp, DesktopConfigError | E, Exclude<R, DesktopRuntimeProviderServices>> =>
-  app({
-    id: definition.id,
-    windows: definition.windows,
-    providers: definition.providers,
-    layers: definition.layers,
-    rpcs: definition.rpcLayers,
-    permissions: definition.permissions,
-    workflows: definition.workflows
-  })
 
 export const app = <RIn = never, E = never>(
   config: DesktopConfig<RIn, E>
@@ -418,9 +353,6 @@ const makeRuntimeGraph = <RIn, E>(
   const nodes: DesktopRuntimeGraphNode[] = [
     provider.node,
     ...CoreServiceGraphNodes,
-    ...(config.layers ?? []).map((_, index) =>
-      graphNode(`user-layer:${index}`, "user-layer", `User layer ${index + 1}`, [], [])
-    ),
     ...rpcLayers.map((rpcLayer, index) => {
       const servedGroup = servedRpcGroup(rpcLayer)
       return graphNode(
@@ -549,10 +481,9 @@ const buildSpine = <RIn, E>(
         const graph = makeRuntimeGraph(config, provider)
         const workflowLayers = config.workflows ?? []
         const rpcLayers = (config.rpcs ?? []).map((rpcLayer) => bindRpcLayer<E, RIn>(rpcLayer))
-        const userLayers = [...(config.layers ?? []), ...rpcLayers]
 
         const workflowLayer = mergeLayerArray(workflowLayers)
-        const userLayer = mergeLayerArray(userLayers)
+        const rpcLayer = mergeLayerArray(rpcLayers)
         const runtimeBase = Layer.mergeAll(
           provider.layer,
           coreServicesLayer,
@@ -579,7 +510,7 @@ const buildSpine = <RIn, E>(
 
         const dependentLayer = Layer.mergeAll(
           workflowLayer,
-          userLayer,
+          rpcLayer,
           desktopAppLayer,
           desktopRuntimeLayer
         ) as Layer.Layer<DesktopApp | DesktopRuntime, E, RIn | DesktopRuntimeProviderServices>
@@ -668,39 +599,10 @@ const bindRpcLayer = <E, R>(rpcLayer: AnyDesktopRpcLayer): Layer.Layer<never, E,
     rpcLayer.layer as Layer.Layer<unknown, E, R>
   ) as unknown as Layer.Layer<never, E, R>
 
-const makeDefinition = <E, R>(definition: {
-  readonly id: string
-  readonly windows: Readonly<Record<string, WindowSpec>>
-  readonly providers: DesktopProviderSelection
-  readonly layers: ReadonlyArray<Layer.Layer<never, E, R>>
-  readonly rpcLayers: ReadonlyArray<AnyDesktopRpcLayer>
-  readonly permissions: ReadonlyArray<NormalizedCapability>
-  readonly workflows: ReadonlyArray<DesktopWorkflowLayer>
-}): DesktopAppDefinition<E, R> =>
-  Object.freeze({
-    _tag: "DesktopAppDefinition" as const,
-    id: definition.id,
-    windows: definition.windows,
-    providers: definition.providers,
-    layers: definition.layers,
-    rpcLayers: definition.rpcLayers,
-    permissions: definition.permissions,
-    workflows: definition.workflows,
-    pipe(...operations: ReadonlyArray<(value: unknown) => unknown>): unknown {
-      if (operations.length === 0) {
-        return this
-      }
-      return operations.reduce<unknown>((value, operation) => operation(value), this)
-    }
-  }) as DesktopAppDefinition<E, R>
-
 const freezeArray = <A>(values: ReadonlyArray<A> | undefined): ReadonlyArray<A> =>
   Object.freeze([...(values ?? [])])
 
-const freezeProviders = (
-  providers: DesktopProviderSelection | undefined
-): DesktopProviderSelection =>
-  providers === undefined ? Object.freeze({}) : Object.freeze({ ...providers })
+const freezeObject = <A extends object>(value: A): A => Object.freeze({ ...value }) as A
 
 const freezeWindows = (
   windows: Readonly<Record<string, WindowSpec>>
@@ -708,12 +610,6 @@ const freezeWindows = (
   Object.freeze(
     Object.fromEntries(Object.entries(windows).map(([name, spec]) => [name, Object.freeze(spec)]))
   )
-
-const isDesktopRpcLayer = (value: unknown): value is AnyDesktopRpcLayer =>
-  typeof value === "object" &&
-  value !== null &&
-  "_tag" in value &&
-  (value as { readonly _tag?: unknown })._tag === "DesktopRpcsLayer"
 
 function graphNode(
   id: string,

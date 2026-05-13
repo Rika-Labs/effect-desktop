@@ -2,13 +2,12 @@
 
 ## Current state
 
-`Desktop.toLayer(definition)` and `Desktop.app(config)` already assemble a useful runtime spine, but the provider graph is implicit:
+`Desktop.app(App)` and `Desktop.app(config)` already assemble a useful runtime spine, but the provider graph is implicit:
 
 - core services are merged inside `packages/core/src/runtime/desktop-app.ts`;
 - Bun platform services are hardcoded through `BunServicesLayer`;
 - provider choice is not data-driven;
-- tests can build the layer, but they cannot inspect which provider graph was selected without launching or building internals;
-- the `DesktopAppDefinition` builder DSL remains in place, but #1278 already tracks removing that larger custom layer-composition DSL.
+- tests can build the layer, but they cannot inspect which provider graph was selected without launching or building internals.
 
 The narrow fix for this ticket is to make the runtime graph explicit and inspectable while preserving existing app definitions.
 
@@ -17,12 +16,12 @@ The narrow fix for this ticket is to make the runtime graph explicit and inspect
 Add a `DesktopRuntime` service in `packages/core/src/runtime/desktop-app.ts` that owns runtime composition metadata:
 
 - selected provider ids;
-- graph nodes describing selected providers, core services, user layers, RPC handler layers, workflows, and the app service;
+- graph nodes describing selected providers, core services, RPC handler layers, workflows, and the app service;
 - the frozen `DesktopConfig` values needed by adapters.
 
-Add `Desktop.runtime(config)` / `DesktopRuntimeLive(config)` as the explicit composition root. It should use `Layer.unwrap` for provider selection, then merge provider layers, core layers, workflow layers, RPC server bindings, user layers, `DesktopApp`, and `DesktopRuntime`.
+Add `Desktop.runtime(config)` / `DesktopRuntimeLive(config)` as the explicit composition root. It should use `Layer.unwrap` for provider selection, then merge provider layers, core layers, workflow layers, RPC server bindings, `DesktopApp`, and `DesktopRuntime`.
 
-Keep `Desktop.app(config)` and `Desktop.toLayer(definition)` as entry points that delegate to the explicit runtime graph. Do not widen this issue into removing `Desktop.make(...).pipe(Desktop.provide(...))`; that is the separate #1278 follow-up.
+Keep `Desktop.app(config)` and `Desktop.app(App)` as entry points that delegate to the explicit runtime graph. App-specific service layers are composed with normal Effect `Layer` operators outside the desktop descriptor.
 
 Provider selection should be data, not app code branching. Start with the provider ids this repo can support locally:
 
@@ -52,10 +51,10 @@ Unknown provider ids should fail as typed `DesktopConfigError` failures from bot
 Add focused tests before broad checks:
 
 1. The same provider-backed user program can run under `Desktop.runtime({ providers: { runtime: "bun" } })` and `Desktop.runtime({ providers: { runtime: "test" } })` without changing program code.
-2. A configured user layer that requires provider services builds under the selected runtime provider.
-3. `Desktop.runtimeGraph(config)` returns inspectable nodes for runtime provider, core services, user layers, RPC layers, workflows, and `DesktopApp` without launching a host.
+2. An RPC handler layer that requires provider services builds under the selected runtime provider.
+3. `Desktop.runtimeGraph(config)` returns inspectable nodes for runtime provider, core services, RPC layers, workflows, and `DesktopApp` without launching a host.
 4. Unknown runtime provider selection fails with `DesktopConfigError` and `reason: "missing-provider"` from both runtime acquisition and graph inspection.
-5. Existing `Desktop.toLayer` RPC binding tests still pass.
+5. Existing `Desktop.app` RPC binding tests still pass.
 
 ## Thin wrappers / follow-ups
 
@@ -65,5 +64,4 @@ Remove now:
 
 Keep as tracked follow-up:
 
-- #1278 removes the custom `DesktopAppDefinition` builder DSL. This issue should not rework public app authoring unless it becomes necessary for the runtime graph.
 - #1280 removes zero-policy Effect re-export wrappers; avoid adding new ones here.

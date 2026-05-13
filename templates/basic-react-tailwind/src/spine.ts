@@ -16,7 +16,8 @@ export const TemplateApp = Desktop.make({
       height: 640,
       renderer: "/"
     }
-  }
-}).pipe(Desktop.provide(Desktop.Rpcs.layer(AppRpc, greetLayer)))
+  },
+  rpcs: [Desktop.Rpcs.layer(AppRpc, greetLayer)]
+})
 
-export const MainLayer = Desktop.toLayer(TemplateApp)
+export const MainLayer = Desktop.app(TemplateApp)

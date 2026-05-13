@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-The framework now exposes app-scoped frontend adapters from a `Desktop.manifest(App)` generated from `Desktop.make(...).pipe(Desktop.provide(Desktop.Rpcs.layer(...)))`. The API is intentionally Effect-first at the boundary, but developers coming from React, Vue, Solid, Next.js, Astro, and Electron need concrete examples that show where the Effect contract lives and where framework-native state lives.
+The framework now exposes app-scoped frontend adapters from a `Desktop.manifest(App)` generated from `Desktop.make({ rpcs: [Desktop.Rpcs.layer(...)] })`. The API is intentionally Effect-first at the boundary, but developers coming from React, Vue, Solid, Next.js, Astro, and Electron need concrete examples that show where the Effect contract lives and where framework-native state lives.
 
 Without examples, each framework user has to rediscover the same boundary: the app owns one `RpcGroup`, each adapter consumes that same group, and the renderer receives a transport from the desktop host. That uncertainty pushes developers back toward Electron-style ad hoc IPC.
 

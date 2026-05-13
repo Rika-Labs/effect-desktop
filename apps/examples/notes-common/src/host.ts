@@ -11,7 +11,8 @@ export const NotesApp = Desktop.make({
       height: 760,
       renderer: "/"
     }
-  }
-}).pipe(Desktop.provide(Desktop.Rpcs.layer(NotesRpcs, makeNotesRpcsLayer())))
+  },
+  rpcs: [Desktop.Rpcs.layer(NotesRpcs, makeNotesRpcsLayer())]
+})
 
-export const NotesLayer = Desktop.toLayer(NotesApp)
+export const NotesLayer = Desktop.app(NotesApp)

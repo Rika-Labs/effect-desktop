@@ -136,9 +136,9 @@ test("framework boundary errors carry public diagnostic fields", async () => {
   expect(error.docsUrl).toContain("docs/SPEC.md")
 })
 
-test("Desktop.make produces a pipeable app definition and Desktop.provide appends layers", async () => {
+test("Desktop.make returns metadata descriptor and Desktop.app returns the runtime Layer", async () => {
   const core = await import("./index.js")
-  const definition = core.Desktop.make({
+  const app = core.Desktop.make({
     id: "notes",
     providers: { runtime: "test" },
     windows: {
@@ -147,15 +147,16 @@ test("Desktop.make produces a pipeable app definition and Desktop.provide append
         renderer: "/"
       }
     }
-  }).pipe(core.Desktop.provide(Layer.empty))
+  })
 
-  expect(definition._tag).toBe("DesktopAppDefinition")
-  expect(definition.id).toBe("notes")
-  expect(definition.windows["main"]?.title).toBe("Notes")
-  expect(definition.windows["main"]?.renderer).toBe("/")
-  expect(definition.providers).toEqual({ runtime: "test" })
-  expect(definition.layers).toHaveLength(1)
-  expect(Layer.isLayer(core.Desktop.toLayer(definition))).toBe(true)
+  expect(app._tag).toBe("DesktopAppDescriptor")
+  expect(app.id).toBe("notes")
+  expect(app.windows["main"]?.title).toBe("Notes")
+  expect(app.windows["main"]?.renderer).toBe("/")
+  expect(app.providers).toEqual({ runtime: "test" })
+  expect("pipe" in app).toBe(false)
+  expect("layers" in app).toBe(false)
+  expect(Layer.isLayer(core.Desktop.app(app))).toBe(true)
 
   const runtime = await Effect.runPromise(
     Effect.scoped(
@@ -163,7 +164,7 @@ test("Desktop.make produces a pipeable app definition and Desktop.provide append
         return yield* core.DesktopRuntime
       }).pipe(
         Effect.provide(
-          core.Desktop.toLayer(definition) as unknown as Layer.Layer<
+          core.Desktop.app(app) as unknown as Layer.Layer<
             InstanceType<typeof core.DesktopRuntime>,
             InstanceType<typeof core.DesktopSpineConfigError>,
             never
@@ -188,7 +189,6 @@ test("Desktop.runtimeGraph exposes selected providers and composition nodes with
         }
       },
       providers: { runtime: "test" },
-      layers: [Layer.empty as Layer.Layer<unknown, never, never>],
       rpcs: [
         core.Desktop.Rpcs.layer(
           NotesRpcs,
@@ -214,7 +214,6 @@ test("Desktop.runtimeGraph exposes selected providers and composition nodes with
     ["core:reactivity", "core-service"],
     ["core:logger", "core-service"],
     ["core:workflow", "core-service"],
-    ["user-layer:0", "user-layer"],
     ["rpc-layer:0", "rpc-layer"],
     ["workflow:0", "workflow"],
     ["service:DesktopApp", "app-service"],
@@ -313,36 +312,32 @@ test("Desktop.runtime runs the same provider-backed app program under bun, node,
   expect(typeof test.cwdExists).toBe("boolean")
 })
 
-test("Desktop.runtime feeds selected provider services into configured user layers", async () => {
+test("Desktop runtime accepts handler services provided around Desktop.app(App)", async () => {
   const core = await import("./index.js")
-  class NeedsFileSystem extends Context.Service<NeedsFileSystem, { readonly cwdExists: boolean }>()(
-    "NeedsFileSystem"
-  ) {}
-  const NeedsFileSystemLayer = Layer.effect(NeedsFileSystem)(
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem
-      const path = yield* Path.Path
-      return {
-        cwdExists: yield* fs.exists(path.resolve("."))
+  class Greeting extends Context.Service<Greeting, { readonly value: string }>()("Greeting") {}
+  const GreetingLayer = Layer.succeed(Greeting)({ value: "hello" })
+  const Ping = Rpc.make("Notes.Layer.Ping", { success: Schema.String })
+  const NotesRpcs = RpcGroup.make(Ping)
+  const NotesLive = NotesRpcs.toLayer({
+    "Notes.Layer.Ping": () =>
+      Effect.gen(function* () {
+        const greeting = yield* Greeting
+        return greeting.value
+      })
+  })
+  const app = core.Desktop.make({
+    id: "notes",
+    windows: {
+      main: {
+        title: "Notes"
       }
-    })
-  )
+    },
+    providers: { runtime: "test" },
+    rpcs: [core.Desktop.Rpcs.layer(NotesRpcs, NotesLive)]
+  })
 
   const exit = await Effect.runPromiseExit(
-    Effect.scoped(
-      Layer.build(
-        core.Desktop.runtime({
-          id: "notes",
-          windows: {
-            main: {
-              title: "Notes"
-            }
-          },
-          providers: { runtime: "test" },
-          layers: [NeedsFileSystemLayer]
-        })
-      )
-    )
+    Effect.scoped(Layer.build(core.Desktop.runtime(app).pipe(Layer.provide(GreetingLayer))))
   )
 
   expect(Exit.isSuccess(exit)).toBe(true)
@@ -398,23 +393,25 @@ test("Desktop.Rpcs.layer pairs an RpcGroup with its implementation for app adapt
   const NotesLive = NotesRpcs.toLayer({
     "Notes.Ping": () => Effect.succeed("pong")
   })
-  const definition = core.Desktop.make({
+  const rpcLayer = core.Desktop.Rpcs.layer(NotesRpcs, NotesLive)
+  const config = core.Desktop.make({
     id: "notes",
     windows: {
       main: {
         title: "Notes",
         renderer: "/"
       }
-    }
-  }).pipe(core.Desktop.provide(core.Desktop.Rpcs.layer(NotesRpcs, NotesLive)))
+    },
+    rpcs: [rpcLayer]
+  })
 
-  expect(definition.layers).toHaveLength(0)
-  expect(definition.rpcLayers).toHaveLength(1)
-  expect(definition.rpcLayers[0]?.group.requests.has("Notes.Ping")).toBe(true)
-  expect(core.Desktop.manifest(definition)).toEqual({
+  const providedRpcs = config.rpcs ?? []
+  expect(providedRpcs).toHaveLength(1)
+  expect(providedRpcs[0]?.group.requests.has("Notes.Ping")).toBe(true)
+  expect(core.Desktop.manifest(config)).toEqual({
     _tag: "DesktopAppManifest",
     id: "notes",
-    windows: definition.windows,
+    windows: config.windows,
     rpcGroups: [
       {
         _tag: "DesktopRpcGroup",
@@ -459,8 +456,9 @@ test("Desktop.Rpc.surface derives server, client, test, docs, and laws from one 
       main: {
         title: "Notes"
       }
-    }
-  }).pipe(core.Desktop.provide(surface.serverLayer))
+    },
+    rpcs: [surface.serverLayer]
+  })
 
   for (const law of surface.contractLaws) {
     await Effect.runPromise(law.check)
@@ -635,7 +633,7 @@ test("Desktop.Rpc.surface laws reject groups that cannot lower to bridge metadat
   })
 })
 
-test("Desktop.toLayer binds RpcGroups into the runtime RpcServer protocol", async () => {
+test("Desktop.app binds RpcGroups into the runtime RpcServer protocol", async () => {
   const core = await import("./index.js")
   let acquired = 0
   const Ping = Rpc.make("Notes.Ping", { success: Schema.String })
@@ -656,22 +654,23 @@ test("Desktop.toLayer binds RpcGroups into the runtime RpcServer protocol", asyn
       main: {
         title: "Notes"
       }
-    }
-  }).pipe(core.Desktop.provide(core.Desktop.Rpcs.layer(NotesRpcs, NotesLive)))
+    },
+    rpcs: [core.Desktop.Rpcs.layer(NotesRpcs, NotesLive)]
+  })
   const transport = {
     send: () => Effect.void,
     run: () => Effect.never
   }
   const protocolLayer = Layer.effect(RpcServer.Protocol)(makeDesktopServerProtocol(transport))
   const exit = await Effect.runPromiseExit(
-    Effect.scoped(Layer.build(core.Desktop.toLayer(definition).pipe(Layer.provide(protocolLayer))))
+    Effect.scoped(Layer.build(core.Desktop.app(definition).pipe(Layer.provide(protocolLayer))))
   )
 
   expect(Exit.isSuccess(exit)).toBe(true)
   expect(acquired).toBe(1)
 })
 
-test("Desktop.toLayer rejects RpcGroup methods that declare known capability kinds without scoped fields", async () => {
+test("Desktop.app rejects RpcGroup methods that declare known capability kinds without scoped fields", async () => {
   const core = await import("./index.js")
   const Connect = Rpc.make("Network.Connect").pipe(
     RpcCapability({
@@ -685,21 +684,18 @@ test("Desktop.toLayer rejects RpcGroup methods that declare known capability kin
       main: {
         title: "Network"
       }
-    }
-  }).pipe(
-    core.Desktop.provide(
+    },
+    rpcs: [
       core.Desktop.Rpcs.layer(
         NetworkRpcs,
         NetworkRpcs.toLayer({
           "Network.Connect": () => Effect.succeed(undefined)
         })
       )
-    )
-  )
+    ]
+  })
 
-  const exit = await Effect.runPromiseExit(
-    Effect.scoped(Layer.build(core.Desktop.toLayer(definition)))
-  )
+  const exit = await Effect.runPromiseExit(Effect.scoped(Layer.build(core.Desktop.app(definition))))
 
   expect(Exit.isFailure(exit)).toBe(true)
   if (Exit.isFailure(exit)) {
@@ -713,7 +709,7 @@ test("Desktop.toLayer rejects RpcGroup methods that declare known capability kin
   }
 })
 
-test("Desktop.toLayer rejects RpcGroup methods that require undeclared capabilities", async () => {
+test("Desktop.app rejects RpcGroup methods that require undeclared capabilities", async () => {
   const core = await import("./index.js")
   const Connect = Rpc.make("Network.Connect").pipe(
     RpcCapability({
@@ -730,21 +726,18 @@ test("Desktop.toLayer rejects RpcGroup methods that require undeclared capabilit
       main: {
         title: "Network"
       }
-    }
-  }).pipe(
-    core.Desktop.provide(
+    },
+    rpcs: [
       core.Desktop.Rpcs.layer(
         NetworkRpcs,
         NetworkRpcs.toLayer({
           "Network.Connect": () => Effect.succeed(undefined)
         })
       )
-    )
-  )
+    ]
+  })
 
-  const exit = await Effect.runPromiseExit(
-    Effect.scoped(Layer.build(core.Desktop.toLayer(definition)))
-  )
+  const exit = await Effect.runPromiseExit(Effect.scoped(Layer.build(core.Desktop.app(definition))))
 
   expect(Exit.isFailure(exit)).toBe(true)
   if (Exit.isFailure(exit)) {
@@ -758,7 +751,7 @@ test("Desktop.toLayer rejects RpcGroup methods that require undeclared capabilit
   }
 })
 
-test("Desktop.toLayer validates RpcGroup capability scope coverage", async () => {
+test("Desktop.app validates RpcGroup capability scope coverage", async () => {
   const core = await import("./index.js")
   const requiredCapability = {
     kind: "network.connect",
@@ -791,8 +784,9 @@ test("Desktop.toLayer validates RpcGroup capability scope coverage", async () =>
         ...requiredCapability,
         hosts: ["other.example.com"]
       }
-    ]
-  }).pipe(core.Desktop.provide(layer))
+    ],
+    rpcs: [layer]
+  })
   const coveredScope = core.Desktop.make({
     id: "network-app",
     windows: {
@@ -800,16 +794,15 @@ test("Desktop.toLayer validates RpcGroup capability scope coverage", async () =>
         title: "Network"
       }
     },
-    permissions: [requiredCapability]
-  }).pipe(core.Desktop.provide(layer))
+    permissions: [requiredCapability],
+    rpcs: [layer]
+  })
 
   const rejected = await Effect.runPromiseExit(
-    Effect.scoped(Layer.build(core.Desktop.toLayer(wrongScope)))
+    Effect.scoped(Layer.build(core.Desktop.app(wrongScope)))
   )
   const accepted = await Effect.runPromiseExit(
-    Effect.scoped(
-      Layer.build(core.Desktop.toLayer(coveredScope).pipe(Layer.provide(protocolLayer)))
-    )
+    Effect.scoped(Layer.build(core.Desktop.app(coveredScope).pipe(Layer.provide(protocolLayer))))
   )
 
   expect(Exit.isFailure(rejected)).toBe(true)
@@ -825,7 +818,7 @@ test("Desktop.toLayer validates RpcGroup capability scope coverage", async () =>
   expect(Exit.isSuccess(accepted)).toBe(true)
 })
 
-test("Desktop.toLayer treats explicit none capability as permission-free metadata", async () => {
+test("Desktop.app treats explicit none capability as permission-free metadata", async () => {
   const core = await import("./index.js")
   const IsSupported = Rpc.make("Screen.isSupported", {
     payload: Schema.Void,
@@ -838,17 +831,16 @@ test("Desktop.toLayer treats explicit none capability as permission-free metadat
       main: {
         title: "Screen"
       }
-    }
-  }).pipe(
-    core.Desktop.provide(
+    },
+    rpcs: [
       core.Desktop.Rpcs.layer(
         ScreenRpcs,
         ScreenRpcs.toLayer({
           "Screen.isSupported": () => Effect.succeed(true)
         })
       )
-    )
-  )
+    ]
+  })
   const transport = {
     send: () => Effect.void,
     run: () => Effect.never
@@ -856,13 +848,13 @@ test("Desktop.toLayer treats explicit none capability as permission-free metadat
   const protocolLayer = Layer.effect(RpcServer.Protocol)(makeDesktopServerProtocol(transport))
 
   const exit = await Effect.runPromiseExit(
-    Effect.scoped(Layer.build(core.Desktop.toLayer(definition).pipe(Layer.provide(protocolLayer))))
+    Effect.scoped(Layer.build(core.Desktop.app(definition).pipe(Layer.provide(protocolLayer))))
   )
 
   expect(Exit.isSuccess(exit)).toBe(true)
 })
 
-test("Desktop.toLayer permission middleware declares app permissions for protected RPCs", async () => {
+test("Desktop.app permission middleware declares app permissions for protected RPCs", async () => {
   const core = await import("./index.js")
   const requiredCapability = {
     kind: "network.connect",
@@ -883,9 +875,8 @@ test("Desktop.toLayer permission middleware declares app permissions for protect
         title: "Network"
       }
     },
-    permissions: [requiredCapability]
-  }).pipe(
-    core.Desktop.provide(
+    permissions: [requiredCapability],
+    rpcs: [
       core.Desktop.Rpcs.layer(
         NetworkRpcs,
         NetworkRpcs.toLayer({
@@ -896,8 +887,8 @@ test("Desktop.toLayer permission middleware declares app permissions for protect
             })
         })
       )
-    )
-  )
+    ]
+  })
   const inbound = Effect.runSync(Queue.unbounded<HostProtocolEnvelope>())
   const response = Effect.runSync(Queue.unbounded<HostProtocolEnvelope>())
   const transport = {
@@ -915,7 +906,7 @@ test("Desktop.toLayer permission middleware declares app permissions for protect
   const envelope = await Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
-        yield* Layer.build(core.Desktop.toLayer(definition).pipe(Layer.provide(protocolLayer)))
+        yield* Layer.build(core.Desktop.app(definition).pipe(Layer.provide(protocolLayer)))
         yield* Queue.offer(
           inbound,
           new HostProtocolRequestEnvelope({
@@ -957,9 +948,8 @@ test("describeRpcs derives endpoint descriptors from provided RpcGroups", async 
       main: {
         title: "Notes"
       }
-    }
-  }).pipe(
-    core.Desktop.provide(
+    },
+    rpcs: [
       core.Desktop.Rpcs.layer(
         NotesRpcs,
         NotesRpcs.toLayer({
@@ -967,8 +957,8 @@ test("describeRpcs derives endpoint descriptors from provided RpcGroups", async 
           "Notes.Tail": () => Effect.never
         })
       )
-    )
-  )
+    ]
+  })
 
   expect(
     core.Desktop.describeRpcs(definition, NotesRpcs).map((descriptor) => descriptor.name)
@@ -992,9 +982,8 @@ test("describeRpcs rejects duplicate endpoint names before adapters build maps",
       main: {
         title: "Lists"
       }
-    }
-  }).pipe(
-    core.Desktop.provide(
+    },
+    rpcs: [
       core.Desktop.Rpcs.layer(
         CollidingRpcs,
         CollidingRpcs.toLayer({
@@ -1002,8 +991,8 @@ test("describeRpcs rejects duplicate endpoint names before adapters build maps",
           "Tasks.List": () => Effect.succeed(["task"])
         })
       )
-    )
-  )
+    ]
+  })
 
   expect(() => core.Desktop.describeRpcs(definition, CollidingRpcs)).toThrow(
     core.DuplicateDesktopRpcNameError

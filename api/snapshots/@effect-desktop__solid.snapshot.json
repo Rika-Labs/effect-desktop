@@ -41,7 +41,7 @@
     {
       "name": "SolidDesktopRootProps",
       "kind": "interface",
-      "signature": "export interface SolidDesktopRootProps { readonly transport?: DesktopRendererRpcTransport | undefined readonly rpcLayers?: ReadonlyArray<AnyDesktopRpcLayer> | undefined readonly children?: JSX.Element }"
+      "signature": "export interface SolidDesktopRootProps { readonly transport?: DesktopRendererRpcTransport | undefined readonly rpcLayers?: ReadonlyArray<AnyDesktopRpcLayer<never, never>> | undefined readonly children?: JSX.Element }"
     },
     {
       "name": "SolidDesktopRpcClient",

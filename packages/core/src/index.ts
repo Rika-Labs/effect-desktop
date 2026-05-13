@@ -8,10 +8,8 @@ import {
   launch,
   make,
   manifest,
-  provide,
   runtime,
-  runtimeGraph,
-  toLayer
+  runtimeGraph
 } from "./runtime/desktop-app.js"
 import type {
   DesktopApp,
@@ -68,17 +66,16 @@ export {
   launch,
   make,
   manifest,
-  provide,
   runtime,
   runtimeGraph,
   Rpcs,
-  toLayer,
   type AnyDesktopRpcLayer,
   type DesktopAppApi,
-  type DesktopAppDefinition,
+  type DesktopAppDescriptor,
   type DesktopAppManifest,
   type DesktopConfig,
   type DesktopMakeConfig,
+  type DesktopManifestSource,
   type DesktopProviderSelection,
   type DesktopRpcGroupDescriptor,
   type DesktopRpcLayer,
@@ -106,12 +103,12 @@ interface DesktopAppOptionsWithPermissions extends DesktopAppOptions {
 }
 
 function app(): Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>
-function app(
-  options: DesktopAppOptionsWithPermissions
-): Layer.Layer<WorkflowEngine.WorkflowEngine, never, PermissionRegistry>
 function app<RIn = never, E = never>(
   config: DesktopConfig<RIn, E>
 ): Layer.Layer<DesktopApp, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices>>
+function app(
+  options: DesktopAppOptionsWithPermissions
+): Layer.Layer<WorkflowEngine.WorkflowEngine, never, PermissionRegistry>
 function app<RIn = never, E = never>(
   options: DesktopAppOptions | DesktopConfig<RIn, E> = {}
 ):
@@ -159,11 +156,9 @@ export const Desktop = Object.freeze({
   launch,
   make,
   manifest,
-  provide,
   Rpc: DesktopRpc,
   runtime,
   runtimeGraph,
   Rpcs,
-  toLayer,
   describeRpcs
 })

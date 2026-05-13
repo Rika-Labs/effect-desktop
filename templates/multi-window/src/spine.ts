@@ -16,7 +16,8 @@ export const MultiWindowApp = Desktop.make({
       height: 640,
       renderer: "/"
     }
-  }
-}).pipe(Desktop.provide(Desktop.Rpcs.layer(AppRpc, pingLayer)))
+  },
+  rpcs: [Desktop.Rpcs.layer(AppRpc, pingLayer)]
+})
 
-export const MainLayer = Desktop.toLayer(MultiWindowApp)
+export const MainLayer = Desktop.app(MultiWindowApp)

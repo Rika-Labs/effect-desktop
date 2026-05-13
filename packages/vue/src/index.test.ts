@@ -34,8 +34,9 @@ test("VueDesktop.from exposes app-scoped composables from provided groups", () =
       main: {
         title: "Notes"
       }
-    }
-  }).pipe(Desktop.provide(NotesLayer))
+    },
+    rpcs: [NotesLayer]
+  })
   const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
   const rpcLayers = [NotesLayer]
   const app = NotesVue.createApp(Root, { rpcLayers })
@@ -69,8 +70,9 @@ test("VueDesktop.useDesktop keeps reserved endpoint names as own properties", ()
       main: {
         title: "Notes"
       }
-    }
-  }).pipe(Desktop.provide(NotesLayer))
+    },
+    rpcs: [NotesLayer]
+  })
   const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
   const rpcLayers = [NotesLayer]
   const app = NotesVue.createApp(Root, { rpcLayers })
@@ -103,8 +105,9 @@ test("VueDesktop query effects are interrupted when the scope is disposed", asyn
       main: {
         title: "Notes"
       }
-    }
-  }).pipe(Desktop.provide(NotesLayer))
+    },
+    rpcs: [NotesLayer]
+  })
   const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
   const rpcLayers = [NotesLayer]
   const app = NotesVue.createApp(Root, { rpcLayers })
@@ -154,8 +157,9 @@ test("VueDesktop stream composables emit values, close, fail, and interrupt on d
       main: {
         title: "Notes"
       }
-    }
-  }).pipe(Desktop.provide(NotesLayer))
+    },
+    rpcs: [NotesLayer]
+  })
   const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
   const rpcLayers = [NotesLayer]
   const app = NotesVue.createApp(Root, { rpcLayers })
@@ -192,17 +196,16 @@ test("VueDesktop.useDesktop fails loudly without provide/inject context or an in
       main: {
         title: "Notes"
       }
-    }
-  }).pipe(
-    Desktop.provide(
+    },
+    rpcs: [
       Desktop.Rpcs.layer(
         NotesRpcs,
         NotesRpcs.toLayer({
           "Notes.Ping": () => Effect.void
         })
       )
-    )
-  )
+    ]
+  })
   const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
 
   const bareApp = createApp(Root)

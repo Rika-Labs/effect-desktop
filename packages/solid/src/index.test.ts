@@ -33,8 +33,9 @@ test("SolidDesktop.from exposes app-scoped primitives from provided groups", () 
       main: {
         title: "Notes"
       }
-    }
-  }).pipe(Desktop.provide(NotesLayer))
+    },
+    rpcs: [NotesLayer]
+  })
   const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
   const rpcLayers = [NotesLayer]
 
@@ -70,8 +71,9 @@ test("SolidDesktop.useDesktop keeps reserved endpoint names as own properties", 
       main: {
         title: "Notes"
       }
-    }
-  }).pipe(Desktop.provide(NotesLayer))
+    },
+    rpcs: [NotesLayer]
+  })
   const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
   const rpcLayers = [NotesLayer]
 
@@ -106,8 +108,9 @@ test("SolidDesktop.useDesktop rejects colliding endpoint names", () => {
       main: {
         title: "Lists"
       }
-    }
-  }).pipe(Desktop.provide(CollidingLayer))
+    },
+    rpcs: [CollidingLayer]
+  })
   const CollidingSolid = SolidDesktop.from(Desktop.manifest(CollidingApp))
   const rpcLayers = [CollidingLayer]
 
@@ -140,8 +143,9 @@ test("SolidDesktop query effects are interrupted when the owner is disposed", as
       main: {
         title: "Notes"
       }
-    }
-  }).pipe(Desktop.provide(NotesLayer))
+    },
+    rpcs: [NotesLayer]
+  })
   const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
   const rpcLayers = [NotesLayer]
 
@@ -194,8 +198,9 @@ test("SolidDesktop stream primitives emit values, close, fail, and interrupt on 
       main: {
         title: "Notes"
       }
-    }
-  }).pipe(Desktop.provide(NotesLayer))
+    },
+    rpcs: [NotesLayer]
+  })
   const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
   const rpcLayers = [NotesLayer]
 
@@ -233,17 +238,16 @@ test("SolidDesktop.useDesktop fails loudly without context or an installed clien
       main: {
         title: "Notes"
       }
-    }
-  }).pipe(
-    Desktop.provide(
+    },
+    rpcs: [
       Desktop.Rpcs.layer(
         NotesRpcs,
         NotesRpcs.toLayer({
           "Notes.Ping": () => Effect.void
         })
       )
-    )
-  )
+    ]
+  })
   const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
 
   createRoot((dispose) => {

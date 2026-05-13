@@ -30,7 +30,7 @@ test("template spine declares startup windows and provided RPCs", async () => {
   const { MultiWindowApp } = await import("./spine.js")
 
   expect(MultiWindowApp.windows["main"]?.title).toBe("Multi-window")
-  expect(MultiWindowApp.rpcLayers[0]?.group).toBe(AppRpc)
+  expect(MultiWindowApp.rpcs[0]?.group).toBe(AppRpc)
 })
 
 test("renderer provider owns unavailable host state", () => {

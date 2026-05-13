@@ -261,7 +261,7 @@
     {
       "name": "ReactDesktopRootProps",
       "kind": "interface",
-      "signature": "export interface ReactDesktopRootProps { readonly transport?: DesktopRendererRpcTransport | undefined readonly rpcLayers?: ReadonlyArray<AnyDesktopRpcLayer> | undefined readonly children?: ReactNode | undefined }"
+      "signature": "export interface ReactDesktopRootProps { readonly transport?: DesktopRendererRpcTransport | undefined readonly rpcLayers?: ReadonlyArray<AnyDesktopRpcLayer<never, never>> | undefined readonly children?: ReactNode | undefined }"
     },
     {
       "name": "ReactDesktopRpcClient",

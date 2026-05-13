@@ -97,7 +97,7 @@ export type VueDesktopClientMap = DesktopRendererRpcClientMap
 
 export interface VueDesktopOptions {
   readonly transport?: DesktopRendererRpcTransport | undefined
-  readonly rpcLayers?: ReadonlyArray<AnyDesktopRpcLayer> | undefined
+  readonly rpcLayers?: ReadonlyArray<AnyDesktopRpcLayer<never, never>> | undefined
 }
 
 export interface VueDesktopAdapter<App extends DesktopAppManifest> {
@@ -181,7 +181,7 @@ export const VueDesktop = Object.freeze({
 const makeVueDesktopRuntime = (
   app: DesktopAppManifest,
   transport: DesktopRendererRpcTransport | undefined,
-  rpcLayers: ReadonlyArray<AnyDesktopRpcLayer> | undefined
+  rpcLayers: ReadonlyArray<AnyDesktopRpcLayer<never, never>> | undefined
 ): VueDesktopRuntime => {
   const runtime = ManagedRuntime.make(
     makeDesktopRendererRpcLayer(app, {

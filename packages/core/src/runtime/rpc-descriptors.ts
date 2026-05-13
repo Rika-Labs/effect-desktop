@@ -11,7 +11,7 @@ import { Rpc, RpcSchema } from "effect/unstable/rpc"
 
 import type {
   AnyDesktopRpcLayer,
-  DesktopAppDefinition,
+  DesktopConfig,
   DesktopAppManifest,
   DesktopRpcGroupDescriptor
 } from "./desktop-app.js"
@@ -29,7 +29,7 @@ export interface RpcEndpointDescriptor {
 }
 
 export type DesktopRpcDescriptorSource =
-  | Pick<DesktopAppDefinition<unknown, unknown>, "rpcLayers">
+  | Pick<DesktopConfig<unknown, unknown>, "rpcs">
   | Pick<DesktopAppManifest, "rpcGroups">
 
 interface RpcWithSuccessSchema extends Rpc.Any {
@@ -87,7 +87,7 @@ const providedRpcGroup = <Group extends RpcGroupWithRequests>(
 ): AnyDesktopRpcLayer | DesktopRpcGroupDescriptor | undefined =>
   "rpcGroups" in app
     ? providedRpcGroupDescriptor(app.rpcGroups, group)
-    : providedRpcLayer(app.rpcLayers, group)
+    : providedRpcLayer(app.rpcs ?? [], group)
 
 const providedRpcLayer = <Group extends RpcGroupWithRequests>(
   layers: readonly AnyDesktopRpcLayer[],

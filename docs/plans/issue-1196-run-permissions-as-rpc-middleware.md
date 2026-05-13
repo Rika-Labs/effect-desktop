@@ -8,16 +8,16 @@ Permissions must be enforced at the RPC call boundary so a protected RPC cannot 
 
 - `PermissionInterceptor` already exists as an Effect `RpcMiddleware.Service`.
 - RPC contracts already carry capability metadata through `RpcCapability`.
-- `Desktop.toLayer` validates required RPC capabilities at app startup.
+- `Desktop.app` validates required RPC capabilities at app startup.
 - The missing link is runtime binding: app RPC groups are served without automatically applying the permission middleware, and the interceptor still reads a core-only annotation instead of the canonical bridge RPC capability metadata.
 
 ## Plan
 
 1. Make bridge `RpcCapability` metadata the single permission annotation source for RPC contracts.
 2. Update `PermissionInterceptor` to decode that metadata into `NormalizedCapability` and enforce it through `PermissionRegistry`.
-3. Apply `PermissionInterceptor` when `Desktop.toLayer` binds user RPC groups into `RpcServer`.
+3. Apply `PermissionInterceptor` when `Desktop.app` binds user RPC groups into `RpcServer`.
 4. Keep unannotated RPCs and explicit `kind: "none"` RPCs pass-through.
-5. Add tests proving a denied protected RPC never reaches its handler through `Desktop.toLayer`.
+5. Add tests proving a denied protected RPC never reaches its handler through `Desktop.app`.
 
 ## Architecture-Debt Sweep
 

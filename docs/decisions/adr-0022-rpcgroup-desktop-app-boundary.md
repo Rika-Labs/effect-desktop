@@ -25,7 +25,7 @@ Effect v4 already gives the right primitive: `RpcGroup` is a pure contract value
 - Runtime implementations use `RpcGroup.toLayer({ ...handlers })`.
 - Desktop app assembly pairs the contract and implementation with `Desktop.Rpcs.layer(group, layer)`.
 - `Desktop.make({ windows })` owns declared startup windows and app shape.
-- `Desktop.provide(...)` composes ordinary Effect layers and desktop RPC layers.
+- Apps compose ordinary Effect layers with `Layer` operators and attach desktop RPC layers through the app descriptor `rpcs` field.
 - Framework adapters derive their public client shape from the assembled desktop app and the provided `RpcGroup`.
 
 Endpoint metadata is carried on the RPC value through Effect annotations:
@@ -121,8 +121,9 @@ export const NotesLive = NotesRpcs.toLayer({
 export const App = Desktop.make({
   windows: {
     main: { title: "Notes", width: 960, height: 640, renderer: "/" }
-  }
-}).pipe(Desktop.provide(Desktop.Rpcs.layer(NotesRpcs, NotesLive)))
+  },
+  rpcs: [Desktop.Rpcs.layer(NotesRpcs, NotesLive)]
+})
 ```
 
 Renderer code should import the framework adapter, not raw bridge clients:

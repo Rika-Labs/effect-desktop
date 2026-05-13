@@ -4034,8 +4034,9 @@ test("ScreenSurface derives server, client, test, and metadata surfaces from the
       main: {
         title: "Screen Test"
       }
-    }
-  }).pipe(Desktop.provide(ScreenSurface.serverLayer))
+    },
+    rpcs: [ScreenSurface.serverLayer]
+  })
 
   for (const law of ScreenSurface.contractLaws) {
     await Effect.runPromise(law.check)

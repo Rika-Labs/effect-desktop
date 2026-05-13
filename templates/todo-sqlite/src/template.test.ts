@@ -34,7 +34,7 @@ test("template spine declares startup windows and provided RPCs", async () => {
   const { TodoApp } = await import("./spine.js")
 
   expect(TodoApp.windows["main"]?.title).toBe("Todos")
-  expect(TodoApp.rpcLayers[0]?.group).toBe(AppRpc)
+  expect(TodoApp.rpcs[0]?.group).toBe(AppRpc)
 })
 
 test("renderer provider owns unavailable host state", () => {

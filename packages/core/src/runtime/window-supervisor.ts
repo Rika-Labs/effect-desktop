@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url"
 import type { HostProtocolError, HostWindowClient, WindowCreateInput } from "@effect-desktop/bridge"
 import { Data, Effect } from "effect"
 
-import type { DesktopAppDefinition, WindowSpec } from "./desktop-app.js"
+import type { DesktopAppDescriptor, WindowSpec } from "./desktop-app.js"
 
 export const APP_MODULE_ENV = "EFFECT_DESKTOP_APP_MODULE"
 export const APP_EXPORT_ENV = "EFFECT_DESKTOP_APP_EXPORT"
@@ -64,8 +64,8 @@ export const readStartupWindows = (
         Record<string, unknown>
       >
       const app = module[exportName]
-      if (!isDesktopAppDefinition(app)) {
-        throw new Error(`export "${exportName}" is not a Desktop app definition`)
+      if (!isDesktopAppConfig(app)) {
+        throw new Error(`export "${exportName}" is not a Desktop app config`)
       }
       return app.windows
     },
@@ -286,11 +286,11 @@ const windowsUncPathToFileUrl = (value: string): string => {
 const encodePathSegments = (segments: ReadonlyArray<string>): string =>
   segments.map((segment) => encodeURIComponent(segment)).join("/")
 
-const isDesktopAppDefinition = (value: unknown): value is DesktopAppDefinition<unknown, unknown> =>
+const isDesktopAppConfig = (value: unknown): value is Pick<DesktopAppDescriptor, "windows"> =>
   typeof value === "object" &&
   value !== null &&
   "_tag" in value &&
-  (value as { readonly _tag?: unknown })._tag === "DesktopAppDefinition" &&
+  (value as { readonly _tag?: unknown })._tag === "DesktopAppDescriptor" &&
   "windows" in value &&
   typeof (value as { readonly windows?: unknown }).windows === "object" &&
   (value as { readonly windows?: unknown }).windows !== null

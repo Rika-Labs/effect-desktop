@@ -118,7 +118,8 @@ export const TodoApp = Desktop.make({
       height: 640,
       renderer: "/"
     }
-  }
-}).pipe(Desktop.provide(Desktop.Rpcs.layer(AppRpc, todoLayer)))
+  },
+  rpcs: [Desktop.Rpcs.layer(AppRpc, todoLayer)]
+})
 
-export const MainLayer = Desktop.toLayer(TodoApp)
+export const MainLayer = Desktop.app(TodoApp)

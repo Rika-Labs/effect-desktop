@@ -47,11 +47,9 @@ const migration = indexedDbStorage.makeMigration(version, (tx) => Effect.void)
 export const TemplateApp = Desktop.make({
   windows: {
     main: { title: "Effect Desktop", renderer: "/" }
-  }
-}).pipe(
-  Desktop.provide(Desktop.Rpcs.layer(AppRpc, greetLayer)),
-  Desktop.provide(migration.layer)
-)
+  },
+  rpcs: [Desktop.Rpcs.layer(AppRpc, greetLayer.pipe(Layer.provide(migration.layer)))]
+})
 ```
 
 ## Dependency Note

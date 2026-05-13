@@ -225,8 +225,9 @@ test("ReactDesktop.from exposes app-scoped RPC hooks from provided groups", () =
       main: {
         title: "Notes"
       }
-    }
-  }).pipe(Desktop.provide(NotesLayer))
+    },
+    rpcs: [NotesLayer]
+  })
   const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
   const rpcLayers = [NotesLayer]
   const Probe = () => {
@@ -260,8 +261,9 @@ test("ReactDesktop.useDesktop keeps reserved endpoint names as own properties", 
       main: {
         title: "Notes"
       }
-    }
-  }).pipe(Desktop.provide(NotesLayer))
+    },
+    rpcs: [NotesLayer]
+  })
   const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
   const rpcLayers = [NotesLayer]
   const Probe = () => {
@@ -291,8 +293,9 @@ test("ReactDesktop.useDesktop rejects colliding endpoint names", () => {
       main: {
         title: "Lists"
       }
-    }
-  }).pipe(Desktop.provide(CollidingLayer))
+    },
+    rpcs: [CollidingLayer]
+  })
   const CollidingReact = ReactDesktop.from(Desktop.manifest(CollidingApp))
   const rpcLayers = [CollidingLayer]
   const Probe = () => {
@@ -315,17 +318,16 @@ test("ReactDesktop.useDesktop fails loudly without a generated root or renderer 
       main: {
         title: "Notes"
       }
-    }
-  }).pipe(
-    Desktop.provide(
+    },
+    rpcs: [
       Desktop.Rpcs.layer(
         NotesRpcs,
         NotesRpcs.toLayer({
           "Notes.Ping": () => Effect.void
         })
       )
-    )
-  )
+    ]
+  })
   const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
   const Probe = () => {
     NotesReact.useDesktop(NotesRpcs)
@@ -355,8 +357,9 @@ test("ReactDesktop.useDesktop exposes RpcSupport metadata on generated endpoints
       main: {
         title: "Notes"
       }
-    }
-  }).pipe(Desktop.provide(NotesLayer))
+    },
+    rpcs: [NotesLayer]
+  })
   const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
   const rpcLayers = [NotesLayer]
   const Probe = () => {

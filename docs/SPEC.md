@@ -4593,7 +4593,7 @@ Requirements:
 The implementation shape for renderer-callable APIs is `RpcGroup.toLayer`.
 
 ```ts
-import { Effect } from "effect"
+import { Effect, Layer } from "effect"
 
 export const ProjectRpcsLive = ProjectRpcs.toLayer({
   "project.list": () =>
@@ -4608,13 +4608,14 @@ export const ProjectRpcsLive = ProjectRpcs.toLayer({
       const store = yield* ProjectStore
       return yield* store.open(path)
     })
-})
+}).pipe(Layer.provide(ProjectStore.Live))
 
 export const App = Desktop.make({
   windows: {
     main: { title: "Example App", renderer: "/" }
-  }
-}).pipe(Desktop.provide(Desktop.Rpcs.layer(ProjectRpcs, ProjectRpcsLive)))
+  },
+  rpcs: [Desktop.Rpcs.layer(ProjectRpcs, ProjectRpcsLive)]
+})
 ```
 
 ### 18.4.2 Class-based service (`Context.Service`)

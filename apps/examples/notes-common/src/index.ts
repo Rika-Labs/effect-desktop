@@ -160,7 +160,7 @@ export const makeNotesRpcsLayer = (
 
 export const makeNotesDemoRpcLayers = (
   initialWorkspace: NotesWorkspace = makeInitialWorkspace()
-): readonly AnyDesktopRpcLayer[] =>
+): readonly AnyDesktopRpcLayer<never, never>[] =>
   Object.freeze([
     Object.freeze({
       _tag: "DesktopRpcsLayer" as const,

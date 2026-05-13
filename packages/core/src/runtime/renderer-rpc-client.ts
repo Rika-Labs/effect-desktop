@@ -45,7 +45,7 @@ export interface DesktopRendererRpcClientLayerOptions extends DesktopProtocolOpt
 
 export interface DesktopRendererRpcLayerOptions extends DesktopRendererRpcClientLayerOptions {
   readonly transport?: DesktopRendererRpcTransport | undefined
-  readonly rpcLayers?: ReadonlyArray<AnyDesktopRpcLayer> | undefined
+  readonly rpcLayers?: ReadonlyArray<AnyDesktopRpcLayer<never, never>> | undefined
 }
 
 const GlobalTransportKey = "__EFFECT_DESKTOP_RPC_TRANSPORT__"
@@ -111,7 +111,7 @@ export const makeDesktopRendererRpcTransportLayer = (
 ): Layer.Layer<RendererRpcTransport, never, never> => Layer.succeed(RendererRpcTransport)(transport)
 
 export const makeDesktopRendererRpcTestLayer = (
-  rpcLayers: ReadonlyArray<AnyDesktopRpcLayer>,
+  rpcLayers: ReadonlyArray<AnyDesktopRpcLayer<never, never>>,
   options: { readonly framework?: DesktopFramework | undefined } = {}
 ): Layer.Layer<RendererRpcClients, never, never> =>
   Layer.effect(RendererRpcClients)(
@@ -156,7 +156,7 @@ const acquireDesktopRendererRpcClients = (
   })
 
 const acquireDesktopRendererRpcTestClients = (
-  rpcLayers: ReadonlyArray<AnyDesktopRpcLayer>,
+  rpcLayers: ReadonlyArray<AnyDesktopRpcLayer<never, never>>,
   framework: DesktopFramework
 ): Effect.Effect<RendererRpcClientsApi, never, Scope.Scope> =>
   Effect.gen(function* () {
@@ -165,7 +165,7 @@ const acquireDesktopRendererRpcTestClients = (
     for (const rpcLayer of rpcLayers) {
       const group = servedRpcGroup(rpcLayer)
       const rpcClient = yield* RpcTest.makeClient(group as RpcGroup.RpcGroup<Rpc.Any>).pipe(
-        Effect.provide(rpcLayer.layer as Layer.Layer<Rpc.ToHandler<Rpc.Any>, never, never>)
+        Effect.provide(rpcLayer.layer)
       )
       const client = makeRpcTestGroupClient(
         group,
