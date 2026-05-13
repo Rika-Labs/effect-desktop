@@ -15,6 +15,7 @@ import {
   WorkerCrashedError,
   WorkerInvalidArgumentError,
   WorkerStaleHandleError,
+  WorkerUnsupportedError,
   type WorkerAdapter,
   type WorkerApi,
   type WorkerError,
@@ -350,8 +351,8 @@ test("Worker rejects negative graceful shutdown durations before adapter spawn",
 
 test("Worker rejects malformed channel schemas before adapter spawn", async () => {
   const cases: ReadonlyArray<{
-    readonly inputSchema: Schema.Schema<{ readonly text: string }>
-    readonly outputSchema: Schema.Schema<{ readonly echoed: string }>
+    readonly inputSchema: Schema.Decoder<{ readonly text: string }, never>
+    readonly outputSchema: Schema.Decoder<{ readonly echoed: string }, never>
   }> = [
     { inputSchema: undefined as never, outputSchema: EchoOut },
     { inputSchema: EchoIn, outputSchema: undefined as never }
@@ -563,6 +564,36 @@ test("Worker default Bun adapter sends, receives, and closes a real worker", asy
   }
 })
 
+test("Worker default Bun adapter reports construction failures as Unsupported", async () => {
+  const originalWorker = globalThis.Worker
+
+  class ThrowingConstructorWorker {
+    constructor(_script: string) {
+      throw new Error("Worker construction failed")
+    }
+  }
+
+  replaceGlobalWorker(ThrowingConstructorWorker)
+
+  const fixture = await makeFixture()
+
+  try {
+    const exit = await Effect.runPromiseExit(
+      fixture.service.spawn({
+        script: "missing-worker.ts",
+        ownerScope: "scope-main",
+        inputSchema: EchoIn,
+        outputSchema: EchoOut,
+        context
+      })
+    )
+
+    expectFailure(exit, WorkerUnsupportedError)
+  } finally {
+    replaceGlobalWorker(originalWorker)
+  }
+})
+
 test("Bun adapter shutdown stays infallible when shutdown stages throw", async () => {
   const originalWorker = globalThis.Worker
   const throwingWorkerLog: string[] = []
@@ -581,7 +612,7 @@ test("Bun adapter shutdown stays infallible when shutdown stages throw", async (
     }
   }
 
-  ;(globalThis as unknown as { Worker: typeof ThrowingWorker }).Worker = ThrowingWorker
+  replaceGlobalWorker(ThrowingWorker)
 
   const file = new File(
     [`self.onmessage = (event) => { if (event.data?._tag === "Shutdown") { close() } }`],
@@ -609,7 +640,7 @@ test("Bun adapter shutdown stays infallible when shutdown stages throw", async (
     expect(throwingWorkerLog).toEqual(["postMessage", "terminate"])
   } finally {
     URL.revokeObjectURL(script)
-    ;(globalThis as unknown as { Worker: typeof ThrowingWorker }).Worker = originalWorker as never
+    replaceGlobalWorker(originalWorker)
   }
 })
 
@@ -720,6 +751,14 @@ const waitUntil = async (predicate: () => Promise<boolean>): Promise<void> => {
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
   throw new Error("condition was not met")
+}
+
+const replaceGlobalWorker = (worker: unknown): void => {
+  Object.defineProperty(globalThis, "Worker", {
+    configurable: true,
+    value: worker,
+    writable: true
+  })
 }
 
 const makeFakeAdapter = (runtime: WorkerRuntime): WorkerAdapter => ({

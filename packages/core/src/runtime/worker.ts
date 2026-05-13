@@ -10,8 +10,14 @@ import {
   Queue,
   Ref,
   Schema,
+  Scope,
   Stream
 } from "effect"
+import * as EffectWorker from "effect/unstable/workers/Worker"
+import {
+  WorkerError as EffectWorkerError,
+  WorkerReceiveError
+} from "effect/unstable/workers/WorkerError"
 
 import {
   PermissionRegistry,
@@ -115,8 +121,8 @@ export type WorkerError =
 export interface WorkerSpawnOptions<In, Out> {
   readonly script: string
   readonly ownerScope: string
-  readonly inputSchema: Schema.Schema<In>
-  readonly outputSchema: Schema.Schema<Out>
+  readonly inputSchema: Schema.Decoder<In, never>
+  readonly outputSchema: Schema.Decoder<Out, never>
   readonly context: PermissionContext
   readonly capabilities?: readonly NormalizedCapability[]
 }
@@ -266,14 +272,7 @@ export const makeWorker = (
             })
           )
 
-          return makeHandle(
-            runtime,
-            resource,
-            input.script,
-            inputSchema as Schema.Schema<In>,
-            outputSchema as Schema.Schema<Out>,
-            registry
-          )
+          return makeHandle(runtime, resource, input.script, inputSchema, outputSchema, registry)
         }).pipe(
           Effect.withSpan("Worker.spawn", {
             attributes: {
@@ -333,8 +332,8 @@ const makeHandle = <In, Out>(
   runtime: WorkerRuntime,
   resource: ManagedResourceHandle<"worker", "running">,
   script: string,
-  inputSchema: Schema.Schema<In>,
-  outputSchema: Schema.Schema<Out>,
+  inputSchema: Schema.Decoder<In, never>,
+  outputSchema: Schema.Decoder<Out, never>,
   registry: ResourceRegistryApi
 ): WorkerHandle<In, Out> => {
   const messages = runtime.messages.pipe(
@@ -494,11 +493,11 @@ const validateGracefulShutdownMs = (
         })
       )
 
-const validateChannelSchema = (
-  schema: unknown,
+const validateChannelSchema = <A>(
+  schema: Schema.Decoder<A, never>,
   field: "inputSchema" | "outputSchema",
   operation: string
-): Effect.Effect<Schema.Schema<unknown>, WorkerInvalidArgumentError, never> =>
+): Effect.Effect<Schema.Decoder<A, never>, WorkerInvalidArgumentError, never> =>
   isEffectSchema(schema)
     ? Effect.succeed(schema)
     : Effect.fail(
@@ -510,12 +509,12 @@ const validateChannelSchema = (
         })
       )
 
-const isEffectSchema = (schema: unknown): schema is Schema.Schema<unknown> =>
+const isEffectSchema = <A>(schema: unknown): schema is Schema.Decoder<A, never> =>
   (typeof schema === "object" || typeof schema === "function") && schema !== null && "ast" in schema
 
 const decodeInput = <In>(
   input: unknown,
-  schema: Schema.Schema<In>,
+  schema: Schema.Decoder<In, never>,
   script: string
 ): Effect.Effect<In, WorkerChannelError, never> =>
   Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
@@ -529,11 +528,11 @@ const decodeInput = <In>(
           cause: Option.some(error)
         })
     )
-  ) as Effect.Effect<In, WorkerChannelError, never>
+  )
 
 const decodeOutput = <Out>(
   input: unknown,
-  schema: Schema.Schema<Out>,
+  schema: Schema.Decoder<Out, never>,
   script: string
 ): Effect.Effect<Out, WorkerChannelError, never> =>
   Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
@@ -547,7 +546,7 @@ const decodeOutput = <Out>(
           cause: Option.some(error)
         })
     )
-  ) as Effect.Effect<Out, WorkerChannelError, never>
+  )
 
 const authorizeWorkerCapabilities = (
   permissions: PermissionRegistryApi,
@@ -624,120 +623,220 @@ export const BunWorkerAdapter: WorkerAdapter = Object.freeze({
     Effect.gen(function* () {
       const queue = yield* Queue.bounded<unknown, WorkerError | Cause.Done>(input.messageBufferSize)
       const exit = yield* Deferred.make<void, WorkerError>()
-      const worker = yield* Effect.try({
-        try: () => new globalThis.Worker(input.script),
-        catch: (cause) =>
-          new WorkerUnsupportedError({
-            operation: "Worker.spawn",
-            script: input.script,
-            reason: "Bun Worker construction failed",
-            cause: Option.some(cause)
-          })
-      })
-
-      const resourceId = Option.none<string>()
-      const onMessage = (event: MessageEvent): void => {
-        Effect.runFork(Queue.offer(queue, event.data))
-      }
-      const onError = (event: ErrorEvent): void => {
-        const error = new WorkerCrashedError({
-          operation: "Worker.messages",
-          script: input.script,
-          resourceId,
-          exitCode: Option.none(),
-          signal: Option.none(),
-          lastError: Option.some(event.error ?? event.message)
-        })
-        Effect.runFork(
-          Queue.fail(queue, error).pipe(Effect.andThen(Deferred.fail(exit, error)), Effect.asVoid)
+      const started = yield* Deferred.make<void, WorkerError>()
+      const workerScope = yield* Scope.make()
+      const shutdownRequested = { current: false }
+      const platform = makeBunWorkerPlatform(input, queue, exit, shutdownRequested)
+      const effectWorker = yield* platform.spawn(0).pipe(
+        Effect.provideService(EffectWorker.Spawner, () => new globalThis.Worker(input.script)),
+        Effect.mapError((error) =>
+          makeWorkerUnsupportedError(input, "Effect worker platform failed", error)
         )
-      }
-      const onMessageError = (event: MessageEvent): void => {
-        const error = new WorkerChannelError({
-          operation: "Worker.messages",
-          field: "transport",
-          script: input.script,
-          message: "worker message could not be deserialized",
-          cause: Option.some(event.data)
-        })
-        Effect.runFork(
-          Queue.fail(queue, error).pipe(Effect.andThen(Deferred.fail(exit, error)), Effect.asVoid)
-        )
-      }
-      const onClose = (event: Event): void => {
-        const exitCode = "code" in event && typeof event.code === "number" ? event.code : 0
-        if (exitCode === 0) {
-          Effect.runFork(Queue.end(queue).pipe(Effect.andThen(Deferred.succeed(exit, undefined))))
-          return
-        }
-        const error = new WorkerCrashedError({
-          operation: "Worker.messages",
-          script: input.script,
-          resourceId,
-          exitCode: Option.some(exitCode),
-          signal: Option.none(),
-          lastError: Option.none()
-        })
-        Effect.runFork(
-          Queue.fail(queue, error).pipe(Effect.andThen(Deferred.fail(exit, error)), Effect.asVoid)
-        )
-      }
-
-      worker.addEventListener("message", onMessage)
-      worker.addEventListener("error", onError)
-      worker.addEventListener("messageerror", onMessageError)
-      worker.addEventListener("close", onClose)
+      )
+      const runWorker = effectWorker.run(
+        (message) => Queue.offer(queue, message).pipe(Effect.asVoid),
+        { onSpawn: Deferred.succeed(started, undefined) }
+      )
+      yield* runWorker.pipe(
+        Effect.catchCause((cause) => {
+          if (Cause.hasInterruptsOnly(cause)) {
+            return Effect.void
+          }
+          const error = makeWorkerUnsupportedError(
+            input,
+            "Effect worker runtime failed",
+            Cause.squash(cause)
+          )
+          Queue.failCauseUnsafe(queue, Cause.fail(error))
+          Deferred.doneUnsafe(exit, Effect.fail(error))
+          return Deferred.fail(started, error).pipe(Effect.asVoid)
+        }),
+        Effect.forkScoped({ startImmediately: true }),
+        Scope.provide(workerScope)
+      )
+      yield* Deferred.await(started).pipe(
+        Effect.tapError(() => Scope.close(workerScope, Exit.void))
+      )
 
       return {
         send: (message: unknown) =>
-          Effect.try({
-            try: () => worker.postMessage(message),
-            catch: (cause) =>
-              new WorkerChannelError({
-                operation: "Worker.send",
-                field: "transport",
-                script: input.script,
-                message: "worker postMessage failed",
-                cause: Option.some(cause)
-              })
-          }),
+          effectWorker
+            .send(message)
+            .pipe(Effect.mapError((error) => mapEffectWorkerSendError(input, error))),
         messages: Stream.fromQueue(queue),
         exit: Deferred.await(exit),
-        shutdown: Effect.gen(function* () {
-          const warnShutdownFailure = (phase: string, cause: unknown) =>
-            Effect.logWarning("Worker.shutdown failed", {
-              script: input.script,
-              phase,
-              reason: String(cause)
-            })
-
-          yield* Effect.try({
-            try: () => worker.postMessage({ _tag: "Shutdown" }),
-            catch: (cause) => cause
-          }).pipe(Effect.catch((cause) => warnShutdownFailure("postMessage", cause)))
-          const gracefulExit = yield* Effect.timeoutOption(
-            Deferred.await(exit),
-            `${input.gracefulShutdownMs} millis`
-          )
-          if (Option.isNone(gracefulExit)) {
-            yield* Effect.try({
-              try: () => worker.terminate(),
-              catch: (cause) => cause
-            }).pipe(Effect.catch((cause) => warnShutdownFailure("terminate", cause)))
-          }
-          yield* cleanupWorkerListeners(worker, onMessage, onError, onMessageError, onClose).pipe(
-            Effect.catchDefect((cause) => warnShutdownFailure("removeListeners", cause))
-          )
-          yield* Queue.shutdown(queue).pipe(
-            Effect.catch((cause) => warnShutdownFailure("queueShutdown", cause)),
-            Effect.catchDefect((cause) => warnShutdownFailure("queueShutdown", cause))
-          )
-        }) as Effect.Effect<void, never, never>
+        shutdown: Scope.close(workerScope, Exit.void).pipe(Effect.asVoid)
       } satisfies WorkerRuntime
     })
 })
 
+interface BunWorkerPort {
+  readonly worker: globalThis.Worker
+  readonly postMessage: (message: unknown) => void
+}
+
+const makeBunWorkerPlatform = (
+  input: WorkerAdapterSpawnInput,
+  queue: Queue.Queue<unknown, WorkerError | Cause.Done>,
+  exit: Deferred.Deferred<void, WorkerError>,
+  shutdownRequested: { current: boolean }
+): EffectWorker.WorkerPlatform["Service"] =>
+  EffectWorker.makePlatform<globalThis.Worker>()({
+    setup: ({ worker }) =>
+      Effect.succeed({
+        worker,
+        postMessage: (message: unknown) => {
+          const payload = isEffectWorkerOutboundMessage(message) ? message[1] : message
+          worker.postMessage(payload)
+        }
+      } satisfies BunWorkerPort),
+    listen: ({ deferred, emit, port, scope }) =>
+      Effect.gen(function* () {
+        const onMessage = (event: MessageEvent): void => {
+          emit([1, event.data])
+        }
+        const onError = (event: ErrorEvent): void => {
+          if (shutdownRequested.current) {
+            endBunWorkerRuntime(queue, exit, deferred)
+            return
+          }
+          const error = new WorkerCrashedError({
+            operation: "Worker.messages",
+            script: input.script,
+            resourceId: Option.none(),
+            exitCode: Option.none(),
+            signal: Option.none(),
+            lastError: Option.some(event.error ?? event.message)
+          })
+          failBunWorkerRuntime(queue, exit, deferred, error, event.error ?? event.message)
+        }
+        const onMessageError = (event: MessageEvent): void => {
+          if (shutdownRequested.current) {
+            endBunWorkerRuntime(queue, exit, deferred)
+            return
+          }
+          const error = new WorkerChannelError({
+            operation: "Worker.messages",
+            field: "transport",
+            script: input.script,
+            message: "worker message could not be deserialized",
+            cause: Option.some(event.data)
+          })
+          failBunWorkerRuntime(queue, exit, deferred, error, event.data)
+        }
+        const onClose = (event: Event): void => {
+          const exitCode = "code" in event && typeof event.code === "number" ? event.code : 0
+          if (exitCode === 0 || shutdownRequested.current) {
+            endBunWorkerRuntime(queue, exit, deferred)
+            return
+          }
+          const error = new WorkerCrashedError({
+            operation: "Worker.messages",
+            script: input.script,
+            resourceId: Option.none(),
+            exitCode: Option.some(exitCode),
+            signal: Option.none(),
+            lastError: Option.none()
+          })
+          failBunWorkerRuntime(queue, exit, deferred, error, undefined)
+        }
+
+        port.worker.addEventListener("message", onMessage)
+        port.worker.addEventListener("error", onError)
+        port.worker.addEventListener("messageerror", onMessageError)
+        port.worker.addEventListener("close", onClose)
+        emit([0])
+
+        yield* Scope.addFinalizer(
+          scope,
+          shutdownBunWorker(input, port.worker, queue, exit, shutdownRequested).pipe(
+            Effect.andThen(
+              cleanupWorkerListeners(
+                input,
+                port.worker,
+                onMessage,
+                onError,
+                onMessageError,
+                onClose
+              )
+            )
+          )
+        )
+      })
+  })
+
+const isEffectWorkerOutboundMessage = (message: unknown): message is readonly [0, unknown] =>
+  Array.isArray(message) && message.length === 2 && message[0] === 0
+
+const failBunWorkerRuntime = (
+  queue: Queue.Queue<unknown, WorkerError | Cause.Done>,
+  exit: Deferred.Deferred<void, WorkerError>,
+  deferred: Deferred.Deferred<never, EffectWorkerError>,
+  error: WorkerError,
+  cause: unknown
+): void => {
+  Queue.failCauseUnsafe(queue, Cause.fail(error))
+  Deferred.doneUnsafe(exit, Effect.fail(error))
+  Deferred.doneUnsafe(
+    deferred,
+    Effect.fail(
+      new EffectWorkerError({
+        reason: new WorkerReceiveError({
+          message: `${error._tag}: ${error.operation}`,
+          cause
+        })
+      })
+    )
+  )
+}
+
+const endBunWorkerRuntime = (
+  queue: Queue.Queue<unknown, WorkerError | Cause.Done>,
+  exit: Deferred.Deferred<void, WorkerError>,
+  deferred: Deferred.Deferred<never, EffectWorkerError>
+): void => {
+  Queue.endUnsafe(queue)
+  Deferred.doneUnsafe(exit, Effect.void)
+  Deferred.doneUnsafe(deferred, Effect.interrupt)
+}
+
+const shutdownBunWorker = (
+  input: WorkerAdapterSpawnInput,
+  worker: globalThis.Worker,
+  queue: Queue.Queue<unknown, WorkerError | Cause.Done>,
+  exit: Deferred.Deferred<void, WorkerError>,
+  shutdownRequested: { current: boolean }
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const warnShutdownFailure = (phase: string, cause: unknown) =>
+      Effect.logWarning("Worker.shutdown failed", {
+        script: input.script,
+        phase,
+        reason: String(cause)
+      })
+
+    shutdownRequested.current = true
+    yield* Effect.try({
+      try: () => worker.postMessage({ _tag: "Shutdown" }),
+      catch: (cause) => cause
+    }).pipe(Effect.catch((cause) => warnShutdownFailure("postMessage", cause)))
+    const gracefulExit = yield* Effect.timeoutOption(
+      Effect.exit(Deferred.await(exit)),
+      `${input.gracefulShutdownMs} millis`
+    )
+    if (Option.isNone(gracefulExit)) {
+      yield* Effect.try({
+        try: () => worker.terminate(),
+        catch: (cause) => cause
+      }).pipe(Effect.catch((cause) => warnShutdownFailure("terminate", cause)))
+    }
+    yield* Queue.shutdown(queue).pipe(
+      Effect.catchCause((cause) => warnShutdownFailure("queueShutdown", cause))
+    )
+  })
+
 const cleanupWorkerListeners = (
+  input: WorkerAdapterSpawnInput,
   worker: globalThis.Worker,
   onMessage: (event: MessageEvent) => void,
   onError: (event: ErrorEvent) => void,
@@ -749,4 +848,36 @@ const cleanupWorkerListeners = (
     worker.removeEventListener("error", onError)
     worker.removeEventListener("messageerror", onMessageError)
     worker.removeEventListener("close", onClose)
+  }).pipe(
+    Effect.catchDefect((cause) =>
+      Effect.logWarning("Worker.shutdown failed", {
+        script: input.script,
+        phase: "removeListeners",
+        reason: String(cause)
+      })
+    )
+  )
+
+const mapEffectWorkerSendError = (
+  input: WorkerAdapterSpawnInput,
+  error: EffectWorkerError
+): WorkerChannelError =>
+  new WorkerChannelError({
+    operation: "Worker.send",
+    field: "transport",
+    script: input.script,
+    message: error.message,
+    cause: Option.some(error)
+  })
+
+const makeWorkerUnsupportedError = (
+  input: WorkerAdapterSpawnInput,
+  reason: string,
+  cause: unknown
+): WorkerUnsupportedError =>
+  new WorkerUnsupportedError({
+    operation: "Worker.spawn",
+    script: input.script,
+    reason,
+    cause: Option.some(cause)
   })
