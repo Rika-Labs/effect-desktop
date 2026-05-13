@@ -23,10 +23,12 @@ import {
   Process,
   PTY,
   ResourceRegistryLive,
+  SidecarCommand,
   Telemetry,
   makeSecretBytesFromUtf8,
   makeSecrets,
   makeResourceRegistry,
+  makeSidecar,
   ResourceHandleSchema,
   type ResourceId,
   unsafeSecretBytes,
@@ -1069,6 +1071,85 @@ test("makeMockProcess records kill and scope cleanup through the real registry",
   expect(result.afterExit).toEqual([])
   expect(result.killed).toBe("SIGTERM")
   expect(result.cleanup?.terminateTreeCalls).toBe(1)
+})
+
+test("Sidecar starts a scoped process and derives readiness from stdout", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      let resourceIndex = 0
+      const registry = yield* makeResourceRegistry({
+        nextId: () => id(`sidecar-resource-${(resourceIndex += 1)}`)
+      })
+      const process = yield* makeMockProcess(registry, {
+        processes: [
+          {
+            command: "server",
+            args: ["serve"],
+            pid: 9876,
+            stdout: [bytes("booting\nREADY http://127.0.0.1:4317\n")],
+            exit: false
+          }
+        ],
+        permissions: { spawn: ["server"] }
+      })
+      const sidecar = yield* makeSidecar(process, registry)
+      const handle = yield* sidecar.start(
+        new SidecarCommand({
+          args: ["serve"],
+          command: "server",
+          ownerScope: "app"
+        }),
+        { readiness: { _tag: "Line", match: "READY", stream: "stdout" } }
+      )
+      const ready = yield* handle.ready
+      const status = yield* handle.status
+      const resourcesBeforeClose = yield* registry.list()
+      yield* handle.close()
+      const resourcesAfterClose = yield* registry.list()
+
+      return { ready, resourcesAfterClose, resourcesBeforeClose, status }
+    })
+  )
+
+  expect(result.ready).toMatchObject({
+    line: "READY http://127.0.0.1:4317",
+    pid: 9876,
+    stream: "stdout"
+  })
+  expect(result.status._tag).toBe("Ready")
+  expect(result.resourcesBeforeClose.entries.map((entry) => entry.handle.kind).sort()).toEqual([
+    "process",
+    "sidecar"
+  ])
+  expect(result.resourcesAfterClose.entries).toEqual([])
+})
+
+test("Sidecar reports typed readiness failure instead of polling a port", async () => {
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const registry = yield* makeResourceRegistry()
+      const process = yield* makeMockProcess(registry, {
+        processes: [{ command: "server", stdout: [bytes("listening somewhere else\n")] }],
+        permissions: { spawn: ["server"] }
+      })
+      const sidecar = yield* makeSidecar(process, registry)
+      const handle = yield* sidecar.start(
+        new SidecarCommand({
+          args: [],
+          command: "server",
+          ownerScope: "app"
+        }),
+        { readiness: { _tag: "Line", match: "READY", stream: "stdout" } }
+      )
+      return yield* handle.ready
+    })
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    expect(JSON.stringify(exit.cause.toJSON())).toContain("SidecarError")
+    expect(JSON.stringify(exit.cause.toJSON())).toContain("readiness")
+  }
 })
 
 test("MockProcess fails loudly when a command has no fixture", async () => {

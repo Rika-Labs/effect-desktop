@@ -319,6 +319,11 @@
       "signature": "export class CspInspectorEvent extends Schema.Class<CspInspectorEvent>(\"CspInspectorEvent\")({ kind: Schema.Literal(\"csp\"), decision: Schema.Literals([\"nonce-issued\", \"policy-applied\", \"navigation-allowed\", \"blocked\"]), source: PermissionMetadataText, traceId: PermissionMetadataText, outcome: PermissionMetadataText, timestamp: Schema.optionalKey(InspectorTimestamp), resource: Schema.optionalKey(Schema.String), directives: Schema.optionalKey(Schema.Array(CspDirectiveSnapshot)), reason: Schema.optionalKey(Schema.String) }) {}"
     },
     {
+      "name": "decodeSidecarCommand",
+      "kind": "value",
+      "signature": "const decodeSidecarCommand: (input: unknown, operation: string) => Effect.Effect<SidecarCommand, HostProtocolInvalidArgumentError, never>"
+    },
+    {
       "name": "Desktop",
       "kind": "value",
       "signature": "const Desktop: Readonly<{ RedactionFilter: Readonly<{ redact: <A>(record: A, options?: import(\"@effect-desktop/bridge\").RedactionFilterOptions) => A; redactForJson: <A>(record: A, options?: import(\"@effect-desktop/bridge\").RedactionFilterOptions) => A; redactWithEvidence: <A>(record: A, options?: import(\"@effect-desktop/bridge\").RedactionFilterOptions) => import(\"@effect-desktop/bridge\").RedactionResult<A>; redactForJsonWithEvidence: <A>(record: A, options?: import(\"@effect-desktop/bridge\").RedactionFilterOptions) => import(\"@effect-desktop/bridge\").RedactionResult<A>; redactedValue: import(\"effect/Redacted\").Redacted<string>; defaultPattern: RegExp; }>; RpcCapability: <Capability extends import(\"@effect-desktop/bridge\").RpcCapabilityMetadata>(capability: Capability) => <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcCapability<R, Capability>; RpcEndpoint: Readonly<{ query: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcEndpointKind<R, \"query\">; mutation: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcEndpointKind<R, \"mutation\">; }>; RpcSupport: Readonly<{ supported: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcSupport<R, { readonly status: \"supported\"; }>; unsupported: (reason: string) => <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcSupport<R, { readonly status: \"unsupported\"; readonly reason: string; }>; }>; app: { (): Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>; <RIn = never, E = never>(config: DesktopConfig<RIn, E>): Layer.Layer<DesktopApp, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices>>; (options: DesktopAppOptionsWithPermissions): Layer.Layer<WorkflowEngine.WorkflowEngine, never, PermissionRegistry>; }; launch: (layer: Layer.Layer<DesktopApp, DesktopConfigError, never>) => Effect.Effect<never, DesktopConfigError, never>; make: <RIn = never, E = never>(config: import(\"./runtime/desktop-app.js\").DesktopMakeConfig<RIn, E>) => import(\"./runtime/desktop-app.js\").DesktopAppDescriptor<RIn, E>; manifest: (config: import(\"./runtime/desktop-app.js\").DesktopManifestSource) => import(\"./runtime/desktop-app.js\").DesktopAppManifest; providerLayerFor: (choice: import(\"./runtime/desktop-app.js\").DesktopRuntimeSelectedProviders) => Layer.Layer<DesktopRuntimeProviderServices, import(\"effect/Config\").ConfigError | DesktopConfigError, never>; Rpc: Readonly<{ surface: { <const Tag extends string, Group extends import(\"effect/unstable/rpc/RpcGroup\").Any & import(\"./runtime/rpc-group-metadata.js\").RpcGroupWithRequests, ServiceId, ServerE, ServerR>(tag: Tag, group: Group, options: import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurfaceDirectOptions<import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, ServerE, ServerR>): import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurface<Tag, Group, import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, ServerE, ServerR>; <const Tag extends string, Group extends import(\"effect/unstable/rpc/RpcGroup\").Any & import(\"./runtime/rpc-group-metadata.js\").RpcGroupWithRequests, ServiceId, Service, ServerE, ServerR>(tag: Tag, group: Group, options: import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurfaceMappedOptions<import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, Service, ServerE, ServerR>): import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurface<Tag, Group, import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, ServerE, ServerR>; }; supportedGroup: <Rpcs extends import(\"effect/unstable/rpc/Rpc\").Any>(group: import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<Rpcs>) => import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<import(\"./runtime/desktop-rpc-surface.js\").SupportedRpc<Rpcs>>; }>; runtime: <RIn = never, E = never>(config: DesktopConfig<RIn, E>) => Layer.Layer<import(\"./runtime/desktop-app.js\").DesktopRuntimeServices, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices>>; runtimeGraph: <RIn, E>(config: DesktopConfig<RIn, E>) => Effect.Effect<import(\"./runtime/desktop-app.js\").DesktopRuntimeGraph, DesktopConfigError, never>; runtimeGraphSnapshot: <RIn, E>(config: DesktopConfig<RIn, E>) => Effect.Effect<import(\"./runtime/desktop-app.js\").LayerGraphSnapshot, never, never>; Rpcs: Readonly<{ layer: <Rpcs extends import(\"effect/unstable/rpc/Rpc\").Any, E, R>(group: import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<Rpcs>, layer: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").ToHandler<Rpcs>, E, R>) => import(\"./runtime/desktop-app.js\").DesktopRpcLayer<Rpcs, E, R>; }>; describeRpcs: <Group extends import(\"./runtime/rpc-group-metadata.js\").RpcGroupWithRequests>(app: import(\"./runtime/rpc-descriptors.js\").DesktopRpcDescriptorSource, group: Group) => readonly import(\"./runtime/rpc-descriptors.js\").RpcEndpointDescriptor[]; }>"
@@ -1229,6 +1234,11 @@
       "signature": "const makeSettingsLayerMemory: Layer.Layer<Settings, never, never>"
     },
     {
+      "name": "makeSidecar",
+      "kind": "value",
+      "signature": "const makeSidecar: (process: ProcessApi, registry: ResourceRegistryApi) => Effect.Effect<SidecarApi, never, never>"
+    },
+    {
       "name": "makeTelemetry",
       "kind": "value",
       "signature": "const makeTelemetry: (options?: TelemetryOptions) => Effect.Effect<TelemetryApi, TelemetryInvalidArgumentError, never>"
@@ -2027,6 +2037,61 @@
       "name": "SettingsStore",
       "kind": "interface",
       "signature": "export interface SettingsStore { readonly key: typeof makeSettingKey readonly get: <A>( key: string | SettingKey<A>, schema?: Schema.Schema<A> ) => Effect.Effect<Option.Option<A>, SettingsError, never> readonly getOrDefault: <A>( key: string | SettingKey<A>, schema?: Schema.Schema<A>, defaultValue?: A ) => Effect.Effect<A, SettingsError, never> readonly set: <A>( key: string | SettingKey<A>, schemaOrValue: Schema.Schema<A> | A, valueOrOptions?: A | SettingsMutationOptions, options?: SettingsMutationOptions ) => Effect.Effect<void, SettingsError, never> readonly delete: ( key: string, options?: SettingsMutationOptions ) => Effect.Effect<void, SettingsError, never> readonly keys: () => Effect.Effect<readonly string[], SettingsError, never> readonly update: <A, E, R>( key: string, schema: Schema.Schema<A>, update: (current: Option.Option<A>) => Effect.Effect<A, E, R>, options?: SettingsMutationOptions ) => Effect.Effect<A, E | SettingsError, R> readonly changes: () => Stream.Stream<SettingsChange, never, never> readonly migrated: () => Stream.Stream<SettingsMigrated, never, never> readonly close: () => Effect.Effect<void, never, never> }"
+    },
+    {
+      "name": "Sidecar",
+      "kind": "class",
+      "signature": "export class Sidecar extends Context.Service<Sidecar, SidecarApi>()(\"Sidecar\") {}"
+    },
+    {
+      "name": "SidecarApi",
+      "kind": "interface",
+      "signature": "export interface SidecarApi { readonly start: ( command: SidecarCommand, options: SidecarStartOptions ) => Effect.Effect<SidecarHandle, SidecarError, never> }"
+    },
+    {
+      "name": "SidecarCommand",
+      "kind": "class",
+      "signature": "export class SidecarCommand extends Schema.Class<SidecarCommand>(\"SidecarCommand\")({ args: Schema.Array(Schema.String), command: NonEmptyString, cwd: Schema.optionalKey(NonEmptyString), env: Schema.optionalKey(Schema.Record(NonEmptyString, Schema.String)), ownerScope: NonEmptyString, shell: Schema.optionalKey(Schema.Boolean) }) {}"
+    },
+    {
+      "name": "SidecarError",
+      "kind": "class",
+      "signature": "export class SidecarError extends Data.TaggedError(\"SidecarError\")<{ readonly message: string readonly operation: string readonly recoverable: boolean }> {}"
+    },
+    {
+      "name": "SidecarHandle",
+      "kind": "interface",
+      "signature": "export interface SidecarHandle { readonly close: () => Effect.Effect<void, never, never> readonly events: Stream.Stream<SidecarState, never, never> readonly process: ProcessHandle readonly ready: Effect.Effect<SidecarReadyPayload, SidecarError, never> readonly resource: ManagedResourceHandle<\"sidecar\", \"running\"> readonly status: Effect.Effect<SidecarState, never, never> }"
+    },
+    {
+      "name": "SidecarLive",
+      "kind": "value",
+      "signature": "const SidecarLive: Layer.Layer<Sidecar, never, ResourceRegistry | Process>"
+    },
+    {
+      "name": "SidecarReadiness",
+      "kind": "type",
+      "signature": "export type SidecarReadiness = | { readonly _tag: \"Line\" readonly match: string readonly stream: \"stdout\" | \"stderr\" } | { readonly _tag: \"None\" }"
+    },
+    {
+      "name": "SidecarReadyPayload",
+      "kind": "class",
+      "signature": "export class SidecarReadyPayload extends Schema.Class<SidecarReadyPayload>(\"SidecarReadyPayload\")({ line: Schema.String, pid: Schema.Number, stream: Schema.Literals([\"stdout\", \"stderr\"]) }) {}"
+    },
+    {
+      "name": "SidecarRetryPolicy",
+      "kind": "interface",
+      "signature": "export interface SidecarRetryPolicy { readonly delay?: Duration.Input readonly idempotent: boolean readonly retries: number }"
+    },
+    {
+      "name": "SidecarStartOptions",
+      "kind": "interface",
+      "signature": "export interface SidecarStartOptions { readonly readiness: SidecarReadiness readonly retry?: SidecarRetryPolicy }"
+    },
+    {
+      "name": "SidecarState",
+      "kind": "type",
+      "signature": "export type SidecarState = | { readonly _tag: \"Starting\"; readonly attempt: number; readonly command: string } | { readonly _tag: \"Ready\"; readonly ready: SidecarReadyPayload } | { readonly _tag: \"Retrying\"; readonly attempt: number; readonly message: string } | { readonly _tag: \"Failed\"; readonly message: string; readonly recoverable: boolean } | { readonly _tag: \"Exited\"; readonly exit: ProcessExitStatus } | { readonly _tag: \"Closing\" } | { readonly _tag: \"Closed\" }"
     },
     {
       "name": "SqlClient",
