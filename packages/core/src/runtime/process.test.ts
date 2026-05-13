@@ -15,6 +15,10 @@ import { BunServices } from "@effect/platform-bun"
 import { Cause, Deferred, Effect, Exit, Fiber, Option, PlatformError, Sink, Stream } from "effect"
 import { ChildProcessSpawner } from "effect/unstable/process"
 
+import {
+  makeExecutionInspectorCollector,
+  type ExecutionInspectorCollectorApi
+} from "./inspector-events.js"
 import { makeProcess, ProcessExitStatus } from "./process.js"
 import type {
   ProcessApi,
@@ -63,6 +67,29 @@ processTest("Process spawn registers a scoped running resource", async () => {
     ownerScope: handle.resource.ownerScope,
     state: handle.resource.state
   })
+})
+
+processTest("Process publishes typed execution inspector events", async () => {
+  const inspector = await Effect.runPromise(makeExecutionInspectorCollector())
+  const fixture = await makeFixture(
+    makeFakeSpawner(() => makeFakeChild({ exit: { code: 0 }, stdout: [] })),
+    { inspector, now: incrementingClock(100) }
+  )
+  const observed = Effect.runFork(inspector.events.pipe(Stream.take(2), Stream.runCollect))
+  await Bun.sleep(0)
+
+  const handle = await Effect.runPromise(
+    fixture.service.spawn("echo", ["hi"], { ownerScope: "scope-main" })
+  )
+  await Effect.runPromise(handle.exit)
+
+  const events = [...(await Effect.runPromise(Fiber.join(observed)))]
+  expect(events.map((event) => [event.kind, event.status, event.operation])).toEqual([
+    ["process", "start", "Process.spawn"],
+    ["process", "success", "Process.spawn"]
+  ])
+  expect(events[1]?.resourceId).toBe(handle.resource.id)
+  expect(events[1]?.pid).toBe(42)
 })
 
 processTest("Process exposes live devtools snapshots with pid, command, and exit", async () => {
@@ -911,6 +938,7 @@ const makeFixture = async (
   options: {
     readonly budgets?: ProcessBudgetPolicy
     readonly gracefulShutdownMs?: number
+    readonly inspector?: ExecutionInspectorCollectorApi
     readonly maxSnapshots?: number
     readonly now?: () => number
     readonly permissions?: ProcessPermissionPolicy
@@ -930,6 +958,7 @@ const makeService = (
   options: {
     readonly budgets?: ProcessBudgetPolicy
     readonly gracefulShutdownMs?: number
+    readonly inspector?: ExecutionInspectorCollectorApi
     readonly maxSnapshots?: number
     readonly now?: () => number
     readonly permissions?: ProcessPermissionPolicy
@@ -942,6 +971,7 @@ const makeService = (
       ...(options.gracefulShutdownMs === undefined
         ? {}
         : { gracefulShutdownMs: options.gracefulShutdownMs }),
+      ...(options.inspector === undefined ? {} : { inspector: options.inspector }),
       ...(options.maxSnapshots === undefined ? {} : { maxSnapshots: options.maxSnapshots }),
       ...(options.now === undefined ? {} : { now: options.now })
     }).pipe(
@@ -1151,6 +1181,14 @@ const waitUntil = async (predicate: () => Promise<boolean>): Promise<void> => {
     })
   }
   throw new Error("condition was not met")
+}
+
+const incrementingClock = (start: number): (() => number) => {
+  let current = start
+  return () => {
+    current += 1
+    return current
+  }
 }
 
 const waitForChildPids = async (path: string): Promise<readonly number[]> => {

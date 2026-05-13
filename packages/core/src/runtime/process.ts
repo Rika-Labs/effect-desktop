@@ -32,6 +32,11 @@ import type { PlatformError } from "effect/PlatformError"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 
 import { ResourceRegistry } from "./resources.js"
+import {
+  disabledExecutionInspectorCollector,
+  ExecutionEvent,
+  type ExecutionInspectorCollectorApi
+} from "./inspector-events.js"
 import type {
   ManagedResourceHandle,
   ResourceId,
@@ -144,6 +149,7 @@ export interface ProcessApi {
 
 export interface ProcessOptions {
   readonly budgets?: ProcessBudgetPolicy
+  readonly inspector?: ExecutionInspectorCollectorApi
   readonly gracefulShutdownMs?: number
   readonly maxSnapshots?: number
   readonly permissions?: ProcessPermissionPolicy
@@ -204,6 +210,7 @@ export const makeProcess = (
     }
     const permissions = options.permissions ?? EMPTY_PROCESS_PERMISSIONS
     const now = options.now ?? Date.now
+    const inspector = options.inspector ?? disabledExecutionInspectorCollector
     const processBudgetScope = yield* Scope.make()
     const processBudgets = yield* RcMap.make({
       lookup: (_ownerScope: string) => Semaphore.make(budgets.maxConcurrent)
@@ -228,6 +235,16 @@ export const makeProcess = (
           )
           yield* authorizeProcessSpawn(permissions, input)
           const startedAt = yield* decodeProcessTimestamp(now(), "Process.spawn")
+          yield* inspector.publish(
+            new ExecutionEvent({
+              kind: "process",
+              status: "start",
+              operation: "Process.spawn",
+              command: input.command,
+              ownerScope: input.ownerScope,
+              timestamp: startedAt
+            })
+          )
           const { child, disposalOrigin, exitObserved, exitState, processScope, resource } =
             yield* Effect.uninterruptible(
               Effect.gen(function* () {
@@ -280,6 +297,18 @@ export const makeProcess = (
                   },
                   maxSnapshots
                 )
+                yield* inspector.publish(
+                  new ExecutionEvent({
+                    kind: "process",
+                    status: "success",
+                    operation: "Process.spawn",
+                    command: input.command,
+                    ownerScope: input.ownerScope,
+                    pid: Number(child.pid),
+                    resourceId: resource.id,
+                    timestamp: startedAt
+                  })
+                )
 
                 return { child, disposalOrigin, exitObserved, exitState, processScope, resource }
               })
@@ -296,9 +325,24 @@ export const makeProcess = (
             budgets,
             snapshots,
             now,
-            registry
+            registry,
+            inspector
           ).pipe(Effect.uninterruptible)
         }).pipe(
+          Effect.tapError((error) =>
+            inspector.publish(
+              new ExecutionEvent({
+                kind: "process",
+                status: "failure",
+                operation: "Process.spawn",
+                command,
+                ...(options?.ownerScope === undefined ? {} : { ownerScope: options.ownerScope }),
+                errorTag: error._tag,
+                message: error.message,
+                timestamp: safeInspectorTimestamp(now)
+              })
+            )
+          ),
           Effect.withSpan("Process.spawn", {
             attributes: {
               argc: args.length,
@@ -346,7 +390,8 @@ const makeHandle = (
   budgets: Required<ProcessBudgetPolicy>,
   snapshots: SubscriptionRef.SubscriptionRef<Map<ResourceId, ProcessSnapshot>>,
   now: () => number,
-  registry: ResourceRegistryApi
+  registry: ResourceRegistryApi,
+  inspector: ExecutionInspectorCollectorApi
 ): Effect.Effect<ProcessHandle, never, never> =>
   Effect.gen(function* makeHandle() {
     const stdout = boundedOutputStream(
@@ -382,6 +427,19 @@ const makeHandle = (
     const completeExit = (status: ProcessExitStatus): Effect.Effect<void, ProcessError, never> =>
       Effect.gen(function* completeExit() {
         yield* markProcessExited(snapshots, resource.id, status, now(), "Process.exit")
+        yield* inspector.publish(
+          new ExecutionEvent({
+            kind: "process",
+            status: "cleanup",
+            operation: "Process.exit",
+            command,
+            resourceId: resource.id,
+            pid: Number(child.pid),
+            exitCode: status.code,
+            ...(status.signal === undefined ? {} : { signal: status.signal }),
+            timestamp: now()
+          })
+        )
         yield* Deferred.succeed(exitState, status)
         yield* Ref.set(exitObserved, true)
         const origin = yield* claimObserverDisposal(disposalOrigin)
@@ -414,6 +472,18 @@ const makeHandle = (
           yield* child
             .kill({ killSignal })
             .pipe(Effect.mapError((error) => mapPlatformError(error, command, "Process.kill")))
+          yield* inspector.publish(
+            new ExecutionEvent({
+              kind: "process",
+              status: "interruption",
+              operation: "Process.kill",
+              command,
+              resourceId: resource.id,
+              pid: Number(child.pid),
+              signal: killSignal,
+              timestamp: now()
+            })
+          )
           yield* exit
         }).pipe(
           Effect.withSpan("Process.kill", {
@@ -533,6 +603,11 @@ const makeBackpressureOverflow = (
       `Process.${streamName}`
     )
   })
+
+const safeInspectorTimestamp = (now: () => number): number => {
+  const timestamp = now()
+  return Number.isFinite(timestamp) && timestamp >= 0 ? timestamp : Date.now()
+}
 
 const mapCauseToProcessError = (
   cause: Cause.Cause<ProcessError>,

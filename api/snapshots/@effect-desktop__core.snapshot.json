@@ -574,6 +574,21 @@
       "signature": "export type DesktopWorkflowLayer<RIn = never, E = never> = Layer.Layer< never, E, RIn | WorkflowEngine.WorkflowEngine >"
     },
     {
+      "name": "disabledExecutionInspectorCollector",
+      "kind": "value",
+      "signature": "const disabledExecutionInspectorCollector: ExecutionInspectorCollectorApi"
+    },
+    {
+      "name": "disabledFilesystemInspectorCollector",
+      "kind": "value",
+      "signature": "const disabledFilesystemInspectorCollector: FilesystemInspectorCollectorApi"
+    },
+    {
+      "name": "disabledNativeHostInspectorCollector",
+      "kind": "value",
+      "signature": "const disabledNativeHostInspectorCollector: NativeHostInspectorCollectorApi"
+    },
+    {
       "name": "DuplicateDesktopRpcNameError",
       "kind": "class",
       "signature": "export class DuplicateDesktopRpcNameError extends Data.TaggedError(\"DuplicateDesktopRpcNameError\")<{ readonly message: string readonly name: string readonly tags: readonly string[] readonly code: string readonly category: DesktopPublicErrorCategory readonly summary: string readonly details: Readonly<Record<string, unknown>> readonly actor: string readonly remediation: string readonly docsUrl: string }> {}"
@@ -609,6 +624,26 @@
       "signature": "const emptyInspectorSafetySummary: InspectorSafetySummary"
     },
     {
+      "name": "ExecutionEvent",
+      "kind": "class",
+      "signature": "export class ExecutionEvent extends Schema.Class<ExecutionEvent>(\"ExecutionEvent\")({ kind: Schema.Literals([\"process\", \"worker\", \"pty\"]), status: InspectorEventStatus, operation: Schema.String, traceId: OptionalString, resourceId: OptionalString, ownerScope: OptionalString, command: OptionalString, script: OptionalString, pid: Schema.optionalKey(Schema.Number), exitCode: Schema.optionalKey(Schema.Number), signal: OptionalString, errorTag: OptionalString, message: OptionalString, timestamp: NonNegativeNumber }) {}"
+    },
+    {
+      "name": "ExecutionInspectorCollector",
+      "kind": "class",
+      "signature": "export class ExecutionInspectorCollector extends Context.Service< ExecutionInspectorCollector, ExecutionInspectorCollectorApi >()(\"ExecutionInspectorCollector\") {}"
+    },
+    {
+      "name": "ExecutionInspectorCollectorApi",
+      "kind": "interface",
+      "signature": "export interface ExecutionInspectorCollectorApi { readonly publish: (event: ExecutionEvent) => Effect.Effect<void, never, never> readonly events: Stream.Stream<ExecutionEvent, never, never> }"
+    },
+    {
+      "name": "ExecutionInspectorCollectorLive",
+      "kind": "value",
+      "signature": "const ExecutionInspectorCollectorLive: Layer.Layer<ExecutionInspectorCollector, never, never>"
+    },
+    {
       "name": "Filesystem",
       "kind": "class",
       "signature": "export class Filesystem extends Context.Service<Filesystem, FilesystemApi>()(\"Filesystem\") {}"
@@ -639,6 +674,26 @@
       "signature": "const FilesystemEventKind: Schema.Literals<readonly [\"created\", \"modified\", \"deleted\", \"renamed\"]>"
     },
     {
+      "name": "FilesystemInspectorCollector",
+      "kind": "class",
+      "signature": "export class FilesystemInspectorCollector extends Context.Service< FilesystemInspectorCollector, FilesystemInspectorCollectorApi >()(\"FilesystemInspectorCollector\") {}"
+    },
+    {
+      "name": "FilesystemInspectorCollectorApi",
+      "kind": "interface",
+      "signature": "export interface FilesystemInspectorCollectorApi { readonly publish: (event: FilesystemInspectorEvent) => Effect.Effect<void, never, never> readonly events: Stream.Stream<FilesystemInspectorEvent, never, never> }"
+    },
+    {
+      "name": "FilesystemInspectorCollectorLive",
+      "kind": "value",
+      "signature": "const FilesystemInspectorCollectorLive: Layer.Layer<FilesystemInspectorCollector, never, never>"
+    },
+    {
+      "name": "FilesystemInspectorEvent",
+      "kind": "class",
+      "signature": "export class FilesystemInspectorEvent extends Schema.Class<FilesystemInspectorEvent>( \"FilesystemInspectorEvent\" )({ kind: Schema.Literals([\"operation\", \"watch\"]), status: InspectorEventStatus, operation: Schema.String, traceId: OptionalString, resourceId: OptionalString, ownerScope: OptionalString, path: OptionalString, directory: OptionalString, eventKind: OptionalString, errorTag: OptionalString, message: OptionalString, timestamp: NonNegativeNumber }) {}"
+    },
+    {
       "name": "FilesystemLive",
       "kind": "value",
       "signature": "const FilesystemLive: Layer.Layer<Filesystem, never, ResourceRegistry | EffectFileSystem.FileSystem>"
@@ -651,7 +706,7 @@
     {
       "name": "FilesystemOptions",
       "kind": "interface",
-      "signature": "export interface FilesystemOptions { readonly permissions?: FilesystemPermissionPolicy }"
+      "signature": "export interface FilesystemOptions { readonly inspector?: FilesystemInspectorCollectorApi readonly permissions?: FilesystemPermissionPolicy readonly now?: () => number }"
     },
     {
       "name": "FilesystemPathCapability",
@@ -719,14 +774,54 @@
       "signature": "export class InspectorCauseEvent extends Schema.Class<InspectorCauseEvent>(\"InspectorCauseEvent\")({ kind: Schema.Literal(\"cause\"), traceId: Schema.String, operation: Schema.String, timestamp: Schema.Number, cause: CausePayload }) {}"
     },
     {
+      "name": "InspectorCollectors",
+      "kind": "class",
+      "signature": "export class InspectorCollectors extends Context.Service< InspectorCollectors, InspectorCollectorsApi >()(\"InspectorCollectors\") {}"
+    },
+    {
+      "name": "InspectorCollectorsApi",
+      "kind": "interface",
+      "signature": "export interface InspectorCollectorsApi { readonly execution: ExecutionInspectorCollectorApi readonly filesystem: FilesystemInspectorCollectorApi readonly nativeHost: NativeHostInspectorCollectorApi readonly events: Stream.Stream<InspectorEvent, never, never> }"
+    },
+    {
+      "name": "InspectorCollectorsLive",
+      "kind": "value",
+      "signature": "const InspectorCollectorsLive: Layer.Layer<InspectorCollectors, never, never>"
+    },
+    {
       "name": "InspectorEvent",
       "kind": "class",
-      "signature": "export class InspectorEvent extends Schema.Class<InspectorEvent>(\"InspectorEvent\")({ sequence: Schema.Number, sessionId: Schema.NonEmptyString, timestampMs: Schema.Number, source: Schema.NonEmptyString, payload: Schema.Unknown }) {}"
+      "signature": "export class InspectorEvent extends Schema.Class<InspectorEvent>(\"InspectorEvent\")({ channel: Schema.Literals([\"execution\", \"filesystem\", \"native-host\"]), execution: Schema.optionalKey(ExecutionEvent), filesystem: Schema.optionalKey(FilesystemInspectorEvent), nativeHost: Schema.optionalKey(NativeHostEvent) }) {}"
     },
     {
       "name": "InspectorEventInput",
       "kind": "interface",
       "signature": "export interface InspectorEventInput { readonly source: string readonly payload: unknown readonly timestampMs?: number }"
+    },
+    {
+      "name": "InspectorEventRpc",
+      "kind": "type",
+      "signature": "export type InspectorEventRpc = RpcGroup.Rpcs<typeof InspectorEventRpcs>"
+    },
+    {
+      "name": "InspectorEventRpcs",
+      "kind": "value",
+      "signature": "const InspectorEventRpcs: RpcGroup.RpcGroup<Rpc.Rpc<\"Inspector.events.execution\", Schema.Void, import(\"effect/unstable/rpc/RpcSchema\").Stream<typeof ExecutionEvent, Schema.Never>, Schema.Never, never, never> | Rpc.Rpc<\"Inspector.events.filesystem\", Schema.Void, import(\"effect/unstable/rpc/RpcSchema\").Stream<typeof FilesystemInspectorEvent, Schema.Never>, Schema.Never, never, never> | Rpc.Rpc<\"Inspector.events.nativeHost\", Schema.Void, import(\"effect/unstable/rpc/RpcSchema\").Stream<typeof NativeHostEvent, Schema.Never>, Schema.Never, never, never>>"
+    },
+    {
+      "name": "InspectorEventStatus",
+      "kind": "type",
+      "signature": "const InspectorEventStatus: Schema.Literals<readonly [\"start\", \"success\", \"failure\", \"interruption\", \"cleanup\"]>"
+    },
+    {
+      "name": "InspectorExecutionEvents",
+      "kind": "value",
+      "signature": "const InspectorExecutionEvents: Rpc.Rpc<\"Inspector.events.execution\", Schema.Void, import(\"effect/unstable/rpc/RpcSchema\").Stream<typeof ExecutionEvent, Schema.Never>, Schema.Never, never, never>"
+    },
+    {
+      "name": "InspectorFilesystemEvents",
+      "kind": "value",
+      "signature": "const InspectorFilesystemEvents: Rpc.Rpc<\"Inspector.events.filesystem\", Schema.Void, import(\"effect/unstable/rpc/RpcSchema\").Stream<typeof FilesystemInspectorEvent, Schema.Never>, Schema.Never, never, never>"
     },
     {
       "name": "InspectorLogEvent",
@@ -737,6 +832,11 @@
       "name": "InspectorMetricEvent",
       "kind": "class",
       "signature": "export class InspectorMetricEvent extends Schema.Class<InspectorMetricEvent>( \"InspectorMetricEvent\" )({ kind: Schema.Literal(\"metric\"), metric: Schema.Unknown }) {}"
+    },
+    {
+      "name": "InspectorNativeHostEvents",
+      "kind": "value",
+      "signature": "const InspectorNativeHostEvents: Rpc.Rpc<\"Inspector.events.nativeHost\", Schema.Void, import(\"effect/unstable/rpc/RpcSchema\").Stream<typeof NativeHostEvent, Schema.Never>, Schema.Never, never, never>"
     },
     {
       "name": "InspectorProductionCapture",
@@ -821,7 +921,12 @@
     {
       "name": "InspectorTransportApi",
       "kind": "interface",
-      "signature": "export interface InspectorTransportApi { readonly session: InspectorSession readonly publish: ( input: InspectorEventInput ) => Effect.Effect<InspectorEvent, InspectorTransportInvalidArgumentError, never> readonly replay: ( request?: InspectorReplayRequest ) => Effect.Effect<readonly InspectorEvent[], InspectorTransportInvalidArgumentError, never> readonly subscribe: ( request?: InspectorReplayRequest ) => Stream.Stream<InspectorEvent, InspectorTransportInvalidArgumentError, never> readonly snapshot: () => Effect.Effect<InspectorTransportSnapshot, never, never> }"
+      "signature": "export interface InspectorTransportApi { readonly session: InspectorSession readonly publish: ( input: InspectorEventInput ) => Effect.Effect<InspectorTransportEvent, InspectorTransportInvalidArgumentError, never> readonly replay: ( request?: InspectorReplayRequest ) => Effect.Effect< readonly InspectorTransportEvent[], InspectorTransportInvalidArgumentError, never > readonly subscribe: ( request?: InspectorReplayRequest ) => Stream.Stream<InspectorTransportEvent, InspectorTransportInvalidArgumentError, never> readonly snapshot: () => Effect.Effect<InspectorTransportSnapshot, never, never> }"
+    },
+    {
+      "name": "InspectorTransportEvent",
+      "kind": "class",
+      "signature": "export class InspectorTransportEvent extends Schema.Class<InspectorTransportEvent>( \"InspectorTransportEvent\" )({ sequence: Schema.Number, sessionId: Schema.NonEmptyString, timestampMs: Schema.Number, source: Schema.NonEmptyString, payload: Schema.Unknown }) {}"
     },
     {
       "name": "InspectorTransportInvalidArgumentError",
@@ -894,9 +999,24 @@
       "signature": "const makeEffectTelemetryCollector: (telemetry: TelemetryApi) => Effect.Effect<EffectTelemetryCollectorApi, never, never>"
     },
     {
+      "name": "makeExecutionInspectorCollector",
+      "kind": "value",
+      "signature": "const makeExecutionInspectorCollector: () => Effect.Effect<ExecutionInspectorCollectorApi, never, never>"
+    },
+    {
       "name": "makeFilesystem",
       "kind": "value",
       "signature": "const makeFilesystem: (registry: ResourceRegistryApi, options?: FilesystemOptions) => Effect.Effect<FilesystemApi, never, EffectFileSystem.FileSystem>"
+    },
+    {
+      "name": "makeFilesystemInspectorCollector",
+      "kind": "value",
+      "signature": "const makeFilesystemInspectorCollector: () => Effect.Effect<FilesystemInspectorCollectorApi, never, never>"
+    },
+    {
+      "name": "makeInspectorCollectors",
+      "kind": "value",
+      "signature": "const makeInspectorCollectors: () => Effect.Effect<InspectorCollectorsApi, never, never>"
     },
     {
       "name": "makeInspectorSafetyPolicy",
@@ -922,6 +1042,11 @@
       "name": "makeMissingDesktopRpcsError",
       "kind": "value",
       "signature": "const makeMissingDesktopRpcsError: (tags: readonly string[], message: string) => MissingDesktopRpcsError"
+    },
+    {
+      "name": "makeNativeHostInspectorCollector",
+      "kind": "value",
+      "signature": "const makeNativeHostInspectorCollector: () => Effect.Effect<NativeHostInspectorCollectorApi, never, never>"
     },
     {
       "name": "makePermissionApprovalWorkflowLayer",
@@ -1027,6 +1152,26 @@
       "name": "MissingDesktopRpcsError",
       "kind": "class",
       "signature": "export class MissingDesktopRpcsError extends Data.TaggedError(\"MissingDesktopRpcsError\")<{ readonly message: string readonly tags: readonly string[] readonly code: string readonly category: DesktopPublicErrorCategory readonly summary: string readonly details: Readonly<Record<string, unknown>> readonly actor: string readonly remediation: string readonly docsUrl: string }> {}"
+    },
+    {
+      "name": "NativeHostEvent",
+      "kind": "class",
+      "signature": "export class NativeHostEvent extends Schema.Class<NativeHostEvent>(\"NativeHostEvent\")({ kind: Schema.Literals([ \"host\", \"window\", \"webview\", \"app\", \"protocol\", \"updater\", \"crash-reporter\", \"menu\", \"tray\", \"dock\", \"platform\" ]), status: InspectorEventStatus, operation: Schema.String, traceId: OptionalString, resourceId: OptionalString, windowId: OptionalString, method: OptionalString, errorTag: OptionalString, message: OptionalString, timestamp: NonNegativeNumber }) {}"
+    },
+    {
+      "name": "NativeHostInspectorCollector",
+      "kind": "class",
+      "signature": "export class NativeHostInspectorCollector extends Context.Service< NativeHostInspectorCollector, NativeHostInspectorCollectorApi >()(\"NativeHostInspectorCollector\") {}"
+    },
+    {
+      "name": "NativeHostInspectorCollectorApi",
+      "kind": "interface",
+      "signature": "export interface NativeHostInspectorCollectorApi { readonly publish: (event: NativeHostEvent) => Effect.Effect<void, never, never> readonly events: Stream.Stream<NativeHostEvent, never, never> }"
+    },
+    {
+      "name": "NativeHostInspectorCollectorLive",
+      "kind": "value",
+      "signature": "const NativeHostInspectorCollectorLive: Layer.Layer<NativeHostInspectorCollector, never, never>"
     },
     {
       "name": "NormalizedCapability",
@@ -1221,7 +1366,7 @@
     {
       "name": "ProcessOptions",
       "kind": "interface",
-      "signature": "export interface ProcessOptions { readonly budgets?: ProcessBudgetPolicy readonly gracefulShutdownMs?: number readonly maxSnapshots?: number readonly permissions?: ProcessPermissionPolicy readonly now?: () => number }"
+      "signature": "export interface ProcessOptions { readonly budgets?: ProcessBudgetPolicy readonly inspector?: ExecutionInspectorCollectorApi readonly gracefulShutdownMs?: number readonly maxSnapshots?: number readonly permissions?: ProcessPermissionPolicy readonly now?: () => number }"
     },
     {
       "name": "ProcessPermissionPolicy",
@@ -1311,7 +1456,7 @@
     {
       "name": "PtyOptions",
       "kind": "interface",
-      "signature": "export interface PtyOptions { readonly adapter?: PtyAdapter readonly budgets?: PtyBudgetPolicy readonly gracefulShutdownMs?: number readonly permissions?: PtyPermissionPolicy }"
+      "signature": "export interface PtyOptions { readonly adapter?: PtyAdapter readonly budgets?: PtyBudgetPolicy readonly inspector?: ExecutionInspectorCollectorApi readonly gracefulShutdownMs?: number readonly permissions?: PtyPermissionPolicy readonly now?: () => number }"
     },
     {
       "name": "PtyOutputMetrics",
@@ -1931,7 +2076,7 @@
     {
       "name": "WorkerOptions",
       "kind": "interface",
-      "signature": "export interface WorkerOptions { readonly adapter?: WorkerAdapter readonly budgets?: WorkerBudgetPolicy readonly gracefulShutdownMs?: number readonly now?: () => number }"
+      "signature": "export interface WorkerOptions { readonly adapter?: WorkerAdapter readonly budgets?: WorkerBudgetPolicy readonly inspector?: ExecutionInspectorCollectorApi readonly gracefulShutdownMs?: number readonly now?: () => number }"
     },
     {
       "name": "WorkerResourceBusyError",

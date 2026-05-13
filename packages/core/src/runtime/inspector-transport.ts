@@ -6,7 +6,9 @@ export class InspectorSession extends Schema.Class<InspectorSession>("InspectorS
   label: Schema.optionalKey(Schema.String)
 }) {}
 
-export class InspectorEvent extends Schema.Class<InspectorEvent>("InspectorEvent")({
+export class InspectorTransportEvent extends Schema.Class<InspectorTransportEvent>(
+  "InspectorTransportEvent"
+)({
   sequence: Schema.Number,
   sessionId: Schema.NonEmptyString,
   timestampMs: Schema.Number,
@@ -49,13 +51,17 @@ export interface InspectorTransportApi {
   readonly session: InspectorSession
   readonly publish: (
     input: InspectorEventInput
-  ) => Effect.Effect<InspectorEvent, InspectorTransportInvalidArgumentError, never>
+  ) => Effect.Effect<InspectorTransportEvent, InspectorTransportInvalidArgumentError, never>
   readonly replay: (
     request?: InspectorReplayRequest
-  ) => Effect.Effect<readonly InspectorEvent[], InspectorTransportInvalidArgumentError, never>
+  ) => Effect.Effect<
+    readonly InspectorTransportEvent[],
+    InspectorTransportInvalidArgumentError,
+    never
+  >
   readonly subscribe: (
     request?: InspectorReplayRequest
-  ) => Stream.Stream<InspectorEvent, InspectorTransportInvalidArgumentError, never>
+  ) => Stream.Stream<InspectorTransportEvent, InspectorTransportInvalidArgumentError, never>
   readonly snapshot: () => Effect.Effect<InspectorTransportSnapshot, never, never>
 }
 
@@ -66,10 +72,10 @@ export class InspectorTransportInvalidArgumentError extends Data.TaggedError("In
 }> {}
 
 interface InspectorRetentionState {
-  readonly events: readonly InspectorEvent[]
+  readonly events: readonly InspectorTransportEvent[]
   readonly droppedByRetention: number
   readonly droppedBySubscribers: number
-  readonly subscribers: ReadonlyMap<number, Queue.Queue<InspectorEvent>>
+  readonly subscribers: ReadonlyMap<number, Queue.Queue<InspectorTransportEvent>>
 }
 
 const DEFAULT_RETENTION_LIMIT = 2_048
@@ -110,13 +116,13 @@ export const makeInspectorTransport = (
 
     const publish = (
       input: InspectorEventInput
-    ): Effect.Effect<InspectorEvent, InspectorTransportInvalidArgumentError, never> =>
+    ): Effect.Effect<InspectorTransportEvent, InspectorTransportInvalidArgumentError, never> =>
       Effect.gen(function* () {
         if (input.source.length === 0) {
           return yield* invalid("InspectorTransport.publish", "source", "source must not be empty")
         }
         const sequence = yield* Ref.updateAndGet(nextSequence, (value) => value + 1)
-        const event = new InspectorEvent({
+        const event = new InspectorTransportEvent({
           sequence,
           sessionId,
           timestampMs: input.timestampMs ?? now(),
@@ -149,7 +155,11 @@ export const makeInspectorTransport = (
 
     const replay = (
       request: InspectorReplayRequest = {}
-    ): Effect.Effect<readonly InspectorEvent[], InspectorTransportInvalidArgumentError, never> =>
+    ): Effect.Effect<
+      readonly InspectorTransportEvent[],
+      InspectorTransportInvalidArgumentError,
+      never
+    > =>
       Effect.gen(function* () {
         const limit = yield* replayLimit(request.limit, retentionLimit)
         const retained = yield* Ref.get(state).pipe(Effect.map((current) => current.events))
@@ -183,11 +193,11 @@ export const makeInspectorTransport = (
 
     const subscribe = (
       request: InspectorReplayRequest = {}
-    ): Stream.Stream<InspectorEvent, InspectorTransportInvalidArgumentError, never> =>
+    ): Stream.Stream<InspectorTransportEvent, InspectorTransportInvalidArgumentError, never> =>
       Stream.unwrap(
         Effect.gen(function* () {
           const replayed = yield* replay(request)
-          const queue = yield* Queue.dropping<InspectorEvent>(subscriberBuffer)
+          const queue = yield* Queue.dropping<InspectorTransportEvent>(subscriberBuffer)
           const subscriberId = yield* Ref.updateAndGet(nextSubscriberId, (value) => value + 1)
           yield* Ref.update(state, (current) => ({
             ...current,

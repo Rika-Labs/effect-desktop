@@ -30,6 +30,11 @@ import {
   type PermissionRegistryError
 } from "./permission-registry.js"
 import {
+  disabledExecutionInspectorCollector,
+  ExecutionEvent,
+  type ExecutionInspectorCollectorApi
+} from "./inspector-events.js"
+import {
   ResourceRegistry,
   type ManagedResourceHandle,
   type ResourceRegistryApi,
@@ -167,6 +172,7 @@ export interface WorkerRuntime {
 export interface WorkerOptions {
   readonly adapter?: WorkerAdapter
   readonly budgets?: WorkerBudgetPolicy
+  readonly inspector?: ExecutionInspectorCollectorApi
   readonly gracefulShutdownMs?: number
   readonly now?: () => number
 }
@@ -191,6 +197,7 @@ export const makeWorker = (
     const adapter = options.adapter ?? BunWorkerAdapter
     const budgets = { ...DEFAULT_WORKER_BUDGETS, ...options.budgets }
     const gracefulShutdownMs = options.gracefulShutdownMs ?? DEFAULT_GRACEFUL_SHUTDOWN_MS
+    const inspector = options.inspector ?? disabledExecutionInspectorCollector
     const now = options.now ?? Date.now
     const workerBudgetScope = yield* Scope.make()
     const workerBudgets = yield* RcMap.make({
@@ -221,6 +228,16 @@ export const makeWorker = (
             "Worker.spawn"
           )
           yield* authorizeWorkerCapabilities(permissions, input, options.context)
+          yield* inspector.publish(
+            new ExecutionEvent({
+              kind: "worker",
+              status: "start",
+              operation: "Worker.spawn",
+              script: input.script,
+              ownerScope: input.ownerScope,
+              timestamp: now()
+            })
+          )
 
           const { runtime, resource } = yield* Effect.uninterruptible(
             Effect.gen(function* () {
@@ -281,12 +298,25 @@ export const makeWorker = (
                   capabilities: input.capabilities
                 })
               )
+              yield* inspector.publish(
+                new ExecutionEvent({
+                  kind: "worker",
+                  status: "success",
+                  operation: "Worker.spawn",
+                  script: input.script,
+                  ownerScope: input.ownerScope,
+                  resourceId: resource.id,
+                  timestamp: now()
+                })
+              )
               yield* observeWorkerExit(
                 runtime.exit,
                 resource,
                 input.script,
                 workerScope,
-                disposalOrigin
+                disposalOrigin,
+                inspector,
+                now
               ).pipe(Scope.provide(workerScope))
 
               return { runtime, resource }
@@ -295,6 +325,20 @@ export const makeWorker = (
 
           return makeHandle(runtime, resource, input.script, inputSchema, outputSchema, registry)
         }).pipe(
+          Effect.tapError((error) =>
+            inspector.publish(
+              new ExecutionEvent({
+                kind: "worker",
+                status: "failure",
+                operation: "Worker.spawn",
+                script: options.script,
+                ownerScope: options.ownerScope,
+                errorTag: error._tag,
+                message: error.message,
+                timestamp: now()
+              })
+            )
+          ),
           Effect.withSpan("Worker.spawn", {
             attributes: {
               script: options.script,
@@ -417,7 +461,9 @@ const observeWorkerExit = (
   resource: ManagedResourceHandle<"worker", "running">,
   script: string,
   workerScope: Scope.Closeable,
-  disposalOrigin: Ref.Ref<WorkerDisposalOrigin>
+  disposalOrigin: Ref.Ref<WorkerDisposalOrigin>,
+  inspector: ExecutionInspectorCollectorApi,
+  now: () => number
 ): Effect.Effect<void, never, Scope.Scope> =>
   exit.pipe(
     Effect.exit,
@@ -428,10 +474,32 @@ const observeWorkerExit = (
           yield* resource.dispose()
         }
         if (Exit.isFailure(result)) {
+          yield* inspector.publish(
+            new ExecutionEvent({
+              kind: "worker",
+              status: "failure",
+              operation: "Worker.exit",
+              script,
+              resourceId: resource.id,
+              message: formatWorkerExitFailure(result),
+              timestamp: now()
+            })
+          )
           yield* Effect.logWarning("Worker.exit observer failed", {
             script,
             reason: formatWorkerExitFailure(result)
           })
+        } else {
+          yield* inspector.publish(
+            new ExecutionEvent({
+              kind: "worker",
+              status: "cleanup",
+              operation: "Worker.exit",
+              script,
+              resourceId: resource.id,
+              timestamp: now()
+            })
+          )
         }
         if (origin !== "registry") {
           yield* Scope.close(workerScope, Exit.void)

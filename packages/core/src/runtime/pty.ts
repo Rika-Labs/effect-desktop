@@ -35,6 +35,11 @@ import {
   type ResourceRegistryApi,
   type StaleHandle
 } from "./resources.js"
+import {
+  disabledExecutionInspectorCollector,
+  ExecutionEvent,
+  type ExecutionInspectorCollectorApi
+} from "./inspector-events.js"
 
 const NonEmptyString = Schema.NonEmptyString
 const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0))
@@ -114,8 +119,10 @@ export interface PtyChild {
 export interface PtyOptions {
   readonly adapter?: PtyAdapter
   readonly budgets?: PtyBudgetPolicy
+  readonly inspector?: ExecutionInspectorCollectorApi
   readonly gracefulShutdownMs?: number
   readonly permissions?: PtyPermissionPolicy
+  readonly now?: () => number
 }
 
 export interface PtyBudgetPolicy {
@@ -173,6 +180,8 @@ export const makePty = (
     const adapter = options.adapter ?? UnsupportedPtyAdapter
     const budgets = { ...DEFAULT_PTY_BUDGETS, ...options.budgets }
     const gracefulShutdownMs = options.gracefulShutdownMs ?? DEFAULT_GRACEFUL_SHUTDOWN_MS
+    const inspector = options.inspector ?? disabledExecutionInspectorCollector
+    const now = options.now ?? Date.now
     if (!Number.isFinite(gracefulShutdownMs) || gracefulShutdownMs <= 0) {
       return yield* Effect.fail(
         makeHostProtocolInvalidArgumentError(
@@ -205,6 +214,16 @@ export const makePty = (
           )
           yield* authorizePtyOpen(permissions, input)
           yield* validatePtyBudgets(budgets, "PTY.open")
+          yield* inspector.publish(
+            new ExecutionEvent({
+              kind: "pty",
+              status: "start",
+              operation: "PTY.open",
+              command: input.command,
+              ownerScope: input.ownerScope,
+              timestamp: now()
+            })
+          )
           const { child, disposalOrigin, ptyScope, resource } = yield* Effect.uninterruptible(
             Effect.gen(function* () {
               const ptyScope = yield* Scope.make()
@@ -233,6 +252,18 @@ export const makePty = (
                   )
                 })
                 .pipe(Effect.orDie)
+              yield* inspector.publish(
+                new ExecutionEvent({
+                  kind: "pty",
+                  status: "success",
+                  operation: "PTY.open",
+                  command: input.command,
+                  ownerScope: input.ownerScope,
+                  resourceId: resource.id,
+                  ...(Option.isSome(child.pid) ? { pid: child.pid.value } : {}),
+                  timestamp: now()
+                })
+              )
 
               return { child, disposalOrigin, ptyScope, resource }
             })
@@ -245,9 +276,25 @@ export const makePty = (
             disposalOrigin,
             input.command,
             budgets,
-            registry
+            registry,
+            inspector,
+            now
           )
         }).pipe(
+          Effect.tapError((error) =>
+            inspector.publish(
+              new ExecutionEvent({
+                kind: "pty",
+                status: "failure",
+                operation: "PTY.open",
+                command: options.argv[0],
+                ownerScope: options.ownerScope,
+                errorTag: error._tag,
+                message: error.message,
+                timestamp: now()
+              })
+            )
+          ),
           Effect.withSpan("PTY.open", {
             attributes: {
               command: options.argv[0],
@@ -290,7 +337,9 @@ const makeHandle = (
   disposalOrigin: Ref.Ref<PtyDisposalOrigin>,
   command: string,
   budgets: Required<PtyBudgetPolicy>,
-  registry: ResourceRegistryApi
+  registry: ResourceRegistryApi,
+  inspector: ExecutionInspectorCollectorApi,
+  now: () => number
 ): Effect.Effect<PtyHandle, never, never> =>
   Effect.gen(function* () {
     const outputMetrics = yield* makeOutputMetrics(budgets)
@@ -308,9 +357,8 @@ const makeHandle = (
       try: () => child.exited,
       catch: (error) => mapPtyError(error, command, "PTY.onExit")
     })
-    yield* observeChildExit(exitStatus, resource, command, ptyScope, disposalOrigin).pipe(
-      Scope.provide(ptyScope)
-    )
+    yield* observeChildExit(exitStatus, resource, command, ptyScope, disposalOrigin, inspector, now)
+      .pipe(Scope.provide(ptyScope))
     const onExit = exitStatus.pipe(Effect.tap(() => resource.dispose()))
 
     return Object.freeze({
@@ -346,6 +394,17 @@ const makeHandle = (
             try: () => child.kill(decodedSignal),
             catch: (error) => mapPtyError(error, command, "PTY.kill")
           })
+          yield* inspector.publish(
+            new ExecutionEvent({
+              kind: "pty",
+              status: "interruption",
+              operation: "PTY.kill",
+              command,
+              resourceId: resource.id,
+              signal: decodedSignal === undefined ? "default" : String(decodedSignal),
+              timestamp: now()
+            })
+          )
         }).pipe(Effect.withSpan("PTY.kill", { attributes: { command } }))
     })
   })
@@ -649,7 +708,9 @@ const observeChildExit = (
   resource: ManagedResourceHandle<"pty", "running">,
   command: string,
   ptyScope: Scope.Closeable,
-  disposalOrigin: Ref.Ref<PtyDisposalOrigin>
+  disposalOrigin: Ref.Ref<PtyDisposalOrigin>,
+  inspector: ExecutionInspectorCollectorApi,
+  now: () => number
 ): Effect.Effect<void, never, Scope.Scope> =>
   exitStatus.pipe(
     Effect.exit,
@@ -660,10 +721,32 @@ const observeChildExit = (
           yield* resource.dispose()
         }
         if (Exit.isFailure(exit)) {
+          yield* inspector.publish(
+            new ExecutionEvent({
+              kind: "pty",
+              status: "failure",
+              operation: "PTY.exit",
+              command,
+              resourceId: resource.id,
+              message: formatExitFailure(exit),
+              timestamp: now()
+            })
+          )
           yield* Effect.logWarning("PTY.exit observer failed", {
             command,
             reason: formatExitFailure(exit)
           })
+        } else {
+          yield* inspector.publish(
+            new ExecutionEvent({
+              kind: "pty",
+              status: "cleanup",
+              operation: "PTY.exit",
+              command,
+              resourceId: resource.id,
+              timestamp: now()
+            })
+          )
         }
         if (origin !== "registry") {
           yield* Scope.close(ptyScope, Exit.void)

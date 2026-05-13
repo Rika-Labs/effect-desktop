@@ -25,6 +25,11 @@ import {
 import type { PlatformError } from "effect/PlatformError"
 
 import { ResourceRegistry, type ResourceRegistryApi } from "./resources.js"
+import {
+  disabledFilesystemInspectorCollector,
+  FilesystemInspectorEvent,
+  type FilesystemInspectorCollectorApi
+} from "./inspector-events.js"
 
 // eslint-disable-next-line no-control-regex -- Native filesystem paths cannot contain NUL.
 const FilesystemPathString = Schema.NonEmptyString.check(Schema.isPattern(/^[^\x00]+$/u))
@@ -135,7 +140,9 @@ export interface FilesystemPermissionPolicy {
 }
 
 export interface FilesystemOptions {
+  readonly inspector?: FilesystemInspectorCollectorApi
   readonly permissions?: FilesystemPermissionPolicy
+  readonly now?: () => number
 }
 
 export const makeFilesystem = (
@@ -145,6 +152,8 @@ export const makeFilesystem = (
   Effect.gen(function* () {
     const fileSystem = yield* EffectFileSystem.FileSystem
     const permissions = options.permissions ?? EMPTY_FILESYSTEM_PERMISSIONS
+    const inspector = options.inspector ?? disabledFilesystemInspectorCollector
+    const now = options.now ?? Date.now
 
     return Object.freeze({
       read: (path: string) =>
@@ -158,13 +167,17 @@ export const makeFilesystem = (
             "Filesystem.read",
             "existing"
           )
-          return yield* fileSystem
+          const bytes = yield* fileSystem
             .readFile(authorizedPath)
             .pipe(
               Effect.mapError((error) =>
                 mapFilesystemError(error, authorizedPath, "Filesystem.read")
               )
             )
+          yield* publishFilesystemOperation(inspector, now, "Filesystem.read", "success", {
+            path: authorizedPath
+          })
+          return bytes
         }).pipe(Effect.withSpan("Filesystem.read", { attributes: { path } })),
       realpath: (path: string, capability?: FilesystemPathCapability) =>
         Effect.gen(function* () {
@@ -203,6 +216,9 @@ export const makeFilesystem = (
                 mapFilesystemError(error, authorizedPath, "Filesystem.write")
               )
             )
+          yield* publishFilesystemOperation(inspector, now, "Filesystem.write", "success", {
+            path: authorizedPath
+          })
         }).pipe(Effect.withSpan("Filesystem.write", { attributes: { path } })),
       writeAtomic: (path: string, bytes: Uint8Array) =>
         Effect.gen(function* () {
@@ -216,6 +232,9 @@ export const makeFilesystem = (
             "directory-entry"
           )
           yield* writeAtomicFile(fileSystem, authorizedPath, input.bytes)
+          yield* publishFilesystemOperation(inspector, now, "Filesystem.writeAtomic", "success", {
+            path: authorizedPath
+          })
         }).pipe(Effect.withSpan("Filesystem.writeAtomic", { attributes: { path } })),
       stat: (path: string) =>
         Effect.gen(function* () {
@@ -228,7 +247,11 @@ export const makeFilesystem = (
             "Filesystem.stat",
             "stat"
           )
-          return yield* statFilesystemPath(fileSystem, authorizedPath)
+          const result = yield* statFilesystemPath(fileSystem, authorizedPath)
+          yield* publishFilesystemOperation(inspector, now, "Filesystem.stat", "success", {
+            path: authorizedPath
+          })
+          return result
         }).pipe(Effect.withSpan("Filesystem.stat", { attributes: { path } })),
       mkdir: (path: string, options?: { readonly recursive?: boolean }) =>
         Effect.gen(function* () {
@@ -251,6 +274,9 @@ export const makeFilesystem = (
                 mapFilesystemError(error, authorizedPath, "Filesystem.mkdir")
               )
             )
+          yield* publishFilesystemOperation(inspector, now, "Filesystem.mkdir", "success", {
+            path: authorizedPath
+          })
         }).pipe(Effect.withSpan("Filesystem.mkdir", { attributes: { path } })),
       remove: (path: string, options?: { readonly recursive?: boolean }) =>
         Effect.gen(function* () {
@@ -274,6 +300,9 @@ export const makeFilesystem = (
             input.recursive === true,
             capability
           )
+          yield* publishFilesystemOperation(inspector, now, "Filesystem.remove", "success", {
+            path: authorizedPath
+          })
         }).pipe(Effect.withSpan("Filesystem.remove", { attributes: { path } })),
       watch: (
         path: string,
@@ -305,21 +334,49 @@ export const makeFilesystem = (
                     const watchFiber = yield* fileSystem.watch(authorizedPath).pipe(
                       Stream.runForEach((event) =>
                         makeWatchEvent(fileSystem, authorizedPath, event).pipe(
+                          Effect.tap((filesystemEvent) =>
+                            inspector.publish(
+                              new FilesystemInspectorEvent({
+                                kind: "watch",
+                                status: "success",
+                                operation: "Filesystem.watch",
+                                ownerScope: input.ownerScope,
+                                path: filesystemEvent.path,
+                                directory: filesystemEvent.directory,
+                                eventKind: filesystemEvent.kind,
+                                ...(filesystemEvent.filename === undefined
+                                  ? {}
+                                  : { message: filesystemEvent.filename }),
+                                timestamp: now()
+                              })
+                            )
+                          ),
                           Effect.flatMap((filesystemEvent) => Queue.offer(queue, filesystemEvent))
                         )
                       ),
-                      Effect.catch((error) =>
-                        Queue.fail(
-                          queue,
-                          isPlatformError(error)
-                            ? mapFilesystemError(error, authorizedPath, "Filesystem.watch")
-                            : error
-                        )
-                      ),
+                      Effect.catch((error) => {
+                        const filesystemError = isPlatformError(error)
+                          ? mapFilesystemError(error, authorizedPath, "Filesystem.watch")
+                          : error
+                        return inspector
+                          .publish(
+                            new FilesystemInspectorEvent({
+                              kind: "watch",
+                              status: "failure",
+                              operation: "Filesystem.watch",
+                              ownerScope: input.ownerScope,
+                              path: authorizedPath,
+                              errorTag: filesystemError._tag,
+                              message: filesystemError.message,
+                              timestamp: now()
+                            })
+                          )
+                          .pipe(Effect.andThen(Queue.fail(queue, filesystemError)))
+                      }),
                       Effect.andThen(Queue.end(queue)),
                       Effect.forkScoped
                     )
-                    return yield* registry
+                    const handle = yield* registry
                       .register({
                         kind: "filesystem-watch",
                         ownerScope: input.ownerScope,
@@ -327,8 +384,35 @@ export const makeFilesystem = (
                         dispose: Fiber.interrupt(watchFiber).pipe(Effect.andThen(Queue.end(queue)))
                       })
                       .pipe(Effect.orDie)
+                    yield* inspector.publish(
+                      new FilesystemInspectorEvent({
+                        kind: "watch",
+                        status: "start",
+                        operation: "Filesystem.watch",
+                        ownerScope: input.ownerScope,
+                        path: authorizedPath,
+                        resourceId: handle.id,
+                        timestamp: now()
+                      })
+                    )
+                    return handle
                   }),
-                  (handle) => registry.dispose(handle.id)
+                  (handle) =>
+                    registry.dispose(handle.id).pipe(
+                      Effect.andThen(
+                        inspector.publish(
+                          new FilesystemInspectorEvent({
+                            kind: "watch",
+                            status: "cleanup",
+                            operation: "Filesystem.watch",
+                            ownerScope: input.ownerScope,
+                            path: authorizedPath,
+                            resourceId: handle.id,
+                            timestamp: now()
+                          })
+                        )
+                      )
+                    )
                 ),
               { bufferSize, strategy: "sliding" }
             )
@@ -352,6 +436,25 @@ export const FilesystemLive: Layer.Layer<
 
 const DEFAULT_WATCH_BUFFER_SIZE = 1_024
 const EMPTY_FILESYSTEM_PERMISSIONS: FilesystemPermissionPolicy = Object.freeze({})
+
+const publishFilesystemOperation = (
+  inspector: FilesystemInspectorCollectorApi,
+  now: () => number,
+  operation: string,
+  status: "success",
+  options: {
+    readonly path: string
+  }
+): Effect.Effect<void, never, never> =>
+  inspector.publish(
+    new FilesystemInspectorEvent({
+      kind: "operation",
+      status,
+      operation,
+      path: options.path,
+      timestamp: now()
+    })
+  )
 
 const writeAtomicFile = (
   fileSystem: EffectFileSystem.FileSystem,
