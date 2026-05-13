@@ -1,10 +1,12 @@
 import {
   describeRpcs,
-  makeDesktopRendererRpcRuntime,
+  getGlobalDesktopRendererRpcTransport,
+  makeDesktopRendererRpcLayer,
   type AnyDesktopRpcLayer,
   makeMissingDesktopContextError,
   makeMissingDesktopRpcClientError,
   makeMissingDesktopRpcsError,
+  RendererRpcClients,
   type DesktopAppManifest,
   type DesktopRendererRpcClient,
   type DesktopRendererRpcClientMap,
@@ -13,7 +15,7 @@ import {
   type RpcGroupWithRequests
 } from "@effect-desktop/core/renderer"
 import type { RpcSupportMetadata, WithRpcEndpointKind } from "@effect-desktop/bridge"
-import { Cause, Effect, Exit, Fiber, Stream } from "effect"
+import { Cause, Effect, Exit, Fiber, ManagedRuntime, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import {
   createApp as createVueApp,
@@ -114,20 +116,21 @@ interface VueDesktopContext {
   readonly clients: VueDesktopClientMap
 }
 
+interface VueDesktopRuntime {
+  readonly clients: VueDesktopClientMap
+  readonly dispose: () => Promise<void>
+}
+
 const VueDesktopKey: InjectionKey<VueDesktopContext> = Symbol("VueDesktop")
 const MissingVueDesktopContext = Symbol("MissingVueDesktopContext")
 
 export const VueDesktop = Object.freeze({
   from: <App extends DesktopAppManifest>(app: App): VueDesktopAdapter<App> => {
     const provideDesktop = (options?: VueDesktopOptions): void => {
-      const runtime = makeDesktopRendererRpcRuntime(app, {
-        framework: "vue",
-        transport: options?.transport,
-        rpcLayers: options?.rpcLayers
-      })
+      const runtime = makeVueDesktopRuntime(app, options?.transport, options?.rpcLayers)
       provide(VueDesktopKey, { clients: runtime.clients })
       onScopeDispose(() => {
-        void Effect.runPromiseExit(runtime.dispose())
+        void runtime.dispose()
       })
     }
 
@@ -160,16 +163,12 @@ export const VueDesktop = Object.freeze({
       app,
       createApp: (rootComponent: Component, options?: VueDesktopOptions) => {
         const vueApp = createVueApp(rootComponent)
-        const runtime = makeDesktopRendererRpcRuntime(app, {
-          framework: "vue",
-          transport: options?.transport,
-          rpcLayers: options?.rpcLayers
-        })
+        const runtime = makeVueDesktopRuntime(app, options?.transport, options?.rpcLayers)
         vueApp.provide(VueDesktopKey, { clients: runtime.clients })
         const unmount = vueApp.unmount.bind(vueApp)
         vueApp.unmount = () => {
           unmount()
-          void Effect.runPromiseExit(runtime.dispose())
+          void runtime.dispose()
         }
         return vueApp
       },
@@ -178,6 +177,31 @@ export const VueDesktop = Object.freeze({
     })
   }
 })
+
+const makeVueDesktopRuntime = (
+  app: DesktopAppManifest,
+  transport: DesktopRendererRpcTransport | undefined,
+  rpcLayers: ReadonlyArray<AnyDesktopRpcLayer> | undefined
+): VueDesktopRuntime => {
+  const runtime = ManagedRuntime.make(
+    makeDesktopRendererRpcLayer(app, {
+      framework: "vue",
+      transport: transport ?? getGlobalDesktopRendererRpcTransport(),
+      rpcLayers
+    })
+  )
+  let clients: VueDesktopClientMap
+  try {
+    clients = runtime.runSync(Effect.service(RendererRpcClients)).clients
+  } catch (error) {
+    void runtime.dispose()
+    throw error
+  }
+  return Object.freeze({
+    clients,
+    dispose: runtime.dispose
+  })
+}
 
 const makeEndpoints = (
   descriptors: ReturnType<typeof describeRpcs>,

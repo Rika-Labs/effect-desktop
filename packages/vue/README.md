@@ -72,8 +72,8 @@ bun run typecheck
 ```
 
 Tests can pass `RpcTest`-backed RPC layers to `createApp` or `provideDesktop`.
-Unmounting the Vue app or disposing the Vue scope closes the renderer RPC runtime
-and interrupts active streams.
+Unmounting the Vue app or disposing the Vue scope disposes the managed renderer
+RPC client layer and interrupts active streams.
 
 ## Platform notes
 
@@ -83,8 +83,8 @@ their Vue runtime version.
 
 ## Internal architecture
 
-The adapter builds a renderer RPC runtime from the desktop manifest and either a
-host transport with `RpcClient.make(group)` or test RPC layers with `RpcTest`.
-Vue `provide` stores only the derived runtime client map. `useDesktop(group)`
-checks the imported `RpcGroup`, maps descriptors into
+The adapter builds a `ManagedRuntime` from a scoped renderer RPC client layer.
+That layer uses a host transport with `RpcClient.make(group)` or test RPC layers
+with `RpcTest`. Vue `provide` stores only the derived client map.
+`useDesktop(group)` checks the imported `RpcGroup`, maps descriptors into
 Vue-native composables, and attaches support metadata to each endpoint.

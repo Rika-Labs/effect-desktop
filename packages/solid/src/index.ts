@@ -2,11 +2,13 @@ import type { WithRpcEndpointKind } from "@effect-desktop/bridge"
 import type { RpcSupportMetadata } from "@effect-desktop/bridge"
 import {
   describeRpcs,
-  makeDesktopRendererRpcRuntime,
+  getGlobalDesktopRendererRpcTransport,
+  makeDesktopRendererRpcLayer,
   type AnyDesktopRpcLayer,
   makeMissingDesktopContextError,
   makeMissingDesktopRpcClientError,
   makeMissingDesktopRpcsError,
+  RendererRpcClients,
   type DesktopAppManifest,
   type DesktopRendererRpcClient,
   type DesktopRendererRpcClientMap,
@@ -14,7 +16,7 @@ import {
   type DesktopRendererRpcTransport,
   type RpcGroupWithRequests
 } from "@effect-desktop/core/renderer"
-import { Cause, Effect, Exit, Fiber, Stream } from "effect"
+import { Cause, Effect, Exit, Fiber, ManagedRuntime, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import {
   createContext,
@@ -123,18 +125,19 @@ interface SolidDesktopContextValue {
   readonly clients: SolidDesktopClientMap
 }
 
+interface SolidDesktopRuntime {
+  readonly clients: SolidDesktopClientMap
+  readonly dispose: () => Promise<void>
+}
+
 const SolidDesktopContext = createContext<SolidDesktopContextValue>()
 
 export const SolidDesktop = Object.freeze({
   from: <App extends DesktopAppManifest>(app: App): SolidDesktopAdapter<App> => {
     const DesktopRoot = (props: SolidDesktopRootProps): JSX.Element => {
-      const runtime = makeDesktopRendererRpcRuntime(app, {
-        framework: "solid",
-        transport: props.transport,
-        rpcLayers: props.rpcLayers
-      })
+      const runtime = makeSolidDesktopRuntime(app, props.transport, props.rpcLayers)
       onCleanup(() => {
-        void Effect.runPromiseExit(runtime.dispose())
+        void runtime.dispose()
       })
       return createComponent(SolidDesktopContext.Provider, {
         value: { clients: runtime.clients },
@@ -194,6 +197,31 @@ export const SolidDesktop = Object.freeze({
     })
   }
 })
+
+const makeSolidDesktopRuntime = (
+  app: DesktopAppManifest,
+  transport: DesktopRendererRpcTransport | undefined,
+  rpcLayers: ReadonlyArray<AnyDesktopRpcLayer> | undefined
+): SolidDesktopRuntime => {
+  const runtime = ManagedRuntime.make(
+    makeDesktopRendererRpcLayer(app, {
+      framework: "solid",
+      transport: transport ?? getGlobalDesktopRendererRpcTransport(),
+      rpcLayers
+    })
+  )
+  let clients: SolidDesktopClientMap
+  try {
+    clients = runtime.runSync(Effect.service(RendererRpcClients)).clients
+  } catch (error) {
+    void runtime.dispose()
+    throw error
+  }
+  return Object.freeze({
+    clients,
+    dispose: runtime.dispose
+  })
+}
 
 const makeEndpoints = (
   descriptors: ReturnType<typeof describeRpcs>,

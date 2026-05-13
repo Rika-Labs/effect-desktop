@@ -25,11 +25,14 @@ The fake transports had reimplemented Effect RPC behavior with local queues, fib
 ## Example
 
 ```ts
-const runtime = makeDesktopRendererRpcTestRuntime(makeNotesDemoRpcLayers())
-
-const workspace = await Effect.runPromise(runtime.clients.Notes.Load({}))
-
-await Effect.runPromise(runtime.dispose())
+const workspace = await Effect.runPromise(
+  Effect.scoped(
+    Effect.service(RendererRpcClients).pipe(
+      Effect.flatMap((clients) => clients.clients.get(NotesRpcs)!["Notes.Load"]({})),
+      Effect.provide(makeDesktopRendererRpcTestLayer(makeNotesDemoRpcLayers()))
+    )
+  )
+)
 ```
 
 ## Rule candidate

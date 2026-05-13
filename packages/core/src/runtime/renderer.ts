@@ -1,12 +1,17 @@
 export {
-  makeDesktopRendererRpcRuntime,
-  makeDesktopRendererRpcTestRuntime,
+  RendererRpcClients,
+  RendererRpcTransport,
+  getGlobalDesktopRendererRpcTransport,
+  makeDesktopRendererRpcClientLayer,
+  makeDesktopRendererRpcLayer,
+  makeDesktopRendererRpcTestLayer,
+  makeDesktopRendererRpcTransportLayer,
   setGlobalDesktopRendererRpcTransport,
   type DesktopRendererRpcClient,
+  type DesktopRendererRpcClientLayerOptions,
   type DesktopRendererRpcClientMap,
   type DesktopRendererRpcClientMethod,
-  type DesktopRendererRpcRuntime,
-  type DesktopRendererRpcRuntimeOptions,
+  type DesktopRendererRpcLayerOptions,
   type DesktopRendererRpcTransport
 } from "./renderer-rpc-client.js"
 export {

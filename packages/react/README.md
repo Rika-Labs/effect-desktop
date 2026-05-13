@@ -11,7 +11,7 @@ transport, and React owns component state and cleanup.
 ## Public API
 
 - `ReactDesktop.from(manifest)` creates an adapter for one desktop app manifest.
-- `DesktopRoot` installs the renderer RPC runtime for a React tree.
+- `DesktopRoot` installs the scoped renderer RPC client layer for a React tree.
 - `createRoot(children, props?)` creates the same provider element without exposing
   the context.
 - `useDesktop(group)` derives endpoints from the imported `RpcGroup`.
@@ -99,9 +99,9 @@ Effect RPC handlers and permission checks.
 
 ## Internal architecture
 
-The adapter builds a renderer RPC runtime from the desktop manifest and either a
-host transport with `RpcClient.make(group)` or test RPC layers with `RpcTest`.
-React context stores only the derived runtime client map. `useDesktop(group)`
-checks the imported `RpcGroup`, maps descriptors into React-native hooks, and
-attaches support metadata to each endpoint. Provider unmount closes the runtime
-scope so stream clients are interrupted.
+The adapter builds a `ManagedRuntime` from a scoped renderer RPC client layer.
+That layer uses a host transport with `RpcClient.make(group)` or test RPC layers
+with `RpcTest`. React context stores only the derived client map.
+`useDesktop(group)` checks the imported `RpcGroup`, maps descriptors into
+React-native hooks, and attaches support metadata to each endpoint. Provider
+unmount disposes the managed runtime so stream clients are interrupted.
