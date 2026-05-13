@@ -921,7 +921,7 @@
     {
       "name": "Streams",
       "kind": "value",
-      "signature": "const Streams: (<Layers extends readonly AnyBridgeRpcLayer[]>(...layers: Layers) => BridgeStreamRuntime<BridgeStreamLayerEnvironment<Layers[number]>>) & { withOptions: <Layers extends readonly AnyBridgeRpcLayer[]>(options: BridgeStreamRuntimeOptions, ...layers: Layers) => BridgeStreamRuntime<BridgeStreamLayerEnvironment<Layers[number]>>; }"
+      "signature": "const Streams: { scoped: <Layers extends readonly AnyBridgeRpcLayer[]>(...layers: Layers) => Effect.Effect<BridgeStreamRuntime<BridgeStreamLayerEnvironment<Layers[number]>>, never, Scope.Scope>; scopedWithOptions: <Layers extends readonly AnyBridgeRpcLayer[]>(options: BridgeStreamRuntimeOptions, ...layers: Layers) => Effect.Effect<BridgeStreamRuntime<BridgeStreamLayerEnvironment<Layers[number]>>, never, Scope.Scope>; }"
     },
     {
       "name": "UnaryDesktopTransportFromBridgeClientExchangeOptions",

@@ -1,11 +1,12 @@
-import { expect, test } from "bun:test"
-import { Cause, Deferred, Effect, Exit, Fiber, Option, Schema, Stream } from "effect"
+import { afterEach, expect, test } from "bun:test"
+import { Cause, Deferred, Effect, Exit, Fiber, Option, Schema, Scope, Stream } from "effect"
 
 import {
   BridgeRpc,
   BridgeStreamCompleteFrame,
   BridgeStreamDataFrame,
   type BridgeRpcGroup,
+  type BridgeStreamRuntime,
   Client,
   HostProtocolCancelByRequestEnvelope,
   HostProtocolCancelByResourceEnvelope,
@@ -32,21 +33,62 @@ class WatchError extends Schema.Class<WatchError>("StreamWatchError")({
   code: Schema.NumberFromString
 }) {}
 
+const runtimeScopes: Scope.Closeable[] = []
+
+afterEach(async () => {
+  while (runtimeScopes.length > 0) {
+    const scope = runtimeScopes.pop()
+    if (scope !== undefined) {
+      await Effect.runPromise(Scope.close(scope, Exit.void))
+    }
+  }
+})
+
+const acquireStreamRuntime = async <Env>(
+  acquire: Effect.Effect<BridgeStreamRuntime<Env>, never, Scope.Scope>
+): Promise<BridgeStreamRuntime<Env>> => {
+  const { runtime } = await acquireStreamRuntimeWithScope(acquire)
+  return runtime
+}
+
+const acquireStreamRuntimeWithScope = async <Env>(
+  acquire: Effect.Effect<BridgeStreamRuntime<Env>, never, Scope.Scope>,
+  finalizerStrategy: "sequential" | "parallel" = "sequential"
+): Promise<{
+  readonly runtime: BridgeStreamRuntime<Env>
+  readonly scope: Scope.Closeable
+}> => {
+  const scope = await Effect.runPromise(Scope.make(finalizerStrategy))
+  const runtime = await Effect.runPromise(Scope.provide(acquire, scope))
+  runtimeScopes.push(scope)
+  return { runtime, scope }
+}
+
+const closeStreamRuntimeScope = async (scope: Scope.Closeable): Promise<void> => {
+  const index = runtimeScopes.indexOf(scope)
+  if (index >= 0) {
+    runtimeScopes.splice(index, 1)
+  }
+  await Effect.runPromise(Scope.close(scope, Exit.void))
+}
+
 test("Streams carries typed chunks from handler to client in order", async () => {
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamOrdered")
-  const runtime = Streams.withOptions(
-    {
-      now: () => 42,
-      nextStreamId: () => "stream-1"
-    },
-    BridgeRpc.layer(ProjectRpcs)({
-      watch: () =>
-        Stream.make(
-          new WatchEvent({ sequence: 1, path: "a" }),
-          new WatchEvent({ sequence: 2, path: "b" }),
-          new WatchEvent({ sequence: 3, path: "c" })
-        )
-    })
+  const runtime = await acquireStreamRuntime(
+    Streams.scopedWithOptions(
+      {
+        now: () => 42,
+        nextStreamId: () => "stream-1"
+      },
+      BridgeRpc.layer(ProjectRpcs)({
+        watch: () =>
+          Stream.make(
+            new WatchEvent({ sequence: 1, path: "a" }),
+            new WatchEvent({ sequence: 2, path: "b" }),
+            new WatchEvent({ sequence: 3, path: "c" })
+          )
+      })
+    )
   )
   const requests: HostProtocolRequestEnvelope[] = []
   const client = Client({ project: ProjectRpcs }, streamExchange(runtime, requests), {
@@ -114,20 +156,22 @@ test("Client rejects stream envelopes for the wrong request id", async () => {
 test("Streams rejects duplicate active request ids", async () => {
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamDuplicateRequest")
   const lifecycle: string[] = []
-  const runtime = Streams(
-    BridgeRpc.layer(ProjectRpcs)({
-      watch: () =>
-        Stream.scoped(
-          Stream.fromEffect(
-            Effect.acquireRelease(
-              Effect.sync(() => {
-                lifecycle.push("acquired")
-              }),
-              () => Effect.sync(() => lifecycle.push("released"))
-            ).pipe(Effect.andThen(Effect.never))
+  const runtime = await acquireStreamRuntime(
+    Streams.scoped(
+      BridgeRpc.layer(ProjectRpcs)({
+        watch: () =>
+          Stream.scoped(
+            Stream.fromEffect(
+              Effect.acquireRelease(
+                Effect.sync(() => {
+                  lifecycle.push("acquired")
+                }),
+                () => Effect.sync(() => lifecycle.push("released"))
+              ).pipe(Effect.andThen(Effect.never))
+            )
           )
-        )
-    })
+      })
+    )
   )
   const requests: HostProtocolRequestEnvelope[] = []
   const client = Client({ project: ProjectRpcs }, streamExchange(runtime, requests), {
@@ -159,21 +203,23 @@ test("Streams rejects duplicate active request ids", async () => {
 test("Streams rejects duplicate active generated stream ids", async () => {
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamDuplicateResource")
   const lifecycle: string[] = []
-  const runtime = Streams.withOptions(
-    {
-      nextStreamId: () => "stream-duplicate-resource"
-    },
-    BridgeRpc.layer(ProjectRpcs)({
-      watch: () =>
-        Stream.scoped(
-          Stream.fromEffect(
-            Effect.acquireRelease(
-              Effect.sync(() => lifecycle.push("acquired")),
-              () => Effect.sync(() => lifecycle.push("released"))
-            ).pipe(Effect.andThen(Effect.never))
+  const runtime = await acquireStreamRuntime(
+    Streams.scopedWithOptions(
+      {
+        nextStreamId: () => "stream-duplicate-resource"
+      },
+      BridgeRpc.layer(ProjectRpcs)({
+        watch: () =>
+          Stream.scoped(
+            Stream.fromEffect(
+              Effect.acquireRelease(
+                Effect.sync(() => lifecycle.push("acquired")),
+                () => Effect.sync(() => lifecycle.push("released"))
+              ).pipe(Effect.andThen(Effect.never))
+            )
           )
-        )
-    })
+      })
+    )
   )
 
   const firstFiber = Effect.runFork(
@@ -229,17 +275,19 @@ test("Streams reserves duplicate generated stream ids atomically", async () => {
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamDuplicateResourceRace")
   const registry = await Effect.runPromise(makeBridgeStreamRegistry())
   const release = Effect.runSync(Deferred.make<void>())
-  const runtime = Streams.withOptions(
-    {
-      nextStreamId: () => "stream-duplicate-resource-race",
-      registry
-    },
-    BridgeRpc.layer(ProjectRpcs)({
-      watch: () =>
-        Stream.fromEffect(
-          Deferred.await(release).pipe(Effect.as(new WatchEvent({ sequence: 1, path: "a" })))
-        ).pipe(Stream.concat(Stream.never))
-    })
+  const runtime = await acquireStreamRuntime(
+    Streams.scopedWithOptions(
+      {
+        nextStreamId: () => "stream-duplicate-resource-race",
+        registry
+      },
+      BridgeRpc.layer(ProjectRpcs)({
+        watch: () =>
+          Stream.fromEffect(
+            Deferred.await(release).pipe(Effect.as(new WatchEvent({ sequence: 1, path: "a" })))
+          ).pipe(Stream.concat(Stream.never))
+      })
+    )
   )
 
   const exitsFiber = Effect.runFork(
@@ -301,14 +349,16 @@ test("Streams reserves duplicate generated stream ids atomically", async () => {
 test("Streams rejects empty generated stream ids before registry state is created", async () => {
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamEmptyId")
   const registry = await Effect.runPromise(makeBridgeStreamRegistry())
-  const runtime = Streams.withOptions(
-    {
-      nextStreamId: () => "",
-      registry
-    },
-    BridgeRpc.layer(ProjectRpcs)({
-      watch: () => Stream.make(new WatchEvent({ sequence: 1, path: "a" }))
-    })
+  const runtime = await acquireStreamRuntime(
+    Streams.scopedWithOptions(
+      {
+        nextStreamId: () => "",
+        registry
+      },
+      BridgeRpc.layer(ProjectRpcs)({
+        watch: () => Stream.make(new WatchEvent({ sequence: 1, path: "a" }))
+      })
+    )
   )
   const client = Client({ project: ProjectRpcs }, streamExchange(runtime, []))
 
@@ -323,20 +373,22 @@ test("Streams rejects empty generated stream ids before registry state is create
 
 test("Streams carries typed stream errors as values in the error channel", async () => {
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamError")
-  const runtime = Streams(
-    BridgeRpc.layer(ProjectRpcs)({
-      watch: () =>
-        Stream.make(new WatchEvent({ sequence: 1, path: "a" })).pipe(
-          Stream.concat(
-            Stream.fail(
-              new WatchError({
-                tag: "WatchError",
-                code: 500
-              })
+  const runtime = await acquireStreamRuntime(
+    Streams.scoped(
+      BridgeRpc.layer(ProjectRpcs)({
+        watch: () =>
+          Stream.make(new WatchEvent({ sequence: 1, path: "a" })).pipe(
+            Stream.concat(
+              Stream.fail(
+                new WatchError({
+                  tag: "WatchError",
+                  code: 500
+                })
+              )
             )
           )
-        )
-    })
+      })
+    )
   )
   const client = Client({ project: ProjectRpcs }, streamExchange(runtime, []))
 
@@ -417,14 +469,16 @@ test("Client stops bridge streams at complete frames", async () => {
 
 test("Streams rejects malformed chunks as typed HostProtocol failures", async () => {
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamInvalidChunk")
-  const runtime = Streams(
-    BridgeRpc.layer(ProjectRpcs)({
-      watch: () =>
-        Stream.make({
-          sequence: Number.NaN,
-          path: "a"
-        } as unknown as WatchEvent)
-    })
+  const runtime = await acquireStreamRuntime(
+    Streams.scoped(
+      BridgeRpc.layer(ProjectRpcs)({
+        watch: () =>
+          Stream.make({
+            sequence: Number.NaN,
+            path: "a"
+          } as unknown as WatchEvent)
+      })
+    )
   )
   const client = Client({ project: ProjectRpcs }, streamExchange(runtime, []))
 
@@ -437,13 +491,15 @@ test("Streams rejects malformed chunks as typed HostProtocol failures", async ()
 
 test("Streams rejects invalid generated timestamps as typed Effect failures", async () => {
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamInvalidTimestamp")
-  const runtime = Streams.withOptions(
-    {
-      now: () => Number.NaN
-    },
-    BridgeRpc.layer(ProjectRpcs)({
-      watch: () => Stream.make(new WatchEvent({ sequence: 1, path: "a" }))
-    })
+  const runtime = await acquireStreamRuntime(
+    Streams.scopedWithOptions(
+      {
+        now: () => Number.NaN
+      },
+      BridgeRpc.layer(ProjectRpcs)({
+        watch: () => Stream.make(new WatchEvent({ sequence: 1, path: "a" }))
+      })
+    )
   )
   const client = Client({ project: ProjectRpcs }, streamExchange(runtime, []))
 
@@ -459,19 +515,21 @@ test("Streams applies error overflow as a BackpressureOverflow terminal frame", 
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamOverflow", {
     backpressure: { strategy: "buffer", size: 1, overflow: "error" }
   })
-  const runtime = Streams.withOptions(
-    {
-      nextStreamId: () => "stream-overflow",
-      registry
-    },
-    BridgeRpc.layer(ProjectRpcs)({
-      watch: () =>
-        Stream.make(
-          new WatchEvent({ sequence: 1, path: "a" }),
-          new WatchEvent({ sequence: 2, path: "b" }),
-          new WatchEvent({ sequence: 3, path: "c" })
-        )
-    })
+  const runtime = await acquireStreamRuntime(
+    Streams.scopedWithOptions(
+      {
+        nextStreamId: () => "stream-overflow",
+        registry
+      },
+      BridgeRpc.layer(ProjectRpcs)({
+        watch: () =>
+          Stream.make(
+            new WatchEvent({ sequence: 1, path: "a" }),
+            new WatchEvent({ sequence: 2, path: "b" }),
+            new WatchEvent({ sequence: 3, path: "c" })
+          )
+      })
+    )
   )
   const client = Client({ project: ProjectRpcs }, streamExchange(runtime, []))
 
@@ -510,21 +568,23 @@ test("Streams records dropNewest overflow metrics without failing publishers", a
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamDropNewest", {
     backpressure: { strategy: "drop", size: 2, overflow: "dropNewest" }
   })
-  const runtime = Streams.withOptions(
-    {
-      nextStreamId: () => "stream-drop-newest",
-      registry
-    },
-    BridgeRpc.layer(ProjectRpcs)({
-      watch: () =>
-        Stream.make(
-          new WatchEvent({ sequence: 1, path: "a" }),
-          new WatchEvent({ sequence: 2, path: "b" }),
-          new WatchEvent({ sequence: 3, path: "c" }),
-          new WatchEvent({ sequence: 4, path: "d" }),
-          new WatchEvent({ sequence: 5, path: "e" })
-        )
-    })
+  const runtime = await acquireStreamRuntime(
+    Streams.scopedWithOptions(
+      {
+        nextStreamId: () => "stream-drop-newest",
+        registry
+      },
+      BridgeRpc.layer(ProjectRpcs)({
+        watch: () =>
+          Stream.make(
+            new WatchEvent({ sequence: 1, path: "a" }),
+            new WatchEvent({ sequence: 2, path: "b" }),
+            new WatchEvent({ sequence: 3, path: "c" }),
+            new WatchEvent({ sequence: 4, path: "d" }),
+            new WatchEvent({ sequence: 5, path: "e" })
+          )
+      })
+    )
   )
   const client = Client({ project: ProjectRpcs }, streamExchange(runtime, []))
 
@@ -558,21 +618,23 @@ test("Streams records dropOldest overflow metrics while keeping the stream succe
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamDropOldest", {
     backpressure: { strategy: "drop", size: 2, overflow: "dropOldest" }
   })
-  const runtime = Streams.withOptions(
-    {
-      nextStreamId: () => "stream-drop-oldest",
-      registry
-    },
-    BridgeRpc.layer(ProjectRpcs)({
-      watch: () =>
-        Stream.make(
-          new WatchEvent({ sequence: 1, path: "a" }),
-          new WatchEvent({ sequence: 2, path: "b" }),
-          new WatchEvent({ sequence: 3, path: "c" }),
-          new WatchEvent({ sequence: 4, path: "d" }),
-          new WatchEvent({ sequence: 5, path: "e" })
-        )
-    })
+  const runtime = await acquireStreamRuntime(
+    Streams.scopedWithOptions(
+      {
+        nextStreamId: () => "stream-drop-oldest",
+        registry
+      },
+      BridgeRpc.layer(ProjectRpcs)({
+        watch: () =>
+          Stream.make(
+            new WatchEvent({ sequence: 1, path: "a" }),
+            new WatchEvent({ sequence: 2, path: "b" }),
+            new WatchEvent({ sequence: 3, path: "c" }),
+            new WatchEvent({ sequence: 4, path: "d" }),
+            new WatchEvent({ sequence: 5, path: "e" })
+          )
+      })
+    )
   )
   const client = Client({ project: ProjectRpcs }, streamExchange(runtime, []))
 
@@ -605,15 +667,17 @@ test("Streams records one terminal state and expires it after cleanup grace", as
   let now = 1_000
   const registry = await Effect.runPromise(makeBridgeStreamRegistry(30_000))
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamLifecycle")
-  const runtime = Streams.withOptions(
-    {
-      now: () => now,
-      nextStreamId: () => "stream-lifecycle",
-      registry
-    },
-    BridgeRpc.layer(ProjectRpcs)({
-      watch: () => Stream.make(new WatchEvent({ sequence: 1, path: "a" }))
-    })
+  const runtime = await acquireStreamRuntime(
+    Streams.scopedWithOptions(
+      {
+        now: () => now,
+        nextStreamId: () => "stream-lifecycle",
+        registry
+      },
+      BridgeRpc.layer(ProjectRpcs)({
+        watch: () => Stream.make(new WatchEvent({ sequence: 1, path: "a" }))
+      })
+    )
   )
   const client = Client({ project: ProjectRpcs }, streamExchange(runtime, []))
 
@@ -710,23 +774,25 @@ test("Streams interruption sends cancel and records a closed terminal", async ()
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamCancel")
   const registry = await Effect.runPromise(makeBridgeStreamRegistry())
   const finalizers: string[] = []
-  const runtime = Streams.withOptions(
-    {
-      nextStreamId: () => "stream-cancel",
-      now: () => 42,
-      registry
-    },
-    BridgeRpc.layer(ProjectRpcs)({
-      watch: () =>
-        Stream.scoped(
-          Stream.fromEffect(
-            Effect.acquireRelease(
-              Effect.sync(() => finalizers.push("acquired")),
-              (_acquired, _exit) => Effect.sync(() => finalizers.push("interrupted"))
-            ).pipe(Effect.andThen(Effect.never))
+  const runtime = await acquireStreamRuntime(
+    Streams.scopedWithOptions(
+      {
+        nextStreamId: () => "stream-cancel",
+        now: () => 42,
+        registry
+      },
+      BridgeRpc.layer(ProjectRpcs)({
+        watch: () =>
+          Stream.scoped(
+            Stream.fromEffect(
+              Effect.acquireRelease(
+                Effect.sync(() => finalizers.push("acquired")),
+                (_acquired, _exit) => Effect.sync(() => finalizers.push("interrupted"))
+              ).pipe(Effect.andThen(Effect.never))
+            )
           )
-        )
-    })
+      })
+    )
   )
   const requests: HostProtocolRequestEnvelope[] = []
   const cancelRequests: HostProtocolCancelByRequestEnvelope[] = []
@@ -773,22 +839,24 @@ test("Streams interruption sends cancel and records a closed terminal", async ()
 test("Streams interruption releases consumers when cancel dispatch does not answer", async () => {
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamCancelNever")
   const finalizers: string[] = []
-  const runtime = Streams.withOptions(
-    {
-      nextStreamId: () => "stream-cancel-never",
-      now: () => 42
-    },
-    BridgeRpc.layer(ProjectRpcs)({
-      watch: () =>
-        Stream.scoped(
-          Stream.fromEffect(
-            Effect.acquireRelease(
-              Effect.sync(() => finalizers.push("acquired")),
-              () => Effect.sync(() => finalizers.push("interrupted"))
-            ).pipe(Effect.andThen(Effect.never))
+  const runtime = await acquireStreamRuntime(
+    Streams.scopedWithOptions(
+      {
+        nextStreamId: () => "stream-cancel-never",
+        now: () => 42
+      },
+      BridgeRpc.layer(ProjectRpcs)({
+        watch: () =>
+          Stream.scoped(
+            Stream.fromEffect(
+              Effect.acquireRelease(
+                Effect.sync(() => finalizers.push("acquired")),
+                () => Effect.sync(() => finalizers.push("interrupted"))
+              ).pipe(Effect.andThen(Effect.never))
+            )
           )
-        )
-    })
+      })
+    )
   )
   const requests: HostProtocolRequestEnvelope[] = []
   const client = Client(
@@ -831,23 +899,25 @@ test("Streams dispose interrupts active producer fibers", async () => {
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamRuntimeDispose")
   const registry = await Effect.runPromise(makeBridgeStreamRegistry())
   const finalizers: string[] = []
-  const runtime = Streams.withOptions(
-    {
-      nextStreamId: () => "stream-runtime-dispose",
-      now: () => 42,
-      registry
-    },
-    BridgeRpc.layer(ProjectRpcs)({
-      watch: () =>
-        Stream.scoped(
-          Stream.fromEffect(
-            Effect.acquireRelease(
-              Effect.sync(() => finalizers.push("acquired")),
-              () => Effect.sync(() => finalizers.push("interrupted"))
-            ).pipe(Effect.andThen(Effect.never))
+  const runtime = await acquireStreamRuntime(
+    Streams.scopedWithOptions(
+      {
+        nextStreamId: () => "stream-runtime-dispose",
+        now: () => 42,
+        registry
+      },
+      BridgeRpc.layer(ProjectRpcs)({
+        watch: () =>
+          Stream.scoped(
+            Stream.fromEffect(
+              Effect.acquireRelease(
+                Effect.sync(() => finalizers.push("acquired")),
+                () => Effect.sync(() => finalizers.push("interrupted"))
+              ).pipe(Effect.andThen(Effect.never))
+            )
           )
-        )
-    })
+      })
+    )
   )
   const streamFiber = Effect.runFork(
     runtime
@@ -905,27 +975,234 @@ test("Streams dispose interrupts active producer fibers", async () => {
   expectFailureTag(postDisposeExit, "InvalidState")
 })
 
+test("Streams scope finalization interrupts active producer fibers", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamRuntimeScope")
+  const registry = await Effect.runPromise(makeBridgeStreamRegistry())
+  const finalizers: string[] = []
+  const { runtime, scope } = await acquireStreamRuntimeWithScope(
+    Streams.scopedWithOptions(
+      {
+        nextStreamId: () => "stream-runtime-scope",
+        now: () => 42,
+        registry
+      },
+      BridgeRpc.layer(ProjectRpcs)({
+        watch: () =>
+          Stream.scoped(
+            Stream.fromEffect(
+              Effect.acquireRelease(
+                Effect.sync(() => finalizers.push("acquired")),
+                () => Effect.sync(() => finalizers.push("interrupted"))
+              ).pipe(Effect.andThen(Effect.never))
+            )
+          )
+      })
+    ),
+    "parallel"
+  )
+  const streamFiber = Effect.runFork(
+    runtime
+      .stream(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "request-stream-runtime-scope",
+          method: "ProjectRpcs.StreamRuntimeScope.watch",
+          timestamp: 41,
+          traceId: "trace-stream-runtime-scope",
+          payload: new WatchInput({ projectId: "project-1" })
+        })
+      )
+      .pipe(Stream.runDrain)
+  )
+
+  await waitFor(() => finalizers.includes("acquired"))
+  await closeStreamRuntimeScope(scope)
+  await waitFor(() => finalizers.includes("interrupted"))
+
+  const exit = await Effect.runPromiseExit(Fiber.join(streamFiber))
+  expect(Exit.isSuccess(exit)).toBe(true)
+  expect(finalizers).toEqual(["acquired", "interrupted"])
+  expect(await Effect.runPromise(registry.snapshot())).toEqual([
+    {
+      generation: 0,
+      backpressure: {
+        evictedFrames: 0,
+        overflow: "error",
+        queueCapacity: 1024,
+        queueDepth: 0
+      },
+      state: "terminal",
+      streamId: "stream-runtime-scope",
+      terminal: "closed",
+      terminalAt: 42
+    }
+  ])
+
+  const postScopeExit = await Effect.runPromiseExit(
+    runtime
+      .stream(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "request-stream-runtime-after-scope",
+          method: "ProjectRpcs.StreamRuntimeScope.watch",
+          timestamp: 44,
+          traceId: "trace-stream-runtime-after-scope",
+          payload: new WatchInput({ projectId: "project-1" })
+        })
+      )
+      .pipe(Stream.runDrain)
+  )
+  expectFailureTag(postScopeExit, "InvalidState")
+})
+
+test("Streams dispose and scope finalization are idempotent", async () => {
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamRuntimeIdempotent")
+  const registry = await Effect.runPromise(makeBridgeStreamRegistry())
+  const finalizers: string[] = []
+  const first = await acquireStreamRuntimeWithScope(
+    Streams.scopedWithOptions(
+      {
+        nextStreamId: () => "stream-runtime-idempotent-first",
+        now: () => 42,
+        registry
+      },
+      BridgeRpc.layer(ProjectRpcs)({
+        watch: () =>
+          Stream.scoped(
+            Stream.fromEffect(
+              Effect.acquireRelease(
+                Effect.sync(() => finalizers.push("first-acquired")),
+                () => Effect.sync(() => finalizers.push("first-interrupted"))
+              ).pipe(Effect.andThen(Effect.never))
+            )
+          )
+      })
+    ),
+    "parallel"
+  )
+  const firstFiber = Effect.runFork(
+    first.runtime
+      .stream(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "request-stream-runtime-idempotent-first",
+          method: "ProjectRpcs.StreamRuntimeIdempotent.watch",
+          timestamp: 41,
+          traceId: "trace-stream-runtime-idempotent-first",
+          payload: new WatchInput({ projectId: "project-1" })
+        })
+      )
+      .pipe(Stream.runDrain)
+  )
+
+  await waitFor(() => finalizers.includes("first-acquired"))
+  await Effect.runPromise(first.runtime.dispose())
+  await closeStreamRuntimeScope(first.scope)
+  await waitFor(() => finalizers.includes("first-interrupted"))
+  const firstExit = await Effect.runPromiseExit(Fiber.join(firstFiber))
+  expect(Exit.isSuccess(firstExit)).toBe(true)
+
+  const second = await acquireStreamRuntimeWithScope(
+    Streams.scopedWithOptions(
+      {
+        nextStreamId: () => "stream-runtime-idempotent-second",
+        now: () => 43,
+        registry
+      },
+      BridgeRpc.layer(ProjectRpcs)({
+        watch: () =>
+          Stream.scoped(
+            Stream.fromEffect(
+              Effect.acquireRelease(
+                Effect.sync(() => finalizers.push("second-acquired")),
+                () => Effect.sync(() => finalizers.push("second-interrupted"))
+              ).pipe(Effect.andThen(Effect.never))
+            )
+          )
+      })
+    ),
+    "parallel"
+  )
+  const secondFiber = Effect.runFork(
+    second.runtime
+      .stream(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "request-stream-runtime-idempotent-second",
+          method: "ProjectRpcs.StreamRuntimeIdempotent.watch",
+          timestamp: 41,
+          traceId: "trace-stream-runtime-idempotent-second",
+          payload: new WatchInput({ projectId: "project-1" })
+        })
+      )
+      .pipe(Stream.runDrain)
+  )
+
+  await waitFor(() => finalizers.includes("second-acquired"))
+  await closeStreamRuntimeScope(second.scope)
+  await Effect.runPromise(second.runtime.dispose())
+  await waitFor(() => finalizers.includes("second-interrupted"))
+  const secondExit = await Effect.runPromiseExit(Fiber.join(secondFiber))
+  expect(Exit.isSuccess(secondExit)).toBe(true)
+  expect(finalizers).toEqual([
+    "first-acquired",
+    "first-interrupted",
+    "second-acquired",
+    "second-interrupted"
+  ])
+  expect(await Effect.runPromise(registry.snapshot())).toEqual([
+    {
+      generation: 0,
+      backpressure: {
+        evictedFrames: 0,
+        overflow: "error",
+        queueCapacity: 1024,
+        queueDepth: 0
+      },
+      state: "terminal",
+      streamId: "stream-runtime-idempotent-first",
+      terminal: "closed",
+      terminalAt: 42
+    },
+    {
+      generation: 0,
+      backpressure: {
+        evictedFrames: 0,
+        overflow: "error",
+        queueCapacity: 1024,
+        queueDepth: 0
+      },
+      state: "terminal",
+      streamId: "stream-runtime-idempotent-second",
+      terminal: "closed",
+      terminalAt: 43
+    }
+  ])
+})
+
 test("Streams cancellation by resource id interrupts the producer", async () => {
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamCancelByResource")
   const registry = await Effect.runPromise(makeBridgeStreamRegistry())
   const finalizers: string[] = []
-  const runtime = Streams.withOptions(
-    {
-      nextStreamId: () => "stream-resource-cancel",
-      now: () => 42,
-      registry
-    },
-    BridgeRpc.layer(ProjectRpcs)({
-      watch: () =>
-        Stream.scoped(
-          Stream.fromEffect(
-            Effect.acquireRelease(
-              Effect.sync(() => finalizers.push("acquired")),
-              (_acquired, _exit) => Effect.sync(() => finalizers.push("interrupted"))
-            ).pipe(Effect.andThen(Effect.never))
+  const runtime = await acquireStreamRuntime(
+    Streams.scopedWithOptions(
+      {
+        nextStreamId: () => "stream-resource-cancel",
+        now: () => 42,
+        registry
+      },
+      BridgeRpc.layer(ProjectRpcs)({
+        watch: () =>
+          Stream.scoped(
+            Stream.fromEffect(
+              Effect.acquireRelease(
+                Effect.sync(() => finalizers.push("acquired")),
+                (_acquired, _exit) => Effect.sync(() => finalizers.push("interrupted"))
+              ).pipe(Effect.andThen(Effect.never))
+            )
           )
-        )
-    })
+      })
+    )
   )
   const client = Client({ project: ProjectRpcs }, streamExchange(runtime, []))
   const exitPromise = Effect.runPromiseExit(
@@ -968,23 +1245,25 @@ test("Streams cancellation cleanup survives invalid close frame timestamps", asy
   const registry = await Effect.runPromise(makeBridgeStreamRegistry())
   const finalizers: string[] = []
   let now = 42
-  const runtime = Streams.withOptions(
-    {
-      nextStreamId: () => "stream-invalid-cancel-time",
-      now: () => now,
-      registry
-    },
-    BridgeRpc.layer(ProjectRpcs)({
-      watch: () =>
-        Stream.scoped(
-          Stream.fromEffect(
-            Effect.acquireRelease(
-              Effect.sync(() => finalizers.push("acquired")),
-              () => Effect.sync(() => finalizers.push("interrupted"))
-            ).pipe(Effect.andThen(Effect.never))
+  const runtime = await acquireStreamRuntime(
+    Streams.scopedWithOptions(
+      {
+        nextStreamId: () => "stream-invalid-cancel-time",
+        now: () => now,
+        registry
+      },
+      BridgeRpc.layer(ProjectRpcs)({
+        watch: () =>
+          Stream.scoped(
+            Stream.fromEffect(
+              Effect.acquireRelease(
+                Effect.sync(() => finalizers.push("acquired")),
+                () => Effect.sync(() => finalizers.push("interrupted"))
+              ).pipe(Effect.andThen(Effect.never))
+            )
           )
-        )
-    })
+      })
+    )
   )
   const streamFiber = Effect.runFork(
     runtime
@@ -1029,15 +1308,17 @@ test("Streams sends cancel on early consumer finalization without abort signal",
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.StreamTakeWithoutSignal")
   const requests: HostProtocolRequestEnvelope[] = []
   const cancelRequests: HostProtocolCancelByRequestEnvelope[] = []
-  const runtime = Streams.withOptions(
-    {
-      nextStreamId: () => "stream-take-without-signal",
-      now: () => 42
-    },
-    BridgeRpc.layer(ProjectRpcs)({
-      watch: () =>
-        Stream.make(new WatchEvent({ sequence: 1, path: "a" })).pipe(Stream.concat(Stream.never))
-    })
+  const runtime = await acquireStreamRuntime(
+    Streams.scopedWithOptions(
+      {
+        nextStreamId: () => "stream-take-without-signal",
+        now: () => 42
+      },
+      BridgeRpc.layer(ProjectRpcs)({
+        watch: () =>
+          Stream.make(new WatchEvent({ sequence: 1, path: "a" })).pipe(Stream.concat(Stream.never))
+      })
+    )
   )
   const client = Client(
     { project: ProjectRpcs },
