@@ -1568,6 +1568,80 @@ test("Menu bindCommand does not duplicate listeners for identical bindings", asy
   expect(calls).toEqual(["bindCommand:file.open:app.file.open"])
 })
 
+test("Menu bindCommand closes the command listener with its resource scope", async () => {
+  const calls: string[] = []
+  const commandCalls: unknown[] = []
+  const activated = await Effect.runPromise(Queue.unbounded<MenuActivatedEvent>())
+  const invoked = await Effect.runPromise(Deferred.make<void>())
+  const resources = await Effect.runPromise(makeResourceRegistry())
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  const commands = await Effect.runPromise(makeCommandRegistry(resources, permissions))
+  await Effect.runPromise(permissions.declare(menuCommandCapability, { source: "test" }))
+  await Effect.runPromise(
+    commands.register({
+      id: "app.file.open",
+      inputSchema: Schema.Struct({
+        itemId: Schema.String,
+        windowId: Schema.optionalKey(Schema.String)
+      }),
+      outputSchema: Schema.Void,
+      capability: menuCommandCapability,
+      ownerScope: "app",
+      handler: (input) =>
+        Effect.sync(() => {
+          commandCalls.push(input)
+        }).pipe(Effect.tap(() => Deferred.succeed(invoked, undefined)))
+    })
+  )
+
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const menu = yield* Menu
+      return yield* menu.bindCommand("file.open", "app.file.open")
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          makeMenuServiceLayer({
+            ...menuClient(calls),
+            onActivated: () => Stream.fromQueue(activated)
+          }),
+          Layer.succeed(ResourceRegistry)(resources),
+          Layer.succeed(CommandRegistry)(commands)
+        )
+      )
+    )
+  )
+
+  await Effect.runPromise(
+    Queue.offer(
+      activated,
+      new MenuActivatedEvent({
+        itemId: "file.open",
+        commandId: "app.file.open",
+        windowId: "window-1"
+      })
+    )
+  )
+  await Effect.runPromise(Deferred.await(invoked))
+  await Effect.runPromise(resources.closeScope("app"))
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      yield* Queue.offer(
+        activated,
+        new MenuActivatedEvent({
+          itemId: "file.open",
+          commandId: "app.file.open",
+          windowId: "window-1"
+        })
+      )
+      yield* Effect.sleep("10 millis")
+    })
+  )
+
+  expect(commandCalls).toEqual([{ itemId: "file.open", windowId: "window-1" }])
+  expect(calls).toEqual(["bindCommand:file.open:app.file.open"])
+})
+
 test("Menu bridge client validates templates, sends host envelopes, and decodes activation events", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const exchange = menuExchange(requests, () => ({ kind: "success", payload: undefined }))
@@ -1999,6 +2073,80 @@ test("ContextMenu bindCommand does not duplicate listeners for identical binding
     ownerScope: result.first.ownerScope,
     state: result.first.state
   })
+  expect(commandCalls).toEqual([{ itemId: "file.open", windowId: "window-1" }])
+  expect(calls).toEqual(["bindCommand:file.open:app.file.open"])
+})
+
+test("ContextMenu bindCommand closes the command listener with its resource scope", async () => {
+  const calls: string[] = []
+  const commandCalls: unknown[] = []
+  const activated = await Effect.runPromise(Queue.unbounded<ContextMenuActivatedEvent>())
+  const invoked = await Effect.runPromise(Deferred.make<void>())
+  const resources = await Effect.runPromise(makeResourceRegistry())
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  const commands = await Effect.runPromise(makeCommandRegistry(resources, permissions))
+  await Effect.runPromise(permissions.declare(menuCommandCapability, { source: "test" }))
+  await Effect.runPromise(
+    commands.register({
+      id: "app.file.open",
+      inputSchema: Schema.Struct({
+        itemId: Schema.String,
+        windowId: Schema.String
+      }),
+      outputSchema: Schema.Void,
+      capability: menuCommandCapability,
+      ownerScope: "app",
+      handler: (input) =>
+        Effect.sync(() => {
+          commandCalls.push(input)
+        }).pipe(Effect.tap(() => Deferred.succeed(invoked, undefined)))
+    })
+  )
+
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const contextMenu = yield* ContextMenu
+      return yield* contextMenu.bindCommand("file.open", "app.file.open")
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          makeContextMenuServiceLayer({
+            ...contextMenuClient(calls),
+            onActivated: () => Stream.fromQueue(activated)
+          }),
+          Layer.succeed(ResourceRegistry)(resources),
+          Layer.succeed(CommandRegistry)(commands)
+        )
+      )
+    )
+  )
+
+  await Effect.runPromise(
+    Queue.offer(
+      activated,
+      new ContextMenuActivatedEvent({
+        itemId: "file.open",
+        commandId: "app.file.open",
+        windowId: "window-1"
+      })
+    )
+  )
+  await Effect.runPromise(Deferred.await(invoked))
+  await Effect.runPromise(resources.closeScope("app"))
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      yield* Queue.offer(
+        activated,
+        new ContextMenuActivatedEvent({
+          itemId: "file.open",
+          commandId: "app.file.open",
+          windowId: "window-1"
+        })
+      )
+      yield* Effect.sleep("10 millis")
+    })
+  )
+
   expect(commandCalls).toEqual([{ itemId: "file.open", windowId: "window-1" }])
   expect(calls).toEqual(["bindCommand:file.open:app.file.open"])
 })

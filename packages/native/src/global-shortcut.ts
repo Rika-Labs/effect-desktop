@@ -3,10 +3,10 @@ import {
   CommandRegistry,
   PermissionActor,
   PermissionContext,
-  ResourceRegistry,
   type CommandRegistryError,
   type ResourceHandle,
-  type ResourceId
+  type ResourceId,
+  type ResourceRegistry
 } from "@effect-desktop/core"
 import {
   type BridgeClientExchange,
@@ -29,8 +29,9 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Fiber, Layer, Schema, Stream } from "effect"
+import { Context, Effect, Layer, Schema, Stream } from "effect"
 
+import { bindScopedCommand } from "./command-binding.js"
 import {
   GlobalShortcutAcceleratorInput,
   GlobalShortcutPressedEvent,
@@ -179,50 +180,27 @@ const bindGlobalShortcutCommand = (
   GlobalShortcutCommandBindingError,
   CommandRegistry | ResourceRegistry
 > => {
-  let completed = false
-  let registered = false
-
   return Effect.gen(function* () {
     const commands = yield* CommandRegistry
-    const resources = yield* ResourceRegistry
     const registrar = toWindowHandle(registrarWindow)
-    yield* client.register(accelerator, registrar)
-    registered = true
-
-    const fiber = yield* client.onPressed().pipe(
-      Stream.filter(
-        (event) => event.accelerator === accelerator && event.registrarWindowId === registrar.id
-      ),
-      Stream.runForEach(() =>
-        invokeGlobalShortcutCommand(commands, commandId, registrar.id, accelerator)
-      ),
-      Effect.forkDetach
-    )
-
-    const cleanup = cleanupGlobalShortcutCommandBinding(client, fiber, accelerator)
-
-    const handle = yield* resources
-      .register({
-        kind: "global-shortcut-command",
-        id: globalShortcutCommandResourceId(registrar.id, accelerator),
-        ownerScope: registrar.ownerScope,
-        state: "registered",
-        dispose: cleanup
-      })
-      .pipe(Effect.orDie)
-    completed = true
-    return handle
-  }).pipe(
-    Effect.ensuring(
-      Effect.suspend(() =>
-        completed || !registered
-          ? Effect.void
-          : client
-              .unregister(accelerator)
-              .pipe(logGlobalShortcutCleanupFailure(accelerator, "registration-rollback"))
-      )
-    )
-  )
+    return yield* bindScopedCommand({
+      kind: "global-shortcut-command",
+      id: globalShortcutCommandResourceId(registrar.id, accelerator),
+      ownerScope: registrar.ownerScope,
+      register: client.register(accelerator, registrar),
+      events: client
+        .onPressed()
+        .pipe(
+          Stream.filter(
+            (event) => event.accelerator === accelerator && event.registrarWindowId === registrar.id
+          )
+        ),
+      invoke: () => invokeGlobalShortcutCommand(commands, commandId, registrar.id, accelerator),
+      release: client
+        .unregister(accelerator)
+        .pipe(logGlobalShortcutCleanupFailure(accelerator, "scope-dispose"))
+    })
+  })
 }
 
 const invokeGlobalShortcutCommand = (
@@ -252,22 +230,10 @@ const invokeGlobalShortcutCommand = (
       )
     )
 
-const cleanupGlobalShortcutCommandBinding = (
-  client: GlobalShortcutClientApi,
-  fiber: Fiber.Fiber<void, GlobalShortcutError | CommandRegistryError>,
-  accelerator: string
-): Effect.Effect<void, never, never> =>
-  Effect.gen(function* () {
-    yield* Fiber.interrupt(fiber)
-    yield* client
-      .unregister(accelerator)
-      .pipe(logGlobalShortcutCleanupFailure(accelerator, "scope-dispose"))
-  })
-
 const logGlobalShortcutCleanupFailure =
   (
     accelerator: string,
-    phase: "registration-rollback" | "scope-dispose"
+    phase: "scope-dispose"
   ): (<A>(
     effect: Effect.Effect<A, GlobalShortcutError, never>
   ) => Effect.Effect<A | void, never, never>) =>

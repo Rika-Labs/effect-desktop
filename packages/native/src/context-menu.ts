@@ -3,10 +3,10 @@ import {
   CommandRegistry,
   PermissionActor,
   PermissionContext,
-  ResourceRegistry,
   type CommandRegistryError,
   type ResourceHandle,
-  type ResourceId
+  type ResourceId,
+  type ResourceRegistry
 } from "@effect-desktop/core"
 import {
   type BridgeClientExchange,
@@ -28,8 +28,9 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Fiber, Layer, Option, Schema, Stream } from "effect"
+import { Context, Effect, Layer, Schema, Stream } from "effect"
 
+import { bindScopedCommand } from "./command-binding.js"
 import { commandBindingWarningError } from "./command-binding-log.js"
 import {
   ContextMenuActivatedEvent,
@@ -134,49 +135,20 @@ const bindContextMenuCommand = (
   ContextMenuCommandBindingError,
   CommandRegistry | ResourceRegistry
 > => {
-  let completed = false
-  let listener: Fiber.Fiber<void, ContextMenuError> | undefined
-
   return Effect.gen(function* () {
     const commands = yield* CommandRegistry
-    const resources = yield* ResourceRegistry
     const resourceId = contextMenuCommandResourceId(itemId, commandId)
-    const existing = yield* resources.get(resourceId)
-    if (Option.isSome(existing)) {
-      return existing.value.handle as ResourceHandle<"context-menu-command", "registered">
-    }
-
-    yield* client.bindCommand(itemId, commandId)
-
-    const fiber = yield* client.onActivated().pipe(
-      Stream.filter((event) => event.itemId === itemId && event.commandId === commandId),
-      Stream.runForEach((event) =>
-        invokeContextMenuCommand(commands, commandId, event.itemId, event.windowId)
-      ),
-      Effect.forkDetach
-    )
-    listener = fiber
-
-    const handle = yield* resources
-      .register({
-        kind: "context-menu-command",
-        id: resourceId,
-        ownerScope: "app",
-        state: "registered",
-        dispose: Fiber.interrupt(fiber).pipe(Effect.asVoid)
-      })
-      .pipe(Effect.orDie)
-    completed = true
-    return handle
-  }).pipe(
-    Effect.ensuring(
-      Effect.suspend(() =>
-        completed || listener === undefined
-          ? Effect.void
-          : Fiber.interrupt(listener).pipe(Effect.asVoid)
-      )
-    )
-  )
+    return yield* bindScopedCommand({
+      kind: "context-menu-command",
+      id: resourceId,
+      ownerScope: "app",
+      register: client.bindCommand(itemId, commandId),
+      events: client
+        .onActivated()
+        .pipe(Stream.filter((event) => event.itemId === itemId && event.commandId === commandId)),
+      invoke: (event) => invokeContextMenuCommand(commands, commandId, event.itemId, event.windowId)
+    })
+  })
 }
 
 const invokeContextMenuCommand = (
