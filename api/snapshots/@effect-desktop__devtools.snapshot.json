@@ -441,7 +441,7 @@
     {
       "name": "ProcessPanelRow",
       "kind": "interface",
-      "signature": "export interface ProcessPanelRow { readonly pid: number readonly command: string readonly ownerScope: string readonly childPids: readonly number[] readonly lastExit: Option.Option<ProcessExitStatus> readonly state: ProcessSnapshot[\"state\"] }"
+      "signature": "export interface ProcessPanelRow { readonly pid: number readonly command: string readonly ownerScope: string readonly lastExit: Option.Option<ProcessExitStatus> readonly state: ProcessSnapshot[\"state\"] }"
     },
     {
       "name": "ReactivityInvalidationRecord",

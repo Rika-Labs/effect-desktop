@@ -316,7 +316,7 @@
     {
       "name": "MockProcessFixture",
       "kind": "interface",
-      "signature": "export interface MockProcessFixture { readonly command?: string readonly args?: readonly string[] readonly pid?: number readonly childPids?: readonly number[] readonly stdout?: readonly Uint8Array[] readonly stderr?: readonly Uint8Array[] readonly exit?: ProcessExitStatus | { readonly code: number; readonly signal?: string } | false }"
+      "signature": "export interface MockProcessFixture { readonly command?: string readonly args?: readonly string[] readonly pid?: number readonly stdout?: readonly Uint8Array[] readonly stderr?: readonly Uint8Array[] readonly exit?: ProcessExitStatus | { readonly code: number; readonly signal?: string } | false }"
     },
     {
       "name": "MockProcessLive",

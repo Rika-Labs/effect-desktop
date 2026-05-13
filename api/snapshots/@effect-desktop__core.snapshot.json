@@ -711,7 +711,7 @@
     {
       "name": "makeProcess",
       "kind": "value",
-      "signature": "const makeProcess: (registry: ResourceRegistryApi, options?: ProcessOptions) => Effect.Effect<ProcessApi, HostProtocolInvalidArgumentError, never>"
+      "signature": "const makeProcess: (registry: ResourceRegistryApi, options?: ProcessOptions) => Effect.Effect<ProcessApi, HostProtocolInvalidArgumentError, ChildProcessSpawner.ChildProcessSpawner>"
     },
     {
       "name": "makePty",
@@ -742,6 +742,11 @@
       "name": "makeSecretsSafeStorageLayer",
       "kind": "value",
       "signature": "const makeSecretsSafeStorageLayer: (safeStorage: SecretsSafeStorageApi) => Layer.Layer<SecretsSafeStorage>"
+    },
+    {
+      "name": "makeSettingKey",
+      "kind": "value",
+      "signature": "const makeSettingKey: <A>(options: { readonly name: string; readonly schema: Schema.Schema<A>; readonly defaultValue?: A; }) => SettingKey<A>"
     },
     {
       "name": "makeSettings",
@@ -934,11 +939,6 @@
       "signature": "export class Process extends Context.Service<Process, ProcessApi>()(\"Process\") {}"
     },
     {
-      "name": "ProcessAdapter",
-      "kind": "interface",
-      "signature": "export interface ProcessAdapter { readonly spawn: (input: ProcessSpawnInput) => ProcessChild }"
-    },
-    {
       "name": "ProcessApi",
       "kind": "interface",
       "signature": "export interface ProcessApi { readonly spawn: ( command: string, args?: readonly string[], options?: ProcessSpawnOptions ) => Effect.Effect<ProcessHandle, ProcessError, never> readonly list: () => Effect.Effect<readonly ProcessSnapshot[], never, never> readonly observe: () => Stream.Stream<readonly ProcessSnapshot[], never, never> }"
@@ -947,11 +947,6 @@
       "name": "ProcessBudgetPolicy",
       "kind": "interface",
       "signature": "export interface ProcessBudgetPolicy { readonly maxConcurrent?: number readonly stderrBufferBytes?: number readonly stdoutBufferBytes?: number }"
-    },
-    {
-      "name": "ProcessChild",
-      "kind": "interface",
-      "signature": "export interface ProcessChild { readonly pid: number readonly stdout: ReadableStream<Uint8Array> readonly stderr: ReadableStream<Uint8Array> readonly exited: Promise<ProcessExitStatus> readonly writeStdin: (chunk: Uint8Array) => Promise<void> readonly closeStdin: () => Promise<void> readonly isRunning: () => boolean readonly terminateTree: () => Promise<void> readonly forceKillTree: () => Promise<void> readonly kill: (signal?: ProcessSignalInput) => void readonly childPids?: readonly number[] }"
     },
     {
       "name": "ProcessError",
@@ -971,17 +966,17 @@
     {
       "name": "ProcessLayer",
       "kind": "value",
-      "signature": "const ProcessLayer: (options?: ProcessOptions) => Layer.Layer<Process, HostProtocolInvalidArgumentError, ResourceRegistry>"
+      "signature": "const ProcessLayer: (options?: ProcessOptions) => Layer.Layer<Process, HostProtocolInvalidArgumentError, ResourceRegistry | ChildProcessSpawner.ChildProcessSpawner>"
     },
     {
       "name": "ProcessLive",
       "kind": "value",
-      "signature": "const ProcessLive: Layer.Layer<Process, never, ResourceRegistry>"
+      "signature": "const ProcessLive: Layer.Layer<Process, never, ResourceRegistry | ChildProcessSpawner.ChildProcessSpawner>"
     },
     {
       "name": "ProcessOptions",
       "kind": "interface",
-      "signature": "export interface ProcessOptions { readonly adapter?: ProcessAdapter readonly budgets?: ProcessBudgetPolicy readonly gracefulShutdownMs?: number readonly maxSnapshots?: number readonly permissions?: ProcessPermissionPolicy readonly now?: () => number }"
+      "signature": "export interface ProcessOptions { readonly budgets?: ProcessBudgetPolicy readonly gracefulShutdownMs?: number readonly maxSnapshots?: number readonly permissions?: ProcessPermissionPolicy readonly now?: () => number }"
     },
     {
       "name": "ProcessPermissionPolicy",
@@ -991,17 +986,17 @@
     {
       "name": "ProcessSignalInput",
       "kind": "type",
-      "signature": "const ProcessSignalInput: Schema.Union<readonly [Schema.NonEmptyString, Schema.Int]>"
+      "signature": "const ProcessSignalInput: Schema.Literals<readonly [\"SIGABRT\", \"SIGALRM\", \"SIGBUS\", \"SIGCHLD\", \"SIGCONT\", \"SIGFPE\", \"SIGHUP\", \"SIGILL\", \"SIGINT\", \"SIGIO\", \"SIGIOT\", \"SIGKILL\", \"SIGPIPE\", \"SIGPOLL\", \"SIGPROF\", \"SIGPWR\", \"SIGQUIT\", \"SIGSEGV\", \"SIGSTKFLT\", \"SIGSTOP\", \"SIGSYS\", \"SIGTERM\", \"SIGTRAP\", \"SIGTSTP\", \"SIGTTIN\", \"SIGTTOU\", \"SIGUNUSED\", \"SIGURG\", \"SIGUSR1\", \"SIGUSR2\", \"SIGVTALRM\", \"SIGWINCH\", \"SIGXCPU\", \"SIGXFSZ\", \"SIGBREAK\", \"SIGLOST\", \"SIGINFO\"]>"
     },
     {
       "name": "ProcessSnapshot",
       "kind": "interface",
-      "signature": "export interface ProcessSnapshot { readonly resourceId: string readonly pid: number readonly command: string readonly args: readonly string[] readonly ownerScope: string readonly childPids: readonly number[] readonly state: \"running\" | \"exited\" readonly startedAt: number readonly updatedAt: number readonly lastExit: Option.Option<ProcessExitStatus> }"
+      "signature": "export interface ProcessSnapshot { readonly resourceId: string readonly pid: number readonly command: string readonly args: readonly string[] readonly ownerScope: string readonly state: \"running\" | \"exited\" readonly startedAt: number readonly updatedAt: number readonly lastExit: Option.Option<ProcessExitStatus> }"
     },
     {
       "name": "ProcessSpawnInput",
       "kind": "class",
-      "signature": "export class ProcessSpawnInput extends Schema.Class<ProcessSpawnInput>(\"ProcessSpawnInput\")({ command: NonEmptyString, args: Schema.Array(Schema.String), ownerScope: NonEmptyString, shell: Schema.optionalKey(Schema.Boolean), cwd: Schema.optionalKey(NonEmptyString), env: Schema.optionalKey(Schema.Record(EnvironmentVariableName, EnvironmentVariableValue)) }) {}"
+      "signature": "export class ProcessSpawnInput extends Schema.Class<ProcessSpawnInput>(\"ProcessSpawnInput\")({ args: Schema.Array(Schema.String), command: NonEmptyString, cwd: Schema.optionalKey(NonEmptyString), env: Schema.optionalKey(Schema.Record(EnvironmentVariableName, EnvironmentVariableValue)), ownerScope: NonEmptyString, shell: Schema.optionalKey(Schema.Boolean) }) {}"
     },
     {
       "name": "ProcessSpawnOptions",
@@ -1344,6 +1339,11 @@
       "signature": "export class SecretsSetInput extends Schema.Class<SecretsSetInput>(\"SecretsSetInput\")({ namespace: SecretName, key: SecretName }) {}"
     },
     {
+      "name": "SettingKey",
+      "kind": "interface",
+      "signature": "export interface SettingKey<A> { readonly name: string readonly schema: Schema.Schema<A> readonly defaultValue?: A }"
+    },
+    {
       "name": "Settings",
       "kind": "class",
       "signature": "export class Settings extends Context.Service<Settings, SettingsApi>()(\"Settings\") {}"
@@ -1416,7 +1416,7 @@
     {
       "name": "SettingsStore",
       "kind": "interface",
-      "signature": "export interface SettingsStore { readonly get: <A>( key: string, schema: Schema.Schema<A> ) => Effect.Effect<Option.Option<A>, SettingsError, never> readonly getOrDefault: <A>( key: string, schema: Schema.Schema<A>, defaultValue: A ) => Effect.Effect<A, SettingsError, never> readonly set: <A>( key: string, schema: Schema.Schema<A>, value: A, options?: SettingsMutationOptions ) => Effect.Effect<void, SettingsError, never> readonly delete: ( key: string, options?: SettingsMutationOptions ) => Effect.Effect<void, SettingsError, never> readonly keys: () => Effect.Effect<readonly string[], SettingsError, never> readonly update: <A, E, R>( key: string, schema: Schema.Schema<A>, update: (current: Option.Option<A>) => Effect.Effect<A, E, R>, options?: SettingsMutationOptions ) => Effect.Effect<A, E | SettingsError, R> readonly changes: () => Stream.Stream<SettingsChange, never, never> readonly migrated: () => Stream.Stream<SettingsMigrated, never, never> readonly close: () => Effect.Effect<void, never, never> }"
+      "signature": "export interface SettingsStore { readonly key: typeof makeSettingKey readonly get: <A>( key: string | SettingKey<A>, schema?: Schema.Schema<A> ) => Effect.Effect<Option.Option<A>, SettingsError, never> readonly getOrDefault: <A>( key: string | SettingKey<A>, schema?: Schema.Schema<A>, defaultValue?: A ) => Effect.Effect<A, SettingsError, never> readonly set: <A>( key: string | SettingKey<A>, schemaOrValue: Schema.Schema<A> | A, valueOrOptions?: A | SettingsMutationOptions, options?: SettingsMutationOptions ) => Effect.Effect<void, SettingsError, never> readonly delete: ( key: string, options?: SettingsMutationOptions ) => Effect.Effect<void, SettingsError, never> readonly keys: () => Effect.Effect<readonly string[], SettingsError, never> readonly update: <A, E, R>( key: string, schema: Schema.Schema<A>, update: (current: Option.Option<A>) => Effect.Effect<A, E, R>, options?: SettingsMutationOptions ) => Effect.Effect<A, E | SettingsError, R> readonly changes: () => Stream.Stream<SettingsChange, never, never> readonly migrated: () => Stream.Stream<SettingsMigrated, never, never> readonly close: () => Effect.Effect<void, never, never> }"
     },
     {
       "name": "SqlClient",
@@ -1691,7 +1691,7 @@
     {
       "name": "WorkerSpawnOptions",
       "kind": "interface",
-      "signature": "export interface WorkerSpawnOptions<In, Out> { readonly script: string readonly ownerScope: string readonly inputSchema: Schema.Schema<In> readonly outputSchema: Schema.Schema<Out> readonly context: PermissionContext readonly capabilities?: readonly NormalizedCapability[] }"
+      "signature": "export interface WorkerSpawnOptions<In, Out> { readonly script: string readonly ownerScope: string readonly inputSchema: Schema.Decoder<In, never> readonly outputSchema: Schema.Decoder<Out, never> readonly context: PermissionContext readonly capabilities?: readonly NormalizedCapability[] }"
     },
     {
       "name": "WorkerStaleHandleError",
