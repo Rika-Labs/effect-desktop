@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Effect, Exit, Fiber, Layer, Option, Schema, Stream } from "effect"
+import { Context, Effect, Exit, Fiber, Layer, Option, Schema, Stream } from "effect"
 
 import {
   HOST_PING_METHOD,
@@ -40,7 +40,6 @@ import {
   DialogLive,
   Screen,
   ScreenLive,
-  type ClipboardClientApi,
   type DialogClientApi,
   makeClipboardBridgeClientLayer,
   makeClipboardServiceLayer,
@@ -48,23 +47,19 @@ import {
   makeDialogServiceLayer,
   makeScreenBridgeClientLayer,
   makeScreenClientLayer,
-  type ClipboardError,
+  makeUnsupportedClipboardClient,
   type DialogError,
   type ScreenClientApi,
   type ScreenError
 } from "@effect-desktop/native"
 import {
-  ClipboardImage,
-  ClipboardSupportedResult,
-  ClipboardText,
   DialogConfirmResult,
   DialogOpenResult,
   DialogSaveResult,
   ScreenDisplay,
   ScreenDisplaysResult,
   ScreenPoint,
-  ScreenSupportedResult,
-  type ClipboardImageOptions
+  ScreenSupportedResult
 } from "@effect-desktop/native/contracts"
 
 import {
@@ -87,8 +82,11 @@ import {
   registerLeakMatchers,
   runHeadless,
   ResourceLeakError,
+  CapabilityLaws,
   ClipboardTest,
   DialogTest,
+  FailureAssertions,
+  LayerMatrix,
   makeClipboardScenarioLayer,
   TestNativeSurfaces,
   ScreenTest
@@ -114,6 +112,75 @@ const waitForRegistryEntries = (
   })
 
 registerLeakMatchers()
+
+const ClipboardContractLaws = CapabilityLaws.make("Clipboard", Clipboard, {
+  "write/read round trips text": (clipboard) =>
+    Effect.gen(function* () {
+      yield* clipboard.writeText("shared text")
+      const text = yield* clipboard.readText()
+      expect(text).toBe("shared text")
+    }),
+  "clear removes text": (clipboard) =>
+    Effect.gen(function* () {
+      yield* clipboard.writeText("temporary")
+      yield* clipboard.clear()
+      const text = yield* clipboard.readText()
+      expect(text).toBe("")
+    }),
+  "support queries return booleans": (clipboard) =>
+    Effect.gen(function* () {
+      const textSupported = yield* clipboard.isSupported("text")
+      const imageSupported = yield* clipboard.isSupported("image")
+      expect(typeof textSupported).toBe("boolean")
+      expect(typeof imageSupported).toBe("boolean")
+    })
+})
+
+CapabilityLaws.run(ClipboardContractLaws, [
+  {
+    name: "test layer",
+    layer: ClipboardTest()
+  },
+  {
+    name: "bridge client layer",
+    layer: (law) => makeClipboardBridgeLawLayer(law.name)
+  }
+])
+
+const makeClipboardBridgeLawLayer = (lawName: string): Layer.Layer<Clipboard> => {
+  const bridge = makeMockBridge()
+  switch (lawName) {
+    case "write/read round trips text":
+      Effect.runSync(
+        Effect.all([
+          bridge.succeed("Clipboard.writeText", undefined),
+          bridge.succeed("Clipboard.readText", { text: "shared text" })
+        ])
+      )
+      break
+    case "clear removes text":
+      Effect.runSync(
+        Effect.all([
+          bridge.succeed("Clipboard.writeText", undefined),
+          bridge.succeed("Clipboard.clear", undefined),
+          bridge.succeed("Clipboard.readText", { text: "" })
+        ])
+      )
+      break
+    case "support queries return booleans":
+      Effect.runSync(
+        Effect.all([
+          bridge.succeed("Clipboard.isSupported", { supported: true }),
+          bridge.succeed("Clipboard.isSupported", { supported: true })
+        ])
+      )
+      break
+    default:
+      throw new Error(`unhandled Clipboard law fixture: ${lawName}`)
+  }
+
+  return Layer.provide(ClipboardLive, makeClipboardBridgeClientLayer(bridge.exchange))
+}
 
 test("assertNoOpenResourcesIn fails with a leaked-handle report", async () => {
   let error: unknown
@@ -1324,6 +1391,53 @@ test("makeMemorySecretsSafeStorage models unavailable platform storage as typed 
   }
 })
 
+test("FailureAssertions matches tagged failures through Exit", async () => {
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const clipboard = yield* Clipboard
+      yield* clipboard.writeText("blocked")
+    }).pipe(Effect.provide(makeClipboardServiceLayer(makeUnsupportedClipboardClient())))
+  )
+
+  FailureAssertions.expectFailureTag(exit, "Unsupported")
+})
+
+test("LayerMatrix interruption closes scoped capability layers", async () => {
+  class InterruptibleService extends Context.Service<
+    InterruptibleService,
+    { readonly wait: Effect.Effect<never, never, never> }
+  >()("@effect-desktop/test/InterruptibleService") {}
+
+  let acquired = 0
+  let released = 0
+  const layer = Layer.effectContext(
+    Effect.acquireRelease(
+      Effect.sync(() => {
+        acquired += 1
+        return Context.make(InterruptibleService, { wait: Effect.never })
+      }),
+      () =>
+        Effect.sync(() => {
+          released += 1
+        })
+    )
+  )
+
+  const exit = await Effect.runPromise(
+    LayerMatrix.interrupt(
+      layer,
+      Effect.gen(function* () {
+        const service = yield* InterruptibleService
+        return yield* service.wait
+      })
+    )
+  )
+
+  FailureAssertions.expectInterrupted(exit)
+  expect(acquired).toBe(1)
+  expect(released).toBe(1)
+})
+
 test("native capability programs run unchanged through Live, Client, and Test layers", async () => {
   const screenProgram: Effect.Effect<string, ScreenError, Screen> = Effect.gen(function* () {
     const screen = yield* Screen
@@ -1346,49 +1460,6 @@ test("native capability programs run unchanged through Live, Client, and Test la
   })
   const screenBridge = makeMockBridge()
   await Effect.runPromise(screenBridge.succeed("Screen.getPrimaryDisplay", screenDisplayPayload))
-
-  const clipboardProgram: Effect.Effect<string, ClipboardError, Clipboard> = Effect.gen(
-    function* () {
-      const clipboard = yield* Clipboard
-      yield* clipboard.writeText("shared text")
-      const afterWrite = yield* clipboard.readText()
-      yield* clipboard.clear()
-      const afterClear = yield* clipboard.readText()
-      return `${afterWrite}:${afterClear}`
-    }
-  )
-  let clipboardText = ""
-  let clipboardImage: ClipboardImage | undefined
-  const clipboardLiveClient: ClipboardClientApi = Object.freeze({
-    readText: () => Effect.succeed(new ClipboardText({ text: clipboardText })),
-    writeText: (text: string) =>
-      Effect.sync(() => {
-        clipboardText = text
-      }),
-    readImage: () =>
-      Effect.succeed(
-        clipboardImage ?? new ClipboardImage({ mime: "image/png", bytes: new Uint8Array(0) })
-      ),
-    writeImage: (image: ClipboardImageOptions) =>
-      Effect.sync(() => {
-        clipboardImage = new ClipboardImage(image)
-      }),
-    clear: () =>
-      Effect.sync(() => {
-        clipboardText = ""
-        clipboardImage = undefined
-      }),
-    isSupported: () => Effect.succeed(new ClipboardSupportedResult({ supported: true }))
-  })
-  const clipboardBridge = makeMockBridge()
-  await Effect.runPromise(
-    Effect.all([
-      clipboardBridge.succeed("Clipboard.writeText", undefined),
-      clipboardBridge.succeed("Clipboard.readText", { text: "shared text" }),
-      clipboardBridge.succeed("Clipboard.clear", undefined),
-      clipboardBridge.succeed("Clipboard.readText", { text: "" })
-    ])
-  )
 
   const dialogProgram: Effect.Effect<string, DialogError, Dialog> = Effect.gen(function* () {
     const dialog = yield* Dialog
@@ -1460,30 +1531,6 @@ test("native capability programs run unchanged through Live, Client, and Test la
             )
           )
         )
-    },
-    {
-      name: "Clipboard",
-      expected: "shared text:",
-      calls: () => clipboardBridge.calls().map((call) => call.method),
-      expectedCalls: [
-        "Clipboard.writeText",
-        "Clipboard.readText",
-        "Clipboard.clear",
-        "Clipboard.readText"
-      ],
-      runLive: () =>
-        Effect.runPromise(
-          clipboardProgram.pipe(Effect.provide(makeClipboardServiceLayer(clipboardLiveClient)))
-        ),
-      runClient: () =>
-        Effect.runPromise(
-          clipboardProgram.pipe(
-            Effect.provide(
-              Layer.provide(ClipboardLive, makeClipboardBridgeClientLayer(clipboardBridge.exchange))
-            )
-          )
-        ),
-      runTest: () => Effect.runPromise(clipboardProgram.pipe(Effect.provide(ClipboardTest())))
     },
     {
       name: "Dialog",

@@ -1992,3 +1992,4 @@ const isRegistrySnapshot = (value: unknown): value is RegistrySnapshot => {
 }
 
 export * from "./native.js"
+export * from "./capability-laws.js"
