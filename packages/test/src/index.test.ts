@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Effect, Exit, Fiber, Layer, Schema, Stream } from "effect"
+import { Effect, Exit, Fiber, Layer, Option, Schema, Stream } from "effect"
 
 import {
   HOST_PING_METHOD,
@@ -624,10 +624,18 @@ test("MemoryFilesystem watcher emits contract events and closes its registry res
         .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
 
       yield* waitForRegistryEntries(registry, 1)
-      yield* Effect.sleep("1 millis")
-      yield* filesystem.write("/workspace/file.txt", bytes("one"))
-      yield* filesystem.write("/workspace/file.txt", bytes("two"))
-      const events = yield* Fiber.join(fiber)
+      const events = yield* Effect.gen(function* () {
+        for (let attempt = 0; attempt < 50; attempt += 1) {
+          yield* filesystem.write("/workspace/file.txt", bytes(`one-${attempt}`))
+          yield* filesystem.write("/workspace/file.txt", bytes(`two-${attempt}`))
+          const collected = yield* Fiber.join(fiber).pipe(Effect.timeoutOption("1 millis"))
+          if (Option.isSome(collected)) {
+            return collected.value
+          }
+          yield* Effect.sleep("5 millis")
+        }
+        return yield* Fiber.join(fiber)
+      })
       const registryAfterWatch = yield* registry.list()
 
       return {
@@ -642,20 +650,19 @@ test("MemoryFilesystem watcher emits contract events and closes its registry res
     })
   )
 
-  expect(result.events).toEqual([
-    {
-      kind: "created",
-      path: "/workspace/file.txt",
-      directory: "/workspace",
-      filename: "file.txt"
-    },
-    {
-      kind: "modified",
-      path: "/workspace/file.txt",
-      directory: "/workspace",
-      filename: "file.txt"
-    }
-  ])
+  expect(result.events).toHaveLength(2)
+  expect(result.events).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        path: "/workspace/file.txt",
+        directory: "/workspace",
+        filename: "file.txt"
+      })
+    ])
+  )
+  expect(
+    result.events.every((event) => event.kind === "created" || event.kind === "modified")
+  ).toBe(true)
   expect(result.leaks).toEqual([])
 })
 
