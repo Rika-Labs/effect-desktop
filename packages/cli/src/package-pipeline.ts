@@ -1,21 +1,14 @@
 import { createHash } from "node:crypto"
-import {
-  chmod,
-  copyFile,
-  lstat,
-  mkdir,
-  readlink,
-  readdir,
-  readFile,
-  rm,
-  stat,
-  writeFile
-} from "node:fs/promises"
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import { Data, Effect } from "effect"
 
+import {
+  ReleaseFileSystem,
+  runReleaseFileSystem,
+  type ReleaseFileInfo
+} from "./release-file-system.js"
 import { runReleaseTool } from "./release-tool-runner.js"
 import {
   appImageArch,
@@ -1323,16 +1316,23 @@ const loadConfig = (path: string): Effect.Effect<unknown, PackageConfigError, ne
   })
 
 const readJson = <A>(path: string): Effect.Effect<A, PackageFileError, never> =>
-  Effect.tryPromise({
-    try: async () => JSON.parse(await readFile(path, "utf8")) as A,
-    catch: (cause) =>
-      new PackageFileError({
-        operation: "read-json",
-        path,
-        message: `failed to read JSON ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      const content = yield* fs.readFileString(path)
+      return JSON.parse(content) as A
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PackageFileError({
+          operation: "read-json",
+          path,
+          message: `failed to read JSON ${path}`,
+          cause
+        })
+    )
+  )
 
 const digestPath = (
   path: string
@@ -1475,115 +1475,158 @@ const writeFileEffect = (
 ): Effect.Effect<void, PackageFileError, never> =>
   Effect.gen(function* () {
     yield* makeDirectory(dirname(path))
-    yield* Effect.tryPromise({
-      try: () => writeFile(path, content),
-      catch: (cause) =>
-        new PackageFileError({
-          operation: "write",
-          path,
-          message: `failed to write ${path}`,
-          cause
-        })
-    })
+    yield* runReleaseFileSystem(
+      Effect.gen(function* () {
+        const fs = yield* ReleaseFileSystem
+        yield* fs.writeFileString(path, content)
+      })
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new PackageFileError({
+            operation: "write",
+            path,
+            message: `failed to write ${path}`,
+            cause
+          })
+      )
+    )
   })
 
 const readFileEffect = (path: string): Effect.Effect<Uint8Array, PackageFileError, never> =>
-  Effect.tryPromise({
-    try: () => readFile(path),
-    catch: (cause) =>
-      new PackageFileError({
-        operation: "read",
-        path,
-        message: `failed to read ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.readFile(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PackageFileError({
+          operation: "read",
+          path,
+          message: `failed to read ${path}`,
+          cause
+        })
+    )
+  )
 
 const makeDirectory = (path: string): Effect.Effect<void, PackageFileError, never> =>
-  Effect.tryPromise({
-    try: () => mkdir(path, { recursive: true }),
-    catch: (cause) =>
-      new PackageFileError({
-        operation: "mkdir",
-        path,
-        message: `failed to create ${path}`,
-        cause
-      })
-  }).pipe(Effect.asVoid)
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      yield* fs.makeDirectory(path)
+    })
+  ).pipe(
+    Effect.asVoid,
+    Effect.mapError(
+      (cause) =>
+        new PackageFileError({
+          operation: "mkdir",
+          path,
+          message: `failed to create ${path}`,
+          cause
+        })
+    )
+  )
 
 const removePath = (path: string): Effect.Effect<void, PackageFileError, never> =>
-  Effect.tryPromise({
-    try: () => rm(path, { recursive: true, force: true }),
-    catch: (cause) =>
-      new PackageFileError({
-        operation: "rm",
-        path,
-        message: `failed to remove ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      yield* fs.remove(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PackageFileError({
+          operation: "rm",
+          path,
+          message: `failed to remove ${path}`,
+          cause
+        })
+    )
+  )
 
 const readDirectory = (path: string): Effect.Effect<readonly string[], PackageFileError, never> =>
-  Effect.tryPromise({
-    try: () => readdir(path),
-    catch: (cause) =>
-      new PackageFileError({
-        operation: "readdir",
-        path,
-        message: `failed to read ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.readDirectory(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PackageFileError({
+          operation: "readdir",
+          path,
+          message: `failed to read ${path}`,
+          cause
+        })
+    )
+  )
 
-const statPath = (
-  path: string
-): Effect.Effect<Awaited<ReturnType<typeof stat>>, PackageFileError, never> =>
-  Effect.tryPromise({
-    try: () => stat(path),
-    catch: (cause) =>
-      new PackageFileError({
-        operation: "stat",
-        path,
-        message: `failed to stat ${path}`,
-        cause
-      })
-  })
+const statPath = (path: string): Effect.Effect<ReleaseFileInfo, PackageFileError, never> =>
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.stat(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PackageFileError({
+          operation: "stat",
+          path,
+          message: `failed to stat ${path}`,
+          cause
+        })
+    )
+  )
 
 const pathExists = (path: string): Effect.Effect<boolean, never, never> =>
-  Effect.promise(async () => {
-    try {
-      await stat(path)
-      return true
-    } catch {
-      return false
-    }
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.exists(path)
+    })
+  ).pipe(Effect.catch(() => Effect.succeed(false)))
 
-const lstatPath = (
-  path: string
-): Effect.Effect<Awaited<ReturnType<typeof lstat>>, PackageFileError, never> =>
-  Effect.tryPromise({
-    try: () => lstat(path),
-    catch: (cause) =>
-      new PackageFileError({
-        operation: "lstat",
-        path,
-        message: `failed to lstat ${path}`,
-        cause
-      })
-  })
+const lstatPath = (path: string): Effect.Effect<ReleaseFileInfo, PackageFileError, never> =>
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.lstat(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PackageFileError({
+          operation: "lstat",
+          path,
+          message: `failed to lstat ${path}`,
+          cause
+        })
+    )
+  )
 
 const readlinkPath = (path: string): Effect.Effect<string, PackageFileError, never> =>
-  Effect.tryPromise({
-    try: () => readlink(path),
-    catch: (cause) =>
-      new PackageFileError({
-        operation: "readlink",
-        path,
-        message: `failed to readlink ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.readLink(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PackageFileError({
+          operation: "readlink",
+          path,
+          message: `failed to readlink ${path}`,
+          cause
+        })
+    )
+  )
 
 const resolveContainedSymlink = (
   root: string,
@@ -1616,29 +1659,41 @@ const copyFileEffect = (
 ): Effect.Effect<void, PackageFileError, never> =>
   Effect.gen(function* () {
     yield* makeDirectory(dirname(destination))
-    yield* Effect.tryPromise({
-      try: () => copyFile(source, destination),
-      catch: (cause) =>
-        new PackageFileError({
-          operation: "copy",
-          path: source,
-          message: `failed to copy ${source} to ${destination}`,
-          cause
-        })
-    })
+    yield* runReleaseFileSystem(
+      Effect.gen(function* () {
+        const fs = yield* ReleaseFileSystem
+        yield* fs.copyFile(source, destination)
+      })
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new PackageFileError({
+            operation: "copy",
+            path: source,
+            message: `failed to copy ${source} to ${destination}`,
+            cause
+          })
+      )
+    )
   })
 
 const chmodEffect = (path: string, mode: number): Effect.Effect<void, PackageFileError, never> =>
-  Effect.tryPromise({
-    try: () => chmod(path, mode),
-    catch: (cause) =>
-      new PackageFileError({
-        operation: "chmod",
-        path,
-        message: `failed to chmod ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      yield* fs.chmod(path, mode)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PackageFileError({
+          operation: "chmod",
+          path,
+          message: `failed to chmod ${path}`,
+          cause
+        })
+    )
+  )
 
 const resolvePath = (cwd: string, path: string): string =>
   isAbsolute(path) ? path : resolve(cwd, path)

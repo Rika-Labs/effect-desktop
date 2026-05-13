@@ -1,8 +1,8 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { isAbsolute, join, relative } from "node:path"
 
 import { Data, Effect, Option } from "effect"
 
+import { ReleaseFileSystem, runReleaseFileSystem } from "./release-file-system.js"
 import { runReleaseTool } from "./release-tool-runner.js"
 
 export interface DocsReleaseGateOptions {
@@ -463,52 +463,76 @@ const readJson = <A>(path: string): Effect.Effect<A, DocsGateFileError, never> =
   })
 
 const readText = (path: string): Effect.Effect<string, DocsGateFileError, never> =>
-  Effect.tryPromise({
-    try: () => readFile(path, "utf8"),
-    catch: (cause) =>
-      new DocsGateFileError({
-        operation: "read",
-        path,
-        message: `failed to read ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.readFileString(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new DocsGateFileError({
+          operation: "read",
+          path,
+          message: `failed to read ${path}`,
+          cause
+        })
+    )
+  )
 
 const writeText = (path: string, text: string): Effect.Effect<void, DocsGateFileError, never> =>
-  Effect.tryPromise({
-    try: () => writeFile(path, text),
-    catch: (cause) =>
-      new DocsGateFileError({
-        operation: "write",
-        path,
-        message: `failed to write ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      yield* fs.writeFileString(path, text)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new DocsGateFileError({
+          operation: "write",
+          path,
+          message: `failed to write ${path}`,
+          cause
+        })
+    )
+  )
 
 const makeTempDirectory = (cwd: string): Effect.Effect<string, DocsGateFileError, never> =>
-  Effect.tryPromise({
-    try: () => mkdtemp(join(cwd, ".docs-examples-")),
-    catch: (cause) =>
-      new DocsGateFileError({
-        operation: "mkdtemp",
-        path: cwd,
-        message: "failed to create docs example temp directory",
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.makeTempDirectory({ directory: cwd, prefix: ".docs-examples-" })
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new DocsGateFileError({
+          operation: "mkdtemp",
+          path: cwd,
+          message: "failed to create docs example temp directory",
+          cause
+        })
+    )
+  )
 
 const removePath = (path: string): Effect.Effect<void, DocsGateFileError, never> =>
-  Effect.tryPromise({
-    try: () => rm(path, { recursive: true, force: true }),
-    catch: (cause) =>
-      new DocsGateFileError({
-        operation: "rm",
-        path,
-        message: `failed to remove ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      yield* fs.remove(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new DocsGateFileError({
+          operation: "rm",
+          path,
+          message: `failed to remove ${path}`,
+          cause
+        })
+    )
+  )
 
 const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
   typeof value === "object" && value !== null

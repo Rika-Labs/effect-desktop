@@ -5,12 +5,16 @@ import {
   sign as cryptoSign,
   verify as cryptoVerify
 } from "node:crypto"
-import { lstat, readdir, readFile, stat, writeFile } from "node:fs/promises"
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import { Data, Effect } from "effect"
 
+import {
+  ReleaseFileSystem,
+  runReleaseFileSystem,
+  type ReleaseFileInfo
+} from "./release-file-system.js"
 import { decodeDesktopTarget, desktopPlatformDirectory, isDesktopArtifactKind } from "./targets.js"
 import type { DesktopArtifactKind, DesktopTargetId } from "./targets.js"
 
@@ -1056,52 +1060,78 @@ const loadConfig = (path: string): Effect.Effect<unknown, PublishConfigError, ne
   })
 
 const readJson = <A>(path: string): Effect.Effect<A, PublishFileError, never> =>
-  Effect.tryPromise({
-    try: async () => JSON.parse(await readFile(path, "utf8")) as A,
-    catch: (cause) =>
-      new PublishFileError({
-        operation: "read-json",
-        path,
-        message: `failed to read JSON ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      const content = yield* fs.readFileString(path)
+      return JSON.parse(content) as A
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PublishFileError({
+          operation: "read-json",
+          path,
+          message: `failed to read JSON ${path}`,
+          cause
+        })
+    )
+  )
 
 const writeJson = (path: string, value: unknown): Effect.Effect<void, PublishFileError, never> =>
-  Effect.tryPromise({
-    try: () => writeFile(path, `${JSON.stringify(value, null, 2)}\n`),
-    catch: (cause) =>
-      new PublishFileError({
-        operation: "write",
-        path,
-        message: `failed to write ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      yield* fs.writeFileString(path, `${JSON.stringify(value, null, 2)}\n`)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PublishFileError({
+          operation: "write",
+          path,
+          message: `failed to write ${path}`,
+          cause
+        })
+    )
+  )
 
 const readBytes = (path: string): Effect.Effect<Buffer, PublishFileError, never> =>
-  Effect.tryPromise({
-    try: () => readFile(path),
-    catch: (cause) =>
-      new PublishFileError({
-        operation: "read",
-        path,
-        message: `failed to read ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      const bytes = yield* fs.readFile(path)
+      return Buffer.from(bytes)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PublishFileError({
+          operation: "read",
+          path,
+          message: `failed to read ${path}`,
+          cause
+        })
+    )
+  )
 
 const readDirectory = (path: string): Effect.Effect<readonly string[], PublishFileError, never> =>
-  Effect.tryPromise({
-    try: () => readdir(path),
-    catch: (cause) =>
-      new PublishFileError({
-        operation: "readdir",
-        path,
-        message: `failed to read ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.readDirectory(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PublishFileError({
+          operation: "readdir",
+          path,
+          message: `failed to read ${path}`,
+          cause
+        })
+    )
+  )
 
 type DirectoryEntryKind = "directory" | "file"
 
@@ -1158,33 +1188,41 @@ const walkDirectoryEntries = (
     return files
   })
 
-const statPath = (
-  path: string
-): Effect.Effect<Awaited<ReturnType<typeof stat>>, PublishFileError, never> =>
-  Effect.tryPromise({
-    try: () => stat(path),
-    catch: (cause) =>
-      new PublishFileError({
-        operation: "stat",
-        path,
-        message: `failed to stat ${path}`,
-        cause
-      })
-  })
+const statPath = (path: string): Effect.Effect<ReleaseFileInfo, PublishFileError, never> =>
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.stat(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PublishFileError({
+          operation: "stat",
+          path,
+          message: `failed to stat ${path}`,
+          cause
+        })
+    )
+  )
 
-const lstatPath = (
-  path: string
-): Effect.Effect<Awaited<ReturnType<typeof lstat>>, PublishFileError, never> =>
-  Effect.tryPromise({
-    try: () => lstat(path),
-    catch: (cause) =>
-      new PublishFileError({
-        operation: "lstat",
-        path,
-        message: `failed to lstat ${path}`,
-        cause
-      })
-  })
+const lstatPath = (path: string): Effect.Effect<ReleaseFileInfo, PublishFileError, never> =>
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.lstat(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PublishFileError({
+          operation: "lstat",
+          path,
+          message: `failed to lstat ${path}`,
+          cause
+        })
+    )
+  )
 
 const resolvePath = (cwd: string, path: string): string =>
   isAbsolute(path) ? path : resolve(cwd, path)

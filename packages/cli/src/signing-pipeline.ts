@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto"
-import { lstat, mkdir, readdir, readFile, readlink, stat, writeFile } from "node:fs/promises"
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { pathToFileURL } from "node:url"
 
@@ -8,6 +7,11 @@ import { Data, Effect } from "effect"
 import { makeSecretString, unsafeSecretString } from "@effect-desktop/bridge"
 import { decodeDesktopConfig } from "@effect-desktop/config"
 
+import {
+  ReleaseFileSystem,
+  runReleaseFileSystem,
+  type ReleaseFileInfo
+} from "./release-file-system.js"
 import { runReleaseTool } from "./release-tool-runner.js"
 import {
   decodeDesktopTarget,
@@ -1241,16 +1245,23 @@ const resolveHostTarget = (
   )
 
 const readJson = <A>(path: string): Effect.Effect<A, SignFileError, never> =>
-  Effect.tryPromise({
-    try: async () => JSON.parse(await readFile(path, "utf8")) as A,
-    catch: (cause) =>
-      new SignFileError({
-        operation: "read-json",
-        path,
-        message: `failed to read JSON ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      const content = yield* fs.readFileString(path)
+      return JSON.parse(content) as A
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new SignFileError({
+          operation: "read-json",
+          path,
+          message: `failed to read JSON ${path}`,
+          cause
+        })
+    )
+  )
 
 const writeJson = (path: string, value: unknown): Effect.Effect<void, SignFileError, never> =>
   writeFileEffect(path, `${JSON.stringify(value, null, 2)}\n`)
@@ -1261,67 +1272,96 @@ const writeFileEffect = (
 ): Effect.Effect<void, SignFileError, never> =>
   Effect.gen(function* () {
     yield* makeDirectory(dirname(path))
-    yield* Effect.tryPromise({
-      try: () => writeFile(path, content),
-      catch: (cause) =>
-        new SignFileError({
-          operation: "write",
-          path,
-          message: `failed to write ${path}`,
-          cause
-        })
-    })
+    yield* runReleaseFileSystem(
+      Effect.gen(function* () {
+        const fs = yield* ReleaseFileSystem
+        yield* fs.writeFileString(path, content)
+      })
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new SignFileError({
+            operation: "write",
+            path,
+            message: `failed to write ${path}`,
+            cause
+          })
+      )
+    )
   })
 
 const makeDirectory = (path: string): Effect.Effect<void, SignFileError, never> =>
-  Effect.tryPromise({
-    try: () => mkdir(path, { recursive: true }),
-    catch: (cause) =>
-      new SignFileError({
-        operation: "mkdir",
-        path,
-        message: `failed to create ${path}`,
-        cause
-      })
-  }).pipe(Effect.asVoid)
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      yield* fs.makeDirectory(path)
+    })
+  ).pipe(
+    Effect.asVoid,
+    Effect.mapError(
+      (cause) =>
+        new SignFileError({
+          operation: "mkdir",
+          path,
+          message: `failed to create ${path}`,
+          cause
+        })
+    )
+  )
 
 const readDirectory = (path: string): Effect.Effect<readonly string[], SignFileError, never> =>
-  Effect.tryPromise({
-    try: () => readdir(path),
-    catch: (cause) =>
-      new SignFileError({
-        operation: "readdir",
-        path,
-        message: `failed to read ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.readDirectory(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new SignFileError({
+          operation: "readdir",
+          path,
+          message: `failed to read ${path}`,
+          cause
+        })
+    )
+  )
 
-const readBytes = (path: string): Effect.Effect<Buffer, SignFileError, never> =>
-  Effect.tryPromise({
-    try: () => readFile(path),
-    catch: (cause) =>
-      new SignFileError({
-        operation: "read",
-        path,
-        message: `failed to read ${path}`,
-        cause
-      })
-  })
+const readBytes = (path: string): Effect.Effect<Uint8Array, SignFileError, never> =>
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.readFile(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new SignFileError({
+          operation: "read",
+          path,
+          message: `failed to read ${path}`,
+          cause
+        })
+    )
+  )
 
-const statPath = (
-  path: string
-): Effect.Effect<Awaited<ReturnType<typeof stat>>, SignFileError, never> =>
-  Effect.tryPromise({
-    try: () => stat(path),
-    catch: (cause) =>
-      new SignFileError({
-        operation: "stat",
-        path,
-        message: `failed to stat ${path}`,
-        cause
-      })
-  })
+const statPath = (path: string): Effect.Effect<ReleaseFileInfo, SignFileError, never> =>
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.stat(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new SignFileError({
+          operation: "stat",
+          path,
+          message: `failed to stat ${path}`,
+          cause
+        })
+    )
+  )
 
 const listFiles = (path: string): Effect.Effect<readonly string[], SignFileError, never> =>
   Effect.gen(function* () {
@@ -1433,31 +1473,41 @@ const walkDigestEntries = (
     return files
   })
 
-const lstatPath = (
-  path: string
-): Effect.Effect<Awaited<ReturnType<typeof lstat>>, SignFileError, never> =>
-  Effect.tryPromise({
-    try: () => lstat(path),
-    catch: (cause) =>
-      new SignFileError({
-        operation: "lstat",
-        path,
-        message: `failed to lstat ${path}`,
-        cause
-      })
-  })
+const lstatPath = (path: string): Effect.Effect<ReleaseFileInfo, SignFileError, never> =>
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.lstat(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new SignFileError({
+          operation: "lstat",
+          path,
+          message: `failed to lstat ${path}`,
+          cause
+        })
+    )
+  )
 
 const readlinkPath = (path: string): Effect.Effect<string, SignFileError, never> =>
-  Effect.tryPromise({
-    try: () => readlink(path),
-    catch: (cause) =>
-      new SignFileError({
-        operation: "readlink",
-        path,
-        message: `failed to read symlink ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.readLink(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new SignFileError({
+          operation: "readlink",
+          path,
+          message: `failed to read symlink ${path}`,
+          cause
+        })
+    )
+  )
 
 const isSignableArtifact = (artifact: PackagedArtifact): boolean =>
   artifact.kind === "app" ||

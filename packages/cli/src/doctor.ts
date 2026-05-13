@@ -1,9 +1,9 @@
-import { access, readFile } from "node:fs/promises"
 import { isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import { Data, Effect } from "effect"
 
+import { ReleaseFileSystem, runReleaseFileSystem } from "./release-file-system.js"
 import { runReleaseTool } from "./release-tool-runner.js"
 
 export class DoctorMissing extends Data.TaggedError("DoctorMissing")<{
@@ -691,25 +691,22 @@ const readPinnedBunVersion = (cwd: string): Effect.Effect<string, never, never> 
 const readPackageJson = (
   cwd: string
 ): Effect.Effect<{ readonly packageManager?: unknown } | undefined, never, never> =>
-  Effect.promise(async () => {
-    try {
-      return JSON.parse(await readFile(join(cwd, "package.json"), "utf8")) as {
-        readonly packageManager?: unknown
-      }
-    } catch {
-      return undefined
-    }
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      const content = yield* fs.readFileString(join(cwd, "package.json"))
+      return JSON.parse(content) as { readonly packageManager?: unknown }
+    })
+  ).pipe(Effect.catch(() => Effect.succeed(undefined)))
 
 const pathExists = (path: string): Effect.Effect<boolean, never, never> =>
-  Effect.promise(async () => {
-    try {
-      await access(path)
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      yield* fs.access(path)
       return true
-    } catch {
-      return false
-    }
-  })
+    })
+  ).pipe(Effect.catch(() => Effect.succeed(false)))
 
 const compareVersions = (actual: string, floor: string): number => {
   const actualParts = parseVersion(actual)

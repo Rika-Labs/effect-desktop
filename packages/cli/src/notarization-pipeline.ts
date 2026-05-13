@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto"
-import { lstat, mkdir, readdir, readFile, readlink, stat, writeFile } from "node:fs/promises"
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
@@ -7,6 +6,11 @@ import { Data, Effect } from "effect"
 
 import { makeSecretString, unsafeSecretString } from "@effect-desktop/bridge"
 
+import {
+  ReleaseFileSystem,
+  runReleaseFileSystem,
+  type ReleaseFileInfo
+} from "./release-file-system.js"
 import { runReleaseTool } from "./release-tool-runner.js"
 import {
   decodeDesktopTarget,
@@ -898,16 +902,23 @@ const resolveHostTarget = (
   )
 
 const readJson = <A>(path: string): Effect.Effect<A, NotarizeFileError, never> =>
-  Effect.tryPromise({
-    try: async () => JSON.parse(await readFile(path, "utf8")) as A,
-    catch: (cause) =>
-      new NotarizeFileError({
-        operation: "read-json",
-        path,
-        message: `failed to read JSON ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      const content = yield* fs.readFileString(path)
+      return JSON.parse(content) as A
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new NotarizeFileError({
+          operation: "read-json",
+          path,
+          message: `failed to read JSON ${path}`,
+          cause
+        })
+    )
+  )
 
 const writeJson = (path: string, value: unknown): Effect.Effect<void, NotarizeFileError, never> =>
   writeFileEffect(path, `${JSON.stringify(value, null, 2)}\n`)
@@ -918,67 +929,96 @@ const writeFileEffect = (
 ): Effect.Effect<void, NotarizeFileError, never> =>
   Effect.gen(function* () {
     yield* makeDirectory(dirname(path))
-    yield* Effect.tryPromise({
-      try: () => writeFile(path, content),
-      catch: (cause) =>
-        new NotarizeFileError({
-          operation: "write",
-          path,
-          message: `failed to write ${path}`,
-          cause
-        })
-    })
+    yield* runReleaseFileSystem(
+      Effect.gen(function* () {
+        const fs = yield* ReleaseFileSystem
+        yield* fs.writeFileString(path, content)
+      })
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new NotarizeFileError({
+            operation: "write",
+            path,
+            message: `failed to write ${path}`,
+            cause
+          })
+      )
+    )
   })
 
 const makeDirectory = (path: string): Effect.Effect<void, NotarizeFileError, never> =>
-  Effect.tryPromise({
-    try: () => mkdir(path, { recursive: true }),
-    catch: (cause) =>
-      new NotarizeFileError({
-        operation: "mkdir",
-        path,
-        message: `failed to create ${path}`,
-        cause
-      })
-  }).pipe(Effect.asVoid)
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      yield* fs.makeDirectory(path)
+    })
+  ).pipe(
+    Effect.asVoid,
+    Effect.mapError(
+      (cause) =>
+        new NotarizeFileError({
+          operation: "mkdir",
+          path,
+          message: `failed to create ${path}`,
+          cause
+        })
+    )
+  )
 
 const readDirectory = (path: string): Effect.Effect<readonly string[], NotarizeFileError, never> =>
-  Effect.tryPromise({
-    try: () => readdir(path),
-    catch: (cause) =>
-      new NotarizeFileError({
-        operation: "readdir",
-        path,
-        message: `failed to read ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.readDirectory(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new NotarizeFileError({
+          operation: "readdir",
+          path,
+          message: `failed to read ${path}`,
+          cause
+        })
+    )
+  )
 
-const readBytes = (path: string): Effect.Effect<Buffer, NotarizeFileError, never> =>
-  Effect.tryPromise({
-    try: () => readFile(path),
-    catch: (cause) =>
-      new NotarizeFileError({
-        operation: "read",
-        path,
-        message: `failed to read ${path}`,
-        cause
-      })
-  })
+const readBytes = (path: string): Effect.Effect<Uint8Array, NotarizeFileError, never> =>
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.readFile(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new NotarizeFileError({
+          operation: "read",
+          path,
+          message: `failed to read ${path}`,
+          cause
+        })
+    )
+  )
 
-const statPath = (
-  path: string
-): Effect.Effect<Awaited<ReturnType<typeof stat>>, NotarizeFileError, never> =>
-  Effect.tryPromise({
-    try: () => stat(path),
-    catch: (cause) =>
-      new NotarizeFileError({
-        operation: "stat",
-        path,
-        message: `failed to stat ${path}`,
-        cause
-      })
-  })
+const statPath = (path: string): Effect.Effect<ReleaseFileInfo, NotarizeFileError, never> =>
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.stat(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new NotarizeFileError({
+          operation: "stat",
+          path,
+          message: `failed to stat ${path}`,
+          cause
+        })
+    )
+  )
 
 const digestPath = (
   path: string
@@ -1078,31 +1118,41 @@ const walkDigestEntries = (
     return files
   })
 
-const lstatPath = (
-  path: string
-): Effect.Effect<Awaited<ReturnType<typeof lstat>>, NotarizeFileError, never> =>
-  Effect.tryPromise({
-    try: () => lstat(path),
-    catch: (cause) =>
-      new NotarizeFileError({
-        operation: "lstat",
-        path,
-        message: `failed to lstat ${path}`,
-        cause
-      })
-  })
+const lstatPath = (path: string): Effect.Effect<ReleaseFileInfo, NotarizeFileError, never> =>
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.lstat(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new NotarizeFileError({
+          operation: "lstat",
+          path,
+          message: `failed to lstat ${path}`,
+          cause
+        })
+    )
+  )
 
 const readlinkPath = (path: string): Effect.Effect<string, NotarizeFileError, never> =>
-  Effect.tryPromise({
-    try: () => readlink(path),
-    catch: (cause) =>
-      new NotarizeFileError({
-        operation: "readlink",
-        path,
-        message: `failed to read symlink ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.readLink(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new NotarizeFileError({
+          operation: "readlink",
+          path,
+          message: `failed to read symlink ${path}`,
+          cause
+        })
+    )
+  )
 
 const resolvePath = (cwd: string, path: string): string =>
   isAbsolute(path) ? path : resolve(cwd, path)
