@@ -1,6 +1,8 @@
 import { Effect, Exit, Schema } from "effect"
 import { DurableClock, DurableDeferred, Workflow, WorkflowEngine } from "effect/unstable/workflow"
 
+import { makeSecretString } from "@effect-desktop/bridge"
+
 import { approvalAuditEvent, emitAuditEvent, type AuditEventsApi } from "./audit-events.js"
 import {
   NormalizedCapability,
@@ -139,7 +141,7 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
           outcome: "granted",
           actor,
           ...(payload.resource === undefined ? {} : { resource: payload.resource }),
-          details: { token: grant.token, grantedAt, expiresAt }
+          details: { token: grantAuditToken(grant.token), grantedAt, expiresAt }
         })
       ).pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "audit", cause)))
 
@@ -162,7 +164,7 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
             outcome: "expired",
             actor,
             ...(payload.resource === undefined ? {} : { resource: payload.resource }),
-            details: { token: grant.token, expiredAt: expiresAt }
+            details: { token: grantAuditToken(grant.token), expiredAt: expiresAt }
           })
         ).pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "audit", cause)))
       }
@@ -176,6 +178,9 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
     })
   )
 }
+
+const grantAuditToken = (token: string) =>
+  makeSecretString(token, { label: "PermissionGrantToken" })
 
 const approvalFailed = (
   traceId: string,

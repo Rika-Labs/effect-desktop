@@ -3853,7 +3853,7 @@ test("desktop sign resolves Windows PFX password env without recording the secre
 
     expect(exitCode).toBe(0)
     expect(signArgs).toContain("secret-password")
-    expect(report).toContain("<redacted>")
+    expect(report).toContain("<redacted:WindowsPfxPassword>")
     expect(report).not.toContain("secret-password")
   } finally {
     if (previousPassword === undefined) {
@@ -4652,7 +4652,7 @@ test("desktop notarize redacts Apple ID password credentials in the persisted re
     expect(exitCode).toBe(0)
     expect(calls.join("\n")).toContain("--password real-app-specific-password")
     expect(submitStep?.command).toContain("--password")
-    expect(submitStep?.command).toContain("<redacted>")
+    expect(submitStep?.command).toContain("<redacted:AppleNotaryPassword>")
     expect(submitStep?.command).not.toContain("real-app-specific-password")
   } finally {
     if (previousPassword === undefined) {

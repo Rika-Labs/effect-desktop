@@ -764,6 +764,11 @@
       "signature": "const makeSecretBytesFromUtf8: (value: string) => SecretBytes"
     },
     {
+      "name": "makeSecretString",
+      "kind": "value",
+      "signature": "const makeSecretString: (value: string, options?: { readonly label?: string; }) => SecretString"
+    },
+    {
       "name": "makeStaleHandleError",
       "kind": "value",
       "signature": "const makeStaleHandleError: (operation: string, handle: ResourceHandleLike, actualGeneration: number) => HostProtocolStaleHandleError"
@@ -1004,6 +1009,11 @@
       "signature": "export type SecretBytes = Redacted.Redacted<Uint8Array>"
     },
     {
+      "name": "SecretString",
+      "kind": "type",
+      "signature": "export type SecretString = Redacted.Redacted<string>"
+    },
+    {
       "name": "Streams",
       "kind": "value",
       "signature": "const Streams: { scoped: <Layers extends readonly AnyBridgeHandlerLayer[]>(...layers: Layers) => Effect.Effect<BridgeStreamRuntime<BridgeStreamLayerEnvironment<Layers[number]>>, never, Scope.Scope>; scopedWithOptions: <Layers extends readonly AnyBridgeHandlerLayer[]>(options: BridgeStreamRuntimeOptions, ...layers: Layers) => Effect.Effect<BridgeStreamRuntime<BridgeStreamLayerEnvironment<Layers[number]>>, never, Scope.Scope>; }"
@@ -1017,6 +1027,11 @@
       "name": "unsafeSecretBytes",
       "kind": "value",
       "signature": "const unsafeSecretBytes: (secret: SecretBytes) => Uint8Array"
+    },
+    {
+      "name": "unsafeSecretString",
+      "kind": "value",
+      "signature": "const unsafeSecretString: (secret: SecretString) => string"
     },
     {
       "name": "validateHostProtocolNonEmptyString",

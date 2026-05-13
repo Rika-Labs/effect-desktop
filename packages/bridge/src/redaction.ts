@@ -1,6 +1,7 @@
 import { Effect, Redacted } from "effect"
 
 export type SecretBytes = Redacted.Redacted<Uint8Array>
+export type SecretString = Redacted.Redacted<string>
 
 const RedactedValue = Redacted.make("redacted", { label: "redacted" })
 const DefaultSecretPattern =
@@ -85,6 +86,13 @@ export const makeSecretBytesFromUtf8 = (value: string): SecretBytes =>
 
 export const unsafeSecretBytes = (secret: SecretBytes): Uint8Array =>
   new Uint8Array(Redacted.value(secret))
+
+export const makeSecretString = (
+  value: string,
+  options: { readonly label?: string } = {}
+): SecretString => Redacted.make(value, { label: options.label ?? "SecretString" })
+
+export const unsafeSecretString = (secret: SecretString): string => Redacted.value(secret)
 
 export const wipeSecretBytes = (secret: SecretBytes): Effect.Effect<void, never, never> =>
   Effect.sync(() => {

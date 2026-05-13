@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto"
 
 import { Context, Data, Deferred, Effect, Option, PubSub, Ref, Schema, Stream } from "effect"
 
+import { makeSecretString } from "@effect-desktop/bridge"
+
 import { emitAuditEvent, permissionAuditEvent, type AuditEventsApi } from "./audit-events.js"
 import {
   ActorKind as ActorKindSchema,
@@ -327,7 +329,7 @@ export const makePermissionRegistry = (
           )
         }).pipe(
           Effect.withSpan("PermissionRegistry.use", {
-            attributes: { token: grant.token, kind: grant.capability.kind }
+            attributes: { token: String(grantAuditToken(grant.token)), kind: grant.capability.kind }
           })
         ),
       listDecisions: () => Ref.get(decisionRows),
@@ -727,7 +729,7 @@ const auditLifecycle = (
       timestamp: tracked.updatedAt,
       details: {
         transition,
-        token: tracked.grant.token,
+        token: grantAuditToken(tracked.grant.token),
         grantedAt: tracked.grant.grantedAt,
         ...(tracked.grant.expiresAt === undefined ? {} : { expiresAt: tracked.grant.expiresAt }),
         ...(tracked.grant.oneTime === undefined ? {} : { oneTime: tracked.grant.oneTime })
@@ -751,6 +753,9 @@ const auditLifecycle = (
         })
     )
   )
+
+const grantAuditToken = (token: string) =>
+  makeSecretString(token, { label: "PermissionGrantToken" })
 
 const lifecycleTransition = (
   status: Exclude<GrantStatus, "active">

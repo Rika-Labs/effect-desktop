@@ -50,9 +50,8 @@ test("PermissionApproval workflow grants when user approves", async () => {
           Effect.provide(layer)
         )
       )
-      yield* Effect.sleep("10 millis")
-      expect(capturedToken).toBeDefined()
-      yield* resolveApprovalDeferred(capturedToken!, true)
+      const token = yield* waitForToken(() => capturedToken)
+      yield* resolveApprovalDeferred(token, true)
       return yield* Fiber.join(fiber)
     }).pipe(provideEngine)
   )
@@ -65,6 +64,8 @@ test("PermissionApproval workflow grants when user approves", async () => {
   expect(auditRows.map((row) => row.kind)).toContain("approval-granted")
   expect(auditRows[0]?.actor).toMatchObject(actor)
   expect(JSON.stringify(auditRows[0]?.actor)).toBe(JSON.stringify(actor))
+  expect(JSON.stringify(auditRows)).not.toContain(result.token)
+  expect(JSON.stringify(auditRows)).toContain("<redacted:PermissionGrantToken>")
 })
 
 test("PermissionApproval workflow fails with PermissionDenied when user denies", async () => {
@@ -96,9 +97,8 @@ test("PermissionApproval workflow fails with PermissionDenied when user denies",
           Effect.provide(layer)
         )
       )
-      yield* Effect.sleep("10 millis")
-      expect(capturedToken).toBeDefined()
-      yield* resolveApprovalDeferred(capturedToken!, false)
+      const token = yield* waitForToken(() => capturedToken)
+      yield* resolveApprovalDeferred(token, false)
       return yield* Effect.exit(Fiber.join(fiber))
     }).pipe(provideEngine)
   )
@@ -119,6 +119,19 @@ const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
       rows.push(event)
     })
 })
+
+const waitForToken = (read: () => string | undefined): Effect.Effect<string, never, never> =>
+  Effect.gen(function* () {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const token = read()
+      if (token !== undefined) {
+        return token
+      }
+      yield* Effect.sleep("1 millis")
+    }
+    expect(read()).toBeDefined()
+    return read()!
+  })
 
 test("resolveApprovalDeferred constructs an Effect for the branded token", () => {
   const effect = resolveApprovalDeferred("workflow-token-example", true)
@@ -154,8 +167,8 @@ test("PermissionApproval workflow records a grant with ttl when ttlMs provided",
           Effect.provide(layer)
         )
       )
-      yield* Effect.sleep("10 millis")
-      yield* resolveApprovalDeferred(capturedToken!, true)
+      const token = yield* waitForToken(() => capturedToken)
+      yield* resolveApprovalDeferred(token, true)
       return yield* Fiber.join(fiber)
     }).pipe(provideEngine)
   )

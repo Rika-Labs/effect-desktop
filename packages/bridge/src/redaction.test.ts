@@ -3,9 +3,11 @@ import { expect, test } from "bun:test"
 import {
   RedactionFilter,
   makeSecretBytesFromUtf8,
+  makeSecretString,
   redact,
   redactForJson,
-  redactForJsonWithEvidence
+  redactForJsonWithEvidence,
+  unsafeSecretString
 } from "./redaction.js"
 
 const redacted = RedactionFilter.redactedValue
@@ -134,6 +136,14 @@ test("redact preserves existing Effect redacted values", () => {
   expect(output).toBe(input)
   expect(output.payload).toBe(secret)
   expect(JSON.stringify(output)).not.toContain("refresh-token")
+})
+
+test("SecretString hides credential display while retaining explicit unsafe access", () => {
+  const secret = makeSecretString("real-password", { label: "Credential" })
+
+  expect(String(secret)).toBe("<redacted:Credential>")
+  expect(JSON.stringify(secret)).toBe('"<redacted:Credential>"')
+  expect(unsafeSecretString(secret)).toBe("real-password")
 })
 
 test("redactForJson materializes Effect redacted values to JSON-safe strings", () => {

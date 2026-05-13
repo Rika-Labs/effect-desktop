@@ -5,6 +5,8 @@ import { pathToFileURL } from "node:url"
 
 import { Data, Effect } from "effect"
 
+import { makeSecretString, unsafeSecretString } from "@effect-desktop/bridge"
+
 import {
   decodeDesktopTarget,
   detectDesktopHostTarget,
@@ -366,7 +368,15 @@ const runToolStep = (
 > =>
   Effect.gen(function* () {
     const start = options.now()
-    const output = yield* options.commandRunner({ step: name, command, args, cwd })
+    const output = yield* options
+      .commandRunner({ step: name, command, args, cwd })
+      .pipe(
+        Effect.mapError((error) =>
+          error instanceof NotarizeCommandFailedError
+            ? new NotarizeCommandFailedError({ ...error, command: [command, ...reportArgs] })
+            : error
+        )
+      )
     const step = {
       name,
       command: [command, ...reportArgs],
@@ -489,9 +499,24 @@ const resolveCredentials = (
       password !== undefined &&
       password.length > 0
     ) {
+      const passwordSecret = makeSecretString(password, { label: "AppleNotaryPassword" })
       return {
-        args: ["--apple-id", appleId, "--team-id", teamId, "--password", password],
-        reportArgs: ["--apple-id", appleId, "--team-id", teamId, "--password", "<redacted>"]
+        args: [
+          "--apple-id",
+          appleId,
+          "--team-id",
+          teamId,
+          "--password",
+          unsafeSecretString(passwordSecret)
+        ],
+        reportArgs: [
+          "--apple-id",
+          appleId,
+          "--team-id",
+          teamId,
+          "--password",
+          String(passwordSecret)
+        ]
       }
     }
     return yield* Effect.fail(

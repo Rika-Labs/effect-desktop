@@ -559,6 +559,8 @@ test("PermissionRegistry expires grants as typed revocation values and audits th
     "permission-granted",
     "permission-expired"
   ])
+  expect(JSON.stringify(rows)).not.toContain("grant-1")
+  expect(JSON.stringify(rows)).toContain("<redacted:PermissionGrantToken>")
 })
 
 test("PermissionRegistry consumes one-time grants after the first use", async () => {
