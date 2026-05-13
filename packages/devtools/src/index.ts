@@ -24,6 +24,8 @@ export * from "./snapshot-client.js"
 export * from "./inspector-events.js"
 export * from "./testing.js"
 export * from "./lifecycle-collectors.js"
+export * from "./inspector-views.js"
+export * from "./embedded-inspector-panel.js"
 
 export interface CommandsDevtoolsApi {
   readonly list: () => Effect.Effect<readonly CommandSnapshot[], never, never>

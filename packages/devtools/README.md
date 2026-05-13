@@ -13,9 +13,9 @@ Runtime inspector projections for framework primitives: windows, bridge calls, s
 - `list()` returns registered commands with capability, owner scope, invocation count, last invocation, and last error.
 - `observeInvocations()` streams command invocation telemetry as it happens.
 
-`WorkersJobsDevtools` is a read-only Effect service over `Worker` and `Job`:
+`WorkersDevtools` is a read-only Effect service over `Worker`:
 
-- `list()` returns one redacted snapshot containing live worker rows and live job rows.
+- `list()` returns one redacted snapshot containing live worker rows.
 - `observe()` emits an initial redacted snapshot and refreshes at the devtools frame interval.
 
 `LiveRuntimePanels` is a read-only Effect service over runtime-owned sources:
@@ -35,6 +35,12 @@ Runtime inspector projections for framework primitives: windows, bridge calls, s
 - `list()` returns startup phase rows, bridge p99 rows by contract tag, and the renderer frame row.
 - Each row includes the current p99 value, budget, ratio, status, and bounded samples for a sparkline.
 - Budgets follow `docs/SPEC.md` §21.2/§21.6; the overlay only projects metrics and does not record its own measurements.
+
+`EmbeddedInspectorPanel` mounts the shared Inspector projections inside a development app:
+
+- `DesktopObservability.layer({ mode: "embedded-devtools", profile: "development" })` exposes the panel service for framework adapters.
+- Production profile returns a disabled panel even when embedded mode is requested.
+- The enabled panel reads through `DevtoolsSnapshotClient`, so embedded and standalone Inspector surfaces consume the same snapshot contract.
 
 `DevtoolsShell` owns the devtools listener lifecycle:
 

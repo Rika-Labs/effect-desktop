@@ -84,6 +84,11 @@
       "signature": "const decodeUnknownInspectorEvent: (input: unknown, options?: import(\"effect/SchemaAST\").ParseOptions) => Effect.Effect<InspectorEvent, Schema.SchemaError, never>"
     },
     {
+      "name": "DesktopObservability",
+      "kind": "value",
+      "signature": "export namespace DesktopObservability { export interface LayerOptions extends EmbeddedInspectorPanelOptions {} export const layer = ( options: LayerOptions = {} ): Layer.Layer<EmbeddedInspectorPanel, never, DevtoolsSnapshotClient | InspectorSafetyPolicy> => EmbeddedInspectorPanelLive(options) }"
+    },
+    {
       "name": "DevtoolsBindError",
       "kind": "class",
       "signature": "export class DevtoolsBindError extends Data.TaggedError(\"BindError\")<{ readonly operation: string readonly host: string readonly cause: unknown }> {}"
@@ -219,6 +224,56 @@
       "signature": "export interface DiagnosticsPanelsSnapshot { readonly logs: readonly TelemetryLogRecord[] readonly traces: readonly TraceGroup[] readonly metrics: readonly TelemetryMetricSnapshot[] readonly safety: InspectorSafetySummary }"
     },
     {
+      "name": "embeddedInspectorGate",
+      "kind": "value",
+      "signature": "const embeddedInspectorGate: (input: EmbeddedInspectorGateInput) => EmbeddedInspectorGateDecision"
+    },
+    {
+      "name": "EmbeddedInspectorGateDecision",
+      "kind": "type",
+      "signature": "export type EmbeddedInspectorGateDecision = | { readonly enabled: true readonly reason: \"enabled\" } | { readonly enabled: false readonly reason: \"disabled\" | \"production-disabled\" }"
+    },
+    {
+      "name": "EmbeddedInspectorGateInput",
+      "kind": "interface",
+      "signature": "export interface EmbeddedInspectorGateInput { readonly mode: EmbeddedInspectorMode readonly profile: EmbeddedInspectorProfile }"
+    },
+    {
+      "name": "EmbeddedInspectorMode",
+      "kind": "type",
+      "signature": "export type EmbeddedInspectorMode = \"disabled\" | \"embedded-devtools\""
+    },
+    {
+      "name": "EmbeddedInspectorPanel",
+      "kind": "class",
+      "signature": "export class EmbeddedInspectorPanel extends Context.Service< EmbeddedInspectorPanel, EmbeddedInspectorPanelApi >()(\"@effect-desktop/devtools/EmbeddedInspectorPanel\") {}"
+    },
+    {
+      "name": "EmbeddedInspectorPanelApi",
+      "kind": "interface",
+      "signature": "export interface EmbeddedInspectorPanelApi { readonly list: () => Effect.Effect< EmbeddedInspectorPanelSnapshot, EventLogPanelError | DevtoolsSnapshotSafetyError, never > readonly observe: () => Stream.Stream< EmbeddedInspectorPanelSnapshot, EventLogPanelError | DevtoolsSnapshotSafetyError, never > }"
+    },
+    {
+      "name": "EmbeddedInspectorPanelLive",
+      "kind": "value",
+      "signature": "const EmbeddedInspectorPanelLive: (options?: EmbeddedInspectorPanelOptions) => Layer.Layer<EmbeddedInspectorPanel, never, DevtoolsSnapshotClient | InspectorSafetyPolicy>"
+    },
+    {
+      "name": "EmbeddedInspectorPanelOptions",
+      "kind": "interface",
+      "signature": "export interface EmbeddedInspectorPanelOptions { readonly mode?: EmbeddedInspectorMode readonly profile?: EmbeddedInspectorProfile readonly frameInterval?: `${number} millis` readonly snapshotClient?: DevtoolsSnapshotClientApi readonly inspectorSafety?: InspectorSafetyPolicyApi }"
+    },
+    {
+      "name": "EmbeddedInspectorPanelSnapshot",
+      "kind": "interface",
+      "signature": "export interface EmbeddedInspectorPanelSnapshot { readonly enabled: boolean readonly reason: \"disabled\" | \"production-disabled\" | \"enabled\" readonly views: Option.Option<InspectorViewsSnapshot> readonly safety: InspectorSafetySummary }"
+    },
+    {
+      "name": "EmbeddedInspectorProfile",
+      "kind": "type",
+      "signature": "export type EmbeddedInspectorProfile = \"development\" | \"production\""
+    },
+    {
       "name": "emptyDiagnosticsPanelsSnapshot",
       "kind": "value",
       "signature": "const emptyDiagnosticsPanelsSnapshot: Readonly<{ logs: never[]; traces: never[]; metrics: never[]; safety: InspectorSafetySummary; }>"
@@ -344,6 +399,11 @@
       "signature": "export class InspectorNativeHostPayload extends Schema.Class<InspectorNativeHostPayload>( \"InspectorNativeHostPayload\" )({ ...InspectorPayloadBase, tag: Schema.Literal(\"native-host\"), event: NonEmptyString, platform: Schema.optionalKey(Schema.Literals([\"macos\", \"windows\", \"linux\"])), pid: Schema.optionalKey(PositiveInteger) }) {}"
     },
     {
+      "name": "InspectorPanelId",
+      "kind": "type",
+      "signature": "export type InspectorPanelId = | \"live-runtime\" | \"diagnostics\" | \"performance\" | \"event-log\" | \"workflows\" | \"reactivity\" | \"persistence\" | \"logs\""
+    },
+    {
       "name": "InspectorPayload",
       "kind": "type",
       "signature": "const InspectorPayload: Schema.Union<readonly [typeof InspectorSpanPayload, typeof InspectorLogPayload, typeof InspectorMetricPayload, typeof InspectorLayerGraphPayload, typeof InspectorProviderPayload, typeof InspectorRpcPayload, typeof InspectorBridgeFramePayload, typeof InspectorPermissionPayload, typeof InspectorResourcePayload, typeof InspectorFiberPayload, typeof InspectorNativeHostPayload, typeof InspectorRendererPayload, typeof InspectorPersistencePayload, typeof InspectorWorkflowPayload, typeof InspectorFailurePayload]>"
@@ -417,6 +477,16 @@
       "name": "InspectorTestWithPolicy",
       "kind": "value",
       "signature": "const InspectorTestWithPolicy: (options?: Omit<InspectorTestOptions, \"inspectorSafety\">) => Layer.Layer<InspectorTest, InspectorSafetyPolicyInvalidArgumentError, never>"
+    },
+    {
+      "name": "InspectorViewPanel",
+      "kind": "interface",
+      "signature": "export interface InspectorViewPanel<A> { readonly id: InspectorPanelId readonly title: string readonly snapshot: A }"
+    },
+    {
+      "name": "InspectorViewsSnapshot",
+      "kind": "interface",
+      "signature": "export interface InspectorViewsSnapshot { readonly panels: readonly [ InspectorViewPanel<DevtoolsSnapshot[\"liveRuntime\"]>, InspectorViewPanel<DevtoolsSnapshot[\"diagnostics\"]>, InspectorViewPanel<DevtoolsSnapshot[\"performance\"]>, InspectorViewPanel<DevtoolsSnapshot[\"eventLog\"]>, InspectorViewPanel<DevtoolsSnapshot[\"workflows\"]>, InspectorViewPanel<DevtoolsSnapshot[\"reactivity\"]>, InspectorViewPanel<DevtoolsSnapshot[\"persistence\"]>, InspectorViewPanel<DevtoolsSnapshot[\"logs\"]> ] readonly safety: DevtoolsSnapshot[\"safety\"] }"
     },
     {
       "name": "InspectorWorkflowPayload",
@@ -522,6 +592,11 @@
       "name": "makeDiagnosticsPanels",
       "kind": "value",
       "signature": "const makeDiagnosticsPanels: (options?: DiagnosticsPanelsOptions) => Effect.Effect<DiagnosticsPanelsApi, never, Telemetry | InspectorSafetyPolicy>"
+    },
+    {
+      "name": "makeEmbeddedInspectorPanel",
+      "kind": "value",
+      "signature": "const makeEmbeddedInspectorPanel: (options?: EmbeddedInspectorPanelOptions) => Effect.Effect<EmbeddedInspectorPanelApi, never, DevtoolsSnapshotClient | InspectorSafetyPolicy>"
     },
     {
       "name": "makeEventLogPanel",
@@ -817,6 +892,11 @@
       "name": "StreamPanelRow",
       "kind": "interface",
       "signature": "export interface StreamPanelRow { readonly id: string readonly generation: number readonly state: BridgeStreamRegistryEntry[\"state\"] readonly terminal: Option.Option<string> readonly queueDepth: Option.Option<number> readonly queueCapacity: Option.Option<number> readonly overflow: Option.Option<string> }"
+    },
+    {
+      "name": "toInspectorViewsSnapshot",
+      "kind": "value",
+      "signature": "const toInspectorViewsSnapshot: (snapshot: DevtoolsSnapshot) => InspectorViewsSnapshot"
     },
     {
       "name": "TraceGroup",

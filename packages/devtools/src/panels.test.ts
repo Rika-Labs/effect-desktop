@@ -1,10 +1,17 @@
 import { expect, test } from "bun:test"
-import { InspectorSafetyPolicyLive } from "@effect-desktop/core"
+import {
+  emptyInspectorSafetySummary,
+  InspectorSafetyPolicyLive,
+  LayerGraphSnapshot
+} from "@effect-desktop/core"
 import { Cause, Effect, Exit, Layer, Option } from "effect"
 
 import {
   ClusterPanel,
   ClusterPanelLive,
+  DesktopObservability,
+  EmbeddedInspectorPanel,
+  EmbeddedInspectorPanelLive,
   EventLogPanel,
   EventLogPanelLive,
   LogsPanel,
@@ -16,10 +23,14 @@ import {
   ReactivityPanel,
   ReactivityPanelLive,
   ReactivityTracker,
+  DevtoolsSnapshotClient,
   WorkflowExecutionRegistry,
   WorkflowsPanel,
   WorkflowsPanelLive,
-  type WorkflowsPanelSnapshot
+  type DevtoolsSnapshot,
+  type DevtoolsSnapshotClientApi,
+  type WorkflowsPanelSnapshot,
+  embeddedInspectorGate
 } from "./index.js"
 import { EventJournal, EventLog as EventLogNS } from "effect/unstable/eventlog"
 import { KeyValueStore } from "effect/unstable/persistence"
@@ -285,3 +296,214 @@ test("PersistencePanel reports typed key-value store failures", async () => {
   expect(result.kvSize).toEqual(Option.none())
   expect(result.kvError).toEqual(Option.some("size: store unavailable"))
 })
+
+test("EmbeddedInspectorPanel is disabled by default", async () => {
+  let exports = 0
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const panel = yield* EmbeddedInspectorPanel
+      return yield* panel.list()
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          EmbeddedInspectorPanelLive({ snapshotClient: snapshotClient(() => exports++) }),
+          Layer.mergeAll(
+            InspectorSafetyPolicyLive(),
+            Layer.succeed(DevtoolsSnapshotClient)(snapshotClient(() => exports++))
+          )
+        )
+      )
+    )
+  )
+
+  expect(result.enabled).toBe(false)
+  expect(result.reason).toBe("disabled")
+  expect(Option.isNone(result.views)).toBe(true)
+  expect(exports).toBe(0)
+})
+
+test("EmbeddedInspectorPanel rejects embedded devtools in production", async () => {
+  let exports = 0
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const panel = yield* EmbeddedInspectorPanel
+      return yield* panel.list()
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          EmbeddedInspectorPanelLive({
+            mode: "embedded-devtools",
+            profile: "production",
+            snapshotClient: snapshotClient(() => exports++)
+          }),
+          Layer.mergeAll(
+            InspectorSafetyPolicyLive(),
+            Layer.succeed(DevtoolsSnapshotClient)(snapshotClient(() => exports++))
+          )
+        )
+      )
+    )
+  )
+
+  expect(result.enabled).toBe(false)
+  expect(result.reason).toBe("production-disabled")
+  expect(exports).toBe(0)
+})
+
+test("EmbeddedInspectorPanel exposes shared Inspector views from the snapshot client", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const panel = yield* EmbeddedInspectorPanel
+      return yield* panel.list()
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          DesktopObservability.layer({
+            mode: "embedded-devtools",
+            profile: "development",
+            snapshotClient: snapshotClient((count) => count)
+          }),
+          Layer.mergeAll(
+            InspectorSafetyPolicyLive(),
+            Layer.succeed(DevtoolsSnapshotClient)(snapshotClient((count) => count))
+          )
+        )
+      )
+    )
+  )
+
+  expect(result.enabled).toBe(true)
+  expect(result.reason).toBe("enabled")
+  expect(Option.isSome(result.views)).toBe(true)
+  if (Option.isSome(result.views)) {
+    expect(result.views.value.panels.map((panel) => panel.id)).toEqual([
+      "live-runtime",
+      "diagnostics",
+      "performance",
+      "event-log",
+      "workflows",
+      "reactivity",
+      "persistence",
+      "logs"
+    ])
+    expect(result.views.value.panels.find((panel) => panel.id === "event-log")?.snapshot).toEqual({
+      entries: [
+        {
+          event: "test.event",
+          id: "event-1",
+          payloadBytes: 7,
+          primaryKey: "app",
+          timestampMs: 1
+        }
+      ],
+      totalCount: 1
+    })
+  }
+})
+
+test("embeddedInspectorGate is opt-in and development-only", () => {
+  expect(embeddedInspectorGate({ mode: "disabled", profile: "development" })).toEqual({
+    enabled: false,
+    reason: "disabled"
+  })
+  expect(embeddedInspectorGate({ mode: "embedded-devtools", profile: "production" })).toEqual({
+    enabled: false,
+    reason: "production-disabled"
+  })
+  expect(embeddedInspectorGate({ mode: "embedded-devtools", profile: "development" })).toEqual({
+    enabled: true,
+    reason: "enabled"
+  })
+})
+
+const snapshotClient = (mark: (count: number) => number): DevtoolsSnapshotClientApi => {
+  let count = 0
+  return {
+    exportSnapshot: () =>
+      Effect.sync(() => {
+        count += 1
+        mark(count)
+        return devtoolsSnapshot
+      })
+  }
+}
+
+const devtoolsSnapshot: DevtoolsSnapshot = {
+  liveRuntime: {
+    bridgeCalls: [],
+    streams: [],
+    resources: [],
+    permissions: [],
+    processes: [],
+    safety: emptyInspectorSafetySummary
+  },
+  diagnostics: {
+    logs: [],
+    traces: [],
+    metrics: [],
+    safety: emptyInspectorSafetySummary
+  },
+  performance: {
+    startup: [],
+    bridgeP99: [],
+    renderFrame: {
+      id: "renderer.frame",
+      label: "Renderer frame",
+      valueMs: Option.none(),
+      budgetMs: 16.7,
+      ratio: Option.none(),
+      status: "missing",
+      samples: []
+    },
+    safety: emptyInspectorSafetySummary
+  },
+  eventLog: {
+    entries: [
+      {
+        event: "test.event",
+        id: "event-1",
+        payloadBytes: 7,
+        primaryKey: "app",
+        timestampMs: 1
+      }
+    ],
+    totalCount: 1
+  },
+  workflows: {
+    executions: [],
+    runningCount: 0,
+    completedCount: 0,
+    failedCount: 0
+  },
+  reactivity: {
+    invalidations: [],
+    totalInvalidations: 0,
+    uniqueKeys: []
+  },
+  persistence: {
+    kvSize: Option.none(),
+    kvHealthy: true,
+    kvError: Option.none()
+  },
+  logs: {
+    records: [],
+    totalCount: 0,
+    levelFilter: "Info",
+    safety: emptyInspectorSafetySummary
+  },
+  cluster: {
+    enabled: false,
+    reason: "cluster-not-enabled"
+  },
+  layerGraph: {
+    layerGraph: new LayerGraphSnapshot({
+      appId: "test",
+      providers: { runtime: "test" },
+      nodes: [],
+      providerFacts: [],
+      failures: []
+    }),
+    safety: emptyInspectorSafetySummary
+  },
+  safety: emptyInspectorSafetySummary
+}
