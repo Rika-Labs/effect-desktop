@@ -6,6 +6,10 @@ Effect primitives are the default architecture. Custom abstractions must justify
 
 Bridge contracts are boundary descriptions, not an internal DSL. Prefer canonical Effect RPC, Effect Schema, Layer, Stream, Schedule, Scope, and Config contracts directly; keep bridge-specific helpers only where they translate across the native/web boundary or enforce durable protocol policy.
 
+`BridgeRpc` is not a permanent architecture target. Keep it only as a small boundary adapter while it carries native/web protocol semantics that Effect RPC does not yet own locally; remove it once canonical Effect RPC can express the same contract directly.
+
+Avoid `unknown as` and other type assertions in Effect-owned code. Use Schema decoding, typed services, generic constraints, or explicit boundary constructors instead. If an assertion is unavoidable at an external boundary, keep it local, document the invariant, and open a follow-up issue when the assertion points at missing Effect-native typing.
+
 For every ticket, actively look for areas like `BridgeRpc`: adapters, thin layers, custom DSLs, bridge specs, or convenience APIs that sit over Effect without adding durable desktop semantics. Do this even when the ticket is about nearby code rather than the wrapper itself.
 
 If a wrapper is not adding durable desktop-specific semantics, remove it as part of the current work.
