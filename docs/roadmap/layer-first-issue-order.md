@@ -153,6 +153,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 | #1159 Own process exit fibers with scopes                      | Implemented | Process exit observers now run as `forkScoped` fibers in the process scope, and registry-driven disposal interrupts unfinished observers without detached `runFork` fibers                           |
 | #1171 Enforce process budgets with semaphores                  | Implemented | Process owner-scope concurrency now uses Effect `Semaphore` values keyed by `RcMap`, with permits held by the process scope instead of manual `Ref` counters                                         |
 | #1282 Shape PTY output as Effect Stream pipelines              | Implemented | PTY output now composes raw adapter bytes through Effect `Stream` stages for input metrics, coalescing, overflow filtering, buffering, and byte emission instead of a local queue producer           |
+| #1298 Own PTY exit observers with scopes                       | Implemented | PTY child-exit observers now run as `forkScoped` fibers in a per-PTY scope, with disposal-origin state preventing observer-initiated cleanup from interrupting itself                                |
 
 ## Design-Debt Follow-ups
 
@@ -180,4 +181,3 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 | #1294 Remove ReactDesktop endpoint support casts over generated hooks  | Removes a React adapter `unknown as` recovery around generated endpoint support.  | Keeps ReactDesktop generated RPC hooks type-preserving after the approval-result cleanup exposed nearby React casts.      |
 | #1295 Remove Solid and Vue endpoint support casts over generated hooks | Removes Solid/Vue `unknown as` recovery around generated endpoint support.        | Completes the renderer-adapter version of the #1294 cleanup after #1278 exposed the same cast pattern outside React.      |
 | #1296 Remove core Desktop runtime Layer variance casts                 | Removes core `as unknown as` recovery around dynamic Layer composition.           | Keeps the post-#1278 descriptor/runtime split type-preserving without hiding Effect Layer requirements behind casts.      |
-| #1298 Own PTY exit observers with scopes                               | Removes detached `Effect.runFork` child-exit observation from PTY lifecycle.      | Completes the PTY lifecycle cleanup after #1282 moved output ownership onto Effect Stream primitives.                     |

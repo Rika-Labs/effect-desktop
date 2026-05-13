@@ -22,6 +22,7 @@ import {
   Pull,
   Ref,
   Schema,
+  Scope,
   Stream
 } from "effect"
 
@@ -198,29 +199,53 @@ export const makePty = (
           )
           yield* authorizePtyOpen(permissions, input)
           yield* validatePtyBudgets(budgets, "PTY.open")
-          const { child, resource } = yield* Effect.uninterruptible(
+          const { child, disposalOrigin, ptyScope, resource } = yield* Effect.uninterruptible(
             Effect.gen(function* () {
               yield* reservePtyBudget(ptyBudgets, input.ownerScope, budgets.maxConcurrent)
+              const ptyScope = yield* Scope.make()
               const child = yield* Effect.try({
                 try: () => adapter.open(input),
                 catch: (error) => mapPtyError(error, input.command, "PTY.open")
-              }).pipe(Effect.tapError(() => releasePtyBudget(ptyBudgets, input.ownerScope)))
+              }).pipe(
+                Effect.tapError(() =>
+                  Effect.all(
+                    [
+                      releasePtyBudget(ptyBudgets, input.ownerScope),
+                      Scope.close(ptyScope, Exit.void)
+                    ],
+                    { discard: true }
+                  )
+                )
+              )
+              const disposalOrigin = yield* Ref.make<PtyDisposalOrigin>("running")
               const resource = yield* registry
                 .register({
                   kind: "pty",
                   ownerScope: input.ownerScope,
                   state: "running",
-                  dispose: disposeChild(child, input.command, gracefulShutdownMs).pipe(
-                    Effect.andThen(releasePtyBudget(ptyBudgets, input.ownerScope))
-                  )
+                  dispose: disposeChild(
+                    child,
+                    ptyScope,
+                    input.command,
+                    gracefulShutdownMs,
+                    disposalOrigin
+                  ).pipe(Effect.andThen(releasePtyBudget(ptyBudgets, input.ownerScope)))
                 })
                 .pipe(Effect.orDie)
 
-              return { child, resource }
+              return { child, disposalOrigin, ptyScope, resource }
             })
           )
 
-          return yield* makeHandle(child, resource, input.command, budgets, registry)
+          return yield* makeHandle(
+            child,
+            resource,
+            ptyScope,
+            disposalOrigin,
+            input.command,
+            budgets,
+            registry
+          )
         }).pipe(
           Effect.withSpan("PTY.open", {
             attributes: {
@@ -260,6 +285,8 @@ export const PtyLayer = (
 const makeHandle = (
   child: PtyChild,
   resource: ManagedResourceHandle<"pty", "running">,
+  ptyScope: Scope.Closeable,
+  disposalOrigin: Ref.Ref<PtyDisposalOrigin>,
   command: string,
   budgets: Required<PtyBudgetPolicy>,
   registry: ResourceRegistryApi
@@ -280,7 +307,9 @@ const makeHandle = (
       try: () => child.exited,
       catch: (error) => mapPtyError(error, command, "PTY.onExit")
     })
-    observeChildExit(exitStatus, resource, command)
+    yield* observeChildExit(exitStatus, resource, command, ptyScope, disposalOrigin).pipe(
+      Scope.provide(ptyScope)
+    )
     const onExit = exitStatus.pipe(Effect.tap(() => resource.dispose()))
 
     return Object.freeze({
@@ -617,33 +646,46 @@ const outputQueueCapacity = (policy: Required<PtyBudgetPolicy>): number =>
 const observeChildExit = (
   exitStatus: Effect.Effect<PtyExitStatus, PtyError, never>,
   resource: ManagedResourceHandle<"pty", "running">,
-  command: string
-): void => {
-  Effect.runFork(
-    exitStatus.pipe(
-      Effect.exit,
-      Effect.flatMap((exit) =>
-        resource.dispose().pipe(
-          Effect.andThen(
-            Exit.isFailure(exit)
-              ? Effect.logWarning("PTY.exit observer failed", {
-                  command,
-                  reason: formatExitFailure(exit)
-                })
-              : Effect.void
-          )
-        )
-      )
-    )
+  command: string,
+  ptyScope: Scope.Closeable,
+  disposalOrigin: Ref.Ref<PtyDisposalOrigin>
+): Effect.Effect<void, never, Scope.Scope> =>
+  exitStatus.pipe(
+    Effect.exit,
+    Effect.flatMap((exit) =>
+      Effect.gen(function* () {
+        const origin = yield* claimPtyObserverDisposal(disposalOrigin)
+        if (origin !== "registry") {
+          yield* resource.dispose()
+        }
+        if (Exit.isFailure(exit)) {
+          yield* Effect.logWarning("PTY.exit observer failed", {
+            command,
+            reason: formatExitFailure(exit)
+          })
+        }
+        if (origin !== "registry") {
+          yield* Scope.close(ptyScope, Exit.void)
+        }
+      })
+    ),
+    Effect.forkScoped({ startImmediately: true }),
+    Effect.asVoid
   )
-}
 
 const disposeChild = (
   child: PtyChild,
+  ptyScope: Scope.Closeable,
   command: string,
-  gracefulShutdownMs: number
+  gracefulShutdownMs: number,
+  disposalOrigin: Ref.Ref<PtyDisposalOrigin>
 ): Effect.Effect<void, never, never> =>
   Effect.gen(function* () {
+    const origin = yield* claimPtyRegistryDisposal(disposalOrigin)
+    if (origin === "observer") {
+      return
+    }
+
     if (child.isRunning()) {
       yield* Effect.tryPromise({
         try: () => child.terminateTree(),
@@ -668,7 +710,25 @@ const disposeChild = (
         }
       }
     }
+
+    yield* Scope.close(ptyScope, Exit.void)
   })
+
+type PtyDisposalOrigin = "running" | "observer" | "registry"
+
+const claimPtyObserverDisposal = (
+  origin: Ref.Ref<PtyDisposalOrigin>
+): Effect.Effect<PtyDisposalOrigin, never, never> =>
+  Ref.modify(origin, (current) =>
+    current === "running" ? (["observer", "observer"] as const) : ([current, current] as const)
+  )
+
+const claimPtyRegistryDisposal = (
+  origin: Ref.Ref<PtyDisposalOrigin>
+): Effect.Effect<PtyDisposalOrigin, never, never> =>
+  Ref.modify(origin, (current) =>
+    current === "running" ? (["registry", "registry"] as const) : ([current, current] as const)
+  )
 
 const forceKillChild = (child: PtyChild, command: string): Effect.Effect<void, never, never> =>
   Effect.tryPromise({
