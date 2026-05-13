@@ -1,3 +1,9 @@
+import {
+  appendBounded,
+  normalizeDesktopStreamCapacity,
+  runRendererStream,
+  type DesktopStreamOptions
+} from "@effect-desktop/core/renderer"
 import { Cause, Effect, Exit, Fiber, Option, Stream, SubscriptionRef } from "effect"
 import { AsyncResult } from "effect/unstable/reactivity"
 import { useEffect, useRef, useState, type DependencyList } from "react"
@@ -10,10 +16,7 @@ export interface StreamState<A, E> {
   readonly error: Option.Option<Cause.Cause<E>>
 }
 
-export interface DesktopStreamOptions<A> {
-  readonly capacity?: number | undefined
-  readonly onItem?: ((item: A) => void) | undefined
-}
+export type { DesktopStreamOptions }
 
 const idle = <A, E>(): StreamState<A, E> => ({
   status: "idle",
@@ -31,7 +34,7 @@ export const useDesktopStream = <A, E>(
   stream: Stream.Stream<A, E, never>,
   options: DesktopStreamOptions<A> = {}
 ): StreamState<A, E> => {
-  const capacity = normalizeCapacity(options.capacity)
+  const capacity = normalizeDesktopStreamCapacity(options.capacity)
   const [state, setState] = useState<StreamState<A, E>>(idle<A, E>)
   const streamRef = useRef<Stream.Stream<A, E, never>>(stream)
   const onItemRef = useRef<((item: A) => void) | undefined>(options.onItem)
@@ -39,40 +42,29 @@ export const useDesktopStream = <A, E>(
   onItemRef.current = options.onItem
 
   useEffect(() => {
-    let active = true
     setState(running<A, E>())
 
-    const fiber = Effect.runFork(
-      Stream.runForEach(streamRef.current, (item) =>
-        Effect.sync(() => {
-          onItemRef.current?.(item)
-          if (active) {
-            setState((prev) => ({
-              ...prev,
-              data: capacity === 0 ? prev.data : [...prev.data, item].slice(-capacity)
-            }))
-          }
-        })
-      )
-    )
-
-    void Effect.runPromiseExit(Fiber.join(fiber)).then((exit) => {
-      if (!active) return
-      if (Exit.isSuccess(exit)) {
-        setState((prev) => ({ ...prev, status: "closed" as const, error: Option.none() }))
-      } else {
+    return runRendererStream(
+      streamRef.current,
+      { capacity, onItem: (item) => onItemRef.current?.(item) },
+      (item) => {
         setState((prev) => ({
           ...prev,
-          status: "failure" as const,
-          error: Option.some(exit.cause)
+          data: appendBounded(prev.data, item, capacity)
         }))
+      },
+      (exit) => {
+        if (Exit.isSuccess(exit)) {
+          setState((prev) => ({ ...prev, status: "closed" as const, error: Option.none() }))
+        } else {
+          setState((prev) => ({
+            ...prev,
+            status: "failure" as const,
+            error: Option.some(exit.cause)
+          }))
+        }
       }
-    })
-
-    return () => {
-      active = false
-      void Effect.runPromiseExit(Fiber.interrupt(fiber))
-    }
+    )
   }, [stream, capacity])
 
   return state
@@ -136,12 +128,4 @@ export const useEffectResult = <A, E>(
   )
 
   return result
-}
-
-const normalizeCapacity = (capacity: number | undefined): number => {
-  const resolved = capacity ?? 1_024
-  if (!Number.isSafeInteger(resolved) || resolved < 0) {
-    throw new RangeError("desktop stream capacity must be a non-negative safe integer")
-  }
-  return resolved
 }

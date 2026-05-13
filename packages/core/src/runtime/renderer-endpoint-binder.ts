@@ -15,7 +15,10 @@ export interface DesktopEndpointSupport {
 export interface RendererEndpointBinders<Endpoint extends object> {
   readonly query: (run: (input: unknown) => Effect.Effect<unknown, unknown, never>) => Endpoint
   readonly mutation: (run: (input: unknown) => Effect.Effect<unknown, unknown, never>) => Endpoint
-  readonly stream: (run: (input: unknown) => Stream.Stream<unknown, unknown, never>) => Endpoint
+  readonly stream: (
+    run: (input: unknown) => Stream.Stream<unknown, unknown, never>,
+    descriptor: RpcEndpointDescriptor
+  ) => Endpoint
 }
 
 export const bindRendererEndpoints = <Endpoint extends object>(
@@ -30,7 +33,7 @@ export const bindRendererEndpoints = <Endpoint extends object>(
     const invoke = requiredClientMethod(client, descriptor.tag, framework)
     const endpoint =
       descriptor.kind === "stream"
-        ? binders.stream((input) => asStream(invoke(input), descriptor.tag, framework))
+        ? binders.stream((input) => asStream(invoke(input), descriptor.tag, framework), descriptor)
         : descriptor.kind === "query"
           ? binders.query((input) => asEffect(invoke(input), descriptor.tag, framework))
           : binders.mutation((input) => asEffect(invoke(input), descriptor.tag, framework))

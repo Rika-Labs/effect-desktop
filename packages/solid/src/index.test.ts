@@ -230,6 +230,59 @@ test("SolidDesktop stream primitives emit values, close, fail, and interrupt on 
   await Effect.runPromise(Deferred.await(interrupted))
 })
 
+test("SolidDesktop stream primitives retain bounded data and support callback-only consumption", async () => {
+  const Tail = Rpc.make("Notes.Tail", {
+    success: Schema.String,
+    error: Schema.Never,
+    stream: true
+  })
+  const NotesRpcs = RpcGroup.make(Tail)
+  const NotesLayer = Desktop.Rpcs.layer(
+    NotesRpcs,
+    NotesRpcs.toLayer({
+      "Notes.Tail": () => Stream.make("a", "b", "c")
+    })
+  )
+  const NotesApp = Desktop.make({
+    windows: {
+      main: {
+        title: "Notes"
+      }
+    },
+    rpcs: [NotesLayer]
+  })
+  const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
+  const observed: string[] = []
+
+  let bounded: (() => { readonly status: string; readonly data: readonly unknown[] }) | undefined
+  let callbackOnly:
+    | (() => { readonly status: string; readonly data: readonly unknown[] })
+    | undefined
+  const dispose = createRoot((disposeRoot) => {
+    createComponent(NotesSolid.DesktopRoot, {
+      rpcLayers: [NotesLayer],
+      get children() {
+        const notes = NotesSolid.useDesktop(NotesRpcs)
+        bounded = notes.tail.createStream({ capacity: 2 })
+        callbackOnly = notes.tail.createStream({
+          capacity: 0,
+          onItem: (item) => {
+            observed.push(item)
+          }
+        })
+        return undefined
+      }
+    })
+    return disposeRoot
+  })
+
+  await waitFor(() => bounded?.().status === "closed" && callbackOnly?.().status === "closed")
+  expect(bounded?.().data).toEqual(["b", "c"])
+  expect(callbackOnly?.().data).toEqual([])
+  expect(observed).toEqual(["a", "b", "c"])
+  dispose()
+})
+
 test("SolidDesktop.useDesktop fails loudly without context or an installed client", () => {
   const Ping = Rpc.make("Notes.Ping")
   const NotesRpcs = RpcGroup.make(Ping)

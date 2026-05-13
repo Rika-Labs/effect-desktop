@@ -1,4 +1,11 @@
 export {
+  appendBounded,
+  isDesktopStreamOptions,
+  normalizeDesktopStreamCapacity,
+  runRendererStream,
+  type DesktopStreamOptions
+} from "./renderer-stream.js"
+export {
   RendererRpcClients,
   RendererRpcTransport,
   getGlobalDesktopRendererRpcTransport,

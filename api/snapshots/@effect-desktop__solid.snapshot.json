@@ -81,7 +81,12 @@
     {
       "name": "SolidStreamEndpoint",
       "kind": "interface",
-      "signature": "export interface SolidStreamEndpoint<I, A, E> { readonly createStream: SolidPrimitive<I, Accessor<SolidStreamState<A, E>>> }"
+      "signature": "export interface SolidStreamEndpoint<I, A, E> { readonly createStream: SolidStreamPrimitive<I, A, E> }"
+    },
+    {
+      "name": "SolidStreamPrimitive",
+      "kind": "type",
+      "signature": "export type SolidStreamPrimitive<I, A, E> = [I] extends [void] ? (options?: DesktopStreamOptions<A>) => Accessor<SolidStreamState<A, E>> : undefined extends I ? (input?: I, options?: DesktopStreamOptions<A>) => Accessor<SolidStreamState<A, E>> : (input: I, options?: DesktopStreamOptions<A>) => Accessor<SolidStreamState<A, E>>"
     },
     {
       "name": "SolidStreamState",

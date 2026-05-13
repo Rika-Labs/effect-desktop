@@ -2,13 +2,18 @@ import {
   bindRendererEndpoints,
   describeRpcs,
   getGlobalDesktopRendererRpcTransport,
+  appendBounded,
+  isDesktopStreamOptions,
   makeDesktopRendererRpcLayer,
   type AnyDesktopRpcLayer,
   makeMissingDesktopContextError,
   makeMissingDesktopRpcsError,
+  normalizeDesktopStreamCapacity,
   RendererRpcClients,
+  runRendererStream,
   type DesktopAppManifest,
   type DesktopEndpointSupport,
+  type DesktopStreamOptions,
   type DesktopRendererRpcClientMap,
   type DesktopRendererRpcTransport,
   type RpcGroupWithRequests
@@ -76,6 +81,12 @@ export type VueComposable<I, A> = [I] extends [void]
     ? (input?: I) => A
     : (input: I) => A
 
+export type VueStreamComposable<I, A, E> = [I] extends [void]
+  ? (options?: DesktopStreamOptions<A>) => Readonly<Ref<VueStreamState<A, E>>>
+  : undefined extends I
+    ? (input?: I, options?: DesktopStreamOptions<A>) => Readonly<Ref<VueStreamState<A, E>>>
+    : (input: I, options?: DesktopStreamOptions<A>) => Readonly<Ref<VueStreamState<A, E>>>
+
 export interface VueMutation<I, A, E> {
   readonly state: Readonly<Ref<VueAsyncState<A, E>>>
   readonly run: VueComposable<I, void>
@@ -92,7 +103,7 @@ export interface VueQueryEndpoint<I, A, E> {
 }
 
 export interface VueStreamEndpoint<I, A, E> {
-  readonly useStream: VueComposable<I, Readonly<Ref<VueStreamState<A, E>>>>
+  readonly useStream: VueStreamComposable<I, A, E>
 }
 
 export interface VueDesktopSupport extends DesktopEndpointSupport {}
@@ -175,11 +186,16 @@ export const VueDesktop = Object.freeze({
         mutation: (run) => ({
           useMutation: () => useMutation((input) => run(input))
         }),
-        stream: (run) => ({
-          useStream: ((input?: unknown) => runStream(run(input))) as VueComposable<
-            unknown,
-            Readonly<Ref<VueStreamState<unknown, unknown>>>
-          >
+        stream: (run, descriptor) => ({
+          useStream: ((inputOrOptions?: unknown, streamOptions?: DesktopStreamOptions<unknown>) => {
+            const input = descriptor.hasPayload ? inputOrOptions : undefined
+            const options = descriptor.hasPayload
+              ? streamOptions
+              : isDesktopStreamOptions(inputOrOptions)
+                ? inputOrOptions
+                : streamOptions
+            return runStream(run(input), options)
+          }) as VueStreamComposable<unknown, unknown, unknown>
         })
       }) as VueDesktopRpcs<Group>
     }
@@ -293,36 +309,33 @@ const runQuery = <A, E>(effect: Effect.Effect<A, E, never>): Readonly<Ref<VueAsy
 }
 
 const runStream = <A, E>(
-  stream: Stream.Stream<A, E, never>
+  stream: Stream.Stream<A, E, never>,
+  options: DesktopStreamOptions<A> = {}
 ): Readonly<Ref<VueStreamState<A, E>>> => {
+  const capacity = normalizeDesktopStreamCapacity(options.capacity)
   const state = shallowRef<VueStreamState<A, E>>({
     status: "running",
     data: [],
     cause: undefined
   })
-  let active = true
-  const fiber = Effect.runFork(
-    Stream.runForEach(stream, (item) =>
-      Effect.sync(() => {
-        if (active) {
-          state.value = { ...state.value, data: [...state.value.data, item] }
-        }
-      })
-    )
+  const dispose = runRendererStream(
+    stream,
+    options,
+    (item) => {
+      state.value = {
+        ...state.value,
+        data: appendBounded(state.value.data, item, capacity)
+      }
+    },
+    (exit) => {
+      state.value = Exit.isSuccess(exit)
+        ? { ...state.value, status: "closed", cause: undefined }
+        : { ...state.value, status: "failure", cause: exit.cause }
+    }
   )
 
-  void Effect.runPromiseExit(Fiber.join(fiber)).then((exit) => {
-    if (!active) {
-      return
-    }
-    state.value = Exit.isSuccess(exit)
-      ? { ...state.value, status: "closed", cause: undefined }
-      : { ...state.value, status: "failure", cause: exit.cause }
-  })
-
   onScopeDispose(() => {
-    active = false
-    void Effect.runPromiseExit(Fiber.interrupt(fiber))
+    dispose()
   })
 
   return state

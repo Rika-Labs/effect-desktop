@@ -188,6 +188,59 @@ test("VueDesktop stream composables emit values, close, fail, and interrupt on d
   await Effect.runPromise(Deferred.await(interrupted))
 })
 
+test("VueDesktop stream composables retain bounded data and support callback-only consumption", async () => {
+  const Tail = Rpc.make("Notes.Tail", {
+    success: Schema.String,
+    error: Schema.Never,
+    stream: true
+  })
+  const NotesRpcs = RpcGroup.make(Tail)
+  const NotesLayer = Desktop.Rpcs.layer(
+    NotesRpcs,
+    NotesRpcs.toLayer({
+      "Notes.Tail": () => Stream.make("a", "b", "c")
+    })
+  )
+  const NotesApp = Desktop.make({
+    windows: {
+      main: {
+        title: "Notes"
+      }
+    },
+    rpcs: [NotesLayer]
+  })
+  const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
+  const app = NotesVue.createApp(Root, { rpcLayers: [NotesLayer] })
+  app.config.warnHandler = () => undefined
+
+  const observed: string[] = []
+  let bounded:
+    | { readonly value: { readonly status: string; readonly data: readonly unknown[] } }
+    | undefined
+  let callbackOnly:
+    | { readonly value: { readonly status: string; readonly data: readonly unknown[] } }
+    | undefined
+  const scope = effectScope()
+  app.runWithContext(() => {
+    scope.run(() => {
+      const notes = NotesVue.useDesktop(NotesRpcs)
+      bounded = notes.tail.useStream({ capacity: 2 })
+      callbackOnly = notes.tail.useStream({
+        capacity: 0,
+        onItem: (item) => {
+          observed.push(item)
+        }
+      })
+    })
+  })
+
+  await waitFor(() => bounded?.value.status === "closed" && callbackOnly?.value.status === "closed")
+  expect(bounded?.value.data).toEqual(["b", "c"])
+  expect(callbackOnly?.value.data).toEqual([])
+  expect(observed).toEqual(["a", "b", "c"])
+  scope.stop()
+})
+
 test("VueDesktop.useDesktop fails loudly without provide/inject context or an installed client", () => {
   const Ping = Rpc.make("Notes.Ping")
   const NotesRpcs = RpcGroup.make(Ping)

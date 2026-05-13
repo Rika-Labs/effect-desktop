@@ -23,6 +23,7 @@ export interface RpcEndpointDescriptor {
   readonly name: string
   readonly tag: string
   readonly kind: RpcEndpointDescriptorKind
+  readonly hasPayload: boolean
   readonly rpc: Rpc.Any
   readonly capability: Option.Option<RpcCapabilityMetadata>
   readonly support: RpcSupportMetadata
@@ -32,7 +33,8 @@ export type DesktopRpcDescriptorSource =
   | Pick<DesktopConfig<unknown, unknown>, "rpcs">
   | Pick<DesktopAppManifest, "rpcGroups">
 
-interface RpcWithSuccessSchema extends Rpc.Any {
+interface RpcWithSchemas extends Rpc.Any {
+  readonly payloadSchema: Schema.Top
   readonly successSchema: Schema.Top
 }
 
@@ -53,6 +55,7 @@ export const describeRpcs = <Group extends RpcGroupWithRequests>(
       name: rpcEndpointName(rpc._tag),
       tag: rpc._tag,
       kind: endpointKind(rpc),
+      hasPayload: payloadSchema(rpc) !== Schema.Void,
       rpc,
       capability: rpcCapability(rpc),
       support: rpcSupport(rpc)
@@ -108,7 +111,9 @@ const descriptorGroup = (
 const endpointKind = (rpc: Rpc.Any): RpcEndpointDescriptorKind =>
   RpcSchema.isStreamSchema(successSchema(rpc)) ? "stream" : rpcEndpointKind(rpc)
 
-const successSchema = (rpc: Rpc.Any): Schema.Top => (rpc as RpcWithSuccessSchema).successSchema
+const payloadSchema = (rpc: Rpc.Any): Schema.Top => (rpc as RpcWithSchemas).payloadSchema
+
+const successSchema = (rpc: Rpc.Any): Schema.Top => (rpc as RpcWithSchemas).successSchema
 
 const groupTags = (group: RpcGroupWithRequests): readonly string[] =>
   Array.from(group.requests.keys())

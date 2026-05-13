@@ -130,6 +130,7 @@ const descriptor = (
     name,
     tag,
     kind,
+    hasPayload: false,
     rpc: Rpc.make(tag, { success: Schema.String }),
     capability: Option.none(),
     support

@@ -3,13 +3,18 @@ import {
   bindRendererEndpoints,
   describeRpcs,
   getGlobalDesktopRendererRpcTransport,
+  appendBounded,
+  isDesktopStreamOptions,
   makeDesktopRendererRpcLayer,
   type AnyDesktopRpcLayer,
   makeMissingDesktopContextError,
   makeMissingDesktopRpcsError,
+  normalizeDesktopStreamCapacity,
   RendererRpcClients,
+  runRendererStream,
   type DesktopAppManifest,
   type DesktopEndpointSupport,
+  type DesktopStreamOptions,
   type DesktopRendererRpcClientMap,
   type DesktopRendererRpcTransport,
   type RpcGroupWithRequests
@@ -80,6 +85,12 @@ export type SolidPrimitive<I, A> = [I] extends [void]
     ? (input?: I) => A
     : (input: I) => A
 
+export type SolidStreamPrimitive<I, A, E> = [I] extends [void]
+  ? (options?: DesktopStreamOptions<A>) => Accessor<SolidStreamState<A, E>>
+  : undefined extends I
+    ? (input?: I, options?: DesktopStreamOptions<A>) => Accessor<SolidStreamState<A, E>>
+    : (input: I, options?: DesktopStreamOptions<A>) => Accessor<SolidStreamState<A, E>>
+
 export interface SolidMutation<I, A, E> {
   readonly state: Accessor<SolidAsyncState<A, E>>
   readonly run: SolidPrimitive<I, void>
@@ -96,7 +107,7 @@ export interface SolidQueryEndpoint<I, A, E> {
 }
 
 export interface SolidStreamEndpoint<I, A, E> {
-  readonly createStream: SolidPrimitive<I, Accessor<SolidStreamState<A, E>>>
+  readonly createStream: SolidStreamPrimitive<I, A, E>
 }
 
 export interface SolidDesktopSupport extends DesktopEndpointSupport {}
@@ -190,11 +201,19 @@ export const SolidDesktop = Object.freeze({
         mutation: (run) => ({
           createMutation: () => createMutationState((input) => run(input))
         }),
-        stream: (run) => ({
-          createStream: ((input?: unknown) => createStreamState(run(input))) as SolidPrimitive<
-            unknown,
-            Accessor<SolidStreamState<unknown, unknown>>
-          >
+        stream: (run, descriptor) => ({
+          createStream: ((
+            inputOrOptions?: unknown,
+            streamOptions?: DesktopStreamOptions<unknown>
+          ) => {
+            const input = descriptor.hasPayload ? inputOrOptions : undefined
+            const options = descriptor.hasPayload
+              ? streamOptions
+              : isDesktopStreamOptions(inputOrOptions)
+                ? inputOrOptions
+                : streamOptions
+            return createStreamState(run(input), options)
+          }) as SolidStreamPrimitive<unknown, unknown, unknown>
         })
       }) as SolidDesktopRpcs<Group>
     }
@@ -324,38 +343,32 @@ const createQueryState = <A, E>(
 }
 
 const createStreamState = <A, E>(
-  stream: Stream.Stream<A, E, never>
+  stream: Stream.Stream<A, E, never>,
+  options: DesktopStreamOptions<A> = {}
 ): Accessor<SolidStreamState<A, E>> => {
+  const capacity = normalizeDesktopStreamCapacity(options.capacity)
   const [state, setState] = createSignal<SolidStreamState<A, E>>({
     status: "running",
     data: [],
     cause: undefined
   })
-  let active = true
-  const fiber = Effect.runFork(
-    Stream.runForEach(stream, (item) =>
-      Effect.sync(() => {
-        if (active) {
-          setState((current) => ({ ...current, data: [...current.data, item] }))
-        }
-      })
-    )
+  const dispose = runRendererStream(
+    stream,
+    options,
+    (item) => {
+      setState((current) => ({ ...current, data: appendBounded(current.data, item, capacity) }))
+    },
+    (exit) => {
+      setState((current) =>
+        Exit.isSuccess(exit)
+          ? { ...current, status: "closed", cause: undefined }
+          : { ...current, status: "failure", cause: exit.cause }
+      )
+    }
   )
 
-  void Effect.runPromiseExit(Fiber.join(fiber)).then((exit) => {
-    if (!active) {
-      return
-    }
-    setState((current) =>
-      Exit.isSuccess(exit)
-        ? { ...current, status: "closed", cause: undefined }
-        : { ...current, status: "failure", cause: exit.cause }
-    )
-  })
-
   onCleanup(() => {
-    active = false
-    void Effect.runPromiseExit(Fiber.interrupt(fiber))
+    dispose()
   })
 
   return state

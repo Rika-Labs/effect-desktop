@@ -99,9 +99,14 @@
       "signature": "export interface VueQueryEndpoint<I, A, E> { readonly useQuery: VueComposable<I, Readonly<Ref<VueAsyncState<A, E>>>> }"
     },
     {
+      "name": "VueStreamComposable",
+      "kind": "type",
+      "signature": "export type VueStreamComposable<I, A, E> = [I] extends [void] ? (options?: DesktopStreamOptions<A>) => Readonly<Ref<VueStreamState<A, E>>> : undefined extends I ? (input?: I, options?: DesktopStreamOptions<A>) => Readonly<Ref<VueStreamState<A, E>>> : (input: I, options?: DesktopStreamOptions<A>) => Readonly<Ref<VueStreamState<A, E>>>"
+    },
+    {
       "name": "VueStreamEndpoint",
       "kind": "interface",
-      "signature": "export interface VueStreamEndpoint<I, A, E> { readonly useStream: VueComposable<I, Readonly<Ref<VueStreamState<A, E>>>> }"
+      "signature": "export interface VueStreamEndpoint<I, A, E> { readonly useStream: VueStreamComposable<I, A, E> }"
     },
     {
       "name": "VueStreamState",

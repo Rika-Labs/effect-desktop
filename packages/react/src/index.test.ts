@@ -7,7 +7,7 @@ import {
   MissingDesktopRpcClientError
 } from "@effect-desktop/core"
 import { AsyncResult, Atom } from "effect/unstable/reactivity"
-import { Cause, Effect, Exit, Option, Schema } from "effect"
+import { Cause, Effect, Exit, Option, Schema, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
@@ -394,6 +394,41 @@ test("ReactDesktop.useDesktop exposes RpcSupport metadata on generated endpoints
   expect(
     renderToStaticMarkup(createElement(NotesReact.DesktopRoot, { rpcLayers }, createElement(Probe)))
   ).toBe("<span>false:unsupported</span>")
+})
+
+test("ReactDesktop generated no-payload stream hooks accept stream options", () => {
+  const Tail = Rpc.make("Notes.Tail", {
+    success: Schema.String,
+    error: Schema.Never,
+    stream: true
+  })
+  const NotesRpcs = RpcGroup.make(Tail)
+  const NotesLayer = Desktop.Rpcs.layer(
+    NotesRpcs,
+    NotesRpcs.toLayer({
+      "Notes.Tail": () => Stream.make("a", "b", "c")
+    })
+  )
+  const NotesApp = Desktop.make({
+    windows: {
+      main: {
+        title: "Notes"
+      }
+    },
+    rpcs: [NotesLayer]
+  })
+  const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
+  const Probe = () => {
+    const notes = NotesReact.useDesktop(NotesRpcs)
+    const tail = notes.tail.useStream({ capacity: 0, onItem: () => undefined })
+    return createElement("span", null, `${tail.status}:${tail.data.length}`)
+  }
+
+  expect(
+    renderToStaticMarkup(
+      createElement(NotesReact.DesktopRoot, { rpcLayers: [NotesLayer] }, createElement(Probe))
+    )
+  ).toBe("<span>idle:0</span>")
 })
 
 test("usePermission exports the deferred shape", () => {

@@ -134,7 +134,7 @@ export const ReactDesktop = Object.freeze({
           bindRendererEndpoints<ReactEndpoint>(describeRpcs(app, group), client, "react", {
             query,
             mutation,
-            stream
+            stream: (run, descriptor) => stream(run, { hasInput: descriptor.hasPayload })
           }) as ReactDesktopRpcs<Group>,
         [client, group]
       )

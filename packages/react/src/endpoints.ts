@@ -1,8 +1,14 @@
+import { isDesktopStreamOptions } from "@effect-desktop/core/renderer"
 import { Effect, Stream } from "effect"
 import type { AsyncResult } from "effect/unstable/reactivity"
 import { useMemo } from "react"
 
-import { useDesktopStream, useEffectResult, type StreamState } from "./hooks/stream.js"
+import {
+  useDesktopStream,
+  useEffectResult,
+  type DesktopStreamOptions,
+  type StreamState
+} from "./hooks/stream.js"
 import { useMutation, type MutationResult } from "./mutation.js"
 
 export type QueryResult<A, E> = AsyncResult.AsyncResult<A, E>
@@ -14,10 +20,10 @@ export type QueryHook<I, A, E> = [I] extends [void]
     : (input: I) => QueryResult<A, E>
 
 export type StreamHook<I, A, E> = [I] extends [void]
-  ? () => StreamState<A, E>
+  ? (options?: DesktopStreamOptions<A>) => StreamState<A, E>
   : undefined extends I
-    ? (input?: I) => StreamState<A, E>
-    : (input: I) => StreamState<A, E>
+    ? (input?: I, options?: DesktopStreamOptions<A>) => StreamState<A, E>
+    : (input: I, options?: DesktopStreamOptions<A>) => StreamState<A, E>
 
 export interface QueryEndpoint<I, A, E> {
   readonly useQuery: QueryHook<I, A, E>
@@ -54,11 +60,22 @@ export const mutation = <I, A, E>(
   })
 
 export const stream = <I, A, E>(
-  makeStream: (input: I) => Stream.Stream<A, E, never>
+  makeStream: (input: I) => Stream.Stream<A, E, never>,
+  options: { readonly hasInput?: boolean | undefined } = {}
 ): StreamEndpoint<I, A, E> =>
   Object.freeze({
-    useStream: ((input?: I) => {
+    useStream: ((
+      inputOrOptions?: I | DesktopStreamOptions<A>,
+      streamOptions?: DesktopStreamOptions<A>
+    ) => {
+      const hasInput = options.hasInput ?? true
+      const input = hasInput ? inputOrOptions : undefined
+      const resolvedOptions = hasInput
+        ? streamOptions
+        : isDesktopStreamOptions(inputOrOptions)
+          ? inputOrOptions
+          : streamOptions
       const effectStream = useMemo(() => makeStream(input as I), [input, makeStream])
-      return useDesktopStream(effectStream)
+      return useDesktopStream(effectStream, resolvedOptions)
     }) as StreamHook<I, A, E>
   })
