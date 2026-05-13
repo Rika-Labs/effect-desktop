@@ -4,14 +4,14 @@
   "entrypoint": "src/index.ts",
   "symbols": [
     {
-      "name": "ApprovalDecision",
+      "name": "ApprovalResolution",
       "kind": "type",
-      "signature": "export type ApprovalDecision = \"approved\" | \"denied\""
+      "signature": "export type ApprovalResolution<E = unknown> = AsyncResult.AsyncResult<void, E>"
     },
     {
       "name": "ApprovalResolver",
-      "kind": "interface",
-      "signature": "export interface ApprovalResolver { readonly resolve: (token: string, approved: boolean) => Effect.Effect<void, unknown, never> readonly onResolveError?: (error: unknown, approval: PendingApproval) => void }"
+      "kind": "type",
+      "signature": "export type ApprovalResolver<E = unknown> = ( token: string, approved: boolean, approval: PendingApproval ) => Effect.Effect<void, E, never>"
     },
     {
       "name": "AsyncResult",
@@ -206,22 +206,22 @@
     {
       "name": "PermissionApprovalPromptProps",
       "kind": "interface",
-      "signature": "export interface PermissionApprovalPromptProps { readonly approval: PendingApproval readonly onApprove: (token: string) => void readonly onDeny: (token: string) => void }"
+      "signature": "export interface PermissionApprovalPromptProps<E = unknown> { readonly approval: PendingApproval readonly resolution: ApprovalResolution<E> readonly onApprove: (token: string) => void readonly onDeny: (token: string) => void }"
     },
     {
       "name": "PermissionApprovalQueue",
       "kind": "value",
-      "signature": "const PermissionApprovalQueue: ({ state, renderPrompt }: PermissionApprovalQueueProps) => import(\"react\").ReactElement<{ \"data-permission-approval-queue\": boolean; }, string | import(\"react\").JSXElementConstructor<any>> | null"
+      "signature": "const PermissionApprovalQueue: <E>({ state, renderPrompt }: PermissionApprovalQueueProps<E>) => import(\"react\").ReactElement<{ \"data-permission-approval-queue\": boolean; }, string | import(\"react\").JSXElementConstructor<any>> | null"
     },
     {
       "name": "PermissionApprovalQueueProps",
       "kind": "interface",
-      "signature": "export interface PermissionApprovalQueueProps { readonly state: PermissionApprovalState readonly renderPrompt?: (props: PermissionApprovalPromptProps) => ReactNode }"
+      "signature": "export interface PermissionApprovalQueueProps<E = unknown> { readonly state: PermissionApprovalState<E> readonly renderPrompt?: (props: PermissionApprovalPromptProps<E>) => ReactNode }"
     },
     {
       "name": "PermissionApprovalState",
       "kind": "interface",
-      "signature": "export interface PermissionApprovalState { readonly pending: readonly PendingApproval[] readonly push: (approval: PendingApproval) => void readonly resolve: (token: string, approved: boolean) => void }"
+      "signature": "export interface PermissionApprovalState<E = unknown> { readonly pending: readonly PendingApproval[] readonly resolutions: ReadonlyMap<string, ApprovalResolution<E>> readonly push: (approval: PendingApproval) => void readonly resolve: (token: string, approved: boolean) => void readonly resolvePromise: (token: string, approved: boolean) => Promise<Exit.Exit<void, E>> readonly clearResolution: (token: string) => void }"
     },
     {
       "name": "PermissionState",
@@ -456,7 +456,7 @@
     {
       "name": "usePermissionApproval",
       "kind": "value",
-      "signature": "const usePermissionApproval: (resolver: ApprovalResolver) => PermissionApprovalState"
+      "signature": "const usePermissionApproval: <E = unknown>(resolver: ApprovalResolver<E>) => PermissionApprovalState<E>"
     },
     {
       "name": "usePower",

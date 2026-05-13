@@ -3,8 +3,8 @@ import { DurableClock, DurableDeferred, Workflow, WorkflowEngine } from "effect/
 
 import { approvalAuditEvent, emitAuditEvent, type AuditEventsApi } from "./audit-events.js"
 import {
-  type NormalizedCapability,
-  type PermissionActor,
+  NormalizedCapability,
+  PermissionActor,
   type PermissionRegistryApi
 } from "./permission-registry.js"
 
@@ -23,8 +23,8 @@ export const PermissionApprovalWorkflow = Workflow.make({
   name: "PermissionApproval",
   payload: {
     traceId: Schema.NonEmptyString,
-    capability: Schema.Unknown,
-    actor: Schema.Unknown,
+    capability: NormalizedCapability,
+    actor: PermissionActor,
     resource: Schema.optionalKey(Schema.NonEmptyString),
     ttlMs: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0)))
   },
@@ -60,8 +60,8 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
 
   return PermissionApprovalWorkflow.toLayer((payload, _executionId) =>
     Effect.gen(function* () {
-      const capability = payload.capability as NormalizedCapability
-      const actor = payload.actor as PermissionActor
+      const capability = payload.capability
+      const actor = payload.actor
 
       yield* options.registry
         .declare(capability, {
@@ -200,6 +200,6 @@ export const resolveApprovalDeferred = (
   approved: boolean
 ): Effect.Effect<void, never, WorkflowEngine.WorkflowEngine> =>
   DurableDeferred.done(approvalPrompt, {
-    token: rawToken as DurableDeferred.Token,
+    token: DurableDeferred.Token.make(rawToken),
     exit: Exit.succeed(approved)
   })

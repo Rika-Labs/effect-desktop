@@ -143,6 +143,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 | #1289 Make DesktopRpc.supportedGroup type-preserving           | Implemented | `DesktopRpc.supportedGroup` now narrows Effect `RpcGroup` values with a typed support predicate, and Window derives its supported callable group from `RpcSupport` metadata without a manual union |
 | #1290 Tighten bridge contract schemas to pure codecs           | Implemented | Bridge method, event, and stream specs now require pure `Schema.Codec` values, and client/handler/event/stream helpers no longer recover Schema services with encode/decode `Effect` assertions    |
 | #1292 Remove BridgeRpc once Effect RPC owns renderer contracts | Implemented | Bridge contracts are now authored with canonical `Rpc.make`/`RpcGroup.make`; the public `BridgeRpc*` DSL exports are removed, and bridge keeps only metadata lowering plus runtime binding helpers |
+| #1163 Preserve approval failures as Effect results             | Implemented | React approval resolution now returns `Exit`, stores per-token `AsyncResult` state, and workflow approval payloads decode capability/actor schemas directly                                        |
 
 ## Design-Debt Follow-ups
 
@@ -171,3 +172,4 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 | #1284 Add guardrails against non-policy Effect wrappers                | Turns the wrapper-removal rule into CI pressure.                                  | Prevents future drift after the current refactor issues land.                                                             |
 | #1287 Make bridge stream runtime an Effect-scoped constructor          | Removes sync scope allocation around `FiberMap` stream ownership.                 | Completes #1182 by making bridge stream runtime acquisition expose its Effect-scoped resource requirements.               |
 | #1293 Enforce permissions on native host RPC runtimes                  | Resolves the permission-looking native metadata that bridge cannot enforce alone. | Completes #1196 for native host runtime serving without making bridge depend on core policy.                              |
+| #1294 Remove ReactDesktop endpoint support casts over generated hooks  | Removes a React adapter `unknown as` recovery around generated endpoint support.  | Keeps ReactDesktop generated RPC hooks type-preserving after the approval-result cleanup exposed nearby React casts.      |
