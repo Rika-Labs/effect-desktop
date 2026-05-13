@@ -22,6 +22,7 @@ export * from "./logs-panel.js"
 export * from "./cluster-panel.js"
 export * from "./snapshot-client.js"
 export * from "./inspector-events.js"
+export * from "./testing.js"
 
 export interface CommandsDevtoolsApi {
   readonly list: () => Effect.Effect<readonly CommandSnapshot[], never, never>

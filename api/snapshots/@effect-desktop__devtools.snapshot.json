@@ -4,6 +4,11 @@
   "entrypoint": "src/index.ts",
   "symbols": [
     {
+      "name": "assertRecordedSessionFixture",
+      "kind": "value",
+      "signature": "const assertRecordedSessionFixture: (input: unknown) => Effect.Effect<RecordedSession, InspectorFixtureError, never>"
+    },
+    {
       "name": "BridgeCallPanelRow",
       "kind": "interface",
       "signature": "export interface BridgeCallPanelRow { readonly id: string readonly state: BridgeCallState[\"tag\"] readonly traceId: Option.Option<string> readonly contractTag: Option.Option<string> readonly latencyMs: Option.Option<number> readonly errorTag: Option.Option<string> }"
@@ -39,6 +44,21 @@
       "signature": "export interface ClusterPanelSnapshot { readonly enabled: false readonly reason: \"cluster-not-enabled\" }"
     },
     {
+      "name": "CollectorLaw",
+      "kind": "interface",
+      "signature": "export interface CollectorLaw<A> { readonly name: string readonly check: (value: A) => Effect.Effect<void, InspectorFixtureError, never> }"
+    },
+    {
+      "name": "CollectorLaws",
+      "kind": "value",
+      "signature": "const CollectorLaws: Readonly<{ recordedSessionDecodes: { name: string; check: (value: unknown) => Effect.Effect<void, InspectorFixtureError, never>; }; framesUseKnownSurfaces: { name: string; check: (session: RecordedSession) => Effect.Effect<void, InspectorFixtureError, never>; }; fixturesAreRedacted: { name: string; check: (session: RecordedSession) => Effect.Effect<undefined, InspectorFixtureError, never>; }; }>"
+    },
+    {
+      "name": "collectorPayloadsDecode",
+      "kind": "value",
+      "signature": "const collectorPayloadsDecode: <S extends Schema.Top & { readonly DecodingServices: never; }>(surface: InspectorSurface, schema: S) => CollectorLaw<RecordedSession>"
+    },
+    {
       "name": "CommandsDevtools",
       "kind": "class",
       "signature": "export class CommandsDevtools extends Context.Service<CommandsDevtools, CommandsDevtoolsApi>()( \"@effect-desktop/devtools/CommandsDevtools\" ) {}"
@@ -52,6 +72,11 @@
       "name": "CommandsDevtoolsLive",
       "kind": "value",
       "signature": "const CommandsDevtoolsLive: Layer.Layer<CommandsDevtools, never, CommandRegistry>"
+    },
+    {
+      "name": "decodeRecordedSession",
+      "kind": "value",
+      "signature": "const decodeRecordedSession: (input: unknown) => Effect.Effect<RecordedSession, InspectorFixtureError, never>"
     },
     {
       "name": "decodeUnknownInspectorEvent",
@@ -284,6 +309,11 @@
       "signature": "export class InspectorFiberPayload extends Schema.Class<InspectorFiberPayload>( \"InspectorFiberPayload\" )({ ...InspectorPayloadBase, tag: Schema.Literal(\"fiber\"), fiberId: NonEmptyString, name: Schema.optionalKey(NonEmptyString), state: Schema.Literals([\"started\", \"suspended\", \"resumed\", \"completed\", \"failed\", \"interrupted\"]) }) {}"
     },
     {
+      "name": "InspectorFixtureError",
+      "kind": "class",
+      "signature": "export class InspectorFixtureError extends Data.TaggedError(\"InspectorFixtureError\")<{ readonly operation: string readonly message: string readonly cause?: unknown }> {}"
+    },
+    {
       "name": "InspectorLayerGraphPayload",
       "kind": "class",
       "signature": "export class InspectorLayerGraphPayload extends Schema.Class<InspectorLayerGraphPayload>( \"InspectorLayerGraphPayload\" )({ ...InspectorPayloadBase, tag: Schema.Literal(\"layer-graph\"), layerId: NonEmptyString, label: NonEmptyString, state: Schema.Literals([\"registered\", \"acquired\", \"released\", \"failed\"]), dependencies: Schema.Array(NonEmptyString) }) {}"
@@ -347,6 +377,36 @@
       "name": "InspectorSpanPayload",
       "kind": "class",
       "signature": "export class InspectorSpanPayload extends Schema.Class<InspectorSpanPayload>( \"InspectorSpanPayload\" )({ ...InspectorPayloadBase, tag: Schema.Literal(\"span\"), name: NonEmptyString, state: Schema.Literals([\"started\", \"ended\"]), durationMs: Schema.optionalKey(NonNegativeNumber) }) {}"
+    },
+    {
+      "name": "InspectorSurface",
+      "kind": "type",
+      "signature": "const InspectorSurface: Schema.Literals<readonly [\"commands\", \"workers\", \"liveRuntime\", \"diagnostics\", \"performance\", \"logs\", \"eventLog\", \"workflows\", \"reactivity\", \"persistence\", \"cluster\"]>"
+    },
+    {
+      "name": "InspectorTest",
+      "kind": "class",
+      "signature": "export class InspectorTest extends Context.Service<InspectorTest, InspectorTestApi>()( \"@effect-desktop/devtools/InspectorTest\" ) {}"
+    },
+    {
+      "name": "InspectorTestApi",
+      "kind": "interface",
+      "signature": "export interface InspectorTestApi { readonly record: ( surface: InspectorSurface, payload: unknown, options?: { readonly atMs?: number } ) => Effect.Effect<Option.Option<RecordedInspectorFrame>, never, never> readonly session: () => Effect.Effect<RecordedSession, never, never> readonly observe: () => Stream.Stream<RecordedInspectorFrame, never, never> }"
+    },
+    {
+      "name": "InspectorTestLayer",
+      "kind": "value",
+      "signature": "const InspectorTestLayer: (options?: InspectorTestOptions) => Layer.Layer<InspectorTest, never, InspectorSafetyPolicy>"
+    },
+    {
+      "name": "InspectorTestOptions",
+      "kind": "interface",
+      "signature": "export interface InspectorTestOptions { readonly id?: string readonly startedAt?: number readonly now?: () => number readonly seed?: RecordedSession readonly inspectorSafety?: InspectorSafetyPolicyApi }"
+    },
+    {
+      "name": "InspectorTestWithPolicy",
+      "kind": "value",
+      "signature": "const InspectorTestWithPolicy: (options?: Omit<InspectorTestOptions, \"inspectorSafety\">) => Layer.Layer<InspectorTest, InspectorSafetyPolicyInvalidArgumentError, never>"
     },
     {
       "name": "InspectorWorkflowPayload",
@@ -609,9 +669,44 @@
       "signature": "const ReactivityTrackerLive: Layer.Layer<ReactivityTracker, never, never>"
     },
     {
+      "name": "recordedDiagnosticsSession",
+      "kind": "value",
+      "signature": "const recordedDiagnosticsSession: RecordedSession"
+    },
+    {
+      "name": "RecordedInspectorFrame",
+      "kind": "class",
+      "signature": "export class RecordedInspectorFrame extends Schema.Class<RecordedInspectorFrame>( \"RecordedInspectorFrame\" )({ atMs: Schema.Number, surface: InspectorSurface, payload: Schema.Unknown, safety: Schema.optionalKey(InspectorSafetySummary) }) {}"
+    },
+    {
+      "name": "RecordedSession",
+      "kind": "class",
+      "signature": "export class RecordedSession extends Schema.Class<RecordedSession>(\"RecordedSession\")({ id: Schema.NonEmptyString, startedAt: Schema.Number, frames: Schema.Array(RecordedInspectorFrame) }) {}"
+    },
+    {
       "name": "replayInspectorFixture",
       "kind": "value",
       "signature": "const replayInspectorFixture: (fixture: readonly unknown[]) => Effect.Effect<readonly InspectorEvent[], Schema.SchemaError, never>"
+    },
+    {
+      "name": "ReplayTransport",
+      "kind": "class",
+      "signature": "export class ReplayTransport extends Context.Service<ReplayTransport, ReplayTransportApi>()( \"@effect-desktop/devtools/ReplayTransport\" ) {}"
+    },
+    {
+      "name": "ReplayTransportApi",
+      "kind": "interface",
+      "signature": "export interface ReplayTransportApi { readonly session: () => Effect.Effect<RecordedSession, never, never> readonly frames: () => Stream.Stream<RecordedInspectorFrame, never, never> readonly surface: ( surface: InspectorSurface ) => Stream.Stream<RecordedInspectorFrame, never, never> }"
+    },
+    {
+      "name": "ReplayTransportFromInspectorTest",
+      "kind": "value",
+      "signature": "const ReplayTransportFromInspectorTest: Layer.Layer<ReplayTransport, never, InspectorTest>"
+    },
+    {
+      "name": "ReplayTransportFromSession",
+      "kind": "value",
+      "signature": "const ReplayTransportFromSession: (session: RecordedSession) => Layer.Layer<ReplayTransport, InspectorFixtureError, never>"
     },
     {
       "name": "ResourcePanelRow",
