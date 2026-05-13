@@ -154,10 +154,43 @@ test("runtime entry can open startup windows from the Desktop app module", async
   }
 })
 
+test("runtime entry runs from a Node-targeted build", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-runtime-node-"))
+  const outfile = join(directory, "runtime-main.js")
+
+  try {
+    await runCommand("bun", ["build", "src/runtime/main.ts", "--target=node", "--outfile", outfile])
+    const result = await runRuntimeWithFakeHost({
+      runtimeCommand: "node",
+      runtimeArgs: [outfile]
+    })
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toBe("")
+    expect(result.trailingStdoutBytes).toBe(0)
+    expect(result.readyEvents).toEqual([
+      {
+        event: "runtime.ready",
+        version: packageJson.version
+      }
+    ])
+    expect(result.methods).toEqual([
+      HOST_VERSION_METHOD,
+      HOST_PING_METHOD,
+      WINDOW_CREATE_METHOD,
+      WINDOW_DESTROY_METHOD
+    ])
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 interface RuntimeHostOptions {
   readonly appModule?: string
   readonly startupWindows?: unknown
   readonly windowSmokeTest?: boolean
+  readonly runtimeCommand?: string
+  readonly runtimeArgs?: readonly string[]
 }
 
 const runRuntimeWithFakeHost = (options: RuntimeHostOptions = {}): Promise<RuntimeHostResult> =>
@@ -179,11 +212,15 @@ const runRuntimeWithFakeHost = (options: RuntimeHostOptions = {}): Promise<Runti
       env[STARTUP_WINDOWS_ENV] = JSON.stringify(options.startupWindows)
     }
 
-    const child = spawn("bun", ["src/runtime/main.ts"], {
-      cwd: PACKAGE_ROOT,
-      env,
-      stdio: ["pipe", "pipe", "pipe"]
-    }) as unknown as NodeJS.EventEmitter & {
+    const child = spawn(
+      options.runtimeCommand ?? "bun",
+      Array.from(options.runtimeArgs ?? ["src/runtime/main.ts"]),
+      {
+        cwd: PACKAGE_ROOT,
+        env,
+        stdio: ["pipe", "pipe", "pipe"]
+      }
+    ) as unknown as NodeJS.EventEmitter & {
       stdin: NodeJS.WritableStream
       stdout: NodeJS.ReadableStream
       stderr: NodeJS.ReadableStream
@@ -270,6 +307,33 @@ const runRuntimeWithFakeHost = (options: RuntimeHostOptions = {}): Promise<Runti
         child.stdin.write(encodeFrame(responseFor(requestValue)))
       }
     }
+  })
+
+const runCommand = (command: string, args: readonly string[]): Promise<void> =>
+  new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(command, Array.from(args), {
+      cwd: PACKAGE_ROOT,
+      stdio: ["ignore", "ignore", "pipe"]
+    }) as unknown as NodeJS.EventEmitter & {
+      stderr: NodeJS.ReadableStream
+    }
+    const stderrChunks: Buffer[] = []
+
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderrChunks.push(chunk)
+    })
+    child.on("error", rejectPromise)
+    child.on("close", (exitCode) => {
+      if (exitCode === 0) {
+        resolvePromise()
+      } else {
+        rejectPromise(
+          new Error(
+            `${command} ${args.join(" ")} failed with ${exitCode}: ${Buffer.concat(stderrChunks).toString("utf8")}`
+          )
+        )
+      }
+    })
   })
 
 const responseFor = (request: HostProtocolRequest): unknown => {

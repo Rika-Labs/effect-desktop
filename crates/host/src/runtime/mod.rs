@@ -1491,72 +1491,80 @@ console.log("this is not framed");
     }
 
     #[test]
-    fn child_runtime_round_trips_ping_and_version_after_ready() {
-        let script = RUNTIME_HANDSHAKE_SCRIPT.replace("__PROTOCOL_VERSION__", PROTOCOL_VERSION);
-        let supervisor = Supervisor::spawn(
-            RuntimeConfig::new("bun").args(["-e".to_string(), script]),
-            test_policy(RuntimeProfile::Prod, 0, EVENT_TIMEOUT),
-            test_router(),
-        )
-        .expect("runtime child should spawn");
+    fn child_runtime_round_trips_ping_and_version_after_ready_for_bun_and_node() {
+        for executable in runtime_provider_executables() {
+            let script = RUNTIME_HANDSHAKE_SCRIPT.replace("__PROTOCOL_VERSION__", PROTOCOL_VERSION);
+            let supervisor = Supervisor::spawn(
+                RuntimeConfig::new(executable).args(["-e".to_string(), script]),
+                test_policy(RuntimeProfile::Prod, 0, EVENT_TIMEOUT),
+                test_router(),
+            )
+            .unwrap_or_else(|error| panic!("{executable} runtime child should spawn: {error}"));
 
-        let events = collect_until_exit(supervisor.events());
+            let events = collect_until_exit(supervisor.events());
 
-        assert!(
-            events.iter().any(
-                |event| matches!(event, RuntimeEvent::Stdout { line } if line == r#"{"event":"runtime.ready","version":"test"}"#)
-            ),
-            "events did not include ready stdout line: {events:?}"
-        );
-        assert!(
-            events
-                .iter()
-                .any(|event| matches!(event, RuntimeEvent::Exited { status } if status.success())),
-            "events did not include successful exit: {events:?}"
-        );
-        assert_terminal_event_closes_channel(&supervisor);
+            assert!(
+                events.iter().any(
+                    |event| matches!(event, RuntimeEvent::Stdout { line } if line == r#"{"event":"runtime.ready","version":"test"}"#)
+                ),
+                "{executable} events did not include ready stdout line: {events:?}"
+            );
+            assert!(
+                events.iter().any(
+                    |event| matches!(event, RuntimeEvent::Exited { status } if status.success())
+                ),
+                "{executable} events did not include successful exit: {events:?}"
+            );
+            assert_terminal_event_closes_channel(&supervisor);
+        }
     }
 
     #[test]
-    fn child_runtime_fails_if_plain_stdout_follows_ready() {
-        let supervisor = Supervisor::spawn(
-            RuntimeConfig::new("bun").args([
-                "-e".to_string(),
-                RUNTIME_POST_READY_STDOUT_SCRIPT.to_string(),
-            ]),
-            test_policy(RuntimeProfile::Prod, 0, EVENT_TIMEOUT),
-            test_router(),
-        )
-        .expect("runtime child should spawn");
+    fn child_runtime_fails_if_plain_stdout_follows_ready_for_bun_and_node() {
+        for executable in runtime_provider_executables() {
+            let supervisor = Supervisor::spawn(
+                RuntimeConfig::new(executable).args([
+                    "-e".to_string(),
+                    RUNTIME_POST_READY_STDOUT_SCRIPT.to_string(),
+                ]),
+                test_policy(RuntimeProfile::Prod, 0, EVENT_TIMEOUT),
+                test_router(),
+            )
+            .unwrap_or_else(|error| panic!("{executable} runtime child should spawn: {error}"));
 
-        let events = collect_until_exit(supervisor.events());
+            let events = collect_until_exit(supervisor.events());
 
-        assert!(
-            events.iter().any(
-                |event| matches!(event, RuntimeEvent::Stdout { line } if line == r#"{"event":"runtime.ready","version":"test"}"#)
-            ),
-            "events did not include ready stdout line: {events:?}"
-        );
-        let runtime_stdio_error = events.iter().find_map(|event| {
-            if let RuntimeEvent::StdioError {
-                stream: RuntimeStream::Stdout,
-                error,
-            } = event
-            {
-                Some(error.as_str())
-            } else {
-                None
-            }
-        });
+            assert!(
+                events.iter().any(
+                    |event| matches!(event, RuntimeEvent::Stdout { line } if line == r#"{"event":"runtime.ready","version":"test"}"#)
+                ),
+                "{executable} events did not include ready stdout line: {events:?}"
+            );
+            let runtime_stdio_error = events.iter().find_map(|event| {
+                if let RuntimeEvent::StdioError {
+                    stream: RuntimeStream::Stdout,
+                    error,
+                } = event
+                {
+                    Some(error.as_str())
+                } else {
+                    None
+                }
+            });
 
-        assert!(
-            matches!(
-                runtime_stdio_error,
-                Some(error) if error.contains("after runtime.ready")
-            ),
-            "events did not include framed-protocol violation: {events:?}"
-        );
-        assert_terminal_event_closes_channel(&supervisor);
+            assert!(
+                matches!(
+                    runtime_stdio_error,
+                    Some(error) if error.contains("after runtime.ready")
+                ),
+                "{executable} events did not include framed-protocol violation: {events:?}"
+            );
+            assert_terminal_event_closes_channel(&supervisor);
+        }
+    }
+
+    fn runtime_provider_executables() -> [&'static str; 2] {
+        ["bun", "node"]
     }
 
     #[test]

@@ -9,7 +9,7 @@ import { Config, Effect, Option } from "effect"
 
 import packageJson from "../../package.json" with { type: "json" }
 import { createHostProtocolExchange } from "./host-client.js"
-import { layerStdioSocket } from "./stdio-socket.js"
+import { layerStdioSocket, writeStdout } from "./stdio-socket.js"
 import { makeTransport } from "./transport.js"
 import { openDeclaredWindows, readStartupWindows } from "./window-supervisor.js"
 
@@ -39,7 +39,7 @@ const smokeTestWindows = Object.freeze({
 
 await Effect.runPromise(
   Effect.gen(function* () {
-    yield* Effect.tryPromise(() => Bun.write(Bun.stdout, `${JSON.stringify(readyEvent)}\n`))
+    yield* writeStdout(`${JSON.stringify(readyEvent)}\n`)
 
     const transport = yield* makeTransport()
     const connection = yield* transport.connect({ target: "stdio" })
