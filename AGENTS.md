@@ -4,9 +4,13 @@ Every active goal must include an architecture-debt sweep. For each ticket or is
 
 Effect primitives are the default architecture. Custom abstractions must justify themselves by owning durable desktop-specific policy, lifecycle, security, or protocol translation. If an abstraction only renames, mirrors, narrows, adapts, or partially reimplements Effect APIs, treat it as design debt.
 
+Bridge contracts are boundary descriptions, not an internal DSL. Prefer canonical Effect RPC, Effect Schema, Layer, Stream, Schedule, Scope, and Config contracts directly; keep bridge-specific helpers only where they translate across the native/web boundary or enforce durable protocol policy.
+
 If a wrapper is not adding durable desktop-specific semantics, remove it as part of the current work.
 
 If removal is larger than the current ticket, open a follow-up GitHub issue with a concrete before/after that shows the current custom abstraction and the desired Effect-native shape. The issue must make the simplification legible enough that a future agent can remove the wrapper without rediscovering the whole design.
+
+Before closing each ticket, record the architecture-debt sweep outcome: wrappers removed, follow-up issues opened, or no debt found in the touched area.
 
 Track follow-up issues in the roadmap when they unblock or simplify later work. Do not preserve legacy compatibility solely for prerelease APIs; prefer the simpler Effect-native interface and migrate call sites fully.
 
