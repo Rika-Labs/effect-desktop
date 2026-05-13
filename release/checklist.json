@@ -1,6 +1,19 @@
 {
   "schemaVersion": 1,
   "source": "docs/SPEC.md §25.4",
+  "subjects": [
+    {
+      "id": "playground",
+      "configPath": "apps/playground/desktop.config.ts",
+      "distDir": "apps/playground/dist",
+      "requiredCommands": [
+        "bun packages/cli/src/bin.ts build --config apps/playground/desktop.config.ts",
+        "bun packages/cli/src/bin.ts package --config apps/playground/desktop.config.ts",
+        "bun packages/cli/src/bin.ts check --repro --config apps/playground/desktop.config.ts",
+        "bun packages/cli/src/bin.ts sign --config apps/playground/desktop.config.ts"
+      ]
+    }
+  ],
   "gates": [
     {
       "id": "spdx-sbom",

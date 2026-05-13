@@ -17,15 +17,23 @@ export type ReleaseGateEvidenceKind = typeof ReleaseGateEvidenceKind.Type
 export class ReleaseChecklistGate extends Schema.Class<ReleaseChecklistGate>(
   "ReleaseChecklistGate"
 )({
-  id: Schema.String,
-  title: Schema.String,
+  id: Schema.NonEmptyString,
+  title: Schema.NonEmptyString,
   kind: ReleaseGateEvidenceKind,
-  evidence: Schema.Array(Schema.String)
+  evidence: Schema.Array(Schema.NonEmptyString)
+}) {}
+
+export class ReleaseSubject extends Schema.Class<ReleaseSubject>("ReleaseSubject")({
+  id: Schema.NonEmptyString,
+  configPath: Schema.NonEmptyString,
+  distDir: Schema.NonEmptyString,
+  requiredCommands: Schema.Array(Schema.NonEmptyString)
 }) {}
 
 export class ReleaseChecklist extends Schema.Class<ReleaseChecklist>("ReleaseChecklist")({
   schemaVersion: Schema.Literal(1),
-  source: Schema.String,
+  source: Schema.NonEmptyString,
+  subjects: Schema.Array(ReleaseSubject),
   gates: Schema.Array(ReleaseChecklistGate)
 }) {}
 
@@ -69,10 +77,6 @@ const KEY_MANAGEMENT_PATH = "docs/security/key-management.md"
 const RELEASE_SETTINGS_PATH = "docs/security/release-settings.md"
 const EXEMPTIONS_PATH = "docs/security/exemptions"
 const SPEC_SOURCE = "docs/SPEC.md §25.4"
-const PLAYGROUND_BUILD_COMMAND =
-  "bun packages/cli/src/bin.ts build --config apps/playground/desktop.config.ts"
-const PLAYGROUND_PACKAGE_COMMAND =
-  "bun packages/cli/src/bin.ts package --config apps/playground/desktop.config.ts"
 const StrictParseOptions = { errors: "all", onExcessProperty: "error" } as const
 
 const REQUIRED_GATES: ReadonlyMap<string, ReleaseGateEvidenceKind> = new Map([
@@ -89,14 +93,7 @@ const REQUIRED_GATES: ReadonlyMap<string, ReleaseGateEvidenceKind> = new Map([
 const RELEASE_WORKFLOW_TOKENS: ReadonlyMap<string, readonly string[]> = new Map([
   ["spdx-sbom", ["anchore/sbom-action", "format: spdx-json", "sbom-artifacts", "sbom-path"]],
   ["cvss-scan", ["anchore/scan-action", "severity-cutoff: high", "docs/security/exemptions"]],
-  [
-    "reproducible-build",
-    [
-      PLAYGROUND_BUILD_COMMAND,
-      PLAYGROUND_PACKAGE_COMMAND,
-      "bun packages/cli/src/bin.ts check --repro"
-    ]
-  ],
+  ["reproducible-build", ["bun packages/cli/src/bin.ts check --repro"]],
   [
     "slsa-provenance",
     ["actions/attest", "subject-path", "dist/desktop", "attestations: write", "id-token: write"]
@@ -197,7 +194,7 @@ export const runReleaseGate = (
     yield* validateWorkflowActionPins(RELEASE_WORKFLOW_PATH, releaseWorkflow)
     yield* validateWorkflowActionPins(CI_WORKFLOW_PATH, ciWorkflow)
     yield* validateReleaseRunnerPosture(releaseWorkflow)
-    yield* validatePlaygroundBuildBeforePackage(releaseWorkflow)
+    yield* validateReleaseSubjectWorkflow(checklist.subjects, releaseWorkflow)
     yield* validatePolicyDocuments({ keyManagement, releaseSettings })
     yield* validateExemptions(join(options.cwd, EXEMPTIONS_PATH))
 
@@ -250,6 +247,13 @@ const validateChecklist = (
       new ReleaseGateManifestError({ message: `release checklist source must be ${SPEC_SOURCE}` })
     )
   }
+  if (checklist.subjects.length === 0) {
+    return Effect.fail(
+      new ReleaseGateManifestError({
+        message: "release checklist must declare at least one release subject"
+      })
+    )
+  }
   if (checklist.gates.length !== REQUIRED_GATES.size) {
     return Effect.fail(
       new ReleaseGateManifestError({
@@ -282,6 +286,23 @@ const validateChecklist = (
       )
     }
     ids.add(gate.id)
+  }
+
+  const subjectIds = new Set<string>()
+  for (const subject of checklist.subjects) {
+    if (subject.requiredCommands.length === 0) {
+      return Effect.fail(
+        new ReleaseGateManifestError({
+          message: `release subject ${subject.id} must declare required commands`
+        })
+      )
+    }
+    if (subjectIds.has(subject.id)) {
+      return Effect.fail(
+        new ReleaseGateManifestError({ message: `duplicate release subject ${subject.id}` })
+      )
+    }
+    subjectIds.add(subject.id)
   }
 
   for (const id of REQUIRED_GATES.keys()) {
@@ -449,25 +470,40 @@ const validateReleaseRunnerPosture = (
   return Effect.void
 }
 
-const validatePlaygroundBuildBeforePackage = (
-  body: string
+const validateReleaseSubjectWorkflow = (
+  subjects: readonly ReleaseSubject[],
+  releaseWorkflow: string
 ): Effect.Effect<void, ReleaseGateEvidenceError, never> => {
-  const packageIndex = body.indexOf(PLAYGROUND_PACKAGE_COMMAND)
-  if (packageIndex === -1) {
-    return Effect.void
-  }
+  for (const subject of subjects) {
+    for (const command of subject.requiredCommands) {
+      if (!releaseWorkflow.includes(command)) {
+        return Effect.fail(
+          new ReleaseGateEvidenceError({
+            gate: "release-workflow",
+            message: `release subject ${subject.id} is missing workflow command ${command}`
+          })
+        )
+      }
+    }
 
-  const buildIndex = body.indexOf(PLAYGROUND_BUILD_COMMAND)
-  if (buildIndex !== -1 && buildIndex < packageIndex) {
-    return Effect.void
-  }
+    const packageCommand = `bun packages/cli/src/bin.ts package --config ${subject.configPath}`
+    const packageIndex = releaseWorkflow.indexOf(packageCommand)
+    if (packageIndex === -1) {
+      continue
+    }
 
-  return Effect.fail(
-    new ReleaseGateEvidenceError({
-      gate: "reproducible-build",
-      message: "release workflow must run desktop build for apps/playground before desktop package"
-    })
-  )
+    const buildCommand = `bun packages/cli/src/bin.ts build --config ${subject.configPath}`
+    const buildIndex = releaseWorkflow.indexOf(buildCommand)
+    if (buildIndex === -1 || buildIndex > packageIndex) {
+      return Effect.fail(
+        new ReleaseGateEvidenceError({
+          gate: "reproducible-build",
+          message: `release subject ${subject.id} must run ${buildCommand} before ${packageCommand}`
+        })
+      )
+    }
+  }
+  return Effect.void
 }
 
 const validatePolicyDocuments = (files: {

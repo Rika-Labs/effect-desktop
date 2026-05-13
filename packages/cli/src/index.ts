@@ -531,6 +531,7 @@ export interface CommandInvocation {
   readonly command: string
   readonly args: readonly string[]
   readonly cwd: string
+  readonly env?: Readonly<Record<string, string | undefined>>
 }
 
 export type CommandRunner = (
@@ -564,6 +565,7 @@ export interface DesktopBuildOptions {
   readonly commandRunner: CommandRunner
   readonly now: () => number
   readonly hostTarget: BuildTarget | undefined
+  readonly env?: Readonly<Record<string, string | undefined>>
 }
 
 interface BuildPlan {
@@ -1187,6 +1189,10 @@ export const runDesktopBuild = (
       command: "cargo",
       args: ["build", "-p", "host", "--release"],
       cwd: options.cwd,
+      env: {
+        ...(options.env ?? process.env),
+        EFFECT_DESKTOP_EMBED_DIST: plan.rendererDistPath
+      },
       outputPath: join(plan.layoutPath, "native", hostBinaryName(target))
     })
     yield* makeDirectory(dirname(nativeHost.outputPath))
@@ -1207,6 +1213,7 @@ const runStep = (
     readonly command: string
     readonly args: readonly string[]
     readonly cwd: string
+    readonly env?: Readonly<Record<string, string | undefined>>
   }
 ): Effect.Effect<BuildStepReport, BuildCommandFailedError, never> =>
   Effect.gen(function* () {
@@ -1215,7 +1222,8 @@ const runStep = (
       step: step.name,
       command: step.command,
       args: step.args,
-      cwd: step.cwd
+      cwd: step.cwd,
+      ...(step.env === undefined ? {} : { env: step.env })
     })
     const elapsedMs = Math.max(0, options.now() - start)
     return {

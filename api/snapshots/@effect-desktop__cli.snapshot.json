@@ -136,7 +136,7 @@
     {
       "name": "CommandInvocation",
       "kind": "interface",
-      "signature": "export interface CommandInvocation { readonly step: BuildStepName readonly command: string readonly args: readonly string[] readonly cwd: string }"
+      "signature": "export interface CommandInvocation { readonly step: BuildStepName readonly command: string readonly args: readonly string[] readonly cwd: string readonly env?: Readonly<Record<string, string | undefined>> }"
     },
     {
       "name": "CommandRunner",
@@ -181,7 +181,7 @@
     {
       "name": "DesktopBuildOptions",
       "kind": "interface",
-      "signature": "export interface DesktopBuildOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly profile: string readonly commandRunner: CommandRunner readonly now: () => number readonly hostTarget: BuildTarget | undefined }"
+      "signature": "export interface DesktopBuildOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly profile: string readonly commandRunner: CommandRunner readonly now: () => number readonly hostTarget: BuildTarget | undefined readonly env?: Readonly<Record<string, string | undefined>> }"
     },
     {
       "name": "DesktopBuildReport",
@@ -601,12 +601,12 @@
     {
       "name": "ReleaseChecklist",
       "kind": "class",
-      "signature": "export class ReleaseChecklist extends Schema.Class<ReleaseChecklist>(\"ReleaseChecklist\")({ schemaVersion: Schema.Literal(1), source: Schema.String, gates: Schema.Array(ReleaseChecklistGate) }) {}"
+      "signature": "export class ReleaseChecklist extends Schema.Class<ReleaseChecklist>(\"ReleaseChecklist\")({ schemaVersion: Schema.Literal(1), source: Schema.NonEmptyString, subjects: Schema.Array(ReleaseSubject), gates: Schema.Array(ReleaseChecklistGate) }) {}"
     },
     {
       "name": "ReleaseChecklistGate",
       "kind": "class",
-      "signature": "export class ReleaseChecklistGate extends Schema.Class<ReleaseChecklistGate>( \"ReleaseChecklistGate\" )({ id: Schema.String, title: Schema.String, kind: ReleaseGateEvidenceKind, evidence: Schema.Array(Schema.String) }) {}"
+      "signature": "export class ReleaseChecklistGate extends Schema.Class<ReleaseChecklistGate>( \"ReleaseChecklistGate\" )({ id: Schema.NonEmptyString, title: Schema.NonEmptyString, kind: ReleaseGateEvidenceKind, evidence: Schema.Array(Schema.NonEmptyString) }) {}"
     },
     {
       "name": "ReleaseGateCheckReport",

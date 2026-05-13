@@ -9,7 +9,9 @@ fn main() {
         .parent()
         .and_then(Path::parent)
         .expect("host crate should live under crates/host");
-    let dist_dir = repo_root.join("apps").join("playground").join("dist");
+    let dist_dir = env::var("EFFECT_DESKTOP_EMBED_DIST")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| repo_root.join("apps").join("playground").join("dist"));
     let csp_policy_path = repo_root
         .join("packages")
         .join("config")
@@ -24,7 +26,7 @@ fn main() {
     println!("cargo:rerun-if-changed={}", csp_policy_path.display());
 
     let mut files = Vec::new();
-    collect_files(&dist_dir, &dist_dir, &mut files).expect("failed to scan playground dist");
+    collect_files(&dist_dir, &dist_dir, &mut files).expect("failed to scan embedded dist");
     files.sort_by(|left, right| left.0.cmp(&right.0));
 
     let mut source = String::from(

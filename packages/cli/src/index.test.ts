@@ -2316,6 +2316,16 @@ test("desktop check --release rejects incomplete spec gate identities", async ()
       checklist: {
         schemaVersion: 1,
         source: "docs/SPEC.md §25.4",
+        subjects: [
+          {
+            id: "playground",
+            configPath: "apps/playground/desktop.config.ts",
+            distDir: "apps/playground/dist",
+            requiredCommands: [
+              "bun packages/cli/src/bin.ts build --config apps/playground/desktop.config.ts"
+            ]
+          }
+        ],
         gates: Array.from({ length: 8 }, (_, index) => ({
           id: `gate-${index}`,
           title: `Gate ${index}`,
@@ -2378,6 +2388,60 @@ test("desktop check --release rejects malformed checklist shape", async () => {
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("ReleaseGateManifestError")
     expect(payload.message).toContain("gates")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --release verifies configured non-playground subjects", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+  try {
+    const checklist = releaseChecklistFixture()
+    if (!isReleaseChecklistFixture(checklist)) {
+      throw new Error("invalid release checklist fixture")
+    }
+    await writeReleaseFixture(directory, {
+      checklist: {
+        ...checklist,
+        subjects: [
+          ...checklist.subjects,
+          {
+            id: "basic-template",
+            configPath: "templates/basic-react-tailwind/desktop.config.ts",
+            distDir: "templates/basic-react-tailwind/dist",
+            requiredCommands: [
+              "bun packages/cli/src/bin.ts build --config templates/basic-react-tailwind/desktop.config.ts",
+              "bun packages/cli/src/bin.ts package --config templates/basic-react-tailwind/desktop.config.ts",
+              "bun packages/cli/src/bin.ts check --repro --config templates/basic-react-tailwind/desktop.config.ts"
+            ]
+          }
+        ]
+      },
+      releaseWorkflow: [
+        releaseWorkflowFixture(),
+        "      - name: Build basic template",
+        "        run: bun packages/cli/src/bin.ts build --config templates/basic-react-tailwind/desktop.config.ts",
+        "      - name: Package basic template",
+        "        run: bun packages/cli/src/bin.ts package --config templates/basic-react-tailwind/desktop.config.ts",
+        "      - name: Repro basic template",
+        "        run: bun packages/cli/src/bin.ts check --repro --config templates/basic-react-tailwind/desktop.config.ts"
+      ].join("\n")
+    })
+    const stdout: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--release"],
+        cwd: directory,
+        writeStdout: (text) => {
+          stdout.push(text)
+        },
+        writeStderr: () => {}
+      })
+    )
+
+    expect(exitCode).toBe(0)
+    expect(stdout.join("")).toContain("gates             8")
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -2634,7 +2698,7 @@ test("desktop check --release ignores uses text inside run scripts", async () =>
   }
 })
 
-test("desktop check --release rejects playground package before build", async () => {
+test("desktop check --release rejects subject package before build", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
   try {
     await writeReleaseFixture(directory, {
@@ -2642,9 +2706,15 @@ test("desktop check --release rejects playground package before build", async ()
         [
           "      - name: Build desktop app",
           "        run: bun packages/cli/src/bin.ts build --config apps/playground/desktop.config.ts",
-          ""
+          "      - name: Package release artifact",
+          "        run: bun packages/cli/src/bin.ts package --config apps/playground/desktop.config.ts"
         ].join("\n"),
-        ""
+        [
+          "      - name: Package release artifact",
+          "        run: bun packages/cli/src/bin.ts package --config apps/playground/desktop.config.ts",
+          "      - name: Build desktop app",
+          "        run: bun packages/cli/src/bin.ts build --config apps/playground/desktop.config.ts"
+        ].join("\n")
       )
     })
     const stderr: string[] = []
@@ -2666,8 +2736,59 @@ test("desktop check --release rejects playground package before build", async ()
     }
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("ReleaseGateEvidenceError")
-    expect(payload.message).toContain("desktop build")
-    expect(payload.message).toContain("before desktop package")
+    expect(payload.message).toContain("release subject playground")
+    expect(payload.message).toContain("build --config apps/playground/desktop.config.ts")
+    expect(payload.message).toContain("before")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop check --release reports missing subject workflow command", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+  try {
+    const checklist = releaseChecklistFixture()
+    if (!isReleaseChecklistFixture(checklist)) {
+      throw new Error("invalid release checklist fixture")
+    }
+    await writeReleaseFixture(directory, {
+      checklist: {
+        ...checklist,
+        subjects: [
+          {
+            id: "basic-template",
+            configPath: "templates/basic-react-tailwind/desktop.config.ts",
+            distDir: "templates/basic-react-tailwind/dist",
+            requiredCommands: [
+              "bun packages/cli/src/bin.ts build --config templates/basic-react-tailwind/desktop.config.ts"
+            ]
+          }
+        ]
+      }
+    })
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["check", "--release", "--json"],
+        cwd: directory,
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("ReleaseGateEvidenceError")
+    expect(payload.message).toContain("release subject basic-template")
+    expect(payload.message).toContain(
+      "bun packages/cli/src/bin.ts build --config templates/basic-react-tailwind/desktop.config.ts"
+    )
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -5971,6 +6092,7 @@ test("desktop build stages renderer runtime host bridge manifests and report", a
   try {
     await writePlaygroundFixture(directory)
     const calls: string[] = []
+    const nativeHostEnv: Array<string | undefined> = []
     const runner: CommandRunner = (invocation) =>
       Effect.gen(function* () {
         calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
@@ -5991,6 +6113,7 @@ test("desktop build stages renderer runtime host bridge manifests and report", a
           }
         }
         if (invocation.step === "native-host") {
+          nativeHostEnv.push(invocation.env?.["EFFECT_DESKTOP_EMBED_DIST"])
           yield* Effect.promise(() =>
             mkdir(join(invocation.cwd, "target", "release"), { recursive: true })
           )
@@ -6034,6 +6157,7 @@ test("desktop build stages renderer runtime host bridge manifests and report", a
       `runtime:bun build ${join(directory, "apps", "playground", "runtime.ts")} --target=bun --outdir ${join(layout, "runtime")}`,
       "native-host:cargo build -p host --release"
     ])
+    expect(nativeHostEnv).toEqual([join(directory, "apps", "playground", "dist")])
     expect(await readFile(join(layout, "renderer", "index.html"), "utf8")).toBe("<h1>ok</h1>")
     expect(await readFile(join(layout, "runtime", "runtime.js"), "utf8")).toContain("ok")
     expect(appManifest).toMatchObject({
@@ -8458,6 +8582,19 @@ const publicApiReportFixture = (kind: "added" | "removed"): PublicApiSnapshotRep
 const releaseChecklistFixture = (): unknown => ({
   schemaVersion: 1,
   source: "docs/SPEC.md §25.4",
+  subjects: [
+    {
+      id: "playground",
+      configPath: "apps/playground/desktop.config.ts",
+      distDir: "apps/playground/dist",
+      requiredCommands: [
+        "bun packages/cli/src/bin.ts build --config apps/playground/desktop.config.ts",
+        "bun packages/cli/src/bin.ts package --config apps/playground/desktop.config.ts",
+        "bun packages/cli/src/bin.ts check --repro --config apps/playground/desktop.config.ts",
+        "bun packages/cli/src/bin.ts sign --config apps/playground/desktop.config.ts"
+      ]
+    }
+  ],
   gates: [
     {
       id: "spdx-sbom",
@@ -8527,13 +8664,25 @@ const isReleaseChecklistFixture = (
 ): value is {
   readonly schemaVersion: 1
   readonly source: string
+  readonly subjects: readonly {
+    readonly id: string
+    readonly configPath: string
+    readonly distDir: string
+    readonly requiredCommands: readonly string[]
+  }[]
   readonly gates: readonly {
     readonly id: string
     readonly title: string
     readonly kind: string
     readonly evidence: readonly string[]
   }[]
-} => typeof value === "object" && value !== null && "gates" in value && Array.isArray(value.gates)
+} =>
+  typeof value === "object" &&
+  value !== null &&
+  "subjects" in value &&
+  Array.isArray(value.subjects) &&
+  "gates" in value &&
+  Array.isArray(value.gates)
 
 const ciWorkflowFixture = (): string =>
   [
