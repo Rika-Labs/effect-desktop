@@ -16,6 +16,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
+import type { DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer } from "effect"
 
 import { CanonicalPath } from "./contracts/path.js"
@@ -168,11 +169,10 @@ const makePathBridgeProtocolLayer = (
 const withPathRpcClient = <A>(
   exchange: BridgeClientExchange,
   options: BridgeClientOptions,
-  use: (client: PathGeneratedClient) => Effect.Effect<A, PathError, never>
+  use: (client: PathRpcClient) => Effect.Effect<A, PathError, never>
 ): Effect.Effect<A, PathError, never> =>
   Effect.scoped(
     RpcClient.make(PathRpcGroup).pipe(
-      Effect.map((client) => client as unknown as PathGeneratedClient),
       Effect.flatMap(use),
       Effect.provide(makePathBridgeProtocolLayer(exchange, options))
     )
@@ -203,21 +203,17 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
     recoverable: false
   })
 
-function pathRpc(method: (typeof PathMethodNames)[number], permission: string) {
-  return Rpc.make(`Path.${method}`, {
+function pathRpc<const Method extends (typeof PathMethodNames)[number]>(
+  method: Method,
+  permission: string
+) {
+  return Rpc.make(`Path.${method}` as const, {
     success: CanonicalPath,
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability({ kind: permission }))
 }
 
-interface PathGeneratedClient {
-  readonly "Path.appData": (input: void) => Effect.Effect<CanonicalPath, unknown, never>
-  readonly "Path.cache": (input: void) => Effect.Effect<CanonicalPath, unknown, never>
-  readonly "Path.logs": (input: void) => Effect.Effect<CanonicalPath, unknown, never>
-  readonly "Path.temp": (input: void) => Effect.Effect<CanonicalPath, unknown, never>
-  readonly "Path.home": (input: void) => Effect.Effect<CanonicalPath, unknown, never>
-  readonly "Path.downloads": (input: void) => Effect.Effect<CanonicalPath, unknown, never>
-}
+type PathRpcClient = DesktopRpcClient<PathRpc>
 
 const runPathRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

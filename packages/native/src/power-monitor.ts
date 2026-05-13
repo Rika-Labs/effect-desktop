@@ -17,6 +17,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
+import type { DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import {
@@ -163,11 +164,10 @@ const makePowerMonitorBridgeProtocolLayer = (
 const withPowerMonitorRpcClient = <A>(
   exchange: BridgeClientExchange,
   options: BridgeClientOptions,
-  use: (client: PowerMonitorGeneratedClient) => Effect.Effect<A, PowerMonitorError, never>
+  use: (client: PowerMonitorRpcClient) => Effect.Effect<A, PowerMonitorError, never>
 ): Effect.Effect<A, PowerMonitorError, never> =>
   Effect.scoped(
     RpcClient.make(PowerMonitorRpcGroup).pipe(
-      Effect.map((client) => client as unknown as PowerMonitorGeneratedClient),
       Effect.flatMap(use),
       Effect.provide(makePowerMonitorBridgeProtocolLayer(exchange, options))
     )
@@ -228,11 +228,7 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
     recoverable: false
   })
 
-interface PowerMonitorGeneratedClient {
-  readonly "PowerMonitor.isSupported": (
-    input: PowerMonitorIsSupportedInput
-  ) => Effect.Effect<PowerMonitorSupportedResult, unknown, never>
-}
+type PowerMonitorRpcClient = DesktopRpcClient<PowerMonitorRpc>
 
 const runPowerMonitorRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

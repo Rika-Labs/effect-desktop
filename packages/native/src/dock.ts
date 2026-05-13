@@ -17,6 +17,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
+import type { DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import {
@@ -253,11 +254,10 @@ const makeDockBridgeProtocolLayer = (
 const withDockRpcClient = <A>(
   exchange: BridgeClientExchange,
   options: BridgeClientOptions,
-  use: (client: DockGeneratedClient) => Effect.Effect<A, DockError, never>
+  use: (client: DockRpcClient) => Effect.Effect<A, DockError, never>
 ): Effect.Effect<A, DockError, never> =>
   Effect.scoped(
     RpcClient.make(DockRpcGroup).pipe(
-      Effect.map((client) => client as unknown as DockGeneratedClient),
       Effect.flatMap(use),
       Effect.provide(makeDockBridgeProtocolLayer(exchange, options))
     )
@@ -389,36 +389,19 @@ const decodeInput = (
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
 
-function dockRpc<Payload extends Schema.Schema<unknown>, Success extends Schema.Schema<unknown>>(
-  method: string,
-  payload: Payload,
-  success: Success,
-  capability: string
-) {
-  return Rpc.make(`Dock.${method}`, {
+function dockRpc<
+  const Method extends string,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
+  Success extends Schema.Codec<unknown, unknown, never, never>
+>(method: Method, payload: Payload, success: Success, capability: string) {
+  return Rpc.make(`Dock.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability({ kind: capability }))
 }
 
-interface DockGeneratedClient {
-  readonly "Dock.setBadgeCount": (
-    input: DockSetBadgeCountInput
-  ) => Effect.Effect<void, unknown, never>
-  readonly "Dock.setBadgeText": (
-    input: DockSetBadgeTextInput
-  ) => Effect.Effect<void, unknown, never>
-  readonly "Dock.setProgress": (input: DockSetProgressInput) => Effect.Effect<void, unknown, never>
-  readonly "Dock.setMenu": (input: DockSetMenuInput) => Effect.Effect<void, unknown, never>
-  readonly "Dock.setJumpList": (input: DockSetJumpListInput) => Effect.Effect<void, unknown, never>
-  readonly "Dock.requestAttention": (
-    input: DockRequestAttentionInput
-  ) => Effect.Effect<void, unknown, never>
-  readonly "Dock.isSupported": (
-    input: DockIsSupportedInput
-  ) => Effect.Effect<DockSupportedResult, unknown, never>
-}
+type DockRpcClient = DesktopRpcClient<DockRpc>
 
 const runDockRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

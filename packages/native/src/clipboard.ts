@@ -17,6 +17,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
+import type { DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import {
@@ -232,11 +233,10 @@ const makeClipboardBridgeClient = (
 const withClipboardRpcClient = <A>(
   exchange: BridgeClientExchange,
   options: BridgeClientOptions,
-  use: (client: ClipboardGeneratedClient) => Effect.Effect<A, ClipboardError, never>
+  use: (client: ClipboardRpcClient) => Effect.Effect<A, ClipboardError, never>
 ): Effect.Effect<A, ClipboardError, never> =>
   Effect.scoped(
     RpcClient.make(ClipboardRpcGroup).pipe(
-      Effect.map((client) => client as unknown as ClipboardGeneratedClient),
       Effect.flatMap(use),
       Effect.provide(makeClipboardBridgeProtocolLayer(exchange, options))
     )
@@ -322,16 +322,7 @@ const decodeInput = (
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
 
-interface ClipboardGeneratedClient {
-  readonly "Clipboard.readText": (input: void) => Effect.Effect<ClipboardText, unknown, never>
-  readonly "Clipboard.writeText": (input: ClipboardText) => Effect.Effect<void, unknown, never>
-  readonly "Clipboard.readImage": (input: void) => Effect.Effect<ClipboardImage, unknown, never>
-  readonly "Clipboard.writeImage": (input: ClipboardImage) => Effect.Effect<void, unknown, never>
-  readonly "Clipboard.clear": (input: void) => Effect.Effect<void, unknown, never>
-  readonly "Clipboard.isSupported": (
-    input: ClipboardIsSupportedInput
-  ) => Effect.Effect<ClipboardSupportedResult, unknown, never>
-}
+type ClipboardRpcClient = DesktopRpcClient<ClipboardRpc>
 
 const runClipboardRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
@@ -357,10 +348,11 @@ const isClipboardError = (error: unknown): error is ClipboardError =>
   "recoverable" in error
 
 function clipboardRpc<
-  Payload extends Schema.Schema<unknown>,
-  Success extends Schema.Schema<unknown>
->(method: string, payload: Payload, success: Success, capability: string) {
-  return Rpc.make(`Clipboard.${method}`, {
+  const Method extends string,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
+  Success extends Schema.Codec<unknown, unknown, never, never>
+>(method: Method, payload: Payload, success: Success, capability: string) {
+  return Rpc.make(`Clipboard.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema

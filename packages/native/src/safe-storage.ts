@@ -17,6 +17,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
+import type { DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import {
@@ -244,11 +245,10 @@ const makeSafeStorageBridgeProtocolLayer = (
 const withSafeStorageRpcClient = <A>(
   exchange: BridgeClientExchange,
   options: BridgeClientOptions,
-  use: (client: SafeStorageGeneratedClient) => Effect.Effect<A, SafeStorageError, never>
+  use: (client: SafeStorageRpcClient) => Effect.Effect<A, SafeStorageError, never>
 ): Effect.Effect<A, SafeStorageError, never> =>
   Effect.scoped(
     RpcClient.make(SafeStorageRpcGroup).pipe(
-      Effect.map((client) => client as unknown as SafeStorageGeneratedClient),
       Effect.flatMap(use),
       Effect.provide(makeSafeStorageBridgeProtocolLayer(exchange, options))
     )
@@ -349,27 +349,18 @@ const decodeInput = (
   )
 
 function safeStorageRpc<
-  Payload extends Schema.Schema<unknown>,
-  Success extends Schema.Schema<unknown>
->(method: string, payload: Payload, success: Success, capability: string) {
-  return Rpc.make(`SafeStorage.${method}`, {
+  const Method extends string,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
+  Success extends Schema.Codec<unknown, unknown, never, never>
+>(method: Method, payload: Payload, success: Success, capability: string) {
+  return Rpc.make(`SafeStorage.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability({ kind: capability }))
 }
 
-interface SafeStorageGeneratedClient {
-  readonly "SafeStorage.set": (input: SafeStorageSetInput) => Effect.Effect<void, unknown, never>
-  readonly "SafeStorage.get": (
-    input: SafeStorageKeyInput
-  ) => Effect.Effect<SafeStorageSecretPayload, unknown, never>
-  readonly "SafeStorage.delete": (input: SafeStorageKeyInput) => Effect.Effect<void, unknown, never>
-  readonly "SafeStorage.list": (input: void) => Effect.Effect<SafeStorageListResult, unknown, never>
-  readonly "SafeStorage.isAvailable": (
-    input: void
-  ) => Effect.Effect<SafeStorageAvailabilityResult, unknown, never>
-}
+type SafeStorageRpcClient = DesktopRpcClient<SafeStorageRpc>
 
 const runSafeStorageRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

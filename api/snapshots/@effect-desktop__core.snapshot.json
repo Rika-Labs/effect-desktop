@@ -1086,7 +1086,7 @@
     {
       "name": "ResourceHandleSchema",
       "kind": "value",
-      "signature": "const ResourceHandleSchema: <Kind extends string, State extends string>(kind: Kind, state: State) => Schema.Schema<ResourceHandle<Kind, State>> & Schema.Decoder<ResourceHandle<Kind, State>, never>"
+      "signature": "const ResourceHandleSchema: <Kind extends string, State extends string>(kind: Kind, state: State) => Schema.Struct<{ readonly kind: Schema.Literal<Kind>; readonly id: Schema.brand<Schema.NonEmptyString, \"ResourceId\">; readonly generation: Schema.Int; readonly ownerScope: Schema.NonEmptyString; readonly state: Schema.Literal<State>; }>"
     },
     {
       "name": "ResourceHandleShape",

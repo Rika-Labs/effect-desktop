@@ -18,6 +18,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
+import type { DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import {
@@ -254,11 +255,10 @@ const makeNotificationBridgeProtocolLayer = (
 const withNotificationRpcClient = <A>(
   exchange: BridgeClientExchange,
   options: BridgeClientOptions,
-  use: (client: NotificationGeneratedClient) => Effect.Effect<A, NotificationError, never>
+  use: (client: NotificationRpcClient) => Effect.Effect<A, NotificationError, never>
 ): Effect.Effect<A, NotificationError, never> =>
   Effect.scoped(
     RpcClient.make(NotificationRpcGroup).pipe(
-      Effect.map((client) => client as unknown as NotificationGeneratedClient),
       Effect.flatMap(use),
       Effect.provide(makeNotificationBridgeProtocolLayer(exchange, options))
     )
@@ -378,33 +378,18 @@ const decodeInput = (
   )
 
 function notificationRpc<
-  Payload extends Schema.Schema<unknown>,
-  Success extends Schema.Schema<unknown>
->(method: string, payload: Payload, success: Success, capability: string) {
-  return Rpc.make(`Notification.${method}`, {
+  const Method extends string,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
+  Success extends Schema.Codec<unknown, unknown, never, never>
+>(method: Method, payload: Payload, success: Success, capability: string) {
+  return Rpc.make(`Notification.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability({ kind: capability }))
 }
 
-interface NotificationGeneratedClient {
-  readonly "Notification.show": (
-    input: NotificationShowInput
-  ) => Effect.Effect<NotificationHandle, unknown, never>
-  readonly "Notification.close": (
-    input: NotificationCloseInput
-  ) => Effect.Effect<void, unknown, never>
-  readonly "Notification.isSupported": (
-    input: void
-  ) => Effect.Effect<NotificationSupportedResult, unknown, never>
-  readonly "Notification.requestPermission": (
-    input: void
-  ) => Effect.Effect<NotificationPermissionResult, unknown, never>
-  readonly "Notification.getPermissionStatus": (
-    input: void
-  ) => Effect.Effect<NotificationPermissionResult, unknown, never>
-}
+type NotificationRpcClient = DesktopRpcClient<NotificationRpc>
 
 const runNotificationRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

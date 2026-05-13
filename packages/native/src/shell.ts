@@ -18,6 +18,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
+import type { DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import {
@@ -205,11 +206,10 @@ const makeShellBridgeProtocolLayer = (
 const withShellRpcClient = <A>(
   exchange: BridgeClientExchange,
   options: BridgeClientOptions,
-  use: (client: ShellGeneratedClient) => Effect.Effect<A, ShellError, never>
+  use: (client: ShellRpcClient) => Effect.Effect<A, ShellError, never>
 ): Effect.Effect<A, ShellError, never> =>
   Effect.scoped(
     RpcClient.make(ShellRpcGroup).pipe(
-      Effect.map((client) => client as unknown as ShellGeneratedClient),
       Effect.flatMap(use),
       Effect.provide(makeShellBridgeProtocolLayer(exchange, options))
     )
@@ -400,28 +400,18 @@ const decodeInput = (
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
 
-function shellRpc<Payload extends Schema.Schema<unknown>>(
-  method: string,
-  payload: Payload,
-  capability: string
-) {
-  return Rpc.make(`Shell.${method}`, {
+function shellRpc<
+  const Method extends string,
+  Payload extends Schema.Codec<unknown, unknown, never, never>
+>(method: Method, payload: Payload, capability: string) {
+  return Rpc.make(`Shell.${method}` as const, {
     payload,
     success: Schema.Void,
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability({ kind: capability }))
 }
 
-interface ShellGeneratedClient {
-  readonly "Shell.openExternal": (
-    input: ShellOpenExternalInput
-  ) => Effect.Effect<void, unknown, never>
-  readonly "Shell.showItemInFolder": (
-    input: ShellShowItemInFolderInput
-  ) => Effect.Effect<void, unknown, never>
-  readonly "Shell.openPath": (input: ShellOpenPathInput) => Effect.Effect<void, unknown, never>
-  readonly "Shell.trashItem": (input: ShellTrashItemInput) => Effect.Effect<void, unknown, never>
-}
+type ShellRpcClient = DesktopRpcClient<ShellRpc>
 
 const runShellRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

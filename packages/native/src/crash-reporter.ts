@@ -19,6 +19,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
+import type { DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Option, Ref, Schema } from "effect"
 
 import {
@@ -271,11 +272,10 @@ const makeCrashReporterBridgeProtocolLayer = (
 const withCrashReporterRpcClient = <A>(
   exchange: BridgeClientExchange,
   options: BridgeClientOptions,
-  use: (client: CrashReporterGeneratedClient) => Effect.Effect<A, CrashReporterError, never>
+  use: (client: CrashReporterRpcClient) => Effect.Effect<A, CrashReporterError, never>
 ): Effect.Effect<A, CrashReporterError, never> =>
   Effect.scoped(
     RpcClient.make(CrashReporterRpcGroup).pipe(
-      Effect.map((client) => client as unknown as CrashReporterGeneratedClient),
       Effect.flatMap(use),
       Effect.provide(makeCrashReporterBridgeProtocolLayer(exchange, options))
     )
@@ -306,28 +306,18 @@ interface CrashReporterFlushBatch {
 }
 
 function crashReporterRpc<
-  Payload extends Schema.Schema<unknown>,
-  Success extends Schema.Schema<unknown>
->(method: string, payload: Payload, success: Success, capability: string) {
-  return Rpc.make(`CrashReporter.${method}`, {
+  const Method extends string,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
+  Success extends Schema.Codec<unknown, unknown, never, never>
+>(method: Method, payload: Payload, success: Success, capability: string) {
+  return Rpc.make(`CrashReporter.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability({ kind: capability }))
 }
 
-interface CrashReporterGeneratedClient {
-  readonly "CrashReporter.start": (
-    input: CrashReporterStartInput
-  ) => Effect.Effect<void, unknown, never>
-  readonly "CrashReporter.recordBreadcrumb": (
-    input: CrashReporterBreadcrumbInput
-  ) => Effect.Effect<void, unknown, never>
-  readonly "CrashReporter.flush": (
-    input: void
-  ) => Effect.Effect<CrashReporterFlushResult, unknown, never>
-  readonly "CrashReporter.setUploadHandler": (input: void) => Effect.Effect<void, unknown, never>
-}
+type CrashReporterRpcClient = DesktopRpcClient<CrashReporterRpc>
 
 const runCrashReporterRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

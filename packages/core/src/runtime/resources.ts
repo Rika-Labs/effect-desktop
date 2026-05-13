@@ -46,8 +46,7 @@ export class ResourceHandleShape extends Schema.Class<ResourceHandleShape>("Reso
 export const ResourceHandleSchema = <Kind extends string, State extends string>(
   kind: Kind,
   state: State
-): Schema.Schema<ResourceHandle<Kind, State>> &
-  Schema.Decoder<ResourceHandle<Kind, State>, never> =>
+) =>
   Schema.Struct({
     kind: Schema.Literal(kind),
     id: ResourceIdSchema,

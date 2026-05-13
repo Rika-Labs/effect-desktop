@@ -17,6 +17,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
+import type { DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import {
@@ -248,11 +249,10 @@ const makeSystemAppearanceBridgeProtocolLayer = (
 const withSystemAppearanceRpcClient = <A>(
   exchange: BridgeClientExchange,
   options: BridgeClientOptions,
-  use: (client: SystemAppearanceGeneratedClient) => Effect.Effect<A, SystemAppearanceError, never>
+  use: (client: SystemAppearanceRpcClient) => Effect.Effect<A, SystemAppearanceError, never>
 ): Effect.Effect<A, SystemAppearanceError, never> =>
   Effect.scoped(
     RpcClient.make(SystemAppearanceRpcGroup).pipe(
-      Effect.map((client) => client as unknown as SystemAppearanceGeneratedClient),
       Effect.flatMap(use),
       Effect.provide(makeSystemAppearanceBridgeProtocolLayer(exchange, options))
     )
@@ -318,33 +318,18 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
   })
 
 function systemAppearanceRpc<
-  Payload extends Schema.Schema<unknown>,
-  Success extends Schema.Schema<unknown>
->(method: string, payload: Payload, success: Success, capability: string) {
-  return Rpc.make(`SystemAppearance.${method}`, {
+  const Method extends string,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
+  Success extends Schema.Codec<unknown, unknown, never, never>
+>(method: Method, payload: Payload, success: Success, capability: string) {
+  return Rpc.make(`SystemAppearance.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability({ kind: capability }))
 }
 
-interface SystemAppearanceGeneratedClient {
-  readonly "SystemAppearance.getAppearance": (
-    input: void
-  ) => Effect.Effect<SystemAppearanceResult, unknown, never>
-  readonly "SystemAppearance.getAccentColor": (
-    input: void
-  ) => Effect.Effect<SystemAppearanceAccentColorResult, unknown, never>
-  readonly "SystemAppearance.getReducedMotion": (
-    input: void
-  ) => Effect.Effect<SystemAppearanceBooleanResult, unknown, never>
-  readonly "SystemAppearance.getReducedTransparency": (
-    input: void
-  ) => Effect.Effect<SystemAppearanceBooleanResult, unknown, never>
-  readonly "SystemAppearance.isSupported": (
-    input: SystemAppearanceIsSupportedInput
-  ) => Effect.Effect<SystemAppearanceSupportedResult, unknown, never>
-}
+type SystemAppearanceRpcClient = DesktopRpcClient<SystemAppearanceRpc>
 
 const runSystemAppearanceRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

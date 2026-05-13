@@ -18,6 +18,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
+import type { DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import {
@@ -223,11 +224,10 @@ const makeTrayBridgeProtocolLayer = (
 const withTrayRpcClient = <A>(
   exchange: BridgeClientExchange,
   options: BridgeClientOptions,
-  use: (client: TrayGeneratedClient) => Effect.Effect<A, TrayError, never>
+  use: (client: TrayRpcClient) => Effect.Effect<A, TrayError, never>
 ): Effect.Effect<A, TrayError, never> =>
   Effect.scoped(
     RpcClient.make(TrayRpcGroup).pipe(
-      Effect.map((client) => client as unknown as TrayGeneratedClient),
       Effect.flatMap(use),
       Effect.provide(makeTrayBridgeProtocolLayer(exchange, options))
     )
@@ -373,27 +373,19 @@ const decodeInput = (
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
 
-function trayRpc<Payload extends Schema.Schema<unknown>, Success extends Schema.Schema<unknown>>(
-  method: string,
-  payload: Payload,
-  success: Success,
-  capability: string
-) {
-  return Rpc.make(`Tray.${method}`, {
+function trayRpc<
+  const Method extends string,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
+  Success extends Schema.Codec<unknown, unknown, never, never>
+>(method: Method, payload: Payload, success: Success, capability: string) {
+  return Rpc.make(`Tray.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability({ kind: capability }))
 }
 
-interface TrayGeneratedClient {
-  readonly "Tray.create": (input: TrayCreateInput) => Effect.Effect<TrayHandle, unknown, never>
-  readonly "Tray.setIcon": (input: TraySetIconInput) => Effect.Effect<void, unknown, never>
-  readonly "Tray.setTooltip": (input: TraySetTooltipInput) => Effect.Effect<void, unknown, never>
-  readonly "Tray.setMenu": (input: TraySetMenuInput) => Effect.Effect<void, unknown, never>
-  readonly "Tray.destroy": (input: TrayDestroyInput) => Effect.Effect<void, unknown, never>
-  readonly "Tray.isSupported": (input: void) => Effect.Effect<TraySupportedResult, unknown, never>
-}
+type TrayRpcClient = DesktopRpcClient<TrayRpc>
 
 const runTrayRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

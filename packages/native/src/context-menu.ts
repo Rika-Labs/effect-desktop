@@ -1,4 +1,5 @@
 import {
+  type DesktopRpcClient,
   CommandRegistry,
   PermissionActor,
   PermissionContext,
@@ -284,11 +285,10 @@ const makeContextMenuBridgeProtocolLayer = (
 const withContextMenuRpcClient = <A>(
   exchange: BridgeClientExchange,
   options: BridgeClientOptions,
-  use: (client: ContextMenuGeneratedClient) => Effect.Effect<A, ContextMenuError, never>
+  use: (client: ContextMenuRpcClient) => Effect.Effect<A, ContextMenuError, never>
 ): Effect.Effect<A, ContextMenuError, never> =>
   Effect.scoped(
     RpcClient.make(ContextMenuRpcGroup).pipe(
-      Effect.map((client) => client as unknown as ContextMenuGeneratedClient),
       Effect.flatMap(use),
       Effect.provide(makeContextMenuBridgeProtocolLayer(exchange, options))
     )
@@ -413,27 +413,18 @@ const decodeInput = (
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
 
-function contextMenuRpc<Payload extends Schema.Schema<unknown>>(
-  method: string,
-  payload: Payload,
-  capability: string
-) {
-  return Rpc.make(`ContextMenu.${method}`, {
+function contextMenuRpc<
+  const Method extends string,
+  Payload extends Schema.Codec<unknown, unknown, never, never>
+>(method: Method, payload: Payload, capability: string) {
+  return Rpc.make(`ContextMenu.${method}` as const, {
     payload,
     success: Schema.Void,
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability({ kind: capability }))
 }
 
-interface ContextMenuGeneratedClient {
-  readonly "ContextMenu.show": (input: ContextMenuShowInput) => Effect.Effect<void, unknown, never>
-  readonly "ContextMenu.buildFromTemplate": (
-    input: ContextMenuBuildFromTemplateInput
-  ) => Effect.Effect<void, unknown, never>
-  readonly "ContextMenu.bindCommand": (
-    input: ContextMenuBindCommandInput
-  ) => Effect.Effect<void, unknown, never>
-}
+type ContextMenuRpcClient = DesktopRpcClient<ContextMenuRpc>
 
 const runContextMenuRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

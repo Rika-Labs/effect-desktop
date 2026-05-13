@@ -18,6 +18,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
+import type { DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import {
@@ -233,11 +234,10 @@ const makeUpdaterBridgeProtocolLayer = (
 const withUpdaterRpcClient = <A>(
   exchange: BridgeClientExchange,
   options: BridgeClientOptions,
-  use: (client: UpdaterGeneratedClient) => Effect.Effect<A, UpdaterError, never>
+  use: (client: UpdaterRpcClient) => Effect.Effect<A, UpdaterError, never>
 ): Effect.Effect<A, UpdaterError, never> =>
   Effect.scoped(
     RpcClient.make(UpdaterRpcGroup).pipe(
-      Effect.map((client) => client as unknown as UpdaterGeneratedClient),
       Effect.flatMap(use),
       Effect.provide(makeUpdaterBridgeProtocolLayer(exchange, options))
     )
@@ -318,35 +318,19 @@ const decodeInput = (
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
 
-function updaterRpc<Payload extends Schema.Schema<unknown>, Success extends Schema.Schema<unknown>>(
-  method: string,
-  payload: Payload,
-  success: Success,
-  capability: string
-) {
-  return Rpc.make(`Updater.${method}`, {
+function updaterRpc<
+  const Method extends string,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
+  Success extends Schema.Codec<unknown, unknown, never, never>
+>(method: Method, payload: Payload, success: Success, capability: string) {
+  return Rpc.make(`Updater.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability({ kind: capability }))
 }
 
-interface UpdaterGeneratedClient {
-  readonly "Updater.check": (
-    input: UpdaterCheckInput
-  ) => Effect.Effect<UpdaterCheckResult, unknown, never>
-  readonly "Updater.download": (
-    input: UpdaterDownloadInput
-  ) => Effect.Effect<UpdaterStatusResult, unknown, never>
-  readonly "Updater.install": (
-    input: UpdaterInstallInput
-  ) => Effect.Effect<UpdaterStatusResult, unknown, never>
-  readonly "Updater.installAndRestart": (
-    input: UpdaterInstallInput
-  ) => Effect.Effect<UpdaterStatusResult, unknown, never>
-  readonly "Updater.getStatus": (input: void) => Effect.Effect<UpdaterStatusResult, unknown, never>
-  readonly "Updater.readyForRestart": (input: void) => Effect.Effect<void, unknown, never>
-}
+type UpdaterRpcClient = DesktopRpcClient<UpdaterRpc>
 
 const runUpdaterRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

@@ -18,6 +18,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
+import type { DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 export * from "./contracts/app.js"
@@ -258,11 +259,10 @@ const makeAppBridgeProtocolLayer = (
 const withAppRpcClient = <A>(
   exchange: BridgeClientExchange,
   options: BridgeClientOptions,
-  use: (client: AppGeneratedClient) => Effect.Effect<A, AppError, never>
+  use: (client: AppRpcClient) => Effect.Effect<A, AppError, never>
 ): Effect.Effect<A, AppError, never> =>
   Effect.scoped(
     RpcClient.make(AppRpcGroup).pipe(
-      Effect.map((client) => client as unknown as AppGeneratedClient),
       Effect.flatMap(use),
       Effect.provide(makeAppBridgeProtocolLayer(exchange, options))
     )
@@ -385,31 +385,19 @@ const decodeInput = (
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
 
-function appRpc<Payload extends Schema.Schema<unknown>, Success extends Schema.Schema<unknown>>(
-  method: string,
-  payload: Payload,
-  success: Success,
-  capability: string
-) {
-  return Rpc.make(`App.${method}`, {
+function appRpc<
+  const Method extends string,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
+  Success extends Schema.Codec<unknown, unknown, never, never>
+>(method: Method, payload: Payload, success: Success, capability: string) {
+  return Rpc.make(`App.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability({ kind: capability }))
 }
 
-interface AppGeneratedClient {
-  readonly "App.getInfo": (input: void) => Effect.Effect<AppInfo, unknown, never>
-  readonly "App.getCommandLine": (input: void) => Effect.Effect<AppCommandLine, unknown, never>
-  readonly "App.quit": (input: AppQuitInput) => Effect.Effect<void, unknown, never>
-  readonly "App.restart": (input: AppRestartInput) => Effect.Effect<void, unknown, never>
-  readonly "App.focus": (input: void) => Effect.Effect<void, unknown, never>
-  readonly "App.requestSingleInstanceLock": (
-    input: void
-  ) => Effect.Effect<AppSingleInstanceResult, unknown, never>
-  readonly "App.setOpenAtLogin": (input: AppOpenAtLoginInput) => Effect.Effect<void, unknown, never>
-  readonly "App.registerProtocol": (input: AppProtocolInput) => Effect.Effect<void, unknown, never>
-}
+type AppRpcClient = DesktopRpcClient<AppRpc>
 
 const runAppRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

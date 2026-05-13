@@ -17,6 +17,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
+import type { DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 import * as nodePath from "node:path"
 
@@ -189,11 +190,10 @@ const makeProtocolBridgeProtocolLayer = (
 const withProtocolRpcClient = <A>(
   exchange: BridgeClientExchange,
   options: BridgeClientOptions,
-  use: (client: ProtocolGeneratedClient) => Effect.Effect<A, ProtocolError, never>
+  use: (client: ProtocolRpcClient) => Effect.Effect<A, ProtocolError, never>
 ): Effect.Effect<A, ProtocolError, never> =>
   Effect.scoped(
     RpcClient.make(ProtocolRpcGroup).pipe(
-      Effect.map((client) => client as unknown as ProtocolGeneratedClient),
       Effect.flatMap(use),
       Effect.provide(makeProtocolBridgeProtocolLayer(exchange, options))
     )
@@ -368,30 +368,18 @@ const decodeInput = (
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
 
-function protocolRpc<Input extends Schema.Schema<unknown>>(
-  method: (typeof ProtocolMethodNames)[number],
-  input: Input,
-  permission: string
-) {
-  return Rpc.make(`Protocol.${method}`, {
+function protocolRpc<
+  const Method extends (typeof ProtocolMethodNames)[number],
+  Input extends Schema.Codec<unknown, unknown, never, never>
+>(method: Method, input: Input, permission: string) {
+  return Rpc.make(`Protocol.${method}` as const, {
     payload: input,
     success: Schema.Void,
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability({ kind: permission }))
 }
 
-interface ProtocolGeneratedClient {
-  readonly "Protocol.registerAppProtocol": (
-    input: ProtocolRegisterAppProtocolInput
-  ) => Effect.Effect<void, unknown, never>
-  readonly "Protocol.serveAsset": (
-    input: ProtocolServeAssetInput
-  ) => Effect.Effect<void, unknown, never>
-  readonly "Protocol.serveRoute": (
-    input: ProtocolServeRouteInput
-  ) => Effect.Effect<void, unknown, never>
-  readonly "Protocol.deny": (input: ProtocolDenyInput) => Effect.Effect<void, unknown, never>
-}
+type ProtocolRpcClient = DesktopRpcClient<ProtocolRpc>
 
 const runProtocolRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

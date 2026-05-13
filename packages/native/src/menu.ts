@@ -1,4 +1,5 @@
 import {
+  type DesktopRpcClient,
   CommandRegistry,
   PermissionActor,
   PermissionContext,
@@ -346,11 +347,10 @@ const makeMenuBridgeProtocolLayer = (
 const withMenuRpcClient = <A>(
   exchange: BridgeClientExchange,
   options: BridgeClientOptions,
-  use: (client: MenuGeneratedClient) => Effect.Effect<A, MenuError, never>
+  use: (client: MenuRpcClient) => Effect.Effect<A, MenuError, never>
 ): Effect.Effect<A, MenuError, never> =>
   Effect.scoped(
     RpcClient.make(MenuRpcGroup).pipe(
-      Effect.map((client) => client as unknown as MenuGeneratedClient),
       Effect.flatMap(use),
       Effect.provide(makeMenuBridgeProtocolLayer(exchange, options))
     )
@@ -503,32 +503,19 @@ const decodeInput = (
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
 
-function menuRpc<Payload extends Schema.Schema<unknown>, Success extends Schema.Schema<unknown>>(
-  method: string,
-  payload: Payload,
-  success: Success,
-  capability: string
-) {
-  return Rpc.make(`Menu.${method}`, {
+function menuRpc<
+  const Method extends string,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
+  Success extends Schema.Codec<unknown, unknown, never, never>
+>(method: Method, payload: Payload, success: Success, capability: string) {
+  return Rpc.make(`Menu.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability({ kind: capability }))
 }
 
-interface MenuGeneratedClient {
-  readonly "Menu.setApplicationMenu": (
-    input: MenuSetApplicationMenuInput
-  ) => Effect.Effect<void, unknown, never>
-  readonly "Menu.setWindowMenu": (
-    input: MenuSetWindowMenuInput
-  ) => Effect.Effect<void, unknown, never>
-  readonly "Menu.clear": (input: MenuClearInput) => Effect.Effect<void, unknown, never>
-  readonly "Menu.bindCommand": (input: MenuBindCommandInput) => Effect.Effect<void, unknown, never>
-  readonly "Menu.capability": (
-    input: MenuCapabilityInput
-  ) => Effect.Effect<MenuCapabilityResult, unknown, never>
-}
+type MenuRpcClient = DesktopRpcClient<MenuRpc>
 
 const runMenuRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

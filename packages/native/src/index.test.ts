@@ -5253,11 +5253,16 @@ test("Linux GlobalShortcut client reports Wayland unsupported as a typed value",
 })
 
 test("WindowRpcs declares the Phase 5 Window method surface", () => {
+  const supportedWindowMethods = Array.from(WindowRpcs.requests)
+    .filter(([, rpc]) => rpcSupport(rpc).status === "supported")
+    .map(([method]) => method)
+
   expect([...WindowMethodNames]).toEqual(expectedWindowMethods)
   expect(Array.from(WindowRpcs.requests.keys())).toEqual(
     expectedWindowMethods.map((method) => `Window.${method}`)
   )
-  expect(Array.from(WindowSupportedRpcs.requests.keys())).toEqual(["Window.create", "Window.close"])
+  expect(Array.from(WindowSupportedRpcs.requests.keys())).toEqual(supportedWindowMethods)
+  expect(supportedWindowMethods).toEqual(["Window.create", "Window.close"])
   expect(rpcSupport(WindowRpcs.requests.get("Window.show")!)).toEqual({
     status: "unsupported",
     reason: "host Window adapter does not implement this method yet"

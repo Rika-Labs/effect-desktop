@@ -1,4 +1,5 @@
 import {
+  type DesktopRpcClient,
   CommandRegistry,
   PermissionActor,
   PermissionContext,
@@ -382,11 +383,10 @@ const makeGlobalShortcutBridgeProtocolLayer = (
 const withGlobalShortcutRpcClient = <A>(
   exchange: BridgeClientExchange,
   options: BridgeClientOptions,
-  use: (client: GlobalShortcutGeneratedClient) => Effect.Effect<A, GlobalShortcutError, never>
+  use: (client: GlobalShortcutRpcClient) => Effect.Effect<A, GlobalShortcutError, never>
 ): Effect.Effect<A, GlobalShortcutError, never> =>
   Effect.scoped(
     RpcClient.make(GlobalShortcutRpcGroup).pipe(
-      Effect.map((client) => client as unknown as GlobalShortcutGeneratedClient),
       Effect.flatMap(use),
       Effect.provide(makeGlobalShortcutBridgeProtocolLayer(exchange, options))
     )
@@ -556,31 +556,18 @@ const decodeInput = (
   )
 
 function shortcutRpc<
-  Payload extends Schema.Schema<unknown>,
-  Success extends Schema.Schema<unknown>
->(method: string, payload: Payload, success: Success, capability: string) {
-  return Rpc.make(`GlobalShortcut.${method}`, {
+  const Method extends string,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
+  Success extends Schema.Codec<unknown, unknown, never, never>
+>(method: Method, payload: Payload, success: Success, capability: string) {
+  return Rpc.make(`GlobalShortcut.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability({ kind: capability }))
 }
 
-interface GlobalShortcutGeneratedClient {
-  readonly "GlobalShortcut.register": (
-    input: GlobalShortcutRegisterInput
-  ) => Effect.Effect<void, unknown, never>
-  readonly "GlobalShortcut.unregister": (
-    input: GlobalShortcutAcceleratorInput
-  ) => Effect.Effect<void, unknown, never>
-  readonly "GlobalShortcut.unregisterAll": (input: void) => Effect.Effect<void, unknown, never>
-  readonly "GlobalShortcut.isRegistered": (
-    input: GlobalShortcutAcceleratorInput
-  ) => Effect.Effect<GlobalShortcutRegisteredResult, unknown, never>
-  readonly "GlobalShortcut.isSupported": (
-    input: void
-  ) => Effect.Effect<GlobalShortcutSupportedResult, unknown, never>
-}
+type GlobalShortcutRpcClient = DesktopRpcClient<GlobalShortcutRpc>
 
 const runGlobalShortcutRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

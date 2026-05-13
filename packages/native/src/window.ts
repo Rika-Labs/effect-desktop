@@ -25,7 +25,7 @@ import {
   type WithRpcSupport,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { DesktopRpc, ResourceRegistry, type ResourceId } from "@effect-desktop/core"
+import { ResourceRegistry, type DesktopRpcClient, type ResourceId } from "@effect-desktop/core"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 
 import { type AppEventRouterApi, windowScope } from "./app-events.js"
@@ -167,22 +167,20 @@ const makeWindowRpcGroup = () =>
 
 const WindowRpcGroup = makeWindowRpcGroup()
 
-export const WindowRpcs: RpcGroup.RpcGroup<RpcGroup.Rpcs<typeof WindowRpcGroup>> = WindowRpcGroup
+type WindowRpcUnion = RpcGroup.Rpcs<typeof WindowRpcGroup>
+
+export const WindowRpcs: RpcGroup.RpcGroup<WindowRpcUnion> = WindowRpcGroup
 
 export type WindowSupportedRpc = typeof WindowCreate | typeof WindowClose
 
-export const WindowSupportedRpcs = DesktopRpc.supportedGroup(
-  WindowRpcGroup
-) as unknown as RpcGroup.RpcGroup<WindowSupportedRpc> & {
-  readonly requests: ReadonlyMap<string, Rpc.Any>
-}
+export const WindowSupportedRpcs: RpcGroup.RpcGroup<WindowSupportedRpc> = RpcGroup.make(
+  WindowCreate,
+  WindowClose
+)
 
 export type WindowBridgeClientOptions = Omit<BridgeClientOptions, "nextRequestId">
 
-interface WindowGeneratedClient {
-  readonly "Window.create": (input: WindowCreateInput) => Effect.Effect<unknown, unknown, never>
-  readonly "Window.close": (input: WindowHandleInput) => Effect.Effect<unknown, unknown, never>
-}
+type WindowRpcClient = DesktopRpcClient<WindowSupportedRpc>
 
 export const WindowMethodNames = Object.freeze([
   "create",
@@ -240,9 +238,7 @@ export const makeWindowBridgeClientLayer = (
 ): Layer.Layer<WindowClient> =>
   Layer.effect(WindowClient)(
     Effect.gen(function* () {
-      const client = yield* RpcClient.make(
-        WindowSupportedRpcs as unknown as RpcGroup.RpcGroup<Rpc.Any>
-      ) as unknown as Effect.Effect<WindowGeneratedClient, never, RpcClient.Protocol>
+      const client = yield* RpcClient.make(WindowSupportedRpcs)
       return windowClientFromRpcClient(client)
     })
   ).pipe(Layer.provide(makeWindowBridgeProtocolLayer(exchange, options)))
@@ -297,7 +293,7 @@ const makeWindowBridgeProtocolLayer = (
     )
   )
 
-const windowClientFromRpcClient = (client: WindowGeneratedClient): WindowClientApi =>
+const windowClientFromRpcClient = (client: WindowRpcClient): WindowClientApi =>
   Object.freeze({
     create: (input) =>
       Effect.gen(function* () {
@@ -503,23 +499,23 @@ const formatUnknownError = (error: unknown): string => {
   return String(error)
 }
 
-type WindowRpcSuccess = Schema.Top
+type WindowRpcSuccess = Schema.Codec<unknown, unknown, never, never>
 
 type WindowRpc<
   Method extends string,
-  Payload extends Schema.Schema<unknown>,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends WindowRpcSuccess
 > = ReturnType<typeof windowRpc<Method, Payload, Success>>
 
 type WindowStreamRpc<
   Method extends string,
-  Payload extends Schema.Schema<unknown>,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends WindowRpcSuccess
 > = ReturnType<typeof windowStreamRpc<Method, Payload, Success>>
 
 type UnsupportedWindowRpc<
   Method extends string,
-  Payload extends Schema.Schema<unknown>,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends WindowRpcSuccess
 > = WithRpcSupport<
   WindowRpc<Method, Payload, Success>,
@@ -528,7 +524,7 @@ type UnsupportedWindowRpc<
 
 type UnsupportedWindowStreamRpc<
   Method extends string,
-  Payload extends Schema.Schema<unknown>,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends WindowRpcSuccess
 > = WithRpcSupport<
   WindowStreamRpc<Method, Payload, Success>,
@@ -537,37 +533,40 @@ type UnsupportedWindowStreamRpc<
 
 function windowRpc<
   const Method extends string,
-  Payload extends Schema.Schema<unknown>,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends WindowRpcSuccess
 >(method: Method, payload: Payload, success: Success, capability: string) {
-  return Rpc.make(`Window.${method}`, {
+  return Rpc.make(`Window.${method}` as const, {
     payload,
-    success: success as Schema.Schema<unknown>,
+    success,
     error: HostProtocolErrorSchema
   }).pipe(RpcCapability({ kind: capability }))
 }
 
 function windowStreamRpc<
   const Method extends string,
-  Payload extends Schema.Schema<unknown>,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends WindowRpcSuccess
 >(method: Method, payload: Payload, success: Success, capability: string) {
-  return Rpc.make(`Window.${method}`, {
+  return Rpc.make(`Window.${method}` as const, {
     payload,
-    success: success as Schema.Schema<unknown>,
+    success,
     error: HostProtocolErrorSchema,
     stream: true
   }).pipe(RpcCapability({ kind: capability }))
 }
 
-function unsupportedWindowRpc<const Method extends string, Payload extends Schema.Schema<unknown>>(
+function unsupportedWindowRpc<
+  const Method extends string,
+  Payload extends Schema.Codec<unknown, unknown, never, never>
+>(
   method: Method,
   payload: Payload,
   capability: string
 ): UnsupportedWindowRpc<Method, Payload, typeof Schema.Void>
 function unsupportedWindowRpc<
   const Method extends string,
-  Payload extends Schema.Schema<unknown>,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends WindowRpcSuccess
 >(
   method: Method,
@@ -577,7 +576,7 @@ function unsupportedWindowRpc<
 ): UnsupportedWindowRpc<Method, Payload, Success>
 function unsupportedWindowRpc<
   const Method extends string,
-  Payload extends Schema.Schema<unknown>,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends WindowRpcSuccess
 >(
   method: Method,
@@ -598,7 +597,7 @@ function unsupportedWindowRpc<
 
 function unsupportedWindowStreamRpc<
   const Method extends string,
-  Payload extends Schema.Schema<unknown>,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends WindowRpcSuccess
 >(
   method: Method,

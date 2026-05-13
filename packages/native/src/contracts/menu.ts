@@ -44,15 +44,15 @@ export interface MenuSubmenuShape {
 
 export type MenuTemplateEntry = MenuItem | MenuSeparator | MenuSubmenuShape
 
-export const MenuSubmenu: Schema.Schema<MenuSubmenuShape> = Schema.Struct({
+export const MenuSubmenu: Schema.Codec<MenuSubmenuShape> = Schema.Struct({
   type: Schema.Literal("submenu"),
   id: PrintableNonEmptyString,
   label: PrintableNonEmptyString,
   enabled: Schema.optionalKey(Schema.Boolean),
-  items: Schema.Array(Schema.suspend((): Schema.Schema<MenuTemplateEntry> => MenuTemplateEntry))
+  items: Schema.Array(Schema.suspend((): Schema.Codec<MenuTemplateEntry> => MenuTemplateEntry))
 })
 
-export const MenuTemplateEntry: Schema.Schema<MenuTemplateEntry> = Schema.suspend(() =>
+export const MenuTemplateEntry: Schema.Codec<MenuTemplateEntry> = Schema.suspend(() =>
   Schema.Union([MenuItem, MenuSeparator, MenuSubmenu])
 )
 

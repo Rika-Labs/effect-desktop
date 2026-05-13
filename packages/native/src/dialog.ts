@@ -17,6 +17,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
+import type { DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import {
@@ -233,11 +234,10 @@ const makeDialogBridgeClient = (
 const withDialogRpcClient = <A>(
   exchange: BridgeClientExchange,
   options: BridgeClientOptions,
-  use: (client: DialogGeneratedClient) => Effect.Effect<A, DialogError, never>
+  use: (client: DialogRpcClient) => Effect.Effect<A, DialogError, never>
 ): Effect.Effect<A, DialogError, never> =>
   Effect.scoped(
     RpcClient.make(DialogRpcGroup).pipe(
-      Effect.map((client) => client as unknown as DialogGeneratedClient),
       Effect.flatMap(use),
       Effect.provide(makeDialogBridgeProtocolLayer(exchange, options))
     )
@@ -326,21 +326,7 @@ const decodeInput = (
     (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
   )
 
-interface DialogGeneratedClient {
-  readonly "Dialog.openFile": (
-    input: DialogOpenFileInput
-  ) => Effect.Effect<DialogOpenResult, unknown, never>
-  readonly "Dialog.openDirectory": (
-    input: DialogOpenDirectoryInput
-  ) => Effect.Effect<DialogOpenResult, unknown, never>
-  readonly "Dialog.saveFile": (
-    input: DialogSaveFileInput
-  ) => Effect.Effect<DialogSaveResult, unknown, never>
-  readonly "Dialog.message": (input: DialogMessageInput) => Effect.Effect<void, unknown, never>
-  readonly "Dialog.confirm": (
-    input: DialogConfirmInput
-  ) => Effect.Effect<DialogConfirmResult, unknown, never>
-}
+type DialogRpcClient = DesktopRpcClient<DialogRpc>
 
 const runDialogRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
@@ -363,13 +349,12 @@ const isDialogError = (error: unknown): error is DialogError =>
   "operation" in error &&
   "recoverable" in error
 
-function dialogRpc<Payload extends Schema.Schema<unknown>, Success extends Schema.Schema<unknown>>(
-  method: string,
-  payload: Payload,
-  success: Success,
-  capability: string
-) {
-  return Rpc.make(`Dialog.${method}`, {
+function dialogRpc<
+  const Method extends string,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
+  Success extends Schema.Codec<unknown, unknown, never, never>
+>(method: Method, payload: Payload, success: Success, capability: string) {
+  return Rpc.make(`Dialog.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema
