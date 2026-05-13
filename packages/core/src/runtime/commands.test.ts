@@ -705,7 +705,8 @@ const delayedCleanupResourceRegistry = (
     declareScope: () => Effect.void,
     closeScope: () => Effect.void,
     share: () => Effect.die("unused"),
-    assertFresh: () => Effect.die("unused")
+    assertFresh: () => Effect.die("unused"),
+    close: () => Effect.void
   }
 }
 
@@ -746,7 +747,8 @@ const stalledRegisterResourceRegistry = (
     declareScope: () => Effect.void,
     closeScope: () => Effect.void,
     share: () => Effect.die("unused"),
-    assertFresh: () => Effect.die("unused")
+    assertFresh: () => Effect.die("unused"),
+    close: () => Effect.void
   }
 }
 
@@ -802,7 +804,8 @@ const firstRegisterStalledResourceRegistry = (
     declareScope: () => Effect.void,
     closeScope: () => Effect.void,
     share: () => Effect.die("unused"),
-    assertFresh: () => Effect.die("unused")
+    assertFresh: () => Effect.die("unused"),
+    close: () => Effect.void
   }
 }
 

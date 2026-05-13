@@ -23,10 +23,14 @@ The non-obvious failure mode was that metadata about redaction can leak what the
 ## Example
 
 ```ts
-const policy = yield* InspectorSafetyPolicy
-const decision = yield* policy.sanitize({
-  source: "devtools.snapshot",
-  payload: snapshot
+const program = Effect.gen(function* () {
+  const policy = yield* InspectorSafetyPolicy
+  const decision = yield* policy.sanitize({
+    source: "devtools.snapshot",
+    payload: snapshot
+  })
+
+  return decision
 })
 ```
 
