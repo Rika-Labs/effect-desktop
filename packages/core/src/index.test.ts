@@ -82,6 +82,21 @@ test("public barrel keeps low-level runtime plumbing behind subpaths", async () 
   expect("Workflow" in core).toBe(false)
 })
 
+test("public barrel keeps optional runtime provider layers behind provider subpaths", async () => {
+  const core = await import("./index.js")
+  const bunProvider = await import("@effect-desktop/core/providers/bun")
+  const nodeProvider = await import("@effect-desktop/core/providers/node")
+  const testProvider = await import("@effect-desktop/core/providers/test")
+
+  expect("BunRuntimeProviderLayer" in core).toBe(false)
+  expect("NodeRuntimeProviderLayer" in core).toBe(false)
+  expect("TestRuntimeProviderLayer" in core).toBe(false)
+  expect(Layer.isLayer(core.providerLayerFor({ runtime: "test" }))).toBe(true)
+  expect(Layer.isLayer(bunProvider.BunRuntimeProviderLayer)).toBe(true)
+  expect(Layer.isLayer(nodeProvider.NodeRuntimeProviderLayer)).toBe(true)
+  expect(Layer.isLayer(testProvider.TestRuntimeProviderLayer)).toBe(true)
+})
+
 test("runtime transport subpath exposes framed transport helpers", async () => {
   const transport = await import("@effect-desktop/core/runtime/transport")
 
@@ -204,7 +219,17 @@ test("Desktop.runtimeGraph exposes selected providers and composition nodes with
   expect(graph).toMatchObject({
     _tag: "DesktopRuntimeGraph",
     appId: "notes",
-    providers: { runtime: "test" }
+    providers: { runtime: "test" },
+    providerBudgets: [
+      {
+        id: "test",
+        kind: "runtime",
+        package: "@effect-desktop/core",
+        importPath: "@effect-desktop/core/providers/test",
+        startupBudgetMs: 25,
+        bundleBudgetKb: 64
+      }
+    ]
   })
   expect(graph.nodes.map((node) => [node.id, node.kind])).toEqual([
     ["provider:runtime:test", "provider"],
@@ -243,6 +268,16 @@ test("Desktop.runtimeGraph exposes node runtime provider selection", async () =>
   )
 
   expect(graph.providers).toEqual({ runtime: "node" })
+  expect(graph.providerBudgets).toEqual([
+    {
+      id: "node",
+      kind: "runtime",
+      package: "@effect/platform-node",
+      importPath: "@effect-desktop/core/providers/node",
+      startupBudgetMs: 25,
+      bundleBudgetKb: 64
+    }
+  ])
   expect(graph.nodes[0]).toMatchObject({
     id: "provider:runtime:node",
     kind: "provider",

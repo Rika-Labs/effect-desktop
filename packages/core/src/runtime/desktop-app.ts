@@ -1,12 +1,10 @@
-import { BunServices } from "@effect/platform-bun"
-import { NodeServices } from "@effect/platform-node"
 import { Config, Context, Data, Effect, Layer, Option, Schema } from "effect"
-import * as FileSystemRuntime from "effect/FileSystem"
-import * as PathRuntime from "effect/Path"
-import * as StdioRuntime from "effect/Stdio"
-import * as TerminalRuntime from "effect/Terminal"
+import type * as FileSystemRuntime from "effect/FileSystem"
+import type * as PathRuntime from "effect/Path"
+import type * as StdioRuntime from "effect/Stdio"
+import type * as TerminalRuntime from "effect/Terminal"
 import { Rpc, RpcGroup, RpcServer } from "effect/unstable/rpc"
-import { ChildProcessSpawner as ChildProcessSpawnerRuntime } from "effect/unstable/process"
+import type { ChildProcessSpawner as ChildProcessSpawnerRuntime } from "effect/unstable/process"
 import { Reactivity } from "effect/unstable/reactivity"
 import { WorkflowEngine } from "effect/unstable/workflow"
 
@@ -159,6 +157,7 @@ export interface DesktopRuntimeGraph {
   readonly _tag: "DesktopRuntimeGraph"
   readonly appId: string
   readonly providers: DesktopRuntimeSelectedProviders
+  readonly providerBudgets: readonly DesktopProviderBudget[]
   readonly nodes: readonly DesktopRuntimeGraphNode[]
   readonly providerFacts: readonly ProviderFact[]
   readonly failures: readonly LayerFailurePayload[]
@@ -167,6 +166,7 @@ export interface DesktopRuntimeGraph {
 export interface DesktopRuntimeApi {
   readonly appId: string
   readonly providers: DesktopRuntimeSelectedProviders
+  readonly providerBudgets: readonly DesktopProviderBudget[]
   readonly graph: DesktopRuntimeGraph
 }
 
@@ -178,6 +178,15 @@ export type DesktopRuntimeProviderServices =
   | ChildProcessSpawnerRuntime.ChildProcessSpawner
 
 export type DesktopRuntimeServices = DesktopApp | DesktopRuntime | DesktopRuntimeProviderServices
+
+export interface DesktopProviderBudget {
+  readonly id: DesktopRuntimeProviderId
+  readonly kind: "runtime"
+  readonly package: string
+  readonly importPath: string
+  readonly startupBudgetMs: number
+  readonly bundleBudgetKb: number
+}
 
 export class DesktopConfigError extends Data.TaggedError("DesktopConfigError")<{
   readonly appId: string
@@ -244,36 +253,16 @@ const RuntimeProviderServiceNames = Object.freeze([
   "ChildProcessSpawner"
 ])
 
-const TestRuntimeProviderLayer: Layer.Layer<DesktopRuntimeProviderServices, never, never> =
-  Layer.mergeAll(
-    FileSystemRuntime.layerNoop({}),
-    PathRuntime.layer,
-    Layer.succeed(
-      TerminalRuntime.Terminal,
-      TerminalRuntime.make({
-        columns: Effect.succeed(80),
-        readInput: Effect.die("readInput not supported by Desktop test runtime provider"),
-        readLine: Effect.die("readLine not supported by Desktop test runtime provider"),
-        display: () => Effect.void
-      })
-    ),
-    StdioRuntime.layerTest({}),
-    Layer.succeed(
-      ChildProcessSpawnerRuntime.ChildProcessSpawner,
-      ChildProcessSpawnerRuntime.make(() =>
-        Effect.die("spawn not supported by Desktop test runtime provider")
-      )
-    )
-  ) as Layer.Layer<DesktopRuntimeProviderServices, never, never>
+interface RuntimeProviderDescriptor {
+  readonly id: DesktopRuntimeProviderId
+  readonly node: DesktopRuntimeGraphNode
+  readonly budget: DesktopProviderBudget
+}
 
 const RuntimeProviders = Object.freeze({
   bun: Object.freeze({
     id: "bun" as const,
-    layer: BunServices.layer as Layer.Layer<
-      DesktopRuntimeProviderServices,
-      Config.ConfigError,
-      never
-    >,
+    budget: providerBudget("bun", "@effect/platform-bun", "@effect-desktop/core/providers/bun"),
     node: graphNode(
       "provider:runtime:bun",
       "provider",
@@ -284,11 +273,11 @@ const RuntimeProviders = Object.freeze({
   }),
   node: Object.freeze({
     id: "node" as const,
-    layer: NodeServices.layer as Layer.Layer<
-      DesktopRuntimeProviderServices,
-      Config.ConfigError,
-      never
-    >,
+    budget: providerBudget(
+      "node",
+      "@effect/platform-node",
+      "@effect-desktop/core/providers/node"
+    ),
     node: graphNode(
       "provider:runtime:node",
       "provider",
@@ -299,7 +288,7 @@ const RuntimeProviders = Object.freeze({
   }),
   test: Object.freeze({
     id: "test" as const,
-    layer: TestRuntimeProviderLayer,
+    budget: providerBudget("test", "@effect-desktop/core", "@effect-desktop/core/providers/test"),
     node: graphNode(
       "provider:runtime:test",
       "provider",
@@ -308,7 +297,7 @@ const RuntimeProviders = Object.freeze({
       []
     )
   })
-})
+}) satisfies Record<"bun" | "node" | "test", RuntimeProviderDescriptor>
 
 export const make = <RIn = never, E = never>(
   config: DesktopMakeConfig<RIn, E>
@@ -436,7 +425,7 @@ export const layerGraphSnapshotFromGraph = (graph: DesktopRuntimeGraph): LayerGr
 
 const makeRuntimeGraph = <RIn, E>(
   config: DesktopConfig<RIn, E>,
-  provider: (typeof RuntimeProviders)[keyof typeof RuntimeProviders]
+  provider: RuntimeProviderDescriptor
 ): DesktopRuntimeGraph => {
   const selected = Object.freeze({
     runtime: provider.id
@@ -472,6 +461,7 @@ const makeRuntimeGraph = <RIn, E>(
     _tag: "DesktopRuntimeGraph" as const,
     appId: config.id,
     providers: selected,
+    providerBudgets: Object.freeze([provider.budget]),
     nodes: Object.freeze(nodes),
     providerFacts: Object.freeze([
       new ProviderFact({
@@ -585,7 +575,7 @@ const buildSpine = <RIn, E>(
         const workflowLayer = mergeLayerArray(workflowLayers)
         const rpcLayer = mergeLayerArray(rpcLayers)
         const runtimeBase = Layer.mergeAll(
-          provider.layer,
+          providerLayerFor({ runtime: provider.id }),
           coreServicesLayer,
           makePermissionServicesLayer(config)
         ) as Layer.Layer<DesktopRuntimeProviderServices, Config.ConfigError, never>
@@ -604,6 +594,7 @@ const buildSpine = <RIn, E>(
           Object.freeze({
             appId: config.id,
             providers: graph.providers,
+            providerBudgets: graph.providerBudgets,
             graph
           } satisfies DesktopRuntimeApi)
         )
@@ -627,7 +618,7 @@ const buildSpine = <RIn, E>(
 const resolveRuntimeProvider = <RIn, E>(
   config: DesktopConfig<RIn, E>
 ): Effect.Effect<
-  (typeof RuntimeProviders)[keyof typeof RuntimeProviders],
+  RuntimeProviderDescriptor,
   DesktopConfigError,
   never
 > => {
@@ -650,6 +641,38 @@ const resolveRuntimeProvider = <RIn, E>(
     })
   )
 }
+
+export const providerLayerFor = (
+  choice: DesktopRuntimeSelectedProviders
+): Layer.Layer<DesktopRuntimeProviderServices, Config.ConfigError | DesktopConfigError, never> =>
+  Layer.unwrap(
+    Effect.gen(function* () {
+      const provider = choice.runtime
+      switch (provider) {
+        case "bun": {
+          const module = yield* Effect.promise(() => import("../providers/bun.js"))
+          return module.BunRuntimeProviderLayer
+        }
+        case "node": {
+          const module = yield* Effect.promise(() => import("../providers/node.js"))
+          return module.NodeRuntimeProviderLayer
+        }
+        case "test": {
+          const module = yield* Effect.promise(() => import("../providers/test.js"))
+          return module.TestRuntimeProviderLayer
+        }
+        default:
+          return yield* Effect.fail(
+            new DesktopConfigError({
+              appId: "provider-loader",
+              reason: "missing-provider",
+              message: `Runtime provider "${provider}" is not available`,
+              provider
+            })
+          )
+      }
+    })
+  )
 
 const makePermissionServicesLayer = <RIn, E>(
   config: DesktopConfig<RIn, E>
@@ -742,5 +765,20 @@ function graphNode(
     label,
     provides: Object.freeze([...provides]),
     requires: Object.freeze([...requires])
+  })
+}
+
+function providerBudget(
+  id: DesktopRuntimeProviderId,
+  packageName: string,
+  importPath: string
+): DesktopProviderBudget {
+  return Object.freeze({
+    id,
+    kind: "runtime" as const,
+    package: packageName,
+    importPath,
+    startupBudgetMs: 25,
+    bundleBudgetKb: 64
   })
 }
