@@ -33,11 +33,15 @@ import {
 } from "@effect-desktop/core"
 import {
   Clipboard,
+  ClipboardClient,
   ClipboardLive,
+  ClipboardSurface,
   Dialog,
   DialogLive,
   Screen,
   ScreenLive,
+  type ClipboardClientApi,
+  type DialogClientApi,
   makeClipboardBridgeClientLayer,
   makeClipboardServiceLayer,
   makeDialogBridgeClientLayer,
@@ -50,10 +54,17 @@ import {
   type ScreenError
 } from "@effect-desktop/native"
 import {
+  ClipboardImage,
+  ClipboardSupportedResult,
+  ClipboardText,
+  DialogConfirmResult,
+  DialogOpenResult,
+  DialogSaveResult,
   ScreenDisplay,
   ScreenDisplaysResult,
   ScreenPoint,
-  ScreenSupportedResult
+  ScreenSupportedResult,
+  type ClipboardImageOptions
 } from "@effect-desktop/native/contracts"
 
 import {
@@ -78,8 +89,8 @@ import {
   ResourceLeakError,
   ClipboardTest,
   DialogTest,
-  makeTestClipboardClient,
-  makeTestDialogClient,
+  makeClipboardScenarioLayer,
+  TestNativeSurfaces,
   ScreenTest
 } from "./index.js"
 
@@ -1346,7 +1357,29 @@ test("native capability programs run unchanged through Live, Client, and Test la
       return `${afterWrite}:${afterClear}`
     }
   )
-  const clipboardLiveClient = makeTestClipboardClient()
+  let clipboardText = ""
+  let clipboardImage: ClipboardImage | undefined
+  const clipboardLiveClient: ClipboardClientApi = Object.freeze({
+    readText: () => Effect.succeed(new ClipboardText({ text: clipboardText })),
+    writeText: (text: string) =>
+      Effect.sync(() => {
+        clipboardText = text
+      }),
+    readImage: () =>
+      Effect.succeed(
+        clipboardImage ?? new ClipboardImage({ mime: "image/png", bytes: new Uint8Array(0) })
+      ),
+    writeImage: (image: ClipboardImageOptions) =>
+      Effect.sync(() => {
+        clipboardImage = new ClipboardImage(image)
+      }),
+    clear: () =>
+      Effect.sync(() => {
+        clipboardText = ""
+        clipboardImage = undefined
+      }),
+    isSupported: () => Effect.succeed(new ClipboardSupportedResult({ supported: true }))
+  })
   const clipboardBridge = makeMockBridge()
   await Effect.runPromise(
     Effect.all([
@@ -1370,7 +1403,15 @@ test("native capability programs run unchanged through Live, Client, and Test la
     saveFilePath: "/tmp/output.txt",
     confirmResult: true
   } as const
-  const dialogLiveClient = makeTestDialogClient(dialogOptions)
+  const dialogLiveClient: DialogClientApi = Object.freeze({
+    openFile: () =>
+      Effect.succeed(new DialogOpenResult({ paths: [...dialogOptions.openFilePaths] })),
+    openDirectory: () => Effect.succeed(new DialogOpenResult({ paths: [] })),
+    saveFile: () => Effect.succeed(new DialogSaveResult({ path: dialogOptions.saveFilePath })),
+    message: () => Effect.void,
+    confirm: () =>
+      Effect.succeed(new DialogConfirmResult({ confirmed: dialogOptions.confirmResult }))
+  })
   const dialogBridge = makeMockBridge()
   await Effect.runPromise(
     Effect.all([
@@ -1481,6 +1522,33 @@ test("native capability programs run unchanged through Live, Client, and Test la
     })
     expect(capability.calls()).toEqual(Array.from(capability.expectedCalls))
   }
+})
+
+test("native test layers are derived from DesktopRpc surfaces", async () => {
+  expect(TestNativeSurfaces.map((surface) => surface.tag)).toEqual([
+    "Clipboard",
+    "Dialog",
+    "Screen"
+  ])
+
+  for (const surface of TestNativeSurfaces) {
+    for (const law of surface.contractLaws) {
+      await Effect.runPromise(law.check)
+    }
+  }
+
+  const malformedWrite = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const clipboard = yield* ClipboardClient
+      // @ts-expect-error Runtime schema rejection is the contract under test.
+      yield* clipboard.writeText(123)
+    }).pipe(
+      Effect.provide(ClipboardSurface.testClientLayer),
+      Effect.provide(makeClipboardScenarioLayer({}))
+    )
+  )
+
+  expect(Exit.isFailure(malformedWrite)).toBe(true)
 })
 
 const nextSequence = (prefix: string): (() => string) => {
