@@ -1,4 +1,5 @@
 import {
+  P,
   type DesktopRpcClient,
   CommandRegistry,
   PermissionActor,
@@ -17,7 +18,6 @@ import {
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
-  makeDesktopRpcHandlerRuntime,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -25,11 +25,14 @@ import {
   Rpc,
   RpcClient,
   RpcCapability,
+  type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
+import type { PermissionRegistry } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
+import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import { bindScopedCommand } from "./command-binding.js"
 import { commandBindingWarningError } from "./command-binding-log.js"
 import {
@@ -50,17 +53,17 @@ export type ContextMenuCommandBindingError = ContextMenuError | CommandRegistryE
 export const ContextMenuShow = contextMenuRpc(
   "show",
   ContextMenuShowInput,
-  "native.invoke:ContextMenu.show"
+  P.nativeInvoke({ primitive: "ContextMenu", methods: ["show"] })
 )
 export const ContextMenuBuildFromTemplate = contextMenuRpc(
   "buildFromTemplate",
   ContextMenuBuildFromTemplateInput,
-  "native.invoke:ContextMenu.buildFromTemplate"
+  P.nativeInvoke({ primitive: "ContextMenu", methods: ["buildFromTemplate"] })
 )
 export const ContextMenuBindCommand = contextMenuRpc(
   "bindCommand",
   ContextMenuBindCommandInput,
-  "native.invoke:ContextMenu.bindCommand"
+  P.nativeInvoke({ primitive: "ContextMenu", methods: ["bindCommand"] })
 )
 
 export const ContextMenuRpcEvents = Object.freeze({
@@ -199,8 +202,8 @@ export type ContextMenuRpcHandlers = Parameters<typeof ContextMenuRpcGroup.toLay
 export const makeHostContextMenuRpcRuntime = (
   handlers: ContextMenuRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<unknown> =>
-  makeDesktopRpcHandlerRuntime(
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  makeNativeHostRpcRuntime(
     ContextMenuRpcGroup,
     ContextMenuRpcGroup.toLayer(handlers),
     runtimeOptions
@@ -370,12 +373,12 @@ const decodeInput = <A>(
 function contextMenuRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, capability: string) {
+>(method: Method, payload: Payload, capability: RpcCapabilityMetadata) {
   return Rpc.make(`ContextMenu.${method}` as const, {
     payload,
     success: Schema.Void,
     error: HostProtocolErrorSchema
-  }).pipe(RpcCapability({ kind: capability }))
+  }).pipe(RpcCapability(capability))
 }
 
 type ContextMenuRpcClient = DesktopRpcClient<ContextMenuRpc>

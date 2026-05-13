@@ -7,7 +7,6 @@ import {
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
-  makeDesktopRpcHandlerRuntime,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -15,12 +14,15 @@ import {
   Rpc,
   RpcClient,
   RpcCapability,
+  type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import type { DesktopRpcClient } from "@effect-desktop/core"
+import type { PermissionRegistry } from "@effect-desktop/core"
+import { P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
+import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import {
   UpdaterCheckInput,
   UpdaterCheckResult,
@@ -42,37 +44,37 @@ export const UpdaterCheck = updaterRpc(
   "check",
   UpdaterCheckInput,
   UpdaterCheckResult,
-  "native.invoke:Updater.check"
+  P.nativeInvoke({ primitive: "Updater", methods: ["check"] })
 )
 export const UpdaterDownload = updaterRpc(
   "download",
   UpdaterDownloadInput,
   UpdaterStatusResult,
-  "native.invoke:Updater.download"
+  P.nativeInvoke({ primitive: "Updater", methods: ["download"] })
 )
 export const UpdaterInstall = updaterRpc(
   "install",
   UpdaterInstallInput,
   UpdaterStatusResult,
-  "native.invoke:Updater.install"
+  P.nativeInvoke({ primitive: "Updater", methods: ["install"] })
 )
 export const UpdaterInstallAndRestart = updaterRpc(
   "installAndRestart",
   UpdaterInstallInput,
   UpdaterStatusResult,
-  "native.invoke:Updater.installAndRestart"
+  P.nativeInvoke({ primitive: "Updater", methods: ["installAndRestart"] })
 )
 export const UpdaterGetStatus = updaterRpc(
   "getStatus",
   Schema.Void,
   UpdaterStatusResult,
-  "native.invoke:Updater.getStatus"
+  P.nativeInvoke({ primitive: "Updater", methods: ["getStatus"] })
 )
 export const UpdaterReadyForRestart = updaterRpc(
   "readyForRestart",
   Schema.Void,
   Schema.Void,
-  "native.invoke:Updater.readyForRestart"
+  P.nativeInvoke({ primitive: "Updater", methods: ["readyForRestart"] })
 )
 
 export const UpdaterRpcEvents = Object.freeze({
@@ -167,8 +169,8 @@ export type UpdaterRpcHandlers = Parameters<typeof UpdaterRpcGroup.toLayer>[0]
 export const makeHostUpdaterRpcRuntime = (
   handlers: UpdaterRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<unknown> =>
-  makeDesktopRpcHandlerRuntime(UpdaterRpcGroup, UpdaterRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  makeNativeHostRpcRuntime(UpdaterRpcGroup, UpdaterRpcGroup.toLayer(handlers), runtimeOptions)
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
@@ -307,12 +309,12 @@ function updaterRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: string) {
+>(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
   return Rpc.make(`Updater.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema
-  }).pipe(RpcCapability({ kind: capability }))
+  }).pipe(RpcCapability(capability))
 }
 
 type UpdaterRpcClient = DesktopRpcClient<UpdaterRpc>

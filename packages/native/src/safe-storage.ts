@@ -6,7 +6,6 @@ import {
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
-  makeDesktopRpcHandlerRuntime,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -16,13 +15,16 @@ import {
   Rpc,
   RpcClient,
   RpcCapability,
+  type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError,
   unsafeSecretBytes
 } from "@effect-desktop/bridge"
-import type { DesktopRpcClient } from "@effect-desktop/core"
+import type { PermissionRegistry } from "@effect-desktop/core"
+import { P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
+import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import {
   SafeStorageAvailabilityResult,
   SafeStorageKeyInput,
@@ -47,31 +49,31 @@ export const SafeStorageSet = safeStorageRpc(
   "set",
   SafeStorageSetInput,
   Schema.Void,
-  "native.invoke:SafeStorage.set"
+  P.nativeInvoke({ primitive: "SafeStorage", methods: ["set"] })
 )
 export const SafeStorageGet = safeStorageRpc(
   "get",
   SafeStorageKeyInput,
   SafeStorageSecretPayload,
-  "native.invoke:SafeStorage.get"
+  P.nativeInvoke({ primitive: "SafeStorage", methods: ["get"] })
 )
 export const SafeStorageDelete = safeStorageRpc(
   "delete",
   SafeStorageKeyInput,
   Schema.Void,
-  "native.invoke:SafeStorage.delete"
+  P.nativeInvoke({ primitive: "SafeStorage", methods: ["delete"] })
 )
 export const SafeStorageList = safeStorageRpc(
   "list",
   Schema.Void,
   SafeStorageListResult,
-  "native.invoke:SafeStorage.list"
+  P.nativeInvoke({ primitive: "SafeStorage", methods: ["list"] })
 )
 export const SafeStorageIsAvailable = safeStorageRpc(
   "isAvailable",
   Schema.Void,
   SafeStorageAvailabilityResult,
-  "none"
+  { kind: "none" }
 )
 
 export const SafeStorageRpcEvents = Object.freeze({})
@@ -148,8 +150,8 @@ export type SafeStorageRpcHandlers = Parameters<typeof SafeStorageRpcGroup.toLay
 export const makeHostSafeStorageRpcRuntime = (
   handlers: SafeStorageRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<unknown> =>
-  makeDesktopRpcHandlerRuntime(
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  makeNativeHostRpcRuntime(
     SafeStorageRpcGroup,
     SafeStorageRpcGroup.toLayer(handlers),
     runtimeOptions
@@ -308,12 +310,12 @@ function safeStorageRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: string) {
+>(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
   return Rpc.make(`SafeStorage.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema
-  }).pipe(RpcCapability({ kind: capability }))
+  }).pipe(RpcCapability(capability))
 }
 
 type SafeStorageRpcClient = DesktopRpcClient<SafeStorageRpc>

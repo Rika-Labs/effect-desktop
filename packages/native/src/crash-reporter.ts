@@ -6,7 +6,6 @@ import {
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
-  makeDesktopRpcHandlerRuntime,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -16,12 +15,15 @@ import {
   Rpc,
   RpcClient,
   RpcCapability,
+  type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import type { DesktopRpcClient } from "@effect-desktop/core"
+import type { PermissionRegistry } from "@effect-desktop/core"
+import { P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Option, Ref, Schema } from "effect"
 
+import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import {
   CrashReporterBreadcrumbInput,
   CrashReporterFlushResult,
@@ -44,25 +46,25 @@ export const CrashReporterStart = crashReporterRpc(
   "start",
   CrashReporterStartInput,
   Schema.Void,
-  "native.invoke:CrashReporter.start"
+  P.nativeInvoke({ primitive: "CrashReporter", methods: ["start"] })
 )
 export const CrashReporterRecordBreadcrumb = crashReporterRpc(
   "recordBreadcrumb",
   CrashReporterBreadcrumbInput,
   Schema.Void,
-  "native.invoke:CrashReporter.recordBreadcrumb"
+  P.nativeInvoke({ primitive: "CrashReporter", methods: ["recordBreadcrumb"] })
 )
 export const CrashReporterFlush = crashReporterRpc(
   "flush",
   Schema.Void,
   CrashReporterFlushResult,
-  "native.invoke:CrashReporter.flush"
+  P.nativeInvoke({ primitive: "CrashReporter", methods: ["flush"] })
 )
 export const CrashReporterSetUploadHandler = crashReporterRpc(
   "setUploadHandler",
   Schema.Void,
   Schema.Void,
-  "native.invoke:CrashReporter.setUploadHandler"
+  P.nativeInvoke({ primitive: "CrashReporter", methods: ["setUploadHandler"] })
 )
 
 export const CrashReporterRpcEvents = Object.freeze({})
@@ -143,8 +145,8 @@ export type CrashReporterRpcHandlers = Parameters<typeof CrashReporterRpcGroup.t
 export const makeHostCrashReporterRpcRuntime = (
   handlers: CrashReporterRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<unknown> =>
-  makeDesktopRpcHandlerRuntime(
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  makeNativeHostRpcRuntime(
     CrashReporterRpcGroup,
     CrashReporterRpcGroup.toLayer(handlers),
     runtimeOptions
@@ -309,12 +311,12 @@ function crashReporterRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: string) {
+>(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
   return Rpc.make(`CrashReporter.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema
-  }).pipe(RpcCapability({ kind: capability }))
+  }).pipe(RpcCapability(capability))
 }
 
 type CrashReporterRpcClient = DesktopRpcClient<CrashReporterRpc>

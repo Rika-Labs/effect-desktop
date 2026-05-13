@@ -1,4 +1,5 @@
 import {
+  P,
   type DesktopRpcClient,
   CommandRegistry,
   PermissionActor,
@@ -18,7 +19,6 @@ import {
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
-  makeDesktopRpcHandlerRuntime,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -26,11 +26,14 @@ import {
   Rpc,
   RpcClient,
   RpcCapability,
+  type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
+import type { PermissionRegistry } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
+import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import { bindScopedCommand } from "./command-binding.js"
 import {
   GlobalShortcutAcceleratorInput,
@@ -54,31 +57,31 @@ export const GlobalShortcutRegister = shortcutRpc(
   "register",
   GlobalShortcutRegisterInput,
   Schema.Void,
-  "native.invoke:GlobalShortcut.register"
+  P.nativeInvoke({ primitive: "GlobalShortcut", methods: ["register"] })
 )
 export const GlobalShortcutUnregister = shortcutRpc(
   "unregister",
   GlobalShortcutAcceleratorInput,
   Schema.Void,
-  "native.invoke:GlobalShortcut.unregister"
+  P.nativeInvoke({ primitive: "GlobalShortcut", methods: ["unregister"] })
 )
 export const GlobalShortcutUnregisterAll = shortcutRpc(
   "unregisterAll",
   Schema.Void,
   Schema.Void,
-  "native.invoke:GlobalShortcut.unregisterAll"
+  P.nativeInvoke({ primitive: "GlobalShortcut", methods: ["unregisterAll"] })
 )
 export const GlobalShortcutIsRegistered = shortcutRpc(
   "isRegistered",
   GlobalShortcutAcceleratorInput,
   GlobalShortcutRegisteredResult,
-  "none"
+  { kind: "none" }
 )
 export const GlobalShortcutIsSupported = shortcutRpc(
   "isSupported",
   Schema.Void,
   GlobalShortcutSupportedOutput,
-  "none"
+  { kind: "none" }
 )
 
 export const GlobalShortcutRpcEvents = Object.freeze({
@@ -270,8 +273,8 @@ export type GlobalShortcutRpcHandlers = Parameters<typeof GlobalShortcutRpcGroup
 export const makeHostGlobalShortcutRpcRuntime = (
   handlers: GlobalShortcutRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<unknown> =>
-  makeDesktopRpcHandlerRuntime(
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  makeNativeHostRpcRuntime(
     GlobalShortcutRpcGroup,
     GlobalShortcutRpcGroup.toLayer(handlers),
     runtimeOptions
@@ -511,12 +514,12 @@ function shortcutRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: string) {
+>(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
   return Rpc.make(`GlobalShortcut.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema
-  }).pipe(RpcCapability({ kind: capability }))
+  }).pipe(RpcCapability(capability))
 }
 
 type GlobalShortcutRpcClient = DesktopRpcClient<GlobalShortcutRpc>

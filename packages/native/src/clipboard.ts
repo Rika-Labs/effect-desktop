@@ -6,7 +6,6 @@ import {
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
-  makeDesktopRpcHandlerRuntime,
   makeUnaryDesktopTransportFromBridgeClientExchange,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -14,12 +13,15 @@ import {
   Rpc,
   RpcClient,
   RpcCapability,
+  type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import type { PermissionRegistry } from "@effect-desktop/core"
+import { P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
+import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import {
   type ClipboardCapability,
   ClipboardImage,
@@ -38,37 +40,37 @@ export const ClipboardReadText = clipboardRpc(
   "readText",
   Schema.Void,
   ClipboardText,
-  "native.invoke:Clipboard.readText"
+  P.nativeInvoke({ primitive: "Clipboard", methods: ["readText"] })
 )
 export const ClipboardWriteText = clipboardRpc(
   "writeText",
   ClipboardText,
   Schema.Void,
-  "native.invoke:Clipboard.writeText"
+  P.nativeInvoke({ primitive: "Clipboard", methods: ["writeText"] })
 )
 export const ClipboardReadImage = clipboardRpc(
   "readImage",
   Schema.Void,
   ClipboardImage,
-  "native.invoke:Clipboard.readImage"
+  P.nativeInvoke({ primitive: "Clipboard", methods: ["readImage"] })
 )
 export const ClipboardWriteImage = clipboardRpc(
   "writeImage",
   ClipboardImage,
   Schema.Void,
-  "native.invoke:Clipboard.writeImage"
+  P.nativeInvoke({ primitive: "Clipboard", methods: ["writeImage"] })
 )
 export const ClipboardClear = clipboardRpc(
   "clear",
   Schema.Void,
   Schema.Void,
-  "native.invoke:Clipboard.clear"
+  P.nativeInvoke({ primitive: "Clipboard", methods: ["clear"] })
 )
 export const ClipboardIsSupported = clipboardRpc(
   "isSupported",
   ClipboardIsSupportedInput,
   ClipboardSupportedResult,
-  "none"
+  { kind: "none" }
 )
 
 export const ClipboardRpcEvents = Object.freeze({})
@@ -193,12 +195,8 @@ export const ClipboardSurface = DesktopRpc.surface("Clipboard", ClipboardRpcGrou
 export const makeHostClipboardRpcRuntime = (
   handlers: ClipboardRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<unknown> =>
-  makeDesktopRpcHandlerRuntime(
-    ClipboardRpcGroup,
-    ClipboardRpcGroup.toLayer(handlers),
-    runtimeOptions
-  )
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  makeNativeHostRpcRuntime(ClipboardRpcGroup, ClipboardRpcGroup.toLayer(handlers), runtimeOptions)
 
 const makeClipboardService = (client: ClipboardClientApi): ClipboardServiceApi => {
   const service: ClipboardServiceApi = {
@@ -381,12 +379,12 @@ function clipboardRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: string) {
+>(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
   return Rpc.make(`Clipboard.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema
-  }).pipe(RpcCapability({ kind: capability }))
+  }).pipe(RpcCapability(capability))
 }
 
 const formatUnknownError = (error: unknown): string => {

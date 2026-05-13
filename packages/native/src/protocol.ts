@@ -6,7 +6,6 @@ import {
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
-  makeDesktopRpcHandlerRuntime,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -14,13 +13,16 @@ import {
   Rpc,
   RpcClient,
   RpcCapability,
+  type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import type { DesktopRpcClient } from "@effect-desktop/core"
+import type { PermissionRegistry } from "@effect-desktop/core"
+import { P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 import * as nodePath from "node:path"
 
+import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import {
   ProtocolDenyInput,
   type ProtocolDenyOptions,
@@ -39,19 +41,23 @@ export type ProtocolError = HostProtocolError
 export const ProtocolRegisterAppProtocol = protocolRpc(
   "registerAppProtocol",
   ProtocolRegisterAppProtocolInput,
-  "native.invoke:Protocol.registerAppProtocol"
+  P.nativeInvoke({ primitive: "Protocol", methods: ["registerAppProtocol"] })
 )
 export const ProtocolServeAsset = protocolRpc(
   "serveAsset",
   ProtocolServeAssetInput,
-  "native.invoke:Protocol.serveAsset"
+  P.nativeInvoke({ primitive: "Protocol", methods: ["serveAsset"] })
 )
 export const ProtocolServeRoute = protocolRpc(
   "serveRoute",
   ProtocolServeRouteInput,
-  "native.invoke:Protocol.serveRoute"
+  P.nativeInvoke({ primitive: "Protocol", methods: ["serveRoute"] })
 )
-export const ProtocolDeny = protocolRpc("deny", ProtocolDenyInput, "native.invoke:Protocol.deny")
+export const ProtocolDeny = protocolRpc(
+  "deny",
+  ProtocolDenyInput,
+  P.nativeInvoke({ primitive: "Protocol", methods: ["deny"] })
+)
 
 export const ProtocolRpcEvents = Object.freeze({})
 
@@ -127,8 +133,8 @@ export type ProtocolRpcHandlers = Parameters<typeof ProtocolRpcGroup.toLayer>[0]
 export const makeHostProtocolRpcRuntime = (
   handlers: ProtocolRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<unknown> =>
-  makeDesktopRpcHandlerRuntime(ProtocolRpcGroup, ProtocolRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  makeNativeHostRpcRuntime(ProtocolRpcGroup, ProtocolRpcGroup.toLayer(handlers), runtimeOptions)
 
 const makeProtocolBridgeClient = (
   exchange: BridgeClientExchange,
@@ -348,12 +354,12 @@ const decodeInput = <A>(
 function protocolRpc<
   const Method extends (typeof ProtocolMethodNames)[number],
   Input extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, input: Input, permission: string) {
+>(method: Method, input: Input, permission: RpcCapabilityMetadata) {
   return Rpc.make(`Protocol.${method}` as const, {
     payload: input,
     success: Schema.Void,
     error: HostProtocolErrorSchema
-  }).pipe(RpcCapability({ kind: permission }))
+  }).pipe(RpcCapability(permission))
 }
 
 type ProtocolRpcClient = DesktopRpcClient<ProtocolRpc>

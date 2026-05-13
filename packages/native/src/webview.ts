@@ -7,7 +7,6 @@ import {
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
-  makeDesktopRpcHandlerRuntime,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   makeHostProtocolInvalidArgumentError,
@@ -15,12 +14,15 @@ import {
   Rpc,
   RpcClient,
   RpcCapability,
+  type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import type { DesktopRpcClient } from "@effect-desktop/core"
+import type { PermissionRegistry } from "@effect-desktop/core"
+import { P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
+import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 export * from "./contracts/webview.js"
 import {
   type WebViewCapabilityName,
@@ -49,61 +51,61 @@ export const WebViewCreate = webviewRpc(
   "create",
   WebViewCreateInput,
   WebViewResource,
-  "native.invoke:WebView.create"
+  P.nativeInvoke({ primitive: "WebView", methods: ["create"] })
 )
 export const WebViewLoadRoute = webviewRpc(
   "loadRoute",
   WebViewLoadRouteInput,
   Schema.Void,
-  "native.invoke:WebView.loadRoute"
+  P.nativeInvoke({ primitive: "WebView", methods: ["loadRoute"] })
 )
 export const WebViewLoadUrl = webviewRpc(
   "loadUrl",
   WebViewLoadUrlInput,
   Schema.Void,
-  "native.invoke:WebView.loadUrl"
+  P.nativeInvoke({ primitive: "WebView", methods: ["loadUrl"] })
 )
 export const WebViewReload = webviewRpc(
   "reload",
   WebViewHandleInput,
   Schema.Void,
-  "native.invoke:WebView.reload"
+  P.nativeInvoke({ primitive: "WebView", methods: ["reload"] })
 )
 export const WebViewGoBack = webviewRpc(
   "goBack",
   WebViewHandleInput,
   Schema.Void,
-  "native.invoke:WebView.goBack"
+  P.nativeInvoke({ primitive: "WebView", methods: ["goBack"] })
 )
 export const WebViewGoForward = webviewRpc(
   "goForward",
   WebViewHandleInput,
   Schema.Void,
-  "native.invoke:WebView.goForward"
+  P.nativeInvoke({ primitive: "WebView", methods: ["goForward"] })
 )
 export const WebViewCaptureScreenshot = webviewRpc(
   "captureScreenshot",
   WebViewHandleInput,
   WebViewScreenshot,
-  "native.invoke:WebView.captureScreenshot"
+  P.nativeInvoke({ primitive: "WebView", methods: ["captureScreenshot"] })
 )
 export const WebViewSetNavigationPolicy = webviewRpc(
   "setNavigationPolicy",
   WebViewSetNavigationPolicyInput,
   Schema.Void,
-  "native.invoke:WebView.setNavigationPolicy"
+  P.nativeInvoke({ primitive: "WebView", methods: ["setNavigationPolicy"] })
 )
 export const WebViewCapability = webviewRpc(
   "capability",
   WebViewCapabilityInput,
   WebViewCapabilityResult,
-  "none"
+  { kind: "none" }
 )
 export const WebViewDestroy = webviewRpc(
   "destroy",
   WebViewHandleInput,
   Schema.Void,
-  "native.invoke:WebView.destroy"
+  P.nativeInvoke({ primitive: "WebView", methods: ["destroy"] })
 )
 
 export const WebViewRpcEvents = Object.freeze({
@@ -217,8 +219,8 @@ export type WebViewRpcHandlers = Parameters<typeof WebViewRpcGroup.toLayer>[0]
 export const makeHostWebViewRpcRuntime = (
   handlers: WebViewRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<unknown> =>
-  makeDesktopRpcHandlerRuntime(WebViewRpcGroup, WebViewRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  makeNativeHostRpcRuntime(WebViewRpcGroup, WebViewRpcGroup.toLayer(handlers), runtimeOptions)
 
 export const webViewCapability = (
   name: WebViewCapabilityName,
@@ -528,12 +530,12 @@ function webviewRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: string) {
+>(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
   return Rpc.make(`WebView.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema
-  }).pipe(RpcCapability({ kind: capability }))
+  }).pipe(RpcCapability(capability))
 }
 
 type WebViewRpcClient = DesktopRpcClient<WebViewRpc>

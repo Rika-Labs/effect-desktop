@@ -6,7 +6,6 @@ import {
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
-  makeDesktopRpcHandlerRuntime,
   makeUnaryDesktopTransportFromBridgeClientExchange,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -14,12 +13,15 @@ import {
   Rpc,
   RpcClient,
   RpcCapability,
+  type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import type { PermissionRegistry } from "@effect-desktop/core"
+import { P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
+import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import {
   DialogConfirmInput,
   type DialogConfirmOptions,
@@ -44,31 +46,31 @@ export const DialogOpenFile = dialogRpc(
   "openFile",
   DialogOpenFileInput,
   DialogOpenResult,
-  "native.invoke:Dialog.openFile"
+  P.nativeInvoke({ primitive: "Dialog", methods: ["openFile"] })
 )
 export const DialogOpenDirectory = dialogRpc(
   "openDirectory",
   DialogOpenDirectoryInput,
   DialogOpenResult,
-  "native.invoke:Dialog.openDirectory"
+  P.nativeInvoke({ primitive: "Dialog", methods: ["openDirectory"] })
 )
 export const DialogSaveFile = dialogRpc(
   "saveFile",
   DialogSaveFileInput,
   DialogSaveResult,
-  "native.invoke:Dialog.saveFile"
+  P.nativeInvoke({ primitive: "Dialog", methods: ["saveFile"] })
 )
 export const DialogMessage = dialogRpc(
   "message",
   DialogMessageInput,
   Schema.Void,
-  "native.invoke:Dialog.message"
+  P.nativeInvoke({ primitive: "Dialog", methods: ["message"] })
 )
 export const DialogConfirm = dialogRpc(
   "confirm",
   DialogConfirmInput,
   DialogConfirmResult,
-  "native.invoke:Dialog.confirm"
+  P.nativeInvoke({ primitive: "Dialog", methods: ["confirm"] })
 )
 
 export const DialogRpcEvents = Object.freeze({})
@@ -193,8 +195,8 @@ export const DialogSurface = DesktopRpc.surface("Dialog", DialogRpcGroup, {
 export const makeHostDialogRpcRuntime = (
   handlers: DialogRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<unknown> =>
-  makeDesktopRpcHandlerRuntime(DialogRpcGroup, DialogRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  makeNativeHostRpcRuntime(DialogRpcGroup, DialogRpcGroup.toLayer(handlers), runtimeOptions)
 
 const makeDialogService = (client: DialogClientApi): DialogServiceApi => {
   const service: DialogServiceApi = {
@@ -367,12 +369,12 @@ function dialogRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: string) {
+>(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
   return Rpc.make(`Dialog.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema
-  }).pipe(RpcCapability({ kind: capability }))
+  }).pipe(RpcCapability(capability))
 }
 
 const formatUnknownError = (error: unknown): string => {

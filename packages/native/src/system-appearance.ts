@@ -7,19 +7,21 @@ import {
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
-  makeDesktopRpcHandlerRuntime,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   makeUnaryDesktopTransportFromBridgeClientExchange,
   Rpc,
   RpcClient,
   RpcCapability,
+  type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import type { DesktopRpcClient } from "@effect-desktop/core"
+import type { PermissionRegistry } from "@effect-desktop/core"
+import { P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
+import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import {
   type SystemAppearanceColor,
   SystemAppearanceAccentColorResult,
@@ -38,31 +40,31 @@ export const SystemAppearanceGetAppearance = systemAppearanceRpc(
   "getAppearance",
   Schema.Void,
   SystemAppearanceResult,
-  "native.invoke:SystemAppearance.getAppearance"
+  P.nativeInvoke({ primitive: "SystemAppearance", methods: ["getAppearance"] })
 )
 export const SystemAppearanceGetAccentColor = systemAppearanceRpc(
   "getAccentColor",
   Schema.Void,
   SystemAppearanceAccentColorResult,
-  "native.invoke:SystemAppearance.getAccentColor"
+  P.nativeInvoke({ primitive: "SystemAppearance", methods: ["getAccentColor"] })
 )
 export const SystemAppearanceGetReducedMotion = systemAppearanceRpc(
   "getReducedMotion",
   Schema.Void,
   SystemAppearanceBooleanResult,
-  "native.invoke:SystemAppearance.getReducedMotion"
+  P.nativeInvoke({ primitive: "SystemAppearance", methods: ["getReducedMotion"] })
 )
 export const SystemAppearanceGetReducedTransparency = systemAppearanceRpc(
   "getReducedTransparency",
   Schema.Void,
   SystemAppearanceBooleanResult,
-  "native.invoke:SystemAppearance.getReducedTransparency"
+  P.nativeInvoke({ primitive: "SystemAppearance", methods: ["getReducedTransparency"] })
 )
 export const SystemAppearanceIsSupported = systemAppearanceRpc(
   "isSupported",
   SystemAppearanceIsSupportedInput,
   SystemAppearanceSupportedResult,
-  "none"
+  { kind: "none" }
 )
 
 export const SystemAppearanceRpcEvents = Object.freeze({
@@ -184,8 +186,8 @@ export type SystemAppearanceRpcHandlers = Parameters<typeof SystemAppearanceRpcG
 export const makeHostSystemAppearanceRpcRuntime = (
   handlers: SystemAppearanceRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<unknown> =>
-  makeDesktopRpcHandlerRuntime(
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  makeNativeHostRpcRuntime(
     SystemAppearanceRpcGroup,
     SystemAppearanceRpcGroup.toLayer(handlers),
     runtimeOptions
@@ -318,12 +320,12 @@ function systemAppearanceRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: string) {
+>(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
   return Rpc.make(`SystemAppearance.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema
-  }).pipe(RpcCapability({ kind: capability }))
+  }).pipe(RpcCapability(capability))
 }
 
 type SystemAppearanceRpcClient = DesktopRpcClient<SystemAppearanceRpc>

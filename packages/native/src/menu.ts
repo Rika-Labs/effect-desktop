@@ -1,4 +1,5 @@
 import {
+  P,
   type DesktopRpcClient,
   CommandRegistry,
   PermissionActor,
@@ -17,7 +18,6 @@ import {
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
-  makeDesktopRpcHandlerRuntime,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -25,11 +25,14 @@ import {
   Rpc,
   RpcClient,
   RpcCapability,
+  type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
+import type { PermissionRegistry } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
+import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 export * from "./contracts/menu.js"
 import { bindScopedCommand } from "./command-binding.js"
 import { commandBindingWarningError } from "./command-binding-log.js"
@@ -59,27 +62,29 @@ export const MenuSetApplicationMenu = menuRpc(
   "setApplicationMenu",
   MenuSetApplicationMenuInput,
   Schema.Void,
-  "native.invoke:Menu.setApplicationMenu"
+  P.nativeInvoke({ primitive: "Menu", methods: ["setApplicationMenu"] })
 )
 export const MenuSetWindowMenu = menuRpc(
   "setWindowMenu",
   MenuSetWindowMenuInput,
   Schema.Void,
-  "native.invoke:Menu.setWindowMenu"
+  P.nativeInvoke({ primitive: "Menu", methods: ["setWindowMenu"] })
 )
-export const MenuClear = menuRpc("clear", MenuClearInput, Schema.Void, "native.invoke:Menu.clear")
+export const MenuClear = menuRpc(
+  "clear",
+  MenuClearInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Menu", methods: ["clear"] })
+)
 export const MenuBindCommand = menuRpc(
   "bindCommand",
   MenuBindCommandInput,
   Schema.Void,
-  "native.invoke:Menu.bindCommand"
+  P.nativeInvoke({ primitive: "Menu", methods: ["bindCommand"] })
 )
-export const MenuCapability = menuRpc(
-  "capability",
-  MenuCapabilityInput,
-  MenuCapabilityResult,
-  "none"
-)
+export const MenuCapability = menuRpc("capability", MenuCapabilityInput, MenuCapabilityResult, {
+  kind: "none"
+})
 
 export const MenuRpcEvents = Object.freeze({
   Activated: { payload: MenuActivatedEvent }
@@ -167,8 +172,8 @@ export type MenuRpcHandlers = Parameters<typeof MenuRpcGroup.toLayer>[0]
 export const makeHostMenuRpcRuntime = (
   handlers: MenuRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<unknown> =>
-  makeDesktopRpcHandlerRuntime(MenuRpcGroup, MenuRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  makeNativeHostRpcRuntime(MenuRpcGroup, MenuRpcGroup.toLayer(handlers), runtimeOptions)
 
 export const menuCapability = (
   name: MenuCapabilityName,
@@ -453,12 +458,12 @@ function menuRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: string) {
+>(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
   return Rpc.make(`Menu.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema
-  }).pipe(RpcCapability({ kind: capability }))
+  }).pipe(RpcCapability(capability))
 }
 
 type MenuRpcClient = DesktopRpcClient<MenuRpc>

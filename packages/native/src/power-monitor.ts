@@ -7,7 +7,6 @@ import {
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
-  makeDesktopRpcHandlerRuntime,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   makeUnaryDesktopTransportFromBridgeClientExchange,
@@ -17,9 +16,11 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
+import type { PermissionRegistry } from "@effect-desktop/core"
 import type { DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
+import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import {
   PowerMonitorIsSupportedInput,
   type PowerMonitorMethod,
@@ -117,8 +118,8 @@ export type PowerMonitorRpcHandlers = Parameters<typeof PowerMonitorRpcGroup.toL
 export const makeHostPowerMonitorRpcRuntime = (
   handlers: PowerMonitorRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<unknown> =>
-  makeDesktopRpcHandlerRuntime(
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  makeNativeHostRpcRuntime(
     PowerMonitorRpcGroup,
     PowerMonitorRpcGroup.toLayer(handlers),
     runtimeOptions

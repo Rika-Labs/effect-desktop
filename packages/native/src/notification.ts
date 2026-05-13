@@ -7,7 +7,6 @@ import {
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
-  makeDesktopRpcHandlerRuntime,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -15,12 +14,15 @@ import {
   Rpc,
   RpcClient,
   RpcCapability,
+  type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import type { DesktopRpcClient } from "@effect-desktop/core"
+import type { PermissionRegistry } from "@effect-desktop/core"
+import { P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
+import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import {
   NotificationActionEvent,
   NotificationClickEvent,
@@ -43,31 +45,31 @@ export const NotificationShow = notificationRpc(
   "show",
   NotificationShowInput,
   NotificationResource,
-  "native.invoke:Notification.show"
+  P.nativeInvoke({ primitive: "Notification", methods: ["show"] })
 )
 export const NotificationClose = notificationRpc(
   "close",
   NotificationCloseInput,
   Schema.Void,
-  "native.invoke:Notification.close"
+  P.nativeInvoke({ primitive: "Notification", methods: ["close"] })
 )
 export const NotificationIsSupported = notificationRpc(
   "isSupported",
   Schema.Void,
   NotificationSupportedResult,
-  "none"
+  { kind: "none" }
 )
 export const NotificationRequestPermission = notificationRpc(
   "requestPermission",
   Schema.Void,
   NotificationPermissionResult,
-  "native.invoke:Notification.requestPermission"
+  P.nativeInvoke({ primitive: "Notification", methods: ["requestPermission"] })
 )
 export const NotificationGetPermissionStatus = notificationRpc(
   "getPermissionStatus",
   Schema.Void,
   NotificationPermissionResult,
-  "none"
+  { kind: "none" }
 )
 
 export const NotificationRpcEvents = Object.freeze({
@@ -168,8 +170,8 @@ export type NotificationRpcHandlers = Parameters<typeof NotificationRpcGroup.toL
 export const makeHostNotificationRpcRuntime = (
   handlers: NotificationRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<unknown> =>
-  makeDesktopRpcHandlerRuntime(
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  makeNativeHostRpcRuntime(
     NotificationRpcGroup,
     NotificationRpcGroup.toLayer(handlers),
     runtimeOptions
@@ -375,12 +377,12 @@ function notificationRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: string) {
+>(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
   return Rpc.make(`Notification.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema
-  }).pipe(RpcCapability({ kind: capability }))
+  }).pipe(RpcCapability(capability))
 }
 
 type NotificationRpcClient = DesktopRpcClient<NotificationRpc>

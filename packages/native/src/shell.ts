@@ -7,7 +7,6 @@ import {
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
-  makeDesktopRpcHandlerRuntime,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -15,12 +14,15 @@ import {
   Rpc,
   RpcClient,
   RpcCapability,
+  type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import type { DesktopRpcClient } from "@effect-desktop/core"
+import type { PermissionRegistry } from "@effect-desktop/core"
+import { P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
+import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import {
   ShellOpenExternalInput,
   type ShellOpenExternalOptions,
@@ -53,22 +55,22 @@ export type ShellError = HostProtocolError
 export const ShellOpenExternal = shellRpc(
   "openExternal",
   ShellOpenExternalInput,
-  "native.invoke:Shell.openExternal"
+  P.nativeInvoke({ primitive: "Shell", methods: ["openExternal"] })
 )
 export const ShellShowItemInFolder = shellRpc(
   "showItemInFolder",
   ShellShowItemInFolderInput,
-  "native.invoke:Shell.showItemInFolder"
+  P.nativeInvoke({ primitive: "Shell", methods: ["showItemInFolder"] })
 )
 export const ShellOpenPath = shellRpc(
   "openPath",
   ShellOpenPathInput,
-  "native.invoke:Shell.openPath"
+  P.nativeInvoke({ primitive: "Shell", methods: ["openPath"] })
 )
 export const ShellTrashItem = shellRpc(
   "trashItem",
   ShellTrashItemInput,
-  "native.invoke:Shell.trashItem"
+  P.nativeInvoke({ primitive: "Shell", methods: ["trashItem"] })
 )
 
 export const ShellRpcEvents = Object.freeze({})
@@ -144,8 +146,8 @@ export type ShellRpcHandlers = Parameters<typeof ShellRpcGroup.toLayer>[0]
 export const makeHostShellRpcRuntime = (
   handlers: ShellRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<unknown> =>
-  makeDesktopRpcHandlerRuntime(ShellRpcGroup, ShellRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  makeNativeHostRpcRuntime(ShellRpcGroup, ShellRpcGroup.toLayer(handlers), runtimeOptions)
 
 const makeShellBridgeClient = (
   exchange: BridgeClientExchange,
@@ -252,13 +254,21 @@ const validateExternalUrl = (
 
     if (ReservedExternalSchemes.includes(scheme)) {
       return yield* Effect.fail(
-        permissionDenied("native.invoke:Shell.openExternal", input.url, "Shell.openExternal")
+        permissionDenied(
+          P.nativeInvoke({ primitive: "Shell", methods: ["openExternal"] }),
+          input.url,
+          "Shell.openExternal"
+        )
       )
     }
 
     if (!allowedSchemes.has(scheme)) {
       return yield* Effect.fail(
-        permissionDenied("native.invoke:Shell.openExternal", scheme, "Shell.openExternal")
+        permissionDenied(
+          P.nativeInvoke({ primitive: "Shell", methods: ["openExternal"] }),
+          scheme,
+          "Shell.openExternal"
+        )
       )
     }
 
@@ -275,7 +285,11 @@ const validateOpenPathInput = (
       }
 
       return Effect.fail(
-        permissionDenied("native.invoke:Shell.openPath", validated.path, "Shell.openPath")
+        permissionDenied(
+          P.nativeInvoke({ primitive: "Shell", methods: ["openPath"] }),
+          validated.path,
+          "Shell.openPath"
+        )
       )
     })
   )
@@ -311,13 +325,13 @@ const parseUrl = (url: string, operation: string): Effect.Effect<URL, ShellError
   })
 
 const permissionDenied = (
-  capability: string,
+  capability: RpcCapabilityMetadata,
   resource: string,
   operation: string
 ): HostProtocolPermissionDeniedError =>
   new HostProtocolPermissionDeniedError({
     tag: "PermissionDenied",
-    capability,
+    capability: capability.kind,
     resource,
     message: `permission denied for ${resource}`,
     operation,
@@ -384,12 +398,12 @@ const decodeInput = <A>(
 function shellRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, capability: string) {
+>(method: Method, payload: Payload, capability: RpcCapabilityMetadata) {
   return Rpc.make(`Shell.${method}` as const, {
     payload,
     success: Schema.Void,
     error: HostProtocolErrorSchema
-  }).pipe(RpcCapability({ kind: capability }))
+  }).pipe(RpcCapability(capability))
 }
 
 type ShellRpcClient = DesktopRpcClient<ShellRpc>

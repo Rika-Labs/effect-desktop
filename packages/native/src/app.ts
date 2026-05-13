@@ -7,7 +7,6 @@ import {
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
-  makeDesktopRpcHandlerRuntime,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -15,12 +14,15 @@ import {
   Rpc,
   RpcClient,
   RpcCapability,
+  type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import type { DesktopRpcClient } from "@effect-desktop/core"
+import type { PermissionRegistry } from "@effect-desktop/core"
+import { P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
+import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 export * from "./contracts/app.js"
 import {
   AppBeforeQuitEvent,
@@ -43,33 +45,45 @@ import {
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
-export const AppGetInfo = appRpc("getInfo", Schema.Void, AppInfo, "none")
-export const AppGetCommandLine = appRpc("getCommandLine", Schema.Void, AppCommandLine, "none")
-export const AppQuit = appRpc("quit", AppQuitInput, Schema.Void, "native.invoke:App.quit")
+export const AppGetInfo = appRpc("getInfo", Schema.Void, AppInfo, { kind: "none" })
+export const AppGetCommandLine = appRpc("getCommandLine", Schema.Void, AppCommandLine, {
+  kind: "none"
+})
+export const AppQuit = appRpc(
+  "quit",
+  AppQuitInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "App", methods: ["quit"] })
+)
 export const AppRestart = appRpc(
   "restart",
   AppRestartInput,
   Schema.Void,
-  "native.invoke:App.restart"
+  P.nativeInvoke({ primitive: "App", methods: ["restart"] })
 )
-export const AppFocus = appRpc("focus", Schema.Void, Schema.Void, "native.invoke:App.focus")
+export const AppFocus = appRpc(
+  "focus",
+  Schema.Void,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "App", methods: ["focus"] })
+)
 export const AppRequestSingleInstanceLock = appRpc(
   "requestSingleInstanceLock",
   Schema.Void,
   AppSingleInstanceOutput,
-  "none"
+  { kind: "none" }
 )
 export const AppSetOpenAtLogin = appRpc(
   "setOpenAtLogin",
   AppOpenAtLoginInput,
   Schema.Void,
-  "native.invoke:App.setOpenAtLogin"
+  P.nativeInvoke({ primitive: "App", methods: ["setOpenAtLogin"] })
 )
 export const AppRegisterProtocol = appRpc(
   "registerProtocol",
   AppProtocolInput,
   Schema.Void,
-  "native.invoke:App.registerProtocol"
+  P.nativeInvoke({ primitive: "App", methods: ["registerProtocol"] })
 )
 
 export const AppRpcEvents = Object.freeze({
@@ -158,8 +172,8 @@ export type AppRpcHandlers = Parameters<typeof AppRpcGroup.toLayer>[0]
 export const makeHostAppRpcRuntime = (
   handlers: AppRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<unknown> =>
-  makeDesktopRpcHandlerRuntime(AppRpcGroup, AppRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  makeNativeHostRpcRuntime(AppRpcGroup, AppRpcGroup.toLayer(handlers), runtimeOptions)
 
 const makeAppService = (client: AppClientApi): AppServiceApi => {
   const service: AppServiceApi = {
@@ -371,12 +385,12 @@ function appRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: string) {
+>(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
   return Rpc.make(`App.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema
-  }).pipe(RpcCapability({ kind: capability }))
+  }).pipe(RpcCapability(capability))
 }
 
 type AppRpcClient = DesktopRpcClient<AppRpc>

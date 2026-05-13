@@ -7,7 +7,6 @@ import {
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
-  makeDesktopRpcHandlerRuntime,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -15,12 +14,15 @@ import {
   Rpc,
   RpcClient,
   RpcCapability,
+  type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import type { DesktopRpcClient } from "@effect-desktop/core"
+import type { PermissionRegistry } from "@effect-desktop/core"
+import { P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
+import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import {
   TrayActivatedEvent,
   TrayCreateInput,
@@ -43,33 +45,35 @@ export const TrayCreate = trayRpc(
   "create",
   TrayCreateInput,
   TrayResource,
-  "native.invoke:Tray.create"
+  P.nativeInvoke({ primitive: "Tray", methods: ["create"] })
 )
 export const TraySetIcon = trayRpc(
   "setIcon",
   TraySetIconInput,
   Schema.Void,
-  "native.invoke:Tray.setIcon"
+  P.nativeInvoke({ primitive: "Tray", methods: ["setIcon"] })
 )
 export const TraySetTooltip = trayRpc(
   "setTooltip",
   TraySetTooltipInput,
   Schema.Void,
-  "native.invoke:Tray.setTooltip"
+  P.nativeInvoke({ primitive: "Tray", methods: ["setTooltip"] })
 )
 export const TraySetMenu = trayRpc(
   "setMenu",
   TraySetMenuInput,
   Schema.Void,
-  "native.invoke:Tray.setMenu"
+  P.nativeInvoke({ primitive: "Tray", methods: ["setMenu"] })
 )
 export const TrayDestroy = trayRpc(
   "destroy",
   TrayDestroyInput,
   Schema.Void,
-  "native.invoke:Tray.destroy"
+  P.nativeInvoke({ primitive: "Tray", methods: ["destroy"] })
 )
-export const TrayIsSupported = trayRpc("isSupported", Schema.Void, TraySupportedResult, "none")
+export const TrayIsSupported = trayRpc("isSupported", Schema.Void, TraySupportedResult, {
+  kind: "none"
+})
 
 export const TrayRpcEvents = Object.freeze({
   Activated: { payload: TrayActivatedEvent }
@@ -153,8 +157,8 @@ export type TrayRpcHandlers = Parameters<typeof TrayRpcGroup.toLayer>[0]
 export const makeHostTrayRpcRuntime = (
   handlers: TrayRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<unknown> =>
-  makeDesktopRpcHandlerRuntime(TrayRpcGroup, TrayRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  makeNativeHostRpcRuntime(TrayRpcGroup, TrayRpcGroup.toLayer(handlers), runtimeOptions)
 
 const makeTrayBridgeClient = (
   exchange: BridgeClientExchange,
@@ -351,12 +355,12 @@ function trayRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: string) {
+>(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
   return Rpc.make(`Tray.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema
-  }).pipe(RpcCapability({ kind: capability }))
+  }).pipe(RpcCapability(capability))
 }
 
 type TrayRpcClient = DesktopRpcClient<TrayRpc>

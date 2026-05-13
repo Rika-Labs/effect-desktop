@@ -12,7 +12,7 @@ import {
   rpcSupport,
   type BridgeClientExchange,
   type BridgeClientResponse,
-  type HostProtocolRequestEnvelope,
+  HostProtocolRequestEnvelope,
   HostProtocolEventEnvelope,
   type HostWindowClientOptions,
   type HostWindowExchange
@@ -22,6 +22,8 @@ import {
   CommandRegistryHandlerFailureError,
   CommandRegistry,
   Desktop,
+  P,
+  PermissionRegistry,
   ResourceRegistry,
   makeCommandRegistry,
   makePermissionRegistry,
@@ -125,6 +127,7 @@ import {
   ScreenLive,
   ScreenMethodNames,
   ScreenSurface,
+  makeHostScreenRpcRuntime,
   Shell,
   ShellRpcs,
   ShellLive,
@@ -4236,7 +4239,7 @@ test("ScreenSurface derives server, client, test, and metadata surfaces from the
       error: doc.error,
       stream: doc.stream,
       support: doc.support,
-      capability: Option.isSome(doc.capability) ? doc.capability.value.kind : undefined
+      capability: Option.isSome(doc.capability) ? doc.capability.value : undefined
     }))
   ).toEqual([
     {
@@ -4248,7 +4251,7 @@ test("ScreenSurface derives server, client, test, and metadata surfaces from the
       error: HostProtocolErrorSchema,
       stream: Option.none(),
       support: { status: "supported" },
-      capability: "native.invoke:Screen.getDisplays"
+      capability: P.nativeInvoke({ primitive: "Screen", methods: ["getDisplays"] })
     },
     {
       name: "getPrimaryDisplay",
@@ -4259,7 +4262,7 @@ test("ScreenSurface derives server, client, test, and metadata surfaces from the
       error: HostProtocolErrorSchema,
       stream: Option.none(),
       support: { status: "supported" },
-      capability: "native.invoke:Screen.getPrimaryDisplay"
+      capability: P.nativeInvoke({ primitive: "Screen", methods: ["getPrimaryDisplay"] })
     },
     {
       name: "getPointerPoint",
@@ -4270,7 +4273,7 @@ test("ScreenSurface derives server, client, test, and metadata surfaces from the
       error: HostProtocolErrorSchema,
       stream: Option.none(),
       support: { status: "supported" },
-      capability: "native.invoke:Screen.getPointerPoint"
+      capability: P.nativeInvoke({ primitive: "Screen", methods: ["getPointerPoint"] })
     },
     {
       name: "isSupported",
@@ -4281,7 +4284,7 @@ test("ScreenSurface derives server, client, test, and metadata surfaces from the
       error: HostProtocolErrorSchema,
       stream: Option.none(),
       support: { status: "supported" },
-      capability: "none"
+      capability: { kind: "none" }
     }
   ])
 })
@@ -4476,6 +4479,78 @@ test("Screen bridge client sends typed host envelopes and decodes values", async
     ["Screen.getPointerPoint", undefined],
     ["Screen.isSupported", { method: "getPointerPoint" }]
   ])
+})
+
+test("native host RPC runtime denies protected Screen calls before handlers run", async () => {
+  const calls: string[] = []
+  const runtime = makeHostScreenRpcRuntime(
+    {
+      "Screen.getDisplays": () =>
+        Effect.sync(() => {
+          calls.push("getDisplays")
+          return new ScreenDisplaysResult({ displays: [primaryDisplay] })
+        }),
+      "Screen.getPrimaryDisplay": () => Effect.succeed(primaryDisplay),
+      "Screen.getPointerPoint": () => Effect.succeed(new ScreenPoint({ x: 12, y: 34 })),
+      "Screen.isSupported": () => Effect.succeed(new ScreenSupportedResult({ supported: true }))
+    },
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+
+  const response = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "screen-denied",
+          method: "Screen.getDisplays",
+          timestamp: 1710000000000,
+          traceId: "trace-screen-denied"
+        })
+      )
+      .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
+  )
+
+  expect(response.kind).toBe("failure")
+  if (response.kind === "failure") {
+    expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
+  }
+  expect(calls).toEqual([])
+})
+
+test("native host RPC runtime lets permission-free Screen support calls pass through", async () => {
+  const calls: string[] = []
+  const runtime = makeHostScreenRpcRuntime(
+    {
+      "Screen.getDisplays": () => Effect.succeed(new ScreenDisplaysResult({ displays: [] })),
+      "Screen.getPrimaryDisplay": () => Effect.succeed(primaryDisplay),
+      "Screen.getPointerPoint": () => Effect.succeed(new ScreenPoint({ x: 12, y: 34 })),
+      "Screen.isSupported": (input) =>
+        Effect.sync(() => {
+          calls.push(input.method)
+          return new ScreenSupportedResult({ supported: input.method === "getDisplays" })
+        })
+    },
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+
+  const response = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "screen-support",
+          method: "Screen.isSupported",
+          timestamp: 1710000000000,
+          traceId: "trace-screen-support",
+          payload: { method: "getDisplays" }
+        })
+      )
+      .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
+  )
+
+  expect(response).toEqual({ kind: "success", payload: { supported: true } })
+  expect(calls).toEqual(["getDisplays"])
 })
 
 test("Screen bridge client validates generated protocol timestamps as typed failures", async () => {
@@ -7690,8 +7765,21 @@ const makeWindowRpcExchange = (
     { originAuth: RendererOriginAuth.unsafeDisabledForTests }
   )
   const registryLayer = Layer.succeed(ResourceRegistry)(registry)
+  const permissionsLayer = Layer.effect(
+    PermissionRegistry,
+    Effect.gen(function* () {
+      const permissions = yield* makePermissionRegistry()
+      yield* permissions.declare(
+        P.nativeInvoke({ primitive: "Window", methods: expectedWindowMethods }),
+        { source: "window-rpc-test", effect: "allow" }
+      )
+      return permissions
+    })
+  )
   const request: BridgeClientExchange["request"] = (request) =>
-    runtime.dispatch(request).pipe(Effect.provide(registryLayer)) as ReturnType<
+    runtime
+      .dispatch(request)
+      .pipe(Effect.provide(Layer.merge(registryLayer, permissionsLayer))) as ReturnType<
       BridgeClientExchange["request"]
     >
 

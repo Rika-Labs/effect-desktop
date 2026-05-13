@@ -6,7 +6,6 @@ import {
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
-  makeDesktopRpcHandlerRuntime,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -14,12 +13,15 @@ import {
   Rpc,
   RpcClient,
   RpcCapability,
+  type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import type { DesktopRpcClient } from "@effect-desktop/core"
+import type { PermissionRegistry } from "@effect-desktop/core"
+import { P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
+import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import {
   type DockMethod,
   DockIsSupportedInput,
@@ -41,44 +43,41 @@ export const DockSetBadgeCount = dockRpc(
   "setBadgeCount",
   DockSetBadgeCountInput,
   Schema.Void,
-  "native.invoke:Dock.setBadgeCount"
+  P.nativeInvoke({ primitive: "Dock", methods: ["setBadgeCount"] })
 )
 export const DockSetBadgeText = dockRpc(
   "setBadgeText",
   DockSetBadgeTextInput,
   Schema.Void,
-  "native.invoke:Dock.setBadgeText"
+  P.nativeInvoke({ primitive: "Dock", methods: ["setBadgeText"] })
 )
 export const DockSetProgress = dockRpc(
   "setProgress",
   DockSetProgressInput,
   Schema.Void,
-  "native.invoke:Dock.setProgress"
+  P.nativeInvoke({ primitive: "Dock", methods: ["setProgress"] })
 )
 export const DockSetMenu = dockRpc(
   "setMenu",
   DockSetMenuInput,
   Schema.Void,
-  "native.invoke:Dock.setMenu"
+  P.nativeInvoke({ primitive: "Dock", methods: ["setMenu"] })
 )
 export const DockSetJumpList = dockRpc(
   "setJumpList",
   DockSetJumpListInput,
   Schema.Void,
-  "native.invoke:Dock.setJumpList"
+  P.nativeInvoke({ primitive: "Dock", methods: ["setJumpList"] })
 )
 export const DockRequestAttention = dockRpc(
   "requestAttention",
   DockRequestAttentionInput,
   Schema.Void,
-  "native.invoke:Dock.requestAttention"
+  P.nativeInvoke({ primitive: "Dock", methods: ["requestAttention"] })
 )
-export const DockIsSupported = dockRpc(
-  "isSupported",
-  DockIsSupportedInput,
-  DockSupportedResult,
-  "none"
-)
+export const DockIsSupported = dockRpc("isSupported", DockIsSupportedInput, DockSupportedResult, {
+  kind: "none"
+})
 
 export const DockRpcEvents = Object.freeze({})
 
@@ -171,8 +170,8 @@ export type DockRpcHandlers = Parameters<typeof DockRpcGroup.toLayer>[0]
 export const makeHostDockRpcRuntime = (
   handlers: DockRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<unknown> =>
-  makeDesktopRpcHandlerRuntime(DockRpcGroup, DockRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  makeNativeHostRpcRuntime(DockRpcGroup, DockRpcGroup.toLayer(handlers), runtimeOptions)
 
 const makeDockBridgeClient = (
   exchange: BridgeClientExchange,
@@ -362,12 +361,12 @@ function dockRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: string) {
+>(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
   return Rpc.make(`Dock.${method}` as const, {
     payload,
     success,
     error: HostProtocolErrorSchema
-  }).pipe(RpcCapability({ kind: capability }))
+  }).pipe(RpcCapability(capability))
 }
 
 type DockRpcClient = DesktopRpcClient<DockRpc>

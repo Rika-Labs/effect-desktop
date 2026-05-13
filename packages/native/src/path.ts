@@ -6,29 +6,37 @@ import {
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
-  makeDesktopRpcHandlerRuntime,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   makeUnaryDesktopTransportFromBridgeClientExchange,
   Rpc,
   RpcClient,
   RpcCapability,
+  type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import type { DesktopRpcClient } from "@effect-desktop/core"
+import type { PermissionRegistry } from "@effect-desktop/core"
+import { P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer } from "effect"
 
+import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import { CanonicalPath } from "./contracts/path.js"
 
 export type PathError = HostProtocolError
 
-export const PathAppData = pathRpc("appData", "native.invoke:Path.appData")
-export const PathCache = pathRpc("cache", "native.invoke:Path.cache")
-export const PathLogs = pathRpc("logs", "native.invoke:Path.logs")
-export const PathTemp = pathRpc("temp", "native.invoke:Path.temp")
-export const PathHome = pathRpc("home", "native.invoke:Path.home")
-export const PathDownloads = pathRpc("downloads", "native.invoke:Path.downloads")
+export const PathAppData = pathRpc(
+  "appData",
+  P.nativeInvoke({ primitive: "Path", methods: ["appData"] })
+)
+export const PathCache = pathRpc("cache", P.nativeInvoke({ primitive: "Path", methods: ["cache"] }))
+export const PathLogs = pathRpc("logs", P.nativeInvoke({ primitive: "Path", methods: ["logs"] }))
+export const PathTemp = pathRpc("temp", P.nativeInvoke({ primitive: "Path", methods: ["temp"] }))
+export const PathHome = pathRpc("home", P.nativeInvoke({ primitive: "Path", methods: ["home"] }))
+export const PathDownloads = pathRpc(
+  "downloads",
+  P.nativeInvoke({ primitive: "Path", methods: ["downloads"] })
+)
 
 export const PathRpcEvents = Object.freeze({})
 
@@ -103,8 +111,8 @@ export type PathRpcHandlers = Parameters<typeof PathRpcGroup.toLayer>[0]
 export const makeHostPathRpcRuntime = (
   handlers: PathRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<unknown> =>
-  makeDesktopRpcHandlerRuntime(PathRpcGroup, PathRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  makeNativeHostRpcRuntime(PathRpcGroup, PathRpcGroup.toLayer(handlers), runtimeOptions)
 
 const makePathService = (client: PathClientApi): PathServiceApi => {
   const toStringPath = (effect: Effect.Effect<CanonicalPath, PathError, never>) =>
@@ -205,12 +213,12 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
 
 function pathRpc<const Method extends (typeof PathMethodNames)[number]>(
   method: Method,
-  permission: string
+  permission: RpcCapabilityMetadata
 ) {
   return Rpc.make(`Path.${method}` as const, {
     success: CanonicalPath,
     error: HostProtocolErrorSchema
-  }).pipe(RpcCapability({ kind: permission }))
+  }).pipe(RpcCapability(permission))
 }
 
 type PathRpcClient = DesktopRpcClient<PathRpc>
