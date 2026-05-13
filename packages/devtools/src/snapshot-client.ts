@@ -1,4 +1,5 @@
-import { Context, Effect, Layer } from "effect"
+import { InspectorSafetyPolicy, type InspectorSafetySummary } from "@effect-desktop/core"
+import { Context, Data, Effect, Layer, Option } from "effect"
 
 import type { ClusterPanelSnapshot } from "./cluster-panel.js"
 import { ClusterPanel } from "./cluster-panel.js"
@@ -29,11 +30,21 @@ export interface DevtoolsSnapshot {
   readonly persistence: PersistencePanelSnapshot
   readonly logs: LogsPanelSnapshot
   readonly cluster: ClusterPanelSnapshot
+  readonly safety: InspectorSafetySummary
 }
 
 export interface DevtoolsSnapshotClientApi {
-  readonly exportSnapshot: () => Effect.Effect<DevtoolsSnapshot, EventLogPanelError, never>
+  readonly exportSnapshot: () => Effect.Effect<
+    DevtoolsSnapshot,
+    EventLogPanelError | DevtoolsSnapshotSafetyError,
+    never
+  >
 }
+
+export class DevtoolsSnapshotSafetyError extends Data.TaggedError("SnapshotSafetyError")<{
+  readonly operation: string
+  readonly safety: InspectorSafetySummary
+}> {}
 
 export class DevtoolsSnapshotClient extends Context.Service<
   DevtoolsSnapshotClient,
@@ -50,6 +61,7 @@ export type DevtoolsSnapshotClientRequirements =
   | PersistencePanel
   | LogsPanel
   | ClusterPanel
+  | InspectorSafetyPolicy
 
 export const DevtoolsSnapshotClientLive: Layer.Layer<
   DevtoolsSnapshotClient,
@@ -66,19 +78,38 @@ export const DevtoolsSnapshotClientLive: Layer.Layer<
     const persistence = yield* PersistencePanel
     const logs = yield* LogsPanel
     const cluster = yield* ClusterPanel
+    const inspectorSafety = yield* InspectorSafetyPolicy
 
     return Object.freeze({
       exportSnapshot: () =>
-        Effect.all({
-          liveRuntime: liveRuntime.list(),
-          diagnostics: diagnostics.list(),
-          performance: performance.list(),
-          eventLog: eventLog.list(),
-          workflows: workflows.list(),
-          reactivity: reactivity.list(),
-          persistence: persistence.list(),
-          logs: logs.list(),
-          cluster: cluster.list()
+        Effect.gen(function* () {
+          const snapshot = yield* Effect.all({
+            liveRuntime: liveRuntime.list(),
+            diagnostics: diagnostics.list(),
+            performance: performance.list(),
+            eventLog: eventLog.list(),
+            workflows: workflows.list(),
+            reactivity: reactivity.list(),
+            persistence: persistence.list(),
+            logs: logs.list(),
+            cluster: cluster.list()
+          })
+          const decision = yield* inspectorSafety.sanitize({
+            source: "devtools.snapshot",
+            payload: snapshot satisfies Omit<DevtoolsSnapshot, "safety">
+          })
+          if (Option.isNone(decision.value)) {
+            return yield* Effect.fail(
+              new DevtoolsSnapshotSafetyError({
+                operation: "DevtoolsSnapshotClient.exportSnapshot",
+                safety: decision.summary
+              })
+            )
+          }
+          return {
+            ...decision.value.value,
+            safety: decision.summary
+          } satisfies DevtoolsSnapshot
         })
     } satisfies DevtoolsSnapshotClientApi)
   })

@@ -2,11 +2,12 @@ import {
   CommandRegistry,
   type CommandInvocationRecord,
   type CommandSnapshot,
-  redact,
+  InspectorSafetyPolicy,
+  type InspectorSafetySummary,
   Worker,
   type WorkerSnapshot
 } from "@effect-desktop/core"
-import { Context, Effect, Layer, Stream } from "effect"
+import { Context, Effect, Layer, Option, Stream } from "effect"
 
 export * from "./shell.js"
 export * from "./live-panels.js"
@@ -42,6 +43,7 @@ export const CommandsDevtoolsLive = Layer.effect(CommandsDevtools)(
 
 export interface WorkersSnapshot {
   readonly workers: readonly WorkerSnapshot[]
+  readonly safety: InspectorSafetySummary
 }
 
 export interface WorkersDevtoolsApi {
@@ -53,13 +55,28 @@ export class WorkersDevtools extends Context.Service<WorkersDevtools, WorkersDev
   "@effect-desktop/devtools/WorkersDevtools"
 ) {}
 
-export const WorkersDevtoolsLive = Layer.effect(WorkersDevtools)(
+export const WorkersDevtoolsLive: Layer.Layer<
+  WorkersDevtools,
+  never,
+  Worker | InspectorSafetyPolicy
+> = Layer.effect(WorkersDevtools)(
   Effect.gen(function* () {
     const workers = yield* Worker
+    const inspectorSafety = yield* InspectorSafetyPolicy
     const list = (): Effect.Effect<WorkersSnapshot, never, never> =>
       Effect.gen(function* () {
         const workerRows = yield* workers.list()
-        return redact({ workers: workerRows })
+        const decision = yield* inspectorSafety.sanitize({
+          source: "devtools.workers",
+          payload: { workers: workerRows } satisfies Omit<WorkersSnapshot, "safety">
+        })
+        if (Option.isNone(decision.value)) {
+          return { workers: [], safety: decision.summary } satisfies WorkersSnapshot
+        }
+        return {
+          ...decision.value.value,
+          safety: decision.summary
+        } satisfies WorkersSnapshot
       })
 
     return Object.freeze({

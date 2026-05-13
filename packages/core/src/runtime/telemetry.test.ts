@@ -106,6 +106,8 @@ test("Telemetry records trace spans in a bounded ring and can disable tracing ex
   expect(spans.map((span) => span.traceId)).toEqual(["trace-new"])
   expect(spans[0]?.spanId).toBe("generated-span")
   expect(spans[0]?.durationMs).toEqual(Option.some(15))
+  expect(spans[0]?.attributes).toEqual(Option.some({ apiKey: "<redacted:redacted>" }))
+  expect(spans[0]?.safety.redacted).toBeGreaterThan(0)
 
   const disabled = await Effect.runPromise(makeTelemetry({ tracingEnabled: false }))
   await Effect.runPromise(
@@ -118,6 +120,56 @@ test("Telemetry records trace spans in a bounded ring and can disable tracing ex
     })
   )
   expect(await Effect.runPromise(disabled.listTraces())).toEqual([])
+})
+
+test("Telemetry drops sampled-out inspector payloads before storage", async () => {
+  const telemetry = await Effect.runPromise(
+    makeTelemetry({ inspectorSafetyPolicy: { sampleRate: 0, nextSample: () => 1 } })
+  )
+
+  await Effect.runPromise(
+    telemetry.log({
+      level: "info",
+      subsystem: "bridge",
+      operation: "Bridge.call",
+      traceId: "trace-1",
+      message: "sampled out"
+    })
+  )
+  await Effect.runPromise(
+    telemetry.recordSpan({
+      traceId: "trace-1",
+      subsystem: "bridge",
+      operation: "Bridge.call",
+      name: "sampled out",
+      startedAt: 1
+    })
+  )
+
+  expect(await Effect.runPromise(telemetry.listLogs())).toEqual([])
+  expect(await Effect.runPromise(telemetry.listTraces())).toEqual([])
+  expect((await Effect.runPromise(telemetry.snapshot())).safety.sampledOut).toBe(2)
+})
+
+test("Telemetry normalizes non-JSON field containers before storage", async () => {
+  const telemetry = await Effect.runPromise(makeTelemetry({ now: () => 1 }))
+  await Effect.runPromise(
+    telemetry.log({
+      level: "info",
+      subsystem: "bridge",
+      operation: "Bridge.call",
+      traceId: "trace-map",
+      message: "map fields",
+      fields: new Map<string, unknown>([
+        ["safe", "value"],
+        ["bytes", new Uint8Array([1, 2, 3])]
+      ])
+    })
+  )
+
+  const logs = await Effect.runPromise(telemetry.listLogs())
+  expect(logs[0]?.fields).toEqual(Option.some({ safe: "value", bytes: "<omitted:binary>" }))
+  expect(logs[0]?.safety.omitted).toBeGreaterThan(0)
 })
 
 test("Telemetry aggregates counters and histograms by metric name and tags", async () => {

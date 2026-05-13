@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test"
 
-import { RedactionFilter, makeSecretBytesFromUtf8, redact, redactForJson } from "./redaction.js"
+import {
+  RedactionFilter,
+  makeSecretBytesFromUtf8,
+  redact,
+  redactForJson,
+  redactForJsonWithEvidence
+} from "./redaction.js"
 
 const redacted = RedactionFilter.redactedValue
 
@@ -144,4 +150,20 @@ test("redactForJson materializes Effect redacted values to JSON-safe strings", (
     nested: { payload: "<redacted:SecretBytes>" },
     safe: "visible"
   })
+})
+
+test("redactForJsonWithEvidence reports redacted paths without raw values", () => {
+  const result = redactForJsonWithEvidence({
+    token: "secret-token",
+    nested: { apiKey: "secret-key", safe: "visible" }
+  })
+
+  expect(result.value).toEqual({
+    token: "<redacted:redacted>",
+    nested: { apiKey: "<redacted:redacted>", safe: "visible" }
+  })
+  expect(result.evidence.map((item) => item.path)).toContain("<redacted-key>")
+  expect(result.evidence.map((item) => item.path)).toContain("nested.<redacted-key>")
+  expect(JSON.stringify(result.evidence)).not.toContain("secret-token")
+  expect(JSON.stringify(result.evidence)).not.toContain("secret-key")
 })

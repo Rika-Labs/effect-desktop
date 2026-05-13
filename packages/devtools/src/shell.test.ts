@@ -9,6 +9,7 @@ import {
   DevtoolsCleanupError,
   DevtoolsShellOpenError,
   DevtoolsTokenError,
+  DevtoolsUnsafeProductionCaptureError,
   makeDevtoolsShell,
   shouldStartDevtools,
   type DevtoolsListener,
@@ -187,6 +188,29 @@ test("DevtoolsShell fails with a typed error when no shell window port is config
   expect(closed).toEqual(["closed"])
 })
 
+test("DevtoolsShell rejects production capture without an explicit safe inspector policy", async () => {
+  const stateDir = await tempStateDir()
+  const shell = await Effect.runPromise(
+    makeDevtoolsShell({
+      transport: fakeTransport([]),
+      shellWindow: fakeShellWindow([])
+    })
+  )
+
+  const error = await Effect.runPromise(
+    Effect.flip(
+      shell.start({
+        profile: "prod",
+        stateDir,
+        devtoolsFlag: true,
+        securityDevtoolsInProd: true
+      })
+    )
+  )
+
+  expect(error).toBeInstanceOf(DevtoolsUnsafeProductionCaptureError)
+})
+
 test("shouldStartDevtools models dev and production gates", () => {
   expect(shouldStartDevtools({ profile: "dev", stateDir: "/tmp/state" })).toBe(true)
   expect(
@@ -194,9 +218,18 @@ test("shouldStartDevtools models dev and production gates", () => {
       profile: "prod",
       stateDir: "/tmp/state",
       devtoolsFlag: true,
-      securityDevtoolsInProd: true
+      securityDevtoolsInProd: true,
+      inspectorCapture: "safe"
     })
   ).toBe(true)
+  expect(
+    shouldStartDevtools({
+      profile: "prod",
+      stateDir: "/tmp/state",
+      devtoolsFlag: true,
+      securityDevtoolsInProd: true
+    })
+  ).toBe(false)
   expect(
     shouldStartDevtools({
       profile: "prod",

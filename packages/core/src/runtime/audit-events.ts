@@ -1,8 +1,11 @@
-import { redactForJson } from "@effect-desktop/bridge"
 import type { RedactionFilterOptions } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Schema } from "effect"
+import { Context, Effect, Layer, Option, Schema } from "effect"
 import { EventGroup, EventJournal, EventLog } from "effect/unstable/eventlog"
 
+import {
+  makeInspectorSafetyPolicy,
+  type InspectorSafetyPolicyApi
+} from "./inspector-safety-policy.js"
 import type { NormalizedCapability, PermissionActor } from "./permission-registry.js"
 
 const NonEmptyString = Schema.NonEmptyString
@@ -84,6 +87,7 @@ export interface AuditEventsApi {
 
 export interface AuditEventsOptions {
   readonly redaction?: RedactionFilterOptions
+  readonly inspectorSafety?: InspectorSafetyPolicyApi
 }
 
 const auditPrimaryKey = (p: unknown): string => {
@@ -153,34 +157,43 @@ export const makeAuditEvents = (
   log: EventLog.EventLog["Service"],
   options: AuditEventsOptions = {}
 ): AuditEventsApi => ({
-  emit: makeEmit(log, options.redaction ?? {})
+  emit: makeEmit(log, options)
 })
 
 const makeEmit =
-  (log: EventLog.EventLog["Service"], redaction: RedactionFilterOptions) =>
-  (event: AuditEvent): Effect.Effect<void, EventJournal.EventJournalError, never> => {
-    const payload = redactForJson(
-      {
-        kind: event.kind,
-        source: event.source,
-        traceId: event.traceId,
-        outcome: event.outcome,
-        ...(event.timestamp === undefined ? {} : { timestamp: event.timestamp }),
-        ...(event.normalizedCapability === undefined
-          ? {}
-          : { normalizedCapability: event.normalizedCapability }),
-        ...(event.actor === undefined ? {} : { actor: event.actor }),
-        ...(event.resource === undefined ? {} : { resource: event.resource }),
-        ...(event.details === undefined ? {} : { details: event.details })
-      },
-      redaction
-    )
-    return log.write({
-      schema: AuditSchema,
-      event: event.kind,
-      payload
-    }) as Effect.Effect<void, EventJournal.EventJournalError, never>
-  }
+  (log: EventLog.EventLog["Service"], options: AuditEventsOptions) =>
+  (event: AuditEvent): Effect.Effect<void, EventJournal.EventJournalError, never> =>
+    Effect.gen(function* () {
+      const inspectorSafety =
+        options.inspectorSafety ??
+        (yield* makeInspectorSafetyPolicy(
+          options.redaction === undefined ? {} : { redaction: options.redaction }
+        ).pipe(Effect.orDie))
+      const decision = yield* inspectorSafety.sanitize({
+        source: "audit.events",
+        payload: {
+          kind: event.kind,
+          source: event.source,
+          traceId: event.traceId,
+          outcome: event.outcome,
+          ...(event.timestamp === undefined ? {} : { timestamp: event.timestamp }),
+          ...(event.normalizedCapability === undefined
+            ? {}
+            : { normalizedCapability: event.normalizedCapability }),
+          ...(event.actor === undefined ? {} : { actor: event.actor }),
+          ...(event.resource === undefined ? {} : { resource: event.resource }),
+          ...(event.details === undefined ? {} : { details: event.details })
+        }
+      })
+      if (Option.isNone(decision.value)) {
+        return
+      }
+      yield* log.write({
+        schema: AuditSchema,
+        event: event.kind,
+        payload: decision.value.value
+      }) as Effect.Effect<void, EventJournal.EventJournalError, never>
+    })
 
 export const emitAuditEvent = (
   audit: AuditEventsApi | undefined,

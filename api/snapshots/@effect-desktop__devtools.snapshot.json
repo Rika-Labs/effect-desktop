@@ -66,7 +66,7 @@
     {
       "name": "DevtoolsError",
       "kind": "type",
-      "signature": "export type DevtoolsError = | DevtoolsInvalidInputError | DevtoolsTokenError | DevtoolsBindError | DevtoolsCleanupError | DevtoolsShellOpenError"
+      "signature": "export type DevtoolsError = | DevtoolsInvalidInputError | DevtoolsTokenError | DevtoolsBindError | DevtoolsCleanupError | DevtoolsShellOpenError | DevtoolsUnsafeProductionCaptureError"
     },
     {
       "name": "DevtoolsHandle",
@@ -121,7 +121,7 @@
     {
       "name": "DevtoolsSnapshot",
       "kind": "interface",
-      "signature": "export interface DevtoolsSnapshot { readonly liveRuntime: LiveRuntimePanelsSnapshot readonly diagnostics: DiagnosticsPanelsSnapshot readonly performance: PerformanceOverlaySnapshot readonly eventLog: EventLogPanelSnapshot readonly workflows: WorkflowsPanelSnapshot readonly reactivity: ReactivityPanelSnapshot readonly persistence: PersistencePanelSnapshot readonly logs: LogsPanelSnapshot readonly cluster: ClusterPanelSnapshot }"
+      "signature": "export interface DevtoolsSnapshot { readonly liveRuntime: LiveRuntimePanelsSnapshot readonly diagnostics: DiagnosticsPanelsSnapshot readonly performance: PerformanceOverlaySnapshot readonly eventLog: EventLogPanelSnapshot readonly workflows: WorkflowsPanelSnapshot readonly reactivity: ReactivityPanelSnapshot readonly persistence: PersistencePanelSnapshot readonly logs: LogsPanelSnapshot readonly cluster: ClusterPanelSnapshot readonly safety: InspectorSafetySummary }"
     },
     {
       "name": "DevtoolsSnapshotClient",
@@ -131,7 +131,7 @@
     {
       "name": "DevtoolsSnapshotClientApi",
       "kind": "interface",
-      "signature": "export interface DevtoolsSnapshotClientApi { readonly exportSnapshot: () => Effect.Effect<DevtoolsSnapshot, EventLogPanelError, never> }"
+      "signature": "export interface DevtoolsSnapshotClientApi { readonly exportSnapshot: () => Effect.Effect< DevtoolsSnapshot, EventLogPanelError | DevtoolsSnapshotSafetyError, never > }"
     },
     {
       "name": "DevtoolsSnapshotClientLive",
@@ -141,12 +141,17 @@
     {
       "name": "DevtoolsSnapshotClientRequirements",
       "kind": "type",
-      "signature": "export type DevtoolsSnapshotClientRequirements = | LiveRuntimePanels | DiagnosticsPanels | PerformanceOverlay | EventLogPanel | WorkflowsPanel | ReactivityPanel | PersistencePanel | LogsPanel | ClusterPanel"
+      "signature": "export type DevtoolsSnapshotClientRequirements = | LiveRuntimePanels | DiagnosticsPanels | PerformanceOverlay | EventLogPanel | WorkflowsPanel | ReactivityPanel | PersistencePanel | LogsPanel | ClusterPanel | InspectorSafetyPolicy"
+    },
+    {
+      "name": "DevtoolsSnapshotSafetyError",
+      "kind": "class",
+      "signature": "export class DevtoolsSnapshotSafetyError extends Data.TaggedError(\"SnapshotSafetyError\")<{ readonly operation: string readonly safety: InspectorSafetySummary }> {}"
     },
     {
       "name": "DevtoolsStartInput",
       "kind": "class",
-      "signature": "export class DevtoolsStartInput extends Schema.Class<DevtoolsStartInput>(\"DevtoolsStartInput\")({ profile: Schema.Literals([\"dev\", \"prod\"]), stateDir: NonEmptyString, devtoolsFlag: Schema.optionalKey(Schema.Boolean), securityDevtoolsInProd: Schema.optionalKey(Schema.Boolean), openShell: Schema.optionalKey(Schema.Boolean) }) {}"
+      "signature": "export class DevtoolsStartInput extends Schema.Class<DevtoolsStartInput>(\"DevtoolsStartInput\")({ profile: Schema.Literals([\"dev\", \"prod\"]), stateDir: NonEmptyString, devtoolsFlag: Schema.optionalKey(Schema.Boolean), securityDevtoolsInProd: Schema.optionalKey(Schema.Boolean), inspectorCapture: Schema.optionalKey(Schema.Literals([\"disabled\", \"safe\"])), openShell: Schema.optionalKey(Schema.Boolean) }) {}"
     },
     {
       "name": "DevtoolsTokenError",
@@ -164,6 +169,11 @@
       "signature": "export interface DevtoolsTracerOptions { readonly webSocketUrl?: string }"
     },
     {
+      "name": "DevtoolsUnsafeProductionCaptureError",
+      "kind": "class",
+      "signature": "export class DevtoolsUnsafeProductionCaptureError extends Data.TaggedError( \"UnsafeProductionCapture\" )<{ readonly operation: string readonly message: string }> {}"
+    },
+    {
       "name": "DiagnosticsPanels",
       "kind": "class",
       "signature": "export class DiagnosticsPanels extends Context.Service<DiagnosticsPanels, DiagnosticsPanelsApi>()( \"@effect-desktop/devtools/DiagnosticsPanels\" ) {}"
@@ -176,17 +186,22 @@
     {
       "name": "DiagnosticsPanelsLive",
       "kind": "value",
-      "signature": "const DiagnosticsPanelsLive: (options?: DiagnosticsPanelsOptions) => Layer.Layer<DiagnosticsPanels, never, Telemetry>"
+      "signature": "const DiagnosticsPanelsLive: (options?: DiagnosticsPanelsOptions) => Layer.Layer<DiagnosticsPanels, never, Telemetry | InspectorSafetyPolicy>"
     },
     {
       "name": "DiagnosticsPanelsOptions",
       "kind": "interface",
-      "signature": "export interface DiagnosticsPanelsOptions { readonly maxRows?: number readonly frameInterval?: `${number} millis` }"
+      "signature": "export interface DiagnosticsPanelsOptions { readonly maxRows?: number readonly frameInterval?: `${number} millis` readonly inspectorSafety?: InspectorSafetyPolicyApi }"
     },
     {
       "name": "DiagnosticsPanelsSnapshot",
       "kind": "interface",
-      "signature": "export interface DiagnosticsPanelsSnapshot { readonly logs: readonly TelemetryLogRecord[] readonly traces: readonly TraceGroup[] readonly metrics: readonly TelemetryMetricSnapshot[] }"
+      "signature": "export interface DiagnosticsPanelsSnapshot { readonly logs: readonly TelemetryLogRecord[] readonly traces: readonly TraceGroup[] readonly metrics: readonly TelemetryMetricSnapshot[] readonly safety: InspectorSafetySummary }"
+    },
+    {
+      "name": "emptyDiagnosticsPanelsSnapshot",
+      "kind": "value",
+      "signature": "const emptyDiagnosticsPanelsSnapshot: Readonly<{ logs: never[]; traces: never[]; metrics: never[]; safety: InspectorSafetySummary; }>"
     },
     {
       "name": "EventLogPanel",
@@ -236,12 +251,12 @@
     {
       "name": "LiveRuntimePanelsLive",
       "kind": "value",
-      "signature": "const LiveRuntimePanelsLive: (sources: LiveRuntimePanelSources, options?: LiveRuntimePanelsOptions) => Layer.Layer<LiveRuntimePanels, never, PermissionRegistry | Process | ResourceRegistry>"
+      "signature": "const LiveRuntimePanelsLive: (sources: LiveRuntimePanelSources, options?: LiveRuntimePanelsOptions) => Layer.Layer<LiveRuntimePanels, never, PermissionRegistry | Process | ResourceRegistry | InspectorSafetyPolicy>"
     },
     {
       "name": "LiveRuntimePanelsOptions",
       "kind": "interface",
-      "signature": "export interface LiveRuntimePanelsOptions { readonly maxRows?: number readonly now?: () => number readonly frameInterval?: `${number} millis` }"
+      "signature": "export interface LiveRuntimePanelsOptions { readonly maxRows?: number readonly now?: () => number readonly frameInterval?: `${number} millis` readonly inspectorSafety?: InspectorSafetyPolicyApi }"
     },
     {
       "name": "LiveRuntimePanelSources",
@@ -251,7 +266,7 @@
     {
       "name": "LiveRuntimePanelsSnapshot",
       "kind": "interface",
-      "signature": "export interface LiveRuntimePanelsSnapshot { readonly bridgeCalls: readonly BridgeCallPanelRow[] readonly streams: readonly StreamPanelRow[] readonly resources: readonly ResourcePanelRow[] readonly permissions: readonly PermissionPanelRow[] readonly processes: readonly ProcessPanelRow[] }"
+      "signature": "export interface LiveRuntimePanelsSnapshot { readonly bridgeCalls: readonly BridgeCallPanelRow[] readonly streams: readonly StreamPanelRow[] readonly resources: readonly ResourcePanelRow[] readonly permissions: readonly PermissionPanelRow[] readonly processes: readonly ProcessPanelRow[] readonly safety: InspectorSafetySummary }"
     },
     {
       "name": "LogsPanel",
@@ -271,22 +286,22 @@
     {
       "name": "LogsPanelLive",
       "kind": "value",
-      "signature": "const LogsPanelLive: (options?: LogsPanelOptions) => Layer.Layer<LogsPanel>"
+      "signature": "const LogsPanelLive: (options?: LogsPanelOptions) => Layer.Layer<LogsPanel, never, InspectorSafetyPolicy>"
     },
     {
       "name": "LogsPanelOptions",
       "kind": "interface",
-      "signature": "export interface LogsPanelOptions { readonly maxRows?: number readonly levelFilter?: LogsPanelLevel readonly frameInterval?: `${number} millis` }"
+      "signature": "export interface LogsPanelOptions { readonly maxRows?: number readonly levelFilter?: LogsPanelLevel readonly frameInterval?: `${number} millis` readonly inspectorSafety?: InspectorSafetyPolicyApi }"
     },
     {
       "name": "LogsPanelRecord",
       "kind": "interface",
-      "signature": "export interface LogsPanelRecord { readonly timestamp: number readonly level: LogsPanelLevel readonly message: string readonly fiber: string }"
+      "signature": "export interface LogsPanelRecord { readonly timestamp: number readonly level: LogsPanelLevel readonly message: string readonly fiber: string readonly safety: InspectorSafetySummary }"
     },
     {
       "name": "LogsPanelSnapshot",
       "kind": "interface",
-      "signature": "export interface LogsPanelSnapshot { readonly records: readonly LogsPanelRecord[] readonly totalCount: number readonly levelFilter: LogsPanelLevel }"
+      "signature": "export interface LogsPanelSnapshot { readonly records: readonly LogsPanelRecord[] readonly totalCount: number readonly levelFilter: LogsPanelLevel readonly safety: InspectorSafetySummary }"
     },
     {
       "name": "makeDevtoolsShell",
@@ -301,7 +316,7 @@
     {
       "name": "makeDiagnosticsPanels",
       "kind": "value",
-      "signature": "const makeDiagnosticsPanels: (options?: DiagnosticsPanelsOptions) => Effect.Effect<DiagnosticsPanelsApi, never, Telemetry>"
+      "signature": "const makeDiagnosticsPanels: (options?: DiagnosticsPanelsOptions) => Effect.Effect<DiagnosticsPanelsApi, never, Telemetry | InspectorSafetyPolicy>"
     },
     {
       "name": "makeEventLogPanel",
@@ -311,17 +326,17 @@
     {
       "name": "makeLiveRuntimePanels",
       "kind": "value",
-      "signature": "const makeLiveRuntimePanels: (sources: LiveRuntimePanelSources, options?: LiveRuntimePanelsOptions) => Effect.Effect<LiveRuntimePanelsApi, never, PermissionRegistry | Process | ResourceRegistry>"
+      "signature": "const makeLiveRuntimePanels: (sources: LiveRuntimePanelSources, options?: LiveRuntimePanelsOptions) => Effect.Effect<LiveRuntimePanelsApi, never, PermissionRegistry | Process | ResourceRegistry | InspectorSafetyPolicy>"
     },
     {
       "name": "makeLogsPanel",
       "kind": "value",
-      "signature": "const makeLogsPanel: (options?: LogsPanelOptions) => Effect.Effect<LogsPanelApi, never, never>"
+      "signature": "const makeLogsPanel: (options?: LogsPanelOptions) => Effect.Effect<LogsPanelApi, never, InspectorSafetyPolicy>"
     },
     {
       "name": "makePerformanceOverlay",
       "kind": "value",
-      "signature": "const makePerformanceOverlay: (options?: PerformanceOverlayOptions) => Effect.Effect<PerformanceOverlayApi, never, Telemetry>"
+      "signature": "const makePerformanceOverlay: (options?: PerformanceOverlayOptions) => Effect.Effect<PerformanceOverlayApi, never, Telemetry | InspectorSafetyPolicy>"
     },
     {
       "name": "makePersistencePanel",
@@ -371,12 +386,12 @@
     {
       "name": "PerformanceOverlayLive",
       "kind": "value",
-      "signature": "const PerformanceOverlayLive: (options?: PerformanceOverlayOptions) => Layer.Layer<PerformanceOverlay, never, Telemetry>"
+      "signature": "const PerformanceOverlayLive: (options?: PerformanceOverlayOptions) => Layer.Layer<PerformanceOverlay, never, Telemetry | InspectorSafetyPolicy>"
     },
     {
       "name": "PerformanceOverlayOptions",
       "kind": "interface",
-      "signature": "export interface PerformanceOverlayOptions { readonly mode?: PerformanceBudgetMode readonly frameInterval?: `${number} millis` }"
+      "signature": "export interface PerformanceOverlayOptions { readonly mode?: PerformanceBudgetMode readonly frameInterval?: `${number} millis` readonly inspectorSafety?: InspectorSafetyPolicyApi }"
     },
     {
       "name": "PerformanceOverlayRow",
@@ -386,7 +401,7 @@
     {
       "name": "PerformanceOverlaySnapshot",
       "kind": "interface",
-      "signature": "export interface PerformanceOverlaySnapshot { readonly startup: readonly PerformanceOverlayRow[] readonly bridgeP99: readonly BridgeP99OverlayRow[] readonly renderFrame: PerformanceOverlayRow }"
+      "signature": "export interface PerformanceOverlaySnapshot { readonly startup: readonly PerformanceOverlayRow[] readonly bridgeP99: readonly BridgeP99OverlayRow[] readonly renderFrame: PerformanceOverlayRow readonly safety: InspectorSafetySummary }"
     },
     {
       "name": "PerformanceOverlayStatus",
@@ -511,12 +526,12 @@
     {
       "name": "WorkersDevtoolsLive",
       "kind": "value",
-      "signature": "const WorkersDevtoolsLive: Layer.Layer<WorkersDevtools, never, Worker>"
+      "signature": "const WorkersDevtoolsLive: Layer.Layer<WorkersDevtools, never, InspectorSafetyPolicy | Worker>"
     },
     {
       "name": "WorkersSnapshot",
       "kind": "interface",
-      "signature": "export interface WorkersSnapshot { readonly workers: readonly WorkerSnapshot[] }"
+      "signature": "export interface WorkersSnapshot { readonly workers: readonly WorkerSnapshot[] readonly safety: InspectorSafetySummary }"
     },
     {
       "name": "WorkflowExecutionEvent",

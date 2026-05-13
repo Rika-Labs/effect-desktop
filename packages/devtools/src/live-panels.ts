@@ -3,14 +3,16 @@ import {
   type BridgeCallState,
   type BridgeStreamRegistry,
   type BridgeStreamRegistryEntry,
+  InspectorSafetyPolicy,
   PermissionRegistry,
   type PermissionDecision,
   Process,
   type ProcessExitStatus,
   type ProcessSnapshot,
-  redact,
   ResourceRegistry,
-  type ResourceEntry
+  type ResourceEntry,
+  type InspectorSafetyPolicyApi,
+  type InspectorSafetySummary
 } from "@effect-desktop/core"
 import { Context, Effect, Layer, Match, Option, Stream } from "effect"
 
@@ -69,6 +71,7 @@ export interface LiveRuntimePanelsSnapshot {
   readonly resources: readonly ResourcePanelRow[]
   readonly permissions: readonly PermissionPanelRow[]
   readonly processes: readonly ProcessPanelRow[]
+  readonly safety: InspectorSafetySummary
 }
 
 export interface LiveRuntimePanelsApi {
@@ -85,6 +88,7 @@ export interface LiveRuntimePanelsOptions {
   readonly maxRows?: number
   readonly now?: () => number
   readonly frameInterval?: `${number} millis`
+  readonly inspectorSafety?: InspectorSafetyPolicyApi
 }
 
 export class LiveRuntimePanels extends Context.Service<LiveRuntimePanels, LiveRuntimePanelsApi>()(
@@ -94,17 +98,25 @@ export class LiveRuntimePanels extends Context.Service<LiveRuntimePanels, LiveRu
 export const LiveRuntimePanelsLive = (
   sources: LiveRuntimePanelSources,
   options: LiveRuntimePanelsOptions = {}
-): Layer.Layer<LiveRuntimePanels, never, PermissionRegistry | Process | ResourceRegistry> =>
-  Layer.effect(LiveRuntimePanels)(makeLiveRuntimePanels(sources, options))
+): Layer.Layer<
+  LiveRuntimePanels,
+  never,
+  PermissionRegistry | Process | ResourceRegistry | InspectorSafetyPolicy
+> => Layer.effect(LiveRuntimePanels)(makeLiveRuntimePanels(sources, options))
 
 export const makeLiveRuntimePanels = (
   sources: LiveRuntimePanelSources,
   options: LiveRuntimePanelsOptions = {}
-): Effect.Effect<LiveRuntimePanelsApi, never, PermissionRegistry | Process | ResourceRegistry> =>
+): Effect.Effect<
+  LiveRuntimePanelsApi,
+  never,
+  PermissionRegistry | Process | ResourceRegistry | InspectorSafetyPolicy
+> =>
   Effect.gen(function* () {
     const permissions = yield* PermissionRegistry
     const processes = yield* Process
     const resources = yield* ResourceRegistry
+    const inspectorSafety = options.inspectorSafety ?? (yield* InspectorSafetyPolicy)
     const maxRows = positiveRowLimit(options.maxRows, 256)
     const now = options.now ?? Date.now
     const frameInterval = positiveFrameInterval(options.frameInterval, "16 millis")
@@ -117,15 +129,32 @@ export const makeLiveRuntimePanels = (
         const permissionRows = yield* permissions.listDecisions()
         const processRows = yield* processes.list()
 
-        return redact({
-          bridgeCalls: toBridgeCallRows(bridgeCalls, maxRows),
-          streams: streams.slice(-maxRows).map(toStreamRow),
-          resources: resourceSnapshot.entries
-            .slice(-maxRows)
-            .map((entry) => toResourceRow(entry, now())),
-          permissions: permissionRows.slice(-maxRows).map(toPermissionRow),
-          processes: processRows.slice(-maxRows).map(toProcessRow)
+        const decision = yield* inspectorSafety.sanitize({
+          source: "devtools.liveRuntime",
+          payload: {
+            bridgeCalls: toBridgeCallRows(bridgeCalls, maxRows),
+            streams: streams.slice(-maxRows).map(toStreamRow),
+            resources: resourceSnapshot.entries
+              .slice(-maxRows)
+              .map((entry) => toResourceRow(entry, now())),
+            permissions: permissionRows.slice(-maxRows).map(toPermissionRow),
+            processes: processRows.slice(-maxRows).map(toProcessRow)
+          } satisfies Omit<LiveRuntimePanelsSnapshot, "safety">
         })
+        if (Option.isNone(decision.value)) {
+          return {
+            bridgeCalls: [],
+            streams: [],
+            resources: [],
+            permissions: [],
+            processes: [],
+            safety: decision.summary
+          } satisfies LiveRuntimePanelsSnapshot
+        }
+        return {
+          ...decision.value.value,
+          safety: decision.summary
+        } satisfies LiveRuntimePanelsSnapshot
       })
 
     return Object.freeze({

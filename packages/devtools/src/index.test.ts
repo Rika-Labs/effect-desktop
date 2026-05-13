@@ -9,6 +9,7 @@ import {
   makeResourceRegistry,
   makeTelemetry,
   makeWorker,
+  InspectorSafetyPolicyLive,
   PermissionRegistry,
   PermissionActor,
   PermissionContext,
@@ -211,7 +212,8 @@ test("LiveRuntimePanels projects bridge, stream, resource, permission, and proce
           Layer.mergeAll(
             Layer.succeed(ResourceRegistry)(resources),
             Layer.succeed(PermissionRegistry)(permissions),
-            Layer.succeed(Process)(processes)
+            Layer.succeed(Process)(processes),
+            InspectorSafetyPolicyLive()
           )
         )
       )
@@ -264,7 +266,8 @@ test("LiveRuntimePanels rejects invalid row caps and refresh intervals", async (
             Layer.mergeAll(
               Layer.succeed(ResourceRegistry)(resources),
               Layer.succeed(PermissionRegistry)(permissions),
-              Layer.succeed(Process)(processes)
+              Layer.succeed(Process)(processes),
+              InspectorSafetyPolicyLive()
             )
           )
         )
@@ -330,7 +333,12 @@ test("DiagnosticsPanels projects redacted logs, grouped traces, and metrics", as
       const panels = yield* DiagnosticsPanels
       return yield* panels.list()
     }).pipe(
-      Effect.provide(Layer.provide(DiagnosticsPanelsLive(), Layer.succeed(Telemetry)(telemetry)))
+      Effect.provide(
+        Layer.provide(
+          DiagnosticsPanelsLive(),
+          Layer.mergeAll(Layer.succeed(Telemetry)(telemetry), InspectorSafetyPolicyLive())
+        )
+      )
     )
   )
 
@@ -369,7 +377,10 @@ test("DiagnosticsPanels projects redacted logs, grouped traces, and metrics", as
       return yield* panels.list()
     }).pipe(
       Effect.provide(
-        Layer.provide(DiagnosticsPanelsLive(), Layer.succeed(Telemetry)(disabledTelemetry))
+        Layer.provide(
+          DiagnosticsPanelsLive(),
+          Layer.mergeAll(Layer.succeed(Telemetry)(disabledTelemetry), InspectorSafetyPolicyLive())
+        )
       )
     )
   )
@@ -387,7 +398,10 @@ test("DiagnosticsPanels rejects invalid row caps and refresh intervals", async (
         return yield* DiagnosticsPanels
       }).pipe(
         Effect.provide(
-          Layer.provide(DiagnosticsPanelsLive(options), Layer.succeed(Telemetry)(telemetry))
+          Layer.provide(
+            DiagnosticsPanelsLive(options),
+            Layer.mergeAll(Layer.succeed(Telemetry)(telemetry), InspectorSafetyPolicyLive())
+          )
         )
       )
     )
@@ -432,7 +446,10 @@ test("DiagnosticsPanels keeps trace groups internally consistent under row caps"
       return yield* panels.list()
     }).pipe(
       Effect.provide(
-        Layer.provide(DiagnosticsPanelsLive({ maxRows: 1 }), Layer.succeed(Telemetry)(telemetry))
+        Layer.provide(
+          DiagnosticsPanelsLive({ maxRows: 1 }),
+          Layer.mergeAll(Layer.succeed(Telemetry)(telemetry), InspectorSafetyPolicyLive())
+        )
       )
     )
   )
@@ -484,7 +501,10 @@ test("DiagnosticsPanels preserves recent trace activity when row caps include pa
       return yield* panels.list()
     }).pipe(
       Effect.provide(
-        Layer.provide(DiagnosticsPanelsLive({ maxRows: 1 }), Layer.succeed(Telemetry)(telemetry))
+        Layer.provide(
+          DiagnosticsPanelsLive({ maxRows: 1 }),
+          Layer.mergeAll(Layer.succeed(Telemetry)(telemetry), InspectorSafetyPolicyLive())
+        )
       )
     )
   )
@@ -519,7 +539,12 @@ test("PerformanceOverlay compares startup, bridge p99, and render frame metrics 
       const overlay = yield* PerformanceOverlay
       return yield* overlay.list()
     }).pipe(
-      Effect.provide(Layer.provide(PerformanceOverlayLive(), Layer.succeed(Telemetry)(telemetry)))
+      Effect.provide(
+        Layer.provide(
+          PerformanceOverlayLive(),
+          Layer.mergeAll(Layer.succeed(Telemetry)(telemetry), InspectorSafetyPolicyLive())
+        )
+      )
     )
   )
 
@@ -622,7 +647,12 @@ const waitForWorkersSnapshot = async (
         const devtools = yield* WorkersDevtools
         return yield* devtools.list()
       }).pipe(
-        Effect.provide(Layer.provide(WorkersDevtoolsLive, Layer.succeed(Worker)(fixture.worker)))
+        Effect.provide(
+          Layer.provide(
+            WorkersDevtoolsLive,
+            Layer.mergeAll(Layer.succeed(Worker)(fixture.worker), InspectorSafetyPolicyLive())
+          )
+        )
       )
     )
     if (predicate(snapshot)) {

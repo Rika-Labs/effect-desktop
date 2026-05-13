@@ -759,14 +759,34 @@
       "signature": "const redactForJson: <A>(record: A, options?: RedactionFilterOptions) => A"
     },
     {
+      "name": "redactForJsonWithEvidence",
+      "kind": "value",
+      "signature": "const redactForJsonWithEvidence: <A>(record: A, options?: RedactionFilterOptions) => RedactionResult<A>"
+    },
+    {
+      "name": "RedactionEvidence",
+      "kind": "interface",
+      "signature": "export interface RedactionEvidence { readonly path: string readonly action: \"redacted\" readonly reason: \"secret-pattern\" | \"redacted-value\" }"
+    },
+    {
       "name": "RedactionFilter",
       "kind": "value",
-      "signature": "const RedactionFilter: Readonly<{ redact: <A>(record: A, options?: RedactionFilterOptions) => A; redactForJson: <A>(record: A, options?: RedactionFilterOptions) => A; redactedValue: Redacted.Redacted<string>; defaultPattern: RegExp; }>"
+      "signature": "const RedactionFilter: Readonly<{ redact: <A>(record: A, options?: RedactionFilterOptions) => A; redactForJson: <A>(record: A, options?: RedactionFilterOptions) => A; redactWithEvidence: <A>(record: A, options?: RedactionFilterOptions) => RedactionResult<A>; redactForJsonWithEvidence: <A>(record: A, options?: RedactionFilterOptions) => RedactionResult<A>; redactedValue: Redacted.Redacted<string>; defaultPattern: RegExp; }>"
     },
     {
       "name": "RedactionFilterOptions",
       "kind": "interface",
       "signature": "export interface RedactionFilterOptions { readonly defaultPatternEnabled?: boolean readonly additionalPatterns?: readonly (RegExp | string)[] readonly allowlist?: readonly string[] }"
+    },
+    {
+      "name": "RedactionResult",
+      "kind": "interface",
+      "signature": "export interface RedactionResult<A> { readonly value: A readonly evidence: readonly RedactionEvidence[] }"
+    },
+    {
+      "name": "redactWithEvidence",
+      "kind": "value",
+      "signature": "const redactWithEvidence: <A>(record: A, options?: RedactionFilterOptions) => RedactionResult<A>"
     },
     {
       "name": "RENDERER_DISCONNECTED_EVENT",

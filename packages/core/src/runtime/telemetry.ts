@@ -1,6 +1,13 @@
-import { redactForJson } from "@effect-desktop/bridge"
 import type { RedactionFilterOptions } from "@effect-desktop/bridge"
 import { Context, Data, Effect, Option, Ref, Schema, Stream, SubscriptionRef } from "effect"
+
+import {
+  emptyInspectorSafetySummary,
+  makeInspectorSafetyPolicy,
+  type InspectorSafetyPolicyApi,
+  type InspectorSafetyPolicyOptions,
+  type InspectorSafetySummary
+} from "./inspector-safety-policy.js"
 
 const TelemetryMetadataText = Schema.NonEmptyString.check(
   // eslint-disable-next-line no-control-regex
@@ -32,6 +39,7 @@ export interface TelemetryLogRecord {
   readonly windowId: Option.Option<string>
   readonly message: string
   readonly fields: Option.Option<unknown>
+  readonly safety: InspectorSafetySummary
 }
 
 export interface TelemetryTraceSpanInput {
@@ -57,6 +65,7 @@ export interface TelemetryTraceSpan {
   readonly endedAt: Option.Option<number>
   readonly durationMs: Option.Option<number>
   readonly attributes: Option.Option<unknown>
+  readonly safety: InspectorSafetySummary
 }
 
 export interface TelemetryCounterInput {
@@ -77,6 +86,7 @@ export interface TelemetryMetricBase {
   readonly name: string
   readonly tags: Readonly<Record<string, string>>
   readonly updatedAt: number
+  readonly safety: InspectorSafetySummary
 }
 
 export interface TelemetryCounterSnapshot extends TelemetryMetricBase {
@@ -102,6 +112,7 @@ export interface TelemetrySnapshot {
   readonly logs: readonly TelemetryLogRecord[]
   readonly traces: readonly TelemetryTraceSpan[]
   readonly metrics: readonly TelemetryMetricSnapshot[]
+  readonly safety: InspectorSafetySummary
 }
 
 export interface TelemetryApi {
@@ -137,6 +148,8 @@ export interface TelemetryOptions {
   readonly maxMetrics?: number
   readonly maxHistogramSamples?: number
   readonly redaction?: RedactionFilterOptions
+  readonly inspectorSafety?: InspectorSafetyPolicyApi
+  readonly inspectorSafetyPolicy?: InspectorSafetyPolicyOptions
   readonly traceRingSize?: number
   readonly tracingEnabled?: boolean
   readonly now?: () => number
@@ -171,6 +184,23 @@ export const makeTelemetry = (
     const tracingEnabled = options.tracingEnabled ?? true
     const now = options.now ?? Date.now
     const nextSpanId = options.nextSpanId ?? (() => `span-${globalThis.crypto.randomUUID()}`)
+    const redaction = options.inspectorSafetyPolicy?.redaction ?? options.redaction
+    const safetyOptions: InspectorSafetyPolicyOptions =
+      redaction === undefined
+        ? { ...options.inspectorSafetyPolicy }
+        : { ...options.inspectorSafetyPolicy, redaction }
+    const inspectorSafety =
+      options.inspectorSafety ??
+      (yield* makeInspectorSafetyPolicy(safetyOptions).pipe(
+        Effect.mapError(
+          (error) =>
+            new TelemetryInvalidArgumentError({
+              operation: error.operation,
+              field: error.field,
+              message: error.message
+            })
+        )
+      ))
     const nextLogId = yield* Ref.make(0)
     const logs = yield* SubscriptionRef.make<readonly TelemetryLogRecord[]>([])
     const traces = yield* SubscriptionRef.make<readonly TelemetryTraceSpan[]>([])
@@ -188,8 +218,20 @@ export const makeTelemetry = (
           yield* validateOptionalMetadataField(input.resourceId, "Telemetry.log", "resourceId")
           yield* validateOptionalMetadataField(input.windowId, "Telemetry.log", "windowId")
           const id = yield* Ref.getAndUpdate(nextLogId, (current) => current + 1)
-          const record = redactForJson(
-            {
+          const fieldsDecision =
+            input.fields === undefined
+              ? undefined
+              : yield* inspectorSafety.sanitize({
+                  source: "telemetry.logs.fields",
+                  payload: input.fields
+                })
+          const fields =
+            fieldsDecision === undefined || Option.isNone(fieldsDecision.value)
+              ? Option.none()
+              : Option.some(fieldsDecision.value.value)
+          const decision = yield* inspectorSafety.sanitize({
+            source: "telemetry.logs",
+            payload: {
               id,
               level: input.level,
               timestamp: input.timestamp ?? now(),
@@ -199,10 +241,19 @@ export const makeTelemetry = (
               resourceId: optionFrom(input.resourceId),
               windowId: optionFrom(input.windowId),
               message: input.message,
-              fields: optionFrom(input.fields)
-            } satisfies TelemetryLogRecord,
-            options.redaction
-          )
+              fields
+            } satisfies Omit<TelemetryLogRecord, "safety">
+          })
+          if (Option.isNone(decision.value)) {
+            return
+          }
+          const record = {
+            ...decision.value.value,
+            safety: inspectorSafety.summarize([
+              ...(fieldsDecision?.evidence ?? []),
+              ...decision.evidence
+            ])
+          } satisfies TelemetryLogRecord
           yield* SubscriptionRef.update(logs, (current) => appendBounded(current, record, maxLogs))
         }),
       listLogs: () => SubscriptionRef.get(logs),
@@ -224,12 +275,38 @@ export const makeTelemetry = (
           if (!tracingEnabled) {
             return
           }
-          yield* SubscriptionRef.update(traces, (current) =>
-            appendBounded(
-              current,
-              toTraceSpan(input, () => resolvedSpanId),
-              traceRingSize
+          const attributesDecision =
+            input.attributes === undefined
+              ? undefined
+              : yield* inspectorSafety.sanitize({
+                  source: "telemetry.traces.attributes",
+                  payload: input.attributes
+                })
+          const decision = yield* inspectorSafety.sanitize({
+            source: "telemetry.traces",
+            payload: toTraceSpan(
+              {
+                ...input,
+                attributes:
+                  attributesDecision === undefined || Option.isNone(attributesDecision.value)
+                    ? undefined
+                    : attributesDecision.value.value
+              },
+              () => resolvedSpanId
             )
+          })
+          if (Option.isNone(decision.value)) {
+            return
+          }
+          const span = {
+            ...decision.value.value,
+            safety: inspectorSafety.summarize([
+              ...(attributesDecision?.evidence ?? []),
+              ...decision.evidence
+            ])
+          } satisfies TelemetryTraceSpan
+          yield* SubscriptionRef.update(traces, (current) =>
+            appendBounded(current, span, traceRingSize)
           )
         }),
       listTraces: () => SubscriptionRef.get(traces),
@@ -239,8 +316,19 @@ export const makeTelemetry = (
           const operation = "Telemetry.incrementCounter"
           yield* validateMetricMetadata(input.name, input.tags, operation)
           const timestamp = yield* metricTimestamp(input.timestamp, now, operation)
+          const decision = yield* inspectorSafety.sanitize({
+            source: "telemetry.metrics",
+            payload: toCounterSnapshot(input, timestamp)
+          })
+          if (Option.isNone(decision.value)) {
+            return
+          }
+          const metric = {
+            ...decision.value.value,
+            safety: decision.summary
+          } satisfies TelemetryCounterSnapshot
           yield* SubscriptionRef.update(metrics, (current) =>
-            upsertMetric(current, toCounterSnapshot(input, timestamp), maxMetrics)
+            upsertMetric(current, metric, maxMetrics)
           )
         }),
       recordHistogram: (input) =>
@@ -248,13 +336,19 @@ export const makeTelemetry = (
           const operation = "Telemetry.recordHistogram"
           yield* validateMetricMetadata(input.name, input.tags, operation)
           const timestamp = yield* metricTimestamp(input.timestamp, now, operation)
+          const decision = yield* inspectorSafety.sanitize({
+            source: "telemetry.metrics",
+            payload: toHistogramSnapshot(input, timestamp, maxHistogramSamples)
+          })
+          if (Option.isNone(decision.value)) {
+            return
+          }
+          const metric = {
+            ...decision.value.value,
+            safety: decision.summary
+          } satisfies TelemetryHistogramSnapshot
           yield* SubscriptionRef.update(metrics, (current) =>
-            upsertMetric(
-              current,
-              toHistogramSnapshot(input, timestamp, maxHistogramSamples),
-              maxMetrics,
-              maxHistogramSamples
-            )
+            upsertMetric(current, metric, maxMetrics, maxHistogramSamples)
           )
         }),
       listMetrics,
@@ -267,7 +361,8 @@ export const makeTelemetry = (
           const logRows = yield* SubscriptionRef.get(logs)
           const traceRows = yield* SubscriptionRef.get(traces)
           const metricRows = yield* listMetrics()
-          return { logs: logRows, traces: traceRows, metrics: metricRows }
+          const safety = yield* inspectorSafety.snapshot()
+          return { logs: logRows, traces: traceRows, metrics: metricRows, safety }
         })
     } satisfies TelemetryApi)
   })
@@ -355,7 +450,8 @@ const toTraceSpan = (
     input.endedAt === undefined
       ? Option.none()
       : Option.some(Math.max(0, input.endedAt - input.startedAt)),
-  attributes: optionFrom(input.attributes)
+  attributes: optionFrom(input.attributes),
+  safety: emptyInspectorSafetySummary
 })
 
 const metricKey = (name: string, tags: Readonly<Record<string, string>>): string =>
@@ -400,6 +496,7 @@ const toCounterSnapshot = (
   name: input.name,
   tags: input.tags ?? {},
   updatedAt: timestamp,
+  safety: emptyInspectorSafetySummary,
   value: input.by ?? 1
 })
 
@@ -412,6 +509,7 @@ const toHistogramSnapshot = (
   name: input.name,
   tags: input.tags ?? {},
   updatedAt: timestamp,
+  safety: emptyInspectorSafetySummary,
   count: 1,
   sum: input.value,
   min: input.value,

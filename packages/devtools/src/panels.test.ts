@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { InspectorSafetyPolicyLive } from "@effect-desktop/core"
 import { Cause, Effect, Exit, Layer, Option } from "effect"
 
 import {
@@ -150,7 +151,11 @@ test("LogsPanel captures log output via installed logger", async () => {
       yield* Effect.logError("error from test").pipe(Effect.provide(logLayer))
       yield* Effect.logDebug("debug below filter").pipe(Effect.provide(logLayer))
       return yield* panel.list()
-    }).pipe(Effect.provide(LogsPanelLive({ levelFilter: "Info" })))
+    }).pipe(
+      Effect.provide(
+        Layer.provide(LogsPanelLive({ levelFilter: "Info" }), InspectorSafetyPolicyLive())
+      )
+    )
   )
 
   expect(result.levelFilter).toBe("Info")
@@ -158,6 +163,25 @@ test("LogsPanel captures log output via installed logger", async () => {
   expect(messages.some((m) => m.includes("hello from test"))).toBe(true)
   expect(messages.some((m) => m.includes("error from test"))).toBe(true)
   expect(messages.some((m) => m.includes("debug below filter"))).toBe(false)
+})
+
+test("LogsPanel sanitizes logger text before buffering", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const panel = yield* LogsPanel
+      const logLayer = panel.layer()
+      yield* Effect.logInfo("api_key=secret-key").pipe(Effect.provide(logLayer))
+      return yield* panel.list()
+    }).pipe(
+      Effect.provide(
+        Layer.provide(LogsPanelLive({ levelFilter: "Info" }), InspectorSafetyPolicyLive())
+      )
+    )
+  )
+
+  expect(JSON.stringify(result)).not.toContain("secret-key")
+  expect(result.records[0]?.message).toContain("<redacted>")
+  expect(result.records[0]?.safety.redacted).toBeGreaterThan(0)
 })
 
 test("EventLogPanel lists entries from an empty journal", async () => {

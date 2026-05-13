@@ -12,6 +12,17 @@ export interface RedactionFilterOptions {
   readonly allowlist?: readonly string[]
 }
 
+export interface RedactionEvidence {
+  readonly path: string
+  readonly action: "redacted"
+  readonly reason: "secret-pattern" | "redacted-value"
+}
+
+export interface RedactionResult<A> {
+  readonly value: A
+  readonly evidence: readonly RedactionEvidence[]
+}
+
 interface ResolvedRedactionFilterOptions {
   readonly patterns: readonly RegExp[]
   readonly allowlist: ReadonlySet<string>
@@ -21,11 +32,43 @@ export const redact = <A>(record: A, options: RedactionFilterOptions = {}): A =>
   redactValue(record, [], resolveOptions(options), new WeakMap<object, unknown>()) as A
 
 export const redactForJson = <A>(record: A, options: RedactionFilterOptions = {}): A =>
-  materializeRedacted(redact(record, options), new WeakMap<object, unknown>()) as A
+  materializeRedacted(redact(record, options), [], new WeakMap<object, unknown>()) as A
+
+export const redactWithEvidence = <A>(
+  record: A,
+  options: RedactionFilterOptions = {}
+): RedactionResult<A> => {
+  const evidence: RedactionEvidence[] = []
+  const value = redactValue(
+    record,
+    [],
+    resolveOptions(options),
+    new WeakMap<object, unknown>(),
+    evidence
+  ) as A
+  return { value, evidence }
+}
+
+export const redactForJsonWithEvidence = <A>(
+  record: A,
+  options: RedactionFilterOptions = {}
+): RedactionResult<A> => {
+  const redacted = redactWithEvidence(record, options)
+  const materializedEvidence: RedactionEvidence[] = [...redacted.evidence]
+  const value = materializeRedacted(
+    redacted.value,
+    [],
+    new WeakMap<object, unknown>(),
+    materializedEvidence
+  ) as A
+  return { value, evidence: materializedEvidence }
+}
 
 export const RedactionFilter = Object.freeze({
   redact,
   redactForJson,
+  redactWithEvidence,
+  redactForJsonWithEvidence,
   redactedValue: RedactedValue,
   defaultPattern: DefaultSecretPattern
 })
@@ -53,7 +96,8 @@ const redactValue = (
   value: unknown,
   path: readonly string[],
   options: ResolvedRedactionFilterOptions,
-  seen: WeakMap<object, unknown>
+  seen: WeakMap<object, unknown>,
+  evidence?: RedactionEvidence[]
 ): unknown => {
   if (value === null || typeof value !== "object") {
     return value
@@ -66,19 +110,29 @@ const redactValue = (
     return cached
   }
   if (Array.isArray(value)) {
-    return redactArray(value, path, options, seen)
+    return redactArray(value, path, options, seen, evidence)
   }
   if (value instanceof Map) {
-    return redactMap(value, path, options, seen)
+    return redactMap(value, path, options, seen, evidence)
   }
   if (value instanceof Uint8Array) {
     return value
   }
-  return redactRecord(value as Readonly<Record<string, unknown>>, path, options, seen)
+  return redactRecord(value as Readonly<Record<string, unknown>>, path, options, seen, evidence)
 }
 
-const materializeRedacted = (value: unknown, seen: WeakMap<object, unknown>): unknown => {
+const materializeRedacted = (
+  value: unknown,
+  path: readonly string[],
+  seen: WeakMap<object, unknown>,
+  evidence?: RedactionEvidence[]
+): unknown => {
   if (Redacted.isRedacted(value)) {
+    evidence?.push({
+      path: formatEvidencePath(path),
+      action: "redacted",
+      reason: "redacted-value"
+    })
     return redactedJsonString(value)
   }
   if (value === null || typeof value !== "object") {
@@ -93,7 +147,7 @@ const materializeRedacted = (value: unknown, seen: WeakMap<object, unknown>): un
     const next: unknown[] = []
     seen.set(value, next)
     for (const item of value) {
-      const materialized = materializeRedacted(item, seen)
+      const materialized = materializeRedacted(item, [...path, String(next.length)], seen, evidence)
       next.push(materialized)
       changed ||= materialized !== item
     }
@@ -108,7 +162,7 @@ const materializeRedacted = (value: unknown, seen: WeakMap<object, unknown>): un
     const next = new Map<unknown, unknown>()
     seen.set(value, next)
     for (const [key, child] of value.entries()) {
-      const materialized = materializeRedacted(child, seen)
+      const materialized = materializeRedacted(child, [...path, String(key)], seen, evidence)
       next.set(key, materialized)
       changed ||= materialized !== child
     }
@@ -126,7 +180,7 @@ const materializeRedacted = (value: unknown, seen: WeakMap<object, unknown>): un
   const next: Record<string, unknown> = {}
   seen.set(value, next)
   for (const [key, child] of Object.entries(value)) {
-    const materialized = materializeRedacted(child, seen)
+    const materialized = materializeRedacted(child, [...path, key], seen, evidence)
     next[key] = materialized
     changed ||= materialized !== child
   }
@@ -150,13 +204,14 @@ const redactArray = (
   value: readonly unknown[],
   path: readonly string[],
   options: ResolvedRedactionFilterOptions,
-  seen: WeakMap<object, unknown>
+  seen: WeakMap<object, unknown>,
+  evidence?: RedactionEvidence[]
 ): unknown => {
   let changed = false
   const next: unknown[] = []
   seen.set(value, next)
   for (const [index, item] of value.entries()) {
-    const redacted = redactValue(item, [...path, String(index)], options, seen)
+    const redacted = redactValue(item, [...path, String(index)], options, seen, evidence)
     next.push(redacted)
     changed ||= redacted !== item
   }
@@ -172,7 +227,8 @@ const redactMap = (
   value: ReadonlyMap<unknown, unknown>,
   path: readonly string[],
   options: ResolvedRedactionFilterOptions,
-  seen: WeakMap<object, unknown>
+  seen: WeakMap<object, unknown>,
+  evidence?: RedactionEvidence[]
 ): unknown => {
   let changed = false
   const next = new Map<unknown, unknown>()
@@ -182,8 +238,8 @@ const redactMap = (
     const mapKey = String(key)
     const childPath = [...path, mapKey]
     const redacted = shouldRedact(mapKey, childPath, options)
-      ? RedactedValue
-      : redactValue(child, childPath, options, seen)
+      ? redactedByPattern(childPath, evidence)
+      : redactValue(child, childPath, options, seen, evidence)
 
     next.set(key, redacted)
     changed ||= redacted !== child
@@ -200,7 +256,8 @@ const redactRecord = (
   value: Readonly<Record<string, unknown>>,
   path: readonly string[],
   options: ResolvedRedactionFilterOptions,
-  seen: WeakMap<object, unknown>
+  seen: WeakMap<object, unknown>,
+  evidence?: RedactionEvidence[]
 ): unknown => {
   let changed = false
   const next: Record<string, unknown> = {}
@@ -209,8 +266,8 @@ const redactRecord = (
   for (const [key, child] of Object.entries(value)) {
     const childPath = [...path, key]
     const redacted = shouldRedact(key, childPath, options)
-      ? RedactedValue
-      : redactValue(child, childPath, options, seen)
+      ? redactedByPattern(childPath, evidence)
+      : redactValue(child, childPath, options, seen, evidence)
     next[key] = redacted
     changed ||= redacted !== child
   }
@@ -245,3 +302,23 @@ const resolveOptions = (options: RedactionFilterOptions): ResolvedRedactionFilte
 
 const toRegExp = (pattern: RegExp | string): RegExp =>
   typeof pattern === "string" ? new RegExp(pattern, "i") : pattern
+
+const redactedByPattern = (
+  path: readonly string[],
+  evidence: RedactionEvidence[] | undefined
+): Redacted.Redacted<string> => {
+  evidence?.push({
+    path: formatEvidencePath(path),
+    action: "redacted",
+    reason: "secret-pattern"
+  })
+  return RedactedValue
+}
+
+const formatEvidencePath = (path: readonly string[]): string =>
+  path.length === 0 ? "$" : path.map(safeEvidencePathSegment).join(".")
+
+const safeEvidencePathSegment = (segment: string): string =>
+  DefaultSecretPattern.test(segment) || /bearer\s+\S+/i.test(segment)
+    ? "<redacted-key>"
+    : segment.replaceAll(/[\r\n\t]/g, " ")
