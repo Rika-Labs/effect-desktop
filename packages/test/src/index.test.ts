@@ -22,12 +22,14 @@ import {
   Process,
   PTY,
   ResourceRegistryLive,
-  SecretValue,
   Telemetry,
+  makeSecretBytesFromUtf8,
   makeSecrets,
   makeResourceRegistry,
   ResourceHandleSchema,
-  type ResourceId
+  type ResourceId,
+  unsafeSecretBytes,
+  wipeSecretBytes
 } from "@effect-desktop/core"
 import {
   Screen,
@@ -1235,16 +1237,16 @@ test("makeMemorySecretsSafeStorage backs Secrets with copied in-memory values", 
       permissions: { read: ["auth"], write: ["auth"] }
     })
   )
-  const original = SecretValue.fromUtf8("refresh-token")
+  const original = makeSecretBytesFromUtf8("refresh-token")
 
   await Effect.runPromise(secrets.set("auth", "token", original))
-  await Effect.runPromise(original.dispose())
+  await Effect.runPromise(wipeSecretBytes(original))
   const stored = await Effect.runPromise(secrets.get("auth", "token"))
   const snapshot = await Effect.runPromise(storage.snapshot())
   await Effect.runPromise(secrets.delete("auth", "token"))
   const missing = await Effect.runPromiseExit(secrets.get("auth", "token"))
 
-  expect(new TextDecoder().decode(stored.unsafeBytes())).toBe("refresh-token")
+  expect(new TextDecoder().decode(unsafeSecretBytes(stored))).toBe("refresh-token")
   expect([...snapshot.keys()]).toEqual(["com.rika.test/auth/token"])
   expect(Exit.isFailure(missing)).toBe(true)
   if (Exit.isFailure(missing)) {
@@ -1261,7 +1263,7 @@ test("makeMemorySecretsSafeStorage models unavailable platform storage as typed 
   )
 
   const unavailable = await Effect.runPromiseExit(
-    secrets.set("auth", "token", SecretValue.fromUtf8("refresh-token"))
+    secrets.set("auth", "token", makeSecretBytesFromUtf8("refresh-token"))
   )
 
   expect(Exit.isFailure(unavailable)).toBe(true)

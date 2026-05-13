@@ -10,12 +10,15 @@ import {
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
+  makeSecretBytes,
+  type SecretBytes,
   makeUnaryDesktopTransportFromBridgeClientExchange,
   Rpc,
   RpcClient,
   RpcCapability,
   RpcGroup,
-  type HostProtocolError
+  type HostProtocolError,
+  unsafeSecretBytes
 } from "@effect-desktop/bridge"
 import type { DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
@@ -29,52 +32,16 @@ import {
 } from "./contracts/safe-storage.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
-const Redacted = "[REDACTED]"
-const NodeInspectCustom = Symbol.for("nodejs.util.inspect.custom")
 
 export type SafeStorageError = HostProtocolError
 
-export class SecretValue {
-  readonly _tag = "SecretValue"
-  #bytes: Uint8Array
-
-  private constructor(bytes: Uint8Array) {
-    this.#bytes = new Uint8Array(bytes)
-  }
-
-  static fromBytes(bytes: Uint8Array): SecretValue {
-    if (!(bytes instanceof Uint8Array)) {
-      throw new TypeError("SecretValue.fromBytes requires a Uint8Array")
-    }
-    return new SecretValue(bytes)
-  }
-
-  static fromUtf8(value: string): SecretValue {
-    return new SecretValue(new TextEncoder().encode(value))
-  }
-
-  unsafeBytes(): Uint8Array {
-    return new Uint8Array(this.#bytes)
-  }
-
-  dispose(): Effect.Effect<void, never, never> {
-    return Effect.sync(() => {
-      this.#bytes.fill(0)
-    })
-  }
-
-  toString(): string {
-    return Redacted
-  }
-
-  toJSON(): string {
-    return Redacted
-  }
-
-  [NodeInspectCustom](): string {
-    return Redacted
-  }
-}
+export {
+  makeSecretBytes,
+  makeSecretBytesFromUtf8,
+  unsafeSecretBytes,
+  wipeSecretBytes,
+  type SecretBytes
+} from "@effect-desktop/bridge"
 
 export const SafeStorageSet = safeStorageRpc(
   "set",
@@ -130,8 +97,8 @@ export const SafeStorageMethodNames = Object.freeze([
 ] as const)
 
 export interface SafeStorageClientApi {
-  readonly set: (key: string, value: SecretValue) => Effect.Effect<void, SafeStorageError, never>
-  readonly get: (key: string) => Effect.Effect<SecretValue, SafeStorageError, never>
+  readonly set: (key: string, value: SecretBytes) => Effect.Effect<void, SafeStorageError, never>
+  readonly get: (key: string) => Effect.Effect<SecretBytes, SafeStorageError, never>
   readonly delete: (key: string) => Effect.Effect<void, SafeStorageError, never>
   readonly list: () => Effect.Effect<ReadonlyArray<string>, SafeStorageError, never>
   readonly isAvailable: () => Effect.Effect<boolean, SafeStorageError, never>
@@ -194,7 +161,7 @@ const makeSafeStorageBridgeClient = (
 ): SafeStorageClientApi => {
   return Object.freeze({
     set: (key, value) =>
-      decodeSafeStorageSetInput({ key, value: value.unsafeBytes() }).pipe(
+      decodeSafeStorageSetInput({ key, value: unsafeSecretBytes(value) }).pipe(
         Effect.flatMap(validateSafeStorageSetInput),
         Effect.flatMap((decoded) =>
           withSafeStorageRpcClient(exchange, options, (client) =>
@@ -210,7 +177,7 @@ const makeSafeStorageBridgeClient = (
             runSafeStorageRpc(client["SafeStorage.get"](decoded), "SafeStorage.get")
           )
         ),
-        Effect.map((result) => SecretValue.fromBytes(result.value))
+        Effect.map((result) => makeSecretBytes(result.value))
       ),
     delete: (key) =>
       decodeSafeStorageKeyInput({ key }, "SafeStorage.delete").pipe(
@@ -259,7 +226,7 @@ export const makeUnsupportedSafeStorageClient = (): SafeStorageClientApi => {
     Effect.fail(unsupportedError(method))
   return Object.freeze({
     set: () => unsupportedEffect<void>("SafeStorage.set"),
-    get: () => unsupportedEffect<SecretValue>("SafeStorage.get"),
+    get: () => unsupportedEffect<SecretBytes>("SafeStorage.get"),
     delete: () => unsupportedEffect<void>("SafeStorage.delete"),
     list: () => unsupportedEffect<ReadonlyArray<string>>("SafeStorage.list"),
     isAvailable: () => Effect.succeed(false)
@@ -271,7 +238,7 @@ export const makeLinuxSafeStorageClient = (): SafeStorageClientApi => {
     Effect.fail(unsupportedError(method, "secret-service-adapter-unimplemented"))
   return Object.freeze({
     set: () => unsupportedEffect<void>("SafeStorage.set"),
-    get: () => unsupportedEffect<SecretValue>("SafeStorage.get"),
+    get: () => unsupportedEffect<SecretBytes>("SafeStorage.get"),
     delete: () => unsupportedEffect<void>("SafeStorage.delete"),
     list: () => Effect.succeed([]),
     isAvailable: () => Effect.succeed(false)

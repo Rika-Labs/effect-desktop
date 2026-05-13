@@ -1,4 +1,4 @@
-import { redact } from "@effect-desktop/bridge"
+import { redactForJson } from "@effect-desktop/bridge"
 import type { RedactionFilterOptions } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Schema } from "effect"
 import { EventGroup, EventJournal, EventLog } from "effect/unstable/eventlog"
@@ -159,7 +159,7 @@ export const makeAuditEvents = (
 const makeEmit =
   (log: EventLog.EventLog["Service"], redaction: RedactionFilterOptions) =>
   (event: AuditEvent): Effect.Effect<void, EventJournal.EventJournalError, never> => {
-    const payload = redact(
+    const payload = redactForJson(
       {
         kind: event.kind,
         source: event.source,

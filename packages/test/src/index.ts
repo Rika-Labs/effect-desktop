@@ -38,7 +38,6 @@ import {
 } from "@effect-desktop/bridge"
 import {
   ResourceRegistry,
-  SecretValue,
   Filesystem,
   PermissionRegistry,
   Process,
@@ -46,6 +45,7 @@ import {
   PTY,
   PtyExitStatus,
   Telemetry,
+  makeSecretBytes,
   makeResourceRegistry,
   makeFilesystem,
   makePermissionRegistry,
@@ -63,6 +63,7 @@ import {
   type ProcessPermissionPolicy,
   type ProcessSignalInput,
   type ProcessSpawnInput,
+  unsafeSecretBytes,
   type PtyAdapter,
   type PtyApi,
   type PtyBudgetPolicy,
@@ -631,7 +632,7 @@ export const makeMemorySecretsSafeStorage = (
     set: (key, value) =>
       available
         ? Effect.sync(() => {
-            values.set(key, value.unsafeBytes())
+            values.set(key, unsafeSecretBytes(value))
           })
         : Effect.fail(unsupportedSafeStorage("SafeStorage.set")),
     get: (key) =>
@@ -642,7 +643,7 @@ export const makeMemorySecretsSafeStorage = (
               return yield* Effect.fail(secretNotFound(key, "SafeStorage.get"))
             }
 
-            return SecretValue.fromBytes(value)
+            return makeSecretBytes(value)
           })
         : Effect.fail(unsupportedSafeStorage("SafeStorage.get")),
     delete: (key) =>

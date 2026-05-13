@@ -35,7 +35,9 @@ test("Telemetry records redacted structured logs and publishes bounded snapshots
   expect(snapshots.at(-1)?.map((record) => record.traceId)).toEqual(["trace-1"])
   expect(logs.map((record) => record.traceId)).toEqual(["trace-2"])
   expect(JSON.stringify(snapshots)).not.toContain("secret-token")
-  expect(snapshots.at(-1)?.[0]?.fields).toEqual(Option.some({ token: "[REDACTED]", safe: "value" }))
+  expect(snapshots.at(-1)?.[0]?.fields).toEqual(
+    Option.some({ token: "<redacted:redacted>", safe: "value" })
+  )
 })
 
 test("Telemetry applies configured redaction policy to structured logs", async () => {
@@ -66,7 +68,7 @@ test("Telemetry applies configured redaction policy to structured logs", async (
   const logs = await Effect.runPromise(telemetry.listLogs())
   expect(logs[0]?.fields).toEqual(
     Option.some({
-      customerSsn: "[REDACTED]",
+      customerSsn: "<redacted:redacted>",
       sessionLabel: "safe-session"
     })
   )

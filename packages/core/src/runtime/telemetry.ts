@@ -1,4 +1,4 @@
-import { redact } from "@effect-desktop/bridge"
+import { redactForJson } from "@effect-desktop/bridge"
 import type { RedactionFilterOptions } from "@effect-desktop/bridge"
 import { Context, Data, Effect, Option, Ref, Schema, Stream, SubscriptionRef } from "effect"
 
@@ -188,7 +188,7 @@ export const makeTelemetry = (
           yield* validateOptionalMetadataField(input.resourceId, "Telemetry.log", "resourceId")
           yield* validateOptionalMetadataField(input.windowId, "Telemetry.log", "windowId")
           const id = yield* Ref.getAndUpdate(nextLogId, (current) => current + 1)
-          const record = redact(
+          const record = redactForJson(
             {
               id,
               level: input.level,

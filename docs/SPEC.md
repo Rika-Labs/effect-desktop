@@ -4045,7 +4045,7 @@ The framework applies a redaction filter at every emission boundary:
 /api[_-]?key|token|password|secret|bearer|authorization|cookie|session[_-]?id|refresh[_-]?token|client[_-]?secret|private[_-]?key/i
 ```
 
-The filter scans structured field names (and nested keys in `unknown` payloads) and replaces matching values with `"[REDACTED]"` while preserving the field's presence and type. Applied to:
+The filter scans structured field names (and nested keys in `unknown` payloads) and replaces matching values with Effect `Redacted` values while preserving the field's presence. Protocol emission boundaries materialize those redacted values to schema-compatible strings before crossing JSON/host frames. Applied to:
 
 - log records emitted via `Telemetry`;
 - devtools display of bridge calls, audit events, and stream frames;
@@ -4400,7 +4400,7 @@ The resolved config must produce:
 - `packageManifest`: `{ targets, artifactLayout, bundleId, resources, signing }`;
 - `updateManifestInput`: `{ channel, feedUrl, publicKey, keyVersion, minVersion?, maxVersion? }`.
 
-Every manifest is JSON-serializable, deterministic for the same inputs, and redacted before logging. `bun desktop info --json` prints the same resolved manifests with secrets replaced by `"[REDACTED]"`.
+Every manifest is JSON-serializable, deterministic for the same inputs, and redacted before logging. `bun desktop info --json` prints the same resolved manifests with secrets replaced by Effect redacted string formatting.
 
 
 \newpage
@@ -11154,7 +11154,7 @@ A bundle whose notarization staple is missing and whose notarization timestamp i
 
 ## C.55 Secret redaction
 
-Log records, devtools display, crash breadcrumbs, and audit events scrub fields matching the §14.10 pattern to `"[REDACTED]"`. Test: `tests/security/redaction.test.ts`.
+Log records, devtools display, crash breadcrumbs, and audit events scrub fields matching the §14.10 pattern to Effect `Redacted` values or their JSON materialized strings at protocol boundaries. Test: `tests/security/redaction.test.ts`.
 
 ## C.56 Worker capability inheritance
 

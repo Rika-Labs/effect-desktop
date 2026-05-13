@@ -95,7 +95,7 @@ test("AuditEvents applies configured redaction policy before writing events", as
       const payload = entries[0]?.payload
       const encodedPayload =
         payload instanceof Uint8Array ? Buffer.from(payload).toString("utf8") : ""
-      expect(encodedPayload).toContain("[REDACTED]")
+      expect(encodedPayload).toContain("<redacted:redacted>")
       expect(encodedPayload).toContain("safe-session")
       expect(encodedPayload).not.toContain("123-45-6789")
     }).pipe(Effect.provide(eventLogLayer))

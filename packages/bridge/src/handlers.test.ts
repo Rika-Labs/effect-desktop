@@ -369,7 +369,7 @@ test("Handlers wraps synchronous handler throws into typed failure responses", a
   const response = await Effect.runPromise(
     runtime.dispatch(
       request("ProjectRpcs.HandlerSyncThrow.open", { path: "/tmp/project" })
-    ) as Effect.Effect<BridgeClientResponse, HostProtocolError | unknown, never>
+    ) as Effect.Effect<BridgeClientResponse, unknown, never>
   )
 
   expect(response).toEqual({
@@ -444,11 +444,14 @@ test("Handlers redacts secret-shaped contract failure fields before renderer emi
     kind: "failure",
     error: {
       tag: "ProjectSecretError",
-      authorization: "[REDACTED]",
-      customerSsn: "[REDACTED]",
-      details: { refresh_token: "[REDACTED]", safe: "visible" }
+      authorization: "<redacted:redacted>",
+      customerSsn: "<redacted:redacted>",
+      details: { refresh_token: "<redacted:redacted>", safe: "visible" }
     }
   })
+  expect(
+    Schema.decodeUnknownSync(ProjectSecretError)((response as { readonly error?: unknown }).error)
+  ).toBeInstanceOf(ProjectSecretError)
   expect(JSON.stringify(states)).not.toContain("Bearer abc")
   expect(JSON.stringify(states)).not.toContain("123-45-6789")
   expect(JSON.stringify(states)).not.toContain(':"refresh"')

@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto"
 
-import { HostProtocolPermissionDeniedError, type HostProtocolError } from "@effect-desktop/bridge"
+import {
+  HostProtocolPermissionDeniedError,
+  type HostProtocolError,
+  type SecretBytes
+} from "@effect-desktop/bridge"
 import { Context, Data, Effect, Layer, Option, Schema } from "effect"
 
 import { emitAuditEvent, secretsAuditEvent, type AuditEventsApi } from "./audit-events.js"
@@ -8,50 +12,14 @@ import { emitAuditEvent, secretsAuditEvent, type AuditEventsApi } from "./audit-
 const NonEmptyString = Schema.NonEmptyString
 const SecretName = Schema.NonEmptyString
 const SecretNamePattern = /^[A-Za-z0-9._-]+$/
-const Redacted = "[REDACTED]"
-const NodeInspectCustom = Symbol.for("nodejs.util.inspect.custom")
 
-export class SecretValue {
-  readonly _tag = "SecretValue"
-  #bytes: Uint8Array
-
-  private constructor(bytes: Uint8Array) {
-    this.#bytes = new Uint8Array(bytes)
-  }
-
-  static fromBytes(bytes: Uint8Array): SecretValue {
-    if (!(bytes instanceof Uint8Array)) {
-      throw new TypeError("SecretValue.fromBytes requires a Uint8Array")
-    }
-    return new SecretValue(bytes)
-  }
-
-  static fromUtf8(value: string): SecretValue {
-    return new SecretValue(new TextEncoder().encode(value))
-  }
-
-  unsafeBytes(): Uint8Array {
-    return new Uint8Array(this.#bytes)
-  }
-
-  dispose(): Effect.Effect<void, never, never> {
-    return Effect.sync(() => {
-      this.#bytes.fill(0)
-    })
-  }
-
-  toString(): string {
-    return Redacted
-  }
-
-  toJSON(): string {
-    return Redacted
-  }
-
-  [NodeInspectCustom](): string {
-    return Redacted
-  }
-}
+export {
+  makeSecretBytes,
+  makeSecretBytesFromUtf8,
+  unsafeSecretBytes,
+  wipeSecretBytes,
+  type SecretBytes
+} from "@effect-desktop/bridge"
 
 export class SecretsNamespaceInput extends Schema.Class<SecretsNamespaceInput>(
   "SecretsNamespaceInput"
@@ -126,16 +94,16 @@ export interface SecretsApi {
   readonly set: (
     namespace: string,
     key: string,
-    value: SecretValue
+    value: SecretBytes
   ) => Effect.Effect<void, SecretsError, never>
-  readonly get: (namespace: string, key: string) => Effect.Effect<SecretValue, SecretsError, never>
+  readonly get: (namespace: string, key: string) => Effect.Effect<SecretBytes, SecretsError, never>
   readonly delete: (namespace: string, key: string) => Effect.Effect<void, SecretsError, never>
   readonly list: (namespace: string) => Effect.Effect<readonly string[], SecretsError, never>
 }
 
 export interface SecretsSafeStorageApi {
-  readonly set: (key: string, value: SecretValue) => Effect.Effect<void, HostProtocolError, never>
-  readonly get: (key: string) => Effect.Effect<SecretValue, HostProtocolError, never>
+  readonly set: (key: string, value: SecretBytes) => Effect.Effect<void, HostProtocolError, never>
+  readonly get: (key: string) => Effect.Effect<SecretBytes, HostProtocolError, never>
   readonly delete: (key: string) => Effect.Effect<void, HostProtocolError, never>
   readonly list: () => Effect.Effect<ReadonlyArray<string>, HostProtocolError, never>
   readonly isAvailable: () => Effect.Effect<boolean, HostProtocolError, never>

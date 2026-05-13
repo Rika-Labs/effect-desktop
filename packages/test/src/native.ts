@@ -133,7 +133,7 @@ import {
   type WindowCreateOptions,
   type WindowHandle
 } from "@effect-desktop/native/contracts"
-import { SecretValue } from "@effect-desktop/native"
+import { makeSecretBytes, type SecretBytes, unsafeSecretBytes } from "@effect-desktop/native"
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -566,19 +566,19 @@ export const makeTestSafeStorageClient = (): TestSafeStorageRpcs => {
   return Object.freeze({
     calls: () => log.slice(),
     snapshot: () => new Map([...store.entries()].map(([k, v]) => [k, new Uint8Array(v)])),
-    set: (key: string, value: SecretValue): Effect.Effect<void, SafeStorageError, never> =>
+    set: (key: string, value: SecretBytes): Effect.Effect<void, SafeStorageError, never> =>
       Effect.sync(() => {
         record("SafeStorage.set", [key])
-        store.set(key, value.unsafeBytes())
+        store.set(key, unsafeSecretBytes(value))
       }),
-    get: (key: string): Effect.Effect<SecretValue, SafeStorageError, never> =>
+    get: (key: string): Effect.Effect<SecretBytes, SafeStorageError, never> =>
       Effect.gen(function* () {
         record("SafeStorage.get", [key])
         const value = store.get(key)
         if (value === undefined) {
           return yield* Effect.fail(notFound(key, "SafeStorage.get"))
         }
-        return SecretValue.fromBytes(value)
+        return makeSecretBytes(value)
       }),
     delete: (key: string): Effect.Effect<void, SafeStorageError, never> =>
       Effect.sync(() => {

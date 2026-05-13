@@ -70,7 +70,7 @@ See `docs/SPEC.md` for the package's normative non-goals.
 ```ts
 import { Effect } from "effect"
 
-import { SecretValue, makeSecrets } from "@effect-desktop/core"
+import { makeSecretBytesFromUtf8, makeSecrets } from "@effect-desktop/core"
 import { makeMemorySecretsSafeStorage } from "@effect-desktop/test"
 
 const program = Effect.gen(function* () {
@@ -79,7 +79,7 @@ const program = Effect.gen(function* () {
     permissions: { read: ["auth"], write: ["auth"] }
   })
 
-  yield* secrets.set("auth", "token", SecretValue.fromUtf8("refresh-token"))
+  yield* secrets.set("auth", "token", makeSecretBytesFromUtf8("refresh-token"))
   return yield* secrets.get("auth", "token")
 })
 ```

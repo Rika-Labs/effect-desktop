@@ -21,7 +21,7 @@ import {
   makeHostProtocolInvalidStateError,
   type HostProtocolError
 } from "./protocol.js"
-import { redact } from "./redaction.js"
+import { redactForJson } from "./redaction.js"
 import type { RedactionFilterOptions } from "./redaction.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
@@ -565,7 +565,7 @@ const resolveOptions = (
 })
 
 const redactForEmission = <A>(value: A, options: ResolvedBridgeHandlerRuntimeOptions): A =>
-  redact(value, options.redaction)
+  redactForJson(value, options.redaction)
 
 const defaultRendererOriginAuth: RendererOriginAuth = Object.freeze({
   verify: (request: HostProtocolRequestEnvelope) =>

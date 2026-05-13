@@ -40,8 +40,8 @@ hardware-backed attestation, and platform-specific libsecret/keychain polish.
 
 - `Secrets` / `SecretsLayer` / `makeSecrets` for namespaced secret
   `set/get/delete/list`.
-- `SecretValue` for redacted secret bytes with explicit `unsafeBytes()` access
-  and Effect-owned disposal.
+- `SecretBytes` as Effect `Redacted.Redacted<Uint8Array>` values with explicit
+  `unsafeSecretBytes` access and `wipeSecretBytes` cleanup.
 - `SecretsSafeStorage` / `makeSecretsSafeStorageLayer` as the core-owned port
   that native SafeStorage or tests can implement without creating a package
   cycle.
@@ -123,7 +123,7 @@ Milestone: Phase 15 - Secrets
 Files changed: core Secrets service and migration; bridge redaction primitive;
 CrashReporter/bridge emission redaction wiring; test package memory secrets
 adapter; Phase 15 learning records.
-Public APIs added: @effect-desktop/core Secrets, SecretValue,
+Public APIs added: @effect-desktop/core Secrets, SecretBytes helpers,
 SecretsSafeStorage port/layer helpers, runSecretsMigration, RedactionFilter
 re-export; @effect-desktop/test makeMemorySecretsSafeStorage.
 Tests added: Secrets runtime tests; redaction filter and emission-boundary tests;

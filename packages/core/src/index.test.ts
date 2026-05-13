@@ -111,7 +111,9 @@ test("public Desktop facade exposes Rpc metadata helpers", async () => {
   expect(core.Desktop.RpcCapability).toBeFunction()
   expect(core.Desktop.RpcSupport.unsupported).toBeFunction()
   expect(core.Desktop.Rpc.supportedGroup).toBeFunction()
-  expect(core.Desktop.RedactionFilter.redact({ token: "abc" })).toEqual({ token: "[REDACTED]" })
+  expect(core.Desktop.RedactionFilter.redact({ token: "abc" }) as unknown).toEqual({
+    token: core.Desktop.RedactionFilter.redactedValue
+  })
 })
 
 test("framework boundary errors carry public diagnostic fields", async () => {

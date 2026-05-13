@@ -247,18 +247,22 @@ export {
   SafeStorageMethodNames,
   SafeStorageRpcEvents,
   SafeStorageRpcs,
-  SecretValue,
   makeHostSafeStorageRpcRuntime,
   makeLinuxSafeStorageClient,
+  makeSecretBytes,
+  makeSecretBytesFromUtf8,
   makeSafeStorageBridgeClientLayer,
   makeSafeStorageClientLayer,
   makeSafeStorageServiceLayer,
   makeUnsupportedSafeStorageClient,
+  unsafeSecretBytes,
+  wipeSecretBytes,
   type SafeStorageClientApi,
   type SafeStorageError,
   type SafeStorageRpc,
   type SafeStorageRpcHandlers,
-  type SafeStorageServiceApi
+  type SafeStorageServiceApi,
+  type SecretBytes
 } from "./safe-storage.js"
 export {
   Screen,

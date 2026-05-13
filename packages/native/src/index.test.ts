@@ -100,7 +100,6 @@ import {
   SafeStorageRpcEvents,
   SafeStorageLive,
   SafeStorageMethodNames,
-  SecretValue,
   Screen,
   ScreenClient,
   ScreenHandlersLive,
@@ -162,6 +161,7 @@ import {
   makePowerMonitorServiceLayer,
   makeScreenBridgeClientLayer,
   makeScreenServiceLayer,
+  makeSecretBytesFromUtf8,
   makeSystemAppearanceBridgeClientLayer,
   makeSystemAppearanceServiceLayer,
   makeUpdaterBridgeClientLayer,
@@ -204,6 +204,8 @@ import {
   makeWindowBridgeClientLayer,
   makeWindowServiceLayer,
   makeUnsupportedWindowClient,
+  unsafeSecretBytes,
+  wipeSecretBytes,
   type AppClientApi,
   type ClipboardClientApi,
   type ContextMenuClientApi,
@@ -3226,18 +3228,15 @@ test("SafeStorageRpcs declares the Phase 8 SafeStorage method surface", () => {
   expect(Object.keys(SafeStorageRpcEvents)).toEqual([])
 })
 
-test("SecretValue redacts string and JSON formatting while exposing explicit byte copies", async () => {
-  const secret = SecretValue.fromUtf8("refresh-token")
-  const bytes = secret.unsafeBytes()
+test("SecretBytes redacts JSON formatting while exposing explicit byte copies", async () => {
+  const secret = makeSecretBytesFromUtf8("refresh-token")
+  const bytes = unsafeSecretBytes(secret)
   bytes.fill(0)
 
-  expect(String(secret)).toBe("[REDACTED]")
-  expect(JSON.stringify({ token: secret })).toBe('{"token":"[REDACTED]"}')
-  expect(new TextDecoder().decode(secret.unsafeBytes())).toBe("refresh-token")
-  await Effect.runPromise(secret.dispose())
-  expect(Array.from(secret.unsafeBytes())).toEqual(
-    Array.from({ length: "refresh-token".length }, () => 0)
-  )
+  expect(JSON.stringify({ token: secret })).toBe('{"token":"<redacted:SecretBytes>"}')
+  expect(new TextDecoder().decode(unsafeSecretBytes(secret))).toBe("refresh-token")
+  await Effect.runPromise(wipeSecretBytes(secret))
+  expect(() => unsafeSecretBytes(secret)).toThrow("Unable to get redacted value")
 })
 
 test("SafeStorage service delegates through a substitutable SafeStorageClient port", async () => {
@@ -3245,7 +3244,7 @@ test("SafeStorage service delegates through a substitutable SafeStorageClient po
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const storage = yield* SafeStorage
-      yield* storage.set("token", SecretValue.fromUtf8("refresh-token"))
+      yield* storage.set("token", makeSecretBytesFromUtf8("refresh-token"))
       const secret = yield* storage.get("token")
       const keys = yield* storage.list()
       const available = yield* storage.isAvailable()
@@ -3256,8 +3255,8 @@ test("SafeStorage service delegates through a substitutable SafeStorageClient po
 
   expect(result.available).toBe(true)
   expect(result.keys).toEqual(["token"])
-  expect(String(result.secret)).toBe("[REDACTED]")
-  expect(new TextDecoder().decode(result.secret.unsafeBytes())).toBe("refresh-token")
+  expect(JSON.stringify(result.secret)).toBe('"<redacted:SecretBytes>"')
+  expect(new TextDecoder().decode(unsafeSecretBytes(result.secret))).toBe("refresh-token")
   expect(calls).toEqual(["set:token:13", "get:token", "list", "isAvailable", "delete:token"])
 })
 
@@ -3282,18 +3281,18 @@ test("SafeStorage bridge client validates keys and redacts decoded values", asyn
     )
   )
 
-  await Effect.runPromise(client.set("token", SecretValue.fromUtf8("refresh-token")))
+  await Effect.runPromise(client.set("token", makeSecretBytesFromUtf8("refresh-token")))
   const secret = await Effect.runPromise(client.get("token"))
   const keys = await Effect.runPromise(client.list())
   const available = await Effect.runPromise(client.isAvailable())
   await Effect.runPromise(client.delete("token"))
   const emptyKeyExit = await Effect.runPromiseExit(
-    client.set("", SecretValue.fromUtf8("refresh-token"))
+    client.set("", makeSecretBytesFromUtf8("refresh-token"))
   )
 
-  expect(String(secret)).toBe("[REDACTED]")
+  expect(JSON.stringify(secret)).toBe('"<redacted:SecretBytes>"')
   expect(JSON.stringify({ token: secret })).not.toContain("refresh-token")
-  expect(new TextDecoder().decode(secret.unsafeBytes())).toBe("refresh-token")
+  expect(new TextDecoder().decode(unsafeSecretBytes(secret))).toBe("refresh-token")
   expect(keys).toEqual(["token"])
   expect(available).toBe(true)
   expectExitFailure(emptyKeyExit, (error) => hasErrorTag(error, "InvalidArgument"))
@@ -3328,7 +3327,7 @@ test("SafeStorage bridge client rejects control-byte keys as InvalidArgument", a
     )
 
     const setExit = await Effect.runPromiseExit(
-      client.set(key, SecretValue.fromUtf8("refresh-token"))
+      client.set(key, makeSecretBytesFromUtf8("refresh-token"))
     )
     const getExit = await Effect.runPromiseExit(client.get(key))
     const deleteExit = await Effect.runPromiseExit(client.delete(key))
@@ -3389,7 +3388,7 @@ test("unsupported SafeStorage client reports availability and typed command fail
       const storage = yield* SafeStorage
       const available = yield* storage.isAvailable()
       const listExit = yield* Effect.exit(storage.list())
-      const setExit = yield* Effect.exit(storage.set("token", SecretValue.fromUtf8("secret")))
+      const setExit = yield* Effect.exit(storage.set("token", makeSecretBytesFromUtf8("secret")))
       const getExit = yield* Effect.exit(storage.get("token"))
       return { available, getExit, listExit, setExit }
     }).pipe(Effect.provide(makeSafeStorageServiceLayer(makeUnsupportedSafeStorageClient())))
@@ -3414,7 +3413,7 @@ test("Linux SafeStorage client reports unimplemented adapter as unavailable with
     Effect.gen(function* () {
       const storage = yield* SafeStorage
       const available = yield* storage.isAvailable()
-      const setExit = yield* Effect.exit(storage.set("token", SecretValue.fromUtf8("secret")))
+      const setExit = yield* Effect.exit(storage.set("token", makeSecretBytesFromUtf8("secret")))
       const getExit = yield* Effect.exit(storage.get("token"))
       const deleteExit = yield* Effect.exit(storage.delete("token"))
       const keys = yield* storage.list()
@@ -3646,8 +3645,8 @@ test("CrashReporter redacts structured breadcrumb details", async () => {
       category: "auth",
       message: "token refresh",
       details: {
-        authorization: "[REDACTED]",
-        nested: { refresh_token: "[REDACTED]", safe: "visible" }
+        authorization: "<redacted:redacted>",
+        nested: { refresh_token: "<redacted:redacted>", safe: "visible" }
       },
       timestamp: expect.any(Number)
     }
@@ -3747,7 +3746,7 @@ test("CrashReporter bridge client records breadcrumbs and defers upload handlers
       {
         category: "user",
         message: "clicked save",
-        details: { authorization: "[REDACTED]" }
+        details: { authorization: "<redacted:redacted>" }
       }
     ],
     ["CrashReporter.flush", null]
@@ -6611,11 +6610,11 @@ const protocolClient = (calls: string[]): ProtocolClientApi => ({
 })
 
 const safeStorageClient = (calls: string[]): SafeStorageClientApi => ({
-  set: (key, value) => recordVoid(calls, `set:${key}:${value.unsafeBytes().byteLength}`),
+  set: (key, value) => recordVoid(calls, `set:${key}:${unsafeSecretBytes(value).byteLength}`),
   get: (key) =>
     Effect.sync(() => {
       calls.push(`get:${key}`)
-      return SecretValue.fromUtf8("refresh-token")
+      return makeSecretBytesFromUtf8("refresh-token")
     }),
   delete: (key) => recordVoid(calls, `delete:${key}`),
   list: () =>

@@ -709,6 +709,16 @@
       "signature": "const makeHostWindowClient: (exchange: HostWindowExchange, options?: HostWindowClientOptions) => HostWindowClient"
     },
     {
+      "name": "makeSecretBytes",
+      "kind": "value",
+      "signature": "const makeSecretBytes: (bytes: Uint8Array) => SecretBytes"
+    },
+    {
+      "name": "makeSecretBytesFromUtf8",
+      "kind": "value",
+      "signature": "const makeSecretBytesFromUtf8: (value: string) => SecretBytes"
+    },
+    {
       "name": "makeStaleHandleError",
       "kind": "value",
       "signature": "const makeStaleHandleError: (operation: string, handle: ResourceHandleLike, actualGeneration: number) => HostProtocolStaleHandleError"
@@ -744,9 +754,14 @@
       "signature": "const redact: <A>(record: A, options?: RedactionFilterOptions) => A"
     },
     {
+      "name": "redactForJson",
+      "kind": "value",
+      "signature": "const redactForJson: <A>(record: A, options?: RedactionFilterOptions) => A"
+    },
+    {
       "name": "RedactionFilter",
       "kind": "value",
-      "signature": "const RedactionFilter: Readonly<{ redact: <A>(record: A, options?: RedactionFilterOptions) => A; redactedValue: \"[REDACTED]\"; defaultPattern: RegExp; }>"
+      "signature": "const RedactionFilter: Readonly<{ redact: <A>(record: A, options?: RedactionFilterOptions) => A; redactForJson: <A>(record: A, options?: RedactionFilterOptions) => A; redactedValue: Redacted.Redacted<string>; defaultPattern: RegExp; }>"
     },
     {
       "name": "RedactionFilterOptions",
@@ -919,6 +934,11 @@
       "signature": "export type RpcSupportMetadata = | { readonly status: \"supported\" } | { readonly status: \"unsupported\" readonly reason: string }"
     },
     {
+      "name": "SecretBytes",
+      "kind": "type",
+      "signature": "export type SecretBytes = Redacted.Redacted<Uint8Array>"
+    },
+    {
       "name": "Streams",
       "kind": "value",
       "signature": "const Streams: { scoped: <Layers extends readonly AnyBridgeRpcLayer[]>(...layers: Layers) => Effect.Effect<BridgeStreamRuntime<BridgeStreamLayerEnvironment<Layers[number]>>, never, Scope.Scope>; scopedWithOptions: <Layers extends readonly AnyBridgeRpcLayer[]>(options: BridgeStreamRuntimeOptions, ...layers: Layers) => Effect.Effect<BridgeStreamRuntime<BridgeStreamLayerEnvironment<Layers[number]>>, never, Scope.Scope>; }"
@@ -927,6 +947,11 @@
       "name": "UnaryDesktopTransportFromBridgeClientExchangeOptions",
       "kind": "interface",
       "signature": "export interface UnaryDesktopTransportFromBridgeClientExchangeOptions extends Pick< BridgeClientOptions, \"nextTraceId\" | \"now\" > { readonly normalizeRequest?: (request: HostProtocolRequestEnvelope) => HostProtocolRequestEnvelope }"
+    },
+    {
+      "name": "unsafeSecretBytes",
+      "kind": "value",
+      "signature": "const unsafeSecretBytes: (secret: SecretBytes) => Uint8Array"
     },
     {
       "name": "validateHostProtocolNonEmptyString",
@@ -972,6 +997,11 @@
       "name": "WindowDestroyPayload",
       "kind": "class",
       "signature": "export class WindowDestroyPayload extends Schema.Class<WindowDestroyPayload>( \"WindowDestroyPayload\" )({ windowId: Schema.NonEmptyString }) {}"
+    },
+    {
+      "name": "wipeSecretBytes",
+      "kind": "value",
+      "signature": "const wipeSecretBytes: (secret: SecretBytes) => Effect.Effect<void, never, never>"
     },
     {
       "name": "WithRpcCapability",

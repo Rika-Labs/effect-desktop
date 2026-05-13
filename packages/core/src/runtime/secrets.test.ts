@@ -9,26 +9,29 @@ import { EventJournal } from "effect/unstable/eventlog"
 import { AuditEvent, type AuditEventsApi } from "./audit-events.js"
 import {
   SecretNotFoundError,
-  SecretValue,
   SecretsCommittedAuditFailedError,
   SecretsInvalidArgumentError,
   SecretsPermissionDeniedError,
   type SecretsSafeStorageApi,
   SecretsSafeStorageUnavailableError,
+  makeSecretBytes,
+  makeSecretBytesFromUtf8,
   makeSecrets,
-  type SecretsApi
+  type SecretBytes,
+  type SecretsApi,
+  unsafeSecretBytes
 } from "./secrets.js"
 
 test("Secrets set/get/delete scopes safe storage keys by app and namespace", async () => {
   const calls: string[] = []
   const secrets = await makeSecretsService(calls)
 
-  await Effect.runPromise(secrets.set("auth", "token", SecretValue.fromUtf8("refresh-token")))
+  await Effect.runPromise(secrets.set("auth", "token", makeSecretBytesFromUtf8("refresh-token")))
   const secret = await Effect.runPromise(secrets.get("auth", "token"))
   await Effect.runPromise(secrets.delete("auth", "token"))
   const missing = await Effect.runPromiseExit(secrets.get("auth", "token"))
 
-  expect(new TextDecoder().decode(secret.unsafeBytes())).toBe("refresh-token")
+  expect(new TextDecoder().decode(unsafeSecretBytes(secret))).toBe("refresh-token")
   expect(calls).toEqual([
     "set:com.rika.test/auth/token",
     "get:com.rika.test/auth/token",
@@ -41,8 +44,8 @@ test("Secrets set/get/delete scopes safe storage keys by app and namespace", asy
 test("Secrets list returns only keys in the requested namespace", async () => {
   const secrets = await makeSecretsService()
 
-  await Effect.runPromise(secrets.set("auth", "token", SecretValue.fromUtf8("refresh-token")))
-  await Effect.runPromise(secrets.set("sync", "token", SecretValue.fromUtf8("sync-token")))
+  await Effect.runPromise(secrets.set("auth", "token", makeSecretBytesFromUtf8("refresh-token")))
+  await Effect.runPromise(secrets.set("sync", "token", makeSecretBytesFromUtf8("sync-token")))
 
   expect(await Effect.runPromise(secrets.list("auth"))).toEqual(["token"])
 })
@@ -50,8 +53,8 @@ test("Secrets list returns only keys in the requested namespace", async () => {
 test("Secrets list returns namespace keys in sorted order", async () => {
   const secrets = await makeSecretsService()
 
-  await Effect.runPromise(secrets.set("auth", "zeta", SecretValue.fromUtf8("z")))
-  await Effect.runPromise(secrets.set("auth", "alpha", SecretValue.fromUtf8("a")))
+  await Effect.runPromise(secrets.set("auth", "zeta", makeSecretBytesFromUtf8("z")))
+  await Effect.runPromise(secrets.set("auth", "alpha", makeSecretBytesFromUtf8("a")))
 
   expect(await Effect.runPromise(secrets.list("auth"))).toEqual(["alpha", "zeta"])
 })
@@ -61,7 +64,7 @@ test("Secrets validates namespace and key before safe storage calls", async () =
   const secrets = await makeSecretsService(calls)
 
   const exit = await Effect.runPromiseExit(
-    secrets.set("auth/private", "token", SecretValue.fromUtf8("refresh-token"))
+    secrets.set("auth/private", "token", makeSecretBytesFromUtf8("refresh-token"))
   )
 
   expectFailure(exit, SecretsInvalidArgumentError)
@@ -76,7 +79,7 @@ test("Secrets denies missing read and write permissions before safe storage call
   )
 
   const write = await Effect.runPromiseExit(
-    secrets.set("auth", "token", SecretValue.fromUtf8("refresh-token"))
+    secrets.set("auth", "token", makeSecretBytesFromUtf8("refresh-token"))
   )
   const read = await Effect.runPromiseExit(secrets.get("sync", "token"))
 
@@ -95,7 +98,7 @@ test("Secrets maps unavailable safe storage before commands", async () => {
   )
 
   const exit = await Effect.runPromiseExit(
-    secrets.set("auth", "token", SecretValue.fromUtf8("refresh-token"))
+    secrets.set("auth", "token", makeSecretBytesFromUtf8("refresh-token"))
   )
 
   expectFailure(exit, SecretsSafeStorageUnavailableError)
@@ -105,7 +108,7 @@ test("Secrets writes audit rows without secret values", async () => {
   const rows: AuditEvent[] = []
   const secrets = await makeSecretsService([], rows)
 
-  await Effect.runPromise(secrets.set("auth", "token", SecretValue.fromUtf8("refresh-token")))
+  await Effect.runPromise(secrets.set("auth", "token", makeSecretBytesFromUtf8("refresh-token")))
   await Effect.runPromise(secrets.get("auth", "token"))
 
   expect(JSON.stringify(rows)).not.toContain("refresh-token")
@@ -127,7 +130,7 @@ test("Secrets rejects empty generated audit trace ids before side effects", asyn
   )
 
   const exit = await Effect.runPromiseExit(
-    secrets.set("auth", "token", SecretValue.fromUtf8("refresh-token"))
+    secrets.set("auth", "token", makeSecretBytesFromUtf8("refresh-token"))
   )
 
   expectFailure(exit, SecretsInvalidArgumentError)
@@ -135,12 +138,12 @@ test("Secrets rejects empty generated audit trace ids before side effects", asyn
   expect(rows).toEqual([])
 })
 
-test("SecretValue rejects non-byte fromBytes input", () => {
-  expect(() => SecretValue.fromBytes("refresh-token" as never)).toThrow(TypeError)
+test("SecretBytes rejects non-byte input", () => {
+  expect(() => makeSecretBytes("refresh-token" as never)).toThrow(TypeError)
   const bytes = new Uint8Array([1, 2, 3])
-  const secret = SecretValue.fromBytes(bytes)
+  const secret = makeSecretBytes(bytes)
   bytes.fill(0)
-  expect(Array.from(secret.unsafeBytes())).toEqual([1, 2, 3])
+  expect(Array.from(unsafeSecretBytes(secret))).toEqual([1, 2, 3])
 })
 
 test("Secrets reports committed audit failures for successful writes", async () => {
@@ -153,7 +156,7 @@ test("Secrets reports committed audit failures for successful writes", async () 
   )
 
   const exit = await Effect.runPromiseExit(
-    secrets.set("auth", "token", SecretValue.fromUtf8("refresh-token"))
+    secrets.set("auth", "token", makeSecretBytesFromUtf8("refresh-token"))
   )
 
   expectFailure(exit, SecretsCommittedAuditFailedError)
@@ -176,12 +179,12 @@ test("Secrets reports committed set when post-write audit fails", async () => {
   )
 
   const exit = await Effect.runPromiseExit(
-    secrets.set("auth", "token", SecretValue.fromUtf8("refresh-token"))
+    secrets.set("auth", "token", makeSecretBytesFromUtf8("refresh-token"))
   )
   const stored = await Effect.runPromise(verifier.get("auth", "token"))
 
   expectFailure(exit, SecretsCommittedAuditFailedError)
-  expect(new TextDecoder().decode(stored.unsafeBytes())).toBe("refresh-token")
+  expect(new TextDecoder().decode(unsafeSecretBytes(stored))).toBe("refresh-token")
 })
 
 test("Secrets reports committed delete when post-delete audit fails", async () => {
@@ -199,7 +202,7 @@ test("Secrets reports committed delete when post-delete audit fails", async () =
       audit: failingAudit()
     })
   )
-  await Effect.runPromise(seed.set("auth", "token", SecretValue.fromUtf8("refresh-token")))
+  await Effect.runPromise(seed.set("auth", "token", makeSecretBytesFromUtf8("refresh-token")))
 
   const exit = await Effect.runPromiseExit(secrets.delete("auth", "token"))
   const afterDelete = await Effect.runPromiseExit(seed.get("auth", "token"))
@@ -218,7 +221,7 @@ test("Secrets preserves denied errors when deny-audit write fails", async () => 
   )
 
   const exit = await Effect.runPromiseExit(
-    secrets.set("auth", "token", SecretValue.fromUtf8("refresh-token"))
+    secrets.set("auth", "token", makeSecretBytesFromUtf8("refresh-token"))
   )
 
   expectFailure(exit, SecretsPermissionDeniedError)
@@ -260,7 +263,7 @@ const memorySafeStorage = (
   calls: string[] = [],
   options: { readonly available?: boolean } = {}
 ): SecretsSafeStorageApi => {
-  const values = new Map<string, SecretValue>()
+  const values = new Map<string, SecretBytes>()
   const available = options.available ?? true
   return {
     isAvailable: () => Effect.succeed(available),
@@ -300,21 +303,21 @@ const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
 
 const failingStorage = (
   options: {
-    readonly get?: () => Effect.Effect<SecretValue, HostProtocolNotFoundError, never>
+    readonly get?: () => Effect.Effect<SecretBytes, HostProtocolNotFoundError, never>
     readonly set?: () => Effect.Effect<void, never, never>
     readonly delete?: () => Effect.Effect<void, never, never>
     readonly list?: () => Effect.Effect<readonly string[], never, never>
     readonly available?: () => Effect.Effect<boolean, never, never>
   } = {}
 ): SecretsSafeStorageApi => {
-  const values = new Map<string, SecretValue>()
+  const values = new Map<string, SecretBytes>()
   return {
     isAvailable: options.available ?? (() => Effect.succeed(true)),
     set:
       options.set ??
       (() =>
         Effect.sync(() => {
-          values.set("auth/token", SecretValue.fromUtf8("refresh-token"))
+          values.set("auth/token", makeSecretBytesFromUtf8("refresh-token"))
         })),
     get: options.get ?? (() => Effect.fail(notFound("missing"))),
     delete: options.delete ?? (() => Effect.void),

@@ -229,20 +229,21 @@ native storage, checks explicit `secrets.read` / `secrets.write` namespace
 permissions, and maps missing keys or unavailable safe storage into typed
 `SecretsError` values.
 
-Secret bytes stay in `SecretValue`, whose string and JSON forms are redacted.
-When an `AuditEventsApi` is supplied, each successful operation writes a `secret
-accessed` audit event with namespace, key, outcome, and trace id, never the
-secret value. There are no long-lived handles; cleanup is the caller's explicit
-disposal of returned `SecretValue` copies.
+Secret bytes stay in Effect `Redacted.Redacted<Uint8Array>` values whose string
+and JSON forms are redacted. When an `AuditEventsApi` is supplied, each
+successful operation writes a `secret accessed` audit event with namespace, key,
+outcome, and trace id, never the secret value. There are no long-lived handles;
+callers can wipe returned byte values with `wipeSecretBytes`.
 
 ### RedactionFilter
 
 `RedactionFilter.redact(record)` walks structured data and replaces values for
-field names matching the §14.10 secret pattern with `"[REDACTED]"`. The filter
-preserves object shape, supports additional patterns and explicit allowlist
-paths, and returns the original object when no field changes. Bridge error
-emission and CrashReporter breadcrumb details use the same filter before values
-reach renderer-visible or crash-report surfaces.
+field names matching the §14.10 secret pattern with an Effect `Redacted` value.
+The filter preserves object shape, supports additional patterns and explicit
+allowlist paths, and returns the original object when no field changes. Bridge
+error emission and CrashReporter breadcrumb details materialize redacted leaves
+to strings before values reach renderer-visible or crash-report protocol
+surfaces.
 
 ## Runtime entry
 

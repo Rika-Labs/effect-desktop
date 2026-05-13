@@ -12,7 +12,7 @@ import {
   makeHostProtocolInvalidOutputError,
   makeHostProtocolInvalidStateError,
   makeUnaryDesktopTransportFromBridgeClientExchange,
-  redact,
+  redactForJson,
   Rpc,
   RpcClient,
   RpcCapability,
@@ -393,7 +393,7 @@ const normalizeBreadcrumbDetails = (
 ): Effect.Effect<unknown, CrashReporterError, never> =>
   Effect.try({
     try: () => {
-      const redacted = redact(details)
+      const redacted = redactForJson(details)
       if (JSON.stringify(redacted) === undefined) {
         throw new Error("details cannot be represented in host JSON")
       }
