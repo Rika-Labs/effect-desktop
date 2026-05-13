@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Cause, Deferred, Effect, Exit, Fiber, Option } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Option, Stream } from "effect"
 
 import { EventJournal } from "effect/unstable/eventlog"
 
@@ -470,7 +470,8 @@ const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
   emit: (event: AuditEvent) =>
     Effect.sync(() => {
       rows.push(event)
-    })
+    }),
+  observe: () => Stream.empty
 })
 
 const failingAudit = (): AuditEventsApi => ({
@@ -480,7 +481,8 @@ const failingAudit = (): AuditEventsApi => ({
         method: "EventJournal.write",
         cause: new Error("journal full")
       })
-    )
+    ),
+  observe: () => Stream.empty
 })
 
 const expectFailure = <ErrorClass extends abstract new (...args: never[]) => unknown>(

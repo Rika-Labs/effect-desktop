@@ -7209,7 +7209,8 @@ const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
   emit: (event: AuditEvent) =>
     Effect.sync(() => {
       rows.push(event)
-    })
+    }),
+  observe: () => Stream.empty
 })
 
 const registerTestCommand = <Input>(

@@ -106,12 +106,12 @@
     {
       "name": "AuditEvents",
       "kind": "class",
-      "signature": "export class AuditEvents extends Context.Service<AuditEvents, AuditEventsApi>()(\"AuditEvents\", { make: Effect.succeed({ emit: () => Effect.void as Effect.Effect<void, EventJournal.EventJournalError, never> } satisfies AuditEventsApi) }) {}"
+      "signature": "export class AuditEvents extends Context.Service<AuditEvents, AuditEventsApi>()(\"AuditEvents\", { make: Effect.succeed({ emit: () => Effect.void as Effect.Effect<void, EventJournal.EventJournalError, never>, observe: () => Stream.empty } satisfies AuditEventsApi) }) {}"
     },
     {
       "name": "AuditEventsApi",
       "kind": "interface",
-      "signature": "export interface AuditEventsApi { readonly emit: (event: AuditEvent) => Effect.Effect<void, EventJournal.EventJournalError, never> }"
+      "signature": "export interface AuditEventsApi { readonly emit: (event: AuditEvent) => Effect.Effect<void, EventJournal.EventJournalError, never> readonly observe: () => Stream.Stream<AuditEvent, never, never> }"
     },
     {
       "name": "AuditEventsLayer",
@@ -132,6 +132,16 @@
       "name": "AuditGroupLayer",
       "kind": "value",
       "signature": "const AuditGroupLayer: Layer.Layer<import(\"effect/unstable/eventlog/Event\").EventHandler<\"permission-granted\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"permission-denied\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"permission-revoked\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"permission-expired\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"permission-consumed\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"permission-used\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"approval-requested\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"approval-granted\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"approval-denied\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"command-registered\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"command-unregistered\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"command-invoked\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"job-retrying\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"secrets-accessed\"> | import(\"effect/unstable/eventlog/Event\").EventHandler<\"trace-id-missing\">, never, EventLog.Registry>"
+    },
+    {
+      "name": "AuditInspectorCollector",
+      "kind": "value",
+      "signature": "const AuditInspectorCollector: (audit: AuditEventsApi) => Stream.Stream<AuditInspectorEvent | SecretAccessInspectorEvent, never, never>"
+    },
+    {
+      "name": "AuditInspectorEvent",
+      "kind": "class",
+      "signature": "export class AuditInspectorEvent extends Schema.Class<AuditInspectorEvent>(\"AuditInspectorEvent\")({ kind: Schema.Literal(\"audit\"), auditKind: Schema.String, source: PermissionMetadataText, traceId: PermissionMetadataText, outcome: PermissionMetadataText, timestamp: Schema.optionalKey(InspectorTimestamp), capability: Schema.optionalKey(Schema.Unknown), actor: Schema.optionalKey(Schema.Unknown), resource: Schema.optionalKey(Schema.String), details: Schema.optionalKey(Schema.Unknown) }) {}"
     },
     {
       "name": "AuditPolicy",
@@ -262,6 +272,21 @@
       "name": "CommandSnapshot",
       "kind": "class",
       "signature": "export class CommandSnapshot extends Schema.Class<CommandSnapshot>(\"CommandSnapshot\")({ id: NonEmptyString, capability: Schema.Unknown, ownerScope: NonEmptyString, invocationCount: NonNegativeInt, lastInvocation: Schema.optionalKey(CommandInvocationRecord), lastError: Schema.optionalKey(CommandInvocationRecord) }) {}"
+    },
+    {
+      "name": "CspInspectorCollector",
+      "kind": "value",
+      "signature": "const CspInspectorCollector: (events: Stream.Stream<CspInspectorEvent, never, never>) => Stream.Stream<CspInspectorEvent, never, never>"
+    },
+    {
+      "name": "cspInspectorEvent",
+      "kind": "value",
+      "signature": "const cspInspectorEvent: (input: ConstructorParameters<typeof CspInspectorEvent>[0]) => CspInspectorEvent"
+    },
+    {
+      "name": "CspInspectorEvent",
+      "kind": "class",
+      "signature": "export class CspInspectorEvent extends Schema.Class<CspInspectorEvent>(\"CspInspectorEvent\")({ kind: Schema.Literal(\"csp\"), decision: Schema.Literals([\"nonce-issued\", \"policy-applied\", \"navigation-allowed\", \"blocked\"]), source: PermissionMetadataText, traceId: PermissionMetadataText, outcome: PermissionMetadataText, timestamp: Schema.optionalKey(InspectorTimestamp), resource: Schema.optionalKey(Schema.String), directives: Schema.optionalKey(Schema.Array(CspDirectiveSnapshot)), reason: Schema.optionalKey(Schema.String) }) {}"
     },
     {
       "name": "Desktop",
@@ -969,6 +994,16 @@
       "signature": "export class PermissionGrantSnapshot extends Schema.Class<PermissionGrantSnapshot>( \"PermissionGrantSnapshot\" )({ grant: GrantedCapability, status: GrantStatus, updatedAt: PermissionTimestamp }) {}"
     },
     {
+      "name": "PermissionInspectorCollector",
+      "kind": "value",
+      "signature": "const PermissionInspectorCollector: (registry: PermissionRegistryApi) => Stream.Stream<PermissionInspectorEvent, never, never>"
+    },
+    {
+      "name": "PermissionInspectorEvent",
+      "kind": "class",
+      "signature": "export class PermissionInspectorEvent extends Schema.Class<PermissionInspectorEvent>( \"PermissionInspectorEvent\" )({ kind: Schema.Literal(\"permission\"), outcome: Schema.Literals([\"granted\", \"denied\"]), reason: Schema.optionalKey( Schema.Literals([ \"explicit-deny\", \"approval-denied\", \"revoked\", \"expired\", \"consumed\", \"default-deny\" ]) ), source: PermissionMetadataText, traceId: PermissionMetadataText, capability: NormalizedCapability, actor: PermissionActor, resource: Schema.optionalKey(PermissionMetadataText) }) {}"
+    },
+    {
       "name": "PermissionInterceptor",
       "kind": "class",
       "signature": "export class PermissionInterceptor extends RpcMiddleware.Service<PermissionInterceptor>()< \"PermissionInterceptor\", typeof PermissionDeniedSchema >(\"PermissionInterceptor\", { error: PermissionDeniedSchema }) {}"
@@ -1319,6 +1354,16 @@
       "signature": "export type ScopeId = string"
     },
     {
+      "name": "SecretAccessInspectorEvent",
+      "kind": "class",
+      "signature": "export class SecretAccessInspectorEvent extends Schema.Class<SecretAccessInspectorEvent>( \"SecretAccessInspectorEvent\" )({ kind: Schema.Literal(\"secret-access\"), source: PermissionMetadataText, traceId: PermissionMetadataText, outcome: PermissionMetadataText, timestamp: Schema.optionalKey(InspectorTimestamp), details: SecretAccessPayload }) {}"
+    },
+    {
+      "name": "SecretAccessPayload",
+      "kind": "class",
+      "signature": "export class SecretAccessPayload extends Schema.Class<SecretAccessPayload>(\"SecretAccessPayload\")({ namespace: PermissionMetadataText, operation: PermissionMetadataText, key: Schema.optionalKey(PermissionMetadataText) }) {}"
+    },
+    {
       "name": "SecretBytes",
       "kind": "type",
       "signature": "export type SecretBytes = Redacted.Redacted<Uint8Array>"
@@ -1422,6 +1467,16 @@
       "name": "SecretsSetInput",
       "kind": "class",
       "signature": "export class SecretsSetInput extends Schema.Class<SecretsSetInput>(\"SecretsSetInput\")({ namespace: SecretName, key: SecretName }) {}"
+    },
+    {
+      "name": "SecurityInspectorCollector",
+      "kind": "value",
+      "signature": "const SecurityInspectorCollector: (input: { readonly permissions?: PermissionRegistryApi; readonly audit?: AuditEventsApi; readonly csp?: Stream.Stream<CspInspectorEvent, never, never>; }) => Stream.Stream<SecurityInspectorEvent, never, never>"
+    },
+    {
+      "name": "SecurityInspectorEvent",
+      "kind": "type",
+      "signature": "const SecurityInspectorEvent: Schema.Union<readonly [typeof PermissionInspectorEvent, typeof AuditInspectorEvent, typeof SecretAccessInspectorEvent, typeof CspInspectorEvent]>"
     },
     {
       "name": "SettingKey",

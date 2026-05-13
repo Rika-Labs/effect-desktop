@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Effect, Exit, Layer } from "effect"
+import { Effect, Exit, Fiber, Layer, Stream } from "effect"
 import { EventJournal, EventLog as EL, EventLogEncryption } from "effect/unstable/eventlog"
 
 import {
@@ -99,6 +99,38 @@ test("AuditEvents applies configured redaction policy before writing events", as
       expect(encodedPayload).toContain("safe-session")
       expect(encodedPayload).not.toContain("123-45-6789")
     }).pipe(Effect.provide(eventLogLayer))
+  )
+})
+
+test("AuditEvents streams sanitized typed audit events", async () => {
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const audit = yield* makeAuditFixture()
+      const fiber = yield* audit
+        .observe()
+        .pipe(
+          Stream.take(1),
+          (stream) => Stream.runCollect(stream),
+          Effect.forkChild({ startImmediately: true })
+        )
+
+      yield* audit.emit(
+        secretsAuditEvent({
+          source: "test",
+          traceId: "trace-secret",
+          outcome: "ok",
+          operation: "read",
+          namespace: "default",
+          key: "api-token"
+        })
+      )
+
+      const events = yield* Fiber.join(fiber)
+      const event = events[0]
+      expect(event?.kind).toBe("secrets-accessed")
+      expect(JSON.stringify(event)).toContain("api-token")
+      expect(JSON.stringify(event)).not.toContain("secret-value")
+    })
   )
 })
 

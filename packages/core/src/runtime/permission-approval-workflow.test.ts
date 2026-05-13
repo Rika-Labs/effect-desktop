@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Cause, Effect, Exit, Fiber, Option } from "effect"
+import { Cause, Effect, Exit, Fiber, Option, Stream } from "effect"
 import { WorkflowEngine } from "effect/unstable/workflow"
 
 import { type AuditEventsApi, type AuditEvent } from "./audit-events.js"
@@ -117,7 +117,8 @@ const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
   emit: (event: AuditEvent) =>
     Effect.sync(() => {
       rows.push(event)
-    })
+    }),
+  observe: () => Stream.empty
 })
 
 const waitForToken = (read: () => string | undefined): Effect.Effect<string, never, never> =>

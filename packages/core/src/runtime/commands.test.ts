@@ -673,7 +673,8 @@ const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
   emit: (event: AuditEvent) =>
     Effect.sync(() => {
       rows.push(event)
-    })
+    }),
+  observe: () => Stream.empty
 })
 
 const failingCommandInvokedAudit = (rows: AuditEvent[]): AuditEventsApi => ({
@@ -687,7 +688,8 @@ const failingCommandInvokedAudit = (rows: AuditEvent[]): AuditEventsApi => ({
         )
       : Effect.sync(() => {
           rows.push(event)
-        })
+        }),
+  observe: () => Stream.empty
 })
 
 const delayedCleanupResourceRegistry = (

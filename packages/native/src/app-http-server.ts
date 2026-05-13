@@ -5,7 +5,8 @@ import {
   type CspNonce,
   type CspPolicy
 } from "@effect-desktop/config"
-import { Context, Data, Effect, Layer, Scope } from "effect"
+import { cspInspectorEvent, type CspInspectorEvent } from "@effect-desktop/core"
+import { Context, Data, Effect, Layer, Option, PubSub, Scope, Stream } from "effect"
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 
 const MIME_MAP: ReadonlyMap<string, string> = new Map([
@@ -117,6 +118,26 @@ export class AppCspPolicy extends Context.Service<AppCspPolicy, AppCspPolicyApi>
   "@effect-desktop/native/AppCspPolicy"
 ) {}
 
+export interface AppCspInspectorApi {
+  readonly emit: (event: CspInspectorEvent) => Effect.Effect<void, never, never>
+  readonly observe: () => Stream.Stream<CspInspectorEvent, never, never>
+}
+
+export class AppCspInspector extends Context.Service<AppCspInspector, AppCspInspectorApi>()(
+  "@effect-desktop/native/AppCspInspector",
+  {
+    make: Effect.succeed({
+      emit: () => Effect.void,
+      observe: () => Stream.empty
+    } satisfies AppCspInspectorApi)
+  }
+) {}
+
+const noopCspInspector: AppCspInspectorApi = {
+  emit: () => Effect.void,
+  observe: () => Stream.empty
+}
+
 export interface AppHttpServerApi {
   readonly handle: (
     request: HttpServerRequest.HttpServerRequest
@@ -130,11 +151,24 @@ export class AppHttpServer extends Context.Service<AppHttpServer, AppHttpServerA
 const buildAssetResponse = (
   asset: ResolvedAsset,
   ifNoneMatch: string | undefined,
-  policy: CspPolicy
+  policy: CspPolicy,
+  inspector: AppCspInspectorApi
 ): Effect.Effect<HttpServerResponse.HttpServerResponse, never, never> =>
   Effect.gen(function* () {
     const nonce = yield* mintCspNonce
     const headers = cspHeaders(policy, nonce)
+    yield* inspector.emit(
+      cspInspectorEvent({
+        kind: "csp",
+        decision:
+          headers["content-security-policy"] === undefined ? "policy-applied" : "nonce-issued",
+        source: "AppHttpServer",
+        traceId: `csp:${nonce.value}`,
+        outcome: headers["content-security-policy"] === undefined ? "disabled" : "applied",
+        timestamp: Date.now(),
+        directives: policy.directives
+      })
+    )
 
     if (!asset.contentType.startsWith("text/html")) {
       const etag = computeEtag(asset.bytes)
@@ -186,6 +220,10 @@ export const AppHttpServerLive: Layer.Layer<AppHttpServer, never, AppAssetResolv
     Effect.gen(function* () {
       const resolver = yield* AppAssetResolver
       const cspPolicy = yield* AppCspPolicy
+      const cspInspector = Option.getOrElse(
+        yield* Effect.serviceOption(AppCspInspector),
+        () => noopCspInspector
+      )
 
       return Object.freeze({
         handle: (request) =>
@@ -203,11 +241,35 @@ export const AppHttpServerLive: Layer.Layer<AppHttpServer, never, AppAssetResolv
               })
 
             if (hasTraversal(request.url)) {
+              yield* cspInspector.emit(
+                cspInspectorEvent({
+                  kind: "csp",
+                  decision: "blocked",
+                  source: "AppHttpServer",
+                  traceId: `csp:${Date.now()}`,
+                  outcome: "blocked",
+                  timestamp: Date.now(),
+                  resource: request.url,
+                  reason: "path-traversal"
+                })
+              )
               return yield* reject(400)
             }
 
             const url = new URL(request.url, "app://localhost")
             if (!ALLOWED_SCHEMES.has(url.protocol) || !ALLOWED_HOSTS.has(url.hostname)) {
+              yield* cspInspector.emit(
+                cspInspectorEvent({
+                  kind: "csp",
+                  decision: "blocked",
+                  source: "AppHttpServer",
+                  traceId: `csp:${Date.now()}`,
+                  outcome: "blocked",
+                  timestamp: Date.now(),
+                  resource: request.url,
+                  reason: "origin-not-allowed"
+                })
+              )
               return yield* reject(404)
             }
 
@@ -220,7 +282,7 @@ export const AppHttpServerLive: Layer.Layer<AppHttpServer, never, AppAssetResolv
 
             const ifNoneMatch = request.headers["if-none-match"]
 
-            return yield* buildAssetResponse(asset, ifNoneMatch, cspPolicy.policy)
+            return yield* buildAssetResponse(asset, ifNoneMatch, cspPolicy.policy, cspInspector)
           })
       } satisfies AppHttpServerApi)
     })
@@ -237,6 +299,20 @@ export const makeAppHttpServerLayer = (
       Layer.succeed(AppCspPolicy)({ policy })
     )
   )
+
+export const makeAppCspInspector = (): Effect.Effect<AppCspInspectorApi, never, never> =>
+  Effect.gen(function* () {
+    const events = yield* PubSub.sliding<CspInspectorEvent>({ capacity: 1024, replay: 0 })
+    return {
+      emit: (event) => PubSub.publish(events, event).pipe(Effect.asVoid),
+      observe: () => Stream.fromPubSub(events)
+    }
+  })
+
+export const AppCspInspectorLive: Layer.Layer<AppCspInspector, never, never> = Layer.effect(
+  AppCspInspector,
+  makeAppCspInspector()
+)
 
 export const AppAssetRoutes: Layer.Layer<never, never, HttpRouter.HttpRouter | AppHttpServer> =
   HttpRouter.use((router) =>

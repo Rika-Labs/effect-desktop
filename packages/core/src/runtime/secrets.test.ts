@@ -3,7 +3,7 @@ import {
   hostProtocolErrorRecoverableDefault
 } from "@effect-desktop/bridge"
 import { expect, test } from "bun:test"
-import { Cause, Effect, Exit } from "effect"
+import { Cause, Effect, Exit, Stream } from "effect"
 import { EventJournal } from "effect/unstable/eventlog"
 
 import { AuditEvent, type AuditEventsApi } from "./audit-events.js"
@@ -298,7 +298,8 @@ const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
   emit: (event: AuditEvent) =>
     Effect.sync(() => {
       rows.push(event)
-    })
+    }),
+  observe: () => Stream.empty
 })
 
 const failingStorage = (
@@ -332,7 +333,8 @@ const failingAudit = (): AuditEventsApi => ({
         method: "EventJournal.write",
         cause: new Error("journal full")
       })
-    )
+    ),
+  observe: () => Stream.empty
 })
 
 const notFound = (key: string): HostProtocolNotFoundError =>

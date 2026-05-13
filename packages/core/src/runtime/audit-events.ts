@@ -1,5 +1,5 @@
 import type { RedactionFilterOptions } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Schema } from "effect"
+import { Context, Effect, Layer, Option, PubSub, Schema, Stream } from "effect"
 import { EventGroup, EventJournal, EventLog } from "effect/unstable/eventlog"
 
 import {
@@ -96,13 +96,6 @@ const TraceIdMissingAuditPayload = Schema.Struct({
   details: TraceIdMissingAuditDetails
 })
 type TraceIdMissingAuditPayload = typeof TraceIdMissingAuditPayload.Type
-type AuditPayload =
-  | PermissionAuditPayload
-  | ApprovalAuditPayload
-  | CommandAuditPayload
-  | JobRetryingAuditPayload
-  | SecretsAuditPayload
-  | TraceIdMissingAuditPayload
 
 export const AuditEventKind = Schema.Literals([
   "permission-granted",
@@ -176,6 +169,7 @@ export interface ApprovalAuditEventInput {
 
 export interface AuditEventsApi {
   readonly emit: (event: AuditEvent) => Effect.Effect<void, EventJournal.EventJournalError, never>
+  readonly observe: () => Stream.Stream<AuditEvent, never, never>
 }
 
 export interface AuditEventsOptions {
@@ -231,7 +225,8 @@ export const AuditReactivityLayer = EventLog.groupReactivity(AuditGroup, ["audit
 
 export class AuditEvents extends Context.Service<AuditEvents, AuditEventsApi>()("AuditEvents", {
   make: Effect.succeed({
-    emit: () => Effect.void as Effect.Effect<void, EventJournal.EventJournalError, never>
+    emit: () => Effect.void as Effect.Effect<void, EventJournal.EventJournalError, never>,
+    observe: () => Stream.empty
   } satisfies AuditEventsApi)
 }) {}
 
@@ -250,12 +245,20 @@ export const AuditEventsLayer: Layer.Layer<
 export const makeAuditEvents = (
   log: EventLog.EventLog["Service"],
   options: AuditEventsOptions = {}
-): AuditEventsApi => ({
-  emit: makeEmit(log, options)
-})
+): AuditEventsApi => {
+  const events = Effect.runSync(PubSub.sliding<AuditEvent>({ capacity: 1024, replay: 0 }))
+  return {
+    emit: makeEmit(log, events, options),
+    observe: () => Stream.fromPubSub(events)
+  }
+}
 
 const makeEmit =
-  (log: EventLog.EventLog["Service"], options: AuditEventsOptions) =>
+  (
+    log: EventLog.EventLog["Service"],
+    events: PubSub.PubSub<AuditEvent>,
+    options: AuditEventsOptions
+  ) =>
   (event: AuditEvent): Effect.Effect<void, EventJournal.EventJournalError, never> =>
     Effect.gen(function* () {
       const inspectorSafety =
@@ -282,7 +285,11 @@ const makeEmit =
       if (Option.isNone(decision.value)) {
         return
       }
-      yield* writeAuditPayload(log, event.kind, decision.value.value)
+      const sanitized = yield* Schema.decodeUnknownEffect(AuditEvent)(decision.value.value).pipe(
+        Effect.orDie
+      )
+      yield* writeAuditPayload(log, sanitized.kind, sanitized)
+      yield* PubSub.publish(events, sanitized).pipe(Effect.asVoid)
     })
 
 const writeAuditPayload = (
@@ -297,47 +304,80 @@ const writeAuditPayload = (
     case "permission-expired":
     case "permission-consumed":
     case "permission-used":
-      return writePayload(log, kind, PermissionAuditPayload, payload)
+      return Schema.decodeUnknownEffect(PermissionAuditPayload)(payload).pipe(
+        Effect.orDie,
+        Effect.flatMap((decoded) => writePermissionPayload(log, kind, decoded))
+      )
     case "approval-requested":
     case "approval-granted":
     case "approval-denied":
-      return writePayload(log, kind, ApprovalAuditPayload, payload)
+      return Schema.decodeUnknownEffect(ApprovalAuditPayload)(payload).pipe(
+        Effect.orDie,
+        Effect.flatMap((decoded) => writeApprovalPayload(log, kind, decoded))
+      )
     case "command-registered":
     case "command-unregistered":
     case "command-invoked":
-      return writePayload(log, kind, CommandAuditPayload, payload)
+      return Schema.decodeUnknownEffect(CommandAuditPayload)(payload).pipe(
+        Effect.orDie,
+        Effect.flatMap((decoded) => writeCommandPayload(log, kind, decoded))
+      )
     case "job-retrying":
-      return writePayload(log, kind, JobRetryingAuditPayload, payload)
+      return Schema.decodeUnknownEffect(JobRetryingAuditPayload)(payload).pipe(
+        Effect.orDie,
+        Effect.flatMap((decoded) => writeJobRetryingPayload(log, decoded))
+      )
     case "secrets-accessed":
-      return writePayload(log, kind, SecretsAuditPayload, payload)
+      return Schema.decodeUnknownEffect(SecretsAuditPayload)(payload).pipe(
+        Effect.orDie,
+        Effect.flatMap((decoded) => writeSecretsPayload(log, decoded))
+      )
     case "trace-id-missing":
-      return writePayload(log, kind, TraceIdMissingAuditPayload, payload)
+      return Schema.decodeUnknownEffect(TraceIdMissingAuditPayload)(payload).pipe(
+        Effect.orDie,
+        Effect.flatMap((decoded) => writeTraceIdMissingPayload(log, decoded))
+      )
   }
 }
 
-const writePayload = (
+const writePermissionPayload = (
   log: EventLog.EventLog["Service"],
-  kind: AuditEventKind,
-  schema:
-    | typeof PermissionAuditPayload
-    | typeof ApprovalAuditPayload
-    | typeof CommandAuditPayload
-    | typeof JobRetryingAuditPayload
-    | typeof SecretsAuditPayload
-    | typeof TraceIdMissingAuditPayload,
-  payload: unknown
+  event: PermissionAuditPayload["kind"],
+  payload: PermissionAuditPayload
 ): Effect.Effect<void, EventJournal.EventJournalError, never> =>
-  Schema.decodeUnknownEffect(schema)(payload).pipe(
-    Effect.orDie,
-    Effect.flatMap((decoded) =>
-      log.write({
-        schema: AuditSchema,
-        event: kind,
-        // Dynamic audit dispatch narrows the event and schema together above.
-        payload: decoded as AuditPayload
-      })
-    )
-  ) as Effect.Effect<void, EventJournal.EventJournalError, never>
+  log.write({ schema: AuditSchema, event, payload })
+
+const writeApprovalPayload = (
+  log: EventLog.EventLog["Service"],
+  event: ApprovalAuditPayload["kind"],
+  payload: ApprovalAuditPayload
+): Effect.Effect<void, EventJournal.EventJournalError, never> =>
+  log.write({ schema: AuditSchema, event, payload })
+
+const writeCommandPayload = (
+  log: EventLog.EventLog["Service"],
+  event: CommandAuditPayload["kind"],
+  payload: CommandAuditPayload
+): Effect.Effect<void, EventJournal.EventJournalError, never> =>
+  log.write({ schema: AuditSchema, event, payload })
+
+const writeJobRetryingPayload = (
+  log: EventLog.EventLog["Service"],
+  payload: JobRetryingAuditPayload
+): Effect.Effect<void, EventJournal.EventJournalError, never> =>
+  log.write({ schema: AuditSchema, event: "job-retrying", payload })
+
+const writeSecretsPayload = (
+  log: EventLog.EventLog["Service"],
+  payload: SecretsAuditPayload
+): Effect.Effect<void, EventJournal.EventJournalError, never> =>
+  log.write({ schema: AuditSchema, event: "secrets-accessed", payload })
+
+const writeTraceIdMissingPayload = (
+  log: EventLog.EventLog["Service"],
+  payload: TraceIdMissingAuditPayload
+): Effect.Effect<void, EventJournal.EventJournalError, never> =>
+  log.write({ schema: AuditSchema, event: "trace-id-missing", payload })
 
 export const emitAuditEvent = (
   audit: AuditEventsApi | undefined,

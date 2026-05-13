@@ -1,13 +1,15 @@
 import { expect, test } from "bun:test"
 import { CspPolicy } from "@effect-desktop/config"
-import { Effect, Layer } from "effect"
+import { Effect, Fiber, Layer, Stream } from "effect"
 import { HttpServerRequest } from "effect/unstable/http"
 
 import {
   AppAssetResolver,
+  AppCspInspector,
   AppCspPolicyDefault,
   AppHttpServer,
   AppHttpServerLive,
+  makeAppCspInspector,
   makeAppHttpServerLayer,
   mimeTypeForPath,
   type AppAssetResolverApi,
@@ -223,6 +225,43 @@ test("backslash traversal URLs are rejected before normalization", async () => {
   )
 
   expect(response.status).toBe(400)
+})
+
+test("streams CSP blocked decisions through AppCspInspector", async () => {
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const inspector = yield* makeAppCspInspector()
+      const server = yield* Effect.gen(function* () {
+        return yield* AppHttpServer
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            AppHttpServerLive,
+            Layer.mergeAll(
+              Layer.succeed(AppAssetResolver)(staticResolver),
+              AppCspPolicyDefault,
+              Layer.succeed(AppCspInspector)(inspector)
+            )
+          )
+        )
+      )
+      const fiber = yield* inspector
+        .observe()
+        .pipe(
+          Stream.take(1),
+          (stream) => Stream.runCollect(stream),
+          Effect.forkChild({ startImmediately: true })
+        )
+
+      const response = yield* Effect.scoped(server.handle(makeRequest("/assets\\..\\secret")))
+      const events = yield* Fiber.join(fiber)
+
+      expect(response.status).toBe(400)
+      expect(events[0]?.kind).toBe("csp")
+      expect(events[0]?.decision).toBe("blocked")
+      expect(events[0]?.reason).toBe("path-traversal")
+    })
+  )
 })
 
 test("AppHttpServerLive requires AppAssetResolver", async () => {
