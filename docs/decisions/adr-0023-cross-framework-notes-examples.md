@@ -19,7 +19,7 @@ Add a first-party Notes example suite under `apps/examples`:
 - `notes-vue` uses Vue composables and refs from `VueDesktop.from(NotesManifest)`.
 - `notes-solid` uses Solid signals and primitives from `SolidDesktop.from(NotesManifest)`.
 - `notes-next` keeps RPC hooks inside a client component using `NextDesktop.from(NotesManifest)`.
-- `notes-astro` keeps `.astro` files as page shells and hydrates a React island declared through `AstroDesktop.from(NotesManifest).island(...)`.
+- `notes-astro` keeps `.astro` files as page shells and hydrates a React island that imports `ReactDesktop.from(NotesManifest)` directly.
 
 Expose a renderer-safe `@effect-desktop/core/renderer` subpath so frontend adapters and browser examples do not pull host-only Bun modules through the core package barrel. RPC group metadata lives in a small shared runtime module so both the host manifest and renderer descriptors can read the same `RpcGroup` without coupling renderer code to desktop startup code.
 
@@ -32,6 +32,12 @@ Single React-only example: cheaper, but it would not validate that the adapter a
 Separate contracts per framework: easier to author locally, but it hides the central framework promise that one Effect `RpcGroup` drives every renderer.
 
 Astro hooks directly in `.astro`: rejected because Astro pages are not hook hosts. Hydrated islands are the correct framework boundary.
+
+Astro metadata helper: rejected because a helper that only records `client:*`
+metadata does not drive Astro's renderer directive, validate the build, or hide a
+desktop-specific protocol. The example uses Astro's native `client:only`
+directive and the hydrated framework adapter directly until there is real
+Astro-specific integration to own.
 
 ## Consequences
 

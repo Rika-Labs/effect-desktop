@@ -8,7 +8,7 @@ These examples use one shared Effect Desktop Notes application contract from `ap
 | Vue     | `bun --cwd apps/examples/notes-vue run dev`   | 5211 | `NotesVue.useDesktop(NotesRpcs)` composables and refs        |
 | Solid   | `bun --cwd apps/examples/notes-solid run dev` | 5212 | `NotesSolid.useDesktop(NotesRpcs)` signals and primitives    |
 | Next    | `bun --cwd apps/examples/notes-next run dev`  | 5213 | client component using `NextDesktop.from(...)`               |
-| Astro   | `bun --cwd apps/examples/notes-astro run dev` | 5214 | hydrated React island declared from `AstroDesktop.from(...)` |
+| Astro   | `bun --cwd apps/examples/notes-astro run dev` | 5214 | `.astro` page shell hydrating a React island directly        |
 
 The examples install `makeNotesDemoRpcLayers()` so they run in a browser during development without fake host transports. A packaged desktop host supplies the real renderer transport.
 

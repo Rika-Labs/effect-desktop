@@ -42,7 +42,6 @@
       "dependencies": {
         "@astrojs/check": "^0.9.4",
         "@astrojs/react": "^4.4.2",
-        "@effect-desktop/astro": "workspace:*",
         "@effect-desktop/example-notes-common": "workspace:*",
         "@effect-desktop/react": "workspace:*",
         "astro": "^5.16.5",
@@ -164,14 +163,6 @@
         "@types/react-dom": "^19.2.3",
         "tailwindcss": "^4.1.18",
         "typescript": "^5.9.3",
-      },
-    },
-    "packages/astro": {
-      "name": "@effect-desktop/astro",
-      "version": "2.0.0",
-      "dependencies": {
-        "@effect-desktop/core": "workspace:*",
-        "effect": "4.0.0-beta.60",
       },
     },
     "packages/bridge": {
@@ -602,8 +593,6 @@
     "@distilled.cloud/core": ["@distilled.cloud/core@0.19.1", "", { "peerDependencies": { "effect": ">=4.0.0-beta.60 || >=4.0.0" } }, "sha512-BQ1Vee46oU4LCZCx1KP3obYUbrMxFCEbDONq4I7/6GawenvPtbw60On9QYUwFnZe5pS6b/ZRwylOG26DuxySaQ=="],
 
     "@distilled.cloud/neon": ["@distilled.cloud/neon@0.19.1", "", { "dependencies": { "@distilled.cloud/core": "0.19.1" }, "peerDependencies": { "effect": ">=4.0.0-beta.60 || >=4.0.0" } }, "sha512-pvUOwK2oDZ5PG9SDOyIZW7+9MvzmqYKkBIlRp9evzym4uqSEZ9HOlsRebkPAdDNBWB1oCEiNCFRNQUQNsr6oZw=="],
-
-    "@effect-desktop/astro": ["@effect-desktop/astro@workspace:packages/astro"],
 
     "@effect-desktop/bridge": ["@effect-desktop/bridge@workspace:packages/bridge"],
 

@@ -24,7 +24,6 @@
   "dependencies": {
     "@astrojs/check": "^0.9.4",
     "@astrojs/react": "^4.4.2",
-    "@effect-desktop/astro": "workspace:*",
     "@effect-desktop/example-notes-common": "workspace:*",
     "@effect-desktop/react": "workspace:*",
     "astro": "^5.16.5",

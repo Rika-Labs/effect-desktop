@@ -14,7 +14,7 @@ Astro owns the page shell. The desktop RPC hooks live inside the hydrated React 
 
 ## Dependency Note
 
-This example adds Astro, `@astrojs/react`, and `@astrojs/check` only for the first-party example application. The framework package `@effect-desktop/astro` stays free of a runtime Astro dependency.
+This example adds Astro, `@astrojs/react`, and `@astrojs/check` only for the first-party example application. There is no `@effect-desktop/astro` helper; Astro islands import a hydrated framework adapter directly.
 
 ```bash
 bun --cwd apps/examples/notes-astro run dev

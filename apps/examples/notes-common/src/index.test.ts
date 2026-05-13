@@ -1,15 +1,14 @@
 import { expect, test } from "bun:test"
 import { Desktop } from "@effect-desktop/core"
 import { makeDesktopRendererRpcTestLayer, RendererRpcClients } from "@effect-desktop/core/renderer"
-import { Effect, Layer } from "effect"
+import { Effect } from "effect"
+import { RpcTest } from "effect/unstable/rpc"
 
 import {
-  NotesClient,
   NotesManifest,
   NotesRpcs,
-  NotesSurface,
   makeNotesDemoRpcLayers,
-  makeNotesStoreLayer
+  makeNotesRpcsLayer
 } from "./index.js"
 import { NotesApp } from "./host.js"
 
@@ -18,16 +17,17 @@ test("NotesApp exposes the canonical Notes RpcGroup through its manifest", () =>
   expect(NotesManifest.windows["main"]?.title).toBe("Notes")
   expect(NotesManifest.rpcGroups[0]?.group).toBe(NotesRpcs)
   expect(Desktop.manifest(NotesApp)).toEqual(NotesManifest)
-  expect(NotesSurface.group).toBe(NotesRpcs)
-  expect(NotesSurface.serverLayer.group).toBe(NotesRpcs)
 })
 
 test("Notes surface test client executes the Notes RpcGroup through RpcTest", async () => {
+  const client = RpcTest.makeClient(NotesRpcs).pipe(Effect.provide(makeNotesRpcsLayer()))
   const workspace = await Effect.runPromise(
-    Effect.gen(function* () {
-      const notes = yield* NotesClient
-      return yield* notes["Notes.Load"](undefined)
-    }).pipe(Effect.provide(NotesSurface.testClientLayer.pipe(Layer.provide(makeNotesStoreLayer()))))
+    Effect.scoped(
+      Effect.gen(function* () {
+        const notes = yield* client
+        return yield* notes["Notes.Load"](undefined)
+      })
+    )
   )
 
   expect(workspace).toMatchObject({
