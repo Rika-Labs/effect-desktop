@@ -72,11 +72,74 @@ export class NativeHostEvent extends Schema.Class<NativeHostEvent>("NativeHostEv
   timestamp: NonNegativeNumber
 }) {}
 
+export class PersistenceInspectorEvent extends Schema.Class<PersistenceInspectorEvent>(
+  "PersistenceInspectorEvent"
+)({
+  kind: Schema.Literals(["settings", "sqlite", "queue", "cache", "backup", "restore"]),
+  status: InspectorEventStatus,
+  operation: Schema.String,
+  store: Schema.String,
+  traceId: OptionalString,
+  ownerScope: OptionalString,
+  namespace: OptionalString,
+  key: OptionalString,
+  fromVersion: Schema.optionalKey(NonNegativeNumber),
+  toVersion: Schema.optionalKey(NonNegativeNumber),
+  durationMs: Schema.optionalKey(NonNegativeNumber),
+  errorTag: OptionalString,
+  message: OptionalString,
+  timestamp: NonNegativeNumber
+}) {}
+
+export class WorkflowInspectorEvent extends Schema.Class<WorkflowInspectorEvent>(
+  "WorkflowInspectorEvent"
+)({
+  kind: Schema.Literals(["workflow", "activity", "timer", "deferred", "updater", "crash-reporter"]),
+  status: InspectorEventStatus,
+  workflowName: Schema.String,
+  executionId: Schema.String,
+  operation: Schema.String,
+  activityName: OptionalString,
+  timerId: OptionalString,
+  deferredId: OptionalString,
+  traceId: OptionalString,
+  errorTag: OptionalString,
+  message: OptionalString,
+  timestamp: NonNegativeNumber
+}) {}
+
+export class EventLogInspectorEvent extends Schema.Class<EventLogInspectorEvent>(
+  "EventLogInspectorEvent"
+)({
+  kind: Schema.Literals(["append", "query", "recovery"]),
+  status: InspectorEventStatus,
+  operation: Schema.String,
+  event: OptionalString,
+  primaryKey: OptionalString,
+  entryId: OptionalString,
+  payloadBytes: Schema.optionalKey(NonNegativeNumber),
+  traceId: OptionalString,
+  namespace: OptionalString,
+  errorTag: OptionalString,
+  message: OptionalString,
+  timestamp: NonNegativeNumber
+}) {}
+
 export class InspectorEvent extends Schema.Class<InspectorEvent>("InspectorEvent")({
-  channel: Schema.Literals(["execution", "filesystem", "native-host"]),
+  channel: Schema.Literals([
+    "execution",
+    "filesystem",
+    "native-host",
+    "persistence",
+    "workflow",
+    "event-log"
+  ]),
   execution: Schema.optionalKey(ExecutionEvent),
   filesystem: Schema.optionalKey(FilesystemInspectorEvent),
-  nativeHost: Schema.optionalKey(NativeHostEvent)
+  nativeHost: Schema.optionalKey(NativeHostEvent),
+  persistence: Schema.optionalKey(PersistenceInspectorEvent),
+  workflow: Schema.optionalKey(WorkflowInspectorEvent),
+  eventLog: Schema.optionalKey(EventLogInspectorEvent)
 }) {}
 
 export interface ExecutionInspectorCollectorApi {
@@ -94,6 +157,21 @@ export interface NativeHostInspectorCollectorApi {
   readonly events: Stream.Stream<NativeHostEvent, never, never>
 }
 
+export interface PersistenceInspectorCollectorApi {
+  readonly publish: (event: PersistenceInspectorEvent) => Effect.Effect<void, never, never>
+  readonly events: Stream.Stream<PersistenceInspectorEvent, never, never>
+}
+
+export interface WorkflowInspectorCollectorApi {
+  readonly publish: (event: WorkflowInspectorEvent) => Effect.Effect<void, never, never>
+  readonly events: Stream.Stream<WorkflowInspectorEvent, never, never>
+}
+
+export interface EventLogInspectorCollectorApi {
+  readonly publish: (event: EventLogInspectorEvent) => Effect.Effect<void, never, never>
+  readonly events: Stream.Stream<EventLogInspectorEvent, never, never>
+}
+
 export class ExecutionInspectorCollector extends Context.Service<
   ExecutionInspectorCollector,
   ExecutionInspectorCollectorApi
@@ -109,10 +187,28 @@ export class NativeHostInspectorCollector extends Context.Service<
   NativeHostInspectorCollectorApi
 >()("NativeHostInspectorCollector") {}
 
+export class PersistenceInspectorCollector extends Context.Service<
+  PersistenceInspectorCollector,
+  PersistenceInspectorCollectorApi
+>()("PersistenceInspectorCollector") {}
+
+export class WorkflowInspectorCollector extends Context.Service<
+  WorkflowInspectorCollector,
+  WorkflowInspectorCollectorApi
+>()("WorkflowInspectorCollector") {}
+
+export class EventLogInspectorCollector extends Context.Service<
+  EventLogInspectorCollector,
+  EventLogInspectorCollectorApi
+>()("EventLogInspectorCollector") {}
+
 export interface InspectorCollectorsApi {
   readonly execution: ExecutionInspectorCollectorApi
   readonly filesystem: FilesystemInspectorCollectorApi
   readonly nativeHost: NativeHostInspectorCollectorApi
+  readonly persistence: PersistenceInspectorCollectorApi
+  readonly workflow: WorkflowInspectorCollectorApi
+  readonly eventLog: EventLogInspectorCollectorApi
   readonly events: Stream.Stream<InspectorEvent, never, never>
 }
 
@@ -155,31 +251,64 @@ export const makeNativeHostInspectorCollector = (): Effect.Effect<
   never
 > => makeCollector<NativeHostEvent>()
 
+export const makePersistenceInspectorCollector = (): Effect.Effect<
+  PersistenceInspectorCollectorApi,
+  never,
+  never
+> => makeCollector<PersistenceInspectorEvent>()
+
+export const makeWorkflowInspectorCollector = (): Effect.Effect<
+  WorkflowInspectorCollectorApi,
+  never,
+  never
+> => makeCollector<WorkflowInspectorEvent>()
+
+export const makeEventLogInspectorCollector = (): Effect.Effect<
+  EventLogInspectorCollectorApi,
+  never,
+  never
+> => makeCollector<EventLogInspectorEvent>()
+
 export const makeInspectorCollectors = (): Effect.Effect<InspectorCollectorsApi, never, never> =>
   Effect.gen(function* () {
     const execution = yield* makeExecutionInspectorCollector()
     const filesystem = yield* makeFilesystemInspectorCollector()
     const nativeHost = yield* makeNativeHostInspectorCollector()
+    const persistence = yield* makePersistenceInspectorCollector()
+    const workflow = yield* makeWorkflowInspectorCollector()
+    const eventLog = yield* makeEventLogInspectorCollector()
 
     return Object.freeze({
       execution,
       filesystem,
       nativeHost,
+      persistence,
+      workflow,
+      eventLog,
       events: Stream.mergeAll(
         [
           execution.events.pipe(
             Stream.map((event) => new InspectorEvent({ channel: "execution", execution: event }))
           ),
           filesystem.events.pipe(
-            Stream.map(
-              (event) => new InspectorEvent({ channel: "filesystem", filesystem: event })
-            )
+            Stream.map((event) => new InspectorEvent({ channel: "filesystem", filesystem: event }))
           ),
           nativeHost.events.pipe(
             Stream.map((event) => new InspectorEvent({ channel: "native-host", nativeHost: event }))
+          ),
+          persistence.events.pipe(
+            Stream.map(
+              (event) => new InspectorEvent({ channel: "persistence", persistence: event })
+            )
+          ),
+          workflow.events.pipe(
+            Stream.map((event) => new InspectorEvent({ channel: "workflow", workflow: event }))
+          ),
+          eventLog.events.pipe(
+            Stream.map((event) => new InspectorEvent({ channel: "event-log", eventLog: event }))
           )
         ],
-        { concurrency: 3 }
+        { concurrency: 6 }
       )
     } satisfies InspectorCollectorsApi)
   })
@@ -201,6 +330,18 @@ export const NativeHostInspectorCollectorLive: Layer.Layer<
   never,
   never
 > = Layer.effect(NativeHostInspectorCollector, makeNativeHostInspectorCollector())
+
+export const PersistenceInspectorCollectorLive: Layer.Layer<
+  PersistenceInspectorCollector,
+  never,
+  never
+> = Layer.effect(PersistenceInspectorCollector, makePersistenceInspectorCollector())
+
+export const WorkflowInspectorCollectorLive: Layer.Layer<WorkflowInspectorCollector, never, never> =
+  Layer.effect(WorkflowInspectorCollector, makeWorkflowInspectorCollector())
+
+export const EventLogInspectorCollectorLive: Layer.Layer<EventLogInspectorCollector, never, never> =
+  Layer.effect(EventLogInspectorCollector, makeEventLogInspectorCollector())
 
 export const InspectorCollectorsLive: Layer.Layer<InspectorCollectors, never, never> = Layer.effect(
   InspectorCollectors,
@@ -225,10 +366,31 @@ export const InspectorNativeHostEvents = Rpc.make("Inspector.events.nativeHost",
   stream: true
 }).pipe(BridgeRuntime({ backpressure: { strategy: "drop", size: 1024 } }))
 
+export const InspectorPersistenceEvents = Rpc.make("Inspector.events.persistence", {
+  success: PersistenceInspectorEvent,
+  error: Schema.Never,
+  stream: true
+}).pipe(BridgeRuntime({ backpressure: { strategy: "drop", size: 1024 } }))
+
+export const InspectorWorkflowEvents = Rpc.make("Inspector.events.workflow", {
+  success: WorkflowInspectorEvent,
+  error: Schema.Never,
+  stream: true
+}).pipe(BridgeRuntime({ backpressure: { strategy: "drop", size: 1024 } }))
+
+export const InspectorEventLogEvents = Rpc.make("Inspector.events.eventLog", {
+  success: EventLogInspectorEvent,
+  error: Schema.Never,
+  stream: true
+}).pipe(BridgeRuntime({ backpressure: { strategy: "drop", size: 1024 } }))
+
 export const InspectorEventRpcs = RpcGroup.make(
   InspectorExecutionEvents,
   InspectorFilesystemEvents,
-  InspectorNativeHostEvents
+  InspectorNativeHostEvents,
+  InspectorPersistenceEvents,
+  InspectorWorkflowEvents,
+  InspectorEventLogEvents
 )
 
 export type InspectorEventRpc = RpcGroup.Rpcs<typeof InspectorEventRpcs>
@@ -244,6 +406,22 @@ export const disabledFilesystemInspectorCollector: FilesystemInspectorCollectorA
 })
 
 export const disabledNativeHostInspectorCollector: NativeHostInspectorCollectorApi = Object.freeze({
+  publish: () => Effect.void,
+  events: Stream.empty
+})
+
+export const disabledPersistenceInspectorCollector: PersistenceInspectorCollectorApi =
+  Object.freeze({
+    publish: () => Effect.void,
+    events: Stream.empty
+  })
+
+export const disabledWorkflowInspectorCollector: WorkflowInspectorCollectorApi = Object.freeze({
+  publish: () => Effect.void,
+  events: Stream.empty
+})
+
+export const disabledEventLogInspectorCollector: EventLogInspectorCollectorApi = Object.freeze({
   publish: () => Effect.void,
   events: Stream.empty
 })
