@@ -11,7 +11,6 @@ import {
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import {
-  Cause,
   Context,
   Effect,
   Exit,
@@ -281,61 +280,59 @@ export const makeFilesystem = (
         options?: { readonly ownerScope: string; readonly bufferSize?: number }
       ) =>
         Stream.unwrap(
-          Effect.acquireRelease(
-            Effect.gen(function* () {
-              const input = yield* decodeWatchInput(
-                {
-                  path,
-                  ...(options === undefined ? {} : options)
-                },
-                "Filesystem.watch"
-              )
-              const authorizedPath = yield* authorizeFilesystemPath(
-                fileSystem,
-                permissions,
-                input.path,
-                "filesystem.read",
-                "Filesystem.watch",
-                "existing"
-              )
-              const queue = yield* Queue.sliding<FilesystemEvent, FilesystemError | Cause.Done>(
-                input.bufferSize ?? DEFAULT_WATCH_BUFFER_SIZE
-              )
-              const watchFiber = yield* Effect.sync(() =>
-                Effect.runFork(
-                  fileSystem.watch(authorizedPath).pipe(
-                    Stream.runForEach((event) =>
-                      publishWatchEvent(queue, fileSystem, authorizedPath, event)
-                    ),
-                    Effect.catch((error) =>
-                      Queue.fail(
-                        queue,
-                        mapFilesystemError(error, authorizedPath, "Filesystem.watch")
-                      )
-                    ),
-                    Effect.andThen(Queue.end(queue))
-                  )
-                )
-              )
-              const handle = yield* registry
-                .register({
-                  kind: "filesystem-watch",
-                  ownerScope: input.ownerScope,
-                  state: "open",
-                  dispose: Effect.gen(function* () {
-                    yield* Fiber.interrupt(watchFiber)
-                    yield* Queue.end(queue)
-                  })
-                })
-                .pipe(Effect.orDie)
+          Effect.gen(function* () {
+            const input = yield* decodeWatchInput(
+              {
+                path,
+                ...(options === undefined ? {} : options)
+              },
+              "Filesystem.watch"
+            )
+            const authorizedPath = yield* authorizeFilesystemPath(
+              fileSystem,
+              permissions,
+              input.path,
+              "filesystem.read",
+              "Filesystem.watch",
+              "existing"
+            )
+            const bufferSize = input.bufferSize ?? DEFAULT_WATCH_BUFFER_SIZE
 
-              return { queue, handle }
-            }),
-            ({ handle }) => registry.dispose(handle.id)
-          ).pipe(
-            Effect.map(({ queue }) => Stream.fromQueue(queue)),
-            Effect.withSpan("Filesystem.watch", { attributes: { path } })
-          )
+            return Stream.callback<FilesystemEvent, FilesystemError>(
+              (queue) =>
+                Effect.acquireRelease(
+                  Effect.gen(function* () {
+                    const watchFiber = yield* fileSystem.watch(authorizedPath).pipe(
+                      Stream.runForEach((event) =>
+                        makeWatchEvent(fileSystem, authorizedPath, event).pipe(
+                          Effect.flatMap((filesystemEvent) => Queue.offer(queue, filesystemEvent))
+                        )
+                      ),
+                      Effect.catch((error) =>
+                        Queue.fail(
+                          queue,
+                          isPlatformError(error)
+                            ? mapFilesystemError(error, authorizedPath, "Filesystem.watch")
+                            : error
+                        )
+                      ),
+                      Effect.andThen(Queue.end(queue)),
+                      Effect.forkScoped
+                    )
+                    return yield* registry
+                      .register({
+                        kind: "filesystem-watch",
+                        ownerScope: input.ownerScope,
+                        state: "open",
+                        dispose: Fiber.interrupt(watchFiber).pipe(Effect.andThen(Queue.end(queue)))
+                      })
+                      .pipe(Effect.orDie)
+                  }),
+                  (handle) => registry.dispose(handle.id)
+                ),
+              { bufferSize, strategy: "sliding" }
+            )
+          }).pipe(Effect.withSpan("Filesystem.watch", { attributes: { path } }))
         )
     })
   })
@@ -781,29 +778,22 @@ const makeSymlinkEscapesRootError = (
     )
   })
 
-const publishWatchEvent = (
-  queue: Queue.Queue<FilesystemEvent, FilesystemError | Cause.Done>,
+const makeWatchEvent = (
   fileSystem: EffectFileSystem.FileSystem,
   directory: string,
   event: EffectFileSystem.WatchEvent
-): Effect.Effect<void, never, never> => {
+): Effect.Effect<FilesystemEvent, FilesystemError, never> => {
   return Effect.gen(function* () {
     const path = watchEventPath(directory, event.path)
     const filename =
       path === directory ? undefined : yield* decodeWatchEventFilename(pathSegment(path))
-    yield* Queue.offer(
-      queue,
-      new FilesystemEvent({
-        kind: yield* classifyWatchEvent(fileSystem, path, event),
-        path,
-        directory,
-        ...(filename === undefined ? {} : { filename })
-      })
-    )
-  }).pipe(
-    Effect.catch((error: FilesystemError) => Queue.fail(queue, error)),
-    Effect.asVoid
-  )
+    return new FilesystemEvent({
+      kind: yield* classifyWatchEvent(fileSystem, path, event),
+      path,
+      directory,
+      ...(filename === undefined ? {} : { filename })
+    })
+  })
 }
 
 const decodeWatchEventFilename = (

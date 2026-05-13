@@ -68,6 +68,23 @@ import {
 } from "./index.js"
 
 const id = (value: string): ResourceId => value as ResourceId
+const waitForRegistryEntries = (
+  registry: {
+    readonly list: () => Effect.Effect<{ readonly entries: readonly unknown[] }, never, never>
+  },
+  count: number
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const snapshot = yield* registry.list()
+      if (snapshot.entries.length >= count) {
+        return
+      }
+      yield* Effect.sleep("1 millis")
+    }
+
+    yield* Effect.die(new Error(`timed out waiting for ${count} registry entries`))
+  })
 
 registerLeakMatchers()
 
@@ -573,7 +590,8 @@ test("MemoryFilesystem watcher emits contract events and closes its registry res
         .watch("/workspace", { ownerScope: "test-watch", bufferSize: 8 })
         .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
 
-      yield* Effect.sleep(1)
+      yield* waitForRegistryEntries(registry, 1)
+      yield* Effect.sleep("1 millis")
       yield* filesystem.write("/workspace/file.txt", bytes("one"))
       yield* filesystem.write("/workspace/file.txt", bytes("two"))
       const events = yield* Fiber.join(fiber)

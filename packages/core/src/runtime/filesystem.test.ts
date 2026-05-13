@@ -17,7 +17,7 @@ import {
   type HostProtocolSymlinkEscapesRootError
 } from "@effect-desktop/bridge"
 import { expect, test } from "bun:test"
-import { Effect, Exit, Fiber, FileSystem, Layer, Option, Queue, Stream } from "effect"
+import { Deferred, Effect, Exit, Fiber, FileSystem, Layer, Option, Queue, Stream } from "effect"
 import * as PlatformError from "effect/PlatformError"
 
 import {
@@ -565,6 +565,50 @@ test("Filesystem watch maps FileSystem errors into the stream failure channel", 
   expectFailureTag(exit, "PermissionDenied")
 })
 
+test("Filesystem watch closes exactly once when the stream fiber is interrupted", async () => {
+  const fixture = await makeWatchFixture()
+  const fiber = Effect.runFork(
+    fixture.service.watch("/tmp/project", { ownerScope: "scope-main" }).pipe(Stream.runDrain)
+  )
+
+  await waitUntil(() => fixture.watchStarted)
+  await Effect.runPromise(Fiber.interrupt(fiber))
+  const afterInterrupt = await Effect.runPromise(fixture.registry.list())
+  await fixture.emit({ _tag: "Update", path: "/tmp/project/after-close.txt" })
+
+  expect(fixture.closeCount).toBe(1)
+  expect(afterInterrupt.entries).toEqual([])
+})
+
+test("Filesystem watch scope close does not wait for a busy downstream consumer", async () => {
+  const fixture = await makeWatchFixture()
+  const consumerStarted = Effect.runSync(Deferred.make<void>())
+  const releaseConsumer = Effect.runSync(Deferred.make<void>())
+  const fiber = Effect.runFork(
+    fixture.service.watch("/tmp/project", { ownerScope: "scope-main" }).pipe(
+      Stream.mapEffect((event) =>
+        Deferred.succeed(consumerStarted, undefined).pipe(
+          Effect.andThen(Deferred.await(releaseConsumer)),
+          Effect.as(event)
+        )
+      ),
+      Stream.runDrain
+    )
+  )
+
+  await waitUntil(() => fixture.watchStarted)
+  await fixture.emit({ _tag: "Update", path: "/tmp/project/busy.txt" })
+  await Effect.runPromise(Deferred.await(consumerStarted))
+  const closeResult = await Effect.runPromise(
+    fixture.registry.closeScope("scope-main").pipe(Effect.timeoutOption("100 millis"))
+  )
+  await Effect.runPromise(Deferred.succeed(releaseConsumer, undefined))
+  await Effect.runPromise(Fiber.join(fiber))
+
+  expect(Option.isSome(closeResult)).toBe(true)
+  expect(fixture.closeCount).toBe(1)
+})
+
 test("Filesystem watch registers a scope-bound resource and closes on scope close", async () => {
   const fixture = await makeWatchFixture()
   const fiber = Effect.runFork(
@@ -577,9 +621,9 @@ test("Filesystem watch registers a scope-bound resource and closes on scope clos
 
   await Effect.runPromise(fixture.registry.closeScope("scope-main"))
   const afterClose = await Effect.runPromise(fixture.registry.list())
+  expect(fixture.closeCount).toBe(1)
   await Effect.runPromise(Fiber.join(fiber))
 
-  expect(fixture.closeCount).toBe(1)
   expect(afterClose.entries).toEqual([])
 })
 
