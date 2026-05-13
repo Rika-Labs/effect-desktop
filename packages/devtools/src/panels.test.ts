@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import {
+  DesktopObservability as CoreDesktopObservability,
   emptyInspectorSafetySummary,
   InspectorSafetyPolicyLive,
   LayerGraphSnapshot
@@ -9,7 +10,7 @@ import { Cause, Effect, Exit, Layer, Option } from "effect"
 import {
   ClusterPanel,
   ClusterPanelLive,
-  DesktopObservability,
+  DesktopInspector,
   EmbeddedInspectorPanel,
   EmbeddedInspectorPanelLive,
   EventLogPanel,
@@ -353,14 +354,15 @@ test("EmbeddedInspectorPanel rejects embedded devtools in production", async () 
 test("EmbeddedInspectorPanel exposes shared Inspector views from the snapshot client", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
+      const observability = yield* CoreDesktopObservability
       const panel = yield* EmbeddedInspectorPanel
-      return yield* panel.list()
+      const snapshot = yield* panel.list()
+      return { observability, snapshot }
     }).pipe(
       Effect.provide(
         Layer.provide(
-          DesktopObservability.layer({
+          DesktopInspector.layer({
             mode: "embedded-devtools",
-            profile: "development",
             snapshotClient: snapshotClient((count) => count)
           }),
           Layer.mergeAll(
@@ -372,11 +374,13 @@ test("EmbeddedInspectorPanel exposes shared Inspector views from the snapshot cl
     )
   )
 
-  expect(result.enabled).toBe(true)
-  expect(result.reason).toBe("enabled")
-  expect(Option.isSome(result.views)).toBe(true)
-  if (Option.isSome(result.views)) {
-    expect(result.views.value.panels.map((panel) => panel.id)).toEqual([
+  expect(result.observability.mode).toBe("embedded-devtools")
+  expect(Option.isSome(result.observability.transport)).toBe(true)
+  expect(result.snapshot.enabled).toBe(true)
+  expect(result.snapshot.reason).toBe("enabled")
+  expect(Option.isSome(result.snapshot.views)).toBe(true)
+  if (Option.isSome(result.snapshot.views)) {
+    expect(result.snapshot.views.value.panels.map((panel) => panel.id)).toEqual([
       "live-runtime",
       "diagnostics",
       "performance",
@@ -386,7 +390,9 @@ test("EmbeddedInspectorPanel exposes shared Inspector views from the snapshot cl
       "persistence",
       "logs"
     ])
-    expect(result.views.value.panels.find((panel) => panel.id === "event-log")?.snapshot).toEqual({
+    expect(
+      result.snapshot.views.value.panels.find((panel) => panel.id === "event-log")?.snapshot
+    ).toEqual({
       entries: [
         {
           event: "test.event",

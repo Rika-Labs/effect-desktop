@@ -38,7 +38,7 @@ Runtime inspector projections for framework primitives: windows, bridge calls, s
 
 `EmbeddedInspectorPanel` mounts the shared Inspector projections inside a development app:
 
-- `DesktopObservability.layer({ mode: "embedded-devtools", profile: "development" })` exposes the panel service for framework adapters.
+- `DesktopInspector.layer({ mode: "embedded-devtools" })` exposes core observability and the panel service for framework adapters.
 - Production profile returns a disabled panel even when embedded mode is requested.
 - The enabled panel reads through `DevtoolsSnapshotClient`, so embedded and standalone Inspector surfaces consume the same snapshot contract.
 

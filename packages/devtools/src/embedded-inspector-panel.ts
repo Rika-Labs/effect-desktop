@@ -138,12 +138,3 @@ const disabledEmbeddedInspectorPanelSnapshot = (
   views: Option.none(),
   safety
 })
-
-export namespace DesktopObservability {
-  export interface LayerOptions extends EmbeddedInspectorPanelOptions {}
-
-  export const layer = (
-    options: LayerOptions = {}
-  ): Layer.Layer<EmbeddedInspectorPanel, never, DevtoolsSnapshotClient | InspectorSafetyPolicy> =>
-    EmbeddedInspectorPanelLive(options)
-}

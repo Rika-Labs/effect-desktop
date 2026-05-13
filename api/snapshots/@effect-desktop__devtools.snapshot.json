@@ -84,9 +84,19 @@
       "signature": "const decodeUnknownInspectorEvent: (input: unknown, options?: import(\"effect/SchemaAST\").ParseOptions) => Effect.Effect<InspectorEvent, Schema.SchemaError, never>"
     },
     {
-      "name": "DesktopObservability",
+      "name": "DesktopInspector",
       "kind": "value",
-      "signature": "export namespace DesktopObservability { export interface LayerOptions extends EmbeddedInspectorPanelOptions {} export const layer = ( options: LayerOptions = {} ): Layer.Layer<EmbeddedInspectorPanel, never, DevtoolsSnapshotClient | InspectorSafetyPolicy> => EmbeddedInspectorPanelLive(options) }"
+      "signature": "export namespace DesktopInspector { export const layer = DesktopInspectorLive }"
+    },
+    {
+      "name": "DesktopInspectorLayerOptions",
+      "kind": "interface",
+      "signature": "export interface DesktopInspectorLayerOptions extends DesktopObservabilityLayerOptions { readonly profile?: EmbeddedInspectorPanelOptions[\"profile\"] readonly frameInterval?: EmbeddedInspectorPanelOptions[\"frameInterval\"] readonly snapshotClient?: EmbeddedInspectorPanelOptions[\"snapshotClient\"] }"
+    },
+    {
+      "name": "DesktopInspectorLive",
+      "kind": "value",
+      "signature": "const DesktopInspectorLive: (options: DesktopInspectorLayerOptions) => Layer.Layer<CoreDesktopObservability | CollectorRegistry | InspectorSafetyPolicy | Telemetry | EmbeddedInspectorPanel, DesktopObservabilityConfigError, DevtoolsSnapshotClient>"
     },
     {
       "name": "DevtoolsBindError",
