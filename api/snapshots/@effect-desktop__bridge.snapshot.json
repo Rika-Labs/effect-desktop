@@ -351,12 +351,12 @@
     {
       "name": "HostProtocolCancelByRequestEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolCancelByRequestEnvelope extends Schema.Class<HostProtocolCancelByRequestEnvelope>( \"HostProtocolCancelByRequestEnvelope\" )({ kind: Schema.Literal(\"cancel\"), id: Schema.String, resourceId: OptionalNonEmptyString, timestamp: UInt, traceId: HostProtocolNonEmptyString }) {}"
+      "signature": "export class HostProtocolCancelByRequestEnvelope extends Schema.Class<HostProtocolCancelByRequestEnvelope>( \"HostProtocolCancelByRequestEnvelope\" )({ kind: Schema.Literal(\"cancel\"), id: Schema.String, resourceId: OptionalNonEmptyString, timestamp: UInt, traceId: HostIdentityString }) {}"
     },
     {
       "name": "HostProtocolCancelByResourceEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolCancelByResourceEnvelope extends Schema.Class<HostProtocolCancelByResourceEnvelope>( \"HostProtocolCancelByResourceEnvelope\" )({ kind: Schema.Literal(\"cancel\"), id: OptionalString, resourceId: HostProtocolNonEmptyString, timestamp: UInt, traceId: HostProtocolNonEmptyString }) {}"
+      "signature": "export class HostProtocolCancelByResourceEnvelope extends Schema.Class<HostProtocolCancelByResourceEnvelope>( \"HostProtocolCancelByResourceEnvelope\" )({ kind: Schema.Literal(\"cancel\"), id: OptionalString, resourceId: HostProtocolNonEmptyString, timestamp: UInt, traceId: HostIdentityString }) {}"
     },
     {
       "name": "HostProtocolCancelledError",
@@ -401,7 +401,7 @@
     {
       "name": "HostProtocolEventEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolEventEnvelope extends Schema.Class<HostProtocolEventEnvelope>( \"HostProtocolEventEnvelope\" )({ kind: Schema.Literal(\"event\"), method: HostProtocolNonEmptyString, timestamp: UInt, traceId: HostProtocolNonEmptyString, windowId: OptionalNonEmptyString, payload: OptionalUnknown }) {}"
+      "signature": "export class HostProtocolEventEnvelope extends Schema.Class<HostProtocolEventEnvelope>( \"HostProtocolEventEnvelope\" )({ kind: Schema.Literal(\"event\"), method: HostProtocolNonEmptyString, timestamp: UInt, traceId: HostIdentityString, windowId: OptionalHostIdentityString, payload: OptionalUnknown }) {}"
     },
     {
       "name": "HostProtocolEventLogFullError",
@@ -506,7 +506,7 @@
     {
       "name": "HostProtocolRequestEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolRequestEnvelope extends Schema.Class<HostProtocolRequestEnvelope>( \"HostProtocolRequestEnvelope\" )({ kind: Schema.Literal(\"request\"), id: Schema.String, method: HostProtocolNonEmptyString, timestamp: UInt, traceId: HostProtocolNonEmptyString, windowId: OptionalNonEmptyString, originToken: OptionalNonEmptyString, payload: OptionalUnknown }) {}"
+      "signature": "export class HostProtocolRequestEnvelope extends Schema.Class<HostProtocolRequestEnvelope>( \"HostProtocolRequestEnvelope\" )({ kind: Schema.Literal(\"request\"), id: Schema.String, method: HostProtocolNonEmptyString, timestamp: UInt, traceId: HostIdentityString, windowId: OptionalHostIdentityString, originToken: OptionalHostIdentityString, payload: OptionalUnknown }) {}"
     },
     {
       "name": "HostProtocolResourceBusyError",
@@ -516,7 +516,7 @@
     {
       "name": "HostProtocolResponseEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolResponseEnvelope extends Schema.Class<HostProtocolResponseEnvelope>( \"HostProtocolResponseEnvelope\" )({ kind: Schema.Literal(\"response\"), id: Schema.String, timestamp: UInt, traceId: HostProtocolNonEmptyString, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
+      "signature": "export class HostProtocolResponseEnvelope extends Schema.Class<HostProtocolResponseEnvelope>( \"HostProtocolResponseEnvelope\" )({ kind: Schema.Literal(\"response\"), id: Schema.String, timestamp: UInt, traceId: HostIdentityString, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
     },
     {
       "name": "HostProtocolRuntimeRestartedError",
@@ -546,12 +546,12 @@
     {
       "name": "HostProtocolStreamByRequestEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolStreamByRequestEnvelope extends Schema.Class<HostProtocolStreamByRequestEnvelope>( \"HostProtocolStreamByRequestEnvelope\" )({ kind: Schema.Literal(\"stream\"), id: Schema.String, resourceId: OptionalNonEmptyString, timestamp: UInt, traceId: HostProtocolNonEmptyString, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
+      "signature": "export class HostProtocolStreamByRequestEnvelope extends Schema.Class<HostProtocolStreamByRequestEnvelope>( \"HostProtocolStreamByRequestEnvelope\" )({ kind: Schema.Literal(\"stream\"), id: Schema.String, resourceId: OptionalNonEmptyString, timestamp: UInt, traceId: HostIdentityString, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
     },
     {
       "name": "HostProtocolStreamByResourceEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolStreamByResourceEnvelope extends Schema.Class<HostProtocolStreamByResourceEnvelope>( \"HostProtocolStreamByResourceEnvelope\" )({ kind: Schema.Literal(\"stream\"), id: OptionalString, resourceId: HostProtocolNonEmptyString, timestamp: UInt, traceId: HostProtocolNonEmptyString, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
+      "signature": "export class HostProtocolStreamByResourceEnvelope extends Schema.Class<HostProtocolStreamByResourceEnvelope>( \"HostProtocolStreamByResourceEnvelope\" )({ kind: Schema.Literal(\"stream\"), id: OptionalString, resourceId: HostProtocolNonEmptyString, timestamp: UInt, traceId: HostIdentityString, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
     },
     {
       "name": "HostProtocolStreamClosedError",

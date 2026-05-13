@@ -657,6 +657,46 @@ test("host protocol envelopes reject empty trace IDs", () => {
   }
 })
 
+test("host protocol envelopes reject control characters in identity fields", () => {
+  const envelopes: ReadonlyArray<unknown> = [
+    {
+      kind: "request",
+      id: "request-1",
+      method: "host.ping",
+      timestamp: 1710000000000,
+      traceId: "trace\nforged"
+    },
+    {
+      kind: "response",
+      id: "request-1",
+      timestamp: 1710000000001,
+      traceId: "trace\u0000forged"
+    },
+    {
+      kind: "request",
+      id: "request-1",
+      method: "host.ping",
+      timestamp: 1710000000002,
+      traceId: "trace-1",
+      windowId: "main\nforged",
+      originToken: "origin-1"
+    },
+    {
+      kind: "request",
+      id: "request-2",
+      method: "host.ping",
+      timestamp: 1710000000003,
+      traceId: "trace-1",
+      windowId: "main",
+      originToken: "origin\nforged"
+    }
+  ]
+
+  for (const envelope of envelopes) {
+    expect(() => decodeHostProtocolEnvelope(envelope)).toThrow()
+  }
+})
+
 test("host protocol envelopes reject empty routing fields", () => {
   const envelopes: ReadonlyArray<unknown> = [
     {

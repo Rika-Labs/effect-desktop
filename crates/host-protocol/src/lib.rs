@@ -622,9 +622,9 @@ impl TryFrom<RawHostProtocolEnvelope> for HostProtocolEnvelope {
                 id,
                 method,
                 timestamp,
-                trace_id,
-                window_id,
-                origin_token,
+                trace_id: validate_host_identity(trace_id)?,
+                window_id: validate_optional_host_identity(window_id)?,
+                origin_token: validate_optional_host_identity(origin_token)?,
                 payload,
             }),
             RawHostProtocolEnvelope::Response {
@@ -636,7 +636,7 @@ impl TryFrom<RawHostProtocolEnvelope> for HostProtocolEnvelope {
             } => Ok(Self::Response {
                 id,
                 timestamp,
-                trace_id,
+                trace_id: validate_host_identity(trace_id)?,
                 payload,
                 error,
             }),
@@ -649,8 +649,8 @@ impl TryFrom<RawHostProtocolEnvelope> for HostProtocolEnvelope {
             } => Ok(Self::Event {
                 method,
                 timestamp,
-                trace_id,
-                window_id,
+                trace_id: validate_host_identity(trace_id)?,
+                window_id: validate_optional_host_identity(window_id)?,
                 payload,
             }),
             RawHostProtocolEnvelope::Stream {
@@ -669,7 +669,7 @@ impl TryFrom<RawHostProtocolEnvelope> for HostProtocolEnvelope {
                     id,
                     resource_id,
                     timestamp,
-                    trace_id,
+                    trace_id: validate_host_identity(trace_id)?,
                     payload,
                     error,
                 })
@@ -688,11 +688,28 @@ impl TryFrom<RawHostProtocolEnvelope> for HostProtocolEnvelope {
                     id,
                     resource_id,
                     timestamp,
-                    trace_id,
+                    trace_id: validate_host_identity(trace_id)?,
                 })
             }
         }
     }
+}
+
+fn validate_host_identity(value: String) -> Result<String, &'static str> {
+    if value.is_empty() {
+        return Err("host protocol identity must be non-empty");
+    }
+    if value
+        .chars()
+        .any(|ch| matches!(ch, '\u{0000}'..='\u{001f}' | '\u{007f}'))
+    {
+        return Err("host protocol identity must not contain ASCII control characters");
+    }
+    Ok(value)
+}
+
+fn validate_optional_host_identity(value: Option<String>) -> Result<Option<String>, &'static str> {
+    value.map(validate_host_identity).transpose()
 }
 
 #[cfg(test)]
@@ -900,6 +917,22 @@ mod tests {
             error.to_string(),
             "cancel envelope requires id or resourceId"
         );
+    }
+
+    #[test]
+    fn host_protocol_envelopes_reject_control_identity_fields() {
+        for source in [
+            r#"{"kind":"request","id":"request-1","method":"host.ping","timestamp":1710000000000,"traceId":"trace\nforged"}"#,
+            r#"{"kind":"request","id":"request-1","method":"host.ping","timestamp":1710000000000,"traceId":"trace-1","windowId":"main\nforged"}"#,
+            r#"{"kind":"request","id":"request-1","method":"host.ping","timestamp":1710000000000,"traceId":"trace-1","originToken":"origin\nforged"}"#,
+            r#"{"kind":"response","id":"request-1","timestamp":1710000000000,"traceId":"trace\u0000forged"}"#,
+        ] {
+            let error = serde_json::from_str::<HostProtocolEnvelope>(source)
+                .expect_err("identity controls should be rejected");
+            assert!(error
+                .to_string()
+                .contains("must not contain ASCII control characters"));
+        }
     }
 
     #[test]

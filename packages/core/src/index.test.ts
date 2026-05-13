@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import {
   HostProtocolResponseEnvelope,
+  HostProtocolRequestEnvelope,
   makeDesktopClientProtocol,
   makeDesktopServerProtocol,
   RpcCapability,
@@ -822,6 +823,122 @@ test("Desktop.toLayer validates RpcGroup capability scope coverage", async () =>
     })
   }
   expect(Exit.isSuccess(accepted)).toBe(true)
+})
+
+test("Desktop.toLayer treats explicit none capability as permission-free metadata", async () => {
+  const core = await import("./index.js")
+  const IsSupported = Rpc.make("Screen.isSupported", {
+    payload: Schema.Void,
+    success: Schema.Boolean
+  }).pipe(RpcCapability({ kind: "none" }))
+  const ScreenRpcs = RpcGroup.make(IsSupported)
+  const definition = core.Desktop.make({
+    id: "screen-app",
+    windows: {
+      main: {
+        title: "Screen"
+      }
+    }
+  }).pipe(
+    core.Desktop.provide(
+      core.Desktop.Rpcs.layer(
+        ScreenRpcs,
+        ScreenRpcs.toLayer({
+          "Screen.isSupported": () => Effect.succeed(true)
+        })
+      )
+    )
+  )
+  const transport = {
+    send: () => Effect.void,
+    run: () => Effect.never
+  }
+  const protocolLayer = Layer.effect(RpcServer.Protocol)(makeDesktopServerProtocol(transport))
+
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(Layer.build(core.Desktop.toLayer(definition).pipe(Layer.provide(protocolLayer))))
+  )
+
+  expect(Exit.isSuccess(exit)).toBe(true)
+})
+
+test("Desktop.toLayer permission middleware declares app permissions for protected RPCs", async () => {
+  const core = await import("./index.js")
+  const requiredCapability = {
+    kind: "network.connect",
+    hosts: ["api.example.com"],
+    askUnknownHosts: false,
+    audit: "on-deny"
+  } as const
+  let handlerCalls = 0
+  const Connect = Rpc.make("Network.Connect", {
+    payload: { host: Schema.String },
+    success: Schema.String
+  }).pipe(RpcCapability(requiredCapability))
+  const NetworkRpcs = RpcGroup.make(Connect)
+  const definition = core.Desktop.make({
+    id: "network-app",
+    windows: {
+      main: {
+        title: "Network"
+      }
+    },
+    permissions: [requiredCapability]
+  }).pipe(
+    core.Desktop.provide(
+      core.Desktop.Rpcs.layer(
+        NetworkRpcs,
+        NetworkRpcs.toLayer({
+          "Network.Connect": ({ host }) =>
+            Effect.sync(() => {
+              handlerCalls += 1
+              return `connected:${host}`
+            })
+        })
+      )
+    )
+  )
+  const inbound = Effect.runSync(Queue.unbounded<HostProtocolEnvelope>())
+  const response = Effect.runSync(Queue.unbounded<HostProtocolEnvelope>())
+  const transport = {
+    send: (envelope: HostProtocolEnvelope) => Queue.offer(response, envelope).pipe(Effect.asVoid),
+    run: (onEnvelope: (envelope: HostProtocolEnvelope) => Effect.Effect<void>) =>
+      Effect.forever(Queue.take(inbound).pipe(Effect.flatMap(onEnvelope)))
+  }
+  const protocolLayer = Layer.effect(RpcServer.Protocol)(
+    makeDesktopServerProtocol(transport, {
+      nextTraceId: () => "trace-permission-test",
+      now: () => 1710000000000
+    })
+  )
+
+  const envelope = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* Layer.build(core.Desktop.toLayer(definition).pipe(Layer.provide(protocolLayer)))
+        yield* Queue.offer(
+          inbound,
+          new HostProtocolRequestEnvelope({
+            kind: "request",
+            id: "req-permission",
+            method: "Network.Connect",
+            timestamp: 1710000000000,
+            traceId: "trace-renderer",
+            windowId: "main",
+            payload: { host: "api.example.com" }
+          })
+        )
+        return yield* Queue.take(response)
+      })
+    )
+  )
+
+  expect(handlerCalls).toBe(1)
+  expect(envelope.kind).toBe("response")
+  if (envelope.kind === "response") {
+    expect(envelope.payload).toBe("connected:api.example.com")
+    expect(envelope.error).toBeUndefined()
+  }
 })
 
 test("describeRpcs derives endpoint descriptors from provided RpcGroups", async () => {

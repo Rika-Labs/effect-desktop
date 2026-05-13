@@ -27,6 +27,7 @@ const OptionalNonEmptyString = Schema.optionalKey(HostProtocolNonEmptyString)
 const OptionalUnknown = Schema.optionalKey(Schema.Unknown)
 const StringRecord = Schema.Record(Schema.String, Schema.String)
 const HostIdentityString = Schema.NonEmptyString.check(Schema.isPattern(/^[^\x00-\x1f\x7f]+$/u))
+const OptionalHostIdentityString = Schema.optionalKey(HostIdentityString)
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export const HOST_PROTOCOL_ERROR_SPECS = [
@@ -687,9 +688,27 @@ export const validateHostProtocolNonEmptyString = (
   value: string,
   operation: string
 ): Effect.Effect<string, HostProtocolInvalidArgumentError, never> =>
-  value.length > 0
-    ? Effect.succeed(value)
-    : Effect.fail(makeHostProtocolInvalidArgumentError(field, "must be non-empty", operation))
+  value.length === 0
+    ? Effect.fail(makeHostProtocolInvalidArgumentError(field, "must be non-empty", operation))
+    : hasAsciiControl(value)
+      ? Effect.fail(
+          makeHostProtocolInvalidArgumentError(
+            field,
+            "must not contain ASCII control characters",
+            operation
+          )
+        )
+      : Effect.succeed(value)
+
+const hasAsciiControl = (value: string): boolean => {
+  for (const char of value) {
+    const code = char.charCodeAt(0)
+    if (code <= 0x1f || code === 0x7f) {
+      return true
+    }
+  }
+  return false
+}
 
 export const validateOptionalHostProtocolNonEmptyString = (
   field: string,
@@ -842,9 +861,9 @@ export class HostProtocolRequestEnvelope extends Schema.Class<HostProtocolReques
   id: Schema.String,
   method: HostProtocolNonEmptyString,
   timestamp: UInt,
-  traceId: HostProtocolNonEmptyString,
-  windowId: OptionalNonEmptyString,
-  originToken: OptionalNonEmptyString,
+  traceId: HostIdentityString,
+  windowId: OptionalHostIdentityString,
+  originToken: OptionalHostIdentityString,
   payload: OptionalUnknown
 }) {}
 
@@ -854,7 +873,7 @@ export class HostProtocolResponseEnvelope extends Schema.Class<HostProtocolRespo
   kind: Schema.Literal("response"),
   id: Schema.String,
   timestamp: UInt,
-  traceId: HostProtocolNonEmptyString,
+  traceId: HostIdentityString,
   payload: OptionalUnknown,
   error: Schema.optionalKey(HostProtocolError)
 }) {}
@@ -865,8 +884,8 @@ export class HostProtocolEventEnvelope extends Schema.Class<HostProtocolEventEnv
   kind: Schema.Literal("event"),
   method: HostProtocolNonEmptyString,
   timestamp: UInt,
-  traceId: HostProtocolNonEmptyString,
-  windowId: OptionalNonEmptyString,
+  traceId: HostIdentityString,
+  windowId: OptionalHostIdentityString,
   payload: OptionalUnknown
 }) {}
 
@@ -877,7 +896,7 @@ export class HostProtocolStreamByRequestEnvelope extends Schema.Class<HostProtoc
   id: Schema.String,
   resourceId: OptionalNonEmptyString,
   timestamp: UInt,
-  traceId: HostProtocolNonEmptyString,
+  traceId: HostIdentityString,
   payload: OptionalUnknown,
   error: Schema.optionalKey(HostProtocolError)
 }) {}
@@ -889,7 +908,7 @@ export class HostProtocolStreamByResourceEnvelope extends Schema.Class<HostProto
   id: OptionalString,
   resourceId: HostProtocolNonEmptyString,
   timestamp: UInt,
-  traceId: HostProtocolNonEmptyString,
+  traceId: HostIdentityString,
   payload: OptionalUnknown,
   error: Schema.optionalKey(HostProtocolError)
 }) {}
@@ -901,7 +920,7 @@ export class HostProtocolCancelByRequestEnvelope extends Schema.Class<HostProtoc
   id: Schema.String,
   resourceId: OptionalNonEmptyString,
   timestamp: UInt,
-  traceId: HostProtocolNonEmptyString
+  traceId: HostIdentityString
 }) {}
 
 export class HostProtocolCancelByResourceEnvelope extends Schema.Class<HostProtocolCancelByResourceEnvelope>(
@@ -911,7 +930,7 @@ export class HostProtocolCancelByResourceEnvelope extends Schema.Class<HostProto
   id: OptionalString,
   resourceId: HostProtocolNonEmptyString,
   timestamp: UInt,
-  traceId: HostProtocolNonEmptyString
+  traceId: HostIdentityString
 }) {}
 
 export const HostProtocolEnvelope = Schema.Union([
@@ -1067,6 +1086,10 @@ const encodeCauseAsHostProtocolError = (
     if (isHostProtocolError(failure.error)) {
       return decodeUnknownHostProtocolError(failure.error, StrictParseOptions)
     }
+    const permissionDenied = hostProtocolPermissionDeniedFromRpcError(failure.error, operation)
+    if (permissionDenied !== undefined) {
+      return permissionDenied
+    }
     return makeHostProtocolInternalError(formatDefect(failure.error), operation)
   }
   const die = cause.find((entry) => entry._tag === "Die")
@@ -1085,6 +1108,43 @@ const encodeCauseAsHostProtocolError = (
   }
   return makeHostProtocolInternalError("unknown failure", operation)
 }
+
+const hostProtocolPermissionDeniedFromRpcError = (
+  error: unknown,
+  operation: string
+): HostProtocolPermissionDeniedError | undefined => {
+  const decoded = Schema.decodeUnknownOption(RpcPermissionDeniedError)(error)
+  if (Option.isNone(decoded)) {
+    return undefined
+  }
+  const input = decoded.value
+  return new HostProtocolPermissionDeniedError({
+    tag: "PermissionDenied",
+    capability: input.capability.kind,
+    message: input.message,
+    operation,
+    recoverable: false,
+    cause: error
+  })
+}
+
+const RpcPermissionDeniedCapability = Schema.Struct({
+  kind: HostIdentityString
+})
+
+const RpcPermissionDeniedActor = Schema.Struct({
+  kind: HostIdentityString,
+  id: HostIdentityString
+})
+
+const RpcPermissionDeniedError = Schema.Struct({
+  _tag: Schema.Literal("PermissionDenied"),
+  reason: HostIdentityString,
+  capability: RpcPermissionDeniedCapability,
+  actor: RpcPermissionDeniedActor,
+  traceId: HostIdentityString,
+  message: Schema.String
+})
 
 export const makeDesktopClientProtocol = (
   transport: DesktopTransportSend & DesktopTransportRun,
@@ -1354,12 +1414,16 @@ export const makeDesktopServerProtocol = (
           const clientId = 0
           hostRequestIds.set(serverRequestKey(clientId, serverRequestId), envelope.id)
           serverRequestIds.set(envelope.id, { clientId, requestId: serverRequestId })
+          const headers: Array<[string, string]> = [["x-effect-desktop-trace-id", envelope.traceId]]
+          if (envelope.windowId !== undefined) {
+            headers.push(["x-effect-desktop-window-id", envelope.windowId])
+          }
           const request: RpcMessage.FromClientEncoded = {
             _tag: "Request",
             id: serverRequestId,
             tag: envelope.method,
             payload: envelope.payload === undefined ? null : envelope.payload,
-            headers: [],
+            headers,
             traceId: envelope.traceId
           }
           return writeToServer(clientId, request)

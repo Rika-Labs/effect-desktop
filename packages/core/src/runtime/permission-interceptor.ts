@@ -1,12 +1,15 @@
 import { randomUUID } from "node:crypto"
 
-import { Context, Data, Effect, Layer, Option, Schema } from "effect"
-import { RpcMiddleware } from "effect/unstable/rpc"
+import { Data, Effect, Layer, Option, Schema } from "effect"
+import { Rpc, RpcMiddleware } from "effect/unstable/rpc"
+
+import { rpcCapability, type RpcCapabilityMetadata } from "@effect-desktop/bridge"
 
 import {
   capabilityCovers,
   NormalizedCapability,
   type NormalizedCapability as NormalizedCapabilityType,
+  NormalizedCapability as NormalizedCapabilitySchema,
   PermissionActor,
   PermissionContext,
   type PermissionRegistryError,
@@ -20,21 +23,23 @@ export class DesktopConfigError extends Data.TaggedError("DesktopConfigError")<{
   readonly message: string
 }> {}
 
-export const CapabilityAnnotation = Context.Service<NormalizedCapabilityType>(
-  "@effect-desktop/core/CapabilityAnnotation"
-)
+const PermissionDeniedCapability = Schema.Union([
+  NormalizedCapability,
+  Schema.Struct({ kind: Schema.String })
+])
+type PermissionDeniedCapability = typeof PermissionDeniedCapability.Type
 
-const PermissionInterceptorErrorSchema = Schema.TaggedStruct("PermissionInterceptorError", {
+const PermissionDeniedSchema = Schema.TaggedStruct("PermissionDenied", {
   reason: Schema.String,
-  capability: NormalizedCapability,
+  capability: PermissionDeniedCapability,
   actor: PermissionActor,
   traceId: Schema.String,
   message: Schema.String
 })
 
-export class PermissionInterceptorError extends Data.TaggedError("PermissionInterceptorError")<{
+export class PermissionDenied extends Data.TaggedError("PermissionDenied")<{
   readonly reason: string
-  readonly capability: NormalizedCapabilityType
+  readonly capability: PermissionDeniedCapability
   readonly actor: PermissionActor
   readonly traceId: string
   readonly message: string
@@ -173,8 +178,8 @@ export interface PermissionInterceptorOptions {
 
 export class PermissionInterceptor extends RpcMiddleware.Service<PermissionInterceptor>()<
   "PermissionInterceptor",
-  typeof PermissionInterceptorErrorSchema
->("PermissionInterceptor", { error: PermissionInterceptorErrorSchema }) {}
+  typeof PermissionDeniedSchema
+>("PermissionInterceptor", { error: PermissionDeniedSchema }) {}
 
 export const makePermissionInterceptorLayer = (
   options: PermissionInterceptorOptions = {}
@@ -184,37 +189,102 @@ export const makePermissionInterceptorLayer = (
     Effect.gen(function* () {
       const registry = yield* PermissionRegistry
       const nextTraceId = options.nextTraceId ?? randomUUID
-      const actorId = options.actorId ?? "app"
-      const actorKind = options.actorKind ?? ("app" as const)
+      const fallbackActorId = options.actorId ?? "app"
+      const fallbackActorKind = options.actorKind ?? ("app" as const)
 
-      return (effect, { rpc }) => {
-        const capabilityOption = Context.getOption(rpc.annotations, CapabilityAnnotation)
+      return (effect, { rpc, headers }) => {
+        const capabilityDecision = decodeRpcCapabilityForMiddleware(rpc)
 
-        if (Option.isNone(capabilityOption)) {
+        if (capabilityDecision._tag === "none") {
           return effect
         }
 
-        const capability = capabilityOption.value
         return Effect.gen(function* () {
-          const context = new PermissionContext({
-            actor: new PermissionActor({ kind: actorKind, id: actorId }),
-            traceId: nextTraceId()
-          })
+          const windowId = rpcHeader(headers, "x-effect-desktop-window-id")
+          const actorId = windowId ?? fallbackActorId
+          const actorKind = windowId === undefined ? fallbackActorKind : ("window" as const)
+          const deniedCapability = permissionDeniedCapability(capabilityDecision)
+          const context = yield* decodePermissionContext(
+            {
+              actor: { kind: actorKind, id: actorId },
+              traceId: rpcHeader(headers, "x-effect-desktop-trace-id") ?? nextTraceId()
+            },
+            deniedCapability,
+            rpc._tag
+          )
+          if (capabilityDecision._tag === "invalid") {
+            return yield* Effect.fail(
+              new PermissionDenied({
+                reason: "invalid-capability",
+                capability: deniedCapability,
+                actor: context.actor,
+                traceId: context.traceId ?? nextTraceId(),
+                message: `invalid capability metadata for RPC ${rpc._tag}`
+              })
+            )
+          }
+          const capability = capabilityDecision.capability
           yield* registry
             .check(capability, context)
-            .pipe(Effect.mapError((error) => toPermissionInterceptorError(error, capability)))
+            .pipe(Effect.mapError((error) => toPermissionDenied(error, capability)))
           return yield* effect
         })
       }
     })
   )
 
-const toPermissionInterceptorError = (
+type RpcCapabilityDecision =
+  | { readonly _tag: "none" }
+  | { readonly _tag: "valid"; readonly capability: NormalizedCapabilityType }
+  | { readonly _tag: "invalid"; readonly capability: RpcCapabilityMetadata }
+
+const permissionDeniedCapability = (
+  decision: Exclude<RpcCapabilityDecision, { readonly _tag: "none" }>
+): PermissionDeniedCapability =>
+  decision._tag === "valid" ? decision.capability : { kind: decision.capability.kind }
+
+const decodeRpcCapabilityForMiddleware = (rpc: Rpc.AnyWithProps): RpcCapabilityDecision => {
+  const capability = rpcCapability(rpc)
+  if (Option.isNone(capability) || capability.value.kind === "none") {
+    return { _tag: "none" }
+  }
+  const decoded = Schema.decodeUnknownOption(NormalizedCapabilitySchema)(capability.value)
+  return Option.isSome(decoded)
+    ? { _tag: "valid", capability: decoded.value }
+    : { _tag: "invalid", capability: capability.value }
+}
+
+const rpcHeader = (headers: Readonly<Record<string, string>>, name: string): string | undefined => {
+  const value = headers[name]
+  return typeof value === "string" && value.length > 0 ? value : undefined
+}
+
+const decodePermissionContext = (
+  input: unknown,
+  capability: PermissionDeniedCapability,
+  rpcTag: string
+): Effect.Effect<PermissionContext, PermissionDenied, never> => {
+  const decoded = Schema.decodeUnknownOption(PermissionContext)(input)
+  if (Option.isSome(decoded)) {
+    return Effect.succeed(decoded.value)
+  }
+  return Effect.fail(
+    new PermissionDenied({
+      reason: "invalid-context",
+      capability,
+      actor: new PermissionActor({ kind: "app", id: "unknown" }),
+      traceId: "unknown",
+      message: `invalid permission context for RPC ${rpcTag}`
+    })
+  )
+}
+
+const toPermissionDenied = (
   error: PermissionRegistryError,
   capability: NormalizedCapabilityType
-): PermissionInterceptorError => {
+): PermissionDenied => {
   if (error._tag === "PermissionDenied") {
-    return new PermissionInterceptorError({
+    return new PermissionDenied({
       reason: error.reason,
       capability: error.capability,
       actor: error.actor,
@@ -223,7 +293,7 @@ const toPermissionInterceptorError = (
     })
   }
 
-  return new PermissionInterceptorError({
+  return new PermissionDenied({
     reason: error._tag,
     capability,
     actor: new PermissionActor({ kind: "app", id: "unknown" }),

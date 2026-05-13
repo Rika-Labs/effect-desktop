@@ -709,6 +709,69 @@ test("makeDesktopServerProtocol translates server defects to host protocol failu
   }
 })
 
+test("makeDesktopServerProtocol translates RPC permission denials to host permission errors", async () => {
+  const sent: HostProtocolEnvelope[] = []
+  const transport: DesktopTransportSend & DesktopTransportRun = {
+    send: (envelope) =>
+      Effect.sync(() => {
+        sent.push(envelope)
+      }),
+    run: (_onEnvelope) => Effect.never
+  }
+
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const protocol = yield* makeDesktopServerProtocol(transport, {
+          nextTraceId: () => "trace-permission-response",
+          now: () => 1710000000003
+        })
+        yield* protocol.send(0, {
+          _tag: "Exit",
+          requestId: "permission-request",
+          exit: {
+            _tag: "Failure",
+            cause: [
+              {
+                _tag: "Fail",
+                error: {
+                  _tag: "PermissionDenied",
+                  reason: "default-deny",
+                  capability: {
+                    kind: "network.connect",
+                    hosts: ["api.example.com"],
+                    askUnknownHosts: false,
+                    audit: "on-deny"
+                  },
+                  actor: { kind: "window", id: "main" },
+                  traceId: "trace-permission-request",
+                  message: "permission denied: default-deny"
+                }
+              }
+            ]
+          }
+        })
+      })
+    )
+  )
+
+  expect(sent).toHaveLength(1)
+  const envelope = sent[0]
+  expect(envelope?.kind).toBe("response")
+  if (envelope?.kind === "response") {
+    expect(envelope.error).toMatchObject({
+      tag: "PermissionDenied",
+      capability: "network.connect",
+      operation: "permission-request",
+      cause: {
+        _tag: "PermissionDenied",
+        actor: { kind: "window", id: "main" },
+        traceId: "trace-permission-request"
+      }
+    })
+  }
+})
+
 test("makeDesktopServerProtocol fails every pending host request for client defects", async () => {
   const queue = Effect.runSync(Queue.unbounded<HostProtocolEnvelope>())
   const observedBoth = Effect.runSync(Deferred.make<void>())

@@ -169,11 +169,6 @@
       "signature": "const BunWorkerAdapter: WorkerAdapter"
     },
     {
-      "name": "CapabilityAnnotation",
-      "kind": "value",
-      "signature": "const CapabilityAnnotation: Context.Service<{ readonly kind: \"filesystem.read\" | \"filesystem.write\" | \"filesystem.delete\"; readonly roots: readonly string[]; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly deny?: readonly string[]; readonly allowCreate?: boolean; readonly allowOverwrite?: boolean; } | { readonly kind: \"sqlite.open\"; readonly roots: readonly string[]; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly deny?: readonly string[]; } | { readonly kind: \"process.spawn\" | \"pty.spawn\"; readonly audit: \"always\" | \"on-deny\"; readonly commands: readonly string[]; readonly environment: \"allowlist\" | \"none\"; readonly shell: false | \"requires-explicit-approval\"; readonly cwd?: readonly string[]; } | { readonly kind: \"network.connect\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly hosts: readonly string[]; readonly askUnknownHosts: boolean; } | { readonly kind: \"secrets.read\" | \"secrets.write\" | \"safeStorage.read\" | \"safeStorage.write\"; readonly audit: \"always\" | \"on-deny\"; readonly namespaces: readonly string[]; } | { readonly kind: \"native.invoke\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly methods: readonly string[]; readonly primitive: string; }, { readonly kind: \"filesystem.read\" | \"filesystem.write\" | \"filesystem.delete\"; readonly roots: readonly string[]; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly deny?: readonly string[]; readonly allowCreate?: boolean; readonly allowOverwrite?: boolean; } | { readonly kind: \"sqlite.open\"; readonly roots: readonly string[]; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly deny?: readonly string[]; } | { readonly kind: \"process.spawn\" | \"pty.spawn\"; readonly audit: \"always\" | \"on-deny\"; readonly commands: readonly string[]; readonly environment: \"allowlist\" | \"none\"; readonly shell: false | \"requires-explicit-approval\"; readonly cwd?: readonly string[]; } | { readonly kind: \"network.connect\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly hosts: readonly string[]; readonly askUnknownHosts: boolean; } | { readonly kind: \"secrets.read\" | \"secrets.write\" | \"safeStorage.read\" | \"safeStorage.write\"; readonly audit: \"always\" | \"on-deny\"; readonly namespaces: readonly string[]; } | { readonly kind: \"native.invoke\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly methods: readonly string[]; readonly primitive: string; }>"
-    },
-    {
       "name": "capabilityCovers",
       "kind": "value",
       "signature": "const capabilityCovers: (declared: NormalizedCapability, requested: NormalizedCapability) => boolean"
@@ -849,6 +844,11 @@
       "signature": "export class PermissionDeclaration extends Schema.Class<PermissionDeclaration>( \"PermissionDeclaration\" )({ capability: NormalizedCapability, effect: PermissionEffect, actor: Schema.optionalKey(PermissionActor), source: Schema.optionalKey(PermissionMetadataText) }) {}"
     },
     {
+      "name": "PermissionDenied",
+      "kind": "class",
+      "signature": "export class PermissionDenied extends Data.TaggedError(\"PermissionDenied\")<{ readonly reason: string readonly capability: PermissionDeniedCapability readonly actor: PermissionActor readonly traceId: string readonly message: string }> {}"
+    },
+    {
       "name": "PermissionDeniedError",
       "kind": "class",
       "signature": "export class PermissionDeniedError extends Data.TaggedError(\"PermissionDenied\")<{ readonly operation: string readonly reason: | \"explicit-deny\" | \"approval-denied\" | \"revoked\" | \"expired\" | \"consumed\" | \"default-deny\" readonly capability: NormalizedCapability readonly actor: PermissionActor readonly resource: Option.Option<string> readonly traceId: string }> {}"
@@ -876,12 +876,7 @@
     {
       "name": "PermissionInterceptor",
       "kind": "class",
-      "signature": "export class PermissionInterceptor extends RpcMiddleware.Service<PermissionInterceptor>()< \"PermissionInterceptor\", typeof PermissionInterceptorErrorSchema >(\"PermissionInterceptor\", { error: PermissionInterceptorErrorSchema }) {}"
-    },
-    {
-      "name": "PermissionInterceptorError",
-      "kind": "class",
-      "signature": "export class PermissionInterceptorError extends Data.TaggedError(\"PermissionInterceptorError\")<{ readonly reason: string readonly capability: NormalizedCapabilityType readonly actor: PermissionActor readonly traceId: string readonly message: string }> {}"
+      "signature": "export class PermissionInterceptor extends RpcMiddleware.Service<PermissionInterceptor>()< \"PermissionInterceptor\", typeof PermissionDeniedSchema >(\"PermissionInterceptor\", { error: PermissionDeniedSchema }) {}"
     },
     {
       "name": "PermissionInterceptorOptions",

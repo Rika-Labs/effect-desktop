@@ -19,6 +19,7 @@ import {
   capabilityCovers,
   makePermissionRegistry
 } from "./permission-registry.js"
+import { PermissionInterceptor, makePermissionInterceptorLayer } from "./permission-interceptor.js"
 import type { NormalizedCapability } from "./permission-registry.js"
 import { ResourceRegistryLive } from "./resources.js"
 import { servedRpcGroup, servedRpcGroupProperties } from "./rpc-group-metadata.js"
@@ -183,13 +184,9 @@ const TelemetryLive: Layer.Layer<Telemetry, never, never> = Layer.effect(Telemet
   makeTelemetry().pipe(Effect.orDie)
 )
 
-const PermissionRegistryLive: Layer.Layer<PermissionRegistry, never, never> =
-  Layer.effect(PermissionRegistry)(makePermissionRegistry())
-
 const coreServicesLayer: Layer.Layer<never, Config.ConfigError, never> = Layer.mergeAll(
   ResourceRegistryLive,
   TelemetryLive,
-  PermissionRegistryLive,
   Reactivity.layer,
   DesktopLoggerLayer,
   WorkflowEngine.layerMemory
@@ -481,7 +478,7 @@ const checkPermissions = <RIn, E>(
       seenRpcTags.add(tag)
 
       const required = rpcCapability(rpc)
-      if (Option.isNone(required)) {
+      if (Option.isNone(required) || required.value.kind === "none") {
         continue
       }
 
@@ -556,11 +553,11 @@ const buildSpine = <RIn, E>(
 
         const workflowLayer = mergeLayerArray(workflowLayers)
         const userLayer = mergeLayerArray(userLayers)
-        const runtimeBase = Layer.merge(provider.layer, coreServicesLayer) as Layer.Layer<
-          DesktopRuntimeProviderServices,
-          Config.ConfigError,
-          never
-        >
+        const runtimeBase = Layer.mergeAll(
+          provider.layer,
+          coreServicesLayer,
+          makePermissionServicesLayer(config)
+        ) as Layer.Layer<DesktopRuntimeProviderServices, Config.ConfigError, never>
 
         const desktopAppLayer: Layer.Layer<DesktopApp, never, never> = Layer.effect(DesktopApp)(
           Effect.succeed({
@@ -623,6 +620,31 @@ const resolveRuntimeProvider = <RIn, E>(
   )
 }
 
+const makePermissionServicesLayer = <RIn, E>(
+  config: DesktopConfig<RIn, E>
+): Layer.Layer<PermissionRegistry | PermissionInterceptor, never, never> => {
+  const registryLayer = Layer.effect(
+    PermissionRegistry,
+    Effect.gen(function* () {
+      const registry = yield* makePermissionRegistry()
+      yield* Effect.forEach(
+        config.permissions ?? [],
+        (capability) =>
+          registry
+            .declare(capability, {
+              source: `Desktop.app:${config.id}`,
+              effect: "allow"
+            })
+            .pipe(Effect.orDie),
+        { discard: true }
+      )
+      return registry
+    })
+  )
+
+  return Layer.provideMerge(makePermissionInterceptorLayer(), registryLayer)
+}
+
 const selectedProviders = (
   selection: DesktopProviderSelection | undefined
 ): DesktopRuntimeSelectedProviders =>
@@ -640,7 +662,9 @@ const mergeLayerArray = <E, R>(
 
 const bindRpcLayer = <E, R>(rpcLayer: AnyDesktopRpcLayer): Layer.Layer<never, E, R> =>
   Layer.provide(
-    RpcServer.layer(servedRpcGroup(rpcLayer) as RpcGroup.RpcGroup<Rpc.Any>),
+    RpcServer.layer(
+      (servedRpcGroup(rpcLayer) as RpcGroup.RpcGroup<Rpc.Any>).middleware(PermissionInterceptor)
+    ),
     rpcLayer.layer as Layer.Layer<unknown, E, R>
   ) as unknown as Layer.Layer<never, E, R>
 
