@@ -765,6 +765,26 @@ processTest("Process kill rejects handles after scope close", async () => {
   expectFailure(exit, HostProtocolStaleHandleError)
 })
 
+processTest("Process scope close interrupts the scoped exit observer", async () => {
+  const child = makeFakeChild({
+    completeExitOnKill: false,
+    exit: { code: 0 },
+    naturalExitDelayMs: 60_000,
+    stdout: []
+  })
+  const fixture = await makeFixture(
+    makeFakeSpawner(() => child),
+    { gracefulShutdownMs: 50 }
+  )
+
+  await Effect.runPromise(fixture.service.spawn("sleep", ["30"], { ownerScope: "scope-main" }))
+  await Effect.runPromise(fixture.registry.closeScope("scope-main"))
+
+  expect(child.kills).toEqual(["SIGTERM"])
+  expect(child.exitCodeInterrupted).toBe(true)
+  expect((await Effect.runPromise(fixture.registry.list())).entries).toEqual([])
+})
+
 if (process.platform !== "win32") {
   processTest(
     "Process scope close asks the process tree to terminate and waits for exit",
@@ -939,6 +959,7 @@ interface FakeChild extends ChildProcessSpawner.ChildProcessHandle {
   readonly stdinCloseCount: number
   readonly killedWith: ProcessSignalInput | undefined
   readonly kills: ProcessSignalInput[]
+  readonly exitCodeInterrupted: boolean
   readonly treeTerminated: boolean
   readonly treeForceKilled: boolean
 }
@@ -950,6 +971,7 @@ const makeFakeChild = (options: {
   readonly killExit?: { readonly code: number; readonly signal?: string }
   readonly naturalExitDelayMs?: number
   readonly ignoreTerminate?: boolean
+  readonly completeExitOnKill?: boolean
   readonly stdoutChunkDelayMs?: number
   readonly stderrChunkDelayMs?: number
 }): FakeChild => {
@@ -960,6 +982,7 @@ const makeFakeChild = (options: {
   const kills: ProcessSignalInput[] = []
   let treeTerminated = false
   let treeForceKilled = false
+  let exitCodeInterrupted = false
   let running = true
   let settled = false
   const exitState = Effect.runSync(Deferred.make<ProcessExitStatus>())
@@ -986,6 +1009,11 @@ const makeFakeChild = (options: {
   const child = ChildProcessSpawner.makeHandle({
     all: streamBytes(options.stdout, options.stdoutChunkDelayMs),
     exitCode: Deferred.await(exitState).pipe(
+      Effect.onInterrupt(() =>
+        Effect.sync(() => {
+          exitCodeInterrupted = true
+        })
+      ),
       Effect.flatMap((status) =>
         status.signal === undefined
           ? Effect.succeed(ChildProcessSpawner.ExitCode(status.code))
@@ -1017,6 +1045,10 @@ const makeFakeChild = (options: {
         killedWith = "SIGKILL"
         kills.push("SIGKILL")
         return finish({ code: options.exit.code, signal: "SIGKILL" })
+      }
+      if (options.completeExitOnKill === false) {
+        running = false
+        return Effect.void
       }
       return finish(options.killExit ?? { code: options.exit.code, signal })
     },
@@ -1051,6 +1083,7 @@ const makeFakeChild = (options: {
   Object.defineProperties(child, {
     killedWith: { get: () => killedWith },
     kills: { value: kills },
+    exitCodeInterrupted: { get: () => exitCodeInterrupted },
     stdinCloseCount: { get: () => stdinCloseCount },
     stdinClosed: { get: () => stdinClosed },
     stdinWrites: { value: stdinWrites },

@@ -149,6 +149,8 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 | #1277 Decode startup environment with Effect Config and Schema | Implemented | Runtime startup reads env through Effect `Config`, decodes startup windows and app descriptors with `Schema`, and keeps only dynamic import/window-opening policy in the supervisor                  |
 | #1222 Rebase native app events on Effect PubSub                | Implemented | Native app event routing now stores windows/focus/pending replay in `SubscriptionRef`, delivers events through per-window/per-event `PubSub` channels, and exposes state/audit streams directly      |
 | #1209 Drive Vite dev runtime with Effect process and socket    | Implemented | Vite dev runtime now spawns through Effect `ChildProcessSpawner`, bridges stdio through `Socket` plus framed transport, serializes restarts with an Effect `Semaphore`, and uses bounded HMR streams |
+| #1158 Use Effect child process primitives                      | Implemented | `Process` now spawns through Effect `ChildProcessSpawner`, keeps desktop policy in `Process`, and removes the local process adapter/child-handle mirror layer                                        |
+| #1159 Own process exit fibers with scopes                      | Implemented | Process exit observers now run as `forkScoped` fibers in the process scope, and registry-driven disposal interrupts unfinished observers without detached `runFork` fibers                           |
 
 ## Design-Debt Follow-ups
 

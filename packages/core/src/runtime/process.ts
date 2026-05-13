@@ -223,69 +223,79 @@ export const makeProcess = (
           )
           yield* authorizeProcessSpawn(permissions, input)
           const startedAt = yield* decodeProcessTimestamp(now(), "Process.spawn")
-          const { child, exitState, resource } = yield* Effect.uninterruptible(
-            Effect.gen(function* () {
-              yield* reserveProcessBudget(processBudgets, input.ownerScope, budgets.maxConcurrent)
-              const processScope = yield* Scope.make()
-              const command = makeChildProcessCommand(input, gracefulShutdownMs)
-              const child = yield* spawner.spawn(command).pipe(
-                Scope.provide(processScope),
-                Effect.mapError((error) => mapPlatformError(error, input.command, "Process.spawn")),
-                Effect.tapError(() =>
-                  Effect.all(
-                    [
-                      releaseProcessBudget(processBudgets, input.ownerScope),
-                      Scope.close(processScope, Exit.void)
-                    ],
-                    { discard: true }
+          const { child, disposalOrigin, exitObserved, exitState, processScope, resource } =
+            yield* Effect.uninterruptible(
+              Effect.gen(function* () {
+                yield* reserveProcessBudget(processBudgets, input.ownerScope, budgets.maxConcurrent)
+                const processScope = yield* Scope.make()
+                const command = makeChildProcessCommand(input, gracefulShutdownMs)
+                const child = yield* spawner.spawn(command).pipe(
+                  Scope.provide(processScope),
+                  Effect.mapError((error) =>
+                    mapPlatformError(error, input.command, "Process.spawn")
+                  ),
+                  Effect.tapError(() =>
+                    Effect.all(
+                      [
+                        releaseProcessBudget(processBudgets, input.ownerScope),
+                        Scope.close(processScope, Exit.void)
+                      ],
+                      { discard: true }
+                    )
                   )
                 )
-              )
-              const exitState = yield* Deferred.make<ProcessExitStatus, ProcessError>()
-              const resource = yield* registry
-                .register({
-                  dispose: disposeChild(
-                    child,
-                    processScope,
-                    input.command,
-                    gracefulShutdownMs
-                  ).pipe(Effect.andThen(releaseProcessBudget(processBudgets, input.ownerScope))),
-                  kind: "process",
-                  ownerScope: input.ownerScope,
-                  state: "running"
-                })
-                .pipe(Effect.orDie)
-              yield* upsertProcessSnapshot(
-                snapshots,
-                resource.id,
-                {
-                  args: input.args,
-                  command: input.command,
-                  lastExit: Option.none(),
-                  ownerScope: input.ownerScope,
-                  pid: Number(child.pid),
-                  resourceId: resource.id,
-                  startedAt,
-                  state: "running",
-                  updatedAt: startedAt
-                },
-                maxSnapshots
-              )
+                const exitState = yield* Deferred.make<ProcessExitStatus, ProcessError>()
+                const exitObserved = yield* Ref.make(false)
+                const disposalOrigin = yield* Ref.make<ProcessDisposalOrigin>("running")
+                const resource = yield* registry
+                  .register({
+                    dispose: disposeChild(
+                      child,
+                      processScope,
+                      input.command,
+                      gracefulShutdownMs,
+                      disposalOrigin,
+                      Ref.get(exitObserved).pipe(Effect.map((observed) => !observed))
+                    ).pipe(Effect.andThen(releaseProcessBudget(processBudgets, input.ownerScope))),
+                    kind: "process",
+                    ownerScope: input.ownerScope,
+                    state: "running"
+                  })
+                  .pipe(Effect.orDie)
+                yield* upsertProcessSnapshot(
+                  snapshots,
+                  resource.id,
+                  {
+                    args: input.args,
+                    command: input.command,
+                    lastExit: Option.none(),
+                    ownerScope: input.ownerScope,
+                    pid: Number(child.pid),
+                    resourceId: resource.id,
+                    startedAt,
+                    state: "running",
+                    updatedAt: startedAt
+                  },
+                  maxSnapshots
+                )
 
-              return { child, exitState, processScope, resource }
-            })
-          )
+                return { child, disposalOrigin, exitObserved, exitState, processScope, resource }
+              })
+            )
 
-          return makeHandle(
+          return yield* makeHandle(
             child,
             resource,
             exitState,
+            processScope,
+            exitObserved,
+            disposalOrigin,
             input.command,
             budgets,
             snapshots,
             now,
             registry
-          )
+          ).pipe(Effect.uninterruptible)
         }).pipe(
           Effect.withSpan("Process.spawn", {
             attributes: {
@@ -327,74 +337,94 @@ const makeHandle = (
   child: ChildProcessSpawner.ChildProcessHandle,
   resource: ManagedResourceHandle<"process", "running">,
   exitState: Deferred.Deferred<ProcessExitStatus, ProcessError>,
+  processScope: Scope.Closeable,
+  exitObserved: Ref.Ref<boolean>,
+  disposalOrigin: Ref.Ref<ProcessDisposalOrigin>,
   command: string,
   budgets: Required<ProcessBudgetPolicy>,
   snapshots: SubscriptionRef.SubscriptionRef<Map<ResourceId, ProcessSnapshot>>,
   now: () => number,
   registry: ResourceRegistryApi
-): ProcessHandle => {
-  const stdout = boundedOutputStream(
-    child.stdout.pipe(
-      Stream.mapError((error) => mapPlatformError(error, command, "Process.stdout"))
-    ),
-    "stdout",
-    command,
-    budgets.stdoutBufferBytes
-  )
-  const stderr = boundedOutputStream(
-    child.stderr.pipe(
-      Stream.mapError((error) => mapPlatformError(error, command, "Process.stderr"))
-    ),
-    "stderr",
-    command,
-    budgets.stderrBufferBytes
-  )
-  const stdin = child.stdin.pipe(
-    Sink.mapError((error) => mapPlatformError(error, command, "Process.stdin.write")),
-    Sink.mapInputEffect((chunk: Uint8Array) => decodeStdinChunk(chunk, "Process.stdin.write"))
-  )
-  const childExitStatus = child.exitCode.pipe(
-    Effect.map((code) => new ProcessExitStatus({ code: Number(code) })),
-    Effect.catch((error: PlatformError) => {
-      const signal = platformErrorSignal(error)
-      if (signal !== undefined) {
-        return Effect.succeed(new ProcessExitStatus({ code: 0, signal }))
-      }
-      return Effect.fail(mapPlatformError(error, command, "Process.exit"))
-    })
-  )
-  const completeExit = (status: ProcessExitStatus): Effect.Effect<void, ProcessError, never> =>
-    markProcessExited(snapshots, resource.id, status, now(), "Process.exit").pipe(
-      Effect.flatMap(() => Deferred.succeed(exitState, status)),
-      Effect.flatMap(() => resource.dispose())
-    )
-  observeChildExit(childExitStatus, exitState, resource, command, completeExit)
-  const exit = Deferred.await(exitState)
-
-  return Object.freeze({
-    exit,
-    kill: (signal?: ProcessSignalInput) =>
-      Effect.gen(function* kill() {
-        const decodedSignal =
-          signal === undefined ? undefined : yield* decodeSignalInput(signal, "Process.kill")
-        yield* assertProcessHandleFresh(registry, resource, "Process.kill")
-        const killSignal = decodedSignal ?? "SIGTERM"
-        yield* child
-          .kill({ killSignal })
-          .pipe(Effect.mapError((error) => mapPlatformError(error, command, "Process.kill")))
-        yield* exit
-      }).pipe(
-        Effect.withSpan("Process.kill", {
-          attributes: { command, pid: Number(child.pid) }
-        })
+): Effect.Effect<ProcessHandle, never, never> =>
+  Effect.gen(function* makeHandle() {
+    const stdout = boundedOutputStream(
+      child.stdout.pipe(
+        Stream.mapError((error) => mapPlatformError(error, command, "Process.stdout"))
       ),
-    pid: Number(child.pid),
-    resource,
-    stderr,
-    stdin,
-    stdout
+      "stdout",
+      command,
+      budgets.stdoutBufferBytes
+    )
+    const stderr = boundedOutputStream(
+      child.stderr.pipe(
+        Stream.mapError((error) => mapPlatformError(error, command, "Process.stderr"))
+      ),
+      "stderr",
+      command,
+      budgets.stderrBufferBytes
+    )
+    const stdin = child.stdin.pipe(
+      Sink.mapError((error) => mapPlatformError(error, command, "Process.stdin.write")),
+      Sink.mapInputEffect((chunk: Uint8Array) => decodeStdinChunk(chunk, "Process.stdin.write"))
+    )
+    const childExitStatus = child.exitCode.pipe(
+      Effect.map((code) => new ProcessExitStatus({ code: Number(code) })),
+      Effect.catch((error: PlatformError) => {
+        const signal = platformErrorSignal(error)
+        if (signal !== undefined) {
+          return Effect.succeed(new ProcessExitStatus({ code: 0, signal }))
+        }
+        return Effect.fail(mapPlatformError(error, command, "Process.exit"))
+      })
+    )
+    const completeExit = (status: ProcessExitStatus): Effect.Effect<void, ProcessError, never> =>
+      Effect.gen(function* completeExit() {
+        yield* markProcessExited(snapshots, resource.id, status, now(), "Process.exit")
+        yield* Deferred.succeed(exitState, status)
+        yield* Ref.set(exitObserved, true)
+        const origin = yield* claimObserverDisposal(disposalOrigin)
+        if (origin === "registry") {
+          return
+        }
+        yield* resource.dispose()
+        yield* Scope.close(processScope, Exit.void)
+      })
+    yield* observeChildExit(
+      childExitStatus,
+      exitState,
+      resource,
+      command,
+      completeExit,
+      disposalOrigin,
+      exitObserved,
+      processScope
+    ).pipe(Scope.provide(processScope))
+    const exit = Deferred.await(exitState)
+
+    return Object.freeze({
+      exit,
+      kill: (signal?: ProcessSignalInput) =>
+        Effect.gen(function* kill() {
+          const decodedSignal =
+            signal === undefined ? undefined : yield* decodeSignalInput(signal, "Process.kill")
+          yield* assertProcessHandleFresh(registry, resource, "Process.kill")
+          const killSignal = decodedSignal ?? "SIGTERM"
+          yield* child
+            .kill({ killSignal })
+            .pipe(Effect.mapError((error) => mapPlatformError(error, command, "Process.kill")))
+          yield* exit
+        }).pipe(
+          Effect.withSpan("Process.kill", {
+            attributes: { command, pid: Number(child.pid) }
+          })
+        ),
+      pid: Number(child.pid),
+      resource,
+      stderr,
+      stdin,
+      stdout
+    })
   })
-}
 
 const boundedOutputStream = (
   stream: Stream.Stream<Uint8Array, ProcessError, never>,
@@ -521,33 +551,47 @@ const observeChildExit = (
   exitState: Deferred.Deferred<ProcessExitStatus, ProcessError>,
   resource: ManagedResourceHandle<"process", "running">,
   command: string,
-  completeExit: (status: ProcessExitStatus) => Effect.Effect<void, ProcessError, never>
-): void => {
-  Effect.runFork(
-    exitStatus.pipe(
-      Effect.flatMap((status) => completeExit(status)),
-      Effect.catch((error: HostProtocolError) =>
-        Deferred.fail(exitState, error).pipe(
-          Effect.andThen(resource.dispose()),
-          Effect.andThen(
-            Effect.logWarning("Process.exit observer failed", {
-              command,
-              reason: error.message
-            })
-          )
-        )
-      )
-    )
+  completeExit: (status: ProcessExitStatus) => Effect.Effect<void, ProcessError, never>,
+  disposalOrigin: Ref.Ref<ProcessDisposalOrigin>,
+  exitObserved: Ref.Ref<boolean>,
+  processScope: Scope.Closeable
+): Effect.Effect<void, never, Scope.Scope> =>
+  exitStatus.pipe(
+    Effect.flatMap((status) => completeExit(status)),
+    Effect.catch((error: HostProtocolError) =>
+      Effect.gen(function* observeChildExitFailure() {
+        yield* Deferred.fail(exitState, error)
+        yield* Ref.set(exitObserved, true)
+        const origin = yield* claimObserverDisposal(disposalOrigin)
+        if (origin !== "registry") {
+          yield* resource.dispose()
+          yield* Scope.close(processScope, Exit.void)
+        }
+        yield* Effect.logWarning("Process.exit observer failed", {
+          command,
+          reason: error.message
+        })
+      })
+    ),
+    Effect.forkScoped({ startImmediately: true }),
+    Effect.asVoid
   )
-}
 
 const disposeChild = (
   child: ChildProcessSpawner.ChildProcessHandle,
   processScope: Scope.Closeable,
   command: string,
-  gracefulShutdownMs: number
+  gracefulShutdownMs: number,
+  disposalOrigin: Ref.Ref<ProcessDisposalOrigin>,
+  closeProcessScope: Effect.Effect<boolean, never, never>
 ): Effect.Effect<void, never, never> =>
   Effect.gen(function* disposeChild() {
+    const origin = yield* claimRegistryDisposal(disposalOrigin)
+    if (origin === "observer") {
+      return
+    }
+    const shouldTerminateChild = yield* closeProcessScope
+
     const running = yield* child.isRunning.pipe(
       Effect.mapError((error) => mapPlatformError(error, command, "Process.dispose.running")),
       Effect.catch((error: HostProtocolError) =>
@@ -557,7 +601,7 @@ const disposeChild = (
         }).pipe(Effect.as(false))
       )
     )
-    if (running) {
+    if (running && shouldTerminateChild) {
       yield* child
         .kill({
           forceKillAfter: `${gracefulShutdownMs} millis`,
@@ -576,6 +620,22 @@ const disposeChild = (
 
     yield* Scope.close(processScope, Exit.void)
   })
+
+type ProcessDisposalOrigin = "running" | "observer" | "registry"
+
+const claimObserverDisposal = (
+  origin: Ref.Ref<ProcessDisposalOrigin>
+): Effect.Effect<ProcessDisposalOrigin, never, never> =>
+  Ref.modify(origin, (current) =>
+    current === "running" ? (["observer", "observer"] as const) : ([current, current] as const)
+  )
+
+const claimRegistryDisposal = (
+  origin: Ref.Ref<ProcessDisposalOrigin>
+): Effect.Effect<ProcessDisposalOrigin, never, never> =>
+  Ref.modify(origin, (current) =>
+    current === "running" ? (["registry", "registry"] as const) : ([current, current] as const)
+  )
 
 const decodeSpawnInput = (
   input: unknown,
