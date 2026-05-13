@@ -9,7 +9,8 @@ import {
   make,
   manifest,
   runtime,
-  runtimeGraph
+  runtimeGraph,
+  runtimeGraphSnapshot
 } from "./runtime/desktop-app.js"
 import type {
   DesktopApp,
@@ -69,10 +70,12 @@ export {
   DesktopApp,
   app as desktopApp,
   launch,
+  layerGraphSnapshotFromGraph,
   make,
   manifest,
   runtime,
   runtimeGraph,
+  runtimeGraphSnapshot,
   Rpcs,
   type AnyDesktopRpcLayer,
   type DesktopAppApi,
@@ -93,6 +96,10 @@ export {
   type DesktopRuntimeSelectedProviders,
   type DesktopRuntimeServices,
   type DesktopWorkflowLayer,
+  LayerFailurePayload,
+  LayerGraphNodeSnapshot,
+  LayerGraphSnapshot,
+  ProviderFact,
   type WindowSpec
 } from "./runtime/desktop-app.js"
 export { DesktopRuntime, DesktopRuntimeLive } from "./runtime/desktop-app.js"
@@ -164,6 +171,7 @@ export const Desktop = Object.freeze({
   Rpc: DesktopRpc,
   runtime,
   runtimeGraph,
+  runtimeGraphSnapshot,
   Rpcs,
   describeRpcs
 })

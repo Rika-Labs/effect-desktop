@@ -99,6 +99,46 @@ export interface DesktopRuntimeSelectedProviders {
   readonly runtime: DesktopRuntimeProviderId
 }
 
+export class ProviderFact extends Schema.Class<ProviderFact>("ProviderFact")({
+  id: Schema.String,
+  kind: Schema.Literal("runtime"),
+  capabilities: Schema.Array(Schema.String)
+}) {}
+
+export class LayerFailurePayload extends Schema.Class<LayerFailurePayload>("LayerFailurePayload")({
+  appId: Schema.String,
+  reason: Schema.Literals(["missing-provider", "missing-requirement"]),
+  requirement: Schema.String,
+  providerPath: Schema.Array(Schema.String),
+  message: Schema.String,
+  provider: Schema.optional(Schema.String)
+}) {}
+
+export class LayerGraphNodeSnapshot extends Schema.Class<LayerGraphNodeSnapshot>(
+  "LayerGraphNodeSnapshot"
+)({
+  id: Schema.String,
+  kind: Schema.Literals([
+    "provider",
+    "core-service",
+    "rpc-layer",
+    "workflow",
+    "app-service",
+    "runtime-service"
+  ]),
+  label: Schema.String,
+  provides: Schema.Array(Schema.String),
+  requires: Schema.Array(Schema.String)
+}) {}
+
+export class LayerGraphSnapshot extends Schema.Class<LayerGraphSnapshot>("LayerGraphSnapshot")({
+  appId: Schema.String,
+  providers: Schema.Struct({ runtime: Schema.String }),
+  nodes: Schema.Array(LayerGraphNodeSnapshot),
+  providerFacts: Schema.Array(ProviderFact),
+  failures: Schema.Array(LayerFailurePayload)
+}) {}
+
 export type DesktopRuntimeGraphNodeKind =
   | "provider"
   | "core-service"
@@ -120,6 +160,8 @@ export interface DesktopRuntimeGraph {
   readonly appId: string
   readonly providers: DesktopRuntimeSelectedProviders
   readonly nodes: readonly DesktopRuntimeGraphNode[]
+  readonly providerFacts: readonly ProviderFact[]
+  readonly failures: readonly LayerFailurePayload[]
 }
 
 export interface DesktopRuntimeApi {
@@ -342,6 +384,56 @@ export const runtimeGraph = <RIn, E>(
 ): Effect.Effect<DesktopRuntimeGraph, DesktopConfigError, never> =>
   resolveRuntimeProvider(config).pipe(Effect.map((provider) => makeRuntimeGraph(config, provider)))
 
+export const runtimeGraphSnapshot = <RIn, E>(
+  config: DesktopConfig<RIn, E>
+): Effect.Effect<LayerGraphSnapshot, never, never> =>
+  Effect.match(runtimeGraph(config), {
+    onFailure: (error) =>
+      new LayerGraphSnapshot({
+        appId: config.id,
+        providers: selectedProviders(config.providers),
+        nodes: [],
+        providerFacts: [],
+        failures: [layerFailureFromConfigError(config.id, error)]
+      }),
+    onSuccess: layerGraphSnapshotFromGraph
+  })
+
+export const layerGraphSnapshotFromGraph = (graph: DesktopRuntimeGraph): LayerGraphSnapshot =>
+  new LayerGraphSnapshot({
+    appId: graph.appId,
+    providers: graph.providers,
+    nodes: graph.nodes.map(
+      (node) =>
+        new LayerGraphNodeSnapshot({
+          id: node.id,
+          kind: node.kind,
+          label: node.label,
+          provides: [...node.provides],
+          requires: [...node.requires]
+        })
+    ),
+    providerFacts: graph.providerFacts.map(
+      (fact) =>
+        new ProviderFact({
+          id: fact.id,
+          kind: fact.kind,
+          capabilities: [...fact.capabilities]
+        })
+    ),
+    failures: graph.failures.map(
+      (failure) =>
+        new LayerFailurePayload({
+          appId: failure.appId,
+          reason: failure.reason,
+          requirement: failure.requirement,
+          providerPath: [...failure.providerPath],
+          message: failure.message,
+          ...(failure.provider === undefined ? {} : { provider: failure.provider })
+        })
+    )
+  })
+
 const makeRuntimeGraph = <RIn, E>(
   config: DesktopConfig<RIn, E>,
   provider: (typeof RuntimeProviders)[keyof typeof RuntimeProviders]
@@ -380,7 +472,15 @@ const makeRuntimeGraph = <RIn, E>(
     _tag: "DesktopRuntimeGraph" as const,
     appId: config.id,
     providers: selected,
-    nodes: Object.freeze(nodes)
+    nodes: Object.freeze(nodes),
+    providerFacts: Object.freeze([
+      new ProviderFact({
+        id: provider.id,
+        kind: "runtime",
+        capabilities: [...RuntimeProviderServiceNames]
+      })
+    ]),
+    failures: Object.freeze([])
   })
 }
 
@@ -581,6 +681,22 @@ const selectedProviders = (
 ): DesktopRuntimeSelectedProviders =>
   Object.freeze({
     runtime: selection?.runtime ?? "bun"
+  })
+
+const layerFailureFromConfigError = (
+  appId: string,
+  error: DesktopConfigError
+): LayerFailurePayload =>
+  new LayerFailurePayload({
+    appId,
+    reason: error.reason === "missing-provider" ? "missing-provider" : "missing-requirement",
+    requirement:
+      error.reason === "missing-provider"
+        ? "DesktopRuntimeProviderServices"
+        : (error.permission ?? error.method ?? error.contract ?? "DesktopRuntime"),
+    providerPath: error.provider === undefined ? [] : [`provider:runtime:${error.provider}`],
+    message: error.message,
+    ...(error.provider === undefined ? {} : { provider: error.provider })
   })
 
 const mergeLayerArray = <E, R>(

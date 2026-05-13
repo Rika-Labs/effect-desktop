@@ -11,6 +11,8 @@ import type { LiveRuntimePanelsSnapshot } from "./live-panels.js"
 import { LiveRuntimePanels } from "./live-panels.js"
 import type { LogsPanelSnapshot } from "./logs-panel.js"
 import { LogsPanel } from "./logs-panel.js"
+import type { LayerGraphPanelSnapshot } from "./layer-graph-panel.js"
+import { LayerGraphPanel } from "./layer-graph-panel.js"
 import type { PerformanceOverlaySnapshot } from "./performance-overlay.js"
 import { PerformanceOverlay } from "./performance-overlay.js"
 import type { PersistencePanelSnapshot } from "./persistence-panel.js"
@@ -30,6 +32,7 @@ export interface DevtoolsSnapshot {
   readonly persistence: PersistencePanelSnapshot
   readonly logs: LogsPanelSnapshot
   readonly cluster: ClusterPanelSnapshot
+  readonly layerGraph: LayerGraphPanelSnapshot
   readonly safety: InspectorSafetySummary
 }
 
@@ -61,6 +64,7 @@ export type DevtoolsSnapshotClientRequirements =
   | PersistencePanel
   | LogsPanel
   | ClusterPanel
+  | LayerGraphPanel
   | InspectorSafetyPolicy
 
 export const DevtoolsSnapshotClientLive: Layer.Layer<
@@ -78,6 +82,7 @@ export const DevtoolsSnapshotClientLive: Layer.Layer<
     const persistence = yield* PersistencePanel
     const logs = yield* LogsPanel
     const cluster = yield* ClusterPanel
+    const layerGraph = yield* LayerGraphPanel
     const inspectorSafety = yield* InspectorSafetyPolicy
 
     return Object.freeze({
@@ -92,7 +97,8 @@ export const DevtoolsSnapshotClientLive: Layer.Layer<
             reactivity: reactivity.list(),
             persistence: persistence.list(),
             logs: logs.list(),
-            cluster: cluster.list()
+            cluster: cluster.list(),
+            layerGraph: layerGraph.list()
           })
           const decision = yield* inspectorSafety.sanitize({
             source: "devtools.snapshot",

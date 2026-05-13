@@ -386,6 +386,37 @@ test("Desktop.runtime rejects unknown runtime providers as typed startup errors"
   }
 })
 
+test("Desktop.runtimeGraphSnapshot preserves missing provider failure evidence", async () => {
+  const core = await import("./index.js")
+  const snapshot = await Effect.runPromise(
+    core.Desktop.runtimeGraphSnapshot({
+      id: "notes",
+      windows: {
+        main: {
+          title: "Notes"
+        }
+      },
+      providers: { runtime: "missing-runtime" }
+    })
+  )
+
+  expect(snapshot).toMatchObject({
+    appId: "notes",
+    providers: { runtime: "missing-runtime" },
+    nodes: [],
+    providerFacts: [],
+    failures: [
+      {
+        appId: "notes",
+        reason: "missing-provider",
+        requirement: "DesktopRuntimeProviderServices",
+        providerPath: ["provider:runtime:missing-runtime"],
+        provider: "missing-runtime"
+      }
+    ]
+  })
+})
+
 test("Desktop.Rpcs.layer pairs an RpcGroup with its implementation for app adapters", async () => {
   const core = await import("./index.js")
   const Ping = Rpc.make("Notes.Ping", { success: Schema.String })

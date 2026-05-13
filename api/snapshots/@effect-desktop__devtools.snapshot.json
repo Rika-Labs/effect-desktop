@@ -151,7 +151,7 @@
     {
       "name": "DevtoolsSnapshot",
       "kind": "interface",
-      "signature": "export interface DevtoolsSnapshot { readonly liveRuntime: LiveRuntimePanelsSnapshot readonly diagnostics: DiagnosticsPanelsSnapshot readonly performance: PerformanceOverlaySnapshot readonly eventLog: EventLogPanelSnapshot readonly workflows: WorkflowsPanelSnapshot readonly reactivity: ReactivityPanelSnapshot readonly persistence: PersistencePanelSnapshot readonly logs: LogsPanelSnapshot readonly cluster: ClusterPanelSnapshot readonly safety: InspectorSafetySummary }"
+      "signature": "export interface DevtoolsSnapshot { readonly liveRuntime: LiveRuntimePanelsSnapshot readonly diagnostics: DiagnosticsPanelsSnapshot readonly performance: PerformanceOverlaySnapshot readonly eventLog: EventLogPanelSnapshot readonly workflows: WorkflowsPanelSnapshot readonly reactivity: ReactivityPanelSnapshot readonly persistence: PersistencePanelSnapshot readonly logs: LogsPanelSnapshot readonly cluster: ClusterPanelSnapshot readonly layerGraph: LayerGraphPanelSnapshot readonly safety: InspectorSafetySummary }"
     },
     {
       "name": "DevtoolsSnapshotClient",
@@ -171,7 +171,7 @@
     {
       "name": "DevtoolsSnapshotClientRequirements",
       "kind": "type",
-      "signature": "export type DevtoolsSnapshotClientRequirements = | LiveRuntimePanels | DiagnosticsPanels | PerformanceOverlay | EventLogPanel | WorkflowsPanel | ReactivityPanel | PersistencePanel | LogsPanel | ClusterPanel | InspectorSafetyPolicy"
+      "signature": "export type DevtoolsSnapshotClientRequirements = | LiveRuntimePanels | DiagnosticsPanels | PerformanceOverlay | EventLogPanel | WorkflowsPanel | ReactivityPanel | PersistencePanel | LogsPanel | ClusterPanel | LayerGraphPanel | InspectorSafetyPolicy"
     },
     {
       "name": "DevtoolsSnapshotSafetyError",
@@ -424,6 +424,31 @@
       "signature": "export class InspectorWorkflowPayload extends Schema.Class<InspectorWorkflowPayload>( \"InspectorWorkflowPayload\" )({ ...InspectorPayloadBase, tag: Schema.Literal(\"workflow\"), executionId: NonEmptyString, workflowName: NonEmptyString, state: Schema.Literals([\"started\", \"completed\", \"failed\", \"retrying\", \"compensating\"]) }) {}"
     },
     {
+      "name": "LayerGraphPanel",
+      "kind": "class",
+      "signature": "export class LayerGraphPanel extends Context.Service<LayerGraphPanel, LayerGraphPanelApi>()( \"@effect-desktop/devtools/LayerGraphPanel\" ) {}"
+    },
+    {
+      "name": "LayerGraphPanelApi",
+      "kind": "interface",
+      "signature": "export interface LayerGraphPanelApi { readonly list: () => Effect.Effect<LayerGraphPanelSnapshot, never, never> readonly observe: () => Stream.Stream<LayerGraphPanelSnapshot, never, never> }"
+    },
+    {
+      "name": "LayerGraphPanelLive",
+      "kind": "value",
+      "signature": "const LayerGraphPanelLive: (options?: LayerGraphPanelOptions) => Layer.Layer<LayerGraphPanel, never, DesktopRuntime | InspectorSafetyPolicy>"
+    },
+    {
+      "name": "LayerGraphPanelOptions",
+      "kind": "interface",
+      "signature": "export interface LayerGraphPanelOptions { readonly frameInterval?: `${number} millis` readonly inspectorSafety?: InspectorSafetyPolicyApi }"
+    },
+    {
+      "name": "LayerGraphPanelSnapshot",
+      "kind": "interface",
+      "signature": "export interface LayerGraphPanelSnapshot { readonly layerGraph: LayerGraphSnapshot readonly safety: InspectorSafetySummary }"
+    },
+    {
       "name": "LiveRuntimePanels",
       "kind": "class",
       "signature": "export class LiveRuntimePanels extends Context.Service<LiveRuntimePanels, LiveRuntimePanelsApi>()( \"@effect-desktop/devtools/LiveRuntimePanels\" ) {}"
@@ -507,6 +532,11 @@
       "name": "makeInspectorEvent",
       "kind": "value",
       "signature": "const makeInspectorEvent: (input: Omit<InspectorEvent, \"layerId\" | \"providerId\" | \"redaction\" | \"spanId\" | \"traceId\"> & Partial<Pick<InspectorEvent, \"layerId\" | \"providerId\" | \"redaction\" | \"spanId\" | \"traceId\">>) => InspectorEvent"
+    },
+    {
+      "name": "makeLayerGraphPanel",
+      "kind": "value",
+      "signature": "const makeLayerGraphPanel: (options?: LayerGraphPanelOptions) => Effect.Effect<LayerGraphPanelApi, never, DesktopRuntime | InspectorSafetyPolicy>"
     },
     {
       "name": "makeLiveRuntimePanels",

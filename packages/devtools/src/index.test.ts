@@ -9,6 +9,7 @@ import {
   makeResourceRegistry,
   makeTelemetry,
   makeWorker,
+  Desktop,
   InspectorSafetyPolicyLive,
   PermissionRegistry,
   PermissionActor,
@@ -37,6 +38,8 @@ import {
   DiagnosticsPanelsLive,
   FiberInspectorCollector,
   FiberInspectorCollectorLive,
+  LayerGraphPanel,
+  LayerGraphPanelLive,
   LiveRuntimePanels,
   LiveRuntimePanelsLive,
   PerformanceOverlay,
@@ -343,6 +346,44 @@ test("Inspector collectors stream resource, scope, fiber, and stream lifecycle e
     "StreamBackpressureChanged",
     "StreamTerminated"
   ])
+})
+
+test("LayerGraphPanel publishes selected providers and graph snapshots to Inspector", async () => {
+  const app = Desktop.make({
+    id: "notes",
+    providers: { runtime: "test" },
+    windows: {
+      main: {
+        title: "Notes"
+      }
+    }
+  })
+
+  const snapshot = await Effect.runPromise(
+    Effect.gen(function* () {
+      const panel = yield* LayerGraphPanel
+      return yield* panel.list()
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          LayerGraphPanelLive(),
+          Layer.merge(Desktop.runtime(app), InspectorSafetyPolicyLive())
+        )
+      )
+    )
+  )
+
+  expect(snapshot.layerGraph.appId).toBe("notes")
+  expect(snapshot.layerGraph.providers).toEqual({ runtime: "test" })
+  expect(snapshot.layerGraph.providerFacts).toEqual([
+    {
+      id: "test",
+      kind: "runtime",
+      capabilities: ["FileSystem", "Path", "Terminal", "Stdio", "ChildProcessSpawner"]
+    }
+  ])
+  expect(snapshot.layerGraph.nodes.map((node) => node.id)).toContain("provider:runtime:test")
+  expect(snapshot.layerGraph.failures).toEqual([])
 })
 
 test("LiveRuntimePanels rejects invalid row caps and refresh intervals", async () => {
