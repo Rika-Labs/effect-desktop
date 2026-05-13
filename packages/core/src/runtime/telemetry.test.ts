@@ -1,7 +1,13 @@
 import { expect, test } from "bun:test"
-import { Cause, Effect, Exit, Fiber, Option, Stream } from "effect"
+import { Cause, Effect, Exit, Fiber, Metric, Option, Schema, Stream } from "effect"
 
-import { makeTelemetry, TelemetryInvalidArgumentError } from "./telemetry.js"
+import {
+  CausePayload,
+  InspectorTelemetryEvent,
+  makeEffectTelemetryCollector,
+  makeTelemetry,
+  TelemetryInvalidArgumentError
+} from "./telemetry.js"
 
 test("Telemetry records redacted structured logs and publishes bounded snapshots", async () => {
   const telemetry = await Effect.runPromise(makeTelemetry({ maxLogs: 1, now: () => 100 }))
@@ -228,6 +234,58 @@ test("Telemetry histogram percentiles use nearest-rank raw samples", async () =>
     p50: 50,
     p95: 95,
     p99: 99
+  })
+})
+
+test("EffectTelemetryCollector captures Effect logs, spans, metrics, and causes as schema-coded Inspector events", async () => {
+  const telemetry = await Effect.runPromise(makeTelemetry({ now: () => 1_000 }))
+  const failures = Metric.counter("inspector.failures")
+  const collector = await Effect.runPromise(makeEffectTelemetryCollector(telemetry))
+
+  const exit = await Effect.runPromiseExit(
+    collector.instrument(
+      Effect.gen(function* () {
+        yield* Effect.logInfo("before failure", { safe: "field" })
+        yield* Metric.update(failures, 1)
+        return yield* new TelemetryInvalidArgumentError({
+          operation: "sample",
+          field: "input",
+          message: "bad input"
+        })
+      }).pipe(Effect.withSpan("sample.effect"))
+    )
+  )
+  expect(Exit.isFailure(exit)).toBe(true)
+  await Bun.sleep(0)
+  await Effect.runPromise(telemetry.collectEffectMetrics())
+
+  const snapshot = await Effect.runPromise(telemetry.snapshot())
+  const decoded = await Effect.runPromise(
+    Schema.decodeUnknownEffect(Schema.Array(InspectorTelemetryEvent))(snapshot.events)
+  )
+
+  expect(decoded.map((event) => event.kind)).toContain("log")
+  expect(decoded.map((event) => event.kind)).toContain("trace")
+  expect(decoded.map((event) => event.kind)).toContain("metric")
+  expect(decoded.map((event) => event.kind)).toContain("cause")
+  expect(snapshot.traces[0]).toMatchObject({
+    traceId: expect.any(String),
+    spanId: expect.any(String),
+    subsystem: "effect",
+    operation: "sample.effect",
+    name: "sample.effect"
+  })
+  expect(snapshot.metrics.find((metric) => metric.name === "inspector.failures")).toMatchObject({
+    kind: "counter",
+    value: 1
+  })
+  const causeEvent = decoded.find((event) => event.kind === "cause")
+  expect(causeEvent?.cause).toBeInstanceOf(CausePayload)
+  expect(causeEvent?.cause.failed).toBe(true)
+  expect(causeEvent?.cause.reasons[0]).toMatchObject({
+    kind: "failure",
+    tag: "InvalidArgument",
+    message: "bad input"
   })
 })
 

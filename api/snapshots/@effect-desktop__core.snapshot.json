@@ -179,6 +179,21 @@
       "signature": "export type CapabilityKind = typeof CapabilityKind.Type"
     },
     {
+      "name": "CausePayload",
+      "kind": "class",
+      "signature": "export class CausePayload extends Schema.Class<CausePayload>(\"CausePayload\")({ pretty: Schema.String, failed: Schema.Boolean, defected: Schema.Boolean, interrupted: Schema.Boolean, reasons: Schema.Array(CauseReasonPayload) }) {}"
+    },
+    {
+      "name": "CausePayloadKind",
+      "kind": "type",
+      "signature": "const CausePayloadKind: Schema.Literals<readonly [\"failure\", \"defect\", \"interrupt\"]>"
+    },
+    {
+      "name": "CauseReasonPayload",
+      "kind": "class",
+      "signature": "export class CauseReasonPayload extends Schema.Class<CauseReasonPayload>(\"CauseReasonPayload\")({ kind: CausePayloadKind, tag: Schema.optionalKey(Schema.String), message: Schema.optionalKey(Schema.String), value: Schema.optionalKey(Schema.Unknown), fiberId: Schema.optionalKey(Schema.Number) }) {}"
+    },
+    {
       "name": "CommandGroupRegistration",
       "kind": "interface",
       "signature": "export interface CommandGroupRegistration<Group extends RpcGroup.Any & RpcGroupWithRequests, E, R> { readonly group: Group readonly handlers: Layer.Layer<Rpc.ToHandler<RpcGroup.Rpcs<Group>>, E, R> readonly ownerScope: ScopeId }"
@@ -459,6 +474,26 @@
       "signature": "export class DuplicateDesktopRpcNameError extends Data.TaggedError(\"DuplicateDesktopRpcNameError\")<{ readonly message: string readonly name: string readonly tags: readonly string[] readonly code: string readonly category: DesktopPublicErrorCategory readonly summary: string readonly details: Readonly<Record<string, unknown>> readonly actor: string readonly remediation: string readonly docsUrl: string }> {}"
     },
     {
+      "name": "EffectTelemetryCollector",
+      "kind": "class",
+      "signature": "export class EffectTelemetryCollector extends Context.Service< EffectTelemetryCollector, EffectTelemetryCollectorApi >()(\"EffectTelemetryCollector\") {}"
+    },
+    {
+      "name": "EffectTelemetryCollectorApi",
+      "kind": "interface",
+      "signature": "export interface EffectTelemetryCollectorApi { readonly logger: Logger.Logger<unknown, void> readonly tracer: Tracer.Tracer readonly instrument: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R> }"
+    },
+    {
+      "name": "EffectTelemetryCollectorLive",
+      "kind": "value",
+      "signature": "const EffectTelemetryCollectorLive: Layer.Layer<EffectTelemetryCollector, never, Telemetry>"
+    },
+    {
+      "name": "EffectTelemetryRuntimeLive",
+      "kind": "value",
+      "signature": "const EffectTelemetryRuntimeLive: Layer.Layer<never, never, Telemetry>"
+    },
+    {
       "name": "emitAuditEvent",
       "kind": "value",
       "signature": "const emitAuditEvent: (audit: AuditEventsApi | undefined, event: AuditEvent) => Effect.Effect<void, EventJournal.EventJournalError, never>"
@@ -574,6 +609,21 @@
       "signature": "export type GrantStatus = typeof GrantStatus.Type"
     },
     {
+      "name": "InspectorCauseEvent",
+      "kind": "class",
+      "signature": "export class InspectorCauseEvent extends Schema.Class<InspectorCauseEvent>(\"InspectorCauseEvent\")({ kind: Schema.Literal(\"cause\"), traceId: Schema.String, operation: Schema.String, timestamp: Schema.Number, cause: CausePayload }) {}"
+    },
+    {
+      "name": "InspectorLogEvent",
+      "kind": "class",
+      "signature": "export class InspectorLogEvent extends Schema.Class<InspectorLogEvent>(\"InspectorLogEvent\")({ kind: Schema.Literal(\"log\"), record: Schema.Unknown }) {}"
+    },
+    {
+      "name": "InspectorMetricEvent",
+      "kind": "class",
+      "signature": "export class InspectorMetricEvent extends Schema.Class<InspectorMetricEvent>( \"InspectorMetricEvent\" )({ kind: Schema.Literal(\"metric\"), metric: Schema.Unknown }) {}"
+    },
+    {
       "name": "InspectorProductionCapture",
       "kind": "type",
       "signature": "export type InspectorProductionCapture = \"disabled\" | \"safe\""
@@ -629,6 +679,16 @@
       "signature": "export class InspectorSafetySummary extends Schema.Class<InspectorSafetySummary>( \"InspectorSafetySummary\" )({ evidence: Schema.Array(InspectorSafetyEvidence), redacted: Schema.Number, omitted: Schema.Number, truncated: Schema.Number, sampledOut: Schema.Number, productionDisabled: Schema.Number }) {}"
     },
     {
+      "name": "InspectorTelemetryEvent",
+      "kind": "type",
+      "signature": "const InspectorTelemetryEvent: Schema.Union<readonly [typeof InspectorLogEvent, typeof InspectorTraceEvent, typeof InspectorMetricEvent, typeof InspectorCauseEvent]>"
+    },
+    {
+      "name": "InspectorTraceEvent",
+      "kind": "class",
+      "signature": "export class InspectorTraceEvent extends Schema.Class<InspectorTraceEvent>(\"InspectorTraceEvent\")({ kind: Schema.Literal(\"trace\"), span: Schema.Unknown, cause: Schema.optionalKey(CausePayload) }) {}"
+    },
+    {
       "name": "launch",
       "kind": "value",
       "signature": "const launch: (layer: Layer.Layer<DesktopApp, DesktopConfigError, never>) => Effect.Effect<never, DesktopConfigError, never>"
@@ -667,6 +727,11 @@
       "name": "makeDuplicateDesktopRpcNameError",
       "kind": "value",
       "signature": "const makeDuplicateDesktopRpcNameError: (name: string, tags: readonly string[], message: string) => DuplicateDesktopRpcNameError"
+    },
+    {
+      "name": "makeEffectTelemetryCollector",
+      "kind": "value",
+      "signature": "const makeEffectTelemetryCollector: (telemetry: TelemetryApi) => Effect.Effect<EffectTelemetryCollectorApi, never, never>"
     },
     {
       "name": "makeFilesystem",
@@ -1506,7 +1571,7 @@
     {
       "name": "TelemetryApi",
       "kind": "interface",
-      "signature": "export interface TelemetryApi { readonly log: ( input: TelemetryLogInput ) => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly listLogs: () => Effect.Effect<readonly TelemetryLogRecord[], never, never> readonly observeLogs: () => Stream.Stream<readonly TelemetryLogRecord[], never, never> readonly recordSpan: ( input: TelemetryTraceSpanInput ) => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly listTraces: () => Effect.Effect<readonly TelemetryTraceSpan[], never, never> readonly observeTraces: () => Stream.Stream<readonly TelemetryTraceSpan[], never, never> readonly incrementCounter: ( input: TelemetryCounterInput ) => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly recordHistogram: ( input: TelemetryHistogramInput ) => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly listMetrics: () => Effect.Effect<readonly TelemetryMetricSnapshot[], never, never> readonly observeMetrics: () => Stream.Stream<readonly TelemetryMetricSnapshot[], never, never> readonly snapshot: () => Effect.Effect<TelemetrySnapshot, never, never> }"
+      "signature": "export interface TelemetryApi { readonly log: ( input: TelemetryLogInput ) => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly listLogs: () => Effect.Effect<readonly TelemetryLogRecord[], never, never> readonly observeLogs: () => Stream.Stream<readonly TelemetryLogRecord[], never, never> readonly recordSpan: ( input: TelemetryTraceSpanInput ) => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly listTraces: () => Effect.Effect<readonly TelemetryTraceSpan[], never, never> readonly observeTraces: () => Stream.Stream<readonly TelemetryTraceSpan[], never, never> readonly incrementCounter: ( input: TelemetryCounterInput ) => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly recordHistogram: ( input: TelemetryHistogramInput ) => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly listMetrics: () => Effect.Effect<readonly TelemetryMetricSnapshot[], never, never> readonly observeMetrics: () => Stream.Stream<readonly TelemetryMetricSnapshot[], never, never> readonly captureCause: (input: { readonly traceId: string readonly operation: string readonly cause: Cause.Cause<unknown> readonly timestamp?: number }) => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly collectEffectMetrics: () => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly listEvents: () => Effect.Effect<readonly InspectorTelemetryEvent[], never, never> readonly observeEvents: () => Stream.Stream<readonly InspectorTelemetryEvent[], never, never> readonly snapshot: () => Effect.Effect<TelemetrySnapshot, never, never> }"
     },
     {
       "name": "TelemetryCounterInput",
@@ -1561,12 +1626,12 @@
     {
       "name": "TelemetryOptions",
       "kind": "interface",
-      "signature": "export interface TelemetryOptions { readonly maxLogs?: number readonly maxMetrics?: number readonly maxHistogramSamples?: number readonly redaction?: RedactionFilterOptions readonly inspectorSafety?: InspectorSafetyPolicyApi readonly inspectorSafetyPolicy?: InspectorSafetyPolicyOptions readonly traceRingSize?: number readonly tracingEnabled?: boolean readonly now?: () => number readonly nextSpanId?: () => string }"
+      "signature": "export interface TelemetryOptions { readonly maxLogs?: number readonly maxMetrics?: number readonly maxHistogramSamples?: number readonly redaction?: RedactionFilterOptions readonly inspectorSafety?: InspectorSafetyPolicyApi readonly inspectorSafetyPolicy?: InspectorSafetyPolicyOptions readonly traceRingSize?: number readonly eventRingSize?: number readonly tracingEnabled?: boolean readonly now?: () => number readonly nextSpanId?: () => string }"
     },
     {
       "name": "TelemetrySnapshot",
       "kind": "interface",
-      "signature": "export interface TelemetrySnapshot { readonly logs: readonly TelemetryLogRecord[] readonly traces: readonly TelemetryTraceSpan[] readonly metrics: readonly TelemetryMetricSnapshot[] readonly safety: InspectorSafetySummary }"
+      "signature": "export interface TelemetrySnapshot { readonly logs: readonly TelemetryLogRecord[] readonly traces: readonly TelemetryTraceSpan[] readonly metrics: readonly TelemetryMetricSnapshot[] readonly events: readonly InspectorTelemetryEvent[] readonly safety: InspectorSafetySummary }"
     },
     {
       "name": "TelemetryTraceSpan",

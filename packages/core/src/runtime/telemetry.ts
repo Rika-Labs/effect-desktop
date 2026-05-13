@@ -1,15 +1,21 @@
 import type { RedactionFilterOptions } from "@effect-desktop/bridge"
 import {
+  Cause,
   Clock,
   Context,
   Data,
   Effect,
+  Exit,
+  Layer,
+  Logger,
+  Metric,
   Option,
   Random,
   Ref,
   Schema,
   Stream,
-  SubscriptionRef
+  SubscriptionRef,
+  Tracer
 } from "effect"
 
 import {
@@ -119,10 +125,64 @@ export interface TelemetryHistogramSnapshot extends TelemetryMetricBase {
 
 export type TelemetryMetricSnapshot = TelemetryCounterSnapshot | TelemetryHistogramSnapshot
 
+export const CausePayloadKind = Schema.Literals(["failure", "defect", "interrupt"])
+export type CausePayloadKind = typeof CausePayloadKind.Type
+
+export class CauseReasonPayload extends Schema.Class<CauseReasonPayload>("CauseReasonPayload")({
+  kind: CausePayloadKind,
+  tag: Schema.optionalKey(Schema.String),
+  message: Schema.optionalKey(Schema.String),
+  value: Schema.optionalKey(Schema.Unknown),
+  fiberId: Schema.optionalKey(Schema.Number)
+}) {}
+
+export class CausePayload extends Schema.Class<CausePayload>("CausePayload")({
+  pretty: Schema.String,
+  failed: Schema.Boolean,
+  defected: Schema.Boolean,
+  interrupted: Schema.Boolean,
+  reasons: Schema.Array(CauseReasonPayload)
+}) {}
+
+export class InspectorLogEvent extends Schema.Class<InspectorLogEvent>("InspectorLogEvent")({
+  kind: Schema.Literal("log"),
+  record: Schema.Unknown
+}) {}
+
+export class InspectorTraceEvent extends Schema.Class<InspectorTraceEvent>("InspectorTraceEvent")({
+  kind: Schema.Literal("trace"),
+  span: Schema.Unknown,
+  cause: Schema.optionalKey(CausePayload)
+}) {}
+
+export class InspectorMetricEvent extends Schema.Class<InspectorMetricEvent>(
+  "InspectorMetricEvent"
+)({
+  kind: Schema.Literal("metric"),
+  metric: Schema.Unknown
+}) {}
+
+export class InspectorCauseEvent extends Schema.Class<InspectorCauseEvent>("InspectorCauseEvent")({
+  kind: Schema.Literal("cause"),
+  traceId: Schema.String,
+  operation: Schema.String,
+  timestamp: Schema.Number,
+  cause: CausePayload
+}) {}
+
+export const InspectorTelemetryEvent = Schema.Union([
+  InspectorLogEvent,
+  InspectorTraceEvent,
+  InspectorMetricEvent,
+  InspectorCauseEvent
+])
+export type InspectorTelemetryEvent = typeof InspectorTelemetryEvent.Type
+
 export interface TelemetrySnapshot {
   readonly logs: readonly TelemetryLogRecord[]
   readonly traces: readonly TelemetryTraceSpan[]
   readonly metrics: readonly TelemetryMetricSnapshot[]
+  readonly events: readonly InspectorTelemetryEvent[]
   readonly safety: InspectorSafetySummary
 }
 
@@ -145,7 +205,22 @@ export interface TelemetryApi {
   ) => Effect.Effect<void, TelemetryInvalidArgumentError, never>
   readonly listMetrics: () => Effect.Effect<readonly TelemetryMetricSnapshot[], never, never>
   readonly observeMetrics: () => Stream.Stream<readonly TelemetryMetricSnapshot[], never, never>
+  readonly captureCause: (input: {
+    readonly traceId: string
+    readonly operation: string
+    readonly cause: Cause.Cause<unknown>
+    readonly timestamp?: number
+  }) => Effect.Effect<void, TelemetryInvalidArgumentError, never>
+  readonly collectEffectMetrics: () => Effect.Effect<void, TelemetryInvalidArgumentError, never>
+  readonly listEvents: () => Effect.Effect<readonly InspectorTelemetryEvent[], never, never>
+  readonly observeEvents: () => Stream.Stream<readonly InspectorTelemetryEvent[], never, never>
   readonly snapshot: () => Effect.Effect<TelemetrySnapshot, never, never>
+}
+
+export interface EffectTelemetryCollectorApi {
+  readonly logger: Logger.Logger<unknown, void>
+  readonly tracer: Tracer.Tracer
+  readonly instrument: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
 }
 
 export class TelemetryInvalidArgumentError extends Data.TaggedError("InvalidArgument")<{
@@ -162,6 +237,7 @@ export interface TelemetryOptions {
   readonly inspectorSafety?: InspectorSafetyPolicyApi
   readonly inspectorSafetyPolicy?: InspectorSafetyPolicyOptions
   readonly traceRingSize?: number
+  readonly eventRingSize?: number
   readonly tracingEnabled?: boolean
   readonly now?: () => number
   readonly nextSpanId?: () => string
@@ -171,6 +247,7 @@ const DEFAULT_MAX_LOGS = 1_024
 const DEFAULT_MAX_METRICS = 1_024
 const DEFAULT_MAX_HISTOGRAM_SAMPLES = 1_024
 const DEFAULT_TRACE_RING_SIZE = 10_000
+const DEFAULT_EVENT_RING_SIZE = 10_000
 
 export const makeTelemetry = (
   options: TelemetryOptions = {}
@@ -191,6 +268,11 @@ export const makeTelemetry = (
       options.traceRingSize,
       DEFAULT_TRACE_RING_SIZE,
       "traceRingSize"
+    )
+    const eventRingSize = yield* positiveIntegerOption(
+      options.eventRingSize,
+      DEFAULT_EVENT_RING_SIZE,
+      "eventRingSize"
     )
     const tracingEnabled = options.tracingEnabled ?? true
     const now =
@@ -234,9 +316,13 @@ export const makeTelemetry = (
     const metrics = yield* SubscriptionRef.make<ReadonlyMap<string, TelemetryMetricSnapshot>>(
       new Map()
     )
+    const events = yield* SubscriptionRef.make<readonly InspectorTelemetryEvent[]>([])
 
     const listMetrics = (): Effect.Effect<readonly TelemetryMetricSnapshot[], never, never> =>
       SubscriptionRef.get(metrics).pipe(Effect.map((snapshot) => Array.from(snapshot.values())))
+
+    const appendEvent = (event: InspectorTelemetryEvent): Effect.Effect<void, never, never> =>
+      SubscriptionRef.update(events, (current) => appendBounded(current, event, eventRingSize))
 
     return Object.freeze({
       log: (input) =>
@@ -282,6 +368,7 @@ export const makeTelemetry = (
             ])
           } satisfies TelemetryLogRecord
           yield* SubscriptionRef.update(logs, (current) => appendBounded(current, record, maxLogs))
+          yield* appendEvent(new InspectorLogEvent({ kind: "log", record }))
         }),
       listLogs: () => SubscriptionRef.get(logs),
       observeLogs: () => SubscriptionRef.changes(logs),
@@ -335,6 +422,7 @@ export const makeTelemetry = (
           yield* SubscriptionRef.update(traces, (current) =>
             appendBounded(current, span, traceRingSize)
           )
+          yield* appendEvent(new InspectorTraceEvent({ kind: "trace", span }))
         }),
       listTraces: () => SubscriptionRef.get(traces),
       observeTraces: () => SubscriptionRef.changes(traces),
@@ -357,6 +445,7 @@ export const makeTelemetry = (
           yield* SubscriptionRef.update(metrics, (current) =>
             upsertMetric(current, metric, maxMetrics)
           )
+          yield* appendEvent(new InspectorMetricEvent({ kind: "metric", metric }))
         }),
       recordHistogram: (input) =>
         Effect.gen(function* () {
@@ -377,19 +466,60 @@ export const makeTelemetry = (
           yield* SubscriptionRef.update(metrics, (current) =>
             upsertMetric(current, metric, maxMetrics, maxHistogramSamples)
           )
+          yield* appendEvent(new InspectorMetricEvent({ kind: "metric", metric }))
         }),
       listMetrics,
       observeMetrics: () =>
         SubscriptionRef.changes(metrics).pipe(
           Stream.map((snapshot) => Array.from(snapshot.values()))
         ),
+      captureCause: (input) =>
+        Effect.gen(function* () {
+          yield* validateMetadataField(input.traceId, "Telemetry.captureCause", "traceId")
+          yield* validateMetadataField(input.operation, "Telemetry.captureCause", "operation")
+          const timestamp = yield* metricTimestamp(input.timestamp, now, "Telemetry.captureCause")
+          yield* appendEvent(
+            new InspectorCauseEvent({
+              kind: "cause",
+              traceId: input.traceId,
+              operation: input.operation,
+              timestamp,
+              cause: causePayload(input.cause)
+            })
+          )
+        }),
+      collectEffectMetrics: () =>
+        Effect.gen(function* () {
+          const snapshots = yield* Metric.snapshot
+          const timestamp = yield* metricTimestamp(undefined, now, "Telemetry.collectEffectMetrics")
+          for (const snapshot of snapshots) {
+            yield* recordEffectMetric(snapshot, timestamp, maxHistogramSamples).pipe(
+              Effect.flatMap((metric) =>
+                SubscriptionRef.update(metrics, (current) =>
+                  upsertMetric(current, metric, maxMetrics, maxHistogramSamples)
+                ).pipe(
+                  Effect.andThen(appendEvent(new InspectorMetricEvent({ kind: "metric", metric })))
+                )
+              )
+            )
+          }
+        }),
+      listEvents: () => SubscriptionRef.get(events),
+      observeEvents: () => SubscriptionRef.changes(events),
       snapshot: () =>
         Effect.gen(function* () {
           const logRows = yield* SubscriptionRef.get(logs)
           const traceRows = yield* SubscriptionRef.get(traces)
           const metricRows = yield* listMetrics()
+          const eventRows = yield* SubscriptionRef.get(events)
           const safety = yield* inspectorSafety.snapshot()
-          return { logs: logRows, traces: traceRows, metrics: metricRows, safety }
+          return {
+            logs: logRows,
+            traces: traceRows,
+            metrics: metricRows,
+            events: eventRows,
+            safety
+          }
         })
     } satisfies TelemetryApi)
   })
@@ -397,6 +527,261 @@ export const makeTelemetry = (
 export class Telemetry extends Context.Service<Telemetry, TelemetryApi>()("Telemetry", {
   make: makeTelemetry()
 }) {}
+
+export class EffectTelemetryCollector extends Context.Service<
+  EffectTelemetryCollector,
+  EffectTelemetryCollectorApi
+>()("EffectTelemetryCollector") {}
+
+export const makeEffectTelemetryCollector = (
+  telemetry: TelemetryApi
+): Effect.Effect<EffectTelemetryCollectorApi, never, never> =>
+  Effect.gen(function* () {
+    const currentTracer = yield* Effect.tracer
+    const logger = Logger.make<unknown, void>((options) => {
+      const span = options.fiber.currentSpan
+      const traceId = span?.traceId ?? `fiber-${options.fiber.id}`
+      const operation = span?._tag === "Span" ? span.name : "Effect.log"
+      const level = logLevelToTelemetry(options.logLevel)
+      void Effect.runPromise(
+        telemetry
+          .log({
+            level,
+            subsystem: "effect",
+            operation,
+            traceId,
+            message: formatLogMessage(options.message),
+            timestamp: options.date.getTime(),
+            fields: {
+              fiberId: options.fiber.id,
+              cause: options.cause.reasons.length === 0 ? undefined : causePayload(options.cause)
+            }
+          })
+          .pipe(Effect.catch(() => Effect.void))
+      )
+    })
+    const tracer = Tracer.make({
+      span(options) {
+        const span = currentTracer.span(options)
+        const oldEnd = span.end
+        span.end = function (this: Tracer.Span, endTime, exit) {
+          oldEnd.call(this, endTime, exit)
+          const parent = Option.getOrUndefined(span.parent)
+          void Effect.runPromise(
+            telemetry
+              .recordSpan({
+                traceId: span.traceId,
+                spanId: span.spanId,
+                ...(parent === undefined ? undefined : { parentSpanId: parent.spanId }),
+                subsystem: "effect",
+                operation: span.name,
+                name: span.name,
+                startedAt: nanosToMillis(span.status.startTime),
+                endedAt: nanosToMillis(endTime),
+                attributes: Object.fromEntries(span.attributes)
+              })
+              .pipe(
+                Effect.andThen(
+                  Exit.isFailure(exit)
+                    ? telemetry.captureCause({
+                        traceId: span.traceId,
+                        operation: span.name,
+                        cause: exit.cause,
+                        timestamp: nanosToMillis(endTime)
+                      })
+                    : Effect.void
+                ),
+                Effect.catch(() => Effect.void)
+              )
+          )
+        }
+        return span
+      },
+      context: currentTracer.context
+    })
+    return EffectTelemetryCollector.of({
+      logger,
+      tracer,
+      instrument: (effect) => effect.pipe(Effect.withTracer(tracer), Effect.withLogger(logger))
+    })
+  })
+
+export const EffectTelemetryCollectorLive: Layer.Layer<EffectTelemetryCollector, never, Telemetry> =
+  Layer.effect(
+    EffectTelemetryCollector,
+    Effect.gen(function* () {
+      const telemetry = yield* Telemetry
+      return yield* makeEffectTelemetryCollector(telemetry)
+    })
+  )
+
+export const EffectTelemetryRuntimeLive: Layer.Layer<never, never, Telemetry> = Layer.unwrap(
+  Effect.gen(function* () {
+    const collector = yield* EffectTelemetryCollector
+    return Layer.merge(
+      Logger.layer([collector.logger], { mergeWithExisting: true }),
+      Layer.succeed(Tracer.Tracer, collector.tracer)
+    )
+  })
+).pipe(Layer.provide(EffectTelemetryCollectorLive))
+
+const causePayload = (cause: Cause.Cause<unknown>): CausePayload =>
+  new CausePayload({
+    pretty: Cause.pretty(cause),
+    failed: Cause.hasFails(cause),
+    defected: Cause.hasDies(cause),
+    interrupted: Cause.hasInterrupts(cause),
+    reasons: cause.reasons.map((reason) => {
+      if (Cause.isFailReason(reason)) {
+        return new CauseReasonPayload({
+          kind: "failure",
+          ...taggedValue(reason.error),
+          value: reason.error
+        })
+      }
+      if (Cause.isDieReason(reason)) {
+        return new CauseReasonPayload({
+          kind: "defect",
+          ...taggedValue(reason.defect),
+          value: reason.defect
+        })
+      }
+      return new CauseReasonPayload({
+        kind: "interrupt",
+        ...(reason.fiberId === undefined ? undefined : { fiberId: reason.fiberId })
+      })
+    })
+  })
+
+const taggedValue = (value: unknown): { readonly tag?: string; readonly message?: string } => {
+  if (value instanceof Error) {
+    return { tag: value.name, message: value.message }
+  }
+  if (typeof value === "object" && value !== null) {
+    return {
+      ...("_tag" in value && typeof value._tag === "string" ? { tag: value._tag } : undefined),
+      ...("message" in value && typeof value.message === "string"
+        ? { message: value.message }
+        : undefined)
+    }
+  }
+  return typeof value === "string" ? { message: value } : {}
+}
+
+const formatLogMessage = (message: unknown): string => {
+  if (Array.isArray(message)) {
+    return message.map(formatLogMessage).join(" ")
+  }
+  if (typeof message === "string") {
+    return message
+  }
+  if (message instanceof Error) {
+    return message.message
+  }
+  return String(message)
+}
+
+const logLevelToTelemetry = (level: string): TelemetryLogLevel => {
+  switch (level) {
+    case "Debug":
+    case "Trace":
+    case "All":
+      return "debug"
+    case "Warning":
+      return "warn"
+    case "Error":
+    case "Fatal":
+      return "error"
+    default:
+      return "info"
+  }
+}
+
+const nanosToMillis = (value: bigint): number => Number(value / 1_000_000n)
+
+const recordEffectMetric = (
+  snapshot: Metric.Metric.Snapshot,
+  timestamp: number,
+  maxHistogramSamples: number
+): Effect.Effect<TelemetryMetricSnapshot, TelemetryInvalidArgumentError, never> =>
+  Effect.gen(function* () {
+    const tags = snapshot.attributes ?? {}
+    yield* validateMetricMetadata(snapshot.id, tags, "Telemetry.collectEffectMetrics")
+    switch (snapshot.type) {
+      case "Counter":
+        return {
+          kind: "counter",
+          name: snapshot.id,
+          tags,
+          updatedAt: timestamp,
+          safety: emptyInspectorSafetySummary,
+          value: Number(snapshot.state.count)
+        } satisfies TelemetryCounterSnapshot
+      case "Gauge":
+        return {
+          kind: "histogram",
+          name: snapshot.id,
+          tags,
+          updatedAt: timestamp,
+          safety: emptyInspectorSafetySummary,
+          count: 1,
+          sum: Number(snapshot.state.value),
+          min: Number(snapshot.state.value),
+          max: Number(snapshot.state.value),
+          p50: Number(snapshot.state.value),
+          p95: Number(snapshot.state.value),
+          p99: Number(snapshot.state.value),
+          samples: [Number(snapshot.state.value)].slice(-maxHistogramSamples)
+        } satisfies TelemetryHistogramSnapshot
+      case "Histogram":
+        return {
+          kind: "histogram",
+          name: snapshot.id,
+          tags,
+          updatedAt: timestamp,
+          safety: emptyInspectorSafetySummary,
+          count: snapshot.state.count,
+          sum: snapshot.state.sum,
+          min: snapshot.state.min,
+          max: snapshot.state.max,
+          p50: snapshot.state.min,
+          p95: snapshot.state.max,
+          p99: snapshot.state.max,
+          samples: [snapshot.state.min, snapshot.state.max].slice(-maxHistogramSamples)
+        } satisfies TelemetryHistogramSnapshot
+      case "Summary": {
+        const quantile = (target: number): number =>
+          snapshot.state.quantiles.find(([value]) => value === target)?.[1] ?? snapshot.state.max
+        return {
+          kind: "histogram",
+          name: snapshot.id,
+          tags,
+          updatedAt: timestamp,
+          safety: emptyInspectorSafetySummary,
+          count: snapshot.state.count,
+          sum: snapshot.state.sum,
+          min: snapshot.state.min,
+          max: snapshot.state.max,
+          p50: quantile(0.5),
+          p95: quantile(0.95),
+          p99: quantile(0.99),
+          samples: [snapshot.state.min, snapshot.state.max].slice(-maxHistogramSamples)
+        } satisfies TelemetryHistogramSnapshot
+      }
+      case "Frequency":
+        return {
+          kind: "counter",
+          name: snapshot.id,
+          tags,
+          updatedAt: timestamp,
+          safety: emptyInspectorSafetySummary,
+          value: Array.from(snapshot.state.occurrences.values()).reduce(
+            (total, count) => total + count,
+            0
+          )
+        } satisfies TelemetryCounterSnapshot
+    }
+  })
 
 const positiveIntegerOption = (
   value: number | undefined,
