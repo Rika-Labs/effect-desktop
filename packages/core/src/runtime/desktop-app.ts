@@ -313,7 +313,7 @@ export const Rpcs = Object.freeze({
 export const app = <RIn = never, E = never>(
   config: DesktopConfig<RIn, E>
 ): Layer.Layer<DesktopApp, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices>> =>
-  runtime(config) as unknown as Layer.Layer<
+  runtime(config) as Layer.Layer<
     DesktopApp,
     DesktopConfigError | E,
     Exclude<RIn, DesktopRuntimeProviderServices>
@@ -328,7 +328,7 @@ export const runtime = <RIn = never, E = never>(
 > => {
   const validationLayer = Layer.effectDiscard(checkPermissions(config))
   const spine = buildSpine(config)
-  return Layer.provideMerge(validationLayer, spine) as unknown as Layer.Layer<
+  return Layer.provideMerge(validationLayer, spine) as Layer.Layer<
     DesktopRuntimeServices,
     DesktopConfigError | E,
     Exclude<RIn, DesktopRuntimeProviderServices>
@@ -588,16 +588,18 @@ const mergeLayerArray = <E, R>(
 ): Layer.Layer<never, E, R> =>
   layers.reduce<Layer.Layer<never, E, R>>(
     (acc, layer) => Layer.merge(acc, layer),
-    Layer.empty as unknown as Layer.Layer<never, E, R>
+    Layer.empty as Layer.Layer<never, E, R>
   )
 
-const bindRpcLayer = <E, R>(rpcLayer: AnyDesktopRpcLayer): Layer.Layer<never, E, R> =>
+const bindRpcLayer = <E, R>(
+  rpcLayer: AnyDesktopRpcLayer<E, R>
+): Layer.Layer<never, E, R> =>
   Layer.provide(
     RpcServer.layer(
       (servedRpcGroup(rpcLayer) as RpcGroup.RpcGroup<Rpc.Any>).middleware(PermissionInterceptor)
     ),
     rpcLayer.layer as Layer.Layer<unknown, E, R>
-  ) as unknown as Layer.Layer<never, E, R>
+  ) as Layer.Layer<never, E, R>
 
 const freezeArray = <A>(values: ReadonlyArray<A> | undefined): ReadonlyArray<A> =>
   Object.freeze([...(values ?? [])])
