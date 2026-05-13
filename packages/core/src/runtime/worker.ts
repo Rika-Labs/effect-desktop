@@ -796,26 +796,17 @@ const makeBunWorkerPlatform = (
           failBunWorkerRuntime(queue, exit, deferred, error, undefined)
         }
 
-        port.worker.addEventListener("message", onMessage)
-        port.worker.addEventListener("error", onError)
-        port.worker.addEventListener("messageerror", onMessageError)
-        port.worker.addEventListener("close", onClose)
+        yield* attachWorkerListeners(input, port.worker, {
+          onMessage,
+          onError,
+          onMessageError,
+          onClose
+        }).pipe(Scope.provide(scope))
         emit([0])
 
         yield* Scope.addFinalizer(
           scope,
-          shutdownBunWorker(input, port.worker, queue, exit, shutdownRequested).pipe(
-            Effect.andThen(
-              cleanupWorkerListeners(
-                input,
-                port.worker,
-                onMessage,
-                onError,
-                onMessageError,
-                onClose
-              )
-            )
-          )
+          shutdownBunWorker(input, port.worker, queue, exit, shutdownRequested)
         )
       })
   })
@@ -890,19 +881,46 @@ const shutdownBunWorker = (
     )
   })
 
+interface WorkerEventHandlers {
+  readonly onMessage: (event: MessageEvent) => void
+  readonly onError: (event: ErrorEvent) => void
+  readonly onMessageError: (event: MessageEvent) => void
+  readonly onClose: (event: Event) => void
+}
+
+const attachWorkerListeners = (
+  input: WorkerAdapterSpawnInput,
+  worker: globalThis.Worker,
+  handlers: WorkerEventHandlers
+): Effect.Effect<void, never, Scope.Scope> =>
+  Effect.acquireRelease(
+    Effect.sync(() => {
+      worker.addEventListener("message", handlers.onMessage)
+      worker.addEventListener("error", handlers.onError)
+      worker.addEventListener("messageerror", handlers.onMessageError)
+      worker.addEventListener("close", handlers.onClose)
+    }),
+    () => cleanupWorkerListeners(input, worker, handlers)
+  ).pipe(
+    Effect.catchDefect((cause) =>
+      Effect.logWarning("Worker.listen failed", {
+        script: input.script,
+        phase: "addListeners",
+        reason: String(cause)
+      })
+    )
+  )
+
 const cleanupWorkerListeners = (
   input: WorkerAdapterSpawnInput,
   worker: globalThis.Worker,
-  onMessage: (event: MessageEvent) => void,
-  onError: (event: ErrorEvent) => void,
-  onMessageError: (event: MessageEvent) => void,
-  onClose: (event: Event) => void
+  handlers: WorkerEventHandlers
 ): Effect.Effect<void, never, never> =>
   Effect.sync(() => {
-    worker.removeEventListener("message", onMessage)
-    worker.removeEventListener("error", onError)
-    worker.removeEventListener("messageerror", onMessageError)
-    worker.removeEventListener("close", onClose)
+    worker.removeEventListener("message", handlers.onMessage)
+    worker.removeEventListener("error", handlers.onError)
+    worker.removeEventListener("messageerror", handlers.onMessageError)
+    worker.removeEventListener("close", handlers.onClose)
   }).pipe(
     Effect.catchDefect((cause) =>
       Effect.logWarning("Worker.shutdown failed", {

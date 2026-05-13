@@ -770,6 +770,55 @@ test("Bun adapter shutdown stays infallible when shutdown stages throw", async (
   }
 })
 
+test("Bun adapter removes worker event listeners when closed", async () => {
+  const originalWorker = globalThis.Worker
+  const listeners = new Map<string, Set<unknown>>()
+  const listenerCount = () =>
+    Array.from(listeners.values()).reduce((total, current) => total + current.size, 0)
+
+  class ListenerTrackingWorker {
+    constructor(_script: string) {}
+    addEventListener(type: string, listener: unknown): void {
+      const current = listeners.get(type) ?? new Set<unknown>()
+      current.add(listener)
+      listeners.set(type, current)
+    }
+    removeEventListener(type: string, listener: unknown): void {
+      listeners.get(type)?.delete(listener)
+    }
+    postMessage(_message: unknown, ..._transfer: readonly unknown[]): void {}
+    terminate(): void {}
+  }
+
+  replaceGlobalWorker(ListenerTrackingWorker)
+
+  const file = new File([`self.onmessage = () => {}`], "effect-desktop-worker-listeners.ts", {
+    type: "application/typescript"
+  })
+  const script = URL.createObjectURL(file)
+  const fixture = await makeFixture(undefined, [], { gracefulShutdownMs: 0 })
+
+  try {
+    const handle = await Effect.runPromise(
+      fixture.service.spawn({
+        script,
+        ownerScope: "scope-main",
+        inputSchema: EchoIn,
+        outputSchema: EchoOut,
+        context
+      })
+    )
+
+    expect(listenerCount()).toBe(4)
+    await Effect.runPromise(handle.close)
+
+    expect(listenerCount()).toBe(0)
+  } finally {
+    URL.revokeObjectURL(script)
+    replaceGlobalWorker(originalWorker)
+  }
+})
+
 interface Fixture {
   readonly service: WorkerApi
   readonly registry: ResourceRegistryApi
