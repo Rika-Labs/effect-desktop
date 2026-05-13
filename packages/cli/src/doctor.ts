@@ -4,6 +4,8 @@ import { pathToFileURL } from "node:url"
 
 import { Data, Effect } from "effect"
 
+import { readCliStreamText } from "./cli-stream.js"
+
 export class DoctorMissing extends Data.TaggedError("DoctorMissing")<{
   readonly probe: DoctorProbeName
   readonly component: string
@@ -159,8 +161,12 @@ export const runDoctorCommand: DoctorCommandRunner = (invocation) =>
         stderr: "pipe"
       })
       const [stdout, stderr, exitCode] = await Promise.all([
-        readStreamText(child.stdout),
-        readStreamText(child.stderr),
+        Effect.runPromise(
+          readCliStreamText(child.stdout, { operation: `${invocation.probe}.stdout` })
+        ),
+        Effect.runPromise(
+          readCliStreamText(child.stderr, { operation: `${invocation.probe}.stderr` })
+        ),
         child.exited
       ])
       if (exitCode !== 0) {
@@ -881,16 +887,3 @@ const formatUnknownCause = (cause: unknown): string => {
 
 const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
   typeof value === "object" && value !== null
-
-const readStreamText = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
-  const reader = stream.getReader()
-  const chunks: Uint8Array[] = []
-  while (true) {
-    const read = await reader.read()
-    if (read.done) {
-      break
-    }
-    chunks.push(read.value)
-  }
-  return await new Blob(chunks).text()
-}

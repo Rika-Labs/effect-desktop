@@ -8,6 +8,7 @@ import { Data, Effect } from "effect"
 import { makeSecretString, unsafeSecretString } from "@effect-desktop/bridge"
 import { decodeDesktopConfig } from "@effect-desktop/config"
 
+import { readCliStreamText } from "./cli-stream.js"
 import {
   decodeDesktopTarget,
   desktopPlatformDirectory,
@@ -238,7 +239,9 @@ export const runSignCommand: SignCommandRunner = (invocation) =>
         stdout: "ignore",
         stderr: "pipe"
       })
-      const stderr = await readStreamText(spawned.stderr)
+      const stderr = await Effect.runPromise(
+        readCliStreamText(spawned.stderr, { operation: `${invocation.step}.stderr` })
+      )
       const exitCode = await spawned.exited
       if (exitCode !== 0) {
         const failure = {
@@ -1491,16 +1494,3 @@ const escapeXml = (value: string): string =>
 
 const formatUnknownError = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause)
-
-const readStreamText = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
-  const reader = stream.getReader()
-  const chunks: Uint8Array[] = []
-  while (true) {
-    const read = await reader.read()
-    if (read.done) {
-      break
-    }
-    chunks.push(read.value)
-  }
-  return await new Blob(chunks).text()
-}

@@ -33,6 +33,7 @@ import {
   type RuntimeEngine
 } from "@effect-desktop/config"
 
+import { readCliStreamText } from "./cli-stream.js"
 import {
   runDesktopPackage,
   runPackageCommand,
@@ -1371,8 +1372,18 @@ const runCommand: CommandRunner = (invocation) =>
         stderr: "pipe"
       })
       const [stdout, stderr, exitCode] = await Promise.all([
-        readBoundedStreamText(process.stdout),
-        readBoundedStreamText(process.stderr),
+        Effect.runPromise(
+          readCliStreamText(process.stdout, {
+            operation: `${invocation.step}.stdout`,
+            maxChars: MAX_COMMAND_OUTPUT_CHARS
+          })
+        ),
+        Effect.runPromise(
+          readCliStreamText(process.stderr, {
+            operation: `${invocation.step}.stderr`,
+            maxChars: MAX_COMMAND_OUTPUT_CHARS
+          })
+        ),
         process.exited
       ])
       if (exitCode !== 0) {
@@ -2740,36 +2751,6 @@ const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
   typeof value === "object" && value !== null
 
 const MAX_COMMAND_OUTPUT_CHARS = 16_384
-
-const readBoundedStreamText = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
-  const reader = stream.getReader()
-  const decoder = new TextDecoder()
-  let result = ""
-  let truncated = false
-
-  try {
-    while (true) {
-      const chunk = await reader.read()
-      if (chunk.done) {
-        break
-      }
-      if (result.length < MAX_COMMAND_OUTPUT_CHARS) {
-        result += decoder.decode(chunk.value, { stream: true })
-        if (result.length > MAX_COMMAND_OUTPUT_CHARS) {
-          result = result.slice(0, MAX_COMMAND_OUTPUT_CHARS)
-          truncated = true
-        }
-      } else {
-        truncated = true
-      }
-    }
-    result += decoder.decode()
-  } finally {
-    reader.releaseLock()
-  }
-
-  return truncated ? `${result}\n[output truncated]` : result
-}
 
 const formatUnknownError = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause)

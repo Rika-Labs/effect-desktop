@@ -7,6 +7,7 @@ import { Data, Effect } from "effect"
 
 import { makeSecretString, unsafeSecretString } from "@effect-desktop/bridge"
 
+import { readCliStreamText } from "./cli-stream.js"
 import {
   decodeDesktopTarget,
   detectDesktopHostTarget,
@@ -221,8 +222,12 @@ export const runNotarizeCommand: NotarizeCommandRunner = (invocation) =>
         stderr: "pipe"
       })
       const [stdout, stderr, exitCode] = await Promise.all([
-        readStreamText(spawned.stdout),
-        readStreamText(spawned.stderr),
+        Effect.runPromise(
+          readCliStreamText(spawned.stdout, { operation: `${invocation.step}.stdout` })
+        ),
+        Effect.runPromise(
+          readCliStreamText(spawned.stderr, { operation: `${invocation.step}.stderr` })
+        ),
         spawned.exited
       ])
       return { stdout, stderr, exitCode }
@@ -1119,16 +1124,3 @@ const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
 
 const formatUnknownError = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause)
-
-const readStreamText = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
-  const reader = stream.getReader()
-  const chunks: Uint8Array[] = []
-  while (true) {
-    const read = await reader.read()
-    if (read.done) {
-      break
-    }
-    chunks.push(read.value)
-  }
-  return await new Blob(chunks).text()
-}
