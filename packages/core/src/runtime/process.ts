@@ -19,8 +19,10 @@ import {
   Layer,
   Option,
   Queue,
+  RcMap,
   Ref,
   Schema,
+  Semaphore,
   Sink,
   Scope,
   Stream,
@@ -202,7 +204,10 @@ export const makeProcess = (
     }
     const permissions = options.permissions ?? EMPTY_PROCESS_PERMISSIONS
     const now = options.now ?? Date.now
-    const processBudgets = yield* Ref.make(new Map<string, number>())
+    const processBudgetScope = yield* Scope.make()
+    const processBudgets = yield* RcMap.make({
+      lookup: (_ownerScope: string) => Semaphore.make(budgets.maxConcurrent)
+    }).pipe(Scope.provide(processBudgetScope))
     const snapshots = yield* SubscriptionRef.make(new Map<ResourceId, ProcessSnapshot>())
 
     return Object.freeze({
@@ -226,23 +231,20 @@ export const makeProcess = (
           const { child, disposalOrigin, exitObserved, exitState, processScope, resource } =
             yield* Effect.uninterruptible(
               Effect.gen(function* () {
-                yield* reserveProcessBudget(processBudgets, input.ownerScope, budgets.maxConcurrent)
                 const processScope = yield* Scope.make()
+                yield* holdProcessBudgetPermit(
+                  processBudgets,
+                  processScope,
+                  input.ownerScope,
+                  budgets.maxConcurrent
+                ).pipe(Effect.tapError(() => Scope.close(processScope, Exit.void)))
                 const command = makeChildProcessCommand(input, gracefulShutdownMs)
                 const child = yield* spawner.spawn(command).pipe(
                   Scope.provide(processScope),
                   Effect.mapError((error) =>
                     mapPlatformError(error, input.command, "Process.spawn")
                   ),
-                  Effect.tapError(() =>
-                    Effect.all(
-                      [
-                        releaseProcessBudget(processBudgets, input.ownerScope),
-                        Scope.close(processScope, Exit.void)
-                      ],
-                      { discard: true }
-                    )
-                  )
+                  Effect.tapError(() => Scope.close(processScope, Exit.void))
                 )
                 const exitState = yield* Deferred.make<ProcessExitStatus, ProcessError>()
                 const exitObserved = yield* Ref.make(false)
@@ -256,7 +258,7 @@ export const makeProcess = (
                       gracefulShutdownMs,
                       disposalOrigin,
                       Ref.get(exitObserved).pipe(Effect.map((observed) => !observed))
-                    ).pipe(Effect.andThen(releaseProcessBudget(processBudgets, input.ownerScope))),
+                    ),
                     kind: "process",
                     ownerScope: input.ownerScope,
                     state: "running"
@@ -734,44 +736,34 @@ const authorizeProcessSpawn = (
     )
   })
 
-const reserveProcessBudget = (
-  processBudgets: Ref.Ref<Map<string, number>>,
+const holdProcessBudgetPermit = (
+  processBudgets: RcMap.RcMap<string, Semaphore.Semaphore>,
+  processScope: Scope.Closeable,
   ownerScope: string,
   maxConcurrent: number
 ): Effect.Effect<void, HostProtocolResourceBusyError, never> =>
-  Effect.gen(function* reserveProcessBudget() {
-    const reserved = yield* Ref.modify(processBudgets, (current) => {
-      const runningProcesses = current.get(ownerScope) ?? 0
-      if (runningProcesses >= maxConcurrent) {
-        return [false, current] as const
-      }
-      const next = new Map(current)
-      next.set(ownerScope, runningProcesses + 1)
-      return [true, next] as const
-    })
-
+  Effect.gen(function* holdProcessBudgetPermit() {
+    const semaphore = yield* RcMap.get(processBudgets, ownerScope).pipe(Scope.provide(processScope))
+    const acquired = yield* Deferred.make<boolean, never>()
+    const holder = semaphore.withPermitsIfAvailable(1)(
+      Deferred.succeed(acquired, true).pipe(Effect.andThen(Effect.never))
+    )
+    yield* holder.pipe(
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Deferred.succeed(acquired, false),
+          onSome: () => Effect.void
+        })
+      ),
+      Effect.forkScoped({ startImmediately: true }),
+      Scope.provide(processScope)
+    )
+    const reserved = yield* Deferred.await(acquired)
     if (reserved) {
       return
     }
 
     return yield* Effect.fail(makeProcessResourceBusy(ownerScope, maxConcurrent, "Process.spawn"))
-  })
-
-const releaseProcessBudget = (
-  processBudgets: Ref.Ref<Map<string, number>>,
-  ownerScope: string
-): Effect.Effect<void, never, never> =>
-  Ref.update(processBudgets, (current) => {
-    const runningProcesses = current.get(ownerScope) ?? 0
-    if (runningProcesses <= 1) {
-      const next = new Map(current)
-      next.delete(ownerScope)
-      return next
-    }
-
-    const next = new Map(current)
-    next.set(ownerScope, runningProcesses - 1)
-    return next
   })
 
 const processSnapshotList = (

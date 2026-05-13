@@ -151,6 +151,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 | #1209 Drive Vite dev runtime with Effect process and socket    | Implemented | Vite dev runtime now spawns through Effect `ChildProcessSpawner`, bridges stdio through `Socket` plus framed transport, serializes restarts with an Effect `Semaphore`, and uses bounded HMR streams |
 | #1158 Use Effect child process primitives                      | Implemented | `Process` now spawns through Effect `ChildProcessSpawner`, keeps desktop policy in `Process`, and removes the local process adapter/child-handle mirror layer                                        |
 | #1159 Own process exit fibers with scopes                      | Implemented | Process exit observers now run as `forkScoped` fibers in the process scope, and registry-driven disposal interrupts unfinished observers without detached `runFork` fibers                           |
+| #1171 Enforce process budgets with semaphores                  | Implemented | Process owner-scope concurrency now uses Effect `Semaphore` values keyed by `RcMap`, with permits held by the process scope instead of manual `Ref` counters                                         |
 
 ## Design-Debt Follow-ups
 

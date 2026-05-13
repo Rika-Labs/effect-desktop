@@ -481,6 +481,34 @@ processTest("Process spawn releases budget after child exit", async () => {
   expect(spawnCalls).toBe(2)
 })
 
+processTest("Process spawn releases budget after adapter failure", async () => {
+  let spawnCalls = 0
+  const fixture = await makeFixture(
+    ChildProcessSpawner.make(() => {
+      spawnCalls += 1
+      if (spawnCalls === 1) {
+        return Effect.fail(
+          PlatformError.systemError({
+            _tag: "NotFound",
+            method: "spawn",
+            module: "ChildProcessSpawner"
+          })
+        )
+      }
+      return Effect.succeed(makeFakeChild({ exit: { code: 0 }, stdout: [] }))
+    }),
+    { budgets: { maxConcurrent: 1 } }
+  )
+
+  const failed = await Effect.runPromiseExit(
+    fixture.service.spawn("definitely-missing", [], { ownerScope: "scope-main" })
+  )
+  await Effect.runPromise(fixture.service.spawn("sleep", ["1"], { ownerScope: "scope-main" }))
+
+  expectFailure(failed, HostProtocolFileNotFoundError)
+  expect(spawnCalls).toBe(2)
+})
+
 processTest(
   "Process stdout fails with BackpressureOverflow when a chunk exceeds budget",
   async () => {
