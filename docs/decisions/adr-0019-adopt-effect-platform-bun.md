@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Superseded by #1213. The runtime spine now imports upstream Bun and Node platform
+layers inside the provider graph instead of exposing a framework-owned
+`BunServicesLayer` wrapper from `@effect-desktop/core`.
 
 ## Context
 
@@ -20,10 +22,13 @@ The result is that standard Effect patterns ("yield\* FileSystem.FileSystem") do
 
 Add `@effect/platform-bun@4.0.0-beta.60` (pinned to match `effect@4.0.0-beta.60`) as a dependency of `packages/core`.
 
-Create `packages/core/src/runtime/platform.ts` that:
+Provide `BunServices.layer` in the runtime spine so standard Effect platform tags
+resolve for runtime code.
 
-- Exports `BunServicesLayer` — the upstream `BunServices.layer` providing `FileSystem`, `Path`, `Terminal`, `Stdio`, and `ChildProcessSpawner` from the standard effect tags.
-- Re-exports the standard platform service tags (`FileSystem`, `Path`, `Terminal`, `Stdio`, `PlatformError`) so every consumer can import them from `@effect-desktop/core` without knowing the upstream module path.
+Historical note: this ADR originally introduced
+`packages/core/src/runtime/platform.ts` and a `BunServicesLayer` re-export. #1213
+removed that zero-policy wrapper. Runtime provider modules now import upstream
+platform layers directly.
 
 The desktop-specific bespoke services (`Filesystem`, `Process`, `Worker`, `PTY`) are kept in place. They add real value that does not exist upstream: permission policies, symlink escape detection, atomic writes, process-tree lifecycle, budget enforcement, and capability authorization. The upstream tags and the desktop services are complementary, not substitutes.
 
@@ -37,7 +42,7 @@ PTY has no upstream equivalent in `effect` or `@effect/platform-bun`. It stays a
 
 ## Consequences
 
-- `BunServicesLayer` must be provided at the runtime spine for standard platform tags to resolve. The existing `FilesystemLive` layer continues to provide the desktop `Filesystem` context service independently.
+- The selected upstream provider layer must be provided at the runtime spine for standard platform tags to resolve. The existing `FilesystemLive` layer continues to provide the desktop `Filesystem` context service independently.
 - Every future version bump of `@effect/platform-bun` must be coordinated with the corresponding `effect` version bump.
 - PTY remains a framework deviation until upstream supports it.
 
@@ -47,4 +52,6 @@ PTY has no upstream equivalent in `effect` or `@effect/platform-bun`. It stays a
 
 ## Migration notes
 
-Consumers that import `FileSystem`, `Path`, `Terminal`, or `Stdio` from upstream Effect can now import them from `@effect-desktop/core` and provide `BunServicesLayer` at the spine to resolve them.
+Consumers should import standard platform tags from Effect packages directly.
+Effect Desktop owns provider selection, not a parallel platform-tag re-export
+surface.

@@ -4206,7 +4206,7 @@ Normative schema fields:
 | `app.id` | yes | none | Reverse-DNS ASCII ID; used for bundle ID and storage namespaces. |
 | `app.name` | yes | none | Human display name. |
 | `app.version` | yes | none | SemVer. |
-| `runtime.engine` | no | `"bun"` | v1 accepts only `"bun"`. |
+| `runtime.engine` | no | `"bun"` | Accepts `"bun"` or `"node"`; unsupported engines fail before build steps run. |
 | `runtime.entry` | yes | none | Existing TypeScript entrypoint. |
 | `renderer.framework` | no | `"react"` | Templates document React. |
 | `renderer.styling` | no | `"tailwind"` | Templates document Tailwind. |
@@ -4393,7 +4393,7 @@ The resolved config must produce:
 
 - `appManifest`: `{ id, name, version, profile, dataDirs, protocolSchemes }`;
 - `hostManifest`: `{ nativeHost, systemWebView, windows, protocols, signingHints }`;
-- `runtimeManifest`: `{ engine, entry, env, permissions, telemetry, protocolLimits }`;
+- `runtimeManifest`: `{ engine, entry, executable, args, env, permissions, telemetry, protocolLimits }`;
 - `rendererManifest`: `{ framework, entry, assetBaseUrl, csp, navigationPolicy }`;
 - `bridgeManifest`: `{ protocolVersion, generatedAt, rpcGroups, errorRegistryHash }`;
 - `permissionManifest`: `{ normalizedCapabilities, approvalDefaults, redactionPolicy }`;

@@ -13,7 +13,7 @@ use std::{
     env::VarError,
     ffi::OsString,
     io::{self, BufRead, BufReader, Read, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, Command, ExitStatus, Stdio},
     sync::mpsc::{self, Receiver, RecvTimeoutError, Sender},
     thread::{self, JoinHandle},
@@ -25,6 +25,7 @@ const RUNTIME_READY_EVENT: &str = "runtime.ready";
 const RUNTIME_EXECUTABLE_ENV: &str = "EFFECT_DESKTOP_RUNTIME_EXECUTABLE";
 const RUNTIME_PROFILE_ENV: &str = "EFFECT_DESKTOP_PROFILE";
 const BUN_INSTALL_ENV: &str = "BUN_INSTALL";
+const APP_MANIFEST_FILE: &str = "app-manifest.json";
 const DEFAULT_RESTART_READY_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_DEV_RESTARTS: usize = 3;
 const TERMINATION_GRACE: Duration = Duration::from_secs(5);
@@ -68,6 +69,82 @@ impl RuntimeConfig {
         self
     }
 
+    pub(crate) fn from_manifest_path(path: &Path) -> Result<Self> {
+        let source = std::fs::read_to_string(path)
+            .with_context(|| format!("failed to read runtime manifest {}", path.display()))?;
+        let layout_root = path
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("runtime manifest path has no parent"))?;
+        Self::from_manifest_str(&source, layout_root)
+    }
+
+    pub(crate) fn from_manifest_str(source: &str, layout_root: &Path) -> Result<Self> {
+        let value: Value =
+            serde_json::from_str(source).context("failed to parse app-manifest.json")?;
+        let runtime = value
+            .get("runtimeManifest")
+            .ok_or_else(|| anyhow::anyhow!("app-manifest.json.runtimeManifest is required"))?;
+        let runtime = runtime.as_object().ok_or_else(|| {
+            anyhow::anyhow!("app-manifest.json.runtimeManifest must be an object")
+        })?;
+        let engine = manifest_line_safe_string(runtime.get("engine"), "runtimeManifest.engine")?;
+        if engine != "bun" && engine != "node" {
+            bail!("app-manifest.json.runtimeManifest.engine must be bun or node");
+        }
+        let entry = manifest_path_string(runtime.get("entry"), "runtimeManifest.entry")?;
+        let entry_path = layout_root.join(&entry);
+        if !entry_path.is_file() {
+            bail!(
+                "app-manifest.json.runtimeManifest.entry does not exist at {}",
+                entry_path.display()
+            );
+        }
+        let executable =
+            manifest_line_safe_string(runtime.get("executable"), "runtimeManifest.executable")?;
+        if executable != engine {
+            bail!("app-manifest.json.runtimeManifest.executable must match runtimeManifest.engine");
+        }
+        let args = runtime
+            .get("args")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                anyhow::anyhow!("app-manifest.json.runtimeManifest.args must be an array")
+            })?;
+        if args.len() != 1 {
+            bail!(
+                "app-manifest.json.runtimeManifest.args must exactly equal [runtimeManifest.entry]"
+            );
+        }
+        let mut config = RuntimeConfig::new(executable).cwd(layout_root);
+        for (index, arg) in args.iter().enumerate() {
+            let arg = manifest_path_string(Some(arg), &format!("runtimeManifest.args[{index}]"))?;
+            if arg != entry {
+                bail!(
+                    "app-manifest.json.runtimeManifest.args must exactly equal [runtimeManifest.entry]"
+                );
+            }
+            config = config.args([arg]);
+        }
+        let env = runtime
+            .get("env")
+            .and_then(Value::as_object)
+            .ok_or_else(|| {
+                anyhow::anyhow!("app-manifest.json.runtimeManifest.env must be an object")
+            })?;
+        for (key, value) in env {
+            if !is_runtime_env_key(key) {
+                bail!(
+                    "app-manifest.json.runtimeManifest.env key must be a line-safe string without ="
+                );
+            }
+            config = config.env(
+                key.as_str(),
+                manifest_line_safe_string(Some(value), "runtimeManifest.env")?,
+            );
+        }
+        Ok(config)
+    }
+
     fn command(&self) -> Command {
         let mut command = Command::new(&self.executable);
         command
@@ -88,6 +165,61 @@ impl RuntimeConfig {
     }
 }
 
+pub(crate) fn manifest_path_for_exe(exe: &Path) -> Option<PathBuf> {
+    let parent = exe.parent()?;
+    if parent.file_name().and_then(|name| name.to_str()) == Some("native") {
+        return parent.parent().map(|layout| layout.join(APP_MANIFEST_FILE));
+    }
+
+    let contents = parent.parent()?;
+    if parent.file_name().and_then(|name| name.to_str()) == Some("MacOS")
+        && contents.file_name().and_then(|name| name.to_str()) == Some("Contents")
+    {
+        return Some(
+            contents
+                .join("Resources")
+                .join("effect-desktop")
+                .join(APP_MANIFEST_FILE),
+        );
+    }
+
+    None
+}
+
+fn manifest_line_safe_string(value: Option<&Value>, field: &str) -> Result<String> {
+    let Some(value) = value.and_then(Value::as_str) else {
+        bail!("app-manifest.json.{field} must be a string");
+    };
+    if !is_line_safe_string(value) {
+        bail!("app-manifest.json.{field} must be a line-safe string");
+    }
+    Ok(value.to_string())
+}
+
+fn manifest_path_string(value: Option<&Value>, field: &str) -> Result<String> {
+    let value = manifest_line_safe_string(value, field)?;
+    if !is_contained_manifest_path(&value) {
+        bail!("app-manifest.json.{field} must be a relative path inside the build layout");
+    }
+    Ok(value)
+}
+
+fn is_line_safe_string(value: &str) -> bool {
+    !value.is_empty() && !value.contains('\0') && !value.contains('\n') && !value.contains('\r')
+}
+
+fn is_contained_manifest_path(value: &str) -> bool {
+    !Path::new(value).is_absolute()
+        && !value.contains('\\')
+        && value
+            .split('/')
+            .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
+}
+
+fn is_runtime_env_key(value: &str) -> bool {
+    is_line_safe_string(value) && !value.contains('=')
+}
+
 fn resolve_runtime_executable(executable: PathBuf) -> PathBuf {
     resolve_runtime_executable_from_env(
         executable,
@@ -101,18 +233,16 @@ fn resolve_runtime_executable_from_env(
     runtime_executable: Option<OsString>,
     bun_install: Option<OsString>,
 ) -> PathBuf {
-    if executable.as_os_str() != "bun" {
-        return executable;
-    }
-
     if let Some(runtime_executable) = non_empty_os_string(runtime_executable) {
         return PathBuf::from(runtime_executable);
     }
 
-    if let Some(bun_install) = non_empty_os_string(bun_install) {
-        return PathBuf::from(bun_install)
-            .join("bin")
-            .join(bun_executable_name());
+    if executable.as_os_str() == "bun" {
+        if let Some(bun_install) = non_empty_os_string(bun_install) {
+            return PathBuf::from(bun_install)
+                .join("bin")
+                .join(bun_executable_name());
+        }
     }
 
     executable
@@ -878,10 +1008,10 @@ fn join_thread(thread: Option<JoinHandle<()>>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        await_ready, await_ready_events, bun_executable_name, monitor_runtime,
-        parse_runtime_ready_line, resolve_runtime_executable_from_env, RestartPolicy, RuntimeChild,
-        RuntimeConfig, RuntimeEvent, RuntimeProfile, RuntimeReady, RuntimeStream, Supervisor,
-        Termination,
+        await_ready, await_ready_events, bun_executable_name, manifest_path_for_exe,
+        monitor_runtime, parse_runtime_ready_line, resolve_runtime_executable_from_env,
+        RestartPolicy, RuntimeChild, RuntimeConfig, RuntimeEvent, RuntimeProfile, RuntimeReady,
+        RuntimeStream, Supervisor, Termination,
     };
     use std::{
         ffi::OsString,
@@ -1006,14 +1136,204 @@ console.log("this is not framed");
     }
 
     #[test]
-    fn runtime_config_preserves_non_bun_executables() {
+    fn runtime_config_resolves_non_bun_from_explicit_runtime_executable_env() {
+        let executable = resolve_runtime_executable_from_env(
+            PathBuf::from("node"),
+            Some(OsString::from("/opt/effect-desktop/bin/node")),
+            Some(OsString::from("/opt/bun")),
+        );
+
+        assert_eq!(executable, PathBuf::from("/opt/effect-desktop/bin/node"));
+    }
+
+    #[test]
+    fn runtime_config_preserves_non_bun_executables_without_override() {
         let executable = resolve_runtime_executable_from_env(
             PathBuf::from("/usr/bin/node"),
-            Some(OsString::from("/opt/effect-desktop/bin/bun")),
+            None,
             Some(OsString::from("/opt/bun")),
         );
 
         assert_eq!(executable, PathBuf::from("/usr/bin/node"));
+    }
+
+    #[test]
+    fn runtime_config_reads_bun_manifest_launch_contract() {
+        let layout = temp_runtime_layout("bun");
+        fs::create_dir_all(layout.join("runtime")).expect("runtime dir");
+        fs::write(
+            layout.join("runtime").join("main.js"),
+            "console.log('runtime')\n",
+        )
+        .expect("runtime entry");
+        let manifest = r#"{
+  "runtimeManifest": {
+    "engine": "bun",
+    "entry": "runtime/main.js",
+    "executable": "bun",
+    "args": ["runtime/main.js"],
+    "env": { "LOG_LEVEL": "debug" }
+  }
+}"#;
+
+        let config = RuntimeConfig::from_manifest_str(manifest, &layout).expect("manifest config");
+        let config_debug = format!("{config:?}");
+
+        assert!(config_debug.contains("bun"), "{config_debug}");
+        assert!(config_debug.contains("runtime/main.js"), "{config_debug}");
+        assert!(config_debug.contains("LOG_LEVEL"), "{config_debug}");
+        assert!(config_debug.contains("debug"), "{config_debug}");
+    }
+
+    #[test]
+    fn runtime_config_reads_node_manifest_launch_contract() {
+        let layout = temp_runtime_layout("node");
+        fs::create_dir_all(layout.join("runtime")).expect("runtime dir");
+        fs::write(
+            layout.join("runtime").join("main.js"),
+            "console.log('runtime')\n",
+        )
+        .expect("runtime entry");
+        let manifest = r#"{
+  "runtimeManifest": {
+    "engine": "node",
+    "entry": "runtime/main.js",
+    "executable": "node",
+    "args": ["runtime/main.js"],
+    "env": {}
+  }
+}"#;
+
+        let config = RuntimeConfig::from_manifest_str(manifest, &layout).expect("manifest config");
+        let config_debug = format!("{config:?}");
+
+        assert!(config_debug.contains("\"node\""), "{config_debug}");
+        assert!(config_debug.contains("runtime/main.js"), "{config_debug}");
+    }
+
+    #[test]
+    fn runtime_manifest_rejects_unsupported_engines() {
+        let layout = temp_runtime_layout("deno");
+        fs::create_dir_all(layout.join("runtime")).expect("runtime dir");
+        fs::write(
+            layout.join("runtime").join("main.js"),
+            "console.log('runtime')\n",
+        )
+        .expect("runtime entry");
+        let manifest = r#"{
+  "runtimeManifest": {
+    "engine": "deno",
+    "entry": "runtime/main.js",
+    "executable": "deno",
+    "args": ["runtime/main.js"],
+    "env": {}
+  }
+}"#;
+
+        let error = RuntimeConfig::from_manifest_str(manifest, &layout)
+            .expect_err("unsupported engine should fail");
+
+        assert_eq!(
+            error.to_string(),
+            "app-manifest.json.runtimeManifest.engine must be bun or node"
+        );
+    }
+
+    #[test]
+    fn runtime_manifest_rejects_args_that_do_not_match_entry() {
+        let layout = temp_runtime_layout("arg-mismatch");
+        fs::create_dir_all(layout.join("runtime")).expect("runtime dir");
+        fs::write(
+            layout.join("runtime").join("main.js"),
+            "console.log('runtime')\n",
+        )
+        .expect("runtime entry");
+        let manifest = r#"{
+  "runtimeManifest": {
+    "engine": "node",
+    "entry": "runtime/main.js",
+    "executable": "node",
+    "args": ["runtime/other.js"],
+    "env": {}
+  }
+}"#;
+
+        let error = RuntimeConfig::from_manifest_str(manifest, &layout)
+            .expect_err("arg mismatch should fail");
+
+        assert_eq!(
+            error.to_string(),
+            "app-manifest.json.runtimeManifest.args must exactly equal [runtimeManifest.entry]"
+        );
+    }
+
+    #[test]
+    fn runtime_manifest_rejects_entry_path_traversal() {
+        let layout = temp_runtime_layout("entry-traversal");
+        let manifest = r#"{
+  "runtimeManifest": {
+    "engine": "node",
+    "entry": "../outside.js",
+    "executable": "node",
+    "args": ["../outside.js"],
+    "env": {}
+  }
+}"#;
+
+        let error = RuntimeConfig::from_manifest_str(manifest, &layout)
+            .expect_err("entry traversal should fail");
+
+        assert_eq!(
+            error.to_string(),
+            "app-manifest.json.runtimeManifest.entry must be a relative path inside the build layout"
+        );
+    }
+
+    #[test]
+    fn runtime_manifest_rejects_invalid_env_keys() {
+        let layout = temp_runtime_layout("env-key");
+        fs::create_dir_all(layout.join("runtime")).expect("runtime dir");
+        fs::write(
+            layout.join("runtime").join("main.js"),
+            "console.log('runtime')\n",
+        )
+        .expect("runtime entry");
+        let manifest = r#"{
+  "runtimeManifest": {
+    "engine": "node",
+    "entry": "runtime/main.js",
+    "executable": "node",
+    "args": ["runtime/main.js"],
+    "env": { "BAD=KEY": "value" }
+  }
+}"#;
+
+        let error = RuntimeConfig::from_manifest_str(manifest, &layout)
+            .expect_err("invalid env key should fail");
+
+        assert_eq!(
+            error.to_string(),
+            "app-manifest.json.runtimeManifest.env key must be a line-safe string without ="
+        );
+    }
+
+    #[test]
+    fn runtime_manifest_path_points_from_native_binary_to_layout_manifest() {
+        let path = manifest_path_for_exe(Path::new("/app/layout/native/host"))
+            .expect("manifest path should resolve");
+
+        assert_eq!(path, Path::new("/app/layout/app-manifest.json"));
+    }
+
+    #[test]
+    fn runtime_manifest_path_points_from_macos_bundle_to_resource_manifest() {
+        let path = manifest_path_for_exe(Path::new("/App/Foo.app/Contents/MacOS/Foo"))
+            .expect("manifest path should resolve");
+
+        assert_eq!(
+            path,
+            Path::new("/App/Foo.app/Contents/Resources/effect-desktop/app-manifest.json")
+        );
     }
 
     #[test]
@@ -1622,6 +1942,19 @@ setInterval(() => {{}}, 1000);
             "effect-desktop-{name}-{}-{unique}.txt",
             std::process::id()
         ))
+    }
+
+    fn temp_runtime_layout(name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after Unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "effect-desktop-runtime-layout-{name}-{}-{unique}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&path).expect("runtime layout dir");
+        path
     }
 
     fn wait_for_count(path: &Path, expected: usize) {

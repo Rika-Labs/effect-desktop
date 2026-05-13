@@ -5951,7 +5951,13 @@ test("desktop build stages renderer runtime host bridge manifests and report", a
     expect(await readFile(join(layout, "renderer", "index.html"), "utf8")).toBe("<h1>ok</h1>")
     expect(await readFile(join(layout, "runtime", "runtime.js"), "utf8")).toContain("ok")
     expect(appManifest).toMatchObject({
-      runtime: { entry: "runtime/runtime.js" }
+      runtimeManifest: {
+        engine: "bun",
+        entry: "runtime/runtime.js",
+        executable: "bun",
+        args: ["runtime/runtime.js"],
+        env: {}
+      }
     })
     const rendererManifest = appManifest["rendererManifest"] as {
       readonly csp: {
@@ -5978,6 +5984,73 @@ test("desktop build stages renderer runtime host bridge manifests and report", a
       appId: "dev.effect-desktop.playground",
       target: "linux-x64",
       layoutPath: layout
+    })
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop build emits node runtime launch manifest for node runtime config", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-node-"))
+  try {
+    await writePlaygroundFixture(directory, { runtime: { engine: "node", entry: "runtime.ts" } })
+    const calls: string[] = []
+    const runner: CommandRunner = (invocation) =>
+      Effect.gen(function* () {
+        calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+        if (invocation.step === "renderer") {
+          yield* Effect.promise(() => mkdir(join(invocation.cwd, "dist"), { recursive: true }))
+          yield* Effect.promise(() =>
+            writeFile(join(invocation.cwd, "dist", "index.html"), "<h1>ok</h1>")
+          )
+        }
+        if (invocation.step === "runtime") {
+          const outdir = invocation.args[invocation.args.indexOf("--outdir") + 1]
+          if (outdir !== undefined) {
+            yield* Effect.promise(() => mkdir(outdir, { recursive: true }))
+            yield* Effect.promise(() =>
+              writeFile(join(outdir, "runtime.js"), "console.log('ok')\n")
+            )
+          }
+        }
+        if (invocation.step === "native-host") {
+          yield* Effect.promise(() =>
+            mkdir(join(invocation.cwd, "target", "release"), { recursive: true })
+          )
+          yield* Effect.promise(() =>
+            writeFile(join(invocation.cwd, "target", "release", "host"), "host")
+          )
+        }
+      })
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["build", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        commandRunner: runner,
+        writeStdout: () => {},
+        writeStderr: () => {}
+      })
+    )
+
+    const layout = join(directory, "apps", "playground", "build", "effect-desktop", "linux-x64")
+    const appManifest = JSON.parse(
+      await readFile(join(layout, "app-manifest.json"), "utf8")
+    ) as Record<string, unknown>
+
+    expect(exitCode).toBe(0)
+    expect(calls).toContain(
+      `runtime:bun build ${join(directory, "apps", "playground", "runtime.ts")} --target=node --outdir ${join(layout, "runtime")}`
+    )
+    expect(appManifest).toMatchObject({
+      runtimeManifest: {
+        engine: "node",
+        entry: "runtime/runtime.js",
+        executable: "node",
+        args: ["runtime/runtime.js"],
+        env: {}
+      }
     })
   } finally {
     await rm(directory, { recursive: true, force: true })
@@ -6075,6 +6148,38 @@ test("desktop build rejects missing runtime.entry", async () => {
     )
     expect(exitCode).toBe(1)
     expect(stderr.join("")).toContain("runtime.entry is required")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop build rejects unsupported runtime.engine before running build steps", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-runtime-engine-"))
+  try {
+    await writePlaygroundFixture(directory, { runtime: { engine: "deno", entry: "runtime.ts" } })
+    const calls: string[] = []
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["build", "--config", "apps/playground/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        commandRunner: (invocation) =>
+          Effect.sync(() => {
+            calls.push(invocation.step)
+          }),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(calls).toEqual([])
+    expect(stderr.join("")).toContain("BuildConfigError")
+    expect(stderr.join("")).toContain("runtime.engine must be one of bun, node")
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -6729,6 +6834,210 @@ test("desktop package rejects malformed build manifests as typed package errors"
     expect(payload.tag).toBe("PackageFileError")
     expect(payload.message).toContain("app-manifest.json")
     expect(payload.message).toContain("renderer")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop package rejects malformed runtime launch manifests", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-runtime-manifest-"))
+  try {
+    await writePlaygroundFixture(directory)
+    await writeBuildLayoutFixture(directory, "macos-arm64")
+    const layout = join(directory, "apps", "playground", "build", "effect-desktop", "macos-arm64")
+    const hostBinary = hostBinaryName("macos-arm64")
+    await writeFile(
+      join(layout, "app-manifest.json"),
+      JSON.stringify(
+        {
+          id: "dev.effect-desktop.playground",
+          name: "Effect Desktop Playground",
+          version: "0.0.0",
+          target: "macos-arm64",
+          renderer: { path: "renderer" },
+          runtimeManifest: {
+            engine: "deno",
+            entry: "runtime/main.js",
+            executable: "deno",
+            args: ["runtime/main.js"],
+            env: {}
+          },
+          nativeHost: { binary: `native/${hostBinary}` }
+        },
+        null,
+        2
+      )
+    )
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: [
+          "package",
+          "--config",
+          "apps/playground/desktop.config.ts",
+          "--artifact",
+          "app",
+          "--json"
+        ],
+        cwd: directory,
+        hostTarget: "macos-arm64",
+        packageCommandRunner: () => Effect.die("package commands should not run for bad manifest"),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    const payload = JSON.parse(stderr.join("")) as {
+      readonly tag: string
+      readonly message: string
+    }
+    expect(exitCode).toBe(1)
+    expect(payload.tag).toBe("PackageFileError")
+    expect(payload.message).toContain("runtimeManifest.engine")
+    expect(payload.message).toContain("bun, node")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop package rejects runtime launch contract drift and path escapes", async () => {
+  const cases = [
+    {
+      name: "missing-executable",
+      mutate: (manifest: Record<string, unknown>) => {
+        delete (manifest["runtimeManifest"] as Record<string, unknown>)["executable"]
+      },
+      message: "runtimeManifest.executable"
+    },
+    {
+      name: "executable-mismatch",
+      mutate: (manifest: Record<string, unknown>) => {
+        ;(manifest["runtimeManifest"] as Record<string, unknown>)["executable"] = "bun"
+      },
+      message: "runtimeManifest.executable must match runtimeManifest.engine"
+    },
+    {
+      name: "args-mismatch",
+      mutate: (manifest: Record<string, unknown>) => {
+        ;(manifest["runtimeManifest"] as Record<string, unknown>)["args"] = ["runtime/other.js"]
+      },
+      message: "runtimeManifest.args must exactly equal [runtimeManifest.entry]"
+    },
+    {
+      name: "env-key",
+      mutate: (manifest: Record<string, unknown>) => {
+        ;(manifest["runtimeManifest"] as Record<string, unknown>)["env"] = { "BAD=KEY": "value" }
+      },
+      message: "runtimeManifest.env.BAD=KEY"
+    },
+    {
+      name: "runtime-traversal",
+      mutate: (manifest: Record<string, unknown>) => {
+        const runtime = manifest["runtimeManifest"] as Record<string, unknown>
+        runtime["entry"] = "../outside.js"
+        runtime["args"] = ["../outside.js"]
+      },
+      message: "runtimeManifest.entry must be a relative path inside the build layout"
+    },
+    {
+      name: "renderer-traversal",
+      mutate: (manifest: Record<string, unknown>) => {
+        manifest["renderer"] = { path: "../renderer" }
+      },
+      message: "renderer.path must be a relative path inside the build layout"
+    },
+    {
+      name: "native-traversal",
+      mutate: (manifest: Record<string, unknown>) => {
+        manifest["nativeHost"] = { binary: "../host" }
+      },
+      message: "nativeHost.binary must be a relative path inside the build layout"
+    }
+  ] as const
+
+  for (const testCase of cases) {
+    const directory = await mkdtemp(join(tmpdir(), `effect-desktop-cli-package-${testCase.name}-`))
+    try {
+      await writePlaygroundFixture(directory, { runtime: { engine: "node", entry: "runtime.ts" } })
+      await writeBuildLayoutFixture(directory, "linux-x64", "node")
+      const layout = join(directory, "apps", "playground", "build", "effect-desktop", "linux-x64")
+      const manifestPath = join(layout, "app-manifest.json")
+      const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown>
+      testCase.mutate(manifest)
+      await writeFile(manifestPath, JSON.stringify(manifest, null, 2))
+      const stderr: string[] = []
+
+      const exitCode = await Effect.runPromise(
+        runCli({
+          argv: [
+            "package",
+            "--config",
+            "apps/playground/desktop.config.ts",
+            "--artifact",
+            "appimage",
+            "--json"
+          ],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          packageCommandRunner: () =>
+            Effect.die("package commands should not run for bad manifest"),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+      )
+
+      const payload = JSON.parse(stderr.join("")) as {
+        readonly tag: string
+        readonly message: string
+      }
+      expect(exitCode).toBe(1)
+      expect(payload.tag).toBe("PackageFileError")
+      expect(payload.message).toContain(testCase.message)
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  }
+})
+
+test("desktop package accepts node runtime launch manifests", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-node-runtime-"))
+  try {
+    await writePlaygroundFixture(directory, { runtime: { engine: "node", entry: "runtime.ts" } })
+    await writeBuildLayoutFixture(directory, "linux-x64", "node")
+    const calls: string[] = []
+    const runner: PackageCommandRunner = (invocation) =>
+      Effect.gen(function* () {
+        calls.push(invocation.step)
+        const output = invocation.args.at(-1)
+        if (output !== undefined) {
+          yield* Effect.promise(() => writeFile(output, invocation.step))
+        }
+      })
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: [
+          "package",
+          "--config",
+          "apps/playground/desktop.config.ts",
+          "--artifact",
+          "appimage"
+        ],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        packageCommandRunner: runner,
+        writeStdout: () => {},
+        writeStderr: () => {}
+      })
+    )
+
+    expect(exitCode).toBe(0)
+    expect(calls).toEqual(["linux-appimage"])
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -7476,7 +7785,8 @@ const writePlaygroundFixture = async (
 
 const writeBuildLayoutFixture = async (
   directory: string,
-  target: Extract<DesktopTargetId, "linux-arm64" | "linux-x64" | "macos-arm64" | "windows-x64">
+  target: Extract<DesktopTargetId, "linux-arm64" | "linux-x64" | "macos-arm64" | "windows-x64">,
+  runtimeEngine: "bun" | "node" = "bun"
 ): Promise<void> => {
   const layout = join(directory, "apps", "playground", "build", "effect-desktop", target)
   const hostBinary = hostBinaryName(target)
@@ -7495,7 +7805,13 @@ const writeBuildLayoutFixture = async (
         version: "0.0.0",
         target,
         renderer: { path: "renderer" },
-        runtime: { entry: "runtime/main.js" },
+        runtimeManifest: {
+          engine: runtimeEngine,
+          entry: "runtime/main.js",
+          executable: runtimeEngine,
+          args: ["runtime/main.js"],
+          env: {}
+        },
         nativeHost: { binary: `native/${hostBinary}` }
       },
       null,

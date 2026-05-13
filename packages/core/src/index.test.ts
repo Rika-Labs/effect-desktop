@@ -8,11 +8,14 @@ import {
   RpcSupport,
   type HostProtocolEnvelope
 } from "@effect-desktop/bridge"
+import { BunServices } from "@effect/platform-bun"
+import { NodeServices } from "@effect/platform-node"
 import { Cause, Context, Effect, Exit, FileSystem, Layer, Path, Queue, Schema } from "effect"
 import type { Scope } from "effect"
 import { Rpc, RpcClient, RpcGroup, RpcServer } from "effect/unstable/rpc"
 import type { Socket } from "effect/unstable/socket"
 import type * as RuntimeTransport from "@effect-desktop/core/runtime/transport"
+import type { DesktopRuntimeProviderServices } from "./runtime/desktop-app.js"
 import type { DesktopRpcClient, SupportedDesktopRpcClient } from "./runtime/desktop-rpc-surface.js"
 import type { WorkflowLayer } from "./runtime/workflow.js"
 
@@ -30,6 +33,18 @@ type TransportConnectContract = Assert<
   >
 >
 const transportConnectContract: TransportConnectContract = true
+type BunProviderServicesContract = Assert<
+  IsEqual<Layer.Success<typeof BunServices.layer>, DesktopRuntimeProviderServices>
+>
+type NodeProviderServicesContract = Assert<
+  IsEqual<Layer.Success<typeof NodeServices.layer>, DesktopRuntimeProviderServices>
+>
+const bunProviderServicesContract: BunProviderServicesContract = true
+const nodeProviderServicesContract: NodeProviderServicesContract = true
+const runtimeProviderServicesContracts = [
+  bunProviderServicesContract,
+  nodeProviderServicesContract
+] as const
 // @ts-expect-error FramedTransport was removed from the public runtime transport subpath.
 type _RemovedFramedTransport = RuntimeTransport.FramedTransport
 // @ts-expect-error FramedTransportOptions was replaced by the narrower FrameCodecOptions name.
@@ -38,6 +53,7 @@ type _RemovedFramedTransportOptions = RuntimeTransport.FramedTransportOptions
 test("public barrel exports the ResourceRegistry factory", async () => {
   const core = await import("./index.js")
 
+  expect(runtimeProviderServicesContracts).toEqual([true, true])
   expect(core.makeResourceRegistry).toBeFunction()
   expect(core.makeProcess).toBeFunction()
   expect(core.ProcessLive).toBeDefined()
@@ -190,7 +206,29 @@ test("Desktop.runtimeGraph exposes selected providers and composition nodes with
   })
 })
 
-test("Desktop.runtime runs the same provider-backed app program under bun and test graphs", async () => {
+test("Desktop.runtimeGraph exposes node runtime provider selection", async () => {
+  const core = await import("./index.js")
+  const graph = await Effect.runPromise(
+    core.Desktop.runtimeGraph({
+      id: "notes",
+      windows: {
+        main: {
+          title: "Notes"
+        }
+      },
+      providers: { runtime: "node" }
+    })
+  )
+
+  expect(graph.providers).toEqual({ runtime: "node" })
+  expect(graph.nodes[0]).toMatchObject({
+    id: "provider:runtime:node",
+    kind: "provider",
+    label: "Node runtime provider"
+  })
+})
+
+test("Desktop.runtime runs the same provider-backed app program under bun, node, and test graphs", async () => {
   const core = await import("./index.js")
   const config = {
     id: "notes",
@@ -217,6 +255,13 @@ test("Desktop.runtime runs the same provider-backed app program under bun and te
   const bun = await Effect.runPromise(
     Effect.scoped(program.pipe(Effect.provide(core.Desktop.runtime(config))))
   )
+  const node = await Effect.runPromise(
+    Effect.scoped(
+      program.pipe(
+        Effect.provide(core.Desktop.runtime({ ...config, providers: { runtime: "node" } }))
+      )
+    )
+  )
   const test = await Effect.runPromise(
     Effect.scoped(
       program.pipe(
@@ -228,6 +273,12 @@ test("Desktop.runtime runs the same provider-backed app program under bun and te
   expect(bun).toEqual({
     appId: "notes",
     runtimeProvider: "bun",
+    graphAppId: "notes",
+    cwdExists: true
+  })
+  expect(node).toEqual({
+    appId: "notes",
+    runtimeProvider: "node",
     graphAppId: "notes",
     cwdExists: true
   })

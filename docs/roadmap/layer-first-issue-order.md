@@ -133,6 +133,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 | #1281 Make renderer RPC runtime a scoped layer               | Implemented | Core renderer RPC now exposes `RendererRpcClients`/`RendererRpcTransport` scoped layers, and framework adapters own `ManagedRuntime` disposal instead of a core unsafe runtime object         |
 | #1220 Centralize release target modeling                     | Implemented | CLI build, package, sign, notarize, and publish pipelines now consume `DesktopTargetId`/`DesktopArtifactKind` plus canonical target policy helpers from `packages/cli/src/targets.ts`         |
 | #1221 Centralize CSP and nonce policy                        | Implemented | Config owns schema-backed `CspPolicy` data, TS native serving renders from that policy with parser-backed nonce rewriting, and Rust host defaults are generated from the same policy artifact |
+| #1213 Add Bun and Node runtime providers                     | Implemented | Config accepts Bun/Node runtime engines, core selects Bun or Node Effect platform layers, CLI emits normalized runtime launch manifests, and Rust host reads that manifest                    |
 | #1264 Replace BridgeRpc runtime DSL with Effect RPC adapters | Implemented | Native capability `*Rpcs` values are plain `RpcGroup`s, host runtimes use `RpcGroup.toLayer(...)` through `makeDesktopRpcHandlerRuntime(...)`, and bridge/native focused tests pass           |
 
 ## Design-Debt Follow-ups

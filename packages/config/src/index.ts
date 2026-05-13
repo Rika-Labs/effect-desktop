@@ -155,7 +155,7 @@ export interface DesktopConfig extends ProductionSecurityConfig {
     readonly version?: string
   }
   readonly runtime?: {
-    readonly engine?: "bun"
+    readonly engine?: RuntimeEngine
     readonly entry?: string
   }
   readonly renderer?: {
@@ -203,6 +203,9 @@ export interface DesktopConfig extends ProductionSecurityConfig {
     readonly sharedConfigPath?: string
   }
 }
+
+export const RuntimeEngine = Schema.Literals(["bun", "node"])
+export type RuntimeEngine = typeof RuntimeEngine.Type
 
 export interface ProductionCheckInput {
   readonly config: ProductionSecurityConfig

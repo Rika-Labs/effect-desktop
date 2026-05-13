@@ -204,9 +204,17 @@ interface AppManifest {
   readonly version: string
   readonly target: PackageTarget
   readonly renderer: { readonly path: string }
-  readonly runtime: { readonly entry: string }
+  readonly runtimeManifest: {
+    readonly engine: "bun" | "node"
+    readonly entry: string
+    readonly executable: string
+    readonly args: readonly string[]
+    readonly env: Readonly<Record<string, string>>
+  }
   readonly nativeHost: { readonly binary: string }
 }
+
+const RUNTIME_ENGINES = ["bun", "node"] as const
 
 interface PlannedArtifact {
   readonly kind: PackageArtifactKind
@@ -399,7 +407,7 @@ const validateBuildLayout = (
       )
     }
     yield* statPath(join(plan.layoutPath, manifest.renderer.path))
-    yield* statPath(join(plan.layoutPath, manifest.runtime.entry))
+    yield* statPath(join(plan.layoutPath, manifest.runtimeManifest.entry))
     yield* statPath(join(plan.layoutPath, manifest.nativeHost.binary))
   })
 
@@ -414,20 +422,107 @@ const decodeAppManifest = (
   const name = readManifestString(value, "name", path)
   const version = readManifestString(value, "version", path)
   const target = readManifestTarget(value, path)
-  const renderer = readNestedManifestString(value, "renderer", "path", path)
-  const runtime = readNestedManifestString(value, "runtime", "entry", path)
-  const nativeHost = readNestedManifestString(value, "nativeHost", "binary", path)
-  return Effect.all({ id, name, version, target, renderer, runtime, nativeHost }).pipe(
+  const renderer = readNestedManifestPath(value, "renderer", "path", path)
+  const runtimeManifest = readRuntimeManifest(value["runtimeManifest"], path)
+  const nativeHost = readNestedManifestPath(value, "nativeHost", "binary", path)
+  return Effect.all({ id, name, version, target, renderer, runtimeManifest, nativeHost }).pipe(
     Effect.map((manifest) => ({
       id: manifest.id,
       name: manifest.name,
       version: manifest.version,
       target: manifest.target,
       renderer: { path: manifest.renderer },
-      runtime: { entry: manifest.runtime },
+      runtimeManifest: manifest.runtimeManifest,
       nativeHost: { binary: manifest.nativeHost }
     }))
   )
+}
+
+const readRuntimeManifest = (
+  value: unknown,
+  path: string
+): Effect.Effect<AppManifest["runtimeManifest"], PackageFileError, never> => {
+  if (!isRecord(value)) {
+    return packageManifestError(path, "app-manifest.json field runtimeManifest must be an object")
+  }
+  const engine = readRuntimeEngine(value["engine"], path)
+  const entry = readManifestPath(value, "runtimeManifest.entry", path)
+  const executable = readLineSafeManifestString(value, "runtimeManifest.executable", path)
+  const args = readRuntimeArgs(value["args"], path)
+  const env = readRuntimeEnv(value["env"], path)
+  return Effect.all({ engine, entry, executable, args, env }).pipe(
+    Effect.flatMap((runtime) =>
+      runtime.executable !== runtime.engine
+        ? packageManifestError(
+            path,
+            "app-manifest.json field runtimeManifest.executable must match runtimeManifest.engine"
+          )
+        : runtime.args.length !== 1 || runtime.args[0] !== runtime.entry
+          ? packageManifestError(
+              path,
+              "app-manifest.json field runtimeManifest.args must exactly equal [runtimeManifest.entry]"
+            )
+          : Effect.succeed(runtime)
+    )
+  )
+}
+
+const readRuntimeEngine = (
+  value: unknown,
+  path: string
+): Effect.Effect<AppManifest["runtimeManifest"]["engine"], PackageFileError, never> =>
+  isRuntimeEngine(value)
+    ? Effect.succeed(value)
+    : packageManifestError(
+        path,
+        `app-manifest.json field runtimeManifest.engine must be one of ${RUNTIME_ENGINES.join(", ")}`
+      )
+
+const isRuntimeEngine = (value: unknown): value is AppManifest["runtimeManifest"]["engine"] =>
+  typeof value === "string" && RUNTIME_ENGINES.some((engine) => engine === value)
+
+const readRuntimeArgs = (
+  value: unknown,
+  path: string
+): Effect.Effect<readonly string[], PackageFileError, never> => {
+  if (!Array.isArray(value)) {
+    return packageManifestError(
+      path,
+      "app-manifest.json field runtimeManifest.args must be an array"
+    )
+  }
+  for (const [index, item] of value.entries()) {
+    if (!isLineSafeString(item)) {
+      return packageManifestError(
+        path,
+        `app-manifest.json field runtimeManifest.args[${index}] must be a line-safe string`
+      )
+    }
+  }
+  return Effect.succeed(Object.freeze([...value]))
+}
+
+const readRuntimeEnv = (
+  value: unknown,
+  path: string
+): Effect.Effect<Readonly<Record<string, string>>, PackageFileError, never> => {
+  if (!isRecord(value)) {
+    return packageManifestError(
+      path,
+      "app-manifest.json field runtimeManifest.env must be an object"
+    )
+  }
+  const env: Record<string, string> = {}
+  for (const [key, item] of Object.entries(value)) {
+    if (!isRuntimeEnvKey(key) || !isLineSafeString(item)) {
+      return packageManifestError(
+        path,
+        `app-manifest.json field runtimeManifest.env.${key} must be a line-safe string without =`
+      )
+    }
+    env[key] = item
+  }
+  return Effect.succeed(Object.freeze(env))
 }
 
 const readManifestString = (
@@ -440,6 +535,47 @@ const readManifestString = (
     ? Effect.succeed(value)
     : packageManifestError(path, `app-manifest.json field ${field} must be a string`)
 }
+
+const readLineSafeManifestString = (
+  record: Readonly<Record<PropertyKey, unknown>>,
+  field: string,
+  path: string
+): Effect.Effect<string, PackageFileError, never> => {
+  const value = record[field.slice(field.lastIndexOf(".") + 1)]
+  return isLineSafeString(value)
+    ? Effect.succeed(value)
+    : packageManifestError(path, `app-manifest.json field ${field} must be a line-safe string`)
+}
+
+const readManifestPath = (
+  record: Readonly<Record<PropertyKey, unknown>>,
+  field: string,
+  path: string
+): Effect.Effect<string, PackageFileError, never> =>
+  readLineSafeManifestString(record, field, path).pipe(
+    Effect.flatMap((manifestPath) =>
+      isContainedManifestPath(manifestPath)
+        ? Effect.succeed(manifestPath)
+        : packageManifestError(
+            path,
+            `app-manifest.json field ${field} must be a relative path inside the build layout`
+          )
+    )
+  )
+
+const isLineSafeString = (value: unknown): value is string =>
+  typeof value === "string" &&
+  value.length > 0 &&
+  !value.includes("\0") &&
+  !value.includes("\r") &&
+  !value.includes("\n")
+
+const isContainedManifestPath = (value: string): boolean =>
+  !isAbsolute(value) &&
+  !value.includes("\\") &&
+  value.split("/").every((segment) => segment.length > 0 && segment !== "." && segment !== "..")
+
+const isRuntimeEnvKey = (value: string): boolean => isLineSafeString(value) && !value.includes("=")
 
 const readManifestTarget = (
   record: Readonly<Record<PropertyKey, unknown>>,
@@ -478,6 +614,23 @@ const readNestedManifestString = (
         `app-manifest.json field ${objectField}.${stringField} must be a string`
       )
 }
+
+const readNestedManifestPath = (
+  record: Readonly<Record<PropertyKey, unknown>>,
+  objectField: string,
+  stringField: string,
+  path: string
+): Effect.Effect<string, PackageFileError, never> =>
+  readNestedManifestString(record, objectField, stringField, path).pipe(
+    Effect.flatMap((manifestPath) =>
+      isLineSafeString(manifestPath) && isContainedManifestPath(manifestPath)
+        ? Effect.succeed(manifestPath)
+        : packageManifestError(
+            path,
+            `app-manifest.json field ${objectField}.${stringField} must be a relative path inside the build layout`
+          )
+    )
+  )
 
 const packageManifestError = (
   path: string,

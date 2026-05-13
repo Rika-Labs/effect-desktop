@@ -66,7 +66,7 @@
     {
       "name": "DesktopConfig",
       "kind": "interface",
-      "signature": "export interface DesktopConfig extends ProductionSecurityConfig { readonly app?: { readonly id?: string readonly name?: string readonly version?: string } readonly runtime?: { readonly engine?: \"bun\" readonly entry?: string } readonly renderer?: { readonly framework?: \"react\" readonly styling?: \"tailwind\" readonly entry?: string readonly dist?: string } readonly native?: { readonly host?: string readonly renderer?: string } readonly windows?: unknown readonly protocols?: readonly { readonly scheme: string readonly handler?: string }[] readonly build?: { readonly targets?: readonly string[] } readonly signing?: unknown readonly update?: ProductionSecurityConfig[\"update\"] & { readonly channel?: \"stable\" | \"beta\" | \"canary\" readonly publicKey?: string readonly feedUrl?: string readonly minVersion?: string readonly maxVersion?: string | undefined readonly keyVersion?: number readonly rollback?: boolean } readonly telemetry?: { readonly enabled?: boolean readonly redactSensitive?: boolean readonly endpoint?: string } readonly protocol?: { readonly limits?: { readonly maxFrameBytes?: number readonly maxConcurrentRequestsPerWindow?: number readonly maxConcurrentStreamsPerWindow?: number } } readonly env?: Record<string, Record<string, string>> readonly workspace?: { readonly sharedConfigPath?: string } }"
+      "signature": "export interface DesktopConfig extends ProductionSecurityConfig { readonly app?: { readonly id?: string readonly name?: string readonly version?: string } readonly runtime?: { readonly engine?: RuntimeEngine readonly entry?: string } readonly renderer?: { readonly framework?: \"react\" readonly styling?: \"tailwind\" readonly entry?: string readonly dist?: string } readonly native?: { readonly host?: string readonly renderer?: string } readonly windows?: unknown readonly protocols?: readonly { readonly scheme: string readonly handler?: string }[] readonly build?: { readonly targets?: readonly string[] } readonly signing?: unknown readonly update?: ProductionSecurityConfig[\"update\"] & { readonly channel?: \"stable\" | \"beta\" | \"canary\" readonly publicKey?: string readonly feedUrl?: string readonly minVersion?: string readonly maxVersion?: string | undefined readonly keyVersion?: number readonly rollback?: boolean } readonly telemetry?: { readonly enabled?: boolean readonly redactSensitive?: boolean readonly endpoint?: string } readonly protocol?: { readonly limits?: { readonly maxFrameBytes?: number readonly maxConcurrentRequestsPerWindow?: number readonly maxConcurrentStreamsPerWindow?: number } } readonly env?: Record<string, Record<string, string>> readonly workspace?: { readonly sharedConfigPath?: string } }"
     },
     {
       "name": "effectiveCspPolicy",
@@ -177,6 +177,11 @@
       "name": "runProductionCheck",
       "kind": "value",
       "signature": "const runProductionCheck: (input: ProductionCheckInput) => Effect.Effect<ProductionCheckReport, ProductionCheckError, never>"
+    },
+    {
+      "name": "RuntimeEngine",
+      "kind": "type",
+      "signature": "const RuntimeEngine: Schema.Literals<readonly [\"bun\", \"node\"]>"
     },
     {
       "name": "SecretPermissionPolicy",

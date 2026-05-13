@@ -55,7 +55,7 @@ test("defineDesktopConfig accepts the documented app config shape", () => {
       version: "1.0.0"
     },
     runtime: {
-      engine: "bun",
+      engine: "node",
       entry: "src/app.ts"
     },
     renderer: {
@@ -117,6 +117,7 @@ test("defineDesktopConfig accepts the documented app config shape", () => {
   })
 
   expect(config.app.version).toBe("1.0.0")
+  expect(config.runtime.engine).toBe("node")
 })
 
 test("defineDesktopConfig rejects invalid app metadata types at compile time", () => {

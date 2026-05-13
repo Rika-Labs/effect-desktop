@@ -1,3 +1,5 @@
+import { BunServices } from "@effect/platform-bun"
+import { NodeServices } from "@effect/platform-node"
 import { Config, Context, Data, Effect, Layer, Option, Schema } from "effect"
 import * as FileSystemRuntime from "effect/FileSystem"
 import * as PathRuntime from "effect/Path"
@@ -9,7 +11,6 @@ import { ChildProcessSpawner as ChildProcessSpawnerRuntime } from "effect/unstab
 import { rpcCapability } from "@effect-desktop/bridge"
 
 import { DesktopLoggerLayer } from "./logger.js"
-import { BunServicesLayer } from "./platform.js"
 import {
   NormalizedCapability as NormalizedCapabilitySchema,
   PermissionRegistry,
@@ -88,7 +89,7 @@ export interface AnyDesktopRpcLayer {
   readonly layer: Layer.Layer<never, unknown, unknown>
 }
 
-export type DesktopRuntimeProviderId = "bun" | "test" | (string & {})
+export type DesktopRuntimeProviderId = "bun" | "node" | "test" | (string & {})
 
 export interface DesktopProviderSelection {
   readonly runtime?: DesktopRuntimeProviderId | undefined
@@ -128,7 +129,12 @@ export interface DesktopRuntimeApi {
   readonly graph: DesktopRuntimeGraph
 }
 
-export type DesktopRuntimeProviderServices = Layer.Success<typeof BunServicesLayer>
+export type DesktopRuntimeProviderServices =
+  | FileSystemRuntime.FileSystem
+  | PathRuntime.Path
+  | TerminalRuntime.Terminal
+  | StdioRuntime.Stdio
+  | ChildProcessSpawnerRuntime.ChildProcessSpawner
 
 export type DesktopRuntimeServices = DesktopApp | DesktopRuntime | DesktopRuntimeProviderServices
 
@@ -226,7 +232,7 @@ const TestRuntimeProviderLayer: Layer.Layer<DesktopRuntimeProviderServices, neve
 const RuntimeProviders = Object.freeze({
   bun: Object.freeze({
     id: "bun" as const,
-    layer: BunServicesLayer as Layer.Layer<
+    layer: BunServices.layer as Layer.Layer<
       DesktopRuntimeProviderServices,
       Config.ConfigError,
       never
@@ -235,6 +241,21 @@ const RuntimeProviders = Object.freeze({
       "provider:runtime:bun",
       "provider",
       "Bun runtime provider",
+      RuntimeProviderServiceNames,
+      []
+    )
+  }),
+  node: Object.freeze({
+    id: "node" as const,
+    layer: NodeServices.layer as Layer.Layer<
+      DesktopRuntimeProviderServices,
+      Config.ConfigError,
+      never
+    >,
+    node: graphNode(
+      "provider:runtime:node",
+      "provider",
+      "Node runtime provider",
       RuntimeProviderServiceNames,
       []
     )
@@ -580,6 +601,9 @@ const resolveRuntimeProvider = <RIn, E>(
   const provider = selectedProviders(config.providers).runtime
   if (provider === "bun") {
     return Effect.succeed(RuntimeProviders.bun)
+  }
+  if (provider === "node") {
+    return Effect.succeed(RuntimeProviders.node)
   }
   if (provider === "test") {
     return Effect.succeed(RuntimeProviders.test)

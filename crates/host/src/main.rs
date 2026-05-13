@@ -12,7 +12,11 @@ mod window;
 mod windows;
 
 use anyhow::{bail, Result};
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 use tracing::info;
 use window::RunMode;
 
@@ -68,16 +72,44 @@ fn main() -> Result<()> {
 }
 
 fn runtime_config(run_mode: RunMode) -> Result<runtime::RuntimeConfig> {
+    if let Some(config) = packaged_runtime_config()? {
+        return Ok(with_run_mode_env(config, run_mode));
+    }
+
     let core_package_dir = resolve_source_runtime_cwd()?;
 
     let config = runtime::RuntimeConfig::new("bun")
         .args([SOURCE_RUNTIME_ENTRY])
         .cwd(core_package_dir);
 
+    Ok(with_run_mode_env(config, run_mode))
+}
+
+fn packaged_runtime_config() -> Result<Option<runtime::RuntimeConfig>> {
+    let current_exe = std::env::current_exe().map_err(|error| {
+        anyhow::anyhow!("failed to read current executable while resolving runtime: {error}")
+    })?;
+    packaged_runtime_config_for_exe(&current_exe)
+}
+
+fn packaged_runtime_config_for_exe(current_exe: &Path) -> Result<Option<runtime::RuntimeConfig>> {
+    let Some(manifest_path) = runtime::manifest_path_for_exe(current_exe) else {
+        return Ok(None);
+    };
+    if !manifest_path.is_file() {
+        bail!(
+            "packaged runtime manifest is missing at {}",
+            manifest_path.display()
+        );
+    }
+    runtime::RuntimeConfig::from_manifest_path(&manifest_path).map(Some)
+}
+
+fn with_run_mode_env(config: runtime::RuntimeConfig, run_mode: RunMode) -> runtime::RuntimeConfig {
     if matches!(run_mode, RunMode::WindowSmokeTest) {
-        Ok(config.env(WINDOW_SMOKE_TEST_ENV, "1"))
+        config.env(WINDOW_SMOKE_TEST_ENV, "1")
     } else {
-        Ok(config)
+        config
     }
 }
 
@@ -127,8 +159,9 @@ fn parse_run_mode(args: impl IntoIterator<Item = String>) -> Result<RunMode> {
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_run_mode, resolve_source_runtime_cwd_from_anchors, runtime_config, startup_event,
-        HOST_STARTED_EVENT, SOURCE_RUNTIME_ENTRY, WINDOW_SMOKE_TEST_ARG, WINDOW_SMOKE_TEST_ENV,
+        packaged_runtime_config_for_exe, parse_run_mode, resolve_source_runtime_cwd_from_anchors,
+        runtime_config, startup_event, HOST_STARTED_EVENT, SOURCE_RUNTIME_ENTRY,
+        WINDOW_SMOKE_TEST_ARG, WINDOW_SMOKE_TEST_ENV,
     };
     use crate::window::RunMode;
     use std::path::PathBuf;
@@ -200,5 +233,25 @@ mod tests {
                 .expect("source runtime should resolve from crate directory");
 
         assert!(core_package_dir.join(SOURCE_RUNTIME_ENTRY).is_file());
+    }
+
+    #[test]
+    fn packaged_runtime_config_fails_when_package_shaped_manifest_is_missing() {
+        let error =
+            packaged_runtime_config_for_exe(PathBuf::from("/app/layout/native/host").as_path())
+                .expect_err("missing packaged manifest should fail");
+
+        assert!(error
+            .to_string()
+            .contains("packaged runtime manifest is missing"));
+    }
+
+    #[test]
+    fn packaged_runtime_config_ignores_source_shaped_executables() {
+        let config =
+            packaged_runtime_config_for_exe(PathBuf::from("/repo/target/debug/host").as_path())
+                .expect("source-shaped executable should not fail");
+
+        assert!(config.is_none());
     }
 }

@@ -26,7 +26,8 @@ import {
   type CspConfig,
   type CspPolicy,
   type ProductionCheckFile,
-  type ProductionSecurityConfig
+  type ProductionSecurityConfig,
+  type RuntimeEngine
 } from "@effect-desktop/config"
 
 import {
@@ -339,7 +340,8 @@ export type BuildPipelineError =
 
 export type BuildTarget = DesktopTargetId
 export type BuildStepName = "renderer" | "runtime" | "native-host" | "bridge" | "manifest"
-const DEFAULT_RUNTIME_ENGINE = "bun"
+const DEFAULT_RUNTIME_ENGINE: RuntimeEngine = "bun"
+const RUNTIME_ENGINES = ["bun", "node"] as const satisfies readonly RuntimeEngine[]
 const DEFAULT_RENDERER_FRAMEWORK = "react"
 const DEFAULT_RENDERER_STYLING = "tailwind"
 const DEFAULT_PROFILE = "dev"
@@ -551,8 +553,10 @@ interface BuildPlan {
   readonly buildTargets: readonly BuildTarget[]
   readonly appRoot: string
   readonly configPath: string
-  readonly runtimeEngine: "bun"
+  readonly runtimeEngine: RuntimeEngine
   readonly runtimeEntry: string
+  readonly runtimeExecutable: RuntimeEngine
+  readonly runtimeArgs: readonly string[]
   readonly rendererFramework: "react"
   readonly rendererStyling: "tailwind"
   readonly rendererEntry: string
@@ -1145,7 +1149,7 @@ export const runDesktopBuild = (
       args: [
         "build",
         plan.runtimeEntryPath,
-        "--target=bun",
+        `--target=${plan.runtimeEngine}`,
         "--outdir",
         join(plan.layoutPath, "runtime")
       ],
@@ -1269,6 +1273,8 @@ const normalizeBuildPlan = (
       configPath: options.configPath,
       runtimeEngine,
       runtimeEntry: `runtime/${runtimeEntryOutputName}`,
+      runtimeExecutable: runtimeEngine,
+      runtimeArgs: [`runtime/${runtimeEntryOutputName}`],
       rendererDistPath,
       runtimeEntryPath,
       rendererEntryPath,
@@ -1437,6 +1443,8 @@ const writeAppManifest = (plan: BuildPlan): Effect.Effect<BuildStepReport, Build
       runtimeManifest: {
         engine: plan.runtimeEngine,
         entry: plan.runtimeEntry,
+        executable: plan.runtimeExecutable,
+        args: plan.runtimeArgs,
         env: plan.targetEnv,
         permissions: {},
         telemetry: { enabled: true },
@@ -1453,10 +1461,6 @@ const writeAppManifest = (plan: BuildPlan): Effect.Effect<BuildStepReport, Build
       renderer: {
         assetBaseUrl: "app://localhost/",
         path: "renderer"
-      },
-      runtime: {
-        engine: plan.runtimeEngine,
-        entry: plan.runtimeEntry
       },
       nativeHost: {
         binary: `native/${hostBinaryName(plan.target)}`
@@ -1837,20 +1841,23 @@ const mergeRecordMap = (shared: unknown, local: unknown): Record<string, unknown
 
 const extractRecord = (value: unknown): Record<string, unknown> => (isRecord(value) ? value : {})
 
-const readRuntimeEngine = (value: unknown): Effect.Effect<"bun", BuildConfigError, never> =>
+const readRuntimeEngine = (value: unknown): Effect.Effect<RuntimeEngine, BuildConfigError, never> =>
   readOptionalString(value, "runtime.engine").pipe(
     Effect.map((rawEngine) => rawEngine ?? DEFAULT_RUNTIME_ENGINE),
     Effect.flatMap((runtimeEngine) =>
-      runtimeEngine === DEFAULT_RUNTIME_ENGINE
+      isRuntimeEngine(runtimeEngine)
         ? Effect.succeed(runtimeEngine)
         : Effect.fail(
             new BuildConfigError({
               field: "runtime.engine",
-              message: `runtime.engine must be ${DEFAULT_RUNTIME_ENGINE}`
+              message: `runtime.engine must be one of ${RUNTIME_ENGINES.join(", ")}`
             })
           )
     )
   )
+
+const isRuntimeEngine = (value: string): value is RuntimeEngine =>
+  RUNTIME_ENGINES.some((engine) => engine === value)
 
 const readRendererFramework = (value: unknown): Effect.Effect<"react", BuildConfigError, never> =>
   readOptionalString(value, "renderer.framework").pipe(
