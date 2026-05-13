@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises"
 import { isAbsolute, join, normalize, resolve } from "node:path"
 
-import { Data, Effect } from "effect"
+import { Data, Effect, Schema } from "effect"
 
 import {
   PublicApiSnapshotMismatchError,
@@ -19,27 +19,38 @@ export interface SemverGuardOptions {
   ) => Effect.Effect<PublicApiSnapshotReport, PublicApiSnapshotError, never>
 }
 
-export type SemverReleaseKind = "patch" | "minor" | "major"
+export const SemverReleaseKind = Schema.Literals(["patch", "minor", "major"])
+export type SemverReleaseKind = typeof SemverReleaseKind.Type
 export type SemverChangeClassification = "additive" | "breaking"
 
-export interface SemverPolicyManifest {
-  readonly schemaVersion: 1
-  readonly source: string
-  readonly release: string
-  readonly releaseKind: SemverReleaseKind
-  readonly publicApiSnapshots: string
-  readonly verificationMatrix: string
-  readonly appendixCRows: readonly string[]
-  readonly bridgeEnvelopePolicy: {
-    readonly source: string
-    readonly frozenBetweenMajors: boolean
-    readonly allowedChange: string
-  }
-  readonly deprecationPolicy: {
-    readonly minimumMinorReleases: number
-    readonly requiresJSDocDeprecated: boolean
-  }
-}
+export class BridgeEnvelopePolicyManifest extends Schema.Class<BridgeEnvelopePolicyManifest>(
+  "BridgeEnvelopePolicyManifest"
+)({
+  source: Schema.String,
+  frozenBetweenMajors: Schema.Boolean,
+  allowedChange: Schema.String
+}) {}
+
+export class DeprecationPolicyManifest extends Schema.Class<DeprecationPolicyManifest>(
+  "DeprecationPolicyManifest"
+)({
+  minimumMinorReleases: Schema.Number,
+  requiresJSDocDeprecated: Schema.Boolean
+}) {}
+
+export class SemverPolicyManifest extends Schema.Class<SemverPolicyManifest>(
+  "SemverPolicyManifest"
+)({
+  schemaVersion: Schema.Literal(1),
+  source: Schema.String,
+  release: Schema.String,
+  releaseKind: SemverReleaseKind,
+  publicApiSnapshots: Schema.String,
+  verificationMatrix: Schema.String,
+  appendixCRows: Schema.Array(Schema.String),
+  bridgeEnvelopePolicy: BridgeEnvelopePolicyManifest,
+  deprecationPolicy: DeprecationPolicyManifest
+}) {}
 
 export interface SemverGuardReport {
   readonly passed: boolean
@@ -57,11 +68,13 @@ export interface SemverApiChange {
   readonly classification: SemverChangeClassification
 }
 
-export interface SemverPackageVersion {
-  readonly name: string
-  readonly version: string
-  readonly path: string
-}
+export class SemverPackageVersion extends Schema.Class<SemverPackageVersion>(
+  "SemverPackageVersion"
+)({
+  name: Schema.String,
+  version: Schema.String,
+  path: Schema.String
+}) {}
 
 export class SemverGuardFileError extends Data.TaggedError("SemverGuardFileError")<{
   readonly operation: string
@@ -85,9 +98,10 @@ export type SemverGuardError =
   | SemverGuardPolicyError
   | PublicApiSnapshotError
 
-interface VerificationMatrix {
-  readonly rows?: Record<string, unknown>
-}
+export const VerificationMatrix = Schema.Struct({
+  rows: Schema.Record(Schema.String, Schema.Unknown)
+})
+export type VerificationMatrix = typeof VerificationMatrix.Type
 
 const MANIFEST_PATH = "release/semver.json"
 const SPEC_SOURCE = "docs/SPEC.md §25.6"
@@ -95,6 +109,7 @@ const BRIDGE_SOURCE = "docs/SPEC.md §9.3"
 const BRIDGE_ALLOWED_CHANGE =
   "fields may be added with defaults; fields may not be removed or reordered"
 const CANONICAL_RELEASE_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u
+const StrictParseOptions = { errors: "all", onExcessProperty: "error" } as const
 
 export const runSemverGuard = (
   options: SemverGuardOptions
@@ -239,8 +254,9 @@ const validateAppendixCRows = (
       manifest.verificationMatrix,
       "verificationMatrix"
     )
-    const matrix = yield* readJson<VerificationMatrix>(matrixPath)
-    const rows = yield* decodeVerificationMatrixRows(matrix)
+    const rawMatrix = yield* readJson<unknown>(matrixPath)
+    const matrix = yield* decodeVerificationMatrix(rawMatrix)
+    const rows = decodeVerificationMatrixRows(matrix)
     const rowSet = new Set(rows)
     for (const row of manifest.appendixCRows) {
       if (!rowSet.has(row)) {
@@ -253,19 +269,20 @@ const validateAppendixCRows = (
     }
   })
 
-const decodeVerificationMatrixRows = (
-  matrix: VerificationMatrix
-): Effect.Effect<readonly string[], SemverGuardManifestError, never> => {
-  if (!isSemverRecord(matrix.rows) || Array.isArray(matrix.rows)) {
-    return Effect.fail(
-      new SemverGuardManifestError({
-        message: "semver verificationMatrix rows must be a JSON object"
-      })
+const decodeVerificationMatrix = (
+  value: unknown
+): Effect.Effect<VerificationMatrix, SemverGuardManifestError, never> =>
+  Schema.decodeUnknownEffect(VerificationMatrix)(value, StrictParseOptions).pipe(
+    Effect.mapError(
+      (error) =>
+        new SemverGuardManifestError({
+          message: `semver verificationMatrix schema validation failed: ${error.message}`
+        })
     )
-  }
+  )
 
-  return Effect.succeed(Object.keys(matrix.rows))
-}
+const decodeVerificationMatrixRows = (matrix: VerificationMatrix): readonly string[] =>
+  Object.keys(matrix.rows)
 
 const validatePackageVersions = (
   manifest: SemverPolicyManifest,
@@ -305,24 +322,34 @@ const parsePackageManifest = (
   value: unknown,
   path: string
 ): Effect.Effect<SemverPackageVersion, SemverGuardManifestError, never> => {
-  if (!isSemverRecord(value)) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return Effect.fail(new SemverGuardManifestError({ message: `${path} must be a JSON object` }))
   }
-  if (typeof value["name"] !== "string" || value["name"].length === 0) {
-    return Effect.fail(
-      new SemverGuardManifestError({ message: `${path} must declare a package name` })
+  return Schema.decodeUnknownEffect(SemverPackageVersion)(
+    Object.assign({ path }, value),
+    StrictParseOptions
+  ).pipe(
+    Effect.mapError(
+      (error) =>
+        new SemverGuardManifestError({
+          message: `${path} package manifest schema validation failed: ${error.message}`
+        })
+    ),
+    Effect.flatMap((manifest) =>
+      manifest.name.length > 0
+        ? Effect.succeed(manifest)
+        : Effect.fail(
+            new SemverGuardManifestError({ message: `${path} must declare a package name` })
+          )
+    ),
+    Effect.flatMap((manifest) =>
+      /^\d+\.\d+\.\d+$/.test(manifest.version)
+        ? Effect.succeed(manifest)
+        : Effect.fail(
+            new SemverGuardManifestError({ message: `${path} must declare a semantic version` })
+          )
     )
-  }
-  if (typeof value["version"] !== "string" || !/^\d+\.\d+\.\d+$/.test(value["version"])) {
-    return Effect.fail(
-      new SemverGuardManifestError({ message: `${path} must declare a semantic version` })
-    )
-  }
-  return Effect.succeed({
-    name: value["name"],
-    version: value["version"],
-    path
-  })
+  )
 }
 
 const classifyApiChange = (change: PublicApiChange): SemverApiChange => ({
@@ -371,144 +398,53 @@ const readJson = <A>(path: string): Effect.Effect<A, SemverGuardFileError, never
 
 const parseSemverPolicyManifest = (
   value: unknown
-): Effect.Effect<SemverPolicyManifest, SemverGuardManifestError, never> => {
-  if (!isSemverRecord(value)) {
-    return Effect.fail(
-      new SemverGuardManifestError({ message: "semver manifest must be a JSON object" })
+): Effect.Effect<SemverPolicyManifest, SemverGuardManifestError, never> =>
+  Schema.decodeUnknownEffect(SemverPolicyManifest)(value, StrictParseOptions).pipe(
+    Effect.mapError(
+      (error) =>
+        new SemverGuardManifestError({
+          message: `semver manifest schema validation failed: ${error.message}`
+        })
+    ),
+    Effect.flatMap((manifest) =>
+      isWorkspaceRelativePath(manifest.publicApiSnapshots)
+        ? Effect.succeed(manifest)
+        : Effect.fail(
+            new SemverGuardManifestError({
+              message: "semver publicApiSnapshots must be a workspace-contained relative path"
+            })
+          )
+    ),
+    Effect.flatMap((manifest) =>
+      isWorkspaceRelativePath(manifest.verificationMatrix)
+        ? Effect.succeed(manifest)
+        : Effect.fail(
+            new SemverGuardManifestError({
+              message: "semver verificationMatrix must be a workspace-contained relative path"
+            })
+          )
+    ),
+    Effect.flatMap((manifest) =>
+      manifest.appendixCRows.every((row) => row.length > 0)
+        ? Effect.succeed(manifest)
+        : Effect.fail(
+            new SemverGuardManifestError({
+              message: "semver appendixCRows must be an array of non-empty strings"
+            })
+          )
+    ),
+    Effect.flatMap((manifest) =>
+      Number.isInteger(manifest.deprecationPolicy.minimumMinorReleases) &&
+      manifest.deprecationPolicy.minimumMinorReleases >= 0
+        ? Effect.succeed(manifest)
+        : Effect.fail(
+            new SemverGuardManifestError({
+              message:
+                "semver deprecationPolicy.minimumMinorReleases must be a non-negative integer"
+            })
+          )
     )
-  }
-  const schemaVersion = value["schemaVersion"]
-  if (typeof schemaVersion !== "number") {
-    return Effect.fail(
-      new SemverGuardManifestError({ message: "semver schemaVersion must be a number" })
-    )
-  }
-  if (schemaVersion !== 1) {
-    return Effect.fail(new SemverGuardManifestError({ message: "semver schemaVersion must be 1" }))
-  }
-  if (typeof value["source"] !== "string") {
-    return Effect.fail(new SemverGuardManifestError({ message: "semver source must be a string" }))
-  }
-  if (typeof value["release"] !== "string") {
-    return Effect.fail(
-      new SemverGuardManifestError({ message: "semver release must be a semantic version string" })
-    )
-  }
-  if (!isSemverReleaseKind(value["releaseKind"])) {
-    return Effect.fail(
-      new SemverGuardManifestError({ message: "semver releaseKind must be patch, minor, or major" })
-    )
-  }
-  if (typeof value["publicApiSnapshots"] !== "string") {
-    return Effect.fail(
-      new SemverGuardManifestError({ message: "semver publicApiSnapshots must be a string" })
-    )
-  }
-  if (!isWorkspaceRelativePath(value["publicApiSnapshots"])) {
-    return Effect.fail(
-      new SemverGuardManifestError({
-        message: "semver publicApiSnapshots must be a workspace-contained relative path"
-      })
-    )
-  }
-  if (typeof value["verificationMatrix"] !== "string") {
-    return Effect.fail(
-      new SemverGuardManifestError({ message: "semver verificationMatrix must be a string" })
-    )
-  }
-  if (!isWorkspaceRelativePath(value["verificationMatrix"])) {
-    return Effect.fail(
-      new SemverGuardManifestError({
-        message: "semver verificationMatrix must be a workspace-contained relative path"
-      })
-    )
-  }
-  if (
-    !Array.isArray(value["appendixCRows"]) ||
-    !value["appendixCRows"].every((row) => typeof row === "string" && row.length > 0)
-  ) {
-    return Effect.fail(
-      new SemverGuardManifestError({
-        message: "semver appendixCRows must be an array of non-empty strings"
-      })
-    )
-  }
-  const bridge = value["bridgeEnvelopePolicy"]
-  if (!isSemverRecord(bridge)) {
-    return Effect.fail(
-      new SemverGuardManifestError({ message: "semver bridgeEnvelopePolicy must be an object" })
-    )
-  }
-  if (typeof bridge["source"] !== "string") {
-    return Effect.fail(
-      new SemverGuardManifestError({
-        message: "semver bridgeEnvelopePolicy.source must be a string"
-      })
-    )
-  }
-  if (typeof bridge["frozenBetweenMajors"] !== "boolean") {
-    return Effect.fail(
-      new SemverGuardManifestError({
-        message: "semver bridgeEnvelopePolicy.frozenBetweenMajors must be a boolean"
-      })
-    )
-  }
-  if (typeof bridge["allowedChange"] !== "string") {
-    return Effect.fail(
-      new SemverGuardManifestError({
-        message: "semver bridgeEnvelopePolicy.allowedChange must be a string"
-      })
-    )
-  }
-  const deprecation = value["deprecationPolicy"]
-  if (!isSemverRecord(deprecation)) {
-    return Effect.fail(
-      new SemverGuardManifestError({ message: "semver deprecationPolicy must be an object" })
-    )
-  }
-  if (
-    typeof deprecation["minimumMinorReleases"] !== "number" ||
-    !Number.isInteger(deprecation["minimumMinorReleases"]) ||
-    deprecation["minimumMinorReleases"] < 0
-  ) {
-    return Effect.fail(
-      new SemverGuardManifestError({
-        message: "semver deprecationPolicy.minimumMinorReleases must be a non-negative integer"
-      })
-    )
-  }
-  if (typeof deprecation["requiresJSDocDeprecated"] !== "boolean") {
-    return Effect.fail(
-      new SemverGuardManifestError({
-        message: "semver deprecationPolicy.requiresJSDocDeprecated must be a boolean"
-      })
-    )
-  }
-  return Effect.succeed({
-    schemaVersion: 1,
-    source: value["source"],
-    release: value["release"],
-    releaseKind: value["releaseKind"],
-    publicApiSnapshots: value["publicApiSnapshots"],
-    verificationMatrix: value["verificationMatrix"],
-    appendixCRows: value["appendixCRows"],
-    bridgeEnvelopePolicy: {
-      source: bridge["source"],
-      frozenBetweenMajors: bridge["frozenBetweenMajors"],
-      allowedChange: bridge["allowedChange"]
-    },
-    deprecationPolicy: {
-      minimumMinorReleases: deprecation["minimumMinorReleases"],
-      requiresJSDocDeprecated: deprecation["requiresJSDocDeprecated"]
-    }
-  })
-}
-
-const isSemverRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null
-
-const isSemverReleaseKind = (value: unknown): value is SemverReleaseKind =>
-  value === "patch" || value === "minor" || value === "major"
+  )
 
 const isWorkspaceRelativePath = (value: string): boolean => {
   const normalized = normalize(value)

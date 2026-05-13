@@ -8,19 +8,37 @@ import {
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { pathToFileURL } from "node:url"
 
-import { Data, Effect } from "effect"
+import { Data, Effect, Schema } from "effect"
 
 import {
   ReleaseFileSystem,
   runReleaseFileSystem,
   type ReleaseFileInfo
 } from "./release-file-system.js"
-import { decodeDesktopTarget, desktopPlatformDirectory, isDesktopArtifactKind } from "./targets.js"
+import { decodeDesktopTarget, desktopPlatformDirectory } from "./targets.js"
 import type { DesktopArtifactKind, DesktopTargetId } from "./targets.js"
 
 export type PublishChannel = "stable" | "beta" | "canary"
 export type PublishTarget = DesktopTargetId
 export type PublishArtifactKind = DesktopArtifactKind
+export const PublishChannel = Schema.Literals(["stable", "beta", "canary"])
+const DecodeDesktopTargetIdSchema = Schema.Literals([
+  "linux-arm64",
+  "linux-x64",
+  "macos-arm64",
+  "macos-x64",
+  "windows-arm64",
+  "windows-x64"
+])
+const PublishArtifactKindSchema = Schema.Literals([
+  "app",
+  "appimage",
+  "deb",
+  "dmg",
+  "msi",
+  "rpm",
+  "zip"
+])
 
 export class PublishConfigError extends Data.TaggedError("PublishConfigError")<{
   readonly field: string
@@ -50,28 +68,30 @@ export interface DesktopPublishOptions {
   readonly env?: Readonly<Record<string, string | undefined>>
 }
 
-export interface UpdateArtifactManifest {
-  readonly platform: PublishTarget
-  readonly kind: PublishArtifactKind
-  readonly url: string
-  readonly sizeBytes: number
-  readonly sha256: string
-  readonly signature: string
-}
+export class UpdateArtifactManifest extends Schema.Class<UpdateArtifactManifest>(
+  "UpdateArtifactManifest"
+)({
+  platform: DecodeDesktopTargetIdSchema,
+  kind: PublishArtifactKindSchema,
+  url: Schema.String,
+  sizeBytes: Schema.Number,
+  sha256: Schema.String,
+  signature: Schema.String
+}) {}
 
-export interface UpdateManifest {
-  readonly schemaVersion: 1
-  readonly appId: string
-  readonly version: string
-  readonly channel: PublishChannel
-  readonly keyVersion: number
-  readonly publishedAt: string
-  readonly rollback?: boolean
-  readonly minVersion?: string
-  readonly maxVersion?: string
-  readonly artifacts: readonly UpdateArtifactManifest[]
-  readonly signature: string
-}
+export class UpdateManifest extends Schema.Class<UpdateManifest>("UpdateManifest")({
+  schemaVersion: Schema.Literal(1),
+  appId: Schema.String,
+  version: Schema.String,
+  channel: PublishChannel,
+  keyVersion: Schema.Number,
+  publishedAt: Schema.String,
+  rollback: Schema.optionalKey(Schema.Boolean),
+  minVersion: Schema.optionalKey(Schema.String),
+  maxVersion: Schema.optionalKey(Schema.String),
+  artifacts: Schema.Array(UpdateArtifactManifest),
+  signature: Schema.String
+}) {}
 
 export interface DesktopPublishReport {
   readonly appId: string
@@ -130,6 +150,45 @@ interface PackagedArtifact {
 }
 
 const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex")
+const StrictParseOptions = { errors: "all", onExcessProperty: "error" } as const
+
+class PackageArtifactMetadata extends Schema.Class<PackageArtifactMetadata>(
+  "PackageArtifactMetadata"
+)({
+  kind: PublishArtifactKindSchema,
+  target: DecodeDesktopTargetIdSchema,
+  fileName: Schema.String,
+  sizeBytes: Schema.Number,
+  sha256: Schema.String,
+  appId: Schema.String,
+  appName: Schema.String,
+  appVersion: Schema.String
+}) {}
+
+export const decodeUpdateManifest = (
+  value: unknown
+): Effect.Effect<UpdateManifest, Schema.SchemaError, never> =>
+  Schema.decodeUnknownEffect(UpdateManifest)(value, StrictParseOptions)
+
+export const encodeUpdateManifest = (
+  value: UpdateManifest
+): Effect.Effect<unknown, Schema.SchemaError, never> =>
+  Schema.encodeUnknownEffect(UpdateManifest)(value, StrictParseOptions)
+
+const decodePackageArtifactMetadata = (
+  value: unknown,
+  path: string
+): Effect.Effect<PackageArtifactMetadata, PublishConfigError, never> =>
+  Schema.decodeUnknownEffect(PackageArtifactMetadata)(value, StrictParseOptions).pipe(
+    Effect.mapError(
+      (error) =>
+        new PublishConfigError({
+          field: path,
+          message: `package artifact metadata schema validation failed: ${error.message}`,
+          remediation: "Regenerate package metadata with `bun desktop package`."
+        })
+    )
+  )
 
 export const runDesktopPublish = (
   options: DesktopPublishOptions
@@ -370,16 +429,11 @@ const readPackagedArtifacts = (
           continue
         }
         const metadataPath = join(rootPath, "artifact.json")
-        const metadata = yield* readJson<{
-          readonly kind?: unknown
-          readonly target?: unknown
-          readonly fileName?: unknown
-          readonly sizeBytes?: unknown
-          readonly sha256?: unknown
-          readonly appId?: unknown
-          readonly appName?: unknown
-          readonly appVersion?: unknown
-        }>(metadataPath)
+        const rawMetadata = yield* readJson<unknown>(metadataPath)
+        const metadata = yield* decodePackageArtifactMetadata(
+          rawMetadata,
+          relative(plan.outputPath, metadataPath)
+        )
         const appIdField = `${relative(plan.outputPath, metadataPath)}#appId`
         const appNameField = `${relative(plan.outputPath, metadataPath)}#appName`
         const appVersionField = `${relative(plan.outputPath, metadataPath)}#appVersion`
@@ -425,10 +479,7 @@ const readPackagedArtifacts = (
             })
           )
         }
-        const target = yield* readTarget(
-          metadata.target,
-          `${relative(plan.outputPath, metadataPath)}#target`
-        )
+        const target = metadata.target
         if (desktopPlatformDirectory(target) !== platform) {
           return yield* Effect.fail(
             new PublishConfigError({
@@ -441,10 +492,7 @@ const readPackagedArtifacts = (
         if (plan.target !== undefined && target !== plan.target) {
           continue
         }
-        const kind = yield* readArtifactKind(
-          metadata.kind,
-          `${relative(plan.outputPath, metadataPath)}#kind`
-        )
+        const kind = metadata.kind
         const fileNameField = `${relative(plan.outputPath, metadataPath)}#fileName`
         const fileName = yield* readContainedFileName(metadata.fileName, fileNameField)
         const sizeBytes = yield* readNonNegativeInteger(
@@ -1005,36 +1053,6 @@ const readOptionalTarget = (
     )
   )
 }
-
-const readTarget = (
-  value: unknown,
-  field: string
-): Effect.Effect<PublishTarget, PublishConfigError, never> =>
-  decodeDesktopTarget(value).pipe(
-    Effect.map((target) => target.id),
-    Effect.mapError(
-      () =>
-        new PublishConfigError({
-          field,
-          message: `${field} must be a supported publish target`,
-          remediation: "Regenerate package metadata."
-        })
-    )
-  )
-
-const readArtifactKind = (
-  value: unknown,
-  field: string
-): Effect.Effect<PublishArtifactKind, PublishConfigError, never> =>
-  isDesktopArtifactKind(value)
-    ? Effect.succeed(value)
-    : Effect.fail(
-        new PublishConfigError({
-          field,
-          message: `${field} must be a supported artifact kind`,
-          remediation: "Regenerate package metadata."
-        })
-      )
 
 const loadConfig = (path: string): Effect.Effect<unknown, PublishConfigError, never> =>
   Effect.gen(function* () {

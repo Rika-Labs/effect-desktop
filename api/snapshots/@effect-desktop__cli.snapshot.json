@@ -5,13 +5,13 @@
   "symbols": [
     {
       "name": "AccessibilityAuditMode",
-      "kind": "interface",
-      "signature": "export interface AccessibilityAuditMode { readonly id: string readonly direction: \"ltr\" | \"rtl\" readonly colorScheme: \"light\" | \"dark\" readonly axe: string readonly pa11y: string }"
+      "kind": "class",
+      "signature": "export class AccessibilityAuditMode extends Schema.Class<AccessibilityAuditMode>( \"AccessibilityAuditMode\" )({ id: Schema.String, direction: Schema.Literals([\"ltr\", \"rtl\"]), colorScheme: Schema.Literals([\"light\", \"dark\"]), axe: Schema.String, pa11y: Schema.String }) {}"
     },
     {
       "name": "AccessibilityContrastPair",
-      "kind": "interface",
-      "signature": "export interface AccessibilityContrastPair { readonly id: string readonly foreground: string readonly background: string readonly minimumRatio: number }"
+      "kind": "class",
+      "signature": "export class AccessibilityContrastPair extends Schema.Class<AccessibilityContrastPair>( \"AccessibilityContrastPair\" )({ id: Schema.String, foreground: Schema.String, background: Schema.String, minimumRatio: Schema.Number }) {}"
     },
     {
       "name": "AccessibilityGateError",
@@ -45,18 +45,18 @@
     },
     {
       "name": "AccessibilityManifest",
-      "kind": "interface",
-      "signature": "export interface AccessibilityManifest { readonly schemaVersion: 1 readonly source: string readonly release: string readonly templates: readonly AccessibilityTemplate[] }"
+      "kind": "class",
+      "signature": "export class AccessibilityManifest extends Schema.Class<AccessibilityManifest>( \"AccessibilityManifest\" )({ schemaVersion: Schema.Literal(1), source: Schema.String, release: Schema.String, templates: Schema.Array(AccessibilityTemplate) }) {}"
     },
     {
       "name": "AccessibilityRequiredToken",
-      "kind": "interface",
-      "signature": "export interface AccessibilityRequiredToken { readonly file: string readonly token: string }"
+      "kind": "class",
+      "signature": "export class AccessibilityRequiredToken extends Schema.Class<AccessibilityRequiredToken>( \"AccessibilityRequiredToken\" )({ file: Schema.String, token: Schema.String }) {}"
     },
     {
       "name": "AccessibilityTemplate",
-      "kind": "interface",
-      "signature": "export interface AccessibilityTemplate { readonly id: string readonly root: string readonly sourceFiles: readonly string[] readonly i18nFiles: readonly string[] readonly auditDir: string readonly auditModes: readonly AccessibilityAuditMode[] readonly contrastPairs: readonly AccessibilityContrastPair[] readonly requiredTokens: readonly AccessibilityRequiredToken[] }"
+      "kind": "class",
+      "signature": "export class AccessibilityTemplate extends Schema.Class<AccessibilityTemplate>( \"AccessibilityTemplate\" )({ id: Schema.String, root: Schema.String, sourceFiles: Schema.Array(Schema.String), i18nFiles: Schema.Array(Schema.String), auditDir: Schema.String, auditModes: Schema.Array(AccessibilityAuditMode), contrastPairs: Schema.Array(AccessibilityContrastPair), requiredTokens: Schema.Array(AccessibilityRequiredToken) }) {}"
     },
     {
       "name": "AccessibilityTemplateReport",
@@ -575,13 +575,13 @@
     },
     {
       "name": "ReleaseChecklist",
-      "kind": "interface",
-      "signature": "export interface ReleaseChecklist { readonly schemaVersion: 1 readonly source: string readonly gates: readonly ReleaseChecklistGate[] }"
+      "kind": "class",
+      "signature": "export class ReleaseChecklist extends Schema.Class<ReleaseChecklist>(\"ReleaseChecklist\")({ schemaVersion: Schema.Literal(1), source: Schema.String, gates: Schema.Array(ReleaseChecklistGate) }) {}"
     },
     {
       "name": "ReleaseChecklistGate",
-      "kind": "interface",
-      "signature": "export interface ReleaseChecklistGate { readonly id: string readonly title: string readonly kind: ReleaseGateEvidenceKind readonly evidence: readonly string[] }"
+      "kind": "class",
+      "signature": "export class ReleaseChecklistGate extends Schema.Class<ReleaseChecklistGate>( \"ReleaseChecklistGate\" )({ id: Schema.String, title: Schema.String, kind: ReleaseGateEvidenceKind, evidence: Schema.Array(Schema.String) }) {}"
     },
     {
       "name": "ReleaseGateCheckReport",
@@ -601,7 +601,7 @@
     {
       "name": "ReleaseGateEvidenceKind",
       "kind": "type",
-      "signature": "export type ReleaseGateEvidenceKind = \"workflow-step\" | \"policy-document\" | \"repository-setting\""
+      "signature": "const ReleaseGateEvidenceKind: Schema.Literals<readonly [\"workflow-step\", \"policy-document\", \"repository-setting\"]>"
     },
     {
       "name": "ReleaseGateFileError",
@@ -780,18 +780,18 @@
     },
     {
       "name": "SemverPackageVersion",
-      "kind": "interface",
-      "signature": "export interface SemverPackageVersion { readonly name: string readonly version: string readonly path: string }"
+      "kind": "class",
+      "signature": "export class SemverPackageVersion extends Schema.Class<SemverPackageVersion>( \"SemverPackageVersion\" )({ name: Schema.String, version: Schema.String, path: Schema.String }) {}"
     },
     {
       "name": "SemverPolicyManifest",
-      "kind": "interface",
-      "signature": "export interface SemverPolicyManifest { readonly schemaVersion: 1 readonly source: string readonly release: string readonly releaseKind: SemverReleaseKind readonly publicApiSnapshots: string readonly verificationMatrix: string readonly appendixCRows: readonly string[] readonly bridgeEnvelopePolicy: { readonly source: string readonly frozenBetweenMajors: boolean readonly allowedChange: string } readonly deprecationPolicy: { readonly minimumMinorReleases: number readonly requiresJSDocDeprecated: boolean } }"
+      "kind": "class",
+      "signature": "export class SemverPolicyManifest extends Schema.Class<SemverPolicyManifest>( \"SemverPolicyManifest\" )({ schemaVersion: Schema.Literal(1), source: Schema.String, release: Schema.String, releaseKind: SemverReleaseKind, publicApiSnapshots: Schema.String, verificationMatrix: Schema.String, appendixCRows: Schema.Array(Schema.String), bridgeEnvelopePolicy: BridgeEnvelopePolicyManifest, deprecationPolicy: DeprecationPolicyManifest }) {}"
     },
     {
       "name": "SemverReleaseKind",
       "kind": "type",
-      "signature": "export type SemverReleaseKind = \"patch\" | \"minor\" | \"major\""
+      "signature": "const SemverReleaseKind: Schema.Literals<readonly [\"patch\", \"minor\", \"major\"]>"
     },
     {
       "name": "SignArtifactKind",
@@ -865,13 +865,13 @@
     },
     {
       "name": "UpdateArtifactManifest",
-      "kind": "interface",
-      "signature": "export interface UpdateArtifactManifest { readonly platform: PublishTarget readonly kind: PublishArtifactKind readonly url: string readonly sizeBytes: number readonly sha256: string readonly signature: string }"
+      "kind": "class",
+      "signature": "export class UpdateArtifactManifest extends Schema.Class<UpdateArtifactManifest>( \"UpdateArtifactManifest\" )({ platform: DecodeDesktopTargetIdSchema, kind: PublishArtifactKindSchema, url: Schema.String, sizeBytes: Schema.Number, sha256: Schema.String, signature: Schema.String }) {}"
     },
     {
       "name": "UpdateManifest",
-      "kind": "interface",
-      "signature": "export interface UpdateManifest { readonly schemaVersion: 1 readonly appId: string readonly version: string readonly channel: PublishChannel readonly keyVersion: number readonly publishedAt: string readonly rollback?: boolean readonly minVersion?: string readonly maxVersion?: string readonly artifacts: readonly UpdateArtifactManifest[] readonly signature: string }"
+      "kind": "class",
+      "signature": "export class UpdateManifest extends Schema.Class<UpdateManifest>(\"UpdateManifest\")({ schemaVersion: Schema.Literal(1), appId: Schema.String, version: Schema.String, channel: PublishChannel, keyVersion: Schema.Number, publishedAt: Schema.String, rollback: Schema.optionalKey(Schema.Boolean), minVersion: Schema.optionalKey(Schema.String), maxVersion: Schema.optionalKey(Schema.String), artifacts: Schema.Array(UpdateArtifactManifest), signature: Schema.String }) {}"
     },
     {
       "name": "wixArch",

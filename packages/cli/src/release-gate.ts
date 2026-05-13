@@ -1,26 +1,33 @@
 import { readdir, readFile } from "node:fs/promises"
 import { join } from "node:path"
 
-import { Data, Effect } from "effect"
+import { Data, Effect, Schema } from "effect"
 
 export interface ReleaseGateOptions {
   readonly cwd: string
 }
 
-export interface ReleaseChecklist {
-  readonly schemaVersion: 1
-  readonly source: string
-  readonly gates: readonly ReleaseChecklistGate[]
-}
+export const ReleaseGateEvidenceKind = Schema.Literals([
+  "workflow-step",
+  "policy-document",
+  "repository-setting"
+])
+export type ReleaseGateEvidenceKind = typeof ReleaseGateEvidenceKind.Type
 
-export type ReleaseGateEvidenceKind = "workflow-step" | "policy-document" | "repository-setting"
+export class ReleaseChecklistGate extends Schema.Class<ReleaseChecklistGate>(
+  "ReleaseChecklistGate"
+)({
+  id: Schema.String,
+  title: Schema.String,
+  kind: ReleaseGateEvidenceKind,
+  evidence: Schema.Array(Schema.String)
+}) {}
 
-export interface ReleaseChecklistGate {
-  readonly id: string
-  readonly title: string
-  readonly kind: ReleaseGateEvidenceKind
-  readonly evidence: readonly string[]
-}
+export class ReleaseChecklist extends Schema.Class<ReleaseChecklist>("ReleaseChecklist")({
+  schemaVersion: Schema.Literal(1),
+  source: Schema.String,
+  gates: Schema.Array(ReleaseChecklistGate)
+}) {}
 
 export interface ReleaseGateReport {
   readonly passed: boolean
@@ -66,6 +73,7 @@ const PLAYGROUND_BUILD_COMMAND =
   "bun packages/cli/src/bin.ts build --config apps/playground/desktop.config.ts"
 const PLAYGROUND_PACKAGE_COMMAND =
   "bun packages/cli/src/bin.ts package --config apps/playground/desktop.config.ts"
+const StrictParseOptions = { errors: "all", onExcessProperty: "error" } as const
 
 const REQUIRED_GATES: ReadonlyMap<string, ReleaseGateEvidenceKind> = new Map([
   ["spdx-sbom", "workflow-step"],
@@ -288,76 +296,15 @@ const validateChecklist = (
 
 const decodeReleaseChecklist = (
   value: unknown
-): Effect.Effect<ReleaseChecklist, ReleaseGateManifestError, never> => {
-  if (!isRecord(value)) {
-    return releaseManifestError("release checklist must be an object")
-  }
-  const rawGates = value["gates"]
-  if (!Array.isArray(rawGates)) {
-    return releaseManifestError("release checklist gates must be an array")
-  }
-  if (value["schemaVersion"] !== 1) {
-    return releaseManifestError("release checklist schemaVersion must be 1")
-  }
-  if (typeof value["source"] !== "string") {
-    return releaseManifestError("release checklist source must be a string")
-  }
-  const gates: ReleaseChecklistGate[] = []
-  for (const [index, gate] of rawGates.entries()) {
-    if (!isRecord(gate)) {
-      return releaseManifestError(`release checklist gates[${index}] must be an object`)
-    }
-    const decoded = decodeReleaseChecklistGate(gate, index)
-    if (decoded._tag === "Left") {
-      return Effect.fail(decoded.error)
-    }
-    gates.push(decoded.value)
-  }
-  return Effect.succeed({
-    schemaVersion: 1,
-    source: value["source"],
-    gates
-  })
-}
-
-const decodeReleaseChecklistGate = (
-  gate: Readonly<Record<string, unknown>>,
-  index: number
-):
-  | { readonly _tag: "Right"; readonly value: ReleaseChecklistGate }
-  | { readonly _tag: "Left"; readonly error: ReleaseGateManifestError } => {
-  const id = gate["id"]
-  if (typeof id !== "string") {
-    return releaseDecodeError(`release checklist gates[${index}].id must be a string`)
-  }
-  const title = gate["title"]
-  if (typeof title !== "string") {
-    return releaseDecodeError(`release checklist gates[${index}].title must be a string`)
-  }
-  const kind = gate["kind"]
-  if (!isReleaseGateEvidenceKind(kind)) {
-    return releaseDecodeError(`release checklist gates[${index}].kind is invalid`)
-  }
-  const evidence = gate["evidence"]
-  if (!Array.isArray(evidence) || !evidence.every((entry) => typeof entry === "string")) {
-    return releaseDecodeError(
-      `release checklist gates[${index}].evidence must be an array of strings`
+): Effect.Effect<ReleaseChecklist, ReleaseGateManifestError, never> =>
+  Schema.decodeUnknownEffect(ReleaseChecklist)(value, StrictParseOptions).pipe(
+    Effect.mapError(
+      (error) =>
+        new ReleaseGateManifestError({
+          message: `release checklist schema validation failed: ${error.message}`
+        })
     )
-  }
-  return { _tag: "Right", value: { id, title, kind, evidence } }
-}
-
-const releaseDecodeError = (
-  message: string
-): { readonly _tag: "Left"; readonly error: ReleaseGateManifestError } => ({
-  _tag: "Left",
-  error: new ReleaseGateManifestError({ message })
-})
-
-const releaseManifestError = (
-  message: string
-): Effect.Effect<never, ReleaseGateManifestError, never> =>
-  Effect.fail(new ReleaseGateManifestError({ message }))
+  )
 
 const releaseEvidenceError = (
   gate: ReleaseChecklistGate,
@@ -366,12 +313,6 @@ const releaseEvidenceError = (
   _tag: "Left",
   error: new ReleaseGateEvidenceError({ gate: gate.id, message })
 })
-
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-
-const isReleaseGateEvidenceKind = (value: unknown): value is ReleaseGateEvidenceKind =>
-  value === "workflow-step" || value === "policy-document" || value === "repository-setting"
 
 const validateGateEvidence = (
   gate: ReleaseChecklistGate,
