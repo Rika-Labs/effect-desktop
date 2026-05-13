@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { RpcEndpoint } from "@effect-desktop/bridge"
+import { RpcEndpoint, RpcSupport } from "@effect-desktop/bridge"
 import { Desktop, MissingDesktopRpcClientError } from "@effect-desktop/core"
 import { Deferred, Effect, Schema, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
@@ -214,6 +214,49 @@ test("VueDesktop.useDesktop fails loudly without provide/inject context or an in
     expect(() => NotesVue.useDesktop(NotesRpcs)).toThrow(MissingDesktopContextError)
   })
   expect(() => NotesVue.createApp(Root)).toThrow(MissingDesktopRpcClientError)
+})
+
+test("VueDesktop.useDesktop exposes RpcSupport metadata on generated endpoints", () => {
+  type SupportedQueryEndpoint = {
+    readonly useQuery: unknown
+    readonly support: { readonly status: string }
+    readonly isSupported: boolean
+  }
+  const Unsupported = Rpc.make("Notes.Unsupported", { success: Schema.String }).pipe(
+    RpcEndpoint.query,
+    RpcSupport.unsupported("host method is unavailable")
+  )
+  const NotesRpcs = RpcGroup.make(Unsupported)
+  const NotesLayer = Desktop.Rpcs.layer(
+    NotesRpcs,
+    NotesRpcs.toLayer({
+      "Notes.Unsupported": () => Effect.succeed("unused")
+    })
+  )
+  const NotesApp = Desktop.make({
+    windows: {
+      main: {
+        title: "Notes"
+      }
+    },
+    rpcs: [NotesLayer]
+  })
+  const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
+  const rpcLayers = [NotesLayer]
+  const app = NotesVue.createApp(Root, { rpcLayers })
+  app.config.warnHandler = () => undefined
+
+  app.runWithContext(() => {
+    const scope = effectScope()
+    scope.run(() => {
+      const notes = NotesVue.useDesktop(NotesRpcs)
+      const endpoint: SupportedQueryEndpoint = notes.unsupported
+
+      expect(endpoint.isSupported).toBe(false)
+      expect(endpoint.support.status).toBe("unsupported")
+    })
+    scope.stop()
+  })
 })
 
 const waitFor = async (predicate: () => boolean): Promise<void> => {

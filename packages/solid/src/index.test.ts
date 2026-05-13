@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { RpcEndpoint } from "@effect-desktop/bridge"
+import { RpcEndpoint, RpcSupport } from "@effect-desktop/bridge"
 import {
   Desktop,
   DuplicateDesktopRpcNameError,
@@ -265,6 +265,51 @@ test("SolidDesktop.useDesktop fails loudly without context or an installed clien
       })
     )
   ).toThrow(MissingDesktopRpcClientError)
+})
+
+test("SolidDesktop.useDesktop exposes RpcSupport metadata on generated endpoints", () => {
+  type SupportedQueryEndpoint = {
+    readonly createQuery: unknown
+    readonly support: { readonly status: string }
+    readonly isSupported: boolean
+  }
+  const Unsupported = Rpc.make("Notes.Unsupported", { success: Schema.String }).pipe(
+    RpcEndpoint.query,
+    RpcSupport.unsupported("host method is unavailable")
+  )
+  const NotesRpcs = RpcGroup.make(Unsupported)
+  const NotesLayer = Desktop.Rpcs.layer(
+    NotesRpcs,
+    NotesRpcs.toLayer({
+      "Notes.Unsupported": () => Effect.succeed("unused")
+    })
+  )
+  const NotesApp = Desktop.make({
+    windows: {
+      main: {
+        title: "Notes"
+      }
+    },
+    rpcs: [NotesLayer]
+  })
+  const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
+  const rpcLayers = [NotesLayer]
+
+  const dispose = createRoot((disposeRoot) => {
+    createComponent(NotesSolid.DesktopRoot, {
+      rpcLayers,
+      get children() {
+        const notes = NotesSolid.useDesktop(NotesRpcs)
+        const endpoint: SupportedQueryEndpoint = notes.unsupported
+
+        expect(endpoint.isSupported).toBe(false)
+        expect(endpoint.support.status).toBe("unsupported")
+        return undefined
+      }
+    })
+    return disposeRoot
+  })
+  dispose()
 })
 
 const waitFor = async (predicate: () => boolean): Promise<void> => {

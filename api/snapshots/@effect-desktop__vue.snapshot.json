@@ -34,24 +34,9 @@
       "signature": "export interface VueDesktopAdapter<App extends DesktopAppManifest> { readonly app: App readonly createApp: (rootComponent: Component, options?: VueDesktopOptions) => VueApp readonly provideDesktop: (options?: VueDesktopOptions) => void readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => VueDesktopRpcs<Group> }"
     },
     {
-      "name": "VueDesktopClientMap",
-      "kind": "type",
-      "signature": "export type VueDesktopClientMap = DesktopRendererRpcClientMap"
-    },
-    {
       "name": "VueDesktopOptions",
       "kind": "interface",
       "signature": "export interface VueDesktopOptions { readonly transport?: DesktopRendererRpcTransport | undefined readonly rpcLayers?: ReadonlyArray<AnyDesktopRpcLayer<never, never>> | undefined }"
-    },
-    {
-      "name": "VueDesktopRpcClient",
-      "kind": "type",
-      "signature": "export type VueDesktopRpcClient = DesktopRendererRpcClient"
-    },
-    {
-      "name": "VueDesktopRpcClientMethod",
-      "kind": "type",
-      "signature": "export type VueDesktopRpcClientMethod = DesktopRendererRpcClientMethod"
     },
     {
       "name": "VueDesktopRpcs",

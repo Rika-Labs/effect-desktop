@@ -84,16 +84,18 @@ export interface VueStreamEndpoint<I, A, E> {
   readonly useStream: VueComposable<I, Readonly<Ref<VueStreamState<A, E>>>>
 }
 
+type VueEndpoint =
+  | VueMutationEndpoint<unknown, unknown, unknown>
+  | VueQueryEndpoint<unknown, unknown, unknown>
+  | VueStreamEndpoint<unknown, unknown, unknown>
+
 export interface VueDesktopSupport {
   readonly support: RpcSupportMetadata
   readonly isSupported: boolean
 }
 
 type WithSupport<Endpoint> = Endpoint & VueDesktopSupport
-
-export type VueDesktopRpcClientMethod = DesktopRendererRpcClientMethod
-export type VueDesktopRpcClient = DesktopRendererRpcClient
-export type VueDesktopClientMap = DesktopRendererRpcClientMap
+type SupportedVueEndpoint<Endpoint extends VueEndpoint> = Endpoint & VueDesktopSupport
 
 export interface VueDesktopOptions {
   readonly transport?: DesktopRendererRpcTransport | undefined
@@ -113,11 +115,11 @@ export {
 } from "@effect-desktop/core/renderer"
 
 interface VueDesktopContext {
-  readonly clients: VueDesktopClientMap
+  readonly clients: DesktopRendererRpcClientMap
 }
 
 interface VueDesktopRuntime {
-  readonly clients: VueDesktopClientMap
+  readonly clients: DesktopRendererRpcClientMap
   readonly dispose: () => Promise<void>
 }
 
@@ -190,7 +192,7 @@ const makeVueDesktopRuntime = (
       rpcLayers
     })
   )
-  let clients: VueDesktopClientMap
+  let clients: DesktopRendererRpcClientMap
   try {
     clients = runtime.runSync(Effect.service(RendererRpcClients)).clients
   } catch (error) {
@@ -205,29 +207,12 @@ const makeVueDesktopRuntime = (
 
 const makeEndpoints = (
   descriptors: ReturnType<typeof describeRpcs>,
-  client: VueDesktopRpcClient
-): Readonly<
-  Record<
-    string,
-    | VueMutationEndpoint<unknown, unknown, unknown>
-    | VueQueryEndpoint<unknown, unknown, unknown>
-    | VueStreamEndpoint<unknown, unknown, unknown>
-  >
-> => {
-  const endpoints: Record<
-    string,
-    | VueMutationEndpoint<unknown, unknown, unknown>
-    | VueQueryEndpoint<unknown, unknown, unknown>
-    | VueStreamEndpoint<unknown, unknown, unknown>
-  > = Object.create(null) as Record<
-    string,
-    | VueMutationEndpoint<unknown, unknown, unknown>
-    | VueQueryEndpoint<unknown, unknown, unknown>
-    | VueStreamEndpoint<unknown, unknown, unknown>
-  >
+  client: DesktopRendererRpcClient
+): Readonly<Record<string, VueEndpoint>> => {
+  const endpoints = Object.create(null) as Record<string, VueEndpoint>
 
   for (const descriptor of descriptors) {
-    const invoke = (input: unknown): ReturnType<VueDesktopRpcClientMethod> => {
+    const invoke = (input: unknown): ReturnType<DesktopRendererRpcClientMethod> => {
       const method = client[descriptor.tag]
       if (method === undefined) {
         throw makeMissingDesktopRpcClientError(
@@ -267,19 +252,19 @@ const makeEndpoints = (
 }
 
 const withSupport = <
-  Endpoint extends
-    | VueMutationEndpoint<unknown, unknown, unknown>
-    | VueQueryEndpoint<unknown, unknown, unknown>
-    | VueStreamEndpoint<unknown, unknown, unknown>
+  Endpoint extends VueEndpoint
 >(
   endpoint: Endpoint,
   support: RpcSupportMetadata
-): Endpoint & VueDesktopSupport =>
-  Object.freeze({
+): SupportedVueEndpoint<Endpoint> => {
+  const supportedEndpoint = {
     ...endpoint,
     support,
     isSupported: support.status === "supported"
-  }) as unknown as Endpoint & VueDesktopSupport
+  } satisfies SupportedVueEndpoint<Endpoint>
+
+  return Object.freeze(supportedEndpoint)
+}
 
 const useMutation = <I, A, E>(
   makeEffect: (input: I) => Effect.Effect<A, E, never>
@@ -382,7 +367,7 @@ const runStream = <A, E>(
 }
 
 const asEffect = (
-  value: ReturnType<VueDesktopRpcClientMethod>,
+  value: ReturnType<DesktopRendererRpcClientMethod>,
   tag: string
 ): Effect.Effect<unknown, unknown, never> => {
   if (Effect.isEffect(value)) {
@@ -396,7 +381,7 @@ const asEffect = (
 }
 
 const asStream = (
-  value: ReturnType<VueDesktopRpcClientMethod>,
+  value: ReturnType<DesktopRendererRpcClientMethod>,
   tag: string
 ): Stream.Stream<unknown, unknown, never> => {
   if (Stream.isStream(value)) {

@@ -83,16 +83,18 @@ export interface SolidStreamEndpoint<I, A, E> {
   readonly createStream: SolidPrimitive<I, Accessor<SolidStreamState<A, E>>>
 }
 
+type SolidEndpoint =
+  | SolidMutationEndpoint<unknown, unknown, unknown>
+  | SolidQueryEndpoint<unknown, unknown, unknown>
+  | SolidStreamEndpoint<unknown, unknown, unknown>
+
 export interface SolidDesktopSupport {
   readonly support: RpcSupportMetadata
   readonly isSupported: boolean
 }
 
 type WithSupport<Endpoint> = Endpoint & SolidDesktopSupport
-
-export type SolidDesktopRpcClientMethod = DesktopRendererRpcClientMethod
-export type SolidDesktopRpcClient = DesktopRendererRpcClient
-export type SolidDesktopClientMap = DesktopRendererRpcClientMap
+type SupportedSolidEndpoint<Endpoint extends SolidEndpoint> = Endpoint & SolidDesktopSupport
 
 export interface SolidDesktopRootProps {
   readonly transport?: DesktopRendererRpcTransport | undefined
@@ -122,11 +124,11 @@ export {
 } from "@effect-desktop/core/renderer"
 
 interface SolidDesktopContextValue {
-  readonly clients: SolidDesktopClientMap
+  readonly clients: DesktopRendererRpcClientMap
 }
 
 interface SolidDesktopRuntime {
-  readonly clients: SolidDesktopClientMap
+  readonly clients: DesktopRendererRpcClientMap
   readonly dispose: () => Promise<void>
 }
 
@@ -210,7 +212,7 @@ const makeSolidDesktopRuntime = (
       rpcLayers
     })
   )
-  let clients: SolidDesktopClientMap
+  let clients: DesktopRendererRpcClientMap
   try {
     clients = runtime.runSync(Effect.service(RendererRpcClients)).clients
   } catch (error) {
@@ -225,29 +227,12 @@ const makeSolidDesktopRuntime = (
 
 const makeEndpoints = (
   descriptors: ReturnType<typeof describeRpcs>,
-  client: SolidDesktopRpcClient
-): Readonly<
-  Record<
-    string,
-    | SolidMutationEndpoint<unknown, unknown, unknown>
-    | SolidQueryEndpoint<unknown, unknown, unknown>
-    | SolidStreamEndpoint<unknown, unknown, unknown>
-  >
-> => {
-  const endpoints: Record<
-    string,
-    | SolidMutationEndpoint<unknown, unknown, unknown>
-    | SolidQueryEndpoint<unknown, unknown, unknown>
-    | SolidStreamEndpoint<unknown, unknown, unknown>
-  > = Object.create(null) as Record<
-    string,
-    | SolidMutationEndpoint<unknown, unknown, unknown>
-    | SolidQueryEndpoint<unknown, unknown, unknown>
-    | SolidStreamEndpoint<unknown, unknown, unknown>
-  >
+  client: DesktopRendererRpcClient
+): Readonly<Record<string, SolidEndpoint>> => {
+  const endpoints = Object.create(null) as Record<string, SolidEndpoint>
 
   for (const descriptor of descriptors) {
-    const invoke = (input: unknown): ReturnType<SolidDesktopRpcClientMethod> => {
+    const invoke = (input: unknown): ReturnType<DesktopRendererRpcClientMethod> => {
       const method = client[descriptor.tag]
       if (method === undefined) {
         throw makeMissingDesktopRpcClientError(
@@ -288,19 +273,19 @@ const makeEndpoints = (
 }
 
 const withSupport = <
-  Endpoint extends
-    | SolidMutationEndpoint<unknown, unknown, unknown>
-    | SolidQueryEndpoint<unknown, unknown, unknown>
-    | SolidStreamEndpoint<unknown, unknown, unknown>
+  Endpoint extends SolidEndpoint
 >(
   endpoint: Endpoint,
   support: RpcSupportMetadata
-): Endpoint & SolidDesktopSupport =>
-  Object.freeze({
+): SupportedSolidEndpoint<Endpoint> => {
+  const supportedEndpoint = {
     ...endpoint,
     support,
     isSupported: support.status === "supported"
-  }) as unknown as Endpoint & SolidDesktopSupport
+  } satisfies SupportedSolidEndpoint<Endpoint>
+
+  return Object.freeze(supportedEndpoint)
+}
 
 const createMutationState = <I, A, E>(
   makeEffect: (input: I) => Effect.Effect<A, E, never>
@@ -411,7 +396,7 @@ const createStreamState = <A, E>(
 }
 
 const asEffect = (
-  value: ReturnType<SolidDesktopRpcClientMethod>,
+  value: ReturnType<DesktopRendererRpcClientMethod>,
   tag: string
 ): Effect.Effect<unknown, unknown, never> => {
   if (Effect.isEffect(value)) {
@@ -425,7 +410,7 @@ const asEffect = (
 }
 
 const asStream = (
-  value: ReturnType<SolidDesktopRpcClientMethod>,
+  value: ReturnType<DesktopRendererRpcClientMethod>,
   tag: string
 ): Stream.Stream<unknown, unknown, never> => {
   if (Stream.isStream(value)) {

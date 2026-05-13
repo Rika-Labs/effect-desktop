@@ -29,11 +29,6 @@
       "signature": "export interface SolidDesktopAdapter<App extends DesktopAppManifest> { readonly app: App readonly DesktopRoot: (props: SolidDesktopRootProps) => JSX.Element readonly render: ( children: () => JSX.Element, mount: HTMLElement, options?: SolidDesktopRenderOptions ) => () => void readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => SolidDesktopRpcs<Group> }"
     },
     {
-      "name": "SolidDesktopClientMap",
-      "kind": "type",
-      "signature": "export type SolidDesktopClientMap = DesktopRendererRpcClientMap"
-    },
-    {
       "name": "SolidDesktopRenderOptions",
       "kind": "interface",
       "signature": "export interface SolidDesktopRenderOptions { readonly transport?: SolidDesktopRootProps[\"transport\"] readonly rpcLayers?: SolidDesktopRootProps[\"rpcLayers\"] }"
@@ -42,16 +37,6 @@
       "name": "SolidDesktopRootProps",
       "kind": "interface",
       "signature": "export interface SolidDesktopRootProps { readonly transport?: DesktopRendererRpcTransport | undefined readonly rpcLayers?: ReadonlyArray<AnyDesktopRpcLayer<never, never>> | undefined readonly children?: JSX.Element }"
-    },
-    {
-      "name": "SolidDesktopRpcClient",
-      "kind": "type",
-      "signature": "export type SolidDesktopRpcClient = DesktopRendererRpcClient"
-    },
-    {
-      "name": "SolidDesktopRpcClientMethod",
-      "kind": "type",
-      "signature": "export type SolidDesktopRpcClientMethod = DesktopRendererRpcClientMethod"
     },
     {
       "name": "SolidDesktopRpcs",
