@@ -1,8 +1,8 @@
 ## Hard Rules
 
-Every active goal includes an architecture-debt sweep. For each ticket or issue, look for adapters, thin wrapper layers, custom DSLs, bridge specs, or parallel abstractions over Effect in the area being touched.
+Every active goal must include an architecture-debt sweep. For each ticket or issue, inspect the area being touched for adapters, thin wrapper layers, custom DSLs, bridge specs, or parallel abstractions over Effect.
 
-Effect primitives are the default architecture. Custom abstractions must justify themselves by owning durable desktop-specific policy, lifecycle, security, or protocol translation. If an abstraction only renames, mirrors, narrows, or partially reimplements Effect APIs, treat it as design debt.
+Effect primitives are the default architecture. Custom abstractions must justify themselves by owning durable desktop-specific policy, lifecycle, security, or protocol translation. If an abstraction only renames, mirrors, narrows, adapts, or partially reimplements Effect APIs, treat it as design debt.
 
 If a wrapper is not adding durable desktop-specific semantics, remove it as part of the current work.
 
