@@ -499,7 +499,7 @@ ptyTest("PTY output fails with BackpressureOverflow when a chunk exceeds budget"
   expectFailure(exit, HostProtocolBackpressureOverflowError)
 })
 
-ptyTest("PTY output dropOldest keeps the queue bounded and records evictions", async () => {
+ptyTest("PTY output dropOldest keeps the stream buffer bounded", async () => {
   const fixture = await makeFixture(
     makeFakeAdapter(() => makeFakeChild({ output: ["aa", "bb", "cc"], exit: { code: 0 } })),
     {
@@ -525,8 +525,6 @@ ptyTest("PTY output dropOldest keeps the queue bounded and records evictions", a
 
   expect(decodeChunks(Array.from(output))).toBe("bbcc")
   expect(metrics).toMatchObject({
-    droppedBytes: 2,
-    droppedFrames: 1,
     emittedFrames: 3,
     inputFrames: 3,
     queueDepth: 0

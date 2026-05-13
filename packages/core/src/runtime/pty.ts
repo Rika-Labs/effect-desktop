@@ -16,10 +16,10 @@ import {
   Context,
   Effect,
   Exit,
-  Fiber,
+  Filter,
   Layer,
   Option,
-  Queue,
+  Pull,
   Ref,
   Schema,
   Stream
@@ -320,10 +320,6 @@ const makeHandle = (
     })
   })
 
-interface QueuedOutput {
-  readonly bytes: Uint8Array
-}
-
 interface OutputFrame {
   readonly bytes: Uint8Array
   readonly coalesced: boolean
@@ -335,192 +331,140 @@ const makeOutputStream = (
   policy: Required<PtyBudgetPolicy>,
   metrics: Ref.Ref<PtyOutputMetrics>
 ): Stream.Stream<Uint8Array, PtyError, never> =>
-  Stream.unwrap(
-    Effect.gen(function* () {
-      const queue = yield* Queue.bounded<QueuedOutput, PtyError | Cause.Done>(
-        outputQueueCapacity(policy)
-      )
-      const queuedBytes = yield* Ref.make(0)
-      const producer = yield* runOutputProducer(
-        source,
-        queue,
-        queuedBytes,
-        command,
-        policy,
-        metrics
-      ).pipe(Effect.forkScoped)
-
-      return Stream.fromQueue(queue).pipe(
-        Stream.mapEffect((queued) =>
-          Ref.update(queuedBytes, (bytes) => Math.max(0, bytes - queued.bytes.byteLength)).pipe(
-            Effect.andThen(syncOutputQueueMetrics(queue, queuedBytes, metrics)),
-            Effect.as(queued.bytes)
-          )
-        ),
-        Stream.ensuring(
-          Effect.gen(function* () {
-            yield* Fiber.interrupt(producer)
-            yield* Queue.shutdown(queue)
-          })
-        )
-      )
-    })
+  source.pipe(
+    Stream.mapEffect((chunk) => recordInputChunk(metrics, chunk).pipe(Effect.as(chunk))),
+    coalesceOutputFrames(policy),
+    Stream.mapError((error) => mapPtyError(error, command, "PTY.output")),
+    Stream.mapEffect((frame) => applyOutputPolicy(command, policy, metrics, frame)),
+    Stream.filterMap(Filter.fromPredicateOption((frame) => frame)),
+    Stream.buffer({
+      capacity: outputQueueCapacity(policy),
+      strategy: outputBufferStrategy(policy)
+    }),
+    Stream.map((frame) => frame.bytes)
   )
 
-const runOutputProducer = (
-  source: Stream.Stream<Uint8Array, PtyError, never>,
-  queue: Queue.Queue<QueuedOutput, PtyError | Cause.Done>,
-  queuedBytes: Ref.Ref<number>,
-  command: string,
-  policy: Required<PtyBudgetPolicy>,
-  metrics: Ref.Ref<PtyOutputMetrics>
-): Effect.Effect<void, never, never> =>
-  Effect.gen(function* () {
-    const coalescer = makeOutputCoalescer(policy)
-    const exit = yield* Effect.exit(
-      source.pipe(
-        Stream.runForEach((chunk) =>
-          Effect.gen(function* () {
-            yield* recordInputChunk(metrics, chunk)
-            const frames = coalescer.push(chunk)
-            for (const frame of frames) {
-              yield* offerOutputFrame(queue, queuedBytes, command, policy, metrics, frame)
+const coalesceOutputFrames =
+  (
+    policy: Required<PtyBudgetPolicy>
+  ): ((
+    source: Stream.Stream<Uint8Array, PtyError, never>
+  ) => Stream.Stream<OutputFrame, PtyError, never>) =>
+  (source) =>
+    Stream.transformPull(source, (pull) =>
+      Effect.sync(() => {
+        const coalescer = makeOutputCoalescer(policy)
+        let pending: OutputFrame[] = []
+        let sourceDone = false
+
+        const pullFrame: Pull.Pull<readonly [OutputFrame, ...OutputFrame[]], PtyError> =
+          Effect.suspend(() => {
+            const nextPending = takeNonEmptyOutputFrames(pending)
+            if (nextPending !== undefined) {
+              pending = pending.slice(nextPending.length)
+              return Effect.succeed(nextPending)
             }
-            if (coalescer.beginTimer()) {
-              yield* flushCoalescedOutputAfterWindow(
-                coalescer,
-                queue,
-                queuedBytes,
-                command,
-                policy,
-                metrics
-              ).pipe(Effect.forkChild)
+
+            if (sourceDone) {
+              const finalFrame = coalescer.flush()
+              if (finalFrame.bytes.byteLength > 0) {
+                return Effect.succeed([finalFrame])
+              }
+              return Cause.done()
             }
+
+            const nextEvent = coalescer.isEmpty()
+              ? readOutputChunks(pull)
+              : Effect.raceFirst(
+                  readOutputChunks(pull),
+                  Effect.sleep(`${coalescer.flushDelayMs()} millis`).pipe(
+                    Effect.as({ _tag: "flush" } as const)
+                  )
+                )
+
+            return nextEvent.pipe(
+              Effect.flatMap((event) => {
+                if (event._tag === "done") {
+                  sourceDone = true
+                  return pullFrame
+                }
+                if (event._tag === "flush") {
+                  const frame = coalescer.flushTimer()
+                  if (frame.bytes.byteLength > 0) {
+                    return Effect.succeed([frame])
+                  }
+                  return pullFrame
+                }
+
+                const frames: OutputFrame[] = []
+                for (const chunk of event.chunks) {
+                  frames.push(...coalescer.push(chunk))
+                }
+                const nextFrames = takeNonEmptyOutputFrames(frames)
+                if (nextFrames !== undefined) {
+                  pending = frames.slice(nextFrames.length)
+                  return Effect.succeed(nextFrames)
+                }
+                return pullFrame
+              })
+            )
           })
-        )
-      )
-    )
-    if (Exit.isFailure(exit)) {
-      yield* Queue.fail(queue, mapCauseToPtyError(exit.cause, command, "PTY.output"))
-      return
-    }
 
-    const finalFrame = coalescer.flush()
-    if (finalFrame.bytes.byteLength > 0) {
-      yield* offerOutputFrame(queue, queuedBytes, command, policy, metrics, finalFrame)
-    }
-    yield* Queue.end(queue)
-  }).pipe(
-    Effect.catchCause((cause) =>
-      Queue.fail(queue, mapCauseToPtyError(cause, command, "PTY.output")).pipe(Effect.asVoid)
+        return pullFrame
+      })
     )
-  )
 
-const offerOutputFrame = (
-  queue: Queue.Queue<QueuedOutput, PtyError | Cause.Done>,
-  queuedBytes: Ref.Ref<number>,
+type OutputPullEvent =
+  | { readonly _tag: "chunks"; readonly chunks: readonly Uint8Array[] }
+  | { readonly _tag: "done" }
+  | { readonly _tag: "flush" }
+
+const readOutputChunks = (
+  pull: Pull.Pull<readonly Uint8Array[], PtyError>
+): Effect.Effect<OutputPullEvent, PtyError, never> =>
+  Pull.matchEffect(pull, {
+    onDone: () => Effect.succeed({ _tag: "done" } as const),
+    onFailure: (cause) => Effect.failCause(cause),
+    onSuccess: (chunks) => Effect.succeed({ _tag: "chunks", chunks } as const)
+  })
+
+const takeNonEmptyOutputFrames = (
+  frames: readonly OutputFrame[]
+): readonly [OutputFrame, ...OutputFrame[]] | undefined => {
+  const [first, ...rest] = frames
+  return first === undefined ? undefined : [first, ...rest]
+}
+
+const applyOutputPolicy = (
   command: string,
   policy: Required<PtyBudgetPolicy>,
   metrics: Ref.Ref<PtyOutputMetrics>,
   frame: OutputFrame
-): Effect.Effect<void, PtyError, never> =>
+): Effect.Effect<Option.Option<OutputFrame>, PtyError, never> =>
   Effect.gen(function* () {
     if (frame.bytes.byteLength > policy.outputBufferBytes) {
       yield* recordDroppedFrame(metrics, frame)
       if (policy.outputOverflow === "error") {
         return yield* Effect.fail(makeBackpressureOverflow(command, policy.outputBufferBytes, 1))
       }
-      return
+      return Option.none<OutputFrame>()
     }
 
-    if (policy.outputOverflow === "block") {
-      yield* Queue.offer(queue, { bytes: frame.bytes })
-      yield* Ref.update(queuedBytes, (bytes) => bytes + frame.bytes.byteLength)
-      yield* recordEmittedFrame(queue, queuedBytes, metrics, frame)
-      return
-    }
-
-    const canFit = yield* makeOutputQueueRoom(
-      queue,
-      queuedBytes,
-      metrics,
-      policy,
-      frame.bytes.byteLength
-    )
-    if (!canFit) {
-      yield* recordDroppedFrame(metrics, frame)
-      if (policy.outputOverflow === "error") {
-        return yield* Effect.fail(makeBackpressureOverflow(command, policy.outputBufferBytes, 1))
-      }
-      return
-    }
-
-    const offered = Queue.offerUnsafe(queue, { bytes: frame.bytes })
-    if (!offered) {
-      yield* recordDroppedFrame(metrics, frame)
-      if (policy.outputOverflow === "error") {
-        return yield* Effect.fail(makeBackpressureOverflow(command, policy.outputBufferBytes, 1))
-      }
-      return
-    }
-
-    yield* Ref.update(queuedBytes, (bytes) => bytes + frame.bytes.byteLength)
-    yield* recordEmittedFrame(queue, queuedBytes, metrics, frame)
+    yield* recordEmittedFrame(metrics, frame)
+    return Option.some(frame)
   })
 
-const flushCoalescedOutputAfterWindow = (
-  coalescer: OutputCoalescer,
-  queue: Queue.Queue<QueuedOutput, PtyError | Cause.Done>,
-  queuedBytes: Ref.Ref<number>,
-  command: string,
-  policy: Required<PtyBudgetPolicy>,
-  metrics: Ref.Ref<PtyOutputMetrics>
-): Effect.Effect<void, never, never> =>
-  Effect.sleep(`${policy.outputCoalesceMs} millis`).pipe(
-    Effect.andThen(
-      Effect.gen(function* () {
-        const frame = coalescer.flushTimer()
-        if (frame.bytes.byteLength > 0) {
-          yield* offerOutputFrame(queue, queuedBytes, command, policy, metrics, frame)
-        }
-      })
-    ),
-    Effect.catchCause((cause) =>
-      Queue.fail(queue, mapCauseToPtyError(cause, command, "PTY.output")).pipe(Effect.asVoid)
-    )
-  )
-
-const makeOutputQueueRoom = (
-  queue: Queue.Queue<QueuedOutput, PtyError | Cause.Done>,
-  queuedBytes: Ref.Ref<number>,
-  metrics: Ref.Ref<PtyOutputMetrics>,
-  policy: Required<PtyBudgetPolicy>,
-  incomingBytes: number
-): Effect.Effect<boolean, never, never> =>
-  Effect.gen(function* () {
-    if (policy.outputOverflow === "dropNewest" || policy.outputOverflow === "error") {
-      const queueBytes = yield* Ref.get(queuedBytes)
-      return queueBytes + incomingBytes <= policy.outputBufferBytes && !Queue.isFullUnsafe(queue)
-    }
-
-    while (
-      (yield* Ref.get(queuedBytes)) + incomingBytes > policy.outputBufferBytes ||
-      Queue.isFullUnsafe(queue)
-    ) {
-      const evicted = Queue.takeUnsafe(queue)
-      if (evicted === undefined) {
-        break
-      }
-      if (Exit.isSuccess(evicted)) {
-        yield* Ref.update(queuedBytes, (bytes) =>
-          Math.max(0, bytes - evicted.value.bytes.byteLength)
-        )
-        yield* recordDroppedFrame(metrics, evicted.value.bytes)
-      }
-    }
-
-    return true
-  })
+const outputBufferStrategy = (
+  policy: Required<PtyBudgetPolicy>
+): "dropping" | "sliding" | "suspend" => {
+  if (policy.outputOverflow === "dropNewest" || policy.outputOverflow === "error") {
+    return "dropping"
+  }
+  if (policy.outputOverflow === "dropOldest") {
+    return "sliding"
+  }
+  return "suspend"
+}
 
 const makeOutputMetrics = (
   policy: Required<PtyBudgetPolicy>
@@ -555,25 +499,19 @@ const recordInputChunk = (
   )
 
 const recordEmittedFrame = (
-  queue: Queue.Queue<QueuedOutput, PtyError | Cause.Done>,
-  queuedBytes: Ref.Ref<number>,
   metrics: Ref.Ref<PtyOutputMetrics>,
   frame: OutputFrame
 ): Effect.Effect<void, never, never> =>
-  Effect.gen(function* () {
-    const queueDepth = yield* Queue.size(queue)
-    const queueBytes = yield* Ref.get(queuedBytes)
-    yield* Ref.update(metrics, (current) =>
-      updateCoalescingFactor({
-        ...current,
-        coalescedFrames: current.coalescedFrames + (frame.coalesced ? 1 : 0),
-        emittedBytes: current.emittedBytes + frame.bytes.byteLength,
-        emittedFrames: current.emittedFrames + 1,
-        queueBytes,
-        queueDepth
-      })
-    )
-  })
+  Ref.update(metrics, (current) =>
+    updateCoalescingFactor({
+      ...current,
+      coalescedFrames: current.coalescedFrames + (frame.coalesced ? 1 : 0),
+      emittedBytes: current.emittedBytes + frame.bytes.byteLength,
+      emittedFrames: current.emittedFrames + 1,
+      queueBytes: 0,
+      queueDepth: 0
+    })
+  )
 
 const recordDroppedFrame = (
   metrics: Ref.Ref<PtyOutputMetrics>,
@@ -588,37 +526,22 @@ const recordDroppedFrame = (
     })
   })
 
-const syncOutputQueueMetrics = (
-  queue: Queue.Queue<QueuedOutput, PtyError | Cause.Done>,
-  queuedBytes: Ref.Ref<number>,
-  metrics: Ref.Ref<PtyOutputMetrics>
-): Effect.Effect<void, never, never> =>
-  Effect.gen(function* () {
-    const queueDepth = yield* Queue.size(queue)
-    const queueBytes = yield* Ref.get(queuedBytes)
-    yield* Ref.update(metrics, (current) => ({
-      ...current,
-      queueBytes,
-      queueDepth
-    }))
-  })
-
 const updateCoalescingFactor = (metrics: PtyOutputMetrics): PtyOutputMetrics => ({
   ...metrics,
   coalescingFactor: metrics.emittedFrames === 0 ? 1 : metrics.inputFrames / metrics.emittedFrames
 })
 
 interface OutputCoalescer {
-  readonly beginTimer: () => boolean
+  readonly flushDelayMs: () => number
   readonly flush: () => OutputFrame
   readonly flushTimer: () => OutputFrame
+  readonly isEmpty: () => boolean
   readonly push: (chunk: Uint8Array) => readonly OutputFrame[]
 }
 
 const makeOutputCoalescer = (policy: Required<PtyBudgetPolicy>): OutputCoalescer => {
   const chunks: Uint8Array[] = []
   let bufferedBytes = 0
-  let timerActive = false
   let windowStartedAt = 0
 
   const flush = (): OutputFrame => {
@@ -635,18 +558,15 @@ const makeOutputCoalescer = (policy: Required<PtyBudgetPolicy>): OutputCoalescer
   }
 
   return {
-    beginTimer: () => {
-      if (bufferedBytes === 0 || timerActive) {
-        return false
+    flushDelayMs: () => {
+      if (bufferedBytes === 0) {
+        return Number.POSITIVE_INFINITY
       }
-      timerActive = true
-      return true
+      return Math.max(0, policy.outputCoalesceMs - (Date.now() - windowStartedAt))
     },
     flush,
-    flushTimer: () => {
-      timerActive = false
-      return flush()
-    },
+    flushTimer: () => flush(),
+    isEmpty: () => bufferedBytes === 0,
     push: (chunk) => {
       if (chunk.byteLength === 0) {
         return []
@@ -960,15 +880,6 @@ const makeBackpressureOverflow = (
       "PTY.output"
     )
   })
-
-const mapCauseToPtyError = (
-  cause: Cause.Cause<PtyError>,
-  command: string,
-  operation: string
-): PtyError => {
-  const squashed = Cause.squash(cause)
-  return mapPtyError(squashed, command, operation)
-}
 
 const makePtyResourceBusy = (
   ownerScope: string,
