@@ -475,6 +475,14 @@ const snapshotRegistrationsSync = <RIn, E>(
   rpcs: DesktopConfig<RIn, E>["rpcs"]
 ): ReadonlyArray<DesktopRpcRegistration<any, any>> => {
   if (rpcs === undefined) return []
+  // Cast invariant: every Desktop.rpc(...) layer body is Effect.sync that only
+  // calls registry.register(...). Composing with DesktopRpcRegistryLive (also
+  // Effect.sync) makes the entire build sync. The user's RIn/E type parameters
+  // are erased here because they describe handler-execution requirements, not
+  // registration-time requirements; handler R is reapplied per-registration in
+  // bindRegistration. The DesktopRpcRegistryAsyncBuildError catch below
+  // converts the runtime crash into a typed framework error if the invariant
+  // is ever violated.
   const composed = Layer.provideMerge(
     rpcs as unknown as Layer.Layer<never, never, DesktopRpcRegistry>,
     DesktopRpcRegistryLive
@@ -873,9 +881,21 @@ const bindRegistration = (
 ): Layer.Layer<never, unknown, unknown> =>
   Layer.provide(
     RpcServer.layer(
+      // Cast invariant: DesktopRpcRegistration.group widens its Rpc-union to
+      // RpcGroup.Any so the registry can hold heterogeneous groups together.
+      // RpcServer.layer accepts any RpcGroup; widening to Rpc.Any here keeps
+      // its type parameter satisfiable without losing runtime behavior.
       (registration.group as RpcGroup.RpcGroup<Rpc.Any>).middleware(PermissionInterceptor)
     ),
+    // Cast invariant: handlers' Rpc.ToHandler<Rpcs> output context is widened
+    // to `any` so it satisfies whatever RpcServer.layer needs from its Rpcs
+    // type parameter. The handler layer's R requirement is preserved as
+    // Layer.provide's environment requirement and bubbles up through the spine.
     registration.handlers as Layer.Layer<unknown, unknown, unknown>
+    // Cast invariant: Layer.provide of an unknown-typed handler returns
+    // Layer<never, unknown, unknown>; we restate it here so the binder's
+    // return type is callable without forcing every caller to thread the
+    // specific Rpc union — bindRegistration is the type-erasure boundary.
   ) as Layer.Layer<never, unknown, unknown>
 
 const freezeArray = <A>(values: ReadonlyArray<A> | undefined): ReadonlyArray<A> =>

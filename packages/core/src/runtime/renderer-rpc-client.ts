@@ -181,6 +181,16 @@ const acquireDesktopRendererRpcTestClients = (
     const clients = new Map<RpcGroup.Any, DesktopRendererRpcClient>()
     for (const registration of registrations) {
       const group = registration.group
+      // Cast invariants:
+      //   group: RpcGroup.RpcGroup<Rpc.Any> — heterogeneous registry holds
+      //     groups with disjoint Rpc unions; widen to Rpc.Any for RpcTest.makeClient.
+      //   handlers: Layer.Layer<any, any, any> — handler R requirements are
+      //     stored as data on the registration and irrelevant to test-client
+      //     wire shape; provide as-is to the RpcTest client layer.
+      //   rpcClient → Record<string, DesktopRendererRpcClientMethod | undefined>:
+      //     RpcTest.makeClient returns a typed client; the renderer surface
+      //     consumes it as a string-keyed dispatch table. The shapes are
+      //     equivalent at runtime; TypeScript can't narrow them without help.
       const rpcClient = (yield* RpcTest.makeClient(group as RpcGroup.RpcGroup<Rpc.Any>).pipe(
         Effect.provide(registration.handlers as Layer.Layer<any, any, any>)
       )) as unknown as Readonly<Record<string, DesktopRendererRpcClientMethod | undefined>>
@@ -194,6 +204,11 @@ const acquireDesktopRendererRpcTestClients = (
       clients.set(group, client)
     }
     return { clients }
+    // Cast invariant: Effect.gen here returns Effect<{clients}, any, Scope.Scope>
+    // because RpcTest.makeClient widens E/R to any. The function contract
+    // promises (..., never, Scope.Scope) — the caller-visible error channel is
+    // empty because every per-registration failure inside the loop bubbles up
+    // and aborts. Restate the type to keep the boundary callable.
   }) as unknown as Effect.Effect<RendererRpcClientsApi, never, Scope.Scope>
 
 const snapshotRegistrations = (
@@ -201,6 +216,10 @@ const snapshotRegistrations = (
 ): Effect.Effect<ReadonlyArray<DesktopRpcRegistration<any, any>>, never, never> =>
   Effect.scoped(
     Effect.gen(function* () {
+      // Cast invariant: identical to snapshotRegistrationsSync in desktop-app.ts.
+      // Desktop.rpc layers only do Effect.sync(register), so handler R/E are
+      // erased here for the build-and-snapshot path — they are reapplied at
+      // RpcTest.makeClient(...) time with Effect.provide(handlers) above.
       const composed = Layer.provideMerge(
         rpcs as unknown as Layer.Layer<never, never, DesktopRpcRegistry>,
         DesktopRpcRegistryLive
