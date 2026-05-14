@@ -1,10 +1,5 @@
 [workspace]
-members = [
-  "crates/host",
-  "crates/host-protocol",
-  "crates/native-pty",
-  "crates/native-updater"
-]
+members = ["crates/host", "crates/host-protocol", "crates/native-pty", "crates/native-updater"]
 resolver = "2"
 
 [workspace.package]

@@ -751,11 +751,7 @@ const auditCommand = (
   outcome: string,
   now: () => number,
   traceId: string = `command:${commandId}`
-): Effect.Effect<
-  void,
-  CommandRegistryAuditFailedError | CommandRegistryInvalidInputError,
-  never
-> =>
+): Effect.Effect<void, CommandRegistryAuditFailedError | CommandRegistryInvalidInputError, never> =>
   audit === undefined
     ? Effect.void
     : Effect.gen(function* () {

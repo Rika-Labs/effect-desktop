@@ -1169,10 +1169,7 @@ const readNonNegativeInteger = (
         })
       )
 
-const readSha256 = (
-  value: unknown,
-  field: string
-): Effect.Effect<string, SignConfigError, never> =>
+const readSha256 = (value: unknown, field: string): Effect.Effect<string, SignConfigError, never> =>
   typeof value === "string" && /^[a-f0-9]{64}$/u.test(value)
     ? Effect.succeed(value)
     : Effect.fail(
