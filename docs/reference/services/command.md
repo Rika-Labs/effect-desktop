@@ -26,13 +26,13 @@ import {
 
 ## API
 
-| Method | Signature |
-| --- | --- |
-| `register` | `({ id, name, run }) => Effect<void, CommandRegistrationError>` |
-| `unregister` | `(id) => Effect<void>` |
-| `invoke` | `(id, args?) => Effect<unknown, CommandError>` |
-| `list` | `() => Effect<CommandSnapshot[]>` |
-| `observeInvocations` | `() => Stream<CommandInvocation>` |
+| Method               | Signature                                                       |
+| -------------------- | --------------------------------------------------------------- |
+| `register`           | `({ id, name, run }) => Effect<void, CommandRegistrationError>` |
+| `unregister`         | `(id) => Effect<void>`                                          |
+| `invoke`             | `(id, args?) => Effect<unknown, CommandError>`                  |
+| `list`               | `() => Effect<CommandSnapshot[]>`                               |
+| `observeInvocations` | `() => Stream<CommandInvocation>`                               |
 
 ## Errors
 

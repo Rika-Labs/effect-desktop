@@ -37,10 +37,10 @@ import {
 
 ## Methods
 
-| Method | Payload | Success | Description |
-| --- | --- | --- | --- |
-| `create` | `WindowCreateOptions` | `WindowHandle` | Open a native window. |
-| `close` | `WindowHandle` | `void` | Destroy a native window. |
+| Method   | Payload               | Success        | Description              |
+| -------- | --------------------- | -------------- | ------------------------ |
+| `create` | `WindowCreateOptions` | `WindowHandle` | Open a native window.    |
+| `close`  | `WindowHandle`        | `void`         | Destroy a native window. |
 
 `WindowMethodNames = ["create", "close"]`. Additional methods (focus, hide, maximize) are reserved for future phases — `WindowSupportedRpcs` only contains what's currently callable.
 

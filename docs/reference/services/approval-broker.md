@@ -25,11 +25,11 @@ import {
 
 ## API
 
-| Method | Signature | Description |
-| --- | --- | --- |
-| `ask` | `(request) => Effect<ApprovalResolution, ApprovalBrokerError>` | Validates, coalesces, queues, and routes the prompt. |
-| `observe` | `() => Stream<ApprovalRequest>` | Live stream of new requests. |
-| `cancel` | `(requestId) => Effect<void>` | Cancel a pending request. |
+| Method    | Signature                                                      | Description                                          |
+| --------- | -------------------------------------------------------------- | ---------------------------------------------------- |
+| `ask`     | `(request) => Effect<ApprovalResolution, ApprovalBrokerError>` | Validates, coalesces, queues, and routes the prompt. |
+| `observe` | `() => Stream<ApprovalRequest>`                                | Live stream of new requests.                         |
+| `cancel`  | `(requestId) => Effect<void>`                                  | Cancel a pending request.                            |
 
 ## Behavior
 
@@ -55,14 +55,18 @@ The substitutable seam. Production: a host-rendered native modal. Tests: a deter
 ## Example
 
 ```ts
-const broker = yield* ApprovalBroker
-const resolution = yield* broker.ask({
-  id: crypto.randomUUID(),
-  operation: "filesystem.write",
-  actor: { kind: "window", id: "main" },
-  resource: "/Users/me/Downloads/file.md",
-  context: { /* additional details */ }
-})
+const broker = yield * ApprovalBroker
+const resolution =
+  yield *
+  broker.ask({
+    id: crypto.randomUUID(),
+    operation: "filesystem.write",
+    actor: { kind: "window", id: "main" },
+    resource: "/Users/me/Downloads/file.md",
+    context: {
+      /* additional details */
+    }
+  })
 if (resolution.approved) {
   // proceed
 }

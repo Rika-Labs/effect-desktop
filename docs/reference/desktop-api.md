@@ -26,14 +26,14 @@ function make<RIn = never, E = never>(
 ): DesktopAppDescriptor<RIn, E>
 ```
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `id` | `string` | Reverse-DNS app id (e.g. `dev.example.notes`). |
-| `windows` | `Record<string, WindowSpec>` | Declared windows, keyed by window id. |
-| `rpcs` | `Array<DesktopRpcLayer>` | RPC groups and their handler layers. |
-| `providers` | `DesktopProviderSelection` | Optional provider selection (e.g. runtime engine). |
-| `permissions` | `NormalizedCapability[]` | Default permission declarations. |
-| `workflows` | `DesktopWorkflowLayer[]` | Optional workflow layers. |
+| Field         | Type                         | Description                                                                                                                    |
+| ------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `id`          | `string`                     | Reverse-DNS app id (e.g. `dev.example.notes`).                                                                                 |
+| `windows`     | `Record<string, WindowSpec>` | Declared windows, keyed by window id.                                                                                          |
+| `rpcs`        | `DesktopRpcsLayer<E, RIn>`   | A single composed Layer of RPC registrations. Build via `Desktop.rpc(group, handlers)`; compose multiple via `Layer.mergeAll`. |
+| `providers`   | `DesktopProviderSelection`   | Optional provider selection (e.g. runtime engine).                                                                             |
+| `permissions` | `NormalizedCapability[]`     | Default permission declarations.                                                                                               |
+| `workflows`   | `DesktopWorkflowLayer[]`     | Optional workflow layers.                                                                                                      |
 
 `WindowSpec` is `{ title, width?, height?, renderer? }`. The window id is the key in the `windows` record — there is no `id` field on the spec itself.
 
@@ -135,7 +135,7 @@ export const App = Desktop.make({
   windows: {
     main: { title: "Notes", width: 720, height: 520 }
   },
-  rpcs: [{ group: NotesRpcs, handlers: NotesHandlersLive }]
+  rpcs: Desktop.rpc(NotesRpcs, NotesHandlersLive)
 })
 
 export const Manifest = Desktop.manifest(App)

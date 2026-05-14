@@ -2,10 +2,10 @@
 
 ## Learning Files Written
 
-| Path                                                                   | Title                                   | Codification target |
-| ---------------------------------------------------------------------- | --------------------------------------- | ------------------- |
-| `engineering/learnings/2026-05-07-destination-local-commit-temp.md`           | Destination-Local Commit Temp           | engineering/learnings      |
-| `engineering/learnings/2026-05-07-timeout-errors-own-recovery-breadcrumbs.md` | Timeout Errors Own Recovery Breadcrumbs | engineering/learnings      |
+| Path                                                                          | Title                                   | Codification target   |
+| ----------------------------------------------------------------------------- | --------------------------------------- | --------------------- |
+| `engineering/learnings/2026-05-07-destination-local-commit-temp.md`           | Destination-Local Commit Temp           | engineering/learnings |
+| `engineering/learnings/2026-05-07-timeout-errors-own-recovery-breadcrumbs.md` | Timeout Errors Own Recovery Breadcrumbs | engineering/learnings |
 
 ## Follow-Up Issues Filed
 

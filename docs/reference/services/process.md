@@ -27,11 +27,11 @@ import {
 
 ## API
 
-| Method | Signature |
-| --- | --- |
-| `spawn` | `(input: ProcessSpawnInput) => Effect<ProcessHandle>` |
-| `list` | `() => Effect<ProcessSnapshot[]>` |
-| `observe` | `() => Stream<ProcessLifecycleEvent>` |
+| Method    | Signature                                             |
+| --------- | ----------------------------------------------------- |
+| `spawn`   | `(input: ProcessSpawnInput) => Effect<ProcessHandle>` |
+| `list`    | `() => Effect<ProcessSnapshot[]>`                     |
+| `observe` | `() => Stream<ProcessLifecycleEvent>`                 |
 
 ## `ProcessSpawnInput`
 

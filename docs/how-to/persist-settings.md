@@ -36,19 +36,22 @@ const program = Effect.gen(function* () {
 const Theme = Schema.Literals(["light", "dark", "system"])
 
 // Read with a default
-const theme = yield* store.getOrDefault("theme", Theme, "system")
+const theme = yield * store.getOrDefault("theme", Theme, "system")
 
 // Write
-yield* store.set("theme", Theme, "dark")
+yield * store.set("theme", Theme, "dark")
 
 // Read or fail
-const required = yield* store.get("apiBaseUrl", Schema.String)
+const required = yield * store.get("apiBaseUrl", Schema.String)
 //             ^? Effect<string, SettingsError | NotFound, never>
 
 // Update inside a transaction
-yield* store.update("counters", Schema.Record({ key: Schema.String, value: Schema.Number }),
-  (counts) => ({ ...counts, opens: (counts.opens ?? 0) + 1 })
-)
+yield *
+  store.update(
+    "counters",
+    Schema.Record({ key: Schema.String, value: Schema.Number }),
+    (counts) => ({ ...counts, opens: (counts.opens ?? 0) + 1 })
+  )
 ```
 
 Every read decodes through the schema. Every write encodes. Mismatched data fails at the boundary, not deep in your component.
@@ -58,21 +61,23 @@ Every read decodes through the schema. Every write encodes. Mismatched data fail
 Pass a `migrations` array on `open` to handle version bumps:
 
 ```ts
-const store = yield* settings.open({
-  path: "preferences.sqlite",
-  ownerScope: "window-main",
-  schemaVersion: 2,
-  migrations: [
-    {
-      from: 1,
-      to: 2,
-      migrate: (raw) => {
-        // raw is the stored object
-        return { ...raw, theme: raw.theme ?? "system" }
+const store =
+  yield *
+  settings.open({
+    path: "preferences.sqlite",
+    ownerScope: "window-main",
+    schemaVersion: 2,
+    migrations: [
+      {
+        from: 1,
+        to: 2,
+        migrate: (raw) => {
+          // raw is the stored object
+          return { ...raw, theme: raw.theme ?? "system" }
+        }
       }
-    }
-  ]
-})
+    ]
+  })
 ```
 
 Migrations run inside a SQLite transaction with the metadata update. They emit `SettingsMigrated` events through `migrated()`.
@@ -80,11 +85,14 @@ Migrations run inside a SQLite transaction with the metadata update. They emit `
 ## 4. Subscribe to changes
 
 ```ts
-yield* store.changes().pipe(
-  Stream.runForEach((change) =>
-    Effect.log(`${change.key} changed: ${change.oldValue} -> ${change.newValue}`)
-  )
-)
+yield *
+  store
+    .changes()
+    .pipe(
+      Stream.runForEach((change) =>
+        Effect.log(`${change.key} changed: ${change.oldValue} -> ${change.newValue}`)
+      )
+    )
 ```
 
 `changes()` emits `{ key, oldValue, newValue, source }` on every write. Useful for cross-window sync (one window writes, another reacts).
@@ -94,12 +102,14 @@ yield* store.changes().pipe(
 If the database file is corrupt at open and you supply `backupPath`, Settings replaces the corrupt file with the backup and reopens it:
 
 ```ts
-const store = yield* settings.open({
-  path: "preferences.sqlite",
-  ownerScope: "window-main",
-  schemaVersion: 1,
-  backupPath: "preferences.backup.sqlite"
-})
+const store =
+  yield *
+  settings.open({
+    path: "preferences.sqlite",
+    ownerScope: "window-main",
+    schemaVersion: 1,
+    backupPath: "preferences.backup.sqlite"
+  })
 ```
 
 A failed copy returns `SettingsRecoveredFromBackup` rather than throwing.

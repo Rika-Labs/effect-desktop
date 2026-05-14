@@ -33,10 +33,7 @@ Returns a `Layer` providing:
 Compose with your handler layer:
 
 ```ts
-const TestLive = Layer.merge(
-  HeadlessRuntime.layer({ testName: "Notes.save" }),
-  NotesHandlersLive
-)
+const TestLive = Layer.merge(HeadlessRuntime.layer({ testName: "Notes.save" }), NotesHandlersLive)
 ```
 
 ## `HeadlessRuntime.run(effect, options)`
@@ -45,7 +42,9 @@ Runs an effect against the layer plus resource leak detection:
 
 ```ts
 await HeadlessRuntime.run(
-  Effect.gen(function* () { /* test body */ }).pipe(Effect.provide(NotesHandlersLive)),
+  Effect.gen(function* () {
+    /* test body */
+  }).pipe(Effect.provide(NotesHandlersLive)),
   { testName: "save persists" }
 )
 ```

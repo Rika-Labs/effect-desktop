@@ -28,12 +28,12 @@ import {
 
 ## API
 
-| Method | Signature |
-| --- | --- |
-| `set` | `(namespace, key, value: SecretBytes) => Effect<void>` |
-| `get` | `(namespace, key) => Effect<SecretBytes>` |
-| `delete` | `(namespace, key) => Effect<void>` |
-| `list` | `(namespace) => Effect<{ namespace, key }[]>` |
+| Method   | Signature                                              |
+| -------- | ------------------------------------------------------ |
+| `set`    | `(namespace, key, value: SecretBytes) => Effect<void>` |
+| `get`    | `(namespace, key) => Effect<SecretBytes>`              |
+| `delete` | `(namespace, key) => Effect<void>`                     |
+| `list`   | `(namespace) => Effect<{ namespace, key }[]>`          |
 
 Storage keys are derived as `appId/namespace/key`.
 
@@ -63,10 +63,10 @@ Every successful operation writes a `secret/accessed` audit event with namespace
 ## Example
 
 ```ts
-const secrets = yield* Secrets
-yield* secrets.set("tokens", "github", makeSecretBytesFromUtf8("ghp_..."))
+const secrets = yield * Secrets
+yield * secrets.set("tokens", "github", makeSecretBytesFromUtf8("ghp_..."))
 
-const stored = yield* secrets.get("tokens", "github")
+const stored = yield * secrets.get("tokens", "github")
 const bytes = Redacted.value(stored)
 const text = new TextDecoder().decode(bytes)
 wipeSecretBytes(bytes)

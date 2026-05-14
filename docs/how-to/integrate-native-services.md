@@ -35,10 +35,7 @@ function CopyButton({ text }: { text: string }) {
   const writeText = clipboard.writeText.useMutation()
 
   return (
-    <button
-      onClick={() => writeText.run({ text })}
-      disabled={writeText.status === "running"}
-    >
+    <button onClick={() => writeText.run({ text })} disabled={writeText.status === "running"}>
       Copy
     </button>
   )
@@ -57,7 +54,10 @@ function OpenButton() {
   const open = dialog.open.useMutation()
 
   const onClick = async () => {
-    const result = await open.run({ properties: ["openFile"], filters: [{ name: "Markdown", extensions: ["md"] }] })
+    const result = await open.run({
+      properties: ["openFile"],
+      filters: [{ name: "Markdown", extensions: ["md"] }]
+    })
     if (!result.canceled) {
       // result.filePaths is string[]
     }
@@ -86,9 +86,9 @@ The React adapter wraps a few high-frequency reads as hooks:
 import { useTheme, useDisplays, usePower } from "@effect-desktop/react"
 
 function StatusBar() {
-  const theme = useTheme()             // { isDark: boolean }
-  const displays = useDisplays()       // { displays: Display[] }
-  const power = usePower()             // { event?: PowerEvent }
+  const theme = useTheme() // { isDark: boolean }
+  const displays = useDisplays() // { displays: Display[] }
+  const power = usePower() // { event?: PowerEvent }
   return (
     <span>
       {theme.isDark ? "🌙" : "☀️"} · {displays.displays.length} displays

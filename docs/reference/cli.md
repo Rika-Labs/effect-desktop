@@ -31,34 +31,32 @@ import {
 
 ## Commands
 
-| Command | Description |
-| --- | --- |
-| `desktop --help` | Top-level help |
-| `desktop check` | Run production security checks |
-| `desktop check --docs` | Run the documentation release gate |
+| Command                                   | Description                                 |
+| ----------------------------------------- | ------------------------------------------- |
+| `desktop --help`                          | Top-level help                              |
+| `desktop check`                           | Run production security checks              |
+| `desktop check --docs`                    | Run the documentation release gate          |
 | `desktop check --repro --baseline <path>` | Reproducibility check against a prior build |
-| `desktop build` | Build renderer and runtime |
-| `desktop package` | Stage platform artifacts |
-| `desktop sign` | Sign artifacts |
-| `desktop notarize` | Notarize macOS artifacts (Apple) |
-| `desktop publish` | Publish signed update manifest |
-| `desktop release` | Run the full release workflow |
-| `desktop doctor` | Diagnose environment prerequisites |
+| `desktop build`                           | Build renderer and runtime                  |
+| `desktop package`                         | Stage platform artifacts                    |
+| `desktop sign`                            | Sign artifacts                              |
+| `desktop notarize`                        | Notarize macOS artifacts (Apple)            |
+| `desktop publish`                         | Publish signed update manifest              |
+| `desktop release`                         | Run the full release workflow               |
+| `desktop doctor`                          | Diagnose environment prerequisites          |
 
 ## Common flags
 
-| Flag | Description |
-| --- | --- |
-| `--config <path>` | Path to `desktop.config.ts` (default: cwd) |
-| `--target <a,b>` | Restrict to specific build targets (e.g. `macos-arm64,windows-x64`) |
-| `--channel <name>` | Update channel for `publish` |
+| Flag               | Description                                                         |
+| ------------------ | ------------------------------------------------------------------- |
+| `--config <path>`  | Path to `desktop.config.ts` (default: cwd)                          |
+| `--target <a,b>`   | Restrict to specific build targets (e.g. `macos-arm64,windows-x64`) |
+| `--channel <name>` | Update channel for `publish`                                        |
 
 ## `runDesktopCheck(options) → ProductionCheckReport`
 
 ```ts
-const report = await Effect.runPromise(
-  runDesktopCheck({ cwd: process.cwd() })
-)
+const report = await Effect.runPromise(runDesktopCheck({ cwd: process.cwd() }))
 if (!report.passed) {
   for (const v of report.violations) {
     console.error(`${v.rule}: ${v.message}`)

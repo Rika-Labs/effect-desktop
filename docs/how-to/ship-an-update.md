@@ -56,9 +56,7 @@ import { UpdaterRpcs } from "@effect-desktop/native"
 export const App = Desktop.make({
   id: "dev.example.notes",
   windows: { main: { title: "Notes" } },
-  rpcs: [
-    { group: UpdaterRpcs, handlers: UpdaterHandlersLive }
-  ]
+  rpcs: Desktop.rpc(UpdaterRpcs, UpdaterHandlersLive)
 })
 
 // Updater configuration (feedUrl, channel, publicKeys, pollIntervalMs) is

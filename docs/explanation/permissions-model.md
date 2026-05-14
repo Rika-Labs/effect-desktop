@@ -71,7 +71,7 @@ If you need to bypass the prompt for development, set `devApproveAll: true` on t
 A successful `check` returns a `GrantedCapability` token. The handler executes its privileged work via:
 
 ```ts
-yield* registry.use(grant, doTheWork)
+yield * registry.use(grant, doTheWork)
 ```
 
 `use` records the use, propagates the trace id, and refuses to run if the grant is revoked or expired between issue and use. Grants have:

@@ -16,10 +16,10 @@ Effect Desktop is a desktop application framework with three process boundaries 
 
 This site is organized as **[Diátaxis](https://diataxis.fr/)**: four quadrants for four kinds of need.
 
-|                           | Practical                                                 | Theoretical                                                  |
-| ------------------------- | --------------------------------------------------------- | ------------------------------------------------------------ |
-| **Learning** (study)      | [Tutorials →](tutorials/) — guided walkthroughs            | [Explanation →](explanation/) — why the framework looks the way it does |
-| **Working** (apply)       | [How-to guides →](how-to/) — recipes for specific tasks    | [Reference →](reference/) — every public symbol, looked up   |
+|                      | Practical                                               | Theoretical                                                             |
+| -------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------- |
+| **Learning** (study) | [Tutorials →](tutorials/) — guided walkthroughs         | [Explanation →](explanation/) — why the framework looks the way it does |
+| **Working** (apply)  | [How-to guides →](how-to/) — recipes for specific tasks | [Reference →](reference/) — every public symbol, looked up              |
 
 If you have never opened the framework before, **start here**: [Install](start/install.md) → [Build your first app in 5 minutes](start/first-app.md) → [Where to go next](start/next-steps.md).
 
@@ -37,32 +37,38 @@ Long, narrative walkthroughs. You'll end with something running.
 Short, task-oriented recipes. Assume you know the basics.
 
 **App composition**
+
 - [Define an RPC surface](how-to/define-an-rpc-surface.md)
 - [Add a window](how-to/add-a-window.md)
 - [Integrate native services](how-to/integrate-native-services.md)
 
 **State and storage**
+
 - [Persist settings](how-to/persist-settings.md)
 - [Store secrets safely](how-to/store-secrets.md)
 - [Use SQLite](how-to/use-sqlite.md)
 - [Read and write files](how-to/read-write-files.md)
 
 **Long-lived work**
+
 - [Spawn a worker](how-to/spawn-a-worker.md)
 - [Run a child process](how-to/run-a-child-process.md)
 - [Open a PTY](how-to/open-a-pty.md)
 - [Schedule background jobs](how-to/schedule-background-jobs.md)
 
 **Permissions and observability**
+
 - [Declare a permission](how-to/declare-a-permission.md)
 - [Handle an approval prompt](how-to/handle-an-approval-prompt.md)
 - [Add telemetry and logs](how-to/add-telemetry-and-logs.md)
 
 **Testing**
+
 - [Write a test with layers](how-to/write-a-test-with-layers.md)
 - [Inject a mock host and bridge](how-to/inject-mock-host-and-bridge.md)
 
 **Release**
+
 - [Package for macOS](how-to/package-for-macos.md)
 - [Sign and notarize](how-to/sign-and-notarize.md)
 - [Ship an update](how-to/ship-an-update.md)

@@ -12,12 +12,12 @@ Operations that hand off to the OS shell — open a file in its default app, ope
 
 ## Methods
 
-| Method | Payload | Success |
-| --- | --- | --- |
-| `openPath` | `{ path }` | `void` |
-| `openExternal` | `{ url }` | `void` |
-| `showItemInFolder` | `{ path }` | `void` |
-| `trashItem` | `{ path }` | `void` |
+| Method             | Payload    | Success |
+| ------------------ | ---------- | ------- |
+| `openPath`         | `{ path }` | `void`  |
+| `openExternal`     | `{ url }`  | `void`  |
+| `showItemInFolder` | `{ path }` | `void`  |
+| `trashItem`        | `{ path }` | `void`  |
 
 ## Errors
 

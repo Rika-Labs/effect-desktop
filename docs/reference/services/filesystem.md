@@ -29,17 +29,17 @@ import {
 
 ## API
 
-| Method | Signature |
-| --- | --- |
-| `readFileString` | `({ path, ownerScope, encoding? }) => Effect<string>` |
-| `readFileBytes` | `({ path, ownerScope }) => Effect<Uint8Array>` |
+| Method            | Signature                                                    |
+| ----------------- | ------------------------------------------------------------ |
+| `readFileString`  | `({ path, ownerScope, encoding? }) => Effect<string>`        |
+| `readFileBytes`   | `({ path, ownerScope }) => Effect<Uint8Array>`               |
 | `writeFileString` | `({ path, content, ownerScope, encoding? }) => Effect<void>` |
-| `writeFileBytes` | `({ path, content, ownerScope }) => Effect<void>` |
-| `readDirectory` | `({ path, ownerScope }) => Effect<DirectoryEntry[]>` |
-| `stat` | `({ path, ownerScope }) => Effect<FileStat>` |
-| `remove` | `({ path, ownerScope }) => Effect<void>` |
-| `exists` | `({ path, ownerScope }) => Effect<boolean>` |
-| `watch` | `({ path, ownerScope }) => Effect<Watcher>` |
+| `writeFileBytes`  | `({ path, content, ownerScope }) => Effect<void>`            |
+| `readDirectory`   | `({ path, ownerScope }) => Effect<DirectoryEntry[]>`         |
+| `stat`            | `({ path, ownerScope }) => Effect<FileStat>`                 |
+| `remove`          | `({ path, ownerScope }) => Effect<void>`                     |
+| `exists`          | `({ path, ownerScope }) => Effect<boolean>`                  |
+| `watch`           | `({ path, ownerScope }) => Effect<Watcher>`                  |
 
 Writes are atomic via temp file + rename. Watchers register a scoped resource that closes with the scope.
 
@@ -60,11 +60,13 @@ Reads need `filesystem.read` for a containing root. Writes need `filesystem.writ
 ## Example
 
 ```ts
-const fs = yield* Filesystem
-const text = yield* fs.readFileString({
-  path: "/Users/me/Documents/notes.md",
-  ownerScope: "window-main"
-})
+const fs = yield * Filesystem
+const text =
+  yield *
+  fs.readFileString({
+    path: "/Users/me/Documents/notes.md",
+    ownerScope: "window-main"
+  })
 ```
 
 ## Test layer

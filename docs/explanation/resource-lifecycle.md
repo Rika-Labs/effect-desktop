@@ -22,15 +22,15 @@ Effect's `Scope` inverts the responsibility. The caller declares "I am opening a
 
 ## What owns what
 
-| Resource | Owner scope | Cleanup |
-| --- | --- | --- |
-| Window | The app's runtime scope, plus a per-window child scope | Window destroy + state persistence |
-| File watcher | The handler's scope (usually a per-call scope) | Stop watching, free OS handles |
-| Process | Caller-declared `ownerScope` | Terminate process tree |
-| PTY session | Caller-declared `ownerScope` | Send signal, close PTY |
-| Worker | Caller-declared `ownerScope` | Terminate worker, release concurrency budget |
-| Forked Effect | Surrounding handler/layer scope | Interrupt fiber on scope close |
-| Stream subscription | Subscriber's scope | Unsubscribe and drain |
+| Resource            | Owner scope                                            | Cleanup                                      |
+| ------------------- | ------------------------------------------------------ | -------------------------------------------- |
+| Window              | The app's runtime scope, plus a per-window child scope | Window destroy + state persistence           |
+| File watcher        | The handler's scope (usually a per-call scope)         | Stop watching, free OS handles               |
+| Process             | Caller-declared `ownerScope`                           | Terminate process tree                       |
+| PTY session         | Caller-declared `ownerScope`                           | Send signal, close PTY                       |
+| Worker              | Caller-declared `ownerScope`                           | Terminate worker, release concurrency budget |
+| Forked Effect       | Surrounding handler/layer scope                        | Interrupt fiber on scope close               |
+| Stream subscription | Subscriber's scope                                     | Unsubscribe and drain                        |
 
 `ResourceRegistry` is the bookkeeping service. Every long-lived primitive registers a `ResourceHandle` keyed by an opaque `ResourceId`. The registry exposes:
 

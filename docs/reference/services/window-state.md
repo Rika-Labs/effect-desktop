@@ -18,13 +18,13 @@ import { WindowState, type WindowStateApi } from "@effect-desktop/core"
 
 ## API
 
-| Method | Signature |
-| --- | --- |
-| `persist` | `(windowId, state) => Effect<void>` |
-| `restore` | `(windowId) => Effect<WindowState \| undefined>` |
-| `restoreAll` | `() => Effect<Record<string, WindowState>>` |
-| `clear` | `(windowId?) => Effect<void>` |
-| `observe` | `() => Stream<WindowStateEvent>` |
+| Method       | Signature                                        |
+| ------------ | ------------------------------------------------ |
+| `persist`    | `(windowId, state) => Effect<void>`              |
+| `restore`    | `(windowId) => Effect<WindowState \| undefined>` |
+| `restoreAll` | `() => Effect<Record<string, WindowState>>`      |
+| `clear`      | `(windowId?) => Effect<void>`                    |
+| `observe`    | `() => Stream<WindowStateEvent>`                 |
 
 ## Behavior
 

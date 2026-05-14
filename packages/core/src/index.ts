@@ -3,18 +3,19 @@ import { Effect, Layer } from "effect"
 import { WorkflowEngine } from "effect/unstable/workflow"
 
 import {
-  Rpcs,
   app as desktopApp,
   launch,
   make,
   manifest,
   providerLayerFor,
+  rpc,
   runtime,
   runtimeGraph,
   runtimeGraphSnapshot,
   WorkflowEngineDurable,
   WorkflowEngineMemory
 } from "./runtime/desktop-app.js"
+import { DesktopRpcRegistry } from "./runtime/desktop-rpc-registry.js"
 import type {
   DesktopApp,
   DesktopConfig,
@@ -71,6 +72,7 @@ export * from "./runtime/inspector-security-events.js"
 export * from "./runtime/desktop-observability.js"
 export * from "./runtime/inspector-transport.js"
 export * from "./runtime/desktop-errors.js"
+export * from "./runtime/desktop-rpc-registry.js"
 export * from "./runtime/desktop-rpc-surface.js"
 export {
   DesktopApp,
@@ -80,11 +82,10 @@ export {
   make,
   manifest,
   providerLayerFor,
+  rpc,
   runtime,
   runtimeGraph,
   runtimeGraphSnapshot,
-  Rpcs,
-  type AnyDesktopRpcLayer,
   type DesktopAppApi,
   type DesktopAppDescriptor,
   type DesktopAppManifest,
@@ -94,7 +95,7 @@ export {
   type DesktopProviderBudget,
   type DesktopProviderSelection,
   type DesktopRpcGroupDescriptor,
-  type DesktopRpcLayer,
+  type DesktopRpcsLayer,
   type DesktopRuntimeApi,
   type DesktopRuntimeGraph,
   type DesktopRuntimeGraphNode,
@@ -128,7 +129,11 @@ interface DesktopAppOptionsWithPermissions extends DesktopAppOptions {
 function app(): Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>
 function app<RIn = never, E = never>(
   config: DesktopConfig<RIn, E>
-): Layer.Layer<DesktopApp, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices>>
+): Layer.Layer<
+  DesktopApp,
+  DesktopConfigError | E,
+  Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry>
+>
 function app(
   options: DesktopAppOptionsWithPermissions
 ): Layer.Layer<WorkflowEngine.WorkflowEngine, never, PermissionRegistry>
@@ -137,7 +142,11 @@ function app<RIn = never, E = never>(
 ):
   | Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>
   | Layer.Layer<WorkflowEngine.WorkflowEngine, never, PermissionRegistry>
-  | Layer.Layer<DesktopApp, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices>> {
+  | Layer.Layer<
+      DesktopApp,
+      DesktopConfigError | E,
+      Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry>
+    > {
   if ("id" in options) {
     return desktopApp(options as DesktopConfig)
   }
@@ -182,10 +191,10 @@ export const Desktop = Object.freeze({
   make,
   manifest,
   providerLayerFor,
+  rpc,
   Rpc: DesktopRpc,
   runtime,
   runtimeGraph,
   runtimeGraphSnapshot,
-  Rpcs,
   describeRpcs
 })

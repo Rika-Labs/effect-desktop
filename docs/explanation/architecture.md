@@ -35,11 +35,11 @@ flowchart LR
   runtime -- "host protocol" --> host
 ```
 
-| Role | Owner | Responsibility |
-| --- | --- | --- |
-| **Host** | Rust (`crates/host`) | Native windows, WebViews, app-protocol routing, OS adapters, process supervision. |
-| **Runtime** | Bun + TypeScript (`packages/core`) | Application services, RPC handlers, resources, permissions, jobs, storage, telemetry. |
-| **Renderer** | Web frameworks (`packages/react`, `solid`, `vue`, …) | UI, generated typed clients, user prompts, mutations and subscriptions. |
+| Role         | Owner                                                | Responsibility                                                                        |
+| ------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| **Host**     | Rust (`crates/host`)                                 | Native windows, WebViews, app-protocol routing, OS adapters, process supervision.     |
+| **Runtime**  | Bun + TypeScript (`packages/core`)                   | Application services, RPC handlers, resources, permissions, jobs, storage, telemetry. |
+| **Renderer** | Web frameworks (`packages/react`, `solid`, `vue`, …) | UI, generated typed clients, user prompts, mutations and subscriptions.               |
 
 The renderer **never** receives native authority. It never opens a file, spawns a process, or reads a credential. Every privileged operation crosses the runtime.
 
@@ -105,16 +105,16 @@ The framework's job is to give you _useful starting layers_ (`PermissionRegistry
 
 ## Where the responsibilities live in code
 
-| Concern | Lives in |
-| --- | --- |
-| Native operations | `packages/native/src/<service>.ts` (TS surface), `crates/host/src/<service>.rs` (Rust impl) |
-| Runtime services | `packages/core/src/runtime/<service>.ts` |
-| Bridge envelopes | `packages/bridge/src/host-protocol.ts`, `framing.ts` |
-| Renderer hooks | `packages/react/src/{desktop,mutation,hooks}/...` |
-| CLI commands | `packages/cli/src/<command>.ts` |
-| Test layers | `packages/test/src/...` (mock host, mock bridge, headless runtime, memory FS) |
-| Configuration & production checks | `packages/config/src/index.ts` |
-| Renderer storage | `packages/platform-browser/src/...` |
+| Concern                           | Lives in                                                                                    |
+| --------------------------------- | ------------------------------------------------------------------------------------------- |
+| Native operations                 | `packages/native/src/<service>.ts` (TS surface), `crates/host/src/<service>.rs` (Rust impl) |
+| Runtime services                  | `packages/core/src/runtime/<service>.ts`                                                    |
+| Bridge envelopes                  | `packages/bridge/src/host-protocol.ts`, `framing.ts`                                        |
+| Renderer hooks                    | `packages/react/src/{desktop,mutation,hooks}/...`                                           |
+| CLI commands                      | `packages/cli/src/<command>.ts`                                                             |
+| Test layers                       | `packages/test/src/...` (mock host, mock bridge, headless runtime, memory FS)               |
+| Configuration & production checks | `packages/config/src/index.ts`                                                              |
+| Renderer storage                  | `packages/platform-browser/src/...`                                                         |
 
 ## What this means for you
 

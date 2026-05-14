@@ -12,10 +12,10 @@ Register and route custom URL schemes (deep linking). When the user clicks `myap
 
 ## Methods
 
-| Method | Payload | Success |
-| --- | --- | --- |
-| `register` | `{ scheme }` | `void` |
-| `unregister` | `{ scheme }` | `void` |
+| Method       | Payload      | Success |
+| ------------ | ------------ | ------- |
+| `register`   | `{ scheme }` | `void`  |
+| `unregister` | `{ scheme }` | `void`  |
 
 Event stream of `{ url: string }` for incoming protocol activations.
 

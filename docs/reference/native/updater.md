@@ -12,11 +12,11 @@ Auto-update service. Verifies signed manifests against the embedded public key b
 
 ## Methods
 
-| Method | Payload | Success |
-| --- | --- | --- |
-| `check` | `{}` | `{ available: boolean, version?: string, notes?: string }` |
-| `download` | `{ version }` | `{ path: string }` |
-| `install` | `{ version }` | `void` |
+| Method     | Payload       | Success                                                    |
+| ---------- | ------------- | ---------------------------------------------------------- |
+| `check`    | `{}`          | `{ available: boolean, version?: string, notes?: string }` |
+| `download` | `{ version }` | `{ path: string }`                                         |
+| `install`  | `{ version }` | `void`                                                     |
 
 ## Types
 

@@ -34,8 +34,8 @@ Supports the existing big-endian length-prefixed framing **plus** LSP-style JSON
 
 ## Connections
 
-| Method | Signature |
-| --- | --- |
+| Method    | Signature                                              |
+| --------- | ------------------------------------------------------ |
 | `connect` | `({ target: "stdio" }) => Effect<TransportConnection>` |
 
 `TransportConnection`:

@@ -43,7 +43,7 @@ methods should not expose a parallel cancellation option.
 | `packages/bridge/src/client.test.ts`                  | Replace abort-signal tests with Effect fiber interruption tests.                                                                       |
 | `packages/bridge/src/streams.test.ts`                 | Replace stream abort-signal tests with stream fiber interruption tests.                                                                |
 | `api/snapshots/@effect-desktop__bridge.snapshot.json` | Update the public bridge API after removing method call options.                                                                       |
-| `engineering/roadmap/layer-first-issue-order.md`             | Record #1155 completion after validation.                                                                                              |
+| `engineering/roadmap/layer-first-issue-order.md`      | Record #1155 completion after validation.                                                                                              |
 
 ## Verification
 

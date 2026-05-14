@@ -15,15 +15,17 @@ effect_version: 4
 ```ts
 import { PermissionRegistry } from "@effect-desktop/core"
 
-const permissions = yield* PermissionRegistry
-yield* permissions.declare(
-  { kind: "filesystem.read", roots: ["/Users/me/Documents"] },
-  { effect: "allow", source: "app-init" }
-)
-yield* permissions.declare(
-  { kind: "filesystem.write", roots: ["/Users/me/Documents"] },
-  { effect: "approval", source: "app-init" }
-)
+const permissions = yield * PermissionRegistry
+yield *
+  permissions.declare(
+    { kind: "filesystem.read", roots: ["/Users/me/Documents"] },
+    { effect: "allow", source: "app-init" }
+  )
+yield *
+  permissions.declare(
+    { kind: "filesystem.write", roots: ["/Users/me/Documents"] },
+    { effect: "approval", source: "app-init" }
+  )
 ```
 
 Reads under `/Users/me/Documents` are allowed. Writes prompt the user the first time.
@@ -48,11 +50,12 @@ For binary, `readFileBytes`. For listings, `readDirectory`.
 ## 3. Write
 
 ```ts
-yield* fs.writeFileString({
-  path: "/Users/me/Documents/draft.md",
-  content: "# Hello",
-  ownerScope: "window-main"
-})
+yield *
+  fs.writeFileString({
+    path: "/Users/me/Documents/draft.md",
+    content: "# Hello",
+    ownerScope: "window-main"
+  })
 ```
 
 Writes are atomic via a temp file + rename. A partial write does not leave a half-written file behind.
@@ -62,14 +65,15 @@ Writes are atomic via a temp file + rename. A partial write does not leave a hal
 ```ts
 import { Stream } from "effect"
 
-const watcher = yield* fs.watch({
-  path: "/Users/me/Documents",
-  ownerScope: "window-main"
-})
+const watcher =
+  yield *
+  fs.watch({
+    path: "/Users/me/Documents",
+    ownerScope: "window-main"
+  })
 
-yield* watcher.events.pipe(
-  Stream.runForEach((event) => Effect.log(`${event.kind}: ${event.path}`))
-)
+yield *
+  watcher.events.pipe(Stream.runForEach((event) => Effect.log(`${event.kind}: ${event.path}`)))
 ```
 
 Watcher resources close when their scope closes.

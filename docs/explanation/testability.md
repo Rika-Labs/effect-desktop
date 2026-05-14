@@ -97,7 +97,11 @@ const bridge = makeMockBridge({
 const DesktopApp = ReactDesktop.from(Manifest, { transport: bridge })
 
 test("renders the greeting", async () => {
-  render(<DesktopApp.createRoot><Greeter /></DesktopApp.createRoot>)
+  render(
+    <DesktopApp.createRoot>
+      <Greeter />
+    </DesktopApp.createRoot>
+  )
   fireEvent.click(screen.getByText("Greet"))
   expect(await screen.findByText("Hi, Test!")).toBeInTheDocument()
 })

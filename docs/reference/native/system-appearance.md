@@ -12,8 +12,8 @@ Theme and appearance information.
 
 ## Methods
 
-| Method | Success |
-| --- | --- |
+| Method  | Success               |
+| ------- | --------------------- |
 | `theme` | `{ isDark: boolean }` |
 
 Plus an event stream emitting `{ isDark: boolean }` whenever the OS theme changes.

@@ -14,12 +14,12 @@ Docs are part of the public surface. The repository's release gate enforces that
 
 The docs follow [Diátaxis](https://diataxis.fr/) — four quadrants by reader need:
 
-| You are writing | It belongs in |
-| --- | --- |
-| A guided walkthrough that ends with something running | `docs/tutorials/` |
-| A short recipe for a single task | `docs/how-to/` |
-| An API listing — symbols, signatures, layers, errors | `docs/reference/` |
-| An essay on _why_ the framework looks this way | `docs/explanation/` |
+| You are writing                                       | It belongs in       |
+| ----------------------------------------------------- | ------------------- |
+| A guided walkthrough that ends with something running | `docs/tutorials/`   |
+| A short recipe for a single task                      | `docs/how-to/`      |
+| An API listing — symbols, signatures, layers, errors  | `docs/reference/`   |
+| An essay on _why_ the framework looks this way        | `docs/explanation/` |
 
 Don't mix modes within a single page. A reference page that drifts into "and the reason we did it this way" should split off the rationale into `explanation/`. A tutorial that lists every option of every method should split off the listing into `reference/`.
 

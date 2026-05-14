@@ -37,7 +37,12 @@ import {
   type Provider
 } from "./provider-registry.js"
 import { ResourceRegistryLive } from "./resources.js"
-import { servedRpcGroup, servedRpcGroupProperties } from "./rpc-group-metadata.js"
+import {
+  DesktopRpcRegistry,
+  DesktopRpcRegistryLive,
+  type DesktopRpcRegistration,
+  type DesktopRpcRegistrationGroup
+} from "./desktop-rpc-registry.js"
 import { EffectTelemetryRuntimeLive, Telemetry, makeTelemetry } from "./telemetry.js"
 
 export interface WindowSpec {
@@ -47,11 +52,17 @@ export interface WindowSpec {
   readonly renderer?: string
 }
 
+export type DesktopRpcsLayer<E = never, RIn = never> = Layer.Layer<
+  never,
+  E,
+  RIn | DesktopRpcRegistry
+>
+
 export interface DesktopConfig<RIn = never, E = never> {
   readonly id: string
   readonly windows: Readonly<Record<string, WindowSpec>>
   readonly providers?: DesktopProviderSelection
-  readonly rpcs?: ReadonlyArray<AnyDesktopRpcLayer<E, RIn>>
+  readonly rpcs?: DesktopRpcsLayer<E, RIn>
   readonly permissions?: ReadonlyArray<NormalizedCapability>
   readonly workflows?: ReadonlyArray<DesktopWorkflowLayer<RIn, E>>
 }
@@ -60,7 +71,7 @@ export interface DesktopMakeConfig<RIn = never, E = never> {
   readonly id?: string
   readonly windows: Readonly<Record<string, WindowSpec>>
   readonly providers?: DesktopProviderSelection
-  readonly rpcs?: ReadonlyArray<AnyDesktopRpcLayer<E, RIn>>
+  readonly rpcs?: DesktopRpcsLayer<E, RIn>
   readonly permissions?: ReadonlyArray<NormalizedCapability>
   readonly workflows?: ReadonlyArray<DesktopWorkflowLayer<RIn, E>>
 }
@@ -79,14 +90,14 @@ export type DesktopWorkflowEngineLayer<RIn = never, E = never> = Layer.Layer<
 
 export interface DesktopAppDescriptor<RIn = never, E = never> extends DesktopConfig<RIn, E> {
   readonly _tag: "DesktopAppDescriptor"
-  readonly rpcs: ReadonlyArray<AnyDesktopRpcLayer<E, RIn>>
+  readonly rpcs: DesktopRpcsLayer<E, RIn>
   readonly permissions: ReadonlyArray<NormalizedCapability>
   readonly workflows: ReadonlyArray<DesktopWorkflowLayer<RIn, E>>
 }
 
 export interface DesktopRpcGroupDescriptor {
   readonly _tag: "DesktopRpcGroup"
-  readonly group: RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> }
+  readonly group: DesktopRpcRegistrationGroup
 }
 
 export interface DesktopAppManifest {
@@ -96,19 +107,10 @@ export interface DesktopAppManifest {
   readonly rpcGroups: ReadonlyArray<DesktopRpcGroupDescriptor>
 }
 
-export interface DesktopRpcLayer<Rpcs extends Rpc.Any = Rpc.Any, E = never, R = never> {
-  readonly _tag: "DesktopRpcsLayer"
-  readonly group: RpcGroup.RpcGroup<Rpcs>
-  readonly layer: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
-}
-
-export interface AnyDesktopRpcLayer<E = unknown, R = unknown> {
-  readonly _tag: "DesktopRpcsLayer"
-  readonly group: RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> }
-  readonly layer: Layer.Layer<any, E, R>
-}
-
-export type DesktopManifestSource = Pick<DesktopConfig<any, any>, "id" | "windows" | "rpcs">
+export type DesktopManifestSource<RIn = never, E = never> = Pick<
+  DesktopConfig<RIn, E>,
+  "id" | "windows" | "rpcs"
+>
 
 export type DesktopRuntimeProviderId = "bun" | "node" | "test" | (string & {})
 
@@ -238,7 +240,7 @@ const NormalizedCapabilityKinds = new Set<NormalizedCapability["kind"]>([
 export interface DesktopAppApi {
   readonly appId: string
   readonly windows: Readonly<Record<string, WindowSpec>>
-  readonly rpcLayers: ReadonlyArray<AnyDesktopRpcLayer<any, any>>
+  readonly rpcRegistrations: ReadonlyArray<DesktopRpcRegistration<any, any>>
 }
 
 export class DesktopApp extends Context.Service<DesktopApp, DesktopAppApi>()("DesktopApp") {}
@@ -369,48 +371,153 @@ export const make = <RIn = never, E = never>(
     _tag: "DesktopAppDescriptor" as const,
     id: config.id ?? "app",
     windows: freezeWindows(config.windows),
-    rpcs: freezeArray(config.rpcs),
+    rpcs: (config.rpcs ?? (Layer.empty as DesktopRpcsLayer<E, RIn>)) as DesktopRpcsLayer<E, RIn>,
     permissions: freezeArray(config.permissions),
     workflows: freezeArray(config.workflows),
     ...(config.providers === undefined ? {} : { providers: freezeObject(config.providers) })
   })
 
-export const manifest = (config: DesktopManifestSource): DesktopAppManifest =>
-  Object.freeze({
+export const manifest = <RIn = never, E = never>(
+  config: DesktopManifestSource<RIn, E>
+): DesktopAppManifest => {
+  const registrations = snapshotRegistrationsSync(config.rpcs)
+  return Object.freeze({
     _tag: "DesktopAppManifest" as const,
     id: config.id,
     windows: config.windows,
     rpcGroups: Object.freeze(
-      (config.rpcs ?? []).map((rpcLayer) => {
-        const servedGroup = servedRpcGroup(rpcLayer)
-        return Object.freeze({
+      registrations.map((registration) =>
+        Object.freeze({
           _tag: "DesktopRpcGroup" as const,
-          group: rpcLayer.group,
-          ...servedRpcGroupProperties(rpcLayer.group, servedGroup)
+          group: registration.group
         })
-      })
+      )
     )
   })
+}
 
-export const Rpcs = Object.freeze({
-  layer: <Rpcs extends Rpc.Any, E, R>(
-    group: RpcGroup.RpcGroup<Rpcs>,
-    layer: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
-  ): DesktopRpcLayer<Rpcs, E, R> =>
-    Object.freeze({
-      _tag: "DesktopRpcsLayer" as const,
-      group,
-      layer
+/**
+ * Registers an RPC group + handler layer with the surrounding `DesktopRpcRegistry`.
+ * Compose multiple registrations with `Layer.mergeAll(...)` and pass the result
+ * as `rpcs:` to `Desktop.make`.
+ *
+ * The resulting layer's environment is `DesktopRpcRegistry` only — the handler's
+ * own service requirements (`R`) are stored as data in the registration and
+ * re-applied at `bindRegistration` time inside the runtime spine. The R
+ * requirement is therefore not propagated through this layer's type.
+ *
+ * **Sync-only constraint.** The body of this layer is `Effect.sync` (it only
+ * calls `registry.register(...)`). `Desktop.manifest(...)` runs the user's
+ * `rpcs` layer synchronously (`Effect.runSync` inside `snapshotRegistrationsSync`)
+ * to extract registrations without making the manifest API async. Any layer
+ * composed into `rpcs` that requires async work to BUILD (e.g. `Layer.scoped`
+ * around an `Effect.promise`) will crash `manifest()` with `DesktopRpcRegistryAsyncBuildError`.
+ *
+ * Compose async work INSIDE the handler bodies, not in the layer construction:
+ *
+ * ```ts
+ * // OK — async work inside handler:
+ * Desktop.rpc(NotesRpcs, NotesRpcs.toLayer({
+ *   "Notes.list": () => Effect.tryPromise(() => fetchNotes())
+ * }))
+ *
+ * // CRASH — async layer construction:
+ * Desktop.rpc(NotesRpcs, NotesRpcs.toLayer(
+ *   Effect.tryPromise(() => loadHandlerSetup())
+ * ))
+ * ```
+ */
+export const rpc = <Rpcs extends Rpc.Any, E, R>(
+  group: RpcGroup.RpcGroup<Rpcs>,
+  handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
+): Layer.Layer<never, never, DesktopRpcRegistry> =>
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const registry = yield* DesktopRpcRegistry
+      yield* registry.register({ group, handlers })
     })
-})
+  )
+
+/**
+ * Thrown by `Desktop.manifest(...)` when the user's `rpcs` layer requires
+ * asynchronous work to build. The framework runs `rpcs` synchronously to
+ * extract the registry snapshot; async layer construction is the one user
+ * mistake the registry-extraction path cannot recover from.
+ */
+export class DesktopRpcRegistryAsyncBuildError extends Data.TaggedError(
+  "DesktopRpcRegistryAsyncBuildError"
+)<{
+  readonly message: string
+  readonly cause: unknown
+}> {}
+
+/**
+ * Builds the user's `rpcs` layer against an isolated `DesktopRpcRegistry` and
+ * returns the resulting registrations. The user's layer is built only for its
+ * registration side effect; handler bodies are not invoked here.
+ */
+const buildRegistrations = <RIn, E>(
+  rpcs: DesktopConfig<RIn, E>["rpcs"]
+): Effect.Effect<ReadonlyArray<DesktopRpcRegistration<any, any>>, never, never> =>
+  Effect.sync(() => snapshotRegistrationsSync(rpcs))
+
+/**
+ * Synchronous registry snapshot. The `Desktop.rpc(...)` constructor produces a
+ * layer whose only side effect is calling `registry.register(...)` via
+ * `Effect.sync`. Composed with `DesktopRpcRegistryLive` (also sync) the whole
+ * build runs without async work, so `Effect.runSync` is safe and lets
+ * `Desktop.manifest(...)` stay synchronous for renderer adapters.
+ */
+const snapshotRegistrationsSync = <RIn, E>(
+  rpcs: DesktopConfig<RIn, E>["rpcs"]
+): ReadonlyArray<DesktopRpcRegistration<any, any>> => {
+  if (rpcs === undefined) return []
+  // Cast invariant: every Desktop.rpc(...) layer body is Effect.sync that only
+  // calls registry.register(...). Composing with DesktopRpcRegistryLive (also
+  // Effect.sync) makes the entire build sync. The user's RIn/E type parameters
+  // are erased here because they describe handler-execution requirements, not
+  // registration-time requirements; handler R is reapplied per-registration in
+  // bindRegistration. The DesktopRpcRegistryAsyncBuildError catch below
+  // converts the runtime crash into a typed framework error if the invariant
+  // is ever violated.
+  const composed = Layer.provideMerge(
+    rpcs as unknown as Layer.Layer<never, never, DesktopRpcRegistry>,
+    DesktopRpcRegistryLive
+  )
+  try {
+    return Effect.runSync(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const context = yield* Layer.build(composed)
+          const registry = Context.get(context, DesktopRpcRegistry)
+          return yield* registry.snapshot
+        })
+      )
+    )
+  } catch (cause) {
+    throw new DesktopRpcRegistryAsyncBuildError({
+      message:
+        "Desktop.manifest(...) requires the rpcs layer to build synchronously. " +
+        "A layer composed into Desktop.make({ rpcs }) requires async work to construct " +
+        "(e.g. Layer.scoped(Effect.promise(...))) — move async work inside handler bodies " +
+        "(e.g. Effect.tryPromise inside RpcGroup.toLayer({ ... })) instead. " +
+        "See `Desktop.rpc` for the sync-only constraint.",
+      cause
+    })
+  }
+}
 
 export const app = <RIn = never, E = never>(
   config: DesktopConfig<RIn, E>
-): Layer.Layer<DesktopApp, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices>> =>
+): Layer.Layer<
+  DesktopApp,
+  DesktopConfigError | E,
+  Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry>
+> =>
   runtime(config) as Layer.Layer<
     DesktopApp,
     DesktopConfigError | E,
-    Exclude<RIn, DesktopRuntimeProviderServices>
+    Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry>
   >
 
 export const runtime = <RIn = never, E = never>(
@@ -418,23 +525,24 @@ export const runtime = <RIn = never, E = never>(
 ): Layer.Layer<
   DesktopRuntimeServices,
   DesktopConfigError | E,
-  Exclude<RIn, DesktopRuntimeProviderServices>
-> => {
-  const validationLayer = Layer.effectDiscard(checkPermissions(config))
-  const spine = buildSpine(config)
-  return Layer.provideMerge(validationLayer, spine) as Layer.Layer<
+  Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry>
+> =>
+  buildSpine(config) as Layer.Layer<
     DesktopRuntimeServices,
     DesktopConfigError | E,
-    Exclude<RIn, DesktopRuntimeProviderServices>
+    Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry>
   >
-}
 
 export const DesktopRuntimeLive = runtime
 
 export const runtimeGraph = <RIn, E>(
   config: DesktopConfig<RIn, E>
 ): Effect.Effect<DesktopRuntimeGraph, DesktopConfigError, never> =>
-  resolveRuntimeProvider(config).pipe(Effect.map((provider) => makeRuntimeGraph(config, provider)))
+  Effect.gen(function* () {
+    const provider = yield* resolveRuntimeProvider(config)
+    const registrations = yield* buildRegistrations(config.rpcs)
+    return makeRuntimeGraph(config, provider, registrations)
+  })
 
 export const runtimeGraphSnapshot = <RIn, E>(
   config: DesktopConfig<RIn, E>
@@ -488,25 +596,24 @@ export const layerGraphSnapshotFromGraph = (graph: DesktopRuntimeGraph): LayerGr
 
 const makeRuntimeGraph = <RIn, E>(
   config: DesktopConfig<RIn, E>,
-  provider: RuntimeProviderDescriptor
+  provider: RuntimeProviderDescriptor,
+  registrations: ReadonlyArray<DesktopRpcRegistration<any, any>>
 ): DesktopRuntimeGraph => {
   const selected = Object.freeze({
     runtime: provider.id
   } satisfies DesktopRuntimeSelectedProviders)
-  const rpcLayers = config.rpcs ?? []
   const nodes: DesktopRuntimeGraphNode[] = [
     provider.node,
     ...CoreServiceGraphNodes,
-    ...rpcLayers.map((rpcLayer, index) => {
-      const servedGroup = servedRpcGroup(rpcLayer)
-      return graphNode(
+    ...registrations.map((registration, index) =>
+      graphNode(
         `rpc-layer:${index}`,
         "rpc-layer",
-        `RPC layer ${Array.from(servedGroup.requests.keys()).join(", ")}`,
-        Array.from(servedGroup.requests.keys()),
+        `RPC layer ${Array.from(registration.group.requests.keys()).join(", ")}`,
+        Array.from(registration.group.requests.keys()),
         ["RpcServer.Protocol"]
       )
-    }),
+    ),
     ...(config.workflows ?? []).map((_, index) =>
       graphNode(
         `workflow:${index}`,
@@ -542,14 +649,14 @@ export const launch = (
 ): Effect.Effect<never, DesktopConfigError, never> => Layer.launch(layer)
 
 const checkPermissions = <RIn, E>(
-  config: DesktopConfig<RIn, E>
+  config: DesktopConfig<RIn, E>,
+  registrations: ReadonlyArray<DesktopRpcRegistration<any, any>>
 ): Effect.Effect<void, DesktopConfigError, never> => {
   const declared = config.permissions ?? []
-  const rpcLayers = config.rpcs ?? []
   const seenRpcTags = new Set<string>()
 
-  for (const rpcLayer of rpcLayers) {
-    for (const [tag, rpc] of servedRpcGroup(rpcLayer).requests.entries()) {
+  for (const registration of registrations) {
+    for (const [tag, rpc] of registration.group.requests.entries()) {
       if (seenRpcTags.has(tag)) {
         return Effect.fail(
           new DesktopConfigError({
@@ -629,53 +736,54 @@ const buildSpine = <RIn, E>(
   Exclude<RIn, DesktopRuntimeProviderServices>
 > =>
   Layer.unwrap(
-    resolveRuntimeProvider(config).pipe(
-      Effect.map((provider) => {
-        const graph = makeRuntimeGraph(config, provider)
-        const workflowLayers = config.workflows ?? []
-        const rpcLayers = (config.rpcs ?? []).map((rpcLayer) => bindRpcLayer<E, RIn>(rpcLayer))
+    Effect.gen(function* () {
+      const provider = yield* resolveRuntimeProvider(config)
+      const registrations = yield* buildRegistrations(config.rpcs)
+      yield* checkPermissions(config, registrations)
+      const graph = makeRuntimeGraph(config, provider, registrations)
+      const workflowLayers = config.workflows ?? []
+      const rpcLayers = registrations.map((registration) => bindRegistration(registration))
 
-        const workflowLayer = mergeLayerArray(workflowLayers)
-        const rpcLayer = mergeLayerArray(rpcLayers)
-        const runtimeBase = Layer.mergeAll(
-          providerLayerFor({ runtime: provider.id }),
-          coreServicesLayer,
-          makePermissionServicesLayer(config)
-        ) as Layer.Layer<DesktopRuntimeProviderServices, Config.ConfigError, never>
+      const workflowLayer = mergeLayerArray(workflowLayers)
+      const rpcLayer = mergeLayerArray(rpcLayers)
+      const runtimeBase = Layer.mergeAll(
+        providerLayerFor({ runtime: provider.id }),
+        coreServicesLayer,
+        makePermissionServicesLayer(config)
+      ) as Layer.Layer<DesktopRuntimeProviderServices, Config.ConfigError, never>
 
-        const desktopAppLayer: Layer.Layer<DesktopApp, never, never> = Layer.effect(DesktopApp)(
-          Effect.succeed({
-            appId: config.id,
-            windows: config.windows,
-            rpcLayers: config.rpcs ?? []
-          })
-        )
+      const desktopAppLayer: Layer.Layer<DesktopApp, never, never> = Layer.effect(DesktopApp)(
+        Effect.succeed({
+          appId: config.id,
+          windows: config.windows,
+          rpcRegistrations: registrations
+        })
+      )
 
-        const desktopRuntimeLayer: Layer.Layer<DesktopRuntime, never, never> = Layer.succeed(
-          DesktopRuntime
-        )(
-          Object.freeze({
-            appId: config.id,
-            providers: graph.providers,
-            providerBudgets: graph.providerBudgets,
-            graph
-          } satisfies DesktopRuntimeApi)
-        )
+      const desktopRuntimeLayer: Layer.Layer<DesktopRuntime, never, never> = Layer.succeed(
+        DesktopRuntime
+      )(
+        Object.freeze({
+          appId: config.id,
+          providers: graph.providers,
+          providerBudgets: graph.providerBudgets,
+          graph
+        } satisfies DesktopRuntimeApi)
+      )
 
-        const dependentLayer = Layer.mergeAll(
-          workflowLayer,
-          rpcLayer,
-          desktopAppLayer,
-          desktopRuntimeLayer
-        ) as Layer.Layer<DesktopApp | DesktopRuntime, E, RIn | DesktopRuntimeProviderServices>
+      const dependentLayer = Layer.mergeAll(
+        workflowLayer,
+        rpcLayer,
+        desktopAppLayer,
+        desktopRuntimeLayer
+      ) as Layer.Layer<DesktopApp | DesktopRuntime, E, RIn | DesktopRuntimeProviderServices>
 
-        return Layer.provideMerge(dependentLayer, runtimeBase) as Layer.Layer<
-          DesktopRuntimeServices,
-          E | DesktopConfigError,
-          Exclude<RIn, DesktopRuntimeProviderServices>
-        >
-      })
-    )
+      return Layer.provideMerge(dependentLayer, runtimeBase) as Layer.Layer<
+        DesktopRuntimeServices,
+        E | DesktopConfigError,
+        Exclude<RIn, DesktopRuntimeProviderServices>
+      >
+    })
   )
 
 const resolveRuntimeProvider = <RIn, E>(
@@ -766,13 +874,27 @@ const mergeLayerArray = <E, R>(
     Layer.empty as Layer.Layer<never, E, R>
   )
 
-const bindRpcLayer = <E, R>(rpcLayer: AnyDesktopRpcLayer<E, R>): Layer.Layer<never, E, R> =>
+const bindRegistration = (
+  registration: DesktopRpcRegistration<any, any>
+): Layer.Layer<never, unknown, unknown> =>
   Layer.provide(
     RpcServer.layer(
-      (servedRpcGroup(rpcLayer) as RpcGroup.RpcGroup<Rpc.Any>).middleware(PermissionInterceptor)
+      // Cast invariant: DesktopRpcRegistration.group widens its Rpc-union to
+      // RpcGroup.Any so the registry can hold heterogeneous groups together.
+      // RpcServer.layer accepts any RpcGroup; widening to Rpc.Any here keeps
+      // its type parameter satisfiable without losing runtime behavior.
+      (registration.group as RpcGroup.RpcGroup<Rpc.Any>).middleware(PermissionInterceptor)
     ),
-    rpcLayer.layer as Layer.Layer<unknown, E, R>
-  ) as Layer.Layer<never, E, R>
+    // Cast invariant: handlers' Rpc.ToHandler<Rpcs> output context is widened
+    // to `any` so it satisfies whatever RpcServer.layer needs from its Rpcs
+    // type parameter. The handler layer's R requirement is preserved as
+    // Layer.provide's environment requirement and bubbles up through the spine.
+    registration.handlers as Layer.Layer<unknown, unknown, unknown>
+    // Cast invariant: Layer.provide of an unknown-typed handler returns
+    // Layer<never, unknown, unknown>; we restate it here so the binder's
+    // return type is callable without forcing every caller to thread the
+    // specific Rpc union — bindRegistration is the type-erasure boundary.
+  ) as Layer.Layer<never, unknown, unknown>
 
 const freezeArray = <A>(values: ReadonlyArray<A> | undefined): ReadonlyArray<A> =>
   Object.freeze([...(values ?? [])])

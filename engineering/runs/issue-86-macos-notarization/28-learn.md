@@ -2,8 +2,8 @@
 
 ## Learning files written
 
-| Path                                                                  | Title                                  | Codification target |
-| --------------------------------------------------------------------- | -------------------------------------- | ------------------- |
+| Path                                                                         | Title                                  | Codification target |
+| ---------------------------------------------------------------------------- | -------------------------------------- | ------------------- |
 | `engineering/learnings/2026-05-06-check-artifacts-before-release-secrets.md` | Check Artifacts Before Release Secrets | test fixture        |
 
 ## Follow-up issues filed

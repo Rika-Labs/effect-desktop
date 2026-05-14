@@ -2,12 +2,12 @@
 
 ## Artifact Inventory
 
-| Artifact               | Status         | Evidence                                                                                                                |
-| ---------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| GitHub issue           | present        | #89 defines staging, rollback metadata, restart deadline, and verification cases.                                       |
+| Artifact               | Status         | Evidence                                                                                                                       |
+| ---------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| GitHub issue           | present        | #89 defines staging, rollback metadata, restart deadline, and verification cases.                                              |
 | Spec                   | present        | `engineering/SPEC.md` §23.4 and Appendix C.53/C.54 define truncation, atomic commit, stale notarization, and restart behavior. |
 | Architecture           | present        | `engineering/runs/issue-89-install-staging/05-architect.md`.                                                                   |
-| Prior design artifacts | not applicable | This is a narrow issue slice following the updater manifest/channel work.                                               |
+| Prior design artifacts | not applicable | This is a narrow issue slice following the updater manifest/channel work.                                                      |
 
 ## Principle Pass
 

@@ -129,7 +129,7 @@ test("RendererRpcClients test layer executes RpcTest clients and interrupts scop
     stream: true
   })
   const NotesRpcs = RpcGroup.make(Tail)
-  const NotesLayer = Desktop.Rpcs.layer(
+  const NotesLayer = Desktop.rpc(
     NotesRpcs,
     NotesRpcs.toLayer({
       "Notes.Tail": () =>
@@ -149,7 +149,7 @@ test("RendererRpcClients test layer executes RpcTest clients and interrupts scop
         expect(tail).toBeDefined()
         yield* Effect.forkScoped(Stream.runDrain(tail!(undefined) as Stream.Stream<unknown>))
         yield* Effect.promise(() => started)
-      }).pipe(Effect.provide(makeDesktopRendererRpcTestLayer([NotesLayer])))
+      }).pipe(Effect.provide(makeDesktopRendererRpcTestLayer(NotesLayer)))
     )
   )
 
@@ -159,7 +159,7 @@ test("RendererRpcClients test layer executes RpcTest clients and interrupts scop
 test("RendererRpcClients test layer publishes renderer RPC lifecycle events", async () => {
   const inspector = await Effect.runPromise(makeRendererInspectorCollector())
   const NotesRpcs = RpcGroup.make(Ping)
-  const NotesLayer = Desktop.Rpcs.layer(
+  const NotesLayer = Desktop.rpc(
     NotesRpcs,
     NotesRpcs.toLayer({
       "Notes.Ping": () => Effect.succeed("pong")
@@ -175,7 +175,7 @@ test("RendererRpcClients test layer publishes renderer RPC lifecycle events", as
         expect(ping).toBeDefined()
         const result = yield* ping!(undefined) as Effect.Effect<unknown, unknown>
         expect(result).toBe("pong")
-      }).pipe(Effect.provide(makeDesktopRendererRpcTestLayer([NotesLayer], { inspector })))
+      }).pipe(Effect.provide(makeDesktopRendererRpcTestLayer(NotesLayer, { inspector })))
     )
   )
 
@@ -200,7 +200,7 @@ test("RendererRpcClients test layer publishes renderer stream interruption event
     stream: true
   })
   const NotesRpcs = RpcGroup.make(Tail)
-  const NotesLayer = Desktop.Rpcs.layer(
+  const NotesLayer = Desktop.rpc(
     NotesRpcs,
     NotesRpcs.toLayer({
       "Notes.Tail": () =>
@@ -223,7 +223,7 @@ test("RendererRpcClients test layer publishes renderer stream interruption event
         )
         yield* Effect.promise(() => started)
         yield* Fiber.interrupt(fiber)
-      }).pipe(Effect.provide(makeDesktopRendererRpcTestLayer([NotesLayer], { inspector })))
+      }).pipe(Effect.provide(makeDesktopRendererRpcTestLayer(NotesLayer, { inspector })))
     )
   )
 

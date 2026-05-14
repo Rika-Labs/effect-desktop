@@ -18,11 +18,11 @@ import { Dialog, DialogClient, DialogRpcs, DialogError } from "@effect-desktop/n
 
 ## Methods
 
-| Method | Payload | Success |
-| --- | --- | --- |
-| `open` | `{ properties?, filters?, defaultPath?, title? }` | `{ canceled, filePaths }` |
-| `save` | `{ defaultPath?, filters?, title? }` | `{ canceled, filePath? }` |
-| `message` | `{ type, title, message, buttons? }` | `{ response: number }` |
+| Method    | Payload                                           | Success                   |
+| --------- | ------------------------------------------------- | ------------------------- |
+| `open`    | `{ properties?, filters?, defaultPath?, title? }` | `{ canceled, filePaths }` |
+| `save`    | `{ defaultPath?, filters?, title? }`              | `{ canceled, filePath? }` |
+| `message` | `{ type, title, message, buttons? }`              | `{ response: number }`    |
 
 `properties`: `["openFile" \| "openDirectory" \| "multiSelections" \| "createDirectory"]`.
 

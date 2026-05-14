@@ -34,7 +34,12 @@ const bridge = makeMockBridge({
   pin: [
     { method: "Notes.list", success: [] },
     { method: "Notes.save", failure: new Error("write failed") },
-    { method: "Notes.import", stream: [/* items */] }
+    {
+      method: "Notes.import",
+      stream: [
+        /* items */
+      ]
+    }
   ]
 })
 ```

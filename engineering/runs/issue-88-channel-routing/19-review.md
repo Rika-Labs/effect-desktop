@@ -2,12 +2,12 @@
 
 ## Artifact Inventory
 
-| Artifact               | Status         | Evidence                                                                                      |
-| ---------------------- | -------------- | --------------------------------------------------------------------------------------------- |
-| GitHub issue           | present        | #88 defines channel, min-version, downgrade, rollback, and test cases.                        |
+| Artifact               | Status         | Evidence                                                                                             |
+| ---------------------- | -------------- | ---------------------------------------------------------------------------------------------------- |
+| GitHub issue           | present        | #88 defines channel, min-version, downgrade, rollback, and test cases.                               |
 | Spec                   | present        | `engineering/SPEC.md` §16.1, §16.2, §23.4, Appendix C.52 define update config and downgrade refusal. |
 | Architecture           | present        | `engineering/runs/issue-88-channel-routing/05-architect.md`.                                         |
-| Prior design artifacts | not applicable | This is a narrow issue slice following the existing updater manifest design from issue #87.   |
+| Prior design artifacts | not applicable | This is a narrow issue slice following the existing updater manifest design from issue #87.          |
 
 ## Principle Pass
 

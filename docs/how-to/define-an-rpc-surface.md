@@ -16,10 +16,9 @@ Every renderer-callable API in Effect Desktop is an Effect `RpcGroup`. This reci
 import { Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
-export class TodoError extends Schema.TaggedError<TodoError>()(
-  "TodoError",
-  { reason: Schema.String }
-) {}
+export class TodoError extends Schema.TaggedError<TodoError>()("TodoError", {
+  reason: Schema.String
+}) {}
 
 export const TodoCreate = Rpc.make("Todos.create", {
   payload: { title: Schema.String, dueAt: Schema.optional(Schema.Number) },
@@ -75,7 +74,7 @@ import { TodoHandlersLive } from "./handlers.js"
 export const App = Desktop.make({
   id: "dev.example.todos",
   windows: { main: { title: "Todos" } },
-  rpcs: [{ group: TodoRpcs, handlers: TodoHandlersLive }]
+  rpcs: Desktop.rpc(TodoRpcs, TodoHandlersLive)
 })
 
 export const Manifest = Desktop.manifest(App)
@@ -119,9 +118,7 @@ import { P } from "@effect-desktop/core"
 export const TodoExport = Rpc.make("Todos.export", {
   payload: { path: Schema.String },
   success: Schema.Struct({ bytesWritten: Schema.Number })
-}).pipe(
-  P.requireFilesystemWrite()
-)
+}).pipe(P.requireFilesystemWrite())
 ```
 
 `PermissionRegistry` checks the capability before the handler runs. The handler still receives the call only if a matching declaration permits it.

@@ -12,12 +12,12 @@ macOS-oriented dock integration. Linux gets a stub via `makeLinuxDockClient()` s
 
 ## Methods
 
-| Method | Payload | Success |
-| --- | --- | --- |
-| `show` | — | `void` |
-| `hide` | — | `void` |
-| `bounce` | `{ type: "critical" \| "informational" }` | `void` |
-| `setBadge` | `{ text }` | `void` |
+| Method     | Payload                                   | Success |
+| ---------- | ----------------------------------------- | ------- |
+| `show`     | —                                         | `void`  |
+| `hide`     | —                                         | `void`  |
+| `bounce`   | `{ type: "critical" \| "informational" }` | `void`  |
+| `setBadge` | `{ text }`                                | `void`  |
 
 ## Errors
 

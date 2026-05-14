@@ -24,13 +24,13 @@ Audit is not logging. Logging is human-readable narration; audit is machine-read
 
 `AuditEventsApi.emit(event)` accepts a closed union of `AuditEvent` shapes. The framework emits these from inside the services that produce them:
 
-| Source | Events |
-| --- | --- |
-| `PermissionRegistry` | `permission/check`, `permission/grant`, `permission/use`, `permission/revoke`, `permission/expire`, `permission/consume` |
-| `ApprovalBroker` | `approval/requested`, `approval/granted`, `approval/denied` |
-| `Secrets` | `secret/accessed` |
-| `Process`, `PTY`, `Worker` | lifecycle transitions, retries, crashes |
-| `Updater` | `update/checked`, `update/downloaded`, `update/installed` |
+| Source                     | Events                                                                                                                   |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `PermissionRegistry`       | `permission/check`, `permission/grant`, `permission/use`, `permission/revoke`, `permission/expire`, `permission/consume` |
+| `ApprovalBroker`           | `approval/requested`, `approval/granted`, `approval/denied`                                                              |
+| `Secrets`                  | `secret/accessed`                                                                                                        |
+| `Process`, `PTY`, `Worker` | lifecycle transitions, retries, crashes                                                                                  |
+| `Updater`                  | `update/checked`, `update/downloaded`, `update/installed`                                                                |
 
 Every event carries:
 

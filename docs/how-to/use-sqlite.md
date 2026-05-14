@@ -41,7 +41,9 @@ await Effect.runPromise(
 ## 2. Queries
 
 ```ts
-const rows = yield* sql<{ id: string; body: string }>`
+const rows =
+  yield *
+  sql<{ id: string; body: string }>`
   SELECT id, body FROM notes WHERE updated_at > ${cutoff}
 `
 ```
@@ -51,12 +53,13 @@ The tagged template handles parameter binding safely.
 ## 3. Transactions
 
 ```ts
-yield* sql.withTransaction(
-  Effect.gen(function* () {
-    yield* sql`INSERT INTO notes (id, body, updated_at) VALUES (${id}, ${body}, ${now})`
-    yield* sql`UPDATE counters SET writes = writes + 1`
-  })
-)
+yield *
+  sql.withTransaction(
+    Effect.gen(function* () {
+      yield* sql`INSERT INTO notes (id, body, updated_at) VALUES (${id}, ${body}, ${now})`
+      yield* sql`UPDATE counters SET writes = writes + 1`
+    })
+  )
 ```
 
 `withTransaction` rolls back on failure or interruption.
@@ -75,10 +78,10 @@ class Note extends Schema.Class<Note>("Note")({
   updatedAt: Schema.Number
 }) {}
 
-const NoteRepo = yield* SqlModel.makeRepository(Note, { tableName: "notes", idColumn: "id" })
+const NoteRepo = yield * SqlModel.makeRepository(Note, { tableName: "notes", idColumn: "id" })
 
-yield* NoteRepo.insertVoid(new Note({ id, body, updatedAt: Date.now() }))
-const found = yield* NoteRepo.findById(id)
+yield * NoteRepo.insertVoid(new Note({ id, body, updatedAt: Date.now() }))
+const found = yield * NoteRepo.findById(id)
 ```
 
 The repository handles encoding/decoding through the Schema.
@@ -86,10 +89,11 @@ The repository handles encoding/decoding through the Schema.
 ## 5. Permissions
 
 ```ts
-yield* permissions.declare(
-  { kind: "sqlite.open", roots: [process.cwd()] },
-  { effect: "allow", source: "app-init" }
-)
+yield *
+  permissions.declare(
+    { kind: "sqlite.open", roots: [process.cwd()] },
+    { effect: "allow", source: "app-init" }
+  )
 ```
 
 `sqlite.open` is checked once when the layer opens; queries on the open connection don't re-check.

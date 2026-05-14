@@ -24,11 +24,11 @@ import {
 
 ## API
 
-| Method | Signature |
-| --- | --- |
-| `register` | `(provider) => Effect<void>` |
-| `select` | `(kind) => Effect<Provider, ProviderRegistryError>` |
-| `list` | `() => Effect<Provider[]>` |
+| Method     | Signature                                           |
+| ---------- | --------------------------------------------------- |
+| `register` | `(provider) => Effect<void>`                        |
+| `select`   | `(kind) => Effect<Provider, ProviderRegistryError>` |
+| `list`     | `() => Effect<Provider[]>`                          |
 
 ## Common providers
 

@@ -42,7 +42,7 @@ export const App = Desktop.make({
     main: { title: "Notes", width: 720, height: 520 },
     compose: { title: "Compose Note", width: 480, height: 360 }
   },
-  rpcs: [{ group: NotesRpcs, handlers: NotesHandlersLive }]
+  rpcs: Desktop.rpc(NotesRpcs, NotesHandlersLive)
 })
 
 export const Manifest = Desktop.manifest(App)
@@ -63,8 +63,7 @@ Inside the component:
 ```tsx
 const createWindow = useCreateWindowMutation()
 
-const onOpenCompose = () =>
-  createWindow.run({ title: "Compose Note" })
+const onOpenCompose = () => createWindow.run({ title: "Compose Note" })
 ```
 
 And in the JSX:
@@ -112,7 +111,9 @@ export function ComposePanel() {
         autoFocus
       />
       <div>
-        <button type="button" onClick={() => closeWindow.run({})}>Cancel</button>
+        <button type="button" onClick={() => closeWindow.run({})}>
+          Cancel
+        </button>
         <button type="submit" onClick={onSave} disabled={save.status === "running"}>
           {save.status === "running" ? "Saving…" : "Save"}
         </button>
@@ -171,11 +172,11 @@ Open the main window. Click "New note" — the compose window opens. Type someth
 
 Two questions to ask when adding cross-window functionality:
 
-| Question | Answer |
-| --- | --- |
-| Should this state survive the app exiting? | Put it in `Settings` or `SqlClient`. |
+| Question                                                 | Answer                                                           |
+| -------------------------------------------------------- | ---------------------------------------------------------------- |
+| Should this state survive the app exiting?               | Put it in `Settings` or `SqlClient`.                             |
 | Should this state survive only while the window is open? | Per-window React state (`useState`, atoms scoped to the window). |
-| Should this state be visible to multiple windows live? | Use a `Stream` or atom from a shared service. |
+| Should this state be visible to multiple windows live?   | Use a `Stream` or atom from a shared service.                    |
 
 The notes themselves live in `Settings`, so both windows see the same list. The draft text in `ComposePanel` lives in React state — only that window cares about it.
 

@@ -49,9 +49,7 @@ const program = Effect.gen(function* () {
     ownerScope: "window-main",
     inputSchema: InMessage,
     outputSchema: OutMessage,
-    capabilities: [
-      { kind: "filesystem.read", roots: ["/Users/me/Documents"] }
-    ]
+    capabilities: [{ kind: "filesystem.read", roots: ["/Users/me/Documents"] }]
   })
 
   // Send a message
@@ -78,7 +76,7 @@ When `"window-main"` closes, the worker is terminated, the per-scope concurrency
 ## 4. Inspect what's running
 
 ```ts
-const live = yield* worker.list()
+const live = yield * worker.list()
 // [{ id, script, ownerScope, resourceId, status, uptime, capabilities, lastError? }, ...]
 ```
 

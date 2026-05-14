@@ -2,8 +2,8 @@
 
 ## Learning files written
 
-| Path                                                                      | Title                                      | Codification target |
-| ------------------------------------------------------------------------- | ------------------------------------------ | ------------------- |
+| Path                                                                             | Title                                      | Codification target |
+| -------------------------------------------------------------------------------- | ------------------------------------------ | ------------------- |
 | `engineering/learnings/2026-05-06-signed-manifests-bind-metadata-to-payloads.md` | Signed Manifests Bind Metadata To Payloads | test fixture        |
 
 ## Follow-up issues filed

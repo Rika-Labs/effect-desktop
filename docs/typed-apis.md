@@ -23,16 +23,14 @@ export class Todo extends Schema.Class<Todo>("Todo")({
   text: Schema.String
 }) {}
 
-export const TodoRpcs = RpcGroup.make(
-  Rpc.make("Todo.list", { success: Schema.Array(Todo) })
-)
+export const TodoRpcs = RpcGroup.make(Rpc.make("Todo.list", { success: Schema.Array(Todo) }))
 ```
 
 Use `RpcGroup.toLayer(...)` to install handlers; use `Desktop.Rpc.surface(...)` for the bundled server, client, test, and docs artifacts.
 
 ## Desktop surface
 
-`Desktop.Rpcs.layer(AppRpc, AppRpc.toLayer(...))` installs an app RPC group into the runtime. `Desktop.manifest(App)` exposes the manifest the renderer adapter consumes.
+`Desktop.rpc(AppRpc, AppRpc.toLayer(...))` returns a Layer that registers the RPC group + handler pair. Compose multiple registrations with `Layer.mergeAll(...)` and pass the result as `rpcs:` to `Desktop.make`. `Desktop.manifest(App)` exposes the manifest the renderer adapter consumes.
 
 ## Verify RPC Exports
 

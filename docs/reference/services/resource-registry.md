@@ -31,13 +31,13 @@ import {
 
 ## API
 
-| Method | Signature | Description |
-| --- | --- | --- |
-| `register` | `(handle) => Effect<ResourceId>` | Register a new resource. |
-| `dispose` | `(id) => Effect<void>` | Dispose explicitly. |
-| `list` | `() => Effect<ResourceEntry[]>` | Snapshot for devtools. |
-| `observe` | `() => Stream<ResourceLifecycleEvent>` | Lifecycle event stream. |
-| `snapshot` | `() => Effect<RegistrySnapshot>` | Structural snapshot for tests. |
+| Method     | Signature                              | Description                    |
+| ---------- | -------------------------------------- | ------------------------------ |
+| `register` | `(handle) => Effect<ResourceId>`       | Register a new resource.       |
+| `dispose`  | `(id) => Effect<void>`                 | Dispose explicitly.            |
+| `list`     | `() => Effect<ResourceEntry[]>`        | Snapshot for devtools.         |
+| `observe`  | `() => Stream<ResourceLifecycleEvent>` | Lifecycle event stream.        |
+| `snapshot` | `() => Effect<RegistrySnapshot>`       | Structural snapshot for tests. |
 
 ## Layer
 
@@ -57,8 +57,8 @@ You usually don't. The runtime primitives (`Process`, `Worker`, `PTY`, `Filesyst
 ```ts
 import { assertNoOpenResourcesIn } from "@effect-desktop/test"
 
-const registry = yield* ResourceRegistry
-yield* assertNoOpenResourcesIn(registry, { testName: "no leaks" })
+const registry = yield * ResourceRegistry
+yield * assertNoOpenResourcesIn(registry, { testName: "no leaks" })
 ```
 
 `HeadlessRuntime.run` installs leak detection automatically.

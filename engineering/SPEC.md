@@ -4,7 +4,7 @@
 **Audience:** framework maintainers, implementation agents, technical leads, contributors, QA, release engineering  
 **Status:** Draft specification for v1.0.0  
 **Generated:** 2026-05-03  
-**Primary artifact:** `SPEC.md`  
+**Primary artifact:** `SPEC.md`
 
 This document is the source-of-truth build specification for Effect Desktop v1.0.0. It is intentionally detailed. It is not a marketing document, not a short product brief, and not a loose roadmap. An implementation agent should be able to read this specification, work through the milestones in order, run the validation gates, and produce a production-grade framework.
 
@@ -85,7 +85,6 @@ Every public method added to the framework must have, in the same change:
 
 A public method whose contract still contains placeholder `unknown` input or output types is not v1.0.0-complete.
 
-
 \newpage
 
 # 0. Executive Specification Summary
@@ -120,7 +119,6 @@ The v1.0.0 release must include:
 - Verification gates that make quality measurable.
 
 The v1.0.0 release must not include compatibility layers for other desktop frameworks, app-specific SDKs, native widget frameworks, cloud product features, billing, marketplace functionality, or vertical packages. The framework must provide composable primitives, not product assumptions.
-
 
 \newpage
 
@@ -190,7 +188,6 @@ Effect Desktop is not a native widget toolkit. It is not a browser. It is not a 
 - resources are scoped;
 - effects, streams, services, and errors are explicit.
 
-
 \newpage
 
 # 2. Decision-Making Hierarchy
@@ -231,7 +228,6 @@ Before accepting a design decision, answer:
 - Does it work across target platforms?
 - Is it the smallest design that satisfies the requirement?
 - Is there a clear migration path if the design changes before v1.0.0?
-
 
 \newpage
 
@@ -338,7 +334,6 @@ Effect Desktop is a security-sensitive substrate. v1.0.0 ships with:
 
 The security model is documented end-to-end in §14, §22, §23, and Appendix M.
 
-
 \newpage
 
 # 4. Technology Stack
@@ -347,24 +342,24 @@ The security model is documented end-to-end in §14, §22, §23, and Appendix M.
 
 The v1.0.0 stack is:
 
-| Layer | Required choice | Purpose |
-|---|---|---|
-| Monorepo package manager | Bun workspaces | Package installation, workspace linking, Bun-first development |
-| Task orchestration | Turborepo | Cached and ordered workspace tasks |
-| Runtime | Bun | TypeScript runtime, package tooling, filesystem, subprocesses, SQLite |
-| Application model | Effect | Services, layers, resource scopes, errors, streams, concurrency |
-| Contract validation | Effect Schema | Runtime validation and generated bridge contracts |
-| Native host language | Rust | Cross-platform native shell and host process |
-| Native window/WebView stack | WRY + TAO | System WebView and native window event loop |
-| Renderer | React | Web UI model |
-| Styling | Tailwind CSS | Utility-first styling in renderer templates |
-| Dev server/build | Vite-compatible pipeline | Fast renderer development and HMR |
-| Type checking | TypeScript strict mode | Compile-time correctness |
-| Linting | Oxlint | Fast TypeScript linting |
-| Formatting | Prettier for TS/MD, rustfmt for Rust | Formatting consistency |
-| Rust quality | cargo test, clippy | Native host correctness |
-| Testing | bun test, cargo test, integration harness | Unit and integration validation |
-| Packaging | first-party CLI | Package, sign, notarize, publish, update |
+| Layer                       | Required choice                           | Purpose                                                               |
+| --------------------------- | ----------------------------------------- | --------------------------------------------------------------------- |
+| Monorepo package manager    | Bun workspaces                            | Package installation, workspace linking, Bun-first development        |
+| Task orchestration          | Turborepo                                 | Cached and ordered workspace tasks                                    |
+| Runtime                     | Bun                                       | TypeScript runtime, package tooling, filesystem, subprocesses, SQLite |
+| Application model           | Effect                                    | Services, layers, resource scopes, errors, streams, concurrency       |
+| Contract validation         | Effect Schema                             | Runtime validation and generated bridge contracts                     |
+| Native host language        | Rust                                      | Cross-platform native shell and host process                          |
+| Native window/WebView stack | WRY + TAO                                 | System WebView and native window event loop                           |
+| Renderer                    | React                                     | Web UI model                                                          |
+| Styling                     | Tailwind CSS                              | Utility-first styling in renderer templates                           |
+| Dev server/build            | Vite-compatible pipeline                  | Fast renderer development and HMR                                     |
+| Type checking               | TypeScript strict mode                    | Compile-time correctness                                              |
+| Linting                     | Oxlint                                    | Fast TypeScript linting                                               |
+| Formatting                  | Prettier for TS/MD, rustfmt for Rust      | Formatting consistency                                                |
+| Rust quality                | cargo test, clippy                        | Native host correctness                                               |
+| Testing                     | bun test, cargo test, integration harness | Unit and integration validation                                       |
+| Packaging                   | first-party CLI                           | Package, sign, notarize, publish, update                              |
 
 ## 4.2 Bun usage
 
@@ -515,7 +510,6 @@ A dependency may be added only when:
 - it has a testable integration path.
 
 Every added dependency must be recorded in `engineering/decisions` or in the relevant package README if it becomes part of the public design.
-
 
 \newpage
 
@@ -702,7 +696,6 @@ import { createHostClient } from "../../bridge/src/internal/createHostClient"
 ```
 
 Every public symbol must be exported intentionally through package exports.
-
 
 \newpage
 
@@ -1066,47 +1059,46 @@ None.
 
 Every primitive in §11 (native) and §12 (runtime) maps to exactly one package and (where relevant) exactly one Rust crate. A primitive without a row here cannot ship.
 
-| Primitive | TypeScript package | Rust crate | Category |
-|---|---|---|---|
-| `App` | `@effect-desktop/native` | `crates/host` | native |
-| `Window` | `@effect-desktop/native` | `crates/host` | native |
-| `WebView` | `@effect-desktop/native` | `crates/host` | native |
-| `Menu` | `@effect-desktop/native` | `crates/host` | native |
-| `ContextMenu` | `@effect-desktop/native` | `crates/host` | native |
-| `Tray` | `@effect-desktop/native` | `crates/host` | native |
-| `Dialog` | `@effect-desktop/native` | `crates/host` | native |
-| `Clipboard` | `@effect-desktop/native` | `crates/host` | native |
-| `Notification` | `@effect-desktop/native` | `crates/host` | native |
-| `Shell` | `@effect-desktop/native` | `crates/host` | native |
-| `Screen` | `@effect-desktop/native` | `crates/host` | native |
-| `GlobalShortcut` | `@effect-desktop/native` | `crates/host` | native |
-| `Protocol` | `@effect-desktop/native` | `crates/host` | native |
-| `SafeStorage` | `@effect-desktop/native` | `crates/host` | native |
-| `Path` | `@effect-desktop/native` | `crates/host` | native |
-| `Updater` | `@effect-desktop/native` | `crates/host` + `crates/native-updater` | native |
-| `CrashReporter` | `@effect-desktop/native` | `crates/host` | native |
-| `PowerMonitor` | `@effect-desktop/native` | `crates/host` | native |
-| `SystemAppearance` | `@effect-desktop/native` | `crates/host` | native |
-| `Dock` | `@effect-desktop/native` | `crates/host` | native |
-| `Filesystem` | `@effect-desktop/core` | — | runtime |
-| `Process` | `@effect-desktop/core` | — | runtime |
-| `PTY` | `@effect-desktop/core` | `crates/native-pty` | runtime |
-| `Worker` | `@effect-desktop/core` | — | runtime |
-| `Job` | `@effect-desktop/core` | — | runtime |
-| `SqlClientLive` | `@effect-desktop/core` | — | runtime |
-| `Settings` | `@effect-desktop/core` | — | runtime |
-| `Secrets` | `@effect-desktop/core` | `crates/host` (SafeStorage backend) | runtime |
-| `EventLog` | `@effect-desktop/core` | — | runtime |
-| `Transport` | `@effect-desktop/core` | — | runtime |
-| `CommandRegistry` | `@effect-desktop/core` | — | runtime |
-| `ApprovalBroker` | `@effect-desktop/core` | `crates/host` (UI surface) | runtime |
-| `PermissionRegistry` | `@effect-desktop/core` | — | runtime |
-| `ResourceRegistry` | `@effect-desktop/core` | — | runtime |
-| `Telemetry` | `@effect-desktop/core` | — | runtime |
-| `WindowState` | `@effect-desktop/core` | — | runtime |
+| Primitive            | TypeScript package       | Rust crate                              | Category |
+| -------------------- | ------------------------ | --------------------------------------- | -------- |
+| `App`                | `@effect-desktop/native` | `crates/host`                           | native   |
+| `Window`             | `@effect-desktop/native` | `crates/host`                           | native   |
+| `WebView`            | `@effect-desktop/native` | `crates/host`                           | native   |
+| `Menu`               | `@effect-desktop/native` | `crates/host`                           | native   |
+| `ContextMenu`        | `@effect-desktop/native` | `crates/host`                           | native   |
+| `Tray`               | `@effect-desktop/native` | `crates/host`                           | native   |
+| `Dialog`             | `@effect-desktop/native` | `crates/host`                           | native   |
+| `Clipboard`          | `@effect-desktop/native` | `crates/host`                           | native   |
+| `Notification`       | `@effect-desktop/native` | `crates/host`                           | native   |
+| `Shell`              | `@effect-desktop/native` | `crates/host`                           | native   |
+| `Screen`             | `@effect-desktop/native` | `crates/host`                           | native   |
+| `GlobalShortcut`     | `@effect-desktop/native` | `crates/host`                           | native   |
+| `Protocol`           | `@effect-desktop/native` | `crates/host`                           | native   |
+| `SafeStorage`        | `@effect-desktop/native` | `crates/host`                           | native   |
+| `Path`               | `@effect-desktop/native` | `crates/host`                           | native   |
+| `Updater`            | `@effect-desktop/native` | `crates/host` + `crates/native-updater` | native   |
+| `CrashReporter`      | `@effect-desktop/native` | `crates/host`                           | native   |
+| `PowerMonitor`       | `@effect-desktop/native` | `crates/host`                           | native   |
+| `SystemAppearance`   | `@effect-desktop/native` | `crates/host`                           | native   |
+| `Dock`               | `@effect-desktop/native` | `crates/host`                           | native   |
+| `Filesystem`         | `@effect-desktop/core`   | —                                       | runtime  |
+| `Process`            | `@effect-desktop/core`   | —                                       | runtime  |
+| `PTY`                | `@effect-desktop/core`   | `crates/native-pty`                     | runtime  |
+| `Worker`             | `@effect-desktop/core`   | —                                       | runtime  |
+| `Job`                | `@effect-desktop/core`   | —                                       | runtime  |
+| `SqlClientLive`      | `@effect-desktop/core`   | —                                       | runtime  |
+| `Settings`           | `@effect-desktop/core`   | —                                       | runtime  |
+| `Secrets`            | `@effect-desktop/core`   | `crates/host` (SafeStorage backend)     | runtime  |
+| `EventLog`           | `@effect-desktop/core`   | —                                       | runtime  |
+| `Transport`          | `@effect-desktop/core`   | —                                       | runtime  |
+| `CommandRegistry`    | `@effect-desktop/core`   | —                                       | runtime  |
+| `ApprovalBroker`     | `@effect-desktop/core`   | `crates/host` (UI surface)              | runtime  |
+| `PermissionRegistry` | `@effect-desktop/core`   | —                                       | runtime  |
+| `ResourceRegistry`   | `@effect-desktop/core`   | —                                       | runtime  |
+| `Telemetry`          | `@effect-desktop/core`   | —                                       | runtime  |
+| `WindowState`        | `@effect-desktop/core`   | —                                       | runtime  |
 
 A package may not export a primitive whose row says it lives elsewhere. A new primitive must add a row here in the same PR that introduces it.
-
 
 \newpage
 
@@ -1128,6 +1120,7 @@ Rust crates must be few and deep. The native host should not split every platfor
 - emit native events.
 - handle app protocol.
 - supervise runtime lifecycle.
+
 ### Native crate rules
 
 - Keep public Rust APIs minimal.
@@ -1198,6 +1191,7 @@ Clippy lints `clippy::unwrap_used`, `clippy::expect_used`, `clippy::indexing_sli
 - version negotiation.
 - serde encoding.
 - protocol tests.
+
 ### Native crate rules
 
 - Keep public Rust APIs minimal.
@@ -1230,6 +1224,7 @@ Clippy lints `clippy::unwrap_used`, `clippy::expect_used`, `clippy::indexing_sli
 - kill.
 - cleanup process tree.
 - platform-specific adapters.
+
 ### Native crate rules
 
 - Keep public Rust APIs minimal.
@@ -1261,6 +1256,7 @@ Clippy lints `clippy::unwrap_used`, `clippy::expect_used`, `clippy::indexing_sli
 - install staging.
 - restart integration.
 - rollback metadata.
+
 ### Native crate rules
 
 - Keep public Rust APIs minimal.
@@ -1279,7 +1275,6 @@ Clippy lints `clippy::unwrap_used`, `clippy::expect_used`, `clippy::indexing_sli
 - `cargo clippy --workspace --all-targets -- -D warnings` passes.
 - Host protocol compatibility tests pass.
 - Platform smoke tests pass on target operating systems.
-
 
 \newpage
 
@@ -1471,17 +1466,17 @@ Minimum lifecycle rules:
 
 Apps with more than one window need explicit answers to "which window receives this event?" The framework defines a routing mode per App-level event. Apps may override per-window via `App.subscribe(event, { route })`.
 
-| Event | Default routing | Notes |
-|---|---|---|
-| `onOpenFile` (macOS Dock drop, Windows file association) | `firstResponder` | Delivered to the focused window. If no window is open, the event is buffered until the first window appears, max 1 buffered event of each kind. |
-| `onOpenUrl` (custom protocol handler) | `firstResponder` | Same buffering rule. URL is also recorded in `App.getCommandLine()` for late subscribers. |
-| `onSecondInstance` | `broadcast` | Every window receives the second-instance event with the duplicate launch's argv. Apps typically focus the primary window in the handler. |
-| `onActivated` (Dock click, taskbar restore) | `firstResponder` | Re-emits even if the focused window is hidden; default behavior is to show it. |
-| `onWillQuit` | `broadcast` | Every window receives it; any handler returning a refusal cancels the quit. |
-| `onAppearanceChanged` | `broadcast` | Every window must update; renderer also receives `prefers-color-scheme` event. |
-| `GlobalShortcut` press | `targeted(registrarWindowId)` | Shortcut handler fires on the window that registered it, regardless of which window is focused. |
-| `Tray` activation | `targeted(trayOwnerWindowId)` | Tray clicks deliver to the window that constructed the `Tray`. |
-| `Notification` interaction | `targeted(notificationOwnerWindowId)` | Click and action callbacks deliver to the window that posted the notification. Notification survives the window only if `App.subscribe('onNotificationActivated')` registered a fallback. |
+| Event                                                    | Default routing                       | Notes                                                                                                                                                                                     |
+| -------------------------------------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `onOpenFile` (macOS Dock drop, Windows file association) | `firstResponder`                      | Delivered to the focused window. If no window is open, the event is buffered until the first window appears, max 1 buffered event of each kind.                                           |
+| `onOpenUrl` (custom protocol handler)                    | `firstResponder`                      | Same buffering rule. URL is also recorded in `App.getCommandLine()` for late subscribers.                                                                                                 |
+| `onSecondInstance`                                       | `broadcast`                           | Every window receives the second-instance event with the duplicate launch's argv. Apps typically focus the primary window in the handler.                                                 |
+| `onActivated` (Dock click, taskbar restore)              | `firstResponder`                      | Re-emits even if the focused window is hidden; default behavior is to show it.                                                                                                            |
+| `onWillQuit`                                             | `broadcast`                           | Every window receives it; any handler returning a refusal cancels the quit.                                                                                                               |
+| `onAppearanceChanged`                                    | `broadcast`                           | Every window must update; renderer also receives `prefers-color-scheme` event.                                                                                                            |
+| `GlobalShortcut` press                                   | `targeted(registrarWindowId)`         | Shortcut handler fires on the window that registered it, regardless of which window is focused.                                                                                           |
+| `Tray` activation                                        | `targeted(trayOwnerWindowId)`         | Tray clicks deliver to the window that constructed the `Tray`.                                                                                                                            |
+| `Notification` interaction                               | `targeted(notificationOwnerWindowId)` | Click and action callbacks deliver to the window that posted the notification. Notification survives the window only if `App.subscribe('onNotificationActivated')` registered a fallback. |
 
 Routing modes:
 
@@ -1494,7 +1489,6 @@ Per-platform notes:
 - macOS: `firstResponder` matches `NSApp.keyWindow` semantics.
 - Windows: `firstResponder` matches the foreground HWND owned by this process.
 - Linux (GNOME/KDE/Wayland): `firstResponder` matches the toplevel with `is_active` set; on Wayland this can be ambiguous if no window has explicit focus, in which case the event falls back to broadcast.
-
 
 \newpage
 
@@ -1536,8 +1530,8 @@ type HostProtocolEnvelope = {
   resourceId?: string
   timestamp: number
   traceId: string
-  windowId?: WindowId        // required on requests originating in a renderer
-  originToken?: string        // required on requests originating in a renderer
+  windowId?: WindowId // required on requests originating in a renderer
+  originToken?: string // required on requests originating in a renderer
   payload?: unknown
   error?: HostProtocolError
 }
@@ -1566,14 +1560,15 @@ The runtime stores `(windowId → originToken)` and rejects any mismatched envel
 
 ### Framing limits
 
-| Limit | Value | Behavior on exceedance |
-|---|---|---|
-| `maxFrameBytes` | 4 MiB | Connection rejects frame with `FrameTooLarge`; offending peer is logged and may be reset on repeat. |
-| `maxConcurrentRequestsPerWindow` | 256 | New request rejected with `RateLimited { retryAfterMs }`. |
-| `maxConcurrentStreamsPerWindow` | 64 | New stream rejected with `RateLimited`. |
-| `maxQueuedEventsPerSubscription` | 1024 | Backpressure policy applies (§10.6). |
+| Limit                            | Value | Behavior on exceedance                                                                              |
+| -------------------------------- | ----- | --------------------------------------------------------------------------------------------------- |
+| `maxFrameBytes`                  | 4 MiB | Connection rejects frame with `FrameTooLarge`; offending peer is logged and may be reset on repeat. |
+| `maxConcurrentRequestsPerWindow` | 256   | New request rejected with `RateLimited { retryAfterMs }`.                                           |
+| `maxConcurrentStreamsPerWindow`  | 64    | New stream rejected with `RateLimited`.                                                             |
+| `maxQueuedEventsPerSubscription` | 1024  | Backpressure policy applies (§10.6).                                                                |
 
 These limits are configurable in `desktop.config.ts` under `protocol.limits` for power users; they cannot be set above 16 MiB / 4096 / 1024 / 65536 respectively.
+
 - Cancel messages require the target request or resource ID.
 - Errors must be structured.
 - Payloads must be schema-validated by the TypeScript-facing service.
@@ -1684,12 +1679,12 @@ Top-level navigation to an origin outside the active `WebView` navigation policy
 
 ### In-flight call disposition
 
-| Call attribute | Disconnect inside reconnect window | Reconnect window expired |
-|---|---|---|
-| `idempotent: true` | Replayed by the renderer client; runtime de-duplicates by `requestId`. | Failed to user code with `RendererDisconnected { duration }`. |
-| `idempotent: false`, runtime side **not yet executed** | Auto-cancelled; renderer sees `RendererDisconnected`. | Failed to user code. |
-| `idempotent: false`, runtime side **executing** | Effect runs to completion; result is cached for `cachedResultMs` (default 60 seconds) and returned on resume; otherwise dropped after that window. | Result discarded. |
-| Stream subscription | Resumed with backfill if cursor still in buffer; otherwise terminated. | Stream terminated with `Error { tag: "RendererDisconnected" }`. |
+| Call attribute                                         | Disconnect inside reconnect window                                                                                                                 | Reconnect window expired                                        |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `idempotent: true`                                     | Replayed by the renderer client; runtime de-duplicates by `requestId`.                                                                             | Failed to user code with `RendererDisconnected { duration }`.   |
+| `idempotent: false`, runtime side **not yet executed** | Auto-cancelled; renderer sees `RendererDisconnected`.                                                                                              | Failed to user code.                                            |
+| `idempotent: false`, runtime side **executing**        | Effect runs to completion; result is cached for `cachedResultMs` (default 60 seconds) and returned on resume; otherwise dropped after that window. | Result discarded.                                               |
+| Stream subscription                                    | Resumed with backfill if cursor still in buffer; otherwise terminated.                                                                             | Stream terminated with `Error { tag: "RendererDisconnected" }`. |
 
 ### Reconnect protocol sequence
 
@@ -1711,7 +1706,6 @@ host injects fresh originToken; runtime validates token hash + ticket window
 ```
 
 The renderer SDK provides `useDesktopReconnectStatus()` so apps can render the "Reconnecting…" overlay (§19.4) automatically.
-
 
 \newpage
 
@@ -1770,35 +1764,23 @@ import { Desktop } from "@effect-desktop/core"
 export const ProjectOpen = Rpc.make("project.open", {
   payload: Schema.Struct({ path: Schema.String }),
   success: Project,
-  error: Schema.Union(
-    Desktop.Errors.PermissionDenied,
-    Desktop.Errors.FileNotFound
-  )
-}).pipe(
-  Desktop.RpcEndpoint.mutation,
-  Desktop.RpcCapability({ kind: "project:open" })
-)
+  error: Schema.Union(Desktop.Errors.PermissionDenied, Desktop.Errors.FileNotFound)
+}).pipe(Desktop.RpcEndpoint.mutation, Desktop.RpcCapability({ kind: "project:open" }))
 
 export const ProjectWatch = Rpc.make("project.watch", {
   payload: Schema.Struct({ projectId: Schema.String }),
   success: ProjectEvent,
-  error: Schema.Union(
-    Desktop.Errors.PermissionDenied,
-    Desktop.Errors.NotFound
-  )
-}).pipe(
-  Desktop.RpcEndpoint.query,
-  Desktop.RpcCapability({ kind: "project:watch" })
-)
+  error: Schema.Union(Desktop.Errors.PermissionDenied, Desktop.Errors.NotFound)
+}).pipe(Desktop.RpcEndpoint.query, Desktop.RpcCapability({ kind: "project:watch" }))
 ```
 
 ### Required and default fields
 
-| Field | Type | Default | Notes |
-|---|---|---|---|
-| `timeoutMs` | `number` | `30_000` | Typed milliseconds. Strings such as `"30 seconds"` are not accepted. `0` disables the timeout (rare; must be justified per contract). |
-| `idempotent` | `boolean` | `false` | If `true`, the renderer client may auto-replay on reconnect (§9.7). Handler must produce the same result for the same input within `cachedResultMs`. |
-| `cancellable` | `boolean` | `true` | If `false`, neither timeout nor renderer-side Effect interruption interrupts the handler; the result is delivered or dropped. |
+| Field                   | Type                                                 | Default   | Notes                                                                                                                                                    |
+| ----------------------- | ---------------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `timeoutMs`             | `number`                                             | `30_000`  | Typed milliseconds. Strings such as `"30 seconds"` are not accepted. `0` disables the timeout (rare; must be justified per contract).                    |
+| `idempotent`            | `boolean`                                            | `false`   | If `true`, the renderer client may auto-replay on reconnect (§9.7). Handler must produce the same result for the same input within `cachedResultMs`.     |
+| `cancellable`           | `boolean`                                            | `true`    | If `false`, neither timeout nor renderer-side Effect interruption interrupts the handler; the result is delivered or dropped.                            |
 | `backpressure.overflow` | `"error" \| "dropOldest" \| "dropNewest" \| "block"` | `"error"` | Behavior when the per-stream queue exceeds `size`. `"block"` applies upstream backpressure; `"error"` terminates the stream with `BackpressureOverflow`. |
 
 A contract whose `idempotent` is `true` must declare a `cachedResultMs` (default `60_000`). The bridge generator emits a compile-time error on a contract that omits required fields.
@@ -1909,12 +1891,12 @@ Rules:
 
 Each subscription has a per-stream queue with capacity `size` (per contract). Overflow policy:
 
-| `overflow` | Behavior |
-|---|---|
-| `"error"` (default) | Stream terminates with `Error { tag: "BackpressureOverflow", policy, lostFrames }`. |
-| `"dropOldest"` | Older frames are evicted; an `EventBufferEvicted` audit row records the count. |
-| `"dropNewest"` | New frames are discarded silently with an audit row. |
-| `"block"` | Producer awaits room; back-pressure propagates to the source Effect. Use with care — slow consumers can stall handlers. |
+| `overflow`          | Behavior                                                                                                                |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `"error"` (default) | Stream terminates with `Error { tag: "BackpressureOverflow", policy, lostFrames }`.                                     |
+| `"dropOldest"`      | Older frames are evicted; an `EventBufferEvicted` audit row records the count.                                          |
+| `"dropNewest"`      | New frames are discarded silently with an audit row.                                                                    |
+| `"block"`           | Producer awaits room; back-pressure propagates to the source Effect. Use with care — slow consumers can stall handlers. |
 
 Devtools surfaces queue depth, eviction counts, and current overflow policy per stream.
 
@@ -1987,31 +1969,31 @@ A handle is owned by exactly one scope. Cross-scope use requires `Resource.share
 
 The bridge must gracefully handle every entry below. Each has a typed error and a corresponding Appendix C verification row.
 
-| Failure mode | Typed error tag | Notes |
-|---|---|---|
-| runtime unavailable | `RuntimeUnavailable` | Renderer client retries with exponential backoff up to `runtimeReconnectMs`. |
-| host unavailable | `HostUnavailable` | Fatal; renderer cannot recover. |
-| renderer disconnected | `RendererDisconnected { duration }` | See §9.7. |
-| runtime restarted | `RuntimeRestarted` | Streams terminate, idempotent calls auto-replay. |
-| stale resource handle | `StaleHandle` | See §10.7. |
-| cross-scope handle | `CrossScopeHandle` | Dev-warn / prod-error. |
-| method not registered | `MethodNotFound` | Bridge generator catches at compile time; this is the runtime fallback. |
-| schema validation failure (input) | `InvalidArgument` | Includes Zod / Schema decode trace in development. |
-| schema validation failure (output) | `InvalidOutput` | Dev-only; surfaces handler bugs. |
-| permission denied | `PermissionDenied` | Includes the failing capability name. |
-| permission revoked mid-call | `PermissionRevoked` | See §14.8. |
-| timeout | `Timeout { timeoutMs }` | Per §10.5 grace contract. |
-| canceled by renderer | `Cancelled { source: "renderer" }` | |
-| canceled by runtime | `Cancelled { source: "runtime" }` | |
-| canceled by host | `Cancelled { source: "host" }` | Window closed, etc. |
-| stream closed | `StreamClosed` | Terminal frame `Closed`. |
-| binary frame decode failure | `BinaryDecodeError` | |
-| backpressure overflow | `BackpressureOverflow { policy, lostFrames }` | See §10.6. |
-| frame too large | `FrameTooLarge { sizeBytes, limitBytes }` | See §9.3. |
-| rate limited | `RateLimited { retryAfterMs }` | |
-| origin invalid | `OriginInvalid` | Spoofed `windowId`/`originToken`. |
-| reconnect backfill exhausted | `ReconnectBackfillExhausted` | See §9.7. |
-| handler panicked | `PanicInNativeCode` (Rust) / `Internal` (JS) | Logged with backtrace. |
+| Failure mode                       | Typed error tag                               | Notes                                                                        |
+| ---------------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------- |
+| runtime unavailable                | `RuntimeUnavailable`                          | Renderer client retries with exponential backoff up to `runtimeReconnectMs`. |
+| host unavailable                   | `HostUnavailable`                             | Fatal; renderer cannot recover.                                              |
+| renderer disconnected              | `RendererDisconnected { duration }`           | See §9.7.                                                                    |
+| runtime restarted                  | `RuntimeRestarted`                            | Streams terminate, idempotent calls auto-replay.                             |
+| stale resource handle              | `StaleHandle`                                 | See §10.7.                                                                   |
+| cross-scope handle                 | `CrossScopeHandle`                            | Dev-warn / prod-error.                                                       |
+| method not registered              | `MethodNotFound`                              | Bridge generator catches at compile time; this is the runtime fallback.      |
+| schema validation failure (input)  | `InvalidArgument`                             | Includes Zod / Schema decode trace in development.                           |
+| schema validation failure (output) | `InvalidOutput`                               | Dev-only; surfaces handler bugs.                                             |
+| permission denied                  | `PermissionDenied`                            | Includes the failing capability name.                                        |
+| permission revoked mid-call        | `PermissionRevoked`                           | See §14.8.                                                                   |
+| timeout                            | `Timeout { timeoutMs }`                       | Per §10.5 grace contract.                                                    |
+| canceled by renderer               | `Cancelled { source: "renderer" }`            |                                                                              |
+| canceled by runtime                | `Cancelled { source: "runtime" }`             |                                                                              |
+| canceled by host                   | `Cancelled { source: "host" }`                | Window closed, etc.                                                          |
+| stream closed                      | `StreamClosed`                                | Terminal frame `Closed`.                                                     |
+| binary frame decode failure        | `BinaryDecodeError`                           |                                                                              |
+| backpressure overflow              | `BackpressureOverflow { policy, lostFrames }` | See §10.6.                                                                   |
+| frame too large                    | `FrameTooLarge { sizeBytes, limitBytes }`     | See §9.3.                                                                    |
+| rate limited                       | `RateLimited { retryAfterMs }`                |                                                                              |
+| origin invalid                     | `OriginInvalid`                               | Spoofed `windowId`/`originToken`.                                            |
+| reconnect backfill exhausted       | `ReconnectBackfillExhausted`                  | See §9.7.                                                                    |
+| handler panicked                   | `PanicInNativeCode` (Rust) / `Internal` (JS)  | Logged with backtrace.                                                       |
 
 Every failure mode must have a typed error, an entry in Appendix C, and a test.
 
@@ -2019,15 +2001,14 @@ Every failure mode must have a typed error, an entry in Appendix C, and a test.
 
 Error tags are owned by the subsystem that first detects the failure:
 
-| Registry | Tags |
-|---|---|
-| Host protocol | `FileNotFound`, `PermissionDenied`, `Timeout`, `Cancelled`, `Unsupported`, `InvalidArgument`, `ResourceBusy`, `DiskFull`, `RateLimited`, `FrameTooLarge`, `OriginInvalid`, `PanicInNativeCode`, `NetworkError`, `NotFound`, `AlreadyExists`, `InvalidState`, `SymlinkEscapesRoot`, `Internal` |
-| Bridge/runtime | `RuntimeUnavailable`, `HostUnavailable`, `RendererDisconnected`, `RuntimeRestarted`, `StaleHandle`, `CrossScopeHandle`, `MethodNotFound`, `InvalidOutput`, `PermissionRevoked`, `StreamClosed`, `BinaryDecodeError`, `BackpressureOverflow`, `ReconnectBackfillExhausted` |
-| Updater | `UpdateDowngradeRefused`, `UpdateDownloadTruncated`, `UpdateStaleNotarization` |
-| Storage/runtime primitives | `EventLogFull`, `SettingsMigrationFailed`, `SettingsRecoveredFromBackup`, `EventLogSegmentCorrupt`, `PtyForceKillTimeout` |
+| Registry                   | Tags                                                                                                                                                                                                                                                                                          |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Host protocol              | `FileNotFound`, `PermissionDenied`, `Timeout`, `Cancelled`, `Unsupported`, `InvalidArgument`, `ResourceBusy`, `DiskFull`, `RateLimited`, `FrameTooLarge`, `OriginInvalid`, `PanicInNativeCode`, `NetworkError`, `NotFound`, `AlreadyExists`, `InvalidState`, `SymlinkEscapesRoot`, `Internal` |
+| Bridge/runtime             | `RuntimeUnavailable`, `HostUnavailable`, `RendererDisconnected`, `RuntimeRestarted`, `StaleHandle`, `CrossScopeHandle`, `MethodNotFound`, `InvalidOutput`, `PermissionRevoked`, `StreamClosed`, `BinaryDecodeError`, `BackpressureOverflow`, `ReconnectBackfillExhausted`                     |
+| Updater                    | `UpdateDowngradeRefused`, `UpdateDownloadTruncated`, `UpdateStaleNotarization`                                                                                                                                                                                                                |
+| Storage/runtime primitives | `EventLogFull`, `SettingsMigrationFailed`, `SettingsRecoveredFromBackup`, `EventLogSegmentCorrupt`, `PtyForceKillTimeout`                                                                                                                                                                     |
 
 All registries map to `DesktopError` before crossing to renderer code. Rust serializes only `HostProtocolError`; TypeScript services translate subsystem-local errors into renderer-facing `Desktop.Errors.*`.
-
 
 \newpage
 
@@ -2068,6 +2049,7 @@ Sizes, positions, and bounds returned or accepted by §11 primitives are in **lo
 - `App.onOpenFile` — file association open event.
 - `App.onOpenUrl` — custom URL scheme open event.
 - `App.onBeforeQuit`
+
 ### Required implementation details
 
 - Public TypeScript API is exposed as an Effect service.
@@ -2124,6 +2106,7 @@ Sizes, positions, and bounds returned or accepted by §11 primitives are in **lo
 - `Window.getScaleFactor` — returns the current device pixel ratio (`1.0`, `1.5`, `2.0`, etc.).
 - `Window.onScaleChanged` — fires when a window moves between displays with different scale factors.
 - `Window.persistState`
+
 ### Required implementation details
 
 - Public TypeScript API is exposed as an Effect service.
@@ -2177,17 +2160,18 @@ Sizes, positions, and bounds returned or accepted by §11 primitives are in **lo
 
 WebViews back onto WebKit (macOS), WebView2 (Windows), and WebKitGTK (Linux). Their feature surfaces diverge. The framework exposes capability flags so apps can branch:
 
-| Capability | macOS WKWebView | Windows WebView2 | Linux WebKitGTK |
-|---|---|---|---|
-| `print` (window.print) | partial(no header/footer) | ✓ | partial |
-| `popup blocking` | ✓ | ✓ | partial |
-| `autofill` | ✓ | ✓ | unsupported |
-| `devtools open` | dev-only | ✓ | dev-only |
-| `getUserMedia` | ✓ (with permission) | ✓ | partial(distro-dep) |
-| `service workers in app:` | partial | ✓ | partial |
-| `PDF embedded viewer` | ✓ | ✓ | unsupported |
+| Capability                | macOS WKWebView           | Windows WebView2 | Linux WebKitGTK     |
+| ------------------------- | ------------------------- | ---------------- | ------------------- |
+| `print` (window.print)    | partial(no header/footer) | ✓                | partial             |
+| `popup blocking`          | ✓                         | ✓                | partial             |
+| `autofill`                | ✓                         | ✓                | unsupported         |
+| `devtools open`           | dev-only                  | ✓                | dev-only            |
+| `getUserMedia`            | ✓ (with permission)       | ✓                | partial(distro-dep) |
+| `service workers in app:` | partial                   | ✓                | partial             |
+| `PDF embedded viewer`     | ✓                         | ✓                | unsupported         |
 
 Apps detect capability at runtime via `WebView.capability(name): boolean`. The §14.6 production checker fails on contracts that require a non-✓ capability without a guard.
+
 ### Required implementation details
 
 - Public TypeScript API is exposed as an Effect service.
@@ -2231,6 +2215,7 @@ Apps detect capability at runtime via `WebView.capability(name): boolean`. The �
 - `Menu.setWindowMenu`
 - `Menu.clear`
 - `Menu.bindCommand`
+
 ### Required implementation details
 
 - Public TypeScript API is exposed as an Effect service.
@@ -2273,6 +2258,7 @@ Apps detect capability at runtime via `WebView.capability(name): boolean`. The �
 - `ContextMenu.show`
 - `ContextMenu.buildFromTemplate`
 - `ContextMenu.bindCommand`
+
 ### Required implementation details
 
 - Public TypeScript API is exposed as an Effect service.
@@ -2317,6 +2303,7 @@ Apps detect capability at runtime via `WebView.capability(name): boolean`. The �
 - `Tray.setTooltip`
 - `Tray.setMenu`
 - `Tray.destroy`
+
 ### Required implementation details
 
 - Public TypeScript API is exposed as an Effect service.
@@ -2361,6 +2348,7 @@ Apps detect capability at runtime via `WebView.capability(name): boolean`. The �
 - `Dialog.saveFile`
 - `Dialog.message`
 - `Dialog.confirm`
+
 ### Required implementation details
 
 - Public TypeScript API is exposed as an Effect service.
@@ -2405,6 +2393,7 @@ Apps detect capability at runtime via `WebView.capability(name): boolean`. The �
 - `Clipboard.readImage`
 - `Clipboard.writeImage`
 - `Clipboard.clear`
+
 ### Required implementation details
 
 - Public TypeScript API is exposed as an Effect service.
@@ -2454,13 +2443,14 @@ Apps detect capability at runtime via `WebView.capability(name): boolean`. The �
 
 ### Per-platform permission flow
 
-| Platform | Default state | Required action |
-|---|---|---|
-| macOS | `default` | App must call `requestPermission()` once; result is recorded by the OS. Re-prompting requires the user to clear notification settings manually. |
-| Windows | `granted` for signed apps; `denied` for unsigned/sideloaded | No prompt. Apps must check status and degrade gracefully if `denied`. |
-| Linux | `granted` if a notification daemon is running; `denied` otherwise | Apps must check `isSupported()` per call. |
+| Platform | Default state                                                     | Required action                                                                                                                                 |
+| -------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS    | `default`                                                         | App must call `requestPermission()` once; result is recorded by the OS. Re-prompting requires the user to clear notification settings manually. |
+| Windows  | `granted` for signed apps; `denied` for unsigned/sideloaded       | No prompt. Apps must check status and degrade gracefully if `denied`.                                                                           |
+| Linux    | `granted` if a notification daemon is running; `denied` otherwise | Apps must check `isSupported()` per call.                                                                                                       |
 
 `Notification.show` returns `PermissionDenied` when permission is missing rather than silently failing. Notification action callbacks deliver via `targeted(ownerWindowId)` per §8.8.
+
 ### Required implementation details
 
 - Public TypeScript API is exposed as an Effect service.
@@ -2511,6 +2501,7 @@ Apps detect capability at runtime via `WebView.capability(name): boolean`. The �
 - always use the **exec** form with discrete `argv` arrays, never a single shell-string;
 - reject `argv[0]` values that contain shell metacharacters (`;`, `|`, `&`, `>`, `<`, backtick, `$(`, newline) with `InvalidArgument`;
 - never pass user input through `cmd.exe /C` or `/bin/sh -c` unless `shell: true` is explicitly set, which itself requires a capability declaration.
+
 ### Required implementation details
 
 - Public TypeScript API is exposed as an Effect service.
@@ -2553,6 +2544,7 @@ Apps detect capability at runtime via `WebView.capability(name): boolean`. The �
 - `Screen.getDisplays`
 - `Screen.getPrimaryDisplay`
 - `Screen.getPointerPoint`
+
 ### Required implementation details
 
 - Public TypeScript API is exposed as an Effect service.
@@ -2601,6 +2593,7 @@ Apps detect capability at runtime via `WebView.capability(name): boolean`. The �
 ### Wayland note
 
 On Linux Wayland sessions without the `org.freedesktop.portal.GlobalShortcuts` portal, `register` returns `Unsupported { reason: "wayland-no-global-shortcut" }`. Apps must call `isSupported()` first and surface in-app alternatives (e.g., per-window accelerators) when the global shortcut path is unavailable. X11 sessions and macOS/Windows are unaffected. Shortcut callbacks deliver via `targeted(registrarWindowId)` per §8.8.
+
 ### Required implementation details
 
 - Public TypeScript API is exposed as an Effect service.
@@ -2644,6 +2637,7 @@ On Linux Wayland sessions without the `org.freedesktop.portal.GlobalShortcuts` p
 - `Protocol.serveAsset`
 - `Protocol.serveRoute`
 - `Protocol.deny`
+
 ### Required implementation details
 
 - Public TypeScript API is exposed as an Effect service.
@@ -2688,6 +2682,7 @@ On Linux Wayland sessions without the `org.freedesktop.portal.GlobalShortcuts` p
 - `SafeStorage.delete`
 - `SafeStorage.list`
 - `SafeStorage.isAvailable`
+
 ### Required implementation details
 
 - Public TypeScript API is exposed as an Effect service.
@@ -2733,6 +2728,7 @@ On Linux Wayland sessions without the `org.freedesktop.portal.GlobalShortcuts` p
 - `Path.temp`
 - `Path.home`
 - `Path.downloads`
+
 ### Required implementation details
 
 - Public TypeScript API is exposed as an Effect service.
@@ -2777,6 +2773,7 @@ On Linux Wayland sessions without the `org.freedesktop.portal.GlobalShortcuts` p
 - `Updater.install`
 - `Updater.installAndRestart`
 - `Updater.getStatus`
+
 ### Required implementation details
 
 - Public TypeScript API is exposed as an Effect service.
@@ -2820,6 +2817,7 @@ On Linux Wayland sessions without the `org.freedesktop.portal.GlobalShortcuts` p
 - `CrashReporter.recordBreadcrumb`
 - `CrashReporter.flush`
 - `CrashReporter.setUploadHandler`
+
 ### Required implementation details
 
 - Public TypeScript API is exposed as an Effect service.
@@ -2863,6 +2861,7 @@ On Linux Wayland sessions without the `org.freedesktop.portal.GlobalShortcuts` p
 - `PowerMonitor.onResume`
 - `PowerMonitor.onShutdown`
 - `PowerMonitor.onPowerSourceChanged`
+
 ### Required implementation details
 
 - Public TypeScript API is exposed as an Effect service.
@@ -2963,7 +2962,6 @@ On Linux Wayland sessions without the `org.freedesktop.portal.GlobalShortcuts` p
 - Failure modes.
 - Example usage.
 - Testing strategy.
-
 
 \newpage
 
@@ -3550,7 +3548,6 @@ runtime databases, migrations, transactions, app stores, and workspace stores.
 - relationship to `Settings` (separate file, separate schema);
 - testing strategy (how to assert restored state).
 
-
 \newpage
 
 # 13. Resource Model
@@ -3577,10 +3574,7 @@ Every resource must have:
 ```ts
 import type { Effect, Stream, Sink } from "effect"
 
-type DesktopResourceHandle<
-  Kind extends ResourceKind,
-  State extends string
-> = {
+type DesktopResourceHandle<Kind extends ResourceKind, State extends string> = {
   readonly kind: Kind
   readonly id: UUIDv7
   readonly generation: number
@@ -3666,7 +3660,7 @@ The registry powers devtools, tests, leak detection, shutdown behavior, and debu
 The test harness must support leak assertions:
 
 ```ts
-yield* Desktop.Test.assertNoOpenResources()
+yield * Desktop.Test.assertNoOpenResources()
 ```
 
 Leak checks must fail if windows, WebViews, processes, PTYs, file watchers, workers, database handles, or streams remain open at test end.
@@ -3696,7 +3690,6 @@ type StaleHandle = {
 Renderer-side helpers in `@effect-desktop/react` automatically discard handles after observing the resource's `Closed` event so user code never re-presents a stale handle. User code that has cached a handle past its `Closed` event observes `StaleHandle` on the next call and is expected to re-acquire.
 
 `generation` is bumped only when the resource kind opts in to `id` reuse (e.g., for resumable streams declared `idempotent: true`). For most kinds (windows, processes, PTYs) the `id` is consumed permanently on disposal and any future use returns `StaleHandle` with `actualGeneration = -1`.
-
 
 \newpage
 
@@ -3866,7 +3859,7 @@ Approval outcomes:
 
 Identical requests collapse into a single prompt:
 
-- two requests are *identical* when `(operation, actor, resource)` matches;
+- two requests are _identical_ when `(operation, actor, resource)` matches;
 - while a prompt is open for an identical key, new arrivals attach as additional waiters;
 - the user's outcome applies to **all** waiting callers atomically;
 - a `denied for scope` outcome prevents future identical requests within the scope without re-prompting.
@@ -4005,7 +3998,6 @@ The filter scans structured field names (and nested keys in `unknown` payloads) 
 
 Apps may extend the pattern via `security.redaction.additionalPatterns` and may opt specific known-safe fields out via `security.redaction.allowlist: string[]`. The §14.6 production checker fails on configurations that disable the default pattern.
 
-
 \newpage
 
 # 15. CLI Specification
@@ -4139,7 +4131,6 @@ The doctor command must inspect:
 - CI mode must disable interactive prompts.
 - Production commands must fail safely.
 
-
 \newpage
 
 # 16. Configuration Specification
@@ -4150,32 +4141,32 @@ The default config file is `desktop.config.ts`. The full schema covers app metad
 
 Normative schema fields:
 
-| Field | Required | Default | Notes |
-|---|---:|---|---|
-| `app.id` | yes | none | Reverse-DNS ASCII ID; used for bundle ID and storage namespaces. |
-| `app.name` | yes | none | Human display name. |
-| `app.version` | yes | none | SemVer. |
-| `runtime.engine` | no | `"bun"` | Accepts `"bun"` or `"node"`; unsupported engines fail before build steps run. |
-| `runtime.entry` | yes | none | Existing TypeScript entrypoint. |
-| `renderer.framework` | no | `"react"` | Templates document React. |
-| `renderer.styling` | no | `"tailwind"` | Templates document Tailwind. |
-| `renderer.entry` | yes | none | Existing renderer entrypoint. |
-| `native.host` | no | `"rust-wry-tao"` | v1 accepts only this value. |
-| `native.renderer` | no | `"system-webview"` | v1 accepts only this value. |
-| `windows.defaults` | no | platform defaults | Merged into every window declaration. |
-| `security.requireTypedBridge` | no | `true` | `false` fails production check. |
-| `security.rendererNativeAccess` | no | `false` | `true` fails production check. |
-| `security.requirePermissions` | no | `true` | `false` fails production check. |
-| `security.externalNavigation` | no | `"deny"` | `"ask"` routes through approval broker. |
-| `security.devtoolsInProd` | no | `false` | Also requires launch flag. |
-| `protocols` | no | `[]` | Custom URL schemes. |
-| `build.targets` | no | current host target | `--all-targets` expands to required v1 cells. |
-| `signing` | no | `{}` | Required only for sign/notarize/publish release commands. |
-| `update` | no | `undefined` | Required only for updater/publish flows. |
-| `telemetry.enabled` | no | `true` | Production cannot disable tracing. |
-| `protocol.limits` | no | §9.3 limits | Values above §9.3 caps fail validation. |
-| `env` | no | `{}` | Profile-specific environment map. |
-| `workspace.sharedConfigPath` | no | `undefined` | Loaded before app-local config. |
+| Field                           | Required | Default             | Notes                                                                         |
+| ------------------------------- | -------: | ------------------- | ----------------------------------------------------------------------------- |
+| `app.id`                        |      yes | none                | Reverse-DNS ASCII ID; used for bundle ID and storage namespaces.              |
+| `app.name`                      |      yes | none                | Human display name.                                                           |
+| `app.version`                   |      yes | none                | SemVer.                                                                       |
+| `runtime.engine`                |       no | `"bun"`             | Accepts `"bun"` or `"node"`; unsupported engines fail before build steps run. |
+| `runtime.entry`                 |      yes | none                | Existing TypeScript entrypoint.                                               |
+| `renderer.framework`            |       no | `"react"`           | Templates document React.                                                     |
+| `renderer.styling`              |       no | `"tailwind"`        | Templates document Tailwind.                                                  |
+| `renderer.entry`                |      yes | none                | Existing renderer entrypoint.                                                 |
+| `native.host`                   |       no | `"rust-wry-tao"`    | v1 accepts only this value.                                                   |
+| `native.renderer`               |       no | `"system-webview"`  | v1 accepts only this value.                                                   |
+| `windows.defaults`              |       no | platform defaults   | Merged into every window declaration.                                         |
+| `security.requireTypedBridge`   |       no | `true`              | `false` fails production check.                                               |
+| `security.rendererNativeAccess` |       no | `false`             | `true` fails production check.                                                |
+| `security.requirePermissions`   |       no | `true`              | `false` fails production check.                                               |
+| `security.externalNavigation`   |       no | `"deny"`            | `"ask"` routes through approval broker.                                       |
+| `security.devtoolsInProd`       |       no | `false`             | Also requires launch flag.                                                    |
+| `protocols`                     |       no | `[]`                | Custom URL schemes.                                                           |
+| `build.targets`                 |       no | current host target | `--all-targets` expands to required v1 cells.                                 |
+| `signing`                       |       no | `{}`                | Required only for sign/notarize/publish release commands.                     |
+| `update`                        |       no | `undefined`         | Required only for updater/publish flows.                                      |
+| `telemetry.enabled`             |       no | `true`              | Production cannot disable tracing.                                            |
+| `protocol.limits`               |       no | §9.3 limits         | Values above §9.3 caps fail validation.                                       |
+| `env`                           |       no | `{}`                | Profile-specific environment map.                                             |
+| `workspace.sharedConfigPath`    |       no | `undefined`         | Loaded before app-local config.                                               |
 
 Profile merge order is fixed: framework defaults → shared config → app config → selected `env[profile]` → explicit CLI flags. Arrays replace by default; `protocols`, `build.targets`, and redaction patterns may opt into append semantics by using `merge: "append"` in the shared config helper.
 
@@ -4207,9 +4198,9 @@ export default defineDesktopConfig({
 
   windows: {
     defaults: {
-      titleBarStyle: "default",          // "default" | "hidden" | "hiddenInset" | "customButtonsOnHover"
-      vibrancy: null,                     // macOS only; null disables
-      trafficLights: { x: 12, y: 12 },    // macOS only
+      titleBarStyle: "default", // "default" | "hidden" | "hiddenInset" | "customButtonsOnHover"
+      vibrancy: null, // macOS only; null disables
+      trafficLights: { x: 12, y: 12 }, // macOS only
       hasShadow: true,
       backgroundColor: "#ffffff"
     }
@@ -4219,8 +4210,8 @@ export default defineDesktopConfig({
     requireTypedBridge: true,
     rendererNativeAccess: false,
     requirePermissions: true,
-    csp: undefined,                      // optional override of §14.7 defaults
-    externalNavigation: "deny",          // "deny" | "ask"
+    csp: undefined, // optional override of §14.7 defaults
+    externalNavigation: "deny", // "deny" | "ask"
     devtoolsInProd: false,
     redaction: {
       additionalPatterns: [],
@@ -4231,7 +4222,7 @@ export default defineDesktopConfig({
   protocols: [
     {
       scheme: "myapp",
-      handler: "open"                    // "open" | "view" — see §11.1 App.registerProtocol
+      handler: "open" // "open" | "view" — see §11.1 App.registerProtocol
     }
   ],
 
@@ -4253,21 +4244,21 @@ export default defineDesktopConfig({
       entitlements: "build/macos-entitlements.plist"
     },
     windows: {
-      thumbprint: "a1b2c3d4...",          // or pfx: { path, passwordEnv }
+      thumbprint: "a1b2c3d4...", // or pfx: { path, passwordEnv }
       timestampUrl: "http://timestamp.digicert.com"
     },
     linux: {
-      gpgKey: "ABCD1234"                  // optional: AppImage/Snap signing
+      gpgKey: "ABCD1234" // optional: AppImage/Snap signing
     }
   },
 
   update: {
-    channel: "stable",                    // "stable" | "beta" | "canary"
+    channel: "stable", // "stable" | "beta" | "canary"
     publicKey: "ed25519:...",
-    minVersion: "1.0.0",                  // optional downgrade floor
-    maxVersion: undefined,                // optional ceiling
+    minVersion: "1.0.0", // optional downgrade floor
+    maxVersion: undefined, // optional ceiling
     feedUrl: "https://updates.example.dev/{platform}/{channel}.json",
-    keyVersion: 2                          // current trust-anchor version
+    keyVersion: 2 // current trust-anchor version
   },
 
   telemetry: {
@@ -4351,7 +4342,6 @@ The resolved config must produce:
 
 Every manifest is JSON-serializable, deterministic for the same inputs, and redacted before logging. `bun desktop info --json` prints the same resolved manifests with secrets replaced by Effect redacted string formatting.
 
-
 \newpage
 
 # 17. Apps and External Examples
@@ -4367,7 +4357,6 @@ Templates, examples, playground apps, and scaffold packages are not current repo
 ## 17.3 Future example rules
 
 Future examples are validation assets. They must not become product demos with app-specific public APIs. If an example needs a concept that is not generic, implement it inside the example application only.
-
 
 \newpage
 
@@ -4450,14 +4439,8 @@ export const ProjectList = Rpc.make("project.list", {
 export const ProjectOpen = Rpc.make("project.open", {
   payload: Schema.Struct({ path: Schema.String }),
   success: Project,
-  error: Schema.Union(
-    Desktop.Errors.PermissionDenied,
-    Desktop.Errors.FileNotFound
-  )
-}).pipe(
-  Desktop.RpcEndpoint.mutation,
-  Desktop.RpcCapability({ kind: "project:open" })
-)
+  error: Schema.Union(Desktop.Errors.PermissionDenied, Desktop.Errors.FileNotFound)
+}).pipe(Desktop.RpcEndpoint.mutation, Desktop.RpcCapability({ kind: "project:open" }))
 
 export const ProjectRpcs = RpcGroup.make(ProjectList, ProjectOpen)
 ```
@@ -4505,23 +4488,20 @@ For services that are not bound to a public bridge contract — internal stores,
 ```ts
 import { Context, Effect, Ref } from "effect"
 
-export class ProjectStore extends Context.Service<ProjectStore, ProjectStoreApi>()(
-  "ProjectStore",
-  {
-    make: Effect.gen(function* () {
-      const ref = yield* Ref.make<ReadonlyArray<Project>>([])
-      return {
-        list: () => Ref.get(ref),
-        open: (path: string) =>
-          Effect.gen(function* () {
-            const projects = yield* Ref.get(ref)
-            const found = projects.find((p) => p.path === path)
-            return found ?? (yield* Effect.fail(new ProjectNotFound({ path })))
-          })
-      }
-    })
-  }
-) {}
+export class ProjectStore extends Context.Service<ProjectStore, ProjectStoreApi>()("ProjectStore", {
+  make: Effect.gen(function* () {
+    const ref = yield* Ref.make<ReadonlyArray<Project>>([])
+    return {
+      list: () => Ref.get(ref),
+      open: (path: string) =>
+        Effect.gen(function* () {
+          const projects = yield* Ref.get(ref)
+          const found = projects.find((p) => p.path === path)
+          return found ?? (yield* Effect.fail(new ProjectNotFound({ path })))
+        })
+    }
+  })
+}) {}
 
 // Provided automatically:
 //   ProjectStore.Default : Layer.Layer<ProjectStore, never, never>
@@ -4570,32 +4550,31 @@ This matrix is normative and supersedes Appendix B sketches. Each method listed 
 
 Shared schema names:
 
-| Schema | Shape |
-|---|---|
-| `VoidInput` | `Schema.Void` |
-| `WindowId` | stable string ID declared by app config or returned by `Window.create` |
-| `ResourceHandle<Kind>` | `{ kind, id: UUIDv7, generation, ownerScope, state }` |
-| `LogicalSize` | `{ width: PositiveInt, height: PositiveInt }` |
-| `LogicalPoint` | `{ x: number, y: number }` |
-| `Bounds` | `{ x, y, width, height }` in logical pixels |
-| `PermissionState` | `"granted" | "denied" | "default"` |
-| `MenuTemplate` | serializable nested menu item data with command IDs only |
-| `ProcessSpec` | `{ command, args, cwd?, env?, shell?: false }` unless explicitly permissioned |
-| `UpdateManifest` | §23.4 manifest shape |
+| Schema                 | Shape                                                                         |
+| ---------------------- | ----------------------------------------------------------------------------- | -------- | ---------- |
+| `VoidInput`            | `Schema.Void`                                                                 |
+| `WindowId`             | stable string ID declared by app config or returned by `Window.create`        |
+| `ResourceHandle<Kind>` | `{ kind, id: UUIDv7, generation, ownerScope, state }`                         |
+| `LogicalSize`          | `{ width: PositiveInt, height: PositiveInt }`                                 |
+| `LogicalPoint`         | `{ x: number, y: number }`                                                    |
+| `Bounds`               | `{ x, y, width, height }` in logical pixels                                   |
+| `PermissionState`      | `"granted"                                                                    | "denied" | "default"` |
+| `MenuTemplate`         | serializable nested menu item data with command IDs only                      |
+| `ProcessSpec`          | `{ command, args, cwd?, env?, shell?: false }` unless explicitly permissioned |
+| `UpdateManifest`       | §23.4 manifest shape                                                          |
 
 Contract rows use this compact form:
 
-| Method group | Required contract rows |
-|---|---|
-| `App` | `getInfo(VoidInput -> AppInfo; errors: Internal; capability: none; resource: none; C.80)`, `getCommandLine(VoidInput -> CommandLine; errors: Internal; capability: none; C.80)`, `quit(QuitInput -> void; errors: Cancelled/Internal; capability: native.invoke:App.quit; C.80)`, `restart(RestartInput -> void; errors: Cancelled/Internal; capability: native.invoke:App.restart; C.80)`, `requestSingleInstanceLock(VoidInput -> SingleInstanceResult; errors: ResourceBusy/Internal; capability: none; C.63)`, `setOpenAtLogin(OpenAtLoginInput -> void; errors: PermissionDenied/Unsupported/Internal; capability: native.invoke:App.setOpenAtLogin; C.81)`, `registerProtocol(ProtocolInput -> void; errors: PermissionDenied/Unsupported/AlreadyExists/Internal; capability: native.invoke:App.registerProtocol; C.82)`, event subscriptions return streams scoped to app or window and emit `RendererDisconnected` on owner close. |
-| `Window` | creation returns `ResourceHandle<"Window">`; mutators accept `{ windowId, ... }`; geometry uses `LogicalSize`, `LogicalPoint`, or `Bounds`; common errors are `InvalidArgument`, `Unsupported`, `StaleHandle`, `CrossScopeHandle`, `Internal`; capability is `native.invoke:Window.<method>`; verification rows are C.23, C.62, C.76, and C.83. |
-| `WebView` | creation returns `ResourceHandle<"WebView">`; navigation inputs include `url` or app route plus `NavigationPolicy`; common errors are `PermissionDenied`, `OriginInvalid`, `Unsupported`, `StaleHandle`, `Internal`; capability is `native.invoke:WebView.<method>`; verification rows are C.34, C.39, C.40, C.50, and C.84. |
-| `Menu`, `ContextMenu`, `Tray` | inputs are `MenuTemplate`, command IDs, icon asset URLs, or window/resource handles; outputs are void or resource handles; errors include `InvalidArgument`, `MethodNotFound`, `Unsupported`, `StaleHandle`, `Internal`; capability is `native.invoke:<Primitive>.<method>`; verification rows are C.21, C.22, C.85. |
-| `Dialog`, `Clipboard`, `Notification`, `Shell`, `Screen`, `GlobalShortcut`, `Protocol`, `SafeStorage`, `Path`, `Updater`, `CrashReporter`, `PowerMonitor`, `SystemAppearance`, `Dock` | every method must define schema files under `packages/native/src/contracts/<primitive>.ts`; error sets must include every Appendix K `error(...)` tag; capability must be either `native.invoke:<Primitive>.<method>` or a narrower normalized capability from §14.3; verification rows are C.21-C.26 plus the specific C.50-C.79 row where applicable. |
-| Runtime primitives in §12 | every service method must define schema files under `packages/core/src/contracts/<primitive>.ts`; resource-producing methods return `ResourceHandle`; stream-producing methods declare backpressure; dangerous operations use normalized capabilities; verification rows are C.27-C.33, C.56-C.67, C.74-C.76, and C.86. |
+| Method group                                                                                                                                                                          | Required contract rows                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `App`                                                                                                                                                                                 | `getInfo(VoidInput -> AppInfo; errors: Internal; capability: none; resource: none; C.80)`, `getCommandLine(VoidInput -> CommandLine; errors: Internal; capability: none; C.80)`, `quit(QuitInput -> void; errors: Cancelled/Internal; capability: native.invoke:App.quit; C.80)`, `restart(RestartInput -> void; errors: Cancelled/Internal; capability: native.invoke:App.restart; C.80)`, `requestSingleInstanceLock(VoidInput -> SingleInstanceResult; errors: ResourceBusy/Internal; capability: none; C.63)`, `setOpenAtLogin(OpenAtLoginInput -> void; errors: PermissionDenied/Unsupported/Internal; capability: native.invoke:App.setOpenAtLogin; C.81)`, `registerProtocol(ProtocolInput -> void; errors: PermissionDenied/Unsupported/AlreadyExists/Internal; capability: native.invoke:App.registerProtocol; C.82)`, event subscriptions return streams scoped to app or window and emit `RendererDisconnected` on owner close. |
+| `Window`                                                                                                                                                                              | creation returns `ResourceHandle<"Window">`; mutators accept `{ windowId, ... }`; geometry uses `LogicalSize`, `LogicalPoint`, or `Bounds`; common errors are `InvalidArgument`, `Unsupported`, `StaleHandle`, `CrossScopeHandle`, `Internal`; capability is `native.invoke:Window.<method>`; verification rows are C.23, C.62, C.76, and C.83.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `WebView`                                                                                                                                                                             | creation returns `ResourceHandle<"WebView">`; navigation inputs include `url` or app route plus `NavigationPolicy`; common errors are `PermissionDenied`, `OriginInvalid`, `Unsupported`, `StaleHandle`, `Internal`; capability is `native.invoke:WebView.<method>`; verification rows are C.34, C.39, C.40, C.50, and C.84.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `Menu`, `ContextMenu`, `Tray`                                                                                                                                                         | inputs are `MenuTemplate`, command IDs, icon asset URLs, or window/resource handles; outputs are void or resource handles; errors include `InvalidArgument`, `MethodNotFound`, `Unsupported`, `StaleHandle`, `Internal`; capability is `native.invoke:<Primitive>.<method>`; verification rows are C.21, C.22, C.85.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `Dialog`, `Clipboard`, `Notification`, `Shell`, `Screen`, `GlobalShortcut`, `Protocol`, `SafeStorage`, `Path`, `Updater`, `CrashReporter`, `PowerMonitor`, `SystemAppearance`, `Dock` | every method must define schema files under `packages/native/src/contracts/<primitive>.ts`; error sets must include every Appendix K `error(...)` tag; capability must be either `native.invoke:<Primitive>.<method>` or a narrower normalized capability from §14.3; verification rows are C.21-C.26 plus the specific C.50-C.79 row where applicable.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Runtime primitives in §12                                                                                                                                                             | every service method must define schema files under `packages/core/src/contracts/<primitive>.ts`; resource-producing methods return `ResourceHandle`; stream-producing methods declare backpressure; dangerous operations use normalized capabilities; verification rows are C.27-C.33, C.56-C.67, C.74-C.76, and C.86.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 The implementation must expand these compact rows into concrete TypeScript `Schema.Class` definitions before a method ships. A milestone may introduce only the rows it implements, but it may not expose a method publicly without its row and schemas.
-
 
 \newpage
 
@@ -4658,19 +4637,19 @@ Development mode must support:
 
 ### State preservation contract
 
-| State | Preserved across renderer HMR | Preserved across runtime restart | Preserved across host restart |
-|---|---|---|---|
-| window position / size | ✓ (via `WindowState`, §12.16) | ✓ | ✓ |
-| zoom level | ✓ | ✓ | ✓ |
-| scroll position | ✓ (React Fast Refresh) | ✗ — renderer reload | ✗ |
-| devtools panel selection + scroll | ✓ | ✓ | ✗ |
-| React component state | ✓ (Fast Refresh) | ✗ | ✗ |
-| in-memory Effect service state | n/a (renderer-only HMR) | ✗ | ✗ |
-| open streams | ✓ | ✗ — terminated with `RuntimeRestarted` | ✗ |
-| PTY sessions | ✓ | ✗ — terminated | ✗ |
-| persistent settings (`Settings`) | ✓ | ✓ | ✓ |
-| persistent secrets (`Secrets`) | ✓ | ✓ | ✓ |
-| `EventLog` | ✓ | ✓ | ✓ |
+| State                             | Preserved across renderer HMR | Preserved across runtime restart       | Preserved across host restart |
+| --------------------------------- | ----------------------------- | -------------------------------------- | ----------------------------- |
+| window position / size            | ✓ (via `WindowState`, §12.16) | ✓                                      | ✓                             |
+| zoom level                        | ✓                             | ✓                                      | ✓                             |
+| scroll position                   | ✓ (React Fast Refresh)        | ✗ — renderer reload                    | ✗                             |
+| devtools panel selection + scroll | ✓                             | ✓                                      | ✗                             |
+| React component state             | ✓ (Fast Refresh)              | ✗                                      | ✗                             |
+| in-memory Effect service state    | n/a (renderer-only HMR)       | ✗                                      | ✗                             |
+| open streams                      | ✓                             | ✗ — terminated with `RuntimeRestarted` | ✗                             |
+| PTY sessions                      | ✓                             | ✗ — terminated                         | ✗                             |
+| persistent settings (`Settings`)  | ✓                             | ✓                                      | ✓                             |
+| persistent secrets (`Secrets`)    | ✓                             | ✓                                      | ✓                             |
+| `EventLog`                        | ✓                             | ✓                                      | ✓                             |
 
 During a runtime restart the renderer shows a "Reconnecting…" overlay (per §9.7) and disables user input until the protocol resumes. Host restarts force a full app restart and surface as a top-level error if not initiated by the user.
 
@@ -4704,20 +4683,19 @@ Every typed error returned by a public API must carry the following fields:
 
 ```ts
 type DesktopError = {
-  code: string             // stable identifier (e.g., "DESKTOP_E_PERMISSION_DENIED")
+  code: string // stable identifier (e.g., "DESKTOP_E_PERMISSION_DENIED")
   category: "validation" | "permission" | "io" | "network" | "platform" | "internal"
-  summary: string          // one sentence, no trailing period; suitable for logs
-  details: unknown         // structured context; redacted per §14.10
-  actor: string            // who attempted the action
-  resource?: string        // what was acted on
-  remediation: string      // one line; what the user/dev should do next
-  docsUrl: string          // canonical docs page
+  summary: string // one sentence, no trailing period; suitable for logs
+  details: unknown // structured context; redacted per §14.10
+  actor: string // who attempted the action
+  resource?: string // what was acted on
+  remediation: string // one line; what the user/dev should do next
+  docsUrl: string // canonical docs page
   cause?: unknown
 }
 ```
 
 `bun desktop check` lints public-facing errors against this shape. An error type defined in a public package that omits any of `code`, `category`, `summary`, `actor`, `remediation`, or `docsUrl` is a check failure.
-
 
 \newpage
 
@@ -4853,7 +4831,6 @@ CI green := every required cell green for every gating Appendix C row + every do
 
 The baseline updates only on `main` after a successful release; PRs cannot mutate the baseline.
 
-
 \newpage
 
 # 21. Performance Requirements
@@ -4866,36 +4843,36 @@ The framework should make the fast path the default path. Performance must be me
 
 Development targets:
 
-| Operation | Target |
-|---|---:|
-| CLI config load | < 100ms |
-| native host boot | < 150ms |
-| runtime boot | < 250ms |
+| Operation                 |                      Target |
+| ------------------------- | --------------------------: |
+| CLI config load           |                     < 100ms |
+| native host boot          |                     < 150ms |
+| runtime boot              |                     < 250ms |
 | renderer dev server ready | project-dependent, reported |
-| first window created | < 500ms after runtime ready |
-| bridge ready | < 100ms after runtime ready |
+| first window created      | < 500ms after runtime ready |
+| bridge ready              | < 100ms after runtime ready |
 
 Production targets:
 
-| Operation | Target |
-|---|---:|
-| native host boot | < 100ms |
-| runtime boot | < 200ms |
-| first window visible | < 700ms |
-| initial bridge ready | < 100ms after renderer load |
-| basic app interactive | < 1200ms |
+| Operation             |                      Target |
+| --------------------- | --------------------------: |
+| native host boot      |                     < 100ms |
+| runtime boot          |                     < 200ms |
+| first window visible  |                     < 700ms |
+| initial bridge ready  | < 100ms after renderer load |
+| basic app interactive |                    < 1200ms |
 
 These are framework targets. Example apps must report their own measured values.
 
 ## 21.3 Bridge budgets
 
-| Operation | Target |
-|---|---:|
-| small request/response p50 | < 2ms local overhead |
-| small request/response p95 | < 10ms local overhead |
-| stream subscription setup | < 25ms |
-| cancellation acknowledgment | < 50ms |
-| resource handle disposal | < 100ms for normal resources |
+| Operation                   |                       Target |
+| --------------------------- | ---------------------------: |
+| small request/response p50  |         < 2ms local overhead |
+| small request/response p95  |        < 10ms local overhead |
+| stream subscription setup   |                       < 25ms |
+| cancellation acknowledgment |                       < 50ms |
+| resource handle disposal    | < 100ms for normal resources |
 
 ## 21.4 Resource budgets
 
@@ -4926,19 +4903,19 @@ The framework must report:
 
 ## 21.6 Cold / warm / hot definitions and p99 budgets
 
-| Term | Definition |
-|---|---|
+| Term     | Definition                                                                                                                     |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | **cold** | OS file caches dropped, app data dir freshly created, no prior runtime in the system. Used to measure worst-case first launch. |
-| **warm** | One prior successful run completed within the last 60 minutes; OS caches retain app binary; app data dir is initialized. |
-| **hot** | 10 prior runs completed within the last 60 minutes. Used to capture steady-state startup. |
+| **warm** | One prior successful run completed within the last 60 minutes; OS caches retain app binary; app data dir is initialized.       |
+| **hot**  | 10 prior runs completed within the last 60 minutes. Used to capture steady-state startup.                                      |
 
-| Operation | Cold p50 | Cold p95 | Hot p50 | Hot p95 | p99 ceiling |
-|---|---:|---:|---:|---:|---:|
-| native host boot | < 200ms | < 400ms | < 100ms | < 150ms | < 600ms |
-| runtime boot | < 350ms | < 700ms | < 200ms | < 300ms | < 1200ms |
-| first window visible | < 1100ms | < 1800ms | < 700ms | < 1100ms | < 2500ms |
-| bridge p99 small request/response | — | — | — | — | < 50ms |
-| stream subscription setup p99 | — | — | — | — | < 100ms |
+| Operation                         | Cold p50 | Cold p95 | Hot p50 |  Hot p95 | p99 ceiling |
+| --------------------------------- | -------: | -------: | ------: | -------: | ----------: |
+| native host boot                  |  < 200ms |  < 400ms | < 100ms |  < 150ms |     < 600ms |
+| runtime boot                      |  < 350ms |  < 700ms | < 200ms |  < 300ms |    < 1200ms |
+| first window visible              | < 1100ms | < 1800ms | < 700ms | < 1100ms |    < 2500ms |
+| bridge p99 small request/response |        — |        — |       — |        — |      < 50ms |
+| stream subscription setup p99     |        — |        — |       — |        — |     < 100ms |
 
 CI runs at least cold + hot. Warm is recommended.
 
@@ -4959,7 +4936,6 @@ The required CI hardware labels are:
 - `linux-x64-baseline`: Ubuntu 22.04 or Fedora 40 x64 runner, 8 CPU cores or better.
 
 Before `perf/main.baseline.json` exists, perf checks are report-only and write `perf/candidate.baseline.json` as an artifact. Only a release manager may promote a candidate baseline on `main` after a green release gate.
-
 
 \newpage
 
@@ -5073,7 +5049,6 @@ Devtools is a privileged developer-facing surface. The framework treats it as se
 
 Devtools is the only surface allowed to read the trace ring buffer in real time. The same surface uses redaction, so secrets cannot leak via the trace view.
 
-
 \newpage
 
 # 23. Packaging, Signing, and Updating
@@ -5098,16 +5073,16 @@ v1.0.0 must provide first-party commands for:
 
 v1.0.0 artifact scope is fixed:
 
-| Artifact | v1 status | Packaging mechanism |
-|---|---|---|
-| macOS `.app` | required | first-party bundle staging + `codesign` |
-| macOS `.dmg` | required | `hdiutil create` from staged `.app` |
-| macOS `.zip` | required | `ditto -c -k --keepParent` from staged `.app` |
-| Windows user installer | required | WiX Toolset v5 MSI under per-user install mode |
-| Windows system installer | deferred to v1.1 | ADR required before adding |
-| Linux AppImage | required | `appimagetool` with generated AppRun |
-| Linux `.deb` | required | `dpkg-deb` from staged filesystem tree |
-| Linux `.rpm` | required | `rpmbuild` from generated spec |
+| Artifact                 | v1 status        | Packaging mechanism                            |
+| ------------------------ | ---------------- | ---------------------------------------------- |
+| macOS `.app`             | required         | first-party bundle staging + `codesign`        |
+| macOS `.dmg`             | required         | `hdiutil create` from staged `.app`            |
+| macOS `.zip`             | required         | `ditto -c -k --keepParent` from staged `.app`  |
+| Windows user installer   | required         | WiX Toolset v5 MSI under per-user install mode |
+| Windows system installer | deferred to v1.1 | ADR required before adding                     |
+| Linux AppImage           | required         | `appimagetool` with generated AppRun           |
+| Linux `.deb`             | required         | `dpkg-deb` from staged filesystem tree         |
+| Linux `.rpm`             | required         | `rpmbuild` from generated spec                 |
 
 Artifacts are written under `dist/desktop/<platform>/<artifact-name>` and accompanied by `artifact.json`, `checksums.txt`, and signed SBOM when running release packaging.
 
@@ -5127,15 +5102,15 @@ The framework must support:
 - Codesign every binary in the bundle (host, runtime helper, native libraries).
 - Hardened runtime entitlements:
 
-| Entitlement | Required value | Reason |
-|---|---|---|
-| `com.apple.security.cs.allow-jit` | `true` | Bun runtime requires JIT. |
-| `com.apple.security.allow-dylib-injection` | `false` | Defends against dylib hijacking. |
-| `com.apple.security.cs.allow-unsigned-executable-memory` | `false` | Forbids RWX pages. |
-| `com.apple.security.cs.disable-library-validation` | `false` unless an app explicitly opts in | Forces signed-library-only loading. |
-| `com.apple.security.device.camera` | `true` only when policy declares camera capability | Inferred from §14.3 capability policy. |
-| `com.apple.security.device.microphone` | `true` only when policy declares mic capability | Inferred. |
-| `com.apple.security.network.client` | `true` for apps with outbound network | Inferred from `network` policy. |
+| Entitlement                                              | Required value                                     | Reason                                 |
+| -------------------------------------------------------- | -------------------------------------------------- | -------------------------------------- |
+| `com.apple.security.cs.allow-jit`                        | `true`                                             | Bun runtime requires JIT.              |
+| `com.apple.security.allow-dylib-injection`               | `false`                                            | Defends against dylib hijacking.       |
+| `com.apple.security.cs.allow-unsigned-executable-memory` | `false`                                            | Forbids RWX pages.                     |
+| `com.apple.security.cs.disable-library-validation`       | `false` unless an app explicitly opts in           | Forces signed-library-only loading.    |
+| `com.apple.security.device.camera`                       | `true` only when policy declares camera capability | Inferred from §14.3 capability policy. |
+| `com.apple.security.device.microphone`                   | `true` only when policy declares mic capability    | Inferred.                              |
+| `com.apple.security.network.client`                      | `true` for apps with outbound network              | Inferred from `network` policy.        |
 
 - Submit for notarization with `xcrun notarytool submit ... --wait`; staple the ticket onto every artifact (`stapler staple`); CI fails on a missing staple.
 - Run Gatekeeper assessment in CI: `spctl --assess --type execute --verbose=4 <artifact>` must pass.
@@ -5184,7 +5159,13 @@ type UpdateManifest = {
   minVersion?: string
   maxVersion?: string
   artifacts: Array<{
-    platform: "macos-arm64" | "macos-x64" | "windows-x64" | "linux-x64" | "windows-arm64" | "linux-arm64"
+    platform:
+      | "macos-arm64"
+      | "macos-x64"
+      | "windows-x64"
+      | "linux-x64"
+      | "windows-arm64"
+      | "linux-arm64"
     kind: "app" | "dmg" | "zip" | "msi" | "appimage" | "deb" | "rpm"
     url: string
     sizeBytes: number
@@ -5243,7 +5224,6 @@ Uninstallation must remove every artifact the app placed on the system. The fram
 - file association registrations.
 
 The uninstaller leaves user-created project files alone unless the user explicitly opts in to "remove user data" in the uninstaller UI. CI tests at least one uninstall on every required platform to verify hygiene; the uninstall test fails on any leftover that the helper claims to remove.
-
 
 \newpage
 
@@ -5307,6 +5287,7 @@ The historical phase numbering in §24.1–24.24 is preserved. **Phase 3.5** is 
 - Rust workspace.
 - initial docs.
 - CI skeleton.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -5319,6 +5300,7 @@ The historical phase numbering in §24.1–24.24 is preserved. **Phase 3.5** is 
 - bun install succeeds.
 - bun run check exists.
 - cargo check --workspace succeeds.
+
 ### Required validation
 
 ```bash
@@ -5340,6 +5322,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - WRY/TAO window.
 - app protocol stub.
 - static renderer asset.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -5352,6 +5335,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - native window opens.
 - renderer displays text.
 - host exits cleanly.
+
 ### Required validation
 
 ```bash
@@ -5373,6 +5357,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - host process launcher.
 - ready event.
 - restart in dev.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -5385,6 +5370,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - runtime ready received.
 - runtime crash is detected.
 - host does not crash.
+
 ### Required validation
 
 ```bash
@@ -5406,6 +5392,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - TS protocol types.
 - request response.
 - structured errors.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -5418,6 +5405,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - roundtrip works.
 - unknown method errors.
 - version mismatch fails.
+
 ### Required validation
 
 ```bash
@@ -5479,6 +5467,7 @@ cargo test --workspace
 - contract registry.
 - generated client.
 - generated handler.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -5491,6 +5480,7 @@ cargo test --workspace
 - renderer calls typed API.
 - invalid input fails.
 - typed error crosses bridge.
+
 ### Required validation
 
 ```bash
@@ -5512,6 +5502,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - host methods.
 - window registry.
 - state events.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -5524,6 +5515,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - create/show/close works.
 - window events stream.
 - resource cleanup works.
+
 ### Required validation
 
 ```bash
@@ -5545,6 +5537,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - create package.
 - renderer build.
 - dev HMR.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -5557,6 +5550,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - create command works.
 - dev command opens app.
 - renderer call works.
+
 ### Required validation
 
 ```bash
@@ -5578,6 +5572,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - Clipboard.
 - Shell.
 - Path.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -5590,6 +5585,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - services work.
 - mock tests pass.
 - permissions work.
+
 ### Required validation
 
 ```bash
@@ -5612,6 +5608,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - Tray.
 - Notification.
 - Screen.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -5624,6 +5621,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - services work where supported.
 - platform gaps typed.
 - docs updated.
+
 ### Required validation
 
 ```bash
@@ -5645,6 +5643,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - Scope integration.
 - devtools feed.
 - test assertNoLeaks.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -5657,6 +5656,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - resources listed.
 - scope cleanup.
 - leak tests fail when expected.
+
 ### Required validation
 
 ```bash
@@ -5678,6 +5678,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - cancel messages.
 - backpressure policy.
 - stream tests.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -5690,6 +5691,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - stream values reach renderer.
 - cancel disposes resource.
 - backpressure configured.
+
 ### Required validation
 
 ```bash
@@ -5711,6 +5713,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - watchers.
 - path policies.
 - mock FS.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -5723,6 +5726,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - read/write/watch works.
 - policy denial works.
 - watcher cleanup works.
+
 ### Required validation
 
 ```bash
@@ -5744,6 +5748,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - process handles.
 - stdout/stderr stream.
 - kill tree.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -5756,6 +5761,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - spawn works.
 - streams work.
 - scope cleanup kills process.
+
 ### Required validation
 
 ```bash
@@ -5777,6 +5783,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - PTY service.
 - resize.
 - output stream.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -5790,6 +5797,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - write works.
 - resize works.
 - cleanup works.
+
 ### Required validation
 
 ```bash
@@ -5811,6 +5819,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - Settings.
 - EventLog.
 - migration runner.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -5823,6 +5832,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - migrations run.
 - settings persist.
 - events replay.
+
 ### Required validation
 
 ```bash
@@ -5844,6 +5854,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - Secrets service.
 - mock secrets.
 - audit.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -5856,6 +5867,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - set/get/delete works.
 - renderer cannot direct access.
 - audit emitted.
+
 ### Required validation
 
 ```bash
@@ -5877,6 +5889,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - Capability DSL.
 - ApprovalBroker.
 - production checker.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -5889,6 +5902,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - allow/deny/ask works.
 - devtools shows decision.
 - production checks fail unsafe config.
+
 ### Required validation
 
 ```bash
@@ -5910,6 +5924,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - keyboard shortcuts.
 - global shortcuts.
 - menu bindings.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -5922,6 +5937,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - command invoked.
 - permissions applied.
 - shortcut unregisters.
+
 ### Required validation
 
 ```bash
@@ -5943,6 +5959,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - Job service.
 - worker pool.
 - progress stream.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -5955,6 +5972,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - job starts.
 - job cancels.
 - worker crash handled.
+
 ### Required validation
 
 ```bash
@@ -5978,6 +5996,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - bridge.
 - permissions.
 - performance.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -5990,6 +6009,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - panels display live data.
 - no secrets shown.
 - devtools works after runtime restart.
+
 ### Required validation
 
 ```bash
@@ -6012,6 +6032,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - mock process.
 - headless runtime.
 - example tests.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -6024,6 +6045,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - unit tests use mocks.
 - integration tests run.
 - leak assertions work.
+
 ### Required validation
 
 ```bash
@@ -6045,6 +6067,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - package command.
 - asset staging.
 - app manifest.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -6057,6 +6080,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - packaged app launches.
 - asset loading works.
 - bridge call works.
+
 ### Required validation
 
 ```bash
@@ -6078,6 +6102,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - notarize command.
 - update manifest.
 - signature verification.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -6090,6 +6115,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - signed artifact path works.
 - unsigned update rejected.
 - update check works.
+
 ### Required validation
 
 ```bash
@@ -6111,6 +6137,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - Windows validation.
 - Linux validation.
 - platform docs.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -6123,6 +6150,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - examples pass on all platforms.
 - platform gaps documented.
 - doctor command works.
+
 ### Required validation
 
 ```bash
@@ -6145,6 +6173,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - docs.
 - examples.
 - package publish dry run.
+
 ### Non-goals
 
 - Do not expand public API beyond the milestone.
@@ -6158,6 +6187,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 - examples pass.
 - docs complete.
 - release approved.
+
 ### Required validation
 
 ```bash
@@ -6168,7 +6198,6 @@ cargo test --workspace
 ```
 
 If this milestone touches packaging, native host behavior, security, or production checks, also run the relevant specialized gate from Chapter 20.
-
 
 \newpage
 
@@ -6286,7 +6315,6 @@ The framework's stability contract after v1.0.0 follows semver with desktop-spec
 - **Deprecation cycle.** A method or field marked deprecated remains in the public API for at least three minor releases (≈ one year) with `@deprecated` JSDoc and a runtime warning before removal.
 - **Bridge contract freeze.** Public envelope shapes (§9.3) are frozen between majors; protocol fields may be added (with defaults), never removed or reordered.
 - **Versioning compliance test.** A snapshot of every public API and every Appendix C row is committed at release; CI flags any non-additive change to the snapshot as a release-blocking semver violation.
-
 
 \newpage
 
@@ -6435,7 +6463,6 @@ The framework's stability contract after v1.0.0 follows semver with desktop-spec
 - **Mitigation:** §4.4.1 pins Effect v4 as the baseline; `bun desktop check` rejects `@effect/schema` imports, the `$` adapter form, and two-parameter `Effect.Effect<A, E>` in public type signatures. v4 conformance is a phase-completion gate (§28.3, §28.5) and is verified by C.79.
 - **Owner:** technical lead assigned by milestone.
 - **Review cadence:** every release candidate and after any related incident.
-
 
 \newpage
 
@@ -6628,7 +6655,6 @@ Each ADR must include:
 - Migration notes;
 - Validation requirements.
 
-
 \newpage
 
 # 28. Implementation Agent Operating Instructions
@@ -6724,7 +6750,6 @@ Verification:
 
 A phase whose completion report omits any required Appendix C row, or attaches evidence that does not match the row's stated proof shape, is not "phase complete" — the gate at §20.8 / §20.9 will refuse it.
 
-
 \newpage
 
 # Appendix A. Required File Templates
@@ -6793,7 +6818,6 @@ Proposed | Accepted | Rejected | Superseded
 ## Completion notes
 ```
 
-
 \newpage
 
 # Appendix B. Native Service API Sketches
@@ -6803,18 +6827,15 @@ These sketches are non-normative implementation notes. The normative public cont
 ```ts
 import { Context, Effect, Schema } from "effect"
 
-export class App extends Context.Service<App, AppApi>()(
-  "App",
-  {
-    make: Effect.gen(function* () {
-      // dependencies acquired here
-      return {
-        getInfo: (input: AppGetInfoInput) => Effect.succeed(/* ... */),
-        // ...
-      }
-    })
-  }
-) {}
+export class App extends Context.Service<App, AppApi>()("App", {
+  make: Effect.gen(function* () {
+    // dependencies acquired here
+    return {
+      getInfo: (input: AppGetInfoInput) => Effect.succeed(/* ... */)
+      // ...
+    }
+  })
+}) {}
 ```
 
 The `interface XxxService` form below is shorthand for the method surface the v4 class must provide. `Effect.Effect<A, E, R>` follows the v4 type-parameter order (success, error, requirements). All inputs and outputs must be schema-validated at the bridge boundary.
@@ -6825,7 +6846,6 @@ The `interface XxxService` form below is shorthand for the method surface the v4
 import type { Effect } from "effect"
 
 export interface AppService {
-
   getInfo(input: unknown): Effect.Effect<unknown, DesktopError, never>
   quit(input: unknown): Effect.Effect<unknown, DesktopError, never>
   restart(input: unknown): Effect.Effect<unknown, DesktopError, never>
@@ -6842,7 +6862,6 @@ This sketch is intentionally generic. The real service must replace `unknown` wi
 
 ```ts
 export interface WindowService {
-
   create(input: unknown): Effect.Effect<unknown, DesktopError, never>
   show(input: unknown): Effect.Effect<unknown, DesktopError, never>
   hide(input: unknown): Effect.Effect<unknown, DesktopError, never>
@@ -6863,7 +6882,6 @@ This sketch is intentionally generic. The real service must replace `unknown` wi
 
 ```ts
 export interface WebViewService {
-
   create(input: unknown): Effect.Effect<unknown, DesktopError, never>
   loadRoute(input: unknown): Effect.Effect<unknown, DesktopError, never>
   loadUrl(input: unknown): Effect.Effect<unknown, DesktopError, never>
@@ -6881,7 +6899,6 @@ This sketch is intentionally generic. The real service must replace `unknown` wi
 
 ```ts
 export interface MenuService {
-
   setApplicationMenu(input: unknown): Effect.Effect<unknown, DesktopError, never>
   setWindowMenu(input: unknown): Effect.Effect<unknown, DesktopError, never>
   clear(input: unknown): Effect.Effect<unknown, DesktopError, never>
@@ -6895,7 +6912,6 @@ This sketch is intentionally generic. The real service must replace `unknown` wi
 
 ```ts
 export interface ContextMenuService {
-
   show(input: unknown): Effect.Effect<unknown, DesktopError, never>
   buildFromTemplate(input: unknown): Effect.Effect<unknown, DesktopError, never>
   bindCommand(input: unknown): Effect.Effect<unknown, DesktopError, never>
@@ -6908,7 +6924,6 @@ This sketch is intentionally generic. The real service must replace `unknown` wi
 
 ```ts
 export interface TrayService {
-
   create(input: unknown): Effect.Effect<unknown, DesktopError, never>
   setIcon(input: unknown): Effect.Effect<unknown, DesktopError, never>
   setTooltip(input: unknown): Effect.Effect<unknown, DesktopError, never>
@@ -6923,7 +6938,6 @@ This sketch is intentionally generic. The real service must replace `unknown` wi
 
 ```ts
 export interface DialogService {
-
   openFile(input: unknown): Effect.Effect<unknown, DesktopError, never>
   openDirectory(input: unknown): Effect.Effect<unknown, DesktopError, never>
   saveFile(input: unknown): Effect.Effect<unknown, DesktopError, never>
@@ -6938,7 +6952,6 @@ This sketch is intentionally generic. The real service must replace `unknown` wi
 
 ```ts
 export interface ClipboardService {
-
   readText(input: unknown): Effect.Effect<unknown, DesktopError, never>
   writeText(input: unknown): Effect.Effect<unknown, DesktopError, never>
   readImage(input: unknown): Effect.Effect<unknown, DesktopError, never>
@@ -6953,7 +6966,6 @@ This sketch is intentionally generic. The real service must replace `unknown` wi
 
 ```ts
 export interface NotificationService {
-
   show(input: unknown): Effect.Effect<unknown, DesktopError, never>
   close(input: unknown): Effect.Effect<unknown, DesktopError, never>
   onClick(input: unknown): Effect.Effect<unknown, DesktopError, never>
@@ -6967,7 +6979,6 @@ This sketch is intentionally generic. The real service must replace `unknown` wi
 
 ```ts
 export interface ShellService {
-
   openExternal(input: unknown): Effect.Effect<unknown, DesktopError, never>
   showItemInFolder(input: unknown): Effect.Effect<unknown, DesktopError, never>
   openPath(input: unknown): Effect.Effect<unknown, DesktopError, never>
@@ -6980,7 +6991,6 @@ This sketch is intentionally generic. The real service must replace `unknown` wi
 
 ```ts
 export interface ScreenService {
-
   getDisplays(input: unknown): Effect.Effect<unknown, DesktopError, never>
   getPrimaryDisplay(input: unknown): Effect.Effect<unknown, DesktopError, never>
   getPointerPoint(input: unknown): Effect.Effect<unknown, DesktopError, never>
@@ -6993,7 +7003,6 @@ This sketch is intentionally generic. The real service must replace `unknown` wi
 
 ```ts
 export interface GlobalShortcutService {
-
   register(input: unknown): Effect.Effect<unknown, DesktopError, never>
   unregister(input: unknown): Effect.Effect<unknown, DesktopError, never>
   unregisterAll(input: unknown): Effect.Effect<unknown, DesktopError, never>
@@ -7007,7 +7016,6 @@ This sketch is intentionally generic. The real service must replace `unknown` wi
 
 ```ts
 export interface ProtocolService {
-
   registerAppProtocol(input: unknown): Effect.Effect<unknown, DesktopError, never>
   serveAsset(input: unknown): Effect.Effect<unknown, DesktopError, never>
   serveRoute(input: unknown): Effect.Effect<unknown, DesktopError, never>
@@ -7021,7 +7029,6 @@ This sketch is intentionally generic. The real service must replace `unknown` wi
 
 ```ts
 export interface SafeStorageService {
-
   set(input: unknown): Effect.Effect<unknown, DesktopError, never>
   get(input: unknown): Effect.Effect<unknown, DesktopError, never>
   delete(input: unknown): Effect.Effect<unknown, DesktopError, never>
@@ -7036,7 +7043,6 @@ This sketch is intentionally generic. The real service must replace `unknown` wi
 
 ```ts
 export interface PathService {
-
   appData(input: unknown): Effect.Effect<unknown, DesktopError, never>
   cache(input: unknown): Effect.Effect<unknown, DesktopError, never>
   logs(input: unknown): Effect.Effect<unknown, DesktopError, never>
@@ -7052,7 +7058,6 @@ This sketch is intentionally generic. The real service must replace `unknown` wi
 
 ```ts
 export interface UpdaterService {
-
   check(input: unknown): Effect.Effect<unknown, DesktopError, never>
   download(input: unknown): Effect.Effect<unknown, DesktopError, never>
   install(input: unknown): Effect.Effect<unknown, DesktopError, never>
@@ -7067,7 +7072,6 @@ This sketch is intentionally generic. The real service must replace `unknown` wi
 
 ```ts
 export interface CrashReporterService {
-
   start(input: unknown): Effect.Effect<unknown, DesktopError, never>
   recordBreadcrumb(input: unknown): Effect.Effect<unknown, DesktopError, never>
   flush(input: unknown): Effect.Effect<unknown, DesktopError, never>
@@ -7081,7 +7085,6 @@ This sketch is intentionally generic. The real service must replace `unknown` wi
 
 ```ts
 export interface PowerMonitorService {
-
   onSuspend(input: unknown): Effect.Effect<unknown, DesktopError, never>
   onResume(input: unknown): Effect.Effect<unknown, DesktopError, never>
   onShutdown(input: unknown): Effect.Effect<unknown, DesktopError, never>
@@ -7090,7 +7093,6 @@ export interface PowerMonitorService {
 ```
 
 This sketch is intentionally generic. The real service must replace `unknown` with schema-defined input and output types. Every method must include tests for success, invalid input, failure mapping, permissions, and devtools events where relevant.
-
 
 \newpage
 
@@ -8008,7 +8010,6 @@ Result:
 Notes:
 ```
 
-
 \newpage
 
 # Appendix D. Security Checklist
@@ -8030,7 +8031,6 @@ Notes:
 - [ ] Logs redact secrets.
 - [ ] Crash reports redact secrets.
 
-
 \newpage
 
 # Appendix E. Performance Checklist
@@ -8045,7 +8045,6 @@ Notes:
 - [ ] Worker count metrics are emitted.
 - [ ] Production checker enforces budgets.
 - [ ] Examples include performance smoke reports.
-
 
 \newpage
 
@@ -8073,7 +8072,6 @@ Notes:
 
 **Devtools:** The runtime inspector for framework primitives and diagnostics.
 
-
 \newpage
 
 # Appendix G. Official Reference Links
@@ -8099,7 +8097,6 @@ These references are used to anchor technology choices and implementation assump
 - Tailwind CSS: https://tailwindcss.com/
 - Cargo workspaces: https://doc.rust-lang.org/cargo/reference/workspaces.html
 - Node-API: https://nodejs.org/api/n-api.html
-
 
 \newpage
 
@@ -10071,7 +10068,6 @@ None.
 - The module's public API is included in the API snapshot.
 - The module's behavior is covered by at least one example or direct integration test.
 
-
 \newpage
 
 # Appendix I. Documentation Plan
@@ -10616,7 +10612,6 @@ The `Release process` documentation page must include:
 - platform notes where applicable;
 - links to example applications where applicable.
 
-
 \newpage
 
 # Appendix J. Versioning and Release Management
@@ -10656,7 +10651,6 @@ Post-v1 changes require:
 - test coverage for old and new behavior during deprecation;
 - clear removal version.
 
-
 \newpage
 
 # Appendix K. Cross-Platform Capability Matrix
@@ -10671,52 +10665,51 @@ Cells use exactly:
 
 Grouped rows are allowed only when every method in the group has identical behavior. Otherwise each method must have its own row.
 
-| Method or exact method group | macOS (arm64/x64) | Windows (x64/arm64) | Linux (x64/arm64) |
-|---|---|---|---|
-| `App.getInfo`, `App.getCommandLine`, `App.quit`, `App.restart`, `App.onBeforeQuit` | ✓ | ✓ | ✓ |
-| `App.requestSingleInstanceLock` | ✓ (flock) | ✓ (named mutex `Global\<bundle>`) | ✓ (flock) |
-| `App.onSecondInstance` | ✓ | ✓ | ✓ |
-| `App.setOpenAtLogin` | ✓ (`SMAppService`) | ✓ (HKCU Run key) | ✓ (`~/.config/autostart`) |
-| `App.registerProtocol`, `App.onOpenUrl` | ✓ | ✓ | partial(distro-dep, requires `xdg-mime`) |
-| `App.onOpenFile` | ✓ | ✓ | partial(file-manager-dep) |
-| `Window.create`, `show`, `hide`, `focus`, `close`, `setTitle`, `setSize`, `setPosition`, `setBackgroundColor`, `persistState` | ✓ | ✓ | ✓ |
-| `Window.setVibrancy` | ✓ | error(`Unsupported`, "no vibrancy on Windows") | error(`Unsupported`, "no vibrancy on Linux") |
-| `Window.setHasShadow` | ✓ | ✓ | partial(compositor-dep) |
-| `Window.enterFullScreen`, `exitFullScreen`, `onFullScreenChanged` | ✓ | ✓ | partial(WM-dep) |
-| `Window.getScaleFactor`, `Window.onScaleChanged` | ✓ | ✓ | ✓ |
-| `WebView.create`, `loadRoute`, `reload`, `goBack`, `goForward`, `destroy`, `setNavigationPolicy` | ✓ | ✓ | ✓ |
-| `WebView.loadUrl` | ✓ | ✓ | ✓ (subject to navigation policy) |
-| `WebView.captureScreenshot` | ✓ | ✓ | partial(WebKitGTK only) |
-| `Menu.setApplicationMenu` | ✓ | partial(per-window menu only) | partial(per-window menu only) |
-| `Menu.setWindowMenu`, `Menu.clear`, `Menu.bindCommand` | ✓ | ✓ | ✓ |
-| `ContextMenu.show`, `buildFromTemplate`, `bindCommand` | ✓ | ✓ | ✓ |
-| `Tray.create`, `setIcon`, `setTooltip`, `setMenu`, `destroy` | ✓ | ✓ | partial(distro-dep, AppIndicator/StatusNotifier) |
-| `Dialog.openFile`, `openDirectory`, `saveFile`, `message`, `confirm` | ✓ | ✓ | ✓ |
-| `Clipboard.readText`, `writeText`, `readImage`, `writeImage`, `clear` | ✓ | ✓ | partial(X11/Wayland diff) |
-| `Notification.show`, `close`, `onClick`, `onAction`, `isSupported`, `getPermissionStatus` | ✓ (after `requestPermission`) | ✓ | partial(distro-dep) |
-| `Notification.requestPermission` | ✓ (must be called once) | ✓ (no-op, returns `granted`) | ✓ (no-op for daemons) |
-| `Shell.openExternal`, `openPath`, `showItemInFolder` | ✓ | ✓ | ✓ |
-| `Screen.getDisplays`, `getPrimaryDisplay`, `Screen.isSupported` | ✓ | ✓ | ✓ |
-| `Screen.getPointerPoint` | ✓ | ✓ | partial(Wayland may deny) |
-| `GlobalShortcut.register`, `unregister`, `unregisterAll`, `isRegistered`, `isSupported` | ✓ | ✓ | partial(X11 ✓; Wayland error(`Unsupported`, "wayland-no-global-shortcut")) |
-| `Protocol.registerAppProtocol`, `serveAsset`, `serveRoute`, `deny` | ✓ | ✓ | ✓ |
-| `SafeStorage.set`, `get`, `delete`, `list`, `isAvailable` | ✓ (Keychain) | ✓ (DPAPI) | partial(Secret Service / GNOME Keyring) |
-| `Path.appData`, `cache`, `logs`, `temp`, `home`, `downloads` | ✓ | ✓ | ✓ |
-| `Updater.check`, `download`, `install`, `installAndRestart`, `getStatus` | ✓ | ✓ | ✓ |
-| `CrashReporter.start`, `recordBreadcrumb`, `flush`, `setUploadHandler` | ✓ | ✓ | ✓ |
-| `PowerMonitor.onSuspend`, `onResume`, `onShutdown`, `PowerMonitor.isSupported` | ✓ | ✓ | ✓ |
-| `PowerMonitor.onPowerSourceChanged` | ✓ | ✓ | partial(distro-dep) |
-| `SystemAppearance.getAppearance`, `onAppearanceChanged`, `SystemAppearance.isSupported`, `getReducedMotion`, `getReducedTransparency` | ✓ | ✓ | partial(distro-dep) |
-| `SystemAppearance.getAccentColor` | ✓ | ✓ | error(`Unsupported`, "no canonical accent on Linux") |
-| `Dock.setBadgeCount` | ✓ | ✓ (taskbar overlay) | partial(launcher-dep) |
-| `Dock.setBadgeText` | ✓ | error(`Unsupported`, "no badge text on Windows") | error(`Unsupported`, "no portable badge text on Linux") |
-| `Dock.setProgress` | partial(no state) | ✓ | partial(launcher-dep) |
-| `Dock.setMenu` | ✓ | error(`Unsupported`, "use jump list") | error(`Unsupported`, "no portable dock menu on Linux") |
-| `Dock.setJumpList` | error(`Unsupported`, "jump lists are Windows-only") | ✓ | error(`Unsupported`, "jump lists are Windows-only") |
-| `Dock.requestAttention` | ✓ (bounce) | ✓ (flash) | partial(WM-dep) |
+| Method or exact method group                                                                                                          | macOS (arm64/x64)                                   | Windows (x64/arm64)                              | Linux (x64/arm64)                                                          |
+| ------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------ | -------------------------------------------------------------------------- |
+| `App.getInfo`, `App.getCommandLine`, `App.quit`, `App.restart`, `App.onBeforeQuit`                                                    | ✓                                                   | ✓                                                | ✓                                                                          |
+| `App.requestSingleInstanceLock`                                                                                                       | ✓ (flock)                                           | ✓ (named mutex `Global\<bundle>`)                | ✓ (flock)                                                                  |
+| `App.onSecondInstance`                                                                                                                | ✓                                                   | ✓                                                | ✓                                                                          |
+| `App.setOpenAtLogin`                                                                                                                  | ✓ (`SMAppService`)                                  | ✓ (HKCU Run key)                                 | ✓ (`~/.config/autostart`)                                                  |
+| `App.registerProtocol`, `App.onOpenUrl`                                                                                               | ✓                                                   | ✓                                                | partial(distro-dep, requires `xdg-mime`)                                   |
+| `App.onOpenFile`                                                                                                                      | ✓                                                   | ✓                                                | partial(file-manager-dep)                                                  |
+| `Window.create`, `show`, `hide`, `focus`, `close`, `setTitle`, `setSize`, `setPosition`, `setBackgroundColor`, `persistState`         | ✓                                                   | ✓                                                | ✓                                                                          |
+| `Window.setVibrancy`                                                                                                                  | ✓                                                   | error(`Unsupported`, "no vibrancy on Windows")   | error(`Unsupported`, "no vibrancy on Linux")                               |
+| `Window.setHasShadow`                                                                                                                 | ✓                                                   | ✓                                                | partial(compositor-dep)                                                    |
+| `Window.enterFullScreen`, `exitFullScreen`, `onFullScreenChanged`                                                                     | ✓                                                   | ✓                                                | partial(WM-dep)                                                            |
+| `Window.getScaleFactor`, `Window.onScaleChanged`                                                                                      | ✓                                                   | ✓                                                | ✓                                                                          |
+| `WebView.create`, `loadRoute`, `reload`, `goBack`, `goForward`, `destroy`, `setNavigationPolicy`                                      | ✓                                                   | ✓                                                | ✓                                                                          |
+| `WebView.loadUrl`                                                                                                                     | ✓                                                   | ✓                                                | ✓ (subject to navigation policy)                                           |
+| `WebView.captureScreenshot`                                                                                                           | ✓                                                   | ✓                                                | partial(WebKitGTK only)                                                    |
+| `Menu.setApplicationMenu`                                                                                                             | ✓                                                   | partial(per-window menu only)                    | partial(per-window menu only)                                              |
+| `Menu.setWindowMenu`, `Menu.clear`, `Menu.bindCommand`                                                                                | ✓                                                   | ✓                                                | ✓                                                                          |
+| `ContextMenu.show`, `buildFromTemplate`, `bindCommand`                                                                                | ✓                                                   | ✓                                                | ✓                                                                          |
+| `Tray.create`, `setIcon`, `setTooltip`, `setMenu`, `destroy`                                                                          | ✓                                                   | ✓                                                | partial(distro-dep, AppIndicator/StatusNotifier)                           |
+| `Dialog.openFile`, `openDirectory`, `saveFile`, `message`, `confirm`                                                                  | ✓                                                   | ✓                                                | ✓                                                                          |
+| `Clipboard.readText`, `writeText`, `readImage`, `writeImage`, `clear`                                                                 | ✓                                                   | ✓                                                | partial(X11/Wayland diff)                                                  |
+| `Notification.show`, `close`, `onClick`, `onAction`, `isSupported`, `getPermissionStatus`                                             | ✓ (after `requestPermission`)                       | ✓                                                | partial(distro-dep)                                                        |
+| `Notification.requestPermission`                                                                                                      | ✓ (must be called once)                             | ✓ (no-op, returns `granted`)                     | ✓ (no-op for daemons)                                                      |
+| `Shell.openExternal`, `openPath`, `showItemInFolder`                                                                                  | ✓                                                   | ✓                                                | ✓                                                                          |
+| `Screen.getDisplays`, `getPrimaryDisplay`, `Screen.isSupported`                                                                       | ✓                                                   | ✓                                                | ✓                                                                          |
+| `Screen.getPointerPoint`                                                                                                              | ✓                                                   | ✓                                                | partial(Wayland may deny)                                                  |
+| `GlobalShortcut.register`, `unregister`, `unregisterAll`, `isRegistered`, `isSupported`                                               | ✓                                                   | ✓                                                | partial(X11 ✓; Wayland error(`Unsupported`, "wayland-no-global-shortcut")) |
+| `Protocol.registerAppProtocol`, `serveAsset`, `serveRoute`, `deny`                                                                    | ✓                                                   | ✓                                                | ✓                                                                          |
+| `SafeStorage.set`, `get`, `delete`, `list`, `isAvailable`                                                                             | ✓ (Keychain)                                        | ✓ (DPAPI)                                        | partial(Secret Service / GNOME Keyring)                                    |
+| `Path.appData`, `cache`, `logs`, `temp`, `home`, `downloads`                                                                          | ✓                                                   | ✓                                                | ✓                                                                          |
+| `Updater.check`, `download`, `install`, `installAndRestart`, `getStatus`                                                              | ✓                                                   | ✓                                                | ✓                                                                          |
+| `CrashReporter.start`, `recordBreadcrumb`, `flush`, `setUploadHandler`                                                                | ✓                                                   | ✓                                                | ✓                                                                          |
+| `PowerMonitor.onSuspend`, `onResume`, `onShutdown`, `PowerMonitor.isSupported`                                                        | ✓                                                   | ✓                                                | ✓                                                                          |
+| `PowerMonitor.onPowerSourceChanged`                                                                                                   | ✓                                                   | ✓                                                | partial(distro-dep)                                                        |
+| `SystemAppearance.getAppearance`, `onAppearanceChanged`, `SystemAppearance.isSupported`, `getReducedMotion`, `getReducedTransparency` | ✓                                                   | ✓                                                | partial(distro-dep)                                                        |
+| `SystemAppearance.getAccentColor`                                                                                                     | ✓                                                   | ✓                                                | error(`Unsupported`, "no canonical accent on Linux")                       |
+| `Dock.setBadgeCount`                                                                                                                  | ✓                                                   | ✓ (taskbar overlay)                              | partial(launcher-dep)                                                      |
+| `Dock.setBadgeText`                                                                                                                   | ✓                                                   | error(`Unsupported`, "no badge text on Windows") | error(`Unsupported`, "no portable badge text on Linux")                    |
+| `Dock.setProgress`                                                                                                                    | partial(no state)                                   | ✓                                                | partial(launcher-dep)                                                      |
+| `Dock.setMenu`                                                                                                                        | ✓                                                   | error(`Unsupported`, "use jump list")            | error(`Unsupported`, "no portable dock menu on Linux")                     |
+| `Dock.setJumpList`                                                                                                                    | error(`Unsupported`, "jump lists are Windows-only") | ✓                                                | error(`Unsupported`, "jump lists are Windows-only")                        |
+| `Dock.requestAttention`                                                                                                               | ✓ (bounce)                                          | ✓ (flash)                                        | partial(WM-dep)                                                            |
 
 Apps must call `<Primitive>.isSupported(method)` before any non-`✓` method. The generated client exposes `isSupported(method: string): boolean` from this table. The production checker fails on renderer or runtime contracts that call non-`✓` methods without a dominating guard in the same control-flow path.
-
 
 \newpage
 
@@ -10776,23 +10769,23 @@ Each variant carries a documented `recoverable: bool` default and (where applica
 
 ## L.2 Platform-error mapping
 
-| Source error | Mapped tag | Notes |
-|---|---|---|
-| `io::ErrorKind::NotFound` | `FileNotFound` / `NotFound` | Path included when available |
-| `io::ErrorKind::PermissionDenied` | `PermissionDenied` | OS error preserved in `cause` |
-| `io::ErrorKind::TimedOut` | `Timeout` | |
-| `io::ErrorKind::WouldBlock` | `ResourceBusy` | |
-| `io::ErrorKind::AlreadyExists` | `AlreadyExists` | |
-| `io::ErrorKind::Other` with `errno=ENOSPC` | `DiskFull` | Linux/macOS |
-| Windows `ERROR_FILE_NOT_FOUND` (2) | `FileNotFound` | |
-| Windows `ERROR_ACCESS_DENIED` (5) | `PermissionDenied` | |
-| Windows `ERROR_DISK_FULL` (112) | `DiskFull` | |
-| Windows `ERROR_SHARING_VIOLATION` (32) | `ResourceBusy` | |
-| Windows `ERROR_FILENAME_EXCED_RANGE` (206) | `InvalidArgument` | |
-| WebView2 `HRESULT 0x80370102` | `Unsupported` | |
-| `serde_json::Error::syntax` | `InvalidArgument` | |
-| `tokio::time::error::Elapsed` | `Timeout` | |
-| `Box<dyn Any + Send>` from `catch_unwind` | `PanicInNativeCode` | message/location extracted |
+| Source error                               | Mapped tag                  | Notes                         |
+| ------------------------------------------ | --------------------------- | ----------------------------- |
+| `io::ErrorKind::NotFound`                  | `FileNotFound` / `NotFound` | Path included when available  |
+| `io::ErrorKind::PermissionDenied`          | `PermissionDenied`          | OS error preserved in `cause` |
+| `io::ErrorKind::TimedOut`                  | `Timeout`                   |                               |
+| `io::ErrorKind::WouldBlock`                | `ResourceBusy`              |                               |
+| `io::ErrorKind::AlreadyExists`             | `AlreadyExists`             |                               |
+| `io::ErrorKind::Other` with `errno=ENOSPC` | `DiskFull`                  | Linux/macOS                   |
+| Windows `ERROR_FILE_NOT_FOUND` (2)         | `FileNotFound`              |                               |
+| Windows `ERROR_ACCESS_DENIED` (5)          | `PermissionDenied`          |                               |
+| Windows `ERROR_DISK_FULL` (112)            | `DiskFull`                  |                               |
+| Windows `ERROR_SHARING_VIOLATION` (32)     | `ResourceBusy`              |                               |
+| Windows `ERROR_FILENAME_EXCED_RANGE` (206) | `InvalidArgument`           |                               |
+| WebView2 `HRESULT 0x80370102`              | `Unsupported`               |                               |
+| `serde_json::Error::syntax`                | `InvalidArgument`           |                               |
+| `tokio::time::error::Elapsed`              | `Timeout`                   |                               |
+| `Box<dyn Any + Send>` from `catch_unwind`  | `PanicInNativeCode`         | message/location extracted    |
 
 ## L.3 Panic boundary contract
 
@@ -10823,7 +10816,6 @@ Forbidden idioms on FFI / protocol-handler paths (enforced by Clippy lints scope
 - `RefCell::borrow_mut()` without a documented invariant.
 
 A `tests/panic_safety.rs` integration test asserts that a panicking handler returns `PanicInNativeCode` rather than aborting the process.
-
 
 \newpage
 
@@ -10916,7 +10908,6 @@ Mirror of §23.3 macOS subsection. Required entitlements are enumerated; deviati
 - Secret scanning enabled on every branch.
 - Release jobs use HSM-backed keys, not runner-local keys.
 
-
 \newpage
 
 # Appendix N. Resource Handle and Lifecycle Semantics
@@ -10930,8 +10921,8 @@ import type { Effect } from "effect"
 
 type DesktopResourceHandle<Kind extends ResourceKind, State extends string> = {
   readonly kind: Kind
-  readonly id: UUIDv7         // sortable, globally unique
-  readonly generation: number  // monotonic; bumped only on opt-in id reuse
+  readonly id: UUIDv7 // sortable, globally unique
+  readonly generation: number // monotonic; bumped only on opt-in id reuse
   readonly ownerScope: ScopeId
   readonly state: State
   dispose(): Effect.Effect<void, DesktopError, never>
@@ -10966,11 +10957,11 @@ Pending ─────► Running ───► Closing ──┐
 
 ## N.5 Reconnect rules
 
-| Event | Window | Behavior |
-|---|---|---|
-| Renderer disconnect | 30 s default reconnect window | Token-bound resume; idempotent calls auto-replay; streams resume from cursor if buffered. |
-| Runtime restart | n/a | All streams terminate with `Error{RuntimeRestarted}`; bridge calls fail; renderer shows "Reconnecting…" overlay until ready. |
-| Host crash | n/a | Supervisor relaunches host; orphaned runtime killed via process group / Job Object; full cold start. |
+| Event               | Window                        | Behavior                                                                                                                     |
+| ------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Renderer disconnect | 30 s default reconnect window | Token-bound resume; idempotent calls auto-replay; streams resume from cursor if buffered.                                    |
+| Runtime restart     | n/a                           | All streams terminate with `Error{RuntimeRestarted}`; bridge calls fail; renderer shows "Reconnecting…" overlay until ready. |
+| Host crash          | n/a                           | Supervisor relaunches host; orphaned runtime killed via process group / Job Object; full cold start.                         |
 
 ## N.6 Multi-window event routing
 
@@ -10989,7 +10980,6 @@ Pending ─────► Running ───► Closing ──┐
 - Outcome applies to all waiters atomically.
 - Rate limit per actor: max 1 visible prompt; max queue depth 8.
 - Approval UI renders in the host process (Rust); never in renderer.
-
 
 \newpage
 

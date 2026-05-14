@@ -46,10 +46,10 @@ Then either:
 
 The docs are organized as **[Diátaxis](https://diataxis.fr/)** — four content modes for four reader needs:
 
-|                       | Practical                                                  | Theoretical                                                       |
-| --------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------- |
-| **Learning** (study)  | [Tutorials →](docs/tutorials/) — guided walkthroughs        | [Explanation →](docs/explanation/) — why the framework looks like this |
-| **Working** (apply)   | [How-to guides →](docs/how-to/) — recipes for specific tasks | [Reference →](docs/reference/) — every public symbol               |
+|                      | Practical                                                    | Theoretical                                                            |
+| -------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| **Learning** (study) | [Tutorials →](docs/tutorials/) — guided walkthroughs         | [Explanation →](docs/explanation/) — why the framework looks like this |
+| **Working** (apply)  | [How-to guides →](docs/how-to/) — recipes for specific tasks | [Reference →](docs/reference/) — every public symbol                   |
 
 The [docs landing page](docs/README.md) is the full index. For LLM consumption, see [`llms.txt`](llms.txt).
 
@@ -66,25 +66,25 @@ If any of those fail on a clean clone, file an issue — it is not your machine.
 
 ## Repository map
 
-| Path | Purpose |
-| --- | --- |
-| [`docs/`](docs) | External documentation (Diátaxis-organized). |
-| [`engineering/`](engineering) | Internal specifications, ADRs, plans, run logs, release evidence, roadmap records. |
-| [`crates/host/`](crates/host) | Rust native host and WebView shell. |
-| [`crates/host-protocol/`](crates/host-protocol) | Wire protocol shared with the runtime. |
-| [`crates/native-pty/`](crates/native-pty) | PTY adapter. |
-| [`crates/native-updater/`](crates/native-updater) | Updater adapter. |
-| [`packages/core/`](packages/core) | Runtime services, public framework entry. |
-| [`packages/native/`](packages/native) | Native capability service definitions and RPC surfaces. |
-| [`packages/bridge/`](packages/bridge) | Host protocol, framing, RPC helpers, redaction. |
-| [`packages/react/`](packages/react) | React provider and hooks. |
-| [`packages/solid/`](packages/solid), [`vue/`](packages/vue), [`next/`](packages/next), [`astro/`](packages/astro), [`vite/`](packages/vite) | Framework adapters. |
-| [`packages/platform-browser/`](packages/platform-browser) | Renderer-side IndexedDB, SQLite WASM, PGlite. |
-| [`packages/cli/`](packages/cli) | Build, package, release, doctor commands. |
-| [`packages/config/`](packages/config) | Configuration schema and production checks. |
-| [`packages/test/`](packages/test) | Test layers and headless harnesses. |
-| [`packages/devtools/`](packages/devtools) | Inspector shell and panels. |
-| [`apps/inspector/`](apps/inspector) | Vite + React inspector for live and recorded sessions. |
+| Path                                                                                                                                        | Purpose                                                                            |
+| ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| [`docs/`](docs)                                                                                                                             | External documentation (Diátaxis-organized).                                       |
+| [`engineering/`](engineering)                                                                                                               | Internal specifications, ADRs, plans, run logs, release evidence, roadmap records. |
+| [`crates/host/`](crates/host)                                                                                                               | Rust native host and WebView shell.                                                |
+| [`crates/host-protocol/`](crates/host-protocol)                                                                                             | Wire protocol shared with the runtime.                                             |
+| [`crates/native-pty/`](crates/native-pty)                                                                                                   | PTY adapter.                                                                       |
+| [`crates/native-updater/`](crates/native-updater)                                                                                           | Updater adapter.                                                                   |
+| [`packages/core/`](packages/core)                                                                                                           | Runtime services, public framework entry.                                          |
+| [`packages/native/`](packages/native)                                                                                                       | Native capability service definitions and RPC surfaces.                            |
+| [`packages/bridge/`](packages/bridge)                                                                                                       | Host protocol, framing, RPC helpers, redaction.                                    |
+| [`packages/react/`](packages/react)                                                                                                         | React provider and hooks.                                                          |
+| [`packages/solid/`](packages/solid), [`vue/`](packages/vue), [`next/`](packages/next), [`astro/`](packages/astro), [`vite/`](packages/vite) | Framework adapters.                                                                |
+| [`packages/platform-browser/`](packages/platform-browser)                                                                                   | Renderer-side IndexedDB, SQLite WASM, PGlite.                                      |
+| [`packages/cli/`](packages/cli)                                                                                                             | Build, package, release, doctor commands.                                          |
+| [`packages/config/`](packages/config)                                                                                                       | Configuration schema and production checks.                                        |
+| [`packages/test/`](packages/test)                                                                                                           | Test layers and headless harnesses.                                                |
+| [`packages/devtools/`](packages/devtools)                                                                                                   | Inspector shell and panels.                                                        |
+| [`apps/inspector/`](apps/inspector)                                                                                                         | Vite + React inspector for live and recorded sessions.                             |
 
 ## Mental model in one diagram
 
@@ -111,7 +111,7 @@ Every privileged operation crosses a typed Effect service. Three roles, one enve
 
 ## Contributing
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`AGENTS.md`](AGENTS.md). The architecture-debt sweep is part of every contribution; the [contributing docs](docs/contributing/) explain what that means in practice.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`AGENTS.md`](AGENTS.md). The architecture-debt sweep is part of every contribution; the [contributing docs](docs/contributing/) explain what that means in practice. Public effectful capability design is governed by [`engineering/architecture/layer-first-contract.md`](engineering/architecture/layer-first-contract.md).
 
 ## License
 

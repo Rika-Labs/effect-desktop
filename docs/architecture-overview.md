@@ -14,11 +14,11 @@ Effect Desktop is a host/runtime/renderer framework.
 
 ## Process roles
 
-| Role | Owner | Responsibility |
-| --- | --- | --- |
-| Host | Rust (`crates/host`) | Native windows, WebViews, app protocol, OS adapters, process supervision. |
-| Runtime | Bun + TypeScript (`packages/core`) | App services, RPC handlers, resources, permissions, jobs, storage, telemetry. |
-| Renderer | React, Solid, Vue, etc. | UI, generated RPC clients, streams, user prompts. |
+| Role     | Owner                              | Responsibility                                                                |
+| -------- | ---------------------------------- | ----------------------------------------------------------------------------- |
+| Host     | Rust (`crates/host`)               | Native windows, WebViews, app protocol, OS adapters, process supervision.     |
+| Runtime  | Bun + TypeScript (`packages/core`) | App services, RPC handlers, resources, permissions, jobs, storage, telemetry. |
+| Renderer | React, Solid, Vue, etc.            | UI, generated RPC clients, streams, user prompts.                             |
 
 ## Data flow
 
@@ -30,7 +30,10 @@ Renderer code calls a generated RPC client. The bridge serializes a `HostProtoco
 import { Desktop } from "../packages/core/src/index.js"
 import { HostProtocolRequestEnvelope } from "../packages/bridge/src/index.js"
 
-if (typeof Desktop.runtimeGraphSnapshot !== "function" || HostProtocolRequestEnvelope === undefined) {
+if (
+  typeof Desktop.runtimeGraphSnapshot !== "function" ||
+  HostProtocolRequestEnvelope === undefined
+) {
   throw new Error("architecture exports are unavailable")
 }
 ```

@@ -5,7 +5,7 @@
 | Artifact               | Status | Evidence                                                                                                                                                         |
 | ---------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GitHub issue           | pass   | #87 defines schema, canonical encoding, Ed25519 signing, byte-stability, and key-window verification.                                                            |
-| Spec grounding         | pass   | `engineering/SPEC.md` §23.4 defines the manifest shape, Ed25519 signature coverage, canonical byte-stability, and `keyVersion - 2` trust window.                        |
+| Spec grounding         | pass   | `engineering/SPEC.md` §23.4 defines the manifest shape, Ed25519 signature coverage, canonical byte-stability, and `keyVersion - 2` trust window.                 |
 | Repository grounding   | pass   | `packages/cli` already owns build/package/sign/notarize release commands; `crates/native-updater` is still a Phase 0 stub and is the correct verification owner. |
 | External API grounding | pass   | Node/Bun crypto supports one-shot Ed25519 signing with `algorithm = null`; `ed25519-dalek` exposes strict Ed25519 verification for Rust.                         |
 | Architecture           | pass   | `05-architect.md` names one canonical-byte mechanism with TypeScript publishing and Rust verification.                                                           |

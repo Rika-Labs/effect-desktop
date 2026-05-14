@@ -92,7 +92,10 @@ const REQUIRED_GATES: ReadonlyMap<string, ReleaseGateEvidenceKind> = new Map([
 
 const RELEASE_WORKFLOW_TOKENS: ReadonlyMap<string, readonly string[]> = new Map([
   ["spdx-sbom", ["anchore/sbom-action", "format: spdx-json", "sbom-artifacts", "sbom-path"]],
-  ["cvss-scan", ["anchore/scan-action", "severity-cutoff: high", "engineering/security/exemptions"]],
+  [
+    "cvss-scan",
+    ["anchore/scan-action", "severity-cutoff: high", "engineering/security/exemptions"]
+  ],
   ["reproducible-build", ["bun packages/cli/src/bin.ts check --repro"]],
   [
     "slsa-provenance",
@@ -130,7 +133,9 @@ const RELEASE_GATE_EVIDENCE: ReadonlyMap<string, ReadonlySet<string>> = new Map(
   ],
   [
     "secret-scanning",
-    new Set(["engineering/security/release-settings.md#Secret scanning is enabled for every branch"])
+    new Set([
+      "engineering/security/release-settings.md#Secret scanning is enabled for every branch"
+    ])
   ],
   [
     "ephemeral-runners",

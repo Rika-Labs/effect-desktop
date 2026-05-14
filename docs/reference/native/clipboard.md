@@ -18,10 +18,10 @@ import { Clipboard, ClipboardClient, ClipboardRpcs, ClipboardError } from "@effe
 
 ## Methods
 
-| Method | Payload | Success |
-| --- | --- | --- |
-| `readText` | — | `{ text: string }` |
-| `writeText` | `{ text: string }` | `void` |
+| Method      | Payload            | Success            |
+| ----------- | ------------------ | ------------------ |
+| `readText`  | —                  | `{ text: string }` |
+| `writeText` | `{ text: string }` | `void`             |
 
 ## Errors
 

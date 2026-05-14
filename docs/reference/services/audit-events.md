@@ -23,11 +23,11 @@ import {
 
 ## API
 
-| Method | Signature | Description |
-| --- | --- | --- |
-| `emit` | `(event) => Effect<void>` | Redact, then append to the event log. |
-| `observe` | `(filter?) => Stream<AuditEvent>` | Live stream of audit events. |
-| `query` | `(filter) => Effect<AuditEvent[]>` | Bounded historical query. |
+| Method    | Signature                          | Description                           |
+| --------- | ---------------------------------- | ------------------------------------- |
+| `emit`    | `(event) => Effect<void>`          | Redact, then append to the event log. |
+| `observe` | `(filter?) => Stream<AuditEvent>`  | Live stream of audit events.          |
+| `query`   | `(filter) => Effect<AuditEvent[]>` | Bounded historical query.             |
 
 ## Event shapes
 
@@ -50,15 +50,16 @@ Every event carries `source`, `kind`, `actor?`, `resource?`, `capability?`, `out
 ## Example
 
 ```ts
-const audit = yield* AuditEvents
-yield* audit.emit({
-  source: "MyApp",
-  kind: "license/accepted",
-  actor: { kind: "user", id: currentUser.id },
-  outcome: "granted",
-  traceId,
-  details: { licenseVersion: "2.0" }
-})
+const audit = yield * AuditEvents
+yield *
+  audit.emit({
+    source: "MyApp",
+    kind: "license/accepted",
+    actor: { kind: "user", id: currentUser.id },
+    outcome: "granted",
+    traceId,
+    details: { licenseVersion: "2.0" }
+  })
 ```
 
 ## When to emit your own
