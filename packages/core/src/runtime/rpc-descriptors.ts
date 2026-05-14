@@ -32,7 +32,6 @@ export interface RpcEndpointDescriptor {
 export type DesktopRpcDescriptorSource =
   | Pick<DesktopAppManifest, "rpcGroups">
   | Pick<DesktopConfig<any, any>, "rpcs" | "id" | "windows">
-  | Pick<DesktopConfig<any, any>, "rpcs">
 
 interface RpcWithSchemas extends Rpc.Any {
   readonly payloadSchema: Schema.Top
