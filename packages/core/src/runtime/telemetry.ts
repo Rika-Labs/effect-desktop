@@ -10,6 +10,7 @@ import {
   Logger,
   Metric,
   Option,
+  PubSub,
   Random,
   Ref,
   Schema,
@@ -214,6 +215,7 @@ export interface TelemetryApi {
   readonly collectEffectMetrics: () => Effect.Effect<void, TelemetryInvalidArgumentError, never>
   readonly listEvents: () => Effect.Effect<readonly InspectorTelemetryEvent[], never, never>
   readonly observeEvents: () => Stream.Stream<readonly InspectorTelemetryEvent[], never, never>
+  readonly eventFeed: Stream.Stream<InspectorTelemetryEvent, never, never>
   readonly snapshot: () => Effect.Effect<TelemetrySnapshot, never, never>
 }
 
@@ -317,12 +319,18 @@ export const makeTelemetry = (
       new Map()
     )
     const events = yield* SubscriptionRef.make<readonly InspectorTelemetryEvent[]>([])
+    const eventFeed = yield* PubSub.sliding<InspectorTelemetryEvent>({
+      capacity: 1024,
+      replay: 128
+    })
 
     const listMetrics = (): Effect.Effect<readonly TelemetryMetricSnapshot[], never, never> =>
       SubscriptionRef.get(metrics).pipe(Effect.map((snapshot) => Array.from(snapshot.values())))
 
     const appendEvent = (event: InspectorTelemetryEvent): Effect.Effect<void, never, never> =>
-      SubscriptionRef.update(events, (current) => appendBounded(current, event, eventRingSize))
+      SubscriptionRef.update(events, (current) =>
+        appendBounded(current, event, eventRingSize)
+      ).pipe(Effect.andThen(PubSub.publish(eventFeed, event)), Effect.asVoid)
 
     return Object.freeze({
       log: (input) =>
@@ -506,6 +514,7 @@ export const makeTelemetry = (
         }),
       listEvents: () => SubscriptionRef.get(events),
       observeEvents: () => SubscriptionRef.changes(events),
+      eventFeed: Stream.fromPubSub(eventFeed),
       snapshot: () =>
         Effect.gen(function* () {
           const logRows = yield* SubscriptionRef.get(logs)

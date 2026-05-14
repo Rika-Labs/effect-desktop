@@ -374,6 +374,26 @@
       "signature": "export class DesktopConfigError extends Data.TaggedError(\"DesktopConfigError\")<{ readonly reason: \"undeclared-capability\" readonly contract: string readonly capability: NormalizedCapabilityType readonly message: string }> {}"
     },
     {
+      "name": "DesktopDevtools",
+      "kind": "class",
+      "signature": "export class DesktopDevtools extends Context.Service<DesktopDevtools, DesktopDevtoolsApi>()( \"@effect-desktop/core/DesktopDevtools\" ) {}"
+    },
+    {
+      "name": "DesktopDevtoolsApi",
+      "kind": "interface",
+      "signature": "export interface DesktopDevtoolsApi { readonly events: Stream.Stream<DesktopRuntimeEvent, never, never> }"
+    },
+    {
+      "name": "DesktopDevtoolsLive",
+      "kind": "value",
+      "signature": "const DesktopDevtoolsLive: Layer.Layer<DesktopDevtools, never, Telemetry | InspectorCollectors>"
+    },
+    {
+      "name": "DesktopDevtoolsTransportLive",
+      "kind": "value",
+      "signature": "const DesktopDevtoolsTransportLive: Layer.Layer<never, never, InspectorTransport | DesktopDevtools>"
+    },
+    {
       "name": "DesktopDurations",
       "kind": "value",
       "signature": "const DesktopDurations: { readonly updateCheckPoll: \"7 days\"; }"
@@ -522,6 +542,16 @@
       "name": "DesktopRuntimeApi",
       "kind": "interface",
       "signature": "export interface DesktopRuntimeApi { readonly appId: string readonly providers: DesktopRuntimeSelectedProviders readonly providerBudgets: readonly DesktopProviderBudget[] readonly graph: DesktopRuntimeGraph }"
+    },
+    {
+      "name": "DesktopRuntimeEvent",
+      "kind": "class",
+      "signature": "export class DesktopRuntimeEvent extends Schema.Class<DesktopRuntimeEvent>(\"DesktopRuntimeEvent\")({ source: DesktopRuntimeEventSource, timestampMs: Schema.Number, inspector: Schema.optionalKey(InspectorEvent), telemetry: Schema.optionalKey(InspectorTelemetryEvent) }) {}"
+    },
+    {
+      "name": "DesktopRuntimeEventSource",
+      "kind": "type",
+      "signature": "const DesktopRuntimeEventSource: Schema.Literals<readonly [\"inspector\", \"telemetry\"]>"
     },
     {
       "name": "DesktopRuntimeGraph",
@@ -1082,6 +1112,11 @@
       "name": "makeCommandRegistry",
       "kind": "value",
       "signature": "const makeCommandRegistry: (resources: ResourceRegistryApi, permissions: PermissionRegistryApi, options?: CommandRegistryOptions) => Effect.Effect<CommandRegistryApi, never, never>"
+    },
+    {
+      "name": "makeDesktopDevtools",
+      "kind": "value",
+      "signature": "const makeDesktopDevtools: (collectors: InspectorCollectorsApi, telemetry: TelemetryApi) => DesktopDevtoolsApi"
     },
     {
       "name": "makeDuplicateDesktopRpcNameError",
@@ -2144,6 +2179,11 @@
       "signature": "export class StaleHandle extends Schema.Class<StaleHandle>(\"StaleHandle\")({ tag: Schema.Literal(\"StaleHandle\"), kind: Schema.String, id: Schema.String, expectedGeneration: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)), actualGeneration: Schema.Int }) { get _tag(): \"StaleHandle\" { return this.tag } }"
     },
     {
+      "name": "streamDevtoolsToTransport",
+      "kind": "value",
+      "signature": "const streamDevtoolsToTransport: (devtools: DesktopDevtoolsApi, transport: InspectorTransportApi) => Effect.Effect<void, never, never>"
+    },
+    {
       "name": "summarizeInspectorSafety",
       "kind": "value",
       "signature": "const summarizeInspectorSafety: (evidence: readonly InspectorSafetyEvidence[], maxEvidenceEntries?: number) => InspectorSafetySummary"
@@ -2181,7 +2221,7 @@
     {
       "name": "TelemetryApi",
       "kind": "interface",
-      "signature": "export interface TelemetryApi { readonly log: ( input: TelemetryLogInput ) => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly listLogs: () => Effect.Effect<readonly TelemetryLogRecord[], never, never> readonly observeLogs: () => Stream.Stream<readonly TelemetryLogRecord[], never, never> readonly recordSpan: ( input: TelemetryTraceSpanInput ) => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly listTraces: () => Effect.Effect<readonly TelemetryTraceSpan[], never, never> readonly observeTraces: () => Stream.Stream<readonly TelemetryTraceSpan[], never, never> readonly incrementCounter: ( input: TelemetryCounterInput ) => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly recordHistogram: ( input: TelemetryHistogramInput ) => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly listMetrics: () => Effect.Effect<readonly TelemetryMetricSnapshot[], never, never> readonly observeMetrics: () => Stream.Stream<readonly TelemetryMetricSnapshot[], never, never> readonly captureCause: (input: { readonly traceId: string readonly operation: string readonly cause: Cause.Cause<unknown> readonly timestamp?: number }) => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly collectEffectMetrics: () => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly listEvents: () => Effect.Effect<readonly InspectorTelemetryEvent[], never, never> readonly observeEvents: () => Stream.Stream<readonly InspectorTelemetryEvent[], never, never> readonly snapshot: () => Effect.Effect<TelemetrySnapshot, never, never> }"
+      "signature": "export interface TelemetryApi { readonly log: ( input: TelemetryLogInput ) => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly listLogs: () => Effect.Effect<readonly TelemetryLogRecord[], never, never> readonly observeLogs: () => Stream.Stream<readonly TelemetryLogRecord[], never, never> readonly recordSpan: ( input: TelemetryTraceSpanInput ) => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly listTraces: () => Effect.Effect<readonly TelemetryTraceSpan[], never, never> readonly observeTraces: () => Stream.Stream<readonly TelemetryTraceSpan[], never, never> readonly incrementCounter: ( input: TelemetryCounterInput ) => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly recordHistogram: ( input: TelemetryHistogramInput ) => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly listMetrics: () => Effect.Effect<readonly TelemetryMetricSnapshot[], never, never> readonly observeMetrics: () => Stream.Stream<readonly TelemetryMetricSnapshot[], never, never> readonly captureCause: (input: { readonly traceId: string readonly operation: string readonly cause: Cause.Cause<unknown> readonly timestamp?: number }) => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly collectEffectMetrics: () => Effect.Effect<void, TelemetryInvalidArgumentError, never> readonly listEvents: () => Effect.Effect<readonly InspectorTelemetryEvent[], never, never> readonly observeEvents: () => Stream.Stream<readonly InspectorTelemetryEvent[], never, never> readonly eventFeed: Stream.Stream<InspectorTelemetryEvent, never, never> readonly snapshot: () => Effect.Effect<TelemetrySnapshot, never, never> }"
     },
     {
       "name": "TelemetryCounterInput",
