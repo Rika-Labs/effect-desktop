@@ -17,9 +17,8 @@ Use Effect's `Effect.log`, `logInfo`, `logWarning`, `logError` — they integrat
 ```ts
 import { Effect } from "effect"
 
-yield* Effect.logInfo("Imported notes").pipe(
-  Effect.annotateLogs({ count: 12, source: "Notes.import" })
-)
+yield *
+  Effect.logInfo("Imported notes").pipe(Effect.annotateLogs({ count: 12, source: "Notes.import" }))
 ```
 
 The log carries level, timestamp, subsystem, operation, trace id, message, and your annotations. Secret-shaped fields in annotations are redacted before storage.
@@ -31,11 +30,10 @@ Effect's tracing is wired automatically — every Effect span is captured in `Te
 ```ts
 import { Effect, Tracer } from "effect"
 
-yield* Effect.gen(function* () {
-  // ... work
-}).pipe(
-  Effect.withSpan("Notes.import.process_file", { attributes: { path } })
-)
+yield *
+  Effect.gen(function* () {
+    // ... work
+  }).pipe(Effect.withSpan("Notes.import.process_file", { attributes: { path } }))
 ```
 
 ## 3. Metrics
@@ -46,8 +44,8 @@ import { Metric } from "effect"
 const importedNotes = Metric.counter("notes.imported")
 const importDuration = Metric.histogram("notes.import.duration", { boundaries: [10, 100, 1000] })
 
-yield* importedNotes(Effect.succeed(1))
-yield* importDuration(Effect.succeed(elapsedMs))
+yield * importedNotes(Effect.succeed(1))
+yield * importDuration(Effect.succeed(elapsedMs))
 ```
 
 Counters increment by tags. Histograms retain bounded samples and publish p50, p95, p99.
@@ -55,11 +53,11 @@ Counters increment by tags. Histograms retain bounded samples and publish p50, p
 ## 4. Read
 
 ```ts
-const telemetry = yield* Telemetry
-const snapshot = yield* telemetry.snapshot()
-const recentLogs = yield* telemetry.listLogs({ limit: 100 })
-const recentSpans = yield* telemetry.listTraces({ limit: 50 })
-const metrics = yield* telemetry.listMetrics()
+const telemetry = yield * Telemetry
+const snapshot = yield * telemetry.snapshot()
+const recentLogs = yield * telemetry.listLogs({ limit: 100 })
+const recentSpans = yield * telemetry.listTraces({ limit: 50 })
+const metrics = yield * telemetry.listMetrics()
 ```
 
 Devtools' logs panel renders these live. `observeLogs()`, `observeTraces()`, `observeMetrics()` stream new entries.

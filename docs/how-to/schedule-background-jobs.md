@@ -12,11 +12,11 @@ Effect Desktop has three runtime primitives for background work, each with a dif
 
 ## Pick the right primitive
 
-| Need | Use |
-| --- | --- |
-| Isolated OS process running TypeScript with a typed channel | [`Worker`](spawn-a-worker.md) |
-| Long-lived companion process you spawn at runtime | [`Sidecar`](../reference/services/sidecar.md) |
-| In-runtime Effect work that needs cancellation but not isolation | `Effect.fork` inside a handler |
+| Need                                                             | Use                                           |
+| ---------------------------------------------------------------- | --------------------------------------------- |
+| Isolated OS process running TypeScript with a typed channel      | [`Worker`](spawn-a-worker.md)                 |
+| Long-lived companion process you spawn at runtime                | [`Sidecar`](../reference/services/sidecar.md) |
+| In-runtime Effect work that needs cancellation but not isolation | `Effect.fork` inside a handler                |
 
 `Worker` is best when you want **capability scoping** — the worker declares what permissions it needs and the registry refuses to spawn one with more than it holds. `Sidecar` is best for long-lived companion processes (language servers, sync daemons). Plain `Effect.fork` is best for everything else.
 
@@ -31,13 +31,12 @@ const MyHandlersLive = MyRpcs.toLayer(
     yield* Effect.fork(
       Effect.gen(function* () {
         yield* doSomeWork()
-      }).pipe(
-        Effect.repeat(Schedule.fixed(Duration.minutes(5))),
-        Effect.scoped
-      )
+      }).pipe(Effect.repeat(Schedule.fixed(Duration.minutes(5))), Effect.scoped)
     )
 
-    return { /* handlers */ }
+    return {
+      /* handlers */
+    }
   })
 )
 ```
@@ -51,14 +50,15 @@ For retry, use Effect's `Schedule` directly:
 ```ts
 import { Schedule, Duration } from "effect"
 
-yield* doRiskyThing.pipe(
-  Effect.retry(
-    Schedule.exponential(Duration.seconds(1)).pipe(
-      Schedule.jittered,
-      Schedule.compose(Schedule.recurs(5))
+yield *
+  doRiskyThing.pipe(
+    Effect.retry(
+      Schedule.exponential(Duration.seconds(1)).pipe(
+        Schedule.jittered,
+        Schedule.compose(Schedule.recurs(5))
+      )
     )
   )
-)
 ```
 
 `Schedule` composes — combine `exponential`, `jittered`, `recurs`, `upTo`, `whileInput` to build the policy you need.
@@ -68,13 +68,15 @@ yield* doRiskyThing.pipe(
 When you want OS isolation:
 
 ```ts
-const handle = yield* worker.spawn({
-  script: "workers/indexer.ts",
-  ownerScope: "background-indexer",
-  inputSchema: InMessage,
-  outputSchema: OutMessage,
-  capabilities: [{ kind: "filesystem.read", roots: ["/Users/me/Documents"] }]
-})
+const handle =
+  yield *
+  worker.spawn({
+    script: "workers/indexer.ts",
+    ownerScope: "background-indexer",
+    inputSchema: InMessage,
+    outputSchema: OutMessage,
+    capabilities: [{ kind: "filesystem.read", roots: ["/Users/me/Documents"] }]
+  })
 ```
 
 See [How-to: spawn a worker](spawn-a-worker.md).

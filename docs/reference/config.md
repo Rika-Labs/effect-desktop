@@ -45,21 +45,21 @@ export default defineDesktopConfig({
 
 ## Top-level fields
 
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| `app` | `DesktopAppConfig` | yes | id, name, version |
-| `runtime` | `DesktopRuntimeConfig` | no | engine (`"bun"` \| `"node"`), entry path |
-| `renderer` | `DesktopRendererConfig` | yes | framework, entry, dist |
-| `web` | `DesktopWebConfig` | no | engine (`"system"` \| `"chromium"`) |
-| `native` | `DesktopNativeConfig` | no | host crate path overrides |
-| `protocol` | `DesktopProtocolConfig` | no | app protocol scheme |
-| `build` | `DesktopBuildConfig` | no | targets, output dir |
-| `signing` | object | no | per-platform signing config |
-| `publishing` | object | no | updater key + manifest publishing |
-| `csp` | `DesktopCspConfig` | no | CSP policy and weakening acknowledgements |
-| `redaction` | `DesktopRedactionPolicy` | no | additional secret patterns and allowlist |
-| `permissions` | array | no | default `PermissionRegistry` declarations |
-| `security` | `ProductionSecurityConfig` | no | production check overrides |
+| Field         | Type                       | Required | Description                               |
+| ------------- | -------------------------- | -------- | ----------------------------------------- |
+| `app`         | `DesktopAppConfig`         | yes      | id, name, version                         |
+| `runtime`     | `DesktopRuntimeConfig`     | no       | engine (`"bun"` \| `"node"`), entry path  |
+| `renderer`    | `DesktopRendererConfig`    | yes      | framework, entry, dist                    |
+| `web`         | `DesktopWebConfig`         | no       | engine (`"system"` \| `"chromium"`)       |
+| `native`      | `DesktopNativeConfig`      | no       | host crate path overrides                 |
+| `protocol`    | `DesktopProtocolConfig`    | no       | app protocol scheme                       |
+| `build`       | `DesktopBuildConfig`       | no       | targets, output dir                       |
+| `signing`     | object                     | no       | per-platform signing config               |
+| `publishing`  | object                     | no       | updater key + manifest publishing         |
+| `csp`         | `DesktopCspConfig`         | no       | CSP policy and weakening acknowledgements |
+| `redaction`   | `DesktopRedactionPolicy`   | no       | additional secret patterns and allowlist  |
+| `permissions` | array                      | no       | default `PermissionRegistry` declarations |
+| `security`    | `ProductionSecurityConfig` | no       | production check overrides                |
 
 See [`packages/config/src/index.ts`](../../packages/config/src/index.ts) for every nested field.
 
@@ -96,22 +96,22 @@ Each violation has `{ rule, severity, message, fix, location, justification? }`.
 
 `ProductionRuleId` is a closed union of 14 rule names:
 
-| Rule | What it catches |
-| --- | --- |
-| `renderer-backend-import` | Renderer code importing `node:*` or backend modules |
-| `raw-bridge-call` | Renderer constructing `HostProtocolEnvelope` directly |
-| `renderer-native-host-protocol` | Renderer-side use of host protocol primitives |
-| `filesystem-write-without-scope` | A `writeFile` call missing `ownerScope` |
-| `process-permission-without-policy` | `Process` use without an explicit permission policy |
-| `secret-access-without-audit` | `Secrets` access where audit was disabled |
-| `update-install-without-signature` | `Updater.install` without signature verification |
-| `app-protocol-path-traversal` | App-protocol routing that allows `..` traversal |
-| `weakened-csp` | CSP weakening without an explicit acknowledgement |
-| `unsafe-external-navigation` | External navigation policy missing |
-| `devtools-in-prod` | Devtools layer enabled in production builds |
-| `unscoped-resource` | Resource registered without an owner scope |
-| `unsupported-capability-without-guard` | Platform-limited call without `isSupported` guard |
-| `secret-pattern-not-redacted` | Secret-shaped value emitted without redaction |
+| Rule                                   | What it catches                                       |
+| -------------------------------------- | ----------------------------------------------------- |
+| `renderer-backend-import`              | Renderer code importing `node:*` or backend modules   |
+| `raw-bridge-call`                      | Renderer constructing `HostProtocolEnvelope` directly |
+| `renderer-native-host-protocol`        | Renderer-side use of host protocol primitives         |
+| `filesystem-write-without-scope`       | A `writeFile` call missing `ownerScope`               |
+| `process-permission-without-policy`    | `Process` use without an explicit permission policy   |
+| `secret-access-without-audit`          | `Secrets` access where audit was disabled             |
+| `update-install-without-signature`     | `Updater.install` without signature verification      |
+| `app-protocol-path-traversal`          | App-protocol routing that allows `..` traversal       |
+| `weakened-csp`                         | CSP weakening without an explicit acknowledgement     |
+| `unsafe-external-navigation`           | External navigation policy missing                    |
+| `devtools-in-prod`                     | Devtools layer enabled in production builds           |
+| `unscoped-resource`                    | Resource registered without an owner scope            |
+| `unsupported-capability-without-guard` | Platform-limited call without `isSupported` guard     |
+| `secret-pattern-not-redacted`          | Secret-shaped value emitted without redaction         |
 
 Each rule can be acknowledged in `security.acknowledgements` with a justification — turning a `fail` into `acknowledged`. The release gate refuses unacknowledged failures.
 

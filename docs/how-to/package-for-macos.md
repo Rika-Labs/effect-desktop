@@ -87,12 +87,12 @@ Both should succeed. If `spctl` complains about notarization, the staple did not
 
 ## Common failures
 
-| Failure | Cause | Fix |
-| --- | --- | --- |
-| `errSecInternalComponent` | Keychain locked | `security unlock-keychain ~/Library/Keychains/login.keychain-db` |
-| Identity not found | Wrong identity name | `security find-identity -v -p codesigning` |
-| Notarization rejected: missing entitlement | Hardened runtime needs an entitlement | Add to `signing.macos.entitlements` |
-| Staple fails | Notarization rejected before stapling | Read the notary log via `xcrun notarytool log <id>` |
+| Failure                                    | Cause                                 | Fix                                                              |
+| ------------------------------------------ | ------------------------------------- | ---------------------------------------------------------------- |
+| `errSecInternalComponent`                  | Keychain locked                       | `security unlock-keychain ~/Library/Keychains/login.keychain-db` |
+| Identity not found                         | Wrong identity name                   | `security find-identity -v -p codesigning`                       |
+| Notarization rejected: missing entitlement | Hardened runtime needs an entitlement | Add to `signing.macos.entitlements`                              |
+| Staple fails                               | Notarization rejected before stapling | Read the notary log via `xcrun notarytool log <id>`              |
 
 `bun run desktop doctor` runs all the macOS-specific prerequisite checks (Xcode tools, codesign availability, notarytool credentials, identity presence).
 

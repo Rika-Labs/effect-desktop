@@ -50,18 +50,17 @@ Before:
 export const runWithTimeout = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
   ms: number
-): Effect.Effect<Option.Option<A>, E, R> =>
-  effect.pipe(Effect.timeoutOption(Duration.millis(ms)))
+): Effect.Effect<Option.Option<A>, E, R> => effect.pipe(Effect.timeoutOption(Duration.millis(ms)))
 
 // caller
-const result = yield* runWithTimeout(fetchData, 5000)
+const result = yield * runWithTimeout(fetchData, 5000)
 ```
 
 After (the sweep removes the helper):
 
 ```ts
 // caller — direct Effect API
-const result = yield* fetchData.pipe(Effect.timeoutOption(Duration.millis(5000)))
+const result = yield * fetchData.pipe(Effect.timeoutOption(Duration.millis(5000)))
 ```
 
 The wrapper added a name and removed a `pipe` call. It did not add durable semantics. Removed.
@@ -93,18 +92,23 @@ If the sweep finds a wrapper that should go but the removal would explode the di
 ## Architecture debt: <wrapper name>
 
 ### Current shape
+
 [current code, briefly]
 
 ### Desired shape
+
 [Effect-native shape]
 
 ### Why this is debt
+
 [no durable semantics added; mirrors X; renames Y]
 
 ### Why removal is deferred
+
 [size, blocker, scheduling]
 
 ### Migration plan
+
 [ordered steps; how call sites move; how tests follow]
 ```
 

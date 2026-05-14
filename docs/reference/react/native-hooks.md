@@ -29,7 +29,9 @@ import {
 ## `useTheme()` → `ThemeState`
 
 ```ts
-{ isDark: boolean }
+{
+  isDark: boolean
+}
 ```
 
 Subscribes to `SystemAppearance` theme events.

@@ -55,7 +55,9 @@
       "id": "secret-scanning",
       "title": "Secret scanning on every branch",
       "kind": "repository-setting",
-      "evidence": ["engineering/security/release-settings.md#Secret scanning is enabled for every branch"]
+      "evidence": [
+        "engineering/security/release-settings.md#Secret scanning is enabled for every branch"
+      ]
     },
     {
       "id": "ephemeral-runners",

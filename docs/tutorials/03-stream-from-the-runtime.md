@@ -146,10 +146,7 @@ export function ImportPanel() {
   const [directory, setDirectory] = useState("")
   const [enabled, setEnabled] = useState(false)
 
-  const stream = notes.import.useStream(
-    enabled ? { directory } : undefined,
-    { capacity: 64 }
-  )
+  const stream = notes.import.useStream(enabled ? { directory } : undefined, { capacity: 64 })
 
   return (
     <section>
@@ -166,11 +163,7 @@ export function ImportPanel() {
         </button>
       )}
 
-      {enabled && (
-        <button onClick={() => setEnabled(false)}>
-          Cancel
-        </button>
-      )}
+      {enabled && <button onClick={() => setEnabled(false)}>Cancel</button>}
 
       {stream.status === "loading" && stream.value && (
         <progress max={stream.value.total} value={stream.value.imported + stream.value.skipped}>
@@ -179,16 +172,18 @@ export function ImportPanel() {
       )}
 
       {stream.status === "loading" && stream.value?.kind === "skipped" && (
-        <p>Skipped {stream.value.file}: {stream.value.message}</p>
+        <p>
+          Skipped {stream.value.file}: {stream.value.message}
+        </p>
       )}
 
       {stream.status === "success" && stream.value?.kind === "completed" && (
-        <p>Done. Imported {stream.value.imported}, skipped {stream.value.skipped}.</p>
+        <p>
+          Done. Imported {stream.value.imported}, skipped {stream.value.skipped}.
+        </p>
       )}
 
-      {stream.status === "error" && (
-        <p>Import failed: {String(stream.error)}</p>
-      )}
+      {stream.status === "error" && <p>Import failed: {String(stream.error)}</p>}
     </section>
   )
 }
@@ -208,11 +203,12 @@ Three things to notice:
 import { PermissionRegistry } from "@effect-desktop/core"
 
 // During app init
-const permissions = yield* PermissionRegistry
-yield* permissions.declare(
-  { kind: "filesystem.read", roots: [process.env.HOME + "/Documents"] },
-  { effect: "approval", source: "Notes.import" }
-)
+const permissions = yield * PermissionRegistry
+yield *
+  permissions.declare(
+    { kind: "filesystem.read", roots: [process.env.HOME + "/Documents"] },
+    { effect: "approval", source: "Notes.import" }
+  )
 ```
 
 `effect: "approval"` means the user is prompted on first access. `source` shows up in the audit log. After the user grants once, subsequent reads under the same root proceed without re-prompting (per the [permissions model](../explanation/permissions-model.md)).

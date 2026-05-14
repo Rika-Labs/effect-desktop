@@ -12,10 +12,10 @@ Lower-level encryption boundary backed by the platform credential store. Most ap
 
 ## Methods
 
-| Method | Payload | Success |
-| --- | --- | --- |
-| `encrypt` | `{ plaintext: Uint8Array }` | `{ ciphertext: Uint8Array }` |
-| `decrypt` | `{ ciphertext: Uint8Array }` | `{ plaintext: Uint8Array }` |
+| Method    | Payload                      | Success                      |
+| --------- | ---------------------------- | ---------------------------- |
+| `encrypt` | `{ plaintext: Uint8Array }`  | `{ ciphertext: Uint8Array }` |
+| `decrypt` | `{ ciphertext: Uint8Array }` | `{ plaintext: Uint8Array }`  |
 
 ## Helpers
 

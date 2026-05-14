@@ -55,8 +55,12 @@ Prebuilt approval queue component. Mount near app root:
 
 ```tsx
 <PermissionApprovalQueue
-  onResolve={(resolution) => { /* telemetry */ }}
-  onReject={() => { /* telemetry */ }}
+  onResolve={(resolution) => {
+    /* telemetry */
+  }}
+  onReject={() => {
+    /* telemetry */
+  }}
 />
 ```
 

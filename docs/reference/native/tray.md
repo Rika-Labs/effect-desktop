@@ -12,13 +12,13 @@ System tray icon and menu support.
 
 ## Methods
 
-| Method | Payload | Success |
-| --- | --- | --- |
-| `create` | `{ icon, tooltip?, menu? }` | `{ id }` |
-| `destroy` | `{ id }` | `void` |
-| `setBadge` | `{ id, text }` | `void` |
-| `setTooltip` | `{ id, tooltip }` | `void` |
-| `setMenu` | `{ id, template }` | `void` |
+| Method       | Payload                     | Success  |
+| ------------ | --------------------------- | -------- |
+| `create`     | `{ icon, tooltip?, menu? }` | `{ id }` |
+| `destroy`    | `{ id }`                    | `void`   |
+| `setBadge`   | `{ id, text }`              | `void`   |
+| `setTooltip` | `{ id, tooltip }`           | `void`   |
+| `setMenu`    | `{ id, template }`          | `void`   |
 
 ## Errors
 

@@ -17,15 +17,17 @@ At app init:
 ```ts
 import { PermissionRegistry } from "@effect-desktop/core"
 
-const permissions = yield* PermissionRegistry
-yield* permissions.declare(
-  { kind: "secrets.read", namespaces: ["tokens"] },
-  { effect: "allow", source: "app-init" }
-)
-yield* permissions.declare(
-  { kind: "secrets.write", namespaces: ["tokens"] },
-  { effect: "allow", source: "app-init" }
-)
+const permissions = yield * PermissionRegistry
+yield *
+  permissions.declare(
+    { kind: "secrets.read", namespaces: ["tokens"] },
+    { effect: "allow", source: "app-init" }
+  )
+yield *
+  permissions.declare(
+    { kind: "secrets.write", namespaces: ["tokens"] },
+    { effect: "allow", source: "app-init" }
+  )
 ```
 
 Without these declarations, `Secrets.get` and `Secrets.set` for the `tokens` namespace return `PermissionDenied`.
@@ -68,10 +70,10 @@ const program = Effect.gen(function* () {
 ## 4. List or delete
 
 ```ts
-const keys = yield* secrets.list("tokens")
+const keys = yield * secrets.list("tokens")
 // Array of { namespace: "tokens", key: "github" } shapes
 
-yield* secrets.delete("tokens", "github")
+yield * secrets.delete("tokens", "github")
 ```
 
 ## 5. Audit what just happened

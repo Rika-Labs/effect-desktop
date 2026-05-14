@@ -14,11 +14,11 @@ Effect Desktop is a Bun + Rust monorepo. There is no published npm package yet â
 
 ## Requirements
 
-| Tool | Version | Source |
-| --- | --- | --- |
-| Bun | `1.3.13` | `package.json#packageManager` |
-| Rust | toolchain in `rust-toolchain.toml` | installed by `rustup` |
-| Platform build tools | per OS | macOS Xcode CLI, Windows VS Build Tools, Linux gcc + libgtk + libwebkit2gtk |
+| Tool                 | Version                            | Source                                                                      |
+| -------------------- | ---------------------------------- | --------------------------------------------------------------------------- |
+| Bun                  | `1.3.13`                           | `package.json#packageManager`                                               |
+| Rust                 | toolchain in `rust-toolchain.toml` | installed by `rustup`                                                       |
+| Platform build tools | per OS                             | macOS Xcode CLI, Windows VS Build Tools, Linux gcc + libgtk + libwebkit2gtk |
 
 ## Get the workspace
 

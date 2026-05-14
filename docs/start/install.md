@@ -12,11 +12,11 @@ Effect Desktop is a Bun + Rust monorepo. There is no published npm package yet, 
 
 ## Requirements
 
-| Tool | Version | Source |
-| --- | --- | --- |
-| **Bun** | `1.3.13` | pinned in `package.json#packageManager` |
-| **Rust** | toolchain in `rust-toolchain.toml` | installed automatically by `rustup` |
-| Platform build tools | per OS, for native packaging | macOS: Xcode CLI tools · Windows: VS Build Tools · Linux: gcc, libgtk, libwebkit2gtk |
+| Tool                 | Version                            | Source                                                                               |
+| -------------------- | ---------------------------------- | ------------------------------------------------------------------------------------ |
+| **Bun**              | `1.3.13`                           | pinned in `package.json#packageManager`                                              |
+| **Rust**             | toolchain in `rust-toolchain.toml` | installed automatically by `rustup`                                                  |
+| Platform build tools | per OS, for native packaging       | macOS: Xcode CLI tools · Windows: VS Build Tools · Linux: gcc, libgtk, libwebkit2gtk |
 
 You only need the platform build tools when you intend to package or run `cargo check`. The TypeScript layer alone needs only Bun.
 
@@ -53,13 +53,13 @@ If any of those fail on a clean clone, file an issue — it is not your machine.
 
 A fifteen-package TypeScript workspace plus Rust crates:
 
-| Layer | Packages |
-| --- | --- |
-| Public framework | `@effect-desktop/core`, `@effect-desktop/native`, `@effect-desktop/bridge`, `@effect-desktop/config` |
+| Layer             | Packages                                                                                                                                         |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Public framework  | `@effect-desktop/core`, `@effect-desktop/native`, `@effect-desktop/bridge`, `@effect-desktop/config`                                             |
 | Renderer adapters | `@effect-desktop/react`, `@effect-desktop/solid`, `@effect-desktop/vue`, `@effect-desktop/next`, `@effect-desktop/astro`, `@effect-desktop/vite` |
-| Renderer runtime | `@effect-desktop/platform-browser` |
-| Tooling | `@effect-desktop/cli`, `@effect-desktop/test`, `@effect-desktop/devtools` |
-| Native (Rust) | `host`, `host-protocol`, `native-pty`, `native-updater` |
+| Renderer runtime  | `@effect-desktop/platform-browser`                                                                                                               |
+| Tooling           | `@effect-desktop/cli`, `@effect-desktop/test`, `@effect-desktop/devtools`                                                                        |
+| Native (Rust)     | `host`, `host-protocol`, `native-pty`, `native-updater`                                                                                          |
 
 The only checked-in app is [`apps/inspector`](../../apps/inspector) — a Vite + React renderer for live and recorded framework sessions. There are **no scaffolders** today; building an app means writing one against `@effect-desktop/core` and friends. The next page does that in five minutes.
 

@@ -5,7 +5,7 @@
 | Artifact                | Status | Evidence                                                                                                                                                           |
 | ----------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | GitHub issue            | pass   | #86 defines submit, staple, assess, idempotency, and rejection-log requirements.                                                                                   |
-| Spec grounding          | pass   | `engineering/SPEC.md` §23.3 requires `xcrun notarytool submit ... --wait`, `stapler staple`, and `spctl --assess --type execute --verbose=4`.                             |
+| Spec grounding          | pass   | `engineering/SPEC.md` §23.3 requires `xcrun notarytool submit ... --wait`, `stapler staple`, and `spctl --assess --type execute --verbose=4`.                      |
 | Official tool grounding | pass   | Apple docs describe `notarytool` and `stapler`; local `notarytool submit --help`, `stapler --help`, and `spctl` man page confirm flags and supported file formats. |
 | Architecture            | pass   | `05-architect.md` names one `Notarizer` module and explicit lifecycle states.                                                                                      |
 

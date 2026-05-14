@@ -18,11 +18,11 @@ bun run desktop sign --config desktop.config.ts
 
 Per platform:
 
-| Platform | Tool | Required config |
-| --- | --- | --- |
-| macOS | `codesign` | `signing.macos.identity` |
-| Windows | `signtool` | `signing.windows.certificateThumbprint` |
-| Linux | `gpg` (optional) | `signing.linux.gpgKey` |
+| Platform | Tool             | Required config                         |
+| -------- | ---------------- | --------------------------------------- |
+| macOS    | `codesign`       | `signing.macos.identity`                |
+| Windows  | `signtool`       | `signing.windows.certificateThumbprint` |
+| Linux    | `gpg` (optional) | `signing.linux.gpgKey`                  |
 
 The CLI invokes the platform tool with the right arguments. Windows additionally handles the PowerShell unblock for downloaded binaries.
 

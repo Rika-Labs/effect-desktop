@@ -15,11 +15,12 @@ effect_version: 4
 ```ts
 import { PermissionRegistry } from "@effect-desktop/core"
 
-const permissions = yield* PermissionRegistry
-yield* permissions.declare(
-  { kind: "process.spawn", command: "git" },
-  { effect: "allow", source: "app-init" }
-)
+const permissions = yield * PermissionRegistry
+yield *
+  permissions.declare(
+    { kind: "process.spawn", command: "git" },
+    { effect: "allow", source: "app-init" }
+  )
 ```
 
 `process.spawn` capabilities use **exact match** on the command. Allowing `git` does not allow `gh` or `git-secret`.
@@ -61,18 +62,15 @@ const program = Effect.gen(function* () {
 `handle.stdout` and `handle.stderr` are bounded `Stream`s. They drop oldest chunks when the consumer falls behind, so a runaway process doesn't OOM the runtime.
 
 ```ts
-yield* handle.stdout.pipe(
-  Stream.runForEach((chunk) =>
-    Effect.log(new TextDecoder().decode(chunk))
-  )
-)
+yield *
+  handle.stdout.pipe(Stream.runForEach((chunk) => Effect.log(new TextDecoder().decode(chunk))))
 ```
 
 ## 4. Send input
 
 ```ts
-yield* handle.stdin.write(new TextEncoder().encode("hello\n"))
-yield* handle.stdin.close()
+yield * handle.stdin.write(new TextEncoder().encode("hello\n"))
+yield * handle.stdin.close()
 ```
 
 ## 5. Kill explicitly (optional)
@@ -80,14 +78,14 @@ yield* handle.stdin.close()
 The framework kills the process tree when the owner scope closes. If you want to terminate sooner:
 
 ```ts
-yield* handle.kill // sends SIGTERM
-yield* handle.kill("SIGKILL")
+yield * handle.kill // sends SIGTERM
+yield * handle.kill("SIGKILL")
 ```
 
 ## 6. Inspect what's running
 
 ```ts
-const snapshots = yield* proc.list()
+const snapshots = yield * proc.list()
 // [{ pid, command, args, ownerScope, childPids, state, lastExit }, ...]
 ```
 

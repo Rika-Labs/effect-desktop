@@ -12,8 +12,8 @@ System power and sleep events.
 
 ## Methods
 
-| Method | Payload | Success |
-| --- | --- | --- |
+| Method        | Payload      | Success                  |
+| ------------- | ------------ | ------------------------ |
 | `isSupported` | `{ method }` | `{ supported: boolean }` |
 
 Event stream of `"suspend" \| "resume" \| "shutdown" \| "lock-screen" \| "unlock-screen"`.

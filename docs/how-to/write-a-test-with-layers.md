@@ -82,8 +82,8 @@ The bridge enforces the contract — pinning a response with the wrong shape fai
 import { ResourceRegistry } from "@effect-desktop/core"
 import { assertNoOpenResourcesIn } from "@effect-desktop/test"
 
-const registry = yield* ResourceRegistry
-yield* assertNoOpenResourcesIn(registry, { testName: "save persists" })
+const registry = yield * ResourceRegistry
+yield * assertNoOpenResourcesIn(registry, { testName: "save persists" })
 ```
 
 `HeadlessRuntime.run` does this automatically. Use it directly when you compose the test layer manually.
@@ -103,7 +103,11 @@ const bridge = makeMockBridge({
 const DesktopApp = ReactDesktop.from(Manifest, { transport: bridge })
 
 test("renders the greeting", async () => {
-  render(<DesktopApp.createRoot><Greeter /></DesktopApp.createRoot>)
+  render(
+    <DesktopApp.createRoot>
+      <Greeter />
+    </DesktopApp.createRoot>
+  )
   // ... interact, assert
 })
 ```

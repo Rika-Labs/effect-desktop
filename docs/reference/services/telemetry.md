@@ -26,15 +26,15 @@ import {
 
 ## API
 
-| Method | Signature |
-| --- | --- |
-| `snapshot` | `() => Effect<{ logs, traces, metrics }>` |
-| `listLogs` | `(filter?) => Effect<LogEntry[]>` |
-| `listTraces` | `(filter?) => Effect<TraceSpan[]>` |
-| `listMetrics` | `() => Effect<MetricSnapshot[]>` |
-| `observeLogs` | `() => Stream<LogEntry>` |
-| `observeTraces` | `() => Stream<TraceSpan>` |
-| `observeMetrics` | `() => Stream<MetricSnapshot>` |
+| Method           | Signature                                 |
+| ---------------- | ----------------------------------------- |
+| `snapshot`       | `() => Effect<{ logs, traces, metrics }>` |
+| `listLogs`       | `(filter?) => Effect<LogEntry[]>`         |
+| `listTraces`     | `(filter?) => Effect<TraceSpan[]>`        |
+| `listMetrics`    | `() => Effect<MetricSnapshot[]>`          |
+| `observeLogs`    | `() => Stream<LogEntry>`                  |
+| `observeTraces`  | `() => Stream<TraceSpan>`                 |
+| `observeMetrics` | `() => Stream<MetricSnapshot>`            |
 
 ## `LogEntry`
 
@@ -73,12 +73,11 @@ Captured from Effect tracing. Stored in a bounded ring (`traceRingSize` default 
 ```ts
 import { Effect } from "effect"
 
-yield* Effect.logInfo("Imported notes").pipe(
-  Effect.annotateLogs({ count: 12, source: "Notes.import" })
-)
+yield *
+  Effect.logInfo("Imported notes").pipe(Effect.annotateLogs({ count: 12, source: "Notes.import" }))
 
-const telemetry = yield* Telemetry
-const recent = yield* telemetry.listLogs({ limit: 100 })
+const telemetry = yield * Telemetry
+const recent = yield * telemetry.listLogs({ limit: 100 })
 ```
 
 ## Related

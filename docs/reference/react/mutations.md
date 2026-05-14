@@ -46,9 +46,9 @@ return (
 ## Pattern: typed error narrowing
 
 ```tsx
-{save.status === "error" && save.error._tag === "NoteNotFound" && (
-  <p>Note not found.</p>
-)}
+{
+  save.status === "error" && save.error._tag === "NoteNotFound" && <p>Note not found.</p>
+}
 ```
 
 TypeScript narrows on `_tag` exhaustively because the contract declared the closed error union.

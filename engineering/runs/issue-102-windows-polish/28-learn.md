@@ -2,9 +2,9 @@
 
 ## Learning Files Written
 
-| Path                                                                      | Title                                      | Codification target |
-| ------------------------------------------------------------------------- | ------------------------------------------ | ------------------- |
-| `engineering/learnings/2026-05-07-platform-polish-hooks-are-not-launch-gates.md` | Platform Polish Hooks Are Not Launch Gates | engineering/learnings      |
+| Path                                                                             | Title                                      | Codification target   |
+| -------------------------------------------------------------------------------- | ------------------------------------------ | --------------------- |
+| `engineering/learnings/2026-05-07-platform-polish-hooks-are-not-launch-gates.md` | Platform Polish Hooks Are Not Launch Gates | engineering/learnings |
 
 ## Follow-Up Issues Filed
 

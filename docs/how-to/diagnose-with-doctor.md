@@ -25,11 +25,11 @@ Always:
 
 Per-platform:
 
-| Platform | Additional checks |
-| --- | --- |
-| macOS | Xcode CLI tools, codesign available, notarytool available, signing identity present in keychain |
-| Windows | Visual Studio build tools, signtool available, certificate thumbprint resolvable |
-| Linux | gcc, libgtk-3, libwebkit2gtk, AppImage tools |
+| Platform | Additional checks                                                                               |
+| -------- | ----------------------------------------------------------------------------------------------- |
+| macOS    | Xcode CLI tools, codesign available, notarytool available, signing identity present in keychain |
+| Windows  | Visual Studio build tools, signtool available, certificate thumbprint resolvable                |
+| Linux    | gcc, libgtk-3, libwebkit2gtk, AppImage tools                                                    |
 
 If you've set release-related environment variables (`APPLE_ID`, `WINDOWS_CERT_THUMBPRINT`, `UPDATER_KEY_PATH`), the doctor verifies they point at something usable.
 

@@ -36,10 +36,10 @@ import {
 
 ## API
 
-| Method | Signature |
-| --- | --- |
+| Method  | Signature                                                         |
+| ------- | ----------------------------------------------------------------- |
 | `spawn` | `(input: WorkerSpawnOptions<I, O>) => Effect<WorkerHandle<I, O>>` |
-| `list` | `() => Effect<WorkerSnapshot[]>` |
+| `list`  | `() => Effect<WorkerSnapshot[]>`                                  |
 
 ## `WorkerSpawnOptions<I, O>`
 

@@ -33,7 +33,10 @@ export function Toolbar() {
   const createWindow = window.create.useMutation()
 
   return (
-    <button disabled={createWindow.status === "running"} onClick={() => createWindow.run({ title: "Notes" })}>
+    <button
+      disabled={createWindow.status === "running"}
+      onClick={() => createWindow.run({ title: "Notes" })}
+    >
       Open
     </button>
   )

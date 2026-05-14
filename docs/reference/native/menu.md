@@ -12,10 +12,10 @@ App-level menu bar (macOS, some Windows). Bind menu items to command ids registe
 
 ## Methods
 
-| Method | Payload | Success |
-| --- | --- | --- |
-| `setMenu` | `{ template: MenuTemplate }` | `void` |
-| `popup` | `{ template, x?, y? }` | `void` |
+| Method    | Payload                      | Success |
+| --------- | ---------------------------- | ------- |
+| `setMenu` | `{ template: MenuTemplate }` | `void`  |
+| `popup`   | `{ template, x?, y? }`       | `void`  |
 
 `MenuTemplate` — array of items with `{ label, accelerator?, command?, submenu?, type? }`.
 

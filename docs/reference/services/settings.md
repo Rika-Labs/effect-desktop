@@ -39,16 +39,16 @@ const store = yield* settings.open({
 
 `Store`:
 
-| Method | Signature |
-| --- | --- |
-| `get` | `(key, schema) => Effect<A, SettingsError \| NotFound>` |
-| `getOrDefault` | `(key, schema, default) => Effect<A>` |
-| `set` | `(key, schema, value) => Effect<void>` |
-| `delete` | `(key) => Effect<void>` |
-| `keys` | `() => Effect<string[]>` |
-| `update` | `(key, schema, fn) => Effect<void>` (transactional) |
-| `changes` | `() => Stream<{ key, oldValue, newValue, source }>` |
-| `migrated` | `() => Stream<SettingsMigrated>` |
+| Method         | Signature                                               |
+| -------------- | ------------------------------------------------------- |
+| `get`          | `(key, schema) => Effect<A, SettingsError \| NotFound>` |
+| `getOrDefault` | `(key, schema, default) => Effect<A>`                   |
+| `set`          | `(key, schema, value) => Effect<void>`                  |
+| `delete`       | `(key) => Effect<void>`                                 |
+| `keys`         | `() => Effect<string[]>`                                |
+| `update`       | `(key, schema, fn) => Effect<void>` (transactional)     |
+| `changes`      | `() => Stream<{ key, oldValue, newValue, source }>`     |
+| `migrated`     | `() => Stream<SettingsMigrated>`                        |
 
 ## Migrations
 

@@ -2,9 +2,9 @@
 
 ## Learning Files Written
 
-| Path                                                                       | Title                                       | Codification target |
-| -------------------------------------------------------------------------- | ------------------------------------------- | ------------------- |
-| `engineering/learnings/2026-05-06-signed-update-policy-needs-audience-binding.md` | Signed Update Policy Needs Audience Binding | engineering/learnings      |
+| Path                                                                              | Title                                       | Codification target   |
+| --------------------------------------------------------------------------------- | ------------------------------------------- | --------------------- |
+| `engineering/learnings/2026-05-06-signed-update-policy-needs-audience-binding.md` | Signed Update Policy Needs Audience Binding | engineering/learnings |
 
 ## Follow-Up Issues Filed
 

@@ -75,9 +75,9 @@ For one-off internal RPCs, `RpcGroup.toLayer(handlers)` directly is fine.
 
 The two shapes for exposing the surface to your app:
 
-| Shape | Description | Example |
-| --- | --- | --- |
-| **Direct** | Public service _is_ the generated client | `Screen` |
+| Shape      | Description                                              | Example  |
+| ---------- | -------------------------------------------------------- | -------- |
+| **Direct** | Public service _is_ the generated client                 | `Screen` |
 | **Mapped** | Public service is a hand-written API wrapping the client | `Window` |
 
 See the explanation page: [RPC surface vs. mapped](../explanation/rpc-surface-vs-mapped.md).

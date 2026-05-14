@@ -12,10 +12,10 @@ OS-level keyboard shortcuts. Binds an accelerator (e.g. `"CommandOrControl+Shift
 
 ## Methods
 
-| Method | Payload | Success |
-| --- | --- | --- |
-| `register` | `{ accelerator, command, window? }` | `void` |
-| `unregister` | `{ accelerator }` | `void` |
+| Method       | Payload                             | Success |
+| ------------ | ----------------------------------- | ------- |
+| `register`   | `{ accelerator, command, window? }` | `void`  |
+| `unregister` | `{ accelerator }`                   | `void`  |
 
 ## Types
 

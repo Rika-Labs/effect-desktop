@@ -21,7 +21,7 @@ const stream = DesktopApp.useDesktop(NotesRpcs).import.useStream(input, options)
 ```ts
 interface StreamState<A, E> {
   readonly status: "pending" | "loading" | "error" | "success"
-  readonly value?: A           // last emitted item
+  readonly value?: A // last emitted item
   readonly error?: E
 }
 ```

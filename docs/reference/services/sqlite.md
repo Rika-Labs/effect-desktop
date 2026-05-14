@@ -22,7 +22,7 @@ import { SqlClient, SqlClientLive } from "@effect-desktop/core"
 
 ```ts
 const SqliteLive = SqlClientLive({
-  filename: "app.sqlite",  // or ":memory:"
+  filename: "app.sqlite", // or ":memory:"
   ownerScope: "window-main"
 })
 ```
@@ -37,11 +37,13 @@ const SqliteLive = SqlClientLive({
 ## Queries
 
 ```ts
-const sql = yield* SqlClient
+const sql = yield * SqlClient
 
-yield* sql`CREATE TABLE notes (id TEXT PRIMARY KEY, body TEXT)`
+yield * sql`CREATE TABLE notes (id TEXT PRIMARY KEY, body TEXT)`
 
-const rows = yield* sql<{ id: string; body: string }>`
+const rows =
+  yield *
+  sql<{ id: string; body: string }>`
   SELECT id, body FROM notes WHERE updated_at > ${cutoff}
 `
 ```
@@ -51,12 +53,13 @@ Tagged template handles parameter binding safely.
 ## Transactions
 
 ```ts
-yield* sql.withTransaction(
-  Effect.gen(function* () {
-    yield* sql`INSERT INTO notes (id, body) VALUES (${id}, ${body})`
-    yield* sql`UPDATE counters SET writes = writes + 1`
-  })
-)
+yield *
+  sql.withTransaction(
+    Effect.gen(function* () {
+      yield* sql`INSERT INTO notes (id, body) VALUES (${id}, ${body})`
+      yield* sql`UPDATE counters SET writes = writes + 1`
+    })
+  )
 ```
 
 Rolls back on failure or interruption.
@@ -66,10 +69,10 @@ Rolls back on failure or interruption.
 ```ts
 import { SqlModel } from "@effect/sql"
 
-const NoteRepo = yield* SqlModel.makeRepository(Note, { tableName: "notes", idColumn: "id" })
+const NoteRepo = yield * SqlModel.makeRepository(Note, { tableName: "notes", idColumn: "id" })
 
-yield* NoteRepo.insertVoid(new Note({ id, body, updatedAt: Date.now() }))
-const found = yield* NoteRepo.findById(id)
+yield * NoteRepo.insertVoid(new Note({ id, body, updatedAt: Date.now() }))
+const found = yield * NoteRepo.findById(id)
 ```
 
 ## Permissions

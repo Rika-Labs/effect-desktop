@@ -34,17 +34,17 @@ import {
 
 ## API
 
-| Method | Signature | Description |
-| --- | --- | --- |
-| `declare` | `(capability, options) => Effect<void, InvalidArgument>` | Records an allow / deny / approval / revocation rule. |
-| `query` | `(kind, actor) => Effect<PermissionQuery>` | Returns global and actor-scoped declarations that apply. |
-| `check` | `(capability, context) => Effect<GrantedCapability, PermissionDenied>` | Issues a tracked grant or returns a typed denial. |
-| `grant` | `(capability, context, options) => Effect<GrantedCapability>` | Bypass the check (for approval-broker callbacks); records a grant. |
-| `use` | `<A, E>(grant, effect) => Effect<A, E \| GrantNotFound \| Revoked>` | Runs an effect under a grant; verifies validity. |
-| `inspect` | `(token) => Effect<PermissionGrantSnapshot \| undefined>` | Inspects current state of a grant. |
-| `revoke` | `(token) => Effect<void>` | Revokes a grant; future `use` calls fail. |
-| `listDecisions` | `() => Effect<PermissionDecision[]>` | Recent decisions for devtools. |
-| `observeDecisions` | `() => Stream<PermissionDecision>` | Live decision stream. |
+| Method             | Signature                                                              | Description                                                        |
+| ------------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `declare`          | `(capability, options) => Effect<void, InvalidArgument>`               | Records an allow / deny / approval / revocation rule.              |
+| `query`            | `(kind, actor) => Effect<PermissionQuery>`                             | Returns global and actor-scoped declarations that apply.           |
+| `check`            | `(capability, context) => Effect<GrantedCapability, PermissionDenied>` | Issues a tracked grant or returns a typed denial.                  |
+| `grant`            | `(capability, context, options) => Effect<GrantedCapability>`          | Bypass the check (for approval-broker callbacks); records a grant. |
+| `use`              | `<A, E>(grant, effect) => Effect<A, E \| GrantNotFound \| Revoked>`    | Runs an effect under a grant; verifies validity.                   |
+| `inspect`          | `(token) => Effect<PermissionGrantSnapshot \| undefined>`              | Inspects current state of a grant.                                 |
+| `revoke`           | `(token) => Effect<void>`                                              | Revokes a grant; future `use` calls fail.                          |
+| `listDecisions`    | `() => Effect<PermissionDecision[]>`                                   | Recent decisions for devtools.                                     |
+| `observeDecisions` | `() => Stream<PermissionDecision>`                                     | Live decision stream.                                              |
 
 ## Decision order (fixed)
 

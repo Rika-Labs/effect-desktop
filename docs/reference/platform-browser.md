@@ -65,10 +65,7 @@ For typed IndexedDB tables:
 ```ts
 import { IndexedDb, IndexedDbTable } from "@effect-desktop/platform-browser"
 
-const NotesTable = IndexedDbTable.makeTableSchema(
-  "notes",
-  { keyPath: "id" }
-)
+const NotesTable = IndexedDbTable.makeTableSchema("notes", { keyPath: "id" })
 
 const dbLayer = IndexedDb.layer({ name: "notes-db", version: 1, tables: [NotesTable] })
 ```
@@ -81,12 +78,12 @@ const dbLayer = IndexedDb.layer({ name: "notes-db", version: 1, tables: [NotesTa
 
 ## When to use what
 
-| Need | Use |
-| --- | --- |
-| Small key/value, occasional reads | IndexedDB or `BrowserKeyValueStore` |
-| Tabular data, joins, aggregates | `RendererSqliteWorkerLive` |
-| Postgres-compatible queries, syncing with a server | `RendererPgliteLive` |
-| Anything that should survive the renderer reload | All of the above (IndexedDB-backed) |
+| Need                                               | Use                                 |
+| -------------------------------------------------- | ----------------------------------- |
+| Small key/value, occasional reads                  | IndexedDB or `BrowserKeyValueStore` |
+| Tabular data, joins, aggregates                    | `RendererSqliteWorkerLive`          |
+| Postgres-compatible queries, syncing with a server | `RendererPgliteLive`                |
+| Anything that should survive the renderer reload   | All of the above (IndexedDB-backed) |
 
 ## Why renderer-side storage matters
 

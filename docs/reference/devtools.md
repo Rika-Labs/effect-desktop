@@ -13,10 +13,7 @@ effect_version: 4
 ## Import
 
 ```ts
-import {
-  DevtoolsShell,
-  DevtoolsSnapshotClient
-} from "@effect-desktop/devtools"
+import { DevtoolsShell, DevtoolsSnapshotClient } from "@effect-desktop/devtools"
 ```
 
 ## `DevtoolsShell`
@@ -32,26 +29,26 @@ The top-level React-rendered devtools shell. Mount it inside the inspector rende
 The client that pulls runtime snapshots from `Telemetry`, `ResourceRegistry`, `EventLog`, and the layer graph.
 
 ```ts
-const client = yield* DevtoolsSnapshotClient
-const resources = yield* client.resourceSnapshot()
-const layers = yield* client.layerGraphSnapshot()
+const client = yield * DevtoolsSnapshotClient
+const resources = yield * client.resourceSnapshot()
+const layers = yield * client.layerGraphSnapshot()
 ```
 
 ## Panels
 
 The shell ships with these live panels:
 
-| Panel | Source |
-| --- | --- |
-| Diagnostics | `Telemetry` summaries, runtime liveness |
-| Event log | `EventLog` recent rows |
-| Workflows | Active workflow executions |
-| Reactivity | Atom subscriptions |
-| Persistence | Settings, Secrets store keys |
-| Logs | Structured logs from `Telemetry` |
-| Cluster | Sharding state |
-| Layer graph | Runtime layer dependency snapshot |
-| Embedded inspector | Recursive inspector view |
+| Panel              | Source                                  |
+| ------------------ | --------------------------------------- |
+| Diagnostics        | `Telemetry` summaries, runtime liveness |
+| Event log          | `EventLog` recent rows                  |
+| Workflows          | Active workflow executions              |
+| Reactivity         | Atom subscriptions                      |
+| Persistence        | Settings, Secrets store keys            |
+| Logs               | Structured logs from `Telemetry`        |
+| Cluster            | Sharding state                          |
+| Layer graph        | Runtime layer dependency snapshot       |
+| Embedded inspector | Recursive inspector view                |
 
 ## Test variants
 

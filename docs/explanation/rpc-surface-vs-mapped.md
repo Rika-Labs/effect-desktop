@@ -20,8 +20,8 @@ Every public capability owns an `RpcGroup`. The framework gives you two shapes f
 `packages/native/src/screen.ts` is the worked example. The public service `Screen` _is_ the RPC client:
 
 ```ts
-const screen = yield* Screen
-const displays = yield* screen.getDisplays()
+const screen = yield * Screen
+const displays = yield * screen.getDisplays()
 ```
 
 That call is exactly the generated client method. There is no hand-written wrapper between you and the contract. If `getDisplays` changes its return type, every caller updates.
@@ -50,13 +50,13 @@ Use **mapped** when the framework owns durable desktop policy on top of the cont
 
 ## Choosing between them
 
-| Question | Answer |
-| --- | --- |
-| Is the contract literally what callers should see? | Direct |
-| Does the framework add defaults, validation, or auxiliary side effects? | Mapped |
-| Will some methods be reserved before they are wired? | Use `supportedGroup` either way |
-| Will the public API need to evolve faster than the wire contract? | Mapped (the wrapper absorbs change) |
-| Do you want one obvious answer? | Mapped, slightly biased — mapping is reversible; direct exposure is not |
+| Question                                                                | Answer                                                                  |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Is the contract literally what callers should see?                      | Direct                                                                  |
+| Does the framework add defaults, validation, or auxiliary side effects? | Mapped                                                                  |
+| Will some methods be reserved before they are wired?                    | Use `supportedGroup` either way                                         |
+| Will the public API need to evolve faster than the wire contract?       | Mapped (the wrapper absorbs change)                                     |
+| Do you want one obvious answer?                                         | Mapped, slightly biased — mapping is reversible; direct exposure is not |
 
 ## What both shapes give you
 

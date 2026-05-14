@@ -12,12 +12,12 @@ Display information and pointer position. **Direct surface** — the public serv
 
 ## Methods
 
-| Method | Payload | Success |
-| --- | --- | --- |
-| `getDisplays` | — | `{ displays: ScreenDisplay[] }` |
-| `getPrimaryDisplay` | — | `ScreenDisplay` |
-| `getPointerPoint` | — | `ScreenPoint` |
-| `isSupported` | `{ method }` | `{ supported: boolean }` |
+| Method              | Payload      | Success                         |
+| ------------------- | ------------ | ------------------------------- |
+| `getDisplays`       | —            | `{ displays: ScreenDisplay[] }` |
+| `getPrimaryDisplay` | —            | `ScreenDisplay`                 |
+| `getPointerPoint`   | —            | `ScreenPoint`                   |
+| `isSupported`       | `{ method }` | `{ supported: boolean }`        |
 
 ## Types
 

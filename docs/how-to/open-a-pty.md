@@ -15,11 +15,12 @@ A PTY (pseudo-terminal) is what you want when you need an interactive shell or a
 ```ts
 import { PermissionRegistry } from "@effect-desktop/core"
 
-const permissions = yield* PermissionRegistry
-yield* permissions.declare(
-  { kind: "process.spawn", command: "/bin/zsh" },
-  { effect: "allow", source: "terminal-feature" }
-)
+const permissions = yield * PermissionRegistry
+yield *
+  permissions.declare(
+    { kind: "process.spawn", command: "/bin/zsh" },
+    { effect: "allow", source: "terminal-feature" }
+  )
 ```
 
 PTY uses the same `process.spawn` capability as `Process` — the command is checked the same way.
@@ -43,9 +44,7 @@ const program = Effect.gen(function* () {
 
   // Stream output
   yield* session.output.pipe(
-    Stream.runForEach((chunk) =>
-      Effect.sync(() => process.stdout.write(chunk))
-    )
+    Stream.runForEach((chunk) => Effect.sync(() => process.stdout.write(chunk)))
   )
 })
 ```
@@ -55,7 +54,7 @@ const program = Effect.gen(function* () {
 ## 3. Write input
 
 ```ts
-yield* session.write(new TextEncoder().encode("ls -la\n"))
+yield * session.write(new TextEncoder().encode("ls -la\n"))
 ```
 
 ## 4. Resize
@@ -63,7 +62,7 @@ yield* session.write(new TextEncoder().encode("ls -la\n"))
 When the user resizes the terminal UI:
 
 ```ts
-yield* session.resize({ rows: 40, cols: 120 })
+yield * session.resize({ rows: 40, cols: 120 })
 ```
 
 Resizes are signaled to the underlying process so applications like `vim` re-render.
@@ -71,8 +70,8 @@ Resizes are signaled to the underlying process so applications like `vim` re-ren
 ## 5. Send signals
 
 ```ts
-yield* session.signal("SIGINT")  // Ctrl+C
-yield* session.signal("SIGTERM")
+yield * session.signal("SIGINT") // Ctrl+C
+yield * session.signal("SIGTERM")
 ```
 
 ## 6. Cleanup
@@ -80,7 +79,7 @@ yield* session.signal("SIGTERM")
 When `"terminal-window"` closes, the PTY is closed, the process is signaled, and the resource is unregistered. Explicit close:
 
 ```ts
-yield* session.close
+yield * session.close
 ```
 
 ## Adapter substitution

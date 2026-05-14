@@ -28,10 +28,10 @@ import {
 
 ## API
 
-| Method | Signature |
-| --- | --- |
+| Method | Signature                                   |
+| ------ | ------------------------------------------- |
 | `open` | `(input: PtyOpenInput) => Effect<PtyChild>` |
-| `list` | `() => Effect<PtySnapshot[]>` |
+| `list` | `() => Effect<PtySnapshot[]>`               |
 
 ## `PtyOpenInput`
 

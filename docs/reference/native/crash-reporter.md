@@ -12,10 +12,10 @@ Crash reporter setup and breadcrumb collection.
 
 ## Methods
 
-| Method | Payload | Success |
-| --- | --- | --- |
-| `start` | `{ productName, version, companyName, submitUrl }` | `void` |
-| `report` | `CrashReporterBreadcrumb` | `void` |
+| Method   | Payload                                            | Success |
+| -------- | -------------------------------------------------- | ------- |
+| `start`  | `{ productName, version, companyName, submitUrl }` | `void`  |
+| `report` | `CrashReporterBreadcrumb`                          | `void`  |
 
 ## Types
 

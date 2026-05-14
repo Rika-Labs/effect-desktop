@@ -12,8 +12,8 @@ System notifications.
 
 ## Methods
 
-| Method | Payload | Success |
-| --- | --- | --- |
+| Method | Payload                                                | Success                |
+| ------ | ------------------------------------------------------ | ---------------------- |
 | `show` | `{ title, body?, icon?, silent?, urgency?, actions? }` | `{ clicked: boolean }` |
 
 ## Errors

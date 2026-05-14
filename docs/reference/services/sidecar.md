@@ -18,11 +18,11 @@ import { Sidecar, type SidecarApi, type SidecarHandle } from "@effect-desktop/co
 
 ## API
 
-| Method | Signature |
-| --- | --- |
-| `spawn` | `(input) => Effect<SidecarHandle>` |
-| `wait` | `(handle) => Effect<ProcessExitStatus>` |
-| `list` | `() => Effect<SidecarSnapshot[]>` |
+| Method  | Signature                               |
+| ------- | --------------------------------------- |
+| `spawn` | `(input) => Effect<SidecarHandle>`      |
+| `wait`  | `(handle) => Effect<ProcessExitStatus>` |
+| `list`  | `() => Effect<SidecarSnapshot[]>`       |
 
 `Sidecar.spawn` shares much of `Process.spawn`'s shape but registers a longer-lived resource and applies sidecar-specific restart policies.
 

@@ -24,10 +24,12 @@ const program = Effect.gen(function* () {
 
 await Effect.runPromise(
   program.pipe(
-    Effect.provide(MockHostLive({
-      version: { protocol: 1, app: "0.1.0" },
-      latencyMs: 10  // simulate host latency
-    }))
+    Effect.provide(
+      MockHostLive({
+        version: { protocol: 1, app: "0.1.0" },
+        latencyMs: 10 // simulate host latency
+      })
+    )
   )
 )
 ```
@@ -45,11 +47,14 @@ const bridge = makeMockBridge({
   pin: [
     { method: "Notes.list", success: [{ id: "1", title: "First" }] },
     { method: "Notes.save", failure: new Error("write failed") },
-    { method: "Notes.import", stream: [
-      { kind: "started", total: 2, imported: 0, skipped: 0 },
-      { kind: "imported", total: 2, imported: 1, skipped: 0, file: "a.md" },
-      { kind: "completed", total: 2, imported: 2, skipped: 0 }
-    ] }
+    {
+      method: "Notes.import",
+      stream: [
+        { kind: "started", total: 2, imported: 0, skipped: 0 },
+        { kind: "imported", total: 2, imported: 1, skipped: 0, file: "a.md" },
+        { kind: "completed", total: 2, imported: 2, skipped: 0 }
+      ]
+    }
   ]
 })
 
@@ -61,12 +66,12 @@ After running, `bridge.callLog` contains the recorded calls with `{ method, payl
 
 ## When to use one vs. the other
 
-| Goal | Use |
-| --- | --- |
-| Test a handler against a fake host | `MockHostLive` |
-| Test a renderer against fake RPC responses | `makeMockBridge` |
-| Test the full handler + bridge round-trip | `HeadlessRuntime.layer` (bundles both) |
-| Test the bridge framing itself | Construct envelopes directly via `@effect-desktop/bridge` |
+| Goal                                       | Use                                                       |
+| ------------------------------------------ | --------------------------------------------------------- |
+| Test a handler against a fake host         | `MockHostLive`                                            |
+| Test a renderer against fake RPC responses | `makeMockBridge`                                          |
+| Test the full handler + bridge round-trip  | `HeadlessRuntime.layer` (bundles both)                    |
+| Test the bridge framing itself             | Construct envelopes directly via `@effect-desktop/bridge` |
 
 ## Recording assertions
 

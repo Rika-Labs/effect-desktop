@@ -48,7 +48,7 @@ export const WindowCreate = windowRpc(
 )
 
 export const WindowRpcs: RpcGroup.RpcGroup<WindowRpcUnion> = WindowRpcGroup
-export const WindowSupportedRpcs = WindowRpcs   // explicitly the supported subset
+export const WindowSupportedRpcs = WindowRpcs // explicitly the supported subset
 
 // 2. Service tag
 export class Window extends Context.Service<Window, WindowServiceApi>()(
@@ -71,7 +71,9 @@ export const makeWindowBridgeClientLayer = (exchange, options) =>
 //    Provided by @effect-desktop/test as TestWindow.layer()
 
 // + handler layer for the runtime side
-export const WindowHandlersLive = WindowRpcGroup.toLayer({ /* handlers */ })
+export const WindowHandlersLive = WindowRpcGroup.toLayer({
+  /* handlers */
+})
 
 // + surface
 export const WindowSurface = DesktopRpc.surface("Window", WindowRpcGroup, options)
@@ -92,7 +94,12 @@ import {
   SettingsLive,
   TelemetryLive
 } from "@effect-desktop/core"
-import { WindowLive, WindowHandlersLive, ClipboardLive, ClipboardHandlersLive } from "@effect-desktop/native"
+import {
+  WindowLive,
+  WindowHandlersLive,
+  ClipboardLive,
+  ClipboardHandlersLive
+} from "@effect-desktop/native"
 
 const RuntimeLive = Layer.mergeAll(
   PermissionRegistryLive,

@@ -2627,7 +2627,10 @@ test("desktop check --release rejects evidence from another gate", async () => {
         ...checklist,
         gates: checklist.gates.map((gate) =>
           gate.id === "secret-scanning"
-            ? { ...gate, evidence: ["engineering/security/release-settings.md#GitHub-hosted runners"] }
+            ? {
+                ...gate,
+                evidence: ["engineering/security/release-settings.md#GitHub-hosted runners"]
+              }
             : gate
         )
       }
@@ -7583,13 +7586,7 @@ test("desktop package accepts node runtime launch manifests", async () => {
 
     const exitCode = await Effect.runPromise(
       runCli({
-        argv: [
-          "package",
-          "--config",
-          "apps/inspector/desktop.config.ts",
-          "--artifact",
-          "appimage"
-        ],
+        argv: ["package", "--config", "apps/inspector/desktop.config.ts", "--artifact", "appimage"],
         cwd: directory,
         hostTarget: "linux-x64",
         packageCommandRunner: runner,
@@ -9151,7 +9148,9 @@ const releaseChecklistFixture = (): unknown => ({
       id: "secret-scanning",
       title: "Secret scanning on every branch",
       kind: "repository-setting",
-      evidence: ["engineering/security/release-settings.md#Secret scanning is enabled for every branch"]
+      evidence: [
+        "engineering/security/release-settings.md#Secret scanning is enabled for every branch"
+      ]
     },
     {
       id: "ephemeral-runners",

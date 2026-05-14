@@ -12,15 +12,15 @@ Platform-specific path lookups.
 
 ## Methods
 
-| Method | Success |
-| --- | --- |
-| `appData` | `{ path: string }` |
+| Method      | Success            |
+| ----------- | ------------------ |
+| `appData`   | `{ path: string }` |
 | `documents` | `{ path: string }` |
 | `downloads` | `{ path: string }` |
-| `desktop` | `{ path: string }` |
-| `temp` | `{ path: string }` |
-| `cache` | `{ path: string }` |
-| `home` | `{ path: string }` |
+| `desktop`   | `{ path: string }` |
+| `temp`      | `{ path: string }` |
+| `cache`     | `{ path: string }` |
+| `home`      | `{ path: string }` |
 
 ## Errors
 

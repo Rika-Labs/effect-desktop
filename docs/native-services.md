@@ -28,28 +28,28 @@ This is the [layer-first contract](explanation/layer-first-design.md) applied un
 
 ## Current native modules
 
-| Module | Purpose | Reference |
-| --- | --- | --- |
-| `App` | App lifecycle | [native/app](reference/native/app.md) |
-| `Clipboard` | Read/write clipboard | [native/clipboard](reference/native/clipboard.md) |
-| `ContextMenu` | Context menus | [native/context-menu](reference/native/context-menu.md) |
-| `CrashReporter` | Crash reporter | [native/crash-reporter](reference/native/crash-reporter.md) |
-| `Dialog` | File, save, message dialogs | [native/dialog](reference/native/dialog.md) |
-| `Dock` | macOS dock | [native/dock](reference/native/dock.md) |
-| `GlobalShortcut` | OS keyboard shortcuts | [native/global-shortcut](reference/native/global-shortcut.md) |
-| `Menu` | App and window menus | [native/menu](reference/native/menu.md) |
-| `Notification` | System notifications | [native/notification](reference/native/notification.md) |
-| `Path` | Platform path lookup | [native/path](reference/native/path.md) |
-| `Protocol` | App protocol routing | [native/protocol](reference/native/protocol.md) |
-| `PowerMonitor` | Power source events | [native/power-monitor](reference/native/power-monitor.md) |
-| `SafeStorage` | Encrypted storage primitive | [native/safe-storage](reference/native/safe-storage.md) |
-| `Screen` | Displays, pointer | [native/screen](reference/native/screen.md) |
-| `Shell` | Open path, external URL | [native/shell](reference/native/shell.md) |
-| `SystemAppearance` | Theme, accent | [native/system-appearance](reference/native/system-appearance.md) |
-| `Tray` | Tray icon and menu | [native/tray](reference/native/tray.md) |
-| `Updater` | Check, download, install | [native/updater](reference/native/updater.md) |
-| `WebView` | Embedded WebView | [native/webview](reference/native/webview.md) |
-| `Window` | Window lifecycle | [native/window](reference/native/window.md) |
+| Module             | Purpose                     | Reference                                                         |
+| ------------------ | --------------------------- | ----------------------------------------------------------------- |
+| `App`              | App lifecycle               | [native/app](reference/native/app.md)                             |
+| `Clipboard`        | Read/write clipboard        | [native/clipboard](reference/native/clipboard.md)                 |
+| `ContextMenu`      | Context menus               | [native/context-menu](reference/native/context-menu.md)           |
+| `CrashReporter`    | Crash reporter              | [native/crash-reporter](reference/native/crash-reporter.md)       |
+| `Dialog`           | File, save, message dialogs | [native/dialog](reference/native/dialog.md)                       |
+| `Dock`             | macOS dock                  | [native/dock](reference/native/dock.md)                           |
+| `GlobalShortcut`   | OS keyboard shortcuts       | [native/global-shortcut](reference/native/global-shortcut.md)     |
+| `Menu`             | App and window menus        | [native/menu](reference/native/menu.md)                           |
+| `Notification`     | System notifications        | [native/notification](reference/native/notification.md)           |
+| `Path`             | Platform path lookup        | [native/path](reference/native/path.md)                           |
+| `Protocol`         | App protocol routing        | [native/protocol](reference/native/protocol.md)                   |
+| `PowerMonitor`     | Power source events         | [native/power-monitor](reference/native/power-monitor.md)         |
+| `SafeStorage`      | Encrypted storage primitive | [native/safe-storage](reference/native/safe-storage.md)           |
+| `Screen`           | Displays, pointer           | [native/screen](reference/native/screen.md)                       |
+| `Shell`            | Open path, external URL     | [native/shell](reference/native/shell.md)                         |
+| `SystemAppearance` | Theme, accent               | [native/system-appearance](reference/native/system-appearance.md) |
+| `Tray`             | Tray icon and menu          | [native/tray](reference/native/tray.md)                           |
+| `Updater`          | Check, download, install    | [native/updater](reference/native/updater.md)                     |
+| `WebView`          | Embedded WebView            | [native/webview](reference/native/webview.md)                     |
+| `Window`           | Window lifecycle            | [native/window](reference/native/window.md)                       |
 
 ## Verify Native Exports
 
