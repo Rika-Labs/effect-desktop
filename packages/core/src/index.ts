@@ -17,7 +17,7 @@ import {
   WorkflowEngineMemory
 } from "./runtime/desktop-app.js"
 import { DesktopRpcRegistry } from "./runtime/desktop-rpc-registry.js"
-import { DesktopWindowRegistry } from "./runtime/desktop-window-registry.js"
+import type { DesktopWindowRegistry } from "./runtime/desktop-window-registry.js"
 import type {
   DesktopApp,
   DesktopConfig,
@@ -100,6 +100,7 @@ export {
   type DesktopProviderSelection,
   type DesktopRpcGroupDescriptor,
   type DesktopRpcsLayer,
+  type DesktopWindowsLayer,
   type DesktopRuntimeApi,
   type DesktopRuntimeGraph,
   type DesktopRuntimeGraphNode,
@@ -136,7 +137,7 @@ function app<RIn = never, E = never>(
 ): Layer.Layer<
   DesktopApp,
   DesktopConfigError | E,
-  Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry>
+  Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry | DesktopWindowRegistry>
 >
 function app(
   options: DesktopAppOptionsWithPermissions
@@ -149,7 +150,7 @@ function app<RIn = never, E = never>(
   | Layer.Layer<
       DesktopApp,
       DesktopConfigError | E,
-      Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry>
+      Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry | DesktopWindowRegistry>
     > {
   if ("id" in options) {
     return desktopApp(options as DesktopConfig)

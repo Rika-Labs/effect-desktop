@@ -43,7 +43,12 @@ import {
   type DesktopRpcRegistration,
   type DesktopRpcRegistrationGroup
 } from "./desktop-rpc-registry.js"
-import { DesktopWindowRegistry, isSafeWindowId } from "./desktop-window-registry.js"
+import {
+  DesktopWindowRegistry,
+  DesktopWindowRegistryLive,
+  isSafeWindowId,
+  type DesktopWindowRegistration
+} from "./desktop-window-registry.js"
 import { EffectTelemetryRuntimeLive, Telemetry, makeTelemetry } from "./telemetry.js"
 
 export interface WindowSpec {
@@ -59,9 +64,15 @@ export type DesktopRpcsLayer<E = never, RIn = never> = Layer.Layer<
   RIn | DesktopRpcRegistry
 >
 
+export type DesktopWindowsLayer<RIn = never> = Layer.Layer<
+  never,
+  never,
+  RIn | DesktopWindowRegistry
+>
+
 export interface DesktopConfig<RIn = never, E = never> {
   readonly id: string
-  readonly windows: Readonly<Record<string, WindowSpec>>
+  readonly windows: DesktopWindowsLayer<RIn>
   readonly providers?: DesktopProviderSelection
   readonly rpcs?: DesktopRpcsLayer<E, RIn>
   readonly permissions?: ReadonlyArray<NormalizedCapability>
@@ -70,7 +81,7 @@ export interface DesktopConfig<RIn = never, E = never> {
 
 export interface DesktopMakeConfig<RIn = never, E = never> {
   readonly id?: string
-  readonly windows: Readonly<Record<string, WindowSpec>>
+  readonly windows: DesktopWindowsLayer<RIn>
   readonly providers?: DesktopProviderSelection
   readonly rpcs?: DesktopRpcsLayer<E, RIn>
   readonly permissions?: ReadonlyArray<NormalizedCapability>
@@ -92,6 +103,7 @@ export type DesktopWorkflowEngineLayer<RIn = never, E = never> = Layer.Layer<
 export interface DesktopAppDescriptor<RIn = never, E = never> extends DesktopConfig<RIn, E> {
   readonly _tag: "DesktopAppDescriptor"
   readonly rpcs: DesktopRpcsLayer<E, RIn>
+  readonly windowRegistrations: ReadonlyArray<DesktopWindowRegistration>
   readonly permissions: ReadonlyArray<NormalizedCapability>
   readonly workflows: ReadonlyArray<DesktopWorkflowLayer<RIn, E>>
 }
@@ -216,12 +228,18 @@ export interface DesktopProviderBudget {
 
 export class DesktopConfigError extends Data.TaggedError("DesktopConfigError")<{
   readonly appId: string
-  readonly reason: "missing-permission" | "missing-provider" | "invalid-config" | "duplicate-rpc"
+  readonly reason:
+    | "missing-permission"
+    | "missing-provider"
+    | "invalid-config"
+    | "duplicate-rpc"
+    | "duplicate-window-id"
   readonly message: string
   readonly contract?: string
   readonly method?: string
   readonly permission?: string
   readonly provider?: string
+  readonly windowId?: string
 }> {}
 
 const NormalizedCapabilityKinds = new Set<NormalizedCapability["kind"]>([
@@ -241,6 +259,7 @@ const NormalizedCapabilityKinds = new Set<NormalizedCapability["kind"]>([
 export interface DesktopAppApi {
   readonly appId: string
   readonly windows: Readonly<Record<string, WindowSpec>>
+  readonly windowRegistrations: ReadonlyArray<DesktopWindowRegistration>
   readonly rpcRegistrations: ReadonlyArray<DesktopRpcRegistration<any, any>>
 }
 
@@ -367,25 +386,30 @@ const RuntimeProviderRegistry = makeProviderRegistry(RuntimeProviders)
 
 export const make = <RIn = never, E = never>(
   config: DesktopMakeConfig<RIn, E>
-): DesktopAppDescriptor<RIn, E> =>
-  Object.freeze({
+): DesktopAppDescriptor<RIn, E> => {
+  const windowRegistrations = snapshotWindowRegistrationsSync(config.windows)
+  failOnDuplicateWindowIds(config.id ?? "app", windowRegistrations)
+  return Object.freeze({
     _tag: "DesktopAppDescriptor" as const,
     id: config.id ?? "app",
-    windows: freezeWindows(config.windows),
+    windows: config.windows,
+    windowRegistrations,
     rpcs: (config.rpcs ?? (Layer.empty as DesktopRpcsLayer<E, RIn>)) as DesktopRpcsLayer<E, RIn>,
     permissions: freezeArray(config.permissions),
     workflows: freezeArray(config.workflows),
     ...(config.providers === undefined ? {} : { providers: freezeObject(config.providers) })
   })
+}
 
 export const manifest = <RIn = never, E = never>(
   config: DesktopManifestSource<RIn, E>
 ): DesktopAppManifest => {
   const registrations = snapshotRegistrationsSync(config.rpcs)
+  const windowRegistrations = snapshotWindowRegistrationsSync(config.windows)
   return Object.freeze({
     _tag: "DesktopAppManifest" as const,
     id: config.id,
-    windows: config.windows,
+    windows: projectWindowRecord(windowRegistrations),
     rpcGroups: Object.freeze(
       registrations.map((registration) =>
         Object.freeze({
@@ -496,6 +520,102 @@ export class DesktopRpcRegistryAsyncBuildError extends Data.TaggedError(
 }> {}
 
 /**
+ * Thrown by `Desktop.make(...)` / `Desktop.manifest(...)` when the user's
+ * `windows` layer requires asynchronous work to build. Mirrors
+ * `DesktopRpcRegistryAsyncBuildError`. The fix is to compose async work
+ * inside the per-window `services` layer, not in the `Desktop.window`
+ * registration itself.
+ */
+export class DesktopWindowRegistryAsyncBuildError extends Data.TaggedError(
+  "DesktopWindowRegistryAsyncBuildError"
+)<{
+  readonly message: string
+  readonly cause: unknown
+}> {}
+
+const snapshotWindowRegistrationsSync = <RIn>(
+  windows: DesktopWindowsLayer<RIn>
+): ReadonlyArray<DesktopWindowRegistration> => {
+  // Cast invariant: every Desktop.window(...) layer body is Effect.sync that
+  // only calls registry.register(...). Composing with DesktopWindowRegistryLive
+  // (also Effect.sync) makes the entire build sync. The user's RIn type
+  // parameter is erased here because it describes what the per-window services
+  // layer needs at OPEN time (Phase 2), not what registration needs.
+  const composed = Layer.provideMerge(
+    windows as unknown as Layer.Layer<never, never, DesktopWindowRegistry>,
+    DesktopWindowRegistryLive
+  )
+  try {
+    return Effect.runSync(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const context = yield* Layer.build(composed)
+          const registry = Context.get(context, DesktopWindowRegistry)
+          return yield* registry.snapshot
+        })
+      )
+    )
+  } catch (cause) {
+    throw new DesktopWindowRegistryAsyncBuildError({
+      message:
+        "Desktop.make(...) / Desktop.manifest(...) requires the windows layer to build " +
+        "synchronously. A layer composed into Desktop.make({ windows }) requires async work " +
+        "to construct (e.g. Layer.scoped(Effect.promise(...))) — move async work inside each " +
+        "window's `services` layer (which is built inside the per-window scope at open time) " +
+        "instead. See `Desktop.window` for the sync-only constraint on registration.",
+      cause
+    })
+  }
+}
+
+const projectWindowRecord = (
+  registrations: ReadonlyArray<DesktopWindowRegistration>
+): Readonly<Record<string, WindowSpec>> =>
+  Object.freeze(
+    Object.fromEntries(
+      registrations.map((registration) => [
+        registration.id,
+        Object.freeze({ ...registration.spec })
+      ])
+    )
+  )
+
+const findDuplicateWindowId = (
+  registrations: ReadonlyArray<DesktopWindowRegistration>
+): string | undefined => {
+  const seen = new Set<string>()
+  for (const { id } of registrations) {
+    if (seen.has(id)) return id
+    seen.add(id)
+  }
+  return undefined
+}
+
+const duplicateWindowError = (appId: string, id: string): DesktopConfigError =>
+  new DesktopConfigError({
+    appId,
+    reason: "duplicate-window-id",
+    message: `Window id ${JSON.stringify(id)} is registered more than once. Each Desktop.window(id, ...) call must use a distinct id.`,
+    windowId: id
+  })
+
+const failOnDuplicateWindowIds = (
+  appId: string,
+  registrations: ReadonlyArray<DesktopWindowRegistration>
+): void => {
+  const dup = findDuplicateWindowId(registrations)
+  if (dup !== undefined) throw duplicateWindowError(appId, dup)
+}
+
+const checkWindowRegistrations = (
+  appId: string,
+  registrations: ReadonlyArray<DesktopWindowRegistration>
+): Effect.Effect<void, DesktopConfigError, never> => {
+  const dup = findDuplicateWindowId(registrations)
+  return dup === undefined ? Effect.void : Effect.fail(duplicateWindowError(appId, dup))
+}
+
+/**
  * Builds the user's `rpcs` layer against an isolated `DesktopRpcRegistry` and
  * returns the resulting registrations. The user's layer is built only for its
  * registration side effect; handler bodies are not invoked here.
@@ -556,12 +676,12 @@ export const app = <RIn = never, E = never>(
 ): Layer.Layer<
   DesktopApp,
   DesktopConfigError | E,
-  Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry>
+  Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry | DesktopWindowRegistry>
 > =>
   runtime(config) as Layer.Layer<
     DesktopApp,
     DesktopConfigError | E,
-    Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry>
+    Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry | DesktopWindowRegistry>
   >
 
 export const runtime = <RIn = never, E = never>(
@@ -569,12 +689,12 @@ export const runtime = <RIn = never, E = never>(
 ): Layer.Layer<
   DesktopRuntimeServices,
   DesktopConfigError | E,
-  Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry>
+  Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry | DesktopWindowRegistry>
 > =>
   buildSpine(config) as Layer.Layer<
     DesktopRuntimeServices,
     DesktopConfigError | E,
-    Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry>
+    Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry | DesktopWindowRegistry>
   >
 
 export const DesktopRuntimeLive = runtime
@@ -783,6 +903,8 @@ const buildSpine = <RIn, E>(
     Effect.gen(function* () {
       const provider = yield* resolveRuntimeProvider(config)
       const registrations = yield* buildRegistrations(config.rpcs)
+      const windowRegistrations = snapshotWindowRegistrationsSync(config.windows)
+      yield* checkWindowRegistrations(config.id, windowRegistrations)
       yield* checkPermissions(config, registrations)
       const graph = makeRuntimeGraph(config, provider, registrations)
       const workflowLayers = config.workflows ?? []
@@ -799,7 +921,8 @@ const buildSpine = <RIn, E>(
       const desktopAppLayer: Layer.Layer<DesktopApp, never, never> = Layer.effect(DesktopApp)(
         Effect.succeed({
           appId: config.id,
-          windows: config.windows,
+          windows: projectWindowRecord(windowRegistrations),
+          windowRegistrations,
           rpcRegistrations: registrations
         })
       )
@@ -944,13 +1067,6 @@ const freezeArray = <A>(values: ReadonlyArray<A> | undefined): ReadonlyArray<A> 
   Object.freeze([...(values ?? [])])
 
 const freezeObject = <A extends object>(value: A): A => Object.freeze({ ...value }) as A
-
-const freezeWindows = (
-  windows: Readonly<Record<string, WindowSpec>>
-): Readonly<Record<string, WindowSpec>> =>
-  Object.freeze(
-    Object.fromEntries(Object.entries(windows).map(([name, spec]) => [name, Object.freeze(spec)]))
-  )
 
 function graphNode(
   id: string,

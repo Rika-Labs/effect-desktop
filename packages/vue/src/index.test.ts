@@ -30,11 +30,7 @@ test("VueDesktop.from exposes app-scoped composables from provided groups", () =
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: Desktop.window("main", { title: "Notes" }),
     rpcs: NotesLayer
   })
   const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
@@ -65,11 +61,7 @@ test("VueDesktop.useDesktop keeps reserved endpoint names as own properties", ()
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: Desktop.window("main", { title: "Notes" }),
     rpcs: NotesLayer
   })
   const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
@@ -99,11 +91,7 @@ test("VueDesktop query effects are interrupted when the scope is disposed", asyn
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: Desktop.window("main", { title: "Notes" }),
     rpcs: NotesLayer
   })
   const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
@@ -134,11 +122,7 @@ test("VueDesktop mutation effects are interrupted when the scope is disposed", a
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: Desktop.window("main", { title: "Notes" }),
     rpcs: NotesLayer
   })
   const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
@@ -187,11 +171,7 @@ test("VueDesktop stream composables emit values, close, fail, and interrupt on d
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: Desktop.window("main", { title: "Notes" }),
     rpcs: NotesLayer
   })
   const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
@@ -235,11 +215,7 @@ test("VueDesktop stream composables retain bounded data and support callback-onl
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: Desktop.window("main", { title: "Notes" }),
     rpcs: NotesLayer
   })
   const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
@@ -278,11 +254,7 @@ test("VueDesktop.useDesktop fails loudly without provide/inject context or an in
   const Ping = Rpc.make("Notes.Ping")
   const NotesRpcs = RpcGroup.make(Ping)
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: Desktop.window("main", { title: "Notes" }),
     rpcs: Desktop.rpc(
       NotesRpcs,
       NotesRpcs.toLayer({
@@ -318,11 +290,7 @@ test("VueDesktop.useDesktop exposes RpcSupport metadata on generated endpoints",
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: Desktop.window("main", { title: "Notes" }),
     rpcs: NotesLayer
   })
   const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))

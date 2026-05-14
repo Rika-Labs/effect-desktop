@@ -215,18 +215,13 @@ test("Desktop.make returns metadata descriptor and Desktop.app returns the runti
   const app = core.Desktop.make({
     id: "notes",
     providers: { runtime: "test" },
-    windows: {
-      main: {
-        title: "Notes",
-        renderer: "/"
-      }
-    }
+    windows: core.Desktop.window("main", { title: "Notes", renderer: "/" })
   })
 
   expect(app._tag).toBe("DesktopAppDescriptor")
   expect(app.id).toBe("notes")
-  expect(app.windows["main"]?.title).toBe("Notes")
-  expect(app.windows["main"]?.renderer).toBe("/")
+  expect(core.Desktop.manifest(app).windows["main"]?.title).toBe("Notes")
+  expect(core.Desktop.manifest(app).windows["main"]?.renderer).toBe("/")
   expect(app.providers).toEqual({ runtime: "test" })
   expect("pipe" in app).toBe(false)
   expect("layers" in app).toBe(false)
@@ -257,11 +252,7 @@ test("Desktop.runtimeGraph exposes selected providers and composition nodes with
   const graph = await Effect.runPromise(
     core.Desktop.runtimeGraph({
       id: "notes",
-      windows: {
-        main: {
-          title: "Notes"
-        }
-      },
+      windows: core.Desktop.window("main", { title: "Notes" }),
       providers: { runtime: "test" },
       rpcs: core.Desktop.rpc(
         NotesRpcs,
@@ -325,11 +316,7 @@ test("Desktop.runtimeGraph exposes node runtime provider selection", async () =>
   const graph = await Effect.runPromise(
     core.Desktop.runtimeGraph({
       id: "notes",
-      windows: {
-        main: {
-          title: "Notes"
-        }
-      },
+      windows: core.Desktop.window("main", { title: "Notes" }),
       providers: { runtime: "node" }
     })
   )
@@ -356,11 +343,7 @@ test("Desktop.runtime runs the same provider-backed app program under bun, node,
   const core = await import("./index.js")
   const config = {
     id: "notes",
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    }
+    windows: core.Desktop.window("main", { title: "Notes" })
   }
   const program = Effect.gen(function* () {
     const app = yield* core.DesktopApp
@@ -429,11 +412,7 @@ test("Desktop runtime accepts handler services provided around Desktop.app(App)"
   })
   const app = core.Desktop.make({
     id: "notes",
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: core.Desktop.window("main", { title: "Notes" }),
     providers: { runtime: "test" },
     rpcs: core.Desktop.rpc(NotesRpcs, NotesLive)
   })
@@ -449,11 +428,7 @@ test("Desktop.runtime rejects unknown runtime providers as typed startup errors"
   const core = await import("./index.js")
   const badConfig = {
     id: "notes",
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: core.Desktop.window("main", { title: "Notes" }),
     providers: { runtime: "missing-runtime" }
   }
   const graphExit = await Effect.runPromiseExit(core.Desktop.runtimeGraph(badConfig))
@@ -500,11 +475,7 @@ test("Desktop.runtimeGraphSnapshot preserves missing provider failure evidence",
   const snapshot = await Effect.runPromise(
     core.Desktop.runtimeGraphSnapshot({
       id: "notes",
-      windows: {
-        main: {
-          title: "Notes"
-        }
-      },
+      windows: core.Desktop.window("main", { title: "Notes" }),
       providers: { runtime: "missing-runtime" }
     })
   )
@@ -536,12 +507,7 @@ test("Desktop.rpc pairs an RpcGroup with its implementation for app adapters", a
   const rpcLayer = core.Desktop.rpc(NotesRpcs, NotesLive)
   const config = core.Desktop.make({
     id: "notes",
-    windows: {
-      main: {
-        title: "Notes",
-        renderer: "/"
-      }
-    },
+    windows: core.Desktop.window("main", { title: "Notes", renderer: "/" }),
     rpcs: rpcLayer
   })
 
@@ -551,7 +517,7 @@ test("Desktop.rpc pairs an RpcGroup with its implementation for app adapters", a
   expect(core.Desktop.manifest(config)).toEqual({
     _tag: "DesktopAppManifest",
     id: "notes",
-    windows: config.windows,
+    windows: { main: { title: "Notes", renderer: "/" } },
     rpcGroups: [
       {
         _tag: "DesktopRpcGroup",
@@ -592,11 +558,7 @@ test("Desktop.Rpc.surface derives server, client, test, docs, and laws from one 
   })
   const app = core.Desktop.make({
     id: "notes",
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: core.Desktop.window("main", { title: "Notes" }),
     rpcs: surface.serverLayer
   })
 
@@ -806,11 +768,7 @@ test("Desktop.app binds RpcGroups into the runtime RpcServer protocol", async ()
   )
   const definition = core.Desktop.make({
     id: "notes",
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: core.Desktop.window("main", { title: "Notes" }),
     rpcs: core.Desktop.rpc(NotesRpcs, NotesLive)
   })
   const transport = {
@@ -836,11 +794,7 @@ test("Desktop.app rejects RpcGroup methods that declare known capability kinds w
   const NetworkRpcs = RpcGroup.make(Connect)
   const definition = core.Desktop.make({
     id: "network-app",
-    windows: {
-      main: {
-        title: "Network"
-      }
-    },
+    windows: core.Desktop.window("main", { title: "Network" }),
     rpcs: core.Desktop.rpc(
       NetworkRpcs,
       NetworkRpcs.toLayer({
@@ -876,11 +830,7 @@ test("Desktop.app rejects RpcGroup methods that require undeclared capabilities"
   const NetworkRpcs = RpcGroup.make(Connect)
   const definition = core.Desktop.make({
     id: "network-app",
-    windows: {
-      main: {
-        title: "Network"
-      }
-    },
+    windows: core.Desktop.window("main", { title: "Network" }),
     rpcs: core.Desktop.rpc(
       NetworkRpcs,
       NetworkRpcs.toLayer({
@@ -926,11 +876,7 @@ test("Desktop.app validates RpcGroup capability scope coverage", async () => {
   const protocolLayer = Layer.effect(RpcServer.Protocol)(makeDesktopServerProtocol(transport))
   const wrongScope = core.Desktop.make({
     id: "network-app",
-    windows: {
-      main: {
-        title: "Network"
-      }
-    },
+    windows: core.Desktop.window("main", { title: "Network" }),
     permissions: [
       {
         ...requiredCapability,
@@ -941,11 +887,7 @@ test("Desktop.app validates RpcGroup capability scope coverage", async () => {
   })
   const coveredScope = core.Desktop.make({
     id: "network-app",
-    windows: {
-      main: {
-        title: "Network"
-      }
-    },
+    windows: core.Desktop.window("main", { title: "Network" }),
     permissions: [requiredCapability],
     rpcs: layer
   })
@@ -979,11 +921,7 @@ test("Desktop.app treats explicit none capability as permission-free metadata", 
   const ScreenRpcs = RpcGroup.make(IsSupported)
   const definition = core.Desktop.make({
     id: "screen-app",
-    windows: {
-      main: {
-        title: "Screen"
-      }
-    },
+    windows: core.Desktop.window("main", { title: "Screen" }),
     rpcs: core.Desktop.rpc(
       ScreenRpcs,
       ScreenRpcs.toLayer({
@@ -1020,11 +958,7 @@ test("Desktop.app permission middleware declares app permissions for protected R
   const NetworkRpcs = RpcGroup.make(Connect)
   const definition = core.Desktop.make({
     id: "network-app",
-    windows: {
-      main: {
-        title: "Network"
-      }
-    },
+    windows: core.Desktop.window("main", { title: "Network" }),
     permissions: [requiredCapability],
     rpcs: core.Desktop.rpc(
       NetworkRpcs,
@@ -1092,11 +1026,7 @@ test("describeRpcs derives endpoint descriptors from provided RpcGroups", async 
   }).pipe(RpcSupport.unsupported("host stream is unavailable"))
   const NotesRpcs = RpcGroup.make(List, Tail)
   const definition = core.Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: core.Desktop.window("main", { title: "Notes" }),
     rpcs: core.Desktop.rpc(
       NotesRpcs,
       NotesRpcs.toLayer({
@@ -1124,11 +1054,7 @@ test("describeRpcs rejects duplicate endpoint names before adapters build maps",
   const TaskList = Rpc.make("Tasks.List", { success: Schema.Array(Schema.String) })
   const CollidingRpcs = RpcGroup.make(ProjectList, TaskList)
   const definition = core.Desktop.make({
-    windows: {
-      main: {
-        title: "Lists"
-      }
-    },
+    windows: core.Desktop.window("main", { title: "Lists" }),
     rpcs: core.Desktop.rpc(
       CollidingRpcs,
       CollidingRpcs.toLayer({
@@ -1147,11 +1073,7 @@ test("describeRpcs fails loudly when a group is not provided to the app", async 
   const core = await import("./index.js")
   const Missing = RpcGroup.make(Rpc.make("Notes.Missing"))
   const definition = core.Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    }
+    windows: core.Desktop.window("main", { title: "Notes" })
   })
 
   expect(() => core.Desktop.describeRpcs(definition, Missing)).toThrow(core.MissingDesktopRpcsError)

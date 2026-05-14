@@ -21,9 +21,17 @@ const WindowSpecSchema = Schema.Struct({
 })
 const StartupWindowsSchema = Schema.Record(Schema.String, WindowSpecSchema)
 const StartupWindowsJsonSchema = Schema.fromJsonString(StartupWindowsSchema)
+const DesktopWindowRegistrationSchema = Schema.Struct({
+  id: Schema.String,
+  spec: WindowSpecSchema
+})
+// The descriptor's `windows` field is now a Layer (not a Record). The
+// authoritative window data on the descriptor is `windowRegistrations` —
+// an array snapshot computed at `Desktop.make` time. Decode that and project
+// to the Record shape the rest of the supervisor expects.
 const DesktopAppDescriptorSchema = Schema.Struct({
   _tag: Schema.Literal("DesktopAppDescriptor"),
-  windows: StartupWindowsSchema
+  windowRegistrations: Schema.Array(DesktopWindowRegistrationSchema)
 })
 
 type DecodedStartupWindows = Schema.Schema.Type<typeof StartupWindowsSchema>
@@ -207,7 +215,12 @@ const decodeDesktopAppDescriptor = (
           message: `Invalid ${APP_MODULE_ENV}: export "${exportName}" is not a Desktop app config: ${formatUnknownError(error)}`
         })
     ),
-    Effect.flatMap((app) => validateWindowNames(app.windows, APP_MODULE_ENV))
+    Effect.flatMap((app) =>
+      validateWindowNames(
+        Object.fromEntries(app.windowRegistrations.map((reg) => [reg.id, reg.spec])),
+        APP_MODULE_ENV
+      )
+    )
   )
 
 const decodeSmokeTest = (

@@ -251,11 +251,7 @@ test("ReactDesktop.from exposes app-scoped RPC hooks from provided groups", () =
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: Desktop.window("main", { title: "Notes" }),
     rpcs: NotesLayer
   })
   const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
@@ -287,11 +283,7 @@ test("ReactDesktop.useDesktop keeps reserved endpoint names as own properties", 
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: Desktop.window("main", { title: "Notes" }),
     rpcs: NotesLayer
   })
   const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
@@ -319,11 +311,7 @@ test("ReactDesktop.useDesktop rejects colliding endpoint names", () => {
     })
   )
   const CollidingApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Lists"
-      }
-    },
+    windows: Desktop.window("main", { title: "Lists" }),
     rpcs: CollidingLayer
   })
   const CollidingReact = ReactDesktop.from(Desktop.manifest(CollidingApp))
@@ -342,11 +330,7 @@ test("ReactDesktop.useDesktop fails loudly without a generated root or renderer 
   const Ping = Rpc.make("Notes.Ping")
   const NotesRpcs = RpcGroup.make(Ping)
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: Desktop.window("main", { title: "Notes" }),
     rpcs: Desktop.rpc(
       NotesRpcs,
       NotesRpcs.toLayer({
@@ -384,11 +368,7 @@ test("ReactDesktop.useDesktop exposes RpcSupport metadata on generated endpoints
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: Desktop.window("main", { title: "Notes" }),
     rpcs: NotesLayer
   })
   const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
@@ -418,11 +398,7 @@ test("ReactDesktop generated no-payload stream hooks accept stream options", () 
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: Desktop.window("main", { title: "Notes" }),
     rpcs: NotesLayer
   })
   const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))

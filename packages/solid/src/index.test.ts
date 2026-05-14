@@ -40,11 +40,7 @@ test("SolidDesktop.from exposes app-scoped primitives from provided groups", () 
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: Desktop.window("main", { title: "Notes" }),
     rpcs: NotesLayer
   })
   const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
@@ -78,11 +74,7 @@ test("SolidDesktop.useDesktop keeps reserved endpoint names as own properties", 
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: Desktop.window("main", { title: "Notes" }),
     rpcs: NotesLayer
   })
   const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
@@ -115,11 +107,7 @@ test("SolidDesktop.useDesktop rejects colliding endpoint names", () => {
     })
   )
   const CollidingApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Lists"
-      }
-    },
+    windows: Desktop.window("main", { title: "Lists" }),
     rpcs: CollidingLayer
   })
   const CollidingSolid = SolidDesktop.from(Desktop.manifest(CollidingApp))
@@ -150,11 +138,7 @@ test("SolidDesktop query effects are interrupted when the owner is disposed", as
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: Desktop.window("main", { title: "Notes" }),
     rpcs: NotesLayer
   })
   const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
@@ -194,11 +178,7 @@ test("SolidDesktop mutation replaces active runs through the scoped runtime help
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: Desktop.window("main", { title: "Notes" }),
     rpcs: NotesLayer
   })
   const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
@@ -263,11 +243,7 @@ test("SolidDesktop stream primitives emit values, close, fail, and interrupt on 
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: Desktop.window("main", { title: "Notes" }),
     rpcs: NotesLayer
   })
   const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
@@ -313,11 +289,7 @@ test("SolidDesktop stream primitives retain bounded data and support callback-on
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: Desktop.window("main", { title: "Notes" }),
     rpcs: NotesLayer
   })
   const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
@@ -356,11 +328,7 @@ test("SolidDesktop.useDesktop fails loudly without context or an installed clien
   const Ping = Rpc.make("Notes.Ping")
   const NotesRpcs = RpcGroup.make(Ping)
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: Desktop.window("main", { title: "Notes" }),
     rpcs: Desktop.rpc(
       NotesRpcs,
       NotesRpcs.toLayer({
@@ -405,11 +373,7 @@ test("SolidDesktop.useDesktop exposes RpcSupport metadata on generated endpoints
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
+    windows: Desktop.window("main", { title: "Notes" }),
     rpcs: NotesLayer
   })
   const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))

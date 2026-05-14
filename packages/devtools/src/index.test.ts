@@ -352,11 +352,7 @@ test("LayerGraphPanel publishes selected providers and graph snapshots to Inspec
   const app = Desktop.make({
     id: "notes",
     providers: { runtime: "test" },
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    }
+    windows: Desktop.window("main", { title: "Notes" })
   })
 
   const snapshot = await Effect.runPromise(

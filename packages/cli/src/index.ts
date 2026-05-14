@@ -18,6 +18,7 @@ import {
   runtimeGraph,
   runtimeGraphSnapshot,
   type DesktopProviderBudget,
+  type DesktopWindowsLayer,
   type LayerGraphSnapshot
 } from "@effect-desktop/core"
 import {
@@ -1420,7 +1421,7 @@ const normalizeBuildPlan = (
     const updateManifestInput = yield* readUpdateFields(config.update, appVersion)
     const layerGraph = yield* runtimeGraphSnapshot({
       id: appId,
-      windows: {},
+      windows: Layer.empty as DesktopWindowsLayer<never>,
       providers: { runtime: runtimeEngine }
     })
 
@@ -1937,7 +1938,7 @@ const providerBudgetForRuntime = (
 ): Effect.Effect<DesktopProviderBudget, BuildConfigError, never> =>
   runtimeGraph({
     id: plan.appId,
-    windows: {},
+    windows: Layer.empty as DesktopWindowsLayer<never>,
     providers: { runtime: plan.runtimeEngine }
   }).pipe(
     Effect.map((graph) => graph.providerBudgets[0]),

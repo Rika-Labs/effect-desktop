@@ -188,9 +188,9 @@ test("startup environment decodes module exports and gives app modules precedenc
     [
       "export const named = {",
       '  _tag: "DesktopAppDescriptor",',
-      "  windows: {",
-      '    module: { title: "Module", width: 800 }',
-      "  }",
+      "  windowRegistrations: [",
+      '    { id: "module", spec: { title: "Module", width: 800 } }',
+      "  ]",
       "}"
     ].join("\n"),
     "utf8"
@@ -227,9 +227,9 @@ test("startup environment defaults blank module export to default", async () => 
     [
       "export default {",
       '  _tag: "DesktopAppDescriptor",',
-      "  windows: {",
-      '    main: { title: "Default Export" }',
-      "  }",
+      "  windowRegistrations: [",
+      '    { id: "main", spec: { title: "Default Export" } }',
+      "  ]",
       "}"
     ].join("\n"),
     "utf8"

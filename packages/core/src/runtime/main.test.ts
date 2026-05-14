@@ -127,9 +127,7 @@ test("runtime entry can open startup windows from the Desktop app module", async
     [
       `import { Desktop } from ${JSON.stringify(coreSpecifier)}`,
       "export default Desktop.make({",
-      "  windows: {",
-      '    main: { title: "Module Notes", width: 960, height: 640, renderer: "/" }',
-      "  }",
+      '  windows: Desktop.window("main", { title: "Module Notes", width: 960, height: 640, renderer: "/" })',
       "})"
     ].join("\n"),
     "utf8"
