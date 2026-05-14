@@ -116,7 +116,7 @@ export const makeMissingDesktopRpcsError = (
       details: { tags: [...tags] },
       actor: "application",
       remediation:
-        "Add the RpcGroup through Desktop.make({ rpcs: [Desktop.Rpcs.layer(...)] }) and pass Desktop.manifest(App) to the framework adapter."
+        "Register the RpcGroup with Desktop.make({ rpcs: Desktop.rpc(group, handlers) }) (compose multiple via Layer.mergeAll) and pass Desktop.manifest(App) to the framework adapter."
     })
   })
 
