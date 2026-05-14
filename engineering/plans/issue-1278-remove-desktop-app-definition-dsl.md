@@ -1,5 +1,13 @@
 # Issue #1278: Remove the custom DesktopAppDefinition builder DSL
 
+> **Note:** the `Desktop.Rpcs.layer(...)` mechanism this plan refers to was
+> superseded in PR #1306. Today the registration shape is
+> `Desktop.rpc(group, handlers)` returning `Layer<DesktopRpcRegistry, ...>`,
+> composed via `Layer.mergeAll(...)`. The metadata-pairing rationale below
+> still holds — the framework still pairs `RpcGroup` with handlers — but the
+> mechanism is now a self-registering Layer instead of a `(group, layer)` pair.
+> See ADR-0022's "Amendments" section for the new shape.
+
 ## Problem
 
 `Desktop.make(...).pipe(Desktop.provide(...))` is a second app-composition model beside Effect `Layer`. It stores user layers and RPC handler layers in a custom object, reimplements `pipe`, and requires `Desktop.toLayer` to lower that object back into the runtime. The durable desktop semantics are the app id, startup windows, permissions, workflows, and RPC manifest extraction; the custom builder mechanics are debt.
@@ -22,7 +30,7 @@ export const NotesApp = Desktop.make({
   windows: {
     main: { title: "Notes", renderer: "/" }
   },
-  rpcs: [Desktop.Rpcs.layer(NotesRpcs, NotesRpcsLive)]
+  rpcs: Desktop.rpc(NotesRpcs, NotesRpcsLive) // amended by PR #1306; was Desktop.Rpcs.layer in the array form.
 })
 
 export const MainLayer = Desktop.app(NotesApp)

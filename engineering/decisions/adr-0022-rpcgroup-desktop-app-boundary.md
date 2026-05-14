@@ -2,7 +2,13 @@
 
 ## Status
 
-Accepted
+Accepted, with the registration shape amended in PR #1306.
+
+The boundary decision (RpcGroup as the renderer-callable contract) is unchanged.
+The assembly mechanism evolved: pairs of `(group, layer)` registered through
+`Desktop.Rpcs.layer(...)` were replaced with `Desktop.rpc(group, handlers)`
+returning a `Layer<DesktopRpcRegistry, ...>`, composed via `Layer.mergeAll(...)`.
+See "Amendments" below.
 
 ## Context
 
@@ -23,7 +29,7 @@ Effect v4 already gives the right primitive: `RpcGroup` is a pure contract value
 
 - New app APIs define one or more `Rpc.make(...)` values and collect them with `RpcGroup.make(...)`.
 - Runtime implementations use `RpcGroup.toLayer({ ...handlers })`.
-- Desktop app assembly pairs the contract and implementation with `Desktop.Rpcs.layer(group, layer)`.
+- Desktop app assembly pairs the contract and implementation with `Desktop.rpc(group, handlers)` (amended; see below).
 - `Desktop.make({ windows })` owns declared startup windows and app shape.
 - Apps compose ordinary Effect layers with `Layer` operators and attach desktop RPC layers through the app descriptor `rpcs` field.
 - Framework adapters derive their public client shape from the assembled desktop app and the provided `RpcGroup`.
@@ -122,7 +128,7 @@ export const App = Desktop.make({
   windows: {
     main: { title: "Notes", width: 960, height: 640, renderer: "/" }
   },
-  rpcs: [Desktop.Rpcs.layer(NotesRpcs, NotesLive)]
+  rpcs: Desktop.rpc(NotesRpcs, NotesLive) // compose multiple via Layer.mergeAll(...)
 })
 ```
 
@@ -142,7 +148,30 @@ function NotesView() {
 
 ## Validation
 
-- A new `RpcGroup` app API can be implemented with `toLayer`, provided with `Desktop.Rpcs.layer`, and consumed from React, Vue, and Solid adapters.
+- A new `RpcGroup` app API can be implemented with `toLayer`, provided with `Desktop.rpc(group, handlers)`, and consumed from React, Vue, and Solid adapters.
+
+## Amendments
+
+### PR #1306 — Registration shape (registry-based composed Layer)
+
+The original ADR paired `(group, layer)` through `Desktop.Rpcs.layer(group, layer)`,
+which produced a `DesktopRpcLayer<Rpcs, E, R>` value carried in `Desktop.make({ rpcs: [...] })`.
+PR #1306 replaced that pair with a single composed Layer:
+
+- `Desktop.rpc(group, handlers)` returns `Layer<DesktopRpcRegistry, ...>` and self-registers
+  the `(group, handlers)` pair when its body runs.
+- Multiple registrations compose via `Layer.mergeAll(...)`.
+- `Desktop.make({ rpcs })` now accepts a single `Layer<DesktopRpcRegistry, ...>`
+  rather than `ReadonlyArray<DesktopRpcLayer>`.
+
+Removed: `AnyDesktopRpcLayer`, `DesktopRpcLayer`, `Desktop.Rpcs.layer`, the entire
+`packages/core/src/runtime/rpc-group-metadata.ts` file, plus `servedRpcGroup` and
+the `Symbol("@effect-desktop/core/servedRpcGroup")` metadata channel.
+
+The boundary decision (RpcGroup as the renderer-callable contract) is unchanged —
+the same `RpcGroup`, the same `RpcGroup.toLayer({ ...handlers })`, the same renderer
+adapter shape. Only the desktop-app assembly mechanism changed. The new shape mirrors
+the cluster `Entity` + `Sharding` self-registration pattern in `repos/effect-smol`.
 - `Desktop.describeRpcs(app, group)` rejects unprovided groups with `MissingDesktopRpcsError`.
 - React, Vue, and Solid adapters reject absent provider context and missing clients with typed framework errors.
 - Startup window declarations are opened by the runtime/host path after protocol readiness.
