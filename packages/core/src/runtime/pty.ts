@@ -14,7 +14,6 @@ import {
 import {
   Cause,
   Context,
-  Deferred,
   Effect,
   Exit,
   Filter,
@@ -40,6 +39,7 @@ import {
   ExecutionEvent,
   type ExecutionInspectorCollectorApi
 } from "./inspector-events.js"
+import { holdScopedExecutionPermit } from "./execution-budgets.js"
 
 const NonEmptyString = Schema.NonEmptyString
 const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0))
@@ -975,28 +975,12 @@ const holdPtyBudgetPermit = (
   ownerScope: string,
   maxConcurrent: number
 ): Effect.Effect<void, HostProtocolResourceBusyError, never> =>
-  Effect.gen(function* () {
-    const semaphore = yield* RcMap.get(ptyBudgets, ownerScope).pipe(Scope.provide(ptyScope))
-    const acquired = yield* Deferred.make<boolean, never>()
-    const holder = semaphore.withPermitsIfAvailable(1)(
-      Deferred.succeed(acquired, true).pipe(Effect.andThen(Effect.never))
-    )
-    yield* holder.pipe(
-      Effect.flatMap(
-        Option.match({
-          onNone: () => Deferred.succeed(acquired, false),
-          onSome: () => Effect.void
-        })
-      ),
-      Effect.forkScoped({ startImmediately: true }),
-      Scope.provide(ptyScope)
-    )
-    const reserved = yield* Deferred.await(acquired)
-    if (reserved) {
-      return
-    }
-
-    return yield* Effect.fail(makePtyResourceBusy(ownerScope, maxConcurrent, "PTY.open"))
+  holdScopedExecutionPermit({
+    budgets: ptyBudgets,
+    maxConcurrent,
+    onBusy: (scope, limit) => makePtyResourceBusy(scope, limit, "PTY.open"),
+    ownerScope,
+    scope: ptyScope
   })
 
 const makeBackpressureOverflow = (
