@@ -22,6 +22,7 @@ import { tmpdir } from "node:os"
 
 import { expect, test } from "bun:test"
 import { Effect, Exit, Option } from "effect"
+import { WorkflowEngine } from "effect/unstable/workflow"
 
 import {
   canonicalUpdateManifestBytes,
@@ -31,11 +32,14 @@ import {
   runDocsReleaseGate,
   runDesktopPackage,
   runDesktopReproCheck,
+  runReleaseWorkflow,
   runSemverGuard,
+  ReleaseConfig,
   type CommandRunner,
   type DocsExampleRunner,
   type DoctorCommandRunner,
   type NotarizeCommandRunner,
+  type ReleaseWorkflowApi,
   type PublicApiSnapshotReport,
   type SignCommandRunner
 } from "./index.js"
@@ -148,6 +152,79 @@ test("desktop exposes every spec-required deferred command explicitly", async ()
     expect(error.tag).toBe("CliDeferredCommand")
     expect(error.command).toBe(command)
   }
+})
+
+test("desktop release --help exits zero with workflow usage", async () => {
+  const stdout: string[] = []
+  const exitCode = await Effect.runPromise(
+    runCli({
+      argv: ["release", "--help"],
+      cwd: process.cwd(),
+      packageCommandRunner: () => Effect.die("release should not run for help"),
+      signCommandRunner: () => Effect.die("release should not run for help"),
+      notarizeCommandRunner: () => Effect.die("release should not run for help"),
+      writeStdout: (text) => {
+        stdout.push(text)
+      },
+      writeStderr: () => {}
+    })
+  )
+
+  expect(exitCode).toBe(0)
+  expect(stdout.join("")).toContain("desktop release")
+  expect(stdout.join("")).toContain("--version")
+})
+
+test("release workflow runs package sign notarize publish activities in order", async () => {
+  const calls: string[] = []
+  const services = fakeReleaseServices(calls, "macos-arm64")
+
+  const report = await Effect.runPromise(
+    runReleaseWorkflow(
+      new ReleaseConfig({
+        configPath: "desktop.config.ts",
+        platform: "macos-arm64",
+        version: "1.2.3"
+      }),
+      services
+    ).pipe(Effect.provide(WorkflowEngine.layerMemory))
+  )
+
+  expect(calls).toEqual(["package", "sign", "notarize", "publish"])
+  expect(report).toMatchObject({
+    appId: "dev.effect-desktop.test",
+    appVersion: "1.2.3",
+    target: "macos-arm64",
+    manifestPath: "/release/update-manifest.json"
+  })
+  expect(report.phases.map((phase) => phase.phase)).toEqual([
+    "package",
+    "sign",
+    "notarize",
+    "publish"
+  ])
+})
+
+test("release workflow skips notarization for non-macOS targets", async () => {
+  const calls: string[] = []
+  const services = fakeReleaseServices(calls, "linux-x64")
+
+  const report = await Effect.runPromise(
+    runReleaseWorkflow(
+      new ReleaseConfig({
+        configPath: "desktop.config.ts",
+        platform: "linux-x64"
+      }),
+      services
+    ).pipe(Effect.provide(WorkflowEngine.layerMemory))
+  )
+
+  expect(calls).toEqual(["package", "sign", "publish"])
+  expect(report.phases).toContainEqual({
+    phase: "notarize",
+    skipped: true,
+    artifacts: 0
+  })
 })
 
 test("desktop value-flag usage errors honor --json", async () => {
@@ -8374,6 +8451,90 @@ const writeBuildLayoutFixture = async (
     )}\n`
   )
 }
+
+const fakeReleaseServices = (calls: string[], target: DesktopTargetId): ReleaseWorkflowApi => ({
+  package: () =>
+    Effect.sync(() => {
+      calls.push("package")
+      return {
+        appId: "dev.effect-desktop.test",
+        appName: "Effect Desktop Test",
+        appVersion: "1.2.3",
+        target,
+        layoutPath: "/build",
+        outputPath: "/release",
+        providers: undefined,
+        artifacts: [
+          {
+            kind: target.startsWith("macos-") ? "dmg" : "appimage",
+            target,
+            artifactPath: "/release/artifact",
+            artifactJsonPath: "/release/artifact.json",
+            checksumsPath: "/release/checksums.txt",
+            appId: "dev.effect-desktop.test",
+            appName: "Effect Desktop Test",
+            appVersion: "1.2.3",
+            sizeBytes: 12,
+            sha256: "abc",
+            providerBudgetChecks: []
+          }
+        ],
+        steps: []
+      }
+    }),
+  sign: () =>
+    Effect.sync(() => {
+      calls.push("sign")
+      return {
+        appId: "dev.effect-desktop.test",
+        appName: "Effect Desktop Test",
+        appVersion: "1.2.3",
+        target,
+        outputPath: "/release",
+        artifacts: [
+          {
+            kind: target.startsWith("macos-") ? "dmg" : "appimage",
+            artifactPath: "/release/artifact",
+            signedPaths: ["/release/artifact"]
+          }
+        ],
+        steps: []
+      }
+    }),
+  notarize: () =>
+    Effect.sync(() => {
+      calls.push("notarize")
+      return {
+        appId: "dev.effect-desktop.test",
+        appName: "Effect Desktop Test",
+        appVersion: "1.2.3",
+        target: "macos-arm64",
+        outputPath: "/release",
+        artifacts: [
+          {
+            kind: "dmg",
+            artifactPath: "/release/artifact",
+            alreadyStapled: false,
+            assessed: true
+          }
+        ],
+        steps: []
+      }
+    }),
+  publish: () =>
+    Effect.sync(() => {
+      calls.push("publish")
+      return {
+        appId: "dev.effect-desktop.test",
+        version: "1.2.3",
+        channel: "stable",
+        keyVersion: 1,
+        manifestPath: "/release/update-manifest.json",
+        canonicalBytes: "{}",
+        artifacts: []
+      }
+    })
+})
 
 const writePackagedArtifactFixture = async (
   directory: string,

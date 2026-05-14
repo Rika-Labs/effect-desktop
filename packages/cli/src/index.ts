@@ -35,6 +35,7 @@ import {
 } from "effect"
 import { Command, Flag } from "effect/unstable/cli"
 import * as ChildProcessSpawnerModule from "effect/unstable/process"
+import { WorkflowEngine } from "effect/unstable/workflow"
 
 import {
   decodeDesktopConfig,
@@ -108,6 +109,14 @@ import {
   type DesktopPublishReport,
   type PublishPipelineError
 } from "./update-manifest.js"
+import {
+  DesktopReleaseReport,
+  ReleaseConfig,
+  ReleaseError,
+  runReleaseWorkflow,
+  type ReleasePhase,
+  type ReleaseWorkflowApi
+} from "./release-workflow.js"
 import {
   formatPublicApiError,
   formatPublicApiReport,
@@ -213,6 +222,19 @@ export {
   type UpdateArtifactManifest,
   type UpdateManifest
 } from "./update-manifest.js"
+export {
+  ReleaseWorkflow,
+  ReleaseWorkflowLayer,
+  ReleaseWorkflowServices
+} from "./release-workflow.js"
+export {
+  DesktopReleaseReport,
+  ReleaseConfig,
+  ReleaseError,
+  runReleaseWorkflow,
+  type ReleasePhase,
+  type ReleaseWorkflowApi
+} from "./release-workflow.js"
 export {
   DesktopArch,
   DesktopArtifact,
@@ -420,6 +442,7 @@ const ROOT_HELP = [
   "  sign",
   "  notarize",
   "  publish",
+  "  release",
   "  typecheck",
   "  lint",
   "  test",
@@ -504,6 +527,13 @@ const CLI_FLAG_SPECS: ReadonlyMap<string, CliFlagSpec> = new Map([
     {
       boolean: new Set(["--json", "--help", "-h"]),
       value: new Set(["--config", "--platform"])
+    }
+  ],
+  [
+    "release",
+    {
+      boolean: new Set(["--json", "--help", "-h"]),
+      value: new Set(["--config", "--platform", "--artifact", "--version"])
     }
   ],
   [
@@ -982,6 +1012,57 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
       )
     )
 
+    const releaseCmd = Command.make(
+      "release",
+      {
+        config: Flag.string("config").pipe(Flag.withDefault("desktop.config.ts")),
+        platform: Flag.optional(Flag.string("platform")),
+        artifact: Flag.optional(Flag.string("artifact")),
+        version: Flag.optional(Flag.string("version")),
+        json: Flag.boolean("json").pipe(Flag.withDefault(false))
+      },
+      (flags) =>
+        Effect.gen(function* () {
+          const platform = Option.getOrUndefined(flags.platform)
+          const artifact = Option.getOrUndefined(flags.artifact)
+          const version = Option.getOrUndefined(flags.version)
+          const report = yield* runReleaseWorkflow(
+            new ReleaseConfig({
+              configPath: flags.config,
+              ...(platform === undefined ? {} : { platform }),
+              ...(artifact === undefined ? {} : { artifact }),
+              ...(version === undefined ? {} : { version })
+            }),
+            makeReleaseWorkflowApi(options)
+          ).pipe(
+            Effect.provide(WorkflowEngine.layerMemory),
+            Effect.catch((error) =>
+              Effect.sync(() => {
+                if (flags.json) {
+                  options.writeStderr(`${JSON.stringify(formatReleaseError(error), null, 2)}\n`)
+                } else {
+                  options.writeStderr(`${formatReleaseErrorText(error)}\n`)
+                }
+                return undefined
+              })
+            )
+          )
+          if (report === undefined) {
+            yield* fail(1)
+            return
+          }
+          if (flags.json) {
+            options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+          } else {
+            options.writeStdout(formatReleaseReport(report))
+          }
+        })
+    ).pipe(
+      Command.withDescription(
+        "Run package, sign, notarize when needed, and publish as a resumable release workflow."
+      )
+    )
+
     const doctorCmd = Command.make(
       "doctor",
       {
@@ -1101,6 +1182,7 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
         signCmd,
         notarizeCmd,
         publishCmd,
+        releaseCmd,
         doctorCmd,
         checkCmd
       ])
@@ -3036,6 +3118,77 @@ const formatPublishErrorText = (error: PublishPipelineError): string => {
     ? `${formatted.tag}: ${formatted.message}`
     : `${formatted.tag}: ${formatted.message}\nNext: ${formatted.remediation}`
 }
+
+const formatReleaseReport = (report: DesktopReleaseReport): string =>
+  [
+    "Effect Desktop release",
+    `app               ${report.appId}`,
+    `version           ${report.appVersion}`,
+    `target            ${report.target}`,
+    `manifest          ${report.manifestPath}`,
+    ...report.phases.map((phase) => {
+      const status = phase.skipped === true ? "skipped" : `${phase.artifacts} artifacts`
+      return `${phase.phase.padEnd(17)} ${status}`
+    }),
+    ""
+  ].join("\n")
+
+const formatReleaseError = (
+  error: ReleaseError
+): { readonly tag: string; readonly phase: ReleasePhase; readonly message: string } => ({
+  tag: error._tag,
+  phase: error.phase,
+  message: error.message
+})
+
+const formatReleaseErrorText = (error: ReleaseError): string => {
+  const formatted = formatReleaseError(error)
+  return `${formatted.tag}: ${formatted.phase}: ${formatted.message}`
+}
+
+const makeReleaseWorkflowApi = (options: CliRunOptions): ReleaseWorkflowApi => ({
+  package: (config) =>
+    runDesktopPackage({
+      cwd: options.cwd,
+      configPath: config.configPath,
+      platform: config.platform,
+      artifact: config.artifact,
+      commandRunner: options.packageCommandRunner ?? runPackageCommand,
+      now: options.now ?? Date.now,
+      hostTarget: options.hostTarget
+    }),
+  sign: (config) =>
+    runDesktopSign({
+      cwd: options.cwd,
+      configPath: config.configPath,
+      platform: config.platform,
+      commandRunner: options.signCommandRunner ?? runSignCommand,
+      now: options.now ?? Date.now,
+      hostTarget: options.hostTarget,
+      env: options.env ?? process.env
+    }),
+  notarize: (config) =>
+    runDesktopNotarize({
+      cwd: options.cwd,
+      configPath: config.configPath,
+      platform: config.platform,
+      commandRunner: options.notarizeCommandRunner ?? runNotarizeCommand,
+      now: options.now ?? Date.now,
+      hostTarget:
+        options.hostTarget === "macos-arm64" || options.hostTarget === "macos-x64"
+          ? options.hostTarget
+          : undefined,
+      env: options.env ?? process.env
+    }),
+  publish: (config) =>
+    runDesktopPublish({
+      cwd: options.cwd,
+      configPath: config.configPath,
+      platform: config.platform,
+      now: options.now ?? Date.now,
+      env: options.env ?? process.env
+    })
+})
 
 const loadConfig = (path: string): Effect.Effect<unknown, BuildConfigError, never> =>
   Effect.gen(function* () {
