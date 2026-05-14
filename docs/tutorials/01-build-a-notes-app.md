@@ -50,10 +50,9 @@ export class Note extends Schema.Class<Note>("Note")({
   updatedAt: Schema.Number
 }) {}
 
-export class NoteNotFound extends Schema.TaggedError<NoteNotFound>()(
-  "NoteNotFound",
-  { id: Schema.String }
-) {}
+export class NoteNotFound extends Schema.TaggedError<NoteNotFound>()("NoteNotFound", {
+  id: Schema.String
+}) {}
 
 export const NotesList = Rpc.make("Notes.list", {
   success: Schema.Array(Note)
@@ -104,8 +103,7 @@ export const NotesHandlersLive = NotesRpcs.toLayer(
     })
 
     return {
-      "Notes.list": () =>
-        store.getOrDefault(NOTES_KEY, NoteSchema, []),
+      "Notes.list": () => store.getOrDefault(NOTES_KEY, NoteSchema, []),
 
       "Notes.save": ({ id, body }) =>
         Effect.gen(function* () {
@@ -207,7 +205,12 @@ export function NotesPanel() {
     <section>
       <h2>Notes</h2>
 
-      <form onSubmit={(event) => { event.preventDefault(); onAdd() }}>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault()
+          onAdd()
+        }}
+      >
         <textarea
           value={draft}
           onChange={(event) => setDraft(event.target.value)}

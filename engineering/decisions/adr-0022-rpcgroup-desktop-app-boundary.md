@@ -172,6 +172,7 @@ The boundary decision (RpcGroup as the renderer-callable contract) is unchanged 
 the same `RpcGroup`, the same `RpcGroup.toLayer({ ...handlers })`, the same renderer
 adapter shape. Only the desktop-app assembly mechanism changed. The new shape mirrors
 the cluster `Entity` + `Sharding` self-registration pattern in `repos/effect-smol`.
+
 - `Desktop.describeRpcs(app, group)` rejects unprovided groups with `MissingDesktopRpcsError`.
 - React, Vue, and Solid adapters reject absent provider context and missing clients with typed framework errors.
 - Startup window declarations are opened by the runtime/host path after protocol readiness.

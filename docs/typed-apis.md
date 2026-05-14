@@ -23,9 +23,7 @@ export class Todo extends Schema.Class<Todo>("Todo")({
   text: Schema.String
 }) {}
 
-export const TodoRpcs = RpcGroup.make(
-  Rpc.make("Todo.list", { success: Schema.Array(Todo) })
-)
+export const TodoRpcs = RpcGroup.make(Rpc.make("Todo.list", { success: Schema.Array(Todo) }))
 ```
 
 Use `RpcGroup.toLayer(...)` to install handlers; use `Desktop.Rpc.surface(...)` for the bundled server, client, test, and docs artifacts.

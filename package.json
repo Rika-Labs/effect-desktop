@@ -13,7 +13,10 @@
     "url": "https://github.com/Rika-Labs/effect-desktop/issues"
   },
   "packageManager": "bun@1.3.13",
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "turbo dev",
     "prepare": "effect-tsgo patch",

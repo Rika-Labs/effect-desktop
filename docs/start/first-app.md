@@ -35,10 +35,9 @@ Create `app/contracts.ts`:
 import { Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
-export class GreetingError extends Schema.TaggedError<GreetingError>()(
-  "GreetingError",
-  { reason: Schema.String }
-) {}
+export class GreetingError extends Schema.TaggedError<GreetingError>()("GreetingError", {
+  reason: Schema.String
+}) {}
 
 export const Greeting = Rpc.make("Greeting.say", {
   payload: { name: Schema.String },
@@ -60,8 +59,7 @@ import { Effect } from "effect"
 import { AppRpcs } from "./contracts.js"
 
 export const AppHandlersLive = AppRpcs.toLayer({
-  "Greeting.say": ({ name }) =>
-    Effect.succeed({ message: `Hello, ${name}!` })
+  "Greeting.say": ({ name }) => Effect.succeed({ message: `Hello, ${name}!` })
 })
 ```
 
@@ -105,13 +103,17 @@ export function Greeter() {
   const say = greeting.say.useMutation()
 
   return (
-    <form onSubmit={(event) => {
-      event.preventDefault()
-      const data = new FormData(event.currentTarget)
-      say.run({ name: String(data.get("name") ?? "") })
-    }}>
+    <form
+      onSubmit={(event) => {
+        event.preventDefault()
+        const data = new FormData(event.currentTarget)
+        say.run({ name: String(data.get("name") ?? "") })
+      }}
+    >
       <input name="name" placeholder="your name" />
-      <button type="submit" disabled={say.status === "running"}>Greet</button>
+      <button type="submit" disabled={say.status === "running"}>
+        Greet
+      </button>
       {say.status === "success" && <p>{say.value.message}</p>}
       {say.status === "error" && <p>Error: {say.error.reason}</p>}
     </form>

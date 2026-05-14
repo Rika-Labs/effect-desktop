@@ -334,9 +334,7 @@ test("ReactDesktop.useDesktop rejects colliding endpoint names", () => {
   }
 
   expect(() =>
-    renderToStaticMarkup(
-      createElement(CollidingReact.DesktopRoot, { rpcs }, createElement(Probe))
-    )
+    renderToStaticMarkup(createElement(CollidingReact.DesktopRoot, { rpcs }, createElement(Probe)))
   ).toThrow(DuplicateDesktopRpcNameError)
 })
 

@@ -458,11 +458,8 @@ export class DesktopRpcRegistryAsyncBuildError extends Data.TaggedError(
  */
 const buildRegistrations = <RIn, E>(
   rpcs: DesktopConfig<RIn, E>["rpcs"]
-): Effect.Effect<
-  ReadonlyArray<DesktopRpcRegistration<any, any>>,
-  never,
-  never
-> => Effect.sync(() => snapshotRegistrationsSync(rpcs))
+): Effect.Effect<ReadonlyArray<DesktopRpcRegistration<any, any>>, never, never> =>
+  Effect.sync(() => snapshotRegistrationsSync(rpcs))
 
 /**
  * Synchronous registry snapshot. The `Desktop.rpc(...)` constructor produces a
@@ -529,11 +526,12 @@ export const runtime = <RIn = never, E = never>(
   DesktopRuntimeServices,
   DesktopConfigError | E,
   Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry>
-> => buildSpine(config) as Layer.Layer<
-  DesktopRuntimeServices,
-  DesktopConfigError | E,
-  Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry>
->
+> =>
+  buildSpine(config) as Layer.Layer<
+    DesktopRuntimeServices,
+    DesktopConfigError | E,
+    Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry>
+  >
 
 export const DesktopRuntimeLive = runtime
 

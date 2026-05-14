@@ -42,13 +42,14 @@ export const describeRpcs = <Group extends DesktopRpcRegistrationGroup>(
   app: DesktopRpcDescriptorSource,
   group: Group
 ): readonly RpcEndpointDescriptor[] => {
-  const rpcGroups = "rpcGroups" in app
-    ? app.rpcGroups
-    : desktopManifest({
-        id: "describeRpcs",
-        windows: {},
-        ...("rpcs" in app ? { rpcs: app.rpcs } : {})
-      } as Parameters<typeof desktopManifest>[0]).rpcGroups
+  const rpcGroups =
+    "rpcGroups" in app
+      ? app.rpcGroups
+      : desktopManifest({
+          id: "describeRpcs",
+          windows: {},
+          ...("rpcs" in app ? { rpcs: app.rpcs } : {})
+        } as Parameters<typeof desktopManifest>[0]).rpcGroups
   const provided = providedRpcGroupDescriptor(rpcGroups, group)
   if (provided === undefined) {
     throw makeMissingDesktopRpcsError(
