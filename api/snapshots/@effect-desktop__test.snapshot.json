@@ -164,6 +164,16 @@
       "signature": "const makeScreenScenarioLayer: (options: TestScreenOptions) => Layer.Layer<Screen, never, never>"
     },
     {
+      "name": "makeTestPermissionRegistry",
+      "kind": "value",
+      "signature": "const makeTestPermissionRegistry: (permissions: TestDesktopPermissions) => Effect.Effect<PermissionRegistryApi, never, never>"
+    },
+    {
+      "name": "makeWindowScenarioLayer",
+      "kind": "value",
+      "signature": "const makeWindowScenarioLayer: () => Layer.Layer<Window | TestWindowState, never, ResourceRegistry>"
+    },
+    {
       "name": "MemoryFilesystem",
       "kind": "value",
       "signature": "const MemoryFilesystem: Readonly<{ layer: (options?: MemoryFilesystemOptions) => Layer.Layer<Filesystem, never, ResourceRegistry>; }>"
@@ -341,7 +351,7 @@
     {
       "name": "TestDesktop",
       "kind": "value",
-      "signature": "const TestDesktop: Readonly<{ layer: (options?: TestDesktopOptions) => Layer.Layer<TestDesktopServices>; }>"
+      "signature": "const TestDesktop: Readonly<{ expectNoLeakedResources: Effect.Effect<void, import(\"./index.js\").ResourceLeakError, ResourceRegistry>; layer: (options?: TestDesktopOptions) => Layer.Layer<TestDesktopServices>; windows: Effect.Effect<readonly TestWindowRecord[], never, TestWindowState>; }>"
     },
     {
       "name": "TestDesktopLive",
@@ -351,12 +361,17 @@
     {
       "name": "TestDesktopOptions",
       "kind": "interface",
-      "signature": "export interface TestDesktopOptions { readonly clipboard?: TestClipboardOptions readonly dialog?: TestDialogOptions readonly screen?: TestScreenOptions }"
+      "signature": "export interface TestDesktopOptions { readonly clipboard?: TestClipboardOptions readonly dialog?: TestDialogOptions readonly permissions?: TestDesktopPermissions readonly screen?: TestScreenOptions }"
+    },
+    {
+      "name": "TestDesktopPermissions",
+      "kind": "type",
+      "signature": "export type TestDesktopPermissions = \"allow-all\" | \"deny-all\""
     },
     {
       "name": "TestDesktopServices",
       "kind": "type",
-      "signature": "export type TestDesktopServices = Clipboard | Dialog | Screen"
+      "signature": "export type TestDesktopServices = | Clipboard | Dialog | PermissionRegistry | Screen | Window | TestWindowState | ResourceRegistry"
     },
     {
       "name": "TestDialogOptions",
@@ -366,7 +381,7 @@
     {
       "name": "TestNativeSurface",
       "kind": "interface",
-      "signature": "export interface TestNativeSurface { readonly tag: string readonly contractLaws: readonly DesktopRpcContractLaw[] }"
+      "signature": "export interface TestNativeSurface { readonly tag: string readonly contractLaws: readonly DesktopRpcContractLaw[] readonly schemaDocs: readonly DesktopRpcSchemaDoc[] }"
     },
     {
       "name": "TestNativeSurfaces",
@@ -374,9 +389,34 @@
       "signature": "const TestNativeSurfaces: readonly TestNativeSurface[]"
     },
     {
+      "name": "TestPermissionRegistry",
+      "kind": "value",
+      "signature": "const TestPermissionRegistry: (permissions: TestDesktopPermissions) => Layer.Layer<PermissionRegistry>"
+    },
+    {
       "name": "TestScreenOptions",
       "kind": "interface",
       "signature": "export interface TestScreenOptions { readonly displays?: readonly { readonly id?: string readonly bounds?: { readonly x?: number readonly y?: number readonly width?: number readonly height?: number } readonly workArea?: { readonly x?: number readonly y?: number readonly width?: number readonly height?: number } readonly scaleFactor?: number readonly primary?: boolean }[] }"
+    },
+    {
+      "name": "TestWindowRecord",
+      "kind": "interface",
+      "signature": "export interface TestWindowRecord { readonly input: WindowCreateOptions readonly window: WindowHandle }"
+    },
+    {
+      "name": "TestWindowState",
+      "kind": "class",
+      "signature": "export class TestWindowState extends Context.Service<TestWindowState, TestWindowStateApi>()( \"@effect-desktop/test/TestWindowState\" ) {}"
+    },
+    {
+      "name": "TestWindowStateApi",
+      "kind": "interface",
+      "signature": "export interface TestWindowStateApi { readonly windows: Effect.Effect<readonly TestWindowRecord[], never, never> }"
+    },
+    {
+      "name": "WindowTest",
+      "kind": "value",
+      "signature": "const WindowTest: () => Layer.Layer<Window | TestWindowState, never, ResourceRegistry>"
     }
   ]
 }

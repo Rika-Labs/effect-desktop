@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import { Context, Effect, Exit, Fiber, Layer, Option, Schema, Stream } from "effect"
+import { TestClock } from "effect/testing"
 
 import {
   HOST_PING_METHOD,
@@ -19,6 +20,8 @@ import {
 } from "@effect-desktop/bridge"
 import {
   Filesystem,
+  PermissionActor,
+  PermissionContext,
   PermissionRegistry,
   Process,
   PTY,
@@ -43,6 +46,7 @@ import {
   DialogLive,
   Screen,
   ScreenLive,
+  Window,
   type DialogClientApi,
   makeClipboardBridgeClientLayer,
   makeClipboardServiceLayer,
@@ -100,7 +104,10 @@ import {
   MockHostLive as SubpathMockHostLive
 } from "@effect-desktop/test/bridge"
 import { MemoryFilesystemLive as SubpathMemoryFilesystemLive } from "@effect-desktop/test/core"
-import { ClipboardTest as SubpathClipboardTest } from "@effect-desktop/test/native"
+import {
+  ClipboardTest as SubpathClipboardTest,
+  TestDesktop as SubpathTestDesktop
+} from "@effect-desktop/test/native"
 import { CapabilityLaws as SubpathCapabilityLaws } from "@effect-desktop/test/renderer"
 
 const id = (value: string): ResourceId => value as ResourceId
@@ -251,6 +258,88 @@ test("public native subpath exposes deterministic native service layers", async 
   )
 
   expect(textValue).toBe("native")
+})
+
+test("public native subpath exposes a composed desktop test layer with inspectable windows", async () => {
+  const windows = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const window = yield* Window
+        const permissions = yield* PermissionRegistry
+        yield* window.create({ title: "Notes", width: 800, height: 600 })
+        yield* permissions.check(
+          {
+            kind: "native.invoke",
+            primitive: "Window",
+            methods: ["create"],
+            audit: "always"
+          },
+          new PermissionContext({
+            actor: new PermissionActor({ kind: "window", id: "main" }),
+            traceId: "trace-allowed"
+          })
+        )
+        yield* TestClock.adjust("1 minute")
+
+        const opened = yield* SubpathTestDesktop.windows
+        const first = opened[0]
+        if (first === undefined) {
+          return yield* Effect.die(new Error("expected a test window"))
+        }
+        yield* window.close(first.window)
+        yield* SubpathTestDesktop.expectNoLeakedResources
+
+        return opened
+      }).pipe(Effect.provide(Layer.mergeAll(SubpathTestDesktop.layer(), TestClock.layer())))
+    )
+  )
+
+  expect(windows).toMatchObject([
+    {
+      input: { title: "Notes", width: 800, height: 600 },
+      window: { kind: "window", ownerScope: "test-window", state: "open" }
+    }
+  ])
+})
+
+test("public native subpath desktop test layer reports leaked windows", async () => {
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.create({ title: "Leaked" })
+      return yield* SubpathTestDesktop.expectNoLeakedResources
+    }).pipe(Effect.provide(SubpathTestDesktop.layer()))
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    expect(JSON.stringify(exit.cause.toJSON())).toContain("ResourceLeakError")
+  }
+})
+
+test("public native subpath desktop test layer can simulate denied permissions", async () => {
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const permissions = yield* PermissionRegistry
+      return yield* permissions.check(
+        {
+          kind: "native.invoke",
+          primitive: "Window",
+          methods: ["create"],
+          audit: "always"
+        },
+        new PermissionContext({
+          actor: new PermissionActor({ kind: "window", id: "main" }),
+          traceId: "trace-denied"
+        })
+      )
+    }).pipe(Effect.provide(SubpathTestDesktop.layer({ permissions: "deny-all" })))
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    expect(JSON.stringify(exit.cause.toJSON())).toContain("PermissionDenied")
+  }
 })
 
 test("public renderer subpath exposes shared capability law helpers", () => {
