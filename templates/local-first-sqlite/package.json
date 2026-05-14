@@ -1,13 +1,13 @@
 {
-  "name": "@effect-desktop/template-multi-window",
+  "name": "@effect-desktop/template-local-first-sqlite",
   "private": true,
-  "description": "Plugin host architecture template with typed RPC coordination.",
+  "description": "Full bridge-crossing todo app with renderer-side SQLite cache and live invalidation.",
   "license": "MIT OR Apache-2.0",
   "author": "Rika Labs, LLC",
   "repository": {
     "type": "git",
     "url": "https://github.com/Rika-Labs/effect-desktop.git",
-    "directory": "templates/multi-window"
+    "directory": "templates/local-first-sqlite"
   },
   "homepage": "https://github.com/Rika-Labs/effect-desktop#readme",
   "bugs": {
@@ -16,7 +16,7 @@
   "type": "module",
   "scripts": {
     "desktop": "desktop",
-    "dev": "vite --host 127.0.0.1 --port 5176 --strictPort",
+    "dev": "vite --host 127.0.0.1 --port 5175 --strictPort",
     "build": "vite build",
     "check": "tsc --noEmit -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",

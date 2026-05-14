@@ -7,7 +7,13 @@ import { fileURLToPath } from "node:url"
 
 import { Effect } from "effect"
 
-import { scaffold, TEMPLATE_NAMES, type RendererStorage, type ScaffoldOptions } from "./index.js"
+import {
+  scaffold,
+  TEMPLATE_CATALOG,
+  TEMPLATE_NAMES,
+  type RendererStorage,
+  type ScaffoldOptions
+} from "./index.js"
 
 const testDir = join(tmpdir(), "create-effect-desktop-test")
 const cliPath = fileURLToPath(new URL("bin.ts", import.meta.url))
@@ -21,7 +27,7 @@ afterEach(() => {
 function makeOptions(overrides: Partial<ScaffoldOptions> = {}): ScaffoldOptions {
   return {
     name: "test-app",
-    template: "basic-react-tailwind",
+    template: "local-first-sqlite",
     rendererStorage: "none",
     includeWorkflows: false,
     includeCluster: false,
@@ -36,11 +42,12 @@ const runScaffold = (options: ScaffoldOptions) =>
 const runScaffoldFailure = (options: ScaffoldOptions) =>
   Effect.runPromise(Effect.flip(scaffold(options).pipe(Effect.provide(BunServices.layer))))
 
-test("scaffold copies basic-react-tailwind into outDir", async () => {
+test("scaffold copies local-first-sqlite into outDir", async () => {
   const result = await runScaffold(makeOptions())
 
   expect(result.path).toBe(testDir)
-  expect(result.template).toBe("basic-react-tailwind")
+  expect(result.template).toBe("local-first-sqlite")
+  expect(result.sourceTemplate).toBe("local-first-sqlite")
   expect(existsSync(join(testDir, "package.json"))).toBe(true)
   expect(existsSync(join(testDir, "src", "contract.ts"))).toBe(true)
   expect(existsSync(join(testDir, "src", "spine.ts"))).toBe(true)
@@ -65,7 +72,7 @@ test("scaffold pins effect to the lockstep version", async () => {
 })
 
 test("scaffold rewrites workspace dependencies for generated packages", async () => {
-  await runScaffold(makeOptions({ template: "todo-sqlite" }))
+  await runScaffold(makeOptions({ template: "local-first-sqlite" }))
 
   const pkg = JSON.parse(readFileSync(join(testDir, "package.json"), "utf8")) as {
     dependencies: Record<string, string>
@@ -108,24 +115,25 @@ test("scaffold adds pglite dep when renderer-storage is pglite", async () => {
   expect(pkg.dependencies["@effect/sql-pglite"]).toBeUndefined()
 })
 
-test("scaffold copies todo-sqlite template", async () => {
-  const result = await runScaffold(makeOptions({ template: "todo-sqlite" }))
+test("scaffold copies local-first-sqlite architecture template", async () => {
+  const result = await runScaffold(makeOptions({ template: "local-first-sqlite" }))
 
-  expect(result.template).toBe("todo-sqlite")
+  expect(result.template).toBe("local-first-sqlite")
+  expect(result.architecture.demonstrates).toContain("SqlClientLive")
   expect(existsSync(join(testDir, "src", "contract.ts"))).toBe(true)
-  expect(result.stubs).toHaveLength(0)
 })
 
-test("scaffold returns stubs notice for multi-window template", async () => {
-  const result = await runScaffold(makeOptions({ template: "multi-window" }))
+test("scaffold copies plugin-host architecture template without stub notices", async () => {
+  const result = await runScaffold(makeOptions({ template: "plugin-host" }))
 
-  expect(result.stubs.length).toBeGreaterThan(0)
-  expect(result.stubs[0]).toContain("T29")
+  expect(result.template).toBe("plugin-host")
+  expect(result.sourceTemplate).toBe("plugin-host")
+  expect(result.architecture.demonstrates).toContain("Desktop.make")
 })
 
 test("scaffold throws for unknown template path", async () => {
   const options = makeOptions()
-  const badOptions = { ...options, template: "does-not-exist" as "basic-react-tailwind" }
+  const badOptions = { ...options, template: "does-not-exist" as "local-first-sqlite" }
 
   const error = await runScaffoldFailure(badOptions)
 
@@ -134,19 +142,20 @@ test("scaffold throws for unknown template path", async () => {
 
 test("scaffold rejects template traversal at the API boundary", async () => {
   const options = makeOptions()
-  const badOptions = { ...options, template: "../package.json" as "basic-react-tailwind" }
+  const badOptions = { ...options, template: "../package.json" as "local-first-sqlite" }
 
   const error = await runScaffoldFailure(badOptions)
 
   expect(error.message).toContain("Unknown template")
 })
 
-test("scaffold copies every selectable template", async () => {
+test("scaffold copies every selectable architecture template", async () => {
   for (const template of TEMPLATE_NAMES) {
     const outDir = join(testDir, template)
     const result = await runScaffold(makeOptions({ outDir, template }))
 
     expect(result.template).toBe(template)
+    expect(TEMPLATE_CATALOG[template].source).toBe(result.sourceTemplate)
     expect(existsSync(join(outDir, "package.json"))).toBe(true)
     expect(existsSync(join(outDir, "src", "App.tsx"))).toBe(true)
   }
@@ -160,7 +169,7 @@ test("scaffold renderer storage dependency matrix is exact", async () => {
   }> = [
     {
       storage: "none",
-      expected: ["@effect-desktop/platform-browser"],
+      expected: [],
       absent: ["@effect/platform-browser", "@effect/sql-sqlite-wasm", "@effect/sql-pglite"]
     },
     {
@@ -225,7 +234,7 @@ test("scaffold adds optional companion dependencies only for selected options", 
 })
 
 test("scaffold keeps cluster APIs on the canonical effect package boundary", async () => {
-  await runScaffold(makeOptions({ template: "multi-window", includeCluster: true }))
+  await runScaffold(makeOptions({ template: "plugin-host", includeCluster: true }))
 
   const pkg = JSON.parse(readFileSync(join(testDir, "package.json"), "utf8")) as {
     dependencies: Record<string, string>
@@ -245,7 +254,7 @@ test("cli skips valued flag operands when defaulting the project name", async ()
   mkdirSync(cwd, { recursive: true })
 
   const proc = Bun.spawn({
-    cmd: [process.execPath, cliPath, "--template", "todo-sqlite"],
+    cmd: [process.execPath, cliPath, "--template", "local-first-sqlite"],
     cwd,
     stdout: "pipe",
     stderr: "pipe"
@@ -259,9 +268,9 @@ test("cli skips valued flag operands when defaulting the project name", async ()
   try {
     expect(exitCode).toBe(0)
     expect(stderr).toBe("")
-    expect(stdout).toContain("Scaffolding my-effect-desktop-app from template todo-sqlite")
+    expect(stdout).toContain("Scaffolding my-effect-desktop-app from template local-first-sqlite")
     expect(existsSync(join(cwd, "my-effect-desktop-app", "package.json"))).toBe(true)
-    expect(existsSync(join(cwd, "todo-sqlite"))).toBe(false)
+    expect(existsSync(join(cwd, "local-first-sqlite"))).toBe(false)
   } finally {
     if (existsSync(cwd)) {
       rmSync(cwd, { recursive: true })

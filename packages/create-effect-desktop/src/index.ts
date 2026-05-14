@@ -4,7 +4,12 @@ import { fileURLToPath } from "node:url"
 import { Data, Effect, FileSystem } from "effect"
 import type { PlatformError } from "effect/PlatformError"
 
-export const TEMPLATE_NAMES = ["basic-react-tailwind", "todo-sqlite", "multi-window"] as const
+export const TEMPLATE_NAMES = [
+  "local-first-sqlite",
+  "workflow-jobs",
+  "ai-desktop",
+  "plugin-host"
+] as const
 export type TemplateName = (typeof TEMPLATE_NAMES)[number]
 
 export const RENDERER_STORAGE_KINDS = ["none", "indexeddb", "sqlite-wasm", "pglite"] as const
@@ -22,7 +27,8 @@ export interface ScaffoldOptions {
 export interface ScaffoldResult {
   readonly path: string
   readonly template: TemplateName
-  readonly stubs: readonly string[]
+  readonly sourceTemplate: string
+  readonly architecture: TemplateArchitecture
 }
 
 export class ScaffoldTemplateError extends Data.TaggedError("ScaffoldTemplateError")<{
@@ -57,19 +63,40 @@ export type ScaffoldError =
 const EFFECT_VERSION = "4.0.0-beta.60"
 const EFFECT_DESKTOP_VERSION = "0.0.0"
 
+export interface TemplateArchitecture {
+  readonly source: string
+  readonly description: string
+  readonly demonstrates: readonly string[]
+}
+
+export const TEMPLATE_CATALOG: Record<TemplateName, TemplateArchitecture> = {
+  "local-first-sqlite": {
+    source: "local-first-sqlite",
+    description: "Local-first SQLite app with schemas, RPC, permissions, resources, and tests.",
+    demonstrates: ["Schema", "RpcGroup", "Layer", "SqlClientLive", "PermissionRegistry"]
+  },
+  "workflow-jobs": {
+    source: "workflow-jobs",
+    description: "Background job app skeleton with explicit Effect service/layer composition.",
+    demonstrates: ["Context.Service", "Layer", "Effect.gen", "test layer"]
+  },
+  "ai-desktop": {
+    source: "ai-desktop",
+    description: "AI desktop app skeleton with typed RPC contracts and substitutable services.",
+    demonstrates: ["Schema", "RpcGroup", "Layer", "test layer"]
+  },
+  "plugin-host": {
+    source: "plugin-host",
+    description: "Plugin host skeleton with typed host RPC contracts and executable tests.",
+    demonstrates: ["Schema", "RpcGroup", "Desktop.make", "Layer"]
+  }
+}
+
 const COMPANION_VERSIONS: Record<string, string> = {
   "@effect/platform": EFFECT_VERSION,
   "@effect/platform-bun": EFFECT_VERSION,
   "@effect/sql": EFFECT_VERSION,
   "@effect/sql-sqlite-bun": EFFECT_VERSION
-}
-
-const TEMPLATE_STUBS: Record<TemplateName, readonly string[]> = {
-  "basic-react-tailwind": [],
-  "todo-sqlite": [],
-  "multi-window": [
-    "multi-window requires T29 (cluster) which has not merged; cluster wiring is stubbed"
-  ]
 }
 
 const templatesRoot = (): string => {
@@ -93,7 +120,8 @@ export const scaffold = (
     }
 
     const root = resolve(templatesRoot())
-    const templateSrc = resolve(root, options.template)
+    const template = TEMPLATE_CATALOG[options.template]
+    const templateSrc = resolve(root, template.source)
     const templateRelativePath = relative(root, templateSrc)
 
     if (templateRelativePath.startsWith("..") || isAbsolute(templateRelativePath)) {
@@ -168,7 +196,8 @@ export const scaffold = (
     return {
       path: options.outDir,
       template: options.template,
-      stubs: TEMPLATE_STUBS[options.template]
+      sourceTemplate: template.source,
+      architecture: template
     }
   })
 

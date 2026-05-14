@@ -30,7 +30,7 @@ const makeCreateCommand = (cwd: string) =>
     {
       name: Argument.string("name").pipe(Argument.withDefault("my-effect-desktop-app")),
       template: Flag.choice("template", TEMPLATE_NAMES).pipe(
-        Flag.withDefault("basic-react-tailwind")
+        Flag.withDefault("local-first-sqlite")
       ),
       rendererStorage: Flag.choice("renderer-storage", RENDERER_STORAGE_KINDS).pipe(
         Flag.withDefault("none")
@@ -60,13 +60,6 @@ const makeCreateCommand = (cwd: string) =>
         )
 
         yield* Console.log(`\nCreated ${result.path}`)
-
-        if (result.stubs.length > 0) {
-          yield* Console.log("\nStubs (not production-ready):")
-          for (const stub of result.stubs) {
-            yield* Console.log(`  - ${stub}`)
-          }
-        }
 
         yield* Console.log(`\nNext steps:
   cd ${args.name}

@@ -1,5 +1,5 @@
 {
-  "name": "@effect-desktop/template-multi-window",
+  "name": "@effect-desktop/template-plugin-host",
   "private": true,
   "description": "Plugin host architecture template with typed RPC coordination.",
   "license": "MIT OR Apache-2.0",
@@ -7,7 +7,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/Rika-Labs/effect-desktop.git",
-    "directory": "templates/multi-window"
+    "directory": "templates/plugin-host"
   },
   "homepage": "https://github.com/Rika-Labs/effect-desktop#readme",
   "bugs": {

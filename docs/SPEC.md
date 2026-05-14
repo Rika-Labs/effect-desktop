@@ -289,14 +289,14 @@ Effect Desktop v1.0.0 will not include:
 
 Examples are allowed only when they validate framework primitives. Example applications must remain generic and must not become product strategy. Valid examples include:
 
-- `basic-react-tailwind`;
-- `multi-window`;
+- `local-first-sqlite`;
+- `workflow-jobs`;
+- `ai-desktop`;
+- `plugin-host`;
 - `native-services`;
 - `streams`;
 - `process-pty`;
 - `permissions`;
-- `local-first`;
-- `heavy-workbench`.
 
 The examples exist to prove that the framework can support demanding applications. They must not introduce public APIs that only make sense for one application category.
 
@@ -555,14 +555,14 @@ effect-desktop/
     playground/
     docs/
     examples/
-      basic-react-tailwind/
-      multi-window/
+      local-first-sqlite/
+      workflow-jobs/
+      ai-desktop/
+      plugin-host/
       native-services/
       streams/
       process-pty/
       permissions/
-      local-first/
-      heavy-workbench/
 
   packages/
     core/
@@ -587,10 +587,10 @@ effect-desktop/
     native-updater/
 
   templates/
-    basic-react-tailwind/
-    local-first/
-    multi-window/
-    heavy-workbench/
+    local-first-sqlite/
+    workflow-jobs/
+    ai-desktop/
+    plugin-host/
 
   docs/
     SPEC.md
@@ -4427,50 +4427,43 @@ Required template qualities:
 
 ## 17.2 Required templates
 
-### `basic-react-tailwind`
-
-Validates:
-
-- React renderer;
-- Tailwind styling;
-- one window;
-- one typed API;
-- one dialog call;
-- settings read/write.
-
-### `local-first`
+### `local-first-sqlite`
 
 Validates:
 
 - SQLite;
-- migrations;
-- settings;
-- safe storage;
-- event log;
+- schemas;
+- typed RPC;
+- permissions;
+- resources;
 - offline startup.
 
-### `multi-window`
+### `workflow-jobs`
 
 Validates:
 
-- multiple windows;
-- route loading;
-- window-specific permissions;
-- window state persistence;
-- runtime-to-renderer events.
+- job service;
+- workflow layer;
+- typed progress RPC;
+- deterministic test layer.
 
-### `heavy-workbench`
+### `ai-desktop`
 
 Validates:
 
-- large renderer application;
-- Web Worker asset;
-- WASM asset;
-- binary stream;
-- process spawn;
-- PTY stream;
-- file watcher;
-- background job;
+- AI service boundary;
+- typed prompt schemas;
+- substitutable model layer;
+- redacted telemetry.
+
+### `plugin-host`
+
+Validates:
+
+- plugin manifest schema;
+- host RPC contract;
+- permission policy;
+- native/web boundary adapter;
 - resource handle;
 - permission prompt.
 

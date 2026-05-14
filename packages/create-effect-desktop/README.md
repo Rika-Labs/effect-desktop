@@ -17,11 +17,11 @@ The CLI entrypoint accepts:
 
 ```bash
 bun create effect-desktop [name] \
-  --template basic-react-tailwind \
+  --template local-first-sqlite \
   --renderer-storage none
 ```
 
-Supported templates are `basic-react-tailwind`, `todo-sqlite`, and `multi-window`. Supported renderer storage adapters are `none`, `indexeddb`, `sqlite-wasm`, and `pglite`.
+Supported architecture templates are `local-first-sqlite`, `workflow-jobs`, `ai-desktop`, and `plugin-host`. Each selected template copies an executable first-party fixture with Effect services, layers, schemas, RPC contracts, and tests. Supported renderer storage adapters are `none`, `indexeddb`, `sqlite-wasm`, and `pglite`.
 
 ## Non-goals
 
@@ -52,4 +52,4 @@ The package depends on `effect` for typed scaffold failures and on `@effect/plat
 
 ## Internal architecture
 
-`src/bin.ts` owns the Effect CLI command definition and user-facing errors. `src/index.ts` owns template resolution, copy safety, and generated manifest normalization.
+`src/bin.ts` owns the Effect CLI command definition and user-facing errors. `src/index.ts` owns the architecture template catalog, template resolution, copy safety, and generated manifest normalization.

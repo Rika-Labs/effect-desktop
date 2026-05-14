@@ -1,13 +1,13 @@
 {
-  "name": "@effect-desktop/template-multi-window",
+  "name": "@effect-desktop/template-workflow-jobs",
   "private": true,
-  "description": "Plugin host architecture template with typed RPC coordination.",
+  "description": "First-party workflow jobs architecture template for Effect Desktop applications.",
   "license": "MIT OR Apache-2.0",
   "author": "Rika Labs, LLC",
   "repository": {
     "type": "git",
     "url": "https://github.com/Rika-Labs/effect-desktop.git",
-    "directory": "templates/multi-window"
+    "directory": "templates/workflow-jobs"
   },
   "homepage": "https://github.com/Rika-Labs/effect-desktop#readme",
   "bugs": {
@@ -16,7 +16,7 @@
   "type": "module",
   "scripts": {
     "desktop": "desktop",
-    "dev": "vite --host 127.0.0.1 --port 5176 --strictPort",
+    "dev": "vite --host 127.0.0.1 --port 5174 --strictPort",
     "build": "vite build",
     "check": "tsc --noEmit -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -24,12 +24,11 @@
     "lint": "oxlint . --ignore-pattern 'dist/**'"
   },
   "dependencies": {
-    "@effect-desktop/bridge": "workspace:*",
     "@effect-desktop/cli": "workspace:*",
     "@effect-desktop/core": "workspace:*",
     "@effect-desktop/native": "workspace:*",
+    "@effect-desktop/platform-browser": "workspace:*",
     "@effect-desktop/react": "workspace:*",
-    "@effect-desktop/test": "workspace:*",
     "effect": "4.0.0-beta.60",
     "react": "^19.2.3",
     "react-dom": "^19.2.3"
