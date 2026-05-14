@@ -16,6 +16,7 @@
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "dev": "turbo dev",
+    "prepare": "effect-tsgo patch",
     "desktop": "bun packages/cli/src/bin.ts",
     "build": "turbo build",
     "check": "turbo check",
@@ -31,7 +32,9 @@
     "cargo:fmt": "cargo fmt --check"
   },
   "devDependencies": {
+    "@effect/tsgo": "^0.7.0",
     "@types/bun": "latest",
+    "@typescript/native-preview": "^7.0.0-dev.20260514.1",
     "oxlint": "latest",
     "oxlint-tsgolint": "latest",
     "prettier": "latest",
