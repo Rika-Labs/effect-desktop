@@ -97,6 +97,16 @@ export {
   type CrashReportUploadHandler
 } from "./crash-reporter.js"
 export {
+  DesktopHttpApi,
+  DesktopHttpApiHttpServer,
+  DesktopHttpApiRoutes,
+  DesktopHttpPermission,
+  DesktopHttpPermissionLive,
+  DesktopHttpWindowCreateCapability,
+  DesktopWindowApiGroup,
+  DesktopWindowApiHandlers
+} from "./desktop-http-api.js"
+export {
   Dialog,
   DialogClient,
   DialogHandlersLive,

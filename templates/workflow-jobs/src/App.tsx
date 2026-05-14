@@ -1,5 +1,5 @@
 import type { WindowCreateOptions } from "@effect-desktop/native/contracts"
-import { useWindow, windows } from "@effect-desktop/react"
+import { AsyncResult, useWindow, windows } from "@effect-desktop/react"
 import { Option } from "effect"
 
 import { DEFAULT_TEMPLATE_LOCALE, resolveTemplateLocale, type TemplateLocale } from "./messages.js"
@@ -30,16 +30,20 @@ export function App(props: AppProps = {}) {
       return copy.currentWindow(currentWindow.value.id)
     }
 
-    switch (createWindow.state.status) {
+    switch (createWindow.status) {
       case "idle":
         return copy.ready
       case "running":
         return copy.running
       case "success":
-        return copy.opened(createWindow.state.value.id)
+        return AsyncResult.isSuccess(createWindow.state)
+          ? copy.opened(createWindow.state.value.id)
+          : copy.running
       case "failure":
+      case "unavailable":
         return "Could not open window."
     }
+    return copy.ready
   })()
 
   return (

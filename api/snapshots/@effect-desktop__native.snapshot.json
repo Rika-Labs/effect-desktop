@@ -284,6 +284,46 @@
       "signature": "export type CrashReportUploadHandler = ( breadcrumbs: ReadonlyArray<CrashReporterBreadcrumb> ) => Effect.Effect<void, CrashReporterError, never>"
     },
     {
+      "name": "DesktopHttpApi",
+      "kind": "class",
+      "signature": "export class DesktopHttpApi extends HttpApi.make(\"DesktopHttpApi\") .add(DesktopWindowApiGroup) .annotateMerge( OpenApi.annotations({ title: \"Effect Desktop HTTP API\", description: \"Loopback-only schema-first desktop APIs backed by Effect services.\" }) ) {}"
+    },
+    {
+      "name": "DesktopHttpApiHttpServer",
+      "kind": "value",
+      "signature": "const DesktopHttpApiHttpServer: Layer.Layer<never, never, PermissionRegistry | import(\"effect/FileSystem\").FileSystem | import(\"effect/Path\").Path | Window | import(\"effect/unstable/http/Etag\").Generator | import(\"effect/unstable/http/HttpPlatform\").HttpPlatform | import(\"effect/unstable/http/HttpServer\").HttpServer>"
+    },
+    {
+      "name": "DesktopHttpApiRoutes",
+      "kind": "value",
+      "signature": "const DesktopHttpApiRoutes: Layer.Layer<never, never, PermissionRegistry | import(\"effect/FileSystem\").FileSystem | import(\"effect/Path\").Path | Window | import(\"effect/unstable/http/Etag\").Generator | HttpRouter.HttpRouter | import(\"effect/unstable/http/HttpPlatform\").HttpPlatform>"
+    },
+    {
+      "name": "DesktopHttpPermission",
+      "kind": "class",
+      "signature": "export class DesktopHttpPermission extends HttpApiMiddleware.Service< DesktopHttpPermission, { requires: PermissionRegistry } >()(\"@effect-desktop/native/DesktopHttpPermission\", { error: DesktopHttpError }) {}"
+    },
+    {
+      "name": "DesktopHttpPermissionLive",
+      "kind": "value",
+      "signature": "const DesktopHttpPermissionLive: Layer.Layer<DesktopHttpPermission, never, PermissionRegistry>"
+    },
+    {
+      "name": "DesktopHttpWindowCreateCapability",
+      "kind": "value",
+      "signature": "const DesktopHttpWindowCreateCapability: { readonly kind: \"filesystem.read\" | \"filesystem.write\" | \"filesystem.delete\"; readonly roots: readonly string[]; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly deny?: readonly string[]; readonly allowCreate?: boolean; readonly allowOverwrite?: boolean; } | { readonly kind: \"sqlite.open\"; readonly roots: readonly string[]; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly deny?: readonly string[]; } | { readonly kind: \"process.spawn\" | \"pty.spawn\"; readonly audit: \"always\" | \"on-deny\"; readonly commands: readonly string[]; readonly environment: \"allowlist\" | \"none\"; readonly shell: false | \"requires-explicit-approval\"; readonly cwd?: readonly string[]; } | { readonly kind: \"network.connect\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly hosts: readonly string[]; readonly askUnknownHosts: boolean; } | { readonly kind: \"secrets.read\" | \"secrets.write\" | \"safeStorage.read\" | \"safeStorage.write\"; readonly audit: \"always\" | \"on-deny\"; readonly namespaces: readonly string[]; } | { readonly kind: \"native.invoke\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly methods: readonly string[]; readonly primitive: string; }"
+    },
+    {
+      "name": "DesktopWindowApiGroup",
+      "kind": "class",
+      "signature": "export class DesktopWindowApiGroup extends HttpApiGroup.make(\"window\") .add( HttpApiEndpoint.post(\"create\", \"/window\", { payload: WindowCreateInput, success: WindowResource, error: DesktopHttpError }).middleware(DesktopHttpPermission) ) .annotateMerge( OpenApi.annotations({ title: \"Window\", description: \"Schema-first local desktop window endpoints.\" }) ) {}"
+    },
+    {
+      "name": "DesktopWindowApiHandlers",
+      "kind": "value",
+      "signature": "const DesktopWindowApiHandlers: Layer.Layer<HttpApiGroup.ApiGroup<\"DesktopHttpApi\", \"window\">, never, PermissionRegistry | Window>"
+    },
+    {
       "name": "Dialog",
       "kind": "class",
       "signature": "export class Dialog extends Context.Service<Dialog, DialogServiceApi>()( \"@effect-desktop/native/Dialog\" ) {}"
