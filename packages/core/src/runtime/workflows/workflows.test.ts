@@ -6,7 +6,6 @@ import { expect, test } from "bun:test"
 import { Effect, Exit, Layer } from "effect"
 import { WorkflowEngine } from "effect/unstable/workflow"
 
-import { AutoSaveService, AutoSaveWorkflow, AutoSaveWorkflowLayer } from "./auto-save.js"
 import { BackupConfigService, BackupWorkflow, BackupWorkflowLayer } from "./backup.js"
 import {
   RestoreConfigService,
@@ -21,38 +20,6 @@ const provideEngine = <A, E, R>(
   effect.pipe(Effect.provide(WorkflowEngine.layerMemory))
 
 const tempDir = (): Promise<string> => mkdtemp(join(tmpdir(), "effect-desktop-workflows-"))
-
-test("AutoSave: discard returns an executionId and accepts a flush port", async () => {
-  const calls: string[] = []
-
-  const autoSaveSvcLayer = Layer.succeed(AutoSaveService, {
-    flush: (target) =>
-      Effect.sync(() => {
-        calls.push(target)
-      })
-  })
-
-  const layers = Layer.provide(AutoSaveWorkflowLayer, autoSaveSvcLayer)
-
-  const executionId = await Effect.runPromise(
-    AutoSaveWorkflow.execute({ target: "session-1" }, { discard: true }).pipe(
-      Effect.provide(layers),
-      provideEngine
-    )
-  )
-
-  expect(typeof executionId).toBe("string")
-  expect(executionId.length).toBeGreaterThan(0)
-})
-
-test("AutoSave: idempotency key is derived from target name", async () => {
-  const executionIdA = await Effect.runPromise(AutoSaveWorkflow.executionId({ target: "doc-1" }))
-  const executionIdB = await Effect.runPromise(AutoSaveWorkflow.executionId({ target: "doc-1" }))
-  const executionIdC = await Effect.runPromise(AutoSaveWorkflow.executionId({ target: "doc-2" }))
-
-  expect(executionIdA).toBe(executionIdB)
-  expect(executionIdA).not.toBe(executionIdC)
-})
 
 test("Backup: produces archive directory with manifest, db.sqlite, and files/", async () => {
   const base = await tempDir()

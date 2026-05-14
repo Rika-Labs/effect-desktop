@@ -14,11 +14,11 @@ Issue #1094 asked application data persistence to move into durable workflows: a
 
 ## What actually ended up working
 
-The PR added `AutoSaveWorkflow`, `BackupWorkflow`, and `RestoreWorkflow` under the core runtime workflow package. Backups now build a temporary snapshot, export SQLite bytes, write a manifest, copy the snapshot into the durable archive, and return only durable success data. Restore validates the manifest before touching data, stops writers before mutation, restores both files and database state, resumes writers in a finalizer, and rolls back both mutated surfaces on failure.
+The PR added `AutoSaveWorkflow`, `BackupWorkflow`, and `RestoreWorkflow` under the core runtime workflow package. Issue #1202 later moved auto-save back to a plain Effect scoped layer because a local flush cadence has no durable state to resume. Backups now build a temporary snapshot, export SQLite bytes, write a manifest, copy the snapshot into the durable archive, and return only durable success data. Restore validates the manifest before touching data, stops writers before mutation, restores both files and database state, resumes writers in a finalizer, and rolls back both mutated surfaces on failure.
 
 ```mermaid
 flowchart LR
-  AutoSave["AutoSaveWorkflow"] --> Flush["AutoSaveService.flush"]
+  AutoSave["makeAutoSaveLayer"] --> Flush["AutoSaveService.flush"]
   Backup["BackupWorkflow"] --> Snapshot["temporary file snapshot"]
   Backup --> DbExport["SQLite export"]
   Snapshot --> Archive[".backup archive"]

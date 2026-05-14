@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-`packages/core/src/runtime/job.ts` hand-rolls long-running task supervision: progress streams, owner scopes, cancellation, retry, and ad-hoc state recovery. It cannot survive process restarts; a crashed runtime loses in-flight jobs entirely. Desktop flows like updates, installs, permission approvals, and crash submissions are exactly the use-cases that need durable resumption after a restart.
+`packages/core/src/runtime/job.ts` hand-rolls long-running task supervision: progress streams, owner scopes, cancellation, retry, and ad-hoc state recovery. It cannot survive process restarts; a crashed runtime loses in-flight jobs entirely. Desktop flows like updates, installs, permission approvals, and crash submissions are exactly the use-cases that need durable resumption after a restart. Transient local loops, such as auto-save ticks or in-memory polling, should remain plain Effect fibers, streams, schedules, and scopes because they have no durable state to resume.
 
 `effect/unstable/workflow` (announced April 2026) ships `Workflow.make`, `Activity.make`, `Activity.retry`, `DurableClock.sleep`, `DurableDeferred`, `DurableQueue`, and `Workflow.withCompensation`. Workflows survive process restarts when backed by a journal. The API is alpha-quality at the time of this decision.
 
@@ -18,6 +18,7 @@ Replace the `Job` service with `Workflow.make` + `Activity.make`. The default v1
 
 - App authors register workflows via a `workflows: [...]` array on `Desktop.app({...})` (T20 spine).
 - The framework wires them into the runtime layer with a single `WorkflowEngine` provided.
+- Use Workflow only for durable desktop work: restart/crash/sleep-resilient coordination, schema-coded activities, and state that must be polled, interrupted, or resumed. Use Effect, Layer, Stream, Schedule, Scope, and child fibers for local async orchestration.
 - Memory engine ships for v1: no new infrastructure required.
 - Upgrade path to SQL-backed journal: when T02 (`SqlClient`) is available, the journal can optionally back workflow state without touching workflow definitions.
 - Upgrade path to cluster engine: when T29 (`effect/unstable/cluster`) is adopted, `ClusterWorkflowEngine` is a drop-in swap — workflow definitions do not change.
