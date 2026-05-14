@@ -6,8 +6,18 @@ import {
   type CspPolicy
 } from "@effect-desktop/config"
 import { cspInspectorEvent, type CspInspectorEvent } from "@effect-desktop/core"
-import { Context, Data, Effect, Layer, Option, PubSub, Scope, Stream } from "effect"
-import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
+import { Context, Data, Effect, Layer, Option, PubSub, Schema, Scope, Stream } from "effect"
+import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
+import {
+  HttpApi,
+  HttpApiBuilder,
+  HttpApiEndpoint,
+  HttpApiError,
+  HttpApiGroup,
+  HttpApiScalar,
+  HttpApiSchema,
+  OpenApi
+} from "effect/unstable/httpapi"
 
 const MIME_MAP: ReadonlyMap<string, string> = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -147,6 +157,46 @@ export interface AppHttpServerApi {
 export class AppHttpServer extends Context.Service<AppHttpServer, AppHttpServerApi>()(
   "@effect-desktop/native/AppHttpServer"
 ) {}
+
+const AppAssetHeaders = Schema.Struct({
+  "if-none-match": Schema.optional(Schema.String)
+})
+
+const AppAssetBytes = Schema.Uint8Array.pipe(
+  HttpApiSchema.asUint8Array({ contentType: "application/octet-stream" })
+)
+
+export class AppAssetApiGroup extends HttpApiGroup.make("appAssets", { topLevel: true }).add(
+  HttpApiEndpoint.get("asset", "/*", {
+    headers: AppAssetHeaders,
+    success: [AppAssetBytes, HttpApiSchema.Empty(304)],
+    error: [HttpApiError.BadRequest, HttpApiError.NotFound]
+  }).annotateMerge(
+    OpenApi.annotations({
+      title: "App asset",
+      description: "Serves local desktop application assets with CSP and cache policy."
+    })
+  )
+) {}
+
+export class DesktopLocalApi extends HttpApi.make("DesktopLocalApi")
+  .add(AppAssetApiGroup)
+  .annotateMerge(
+    OpenApi.annotations({
+      title: "Effect Desktop Local API",
+      description: "Loopback-only local HTTP surfaces exposed by the desktop runtime."
+    })
+  )
+{}
+
+export const DesktopLocalHandlers = HttpApiBuilder.group(
+  DesktopLocalApi,
+  "appAssets",
+  Effect.fn(function* (handlers) {
+    const server = yield* AppHttpServer
+    return handlers.handleRaw("asset", ({ request }) => Effect.scoped(server.handle(request)))
+  })
+)
 
 const buildAssetResponse = (
   asset: ResolvedAsset,
@@ -314,10 +364,12 @@ export const AppCspInspectorLive: Layer.Layer<AppCspInspector, never, never> = L
   makeAppCspInspector()
 )
 
-export const AppAssetRoutes: Layer.Layer<never, never, HttpRouter.HttpRouter | AppHttpServer> =
-  HttpRouter.use((router) =>
-    Effect.gen(function* () {
-      const server = yield* AppHttpServer
-      yield* router.add("GET", "/*", (req) => Effect.scoped(server.handle(req)))
-    })
-  )
+export const DesktopLocalApiRoutes = HttpApiBuilder.layer(DesktopLocalApi, {
+  openapiPath: "/openapi.json"
+}).pipe(Layer.provide(DesktopLocalHandlers))
+
+export const DesktopLocalApiDocs = HttpApiScalar.layer(DesktopLocalApi, {
+  path: "/docs"
+})
+
+export const AppAssetRoutes = Layer.mergeAll(DesktopLocalApiRoutes, DesktopLocalApiDocs)
