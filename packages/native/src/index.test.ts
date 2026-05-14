@@ -146,7 +146,6 @@ import {
   SafeStorageSurface,
   Screen,
   ScreenClient,
-  ScreenHandlersLive,
   ScreenRpcs,
   ScreenLive,
   ScreenMethodNames,
@@ -3806,7 +3805,7 @@ test("ScreenSurface derives server, client, test, and metadata surfaces from the
         title: "Screen Test"
       }
     },
-    rpcs: [ScreenSurface.serverLayer]
+    rpcs: ScreenSurface.serverLayer
   })
 
   for (const law of ScreenSurface.contractLaws) {
@@ -3814,8 +3813,7 @@ test("ScreenSurface derives server, client, test, and metadata surfaces from the
   }
 
   expect(ScreenSurface.group).toBe(ScreenRpcs)
-  expect(ScreenSurface.serverLayer.group).toBe(ScreenRpcs)
-  expect(ScreenSurface.serverLayer.layer).toBe(ScreenHandlersLive)
+  expect(Layer.isLayer(ScreenSurface.serverLayer)).toBe(true)
   expect(Layer.isLayer(ScreenSurface.clientLayer)).toBe(true)
   expect(Layer.isLayer(ScreenSurface.testClientLayer)).toBe(true)
   expect(Desktop.manifest(app).rpcGroups[0]?.group).toBe(ScreenRpcs)
@@ -4029,8 +4027,8 @@ test("native DesktopRpc surfaces derive server, client, test, and metadata layer
 
     expect(name).toBe(surface.tag)
     expect(surface.group).toBe(group)
-    expect(surface.serverLayer.group).toBe(group)
-    expect(surface.serverLayer.layer).toBe(handlers)
+    expect(Layer.isLayer(surface.serverLayer)).toBe(true)
+    void handlers
     expect(Layer.isLayer(surface.clientLayer)).toBe(true)
     expect(Layer.isLayer(surface.testClientLayer)).toBe(true)
     expect(surface.schemaDocs.map((doc) => doc.tag)).toEqual(Array.from(tags))

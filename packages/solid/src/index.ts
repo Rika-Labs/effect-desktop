@@ -6,7 +6,7 @@ import {
   appendBounded,
   isDesktopStreamOptions,
   makeDesktopRendererRpcLayer,
-  type AnyDesktopRpcLayer,
+  type DesktopRpcsLayer,
   makeMissingDesktopContextError,
   makeMissingDesktopRpcsError,
   makeFrameworkRuntime,
@@ -21,7 +21,7 @@ import {
   type DesktopRendererRpcTransport,
   type FrameworkRuntime,
   type MissingDesktopRpcClientError,
-  type RpcGroupWithRequests
+  type DesktopRpcRegistrationGroup as RpcGroupWithRequests
 } from "@effect-desktop/core/renderer"
 import { Cause, Effect, Exit, ManagedRuntime, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
@@ -125,13 +125,13 @@ type SolidEndpoint =
 
 export interface SolidDesktopRootProps {
   readonly transport?: DesktopRendererRpcTransport | undefined
-  readonly rpcLayers?: ReadonlyArray<AnyDesktopRpcLayer<never, never>> | undefined
+  readonly rpcs?: DesktopRpcsLayer<never, never> | undefined
   readonly children?: JSX.Element
 }
 
 export interface SolidDesktopRenderOptions {
   readonly transport?: SolidDesktopRootProps["transport"]
-  readonly rpcLayers?: SolidDesktopRootProps["rpcLayers"]
+  readonly rpcs?: SolidDesktopRootProps["rpcs"]
 }
 
 export interface SolidDesktopAdapter<App extends DesktopAppManifest> {
@@ -166,7 +166,7 @@ const SolidDesktopContext = createContext<SolidDesktopContextValue>()
 export const SolidDesktop = Object.freeze({
   from: <App extends DesktopAppManifest>(app: App): SolidDesktopAdapter<App> => {
     const DesktopRoot = (props: SolidDesktopRootProps): JSX.Element => {
-      const runtime = makeSolidDesktopRuntime(app, props.transport, props.rpcLayers)
+      const runtime = makeSolidDesktopRuntime(app, props.transport, props.rpcs)
       onCleanup(() => {
         void runtime.dispose()
       })
@@ -234,7 +234,7 @@ export const SolidDesktop = Object.freeze({
         options?: SolidDesktopRenderOptions
       ) => {
         const rootProps =
-          options?.transport === undefined && options?.rpcLayers === undefined
+          options?.transport === undefined && options?.rpcs === undefined
             ? {
                 get children() {
                   return children()
@@ -242,7 +242,7 @@ export const SolidDesktop = Object.freeze({
               }
             : {
                 transport: options.transport,
-                rpcLayers: options.rpcLayers,
+                rpcLayers: options.rpcs,
                 get children() {
                   return children()
                 }
@@ -257,13 +257,13 @@ export const SolidDesktop = Object.freeze({
 const makeSolidDesktopRuntime = (
   app: DesktopAppManifest,
   transport: DesktopRendererRpcTransport | undefined,
-  rpcLayers: ReadonlyArray<AnyDesktopRpcLayer<never, never>> | undefined
+  rpcs: DesktopRpcsLayer<never, never> | undefined
 ): SolidDesktopRuntime => {
   const runtime = ManagedRuntime.make(
     makeDesktopRendererRpcLayer(app, {
       framework: "solid",
       transport: transport ?? getGlobalDesktopRendererRpcTransport(),
-      rpcLayers
+      rpcs
     })
   )
   let clients: DesktopRendererRpcClientMap

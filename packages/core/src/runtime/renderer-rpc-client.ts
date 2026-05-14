@@ -7,7 +7,13 @@ import {
 import { Context, Effect, Exit, Layer, Scope, Stream } from "effect"
 import { Rpc, RpcClient, RpcGroup, RpcTest } from "effect/unstable/rpc"
 
-import type { AnyDesktopRpcLayer, DesktopAppManifest } from "./desktop-app.js"
+import type { DesktopAppManifest, DesktopRpcsLayer } from "./desktop-app.js"
+import {
+  DesktopRpcRegistry,
+  DesktopRpcRegistryLive,
+  type DesktopRpcRegistration,
+  type DesktopRpcRegistrationGroup
+} from "./desktop-rpc-registry.js"
 import {
   makeMissingDesktopRpcClientError,
   type DesktopFramework,
@@ -18,7 +24,8 @@ import {
   RendererInspectorEvent,
   type RendererInspectorCollectorApi
 } from "./inspector-events.js"
-import { servedRpcGroup, type RpcGroupWithRequests } from "./rpc-group-metadata.js"
+
+type RpcGroupWithRequests = DesktopRpcRegistrationGroup
 
 export type DesktopRendererRpcTransport = DesktopTransportSend & DesktopTransportRun
 
@@ -51,7 +58,7 @@ export interface DesktopRendererRpcClientLayerOptions extends DesktopProtocolOpt
 
 export interface DesktopRendererRpcLayerOptions extends DesktopRendererRpcClientLayerOptions {
   readonly transport?: DesktopRendererRpcTransport | undefined
-  readonly rpcLayers?: ReadonlyArray<AnyDesktopRpcLayer<never, never>> | undefined
+  readonly rpcs?: DesktopRpcsLayer<never, never> | undefined
 }
 
 const GlobalTransportKey = "__EFFECT_DESKTOP_RPC_TRANSPORT__"
@@ -60,8 +67,8 @@ export const makeDesktopRendererRpcLayer = (
   app: DesktopAppManifest,
   options: DesktopRendererRpcLayerOptions
 ): Layer.Layer<RendererRpcClients, MissingDesktopRpcClientError, never> => {
-  if (options.rpcLayers !== undefined) {
-    return makeDesktopRendererRpcTestLayer(options.rpcLayers, {
+  if (options.rpcs !== undefined) {
+    return makeDesktopRendererRpcTestLayer(options.rpcs, {
       framework: options.framework,
       inspector: options.inspector
     })
@@ -120,18 +127,14 @@ export const makeDesktopRendererRpcTransportLayer = (
 ): Layer.Layer<RendererRpcTransport, never, never> => Layer.succeed(RendererRpcTransport)(transport)
 
 export const makeDesktopRendererRpcTestLayer = (
-  rpcLayers: ReadonlyArray<AnyDesktopRpcLayer<never, never>>,
+  rpcs: DesktopRpcsLayer<never, never>,
   options: {
     readonly framework?: DesktopFramework | undefined
     readonly inspector?: RendererInspectorCollectorApi | undefined
   } = {}
 ): Layer.Layer<RendererRpcClients, never, never> =>
   Layer.effect(RendererRpcClients)(
-    acquireDesktopRendererRpcTestClients(
-      rpcLayers,
-      options.framework ?? "unknown",
-      options.inspector
-    )
+    acquireDesktopRendererRpcTestClients(rpcs, options.framework ?? "unknown", options.inspector)
   )
 
 const missingRendererRpcTransportLayer = (
@@ -161,45 +164,52 @@ const acquireDesktopRendererRpcClients = (
     })
     const clients = new Map<RpcGroup.Any, DesktopRendererRpcClient>()
     for (const descriptor of app.rpcGroups) {
-      const servedGroup = servedRpcGroup(descriptor)
-      const client = yield* makeGroupClient(servedGroup, protocol, options)
+      const client = yield* makeGroupClient(descriptor.group, protocol, options)
       clients.set(descriptor.group, client)
-      if (servedGroup !== descriptor.group) {
-        clients.set(servedGroup, client)
-      }
     }
     return { clients }
   })
 
 const acquireDesktopRendererRpcTestClients = (
-  rpcLayers: ReadonlyArray<AnyDesktopRpcLayer<never, never>>,
+  rpcs: DesktopRpcsLayer<never, never>,
   framework: DesktopFramework,
   inspector: RendererInspectorCollectorApi | undefined
 ): Effect.Effect<RendererRpcClientsApi, never, Scope.Scope> =>
   Effect.gen(function* () {
     const scope = yield* Effect.scope
+    const registrations = yield* snapshotRegistrations(rpcs)
     const clients = new Map<RpcGroup.Any, DesktopRendererRpcClient>()
-    for (const rpcLayer of rpcLayers) {
-      const group = servedRpcGroup(rpcLayer)
-      const rpcClient = yield* RpcTest.makeClient(group as RpcGroup.RpcGroup<Rpc.Any>).pipe(
-        Effect.provide(rpcLayer.layer)
-      )
+    for (const registration of registrations) {
+      const group = registration.group
+      const rpcClient = (yield* RpcTest.makeClient(group as RpcGroup.RpcGroup<Rpc.Any>).pipe(
+        Effect.provide(registration.handlers as Layer.Layer<any, any, any>)
+      )) as unknown as Readonly<Record<string, DesktopRendererRpcClientMethod | undefined>>
       const client = makeRpcTestGroupClient(
         group,
-        rpcClient as unknown as Readonly<
-          Record<string, DesktopRendererRpcClientMethod | undefined>
-        >,
+        rpcClient,
         scope,
         framework,
         inspector ?? disabledRendererInspectorCollector
       )
-      clients.set(rpcLayer.group, client)
-      if (group !== rpcLayer.group) {
-        clients.set(group, client)
-      }
+      clients.set(group, client)
     }
     return { clients }
-  })
+  }) as unknown as Effect.Effect<RendererRpcClientsApi, never, Scope.Scope>
+
+const snapshotRegistrations = (
+  rpcs: DesktopRpcsLayer<never, never>
+): Effect.Effect<ReadonlyArray<DesktopRpcRegistration<any, any>>, never, never> =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const composed = Layer.provideMerge(
+        rpcs as unknown as Layer.Layer<never, never, DesktopRpcRegistry>,
+        DesktopRpcRegistryLive
+      )
+      const context = yield* Layer.build(composed)
+      const registry = Context.get(context, DesktopRpcRegistry)
+      return yield* registry.snapshot
+    })
+  )
 
 const makeGroupClient = (
   group: RpcGroupWithRequests,

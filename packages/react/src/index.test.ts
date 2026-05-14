@@ -243,7 +243,7 @@ test("ReactDesktop.from exposes app-scoped RPC hooks from provided groups", () =
     success: Schema.String
   })
   const NotesRpcs = RpcGroup.make(ListNotes, CreateNote)
-  const NotesLayer = Desktop.Rpcs.layer(
+  const NotesLayer = Desktop.rpc(
     NotesRpcs,
     NotesRpcs.toLayer({
       "Notes.List": () => Effect.succeed(["inbox"]),
@@ -256,10 +256,10 @@ test("ReactDesktop.from exposes app-scoped RPC hooks from provided groups", () =
         title: "Notes"
       }
     },
-    rpcs: [NotesLayer]
+    rpcs: NotesLayer
   })
   const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
-  const rpcLayers = [NotesLayer]
+  const rpcs = NotesLayer
   const Probe = () => {
     const notes = NotesReact.useDesktop(NotesRpcs)
     const list = notes.list.useQuery()
@@ -273,14 +273,14 @@ test("ReactDesktop.from exposes app-scoped RPC hooks from provided groups", () =
   }
 
   expect(
-    renderToStaticMarkup(createElement(NotesReact.DesktopRoot, { rpcLayers }, createElement(Probe)))
+    renderToStaticMarkup(createElement(NotesReact.DesktopRoot, { rpcs }, createElement(Probe)))
   ).toBe("<span>initial:idle</span>")
 })
 
 test("ReactDesktop.useDesktop keeps reserved endpoint names as own properties", () => {
   const Reserved = Rpc.make("Notes.__proto__", { success: Schema.String }).pipe(RpcEndpoint.query)
   const NotesRpcs = RpcGroup.make(Reserved)
-  const NotesLayer = Desktop.Rpcs.layer(
+  const NotesLayer = Desktop.rpc(
     NotesRpcs,
     NotesRpcs.toLayer({
       "Notes.__proto__": () => Effect.succeed("ok")
@@ -292,10 +292,10 @@ test("ReactDesktop.useDesktop keeps reserved endpoint names as own properties", 
         title: "Notes"
       }
     },
-    rpcs: [NotesLayer]
+    rpcs: NotesLayer
   })
   const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
-  const rpcLayers = [NotesLayer]
+  const rpcs = NotesLayer
   const Probe = () => {
     const notes = NotesReact.useDesktop(NotesRpcs) as unknown as Record<string, unknown>
     const hasReserved = Object.prototype.hasOwnProperty.call(notes, "__proto__")
@@ -303,7 +303,7 @@ test("ReactDesktop.useDesktop keeps reserved endpoint names as own properties", 
   }
 
   expect(
-    renderToStaticMarkup(createElement(NotesReact.DesktopRoot, { rpcLayers }, createElement(Probe)))
+    renderToStaticMarkup(createElement(NotesReact.DesktopRoot, { rpcs }, createElement(Probe)))
   ).toBe("<span>true:true</span>")
 })
 
@@ -311,7 +311,7 @@ test("ReactDesktop.useDesktop rejects colliding endpoint names", () => {
   const ProjectList = Rpc.make("Projects.List", { success: Schema.Array(Schema.String) })
   const TaskList = Rpc.make("Tasks.List", { success: Schema.Array(Schema.String) })
   const CollidingRpcs = RpcGroup.make(ProjectList, TaskList)
-  const CollidingLayer = Desktop.Rpcs.layer(
+  const CollidingLayer = Desktop.rpc(
     CollidingRpcs,
     CollidingRpcs.toLayer({
       "Projects.List": () => Effect.succeed(["project"]),
@@ -324,10 +324,10 @@ test("ReactDesktop.useDesktop rejects colliding endpoint names", () => {
         title: "Lists"
       }
     },
-    rpcs: [CollidingLayer]
+    rpcs: CollidingLayer
   })
   const CollidingReact = ReactDesktop.from(Desktop.manifest(CollidingApp))
-  const rpcLayers = [CollidingLayer]
+  const rpcs = CollidingLayer
   const Probe = () => {
     CollidingReact.useDesktop(CollidingRpcs)
     return createElement("span", null, "mounted")
@@ -335,7 +335,7 @@ test("ReactDesktop.useDesktop rejects colliding endpoint names", () => {
 
   expect(() =>
     renderToStaticMarkup(
-      createElement(CollidingReact.DesktopRoot, { rpcLayers }, createElement(Probe))
+      createElement(CollidingReact.DesktopRoot, { rpcs }, createElement(Probe))
     )
   ).toThrow(DuplicateDesktopRpcNameError)
 })
@@ -349,14 +349,12 @@ test("ReactDesktop.useDesktop fails loudly without a generated root or renderer 
         title: "Notes"
       }
     },
-    rpcs: [
-      Desktop.Rpcs.layer(
-        NotesRpcs,
-        NotesRpcs.toLayer({
-          "Notes.Ping": () => Effect.void
-        })
-      )
-    ]
+    rpcs: Desktop.rpc(
+      NotesRpcs,
+      NotesRpcs.toLayer({
+        "Notes.Ping": () => Effect.void
+      })
+    )
   })
   const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
   const Probe = () => {
@@ -381,7 +379,7 @@ test("ReactDesktop.useDesktop exposes RpcSupport metadata on generated endpoints
     RpcSupport.unsupported("host method is unavailable")
   )
   const NotesRpcs = RpcGroup.make(Unsupported)
-  const NotesLayer = Desktop.Rpcs.layer(
+  const NotesLayer = Desktop.rpc(
     NotesRpcs,
     NotesRpcs.toLayer({
       "Notes.Unsupported": () => Effect.succeed("unused")
@@ -393,10 +391,10 @@ test("ReactDesktop.useDesktop exposes RpcSupport metadata on generated endpoints
         title: "Notes"
       }
     },
-    rpcs: [NotesLayer]
+    rpcs: NotesLayer
   })
   const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
-  const rpcLayers = [NotesLayer]
+  const rpcs = NotesLayer
   const Probe = () => {
     const notes = NotesReact.useDesktop(NotesRpcs)
     const endpoint: SupportedQueryEndpoint = notes.unsupported
@@ -404,7 +402,7 @@ test("ReactDesktop.useDesktop exposes RpcSupport metadata on generated endpoints
   }
 
   expect(
-    renderToStaticMarkup(createElement(NotesReact.DesktopRoot, { rpcLayers }, createElement(Probe)))
+    renderToStaticMarkup(createElement(NotesReact.DesktopRoot, { rpcs }, createElement(Probe)))
   ).toBe("<span>false:unsupported</span>")
 })
 
@@ -415,7 +413,7 @@ test("ReactDesktop generated no-payload stream hooks accept stream options", () 
     stream: true
   })
   const NotesRpcs = RpcGroup.make(Tail)
-  const NotesLayer = Desktop.Rpcs.layer(
+  const NotesLayer = Desktop.rpc(
     NotesRpcs,
     NotesRpcs.toLayer({
       "Notes.Tail": () => Stream.make("a", "b", "c")
@@ -427,7 +425,7 @@ test("ReactDesktop generated no-payload stream hooks accept stream options", () 
         title: "Notes"
       }
     },
-    rpcs: [NotesLayer]
+    rpcs: NotesLayer
   })
   const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
   const Probe = () => {
@@ -438,7 +436,7 @@ test("ReactDesktop generated no-payload stream hooks accept stream options", () 
 
   expect(
     renderToStaticMarkup(
-      createElement(NotesReact.DesktopRoot, { rpcLayers: [NotesLayer] }, createElement(Probe))
+      createElement(NotesReact.DesktopRoot, { rpcs: NotesLayer }, createElement(Probe))
     )
   ).toBe("<span>idle:0</span>")
 })

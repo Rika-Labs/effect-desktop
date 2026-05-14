@@ -3,7 +3,6 @@ import { Effect, Layer } from "effect"
 import { WorkflowEngine } from "effect/unstable/workflow"
 
 import {
-  Rpcs,
   app as desktopApp,
   launch,
   make,
@@ -16,6 +15,7 @@ import {
   WorkflowEngineDurable,
   WorkflowEngineMemory
 } from "./runtime/desktop-app.js"
+import { DesktopRpcRegistry } from "./runtime/desktop-rpc-registry.js"
 import type {
   DesktopApp,
   DesktopConfig,
@@ -86,8 +86,6 @@ export {
   runtime,
   runtimeGraph,
   runtimeGraphSnapshot,
-  Rpcs,
-  type AnyDesktopRpcLayer,
   type DesktopAppApi,
   type DesktopAppDescriptor,
   type DesktopAppManifest,
@@ -97,7 +95,7 @@ export {
   type DesktopProviderBudget,
   type DesktopProviderSelection,
   type DesktopRpcGroupDescriptor,
-  type DesktopRpcLayer,
+  type DesktopRpcsLayer,
   type DesktopRuntimeApi,
   type DesktopRuntimeGraph,
   type DesktopRuntimeGraphNode,
@@ -131,7 +129,11 @@ interface DesktopAppOptionsWithPermissions extends DesktopAppOptions {
 function app(): Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>
 function app<RIn = never, E = never>(
   config: DesktopConfig<RIn, E>
-): Layer.Layer<DesktopApp, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices>>
+): Layer.Layer<
+  DesktopApp,
+  DesktopConfigError | E,
+  Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry>
+>
 function app(
   options: DesktopAppOptionsWithPermissions
 ): Layer.Layer<WorkflowEngine.WorkflowEngine, never, PermissionRegistry>
@@ -140,7 +142,11 @@ function app<RIn = never, E = never>(
 ):
   | Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>
   | Layer.Layer<WorkflowEngine.WorkflowEngine, never, PermissionRegistry>
-  | Layer.Layer<DesktopApp, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices>> {
+  | Layer.Layer<
+      DesktopApp,
+      DesktopConfigError | E,
+      Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry>
+    > {
   if ("id" in options) {
     return desktopApp(options as DesktopConfig)
   }
@@ -190,6 +196,5 @@ export const Desktop = Object.freeze({
   runtime,
   runtimeGraph,
   runtimeGraphSnapshot,
-  Rpcs,
   describeRpcs
 })

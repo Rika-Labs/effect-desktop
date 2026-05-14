@@ -35,7 +35,7 @@ import {
   type ResourceRegistryApi,
   type ScopeId
 } from "./resources.js"
-import type { RpcGroupWithRequests } from "./rpc-group-metadata.js"
+import type { DesktopRpcRegistrationGroup as RpcGroupWithRequests } from "./desktop-rpc-registry.js"
 
 const NonEmptyString = Schema.NonEmptyString
 // eslint-disable-next-line no-control-regex -- Intentionally matches control chars to reject them.
