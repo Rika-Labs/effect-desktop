@@ -401,10 +401,31 @@ export const manifest = <RIn = never, E = never>(
  * Compose multiple registrations with `Layer.mergeAll(...)` and pass the result
  * as `rpcs:` to `Desktop.make`.
  *
- * Note: the resulting layer's environment is `DesktopRpcRegistry` only. The
- * handler's own service requirements (`R`) are stored as data in the registration
- * and re-applied at `bindRegistration` time inside the runtime spine. The R
- * requirement is therefore not propagated through the layer type.
+ * The resulting layer's environment is `DesktopRpcRegistry` only — the handler's
+ * own service requirements (`R`) are stored as data in the registration and
+ * re-applied at `bindRegistration` time inside the runtime spine. The R
+ * requirement is therefore not propagated through this layer's type.
+ *
+ * **Sync-only constraint.** The body of this layer is `Effect.sync` (it only
+ * calls `registry.register(...)`). `Desktop.manifest(...)` runs the user's
+ * `rpcs` layer synchronously (`Effect.runSync` inside `snapshotRegistrationsSync`)
+ * to extract registrations without making the manifest API async. Any layer
+ * composed into `rpcs` that requires async work to BUILD (e.g. `Layer.scoped`
+ * around an `Effect.promise`) will crash `manifest()` with `DesktopRpcRegistryAsyncBuildError`.
+ *
+ * Compose async work INSIDE the handler bodies, not in the layer construction:
+ *
+ * ```ts
+ * // OK — async work inside handler:
+ * Desktop.rpc(NotesRpcs, NotesRpcs.toLayer({
+ *   "Notes.list": () => Effect.tryPromise(() => fetchNotes())
+ * }))
+ *
+ * // CRASH — async layer construction:
+ * Desktop.rpc(NotesRpcs, NotesRpcs.toLayer(
+ *   Effect.tryPromise(() => loadHandlerSetup())
+ * ))
+ * ```
  */
 export const rpc = <Rpcs extends Rpc.Any, E, R>(
   group: RpcGroup.RpcGroup<Rpcs>,
@@ -416,6 +437,19 @@ export const rpc = <Rpcs extends Rpc.Any, E, R>(
       yield* registry.register({ group, handlers })
     })
   )
+
+/**
+ * Thrown by `Desktop.manifest(...)` when the user's `rpcs` layer requires
+ * asynchronous work to build. The framework runs `rpcs` synchronously to
+ * extract the registry snapshot; async layer construction is the one user
+ * mistake the registry-extraction path cannot recover from.
+ */
+export class DesktopRpcRegistryAsyncBuildError extends Data.TaggedError(
+  "DesktopRpcRegistryAsyncBuildError"
+)<{
+  readonly message: string
+  readonly cause: unknown
+}> {}
 
 /**
  * Builds the user's `rpcs` layer against an isolated `DesktopRpcRegistry` and
@@ -445,15 +479,27 @@ const snapshotRegistrationsSync = <RIn, E>(
     rpcs as unknown as Layer.Layer<never, never, DesktopRpcRegistry>,
     DesktopRpcRegistryLive
   )
-  return Effect.runSync(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const context = yield* Layer.build(composed)
-        const registry = Context.get(context, DesktopRpcRegistry)
-        return yield* registry.snapshot
-      })
+  try {
+    return Effect.runSync(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const context = yield* Layer.build(composed)
+          const registry = Context.get(context, DesktopRpcRegistry)
+          return yield* registry.snapshot
+        })
+      )
     )
-  )
+  } catch (cause) {
+    throw new DesktopRpcRegistryAsyncBuildError({
+      message:
+        "Desktop.manifest(...) requires the rpcs layer to build synchronously. " +
+        "A layer composed into Desktop.make({ rpcs }) requires async work to construct " +
+        "(e.g. Layer.scoped(Effect.promise(...))) — move async work inside handler bodies " +
+        "(e.g. Effect.tryPromise inside RpcGroup.toLayer({ ... })) instead. " +
+        "See `Desktop.rpc` for the sync-only constraint.",
+      cause
+    })
+  }
 }
 
 export const app = <RIn = never, E = never>(
