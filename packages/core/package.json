@@ -43,7 +43,10 @@
       "types": "./src/providers/test.ts",
       "default": "./src/providers/test.ts"
     },
-    "./runtime/event-log": null,
+    "./runtime/event-log": {
+      "types": "./src/runtime/event-log.ts",
+      "default": "./src/runtime/event-log.ts"
+    },
     "./runtime/reactivity": null,
     "./runtime/workflow": null,
     "./runtime/*": {

@@ -59,9 +59,11 @@ after open.
 
 ### EventLog
 
-Effect Desktop uses `effect/unstable/eventlog` directly for append-only event
-journals. The core package does not re-export a local `EventLog` wrapper;
-callers compose `EventLog`, `EventJournal`, and journal backends from Effect.
+Effect Desktop keeps the raw `effect/unstable/eventlog` primitive as the
+advanced dependency and exposes `@effect-desktop/core/runtime/event-log` for
+desktop policy. `DesktopEventLog` owns the closed desktop operation event
+schema, redaction before append, bounded query results, identity setup, and
+Inspector emission for append, query, recovery, and read-only transitions.
 
 ### AuditEvents
 

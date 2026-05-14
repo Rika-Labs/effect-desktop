@@ -706,7 +706,7 @@
     {
       "name": "EventLogInspectorEvent",
       "kind": "class",
-      "signature": "export class EventLogInspectorEvent extends Schema.Class<EventLogInspectorEvent>( \"EventLogInspectorEvent\" )({ kind: Schema.Literals([\"append\", \"query\", \"recovery\"]), status: InspectorEventStatus, operation: Schema.String, event: OptionalString, primaryKey: OptionalString, entryId: OptionalString, payloadBytes: Schema.optionalKey(NonNegativeNumber), traceId: OptionalString, namespace: OptionalString, errorTag: OptionalString, message: OptionalString, timestamp: NonNegativeNumber }) {}"
+      "signature": "export class EventLogInspectorEvent extends Schema.Class<EventLogInspectorEvent>( \"EventLogInspectorEvent\" )({ kind: Schema.Literals([\"append\", \"query\", \"recovery\", \"read-only-transition\"]), status: InspectorEventStatus, operation: Schema.String, event: OptionalString, primaryKey: OptionalString, entryId: OptionalString, payloadBytes: Schema.optionalKey(NonNegativeNumber), traceId: OptionalString, namespace: OptionalString, errorTag: OptionalString, message: OptionalString, timestamp: NonNegativeNumber }) {}"
     },
     {
       "name": "ExecutionEvent",

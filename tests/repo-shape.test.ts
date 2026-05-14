@@ -167,7 +167,6 @@ describe("crates/*", () => {
 
 describe("architecture debt guardrails", () => {
   const removedEffectWrapperModules = [
-    "packages/core/src/runtime/event-log.ts",
     "packages/core/src/runtime/platform.ts",
     "packages/core/src/runtime/reactivity.ts",
     "packages/core/src/runtime/workflow.ts"
@@ -178,4 +177,11 @@ describe("architecture debt guardrails", () => {
       expect(existsSync(join(REPO_ROOT, path))).toBe(false)
     })
   }
+
+  test("packages/core/src/runtime/event-log.ts is desktop policy, not a zero-policy Effect wrapper", () => {
+    const source = readFileSync(join(REPO_ROOT, "packages/core/src/runtime/event-log.ts"), "utf8")
+    expect(source).toContain("DesktopEventLog")
+    expect(source).toContain("DesktopEventSchema")
+    expect(source).not.toMatch(/export\s+\{[^}]+}\s+from\s+"effect\/unstable\/eventlog"/)
+  })
 })

@@ -110,7 +110,7 @@ test("runtime transport subpath exposes framed transport helpers", async () => {
 })
 
 test("deleted zero-policy runtime wrapper subpaths are not exported", async () => {
-  for (const module of ["event-log", "reactivity", "workflow"]) {
+  for (const module of ["reactivity", "workflow"]) {
     const specifier = "@effect-desktop/core/runtime/" + module
     const rejected = await import(specifier).then(
       () => false,
@@ -118,6 +118,17 @@ test("deleted zero-policy runtime wrapper subpaths are not exported", async () =
     )
     expect(rejected).toBe(true)
   }
+})
+
+test("runtime event-log subpath exposes desktop policy without raw journal shortcuts", async () => {
+  const eventLog = await import("@effect-desktop/core/runtime/event-log")
+
+  expect(eventLog.DesktopEventLog).toBeDefined()
+  expect(eventLog.DesktopEventSchema).toBeDefined()
+  expect(eventLog.DesktopEventLogLive).toBeFunction()
+  expect("EventJournal" in eventLog).toBe(false)
+  expect("SqlEventJournal" in eventLog).toBe(false)
+  expect("EventLog" in eventLog).toBe(false)
 })
 
 test("public Desktop facade exposes Rpc metadata helpers", async () => {
@@ -255,11 +266,12 @@ test("Desktop.runtimeGraph exposes selected providers and composition nodes with
     kind: "runtime",
     capabilities: ["FileSystem", "Path", "Terminal", "Stdio", "ChildProcessSpawner"]
   })
-  expect(core.layerGraphSnapshotFromGraph(graph).nodes.find((node) => node.id === "rpc-layer:0"))
-    .toMatchObject({
-      provides: ["Notes.Graph.Ping"],
-      requires: ["RpcServer.Protocol"]
-    })
+  expect(
+    core.layerGraphSnapshotFromGraph(graph).nodes.find((node) => node.id === "rpc-layer:0")
+  ).toMatchObject({
+    provides: ["Notes.Graph.Ping"],
+    requires: ["RpcServer.Protocol"]
+  })
 })
 
 test("Desktop.runtimeGraph exposes node runtime provider selection", async () => {
