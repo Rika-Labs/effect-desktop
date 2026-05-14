@@ -21,6 +21,7 @@ import {
   WorkerReceiveError
 } from "effect/unstable/workers/WorkerError"
 
+import { holdScopedExecutionPermit } from "./execution-budgets.js"
 import {
   PermissionRegistry,
   type NormalizedCapability,
@@ -228,6 +229,7 @@ export const makeWorker = (
             "Worker.spawn"
           )
           yield* authorizeWorkerCapabilities(permissions, input, options.context)
+          const startedAt = safeWorkerTimestamp(now)
           yield* inspector.publish(
             new ExecutionEvent({
               kind: "worker",
@@ -235,19 +237,25 @@ export const makeWorker = (
               operation: "Worker.spawn",
               script: input.script,
               ownerScope: input.ownerScope,
-              timestamp: now()
+              timestamp: startedAt
             })
           )
 
           const { runtime, resource } = yield* Effect.uninterruptible(
             Effect.gen(function* () {
               const workerScope = yield* Scope.make()
-              yield* holdWorkerBudgetPermit(
-                workerBudgets,
-                workerScope,
-                input.ownerScope,
-                budgets.maxConcurrent
-              ).pipe(Effect.tapError(() => Scope.close(workerScope, Exit.void)))
+              yield* holdScopedExecutionPermit({
+                budgets: workerBudgets,
+                scope: workerScope,
+                ownerScope: input.ownerScope,
+                maxConcurrent: budgets.maxConcurrent,
+                onBusy: (ownerScope, maxConcurrent) =>
+                  new WorkerResourceBusyError({
+                    operation: "Worker.spawn",
+                    ownerScope,
+                    maxConcurrent
+                  })
+              }).pipe(Effect.tapError(() => Scope.close(workerScope, Exit.void)))
               const runtime = yield* adapter
                 .spawn({
                   script: input.script,
@@ -294,7 +302,7 @@ export const makeWorker = (
                   script: input.script,
                   ownerScope: input.ownerScope,
                   resourceId: resource.id,
-                  startedAt: now(),
+                  startedAt,
                   capabilities: input.capabilities
                 })
               )
@@ -306,7 +314,7 @@ export const makeWorker = (
                   script: input.script,
                   ownerScope: input.ownerScope,
                   resourceId: resource.id,
-                  timestamp: now()
+                  timestamp: startedAt
                 })
               )
               yield* observeWorkerExit(
@@ -335,7 +343,7 @@ export const makeWorker = (
                 ownerScope: options.ownerScope,
                 errorTag: error._tag,
                 message: error.message,
-                timestamp: now()
+                timestamp: safeWorkerTimestamp(now)
               })
             )
           ),
@@ -482,7 +490,7 @@ const observeWorkerExit = (
               script,
               resourceId: resource.id,
               message: formatWorkerExitFailure(result),
-              timestamp: now()
+              timestamp: safeWorkerTimestamp(now)
             })
           )
           yield* Effect.logWarning("Worker.exit observer failed", {
@@ -497,7 +505,7 @@ const observeWorkerExit = (
               operation: "Worker.exit",
               script,
               resourceId: resource.id,
-              timestamp: now()
+              timestamp: safeWorkerTimestamp(now)
             })
           )
         }
@@ -561,6 +569,11 @@ const workerUptimeMs = (startedAt: number, currentTimestamp: number): number => 
 
   const uptimeMs = Math.floor(currentTimestamp - startedAt)
   return Number.isSafeInteger(uptimeMs) && uptimeMs >= 0 ? uptimeMs : 0
+}
+
+const safeWorkerTimestamp = (now: () => number): number => {
+  const timestamp = now()
+  return Number.isFinite(timestamp) && timestamp >= 0 ? timestamp : Date.now()
 }
 
 const removeWorker = (
@@ -704,42 +717,6 @@ const authorizeWorkerCapabilities = (
         ),
     { discard: true }
   )
-
-const holdWorkerBudgetPermit = (
-  workerBudgets: RcMap.RcMap<string, Semaphore.Semaphore>,
-  workerScope: Scope.Closeable,
-  ownerScope: string,
-  maxConcurrent: number
-): Effect.Effect<void, WorkerResourceBusyError, never> =>
-  Effect.gen(function* () {
-    const semaphore = yield* RcMap.get(workerBudgets, ownerScope).pipe(Scope.provide(workerScope))
-    const acquired = yield* Deferred.make<boolean, never>()
-    const holder = semaphore.withPermitsIfAvailable(1)(
-      Deferred.succeed(acquired, true).pipe(Effect.andThen(Effect.never))
-    )
-    yield* holder.pipe(
-      Effect.flatMap(
-        Option.match({
-          onNone: () => Deferred.succeed(acquired, false),
-          onSome: () => Effect.void
-        })
-      ),
-      Effect.forkScoped({ startImmediately: true }),
-      Scope.provide(workerScope)
-    )
-    const reserved = yield* Deferred.await(acquired)
-    if (reserved) {
-      return
-    }
-
-    return yield* Effect.fail(
-      new WorkerResourceBusyError({
-        operation: "Worker.spawn",
-        ownerScope,
-        maxConcurrent
-      })
-    )
-  })
 
 export const BunWorkerAdapter: WorkerAdapter = Object.freeze({
   spawn: (input: WorkerAdapterSpawnInput) =>

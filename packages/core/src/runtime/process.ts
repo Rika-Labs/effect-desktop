@@ -31,6 +31,7 @@ import {
 import type { PlatformError } from "effect/PlatformError"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 
+import { holdScopedExecutionPermit } from "./execution-budgets.js"
 import { ResourceRegistry } from "./resources.js"
 import {
   disabledExecutionInspectorCollector,
@@ -249,12 +250,14 @@ export const makeProcess = (
             yield* Effect.uninterruptible(
               Effect.gen(function* () {
                 const processScope = yield* Scope.make()
-                yield* holdProcessBudgetPermit(
-                  processBudgets,
-                  processScope,
-                  input.ownerScope,
-                  budgets.maxConcurrent
-                ).pipe(Effect.tapError(() => Scope.close(processScope, Exit.void)))
+                yield* holdScopedExecutionPermit({
+                  budgets: processBudgets,
+                  scope: processScope,
+                  ownerScope: input.ownerScope,
+                  maxConcurrent: budgets.maxConcurrent,
+                  onBusy: (ownerScope, maxConcurrent) =>
+                    makeProcessResourceBusy(ownerScope, maxConcurrent, "Process.spawn")
+                }).pipe(Effect.tapError(() => Scope.close(processScope, Exit.void)))
                 const command = makeChildProcessCommand(input, gracefulShutdownMs)
                 const child = yield* spawner.spawn(command).pipe(
                   Scope.provide(processScope),
@@ -809,36 +812,6 @@ const authorizeProcessSpawn = (
     return yield* Effect.fail(
       makeProcessPermissionDenied("process.spawn", input.command, "Process.spawn")
     )
-  })
-
-const holdProcessBudgetPermit = (
-  processBudgets: RcMap.RcMap<string, Semaphore.Semaphore>,
-  processScope: Scope.Closeable,
-  ownerScope: string,
-  maxConcurrent: number
-): Effect.Effect<void, HostProtocolResourceBusyError, never> =>
-  Effect.gen(function* holdProcessBudgetPermit() {
-    const semaphore = yield* RcMap.get(processBudgets, ownerScope).pipe(Scope.provide(processScope))
-    const acquired = yield* Deferred.make<boolean, never>()
-    const holder = semaphore.withPermitsIfAvailable(1)(
-      Deferred.succeed(acquired, true).pipe(Effect.andThen(Effect.never))
-    )
-    yield* holder.pipe(
-      Effect.flatMap(
-        Option.match({
-          onNone: () => Deferred.succeed(acquired, false),
-          onSome: () => Effect.void
-        })
-      ),
-      Effect.forkScoped({ startImmediately: true }),
-      Scope.provide(processScope)
-    )
-    const reserved = yield* Deferred.await(acquired)
-    if (reserved) {
-      return
-    }
-
-    return yield* Effect.fail(makeProcessResourceBusy(ownerScope, maxConcurrent, "Process.spawn"))
   })
 
 const processSnapshotList = (
