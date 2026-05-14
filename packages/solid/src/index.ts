@@ -9,6 +9,7 @@ import {
   type AnyDesktopRpcLayer,
   makeMissingDesktopContextError,
   makeMissingDesktopRpcsError,
+  makeFrameworkRuntime,
   makeFrameworkScopedOperation,
   normalizeDesktopStreamCapacity,
   RendererRpcClients,
@@ -151,12 +152,12 @@ export {
 
 interface SolidDesktopContextValue {
   readonly clients: DesktopRendererRpcClientMap
-  readonly runtime: ManagedRuntime.ManagedRuntime<RendererRpcClients, MissingDesktopRpcClientError>
+  readonly runtime: FrameworkRuntime<RendererRpcClients, MissingDesktopRpcClientError>
 }
 
 interface SolidDesktopRuntime {
   readonly clients: DesktopRendererRpcClientMap
-  readonly runtime: ManagedRuntime.ManagedRuntime<RendererRpcClients, MissingDesktopRpcClientError>
+  readonly runtime: FrameworkRuntime<RendererRpcClients, MissingDesktopRpcClientError>
   readonly dispose: () => Promise<void>
 }
 
@@ -272,10 +273,14 @@ const makeSolidDesktopRuntime = (
     void runtime.dispose()
     throw error
   }
+  const frameworkRuntime = makeFrameworkRuntime(runtime)
   return Object.freeze({
     clients,
-    runtime,
-    dispose: runtime.dispose
+    runtime: frameworkRuntime,
+    dispose: async () => {
+      await frameworkRuntime.dispose()
+      await runtime.dispose()
+    }
   })
 }
 

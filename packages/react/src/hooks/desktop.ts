@@ -1,11 +1,12 @@
 import {
+  makeFrameworkScopedOperation,
   runFrameworkEffect,
   runFrameworkPromiseExit,
   type FrameworkRuntime
 } from "@effect-desktop/core/renderer"
 import { Effect, Exit, Layer, ManagedRuntime, type Cause } from "effect"
 import { AsyncResult } from "effect/unstable/reactivity"
-import { useCallback, useEffect, useRef, useState, type DependencyList } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type DependencyList } from "react"
 
 import {
   asyncResultFromExit,
@@ -162,6 +163,7 @@ export const useDesktopQuery = <A, E>(
 ): DesktopQuery<A, E> => {
   const operationRef = useRef(operation)
   const interruptRef = useRef<(() => void) | undefined>(undefined)
+  const queryOperation = useMemo(() => makeFrameworkScopedOperation(defaultRuntime), [])
   const [reloads, setReloads] = useState(0)
   const [state, setState] = useState<DesktopAsyncState<A, E>>(idle<A, E>)
 
@@ -186,30 +188,26 @@ export const useDesktopQuery = <A, E>(
 
   useEffect(
     () => {
-      let active = true
       setState(running<A, E>())
 
-      const interrupt = runFrameworkEffect(
-        defaultRuntime,
-        runAsyncResult(operationRef.current()),
-        (exit) => {
-          if (!active) {
-            return
-          }
-
-          interruptRef.current = undefined
-          setState(asyncResultFromExit(exit))
-        }
-      )
-      interruptRef.current = interrupt
+      queryOperation.runLatest(runAsyncResult(operationRef.current()), (exit) => {
+        interruptRef.current = undefined
+        setState(asyncResultFromExit(exit))
+      })
+      interruptRef.current = queryOperation.reset
 
       return () => {
-        active = false
-        interrupt()
+        queryOperation.reset()
       }
     },
     deps === undefined ? [reloads] : [...deps, reloads]
   )
+
+  useEffect(() => {
+    return () => {
+      queryOperation.dispose()
+    }
+  }, [queryOperation])
 
   return {
     state,

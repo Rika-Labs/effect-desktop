@@ -1,7 +1,7 @@
-import { runFrameworkPromiseExit, type FrameworkRuntime } from "@effect-desktop/core/renderer"
+import { makeFrameworkScopedOperation, type FrameworkRuntime } from "@effect-desktop/core/renderer"
 import { Effect, Exit, Layer, ManagedRuntime } from "effect"
 import { AsyncResult } from "effect/unstable/reactivity"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { asyncResultFromExit, asyncResultStatusOf, runAsyncResult } from "./hooks/effect-runner.js"
 import type { DesktopAsyncStatus } from "./hooks/desktop.js"
@@ -42,30 +42,24 @@ export const useMutation = <I, A, E, R = never, ER = never>(
 ): MutationResult<I, A, E | ER> => {
   const [state, setState] = useState<MutationState<A, E | ER>>(AsyncResult.initial<A, E | ER>())
   const makeEffectRef = useRef(makeEffect)
-  const mountedRef = useRef(true)
-  const runIdRef = useRef(0)
+  const operation = useMemo(() => makeFrameworkScopedOperation(runtime), [runtime])
   makeEffectRef.current = makeEffect
 
   useEffect(() => {
-    mountedRef.current = true
     return () => {
-      mountedRef.current = false
-      runIdRef.current += 1
+      operation.dispose()
     }
-  }, [])
+  }, [operation])
 
   const runPromiseImpl = useCallback(
     async (input?: I): Promise<Exit.Exit<A, E | ER>> => {
-      const runId = runIdRef.current + 1
-      runIdRef.current = runId
       setState(AsyncResult.initial<A, E | ER>(true))
 
-      const resultExit = await runFrameworkPromiseExit(
-        runtime,
+      const [resultExit, isLatest] = await operation.runLatestPromiseExit(
         runAsyncResult(makeEffectRef.current(input as I))
       )
       const stateResult = asyncResultFromExit(resultExit)
-      if (!mountedRef.current || runIdRef.current !== runId) {
+      if (!isLatest) {
         return exitFromAsyncResult(stateResult)
       }
 
@@ -73,7 +67,7 @@ export const useMutation = <I, A, E, R = never, ER = never>(
 
       return exitFromAsyncResult(stateResult)
     },
-    [runtime]
+    [operation]
   )
 
   const runPromise = runPromiseImpl as MutationRunPromise<I, A, E | ER>
@@ -88,9 +82,9 @@ export const useMutation = <I, A, E, R = never, ER = never>(
   const run = runImpl as MutationRun<I>
 
   const reset = useCallback((): void => {
-    runIdRef.current += 1
+    operation.reset()
     setState(AsyncResult.initial<A, E | ER>())
-  }, [])
+  }, [operation])
 
   const status = asyncResultStatusOf(state)
 

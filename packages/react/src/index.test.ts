@@ -218,6 +218,22 @@ test("useDesktopQuery defaults to reload-only dependencies for inline operations
   expect(source).not.toContain("deps === undefined ? [reloads, operation]")
 })
 
+test("React adapter lifecycle paths use the shared scoped framework helper", () => {
+  const desktopSource = readFileSync(new URL("./desktop.tsx", import.meta.url), "utf8")
+  const mutationSource = readFileSync(new URL("./mutation.ts", import.meta.url), "utf8")
+  const desktopHookSource = readFileSync(new URL("./hooks/desktop.ts", import.meta.url), "utf8")
+  const streamHookSource = readFileSync(new URL("./hooks/stream.ts", import.meta.url), "utf8")
+
+  expect(desktopSource).toContain("makeFrameworkRuntime(runtime)")
+  expect(mutationSource).toContain("makeFrameworkScopedOperation(runtime)")
+  expect(mutationSource).not.toContain("runIdRef")
+  expect(mutationSource).not.toContain("mountedRef")
+  expect(mutationSource).not.toContain("runFrameworkPromiseExit")
+  expect(desktopHookSource).toContain("makeFrameworkScopedOperation(defaultRuntime)")
+  expect(streamHookSource).toContain("makeFrameworkScopedOperation(runtime)")
+  expect(streamHookSource).not.toContain("let active")
+})
+
 test("ReactDesktop.from exposes app-scoped RPC hooks from provided groups", () => {
   const ListNotes = Rpc.make("Notes.List", { success: Schema.Array(Schema.String) }).pipe(
     RpcEndpoint.query
@@ -384,11 +400,7 @@ test("ReactDesktop.useDesktop exposes RpcSupport metadata on generated endpoints
   const Probe = () => {
     const notes = NotesReact.useDesktop(NotesRpcs)
     const endpoint: SupportedQueryEndpoint = notes.unsupported
-    return createElement(
-      "span",
-      null,
-      `${endpoint.isSupported}:${endpoint.support.status}`
-    )
+    return createElement("span", null, `${endpoint.isSupported}:${endpoint.support.status}`)
   }
 
   expect(

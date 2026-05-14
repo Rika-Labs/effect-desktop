@@ -2,6 +2,7 @@ import {
   bindRendererEndpoints,
   describeRpcs,
   getGlobalDesktopRendererRpcTransport,
+  makeFrameworkRuntime,
   makeDesktopRendererRpcLayer,
   makeMissingDesktopContextError,
   makeMissingDesktopRpcsError,
@@ -14,6 +15,7 @@ import {
   type DesktopRendererRpcClientMap,
   type DesktopRendererRpcClientMethod,
   type DesktopRendererRpcTransport,
+  type FrameworkRuntime,
   type RpcGroupWithRequests
 } from "@effect-desktop/core/renderer"
 import type { WithRpcEndpointKind } from "@effect-desktop/bridge"
@@ -82,12 +84,12 @@ export {
 
 interface ReactDesktopContextValue {
   readonly clients: ReactDesktopClientMap
-  readonly runtime: ManagedRuntime.ManagedRuntime<RendererRpcClients, MissingDesktopRpcClientError>
+  readonly runtime: FrameworkRuntime<RendererRpcClients, MissingDesktopRpcClientError>
 }
 
 interface ReactDesktopRuntime {
   readonly clients: ReactDesktopClientMap
-  readonly runtime: ManagedRuntime.ManagedRuntime<RendererRpcClients, MissingDesktopRpcClientError>
+  readonly runtime: FrameworkRuntime<RendererRpcClients, MissingDesktopRpcClientError>
   readonly dispose: () => Promise<void>
 }
 
@@ -173,9 +175,13 @@ const makeReactDesktopRuntime = (
     void runtime.dispose()
     throw error
   }
+  const frameworkRuntime = makeFrameworkRuntime(runtime)
   return Object.freeze({
     clients,
-    runtime,
-    dispose: runtime.dispose
+    runtime: frameworkRuntime,
+    dispose: async () => {
+      await frameworkRuntime.dispose()
+      await runtime.dispose()
+    }
   })
 }

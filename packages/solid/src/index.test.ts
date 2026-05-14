@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { readFileSync } from "node:fs"
 import { RpcEndpoint, RpcSupport } from "@effect-desktop/bridge"
 import {
   Desktop,
@@ -11,6 +12,16 @@ import { createRoot } from "solid-js"
 import { createComponent, renderToString } from "solid-js/web"
 
 import { MissingDesktopContextError, SolidDesktop } from "./index.js"
+
+test("SolidDesktop adapter runtime uses the shared scoped framework helper", () => {
+  const source = readFileSync(new URL("./index.ts", import.meta.url), "utf8")
+
+  expect(source).toContain("makeFrameworkRuntime(runtime)")
+  expect(source).toContain("makeFrameworkScopedOperation(runtime)")
+  expect(source).not.toContain("let runId")
+  expect(source).not.toContain("let active")
+  expect(source).not.toContain("runFrameworkPromiseExit")
+})
 
 test("SolidDesktop.from exposes app-scoped primitives from provided groups", () => {
   const ListNotes = Rpc.make("Notes.List", { success: Schema.Array(Schema.String) }).pipe(
