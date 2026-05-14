@@ -9,14 +9,23 @@ import {
   RpcSupport,
   type HostProtocolEnvelope
 } from "@effect-desktop/bridge"
+import * as SqliteClient from "@effect/sql-sqlite-bun/SqliteClient"
 import { BunServices } from "@effect/platform-bun"
 import { NodeServices } from "@effect/platform-node"
 import { Cause, Context, Effect, Exit, FileSystem, Layer, Path, Queue, Schema } from "effect"
 import type { Scope } from "effect"
 import { Rpc, RpcClient, RpcGroup, RpcServer } from "effect/unstable/rpc"
+import type { SqlClient } from "effect/unstable/sql/SqlClient"
+import type { SqlError } from "effect/unstable/sql/SqlError"
 import type { Socket } from "effect/unstable/socket"
+import { Reactivity } from "effect/unstable/reactivity"
+import { WorkflowEngine } from "effect/unstable/workflow"
 import type * as RuntimeTransport from "@effect-desktop/core/runtime/transport"
-import type { DesktopRuntimeProviderServices, DesktopWorkflowLayer } from "./runtime/desktop-app.js"
+import type {
+  DesktopRuntimeProviderServices,
+  DesktopWorkflowEngineLayer,
+  DesktopWorkflowLayer
+} from "./runtime/desktop-app.js"
 import type { DesktopRpcClient, SupportedDesktopRpcClient } from "./runtime/desktop-rpc-surface.js"
 
 type IsEqual<A, B> =
@@ -39,8 +48,15 @@ type BunProviderServicesContract = Assert<
 type NodeProviderServicesContract = Assert<
   IsEqual<Layer.Success<typeof NodeServices.layer>, DesktopRuntimeProviderServices>
 >
+type DurableWorkflowEngineContract = Assert<
+  IsEqual<
+    typeof import("./index.js").WorkflowEngineDurable,
+    DesktopWorkflowEngineLayer<SqlClient, SqlError>
+  >
+>
 const bunProviderServicesContract: BunProviderServicesContract = true
 const nodeProviderServicesContract: NodeProviderServicesContract = true
+const durableWorkflowEngineContract: DurableWorkflowEngineContract = true
 const runtimeProviderServicesContracts = [
   bunProviderServicesContract,
   nodeProviderServicesContract
@@ -60,6 +76,38 @@ test("public barrel exports the ResourceRegistry factory", async () => {
   expect(core.makeApprovalBroker).toBeFunction()
   expect(core.makeAuditEvents).toBeFunction()
   expect(core.makeCommandRegistry).toBeFunction()
+  expect(Layer.isLayer(core.WorkflowEngineMemory)).toBe(true)
+  expect(Layer.isLayer(core.WorkflowEngineDurable)).toBe(true)
+  expect(durableWorkflowEngineContract).toBe(true)
+})
+
+test("workflow engine layers separate memory and durable storage requirements", async () => {
+  const core = await import("./index.js")
+  const memoryRuntime = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        return yield* WorkflowEngine.WorkflowEngine
+      }).pipe(Effect.provide(core.WorkflowEngineMemory))
+    )
+  )
+
+  expect(memoryRuntime).toBeDefined()
+  expect(Layer.isLayer(core.Desktop.WorkflowEngineMemory)).toBe(true)
+  expect(Layer.isLayer(core.Desktop.WorkflowEngineDurable)).toBe(true)
+
+  const durableRuntime = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        return yield* WorkflowEngine.WorkflowEngine
+      }).pipe(
+        Effect.provide(core.WorkflowEngineDurable),
+        Effect.provide(SqliteClient.layer({ filename: ":memory:" })),
+        Effect.provide(Reactivity.layer)
+      )
+    )
+  )
+
+  expect(durableRuntime).toBeDefined()
 })
 
 test("public barrel keeps low-level runtime plumbing behind subpaths", async () => {

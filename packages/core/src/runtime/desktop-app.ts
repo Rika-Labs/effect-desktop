@@ -3,9 +3,20 @@ import type * as FileSystemRuntime from "effect/FileSystem"
 import type * as PathRuntime from "effect/Path"
 import type * as StdioRuntime from "effect/Stdio"
 import type * as TerminalRuntime from "effect/Terminal"
+import {
+  ClusterWorkflowEngine,
+  RunnerHealth,
+  Runners,
+  Sharding,
+  ShardingConfig,
+  SqlMessageStorage,
+  SqlRunnerStorage
+} from "effect/unstable/cluster"
 import { Rpc, RpcGroup, RpcServer } from "effect/unstable/rpc"
 import type { ChildProcessSpawner as ChildProcessSpawnerRuntime } from "effect/unstable/process"
 import { Reactivity } from "effect/unstable/reactivity"
+import type { SqlClient } from "effect/unstable/sql/SqlClient"
+import type { SqlError } from "effect/unstable/sql/SqlError"
 import { WorkflowEngine } from "effect/unstable/workflow"
 
 import { rpcCapability } from "@effect-desktop/bridge"
@@ -58,6 +69,12 @@ export type DesktopWorkflowLayer<RIn = never, E = never> = Layer.Layer<
   never,
   E,
   RIn | WorkflowEngine.WorkflowEngine
+>
+
+export type DesktopWorkflowEngineLayer<RIn = never, E = never> = Layer.Layer<
+  WorkflowEngine.WorkflowEngine,
+  E,
+  RIn
 >
 
 export interface DesktopAppDescriptor<RIn = never, E = never> extends DesktopConfig<RIn, E> {
@@ -234,12 +251,24 @@ const TelemetryLive: Layer.Layer<Telemetry, never, never> = Layer.effect(Telemet
   makeTelemetry().pipe(Effect.orDie)
 )
 
+export const WorkflowEngineMemory: DesktopWorkflowEngineLayer = WorkflowEngine.layerMemory
+
+export const WorkflowEngineDurable: DesktopWorkflowEngineLayer<SqlClient, SqlError> =
+  ClusterWorkflowEngine.layer.pipe(
+    Layer.provideMerge(Sharding.layer),
+    Layer.provide(Runners.layerNoop),
+    Layer.provideMerge(SqlMessageStorage.layer),
+    Layer.provide(SqlRunnerStorage.layer),
+    Layer.provide(RunnerHealth.layerNoop),
+    Layer.provide(ShardingConfig.layer())
+  )
+
 const coreServicesLayer: Layer.Layer<never, Config.ConfigError, never> = Layer.mergeAll(
   ResourceRegistryLive,
   Layer.provideMerge(EffectTelemetryRuntimeLive, TelemetryLive),
   Reactivity.layer,
   DesktopLoggerLayer,
-  WorkflowEngine.layerMemory
+  WorkflowEngineMemory
 )
 
 const CoreServiceGraphNodes = Object.freeze([

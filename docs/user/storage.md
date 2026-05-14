@@ -2,6 +2,12 @@
 
 Storage covers settings, SQLite, event log, and safe storage boundaries with typed schema validation.
 
+Workflow execution has two explicit engine layers. `WorkflowEngineMemory` is transient and is
+intended for tests and development. `WorkflowEngineDurable` uses Effect's cluster workflow engine
+with SQL-backed message and runner storage; workflow messages, activity/deferred replies, timers,
+and runner assignment state survive process restart when the provided `SqlClient` points at a
+durable SQLite file.
+
 ## Runnable Example
 
 ```ts run

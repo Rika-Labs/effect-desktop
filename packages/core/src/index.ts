@@ -11,7 +11,9 @@ import {
   providerLayerFor,
   runtime,
   runtimeGraph,
-  runtimeGraphSnapshot
+  runtimeGraphSnapshot,
+  WorkflowEngineDurable,
+  WorkflowEngineMemory
 } from "./runtime/desktop-app.js"
 import type {
   DesktopApp,
@@ -101,7 +103,10 @@ export {
   type DesktopRuntimeProviderServices,
   type DesktopRuntimeSelectedProviders,
   type DesktopRuntimeServices,
+  type DesktopWorkflowEngineLayer,
   type DesktopWorkflowLayer,
+  WorkflowEngineDurable,
+  WorkflowEngineMemory,
   LayerFailurePayload,
   LayerGraphNodeSnapshot,
   LayerGraphSnapshot,
@@ -155,14 +160,14 @@ function app<RIn = never, E = never>(
         )
 
   if (wfs.length === 0) {
-    return Layer.merge(WorkflowEngine.layerMemory, declareLayer)
+    return Layer.merge(WorkflowEngineMemory, declareLayer)
   }
 
   const merged = wfs.reduce<Layer.Layer<never, never, WorkflowEngine.WorkflowEngine>>(
     (acc, wf) => Layer.merge(acc, wf),
     Layer.empty as Layer.Layer<never, never, WorkflowEngine.WorkflowEngine>
   )
-  return Layer.merge(Layer.provideMerge(merged, WorkflowEngine.layerMemory), declareLayer)
+  return Layer.merge(Layer.provideMerge(merged, WorkflowEngineMemory), declareLayer)
 }
 
 export const Desktop = Object.freeze({
@@ -171,6 +176,8 @@ export const Desktop = Object.freeze({
   RpcEndpoint,
   RpcSupport,
   app,
+  WorkflowEngineDurable,
+  WorkflowEngineMemory,
   launch,
   make,
   manifest,
