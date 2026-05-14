@@ -1,6 +1,6 @@
 # @effect-desktop/playground
 
-Renderer playground used by the Rust host smoke path. A Next.js 16 + Fumadocs UI documentation site exported as static HTML and embedded into `crates/host`.
+Renderer playground used by the Rust host smoke path. A Next.js 16 + Fumadocs UI documentation site exported as static HTML and served by `crates/host` from the build layout.
 
 ## Commands
 
@@ -14,8 +14,8 @@ bun run lint       # oxlint
 ## Pipeline
 
 1. `next build` writes a static export to `dist/` (Next 16 `output: "export"`, `distDir: "dist"`, `trailingSlash: true`). The renderer ships its `dist/` directory with no nonce annotation; the host attaches CSP nonces at request time.
-2. `crates/host/build.rs` walks `dist/` recursively and embeds every file via `include_bytes!`.
-3. On each request the host parses `text/html` responses through `crates/host/src/html_csp.rs`, attaches a freshly minted CSP nonce to every `<script>`, `<style>`, and `<link rel="stylesheet">`, and emits the matching nonce in the CSP header. Any framework that produces a static export plugs in by pointing `dist/` at it.
+2. The CLI copies `dist/` into `build/effect-desktop/<target>/renderer/` and records that path in `app-manifest.json`.
+3. On each request the host reads the renderer asset from the packaged layout, parses `text/html` responses through `crates/host/src/html_csp.rs`, attaches a freshly minted CSP nonce to every `<script>`, `<style>`, and `<link rel="stylesheet">`, and emits the matching nonce in the CSP header. Any framework that produces a static export plugs in by pointing `dist/` at it.
 
 ## Authoring docs
 

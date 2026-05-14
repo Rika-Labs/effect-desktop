@@ -80,7 +80,7 @@ fn app_scheme_response_with_policy(
     let body = if method == Method::HEAD {
         Cow::Borrowed::<[u8]>(b"")
     } else {
-        Cow::Borrowed(asset.bytes)
+        Cow::Owned(asset.bytes.clone())
     };
 
     if !asset.content_type.starts_with("text/html") {
@@ -94,7 +94,7 @@ fn app_scheme_response_with_policy(
         );
     }
 
-    match rewriter(asset.bytes, &nonce) {
+    match rewriter(&asset.bytes, &nonce) {
         Ok(outcome) => {
             if outcome.script_count == 0 && outcome.style_count == 0 && outcome.link_count == 0 {
                 warn!(
@@ -270,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn app_scheme_response_returns_embedded_index_html() {
+    fn app_scheme_response_returns_renderer_index_html() {
         let request = Request::builder()
             .uri(APP_URL)
             .header(TRACE_ID_HEADER, "trace-app-request")

@@ -1,5 +1,15 @@
 import { createHash } from "node:crypto"
-import { copyFile, lstat, mkdir, readFile, readlink, readdir, rm, stat, writeFile } from "node:fs/promises"
+import {
+  copyFile,
+  lstat,
+  mkdir,
+  readFile,
+  readlink,
+  readdir,
+  rm,
+  stat,
+  writeFile
+} from "node:fs/promises"
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
@@ -1252,11 +1262,7 @@ export const runDesktopBuild = (
       name: "native-host",
       command: "cargo",
       args: ["build", "-p", "host", "--release"],
-      cwd: options.cwd,
-      env: {
-        ...(options.env ?? process.env),
-        EFFECT_DESKTOP_EMBED_DIST: plan.rendererDistPath
-      }
+      cwd: options.cwd
     })
     if (nativeHost.status === "rebuilt") {
       yield* makeDirectory(dirname(nativeHost.outputPath))
@@ -1268,9 +1274,11 @@ export const runDesktopBuild = (
     const manifestNode = makeManifestBuildNode(plan, [renderer, runtime, nativeHost, bridge])
     const manifest = yield* writeAppManifest(plan, cache, manifestNode)
     const providerMeasurement = yield* measureBuildProvider(plan, runtime)
-    const report = newBuildReport(plan, [renderer, runtime, nativeHost, bridge, manifest], [
-      providerMeasurement
-    ])
+    const report = newBuildReport(
+      plan,
+      [renderer, runtime, nativeHost, bridge, manifest],
+      [providerMeasurement]
+    )
     yield* writeJson(join(plan.layoutPath, "build-report.json"), report)
     yield* writeBuildCache(plan, report)
 
@@ -1496,7 +1504,10 @@ const makeNativeHostBuildNode = (
     ["target", plan.target],
     [
       "host.sources.sha256",
-      hashExistingTrees([join(repoRoot, "crates", "host"), join(repoRoot, "crates", "host-protocol")])
+      hashExistingTrees([
+        join(repoRoot, "crates", "host"),
+        join(repoRoot, "crates", "host-protocol")
+      ])
     ]
   ]).pipe(
     Effect.map((cacheKey) => ({
@@ -1545,7 +1556,10 @@ const hashBuildInputs = (
 
 const yieldableFileDigest = (path: string): Effect.Effect<string, BuildFileError, never> =>
   Effect.tryPromise({
-    try: async () => createHash("sha256").update(await readFile(path)).digest("hex"),
+    try: async () =>
+      createHash("sha256")
+        .update(await readFile(path))
+        .digest("hex"),
     catch: (cause) =>
       new BuildFileError({
         operation: "read",
@@ -1555,7 +1569,9 @@ const yieldableFileDigest = (path: string): Effect.Effect<string, BuildFileError
       })
   })
 
-const hashExistingTrees = (roots: readonly string[]): Effect.Effect<string, BuildFileError, never> =>
+const hashExistingTrees = (
+  roots: readonly string[]
+): Effect.Effect<string, BuildFileError, never> =>
   Effect.gen(function* () {
     const entries: Array<readonly [string, string]> = []
     for (const root of roots) {
@@ -1787,7 +1803,9 @@ const writeAppManifest = (
     }
   })
 
-const readBuildCache = (plan: BuildPlan): Effect.Effect<BuildCacheManifest, BuildFileError, never> =>
+const readBuildCache = (
+  plan: BuildPlan
+): Effect.Effect<BuildCacheManifest, BuildFileError, never> =>
   Effect.gen(function* () {
     const path = buildCachePath(plan)
     const exists = yield* pathExists(path)
@@ -1807,9 +1825,7 @@ const writeBuildCache = (
   report: DesktopBuildReport
 ): Effect.Effect<void, BuildFileError, never> =>
   writeJson(buildCachePath(plan), {
-    nodes: Object.fromEntries(
-      report.steps.map((step) => [step.name, { cacheKey: step.cacheKey }])
-    )
+    nodes: Object.fromEntries(report.steps.map((step) => [step.name, { cacheKey: step.cacheKey }]))
   })
 
 const buildCachePath = (plan: BuildPlan): string => join(plan.layoutPath, ".build-cache.json")
@@ -1973,14 +1989,13 @@ const formatBuildReport = (report: DesktopBuildReport): string =>
       `web:${report.providers.webEngine}`
     ].join("         "),
     `layout            ${report.layoutPath}`,
-    ...report.providerMeasurements.map(
-      (measurement) =>
-        [
-          "provider budget",
-          `${measurement.provider.id}`,
-          `runtime=${measurement.runtimePayloadBytes}b/${measurement.provider.bundleBudgetKb}kb`,
-          `startup=unmeasured/${measurement.provider.startupBudgetMs}ms`
-        ].join("   ")
+    ...report.providerMeasurements.map((measurement) =>
+      [
+        "provider budget",
+        `${measurement.provider.id}`,
+        `runtime=${measurement.runtimePayloadBytes}b/${measurement.provider.bundleBudgetKb}kb`,
+        `startup=unmeasured/${measurement.provider.startupBudgetMs}ms`
+      ].join("   ")
     ),
     ...report.steps.map(
       (step) =>
@@ -3269,8 +3284,7 @@ const pathToFileUrl = (path: string): string => pathToFileURL(path).href
 const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
   typeof value === "object" && value !== null
 
-const isNotFoundError = (cause: unknown): boolean =>
-  isRecord(cause) && cause["code"] === "ENOENT"
+const isNotFoundError = (cause: unknown): boolean => isRecord(cause) && cause["code"] === "ENOENT"
 
 const MAX_COMMAND_OUTPUT_CHARS = 16_384
 

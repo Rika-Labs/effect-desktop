@@ -6092,7 +6092,7 @@ test("desktop build stages renderer runtime host bridge manifests and report", a
   try {
     await writePlaygroundFixture(directory)
     const calls: string[] = []
-    const nativeHostEnv: Array<string | undefined> = []
+    const nativeHostEmbedEnv: Array<string | undefined> = []
     const runner: CommandRunner = (invocation) =>
       Effect.gen(function* () {
         calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
@@ -6113,7 +6113,7 @@ test("desktop build stages renderer runtime host bridge manifests and report", a
           }
         }
         if (invocation.step === "native-host") {
-          nativeHostEnv.push(invocation.env?.["EFFECT_DESKTOP_EMBED_DIST"])
+          nativeHostEmbedEnv.push(invocation.env?.["EFFECT_DESKTOP_EMBED_DIST"])
           yield* Effect.promise(() =>
             mkdir(join(invocation.cwd, "target", "release"), { recursive: true })
           )
@@ -6157,7 +6157,7 @@ test("desktop build stages renderer runtime host bridge manifests and report", a
       `runtime:bun build ${join(directory, "apps", "playground", "runtime.ts")} --target=bun --outdir ${join(layout, "runtime")}`,
       "native-host:cargo build -p host --release"
     ])
-    expect(nativeHostEnv).toEqual([join(directory, "apps", "playground", "dist")])
+    expect(nativeHostEmbedEnv).toEqual([undefined])
     expect(await readFile(join(layout, "renderer", "index.html"), "utf8")).toBe("<h1>ok</h1>")
     expect(await readFile(join(layout, "runtime", "runtime.js"), "utf8")).toContain("ok")
     expect(appManifest).toMatchObject({
@@ -6478,11 +6478,84 @@ test("desktop build reuses provider-owned nodes when only runtime source changes
     expect(report.steps.map((step) => [step.name, step.status, step.provider])).toEqual([
       ["renderer", "reused", "renderer:react"],
       ["runtime", "rebuilt", "runtime:bun"],
-      ["native-host", "reused", "webview:system-webview"],
+      ["native-host", "reused", "webview:system"],
       ["bridge", "reused", undefined],
       ["manifest", "rebuilt", undefined]
     ])
     expect(report.steps.find((step) => step.name === "runtime")?.reason).toContain("cache key")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop build reuses native host when only renderer source changes", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-renderer-cache-"))
+  try {
+    await writePlaygroundFixture(directory)
+    const appRoot = join(directory, "apps", "playground")
+    const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
+    const calls: string[] = []
+    const runner: CommandRunner = (invocation) =>
+      Effect.gen(function* () {
+        calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+        if (invocation.step === "renderer") {
+          yield* Effect.promise(() => mkdir(join(invocation.cwd, "dist"), { recursive: true }))
+          yield* Effect.promise(() =>
+            writeFile(join(invocation.cwd, "dist", "index.html"), "<h1>renderer</h1>")
+          )
+        }
+        if (invocation.step === "runtime") {
+          const outdir = invocation.args[invocation.args.indexOf("--outdir") + 1]
+          if (outdir !== undefined) {
+            yield* Effect.promise(() => mkdir(outdir, { recursive: true }))
+            yield* Effect.promise(() =>
+              writeFile(join(outdir, "runtime.js"), "console.log('runtime')\n")
+            )
+          }
+        }
+        if (invocation.step === "native-host") {
+          yield* Effect.promise(() =>
+            mkdir(join(invocation.cwd, "target", "release"), { recursive: true })
+          )
+          yield* Effect.promise(() =>
+            writeFile(join(invocation.cwd, "target", "release", "host"), "host")
+          )
+        }
+      })
+
+    const runBuild = () =>
+      Effect.runPromise(
+        runCli({
+          argv: ["build", "--config", "apps/playground/desktop.config.ts", "--json"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+      )
+
+    expect(await runBuild()).toBe(0)
+    calls.length = 0
+    await writeFile(join(appRoot, "src", "renderer", "main.tsx"), "console.log('changed')\n")
+
+    expect(await runBuild()).toBe(0)
+
+    const report = JSON.parse(await readFile(join(layout, "build-report.json"), "utf8")) as {
+      readonly steps: readonly {
+        readonly name: string
+        readonly provider?: string
+        readonly status: string
+      }[]
+    }
+    expect(calls).toEqual(["renderer:bun run build"])
+    expect(report.steps.map((step) => [step.name, step.status, step.provider])).toEqual([
+      ["renderer", "rebuilt", "renderer:react"],
+      ["runtime", "reused", "runtime:bun"],
+      ["native-host", "reused", "webview:system"],
+      ["bridge", "reused", undefined],
+      ["manifest", "rebuilt", undefined]
+    ])
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

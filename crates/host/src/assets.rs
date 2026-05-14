@@ -1,11 +1,14 @@
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct EmbeddedAsset {
-    pub(crate) bytes: &'static [u8],
-    pub(crate) content_type: &'static str,
-}
+use crate::runtime;
+use serde_json::Value;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
-mod generated {
-    include!(concat!(env!("OUT_DIR"), "/embedded_assets.rs"));
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct Asset {
+    pub(crate) bytes: Vec<u8>,
+    pub(crate) content_type: &'static str,
 }
 
 const INDEX_PATH: &str = "/index.html";
@@ -25,16 +28,25 @@ const TEXT_PLAIN_CONTENT_TYPE: &str = "text/plain; charset=utf-8";
 const XML_CONTENT_TYPE: &str = "application/xml; charset=utf-8";
 const SOURCE_MAP_CONTENT_TYPE: &str = "application/json; charset=utf-8";
 const OCTET_STREAM_CONTENT_TYPE: &str = "application/octet-stream";
+const DEFAULT_SOURCE_RENDERER_DIST: &[&str] = &["apps", "playground", "dist"];
 
-pub(crate) fn resolve(path: &str) -> Option<EmbeddedAsset> {
+pub(crate) fn resolve(path: &str) -> Option<Asset> {
     let normalized_path = normalize_path(path)?;
-    let entry = generated::GENERATED_ASSETS
-        .iter()
-        .find(|asset| asset.path == normalized_path)?;
+    let root = renderer_asset_root()?;
+    resolve_from_root(&root, normalized_path)
+}
 
-    Some(EmbeddedAsset {
-        bytes: entry.bytes,
-        content_type: content_type_for_path(entry.path),
+fn resolve_from_root(root: &Path, normalized_path: &str) -> Option<Asset> {
+    let normalized_path = normalize_path(normalized_path)?;
+    let relative_path = normalized_path.strip_prefix('/')?;
+    let file_path = root.join(relative_path);
+    if !file_path.is_file() {
+        return None;
+    }
+
+    Some(Asset {
+        bytes: fs::read(file_path).ok()?,
+        content_type: content_type_for_path(normalized_path),
     })
 }
 
@@ -48,6 +60,63 @@ fn normalize_path(path: &str) -> Option<&str> {
     }
 
     Some(path)
+}
+
+fn renderer_asset_root() -> Option<PathBuf> {
+    let current_exe = std::env::current_exe().ok()?;
+    if let Some(manifest_path) = runtime::manifest_path_for_exe(&current_exe) {
+        return renderer_asset_root_from_manifest_path(&manifest_path);
+    }
+
+    source_renderer_asset_root([
+        std::env::current_dir().ok(),
+        current_exe.parent().map(Path::to_path_buf),
+    ])
+}
+
+fn renderer_asset_root_from_manifest_path(manifest_path: &Path) -> Option<PathBuf> {
+    let layout_root = manifest_path.parent()?;
+    let manifest = fs::read_to_string(manifest_path).ok()?;
+    renderer_asset_root_from_manifest_str(&manifest, layout_root)
+}
+
+fn renderer_asset_root_from_manifest_str(source: &str, layout_root: &Path) -> Option<PathBuf> {
+    let value: Value = serde_json::from_str(source).ok()?;
+    let renderer_path = value
+        .get("renderer")
+        .and_then(|renderer| renderer.get("path"))
+        .and_then(Value::as_str)?;
+    if !is_contained_manifest_path(renderer_path) {
+        return None;
+    }
+
+    Some(layout_root.join(renderer_path))
+}
+
+fn source_renderer_asset_root(
+    anchors: impl IntoIterator<Item = Option<PathBuf>>,
+) -> Option<PathBuf> {
+    for anchor in anchors.into_iter().flatten() {
+        for candidate in anchor.ancestors() {
+            let root = DEFAULT_SOURCE_RENDERER_DIST
+                .iter()
+                .fold(candidate.to_path_buf(), |path, segment| path.join(segment));
+            if root.is_dir() {
+                return Some(root);
+            }
+        }
+    }
+
+    None
+}
+
+fn is_contained_manifest_path(value: &str) -> bool {
+    !value.is_empty()
+        && !Path::new(value).is_absolute()
+        && !value.contains('\\')
+        && value
+            .split('/')
+            .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
 }
 
 fn content_type_for_path(path: &str) -> &'static str {
@@ -88,10 +157,18 @@ fn content_type_for_path(path: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve, CSS_CONTENT_TYPE, HTML_CONTENT_TYPE, JAVASCRIPT_CONTENT_TYPE};
+    use super::{
+        renderer_asset_root_from_manifest_str, resolve, resolve_from_root,
+        source_renderer_asset_root, CSS_CONTENT_TYPE, HTML_CONTENT_TYPE, JAVASCRIPT_CONTENT_TYPE,
+    };
+    use std::{
+        fs::{create_dir_all, remove_dir_all, write},
+        path::Path,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     #[test]
-    fn root_resolves_to_embedded_index_html() {
+    fn root_resolves_to_source_index_html() {
         let asset = resolve("/").expect("root should resolve");
 
         assert_eq!(asset.content_type, HTML_CONTENT_TYPE);
@@ -101,12 +178,12 @@ mod tests {
             lower
                 .windows(b"<script".len())
                 .any(|window| window == b"<script"),
-            "embedded index should carry at least one script element"
+            "source renderer index should carry at least one script element"
         );
     }
 
     #[test]
-    fn index_resolves_to_embedded_index_html() {
+    fn index_resolves_to_source_index_html() {
         let root = resolve("/").expect("root should resolve");
         let index = resolve("/index.html").expect("index should resolve");
 
@@ -116,7 +193,7 @@ mod tests {
     #[test]
     fn sibling_assets_resolve_with_mime_types() {
         let index = resolve("/").expect("root should resolve");
-        let index_text = std::str::from_utf8(index.bytes).expect("index should be utf8");
+        let index_text = std::str::from_utf8(&index.bytes).expect("index should be utf8");
 
         let css_path = first_attribute_with_suffix(index_text, "href=\"", ".css")
             .expect("index should reference a stylesheet");
@@ -146,6 +223,73 @@ mod tests {
         assert_eq!(resolve("\\index.html"), None);
     }
 
+    #[test]
+    fn packaged_manifest_renderer_path_resolves_assets_from_layout() {
+        let root = temp_root("effect-desktop-host-assets-packaged");
+        let layout = root.join("layout");
+        let renderer = layout.join("renderer").join("assets");
+        create_dir_all(&renderer).expect("renderer directory should be created");
+        write(
+            layout.join("app-manifest.json"),
+            r#"{"renderer":{"path":"renderer"}}"#,
+        )
+        .expect("manifest should write");
+        write(
+            layout.join("renderer").join("index.html"),
+            "<!doctype html><h1>ok</h1>",
+        )
+        .expect("index should write");
+        write(renderer.join("style.css"), "body{}").expect("css should write");
+
+        let asset_root =
+            renderer_asset_root_from_manifest_str(r#"{"renderer":{"path":"renderer"}}"#, &layout)
+                .expect("renderer root should resolve");
+        let index = resolve_from_root(&asset_root, "/").expect("index should resolve");
+        let css = resolve_from_root(&asset_root, "/assets/style.css").expect("css should resolve");
+
+        assert_eq!(index.bytes, b"<!doctype html><h1>ok</h1>");
+        assert_eq!(index.content_type, HTML_CONTENT_TYPE);
+        assert_eq!(css.bytes, b"body{}");
+        assert_eq!(css.content_type, CSS_CONTENT_TYPE);
+
+        remove_dir_all(root).expect("temp root should remove");
+    }
+
+    #[test]
+    fn manifest_renderer_path_must_stay_inside_layout() {
+        let layout = Path::new("/app/layout");
+
+        assert_eq!(
+            renderer_asset_root_from_manifest_str(r#"{"renderer":{"path":"../renderer"}}"#, layout),
+            None
+        );
+        assert_eq!(
+            renderer_asset_root_from_manifest_str(r#"{"renderer":{"path":"/renderer"}}"#, layout),
+            None
+        );
+        assert_eq!(
+            renderer_asset_root_from_manifest_str(
+                r#"{"renderer":{"path":"renderer\\dist"}}"#,
+                layout
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn source_renderer_root_uses_playground_dist_without_embedding() {
+        let root = temp_root("effect-desktop-host-assets-source");
+        let dist = root.join("apps").join("playground").join("dist");
+        create_dir_all(&dist).expect("source dist should be created");
+
+        assert_eq!(
+            source_renderer_asset_root([Some(root.join("apps").join("playground"))]),
+            Some(dist)
+        );
+
+        remove_dir_all(root).expect("temp root should remove");
+    }
+
     fn first_attribute_with_suffix<'a>(
         value: &'a str,
         attr: &str,
@@ -164,5 +308,13 @@ mod tests {
 
     fn app_asset_path(value: &str) -> &str {
         value.strip_prefix("app://localhost").unwrap_or(value)
+    }
+
+    fn temp_root(prefix: &str) -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("{prefix}-{nanos}"))
     }
 }
