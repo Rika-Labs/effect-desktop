@@ -9,11 +9,14 @@ import {
 import { Option, Schema } from "effect"
 import { Rpc, RpcSchema } from "effect/unstable/rpc"
 
+import { Layer } from "effect"
+
 import {
   manifest as desktopManifest,
   type DesktopAppManifest,
   type DesktopConfig,
-  type DesktopRpcGroupDescriptor
+  type DesktopRpcGroupDescriptor,
+  type DesktopWindowsLayer
 } from "./desktop-app.js"
 import type { DesktopRpcRegistrationGroup } from "./desktop-rpc-registry.js"
 import { makeDuplicateDesktopRpcNameError, makeMissingDesktopRpcsError } from "./desktop-errors.js"
@@ -47,7 +50,7 @@ export const describeRpcs = <Group extends DesktopRpcRegistrationGroup>(
       ? app.rpcGroups
       : desktopManifest({
           id: "describeRpcs",
-          windows: {},
+          windows: Layer.empty as DesktopWindowsLayer<never>,
           ...("rpcs" in app ? { rpcs: app.rpcs } : {})
         } as Parameters<typeof desktopManifest>[0]).rpcGroups
   const provided = providedRpcGroupDescriptor(rpcGroups, group)

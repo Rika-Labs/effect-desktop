@@ -26,16 +26,16 @@ function make<RIn = never, E = never>(
 ): DesktopAppDescriptor<RIn, E>
 ```
 
-| Field         | Type                         | Description                                                                                                                    |
-| ------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `id`          | `string`                     | Reverse-DNS app id (e.g. `dev.example.notes`).                                                                                 |
-| `windows`     | `Record<string, WindowSpec>` | Declared windows, keyed by window id.                                                                                          |
-| `rpcs`        | `DesktopRpcsLayer<E, RIn>`   | A single composed Layer of RPC registrations. Build via `Desktop.rpc(group, handlers)`; compose multiple via `Layer.mergeAll`. |
-| `providers`   | `DesktopProviderSelection`   | Optional provider selection (e.g. runtime engine).                                                                             |
-| `permissions` | `NormalizedCapability[]`     | Default permission declarations.                                                                                               |
-| `workflows`   | `DesktopWorkflowLayer[]`     | Optional workflow layers.                                                                                                      |
+| Field         | Type                       | Description                                                                                                                              |
+| ------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`          | `string`                   | Reverse-DNS app id (e.g. `dev.example.notes`).                                                                                           |
+| `windows`     | `DesktopWindowsLayer<RIn>` | A single composed Layer of window registrations. Build via `Desktop.window(id, spec, services?)`; compose multiple via `Layer.mergeAll`. |
+| `rpcs`        | `DesktopRpcsLayer<E, RIn>` | A single composed Layer of RPC registrations. Build via `Desktop.rpc(group, handlers)`; compose multiple via `Layer.mergeAll`.           |
+| `providers`   | `DesktopProviderSelection` | Optional provider selection (e.g. runtime engine).                                                                                       |
+| `permissions` | `NormalizedCapability[]`   | Default permission declarations.                                                                                                         |
+| `workflows`   | `DesktopWorkflowLayer[]`   | Optional workflow layers.                                                                                                                |
 
-`WindowSpec` is `{ title, width?, height?, renderer? }`. The window id is the key in the `windows` record — there is no `id` field on the spec itself.
+`WindowSpec` is `{ title, width?, height?, renderer? }`. The window id is the first argument to `Desktop.window(id, spec)` — there is no `id` field on the spec itself.
 
 ## `Desktop.manifest(app)`
 
@@ -65,11 +65,17 @@ Desktop.app(config): Layer.Layer<DesktopApp, DesktopConfigError | E, ...>
 
 Use `Desktop.app(config)` in your runtime entry to materialize the dependency graph.
 
-## `WindowSpec` shape
+## `Desktop.window(id, spec, services?)`
 
-Windows are plain objects in the `windows` record:
+Registers a window with the surrounding `DesktopWindowRegistry`. Returns a `Layer` that self-registers when built; compose multiple windows with `Layer.mergeAll(...)` and pass the result as the `windows:` field of `Desktop.make`.
 
 ```ts
+function window<RIn = never>(
+  id: string,
+  spec: WindowSpec,
+  services?: Layer.Layer<never, never, RIn | Scope.Scope>
+): Layer.Layer<never, never, RIn | DesktopWindowRegistry>
+
 interface WindowSpec {
   readonly title: string
   readonly width?: number
@@ -78,14 +84,16 @@ interface WindowSpec {
 }
 ```
 
-There is no `Desktop.window(...)` factory — declare them as record values directly:
+The optional `services` Layer is built **inside** the per-window scope at open time. Anything it acquires (a `Settings` store, a watcher, a stream subscription) is released when the window closes. This is the framework's typed answer to per-window resource lifetime.
 
 ```ts
-windows: {
-  main: { title: "App", width: 1024, height: 720 },
-  preferences: { title: "Preferences", width: 480, height: 360 }
-}
+windows: Layer.mergeAll(
+  Desktop.window("main", { title: "App", width: 1024, height: 720 }),
+  Desktop.window("preferences", { title: "Preferences", width: 480, height: 360 })
+)
 ```
+
+Reserved ids — `__proto__`, `constructor`, `prototype`, and the empty string — throw a `TypeError` synchronously from the call site. Duplicate ids surface as a `DesktopConfigError` at `Desktop.make` time.
 
 ## `Desktop.Rpc.surface(name, group, options)`
 
@@ -132,9 +140,7 @@ import { NotesHandlersLive } from "./handlers.js"
 
 export const App = Desktop.make({
   id: "dev.example.notes",
-  windows: {
-    main: { title: "Notes", width: 720, height: 520 }
-  },
+  windows: Desktop.window("main", { title: "Notes", width: 720, height: 520 }),
   rpcs: Desktop.rpc(NotesRpcs, NotesHandlersLive)
 })
 

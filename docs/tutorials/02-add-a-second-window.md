@@ -33,22 +33,46 @@ Update your `Desktop.make` call to declare two windows:
 
 ```ts
 import { Desktop } from "@effect-desktop/core"
+import { Layer } from "effect"
 import { NotesRpcs } from "./notes/contracts.js"
 import { NotesHandlersLive } from "./notes/handlers.js"
 
 export const App = Desktop.make({
   id: "dev.example.notes",
-  windows: {
-    main: { title: "Notes", width: 720, height: 520 },
-    compose: { title: "Compose Note", width: 480, height: 360 }
-  },
+  windows: Layer.mergeAll(
+    Desktop.window("main", { title: "Notes", width: 720, height: 520 }),
+    Desktop.window("compose", { title: "Compose Note", width: 480, height: 360 })
+  ),
   rpcs: Desktop.rpc(NotesRpcs, NotesHandlersLive)
 })
 
 export const Manifest = Desktop.manifest(App)
 ```
 
-`windows` is a `Record<string, WindowSpec>` — the keys (`main`, `compose`) are the window ids the runtime uses. The `compose` window is declared so the runtime knows about it; we'll open it on demand from the renderer rather than at launch.
+Each `Desktop.window(id, spec)` returns a `Layer` that self-registers the window with the framework. Compose multiple windows with `Layer.mergeAll(...)`. The window ids (`"main"`, `"compose"`) are what the runtime uses to address them. The `compose` window is declared so the runtime knows about it; we'll open it on demand from the renderer rather than at launch.
+
+### Optional: bind window-scoped resources
+
+`Desktop.window` accepts a third argument — a `Layer` whose lifetime is bound to that window's scope. Anything it acquires (a `Settings` store, a watcher, a stream subscription) is released when the window closes. Use this when you have state that "only matters while this window is open" but needs to live in a service rather than React local state:
+
+```ts
+Desktop.window(
+  "compose",
+  { title: "Compose Note" },
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const settings = yield* Settings
+      const draftStore = yield* settings.open({
+        path: "compose-drafts.sqlite",
+        schemaVersion: 1
+      })
+      yield* registerWindowStore("compose", draftStore)
+    })
+  )
+)
+```
+
+You don't write a finalizer; the framework owns the per-window scope.
 
 ## Step 2 — Open the compose window from a button
 

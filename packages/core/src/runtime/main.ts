@@ -34,10 +34,10 @@ await Effect.runPromise(
     const windows = makeHostWindowClient(hostExchange)
     const startupEnvironment = yield* readStartupEnvironment()
     const startupWindows = yield* readStartupWindows(startupEnvironment)
-    const declaredWindows = yield* requireStartupWindows(startupWindows)
+    const declaredRegistrations = yield* requireStartupWindows(startupWindows)
     yield* negotiateHostVersion(handshake, HOST_PROTOCOL_VERSION)
     yield* handshake.ping()
-    yield* openDeclaredWindows(windows, declaredWindows, {
+    yield* openDeclaredWindows(windows, declaredRegistrations, {
       smokeTest: startupEnvironment.smokeTest
     })
   }).pipe(Effect.scoped, Effect.provide(layerStdioSocket))

@@ -3827,11 +3827,7 @@ test("ScreenRpcs declares the Phase 8 Screen method surface", () => {
 test("ScreenSurface derives server, client, test, and metadata surfaces from the RpcGroup", async () => {
   const app = Desktop.make({
     id: "screen-test",
-    windows: {
-      main: {
-        title: "Screen Test"
-      }
-    },
+    windows: Desktop.window("main", { title: "Screen Test" }),
     rpcs: ScreenSurface.serverLayer
   })
 

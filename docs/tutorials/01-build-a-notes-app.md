@@ -149,12 +149,11 @@ import { NotesHandlersLive } from "./notes/handlers.js"
 
 export const App = Desktop.make({
   id: "dev.example.notes",
-  windows: {
-    main: { title: "Notes" }
-  },
+  windows: Desktop.window("main", { title: "Notes" }),
   rpcs: Desktop.rpc(NotesRpcs, NotesHandlersLive)
-  // For multiple RPC surfaces, compose with Layer.mergeAll:
-  //   rpcs: Layer.mergeAll(Desktop.rpc(NotesRpcs, NotesHandlersLive), Desktop.rpc(...))
+  // For multiple windows or RPC surfaces, compose with Layer.mergeAll:
+  //   windows: Layer.mergeAll(Desktop.window("main", ...), Desktop.window("compose", ...))
+  //   rpcs:    Layer.mergeAll(Desktop.rpc(NotesRpcs, NotesHandlersLive), Desktop.rpc(...))
 })
 
 export const Manifest = Desktop.manifest(App)

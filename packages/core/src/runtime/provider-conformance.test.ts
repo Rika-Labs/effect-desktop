@@ -83,7 +83,7 @@ test("runtime provider conformance has no experimental Deno cell", async () => {
   const exit = await Effect.runPromiseExit(
     Desktop.runtimeGraph({
       id: "provider-parity",
-      windows: { main: { title: "Provider Parity" } },
+      windows: Desktop.window("main", { title: "Provider Parity" }),
       providers: { runtime: "deno" }
     })
   )
@@ -158,7 +158,7 @@ const runProviderContract = (provider: RuntimeProviderCase): Promise<ProviderPar
         Effect.provide(
           Desktop.runtime({
             id: "provider-parity",
-            windows: { main: { title: "Provider Parity" } },
+            windows: Desktop.window("main", { title: "Provider Parity" }),
             providers: { runtime: provider.engine }
           })
         )
@@ -179,7 +179,7 @@ const runMissingExecutableContract = (provider: RuntimeProviderCase) =>
         Effect.provide(
           Desktop.runtime({
             id: "provider-parity",
-            windows: { main: { title: "Provider Parity" } },
+            windows: Desktop.window("main", { title: "Provider Parity" }),
             providers: { runtime: provider.engine }
           })
         )

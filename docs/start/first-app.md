@@ -76,16 +76,14 @@ import { AppRpcs } from "./contracts.js"
 
 export const App = Desktop.make({
   id: "dev.example.first-app",
-  windows: {
-    main: { title: "First App" }
-  },
+  windows: Desktop.window("main", { title: "First App" }),
   rpcs: Desktop.rpc(AppRpcs, AppHandlersLive)
 })
 
 export const Manifest = Desktop.manifest(App)
 ```
 
-`Desktop.make` ties everything together: app id, declared windows (a record keyed by window name), RPC surfaces, providers, permissions. `Desktop.manifest` produces the value the renderer needs to know which contracts to expose.
+`Desktop.make` ties everything together: app id, declared windows, RPC surfaces, providers, permissions. Each `Desktop.window(id, spec, services?)` self-registers with the framework; compose multiple via `Layer.mergeAll(Desktop.window(...), Desktop.window(...))`. `Desktop.manifest` produces the value the renderer needs to know which contracts to expose.
 
 ## 4. The renderer
 
