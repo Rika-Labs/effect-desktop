@@ -6,7 +6,7 @@ import {
   type InspectorSafetyPolicyOptions,
   makeInspectorSafetyPolicy
 } from "./inspector-safety-policy.js"
-import { Telemetry, makeTelemetry } from "./telemetry.js"
+import { EffectTelemetryRuntimeLive, Telemetry, makeTelemetry } from "./telemetry.js"
 
 export type DesktopObservabilityModeName =
   | "off"
@@ -152,19 +152,20 @@ const layer = (
             )
           })
         )
-        const collectorLayer = Layer.effect(
-          CollectorRegistry,
-          makeCollectorRegistry({ enabled })
-        )
+        const collectorLayer = Layer.effect(CollectorRegistry, makeCollectorRegistry({ enabled }))
         const observabilityLayer = Layer.succeed(DesktopObservability)(
           Object.freeze({
             mode: decoded.mode,
             transport: transportFor(decoded)
           } satisfies DesktopObservabilityApi)
         )
+        const telemetryWithObserverLayer = Layer.provideMerge(
+          EffectTelemetryRuntimeLive,
+          Layer.provide(telemetryLayer, safetyLayer)
+        )
         const baseLayer = Layer.mergeAll(
           safetyLayer,
-          Layer.provide(telemetryLayer, safetyLayer),
+          telemetryWithObserverLayer,
           collectorLayer,
           observabilityLayer
         )
@@ -184,11 +185,7 @@ export namespace DesktopObservability {
 
 const decodeOptions = (
   options: DesktopObservabilityLayerOptions
-): Effect.Effect<
-  DesktopObservabilityLayerOptions,
-  DesktopObservabilityConfigError,
-  never
-> =>
+): Effect.Effect<DesktopObservabilityLayerOptions, DesktopObservabilityConfigError, never> =>
   Schema.decodeUnknownEffect(ObservabilityMode)(options).pipe(
     Effect.mapError(
       () =>

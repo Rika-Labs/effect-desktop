@@ -2276,7 +2276,7 @@
     {
       "name": "TelemetryOptions",
       "kind": "interface",
-      "signature": "export interface TelemetryOptions { readonly maxLogs?: number readonly maxMetrics?: number readonly maxHistogramSamples?: number readonly redaction?: RedactionFilterOptions readonly inspectorSafety?: InspectorSafetyPolicyApi readonly inspectorSafetyPolicy?: InspectorSafetyPolicyOptions readonly traceRingSize?: number readonly eventRingSize?: number readonly tracingEnabled?: boolean readonly now?: () => number readonly nextSpanId?: () => string }"
+      "signature": "export interface TelemetryOptions { readonly maxLogs?: number readonly maxMetrics?: number readonly maxHistogramSamples?: number readonly redaction?: RedactionFilterOptions readonly inspectorSafety?: InspectorSafetyPolicyApi readonly inspectorSafetyPolicy?: InspectorSafetyPolicyOptions readonly traceRingSize?: number readonly eventRingSize?: number readonly tracingEnabled?: boolean readonly now?: () => number }"
     },
     {
       "name": "TelemetrySnapshot",
@@ -2312,6 +2312,11 @@
       "name": "wipeSecretBytes",
       "kind": "value",
       "signature": "const wipeSecretBytes: (secret: SecretBytes) => Effect.Effect<void, never, never>"
+    },
+    {
+      "name": "withDesktopSpan",
+      "kind": "value",
+      "signature": "const withDesktopSpan: (name: string, attributes?: Record<string, unknown>) => (<A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, Exclude<R, Tracer.ParentSpan>>)"
     },
     {
       "name": "Worker",

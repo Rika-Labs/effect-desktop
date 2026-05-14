@@ -423,9 +423,7 @@ test("LiveRuntimePanels rejects invalid row caps and refresh intervals", async (
 })
 
 test("DiagnosticsPanels projects redacted logs, grouped traces, and metrics", async () => {
-  const telemetry = await Effect.runPromise(
-    makeTelemetry({ now: () => 1_000, nextSpanId: () => "span-generated" })
-  )
+  const telemetry = await Effect.runPromise(makeTelemetry({ now: () => 1_000 }))
   await Effect.runPromise(
     telemetry.log({
       level: "error",
@@ -451,6 +449,7 @@ test("DiagnosticsPanels projects redacted logs, grouped traces, and metrics", as
   await Effect.runPromise(
     telemetry.recordSpan({
       traceId: "trace-diagnostics",
+      spanId: "child",
       parentSpanId: "root",
       subsystem: "runtime",
       operation: "Command.invoke",

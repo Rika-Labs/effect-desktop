@@ -11,7 +11,7 @@ import {
   Metric,
   Option,
   PubSub,
-  Random,
+  References,
   Ref,
   Schema,
   Stream,
@@ -242,7 +242,6 @@ export interface TelemetryOptions {
   readonly eventRingSize?: number
   readonly tracingEnabled?: boolean
   readonly now?: () => number
-  readonly nextSpanId?: () => string
 }
 
 const DEFAULT_MAX_LOGS = 1_024
@@ -291,10 +290,6 @@ export const makeTelemetry = (
               )
             )
           )
-    const nextSpanId =
-      options.nextSpanId === undefined
-        ? Random.nextUUIDv4.pipe(Effect.map((uuid) => `span-${uuid}`))
-        : Effect.sync(options.nextSpanId)
     const redaction = options.inspectorSafetyPolicy?.redaction ?? options.redaction
     const safetyOptions: InspectorSafetyPolicyOptions =
       redaction === undefined
@@ -380,8 +375,8 @@ export const makeTelemetry = (
         }),
       listLogs: () => SubscriptionRef.get(logs),
       observeLogs: () => SubscriptionRef.changes(logs),
-      recordSpan: (input) =>
-        Effect.gen(function* () {
+      recordSpan: (input) => {
+        const record = Effect.gen(function* () {
           yield* validateMetadataField(input.traceId, "Telemetry.recordSpan", "traceId")
           yield* validateMetadataField(input.subsystem, "Telemetry.recordSpan", "subsystem")
           yield* validateMetadataField(input.operation, "Telemetry.recordSpan", "operation")
@@ -392,11 +387,29 @@ export const makeTelemetry = (
             "Telemetry.recordSpan",
             "parentSpanId"
           )
-          const resolvedSpanId = input.spanId ?? (yield* nextSpanId)
-          yield* validateMetadataField(resolvedSpanId, "Telemetry.recordSpan", "spanId")
           if (!tracingEnabled) {
             return
           }
+          const effectSpanOption = yield* Effect.currentSpan.pipe(
+            Effect.map(Option.some),
+            Effect.catch(() => Effect.succeed(Option.none()))
+          )
+          const effectSpan = Option.getOrUndefined(effectSpanOption)
+          const parent =
+            effectSpan === undefined ? undefined : Option.getOrUndefined(effectSpan.parent)
+          const resolvedSpanId = input.spanId ?? effectSpan?.spanId ?? ""
+          const resolvedTraceId =
+            input.spanId === undefined && effectSpan !== undefined
+              ? effectSpan.traceId
+              : input.traceId
+          const resolvedParentSpanId = input.parentSpanId ?? parent?.spanId
+          yield* validateMetadataField(resolvedTraceId, "Telemetry.recordSpan", "traceId")
+          yield* validateMetadataField(resolvedSpanId, "Telemetry.recordSpan", "spanId")
+          yield* validateOptionalMetadataField(
+            resolvedParentSpanId,
+            "Telemetry.recordSpan",
+            "parentSpanId"
+          )
           const attributesDecision =
             input.attributes === undefined
               ? undefined
@@ -409,10 +422,13 @@ export const makeTelemetry = (
             payload: toTraceSpan(
               {
                 ...input,
-                attributes:
-                  attributesDecision === undefined || Option.isNone(attributesDecision.value)
-                    ? undefined
-                    : attributesDecision.value.value
+                traceId: resolvedTraceId,
+                ...(attributesDecision === undefined || Option.isNone(attributesDecision.value)
+                  ? undefined
+                  : { attributes: attributesDecision.value.value }),
+                ...(resolvedParentSpanId === undefined
+                  ? undefined
+                  : { parentSpanId: resolvedParentSpanId })
               },
               resolvedSpanId
             )
@@ -431,7 +447,11 @@ export const makeTelemetry = (
             appendBounded(current, span, traceRingSize)
           )
           yield* appendEvent(new InspectorTraceEvent({ kind: "trace", span }))
-        }),
+        })
+        return input.spanId === undefined
+          ? record.pipe(withDesktopSpan(input.name, telemetrySpanAttributes(input)))
+          : record
+      },
       listTraces: () => SubscriptionRef.get(traces),
       observeTraces: () => SubscriptionRef.changes(traces),
       incrementCounter: (input) =>
@@ -542,6 +562,20 @@ export class EffectTelemetryCollector extends Context.Service<
   EffectTelemetryCollectorApi
 >()("EffectTelemetryCollector") {}
 
+export const withDesktopSpan =
+  (
+    name: string,
+    attributes: Record<string, unknown> = {}
+  ): (<A, E, R>(
+    effect: Effect.Effect<A, E, R>
+  ) => Effect.Effect<A, E, Exclude<R, Tracer.ParentSpan>>) =>
+  (effect) =>
+    effect.pipe(
+      Effect.annotateSpans(attributes),
+      Effect.annotateLogs(attributes),
+      Effect.withSpan(name, { attributes })
+    )
+
 export const makeEffectTelemetryCollector = (
   telemetry: TelemetryApi
 ): Effect.Effect<EffectTelemetryCollectorApi, never, never> =>
@@ -563,7 +597,11 @@ export const makeEffectTelemetryCollector = (
             timestamp: options.date.getTime(),
             fields: {
               fiberId: options.fiber.id,
-              cause: options.cause.reasons.length === 0 ? undefined : causePayload(options.cause)
+              spanId: span?.spanId,
+              ...options.fiber.getRef(References.CurrentLogAnnotations),
+              ...(options.cause.reasons.length === 0
+                ? undefined
+                : { cause: causePayload(options.cause) })
             }
           })
           .pipe(Effect.catch(() => Effect.void))
@@ -572,9 +610,9 @@ export const makeEffectTelemetryCollector = (
     const tracer = Tracer.make({
       span(options) {
         const span = currentTracer.span(options)
-        const oldEnd = span.end
+        const endSpan = span.end.bind(span)
         span.end = function (this: Tracer.Span, endTime, exit) {
-          oldEnd.call(this, endTime, exit)
+          endSpan(endTime, exit)
           const parent = Option.getOrUndefined(span.parent)
           void Effect.runPromise(
             telemetry
@@ -870,6 +908,18 @@ const toTraceSpan = (input: TelemetryTraceSpanInput, spanId: string): TelemetryT
       : Option.some(Math.max(0, input.endedAt - input.startedAt)),
   attributes: optionFrom(input.attributes),
   safety: emptyInspectorSafetySummary
+})
+
+const telemetrySpanAttributes = (input: TelemetryTraceSpanInput): Record<string, unknown> => ({
+  "effect-desktop.subsystem": input.subsystem,
+  "effect-desktop.operation": input.operation,
+  "effect-desktop.traceId": input.traceId,
+  ...(input.parentSpanId === undefined
+    ? undefined
+    : { "effect-desktop.parentSpanId": input.parentSpanId }),
+  ...(input.attributes === undefined
+    ? undefined
+    : { "effect-desktop.attributes": input.attributes })
 })
 
 const metricKey = (name: string, tags: Readonly<Record<string, string>>): string =>

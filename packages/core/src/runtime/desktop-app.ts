@@ -27,7 +27,7 @@ import {
 } from "./provider-registry.js"
 import { ResourceRegistryLive } from "./resources.js"
 import { servedRpcGroup, servedRpcGroupProperties } from "./rpc-group-metadata.js"
-import { Telemetry, makeTelemetry } from "./telemetry.js"
+import { EffectTelemetryRuntimeLive, Telemetry, makeTelemetry } from "./telemetry.js"
 
 export interface WindowSpec {
   readonly title: string
@@ -236,7 +236,7 @@ const TelemetryLive: Layer.Layer<Telemetry, never, never> = Layer.effect(Telemet
 
 const coreServicesLayer: Layer.Layer<never, Config.ConfigError, never> = Layer.mergeAll(
   ResourceRegistryLive,
-  TelemetryLive,
+  Layer.provideMerge(EffectTelemetryRuntimeLive, TelemetryLive),
   Reactivity.layer,
   DesktopLoggerLayer,
   WorkflowEngine.layerMemory
