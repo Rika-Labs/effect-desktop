@@ -23,6 +23,9 @@ import {
   CommandRegistryHandlerFailureError,
   CommandRegistry,
   Desktop,
+  DesktopRpcRegistry,
+  DesktopRpcRegistryLive,
+  type DesktopRpcRegistration,
   P,
   PermissionRegistry,
   ResourceRegistry,
@@ -37,6 +40,7 @@ import {
 } from "@effect-desktop/core"
 import {
   Cause,
+  Context,
   Deferred,
   Effect,
   Exit,
@@ -146,6 +150,7 @@ import {
   SafeStorageSurface,
   Screen,
   ScreenClient,
+  ScreenHandlersLive,
   ScreenRpcs,
   ScreenLive,
   ScreenMethodNames,
@@ -337,6 +342,28 @@ const runScopedPromise = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>): Promi
 const runScopedPromiseExit = <A, E>(
   effect: Effect.Effect<A, E, Scope.Scope>
 ): Promise<Exit.Exit<A, E>> => Effect.runPromiseExit(Effect.scoped(effect))
+
+// Snapshot helper: builds a surface's serverLayer against DesktopRpcRegistryLive
+// and returns the captured registrations. The cast mirrors the framework's
+// snapshotRegistrationsSync — Desktop.rpc layer bodies only do Effect.sync, so
+// handler R requirements are not actually resolved here even though TypeScript
+// thinks the surface layer needs the service (e.g., Screen).
+const snapshotSurfaceRegistrations = (
+  serverLayer: Layer.Layer<never, never, any>
+): Promise<ReadonlyArray<DesktopRpcRegistration<unknown, unknown>>> =>
+  Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const ctx = yield* Layer.build(
+          Layer.provideMerge(
+            serverLayer as Layer.Layer<never, never, DesktopRpcRegistry>,
+            DesktopRpcRegistryLive
+          )
+        )
+        return yield* Context.get(ctx, DesktopRpcRegistry).snapshot
+      })
+    )
+  )
 
 test("native package root keeps contracts and implementation helpers behind subpaths", async () => {
   const native = await import("@effect-desktop/native")
@@ -3816,6 +3843,12 @@ test("ScreenSurface derives server, client, test, and metadata surfaces from the
   expect(Layer.isLayer(ScreenSurface.serverLayer)).toBe(true)
   expect(Layer.isLayer(ScreenSurface.clientLayer)).toBe(true)
   expect(Layer.isLayer(ScreenSurface.testClientLayer)).toBe(true)
+  // Identity assertion: build serverLayer against the registry, snapshot, and
+  // confirm (group, handlers) was threaded through unchanged.
+  const screenRegistrations = await snapshotSurfaceRegistrations(ScreenSurface.serverLayer)
+  expect(screenRegistrations).toHaveLength(1)
+  expect(screenRegistrations[0]?.group).toBe(ScreenRpcs)
+  expect(screenRegistrations[0]?.handlers).toBe(ScreenHandlersLive)
   expect(Desktop.manifest(app).rpcGroups[0]?.group).toBe(ScreenRpcs)
   expect(Desktop.describeRpcs(app, ScreenRpcs).map((descriptor) => descriptor.tag)).toEqual([
     "Screen.getDisplays",
@@ -4028,7 +4061,13 @@ test("native DesktopRpc surfaces derive server, client, test, and metadata layer
     expect(name).toBe(surface.tag)
     expect(surface.group).toBe(group)
     expect(Layer.isLayer(surface.serverLayer)).toBe(true)
-    void handlers
+    // Identity assertion: build serverLayer against the registry, snapshot, and
+    // confirm the (group, handlers) pair survived. Catches surface() regressions
+    // where the wrong group or handlers reference is captured.
+    const surfaceRegistrations = await snapshotSurfaceRegistrations(surface.serverLayer)
+    expect(surfaceRegistrations).toHaveLength(1)
+    expect(surfaceRegistrations[0]?.group).toBe(group)
+    expect(surfaceRegistrations[0]?.handlers).toBe(handlers)
     expect(Layer.isLayer(surface.clientLayer)).toBe(true)
     expect(Layer.isLayer(surface.testClientLayer)).toBe(true)
     expect(surface.schemaDocs.map((doc) => doc.tag)).toEqual(Array.from(tags))

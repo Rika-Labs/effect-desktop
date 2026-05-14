@@ -657,6 +657,23 @@ test("Desktop.Rpc.surface derives server, client, test, docs, and laws from one 
   expect(Layer.isLayer(surface.serverLayer)).toBe(true)
   expect(Layer.isLayer(surface.clientLayer)).toBe(true)
   expect(Layer.isLayer(surface.testClientLayer)).toBe(true)
+  // Identity assertion: build serverLayer against the registry, snapshot, and
+  // confirm the (group, handlers) pair was threaded through unchanged. Catches
+  // regressions where surface() loses the reference (the prior identity check
+  // used surface.serverLayer.group/.layer before the registry refactor).
+  const surfaceRegistrations = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const ctx = yield* Layer.build(
+          Layer.provideMerge(surface.serverLayer, core.DesktopRpcRegistryLive)
+        )
+        return yield* Context.get(ctx, core.DesktopRpcRegistry).snapshot
+      })
+    )
+  )
+  expect(surfaceRegistrations).toHaveLength(1)
+  expect(surfaceRegistrations[0]?.group).toBe(NotesRpcs)
+  expect(surfaceRegistrations[0]?.handlers).toBe(NotesLive)
   expect(surface.schemaDocs.map((doc) => [doc.name, doc.tag, doc.kind])).toEqual([
     ["ping", "Notes.Ping", "query"]
   ])
