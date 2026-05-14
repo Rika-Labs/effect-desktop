@@ -26,10 +26,6 @@ const DesktopWindowRegistrationSchema = Schema.Struct({
   id: Schema.String,
   spec: WindowSpecSchema
 })
-// The descriptor's `windows` field is now a Layer (not a Record). The
-// authoritative window data on the descriptor is `windowRegistrations` —
-// an array snapshot computed at `Desktop.make` time. Decode that and project
-// to the Record shape the rest of the supervisor expects.
 const DesktopAppDescriptorSchema = Schema.Struct({
   _tag: Schema.Literal("DesktopAppDescriptor"),
   windowRegistrations: Schema.Array(DesktopWindowRegistrationSchema)
@@ -167,20 +163,12 @@ const openSingleWindow = (
   options: WindowSupervisorOptions
 ): Effect.Effect<OpenedDeclaredWindow, HostProtocolError, never> =>
   Effect.gen(function* () {
-    // One scope per window, forked from the outer runtime scope so the
-    // per-window finalizers also fire when the runtime exits.
     const windowScope = yield* Scope.fork(outerScope)
     const opened = yield* windows
       .create(toWindowCreateInput(registration.spec))
       .pipe(Effect.tapError(() => Scope.close(windowScope, Exit.interrupt())))
 
     if (registration.services !== undefined) {
-      // Cast invariant: registration.services is type-erased to Layer<never, any, any>.
-      // The framework trusts that any RIn the user's services Layer needs is
-      // already satisfied by the surrounding runtime context (Desktop.app
-      // builds against the same context). The cast surfaces the services
-      // failure as a HostProtocolError-typed channel so the caller sees a
-      // single error union; the original error value is preserved at runtime.
       yield* (
         Layer.buildWithScope(registration.services, windowScope) as Effect.Effect<
           unknown,
@@ -277,11 +265,7 @@ const decodeDesktopAppDescriptor = (
       validateWindowNames(
         Object.fromEntries(app.windowRegistrations.map((reg) => [reg.id, reg.spec])),
         APP_MODULE_ENV
-      ).pipe(
-        // Schema validated id+spec; carry the original `services` Layer
-        // through (the schema dropped it because Schema can't validate Layers).
-        Effect.map(() => projectRegistrationsWithServices(value, app.windowRegistrations))
-      )
+      ).pipe(Effect.map(() => projectRegistrationsWithServices(value, app.windowRegistrations)))
     )
   )
 

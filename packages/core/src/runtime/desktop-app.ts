@@ -463,25 +463,6 @@ export const rpc = <Rpcs extends Rpc.Any, E, R>(
     })
   )
 
-/**
- * Registers a window with the surrounding `DesktopWindowRegistry`.
- * Compose multiple windows with `Layer.mergeAll(...)` and pass the result
- * as `windows:` to `Desktop.make`.
- *
- * The optional `services` Layer is built INSIDE the per-window scope at open
- * time, so any resource it acquires (a `Settings` store, a watcher, a stream
- * subscription) is released when the OS window closes. This is the framework's
- * typed answer to today's `ownerScope: "window-main"` string handshake — the
- * window's scope is owned by the framework, not stringly bound by the renderer.
- *
- * The services layer's `R` requirement (e.g. `Settings`) is type-erased into
- * the registry and re-applied at open time inside the runtime spine — same
- * pattern as `Desktop.rpc`'s handler layer.
- *
- * **Reserved ids.** `__proto__`, `constructor`, `prototype`, and the empty
- * string are rejected synchronously at construction (a `TypeError` from the
- * call site, not a deferred boot failure).
- */
 export const desktopWindow = <RIn = never>(
   id: string,
   spec: WindowSpec,
@@ -498,8 +479,6 @@ export const desktopWindow = <RIn = never>(
       yield* registry.register({
         id,
         spec,
-        // Type-erased — RIn is satisfied by the surrounding runtime context
-        // when openDeclaredWindows builds this layer inside the per-window scope.
         services: services as Layer.Layer<never, any, any> | undefined
       })
     })
@@ -519,13 +498,6 @@ export class DesktopRpcRegistryAsyncBuildError extends Data.TaggedError(
   readonly cause: unknown
 }> {}
 
-/**
- * Thrown by `Desktop.make(...)` / `Desktop.manifest(...)` when the user's
- * `windows` layer requires asynchronous work to build. Mirrors
- * `DesktopRpcRegistryAsyncBuildError`. The fix is to compose async work
- * inside the per-window `services` layer, not in the `Desktop.window`
- * registration itself.
- */
 export class DesktopWindowRegistryAsyncBuildError extends Data.TaggedError(
   "DesktopWindowRegistryAsyncBuildError"
 )<{
@@ -536,11 +508,6 @@ export class DesktopWindowRegistryAsyncBuildError extends Data.TaggedError(
 const snapshotWindowRegistrationsSync = <RIn>(
   windows: DesktopWindowsLayer<RIn>
 ): ReadonlyArray<DesktopWindowRegistration> => {
-  // Cast invariant: every Desktop.window(...) layer body is Effect.sync that
-  // only calls registry.register(...). Composing with DesktopWindowRegistryLive
-  // (also Effect.sync) makes the entire build sync. The user's RIn type
-  // parameter is erased here because it describes what the per-window services
-  // layer needs at OPEN time (Phase 2), not what registration needs.
   const composed = Layer.provideMerge(
     windows as unknown as Layer.Layer<never, never, DesktopWindowRegistry>,
     DesktopWindowRegistryLive

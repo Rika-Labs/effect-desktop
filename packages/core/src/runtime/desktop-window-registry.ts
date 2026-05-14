@@ -2,30 +2,9 @@ import { Context, Effect, Layer } from "effect"
 
 import type { WindowSpec } from "./desktop-app.js"
 
-/**
- * Tactical scaffolding (not a deep module).
- *
- * `DesktopWindowRegistry` is the chokepoint that lets `Desktop.window(id, spec, services?)`
- * self-register into a `Layer` without forcing the user to maintain a `Record<string, WindowSpec>`
- * keyed by window id. The implementation wraps an array push and a frozen snapshot. It owns no
- * durable desktop policy on its own (no per-window scope wiring, no host-side mutation, no audit).
- *
- * The thing that earns this module's place in the framework is not the registry — it is the
- * `services?: Layer<never, never, ...Scope.Scope...>` channel on each registration. That channel
- * lets the spine build per-window scoped resources INSIDE the window's lifetime so they die when
- * the window closes. That is the durable lifecycle policy. Without it, this module would be
- * pure cosmetic symmetry with `desktop-rpc-registry.ts` and would fail the AGENTS.md
- * "earn-its-place" check.
- */
 export interface DesktopWindowRegistration {
   readonly id: string
   readonly spec: WindowSpec
-  // Type-erased. The constructor `Desktop.window<RIn, E>(id, spec, services?)`
-  // accepts a typed `Layer<never, E, RIn | Scope.Scope>`; the registry stores
-  // it widened so heterogeneous registrations live in one array. The framework
-  // re-applies the layer inside the per-window scope at open time, satisfying
-  // RIn from the surrounding runtime context (same pattern as
-  // DesktopRpcRegistration's handlers field).
   readonly services: Layer.Layer<never, any, any> | undefined
 }
 
