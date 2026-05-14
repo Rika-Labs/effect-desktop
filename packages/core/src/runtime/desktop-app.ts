@@ -1,4 +1,4 @@
-import { Config, Context, Data, Effect, Layer, Option, Schema } from "effect"
+import { Config, Context, Data, Effect, Layer, Option, Schema, type Scope } from "effect"
 import type * as FileSystemRuntime from "effect/FileSystem"
 import type * as PathRuntime from "effect/Path"
 import type * as StdioRuntime from "effect/Stdio"
@@ -43,6 +43,7 @@ import {
   type DesktopRpcRegistration,
   type DesktopRpcRegistrationGroup
 } from "./desktop-rpc-registry.js"
+import { DesktopWindowRegistry, isSafeWindowId } from "./desktop-window-registry.js"
 import { EffectTelemetryRuntimeLive, Telemetry, makeTelemetry } from "./telemetry.js"
 
 export interface WindowSpec {
@@ -437,6 +438,49 @@ export const rpc = <Rpcs extends Rpc.Any, E, R>(
       yield* registry.register({ group, handlers })
     })
   )
+
+/**
+ * Registers a window with the surrounding `DesktopWindowRegistry`.
+ * Compose multiple windows with `Layer.mergeAll(...)` and pass the result
+ * as `windows:` to `Desktop.make`.
+ *
+ * The optional `services` Layer is built INSIDE the per-window scope at open
+ * time, so any resource it acquires (a `Settings` store, a watcher, a stream
+ * subscription) is released when the OS window closes. This is the framework's
+ * typed answer to today's `ownerScope: "window-main"` string handshake — the
+ * window's scope is owned by the framework, not stringly bound by the renderer.
+ *
+ * The services layer's `R` requirement (e.g. `Settings`) is type-erased into
+ * the registry and re-applied at open time inside the runtime spine — same
+ * pattern as `Desktop.rpc`'s handler layer.
+ *
+ * **Reserved ids.** `__proto__`, `constructor`, `prototype`, and the empty
+ * string are rejected synchronously at construction (a `TypeError` from the
+ * call site, not a deferred boot failure).
+ */
+export const desktopWindow = <RIn = never>(
+  id: string,
+  spec: WindowSpec,
+  services?: Layer.Layer<never, never, RIn | Scope.Scope>
+): Layer.Layer<never, never, RIn | DesktopWindowRegistry> => {
+  if (!isSafeWindowId(id)) {
+    throw new TypeError(
+      `Desktop.window: window id ${JSON.stringify(id)} is reserved (cannot be empty, "__proto__", "constructor", or "prototype")`
+    )
+  }
+  return Layer.effectDiscard(
+    Effect.gen(function* () {
+      const registry = yield* DesktopWindowRegistry
+      yield* registry.register({
+        id,
+        spec,
+        // Type-erased — RIn is satisfied by the surrounding runtime context
+        // when openDeclaredWindows builds this layer inside the per-window scope.
+        services: services as Layer.Layer<never, never, Scope.Scope> | undefined
+      })
+    })
+  )
+}
 
 /**
  * Thrown by `Desktop.manifest(...)` when the user's `rpcs` layer requires

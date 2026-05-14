@@ -12,10 +12,12 @@ import {
   runtime,
   runtimeGraph,
   runtimeGraphSnapshot,
+  desktopWindow,
   WorkflowEngineDurable,
   WorkflowEngineMemory
 } from "./runtime/desktop-app.js"
 import { DesktopRpcRegistry } from "./runtime/desktop-rpc-registry.js"
+import { DesktopWindowRegistry } from "./runtime/desktop-window-registry.js"
 import type {
   DesktopApp,
   DesktopConfig,
@@ -74,6 +76,7 @@ export * from "./runtime/inspector-transport.js"
 export * from "./runtime/desktop-errors.js"
 export * from "./runtime/desktop-rpc-registry.js"
 export * from "./runtime/desktop-rpc-surface.js"
+export * from "./runtime/desktop-window-registry.js"
 export {
   DesktopApp,
   app as desktopApp,
@@ -86,6 +89,7 @@ export {
   runtime,
   runtimeGraph,
   runtimeGraphSnapshot,
+  desktopWindow,
   type DesktopAppApi,
   type DesktopAppDescriptor,
   type DesktopAppManifest,
@@ -192,6 +196,7 @@ export const Desktop = Object.freeze({
   manifest,
   providerLayerFor,
   rpc,
+  window: desktopWindow,
   Rpc: DesktopRpc,
   runtime,
   runtimeGraph,
