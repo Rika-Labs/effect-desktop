@@ -5,7 +5,7 @@ import {
   DuplicateDesktopRpcNameError,
   MissingDesktopRpcClientError
 } from "@effect-desktop/core"
-import { Deferred, Effect, Schema, Stream } from "effect"
+import { Deferred, Effect, Exit, Schema, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { createRoot } from "solid-js"
 import { createComponent, renderToString } from "solid-js/web"
@@ -164,6 +164,64 @@ test("SolidDesktop query effects are interrupted when the owner is disposed", as
   dispose()
 
   await Effect.runPromise(Deferred.await(interrupted))
+})
+
+test("SolidDesktop mutation replaces active runs through the scoped runtime helper", async () => {
+  const interrupted = await Effect.runPromise(Deferred.make<void>())
+  const Save = Rpc.make("Notes.Save", { success: Schema.String })
+  const NotesRpcs = RpcGroup.make(Save)
+  let calls = 0
+  const NotesLayer = Desktop.Rpcs.layer(
+    NotesRpcs,
+    NotesRpcs.toLayer({
+      "Notes.Save": () => {
+        calls += 1
+        return calls === 1
+          ? Effect.never.pipe(Effect.ensuring(Deferred.succeed(interrupted, undefined)))
+          : Effect.succeed("second")
+      }
+    })
+  )
+  const NotesApp = Desktop.make({
+    windows: {
+      main: {
+        title: "Notes"
+      }
+    },
+    rpcs: [NotesLayer]
+  })
+  const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
+
+  let mutation:
+    | {
+        readonly state: () => unknown
+        readonly runPromise: () => Promise<Exit.Exit<string, unknown>>
+      }
+    | undefined
+  const dispose = createRoot((disposeRoot) => {
+    createComponent(NotesSolid.DesktopRoot, {
+      rpcLayers: [NotesLayer],
+      get children() {
+        const notes = NotesSolid.useDesktop(NotesRpcs)
+        mutation = notes.save.createMutation()
+        return undefined
+      }
+    })
+    return disposeRoot
+  })
+
+  const first = mutation?.runPromise()
+  const second = mutation?.runPromise()
+
+  await Effect.runPromise(Deferred.await(interrupted))
+  const secondExit = await second
+  const firstExit = await first
+
+  expect(secondExit !== undefined && Exit.isSuccess(secondExit)).toBe(true)
+  expect(firstExit !== undefined && Exit.isFailure(firstExit)).toBe(true)
+  expect(mutation?.state()).toMatchObject({ status: "success" })
+  expect(calls).toBe(2)
+  dispose()
 })
 
 test("SolidDesktop stream primitives emit values, close, fail, and interrupt on disposal", async () => {

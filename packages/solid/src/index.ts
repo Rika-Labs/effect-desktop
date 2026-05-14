@@ -9,9 +9,8 @@ import {
   type AnyDesktopRpcLayer,
   makeMissingDesktopContextError,
   makeMissingDesktopRpcsError,
+  makeFrameworkScopedOperation,
   normalizeDesktopStreamCapacity,
-  runFrameworkEffect,
-  runFrameworkPromiseExit,
   RendererRpcClients,
   runRendererStream,
   type DesktopAppManifest,
@@ -285,29 +284,24 @@ const createMutationState = <R, ER, I, A, E>(
   makeEffect: (input: I) => Effect.Effect<A, E, R>
 ): SolidMutation<I, A, E | ER> => {
   const [state, setState] = createSignal<SolidAsyncState<A, E | ER>>({ status: "idle" })
-  let runId = 0
-  let active = true
+  const operation = makeFrameworkScopedOperation(runtime)
 
   onCleanup(() => {
-    active = false
-    runId += 1
+    operation.dispose()
   })
 
   const runPromiseImpl = async (input?: I): Promise<Exit.Exit<A, E | ER>> => {
-    const currentRun = runId + 1
-    runId = currentRun
     setState({ status: "running" })
 
-    const exit = await runFrameworkPromiseExit(runtime, makeEffect(input as I))
-    if (!active || runId !== currentRun) {
-      return exit
-    }
+    const [exit, isLatest] = await operation.runLatestPromiseExit(makeEffect(input as I))
 
-    setState(
-      Exit.isSuccess(exit)
-        ? { status: "success", value: exit.value }
-        : { status: "failure", cause: exit.cause }
-    )
+    if (isLatest) {
+      setState(
+        Exit.isSuccess(exit)
+          ? { status: "success", value: exit.value }
+          : { status: "failure", cause: exit.cause }
+      )
+    }
     return exit
   }
 
@@ -318,7 +312,7 @@ const createMutationState = <R, ER, I, A, E>(
     }) as SolidPrimitive<I, void>,
     runPromise: runPromiseImpl as SolidPrimitive<I, Promise<Exit.Exit<A, E | ER>>>,
     reset: () => {
-      runId += 1
+      operation.reset()
       setState({ status: "idle" })
     }
   }
@@ -329,12 +323,9 @@ const createQueryState = <R, ER, A, E>(
   effect: Effect.Effect<A, E, R>
 ): Accessor<SolidAsyncState<A, E | ER>> => {
   const [state, setState] = createSignal<SolidAsyncState<A, E | ER>>({ status: "running" })
-  let active = true
+  const operation = makeFrameworkScopedOperation(runtime)
 
-  const interrupt = runFrameworkEffect(runtime, effect, (exit) => {
-    if (!active) {
-      return
-    }
+  operation.runLatest(effect, (exit) => {
     setState(
       Exit.isSuccess(exit)
         ? { status: "success", value: exit.value }
@@ -343,8 +334,7 @@ const createQueryState = <R, ER, A, E>(
   })
 
   onCleanup(() => {
-    active = false
-    interrupt()
+    operation.dispose()
   })
 
   return state

@@ -1,6 +1,7 @@
 export {
   appendBounded,
   interruptFrameworkFiber,
+  makeFrameworkScopedOperation,
   runFrameworkEffect,
   runFrameworkPromiseExit,
   isDesktopStreamOptions,
@@ -8,6 +9,7 @@ export {
   observeFrameworkFiber,
   normalizeDesktopStreamCapacity,
   runRendererStream,
+  type FrameworkScopedOperation,
   type FrameworkRuntime,
   type DesktopStreamOptions
 } from "./renderer-stream.js"

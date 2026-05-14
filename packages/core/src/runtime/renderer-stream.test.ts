@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test"
-import { Context, Effect, Exit, Layer, ManagedRuntime, Stream } from "effect"
+import { Context, Deferred, Effect, Exit, Layer, ManagedRuntime, Stream } from "effect"
 
 import {
   makeFrameworkRuntime,
+  makeFrameworkScopedOperation,
   runFrameworkPromiseExit,
   runRendererStream
 } from "./renderer-stream.js"
@@ -57,6 +58,31 @@ test("renderer streams run through the supplied framework runtime", async () => 
   await frameworkRuntime.dispose()
   await runtime.dispose()
   expect(emitted).toEqual(["stream-runtime"])
+})
+
+test("scoped framework operations replace the active fiber and interrupt on dispose", async () => {
+  const runtime = ManagedRuntime.make(Layer.empty)
+  const frameworkRuntime = makeFrameworkRuntime(runtime)
+  const operation = makeFrameworkScopedOperation(frameworkRuntime)
+  const interrupted = await Effect.runPromise(Deferred.make<void>())
+
+  const first = operation.runLatestPromiseExit(
+    Effect.never.pipe(Effect.ensuring(Deferred.succeed(interrupted, undefined)))
+  )
+  const second = operation.runLatestPromiseExit(Effect.succeed("second"))
+
+  await Effect.runPromise(Deferred.await(interrupted))
+  const [secondExit, secondIsLatest] = await second
+  const [firstExit, firstIsLatest] = await first
+
+  expect(Exit.isSuccess(secondExit)).toBe(true)
+  expect(secondIsLatest).toBe(true)
+  expect(Exit.isFailure(firstExit)).toBe(true)
+  expect(firstIsLatest).toBe(false)
+
+  operation.dispose()
+  await frameworkRuntime.dispose()
+  await runtime.dispose()
 })
 
 const waitFor = async (predicate: () => boolean): Promise<void> => {

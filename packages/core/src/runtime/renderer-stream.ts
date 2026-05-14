@@ -5,6 +5,18 @@ export interface FrameworkRuntime<R = never, ER = never> {
   readonly dispose: () => Promise<void>
 }
 
+export interface FrameworkScopedOperation<R = never, ER = never> {
+  readonly runLatestPromiseExit: <A, E>(
+    effect: Effect.Effect<A, E, R>
+  ) => Promise<readonly [Exit.Exit<A, E | ER>, boolean]>
+  readonly runLatest: <A, E>(
+    effect: Effect.Effect<A, E, R>,
+    onExit: (exit: Exit.Exit<A, E | ER>) => void
+  ) => void
+  readonly reset: () => void
+  readonly dispose: () => void
+}
+
 export interface DesktopStreamOptions<A> {
   readonly capacity?: number | undefined
   readonly onItem?: ((item: A) => void) | undefined
@@ -79,6 +91,67 @@ export const observeFrameworkFiber = <A, E>(
 
 export const interruptFrameworkFiber = <A, E>(fiber: Fiber.Fiber<A, E>): void => {
   Effect.runFork(Fiber.interrupt(fiber))
+}
+
+export const makeFrameworkScopedOperation = <R, ER>(
+  runtime: FrameworkRuntime<R, ER>
+): FrameworkScopedOperation<R, ER> => {
+  let generation = 0
+  let disposed = false
+  let interruptLatest: (() => void) | undefined
+
+  const interrupt = (): void => {
+    interruptLatest?.()
+    interruptLatest = undefined
+  }
+
+  const runLatestPromiseExit = async <A, E>(
+    effect: Effect.Effect<A, E, R>
+  ): Promise<readonly [Exit.Exit<A, E | ER>, boolean]> => {
+    interrupt()
+    const currentGeneration = generation + 1
+    generation = currentGeneration
+    const fiber = runtime.runFork(effect)
+    interruptLatest = () => {
+      interruptFrameworkFiber(fiber)
+    }
+    const exit = await new Promise<Exit.Exit<A, E | ER>>((resolve) => {
+      fiber.addObserver((completed) => {
+        queueMicrotask(() => {
+          resolve(completed)
+        })
+      })
+    })
+    if (generation === currentGeneration) {
+      interruptLatest = undefined
+    }
+    return [exit, !disposed && generation === currentGeneration]
+  }
+
+  return {
+    runLatestPromiseExit,
+    runLatest: <A, E>(
+      effect: Effect.Effect<A, E, R>,
+      onExit: (exit: Exit.Exit<A, E | ER>) => void
+    ): void => {
+      void runLatestPromiseExit(effect).then(([exit, isLatest]) => {
+        if (isLatest) {
+          queueMicrotask(() => {
+            onExit(exit)
+          })
+        }
+      })
+    },
+    reset: () => {
+      generation += 1
+      interrupt()
+    },
+    dispose: () => {
+      disposed = true
+      generation += 1
+      interrupt()
+    }
+  }
 }
 
 export const runRendererStream = <R, ER, A, E>(
