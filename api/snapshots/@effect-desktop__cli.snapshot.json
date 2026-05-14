@@ -701,7 +701,7 @@
     {
       "name": "ReleaseWorkflowApi",
       "kind": "interface",
-      "signature": "export interface ReleaseWorkflowApi { readonly package: ( config: ReleaseConfig ) => Effect.Effect<DesktopPackageReport, PackagePipelineError, never> readonly sign: (config: ReleaseConfig) => Effect.Effect<DesktopSignReport, SignPipelineError, never> readonly notarize: ( config: ReleaseConfig ) => Effect.Effect<DesktopNotarizeReport, NotarizePipelineError, never> readonly publish: ( config: ReleaseConfig ) => Effect.Effect<DesktopPublishReport, PublishPipelineError, never> }"
+      "signature": "export interface ReleaseWorkflowApi { readonly package: ( config: ReleaseConfig ) => Effect.Effect<DesktopPackageReport, PackagePipelineError, never> readonly sign: ( config: ReleaseConfig ) => Effect.Effect<DesktopSignReport, SignPipelineError, never> readonly notarize: ( config: ReleaseConfig ) => Effect.Effect<DesktopNotarizeReport, NotarizePipelineError, never> readonly publish: ( config: ReleaseConfig ) => Effect.Effect<DesktopPublishReport, PublishPipelineError, never> }"
     },
     {
       "name": "ReleaseWorkflowLayer",
