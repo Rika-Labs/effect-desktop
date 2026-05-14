@@ -5,7 +5,7 @@ import {
   InspectorSafetyPolicyLive,
   LayerGraphSnapshot
 } from "@effect-desktop/core"
-import { Cause, Effect, Exit, Layer, Option } from "effect"
+import { Cause, Effect, Exit, Fiber, Layer, Option, Stream } from "effect"
 
 import {
   ClusterPanel,
@@ -135,6 +135,40 @@ test("WorkflowsPanel snapshot counts running and completed executions", async ()
   expect(snapshot.executions.find((e) => e.executionId === "exec-a")?.errorTag).toEqual(
     Option.some("NetworkError")
   )
+})
+
+test("WorkflowsPanel observes registry changes without polling", async () => {
+  const now = Date.now()
+  const registry = await Effect.runPromise(makeWorkflowExecutionRegistry({ now: () => now }))
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const panel = yield* WorkflowsPanel
+      const snapshots = yield* panel
+        .observe()
+        .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+
+      yield* Effect.sleep("0 millis")
+      yield* registry.record({
+        tag: "Started",
+        executionId: "exec-push",
+        workflowName: "PushWorkflow",
+        startedAt: now
+      })
+
+      return yield* Fiber.join(snapshots).pipe(Effect.timeoutOption("20 millis"))
+    }).pipe(
+      Effect.provide(
+        Layer.provide(WorkflowsPanelLive(), Layer.succeed(WorkflowExecutionRegistry)(registry))
+      )
+    )
+  )
+
+  expect(Option.isSome(result)).toBe(true)
+  const snapshots = Option.getOrThrow(result)
+  expect(snapshots[0]?.executions).toEqual([])
+  expect(snapshots[1]?.executions[0]?.executionId).toBe("exec-push")
+  expect(snapshots[1]?.runningCount).toBe(1)
 })
 
 test("ReactivityTracker records invalidation events", async () => {

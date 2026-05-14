@@ -1001,7 +1001,7 @@
     {
       "name": "WorkflowsPanelOptions",
       "kind": "interface",
-      "signature": "export interface WorkflowsPanelOptions { readonly maxRows?: number readonly frameInterval?: `${number} millis` }"
+      "signature": "export interface WorkflowsPanelOptions { readonly maxRows?: number }"
     },
     {
       "name": "WorkflowsPanelSnapshot",
