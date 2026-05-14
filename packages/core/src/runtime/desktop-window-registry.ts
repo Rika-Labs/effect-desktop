@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, type Scope } from "effect"
+import { Context, Effect, Layer } from "effect"
 
 import type { WindowSpec } from "./desktop-app.js"
 
@@ -20,7 +20,13 @@ import type { WindowSpec } from "./desktop-app.js"
 export interface DesktopWindowRegistration {
   readonly id: string
   readonly spec: WindowSpec
-  readonly services: Layer.Layer<never, never, Scope.Scope> | undefined
+  // Type-erased. The constructor `Desktop.window<RIn, E>(id, spec, services?)`
+  // accepts a typed `Layer<never, E, RIn | Scope.Scope>`; the registry stores
+  // it widened so heterogeneous registrations live in one array. The framework
+  // re-applies the layer inside the per-window scope at open time, satisfying
+  // RIn from the surrounding runtime context (same pattern as
+  // DesktopRpcRegistration's handlers field).
+  readonly services: Layer.Layer<never, any, any> | undefined
 }
 
 export interface DesktopWindowRegistryApi {

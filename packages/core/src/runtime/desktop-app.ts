@@ -500,7 +500,7 @@ export const desktopWindow = <RIn = never>(
         spec,
         // Type-erased — RIn is satisfied by the surrounding runtime context
         // when openDeclaredWindows builds this layer inside the per-window scope.
-        services: services as Layer.Layer<never, never, Scope.Scope> | undefined
+        services: services as Layer.Layer<never, any, any> | undefined
       })
     })
   )

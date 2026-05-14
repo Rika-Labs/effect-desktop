@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import type { HostWindowClient, WindowCreateInput } from "@effect-desktop/bridge"
-import { Cause, ConfigProvider, Effect, Exit } from "effect"
+import { Cause, ConfigProvider, Effect, Exit, Layer } from "effect"
 
 import {
   APP_EXPORT_ENV,
@@ -35,20 +35,23 @@ test("openDeclaredWindows opens declared windows and smoke-test destroys them", 
   }
 
   const opened = await Effect.runPromise(
-    openDeclaredWindows(
-      client,
-      {
-        main: {
-          title: "Notes",
-          width: 960,
-          height: 640,
-          renderer: "/"
-        },
-        prefs: {
-          title: "Preferences"
-        }
-      },
-      { smokeTest: true }
+    Effect.scoped(
+      openDeclaredWindows(
+        client,
+        [
+          {
+            id: "main",
+            spec: { title: "Notes", width: 960, height: 640, renderer: "/" },
+            services: undefined
+          },
+          {
+            id: "prefs",
+            spec: { title: "Preferences" },
+            services: undefined
+          }
+        ],
+        { smokeTest: true }
+      )
     )
   )
 
@@ -67,6 +70,94 @@ test("openDeclaredWindows opens declared windows and smoke-test destroys them", 
     ["prefs", "window-2"]
   ])
   expect(destroyed).toEqual(["window-1", "window-2"])
+})
+
+test("openDeclaredWindows binds each window's services Layer to that window's scope", async () => {
+  const created: WindowCreateInput[] = []
+  const destroyed: string[] = []
+  const events: string[] = []
+  const client: HostWindowClient = {
+    create: (input = {}) =>
+      Effect.sync(() => {
+        created.push(input)
+        return { windowId: `window-${created.length}` }
+      }),
+    destroy: (windowId) =>
+      Effect.sync(() => {
+        destroyed.push(windowId)
+      })
+  }
+
+  const mainServices = Layer.effectDiscard(
+    Effect.acquireRelease(
+      Effect.sync(() => events.push("main:acquired")),
+      () =>
+        Effect.sync(() => {
+          events.push("main:released")
+        })
+    )
+  )
+
+  await Effect.runPromise(
+    Effect.scoped(
+      openDeclaredWindows(client, [
+        {
+          id: "main",
+          spec: { title: "Main" },
+          services: mainServices
+        },
+        {
+          id: "prefs",
+          spec: { title: "Preferences" },
+          services: undefined
+        }
+      ])
+    )
+  )
+
+  expect(events).toEqual(["main:acquired", "main:released"])
+  expect(destroyed).toEqual(["window-2", "window-1"])
+})
+
+test("openDeclaredWindows tears down a window when its services Layer fails to build", async () => {
+  const destroyed: string[] = []
+  const released: string[] = []
+  const client: HostWindowClient = {
+    create: () => Effect.succeed({ windowId: "window-1" }),
+    destroy: (windowId) =>
+      Effect.sync(() => {
+        destroyed.push(windowId)
+      })
+  }
+
+  class ServicesBuildFailure extends Error {
+    constructor() {
+      super("services failure")
+    }
+  }
+
+  const failingServices = Layer.effectDiscard(
+    Effect.acquireRelease(Effect.fail(new ServicesBuildFailure()), () =>
+      Effect.sync(() => {
+        released.push("released")
+      })
+    )
+  )
+
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(
+      openDeclaredWindows(client, [
+        {
+          id: "main",
+          spec: { title: "Main" },
+          services: failingServices
+        }
+      ])
+    )
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  expect(destroyed).toEqual(["window-1"])
 })
 
 test("startup environment decodes declared window specs through Effect Config and Schema", async () => {
@@ -88,14 +179,18 @@ test("startup environment decodes declared window specs through Effect Config an
   const windows = await Effect.runPromise(readStartupWindows(config))
 
   expect(config.smokeTest).toBe(true)
-  expect(windows).toEqual({
-    main: {
-      title: "Terminal",
-      width: 1024,
-      height: 768,
-      renderer: "/terminal"
+  expect(windows).toEqual([
+    {
+      id: "main",
+      spec: {
+        title: "Terminal",
+        width: 1024,
+        height: 768,
+        renderer: "/terminal"
+      },
+      services: undefined
     }
-  })
+  ])
 })
 
 test("startup environment treats missing and blank startup windows as empty declarations", async () => {
@@ -104,8 +199,8 @@ test("startup environment treats missing and blank startup windows as empty decl
     readStartupEnvironment(provider({ [STARTUP_WINDOWS_ENV]: "   " }))
   )
 
-  expect(await Effect.runPromise(readStartupWindows(missing))).toEqual({})
-  expect(await Effect.runPromise(readStartupWindows(blank))).toEqual({})
+  expect(await Effect.runPromise(readStartupWindows(missing))).toEqual([])
+  expect(await Effect.runPromise(readStartupWindows(blank))).toEqual([])
 })
 
 test("startup environment requires at least one declared startup window before launch", async () => {
@@ -208,12 +303,13 @@ test("startup environment decodes module exports and gives app modules precedenc
     )
     const windows = await Effect.runPromise(readStartupWindows(config))
 
-    expect(windows).toEqual({
-      module: {
-        title: "Module",
-        width: 800
+    expect(windows).toEqual([
+      {
+        id: "module",
+        spec: { title: "Module", width: 800 },
+        services: undefined
       }
-    })
+    ])
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -246,11 +342,13 @@ test("startup environment defaults blank module export to default", async () => 
     )
     const windows = await Effect.runPromise(readStartupWindows(config))
 
-    expect(windows).toEqual({
-      main: {
-        title: "Default Export"
+    expect(windows).toEqual([
+      {
+        id: "main",
+        spec: { title: "Default Export" },
+        services: undefined
       }
-    })
+    ])
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
