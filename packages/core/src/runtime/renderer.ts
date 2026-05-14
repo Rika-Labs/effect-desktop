@@ -1,8 +1,11 @@
 export {
   appendBounded,
+  interruptFrameworkFiber,
   runFrameworkEffect,
   runFrameworkPromiseExit,
   isDesktopStreamOptions,
+  makeFrameworkRuntime,
+  observeFrameworkFiber,
   normalizeDesktopStreamCapacity,
   runRendererStream,
   type FrameworkRuntime,

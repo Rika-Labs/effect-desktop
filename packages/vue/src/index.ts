@@ -3,14 +3,15 @@ import {
   describeRpcs,
   getGlobalDesktopRendererRpcTransport,
   appendBounded,
+  interruptFrameworkFiber,
   isDesktopStreamOptions,
   makeDesktopRendererRpcLayer,
+  makeFrameworkRuntime,
   type AnyDesktopRpcLayer,
   makeMissingDesktopContextError,
   makeMissingDesktopRpcsError,
   normalizeDesktopStreamCapacity,
-  runFrameworkEffect,
-  runFrameworkPromiseExit,
+  observeFrameworkFiber,
   RendererRpcClients,
   runRendererStream,
   type DesktopAppManifest,
@@ -23,7 +24,7 @@ import {
   type RpcGroupWithRequests
 } from "@effect-desktop/core/renderer"
 import type { WithRpcEndpointKind } from "@effect-desktop/bridge"
-import { Cause, Effect, Exit, ManagedRuntime, Stream } from "effect"
+import { Cause, Effect, Exit, Fiber, ManagedRuntime, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import {
   createApp as createVueApp,
@@ -138,12 +139,12 @@ export {
 
 interface VueDesktopContext {
   readonly clients: DesktopRendererRpcClientMap
-  readonly runtime: ManagedRuntime.ManagedRuntime<RendererRpcClients, MissingDesktopRpcClientError>
+  readonly runtime: FrameworkRuntime<RendererRpcClients, MissingDesktopRpcClientError>
 }
 
 interface VueDesktopRuntime {
   readonly clients: DesktopRendererRpcClientMap
-  readonly runtime: ManagedRuntime.ManagedRuntime<RendererRpcClients, MissingDesktopRpcClientError>
+  readonly runtime: FrameworkRuntime<RendererRpcClients, MissingDesktopRpcClientError>
   readonly dispose: () => Promise<void>
 }
 
@@ -244,10 +245,14 @@ const makeVueDesktopRuntime = (
     void runtime.dispose()
     throw error
   }
+  const frameworkRuntime = makeFrameworkRuntime(runtime)
   return Object.freeze({
     clients,
-    runtime,
-    dispose: runtime.dispose
+    runtime: frameworkRuntime,
+    dispose: async () => {
+      await frameworkRuntime.dispose()
+      await runtime.dispose()
+    }
   })
 }
 
@@ -256,27 +261,38 @@ const useMutation = <R, ER, I, A, E>(
   makeEffect: (input: I) => Effect.Effect<A, E, R>
 ): VueMutation<I, A, E | ER> => {
   const state = shallowRef<VueAsyncState<A, E | ER>>({ status: "idle" })
-  let runId = 0
-  let active = true
+  let currentFiber: Fiber.Fiber<A, E | ER> | undefined
 
   onScopeDispose(() => {
-    active = false
-    runId += 1
+    const fiber = currentFiber
+    currentFiber = undefined
+    if (fiber !== undefined) {
+      interruptFrameworkFiber(fiber)
+    }
   })
 
   const runPromiseImpl = async (input?: I): Promise<Exit.Exit<A, E | ER>> => {
-    const currentRun = runId + 1
-    runId = currentRun
-    state.value = { status: "running" }
-
-    const exit = await runFrameworkPromiseExit(runtime, makeEffect(input as I))
-    if (!active || runId !== currentRun) {
-      return exit
+    if (currentFiber !== undefined) {
+      interruptFrameworkFiber(currentFiber)
     }
+    state.value = { status: "running" }
+    const fiber = runtime.runFork(makeEffect(input as I))
+    currentFiber = fiber
 
-    state.value = Exit.isSuccess(exit)
-      ? { status: "success", value: exit.value }
-      : { status: "failure", cause: exit.cause }
+    const exit = await new Promise<Exit.Exit<A, E | ER>>((resolve) => {
+      fiber.addObserver((completed) => {
+        queueMicrotask(() => {
+          resolve(completed)
+        })
+      })
+    })
+
+    if (currentFiber === fiber) {
+      currentFiber = undefined
+      state.value = Exit.isSuccess(exit)
+        ? { status: "success", value: exit.value }
+        : { status: "failure", cause: exit.cause }
+    }
     return exit
   }
 
@@ -287,7 +303,10 @@ const useMutation = <R, ER, I, A, E>(
     }) as VueComposable<I, void>,
     runPromise: runPromiseImpl as VueComposable<I, Promise<Exit.Exit<A, E | ER>>>,
     reset: () => {
-      runId += 1
+      if (currentFiber !== undefined) {
+        interruptFrameworkFiber(currentFiber)
+        currentFiber = undefined
+      }
       state.value = { status: "idle" }
     }
   }
@@ -298,20 +317,16 @@ const runQuery = <R, ER, A, E>(
   effect: Effect.Effect<A, E, R>
 ): Readonly<Ref<VueAsyncState<A, E | ER>>> => {
   const state = shallowRef<VueAsyncState<A, E | ER>>({ status: "running" })
-  let active = true
 
-  const interrupt = runFrameworkEffect(runtime, effect, (exit) => {
-    if (!active) {
-      return
-    }
+  const fiber = runtime.runFork(effect)
+  observeFrameworkFiber(fiber, (exit) => {
     state.value = Exit.isSuccess(exit)
       ? { status: "success", value: exit.value }
       : { status: "failure", cause: exit.cause }
   })
 
   onScopeDispose(() => {
-    active = false
-    interrupt()
+    interruptFrameworkFiber(fiber)
   })
 
   return state

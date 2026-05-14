@@ -125,6 +125,43 @@ test("VueDesktop query effects are interrupted when the scope is disposed", asyn
   await Effect.runPromise(Deferred.await(interrupted))
 })
 
+test("VueDesktop mutation effects are interrupted when the scope is disposed", async () => {
+  const interrupted = await Effect.runPromise(Deferred.make<void>())
+  const Slow = Rpc.make("Notes.SlowCreate", { success: Schema.String })
+  const NotesRpcs = RpcGroup.make(Slow)
+  const NotesLayer = Desktop.Rpcs.layer(
+    NotesRpcs,
+    NotesRpcs.toLayer({
+      "Notes.SlowCreate": () =>
+        Effect.never.pipe(Effect.ensuring(Deferred.succeed(interrupted, undefined)))
+    })
+  )
+  const NotesApp = Desktop.make({
+    windows: {
+      main: {
+        title: "Notes"
+      }
+    },
+    rpcs: [NotesLayer]
+  })
+  const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
+  const app = NotesVue.createApp(Root, { rpcLayers: [NotesLayer] })
+  app.config.warnHandler = () => undefined
+
+  app.runWithContext(() => {
+    const scope = effectScope()
+    scope.run(() => {
+      const notes = NotesVue.useDesktop(NotesRpcs)
+      const mutation = notes.slowCreate.useMutation()
+      mutation.run()
+      expect(mutation.state.value.status).toBe("running")
+    })
+    scope.stop()
+  })
+
+  await Effect.runPromise(Deferred.await(interrupted))
+})
+
 test("VueDesktop stream composables emit values, close, fail, and interrupt on disposal", async () => {
   const interrupted = await Effect.runPromise(Deferred.make<void>())
   const Tail = Rpc.make("Notes.Tail", {

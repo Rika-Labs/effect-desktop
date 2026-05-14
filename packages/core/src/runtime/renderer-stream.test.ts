@@ -1,7 +1,11 @@
 import { expect, test } from "bun:test"
 import { Context, Effect, Exit, Layer, ManagedRuntime, Stream } from "effect"
 
-import { runFrameworkPromiseExit, runRendererStream } from "./renderer-stream.js"
+import {
+  makeFrameworkRuntime,
+  runFrameworkPromiseExit,
+  runRendererStream
+} from "./renderer-stream.js"
 
 class RuntimeValue extends Context.Service<RuntimeValue, { readonly value: string }>()(
   "RuntimeValue"
@@ -9,15 +13,17 @@ class RuntimeValue extends Context.Service<RuntimeValue, { readonly value: strin
 
 test("framework runtime supplies non-empty Effect environments", async () => {
   const runtime = ManagedRuntime.make(Layer.succeed(RuntimeValue)({ value: "from-runtime" }))
+  const frameworkRuntime = makeFrameworkRuntime(runtime)
 
   const exit = await runFrameworkPromiseExit(
-    runtime,
+    frameworkRuntime,
     Effect.gen(function* () {
       const service = yield* RuntimeValue
       return service.value
     })
   )
 
+  await frameworkRuntime.dispose()
   await runtime.dispose()
   expect(Exit.isSuccess(exit)).toBe(true)
   if (Exit.isSuccess(exit)) {
@@ -27,6 +33,7 @@ test("framework runtime supplies non-empty Effect environments", async () => {
 
 test("renderer streams run through the supplied framework runtime", async () => {
   const runtime = ManagedRuntime.make(Layer.succeed(RuntimeValue)({ value: "stream-runtime" }))
+  const frameworkRuntime = makeFrameworkRuntime(runtime)
   const emitted: string[] = []
   const stream: Stream.Stream<string, never, RuntimeValue> = Stream.fromEffect(
     Effect.gen(function* () {
@@ -36,7 +43,7 @@ test("renderer streams run through the supplied framework runtime", async () => 
   )
 
   const dispose = runRendererStream(
-    runtime,
+    frameworkRuntime,
     stream,
     {},
     (item) => {
@@ -47,6 +54,7 @@ test("renderer streams run through the supplied framework runtime", async () => 
 
   await waitFor(() => emitted.length === 1)
   dispose()
+  await frameworkRuntime.dispose()
   await runtime.dispose()
   expect(emitted).toEqual(["stream-runtime"])
 })
