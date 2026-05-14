@@ -444,6 +444,9 @@ const walkSnapshotEntries = (
   Effect.gen(function* () {
     const children = yield* readDirectory(currentPath)
     for (const child of children.toSorted()) {
+      if (child.endsWith("-report.json")) {
+        continue
+      }
       const childPath = join(currentPath, child)
       const childStat = yield* lstatPath(childPath)
       const relativePath = relative(rootPath, childPath)

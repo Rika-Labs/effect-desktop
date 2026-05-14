@@ -5,7 +5,6 @@ import {
   type BridgeHandlerRuntimeOptions,
   type HostProtocolEventEnvelope,
   HostProtocolError as HostProtocolErrorSchema,
-  HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
@@ -441,35 +440,6 @@ const decodeWebViewEventEnvelope = (
   )
 }
 
-export const makeUnsupportedWebViewClient = (): WebViewClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, WebViewError, never> =>
-    Effect.fail(unsupportedError(method))
-  const unsupportedStream = <A>(method: string): Stream.Stream<A, WebViewError, never> =>
-    Stream.fail(unsupportedError(method))
-
-  const client: WebViewClientApi = {
-    create: () => unsupportedEffect<WebViewHandle>("WebView.create"),
-    loadRoute: () => unsupportedEffect<void>("WebView.loadRoute"),
-    loadUrl: () => unsupportedEffect<void>("WebView.loadUrl"),
-    reload: () => unsupportedEffect<void>("WebView.reload"),
-    goBack: () => unsupportedEffect<void>("WebView.goBack"),
-    goForward: () => unsupportedEffect<void>("WebView.goForward"),
-    captureScreenshot: () => unsupportedEffect<WebViewScreenshot>("WebView.captureScreenshot"),
-    setNavigationPolicy: () => unsupportedEffect<void>("WebView.setNavigationPolicy"),
-    capability: (input) =>
-      Effect.succeed(
-        new WebViewCapabilityResult({
-          supported: webViewCapability(input.name, input.platform, input.mode)
-        })
-      ),
-    destroy: () => unsupportedEffect<void>("WebView.destroy"),
-    onNavigationBlocked: () =>
-      unsupportedStream<WebViewNavigationBlockedEvent>("WebView.NavigationBlocked")
-  }
-
-  return Object.freeze(client)
-}
-
 const defaultWebViewCreateOptions = (): WebViewCreateOptions => ({
   url: "app://localhost/",
   originPolicy: {
@@ -477,15 +447,6 @@ const defaultWebViewCreateOptions = (): WebViewCreateOptions => ({
     onDisallowed: "block"
   }
 })
-
-const unsupportedError = (method: string): HostProtocolUnsupportedError =>
-  new HostProtocolUnsupportedError({
-    tag: "Unsupported",
-    reason: "host WebView platform adapter is not implemented yet",
-    message: `unsupported WebView method: ${method}`,
-    operation: method,
-    recoverable: false
-  })
 
 const toWebViewHandle = (handle: WebViewHandle): WebViewHandle =>
   Object.freeze({

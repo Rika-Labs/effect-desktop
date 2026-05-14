@@ -299,9 +299,9 @@
       "signature": "export interface MockPtyFixture { readonly command?: string readonly args?: readonly string[] readonly pid?: number | null readonly output?: readonly Uint8Array[] readonly exit?: PtyExitStatus | { readonly code: number; readonly signal?: string } | false }"
     },
     {
-      "name": "MockPtyLive",
+      "name": "MockPtyLayer",
       "kind": "value",
-      "signature": "const MockPtyLive: (options?: MockPtyOptions) => Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceRegistry>"
+      "signature": "const MockPtyLayer: (options?: MockPtyOptions) => Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceRegistry>"
     },
     {
       "name": "MockPtyOpenRecord",

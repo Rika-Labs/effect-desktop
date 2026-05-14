@@ -5,7 +5,6 @@ import {
   type BridgeHandlerRuntimeOptions,
   type HostProtocolEventEnvelope,
   HostProtocolError as HostProtocolErrorSchema,
-  HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -281,34 +280,6 @@ const decodeTrayEventEnvelope = (
     )
   )
 }
-
-export const makeUnsupportedTrayClient = (): TrayClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, TrayError, never> =>
-    Effect.fail(unsupportedError(method))
-  const unsupportedStream = <A>(method: string): Stream.Stream<A, TrayError, never> =>
-    Stream.fail(unsupportedError(method))
-
-  const client: TrayClientApi = {
-    create: () => unsupportedEffect<TrayHandle>("Tray.create"),
-    setIcon: () => unsupportedEffect<void>("Tray.setIcon"),
-    setTooltip: () => unsupportedEffect<void>("Tray.setTooltip"),
-    setMenu: () => unsupportedEffect<void>("Tray.setMenu"),
-    destroy: () => unsupportedEffect<void>("Tray.destroy"),
-    onActivated: () => unsupportedStream<TrayActivatedEvent>("Tray.Activated"),
-    isSupported: () => Effect.succeed(new TraySupportedResult({ supported: false }))
-  }
-
-  return Object.freeze(client)
-}
-
-const unsupportedError = (method: string): HostProtocolUnsupportedError =>
-  new HostProtocolUnsupportedError({
-    tag: "Unsupported",
-    reason: "host Tray platform adapter is not implemented yet",
-    message: `unsupported Tray method: ${method}`,
-    operation: method,
-    recoverable: false
-  })
 
 const toTrayHandle = (handle: TrayHandle): TrayHandle =>
   Object.freeze({

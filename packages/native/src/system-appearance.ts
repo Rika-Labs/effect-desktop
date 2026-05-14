@@ -5,7 +5,6 @@ import {
   type BridgeHandlerRuntimeOptions,
   type HostProtocolEventEnvelope,
   HostProtocolError as HostProtocolErrorSchema,
-  HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
@@ -332,30 +331,6 @@ const decodeSystemAppearanceEventEnvelope = (
     )
   )
 }
-
-export const makeUnsupportedSystemAppearanceClient = (): SystemAppearanceClientApi => {
-  const unsupportedStream = <A>(method: string): Stream.Stream<A, SystemAppearanceError, never> =>
-    Stream.fail(unsupportedError(method))
-  return Object.freeze({
-    getAppearance: () => Effect.fail(unsupportedError("SystemAppearance.getAppearance")),
-    getAccentColor: () => Effect.fail(unsupportedError("SystemAppearance.getAccentColor")),
-    getReducedMotion: () => Effect.fail(unsupportedError("SystemAppearance.getReducedMotion")),
-    getReducedTransparency: () =>
-      Effect.fail(unsupportedError("SystemAppearance.getReducedTransparency")),
-    onAppearanceChanged: () =>
-      unsupportedStream<SystemAppearanceChangedEvent>("SystemAppearance.AppearanceChanged"),
-    isSupported: () => Effect.succeed(new SystemAppearanceSupportedResult({ supported: false }))
-  } satisfies SystemAppearanceClientApi)
-}
-
-const unsupportedError = (method: string): HostProtocolUnsupportedError =>
-  new HostProtocolUnsupportedError({
-    tag: "Unsupported",
-    reason: "host SystemAppearance platform adapter is not implemented yet",
-    message: `unsupported SystemAppearance method: ${method}`,
-    operation: method,
-    recoverable: false
-  })
 
 function systemAppearanceRpc<
   const Method extends string,

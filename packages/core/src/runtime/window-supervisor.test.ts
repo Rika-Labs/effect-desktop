@@ -15,6 +15,7 @@ import {
   openDeclaredWindows,
   readStartupEnvironment,
   readStartupWindows,
+  requireStartupWindows,
   toStartupModuleSpecifier
 } from "./window-supervisor.js"
 
@@ -105,6 +106,18 @@ test("startup environment treats missing and blank startup windows as empty decl
 
   expect(await Effect.runPromise(readStartupWindows(missing))).toEqual({})
   expect(await Effect.runPromise(readStartupWindows(blank))).toEqual({})
+})
+
+test("startup environment requires at least one declared startup window before launch", async () => {
+  const config = await Effect.runPromise(readStartupEnvironment(provider({})))
+  const windows = await Effect.runPromise(readStartupWindows(config))
+  const exit = await Effect.runPromiseExit(requireStartupWindows(windows))
+
+  const error = getFailure(exit)
+  expect(error).toBeInstanceOf(StartupWindowConfigError)
+  expect(error?.message).toContain("at least one startup window must be declared")
+  expect(error?.message).toContain(APP_MODULE_ENV)
+  expect(error?.message).toContain(STARTUP_WINDOWS_ENV)
 })
 
 test("startup environment rejects invalid declared window specs with a typed error", async () => {

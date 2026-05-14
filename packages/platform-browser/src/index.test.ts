@@ -32,9 +32,7 @@ const packageJsonUrl = new URL("../package.json", import.meta.url)
 const packageRootUrl = new URL("../", import.meta.url)
 
 test("platform-browser package exports point at checked-in source files", () => {
-  const packageJson = JSON.parse(
-    readFileSync(packageJsonUrl, "utf8")
-  ) as PlatformBrowserPackageJson
+  const packageJson = JSON.parse(readFileSync(packageJsonUrl, "utf8")) as PlatformBrowserPackageJson
   const missing: string[] = []
 
   for (const [subpath, target] of Object.entries(packageJson.exports)) {

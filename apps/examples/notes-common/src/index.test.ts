@@ -4,12 +4,7 @@ import { makeDesktopRendererRpcTestLayer, RendererRpcClients } from "@effect-des
 import { Effect } from "effect"
 import { RpcTest } from "effect/unstable/rpc"
 
-import {
-  NotesManifest,
-  NotesRpcs,
-  makeNotesDemoRpcLayers,
-  makeNotesRpcsLayer
-} from "./index.js"
+import { NotesManifest, NotesRpcs, makeNotesDemoRpcLayers, makeNotesRpcsLayer } from "./index.js"
 import { NotesApp } from "./host.js"
 
 test("NotesApp exposes the canonical Notes RpcGroup through its manifest", () => {

@@ -14,7 +14,7 @@ Issue #15 asked for the Phase 7 App lifecycle surface: metadata, command line, q
 
 ## What actually ended up working
 
-The merged shape is an `@effect-desktop/native` App service with a narrow `AppClient` port, an `AppApi` bridge contract, schema classes for every input/output/event payload, and public service helpers that keep zero-argument `quit` and `restart` ergonomic. Bridge adapters decode plain option objects into Effect Schema class instances before sending envelopes, so malformed inputs become `HostProtocolInvalidArgumentError` values instead of thrown exceptions. Host methods that are not implemented yet are represented by `makeUnsupportedAppClient`, whose methods and streams fail through the Effect error channel with `HostProtocolUnsupportedError`.
+The merged shape is an `@effect-desktop/native` App service with a narrow `AppClient` port, an `AppApi` bridge contract, schema classes for every input/output/event payload, and public service helpers that keep zero-argument `quit` and `restart` ergonomic. Bridge adapters decode plain option objects into Effect Schema class instances before sending envelopes, so malformed inputs become `HostProtocolInvalidArgumentError` values instead of thrown exceptions. Early test fixtures used `makeUnsupportedAppClient` for host methods that were not implemented yet; later public-surface cleanup removed unsupported client factories from the package root so they no longer read as supported SDK entry points.
 
 ```mermaid
 flowchart LR

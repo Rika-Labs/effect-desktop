@@ -257,11 +257,16 @@ The runtime entry emits exactly one newline-terminated JSON ready event to stdou
 { "event": "runtime.ready", "version": "0.0.0" }
 ```
 
-After the ready line, the runtime uses the framed stdio transport to call the
-required `host.version` and `host.ping` handshake methods, then calls
-`Window.create`. When `EFFECT_DESKTOP_WINDOW_SMOKE_TEST` is an Effect Config
-boolean true value such as `1`, `true`, `yes`, or `on`, it also calls
-`Window.destroy` for the returned `WindowId` before exiting.
+Startup windows must be declared through `EFFECT_DESKTOP_APP_MODULE` or
+`EFFECT_DESKTOP_STARTUP_WINDOWS`. Launch fails before host negotiation when no
+startup window is declared; the runtime does not synthesize a default window.
+
+After the ready line and startup-window validation, the runtime uses the framed
+stdio transport to call the required `host.version` and `host.ping` handshake
+methods, then calls `Window.create` for each declared window. When
+`EFFECT_DESKTOP_WINDOW_SMOKE_TEST` is an Effect Config boolean true value such
+as `1`, `true`, `yes`, or `on`, it also calls `Window.destroy` for each returned
+`WindowId` before exiting.
 
 ## Non-goals
 

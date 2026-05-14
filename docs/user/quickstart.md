@@ -10,7 +10,7 @@ cd templates/basic-react-tailwind
 bun run dev
 ```
 
-The current development loop uses Vite. `desktop dev` is not implemented yet.
+The current development loop runs the template's Vite dev server directly.
 
 ## Runnable Example
 

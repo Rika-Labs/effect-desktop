@@ -98,9 +98,9 @@ createNote.run({ title: "Draft" })
 
 ## Support metadata
 
-Native services can expose a larger planned RPC group than the host implements today. Unsupported methods must stay visible as metadata so docs, adapters, and tests can describe the full contract, but renderer-facing clients should prefer endpoints whose `support.status` is `"supported"`.
+Native services expose the RPC group the host implements today. Planned methods stay out of the public `RpcGroup` until they have a real host path, so docs, adapters, and tests cannot mistake roadmap surface for callable API.
 
-`WindowRpcs` follows that rule: it describes the full Window method contract. `WindowSupportedRpcs` filters the callable generated client to the host-backed methods.
+`WindowRpcs` follows that rule: it currently contains `Window.create` and `Window.close`.
 
 React endpoint hooks expose `support` and `isSupported`:
 

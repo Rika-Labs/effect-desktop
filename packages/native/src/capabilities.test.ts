@@ -17,30 +17,29 @@ test("NativeCapabilities exposes support metadata from native RpcGroups", async 
     Effect.gen(function* () {
       const capabilities = yield* NativeCapabilities
       const create = yield* capabilities.support("Window.create")
-      const show = yield* capabilities.support("Window.show")
       return {
         create,
-        show,
         hasWindowShow: capabilities.manifest.some((fact) => fact.tag === "Window.show")
       }
     }).pipe(Effect.provide(NativeCapabilitiesLive))
   )
 
   expect(result.create).toEqual({ status: "supported" })
-  expect(result.show).toEqual({
-    status: "unsupported",
-    reason: "host Window adapter does not implement this method yet"
-  })
-  expect(result.hasWindowShow).toBe(true)
+  expect(result.hasWindowShow).toBe(false)
 })
 
-test("NativeCapabilities require fails unsupported methods only when explicitly required", async () => {
+test("NativeCapabilities require fails unsupported methods from explicit metadata", async () => {
+  const UnsupportedGroup = RpcGroup.make(
+    Rpc.make("Example.unsupported", { success: Schema.Void }).pipe(
+      RpcSupport.unsupported("example unavailable")
+    )
+  )
   const exit = await Effect.runPromiseExit(
     Effect.gen(function* () {
       const capabilities = yield* NativeCapabilities
-      yield* capabilities.support("Window.show")
-      return yield* capabilities.require("Window.show")
-    }).pipe(Effect.provide(NativeCapabilitiesLive))
+      yield* capabilities.support("Example.unsupported")
+      return yield* capabilities.require("Example.unsupported")
+    }).pipe(Effect.provide(makeNativeCapabilitiesLayer([UnsupportedGroup])))
   )
 
   expect(Exit.isFailure(exit)).toBe(true)
@@ -49,8 +48,8 @@ test("NativeCapabilities require fails unsupported methods only when explicitly 
     expect(failure?.error).toBeInstanceOf(UnsupportedCapability)
     expect(failure?.error).toMatchObject({
       _tag: "UnsupportedCapability",
-      tag: "Window.show",
-      reason: "host Window adapter does not implement this method yet"
+      tag: "Example.unsupported",
+      reason: "example unavailable"
     })
   }
 })

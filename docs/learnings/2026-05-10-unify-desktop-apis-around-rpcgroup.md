@@ -39,7 +39,7 @@ flowchart LR
 
 Every review thread was addressed; none were intentionally pushed back. The first review found the largest gap: RPC descriptors and layers existed, but they were not yet bound into a runtime `RpcServer`, so the public API looked complete without a working renderer-callable path. Later review passes caught authority and lifecycle issues: renderer adapters importing full app definitions, duplicated RPC layer construction, missing permission validation for RPC annotations, lossy endpoint names, query effects that survived component disposal, and startup windows declared in app code but not used by runtime launch.
 
-The final review passes changed smaller but material details: Windows module paths must be URL-encoded correctly, legacy event omission cannot replace the public `RpcGroup` identity, default app launches must still open a window when no startup windows are declared, endpoint maps must tolerate `__proto__` as data, and shared transports must namespace request IDs by logical client.
+The final review passes changed smaller but material details: Windows module paths must be URL-encoded correctly, legacy event omission cannot replace the public `RpcGroup` identity, default app launches must declare startup windows instead of relying on a synthesized fallback, endpoint maps must tolerate `__proto__` as data, and shared transports must namespace request IDs by logical client.
 
 ## First-principles postmortem
 

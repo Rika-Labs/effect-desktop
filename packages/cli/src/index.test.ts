@@ -97,7 +97,7 @@ test("desktop --help exits zero with root usage on stdout", async () => {
   expect(stderr.join("")).toBe("")
 })
 
-test("desktop exposes every spec-required deferred command explicitly", async () => {
+test("desktop does not expose unimplemented deferred commands", async () => {
   const commands = [
     "init",
     "dev",
@@ -113,23 +113,11 @@ test("desktop exposes every spec-required deferred command explicitly", async ()
   ] as const
 
   for (const command of commands) {
-    const helpStdout: string[] = []
-    const helpExitCode = await Effect.runPromise(
-      runCli({
-        argv: [command, "--help"],
-        cwd: process.cwd(),
-        writeStdout: (text) => {
-          helpStdout.push(text)
-        },
-        writeStderr: () => {}
-      })
-    )
-
     const stdout: string[] = []
     const stderr: string[] = []
     const exitCode = await Effect.runPromise(
       runCli({
-        argv: [command, "--json"],
+        argv: [command],
         cwd: process.cwd(),
         writeStdout: (text) => {
           stdout.push(text)
@@ -139,18 +127,12 @@ test("desktop exposes every spec-required deferred command explicitly", async ()
         }
       })
     )
-    const error = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly command: string
-      readonly message: string
-    }
 
-    expect(helpExitCode).toBe(0)
-    expect(helpStdout.join("")).toContain(`desktop ${command}`)
     expect(exitCode).toBe(1)
-    expect(stdout.join("")).toBe("")
-    expect(error.tag).toBe("CliDeferredCommand")
-    expect(error.command).toBe(command)
+    expect(stdout.join("")).toContain("USAGE")
+    expect(stdout.join("")).toContain("desktop <subcommand>")
+    expect(stdout.join("")).not.toContain(`  ${command}`)
+    expect(stderr.join("")).toContain(`Unknown subcommand "${command}" for "desktop"`)
   }
 })
 
@@ -3633,9 +3615,9 @@ test("semver guard rejects malformed Appendix C matrix coverage", async () => {
     readonly matrix: unknown
   }> = [
     { label: "empty rows", manifestPatch: { appendixCRows: [] }, matrix: semverMatrixFixture() },
-    { label: "missing rows", matrix: {} },
-    { label: "array rows", matrix: { rows: [] } },
-    { label: "string rows", matrix: { rows: "not rows" } }
+    { label: "missing rows", matrix: { ...semverMatrixFixture(), rows: undefined } },
+    { label: "array rows", matrix: { ...semverMatrixFixture(), rows: [] } },
+    { label: "string rows", matrix: { ...semverMatrixFixture(), rows: "not rows" } }
   ]
 
   for (const testCase of cases) {
@@ -9054,7 +9036,40 @@ const isSemverManifestFixture = (
   "appendixCRows" in value &&
   Array.isArray(value.appendixCRows)
 
-const semverMatrixFixture = (): unknown => ({
+const semverMatrixFixture = (): Record<string, unknown> => ({
+  schemaVersion: 1,
+  source: "docs/SPEC.md §20.10 and Appendix C",
+  requiredCells: ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"],
+  optionalCells: ["windows-arm64", "linux-arm64"],
+  ciCells: [
+    {
+      cell: "linux-x64",
+      runner: "ubuntu-latest",
+      headless: true
+    },
+    {
+      cell: "macos-arm64",
+      runner: "macos-latest",
+      headless: true
+    },
+    {
+      cell: "windows-x64",
+      runner: "windows-latest",
+      headless: true
+    }
+  ],
+  manualGateCells: [
+    {
+      cell: "macos-x64",
+      reason: "GitHub-hosted macOS runners are Apple Silicon only.",
+      path: "docs/manual-gates/macos.md"
+    }
+  ],
+  defaults: {
+    cells: ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"],
+    headless: true,
+    requiresHardware: false
+  },
   rows: {
     "C.54": {},
     "C.71": {},

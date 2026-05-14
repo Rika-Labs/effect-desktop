@@ -89,4 +89,4 @@ That is the minimum substitution claim this contract requires: provider replacem
 
 `packages/native/src/screen.ts`, `packages/native/src/clipboard.ts`, and `packages/native/src/dialog.ts` are the current generated native vertical slices. Their `*Rpcs` values are canonical Effect `RpcGroup`s; their `*Surface` values derive server, client, test-client, schema-doc, and law artifacts; their `make*BridgeClientLayer(...)` functions adapt the existing bridge exchange into the generated RPC protocol instead of widening the public service contract.
 
-`packages/native/src/window.ts` proves the supported-client rule. `WindowRpcs` keeps the full Phase 5 descriptor surface and support metadata, while `WindowSupportedRpcs` filters the callable generated client to `Window.create` and `Window.close`.
+`packages/native/src/window.ts` proves the callable-client rule. `WindowRpcs` exposes only host-backed methods, currently `Window.create` and `Window.close`; planned Window methods stay out of the RPC group until the host path exists.

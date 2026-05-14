@@ -5,7 +5,6 @@ import {
   HostProtocolPermissionDeniedError,
   HostProtocolResourceBusyError,
   HostProtocolStaleHandleError,
-  HostProtocolUnsupportedError,
   hostProtocolErrorRecoverableDefault,
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError,
@@ -117,7 +116,7 @@ export interface PtyChild {
 }
 
 export interface PtyOptions {
-  readonly adapter?: PtyAdapter
+  readonly adapter: PtyAdapter
   readonly budgets?: PtyBudgetPolicy
   readonly inspector?: ExecutionInspectorCollectorApi
   readonly gracefulShutdownMs?: number
@@ -174,10 +173,10 @@ const EMPTY_PTY_PERMISSIONS: PtyPermissionPolicy = Object.freeze({})
 
 export const makePty = (
   registry: ResourceRegistryApi,
-  options: PtyOptions = {}
+  options: PtyOptions
 ): Effect.Effect<PtyApi, HostProtocolInvalidArgumentError, never> =>
   Effect.gen(function* () {
-    const adapter = options.adapter ?? UnsupportedPtyAdapter
+    const adapter = options.adapter
     const budgets = { ...DEFAULT_PTY_BUDGETS, ...options.budgets }
     const gracefulShutdownMs = options.gracefulShutdownMs ?? DEFAULT_GRACEFUL_SHUTDOWN_MS
     const inspector = options.inspector ?? disabledExecutionInspectorCollector
@@ -311,16 +310,8 @@ export const makePty = (
 
 export class PTY extends Context.Service<PTY, PtyApi>()("PTY") {}
 
-export const PtyLive = Layer.effect(
-  PTY,
-  Effect.gen(function* () {
-    const registry = yield* ResourceRegistry
-    return yield* makePty(registry).pipe(Effect.orDie)
-  })
-)
-
 export const PtyLayer = (
-  options: PtyOptions = {}
+  options: PtyOptions
 ): Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceRegistry> =>
   Layer.effect(
     PTY,
@@ -357,8 +348,15 @@ const makeHandle = (
       try: () => child.exited,
       catch: (error) => mapPtyError(error, command, "PTY.onExit")
     })
-    yield* observeChildExit(exitStatus, resource, command, ptyScope, disposalOrigin, inspector, now)
-      .pipe(Scope.provide(ptyScope))
+    yield* observeChildExit(
+      exitStatus,
+      resource,
+      command,
+      ptyScope,
+      disposalOrigin,
+      inspector,
+      now
+    ).pipe(Scope.provide(ptyScope))
     const onExit = exitStatus.pipe(Effect.tap(() => resource.dispose()))
 
     return Object.freeze({
@@ -1024,19 +1022,6 @@ const makePtyPermissionDenied = (
     resource: command,
     ...makePtyErrorCommon("PermissionDenied", `permission denied: ${command}`, operation)
   })
-
-const makePtyUnsupported = (operation: string): HostProtocolUnsupportedError =>
-  new HostProtocolUnsupportedError({
-    tag: "Unsupported",
-    reason: "PTY adapter is not configured",
-    ...makePtyErrorCommon("Unsupported", "PTY adapter is not configured", operation)
-  })
-
-const UnsupportedPtyAdapter: PtyAdapter = {
-  open: () => {
-    throw makePtyUnsupported("PTY.open")
-  }
-}
 
 const mapPtyError = (error: unknown, command: string, operation: string): HostProtocolError => {
   if (isHostProtocolError(error)) {

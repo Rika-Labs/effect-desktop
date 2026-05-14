@@ -12,6 +12,7 @@ const DEV_URL_ENV: &str = "EFFECT_DESKTOP_DEV_URL";
 const WEBVIEW_CREATE_OPERATION: &str = host_protocol::WINDOW_CREATE_METHOD;
 
 pub(crate) type HostWebView = WebView;
+type WebViewResult<T> = std::result::Result<T, Box<HostProtocolError>>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum WebEngineKind {
@@ -30,7 +31,7 @@ trait WebEngineProvider {
         &self,
         window: &Window,
         request: WebViewRequest,
-    ) -> std::result::Result<HostWebView, HostProtocolError>;
+    ) -> WebViewResult<HostWebView>;
 
     fn capabilities(&self) -> WebViewCapabilities;
 }
@@ -46,14 +47,14 @@ impl WebEngineProvider for SystemWebEngineProvider {
         &self,
         window: &Window,
         request: WebViewRequest,
-    ) -> std::result::Result<HostWebView, HostProtocolError> {
+    ) -> WebViewResult<HostWebView> {
         let builder =
             scheme::register_app_scheme(WebViewBuilder::new()).with_url(request.url.to_string());
         build_webview(builder, window).map_err(|error| {
-            HostProtocolError::internal(
+            Box::new(HostProtocolError::internal(
                 format!("failed to attach system WebView provider: {error}"),
                 WEBVIEW_CREATE_OPERATION,
-            )
+            ))
         })
     }
 
@@ -72,7 +73,7 @@ impl WebEngineProvider for ChromiumWebEngineProvider {
         &self,
         _window: &Window,
         _request: WebViewRequest,
-    ) -> std::result::Result<HostWebView, HostProtocolError> {
+    ) -> WebViewResult<HostWebView> {
         Err(chromium_provider_missing_error())
     }
 
@@ -84,16 +85,14 @@ impl WebEngineProvider for ChromiumWebEngineProvider {
     }
 }
 
-fn chromium_provider_missing_error() -> HostProtocolError {
-    HostProtocolError::unsupported(
+fn chromium_provider_missing_error() -> Box<HostProtocolError> {
+    Box::new(HostProtocolError::unsupported(
         "web.engine chromium was selected, but the Chromium WebView provider is not installed",
         WEBVIEW_CREATE_OPERATION,
-    )
+    ))
 }
 
-pub(crate) fn attach_app_webview(
-    window: &Window,
-) -> std::result::Result<HostWebView, HostProtocolError> {
+pub(crate) fn attach_app_webview(window: &Window) -> WebViewResult<HostWebView> {
     let engine = selected_web_engine()?;
     let url = renderer_url(std::env::var(DEV_URL_ENV).ok());
     let url_for_log = url.to_string();
@@ -114,12 +113,12 @@ pub(crate) fn attach_app_webview(
     Ok(webview)
 }
 
-fn selected_web_engine() -> std::result::Result<WebEngineKind, HostProtocolError> {
+fn selected_web_engine() -> WebViewResult<WebEngineKind> {
     let current_exe = std::env::current_exe().map_err(|error| {
-        HostProtocolError::internal(
+        Box::new(HostProtocolError::internal(
             format!("failed to read current executable while resolving web engine: {error}"),
             WEBVIEW_CREATE_OPERATION,
-        )
+        ))
     })?;
     let Some(manifest_path) = runtime::manifest_path_for_exe(&current_exe) else {
         return Ok(WebEngineKind::System);
@@ -130,26 +129,22 @@ fn selected_web_engine() -> std::result::Result<WebEngineKind, HostProtocolError
     web_engine_from_manifest_path(&manifest_path)
 }
 
-fn web_engine_from_manifest_path(
-    path: &Path,
-) -> std::result::Result<WebEngineKind, HostProtocolError> {
+fn web_engine_from_manifest_path(path: &Path) -> WebViewResult<WebEngineKind> {
     let source = std::fs::read_to_string(path).map_err(|error| {
-        HostProtocolError::internal(
+        Box::new(HostProtocolError::internal(
             format!("failed to read app-manifest.json while resolving web engine: {error}"),
             WEBVIEW_CREATE_OPERATION,
-        )
+        ))
     })?;
     web_engine_from_manifest_str(&source)
 }
 
-fn web_engine_from_manifest_str(
-    source: &str,
-) -> std::result::Result<WebEngineKind, HostProtocolError> {
+fn web_engine_from_manifest_str(source: &str) -> WebViewResult<WebEngineKind> {
     let value: serde_json::Value = serde_json::from_str(source).map_err(|error| {
-        HostProtocolError::internal(
+        Box::new(HostProtocolError::internal(
             format!("failed to parse app-manifest.json while resolving web engine: {error}"),
             WEBVIEW_CREATE_OPERATION,
-        )
+        ))
     })?;
     let Some(host_manifest) = value.get("hostManifest") else {
         return Ok(WebEngineKind::System);
@@ -160,16 +155,16 @@ fn web_engine_from_manifest_str(
     match web_engine.as_str() {
         Some("system") => Ok(WebEngineKind::System),
         Some("chromium") => Ok(WebEngineKind::Chromium),
-        Some(other) => Err(HostProtocolError::invalid_argument(
+        Some(other) => Err(Box::new(HostProtocolError::invalid_argument(
             "hostManifest.webEngine",
             format!("must be system or chromium, got {other}"),
             WEBVIEW_CREATE_OPERATION,
-        )),
-        None => Err(HostProtocolError::invalid_argument(
+        ))),
+        None => Err(Box::new(HostProtocolError::invalid_argument(
             "hostManifest.webEngine",
             "must be a string",
             WEBVIEW_CREATE_OPERATION,
-        )),
+        ))),
     }
 }
 

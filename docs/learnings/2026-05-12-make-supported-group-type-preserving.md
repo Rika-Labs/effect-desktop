@@ -9,9 +9,9 @@ with a typed `isSupportedRpc` predicate. `RpcGroup.make(...)` preserves the narr
 `SupportedRpc<Rpcs>` union directly, so the helper no longer recovers the result with
 `as unknown as SupportedDesktopRpcGroup<Group>`.
 
-Window now derives `WindowSupportedRpcs` from `DesktopRpc.supportedGroup(WindowRpcs)`. Its
-`WindowSupportedRpc` alias is derived from `SupportedRpc<WindowRpcUnion>` instead of manually
-listing `WindowCreate | WindowClose`.
+At the time, Window derived `WindowSupportedRpcs` from `DesktopRpc.supportedGroup(WindowRpcs)`.
+Later cleanup removed descriptor-only unsupported Window RPCs, so `WindowRpcs` and
+`WindowSupportedRpcs` now share the same callable `Window.create` / `Window.close` contract.
 
 ## What Worked
 

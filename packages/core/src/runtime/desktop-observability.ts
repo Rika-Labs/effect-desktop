@@ -8,10 +8,7 @@ import {
 } from "./inspector-safety-policy.js"
 import { EffectTelemetryRuntimeLive, Telemetry, makeTelemetry } from "./telemetry.js"
 
-export type DesktopObservabilityModeName =
-  | "off"
-  | "embedded-devtools"
-  | "standalone-inspector"
+export type DesktopObservabilityModeName = "off" | "embedded-devtools" | "standalone-inspector"
 
 export class ObservabilityMode extends Schema.Class<ObservabilityMode>("ObservabilityMode")({
   mode: Schema.Literals(["off", "embedded-devtools", "standalone-inspector"])

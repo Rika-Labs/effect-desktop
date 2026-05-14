@@ -8,6 +8,7 @@ import {
   HOST_VERSION_METHOD,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
+  HostProtocolUnsupportedError,
   HostProtocolRequestEnvelope,
   HostProtocolInvalidOutputError,
   HostProtocolNotFoundError,
@@ -54,12 +55,13 @@ import {
   makeDialogServiceLayer,
   makeScreenBridgeClientLayer,
   makeScreenClientLayer,
-  makeUnsupportedClipboardClient,
+  type ClipboardClientApi,
   type DialogError,
   type ScreenClientApi,
   type ScreenError
 } from "@effect-desktop/native"
 import {
+  ClipboardSupportedResult,
   DialogConfirmResult,
   DialogOpenResult,
   DialogSaveResult,
@@ -82,7 +84,7 @@ import {
   makeMockPty,
   MemoryFilesystemLive,
   MockProcessLive,
-  MockPtyLive,
+  MockPtyLayer,
   MockHost,
   MockHostLive,
   MockBridge,
@@ -1299,7 +1301,7 @@ test("MockPTY layer emits output, records writes and resizes, and exits", async 
       }
     }).pipe(
       Effect.provide(
-        MockPtyLive({
+        MockPtyLayer({
           ptys: [{ command: "bash", args: ["-l"], output: [bytes("layer")], exit: { code: 0 } }],
           permissions: { spawn: ["bash"] },
           budgets: { outputCoalesceBytes: 1024, outputCoalesceMs: 1 }
@@ -1640,11 +1642,34 @@ test("FailureAssertions matches tagged failures through Exit", async () => {
     Effect.gen(function* () {
       const clipboard = yield* Clipboard
       yield* clipboard.writeText("blocked")
-    }).pipe(Effect.provide(makeClipboardServiceLayer(makeUnsupportedClipboardClient())))
+    }).pipe(Effect.provide(makeClipboardServiceLayer(makeUnavailableClipboardClient())))
   )
 
   FailureAssertions.expectFailureTag(exit, "Unsupported")
 })
+
+const makeUnavailableClipboardClient = (): ClipboardClientApi => {
+  const unsupported = (method: string) =>
+    new HostProtocolUnsupportedError({
+      tag: "Unsupported",
+      reason: "test clipboard client is unavailable",
+      message: `unsupported Clipboard method: ${method}`,
+      operation: method,
+      recoverable: false
+    })
+
+  const fail = <A>(method: string): Effect.Effect<A, HostProtocolUnsupportedError, never> =>
+    Effect.fail(unsupported(method))
+
+  return {
+    readText: () => fail("Clipboard.readText"),
+    writeText: () => fail("Clipboard.writeText"),
+    readImage: () => fail("Clipboard.readImage"),
+    writeImage: () => fail("Clipboard.writeImage"),
+    clear: () => fail("Clipboard.clear"),
+    isSupported: () => Effect.succeed(new ClipboardSupportedResult({ supported: false }))
+  }
+}
 
 test("LayerMatrix interruption closes scoped capability layers", async () => {
   class InterruptibleService extends Context.Service<

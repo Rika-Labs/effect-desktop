@@ -13,7 +13,6 @@ import {
   makeHostProtocolInvalidOutputError,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolRequestEnvelope,
-  HostProtocolUnsupportedError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import type { PermissionRegistry } from "@effect-desktop/core"
@@ -248,23 +247,3 @@ const validateScreenDisplays = (
   }
   return Effect.succeed(result)
 }
-
-export const makeUnsupportedScreenClient = (): ScreenClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, ScreenError, never> =>
-    Effect.fail(unsupportedError(method))
-  return Object.freeze({
-    getDisplays: () => unsupportedEffect<ScreenDisplaysResult>("Screen.getDisplays"),
-    getPrimaryDisplay: () => unsupportedEffect<ScreenDisplay>("Screen.getPrimaryDisplay"),
-    getPointerPoint: () => unsupportedEffect<ScreenPoint>("Screen.getPointerPoint"),
-    isSupported: () => Effect.succeed(new ScreenSupportedResult({ supported: false }))
-  } satisfies ScreenClientApi)
-}
-
-const unsupportedError = (method: string): HostProtocolUnsupportedError =>
-  new HostProtocolUnsupportedError({
-    tag: "Unsupported",
-    reason: "host Screen platform adapter is not implemented yet",
-    message: `unsupported Screen method: ${method}`,
-    operation: method,
-    recoverable: false
-  })

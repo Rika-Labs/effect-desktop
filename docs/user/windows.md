@@ -46,13 +46,13 @@ return (
 )
 ```
 
-The React built-in Window helpers follow the same supported surface: `windows.create.useMutation()`, `windows.close.useMutation()`, and `currentWindow.close.useMutation()`. Title mutation helpers are not exported while `Window.setTitle` remains unsupported descriptor metadata.
+The React built-in Window helpers follow the same supported surface: `windows.create.useMutation()`, `windows.close.useMutation()`, and `currentWindow.close.useMutation()`. Title mutation helpers are not exported because `Window.setTitle` is not part of the callable Window contract yet.
 
 ## Support model
 
-`WindowMethodNames` lists the Phase 5 Window contract. The host implementation can lag that contract. Unsupported methods remain in `WindowRpcs` so descriptors, docs, tests, and compatibility handlers can describe the full surface.
+`WindowMethodNames` lists the callable Window contract implemented by the host path. Planned methods are not listed until the implementation exists.
 
-`WindowSupportedRpcs` is the callable generated group. It currently contains `Window.create` and `Window.close`; unsupported descriptor methods such as `Window.show`, `Window.setTitle`, and `Window.setVibrancy` are intentionally absent from the generated client service.
+`WindowRpcs` and `WindowSupportedRpcs` currently contain `Window.create` and `Window.close`.
 
 `makeWindowBridgeClientLayer(exchange, options)` accepts `WindowBridgeClientOptions`, which intentionally omits `nextRequestId`. The generated Effect RPC protocol owns request identifiers for this path.
 

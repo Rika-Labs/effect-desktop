@@ -1,13 +1,13 @@
-# Deferred CLI commands are explicit
+# Deferred CLI commands are not public surface
 
 ## Context
 
-Several commands listed in the spec fell through as unknown root invocations. That made `desktop <command> --help` and automation probes ambiguous because missing implementation looked the same as a typo.
+Several commands listed in the spec were registered before they had behavior. That made `desktop <command> --help` and automation probes look supported even though the command could only return a deferred error.
 
 ## Change
 
-The CLI now registers every currently deferred spec command by name: `init`, `dev`, `typecheck`, `lint`, `test`, `info`, `generate-types`, `migrate`, `clean`, `inspect`, and `replay`. Each command has command-specific help and returns a structured `CliDeferredCommand` error, including JSON output.
+The CLI now exposes only implemented commands. Reserved commands such as `init`, `dev`, `typecheck`, `lint`, `test`, `info`, `generate-types`, `migrate`, `clean`, `inspect`, and `replay` stay unknown until they have real behavior.
 
 ## Lesson
 
-Public command names should be owned even before their behavior is complete. A typed deferred response is a stable contract; a generic unknown-command failure is drift.
+Public command names are behavior contracts. A typed deferred response still creates surface area; an unimplemented command should remain unknown until the implementation exists.

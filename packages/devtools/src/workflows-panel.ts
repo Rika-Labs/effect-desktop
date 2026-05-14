@@ -104,9 +104,7 @@ export const makeWorkflowsPanel = (
     return Object.freeze({
       list,
       observe: () =>
-        registry.observe().pipe(
-          Stream.map((executions) => toSnapshot(executions.slice(-maxRows)))
-        )
+        registry.observe().pipe(Stream.map((executions) => toSnapshot(executions.slice(-maxRows))))
     } satisfies WorkflowsPanelApi)
   })
 

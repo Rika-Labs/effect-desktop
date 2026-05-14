@@ -21,7 +21,7 @@ Native services have two public layers:
 
 `Screen` is the first generated Layer-first native surface. `ScreenRpcs` is a pure Effect `RpcGroup`; `ScreenSurface` derives server, client, test-client, schema-doc, and law artifacts from that group. The bridge exchange remains only at the adapter boundary through `makeScreenBridgeClientLayer(...)`.
 
-`Window` exposes the full Phase 5 method contract as `WindowRpcs`, then derives `WindowSupportedRpcs` for the generated callable client. Today that supported client contains `Window.create` and `Window.close`. Planned chrome mutation, focus, fullscreen, scale, and persistence methods remain visible as unsupported descriptor metadata.
+`WindowRpcs` exposes the callable host-backed Window contract. It currently contains `Window.create` and `Window.close`; planned chrome mutation, focus, fullscreen, scale, and persistence methods stay out of the public RPC group until they have real host implementations.
 
 ## Screen
 

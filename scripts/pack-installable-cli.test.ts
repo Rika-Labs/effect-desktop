@@ -32,6 +32,7 @@ test("pack-installable-cli emits a workspace-free CLI package installable by a t
     expect(packedManifest).not.toContain("workspace:*")
     expect(packedManifest).toContain('"@effect-desktop/bridge": "file:../bridge"')
     expect(packedManifest).toContain('"@effect-desktop/config": "file:../config"')
+    expect(packedManifest).toContain('"@effect-desktop/core": "file:../core"')
 
     const appRoot = join(directory, "app")
     await mkdir(appRoot)
@@ -71,7 +72,7 @@ test("pack-installable-cli emits a workspace-free CLI package installable by a t
     expect(helpExitCode).toBe(1)
     expect(helpText).toContain("USAGE\n  desktop <subcommand> [flags]")
     expect(helpText).toContain(
-      "build             Build renderer, runtime, native host, bridge manifest, and app manifest"
+      "build       Build renderer, runtime, native host, bridge manifest, and app manifest"
     )
   } finally {
     await rm(directory, { recursive: true, force: true })

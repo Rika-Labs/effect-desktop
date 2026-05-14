@@ -412,28 +412,6 @@ const decodeGlobalShortcutEventEnvelope = (
   )
 }
 
-export const makeUnsupportedGlobalShortcutClient = (): GlobalShortcutClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, GlobalShortcutError, never> =>
-    Effect.fail(unsupportedError(method, "host-adapter-unimplemented"))
-  const unsupportedStream = <A>(method: string): Stream.Stream<A, GlobalShortcutError, never> =>
-    Stream.fail(unsupportedError(method))
-  return Object.freeze({
-    register: () => unsupportedEffect<void>("GlobalShortcut.register"),
-    unregister: () => unsupportedEffect<void>("GlobalShortcut.unregister"),
-    unregisterAll: () => unsupportedEffect<void>("GlobalShortcut.unregisterAll"),
-    isRegistered: () =>
-      unsupportedEffect<GlobalShortcutRegisteredResult>("GlobalShortcut.isRegistered"),
-    isSupported: () =>
-      Effect.succeed(
-        new GlobalShortcutSupportedResult({
-          supported: false,
-          reason: "host-adapter-unimplemented"
-        })
-      ),
-    onPressed: () => unsupportedStream<GlobalShortcutPressedEvent>("GlobalShortcut.Pressed")
-  } satisfies GlobalShortcutClientApi)
-}
-
 export const makeLinuxGlobalShortcutClient = (
   sessionType = process.env["XDG_SESSION_TYPE"]
 ): GlobalShortcutClientApi => {

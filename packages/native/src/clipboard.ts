@@ -4,7 +4,6 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolError as HostProtocolErrorSchema,
-  HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
   makeUnaryDesktopTransportFromBridgeClientExchange,
   makeHostProtocolInternalError,
@@ -256,22 +255,6 @@ const clipboardClientFromRpcClient = (
   return Object.freeze(clipboardClient)
 }
 
-export const makeUnsupportedClipboardClient = (): ClipboardClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, ClipboardError, never> =>
-    Effect.fail(unsupportedError(method))
-
-  const client: ClipboardClientApi = {
-    readText: () => unsupportedEffect<ClipboardText>("Clipboard.readText"),
-    writeText: () => unsupportedEffect<void>("Clipboard.writeText"),
-    readImage: () => unsupportedEffect<ClipboardImage>("Clipboard.readImage"),
-    writeImage: () => unsupportedEffect<void>("Clipboard.writeImage"),
-    clear: () => unsupportedEffect<void>("Clipboard.clear"),
-    isSupported: () => Effect.succeed(new ClipboardSupportedResult({ supported: false }))
-  }
-
-  return Object.freeze(client)
-}
-
 const validateClipboardImageInput = (
   image: ClipboardImage
 ): Effect.Effect<ClipboardImage, ClipboardError, never> =>
@@ -296,15 +279,6 @@ const validateClipboardImageOutput = (
           `declared ${image.mime} does not match image header`
         )
       )
-
-const unsupportedError = (method: string): HostProtocolUnsupportedError =>
-  new HostProtocolUnsupportedError({
-    tag: "Unsupported",
-    reason: "host Clipboard platform adapter is not implemented yet",
-    message: `unsupported Clipboard method: ${method}`,
-    operation: method,
-    recoverable: false
-  })
 
 const decodeClipboardText = (input: unknown): Effect.Effect<ClipboardText, ClipboardError, never> =>
   decodeInput(ClipboardText, input, "Clipboard.writeText")

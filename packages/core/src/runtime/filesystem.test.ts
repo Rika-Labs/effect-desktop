@@ -57,10 +57,11 @@ test("Filesystem writeAtomic roundtrips a large payload", async () => {
 
 test("Filesystem writeAtomic preserves destination and removes temp on write failure", async () => {
   const calls: string[] = []
-  const path = "/workspace/config.json"
+  const root = mockWorkspaceRoot()
+  const path = join(root, "config.json")
   const service = await makeTestFilesystem(
     {
-      permissions: allowFilesystemRoot("/workspace")
+      permissions: allowFilesystemRoot(root)
     },
     failingOpenFileSystem(calls, "ENOSPC")
   )
@@ -70,16 +71,17 @@ test("Filesystem writeAtomic preserves destination and removes temp on write fai
   )
 
   expectFailureTag(exit, "DiskFull")
-  expect(calls.some((call) => call.startsWith("open:/workspace/config.json.tmp."))).toBe(true)
-  expect(calls.some((call) => call.startsWith("remove:/workspace/config.json.tmp."))).toBe(true)
+  expect(calls.some((call) => call.startsWith(`open:${path}.tmp.`))).toBe(true)
+  expect(calls.some((call) => call.startsWith(`remove:${path}.tmp.`))).toBe(true)
 })
 
 test("Filesystem writeAtomic preserves destination and removes temp on rename failure", async () => {
   const calls: string[] = []
-  const path = "/workspace/config.json"
+  const root = mockWorkspaceRoot()
+  const path = join(root, "config.json")
   const service = await makeTestFilesystem(
     {
-      permissions: allowFilesystemRoot("/workspace")
+      permissions: allowFilesystemRoot(root)
     },
     failingRenameFileSystem(calls, "EACCES")
   )
@@ -89,16 +91,17 @@ test("Filesystem writeAtomic preserves destination and removes temp on rename fa
   )
 
   expectFailureTag(exit, "PermissionDenied")
-  expect(calls.some((call) => call.startsWith("rename:/workspace/config.json.tmp."))).toBe(true)
-  expect(calls.some((call) => call.startsWith("remove:/workspace/config.json.tmp."))).toBe(true)
+  expect(calls.some((call) => call.startsWith(`rename:${path}.tmp.`))).toBe(true)
+  expect(calls.some((call) => call.startsWith(`remove:${path}.tmp.`))).toBe(true)
 })
 
 test("Filesystem writeAtomic preserves destination when temp cleanup fails", async () => {
   const calls: string[] = []
-  const path = "/workspace/config.json"
+  const root = mockWorkspaceRoot()
+  const path = join(root, "config.json")
   const service = await makeTestFilesystem(
     {
-      permissions: allowFilesystemRoot("/workspace")
+      permissions: allowFilesystemRoot(root)
     },
     failingRenameAndCleanupFileSystem(calls)
   )
@@ -108,7 +111,7 @@ test("Filesystem writeAtomic preserves destination when temp cleanup fails", asy
   )
 
   expectFailureTag(exit, "PermissionDenied")
-  expect(calls.some((call) => call.startsWith("remove:/workspace/config.json.tmp."))).toBe(true)
+  expect(calls.some((call) => call.startsWith(`remove:${path}.tmp.`))).toBe(true)
 })
 
 test("Filesystem writeAtomic consumes the write capability", async () => {
@@ -410,7 +413,7 @@ test("Filesystem canonicalizes symlink targets before permission checks", async 
   const exit = await Effect.runPromiseExit(service.read(link))
 
   expectFailureTag(exit, "SymlinkEscapesRoot")
-  expectSymlinkEscapesRoot(exit, {
+  await expectSymlinkEscapesRoot(exit, {
     requested: link,
     resolved: await realpath(target),
     capabilityRoots: [await realpath(allowed)]
@@ -432,7 +435,7 @@ test("Filesystem reports SymlinkEscapesRoot for intermediate symlink escapes", a
   const exit = await Effect.runPromiseExit(service.read(linkPath))
 
   expectFailureTag(exit, "SymlinkEscapesRoot")
-  expectSymlinkEscapesRoot(exit, {
+  await expectSymlinkEscapesRoot(exit, {
     requested: linkPath,
     resolved: await realpath(target),
     capabilityRoots: [await realpath(allowed)]
@@ -449,7 +452,7 @@ test("Filesystem realpath returns the authorized canonical path", async () => {
 
   const resolved = await Effect.runPromise(service.realpath(link))
 
-  expect(resolved).toBe(await realpath(target))
+  await expectSameFilesystemEntry(resolved, await realpath(target))
 })
 
 test("Filesystem realpath returns SymlinkEscapesRoot for symlink escapes", async () => {
@@ -628,6 +631,9 @@ test("Filesystem watch registers a scope-bound resource and closes on scope clos
 })
 
 const tempDirectory = (): Promise<string> => mkdtemp(join(tmpdir(), "effect-desktop-fs-"))
+
+const mockWorkspaceRoot = (): string =>
+  process.platform === "win32" ? "C:\\workspace" : "/workspace"
 
 const BunFileSystemLayer: Layer.Layer<FileSystem.FileSystem> = BunFileSystem.layer
 
@@ -980,20 +986,38 @@ const expectFailurePermissionDenied = (
   throw new Error("expected permission denied error")
 }
 
-function expectSymlinkEscapesRoot(
+async function expectSymlinkEscapesRoot(
   exit: Exit.Exit<unknown, unknown>,
   expected: {
     readonly requested: string
     readonly resolved: string
     readonly capabilityRoots: readonly string[]
   }
-): void {
+): globalThis.Promise<void> {
   expect(Exit.isFailure(exit)).toBe(true)
   if (Exit.isFailure(exit)) {
     const fail = exit.cause.reasons.find((reason) => reason._tag === "Fail")
     const error = fail?.error as HostProtocolSymlinkEscapesRootError | undefined
     expect(error?.requested).toBe(expected.requested)
-    expect(error?.resolved).toBe(expected.resolved)
-    expect(error?.capabilityRoots).toEqual(expected.capabilityRoots)
+    if (error?.resolved !== undefined) {
+      await expectSameFilesystemEntry(error.resolved, expected.resolved)
+    }
+    expect(error?.capabilityRoots.length).toBe(expected.capabilityRoots.length)
+    for (let index = 0; index < expected.capabilityRoots.length; index += 1) {
+      const actualRoot = error?.capabilityRoots[index]
+      expect(actualRoot).toBeDefined()
+      if (actualRoot !== undefined) {
+        await expectSameFilesystemEntry(actualRoot, expected.capabilityRoots[index] ?? "")
+      }
+    }
   }
+}
+
+async function expectSameFilesystemEntry(
+  actual: string,
+  expected: string
+): globalThis.Promise<void> {
+  const [actualStat, expectedStat] = await Promise.all([nodeStat(actual), nodeStat(expected)])
+  expect(actualStat.dev).toBe(expectedStat.dev)
+  expect(actualStat.ino).toBe(expectedStat.ino)
 }

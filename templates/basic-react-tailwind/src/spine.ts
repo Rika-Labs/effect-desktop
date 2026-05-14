@@ -47,9 +47,7 @@ export const TemplateApp = Desktop.make({
 export const MainLayer = Desktop.app(TemplateApp)
 export const AppLive = Layer.mergeAll(MainLayer, WindowLive)
 
-const defaultTestWindowHandle = Schema.decodeUnknownSync(
-  WindowResource
-)({
+const defaultTestWindowHandle = Schema.decodeUnknownSync(WindowResource)({
   kind: "window",
   id: "template-window-001",
   generation: 0,
@@ -63,8 +61,7 @@ export const makeTemplateProductionLayer = <E, R>(
   Window | Layer.Success<typeof MainLayer>,
   WindowError | Layer.Error<typeof MainLayer> | E,
   R
-> =>
-  Layer.provide(AppLive, windowClientLayer)
+> => Layer.provide(AppLive, windowClientLayer)
 
 export const makeTemplateTestLayer = (
   handle: WindowHandle = defaultTestWindowHandle

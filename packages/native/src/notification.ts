@@ -5,7 +5,6 @@ import {
   type BridgeHandlerRuntimeOptions,
   type HostProtocolEventEnvelope,
   HostProtocolError as HostProtocolErrorSchema,
-  HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -316,36 +315,6 @@ const decodeNotificationEventEnvelope = <A>(
     )
   )
 }
-
-export const makeUnsupportedNotificationClient = (): NotificationClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, NotificationError, never> =>
-    Effect.fail(unsupportedError(method))
-  const unsupportedStream = <A>(method: string): Stream.Stream<A, NotificationError, never> =>
-    Stream.fail(unsupportedError(method))
-
-  const client: NotificationClientApi = {
-    show: () => unsupportedEffect<NotificationHandle>("Notification.show"),
-    close: () => unsupportedEffect<void>("Notification.close"),
-    isSupported: () => Effect.succeed(new NotificationSupportedResult({ supported: false })),
-    requestPermission: () =>
-      unsupportedEffect<NotificationPermissionResult>("Notification.requestPermission"),
-    getPermissionStatus: () =>
-      unsupportedEffect<NotificationPermissionResult>("Notification.getPermissionStatus"),
-    onClick: () => unsupportedStream<NotificationClickEvent>("Notification.Click"),
-    onAction: () => unsupportedStream<NotificationActionEvent>("Notification.Action")
-  }
-
-  return Object.freeze(client)
-}
-
-const unsupportedError = (method: string): HostProtocolUnsupportedError =>
-  new HostProtocolUnsupportedError({
-    tag: "Unsupported",
-    reason: "host Notification platform adapter is not implemented yet",
-    message: `unsupported Notification method: ${method}`,
-    operation: method,
-    recoverable: false
-  })
 
 const toNotificationShowInput = (input: NotificationShowOptions): unknown => ({
   title: input.title,

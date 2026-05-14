@@ -309,26 +309,10 @@ const decodeContextMenuEventEnvelope = (
   )
 }
 
-export const makeUnsupportedContextMenuClient = (): ContextMenuClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, ContextMenuError, never> =>
-    Effect.fail(unsupportedError(method))
-  const unsupportedStream = <A>(method: string): Stream.Stream<A, ContextMenuError, never> =>
-    Stream.fail(unsupportedError(method))
-
-  const client: ContextMenuClientApi = {
-    show: () => unsupportedEffect<void>("ContextMenu.show"),
-    buildFromTemplate: () => unsupportedEffect<void>("ContextMenu.buildFromTemplate"),
-    bindCommand: () => unsupportedEffect<void>("ContextMenu.bindCommand"),
-    onActivated: () => unsupportedStream<ContextMenuActivatedEvent>("ContextMenu.Activated")
-  }
-
-  return Object.freeze(client)
-}
-
 const unsupportedError = (method: string): HostProtocolUnsupportedError =>
   new HostProtocolUnsupportedError({
     tag: "Unsupported",
-    reason: "host ContextMenu platform adapter is not implemented yet",
+    reason: "ContextMenu command binding is available through the ContextMenu service",
     message: `unsupported ContextMenu method: ${method}`,
     operation: method,
     recoverable: false

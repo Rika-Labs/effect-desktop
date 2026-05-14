@@ -14,7 +14,7 @@ Issue #1148 set one contract rule: renderer-callable framework APIs should be Ef
 
 ## What actually ended up working
 
-The landed code matches the issue architecture. Core now exposes `Desktop.Rpcs.layer(...)` and app `rpcs` as the app boundary, bridge exposes `BridgeRpc.group(...)` while still producing real `RpcGroup` values, and native services expose `*Rpcs` groups instead of `*Api` contracts. React no longer exports manual API builders; it derives endpoint hooks from the provided group. The pre-1 migration doc and old secrets migration path were deleted.
+The landed code matched the issue architecture for that slice. Core exposed `Desktop.Rpcs.layer(...)` and app `rpcs` as the app boundary, bridge temporarily exposed `BridgeRpc.group(...)` while still producing real `RpcGroup` values, and native services exposed `*Rpcs` groups instead of `*Api` contracts. Later follow-up work removed the temporary `BridgeRpc` DSL as well. React no longer exports manual API builders; it derives endpoint hooks from the provided group. The pre-1 migration doc and old secrets migration path were deleted.
 
 The PR diagram still describes the app boundary:
 

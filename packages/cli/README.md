@@ -1,10 +1,10 @@
 # @effect-desktop/cli
 
-> **Status:** Incremental implementation. The production check, build, package, sign, notarize, publish, release, repro check, and doctor commands are active; remaining CLI commands are reserved for later phases. See `docs/SPEC.md`.
+> **Status:** Incremental implementation. The check, build, package, sign, notarize, publish, release, and doctor commands are active. See `docs/SPEC.md`.
 
 ## Purpose
 
-Developer CLI for creation, development, validation, packaging, and release: `create`, `dev`, `check`, `build`, `package`, `sign`, `notarize`, `publish`, `release`, `doctor`, `inspect`.
+Developer CLI for validation, packaging, and release: `check`, `build`, `package`, `sign`, `notarize`, `publish`, `release`, and `doctor`.
 
 ## Public API
 

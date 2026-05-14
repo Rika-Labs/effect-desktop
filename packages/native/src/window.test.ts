@@ -3,17 +3,11 @@ import { rpcSupport, type Rpc } from "@effect-desktop/bridge"
 
 import { WindowRpcs } from "./window.js"
 
-test("WindowRpcs exposes host implementation support metadata through RpcGroup lowering", () => {
+test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering", () => {
   expect(rpcSupport(request("Window.create"))).toEqual({ status: "supported" })
   expect(rpcSupport(request("Window.close"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.show"))).toEqual({
-    status: "unsupported",
-    reason: "host Window adapter does not implement this method yet"
-  })
-  expect(rpcSupport(request("Window.setVibrancy"))).toEqual({
-    status: "unsupported",
-    reason: "host Window adapter does not implement this method yet"
-  })
+  expect(WindowRpcs.requests.has("Window.show")).toBe(false)
+  expect(WindowRpcs.requests.has("Window.setVibrancy")).toBe(false)
 })
 
 const request = (tag: string): Rpc.Any => {

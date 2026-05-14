@@ -279,9 +279,7 @@ const observeExit = (
         )
       )
     ),
-    Effect.catch((error) =>
-      publish({ _tag: "Failed", message: error.message, recoverable: false })
-    )
+    Effect.catch((error) => publish({ _tag: "Failed", message: error.message, recoverable: false }))
   )
 
 const readinessLines = (
@@ -323,11 +321,7 @@ const closeSidecar = (
 
 const lineMatches = (line: string, match: string): boolean => line.includes(match)
 
-const sidecarError = (
-  error: ProcessError,
-  operation: string,
-  recoverable: boolean
-): SidecarError =>
+const sidecarError = (error: ProcessError, operation: string, recoverable: boolean): SidecarError =>
   new SidecarError({
     message: error.message,
     operation,

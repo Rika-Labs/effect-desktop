@@ -5,8 +5,7 @@ import {
   HostProtocolInvalidArgumentError,
   HostProtocolPermissionDeniedError,
   HostProtocolResourceBusyError,
-  HostProtocolStaleHandleError,
-  HostProtocolUnsupportedError
+  HostProtocolStaleHandleError
 } from "@effect-desktop/bridge"
 import { Cause, Effect, Exit, Option, Stream } from "effect"
 
@@ -175,7 +174,9 @@ ptyTest("PTY open validates size before adapter activity", async () => {
 test("PTY rejects non-finite graceful shutdown windows", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
-    const exit = await Effect.runPromiseExit(makePty(registry, { gracefulShutdownMs: value }))
+    const exit = await Effect.runPromiseExit(
+      makePty(registry, { adapter: makeFakeAdapter(), gracefulShutdownMs: value })
+    )
     expectFailure(exit, HostProtocolInvalidArgumentError)
   }
 })
@@ -344,22 +345,6 @@ ptyTest("PTY open rejects NUL bytes in environment values", async () => {
 
   expect(openCalls).toBe(0)
   expectFailure(exit, HostProtocolInvalidArgumentError)
-})
-
-ptyTest("PTY default adapter fails loudly as Unsupported", async () => {
-  const registry = await Effect.runPromise(makeResourceRegistry())
-  const service = await Effect.runPromise(makePty(registry, { permissions: { spawn: ["bash"] } }))
-
-  const exit = await Effect.runPromiseExit(
-    service.open({
-      argv: ["bash"],
-      ownerScope: "scope-main",
-      rows: 24,
-      cols: 80
-    })
-  )
-
-  expectFailure(exit, HostProtocolUnsupportedError)
 })
 
 ptyTest("PTY open enforces the per-scope concurrent budget", async () => {
@@ -809,13 +794,13 @@ const makeFixture = async (
   } = {}
 ): Promise<{ readonly registry: ResourceRegistryApi; readonly service: PtyApi }> => {
   const registry = await Effect.runPromise(makeResourceRegistry())
-  const service = await makeService(registry, adapter, options)
+  const service = await makeService(registry, adapter ?? makeFakeAdapter(), options)
   return { registry, service }
 }
 
 const makeService = (
   registry: ResourceRegistryApi,
-  adapter?: PtyAdapter,
+  adapter: PtyAdapter,
   options: {
     readonly budgets?: PtyBudgetPolicy
     readonly gracefulShutdownMs?: number
@@ -824,7 +809,7 @@ const makeService = (
 ) =>
   Effect.runPromise(
     makePty(registry, {
-      ...(adapter === undefined ? {} : { adapter }),
+      adapter,
       ...(options.budgets === undefined ? {} : { budgets: options.budgets }),
       ...(options.gracefulShutdownMs === undefined
         ? {}
@@ -837,7 +822,9 @@ const ALLOW_TEST_PTY_PERMISSIONS: PtyPermissionPolicy = {
   spawn: ["bash"]
 }
 
-const makeFakeAdapter = (makeChild: () => PtyChild): PtyAdapter => ({
+const makeFakeAdapter = (
+  makeChild: () => PtyChild = () => makeFakeChild({ output: [], exit: { code: 0 } })
+): PtyAdapter => ({
   open: () => makeChild()
 })
 

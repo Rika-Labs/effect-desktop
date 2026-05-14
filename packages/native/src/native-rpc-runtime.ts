@@ -48,7 +48,8 @@ const nativeHostInspectorState = (
   inspector: NativeHostInspectorCollectorApi | undefined,
   now: () => number,
   state: BridgeCallState
-) => (inspector ?? disabledNativeHostInspectorCollector).publish(nativeHostEventFromState(state, now))
+) =>
+  (inspector ?? disabledNativeHostInspectorCollector).publish(nativeHostEventFromState(state, now))
 
 const nativeHostEventFromState = (state: BridgeCallState, now: () => number): NativeHostEvent =>
   new NativeHostEvent({

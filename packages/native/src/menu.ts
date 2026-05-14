@@ -379,28 +379,10 @@ const decodeMenuEventEnvelope = (
   )
 }
 
-export const makeUnsupportedMenuClient = (): MenuClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, MenuError, never> =>
-    Effect.fail(unsupportedError(method))
-  const unsupportedStream = <A>(method: string): Stream.Stream<A, MenuError, never> =>
-    Stream.fail(unsupportedError(method))
-
-  const client: MenuClientApi = {
-    setApplicationMenu: () => unsupportedEffect<void>("Menu.setApplicationMenu"),
-    setWindowMenu: () => unsupportedEffect<void>("Menu.setWindowMenu"),
-    clear: () => unsupportedEffect<void>("Menu.clear"),
-    bindCommand: () => unsupportedEffect<void>("Menu.bindCommand"),
-    capability: () => Effect.succeed(new MenuCapabilityResult({ supported: false })),
-    onActivated: () => unsupportedStream<MenuActivatedEvent>("Menu.Activated")
-  }
-
-  return Object.freeze(client)
-}
-
 const unsupportedError = (method: string): HostProtocolUnsupportedError =>
   new HostProtocolUnsupportedError({
     tag: "Unsupported",
-    reason: "host Menu platform adapter is not implemented yet",
+    reason: "Menu command binding is available through the Menu service",
     message: `unsupported Menu method: ${method}`,
     operation: method,
     recoverable: false

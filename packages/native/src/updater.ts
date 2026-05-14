@@ -5,7 +5,6 @@ import {
   type BridgeHandlerRuntimeOptions,
   type HostProtocolEventEnvelope,
   HostProtocolError as HostProtocolErrorSchema,
-  HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -378,29 +377,3 @@ const formatUnknownError = (error: unknown): string => {
 
   return String(error)
 }
-
-export const makeUnsupportedUpdaterClient = (): UpdaterClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, UpdaterError, never> =>
-    Effect.fail(unsupportedError(method))
-  const unsupportedStream = <A>(method: string): Stream.Stream<A, UpdaterError, never> =>
-    Stream.fail(unsupportedError(method))
-  return Object.freeze({
-    check: () => unsupportedEffect<UpdaterCheckResult>("Updater.check"),
-    download: () => unsupportedEffect<UpdaterStatusResult>("Updater.download"),
-    install: () => unsupportedEffect<UpdaterStatusResult>("Updater.install"),
-    installAndRestart: () => unsupportedEffect<UpdaterStatusResult>("Updater.installAndRestart"),
-    getStatus: () => unsupportedEffect<UpdaterStatusResult>("Updater.getStatus"),
-    readyForRestart: () => unsupportedEffect<void>("Updater.readyForRestart"),
-    onPreparingRestart: () =>
-      unsupportedStream<UpdaterPreparingRestartEvent>("Updater.PreparingRestart")
-  } satisfies UpdaterClientApi)
-}
-
-const unsupportedError = (method: string): HostProtocolUnsupportedError =>
-  new HostProtocolUnsupportedError({
-    tag: "Unsupported",
-    reason: "phase-22",
-    message: `unsupported Updater method until Phase 22: ${method}`,
-    operation: method,
-    recoverable: false
-  })

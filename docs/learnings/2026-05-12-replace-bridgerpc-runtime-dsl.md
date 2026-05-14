@@ -10,9 +10,9 @@ Effect `RpcGroup` values, handler records typed from `RpcGroup.toLayer(...)`, an
 factories backed by `makeDesktopRpcHandlerRuntime(...)`.
 
 The implementation went wider than the original Screen/Window slice. The same runtime shape now
-covers the native capability set, while the bridge package keeps its old `BridgeRpc` helpers only as
-transition code and tests. Remaining native `BridgeRpc.Resource(...)` usage is tracked separately in
-#1285 because it is schema-handle debt, not the runtime DSL removed here.
+covers the native capability set. Later follow-up work removed the remaining public `BridgeRpc`
+helpers and native `BridgeRpc.Resource(...)` usage, so package source no longer depends on the
+BridgeRpc DSL.
 
 ```mermaid
 flowchart LR

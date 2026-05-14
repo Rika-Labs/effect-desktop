@@ -17,8 +17,8 @@ second hand-authored table.
 
 `@effect-desktop/native` now exports `NativeCapabilities`, a Layer-backed service that
 builds a manifest from native `RpcGroup.requests`. `support(tag)` returns the existing
-`RpcSupport` metadata for a method such as `Window.show`, and `require(tag)` succeeds for
-supported methods or fails with `UnsupportedCapability` for unsupported ones.
+`RpcSupport` metadata for a method tag, and `require(tag)` succeeds for supported methods
+or fails with `UnsupportedCapability` when explicit unsupported metadata is present.
 
 The service fails duplicate manifest tags and unknown method lookups as typed values, so
 support data cannot silently drift or pretend unknown methods are merely unsupported.

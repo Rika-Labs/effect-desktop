@@ -5,7 +5,6 @@ import {
   type BridgeHandlerRuntimeOptions,
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolPermissionDeniedError,
-  HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -230,20 +229,6 @@ const makeShellBridgeProtocolLayer = (
     )
   )
 
-export const makeUnsupportedShellClient = (): ShellClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, ShellError, never> =>
-    Effect.fail(unsupportedError(method))
-
-  const client: ShellClientApi = {
-    openExternal: () => unsupportedEffect<void>("Shell.openExternal"),
-    showItemInFolder: () => unsupportedEffect<void>("Shell.showItemInFolder"),
-    openPath: () => unsupportedEffect<void>("Shell.openPath"),
-    trashItem: () => unsupportedEffect<void>("Shell.trashItem")
-  }
-
-  return Object.freeze(client)
-}
-
 const validateExternalUrl = (
   input: ShellOpenExternalInput
 ): Effect.Effect<ShellOpenExternalInput, ShellError, never> =>
@@ -348,15 +333,6 @@ const permissionDenied = (
     resource,
     message: `permission denied for ${resource}`,
     operation,
-    recoverable: false
-  })
-
-const unsupportedError = (method: string): HostProtocolUnsupportedError =>
-  new HostProtocolUnsupportedError({
-    tag: "Unsupported",
-    reason: "host Shell platform adapter is not implemented yet",
-    message: `unsupported Shell method: ${method}`,
-    operation: method,
     recoverable: false
   })
 

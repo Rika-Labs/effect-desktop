@@ -5,7 +5,6 @@ import {
   type BridgeHandlerRuntimeOptions,
   type HostProtocolEventEnvelope,
   HostProtocolError as HostProtocolErrorSchema,
-  HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
@@ -213,28 +212,6 @@ const decodePowerMonitorEventEnvelope = <A>(
     )
   )
 }
-
-export const makeUnsupportedPowerMonitorClient = (): PowerMonitorClientApi => {
-  const unsupportedStream = <A>(method: string): Stream.Stream<A, PowerMonitorError, never> =>
-    Stream.fail(unsupportedError(method))
-  return Object.freeze({
-    onSuspend: () => unsupportedStream<PowerMonitorSuspendEvent>("PowerMonitor.Suspend"),
-    onResume: () => unsupportedStream<PowerMonitorResumeEvent>("PowerMonitor.Resume"),
-    onShutdown: () => unsupportedStream<PowerMonitorShutdownEvent>("PowerMonitor.Shutdown"),
-    onPowerSourceChanged: () =>
-      unsupportedStream<PowerMonitorSourceChangedEvent>("PowerMonitor.PowerSourceChanged"),
-    isSupported: () => Effect.succeed(new PowerMonitorSupportedResult({ supported: false }))
-  } satisfies PowerMonitorClientApi)
-}
-
-const unsupportedError = (method: string): HostProtocolUnsupportedError =>
-  new HostProtocolUnsupportedError({
-    tag: "Unsupported",
-    reason: "host PowerMonitor platform adapter is not implemented yet",
-    message: `unsupported PowerMonitor method: ${method}`,
-    operation: method,
-    recoverable: false
-  })
 
 const runPowerMonitorRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

@@ -277,20 +277,6 @@ const makeDockBridgeProtocolLayer = (
     )
   )
 
-export const makeUnsupportedDockClient = (): DockClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, DockError, never> =>
-    Effect.fail(unsupportedError(method))
-  return Object.freeze({
-    setBadgeCount: () => unsupportedEffect<void>("Dock.setBadgeCount"),
-    setBadgeText: () => unsupportedEffect<void>("Dock.setBadgeText"),
-    setProgress: () => unsupportedEffect<void>("Dock.setProgress"),
-    setMenu: () => unsupportedEffect<void>("Dock.setMenu"),
-    setJumpList: () => unsupportedEffect<void>("Dock.setJumpList"),
-    requestAttention: () => unsupportedEffect<void>("Dock.requestAttention"),
-    isSupported: () => Effect.succeed(new DockSupportedResult({ supported: false }))
-  } satisfies DockClientApi)
-}
-
 export const makeLinuxDockClient = (): DockClientApi => {
   const unsupportedEffect = <A>(
     method: string,
@@ -314,10 +300,7 @@ export const makeLinuxDockClient = (): DockClientApi => {
   } satisfies DockClientApi)
 }
 
-const unsupportedError = (
-  method: string,
-  reason = "host Dock platform adapter is not implemented yet"
-): HostProtocolUnsupportedError =>
+const unsupportedError = (method: string, reason: string): HostProtocolUnsupportedError =>
   new HostProtocolUnsupportedError({
     tag: "Unsupported",
     reason,

@@ -56,9 +56,9 @@ The scoped debt removed here was the local Clipboard/Dialog `RpcClient.make(...)
 new capability-contract DSL was deliberately not added because it would only group existing Effect
 `Layer` values without owning durable desktop semantics.
 
-The remaining bridge cleanup is intentionally separate. #1271 tracks generated test native clients
-from `DesktopRpc` surfaces, and #1292 tracks removing `BridgeRpc` once canonical Effect RPC can own
-renderer contracts directly.
+The remaining bridge cleanup was intentionally separate. #1271 tracks generated test native clients
+from `DesktopRpc` surfaces, and #1292 later removed the public `BridgeRpc` DSL once canonical Effect
+RPC owned renderer contracts directly.
 
 ## Rule
 

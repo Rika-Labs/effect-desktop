@@ -5,7 +5,6 @@ import {
   type BridgeHandlerRuntimeOptions,
   type HostProtocolEventEnvelope,
   HostProtocolError as HostProtocolErrorSchema,
-  HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -335,40 +334,6 @@ const decodeAppEventEnvelope = <A>(
     )
   )
 }
-
-export const makeUnsupportedAppClient = (): AppClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, AppError, never> =>
-    Effect.fail(unsupportedError(method))
-  const unsupportedStream = <A>(method: string): Stream.Stream<A, AppError, never> =>
-    Stream.fail(unsupportedError(method))
-
-  const client: AppClientApi = {
-    getInfo: () => unsupportedEffect<AppInfo>("App.getInfo"),
-    getCommandLine: () => unsupportedEffect<AppCommandLine>("App.getCommandLine"),
-    quit: () => unsupportedEffect<void>("App.quit"),
-    restart: () => unsupportedEffect<void>("App.restart"),
-    focus: () => unsupportedEffect<void>("App.focus"),
-    requestSingleInstanceLock: () =>
-      unsupportedEffect<AppSingleInstanceResult>("App.requestSingleInstanceLock"),
-    setOpenAtLogin: () => unsupportedEffect<void>("App.setOpenAtLogin"),
-    registerProtocol: () => unsupportedEffect<void>("App.registerProtocol"),
-    onSecondInstance: () => unsupportedStream<AppSecondInstanceEvent>("App.onSecondInstance"),
-    onOpenFile: () => unsupportedStream<AppOpenFileEvent>("App.onOpenFile"),
-    onOpenUrl: () => unsupportedStream<AppOpenUrlEvent>("App.onOpenUrl"),
-    onBeforeQuit: () => unsupportedStream<AppBeforeQuitEvent>("App.onBeforeQuit")
-  }
-
-  return Object.freeze(client)
-}
-
-const unsupportedError = (method: string): HostProtocolUnsupportedError =>
-  new HostProtocolUnsupportedError({
-    tag: "Unsupported",
-    reason: "host App platform adapter is not implemented yet",
-    message: `unsupported App method: ${method}`,
-    operation: method,
-    recoverable: false
-  })
 
 const decodeAppQuitInput = (
   input: unknown

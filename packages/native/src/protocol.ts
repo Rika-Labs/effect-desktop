@@ -4,7 +4,6 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolError as HostProtocolErrorSchema,
-  HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -211,17 +210,6 @@ const makeProtocolBridgeProtocolLayer = (
     )
   )
 
-export const makeUnsupportedProtocolClient = (): ProtocolClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, ProtocolError, never> =>
-    Effect.fail(unsupportedError(method))
-  return Object.freeze({
-    registerAppProtocol: () => unsupportedEffect<void>("Protocol.registerAppProtocol"),
-    serveAsset: () => unsupportedEffect<void>("Protocol.serveAsset"),
-    serveRoute: () => unsupportedEffect<void>("Protocol.serveRoute"),
-    deny: () => unsupportedEffect<void>("Protocol.deny")
-  } satisfies ProtocolClientApi)
-}
-
 const validateRegisterAppProtocolInput = (
   input: ProtocolRegisterAppProtocolInput
 ): Effect.Effect<ProtocolRegisterAppProtocolInput, ProtocolError, never> =>
@@ -316,15 +304,6 @@ const validateRoutePath = (
 
   return validateLocalPath(path, field, operation)
 }
-
-const unsupportedError = (method: string): HostProtocolUnsupportedError =>
-  new HostProtocolUnsupportedError({
-    tag: "Unsupported",
-    reason: "host Protocol platform adapter is not implemented yet",
-    message: `unsupported Protocol method: ${method}`,
-    operation: method,
-    recoverable: false
-  })
 
 const decodeProtocolRegisterAppProtocolInput = (
   input: unknown

@@ -186,8 +186,7 @@ export class DesktopLocalApi extends HttpApi.make("DesktopLocalApi")
       title: "Effect Desktop Local API",
       description: "Loopback-only local HTTP surfaces exposed by the desktop runtime."
     })
-  )
-{}
+  ) {}
 
 export const DesktopLocalHandlers = HttpApiBuilder.group(
   DesktopLocalApi,

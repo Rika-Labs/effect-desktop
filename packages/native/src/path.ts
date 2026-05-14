@@ -4,7 +4,6 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolError as HostProtocolErrorSchema,
-  HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
@@ -198,31 +197,6 @@ const makePathBridgeProtocolLayer = (
       Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
     )
   )
-
-export const makeUnsupportedPathClient = (): PathClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, PathError, never> =>
-    Effect.fail(unsupportedError(method))
-
-  const client: PathClientApi = {
-    appData: () => unsupportedEffect<CanonicalPath>("Path.appData"),
-    cache: () => unsupportedEffect<CanonicalPath>("Path.cache"),
-    logs: () => unsupportedEffect<CanonicalPath>("Path.logs"),
-    temp: () => unsupportedEffect<CanonicalPath>("Path.temp"),
-    home: () => unsupportedEffect<CanonicalPath>("Path.home"),
-    downloads: () => unsupportedEffect<CanonicalPath>("Path.downloads")
-  }
-
-  return Object.freeze(client)
-}
-
-const unsupportedError = (method: string): HostProtocolUnsupportedError =>
-  new HostProtocolUnsupportedError({
-    tag: "Unsupported",
-    reason: "host Path platform adapter is not implemented yet",
-    message: `unsupported Path method: ${method}`,
-    operation: method,
-    recoverable: false
-  })
 
 function pathRpc<const Method extends (typeof PathMethodNames)[number]>(
   method: Method,

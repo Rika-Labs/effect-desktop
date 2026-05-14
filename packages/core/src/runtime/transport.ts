@@ -1,7 +1,4 @@
-import {
-  BridgeInspectorEvent,
-  type BridgeInspector
-} from "@effect-desktop/bridge"
+import { BridgeInspectorEvent, type BridgeInspector } from "@effect-desktop/bridge"
 import {
   Cause,
   Context,
@@ -239,11 +236,13 @@ export const instrumentTransportConnection = (
       )
     ),
     close: () =>
-      connection.close().pipe(
-        Effect.ensuring(
-          emitTransportEvent(options.inspector, "transport.disconnect", options.target, now, {})
+      connection
+        .close()
+        .pipe(
+          Effect.ensuring(
+            emitTransportEvent(options.inspector, "transport.disconnect", options.target, now, {})
+          )
         )
-      )
   })
 }
 

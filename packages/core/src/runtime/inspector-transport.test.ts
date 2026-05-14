@@ -71,10 +71,14 @@ test("InspectorTransport counts subscriber backpressure drops", async () => {
 })
 
 test("InspectorTransport rejects invalid retention, replay, and source inputs", async () => {
-  const invalidRetention = await Effect.runPromiseExit(makeInspectorTransport({ retentionLimit: 0 }))
+  const invalidRetention = await Effect.runPromiseExit(
+    makeInspectorTransport({ retentionLimit: 0 })
+  )
   expect(invalidRetention._tag).toBe("Failure")
 
-  const transport = await Effect.runPromise(makeInspectorTransport({ sessionId: "session-invalid" }))
+  const transport = await Effect.runPromise(
+    makeInspectorTransport({ sessionId: "session-invalid" })
+  )
   const invalidReplay = await Effect.runPromiseExit(transport.replay({ afterSequence: -1 }))
   const invalidPublish = await Effect.runPromiseExit(
     transport.publish({ source: "", payload: undefined })

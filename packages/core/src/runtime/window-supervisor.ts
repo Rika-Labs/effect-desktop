@@ -121,6 +121,23 @@ export const readStartupWindows = (
   }).pipe(Effect.flatMap((app) => decodeDesktopAppDescriptor(app, exportName)))
 }
 
+export const requireStartupWindows = (
+  windows: Readonly<Record<string, WindowSpec>>,
+  env = "startup environment"
+): Effect.Effect<Readonly<Record<string, WindowSpec>>, StartupWindowConfigError, never> => {
+  if (Object.keys(windows).length > 0) {
+    return Effect.succeed(windows)
+  }
+
+  return Effect.fail(
+    new StartupWindowConfigError({
+      env,
+      message:
+        "Invalid startup environment: at least one startup window must be declared with EFFECT_DESKTOP_APP_MODULE or EFFECT_DESKTOP_STARTUP_WINDOWS"
+    })
+  )
+}
+
 export const openDeclaredWindows = (
   windows: HostWindowClient,
   declared: Readonly<Record<string, WindowSpec>>,

@@ -9,10 +9,7 @@ import {
 } from "./permission-contracts.js"
 import type { PermissionRegistryApi } from "./permission-registry.js"
 
-const InspectorTimestamp = Schema.Number.check(
-  Schema.isFinite(),
-  Schema.isGreaterThanOrEqualTo(0)
-)
+const InspectorTimestamp = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0))
 const CspDirectiveSnapshot = Schema.Struct({
   name: PermissionMetadataText,
   values: Schema.Array(Schema.String)

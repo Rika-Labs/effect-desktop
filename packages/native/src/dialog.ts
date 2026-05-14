@@ -4,7 +4,6 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolError as HostProtocolErrorSchema,
-  HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
   makeUnaryDesktopTransportFromBridgeClientExchange,
   makeHostProtocolInternalError,
@@ -257,30 +256,6 @@ const dialogClientFromRpcClient = (client: DesktopRpcClient<DialogRpc>): DialogC
 
   return Object.freeze(dialogClient)
 }
-
-export const makeUnsupportedDialogClient = (): DialogClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, DialogError, never> =>
-    Effect.fail(unsupportedError(method))
-
-  const client: DialogClientApi = {
-    openFile: () => unsupportedEffect<DialogOpenResult>("Dialog.openFile"),
-    openDirectory: () => unsupportedEffect<DialogOpenResult>("Dialog.openDirectory"),
-    saveFile: () => unsupportedEffect<DialogSaveResult>("Dialog.saveFile"),
-    message: () => unsupportedEffect<void>("Dialog.message"),
-    confirm: () => unsupportedEffect<DialogConfirmResult>("Dialog.confirm")
-  }
-
-  return Object.freeze(client)
-}
-
-const unsupportedError = (method: string): HostProtocolUnsupportedError =>
-  new HostProtocolUnsupportedError({
-    tag: "Unsupported",
-    reason: "host Dialog platform adapter is not implemented yet",
-    message: `unsupported Dialog method: ${method}`,
-    operation: method,
-    recoverable: false
-  })
 
 const decodeDialogOpenFileInput = (
   input: unknown

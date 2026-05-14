@@ -370,7 +370,7 @@ test("AppAssetRoutes exposes Scalar documentation", async () => {
 
     expect(response.status).toBe(200)
     expect(body).toContain("Effect Desktop Local API")
-    expect(body).toContain("\"openapi\":\"3.1.0\"")
+    expect(body).toContain('"openapi":"3.1.0"')
   } finally {
     await dispose()
   }

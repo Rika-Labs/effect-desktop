@@ -245,18 +245,6 @@ const makeSafeStorageBridgeProtocolLayer = (
     )
   )
 
-export const makeUnsupportedSafeStorageClient = (): SafeStorageClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, SafeStorageError, never> =>
-    Effect.fail(unsupportedError(method))
-  return Object.freeze({
-    set: () => unsupportedEffect<void>("SafeStorage.set"),
-    get: () => unsupportedEffect<SecretBytes>("SafeStorage.get"),
-    delete: () => unsupportedEffect<void>("SafeStorage.delete"),
-    list: () => unsupportedEffect<ReadonlyArray<string>>("SafeStorage.list"),
-    isAvailable: () => Effect.succeed(false)
-  } satisfies SafeStorageClientApi)
-}
-
 export const makeLinuxSafeStorageClient = (): SafeStorageClientApi => {
   const unsupportedEffect = <A>(method: string): Effect.Effect<A, SafeStorageError, never> =>
     Effect.fail(unsupportedError(method, "secret-service-adapter-unimplemented"))
@@ -294,10 +282,7 @@ const validateKey = (
   return Effect.succeed(key)
 }
 
-const unsupportedError = (
-  method: string,
-  reason = "host SafeStorage platform adapter is not implemented yet"
-): HostProtocolUnsupportedError =>
+const unsupportedError = (method: string, reason: string): HostProtocolUnsupportedError =>
   new HostProtocolUnsupportedError({
     tag: "Unsupported",
     reason,

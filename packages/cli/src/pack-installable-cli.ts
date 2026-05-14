@@ -12,7 +12,7 @@ interface PackageJson {
   readonly [key: string]: unknown
 }
 
-const PACKAGE_NAMES = ["bridge", "config", "cli"] as const
+const PACKAGE_NAMES = ["bridge", "config", "core", "cli"] as const
 
 class PackInstallableCliError extends Data.TaggedError("PackInstallableCliError")<{
   readonly message: string
@@ -62,16 +62,9 @@ const packInstallableCli = (
       yield* copyPackage(fs, path, repoRoot, outputRoot, name)
     }
 
-    const cliPackagePath = path.join(outputRoot, "packages", "cli", "package.json")
-    const cliPackage = yield* readJson<PackageJson>(fs, cliPackagePath)
-    yield* writeJson(fs, cliPackagePath, {
-      ...cliPackage,
-      dependencies: {
-        ...cliPackage.dependencies,
-        "@effect-desktop/bridge": "file:../bridge",
-        "@effect-desktop/config": "file:../config"
-      }
-    })
+    for (const name of PACKAGE_NAMES) {
+      yield* rewriteLocalPackageDependencies(fs, path, outputRoot, name)
+    }
 
     for (const name of PACKAGE_NAMES) {
       yield* installPackageDependencies(path, outputRoot, name)
@@ -89,6 +82,25 @@ const copyPackage = (
   const target = path.join(outputRoot, "packages", name)
   return copyTree(fs, path, source, target)
 }
+
+const rewriteLocalPackageDependencies = (
+  fs: FileSystem.FileSystem,
+  path: Path.Path,
+  outputRoot: string,
+  name: (typeof PACKAGE_NAMES)[number]
+): Effect.Effect<void, PackInstallableCliError> =>
+  Effect.gen(function* () {
+    const packagePath = path.join(outputRoot, "packages", name, "package.json")
+    const packageJson = yield* readJson<PackageJson>(fs, packagePath)
+    const dependencies = { ...packageJson.dependencies }
+    for (const localName of PACKAGE_NAMES) {
+      const dependencyName = `@effect-desktop/${localName}`
+      if (dependencies[dependencyName] === "workspace:*") {
+        dependencies[dependencyName] = `file:../${localName}`
+      }
+    }
+    yield* writeJson(fs, packagePath, { ...packageJson, dependencies })
+  })
 
 const installPackageDependencies = (
   path: Path.Path,

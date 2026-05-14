@@ -100,27 +100,22 @@ test("runtime entry emits ready and opens declared startup windows after host re
   ])
 })
 
-test("runtime smoke mode opens a fallback window when no startup windows are declared", async () => {
+test("runtime smoke mode rejects launch when no startup windows are declared", async () => {
   const result = await runRuntimeWithFakeHost()
 
-  expect(result.exitCode).toBe(0)
-  expect(result.stderr).toBe("")
+  expect(result.exitCode).not.toBe(0)
+  expect(result.stderr).toContain("at least one startup window must be declared")
   expect(result.trailingStdoutBytes).toBe(0)
-  expect(result.methods).toEqual([
-    HOST_VERSION_METHOD,
-    HOST_PING_METHOD,
-    WINDOW_CREATE_METHOD,
-    WINDOW_DESTROY_METHOD
-  ])
+  expect(result.methods).toEqual([])
 })
 
-test("runtime normal launch opens a fallback window when no startup windows are declared", async () => {
+test("runtime normal launch rejects launch when no startup windows are declared", async () => {
   const result = await runRuntimeWithFakeHost({ windowSmokeTest: false })
 
-  expect(result.exitCode).toBe(0)
-  expect(result.stderr).toBe("")
+  expect(result.exitCode).not.toBe(0)
+  expect(result.stderr).toContain("at least one startup window must be declared")
   expect(result.trailingStdoutBytes).toBe(0)
-  expect(result.methods).toEqual([HOST_VERSION_METHOD, HOST_PING_METHOD, WINDOW_CREATE_METHOD])
+  expect(result.methods).toEqual([])
 })
 
 test("runtime entry can open startup windows from the Desktop app module", async () => {
@@ -167,7 +162,12 @@ test("runtime entry runs from a Node-targeted build", async () => {
     await runCommand("bun", ["build", "src/runtime/main.ts", "--target=node", "--outfile", outfile])
     const result = await runRuntimeWithFakeHost({
       runtimeCommand: "node",
-      runtimeArgs: [outfile]
+      runtimeArgs: [outfile],
+      startupWindows: {
+        main: {
+          title: "Node Runtime"
+        }
+      }
     })
 
     expect(result.exitCode).toBe(0)

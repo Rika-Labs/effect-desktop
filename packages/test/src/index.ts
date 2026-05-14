@@ -494,7 +494,7 @@ export const makeMockPty = (
   }).pipe(Effect.map((api) => Object.freeze({ ...api, calls: () => clonePtyCalls(calls) })))
 }
 
-export const MockPtyLive = (
+export const MockPtyLayer = (
   options: MockPtyOptions = {}
 ): Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceRegistry> =>
   Layer.effect(
@@ -506,7 +506,7 @@ export const MockPtyLive = (
   )
 
 export const MockPTY = Object.freeze({
-  layer: MockPtyLive
+  layer: MockPtyLayer
 })
 
 export interface HeadlessRuntimeLayerOptions {

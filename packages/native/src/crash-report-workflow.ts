@@ -12,7 +12,7 @@ import {
 import { PersistedQueue } from "effect/unstable/persistence"
 import { Activity, Workflow, WorkflowEngine } from "effect/unstable/workflow"
 
-import type { CrashReportUploadHandler } from "./crash-reporter.js"
+import type { CrashReporterError } from "./crash-reporter.js"
 import { CrashReporterBreadcrumbInput } from "./contracts/crash-reporter.js"
 
 export class CrashReport extends Schema.Class<CrashReport>("CrashReport")({
@@ -123,9 +123,13 @@ export interface CrashReportQueueUploadHandlerOptions {
   readonly platform?: string
 }
 
+export type CrashReportQueueUploadHandler = (
+  breadcrumbs: ReadonlyArray<CrashReporterBreadcrumbInput>
+) => Effect.Effect<void, CrashReporterError, never>
+
 export const makeCrashReportQueueUploadHandler = (
   options: CrashReportQueueUploadHandlerOptions = {}
-): Effect.Effect<CrashReportUploadHandler, never, PersistedQueue.PersistedQueueFactory> =>
+): Effect.Effect<CrashReportQueueUploadHandler, never, PersistedQueue.PersistedQueueFactory> =>
   Effect.gen(function* () {
     const queue = yield* makeCrashReportQueue
     const now = options.now === undefined ? Clock.currentTimeMillis : Effect.sync(options.now)

@@ -451,7 +451,7 @@
     {
       "name": "DesktopObservabilityModeName",
       "kind": "type",
-      "signature": "export type DesktopObservabilityModeName = | \"off\" | \"embedded-devtools\" | \"standalone-inspector\""
+      "signature": "export type DesktopObservabilityModeName = \"off\" | \"embedded-devtools\" | \"standalone-inspector\""
     },
     {
       "name": "DesktopObservabilityTransport",
@@ -1221,7 +1221,7 @@
     {
       "name": "makePty",
       "kind": "value",
-      "signature": "const makePty: (registry: ResourceRegistryApi, options?: PtyOptions) => Effect.Effect<PtyApi, HostProtocolInvalidArgumentError, never>"
+      "signature": "const makePty: (registry: ResourceRegistryApi, options: PtyOptions) => Effect.Effect<PtyApi, HostProtocolInvalidArgumentError, never>"
     },
     {
       "name": "makeRendererInspectorCollector",
@@ -1656,12 +1656,7 @@
     {
       "name": "PtyLayer",
       "kind": "value",
-      "signature": "const PtyLayer: (options?: PtyOptions) => Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceRegistry>"
-    },
-    {
-      "name": "PtyLive",
-      "kind": "value",
-      "signature": "const PtyLive: Layer.Layer<PTY, never, ResourceRegistry>"
+      "signature": "const PtyLayer: (options: PtyOptions) => Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceRegistry>"
     },
     {
       "name": "PtyOpenInput",
@@ -1676,7 +1671,7 @@
     {
       "name": "PtyOptions",
       "kind": "interface",
-      "signature": "export interface PtyOptions { readonly adapter?: PtyAdapter readonly budgets?: PtyBudgetPolicy readonly inspector?: ExecutionInspectorCollectorApi readonly gracefulShutdownMs?: number readonly permissions?: PtyPermissionPolicy readonly now?: () => number }"
+      "signature": "export interface PtyOptions { readonly adapter: PtyAdapter readonly budgets?: PtyBudgetPolicy readonly inspector?: ExecutionInspectorCollectorApi readonly gracefulShutdownMs?: number readonly permissions?: PtyPermissionPolicy readonly now?: () => number }"
     },
     {
       "name": "PtyOutputMetrics",

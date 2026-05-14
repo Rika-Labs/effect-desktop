@@ -34,7 +34,9 @@ release documentation/API snapshot coverage.
 
 `@effect-desktop/core` exports:
 
-- `PTY` / `PtyLive` / `PtyLayer` / `makePty` for typed PTY open operations.
+- `PTY` / `PtyLayer` / `makePty` for typed PTY open operations. `makePty`
+  requires an explicit platform adapter; there is no default unsupported
+  adapter.
 - `PtyApi`, `PtyHandle`, `PtyAdapter`, `PtyChild`, `PtyOptions`,
   `PtyPermissionPolicy`, `PtyBudgetPolicy`, and `PtyOutputPolicy` for runtime
   wiring and tests.
@@ -100,7 +102,7 @@ Specialized Phase 13 evidence:
 Milestone: Phase 13 - PTY
 Files changed: native-pty Rust crate, core PTY Effect service, tests, public
 export, and Phase 13 learning records.
-Public APIs added: @effect-desktop/core PTY, PtyLive, PtyLayer, makePty,
+Public APIs added: @effect-desktop/core PTY, PtyLayer, makePty,
 PtyApi, PtyHandle, PtyAdapter, PtyChild, PtyOptions, PtyPermissionPolicy,
 PtyBudgetPolicy, PtyOutputPolicy, PtyOpenOptions, PtyResizeInput,
 PtyExitStatus, and PtySignalInput; crates/native-pty Rust PTY primitive.

@@ -96,7 +96,8 @@ export const makeInspectorTransport = (
       "subscriberBuffer"
     )
     const now = options.now ?? Date.now
-    const sessionId = options.sessionId ?? `inspector-${yield* Effect.sync(() => crypto.randomUUID())}`
+    const sessionId =
+      options.sessionId ?? `inspector-${yield* Effect.sync(() => crypto.randomUUID())}`
     if (sessionId.length === 0) {
       return yield* invalid("InspectorTransport.make", "sessionId", "sessionId must not be empty")
     }
