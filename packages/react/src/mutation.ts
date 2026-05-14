@@ -1,14 +1,14 @@
 import { runFrameworkPromiseExit, type FrameworkRuntime } from "@effect-desktop/core/renderer"
-import { Cause, Effect, Exit, Layer, ManagedRuntime } from "effect"
+import { Effect, Exit, Layer, ManagedRuntime } from "effect"
+import { AsyncResult } from "effect/unstable/reactivity"
 import { useCallback, useEffect, useRef, useState } from "react"
 
-export type MutationStatus = "idle" | "running" | "success" | "failure"
+import { asyncResultFromExit, asyncResultStatusOf, runAsyncResult } from "./hooks/effect-runner.js"
+import type { DesktopAsyncStatus } from "./hooks/desktop.js"
 
-export type MutationState<A, E> =
-  | { readonly status: "idle" }
-  | { readonly status: "running" }
-  | { readonly status: "success"; readonly value: A }
-  | { readonly status: "failure"; readonly cause: Cause.Cause<E> }
+export type MutationStatus = DesktopAsyncStatus
+
+export type MutationState<A, E> = AsyncResult.AsyncResult<A, E>
 
 export type MutationRun<I> = [I] extends [void]
   ? () => void
@@ -40,7 +40,7 @@ export const useMutation = <I, A, E, R = never, ER = never>(
   makeEffect: (input: I) => Effect.Effect<A, E, R>,
   runtime: FrameworkRuntime<R, ER> = defaultRuntime as FrameworkRuntime<R, ER>
 ): MutationResult<I, A, E | ER> => {
-  const [state, setState] = useState<MutationState<A, E | ER>>({ status: "idle" })
+  const [state, setState] = useState<MutationState<A, E | ER>>(AsyncResult.initial<A, E | ER>())
   const makeEffectRef = useRef(makeEffect)
   const mountedRef = useRef(true)
   const runIdRef = useRef(0)
@@ -58,20 +58,20 @@ export const useMutation = <I, A, E, R = never, ER = never>(
     async (input?: I): Promise<Exit.Exit<A, E | ER>> => {
       const runId = runIdRef.current + 1
       runIdRef.current = runId
-      setState({ status: "running" })
+      setState(AsyncResult.initial<A, E | ER>(true))
 
-      const exit = await runFrameworkPromiseExit(runtime, makeEffectRef.current(input as I))
+      const resultExit = await runFrameworkPromiseExit(
+        runtime,
+        runAsyncResult(makeEffectRef.current(input as I))
+      )
+      const stateResult = asyncResultFromExit(resultExit)
       if (!mountedRef.current || runIdRef.current !== runId) {
-        return exit
+        return exitFromAsyncResult(stateResult)
       }
 
-      if (Exit.isSuccess(exit)) {
-        setState({ status: "success", value: exit.value })
-      } else {
-        setState({ status: "failure", cause: exit.cause })
-      }
+      setState(stateResult)
 
-      return exit
+      return exitFromAsyncResult(stateResult)
     },
     [runtime]
   )
@@ -89,18 +89,30 @@ export const useMutation = <I, A, E, R = never, ER = never>(
 
   const reset = useCallback((): void => {
     runIdRef.current += 1
-    setState({ status: "idle" })
+    setState(AsyncResult.initial<A, E | ER>())
   }, [])
+
+  const status = asyncResultStatusOf(state)
 
   return {
     state,
-    status: state.status,
-    isIdle: state.status === "idle",
-    isRunning: state.status === "running",
-    isSuccess: state.status === "success",
-    isFailure: state.status === "failure",
+    status,
+    isIdle: status === "idle",
+    isRunning: status === "running",
+    isSuccess: status === "success",
+    isFailure: status === "failure" || status === "unavailable",
     run,
     runPromise,
     reset
   }
+}
+
+const exitFromAsyncResult = <A, E>(result: AsyncResult.AsyncResult<A, E>): Exit.Exit<A, E> => {
+  if (AsyncResult.isSuccess(result)) {
+    return Exit.succeed(result.value)
+  }
+  if (AsyncResult.isFailure(result)) {
+    return Exit.failCause(result.cause)
+  }
+  return Exit.die("mutation completed without a result")
 }

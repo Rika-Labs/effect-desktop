@@ -10,6 +10,8 @@ import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Stream, Subscriptio
 import { AsyncResult } from "effect/unstable/reactivity"
 import { useEffect, useRef, useState, type DependencyList } from "react"
 
+import { asyncResultFromExit, runAsyncResult } from "./effect-runner.js"
+
 export type StreamStatus = "idle" | "running" | "closed" | "failure"
 
 export interface StreamState<A, E> {
@@ -119,13 +121,9 @@ export const useEffectResult = <A, E, R = never, ER = never>(
       let active = true
       setResult(AsyncResult.initial<A, E | ER>(true))
 
-      const interrupt = runFrameworkEffect(runtime, effectRef.current, (exit) => {
+      const interrupt = runFrameworkEffect(runtime, runAsyncResult(effectRef.current), (exit) => {
         if (!active) return
-        if (Exit.isSuccess(exit)) {
-          setResult(AsyncResult.success(exit.value))
-        } else {
-          setResult(AsyncResult.failure(exit.cause))
-        }
+        setResult(asyncResultFromExit(exit))
       })
 
       return () => {
