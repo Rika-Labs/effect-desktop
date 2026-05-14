@@ -28,7 +28,7 @@ const TEXT_PLAIN_CONTENT_TYPE: &str = "text/plain; charset=utf-8";
 const XML_CONTENT_TYPE: &str = "application/xml; charset=utf-8";
 const SOURCE_MAP_CONTENT_TYPE: &str = "application/json; charset=utf-8";
 const OCTET_STREAM_CONTENT_TYPE: &str = "application/octet-stream";
-const DEFAULT_SOURCE_RENDERER_DIST: &[&str] = &["apps", "playground", "dist"];
+const DEFAULT_SOURCE_RENDERER_DIST: &[&str] = &["apps", "inspector", "dist"];
 
 pub(crate) fn resolve(path: &str) -> Option<Asset> {
     let normalized_path = normalize_path(path)?;
@@ -169,7 +169,10 @@ mod tests {
 
     #[test]
     fn root_resolves_to_source_index_html() {
-        let asset = resolve("/").expect("root should resolve");
+        let root = temp_root("effect-desktop-host-assets-root");
+        let dist = root.join("dist");
+        write_asset_fixture(&dist);
+        let asset = resolve_from_root(&dist, "/").expect("root should resolve");
 
         assert_eq!(asset.content_type, HTML_CONTENT_TYPE);
         let lower = asset.bytes.to_ascii_lowercase();
@@ -180,19 +183,29 @@ mod tests {
                 .any(|window| window == b"<script"),
             "source renderer index should carry at least one script element"
         );
+
+        remove_dir_all(root).expect("temp root should remove");
     }
 
     #[test]
     fn index_resolves_to_source_index_html() {
-        let root = resolve("/").expect("root should resolve");
-        let index = resolve("/index.html").expect("index should resolve");
+        let root = temp_root("effect-desktop-host-assets-index");
+        let dist = root.join("dist");
+        write_asset_fixture(&dist);
+        let root_asset = resolve_from_root(&dist, "/").expect("root should resolve");
+        let index = resolve_from_root(&dist, "/index.html").expect("index should resolve");
 
-        assert_eq!(root, index);
+        assert_eq!(root_asset, index);
+
+        remove_dir_all(root).expect("temp root should remove");
     }
 
     #[test]
     fn sibling_assets_resolve_with_mime_types() {
-        let index = resolve("/").expect("root should resolve");
+        let root = temp_root("effect-desktop-host-assets-siblings");
+        let dist = root.join("dist");
+        write_asset_fixture(&dist);
+        let index = resolve_from_root(&dist, "/").expect("root should resolve");
         let index_text = std::str::from_utf8(&index.bytes).expect("index should be utf8");
 
         let css_path = first_attribute_with_suffix(index_text, "href=\"", ".css")
@@ -200,13 +213,17 @@ mod tests {
         let js_path = first_attribute_with_suffix(index_text, "src=\"", ".js")
             .expect("index should reference a script");
 
-        let css = resolve(app_asset_path(css_path)).expect("style asset should resolve");
-        let js = resolve(app_asset_path(js_path)).expect("script asset should resolve");
+        let css =
+            resolve_from_root(&dist, app_asset_path(css_path)).expect("style asset should resolve");
+        let js =
+            resolve_from_root(&dist, app_asset_path(js_path)).expect("script asset should resolve");
 
         assert_eq!(css.content_type, CSS_CONTENT_TYPE);
         assert!(!css.bytes.is_empty(), "css asset should have content");
         assert_eq!(js.content_type, JAVASCRIPT_CONTENT_TYPE);
         assert!(!js.bytes.is_empty(), "js asset should have content");
+
+        remove_dir_all(root).expect("temp root should remove");
     }
 
     #[test]
@@ -277,13 +294,13 @@ mod tests {
     }
 
     #[test]
-    fn source_renderer_root_uses_playground_dist_without_embedding() {
+    fn source_renderer_root_uses_inspector_dist_without_embedding() {
         let root = temp_root("effect-desktop-host-assets-source");
-        let dist = root.join("apps").join("playground").join("dist");
+        let dist = root.join("apps").join("inspector").join("dist");
         create_dir_all(&dist).expect("source dist should be created");
 
         assert_eq!(
-            source_renderer_asset_root([Some(root.join("apps").join("playground"))]),
+            source_renderer_asset_root([Some(root.join("apps").join("inspector"))]),
             Some(dist)
         );
 
@@ -316,5 +333,16 @@ mod tests {
             .expect("system time should be after epoch")
             .as_nanos();
         std::env::temp_dir().join(format!("{prefix}-{nanos}"))
+    }
+
+    fn write_asset_fixture(root: &Path) {
+        create_dir_all(root).expect("asset root should be created");
+        write(
+            root.join("index.html"),
+            b"<!doctype html><html><head><link rel=\"stylesheet\" href=\"/style.css\"></head><body><script src=\"/app.js\"></script></body></html>",
+        )
+        .expect("index fixture should write");
+        write(root.join("style.css"), b"body{}").expect("style fixture should write");
+        write(root.join("app.js"), b"console.log('ok')").expect("script fixture should write");
     }
 }

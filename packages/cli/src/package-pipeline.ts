@@ -993,7 +993,7 @@ const resolveArtifactKinds = (
       artifact: requested,
       target,
       message: `artifact ${requested} is not part of the ${target} package set`,
-      remediation: "Use the default artifact set from docs/SPEC.md §23.2."
+      remediation: "Use the default artifact set from engineering/SPEC.md §23.2."
     })
   )
 }

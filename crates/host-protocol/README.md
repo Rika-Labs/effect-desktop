@@ -4,7 +4,7 @@
 
 ## Purpose
 
-- Define the canonical host protocol envelope from `docs/SPEC.md` §9.3.
+- Define the canonical host protocol envelope from `engineering/SPEC.md` §9.3.
 - Define the closed Appendix L host-wire error tag/details shape.
 - Define the Phase 3 required host method payloads for handshake and window
   create/destroy calls.
@@ -15,7 +15,7 @@
 - `serde` owns Rust encode/decode derives for the wire contract.
 - `serde_json` owns JSON `payload`/fixture values at the envelope boundary.
 
-Both dependencies are declared in the workspace root per `docs/SPEC.md` §5.6.
+Both dependencies are declared in the workspace root per `engineering/SPEC.md` §5.6.
 
 ## Non-goals
 

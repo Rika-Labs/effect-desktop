@@ -19,7 +19,7 @@ fn verifies_manifest_signed_by_current_key() {
     )
     .expect("manifest should verify");
 
-    assert_eq!(verified.app_id, "dev.effect-desktop.playground");
+    assert_eq!(verified.app_id, "dev.effect-desktop.inspector");
     assert_eq!(verified.version, "1.2.3");
     assert_eq!(verified.key_version, 5);
 }
@@ -43,7 +43,7 @@ fn manifest_validation_rejects_empty_app_id_invalid_version_and_bad_timestamp() 
             "version",
             json!({
                 "schemaVersion": 1,
-                "appId": "dev.effect-desktop.playground",
+                "appId": "dev.effect-desktop.inspector",
                 "version": "not-a-version",
                 "channel": "stable",
                 "keyVersion": 5,
@@ -55,7 +55,7 @@ fn manifest_validation_rejects_empty_app_id_invalid_version_and_bad_timestamp() 
             "publishedAt",
             json!({
                 "schemaVersion": 1,
-                "appId": "dev.effect-desktop.playground",
+                "appId": "dev.effect-desktop.inspector",
                 "version": "1.2.3",
                 "channel": "stable",
                 "keyVersion": 5,
@@ -105,7 +105,7 @@ fn canonical_bytes_are_stable_for_reordered_fields() {
             "kind": "dmg",
             "platform": "macos-arm64"
         }],
-        "appId": "dev.effect-desktop.playground"
+        "appId": "dev.effect-desktop.inspector"
     })
     .to_string();
 
@@ -150,7 +150,7 @@ fn rejects_tampered_manifest_and_key_outside_rotation_window() {
 fn unknown_signed_shape_fails_closed() {
     let signed = sign_value(json!({
         "schemaVersion": 1,
-        "appId": "dev.effect-desktop.playground",
+        "appId": "dev.effect-desktop.inspector",
         "version": "1.2.3",
         "channel": "stable",
         "keyVersion": 5,
@@ -436,7 +436,7 @@ struct SignedManifest {
 fn signed_manifest(key_version: u32, version: &str) -> SignedManifest {
     sign_value(json!({
         "schemaVersion": 1,
-        "appId": "dev.effect-desktop.playground",
+        "appId": "dev.effect-desktop.inspector",
         "version": version,
         "channel": "stable",
         "keyVersion": key_version,
@@ -483,7 +483,7 @@ fn update_policy(
     min_version: Option<&str>,
 ) -> UpdatePolicy {
     UpdatePolicy {
-        app_id: "dev.effect-desktop.playground".to_string(),
+        app_id: "dev.effect-desktop.inspector".to_string(),
         channel,
         platform: UpdatePlatform::MacosArm64,
         installed_version: installed_version.to_string(),
@@ -499,7 +499,7 @@ fn verified_manifest(
     max_version: Option<&str>,
 ) -> VerifiedManifest {
     VerifiedManifest {
-        app_id: "dev.effect-desktop.playground".to_string(),
+        app_id: "dev.effect-desktop.inspector".to_string(),
         version: version.to_string(),
         channel,
         key_version: 5,

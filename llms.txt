@@ -1,0 +1,131 @@
+# Effect Desktop
+
+> Effect Desktop is a desktop application framework with three process boundaries — a Rust host that owns the native shell, a Bun runtime that owns application services, and a renderer (React, Solid, Vue, or your own) that owns UI. Every privileged operation crosses a typed Effect service. Permissions are deny-by-default. Resources are scoped. Failures are tagged.
+
+The framework is **pre-v1**. Workspace packages are private at version `0.0.0` and not yet published to npm; consumers develop against this repository directly. APIs are stable in shape but not in version.
+
+The documentation follows the [Diátaxis](https://diataxis.fr/) framework: tutorials (learning), how-to guides (tasks), reference (lookup), explanation (understanding).
+
+## Start here
+
+- [Install](docs/start/install.md): Toolchain, requirements, verify the workspace
+- [Build your first app](docs/start/first-app.md): Five-minute zero-to-running walkthrough
+- [Where to go next](docs/start/next-steps.md): Pick a tutorial, recipe, reference page, or essay
+
+## Tutorials
+
+- [Build a notes app](docs/tutorials/01-build-a-notes-app.md): Settings, RPC, React, end-to-end
+- [Add a second window](docs/tutorials/02-add-a-second-window.md): Multi-window state and restoration
+- [Stream from the runtime](docs/tutorials/03-stream-from-the-runtime.md): Long-running jobs with cancellation
+- [Package, sign, and ship](docs/tutorials/04-package-and-sign.md): Build pipeline through Apple notarization
+
+## How-to guides
+
+- [Define an RPC surface](docs/how-to/define-an-rpc-surface.md)
+- [Add a window](docs/how-to/add-a-window.md)
+- [Persist settings](docs/how-to/persist-settings.md)
+- [Store secrets safely](docs/how-to/store-secrets.md)
+- [Declare a permission](docs/how-to/declare-a-permission.md)
+- [Handle an approval prompt](docs/how-to/handle-an-approval-prompt.md)
+- [Spawn a worker](docs/how-to/spawn-a-worker.md)
+- [Run a child process](docs/how-to/run-a-child-process.md)
+- [Open a PTY](docs/how-to/open-a-pty.md)
+- [Schedule background jobs](docs/how-to/schedule-background-jobs.md)
+- [Read and write files](docs/how-to/read-write-files.md)
+- [Use SQLite](docs/how-to/use-sqlite.md)
+- [Integrate native services](docs/how-to/integrate-native-services.md)
+- [Add telemetry and logs](docs/how-to/add-telemetry-and-logs.md)
+- [Write a test with layers](docs/how-to/write-a-test-with-layers.md)
+- [Inject a mock host and bridge](docs/how-to/inject-mock-host-and-bridge.md)
+- [Package for macOS](docs/how-to/package-for-macos.md)
+- [Sign and notarize](docs/how-to/sign-and-notarize.md)
+- [Ship an update](docs/how-to/ship-an-update.md)
+- [Diagnose with doctor](docs/how-to/diagnose-with-doctor.md)
+
+## Reference — top-level
+
+- [Desktop API](docs/reference/desktop-api.md): `make`, `manifest`, `app`, `window`, `Rpc.surface`
+- [Desktop.Rpc surfaces](docs/reference/rpc-surface.md): `surface`, `supportedGroup`, generated clients
+- [Configuration](docs/reference/config.md): `defineDesktopConfig`, schema, production checks
+- [CLI commands](docs/reference/cli.md): every subcommand and report
+- [Errors catalog](docs/reference/errors.md): every typed failure
+- [Devtools](docs/reference/devtools.md): inspector shell and panels
+- [Platform browser](docs/reference/platform-browser.md): IndexedDB, SQLite WASM, PGlite
+
+## Reference — runtime services (`@effect-desktop/core`)
+
+- [PermissionRegistry](docs/reference/services/permission-registry.md)
+- [ApprovalBroker](docs/reference/services/approval-broker.md)
+- [AuditEvents](docs/reference/services/audit-events.md)
+- [ResourceRegistry](docs/reference/services/resource-registry.md)
+- [Filesystem](docs/reference/services/filesystem.md)
+- [Process](docs/reference/services/process.md)
+- [PTY](docs/reference/services/pty.md)
+- [Worker (and Job)](docs/reference/services/worker.md)
+- [Sidecar](docs/reference/services/sidecar.md)
+- [Command](docs/reference/services/command.md)
+- [SqlClient](docs/reference/services/sqlite.md)
+- [Settings](docs/reference/services/settings.md)
+- [Secrets](docs/reference/services/secrets.md)
+- [Telemetry](docs/reference/services/telemetry.md)
+- [Transport](docs/reference/services/transport.md)
+- [WindowState](docs/reference/services/window-state.md)
+- [ProviderRegistry](docs/reference/services/provider-registry.md)
+
+## Reference — native RPC groups (`@effect-desktop/native`)
+
+- [App](docs/reference/native/app.md), [Clipboard](docs/reference/native/clipboard.md), [ContextMenu](docs/reference/native/context-menu.md), [CrashReporter](docs/reference/native/crash-reporter.md), [Dialog](docs/reference/native/dialog.md)
+- [Dock](docs/reference/native/dock.md), [GlobalShortcut](docs/reference/native/global-shortcut.md), [Menu](docs/reference/native/menu.md), [Notification](docs/reference/native/notification.md), [Path](docs/reference/native/path.md)
+- [PowerMonitor](docs/reference/native/power-monitor.md), [Protocol](docs/reference/native/protocol.md), [SafeStorage](docs/reference/native/safe-storage.md), [Screen](docs/reference/native/screen.md), [Shell](docs/reference/native/shell.md)
+- [SystemAppearance](docs/reference/native/system-appearance.md), [Tray](docs/reference/native/tray.md), [Updater](docs/reference/native/updater.md), [WebView](docs/reference/native/webview.md), [Window](docs/reference/native/window.md)
+
+## Reference — React hooks (`@effect-desktop/react`)
+
+- [Provider and context](docs/reference/react/provider-and-context.md)
+- [Mutations](docs/reference/react/mutations.md)
+- [Queries](docs/reference/react/queries.md)
+- [Streams](docs/reference/react/streams.md)
+- [Windows](docs/reference/react/windows.md)
+- [Permissions](docs/reference/react/permissions.md)
+- [Atoms](docs/reference/react/atoms.md)
+- [Native hooks](docs/reference/react/native-hooks.md)
+
+## Reference — bridge protocol (`@effect-desktop/bridge`)
+
+- [Host protocol](docs/reference/bridge/host-protocol.md)
+- [Envelopes and framing](docs/reference/bridge/envelopes-and-framing.md)
+- [Streams and cancellation](docs/reference/bridge/streams-and-cancellation.md)
+- [Redaction](docs/reference/bridge/redaction.md)
+
+## Reference — test layers (`@effect-desktop/test`)
+
+- [HeadlessRuntime](docs/reference/test/headless-runtime.md)
+- [Mock host and bridge](docs/reference/test/mock-host-and-bridge.md)
+- [Memory filesystem](docs/reference/test/memory-filesystem.md)
+- [Mock process and PTY](docs/reference/test/mock-process-and-pty.md)
+- [Native test layers](docs/reference/test/native-test-layers.md)
+
+## Explanation
+
+- [Architecture overview](docs/explanation/architecture.md): three process roles, one envelope
+- [The boundary rule](docs/explanation/boundary-rule.md): why renderers never get raw native authority
+- [Permissions model](docs/explanation/permissions-model.md): deny-by-default, decision order, audit
+- [Layer-first design](docs/explanation/layer-first-design.md): how public services compose
+- [RPC surface vs. mapped surface](docs/explanation/rpc-surface-vs-mapped.md): when to use each
+- [Resource lifecycle](docs/explanation/resource-lifecycle.md): scopes, ownership, cleanup
+- [Audit and redaction](docs/explanation/audit-and-redaction.md): every privileged call observable
+- [Testability](docs/explanation/testability.md): substitutable layers
+- [Effect-first philosophy](docs/explanation/effect-first-philosophy.md): why thin wrappers are debt
+
+## Contributing
+
+- [Updating the docs](docs/contributing/docs.md)
+- [Architecture-debt sweep](docs/contributing/architecture-debt.md)
+- [`AGENTS.md`](AGENTS.md): repo-wide rules
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): contributor workflow
+
+## Optional
+
+- [`engineering/SPEC.md`](engineering/SPEC.md): full v1.0.0 build specification (source of truth for status, milestones, verification matrix)
+- [`engineering/architecture/layer-first-contract.md`](engineering/architecture/layer-first-contract.md): the contract every public capability follows
+- [`apps/inspector/`](apps/inspector): the only first-party app, useful as a reference scaffold

@@ -207,7 +207,7 @@ test("framework boundary errors carry public diagnostic fields", async () => {
     details: { framework: "react" }
   })
   expect(error.remediation).toContain("react")
-  expect(error.docsUrl).toContain("docs/SPEC.md")
+  expect(error.docsUrl).toContain("docs/typed-apis.md")
 })
 
 test("Desktop.make returns metadata descriptor and Desktop.app returns the runtime Layer", async () => {

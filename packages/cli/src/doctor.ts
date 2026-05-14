@@ -148,7 +148,8 @@ interface AppConfig {
   }
 }
 
-const DOCS_URL = "https://github.com/Rika-Labs/effect-desktop/blob/main/docs/SPEC.md"
+const DOCS_URL =
+  "https://github.com/Rika-Labs/effect-desktop/blob/main/docs/troubleshooting.md"
 const MAX_PROTOCOL_FRAME_BYTES = 16 * 1024 * 1024
 const MAX_PROTOCOL_CONCURRENT_REQUESTS_PER_WINDOW = 4096
 const MAX_PROTOCOL_CONCURRENT_STREAMS_PER_WINDOW = 1024

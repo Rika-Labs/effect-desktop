@@ -73,10 +73,10 @@ export type ReleaseGateError =
 const CHECKLIST_PATH = "release/checklist.json"
 const CI_WORKFLOW_PATH = ".github/workflows/ci.yml"
 const RELEASE_WORKFLOW_PATH = ".github/workflows/release.yml"
-const KEY_MANAGEMENT_PATH = "docs/security/key-management.md"
-const RELEASE_SETTINGS_PATH = "docs/security/release-settings.md"
-const EXEMPTIONS_PATH = "docs/security/exemptions"
-const SPEC_SOURCE = "docs/SPEC.md §25.4"
+const KEY_MANAGEMENT_PATH = "engineering/security/key-management.md"
+const RELEASE_SETTINGS_PATH = "engineering/security/release-settings.md"
+const EXEMPTIONS_PATH = "engineering/security/exemptions"
+const SPEC_SOURCE = "engineering/SPEC.md §25.4"
 const StrictParseOptions = { errors: "all", onExcessProperty: "error" } as const
 
 const REQUIRED_GATES: ReadonlyMap<string, ReleaseGateEvidenceKind> = new Map([
@@ -92,7 +92,7 @@ const REQUIRED_GATES: ReadonlyMap<string, ReleaseGateEvidenceKind> = new Map([
 
 const RELEASE_WORKFLOW_TOKENS: ReadonlyMap<string, readonly string[]> = new Map([
   ["spdx-sbom", ["anchore/sbom-action", "format: spdx-json", "sbom-artifacts", "sbom-path"]],
-  ["cvss-scan", ["anchore/scan-action", "severity-cutoff: high", "docs/security/exemptions"]],
+  ["cvss-scan", ["anchore/scan-action", "severity-cutoff: high", "engineering/security/exemptions"]],
   ["reproducible-build", ["bun packages/cli/src/bin.ts check --repro"]],
   [
     "slsa-provenance",
@@ -116,7 +116,7 @@ const RELEASE_GATE_EVIDENCE: ReadonlyMap<string, ReadonlySet<string>> = new Map(
     "cvss-scan",
     new Set([
       ".github/workflows/release.yml#Scan release SBOM for high vulnerabilities",
-      "docs/security/release-settings.md#docs/security/exemptions"
+      "engineering/security/release-settings.md#engineering/security/exemptions"
     ])
   ],
   ["reproducible-build", new Set([".github/workflows/release.yml#Reproducible build gate"])],
@@ -124,26 +124,26 @@ const RELEASE_GATE_EVIDENCE: ReadonlyMap<string, ReadonlySet<string>> = new Map(
   [
     "hsm-signing",
     new Set([
-      "docs/security/key-management.md#HSM-backed",
-      "docs/security/key-management.md#runner-local keys are forbidden"
+      "engineering/security/key-management.md#HSM-backed",
+      "engineering/security/key-management.md#runner-local keys are forbidden"
     ])
   ],
   [
     "secret-scanning",
-    new Set(["docs/security/release-settings.md#Secret scanning is enabled for every branch"])
+    new Set(["engineering/security/release-settings.md#Secret scanning is enabled for every branch"])
   ],
   [
     "ephemeral-runners",
     new Set([
-      "docs/security/release-settings.md#GitHub-hosted runners",
-      "docs/security/release-settings.md#persistent self-hosted runners are forbidden"
+      "engineering/security/release-settings.md#GitHub-hosted runners",
+      "engineering/security/release-settings.md#persistent self-hosted runners are forbidden"
     ])
   ],
   [
     "branch-protection",
     new Set([
-      "docs/security/release-settings.md#main requires at least one review",
-      "docs/security/release-settings.md#release branches require at least two reviews"
+      "engineering/security/release-settings.md#main requires at least one review",
+      "engineering/security/release-settings.md#release branches require at least two reviews"
     ])
   ]
 ])

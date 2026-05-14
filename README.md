@@ -1,6 +1,6 @@
 # Effect Desktop
 
-Effect Desktop is a pre-v1 desktop application framework for building local-first apps with a Rust host, a Bun TypeScript runtime, React renderers, and Effect services at every privileged boundary.
+Build local-first desktop apps with **Rust for the shell**, **Bun for the runtime**, **React (or your framework) for the UI**, and **Effect for correctness**.
 
 ```txt
 Rust owns the shell.
@@ -9,138 +9,110 @@ React owns the UI.
 Effect owns correctness.
 ```
 
-The framework specification is the source of truth: [docs/SPEC.md](docs/SPEC.md).
-Layer-first public capability design is governed by [docs/architecture/layer-first-contract.md](docs/architecture/layer-first-contract.md).
+## What you get
+
+- A **Rust host** that owns the native shell, WebViews, app-protocol routing, and OS adapters.
+- A **Bun runtime** that owns application services, RPC handlers, jobs, storage, and telemetry.
+- A **renderer adapter** for React (Solid, Vue, Next, Astro also available) that consumes typed RPC clients.
+- **Permissions are deny-by-default.** Every privileged call crosses `PermissionRegistry`, emits an audit event, and has a deterministic test double.
+- **Failures are tagged values**, not thrown exceptions. The renderer narrows on `_tag`.
+- **Resources are scoped.** Windows, watchers, processes, PTYs, workers, jobs — all close with their owner scope.
+- **A first-party CLI** for build, package, sign, notarize, publish, and reproducibility checks.
+- **A headless test runtime** so you can exercise handlers without a real OS.
+
+The renderer never receives raw native authority. Privileged work crosses named services, typed contracts, permissions, and resource lifecycles — the [boundary rule](docs/explanation/boundary-rule.md).
 
 ## Status
 
-Effect Desktop is not published to npm yet.
+Effect Desktop is **pre-v1**. Workspace packages are `private: true` at version `0.0.0` and not yet published to npm. Develop against this repository directly.
 
-The package manifests in this repository are still `private: true` and `version: 0.0.0`. The intended npm flow is implemented in `packages/create-effect-desktop`, but it cannot produce a standalone installable app until the `create-effect-desktop` package and the `@effect-desktop/*` packages are published.
+Public APIs are stable in shape but not in version. Anything described in `docs/` is grounded in current source — if you can read it, you can grep it.
 
-Use this repository today if you want to inspect or test the framework. Treat public APIs as unstable until v1.0.0.
-
-## Quick Start
-
-### Today, from this repository
-
-Requirements:
-
-- Bun `1.3.13`, pinned in [package.json](package.json).
-- Rust, pinned by [rust-toolchain.toml](rust-toolchain.toml).
-
-Install the workspace:
+## Get started
 
 ```bash
+git clone https://github.com/Rika-Labs/effect-desktop.git
+cd effect-desktop
 bun install --frozen-lockfile
+bun run desktop --help
 ```
 
-Run the safest starter template:
+Then either:
 
-```bash
-cd templates/basic-react-tailwind
-bun run dev
-```
-
-Run the main repository checks while developing:
-
-```bash
-bun run check
-bun run typecheck
-bun run lint
-bun test
-cargo check --workspace
-cargo test --workspace
-```
-
-The full phase-completion gate lives in [AGENTS.md](AGENTS.md).
-
-### From npm, once published
-
-This is the intended user-facing flow after the packages are published:
-
-```bash
-bun create effect-desktop my-app
-cd my-app
-bun install
-bun run dev
-```
-
-The scaffold command supports:
-
-```bash
-bun create effect-desktop my-app --template basic-react-tailwind
-bun create effect-desktop my-app --template todo-sqlite --renderer-storage sqlite-wasm
-```
-
-Supported templates are `basic-react-tailwind`, `todo-sqlite`, and `multi-window`. Supported renderer storage adapters are `none`, `indexeddb`, `sqlite-wasm`, and `pglite`.
-
-## What You Get
-
-- A Rust host for windows, WebViews, app protocol handling, and native platform adapters.
-- A Bun runtime for TypeScript application services.
-- Typed bridge contracts between renderer code and runtime services.
-- Effect services, schemas, layers, resources, streams, and typed failures around native authority.
-- A Layer-first architecture where live, client, and test implementations can satisfy the same service requirement.
-- Generated RPC surfaces through `Desktop.Rpc.surface(...)`, so one Effect `RpcGroup` can produce server, client, test, schema-doc, and contract-law artifacts.
-- React hooks and providers for renderer code.
-- CLI slices for build, package, sign, notarize, publish, doctor, and release checks.
-
-The renderer does not receive raw native authority. Privileged work crosses named services, typed contracts, permissions, and resource lifecycles.
-
-The current generated native proofs are `ScreenSurface` and the Window supported-client slice. `ScreenRpcs` and `WindowRpcs` remain canonical Effect `RpcGroup` descriptors, while generated client layers expose only the methods that are host-backed today.
-
-## Templates
-
-| Template               | Use it for                                                  | Current state                            |
-| ---------------------- | ----------------------------------------------------------- | ---------------------------------------- |
-| `basic-react-tailwind` | First app, React 19, Tailwind 4, Vite, one window           | Best starting point                      |
-| `todo-sqlite`          | Bridge-crossing todo flow and storage-oriented verification | Active first-party verification material |
-| `multi-window`         | Multi-window and cluster coordination shape                 | Reserved until cluster support lands     |
-
-Inside this monorepo, templates use `workspace:*` dependencies so framework and template changes stay atomic. Generated apps will use published package versions once npm publication is enabled.
-
-## CLI
-
-The current CLI package is [packages/cli](packages/cli). Its implemented commands are:
-
-```bash
-bun run desktop doctor
-bun run desktop build
-bun run desktop package
-bun run desktop sign
-bun run desktop notarize
-bun run desktop publish
-bun run desktop check --production
-```
-
-There is no `desktop dev` command today. Template development currently runs through Vite with `bun run dev`.
-
-## Repository Map
-
-| Path                                                             | Purpose                                                   |
-| ---------------------------------------------------------------- | --------------------------------------------------------- |
-| [crates/host](crates/host)                                       | Rust native host and WebView shell                        |
-| [packages/bridge](packages/bridge)                               | Typed contracts, clients, handlers, events, and resources |
-| [packages/core](packages/core)                                   | Runtime services and public framework entry point         |
-| [packages/native](packages/native)                               | TypeScript-facing native service definitions              |
-| [packages/react](packages/react)                                 | React provider and hooks                                  |
-| [packages/cli](packages/cli)                                     | Build, package, release, doctor, and validation commands  |
-| [packages/create-effect-desktop](packages/create-effect-desktop) | Future `bun create effect-desktop` scaffolder             |
-| [templates/basic-react-tailwind](templates/basic-react-tailwind) | Safest first-party starter template                       |
-| [docs/SPEC.md](docs/SPEC.md)                                     | Normative framework specification                         |
+- Read [Install](docs/start/install.md) → [Build your first app in 5 minutes](docs/start/first-app.md), or
+- Run the inspector: `cd apps/inspector && bun run dev`.
 
 ## Documentation
 
-- [docs/SPEC.md](docs/SPEC.md) defines the framework behavior and milestone order.
-- [docs/user/typed-apis.md](docs/user/typed-apis.md) explains the `RpcGroup` and generated surface model.
-- [docs/user/native-services.md](docs/user/native-services.md) summarizes the current native service surfaces.
-- [docs/user/windows.md](docs/user/windows.md) documents the current Window contract and support metadata.
-- Package READMEs describe implemented package surfaces.
-- Milestone reports under [docs/milestones](docs/milestones) record completed phase work.
-- [CONTRIBUTING.md](CONTRIBUTING.md) describes contribution expectations.
-- [SECURITY.md](SECURITY.md) describes private security reporting.
+The docs are organized as **[Diátaxis](https://diataxis.fr/)** — four content modes for four reader needs:
+
+|                       | Practical                                                  | Theoretical                                                       |
+| --------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------- |
+| **Learning** (study)  | [Tutorials →](docs/tutorials/) — guided walkthroughs        | [Explanation →](docs/explanation/) — why the framework looks like this |
+| **Working** (apply)   | [How-to guides →](docs/how-to/) — recipes for specific tasks | [Reference →](docs/reference/) — every public symbol               |
+
+The [docs landing page](docs/README.md) is the full index. For LLM consumption, see [`llms.txt`](llms.txt).
+
+## Run the framework's own checks
+
+```bash
+bun run check       # Ultracite (oxlint + oxfmt)
+bun run typecheck   # tsc across all packages
+bun test            # Bun test runner
+cargo check --workspace
+```
+
+If any of those fail on a clean clone, file an issue — it is not your machine.
+
+## Repository map
+
+| Path | Purpose |
+| --- | --- |
+| [`docs/`](docs) | External documentation (Diátaxis-organized). |
+| [`engineering/`](engineering) | Internal specifications, ADRs, plans, run logs, release evidence, roadmap records. |
+| [`crates/host/`](crates/host) | Rust native host and WebView shell. |
+| [`crates/host-protocol/`](crates/host-protocol) | Wire protocol shared with the runtime. |
+| [`crates/native-pty/`](crates/native-pty) | PTY adapter. |
+| [`crates/native-updater/`](crates/native-updater) | Updater adapter. |
+| [`packages/core/`](packages/core) | Runtime services, public framework entry. |
+| [`packages/native/`](packages/native) | Native capability service definitions and RPC surfaces. |
+| [`packages/bridge/`](packages/bridge) | Host protocol, framing, RPC helpers, redaction. |
+| [`packages/react/`](packages/react) | React provider and hooks. |
+| [`packages/solid/`](packages/solid), [`vue/`](packages/vue), [`next/`](packages/next), [`astro/`](packages/astro), [`vite/`](packages/vite) | Framework adapters. |
+| [`packages/platform-browser/`](packages/platform-browser) | Renderer-side IndexedDB, SQLite WASM, PGlite. |
+| [`packages/cli/`](packages/cli) | Build, package, release, doctor commands. |
+| [`packages/config/`](packages/config) | Configuration schema and production checks. |
+| [`packages/test/`](packages/test) | Test layers and headless harnesses. |
+| [`packages/devtools/`](packages/devtools) | Inspector shell and panels. |
+| [`apps/inspector/`](apps/inspector) | Vite + React inspector for live and recorded sessions. |
+
+## Mental model in one diagram
+
+```mermaid
+flowchart LR
+  subgraph host[Rust host]
+    H1[Native windows & WebViews]
+    H2[OS adapters]
+  end
+  subgraph runtime[Bun runtime]
+    R1[Effect services]
+    R2[RPC handlers]
+    R3[Permissions, resources, audit]
+  end
+  subgraph renderer[Renderer]
+    UI1[React / Solid / Vue]
+    UI2[Generated typed clients]
+  end
+  renderer -- "framed envelope" --> runtime
+  runtime -- "host protocol" --> host
+```
+
+Every privileged operation crosses a typed Effect service. Three roles, one envelope between each pair, total observability.
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`AGENTS.md`](AGENTS.md). The architecture-debt sweep is part of every contribution; the [contributing docs](docs/contributing/) explain what that means in practice.
 
 ## License
 
-Effect Desktop is provided by Rika Labs, LLC under either the MIT license or the Apache License 2.0, at your option. See [LICENSE](LICENSE), [LICENSE-MIT](LICENSE-MIT), and [LICENSE-APACHE](LICENSE-APACHE).
+Effect Desktop is provided by Rika Labs, LLC under either the MIT license or the Apache License 2.0, at your option. See [`LICENSE`](LICENSE), [`LICENSE-MIT`](LICENSE-MIT), and [`LICENSE-APACHE`](LICENSE-APACHE).

@@ -1,6 +1,6 @@
 # @effect-desktop/cli
 
-> **Status:** Incremental implementation. The check, build, package, sign, notarize, publish, release, and doctor commands are active. See `docs/SPEC.md`.
+> **Status:** Incremental implementation. The check, build, package, sign, notarize, publish, release, and doctor commands are active. See `engineering/SPEC.md`.
 
 ## Purpose
 
@@ -20,7 +20,7 @@ Developer CLI for validation, packaging, and release: `check`, `build`, `package
 
 ## Non-goals
 
-See `docs/SPEC.md` for the package's normative non-goals.
+See `engineering/SPEC.md` for the package's normative non-goals.
 
 ## Usage
 
@@ -48,7 +48,7 @@ bun run typecheck
 ## Platform notes
 
 `desktop build` refuses to produce platform-specific layouts for a non-matching host. Use `bun desktop doctor` on the target host when the command returns a target remediation.
-`desktop package` follows the same host-target rule and emits only the artifact kinds listed in `docs/SPEC.md` §23.2. Windows system-mode MSI output is deferred to v1.1 and returns a typed unsupported-artifact error.
+`desktop package` follows the same host-target rule and emits only the artifact kinds listed in `engineering/SPEC.md` §23.2. Windows system-mode MSI output is deferred to v1.1 and returns a typed unsupported-artifact error.
 `desktop sign` follows the same host-target rule and signs existing packaged artifacts under `dist/desktop/<platform>`. macOS signing generates hardened-runtime entitlements and invokes `codesign`; Windows signing strips Mark-of-the-Web and invokes `signtool` with an RFC 3161 timestamp; Linux AppImage signing writes AppStream/desktop metadata and invokes `gpg`.
 `desktop notarize` is macOS-only. It validates existing staples, submits unstapled `.app` and `.dmg` artifacts with `xcrun notarytool submit --wait`, staples accepted artifacts, and runs `spctl --assess --type execute --verbose=4`.
 `desktop publish` reads packaged artifact metadata, signs artifact bytes and the canonical update manifest with Ed25519, verifies byte-stability, and writes `dist/desktop/update-manifest.json`. The private key is read from `update.privateKeyEnv`; reports persist only public signatures and manifest metadata.

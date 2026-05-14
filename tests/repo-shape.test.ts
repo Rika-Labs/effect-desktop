@@ -13,7 +13,6 @@ const REQUIRED_TS_PACKAGES = [
   "devtools",
   "test",
   "config",
-  "create-effect-desktop",
   "vite"
 ] as const
 
@@ -46,7 +45,7 @@ describe("workspaces", () => {
   const root = readJson<PackageJson>(join(REPO_ROOT, "package.json"))
 
   test("root package.json declares the spec §5.4 globs", () => {
-    expect(root.workspaces).toEqual(["apps/*", "apps/examples/*", "packages/*", "templates/*"])
+    expect(root.workspaces).toEqual(["apps/*", "packages/*"])
   })
 
   test("root package.json exposes the documented bun desktop entrypoint", () => {

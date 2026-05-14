@@ -65,7 +65,7 @@
     "target",
     ".turbo",
     "coverage",
-    "docs/SPEC.md",
+    "engineering/SPEC.md",
     "repos",
     "repos/**"
   ]

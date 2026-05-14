@@ -1,6 +1,6 @@
 # @effect-desktop/native
 
-> **Status:** Phase 5 started. The Window service definition is available; host-backed live behavior lands in the later native-service issues. See `docs/SPEC.md`.
+> **Status:** Phase 5 started. The Window service definition is available; host-backed live behavior lands in the later native-service issues. See `engineering/SPEC.md`.
 
 ## Purpose
 
@@ -20,7 +20,7 @@ The generated Window client validates caller input before transport and validate
 
 ## Non-goals
 
-See `docs/SPEC.md` for the package's normative non-goals.
+See `engineering/SPEC.md` for the package's normative non-goals.
 
 ## Usage
 

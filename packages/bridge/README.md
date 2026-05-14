@@ -1,7 +1,7 @@
 # @effect-desktop/bridge
 
 > **Status:** Phase 3 host-protocol schema mirror. Public renderer-facing APIs
-> are populated in Phase 4. See `docs/SPEC.md`.
+> are populated in Phase 4. See `engineering/SPEC.md`.
 
 ## Purpose
 
@@ -28,7 +28,7 @@ Bridge contracts are authored as canonical Effect RPC groups. Bridge-specific he
 
 ## Non-goals
 
-See `docs/SPEC.md` for the package's normative non-goals.
+See `engineering/SPEC.md` for the package's normative non-goals.
 
 ## Usage
 
@@ -68,7 +68,7 @@ None until the package implements native-touching primitives.
 ## Dependency notes
 
 - `effect@4.0.0-beta.60` owns the Effect v4 `Schema.Class` and `Schema.Union`
-  mirror required by `docs/SPEC.md` §4.4.1 and issue #57. The npm `latest`
+  mirror required by `engineering/SPEC.md` §4.4.1 and issue #57. The npm `latest`
   dist-tag is still Effect v3, so this package pins the v4 beta line required
   by the repository spec.
 

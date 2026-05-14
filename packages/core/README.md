@@ -1,6 +1,6 @@
 # @effect-desktop/core
 
-> **Status:** Phase 2 runtime entry exists; the public API remains reserved for Phase 4+. See `docs/SPEC.md`.
+> **Status:** Phase 2 runtime entry exists; the public API remains reserved for Phase 4+. See `engineering/SPEC.md`.
 
 ## Purpose
 
@@ -270,7 +270,7 @@ as `1`, `true`, `yes`, or `on`, it also calls `Window.destroy` for each returned
 
 ## Non-goals
 
-See `docs/SPEC.md` for the package's normative non-goals.
+See `engineering/SPEC.md` for the package's normative non-goals.
 
 ## Usage
 

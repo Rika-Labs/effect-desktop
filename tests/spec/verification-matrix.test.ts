@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
 const REPO_ROOT = join(import.meta.dir, "..", "..")
-const SPEC_PATH = join(REPO_ROOT, "docs", "SPEC.md")
-const MATRIX_PATH = join(REPO_ROOT, "docs", "verification-matrix.json")
+const SPEC_PATH = join(REPO_ROOT, "engineering", "SPEC.md")
+const MATRIX_PATH = join(REPO_ROOT, "engineering", "verification-matrix.json")
 const CI_PATH = join(REPO_ROOT, ".github", "workflows", "ci.yml")
 
 const REQUIRED_CELLS = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"] as const
@@ -131,7 +131,7 @@ const resolveRow = (id: string): ResolvedRow => {
 }
 
 describe("verification matrix", () => {
-  test("declares the required and optional cells from docs/SPEC.md §20.10", () => {
+  test("declares the required and optional cells from engineering/SPEC.md §20.10", () => {
     expect(matrix.requiredCells).toEqual(REQUIRED_CELLS)
     expect(matrix.optionalCells).toEqual(OPTIONAL_CELLS)
   })

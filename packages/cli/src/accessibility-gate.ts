@@ -127,8 +127,7 @@ interface ResolvedAccessibilityRequiredToken extends AccessibilityRequiredToken 
 }
 
 const MANIFEST_PATH = "release/accessibility.json"
-const SPEC_SOURCE = "docs/SPEC.md §25.5"
-const REQUIRED_TEMPLATE_ID = "basic-react-tailwind"
+const SPEC_SOURCE = "engineering/SPEC.md §25.5"
 const REQUIRED_AUDIT_MODES = new Map<
   string,
   { readonly direction: "ltr" | "rtl"; readonly colorScheme: "light" | "dark" }
@@ -225,13 +224,6 @@ const validateManifest = (
       )
     }
     ids.add(template.id)
-  }
-  if (!ids.has(REQUIRED_TEMPLATE_ID)) {
-    return Effect.fail(
-      new AccessibilityGateManifestError({
-        message: `accessibility manifest is missing required template ${REQUIRED_TEMPLATE_ID}`
-      })
-    )
   }
   return Effect.void
 }

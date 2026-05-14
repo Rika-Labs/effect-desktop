@@ -99,31 +99,31 @@ interface RunnableBlock {
 
 const MANIFEST_PATH = "docs/docs-manifest.json"
 const RUNNABLE_BLOCK_PATTERN = /```([^\n`]*)\n([\s\S]*?)```/g
-const SPEC_SOURCE = "docs/SPEC.md §25.3"
+const SPEC_SOURCE = "engineering/SPEC.md §25.3"
 const REQUIRED_SPEC_PAGES: ReadonlyMap<string, string> = new Map([
-  ["installation", "docs/user/installation.md"],
-  ["quickstart", "docs/user/quickstart.md"],
-  ["concepts", "docs/user/concepts.md"],
-  ["architecture-overview", "docs/user/architecture-overview.md"],
-  ["app-config", "docs/user/app-config.md"],
-  ["windows", "docs/user/windows.md"],
-  ["typed-apis", "docs/user/typed-apis.md"],
-  ["bridge", "docs/user/bridge.md"],
-  ["native-services", "docs/user/native-services.md"],
-  ["resources", "docs/user/resources.md"],
-  ["processes", "docs/user/processes.md"],
-  ["ptys", "docs/user/ptys.md"],
-  ["filesystem", "docs/user/filesystem.md"],
-  ["storage", "docs/user/storage.md"],
-  ["permissions", "docs/user/permissions.md"],
-  ["commands", "docs/user/commands.md"],
-  ["devtools", "docs/user/devtools.md"],
-  ["testing", "docs/user/testing.md"],
-  ["packaging", "docs/user/packaging.md"],
-  ["signing", "docs/user/signing.md"],
-  ["updating", "docs/user/updating.md"],
-  ["troubleshooting", "docs/user/troubleshooting.md"],
-  ["contribution-guide", "docs/user/contribution-guide.md"]
+  ["installation", "docs/installation.md"],
+  ["quickstart", "docs/quickstart.md"],
+  ["concepts", "docs/concepts.md"],
+  ["architecture-overview", "docs/architecture-overview.md"],
+  ["app-config", "docs/app-config.md"],
+  ["windows", "docs/windows.md"],
+  ["typed-apis", "docs/typed-apis.md"],
+  ["bridge", "docs/bridge.md"],
+  ["native-services", "docs/native-services.md"],
+  ["resources", "docs/resources.md"],
+  ["processes", "docs/processes.md"],
+  ["ptys", "docs/ptys.md"],
+  ["filesystem", "docs/filesystem.md"],
+  ["storage", "docs/storage.md"],
+  ["permissions", "docs/permissions.md"],
+  ["commands", "docs/commands.md"],
+  ["devtools", "docs/devtools.md"],
+  ["testing", "docs/testing.md"],
+  ["packaging", "docs/packaging.md"],
+  ["signing", "docs/signing.md"],
+  ["updating", "docs/updating.md"],
+  ["troubleshooting", "docs/troubleshooting.md"],
+  ["contribution-guide", "docs/contribution-guide.md"]
 ])
 const REQUIRED_PAGE_COVERAGE_TOKENS: ReadonlyMap<string, readonly string[]> = new Map([
   ["installation", ["runCli", "desktop --help"]],

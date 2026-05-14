@@ -129,8 +129,8 @@ export const VerificationMatrix = Schema.Struct({
 export type VerificationMatrix = typeof VerificationMatrix.Type
 
 const MANIFEST_PATH = "release/semver.json"
-const SPEC_SOURCE = "docs/SPEC.md §25.6"
-const BRIDGE_SOURCE = "docs/SPEC.md §9.3"
+const SPEC_SOURCE = "engineering/SPEC.md §25.6"
+const BRIDGE_SOURCE = "engineering/SPEC.md §9.3"
 const BRIDGE_ALLOWED_CHANGE =
   "fields may be added with defaults; fields may not be removed or reordered"
 const CANONICAL_RELEASE_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u

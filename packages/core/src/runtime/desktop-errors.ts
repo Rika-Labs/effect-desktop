@@ -64,7 +64,7 @@ export class DuplicateDesktopRpcNameError extends Data.TaggedError("DuplicateDes
 }> {}
 
 const FRAMEWORK_ADAPTER_DOCS =
-  "https://github.com/Rika-Labs/effect-desktop/blob/main/docs/SPEC.md#framework-adapters"
+  "https://github.com/Rika-Labs/effect-desktop/blob/main/docs/typed-apis.md"
 
 export const makeMissingDesktopContextError = (
   framework: DesktopFramework,
