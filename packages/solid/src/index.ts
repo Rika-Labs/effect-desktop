@@ -10,6 +10,8 @@ import {
   makeMissingDesktopContextError,
   makeMissingDesktopRpcsError,
   normalizeDesktopStreamCapacity,
+  runFrameworkEffect,
+  runFrameworkPromiseExit,
   RendererRpcClients,
   runRendererStream,
   type DesktopAppManifest,
@@ -17,9 +19,11 @@ import {
   type DesktopStreamOptions,
   type DesktopRendererRpcClientMap,
   type DesktopRendererRpcTransport,
+  type FrameworkRuntime,
+  type MissingDesktopRpcClientError,
   type RpcGroupWithRequests
 } from "@effect-desktop/core/renderer"
-import { Cause, Effect, Exit, Fiber, ManagedRuntime, Stream } from "effect"
+import { Cause, Effect, Exit, ManagedRuntime, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import {
   createContext,
@@ -148,10 +152,12 @@ export {
 
 interface SolidDesktopContextValue {
   readonly clients: DesktopRendererRpcClientMap
+  readonly runtime: ManagedRuntime.ManagedRuntime<RendererRpcClients, MissingDesktopRpcClientError>
 }
 
 interface SolidDesktopRuntime {
   readonly clients: DesktopRendererRpcClientMap
+  readonly runtime: ManagedRuntime.ManagedRuntime<RendererRpcClients, MissingDesktopRpcClientError>
   readonly dispose: () => Promise<void>
 }
 
@@ -165,7 +171,7 @@ export const SolidDesktop = Object.freeze({
         void runtime.dispose()
       })
       return createComponent(SolidDesktopContext.Provider, {
-        value: { clients: runtime.clients },
+        value: { clients: runtime.clients, runtime: runtime.runtime },
         get children() {
           return props.children
         }
@@ -193,13 +199,14 @@ export const SolidDesktop = Object.freeze({
 
       return bindRendererEndpoints<SolidEndpoint>(describeRpcs(app, group), client, "solid", {
         query: (run) => ({
-          createQuery: ((input?: unknown) => createQueryState(run(input))) as SolidPrimitive<
+          createQuery: ((input?: unknown) =>
+            createQueryState(context.runtime, run(input))) as SolidPrimitive<
             unknown,
             Accessor<SolidAsyncState<unknown, unknown>>
           >
         }),
         mutation: (run) => ({
-          createMutation: () => createMutationState((input) => run(input))
+          createMutation: () => createMutationState(context.runtime, (input) => run(input))
         }),
         stream: (run, descriptor) => ({
           createStream: ((
@@ -212,7 +219,7 @@ export const SolidDesktop = Object.freeze({
               : isDesktopStreamOptions(inputOrOptions)
                 ? inputOrOptions
                 : streamOptions
-            return createStreamState(run(input), options)
+            return createStreamState(context.runtime, run(input), options)
           }) as SolidStreamPrimitive<unknown, unknown, unknown>
         })
       }) as SolidDesktopRpcs<Group>
@@ -268,14 +275,16 @@ const makeSolidDesktopRuntime = (
   }
   return Object.freeze({
     clients,
+    runtime,
     dispose: runtime.dispose
   })
 }
 
-const createMutationState = <I, A, E>(
-  makeEffect: (input: I) => Effect.Effect<A, E, never>
-): SolidMutation<I, A, E> => {
-  const [state, setState] = createSignal<SolidAsyncState<A, E>>({ status: "idle" })
+const createMutationState = <R, ER, I, A, E>(
+  runtime: FrameworkRuntime<R, ER>,
+  makeEffect: (input: I) => Effect.Effect<A, E, R>
+): SolidMutation<I, A, E | ER> => {
+  const [state, setState] = createSignal<SolidAsyncState<A, E | ER>>({ status: "idle" })
   let runId = 0
   let active = true
 
@@ -284,12 +293,12 @@ const createMutationState = <I, A, E>(
     runId += 1
   })
 
-  const runPromiseImpl = async (input?: I): Promise<Exit.Exit<A, E>> => {
+  const runPromiseImpl = async (input?: I): Promise<Exit.Exit<A, E | ER>> => {
     const currentRun = runId + 1
     runId = currentRun
     setState({ status: "running" })
 
-    const exit = await Effect.runPromiseExit(makeEffect(input as I))
+    const exit = await runFrameworkPromiseExit(runtime, makeEffect(input as I))
     if (!active || runId !== currentRun) {
       return exit
     }
@@ -307,7 +316,7 @@ const createMutationState = <I, A, E>(
     run: ((input?: I) => {
       void runPromiseImpl(input)
     }) as SolidPrimitive<I, void>,
-    runPromise: runPromiseImpl as SolidPrimitive<I, Promise<Exit.Exit<A, E>>>,
+    runPromise: runPromiseImpl as SolidPrimitive<I, Promise<Exit.Exit<A, E | ER>>>,
     reset: () => {
       runId += 1
       setState({ status: "idle" })
@@ -315,15 +324,14 @@ const createMutationState = <I, A, E>(
   }
 }
 
-const createQueryState = <A, E>(
-  effect: Effect.Effect<A, E, never>
-): Accessor<SolidAsyncState<A, E>> => {
-  const [state, setState] = createSignal<SolidAsyncState<A, E>>({ status: "running" })
+const createQueryState = <R, ER, A, E>(
+  runtime: FrameworkRuntime<R, ER>,
+  effect: Effect.Effect<A, E, R>
+): Accessor<SolidAsyncState<A, E | ER>> => {
+  const [state, setState] = createSignal<SolidAsyncState<A, E | ER>>({ status: "running" })
   let active = true
 
-  const fiber = Effect.runFork(effect)
-
-  void Effect.runPromiseExit(Fiber.join(fiber)).then((exit) => {
+  const interrupt = runFrameworkEffect(runtime, effect, (exit) => {
     if (!active) {
       return
     }
@@ -336,23 +344,25 @@ const createQueryState = <A, E>(
 
   onCleanup(() => {
     active = false
-    void Effect.runPromiseExit(Fiber.interrupt(fiber))
+    interrupt()
   })
 
   return state
 }
 
-const createStreamState = <A, E>(
-  stream: Stream.Stream<A, E, never>,
+const createStreamState = <R, ER, A, E>(
+  runtime: FrameworkRuntime<R, ER>,
+  stream: Stream.Stream<A, E, R>,
   options: DesktopStreamOptions<A> = {}
-): Accessor<SolidStreamState<A, E>> => {
+): Accessor<SolidStreamState<A, E | ER>> => {
   const capacity = normalizeDesktopStreamCapacity(options.capacity)
-  const [state, setState] = createSignal<SolidStreamState<A, E>>({
+  const [state, setState] = createSignal<SolidStreamState<A, E | ER>>({
     status: "running",
     data: [],
     cause: undefined
   })
   const dispose = runRendererStream(
+    runtime,
     stream,
     options,
     (item) => {

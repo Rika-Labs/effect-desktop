@@ -1,4 +1,5 @@
-import { Cause, Effect, Exit } from "effect"
+import { runFrameworkPromiseExit, type FrameworkRuntime } from "@effect-desktop/core/renderer"
+import { Cause, Effect, Exit, Layer, ManagedRuntime } from "effect"
 import { useCallback, useEffect, useRef, useState } from "react"
 
 export type MutationStatus = "idle" | "running" | "success" | "failure"
@@ -33,10 +34,13 @@ export interface MutationResult<I, A, E> {
   readonly reset: () => void
 }
 
-export const useMutation = <I, A, E>(
-  makeEffect: (input: I) => Effect.Effect<A, E, never>
-): MutationResult<I, A, E> => {
-  const [state, setState] = useState<MutationState<A, E>>({ status: "idle" })
+const defaultRuntime: FrameworkRuntime = ManagedRuntime.make(Layer.empty)
+
+export const useMutation = <I, A, E, R = never, ER = never>(
+  makeEffect: (input: I) => Effect.Effect<A, E, R>,
+  runtime: FrameworkRuntime<R, ER> = defaultRuntime as FrameworkRuntime<R, ER>
+): MutationResult<I, A, E | ER> => {
+  const [state, setState] = useState<MutationState<A, E | ER>>({ status: "idle" })
   const makeEffectRef = useRef(makeEffect)
   const mountedRef = useRef(true)
   const runIdRef = useRef(0)
@@ -50,26 +54,29 @@ export const useMutation = <I, A, E>(
     }
   }, [])
 
-  const runPromiseImpl = useCallback(async (input?: I): Promise<Exit.Exit<A, E>> => {
-    const runId = runIdRef.current + 1
-    runIdRef.current = runId
-    setState({ status: "running" })
+  const runPromiseImpl = useCallback(
+    async (input?: I): Promise<Exit.Exit<A, E | ER>> => {
+      const runId = runIdRef.current + 1
+      runIdRef.current = runId
+      setState({ status: "running" })
 
-    const exit = await Effect.runPromiseExit(makeEffectRef.current(input as I))
-    if (!mountedRef.current || runIdRef.current !== runId) {
+      const exit = await runFrameworkPromiseExit(runtime, makeEffectRef.current(input as I))
+      if (!mountedRef.current || runIdRef.current !== runId) {
+        return exit
+      }
+
+      if (Exit.isSuccess(exit)) {
+        setState({ status: "success", value: exit.value })
+      } else {
+        setState({ status: "failure", cause: exit.cause })
+      }
+
       return exit
-    }
+    },
+    [runtime]
+  )
 
-    if (Exit.isSuccess(exit)) {
-      setState({ status: "success", value: exit.value })
-    } else {
-      setState({ status: "failure", cause: exit.cause })
-    }
-
-    return exit
-  }, [])
-
-  const runPromise = runPromiseImpl as MutationRunPromise<I, A, E>
+  const runPromise = runPromiseImpl as MutationRunPromise<I, A, E | ER>
 
   const runImpl = useCallback(
     (input?: I): void => {

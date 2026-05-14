@@ -1,10 +1,12 @@
 import {
   appendBounded,
   normalizeDesktopStreamCapacity,
+  runFrameworkEffect,
   runRendererStream,
-  type DesktopStreamOptions
+  type DesktopStreamOptions,
+  type FrameworkRuntime
 } from "@effect-desktop/core/renderer"
-import { Cause, Effect, Exit, Fiber, Option, Stream, SubscriptionRef } from "effect"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Stream, SubscriptionRef } from "effect"
 import { AsyncResult } from "effect/unstable/reactivity"
 import { useEffect, useRef, useState, type DependencyList } from "react"
 
@@ -18,6 +20,8 @@ export interface StreamState<A, E> {
 
 export type { DesktopStreamOptions }
 
+const defaultRuntime: FrameworkRuntime = ManagedRuntime.make(Layer.empty)
+
 const idle = <A, E>(): StreamState<A, E> => ({
   status: "idle",
   data: [],
@@ -30,13 +34,14 @@ const running = <A, E>(): StreamState<A, E> => ({
   error: Option.none()
 })
 
-export const useDesktopStream = <A, E>(
-  stream: Stream.Stream<A, E, never>,
-  options: DesktopStreamOptions<A> = {}
-): StreamState<A, E> => {
+export const useDesktopStream = <A, E, R = never, ER = never>(
+  stream: Stream.Stream<A, E, R>,
+  options: DesktopStreamOptions<A> = {},
+  runtime: FrameworkRuntime<R, ER> = defaultRuntime as FrameworkRuntime<R, ER>
+): StreamState<A, E | ER> => {
   const capacity = normalizeDesktopStreamCapacity(options.capacity)
-  const [state, setState] = useState<StreamState<A, E>>(idle<A, E>)
-  const streamRef = useRef<Stream.Stream<A, E, never>>(stream)
+  const [state, setState] = useState<StreamState<A, E | ER>>(idle<A, E | ER>)
+  const streamRef = useRef<Stream.Stream<A, E, R>>(stream)
   const onItemRef = useRef<((item: A) => void) | undefined>(options.onItem)
   streamRef.current = stream
   onItemRef.current = options.onItem
@@ -45,6 +50,7 @@ export const useDesktopStream = <A, E>(
     setState(running<A, E>())
 
     return runRendererStream(
+      runtime,
       streamRef.current,
       { capacity, onItem: (item) => onItemRef.current?.(item) },
       (item) => {
@@ -65,7 +71,7 @@ export const useDesktopStream = <A, E>(
         }
       }
     )
-  }, [stream, capacity])
+  }, [stream, capacity, runtime])
 
   return state
 }
@@ -78,39 +84,42 @@ export const useSubscribable = <A>(ref: SubscriptionRef.SubscriptionRef<A>): A |
   useEffect(() => {
     let active = true
 
-    const fiber = Effect.runFork(
+    const interrupt = runFrameworkEffect(
+      defaultRuntime,
       Stream.runForEach(SubscriptionRef.changes(refRef.current), (v) =>
         Effect.sync(() => {
           if (active) setValue(v)
         })
-      )
+      ),
+      () => undefined
     )
 
     return () => {
       active = false
-      void Effect.runPromiseExit(Fiber.interrupt(fiber))
+      interrupt()
     }
   }, [ref])
 
   return value
 }
 
-export const useEffectResult = <A, E>(
-  effect: Effect.Effect<A, E, never>,
-  deps?: DependencyList
-): AsyncResult.AsyncResult<A, E> => {
-  const [result, setResult] = useState<AsyncResult.AsyncResult<A, E>>(AsyncResult.initial<A, E>)
-  const effectRef = useRef<Effect.Effect<A, E, never>>(effect)
+export const useEffectResult = <A, E, R = never, ER = never>(
+  effect: Effect.Effect<A, E, R>,
+  deps?: DependencyList,
+  runtime: FrameworkRuntime<R, ER> = defaultRuntime as FrameworkRuntime<R, ER>
+): AsyncResult.AsyncResult<A, E | ER> => {
+  const [result, setResult] = useState<AsyncResult.AsyncResult<A, E | ER>>(
+    AsyncResult.initial<A, E | ER>
+  )
+  const effectRef = useRef<Effect.Effect<A, E, R>>(effect)
   effectRef.current = effect
 
   useEffect(
     () => {
       let active = true
-      setResult(AsyncResult.initial<A, E>(true))
+      setResult(AsyncResult.initial<A, E | ER>(true))
 
-      const fiber = Effect.runFork(effectRef.current)
-
-      void Effect.runPromiseExit(Fiber.join(fiber)).then((exit) => {
+      const interrupt = runFrameworkEffect(runtime, effectRef.current, (exit) => {
         if (!active) return
         if (Exit.isSuccess(exit)) {
           setResult(AsyncResult.success(exit.value))
@@ -121,10 +130,10 @@ export const useEffectResult = <A, E>(
 
       return () => {
         active = false
-        void Effect.runPromiseExit(Fiber.interrupt(fiber))
+        interrupt()
       }
     },
-    deps ?? [effect]
+    deps ?? [effect, runtime]
   )
 
   return result

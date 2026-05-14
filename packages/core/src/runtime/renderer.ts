@@ -1,8 +1,11 @@
 export {
   appendBounded,
+  runFrameworkEffect,
+  runFrameworkPromiseExit,
   isDesktopStreamOptions,
   normalizeDesktopStreamCapacity,
   runRendererStream,
+  type FrameworkRuntime,
   type DesktopStreamOptions
 } from "./renderer-stream.js"
 export {

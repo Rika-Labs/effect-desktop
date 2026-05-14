@@ -1,4 +1,9 @@
-import { Cause, Effect, Exit, Fiber } from "effect"
+import {
+  runFrameworkEffect,
+  runFrameworkPromiseExit,
+  type FrameworkRuntime
+} from "@effect-desktop/core/renderer"
+import { Cause, Effect, Exit, Layer, ManagedRuntime } from "effect"
 import { useCallback, useEffect, useRef, useState, type DependencyList } from "react"
 
 export type DesktopAsyncStatus =
@@ -48,6 +53,8 @@ export interface DesktopDisposable<E = never> {
   readonly dispose: () => Effect.Effect<void, E, never>
 }
 
+const defaultRuntime: FrameworkRuntime = ManagedRuntime.make(Layer.empty)
+
 const idle = <A, E>(): DesktopAsyncState<A, E> => ({ _tag: "Idle" })
 
 export const statusOf = <A, E>(state: DesktopAsyncState<A, E>): DesktopAsyncStatus => {
@@ -75,7 +82,7 @@ export const useDesktopAction = <Args extends readonly unknown[], A, E>(
   const operationRef = useRef(operation)
   const mountedRef = useRef(true)
   const runningRef = useRef(false)
-  const fiberRef = useRef<Fiber.Fiber<A, E> | undefined>(undefined)
+  const interruptRef = useRef<(() => void) | undefined>(undefined)
   const runIdRef = useRef(0)
   const canceledRunIdsRef = useRef(new Set<number>())
   const queueRef = useRef<Args[]>([])
@@ -89,16 +96,13 @@ export const useDesktopAction = <Args extends readonly unknown[], A, E>(
     runIdRef.current = runId
     setState({ _tag: "Running" })
 
-    const fiber = Effect.runFork(operationRef.current(...args))
-    fiberRef.current = fiber
-
-    void Effect.runPromiseExit(Fiber.join(fiber)).then((exit) => {
+    const interrupt = runFrameworkEffect(defaultRuntime, operationRef.current(...args), (exit) => {
       if (!mountedRef.current || runId !== runIdRef.current) {
         canceledRunIdsRef.current.delete(runId)
         return
       }
 
-      fiberRef.current = undefined
+      interruptRef.current = undefined
       runningRef.current = false
 
       const wasCanceled = canceledRunIdsRef.current.delete(runId)
@@ -113,16 +117,17 @@ export const useDesktopAction = <Args extends readonly unknown[], A, E>(
         start(next)
       }
     })
+    interruptRef.current = interrupt
   }, [])
 
   const cancel = useCallback((): void => {
-    const fiber = fiberRef.current
-    if (fiber === undefined) {
+    const interrupt = interruptRef.current
+    if (interrupt === undefined) {
       return
     }
 
     canceledRunIdsRef.current.add(runIdRef.current)
-    void Effect.runPromiseExit(Fiber.interrupt(fiber))
+    interrupt()
   }, [])
 
   const run = useCallback(
@@ -156,9 +161,9 @@ export const useDesktopAction = <Args extends readonly unknown[], A, E>(
     mountedRef.current = true
     return () => {
       mountedRef.current = false
-      const fiber = fiberRef.current
-      if (fiber !== undefined) {
-        void Effect.runPromiseExit(Fiber.interrupt(fiber))
+      const interrupt = interruptRef.current
+      if (interrupt !== undefined) {
+        interrupt()
       }
     }
   }, [])
@@ -177,7 +182,7 @@ export const useDesktopQuery = <A, E>(
   deps?: DependencyList
 ): DesktopQuery<A, E> => {
   const operationRef = useRef(operation)
-  const fiberRef = useRef<Fiber.Fiber<A, E> | undefined>(undefined)
+  const interruptRef = useRef<(() => void) | undefined>(undefined)
   const canceledRef = useRef(false)
   const [reloads, setReloads] = useState(0)
   const [state, setState] = useState<DesktopAsyncState<A, E>>(idle<A, E>)
@@ -185,13 +190,13 @@ export const useDesktopQuery = <A, E>(
   operationRef.current = operation
 
   const cancel = useCallback((): void => {
-    const fiber = fiberRef.current
-    if (fiber === undefined) {
+    const interrupt = interruptRef.current
+    if (interrupt === undefined) {
       return
     }
 
     canceledRef.current = true
-    void Effect.runPromiseExit(Fiber.interrupt(fiber))
+    interrupt()
   }, [])
 
   const reload = useCallback((): void => {
@@ -208,25 +213,23 @@ export const useDesktopQuery = <A, E>(
       canceledRef.current = false
       setState({ _tag: "Running" })
 
-      const fiber = Effect.runFork(operationRef.current())
-      fiberRef.current = fiber
-
-      void Effect.runPromiseExit(Fiber.join(fiber)).then((exit) => {
+      const interrupt = runFrameworkEffect(defaultRuntime, operationRef.current(), (exit) => {
         if (!active) {
           return
         }
 
-        fiberRef.current = undefined
+        interruptRef.current = undefined
         if (canceledRef.current) {
           setState({ _tag: "Canceled" })
         } else {
           setState(stateFromExit(exit))
         }
       })
+      interruptRef.current = interrupt
 
       return () => {
         active = false
-        void Effect.runPromiseExit(Fiber.interrupt(fiber))
+        interrupt()
       }
     },
     deps === undefined ? [reloads] : [...deps, reloads]
@@ -272,7 +275,7 @@ export const useDesktopResource = <E>(
 
       setState({ status: "active", error: undefined })
       return () => {
-        void Effect.runPromiseExit(current.dispose()).then((exit) => {
+        void runFrameworkPromiseExit(defaultRuntime, current.dispose()).then((exit) => {
           if (!mountedRef.current || generationRef.current !== generation) {
             return
           }

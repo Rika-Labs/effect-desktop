@@ -371,7 +371,7 @@
     {
       "name": "useDesktopStream",
       "kind": "value",
-      "signature": "const useDesktopStream: <A, E>(stream: Stream.Stream<A, E, never>, options?: DesktopStreamOptions<A>) => StreamState<A, E>"
+      "signature": "const useDesktopStream: <A, E, R = never, ER = never>(stream: Stream.Stream<A, E, R>, options?: DesktopStreamOptions<A>, runtime?: FrameworkRuntime<R, ER>) => StreamState<A, E | ER>"
     },
     {
       "name": "useDisplays",
@@ -381,12 +381,12 @@
     {
       "name": "useEffectResult",
       "kind": "value",
-      "signature": "const useEffectResult: <A, E>(effect: Effect.Effect<A, E, never>, deps?: DependencyList) => AsyncResult.AsyncResult<A, E>"
+      "signature": "const useEffectResult: <A, E, R = never, ER = never>(effect: Effect.Effect<A, E, R>, deps?: DependencyList, runtime?: FrameworkRuntime<R, ER>) => AsyncResult.AsyncResult<A, E | ER>"
     },
     {
       "name": "useMutation",
       "kind": "value",
-      "signature": "const useMutation: <I, A, E>(makeEffect: (input: I) => Effect.Effect<A, E, never>) => MutationResult<I, A, E>"
+      "signature": "const useMutation: <I, A, E, R = never, ER = never>(makeEffect: (input: I) => Effect.Effect<A, E, R>, runtime?: FrameworkRuntime<R, ER>) => MutationResult<I, A, E | ER>"
     },
     {
       "name": "useOptionalDesktopClient",

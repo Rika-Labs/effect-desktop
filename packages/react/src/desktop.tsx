@@ -6,6 +6,7 @@ import {
   makeMissingDesktopContextError,
   makeMissingDesktopRpcsError,
   RendererRpcClients,
+  type MissingDesktopRpcClientError,
   type DesktopAppManifest,
   type AnyDesktopRpcLayer,
   type DesktopEndpointSupport,
@@ -81,10 +82,12 @@ export {
 
 interface ReactDesktopContextValue {
   readonly clients: ReactDesktopClientMap
+  readonly runtime: ManagedRuntime.ManagedRuntime<RendererRpcClients, MissingDesktopRpcClientError>
 }
 
 interface ReactDesktopRuntime {
   readonly clients: ReactDesktopClientMap
+  readonly runtime: ManagedRuntime.ManagedRuntime<RendererRpcClients, MissingDesktopRpcClientError>
   readonly dispose: () => Promise<void>
 }
 
@@ -104,7 +107,7 @@ export const ReactDesktop = Object.freeze({
         [runtime]
       )
       const value = useMemo<ReactDesktopContextValue>(
-        () => ({ clients: runtime.clients }),
+        () => ({ clients: runtime.clients, runtime: runtime.runtime }),
         [runtime]
       )
       return createElement(ReactDesktopContext.Provider, { value }, children)
@@ -132,11 +135,12 @@ export const ReactDesktop = Object.freeze({
       return useMemo(
         () =>
           bindRendererEndpoints<ReactEndpoint>(describeRpcs(app, group), client, "react", {
-            query,
-            mutation,
-            stream: (run, descriptor) => stream(run, { hasInput: descriptor.hasPayload })
+            query: (run) => query(context.runtime, run),
+            mutation: (run) => mutation(context.runtime, run),
+            stream: (run, descriptor) =>
+              stream(context.runtime, run, { hasInput: descriptor.hasPayload })
           }) as ReactDesktopRpcs<Group>,
-        [client, group]
+        [client, context.runtime, group]
       )
     }
 
@@ -171,6 +175,7 @@ const makeReactDesktopRuntime = (
   }
   return Object.freeze({
     clients,
+    runtime,
     dispose: runtime.dispose
   })
 }

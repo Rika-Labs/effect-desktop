@@ -9,6 +9,8 @@ import {
   makeMissingDesktopContextError,
   makeMissingDesktopRpcsError,
   normalizeDesktopStreamCapacity,
+  runFrameworkEffect,
+  runFrameworkPromiseExit,
   RendererRpcClients,
   runRendererStream,
   type DesktopAppManifest,
@@ -16,10 +18,12 @@ import {
   type DesktopStreamOptions,
   type DesktopRendererRpcClientMap,
   type DesktopRendererRpcTransport,
+  type FrameworkRuntime,
+  type MissingDesktopRpcClientError,
   type RpcGroupWithRequests
 } from "@effect-desktop/core/renderer"
 import type { WithRpcEndpointKind } from "@effect-desktop/bridge"
-import { Cause, Effect, Exit, Fiber, ManagedRuntime, Stream } from "effect"
+import { Cause, Effect, Exit, ManagedRuntime, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import {
   createApp as createVueApp,
@@ -134,10 +138,12 @@ export {
 
 interface VueDesktopContext {
   readonly clients: DesktopRendererRpcClientMap
+  readonly runtime: ManagedRuntime.ManagedRuntime<RendererRpcClients, MissingDesktopRpcClientError>
 }
 
 interface VueDesktopRuntime {
   readonly clients: DesktopRendererRpcClientMap
+  readonly runtime: ManagedRuntime.ManagedRuntime<RendererRpcClients, MissingDesktopRpcClientError>
   readonly dispose: () => Promise<void>
 }
 
@@ -148,7 +154,7 @@ export const VueDesktop = Object.freeze({
   from: <App extends DesktopAppManifest>(app: App): VueDesktopAdapter<App> => {
     const provideDesktop = (options?: VueDesktopOptions): void => {
       const runtime = makeVueDesktopRuntime(app, options?.transport, options?.rpcLayers)
-      provide(VueDesktopKey, { clients: runtime.clients })
+      provide(VueDesktopKey, { clients: runtime.clients, runtime: runtime.runtime })
       onScopeDispose(() => {
         void runtime.dispose()
       })
@@ -178,13 +184,13 @@ export const VueDesktop = Object.freeze({
 
       return bindRendererEndpoints<VueEndpoint>(describeRpcs(app, group), client, "vue", {
         query: (run) => ({
-          useQuery: ((input?: unknown) => runQuery(run(input))) as VueComposable<
+          useQuery: ((input?: unknown) => runQuery(context.runtime, run(input))) as VueComposable<
             unknown,
             Readonly<Ref<VueAsyncState<unknown, unknown>>>
           >
         }),
         mutation: (run) => ({
-          useMutation: () => useMutation((input) => run(input))
+          useMutation: () => useMutation(context.runtime, (input) => run(input))
         }),
         stream: (run, descriptor) => ({
           useStream: ((inputOrOptions?: unknown, streamOptions?: DesktopStreamOptions<unknown>) => {
@@ -194,7 +200,7 @@ export const VueDesktop = Object.freeze({
               : isDesktopStreamOptions(inputOrOptions)
                 ? inputOrOptions
                 : streamOptions
-            return runStream(run(input), options)
+            return runStream(context.runtime, run(input), options)
           }) as VueStreamComposable<unknown, unknown, unknown>
         })
       }) as VueDesktopRpcs<Group>
@@ -205,7 +211,7 @@ export const VueDesktop = Object.freeze({
       createApp: (rootComponent: Component, options?: VueDesktopOptions) => {
         const vueApp = createVueApp(rootComponent)
         const runtime = makeVueDesktopRuntime(app, options?.transport, options?.rpcLayers)
-        vueApp.provide(VueDesktopKey, { clients: runtime.clients })
+        vueApp.provide(VueDesktopKey, { clients: runtime.clients, runtime: runtime.runtime })
         const unmount = vueApp.unmount.bind(vueApp)
         vueApp.unmount = () => {
           unmount()
@@ -240,14 +246,16 @@ const makeVueDesktopRuntime = (
   }
   return Object.freeze({
     clients,
+    runtime,
     dispose: runtime.dispose
   })
 }
 
-const useMutation = <I, A, E>(
-  makeEffect: (input: I) => Effect.Effect<A, E, never>
-): VueMutation<I, A, E> => {
-  const state = shallowRef<VueAsyncState<A, E>>({ status: "idle" })
+const useMutation = <R, ER, I, A, E>(
+  runtime: FrameworkRuntime<R, ER>,
+  makeEffect: (input: I) => Effect.Effect<A, E, R>
+): VueMutation<I, A, E | ER> => {
+  const state = shallowRef<VueAsyncState<A, E | ER>>({ status: "idle" })
   let runId = 0
   let active = true
 
@@ -256,12 +264,12 @@ const useMutation = <I, A, E>(
     runId += 1
   })
 
-  const runPromiseImpl = async (input?: I): Promise<Exit.Exit<A, E>> => {
+  const runPromiseImpl = async (input?: I): Promise<Exit.Exit<A, E | ER>> => {
     const currentRun = runId + 1
     runId = currentRun
     state.value = { status: "running" }
 
-    const exit = await Effect.runPromiseExit(makeEffect(input as I))
+    const exit = await runFrameworkPromiseExit(runtime, makeEffect(input as I))
     if (!active || runId !== currentRun) {
       return exit
     }
@@ -277,7 +285,7 @@ const useMutation = <I, A, E>(
     run: ((input?: I) => {
       void runPromiseImpl(input)
     }) as VueComposable<I, void>,
-    runPromise: runPromiseImpl as VueComposable<I, Promise<Exit.Exit<A, E>>>,
+    runPromise: runPromiseImpl as VueComposable<I, Promise<Exit.Exit<A, E | ER>>>,
     reset: () => {
       runId += 1
       state.value = { status: "idle" }
@@ -285,13 +293,14 @@ const useMutation = <I, A, E>(
   }
 }
 
-const runQuery = <A, E>(effect: Effect.Effect<A, E, never>): Readonly<Ref<VueAsyncState<A, E>>> => {
-  const state = shallowRef<VueAsyncState<A, E>>({ status: "running" })
+const runQuery = <R, ER, A, E>(
+  runtime: FrameworkRuntime<R, ER>,
+  effect: Effect.Effect<A, E, R>
+): Readonly<Ref<VueAsyncState<A, E | ER>>> => {
+  const state = shallowRef<VueAsyncState<A, E | ER>>({ status: "running" })
   let active = true
 
-  const fiber = Effect.runFork(effect)
-
-  void Effect.runPromiseExit(Fiber.join(fiber)).then((exit) => {
+  const interrupt = runFrameworkEffect(runtime, effect, (exit) => {
     if (!active) {
       return
     }
@@ -302,23 +311,25 @@ const runQuery = <A, E>(effect: Effect.Effect<A, E, never>): Readonly<Ref<VueAsy
 
   onScopeDispose(() => {
     active = false
-    void Effect.runPromiseExit(Fiber.interrupt(fiber))
+    interrupt()
   })
 
   return state
 }
 
-const runStream = <A, E>(
-  stream: Stream.Stream<A, E, never>,
+const runStream = <R, ER, A, E>(
+  runtime: FrameworkRuntime<R, ER>,
+  stream: Stream.Stream<A, E, R>,
   options: DesktopStreamOptions<A> = {}
-): Readonly<Ref<VueStreamState<A, E>>> => {
+): Readonly<Ref<VueStreamState<A, E | ER>>> => {
   const capacity = normalizeDesktopStreamCapacity(options.capacity)
-  const state = shallowRef<VueStreamState<A, E>>({
+  const state = shallowRef<VueStreamState<A, E | ER>>({
     status: "running",
     data: [],
     cause: undefined
   })
   const dispose = runRendererStream(
+    runtime,
     stream,
     options,
     (item) => {
