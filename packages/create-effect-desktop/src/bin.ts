@@ -3,7 +3,7 @@ import { BunRuntime, BunServices } from "@effect/platform-bun"
 import { basename, join } from "node:path"
 
 import { Console, Data, Effect } from "effect"
-import { Argument, Command, Flag, type CliError } from "effect/unstable/cli"
+import { Argument, CliError, Command, Flag } from "effect/unstable/cli"
 
 import { RENDERER_STORAGE_KINDS, scaffold, TEMPLATE_NAMES, type ScaffoldError } from "./index.js"
 
@@ -20,7 +20,7 @@ export const runCreateEffectDesktop = (
   BunServices.BunServices
 > =>
   Effect.andThen(
-    validateRawArgs(args),
+    validateValuedFlagOperands(args),
     Command.runWith(makeCreateCommand(cwd), { version: "0.0.0" })(args)
   )
 
@@ -28,7 +28,21 @@ const makeCreateCommand = (cwd: string) =>
   Command.make(
     "create-effect-desktop",
     {
-      name: Argument.string("name").pipe(Argument.withDefault("my-effect-desktop-app")),
+      name: Argument.string("name").pipe(
+        Argument.variadic(),
+        Argument.mapEffect((names) =>
+          names.length > 1
+            ? Effect.fail(
+                new CliError.InvalidValue({
+                  option: "name",
+                  value: names[1] ?? "",
+                  expected: "at most 1 value",
+                  kind: "argument"
+                })
+              )
+            : Effect.succeed(names[0] ?? "my-effect-desktop-app")
+        )
+      ),
       template: Flag.choice("template", TEMPLATE_NAMES).pipe(
         Flag.withDefault("local-first-sqlite")
       ),
@@ -69,33 +83,20 @@ const makeCreateCommand = (cwd: string) =>
       })
   ).pipe(Command.withDescription("Create a new Effect Desktop application from a template."))
 
-const validateRawArgs = (args: readonly string[]): Effect.Effect<void, CreateCliError> =>
+const VALUE_FLAGS = new Set(["--template", "--renderer-storage"])
+
+const validateValuedFlagOperands = (args: readonly string[]): Effect.Effect<void, CreateCliError> =>
   Effect.gen(function* () {
-    const positionals: string[] = []
+    for (const [index, token] of args.entries()) {
+      if (!VALUE_FLAGS.has(token)) {
+        continue
+      }
 
-    for (let index = 0; index < args.length; index += 1) {
-      const token = args[index]
-      if (token === undefined) {
-        continue
+      const value = args[index + 1]
+      if (value === undefined || value.startsWith("--")) {
+        return yield* failCreate(`${token} requires a value`)
       }
-      if (token === "--template" || token === "--renderer-storage") {
-        const value = args[index + 1]
-        if (value === undefined || value.startsWith("--")) {
-          return yield* failCreate(`${token} requires a value`)
-        }
-        index += 1
-        continue
-      }
-      if (token.startsWith("--") || token === "-h") {
-        continue
-      }
-      positionals.push(token)
     }
-
-    if (positionals.length > 1) {
-      return yield* failCreate(`unexpected positional argument '${positionals[1]}'`)
-    }
-    return undefined
   })
 
 const failCreate = (message: string): Effect.Effect<never, CreateCliError> =>

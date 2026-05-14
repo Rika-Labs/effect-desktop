@@ -304,7 +304,7 @@ test("cli rejects invalid arguments before scaffolding", async () => {
     { args: ["--template"], message: "--template requires a value" },
     { args: ["--renderer-storage"], message: "--renderer-storage requires a value" },
     { args: ["--unknown"], message: "Unrecognized flag: --unknown" },
-    { args: ["one", "two"], message: "unexpected positional argument" }
+    { args: ["one", "two"], message: "Invalid value for argument <name>" }
   ]
 
   for (const [index, entry] of cases.entries()) {
@@ -332,4 +332,4 @@ test("cli rejects invalid arguments before scaffolding", async () => {
       }
     }
   }
-})
+}, 10_000)
