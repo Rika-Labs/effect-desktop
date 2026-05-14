@@ -26,7 +26,7 @@ Addressed: 1 internal review finding. Pushed back: 2 internal findings. Escalate
 
 The valid issue changed the final design language: `docs/architecture/layer-first-contract.md` incorrectly referenced `Effect.Service`, while vendored Effect v4 and repo code use `Context.Service`. The fix updated the contract, `AGENTS.md`, `docs/SPEC.md`, and `tests/layer-first-contract.test.ts`, making the rule executable instead of merely documented.
 
-The two pushed-back findings were invalid because they compared docs-deploy files against stale local `main`, not the actual PR base. Those files were not in the PR diff, so they did not change scope or design.
+The two pushed-back findings were invalid because they compared stale local `main` files against the actual PR base. Those files were not in the PR diff, so they did not change scope or design.
 
 ## First-principles postmortem
 
