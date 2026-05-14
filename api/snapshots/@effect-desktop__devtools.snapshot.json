@@ -34,14 +34,29 @@
       "signature": "export interface ClusterPanelApi { readonly list: () => Effect.Effect<ClusterPanelSnapshot, never, never> readonly observe: () => Stream.Stream<ClusterPanelSnapshot, never, never> }"
     },
     {
+      "name": "ClusterPanelDisabled",
+      "kind": "value",
+      "signature": "const ClusterPanelDisabled: Layer.Layer<ClusterPanel, never, never>"
+    },
+    {
+      "name": "ClusterPanelDisabledSnapshot",
+      "kind": "interface",
+      "signature": "export interface ClusterPanelDisabledSnapshot { readonly enabled: false readonly reason: \"cluster-not-enabled\" }"
+    },
+    {
+      "name": "ClusterPanelEnabledSnapshot",
+      "kind": "interface",
+      "signature": "export interface ClusterPanelEnabledSnapshot { readonly enabled: true readonly activeEntityCount: number readonly isShutdown: boolean }"
+    },
+    {
       "name": "ClusterPanelLive",
       "kind": "value",
-      "signature": "const ClusterPanelLive: Layer.Layer<ClusterPanel, never, never>"
+      "signature": "const ClusterPanelLive: Layer.Layer<ClusterPanel, never, Sharding.Sharding>"
     },
     {
       "name": "ClusterPanelSnapshot",
-      "kind": "interface",
-      "signature": "export interface ClusterPanelSnapshot { readonly enabled: false readonly reason: \"cluster-not-enabled\" }"
+      "kind": "type",
+      "signature": "export type ClusterPanelSnapshot = ClusterPanelDisabledSnapshot | ClusterPanelEnabledSnapshot"
     },
     {
       "name": "CollectorLaw",

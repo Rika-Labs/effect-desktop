@@ -9,6 +9,7 @@ import { Cause, Effect, Exit, Layer, Option } from "effect"
 
 import {
   ClusterPanel,
+  ClusterPanelDisabled,
   ClusterPanelLive,
   DesktopInspector,
   EmbeddedInspectorPanel,
@@ -34,18 +35,36 @@ import {
   embeddedInspectorGate
 } from "./index.js"
 import { EventJournal, EventLog as EventLogNS } from "effect/unstable/eventlog"
+import { TestRunner } from "effect/unstable/cluster"
 import { KeyValueStore } from "effect/unstable/persistence"
 
-test("ClusterPanel returns disabled state", async () => {
+test("ClusterPanelDisabled returns disabled state", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const panel = yield* ClusterPanel
       return yield* panel.list()
-    }).pipe(Effect.provide(ClusterPanelLive))
+    }).pipe(Effect.provide(ClusterPanelDisabled))
   )
 
   expect(result.enabled).toBe(false)
-  expect(result.reason).toBe("cluster-not-enabled")
+  if (!result.enabled) {
+    expect(result.reason).toBe("cluster-not-enabled")
+  }
+})
+
+test("ClusterPanelLive reads Effect cluster services", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const panel = yield* ClusterPanel
+      return yield* panel.list()
+    }).pipe(Effect.provide(ClusterPanelLive), Effect.provide(TestRunner.layer))
+  )
+
+  expect(result.enabled).toBe(true)
+  if (result.enabled) {
+    expect(result.activeEntityCount).toBe(0)
+    expect(result.isShutdown).toBe(false)
+  }
 })
 
 test("WorkflowExecutionRegistry tracks started and completed executions", async () => {
