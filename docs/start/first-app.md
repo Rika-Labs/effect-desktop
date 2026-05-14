@@ -81,7 +81,7 @@ export const App = Desktop.make({
   windows: {
     main: { title: "First App" }
   },
-  rpcs: [{ group: AppRpcs, handlers: AppHandlersLive }]
+  rpcs: Desktop.rpc(AppRpcs, AppHandlersLive)
 })
 
 export const Manifest = Desktop.manifest(App)

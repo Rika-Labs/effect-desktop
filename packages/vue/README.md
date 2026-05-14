@@ -27,7 +27,7 @@ applications rely on the host-installed renderer transport.
 ## Non-goals
 
 - This package does not define desktop APIs. Use `Rpc.make`, `RpcGroup.make`, and
-  `Desktop.Rpcs.layer(...)` in app code.
+  `Desktop.rpc(group, handlers)` in app code (compose multiple via `Layer.mergeAll`).
 - This package does not open startup windows. Startup windows belong to
   `Desktop.make({ windows })` and the host runtime.
 - This package does not expose raw bridge client maps as the normal public API.

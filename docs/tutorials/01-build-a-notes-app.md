@@ -154,10 +154,9 @@ export const App = Desktop.make({
   windows: {
     main: { title: "Notes" }
   },
-  rpcs: [
-    // ... your existing groups
-    { group: NotesRpcs, handlers: NotesHandlersLive }
-  ]
+  rpcs: Desktop.rpc(NotesRpcs, NotesHandlersLive)
+  // For multiple RPC surfaces, compose with Layer.mergeAll:
+  //   rpcs: Layer.mergeAll(Desktop.rpc(NotesRpcs, NotesHandlersLive), Desktop.rpc(...))
 })
 
 export const Manifest = Desktop.manifest(App)

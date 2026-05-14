@@ -42,7 +42,7 @@ export const App = Desktop.make({
     main: { title: "Notes", width: 720, height: 520 },
     compose: { title: "Compose Note", width: 480, height: 360 }
   },
-  rpcs: [{ group: NotesRpcs, handlers: NotesHandlersLive }]
+  rpcs: Desktop.rpc(NotesRpcs, NotesHandlersLive)
 })
 
 export const Manifest = Desktop.manifest(App)

@@ -32,7 +32,7 @@ Use `RpcGroup.toLayer(...)` to install handlers; use `Desktop.Rpc.surface(...)` 
 
 ## Desktop surface
 
-`Desktop.Rpcs.layer(AppRpc, AppRpc.toLayer(...))` installs an app RPC group into the runtime. `Desktop.manifest(App)` exposes the manifest the renderer adapter consumes.
+`Desktop.rpc(AppRpc, AppRpc.toLayer(...))` returns a Layer that registers the RPC group + handler pair. Compose multiple registrations with `Layer.mergeAll(...)` and pass the result as `rpcs:` to `Desktop.make`. `Desktop.manifest(App)` exposes the manifest the renderer adapter consumes.
 
 ## Verify RPC Exports
 

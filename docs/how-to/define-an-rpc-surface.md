@@ -75,7 +75,7 @@ import { TodoHandlersLive } from "./handlers.js"
 export const App = Desktop.make({
   id: "dev.example.todos",
   windows: { main: { title: "Todos" } },
-  rpcs: [{ group: TodoRpcs, handlers: TodoHandlersLive }]
+  rpcs: Desktop.rpc(TodoRpcs, TodoHandlersLive)
 })
 
 export const Manifest = Desktop.manifest(App)
