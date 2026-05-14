@@ -37,6 +37,7 @@ import {
   type Provider
 } from "./provider-registry.js"
 import { ResourceRegistryLive } from "./resources.js"
+import { DesktopRpcRegistry } from "./desktop-rpc-registry.js"
 import { servedRpcGroup, servedRpcGroupProperties } from "./rpc-group-metadata.js"
 import { EffectTelemetryRuntimeLive, Telemetry, makeTelemetry } from "./telemetry.js"
 
@@ -403,6 +404,22 @@ export const Rpcs = Object.freeze({
       layer
     })
 })
+
+/**
+ * Registers an RPC group + handler layer with the surrounding `DesktopRpcRegistry`.
+ * Compose multiple registrations with `Layer.mergeAll(...)` and pass the result
+ * as `rpcs:` to `Desktop.make`.
+ */
+export const rpc = <Rpcs extends Rpc.Any, E, R>(
+  group: RpcGroup.RpcGroup<Rpcs>,
+  handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
+): Layer.Layer<never, E, Exclude<R, DesktopRpcRegistry> | DesktopRpcRegistry> =>
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const registry = yield* DesktopRpcRegistry
+      yield* registry.register({ group, handlers })
+    })
+  ) as Layer.Layer<never, E, Exclude<R, DesktopRpcRegistry> | DesktopRpcRegistry>
 
 export const app = <RIn = never, E = never>(
   config: DesktopConfig<RIn, E>

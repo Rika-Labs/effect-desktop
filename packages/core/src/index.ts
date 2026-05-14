@@ -9,6 +9,7 @@ import {
   make,
   manifest,
   providerLayerFor,
+  rpc,
   runtime,
   runtimeGraph,
   runtimeGraphSnapshot,
@@ -71,6 +72,7 @@ export * from "./runtime/inspector-security-events.js"
 export * from "./runtime/desktop-observability.js"
 export * from "./runtime/inspector-transport.js"
 export * from "./runtime/desktop-errors.js"
+export * from "./runtime/desktop-rpc-registry.js"
 export * from "./runtime/desktop-rpc-surface.js"
 export {
   DesktopApp,
@@ -80,6 +82,7 @@ export {
   make,
   manifest,
   providerLayerFor,
+  rpc,
   runtime,
   runtimeGraph,
   runtimeGraphSnapshot,
@@ -182,6 +185,7 @@ export const Desktop = Object.freeze({
   make,
   manifest,
   providerLayerFor,
+  rpc,
   Rpc: DesktopRpc,
   runtime,
   runtimeGraph,
