@@ -58,36 +58,62 @@ export class ResourceOwner extends Context.Service<ResourceOwner, ResourceOwnerA
   }
 
   static job(jobId: string): Layer.Layer<ResourceOwner, ResourceOwnerInvalidArgumentError> {
-    return resourceOwnerLayer("ResourceOwner.job", {
-      kind: "job",
-      scopeId: `job:${jobId}`,
-      actor: new PermissionActor({ kind: "resource", id: `job:${jobId}` }),
-      attributes: { jobId }
-    })
+    return Layer.effect(ResourceOwner, makeJobResourceOwner(jobId))
   }
 
   static test(scopeId: string): Layer.Layer<ResourceOwner, ResourceOwnerInvalidArgumentError> {
-    return resourceOwnerLayer("ResourceOwner.test", {
-      kind: "test",
-      scopeId,
-      actor: new PermissionActor({ kind: "resource", id: scopeId }),
-      attributes: { scopeId }
-    })
+    return Layer.effect(ResourceOwner, makeTestResourceOwner(scopeId))
   }
 }
 
 export const makeAppResourceOwner = (
   appId: string
 ): Effect.Effect<ResourceOwnerApi, ResourceOwnerInvalidArgumentError> =>
-  makeResourceOwner(
-    {
-      kind: "app",
-      scopeId: appId,
-      actor: new PermissionActor({ kind: "app", id: appId }),
-      attributes: { appId }
-    },
-    "ResourceOwner.app"
-  )
+  Effect.gen(function* () {
+    const id = yield* decodeOwnerText(appId, "appId", "ResourceOwner.app")
+    return yield* makeResourceOwner(
+      {
+        kind: "app",
+        scopeId: id,
+        actor: new PermissionActor({ kind: "app", id }),
+        attributes: { appId: id }
+      },
+      "ResourceOwner.app"
+    )
+  })
+
+export const makeJobResourceOwner = (
+  jobId: string
+): Effect.Effect<ResourceOwnerApi, ResourceOwnerInvalidArgumentError> =>
+  Effect.gen(function* () {
+    const id = yield* decodeOwnerText(jobId, "jobId", "ResourceOwner.job")
+    const scopeId = `job:${id}`
+    return yield* makeResourceOwner(
+      {
+        kind: "job",
+        scopeId,
+        actor: new PermissionActor({ kind: "resource", id: scopeId }),
+        attributes: { jobId: id }
+      },
+      "ResourceOwner.job"
+    )
+  })
+
+export const makeTestResourceOwner = (
+  scopeId: string
+): Effect.Effect<ResourceOwnerApi, ResourceOwnerInvalidArgumentError> =>
+  Effect.gen(function* () {
+    const id = yield* decodeOwnerText(scopeId, "scopeId", "ResourceOwner.test")
+    return yield* makeResourceOwner(
+      {
+        kind: "test",
+        scopeId: id,
+        actor: new PermissionActor({ kind: "resource", id }),
+        attributes: { scopeId: id }
+      },
+      "ResourceOwner.test"
+    )
+  })
 
 export const makeResourceOwner = (
   owner: ResourceOwnerApi,
