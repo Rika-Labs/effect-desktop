@@ -1438,6 +1438,7 @@ test("HeadlessRuntime layer composes mocks with real registry telemetry and perm
       const permissions = yield* PermissionRegistry
       const host = yield* MockHost
       const bridge = yield* MockBridge
+      const owner = yield* ResourceOwner
 
       yield* bridge.succeed("Test.HeadlessRuntime.Project.open", { id: "project-1" })
       const client = bridge.client({ project: ProjectRpcs })
@@ -1479,7 +1480,9 @@ test("HeadlessRuntime layer composes mocks with real registry telemetry and perm
         hostCalls: host.calls().map((call) => call.method),
         bridgeCalls: bridge.calls().map((call) => call.method),
         logs: logs.map((log) => log.message),
-        decisions
+        decisions,
+        ownerKind: owner.kind,
+        ownerScope: owner.scopeId
       }
     }).pipe(
       Effect.provide(
@@ -1517,7 +1520,9 @@ test("HeadlessRuntime layer composes mocks with real registry telemetry and perm
     hostCalls: [],
     bridgeCalls: ["Test.HeadlessRuntime.Project.open"],
     logs: ["ran"],
-    decisions: []
+    decisions: [],
+    ownerKind: "test",
+    ownerScope: "headless"
   })
 })
 

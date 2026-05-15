@@ -546,6 +546,35 @@ test("Desktop.runtime rejects duplicate runtime providers as typed startup error
   }
 })
 
+test("Desktop.runtime rejects app ids that cannot become ResourceOwner ids", async () => {
+  const core = await import("./index.js")
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(
+      Effect.gen(function* () {
+        return yield* core.DesktopRuntime
+      }).pipe(
+        Effect.provide(
+          core.Desktop.runtime({
+            id: "bad\napp",
+            windows: core.Desktop.window("main", { title: "Notes" })
+          })
+        )
+      )
+    )
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(core.DesktopSpineConfigError)
+    expect(failure?.error).toMatchObject({
+      _tag: "DesktopConfigError",
+      reason: "invalid-config",
+      appId: "bad\napp"
+    })
+  }
+})
+
 test("Desktop.runtimeGraphSnapshot preserves provider failure evidence", async () => {
   const core = await import("./index.js")
   const duplicateProviders = Layer.mergeAll(
