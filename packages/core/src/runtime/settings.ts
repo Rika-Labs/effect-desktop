@@ -2,8 +2,8 @@ import { Clock, Context, Data, Effect, Layer, Option, PubSub, Schema, Stream } f
 import { KeyValueStore } from "effect/unstable/persistence"
 
 import type { PermissionRegistry } from "./permission-registry.js"
+import { ResourceOwner } from "./resource-owner.js"
 import type { ResourceRegistry } from "./resources.js"
-import { DesktopWindowContext } from "./desktop-window-context.js"
 import { SqlClientLive, type SqlitePolicyError } from "./sqlite.js"
 
 const NonEmptyString = Schema.NonEmptyString
@@ -383,12 +383,12 @@ export class Settings extends Context.Service<Settings, SettingsApi>()("Settings
   ): Layer.Layer<
     Settings,
     SettingsError | SqlitePolicyError,
-    DesktopWindowContext | PermissionRegistry | ResourceRegistry
+    ResourceOwner | PermissionRegistry | ResourceRegistry
   > {
     return Layer.unwrap(
       Effect.gen(function* () {
-        const context = yield* DesktopWindowContext
-        return settingsLayer(options, context.ownerScope)
+        const owner = yield* ResourceOwner
+        return settingsLayer(options, owner.scopeId)
       })
     )
   }

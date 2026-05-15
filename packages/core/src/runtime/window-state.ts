@@ -15,7 +15,7 @@ import {
 } from "effect"
 import { KeyValueStore } from "effect/unstable/persistence"
 
-import { DesktopWindowContext } from "./desktop-window-context.js"
+import { WindowContext } from "./window-context.js"
 
 export class WindowStateRecord extends Schema.Class<WindowStateRecord>("WindowStateRecord")({
   x: Schema.Number.check(Schema.isFinite()),
@@ -258,12 +258,12 @@ export class WindowState extends Context.Service<WindowState, WindowStateApi>()(
   ): Layer.Layer<
     WindowState,
     WindowStateInvalidArgumentError,
-    DesktopWindowContext | KeyValueStore.KeyValueStore
+    WindowContext | KeyValueStore.KeyValueStore
   > {
     return Layer.effect(
       WindowState,
       Effect.gen(function* () {
-        const context = yield* DesktopWindowContext
+        const context = yield* WindowContext
         return yield* makeWindowState(context.registrationId, options)
       })
     )
@@ -273,7 +273,7 @@ export class WindowState extends Context.Service<WindowState, WindowStateApi>()(
 export const WindowStateLive: Layer.Layer<
   WindowState,
   WindowStateInvalidArgumentError,
-  DesktopWindowContext | KeyValueStore.KeyValueStore
+  WindowContext | KeyValueStore.KeyValueStore
 > = WindowState.window()
 
 const readStore = (

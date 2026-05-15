@@ -6,7 +6,8 @@ import { pathToFileURL } from "node:url"
 import type { HostWindowClient, WindowCreateInput } from "@effect-desktop/bridge"
 import { Cause, ConfigProvider, Effect, Exit, Layer } from "effect"
 
-import { DesktopWindowContext } from "./desktop-window-context.js"
+import { ResourceOwner } from "./resource-owner.js"
+import { WindowContext } from "./window-context.js"
 import {
   APP_EXPORT_ENV,
   APP_MODULE_ENV,
@@ -96,10 +97,15 @@ test("openDeclaredWindows binds each window's services Layer to that window's sc
 
   const mainServices = Layer.effectDiscard(
     Effect.gen(function* () {
-      const context = yield* DesktopWindowContext
+      const context = yield* WindowContext
+      const owner = yield* ResourceOwner
       return yield* Effect.acquireRelease(
         Effect.sync(() => {
-          contexts.push(context)
+          contexts.push({
+            registrationId: context.registrationId,
+            hostWindowId: context.hostWindowId,
+            ownerScope: owner.scopeId
+          })
           events.push("main:acquired")
         }),
         () =>
@@ -112,9 +118,14 @@ test("openDeclaredWindows binds each window's services Layer to that window's sc
 
   const prefsServices = Layer.effectDiscard(
     Effect.gen(function* () {
-      const context = yield* DesktopWindowContext
+      const context = yield* WindowContext
+      const owner = yield* ResourceOwner
       return yield* Effect.sync(() => {
-        contexts.push(context)
+        contexts.push({
+          registrationId: context.registrationId,
+          hostWindowId: context.hostWindowId,
+          ownerScope: owner.scopeId
+        })
         events.push("prefs:acquired")
       })
     })
