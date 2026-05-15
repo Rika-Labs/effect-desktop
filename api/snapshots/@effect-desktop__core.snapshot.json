@@ -331,12 +331,12 @@
     {
       "name": "Desktop",
       "kind": "value",
-      "signature": "const Desktop: Readonly<{ RedactionFilter: Readonly<{ redact: <A>(record: A, options?: import(\"@effect-desktop/bridge\").RedactionFilterOptions) => A; redactForJson: <A>(record: A, options?: import(\"@effect-desktop/bridge\").RedactionFilterOptions) => A; redactWithEvidence: <A>(record: A, options?: import(\"@effect-desktop/bridge\").RedactionFilterOptions) => import(\"@effect-desktop/bridge\").RedactionResult<A>; redactForJsonWithEvidence: <A>(record: A, options?: import(\"@effect-desktop/bridge\").RedactionFilterOptions) => import(\"@effect-desktop/bridge\").RedactionResult<A>; redactedValue: import(\"effect/Redacted\").Redacted<string>; defaultPattern: RegExp; }>; RpcCapability: <Capability extends import(\"@effect-desktop/bridge\").RpcCapabilityMetadata>(capability: Capability) => <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcCapability<R, Capability>; RpcEndpoint: Readonly<{ query: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcEndpointKind<R, \"query\">; mutation: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcEndpointKind<R, \"mutation\">; }>; RpcSupport: Readonly<{ supported: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcSupport<R, { readonly status: \"supported\"; }>; unsupported: (reason: string) => <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcSupport<R, { readonly status: \"unsupported\"; readonly reason: string; }>; }>; app: { (): Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>; <RIn = never, E = never>(config: DesktopConfig<RIn, E>): Layer.Layer<DesktopApp, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry | DesktopWindowRegistry | DesktopPermissionRegistry | DesktopWorkflowRegistry>>; <RIn = never, E = never>(options: DesktopAppOptionsWithPermissions<RIn, E>): Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn | PermissionRegistry>; <RIn = never, E = never>(options: DesktopAppOptions<RIn, E>): Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn>; }; WorkflowEngineDurable: import(\"./runtime/desktop-app.js\").DesktopWorkflowEngineLayer<import(\"effect/unstable/sql/SqlClient\").SqlClient, import(\"effect/unstable/sql/SqlError\").SqlError>; WorkflowEngineMemory: import(\"./runtime/desktop-app.js\").DesktopWorkflowEngineLayer<never, never>; launch: (layer: Layer.Layer<DesktopApp, DesktopConfigError, never>) => Effect.Effect<never, DesktopConfigError, never>; make: <RIn = never, E = never>(config: import(\"./runtime/desktop-app.js\").DesktopMakeConfig<RIn, E>) => import(\"./runtime/desktop-app.js\").DesktopAppDescriptor<RIn, E>; manifest: <RIn = never, E = never>(config: import(\"./runtime/desktop-app.js\").DesktopManifestSource<RIn, E>) => import(\"./runtime/desktop-app.js\").DesktopAppManifest; permission: <RIn = never>(capability: NormalizedCapability) => Layer.Layer<never, never, RIn | DesktopPermissionRegistry>; provider: <RIn = never>(descriptor: import(\"./runtime/desktop-app.js\").DesktopProviderDescriptor) => Layer.Layer<never, never, RIn | import(\"./runtime/desktop-app.js\").DesktopProviderRegistry>; Provider: Readonly<{ runtime: (options: import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderOptions) => import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderDescriptor; webview: (options: import(\"./runtime/desktop-app.js\").DesktopWebViewProviderOptions) => import(\"./runtime/desktop-app.js\").DesktopWebViewProviderDescriptor; Runtime: Readonly<{ bun: import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderDescriptor; node: import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderDescriptor; test: import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderDescriptor; }>; WebView: Readonly<{ system: Readonly<{ kind: \"webview\"; id: \"system\"; hostEngine: \"system\"; capabilities: import(\"./runtime/provider-registry.js\").ProviderCapability[]; node: import(\"./runtime/desktop-app.js\").DesktopRuntimeGraphNode; }>; chrome: Readonly<{ kind: \"webview\"; id: \"chrome\"; hostEngine: \"chrome\"; capabilities: import(\"./runtime/provider-registry.js\").ProviderCapability[]; node: import(\"./runtime/desktop-app.js\").DesktopRuntimeGraphNode; }>; }>; }>; providerLayerFor: (choice: Pick<import(\"./runtime/desktop-app.js\").DesktopRuntimeSelectedProviders, \"runtime\">) => Layer.Layer<DesktopRuntimeProviderServices, import(\"effect/Config\").ConfigError | DesktopConfigError, never>; rpc: <Rpcs extends import(\"effect/unstable/rpc/Rpc\").Any, E, R>(group: import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<Rpcs>, handlers: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").ToHandler<Rpcs>, E, R>) => Layer.Layer<never, never, DesktopRpcRegistry>; window: <RIn = never>(id: string, spec: import(\"./runtime/desktop-app.js\").WindowSpec, services?: Layer.Layer<never, never, RIn | import(\"effect/Scope\").Scope>) => Layer.Layer<never, never, RIn | DesktopWindowRegistry>; workflow: <RIn = never, E = never>(layer: DesktopWorkflowLayer<RIn, E>) => Layer.Layer<never, never, DesktopWorkflowRegistry>; Rpc: Readonly<{ surface: { <const Tag extends string, Group extends import(\"effect/unstable/rpc/RpcGroup\").Any & import(\"./runtime/desktop-rpc-registry.js\").DesktopRpcRegistrationGroup, ServiceId, ServerE, ServerR>(tag: Tag, group: Group, options: import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurfaceDirectOptions<import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, ServerE, ServerR>): import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurface<Tag, Group, import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, ServerE, ServerR>; <const Tag extends string, Group extends import(\"effect/unstable/rpc/RpcGroup\").Any & import(\"./runtime/desktop-rpc-registry.js\").DesktopRpcRegistrationGroup, ServiceId, Service, ServerE, ServerR>(tag: Tag, group: Group, options: import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurfaceMappedOptions<import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, Service, ServerE, ServerR>): import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurface<Tag, Group, import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, ServerE, ServerR>; }; supportedGroup: <Rpcs extends import(\"effect/unstable/rpc/Rpc\").Any>(group: import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<Rpcs>) => import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<import(\"./runtime/desktop-rpc-surface.js\").SupportedRpc<Rpcs>>; }>; runtime: <RIn = never, E = never>(config: DesktopConfig<RIn, E>) => Layer.Layer<import(\"./runtime/desktop-app.js\").DesktopRuntimeServices, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry | DesktopWindowRegistry | DesktopPermissionRegistry | DesktopWorkflowRegistry>>; runtimeGraph: <RIn, E>(config: DesktopConfig<RIn, E>) => Effect.Effect<import(\"./runtime/desktop-app.js\").DesktopRuntimeGraph, DesktopConfigError, never>; runtimeGraphSnapshot: <RIn, E>(config: DesktopConfig<RIn, E>) => Effect.Effect<import(\"./runtime/desktop-app.js\").LayerGraphSnapshot, never, never>; describeRpcs: <Group extends import(\"./runtime/desktop-rpc-registry.js\").DesktopRpcRegistrationGroup>(app: import(\"./runtime/rpc-descriptors.js\").DesktopRpcDescriptorSource, group: Group) => readonly import(\"./runtime/rpc-descriptors.js\").RpcEndpointDescriptor[]; }>"
+      "signature": "const Desktop: Readonly<{ RedactionFilter: Readonly<{ redact: <A>(record: A, options?: import(\"@effect-desktop/bridge\").RedactionFilterOptions) => A; redactForJson: <A>(record: A, options?: import(\"@effect-desktop/bridge\").RedactionFilterOptions) => A; redactWithEvidence: <A>(record: A, options?: import(\"@effect-desktop/bridge\").RedactionFilterOptions) => import(\"@effect-desktop/bridge\").RedactionResult<A>; redactForJsonWithEvidence: <A>(record: A, options?: import(\"@effect-desktop/bridge\").RedactionFilterOptions) => import(\"@effect-desktop/bridge\").RedactionResult<A>; redactedValue: import(\"effect/Redacted\").Redacted<string>; defaultPattern: RegExp; }>; RpcCapability: <Capability extends import(\"@effect-desktop/bridge\").RpcCapabilityMetadata>(capability: Capability) => <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcCapability<R, Capability>; RpcEndpoint: Readonly<{ query: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcEndpointKind<R, \"query\">; mutation: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcEndpointKind<R, \"mutation\">; }>; RpcSupport: Readonly<{ supported: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcSupport<R, { readonly status: \"supported\"; }>; unsupported: (reason: string) => <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcSupport<R, { readonly status: \"unsupported\"; readonly reason: string; }>; }>; app: { (): Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>; <RIn = never, E = never>(config: DesktopConfig<RIn, E>): Layer.Layer<DesktopApp, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry | DesktopWindowRegistry | DesktopPermissionRegistry | DesktopWorkflowRegistry | ResourceOwner>>; <RIn = never, E = never>(options: DesktopAppOptionsWithPermissions<RIn, E>): Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn | PermissionRegistry>; <RIn = never, E = never>(options: DesktopAppOptions<RIn, E>): Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn>; }; WorkflowEngineDurable: import(\"./runtime/desktop-app.js\").DesktopWorkflowEngineLayer<import(\"effect/unstable/sql/SqlClient\").SqlClient, import(\"effect/unstable/sql/SqlError\").SqlError>; WorkflowEngineMemory: import(\"./runtime/desktop-app.js\").DesktopWorkflowEngineLayer<never, never>; launch: (layer: Layer.Layer<DesktopApp, DesktopConfigError, never>) => Effect.Effect<never, DesktopConfigError, never>; make: <RIn = never, E = never>(config: import(\"./runtime/desktop-app.js\").DesktopMakeConfig<RIn, E>) => import(\"./runtime/desktop-app.js\").DesktopAppDescriptor<RIn, E>; manifest: <RIn = never, E = never>(config: import(\"./runtime/desktop-app.js\").DesktopManifestSource<RIn, E>) => import(\"./runtime/desktop-app.js\").DesktopAppManifest; permission: <RIn = never>(capability: NormalizedCapability) => Layer.Layer<never, never, RIn | DesktopPermissionRegistry>; provider: <RIn = never>(descriptor: import(\"./runtime/desktop-app.js\").DesktopProviderDescriptor) => Layer.Layer<never, never, RIn | import(\"./runtime/desktop-app.js\").DesktopProviderRegistry>; Provider: Readonly<{ runtime: (options: import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderOptions) => import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderDescriptor; webview: (options: import(\"./runtime/desktop-app.js\").DesktopWebViewProviderOptions) => import(\"./runtime/desktop-app.js\").DesktopWebViewProviderDescriptor; Runtime: Readonly<{ bun: import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderDescriptor; node: import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderDescriptor; test: import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderDescriptor; }>; WebView: Readonly<{ system: Readonly<{ kind: \"webview\"; id: \"system\"; hostEngine: \"system\"; capabilities: import(\"./runtime/provider-registry.js\").ProviderCapability[]; node: import(\"./runtime/desktop-app.js\").DesktopRuntimeGraphNode; }>; chrome: Readonly<{ kind: \"webview\"; id: \"chrome\"; hostEngine: \"chrome\"; capabilities: import(\"./runtime/provider-registry.js\").ProviderCapability[]; node: import(\"./runtime/desktop-app.js\").DesktopRuntimeGraphNode; }>; }>; }>; providerLayerFor: (choice: Pick<import(\"./runtime/desktop-app.js\").DesktopRuntimeSelectedProviders, \"runtime\">) => Layer.Layer<DesktopRuntimeProviderServices, import(\"effect/Config\").ConfigError | DesktopConfigError, never>; rpc: <Rpcs extends import(\"effect/unstable/rpc/Rpc\").Any, E, R>(group: import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<Rpcs>, handlers: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").ToHandler<Rpcs>, E, R>) => Layer.Layer<never, never, DesktopRpcRegistry>; window: <RIn = never>(id: string, spec: import(\"./runtime/desktop-app.js\").WindowSpec, services?: Layer.Layer<never, never, RIn | import(\"effect/Scope\").Scope>) => Layer.Layer<never, never, RIn | DesktopWindowRegistry>; workflow: <RIn = never, E = never>(layer: DesktopWorkflowLayer<RIn, E>) => Layer.Layer<never, never, DesktopWorkflowRegistry>; Rpc: Readonly<{ surface: { <const Tag extends string, Group extends import(\"effect/unstable/rpc/RpcGroup\").Any & import(\"./runtime/desktop-rpc-registry.js\").DesktopRpcRegistrationGroup, ServiceId, ServerE, ServerR>(tag: Tag, group: Group, options: import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurfaceDirectOptions<import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, ServerE, ServerR>): import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurface<Tag, Group, import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, ServerE, ServerR>; <const Tag extends string, Group extends import(\"effect/unstable/rpc/RpcGroup\").Any & import(\"./runtime/desktop-rpc-registry.js\").DesktopRpcRegistrationGroup, ServiceId, Service, ServerE, ServerR>(tag: Tag, group: Group, options: import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurfaceMappedOptions<import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, Service, ServerE, ServerR>): import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurface<Tag, Group, import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, ServerE, ServerR>; }; supportedGroup: <Rpcs extends import(\"effect/unstable/rpc/Rpc\").Any>(group: import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<Rpcs>) => import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<import(\"./runtime/desktop-rpc-surface.js\").SupportedRpc<Rpcs>>; }>; runtime: <RIn = never, E = never>(config: DesktopConfig<RIn, E>) => Layer.Layer<import(\"./runtime/desktop-app.js\").DesktopRuntimeServices, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry | DesktopWindowRegistry | DesktopPermissionRegistry | DesktopWorkflowRegistry | ResourceOwner>>; runtimeGraph: <RIn, E>(config: DesktopConfig<RIn, E>) => Effect.Effect<import(\"./runtime/desktop-app.js\").DesktopRuntimeGraph, DesktopConfigError, never>; runtimeGraphSnapshot: <RIn, E>(config: DesktopConfig<RIn, E>) => Effect.Effect<import(\"./runtime/desktop-app.js\").LayerGraphSnapshot, never, never>; describeRpcs: <Group extends import(\"./runtime/desktop-rpc-registry.js\").DesktopRpcRegistrationGroup>(app: import(\"./runtime/rpc-descriptors.js\").DesktopRpcDescriptorSource, group: Group) => readonly import(\"./runtime/rpc-descriptors.js\").RpcEndpointDescriptor[]; }>"
     },
     {
       "name": "desktopApp",
       "kind": "value",
-      "signature": "const app: <RIn = never, E = never>(config: DesktopConfig<RIn, E>) => Layer.Layer<DesktopApp, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry | DesktopWindowRegistry | DesktopPermissionRegistry | DesktopWorkflowRegistry>>"
+      "signature": "const app: <RIn = never, E = never>(config: DesktopConfig<RIn, E>) => Layer.Layer<DesktopApp, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry | DesktopWindowRegistry | DesktopPermissionRegistry | DesktopWorkflowRegistry | ResourceOwner>>"
     },
     {
       "name": "DesktopApp",
@@ -626,7 +626,7 @@
     {
       "name": "DesktopRuntimeLive",
       "kind": "value",
-      "signature": "const DesktopRuntimeLive: <RIn = never, E = never>(config: DesktopConfig<RIn, E>) => Layer.Layer<DesktopRuntimeServices, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry | DesktopWindowRegistry | DesktopPermissionRegistry | DesktopWorkflowRegistry>>"
+      "signature": "const DesktopRuntimeLive: <RIn = never, E = never>(config: DesktopConfig<RIn, E>) => Layer.Layer<DesktopRuntimeServices, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry | DesktopWindowRegistry | DesktopPermissionRegistry | DesktopWorkflowRegistry | ResourceOwner>>"
     },
     {
       "name": "DesktopRuntimeProviderDescriptor",
@@ -656,7 +656,7 @@
     {
       "name": "DesktopRuntimeServices",
       "kind": "type",
-      "signature": "export type DesktopRuntimeServices = DesktopApp | DesktopRuntime | DesktopRuntimeProviderServices"
+      "signature": "export type DesktopRuntimeServices = | DesktopApp | DesktopRuntime | DesktopRuntimeProviderServices | ResourceOwner"
     },
     {
       "name": "DesktopScheduleLimits",
@@ -702,21 +702,6 @@
       "name": "desktopWindow",
       "kind": "value",
       "signature": "const desktopWindow: <RIn = never>(id: string, spec: WindowSpec, services?: Layer.Layer<never, never, RIn | Scope.Scope>) => Layer.Layer<never, never, RIn | DesktopWindowRegistry>"
-    },
-    {
-      "name": "DesktopWindowContext",
-      "kind": "class",
-      "signature": "export class DesktopWindowContext extends Context.Service< DesktopWindowContext, DesktopWindowContextApi >()(\"@effect-desktop/core/DesktopWindowContext\") {}"
-    },
-    {
-      "name": "DesktopWindowContextApi",
-      "kind": "interface",
-      "signature": "export interface DesktopWindowContextApi { readonly registrationId: string readonly hostWindowId: string readonly ownerScope: string }"
-    },
-    {
-      "name": "desktopWindowContextLayer",
-      "kind": "value",
-      "signature": "const desktopWindowContextLayer: (context: DesktopWindowContextApi) => Layer.Layer<DesktopWindowContext>"
     },
     {
       "name": "DesktopWindowRegistration",
@@ -896,7 +881,7 @@
     {
       "name": "FilesystemApi",
       "kind": "interface",
-      "signature": "export interface FilesystemApi { readonly read: (path: string) => Effect.Effect<Uint8Array, FilesystemError, never> readonly realpath: ( path: string, capability?: FilesystemPathCapability ) => Effect.Effect<string, FilesystemError, never> readonly write: (path: string, bytes: Uint8Array) => Effect.Effect<void, FilesystemError, never> readonly writeAtomic: ( path: string, bytes: Uint8Array ) => Effect.Effect<void, FilesystemError, never> readonly stat: (path: string) => Effect.Effect<FilesystemStatResult, FilesystemError, never> readonly mkdir: ( path: string, options?: { readonly recursive?: boolean } ) => Effect.Effect<void, FilesystemError, never> readonly remove: ( path: string, options?: { readonly recursive?: boolean } ) => Effect.Effect<void, FilesystemError, never> readonly watch: ( path: string, options?: { readonly ownerScope: string; readonly bufferSize?: number } ) => Stream.Stream<FilesystemEvent, FilesystemError, never> }"
+      "signature": "export interface FilesystemApi { readonly read: (path: string) => Effect.Effect<Uint8Array, FilesystemError, never> readonly realpath: ( path: string, capability?: FilesystemPathCapability ) => Effect.Effect<string, FilesystemError, never> readonly write: (path: string, bytes: Uint8Array) => Effect.Effect<void, FilesystemError, never> readonly writeAtomic: ( path: string, bytes: Uint8Array ) => Effect.Effect<void, FilesystemError, never> readonly stat: (path: string) => Effect.Effect<FilesystemStatResult, FilesystemError, never> readonly mkdir: ( path: string, options?: { readonly recursive?: boolean } ) => Effect.Effect<void, FilesystemError, never> readonly remove: ( path: string, options?: { readonly recursive?: boolean } ) => Effect.Effect<void, FilesystemError, never> readonly watch: ( path: string, options?: { readonly bufferSize?: number } ) => Stream.Stream<FilesystemEvent, FilesystemError, never> }"
     },
     {
       "name": "FilesystemEntryKind",
@@ -941,7 +926,7 @@
     {
       "name": "FilesystemLive",
       "kind": "value",
-      "signature": "const FilesystemLive: Layer.Layer<Filesystem, never, ResourceRegistry | EffectFileSystem.FileSystem>"
+      "signature": "const FilesystemLive: Layer.Layer<Filesystem, never, ResourceRegistry | ResourceOwner | EffectFileSystem.FileSystem>"
     },
     {
       "name": "FilesystemMkdirInput",
@@ -1249,6 +1234,11 @@
       "signature": "const make: <RIn = never, E = never>(config: DesktopMakeConfig<RIn, E>) => DesktopAppDescriptor<RIn, E>"
     },
     {
+      "name": "makeAppResourceOwner",
+      "kind": "value",
+      "signature": "const makeAppResourceOwner: (appId: string) => Effect.Effect<ResourceOwnerApi, ResourceOwnerInvalidArgumentError>"
+    },
+    {
       "name": "makeApprovalBroker",
       "kind": "value",
       "signature": "const makeApprovalBroker: (options: ApprovalBrokerOptions) => Effect.Effect<ApprovalBrokerApi, ApprovalBrokerInvalidArgumentError, never>"
@@ -1294,11 +1284,6 @@
       "signature": "const makeDesktopRpcRegistry: () => DesktopRpcRegistryApi"
     },
     {
-      "name": "makeDesktopWindowContext",
-      "kind": "value",
-      "signature": "const makeDesktopWindowContext: (input: { readonly registrationId: string; readonly hostWindowId: string; }) => DesktopWindowContextApi"
-    },
-    {
       "name": "makeDesktopWindowRegistry",
       "kind": "value",
       "signature": "const makeDesktopWindowRegistry: () => DesktopWindowRegistryApi"
@@ -1331,7 +1316,7 @@
     {
       "name": "makeFilesystem",
       "kind": "value",
-      "signature": "const makeFilesystem: (registry: ResourceRegistryApi, options?: FilesystemOptions) => Effect.Effect<FilesystemApi, never, EffectFileSystem.FileSystem>"
+      "signature": "const makeFilesystem: (registry: ResourceRegistryApi, owner: ResourceOwnerApi, options?: FilesystemOptions) => Effect.Effect<FilesystemApi, never, EffectFileSystem.FileSystem>"
     },
     {
       "name": "makeFilesystemInspectorCollector",
@@ -1352,6 +1337,11 @@
       "name": "makeInspectorTransport",
       "kind": "value",
       "signature": "const makeInspectorTransport: (options?: InspectorTransportOptions) => Effect.Effect<InspectorTransportApi, InspectorTransportInvalidArgumentError, never>"
+    },
+    {
+      "name": "makeJobResourceOwner",
+      "kind": "value",
+      "signature": "const makeJobResourceOwner: (jobId: string) => Effect.Effect<ResourceOwnerApi, ResourceOwnerInvalidArgumentError>"
     },
     {
       "name": "makeMissingDesktopContextError",
@@ -1396,7 +1386,7 @@
     {
       "name": "makeProcess",
       "kind": "value",
-      "signature": "const makeProcess: (registry: ResourceRegistryApi, options?: ProcessOptions) => Effect.Effect<ProcessApi, HostProtocolInvalidArgumentError, ChildProcessSpawner.ChildProcessSpawner>"
+      "signature": "const makeProcess: (registry: ResourceRegistryApi, owner: ResourceOwnerApi, options?: ProcessOptions) => Effect.Effect<ProcessApi, HostProtocolInvalidArgumentError, ChildProcessSpawner.ChildProcessSpawner>"
     },
     {
       "name": "makeProviderRegistry",
@@ -1406,12 +1396,17 @@
     {
       "name": "makePty",
       "kind": "value",
-      "signature": "const makePty: (registry: ResourceRegistryApi, options: PtyOptions) => Effect.Effect<PtyApi, HostProtocolInvalidArgumentError, never>"
+      "signature": "const makePty: (registry: ResourceRegistryApi, owner: ResourceOwnerApi, options: PtyOptions) => Effect.Effect<PtyApi, HostProtocolInvalidArgumentError, never>"
     },
     {
       "name": "makeRendererInspectorCollector",
       "kind": "value",
       "signature": "const makeRendererInspectorCollector: () => Effect.Effect<RendererInspectorCollectorApi, never, never>"
+    },
+    {
+      "name": "makeResourceOwner",
+      "kind": "value",
+      "signature": "const makeResourceOwner: (owner: ResourceOwnerApi, operation?: string) => Effect.Effect<ResourceOwnerApi, ResourceOwnerInvalidArgumentError>"
     },
     {
       "name": "makeResourceRegistry",
@@ -1459,9 +1454,19 @@
       "signature": "const makeTelemetry: (options?: TelemetryOptions) => Effect.Effect<TelemetryApi, TelemetryInvalidArgumentError, never>"
     },
     {
+      "name": "makeTestResourceOwner",
+      "kind": "value",
+      "signature": "const makeTestResourceOwner: (scopeId: string) => Effect.Effect<ResourceOwnerApi, ResourceOwnerInvalidArgumentError>"
+    },
+    {
+      "name": "makeWindowContext",
+      "kind": "value",
+      "signature": "const makeWindowContext: (input: { readonly registrationId: string; readonly hostWindowId: string; }) => WindowContextApi"
+    },
+    {
       "name": "makeWorker",
       "kind": "value",
-      "signature": "const makeWorker: (registry: ResourceRegistryApi, permissions: PermissionRegistryApi, options?: WorkerOptions) => Effect.Effect<WorkerApi, never, never>"
+      "signature": "const makeWorker: (registry: ResourceRegistryApi, permissions: PermissionRegistryApi, owner: ResourceOwnerApi, options?: WorkerOptions) => Effect.Effect<WorkerApi, never, never>"
     },
     {
       "name": "makeWorkflowInspectorCollector",
@@ -1721,12 +1726,12 @@
     {
       "name": "ProcessLayer",
       "kind": "value",
-      "signature": "const ProcessLayer: (options?: ProcessOptions) => Layer.Layer<Process, HostProtocolInvalidArgumentError, ResourceRegistry | ChildProcessSpawner.ChildProcessSpawner>"
+      "signature": "const ProcessLayer: (options?: ProcessOptions) => Layer.Layer<Process, HostProtocolInvalidArgumentError, ResourceOwner | ResourceRegistry | ChildProcessSpawner.ChildProcessSpawner>"
     },
     {
       "name": "ProcessLive",
       "kind": "value",
-      "signature": "const ProcessLive: Layer.Layer<Process, never, ResourceRegistry | ChildProcessSpawner.ChildProcessSpawner>"
+      "signature": "const ProcessLive: Layer.Layer<Process, never, ResourceRegistry | ResourceOwner | ChildProcessSpawner.ChildProcessSpawner>"
     },
     {
       "name": "ProcessOptions",
@@ -1756,7 +1761,7 @@
     {
       "name": "ProcessSpawnOptions",
       "kind": "interface",
-      "signature": "export interface ProcessSpawnOptions { readonly ownerScope: string readonly shell?: boolean readonly cwd?: string readonly env?: Readonly<Record<string, string>> }"
+      "signature": "export interface ProcessSpawnOptions { readonly shell?: boolean readonly cwd?: string readonly env?: Readonly<Record<string, string>> }"
     },
     {
       "name": "provider",
@@ -1841,7 +1846,7 @@
     {
       "name": "PtyLayer",
       "kind": "value",
-      "signature": "const PtyLayer: (options: PtyOptions) => Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceRegistry>"
+      "signature": "const PtyLayer: (options: PtyOptions) => Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceOwner | ResourceRegistry>"
     },
     {
       "name": "PtyOpenInput",
@@ -1851,7 +1856,7 @@
     {
       "name": "PtyOpenOptions",
       "kind": "interface",
-      "signature": "export interface PtyOpenOptions { readonly argv: readonly [string, ...string[]] readonly ownerScope: string readonly rows: number readonly cols: number readonly cwd?: string readonly env?: Readonly<Record<string, string>> }"
+      "signature": "export interface PtyOpenOptions { readonly argv: readonly [string, ...string[]] readonly rows: number readonly cols: number readonly cwd?: string readonly env?: Readonly<Record<string, string>> }"
     },
     {
       "name": "PtyOptions",
@@ -1979,6 +1984,26 @@
       "signature": "export type ResourceLifecycleEvent = | { readonly _tag: \"ResourceRegistered\" readonly entry: ResourceEntry } | { readonly _tag: \"ResourceShared\" readonly source: ResourceHandle readonly entry: ResourceEntry } | { readonly _tag: \"ResourceDisposed\" readonly handle: ResourceHandle } | { readonly _tag: \"ResourceStale\" readonly handle: ResourceHandle readonly actualGeneration: number } | { readonly _tag: \"ScopeDeclared\" readonly scope: ScopeId readonly parent: Option.Option<ScopeId> } | { readonly _tag: \"ScopeClosing\" readonly scope: ScopeId readonly descendants: readonly ScopeId[] readonly resources: readonly ResourceHandle[] } | { readonly _tag: \"ScopeClosed\" readonly scope: ScopeId }"
     },
     {
+      "name": "ResourceOwner",
+      "kind": "class",
+      "signature": "export class ResourceOwner extends Context.Service<ResourceOwner, ResourceOwnerApi>()( \"@effect-desktop/core/ResourceOwner\" ) { static app(appId: string): Layer.Layer<ResourceOwner, ResourceOwnerInvalidArgumentError> { return Layer.effect(ResourceOwner, makeAppResourceOwner(appId)) } static window(input: { readonly registrationId: string readonly hostWindowId: string }): Layer.Layer<ResourceOwner, ResourceOwnerInvalidArgumentError> { return Layer.unwrap( Effect.gen(function* () { const registrationId = yield* decodeOwnerText( input.registrationId, \"registrationId\", \"ResourceOwner.window\" ) const hostWindowId = yield* decodeOwnerText( input.hostWindowId, \"hostWindowId\", \"ResourceOwner.window\" ) const scopeId = `window:${hostWindowId}` return resourceOwnerLayer(\"ResourceOwner.window\", { kind: \"window\", scopeId, actor: new PermissionActor({ kind: \"window\", id: scopeId }), attributes: { registrationId, hostWindowId } }) }) ) } static job(jobId: string): Layer.Layer<ResourceOwner, ResourceOwnerInvalidArgumentError> { return Layer.effect(ResourceOwner, makeJobResourceOwner(jobId)) } static test(scopeId: string): Layer.Layer<ResourceOwner, ResourceOwnerInvalidArgumentError> { return Layer.effect(ResourceOwner, makeTestResourceOwner(scopeId)) } }"
+    },
+    {
+      "name": "ResourceOwnerApi",
+      "kind": "interface",
+      "signature": "export interface ResourceOwnerApi { readonly kind: ResourceOwnerKind readonly scopeId: string readonly actor: PermissionActor readonly attributes: Readonly<Record<string, string>> }"
+    },
+    {
+      "name": "ResourceOwnerInvalidArgumentError",
+      "kind": "class",
+      "signature": "export class ResourceOwnerInvalidArgumentError extends Data.TaggedError(\"InvalidArgument\")<{ readonly operation: string readonly field: string readonly message: string readonly cause: Option.Option<unknown> }> {}"
+    },
+    {
+      "name": "ResourceOwnerKind",
+      "kind": "type",
+      "signature": "export type ResourceOwnerKind = \"app\" | \"window\" | \"job\" | \"test\""
+    },
+    {
       "name": "ResourceRegistry",
       "kind": "class",
       "signature": "export class ResourceRegistry extends Context.Service<ResourceRegistry, ResourceRegistryApi>()( \"ResourceRegistry\" ) {}"
@@ -2041,7 +2066,7 @@
     {
       "name": "runtime",
       "kind": "value",
-      "signature": "const runtime: <RIn = never, E = never>(config: DesktopConfig<RIn, E>) => Layer.Layer<DesktopRuntimeServices, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry | DesktopWindowRegistry | DesktopPermissionRegistry | DesktopWorkflowRegistry>>"
+      "signature": "const runtime: <RIn = never, E = never>(config: DesktopConfig<RIn, E>) => Layer.Layer<DesktopRuntimeServices, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry | DesktopWindowRegistry | DesktopPermissionRegistry | DesktopWorkflowRegistry | ResourceOwner>>"
     },
     {
       "name": "runtimeGraph",
@@ -2191,7 +2216,7 @@
     {
       "name": "Settings",
       "kind": "class",
-      "signature": "export class Settings extends Context.Service<Settings, SettingsApi>()(\"Settings\") { static layer( options: SettingsOptions ): Layer.Layer< Settings, SettingsError | SqlitePolicyError, PermissionRegistry | ResourceRegistry > { return settingsLayer(options, \"app\") } static window( options: SettingsOptions ): Layer.Layer< Settings, SettingsError | SqlitePolicyError, DesktopWindowContext | PermissionRegistry | ResourceRegistry > { return Layer.unwrap( Effect.gen(function* () { const context = yield* DesktopWindowContext return settingsLayer(options, context.ownerScope) }) ) } static memory(options: SettingsMemoryOptions = {}): Layer.Layer<Settings, SettingsError, never> { return settingsMemoryLayer(options) } }"
+      "signature": "export class Settings extends Context.Service<Settings, SettingsApi>()(\"Settings\") { static layer( options: SettingsOptions ): Layer.Layer< Settings, SettingsError | SqlitePolicyError, ResourceOwner | PermissionRegistry | ResourceRegistry > { return Layer.unwrap( Effect.gen(function* () { const owner = yield* ResourceOwner return settingsLayer(options, owner.scopeId) }) ) } static window( options: SettingsOptions ): Layer.Layer< Settings, SettingsError | SqlitePolicyError, ResourceOwner | PermissionRegistry | ResourceRegistry > { return Settings.layer(options) } static memory(options: SettingsMemoryOptions = {}): Layer.Layer<Settings, SettingsError, never> { return settingsMemoryLayer(options) } }"
     },
     {
       "name": "SettingsApi",
@@ -2331,12 +2356,12 @@
     {
       "name": "SqlClientLayerConfig",
       "kind": "interface",
-      "signature": "export interface SqlClientLayerConfig extends Omit< UpstreamSqliteClient.SqliteClientConfig, \"filename\" > { readonly filename: string readonly ownerScope: string }"
+      "signature": "export interface SqlClientLayerConfig extends Omit< UpstreamSqliteClient.SqliteClientConfig, \"filename\" > { readonly filename: string }"
     },
     {
       "name": "SqlClientLive",
       "kind": "value",
-      "signature": "const SqlClientLive: (config: SqlClientLayerConfig) => Layer.Layer<SqlClient | UpstreamSqliteClient.SqliteClient, SqlitePolicyError, ResourceRegistry | PermissionRegistry>"
+      "signature": "const SqlClientLive: (config: SqlClientLayerConfig) => Layer.Layer<SqlClient | UpstreamSqliteClient.SqliteClient, SqlitePolicyError, ResourceOwner | ResourceRegistry | PermissionRegistry>"
     },
     {
       "name": "SqlError",
@@ -2356,7 +2381,7 @@
     {
       "name": "SqliteInvalidArgumentError",
       "kind": "class",
-      "signature": "export class SqliteInvalidArgumentError extends Data.TaggedError(\"InvalidArgument\")<{ readonly operation: string readonly field: \"filename\" | \"ownerScope\" readonly message: string readonly cause: Option.Option<unknown> }> {}"
+      "signature": "export class SqliteInvalidArgumentError extends Data.TaggedError(\"InvalidArgument\")<{ readonly operation: string readonly field: \"filename\" readonly message: string readonly cause: Option.Option<unknown> }> {}"
     },
     {
       "name": "SqlitePolicyError",
@@ -2504,9 +2529,19 @@
       "signature": "const validatePermissions: (declared: readonly NormalizedCapabilityType[], required: readonly NormalizedCapabilityType[]) => Effect.Effect<void, DesktopConfigError, never>"
     },
     {
-      "name": "windowOwnerScope",
+      "name": "WindowContext",
+      "kind": "class",
+      "signature": "export class WindowContext extends Context.Service<WindowContext, WindowContextApi>()( \"@effect-desktop/core/WindowContext\" ) {}"
+    },
+    {
+      "name": "WindowContextApi",
+      "kind": "interface",
+      "signature": "export interface WindowContextApi { readonly registrationId: string readonly hostWindowId: string }"
+    },
+    {
+      "name": "windowContextLayer",
       "kind": "value",
-      "signature": "const windowOwnerScope: (hostWindowId: string) => string"
+      "signature": "const windowContextLayer: (context: WindowContextApi) => Layer.Layer<WindowContext>"
     },
     {
       "name": "WindowSpec",
@@ -2581,12 +2616,12 @@
     {
       "name": "WorkerLayer",
       "kind": "value",
-      "signature": "const WorkerLayer: (options?: WorkerOptions) => Layer.Layer<Worker, never, ResourceRegistry | PermissionRegistry>"
+      "signature": "const WorkerLayer: (options?: WorkerOptions) => Layer.Layer<Worker, never, ResourceOwner | ResourceRegistry | PermissionRegistry>"
     },
     {
       "name": "WorkerLive",
       "kind": "value",
-      "signature": "const WorkerLive: Layer.Layer<Worker, never, PermissionRegistry | ResourceRegistry>"
+      "signature": "const WorkerLive: Layer.Layer<Worker, never, PermissionRegistry | ResourceRegistry | ResourceOwner>"
     },
     {
       "name": "WorkerOptions",
@@ -2616,7 +2651,7 @@
     {
       "name": "WorkerSpawnOptions",
       "kind": "interface",
-      "signature": "export interface WorkerSpawnOptions<In, Out> { readonly script: string readonly ownerScope: string readonly inputSchema: Schema.Decoder<In, never> readonly outputSchema: Schema.Decoder<Out, never> readonly context: PermissionContext readonly capabilities?: readonly NormalizedCapability[] }"
+      "signature": "export interface WorkerSpawnOptions<In, Out> { readonly script: string readonly inputSchema: Schema.Decoder<In, never> readonly outputSchema: Schema.Decoder<Out, never> readonly context?: Pick<PermissionContext, \"resource\" | \"traceId\"> readonly capabilities?: readonly NormalizedCapability[] }"
     },
     {
       "name": "WorkerStaleHandleError",

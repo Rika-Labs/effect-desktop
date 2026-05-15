@@ -131,7 +131,7 @@
     {
       "name": "makeMemoryFilesystem",
       "kind": "value",
-      "signature": "const makeMemoryFilesystem: (registry: ResourceRegistryApi, options?: MemoryFilesystemOptions) => Effect.Effect<FilesystemApi, never, never>"
+      "signature": "const makeMemoryFilesystem: (registry: ResourceRegistryApi, owner: ResourceOwnerApi, options?: MemoryFilesystemOptions) => Effect.Effect<FilesystemApi, never, never>"
     },
     {
       "name": "makeMemorySecretsSafeStorage",
@@ -151,12 +151,12 @@
     {
       "name": "makeMockProcess",
       "kind": "value",
-      "signature": "const makeMockProcess: (registry: ResourceRegistryApi, options?: MockProcessOptions) => Effect.Effect<MockProcessApi, HostProtocolInvalidArgumentError, never>"
+      "signature": "const makeMockProcess: (registry: ResourceRegistryApi, owner: ResourceOwnerApi, options?: MockProcessOptions) => Effect.Effect<MockProcessApi, HostProtocolInvalidArgumentError, never>"
     },
     {
       "name": "makeMockPty",
       "kind": "value",
-      "signature": "const makeMockPty: (registry: ResourceRegistryApi, options?: MockPtyOptions) => Effect.Effect<MockPtyApi, HostProtocolInvalidArgumentError, never>"
+      "signature": "const makeMockPty: (registry: ResourceRegistryApi, owner: ResourceOwnerApi, options?: MockPtyOptions) => Effect.Effect<MockPtyApi, HostProtocolInvalidArgumentError, never>"
     },
     {
       "name": "makeScreenScenarioLayer",
@@ -176,7 +176,7 @@
     {
       "name": "MemoryFilesystem",
       "kind": "value",
-      "signature": "const MemoryFilesystem: Readonly<{ layer: (options?: MemoryFilesystemOptions) => Layer.Layer<Filesystem, never, ResourceRegistry>; }>"
+      "signature": "const MemoryFilesystem: Readonly<{ layer: (options?: MemoryFilesystemOptions) => Layer.Layer<Filesystem, never, ResourceOwner | ResourceRegistry>; }>"
     },
     {
       "name": "MemoryFilesystemFile",
@@ -186,7 +186,7 @@
     {
       "name": "MemoryFilesystemLive",
       "kind": "value",
-      "signature": "const MemoryFilesystemLive: (options?: MemoryFilesystemOptions) => Layer.Layer<Filesystem, never, ResourceRegistry>"
+      "signature": "const MemoryFilesystemLive: (options?: MemoryFilesystemOptions) => Layer.Layer<Filesystem, never, ResourceOwner | ResourceRegistry>"
     },
     {
       "name": "MemoryFilesystemOptions",
@@ -256,7 +256,7 @@
     {
       "name": "MockProcess",
       "kind": "value",
-      "signature": "const MockProcess: Readonly<{ layer: (options?: MockProcessOptions) => Layer.Layer<Process, HostProtocolInvalidArgumentError, ResourceRegistry>; }>"
+      "signature": "const MockProcess: Readonly<{ layer: (options?: MockProcessOptions) => Layer.Layer<Process, HostProtocolInvalidArgumentError, ResourceOwner | ResourceRegistry>; }>"
     },
     {
       "name": "MockProcessApi",
@@ -271,7 +271,7 @@
     {
       "name": "MockProcessLive",
       "kind": "value",
-      "signature": "const MockProcessLive: (options?: MockProcessOptions) => Layer.Layer<Process, HostProtocolInvalidArgumentError, ResourceRegistry>"
+      "signature": "const MockProcessLive: (options?: MockProcessOptions) => Layer.Layer<Process, HostProtocolInvalidArgumentError, ResourceOwner | ResourceRegistry>"
     },
     {
       "name": "MockProcessOptions",
@@ -286,7 +286,7 @@
     {
       "name": "MockPTY",
       "kind": "value",
-      "signature": "const MockPTY: Readonly<{ layer: (options?: MockPtyOptions) => Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceRegistry>; }>"
+      "signature": "const MockPTY: Readonly<{ layer: (options?: MockPtyOptions) => Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceOwner | ResourceRegistry>; }>"
     },
     {
       "name": "MockPtyApi",
@@ -301,7 +301,7 @@
     {
       "name": "MockPtyLayer",
       "kind": "value",
-      "signature": "const MockPtyLayer: (options?: MockPtyOptions) => Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceRegistry>"
+      "signature": "const MockPtyLayer: (options?: MockPtyOptions) => Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceOwner | ResourceRegistry>"
     },
     {
       "name": "MockPtyOpenRecord",
