@@ -401,11 +401,14 @@ test("Desktop.runtime runs the same provider-backed app program under bun, node,
   const program = Effect.gen(function* () {
     const app = yield* core.DesktopApp
     const runtime = yield* core.DesktopRuntime
+    const owner = yield* core.ResourceOwner
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
     const cwd = path.resolve(".")
     return {
       appId: app.appId,
+      ownerKind: owner.kind,
+      ownerScope: owner.scopeId,
       runtimeProvider: runtime.providers.runtime,
       graphAppId: runtime.graph.appId,
       cwdExists: yield* fs.exists(cwd)
@@ -442,18 +445,24 @@ test("Desktop.runtime runs the same provider-backed app program under bun, node,
 
   expect(bun).toEqual({
     appId: "notes",
+    ownerKind: "app",
+    ownerScope: "notes",
     runtimeProvider: "bun",
     graphAppId: "notes",
     cwdExists: true
   })
   expect(node).toEqual({
     appId: "notes",
+    ownerKind: "app",
+    ownerScope: "notes",
     runtimeProvider: "node",
     graphAppId: "notes",
     cwdExists: true
   })
   expect(test).toMatchObject({
     appId: "notes",
+    ownerKind: "app",
+    ownerScope: "notes",
     runtimeProvider: "test",
     graphAppId: "notes"
   })

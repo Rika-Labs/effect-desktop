@@ -27,12 +27,7 @@ export class ResourceOwner extends Context.Service<ResourceOwner, ResourceOwnerA
   "@effect-desktop/core/ResourceOwner"
 ) {
   static app(appId: string): Layer.Layer<ResourceOwner, ResourceOwnerInvalidArgumentError> {
-    return resourceOwnerLayer("ResourceOwner.app", {
-      kind: "app",
-      scopeId: appId,
-      actor: new PermissionActor({ kind: "app", id: appId }),
-      attributes: { appId }
-    })
+    return Layer.effect(ResourceOwner, makeAppResourceOwner(appId))
   }
 
   static window(input: {
@@ -80,6 +75,19 @@ export class ResourceOwner extends Context.Service<ResourceOwner, ResourceOwnerA
     })
   }
 }
+
+export const makeAppResourceOwner = (
+  appId: string
+): Effect.Effect<ResourceOwnerApi, ResourceOwnerInvalidArgumentError> =>
+  makeResourceOwner(
+    {
+      kind: "app",
+      scopeId: appId,
+      actor: new PermissionActor({ kind: "app", id: appId }),
+      attributes: { appId }
+    },
+    "ResourceOwner.app"
+  )
 
 export const makeResourceOwner = (
   owner: ResourceOwnerApi,

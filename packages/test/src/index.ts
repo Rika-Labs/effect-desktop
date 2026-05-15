@@ -538,6 +538,7 @@ type HeadlessRuntimeServices =
   | Filesystem
   | Process
   | PTY
+  | ResourceOwner
   | ResourceRegistry
   | Telemetry
   | PermissionRegistry
@@ -617,7 +618,12 @@ const makeHeadlessRuntimeContext = (
               Context.add(
                 Filesystem,
                 filesystem
-              )(Context.add(MockBridge, bridge)(Context.make(MockHost, host)))
+              )(
+                Context.add(
+                  ResourceOwner,
+                  owner
+                )(Context.add(MockBridge, bridge)(Context.make(MockHost, host)))
+              )
             )
           )
         )

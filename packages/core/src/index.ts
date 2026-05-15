@@ -42,6 +42,7 @@ import type {
 import { DesktopRpc } from "./runtime/desktop-rpc-surface.js"
 import type { NormalizedCapability } from "./runtime/permission-registry.js"
 import { PermissionRegistry } from "./runtime/permission-registry.js"
+import type { ResourceOwner } from "./runtime/resource-owner.js"
 import { describeRpcs } from "./runtime/rpc-descriptors.js"
 
 export {
@@ -178,6 +179,7 @@ function app<RIn = never, E = never>(
     | DesktopWindowRegistry
     | DesktopPermissionRegistry
     | DesktopWorkflowRegistry
+    | ResourceOwner
   >
 >
 function app<RIn = never, E = never>(
@@ -202,6 +204,7 @@ function app<RIn = never, E = never>(
         | DesktopWindowRegistry
         | DesktopPermissionRegistry
         | DesktopWorkflowRegistry
+        | ResourceOwner
       >
     > {
   if ("id" in options) {

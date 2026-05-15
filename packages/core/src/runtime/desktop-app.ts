@@ -59,6 +59,8 @@ import {
   isSafeWindowId,
   type DesktopWindowRegistration
 } from "./desktop-window-registry.js"
+import { ResourceOwner, makeAppResourceOwner } from "./resource-owner.js"
+import type { ResourceOwnerInvalidArgumentError } from "./resource-owner.js"
 import { EffectTelemetryRuntimeLive, Telemetry, makeTelemetry } from "./telemetry.js"
 
 export interface WindowSpec {
@@ -243,7 +245,11 @@ export type DesktopRuntimeProviderServices =
   | StdioRuntime.Stdio
   | ChildProcessSpawnerRuntime.ChildProcessSpawner
 
-export type DesktopRuntimeServices = DesktopApp | DesktopRuntime | DesktopRuntimeProviderServices
+export type DesktopRuntimeServices =
+  | DesktopApp
+  | DesktopRuntime
+  | DesktopRuntimeProviderServices
+  | ResourceOwner
 
 export interface DesktopProviderBudget {
   readonly id: DesktopRuntimeProviderId
@@ -1014,6 +1020,7 @@ export const app = <RIn = never, E = never>(
     | DesktopWindowRegistry
     | DesktopPermissionRegistry
     | DesktopWorkflowRegistry
+    | ResourceOwner
   >
 > =>
   runtime(config) as Layer.Layer<
@@ -1026,6 +1033,7 @@ export const app = <RIn = never, E = never>(
       | DesktopWindowRegistry
       | DesktopPermissionRegistry
       | DesktopWorkflowRegistry
+      | ResourceOwner
     >
   >
 
@@ -1041,6 +1049,7 @@ export const runtime = <RIn = never, E = never>(
     | DesktopWindowRegistry
     | DesktopPermissionRegistry
     | DesktopWorkflowRegistry
+    | ResourceOwner
   >
 > =>
   buildSpine(config) as Layer.Layer<
@@ -1053,6 +1062,7 @@ export const runtime = <RIn = never, E = never>(
       | DesktopWindowRegistry
       | DesktopPermissionRegistry
       | DesktopWorkflowRegistry
+      | ResourceOwner
     >
   >
 
@@ -1268,7 +1278,7 @@ const buildSpine = <RIn, E>(
 ): Layer.Layer<
   DesktopRuntimeServices,
   E | DesktopConfigError,
-  Exclude<RIn, DesktopRuntimeProviderServices>
+  Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
 > =>
   Layer.unwrap(
     Effect.gen(function* () {
@@ -1294,8 +1304,13 @@ const buildSpine = <RIn, E>(
       const runtimeBase = Layer.mergeAll(
         runtimeProviderLayer,
         coreServicesLayer,
-        makePermissionServicesLayer(config, permissions)
-      ) as Layer.Layer<DesktopRuntimeProviderServices, Config.ConfigError, never>
+        makePermissionServicesLayer(config, permissions),
+        makeAppResourceOwnerLayer(config.id)
+      ) as Layer.Layer<
+        DesktopRuntimeProviderServices | ResourceOwner,
+        Config.ConfigError | DesktopConfigError,
+        never
+      >
 
       const desktopAppLayer: Layer.Layer<DesktopApp, never, never> = Layer.effect(DesktopApp)(
         Effect.succeed({
@@ -1322,12 +1337,16 @@ const buildSpine = <RIn, E>(
         rpcLayer,
         desktopAppLayer,
         desktopRuntimeLayer
-      ) as Layer.Layer<DesktopApp | DesktopRuntime, E, RIn | DesktopRuntimeProviderServices>
+      ) as Layer.Layer<
+        DesktopApp | DesktopRuntime,
+        E,
+        RIn | DesktopRuntimeProviderServices | ResourceOwner
+      >
 
       return Layer.provideMerge(dependentLayer, runtimeBase) as Layer.Layer<
         DesktopRuntimeServices,
         E | DesktopConfigError,
-        Exclude<RIn, DesktopRuntimeProviderServices>
+        Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
       >
     })
   )
@@ -1466,6 +1485,26 @@ const makePermissionServicesLayer = <RIn, E>(
 
   return Layer.provideMerge(makePermissionInterceptorLayer(), registryLayer)
 }
+
+const makeAppResourceOwnerLayer = (
+  appId: string
+): Layer.Layer<ResourceOwner, DesktopConfigError, never> =>
+  Layer.effect(
+    ResourceOwner,
+    makeAppResourceOwner(appId).pipe(
+      Effect.mapError((error) => resourceOwnerErrorToConfigError(appId, error))
+    )
+  )
+
+const resourceOwnerErrorToConfigError = (
+  appId: string,
+  error: ResourceOwnerInvalidArgumentError
+): DesktopConfigError =>
+  new DesktopConfigError({
+    appId,
+    reason: "invalid-config",
+    message: `Desktop app id is not a valid resource owner id: ${error.message}`
+  })
 
 const layerFailureFromConfigError = (
   appId: string,
