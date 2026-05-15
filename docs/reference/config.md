@@ -50,7 +50,7 @@ export default defineDesktopConfig({
 | `app`         | `DesktopAppConfig`         | yes      | id, name, version                         |
 | `runtime`     | `DesktopRuntimeConfig`     | no       | engine (`"bun"` \| `"node"`), entry path  |
 | `renderer`    | `DesktopRendererConfig`    | yes      | framework, entry, dist                    |
-| `web`         | `DesktopWebConfig`         | no       | engine (`"system"` \| `"chromium"`)       |
+| `web`         | `DesktopWebConfig`         | no       | engine (`"system"` \| `"chrome"`)         |
 | `native`      | `DesktopNativeConfig`      | no       | host crate path overrides                 |
 | `protocol`    | `DesktopProtocolConfig`    | no       | app protocol scheme                       |
 | `build`       | `DesktopBuildConfig`       | no       | targets, output dir                       |
@@ -74,6 +74,20 @@ const config = await Effect.runPromise(decodeDesktopConfig(rawJson))
 ## `mergeDesktopConfig(...configs)`
 
 Merges multiple partial configs left-to-right. Useful for composing per-environment overrides.
+
+## Runtime and WebView engines
+
+`runtime.engine` selects the JavaScript runtime used by CLI build and package commands. It maps to the same provider descriptors available through `Desktop.provider(...)`:
+
+- `bun` — default runtime provider.
+- `node` — Node runtime provider.
+
+`web.engine` selects the native WebView provider for the host manifest:
+
+- `system` — default OS WebView provider.
+- `chrome` — bundled Chromium/CEF provider. The build requires assets at `native/chrome/<target>` and copies them into the packaged layout at `native/chrome`.
+
+Legacy config files that say `web.engine: "chromium"` decode to the canonical `chrome` value.
 
 ## `effectiveCspPolicy(cspConfig)` → `CspPolicy`
 

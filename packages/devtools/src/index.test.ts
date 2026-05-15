@@ -351,7 +351,7 @@ test("Inspector collectors stream resource, scope, fiber, and stream lifecycle e
 test("LayerGraphPanel publishes selected providers and graph snapshots to Inspector", async () => {
   const app = Desktop.make({
     id: "notes",
-    providers: { runtime: "test" },
+    providers: Desktop.provider(Desktop.Provider.Runtime.test),
     windows: Desktop.window("main", { title: "Notes" })
   })
 
@@ -370,12 +370,17 @@ test("LayerGraphPanel publishes selected providers and graph snapshots to Inspec
   )
 
   expect(snapshot.layerGraph.appId).toBe("notes")
-  expect(snapshot.layerGraph.providers).toEqual({ runtime: "test" })
+  expect(snapshot.layerGraph.providers).toEqual({ runtime: "test", webview: "system" })
   expect(snapshot.layerGraph.providerFacts).toEqual([
     {
       id: "test",
       kind: "runtime",
       capabilities: ["FileSystem", "Path", "Terminal", "Stdio", "ChildProcessSpawner"]
+    },
+    {
+      id: "system",
+      kind: "webview",
+      capabilities: ["WindowWebView", "AppProtocol"]
     }
   ])
   expect(snapshot.layerGraph.nodes.map((node) => node.id)).toContain("provider:runtime:test")

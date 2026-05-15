@@ -556,7 +556,7 @@ const devtoolsSnapshot: DevtoolsSnapshot = {
   layerGraph: {
     layerGraph: new LayerGraphSnapshot({
       appId: "test",
-      providers: { runtime: "test" },
+      providers: { runtime: "test", webview: "system" },
       nodes: [],
       providerFacts: [],
       failures: []

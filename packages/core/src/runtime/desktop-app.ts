@@ -33,8 +33,8 @@ import type { NormalizedCapability } from "./permission-registry.js"
 import {
   ProviderCapability,
   ProviderRegistryError,
-  makeProviderRegistry,
-  type Provider
+  type Provider as RegistryProvider,
+  type ProviderKind
 } from "./provider-registry.js"
 import { ResourceRegistryLive } from "./resources.js"
 import {
@@ -86,6 +86,12 @@ export type DesktopPermissionsLayer<RIn = never> = Layer.Layer<
   RIn | DesktopPermissionRegistry
 >
 
+export type DesktopProvidersLayer<RIn = never> = Layer.Layer<
+  never,
+  never,
+  RIn | DesktopProviderRegistry
+>
+
 export type DesktopWorkflowsLayer<RIn = never, E = never> = Layer.Layer<
   never,
   E,
@@ -95,7 +101,7 @@ export type DesktopWorkflowsLayer<RIn = never, E = never> = Layer.Layer<
 export interface DesktopConfig<RIn = never, E = never> {
   readonly id: string
   readonly windows: DesktopWindowsLayer<RIn>
-  readonly providers?: DesktopProviderSelection
+  readonly providers?: DesktopProvidersLayer<RIn>
   readonly rpcs?: DesktopRpcsLayer<E, RIn>
   readonly permissions?: DesktopPermissionsLayer<RIn>
   readonly workflows?: DesktopWorkflowsLayer<RIn, E>
@@ -104,7 +110,7 @@ export interface DesktopConfig<RIn = never, E = never> {
 export interface DesktopMakeConfig<RIn = never, E = never> {
   readonly id?: string
   readonly windows: DesktopWindowsLayer<RIn>
-  readonly providers?: DesktopProviderSelection
+  readonly providers?: DesktopProvidersLayer<RIn>
   readonly rpcs?: DesktopRpcsLayer<E, RIn>
   readonly permissions?: DesktopPermissionsLayer<RIn>
   readonly workflows?: DesktopWorkflowsLayer<RIn, E>
@@ -144,18 +150,17 @@ export type DesktopManifestSource<RIn = never, E = never> = Pick<
 >
 
 export type DesktopRuntimeProviderId = "bun" | "node" | "test" | (string & {})
-
-export interface DesktopProviderSelection {
-  readonly runtime?: DesktopRuntimeProviderId | undefined
-}
+export type DesktopWebViewProviderId = "system" | "chrome" | (string & {})
+export type DesktopWebViewHostEngine = "system" | "chrome" | (string & {})
 
 export interface DesktopRuntimeSelectedProviders {
   readonly runtime: DesktopRuntimeProviderId
+  readonly webview: DesktopWebViewProviderId
 }
 
 export class ProviderFact extends Schema.Class<ProviderFact>("ProviderFact")({
   id: Schema.String,
-  kind: Schema.Literal("runtime"),
+  kind: Schema.Literals(["runtime", "webview"]),
   capabilities: Schema.Array(Schema.String)
 }) {}
 
@@ -187,7 +192,7 @@ export class LayerGraphNodeSnapshot extends Schema.Class<LayerGraphNodeSnapshot>
 
 export class LayerGraphSnapshot extends Schema.Class<LayerGraphSnapshot>("LayerGraphSnapshot")({
   appId: Schema.String,
-  providers: Schema.Struct({ runtime: Schema.String }),
+  providers: Schema.Struct({ runtime: Schema.String, webview: Schema.String }),
   nodes: Schema.Array(LayerGraphNodeSnapshot),
   providerFacts: Schema.Array(ProviderFact),
   failures: Schema.Array(LayerFailurePayload)
@@ -226,6 +231,11 @@ export interface DesktopRuntimeApi {
   readonly graph: DesktopRuntimeGraph
 }
 
+interface SelectedProviderDescriptors {
+  readonly runtime: DesktopRuntimeProviderDescriptor
+  readonly webview: DesktopWebViewProviderDescriptor
+}
+
 export type DesktopRuntimeProviderServices =
   | FileSystemRuntime.FileSystem
   | PathRuntime.Path
@@ -257,6 +267,7 @@ export class DesktopConfigError extends Data.TaggedError("DesktopConfigError")<{
   readonly method?: string
   readonly permission?: string
   readonly provider?: string
+  readonly providerKind?: ProviderKind
   readonly windowId?: string
 }> {}
 
@@ -328,6 +339,8 @@ const RuntimeProviderServiceNames = Object.freeze([
   "ChildProcessSpawner"
 ])
 
+const WebViewProviderCapabilities = Object.freeze(["WindowWebView", "AppProtocol"])
+
 const RuntimeProviderCapabilities = Object.freeze(
   RuntimeProviderServiceNames.map(
     (name) =>
@@ -338,7 +351,10 @@ const RuntimeProviderCapabilities = Object.freeze(
   )
 )
 
-interface RuntimeProviderDescriptor extends Provider<"runtime", DesktopRuntimeProviderId> {
+export interface DesktopRuntimeProviderDescriptor extends RegistryProvider<
+  "runtime",
+  DesktopRuntimeProviderId
+> {
   readonly id: DesktopRuntimeProviderId
   readonly node: DesktopRuntimeGraphNode
   readonly budget: DesktopProviderBudget
@@ -349,58 +365,237 @@ interface RuntimeProviderDescriptor extends Provider<"runtime", DesktopRuntimePr
   >
 }
 
-const RuntimeProviders = [
+export interface DesktopRuntimeProviderOptions {
+  readonly id: DesktopRuntimeProviderId
+  readonly layer: Layer.Layer<DesktopRuntimeProviderServices, Config.ConfigError, never>
+  readonly budget: DesktopProviderBudget
+  readonly capabilities?: readonly ProviderCapability[]
+  readonly node?: DesktopRuntimeGraphNode
+}
+
+export interface DesktopWebViewProviderDescriptor extends RegistryProvider<
+  "webview",
+  DesktopWebViewProviderId
+> {
+  readonly id: DesktopWebViewProviderId
+  readonly hostEngine: DesktopWebViewHostEngine
+  readonly node: DesktopRuntimeGraphNode
+}
+
+export interface DesktopWebViewProviderOptions {
+  readonly id: DesktopWebViewProviderId
+  readonly hostEngine: DesktopWebViewHostEngine
+  readonly capabilities: readonly (ProviderCapability | string)[]
+  readonly node?: DesktopRuntimeGraphNode
+}
+
+export type DesktopProviderDescriptor =
+  | DesktopRuntimeProviderDescriptor
+  | DesktopWebViewProviderDescriptor
+
+interface DesktopProviderRegistryApi {
+  readonly register: (descriptor: DesktopProviderDescriptor) => Effect.Effect<void>
+  readonly snapshot: Effect.Effect<ReadonlyArray<DesktopProviderDescriptor>>
+}
+
+export class DesktopProviderRegistry extends Context.Service<
+  DesktopProviderRegistry,
+  DesktopProviderRegistryApi
+>()("@effect-desktop/core/DesktopProviderRegistry") {}
+
+const makeDesktopProviderRegistry = (): DesktopProviderRegistryApi => {
+  const entries: DesktopProviderDescriptor[] = []
+  return {
+    register: (descriptor) =>
+      Effect.sync(() => {
+        entries.push(descriptor)
+      }),
+    snapshot: Effect.sync(() => Object.freeze([...entries]))
+  }
+}
+
+const DesktopProviderRegistryLive: Layer.Layer<DesktopProviderRegistry> = Layer.effect(
+  DesktopProviderRegistry,
+  Effect.sync(makeDesktopProviderRegistry)
+)
+
+const runtimeProvider = (
+  options: DesktopRuntimeProviderOptions
+): DesktopRuntimeProviderDescriptor =>
   Object.freeze({
     kind: "runtime" as const,
-    id: "bun" as const,
-    capabilities: RuntimeProviderCapabilities,
-    budget: providerBudget("bun", "@effect/platform-bun", "@effect-desktop/core/providers/bun"),
-    layer: Effect.promise(() =>
-      import("../providers/bun.js").then((module) => module.BunRuntimeProviderLayer)
-    ),
-    node: graphNode(
-      "provider:runtime:bun",
-      "provider",
-      "Bun runtime provider",
-      RuntimeProviderServiceNames,
-      []
-    )
-  }),
+    id: options.id,
+    capabilities: Object.freeze([...(options.capabilities ?? RuntimeProviderCapabilities)]),
+    budget: Object.freeze({ ...options.budget }),
+    layer: Effect.succeed(options.layer),
+    node:
+      options.node ??
+      graphNode(
+        `provider:runtime:${options.id}`,
+        "provider",
+        `${providerLabel(options.id)} runtime provider`,
+        RuntimeProviderServiceNames,
+        []
+      )
+  })
+
+const lazyRuntimeProvider = (options: {
+  readonly id: DesktopRuntimeProviderId
+  readonly budget: DesktopProviderBudget
+  readonly layer: Effect.Effect<
+    Layer.Layer<DesktopRuntimeProviderServices, Config.ConfigError, never>,
+    never,
+    never
+  >
+  readonly label: string
+}): DesktopRuntimeProviderDescriptor =>
   Object.freeze({
     kind: "runtime" as const,
-    id: "node" as const,
+    id: options.id,
     capabilities: RuntimeProviderCapabilities,
-    budget: providerBudget("node", "@effect/platform-node", "@effect-desktop/core/providers/node"),
-    layer: Effect.promise(() =>
-      import("../providers/node.js").then((module) => module.NodeRuntimeProviderLayer)
-    ),
+    budget: options.budget,
+    layer: options.layer,
     node: graphNode(
-      "provider:runtime:node",
+      `provider:runtime:${options.id}`,
       "provider",
-      "Node runtime provider",
-      RuntimeProviderServiceNames,
-      []
-    )
-  }),
-  Object.freeze({
-    kind: "runtime" as const,
-    id: "test" as const,
-    capabilities: RuntimeProviderCapabilities,
-    budget: providerBudget("test", "@effect-desktop/core", "@effect-desktop/core/providers/test"),
-    layer: Effect.promise(() =>
-      import("../providers/test.js").then((module) => module.TestRuntimeProviderLayer)
-    ),
-    node: graphNode(
-      "provider:runtime:test",
-      "provider",
-      "Test runtime provider",
+      options.label,
       RuntimeProviderServiceNames,
       []
     )
   })
-] as const satisfies readonly RuntimeProviderDescriptor[]
 
-const RuntimeProviderRegistry = makeProviderRegistry(RuntimeProviders)
+const webviewProvider = (
+  options: DesktopWebViewProviderOptions
+): DesktopWebViewProviderDescriptor => {
+  const capabilities = options.capabilities.map((capability) =>
+    typeof capability === "string"
+      ? new ProviderCapability({
+          name: capability,
+          description: `Provides ${capability} through the ${options.id} WebView provider`
+        })
+      : capability
+  )
+  return Object.freeze({
+    kind: "webview" as const,
+    id: options.id,
+    hostEngine: options.hostEngine,
+    capabilities: Object.freeze(capabilities),
+    node:
+      options.node ??
+      graphNode(
+        `provider:webview:${options.id}`,
+        "provider",
+        `${providerLabel(options.id)} WebView provider`,
+        capabilities.map((capability) => capability.name),
+        []
+      )
+  })
+}
+
+const RuntimeProviders = [
+  lazyRuntimeProvider({
+    id: "bun" as const,
+    budget: providerBudget("bun", "@effect/platform-bun", "@effect-desktop/core/providers/bun"),
+    layer: Effect.promise(() =>
+      import("../providers/bun.js").then((module) => module.BunRuntimeProviderLayer)
+    ),
+    label: "Bun runtime provider"
+  }),
+  lazyRuntimeProvider({
+    id: "node" as const,
+    budget: providerBudget("node", "@effect/platform-node", "@effect-desktop/core/providers/node"),
+    layer: Effect.promise(() =>
+      import("../providers/node.js").then((module) => module.NodeRuntimeProviderLayer)
+    ),
+    label: "Node runtime provider"
+  }),
+  lazyRuntimeProvider({
+    id: "test" as const,
+    budget: providerBudget("test", "@effect-desktop/core", "@effect-desktop/core/providers/test"),
+    layer: Effect.promise(() =>
+      import("../providers/test.js").then((module) => module.TestRuntimeProviderLayer)
+    ),
+    label: "Test runtime provider"
+  })
+] as const satisfies readonly DesktopRuntimeProviderDescriptor[]
+
+const WebViewProviders = [
+  Object.freeze({
+    kind: "webview" as const,
+    id: "system" as const,
+    hostEngine: "system" as const,
+    capabilities: WebViewProviderCapabilities.map(
+      (name) =>
+        new ProviderCapability({
+          name,
+          description: `Provides ${name} through the operating system WebView runtime`
+        })
+    ),
+    node: graphNode(
+      "provider:webview:system",
+      "provider",
+      "System WebView provider",
+      WebViewProviderCapabilities,
+      []
+    )
+  }),
+  Object.freeze({
+    kind: "webview" as const,
+    id: "chrome" as const,
+    hostEngine: "chrome" as const,
+    capabilities: [
+      ...WebViewProviderCapabilities.map(
+        (name) =>
+          new ProviderCapability({
+            name,
+            description: `Provides ${name} through bundled Chromium/CEF`
+          })
+      ),
+      new ProviderCapability({
+        name: "BundledChromium",
+        description: "Provides a packaged Chromium runtime instead of an installed browser"
+      })
+    ],
+    node: graphNode(
+      "provider:webview:chrome",
+      "provider",
+      "Bundled Chrome WebView provider",
+      [...WebViewProviderCapabilities, "BundledChromium"],
+      []
+    )
+  })
+] as const satisfies readonly DesktopWebViewProviderDescriptor[]
+
+export const Provider = Object.freeze({
+  runtime: runtimeProvider,
+  webview: webviewProvider,
+  Runtime: Object.freeze({
+    bun: RuntimeProviders[0],
+    node: RuntimeProviders[1],
+    test: RuntimeProviders[2]
+  }),
+  WebView: Object.freeze({
+    system: WebViewProviders[0],
+    chrome: WebViewProviders[1]
+  })
+})
+
+export const provider = <RIn = never>(
+  descriptor: DesktopProviderDescriptor
+): Layer.Layer<never, never, RIn | DesktopProviderRegistry> =>
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const registry = yield* DesktopProviderRegistry
+      yield* registry.register(descriptor)
+    })
+  )
+
+const DefaultProviders = Object.freeze({
+  runtime: Provider.Runtime.bun,
+  webview: Provider.WebView.system
+})
+
+const providerLabel = (id: string): string => `${id.slice(0, 1).toUpperCase()}${id.slice(1)}`
 
 export const make = <RIn = never, E = never>(
   config: DesktopMakeConfig<RIn, E>
@@ -415,7 +610,7 @@ export const make = <RIn = never, E = never>(
     rpcs: config.rpcs ?? (Layer.empty as DesktopRpcsLayer<E, RIn>),
     permissions: config.permissions ?? (Layer.empty as DesktopPermissionsLayer<RIn>),
     workflows: config.workflows ?? (Layer.empty as DesktopWorkflowsLayer<RIn, E>),
-    ...(config.providers === undefined ? {} : { providers: freezeObject(config.providers) })
+    ...(config.providers === undefined ? {} : { providers: config.providers })
   })
 }
 
@@ -560,6 +755,13 @@ export class DesktopWorkflowRegistryAsyncBuildError extends Data.TaggedError(
   readonly cause: unknown
 }> {}
 
+export class DesktopProviderRegistryAsyncBuildError extends Data.TaggedError(
+  "DesktopProviderRegistryAsyncBuildError"
+)<{
+  readonly message: string
+  readonly cause: unknown
+}> {}
+
 const snapshotWindowRegistrationsSync = <RIn>(
   windows: DesktopWindowsLayer<RIn>
 ): ReadonlyArray<DesktopWindowRegistration> => {
@@ -656,6 +858,13 @@ const buildWorkflows = <RIn, E>(
   workflows: DesktopConfig<RIn, E>["workflows"]
 ): Effect.Effect<ReadonlyArray<AnyDesktopWorkflowRegistration>, never, never> =>
   Effect.sync(() => snapshotWorkflowsSync(workflows))
+
+const buildProviders = <RIn, E>(
+  config: DesktopConfig<RIn, E>
+): Effect.Effect<SelectedProviderDescriptors, DesktopConfigError, never> =>
+  Effect.sync(() => snapshotProvidersSync(config.providers)).pipe(
+    Effect.flatMap((providers) => selectProviderDescriptors(config.id, providers))
+  )
 
 /**
  * Synchronous registry snapshot. The `Desktop.rpc(...)` constructor produces a
@@ -763,6 +972,36 @@ const snapshotWorkflowsSync = <RIn, E>(
   }
 }
 
+const snapshotProvidersSync = <RIn>(
+  providers: DesktopProvidersLayer<RIn> | undefined
+): ReadonlyArray<DesktopProviderDescriptor> => {
+  if (providers === undefined) return []
+  const composed = Layer.provideMerge(
+    providers as Layer.Layer<never, never, DesktopProviderRegistry>,
+    DesktopProviderRegistryLive
+  )
+  try {
+    return Effect.runSync(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const context = yield* Layer.build(composed)
+          const registry = Context.get(context, DesktopProviderRegistry)
+          return yield* registry.snapshot
+        })
+      )
+    )
+  } catch (cause) {
+    throw new DesktopProviderRegistryAsyncBuildError({
+      message:
+        "Desktop.make(...) requires the providers layer to build synchronously. " +
+        "A layer composed into Desktop.make({ providers }) requires async work to construct " +
+        "(e.g. Layer.scoped(Effect.promise(...))) — pass provider descriptors through `Desktop.provider(...)` " +
+        "and keep async work inside provider layers instead.",
+      cause
+    })
+  }
+}
+
 export const app = <RIn = never, E = never>(
   config: DesktopConfig<RIn, E>
 ): Layer.Layer<
@@ -823,10 +1062,10 @@ export const runtimeGraph = <RIn, E>(
   config: DesktopConfig<RIn, E>
 ): Effect.Effect<DesktopRuntimeGraph, DesktopConfigError, never> =>
   Effect.gen(function* () {
-    const provider = yield* resolveRuntimeProvider(config)
+    const providers = yield* buildProviders(config)
     const registrations = yield* buildRegistrations(config.rpcs)
     const workflows = yield* buildWorkflows(config.workflows)
-    return makeRuntimeGraph(config, provider, registrations, workflows)
+    return makeRuntimeGraph(config, providers.runtime, providers.webview, registrations, workflows)
   })
 
 export const runtimeGraphSnapshot = <RIn, E>(
@@ -836,7 +1075,9 @@ export const runtimeGraphSnapshot = <RIn, E>(
     onFailure: (error) =>
       new LayerGraphSnapshot({
         appId: config.id,
-        providers: selectedProviders(config.providers),
+        providers: selectedProviderIdsFromLayer(
+          config.providers as DesktopProvidersLayer | undefined
+        ),
         nodes: [],
         providerFacts: [],
         failures: [layerFailureFromConfigError(config.id, error)]
@@ -881,15 +1122,18 @@ export const layerGraphSnapshotFromGraph = (graph: DesktopRuntimeGraph): LayerGr
 
 const makeRuntimeGraph = <RIn, E>(
   config: DesktopConfig<RIn, E>,
-  provider: RuntimeProviderDescriptor,
+  provider: DesktopRuntimeProviderDescriptor,
+  webviewProvider: DesktopWebViewProviderDescriptor,
   registrations: ReadonlyArray<AnyDesktopRpcRegistration>,
   workflows: ReadonlyArray<AnyDesktopWorkflowRegistration>
 ): DesktopRuntimeGraph => {
   const selected = Object.freeze({
-    runtime: provider.id
+    runtime: provider.id,
+    webview: webviewProvider.id
   } satisfies DesktopRuntimeSelectedProviders)
   const nodes: DesktopRuntimeGraphNode[] = [
     provider.node,
+    webviewProvider.node,
     ...CoreServiceGraphNodes,
     ...registrations.map((registration, index) =>
       graphNode(
@@ -924,6 +1168,11 @@ const makeRuntimeGraph = <RIn, E>(
         id: provider.id,
         kind: "runtime",
         capabilities: [...RuntimeProviderServiceNames]
+      }),
+      new ProviderFact({
+        id: webviewProvider.id,
+        kind: "webview",
+        capabilities: webviewProvider.capabilities.map((capability) => capability.name)
       })
     ]),
     failures: Object.freeze([])
@@ -1023,20 +1272,27 @@ const buildSpine = <RIn, E>(
 > =>
   Layer.unwrap(
     Effect.gen(function* () {
-      const provider = yield* resolveRuntimeProvider(config)
+      const providers = yield* buildProviders(config)
       const registrations = yield* buildRegistrations(config.rpcs)
       const permissions = yield* buildPermissions(config.permissions)
       const workflowLayers = yield* buildWorkflows(config.workflows)
       const windowRegistrations = snapshotWindowRegistrationsSync(config.windows)
       yield* checkWindowRegistrations(config.id, windowRegistrations)
       yield* checkPermissions(config, registrations, permissions)
-      const graph = makeRuntimeGraph(config, provider, registrations, workflowLayers)
+      const graph = makeRuntimeGraph(
+        config,
+        providers.runtime,
+        providers.webview,
+        registrations,
+        workflowLayers
+      )
       const rpcLayers = registrations.map((registration) => bindRegistration(registration))
 
       const workflowLayer = mergeLayerArray(workflowLayers)
       const rpcLayer = mergeLayerArray(rpcLayers)
+      const runtimeProviderLayer = yield* providers.runtime.layer
       const runtimeBase = Layer.mergeAll(
-        providerLayerFor({ runtime: provider.id }),
+        runtimeProviderLayer,
         coreServicesLayer,
         makePermissionServicesLayer(config, permissions)
       ) as Layer.Layer<DesktopRuntimeProviderServices, Config.ConfigError, never>
@@ -1076,26 +1332,102 @@ const buildSpine = <RIn, E>(
     })
   )
 
-const resolveRuntimeProvider = <RIn, E>(
-  config: DesktopConfig<RIn, E>
-): Effect.Effect<RuntimeProviderDescriptor, DesktopConfigError, never> => {
-  const provider = selectedProviders(config.providers).runtime
-  return RuntimeProviderRegistry.pipe(
-    Effect.flatMap((registry) => registry.get("runtime", provider)),
-    Effect.mapError((error) => providerRegistryErrorToConfigError(config.id, error))
-  )
-}
-
 export const providerLayerFor = (
-  choice: DesktopRuntimeSelectedProviders
+  choice: Pick<DesktopRuntimeSelectedProviders, "runtime">
 ): Layer.Layer<DesktopRuntimeProviderServices, Config.ConfigError | DesktopConfigError, never> =>
   Layer.unwrap(
-    RuntimeProviderRegistry.pipe(
-      Effect.flatMap((registry) => registry.get("runtime", choice.runtime)),
-      Effect.mapError((error) => providerRegistryErrorToConfigError("provider-loader", error)),
-      Effect.flatMap((provider) => provider.layer)
+    resolveBuiltinRuntimeProvider(choice.runtime).pipe(Effect.flatMap((provider) => provider.layer))
+  )
+
+const selectProviderDescriptors = (
+  appId: string,
+  descriptors: ReadonlyArray<DesktopProviderDescriptor>
+): Effect.Effect<SelectedProviderDescriptors, DesktopConfigError, never> => {
+  let runtimeProvider: DesktopRuntimeProviderDescriptor | undefined
+  let webviewProviderDescriptor: DesktopWebViewProviderDescriptor | undefined
+
+  for (const descriptor of descriptors) {
+    if (descriptor.kind === "runtime") {
+      if (runtimeProvider !== undefined) {
+        return duplicateProviderSelection(appId, "runtime", runtimeProvider.id, descriptor.id)
+      }
+      runtimeProvider = descriptor
+      continue
+    }
+
+    if (webviewProviderDescriptor !== undefined) {
+      return duplicateProviderSelection(
+        appId,
+        "webview",
+        webviewProviderDescriptor.id,
+        descriptor.id
+      )
+    }
+    webviewProviderDescriptor = descriptor
+  }
+
+  return Effect.succeed({
+    runtime: runtimeProvider ?? DefaultProviders.runtime,
+    webview: webviewProviderDescriptor ?? DefaultProviders.webview
+  })
+}
+
+const duplicateProviderSelection = (
+  appId: string,
+  kind: "runtime" | "webview",
+  first: string,
+  second: string
+): Effect.Effect<never, DesktopConfigError, never> =>
+  Effect.fail(
+    new DesktopConfigError({
+      appId,
+      reason: "invalid-config",
+      message: `Desktop.provider(...) selected more than one ${kind} provider (${first}, ${second})`,
+      provider: second,
+      providerKind: kind
+    })
+  )
+
+const selectedProviderIdsFromLayer = (
+  providers: DesktopProvidersLayer<unknown> | undefined
+): DesktopRuntimeSelectedProviders => {
+  const descriptors = snapshotProvidersSync(providers)
+  let runtimeProvider: DesktopRuntimeProviderId = "bun"
+  let webviewProviderDescriptor: DesktopWebViewProviderId = "system"
+
+  for (const descriptor of descriptors) {
+    if (descriptor.kind === "runtime") {
+      runtimeProvider = descriptor.id
+    } else {
+      webviewProviderDescriptor = descriptor.id
+    }
+  }
+
+  return Object.freeze({
+    runtime: runtimeProvider,
+    webview: webviewProviderDescriptor
+  })
+}
+
+const resolveBuiltinRuntimeProvider = (
+  provider: DesktopRuntimeProviderId
+): Effect.Effect<DesktopRuntimeProviderDescriptor, DesktopConfigError, never> => {
+  const descriptor = RuntimeProviders.find((candidate) => candidate.id === provider)
+  if (descriptor !== undefined) {
+    return Effect.succeed(descriptor)
+  }
+  return Effect.fail(
+    providerRegistryErrorToConfigError(
+      "provider-loader",
+      new ProviderRegistryError({
+        reason: "missing-provider",
+        kind: "runtime",
+        provider,
+        message: `Runtime provider "${provider}" is not available`
+      })
     )
   )
+}
 
 const providerRegistryErrorToConfigError = (
   appId: string,
@@ -1105,7 +1437,8 @@ const providerRegistryErrorToConfigError = (
     appId,
     reason: error.reason === "missing-provider" ? "missing-provider" : "invalid-config",
     message: error.message,
-    provider: error.provider
+    provider: error.provider,
+    providerKind: error.kind
   })
 
 const makePermissionServicesLayer = <RIn, E>(
@@ -1134,13 +1467,6 @@ const makePermissionServicesLayer = <RIn, E>(
   return Layer.provideMerge(makePermissionInterceptorLayer(), registryLayer)
 }
 
-const selectedProviders = (
-  selection: DesktopProviderSelection | undefined
-): DesktopRuntimeSelectedProviders =>
-  Object.freeze({
-    runtime: selection?.runtime ?? "bun"
-  })
-
 const layerFailureFromConfigError = (
   appId: string,
   error: DesktopConfigError
@@ -1150,9 +1476,14 @@ const layerFailureFromConfigError = (
     reason: error.reason === "missing-provider" ? "missing-provider" : "missing-requirement",
     requirement:
       error.reason === "missing-provider"
-        ? "DesktopRuntimeProviderServices"
+        ? error.providerKind === "webview"
+          ? "DesktopWebViewProvider"
+          : "DesktopRuntimeProviderServices"
         : (error.permission ?? error.method ?? error.contract ?? "DesktopRuntime"),
-    providerPath: error.provider === undefined ? [] : [`provider:runtime:${error.provider}`],
+    providerPath:
+      error.provider === undefined
+        ? []
+        : [`provider:${error.providerKind ?? "runtime"}:${error.provider}`],
     message: error.message,
     ...(error.provider === undefined ? {} : { provider: error.provider })
   })
@@ -1186,8 +1517,6 @@ const bindRegistration = (
     // return type is callable without forcing every caller to thread the
     // specific Rpc union — bindRegistration is the type-erasure boundary.
   )
-
-const freezeObject = <A extends object>(value: A): A => Object.freeze({ ...value }) as A
 
 function graphNode(
   id: string,

@@ -185,7 +185,7 @@ export interface DesktopPackageReport {
 export interface PackageProviderReport {
   readonly runtime: AppManifest["runtimeManifest"]["engine"]
   readonly runtimePackaging: "source"
-  readonly webEngine: "system"
+  readonly webEngine: "system" | "chrome"
   readonly providerBudgets: readonly DesktopProviderBudget[]
 }
 
@@ -395,7 +395,7 @@ const readBuildProviderReport = (
     if (
       (runtime !== "bun" && runtime !== "node") ||
       runtimePackaging !== "source" ||
-      webEngine !== "system"
+      (webEngine !== "system" && webEngine !== "chrome")
     ) {
       return undefined
     }

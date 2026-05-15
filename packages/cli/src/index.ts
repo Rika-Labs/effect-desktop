@@ -15,6 +15,8 @@ import { pathToFileURL } from "node:url"
 
 import { HOST_PROTOCOL_VERSION } from "@effect-desktop/bridge"
 import {
+  provider,
+  Provider,
   runtimeGraph,
   runtimeGraphSnapshot,
   type DesktopProviderBudget,
@@ -400,7 +402,13 @@ export type BuildPipelineError =
   | BuildFileError
 
 export type BuildTarget = DesktopTargetId
-export type BuildStepName = "renderer" | "runtime" | "native-host" | "bridge" | "manifest"
+export type BuildStepName =
+  | "renderer"
+  | "runtime"
+  | "native-host"
+  | "webview-runtime"
+  | "bridge"
+  | "manifest"
 const DEFAULT_RUNTIME_ENGINE: RuntimeEngine = "bun"
 const RUNTIME_ENGINES = ["bun", "node"] as const satisfies readonly RuntimeEngine[]
 const DEFAULT_RENDERER_FRAMEWORK = "react"
@@ -637,6 +645,8 @@ interface BuildPlan {
   readonly rendererFramework: "react"
   readonly rendererStyling: "tailwind"
   readonly webEngine: WebEngine
+  readonly webEngineRuntimeSource: string | undefined
+  readonly webEngineRuntimePath: string | undefined
   readonly rendererEntry: string
   readonly rendererDistPath: string
   readonly runtimeEntryPath: string
@@ -1290,14 +1300,25 @@ export const runDesktopBuild = (
       yield* copyFileEffect(hostBuildOutputPath(options.cwd, target), nativeHost.outputPath)
     }
 
+    const webviewRuntime =
+      plan.webEngine === "chrome"
+        ? yield* copyWebViewRuntimeBuildNode(options, cache, plan)
+        : undefined
     const bridgeNode = makeBridgeBuildNode(plan)
     const bridge = yield* writeBridgeManifest(plan, options.now, cache, bridgeNode)
-    const manifestNode = makeManifestBuildNode(plan, [renderer, runtime, nativeHost, bridge])
+    const manifestNode = makeManifestBuildNode(
+      plan,
+      webviewRuntime === undefined
+        ? [renderer, runtime, nativeHost, bridge]
+        : [renderer, runtime, nativeHost, webviewRuntime, bridge]
+    )
     const manifest = yield* writeAppManifest(plan, cache, manifestNode)
     const providerMeasurement = yield* measureBuildProvider(plan, runtime)
     const report = newBuildReport(
       plan,
-      [renderer, runtime, nativeHost, bridge, manifest],
+      webviewRuntime === undefined
+        ? [renderer, runtime, nativeHost, bridge, manifest]
+        : [renderer, runtime, nativeHost, webviewRuntime, bridge, manifest],
       [providerMeasurement]
     )
     yield* writeJson(join(plan.layoutPath, "build-report.json"), report)
@@ -1378,6 +1399,11 @@ const normalizeBuildPlan = (
     const rendererFramework = yield* readRendererFramework(config.renderer?.framework)
     const rendererStyling = yield* readRendererStyling(config.renderer?.styling)
     const webEngine = yield* readWebEngine(config.web?.engine)
+    const webEngineRuntimeSource = yield* readWebEngineRuntimeSource(
+      appRoot,
+      webEngine,
+      options.target
+    )
     const rendererEntry = yield* readRequiredExistingFile(
       config.renderer?.entry,
       "renderer.entry",
@@ -1422,7 +1448,7 @@ const normalizeBuildPlan = (
     const layerGraph = yield* runtimeGraphSnapshot({
       id: appId,
       windows: Layer.empty as DesktopWindowsLayer<never>,
-      providers: { runtime: runtimeEngine }
+      providers: providerLayerForBuildConfig(runtimeEngine, webEngine)
     })
 
     return {
@@ -1433,6 +1459,8 @@ const normalizeBuildPlan = (
       rendererFramework,
       rendererStyling,
       webEngine,
+      webEngineRuntimeSource,
+      webEngineRuntimePath: webEngineRuntimeSource === undefined ? undefined : "native/chrome",
       rendererEntry,
       appRoot,
       configPath: options.configPath,
@@ -1539,11 +1567,66 @@ const makeNativeHostBuildNode = (
     }))
   )
 
+const makeWebViewRuntimeBuildNode = (
+  plan: BuildPlan
+): Effect.Effect<BuildNodePlan, BuildFileError, never> => {
+  const source = plan.webEngineRuntimeSource
+  return hashBuildInputs([
+    ["web.engine", plan.webEngine],
+    ["web.runtime.source", source ?? ""],
+    ["web.runtime.sources.sha256", source === undefined ? "" : hashExistingTrees([source])]
+  ]).pipe(
+    Effect.map((cacheKey) => ({
+      name: "webview-runtime" as const,
+      provider: `webview:${plan.webEngine}`,
+      cacheKey,
+      outputPath: join(plan.layoutPath, plan.webEngineRuntimePath ?? "native/chrome")
+    }))
+  )
+}
+
+const copyWebViewRuntimeBuildNode = (
+  _options: DesktopBuildOptions,
+  cache: BuildCacheManifest,
+  plan: BuildPlan
+): Effect.Effect<BuildStepReport, BuildFileError, never> =>
+  Effect.gen(function* () {
+    const source = plan.webEngineRuntimeSource
+    if (source === undefined) {
+      return yield* Effect.fail(
+        new BuildFileError({
+          operation: "read",
+          path: join(plan.appRoot, "native", "chrome", plan.target),
+          message: "web.engine chrome requires a bundled Chrome runtime",
+          cause: undefined
+        })
+      )
+    }
+    const node = yield* makeWebViewRuntimeBuildNode(plan)
+    const cached = yield* canReuseBuildNode(cache, node)
+    if (cached) {
+      return reusedBuildStep(node)
+    }
+    const start = Date.now()
+    yield* removePath(node.outputPath)
+    yield* copyDirectory(source, node.outputPath)
+    return {
+      name: node.name,
+      elapsedMs: Math.max(0, Date.now() - start),
+      outputPath: node.outputPath,
+      ...(node.provider === undefined ? {} : { provider: node.provider }),
+      cacheKey: node.cacheKey,
+      status: "rebuilt",
+      reason: buildNodeRebuildReason(cache, node)
+    }
+  })
+
 const makeBridgeBuildNode = (plan: BuildPlan): BuildNodePlan => ({
   name: "bridge",
   cacheKey: stableHash([
     ["bridge.protocol", HOST_PROTOCOL_VERSION],
-    ["provider.runtime", plan.layerGraph.providers.runtime]
+    ["provider.runtime", plan.layerGraph.providers.runtime],
+    ["provider.webview", plan.layerGraph.providers.webview]
   ]),
   outputPath: join(plan.layoutPath, "bridge", "bridge-manifest.json")
 })
@@ -1558,6 +1641,7 @@ const makeManifestBuildNode = (
     ["app.version", plan.appVersion],
     ["target", plan.target],
     ["provider.runtime", plan.layerGraph.providers.runtime],
+    ["provider.webview", plan.layerGraph.providers.webview],
     ["web.engine", plan.webEngine],
     ["dependencies", dependencies.map((dependency) => [dependency.name, dependency.cacheKey])]
   ]),
@@ -1762,8 +1846,12 @@ const writeAppManifest = (
       },
       hostManifest: {
         nativeHost: "rust-wry-tao",
-        systemWebView: "system-webview",
+        ...(plan.webEngine === "system" ? { systemWebView: "system-webview" } : {}),
         webEngine: plan.webEngine,
+        webEngineRuntime: plan.webEngine === "chrome" ? "cef" : "system-webview",
+        ...(plan.webEngineRuntimePath === undefined
+          ? {}
+          : { webEnginePath: plan.webEngineRuntimePath }),
         windows: plan.windows,
         protocols: protocolSchemes,
         signingHints: {}
@@ -1792,6 +1880,10 @@ const writeAppManifest = (
       },
       nativeHost: {
         binary: `native/${hostBinaryName(plan.target)}`
+      },
+      providers: {
+        runtime: plan.layerGraph.providers.runtime,
+        webview: plan.layerGraph.providers.webview
       },
       bridge: {
         manifest: "bridge/bridge-manifest.json"
@@ -1939,7 +2031,7 @@ const providerBudgetForRuntime = (
   runtimeGraph({
     id: plan.appId,
     windows: Layer.empty as DesktopWindowsLayer<never>,
-    providers: { runtime: plan.runtimeEngine }
+    providers: providerLayerForBuildConfig(plan.runtimeEngine, "system")
   }).pipe(
     Effect.map((graph) => graph.providerBudgets[0]),
     Effect.flatMap((budget) =>
@@ -1959,6 +2051,12 @@ const providerBudgetForRuntime = (
           message: error.message
         })
     )
+  )
+
+const providerLayerForBuildConfig = (runtimeEngine: RuntimeEngine, webEngine: WebEngine) =>
+  Layer.mergeAll(
+    provider(runtimeEngine === "node" ? Provider.Runtime.node : Provider.Runtime.bun),
+    provider(webEngine === "chrome" ? Provider.WebView.chrome : Provider.WebView.system)
   )
 
 const providerMeasurementReport = (options: {
@@ -2293,7 +2391,7 @@ const formatBuildConfigDecodeMessage = (message: string): string => {
     return `runtime.engine must be one of ${RUNTIME_ENGINES.join(", ")}`
   }
   if (message.includes('["web"]["engine"]')) {
-    return "web.engine must be one of system, chromium"
+    return "web.engine must be one of system, chrome"
   }
   if (message.includes('["security"]["externalNavigation"]')) {
     return 'security.externalNavigation must be "deny" or "ask"'
@@ -2323,16 +2421,47 @@ const readWebEngine = (value: unknown): Effect.Effect<WebEngine, BuildConfigErro
   readOptionalString(value, "web.engine").pipe(
     Effect.map((rawEngine) => rawEngine ?? "system"),
     Effect.flatMap((webEngine) =>
-      webEngine === "system" || webEngine === "chromium"
-        ? Effect.succeed(webEngine)
+      webEngine === "system" || webEngine === "chrome" || webEngine === "chromium"
+        ? Effect.succeed(webEngine === "chromium" ? "chrome" : webEngine)
         : Effect.fail(
             new BuildConfigError({
               field: "web.engine",
-              message: "web.engine must be one of system, chromium"
+              message: "web.engine must be one of system, chrome"
             })
           )
     )
   )
+
+const readWebEngineRuntimeSource = (
+  appRoot: string,
+  webEngine: WebEngine,
+  target: BuildTarget
+): Effect.Effect<string | undefined, BuildConfigError, never> => {
+  if (webEngine !== "chrome") {
+    return Effect.succeed(undefined)
+  }
+
+  const source = join(appRoot, "native", "chrome", target)
+  return pathExists(source).pipe(
+    Effect.mapError(
+      () =>
+        new BuildConfigError({
+          field: "web.engine",
+          message: `failed to inspect bundled Chromium/CEF assets at native/chrome/${target}`
+        })
+    ),
+    Effect.flatMap((exists) =>
+      exists
+        ? Effect.succeed(source)
+        : Effect.fail(
+            new BuildConfigError({
+              field: "web.engine",
+              message: `web.engine chrome requires bundled Chromium/CEF assets at native/chrome/${target}`
+            })
+          )
+    )
+  )
+}
 
 const readRendererFramework = (value: unknown): Effect.Effect<"react", BuildConfigError, never> =>
   readOptionalString(value, "renderer.framework").pipe(
