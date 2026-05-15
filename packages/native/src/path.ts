@@ -3,22 +3,19 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  HostProtocolError as HostProtocolErrorSchema,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   makeUnaryDesktopTransportFromBridgeClientExchange,
-  Rpc,
   RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
-import { Context, Effect, Layer } from "effect"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
+import { Context, Effect, Layer, Schema } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
 import { CanonicalPath } from "./contracts/path.js"
 
 export type PathError = HostProtocolError
@@ -146,7 +143,7 @@ export const PathHandlersLive = PathRpcGroup.toLayer({
     })
 })
 
-export const PathSurface = DesktopRpc.surface("Path", PathRpcGroup, {
+export const PathSurface = NativeSurface.make("Path", PathRpcGroup, {
   service: PathClient,
   handlers: PathHandlersLive,
   client: (client) => pathClientFromRpcClient(client)
@@ -155,8 +152,7 @@ export const PathSurface = DesktopRpc.surface("Path", PathRpcGroup, {
 export const makeHostPathRpcRuntime = (
   handlers: PathRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(PathRpcGroup, PathRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> => PathSurface.hostRuntime(handlers, runtimeOptions)
 
 const makePathService = (client: PathClientApi): PathServiceApi => {
   const toStringPath = (effect: Effect.Effect<CanonicalPath, PathError, never>) =>
@@ -201,10 +197,13 @@ function pathRpc<const Method extends (typeof PathMethodNames)[number]>(
   method: Method,
   permission: RpcCapabilityMetadata
 ) {
-  return Rpc.make(`Path.${method}` as const, {
+  return NativeSurface.rpc("Path", method, {
+    payload: Schema.Void,
     success: CanonicalPath,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(permission))
+    authority: NativeSurface.authority.custom(permission),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
 
 const runPathRpc = <A, E>(

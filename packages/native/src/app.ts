@@ -4,23 +4,20 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolEventEnvelope,
-  HostProtocolError as HostProtocolErrorSchema,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   makeUnaryDesktopTransportFromBridgeClientExchange,
-  Rpc,
   RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
 export * from "./contracts/app.js"
 import {
   AppBeforeQuitEvent,
@@ -216,7 +213,7 @@ export const AppHandlersLive = AppRpcGroup.toLayer({
     })
 })
 
-export const AppSurface = DesktopRpc.surface("App", AppRpcGroup, {
+export const AppSurface = NativeSurface.make("App", AppRpcGroup, {
   service: AppClient,
   handlers: AppHandlersLive,
   client: (client) => appClientFromRpcClient(client, undefined)
@@ -225,8 +222,7 @@ export const AppSurface = DesktopRpc.surface("App", AppRpcGroup, {
 export const makeHostAppRpcRuntime = (
   handlers: AppRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(AppRpcGroup, AppRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> => AppSurface.hostRuntime(handlers, runtimeOptions)
 
 const makeAppService = (client: AppClientApi): AppServiceApi => {
   const service: AppServiceApi = {
@@ -370,11 +366,13 @@ function appRpc<
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return Rpc.make(`App.${method}` as const, {
+  return NativeSurface.rpc("App", method, {
     payload,
     success,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(capability))
+    authority: NativeSurface.authority.custom(capability),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
 
 const runAppRpc = <A, E>(

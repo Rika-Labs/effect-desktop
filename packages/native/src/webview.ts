@@ -4,23 +4,20 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolEventEnvelope,
-  HostProtocolError as HostProtocolErrorSchema,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   makeHostProtocolInvalidArgumentError,
   makeUnaryDesktopTransportFromBridgeClientExchange,
-  Rpc,
   RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
 export * from "./contracts/webview.js"
 import {
   type WebViewCapabilityName,
@@ -276,7 +273,7 @@ export const WebViewHandlersLive = WebViewRpcGroup.toLayer({
     })
 })
 
-export const WebViewSurface = DesktopRpc.surface("WebView", WebViewRpcGroup, {
+export const WebViewSurface = NativeSurface.make("WebView", WebViewRpcGroup, {
   service: WebViewClient,
   handlers: WebViewHandlersLive,
   client: (client) => webViewClientFromRpcClient(client, undefined)
@@ -285,8 +282,7 @@ export const WebViewSurface = DesktopRpc.surface("WebView", WebViewRpcGroup, {
 export const makeHostWebViewRpcRuntime = (
   handlers: WebViewRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(WebViewRpcGroup, WebViewRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> => WebViewSurface.hostRuntime(handlers, runtimeOptions)
 
 export const webViewCapability = (
   name: WebViewCapabilityName,
@@ -527,11 +523,13 @@ function webviewRpc<
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return Rpc.make(`WebView.${method}` as const, {
+  return NativeSurface.rpc("WebView", method, {
     payload,
     success,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(capability))
+    authority: NativeSurface.authority.custom(capability),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
 
 const runWebViewRpc = <A, E>(

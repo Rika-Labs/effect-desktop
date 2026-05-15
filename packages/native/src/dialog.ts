@@ -3,23 +3,20 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  HostProtocolError as HostProtocolErrorSchema,
   makeDesktopClientProtocol,
   makeUnaryDesktopTransportFromBridgeClientExchange,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
-  Rpc,
   RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
 import {
   DialogConfirmInput,
   type DialogConfirmOptions,
@@ -184,7 +181,7 @@ export const DialogHandlersLive = DialogRpcGroup.toLayer({
     })
 })
 
-export const DialogSurface = DesktopRpc.surface("Dialog", DialogRpcGroup, {
+export const DialogSurface = NativeSurface.make("Dialog", DialogRpcGroup, {
   service: DialogClient,
   handlers: DialogHandlersLive,
   client: (client) => dialogClientFromRpcClient(client)
@@ -193,8 +190,7 @@ export const DialogSurface = DesktopRpc.surface("Dialog", DialogRpcGroup, {
 export const makeHostDialogRpcRuntime = (
   handlers: DialogRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(DialogRpcGroup, DialogRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> => DialogSurface.hostRuntime(handlers, runtimeOptions)
 
 const makeDialogService = (client: DialogClientApi): DialogServiceApi => {
   const service: DialogServiceApi = {
@@ -318,11 +314,13 @@ function dialogRpc<
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return Rpc.make(`Dialog.${method}` as const, {
+  return NativeSurface.rpc("Dialog", method, {
     payload,
     success,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(capability))
+    authority: NativeSurface.authority.custom(capability),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
 
 const formatUnknownError = (error: unknown): string => {

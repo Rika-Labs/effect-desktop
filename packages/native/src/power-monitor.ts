@@ -4,21 +4,18 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolEventEnvelope,
-  HostProtocolError as HostProtocolErrorSchema,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   makeUnaryDesktopTransportFromBridgeClientExchange,
-  Rpc,
   RpcClient,
-  RpcCapability,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
 import {
   PowerMonitorIsSupportedInput,
   type PowerMonitorMethod,
@@ -31,11 +28,13 @@ import {
 
 export type PowerMonitorError = HostProtocolError
 
-export const PowerMonitorIsSupported = Rpc.make("PowerMonitor.isSupported", {
+export const PowerMonitorIsSupported = NativeSurface.rpc("PowerMonitor", "isSupported", {
   payload: PowerMonitorIsSupportedInput,
   success: PowerMonitorSupportedResult,
-  error: HostProtocolErrorSchema
-}).pipe(RpcCapability({ kind: "none" }))
+  authority: NativeSurface.authority.none,
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
 
 export const PowerMonitorRpcEvents = Object.freeze({
   Suspend: { payload: PowerMonitorSuspendEvent },
@@ -127,7 +126,7 @@ export const PowerMonitorHandlersLive = PowerMonitorRpcGroup.toLayer({
     })
 })
 
-export const PowerMonitorSurface = DesktopRpc.surface("PowerMonitor", PowerMonitorRpcGroup, {
+export const PowerMonitorSurface = NativeSurface.make("PowerMonitor", PowerMonitorRpcGroup, {
   service: PowerMonitorClient,
   handlers: PowerMonitorHandlersLive,
   client: (client) => powerMonitorClientFromRpcClient(client, undefined)
@@ -137,11 +136,7 @@ export const makeHostPowerMonitorRpcRuntime = (
   handlers: PowerMonitorRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
 ): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(
-    PowerMonitorRpcGroup,
-    PowerMonitorRpcGroup.toLayer(handlers),
-    runtimeOptions
-  )
+  PowerMonitorSurface.hostRuntime(handlers, runtimeOptions)
 
 const powerMonitorClientFromRpcClient = (
   client: DesktopRpcClient<PowerMonitorRpc>,

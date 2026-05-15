@@ -3,24 +3,21 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  HostProtocolError as HostProtocolErrorSchema,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   makeUnaryDesktopTransportFromBridgeClientExchange,
-  Rpc,
   RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 import * as nodePath from "node:path"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
 import {
   ProtocolDenyInput,
   type ProtocolDenyOptions,
@@ -151,7 +148,7 @@ export const ProtocolHandlersLive = ProtocolRpcGroup.toLayer({
     })
 })
 
-export const ProtocolSurface = DesktopRpc.surface("Protocol", ProtocolRpcGroup, {
+export const ProtocolSurface = NativeSurface.make("Protocol", ProtocolRpcGroup, {
   service: ProtocolClient,
   handlers: ProtocolHandlersLive,
   client: (client) => protocolClientFromRpcClient(client)
@@ -160,8 +157,7 @@ export const ProtocolSurface = DesktopRpc.surface("Protocol", ProtocolRpcGroup, 
 export const makeHostProtocolRpcRuntime = (
   handlers: ProtocolRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(ProtocolRpcGroup, ProtocolRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> => ProtocolSurface.hostRuntime(handlers, runtimeOptions)
 
 const protocolClientFromRpcClient = (client: DesktopRpcClient<ProtocolRpc>): ProtocolClientApi => {
   return Object.freeze({
@@ -339,11 +335,13 @@ function protocolRpc<
   const Method extends (typeof ProtocolMethodNames)[number],
   Input extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, input: Input, permission: RpcCapabilityMetadata) {
-  return Rpc.make(`Protocol.${method}` as const, {
+  return NativeSurface.rpc("Protocol", method, {
     payload: input,
     success: Schema.Void,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(permission))
+    authority: NativeSurface.authority.custom(permission),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
 
 const runProtocolRpc = <A, E>(

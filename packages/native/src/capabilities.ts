@@ -1,37 +1,38 @@
-import { rpcSupport, type RpcSupportMetadata } from "@effect-desktop/bridge"
-import { Context, Data, Effect, Layer } from "effect"
-import { Rpc, RpcGroup } from "effect/unstable/rpc"
+import type { RpcCapabilityMetadata, RpcSupportMetadata } from "@effect-desktop/bridge"
+import type { DesktopRpcSchemaDoc } from "@effect-desktop/core"
+import { Context, Data, Effect, Layer, Option } from "effect"
 
-import { AppRpcs } from "./app.js"
-import { ClipboardRpcs } from "./clipboard.js"
-import { ContextMenuRpcs } from "./context-menu.js"
-import { CrashReporterRpcs } from "./crash-reporter.js"
-import { DialogRpcs } from "./dialog.js"
-import { DockRpcs } from "./dock.js"
-import { GlobalShortcutRpcs } from "./global-shortcut.js"
-import { MenuRpcs } from "./menu.js"
-import { NotificationRpcs } from "./notification.js"
-import { PathRpcs } from "./path.js"
-import { PowerMonitorRpcs } from "./power-monitor.js"
-import { ProtocolRpcs } from "./protocol.js"
-import { SafeStorageRpcs } from "./safe-storage.js"
-import { ScreenRpcs } from "./screen.js"
-import { ShellRpcs } from "./shell.js"
-import { SystemAppearanceRpcs } from "./system-appearance.js"
-import { TrayRpcs } from "./tray.js"
-import { UpdaterRpcs } from "./updater.js"
-import { WebViewRpcs } from "./webview.js"
-import { WindowRpcs } from "./window.js"
+import { AppSurface } from "./app.js"
+import { ClipboardSurface } from "./clipboard.js"
+import { ContextMenuSurface } from "./context-menu.js"
+import { CrashReporterSurface } from "./crash-reporter.js"
+import { DialogSurface } from "./dialog.js"
+import { DockSurface } from "./dock.js"
+import { GlobalShortcutSurface } from "./global-shortcut.js"
+import { MenuSurface } from "./menu.js"
+import { NotificationSurface } from "./notification.js"
+import { PathSurface } from "./path.js"
+import { PowerMonitorSurface } from "./power-monitor.js"
+import { ProtocolSurface } from "./protocol.js"
+import { SafeStorageSurface } from "./safe-storage.js"
+import { ScreenSurface } from "./screen.js"
+import { ShellSurface } from "./shell.js"
+import { SystemAppearanceSurface } from "./system-appearance.js"
+import { TraySurface } from "./tray.js"
+import { UpdaterSurface } from "./updater.js"
+import { WebViewSurface } from "./webview.js"
+import { WindowSurface } from "./window.js"
 
 export type NativeCapabilitySupport = RpcSupportMetadata
 
 export interface NativeCapabilityFact {
   readonly tag: string
+  readonly capability: RpcCapabilityMetadata
   readonly support: NativeCapabilitySupport
 }
 
-type NativeCapabilityGroup = RpcGroup.Any & {
-  readonly requests: ReadonlyMap<string, Rpc.Any>
+export interface NativeCapabilitySurface {
+  readonly schemaDocs: readonly DesktopRpcSchemaDoc[]
 }
 
 export class NativeCapabilityLookupError extends Data.TaggedError("NativeCapabilityLookupError")<{
@@ -67,51 +68,69 @@ export class NativeCapabilities extends Context.Service<
   NativeCapabilitiesApi
 >()("@effect-desktop/native/NativeCapabilities") {}
 
-const NativeCapabilityGroups: readonly NativeCapabilityGroup[] = Object.freeze([
-  AppRpcs,
-  ClipboardRpcs,
-  ContextMenuRpcs,
-  CrashReporterRpcs,
-  DialogRpcs,
-  DockRpcs,
-  GlobalShortcutRpcs,
-  MenuRpcs,
-  NotificationRpcs,
-  PathRpcs,
-  PowerMonitorRpcs,
-  ProtocolRpcs,
-  SafeStorageRpcs,
-  ScreenRpcs,
-  ShellRpcs,
-  SystemAppearanceRpcs,
-  TrayRpcs,
-  UpdaterRpcs,
-  WebViewRpcs,
-  WindowRpcs
+const NativeCapabilitySurfaces: readonly NativeCapabilitySurface[] = Object.freeze([
+  AppSurface,
+  ClipboardSurface,
+  ContextMenuSurface,
+  CrashReporterSurface,
+  DialogSurface,
+  DockSurface,
+  GlobalShortcutSurface,
+  MenuSurface,
+  NotificationSurface,
+  PathSurface,
+  PowerMonitorSurface,
+  ProtocolSurface,
+  SafeStorageSurface,
+  ScreenSurface,
+  ShellSurface,
+  SystemAppearanceSurface,
+  TraySurface,
+  UpdaterSurface,
+  WebViewSurface,
+  WindowSurface
 ])
 
 export const makeNativeCapabilityManifest = (
-  groups: Iterable<NativeCapabilityGroup>
+  surfaces: Iterable<NativeCapabilitySurface>
 ): Effect.Effect<readonly NativeCapabilityFact[], NativeCapabilityManifestError, never> =>
   Effect.suspend(() => {
     const seen = new Set<string>()
     const facts: NativeCapabilityFact[] = []
 
-    for (const group of groups) {
-      for (const rpc of group.requests.values()) {
-        if (seen.has(rpc._tag)) {
+    for (const surface of surfaces) {
+      for (const doc of surface.schemaDocs) {
+        if (seen.has(doc.tag)) {
           return Effect.fail(
             new NativeCapabilityManifestError({
-              tag: rpc._tag,
-              message: `duplicate native capability tag: ${rpc._tag}`
+              tag: doc.tag,
+              message: `duplicate native capability tag: ${doc.tag}`
             })
           )
         }
-        seen.add(rpc._tag)
+        const capability = Option.getOrUndefined(doc.capability)
+        if (capability === undefined) {
+          return Effect.fail(
+            new NativeCapabilityManifestError({
+              tag: doc.tag,
+              message: `missing native capability metadata: ${doc.tag}`
+            })
+          )
+        }
+        if (doc.support.status === "unsupported" && doc.support.reason.trim().length === 0) {
+          return Effect.fail(
+            new NativeCapabilityManifestError({
+              tag: doc.tag,
+              message: `unsupported native capability must include a reason: ${doc.tag}`
+            })
+          )
+        }
+        seen.add(doc.tag)
         facts.push(
           Object.freeze({
-            tag: rpc._tag,
-            support: freezeSupport(rpcSupport(rpc))
+            tag: doc.tag,
+            capability,
+            support: freezeSupport(doc.support)
           })
         )
       }
@@ -121,14 +140,14 @@ export const makeNativeCapabilityManifest = (
   })
 
 export const makeNativeCapabilities = (
-  groups: Iterable<NativeCapabilityGroup>
+  surfaces: Iterable<NativeCapabilitySurface>
 ): Effect.Effect<NativeCapabilitiesApi, NativeCapabilityManifestError, never> =>
-  makeNativeCapabilityManifest(groups).pipe(Effect.map(capabilitiesFromManifest))
+  makeNativeCapabilityManifest(surfaces).pipe(Effect.map(capabilitiesFromManifest))
 
 export const makeNativeCapabilitiesLayer = (
-  groups: Iterable<NativeCapabilityGroup> = NativeCapabilityGroups
+  surfaces: Iterable<NativeCapabilitySurface> = NativeCapabilitySurfaces
 ): Layer.Layer<NativeCapabilities, NativeCapabilityManifestError, never> =>
-  Layer.effect(NativeCapabilities, makeNativeCapabilities(groups))
+  Layer.effect(NativeCapabilities, makeNativeCapabilities(surfaces))
 
 export const NativeCapabilitiesLive: Layer.Layer<
   NativeCapabilities,

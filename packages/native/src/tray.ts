@@ -4,23 +4,20 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolEventEnvelope,
-  HostProtocolError as HostProtocolErrorSchema,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   makeUnaryDesktopTransportFromBridgeClientExchange,
-  Rpc,
   RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
 import {
   TrayActivatedEvent,
   TrayCreateInput,
@@ -192,7 +189,7 @@ export const TrayHandlersLive = TrayRpcGroup.toLayer({
     })
 })
 
-export const TraySurface = DesktopRpc.surface("Tray", TrayRpcGroup, {
+export const TraySurface = NativeSurface.make("Tray", TrayRpcGroup, {
   service: TrayClient,
   handlers: TrayHandlersLive,
   client: (client) => trayClientFromRpcClient(client, undefined)
@@ -201,8 +198,7 @@ export const TraySurface = DesktopRpc.surface("Tray", TrayRpcGroup, {
 export const makeHostTrayRpcRuntime = (
   handlers: TrayRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(TrayRpcGroup, TrayRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> => TraySurface.hostRuntime(handlers, runtimeOptions)
 
 const trayClientFromRpcClient = (
   client: DesktopRpcClient<TrayRpc>,
@@ -339,11 +335,13 @@ function trayRpc<
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return Rpc.make(`Tray.${method}` as const, {
+  return NativeSurface.rpc("Tray", method, {
     payload,
     success,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(capability))
+    authority: NativeSurface.authority.custom(capability),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
 
 const runTrayRpc = <A, E>(

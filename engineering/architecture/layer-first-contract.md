@@ -77,6 +77,20 @@ Use the direct surface shape when the public service is the generated `DesktopRp
 
 Use `Desktop.Rpc.supportedGroup(group)` when a capability intentionally publishes a larger descriptor group than the host can call today. Unsupported RPCs remain in `schemaDocs` and renderer descriptors, but generated client services are built from the filtered supported group. That prevents unsupported methods from looking like ordinary callable service methods.
 
+## Native RPC surfaces
+
+Native capability modules must author host-backed endpoints through the package-internal `NativeSurface` helper, not raw `Rpc.make(...)` calls in each service file.
+
+`NativeSurface.rpc(surface, method, spec)` is the native authoring point. The spec must declare the payload schema, success schema, endpoint kind, support status, and authority. Authority is explicit:
+
+- native host invocation, which derives the `P.nativeInvoke(...)` capability from the surface and method;
+- no-permission metadata for support/status endpoints;
+- custom capability metadata when the endpoint owns durable desktop policy.
+
+`NativeSurface.make(name, group, options)` delegates to `Desktop.Rpc.surface(...)` and adds the standard native bridge-client and host-runtime assembly. Capability-specific adapters may still stay local when they translate protocol semantics, event streams, scoped resource handles, or request normalization. They should not re-create RPC construction, host runtime wiring, or capability manifest tables.
+
+`NativeCapabilities` derives runtime facts from native surfaces and their `schemaDocs`. A fact includes the method tag, capability metadata, and support metadata. Missing capability metadata, duplicate method tags, and unsupported endpoints without a reason are definition errors.
+
 ## Current proof
 
 `packages/test/src/index.test.ts` contains the `native capability programs run unchanged through Live, Client, and Test layers` test. It defines user-level `Effect` programs for `Screen`, `Clipboard`, and `Dialog` and runs each through:
@@ -87,6 +101,6 @@ Use `Desktop.Rpc.supportedGroup(group)` when a capability intentionally publishe
 
 That is the minimum substitution claim this contract requires: provider replacement changes layers, not user code.
 
-`packages/native/src/screen.ts`, `packages/native/src/clipboard.ts`, and `packages/native/src/dialog.ts` are the current generated native vertical slices. Their `*Rpcs` values are canonical Effect `RpcGroup`s; their `*Surface` values derive server, client, test-client, schema-doc, and law artifacts; their `make*BridgeClientLayer(...)` functions adapt the existing bridge exchange into the generated RPC protocol instead of widening the public service contract.
+Native service modules are generated native vertical slices. Their `*Rpcs` values are canonical Effect `RpcGroup`s; their `*Surface` values derive server, client, test-client, schema-doc, law, capability-fact, bridge-client, and host-runtime artifacts; their `make*BridgeClientLayer(...)` functions adapt the existing bridge exchange into the generated RPC protocol instead of widening the public service contract.
 
 `packages/native/src/window.ts` proves the callable-client rule. `WindowRpcs` exposes only host-backed methods, currently `Window.create` and `Window.close`; planned Window methods stay out of the RPC group until the host path exists.

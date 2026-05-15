@@ -5,7 +5,6 @@ import {
   type BridgeHandlerRuntimeOptions,
   type HostWindowClientOptions,
   type HostWindowExchange,
-  HostProtocolError as HostProtocolErrorSchema,
   makeDesktopClientProtocol,
   makeUnaryDesktopTransportFromBridgeClientExchange,
   makeHostProtocolInternalError,
@@ -14,15 +13,12 @@ import {
   makeHostProtocolNotFoundError,
   makeHostWindowClient,
   makeStaleHandleError,
-  Rpc,
   RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import {
-  DesktopRpc,
   P,
   PermissionRegistry,
   ResourceRegistry,
@@ -31,6 +27,7 @@ import {
 } from "@effect-desktop/core"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 
+import { NativeSurface } from "./native-surface.js"
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import { type AppEventRouterApi, windowScope } from "./app-events.js"
 export * from "./contracts/window.js"
@@ -131,7 +128,7 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
     })
 })
 
-export const WindowSurface = DesktopRpc.surface("Window", WindowRpcGroup, {
+export const WindowSurface = NativeSurface.make("Window", WindowRpcGroup, {
   service: WindowClient,
   handlers: WindowHandlersLive,
   client: windowClientFromRpcClient
@@ -352,9 +349,11 @@ function windowRpc<
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends WindowRpcSuccess
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return Rpc.make(`Window.${method}` as const, {
+  return NativeSurface.rpc("Window", method, {
     payload,
     success,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(capability))
+    authority: NativeSurface.authority.custom(capability),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }

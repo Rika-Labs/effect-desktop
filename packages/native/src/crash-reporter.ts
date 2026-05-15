@@ -3,7 +3,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  HostProtocolError as HostProtocolErrorSchema,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -11,17 +10,15 @@ import {
   makeHostProtocolInvalidStateError,
   makeUnaryDesktopTransportFromBridgeClientExchange,
   redactForJson,
-  Rpc,
   RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Ref, Schema } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
 import {
   CrashReporterBreadcrumbInput,
   CrashReporterFlushResult,
@@ -142,7 +139,7 @@ export const CrashReporterHandlersLive = CrashReporterRpcGroup.toLayer({
     })
 })
 
-export const CrashReporterSurface = DesktopRpc.surface("CrashReporter", CrashReporterRpcGroup, {
+export const CrashReporterSurface = NativeSurface.make("CrashReporter", CrashReporterRpcGroup, {
   service: CrashReporterClient,
   handlers: CrashReporterHandlersLive,
   client: (client) => crashReporterClientFromRpcClient(client)
@@ -152,11 +149,7 @@ export const makeHostCrashReporterRpcRuntime = (
   handlers: CrashReporterRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
 ): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(
-    CrashReporterRpcGroup,
-    CrashReporterRpcGroup.toLayer(handlers),
-    runtimeOptions
-  )
+  CrashReporterSurface.hostRuntime(handlers, runtimeOptions)
 
 export const makeCrashReporterMemoryClient = (): Effect.Effect<
   CrashReporterClientApi,
@@ -254,11 +247,13 @@ function crashReporterRpc<
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return Rpc.make(`CrashReporter.${method}` as const, {
+  return NativeSurface.rpc("CrashReporter", method, {
     payload,
     success,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(capability))
+    authority: NativeSurface.authority.custom(capability),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
 
 const runCrashReporterRpc = <A, E>(

@@ -3,23 +3,20 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  HostProtocolError as HostProtocolErrorSchema,
   makeDesktopClientProtocol,
   makeUnaryDesktopTransportFromBridgeClientExchange,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
-  Rpc,
   RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
 import {
   type ClipboardCapability,
   ClipboardImage,
@@ -184,7 +181,7 @@ export const ClipboardHandlersLive = ClipboardRpcGroup.toLayer({
     })
 })
 
-export const ClipboardSurface = DesktopRpc.surface("Clipboard", ClipboardRpcGroup, {
+export const ClipboardSurface = NativeSurface.make("Clipboard", ClipboardRpcGroup, {
   service: ClipboardClient,
   handlers: ClipboardHandlersLive,
   client: (client) => clipboardClientFromRpcClient(client)
@@ -194,7 +191,7 @@ export const makeHostClipboardRpcRuntime = (
   handlers: ClipboardRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
 ): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(ClipboardRpcGroup, ClipboardRpcGroup.toLayer(handlers), runtimeOptions)
+  ClipboardSurface.hostRuntime(handlers, runtimeOptions)
 
 const makeClipboardService = (client: ClipboardClientApi): ClipboardServiceApi => {
   const service: ClipboardServiceApi = {
@@ -326,11 +323,13 @@ function clipboardRpc<
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return Rpc.make(`Clipboard.${method}` as const, {
+  return NativeSurface.rpc("Clipboard", method, {
     payload,
     success,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(capability))
+    authority: NativeSurface.authority.custom(capability),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
 
 const formatUnknownError = (error: unknown): string => {

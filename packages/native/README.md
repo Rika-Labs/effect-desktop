@@ -1,6 +1,6 @@
 # @effect-desktop/native
 
-> **Status:** Phase 5 started. The Window service definition is available; host-backed live behavior lands in the later native-service issues. See `engineering/SPEC.md`.
+> **Status:** Native service APIs are Layer-first Effect services backed by canonical Effect RPC surfaces. See `engineering/SPEC.md`.
 
 ## Purpose
 
@@ -8,7 +8,11 @@ TypeScript-facing native services backed by the Rust host: `App`, `Window`, `Web
 
 ## Public API
 
-`Screen` is the current generated Layer-first native proof. `ScreenRpcs` is the canonical Effect `RpcGroup`; `ScreenSurface` derives the server, client, test-client, schema-doc, and contract-law artifacts; and `makeScreenBridgeClientLayer()` adapts the existing bridge exchange into the generated Effect RPC protocol. `ScreenClient` remains the substitutable port used by tests and adapters.
+Each native module exposes a canonical Effect `RpcGroup`, a generated `*Surface`, an Effect service, a client service, live handlers, bridge client layers, host runtime helpers, support metadata, and deterministic test seams. The `*Surface` value is the source for server, client, test-client, schema-doc, contract-law, host-runtime, and default bridge-client artifacts.
+
+Native RPC endpoints are authored through the package-internal `NativeSurface` helper. New native endpoints must declare payload and success schemas, endpoint kind, support status, and authority in one place. Authority is explicit: either a native invoke capability, an explicit no-permission endpoint, or a custom capability for desktop-specific policy. Native service files should not call `Rpc.make(...)` directly.
+
+`NativeCapabilities` builds its manifest from native surfaces, not from a parallel table of RPC groups. Every manifest fact includes the endpoint tag, capability metadata, and support metadata. Duplicate tags, missing capability metadata, and unsupported endpoints without reasons fail as typed manifest errors.
 
 `Window` is exposed as an Effect service. `WindowRpcs` is the full Window method descriptor with support metadata, and `WindowSupportedRpcs` is the generated callable group used by the bridge client layer. The host runtime binds handlers through canonical Effect RPC groups and bridge protocol adapters. `WindowClient` remains the substitutable port used by tests and adapters, but its supported callable surface is `create` and `close`.
 
@@ -54,4 +58,4 @@ This package depends on `effect` for services/layers, streams, `PubSub`, `Subscr
 
 ## Internal architecture
 
-To be documented as the package is built out.
+`NativeSurface` is internal to this package. It is not a public app-authoring API; app code should continue to consume the exported Effect services, `*Rpcs`, `*Surface` values, and bridge/test layers. Boundary-specific adapters may remain local when they translate native/web protocol semantics, event streams, resource handles, or request normalization. Thin wrappers that only rename Effect RPC construction are architecture debt and should be removed.

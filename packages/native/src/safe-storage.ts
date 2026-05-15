@@ -3,7 +3,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
@@ -12,18 +11,16 @@ import {
   makeSecretBytes,
   type SecretBytes,
   makeUnaryDesktopTransportFromBridgeClientExchange,
-  Rpc,
   RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError,
   unsafeSecretBytes
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
 import {
   SafeStorageAvailabilityResult,
   SafeStorageKeyInput,
@@ -180,7 +177,7 @@ export const SafeStorageHandlersLive = SafeStorageRpcGroup.toLayer({
     })
 })
 
-export const SafeStorageSurface = DesktopRpc.surface("SafeStorage", SafeStorageRpcGroup, {
+export const SafeStorageSurface = NativeSurface.make("SafeStorage", SafeStorageRpcGroup, {
   service: SafeStorageClient,
   handlers: SafeStorageHandlersLive,
   client: (client) => safeStorageClientFromRpcClient(client)
@@ -190,11 +187,7 @@ export const makeHostSafeStorageRpcRuntime = (
   handlers: SafeStorageRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
 ): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(
-    SafeStorageRpcGroup,
-    SafeStorageRpcGroup.toLayer(handlers),
-    runtimeOptions
-  )
+  SafeStorageSurface.hostRuntime(handlers, runtimeOptions)
 
 const safeStorageClientFromRpcClient = (
   client: DesktopRpcClient<SafeStorageRpc>
@@ -317,11 +310,13 @@ function safeStorageRpc<
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return Rpc.make(`SafeStorage.${method}` as const, {
+  return NativeSurface.rpc("SafeStorage", method, {
     payload,
     success,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(capability))
+    authority: NativeSurface.authority.custom(capability),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
 
 const runSafeStorageRpc = <A, E>(

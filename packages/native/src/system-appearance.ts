@@ -4,22 +4,19 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolEventEnvelope,
-  HostProtocolError as HostProtocolErrorSchema,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   makeUnaryDesktopTransportFromBridgeClientExchange,
-  Rpc,
   RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
 import {
   type SystemAppearanceColor,
   SystemAppearanceAccentColorResult,
@@ -223,7 +220,7 @@ export const SystemAppearanceHandlersLive = SystemAppearanceRpcGroup.toLayer({
     })
 })
 
-export const SystemAppearanceSurface = DesktopRpc.surface(
+export const SystemAppearanceSurface = NativeSurface.make(
   "SystemAppearance",
   SystemAppearanceRpcGroup,
   {
@@ -245,11 +242,7 @@ export const makeHostSystemAppearanceRpcRuntime = (
   handlers: SystemAppearanceRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
 ): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(
-    SystemAppearanceRpcGroup,
-    SystemAppearanceRpcGroup.toLayer(handlers),
-    runtimeOptions
-  )
+  SystemAppearanceSurface.hostRuntime(handlers, runtimeOptions)
 
 const systemAppearanceClientFromRpcClient = (
   client: DesktopRpcClient<SystemAppearanceRpc>,
@@ -336,11 +329,13 @@ function systemAppearanceRpc<
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return Rpc.make(`SystemAppearance.${method}` as const, {
+  return NativeSurface.rpc("SystemAppearance", method, {
     payload,
     success,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(capability))
+    authority: NativeSurface.authority.custom(capability),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
 
 const runSystemAppearanceRpc = <A, E>(

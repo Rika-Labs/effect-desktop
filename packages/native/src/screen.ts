@@ -5,20 +5,17 @@ import {
   type BridgeHandlerRuntimeOptions,
   makeDesktopClientProtocol,
   makeUnaryDesktopTransportFromBridgeClientExchange,
-  Rpc,
   RpcClient,
-  RpcCapability,
   RpcGroup,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
-  HostProtocolError as HostProtocolErrorSchema,
   HostProtocolRequestEnvelope,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
 import {
   ScreenDisplay,
   ScreenDisplaysResult,
@@ -30,29 +27,37 @@ import {
 
 export type ScreenError = HostProtocolError
 
-export const ScreenGetDisplays = Rpc.make("Screen.getDisplays", {
+export const ScreenGetDisplays = NativeSurface.rpc("Screen", "getDisplays", {
   payload: Schema.Void,
   success: ScreenDisplaysResult,
-  error: HostProtocolErrorSchema
-}).pipe(RpcCapability(P.nativeInvoke({ primitive: "Screen", methods: ["getDisplays"] })))
+  authority: NativeSurface.authority.native(),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
 
-export const ScreenGetPrimaryDisplay = Rpc.make("Screen.getPrimaryDisplay", {
+export const ScreenGetPrimaryDisplay = NativeSurface.rpc("Screen", "getPrimaryDisplay", {
   payload: Schema.Void,
   success: ScreenDisplay,
-  error: HostProtocolErrorSchema
-}).pipe(RpcCapability(P.nativeInvoke({ primitive: "Screen", methods: ["getPrimaryDisplay"] })))
+  authority: NativeSurface.authority.native(),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
 
-export const ScreenGetPointerPoint = Rpc.make("Screen.getPointerPoint", {
+export const ScreenGetPointerPoint = NativeSurface.rpc("Screen", "getPointerPoint", {
   payload: Schema.Void,
   success: ScreenPoint,
-  error: HostProtocolErrorSchema
-}).pipe(RpcCapability(P.nativeInvoke({ primitive: "Screen", methods: ["getPointerPoint"] })))
+  authority: NativeSurface.authority.native(),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
 
-export const ScreenIsSupported = Rpc.make("Screen.isSupported", {
+export const ScreenIsSupported = NativeSurface.rpc("Screen", "isSupported", {
   payload: ScreenIsSupportedInput,
   success: ScreenSupportedResult,
-  error: HostProtocolErrorSchema
-}).pipe(RpcCapability({ kind: "none" }))
+  authority: NativeSurface.authority.none,
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
 
 const makeScreenRpcGroup = () =>
   RpcGroup.make(
@@ -139,7 +144,7 @@ export const ScreenHandlersLive = ScreenRpcGroup.toLayer({
     })
 })
 
-export const ScreenSurface = DesktopRpc.surface("Screen", ScreenRpcGroup, {
+export const ScreenSurface = NativeSurface.make("Screen", ScreenRpcGroup, {
   service: ScreenClient,
   handlers: ScreenHandlersLive,
   client: (client) => screenClientFromRpcClient(client)
@@ -162,8 +167,7 @@ export type ScreenRpcHandlers = Parameters<typeof ScreenRpcGroup.toLayer>[0]
 export const makeHostScreenRpcRuntime = (
   handlers: ScreenRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(ScreenRpcGroup, ScreenRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> => ScreenSurface.hostRuntime(handlers, runtimeOptions)
 
 const makeScreenBridgeProtocolLayer = (
   exchange: BridgeClientExchange,

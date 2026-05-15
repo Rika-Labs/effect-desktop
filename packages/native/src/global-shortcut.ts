@@ -1,6 +1,5 @@
 import {
   P,
-  DesktopRpc,
   type DesktopRpcClient,
   CommandRegistry,
   PermissionActor,
@@ -18,23 +17,20 @@ import {
   type BridgeHandlerRuntimeOptions,
   type HostProtocolEventEnvelope,
   HostProtocolAlreadyExistsError,
-  HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   makeUnaryDesktopTransportFromBridgeClientExchange,
-  Rpc,
   RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
 import { bindScopedCommand } from "./command-binding.js"
 import {
   GlobalShortcutAcceleratorInput,
@@ -305,7 +301,7 @@ export const GlobalShortcutHandlersLive = GlobalShortcutRpcGroup.toLayer({
     })
 })
 
-export const GlobalShortcutSurface = DesktopRpc.surface("GlobalShortcut", GlobalShortcutRpcGroup, {
+export const GlobalShortcutSurface = NativeSurface.make("GlobalShortcut", GlobalShortcutRpcGroup, {
   service: GlobalShortcutClient,
   handlers: GlobalShortcutHandlersLive,
   client: (client) => globalShortcutClientFromRpcClient(client, undefined)
@@ -315,11 +311,7 @@ export const makeHostGlobalShortcutRpcRuntime = (
   handlers: GlobalShortcutRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
 ): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(
-    GlobalShortcutRpcGroup,
-    GlobalShortcutRpcGroup.toLayer(handlers),
-    runtimeOptions
-  )
+  GlobalShortcutSurface.hostRuntime(handlers, runtimeOptions)
 
 const globalShortcutClientFromRpcClient = (
   client: DesktopRpcClient<GlobalShortcutRpc>,
@@ -512,11 +504,13 @@ function shortcutRpc<
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return Rpc.make(`GlobalShortcut.${method}` as const, {
+  return NativeSurface.rpc("GlobalShortcut", method, {
     payload,
     success,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(capability))
+    authority: NativeSurface.authority.custom(capability),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
 
 const runGlobalShortcutRpc = <A, E>(

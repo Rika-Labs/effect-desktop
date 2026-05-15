@@ -4,23 +4,20 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolEventEnvelope,
-  HostProtocolError as HostProtocolErrorSchema,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   makeUnaryDesktopTransportFromBridgeClientExchange,
-  Rpc,
   RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
 import {
   NotificationActionEvent,
   NotificationClickEvent,
@@ -201,7 +198,7 @@ export const NotificationHandlersLive = NotificationRpcGroup.toLayer({
     })
 })
 
-export const NotificationSurface = DesktopRpc.surface("Notification", NotificationRpcGroup, {
+export const NotificationSurface = NativeSurface.make("Notification", NotificationRpcGroup, {
   service: NotificationClient,
   handlers: NotificationHandlersLive,
   client: (client) => notificationClientFromRpcClient(client, undefined)
@@ -211,11 +208,7 @@ export const makeHostNotificationRpcRuntime = (
   handlers: NotificationRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
 ): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(
-    NotificationRpcGroup,
-    NotificationRpcGroup.toLayer(handlers),
-    runtimeOptions
-  )
+  NotificationSurface.hostRuntime(handlers, runtimeOptions)
 
 const makeNotificationService = (client: NotificationClientApi): NotificationServiceApi => {
   const service: NotificationServiceApi = {
@@ -363,11 +356,13 @@ function notificationRpc<
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return Rpc.make(`Notification.${method}` as const, {
+  return NativeSurface.rpc("Notification", method, {
     payload,
     success,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(capability))
+    authority: NativeSurface.authority.custom(capability),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
 
 const runNotificationRpc = <A, E>(

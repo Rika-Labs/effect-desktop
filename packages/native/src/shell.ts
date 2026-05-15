@@ -3,24 +3,21 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  HostProtocolError as HostProtocolErrorSchema,
   HostProtocolPermissionDeniedError,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   makeUnaryDesktopTransportFromBridgeClientExchange,
-  Rpc,
   RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
 import {
   ShellOpenExternalInput,
   type ShellOpenExternalOptions,
@@ -171,7 +168,7 @@ export const ShellHandlersLive = ShellRpcGroup.toLayer({
     })
 })
 
-export const ShellSurface = DesktopRpc.surface("Shell", ShellRpcGroup, {
+export const ShellSurface = NativeSurface.make("Shell", ShellRpcGroup, {
   service: ShellClient,
   handlers: ShellHandlersLive,
   client: (client) => shellClientFromRpcClient(client)
@@ -180,8 +177,7 @@ export const ShellSurface = DesktopRpc.surface("Shell", ShellRpcGroup, {
 export const makeHostShellRpcRuntime = (
   handlers: ShellRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(ShellRpcGroup, ShellRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> => ShellSurface.hostRuntime(handlers, runtimeOptions)
 
 const shellClientFromRpcClient = (client: DesktopRpcClient<ShellRpc>): ShellClientApi => {
   const shellClient: ShellClientApi = {
@@ -387,11 +383,13 @@ function shellRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, capability: RpcCapabilityMetadata) {
-  return Rpc.make(`Shell.${method}` as const, {
+  return NativeSurface.rpc("Shell", method, {
     payload,
     success: Schema.Void,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(capability))
+    authority: NativeSurface.authority.custom(capability),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
 
 const runShellRpc = <A, E>(

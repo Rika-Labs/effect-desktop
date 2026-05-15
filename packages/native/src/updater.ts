@@ -4,23 +4,20 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolEventEnvelope,
-  HostProtocolError as HostProtocolErrorSchema,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   makeUnaryDesktopTransportFromBridgeClientExchange,
-  Rpc,
   RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
 import {
   UpdaterCheckInput,
   UpdaterCheckResult,
@@ -206,7 +203,7 @@ export const UpdaterHandlersLive = UpdaterRpcGroup.toLayer({
     })
 })
 
-export const UpdaterSurface = DesktopRpc.surface("Updater", UpdaterRpcGroup, {
+export const UpdaterSurface = NativeSurface.make("Updater", UpdaterRpcGroup, {
   service: UpdaterClient,
   handlers: UpdaterHandlersLive,
   client: (client) =>
@@ -223,8 +220,7 @@ export const UpdaterSurface = DesktopRpc.surface("Updater", UpdaterRpcGroup, {
 export const makeHostUpdaterRpcRuntime = (
   handlers: UpdaterRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(UpdaterRpcGroup, UpdaterRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> => UpdaterSurface.hostRuntime(handlers, runtimeOptions)
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
@@ -339,11 +335,13 @@ function updaterRpc<
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return Rpc.make(`Updater.${method}` as const, {
+  return NativeSurface.rpc("Updater", method, {
     payload,
     success,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(capability))
+    authority: NativeSurface.authority.custom(capability),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
 
 const runUpdaterRpc = <A, E>(

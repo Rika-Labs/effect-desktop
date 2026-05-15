@@ -26,6 +26,8 @@ Most native modules follow the same public shape:
 
 This is the [layer-first contract](explanation/layer-first-design.md) applied uniformly.
 
+Native service authors should use the internal native surface authoring path, not ad hoc RPC construction. Each endpoint must carry schemas, endpoint kind, support metadata, and authority metadata together. `NativeCapabilities` reads the resulting surface docs, so the public support manifest uses the same source of truth as handlers, clients, tests, and renderer descriptors.
+
 ## Current native modules
 
 | Module             | Purpose                     | Reference                                                         |
@@ -64,6 +66,8 @@ if (ClipboardRpcs === undefined || DialogRpcs === undefined || WindowRpcs === un
 ## Support checks
 
 Platform-limited operations must be guarded through support metadata or `isSupported` methods. Unsupported capability is a **typed result**, not an implicit no-op.
+
+`NativeCapabilities` exposes a manifest of native method facts. Each fact includes the method tag, its capability metadata, and its support metadata. Unknown tags fail with `NativeCapabilityLookupError`; unsupported methods fail `require(tag)` with `UnsupportedCapability`.
 
 ## Where to go next
 

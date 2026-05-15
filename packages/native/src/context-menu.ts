@@ -1,6 +1,5 @@
 import {
   P,
-  DesktopRpc,
   type DesktopRpcClient,
   CommandRegistry,
   PermissionActor,
@@ -17,23 +16,20 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolEventEnvelope,
-  HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   makeUnaryDesktopTransportFromBridgeClientExchange,
-  Rpc,
   RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
 import { bindScopedCommand } from "./command-binding.js"
 import { commandBindingWarningError } from "./command-binding-log.js"
 import {
@@ -219,7 +215,7 @@ export const ContextMenuHandlersLive = ContextMenuRpcGroup.toLayer({
   "ContextMenu.bindCommand": () => Effect.fail(unsupportedError("ContextMenu.bindCommand"))
 })
 
-export const ContextMenuSurface = DesktopRpc.surface("ContextMenu", ContextMenuRpcGroup, {
+export const ContextMenuSurface = NativeSurface.make("ContextMenu", ContextMenuRpcGroup, {
   service: ContextMenuClient,
   handlers: ContextMenuHandlersLive,
   client: (client) => contextMenuClientFromRpcClient(client, undefined)
@@ -229,11 +225,7 @@ export const makeHostContextMenuRpcRuntime = (
   handlers: ContextMenuRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
 ): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(
-    ContextMenuRpcGroup,
-    ContextMenuRpcGroup.toLayer(handlers),
-    runtimeOptions
-  )
+  ContextMenuSurface.hostRuntime(handlers, runtimeOptions)
 
 const contextMenuClientFromRpcClient = (
   client: DesktopRpcClient<ContextMenuRpc>,
@@ -366,11 +358,13 @@ function contextMenuRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, capability: RpcCapabilityMetadata) {
-  return Rpc.make(`ContextMenu.${method}` as const, {
+  return NativeSurface.rpc("ContextMenu", method, {
     payload,
     success: Schema.Void,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(capability))
+    authority: NativeSurface.authority.custom(capability),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
 
 const runContextMenuRpc = <A, E>(

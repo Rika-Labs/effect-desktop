@@ -28,6 +28,7 @@ export {
   UnsupportedCapability,
   type NativeCapabilitiesApi,
   type NativeCapabilityFact,
+  type NativeCapabilitySurface,
   type NativeCapabilitySupport
 } from "./capabilities.js"
 export {
