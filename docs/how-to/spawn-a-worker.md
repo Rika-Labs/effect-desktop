@@ -46,7 +46,6 @@ const program = Effect.gen(function* () {
   const worker = yield* Worker
   const handle = yield* worker.spawn({
     script: "workers/indexer.ts",
-    ownerScope: "window-main",
     inputSchema: InMessage,
     outputSchema: OutMessage,
     capabilities: [{ kind: "filesystem.read", roots: ["/Users/me/Documents"] }]
@@ -67,11 +66,11 @@ What the framework checks before the worker activates:
 - Every declared capability must have a matching `PermissionRegistry` declaration. Missing → `CapabilityNotHeld`, no spawn.
 - The `inputSchema` is enforced on every `send`. Bad shape → `ChannelError`.
 - The `outputSchema` is enforced on every received message.
-- The worker is registered with `ResourceRegistry` keyed by `ownerScope`.
+- The worker is registered with `ResourceRegistry` under the current `ResourceOwner`.
 
 ## 3. Cleanup is automatic
 
-When `"window-main"` closes, the worker is terminated, the per-scope concurrency budget is released, and the resource is unregistered. If the worker crashes, `WorkerCrashed` arrives on the message stream rather than throwing.
+When the owning `ResourceOwner` scope closes, the worker is terminated, the per-scope concurrency budget is released, and the resource is unregistered. If the worker crashes, `WorkerCrashed` arrives on the message stream rather than throwing.
 
 ## 4. Inspect what's running
 

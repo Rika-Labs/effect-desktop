@@ -19,11 +19,13 @@ import { MemoryFilesystem, type FilesystemOptions } from "@effect-desktop/test"
 ## Layer
 
 ```ts
+import { Layer } from "effect"
+import { ResourceOwner } from "@effect-desktop/core"
+
 const FilesystemLive = MemoryFilesystem.layer({
-  ownerScope: "test",
   rootScope: "/",
   policy: defaultMemoryPolicy
-})
+}).pipe(Layer.provide(ResourceOwner.test("test")))
 ```
 
 ## Behavior

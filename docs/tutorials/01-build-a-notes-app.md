@@ -146,8 +146,7 @@ export const NotesHandlersLive = NotesRpcs.toLayer(
 ).pipe(
   Layer.provide(
     SqlClientLive({
-      filename: "notes.sqlite",
-      ownerScope: "app:notes"
+      filename: "notes.sqlite"
     })
   )
 )
@@ -156,7 +155,7 @@ export const NotesHandlersLive = NotesRpcs.toLayer(
 What's happening here:
 
 - `RpcGroup.toLayer(effect)` accepts an Effect that builds the handler map. The Effect can `yield*` services — here it grabs `SqlClient` — and the resulting handlers run inside the same scope.
-- `SqlClientLive(...)` opens the SQLite database once for the layer scope and closes it with that scope (see [resource lifecycle](../explanation/resource-lifecycle.md)).
+- `SqlClientLive(...)` opens the SQLite database once for the layer scope and registers it under the app `ResourceOwner` supplied by `Desktop.runtime(...)` (see [resource lifecycle](../explanation/resource-lifecycle.md)).
 - The SQL tagged template binds parameters safely. `Schema.decodeUnknownEffect(NoteSchema)` keeps rows typed at the boundary.
 - The delete handler returns `Effect.fail(new NoteNotFound({ id }))` for the domain failure. TypeScript knows this is the only failure in the contract.
 

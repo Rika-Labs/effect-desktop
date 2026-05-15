@@ -26,9 +26,9 @@ Effect's `Scope` inverts the responsibility. The caller declares "I am opening a
 | ------------------- | ------------------------------------------------------ | -------------------------------------------- |
 | Window              | The app's runtime scope, plus a per-window child scope | Window destroy + state persistence           |
 | File watcher        | The handler's scope (usually a per-call scope)         | Stop watching, free OS handles               |
-| Process             | Caller-declared `ownerScope`                           | Terminate process tree                       |
-| PTY session         | Caller-declared `ownerScope`                           | Send signal, close PTY                       |
-| Worker              | Caller-declared `ownerScope`                           | Terminate worker, release concurrency budget |
+| Process             | Current `ResourceOwner`                                | Terminate process tree                       |
+| PTY session         | Current `ResourceOwner`                                | Send signal, close PTY                       |
+| Worker              | Current `ResourceOwner`                                | Terminate worker, release concurrency budget |
 | Forked Effect       | Surrounding handler/layer scope                        | Interrupt fiber on scope close               |
 | Stream subscription | Subscriber's scope                                     | Unsubscribe and drain                        |
 
@@ -40,13 +40,14 @@ Effect's `Scope` inverts the responsibility. The caller declares "I am opening a
 
 You rarely call the registry yourself. You _do_ rely on it during testing: `assertNoOpenResourcesIn(registry)` or `installResourceLeakDetection(registry)` from `@effect-desktop/test` will fail your test if a handler opens a resource without closing it.
 
-## Owner scopes are values
+## Resource owners are layer services
 
-When you spawn a process, open a PTY, or start a worker, the input includes an `ownerScope: ScopeId`. That id is a name — typically `"window-main"`, `"job-export-pdf"`, `"worker-indexer-1"`. The framework joins it to the actual `Scope` through internal bookkeeping; you only need to choose a meaningful name.
+When you spawn a process, open a PTY, start a worker, watch files, or open SQLite, the service uses the `ResourceOwner` in its layer context. App runtimes provide `ResourceOwner.app(appId)`. Window service layers provide `ResourceOwner.window(...)`. Custom background layers can provide `ResourceOwner.job(jobId)`. Tests can provide `ResourceOwner.test(scopeId)`.
 
-Why a name and not the scope itself? Two reasons:
+Why an owner service and not an argument on every call? Two reasons:
 
-- **Audit.** When a process is killed, the audit event records the scope name. "Process `git status` was terminated when scope `window-main` closed" is a sentence you can read.
+- **Correctness.** The owner is chosen once where the resource service is built, not repeated at every call site.
+- **Audit.** When a process is killed, the audit event records the owner scope. "Process `git status` was terminated when scope `window:main` closed" is a sentence you can read.
 - **Cross-process visibility.** The Rust host knows the scope name from the host protocol envelope and uses it to clean up native resources when the runtime tells it the scope is closing.
 
 ## What this looks like in code
@@ -57,11 +58,7 @@ import { Process } from "@effect-desktop/core"
 
 const program = Effect.gen(function* () {
   const proc = yield* Process
-  const handle = yield* proc.spawn({
-    command: "rg",
-    args: ["pattern", "/path"],
-    ownerScope: "window-main"
-  })
+  const handle = yield* proc.spawn("rg", ["pattern", "/path"])
   // The process runs until the scope closes, the handle is killed,
   // or the process exits on its own. You don't need a try/finally.
   return handle

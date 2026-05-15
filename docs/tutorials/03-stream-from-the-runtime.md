@@ -70,17 +70,14 @@ import { ImportProgress } from "./contracts.js"
     const fs = yield* Filesystem
     const sql = yield* SqlClient
 
-    const entries = yield* fs.readDirectory({
-      path: directory,
-      ownerScope: "import-job"
-    })
+    const entries = yield* fs.readDirectory(directory)
     const files = entries.filter((e) => e.kind === "file" && e.name.endsWith(".md"))
     const total = files.length
 
     return Stream.fromIterable(files).pipe(
       Stream.mapEffect((entry, index) =>
         Effect.gen(function* () {
-          const body = yield* fs.readFileString({ path: entry.path, ownerScope: "import-job" })
+          const body = new TextDecoder().decode(yield* fs.read(entry.path))
           const note = new Note({ id: entry.name, body, updatedAt: Date.now() })
           yield* sql`
             INSERT INTO notes (id, body, updated_at)
@@ -123,7 +120,7 @@ import { ImportProgress } from "./contracts.js"
 
 A few important things:
 
-- `Filesystem.readDirectory` and `readFileString` need an `ownerScope` — we use `"import-job"` so all the file handles for this import close together.
+- `Filesystem` uses the current `ResourceOwner`, so the stream's file reads close with the owning app, window, or job scope.
 - `Stream.mapEffect` runs each file as its own Effect. A failure on one file is **caught** and converted to a `skipped` progress event, so the whole import doesn't abort on a single bad file.
 - The final `Stream.concat(Stream.succeed(...))` emits a `completed` event so the UI knows to stop.
 
@@ -191,7 +188,7 @@ Three things to notice:
 
 1. **Conditional subscription.** Passing `undefined` as the input pauses the subscription. We use a `enabled` flag so the stream only starts when the user clicks.
 2. **`capacity: 64`** sets how many in-flight items the renderer buffers. Older items are dropped if the consumer can't keep up.
-3. **Cancel by setting `enabled = false`.** Unmounting the subscription tears down the stream — the framework sends a `HostProtocolCancelByRequestEnvelope` to the runtime, which cancels the underlying Effect fiber, which closes the `import-job` scope, which closes the `Filesystem` reads. End to end.
+3. **Cancel by setting `enabled = false`.** Unmounting the subscription tears down the stream — the framework sends a `HostProtocolCancelByRequestEnvelope` to the runtime, which cancels the underlying Effect fiber and releases the scoped `Filesystem` reads. End to end.
 
 ## Step 4 — Declare the filesystem permission
 

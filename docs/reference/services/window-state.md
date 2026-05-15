@@ -25,7 +25,7 @@ import { WindowState, type WindowStateApi } from "@effect-desktop/core"
 | `clear`   | `() => Effect<void>`                |
 | `observe` | `() => Stream<WindowStateEvent>`    |
 
-`WindowState.window(options?)` provides this API for the current `Desktop.window(...)` services scope. The current window id comes from `DesktopWindowContext`, so callers cannot accidentally persist one window's geometry under another window id.
+`WindowState.window(options?)` provides this API for the current `Desktop.window(...)` services scope. The current window id comes from `WindowContext`, so callers cannot accidentally persist one window's geometry under another window id.
 
 ## Behavior
 
