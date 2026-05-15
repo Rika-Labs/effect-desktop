@@ -260,7 +260,7 @@ test("Desktop.runtimeGraph exposes selected providers and composition nodes with
           "Notes.Graph.Ping": () => Effect.succeed("pong")
         })
       ),
-      workflows: [Layer.empty as DesktopWorkflowLayer]
+      workflows: core.Desktop.workflow(Layer.empty as DesktopWorkflowLayer)
     })
   )
 
@@ -877,18 +877,16 @@ test("Desktop.app validates RpcGroup capability scope coverage", async () => {
   const wrongScope = core.Desktop.make({
     id: "network-app",
     windows: core.Desktop.window("main", { title: "Network" }),
-    permissions: [
-      {
-        ...requiredCapability,
-        hosts: ["other.example.com"]
-      }
-    ],
+    permissions: core.Desktop.permission({
+      ...requiredCapability,
+      hosts: ["other.example.com"]
+    }),
     rpcs: layer
   })
   const coveredScope = core.Desktop.make({
     id: "network-app",
     windows: core.Desktop.window("main", { title: "Network" }),
-    permissions: [requiredCapability],
+    permissions: core.Desktop.permission(requiredCapability),
     rpcs: layer
   })
 
@@ -959,7 +957,7 @@ test("Desktop.app permission middleware declares app permissions for protected R
   const definition = core.Desktop.make({
     id: "network-app",
     windows: core.Desktop.window("main", { title: "Network" }),
-    permissions: [requiredCapability],
+    permissions: core.Desktop.permission(requiredCapability),
     rpcs: core.Desktop.rpc(
       NetworkRpcs,
       NetworkRpcs.toLayer({

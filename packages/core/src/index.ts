@@ -1,5 +1,5 @@
 import { RedactionFilter, RpcCapability, RpcEndpoint, RpcSupport } from "@effect-desktop/bridge"
-import { Effect, Layer } from "effect"
+import { Context, Effect, Layer } from "effect"
 import { WorkflowEngine } from "effect/unstable/workflow"
 
 import {
@@ -7,23 +7,35 @@ import {
   launch,
   make,
   manifest,
+  permission,
   providerLayerFor,
   rpc,
   runtime,
   runtimeGraph,
   runtimeGraphSnapshot,
   desktopWindow,
+  workflow,
   WorkflowEngineDurable,
   WorkflowEngineMemory
 } from "./runtime/desktop-app.js"
+import {
+  DesktopPermissionRegistry,
+  DesktopPermissionRegistryLive
+} from "./runtime/desktop-permission-registry.js"
 import { DesktopRpcRegistry } from "./runtime/desktop-rpc-registry.js"
+import {
+  DesktopWorkflowRegistry,
+  DesktopWorkflowRegistryLive
+} from "./runtime/desktop-workflow-registry.js"
 import type { DesktopWindowRegistry } from "./runtime/desktop-window-registry.js"
 import type {
   DesktopApp,
   DesktopConfig,
   DesktopConfigError,
+  DesktopPermissionsLayer,
   DesktopRuntimeProviderServices,
-  DesktopWorkflowLayer
+  DesktopWorkflowLayer,
+  DesktopWorkflowsLayer
 } from "./runtime/desktop-app.js"
 import { DesktopRpc } from "./runtime/desktop-rpc-surface.js"
 import type { NormalizedCapability } from "./runtime/permission-registry.js"
@@ -74,8 +86,10 @@ export * from "./runtime/inspector-security-events.js"
 export * from "./runtime/desktop-observability.js"
 export * from "./runtime/inspector-transport.js"
 export * from "./runtime/desktop-errors.js"
+export * from "./runtime/desktop-permission-registry.js"
 export * from "./runtime/desktop-rpc-registry.js"
 export * from "./runtime/desktop-rpc-surface.js"
+export * from "./runtime/desktop-workflow-registry.js"
 export * from "./runtime/desktop-window-registry.js"
 export {
   DesktopApp,
@@ -84,12 +98,14 @@ export {
   layerGraphSnapshotFromGraph,
   make,
   manifest,
+  permission,
   providerLayerFor,
   rpc,
   runtime,
   runtimeGraph,
   runtimeGraphSnapshot,
   desktopWindow,
+  workflow,
   type DesktopAppApi,
   type DesktopAppDescriptor,
   type DesktopAppManifest,
@@ -109,8 +125,10 @@ export {
   type DesktopRuntimeProviderServices,
   type DesktopRuntimeSelectedProviders,
   type DesktopRuntimeServices,
+  type DesktopPermissionsLayer,
   type DesktopWorkflowEngineLayer,
   type DesktopWorkflowLayer,
+  type DesktopWorkflowsLayer,
   WorkflowEngineDurable,
   WorkflowEngineMemory,
   LayerFailurePayload,
@@ -122,13 +140,16 @@ export {
 export { DesktopRuntime, DesktopRuntimeLive } from "./runtime/desktop-app.js"
 export { DesktopConfigError as DesktopSpineConfigError } from "./runtime/desktop-app.js"
 
-export interface DesktopAppOptions {
-  readonly workflows?: readonly DesktopWorkflowLayer[]
-  readonly permissions?: readonly NormalizedCapability[]
+export interface DesktopAppOptions<RIn = never, E = never> {
+  readonly workflows?: DesktopWorkflowsLayer<RIn, E>
+  readonly permissions?: DesktopPermissionsLayer
 }
 
-interface DesktopAppOptionsWithPermissions extends DesktopAppOptions {
-  readonly permissions: readonly NormalizedCapability[]
+interface DesktopAppOptionsWithPermissions<RIn = never, E = never> extends DesktopAppOptions<
+  RIn,
+  E
+> {
+  readonly permissions: DesktopPermissionsLayer
 }
 
 function app(): Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>
@@ -137,27 +158,45 @@ function app<RIn = never, E = never>(
 ): Layer.Layer<
   DesktopApp,
   DesktopConfigError | E,
-  Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry | DesktopWindowRegistry>
+  Exclude<
+    RIn,
+    | DesktopRuntimeProviderServices
+    | DesktopRpcRegistry
+    | DesktopWindowRegistry
+    | DesktopPermissionRegistry
+    | DesktopWorkflowRegistry
+  >
 >
-function app(
-  options: DesktopAppOptionsWithPermissions
-): Layer.Layer<WorkflowEngine.WorkflowEngine, never, PermissionRegistry>
 function app<RIn = never, E = never>(
-  options: DesktopAppOptions | DesktopConfig<RIn, E> = {}
+  options: DesktopAppOptionsWithPermissions<RIn, E>
+): Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn | PermissionRegistry>
+function app<RIn = never, E = never>(
+  options: DesktopAppOptions<RIn, E>
+): Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn>
+function app<RIn = never, E = never>(
+  options: DesktopAppOptions<RIn, E> | DesktopConfig<RIn, E> = {}
 ):
   | Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>
-  | Layer.Layer<WorkflowEngine.WorkflowEngine, never, PermissionRegistry>
+  | Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn>
+  | Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn | PermissionRegistry>
   | Layer.Layer<
       DesktopApp,
       DesktopConfigError | E,
-      Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry | DesktopWindowRegistry>
+      Exclude<
+        RIn,
+        | DesktopRuntimeProviderServices
+        | DesktopRpcRegistry
+        | DesktopWindowRegistry
+        | DesktopPermissionRegistry
+        | DesktopWorkflowRegistry
+      >
     > {
   if ("id" in options) {
     return desktopApp(options as DesktopConfig)
   }
 
-  const wfs = options.workflows ?? []
-  const permissions = options.permissions ?? []
+  const workflows = snapshotStandaloneWorkflows(options.workflows)
+  const permissions = snapshotStandalonePermissions(options.permissions)
 
   const declareLayer =
     permissions.length === 0
@@ -173,15 +212,57 @@ function app<RIn = never, E = never>(
           })
         )
 
-  if (wfs.length === 0) {
+  if (workflows.length === 0) {
     return Layer.merge(WorkflowEngineMemory, declareLayer)
   }
 
-  const merged = wfs.reduce<Layer.Layer<never, never, WorkflowEngine.WorkflowEngine>>(
+  const merged = workflows.reduce<Layer.Layer<never, E, RIn | WorkflowEngine.WorkflowEngine>>(
     (acc, wf) => Layer.merge(acc, wf),
-    Layer.empty as Layer.Layer<never, never, WorkflowEngine.WorkflowEngine>
+    Layer.empty as Layer.Layer<never, E, RIn | WorkflowEngine.WorkflowEngine>
   )
   return Layer.merge(Layer.provideMerge(merged, WorkflowEngineMemory), declareLayer)
+}
+
+const snapshotStandalonePermissions = (
+  permissions: DesktopPermissionsLayer | undefined
+): ReadonlyArray<NormalizedCapability> => {
+  if (permissions === undefined) return []
+
+  return Effect.runSync(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const context = yield* Layer.build(
+          Layer.provideMerge(
+            permissions as Layer.Layer<never, never, DesktopPermissionRegistry>,
+            DesktopPermissionRegistryLive
+          )
+        )
+        return yield* Context.get(context, DesktopPermissionRegistry).snapshot
+      })
+    )
+  )
+}
+
+const snapshotStandaloneWorkflows = <RIn, E>(
+  workflows: DesktopWorkflowsLayer<RIn, E> | undefined
+): ReadonlyArray<DesktopWorkflowLayer<RIn, E>> => {
+  if (workflows === undefined) return []
+
+  const snapshot = Effect.runSync(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const context = yield* Layer.build(
+          Layer.provideMerge(
+            workflows as unknown as Layer.Layer<never, never, DesktopWorkflowRegistry>,
+            DesktopWorkflowRegistryLive
+          )
+        )
+        return yield* Context.get(context, DesktopWorkflowRegistry).snapshot
+      })
+    )
+  )
+
+  return snapshot as ReadonlyArray<DesktopWorkflowLayer<RIn, E>>
 }
 
 export const Desktop = Object.freeze({
@@ -195,9 +276,11 @@ export const Desktop = Object.freeze({
   launch,
   make,
   manifest,
+  permission,
   providerLayerFor,
   rpc,
   window: desktopWindow,
+  workflow,
   Rpc: DesktopRpc,
   runtime,
   runtimeGraph,

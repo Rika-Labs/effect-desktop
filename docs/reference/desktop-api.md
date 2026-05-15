@@ -26,14 +26,14 @@ function make<RIn = never, E = never>(
 ): DesktopAppDescriptor<RIn, E>
 ```
 
-| Field         | Type                       | Description                                                                                                                              |
-| ------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`          | `string`                   | Reverse-DNS app id (e.g. `dev.example.notes`).                                                                                           |
-| `windows`     | `DesktopWindowsLayer<RIn>` | A single composed Layer of window registrations. Build via `Desktop.window(id, spec, services?)`; compose multiple via `Layer.mergeAll`. |
-| `rpcs`        | `DesktopRpcsLayer<E, RIn>` | A single composed Layer of RPC registrations. Build via `Desktop.rpc(group, handlers)`; compose multiple via `Layer.mergeAll`.           |
-| `providers`   | `DesktopProviderSelection` | Optional provider selection (e.g. runtime engine).                                                                                       |
-| `permissions` | `NormalizedCapability[]`   | Default permission declarations.                                                                                                         |
-| `workflows`   | `DesktopWorkflowLayer[]`   | Optional workflow layers.                                                                                                                |
+| Field         | Type                           | Description                                                                                                                              |
+| ------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`          | `string`                       | Reverse-DNS app id (e.g. `dev.example.notes`).                                                                                           |
+| `windows`     | `DesktopWindowsLayer<RIn>`     | A single composed Layer of window registrations. Build via `Desktop.window(id, spec, services?)`; compose multiple via `Layer.mergeAll`. |
+| `rpcs`        | `DesktopRpcsLayer<E, RIn>`     | A single composed Layer of RPC registrations. Build via `Desktop.rpc(group, handlers)`; compose multiple via `Layer.mergeAll`.           |
+| `providers`   | `DesktopProviderSelection`     | Optional provider selection (e.g. runtime engine).                                                                                       |
+| `permissions` | `DesktopPermissionsLayer<RIn>` | A single composed Layer of permission declarations. Build via `Desktop.permission(capability)`.                                          |
+| `workflows`   | `DesktopWorkflowsLayer<RIn,E>` | A single composed Layer of workflow registrations. Build via `Desktop.workflow(layer)`.                                                  |
 
 `WindowSpec` is `{ title, width?, height?, renderer? }`. The window id is the first argument to `Desktop.window(id, spec)` — there is no `id` field on the spec itself.
 
@@ -55,9 +55,9 @@ Builds the runtime layer for the app. Three overloads:
 // Empty — workflow engine only
 Desktop.app(): Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>
 
-// With permissions
-Desktop.app({ permissions, workflows? }):
-  Layer.Layer<WorkflowEngine.WorkflowEngine, never, PermissionRegistry>
+// With permissions and workflow registrations
+Desktop.app({ permissions?, workflows? }):
+  Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn | PermissionRegistry>
 
 // From a config descriptor
 Desktop.app(config): Layer.Layer<DesktopApp, DesktopConfigError | E, ...>
@@ -94,6 +94,25 @@ windows: Layer.mergeAll(
 ```
 
 Reserved ids — `__proto__`, `constructor`, `prototype`, and the empty string — throw a `TypeError` synchronously from the call site. Duplicate ids surface as a `DesktopConfigError` at `Desktop.make` time.
+
+## `Desktop.permission(capability)`
+
+Registers one permission declaration with the surrounding `DesktopPermissionRegistry`. Compose multiple declarations with `Layer.mergeAll(...)` and pass the result as `permissions:`.
+
+```ts
+permissions: Layer.mergeAll(
+  Desktop.permission(Permission.filesystemRead({ roots: ["/tmp/app"] })),
+  Desktop.permission(Permission.networkConnect({ hosts: ["api.example.com"] }))
+)
+```
+
+## `Desktop.workflow(layer)`
+
+Registers one workflow layer with the surrounding `DesktopWorkflowRegistry`. Compose multiple workflow registrations with `Layer.mergeAll(...)` and pass the result as `workflows:`.
+
+```ts
+workflows: Layer.mergeAll(Desktop.workflow(UserOnboardingWorkflow), Desktop.workflow(SyncWorkflow))
+```
 
 ## `Desktop.Rpc.surface(name, group, options)`
 

@@ -44,6 +44,16 @@ import {
   type DesktopRpcRegistrationGroup
 } from "./desktop-rpc-registry.js"
 import {
+  DesktopPermissionRegistry,
+  DesktopPermissionRegistryLive
+} from "./desktop-permission-registry.js"
+import {
+  DesktopWorkflowRegistry,
+  DesktopWorkflowRegistryLive,
+  type AnyDesktopWorkflowRegistration,
+  type DesktopWorkflowRegistration
+} from "./desktop-workflow-registry.js"
+import {
   DesktopWindowRegistry,
   DesktopWindowRegistryLive,
   isSafeWindowId,
@@ -70,13 +80,25 @@ export type DesktopWindowsLayer<RIn = never> = Layer.Layer<
   RIn | DesktopWindowRegistry
 >
 
+export type DesktopPermissionsLayer<RIn = never> = Layer.Layer<
+  never,
+  never,
+  RIn | DesktopPermissionRegistry
+>
+
+export type DesktopWorkflowsLayer<RIn = never, E = never> = Layer.Layer<
+  never,
+  E,
+  RIn | DesktopWorkflowRegistry
+>
+
 export interface DesktopConfig<RIn = never, E = never> {
   readonly id: string
   readonly windows: DesktopWindowsLayer<RIn>
   readonly providers?: DesktopProviderSelection
   readonly rpcs?: DesktopRpcsLayer<E, RIn>
-  readonly permissions?: ReadonlyArray<NormalizedCapability>
-  readonly workflows?: ReadonlyArray<DesktopWorkflowLayer<RIn, E>>
+  readonly permissions?: DesktopPermissionsLayer<RIn>
+  readonly workflows?: DesktopWorkflowsLayer<RIn, E>
 }
 
 export interface DesktopMakeConfig<RIn = never, E = never> {
@@ -84,15 +106,11 @@ export interface DesktopMakeConfig<RIn = never, E = never> {
   readonly windows: DesktopWindowsLayer<RIn>
   readonly providers?: DesktopProviderSelection
   readonly rpcs?: DesktopRpcsLayer<E, RIn>
-  readonly permissions?: ReadonlyArray<NormalizedCapability>
-  readonly workflows?: ReadonlyArray<DesktopWorkflowLayer<RIn, E>>
+  readonly permissions?: DesktopPermissionsLayer<RIn>
+  readonly workflows?: DesktopWorkflowsLayer<RIn, E>
 }
 
-export type DesktopWorkflowLayer<RIn = never, E = never> = Layer.Layer<
-  never,
-  E,
-  RIn | WorkflowEngine.WorkflowEngine
->
+export type DesktopWorkflowLayer<RIn = never, E = never> = DesktopWorkflowRegistration<E, RIn>
 
 export type DesktopWorkflowEngineLayer<RIn = never, E = never> = Layer.Layer<
   WorkflowEngine.WorkflowEngine,
@@ -103,9 +121,9 @@ export type DesktopWorkflowEngineLayer<RIn = never, E = never> = Layer.Layer<
 export interface DesktopAppDescriptor<RIn = never, E = never> extends DesktopConfig<RIn, E> {
   readonly _tag: "DesktopAppDescriptor"
   readonly rpcs: DesktopRpcsLayer<E, RIn>
+  readonly permissions: DesktopPermissionsLayer<RIn>
+  readonly workflows: DesktopWorkflowsLayer<RIn, E>
   readonly windowRegistrations: ReadonlyArray<DesktopWindowRegistration>
-  readonly permissions: ReadonlyArray<NormalizedCapability>
-  readonly workflows: ReadonlyArray<DesktopWorkflowLayer<RIn, E>>
 }
 
 export interface DesktopRpcGroupDescriptor {
@@ -395,8 +413,8 @@ export const make = <RIn = never, E = never>(
     windows: config.windows,
     windowRegistrations,
     rpcs: config.rpcs ?? (Layer.empty as DesktopRpcsLayer<E, RIn>),
-    permissions: freezeArray(config.permissions),
-    workflows: freezeArray(config.workflows),
+    permissions: config.permissions ?? (Layer.empty as DesktopPermissionsLayer<RIn>),
+    workflows: config.workflows ?? (Layer.empty as DesktopWorkflowsLayer<RIn, E>),
     ...(config.providers === undefined ? {} : { providers: freezeObject(config.providers) })
   })
 }
@@ -488,6 +506,26 @@ export const desktopWindow = <RIn = never>(
   )
 }
 
+export const permission = <RIn = never>(
+  capability: NormalizedCapability
+): Layer.Layer<never, never, RIn | DesktopPermissionRegistry> =>
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const registry = yield* DesktopPermissionRegistry
+      yield* registry.register(capability)
+    })
+  )
+
+export const workflow = <RIn = never, E = never>(
+  layer: DesktopWorkflowLayer<RIn, E>
+): Layer.Layer<never, never, DesktopWorkflowRegistry> =>
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const registry = yield* DesktopWorkflowRegistry
+      yield* registry.register(layer as unknown as AnyDesktopWorkflowRegistration)
+    })
+  )
+
 /**
  * Thrown by `Desktop.manifest(...)` when the user's `rpcs` layer requires
  * asynchronous work to build. The framework runs `rpcs` synchronously to
@@ -503,6 +541,20 @@ export class DesktopRpcRegistryAsyncBuildError extends Data.TaggedError(
 
 export class DesktopWindowRegistryAsyncBuildError extends Data.TaggedError(
   "DesktopWindowRegistryAsyncBuildError"
+)<{
+  readonly message: string
+  readonly cause: unknown
+}> {}
+
+export class DesktopPermissionRegistryAsyncBuildError extends Data.TaggedError(
+  "DesktopPermissionRegistryAsyncBuildError"
+)<{
+  readonly message: string
+  readonly cause: unknown
+}> {}
+
+export class DesktopWorkflowRegistryAsyncBuildError extends Data.TaggedError(
+  "DesktopWorkflowRegistryAsyncBuildError"
 )<{
   readonly message: string
   readonly cause: unknown
@@ -595,6 +647,16 @@ const buildRegistrations = <RIn, E>(
 ): Effect.Effect<ReadonlyArray<AnyDesktopRpcRegistration>, never, never> =>
   Effect.sync(() => snapshotRegistrationsSync(rpcs))
 
+const buildPermissions = <RIn>(
+  permissions: DesktopConfig<RIn, never>["permissions"]
+): Effect.Effect<ReadonlyArray<NormalizedCapability>, never, never> =>
+  Effect.sync(() => snapshotPermissionsSync(permissions))
+
+const buildWorkflows = <RIn, E>(
+  workflows: DesktopConfig<RIn, E>["workflows"]
+): Effect.Effect<ReadonlyArray<AnyDesktopWorkflowRegistration>, never, never> =>
+  Effect.sync(() => snapshotWorkflowsSync(workflows))
+
 /**
  * Synchronous registry snapshot. The `Desktop.rpc(...)` constructor produces a
  * layer whose only side effect is calling `registry.register(...)` via
@@ -641,17 +703,91 @@ const snapshotRegistrationsSync = <RIn, E>(
   }
 }
 
+const snapshotPermissionsSync = <RIn>(
+  permissions: DesktopConfig<RIn, never>["permissions"]
+): ReadonlyArray<NormalizedCapability> => {
+  if (permissions === undefined) return []
+  const composed = Layer.provideMerge(
+    permissions as unknown as Layer.Layer<never, never, DesktopPermissionRegistry>,
+    DesktopPermissionRegistryLive
+  )
+  try {
+    return Effect.runSync(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const context = yield* Layer.build(composed)
+          const registry = Context.get(context, DesktopPermissionRegistry)
+          return yield* registry.snapshot
+        })
+      )
+    )
+  } catch (cause) {
+    throw new DesktopPermissionRegistryAsyncBuildError({
+      message:
+        "Desktop.make(...) requires the permissions layer to build synchronously. " +
+        "A layer composed into Desktop.make({ permissions }) requires async work to construct " +
+        "(e.g. Layer.scoped(Effect.promise(...))) — pass capabilities through `Desktop.permission(...)` " +
+        "and keep async policy work inside runtime services instead.",
+      cause
+    })
+  }
+}
+
+const snapshotWorkflowsSync = <RIn, E>(
+  workflows: DesktopConfig<RIn, E>["workflows"]
+): ReadonlyArray<AnyDesktopWorkflowRegistration> => {
+  if (workflows === undefined) return []
+  const composed = Layer.provideMerge(
+    workflows as unknown as Layer.Layer<never, never, DesktopWorkflowRegistry>,
+    DesktopWorkflowRegistryLive
+  )
+  try {
+    return Effect.runSync(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const context = yield* Layer.build(composed)
+          const registry = Context.get(context, DesktopWorkflowRegistry)
+          return yield* registry.snapshot
+        })
+      )
+    )
+  } catch (cause) {
+    throw new DesktopWorkflowRegistryAsyncBuildError({
+      message:
+        "Desktop.make(...) requires the workflows layer to build synchronously. " +
+        "A layer composed into Desktop.make({ workflows }) requires async work to construct " +
+        "(e.g. Layer.scoped(Effect.promise(...))) — pass workflow layers through `Desktop.workflow(...)` " +
+        "and keep async work inside workflow effects instead.",
+      cause
+    })
+  }
+}
+
 export const app = <RIn = never, E = never>(
   config: DesktopConfig<RIn, E>
 ): Layer.Layer<
   DesktopApp,
   DesktopConfigError | E,
-  Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry | DesktopWindowRegistry>
+  Exclude<
+    RIn,
+    | DesktopRuntimeProviderServices
+    | DesktopRpcRegistry
+    | DesktopWindowRegistry
+    | DesktopPermissionRegistry
+    | DesktopWorkflowRegistry
+  >
 > =>
   runtime(config) as Layer.Layer<
     DesktopApp,
     DesktopConfigError | E,
-    Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry | DesktopWindowRegistry>
+    Exclude<
+      RIn,
+      | DesktopRuntimeProviderServices
+      | DesktopRpcRegistry
+      | DesktopWindowRegistry
+      | DesktopPermissionRegistry
+      | DesktopWorkflowRegistry
+    >
   >
 
 export const runtime = <RIn = never, E = never>(
@@ -659,12 +795,26 @@ export const runtime = <RIn = never, E = never>(
 ): Layer.Layer<
   DesktopRuntimeServices,
   DesktopConfigError | E,
-  Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry | DesktopWindowRegistry>
+  Exclude<
+    RIn,
+    | DesktopRuntimeProviderServices
+    | DesktopRpcRegistry
+    | DesktopWindowRegistry
+    | DesktopPermissionRegistry
+    | DesktopWorkflowRegistry
+  >
 > =>
   buildSpine(config) as Layer.Layer<
     DesktopRuntimeServices,
     DesktopConfigError | E,
-    Exclude<RIn, DesktopRuntimeProviderServices | DesktopRpcRegistry | DesktopWindowRegistry>
+    Exclude<
+      RIn,
+      | DesktopRuntimeProviderServices
+      | DesktopRpcRegistry
+      | DesktopWindowRegistry
+      | DesktopPermissionRegistry
+      | DesktopWorkflowRegistry
+    >
   >
 
 export const DesktopRuntimeLive = runtime
@@ -675,7 +825,8 @@ export const runtimeGraph = <RIn, E>(
   Effect.gen(function* () {
     const provider = yield* resolveRuntimeProvider(config)
     const registrations = yield* buildRegistrations(config.rpcs)
-    return makeRuntimeGraph(config, provider, registrations)
+    const workflows = yield* buildWorkflows(config.workflows)
+    return makeRuntimeGraph(config, provider, registrations, workflows)
   })
 
 export const runtimeGraphSnapshot = <RIn, E>(
@@ -731,7 +882,8 @@ export const layerGraphSnapshotFromGraph = (graph: DesktopRuntimeGraph): LayerGr
 const makeRuntimeGraph = <RIn, E>(
   config: DesktopConfig<RIn, E>,
   provider: RuntimeProviderDescriptor,
-  registrations: ReadonlyArray<AnyDesktopRpcRegistration>
+  registrations: ReadonlyArray<AnyDesktopRpcRegistration>,
+  workflows: ReadonlyArray<AnyDesktopWorkflowRegistration>
 ): DesktopRuntimeGraph => {
   const selected = Object.freeze({
     runtime: provider.id
@@ -748,7 +900,7 @@ const makeRuntimeGraph = <RIn, E>(
         ["RpcServer.Protocol"]
       )
     ),
-    ...(config.workflows ?? []).map((_, index) =>
+    ...workflows.map((_, index) =>
       graphNode(
         `workflow:${index}`,
         "workflow",
@@ -784,9 +936,9 @@ export const launch = (
 
 const checkPermissions = <RIn, E>(
   config: DesktopConfig<RIn, E>,
-  registrations: ReadonlyArray<AnyDesktopRpcRegistration>
+  registrations: ReadonlyArray<AnyDesktopRpcRegistration>,
+  declared: ReadonlyArray<NormalizedCapability>
 ): Effect.Effect<void, DesktopConfigError, never> => {
-  const declared = config.permissions ?? []
   const seenRpcTags = new Set<string>()
 
   for (const registration of registrations) {
@@ -819,7 +971,7 @@ const checkPermissions = <RIn, E>(
           new DesktopConfigError({
             appId: config.id,
             reason: "missing-permission",
-            message: `RPC method "${tag}" requires capability "${requiredCapability.kind}" but it is not declared in config.permissions`,
+            message: `RPC method "${tag}" requires capability "${requiredCapability.kind}" but it is not declared with Desktop.permission(...)`,
             method: tag,
             permission: requiredCapability.kind
           })
@@ -855,7 +1007,7 @@ const decodeRpcCapability = (
     new DesktopConfigError({
       appId,
       reason: "missing-permission",
-      message: `RPC method "${method}" requires unknown capability "${value.kind}" and it cannot be matched against config.permissions`,
+      message: `RPC method "${method}" requires unknown capability "${value.kind}" and it cannot be matched against Desktop.permission(...) declarations`,
       method,
       permission: value.kind
     })
@@ -873,11 +1025,12 @@ const buildSpine = <RIn, E>(
     Effect.gen(function* () {
       const provider = yield* resolveRuntimeProvider(config)
       const registrations = yield* buildRegistrations(config.rpcs)
+      const permissions = yield* buildPermissions(config.permissions)
+      const workflowLayers = yield* buildWorkflows(config.workflows)
       const windowRegistrations = snapshotWindowRegistrationsSync(config.windows)
       yield* checkWindowRegistrations(config.id, windowRegistrations)
-      yield* checkPermissions(config, registrations)
-      const graph = makeRuntimeGraph(config, provider, registrations)
-      const workflowLayers = config.workflows ?? []
+      yield* checkPermissions(config, registrations, permissions)
+      const graph = makeRuntimeGraph(config, provider, registrations, workflowLayers)
       const rpcLayers = registrations.map((registration) => bindRegistration(registration))
 
       const workflowLayer = mergeLayerArray(workflowLayers)
@@ -885,7 +1038,7 @@ const buildSpine = <RIn, E>(
       const runtimeBase = Layer.mergeAll(
         providerLayerFor({ runtime: provider.id }),
         coreServicesLayer,
-        makePermissionServicesLayer(config)
+        makePermissionServicesLayer(config, permissions)
       ) as Layer.Layer<DesktopRuntimeProviderServices, Config.ConfigError, never>
 
       const desktopAppLayer: Layer.Layer<DesktopApp, never, never> = Layer.effect(DesktopApp)(
@@ -956,14 +1109,15 @@ const providerRegistryErrorToConfigError = (
   })
 
 const makePermissionServicesLayer = <RIn, E>(
-  config: DesktopConfig<RIn, E>
+  config: DesktopConfig<RIn, E>,
+  permissions: ReadonlyArray<NormalizedCapability>
 ): Layer.Layer<PermissionRegistry | PermissionInterceptor, never, never> => {
   const registryLayer = Layer.effect(
     PermissionRegistry,
     Effect.gen(function* () {
       const registry = yield* makePermissionRegistry()
       yield* Effect.forEach(
-        config.permissions ?? [],
+        permissions,
         (capability) =>
           registry
             .declare(capability, {
@@ -1032,9 +1186,6 @@ const bindRegistration = (
     // return type is callable without forcing every caller to thread the
     // specific Rpc union — bindRegistration is the type-erasure boundary.
   )
-
-const freezeArray = <A>(values: ReadonlyArray<A> | undefined): ReadonlyArray<A> =>
-  Object.freeze([...(values ?? [])])
 
 const freezeObject = <A extends object>(value: A): A => Object.freeze({ ...value }) as A
 

@@ -355,7 +355,7 @@ export const validatePermissions = (
             reason: "undeclared-capability",
             contract: req.kind,
             capability: req,
-            message: `capability "${req.kind}" is required by a contract but was not declared in Desktop.app({ permissions })`
+            message: `capability "${req.kind}" is required by a contract but was not declared with Desktop.permission(...)`
           })
         )
       }
