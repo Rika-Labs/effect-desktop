@@ -849,7 +849,7 @@ const isJsonPayload = (
   if (typeof value !== "object") {
     return false
   }
-  if (seen.has(value as object)) {
+  if (seen.has(value)) {
     return false
   }
 
@@ -861,7 +861,7 @@ const isJsonPayload = (
   if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) {
     return false
   }
-  seen.add(value as object)
+  seen.add(value)
   return Object.values(value).every((item) => isJsonPayload(item, seen, false))
 }
 
@@ -1813,6 +1813,8 @@ const isNodeError = (error: unknown): error is NodeJS.ErrnoException =>
 
 const memoryPlatformErrorTag = (code: string | undefined): PlatformError.SystemErrorTag => {
   switch (code) {
+    case undefined:
+      return "Unknown"
     case "EEXIST":
       return "AlreadyExists"
     case "ENOENT":
@@ -1991,5 +1993,6 @@ const isRegistrySnapshot = (value: unknown): value is RegistrySnapshot => {
   )
 }
 
+// oxlint-disable-next-line import/no-cycle -- package barrel intentionally includes the native harness.
 export * from "./native.js"
 export * from "./capability-laws.js"

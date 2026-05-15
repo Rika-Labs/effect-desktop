@@ -5,7 +5,7 @@ import type { WindowSpec } from "./desktop-app.js"
 export interface DesktopWindowRegistration {
   readonly id: string
   readonly spec: WindowSpec
-  readonly services: Layer.Layer<never, any, any> | undefined
+  readonly services: Layer.Layer<never, unknown, unknown> | undefined
 }
 
 export interface DesktopWindowRegistryApi {

@@ -128,7 +128,7 @@ const waitForRegistryEntries = (
       yield* Effect.sleep("1 millis")
     }
 
-    yield* Effect.die(new Error(`timed out waiting for ${count} registry entries`))
+    return yield* Effect.die(new Error(`timed out waiting for ${count} registry entries`))
   })
 
 registerLeakMatchers()

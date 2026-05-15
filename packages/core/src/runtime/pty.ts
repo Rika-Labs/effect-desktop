@@ -1050,6 +1050,8 @@ const mapPtyError = (error: unknown, command: string, operation: string): HostPr
         })
       case "EINVAL":
         return makeHostProtocolInvalidArgumentError("command", error.message, operation)
+      case undefined:
+        return makeHostProtocolInvalidArgumentError("command", error.message, operation)
       default:
         return makeHostProtocolInvalidArgumentError("command", error.message, operation)
     }

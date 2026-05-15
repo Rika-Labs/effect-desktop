@@ -66,7 +66,7 @@ test("UpdateWorkflow fails signature verification as a typed workflow error", as
     expect(fail).toBeDefined()
     if (fail?._tag === "Fail") {
       expect(fail.error).toBeInstanceOf(UpdateError)
-      const error = fail.error as UpdateError
+      const error = fail.error
       expect(error.stage).toBe("verify")
     }
   }
@@ -123,7 +123,7 @@ test("UpdateWorkflow rejects manifest versions that are not safe filename segmen
     expect(fail).toBeDefined()
     if (fail?._tag === "Fail") {
       expect(fail.error).toBeInstanceOf(UpdateError)
-      const error = fail.error as UpdateError
+      const error = fail.error
       expect(error.stage).toBe("stage")
     }
   }

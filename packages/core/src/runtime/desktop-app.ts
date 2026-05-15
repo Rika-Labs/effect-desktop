@@ -40,7 +40,7 @@ import { ResourceRegistryLive } from "./resources.js"
 import {
   DesktopRpcRegistry,
   DesktopRpcRegistryLive,
-  type DesktopRpcRegistration,
+  type AnyDesktopRpcRegistration,
   type DesktopRpcRegistrationGroup
 } from "./desktop-rpc-registry.js"
 import {
@@ -260,7 +260,7 @@ export interface DesktopAppApi {
   readonly appId: string
   readonly windows: Readonly<Record<string, WindowSpec>>
   readonly windowRegistrations: ReadonlyArray<DesktopWindowRegistration>
-  readonly rpcRegistrations: ReadonlyArray<DesktopRpcRegistration<any, any>>
+  readonly rpcRegistrations: ReadonlyArray<AnyDesktopRpcRegistration>
 }
 
 export class DesktopApp extends Context.Service<DesktopApp, DesktopAppApi>()("DesktopApp") {}
@@ -394,7 +394,7 @@ export const make = <RIn = never, E = never>(
     id: config.id ?? "app",
     windows: config.windows,
     windowRegistrations,
-    rpcs: (config.rpcs ?? (Layer.empty as DesktopRpcsLayer<E, RIn>)) as DesktopRpcsLayer<E, RIn>,
+    rpcs: config.rpcs ?? (Layer.empty as DesktopRpcsLayer<E, RIn>),
     permissions: freezeArray(config.permissions),
     workflows: freezeArray(config.workflows),
     ...(config.providers === undefined ? {} : { providers: freezeObject(config.providers) })
@@ -459,7 +459,10 @@ export const rpc = <Rpcs extends Rpc.Any, E, R>(
   Layer.effectDiscard(
     Effect.gen(function* () {
       const registry = yield* DesktopRpcRegistry
-      yield* registry.register({ group, handlers })
+      yield* registry.register({
+        group,
+        handlers: handlers as unknown as Layer.Layer<unknown, unknown, unknown>
+      })
     })
   )
 
@@ -479,7 +482,7 @@ export const desktopWindow = <RIn = never>(
       yield* registry.register({
         id,
         spec,
-        services: services as Layer.Layer<never, any, any> | undefined
+        services: services as unknown as Layer.Layer<never, unknown, unknown> | undefined
       })
     })
   )
@@ -589,7 +592,7 @@ const checkWindowRegistrations = (
  */
 const buildRegistrations = <RIn, E>(
   rpcs: DesktopConfig<RIn, E>["rpcs"]
-): Effect.Effect<ReadonlyArray<DesktopRpcRegistration<any, any>>, never, never> =>
+): Effect.Effect<ReadonlyArray<AnyDesktopRpcRegistration>, never, never> =>
   Effect.sync(() => snapshotRegistrationsSync(rpcs))
 
 /**
@@ -601,7 +604,7 @@ const buildRegistrations = <RIn, E>(
  */
 const snapshotRegistrationsSync = <RIn, E>(
   rpcs: DesktopConfig<RIn, E>["rpcs"]
-): ReadonlyArray<DesktopRpcRegistration<any, any>> => {
+): ReadonlyArray<AnyDesktopRpcRegistration> => {
   if (rpcs === undefined) return []
   // Cast invariant: every Desktop.rpc(...) layer body is Effect.sync that only
   // calls registry.register(...). Composing with DesktopRpcRegistryLive (also
@@ -728,7 +731,7 @@ export const layerGraphSnapshotFromGraph = (graph: DesktopRuntimeGraph): LayerGr
 const makeRuntimeGraph = <RIn, E>(
   config: DesktopConfig<RIn, E>,
   provider: RuntimeProviderDescriptor,
-  registrations: ReadonlyArray<DesktopRpcRegistration<any, any>>
+  registrations: ReadonlyArray<AnyDesktopRpcRegistration>
 ): DesktopRuntimeGraph => {
   const selected = Object.freeze({
     runtime: provider.id
@@ -781,7 +784,7 @@ export const launch = (
 
 const checkPermissions = <RIn, E>(
   config: DesktopConfig<RIn, E>,
-  registrations: ReadonlyArray<DesktopRpcRegistration<any, any>>
+  registrations: ReadonlyArray<AnyDesktopRpcRegistration>
 ): Effect.Effect<void, DesktopConfigError, never> => {
   const declared = config.permissions ?? []
   const seenRpcTags = new Set<string>()
@@ -1009,7 +1012,7 @@ const mergeLayerArray = <E, R>(
   )
 
 const bindRegistration = (
-  registration: DesktopRpcRegistration<any, any>
+  registration: AnyDesktopRpcRegistration
 ): Layer.Layer<never, unknown, unknown> =>
   Layer.provide(
     RpcServer.layer(
@@ -1023,12 +1026,12 @@ const bindRegistration = (
     // to `any` so it satisfies whatever RpcServer.layer needs from its Rpcs
     // type parameter. The handler layer's R requirement is preserved as
     // Layer.provide's environment requirement and bubbles up through the spine.
-    registration.handlers as Layer.Layer<unknown, unknown, unknown>
+    registration.handlers
     // Cast invariant: Layer.provide of an unknown-typed handler returns
     // Layer<never, unknown, unknown>; we restate it here so the binder's
     // return type is callable without forcing every caller to thread the
     // specific Rpc union — bindRegistration is the type-erasure boundary.
-  ) as Layer.Layer<never, unknown, unknown>
+  )
 
 const freezeArray = <A>(values: ReadonlyArray<A> | undefined): ReadonlyArray<A> =>
   Object.freeze([...(values ?? [])])

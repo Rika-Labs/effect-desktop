@@ -34,12 +34,14 @@ export type DesktopRpcRegistrationGroup = RpcGroup.Any & {
 
 export interface DesktopRpcRegistration<E = unknown, R = unknown> {
   readonly group: DesktopRpcRegistrationGroup
-  readonly handlers: Layer.Layer<any, E, R>
+  readonly handlers: Layer.Layer<unknown, E, R>
 }
 
+export type AnyDesktopRpcRegistration = DesktopRpcRegistration<unknown, unknown>
+
 export interface DesktopRpcRegistryApi {
-  readonly register: (registration: DesktopRpcRegistration<any, any>) => Effect.Effect<void>
-  readonly snapshot: Effect.Effect<ReadonlyArray<DesktopRpcRegistration<any, any>>>
+  readonly register: (registration: AnyDesktopRpcRegistration) => Effect.Effect<void>
+  readonly snapshot: Effect.Effect<ReadonlyArray<AnyDesktopRpcRegistration>>
 }
 
 export class DesktopRpcRegistry extends Context.Service<
@@ -48,7 +50,7 @@ export class DesktopRpcRegistry extends Context.Service<
 >()("@effect-desktop/core/DesktopRpcRegistry") {}
 
 export const makeDesktopRpcRegistry = (): DesktopRpcRegistryApi => {
-  const entries: DesktopRpcRegistration<any, any>[] = []
+  const entries: AnyDesktopRpcRegistration[] = []
   return {
     register: (registration) =>
       Effect.sync(() => {

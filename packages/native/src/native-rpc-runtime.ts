@@ -20,15 +20,19 @@ type NativeRpcGroup<Rpcs extends Rpc.Any> = RpcGroup.RpcGroup<Rpcs> & {
   readonly requests: ReadonlyMap<string, Rpcs>
 }
 
-export const makeNativeHostRpcRuntime = <Rpcs extends Rpc.Any, E = never, R = never>(
+export const makeNativeHostRpcRuntime = <Rpcs extends Rpc.Any, E = never>(
   group: NativeRpcGroup<Rpcs>,
-  handlers: Layer.Layer<Rpc.ToHandler<Rpc.AddMiddleware<Rpcs, typeof PermissionInterceptor>>, E, R>,
+  handlers: Layer.Layer<
+    Rpc.ToHandler<Rpc.AddMiddleware<Rpcs, typeof PermissionInterceptor>>,
+    E,
+    unknown
+  >,
   options: BridgeHandlerRuntimeOptions & {
     readonly nativeHostInspector?: NativeHostInspectorCollectorApi
     readonly nextTraceId?: () => string
   } = {}
-): BridgeHandlerRuntime<R | PermissionRegistry> =>
-  makeDesktopRpcHandlerRuntime(
+): BridgeHandlerRuntime<PermissionRegistry> => {
+  const runtime = makeDesktopRpcHandlerRuntime(
     group.middleware(PermissionInterceptor),
     Layer.merge(handlers, makePermissionInterceptorLayer()),
     {
@@ -43,6 +47,8 @@ export const makeNativeHostRpcRuntime = <Rpcs extends Rpc.Any, E = never, R = ne
         )
     }
   )
+  return runtime as BridgeHandlerRuntime<PermissionRegistry>
+}
 
 const nativeHostInspectorState = (
   inspector: NativeHostInspectorCollectorApi | undefined,

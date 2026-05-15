@@ -17,9 +17,10 @@ import {
   TransportClosedError,
   encodeFrame,
   instrumentTransportConnection,
-  makeFramedSocketConnection
+  makeFramedSocketConnection,
+  makeInMemoryTransportPair,
+  makeTransport
 } from "./transport.js"
-import { makeInMemoryTransportPair, makeTransport } from "./transport.js"
 
 test("encodeFrame emits a big-endian length prefix", () => {
   const frame = encodeFrame(new Uint8Array([0x68, 0x69]))

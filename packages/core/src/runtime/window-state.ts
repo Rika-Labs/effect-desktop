@@ -415,7 +415,15 @@ const buildDefaultWindowStatePath = (bundleId: string): string => {
       return join(homeDirectory(), "Library", "Application Support", bundleId, "window-state.json")
     case "win32":
       return join(process.env["APPDATA"] ?? tmpdir(), bundleId, "window-state.json")
-    default:
+    case "aix":
+    case "android":
+    case "cygwin":
+    case "freebsd":
+    case "haiku":
+    case "linux":
+    case "netbsd":
+    case "openbsd":
+    case "sunos":
       return join(
         process.env["XDG_STATE_HOME"] ?? join(homeDirectory(), ".local", "state"),
         bundleId,

@@ -308,11 +308,11 @@ const makeResourceRegistryInstance = (
           "kind",
           "ResourceRegistry.register"
         )) as Kind
-        const ownerScope = (yield* validateIdentity(
+        const ownerScope = yield* validateIdentity(
           input.ownerScope,
           "ownerScope",
           "ResourceRegistry.register"
-        )) as ScopeId
+        )
         const state = (yield* validateIdentity(
           input.state,
           "state",
@@ -404,7 +404,7 @@ const makeResourceRegistryInstance = (
       handle: ResourceHandle<Kind, State>
     ): Effect.Effect<ResourceEntry<Kind, State>, StaleHandle, never> =>
       Effect.flatMap(SubscriptionRef.get(entries), (current) => {
-        const entry = current.get(handle.id as ResourceId)
+        const entry = current.get(handle.id)
         if (
           entry !== undefined &&
           entry.handle.kind === handle.kind &&
@@ -441,19 +441,11 @@ const makeResourceRegistryInstance = (
       parent?: ScopeId
     ): Effect.Effect<void, ResourceInvalidArgumentError, never> =>
       Effect.gen(function* () {
-        const validScope = (yield* validateIdentity(
-          scope,
-          "scope",
-          "ResourceRegistry.declareScope"
-        )) as ScopeId
+        const validScope = yield* validateIdentity(scope, "scope", "ResourceRegistry.declareScope")
         const validParent =
           parent === undefined
             ? undefined
-            : ((yield* validateIdentity(
-                parent,
-                "parent",
-                "ResourceRegistry.declareScope"
-              )) as ScopeId)
+            : yield* validateIdentity(parent, "parent", "ResourceRegistry.declareScope")
 
         if (validParent === undefined) {
           yield* Semaphore.withPermit(
@@ -532,11 +524,11 @@ const makeResourceRegistryInstance = (
       never
     > =>
       Effect.gen(function* () {
-        const validTargetScope = (yield* validateIdentity(
+        const validTargetScope = yield* validateIdentity(
           targetScope,
           "targetScope",
           "ResourceRegistry.share"
-        )) as ScopeId
+        )
         const createdAt = yield* validateTimestamp(now(), "ResourceRegistry.share")
         return yield* Semaphore.withPermit(
           lifecycle,
@@ -553,7 +545,7 @@ const makeResourceRegistryInstance = (
               const result = yield* SubscriptionRef.modify(
                 entries,
                 (current): readonly [ShareResult, Map<ResourceId, StoredResourceEntry>] => {
-                  const stored = current.get(handle.id as ResourceId)
+                  const stored = current.get(handle.id)
                   if (
                     stored === undefined ||
                     stored.handle.kind !== handle.kind ||

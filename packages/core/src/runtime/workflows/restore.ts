@@ -80,7 +80,7 @@ export const RestoreWorkflowLayer: Layer.Layer<
             new RestoreError({ phase: "validate", message: "manifest is not valid JSON", cause: e })
         })
         if (parsed.format !== "effect-desktop-backup-v1") {
-          yield* Effect.fail(
+          return yield* Effect.fail(
             new RestoreError({
               phase: "validate",
               message: `unknown backup format: ${parsed.format}`,

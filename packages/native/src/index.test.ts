@@ -1854,13 +1854,7 @@ test("Menu and ContextMenu schemas reject newline-bearing labels and ids", async
   ]
 
   for (const { label, value } of cases) {
-    const exit = await Effect.runPromiseExit(
-      Schema.decodeUnknownEffect(MenuTemplate)(value) as Effect.Effect<
-        MenuTemplate,
-        Schema.SchemaError,
-        never
-      >
-    )
+    const exit = await Effect.runPromiseExit(Schema.decodeUnknownEffect(MenuTemplate)(value))
     expect(Exit.isFailure(exit)).toBe(true)
     expect(label).toBeDefined()
   }
@@ -3844,7 +3838,7 @@ test("ScreenSurface derives server, client, test, and metadata surfaces from the
   const screenRegistrations = await snapshotSurfaceRegistrations(ScreenSurface.serverLayer)
   expect(screenRegistrations).toHaveLength(1)
   expect(screenRegistrations[0]?.group).toBe(ScreenRpcs)
-  expect(screenRegistrations[0]?.handlers).toBe(ScreenHandlersLive)
+  expect(Object.is(screenRegistrations[0]?.handlers, ScreenHandlersLive)).toBe(true)
   expect(Desktop.manifest(app).rpcGroups[0]?.group).toBe(ScreenRpcs)
   expect(Desktop.describeRpcs(app, ScreenRpcs).map((descriptor) => descriptor.tag)).toEqual([
     "Screen.getDisplays",
@@ -4063,7 +4057,7 @@ test("native DesktopRpc surfaces derive server, client, test, and metadata layer
     const surfaceRegistrations = await snapshotSurfaceRegistrations(surface.serverLayer)
     expect(surfaceRegistrations).toHaveLength(1)
     expect(surfaceRegistrations[0]?.group).toBe(group)
-    expect(surfaceRegistrations[0]?.handlers).toBe(handlers)
+    expect(Object.is(surfaceRegistrations[0]?.handlers, handlers)).toBe(true)
     expect(Layer.isLayer(surface.clientLayer)).toBe(true)
     expect(Layer.isLayer(surface.testClientLayer)).toBe(true)
     expect(surface.schemaDocs.map((doc) => doc.tag)).toEqual(Array.from(tags))
@@ -7414,7 +7408,7 @@ const expectExitFailure = <E>(
     const fail = exit.cause.reasons.find(Cause.isFailReason)
     expect(fail).toBeDefined()
     if (fail !== undefined) {
-      expect(predicate(fail.error as E)).toBe(true)
+      expect(predicate(fail.error)).toBe(true)
       return
     }
   }

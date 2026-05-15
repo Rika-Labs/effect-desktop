@@ -19,13 +19,13 @@ import {
   type CommandRegistryError
 } from "./commands.js"
 import {
+  makePermissionRegistry,
   PermissionActor,
   PermissionContext,
   type NormalizedCapability,
   type PermissionRegistryApi
 } from "./permission-registry.js"
 import { PermissionDenied } from "./permission-interceptor.js"
-import { makePermissionRegistry } from "./permission-registry.js"
 import {
   makeResourceRegistry,
   ResourceRegistry,

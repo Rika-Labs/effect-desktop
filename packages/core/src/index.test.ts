@@ -635,7 +635,7 @@ test("Desktop.Rpc.surface derives server, client, test, docs, and laws from one 
   )
   expect(surfaceRegistrations).toHaveLength(1)
   expect(surfaceRegistrations[0]?.group).toBe(NotesRpcs)
-  expect(surfaceRegistrations[0]?.handlers).toBe(NotesLive)
+  expect(Object.is(surfaceRegistrations[0]?.handlers, NotesLive)).toBe(true)
   expect(surface.schemaDocs.map((doc) => [doc.name, doc.tag, doc.kind])).toEqual([
     ["ping", "Notes.Ping", "query"]
   ])

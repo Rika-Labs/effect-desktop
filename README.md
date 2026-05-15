@@ -57,10 +57,13 @@ The [docs landing page](docs/README.md) is the full index. For LLM consumption, 
 
 ```bash
 bun run check       # Ultracite (oxlint + oxfmt)
-bun run typecheck   # tsc across all packages
+bun run typecheck   # tsgo across all packages
 bun test            # Bun test runner
 cargo check --workspace
 ```
+
+`bun install` runs the repo's `postinstall` hook, which patches `@typescript/native-preview`
+with `@effect/tsgo` so local `tsgo` and editor LSP diagnostics use the Effect language service.
 
 If any of those fail on a clean clone, file an issue — it is not your machine.
 

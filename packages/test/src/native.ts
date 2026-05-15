@@ -63,6 +63,7 @@ import {
   type WindowCreateOptions,
   type WindowHandle
 } from "@effect-desktop/native/contracts"
+// oxlint-disable-next-line import/no-cycle -- test native harness extends the package barrel it is re-exported from.
 import { assertNoOpenResources } from "./index.js"
 
 export interface TestClipboardOptions {

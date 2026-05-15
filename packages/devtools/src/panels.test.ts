@@ -31,7 +31,6 @@ import {
   WorkflowsPanelLive,
   type DevtoolsSnapshot,
   type DevtoolsSnapshotClientApi,
-  type WorkflowsPanelSnapshot,
   embeddedInspectorGate
 } from "./index.js"
 import { EventJournal, EventLog as EventLogNS } from "effect/unstable/eventlog"
@@ -118,7 +117,7 @@ test("WorkflowsPanel snapshot counts running and completed executions", async ()
     })
   )
 
-  const snapshot = (await Effect.runPromise(
+  const snapshot = await Effect.runPromise(
     Effect.gen(function* () {
       const panel = yield* WorkflowsPanel
       return yield* panel.list()
@@ -127,7 +126,7 @@ test("WorkflowsPanel snapshot counts running and completed executions", async ()
         Layer.provide(WorkflowsPanelLive(), Layer.succeed(WorkflowExecutionRegistry)(registry))
       )
     )
-  )) as WorkflowsPanelSnapshot
+  )
 
   expect(snapshot.runningCount).toBe(0)
   expect(snapshot.completedCount).toBe(1)

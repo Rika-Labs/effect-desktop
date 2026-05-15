@@ -11,7 +11,7 @@ import type { DesktopAppManifest, DesktopRpcsLayer } from "./desktop-app.js"
 import {
   DesktopRpcRegistry,
   DesktopRpcRegistryLive,
-  type DesktopRpcRegistration,
+  type AnyDesktopRpcRegistration,
   type DesktopRpcRegistrationGroup
 } from "./desktop-rpc-registry.js"
 import {
@@ -192,7 +192,7 @@ const acquireDesktopRendererRpcTestClients = (
       //     consumes it as a string-keyed dispatch table. The shapes are
       //     equivalent at runtime; TypeScript can't narrow them without help.
       const rpcClient = (yield* RpcTest.makeClient(group as RpcGroup.RpcGroup<Rpc.Any>).pipe(
-        Effect.provide(registration.handlers as Layer.Layer<any, any, any>)
+        Effect.provide(registration.handlers)
       )) as unknown as Readonly<Record<string, DesktopRendererRpcClientMethod | undefined>>
       const client = makeRpcTestGroupClient(
         group,
@@ -213,7 +213,7 @@ const acquireDesktopRendererRpcTestClients = (
 
 const snapshotRegistrations = (
   rpcs: DesktopRpcsLayer<never, never>
-): Effect.Effect<ReadonlyArray<DesktopRpcRegistration<any, any>>, never, never> =>
+): Effect.Effect<ReadonlyArray<AnyDesktopRpcRegistration>, never, never> =>
   Effect.scoped(
     Effect.gen(function* () {
       // Cast invariant: identical to snapshotRegistrationsSync in desktop-app.ts.
@@ -266,7 +266,7 @@ const makeGroupClient = (
         )
       }
     ])
-    return Object.freeze(Object.fromEntries(entries))
+    return Object.freeze(Object.fromEntries(entries)) as DesktopRendererRpcClient
   })
 
 const makeRpcTestGroupClient = (
@@ -295,7 +295,7 @@ const makeRpcTestGroupClient = (
       )
     }
   ])
-  return Object.freeze(Object.fromEntries(entries))
+  return Object.freeze(Object.fromEntries(entries)) as DesktopRendererRpcClient
 }
 
 const provideRendererRpcMethodScope = (

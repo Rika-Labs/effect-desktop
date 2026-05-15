@@ -128,6 +128,9 @@ const logLevelToPanel = (level: LogLevel.LogLevel): LogsPanelLevel | undefined =
       return "Error"
     case "Fatal":
       return "Fatal"
+    case "All":
+    case "None":
+      return undefined
     default:
       return undefined
   }

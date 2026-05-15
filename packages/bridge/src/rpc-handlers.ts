@@ -80,7 +80,7 @@ const dispatch = <Rpcs extends Rpc.Any, E, R>(
   pendingCalls: Map<string, PendingCall>,
   options: ResolvedDesktopRpcHandlerOptions,
   request: HostProtocolRequestEnvelope
-): Effect.Effect<BridgeClientResponse, HostProtocolError | E, any> =>
+): Effect.Effect<BridgeClientResponse, HostProtocolError | E, unknown> =>
   Effect.scoped(
     Effect.gen(function* () {
       const startedAt = options.now()
@@ -180,7 +180,7 @@ const runDispatch = <Rpcs extends Rpc.Any, E, R>(
   pending: PendingCall,
   options: ResolvedDesktopRpcHandlerOptions,
   request: HostProtocolRequestEnvelope
-): Effect.Effect<BridgeClientResponse, HostProtocolError | E, any> =>
+): Effect.Effect<BridgeClientResponse, HostProtocolError | E, unknown> =>
   Effect.gen(function* () {
     const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
     const response = yield* Deferred.make<BridgeClientResponse, HostProtocolError>()

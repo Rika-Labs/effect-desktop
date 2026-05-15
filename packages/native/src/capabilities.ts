@@ -1,6 +1,6 @@
 import { rpcSupport, type RpcSupportMetadata } from "@effect-desktop/bridge"
 import { Context, Data, Effect, Layer } from "effect"
-import { RpcGroup } from "effect/unstable/rpc"
+import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
 import { AppRpcs } from "./app.js"
 import { ClipboardRpcs } from "./clipboard.js"
@@ -28,6 +28,10 @@ export type NativeCapabilitySupport = RpcSupportMetadata
 export interface NativeCapabilityFact {
   readonly tag: string
   readonly support: NativeCapabilitySupport
+}
+
+type NativeCapabilityGroup = RpcGroup.Any & {
+  readonly requests: ReadonlyMap<string, Rpc.Any>
 }
 
 export class NativeCapabilityLookupError extends Data.TaggedError("NativeCapabilityLookupError")<{
@@ -63,7 +67,7 @@ export class NativeCapabilities extends Context.Service<
   NativeCapabilitiesApi
 >()("@effect-desktop/native/NativeCapabilities") {}
 
-const NativeCapabilityGroups: readonly RpcGroup.RpcGroup<any>[] = Object.freeze([
+const NativeCapabilityGroups: readonly NativeCapabilityGroup[] = Object.freeze([
   AppRpcs,
   ClipboardRpcs,
   ContextMenuRpcs,
@@ -87,7 +91,7 @@ const NativeCapabilityGroups: readonly RpcGroup.RpcGroup<any>[] = Object.freeze(
 ])
 
 export const makeNativeCapabilityManifest = (
-  groups: Iterable<RpcGroup.RpcGroup<any>>
+  groups: Iterable<NativeCapabilityGroup>
 ): Effect.Effect<readonly NativeCapabilityFact[], NativeCapabilityManifestError, never> =>
   Effect.suspend(() => {
     const seen = new Set<string>()
@@ -117,12 +121,12 @@ export const makeNativeCapabilityManifest = (
   })
 
 export const makeNativeCapabilities = (
-  groups: Iterable<RpcGroup.RpcGroup<any>>
+  groups: Iterable<NativeCapabilityGroup>
 ): Effect.Effect<NativeCapabilitiesApi, NativeCapabilityManifestError, never> =>
   makeNativeCapabilityManifest(groups).pipe(Effect.map(capabilitiesFromManifest))
 
 export const makeNativeCapabilitiesLayer = (
-  groups: Iterable<RpcGroup.RpcGroup<any>> = NativeCapabilityGroups
+  groups: Iterable<NativeCapabilityGroup> = NativeCapabilityGroups
 ): Layer.Layer<NativeCapabilities, NativeCapabilityManifestError, never> =>
   Layer.effect(NativeCapabilities, makeNativeCapabilities(groups))
 

@@ -50,6 +50,16 @@ import type { DesktopArtifactKind, DesktopTargetId } from "./targets.js"
 
 const REPO_ROOT = join(import.meta.dir, "../../..")
 
+const expectPromiseRejects = async (promise: Promise<unknown>): Promise<void> => {
+  let rejected = false
+  try {
+    await promise
+  } catch {
+    rejected = true
+  }
+  expect(rejected).toBe(true)
+}
+
 test("doctor report renders selected layer providers", () => {
   const output = formatDoctorReport({
     passed: true,
@@ -4256,7 +4266,7 @@ test("desktop sign rejects Linux signable artifacts without linuxIntegration met
     expect(calls).toEqual([])
     expect(stderr.join("")).toContain("SignConfigError")
     expect(stderr.join("")).toContain("linuxIntegration")
-    await expect(stat(`${artifactPath}.asc`)).rejects.toThrow()
+    await expectPromiseRejects(stat(`${artifactPath}.asc`))
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -4325,7 +4335,7 @@ test("desktop sign rejects artifact fileName that escapes the metadata directory
       expect(stderr.join("")).toContain("SignConfigError")
       expect(stderr.join("")).toContain("#fileName")
       expect(calls).toEqual([])
-      await expect(stat(`${outsidePath}.asc`)).rejects.toThrow()
+      await expectPromiseRejects(stat(`${outsidePath}.asc`))
     } finally {
       await rm(directory, { recursive: true, force: true })
     }
@@ -4370,8 +4380,8 @@ test("desktop sign rejects path-shaped app.id before writing Linux sidecars", as
     expect(calls).toEqual([])
     expect(stderr.join("")).toContain("SignConfigError")
     expect(stderr.join("")).toContain("app.id must be a reverse-DNS ASCII identifier")
-    await expect(stat(escapedDesktop)).rejects.toThrow()
-    await expect(stat(escapedMetainfo)).rejects.toThrow()
+    await expectPromiseRejects(stat(escapedDesktop))
+    await expectPromiseRejects(stat(escapedMetainfo))
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -5138,7 +5148,7 @@ test("desktop publish rejects invalid publish timestamps before writing manifest
       expect(exitCode).toBe(1)
       expect(payload.tag).toBe("PublishConfigError")
       expect(payload.message).toContain("publish timestamp")
-      await expect(readFile(manifestPath, "utf8")).rejects.toThrow()
+      await expectPromiseRejects(readFile(manifestPath, "utf8"))
     } finally {
       if (previousPrivateKey === undefined) {
         delete process.env[privateKeyEnv]
@@ -5377,7 +5387,7 @@ test("desktop publish rejects invalid app ids before writing manifests", async (
     expect(exitCode).toBe(1)
     expect(error.tag).toBe("PublishConfigError")
     expect(error.message).toContain("app.id must be a reverse-DNS ASCII identifier")
-    await expect(stat(manifestPath)).rejects.toThrow()
+    await expectPromiseRejects(stat(manifestPath))
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -5429,7 +5439,7 @@ test("desktop publish rejects non-SemVer app versions before writing manifests",
     expect(exitCode).toBe(1)
     expect(error.tag).toBe("PublishConfigError")
     expect(error.message).toContain("app.version must be a SemVer X.Y.Z string")
-    await expect(stat(manifestPath)).rejects.toThrow()
+    await expectPromiseRejects(stat(manifestPath))
   } finally {
     if (previousPrivateKey === undefined) {
       delete process.env[privateKeyEnv]
@@ -5611,7 +5621,7 @@ test("desktop publish rejects stale artifacts from a different app identity", as
     expect(error.tag).toBe("PublishConfigError")
     expect(error.message).toContain("artifact.json#appId")
     expect(error.message).toContain("dev.effect-desktop.other")
-    await expect(stat(manifestPath)).rejects.toThrow()
+    await expectPromiseRejects(stat(manifestPath))
   } finally {
     if (previousPrivateKey === undefined) {
       delete process.env[privateKeyEnv]
@@ -5734,7 +5744,7 @@ test("desktop publish rejects artifact fileName that escapes the metadata direct
     expect(exitCode).toBe(1)
     expect(stderr.join("")).toContain("PublishConfigError")
     expect(stderr.join("")).toContain("#fileName")
-    await expect(stat(manifestPath)).rejects.toThrow()
+    await expectPromiseRejects(stat(manifestPath))
   } finally {
     if (previousPrivateKey === undefined) {
       delete process.env[privateKeyEnv]
@@ -5791,7 +5801,7 @@ test("desktop publish rejects update.minVersion greater than app.version", async
     expect(exitCode).toBe(1)
     expect(stderr.join("")).toContain("update.minVersion")
     expect(stderr.join("")).toContain("must not exceed app.version")
-    await expect(stat(manifestPath)).rejects.toThrow()
+    await expectPromiseRejects(stat(manifestPath))
   } finally {
     if (previousPrivateKey === undefined) {
       delete process.env[privateKeyEnv]
@@ -5848,7 +5858,7 @@ test("desktop publish rejects rollback manifests without maxVersion", async () =
     expect(exitCode).toBe(1)
     expect(stderr.join("")).toContain("update.maxVersion")
     expect(stderr.join("")).toContain("update.rollback is true")
-    await expect(stat(manifestPath)).rejects.toThrow()
+    await expectPromiseRejects(stat(manifestPath))
   } finally {
     if (previousPrivateKey === undefined) {
       delete process.env[privateKeyEnv]
@@ -6137,7 +6147,7 @@ test("desktop publish rejects symbolic links inside directory artifacts", async 
     expect(exitCode).toBe(1)
     expect(stderr.join("")).toContain("PublishFileError")
     expect(stderr.join("")).toContain("symbolic links")
-    await expect(stat(manifestPath)).rejects.toThrow()
+    await expectPromiseRejects(stat(manifestPath))
   } finally {
     if (previousPrivateKey === undefined) {
       delete process.env[privateKeyEnv]
@@ -6921,7 +6931,7 @@ test("desktop build rejects renderer.dist outside the app root before running bu
     expect(calls).toBe(0)
     expect(stderr.join("")).toContain("BuildConfigError")
     expect(stderr.join("")).toContain("renderer.dist")
-    await expect(stat(stagedRenderer)).rejects.toThrow()
+    await expectPromiseRejects(stat(stagedRenderer))
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -6968,7 +6978,7 @@ test("desktop build refuses renderer dist symlinks that escape dist", async () =
     expect(exitCode).toBe(1)
     expect(stderr.join("")).toContain("BuildFileError")
     expect(stderr.join("")).toContain("points outside")
-    await expect(stat(stagedSecret)).rejects.toThrow()
+    await expectPromiseRejects(stat(stagedSecret))
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -7719,7 +7729,7 @@ packageModeTest("desktop package metadata digest includes directory file modes",
       }
       expect(appMetadata.kind).toBe("app")
       expect(appMetadata.sha256).toHaveLength(64)
-      return appMetadata.sha256 as string
+      return appMetadata.sha256
     }
 
     await chmod(runtimeMain, 0o644)
@@ -8196,7 +8206,7 @@ test("desktop package rejects build layout symlinks that escape the layout", asy
     expect(calls).toEqual([])
     expect(stderr.join("")).toContain("PackageFileError")
     expect(stderr.join("")).toContain("points outside")
-    await expect(stat(stagedSecret)).rejects.toThrow()
+    await expectPromiseRejects(stat(stagedSecret))
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

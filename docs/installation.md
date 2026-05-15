@@ -52,7 +52,7 @@ if (typeof runCli !== "function" || documentedCommand.length === 0) {
 
 ```bash
 bun run check       # Ultracite (oxlint + oxfmt)
-bun run typecheck   # tsc across all packages
+bun run typecheck   # tsgo across all packages
 bun test
 cargo check --workspace
 ```

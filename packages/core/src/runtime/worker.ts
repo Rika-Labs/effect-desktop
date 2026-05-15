@@ -282,7 +282,7 @@ export const makeWorker = (
                 })
                 .pipe(Effect.orDie)
               if (resource.id.length === 0) {
-                yield* resource.dispose().pipe(
+                return yield* resource.dispose().pipe(
                   Effect.andThen(
                     Effect.fail(
                       new WorkerInvalidArgumentError({

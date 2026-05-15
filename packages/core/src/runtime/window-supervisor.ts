@@ -115,7 +115,7 @@ export const readStartupWindows = (
   const exportName = config.appExport
   return Effect.tryPromise({
     try: async () => {
-      const module = await import(toStartupModuleSpecifier(rawModule))
+      const module = (await import(toStartupModuleSpecifier(rawModule))) as Record<string, unknown>
       const app = module[exportName]
       return app
     },

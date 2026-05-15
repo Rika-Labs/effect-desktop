@@ -144,11 +144,7 @@ export const makeHostWindowRpcRuntime = (
 ): BridgeHandlerRuntime<ResourceRegistry | PermissionRegistry> =>
   makeNativeHostRpcRuntime(
     WindowRpcGroup,
-    WindowRpcGroup.toLayer(makeHostWindowHandlers(exchange, options)) as Layer.Layer<
-      Rpc.ToHandler<RpcGroup.Rpcs<typeof WindowRpcGroup>>,
-      never,
-      ResourceRegistry
-    >,
+    WindowRpcGroup.toLayer(makeHostWindowHandlers(exchange, options)),
     runtimeOptions
   )
 
@@ -285,7 +281,7 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
       Effect.gen(function* () {
         const registry = yield* ResourceRegistry
         const { window } = input
-        const resourceId = window.id as ResourceId
+        const resourceId = window.id
         if (!knownWindowIds.has(window.id)) {
           return yield* Effect.fail(
             makeHostProtocolNotFoundError(`Window:${window.id}`, "Window.close")

@@ -29,7 +29,7 @@ export type MacosDesktopTargetId = typeof MacosDesktopTargetId.Type
 export const desktopTargetId = (target: {
   readonly os: DesktopOs
   readonly arch: DesktopArch
-}): DesktopTargetId => `${target.os}-${target.arch}` as DesktopTargetId
+}): DesktopTargetId => `${target.os}-${target.arch}`
 
 export class DesktopTarget extends Schema.Class<DesktopTarget>("DesktopTarget")({
   arch: DesktopArch,

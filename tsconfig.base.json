@@ -34,6 +34,14 @@
     "plugins": [
       {
         "name": "@effect/language-service",
+        "includeSuggestionsInTsc": false,
+        "diagnosticSeverity": {
+          "globalErrorInEffectCatch": "suggestion",
+          "globalErrorInEffectFailure": "suggestion",
+          "layerMergeAllWithDependencies": "suggestion",
+          "multipleEffectProvide": "suggestion",
+          "unknownInEffectCatch": "suggestion"
+        },
         "ignoreEffectWarningsInTscExitCode": true,
         "ignoreEffectErrorsInTscExitCode": true
       }

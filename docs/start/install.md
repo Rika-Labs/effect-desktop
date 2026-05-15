@@ -42,10 +42,14 @@ Run the framework's own checks to confirm a healthy environment:
 
 ```bash
 bun run check       # Ultracite (oxlint + oxfmt)
-bun run typecheck   # tsc across all packages
+bun run typecheck   # tsgo across all packages
 bun test            # Bun test runner
 cargo check --workspace
 ```
+
+The install step runs the repo `postinstall` hook, which patches `@typescript/native-preview`
+with `@effect/tsgo`. That makes the local `tsgo` command and compatible editors use the Effect
+language service without a manual setup step.
 
 If any of those fail on a clean clone, file an issue — it is not your machine.
 

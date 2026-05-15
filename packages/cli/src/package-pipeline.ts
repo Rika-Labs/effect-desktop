@@ -542,6 +542,7 @@ const readRuntimeArgs = (
       "app-manifest.json field runtimeManifest.args must be an array"
     )
   }
+  const args: string[] = []
   for (const [index, item] of value.entries()) {
     if (!isLineSafeString(item)) {
       return packageManifestError(
@@ -549,8 +550,9 @@ const readRuntimeArgs = (
         `app-manifest.json field runtimeManifest.args[${index}] must be a line-safe string`
       )
     }
+    args.push(item)
   }
-  return Effect.succeed(Object.freeze([...value]))
+  return Effect.succeed(Object.freeze(args))
 }
 
 const readRuntimeEnv = (

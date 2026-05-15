@@ -104,7 +104,7 @@ test("redact returns original map when no entries match", () => {
     ["session", new Map<string, string>([["safe", "ok"]])]
   ])
 
-  const output = redact(input) as Map<string, string | Map<string, string>>
+  const output = redact(input)
 
   expect(output).toBe(input)
   expect(output.get("session")).toBe(input.get("session"))
@@ -114,7 +114,7 @@ test("redact handles map cycles safely", () => {
   const input = new Map<string, unknown>([["token", "secret"]])
   input.set("self", input)
 
-  const output = redact(input) as Map<string, unknown>
+  const output = redact(input)
 
   expect(output).not.toBe(input)
   expect(output.get("token")).toBe(redacted)

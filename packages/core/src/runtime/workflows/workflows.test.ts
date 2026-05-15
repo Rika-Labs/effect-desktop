@@ -56,10 +56,7 @@ test("Backup: produces archive directory with manifest, db.sqlite, and files/", 
   ) as never
 
   const result = await Effect.runPromise(
-    BackupWorkflow.execute({ label: "test-backup" }).pipe(
-      Effect.provide(layers as never),
-      provideEngine
-    )
+    BackupWorkflow.execute({ label: "test-backup" }).pipe(Effect.provide(layers), provideEngine)
   )
 
   expect(dbExportCalled).toBe(true)
@@ -103,10 +100,7 @@ test("Backup: rejects labels that escape the output directory", async () => {
   ) as never
 
   const exit = await Effect.runPromiseExit(
-    BackupWorkflow.execute({ label: "../escape" }).pipe(
-      Effect.provide(layers as never),
-      provideEngine
-    )
+    BackupWorkflow.execute({ label: "../escape" }).pipe(Effect.provide(layers), provideEngine)
   )
 
   expect(Exit.isFailure(exit)).toBe(true)
@@ -154,7 +148,7 @@ test("Restore: round-trip restores files and database", async () => {
   ) as never
 
   await Effect.runPromise(
-    RestoreWorkflow.execute({ archivePath }).pipe(Effect.provide(layers as never), provideEngine)
+    RestoreWorkflow.execute({ archivePath }).pipe(Effect.provide(layers), provideEngine)
   )
 
   const restoredDoc = await Bun.file(join(userDataDir, "document.txt")).text()
@@ -202,7 +196,7 @@ test("Restore: validates manifest format before touching data", async () => {
   ) as never
 
   const exit = await Effect.runPromiseExit(
-    RestoreWorkflow.execute({ archivePath }).pipe(Effect.provide(layers as never), provideEngine)
+    RestoreWorkflow.execute({ archivePath }).pipe(Effect.provide(layers), provideEngine)
   )
 
   expect(Exit.isFailure(exit)).toBe(true)
@@ -258,7 +252,7 @@ test("Restore: rolls back database and resumes writers after file restore failur
   ) as never
 
   const exit = await Effect.runPromiseExit(
-    RestoreWorkflow.execute({ archivePath }).pipe(Effect.provide(layers as never), provideEngine)
+    RestoreWorkflow.execute({ archivePath }).pipe(Effect.provide(layers), provideEngine)
   )
 
   expect(Exit.isFailure(exit)).toBe(true)

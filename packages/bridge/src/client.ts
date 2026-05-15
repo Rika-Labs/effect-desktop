@@ -293,12 +293,7 @@ const makeContractClient = <Tag extends string, Spec extends BridgeContractSpec>
           )) as BridgeClientMethod<Spec[typeof method]> | undefined
   }
 
-  for (const [event, eventSpec] of Object.entries(contractEvents) as Array<
-    [
-      Extract<keyof typeof contractEvents, string>,
-      (typeof contractEvents)[Extract<keyof typeof contractEvents, string>]
-    ]
-  >) {
+  for (const [event, eventSpec] of Object.entries(contractEvents)) {
     events[event] = subscribeContractEvent(contract.tag, event, eventSpec, exchange)
   }
 

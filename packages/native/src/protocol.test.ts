@@ -18,7 +18,7 @@ const expectExitFailure = <E>(
     const fail = exit.cause.reasons.find(Cause.isFailReason)
     expect(fail).toBeDefined()
     if (fail !== undefined) {
-      expect(predicate(fail.error as E)).toBe(true)
+      expect(predicate(fail.error)).toBe(true)
       return
     }
   }

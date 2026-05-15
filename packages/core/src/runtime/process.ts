@@ -1,4 +1,3 @@
-import type { HostProtocolInvalidArgumentError } from "@effect-desktop/bridge"
 import {
   HostProtocolBackpressureOverflowError,
   HostProtocolFileNotFoundError,
@@ -6,9 +5,11 @@ import {
   HostProtocolResourceBusyError,
   HostProtocolStaleHandleError,
   hostProtocolErrorRecoverableDefault,
-  makeHostProtocolInvalidArgumentError
+  makeHostProtocolInvalidArgumentError,
+  type HostProtocolError,
+  type HostProtocolErrorTag,
+  type HostProtocolInvalidArgumentError
 } from "@effect-desktop/bridge"
-import type { HostProtocolError, HostProtocolErrorTag } from "@effect-desktop/bridge"
 import {
   Cause,
   Context,

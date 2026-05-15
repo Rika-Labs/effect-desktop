@@ -2423,7 +2423,7 @@ const readProtocols = (
     if (value === undefined) {
       return []
     }
-    if (!Array.isArray(value)) {
+    if (!isUnknownArray(value)) {
       return yield* Effect.fail(
         new BuildConfigError({ field: "protocols", message: "protocols must be an array" })
       )
@@ -3375,6 +3375,8 @@ const pathToFileUrl = (path: string): string => pathToFileURL(path).href
 
 const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
   typeof value === "object" && value !== null
+
+const isUnknownArray = (value: unknown): value is readonly unknown[] => Array.isArray(value)
 
 const isNotFoundError = (cause: unknown): boolean => isRecord(cause) && cause["code"] === "ENOENT"
 

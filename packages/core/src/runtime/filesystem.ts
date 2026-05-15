@@ -719,7 +719,7 @@ const denyEscapingHardLink = (
       stats.type === "File" &&
       Option.getOrElse(stats.nlink, () => 1) > 1
     ) {
-      yield* Effect.fail(
+      return yield* Effect.fail(
         makeSymlinkEscapesRootError(requestedPath, canonicalPath, capabilityRoots, operation)
       )
     }
@@ -1031,8 +1031,12 @@ const mapFilesystemError = (
       case "BadResource":
       case "InvalidData":
       case "AlreadyExists":
-        return makeHostProtocolInvalidArgumentError("path", reason.message, operation)
-      default:
+      case "Busy":
+      case "TimedOut":
+      case "UnexpectedEof":
+      case "Unknown":
+      case "WouldBlock":
+      case "WriteZero":
         return makeHostProtocolInvalidArgumentError("path", reason.message, operation)
     }
   }
@@ -1069,6 +1073,8 @@ const mapFilesystemError = (
       case "EISDIR":
       case "ENOTDIR":
       case "EINVAL":
+        return makeHostProtocolInvalidArgumentError("path", error.message, operation)
+      case undefined:
         return makeHostProtocolInvalidArgumentError("path", error.message, operation)
       default:
         return makeHostProtocolInvalidArgumentError("path", error.message, operation)

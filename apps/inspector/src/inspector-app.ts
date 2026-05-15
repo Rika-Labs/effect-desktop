@@ -216,6 +216,16 @@ const surfaceTitle = (surface: InspectorSurface): string => {
       return "Live runtime"
     case "eventLog":
       return "Event log"
+    case "cluster":
+    case "commands":
+    case "diagnostics":
+    case "logs":
+    case "performance":
+    case "persistence":
+    case "reactivity":
+    case "workers":
+    case "workflows":
+      return surface
     default:
       return surface
   }

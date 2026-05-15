@@ -15,8 +15,7 @@ import {
   HostProtocolRequestEnvelope,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import type { PermissionRegistry } from "@effect-desktop/core"
-import { P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"

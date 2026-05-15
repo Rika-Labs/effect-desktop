@@ -1,8 +1,7 @@
 import { expect, test } from "bun:test"
-import { Effect, Exit, Layer, Option } from "effect"
+import { Effect, Exit, Layer, Option, Schema } from "effect"
 import { Headers } from "effect/unstable/http"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
-import { Schema } from "effect"
 
 import { RpcCapability, rpcCapability } from "@effect-desktop/bridge"
 
@@ -394,7 +393,7 @@ test("validatePermissions fails with DesktopConfigError when capability kind is 
     expect(fail).toBeDefined()
     if (fail?._tag === "Fail") {
       expect(fail.error).toBeInstanceOf(DesktopConfigError)
-      const error = fail.error as DesktopConfigError
+      const error = fail.error
       expect(error.reason).toBe("undeclared-capability")
       expect(error.contract).toBe("network.connect")
     }
@@ -412,7 +411,7 @@ test("validatePermissions fails when declared capability does not cover the requ
     expect(fail).toBeDefined()
     if (fail?._tag === "Fail") {
       expect(fail.error).toBeInstanceOf(DesktopConfigError)
-      const error = fail.error as DesktopConfigError
+      const error = fail.error
       expect(error.reason).toBe("undeclared-capability")
       expect(error.contract).toBe("filesystem.read")
     }

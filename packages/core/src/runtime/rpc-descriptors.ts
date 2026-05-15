@@ -6,10 +6,8 @@ import {
   type RpcCapabilityMetadata,
   type RpcSupportMetadata
 } from "@effect-desktop/bridge"
-import { Option, Schema } from "effect"
+import { Layer, Option, Schema } from "effect"
 import { Rpc, RpcSchema } from "effect/unstable/rpc"
-
-import { Layer } from "effect"
 
 import {
   manifest as desktopManifest,
@@ -34,7 +32,7 @@ export interface RpcEndpointDescriptor {
 
 export type DesktopRpcDescriptorSource =
   | Pick<DesktopAppManifest, "rpcGroups">
-  | Pick<DesktopConfig<any, any>, "rpcs" | "id" | "windows">
+  | Pick<DesktopConfig<unknown, unknown>, "rpcs" | "id" | "windows">
 
 interface RpcWithSchemas extends Rpc.Any {
   readonly payloadSchema: Schema.Top
