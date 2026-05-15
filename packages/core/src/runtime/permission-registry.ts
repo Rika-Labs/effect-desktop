@@ -329,7 +329,7 @@ export const makePermissionRegistry = (
           )
         }).pipe(
           Effect.withSpan("PermissionRegistry.use", {
-            attributes: { token: String(grantAuditToken(grant.token)), kind: grant.capability.kind }
+            attributes: { token: redactedAuditToken(grant.token), kind: grant.capability.kind }
           })
         ),
       listDecisions: () => Ref.get(decisionRows),
@@ -756,6 +756,8 @@ const auditLifecycle = (
 
 const grantAuditToken = (token: string) =>
   makeSecretString(token, { label: "PermissionGrantToken" })
+
+const redactedAuditToken = (_token: string): string => "<redacted:PermissionGrantToken>"
 
 const lifecycleTransition = (
   status: Exclude<GrantStatus, "active">

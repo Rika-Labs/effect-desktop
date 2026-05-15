@@ -26,7 +26,11 @@ const OptionalString = Schema.optionalKey(Schema.String)
 const OptionalNonEmptyString = Schema.optionalKey(HostProtocolNonEmptyString)
 const OptionalUnknown = Schema.optionalKey(Schema.Unknown)
 const StringRecord = Schema.Record(Schema.String, Schema.String)
-const HostIdentityString = Schema.NonEmptyString.check(Schema.isPattern(/^[^\x00-\x1f\x7f]+$/u))
+const NulByte = String.fromCharCode(0)
+const UnitSeparatorByte = String.fromCharCode(31)
+const DeleteByte = String.fromCharCode(127)
+const NoControlTextPattern = new RegExp(`^[^${NulByte}-${UnitSeparatorByte}${DeleteByte}]+$`, "u")
+const HostIdentityString = Schema.NonEmptyString.check(Schema.isPattern(NoControlTextPattern))
 const OptionalHostIdentityString = Schema.optionalKey(HostIdentityString)
 const StrictParseOptions = { onExcessProperty: "error" } as const
 

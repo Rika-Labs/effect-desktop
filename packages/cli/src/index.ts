@@ -2807,7 +2807,10 @@ const validateWindowOptions = (value: unknown, field: string): BuildConfigError 
   }
 
   const titleBarStyle = value["titleBarStyle"]
-  if (titleBarStyle !== undefined && !WINDOW_TITLE_BAR_STYLES.has(String(titleBarStyle))) {
+  if (
+    titleBarStyle !== undefined &&
+    (typeof titleBarStyle !== "string" || !WINDOW_TITLE_BAR_STYLES.has(titleBarStyle))
+  ) {
     return new BuildConfigError({
       field: `${field}.titleBarStyle`,
       message: `${field}.titleBarStyle must be default, hidden, hiddenInset, or customButtonsOnHover`

@@ -5283,7 +5283,19 @@ test("desktop publish rejects tampered manifest signatures through canonical byt
         "utf8"
       )
     ) as UpdateManifest
-    const tampered = { ...manifest, version: "9.9.9" }
+    const tampered: UpdateManifest = {
+      schemaVersion: manifest.schemaVersion,
+      appId: manifest.appId,
+      version: "9.9.9",
+      channel: manifest.channel,
+      keyVersion: manifest.keyVersion,
+      publishedAt: manifest.publishedAt,
+      ...(manifest.rollback === undefined ? {} : { rollback: manifest.rollback }),
+      ...(manifest.minVersion === undefined ? {} : { minVersion: manifest.minVersion }),
+      ...(manifest.maxVersion === undefined ? {} : { maxVersion: manifest.maxVersion }),
+      artifacts: manifest.artifacts,
+      signature: manifest.signature
+    }
 
     expect(verifyUpdateManifest(manifest, key.publicKey)).toBe(true)
     expect(verifyUpdateManifest(tampered, key.publicKey)).toBe(false)

@@ -48,12 +48,12 @@ const checkUpdate = (manifestUrl: string) =>
       const client = yield* HttpClientTag
       const response = yield* client
         .get(manifestUrl)
-        .pipe(Effect.mapError((e) => new UpdateError({ stage: "check", message: String(e) })))
+        .pipe(Effect.mapError((e) => new UpdateError({ stage: "check", message: formatCause(e) })))
       const json = yield* response.json.pipe(
-        Effect.mapError((e) => new UpdateError({ stage: "check", message: String(e) }))
+        Effect.mapError((e) => new UpdateError({ stage: "check", message: formatCause(e) }))
       )
       return yield* Schema.decodeUnknownEffect(UpdateManifest)(json).pipe(
-        Effect.mapError((e) => new UpdateError({ stage: "check", message: String(e) }))
+        Effect.mapError((e) => new UpdateError({ stage: "check", message: formatCause(e) }))
       )
     })
   })
@@ -70,7 +70,7 @@ const downloadBundle = (url: string) =>
       const buf = yield* client.get(url).pipe(
         Effect.flatMap((response) => response.arrayBuffer),
         Effect.retry(DesktopSchedules.updateBundleDownload),
-        Effect.mapError((e) => new UpdateError({ stage: "download", message: String(e) }))
+        Effect.mapError((e) => new UpdateError({ stage: "download", message: formatCause(e) }))
       )
       return new Uint8Array(buf)
     })
@@ -86,7 +86,7 @@ const verifySignature = (bytes: Uint8Array, manifest: UpdateManifest) =>
       const updater = yield* Updater
       const result = yield* updater
         .check({ currentVersion: manifest.version })
-        .pipe(Effect.mapError((e) => new UpdateError({ stage: "verify", message: String(e) })))
+        .pipe(Effect.mapError((e) => new UpdateError({ stage: "verify", message: formatCause(e) })))
       if (!result.available) {
         return yield* Effect.fail(
           new UpdateError({
@@ -119,7 +119,7 @@ const stageBundle = (bytes: Uint8Array, version: string) =>
           await Bun.write(tmpPath, bytes)
           return tmpPath
         },
-        catch: (e) => new UpdateError({ stage: "stage", message: String(e) })
+        catch: (e) => new UpdateError({ stage: "stage", message: formatCause(e) })
       })
     })
   })
@@ -143,9 +143,20 @@ const applyUpdate = Activity.make({
     const updater = yield* Updater
     yield* updater
       .installAndRestart({})
-      .pipe(Effect.mapError((e) => new UpdateError({ stage: "apply", message: String(e) })))
+      .pipe(Effect.mapError((e) => new UpdateError({ stage: "apply", message: formatCause(e) })))
   })
 })
+
+const formatCause = (cause: unknown): string => {
+  if (cause instanceof Error) {
+    return cause.message
+  }
+  if (typeof cause === "string") {
+    return cause
+  }
+  const json = JSON.stringify(cause)
+  return json ?? "undefined"
+}
 
 export const UpdateWorkflowLayer = UpdateWorkflow.toLayer((payload: UpdatePayload) =>
   Effect.gen(function* () {

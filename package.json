@@ -27,7 +27,7 @@
     "check": "bun run format:check && bun run lint:types && turbo check",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
-    "lint": "ultracite check packages apps tests scripts --type-aware --type-check --disable-nested-config --quiet",
+    "lint": "ultracite check packages apps tests scripts --type-aware --type-check --deny-warnings --disable-nested-config --quiet",
     "lint:types": "bun run lint",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",

@@ -2036,7 +2036,7 @@
     {
       "name": "RpcCapability",
       "kind": "value",
-      "signature": "const RpcCapability: <Capability extends RpcCapabilityMetadata>(capability: Capability) => <R extends Rpc.Any>(rpc: R) => WithRpcCapability<R, Capability>"
+      "signature": "const RpcCapability: <Capability extends RpcCapabilityMetadata>(capability: Capability) => <R extends RpcAny>(rpc: R) => WithRpcCapability<R, Capability>"
     },
     {
       "name": "RpcCapabilityMetadata",
@@ -2046,7 +2046,7 @@
     {
       "name": "RpcEndpoint",
       "kind": "value",
-      "signature": "const RpcEndpoint: Readonly<{ query: <R extends Rpc.Any>(rpc: R) => WithRpcEndpointKind<R, \"query\">; mutation: <R extends Rpc.Any>(rpc: R) => WithRpcEndpointKind<R, \"mutation\">; }>"
+      "signature": "const RpcEndpoint: Readonly<{ query: <R extends RpcAny>(rpc: R) => WithRpcEndpointKind<R, \"query\">; mutation: <R extends RpcAny>(rpc: R) => WithRpcEndpointKind<R, \"mutation\">; }>"
     },
     {
       "name": "RpcEndpointKind",
@@ -2056,7 +2056,7 @@
     {
       "name": "RpcSupport",
       "kind": "value",
-      "signature": "const RpcSupport: Readonly<{ supported: <R extends Rpc.Any>(rpc: R) => WithRpcSupport<R, { readonly status: \"supported\"; }>; unsupported: (reason: string) => <R extends Rpc.Any>(rpc: R) => WithRpcSupport<R, { readonly status: \"unsupported\"; readonly reason: string; }>; }>"
+      "signature": "const RpcSupport: Readonly<{ supported: <R extends RpcAny>(rpc: R) => WithRpcSupport<R, { readonly status: \"supported\"; }>; unsupported: (reason: string) => <R extends RpcAny>(rpc: R) => WithRpcSupport<R, { readonly status: \"unsupported\"; readonly reason: string; }>; }>"
     },
     {
       "name": "RpcSupportMetadata",

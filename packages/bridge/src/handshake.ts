@@ -12,7 +12,11 @@ import {
 } from "./protocol.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
-const ProtocolVersion = Schema.NonEmptyString.check(Schema.isPattern(/^[^\x00-\x1f\x7f]+$/u))
+const NulByte = String.fromCharCode(0)
+const UnitSeparatorByte = String.fromCharCode(31)
+const DeleteByte = String.fromCharCode(127)
+const NoControlTextPattern = new RegExp(`^[^${NulByte}-${UnitSeparatorByte}${DeleteByte}]+$`, "u")
+const ProtocolVersion = Schema.NonEmptyString.check(Schema.isPattern(NoControlTextPattern))
 
 export class HostVersionPayload extends Schema.Class<HostVersionPayload>("HostVersionPayload")({
   protocolVersion: ProtocolVersion

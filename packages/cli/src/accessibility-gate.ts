@@ -275,14 +275,14 @@ const resolveTemplatePaths = (
             template,
             "pa11y"
           )
-          return { ...mode, axePath, pa11yPath }
+          return Object.assign({}, mode, { axePath, pa11yPath })
         })
       )
     )
     const requiredTokens = yield* Effect.all(
       template.requiredTokens.map((required) =>
         containedPath(workspaceRoot, root, required.file, template, "requiredTokens.file").pipe(
-          Effect.map((filePath) => ({ ...required, filePath }))
+          Effect.map((filePath) => Object.assign({}, required, { filePath }))
         )
       )
     )

@@ -315,7 +315,7 @@ const instrumentRendererRpcMethod = (
   operation: string,
   framework: DesktopFramework,
   inspector: RendererInspectorCollectorApi,
-  now: (() => number) | undefined = undefined
+  now?: () => number
 ): ReturnType<DesktopRendererRpcClientMethod> =>
   Effect.isEffect(result)
     ? instrumentRendererRpcEffect(result, operation, framework, inspector, now)

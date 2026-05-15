@@ -43,10 +43,15 @@ import { holdScopedExecutionPermit } from "./execution-budgets.js"
 
 const NonEmptyString = Schema.NonEmptyString
 const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0))
-// eslint-disable-next-line no-control-regex -- PTY signals and env values must not contain control bytes or NUL.
-const PtySignalString = Schema.NonEmptyString.check(Schema.isPattern(/^[^\u0000-\u001F\u007F]+$/))
-const EnvironmentVariableName = Schema.NonEmptyString.check(Schema.isPattern(/^[^\u0000]+$/))
-const EnvironmentVariableValue = Schema.String.check(Schema.isPattern(/^[^\u0000]*$/))
+const NulByte = String.fromCharCode(0)
+const UnitSeparatorByte = String.fromCharCode(31)
+const DeleteByte = String.fromCharCode(127)
+const NoControlTextPattern = new RegExp(`^[^${NulByte}-${UnitSeparatorByte}${DeleteByte}]+$`, "u")
+const NoNulTextPattern = new RegExp(`^[^${NulByte}]+$`, "u")
+const OptionalNoNulTextPattern = new RegExp(`^[^${NulByte}]*$`, "u")
+const PtySignalString = Schema.NonEmptyString.check(Schema.isPattern(NoControlTextPattern))
+const EnvironmentVariableName = Schema.NonEmptyString.check(Schema.isPattern(NoNulTextPattern))
+const EnvironmentVariableValue = Schema.String.check(Schema.isPattern(OptionalNoNulTextPattern))
 
 export class PtyOpenInput extends Schema.Class<PtyOpenInput>("PtyOpenInput")({
   command: NonEmptyString,

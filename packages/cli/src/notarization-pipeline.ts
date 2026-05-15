@@ -366,15 +366,21 @@ const runToolStep = (
 > =>
   Effect.gen(function* () {
     const start = options.now()
-    const output = yield* options
-      .commandRunner({ step: name, command, args, cwd })
-      .pipe(
-        Effect.mapError((error) =>
-          error instanceof NotarizeCommandFailedError
-            ? new NotarizeCommandFailedError({ ...error, command: [command, ...reportArgs] })
-            : error
-        )
+    const output = yield* options.commandRunner({ step: name, command, args, cwd }).pipe(
+      Effect.mapError((error) =>
+        error instanceof NotarizeCommandFailedError
+          ? new NotarizeCommandFailedError({
+              step: error.step,
+              command: [command, ...reportArgs],
+              cwd: error.cwd,
+              exitCode: error.exitCode,
+              message: error.message,
+              ...(error.stdout === undefined ? {} : { stdout: error.stdout }),
+              ...(error.stderr === undefined ? {} : { stderr: error.stderr })
+            })
+          : error
       )
+    )
     const step = {
       name,
       command: [command, ...reportArgs],
@@ -512,7 +518,7 @@ const resolveCredentials = (
           "--team-id",
           teamId,
           "--password",
-          String(passwordSecret)
+          "<redacted:AppleNotaryPassword>"
         ]
       }
     }

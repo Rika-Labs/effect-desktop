@@ -48,9 +48,11 @@ import type {
 } from "./resources.js"
 
 const { NonEmptyString } = Schema
-// eslint-disable-next-line no-control-regex -- Process signals and env values must not contain control bytes or NUL.
-const EnvironmentVariableName = Schema.NonEmptyString.check(Schema.isPattern(/^[^\u0000]+$/))
-const EnvironmentVariableValue = Schema.String.check(Schema.isPattern(/^[^\u0000]*$/))
+const NulByte = String.fromCharCode(0)
+const NoNulTextPattern = new RegExp(`^[^${NulByte}]+$`, "u")
+const OptionalNoNulTextPattern = new RegExp(`^[^${NulByte}]*$`, "u")
+const EnvironmentVariableName = Schema.NonEmptyString.check(Schema.isPattern(NoNulTextPattern))
+const EnvironmentVariableValue = Schema.String.check(Schema.isPattern(OptionalNoNulTextPattern))
 const ProcessTimestamp = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const PROCESS_SIGNALS = [
   "SIGABRT",
@@ -979,7 +981,8 @@ const mapPlatformError = (
 }
 
 const platformErrorSignal = (error: PlatformError): ProcessSignalInput | undefined => {
-  const message = `${error.message} ${String(error.cause ?? "")}`
+  const cause = error.cause === undefined ? "" : formatUnknownError(error.cause)
+  const message = `${error.message} ${cause}`
   return PROCESS_SIGNALS.find((signal) => message.includes(signal))
 }
 

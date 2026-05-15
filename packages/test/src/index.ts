@@ -1302,7 +1302,7 @@ const readableBytes = (chunks: readonly Uint8Array[]): ReadableStream<Uint8Array
 const stringArraysEqual = (left: readonly string[], right: readonly string[]): boolean =>
   left.length === right.length && left.every((value, index) => value === right[index])
 
-const signalNameForMock = (signal: ProcessSignalInput | PtySignalInput | undefined): string =>
+const signalNameForMock = (signal: string | number | undefined): string =>
   typeof signal === "string" ? signal : signal === undefined ? "SIGTERM" : String(signal)
 
 const mockNodeError = (code: string, message: string): NodeJS.ErrnoException =>

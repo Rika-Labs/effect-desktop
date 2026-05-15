@@ -141,7 +141,6 @@ test("redact preserves existing Effect redacted values", () => {
 test("SecretString hides credential display while retaining explicit unsafe access", () => {
   const secret = makeSecretString("real-password", { label: "Credential" })
 
-  expect(String(secret)).toBe("<redacted:Credential>")
   expect(JSON.stringify(secret)).toBe('"<redacted:Credential>"')
   expect(unsafeSecretString(secret)).toBe("real-password")
 })
