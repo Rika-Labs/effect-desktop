@@ -34,6 +34,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 
 import { holdScopedExecutionPermit } from "./execution-budgets.js"
 import { ResourceRegistry } from "./resources.js"
+import { ResourceOwner, type ResourceOwnerApi } from "./resource-owner.js"
 import {
   disabledExecutionInspectorCollector,
   ExecutionEvent,
@@ -111,7 +112,6 @@ export class ProcessExitStatus extends Schema.Class<ProcessExitStatus>("ProcessE
 export type ProcessError = HostProtocolError
 
 export interface ProcessSpawnOptions {
-  readonly ownerScope: string
   readonly shell?: boolean
   readonly cwd?: string
   readonly env?: Readonly<Record<string, string>>
@@ -180,6 +180,7 @@ const EMPTY_PROCESS_PERMISSIONS: ProcessPermissionPolicy = Object.freeze({})
 
 export const makeProcess = (
   registry: ResourceRegistryApi,
+  owner: ResourceOwnerApi,
   options: ProcessOptions = {}
 ): Effect.Effect<
   ProcessApi,
@@ -228,7 +229,7 @@ export const makeProcess = (
             {
               args: [...args],
               command,
-              ownerScope: options?.ownerScope,
+              ownerScope: owner.scopeId,
               ...(options?.shell === undefined ? {} : { shell: options.shell }),
               ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
               ...(options?.env === undefined ? {} : { env: options.env })
@@ -340,7 +341,7 @@ export const makeProcess = (
                 status: "failure",
                 operation: "Process.spawn",
                 command,
-                ...(options?.ownerScope === undefined ? {} : { ownerScope: options.ownerScope }),
+                ownerScope: owner.scopeId,
                 errorTag: error._tag,
                 message: error.message,
                 timestamp: safeInspectorTimestamp(now)
@@ -351,7 +352,7 @@ export const makeProcess = (
             attributes: {
               argc: args.length,
               command,
-              ownerScope: options?.ownerScope ?? ""
+              ownerScope: owner.scopeId
             }
           })
         )
@@ -363,8 +364,9 @@ export class Process extends Context.Service<Process, ProcessApi>()("Process") {
 export const ProcessLive = Layer.effect(
   Process,
   Effect.gen(function* ProcessLive() {
+    const owner = yield* ResourceOwner
     const registry = yield* ResourceRegistry
-    return yield* makeProcess(registry).pipe(Effect.orDie)
+    return yield* makeProcess(registry, owner).pipe(Effect.orDie)
   })
 )
 
@@ -373,13 +375,14 @@ export const ProcessLayer = (
 ): Layer.Layer<
   Process,
   HostProtocolInvalidArgumentError,
-  ResourceRegistry | ChildProcessSpawner.ChildProcessSpawner
+  ResourceOwner | ResourceRegistry | ChildProcessSpawner.ChildProcessSpawner
 > =>
   Layer.effect(
     Process,
     Effect.gen(function* ProcessLayer() {
+      const owner = yield* ResourceOwner
       const registry = yield* ResourceRegistry
-      return yield* makeProcess(registry, options)
+      return yield* makeProcess(registry, owner, options)
     })
   )
 

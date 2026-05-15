@@ -8,6 +8,7 @@ import { Cause, Effect, Exit, Fiber, Layer, Option, Schema, Stream } from "effec
 import { KeyValueStore } from "effect/unstable/persistence"
 
 import { makePermissionRegistry, PermissionRegistry } from "./permission-registry.js"
+import { ResourceOwner } from "./resource-owner.js"
 import { makeResourceRegistry, ResourceRegistry } from "./resources.js"
 import {
   makeSettings,
@@ -42,7 +43,8 @@ const makePersistentSettingsLayer = async (
 
   return Settings.layer({ path, ...options }).pipe(
     Layer.provide(Layer.succeed(ResourceRegistry, registry)),
-    Layer.provide(Layer.succeed(PermissionRegistry, permissions))
+    Layer.provide(Layer.succeed(PermissionRegistry, permissions)),
+    Layer.provide(ResourceOwner.test("scope-settings"))
   )
 }
 

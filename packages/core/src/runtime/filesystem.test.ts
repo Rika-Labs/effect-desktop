@@ -29,7 +29,16 @@ import {
   type FilesystemOptions,
   type FilesystemPermissionPolicy
 } from "./filesystem.js"
+import { PermissionActor } from "./permission-registry.js"
+import type { ResourceOwnerApi } from "./resource-owner.js"
 import { makeResourceRegistry, type ResourceRegistryApi } from "./resources.js"
+
+const TEST_OWNER: ResourceOwnerApi = Object.freeze({
+  kind: "test",
+  scopeId: "scope-main",
+  actor: new PermissionActor({ kind: "resource", id: "scope-main" }),
+  attributes: Object.freeze({ scopeId: "scope-main" })
+})
 
 test("Filesystem reads and writes bytes through typed Effects", async () => {
   const directory = await tempDirectory()
@@ -260,7 +269,7 @@ test("Filesystem rejects NUL path bytes before FileSystem calls", async () => {
     Effect.runPromiseExit(service.stat(path)),
     Effect.runPromiseExit(service.mkdir(path)),
     Effect.runPromiseExit(service.remove(path)),
-    Effect.runPromiseExit(service.watch(path, { ownerScope: "scope-main" }).pipe(Stream.runDrain))
+    Effect.runPromiseExit(service.watch(path).pipe(Stream.runDrain))
   ])
 
   for (const exit of exits) {
@@ -496,9 +505,7 @@ test("Filesystem denies hard-linked files with SymlinkEscapesRoot", async () => 
 test("Filesystem watch emits typed events from Effect FileSystem", async () => {
   const fixture = await makeWatchFixture()
   const fiber = Effect.runFork(
-    fixture.service
-      .watch("/tmp/project", { ownerScope: "scope-main" })
-      .pipe(Stream.take(1), Stream.runCollect)
+    fixture.service.watch("/tmp/project").pipe(Stream.take(1), Stream.runCollect)
   )
 
   await waitUntil(() => fixture.watchStarted)
@@ -534,9 +541,7 @@ test("Filesystem watch reclassifies Effect create and remove events from current
 
 test("Filesystem watch rejects control-byte filenames in FileSystem events", async () => {
   const fixture = await makeWatchFixture()
-  const fiber = Effect.runFork(
-    fixture.service.watch("/tmp/project", { ownerScope: "scope-main" }).pipe(Stream.runCollect)
-  )
+  const fiber = Effect.runFork(fixture.service.watch("/tmp/project").pipe(Stream.runCollect))
 
   await waitUntil(() => fixture.watchStarted)
   await fixture.emit({ _tag: "Update", path: "/tmp/project/audit\nlog.txt" })
@@ -545,21 +550,9 @@ test("Filesystem watch rejects control-byte filenames in FileSystem events", asy
   expectFailureTag(exit, "InvalidArgument")
 })
 
-test("Filesystem watch reports missing options as typed invalid input", async () => {
-  const service = await makeTestFilesystem()
-
-  const exit = await Effect.runPromiseExit(
-    service.watch("/tmp/project").pipe(Stream.take(1), Stream.runCollect)
-  )
-
-  expectFailureTag(exit, "InvalidArgument")
-})
-
 test("Filesystem watch maps FileSystem errors into the stream failure channel", async () => {
   const fixture = await makeWatchFixture()
-  const fiber = Effect.runFork(
-    fixture.service.watch("/tmp/project", { ownerScope: "scope-main" }).pipe(Stream.runDrain)
-  )
+  const fiber = Effect.runFork(fixture.service.watch("/tmp/project").pipe(Stream.runDrain))
 
   await waitUntil(() => fixture.watchStarted)
   await fixture.fail(makePermissionDeniedError())
@@ -570,9 +563,7 @@ test("Filesystem watch maps FileSystem errors into the stream failure channel", 
 
 test("Filesystem watch closes exactly once when the stream fiber is interrupted", async () => {
   const fixture = await makeWatchFixture()
-  const fiber = Effect.runFork(
-    fixture.service.watch("/tmp/project", { ownerScope: "scope-main" }).pipe(Stream.runDrain)
-  )
+  const fiber = Effect.runFork(fixture.service.watch("/tmp/project").pipe(Stream.runDrain))
 
   await waitUntil(() => fixture.watchStarted)
   await Effect.runPromise(Fiber.interrupt(fiber))
@@ -588,7 +579,7 @@ test("Filesystem watch scope close does not wait for a busy downstream consumer"
   const consumerStarted = Effect.runSync(Deferred.make<void>())
   const releaseConsumer = Effect.runSync(Deferred.make<void>())
   const fiber = Effect.runFork(
-    fixture.service.watch("/tmp/project", { ownerScope: "scope-main" }).pipe(
+    fixture.service.watch("/tmp/project").pipe(
       Stream.mapEffect((event) =>
         Deferred.succeed(consumerStarted, undefined).pipe(
           Effect.andThen(Deferred.await(releaseConsumer)),
@@ -614,9 +605,7 @@ test("Filesystem watch scope close does not wait for a busy downstream consumer"
 
 test("Filesystem watch registers a scope-bound resource and closes on scope close", async () => {
   const fixture = await makeWatchFixture()
-  const fiber = Effect.runFork(
-    fixture.service.watch("/tmp/project", { ownerScope: "scope-main" }).pipe(Stream.runDrain)
-  )
+  const fiber = Effect.runFork(fixture.service.watch("/tmp/project").pipe(Stream.runDrain))
 
   await waitUntil(() => fixture.watchStarted)
   const registered = await Effect.runPromise(fixture.registry.list())
@@ -643,7 +632,7 @@ async function makeTestFilesystem(
 ): Promise<FilesystemApi> {
   const registry = await Effect.runPromise(makeResourceRegistry())
   return await Effect.runPromise(
-    makeFilesystem(registry, options).pipe(Effect.provide(fileSystemLayer))
+    makeFilesystem(registry, TEST_OWNER, options).pipe(Effect.provide(fileSystemLayer))
   )
 }
 
@@ -872,9 +861,7 @@ async function collectOneWatchEvent(options: {
 }): Promise<FilesystemEvent> {
   const fixture = await makeWatchFixture({ existingPaths: options.existingPaths })
   const fiber = Effect.runFork(
-    fixture.service
-      .watch("/tmp/project", { ownerScope: "scope-main" })
-      .pipe(Stream.take(1), Stream.runCollect)
+    fixture.service.watch("/tmp/project").pipe(Stream.take(1), Stream.runCollect)
   )
 
   await waitUntil(() => fixture.watchStarted)
@@ -907,7 +894,7 @@ async function makeWatchFixture(
   let closeCount = 0
   const registry = await Effect.runPromise(makeResourceRegistry())
   const service = await Effect.runPromise(
-    makeFilesystem(registry, {
+    makeFilesystem(registry, TEST_OWNER, {
       permissions: { readRoots: ["/tmp/project"] }
     }).pipe(
       Effect.provide(

@@ -53,6 +53,7 @@ import {
   ResourceRegistry,
   Filesystem,
   PermissionRegistry,
+  PermissionActor,
   Process,
   ProcessExitStatus,
   ProcessSpawnInput,
@@ -66,6 +67,7 @@ import {
   makeProcess,
   makePty,
   makeTelemetry,
+  ResourceOwner,
   type FilesystemApi,
   type FilesystemOptions,
   type FilesystemPermissionPolicy,
@@ -89,6 +91,7 @@ import {
   type ResourceRegistryApi,
   type ResourceId,
   type ResourceKind,
+  type ResourceOwnerApi,
   type SecretsSafeStorageApi,
   type TelemetryInvalidArgumentError,
   type TelemetryOptions
@@ -361,21 +364,25 @@ export interface MemoryFilesystemOptions {
 
 export const makeMemoryFilesystem = (
   registry: ResourceRegistryApi,
+  owner: ResourceOwnerApi,
   options: MemoryFilesystemOptions = {}
 ): Effect.Effect<FilesystemApi, never, never> =>
   Effect.gen(function* () {
     const memory = makeMemoryFilesystemRuntime(options)
-    return yield* makeFilesystem(registry, memory.options).pipe(Effect.provide(memory.fileSystem))
+    return yield* makeFilesystem(registry, owner, memory.options).pipe(
+      Effect.provide(memory.fileSystem)
+    )
   })
 
 export const MemoryFilesystemLive = (
   options: MemoryFilesystemOptions = {}
-): Layer.Layer<Filesystem, never, ResourceRegistry> =>
+): Layer.Layer<Filesystem, never, ResourceOwner | ResourceRegistry> =>
   Layer.effect(
     Filesystem,
     Effect.gen(function* () {
+      const owner = yield* ResourceOwner
       const registry = yield* ResourceRegistry
-      return yield* makeMemoryFilesystem(registry, options)
+      return yield* makeMemoryFilesystem(registry, owner, options)
     })
   )
 
@@ -416,10 +423,11 @@ export interface MockProcessApi extends ProcessApi {
 
 export const makeMockProcess = (
   registry: ResourceRegistryApi,
+  owner: ResourceOwnerApi,
   options: MockProcessOptions = {}
 ): Effect.Effect<MockProcessApi, HostProtocolInvalidArgumentError, never> => {
   const calls: MutableMockProcessSpawnRecord[] = []
-  return makeProcess(registry, {
+  return makeProcess(registry, owner, {
     ...(options.budgets === undefined ? {} : { budgets: options.budgets }),
     ...(options.gracefulShutdownMs === undefined
       ? {}
@@ -437,12 +445,13 @@ export const makeMockProcess = (
 
 export const MockProcessLive = (
   options: MockProcessOptions = {}
-): Layer.Layer<Process, HostProtocolInvalidArgumentError, ResourceRegistry> =>
+): Layer.Layer<Process, HostProtocolInvalidArgumentError, ResourceOwner | ResourceRegistry> =>
   Layer.effect(
     Process,
     Effect.gen(function* () {
+      const owner = yield* ResourceOwner
       const registry = yield* ResourceRegistry
-      return yield* makeMockProcess(registry, options)
+      return yield* makeMockProcess(registry, owner, options)
     })
   )
 
@@ -481,10 +490,11 @@ export interface MockPtyApi extends PtyApi {
 
 export const makeMockPty = (
   registry: ResourceRegistryApi,
+  owner: ResourceOwnerApi,
   options: MockPtyOptions = {}
 ): Effect.Effect<MockPtyApi, HostProtocolInvalidArgumentError, never> => {
   const calls: MutableMockPtyOpenRecord[] = []
-  return makePty(registry, {
+  return makePty(registry, owner, {
     adapter: makeMockPtyAdapter(options, calls),
     ...(options.budgets === undefined ? {} : { budgets: options.budgets }),
     ...(options.gracefulShutdownMs === undefined
@@ -496,12 +506,13 @@ export const makeMockPty = (
 
 export const MockPtyLayer = (
   options: MockPtyOptions = {}
-): Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceRegistry> =>
+): Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceOwner | ResourceRegistry> =>
   Layer.effect(
     PTY,
     Effect.gen(function* () {
+      const owner = yield* ResourceOwner
       const registry = yield* ResourceRegistry
-      return yield* makeMockPty(registry, options)
+      return yield* makeMockPty(registry, owner, options)
     })
   )
 
@@ -578,9 +589,10 @@ const makeHeadlessRuntimeContext = (
     const permissions = yield* makePermissionRegistry(options.permissions)
     const host = makeMockHost(options.host)
     const bridge = makeMockBridge(options.bridge)
-    const filesystem = yield* makeMemoryFilesystem(registry, options.filesystem)
-    const process = yield* makeMockProcess(registry, options.process)
-    const pty = yield* makeMockPty(registry, options.pty)
+    const owner = makeTestResourceOwner(DEFAULT_HEADLESS_SCOPE)
+    const filesystem = yield* makeMemoryFilesystem(registry, owner, options.filesystem)
+    const process = yield* makeMockProcess(registry, owner, options.process)
+    const pty = yield* makeMockPty(registry, owner, options.pty)
 
     return Context.add(
       PermissionRegistry,
@@ -1965,6 +1977,14 @@ let matchersRegistered = false
 const DEFAULT_HEADLESS_SCOPE = "headless"
 const DEFAULT_WINDOW_CREATE_PAYLOAD = undefined
 const DEFAULT_ALLOWED_KINDS = ["app"] as const satisfies readonly ResourceKind[]
+
+const makeTestResourceOwner = (scopeId: string): ResourceOwnerApi =>
+  Object.freeze({
+    kind: "test",
+    scopeId,
+    actor: new PermissionActor({ kind: "resource", id: scopeId }),
+    attributes: Object.freeze({ scopeId })
+  })
 
 const secretNotFound = (key: string, operation: string): HostProtocolNotFoundError =>
   new HostProtocolNotFoundError({

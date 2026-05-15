@@ -21,6 +21,7 @@ import {
   Worker,
   type NormalizedCapability,
   type ProcessApi,
+  type ResourceOwnerApi,
   type ResourceRegistryApi,
   type WorkerApi,
   type WorkerAdapter,
@@ -55,6 +56,13 @@ import {
   type WorkersSnapshot
 } from "./index.js"
 import { DevtoolsInvalidOptionError } from "./panel-options.js"
+
+const TEST_OWNER: ResourceOwnerApi = Object.freeze({
+  kind: "test",
+  scopeId: "scope-main",
+  actor: new PermissionActor({ kind: "resource", id: "scope-main" }),
+  attributes: Object.freeze({ scopeId: "scope-main" })
+})
 
 const commandCapability: NormalizedCapability = {
   kind: "native.invoke",
@@ -125,13 +133,9 @@ test("WorkersDevtools lists live workers with redacted scripts", async () => {
   const workerHandle = await Effect.runPromise(
     fixture.worker.spawn({
       script: "./secret-worker.ts",
-      ownerScope: "scope-main",
       inputSchema: Schema.Struct({ text: Schema.String }),
       outputSchema: Schema.Struct({ echoed: Schema.String }),
-      context: new PermissionContext({
-        actor: new PermissionActor({ kind: "app", id: "app-main" }),
-        traceId: "trace-devtools"
-      })
+      context: { traceId: "trace-devtools" }
     })
   )
 
@@ -211,9 +215,7 @@ test("LiveRuntimePanels projects bridge, stream, resource, permission, and proce
       traceId: "trace-panel"
     })
   )
-  const handle = await Effect.runPromise(
-    processes.spawn("echo", ["hi"], { ownerScope: "scope-main" })
-  )
+  const handle = await Effect.runPromise(processes.spawn("echo", ["hi"]))
   await Effect.runPromise(handle.exit)
 
   const snapshot = await Effect.runPromise(
@@ -726,7 +728,7 @@ interface WorkersFixture {
 
 const makeProcessService = (registry: ResourceRegistryApi): Promise<ProcessApi> =>
   Effect.runPromise(
-    makeProcess(registry, {
+    makeProcess(registry, TEST_OWNER, {
       permissions: { spawn: ["echo"] }
     }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, fakeProcessSpawner))
   )
@@ -760,7 +762,7 @@ const makeWorkersFixture = async (): Promise<WorkersFixture> => {
   const permissions = await Effect.runPromise(makePermissionRegistry({ traceId: () => "trace" }))
   const runtime = await makeFakeRuntime()
   const worker = await Effect.runPromise(
-    makeWorker(registry, permissions, {
+    makeWorker(registry, permissions, TEST_OWNER, {
       adapter: makeFakeAdapter(runtime),
       now: () => timestamp++
     })

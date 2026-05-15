@@ -373,9 +373,14 @@ export class Settings extends Context.Service<Settings, SettingsApi>()("Settings
   ): Layer.Layer<
     Settings,
     SettingsError | SqlitePolicyError,
-    PermissionRegistry | ResourceRegistry
+    ResourceOwner | PermissionRegistry | ResourceRegistry
   > {
-    return settingsLayer(options, "app")
+    return Layer.unwrap(
+      Effect.gen(function* () {
+        const owner = yield* ResourceOwner
+        return settingsLayer(options, owner.scopeId)
+      })
+    )
   }
 
   static window(
@@ -385,12 +390,7 @@ export class Settings extends Context.Service<Settings, SettingsApi>()("Settings
     SettingsError | SqlitePolicyError,
     ResourceOwner | PermissionRegistry | ResourceRegistry
   > {
-    return Layer.unwrap(
-      Effect.gen(function* () {
-        const owner = yield* ResourceOwner
-        return settingsLayer(options, owner.scopeId)
-      })
-    )
+    return Settings.layer(options)
   }
 
   static memory(options: SettingsMemoryOptions = {}): Layer.Layer<Settings, SettingsError, never> {
@@ -404,11 +404,11 @@ const settingsLayer = (
 ): Layer.Layer<
   Settings,
   SettingsError | SqlitePolicyError,
-  PermissionRegistry | ResourceRegistry
+  ResourceOwner | PermissionRegistry | ResourceRegistry
 > =>
   settingsFromKv(options, ownerScope).pipe(
     Layer.provide(KeyValueStore.layerSql()),
-    Layer.provide(SqlClientLive({ filename: options.path, ownerScope }))
+    Layer.provide(SqlClientLive({ filename: options.path }))
   )
 
 const settingsMemoryLayer = (

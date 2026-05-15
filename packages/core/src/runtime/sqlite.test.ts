@@ -13,12 +13,13 @@ import {
   PermissionDeniedError,
   PermissionRegistry
 } from "./permission-registry.js"
+import { ResourceOwner } from "./resource-owner.js"
 import { makeResourceRegistry, ResourceRegistry, type ResourceRegistryApi } from "./resources.js"
 import { SqlClientLive, SqliteInvalidArgumentError } from "./sqlite.js"
 
 describe("SqlClientLive", () => {
   test("SqlClient executes a raw query against in-memory SQLite", async () => {
-    const { layer } = await makeFixture({ filename: ":memory:", ownerScope: "scope-sql" })
+    const { layer } = await makeFixture({ filename: ":memory:" })
     const program = Effect.gen(function* () {
       const sql = yield* SqlClient
       return yield* sql`SELECT 1 AS value`
@@ -32,9 +33,10 @@ describe("SqlClientLive", () => {
   test("rejects invalid layer input before opening a database", async () => {
     const registry = await Effect.runPromise(makeResourceRegistry())
     const permissions = await Effect.runPromise(makePermissionRegistry())
-    const layer = SqlClientLive({ filename: "", ownerScope: "scope-sql" }).pipe(
+    const layer = SqlClientLive({ filename: "" }).pipe(
       Layer.provide(Layer.succeed(ResourceRegistry, registry)),
-      Layer.provide(Layer.succeed(PermissionRegistry, permissions))
+      Layer.provide(Layer.succeed(PermissionRegistry, permissions)),
+      Layer.provide(ResourceOwner.test("scope-sql"))
     )
 
     const exit = await Effect.runPromiseExit(
@@ -59,11 +61,11 @@ describe("SqlClientLive", () => {
     )
     const layer = SqlClientLive({
       filename: databasePath,
-      ownerScope: "scope-main",
       create: true
     }).pipe(
       Layer.provide(Layer.succeed(ResourceRegistry, registry)),
-      Layer.provide(Layer.succeed(PermissionRegistry, permissions))
+      Layer.provide(Layer.succeed(PermissionRegistry, permissions)),
+      Layer.provide(ResourceOwner.test("scope-main"))
     )
 
     const exit = await Effect.runPromiseExit(
@@ -97,11 +99,11 @@ describe("SqlClientLive", () => {
     )
     const layer = SqlClientLive({
       filename: databasePath,
-      ownerScope: "scope-main",
       create: true
     }).pipe(
       Layer.provide(Layer.succeed(ResourceRegistry, registry)),
-      Layer.provide(Layer.succeed(PermissionRegistry, permissions))
+      Layer.provide(Layer.succeed(PermissionRegistry, permissions)),
+      Layer.provide(ResourceOwner.test("scope-main"))
     )
 
     await Effect.runPromise(
@@ -123,11 +125,11 @@ describe("SqlClientLive", () => {
     const registry = await Effect.runPromise(makeResourceRegistry())
     const permissions = await Effect.runPromise(makePermissionRegistry())
     const layer = SqlClientLive({
-      filename: ":memory:\u0000shadow",
-      ownerScope: "scope-main"
+      filename: ":memory:\u0000shadow"
     }).pipe(
       Layer.provide(Layer.succeed(ResourceRegistry, registry)),
-      Layer.provide(Layer.succeed(PermissionRegistry, permissions))
+      Layer.provide(Layer.succeed(PermissionRegistry, permissions)),
+      Layer.provide(ResourceOwner.test("scope-main"))
     )
 
     const exit = await Effect.runPromiseExit(
@@ -145,7 +147,7 @@ describe("SqlClientLive", () => {
 
   test("registers a sqlite resource while the layer scope is open and removes it on close", async () => {
     const registry = await Effect.runPromise(makeResourceRegistry())
-    const { layer } = await makeFixture({ filename: ":memory:", ownerScope: "scope-sql", registry })
+    const { layer } = await makeFixture({ filename: ":memory:", registry })
     const program = Effect.gen(function* () {
       const sql = yield* SqlClient
       yield* sql`SELECT 1`
@@ -161,7 +163,7 @@ describe("SqlClientLive", () => {
 
   test("ResourceRegistry.closeScope closes the scoped SqlClient", async () => {
     const registry = await Effect.runPromise(makeResourceRegistry())
-    const { layer } = await makeFixture({ filename: ":memory:", ownerScope: "scope-sql", registry })
+    const { layer } = await makeFixture({ filename: ":memory:", registry })
     const program = Effect.gen(function* () {
       const sql = yield* SqlClient
       yield* sql`CREATE TABLE users (name TEXT)`
@@ -178,7 +180,7 @@ describe("SqlClientLive", () => {
   })
 
   test("SqlClient transactions roll back failed programs", async () => {
-    const { layer } = await makeFixture({ filename: ":memory:", ownerScope: "scope-tx" })
+    const { layer } = await makeFixture({ filename: ":memory:" })
     const program = Effect.gen(function* () {
       const sql = yield* SqlClient
       yield* sql`CREATE TABLE users (name TEXT)`
@@ -206,7 +208,7 @@ describe("SqlClientLive", () => {
       name: Schema.NonEmptyString
     }) {}
 
-    const { layer } = await makeFixture({ filename: ":memory:", ownerScope: "scope-model" })
+    const { layer } = await makeFixture({ filename: ":memory:" })
     const program = Effect.gen(function* () {
       const sql = yield* SqlClient
       yield* sql`CREATE TABLE item (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)`
@@ -230,17 +232,16 @@ describe("SqlClientLive", () => {
 
 async function makeFixture(config: {
   readonly filename: string
-  readonly ownerScope: string
   readonly registry?: ResourceRegistryApi
 }) {
   const registry = config.registry ?? (await Effect.runPromise(makeResourceRegistry()))
   const permissions = await Effect.runPromise(makePermissionRegistry())
   const layer = SqlClientLive({
-    filename: config.filename,
-    ownerScope: config.ownerScope
+    filename: config.filename
   }).pipe(
     Layer.provide(Layer.succeed(ResourceRegistry, registry)),
-    Layer.provide(Layer.succeed(PermissionRegistry, permissions))
+    Layer.provide(Layer.succeed(PermissionRegistry, permissions)),
+    Layer.provide(ResourceOwner.test("scope-sql"))
   )
 
   return { registry, layer }

@@ -181,7 +181,10 @@ const openSingleWindow = (
         registrationId: registration.id,
         hostWindowId: opened.windowId
       })
-      const services = Layer.provide(registration.services, Layer.merge(windowContext, resourceOwner))
+      const services = Layer.provide(
+        registration.services,
+        Layer.merge(windowContext, resourceOwner)
+      )
       yield* (
         Layer.buildWithScope(services, windowScope) as Effect.Effect<
           unknown,

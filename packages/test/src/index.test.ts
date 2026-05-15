@@ -26,6 +26,7 @@ import {
   PermissionRegistry,
   Process,
   PTY,
+  ResourceOwner,
   ResourceRegistryLive,
   SidecarCommand,
   Telemetry,
@@ -34,6 +35,7 @@ import {
   makeResourceRegistry,
   makeSidecar,
   ResourceHandleSchema,
+  type ResourceOwnerApi,
   type ResourceId,
   unsafeSecretBytes,
   wipeSecretBytes
@@ -113,6 +115,12 @@ import {
 import { CapabilityLaws as SubpathCapabilityLaws } from "@effect-desktop/test/renderer"
 
 const id = (value: string): ResourceId => value as ResourceId
+const TEST_OWNER: ResourceOwnerApi = Object.freeze({
+  kind: "test",
+  scopeId: "scope-main",
+  actor: new PermissionActor({ kind: "resource", id: "scope-main" }),
+  attributes: Object.freeze({ scopeId: "scope-main" })
+})
 const waitForRegistryEntries = (
   registry: {
     readonly list: () => Effect.Effect<{ readonly entries: readonly unknown[] }, never, never>
@@ -242,7 +250,10 @@ test("public core subpath exposes composable core fixture layers", async () => {
             readRoots: ["/workspace"],
             writeRoots: ["/workspace"]
           }
-        }).pipe(Layer.provide(ResourceRegistryLive))
+        }).pipe(
+          Layer.provide(ResourceRegistryLive),
+          Layer.provide(ResourceOwner.test("scope-main"))
+        )
       )
     )
   )
@@ -299,7 +310,7 @@ test("public native subpath exposes a composed desktop test layer with inspectab
   expect(windows).toMatchObject([
     {
       input: { title: "Notes", width: 800, height: 600 },
-      window: { kind: "window", ownerScope: "test-window", state: "open" }
+      window: { kind: "window", state: "open" }
     }
   ])
 })
@@ -407,7 +418,7 @@ test("leakedHandles ignores app handles by default without exempting app-owned r
       })
       const window = yield* registry.register({
         kind: "window",
-        ownerScope: "app",
+        ownerScope: "window-1",
         state: "open"
       })
 
@@ -839,7 +850,10 @@ test("MemoryFilesystem layer reads, writes, stats, and atomically replaces files
             allowRecursiveRemove: true
           },
           now: () => 1710000000600
-        }).pipe(Layer.provide(ResourceRegistryLive))
+        }).pipe(
+          Layer.provide(ResourceRegistryLive),
+          Layer.provide(ResourceOwner.test("scope-main"))
+        )
       )
     )
   )
@@ -857,7 +871,7 @@ test("MemoryFilesystem watcher emits contract events and closes its registry res
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry({ nextId: () => id("watch-1") })
-      const filesystem = yield* makeMemoryFilesystem(registry, {
+      const filesystem = yield* makeMemoryFilesystem(registry, TEST_OWNER, {
         directories: ["/workspace"],
         permissions: {
           readRoots: ["/workspace"],
@@ -865,7 +879,7 @@ test("MemoryFilesystem watcher emits contract events and closes its registry res
         }
       })
       const fiber = yield* filesystem
-        .watch("/workspace", { ownerScope: "test-watch", bufferSize: 8 })
+        .watch("/workspace", { bufferSize: 8 })
         .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
 
       yield* waitForRegistryEntries(registry, 1)
@@ -914,7 +928,7 @@ test("MemoryFilesystem watcher emits contract events and closes its registry res
 test("MemoryFilesystem preserves symlink escape failures through the real service policy", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   const filesystem = await Effect.runPromise(
-    makeMemoryFilesystem(registry, {
+    makeMemoryFilesystem(registry, TEST_OWNER, {
       directories: ["/allowed", "/outside"],
       files: [{ path: "/outside/secret.txt", bytes: bytes("secret") }],
       symlinks: [{ path: "/allowed/link.txt", target: "/outside/secret.txt" }],
@@ -935,7 +949,7 @@ test("MemoryFilesystem preserves symlink escape failures through the real servic
 test("MemoryFilesystem follows symlinks in intermediate path segments", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   const filesystem = await Effect.runPromise(
-    makeMemoryFilesystem(registry, {
+    makeMemoryFilesystem(registry, TEST_OWNER, {
       directories: ["/allowed", "/target"],
       files: [{ path: "/target/file.txt", bytes: bytes("resolved") }],
       symlinks: [{ path: "/allowed/linkdir", target: "/target" }],
@@ -953,7 +967,7 @@ test("MemoryFilesystem follows symlinks in intermediate path segments", async ()
 test("MemoryFilesystem resolves relative symlink fixtures from the link directory", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   const filesystem = await Effect.runPromise(
-    makeMemoryFilesystem(registry, {
+    makeMemoryFilesystem(registry, TEST_OWNER, {
       directories: ["/workspace/sub"],
       files: [{ path: "/workspace/sub/file.txt", bytes: bytes("relative") }],
       symlinks: [{ path: "/workspace/link.txt", target: "sub/file.txt" }],
@@ -971,7 +985,7 @@ test("MemoryFilesystem resolves relative symlink fixtures from the link director
 test("MemoryFilesystem preserves symlink stat identity", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   const filesystem = await Effect.runPromise(
-    makeMemoryFilesystem(registry, {
+    makeMemoryFilesystem(registry, TEST_OWNER, {
       directories: ["/workspace"],
       files: [{ path: "/workspace/target.txt", bytes: bytes("target content") }],
       symlinks: [{ path: "/workspace/link.txt", target: "target.txt" }],
@@ -992,7 +1006,7 @@ test("MemoryFilesystem preserves symlink stat identity", async () => {
 test("MemoryFilesystem writeAtomic replaces symlink without changing target", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   const filesystem = await Effect.runPromise(
-    makeMemoryFilesystem(registry, {
+    makeMemoryFilesystem(registry, TEST_OWNER, {
       directories: ["/workspace"],
       files: [{ path: "/workspace/target.txt", bytes: bytes("target") }],
       symlinks: [{ path: "/workspace/link.txt", target: "target.txt" }],
@@ -1016,7 +1030,7 @@ test("MemoryFilesystem writeAtomic replaces symlink without changing target", as
 test("MemoryFilesystem rejects directory targets for writes and atomic renames", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   const filesystem = await Effect.runPromise(
-    makeMemoryFilesystem(registry, {
+    makeMemoryFilesystem(registry, TEST_OWNER, {
       directories: ["/workspace/target"],
       permissions: {
         readRoots: ["/workspace"],
@@ -1045,7 +1059,7 @@ test("MemoryFilesystem rejects directory targets for writes and atomic renames",
 test("MemoryFilesystem mkdir preserves existing nodes instead of clobbering them", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   const filesystem = await Effect.runPromise(
-    makeMemoryFilesystem(registry, {
+    makeMemoryFilesystem(registry, TEST_OWNER, {
       directories: ["/workspace"],
       files: [{ path: "/workspace/file.txt", bytes: bytes("file") }],
       permissions: {
@@ -1076,7 +1090,7 @@ test("MockProcess layer emits stdout, stderr, exit, and records stdin", async ()
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const process = yield* Process
-      const handle = yield* process.spawn("git", ["status"], { ownerScope: "test-process" })
+      const handle = yield* process.spawn("git", ["status"])
       yield* Stream.make(bytes("input")).pipe(Stream.run(handle.stdin))
       const stdout = yield* Stream.runCollect(handle.stdout)
       const stderr = yield* Stream.runCollect(handle.stderr)
@@ -1107,7 +1121,10 @@ test("MockProcess layer emits stdout, stderr, exit, and records stdin", async ()
             spawn: ["git"]
           },
           now: () => 1710000000700
-        }).pipe(Layer.provide(ResourceRegistryLive))
+        }).pipe(
+          Layer.provide(ResourceRegistryLive),
+          Layer.provide(ResourceOwner.test("scope-main"))
+        )
       )
     )
   )
@@ -1121,7 +1138,6 @@ test("MockProcess layer emits stdout, stderr, exit, and records stdin", async ()
       pid: 1234,
       command: "git",
       args: ["status"],
-      ownerScope: "test-process",
       state: "exited"
     }
   ])
@@ -1131,23 +1147,23 @@ test("makeMockProcess records kill and scope cleanup through the real registry",
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry({ nextId: () => id("process-1") })
-      const process = yield* makeMockProcess(registry, {
+      const process = yield* makeMockProcess(registry, TEST_OWNER, {
         processes: [{ command: "sleep", pid: 4321, exit: false }],
         permissions: { spawn: ["sleep"] },
         gracefulShutdownMs: 1
       })
-      const handle = yield* process.spawn("sleep", ["10"], { ownerScope: "scope-1" })
+      const handle = yield* process.spawn("sleep", ["10"])
       yield* handle.kill("SIGTERM")
       const exit = yield* handle.exit
       const afterExit = yield* registry.list()
 
-      const cleanup = yield* makeMockProcess(registry, {
+      const cleanup = yield* makeMockProcess(registry, TEST_OWNER, {
         processes: [{ command: "tail", pid: 4322, exit: false }],
         permissions: { spawn: ["tail"] },
         gracefulShutdownMs: 1
       })
-      yield* cleanup.spawn("tail", ["-f"], { ownerScope: "scope-2" })
-      yield* registry.closeScope("scope-2")
+      yield* cleanup.spawn("tail", ["-f"])
+      yield* registry.closeScope("scope-main")
 
       return {
         exit,
@@ -1171,7 +1187,7 @@ test("Sidecar starts a scoped process and derives readiness from stdout", async 
       const registry = yield* makeResourceRegistry({
         nextId: () => id(`sidecar-resource-${(resourceIndex += 1)}`)
       })
-      const process = yield* makeMockProcess(registry, {
+      const process = yield* makeMockProcess(registry, TEST_OWNER, {
         processes: [
           {
             command: "server",
@@ -1188,7 +1204,7 @@ test("Sidecar starts a scoped process and derives readiness from stdout", async 
         new SidecarCommand({
           args: ["serve"],
           command: "server",
-          ownerScope: "app"
+          ownerScope: "scope-main"
         }),
         { readiness: { _tag: "Line", match: "READY", stream: "stdout" } }
       )
@@ -1219,7 +1235,7 @@ test("Sidecar reports typed readiness failure instead of polling a port", async 
   const exit = await Effect.runPromiseExit(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry()
-      const process = yield* makeMockProcess(registry, {
+      const process = yield* makeMockProcess(registry, TEST_OWNER, {
         processes: [{ command: "server", stdout: [bytes("listening somewhere else\n")] }],
         permissions: { spawn: ["server"] }
       })
@@ -1228,7 +1244,7 @@ test("Sidecar reports typed readiness failure instead of polling a port", async 
         new SidecarCommand({
           args: [],
           command: "server",
-          ownerScope: "app"
+          ownerScope: "scope-main"
         }),
         { readiness: { _tag: "Line", match: "READY", stream: "stdout" } }
       )
@@ -1246,14 +1262,12 @@ test("Sidecar reports typed readiness failure instead of polling a port", async 
 test("MockProcess fails loudly when a command has no fixture", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   const process = await Effect.runPromise(
-    makeMockProcess(registry, {
+    makeMockProcess(registry, TEST_OWNER, {
       permissions: { spawn: ["missing"] }
     })
   )
 
-  const exit = await Effect.runPromiseExit(
-    process.spawn("missing", [], { ownerScope: "missing-scope" })
-  )
+  const exit = await Effect.runPromiseExit(process.spawn("missing", []))
 
   expect(Exit.isFailure(exit)).toBe(true)
   if (Exit.isFailure(exit)) {
@@ -1264,14 +1278,12 @@ test("MockProcess fails loudly when a command has no fixture", async () => {
 test("MockProcess rejects stdin writes after process exit", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   const process = await Effect.runPromise(
-    makeMockProcess(registry, {
+    makeMockProcess(registry, TEST_OWNER, {
       processes: [{ command: "cat", exit: { code: 0 } }],
       permissions: { spawn: ["cat"] }
     })
   )
-  const handle = await Effect.runPromise(
-    process.spawn("cat", [], { ownerScope: "stale-process-stdin" })
-  )
+  const handle = await Effect.runPromise(process.spawn("cat", []))
   await Effect.runPromise(handle.exit)
 
   const exit = await Effect.runPromiseExit(
@@ -1288,7 +1300,6 @@ test("MockPTY layer emits output, records writes and resizes, and exits", async 
       const pty = yield* PTY
       const handle = yield* pty.open({
         argv: ["bash", "-l"],
-        ownerScope: "layer-pty",
         rows: 24,
         cols: 80
       })
@@ -1305,7 +1316,10 @@ test("MockPTY layer emits output, records writes and resizes, and exits", async 
           ptys: [{ command: "bash", args: ["-l"], output: [bytes("layer")], exit: { code: 0 } }],
           permissions: { spawn: ["bash"] },
           budgets: { outputCoalesceBytes: 1024, outputCoalesceMs: 1 }
-        }).pipe(Layer.provide(ResourceRegistryLive))
+        }).pipe(
+          Layer.provide(ResourceRegistryLive),
+          Layer.provide(ResourceOwner.test("scope-main"))
+        )
       )
     )
   )
@@ -1315,7 +1329,7 @@ test("MockPTY layer emits output, records writes and resizes, and exits", async 
 
   const registry = await Effect.runPromise(makeResourceRegistry())
   const pty = await Effect.runPromise(
-    makeMockPty(registry, {
+    makeMockPty(registry, TEST_OWNER, {
       ptys: [
         {
           command: "bash",
@@ -1333,9 +1347,7 @@ test("MockPTY layer emits output, records writes and resizes, and exits", async 
     })
   )
 
-  const handle = await Effect.runPromise(
-    pty.open({ argv: ["bash", "-l"], ownerScope: "pty-scope", rows: 24, cols: 80 })
-  )
+  const handle = await Effect.runPromise(pty.open({ argv: ["bash", "-l"], rows: 24, cols: 80 }))
   await Effect.runPromise(handle.write(bytes("echo hi\n")))
   await Effect.runPromise(handle.resize({ rows: 40, cols: 120 }))
   const output = await Effect.runPromise(Stream.runCollect(handle.output))
@@ -1355,15 +1367,15 @@ test("MockPTY layer emits output, records writes and resizes, and exits", async 
 test("MockPTY closes through scope cleanup with the real PTY disposer", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry({ nextId: () => id("pty-1") }))
   const pty = await Effect.runPromise(
-    makeMockPty(registry, {
+    makeMockPty(registry, TEST_OWNER, {
       ptys: [{ command: "bash", exit: false }],
       permissions: { spawn: ["bash"] },
       gracefulShutdownMs: 1
     })
   )
 
-  await Effect.runPromise(pty.open({ argv: ["bash"], ownerScope: "pty-scope", rows: 24, cols: 80 }))
-  await Effect.runPromise(registry.closeScope("pty-scope"))
+  await Effect.runPromise(pty.open({ argv: ["bash"], rows: 24, cols: 80 }))
+  await Effect.runPromise(registry.closeScope("scope-main"))
 
   expect(pty.calls()[0]?.terminateTreeCalls).toBe(1)
 })
@@ -1371,14 +1383,12 @@ test("MockPTY closes through scope cleanup with the real PTY disposer", async ()
 test("MockPTY fails loudly when a command has no fixture", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   const pty = await Effect.runPromise(
-    makeMockPty(registry, {
+    makeMockPty(registry, TEST_OWNER, {
       permissions: { spawn: ["missing"] }
     })
   )
 
-  const exit = await Effect.runPromiseExit(
-    pty.open({ argv: ["missing"], ownerScope: "missing-pty", rows: 24, cols: 80 })
-  )
+  const exit = await Effect.runPromiseExit(pty.open({ argv: ["missing"], rows: 24, cols: 80 }))
 
   expect(Exit.isFailure(exit)).toBe(true)
   if (Exit.isFailure(exit)) {
@@ -1389,15 +1399,13 @@ test("MockPTY fails loudly when a command has no fixture", async () => {
 test("MockPTY rejects writes and resizes after exit", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   const pty = await Effect.runPromise(
-    makeMockPty(registry, {
+    makeMockPty(registry, TEST_OWNER, {
       ptys: [{ command: "bash", exit: { code: 0 } }],
       permissions: { spawn: ["bash"] },
       budgets: { outputCoalesceBytes: 1024, outputCoalesceMs: 1 }
     })
   )
-  const handle = await Effect.runPromise(
-    pty.open({ argv: ["bash"], ownerScope: "stale-pty", rows: 24, cols: 80 })
-  )
+  const handle = await Effect.runPromise(pty.open({ argv: ["bash"], rows: 24, cols: 80 }))
   await Effect.runPromise(handle.onExit)
 
   const writeExit = await Effect.runPromiseExit(handle.write(bytes("late")))
@@ -1438,13 +1446,12 @@ test("HeadlessRuntime layer composes mocks with real registry telemetry and perm
       yield* filesystem.write("/workspace/out.txt", bytes("file"))
       const file = yield* filesystem.read("/workspace/out.txt")
 
-      const child = yield* process.spawn("echo", ["ok"], { ownerScope: "headless-test" })
+      const child = yield* process.spawn("echo", ["ok"])
       const stdout = yield* Stream.runCollect(child.stdout)
       const processExit = yield* child.exit
 
       const terminal = yield* pty.open({
         argv: ["bash"],
-        ownerScope: "headless-test",
         rows: 24,
         cols: 80
       })
@@ -1519,7 +1526,7 @@ test("HeadlessRuntime run fails when scoped resources leak", async () => {
     HeadlessRuntime.run(
       Effect.gen(function* () {
         const process = yield* Process
-        yield* process.spawn("sleep", ["10"], { ownerScope: "leaky-process" })
+        yield* process.spawn("sleep", ["10"])
       }),
       {
         process: {

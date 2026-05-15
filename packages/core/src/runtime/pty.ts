@@ -38,6 +38,7 @@ import {
   ExecutionEvent,
   type ExecutionInspectorCollectorApi
 } from "./inspector-events.js"
+import { ResourceOwner, type ResourceOwnerApi } from "./resource-owner.js"
 import { holdScopedExecutionPermit } from "./execution-budgets.js"
 
 const NonEmptyString = Schema.NonEmptyString
@@ -77,7 +78,6 @@ export type PtyError = HostProtocolError
 
 export interface PtyOpenOptions {
   readonly argv: readonly [string, ...string[]]
-  readonly ownerScope: string
   readonly rows: number
   readonly cols: number
   readonly cwd?: string
@@ -173,6 +173,7 @@ const EMPTY_PTY_PERMISSIONS: PtyPermissionPolicy = Object.freeze({})
 
 export const makePty = (
   registry: ResourceRegistryApi,
+  owner: ResourceOwnerApi,
   options: PtyOptions
 ): Effect.Effect<PtyApi, HostProtocolInvalidArgumentError, never> =>
   Effect.gen(function* () {
@@ -203,7 +204,7 @@ export const makePty = (
             {
               command: options.argv[0],
               args: options.argv.slice(1),
-              ownerScope: options.ownerScope,
+              ownerScope: owner.scopeId,
               rows: options.rows,
               cols: options.cols,
               ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
@@ -287,7 +288,7 @@ export const makePty = (
                 status: "failure",
                 operation: "PTY.open",
                 command: options.argv[0],
-                ownerScope: options.ownerScope,
+                ownerScope: owner.scopeId,
                 errorTag: error._tag,
                 message: error.message,
                 timestamp: now()
@@ -298,7 +299,7 @@ export const makePty = (
             attributes: {
               command: options.argv[0],
               argc: options.argv.length,
-              ownerScope: options.ownerScope,
+              ownerScope: owner.scopeId,
               rows: options.rows,
               cols: options.cols
             }
@@ -312,12 +313,13 @@ export class PTY extends Context.Service<PTY, PtyApi>()("PTY") {}
 
 export const PtyLayer = (
   options: PtyOptions
-): Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceRegistry> =>
+): Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceOwner | ResourceRegistry> =>
   Layer.effect(
     PTY,
     Effect.gen(function* () {
+      const owner = yield* ResourceOwner
       const registry = yield* ResourceRegistry
-      return yield* makePty(registry, options)
+      return yield* makePty(registry, owner, options)
     })
   )
 

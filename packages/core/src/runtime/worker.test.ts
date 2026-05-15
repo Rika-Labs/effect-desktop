@@ -4,9 +4,9 @@ import { Cause, Deferred, Effect, Exit, Option, Queue, Schema, Stream } from "ef
 import {
   makePermissionRegistry,
   PermissionActor,
-  PermissionContext,
   type NormalizedCapability
 } from "./permission-registry.js"
+import type { ResourceOwnerApi } from "./resource-owner.js"
 import { makeResourceRegistry, type ResourceId, type ResourceRegistryApi } from "./resources.js"
 import {
   makeWorker,
@@ -26,8 +26,13 @@ import {
 const EchoIn = Schema.Struct({ text: Schema.String })
 const EchoOut = Schema.Struct({ echoed: Schema.String })
 
-const actor = new PermissionActor({ kind: "app", id: "app-main" })
-const context = new PermissionContext({ actor, traceId: "trace-worker" })
+const TEST_OWNER: ResourceOwnerApi = Object.freeze({
+  kind: "test",
+  scopeId: "scope-main",
+  actor: new PermissionActor({ kind: "resource", id: "scope-main" }),
+  attributes: Object.freeze({ scopeId: "scope-main" })
+})
+const context = { traceId: "trace-worker" }
 const filesystemReadCapability: NormalizedCapability = {
   kind: "filesystem.read",
   roots: ["/tmp"],
@@ -41,7 +46,6 @@ test("Worker validates channel send and receive through schemas", async () => {
   const handle = await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -68,14 +72,13 @@ test("Worker rejects generated resource ids that violate non-empty contract", as
   const permissions = await Effect.runPromise(makePermissionRegistry({ traceId: () => "trace" }))
 
   const service = await Effect.runPromise(
-    makeWorker(registry, permissions, {
+    makeWorker(registry, permissions, TEST_OWNER, {
       adapter: makeFakeAdapter(runtime)
     })
   )
   const exit = await Effect.runPromiseExit(
     service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context
@@ -94,7 +97,6 @@ test("Worker closes with the owning resource scope", async () => {
   await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -113,7 +115,6 @@ test("Worker owner-scope close interrupts unfinished exit observers", async () =
   await Effect.runPromise(
     fixture.service.spawn({
       script: "./hanging-exit-worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -137,7 +138,6 @@ test("Worker list returns live snapshots and removes closed workers", async () =
   const handle = await Effect.runPromise(
     fixture.service.spawn({
       script: "./listed-worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -164,7 +164,6 @@ test("Worker list normalizes fractional uptime before snapshot construction", as
   await Effect.runPromise(
     fixture.service.spawn({
       script: "./fractional-clock-worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context
@@ -196,7 +195,7 @@ test("Worker list normalizes invalid uptime before snapshot construction", async
     const permissions = await Effect.runPromise(makePermissionRegistry({ traceId: () => "trace" }))
     const workerNow = [100, timestamp]
     const service = await Effect.runPromise(
-      makeWorker(registry, permissions, {
+      makeWorker(registry, permissions, TEST_OWNER, {
         adapter: makeFakeAdapter(runtime),
         now: () => workerNow.shift() ?? timestamp
       })
@@ -204,7 +203,6 @@ test("Worker list normalizes invalid uptime before snapshot construction", async
     await Effect.runPromise(
       service.spawn({
         script: "./invalid-clock-worker.ts",
-        ownerScope: "scope-main",
         inputSchema: EchoIn,
         outputSchema: EchoOut,
         context
@@ -230,7 +228,6 @@ test("Worker rejects missing capabilities as CapabilityNotHeld before adapter sp
   const exit = await Effect.runPromiseExit(
     fixture.service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -248,7 +245,6 @@ test("Worker reports crashes on the messages error channel", async () => {
   const handle = await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -297,7 +293,6 @@ test("Worker disposes resource and releases budget when runtime exits by itself"
   const handle = await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -312,7 +307,6 @@ test("Worker disposes resource and releases budget when runtime exits by itself"
   const nextHandle = await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -342,7 +336,6 @@ test("Worker enforces the per-scope concurrent worker budget", async () => {
   const handle = await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker-one.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -352,17 +345,16 @@ test("Worker enforces the per-scope concurrent worker budget", async () => {
   const busy = await Effect.runPromiseExit(
     fixture.service.spawn({
       script: "./worker-two.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
       capabilities: [filesystemReadCapability]
     })
   )
+  await Effect.runPromise(handle.close)
   const otherScope = await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker-three.ts",
-      ownerScope: "scope-other",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -402,7 +394,6 @@ test("Worker releases the per-scope budget after adapter failure", async () => {
   const failed = await Effect.runPromiseExit(
     fixture.service.spawn({
       script: "./worker-one.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -412,7 +403,6 @@ test("Worker releases the per-scope budget after adapter failure", async () => {
   const handle = await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker-two.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -431,7 +421,6 @@ test("Worker validates malformed sends before transmission", async () => {
   const handle = await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -462,7 +451,6 @@ test("Worker rejects negative graceful shutdown durations before adapter spawn",
   const exit = await Effect.runPromiseExit(
     fixture.service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context
@@ -497,7 +485,6 @@ test("Worker rejects malformed channel schemas before adapter spawn", async () =
     const exit = await Effect.runPromiseExit(
       fixture.service.spawn({
         script: "./worker.ts",
-        ownerScope: "scope-main",
         inputSchema: workerOptions.inputSchema,
         outputSchema: workerOptions.outputSchema,
         context
@@ -517,7 +504,6 @@ test("Worker send rejects handles after close", async () => {
   const handle = await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -538,7 +524,6 @@ test("Worker send rejects handles after owner scope close", async () => {
   const handle = await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -559,7 +544,6 @@ test("Worker send rejects handles after runtime exit", async () => {
   const handle = await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -584,7 +568,6 @@ test("Worker validates malformed outputs on the messages stream", async () => {
   const handle = await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -628,7 +611,6 @@ test("Worker disposes two workers in deterministic newest-first scope order", as
   await Effect.runPromise(
     fixture.service.spawn({
       script: "./first.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -638,7 +620,6 @@ test("Worker disposes two workers in deterministic newest-first scope order", as
   await Effect.runPromise(
     fixture.service.spawn({
       script: "./second.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -671,7 +652,6 @@ test("Worker default Bun adapter sends, receives, and closes a real worker", asy
     const handle = await Effect.runPromise(
       fixture.service.spawn({
         script,
-        ownerScope: "scope-main",
         inputSchema: EchoIn,
         outputSchema: EchoOut,
         context
@@ -707,7 +687,6 @@ test("Worker default Bun adapter reports construction failures as Unsupported", 
     const exit = await Effect.runPromiseExit(
       fixture.service.spawn({
         script: "missing-worker.ts",
-        ownerScope: "scope-main",
         inputSchema: EchoIn,
         outputSchema: EchoOut,
         context
@@ -752,7 +731,6 @@ test("Bun adapter shutdown stays infallible when shutdown stages throw", async (
     const handle = await Effect.runPromise(
       fixture.service.spawn({
         script,
-        ownerScope: "scope-main",
         inputSchema: EchoIn,
         outputSchema: EchoOut,
         context
@@ -802,7 +780,6 @@ test("Bun adapter removes worker event listeners when closed", async () => {
     const handle = await Effect.runPromise(
       fixture.service.spawn({
         script,
-        ownerScope: "scope-main",
         inputSchema: EchoIn,
         outputSchema: EchoOut,
         context
@@ -845,11 +822,15 @@ const makeFixture = async (
   const permissions = await Effect.runPromise(makePermissionRegistry({ traceId: () => "trace" }))
   for (const capability of allowedCapabilities) {
     await Effect.runPromise(
-      permissions.declare(capability, { actor, source: "worker-test", effect: "allow" })
+      permissions.declare(capability, {
+        actor: TEST_OWNER.actor,
+        source: "worker-test",
+        effect: "allow"
+      })
     )
   }
   const service = await Effect.runPromise(
-    makeWorker(registry, permissions, {
+    makeWorker(registry, permissions, TEST_OWNER, {
       now: () => workerNow++,
       ...(adapter === undefined ? {} : { adapter }),
       ...(options.maxConcurrent === undefined

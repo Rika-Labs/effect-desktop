@@ -141,7 +141,6 @@ const startSidecar = (
         .spawn(command.command, command.args, {
           ...(command.cwd === undefined ? {} : { cwd: command.cwd }),
           ...(command.env === undefined ? {} : { env: command.env }),
-          ownerScope: command.ownerScope,
           ...(command.shell === undefined ? {} : { shell: command.shell })
         })
         .pipe(Effect.mapError((error) => sidecarError(error, "Sidecar.start", true)))

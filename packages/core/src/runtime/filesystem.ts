@@ -25,6 +25,7 @@ import {
 import type { PlatformError } from "effect/PlatformError"
 
 import { ResourceRegistry, type ResourceRegistryApi } from "./resources.js"
+import { ResourceOwner, type ResourceOwnerApi } from "./resource-owner.js"
 import {
   disabledFilesystemInspectorCollector,
   FilesystemInspectorEvent,
@@ -128,7 +129,7 @@ export interface FilesystemApi {
   ) => Effect.Effect<void, FilesystemError, never>
   readonly watch: (
     path: string,
-    options?: { readonly ownerScope: string; readonly bufferSize?: number }
+    options?: { readonly bufferSize?: number }
   ) => Stream.Stream<FilesystemEvent, FilesystemError, never>
 }
 
@@ -147,6 +148,7 @@ export interface FilesystemOptions {
 
 export const makeFilesystem = (
   registry: ResourceRegistryApi,
+  owner: ResourceOwnerApi,
   options: FilesystemOptions = {}
 ): Effect.Effect<FilesystemApi, never, EffectFileSystem.FileSystem> =>
   Effect.gen(function* () {
@@ -304,15 +306,13 @@ export const makeFilesystem = (
             path: authorizedPath
           })
         }).pipe(Effect.withSpan("Filesystem.remove", { attributes: { path } })),
-      watch: (
-        path: string,
-        options?: { readonly ownerScope: string; readonly bufferSize?: number }
-      ) =>
+      watch: (path: string, options?: { readonly bufferSize?: number }) =>
         Stream.unwrap(
           Effect.gen(function* () {
             const input = yield* decodeWatchInput(
               {
                 path,
+                ownerScope: owner.scopeId,
                 ...(options === undefined ? {} : options)
               },
               "Filesystem.watch"
@@ -426,11 +426,12 @@ export class Filesystem extends Context.Service<Filesystem, FilesystemApi>()("Fi
 export const FilesystemLive: Layer.Layer<
   Filesystem,
   never,
-  ResourceRegistry | EffectFileSystem.FileSystem
+  ResourceOwner | ResourceRegistry | EffectFileSystem.FileSystem
 > = Layer.effect(Filesystem)(
   Effect.gen(function* () {
+    const owner = yield* ResourceOwner
     const registry = yield* ResourceRegistry
-    return yield* makeFilesystem(registry)
+    return yield* makeFilesystem(registry, owner)
   })
 )
 
