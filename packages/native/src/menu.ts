@@ -192,9 +192,8 @@ export const MenuHandlersLive = MenuRpcGroup.toLayer({
   "Menu.capability": (input) =>
     Effect.gen(function* () {
       const menu = yield* Menu
-      const supported = yield* menu.capability(input.name, {
-        ...(input.platform === undefined ? {} : { platform: input.platform })
-      })
+      const options = input.platform === undefined ? undefined : { platform: input.platform }
+      const supported = yield* menu.capability(input.name, options)
       return new MenuCapabilityResult({ supported })
     })
 })

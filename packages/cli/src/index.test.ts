@@ -69,13 +69,18 @@ test("doctor report renders selected layer providers", () => {
     probes: [],
     layerGraph: {
       appId: "notes",
-      providers: { runtime: "test" },
+      providers: { runtime: "test", webview: "system" },
       nodes: [],
       providerFacts: [
         {
           id: "test",
           kind: "runtime",
           capabilities: ["FileSystem"]
+        },
+        {
+          id: "system",
+          kind: "webview",
+          capabilities: ["WindowWebView"]
         }
       ],
       failures: []
@@ -83,6 +88,7 @@ test("doctor report renders selected layer providers", () => {
   })
 
   expect(output).toContain("layer providers   runtime:test")
+  expect(output).toContain("webview:system")
   expect(output).toContain("layer failures    0")
 })
 
@@ -5277,7 +5283,19 @@ test("desktop publish rejects tampered manifest signatures through canonical byt
         "utf8"
       )
     ) as UpdateManifest
-    const tampered = { ...manifest, version: "9.9.9" }
+    const tampered: UpdateManifest = {
+      schemaVersion: manifest.schemaVersion,
+      appId: manifest.appId,
+      version: "9.9.9",
+      channel: manifest.channel,
+      keyVersion: manifest.keyVersion,
+      publishedAt: manifest.publishedAt,
+      ...(manifest.rollback === undefined ? {} : { rollback: manifest.rollback }),
+      ...(manifest.minVersion === undefined ? {} : { minVersion: manifest.minVersion }),
+      ...(manifest.maxVersion === undefined ? {} : { maxVersion: manifest.maxVersion }),
+      artifacts: manifest.artifacts,
+      signature: manifest.signature
+    }
 
     expect(verifyUpdateManifest(manifest, key.publicKey)).toBe(true)
     expect(verifyUpdateManifest(tampered, key.publicKey)).toBe(false)
@@ -6317,10 +6335,13 @@ test("desktop build stages renderer runtime host bridge manifests and report", a
   }
 })
 
-test("desktop build emits explicit chromium web engine selection in the host manifest", async () => {
+test("desktop build emits explicit chrome web engine selection in the host manifest", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-web-engine-"))
   try {
-    await writePlaygroundFixture(directory, { web: { engine: "chromium" } })
+    await writePlaygroundFixture(directory, { web: { engine: "chrome" } })
+    const chromeRuntime = join(directory, "apps", "inspector", "native", "chrome", "linux-x64")
+    await mkdir(chromeRuntime, { recursive: true })
+    await writeFile(join(chromeRuntime, "cef-runtime.txt"), "pinned test runtime")
     const runner: CommandRunner = (invocation) =>
       Effect.gen(function* () {
         if (invocation.step === "renderer") {
@@ -6375,6 +6396,8 @@ test("desktop build emits explicit chromium web engine selection in the host man
     ) as {
       readonly hostManifest: {
         readonly webEngine: string
+        readonly webEngineRuntime: string
+        readonly webEnginePath: string
       }
     }
     const report = JSON.parse(
@@ -6404,12 +6427,50 @@ test("desktop build emits explicit chromium web engine selection in the host man
     }
 
     expect(exitCode).toBe(0)
-    expect(manifest.hostManifest.webEngine).toBe("chromium")
-    expect(report.providers.webEngine).toBe("chromium")
-    expect(report.providerMeasurements[0]?.webEngine).toBe("chromium")
+    expect(manifest.hostManifest.webEngine).toBe("chrome")
+    expect(manifest.hostManifest.webEngineRuntime).toBe("cef")
+    expect(manifest.hostManifest.webEnginePath).toBe("native/chrome")
+    expect(report.providers.webEngine).toBe("chrome")
+    expect(report.providerMeasurements[0]?.webEngine).toBe("chrome")
     expect(report.steps.find((step) => step.name === "native-host")?.provider).toBe(
-      "webview:chromium"
+      "webview:chrome"
     )
+    expect(report.steps.find((step) => step.name === "webview-runtime")?.provider).toBe(
+      "webview:chrome"
+    )
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop build rejects chrome web engine when the bundled runtime is absent", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-missing-chrome-"))
+  try {
+    await writePlaygroundFixture(directory, { web: { engine: "chrome" } })
+    const calls: string[] = []
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        commandRunner: (invocation) =>
+          Effect.sync(() => {
+            calls.push(invocation.step)
+          }),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(calls).toEqual([])
+    expect(stderr.join("")).toContain("BuildConfigError")
+    expect(stderr.join("")).toContain("web.engine chrome requires bundled Chromium/CEF assets")
+    expect(stderr.join("")).toContain("native/chrome/linux-x64")
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

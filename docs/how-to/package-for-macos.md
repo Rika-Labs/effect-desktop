@@ -25,7 +25,7 @@ Notes.app/
 │   ├── MacOS/
 │   │   └── Notes               # native launcher
 │   └── Resources/
-│       ├── runtime/             # Bun runtime entry + dependencies
+│       ├── runtime/             # TypeScript runtime entry + dependencies
 │       ├── renderer/            # built renderer assets
 │       └── icon.icns
 └── ...

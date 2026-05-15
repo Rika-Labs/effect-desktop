@@ -214,7 +214,7 @@ test("Desktop.make returns metadata descriptor and Desktop.app returns the runti
   const core = await import("./index.js")
   const app = core.Desktop.make({
     id: "notes",
-    providers: { runtime: "test" },
+    providers: core.Desktop.provider(core.Desktop.Provider.Runtime.test),
     windows: core.Desktop.window("main", { title: "Notes", renderer: "/" })
   })
 
@@ -222,7 +222,7 @@ test("Desktop.make returns metadata descriptor and Desktop.app returns the runti
   expect(app.id).toBe("notes")
   expect(core.Desktop.manifest(app).windows["main"]?.title).toBe("Notes")
   expect(core.Desktop.manifest(app).windows["main"]?.renderer).toBe("/")
-  expect(app.providers).toEqual({ runtime: "test" })
+  expect(Layer.isLayer(app.providers)).toBe(true)
   expect("pipe" in app).toBe(false)
   expect("layers" in app).toBe(false)
   expect(Layer.isLayer(core.Desktop.app(app))).toBe(true)
@@ -242,7 +242,7 @@ test("Desktop.make returns metadata descriptor and Desktop.app returns the runti
       )
     )
   )
-  expect(runtime.providers).toEqual({ runtime: "test" })
+  expect(runtime.providers).toEqual({ runtime: "test", webview: "system" })
 })
 
 test("Desktop.runtimeGraph exposes selected providers and composition nodes without launching", async () => {
@@ -253,7 +253,7 @@ test("Desktop.runtimeGraph exposes selected providers and composition nodes with
     core.Desktop.runtimeGraph({
       id: "notes",
       windows: core.Desktop.window("main", { title: "Notes" }),
-      providers: { runtime: "test" },
+      providers: core.Desktop.provider(core.Desktop.Provider.Runtime.test),
       rpcs: core.Desktop.rpc(
         NotesRpcs,
         NotesRpcs.toLayer({
@@ -267,7 +267,7 @@ test("Desktop.runtimeGraph exposes selected providers and composition nodes with
   expect(graph).toMatchObject({
     _tag: "DesktopRuntimeGraph",
     appId: "notes",
-    providers: { runtime: "test" },
+    providers: { runtime: "test", webview: "system" },
     providerBudgets: [
       {
         id: "test",
@@ -281,6 +281,7 @@ test("Desktop.runtimeGraph exposes selected providers and composition nodes with
   })
   expect(graph.nodes.map((node) => [node.id, node.kind])).toEqual([
     ["provider:runtime:test", "provider"],
+    ["provider:webview:system", "provider"],
     ["core:resources", "core-service"],
     ["core:telemetry", "core-service"],
     ["core:permissions", "core-service"],
@@ -303,6 +304,10 @@ test("Desktop.runtimeGraph exposes selected providers and composition nodes with
     kind: "runtime",
     capabilities: ["FileSystem", "Path", "Terminal", "Stdio", "ChildProcessSpawner"]
   })
+  expect(graph.providerFacts.find((provider) => provider.id === "system")).toMatchObject({
+    kind: "webview",
+    capabilities: ["WindowWebView", "AppProtocol"]
+  })
   expect(
     core.layerGraphSnapshotFromGraph(graph).nodes.find((node) => node.id === "rpc-layer:0")
   ).toMatchObject({
@@ -317,11 +322,14 @@ test("Desktop.runtimeGraph exposes node runtime provider selection", async () =>
     core.Desktop.runtimeGraph({
       id: "notes",
       windows: core.Desktop.window("main", { title: "Notes" }),
-      providers: { runtime: "node" }
+      providers: Layer.mergeAll(
+        core.Desktop.provider(core.Desktop.Provider.Runtime.node),
+        core.Desktop.provider(core.Desktop.Provider.WebView.chrome)
+      )
     })
   )
 
-  expect(graph.providers).toEqual({ runtime: "node" })
+  expect(graph.providers).toEqual({ runtime: "node", webview: "chrome" })
   expect(graph.providerBudgets).toEqual([
     {
       id: "node",
@@ -337,6 +345,51 @@ test("Desktop.runtimeGraph exposes node runtime provider selection", async () =>
     kind: "provider",
     label: "Node runtime provider"
   })
+  expect(graph.nodes[1]).toMatchObject({
+    id: "provider:webview:chrome",
+    kind: "provider",
+    label: "Bundled Chrome WebView provider"
+  })
+})
+
+test("Desktop.provider accepts custom provider descriptors through layer composition", async () => {
+  const core = await import("./index.js")
+  const { TestRuntimeProviderLayer } = await import("@effect-desktop/core/providers/test")
+  const customRuntime = core.Desktop.Provider.runtime({
+    id: "custom-runtime",
+    layer: TestRuntimeProviderLayer,
+    budget: {
+      id: "custom-runtime",
+      kind: "runtime",
+      package: "@effect-desktop/core",
+      importPath: "@effect-desktop/core/providers/custom-runtime",
+      startupBudgetMs: 25,
+      bundleBudgetKb: 64
+    }
+  })
+  const customWebView = core.Desktop.Provider.webview({
+    id: "custom-webview",
+    hostEngine: "chrome",
+    capabilities: ["WindowWebView", "AppProtocol"]
+  })
+
+  const graph = await Effect.runPromise(
+    core.Desktop.runtimeGraph({
+      id: "notes",
+      windows: core.Desktop.window("main", { title: "Notes" }),
+      providers: Layer.mergeAll(
+        core.Desktop.provider(customRuntime),
+        core.Desktop.provider(customWebView)
+      )
+    })
+  )
+
+  expect(graph.providers).toEqual({ runtime: "custom-runtime", webview: "custom-webview" })
+  expect(graph.providerBudgets[0]?.id).toBe("custom-runtime")
+  expect(graph.providerFacts.find((provider) => provider.id === "custom-webview")).toMatchObject({
+    kind: "webview",
+    capabilities: ["WindowWebView", "AppProtocol"]
+  })
 })
 
 test("Desktop.runtime runs the same provider-backed app program under bun, node, and test graphs", async () => {
@@ -348,11 +401,14 @@ test("Desktop.runtime runs the same provider-backed app program under bun, node,
   const program = Effect.gen(function* () {
     const app = yield* core.DesktopApp
     const runtime = yield* core.DesktopRuntime
+    const owner = yield* core.ResourceOwner
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
     const cwd = path.resolve(".")
     return {
       appId: app.appId,
+      ownerKind: owner.kind,
+      ownerScope: owner.scopeId,
       runtimeProvider: runtime.providers.runtime,
       graphAppId: runtime.graph.appId,
       cwdExists: yield* fs.exists(cwd)
@@ -365,32 +421,48 @@ test("Desktop.runtime runs the same provider-backed app program under bun, node,
   const node = await Effect.runPromise(
     Effect.scoped(
       program.pipe(
-        Effect.provide(core.Desktop.runtime({ ...config, providers: { runtime: "node" } }))
+        Effect.provide(
+          core.Desktop.runtime({
+            ...config,
+            providers: core.Desktop.provider(core.Desktop.Provider.Runtime.node)
+          })
+        )
       )
     )
   )
   const test = await Effect.runPromise(
     Effect.scoped(
       program.pipe(
-        Effect.provide(core.Desktop.runtime({ ...config, providers: { runtime: "test" } }))
+        Effect.provide(
+          core.Desktop.runtime({
+            ...config,
+            providers: core.Desktop.provider(core.Desktop.Provider.Runtime.test)
+          })
+        )
       )
     )
   )
 
   expect(bun).toEqual({
     appId: "notes",
+    ownerKind: "app",
+    ownerScope: "notes",
     runtimeProvider: "bun",
     graphAppId: "notes",
     cwdExists: true
   })
   expect(node).toEqual({
     appId: "notes",
+    ownerKind: "app",
+    ownerScope: "notes",
     runtimeProvider: "node",
     graphAppId: "notes",
     cwdExists: true
   })
   expect(test).toMatchObject({
     appId: "notes",
+    ownerKind: "app",
+    ownerScope: "notes",
     runtimeProvider: "test",
     graphAppId: "notes"
   })
@@ -413,7 +485,7 @@ test("Desktop runtime accepts handler services provided around Desktop.app(App)"
   const app = core.Desktop.make({
     id: "notes",
     windows: core.Desktop.window("main", { title: "Notes" }),
-    providers: { runtime: "test" },
+    providers: core.Desktop.provider(core.Desktop.Provider.Runtime.test),
     rpcs: core.Desktop.rpc(NotesRpcs, NotesLive)
   })
 
@@ -424,12 +496,16 @@ test("Desktop runtime accepts handler services provided around Desktop.app(App)"
   expect(Exit.isSuccess(exit)).toBe(true)
 })
 
-test("Desktop.runtime rejects unknown runtime providers as typed startup errors", async () => {
+test("Desktop.runtime rejects duplicate runtime providers as typed startup errors", async () => {
   const core = await import("./index.js")
+  const duplicateProviders = Layer.mergeAll(
+    core.Desktop.provider(core.Desktop.Provider.Runtime.bun),
+    core.Desktop.provider(core.Desktop.Provider.Runtime.node)
+  )
   const badConfig = {
     id: "notes",
     windows: core.Desktop.window("main", { title: "Notes" }),
-    providers: { runtime: "missing-runtime" }
+    providers: duplicateProviders
   }
   const graphExit = await Effect.runPromiseExit(core.Desktop.runtimeGraph(badConfig))
   const diagnostics = await Effect.runPromise(core.Desktop.runtimeGraphSnapshot(badConfig))
@@ -447,15 +523,15 @@ test("Desktop.runtime rejects unknown runtime providers as typed startup errors"
     expect(failure?.error).toBeInstanceOf(core.DesktopSpineConfigError)
     expect(failure?.error).toMatchObject({
       _tag: "DesktopConfigError",
-      reason: "missing-provider",
-      provider: "missing-runtime"
+      reason: "invalid-config",
+      provider: "node"
     })
   }
   expect(diagnostics.failures[0]).toMatchObject({
-    reason: "missing-provider",
-    requirement: "DesktopRuntimeProviderServices",
-    providerPath: ["provider:runtime:missing-runtime"],
-    message: 'Runtime provider "missing-runtime" is not available'
+    reason: "missing-requirement",
+    requirement: "DesktopRuntime",
+    providerPath: ["provider:runtime:node"],
+    message: "Desktop.provider(...) selected more than one runtime provider (bun, node)"
   })
 
   expect(Exit.isFailure(exit)).toBe(true)
@@ -464,34 +540,67 @@ test("Desktop.runtime rejects unknown runtime providers as typed startup errors"
     expect(failure?.error).toBeInstanceOf(core.DesktopSpineConfigError)
     expect(failure?.error).toMatchObject({
       _tag: "DesktopConfigError",
-      reason: "missing-provider",
-      provider: "missing-runtime"
+      reason: "invalid-config",
+      provider: "node"
     })
   }
 })
 
-test("Desktop.runtimeGraphSnapshot preserves missing provider failure evidence", async () => {
+test("Desktop.runtime rejects app ids that cannot become ResourceOwner ids", async () => {
   const core = await import("./index.js")
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(
+      Effect.gen(function* () {
+        return yield* core.DesktopRuntime
+      }).pipe(
+        Effect.provide(
+          core.Desktop.runtime({
+            id: "bad\napp",
+            windows: core.Desktop.window("main", { title: "Notes" })
+          })
+        )
+      )
+    )
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(core.DesktopSpineConfigError)
+    expect(failure?.error).toMatchObject({
+      _tag: "DesktopConfigError",
+      reason: "invalid-config",
+      appId: "bad\napp"
+    })
+  }
+})
+
+test("Desktop.runtimeGraphSnapshot preserves provider failure evidence", async () => {
+  const core = await import("./index.js")
+  const duplicateProviders = Layer.mergeAll(
+    core.Desktop.provider(core.Desktop.Provider.Runtime.bun),
+    core.Desktop.provider(core.Desktop.Provider.Runtime.node)
+  )
   const snapshot = await Effect.runPromise(
     core.Desktop.runtimeGraphSnapshot({
       id: "notes",
       windows: core.Desktop.window("main", { title: "Notes" }),
-      providers: { runtime: "missing-runtime" }
+      providers: duplicateProviders
     })
   )
 
   expect(snapshot).toMatchObject({
     appId: "notes",
-    providers: { runtime: "missing-runtime" },
+    providers: { runtime: "node", webview: "system" },
     nodes: [],
     providerFacts: [],
     failures: [
       {
         appId: "notes",
-        reason: "missing-provider",
-        requirement: "DesktopRuntimeProviderServices",
-        providerPath: ["provider:runtime:missing-runtime"],
-        provider: "missing-runtime"
+        reason: "missing-requirement",
+        requirement: "DesktopRuntime",
+        providerPath: ["provider:runtime:node"],
+        provider: "node"
       }
     ]
   })

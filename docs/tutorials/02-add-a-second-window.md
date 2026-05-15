@@ -19,7 +19,7 @@ You built a notes app in [Tutorial 01](01-build-a-notes-app.md). Now you'll add 
 
 ## The mental model: windows are scoped resources
 
-Each window the app opens is a scoped resource. The scope is named (`"window-main"`, `"window-compose"`) and owns:
+Each window the app opens is a scoped resource. The scope is named from the host window id and owns:
 
 - The window's geometry (persisted by `WindowState`).
 - Any per-window services or watchers.
@@ -66,7 +66,7 @@ Desktop.window(
 )
 ```
 
-Inside that window's scoped services, `yield* Settings` gives the compose window's store. The framework provides the current window context before building the layer, so `Settings.window(...)` can bind ownership to the actual host window scope.
+Inside that window's scoped services, `yield* Settings` gives the compose window's store. The framework provides the current `WindowContext` and window `ResourceOwner` before building the layer, so `Settings.window(...)` can bind ownership to the actual host window scope.
 
 ```ts
 const ComposeDraftsLive = Layer.effectDiscard(

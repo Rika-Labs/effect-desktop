@@ -232,7 +232,11 @@ const formatLayerGraph = (graph: LayerGraphSnapshot | undefined): readonly strin
   }
 
   const selected = graph.providerFacts
-    .filter((provider) => provider.id === graph.providers.runtime)
+    .filter(
+      (provider) =>
+        (provider.kind === "runtime" && provider.id === graph.providers.runtime) ||
+        (provider.kind === "webview" && provider.id === graph.providers.webview)
+    )
     .map((provider) => `${provider.kind}:${provider.id}`)
     .join(", ")
 

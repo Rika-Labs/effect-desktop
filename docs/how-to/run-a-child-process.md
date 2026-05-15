@@ -33,11 +33,8 @@ import { Process } from "@effect-desktop/core"
 
 const program = Effect.gen(function* () {
   const proc = yield* Process
-  const handle = yield* proc.spawn({
-    command: "git",
-    args: ["status", "--porcelain"],
-    cwd: "/path/to/repo",
-    ownerScope: "window-main"
+  const handle = yield* proc.spawn("git", ["status", "--porcelain"], {
+    cwd: "/path/to/repo"
   })
 
   // Collect stdout
@@ -55,7 +52,9 @@ const program = Effect.gen(function* () {
 })
 ```
 
-`Process.spawn` is **shellless**. There is no shell expansion. Pass arguments as an array. If you need a shell, use `Command` for app-level command logic, not `Process`.
+`Process.spawn` is **shellless** by default. There is no shell expansion. Pass arguments as an array. If you need a shell, opt in with `shell: true` or use `Command` for app-level command logic.
+
+The spawned process is owned by the `ResourceOwner` that built the `Process` service. App runtime services use the app owner; window service layers use the window owner.
 
 ## 3. Stream output
 

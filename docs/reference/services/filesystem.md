@@ -8,7 +8,7 @@ effect_version: 4
 
 # `Filesystem`
 
-Runtime filesystem service. Enforces root containment, requires an `ownerScope` on every operation, returns typed failures.
+Runtime filesystem service. Enforces root containment, binds handles to the `ResourceOwner` in the layer graph, and returns typed failures.
 
 > Note: this is `@effect-desktop/core`'s `Filesystem`, distinct from Effect's `FileSystem` from `effect/platform`.
 
@@ -29,17 +29,16 @@ import {
 
 ## API
 
-| Method            | Signature                                                    |
-| ----------------- | ------------------------------------------------------------ |
-| `readFileString`  | `({ path, ownerScope, encoding? }) => Effect<string>`        |
-| `readFileBytes`   | `({ path, ownerScope }) => Effect<Uint8Array>`               |
-| `writeFileString` | `({ path, content, ownerScope, encoding? }) => Effect<void>` |
-| `writeFileBytes`  | `({ path, content, ownerScope }) => Effect<void>`            |
-| `readDirectory`   | `({ path, ownerScope }) => Effect<DirectoryEntry[]>`         |
-| `stat`            | `({ path, ownerScope }) => Effect<FileStat>`                 |
-| `remove`          | `({ path, ownerScope }) => Effect<void>`                     |
-| `exists`          | `({ path, ownerScope }) => Effect<boolean>`                  |
-| `watch`           | `({ path, ownerScope }) => Effect<Watcher>`                  |
+| Method        | Signature                                                      |
+| ------------- | -------------------------------------------------------------- |
+| `read`        | `(path) => Effect<Uint8Array>`                                 |
+| `realpath`    | `(path, capability?) => Effect<string>`                        |
+| `write`       | `(path, bytes) => Effect<void>`                                |
+| `writeAtomic` | `(path, bytes) => Effect<void>`                                |
+| `stat`        | `(path) => Effect<FileStat>`                                   |
+| `mkdir`       | `(path, options?) => Effect<void>`                             |
+| `remove`      | `(path, options?) => Effect<void>`                             |
+| `watch`       | `(path, options?) => Stream<FilesystemEvent, FilesystemError>` |
 
 Writes are atomic via temp file + rename. Watchers register a scoped resource that closes with the scope.
 
@@ -55,18 +54,13 @@ Reads need `filesystem.read` for a containing root. Writes need `filesystem.writ
 
 ## Layer
 
-`makeFilesystem({ ownerScope, rootScope, policy })` returns the layer.
+`FilesystemLive` and `makeFilesystem(...)` require `ResourceOwner` plus `ResourceRegistry`. `Desktop.runtime(...)` provides an app owner, `Desktop.window(..., services)` provides a window owner, and tests can provide `ResourceOwner.test(...)`.
 
 ## Example
 
 ```ts
 const fs = yield * Filesystem
-const text =
-  yield *
-  fs.readFileString({
-    path: "/Users/me/Documents/notes.md",
-    ownerScope: "window-main"
-  })
+const bytes = yield * fs.read("/Users/me/Documents/notes.md")
 ```
 
 ## Test layer

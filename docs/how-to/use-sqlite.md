@@ -14,11 +14,10 @@ effect_version: 4
 
 ```ts
 import { Effect, Layer } from "effect"
-import { SqlClient, SqlClientLive } from "@effect-desktop/core"
+import { ResourceOwner, SqlClient, SqlClientLive } from "@effect-desktop/core"
 
 const SqliteLive = SqlClientLive({
-  filename: "app.sqlite",
-  ownerScope: "window-main"
+  filename: "app.sqlite"
 })
 
 const program = Effect.gen(function* () {
@@ -29,6 +28,7 @@ const program = Effect.gen(function* () {
 await Effect.runPromise(
   program.pipe(
     Effect.provide(SqliteLive),
+    Effect.provide(ResourceOwner.app("dev.example.notes")),
     Effect.provide(PermissionRegistryLive),
     Effect.provide(ResourceRegistryLive),
     Effect.scoped
@@ -36,7 +36,7 @@ await Effect.runPromise(
 )
 ```
 
-`SqlClientLive` validates the path, checks the `sqlite.open` permission, registers a scoped `sqlite` resource, and delegates everything else to `@effect/sql-sqlite-bun`.
+`SqlClientLive` validates the path, checks the `sqlite.open` permission, registers a scoped `sqlite` resource under the current `ResourceOwner`, and delegates everything else to `@effect/sql-sqlite-bun`. `Desktop.runtime(...)` provides the app owner automatically; the explicit `ResourceOwner.app(...)` above is only for this standalone layer example.
 
 ## 2. Queries
 

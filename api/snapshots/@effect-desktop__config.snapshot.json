@@ -341,7 +341,7 @@
     {
       "name": "WebEngine",
       "kind": "type",
-      "signature": "const WebEngine: Schema.Literals<readonly [\"system\", \"chromium\"]>"
+      "signature": "const WebEngine: Schema.Literals<readonly [\"system\", \"chrome\", \"chromium\"]>"
     }
   ]
 }

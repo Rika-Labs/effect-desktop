@@ -31,7 +31,7 @@ function make<RIn = never, E = never>(
 | `id`          | `string`                       | Reverse-DNS app id (e.g. `dev.example.notes`).                                                                                           |
 | `windows`     | `DesktopWindowsLayer<RIn>`     | A single composed Layer of window registrations. Build via `Desktop.window(id, spec, services?)`; compose multiple via `Layer.mergeAll`. |
 | `rpcs`        | `DesktopRpcsLayer<E, RIn>`     | A single composed Layer of RPC registrations. Build via `Desktop.rpc(group, handlers)`; compose multiple via `Layer.mergeAll`.           |
-| `providers`   | `DesktopProviderSelection`     | Optional provider selection (e.g. runtime engine).                                                                                       |
+| `providers`   | `DesktopProvidersLayer<RIn>`   | A single composed Layer of provider registrations. Build via `Desktop.provider(...)`; compose multiple via `Layer.mergeAll`.             |
 | `permissions` | `DesktopPermissionsLayer<RIn>` | A single composed Layer of permission declarations. Build via `Desktop.permission(capability)`.                                          |
 | `workflows`   | `DesktopWorkflowsLayer<RIn,E>` | A single composed Layer of workflow registrations. Build via `Desktop.workflow(layer)`.                                                  |
 
@@ -128,7 +128,7 @@ Returns the assembled runtime layer graph (nodes and edges) as data — useful f
 
 ```ts
 const snapshot = Desktop.runtimeGraphSnapshot()
-// LayerGraphSnapshot — { nodes: LayerGraphNodeSnapshot[], failures: LayerFailurePayload[] }
+// LayerGraphSnapshot — { providers: { runtime, webview }, nodes, providerFacts, failures }
 ```
 
 ## `Desktop.Rpcs`, `Desktop.describeRpcs()`
@@ -148,7 +148,30 @@ These come from `@effect-desktop/bridge` and are exposed here so a runtime entry
 
 ## Workflow engine
 
-`Desktop.WorkflowEngineMemory` and `Desktop.WorkflowEngineDurable` are the two workflow engine layers. Memory is the default for development; durable persists workflow state across restarts. Override via the `providers` field of `Desktop.make`.
+`Desktop.WorkflowEngineMemory` and `Desktop.WorkflowEngineDurable` are the two workflow engine layers. Memory is the default for development; durable persists workflow state across restarts. Compose the durable layer in `workflows` or around `Desktop.app(...)`.
+
+## Providers
+
+Provider selection follows the same app-composition shape as windows, RPCs, permissions, and workflows:
+
+```ts
+providers: Layer.mergeAll(
+  Desktop.provider(Desktop.Provider.Runtime.node),
+  Desktop.provider(Desktop.Provider.WebView.chrome)
+)
+```
+
+Omitting `providers` is equivalent to registering `Desktop.Provider.Runtime.bun` and `Desktop.Provider.WebView.system`.
+
+Custom providers are descriptors:
+
+```ts
+const ChromeWebView = Desktop.Provider.webview({
+  id: "chrome",
+  hostEngine: "chrome",
+  capabilities: ["WindowWebView", "AppProtocol", "BundledChromium"]
+})
+```
 
 ## Example
 

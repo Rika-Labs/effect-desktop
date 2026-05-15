@@ -50,7 +50,7 @@ export default defineDesktopConfig({
 | `app`         | `DesktopAppConfig`         | yes      | id, name, version                         |
 | `runtime`     | `DesktopRuntimeConfig`     | no       | engine (`"bun"` \| `"node"`), entry path  |
 | `renderer`    | `DesktopRendererConfig`    | yes      | framework, entry, dist                    |
-| `web`         | `DesktopWebConfig`         | no       | engine (`"system"` \| `"chromium"`)       |
+| `web`         | `DesktopWebConfig`         | no       | engine (`"system"` \| `"chrome"`)         |
 | `native`      | `DesktopNativeConfig`      | no       | host crate path overrides                 |
 | `protocol`    | `DesktopProtocolConfig`    | no       | app protocol scheme                       |
 | `build`       | `DesktopBuildConfig`       | no       | targets, output dir                       |
@@ -75,6 +75,20 @@ const config = await Effect.runPromise(decodeDesktopConfig(rawJson))
 
 Merges multiple partial configs left-to-right. Useful for composing per-environment overrides.
 
+## Runtime and WebView engines
+
+`runtime.engine` selects the JavaScript runtime used by CLI build and package commands. It maps to the same provider descriptors available through `Desktop.provider(...)`:
+
+- `bun` — default runtime provider.
+- `node` — Node runtime provider.
+
+`web.engine` selects the native WebView provider for the host manifest:
+
+- `system` — default OS WebView provider.
+- `chrome` — bundled Chromium/CEF provider. The build requires assets at `native/chrome/<target>` and copies them into the packaged layout at `native/chrome`.
+
+Legacy config files that say `web.engine: "chromium"` decode to the canonical `chrome` value.
+
 ## `effectiveCspPolicy(cspConfig)` → `CspPolicy`
 
 Computes the effective CSP from your declared policy and any acknowledged weakenings. Returned policy is what the framework will inject into the renderer.
@@ -96,22 +110,22 @@ Each violation has `{ rule, severity, message, fix, location, justification? }`.
 
 `ProductionRuleId` is a closed union of 14 rule names:
 
-| Rule                                   | What it catches                                       |
-| -------------------------------------- | ----------------------------------------------------- |
-| `renderer-backend-import`              | Renderer code importing `node:*` or backend modules   |
-| `raw-bridge-call`                      | Renderer constructing `HostProtocolEnvelope` directly |
-| `renderer-native-host-protocol`        | Renderer-side use of host protocol primitives         |
-| `filesystem-write-without-scope`       | A `writeFile` call missing `ownerScope`               |
-| `process-permission-without-policy`    | `Process` use without an explicit permission policy   |
-| `secret-access-without-audit`          | `Secrets` access where audit was disabled             |
-| `update-install-without-signature`     | `Updater.install` without signature verification      |
-| `app-protocol-path-traversal`          | App-protocol routing that allows `..` traversal       |
-| `weakened-csp`                         | CSP weakening without an explicit acknowledgement     |
-| `unsafe-external-navigation`           | External navigation policy missing                    |
-| `devtools-in-prod`                     | Devtools layer enabled in production builds           |
-| `unscoped-resource`                    | Resource registered without an owner scope            |
-| `unsupported-capability-without-guard` | Platform-limited call without `isSupported` guard     |
-| `secret-pattern-not-redacted`          | Secret-shaped value emitted without redaction         |
+| Rule                                   | What it catches                                          |
+| -------------------------------------- | -------------------------------------------------------- |
+| `renderer-backend-import`              | Renderer code importing `node:*` or backend modules      |
+| `raw-bridge-call`                      | Renderer constructing `HostProtocolEnvelope` directly    |
+| `renderer-native-host-protocol`        | Renderer-side use of host protocol primitives            |
+| `filesystem-write-without-scope`       | A filesystem write path missing an owning resource scope |
+| `process-permission-without-policy`    | `Process` use without an explicit permission policy      |
+| `secret-access-without-audit`          | `Secrets` access where audit was disabled                |
+| `update-install-without-signature`     | `Updater.install` without signature verification         |
+| `app-protocol-path-traversal`          | App-protocol routing that allows `..` traversal          |
+| `weakened-csp`                         | CSP weakening without an explicit acknowledgement        |
+| `unsafe-external-navigation`           | External navigation policy missing                       |
+| `devtools-in-prod`                     | Devtools layer enabled in production builds              |
+| `unscoped-resource`                    | Resource registered without an owner scope               |
+| `unsupported-capability-without-guard` | Platform-limited call without `isSupported` guard        |
+| `secret-pattern-not-redacted`          | Secret-shaped value emitted without redaction            |
 
 Each rule can be acknowledged in `security.acknowledgements` with a justification — turning a `fail` into `acknowledged`. The release gate refuses unacknowledged failures.
 

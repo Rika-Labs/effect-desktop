@@ -29,26 +29,23 @@ import {
 
 | Method    | Signature                                             |
 | --------- | ----------------------------------------------------- |
-| `spawn`   | `(input: ProcessSpawnInput) => Effect<ProcessHandle>` |
+| `spawn`   | `(command, args?, options?) => Effect<ProcessHandle>` |
 | `list`    | `() => Effect<ProcessSnapshot[]>`                     |
-| `observe` | `() => Stream<ProcessLifecycleEvent>`                 |
+| `observe` | `() => Stream<readonly ProcessSnapshot[]>`            |
 
-## `ProcessSpawnInput`
+## `ProcessSpawnOptions`
 
 ```ts
 {
-  command: string
-  args?: string[]
   cwd?: string
   env?: Record<string, string>
-  ownerScope: string
-  stdin?: "ignore" | "pipe"
-  stdout?: "ignore" | "pipe"
-  stderr?: "ignore" | "pipe"
+  shell?: boolean
 }
 ```
 
 Shellless. No shell expansion. Pass arguments as an array.
+
+Processes are registered under the `ResourceOwner` that built the `Process` service. `Desktop.runtime(...)` supplies an app owner, `Desktop.window(..., services)` supplies a window owner, and custom job layers can provide `ResourceOwner.job(...)`.
 
 ## `ProcessHandle`
 

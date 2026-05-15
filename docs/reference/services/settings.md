@@ -40,7 +40,7 @@ Settings.layer({
 })
 ```
 
-`Settings.window(...)` provides the same store for a `Desktop.window(...)` service layer and binds ownership to the current host window context. `Settings.memory(...)` provides an in-memory store for tests.
+`Settings.window(...)` provides the same store for a `Desktop.window(...)` service layer and binds ownership to that window's `ResourceOwner`. `Settings.memory(...)` provides an in-memory store for tests.
 
 `Store` / `SettingsApi`:
 
@@ -81,9 +81,9 @@ When the layer detects corruption and a `backupPath` is provided, Settings repla
 
 ## Layer
 
-`Settings.layer(options)` returns a layer that depends on `SqlClient`, `PermissionRegistry`, and `ResourceRegistry`.
+`Settings.layer(options)` returns a layer that depends on `ResourceOwner`, `PermissionRegistry`, and `ResourceRegistry`.
 
-`Settings.window(options)` returns a layer with the same dependencies plus `DesktopWindowContext`; `Desktop.window(...)` supplies that context automatically for its third-argument services layer.
+`Settings.window(options)` returns the same layer shape. `Desktop.window(...)` supplies a window `ResourceOwner` automatically for its third-argument services layer.
 
 `Settings.memory(options?)` returns an in-memory layer with no external dependencies.
 

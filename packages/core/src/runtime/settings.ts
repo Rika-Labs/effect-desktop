@@ -2,8 +2,8 @@ import { Clock, Context, Data, Effect, Layer, Option, PubSub, Schema, Stream } f
 import { KeyValueStore } from "effect/unstable/persistence"
 
 import type { PermissionRegistry } from "./permission-registry.js"
+import { ResourceOwner } from "./resource-owner.js"
 import type { ResourceRegistry } from "./resources.js"
-import { DesktopWindowContext } from "./desktop-window-context.js"
 import { SqlClientLive, type SqlitePolicyError } from "./sqlite.js"
 
 const NonEmptyString = Schema.NonEmptyString
@@ -373,9 +373,14 @@ export class Settings extends Context.Service<Settings, SettingsApi>()("Settings
   ): Layer.Layer<
     Settings,
     SettingsError | SqlitePolicyError,
-    PermissionRegistry | ResourceRegistry
+    ResourceOwner | PermissionRegistry | ResourceRegistry
   > {
-    return settingsLayer(options, "app")
+    return Layer.unwrap(
+      Effect.gen(function* () {
+        const owner = yield* ResourceOwner
+        return settingsLayer(options, owner.scopeId)
+      })
+    )
   }
 
   static window(
@@ -383,14 +388,9 @@ export class Settings extends Context.Service<Settings, SettingsApi>()("Settings
   ): Layer.Layer<
     Settings,
     SettingsError | SqlitePolicyError,
-    DesktopWindowContext | PermissionRegistry | ResourceRegistry
+    ResourceOwner | PermissionRegistry | ResourceRegistry
   > {
-    return Layer.unwrap(
-      Effect.gen(function* () {
-        const context = yield* DesktopWindowContext
-        return settingsLayer(options, context.ownerScope)
-      })
-    )
+    return Settings.layer(options)
   }
 
   static memory(options: SettingsMemoryOptions = {}): Layer.Layer<Settings, SettingsError, never> {
@@ -404,11 +404,11 @@ const settingsLayer = (
 ): Layer.Layer<
   Settings,
   SettingsError | SqlitePolicyError,
-  PermissionRegistry | ResourceRegistry
+  ResourceOwner | PermissionRegistry | ResourceRegistry
 > =>
   settingsFromKv(options, ownerScope).pipe(
     Layer.provide(KeyValueStore.layerSql()),
-    Layer.provide(SqlClientLive({ filename: options.path, ownerScope }))
+    Layer.provide(SqlClientLive({ filename: options.path }))
   )
 
 const settingsMemoryLayer = (

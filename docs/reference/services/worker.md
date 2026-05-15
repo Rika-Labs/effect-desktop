@@ -46,13 +46,14 @@ import {
 ```ts
 {
   script: string
-  ownerScope: string
   inputSchema: Schema.Schema<I>
   outputSchema: Schema.Schema<O>
-  context?: unknown
-  capabilities: NormalizedCapability[]
+  context?: { resource?: string, traceId?: string }
+  capabilities?: NormalizedCapability[]
 }
 ```
+
+Workers are registered under the `ResourceOwner` that built the `Worker` service. `Desktop.runtime(...)` supplies an app owner, `Desktop.window(..., services)` supplies a window owner, and custom job layers can provide `ResourceOwner.job(...)`.
 
 ## `WorkerHandle<I, O>`
 

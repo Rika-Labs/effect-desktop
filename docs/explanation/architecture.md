@@ -20,7 +20,7 @@ flowchart LR
     H2[OS adapters: clipboard, dialog, screen, …]
     H3[App protocol & process supervision]
   end
-  subgraph runtime[Bun runtime]
+  subgraph runtime[TypeScript runtime]
     direction TB
     R1[Effect services]
     R2[RPC handlers]
@@ -38,7 +38,7 @@ flowchart LR
 | Role         | Owner                                                | Responsibility                                                                        |
 | ------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | **Host**     | Rust (`crates/host`)                                 | Native windows, WebViews, app-protocol routing, OS adapters, process supervision.     |
-| **Runtime**  | Bun + TypeScript (`packages/core`)                   | Application services, RPC handlers, resources, permissions, jobs, storage, telemetry. |
+| **Runtime**  | Bun or Node + TypeScript (`packages/core`)           | Application services, RPC handlers, resources, permissions, jobs, storage, telemetry. |
 | **Renderer** | Web frameworks (`packages/react`, `solid`, `vue`, …) | UI, generated typed clients, user prompts, mutations and subscriptions.               |
 
 The renderer **never** receives native authority. It never opens a file, spawns a process, or reads a credential. Every privileged operation crosses the runtime.
@@ -48,7 +48,8 @@ The renderer **never** receives native authority. It never opens a file, spawns 
 Desktop frameworks face a forcing question: where does the JavaScript run? Electron answers "in a Node.js process you embed in your app" and pays the cost in size, attack surface, and a single failure domain. Tauri answers "compile a Rust shell that talks to a system WebView" and pushes app logic toward Rust. Effect Desktop takes a third path:
 
 - **Rust for the shell.** Tauri-style — a small native process, the only thing that holds raw OS authority. Compiled, sandboxed, hard to misuse.
-- **Bun for the runtime.** A fast TypeScript runtime with a SQLite binding, a worker model, and predictable startup. App logic stays in TypeScript so the team that ships features doesn't have to context-switch to Rust.
+- **TypeScript for the runtime.** Bun is the default runtime provider; Node is selectable when deployment policy or existing infrastructure needs it. App logic stays in TypeScript so the team that ships features doesn't have to context-switch to Rust.
+- **Selectable WebView engines.** The default host uses the operating system WebView. Apps that need a pinned browser engine can choose the bundled Chrome/CEF provider and package that runtime with the app.
 - **Effect for correctness.** Every effectful surface is an `Effect.Effect<A, E, R>`. Failures are typed. Resources have scopes. Concurrency is explicit. Permissions are values you can inspect and audit.
 
 The pitch is plain: **the parts that need to be small, fast, and adversary-resistant are Rust; the parts that need to move quickly are TypeScript; the parts that need to be correct under failure are Effect.**

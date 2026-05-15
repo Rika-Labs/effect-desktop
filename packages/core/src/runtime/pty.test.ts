@@ -9,6 +9,7 @@ import {
 } from "@effect-desktop/bridge"
 import { Cause, Effect, Exit, Option, Stream } from "effect"
 
+import { PermissionActor } from "./permission-registry.js"
 import {
   makePty,
   PtyExitStatus,
@@ -20,11 +21,18 @@ import {
   type PtyPermissionPolicy,
   type PtySignalInput
 } from "./pty.js"
+import type { ResourceOwnerApi } from "./resource-owner.js"
 import { makeResourceRegistry, type ResourceRegistryApi } from "./resources.js"
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 const ptyTest = process.platform === "win32" ? test.skip : test
+const TEST_OWNER: ResourceOwnerApi = Object.freeze({
+  kind: "test",
+  scopeId: "scope-main",
+  actor: new PermissionActor({ kind: "resource", id: "scope-main" }),
+  attributes: Object.freeze({ scopeId: "scope-main" })
+})
 
 ptyTest("PTY open exposes output and exit status", async () => {
   const fixture = await makeFixture(
@@ -34,7 +42,6 @@ ptyTest("PTY open exposes output and exit status", async () => {
   const handle = await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -54,7 +61,6 @@ ptyTest("PTY open registers a scoped running resource", async () => {
   const handle = await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -80,7 +86,6 @@ ptyTest("PTY removes the resource when a child exits without awaiting onExit", a
   await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -106,7 +111,6 @@ ptyTest("PTY removes the resource and releases budget when child exit fails", as
   await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -118,35 +122,12 @@ ptyTest("PTY removes the resource and releases budget when child exit fails", as
   await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
   )
 
   expect(openCalls).toBe(2)
-})
-
-ptyTest("PTY open validates owner scope before adapter activity", async () => {
-  let openCalls = 0
-  const fixture = await makeFixture(
-    makeFakeAdapter(() => {
-      openCalls += 1
-      return makeFakeChild({ output: [], exit: { code: 0 } })
-    })
-  )
-
-  const exit = await Effect.runPromiseExit(
-    fixture.service.open({
-      argv: ["bash"],
-      ownerScope: "",
-      rows: 24,
-      cols: 80
-    })
-  )
-
-  expect(openCalls).toBe(0)
-  expectFailure(exit, HostProtocolInvalidArgumentError)
 })
 
 ptyTest("PTY open validates size before adapter activity", async () => {
@@ -161,7 +142,6 @@ ptyTest("PTY open validates size before adapter activity", async () => {
   const exit = await Effect.runPromiseExit(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 0,
       cols: 80
     })
@@ -175,7 +155,7 @@ test("PTY rejects non-finite graceful shutdown windows", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
     const exit = await Effect.runPromiseExit(
-      makePty(registry, { adapter: makeFakeAdapter(), gracefulShutdownMs: value })
+      makePty(registry, TEST_OWNER, { adapter: makeFakeAdapter(), gracefulShutdownMs: value })
     )
     expectFailure(exit, HostProtocolInvalidArgumentError)
   }
@@ -186,7 +166,7 @@ test("PTY rejects non-positive graceful shutdown windows before adapter activity
   for (const value of [0, -1, -5000]) {
     let openCalls = 0
     const exit = await Effect.runPromiseExit(
-      makePty(registry, {
+      makePty(registry, TEST_OWNER, {
         gracefulShutdownMs: value,
         adapter: {
           open: () => {
@@ -205,7 +185,7 @@ ptyTest("PTY open denies commands by default before adapter activity", async () 
   let openCalls = 0
   const registry = await Effect.runPromise(makeResourceRegistry())
   const service = await Effect.runPromise(
-    makePty(registry, {
+    makePty(registry, TEST_OWNER, {
       adapter: {
         open: () => {
           openCalls += 1
@@ -218,7 +198,6 @@ ptyTest("PTY open denies commands by default before adapter activity", async () 
   const exit = await Effect.runPromiseExit(
     service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -241,7 +220,6 @@ ptyTest("PTY open allows commands declared in pty.spawn policy", async () => {
   await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -263,7 +241,6 @@ ptyTest("PTY open rejects argv0 shell metacharacters before permission lookup", 
   const exit = await Effect.runPromiseExit(
     fixture.service.open({
       argv: ["bash;rm"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -286,7 +263,6 @@ ptyTest("PTY open rejects empty environment names before adapter activity", asyn
   const exit = await Effect.runPromiseExit(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80,
       env: { "": "bad" }
@@ -311,7 +287,6 @@ ptyTest("PTY open rejects NUL bytes in environment names", async () => {
   const exit = await Effect.runPromiseExit(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80,
       env: { [`key${nul}`]: "value" }
@@ -336,7 +311,6 @@ ptyTest("PTY open rejects NUL bytes in environment values", async () => {
   const exit = await Effect.runPromiseExit(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80,
       env: { key: `value${nul}` }
@@ -363,13 +337,11 @@ ptyTest("PTY open enforces the per-scope concurrent budget", async () => {
 
   const first = fixture.service.open({
     argv: ["bash"],
-    ownerScope: "scope-main",
     rows: 24,
     cols: 80
   })
   const second = fixture.service.open({
     argv: ["bash"],
-    ownerScope: "scope-main",
     rows: 24,
     cols: 80
   })
@@ -405,7 +377,6 @@ ptyTest("PTY open releases the per-scope budget after adapter failure", async ()
   const failed = await Effect.runPromiseExit(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -413,7 +384,6 @@ ptyTest("PTY open releases the per-scope budget after adapter failure", async ()
   await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -436,7 +406,6 @@ ptyTest("PTY open validates output budget policy before adapter activity", async
   const exit = await Effect.runPromiseExit(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -454,7 +423,6 @@ ptyTest("PTY output coalesces small chunks up to the byte window", async () => {
   const handle = await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -488,7 +456,6 @@ ptyTest("PTY output flushes a quiet small chunk when the coalescing window expir
   const handle = await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -510,7 +477,6 @@ ptyTest("PTY output fails with BackpressureOverflow when a chunk exceeds budget"
   const handle = await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -536,7 +502,6 @@ ptyTest("PTY output dropOldest keeps the stream buffer bounded", async () => {
   const handle = await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -575,7 +540,6 @@ ptyTest("PTY rejects invalid output overflow policies before adapter open", asyn
   const exit = await Effect.runPromiseExit(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -591,7 +555,6 @@ ptyTest("PTY handle writes, resizes, kills, and preserves exit signal", async ()
   const handle = await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -614,7 +577,6 @@ ptyTest("PTY write rejects non-byte chunks before adapter activity", async () =>
   const handle = await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -633,7 +595,6 @@ ptyTest("PTY side effects reject handles after child exit", async () => {
   const handle = await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -660,7 +621,6 @@ ptyTest("PTY side effects reject handles after scope close", async () => {
   const handle = await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -690,7 +650,6 @@ ptyTest("PTY kill rejects control bytes in signal names", async () => {
   const handle = await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -710,7 +669,6 @@ ptyTest("PTY scope close kills the child", async () => {
   await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -739,7 +697,6 @@ ptyTest("PTY scope close waits for child exit before releasing budget", async ()
   await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -748,7 +705,6 @@ ptyTest("PTY scope close waits for child exit before releasing budget", async ()
   await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -773,7 +729,6 @@ ptyTest("PTY scope close escalates to SIGKILL when SIGTERM is ignored", async ()
   await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -808,7 +763,7 @@ const makeService = (
   } = {}
 ) =>
   Effect.runPromise(
-    makePty(registry, {
+    makePty(registry, TEST_OWNER, {
       adapter,
       ...(options.budgets === undefined ? {} : { budgets: options.budgets }),
       ...(options.gracefulShutdownMs === undefined

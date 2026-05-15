@@ -106,7 +106,7 @@
     {
       "name": "BridgeContractRpc",
       "kind": "type",
-      "signature": "export type BridgeContractRpc = Rpc.AnyWithProps & { readonly payloadSchema: BridgeContractCodec readonly successSchema: BridgeSuccessSchema readonly errorSchema: BridgeContractCodec }"
+      "signature": "export type BridgeContractRpc = RpcAnyWithProps & { readonly payloadSchema: BridgeContractCodec readonly successSchema: BridgeSuccessSchema readonly errorSchema: BridgeContractCodec }"
     },
     {
       "name": "BridgeContractRpcGroup",
@@ -201,12 +201,12 @@
     {
       "name": "bridgeRuntime",
       "kind": "value",
-      "signature": "const bridgeRuntime: (rpc: Rpc.Any) => Option.Option<BridgeRuntimeMetadata>"
+      "signature": "const bridgeRuntime: (rpc: RpcAny) => Option.Option<BridgeRuntimeMetadata>"
     },
     {
       "name": "BridgeRuntime",
       "kind": "value",
-      "signature": "const BridgeRuntime: (metadata: BridgeRuntimeMetadata) => <R extends Rpc.Any>(rpc: R) => R"
+      "signature": "const BridgeRuntime: (metadata: BridgeRuntimeMetadata) => <R extends RpcAny>(rpc: R) => R"
     },
     {
       "name": "BridgeRuntimeMetadata",
@@ -936,12 +936,12 @@
     {
       "name": "rpcCapability",
       "kind": "value",
-      "signature": "const rpcCapability: (rpc: Rpc.Any) => Option.Option<RpcCapabilityMetadata>"
+      "signature": "const rpcCapability: (rpc: RpcAny) => Option.Option<RpcCapabilityMetadata>"
     },
     {
       "name": "RpcCapability",
       "kind": "value",
-      "signature": "const RpcCapability: <Capability extends RpcCapabilityMetadata>(capability: Capability) => <R extends Rpc.Any>(rpc: R) => WithRpcCapability<R, Capability>"
+      "signature": "const RpcCapability: <Capability extends RpcCapabilityMetadata>(capability: Capability) => <R extends RpcAny>(rpc: R) => WithRpcCapability<R, Capability>"
     },
     {
       "name": "RpcCapabilityMarker",
@@ -966,12 +966,12 @@
     {
       "name": "RpcEndpoint",
       "kind": "value",
-      "signature": "const RpcEndpoint: Readonly<{ query: <R extends Rpc.Any>(rpc: R) => WithRpcEndpointKind<R, \"query\">; mutation: <R extends Rpc.Any>(rpc: R) => WithRpcEndpointKind<R, \"mutation\">; }>"
+      "signature": "const RpcEndpoint: Readonly<{ query: <R extends RpcAny>(rpc: R) => WithRpcEndpointKind<R, \"query\">; mutation: <R extends RpcAny>(rpc: R) => WithRpcEndpointKind<R, \"mutation\">; }>"
     },
     {
       "name": "rpcEndpointKind",
       "kind": "value",
-      "signature": "const rpcEndpointKind: (rpc: Rpc.Any) => RpcEndpointKind"
+      "signature": "const rpcEndpointKind: (rpc: RpcAny) => RpcEndpointKind"
     },
     {
       "name": "RpcEndpointKind",
@@ -1021,12 +1021,12 @@
     {
       "name": "rpcSupport",
       "kind": "value",
-      "signature": "const rpcSupport: (rpc: Rpc.Any) => RpcSupportMetadata"
+      "signature": "const rpcSupport: (rpc: RpcAny) => RpcSupportMetadata"
     },
     {
       "name": "RpcSupport",
       "kind": "value",
-      "signature": "const RpcSupport: Readonly<{ supported: <R extends Rpc.Any>(rpc: R) => WithRpcSupport<R, { readonly status: \"supported\"; }>; unsupported: (reason: string) => <R extends Rpc.Any>(rpc: R) => WithRpcSupport<R, { readonly status: \"unsupported\"; readonly reason: string; }>; }>"
+      "signature": "const RpcSupport: Readonly<{ supported: <R extends RpcAny>(rpc: R) => WithRpcSupport<R, { readonly status: \"supported\"; }>; unsupported: (reason: string) => <R extends RpcAny>(rpc: R) => WithRpcSupport<R, { readonly status: \"unsupported\"; readonly reason: string; }>; }>"
     },
     {
       "name": "RpcSupportMarker",
@@ -1121,17 +1121,17 @@
     {
       "name": "WithRpcCapability",
       "kind": "type",
-      "signature": "export type WithRpcCapability<R extends Rpc.Any, Capability extends RpcCapabilityMetadata> = R & RpcCapabilityMarker<Capability>"
+      "signature": "export type WithRpcCapability<R extends RpcAny, Capability extends RpcCapabilityMetadata> = R & RpcCapabilityMarker<Capability>"
     },
     {
       "name": "WithRpcEndpointKind",
       "kind": "type",
-      "signature": "export type WithRpcEndpointKind<R extends Rpc.Any, Kind extends RpcEndpointKind> = R & RpcEndpointKindMarker<Kind>"
+      "signature": "export type WithRpcEndpointKind<R extends RpcAny, Kind extends RpcEndpointKind> = R & RpcEndpointKindMarker<Kind>"
     },
     {
       "name": "WithRpcSupport",
       "kind": "type",
-      "signature": "export type WithRpcSupport<R extends Rpc.Any, Support extends RpcSupportMetadata> = R & RpcSupportMarker<Support>"
+      "signature": "export type WithRpcSupport<R extends RpcAny, Support extends RpcSupportMetadata> = R & RpcSupportMarker<Support>"
     }
   ]
 }

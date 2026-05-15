@@ -19,6 +19,7 @@ import {
   makeExecutionInspectorCollector,
   type ExecutionInspectorCollectorApi
 } from "./inspector-events.js"
+import { PermissionActor } from "./permission-registry.js"
 import { makeProcess, ProcessExitStatus } from "./process.js"
 import type {
   ProcessApi,
@@ -26,21 +27,26 @@ import type {
   ProcessPermissionPolicy,
   ProcessSignalInput
 } from "./process.js"
+import type { ResourceOwnerApi } from "./resource-owner.js"
 import { makeResourceRegistry } from "./resources.js"
 import type { ResourceRegistryApi } from "./resources.js"
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 const processTest = process.platform === "win32" ? test.skip : test
+const TEST_OWNER: ResourceOwnerApi = Object.freeze({
+  kind: "test",
+  scopeId: "scope-main",
+  actor: new PermissionActor({ kind: "resource", id: "scope-main" }),
+  attributes: Object.freeze({ scopeId: "scope-main" })
+})
 
 processTest("Process spawn exposes stdout and exit status", async () => {
   const fixture = await makeFixture(
     makeFakeSpawner(() => makeFakeChild({ exit: { code: 0 }, stdout: ["hi\n"] }))
   )
 
-  const handle = await Effect.runPromise(
-    fixture.service.spawn("echo", ["hi"], { ownerScope: "scope-main" })
-  )
+  const handle = await Effect.runPromise(fixture.service.spawn("echo", ["hi"]))
   const output = await Effect.runPromise(handle.stdout.pipe(Stream.runCollect))
   const status = await Effect.runPromise(handle.exit)
 
@@ -53,9 +59,7 @@ processTest("Process spawn registers a scoped running resource", async () => {
     makeFakeSpawner(() => makeFakeChild({ exit: { code: 0 }, stdout: [] }))
   )
 
-  const handle = await Effect.runPromise(
-    fixture.service.spawn("echo", ["hi"], { ownerScope: "scope-main" })
-  )
+  const handle = await Effect.runPromise(fixture.service.spawn("echo", ["hi"]))
   const snapshot = await Effect.runPromise(fixture.registry.list())
 
   expect(handle.resource.kind).toBe("process")
@@ -78,9 +82,7 @@ processTest("Process publishes typed execution inspector events", async () => {
   const observed = Effect.runFork(inspector.events.pipe(Stream.take(2), Stream.runCollect))
   await Bun.sleep(0)
 
-  const handle = await Effect.runPromise(
-    fixture.service.spawn("echo", ["hi"], { ownerScope: "scope-main" })
-  )
+  const handle = await Effect.runPromise(fixture.service.spawn("echo", ["hi"]))
   await Effect.runPromise(handle.exit)
 
   const events = [...(await Effect.runPromise(Fiber.join(observed)))]
@@ -98,9 +100,7 @@ processTest("Process exposes live devtools snapshots with pid, command, and exit
   )
   const observed = Effect.runFork(fixture.service.observe().pipe(Stream.take(3), Stream.runCollect))
 
-  const handle = await Effect.runPromise(
-    fixture.service.spawn("echo", ["hi"], { ownerScope: "scope-main" })
-  )
+  const handle = await Effect.runPromise(fixture.service.spawn("echo", ["hi"]))
   await Effect.runPromise(handle.exit)
 
   const listed = await Effect.runPromise(fixture.service.list())
@@ -111,7 +111,6 @@ processTest("Process exposes live devtools snapshots with pid, command, and exit
   expect(snapshots[1]?.[0]).toMatchObject({
     args: ["hi"],
     command: "echo",
-    ownerScope: "scope-main",
     pid: 42,
     state: "running"
   })
@@ -127,7 +126,7 @@ processTest(
       makeFakeSpawner(() => makeFakeChild({ exit: { code: 0 }, stdout: [] }))
     )
 
-    await Effect.runPromise(fixture.service.spawn("echo", ["hi"], { ownerScope: "scope-main" }))
+    await Effect.runPromise(fixture.service.spawn("echo", ["hi"]))
     await waitUntil(async () => {
       const snapshot = await Effect.runPromise(fixture.registry.list())
       return snapshot.entries.length === 0
@@ -139,7 +138,7 @@ test("Process rejects non-finite graceful shutdown windows", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
     const exit = await Effect.runPromiseExit(
-      makeProcess(registry, { gracefulShutdownMs: value }).pipe(provideFakeSpawner())
+      makeProcess(registry, TEST_OWNER, { gracefulShutdownMs: value }).pipe(provideFakeSpawner())
     )
     expectFailure(exit, HostProtocolInvalidArgumentError)
   }
@@ -149,7 +148,7 @@ test("Process rejects non-positive graceful shutdown windows", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   for (const value of [0, -1, -5000]) {
     const exit = await Effect.runPromiseExit(
-      makeProcess(registry, { gracefulShutdownMs: value }).pipe(provideFakeSpawner())
+      makeProcess(registry, TEST_OWNER, { gracefulShutdownMs: value }).pipe(provideFakeSpawner())
     )
     expectFailure(exit, HostProtocolInvalidArgumentError)
   }
@@ -159,7 +158,7 @@ test("Process accepts a valid finite positive graceful shutdown window", async (
   const registry = await Effect.runPromise(makeResourceRegistry())
   for (const value of [1, 0.5, Number.MIN_VALUE, 5000]) {
     const exit = await Effect.runPromiseExit(
-      makeProcess(registry, { gracefulShutdownMs: value }).pipe(provideFakeSpawner())
+      makeProcess(registry, TEST_OWNER, { gracefulShutdownMs: value }).pipe(provideFakeSpawner())
     )
     expect(Exit.isSuccess(exit)).toBe(true)
   }
@@ -167,7 +166,9 @@ test("Process accepts a valid finite positive graceful shutdown window", async (
 
 test("Process accepts the default graceful shutdown window when omitted", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
-  const exit = await Effect.runPromiseExit(makeProcess(registry).pipe(provideFakeSpawner()))
+  const exit = await Effect.runPromiseExit(
+    makeProcess(registry, TEST_OWNER).pipe(provideFakeSpawner())
+  )
   expect(Exit.isSuccess(exit)).toBe(true)
 })
 
@@ -175,7 +176,7 @@ test("Process rejects invalid snapshot capacities", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   for (const value of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
     const exit = await Effect.runPromiseExit(
-      makeProcess(registry, { maxSnapshots: value }).pipe(provideFakeSpawner())
+      makeProcess(registry, TEST_OWNER, { maxSnapshots: value }).pipe(provideFakeSpawner())
     )
     expectFailure(exit, HostProtocolInvalidArgumentError)
   }
@@ -196,25 +197,10 @@ test("Process rejects invalid budget options at service construction", async () 
   for (const budgets of cases) {
     const registry = await Effect.runPromise(makeResourceRegistry())
     const exit = await Effect.runPromiseExit(
-      makeProcess(registry, { budgets }).pipe(provideFakeSpawner())
+      makeProcess(registry, TEST_OWNER, { budgets }).pipe(provideFakeSpawner())
     )
     expectFailure(exit, HostProtocolInvalidArgumentError)
   }
-})
-
-processTest("Process spawn validates required owner scope before adapter activity", async () => {
-  let spawnCalls = 0
-  const fixture = await makeFixture(
-    makeFakeSpawner(() => {
-      spawnCalls += 1
-      return makeFakeChild({ exit: { code: 0 }, stdout: [] })
-    })
-  )
-
-  const exit = await Effect.runPromiseExit(fixture.service.spawn("echo", [], { ownerScope: "" }))
-
-  expect(spawnCalls).toBe(0)
-  expectFailure(exit, HostProtocolInvalidArgumentError)
 })
 
 processTest(
@@ -230,9 +216,7 @@ processTest(
         { now: () => now }
       )
 
-      const exit = await Effect.runPromiseExit(
-        fixture.service.spawn("echo", ["hi"], { ownerScope: "scope-main" })
-      )
+      const exit = await Effect.runPromiseExit(fixture.service.spawn("echo", ["hi"]))
 
       expectFailure(exit, HostProtocolInvalidArgumentError)
       expect(spawnCalls).toBe(0)
@@ -246,7 +230,7 @@ processTest("Process spawn denies binaries by default before adapter activity", 
   let spawnCalls = 0
   const registry = await Effect.runPromise(makeResourceRegistry())
   const service = await Effect.runPromise(
-    makeProcess(registry).pipe(
+    makeProcess(registry, TEST_OWNER).pipe(
       Effect.provideService(
         ChildProcessSpawner.ChildProcessSpawner,
         makeFakeSpawner(() => {
@@ -257,9 +241,7 @@ processTest("Process spawn denies binaries by default before adapter activity", 
     )
   )
 
-  const exit = await Effect.runPromiseExit(
-    service.spawn("git", ["status"], { ownerScope: "scope-main" })
-  )
+  const exit = await Effect.runPromiseExit(service.spawn("git", ["status"]))
 
   expect(spawnCalls).toBe(0)
   expectFailure(exit, HostProtocolPermissionDeniedError)
@@ -275,7 +257,7 @@ processTest("Process spawn allows binaries declared in the process.spawn policy"
     { permissions: { spawn: ["git"] } }
   )
 
-  await Effect.runPromise(fixture.service.spawn("git", ["status"], { ownerScope: "scope-main" }))
+  await Effect.runPromise(fixture.service.spawn("git", ["status"]))
 
   expect(spawnCalls).toBe(1)
 })
@@ -290,11 +272,7 @@ processTest("Process spawn denies binaries outside the process.spawn policy", as
     { permissions: { spawn: ["git"] } }
   )
 
-  const exit = await Effect.runPromiseExit(
-    fixture.service.spawn("rm", ["-rf", "/tmp/project"], {
-      ownerScope: "scope-main"
-    })
-  )
+  const exit = await Effect.runPromiseExit(fixture.service.spawn("rm", ["-rf", "/tmp/project"]))
 
   expect(spawnCalls).toBe(0)
   expectFailure(exit, HostProtocolPermissionDeniedError)
@@ -312,9 +290,7 @@ processTest(
       { permissions: { spawn: ["git;ls"] } }
     )
 
-    const exit = await Effect.runPromiseExit(
-      fixture.service.spawn("git;ls", [], { ownerScope: "scope-main" })
-    )
+    const exit = await Effect.runPromiseExit(fixture.service.spawn("git;ls", []))
 
     expect(spawnCalls).toBe(0)
     expectFailure(exit, HostProtocolInvalidArgumentError)
@@ -334,8 +310,7 @@ processTest("Process spawn rejects NUL bytes in environment names", async () => 
 
   const exit = await Effect.runPromiseExit(
     fixture.service.spawn("echo", ["hi"], {
-      env: { [`key${nul}`]: "value" },
-      ownerScope: "scope-main"
+      env: { [`key${nul}`]: "value" }
     })
   )
 
@@ -355,8 +330,7 @@ processTest("Process spawn rejects empty environment names before adapter activi
 
   const exit = await Effect.runPromiseExit(
     fixture.service.spawn("echo", ["hi"], {
-      env: { "": "value" },
-      ownerScope: "scope-main"
+      env: { "": "value" }
     })
   )
 
@@ -377,8 +351,7 @@ processTest("Process spawn rejects NUL bytes in environment values", async () =>
 
   const exit = await Effect.runPromiseExit(
     fixture.service.spawn("echo", ["hi"], {
-      env: { key: `value${nul}` },
-      ownerScope: "scope-main"
+      env: { key: `value${nul}` }
     })
   )
 
@@ -398,7 +371,6 @@ processTest("Process spawn requires process.shell when shell mode is requested",
 
   const exit = await Effect.runPromiseExit(
     fixture.service.spawn("sh", ["-c", "echo hi"], {
-      ownerScope: "scope-main",
       shell: true
     })
   )
@@ -419,7 +391,6 @@ processTest("Process spawn allows shell mode with process.shell permission", asy
 
   await Effect.runPromise(
     fixture.service.spawn("sh", ["-c", "echo hi"], {
-      ownerScope: "scope-main",
       shell: true
     })
   )
@@ -442,11 +413,9 @@ processTest("Process spawn enforces the per-scope concurrent process budget", as
     { budgets: { maxConcurrent: 2 }, gracefulShutdownMs: 1 }
   )
 
-  await Effect.runPromise(fixture.service.spawn("sleep", ["30"], { ownerScope: "scope-main" }))
-  await Effect.runPromise(fixture.service.spawn("sleep", ["30"], { ownerScope: "scope-main" }))
-  const exit = await Effect.runPromiseExit(
-    fixture.service.spawn("sleep", ["30"], { ownerScope: "scope-main" })
-  )
+  await Effect.runPromise(fixture.service.spawn("sleep", ["30"]))
+  await Effect.runPromise(fixture.service.spawn("sleep", ["30"]))
+  const exit = await Effect.runPromiseExit(fixture.service.spawn("sleep", ["30"]))
   await Effect.runPromise(fixture.registry.closeScope("scope-main"))
 
   expect(spawnCalls).toBe(2)
@@ -471,8 +440,8 @@ processTest("Process spawn reserves budget across parallel spawns", async () => 
   const exits = await Effect.runPromise(
     Effect.all(
       [
-        Effect.exit(fixture.service.spawn("sleep", ["30"], { ownerScope: "scope-main" })),
-        Effect.exit(fixture.service.spawn("sleep", ["30"], { ownerScope: "scope-main" }))
+        Effect.exit(fixture.service.spawn("sleep", ["30"])),
+        Effect.exit(fixture.service.spawn("sleep", ["30"]))
       ],
       { concurrency: "unbounded" }
     )
@@ -498,12 +467,12 @@ processTest("Process spawn releases budget after child exit", async () => {
     { budgets: { maxConcurrent: 1 } }
   )
 
-  await Effect.runPromise(fixture.service.spawn("echo", ["hi"], { ownerScope: "scope-main" }))
+  await Effect.runPromise(fixture.service.spawn("echo", ["hi"]))
   await waitUntil(async () => {
     const snapshot = await Effect.runPromise(fixture.registry.list())
     return snapshot.entries.length === 0
   })
-  await Effect.runPromise(fixture.service.spawn("echo", ["hi"], { ownerScope: "scope-main" }))
+  await Effect.runPromise(fixture.service.spawn("echo", ["hi"]))
 
   expect(spawnCalls).toBe(2)
 })
@@ -527,10 +496,8 @@ processTest("Process spawn releases budget after adapter failure", async () => {
     { budgets: { maxConcurrent: 1 } }
   )
 
-  const failed = await Effect.runPromiseExit(
-    fixture.service.spawn("definitely-missing", [], { ownerScope: "scope-main" })
-  )
-  await Effect.runPromise(fixture.service.spawn("sleep", ["1"], { ownerScope: "scope-main" }))
+  const failed = await Effect.runPromiseExit(fixture.service.spawn("definitely-missing", []))
+  await Effect.runPromise(fixture.service.spawn("sleep", ["1"]))
 
   expectFailure(failed, HostProtocolFileNotFoundError)
   expect(spawnCalls).toBe(2)
@@ -543,9 +510,7 @@ processTest(
       makeFakeSpawner(() => makeFakeChild({ exit: { code: 0 }, stdout: ["abcd"] })),
       { budgets: { stdoutBufferBytes: 3 } }
     )
-    const handle = await Effect.runPromise(
-      fixture.service.spawn("echo", ["abcd"], { ownerScope: "scope-main" })
-    )
+    const handle = await Effect.runPromise(fixture.service.spawn("echo", ["abcd"]))
 
     const exit = await Effect.runPromiseExit(handle.stdout.pipe(Stream.runCollect))
 
@@ -566,9 +531,7 @@ processTest(
       ),
       { budgets: { stdoutBufferBytes: 3 } }
     )
-    const handle = await Effect.runPromise(
-      fixture.service.spawn("echo", ["abcd"], { ownerScope: "scope-main" })
-    )
+    const handle = await Effect.runPromise(fixture.service.spawn("echo", ["abcd"]))
 
     const chunks = await Effect.runPromise(handle.stdout.pipe(Stream.runCollect))
 
@@ -583,9 +546,7 @@ processTest(
       makeFakeSpawner(() => makeFakeChild({ exit: { code: 0 }, stdout: ["ab", "cd"] })),
       { budgets: { stdoutBufferBytes: 3 } }
     )
-    const handle = await Effect.runPromise(
-      fixture.service.spawn("echo", ["abcd"], { ownerScope: "scope-main" })
-    )
+    const handle = await Effect.runPromise(fixture.service.spawn("echo", ["abcd"]))
 
     const exit = await Effect.runPromiseExit(
       handle.stdout.pipe(
@@ -605,9 +566,7 @@ processTest(
       makeFakeSpawner(() => makeFakeChild({ exit: { code: 0 }, stderr: ["abcd"], stdout: [] })),
       { budgets: { stderrBufferBytes: 3 } }
     )
-    const handle = await Effect.runPromise(
-      fixture.service.spawn("echo", ["abcd"], { ownerScope: "scope-main" })
-    )
+    const handle = await Effect.runPromise(fixture.service.spawn("echo", ["abcd"]))
 
     const exit = await Effect.runPromiseExit(handle.stderr.pipe(Stream.runCollect))
 
@@ -629,9 +588,7 @@ processTest(
       ),
       { budgets: { stderrBufferBytes: 3 } }
     )
-    const handle = await Effect.runPromise(
-      fixture.service.spawn("echo", ["abcd"], { ownerScope: "scope-main" })
-    )
+    const handle = await Effect.runPromise(fixture.service.spawn("echo", ["abcd"]))
 
     const chunks = await Effect.runPromise(handle.stderr.pipe(Stream.runCollect))
 
@@ -639,24 +596,10 @@ processTest(
   }
 )
 
-processTest("Process spawn reports missing options as a typed failure", async () => {
-  const fixture = await makeFixture(
-    makeFakeSpawner(() => makeFakeChild({ exit: { code: 0 }, stdout: [] }))
-  )
-
-  const exit = await Effect.runPromiseExit(fixture.service.spawn("echo"))
-
-  expectFailure(exit, HostProtocolInvalidArgumentError)
-})
-
 processTest("Process spawn maps missing executable to FileNotFound", async () => {
   const fixture = await makeFixture(makeFailingSpawner("NotFound"))
 
-  const exit = await Effect.runPromiseExit(
-    fixture.service.spawn("definitely-missing", [], {
-      ownerScope: "scope-main"
-    })
-  )
+  const exit = await Effect.runPromiseExit(fixture.service.spawn("definitely-missing", []))
 
   expectFailure(exit, HostProtocolFileNotFoundError)
 })
@@ -664,9 +607,7 @@ processTest("Process spawn maps missing executable to FileNotFound", async () =>
 processTest("Process stdin sink writes chunks and closes when the sink completes", async () => {
   const child = makeFakeChild({ exit: { code: 0 }, stdout: [] })
   const fixture = await makeFixture(makeFakeSpawner(() => child))
-  const handle = await Effect.runPromise(
-    fixture.service.spawn("cat", [], { ownerScope: "scope-main" })
-  )
+  const handle = await Effect.runPromise(fixture.service.spawn("cat", []))
 
   await Effect.runPromise(Stream.make(textEncoder.encode("abc")).pipe(Stream.run(handle.stdin)))
 
@@ -677,9 +618,7 @@ processTest("Process stdin sink writes chunks and closes when the sink completes
 processTest("Process stdin sink keeps child stdin open across chunks", async () => {
   const child = makeFakeChild({ exit: { code: 0 }, stdout: [] })
   const fixture = await makeFixture(makeFakeSpawner(() => child))
-  const handle = await Effect.runPromise(
-    fixture.service.spawn("cat", [], { ownerScope: "scope-main" })
-  )
+  const handle = await Effect.runPromise(fixture.service.spawn("cat", []))
 
   await Effect.runPromise(
     Stream.make(textEncoder.encode("abc"), textEncoder.encode("def")).pipe(Stream.run(handle.stdin))
@@ -693,9 +632,7 @@ processTest("Process stdin sink keeps child stdin open across chunks", async () 
 processTest("Process stdin rejects non-byte chunks without writing bytes", async () => {
   const child = makeFakeChild({ exit: { code: 0 }, stdout: [] })
   const fixture = await makeFixture(makeFakeSpawner(() => child))
-  const handle = await Effect.runPromise(
-    fixture.service.spawn("cat", [], { ownerScope: "scope-main" })
-  )
+  const handle = await Effect.runPromise(fixture.service.spawn("cat", []))
 
   const exit = await Effect.runPromiseExit(
     Stream.make("abc" as never).pipe(Stream.run(handle.stdin))
@@ -708,9 +645,7 @@ processTest("Process stdin rejects non-byte chunks without writing bytes", async
 processTest("Process kill returns a typed effect and exit preserves the signal", async () => {
   const child = makeFakeChild({ exit: { code: 0 }, stdout: [] })
   const fixture = await makeFixture(makeFakeSpawner(() => child))
-  const handle = await Effect.runPromise(
-    fixture.service.spawn("sleep", ["10"], { ownerScope: "scope-main" })
-  )
+  const handle = await Effect.runPromise(fixture.service.spawn("sleep", ["10"]))
 
   await Effect.runPromise(handle.kill("SIGTERM"))
   const status = await Effect.runPromise(handle.exit)
@@ -726,9 +661,7 @@ processTest("Process kill preserves the actual child exit result", async () => {
     stdout: []
   })
   const fixture = await makeFixture(makeFakeSpawner(() => child))
-  const handle = await Effect.runPromise(
-    fixture.service.spawn("sleep", ["10"], { ownerScope: "scope-main" })
-  )
+  const handle = await Effect.runPromise(fixture.service.spawn("sleep", ["10"]))
 
   await Effect.runPromise(handle.kill("SIGTERM"))
   const status = await Effect.runPromise(handle.exit)
@@ -740,9 +673,7 @@ processTest("Process kill preserves the actual child exit result", async () => {
 processTest("Process kill rejects control bytes in signal names", async () => {
   const child = makeFakeChild({ exit: { code: 0 }, stdout: [] })
   const fixture = await makeFixture(makeFakeSpawner(() => child))
-  const handle = await Effect.runPromise(
-    fixture.service.spawn("sleep", ["10"], { ownerScope: "scope-main" })
-  )
+  const handle = await Effect.runPromise(fixture.service.spawn("sleep", ["10"]))
   const nul = String.fromCodePoint(0)
 
   const exit = await Effect.runPromiseExit(handle.kill(`SIG${nul}TERM` as never))
@@ -754,9 +685,7 @@ processTest("Process kill rejects control bytes in signal names", async () => {
 processTest("Process kill rejects handles after process exit", async () => {
   const child = makeFakeChild({ exit: { code: 0 }, stdout: [] })
   const fixture = await makeFixture(makeFakeSpawner(() => child))
-  const handle = await Effect.runPromise(
-    fixture.service.spawn("sleep", ["10"], { ownerScope: "scope-main" })
-  )
+  const handle = await Effect.runPromise(fixture.service.spawn("sleep", ["10"]))
   await Effect.runPromise(handle.exit)
 
   const exit = await Effect.runPromiseExit(handle.kill("SIGTERM"))
@@ -783,9 +712,7 @@ processTest(
       const observed = Effect.runFork(
         fixture.service.observe().pipe(Stream.take(2), Stream.runCollect)
       )
-      const handle = await Effect.runPromise(
-        fixture.service.spawn("echo", ["hi"], { ownerScope: "scope-main" })
-      )
+      const handle = await Effect.runPromise(fixture.service.spawn("echo", ["hi"]))
       currentTime = now
 
       const exit = await Effect.runPromiseExit(handle.exit)
@@ -808,9 +735,7 @@ processTest("Process kill rejects handles after scope close", async () => {
     stdout: []
   })
   const fixture = await makeFixture(makeFakeSpawner(() => child))
-  const handle = await Effect.runPromise(
-    fixture.service.spawn("sleep", ["10"], { ownerScope: "scope-main" })
-  )
+  const handle = await Effect.runPromise(fixture.service.spawn("sleep", ["10"]))
   await Effect.runPromise(fixture.registry.closeScope("scope-main"))
 
   const exit = await Effect.runPromiseExit(handle.kill("SIGKILL"))
@@ -832,7 +757,7 @@ processTest("Process scope close interrupts the scoped exit observer", async () 
     { gracefulShutdownMs: 50 }
   )
 
-  await Effect.runPromise(fixture.service.spawn("sleep", ["30"], { ownerScope: "scope-main" }))
+  await Effect.runPromise(fixture.service.spawn("sleep", ["30"]))
   await Effect.runPromise(fixture.registry.closeScope("scope-main"))
 
   expect(child.kills).toEqual(["SIGTERM"])
@@ -854,7 +779,7 @@ if (process.platform !== "win32") {
         { gracefulShutdownMs: 50 }
       )
 
-      await Effect.runPromise(fixture.service.spawn("sleep", ["30"], { ownerScope: "scope-main" }))
+      await Effect.runPromise(fixture.service.spawn("sleep", ["30"]))
       await Effect.runPromise(fixture.registry.closeScope("scope-main"))
 
       expect(child.treeTerminated).toBe(true)
@@ -874,7 +799,7 @@ if (process.platform !== "win32") {
       { gracefulShutdownMs: 1 }
     )
 
-    await Effect.runPromise(fixture.service.spawn("sleep", ["30"], { ownerScope: "scope-main" }))
+    await Effect.runPromise(fixture.service.spawn("sleep", ["30"]))
     await Effect.runPromise(fixture.registry.closeScope("scope-main"))
 
     expect(child.treeTerminated).toBe(true)
@@ -884,9 +809,7 @@ if (process.platform !== "win32") {
   processTest("Process spawn works against Bun for stdout and exit code", async () => {
     const fixture = await makeFixture()
     const handle = await Effect.runPromise(
-      fixture.service.spawn(process.execPath, ["--eval", "process.stdout.write('hi\\n')"], {
-        ownerScope: "scope-main"
-      })
+      fixture.service.spawn(process.execPath, ["--eval", "process.stdout.write('hi\\n')"])
     )
 
     try {
@@ -917,7 +840,7 @@ if (process.platform !== "win32") {
                 pidFile
               )}; wait`
             ],
-            { ownerScope: "scope-main" }
+            {}
           )
         )
         const childPids = await waitForChildPids(pidFile)
@@ -965,7 +888,7 @@ const makeService = (
   } = {}
 ) =>
   Effect.runPromise(
-    makeProcess(registry, {
+    makeProcess(registry, TEST_OWNER, {
       ...(options.budgets === undefined ? {} : { budgets: options.budgets }),
       permissions: options.permissions ?? ALLOW_TEST_PROCESS_PERMISSIONS,
       ...(options.gracefulShutdownMs === undefined

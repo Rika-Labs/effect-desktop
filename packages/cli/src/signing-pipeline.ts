@@ -544,15 +544,20 @@ const runToolStep = (
 ): Effect.Effect<SignStepReport, SignCommandFailedError | SignFileError, never> =>
   Effect.gen(function* () {
     const start = options.now()
-    yield* options
-      .commandRunner({ step: name, command, args, cwd })
-      .pipe(
-        Effect.mapError((error) =>
-          error instanceof SignCommandFailedError
-            ? new SignCommandFailedError({ ...error, command: [command, ...reportArgs] })
-            : error
-        )
+    yield* options.commandRunner({ step: name, command, args, cwd }).pipe(
+      Effect.mapError((error) =>
+        error instanceof SignCommandFailedError
+          ? new SignCommandFailedError({
+              step: error.step,
+              command: [command, ...reportArgs],
+              cwd: error.cwd,
+              exitCode: error.exitCode,
+              message: error.message,
+              ...(error.stderr === undefined ? {} : { stderr: error.stderr })
+            })
+          : error
       )
+    )
     yield* statPath(outputPath)
     return {
       name,
@@ -797,7 +802,7 @@ const windowsCredentialArgs = (
       const passwordSecret = makeSecretString(password, { label: "WindowsPfxPassword" })
       return {
         args: ["/f", pfxPath, "/p", unsafeSecretString(passwordSecret)],
-        reportArgs: ["/f", pfxPath, "/p", String(passwordSecret)]
+        reportArgs: ["/f", pfxPath, "/p", "<redacted:WindowsPfxPassword>"]
       }
     }
     return yield* Effect.fail(

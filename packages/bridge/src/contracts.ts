@@ -1,10 +1,11 @@
 import { Context, Data, Effect, Option, Schema, Stream } from "effect"
-import { Rpc, RpcGroup, RpcSchema } from "effect/unstable/rpc"
+import { RpcGroup, RpcSchema } from "effect/unstable/rpc"
+import type { Any as RpcAny, AnyWithProps as RpcAnyWithProps } from "effect/unstable/rpc/Rpc"
 
 import { rpcCapability, rpcSupport, type RpcSupportMetadata } from "./rpc-endpoint.js"
 
-interface AnnotatableRpc extends Rpc.Any {
-  annotate<I, S>(tag: Context.Key<I, S>, value: S): Rpc.Any
+interface AnnotatableRpc extends RpcAny {
+  annotate<I, S>(tag: Context.Key<I, S>, value: S): RpcAny
 }
 
 export type BridgeContractCodec<Type = unknown, Encoded = unknown> = Schema.Codec<
@@ -64,7 +65,7 @@ export interface BackpressureSpec {
 
 export type BridgeStreamSchema = RpcSchema.Stream<BridgeContractCodec, BridgeContractCodec>
 export type BridgeSuccessSchema = BridgeContractCodec | BridgeStreamSchema
-export type BridgeContractRpc = Rpc.AnyWithProps & {
+export type BridgeContractRpc = RpcAnyWithProps & {
   readonly payloadSchema: BridgeContractCodec
   readonly successSchema: BridgeSuccessSchema
   readonly errorSchema: BridgeContractCodec
@@ -186,10 +187,10 @@ const BridgeRuntimeAnnotation = Context.Service<BridgeRuntimeMetadata>(
 
 export const BridgeRuntime =
   (metadata: BridgeRuntimeMetadata) =>
-  <R extends Rpc.Any>(rpc: R): R =>
+  <R extends RpcAny>(rpc: R): R =>
     annotateRpc(rpc, BridgeRuntimeAnnotation, Object.freeze(metadata))
 
-export const bridgeRuntime = (rpc: Rpc.Any): Option.Option<BridgeRuntimeMetadata> =>
+export const bridgeRuntime = (rpc: RpcAny): Option.Option<BridgeRuntimeMetadata> =>
   Context.getOption(rpc.annotations, BridgeRuntimeAnnotation)
 
 export const bridgeContractFromRpcGroup = <
@@ -581,7 +582,7 @@ const makeBridgeStreamSpec = <Chunk extends BridgeContractCodec, Error extends B
     ...(backpressure === undefined ? {} : { backpressure: Object.freeze(backpressure) })
   })
 
-const annotateRpc = <R extends Rpc.Any, I, S>(rpc: R, tag: Context.Key<I, S>, value: S): R =>
+const annotateRpc = <R extends RpcAny, I, S>(rpc: R, tag: Context.Key<I, S>, value: S): R =>
   (rpc as R & AnnotatableRpc).annotate(tag, value) as R
 
 const backpressureStrategies = new Set<BackpressureSpec["strategy"]>(["buffer", "drop", "block"])

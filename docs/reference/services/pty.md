@@ -37,14 +37,15 @@ import {
 
 ```ts
 {
-  shell: string
-  args?: string[]
+  argv: [string, ...string[]]
+  rows: number
+  cols: number
   cwd?: string
   env?: Record<string, string>
-  size?: { rows: number, cols: number }
-  ownerScope: string
 }
 ```
+
+PTY sessions are registered under the `ResourceOwner` that built the `PTY` service. `Desktop.runtime(...)` supplies an app owner, `Desktop.window(..., services)` supplies a window owner, and custom job layers can provide `ResourceOwner.job(...)`.
 
 ## `PtyChild`
 

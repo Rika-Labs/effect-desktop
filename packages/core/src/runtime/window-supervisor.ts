@@ -5,8 +5,9 @@ import type { HostProtocolError, HostWindowClient, WindowCreateInput } from "@ef
 import { Config, ConfigProvider, Data, Effect, Exit, Layer, Option, Schema, Scope } from "effect"
 
 import type { WindowSpec } from "./desktop-app.js"
-import { desktopWindowContextLayer, makeDesktopWindowContext } from "./desktop-window-context.js"
 import type { DesktopWindowRegistration } from "./desktop-window-registry.js"
+import { ResourceOwner } from "./resource-owner.js"
+import { makeWindowContext, windowContextLayer } from "./window-context.js"
 
 export const APP_MODULE_ENV = "EFFECT_DESKTOP_APP_MODULE"
 export const APP_EXPORT_ENV = "EFFECT_DESKTOP_APP_EXPORT"
@@ -170,13 +171,20 @@ const openSingleWindow = (
       .pipe(Effect.tapError(() => Scope.close(windowScope, Exit.interrupt())))
 
     if (registration.services !== undefined) {
-      const windowContext = desktopWindowContextLayer(
-        makeDesktopWindowContext({
+      const windowContext = windowContextLayer(
+        makeWindowContext({
           registrationId: registration.id,
           hostWindowId: opened.windowId
         })
       )
-      const services = Layer.provide(registration.services, windowContext)
+      const resourceOwner = ResourceOwner.window({
+        registrationId: registration.id,
+        hostWindowId: opened.windowId
+      })
+      const services = Layer.provide(
+        registration.services,
+        Layer.merge(windowContext, resourceOwner)
+      )
       yield* (
         Layer.buildWithScope(services, windowScope) as Effect.Effect<
           unknown,

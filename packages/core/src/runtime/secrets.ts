@@ -415,7 +415,7 @@ const auditSecretAccessOrWarn = (
         operation: input.operation,
         namespace: input.namespace,
         outcome: input.outcome,
-        reason: String(cause)
+        reason: formatUnknownError(cause)
       }).pipe(Effect.asVoid)
     )
   )

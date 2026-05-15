@@ -23,13 +23,14 @@ import {
 
 import { holdScopedExecutionPermit } from "./execution-budgets.js"
 import {
+  PermissionContext,
   PermissionRegistry,
   type NormalizedCapability,
-  type PermissionContext,
   type PermissionDeniedError,
   type PermissionRegistryApi,
   type PermissionRegistryError
 } from "./permission-registry.js"
+import { ResourceOwner, type ResourceOwnerApi } from "./resource-owner.js"
 import {
   disabledExecutionInspectorCollector,
   ExecutionEvent,
@@ -128,10 +129,9 @@ export type WorkerError =
 
 export interface WorkerSpawnOptions<In, Out> {
   readonly script: string
-  readonly ownerScope: string
   readonly inputSchema: Schema.Decoder<In, never>
   readonly outputSchema: Schema.Decoder<Out, never>
-  readonly context: PermissionContext
+  readonly context?: Pick<PermissionContext, "resource" | "traceId">
   readonly capabilities?: readonly NormalizedCapability[]
 }
 
@@ -192,6 +192,7 @@ const DEFAULT_GRACEFUL_SHUTDOWN_MS = 5_000
 export const makeWorker = (
   registry: ResourceRegistryApi,
   permissions: PermissionRegistryApi,
+  owner: ResourceOwnerApi,
   options: WorkerOptions = {}
 ): Effect.Effect<WorkerApi, never, never> =>
   Effect.gen(function* () {
@@ -223,12 +224,19 @@ export const makeWorker = (
           const input = yield* decodeSpawnInput(
             {
               script: options.script,
-              ownerScope: options.ownerScope,
+              ownerScope: owner.scopeId,
               capabilities: options.capabilities ?? []
             },
             "Worker.spawn"
           )
-          yield* authorizeWorkerCapabilities(permissions, input, options.context)
+          const context = new PermissionContext({
+            actor: owner.actor,
+            ...(options.context?.resource === undefined
+              ? {}
+              : { resource: options.context.resource }),
+            ...(options.context?.traceId === undefined ? {} : { traceId: options.context.traceId })
+          })
+          yield* authorizeWorkerCapabilities(permissions, input, context)
           const startedAt = safeWorkerTimestamp(now)
           yield* inspector.publish(
             new ExecutionEvent({
@@ -340,7 +348,7 @@ export const makeWorker = (
                 status: "failure",
                 operation: "Worker.spawn",
                 script: options.script,
-                ownerScope: options.ownerScope,
+                ownerScope: owner.scopeId,
                 errorTag: error._tag,
                 message: error.message,
                 timestamp: safeWorkerTimestamp(now)
@@ -350,7 +358,7 @@ export const makeWorker = (
           Effect.withSpan("Worker.spawn", {
             attributes: {
               script: options.script,
-              ownerScope: options.ownerScope,
+              ownerScope: owner.scopeId,
               capabilityCount: options.capabilities?.length ?? 0
             }
           })
@@ -383,21 +391,23 @@ export class Worker extends Context.Service<Worker, WorkerApi>()("Worker") {}
 export const WorkerLive = Layer.effect(
   Worker,
   Effect.gen(function* () {
+    const owner = yield* ResourceOwner
     const registry = yield* ResourceRegistry
     const permissions = yield* PermissionRegistry
-    return yield* makeWorker(registry, permissions)
+    return yield* makeWorker(registry, permissions, owner)
   })
 )
 
 export const WorkerLayer = (
   options: WorkerOptions = {}
-): Layer.Layer<Worker, never, ResourceRegistry | PermissionRegistry> =>
+): Layer.Layer<Worker, never, ResourceOwner | ResourceRegistry | PermissionRegistry> =>
   Layer.effect(
     Worker,
     Effect.gen(function* () {
+      const owner = yield* ResourceOwner
       const registry = yield* ResourceRegistry
       const permissions = yield* PermissionRegistry
-      return yield* makeWorker(registry, permissions, options)
+      return yield* makeWorker(registry, permissions, owner, options)
     })
   )
 

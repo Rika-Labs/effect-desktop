@@ -66,7 +66,7 @@ test("defineDesktopConfig accepts the documented app config shape", () => {
       entry: "src/renderer/main.tsx"
     },
     web: {
-      engine: "chromium"
+      engine: "chrome"
     },
     native: {
       host: "rust-wry-tao",
@@ -123,7 +123,7 @@ test("defineDesktopConfig accepts the documented app config shape", () => {
 
   expect(config.app.version).toBe("1.0.0")
   expect(config.runtime.engine).toBe("node")
-  expect(config.web.engine).toBe("chromium")
+  expect(config.web.engine).toBe("chrome")
 })
 
 test("defineDesktopConfig rejects invalid app metadata types at compile time", () => {
@@ -177,6 +177,16 @@ test("decodeDesktopConfig defaults web engine to system when web config is prese
   expect(config.web?.engine).toBe("system")
 })
 
+test("decodeDesktopConfig normalizes legacy chromium web engine to chrome", async () => {
+  const config = await Effect.runPromise(
+    decodeDesktopConfig({
+      web: { engine: "chromium" }
+    })
+  )
+
+  expect(config.web?.engine).toBe("chrome")
+})
+
 test("decodeDesktopConfig rejects non-json windows and signing values", async () => {
   for (const invalid of [
     { windows: "main" },
@@ -213,7 +223,7 @@ test("mergeDesktopConfig combines decoded shared and app config by typed policy"
     maxConcurrentRequestsPerWindow: 4,
     maxFrameBytes: 1024
   })
-  expect(merged.web).toEqual({ engine: "chromium" })
+  expect(merged.web).toEqual({ engine: "chrome" })
   expect(merged.signing).toEqual({ macos: { identity: "shared" } })
   expect(merged.windows).toEqual([{ id: "main" }])
 })

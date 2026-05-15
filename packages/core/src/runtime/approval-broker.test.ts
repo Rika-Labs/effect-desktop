@@ -373,8 +373,7 @@ test("ApprovalBroker ask rejects prompt outcomes containing control bytes", asyn
       ).pipe(
         Effect.map(
           (good) =>
-            ({
-              ...good,
+            Object.assign({}, good, {
               source: `host${String.fromCharCode(10)}forged`
             }) as ApprovalOutcome
         )

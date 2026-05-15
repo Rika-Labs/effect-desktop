@@ -8,6 +8,8 @@ import {
   make,
   manifest,
   permission,
+  provider,
+  Provider,
   providerLayerFor,
   rpc,
   runtime,
@@ -40,6 +42,7 @@ import type {
 import { DesktopRpc } from "./runtime/desktop-rpc-surface.js"
 import type { NormalizedCapability } from "./runtime/permission-registry.js"
 import { PermissionRegistry } from "./runtime/permission-registry.js"
+import type { ResourceOwner } from "./runtime/resource-owner.js"
 import { describeRpcs } from "./runtime/rpc-descriptors.js"
 
 export {
@@ -90,8 +93,9 @@ export * from "./runtime/desktop-permission-registry.js"
 export * from "./runtime/desktop-rpc-registry.js"
 export * from "./runtime/desktop-rpc-surface.js"
 export * from "./runtime/desktop-workflow-registry.js"
-export * from "./runtime/desktop-window-context.js"
 export * from "./runtime/desktop-window-registry.js"
+export * from "./runtime/resource-owner.js"
+export * from "./runtime/window-context.js"
 export {
   DesktopApp,
   app as desktopApp,
@@ -100,6 +104,8 @@ export {
   make,
   manifest,
   permission,
+  provider,
+  Provider,
   providerLayerFor,
   rpc,
   runtime,
@@ -113,8 +119,9 @@ export {
   type DesktopConfig,
   type DesktopMakeConfig,
   type DesktopManifestSource,
+  type DesktopProviderDescriptor,
   type DesktopProviderBudget,
-  type DesktopProviderSelection,
+  type DesktopProvidersLayer,
   type DesktopRpcGroupDescriptor,
   type DesktopRpcsLayer,
   type DesktopWindowsLayer,
@@ -122,7 +129,13 @@ export {
   type DesktopRuntimeGraph,
   type DesktopRuntimeGraphNode,
   type DesktopRuntimeGraphNodeKind,
+  type DesktopRuntimeProviderDescriptor,
   type DesktopRuntimeProviderId,
+  type DesktopRuntimeProviderOptions,
+  type DesktopWebViewHostEngine,
+  type DesktopWebViewProviderDescriptor,
+  type DesktopWebViewProviderId,
+  type DesktopWebViewProviderOptions,
   type DesktopRuntimeProviderServices,
   type DesktopRuntimeSelectedProviders,
   type DesktopRuntimeServices,
@@ -166,6 +179,7 @@ function app<RIn = never, E = never>(
     | DesktopWindowRegistry
     | DesktopPermissionRegistry
     | DesktopWorkflowRegistry
+    | ResourceOwner
   >
 >
 function app<RIn = never, E = never>(
@@ -190,6 +204,7 @@ function app<RIn = never, E = never>(
         | DesktopWindowRegistry
         | DesktopPermissionRegistry
         | DesktopWorkflowRegistry
+        | ResourceOwner
       >
     > {
   if ("id" in options) {
@@ -278,6 +293,8 @@ export const Desktop = Object.freeze({
   make,
   manifest,
   permission,
+  provider,
+  Provider,
   providerLayerFor,
   rpc,
   window: desktopWindow,
