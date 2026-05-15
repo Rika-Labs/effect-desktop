@@ -11,8 +11,6 @@ import { makePermissionRegistry, PermissionRegistry } from "./permission-registr
 import { makeResourceRegistry, ResourceRegistry } from "./resources.js"
 import {
   makeSettings,
-  makeSettingsLayer,
-  makeSettingsLayerMemory,
   Settings,
   SettingsInvalidArgumentError,
   SettingsMigrationFailedError,
@@ -31,7 +29,10 @@ const makeKvMemory = (): Promise<KeyValueStore.KeyValueStore> =>
     }).pipe(Effect.provide(KeyValueStore.layerMemory))
   )
 
-const makePersistentSettingsLayer = async (path: string) => {
+const makePersistentSettingsLayer = async (
+  path: string,
+  options: Omit<Parameters<typeof Settings.layer>[0], "path"> = { schemaVersion: 1 }
+) => {
   const root = await realpath(dirname(path))
   const registry = await Effect.runPromise(makeResourceRegistry())
   const permissions = await Effect.runPromise(makePermissionRegistry())
@@ -39,7 +40,7 @@ const makePersistentSettingsLayer = async (path: string) => {
     permissions.declare({ kind: "sqlite.open", roots: [root], audit: "always" })
   )
 
-  return makeSettingsLayer(path).pipe(
+  return Settings.layer({ path, ...options }).pipe(
     Layer.provide(Layer.succeed(ResourceRegistry, registry)),
     Layer.provide(Layer.succeed(PermissionRegistry, permissions))
   )
@@ -205,29 +206,29 @@ describe("Settings", () => {
     const path = join(directory, "settings.sqlite")
     const layer = await makePersistentSettingsLayer(path)
 
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const store1 = yield* Settings
+        yield* store1.set("user.username", UserName, "alice")
+      }).pipe(Effect.provide(layer))
+    )
+
+    const layerWithMigration = await makePersistentSettingsLayer(path, {
+      schemaVersion: 2,
+      migrations: [{ from: 1, to: 2, migrate: (ctx) => ctx.rename("user.username", "user.name") }],
+      now: () => 10
+    })
+
     const { value, migrated } = await Effect.runPromise(
       Effect.gen(function* () {
-        const api1 = yield* Settings
-        const store1 = yield* api1.open({ path, ownerScope: "scope-main", schemaVersion: 1 })
-        yield* store1.set("user.username", UserName, "alice")
-
-        const api2 = yield* Settings
-        const store2 = yield* api2.open({
-          path,
-          ownerScope: "scope-main",
-          schemaVersion: 2,
-          migrations: [
-            { from: 1, to: 2, migrate: (ctx) => ctx.rename("user.username", "user.name") }
-          ],
-          now: () => 10
-        })
+        const store2 = yield* Settings
         const migratedFiber = Effect.runFork(
           store2.migrated().pipe(Stream.take(1), Stream.runCollect)
         )
         const value = yield* store2.get("user.name", UserName)
         const migrated = yield* Fiber.join(migratedFiber).pipe(Effect.timeoutOption("10 millis"))
         return { value, migrated }
-      }).pipe(Effect.provide(layer))
+      }).pipe(Effect.provide(layerWithMigration))
     )
 
     expect(Option.getOrUndefined(value)).toBe("alice")
@@ -239,20 +240,11 @@ describe("Settings", () => {
 
   test("migration events clamp negative durations from non-monotonic clocks", async () => {
     const kv = await makeKvMemory()
-    const settings = await Effect.runPromise(makeSettings(kv))
     let currentTime = 10
 
-    await Effect.runPromise(
-      settings.open({
-        path: ":memory:",
-        ownerScope: "scope-main",
-        schemaVersion: 1
-      })
-    )
+    await Effect.runPromise(makeSettings(kv, { schemaVersion: 1 }))
     const store = await Effect.runPromise(
-      settings.open({
-        path: ":memory:",
-        ownerScope: "scope-main",
+      makeSettings(kv, {
         schemaVersion: 2,
         migrations: [
           {
@@ -277,19 +269,10 @@ describe("Settings", () => {
 
   test("migration events reject non-finite durations as typed failures", async () => {
     const kv = await makeKvMemory()
-    const settings = await Effect.runPromise(makeSettings(kv))
 
-    await Effect.runPromise(
-      settings.open({
-        path: ":memory:",
-        ownerScope: "scope-main",
-        schemaVersion: 1
-      })
-    )
+    await Effect.runPromise(makeSettings(kv, { schemaVersion: 1 }))
     const exit = await Effect.runPromiseExit(
-      settings.open({
-        path: ":memory:",
-        ownerScope: "scope-main",
+      makeSettings(kv, {
         schemaVersion: 2,
         migrations: [{ from: 1, to: 2, migrate: () => Effect.void }],
         now: () => Number.NaN
@@ -304,34 +287,28 @@ describe("Settings", () => {
     const path = join(directory, "settings.sqlite")
     const layer = await makePersistentSettingsLayer(path)
 
-    const exit = await Effect.runPromiseExit(
+    await Effect.runPromise(
       Effect.gen(function* () {
-        const api1 = yield* Settings
-        yield* api1.open({ path, ownerScope: "scope-main", schemaVersion: 1 })
-
-        const api2 = yield* Settings
-        return yield* api2.open({ path, ownerScope: "scope-main", schemaVersion: 2 })
+        yield* Settings
       }).pipe(Effect.provide(layer))
     )
 
-    expectFailure(exit, SettingsMigrationFailedError)
+    const missingMigrationLayer = await makePersistentSettingsLayer(path, { schemaVersion: 2 })
+    const missingMigrationExit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        return yield* Settings
+      }).pipe(Effect.provide(missingMigrationLayer))
+    )
+
+    expectFailure(missingMigrationExit, SettingsMigrationFailedError)
   })
 
   test("non-advancing migration returns SettingsMigrationFailed", async () => {
     const kv = await makeKvMemory()
-    const settings = await Effect.runPromise(makeSettings(kv))
 
-    await Effect.runPromise(
-      settings.open({
-        path: ":memory:",
-        ownerScope: "scope-main",
-        schemaVersion: 1
-      })
-    )
+    await Effect.runPromise(makeSettings(kv, { schemaVersion: 1 }))
     const exit = await Effect.runPromiseExit(
-      settings.open({
-        path: ":memory:",
-        ownerScope: "scope-main",
+      makeSettings(kv, {
         schemaVersion: 2,
         migrations: [{ from: 1, to: 1, migrate: () => Effect.void }]
       })
@@ -372,21 +349,16 @@ describe("Settings", () => {
     expect(await Effect.runPromise(store.keys())).toEqual([])
   })
 
-  test("open rejects every C0 control byte and DEL in namespace", async () => {
+  test("layer rejects every C0 control byte and DEL in namespace", async () => {
     const kv = await makeKvMemory()
-    const settings = await Effect.runPromise(makeSettings(kv))
 
     for (let codePoint = 0; codePoint <= 31; codePoint += 1) {
       const namespace = `settings${String.fromCharCode(codePoint)}forged`
-      const exit = await Effect.runPromiseExit(
-        settings.open({ path: ":memory:", ownerScope: "scope-main", namespace, schemaVersion: 1 })
-      )
+      const exit = await Effect.runPromiseExit(makeSettings(kv, { namespace, schemaVersion: 1 }))
       expectFailure(exit, SettingsInvalidArgumentError)
     }
     const delExit = await Effect.runPromiseExit(
-      settings.open({
-        path: ":memory:",
-        ownerScope: "scope-main",
+      makeSettings(kv, {
         namespace: `settings${String.fromCharCode(127)}forged`,
         schemaVersion: 1
       })
@@ -446,10 +418,9 @@ describe("Settings", () => {
     const path = join(directory, "settings.sqlite")
 
     const program = Effect.gen(function* () {
-      const settingsApi = yield* Settings
-      const store = yield* settingsApi.open({ path, ownerScope: "test", schemaVersion: 1 })
-      yield* store.set("hello", UserName, "world")
-      return yield* store.get("hello", UserName)
+      const settings = yield* Settings
+      yield* settings.set("hello", UserName, "world")
+      return yield* settings.get("hello", UserName)
     })
 
     const layer = await makePersistentSettingsLayer(path)
@@ -457,19 +428,14 @@ describe("Settings", () => {
     expect(Option.getOrUndefined(result)).toBe("world")
   })
 
-  test("makeSettingsLayerMemory provides in-memory Settings", async () => {
+  test("Settings.memory provides in-memory Settings", async () => {
     const program = Effect.gen(function* () {
-      const settingsApi = yield* Settings
-      const store = yield* settingsApi.open({
-        path: ":memory:",
-        ownerScope: "test",
-        schemaVersion: 1
-      })
-      yield* store.set("key", UserName, "value")
-      return yield* store.get("key", UserName)
+      const settings = yield* Settings
+      yield* settings.set("key", UserName, "value")
+      return yield* settings.get("key", UserName)
     })
 
-    const result = await Effect.runPromise(Effect.provide(program, makeSettingsLayerMemory))
+    const result = await Effect.runPromise(Effect.provide(program, Settings.memory()))
     expect(Option.getOrUndefined(result)).toBe("value")
   })
 })
@@ -480,13 +446,8 @@ async function makeFixture(
   } = {}
 ): Promise<{ readonly store: SettingsStore }> {
   const kv = await makeKvMemory()
-  const settings = await Effect.runPromise(makeSettings(kv))
   const store = await Effect.runPromise(
-    settings.open({
-      path: ":memory:",
-      ownerScope: "scope-main",
-      schemaVersion: options.schemaVersion ?? 1
-    })
+    makeSettings(kv, { schemaVersion: options.schemaVersion ?? 1 })
   )
 
   return { store }
@@ -512,28 +473,19 @@ async function runFailingMigration(
   readonly keys: readonly string[]
 }> {
   const kv = await makeKvMemory()
-  const settings = await Effect.runPromise(makeSettings(kv))
-  const initial = await Effect.runPromise(
-    settings.open({ path: ":memory:", ownerScope: "scope-main", schemaVersion: 1 })
-  )
+  const initial = await Effect.runPromise(makeSettings(kv, { schemaVersion: 1 }))
   if (seed !== undefined) {
     await Effect.runPromise(seed(initial))
   }
 
-  const settings2 = await Effect.runPromise(makeSettings(kv))
   const exit = await Effect.runPromiseExit(
-    settings2.open({
-      path: ":memory:",
-      ownerScope: "scope-main",
+    makeSettings(kv, {
       schemaVersion: 2,
       migrations: [{ from: 1, to: 2, migrate }]
     })
   )
 
-  const settings3 = await Effect.runPromise(makeSettings(kv))
-  const after = await Effect.runPromise(
-    settings3.open({ path: ":memory:", ownerScope: "scope-main", schemaVersion: 1 })
-  )
+  const after = await Effect.runPromise(makeSettings(kv, { schemaVersion: 1 }))
   const keys = await Effect.runPromise(after.keys())
 
   return { exit, keys }

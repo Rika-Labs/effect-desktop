@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Effect, Exit, Fiber, Option, Stream } from "effect"
+import { Effect, Exit, Fiber, Layer, Option, Stream } from "effect"
 import { KeyValueStore } from "effect/unstable/persistence"
 
 import {
@@ -19,8 +19,8 @@ test("WindowState persists and restores a validated window record", async () => 
   const path = await tempWindowStatePath()
   const { kv, service } = await makeFixture({ path })
 
-  await Effect.runPromise(service.persist("main", state))
-  const restored = await Effect.runPromise(service.restore("main"))
+  await Effect.runPromise(service.persist(state))
+  const restored = await Effect.runPromise(service.restore())
 
   expect(Option.getOrUndefined(restored)).toEqual(state)
   expect(await Effect.runPromise(kv.get(path))).toContain('"main"')
@@ -30,73 +30,58 @@ test("WindowState persists through KeyValueStore without touching the filesystem
   const path = await tempWindowStatePath()
   const { kv, service } = await makeFixture({ path })
 
-  await Effect.runPromise(service.persist("main", state))
+  await Effect.runPromise(service.persist(state))
 
   expect(await Effect.runPromise(kv.has(path))).toBe(true)
 })
 
-test("WindowState rejects empty window ids on persist before reading durable state", async () => {
+test("WindowState rejects empty window ids before reading durable state", async () => {
   const path = await tempWindowStatePath()
-  const { kv, service } = await makeFixture({ path, now: () => 1710000000000 })
+  const { kv } = await makeFixture({ path, now: () => 1710000000000 })
   await Effect.runPromise(kv.set(path, "{"))
 
-  const exit = await Effect.runPromiseExit(service.persist("", state))
+  const exit = await Effect.runPromiseExit(
+    makeWindowState("", { path, now: () => 1710000000000 }).pipe(
+      Effect.provide(Layer.succeed(KeyValueStore.KeyValueStore, kv))
+    )
+  )
 
-  expectInvalidArgument(exit, "WindowState.persist")
-  expect(await Effect.runPromise(kv.get(path))).toBe("{")
-})
-
-test("WindowState rejects empty window ids on restore before reading durable state", async () => {
-  const path = await tempWindowStatePath()
-  const { kv, service } = await makeFixture({ path, now: () => 1710000000000 })
-  await Effect.runPromise(kv.set(path, "{"))
-
-  const exit = await Effect.runPromiseExit(service.restore(""))
-
-  expectInvalidArgument(exit, "WindowState.restore")
-  expect(await Effect.runPromise(kv.get(path))).toBe("{")
-})
-
-test("WindowState rejects empty window ids on clear before reading durable state", async () => {
-  const path = await tempWindowStatePath()
-  const { kv, service } = await makeFixture({ path, now: () => 1710000000000 })
-  await Effect.runPromise(kv.set(path, "{"))
-
-  const exit = await Effect.runPromiseExit(service.clear(""))
-
-  expectInvalidArgument(exit, "WindowState.clear")
+  expectInvalidArgument(exit, "WindowState.make")
   expect(await Effect.runPromise(kv.get(path))).toBe("{")
 })
 
 test("WindowState rejects whitespace-only window ids", async () => {
   const path = await tempWindowStatePath()
-  const { service } = await makeFixture({ path })
 
-  const exit = await Effect.runPromiseExit(service.restore("   "))
+  const exit = await Effect.runPromiseExit(
+    makeWindowState("   ", { path }).pipe(Effect.provide(KeyValueStore.layerMemory))
+  )
 
-  expectInvalidArgument(exit, "WindowState.restore")
+  expectInvalidArgument(exit, "WindowState.make")
 })
 
 test("WindowState rejects every C0 control byte and DEL in window ids", async () => {
   const path = await tempWindowStatePath()
-  const { kv, service } = await makeFixture({ path })
+  const { kv } = await makeFixture({ path })
 
   for (let codePoint = 0; codePoint <= 31; codePoint += 1) {
     const windowId = `main${String.fromCharCode(codePoint)}forged`
-    const persistExit = await Effect.runPromiseExit(service.persist(windowId, state))
-    const restoreExit = await Effect.runPromiseExit(service.restore(windowId))
-    const clearExit = await Effect.runPromiseExit(service.clear(windowId))
-    expectInvalidArgument(persistExit, "WindowState.persist")
-    expectInvalidArgument(restoreExit, "WindowState.restore")
-    expectInvalidArgument(clearExit, "WindowState.clear")
+    const exit = await Effect.runPromiseExit(
+      makeWindowState(windowId, { path }).pipe(
+        Effect.provide(Layer.succeed(KeyValueStore.KeyValueStore, kv))
+      )
+    )
+    expectInvalidArgument(exit, "WindowState.make")
   }
   const delId = `main${String.fromCharCode(127)}forged`
   expectInvalidArgument(
-    await Effect.runPromiseExit(service.persist(delId, state)),
-    "WindowState.persist"
+    await Effect.runPromiseExit(
+      makeWindowState(delId, { path }).pipe(
+        Effect.provide(Layer.succeed(KeyValueStore.KeyValueStore, kv))
+      )
+    ),
+    "WindowState.make"
   )
-  expectInvalidArgument(await Effect.runPromiseExit(service.restore(delId)), "WindowState.restore")
-  expectInvalidArgument(await Effect.runPromiseExit(service.clear(delId)), "WindowState.clear")
 
   expect(await Effect.runPromise(kv.has(path))).toBe(false)
 })
@@ -115,7 +100,7 @@ test("WindowState default path rejects bundle ids with path traversal", async ()
   ]) {
     expect(() => defaultWindowStatePath(bundleId)).toThrow(WindowStateInvalidArgumentError)
     const exit = await Effect.runPromiseExit(
-      Effect.provide(makeWindowState({ bundleId }), KeyValueStore.layerMemory)
+      Effect.provide(makeWindowState("main", { bundleId }), KeyValueStore.layerMemory)
     )
     expectInvalidBundleId(exit, "WindowState.make")
   }
@@ -128,23 +113,24 @@ test("WindowState default path accepts bundle ids as namespaces", () => {
   expect(path.endsWith("window-state.json")).toBe(true)
 })
 
-test("WindowState clear with no argument wipes the full store", async () => {
+test("WindowState clear removes the current window only", async () => {
   const path = await tempWindowStatePath()
   const { kv, service } = await makeFixture({ path })
+  const palette = await makeService("palette", { path }, kv)
 
-  await Effect.runPromise(service.persist("main", state))
-  await Effect.runPromise(service.persist("aux", state))
+  await Effect.runPromise(service.persist(state))
+  await Effect.runPromise(palette.persist(state))
   await Effect.runPromise(service.clear())
 
   expect(await Effect.runPromise(kv.get(path))).not.toContain('"main"')
-  expect(await Effect.runPromise(kv.get(path))).not.toContain('"aux"')
+  expect(await Effect.runPromise(kv.get(path))).toContain('"palette"')
 })
 
 test("WindowState restore returns none for a missing window id", async () => {
   const path = await tempWindowStatePath()
   const { service } = await makeFixture({ path })
 
-  const restored = await Effect.runPromise(service.restore("missing"))
+  const restored = await Effect.runPromise(service.restore())
 
   expect(Option.isNone(restored)).toBe(true)
 })
@@ -154,7 +140,7 @@ test("WindowState clears corrupt state and continues with defaults", async () =>
   const { kv, service } = await makeFixture({ path, now: () => 1710000000000 })
   await Effect.runPromise(kv.set(path, "{"))
 
-  const restored = await Effect.runPromise(service.restore("main"))
+  const restored = await Effect.runPromise(service.restore())
 
   expect(Option.isNone(restored)).toBe(true)
   expect(await Effect.runPromise(kv.has(path))).toBe(false)
@@ -168,7 +154,7 @@ test("WindowState rejects invalid corrupt recovery timestamps without removing c
     const { kv, service } = await makeFixture({ path, now: () => timestamp })
     await Effect.runPromise(kv.set(path, "{"))
 
-    const exit = await Effect.runPromiseExit(service.restore("main"))
+    const exit = await Effect.runPromiseExit(service.restore())
 
     expect(Exit.isFailure(exit)).toBe(true)
     if (Exit.isFailure(exit)) {
@@ -192,49 +178,51 @@ test("WindowState applies injected bounds validation on restore", async () => {
 
   await Effect.runPromise(
     service.persist(
-      "main",
       makeWindowStateRecord({
         x: -500,
         y: -400
       })
     )
   )
-  const restored = await Effect.runPromise(service.restore("main"))
+  const restored = await Effect.runPromise(service.restore())
 
   expect(Option.getOrThrow(restored).x).toBe(0)
   expect(Option.getOrThrow(restored).y).toBe(0)
 })
 
-test("WindowState restores all windows independently", async () => {
+test("WindowState scopes records by current window id", async () => {
   const path = await tempWindowStatePath()
-  const { service } = await makeFixture({ path })
+  const { kv, service } = await makeFixture({ path })
+  const palette = await makeService("palette", { path }, kv)
 
-  await Effect.runPromise(service.persist("main", makeWindowStateRecord({ x: 10 })))
-  await Effect.runPromise(service.persist("palette", makeWindowStateRecord({ x: 900 })))
-  const restored = await Effect.runPromise(service.restoreAll())
+  await Effect.runPromise(service.persist(makeWindowStateRecord({ x: 10 })))
+  await Effect.runPromise(palette.persist(makeWindowStateRecord({ x: 900 })))
+  const restoredMain = await Effect.runPromise(service.restore())
+  const restoredPalette = await Effect.runPromise(palette.restore())
 
-  expect(restored["main"]?.x).toBe(10)
-  expect(restored["palette"]?.x).toBe(900)
+  expect(Option.getOrThrow(restoredMain).x).toBe(10)
+  expect(Option.getOrThrow(restoredPalette).x).toBe(900)
 })
 
 test("WindowState concurrent persists keep independent records", async () => {
   const path = await tempWindowStatePath()
-  const { service } = await makeFixture({ path })
+  const { kv, service } = await makeFixture({ path })
+  const palette = await makeService("palette", { path }, kv)
 
   await Effect.runPromise(
     Effect.all(
       [
-        service.persist("main", makeWindowStateRecord({ x: 10 })),
-        service.persist("palette", makeWindowStateRecord({ x: 900 }))
+        service.persist(makeWindowStateRecord({ x: 10 })),
+        palette.persist(makeWindowStateRecord({ x: 900 }))
       ],
       { concurrency: "unbounded" }
     )
   )
-  const restored = await Effect.runPromise(service.restoreAll())
+  const restoredMain = await Effect.runPromise(service.restore())
+  const restoredPalette = await Effect.runPromise(palette.restore())
 
-  expect(Object.keys(restored).sort()).toEqual(["main", "palette"])
-  expect(restored["main"]?.x).toBe(10)
-  expect(restored["palette"]?.x).toBe(900)
+  expect(Option.getOrThrow(restoredMain).x).toBe(10)
+  expect(Option.getOrThrow(restoredPalette).x).toBe(900)
 })
 
 test("WindowState snaps off-screen windows to the primary display", async () => {
@@ -247,24 +235,25 @@ test("WindowState snaps off-screen windows to the primary display", async () => 
     ]
   })
 
-  await Effect.runPromise(service.persist("main", makeWindowStateRecord({ x: 5000, y: 5000 })))
-  const restored = await Effect.runPromise(service.restore("main"))
+  await Effect.runPromise(service.persist(makeWindowStateRecord({ x: 5000, y: 5000 })))
+  const restored = await Effect.runPromise(service.restore())
 
   expect(Option.getOrThrow(restored).x).toBe(0)
   expect(Option.getOrThrow(restored).y).toBe(0)
 })
 
-test("WindowState clear removes one window or the full store", async () => {
+test("WindowState clear leaves other window records intact", async () => {
   const path = await tempWindowStatePath()
-  const { service } = await makeFixture({ path })
+  const { kv, service } = await makeFixture({ path })
+  const palette = await makeService("palette", { path }, kv)
 
-  await Effect.runPromise(service.persist("main", makeWindowStateRecord({ x: 10 })))
-  await Effect.runPromise(service.persist("palette", makeWindowStateRecord({ x: 900 })))
-  await Effect.runPromise(service.clear("main"))
-  expect(Object.keys(await Effect.runPromise(service.restoreAll()))).toEqual(["palette"])
-
+  await Effect.runPromise(service.persist(makeWindowStateRecord({ x: 10 })))
+  await Effect.runPromise(palette.persist(makeWindowStateRecord({ x: 900 })))
   await Effect.runPromise(service.clear())
-  expect(await Effect.runPromise(service.restoreAll())).toEqual({})
+  expect(Option.isNone(await Effect.runPromise(service.restore()))).toBe(true)
+
+  const restoredPalette = await Effect.runPromise(palette.restore())
+  expect(Option.getOrThrow(restoredPalette).x).toBe(900)
 })
 
 test("WindowState observe emits persist, clear, and corrupt recovery events", async () => {
@@ -272,10 +261,10 @@ test("WindowState observe emits persist, clear, and corrupt recovery events", as
   const { kv, service } = await makeFixture({ path, now: () => 1710000000000 })
   const fiber = Effect.runFork(service.observe().pipe(Stream.take(3), Stream.runCollect))
 
-  await Effect.runPromise(service.persist("main", state))
-  await Effect.runPromise(service.clear("main"))
+  await Effect.runPromise(service.persist(state))
+  await Effect.runPromise(service.clear())
   await Effect.runPromise(kv.set(path, "{"))
-  await Effect.runPromise(service.restore("main"))
+  await Effect.runPromise(service.restore())
   const events = Array.from(await Effect.runPromise(Fiber.join(fiber)))
 
   expect(events.map((event) => event.kind)).toEqual(["persisted", "cleared", "corrupt-renamed"])
@@ -301,7 +290,7 @@ const tempWindowStatePath = async (): Promise<string> => {
 }
 
 const makeFixture = (
-  options: Parameters<typeof makeWindowState>[0] = {}
+  options: Parameters<typeof makeWindowState>[1] = {}
 ): Promise<{
   readonly kv: KeyValueStore.KeyValueStore
   readonly service: WindowStateApi
@@ -309,9 +298,20 @@ const makeFixture = (
   Effect.runPromise(
     Effect.gen(function* () {
       const kv = yield* KeyValueStore.KeyValueStore
-      const service = yield* makeWindowState(options)
+      const service = yield* makeWindowState("main", options)
       return { kv, service }
     }).pipe(Effect.provide(KeyValueStore.layerMemory))
+  )
+
+const makeService = (
+  windowId: string,
+  options: Parameters<typeof makeWindowState>[1],
+  kv: KeyValueStore.KeyValueStore
+): Promise<WindowStateApi> =>
+  Effect.runPromise(
+    makeWindowState(windowId, options).pipe(
+      Effect.provide(Layer.succeed(KeyValueStore.KeyValueStore, kv))
+    )
   )
 
 function expectInvalidArgument(exit: Exit.Exit<unknown, unknown>, expectedOperation: string): void {

@@ -10,7 +10,7 @@ effect_version: 4
 
 You'll build a small notes application that:
 
-- Stores notes in `Settings` (a typed key/value store backed by SQLite).
+- Stores notes in SQLite through the Effect `SqlClient`.
 - Exposes typed RPC methods `Notes.list`, `Notes.save`, and `Notes.delete`.
 - Renders a list and an editor in React using the framework's hooks.
 - Handles failures as typed values rather than thrown exceptions.
@@ -25,13 +25,13 @@ By the end, you'll understand how every Effect Desktop app is shaped — contrac
 flowchart LR
   UI[NotesPanel.tsx] -- useDesktop(NotesRpcs) --> Bridge
   Bridge -- HostProtocolEnvelope --> Handlers[NotesHandlersLive]
-  Handlers --> Settings[(Settings store)]
+  Handlers --> SQLite[(SqlClient)]
 ```
 
 Three new files in `apps/inspector/src/`:
 
 - `notes/contracts.ts` — `RpcGroup` with three methods and a tagged error.
-- `notes/handlers.ts` — runtime layer that implements them against `Settings`.
+- `notes/handlers.ts` — runtime layer that implements them against SQLite.
 - `notes/NotesPanel.tsx` — React UI that calls them.
 
 Plus one edit to wire it into the inspector's existing manifest.
@@ -86,55 +86,78 @@ Notice `NotesList` and `NotesSave` declare no `error` — they'll only fail with
 Create `apps/inspector/src/notes/handlers.ts`:
 
 ```ts
-import { Effect, Schema } from "effect"
-import { Settings } from "@effect-desktop/core"
+import { Effect, Layer, Schema } from "effect"
+import { SqlClient, SqlClientLive } from "@effect-desktop/core"
 import { NotesRpcs, Note, NoteNotFound } from "./contracts.js"
 
 const NoteSchema = Schema.Array(Note)
-const NOTES_KEY = "notes/all"
 
 export const NotesHandlersLive = NotesRpcs.toLayer(
   Effect.gen(function* () {
-    const settings = yield* Settings
-    const store = yield* settings.open({
-      path: "notes.sqlite",
-      ownerScope: "window-main",
-      schemaVersion: 1
-    })
+    const sql = yield* SqlClient
+    yield* sql`
+      CREATE TABLE IF NOT EXISTS notes (
+        id TEXT PRIMARY KEY,
+        body TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `
 
     return {
-      "Notes.list": () => store.getOrDefault(NOTES_KEY, NoteSchema, []),
+      "Notes.list": () =>
+        Effect.gen(function* () {
+          const rows = yield* sql<{
+            readonly id: string
+            readonly body: string
+            readonly updatedAt: number
+          }>`
+            SELECT id, body, updated_at AS updatedAt
+            FROM notes
+            ORDER BY updated_at DESC
+          `
+          return yield* Schema.decodeUnknownEffect(NoteSchema)(rows)
+        }),
 
       "Notes.save": ({ id, body }) =>
         Effect.gen(function* () {
           const note = new Note({ id, body, updatedAt: Date.now() })
-          yield* store.update(NOTES_KEY, NoteSchema, (existing) => {
-            const others = existing.filter((n) => n.id !== id)
-            return [...others, note]
-          })
+          yield* sql`
+            INSERT INTO notes (id, body, updated_at)
+            VALUES (${note.id}, ${note.body}, ${note.updatedAt})
+            ON CONFLICT(id) DO UPDATE SET
+              body = excluded.body,
+              updated_at = excluded.updated_at
+          `
           return note
         }),
 
       "Notes.delete": ({ id }) =>
         Effect.gen(function* () {
-          const before = yield* store.getOrDefault(NOTES_KEY, NoteSchema, [])
-          if (!before.some((n) => n.id === id)) {
+          const existing = yield* sql<{ readonly id: string }>`
+            SELECT id FROM notes WHERE id = ${id} LIMIT 1
+          `
+          if (existing.length === 0) {
             return yield* Effect.fail(new NoteNotFound({ id }))
           }
-          yield* store.update(NOTES_KEY, NoteSchema, (existing) =>
-            existing.filter((n) => n.id !== id)
-          )
+          yield* sql`DELETE FROM notes WHERE id = ${id}`
         })
     }
   })
+).pipe(
+  Layer.provide(
+    SqlClientLive({
+      filename: "notes.sqlite",
+      ownerScope: "app:notes"
+    })
+  )
 )
 ```
 
 What's happening here:
 
-- `RpcGroup.toLayer(effect)` accepts an Effect that builds the handler map. The Effect can `yield*` services — here it grabs `Settings` and opens a store — and the resulting handlers run inside the same scope.
-- `Settings.open` returns a typed `Store`. We pass `ownerScope: "window-main"` so the store closes when the main window's scope closes (see [resource lifecycle](../explanation/resource-lifecycle.md)).
-- `store.update(key, schema, fn)` runs inside a SQLite transaction. Concurrent saves on the same connection serialize automatically.
+- `RpcGroup.toLayer(effect)` accepts an Effect that builds the handler map. The Effect can `yield*` services — here it grabs `SqlClient` — and the resulting handlers run inside the same scope.
+- `SqlClientLive(...)` opens the SQLite database once for the layer scope and closes it with that scope (see [resource lifecycle](../explanation/resource-lifecycle.md)).
+- The SQL tagged template binds parameters safely. `Schema.decodeUnknownEffect(NoteSchema)` keeps rows typed at the boundary.
 - The delete handler returns `Effect.fail(new NoteNotFound({ id }))` for the domain failure. TypeScript knows this is the only failure in the contract.
 
 ## Step 3 — Wire into the manifest
@@ -159,7 +182,7 @@ export const App = Desktop.make({
 export const Manifest = Desktop.manifest(App)
 ```
 
-`Desktop.make` builds the runtime graph — settings, sqlite, permission registry, your handlers. `Desktop.manifest` produces the value the renderer reads to know what's callable.
+`Desktop.make` builds the runtime graph — SQLite, permission registry, your handlers. `Desktop.manifest` produces the value the renderer reads to know what's callable.
 
 ## Step 4 — The React panel
 
@@ -265,14 +288,14 @@ cd apps/inspector
 bun run dev
 ```
 
-Add a note. Reload the page. The note is still there — `Settings` persisted it to `notes.sqlite` in the app's data directory. Delete a note, then click delete on the same item again — you'll see "that note no longer exists" because the typed `NoteNotFound` error reached the UI cleanly.
+Add a note. Reload the page. The note is still there — SQLite persisted it to `notes.sqlite` in the app's data directory. Delete a note, then click delete on the same item again — you'll see "that note no longer exists" because the typed `NoteNotFound` error reached the UI cleanly.
 
 ## What just happened
 
 You did three things that the framework rewards:
 
 1. **Declared a contract once.** `NotesRpcs` is the source of truth. The renderer's typed client, the runtime handler signatures, and the bridge's Schema decoders all derive from it.
-2. **Used a typed store with a scope.** `Settings.open(...)` is bound to `"window-main"`. When the user closes the window, the store closes. You did not write a finalizer.
+2. **Used a scoped database connection.** `SqlClientLive(...)` owns the SQLite lifetime. When the layer scope closes, the connection closes. You did not write a finalizer.
 3. **Failed as a value, not an exception.** `NoteNotFound` flowed from handler to bridge to renderer as a tagged value. No `try/catch`. The renderer matches on `_tag`.
 
 ## Where this leaves you
@@ -282,10 +305,10 @@ You can extend in many directions:
 - **Search.** Add `Notes.search` with a `query: Schema.String` payload. Filter inside the handler. The renderer gets `notes.search.useQuery({ query })` for free.
 - **Streams.** Replace `list.useQuery()` with a stream that emits whenever notes change. See [Tutorial 03](03-stream-from-the-runtime.md).
 - **Multi-window.** Open a "compose" window from a button. See [Tutorial 02](02-add-a-second-window.md).
-- **Sync.** Move to SQLite directly with `SqlClient` for richer queries. See [How-to: use SQLite](../how-to/use-sqlite.md).
+- **Preferences.** Add `Settings` for user-configurable defaults like editor theme or import directory. See [How-to: persist settings](../how-to/persist-settings.md).
 
 ## Related
 
 - [Architecture overview](../explanation/architecture.md) — the three roles you just used
 - [Layer-first design](../explanation/layer-first-design.md) — how `RpcGroup.toLayer` fits in
-- Reference: [`Settings`](../reference/services/settings.md), [`Desktop` API](../reference/desktop-api.md), [React mutations](../reference/react/mutations.md)
+- Reference: [`SqlClient`](../reference/services/sqlite.md), [`Desktop` API](../reference/desktop-api.md), [React mutations](../reference/react/mutations.md)

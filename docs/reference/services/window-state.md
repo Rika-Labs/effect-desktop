@@ -18,24 +18,26 @@ import { WindowState, type WindowStateApi } from "@effect-desktop/core"
 
 ## API
 
-| Method       | Signature                                        |
-| ------------ | ------------------------------------------------ |
-| `persist`    | `(windowId, state) => Effect<void>`              |
-| `restore`    | `(windowId) => Effect<WindowState \| undefined>` |
-| `restoreAll` | `() => Effect<Record<string, WindowState>>`      |
-| `clear`      | `(windowId?) => Effect<void>`                    |
-| `observe`    | `() => Stream<WindowStateEvent>`                 |
+| Method    | Signature                           |
+| --------- | ----------------------------------- |
+| `persist` | `(state) => Effect<void>`           |
+| `restore` | `() => Effect<Option<WindowState>>` |
+| `clear`   | `() => Effect<void>`                |
+| `observe` | `() => Stream<WindowStateEvent>`    |
+
+`WindowState.window(options?)` provides this API for the current `Desktop.window(...)` services scope. The current window id comes from `DesktopWindowContext`, so callers cannot accidentally persist one window's geometry under another window id.
 
 ## Behavior
 
-- `persist` writes the window record atomically.
-- `restore` returns the persisted state or `undefined`.
+- `persist` writes the current window record atomically.
+- `restore` returns the current window's persisted state or `Option.none()`.
+- `clear` removes the current window record and leaves other windows intact.
 - Off-screen rectangles snap to the primary display.
 - Corrupt files are renamed to `window-state.corrupt.<timestamp>.json`; runtime continues with defaults; `corrupt-renamed` event emitted.
 
 ## Wiring it up
 
-There is no built-in `restoreState` flag on `WindowSpec` today. To use `WindowState` in your app, wire the layer into your runtime and add a small handler wrapper around `Window.create` that calls `restore(windowId)` before opening, then subscribes to size/position changes and calls `persist(windowId, state)`. Persistence policy stays explicit rather than hidden behind a config flag.
+There is no built-in `restoreState` flag on `WindowSpec` today. To use `WindowState` in your app, wire `WindowState.window(...)` into the third argument of `Desktop.window(...)` and add a small handler wrapper around `Window.create` that calls `restore()` before opening, then subscribes to size/position changes and calls `persist(state)`. Persistence policy stays explicit rather than hidden behind a config flag.
 
 ## Related
 

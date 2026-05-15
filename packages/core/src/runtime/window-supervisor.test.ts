@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url"
 import type { HostWindowClient, WindowCreateInput } from "@effect-desktop/bridge"
 import { Cause, ConfigProvider, Effect, Exit, Layer } from "effect"
 
+import { DesktopWindowContext } from "./desktop-window-context.js"
 import {
   APP_EXPORT_ENV,
   APP_MODULE_ENV,
@@ -76,6 +77,11 @@ test("openDeclaredWindows binds each window's services Layer to that window's sc
   const created: WindowCreateInput[] = []
   const destroyed: string[] = []
   const events: string[] = []
+  const contexts: Array<{
+    readonly registrationId: string
+    readonly hostWindowId: string
+    readonly ownerScope: string
+  }> = []
   const client: HostWindowClient = {
     create: (input = {}) =>
       Effect.sync(() => {
@@ -89,13 +95,29 @@ test("openDeclaredWindows binds each window's services Layer to that window's sc
   }
 
   const mainServices = Layer.effectDiscard(
-    Effect.acquireRelease(
-      Effect.sync(() => events.push("main:acquired")),
-      () =>
+    Effect.gen(function* () {
+      const context = yield* DesktopWindowContext
+      return yield* Effect.acquireRelease(
         Effect.sync(() => {
-          events.push("main:released")
-        })
-    )
+          contexts.push(context)
+          events.push("main:acquired")
+        }),
+        () =>
+          Effect.sync(() => {
+            events.push("main:released")
+          })
+      )
+    })
+  )
+
+  const prefsServices = Layer.effectDiscard(
+    Effect.gen(function* () {
+      const context = yield* DesktopWindowContext
+      return yield* Effect.sync(() => {
+        contexts.push(context)
+        events.push("prefs:acquired")
+      })
+    })
   )
 
   await Effect.runPromise(
@@ -109,13 +131,25 @@ test("openDeclaredWindows binds each window's services Layer to that window's sc
         {
           id: "prefs",
           spec: { title: "Preferences" },
-          services: undefined
+          services: prefsServices
         }
       ])
     )
   )
 
-  expect(events).toEqual(["main:acquired", "main:released"])
+  expect(events).toEqual(["main:acquired", "prefs:acquired", "main:released"])
+  expect(contexts).toEqual([
+    {
+      registrationId: "main",
+      hostWindowId: "window-1",
+      ownerScope: "window:window-1"
+    },
+    {
+      registrationId: "prefs",
+      hostWindowId: "window-2",
+      ownerScope: "window:window-2"
+    }
+  ])
   expect(destroyed).toEqual(["window-2", "window-1"])
 })
 

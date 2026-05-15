@@ -90,6 +90,7 @@ export * from "./runtime/desktop-permission-registry.js"
 export * from "./runtime/desktop-rpc-registry.js"
 export * from "./runtime/desktop-rpc-surface.js"
 export * from "./runtime/desktop-workflow-registry.js"
+export * from "./runtime/desktop-window-context.js"
 export * from "./runtime/desktop-window-registry.js"
 export {
   DesktopApp,

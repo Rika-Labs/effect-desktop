@@ -3,6 +3,7 @@ import { KeyValueStore } from "effect/unstable/persistence"
 
 import type { PermissionRegistry } from "./permission-registry.js"
 import type { ResourceRegistry } from "./resources.js"
+import { DesktopWindowContext } from "./desktop-window-context.js"
 import { SqlClientLive, type SqlitePolicyError } from "./sqlite.js"
 
 const NonEmptyString = Schema.NonEmptyString
@@ -13,7 +14,9 @@ const SettingsMetadataText = Schema.NonEmptyString.check(
 )
 const SettingsKeySchema = SettingsMetadataText
 
-export class SettingsOpenInput extends Schema.Class<SettingsOpenInput>("SettingsOpenInput")({
+export class SettingsResolvedInput extends Schema.Class<SettingsResolvedInput>(
+  "SettingsResolvedInput"
+)({
   path: NonEmptyString,
   ownerScope: NonEmptyString,
   namespace: SettingsMetadataText,
@@ -66,13 +69,19 @@ export type SettingsError =
   | SettingsMigrationFailedError
   | SettingsRecoveredFromBackupError
 
-export interface SettingsOpenOptions {
+export interface SettingsOptions {
   readonly path: string
-  readonly ownerScope: string
   readonly namespace?: string
   readonly schemaVersion: number
   readonly migrations?: readonly SettingsMigration[]
   readonly backupPath?: string
+  readonly now?: () => number
+}
+
+export interface SettingsMemoryOptions {
+  readonly namespace?: string
+  readonly schemaVersion?: number
+  readonly migrations?: readonly SettingsMigration[]
   readonly now?: () => number
 }
 
@@ -138,11 +147,9 @@ export interface SettingsStore {
   readonly close: () => Effect.Effect<void, never, never>
 }
 
-export interface SettingsApi {
-  readonly open: (
-    options: SettingsOpenOptions
-  ) => Effect.Effect<SettingsStore, SettingsError, never>
-}
+export interface SettingsApi extends SettingsStore {}
+
+export type Store = SettingsStore
 
 const VERSION_KEY_SUFFIX = "__meta__/version"
 const INDEX_KEY_SUFFIX = "__meta__/keys"
@@ -308,80 +315,120 @@ const writeVersion = (
 ): Effect.Effect<void, SettingsError, never> => kvSet(kv, versionKey(namespace), version, operation)
 
 export const makeSettings = (
-  kv: KeyValueStore.KeyValueStore
-): Effect.Effect<SettingsApi, never, never> =>
-  Effect.sync(() =>
-    Object.freeze({
-      open: (options: SettingsOpenOptions) =>
-        Effect.gen(function* () {
-          const input = yield* decodeOpenInput(
-            {
-              path: options.path,
-              ownerScope: options.ownerScope,
-              namespace: options.namespace ?? "default",
-              schemaVersion: options.schemaVersion,
-              ...(options.backupPath === undefined ? {} : { backupPath: options.backupPath })
-            },
-            "Settings.open"
+  kv: KeyValueStore.KeyValueStore,
+  options: SettingsOptions | SettingsMemoryOptions,
+  ownerScope = "memory"
+): Effect.Effect<SettingsApi, SettingsError, never> => {
+  const path = "path" in options ? options.path : ":memory:"
+  const backupPath = "backupPath" in options ? options.backupPath : undefined
+  return Effect.gen(function* () {
+    const input = yield* decodeResolvedInput(
+      {
+        path,
+        ownerScope,
+        namespace: options.namespace ?? "default",
+        schemaVersion: options.schemaVersion ?? 1,
+        ...(backupPath === undefined ? {} : { backupPath })
+      },
+      "Settings.layer"
+    )
+    const changes = yield* PubSub.sliding<SettingsChange>({ capacity: 1024, replay: 0 })
+    const migratedPub = yield* PubSub.sliding<SettingsMigrated>({
+      capacity: 16,
+      replay: 16
+    })
+    const now =
+      options.now === undefined
+        ? Clock.currentTimeMillis
+        : Effect.sync(options.now).pipe(
+            Effect.catchDefect((error) =>
+              Effect.fail(
+                new SettingsMigrationFailedError({
+                  schemaVersion: input.schemaVersion,
+                  operation: "Settings.layer",
+                  cause: Option.some(error)
+                })
+              )
+            )
           )
-          const changes = yield* PubSub.sliding<SettingsChange>({ capacity: 1024, replay: 0 })
-          const migratedPub = yield* PubSub.sliding<SettingsMigrated>({
-            capacity: 16,
-            replay: 16
-          })
-          const now =
-            options.now === undefined
-              ? Clock.currentTimeMillis
-              : Effect.sync(options.now).pipe(
-                  Effect.catchDefect((error) =>
-                    Effect.fail(
-                      new SettingsMigrationFailedError({
-                        schemaVersion: input.schemaVersion,
-                        operation: "Settings.open",
-                        cause: Option.some(error)
-                      })
-                    )
-                  )
-                )
 
-          yield* initialize(kv, input, options.migrations ?? [], now, migratedPub)
+    yield* initialize(kv, input, options.migrations ?? [], now, migratedPub)
 
-          return makeStore(kv, input.namespace, changes, migratedPub)
-        }).pipe(
-          Effect.withSpan("Settings.open", {
-            attributes: {
-              path: options.path,
-              ownerScope: options.ownerScope,
-              namespace: options.namespace ?? "default",
-              schemaVersion: options.schemaVersion
-            }
-          })
-        )
+    return makeStore(kv, input.namespace, changes, migratedPub)
+  }).pipe(
+    Effect.withSpan("Settings.layer", {
+      attributes: {
+        path,
+        ownerScope,
+        namespace: options.namespace ?? "default",
+        schemaVersion: options.schemaVersion ?? 1
+      }
     })
   )
+}
 
-export class Settings extends Context.Service<Settings, SettingsApi>()("Settings") {}
+export class Settings extends Context.Service<Settings, SettingsApi>()("Settings") {
+  static layer(
+    options: SettingsOptions
+  ): Layer.Layer<
+    Settings,
+    SettingsError | SqlitePolicyError,
+    PermissionRegistry | ResourceRegistry
+  > {
+    return settingsLayer(options, "app")
+  }
 
-const SettingsFromKv: Layer.Layer<Settings, never, KeyValueStore.KeyValueStore> = Layer.effect(
+  static window(
+    options: SettingsOptions
+  ): Layer.Layer<
+    Settings,
+    SettingsError | SqlitePolicyError,
+    DesktopWindowContext | PermissionRegistry | ResourceRegistry
+  > {
+    return Layer.unwrap(
+      Effect.gen(function* () {
+        const context = yield* DesktopWindowContext
+        return settingsLayer(options, context.ownerScope)
+      })
+    )
+  }
+
+  static memory(options: SettingsMemoryOptions = {}): Layer.Layer<Settings, SettingsError, never> {
+    return settingsMemoryLayer(options)
+  }
+}
+
+const settingsLayer = (
+  options: SettingsOptions,
+  ownerScope: string
+): Layer.Layer<
   Settings,
-  Effect.gen(function* () {
-    const kv = yield* KeyValueStore.KeyValueStore
-    return yield* makeSettings(kv)
-  })
-)
-
-export const makeSettingsLayer = (
-  path: string,
-  ownerScope = "settings"
-): Layer.Layer<Settings, SqlitePolicyError, PermissionRegistry | ResourceRegistry> =>
-  SettingsFromKv.pipe(
+  SettingsError | SqlitePolicyError,
+  PermissionRegistry | ResourceRegistry
+> =>
+  settingsFromKv(options, ownerScope).pipe(
     Layer.provide(KeyValueStore.layerSql()),
-    Layer.provide(SqlClientLive({ filename: path, ownerScope }))
+    Layer.provide(SqlClientLive({ filename: options.path, ownerScope }))
   )
 
-export const makeSettingsLayerMemory: Layer.Layer<Settings, never, never> = SettingsFromKv.pipe(
-  Layer.provide(KeyValueStore.layerMemory)
-)
+const settingsMemoryLayer = (
+  options: SettingsMemoryOptions = {}
+): Layer.Layer<Settings, SettingsError, never> =>
+  settingsFromKv(options, "memory").pipe(Layer.provide(KeyValueStore.layerMemory))
+
+const settingsFromKv = (
+  options: SettingsOptions | SettingsMemoryOptions,
+  ownerScope: string
+): Layer.Layer<Settings, SettingsError, KeyValueStore.KeyValueStore> =>
+  Layer.effect(
+    Settings,
+    Effect.gen(function* () {
+      const kv = yield* KeyValueStore.KeyValueStore
+      return yield* Effect.acquireRelease(makeSettings(kv, options, ownerScope), (store) =>
+        store.close()
+      )
+    })
+  )
 
 const makeStore = (
   kv: KeyValueStore.KeyValueStore,
@@ -517,7 +564,7 @@ const makeStore = (
 
 const initialize = (
   kv: KeyValueStore.KeyValueStore,
-  input: SettingsOpenInput,
+  input: SettingsResolvedInput,
   migrations: readonly SettingsMigration[],
   now: Effect.Effect<number, SettingsError, never>,
   migrated: PubSub.PubSub<SettingsMigrated>
@@ -655,11 +702,11 @@ const migrationContext = (
     })
 })
 
-const decodeOpenInput = (
+const decodeResolvedInput = (
   input: unknown,
   operation: string
-): Effect.Effect<SettingsOpenInput, SettingsInvalidArgumentError, never> =>
-  Schema.decodeUnknownEffect(SettingsOpenInput)(input).pipe(
+): Effect.Effect<SettingsResolvedInput, SettingsInvalidArgumentError, never> =>
+  Schema.decodeUnknownEffect(SettingsResolvedInput)(input).pipe(
     Effect.mapError(
       (error) =>
         new SettingsInvalidArgumentError({

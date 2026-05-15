@@ -776,17 +776,17 @@
     {
       "name": "makeNativeCapabilities",
       "kind": "value",
-      "signature": "const makeNativeCapabilities: (groups: Iterable<RpcGroup.RpcGroup<any>>) => Effect.Effect<NativeCapabilitiesApi, NativeCapabilityManifestError, never>"
+      "signature": "const makeNativeCapabilities: (groups: Iterable<NativeCapabilityGroup>) => Effect.Effect<NativeCapabilitiesApi, NativeCapabilityManifestError, never>"
     },
     {
       "name": "makeNativeCapabilitiesLayer",
       "kind": "value",
-      "signature": "const makeNativeCapabilitiesLayer: (groups?: Iterable<RpcGroup.RpcGroup<any>>) => Layer.Layer<NativeCapabilities, NativeCapabilityManifestError, never>"
+      "signature": "const makeNativeCapabilitiesLayer: (groups?: Iterable<NativeCapabilityGroup>) => Layer.Layer<NativeCapabilities, NativeCapabilityManifestError, never>"
     },
     {
       "name": "makeNativeCapabilityManifest",
       "kind": "value",
-      "signature": "const makeNativeCapabilityManifest: (groups: Iterable<RpcGroup.RpcGroup<any>>) => Effect.Effect<readonly NativeCapabilityFact[], NativeCapabilityManifestError, never>"
+      "signature": "const makeNativeCapabilityManifest: (groups: Iterable<NativeCapabilityGroup>) => Effect.Effect<readonly NativeCapabilityFact[], NativeCapabilityManifestError, never>"
     },
     {
       "name": "makeNotificationBridgeClientLayer",

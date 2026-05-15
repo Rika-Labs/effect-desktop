@@ -60,20 +60,15 @@ The `stream: true` flag tells Effect RPC to model the success channel as a `Stre
 Add to `apps/inspector/src/notes/handlers.ts`:
 
 ```ts
-import { Effect, Stream, Schema } from "effect"
-import { Filesystem } from "@effect-desktop/core"
+import { Effect, Stream } from "effect"
+import { Filesystem, SqlClient } from "@effect-desktop/core"
 import { ImportProgress } from "./contracts.js"
 
 // Inside the handlers map returned by NotesRpcs.toLayer:
 "Notes.import": ({ directory }) =>
   Effect.gen(function* () {
     const fs = yield* Filesystem
-    const settings = yield* Settings
-    const store = yield* settings.open({
-      path: "notes.sqlite",
-      ownerScope: "window-main",
-      schemaVersion: 1
-    })
+    const sql = yield* SqlClient
 
     const entries = yield* fs.readDirectory({
       path: directory,
@@ -87,10 +82,13 @@ import { ImportProgress } from "./contracts.js"
         Effect.gen(function* () {
           const body = yield* fs.readFileString({ path: entry.path, ownerScope: "import-job" })
           const note = new Note({ id: entry.name, body, updatedAt: Date.now() })
-          yield* store.update(NOTES_KEY, NoteSchema, (existing) => [
-            ...existing.filter((n) => n.id !== note.id),
-            note
-          ])
+          yield* sql`
+            INSERT INTO notes (id, body, updated_at)
+            VALUES (${note.id}, ${note.body}, ${note.updatedAt})
+            ON CONFLICT(id) DO UPDATE SET
+              body = excluded.body,
+              updated_at = excluded.updated_at
+          `
           return new ImportProgress({
             kind: "imported",
             file: entry.name,

@@ -1,6 +1,6 @@
 ---
 title: How to persist settings
-description: Use the typed Settings store backed by SQLite for app preferences and small data.
+description: Use the typed Settings store backed by SQLite for app preferences and configuration.
 kind: how-to
 audience: app-developers
 effect_version: 4
@@ -8,7 +8,7 @@ effect_version: 4
 
 # How to persist settings
 
-`Settings` is a typed key/value store backed by SQLite. Use it for preferences, small per-user data, and anything you'd reach for `localStorage` to do — but with schemas, transactions, and migrations.
+`Settings` is a typed key/value store backed by SQLite. Use it for preferences, feature flags, and small configuration values. Use `SqlClient` for app records and query-shaped data.
 
 ## 1. Open a store
 
@@ -17,18 +17,20 @@ import { Effect, Schema } from "effect"
 import { Settings } from "@effect-desktop/core"
 
 const program = Effect.gen(function* () {
-  const settings = yield* Settings
-  const store = yield* settings.open({
-    path: "preferences.sqlite",
-    ownerScope: "window-main",
-    schemaVersion: 1
-  })
+  const store = yield* Settings
 
   // use store.get, store.set, store.update, store.delete, store.keys
-})
+}).pipe(
+  Effect.provide(
+    Settings.layer({
+      path: "preferences.sqlite",
+      schemaVersion: 1
+    })
+  )
+)
 ```
 
-`Settings.open` validates the path and owner scope, opens (or creates) the SQLite file, and registers a scoped resource. When `"window-main"` closes, the store closes.
+`Settings.layer` validates the path, opens (or creates) the SQLite file, and registers a scoped resource. When the layer scope closes, the store closes. Use `Settings.window(...)` inside `Desktop.window(..., services)` when the store should be owned by one window.
 
 ## 2. Read and write typed values
 
@@ -58,26 +60,23 @@ Every read decodes through the schema. Every write encodes. Mismatched data fail
 
 ## 3. Migrate when you change the shape
 
-Pass a `migrations` array on `open` to handle version bumps:
+Pass a `migrations` array on the layer to handle version bumps:
 
 ```ts
-const store =
-  yield *
-  settings.open({
-    path: "preferences.sqlite",
-    ownerScope: "window-main",
-    schemaVersion: 2,
-    migrations: [
-      {
-        from: 1,
-        to: 2,
-        migrate: (raw) => {
-          // raw is the stored object
-          return { ...raw, theme: raw.theme ?? "system" }
-        }
+const settingsLayer = Settings.layer({
+  path: "preferences.sqlite",
+  schemaVersion: 2,
+  migrations: [
+    {
+      from: 1,
+      to: 2,
+      migrate: (raw) => {
+        // raw is the stored object
+        return { ...raw, theme: raw.theme ?? "system" }
       }
-    ]
-  })
+    }
+  ]
+})
 ```
 
 Migrations run inside a SQLite transaction with the metadata update. They emit `SettingsMigrated` events through `migrated()`.
@@ -99,17 +98,14 @@ yield *
 
 ## 5. Recover from corruption
 
-If the database file is corrupt at open and you supply `backupPath`, Settings replaces the corrupt file with the backup and reopens it:
+If the database file is corrupt when the layer opens and you supply `backupPath`, Settings replaces the corrupt file with the backup and reopens it:
 
 ```ts
-const store =
-  yield *
-  settings.open({
-    path: "preferences.sqlite",
-    ownerScope: "window-main",
-    schemaVersion: 1,
-    backupPath: "preferences.backup.sqlite"
-  })
+const settingsLayer = Settings.layer({
+  path: "preferences.sqlite",
+  schemaVersion: 1,
+  backupPath: "preferences.backup.sqlite"
+})
 ```
 
 A failed copy returns `SettingsRecoveredFromBackup` rather than throwing.
@@ -118,6 +114,7 @@ A failed copy returns `SettingsRecoveredFromBackup` rather than throwing.
 
 Reach for `SqlClient` directly when you need:
 
+- App entities such as notes, tasks, documents, or events.
 - Joins, indexes, or queries beyond `getOrDefault`.
 - Data large enough to benefit from columnar access.
 - Multiple tables.
