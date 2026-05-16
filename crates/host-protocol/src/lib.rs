@@ -37,6 +37,14 @@ pub const REALTIME_MEDIA_SESSION_PERMISSION_STATE_EVENT: &str =
     "RealtimeMediaSession.PermissionState";
 pub const REALTIME_MEDIA_SESSION_INTERRUPTION_EVENT: &str = "RealtimeMediaSession.Interruption";
 pub const REALTIME_MEDIA_SESSION_SESSION_STATE_EVENT: &str = "RealtimeMediaSession.SessionState";
+pub const DIAGNOSTICS_BUNDLE_COLLECT_METHOD: &str = "DiagnosticsBundle.collect";
+pub const DIAGNOSTICS_BUNDLE_REDACT_METHOD: &str = "DiagnosticsBundle.redact";
+pub const DIAGNOSTICS_BUNDLE_WRITE_METHOD: &str = "DiagnosticsBundle.write";
+pub const DIAGNOSTICS_BUNDLE_IS_SUPPORTED_METHOD: &str = "DiagnosticsBundle.isSupported";
+pub const DIAGNOSTICS_BUNDLE_COLLECT_STARTED_EVENT: &str = "DiagnosticsBundle.CollectStarted";
+pub const DIAGNOSTICS_BUNDLE_SOURCE_REDACTED_EVENT: &str = "DiagnosticsBundle.SourceRedacted";
+pub const DIAGNOSTICS_BUNDLE_WRITE_COMPLETED_EVENT: &str = "DiagnosticsBundle.WriteCompleted";
+pub const DIAGNOSTICS_BUNDLE_FAILED_EVENT: &str = "DiagnosticsBundle.Failed";
 pub const MENU_SET_APPLICATION_MENU_METHOD: &str = "Menu.setApplicationMenu";
 pub const MENU_SET_WINDOW_MENU_METHOD: &str = "Menu.setWindowMenu";
 pub const RENDERER_DISCONNECTED_EVENT: &str = "renderer.disconnected";
@@ -46,6 +54,7 @@ pub const RENDERER_RESUME_DENIED_EVENT: &str = "renderer.resume.denied";
 pub const DEFAULT_RECONNECT_WINDOW_MS: u64 = 30_000;
 pub const DEFAULT_MAX_BACKFILL_EVENTS: u64 = 1_024;
 pub const REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -461,6 +470,293 @@ impl RealtimeMediaSessionStateEventPayload {
             profile_id: profile_id.into(),
             session_id: session_id.into(),
             state,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DiagnosticsBundleSourceKind {
+    Logs,
+    Traces,
+    CrashReports,
+    HostState,
+    ExtensionHealth,
+    AuditEvents,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DiagnosticsBundleCollectPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bundle_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    sources: Vec<DiagnosticsBundleSourceKind>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl DiagnosticsBundleCollectPayload {
+    pub fn new(
+        bundle_id: Option<String>,
+        sources: Vec<DiagnosticsBundleSourceKind>,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            bundle_id,
+            sources,
+            trace_id,
+        }
+    }
+
+    pub fn bundle_id(&self) -> Option<&str> {
+        self.bundle_id.as_deref()
+    }
+
+    pub fn sources(&self) -> &[DiagnosticsBundleSourceKind] {
+        &self.sources
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DiagnosticsBundleRedactPayload {
+    bundle_id: String,
+    source: DiagnosticsBundleSourceKind,
+    payload: Value,
+}
+
+impl DiagnosticsBundleRedactPayload {
+    pub fn new(
+        bundle_id: impl Into<String>,
+        source: DiagnosticsBundleSourceKind,
+        payload: Value,
+    ) -> Self {
+        Self {
+            bundle_id: bundle_id.into(),
+            source,
+            payload,
+        }
+    }
+
+    pub fn bundle_id(&self) -> &str {
+        &self.bundle_id
+    }
+
+    pub fn source(&self) -> DiagnosticsBundleSourceKind {
+        self.source
+    }
+
+    pub fn payload(&self) -> &Value {
+        &self.payload
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DiagnosticsBundleWritePayload {
+    bundle_id: String,
+    destination_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl DiagnosticsBundleWritePayload {
+    pub fn new(
+        bundle_id: impl Into<String>,
+        destination_path: impl Into<String>,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            bundle_id: bundle_id.into(),
+            destination_path: destination_path.into(),
+            trace_id,
+        }
+    }
+
+    pub fn bundle_id(&self) -> &str {
+        &self.bundle_id
+    }
+
+    pub fn destination_path(&self) -> &str {
+        &self.destination_path
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DiagnosticsBundleSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl DiagnosticsBundleSupportedPayload {
+    pub fn available() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+
+    pub fn supported(&self) -> bool {
+        self.supported
+    }
+
+    pub fn reason(&self) -> Option<&str> {
+        self.reason.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DiagnosticsBundleRedactionEvidencePayload {
+    path: String,
+    action: String,
+    reason: String,
+}
+
+impl DiagnosticsBundleRedactionEvidencePayload {
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            action: "redacted".to_string(),
+            reason: reason.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DiagnosticsBundleRedactionPolicyPayload {
+    id: String,
+    evidence: Vec<DiagnosticsBundleRedactionEvidencePayload>,
+}
+
+impl DiagnosticsBundleRedactionPolicyPayload {
+    pub fn new(
+        id: impl Into<String>,
+        evidence: Vec<DiagnosticsBundleRedactionEvidencePayload>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            evidence,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DiagnosticsBundleSourceSummaryPayload {
+    source: DiagnosticsBundleSourceKind,
+    item_count: u64,
+    redaction_policy: DiagnosticsBundleRedactionPolicyPayload,
+}
+
+impl DiagnosticsBundleSourceSummaryPayload {
+    pub fn new(
+        source: DiagnosticsBundleSourceKind,
+        item_count: u64,
+        redaction_policy: DiagnosticsBundleRedactionPolicyPayload,
+    ) -> Self {
+        Self {
+            source,
+            item_count,
+            redaction_policy,
+        }
+    }
+
+    pub fn source(&self) -> DiagnosticsBundleSourceKind {
+        self.source
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DiagnosticsBundleCollectResultPayload {
+    bundle_id: String,
+    collected_at: u64,
+    sources: Vec<DiagnosticsBundleSourceSummaryPayload>,
+    artifact_count: u64,
+}
+
+impl DiagnosticsBundleCollectResultPayload {
+    pub fn new(
+        bundle_id: impl Into<String>,
+        collected_at: u64,
+        sources: Vec<DiagnosticsBundleSourceSummaryPayload>,
+    ) -> Self {
+        let artifact_count = sources.iter().map(|source| source.item_count).sum();
+        Self {
+            bundle_id: bundle_id.into(),
+            collected_at,
+            sources,
+            artifact_count,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DiagnosticsBundleRedactResultPayload {
+    bundle_id: String,
+    source: DiagnosticsBundleSourceKind,
+    payload: Value,
+    redaction_policy: DiagnosticsBundleRedactionPolicyPayload,
+}
+
+impl DiagnosticsBundleRedactResultPayload {
+    pub fn new(
+        bundle_id: impl Into<String>,
+        source: DiagnosticsBundleSourceKind,
+        payload: Value,
+        redaction_policy: DiagnosticsBundleRedactionPolicyPayload,
+    ) -> Self {
+        Self {
+            bundle_id: bundle_id.into(),
+            source,
+            payload,
+            redaction_policy,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DiagnosticsBundleWriteResultPayload {
+    bundle_id: String,
+    destination_path: String,
+    bytes_written: u64,
+    sources: Vec<DiagnosticsBundleSourceSummaryPayload>,
+}
+
+impl DiagnosticsBundleWriteResultPayload {
+    pub fn new(
+        bundle_id: impl Into<String>,
+        destination_path: impl Into<String>,
+        bytes_written: u64,
+        sources: Vec<DiagnosticsBundleSourceSummaryPayload>,
+    ) -> Self {
+        Self {
+            bundle_id: bundle_id.into(),
+            destination_path: destination_path.into(),
+            bytes_written,
+            sources,
         }
     }
 }
@@ -1018,18 +1314,24 @@ fn validate_optional_host_identity(value: Option<String>) -> Result<Option<Strin
 #[cfg(test)]
 mod tests {
     use super::{
-        HostProtocolEnvelope, HostProtocolError, HostVersionPayload, RealtimeMediaDeviceKind,
-        RealtimeMediaDeviceStateEventPayload, RealtimeMediaDeviceStatePayload,
-        RealtimeMediaInterruptionEventPayload, RealtimeMediaInterruptionReason,
-        RealtimeMediaPermissionState, RealtimeMediaPermissionStateEventPayload,
-        RealtimeMediaSessionIdentityPayload, RealtimeMediaSessionInterruptPayload,
-        RealtimeMediaSessionSelectDevicePayload, RealtimeMediaSessionState,
-        RealtimeMediaSessionStateEventPayload, RealtimeMediaSessionSupportedPayload,
-        RendererResumeDeniedPayload, RendererResumeDeniedReason, RendererResumePayload,
-        RendererResumedPayload, ResumeTicket, WindowCreatePayload, WindowCreateResponse,
-        WindowDestroyPayload, WindowTitleBarStyle, WindowTrafficLights,
-        DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS, HOST_PROTOCOL_ERROR_SPECS,
-        PROTOCOL_VERSION, REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON,
+        DiagnosticsBundleCollectPayload, DiagnosticsBundleCollectResultPayload,
+        DiagnosticsBundleRedactPayload, DiagnosticsBundleRedactResultPayload,
+        DiagnosticsBundleRedactionEvidencePayload, DiagnosticsBundleRedactionPolicyPayload,
+        DiagnosticsBundleSourceKind, DiagnosticsBundleSourceSummaryPayload,
+        DiagnosticsBundleSupportedPayload, DiagnosticsBundleWritePayload,
+        DiagnosticsBundleWriteResultPayload, HostProtocolEnvelope, HostProtocolError,
+        HostVersionPayload, RealtimeMediaDeviceKind, RealtimeMediaDeviceStateEventPayload,
+        RealtimeMediaDeviceStatePayload, RealtimeMediaInterruptionEventPayload,
+        RealtimeMediaInterruptionReason, RealtimeMediaPermissionState,
+        RealtimeMediaPermissionStateEventPayload, RealtimeMediaSessionIdentityPayload,
+        RealtimeMediaSessionInterruptPayload, RealtimeMediaSessionSelectDevicePayload,
+        RealtimeMediaSessionState, RealtimeMediaSessionStateEventPayload,
+        RealtimeMediaSessionSupportedPayload, RendererResumeDeniedPayload,
+        RendererResumeDeniedReason, RendererResumePayload, RendererResumedPayload, ResumeTicket,
+        WindowCreatePayload, WindowCreateResponse, WindowDestroyPayload, WindowTitleBarStyle,
+        WindowTrafficLights, DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
+        DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON, HOST_PROTOCOL_ERROR_SPECS, PROTOCOL_VERSION,
+        REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON,
     };
     use std::{
         collections::{BTreeMap, BTreeSet},
@@ -1421,6 +1723,108 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&session_event).expect("session event should encode"),
             r#"{"type":"session-state","profileId":"profile-1","sessionId":"session-1","state":"interrupted"}"#
+        );
+    }
+
+    #[test]
+    fn diagnostics_bundle_payloads_serialize_canonically() {
+        let collect = DiagnosticsBundleCollectPayload::new(
+            Some("bundle-1".to_string()),
+            vec![
+                DiagnosticsBundleSourceKind::Logs,
+                DiagnosticsBundleSourceKind::AuditEvents,
+            ],
+            Some("trace-1".to_string()),
+        );
+        assert_eq!(collect.bundle_id(), Some("bundle-1"));
+        assert_eq!(
+            collect.sources(),
+            &[
+                DiagnosticsBundleSourceKind::Logs,
+                DiagnosticsBundleSourceKind::AuditEvents
+            ]
+        );
+        assert_eq!(collect.trace_id(), Some("trace-1"));
+        assert_eq!(
+            serde_json::to_string(&collect).expect("collect payload should encode"),
+            r#"{"bundleId":"bundle-1","sources":["logs","audit-events"],"traceId":"trace-1"}"#
+        );
+
+        let redact = DiagnosticsBundleRedactPayload::new(
+            "bundle-1",
+            DiagnosticsBundleSourceKind::Logs,
+            serde_json::json!({ "apiKey": "secret" }),
+        );
+        assert_eq!(redact.bundle_id(), "bundle-1");
+        assert_eq!(redact.source(), DiagnosticsBundleSourceKind::Logs);
+        assert_eq!(redact.payload(), &serde_json::json!({ "apiKey": "secret" }));
+        assert_eq!(
+            serde_json::to_string(&redact).expect("redact payload should encode"),
+            r#"{"bundleId":"bundle-1","source":"logs","payload":{"apiKey":"secret"}}"#
+        );
+
+        let write = DiagnosticsBundleWritePayload::new("bundle-1", "/tmp/diagnostics.zip", None);
+        assert_eq!(write.bundle_id(), "bundle-1");
+        assert_eq!(write.destination_path(), "/tmp/diagnostics.zip");
+        assert_eq!(write.trace_id(), None);
+        assert_eq!(
+            serde_json::to_string(&write).expect("write payload should encode"),
+            r#"{"bundleId":"bundle-1","destinationPath":"/tmp/diagnostics.zip"}"#
+        );
+
+        let policy = DiagnosticsBundleRedactionPolicyPayload::new(
+            "host-secret-patterns",
+            vec![DiagnosticsBundleRedactionEvidencePayload::new(
+                "<redacted-path>",
+                "secret-pattern",
+            )],
+        );
+        let summary = DiagnosticsBundleSourceSummaryPayload::new(
+            DiagnosticsBundleSourceKind::Logs,
+            1,
+            policy,
+        );
+        assert_eq!(summary.source(), DiagnosticsBundleSourceKind::Logs);
+        let collect_result = DiagnosticsBundleCollectResultPayload::new(
+            "bundle-1",
+            1_710_000_000_000,
+            vec![summary.clone()],
+        );
+        assert_eq!(
+            serde_json::to_string(&collect_result).expect("collect result should encode"),
+            r#"{"bundleId":"bundle-1","collectedAt":1710000000000,"sources":[{"source":"logs","itemCount":1,"redactionPolicy":{"id":"host-secret-patterns","evidence":[{"path":"<redacted-path>","action":"redacted","reason":"secret-pattern"}]}}],"artifactCount":1}"#
+        );
+        let redact_result = DiagnosticsBundleRedactResultPayload::new(
+            "bundle-1",
+            DiagnosticsBundleSourceKind::Logs,
+            serde_json::json!({ "token": "<redacted:redacted>" }),
+            DiagnosticsBundleRedactionPolicyPayload::new("host-secret-patterns", Vec::new()),
+        );
+        assert_eq!(
+            serde_json::to_string(&redact_result).expect("redact result should encode"),
+            r#"{"bundleId":"bundle-1","source":"logs","payload":{"token":"<redacted:redacted>"},"redactionPolicy":{"id":"host-secret-patterns","evidence":[]}}"#
+        );
+        let write_result = DiagnosticsBundleWriteResultPayload::new(
+            "bundle-1",
+            "/tmp/diagnostics.zip",
+            42,
+            vec![summary],
+        );
+        assert_eq!(
+            serde_json::to_string(&write_result).expect("write result should encode"),
+            r#"{"bundleId":"bundle-1","destinationPath":"/tmp/diagnostics.zip","bytesWritten":42,"sources":[{"source":"logs","itemCount":1,"redactionPolicy":{"id":"host-secret-patterns","evidence":[{"path":"<redacted-path>","action":"redacted","reason":"secret-pattern"}]}}]}"#
+        );
+
+        let supported =
+            DiagnosticsBundleSupportedPayload::unsupported(DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON);
+        assert!(!supported.supported());
+        assert_eq!(
+            supported.reason(),
+            Some(DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON)
+        );
+        assert_eq!(
+            serde_json::to_string(&supported).expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
         );
     }
 

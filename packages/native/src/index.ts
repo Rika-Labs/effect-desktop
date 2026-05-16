@@ -101,6 +101,29 @@ export {
   type CrashReporterStartOptions
 } from "./crash-reporter.js"
 export {
+  DiagnosticsBundle,
+  DiagnosticsBundleClient,
+  DiagnosticsBundleHandlersLive,
+  DiagnosticsBundleLive,
+  DiagnosticsBundleMethodNames,
+  DiagnosticsBundleRpcEvents,
+  DiagnosticsBundleRpcs,
+  DiagnosticsBundleSurface,
+  makeDiagnosticsBundleBridgeClientLayer,
+  makeDiagnosticsBundleClientLayer,
+  makeDiagnosticsBundleMemoryClient,
+  makeDiagnosticsBundlePermissionDeniedError,
+  makeDiagnosticsBundleServiceLayer,
+  makeDiagnosticsBundleUnsupportedClient,
+  makeHostDiagnosticsBundleRpcRuntime,
+  type DiagnosticsBundleClientApi,
+  type DiagnosticsBundleError,
+  type DiagnosticsBundleRpc,
+  type DiagnosticsBundleRpcHandlers,
+  type DiagnosticsBundleServiceApi,
+  type DiagnosticsBundleServiceOptions
+} from "./diagnostics-bundle.js"
+export {
   DesktopHttpApi,
   DesktopHttpApiHttpServer,
   DesktopHttpApiRoutes,

@@ -8,6 +8,7 @@ import { AppSurface } from "./app.js"
 import { ClipboardSurface } from "./clipboard.js"
 import { ContextMenuSurface } from "./context-menu.js"
 import { CrashReporterSurface } from "./crash-reporter.js"
+import { DiagnosticsBundleSurface } from "./diagnostics-bundle.js"
 import { DialogSurface } from "./dialog.js"
 import { DockSurface } from "./dock.js"
 import { GlobalShortcutSurface } from "./global-shortcut.js"
@@ -32,6 +33,7 @@ const BuiltInSurfaces = Object.freeze([
   ClipboardSurface,
   ContextMenuSurface,
   CrashReporterSurface,
+  DiagnosticsBundleSurface,
   DialogSurface,
   DockSurface,
   GlobalShortcutSurface,
@@ -62,6 +64,7 @@ const App = AppSurface.selection
 const Clipboard = ClipboardSurface.selection
 const ContextMenu = ContextMenuSurface.selection
 const CrashReporter = CrashReporterSurface.selection
+const DiagnosticsBundle = DiagnosticsBundleSurface.selection
 const Dialog = DialogSurface.selection
 const Dock = DockSurface.selection
 const GlobalShortcut = GlobalShortcutSurface.selection
@@ -92,6 +95,7 @@ export const Permissions = Object.freeze({
   clipboard: ClipboardSurface.permissions,
   contextMenu: ContextMenuSurface.permissions,
   crashReporter: CrashReporterSurface.permissions,
+  diagnosticsBundle: DiagnosticsBundleSurface.permissions,
   dialog: DialogSurface.permissions,
   dock: DockSurface.permissions,
   globalShortcut: GlobalShortcutSurface.permissions,
@@ -117,6 +121,7 @@ export const Native = Object.freeze({
   Clipboard,
   ContextMenu,
   CrashReporter,
+  DiagnosticsBundle,
   Dialog,
   Dock,
   GlobalShortcut,

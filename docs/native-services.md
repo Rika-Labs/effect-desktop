@@ -1,6 +1,6 @@
 ---
 title: Native services
-description: 21 host-backed native capabilities exposed as Effect RPC groups.
+description: 22 host-backed native capabilities exposed as Effect RPC groups.
 kind: reference
 audience: app-developers
 effect_version: 4
@@ -80,6 +80,7 @@ Native service authors should use the internal native surface authoring path, no
 | `Clipboard`            | Read/write clipboard        | [native/clipboard](reference/native/clipboard.md)                           |
 | `ContextMenu`          | Context menus               | [native/context-menu](reference/native/context-menu.md)                     |
 | `CrashReporter`        | Crash reporter              | [native/crash-reporter](reference/native/crash-reporter.md)                 |
+| `DiagnosticsBundle`    | Diagnostics export          | [native/diagnostics-bundle](reference/native/diagnostics-bundle.md)         |
 | `Dialog`               | File, save, message dialogs | [native/dialog](reference/native/dialog.md)                                 |
 | `Dock`                 | macOS dock                  | [native/dock](reference/native/dock.md)                                     |
 | `GlobalShortcut`       | OS keyboard shortcuts       | [native/global-shortcut](reference/native/global-shortcut.md)               |

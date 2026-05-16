@@ -1940,6 +1940,7 @@ test("native test layers are derived from DesktopRpc surfaces", async () => {
     "Clipboard",
     "ContextMenu",
     "CrashReporter",
+    "DiagnosticsBundle",
     "Dialog",
     "Dock",
     "GlobalShortcut",

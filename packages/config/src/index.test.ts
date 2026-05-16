@@ -736,6 +736,23 @@ test("ProductionChecker flags unguarded realtime media session usage", async () 
   ])
 })
 
+test("ProductionChecker accepts diagnostics bundle usage as a supported native capability", async () => {
+  const report = await Effect.runPromise(
+    runProductionCheck({
+      config: {},
+      rendererFiles: [
+        {
+          path: "src/renderer/diagnostics.ts",
+          content: 'DiagnosticsBundle.collect({ bundleId: "bundle-1" })'
+        }
+      ]
+    })
+  )
+
+  expect(report.passed).toBe(true)
+  expect(report.failures).toEqual([])
+})
+
 test("ProductionChecker accepts supported Dock requestAttention without a guard", async () => {
   const report = await Effect.runPromise(
     runProductionCheck({

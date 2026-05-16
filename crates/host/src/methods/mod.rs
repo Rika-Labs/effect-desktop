@@ -1,3 +1,4 @@
+mod diagnostics_bundle;
 mod dock;
 pub(crate) mod handshake;
 mod menu;
@@ -89,6 +90,14 @@ impl HostMethodRouter {
             }
             host_protocol::REALTIME_MEDIA_SESSION_IS_SUPPORTED_METHOD => {
                 realtime_media_session::is_supported()
+            }
+            host_protocol::DIAGNOSTICS_BUNDLE_COLLECT_METHOD => {
+                diagnostics_bundle::collect(payload)
+            }
+            host_protocol::DIAGNOSTICS_BUNDLE_REDACT_METHOD => diagnostics_bundle::redact(payload),
+            host_protocol::DIAGNOSTICS_BUNDLE_WRITE_METHOD => diagnostics_bundle::write(payload),
+            host_protocol::DIAGNOSTICS_BUNDLE_IS_SUPPORTED_METHOD => {
+                diagnostics_bundle::is_supported()
             }
             host_protocol::MENU_SET_APPLICATION_MENU_METHOD => {
                 menu::set_application_menu(&*self.window, payload)
@@ -540,6 +549,95 @@ mod tests {
                 payload: Some(serde_json::json!({
                     "supported": false,
                     "reason": host_protocol::REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON
+                })),
+                error: None,
+            }
+        );
+    }
+
+    #[test]
+    fn diagnostics_bundle_collect_returns_summary_payload() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-diagnostics-router-collect",
+                    host_protocol::DIAGNOSTICS_BUNDLE_COLLECT_METHOD,
+                    serde_json::json!({
+                        "bundleId": "bundle-router-collect",
+                        "sources": ["logs", "audit-events"]
+                    }),
+                ),
+                1710000000116,
+            )
+            .expect("diagnostics request should return response");
+
+        match response {
+            HostProtocolEnvelope::Response {
+                id,
+                timestamp,
+                trace_id,
+                payload: Some(payload),
+                error: None,
+            } => {
+                assert_eq!(id, "request-diagnostics-router-collect");
+                assert_eq!(timestamp, 1710000000116);
+                assert_eq!(trace_id, "trace-request-diagnostics-router-collect");
+                assert_eq!(payload["bundleId"], "bundle-router-collect");
+                assert_eq!(payload["artifactCount"], 2);
+                assert_eq!(payload["sources"][0]["source"], "logs");
+                assert_eq!(
+                    payload["sources"][0]["redactionPolicy"]["id"],
+                    "host-secret-patterns"
+                );
+            }
+            other => panic!("unexpected diagnostics collect response: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn diagnostics_bundle_rejects_invalid_payload() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-diagnostics-invalid",
+                    host_protocol::DIAGNOSTICS_BUNDLE_WRITE_METHOD,
+                    serde_json::json!({
+                        "bundleId": "bundle-1",
+                        "destinationPath": ""
+                    }),
+                ),
+                1710000000117,
+            )
+            .expect("diagnostics request should return response");
+
+        match response {
+            HostProtocolEnvelope::Response {
+                error: Some(error), ..
+            } => assert_eq!(error.tag(), "InvalidArgument"),
+            other => panic!("unexpected diagnostics invalid response: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn diagnostics_bundle_is_supported_reports_host_exporter_support() {
+        let response = test_router()
+            .dispatch_at(
+                request(
+                    "request-diagnostics-supported",
+                    host_protocol::DIAGNOSTICS_BUNDLE_IS_SUPPORTED_METHOD,
+                ),
+                1710000000118,
+            )
+            .expect("diagnostics support request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-diagnostics-supported".to_string(),
+                timestamp: 1710000000118,
+                trace_id: "trace-request-diagnostics-supported".to_string(),
+                payload: Some(serde_json::json!({
+                    "supported": true
                 })),
                 error: None,
             }
