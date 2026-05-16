@@ -8,6 +8,7 @@ import {
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   type RpcCapabilityMetadata,
+  type RpcSupportMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
@@ -31,6 +32,62 @@ import type { MenuTemplateOptions } from "./menu.js"
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export type DockError = HostProtocolError
+
+type DockMethodName =
+  | "setBadgeCount"
+  | "setBadgeText"
+  | "setProgress"
+  | "setMenu"
+  | "setJumpList"
+  | "requestAttention"
+  | "isSupported"
+
+const DOCK_PLATFORM_VARIANCE_REASON = "dock behavior is platform-specific"
+const DOCK_UNSUPPORTED_REASON = "host adapter does not implement this Dock method on any platform"
+const DOCK_WINDOWS_BADGE_REASON = "Windows taskbar badges require jump-list/taskbar integration"
+const DOCK_LINUX_BADGE_TEXT_REASON = "Linux host only exposes numeric launcher badge labels"
+const DOCK_MACOS_PROGRESS_REASON = "macOS Dock does not expose taskbar progress"
+const DOCK_WINDOWS_PROGRESS_REASON = "Windows taskbar progress is not wired yet"
+
+const DockSupportByMethod = Object.freeze({
+  setBadgeCount: NativeSurface.support.partial(DOCK_PLATFORM_VARIANCE_REASON, {
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "linux", status: "supported" },
+      { platform: "windows", status: "unsupported", reason: DOCK_WINDOWS_BADGE_REASON }
+    ]
+  }),
+  setBadgeText: NativeSurface.support.partial(DOCK_PLATFORM_VARIANCE_REASON, {
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "linux", status: "unsupported", reason: DOCK_LINUX_BADGE_TEXT_REASON },
+      { platform: "windows", status: "unsupported", reason: DOCK_WINDOWS_BADGE_REASON }
+    ]
+  }),
+  setProgress: NativeSurface.support.partial(DOCK_PLATFORM_VARIANCE_REASON, {
+    platforms: [
+      { platform: "linux", status: "supported" },
+      { platform: "macos", status: "unsupported", reason: DOCK_MACOS_PROGRESS_REASON },
+      { platform: "windows", status: "unsupported", reason: DOCK_WINDOWS_PROGRESS_REASON }
+    ]
+  }),
+  setMenu: NativeSurface.support.unsupported(DOCK_UNSUPPORTED_REASON, {
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: DOCK_UNSUPPORTED_REASON },
+      { platform: "linux", status: "unsupported", reason: DOCK_UNSUPPORTED_REASON },
+      { platform: "windows", status: "unsupported", reason: DOCK_UNSUPPORTED_REASON }
+    ]
+  }),
+  setJumpList: NativeSurface.support.unsupported(DOCK_UNSUPPORTED_REASON, {
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: DOCK_UNSUPPORTED_REASON },
+      { platform: "linux", status: "unsupported", reason: DOCK_UNSUPPORTED_REASON },
+      { platform: "windows", status: "unsupported", reason: DOCK_UNSUPPORTED_REASON }
+    ]
+  }),
+  requestAttention: NativeSurface.support.supported,
+  isSupported: NativeSurface.support.supported
+} satisfies Record<DockMethodName, RpcSupportMetadata>)
 
 export const DockSetBadgeCount = dockRpc(
   "setBadgeCount",
@@ -96,7 +153,7 @@ export const DockMethodNames = Object.freeze([
   "setJumpList",
   "requestAttention",
   "isSupported"
-] as const)
+] as const satisfies readonly DockMethodName[])
 
 const DockCapabilityMethods = Object.freeze([
   "setBadgeCount",
@@ -349,7 +406,7 @@ const decodeInput = <A>(
   )
 
 function dockRpc<
-  const Method extends string,
+  const Method extends DockMethodName,
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
@@ -358,7 +415,7 @@ function dockRpc<
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: NativeSurface.support.supported
+    support: DockSupportByMethod[method]
   })
 }
 

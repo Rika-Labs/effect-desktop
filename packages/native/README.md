@@ -12,7 +12,7 @@ Each native module exposes a canonical Effect `RpcGroup`, a generated `*Surface`
 
 Native RPC endpoints are authored through the package-internal `NativeSurface` helper. New native endpoints must declare payload and success schemas, endpoint kind, support status, and authority in one place. Authority is explicit: either a native invoke capability, an explicit no-permission endpoint, or a custom capability for desktop-specific policy. Native service files should not call `Rpc.make(...)` directly.
 
-`NativeCapabilities` builds its manifest from selected native layers, not from a parallel table of RPC groups. Every manifest fact includes the endpoint tag, capability metadata, and support metadata. Duplicate tags, missing capability metadata, and unsupported endpoints without reasons fail as typed manifest errors.
+`NativeCapabilities` builds its manifest from selected native layers, not from a parallel table of RPC groups. Every manifest fact includes the endpoint tag, capability metadata, and Schema-typed support metadata: `supported`, `partial`, or `unsupported`, with per-platform reasons when behavior differs across macOS, Windows, and Linux. Duplicate tags, missing capability metadata, and malformed maturity metadata fail as typed manifest errors.
 
 `Window` is exposed as an Effect service. `WindowRpcs` is the full Window method descriptor with support metadata, and `WindowSupportedRpcs` is the generated callable group used by the bridge client layer. The host runtime binds handlers through canonical Effect RPC groups and bridge protocol adapters. `WindowClient` remains the substitutable port used by tests and adapters, but its supported callable surface is `create` and `close`.
 

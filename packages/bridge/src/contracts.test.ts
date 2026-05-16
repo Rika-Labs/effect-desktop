@@ -167,7 +167,24 @@ test("bridge metadata validation rejects invalid annotations", () => {
   }).pipe(RpcCapability({ kind: "" }))
   const EmptySupportReason = Rpc.make("Test.FromGroup.unsupported", {
     success: Schema.String
-  }).pipe(RpcSupport.unsupported(""))
+  }).pipe(RpcSupport.unsupported(" "))
+  const DuplicatePlatformSupport = Rpc.make("Test.FromGroup.platforms", {
+    success: Schema.String
+  }).pipe(
+    RpcSupport.partial("platform-specific support", {
+      platforms: [
+        { platform: "macos", status: "supported" },
+        { platform: "macos", status: "unsupported", reason: "duplicate" }
+      ]
+    })
+  )
+  const EmptyPlatformSupportReason = Rpc.make("Test.FromGroup.platformReason", {
+    success: Schema.String
+  }).pipe(
+    RpcSupport.partial("platform-specific support", {
+      platforms: [{ platform: "linux", status: "unsupported", reason: " " }]
+    })
+  )
   const InvalidStreamBackpressure = Rpc.make("Test.FromGroup.watch", {
     success: Schema.String,
     error: Schema.Never,
@@ -184,6 +201,12 @@ test("bridge metadata validation rejects invalid annotations", () => {
   ).toThrow(InvalidBridgeMetadataError)
   expect(() =>
     bridgeContractFromRpcGroup("Test.FromGroup", RpcGroup.make(EmptySupportReason))
+  ).toThrow(InvalidBridgeMetadataError)
+  expect(() =>
+    bridgeContractFromRpcGroup("Test.FromGroup", RpcGroup.make(DuplicatePlatformSupport))
+  ).toThrow(InvalidBridgeMetadataError)
+  expect(() =>
+    bridgeContractFromRpcGroup("Test.FromGroup", RpcGroup.make(EmptyPlatformSupportReason))
   ).toThrow(InvalidBridgeMetadataError)
   expect(() =>
     bridgeContractFromRpcGroup("Test.FromGroup", RpcGroup.make(InvalidStreamBackpressure))
@@ -203,7 +226,12 @@ test("canonical RpcGroup carries endpoint, capability, support, stream, and even
     error: Schema.Never
   }).pipe(
     RpcCapability({ kind: "notes:open" }),
-    RpcSupport.unsupported("host adapter does not implement open yet")
+    RpcSupport.partial("platform implementations differ", {
+      platforms: [
+        { platform: "macos", status: "supported" },
+        { platform: "linux", status: "unsupported", reason: "host adapter missing" }
+      ]
+    })
   )
   const Watch = Rpc.make("Test.Metadata.watch", {
     success: Schema.String,
@@ -235,8 +263,12 @@ test("canonical RpcGroup carries endpoint, capability, support, stream, and even
     })
   ).toEqual({ kind: "notes:open" })
   expect(rpcSupport(request(NotesRpcs, "Test.Metadata.open"))).toEqual({
-    status: "unsupported",
-    reason: "host adapter does not implement open yet"
+    status: "partial",
+    reason: "platform implementations differ",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "linux", status: "unsupported", reason: "host adapter missing" }
+    ]
   })
   expect(Object.isFrozen(NotesRpcs.spec["open"]?.support)).toBe(true)
   expect(RpcSchema.isStreamSchema(successSchema(request(NotesRpcs, "Test.Metadata.watch")))).toBe(

@@ -12,13 +12,35 @@ export interface RpcCapabilityMetadata {
   readonly [key: string]: unknown
 }
 
+export type RpcSupportPlatform = "macos" | "windows" | "linux"
+
+export type RpcSupportStatus = "supported" | "partial" | "unsupported"
+
+export type RpcPlatformSupportMetadata =
+  | {
+      readonly platform: RpcSupportPlatform
+      readonly status: "supported"
+    }
+  | {
+      readonly platform: RpcSupportPlatform
+      readonly status: "partial" | "unsupported"
+      readonly reason: string
+    }
+
 export type RpcSupportMetadata =
   | {
       readonly status: "supported"
+      readonly platforms?: readonly RpcPlatformSupportMetadata[]
+    }
+  | {
+      readonly status: "partial"
+      readonly reason: string
+      readonly platforms?: readonly RpcPlatformSupportMetadata[]
     }
   | {
       readonly status: "unsupported"
       readonly reason: string
+      readonly platforms?: readonly RpcPlatformSupportMetadata[]
     }
 
 declare const RpcEndpointKindTypeId: unique symbol
@@ -75,20 +97,76 @@ export const RpcCapability =
     >
 
 export const RpcSupport = Object.freeze({
-  supported: <R extends RpcAny>(rpc: R): WithRpcSupport<R, { readonly status: "supported" }> =>
-    annotateRpc(rpc, RpcSupportAnnotation, { status: "supported" }) as WithRpcSupport<
+  supported: <R extends RpcAny>(
+    rpc: R,
+    options: { readonly platforms?: readonly RpcPlatformSupportMetadata[] } = {}
+  ): WithRpcSupport<
+    R,
+    { readonly status: "supported"; readonly platforms?: readonly RpcPlatformSupportMetadata[] }
+  > =>
+    annotateRpc(
+      rpc,
+      RpcSupportAnnotation,
+      freezeSupport({ status: "supported", ...options })
+    ) as WithRpcSupport<
       R,
-      { readonly status: "supported" }
+      { readonly status: "supported"; readonly platforms?: readonly RpcPlatformSupportMetadata[] }
     >,
 
-  unsupported:
-    (reason: string) =>
+  partial:
+    (
+      reason: string,
+      options: { readonly platforms?: readonly RpcPlatformSupportMetadata[] } = {}
+    ) =>
     <R extends RpcAny>(
       rpc: R
-    ): WithRpcSupport<R, { readonly status: "unsupported"; readonly reason: string }> =>
-      annotateRpc(rpc, RpcSupportAnnotation, { status: "unsupported", reason }) as WithRpcSupport<
+    ): WithRpcSupport<
+      R,
+      {
+        readonly status: "partial"
+        readonly reason: string
+        readonly platforms?: readonly RpcPlatformSupportMetadata[]
+      }
+    > =>
+      annotateRpc(
+        rpc,
+        RpcSupportAnnotation,
+        freezeSupport({ status: "partial", reason, ...options })
+      ) as WithRpcSupport<
         R,
-        { readonly status: "unsupported"; readonly reason: string }
+        {
+          readonly status: "partial"
+          readonly reason: string
+          readonly platforms?: readonly RpcPlatformSupportMetadata[]
+        }
+      >,
+
+  unsupported:
+    (
+      reason: string,
+      options: { readonly platforms?: readonly RpcPlatformSupportMetadata[] } = {}
+    ) =>
+    <R extends RpcAny>(
+      rpc: R
+    ): WithRpcSupport<
+      R,
+      {
+        readonly status: "unsupported"
+        readonly reason: string
+        readonly platforms?: readonly RpcPlatformSupportMetadata[]
+      }
+    > =>
+      annotateRpc(
+        rpc,
+        RpcSupportAnnotation,
+        freezeSupport({ status: "unsupported", reason, ...options })
+      ) as WithRpcSupport<
+        R,
+        {
+          readonly status: "unsupported"
+          readonly reason: string
+          readonly platforms?: readonly RpcPlatformSupportMetadata[]
+        }
       >
 })
 
@@ -115,3 +193,13 @@ export const rpcEndpointName = (tag: string): string => {
 
 const annotateRpc = <R extends RpcAny, I, S>(rpc: R, tag: Context.Key<I, S>, value: S): R =>
   (rpc as R & AnnotatableRpc).annotate(tag, value) as R
+
+const freezeSupport = <Support extends RpcSupportMetadata>(support: Support): Support => {
+  if (support.platforms === undefined) {
+    return Object.freeze(support)
+  }
+  return Object.freeze({
+    ...support,
+    platforms: Object.freeze(support.platforms.map((platform) => Object.freeze(platform)))
+  }) as Support
+}

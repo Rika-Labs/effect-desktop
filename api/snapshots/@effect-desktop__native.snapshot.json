@@ -901,17 +901,52 @@
     {
       "name": "NativeCapabilityLookupError",
       "kind": "class",
-      "signature": "export class NativeCapabilityLookupError extends Data.TaggedError(\"NativeCapabilityLookupError\")<{ readonly tag: string readonly message: string }> {}"
+      "signature": "export class NativeCapabilityLookupError extends Schema.TaggedErrorClass<NativeCapabilityLookupError>()( \"NativeCapabilityLookupError\", { tag: Schema.NonEmptyString, message: Schema.NonEmptyString } ) {}"
     },
     {
       "name": "NativeCapabilityManifestError",
       "kind": "class",
-      "signature": "export class NativeCapabilityManifestError extends Data.TaggedError( \"NativeCapabilityManifestError\" )<{ readonly tag: string readonly message: string }> {}"
+      "signature": "export class NativeCapabilityManifestError extends Schema.TaggedErrorClass<NativeCapabilityManifestError>()( \"NativeCapabilityManifestError\", { tag: Schema.NonEmptyString, message: Schema.NonEmptyString } ) {}"
+    },
+    {
+      "name": "NativeCapabilityPlatform",
+      "kind": "type",
+      "signature": "export type NativeCapabilityPlatform = Schema.Schema.Type<typeof NativeCapabilityPlatformSchema>"
+    },
+    {
+      "name": "NativeCapabilityPlatformSchema",
+      "kind": "value",
+      "signature": "const NativeCapabilityPlatformSchema: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>"
+    },
+    {
+      "name": "NativeCapabilityPlatformSupport",
+      "kind": "type",
+      "signature": "export type NativeCapabilityPlatformSupport = Schema.Schema.Type< typeof NativeCapabilityPlatformSupportSchema >"
+    },
+    {
+      "name": "NativeCapabilityPlatformSupportSchema",
+      "kind": "value",
+      "signature": "const NativeCapabilityPlatformSupportSchema: Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literals<readonly [\"supported\", \"partial\", \"unsupported\"]>; readonly reason: Schema.optionalKey<Schema.NonEmptyString>; }>"
+    },
+    {
+      "name": "NativeCapabilityStatus",
+      "kind": "type",
+      "signature": "export type NativeCapabilityStatus = Schema.Schema.Type<typeof NativeCapabilityStatusSchema>"
+    },
+    {
+      "name": "NativeCapabilityStatusSchema",
+      "kind": "value",
+      "signature": "const NativeCapabilityStatusSchema: Schema.Literals<readonly [\"supported\", \"partial\", \"unsupported\"]>"
     },
     {
       "name": "NativeCapabilitySupport",
       "kind": "type",
-      "signature": "export type NativeCapabilitySupport = RpcSupportMetadata"
+      "signature": "export type NativeCapabilitySupport = Schema.Schema.Type<typeof NativeCapabilitySupportSchema>"
+    },
+    {
+      "name": "NativeCapabilitySupportSchema",
+      "kind": "value",
+      "signature": "const NativeCapabilitySupportSchema: Schema.Union<readonly [Schema.Struct<{ readonly status: Schema.Literal<\"supported\">; readonly platforms: Schema.optionalKey<Schema.$Array<Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literals<readonly [\"supported\", \"partial\", \"unsupported\"]>; readonly reason: Schema.optionalKey<Schema.NonEmptyString>; }>>>; }>, Schema.Struct<{ readonly status: Schema.Literal<\"partial\">; readonly reason: Schema.NonEmptyString; readonly platforms: Schema.optionalKey<Schema.$Array<Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literals<readonly [\"supported\", \"partial\", \"unsupported\"]>; readonly reason: Schema.optionalKey<Schema.NonEmptyString>; }>>>; }>, Schema.Struct<{ readonly status: Schema.Literal<\"unsupported\">; readonly reason: Schema.NonEmptyString; readonly platforms: Schema.optionalKey<Schema.$Array<Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literals<readonly [\"supported\", \"partial\", \"unsupported\"]>; readonly reason: Schema.optionalKey<Schema.NonEmptyString>; }>>>; }>]>"
     },
     {
       "name": "NativeCapabilitySurface",
@@ -1531,7 +1566,7 @@
     {
       "name": "UnsupportedCapability",
       "kind": "class",
-      "signature": "export class UnsupportedCapability extends Data.TaggedError(\"UnsupportedCapability\")<{ readonly tag: string readonly reason: string readonly message: string }> {}"
+      "signature": "export class UnsupportedCapability extends Schema.TaggedErrorClass<UnsupportedCapability>()( \"UnsupportedCapability\", { tag: Schema.NonEmptyString, reason: Schema.NonEmptyString, message: Schema.NonEmptyString } ) {}"
     },
     {
       "name": "Updater",

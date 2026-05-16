@@ -18,14 +18,21 @@ export {
 export {
   NativeCapabilities,
   NativeCapabilitiesLive,
+  NativeCapabilityPlatformSchema,
+  NativeCapabilityPlatformSupportSchema,
   NativeCapabilityLookupError,
   NativeCapabilityManifestError,
+  NativeCapabilityStatusSchema,
+  NativeCapabilitySupportSchema,
   makeNativeCapabilities,
   makeNativeCapabilitiesLayer,
   makeNativeCapabilityManifest,
   UnsupportedCapability,
   type NativeCapabilitiesApi,
   type NativeCapabilityFact,
+  type NativeCapabilityPlatform,
+  type NativeCapabilityPlatformSupport,
+  type NativeCapabilityStatus,
   type NativeCapabilitySurface,
   type NativeCapabilitySupport
 } from "./capabilities.js"

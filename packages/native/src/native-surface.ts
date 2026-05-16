@@ -10,6 +10,7 @@ import {
   type RpcCapabilityMetadata,
   RpcEndpoint,
   type RpcEndpointKind,
+  type RpcPlatformSupportMetadata,
   RpcSupport,
   type RpcSupportMetadata
 } from "@effect-desktop/bridge"
@@ -107,8 +108,14 @@ export const nativeAuthority = Object.freeze({
 
 export const NativeRpcSupport = Object.freeze({
   supported: Object.freeze({ status: "supported" } satisfies RpcSupportMetadata),
-  unsupported: (reason: string): RpcSupportMetadata =>
-    Object.freeze({ status: "unsupported", reason })
+  partial: (
+    reason: string,
+    options: { readonly platforms?: readonly RpcPlatformSupportMetadata[] } = {}
+  ): RpcSupportMetadata => Object.freeze({ status: "partial", reason, ...options }),
+  unsupported: (
+    reason: string,
+    options: { readonly platforms?: readonly RpcPlatformSupportMetadata[] } = {}
+  ): RpcSupportMetadata => Object.freeze({ status: "unsupported", reason, ...options })
 })
 
 const rpc = <
@@ -348,8 +355,19 @@ const applyCapability = <R extends Rpc.Any>(
 
 const applySupport = <R extends Rpc.Any>(rpc: R, support: RpcSupportMetadata): R =>
   support.status === "supported"
-    ? RpcSupport.supported(rpc)
-    : RpcSupport.unsupported(support.reason)(rpc)
+    ? RpcSupport.supported(
+        rpc,
+        support.platforms === undefined ? {} : { platforms: support.platforms }
+      )
+    : support.status === "partial"
+      ? RpcSupport.partial(
+          support.reason,
+          support.platforms === undefined ? {} : { platforms: support.platforms }
+        )(rpc)
+      : RpcSupport.unsupported(
+          support.reason,
+          support.platforms === undefined ? {} : { platforms: support.platforms }
+        )(rpc)
 
 const capabilityFor = (
   surface: string,

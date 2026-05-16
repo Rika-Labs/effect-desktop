@@ -38,23 +38,36 @@ test("bindRendererEndpoints binds descriptors, preserves reserved names, and att
       status: "unsupported",
       reason: "host method is unavailable"
     }),
+    descriptor("share", "Notes.Share", "mutation", {
+      status: "partial",
+      reason: "platform implementations differ",
+      platforms: [{ platform: "linux", status: "unsupported", reason: "portal missing" }]
+    }),
     descriptor("watch", "Notes.Watch", "stream", { status: "supported" })
   ] satisfies readonly RpcEndpointDescriptor[]
   const client: DesktopRendererRpcClient = {
     "Notes.List": () => Effect.succeed("list"),
     "Notes.Create": (input) => Effect.succeed(input),
+    "Notes.Share": (input) => Effect.succeed(input),
     "Notes.Watch": () => Stream.make("one", "two")
   }
 
   const endpoints = bindRendererEndpoints(descriptors, client, "react", binders)
   const listEndpoint = requireEndpoint(endpoints, "__proto__")
   const createEndpoint = requireEndpoint(endpoints, "create")
+  const shareEndpoint = requireEndpoint(endpoints, "share")
   const watchEndpoint = requireEndpoint(endpoints, "watch")
 
   expect(Object.getPrototypeOf(endpoints)).toBe(null)
   expect(Object.prototype.hasOwnProperty.call(endpoints, "__proto__")).toBe(true)
   expect(listEndpoint.isSupported).toBe(true)
   expect(createEndpoint.isSupported).toBe(false)
+  expect(shareEndpoint.isSupported).toBe(true)
+  expect(shareEndpoint.support).toEqual({
+    status: "partial",
+    reason: "platform implementations differ",
+    platforms: [{ platform: "linux", status: "unsupported", reason: "portal missing" }]
+  })
   expect(createEndpoint.support).toEqual({
     status: "unsupported",
     reason: "host method is unavailable"

@@ -111,7 +111,7 @@ if (ClipboardRpcs === undefined || DialogRpcs === undefined || WindowRpcs === un
 
 Platform-limited operations must be guarded through support metadata or `isSupported` methods. Unsupported capability is a **typed result**, not an implicit no-op.
 
-`NativeCapabilities` exposes a manifest of native method facts. Each fact includes the method tag, its capability metadata, and its support metadata. Unknown tags fail with `NativeCapabilityLookupError`; unsupported methods fail `require(tag)` with `UnsupportedCapability`.
+`NativeCapabilities` exposes a manifest of native method facts. Each fact includes the method tag, its capability metadata, and Schema-typed maturity metadata. Status is `supported`, `partial`, or `unsupported`; `partial` and `unsupported` include a reason, and platform-specific entries record macOS, Windows, and Linux differences. Unknown tags fail with `NativeCapabilityLookupError`; unsupported methods fail `require(tag)` with `UnsupportedCapability`.
 
 ## Where to go next
 

@@ -18,14 +18,29 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
     Effect.gen(function* () {
       const capabilities = yield* NativeCapabilities
       const create = yield* capabilities.support("Window.create")
+      const dockBadge = yield* capabilities.support("Dock.setBadgeCount")
       return {
         create,
+        dockBadge,
         hasWindowShow: capabilities.manifest.some((fact) => fact.tag === "Window.show")
       }
     }).pipe(Effect.provide(NativeCapabilitiesLive))
   )
 
   expect(result.create).toEqual({ status: "supported" })
+  expect(result.dockBadge).toEqual({
+    status: "partial",
+    reason: "dock behavior is platform-specific",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "linux", status: "supported" },
+      {
+        platform: "windows",
+        status: "unsupported",
+        reason: "Windows taskbar badges require jump-list/taskbar integration"
+      }
+    ]
+  })
   expect(result.hasWindowShow).toBe(false)
 })
 
@@ -76,6 +91,37 @@ test("NativeCapabilities require fails unsupported methods from explicit metadat
       reason: "example unavailable"
     })
   }
+})
+
+test("NativeCapabilities exposes partial support with platform-specific reasons", async () => {
+  const partial = testSurface("Example.partial", {
+    status: "partial",
+    reason: "platform implementations differ",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "linux", status: "unsupported", reason: "host adapter missing" }
+    ]
+  })
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const capabilities = yield* NativeCapabilities
+      const support = yield* capabilities.support("Example.partial")
+      yield* capabilities.require("Example.partial")
+      return support
+    }).pipe(Effect.provide(makeNativeCapabilitiesLayer(testNativeLayer(partial))))
+  )
+
+  expect(result).toEqual({
+    status: "partial",
+    reason: "platform implementations differ",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "linux", status: "unsupported", reason: "host adapter missing" }
+    ]
+  })
+  expect(Object.isFrozen(result)).toBe(true)
+  expect(Object.isFrozen(result.platforms)).toBe(true)
 })
 
 test("NativeCapabilities require succeeds for supported methods", async () => {
@@ -144,6 +190,28 @@ test("NativeCapabilities rejects missing capability metadata", async () => {
     expect(failure?.error).toMatchObject({
       tag: "Example.missing",
       message: "missing native capability metadata: Example.missing"
+    })
+  }
+})
+
+test("NativeCapabilities rejects malformed support metadata", async () => {
+  const malformed = testSurface("Example.malformed", {
+    status: "partial",
+    reason: " ",
+    platforms: [{ platform: "linux", status: "unsupported", reason: " " }]
+  })
+
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(Layer.build(makeNativeCapabilitiesLayer(testNativeLayer(malformed))))
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(NativeCapabilityManifestError)
+    expect(failure?.error).toMatchObject({
+      tag: "Example.malformed",
+      message: "partial and unsupported native capabilities must include a reason"
     })
   }
 })
