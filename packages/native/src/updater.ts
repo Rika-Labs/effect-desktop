@@ -168,7 +168,7 @@ export const makeUpdaterBridgeClientLayer = (
 
 export type UpdaterRpc = RpcGroup.Rpcs<typeof UpdaterRpcGroup>
 
-export type UpdaterRpcHandlers = Parameters<typeof UpdaterRpcGroup.toLayer>[0]
+export type UpdaterRpcHandlers = RpcGroup.HandlersFrom<UpdaterRpc>
 
 export const UpdaterHandlersLive = UpdaterRpcGroup.toLayer({
   "Updater.check": (input) =>
@@ -205,6 +205,7 @@ export const UpdaterHandlersLive = UpdaterRpcGroup.toLayer({
 
 export const UpdaterSurface = NativeSurface.make("Updater", UpdaterRpcGroup, {
   service: UpdaterClient,
+  capabilities: UpdaterMethodNames,
   handlers: UpdaterHandlersLive,
   client: (client) =>
     updaterClientFromRpcClient(client, () =>

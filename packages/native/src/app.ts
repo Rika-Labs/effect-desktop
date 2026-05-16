@@ -114,6 +114,14 @@ export const AppMethodNames = Object.freeze([
   "registerProtocol"
 ] as const)
 
+const AppCapabilityMethods = Object.freeze([
+  "quit",
+  "restart",
+  "focus",
+  "setOpenAtLogin",
+  "registerProtocol"
+] as const satisfies readonly (typeof AppMethodNames)[number][])
+
 export type AppError = HostProtocolError
 
 export interface AppClientApi {
@@ -168,7 +176,7 @@ export const makeAppBridgeClientLayer = (
 
 export type AppRpc = RpcGroup.Rpcs<typeof AppRpcGroup>
 
-export type AppRpcHandlers = Parameters<typeof AppRpcGroup.toLayer>[0]
+export type AppRpcHandlers = RpcGroup.HandlersFrom<AppRpc>
 
 export const AppHandlersLive = AppRpcGroup.toLayer({
   "App.getInfo": () =>
@@ -215,6 +223,7 @@ export const AppHandlersLive = AppRpcGroup.toLayer({
 
 export const AppSurface = NativeSurface.make("App", AppRpcGroup, {
   service: AppClient,
+  capabilities: AppCapabilityMethods,
   handlers: AppHandlersLive,
   client: (client) => appClientFromRpcClient(client, undefined)
 })

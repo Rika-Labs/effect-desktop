@@ -101,6 +101,15 @@ export const DockMethodNames = Object.freeze([
   "isSupported"
 ] as const)
 
+const DockCapabilityMethods = Object.freeze([
+  "setBadgeCount",
+  "setBadgeText",
+  "setProgress",
+  "setMenu",
+  "setJumpList",
+  "requestAttention"
+] as const satisfies readonly (typeof DockMethodNames)[number][])
+
 export interface DockClientApi {
   readonly setBadgeCount: (count: number) => Effect.Effect<void, DockError, never>
   readonly setBadgeText: (text: string | null) => Effect.Effect<void, DockError, never>
@@ -162,7 +171,7 @@ export const makeDockBridgeClientLayer = (
 
 export type DockRpc = RpcGroup.Rpcs<typeof DockRpcGroup>
 
-export type DockRpcHandlers = Parameters<typeof DockRpcGroup.toLayer>[0]
+export type DockRpcHandlers = RpcGroup.HandlersFrom<DockRpc>
 
 export const DockHandlersLive = DockRpcGroup.toLayer({
   "Dock.setBadgeCount": (input) =>
@@ -205,6 +214,7 @@ export const DockHandlersLive = DockRpcGroup.toLayer({
 
 export const DockSurface = NativeSurface.make("Dock", DockRpcGroup, {
   service: DockClient,
+  capabilities: DockCapabilityMethods,
   handlers: DockHandlersLive,
   client: (client) => dockClientFromRpcClient(client)
 })

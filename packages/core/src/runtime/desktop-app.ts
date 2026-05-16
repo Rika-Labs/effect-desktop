@@ -98,6 +98,18 @@ export type DesktopNativeLayer = DesktopDeclarationLayer<
   DesktopNativeRegistry | DesktopPermissionRegistry
 >
 
+export interface DesktopNativeSurfaceSelection {
+  readonly _tag: "NativeSurfaceSelection" | "NativeCapabilitySelection"
+  readonly surfaces: readonly AnyDesktopNativeRegistration[]
+}
+
+export interface DesktopNativeCapabilitySelection extends DesktopNativeSurfaceSelection {
+  readonly _tag: "NativeCapabilitySelection"
+  readonly permissions: readonly NormalizedCapability[]
+}
+
+export type DesktopNativeDeclaration = DesktopNativeLayer | DesktopNativeSurfaceSelection
+
 export type DesktopWorkflowsLayer<RIn = never, E = never> = DesktopDeclarationLayer<
   DesktopWorkflowRegistry,
   RIn,
@@ -613,8 +625,88 @@ export const provider = (descriptor: DesktopProviderDescriptor): DesktopProvider
 export const providers = (...layers: readonly DesktopProvidersLayer[]): DesktopProvidersLayer =>
   mergeDeclarationLayers(layers)
 
-export const native = (...layers: readonly DesktopNativeLayer[]): DesktopNativeLayer =>
-  mergeDeclarationLayers(layers.map((layer) => Layer.fresh(layer)))
+export const native = (...declarations: readonly DesktopNativeDeclaration[]): DesktopNativeLayer =>
+  mergeDeclarationLayers([
+    ...declarations.filter(isDesktopNativeLayer).map((layer) => Layer.fresh(layer)),
+    registerNativeSelections(declarations.filter(isDesktopNativeSelection))
+  ])
+
+const isDesktopNativeLayer = (
+  declaration: DesktopNativeDeclaration
+): declaration is DesktopNativeLayer => Layer.isLayer(declaration)
+
+const isDesktopNativeSelection = (
+  declaration: DesktopNativeDeclaration
+): declaration is DesktopNativeSurfaceSelection =>
+  !isDesktopNativeLayer(declaration) &&
+  (declaration._tag === "NativeSurfaceSelection" ||
+    declaration._tag === "NativeCapabilitySelection")
+
+const registerNativeSelections = (
+  selections: readonly DesktopNativeSurfaceSelection[]
+): DesktopNativeLayer =>
+  declarationLayer(
+    Layer.effectDiscard(
+      Effect.gen(function* () {
+        const nativeRegistry = yield* DesktopNativeRegistry
+        const permissionRegistry = yield* DesktopPermissionRegistry
+
+        for (const registration of dedupeNativeSelectionSurfaces(selections)) {
+          yield* nativeRegistry.register(registration)
+        }
+
+        for (const permission of dedupeNativeSelectionPermissions(selections)) {
+          yield* permissionRegistry.register(permission)
+        }
+      })
+    )
+  )
+
+const dedupeNativeSelectionSurfaces = (
+  selections: readonly DesktopNativeSurfaceSelection[]
+): readonly AnyDesktopNativeRegistration[] => {
+  const surfaces: AnyDesktopNativeRegistration[] = []
+  const seen = new Set<string>()
+
+  for (const selection of selections) {
+    for (const nativeSurface of selection.surfaces) {
+      if (seen.has(nativeSurface.tag)) {
+        continue
+      }
+      seen.add(nativeSurface.tag)
+      surfaces.push(nativeSurface)
+    }
+  }
+
+  return Object.freeze(surfaces)
+}
+
+const dedupeNativeSelectionPermissions = (
+  selections: readonly DesktopNativeSurfaceSelection[]
+): readonly NormalizedCapability[] => {
+  const permissions: NormalizedCapability[] = []
+  const seen = new Set<string>()
+
+  for (const selection of selections) {
+    if (!isDesktopNativeCapabilitySelection(selection)) {
+      continue
+    }
+    for (const permission of selection.permissions) {
+      const key = JSON.stringify(permission)
+      if (seen.has(key)) {
+        continue
+      }
+      seen.add(key)
+      permissions.push(permission)
+    }
+  }
+
+  return Object.freeze(permissions)
+}
+
+const isDesktopNativeCapabilitySelection = (
+  selection: DesktopNativeSurfaceSelection
+): selection is DesktopNativeCapabilitySelection => selection._tag === "NativeCapabilitySelection"
 
 const DefaultProviders = Object.freeze({
   runtime: Provider.Runtime.bun,

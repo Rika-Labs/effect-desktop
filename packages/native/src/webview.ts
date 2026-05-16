@@ -137,6 +137,18 @@ export const WebViewMethodNames = Object.freeze([
   "destroy"
 ] as const)
 
+const WebViewCapabilityMethods = Object.freeze([
+  "create",
+  "loadRoute",
+  "loadUrl",
+  "reload",
+  "goBack",
+  "goForward",
+  "captureScreenshot",
+  "setNavigationPolicy",
+  "destroy"
+] as const satisfies readonly (typeof WebViewMethodNames)[number][])
+
 export interface WebViewClientApi {
   readonly create: (
     input: WebViewCreateOptions
@@ -214,7 +226,7 @@ export const makeWebViewBridgeClientLayer = (
 
 export type WebViewRpc = RpcGroup.Rpcs<typeof WebViewRpcGroup>
 
-export type WebViewRpcHandlers = Parameters<typeof WebViewRpcGroup.toLayer>[0]
+export type WebViewRpcHandlers = RpcGroup.HandlersFrom<WebViewRpc>
 
 export const WebViewHandlersLive = WebViewRpcGroup.toLayer({
   "WebView.create": (input) =>
@@ -275,6 +287,7 @@ export const WebViewHandlersLive = WebViewRpcGroup.toLayer({
 
 export const WebViewSurface = NativeSurface.make("WebView", WebViewRpcGroup, {
   service: WebViewClient,
+  capabilities: WebViewCapabilityMethods,
   handlers: WebViewHandlersLive,
   client: (client) => webViewClientFromRpcClient(client, undefined)
 })

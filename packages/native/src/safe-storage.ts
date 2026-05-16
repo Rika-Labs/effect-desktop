@@ -94,6 +94,13 @@ export const SafeStorageMethodNames = Object.freeze([
   "isAvailable"
 ] as const)
 
+const SafeStorageCapabilityMethods = Object.freeze([
+  "set",
+  "get",
+  "delete",
+  "list"
+] as const satisfies readonly (typeof SafeStorageMethodNames)[number][])
+
 export interface SafeStorageClientApi {
   readonly set: (key: string, value: SecretBytes) => Effect.Effect<void, SafeStorageError, never>
   readonly get: (key: string) => Effect.Effect<SecretBytes, SafeStorageError, never>
@@ -144,7 +151,7 @@ export const makeSafeStorageBridgeClientLayer = (
 
 export type SafeStorageRpc = RpcGroup.Rpcs<typeof SafeStorageRpcGroup>
 
-export type SafeStorageRpcHandlers = Parameters<typeof SafeStorageRpcGroup.toLayer>[0]
+export type SafeStorageRpcHandlers = RpcGroup.HandlersFrom<SafeStorageRpc>
 
 export const SafeStorageHandlersLive = SafeStorageRpcGroup.toLayer({
   "SafeStorage.set": (input) =>
@@ -179,6 +186,7 @@ export const SafeStorageHandlersLive = SafeStorageRpcGroup.toLayer({
 
 export const SafeStorageSurface = NativeSurface.make("SafeStorage", SafeStorageRpcGroup, {
   service: SafeStorageClient,
+  capabilities: SafeStorageCapabilityMethods,
   handlers: SafeStorageHandlersLive,
   client: (client) => safeStorageClientFromRpcClient(client)
 })

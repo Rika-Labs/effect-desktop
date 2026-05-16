@@ -119,7 +119,7 @@ export const makeCrashReporterBridgeClientLayer = (
 
 export type CrashReporterRpc = RpcGroup.Rpcs<typeof CrashReporterRpcGroup>
 
-export type CrashReporterRpcHandlers = Parameters<typeof CrashReporterRpcGroup.toLayer>[0]
+export type CrashReporterRpcHandlers = RpcGroup.HandlersFrom<CrashReporterRpc>
 
 export const CrashReporterHandlersLive = CrashReporterRpcGroup.toLayer({
   "CrashReporter.start": (input) =>
@@ -141,6 +141,7 @@ export const CrashReporterHandlersLive = CrashReporterRpcGroup.toLayer({
 
 export const CrashReporterSurface = NativeSurface.make("CrashReporter", CrashReporterRpcGroup, {
   service: CrashReporterClient,
+  capabilities: CrashReporterMethodNames,
   handlers: CrashReporterHandlersLive,
   client: (client) => crashReporterClientFromRpcClient(client)
 })

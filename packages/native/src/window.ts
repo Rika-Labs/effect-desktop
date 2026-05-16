@@ -130,6 +130,7 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
 
 export const WindowSurface = NativeSurface.make("Window", WindowRpcGroup, {
   service: WindowClient,
+  capabilities: WindowMethodNames,
   handlers: WindowHandlersLive,
   client: windowClientFromRpcClient
 })

@@ -137,7 +137,7 @@ export const makeShellBridgeClientLayer = (
 
 export type ShellRpc = RpcGroup.Rpcs<typeof ShellRpcGroup>
 
-export type ShellRpcHandlers = Parameters<typeof ShellRpcGroup.toLayer>[0]
+export type ShellRpcHandlers = RpcGroup.HandlersFrom<ShellRpc>
 
 export const ShellHandlersLive = ShellRpcGroup.toLayer({
   "Shell.openExternal": (input) =>
@@ -170,6 +170,7 @@ export const ShellHandlersLive = ShellRpcGroup.toLayer({
 
 export const ShellSurface = NativeSurface.make("Shell", ShellRpcGroup, {
   service: ShellClient,
+  capabilities: ShellMethodNames,
   handlers: ShellHandlersLive,
   client: (client) => shellClientFromRpcClient(client)
 })

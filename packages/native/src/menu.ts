@@ -107,6 +107,13 @@ export const MenuMethodNames = Object.freeze([
   "capability"
 ] as const)
 
+const MenuCapabilityMethods = Object.freeze([
+  "setApplicationMenu",
+  "setWindowMenu",
+  "clear",
+  "bindCommand"
+] as const satisfies readonly (typeof MenuMethodNames)[number][])
+
 export interface MenuClientApi {
   readonly setApplicationMenu: (
     template: MenuTemplateOptions
@@ -170,7 +177,7 @@ export const makeMenuBridgeClientLayer = (
 
 export type MenuRpc = RpcGroup.Rpcs<typeof MenuRpcGroup>
 
-export type MenuRpcHandlers = Parameters<typeof MenuRpcGroup.toLayer>[0]
+export type MenuRpcHandlers = RpcGroup.HandlersFrom<MenuRpc>
 
 export const MenuHandlersLive = MenuRpcGroup.toLayer({
   "Menu.setApplicationMenu": (input) =>
@@ -200,6 +207,7 @@ export const MenuHandlersLive = MenuRpcGroup.toLayer({
 
 export const MenuSurface = NativeSurface.make("Menu", MenuRpcGroup, {
   service: MenuClient,
+  capabilities: MenuCapabilityMethods,
   handlers: MenuHandlersLive,
   client: (client) => menuClientFromRpcClient(client, undefined)
 })

@@ -380,6 +380,7 @@ test("native package root keeps contracts and implementation helpers behind subp
   expect(native.Native.Clipboard.readText).toBeDefined()
   expect(Layer.isLayer(native.Native.available(native.Native.Clipboard))).toBe(true)
   expect(Layer.isLayer(native.Native.capabilities(native.Native.all))).toBe(true)
+  expect(Layer.isLayer(Desktop.native(native.Native.all))).toBe(true)
   expect("Permissions" in native.Native).toBe(false)
   expect(native.NativeCapabilities).toBeFunction()
   expect(native.NativeCapabilitiesLive).toBeDefined()
@@ -423,10 +424,25 @@ test("native capability groups declare only their native surface", async () => {
 })
 
 test("native capability constants can declare a selected method", async () => {
-  const declared = await nativePermissionTags(Native.capabilities(Native.Clipboard.readText))
+  const declared = await nativePermissionTags(Desktop.native(Native.Clipboard.readText))
 
   expect(declared).toContain("Clipboard.readText")
   expect(declared).not.toContain("Clipboard.writeText")
+})
+
+test("native capability selections come from their surfaces", async () => {
+  const declared = await nativePermissionTags(
+    Native.capabilities(ClipboardSurface.selection.readText)
+  )
+
+  expect(Native.Clipboard).toBe(ClipboardSurface.selection)
+  expect(Native.Dialog).toBe(DialogSurface.selection)
+  expect(Native.Clipboard.readText.surfaces).toHaveLength(1)
+  expect(Native.Clipboard.readText.surfaces[0]?.tag).toBe(ClipboardSurface.tag)
+  expect(Native.Clipboard.readText.surfaces[0]?.serverLayer).toBe(ClipboardSurface.serverLayer)
+  expect("isSupported" in Native.Clipboard).toBe(false)
+  expect("getInfo" in Native.App).toBe(false)
+  expect(declared).toContain("Clipboard.readText")
 })
 
 test("native capability bundles dedupe repeated surfaces and permissions", async () => {

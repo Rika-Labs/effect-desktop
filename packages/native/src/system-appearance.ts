@@ -86,6 +86,13 @@ export const SystemAppearanceMethodNames = Object.freeze([
   "isSupported"
 ] as const)
 
+const SystemAppearanceCapabilityMethods = Object.freeze([
+  "getAppearance",
+  "getAccentColor",
+  "getReducedMotion",
+  "getReducedTransparency"
+] as const satisfies readonly (typeof SystemAppearanceMethodNames)[number][])
+
 export interface SystemAppearanceClientApi {
   readonly getAppearance: () => Effect.Effect<SystemAppearanceResult, SystemAppearanceError, never>
   readonly getAccentColor: () => Effect.Effect<
@@ -185,7 +192,7 @@ export const makeSystemAppearanceBridgeClientLayer = (
 
 export type SystemAppearanceRpc = RpcGroup.Rpcs<typeof SystemAppearanceRpcGroup>
 
-export type SystemAppearanceRpcHandlers = Parameters<typeof SystemAppearanceRpcGroup.toLayer>[0]
+export type SystemAppearanceRpcHandlers = RpcGroup.HandlersFrom<SystemAppearanceRpc>
 
 export const SystemAppearanceHandlersLive = SystemAppearanceRpcGroup.toLayer({
   "SystemAppearance.getAppearance": () =>
@@ -225,6 +232,7 @@ export const SystemAppearanceSurface = NativeSurface.make(
   SystemAppearanceRpcGroup,
   {
     service: SystemAppearanceClient,
+    capabilities: SystemAppearanceCapabilityMethods,
     handlers: SystemAppearanceHandlersLive,
     client: (client) =>
       systemAppearanceClientFromRpcClient(client, () =>

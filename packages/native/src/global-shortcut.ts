@@ -105,6 +105,12 @@ export const GlobalShortcutMethodNames = Object.freeze([
   "isSupported"
 ] as const)
 
+const GlobalShortcutCapabilityMethods = Object.freeze([
+  "register",
+  "unregister",
+  "unregisterAll"
+] as const satisfies readonly (typeof GlobalShortcutMethodNames)[number][])
+
 export interface GlobalShortcutClientApi {
   readonly register: (
     accelerator: string,
@@ -270,7 +276,7 @@ export const makeGlobalShortcutBridgeClientLayer = (
 
 export type GlobalShortcutRpc = RpcGroup.Rpcs<typeof GlobalShortcutRpcGroup>
 
-export type GlobalShortcutRpcHandlers = Parameters<typeof GlobalShortcutRpcGroup.toLayer>[0]
+export type GlobalShortcutRpcHandlers = RpcGroup.HandlersFrom<GlobalShortcutRpc>
 
 export const GlobalShortcutHandlersLive = GlobalShortcutRpcGroup.toLayer({
   "GlobalShortcut.register": (input) =>
@@ -303,6 +309,7 @@ export const GlobalShortcutHandlersLive = GlobalShortcutRpcGroup.toLayer({
 
 export const GlobalShortcutSurface = NativeSurface.make("GlobalShortcut", GlobalShortcutRpcGroup, {
   service: GlobalShortcutClient,
+  capabilities: GlobalShortcutCapabilityMethods,
   handlers: GlobalShortcutHandlersLive,
   client: (client) => globalShortcutClientFromRpcClient(client, undefined)
 })

@@ -123,7 +123,7 @@ export const makeProtocolBridgeClientLayer = (
 
 export type ProtocolRpc = RpcGroup.Rpcs<typeof ProtocolRpcGroup>
 
-export type ProtocolRpcHandlers = Parameters<typeof ProtocolRpcGroup.toLayer>[0]
+export type ProtocolRpcHandlers = RpcGroup.HandlersFrom<ProtocolRpc>
 
 export const ProtocolHandlersLive = ProtocolRpcGroup.toLayer({
   "Protocol.registerAppProtocol": (input) =>
@@ -150,6 +150,7 @@ export const ProtocolHandlersLive = ProtocolRpcGroup.toLayer({
 
 export const ProtocolSurface = NativeSurface.make("Protocol", ProtocolRpcGroup, {
   service: ProtocolClient,
+  capabilities: ProtocolMethodNames,
   handlers: ProtocolHandlersLive,
   client: (client) => protocolClientFromRpcClient(client)
 })

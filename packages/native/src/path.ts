@@ -102,7 +102,7 @@ export const makePathBridgeClientLayer = (
 
 export type PathRpc = RpcGroup.Rpcs<typeof PathRpcGroup>
 
-export type PathRpcHandlers = Parameters<typeof PathRpcGroup.toLayer>[0]
+export type PathRpcHandlers = RpcGroup.HandlersFrom<PathRpc>
 
 export const PathHandlersLive = PathRpcGroup.toLayer({
   "Path.appData": () =>
@@ -145,6 +145,7 @@ export const PathHandlersLive = PathRpcGroup.toLayer({
 
 export const PathSurface = NativeSurface.make("Path", PathRpcGroup, {
   service: PathClient,
+  capabilities: PathMethodNames,
   handlers: PathHandlersLive,
   client: (client) => pathClientFromRpcClient(client)
 })

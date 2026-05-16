@@ -96,6 +96,14 @@ export const TrayMethodNames = Object.freeze([
   "isSupported"
 ] as const)
 
+const TrayCapabilityMethods = Object.freeze([
+  "create",
+  "setIcon",
+  "setTooltip",
+  "setMenu",
+  "destroy"
+] as const satisfies readonly (typeof TrayMethodNames)[number][])
+
 export interface TrayClientApi {
   readonly create: (input: TrayCreateOptions) => Effect.Effect<TrayHandle, TrayError, never>
   readonly setIcon: (tray: TrayHandle, icon: string) => Effect.Effect<void, TrayError, never>
@@ -153,7 +161,7 @@ export const makeTrayBridgeClientLayer = (
 
 export type TrayRpc = RpcGroup.Rpcs<typeof TrayRpcGroup>
 
-export type TrayRpcHandlers = Parameters<typeof TrayRpcGroup.toLayer>[0]
+export type TrayRpcHandlers = RpcGroup.HandlersFrom<TrayRpc>
 
 export const TrayHandlersLive = TrayRpcGroup.toLayer({
   "Tray.create": (input) =>
@@ -191,6 +199,7 @@ export const TrayHandlersLive = TrayRpcGroup.toLayer({
 
 export const TraySurface = NativeSurface.make("Tray", TrayRpcGroup, {
   service: TrayClient,
+  capabilities: TrayCapabilityMethods,
   handlers: TrayHandlersLive,
   client: (client) => trayClientFromRpcClient(client, undefined)
 })

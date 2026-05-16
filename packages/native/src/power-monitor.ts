@@ -115,7 +115,7 @@ export const makePowerMonitorBridgeClientLayer = (
 
 export type PowerMonitorRpc = RpcGroup.Rpcs<typeof PowerMonitorRpcGroup>
 
-export type PowerMonitorRpcHandlers = Parameters<typeof PowerMonitorRpcGroup.toLayer>[0]
+export type PowerMonitorRpcHandlers = RpcGroup.HandlersFrom<PowerMonitorRpc>
 
 export const PowerMonitorHandlersLive = PowerMonitorRpcGroup.toLayer({
   "PowerMonitor.isSupported": (input) =>

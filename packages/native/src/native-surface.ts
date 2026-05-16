@@ -13,14 +13,19 @@ import {
   type RpcSupportMetadata
 } from "@effect-desktop/bridge"
 import {
+  type AnyDesktopNativeRegistration,
   DesktopRpc,
+  type DesktopNativeCapabilitySelection,
+  type DesktopNativeSurfaceSelection,
   type DesktopRpcSurface,
   type DesktopRpcSurfaceDirectOptions,
   type DesktopRpcSurfaceMappedOptions,
+  NormalizedCapability as NormalizedCapabilitySchema,
+  type NormalizedCapability,
   P,
   type PermissionRegistry
 } from "@effect-desktop/core"
-import { Effect, Layer, Schema } from "effect"
+import { Effect, Layer, Option, Schema } from "effect"
 import { Rpc, RpcClient, RpcGroup } from "effect/unstable/rpc"
 
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
@@ -28,6 +33,18 @@ import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 type NativeRpcGroup<Rpcs extends Rpc.Any> = RpcGroup.RpcGroup<Rpcs> & {
   readonly requests: ReadonlyMap<string, Rpcs>
 }
+
+type NativeRpcHandlers<Group extends RpcGroup.Any> = RpcGroup.HandlersFrom<RpcGroup.Rpcs<Group>>
+
+export type NativeSurfaceSelection = DesktopNativeSurfaceSelection
+export type NativeCapabilitySelection = DesktopNativeCapabilitySelection
+
+export type NativeSurfaceApi<Method extends string = never> = Readonly<
+  NativeSurfaceSelection &
+    Record<Method, NativeCapabilitySelection> & {
+      readonly all: NativeCapabilitySelection
+    }
+>
 
 export type NativeRpcAuthority =
   | {
@@ -53,20 +70,26 @@ export interface NativeRpcOptions<
   readonly support: RpcSupportMetadata
 }
 
+export interface NativeRpcSurfaceSelectionOptions<Method extends string = never> {
+  readonly capabilities?: readonly Method[]
+}
+
 export interface NativeRpcSurface<
   Tag extends string,
   Group extends NativeRpcGroup<Rpcs>,
   Rpcs extends Rpc.Any,
   ServiceId,
   ServerE,
-  ServerR
+  ServerR,
+  Method extends string = never
 > extends DesktopRpcSurface<Tag, Group, Rpcs, ServiceId, ServerE, ServerR> {
+  readonly selection: NativeSurfaceApi<Method>
   readonly bridgeClientLayer: (
     exchange: BridgeClientExchange,
     options?: BridgeClientOptions
   ) => Layer.Layer<ServiceId>
   readonly hostRuntime: (
-    handlers: Parameters<Group["toLayer"]>[0],
+    handlers: NativeRpcHandlers<Group>,
     runtimeOptions?: BridgeHandlerRuntimeOptions
   ) => BridgeHandlerRuntime<PermissionRegistry>
 }
@@ -114,19 +137,22 @@ function make<
   Group extends RpcGroup.Any & NativeRpcGroup<RpcGroup.Rpcs<Group>>,
   ServiceId,
   ServerE,
-  ServerR
+  ServerR,
+  const Method extends string = never
 >(
   tag: Tag,
   group: Group,
-  options: DesktopRpcSurfaceDirectOptions<RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR>
-): NativeRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR>
+  options: DesktopRpcSurfaceDirectOptions<RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR> &
+    NativeRpcSurfaceSelectionOptions<Method>
+): NativeRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR, Method>
 function make<
   const Tag extends string,
   Group extends RpcGroup.Any & NativeRpcGroup<RpcGroup.Rpcs<Group>>,
   ServiceId,
   Service,
   ServerE,
-  ServerR
+  ServerR,
+  const Method extends string = never
 >(
   tag: Tag,
   group: Group,
@@ -136,35 +162,44 @@ function make<
     Service,
     ServerE,
     ServerR
-  >
-): NativeRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR>
+  > &
+    NativeRpcSurfaceSelectionOptions<Method>
+): NativeRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR, Method>
 function make<
   const Tag extends string,
   Group extends RpcGroup.Any & NativeRpcGroup<RpcGroup.Rpcs<Group>>,
   ServiceId,
   Service,
   ServerE,
-  ServerR
+  ServerR,
+  const Method extends string = never
 >(
   tag: Tag,
   group: Group,
   options:
-    | DesktopRpcSurfaceDirectOptions<RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR>
-    | DesktopRpcSurfaceMappedOptions<RpcGroup.Rpcs<Group>, ServiceId, Service, ServerE, ServerR>
-): NativeRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR> {
+    | (DesktopRpcSurfaceDirectOptions<RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR> &
+        NativeRpcSurfaceSelectionOptions<Method>)
+    | (DesktopRpcSurfaceMappedOptions<RpcGroup.Rpcs<Group>, ServiceId, Service, ServerE, ServerR> &
+        NativeRpcSurfaceSelectionOptions<Method>)
+): NativeRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR, Method> {
   const desktopSurface =
     "client" in options
       ? DesktopRpc.surface(tag, group, options)
       : DesktopRpc.surface(tag, group, options)
 
-  return Object.freeze({
+  const surfaceWithoutSelection = Object.freeze({
     ...desktopSurface,
     bridgeClientLayer: (exchange: BridgeClientExchange, bridgeOptions: BridgeClientOptions = {}) =>
       Layer.provide(desktopSurface.clientLayer, makeBridgeProtocolLayer(exchange, bridgeOptions)),
     hostRuntime: (
-      handlers: Parameters<Group["toLayer"]>[0],
+      handlers: NativeRpcHandlers<Group>,
       runtimeOptions: BridgeHandlerRuntimeOptions = {}
     ) => makeNativeHostRpcRuntime(group, group.toLayer(handlers), runtimeOptions)
+  })
+
+  return Object.freeze({
+    ...surfaceWithoutSelection,
+    selection: nativeSurfaceSelection(surfaceWithoutSelection, options.capabilities ?? [])
   })
 }
 
@@ -177,6 +212,124 @@ const makeBridgeProtocolLayer = (
       Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
     )
   )
+
+const nativeSurfaceSelection = <const Method extends string>(
+  registration: AnyDesktopNativeRegistration,
+  capabilities: readonly Method[]
+): NativeSurfaceApi<Method> =>
+  Object.freeze({
+    ...surfaceSelection(registration),
+    ...Object.fromEntries(
+      capabilities.map((method) => [method, surfaceCapability(registration, method)] as const)
+    ),
+    all: capabilitySelection(registration, allPermissionCapabilities([registration]))
+  }) as NativeSurfaceApi<Method>
+
+const surfaceSelection = (registration: AnyDesktopNativeRegistration): NativeSurfaceSelection =>
+  Object.freeze({
+    _tag: "NativeSurfaceSelection" as const,
+    surfaces: Object.freeze([registration])
+  })
+
+const capabilitySelection = (
+  registration: AnyDesktopNativeRegistration,
+  permissions: readonly NormalizedCapability[]
+): NativeCapabilitySelection =>
+  Object.freeze({
+    _tag: "NativeCapabilitySelection" as const,
+    surfaces: Object.freeze([registration]),
+    permissions: Object.freeze([...permissions])
+  })
+
+const surfaceCapability = (
+  registration: AnyDesktopNativeRegistration,
+  method: string
+): NativeCapabilitySelection =>
+  capabilitySelection(registration, [permissionCapability(registration, method)])
+
+const permissionCapability = (
+  registration: AnyDesktopNativeRegistration,
+  method: string
+): NormalizedCapability => {
+  const capability = permissionCapabilitiesByMethod(registration).get(method)
+  if (capability === undefined) {
+    throw new TypeError(
+      `Native.${registration.tag} cannot expose capability for unprivileged or unknown method ${JSON.stringify(method)}`
+    )
+  }
+  return capability
+}
+
+export const allCapabilitySelection = (
+  surfaces: readonly AnyDesktopNativeRegistration[]
+): NativeCapabilitySelection =>
+  Object.freeze({
+    _tag: "NativeCapabilitySelection" as const,
+    surfaces: Object.freeze([...surfaces]),
+    permissions: allPermissionCapabilities(surfaces)
+  })
+
+const allPermissionCapabilities = (
+  surfaces: readonly AnyDesktopNativeRegistration[]
+): readonly NormalizedCapability[] => {
+  const permissions: NormalizedCapability[] = []
+  const seen = new Set<string>()
+
+  for (const nativeSurface of surfaces) {
+    for (const doc of nativeSurface.schemaDocs) {
+      const capability = Option.getOrUndefined(doc.capability)
+      if (capability === undefined || capability.kind === "none") {
+        continue
+      }
+
+      const decoded = Schema.decodeUnknownOption(NormalizedCapabilitySchema)(capability)
+      if (Option.isNone(decoded)) {
+        throw new TypeError(
+          `Native.${nativeSurface.tag} cannot declare non-normalized capability metadata for ${doc.tag}: ${capability.kind}`
+        )
+      }
+
+      const key = JSON.stringify(decoded.value)
+      if (seen.has(key)) {
+        continue
+      }
+      seen.add(key)
+      permissions.push(decoded.value)
+    }
+  }
+
+  return Object.freeze(permissions)
+}
+
+const permissionCapabilitiesByMethod = (
+  surfaceRegistration: AnyDesktopNativeRegistration
+): ReadonlyMap<string, NormalizedCapability> => {
+  const capabilities = new Map<string, NormalizedCapability>()
+
+  for (const doc of surfaceRegistration.schemaDocs) {
+    const method = methodNameFromTag(surfaceRegistration.tag, doc.tag)
+    const capability = Option.getOrUndefined(doc.capability)
+    if (capability === undefined || capability.kind === "none") {
+      continue
+    }
+
+    const decoded = Schema.decodeUnknownOption(NormalizedCapabilitySchema)(capability)
+    if (Option.isNone(decoded)) {
+      throw new TypeError(
+        `Native.${surfaceRegistration.tag} cannot declare non-normalized capability metadata for ${doc.tag}: ${capability.kind}`
+      )
+    }
+
+    capabilities.set(method, decoded.value)
+  }
+
+  return capabilities
+}
+
+const methodNameFromTag = (surfaceTag: string, tag: string): string => {
+  const prefix = `${surfaceTag}.`
+  return tag.startsWith(prefix) ? tag.slice(prefix.length) : tag
+}
 
 const applyEndpoint = <R extends Rpc.Any>(rpc: R, endpoint: RpcEndpointKind): R =>
   endpoint === "query" ? RpcEndpoint.query(rpc) : RpcEndpoint.mutation(rpc)

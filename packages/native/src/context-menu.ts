@@ -199,7 +199,7 @@ export const makeContextMenuBridgeClientLayer = (
 
 export type ContextMenuRpc = RpcGroup.Rpcs<typeof ContextMenuRpcGroup>
 
-export type ContextMenuRpcHandlers = Parameters<typeof ContextMenuRpcGroup.toLayer>[0]
+export type ContextMenuRpcHandlers = RpcGroup.HandlersFrom<ContextMenuRpc>
 
 export const ContextMenuHandlersLive = ContextMenuRpcGroup.toLayer({
   "ContextMenu.show": (input) =>
@@ -217,6 +217,7 @@ export const ContextMenuHandlersLive = ContextMenuRpcGroup.toLayer({
 
 export const ContextMenuSurface = NativeSurface.make("ContextMenu", ContextMenuRpcGroup, {
   service: ContextMenuClient,
+  capabilities: ContextMenuMethodNames,
   handlers: ContextMenuHandlersLive,
   client: (client) => contextMenuClientFromRpcClient(client, undefined)
 })

@@ -3,12 +3,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  makeDesktopClientProtocol,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  makeHostProtocolInternalError,
-  makeHostProtocolInvalidArgumentError,
-  makeHostProtocolInvalidOutputError,
-  RpcClient,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
@@ -17,6 +11,7 @@ import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-deskt
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import {
   DialogConfirmInput,
   type DialogConfirmOptions,
@@ -32,8 +27,6 @@ import {
   type DialogSaveFileOptions,
   DialogSaveResult
 } from "./contracts/dialog.js"
-
-const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export type DialogError = HostProtocolError
 
@@ -144,10 +137,9 @@ export const makeDialogServiceLayer = (client: DialogClientApi): Layer.Layer<Dia
 export const makeDialogBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<DialogClient> =>
-  Layer.provide(DialogSurface.clientLayer, makeDialogBridgeProtocolLayer(exchange, options))
+): Layer.Layer<DialogClient> => DialogSurface.bridgeClientLayer(exchange, options)
 
-export type DialogRpcHandlers = Parameters<typeof DialogRpcGroup.toLayer>[0]
+export type DialogRpcHandlers = RpcGroup.HandlersFrom<DialogRpc>
 
 export const DialogHandlersLive = DialogRpcGroup.toLayer({
   "Dialog.openFile": (input) =>
@@ -183,6 +175,7 @@ export const DialogHandlersLive = DialogRpcGroup.toLayer({
 
 export const DialogSurface = NativeSurface.make("Dialog", DialogRpcGroup, {
   service: DialogClient,
+  capabilities: DialogMethodNames,
   handlers: DialogHandlersLive,
   client: (client) => dialogClientFromRpcClient(client)
 })
@@ -204,16 +197,6 @@ const makeDialogService = (client: DialogClientApi): DialogServiceApi => {
 
   return Object.freeze(service)
 }
-
-const makeDialogBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
 
 const dialogClientFromRpcClient = (client: DesktopRpcClient<DialogRpc>): DialogClientApi => {
   const dialogClient: DialogClientApi = {
@@ -255,59 +238,32 @@ const dialogClientFromRpcClient = (client: DesktopRpcClient<DialogRpc>): DialogC
 const decodeDialogOpenFileInput = (
   input: unknown
 ): Effect.Effect<DialogOpenFileInput, DialogError, never> =>
-  decodeInput(DialogOpenFileInput, input, "Dialog.openFile")
+  decodeNativeInput(DialogOpenFileInput, input, "Dialog.openFile")
 
 const decodeDialogOpenDirectoryInput = (
   input: unknown
 ): Effect.Effect<DialogOpenDirectoryInput, DialogError, never> =>
-  decodeInput(DialogOpenDirectoryInput, input, "Dialog.openDirectory")
+  decodeNativeInput(DialogOpenDirectoryInput, input, "Dialog.openDirectory")
 
 const decodeDialogSaveFileInput = (
   input: unknown
 ): Effect.Effect<DialogSaveFileInput, DialogError, never> =>
-  decodeInput(DialogSaveFileInput, input, "Dialog.saveFile")
+  decodeNativeInput(DialogSaveFileInput, input, "Dialog.saveFile")
 
 const decodeDialogMessageInput = (
   input: unknown
 ): Effect.Effect<DialogMessageInput, DialogError, never> =>
-  decodeInput(DialogMessageInput, input, "Dialog.message")
+  decodeNativeInput(DialogMessageInput, input, "Dialog.message")
 
 const decodeDialogConfirmInput = (
   input: unknown
 ): Effect.Effect<DialogConfirmInput, DialogError, never> =>
-  decodeInput(DialogConfirmInput, input, "Dialog.confirm")
-
-const decodeInput = <A>(
-  schema: Schema.Codec<A, unknown, never, never>,
-  input: unknown,
-  operation: string
-): Effect.Effect<A, DialogError, never> =>
-  Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
-    )
-  )
+  decodeNativeInput(DialogConfirmInput, input, "Dialog.confirm")
 
 const runDialogRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
-): Effect.Effect<A, DialogError, never> =>
-  effect.pipe(
-    Effect.mapError(mapDialogRpcClientError),
-    Effect.catchDefect((defect) =>
-      Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
-    )
-  )
-
-const mapDialogRpcClientError = (error: unknown): DialogError =>
-  isDialogError(error) ? error : makeHostProtocolInternalError("Dialog RPC client failed", "Dialog")
-
-const isDialogError = (error: unknown): error is DialogError =>
-  typeof error === "object" &&
-  error !== null &&
-  "tag" in error &&
-  "operation" in error &&
-  "recoverable" in error
+): Effect.Effect<A, DialogError, never> => runNativeRpc(effect, operation, "Dialog")
 
 function dialogRpc<
   const Method extends string,
@@ -321,12 +277,4 @@ function dialogRpc<
     endpoint: "mutation",
     support: NativeSurface.support.supported
   })
-}
-
-const formatUnknownError = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return String(error)
 }

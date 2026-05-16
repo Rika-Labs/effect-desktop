@@ -83,6 +83,12 @@ export const ScreenMethodNames = Object.freeze([
   "isSupported"
 ] as const)
 
+const ScreenCapabilityMethods = Object.freeze([
+  "getDisplays",
+  "getPrimaryDisplay",
+  "getPointerPoint"
+] as const satisfies readonly (typeof ScreenMethodNames)[number][])
+
 export interface ScreenClientApi {
   readonly getDisplays: () => Effect.Effect<ScreenDisplaysResult, ScreenError, never>
   readonly getPrimaryDisplay: () => Effect.Effect<ScreenDisplay, ScreenError, never>
@@ -147,6 +153,7 @@ export const ScreenHandlersLive = ScreenRpcGroup.toLayer({
 
 export const ScreenSurface = NativeSurface.make("Screen", ScreenRpcGroup, {
   service: ScreenClient,
+  capabilities: ScreenCapabilityMethods,
   handlers: ScreenHandlersLive,
   client: (client) => screenClientFromRpcClient(client)
 })
@@ -163,7 +170,7 @@ export const makeScreenBridgeClientLayer = (
 ): Layer.Layer<ScreenClient> =>
   Layer.provide(ScreenSurface.clientLayer, makeScreenBridgeProtocolLayer(exchange, options))
 
-export type ScreenRpcHandlers = Parameters<typeof ScreenRpcGroup.toLayer>[0]
+export type ScreenRpcHandlers = RpcGroup.HandlersFrom<ScreenRpc>
 
 export const makeHostScreenRpcRuntime = (
   handlers: ScreenRpcHandlers,

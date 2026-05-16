@@ -92,6 +92,12 @@ export const NotificationMethodNames = Object.freeze([
   "getPermissionStatus"
 ] as const)
 
+const NotificationCapabilityMethods = Object.freeze([
+  "show",
+  "close",
+  "requestPermission"
+] as const satisfies readonly (typeof NotificationMethodNames)[number][])
+
 export interface NotificationClientApi {
   readonly show: (
     input: NotificationShowOptions
@@ -165,7 +171,7 @@ export const makeNotificationBridgeClientLayer = (
 
 export type NotificationRpc = RpcGroup.Rpcs<typeof NotificationRpcGroup>
 
-export type NotificationRpcHandlers = Parameters<typeof NotificationRpcGroup.toLayer>[0]
+export type NotificationRpcHandlers = RpcGroup.HandlersFrom<NotificationRpc>
 
 export const NotificationHandlersLive = NotificationRpcGroup.toLayer({
   "Notification.show": (input) =>
@@ -200,6 +206,7 @@ export const NotificationHandlersLive = NotificationRpcGroup.toLayer({
 
 export const NotificationSurface = NativeSurface.make("Notification", NotificationRpcGroup, {
   service: NotificationClient,
+  capabilities: NotificationCapabilityMethods,
   handlers: NotificationHandlersLive,
   client: (client) => notificationClientFromRpcClient(client, undefined)
 })
