@@ -19,18 +19,18 @@ import { Native, WebView, WebViewError, WebViewRpcs } from "@effect-desktop/nati
 
 ## Methods
 
-| Method                | Payload                   | Success                |
-| --------------------- | ------------------------- | ---------------------- |
-| `create`              | `{ id?, window?, route? }` | `{ id, window }`       |
-| `loadRoute`           | `{ webview, route }`      | `void`                 |
-| `loadUrl`             | `{ webview, url }`        | `void`                 |
-| `reload`              | `{ webview }`             | `void`                 |
-| `goBack`              | `{ webview }`             | `void`                 |
-| `goForward`           | `{ webview }`             | `void`                 |
-| `captureScreenshot`   | `{ webview }`             | screenshot data        |
-| `setNavigationPolicy` | `{ webview, policy }`     | `void`                 |
+| Method                | Payload                      | Success                  |
+| --------------------- | ---------------------------- | ------------------------ |
+| `create`              | `{ id?, window?, route? }`   | `{ id, window }`         |
+| `loadRoute`           | `{ webview, route }`         | `void`                   |
+| `loadUrl`             | `{ webview, url }`           | `void`                   |
+| `reload`              | `{ webview }`                | `void`                   |
+| `goBack`              | `{ webview }`                | `void`                   |
+| `goForward`           | `{ webview }`                | `void`                   |
+| `captureScreenshot`   | `{ webview }`                | screenshot data          |
+| `setNavigationPolicy` | `{ webview, policy }`        | `void`                   |
 | `capability`          | `{ name, platform?, mode? }` | `{ supported: boolean }` |
-| `destroy`             | `{ webview }`             | `void`                 |
+| `destroy`             | `{ webview }`                | `void`                   |
 
 ## App composition
 

@@ -19,13 +19,13 @@ import { Menu, MenuError, MenuRpcs, Native } from "@effect-desktop/native"
 
 ## Methods
 
-| Method               | Payload                         | Success                |
-| -------------------- | ------------------------------- | ---------------------- |
-| `setApplicationMenu` | `{ template }`                  | `void`                 |
-| `setWindowMenu`      | `{ window, template }`          | `void`                 |
-| `clear`              | `{ scope?, window? }`           | `void`                 |
-| `bindCommand`        | `{ itemId, commandId }`         | `void`                 |
-| `capability`         | `{ name, platform? }`           | `{ supported: boolean }` |
+| Method               | Payload                 | Success                  |
+| -------------------- | ----------------------- | ------------------------ |
+| `setApplicationMenu` | `{ template }`          | `void`                   |
+| `setWindowMenu`      | `{ window, template }`  | `void`                   |
+| `clear`              | `{ scope?, window? }`   | `void`                   |
+| `bindCommand`        | `{ itemId, commandId }` | `void`                   |
+| `capability`         | `{ name, platform? }`   | `{ supported: boolean }` |
 
 `MenuTemplate` — array of items with `{ label, accelerator?, command?, submenu?, type? }`.
 
