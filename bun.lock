@@ -120,7 +120,7 @@
       "version": "2.0.0",
       "dependencies": {
         "@effect/platform-browser": "4.0.0-beta.60",
-        "@effect/sql-sqlite-wasm": "4.0.0-beta.60",
+        "@effect/sql-sqlite-wasm": "4.0.0-beta.66",
         "@effect/wa-sqlite": "^0.1.2",
         "effect": "4.0.0-beta.60",
       },
@@ -300,7 +300,7 @@
 
     "@effect/sql-sqlite-bun": ["@effect/sql-sqlite-bun@4.0.0-beta.60", "", { "peerDependencies": { "effect": "^4.0.0-beta.60" } }, "sha512-vDXAGVmRZkB8gq+4KHfp3JgxqttSg+Bl6wn6YOYqGi4/X0BMMACLndY09c2+Pt4Whd4W+xNM2SD4SIo1Hd5i6w=="],
 
-    "@effect/sql-sqlite-wasm": ["@effect/sql-sqlite-wasm@4.0.0-beta.60", "", { "peerDependencies": { "@effect/wa-sqlite": "^0.1.2", "effect": "^4.0.0-beta.60" } }, "sha512-UvB4hL4cJr87dYnXN3K8pdjqGrEqhbSYUmgmaTjsSjjAqMSBFZ2Q4zoHYXTqX5EkccNR3R9exlQEGjGxLLgcZA=="],
+    "@effect/sql-sqlite-wasm": ["@effect/sql-sqlite-wasm@4.0.0-beta.66", "", { "peerDependencies": { "@effect/wa-sqlite": "^0.1.2", "effect": "^4.0.0-beta.66" } }, "sha512-D+FjOasz1YXN6UDsfkFRXoM+4cEsk8F2rdy8XBpuFZAFnYYMsam/7qTC6oQWWBSDT/82Miahv+jPD39brsMATA=="],
 
     "@effect/tsgo": ["@effect/tsgo@0.7.2", "", { "optionalDependencies": { "@effect/tsgo-darwin-arm64": "0.7.2", "@effect/tsgo-darwin-x64": "0.7.2", "@effect/tsgo-linux-arm": "0.7.2", "@effect/tsgo-linux-arm64": "0.7.2", "@effect/tsgo-linux-x64": "0.7.2", "@effect/tsgo-win32-arm64": "0.7.2", "@effect/tsgo-win32-x64": "0.7.2" }, "bin": { "effect-tsgo": "dist/effect-tsgo.js" } }, "sha512-ZTpfpJvn4IPykmCDsPQiZ4RvhCagQfuYL4zlIk77gSf5AyxmUYjrtDshHB2RK9fnEI8qyQ9abWVmVRkVwnjHyw=="],
 
