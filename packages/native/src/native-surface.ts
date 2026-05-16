@@ -3,7 +3,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  type HostProtocolRequestEnvelope,
   HostProtocolError as HostProtocolErrorSchema,
   makeDesktopClientProtocol,
   makeUnaryDesktopTransportFromBridgeClientExchange,
@@ -16,16 +15,17 @@ import {
 import {
   type AnyDesktopNativeRegistration,
   DesktopRpc,
-  type DesktopRpcClient,
   type DesktopNativeCapabilitySelection,
   type DesktopNativeSurfaceSelection,
   type DesktopRpcSurface,
+  type DesktopRpcSurfaceDirectOptions,
+  type DesktopRpcSurfaceMappedOptions,
   NormalizedCapability as NormalizedCapabilitySchema,
   type NormalizedCapability,
   P,
   type PermissionRegistry
 } from "@effect-desktop/core"
-import { Context, Effect, Layer, Option, Schema } from "effect"
+import { Effect, Layer, Option, Schema } from "effect"
 import { Rpc, RpcClient, RpcGroup } from "effect/unstable/rpc"
 
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
@@ -72,39 +72,6 @@ export interface NativeRpcOptions<
 
 export interface NativeRpcSurfaceSelectionOptions<Method extends string = never> {
   readonly capabilities?: readonly Method[]
-  readonly bridge?: NativeBridgeProtocolOptions
-}
-
-export interface NativeBridgeProtocolOptions extends BridgeClientOptions {
-  readonly normalizeRequest?: (request: HostProtocolRequestEnvelope) => HostProtocolRequestEnvelope
-}
-
-export interface NativeRpcSurfaceDirectOptions<
-  Rpcs extends Rpc.Any,
-  ServiceId,
-  ServerE,
-  ServerR,
-  Method extends string = never
-> extends NativeRpcSurfaceSelectionOptions<Method> {
-  readonly service: Context.Key<ServiceId, DesktopRpcClient<Rpcs>>
-  readonly handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, ServerE, ServerR>
-}
-
-export interface NativeRpcSurfaceMappedOptions<
-  Rpcs extends Rpc.Any,
-  ServiceId,
-  Service,
-  ServerE,
-  ServerR,
-  Method extends string = never
-> extends NativeRpcSurfaceSelectionOptions<Method> {
-  readonly service: Context.Key<ServiceId, Service>
-  readonly handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, ServerE, ServerR>
-  readonly client: (client: DesktopRpcClient<Rpcs>) => Service
-  readonly bridgeClient?: (
-    client: DesktopRpcClient<Rpcs>,
-    exchange: BridgeClientExchange
-  ) => Service
 }
 
 export interface NativeRpcSurface<
@@ -175,7 +142,8 @@ function make<
 >(
   tag: Tag,
   group: Group,
-  options: NativeRpcSurfaceDirectOptions<RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR, Method>
+  options: DesktopRpcSurfaceDirectOptions<RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR> &
+    NativeRpcSurfaceSelectionOptions<Method>
 ): NativeRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR, Method>
 function make<
   const Tag extends string,
@@ -188,14 +156,14 @@ function make<
 >(
   tag: Tag,
   group: Group,
-  options: NativeRpcSurfaceMappedOptions<
+  options: DesktopRpcSurfaceMappedOptions<
     RpcGroup.Rpcs<Group>,
     ServiceId,
     Service,
     ServerE,
-    ServerR,
-    Method
-  >
+    ServerR
+  > &
+    NativeRpcSurfaceSelectionOptions<Method>
 ): NativeRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR, Method>
 function make<
   const Tag extends string,
@@ -209,15 +177,10 @@ function make<
   tag: Tag,
   group: Group,
   options:
-    | NativeRpcSurfaceDirectOptions<RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR, Method>
-    | NativeRpcSurfaceMappedOptions<
-        RpcGroup.Rpcs<Group>,
-        ServiceId,
-        Service,
-        ServerE,
-        ServerR,
-        Method
-      >
+    | (DesktopRpcSurfaceDirectOptions<RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR> &
+        NativeRpcSurfaceSelectionOptions<Method>)
+    | (DesktopRpcSurfaceMappedOptions<RpcGroup.Rpcs<Group>, ServiceId, Service, ServerE, ServerR> &
+        NativeRpcSurfaceSelectionOptions<Method>)
 ): NativeRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR, Method> {
   const desktopSurface =
     "client" in options
@@ -227,7 +190,7 @@ function make<
   const surfaceWithoutSelection = Object.freeze({
     ...desktopSurface,
     bridgeClientLayer: (exchange: BridgeClientExchange, bridgeOptions: BridgeClientOptions = {}) =>
-      makeBridgeClientLayer(exchange, bridgeOptions),
+      Layer.provide(desktopSurface.clientLayer, makeBridgeProtocolLayer(exchange, bridgeOptions)),
     hostRuntime: (
       handlers: NativeRpcHandlers<Group>,
       runtimeOptions: BridgeHandlerRuntimeOptions = {}
@@ -238,31 +201,11 @@ function make<
     ...surfaceWithoutSelection,
     selection: nativeSurfaceSelection(surfaceWithoutSelection, options.capabilities ?? [])
   })
-
-  function makeBridgeClientLayer(
-    exchange: BridgeClientExchange,
-    bridgeOptions: BridgeClientOptions
-  ): Layer.Layer<ServiceId> {
-    const protocolLayer = makeBridgeProtocolLayer(exchange, {
-      ...bridgeOptions,
-      ...options.bridge
-    })
-
-    if ("bridgeClient" in options && options.bridgeClient !== undefined) {
-      const bridgeClient = options.bridgeClient
-      return Layer.effect(
-        options.service,
-        RpcClient.make(group).pipe(Effect.map((client) => bridgeClient(client, exchange)))
-      ).pipe(Layer.provide(protocolLayer))
-    }
-
-    return Layer.provide(desktopSurface.clientLayer, protocolLayer)
-  }
 }
 
 const makeBridgeProtocolLayer = (
   exchange: BridgeClientExchange,
-  options: NativeBridgeProtocolOptions
+  options: BridgeClientOptions
 ): Layer.Layer<RpcClient.Protocol> =>
   Layer.effect(RpcClient.Protocol)(
     makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
@@ -273,14 +216,21 @@ const makeBridgeProtocolLayer = (
 const nativeSurfaceSelection = <const Method extends string>(
   registration: AnyDesktopNativeRegistration,
   capabilities: readonly Method[]
-): NativeSurfaceApi<Method> =>
-  Object.freeze({
+): NativeSurfaceApi<Method> => {
+  const capabilitySelections: Record<Method, NativeCapabilitySelection> = {} as Record<
+    Method,
+    NativeCapabilitySelection
+  >
+  for (const method of capabilities) {
+    capabilitySelections[method] = surfaceCapability(registration, method)
+  }
+
+  return Object.freeze({
     ...surfaceSelection(registration),
-    ...Object.fromEntries(
-      capabilities.map((method) => [method, surfaceCapability(registration, method)] as const)
-    ),
+    ...capabilitySelections,
     all: capabilitySelection(registration, allPermissionCapabilities([registration]))
-  }) as NativeSurfaceApi<Method>
+  })
+}
 
 const surfaceSelection = (registration: AnyDesktopNativeRegistration): NativeSurfaceSelection =>
   Object.freeze({

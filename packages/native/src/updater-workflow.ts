@@ -1,5 +1,6 @@
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { unlink } from "node:fs/promises"
 
 import { DesktopDurations, DesktopSchedules } from "@effect-desktop/core"
 import { Cause, Effect, Schema } from "effect"
@@ -129,7 +130,7 @@ const deleteStaged = (path: string): Effect.Effect<void> =>
     try: async () => {
       const f = Bun.file(path)
       if (await f.exists()) {
-        await import("node:fs/promises").then((m) => m.unlink(path))
+        await unlink(path)
       }
     },
     catch: () => undefined

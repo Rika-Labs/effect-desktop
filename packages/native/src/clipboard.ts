@@ -1,11 +1,15 @@
 import {
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeHandlerRuntime,
+  type BridgeHandlerRuntimeOptions,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { P, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -137,6 +141,11 @@ export const makeClipboardClientLayer = (
 export const makeClipboardServiceLayer = (client: ClipboardClientApi): Layer.Layer<Clipboard> =>
   Layer.provide(ClipboardLive, makeClipboardClientLayer(client))
 
+export const makeClipboardBridgeClientLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
+): Layer.Layer<ClipboardClient> => ClipboardSurface.bridgeClientLayer(exchange, options)
+
 export type ClipboardRpcHandlers = RpcGroup.HandlersFrom<ClipboardRpc>
 
 export const ClipboardHandlersLive = ClipboardRpcGroup.toLayer({
@@ -180,6 +189,12 @@ export const ClipboardSurface = NativeSurface.make("Clipboard", ClipboardRpcGrou
   handlers: ClipboardHandlersLive,
   client: (client) => clipboardClientFromRpcClient(client)
 })
+
+export const makeHostClipboardRpcRuntime = (
+  handlers: ClipboardRpcHandlers,
+  runtimeOptions: BridgeHandlerRuntimeOptions = {}
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  ClipboardSurface.hostRuntime(handlers, runtimeOptions)
 
 const makeClipboardService = (client: ClipboardClientApi): ClipboardServiceApi => {
   const service: ClipboardServiceApi = {

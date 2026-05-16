@@ -2,7 +2,7 @@ import { createHash } from "node:crypto"
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
-import { Data, Effect } from "effect"
+import { Data, Effect, Schema } from "effect"
 
 import type { DesktopProviderBudget } from "@effect-desktop/core"
 
@@ -1410,7 +1410,9 @@ const readJson = <A>(path: string): Effect.Effect<A, PackageFileError, never> =>
     Effect.gen(function* () {
       const fs = yield* ReleaseFileSystem
       const content = yield* fs.readFileString(path)
-      return JSON.parse(content) as A
+      return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(content).pipe(
+        Effect.map((value) => value as A)
+      )
     })
   ).pipe(
     Effect.mapError(
@@ -1674,13 +1676,23 @@ const statPath = (path: string): Effect.Effect<ReleaseFileInfo, PackageFileError
     )
   )
 
-const pathExists = (path: string): Effect.Effect<boolean, never, never> =>
+const pathExists = (path: string): Effect.Effect<boolean, PackageFileError, never> =>
   runReleaseFileSystem(
     Effect.gen(function* () {
       const fs = yield* ReleaseFileSystem
       return yield* fs.exists(path)
     })
-  ).pipe(Effect.catch(() => Effect.succeed(false)))
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PackageFileError({
+          operation: "exists",
+          path,
+          message: `failed to check whether ${path} exists`,
+          cause
+        })
+    )
+  )
 
 const lstatPath = (path: string): Effect.Effect<ReleaseFileInfo, PackageFileError, never> =>
   runReleaseFileSystem(

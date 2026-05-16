@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 
-import { Context, Data, Deferred, Effect, Option, PubSub, Ref, Schema, Stream } from "effect"
+import { Clock, Context, Data, Deferred, Effect, Option, PubSub, Ref, Schema, Stream } from "effect"
 
 import { makeSecretString } from "@effect-desktop/bridge"
 
@@ -124,12 +124,12 @@ export interface PermissionRegistryApi {
   ) => Effect.Effect<readonly PermissionRule[], PermissionInvalidArgumentError, never>
   readonly check: (
     capability: NormalizedCapability,
-    context: PermissionContext,
+    context: unknown,
     options?: PermissionGrantOptions
   ) => Effect.Effect<GrantedCapability, PermissionRegistryError, never>
   readonly grant: (
     capability: NormalizedCapability,
-    context: PermissionContext,
+    context: unknown,
     options?: PermissionGrantOptions
   ) => Effect.Effect<GrantedCapability, PermissionRegistryError, never>
   readonly revoke: (
@@ -156,7 +156,8 @@ export const makePermissionRegistry = (
     const decisions = yield* PubSub.sliding<PermissionDecision>({ capacity: 1024, replay: 0 })
     const traceId = options.traceId ?? randomUUID
     const nextToken = options.nextToken ?? randomUUID
-    const now = options.now ?? Date.now
+    const clock = yield* Clock.Clock
+    const now = options.now ?? (() => clock.currentTimeMillisUnsafe())
 
     return Object.freeze({
       declare: (capability, declarationOptions = {}) =>

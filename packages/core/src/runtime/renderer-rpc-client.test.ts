@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { HostProtocolResponseEnvelope, type HostProtocolEnvelope } from "@effect-desktop/bridge"
-import { Effect, Fiber, Layer, Schema, Stream } from "effect"
+import { Clock, Deferred, Effect, Fiber, Layer, Schema, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
 import { Desktop } from "../index.js"
@@ -49,14 +49,8 @@ test("RendererRpcClients layer does not require transport for manifests with no 
 test("RendererRpcClients layer closes the client protocol scope", async () => {
   const NotesRpcs = RpcGroup.make(Ping)
   const app = manifestFor(NotesRpcs)
-  let startRun: (() => void) | undefined
-  let closeRun: (() => void) | undefined
-  const started = new Promise<void>((resolve) => {
-    startRun = resolve
-  })
-  const closed = new Promise<void>((resolve) => {
-    closeRun = resolve
-  })
+  const started = Effect.runSync(Deferred.make<void>())
+  const closed = Effect.runSync(Deferred.make<void>())
   let pendingRequest: Extract<HostProtocolEnvelope, { readonly kind: "request" }> | undefined
   const respond = (): void => {
     if (pendingRequest === undefined || onEnvelope === undefined) {
@@ -86,9 +80,11 @@ test("RendererRpcClients layer closes the client protocol scope", async () => {
         : Effect.void,
     run: (handler) => {
       onEnvelope = handler
-      startRun?.()
+      Effect.runSync(Deferred.succeed(started, undefined).pipe(Effect.asVoid))
       respond()
-      return Effect.never.pipe(Effect.ensuring(Effect.sync(() => closeRun?.())))
+      return Effect.never.pipe(
+        Effect.ensuring(Deferred.succeed(closed, undefined).pipe(Effect.asVoid))
+      )
     }
   }
   let onEnvelope: ((envelope: HostProtocolEnvelope) => Effect.Effect<void>) | undefined
@@ -103,7 +99,7 @@ test("RendererRpcClients layer closes the client protocol scope", async () => {
           expect(ping).toBeDefined()
           return ping!(undefined) as Effect.Effect<unknown, unknown>
         }),
-        Effect.andThen(Effect.promise(() => started)),
+        Effect.andThen(Deferred.await(started)),
         Effect.provide(
           makeDesktopRendererRpcClientLayer(app, { framework: "react" }).pipe(
             Layer.provide(makeDesktopRendererRpcTransportLayer(transport))
@@ -112,18 +108,12 @@ test("RendererRpcClients layer closes the client protocol scope", async () => {
       )
     )
   )
-  await closed
+  await Effect.runPromise(Deferred.await(closed))
 })
 
 test("RendererRpcClients test layer executes RpcTest clients and interrupts scoped streams", async () => {
-  let markStarted: (() => void) | undefined
-  let markInterrupted: (() => void) | undefined
-  const started = new Promise<void>((resolve) => {
-    markStarted = resolve
-  })
-  const interrupted = new Promise<void>((resolve) => {
-    markInterrupted = resolve
-  })
+  const started = Effect.runSync(Deferred.make<void>())
+  const interrupted = Effect.runSync(Deferred.make<void>())
   const Tail = Rpc.make("Notes.Tail", {
     success: Schema.String,
     stream: true
@@ -134,8 +124,13 @@ test("RendererRpcClients test layer executes RpcTest clients and interrupts scop
     NotesRpcs.toLayer({
       "Notes.Tail": () =>
         Stream.make("start").pipe(
-          Stream.tap(() => Effect.sync(() => markStarted?.())),
-          Stream.concat(Stream.never.pipe(Stream.ensuring(Effect.sync(() => markInterrupted?.()))))
+          Stream.concat(
+            Stream.fromEffect(Deferred.succeed(started, undefined).pipe(Effect.asVoid)).pipe(
+              Stream.drain,
+              Stream.concat(Stream.never),
+              Stream.ensuring(Deferred.succeed(interrupted, undefined).pipe(Effect.asVoid))
+            )
+          )
         )
     })
   )
@@ -148,15 +143,16 @@ test("RendererRpcClients test layer executes RpcTest clients and interrupts scop
         const tail = notes?.["Notes.Tail"]
         expect(tail).toBeDefined()
         yield* Effect.forkScoped(Stream.runDrain(tail!(undefined) as Stream.Stream<unknown>))
-        yield* Effect.promise(() => started)
+        yield* Deferred.await(started)
       }).pipe(Effect.provide(makeDesktopRendererRpcTestLayer(NotesLayer)))
     )
   )
 
-  await interrupted
+  await Effect.runPromise(Deferred.await(interrupted))
 })
 
 test("RendererRpcClients test layer publishes renderer RPC lifecycle events", async () => {
+  const timestamp = 1_715_001_456_000
   const inspector = await Effect.runPromise(makeRendererInspectorCollector())
   const NotesRpcs = RpcGroup.make(Ping)
   const NotesLayer = Desktop.rpc(
@@ -175,7 +171,10 @@ test("RendererRpcClients test layer publishes renderer RPC lifecycle events", as
         expect(ping).toBeDefined()
         const result = yield* ping!(undefined) as Effect.Effect<unknown, unknown>
         expect(result).toBe("pong")
-      }).pipe(Effect.provide(makeDesktopRendererRpcTestLayer(NotesLayer, { inspector })))
+      }).pipe(
+        Effect.provide(makeDesktopRendererRpcTestLayer(NotesLayer, { inspector })),
+        Effect.provideService(Clock.Clock, fixedClock(timestamp))
+      )
     )
   )
 
@@ -187,14 +186,12 @@ test("RendererRpcClients test layer publishes renderer RPC lifecycle events", as
     { kind: "rpc", operation: "Notes.Ping", status: "start" },
     { kind: "rpc", operation: "Notes.Ping", status: "success" }
   ])
+  expect(Array.from(events).map((event) => event.timestamp)).toEqual([timestamp, timestamp])
 })
 
 test("RendererRpcClients test layer publishes renderer stream interruption events", async () => {
   const inspector = await Effect.runPromise(makeRendererInspectorCollector())
-  let markStarted: (() => void) | undefined
-  const started = new Promise<void>((resolve) => {
-    markStarted = resolve
-  })
+  const started = Effect.runSync(Deferred.make<void>())
   const Tail = Rpc.make("Notes.Tail", {
     success: Schema.String,
     stream: true
@@ -205,8 +202,12 @@ test("RendererRpcClients test layer publishes renderer stream interruption event
     NotesRpcs.toLayer({
       "Notes.Tail": () =>
         Stream.make("start").pipe(
-          Stream.tap(() => Effect.sync(() => markStarted?.())),
-          Stream.concat(Stream.never)
+          Stream.concat(
+            Stream.fromEffect(Deferred.succeed(started, undefined).pipe(Effect.asVoid)).pipe(
+              Stream.drain,
+              Stream.concat(Stream.never)
+            )
+          )
         )
     })
   )
@@ -221,7 +222,7 @@ test("RendererRpcClients test layer publishes renderer stream interruption event
         const fiber = yield* Effect.forkScoped(
           Stream.runDrain(tail!(undefined) as Stream.Stream<unknown>)
         )
-        yield* Effect.promise(() => started)
+        yield* Deferred.await(started)
         yield* Fiber.interrupt(fiber)
       }).pipe(Effect.provide(makeDesktopRendererRpcTestLayer(NotesLayer, { inspector })))
     )
@@ -259,3 +260,11 @@ const emptyManifest = (): DesktopAppManifest =>
     windows: Object.freeze({}),
     rpcGroups: Object.freeze([])
   })
+
+const fixedClock = (timestamp: number): Clock.Clock => ({
+  currentTimeMillisUnsafe: () => timestamp,
+  currentTimeMillis: Effect.succeed(timestamp),
+  currentTimeNanosUnsafe: () => BigInt(timestamp) * 1_000_000n,
+  currentTimeNanos: Effect.succeed(BigInt(timestamp) * 1_000_000n),
+  sleep: () => Effect.void
+})

@@ -1,5 +1,6 @@
 import type { CommandRegistryError } from "@effect-desktop/core"
 import type { HostProtocolError } from "@effect-desktop/bridge"
+import { Predicate } from "effect"
 
 export interface CommandBindingWarningError {
   readonly tag: string
@@ -23,7 +24,7 @@ export const commandBindingWarningError = (
 }
 
 const asRecord = (value: unknown): Record<string, unknown> =>
-  typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {}
+  Predicate.isObject(value) ? value : {}
 
 const stringField = (value: Record<string, unknown>, key: string): string | undefined =>
   typeof value[key] === "string" ? value[key] : undefined

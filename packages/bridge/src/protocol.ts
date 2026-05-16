@@ -1,4 +1,4 @@
-import { Effect, Option, Queue, Scope, Schema } from "effect"
+import { Clock, Effect, Option, Queue, Scope, Schema } from "effect"
 import { RpcClient, RpcClientError, RpcMessage, RpcServer } from "effect/unstable/rpc"
 
 export const HOST_PING_METHOD = "host.ping"
@@ -1019,11 +1019,12 @@ interface ResolvedDesktopProtocolOptions {
 }
 
 const resolveProtocolOptions = (
-  options: DesktopProtocolOptions
+  options: DesktopProtocolOptions,
+  defaultNow: () => number
 ): ResolvedDesktopProtocolOptions => ({
   windowId: options.windowId ?? "",
   originToken: options.originToken ?? "",
-  now: options.now ?? Date.now,
+  now: options.now ?? defaultNow,
   nextRequestId:
     options.nextRequestId === undefined
       ? (clientId, requestId) => clientRequestId(clientId, requestId)
@@ -1178,7 +1179,8 @@ export const makeDesktopClientProtocol = (
   options: DesktopProtocolOptions = {}
 ): Effect.Effect<RpcClient.Protocol["Service"], never, Scope.Scope> =>
   Effect.gen(function* () {
-    const resolved = resolveProtocolOptions(options)
+    const clock = yield* Clock.Clock
+    const resolved = resolveProtocolOptions(options, () => clock.currentTimeMillisUnsafe())
 
     let writeToClient: ClientWriteFn = (_clientId, _response) => Effect.void
     const requestClients = new Map<
@@ -1331,7 +1333,8 @@ export const makeDesktopServerProtocol = (
   options: DesktopProtocolOptions = {}
 ): Effect.Effect<RpcServer.Protocol["Service"], never, Scope.Scope> =>
   Effect.gen(function* () {
-    const resolved = resolveProtocolOptions(options)
+    const clock = yield* Clock.Clock
+    const resolved = resolveProtocolOptions(options, () => clock.currentTimeMillisUnsafe())
     const disconnects = yield* Queue.unbounded<number>()
     const hostRequestIds = new Map<string, string>()
     const serverRequestIds = new Map<

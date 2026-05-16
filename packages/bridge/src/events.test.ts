@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Cause, Effect, Exit, Fiber, Option, Schema, Stream } from "effect"
+import { Cause, Clock, Effect, Exit, Fiber, Option, Schema, Stream } from "effect"
 
 import {
   BridgeRuntime,
@@ -71,10 +71,10 @@ test("EventHub publishes contract events to typed client streams in order", asyn
 
 test("EventHub encodes payloads before fanout", async () => {
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.EventsEncoded")
+  const timestamp = 1_715_000_000_000
   const envelopes = await Effect.runPromise(
     Effect.gen(function* () {
       const hub = yield* EventHub([ProjectRpcs], {
-        now: () => 42,
         nextTraceId: () => "trace-event",
         windowId: "window-1"
       })
@@ -89,14 +89,14 @@ test("EventHub encodes payloads before fanout", async () => {
       )
 
       return yield* Fiber.join(fiber).pipe(Effect.timeout("2 seconds"))
-    })
+    }).pipe(Effect.provideService(Clock.Clock, fixedClock(timestamp)))
   )
 
   expect(Array.from(envelopes)).toEqual([
     new HostProtocolEventEnvelope({
       kind: "event",
       method: "ProjectRpcs.EventsEncoded.changed",
-      timestamp: 42,
+      timestamp,
       traceId: "trace-event",
       windowId: "window-1",
       payload: {
@@ -699,3 +699,11 @@ const expectFailureTag = (exit: Exit.Exit<unknown, unknown>, tag: string): void 
     }
   }
 }
+
+const fixedClock = (timestamp: number): Clock.Clock => ({
+  currentTimeMillisUnsafe: () => timestamp,
+  currentTimeMillis: Effect.succeed(timestamp),
+  currentTimeNanosUnsafe: () => BigInt(timestamp) * 1_000_000n,
+  currentTimeNanos: Effect.succeed(BigInt(timestamp) * 1_000_000n),
+  sleep: () => Effect.yieldNow
+})

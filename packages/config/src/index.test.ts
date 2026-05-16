@@ -774,7 +774,7 @@ test("ProductionChecker rule registry covers the current production rule set", a
       requireTypedBridge: false,
       rendererNativeAccess: true,
       requirePermissions: false,
-      externalNavigation: "allow" as never,
+      externalNavigation: "allow",
       csp: { disabled: true },
       redaction: { defaultPatternEnabled: false }
     },
@@ -925,7 +925,7 @@ test("ProductionChecker rejects empty config paths", async () => {
       configPath: "",
       config: {
         security: { externalNavigation: "deny" }
-      } as never
+      }
     })
   )
   const whitespaceExit = await Effect.runPromiseExit(
@@ -933,14 +933,14 @@ test("ProductionChecker rejects empty config paths", async () => {
       configPath: "   ",
       config: {
         security: { externalNavigation: "deny" }
-      } as never
+      }
     })
   )
   const absentExit = await Effect.runPromiseExit(
     runProductionCheck({
       config: {
         security: { externalNavigation: "deny" }
-      } as never
+      }
     })
   )
 
@@ -962,7 +962,7 @@ test("ProductionChecker rejects malformed renderer file inputs", async () => {
   const exit = await Effect.runPromiseExit(
     runProductionCheck({
       config: {},
-      rendererFiles: [{ path: "src/renderer/main.ts" } as never]
+      rendererFiles: [{ path: "src/renderer/main.ts" }]
     })
   )
 

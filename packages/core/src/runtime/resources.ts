@@ -1,4 +1,5 @@
 import {
+  Clock,
   Context,
   Data,
   Effect,
@@ -16,6 +17,8 @@ import {
 
 export const ResourceIdSchema = Schema.NonEmptyString.pipe(Schema.brand("ResourceId"))
 export type ResourceId = Schema.Schema.Type<typeof ResourceIdSchema>
+const decodeResourceIdSync = Schema.decodeUnknownSync(ResourceIdSchema)
+export const makeResourceId = (value: string): ResourceId => decodeResourceIdSync(value)
 export type ResourceKind = string
 export type ResourceState = string
 export type ScopeId = string
@@ -178,7 +181,8 @@ const makeResourceRegistryInstance = (
   options: ResourceRegistryOptions = {}
 ): Effect.Effect<ResourceRegistryInstance, never, never> =>
   Effect.gen(function* () {
-    const now = options.now ?? Date.now
+    const clock = yield* Clock.Clock
+    const now = options.now ?? (() => clock.currentTimeMillisUnsafe())
     const nextId = options.nextId ?? generateUuidV7
     const entries = yield* SubscriptionRef.make(new Map<ResourceId, StoredResourceEntry>())
     const events = yield* PubSub.unbounded<ResourceLifecycleEvent>()
@@ -255,8 +259,9 @@ const makeResourceRegistryInstance = (
           handle: publicHandle(entry.handle)
         })
       }).pipe(
-        Effect.catchDefect((cause) => reportDisposalFailure(cleanupFailureContext(entry), cause)),
-        Effect.catch((cause) => reportDisposalFailure(cleanupFailureContext(entry), cause))
+        Effect.tapError((cause) => reportDisposalFailure(cleanupFailureContext(entry), cause)),
+        Effect.tapDefect((cause) => reportDisposalFailure(cleanupFailureContext(entry), cause)),
+        Effect.ignoreCause
       )
 
     const markDisposed = (id: ResourceId, entry: StoredResourceEntry): void => {
@@ -491,20 +496,21 @@ const makeResourceRegistryInstance = (
 
             for (const entry of entriesToDispose) {
               yield* disposeForScopeClose(entry).pipe(
-                Effect.catch((cause) =>
+                Effect.tapError((cause) =>
                   reportDisposalFailure(cleanupFailureContext(entry), {
                     phase: "closeScope",
                     scope,
                     cause
                   })
                 ),
-                Effect.catchDefect((cause) =>
+                Effect.tapDefect((cause) =>
                   reportDisposalFailure(cleanupFailureContext(entry), {
                     phase: "closeScope",
                     scope,
                     cause
                   })
-                )
+                ),
+                Effect.ignoreCause
               )
             }
             yield* publishEvent(events, {
@@ -956,8 +962,10 @@ export const generateUuidV7 = (now: number): ResourceId => {
 
 const formatUuid = (bytes: Uint8Array): ResourceId => {
   const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(
-    16,
-    20
-  )}-${hex.slice(20)}` as ResourceId
+  return makeResourceId(
+    `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(
+      16,
+      20
+    )}-${hex.slice(20)}`
+  )
 }

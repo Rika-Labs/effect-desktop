@@ -1,7 +1,7 @@
 import { readdir, readFile, stat } from "node:fs/promises"
 import { isAbsolute, join, normalize, resolve } from "node:path"
 
-import { Data, Effect, Schema } from "effect"
+import { Data, Effect, Result, Schema } from "effect"
 
 import {
   PublicApiSnapshotMismatchError,
@@ -203,10 +203,15 @@ const readPublicApiReport = (
   const check =
     options.publicApiCheck ?? ((cwd, root) => runPublicApiCheck({ cwd, snapshotRoot: root }))
   return check(options.cwd, snapshotRoot).pipe(
-    Effect.catch((error) =>
-      error instanceof PublicApiSnapshotMismatchError
-        ? Effect.succeed(error.report)
-        : Effect.fail(error)
+    Effect.result,
+    Effect.flatMap((result) =>
+      Result.match(result, {
+        onFailure: (error) =>
+          error instanceof PublicApiSnapshotMismatchError
+            ? Effect.succeed(error.report)
+            : Effect.fail(error),
+        onSuccess: (report) => Effect.succeed(report)
+      })
     )
   )
 }
@@ -417,16 +422,18 @@ const releaseKindForVersion = (release: string): SemverReleaseKind => {
 const readJson = <A>(path: string): Effect.Effect<A, SemverGuardFileError, never> =>
   readText(path).pipe(
     Effect.flatMap((body) =>
-      Effect.try({
-        try: () => JSON.parse(body) as A,
-        catch: (cause) =>
-          new SemverGuardFileError({
-            operation: "parse-json",
-            path,
-            message: `failed to parse JSON at ${path}`,
-            cause
-          })
-      })
+      Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(body).pipe(
+        Effect.map((value) => value as A),
+        Effect.mapError(
+          (cause) =>
+            new SemverGuardFileError({
+              operation: "parse-json",
+              path,
+              message: `failed to parse JSON at ${path}`,
+              cause
+            })
+        )
+      )
     )
   )
 

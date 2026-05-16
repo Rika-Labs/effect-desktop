@@ -1,13 +1,29 @@
 import { expect, test } from "bun:test"
-import { Cause, Deferred, Effect, Exit, Option, Queue, Schema, Stream } from "effect"
+import {
+  Cause,
+  Clock,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Option,
+  Queue,
+  Schedule,
+  Schema,
+  Stream
+} from "effect"
 
+import {
+  makeExecutionInspectorCollector,
+  type ExecutionInspectorCollectorApi
+} from "./inspector-events.js"
 import {
   makePermissionRegistry,
   PermissionActor,
   type NormalizedCapability
 } from "./permission-registry.js"
 import type { ResourceOwnerApi } from "./resource-owner.js"
-import { makeResourceRegistry, type ResourceId, type ResourceRegistryApi } from "./resources.js"
+import { makeResourceId, makeResourceRegistry, type ResourceRegistryApi } from "./resources.js"
 import {
   makeWorker,
   WorkerCapabilityNotHeldError,
@@ -38,7 +54,7 @@ const filesystemReadCapability: NormalizedCapability = {
   roots: ["/tmp"],
   audit: "always"
 }
-const id = (value: string): ResourceId => value as ResourceId
+const id = makeResourceId
 
 test("Worker validates channel send and receive through schemas", async () => {
   const runtime = await makeFakeRuntime()
@@ -66,7 +82,8 @@ test("Worker rejects generated resource ids that violate non-empty contract", as
   const registry = await Effect.runPromise(
     makeResourceRegistry({
       now: () => 1,
-      nextId: () => id("")
+      // @ts-expect-error intentionally invalid generated id exercises registry validation.
+      nextId: () => ""
     })
   )
   const permissions = await Effect.runPromise(makePermissionRegistry({ traceId: () => "trace" }))
@@ -213,6 +230,43 @@ test("Worker list normalizes invalid uptime before snapshot construction", async
 
     expect(listed[0]?.uptimeMs).toBe(0)
   }
+})
+
+test("Worker spawn failure timestamps fall back to the Effect Clock", async () => {
+  const timestamp = 1_715_001_345_000
+  const inspector = await Effect.runPromise(makeExecutionInspectorCollector())
+  let spawnCalls = 0
+  const runtime = await makeFakeRuntime()
+  const fixture = await makeFixture(
+    {
+      spawn: () => {
+        spawnCalls += 1
+        return Effect.succeed(runtime)
+      }
+    },
+    [],
+    { inspector, now: () => Number.NaN }
+  )
+  const observed = Effect.runFork(inspector.events.pipe(Stream.take(1), Stream.runCollect))
+  await Effect.runPromise(Effect.yieldNow)
+
+  const exit = await Effect.runPromiseExit(
+    fixture.service
+      .spawn({
+        script: "./worker.ts",
+        inputSchema: EchoIn,
+        outputSchema: EchoOut,
+        context,
+        capabilities: [filesystemReadCapability]
+      })
+      .pipe(Effect.provideService(Clock.Clock, fixedClock(timestamp)))
+  )
+  const events = [...(await Effect.runPromise(Fiber.join(observed)))]
+
+  expectFailure(exit, WorkerCapabilityNotHeldError)
+  expect(spawnCalls).toBe(0)
+  expect(events[0]?.status).toBe("failure")
+  expect(events[0]?.timestamp).toBe(timestamp)
 })
 
 test("Worker rejects missing capabilities as CapabilityNotHeld before adapter spawn", async () => {
@@ -428,7 +482,7 @@ test("Worker validates malformed sends before transmission", async () => {
     })
   )
 
-  const exit = await Effect.runPromiseExit(handle.send({ nope: true } as never))
+  const exit = await Effect.runPromiseExit(handle.send({ nope: true }))
 
   expect(runtime.sent).toEqual([])
   expectFailure(exit, WorkerChannelError)
@@ -465,11 +519,11 @@ test("Worker rejects negative graceful shutdown durations before adapter spawn",
 
 test("Worker rejects malformed channel schemas before adapter spawn", async () => {
   const cases: ReadonlyArray<{
-    readonly inputSchema: Schema.Decoder<{ readonly text: string }, never>
-    readonly outputSchema: Schema.Decoder<{ readonly echoed: string }, never>
+    readonly inputSchema: unknown
+    readonly outputSchema: unknown
   }> = [
-    { inputSchema: undefined as never, outputSchema: EchoOut },
-    { inputSchema: EchoIn, outputSchema: undefined as never }
+    { inputSchema: undefined, outputSchema: EchoOut },
+    { inputSchema: EchoIn, outputSchema: undefined }
   ]
 
   for (const workerOptions of cases) {
@@ -806,7 +860,9 @@ const makeFixture = async (
   allowedCapabilities: readonly NormalizedCapability[] = [],
   options: {
     readonly gracefulShutdownMs?: number
+    readonly inspector?: ExecutionInspectorCollectorApi
     readonly maxConcurrent?: number
+    readonly now?: () => number
     readonly nowStart?: number
     readonly workerNowStart?: number
   } = {}
@@ -816,7 +872,7 @@ const makeFixture = async (
   const registry = await Effect.runPromise(
     makeResourceRegistry({
       now: () => resourceNow++,
-      nextId: (timestamp) => `resource-${timestamp}` as never
+      nextId: (timestamp) => id(`resource-${timestamp}`)
     })
   )
   const permissions = await Effect.runPromise(makePermissionRegistry({ traceId: () => "trace" }))
@@ -831,8 +887,9 @@ const makeFixture = async (
   }
   const service = await Effect.runPromise(
     makeWorker(registry, permissions, TEST_OWNER, {
-      now: () => workerNow++,
+      now: options.now ?? (() => workerNow++),
       ...(adapter === undefined ? {} : { adapter }),
+      ...(options.inspector === undefined ? {} : { inspector: options.inspector }),
       ...(options.maxConcurrent === undefined
         ? {}
         : { budgets: { maxConcurrent: options.maxConcurrent } }),
@@ -900,14 +957,19 @@ const makeFakeRuntime = async (
   }
 }
 
-const waitUntil = async (predicate: () => Promise<boolean>): Promise<void> => {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    if (await predicate()) {
-      return
-    }
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error("condition was not met")
+const waitUntil = async (predicate: () => boolean | Promise<boolean>): Promise<void> => {
+  await Effect.runPromise(
+    Effect.tryPromise({
+      try: async () => await predicate(),
+      catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause)))
+    }).pipe(
+      Effect.flatMap((ready) =>
+        ready ? Effect.void : Effect.fail(new Error("condition was not met"))
+      ),
+      Effect.retry(Schedule.spaced("10 millis").pipe(Schedule.both(Schedule.recurs(50)))),
+      Effect.mapError(() => new Error("condition was not met"))
+    )
+  )
 }
 
 const replaceGlobalWorker = (worker: unknown): void => {
@@ -917,6 +979,14 @@ const replaceGlobalWorker = (worker: unknown): void => {
     writable: true
   })
 }
+
+const fixedClock = (timestamp: number): Clock.Clock => ({
+  currentTimeMillisUnsafe: () => timestamp,
+  currentTimeMillis: Effect.succeed(timestamp),
+  currentTimeNanosUnsafe: () => BigInt(timestamp) * 1_000_000n,
+  currentTimeNanos: Effect.succeed(BigInt(timestamp) * 1_000_000n),
+  sleep: () => Effect.void
+})
 
 const makeFakeAdapter = (runtime: WorkerRuntime): WorkerAdapter => ({
   spawn: () => Effect.succeed(runtime)

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { Effect, Exit, Layer, Stream } from "effect"
-import { HttpClient } from "effect/unstable/http"
+import { HttpClient, HttpClientResponse } from "effect/unstable/http"
 import { WorkflowEngine } from "effect/unstable/workflow"
 
 import { makeUpdaterServiceLayer } from "./updater.js"
@@ -16,6 +16,19 @@ const provideEngine = <A, E, R>(
 ): Effect.Effect<A, E, Exclude<R, WorkflowEngine.WorkflowEngine>> =>
   effect.pipe(Effect.provide(WorkflowEngine.layerMemory))
 
+const makeHttpLayer = (respond: (url: string) => Response): Layer.Layer<HttpClient.HttpClient> =>
+  Layer.succeed(
+    HttpClient.HttpClient,
+    HttpClient.make((request, url) =>
+      Effect.sync(() => HttpClientResponse.fromWeb(request, respond(url.href)))
+    )
+  )
+
+const makeUpdateLayer = (
+  httpLayer: Layer.Layer<HttpClient.HttpClient>,
+  updaterLayer: ReturnType<typeof makeUpdaterServiceLayer>
+) => UpdateWorkflowLayer.pipe(Layer.provide(Layer.mergeAll(httpLayer, updaterLayer)))
+
 test("UpdateWorkflow fails signature verification as a typed workflow error", async () => {
   const calls: string[] = []
   const manifest = {
@@ -24,19 +37,13 @@ test("UpdateWorkflow fails signature verification as a typed workflow error", as
     signature: "sig"
   }
 
-  const httpLayer = Layer.succeed(HttpClient.HttpClient, {
-    get: (url: string) => {
-      calls.push(url)
-      if (url === "https://updates.example/manifest.json") {
-        return Effect.succeed({
-          json: Effect.succeed(manifest)
-        })
-      }
-      return Effect.succeed({
-        arrayBuffer: Effect.succeed(new TextEncoder().encode("bundle").buffer)
-      })
+  const httpLayer = makeHttpLayer((url) => {
+    calls.push(url)
+    if (url === "https://updates.example/manifest.json") {
+      return Response.json(manifest)
     }
-  } as never)
+    return new Response(new TextEncoder().encode("bundle"))
+  })
 
   let installCalled = false
   const updaterLayer = makeUpdaterServiceLayer({
@@ -53,7 +60,7 @@ test("UpdateWorkflow fails signature verification as a typed workflow error", as
     onPreparingRestart: () => Stream.empty
   })
 
-  const layers = Layer.mergeAll(UpdateWorkflowLayer as never, httpLayer, updaterLayer) as never
+  const layers = makeUpdateLayer(httpLayer, updaterLayer)
   const exit = await Effect.runPromiseExit(
     UpdateWorkflow.execute(
       new UpdatePayload({ version: "2.0.0", manifestUrl: "https://updates.example/manifest.json" })
@@ -84,18 +91,12 @@ test("UpdateWorkflow rejects manifest versions that are not safe filename segmen
     signature: "sig"
   }
 
-  const httpLayer = Layer.succeed(HttpClient.HttpClient, {
-    get: (url: string) => {
-      if (url === "https://updates.example/manifest.json") {
-        return Effect.succeed({
-          json: Effect.succeed(manifest)
-        })
-      }
-      return Effect.succeed({
-        arrayBuffer: Effect.succeed(new TextEncoder().encode("bundle").buffer)
-      })
+  const httpLayer = makeHttpLayer((url) => {
+    if (url === "https://updates.example/manifest.json") {
+      return Response.json(manifest)
     }
-  } as never)
+    return new Response(new TextEncoder().encode("bundle"))
+  })
 
   const updaterLayer = makeUpdaterServiceLayer({
     check: () => Effect.succeed({ available: true, version: "../escape" }),
@@ -107,7 +108,7 @@ test("UpdateWorkflow rejects manifest versions that are not safe filename segmen
     onPreparingRestart: () => Stream.empty
   })
 
-  const layers = Layer.mergeAll(UpdateWorkflowLayer as never, httpLayer, updaterLayer) as never
+  const layers = makeUpdateLayer(httpLayer, updaterLayer)
   const exit = await Effect.runPromiseExit(
     UpdateWorkflow.execute(
       new UpdatePayload({

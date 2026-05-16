@@ -1,7 +1,7 @@
 import { isAbsolute, join, relative } from "node:path"
 
 import { DesktopTimeouts } from "@effect-desktop/core"
-import { Data, Duration, Effect, Option } from "effect"
+import { Data, Duration, Effect, Option, Schema } from "effect"
 
 import { ReleaseFileSystem, runReleaseFileSystem } from "./release-file-system.js"
 import { runReleaseTool } from "./release-tool-runner.js"
@@ -179,13 +179,12 @@ export const runDocsReleaseGate = (
         )
       }
       const body = yield* readText(absolutePath).pipe(
-        Effect.catch((error) =>
-          Effect.fail(
+        Effect.mapError(
+          (error) =>
             new DocsGateMissingPageError({
               page,
               message: `required docs page ${page.path} is missing or unreadable: ${error.message}`
             })
-          )
         )
       )
       if (body.trim().length === 0) {
@@ -452,16 +451,18 @@ const runDocsExample: DocsExampleRunner = (invocation) =>
 const readJson = <A>(path: string): Effect.Effect<A, DocsGateFileError, never> =>
   Effect.gen(function* () {
     const body = yield* readText(path)
-    return yield* Effect.try({
-      try: () => JSON.parse(body) as A,
-      catch: (cause) =>
-        new DocsGateFileError({
-          operation: "parse",
-          path,
-          message: `failed to parse ${path}`,
-          cause
-        })
-    })
+    return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(body).pipe(
+      Effect.map((value) => value as A),
+      Effect.mapError(
+        (cause) =>
+          new DocsGateFileError({
+            operation: "parse",
+            path,
+            message: `failed to parse ${path}`,
+            cause
+          })
+      )
+    )
   })
 
 const readText = (path: string): Effect.Effect<string, DocsGateFileError, never> =>

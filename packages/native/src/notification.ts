@@ -1,15 +1,23 @@
 import {
   type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeHandlerRuntime,
+  type BridgeHandlerRuntimeOptions,
+  makeDesktopClientProtocol,
+  makeHostProtocolInternalError,
+  makeHostProtocolInvalidArgumentError,
+  makeHostProtocolInvalidOutputError,
+  makeUnaryDesktopTransportFromBridgeClientExchange,
+  RpcClient,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { P, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
-import { subscribeNativeEvent } from "./event-stream.js"
 import { NativeSurface } from "./native-surface.js"
-import { decodeNativeInput, runNativeRpc } from "./native-client.js"
+import { subscribeNativeEvent } from "./event-stream.js"
 import {
   NotificationActionEvent,
   NotificationClickEvent,
@@ -23,6 +31,8 @@ import {
   type PermissionState
 } from "./contracts/notification.js"
 import type { WindowHandle } from "./window.js"
+
+const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export type NotificationError = HostProtocolError
 
@@ -148,6 +158,17 @@ export const makeNotificationServiceLayer = (
   client: NotificationClientApi
 ): Layer.Layer<Notification> => Layer.provide(NotificationLive, makeNotificationClientLayer(client))
 
+export const makeNotificationBridgeClientLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
+): Layer.Layer<NotificationClient> =>
+  Layer.effect(
+    NotificationClient,
+    RpcClient.make(NotificationRpcGroup).pipe(
+      Effect.map((client) => notificationClientFromRpcClient(client, exchange))
+    )
+  ).pipe(Layer.provide(makeNotificationBridgeProtocolLayer(exchange, options)))
+
 export type NotificationRpc = RpcGroup.Rpcs<typeof NotificationRpcGroup>
 
 export type NotificationRpcHandlers = RpcGroup.HandlersFrom<NotificationRpc>
@@ -187,9 +208,14 @@ export const NotificationSurface = NativeSurface.make("Notification", Notificati
   service: NotificationClient,
   capabilities: NotificationCapabilityMethods,
   handlers: NotificationHandlersLive,
-  bridgeClient: (client, exchange) => notificationClientFromRpcClient(client, exchange),
   client: (client) => notificationClientFromRpcClient(client, undefined)
 })
+
+export const makeHostNotificationRpcRuntime = (
+  handlers: NotificationRpcHandlers,
+  runtimeOptions: BridgeHandlerRuntimeOptions = {}
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  NotificationSurface.hostRuntime(handlers, runtimeOptions)
 
 const makeNotificationService = (client: NotificationClientApi): NotificationServiceApi => {
   const service: NotificationServiceApi = {
@@ -236,20 +262,36 @@ const notificationClientFromRpcClient = (
         client["Notification.getPermissionStatus"](undefined),
         "Notification.getPermissionStatus"
       ),
-    onClick: () => subscribeNativeEvent(exchange, "Notification.Click", NotificationClickEvent),
-    onAction: () => subscribeNativeEvent(exchange, "Notification.Action", NotificationActionEvent)
+    onClick: () =>
+      subscribeNotificationEvent(exchange, "Notification.Click", NotificationClickEvent),
+    onAction: () =>
+      subscribeNotificationEvent(exchange, "Notification.Action", NotificationActionEvent)
   }
 
   return Object.freeze(notificationClient)
 }
 
+const makeNotificationBridgeProtocolLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
+): Layer.Layer<RpcClient.Protocol> =>
+  Layer.effect(RpcClient.Protocol)(
+    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
+      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
+    )
+  )
+
+const subscribeNotificationEvent = <A>(
+  exchange: BridgeClientExchange | undefined,
+  method: string,
+  schema: Schema.Codec<A, unknown, never, never>
+): Stream.Stream<A, NotificationError, never> => subscribeNativeEvent(exchange, method, schema)
+
 const toNotificationShowInput = (input: NotificationShowOptions): unknown => ({
   title: input.title,
   body: input.body,
   ...(input.actions === undefined ? {} : { actions: input.actions }),
-  ...(input.ownerWindow === undefined
-    ? {}
-    : { ownerWindow: toWindowHandle(input.ownerWindow as WindowHandle) })
+  ...(input.ownerWindow === undefined ? {} : { ownerWindow: toWindowHandle(input.ownerWindow) })
 })
 
 const toWindowHandle = (handle: WindowHandle): WindowHandle =>
@@ -259,7 +301,7 @@ const toWindowHandle = (handle: WindowHandle): WindowHandle =>
     generation: handle.generation,
     ownerScope: handle.ownerScope,
     state: handle.state
-  }) as WindowHandle
+  })
 
 const toNotificationHandle = (handle: NotificationHandle): NotificationHandle =>
   Object.freeze({
@@ -268,12 +310,23 @@ const toNotificationHandle = (handle: NotificationHandle): NotificationHandle =>
     generation: handle.generation,
     ownerScope: handle.ownerScope,
     state: handle.state
-  }) as NotificationHandle
+  })
 
 const decodeNotificationShowInput = (
   input: unknown
 ): Effect.Effect<NotificationShowInput, NotificationError, never> =>
-  decodeNativeInput(NotificationShowInput, input, "Notification.show")
+  decodeInput(NotificationShowInput, input, "Notification.show")
+
+const decodeInput = <A>(
+  schema: Schema.Codec<A, unknown, never, never>,
+  input: unknown,
+  operation: string
+): Effect.Effect<A, NotificationError, never> =>
+  Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
 
 function notificationRpc<
   const Method extends string,
@@ -292,4 +345,30 @@ function notificationRpc<
 const runNotificationRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
-): Effect.Effect<A, NotificationError, never> => runNativeRpc(effect, operation, "Notification")
+): Effect.Effect<A, NotificationError, never> =>
+  effect.pipe(
+    Effect.mapError(mapNotificationRpcClientError),
+    Effect.catchDefect((defect) =>
+      Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
+    )
+  )
+
+const mapNotificationRpcClientError = (error: unknown): NotificationError =>
+  isNotificationError(error)
+    ? error
+    : makeHostProtocolInternalError("Notification RPC client failed", "Notification")
+
+const isNotificationError = (error: unknown): error is NotificationError =>
+  typeof error === "object" &&
+  error !== null &&
+  "tag" in error &&
+  "operation" in error &&
+  "recoverable" in error
+
+const formatUnknownError = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  return String(error)
+}

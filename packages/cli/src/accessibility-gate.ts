@@ -632,16 +632,18 @@ const linearize = (channel: number): number => {
 const readJson = <A>(path: string): Effect.Effect<A, AccessibilityGateFileError, never> =>
   readText(path).pipe(
     Effect.flatMap((body) =>
-      Effect.try({
-        try: () => JSON.parse(body) as A,
-        catch: (cause) =>
-          new AccessibilityGateFileError({
-            operation: "parse-json",
-            path,
-            message: `failed to parse JSON at ${path}`,
-            cause
-          })
-      })
+      Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(body).pipe(
+        Effect.map((value) => value as A),
+        Effect.mapError(
+          (cause) =>
+            new AccessibilityGateFileError({
+              operation: "parse-json",
+              path,
+              message: `failed to parse JSON at ${path}`,
+              cause
+            })
+        )
+      )
     )
   )
 

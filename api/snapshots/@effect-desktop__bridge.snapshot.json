@@ -41,7 +41,7 @@
     {
       "name": "BridgeClientExchange",
       "kind": "interface",
-      "signature": "export interface BridgeClientExchange { readonly request: ( request: HostProtocolRequestEnvelope ) => Effect.Effect<BridgeClientResponse, HostProtocolError, never> readonly subscribe?: ( method: string ) => Stream.Stream<HostProtocolEventEnvelope, HostProtocolError, never> readonly stream?: ( request: HostProtocolRequestEnvelope ) => Stream.Stream<HostProtocolStreamEnvelope, HostProtocolError, never> /** * Sends a best-effort protocol cancel envelope. Implementations must stay bounded and * interruption-friendly; cancellation cleanup starts this effect in the background. */ readonly cancel?: ( request: HostProtocolCancelByRequestEnvelope ) => Effect.Effect<void, HostProtocolError, never> }"
+      "signature": "export interface BridgeClientExchange { readonly request: ( request: HostProtocolRequestEnvelope ) => Effect.Effect<unknown, HostProtocolError, never> readonly subscribe?: ( method: string ) => Stream.Stream<HostProtocolEventEnvelope, HostProtocolError, never> readonly stream?: ( request: HostProtocolRequestEnvelope ) => Stream.Stream<HostProtocolStreamEnvelope, HostProtocolError, never> /** * Sends a best-effort protocol cancel envelope. Implementations must stay bounded and * interruption-friendly; cancellation cleanup starts this effect in the background. */ readonly cancel?: ( request: HostProtocolCancelByRequestEnvelope ) => Effect.Effect<void, HostProtocolError, never> }"
     },
     {
       "name": "BridgeClientFor",
@@ -56,7 +56,7 @@
     {
       "name": "BridgeClientOptions",
       "kind": "interface",
-      "signature": "export interface BridgeClientOptions { readonly nextRequestId?: () => string readonly nextTraceId?: () => string readonly now?: () => number readonly windowId?: string readonly originToken?: string readonly inspector?: BridgeInspector }"
+      "signature": "export interface BridgeClientOptions { readonly nextRequestId?: () => string readonly nextTraceId?: () => string readonly now?: () => number readonly windowId?: string readonly originToken?: string readonly inspector?: BridgeInspector readonly normalizeRequest?: (request: HostProtocolRequestEnvelope) => HostProtocolRequestEnvelope }"
     },
     {
       "name": "BridgeClientResponse",
@@ -691,7 +691,7 @@
     {
       "name": "makeDesktopRpcHandlerRuntime",
       "kind": "value",
-      "signature": "const makeDesktopRpcHandlerRuntime: <Rpcs extends Rpc.Any, E = never, R = never>(group: RpcGroupWithRequests<Rpcs>, handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>, options?: BridgeHandlerRuntimeOptions & { readonly nextTraceId?: () => string; }) => BridgeHandlerRuntime<R>"
+      "signature": "const makeDesktopRpcHandlerRuntime: <Rpcs extends Rpc.Any, E extends HostProtocolError = never, R = never>(group: RpcGroupWithRequests<Rpcs>, handlers: Layer.Layer<RpcServerLayerRequirements<Rpcs>, E, R>, options?: BridgeHandlerRuntimeOptions & { readonly nextTraceId?: () => string; }) => BridgeHandlerRuntime<RpcServerRuntimeEnvironment<Rpcs, R>>"
     },
     {
       "name": "makeDesktopServerProtocol",
@@ -1016,7 +1016,7 @@
     {
       "name": "UnaryDesktopTransportFromBridgeClientExchangeOptions",
       "kind": "interface",
-      "signature": "export interface UnaryDesktopTransportFromBridgeClientExchangeOptions extends Pick< BridgeClientOptions, \"nextTraceId\" | \"now\" > { readonly normalizeRequest?: (request: HostProtocolRequestEnvelope) => HostProtocolRequestEnvelope }"
+      "signature": "export interface UnaryDesktopTransportFromBridgeClientExchangeOptions extends Pick< BridgeClientOptions, \"nextTraceId\" | \"now\" | \"normalizeRequest\" > {}"
     },
     {
       "name": "unsafeSecretBytes",

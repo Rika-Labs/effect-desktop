@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Cause, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect"
+import { Cause, Clock, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect"
 import { Rpc, RpcClient, RpcGroup, RpcServer } from "effect/unstable/rpc"
 
 import {
@@ -109,22 +109,23 @@ test("makeDesktopRpcHandlerRuntime emits inspector RPC events", async () => {
     }),
     {
       originAuth: RendererOriginAuth.unsafeDisabledForTests,
-      now: () => 1710000000000,
       inspector
     }
   )
 
   await Effect.runPromise(
-    runtime.dispatch(
-      new HostProtocolRequestEnvelope({
-        kind: "request",
-        id: "request-inspector",
-        method: "Ping",
-        timestamp: 1710000000000,
-        traceId: "trace-inspector",
-        payload: { message: "hello" }
-      })
-    )
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "request-inspector",
+          method: "Ping",
+          timestamp: 1710000000000,
+          traceId: "trace-inspector",
+          payload: { message: "hello" }
+        })
+      )
+      .pipe(Effect.provideService(Clock.Clock, fixedClock(1_715_000_000_000)))
   )
 
   expect(events).toContainEqual(
@@ -133,7 +134,8 @@ test("makeDesktopRpcHandlerRuntime emits inspector RPC events", async () => {
       boundary: "runtime",
       method: "Ping",
       requestId: "request-inspector",
-      traceId: "trace-inspector"
+      traceId: "trace-inspector",
+      timestamp: 1_715_000_000_000
     })
   )
   expect(events).toContainEqual(
@@ -141,7 +143,8 @@ test("makeDesktopRpcHandlerRuntime emits inspector RPC events", async () => {
       kind: "rpc.response",
       boundary: "runtime",
       method: "Ping",
-      requestId: "request-inspector"
+      requestId: "request-inspector",
+      timestamp: 1_715_000_000_000
     })
   )
 })
@@ -394,7 +397,7 @@ test("makeDesktopClientProtocol send translates Request to HostProtocolRequestEn
           traceId: "trace-rpc-test"
         })
       })
-    )
+    ).pipe(Effect.provideService(Clock.Clock, fixedClock(1_715_000_000_000)))
   )
 
   expect(sent).toHaveLength(1)
@@ -404,6 +407,7 @@ test("makeDesktopClientProtocol send translates Request to HostProtocolRequestEn
     expect(envelope.id).toBe("0:req-1")
     expect(envelope.method).toBe("Ping")
     expect(envelope.traceId).toBe("trace-rpc-test")
+    expect(envelope.timestamp).toBe(1_715_000_000_000)
   }
 })
 
@@ -502,7 +506,7 @@ test("makeDesktopClientProtocol routes responses to the client id that sent each
         })
       ).pipe(Effect.asVoid)
     },
-    run: (onEnvelope) => Effect.forever(Queue.take(queue).pipe(Effect.flatMap(onEnvelope)))
+    run: (onEnvelope) => runQueuedTransport(queue, onEnvelope)
   }
 
   const replies = await Effect.runPromise(
@@ -544,7 +548,7 @@ test("makeDesktopClientProtocol namespaces duplicate request ids by client id", 
         )
       )
     },
-    run: (onEnvelope) => Effect.forever(Queue.take(queue).pipe(Effect.flatMap(onEnvelope)))
+    run: (onEnvelope) => runQueuedTransport(queue, onEnvelope)
   }
 
   const replies = await Effect.runPromise(
@@ -636,19 +640,20 @@ test("makeDesktopClientProtocol namespaces duplicate request ids by client id", 
     )
   )
 
-  expect(replies).toEqual([
-    {
-      clientId: 2,
-      payload: {
-        _tag: "Success",
-        value: "pong:two"
-      }
-    },
+  const repliesByClient = [...replies].sort((a, b) => a.clientId - b.clientId)
+  expect(repliesByClient).toEqual([
     {
       clientId: 1,
       payload: {
         _tag: "Success",
         value: "pong:one"
+      }
+    },
+    {
+      clientId: 2,
+      payload: {
+        _tag: "Success",
+        value: "pong:two"
       }
     }
   ])
@@ -695,8 +700,7 @@ test("makeDesktopServerProtocol send translates Exit success to HostProtocolResp
     Effect.scoped(
       Effect.gen(function* () {
         const protocol = yield* makeDesktopServerProtocol(transport, {
-          nextTraceId: () => "trace-server-test",
-          now: () => 1710000000000
+          nextTraceId: () => "trace-server-test"
         })
 
         yield* protocol.send(0, {
@@ -705,7 +709,7 @@ test("makeDesktopServerProtocol send translates Exit success to HostProtocolResp
           exit: { _tag: "Success", value: { result: "ok" } }
         })
       })
-    )
+    ).pipe(Effect.provideService(Clock.Clock, fixedClock(1_710_000_000_000)))
   )
 
   expect(sent).toHaveLength(1)
@@ -785,14 +789,13 @@ test("makeDesktopServerProtocol translates server defects to host protocol failu
         sent.push(envelope)
       }),
     run: (onEnvelope): Effect.Effect<never> =>
-      Effect.forever(
-        Queue.take(queue).pipe(
-          Effect.flatMap((envelope) =>
-            onEnvelope(envelope).pipe(
-              Effect.flatMap(() => Deferred.succeed(requestObserved, undefined))
-            )
+      Stream.fromQueue(queue).pipe(
+        Stream.runForEach((envelope) =>
+          onEnvelope(envelope).pipe(
+            Effect.flatMap(() => Deferred.succeed(requestObserved, undefined))
           )
-        )
+        ),
+        Effect.andThen(Effect.never)
       )
   }
 
@@ -907,22 +910,21 @@ test("makeDesktopServerProtocol fails every pending host request for client defe
         sent.push(envelope)
       }),
     run: (onEnvelope): Effect.Effect<never> =>
-      Effect.forever(
-        Queue.take(queue).pipe(
-          Effect.flatMap((envelope) =>
-            onEnvelope(envelope).pipe(
-              Effect.flatMap(() =>
-                Effect.sync(() => {
-                  observedCount += 1
-                  return observedCount
-                })
-              ),
-              Effect.flatMap((count) =>
-                count === 2 ? Deferred.succeed(observedBoth, undefined) : Effect.void
-              )
+      Stream.fromQueue(queue).pipe(
+        Stream.runForEach((envelope) =>
+          onEnvelope(envelope).pipe(
+            Effect.flatMap(() =>
+              Effect.sync(() => {
+                observedCount += 1
+                return observedCount
+              })
+            ),
+            Effect.flatMap((count) =>
+              count === 2 ? Deferred.succeed(observedBoth, undefined) : Effect.void
             )
           )
-        )
+        ),
+        Effect.andThen(Effect.never)
       )
   }
 
@@ -986,6 +988,14 @@ const expectExitFailure = <E>(
 
 const hasErrorTag = (error: unknown, tag: string): boolean =>
   typeof error === "object" && error !== null && "tag" in error && error.tag === tag
+
+const fixedClock = (timestamp: number): Clock.Clock => ({
+  currentTimeMillisUnsafe: () => timestamp,
+  currentTimeMillis: Effect.succeed(timestamp),
+  currentTimeNanosUnsafe: () => BigInt(timestamp) * 1_000_000n,
+  currentTimeNanos: Effect.succeed(BigInt(timestamp) * 1_000_000n),
+  sleep: () => Effect.yieldNow
+})
 
 test("RpcClient.Protocol and RpcServer.Protocol are exported from bridge index", () => {
   expect(RpcClient.Protocol).toBeDefined()

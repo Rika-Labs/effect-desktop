@@ -1,5 +1,5 @@
 import type { RedactionFilterOptions } from "@effect-desktop/bridge"
-import { Context, Effect, Layer, Option, Schema } from "effect"
+import { Clock, Context, Effect, Layer, Option, Schema } from "effect"
 import { EventGroup, EventJournal, EventLog, EventLogEncryption } from "effect/unstable/eventlog"
 
 import {
@@ -157,7 +157,7 @@ export const makeDesktopEventLog = (
         })
         yield* publishInspector(sanitized)
       }).pipe(
-        Effect.catch((error: EventJournal.EventJournalError) =>
+        Effect.tapError((error: EventJournal.EventJournalError) =>
           publishInspector(
             new DesktopEventLogEvent({
               kind: "append",
@@ -170,7 +170,7 @@ export const makeDesktopEventLog = (
               message: `${error.method} failed`,
               timestamp: event.timestamp
             })
-          ).pipe(Effect.andThen(Effect.fail(error)))
+          )
         )
       )
 
@@ -182,32 +182,38 @@ export const makeDesktopEventLog = (
           applyQueryPolicy(entries, queryOptions, options.maxQueryEntries)
         ),
         Effect.tap(() =>
-          publishInspector(
-            new DesktopEventLogEvent({
-              kind: "query",
-              status: "success",
-              operation: "DesktopEventLog.query",
-              ...(queryOptions.primaryKey === undefined
-                ? {}
-                : { primaryKey: queryOptions.primaryKey }),
-              ...(queryOptions.namespace === undefined
-                ? {}
-                : { namespace: queryOptions.namespace }),
-              timestamp: Date.now()
-            })
-          )
+          Effect.gen(function* () {
+            const timestamp = yield* Clock.currentTimeMillis
+            yield* publishInspector(
+              new DesktopEventLogEvent({
+                kind: "query",
+                status: "success",
+                operation: "DesktopEventLog.query",
+                ...(queryOptions.primaryKey === undefined
+                  ? {}
+                  : { primaryKey: queryOptions.primaryKey }),
+                ...(queryOptions.namespace === undefined
+                  ? {}
+                  : { namespace: queryOptions.namespace }),
+                timestamp
+              })
+            )
+          })
         ),
-        Effect.catch((error: EventJournal.EventJournalError) =>
-          publishInspector(
-            new DesktopEventLogEvent({
-              kind: "query",
-              status: "failure",
-              operation: "DesktopEventLog.query",
-              errorTag: error._tag,
-              message: `${error.method} failed`,
-              timestamp: Date.now()
-            })
-          ).pipe(Effect.andThen(Effect.fail(error)))
+        Effect.tapError((error: EventJournal.EventJournalError) =>
+          Effect.gen(function* () {
+            const timestamp = yield* Clock.currentTimeMillis
+            yield* publishInspector(
+              new DesktopEventLogEvent({
+                kind: "query",
+                status: "failure",
+                operation: "DesktopEventLog.query",
+                errorTag: error._tag,
+                message: `${error.method} failed`,
+                timestamp
+              })
+            )
+          })
         )
       )
 

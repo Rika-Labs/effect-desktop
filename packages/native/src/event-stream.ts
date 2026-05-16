@@ -4,9 +4,9 @@ import {
   type HostProtocolEventEnvelope,
   makeHostProtocolInvalidOutputError
 } from "@effect-desktop/bridge"
-import { Effect, Schema, type SchemaAST, Stream } from "effect"
+import { Effect, Schema, SchemaAST, Stream } from "effect"
 
-const SubscriptionUnsupportedMessage = "event exchange does not support subscriptions"
+const SUBSCRIPTION_UNSUPPORTED = "event exchange does not support subscriptions"
 
 export const subscribeNativeEvent = <A>(
   exchange: BridgeClientExchange | undefined,
@@ -15,7 +15,7 @@ export const subscribeNativeEvent = <A>(
   parseOptions?: SchemaAST.ParseOptions
 ): Stream.Stream<A, HostProtocolError, never> => {
   if (exchange?.subscribe === undefined) {
-    return Stream.fail(makeHostProtocolInvalidOutputError(method, SubscriptionUnsupportedMessage))
+    return Stream.fail(makeHostProtocolInvalidOutputError(method, SUBSCRIPTION_UNSUPPORTED))
   }
 
   return exchange
@@ -50,6 +50,5 @@ const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {
     return error.message
   }
-
   return String(error)
 }

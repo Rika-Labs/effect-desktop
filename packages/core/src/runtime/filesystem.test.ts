@@ -17,7 +17,18 @@ import {
   type HostProtocolSymlinkEscapesRootError
 } from "@effect-desktop/bridge"
 import { expect, test } from "bun:test"
-import { Deferred, Effect, Exit, Fiber, FileSystem, Layer, Option, Queue, Stream } from "effect"
+import {
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  FileSystem,
+  Layer,
+  Option,
+  Queue,
+  Schedule,
+  Stream
+} from "effect"
 import * as PlatformError from "effect/PlatformError"
 
 import {
@@ -304,6 +315,28 @@ test("Filesystem maps Effect FileSystem unknown EPERM failures to PermissionDeni
   expectFailureTag(exit, "PermissionDenied")
 })
 
+test("Filesystem stat treats readLink EINVAL as a non-symlink", async () => {
+  const service = await makeTestFilesystem(
+    { permissions: allowFilesystemRoot("/workspace") },
+    readLinkFailureFileSystem("EINVAL")
+  )
+
+  const result = await Effect.runPromise(service.stat("/workspace/file.txt"))
+
+  expect(result.kind).toBe("file")
+})
+
+test("Filesystem stat maps readLink permission failures", async () => {
+  const service = await makeTestFilesystem(
+    { permissions: allowFilesystemRoot("/workspace") },
+    readLinkFailureFileSystem("EACCES")
+  )
+
+  const exit = await Effect.runPromiseExit(service.stat("/workspace/file.txt"))
+
+  expectFailureTag(exit, "PermissionDenied")
+})
+
 test("Filesystem maps remove EACCES to filesystem.delete", async () => {
   const directory = await tempDirectory()
   const service = await makeTestFilesystem(
@@ -403,10 +436,7 @@ test("Filesystem allows recursive remove with delete root and recursive capabili
 
   await Effect.runPromise(service.remove(path, { recursive: true }))
 
-  const exists = await nodeStat(path).then(
-    () => true,
-    () => false
-  )
+  const exists = await pathExists(path)
   expect(exists).toBe(false)
 })
 
@@ -481,9 +511,8 @@ test("Filesystem realpath returns SymlinkEscapesRoot for symlink escapes", async
 test("Filesystem realpath validates capability input", async () => {
   const service = await makeTestFilesystem()
 
-  const exit = await Effect.runPromiseExit(
-    service.realpath("/tmp/project", "filesystem.delete" as never)
-  )
+  // @ts-expect-error intentionally invalid capability exercises runtime decoding.
+  const exit = await Effect.runPromiseExit(service.realpath("/tmp/project", "filesystem.delete"))
 
   expectFailureTag(exit, "InvalidArgument")
 })
@@ -758,6 +787,16 @@ const failingWriteFileSystem = (code: string): Layer.Layer<FileSystem.FileSystem
       )
   })
 
+const readLinkFailureFileSystem = (code: string): Layer.Layer<FileSystem.FileSystem> =>
+  FileSystem.layerNoop({
+    realPath: (path) => Effect.succeed(path),
+    readLink: (path) =>
+      Effect.fail(
+        platformError(code === "EINVAL" ? "Unknown" : "PermissionDenied", "readLink", path, code)
+      ),
+    stat: () => Effect.succeed(testFileInfo())
+  })
+
 const failingRemoveFileSystem = (root: string, code: string): Layer.Layer<FileSystem.FileSystem> =>
   FileSystem.layerNoop({
     realPath: (path) => Effect.succeed(path),
@@ -941,13 +980,23 @@ function makePermissionDeniedError(): PlatformError.PlatformError {
 }
 
 async function waitUntil(predicate: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    if (predicate()) {
-      return
-    }
-    await new Promise((resolve) => setTimeout(resolve, 10))
+  await Effect.runPromise(
+    Effect.suspend(() =>
+      predicate() ? Effect.void : Effect.fail(new Error("condition was not met"))
+    ).pipe(
+      Effect.retry(Schedule.spaced("10 millis").pipe(Schedule.both(Schedule.recurs(50)))),
+      Effect.mapError(() => new Error("condition was not met"))
+    )
+  )
+}
+
+const pathExists = async (path: string): Promise<boolean> => {
+  try {
+    await nodeStat(path)
+    return true
+  } catch {
+    return false
   }
-  throw new Error("condition was not met")
 }
 
 function expectFailureTag(exit: Exit.Exit<unknown, unknown>, tag: string): void {

@@ -3,19 +3,16 @@ import { Readable } from "node:stream"
 import { Effect, Layer } from "effect"
 import { Socket } from "effect/unstable/socket"
 
-const writeProcessStdout = (chunk: string | Uint8Array): Promise<void> =>
-  new Promise((resolve, reject) => {
+export const writeStdout = (chunk: string | Uint8Array): Effect.Effect<void, unknown, never> =>
+  Effect.callback((resume) => {
     process.stdout.write(chunk, (error) => {
       if (error) {
-        reject(error)
+        resume(Effect.fail(error))
       } else {
-        resolve()
+        resume(Effect.void)
       }
     })
   })
-
-export const writeStdout = (chunk: string | Uint8Array): Effect.Effect<void, unknown, never> =>
-  Effect.tryPromise(() => writeProcessStdout(chunk))
 
 const acquire = Effect.acquireRelease(
   Effect.sync(() => {
@@ -24,9 +21,7 @@ const acquire = Effect.acquireRelease(
     const readable = Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>
 
     const writable = new WritableStream<Uint8Array>({
-      async write(chunk) {
-        await writeProcessStdout(chunk)
-      }
+      write: (chunk) => Effect.runPromise(writeStdout(chunk))
     })
 
     return { readable, writable }

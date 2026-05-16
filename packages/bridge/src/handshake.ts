@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect"
+import { Clock, Effect, Schema } from "effect"
 
 import {
   HOST_PING_METHOD,
@@ -42,7 +42,7 @@ export interface HostHandshakeClientOptions {
 interface ResolvedHostHandshakeClientOptions {
   readonly nextRequestId: () => string
   readonly nextTraceId: () => string
-  readonly now: () => number
+  readonly now?: (() => number) | undefined
 }
 
 export const makeHostHandshakeClient = (
@@ -54,14 +54,14 @@ export const makeHostHandshakeClient = (
   return {
     ping: () =>
       Effect.gen(function* () {
-        const request = makeRequest(HOST_PING_METHOD, resolved)
+        const request = yield* makeRequest(HOST_PING_METHOD, resolved)
         yield* requireSuccess(
           yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
       }),
     version: () =>
       Effect.gen(function* () {
-        const request = makeRequest(HOST_VERSION_METHOD, resolved)
+        const request = yield* makeRequest(HOST_VERSION_METHOD, resolved)
         const response = yield* requireSuccess(
           yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
@@ -129,22 +129,30 @@ const decodeVersionPayload = (
 const makeRequest = (
   method: string,
   options: ResolvedHostHandshakeClientOptions
-): HostProtocolRequestEnvelope =>
-  new HostProtocolRequestEnvelope({
-    kind: "request",
-    id: options.nextRequestId(),
-    method,
-    timestamp: options.now(),
-    traceId: options.nextTraceId()
-  })
+): Effect.Effect<HostProtocolRequestEnvelope, never, never> =>
+  currentTimeMillis(options.now).pipe(
+    Effect.map(
+      (timestamp) =>
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: options.nextRequestId(),
+          method,
+          timestamp,
+          traceId: options.nextTraceId()
+        })
+    )
+  )
 
 const resolveOptions = (
   options: HostHandshakeClientOptions
 ): ResolvedHostHandshakeClientOptions => ({
   nextRequestId: options.nextRequestId ?? (() => `request-${globalThis.crypto.randomUUID()}`),
   nextTraceId: options.nextTraceId ?? (() => `trace-${globalThis.crypto.randomUUID()}`),
-  now: options.now ?? Date.now
+  now: options.now
 })
+
+const currentTimeMillis = (now: (() => number) | undefined): Effect.Effect<number, never, never> =>
+  now === undefined ? Clock.currentTimeMillis : Effect.sync(now)
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {

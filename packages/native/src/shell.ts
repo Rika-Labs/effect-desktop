@@ -1,4 +1,8 @@
 import {
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeHandlerRuntime,
+  type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -7,7 +11,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { P, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -122,6 +126,11 @@ export const makeShellClientLayer = (client: ShellClientApi): Layer.Layer<ShellC
 export const makeShellServiceLayer = (client: ShellClientApi): Layer.Layer<Shell> =>
   Layer.provide(ShellLive, makeShellClientLayer(client))
 
+export const makeShellBridgeClientLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
+): Layer.Layer<ShellClient> => ShellSurface.bridgeClientLayer(exchange, options)
+
 export type ShellRpc = RpcGroup.Rpcs<typeof ShellRpcGroup>
 
 export type ShellRpcHandlers = RpcGroup.HandlersFrom<ShellRpc>
@@ -161,6 +170,11 @@ export const ShellSurface = NativeSurface.make("Shell", ShellRpcGroup, {
   handlers: ShellHandlersLive,
   client: (client) => shellClientFromRpcClient(client)
 })
+
+export const makeHostShellRpcRuntime = (
+  handlers: ShellRpcHandlers,
+  runtimeOptions: BridgeHandlerRuntimeOptions = {}
+): BridgeHandlerRuntime<PermissionRegistry> => ShellSurface.hostRuntime(handlers, runtimeOptions)
 
 const shellClientFromRpcClient = (client: DesktopRpcClient<ShellRpc>): ShellClientApi => {
   const shellClient: ShellClientApi = {

@@ -11,7 +11,7 @@ import {
   ReplayTransport,
   type ReplayTransportApi
 } from "@effect-desktop/devtools/testing"
-import { Context, Effect, Layer, Stream } from "effect"
+import { Context, Effect, Layer, Schedule, Stream } from "effect"
 
 export type InspectorSessionKind = "live" | "recorded"
 
@@ -119,13 +119,7 @@ export const makeInspectorAppForTransports = (
   return Object.freeze({
     snapshot,
     observe: (selectedSessionId) =>
-      Stream.fromEffect(snapshot(selectedSessionId)).pipe(
-        Stream.concat(
-          Stream.fromEffectRepeat(
-            Effect.sleep("250 millis").pipe(Effect.andThen(snapshot(selectedSessionId)))
-          )
-        )
-      )
+      Stream.fromEffectSchedule(snapshot(selectedSessionId), Schedule.spaced("250 millis"))
   } satisfies InspectorAppApi)
 }
 

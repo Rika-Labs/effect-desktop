@@ -141,7 +141,7 @@ export interface ProductionSecurityConfig {
     readonly requireTypedBridge?: boolean
     readonly rendererNativeAccess?: boolean
     readonly requirePermissions?: boolean
-    readonly externalNavigation?: "deny" | "ask"
+    readonly externalNavigation?: string
     readonly devtoolsInProd?: boolean
     readonly csp?: CspConfig | undefined
     readonly redaction?: RedactionPolicy
@@ -544,7 +544,7 @@ const mergeRecordMap = (
 export interface ProductionCheckInput {
   readonly config: ProductionSecurityConfig
   readonly configPath?: string
-  readonly rendererFiles?: readonly ProductionCheckFile[]
+  readonly rendererFiles?: readonly unknown[]
 }
 
 interface RuleContext {
@@ -775,11 +775,13 @@ const decodeProductionCheckInput = (
       if (configPath.trim() === "") {
         throw new Error("configPath must be a non-empty string")
       }
-      const rendererFiles = input.rendererFiles ?? []
-      for (const [index, file] of rendererFiles.entries()) {
+      const rendererFileInputs = input.rendererFiles ?? []
+      const rendererFiles: ProductionCheckFile[] = []
+      for (const [index, file] of rendererFileInputs.entries()) {
         if (!isProductionCheckFile(file)) {
           throw new Error(`rendererFiles[${index}] must include string path and content`)
         }
+        rendererFiles.push(file)
       }
       return {
         config: input.config,

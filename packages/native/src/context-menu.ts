@@ -2,27 +2,35 @@ import {
   P,
   type DesktopRpcClient,
   CommandRegistry,
+  makeResourceId,
   PermissionActor,
   PermissionContext,
   type CommandRegistryError,
+  type PermissionRegistry,
   type ResourceHandle,
   type ResourceId,
   type ResourceRegistry
 } from "@effect-desktop/core"
 import {
   type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeHandlerRuntime,
+  type BridgeHandlerRuntimeOptions,
   HostProtocolUnsupportedError,
+  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
+  makeUnaryDesktopTransportFromBridgeClientExchange,
+  RpcClient,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
-import { subscribeNativeEvent } from "./event-stream.js"
 import { NativeSurface } from "./native-surface.js"
+import { subscribeNativeEvent } from "./event-stream.js"
 import { bindScopedCommand } from "./command-binding.js"
 import { commandBindingWarningError } from "./command-binding-log.js"
 import {
@@ -161,14 +169,15 @@ const invokeContextMenuCommand = (
     )
     .pipe(
       Effect.asVoid,
-      Effect.catch((error: CommandRegistryError) =>
+      Effect.tapError((error: CommandRegistryError) =>
         Effect.logWarning("ContextMenu command invocation failed", {
           commandId,
           error: commandBindingWarningError(error),
           itemId,
           windowId
         })
-      )
+      ),
+      Effect.ignore
     )
 
 export const makeContextMenuClientLayer = (
@@ -178,6 +187,17 @@ export const makeContextMenuClientLayer = (
 export const makeContextMenuServiceLayer = (
   client: ContextMenuClientApi
 ): Layer.Layer<ContextMenu> => Layer.provide(ContextMenuLive, makeContextMenuClientLayer(client))
+
+export const makeContextMenuBridgeClientLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
+): Layer.Layer<ContextMenuClient> =>
+  Layer.effect(
+    ContextMenuClient,
+    RpcClient.make(ContextMenuRpcGroup).pipe(
+      Effect.map((client) => contextMenuClientFromRpcClient(client, exchange))
+    )
+  ).pipe(Layer.provide(makeContextMenuBridgeProtocolLayer(exchange, options)))
 
 export type ContextMenuRpc = RpcGroup.Rpcs<typeof ContextMenuRpcGroup>
 
@@ -201,9 +221,14 @@ export const ContextMenuSurface = NativeSurface.make("ContextMenu", ContextMenuR
   service: ContextMenuClient,
   capabilities: ContextMenuMethodNames,
   handlers: ContextMenuHandlersLive,
-  bridgeClient: (client, exchange) => contextMenuClientFromRpcClient(client, exchange),
   client: (client) => contextMenuClientFromRpcClient(client, undefined)
 })
+
+export const makeHostContextMenuRpcRuntime = (
+  handlers: ContextMenuRpcHandlers,
+  runtimeOptions: BridgeHandlerRuntimeOptions = {}
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  ContextMenuSurface.hostRuntime(handlers, runtimeOptions)
 
 const contextMenuClientFromRpcClient = (
   client: DesktopRpcClient<ContextMenuRpc>,
@@ -231,12 +256,27 @@ const contextMenuClientFromRpcClient = (
           runContextMenuRpc(client["ContextMenu.bindCommand"](decoded), "ContextMenu.bindCommand")
         )
       ),
-    onActivated: () =>
-      subscribeNativeEvent(exchange, "ContextMenu.Activated", ContextMenuActivatedEvent)
+    onActivated: () => subscribeContextMenuEvent(exchange, "ContextMenu.Activated")
   }
 
   return Object.freeze(contextMenuClient)
 }
+
+const makeContextMenuBridgeProtocolLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
+): Layer.Layer<RpcClient.Protocol> =>
+  Layer.effect(RpcClient.Protocol)(
+    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
+      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
+    )
+  )
+
+const subscribeContextMenuEvent = (
+  exchange: BridgeClientExchange | undefined,
+  method: "ContextMenu.Activated"
+): Stream.Stream<ContextMenuActivatedEvent, ContextMenuError, never> =>
+  subscribeNativeEvent(exchange, method, ContextMenuActivatedEvent)
 
 const unsupportedError = (method: string): HostProtocolUnsupportedError =>
   new HostProtocolUnsupportedError({
@@ -248,10 +288,10 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
   })
 
 const contextMenuCommandResourceId = (itemId: string, commandId: string): ResourceId =>
-  `context-menu-command:${itemId}:${commandId}` as ResourceId
+  makeResourceId(`context-menu-command:${itemId}:${commandId}`)
 
 const toContextMenuShowInput = (input: ContextMenuShowOptions): unknown => ({
-  window: toWindowHandle(input.window as WindowHandle),
+  window: toWindowHandle(input.window),
   template: input.template,
   position: input.position
 })
@@ -263,7 +303,7 @@ const toWindowHandle = (handle: WindowHandle): WindowHandle =>
     generation: handle.generation,
     ownerScope: handle.ownerScope,
     state: handle.state
-  }) as WindowHandle
+  })
 
 const decodeContextMenuShowInput = (
   input: unknown

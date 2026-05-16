@@ -39,7 +39,10 @@ const FIXTURE_DIR = fileURLToPath(
   new URL("../../../crates/host-protocol/fixtures", import.meta.url)
 )
 const StrictParseOptions = { onExcessProperty: "error" } as const
+const TextEncoderUtf8 = new TextEncoder()
+const HostProtocolErrorsJson = Schema.fromJsonString(Schema.Array(HostProtocolError))
 const decodeUnknownHostProtocolError = Schema.decodeUnknownSync(HostProtocolError)
+const decodeHostProtocolErrorsJson = Schema.decodeUnknownSync(HostProtocolErrorsJson)
 const encodeHostProtocolError = Schema.encodeSync(HostProtocolError)
 
 test("host protocol version matches the bridge package version", () => {
@@ -66,7 +69,9 @@ test("shared host-protocol fixtures decode and encode canonically", async () => 
 
   for (const fixtureName of fixtureNames) {
     const source = (await readFile(join(FIXTURE_DIR, fixtureName), "utf8")).trim()
-    const decoded = decodeHostProtocolEnvelope(JSON.parse(source))
+    const decoded = await Effect.runPromise(
+      decodeHostProtocolFrame(TextEncoderUtf8.encode(source), fixtureName)
+    )
     const encoded = encodeHostProtocolEnvelope(decoded)
 
     expect(JSON.stringify(encoded), fixtureName).toBe(source)
@@ -81,7 +86,9 @@ test("host protocol codec round-trips shared fixtures as canonical JSON bytes", 
 
   for (const fixtureName of fixtureNames) {
     const source = (await readFile(join(FIXTURE_DIR, fixtureName), "utf8")).trim()
-    const decoded = decodeHostProtocolEnvelope(JSON.parse(source))
+    const decoded = await Effect.runPromise(
+      decodeHostProtocolFrame(TextEncoderUtf8.encode(source), fixtureName)
+    )
     const frame = await Effect.runPromise(encodeHostProtocolFrame(decoded, fixtureName))
     const fromFrame = await Effect.runPromise(decodeHostProtocolFrame(frame, fixtureName))
 
@@ -266,9 +273,7 @@ test("host protocol codec encodes schema class payload instances", async () => {
 
 test("shared host-protocol error fixtures decode and encode canonically", async () => {
   const source = (await readFile(join(FIXTURE_DIR, "errors.json"), "utf8")).trim()
-  const decoded = (JSON.parse(source) as ReadonlyArray<unknown>).map((error) =>
-    decodeUnknownHostProtocolError(error, StrictParseOptions)
-  )
+  const decoded = decodeHostProtocolErrorsJson(source, StrictParseOptions)
   const encoded = decoded.map((error) => encodeHostProtocolError(error, StrictParseOptions))
 
   expect(JSON.stringify(encoded)).toBe(source)
@@ -880,7 +885,9 @@ test("u32 error fields reject values above Rust u32 max", () => {
 
 test("host protocol envelope type accepts decoded fixture values", async () => {
   const source = await readFile(join(FIXTURE_DIR, "request.json"), "utf8")
-  const envelope: HostProtocolEnvelope = decodeHostProtocolEnvelope(JSON.parse(source))
+  const envelope: HostProtocolEnvelope = await Effect.runPromise(
+    decodeHostProtocolFrame(TextEncoderUtf8.encode(source.trim()), "request.json")
+  )
 
   expect(envelope.kind).toBe("request")
 })

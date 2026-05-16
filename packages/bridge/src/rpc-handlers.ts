@@ -1,4 +1,4 @@
-import { Cause, Deferred, Effect, Exit, Fiber, Layer, Queue } from "effect"
+import { Cause, Clock, Deferred, Effect, Exit, Fiber, Layer, Queue, Scope, Stream } from "effect"
 import { Rpc, RpcGroup, RpcServer } from "effect/unstable/rpc"
 
 import { type BridgeClientResponse } from "./client.js"
@@ -33,6 +33,10 @@ type RpcGroupWithRequests<Rpcs extends Rpc.Any> = RpcGroup.RpcGroup<Rpcs> & {
   readonly requests: ReadonlyMap<string, Rpcs>
 }
 
+type RpcServerLayerRequirements<Rpcs extends Rpc.Any> = Rpc.ToHandler<Rpcs> | Rpc.Middleware<Rpcs>
+
+type RpcServerRuntimeEnvironment<Rpcs extends Rpc.Any, R> = R | Rpc.ServicesServer<Rpcs>
+
 type TerminalStateEntry = {
   readonly state: "Completed" | "Failed" | "Canceled" | "TimedOut"
   readonly recordedAt: number
@@ -45,7 +49,7 @@ type PendingCall = {
 }
 
 interface ResolvedDesktopRpcHandlerOptions {
-  readonly now: () => number
+  readonly now?: (() => number) | undefined
   readonly onState: NonNullable<BridgeHandlerRuntimeOptions["onState"]>
   readonly originAuth: RendererOriginAuth
   readonly terminalStateTtlMs: number
@@ -53,37 +57,41 @@ interface ResolvedDesktopRpcHandlerOptions {
   readonly inspector: BridgeInspector | undefined
 }
 
-export const makeDesktopRpcHandlerRuntime = <Rpcs extends Rpc.Any, E = never, R = never>(
+export const makeDesktopRpcHandlerRuntime = <
+  Rpcs extends Rpc.Any,
+  E extends HostProtocolError = never,
+  R = never
+>(
   group: RpcGroupWithRequests<Rpcs>,
-  handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>,
+  handlers: Layer.Layer<RpcServerLayerRequirements<Rpcs>, E, R>,
   options: BridgeHandlerRuntimeOptions & { readonly nextTraceId?: () => string } = {}
-): BridgeHandlerRuntime<R> => {
+): BridgeHandlerRuntime<RpcServerRuntimeEnvironment<Rpcs, R>> => {
   const resolved = resolveOptions(options)
   const terminalStates = new Map<string, TerminalStateEntry>()
   const pendingCalls = new Map<string, PendingCall>()
 
   return Object.freeze({
     dispatch: (request: HostProtocolRequestEnvelope) =>
-      dispatch(group, handlers, terminalStates, pendingCalls, resolved, request) as Effect.Effect<
-        BridgeClientResponse,
-        HostProtocolError | E,
-        R
-      >,
+      dispatch(group, handlers, terminalStates, pendingCalls, resolved, request),
     cancel: (request: HostProtocolCancelByRequestEnvelope) => cancel(pendingCalls, request)
-  }) as BridgeHandlerRuntime<R>
+  } satisfies BridgeHandlerRuntime<RpcServerRuntimeEnvironment<Rpcs, R>>)
 }
 
-const dispatch = <Rpcs extends Rpc.Any, E, R>(
+const dispatch = <Rpcs extends Rpc.Any, E extends HostProtocolError, R>(
   group: RpcGroupWithRequests<Rpcs>,
-  handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>,
+  handlers: Layer.Layer<RpcServerLayerRequirements<Rpcs>, E, R>,
   terminalStates: Map<string, TerminalStateEntry>,
   pendingCalls: Map<string, PendingCall>,
   options: ResolvedDesktopRpcHandlerOptions,
   request: HostProtocolRequestEnvelope
-): Effect.Effect<BridgeClientResponse, HostProtocolError | E, unknown> =>
+): Effect.Effect<
+  BridgeClientResponse,
+  HostProtocolError | E,
+  RpcServerRuntimeEnvironment<Rpcs, R>
+> =>
   Effect.scoped(
     Effect.gen(function* () {
-      const startedAt = options.now()
+      const startedAt = yield* currentTimeMillis(options)
       purgeExpiredTerminalStates(terminalStates, startedAt, options.terminalStateTtlMs)
 
       const priorTerminalState = terminalStates.get(request.id)?.state
@@ -160,7 +168,7 @@ const dispatch = <Rpcs extends Rpc.Any, E, R>(
 
       const canceled = cancelledFromCause(request.method, exit.cause, canceledBy)
       if (canceled !== undefined) {
-        recordTerminalState(terminalStates, request.id, "Canceled", options)
+        yield* recordTerminalState(terminalStates, request.id, "Canceled", options)
         yield* options.onState({
           tag: "Canceled",
           id: request.id,
@@ -173,14 +181,18 @@ const dispatch = <Rpcs extends Rpc.Any, E, R>(
     })
   )
 
-const runDispatch = <Rpcs extends Rpc.Any, E, R>(
+const runDispatch = <Rpcs extends Rpc.Any, E extends HostProtocolError, R>(
   group: RpcGroupWithRequests<Rpcs>,
-  handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>,
+  handlers: Layer.Layer<RpcServerLayerRequirements<Rpcs>, E, R>,
   terminalStates: Map<string, TerminalStateEntry>,
   pending: PendingCall,
   options: ResolvedDesktopRpcHandlerOptions,
   request: HostProtocolRequestEnvelope
-): Effect.Effect<BridgeClientResponse, HostProtocolError | E, unknown> =>
+): Effect.Effect<
+  BridgeClientResponse,
+  HostProtocolError | E,
+  RpcServerRuntimeEnvironment<Rpcs, R> | Scope.Scope
+> =>
   Effect.gen(function* () {
     const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
     const response = yield* Deferred.make<BridgeClientResponse, HostProtocolError>()
@@ -196,7 +208,7 @@ const runDispatch = <Rpcs extends Rpc.Any, E, R>(
         })
       ).pipe(Effect.asVoid)
     const protocol = yield* makeDesktopServerProtocol(transport, {
-      now: options.now,
+      ...(options.now === undefined ? {} : { now: options.now }),
       ...(options.nextTraceId === undefined ? {} : { nextTraceId: options.nextTraceId })
     })
 
@@ -227,11 +239,12 @@ const runDispatch = <Rpcs extends Rpc.Any, E, R>(
     )
     const result = yield* Deferred.await(response)
     if (result.kind === "success") {
-      recordTerminalState(terminalStates, request.id, "Completed", options)
+      const completedAt = yield* currentTimeMillis(options)
+      yield* recordTerminalState(terminalStates, request.id, "Completed", options)
       yield* options.onState({
         tag: "Completed",
         id: request.id,
-        completedAt: options.now()
+        completedAt
       })
       yield* emitBridgeInspectorEvent(
         options.inspector,
@@ -242,12 +255,12 @@ const runDispatch = <Rpcs extends Rpc.Any, E, R>(
           method: request.method,
           requestId: request.id,
           traceId: request.traceId,
-          timestamp: options.now()
+          timestamp: completedAt
         })
       )
     } else {
       if (isHostProtocolCancelledError(result.error)) {
-        recordTerminalState(terminalStates, request.id, "Canceled", options)
+        yield* recordTerminalState(terminalStates, request.id, "Canceled", options)
         yield* options.onState({
           tag: "Canceled",
           id: request.id,
@@ -255,7 +268,8 @@ const runDispatch = <Rpcs extends Rpc.Any, E, R>(
         })
         return yield* Effect.fail(result.error)
       }
-      recordTerminalState(terminalStates, request.id, "Failed", options)
+      const failedAt = yield* currentTimeMillis(options)
+      yield* recordTerminalState(terminalStates, request.id, "Failed", options)
       yield* options.onState({
         tag: "Failed",
         id: request.id,
@@ -270,7 +284,7 @@ const runDispatch = <Rpcs extends Rpc.Any, E, R>(
           method: request.method,
           requestId: request.id,
           traceId: request.traceId,
-          timestamp: options.now(),
+          timestamp: failedAt,
           errorTag: hostProtocolErrorTag(result.error)
         })
       )
@@ -323,7 +337,7 @@ const desktopRpcHandlerTransport = (
       return Effect.void
     },
     run: (onEnvelope: (envelope: HostProtocolEnvelope) => Effect.Effect<void>) =>
-      Effect.forever(Queue.take(queue).pipe(Effect.flatMap(onEnvelope)))
+      Stream.fromQueue(queue).pipe(Stream.runForEach(onEnvelope), Effect.andThen(Effect.never))
   })
 
 const failCall = (
@@ -333,7 +347,7 @@ const failCall = (
   error: HostProtocolError
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
-    recordTerminalState(terminalStates, id, "Failed", options)
+    yield* recordTerminalState(terminalStates, id, "Failed", options)
     yield* options.onState({
       tag: "Failed",
       id,
@@ -346,12 +360,19 @@ const recordTerminalState = (
   id: string,
   state: TerminalStateEntry["state"],
   options: ResolvedDesktopRpcHandlerOptions
-): void => {
-  terminalStates.set(id, {
-    state,
-    recordedAt: options.now()
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const recordedAt = yield* currentTimeMillis(options)
+    terminalStates.set(id, {
+      state,
+      recordedAt
+    })
   })
-}
+
+const currentTimeMillis = (
+  options: ResolvedDesktopRpcHandlerOptions
+): Effect.Effect<number, never, never> =>
+  options.now === undefined ? Clock.currentTimeMillis : Effect.sync(options.now)
 
 const purgeExpiredTerminalStates = (
   terminalStates: Map<string, TerminalStateEntry>,
@@ -408,7 +429,7 @@ const originFailure = (operation: string): HostProtocolError =>
 const resolveOptions = (
   options: BridgeHandlerRuntimeOptions & { readonly nextTraceId?: () => string }
 ): ResolvedDesktopRpcHandlerOptions => ({
-  now: options.now ?? Date.now,
+  now: options.now,
   onState: options.onState ?? (() => Effect.void),
   originAuth: options.originAuth ?? defaultRendererOriginAuth,
   terminalStateTtlMs: options.terminalStateTtlMs ?? DEFAULT_TERMINAL_STATE_TTL_MS,

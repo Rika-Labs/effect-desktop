@@ -1,5 +1,17 @@
 import { expect, test } from "bun:test"
-import { Context, Effect, Exit, Fiber, Layer, Option, Schema, Stream } from "effect"
+import {
+  Clock,
+  Context,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  Option,
+  Ref,
+  Schedule,
+  Schema,
+  Stream
+} from "effect"
 import { TestClock } from "effect/testing"
 
 import {
@@ -33,10 +45,10 @@ import {
   makeSecretBytesFromUtf8,
   makeSecrets,
   makeResourceRegistry,
+  makeResourceId,
   makeSidecar,
   ResourceHandleSchema,
   type ResourceOwnerApi,
-  type ResourceId,
   unsafeSecretBytes,
   wipeSecretBytes
 } from "@effect-desktop/core"
@@ -113,7 +125,7 @@ import {
 } from "@effect-desktop/test/native"
 import { CapabilityLaws as SubpathCapabilityLaws } from "@effect-desktop/test/renderer"
 
-const id = (value: string): ResourceId => value as ResourceId
+const id = makeResourceId
 const TEST_OWNER: ResourceOwnerApi = Object.freeze({
   kind: "test",
   scopeId: "scope-main",
@@ -126,17 +138,20 @@ const waitForRegistryEntries = (
   },
   count: number
 ): Effect.Effect<void, never, never> =>
-  Effect.gen(function* () {
-    for (let attempt = 0; attempt < 100; attempt += 1) {
-      const snapshot = yield* registry.list()
-      if (snapshot.entries.length >= count) {
-        return
-      }
-      yield* Effect.sleep("1 millis")
-    }
-
-    return yield* Effect.die(new Error(`timed out waiting for ${count} registry entries`))
-  })
+  Effect.suspend(() =>
+    registry
+      .list()
+      .pipe(
+        Effect.flatMap((snapshot) =>
+          snapshot.entries.length >= count
+            ? Effect.void
+            : Effect.fail(new Error(`waiting for ${count} registry entries`))
+        )
+      )
+  ).pipe(
+    Effect.retry(Schedule.spaced("1 millis").pipe(Schedule.both(Schedule.recurs(100)))),
+    Effect.orDie
+  )
 
 registerLeakMatchers()
 
@@ -548,8 +563,18 @@ test("MockHost reports unknown window destroy as a typed host error", async () =
   }
 })
 
+const expectFrozenPathPayload = (payload: unknown): void => {
+  if (typeof payload !== "object" || payload === null) {
+    throw new Error("expected object payload")
+  }
+
+  expect(Reflect.set(payload, "path", "after")).toBe(false)
+  expect(Reflect.get(payload, "path")).toBe("before")
+}
+
 test("MockHost calls returns immutable request snapshots", async () => {
-  const host = makeMockHost({ now: () => 1710000000200 })
+  const timestamp = 1_710_000_002_000
+  const host = makeMockHost()
   const request = new HostProtocolRequestEnvelope({
     kind: "request",
     id: "request-immutable-host",
@@ -559,20 +584,21 @@ test("MockHost calls returns immutable request snapshots", async () => {
     payload: { path: "before" }
   })
 
-  await Effect.runPromise(host.request(request))
+  const response = await Effect.runPromise(
+    host.request(request).pipe(Effect.provideService(Clock.Clock, fixedClock(timestamp)))
+  )
   const first = host.calls()
   const firstCall = first[0]
   if (firstCall === undefined) {
     throw new Error("expected MockHost call")
   }
-  expect(() => {
-    ;(firstCall.request.payload as any).path = "after"
-  }).toThrow()
+  expectFrozenPathPayload(firstCall.request.payload)
   const storedCall = host.calls()[0]
   if (storedCall === undefined) {
     throw new Error("expected stored MockHost call")
   }
-  expect((storedCall.request.payload as any).path).toBe("before")
+  expect(response.timestamp).toBe(timestamp)
+  expectFrozenPathPayload(storedCall.request.payload)
 })
 
 test("MockHost rejects non-JSON fixture payloads", async () => {
@@ -658,14 +684,12 @@ test("MockBridge calls returns immutable payload snapshots", async () => {
   if (firstCall === undefined) {
     throw new Error("expected MockBridge call")
   }
-  expect(() => {
-    ;(firstCall.payload as any).path = "after"
-  }).toThrow()
+  expectFrozenPathPayload(firstCall.payload)
   const storedCall = bridge.calls()[0]
   if (storedCall === undefined) {
     throw new Error("expected stored MockBridge call")
   }
-  expect((storedCall.payload as any).path).toBe("before")
+  expectFrozenPathPayload(storedCall.payload)
 })
 
 test("MockBridge rejects pinned success payloads that are not JSON-serializable", async () => {
@@ -749,6 +773,7 @@ test("MockBridge returns pinned contract errors through the typed error channel"
 })
 
 test("MockBridge replays pinned stream chunks in order", async () => {
+  const timestamp = 1_710_000_005_000
   const ProjectRpcs = bridgeContractFromRpcGroup(
     "Test.MockBridge.Stream",
     RpcGroup.make(
@@ -760,23 +785,48 @@ test("MockBridge replays pinned stream chunks in order", async () => {
       })
     )
   )
-  const bridge = makeMockBridge({ now: () => 1710000000500 })
+  const bridge = makeMockBridge()
   await Effect.runPromise(bridge.streamChunks("Test.MockBridge.Stream.watch", ["a", "b"]))
   const client = bridge.client(
     { project: ProjectRpcs },
     {
       nextRequestId: nextSequence("request"),
-      nextTraceId: nextSequence("trace"),
-      now: () => 1710000000500
+      nextTraceId: nextSequence("trace")
     }
   )
 
   const chunks = await Effect.runPromise(
-    client.project.watch({ path: "/tmp/project" }).pipe(Stream.runCollect)
+    client.project
+      .watch({ path: "/tmp/project" })
+      .pipe(Stream.runCollect, Effect.provideService(Clock.Clock, fixedClock(timestamp)))
+  )
+  const stream = bridge.exchange.stream
+  if (stream === undefined) {
+    throw new Error("expected MockBridge stream")
+  }
+  const envelopes = await Effect.runPromise(
+    stream(
+      new HostProtocolRequestEnvelope({
+        kind: "request",
+        id: "request-stream-clock",
+        timestamp,
+        traceId: "trace-stream-clock",
+        method: "Test.MockBridge.Stream.watch",
+        payload: { path: "/tmp/project" }
+      })
+    ).pipe(Stream.runCollect, Effect.provideService(Clock.Clock, fixedClock(timestamp)))
   )
 
   expect(Array.from(chunks)).toEqual(["a", "b"])
-  expect(bridge.calls().map((call) => call.method)).toEqual(["Test.MockBridge.Stream.watch"])
+  expect(Array.from(envelopes).map((envelope) => envelope.timestamp)).toEqual([
+    timestamp,
+    timestamp,
+    timestamp
+  ])
+  expect(bridge.calls().map((call) => call.method)).toEqual([
+    "Test.MockBridge.Stream.watch",
+    "Test.MockBridge.Stream.watch"
+  ])
 })
 
 test("MockBridge returns resource handles through the method schema", async () => {
@@ -866,6 +916,33 @@ test("MemoryFilesystem layer reads, writes, stats, and atomically replaces files
   })
 })
 
+test("MemoryFilesystem default timestamps come from the Effect Clock", async () => {
+  const timestamp = 1_710_000_601_000
+  const stat = await Effect.runPromise(
+    Effect.gen(function* () {
+      const filesystem = yield* Filesystem
+      yield* filesystem.write("/workspace/file.txt", bytes("clocked"))
+      return yield* filesystem.stat("/workspace/file.txt")
+    }).pipe(
+      Effect.provide(
+        MemoryFilesystemLive({
+          directories: ["/workspace"],
+          permissions: {
+            readRoots: ["/workspace"],
+            writeRoots: ["/workspace"]
+          }
+        }).pipe(
+          Layer.provide(ResourceRegistryLive),
+          Layer.provide(ResourceOwner.test("scope-main"))
+        )
+      ),
+      Effect.provideService(Clock.Clock, fixedClock(timestamp))
+    )
+  )
+
+  expect(stat.modifiedAtMs).toBe(timestamp)
+})
+
 test("MemoryFilesystem watcher emits contract events and closes its registry resource", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
@@ -883,16 +960,20 @@ test("MemoryFilesystem watcher emits contract events and closes its registry res
 
       yield* waitForRegistryEntries(registry, 1)
       const events = yield* Effect.gen(function* () {
-        for (let attempt = 0; attempt < 50; attempt += 1) {
+        const attemptRef = yield* Ref.make(0)
+        return yield* Effect.gen(function* () {
+          const attempt = yield* Ref.getAndUpdate(attemptRef, (current) => current + 1)
           yield* filesystem.write("/workspace/file.txt", bytes(`one-${attempt}`))
           yield* filesystem.write("/workspace/file.txt", bytes(`two-${attempt}`))
           const collected = yield* Fiber.join(fiber).pipe(Effect.timeoutOption("1 millis"))
           if (Option.isSome(collected)) {
             return collected.value
           }
-          yield* Effect.sleep("5 millis")
-        }
-        return yield* Fiber.join(fiber)
+          return yield* Effect.fail(new Error("watch events not collected"))
+        }).pipe(
+          Effect.retry(Schedule.spaced("5 millis").pipe(Schedule.both(Schedule.recurs(50)))),
+          Effect.catch(() => Fiber.join(fiber))
+        )
       })
       const registryAfterWatch = yield* registry.list()
 
@@ -1904,3 +1985,11 @@ const nextSequence = (prefix: string): (() => string) => {
 const bytes = (value: string): Uint8Array => new TextEncoder().encode(value)
 
 const text = (value: Uint8Array): string => new TextDecoder().decode(value)
+
+const fixedClock = (timestamp: number): Clock.Clock => ({
+  currentTimeMillisUnsafe: () => timestamp,
+  currentTimeMillis: Effect.succeed(timestamp),
+  currentTimeNanosUnsafe: () => BigInt(timestamp) * 1_000_000n,
+  currentTimeNanos: Effect.succeed(BigInt(timestamp) * 1_000_000n),
+  sleep: () => Effect.yieldNow
+})

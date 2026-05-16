@@ -1,4 +1,8 @@
 import {
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeHandlerRuntime,
+  type BridgeHandlerRuntimeOptions,
   RpcGroup,
   hostProtocolErrorFromRpcClientError,
   makeHostProtocolInternalError,
@@ -6,7 +10,7 @@ import {
   HostProtocolRequestEnvelope,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -66,6 +70,8 @@ const ScreenRpcGroup = makeScreenRpcGroup()
 export const ScreenRpcs: RpcGroup.RpcGroup<ScreenRpc> = ScreenRpcGroup
 
 export type ScreenRpc = RpcGroup.Rpcs<typeof ScreenRpcGroup>
+
+export type ScreenBridgeClientOptions = Omit<BridgeClientOptions, "nextRequestId">
 
 export const ScreenMethodNames = Object.freeze([
   "getDisplays",
@@ -146,9 +152,6 @@ export const ScreenSurface = NativeSurface.make("Screen", ScreenRpcGroup, {
   service: ScreenClient,
   capabilities: ScreenCapabilityMethods,
   handlers: ScreenHandlersLive,
-  bridge: {
-    normalizeRequest: normalizeScreenBridgeRequest
-  },
   client: (client) => screenClientFromRpcClient(client)
 })
 
@@ -158,11 +161,25 @@ export const makeScreenClientLayer = (client: ScreenClientApi): Layer.Layer<Scre
 export const makeScreenServiceLayer = (client: ScreenClientApi): Layer.Layer<Screen> =>
   Layer.provide(ScreenLive, makeScreenClientLayer(client))
 
+export const makeScreenBridgeClientLayer = (
+  exchange: BridgeClientExchange,
+  options: ScreenBridgeClientOptions = {}
+): Layer.Layer<ScreenClient> =>
+  ScreenSurface.bridgeClientLayer(exchange, {
+    ...options,
+    normalizeRequest: normalizeScreenBridgeRequest
+  })
+
 export type ScreenRpcHandlers = RpcGroup.HandlersFrom<ScreenRpc>
 
-function normalizeScreenBridgeRequest(
+export const makeHostScreenRpcRuntime = (
+  handlers: ScreenRpcHandlers,
+  runtimeOptions: BridgeHandlerRuntimeOptions = {}
+): BridgeHandlerRuntime<PermissionRegistry> => ScreenSurface.hostRuntime(handlers, runtimeOptions)
+
+const normalizeScreenBridgeRequest = (
   request: HostProtocolRequestEnvelope
-): HostProtocolRequestEnvelope {
+): HostProtocolRequestEnvelope => {
   if (
     request.payload !== null ||
     (request.method !== "Screen.getDisplays" &&

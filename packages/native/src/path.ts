@@ -1,11 +1,15 @@
 import {
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeHandlerRuntime,
+  type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { P, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -87,6 +91,11 @@ export const makePathClientLayer = (client: PathClientApi): Layer.Layer<PathClie
 export const makePathServiceLayer = (client: PathClientApi): Layer.Layer<Path> =>
   Layer.provide(PathLive, makePathClientLayer(client))
 
+export const makePathBridgeClientLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
+): Layer.Layer<PathClient> => PathSurface.bridgeClientLayer(exchange, options)
+
 export type PathRpc = RpcGroup.Rpcs<typeof PathRpcGroup>
 
 export type PathRpcHandlers = RpcGroup.HandlersFrom<PathRpc>
@@ -136,6 +145,11 @@ export const PathSurface = NativeSurface.make("Path", PathRpcGroup, {
   handlers: PathHandlersLive,
   client: (client) => pathClientFromRpcClient(client)
 })
+
+export const makeHostPathRpcRuntime = (
+  handlers: PathRpcHandlers,
+  runtimeOptions: BridgeHandlerRuntimeOptions = {}
+): BridgeHandlerRuntime<PermissionRegistry> => PathSurface.hostRuntime(handlers, runtimeOptions)
 
 const makePathService = (client: PathClientApi): PathServiceApi => {
   const toStringPath = (effect: Effect.Effect<CanonicalPath, PathError, never>) =>

@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit, Fiber, Queue, Schema, Stream } from "effect"
+import { Cause, Clock, Effect, Exit, Fiber, Queue, Result, Schema, Stream } from "effect"
 
 import {
   type BridgeContract,
@@ -50,7 +50,7 @@ const CancelDispatchGrace = "50 millis" as const
 export interface BridgeClientExchange {
   readonly request: (
     request: HostProtocolRequestEnvelope
-  ) => Effect.Effect<BridgeClientResponse, HostProtocolError, never>
+  ) => Effect.Effect<unknown, HostProtocolError, never>
   readonly subscribe?: (
     method: string
   ) => Stream.Stream<HostProtocolEventEnvelope, HostProtocolError, never>
@@ -85,14 +85,13 @@ export interface BridgeClientOptions {
   readonly windowId?: string
   readonly originToken?: string
   readonly inspector?: BridgeInspector
+  readonly normalizeRequest?: (request: HostProtocolRequestEnvelope) => HostProtocolRequestEnvelope
 }
 
 export interface UnaryDesktopTransportFromBridgeClientExchangeOptions extends Pick<
   BridgeClientOptions,
-  "nextTraceId" | "now"
-> {
-  readonly normalizeRequest?: (request: HostProtocolRequestEnvelope) => HostProtocolRequestEnvelope
-}
+  "nextTraceId" | "now" | "normalizeRequest"
+> {}
 
 export const makeUnaryDesktopTransportFromBridgeClientExchange = (
   exchange: BridgeClientExchange,
@@ -100,7 +99,8 @@ export const makeUnaryDesktopTransportFromBridgeClientExchange = (
 ): Effect.Effect<DesktopTransportSend & DesktopTransportRun> =>
   Effect.gen(function* () {
     const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
-    const now = options.now ?? Date.now
+    const clock = yield* Clock.Clock
+    const now = options.now ?? (() => clock.currentTimeMillisUnsafe())
     const nextTraceId = options.nextTraceId ?? (() => `trace-${globalThis.crypto.randomUUID()}`)
     const normalizeRequest = options.normalizeRequest ?? ((request) => request)
 
@@ -108,11 +108,13 @@ export const makeUnaryDesktopTransportFromBridgeClientExchange = (
       send: (envelope) => {
         if (envelope.kind === "request") {
           return exchange.request(normalizeRequest(envelope)).pipe(
-            Effect.catch((error) =>
-              Effect.succeed({
-                kind: "failure" as const,
-                error
-              } satisfies BridgeClientResponse)
+            Effect.flatMap((response) => validateBridgeClientResponse(envelope.method, response)),
+            Effect.result,
+            Effect.map((result) =>
+              Result.match(result, {
+                onFailure: (error): BridgeClientResponse => ({ kind: "failure", error }),
+                onSuccess: (response) => response
+              })
             ),
             Effect.flatMap((response) =>
               Queue.offer(queue, bridgeResponseEnvelope(envelope, response, now, nextTraceId))
@@ -135,21 +137,23 @@ export const makeUnaryDesktopTransportFromBridgeClientExchange = (
                 traceId: envelope.traceId
               })
             )
-            .pipe(Effect.catch(() => Effect.void))
+            .pipe(Effect.ignore)
         }
         return Effect.void
       },
-      run: (onEnvelope) => Effect.forever(Queue.take(queue).pipe(Effect.flatMap(onEnvelope)))
+      run: (onEnvelope) =>
+        Stream.fromQueue(queue).pipe(Stream.runForEach(onEnvelope), Effect.andThen(Effect.never))
     } satisfies DesktopTransportSend & DesktopTransportRun)
   })
 
 interface ResolvedBridgeClientOptions {
   readonly nextRequestId: () => string
   readonly nextTraceId: () => string
-  readonly now: () => number
+  readonly now?: (() => number) | undefined
   readonly windowId: string | undefined
   readonly originToken: string | undefined
   readonly inspector: BridgeInspector | undefined
+  readonly normalizeRequest: (request: HostProtocolRequestEnvelope) => HostProtocolRequestEnvelope
 }
 
 const decodeUnknownHostProtocolError = Schema.decodeUnknownSync(HostProtocolErrorSchema)
@@ -187,6 +191,19 @@ const bridgeFailureError = (error: unknown, operation: string): HostProtocolErro
   } catch {
     return makeHostProtocolInternalError("bridge exchange failed", operation)
   }
+}
+
+const validateBridgeClientResponse = (
+  operation: string,
+  response: unknown
+): Effect.Effect<BridgeClientResponse, HostProtocolError, never> => {
+  const responseKind = (response as { readonly kind?: unknown }).kind
+  if (responseKind === "success" || responseKind === "failure") {
+    return Effect.succeed(response as BridgeClientResponse)
+  }
+  return Effect.fail(
+    makeHostProtocolInvalidOutputError(operation, `unknown response kind: ${String(responseKind)}`)
+  )
 }
 
 export type BridgeClientMethod<Spec extends BridgeMethodSpec> =
@@ -333,7 +350,7 @@ const requestContractMethod = <Spec extends BridgeUnaryMethodSpec>(
         timestamp: startedAt
       })
     )
-    const response = yield* runRequestWithInterruption(exchange, request, options.now)
+    const response = yield* runRequestWithInterruption(exchange, request, options)
     const responseKind = (response as { readonly kind?: unknown }).kind
 
     if (responseKind === "failure") {
@@ -341,6 +358,7 @@ const requestContractMethod = <Spec extends BridgeUnaryMethodSpec>(
         BridgeClientResponse,
         { readonly kind: "failure" }
       >
+      const completedAt = yield* currentTimeMillis(options.now)
       yield* emitBridgeInspectorEvent(
         options.inspector,
         new BridgeInspectorEvent({
@@ -350,8 +368,8 @@ const requestContractMethod = <Spec extends BridgeUnaryMethodSpec>(
           method: operation,
           requestId: request.id,
           traceId: request.traceId,
-          timestamp: options.now(),
-          durationMs: Math.max(0, options.now() - startedAt),
+          timestamp: completedAt,
+          durationMs: Math.max(0, completedAt - startedAt),
           errorTag: hostProtocolErrorTag(failureResponse.error)
         })
       )
@@ -372,6 +390,7 @@ const requestContractMethod = <Spec extends BridgeUnaryMethodSpec>(
       )
     }
     const successResponse = response as Extract<BridgeClientResponse, { readonly kind: "success" }>
+    const completedAt = yield* currentTimeMillis(options.now)
     yield* emitBridgeInspectorEvent(
       options.inspector,
       new BridgeInspectorEvent({
@@ -381,8 +400,8 @@ const requestContractMethod = <Spec extends BridgeUnaryMethodSpec>(
         method: operation,
         requestId: request.id,
         traceId: request.traceId,
-        timestamp: options.now(),
-        durationMs: Math.max(0, options.now() - startedAt)
+        timestamp: completedAt,
+        durationMs: Math.max(0, completedAt - startedAt)
       })
     )
 
@@ -410,8 +429,8 @@ const decodeOutput = <Type, Encoded>(
   operation: string,
   schema: BridgeContractCodec<Type, Encoded>,
   payload: unknown,
-  inspector?: BridgeInspector,
-  request?: HostProtocolRequestEnvelope
+  inspector: BridgeInspector | undefined,
+  request: HostProtocolRequestEnvelope
 ): Effect.Effect<Type, HostProtocolError, never> =>
   Schema.decodeUnknownEffect(schema)(payload, StrictParseOptions).pipe(
     Effect.mapError((error) =>
@@ -426,8 +445,8 @@ const decodeContractError = <Type, Encoded>(
   operation: string,
   schema: BridgeContractCodec<Type, Encoded>,
   error: unknown,
-  inspector?: BridgeInspector,
-  request?: HostProtocolRequestEnvelope
+  inspector: BridgeInspector | undefined,
+  request: HostProtocolRequestEnvelope
 ): Effect.Effect<never, Type | HostProtocolError, never> =>
   Effect.flatMap(
     Schema.decodeUnknownEffect(schema)(error, StrictParseOptions).pipe(
@@ -509,7 +528,7 @@ const streamContractMethod = <
         ),
         Stream.ensuring(
           Effect.suspend(() =>
-            terminal ? Effect.void : startCancelByRequest(exchange, request, options.now)
+            terminal ? Effect.void : startCancelByRequest(exchange, request, options)
           )
         )
       )
@@ -682,18 +701,18 @@ const decodeStreamError = <Type, Encoded>(
 const sendCancelByRequest = (
   exchange: BridgeClientExchange,
   request: HostProtocolRequestEnvelope,
-  now: () => number
+  options: ResolvedBridgeClientOptions
 ): Effect.Effect<void, never, never> =>
   exchange.cancel === undefined
     ? Effect.void
-    : makeCancelRequest(request, now).pipe(Effect.flatMap(exchange.cancel), Effect.ignore)
+    : makeCancelRequest(request, options).pipe(Effect.flatMap(exchange.cancel), Effect.ignore)
 
 const startCancelByRequest = (
   exchange: BridgeClientExchange,
   request: HostProtocolRequestEnvelope,
-  now: () => number
+  options: ResolvedBridgeClientOptions
 ): Effect.Effect<void, never, never> =>
-  sendCancelByRequest(exchange, request, now).pipe(
+  sendCancelByRequest(exchange, request, options).pipe(
     Effect.timeoutOption(CancelDispatchGrace),
     Effect.ignore,
     Effect.forkDetach({ startImmediately: true }),
@@ -703,14 +722,16 @@ const startCancelByRequest = (
 const runRequestWithInterruption = (
   exchange: BridgeClientExchange,
   request: HostProtocolRequestEnvelope,
-  now: () => number
-): Effect.Effect<BridgeClientResponse, HostProtocolError, never> =>
+  options: ResolvedBridgeClientOptions
+): Effect.Effect<unknown, HostProtocolError, never> =>
   Effect.acquireUseRelease(
-    exchange.request(request).pipe(Effect.forkDetach({ startImmediately: true })),
+    exchange
+      .request(options.normalizeRequest(request))
+      .pipe(Effect.forkDetach({ startImmediately: true })),
     (requestFiber) => Fiber.join(requestFiber),
     (requestFiber, exit) =>
       Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)
-        ? startCancelByRequest(exchange, request, now).pipe(
+        ? startCancelByRequest(exchange, request, options).pipe(
             Effect.andThen(
               (exchange.cancel === undefined
                 ? Fiber.interrupt(requestFiber)
@@ -725,10 +746,11 @@ const runRequestWithInterruption = (
 
 const makeCancelRequest = (
   request: HostProtocolRequestEnvelope,
-  now: () => number
+  options: ResolvedBridgeClientOptions
 ): Effect.Effect<HostProtocolCancelByRequestEnvelope, HostProtocolError, never> =>
   Effect.gen(function* () {
-    const timestamp = yield* validateHostProtocolTimestamp(now(), request.method)
+    const now = yield* currentTimeMillis(options.now)
+    const timestamp = yield* validateHostProtocolTimestamp(now, request.method)
 
     return new HostProtocolCancelByRequestEnvelope({
       kind: "cancel",
@@ -744,7 +766,8 @@ const makeRequest = (
   options: ResolvedBridgeClientOptions
 ): Effect.Effect<HostProtocolRequestEnvelope, HostProtocolError, never> =>
   Effect.gen(function* () {
-    const timestamp = yield* validateHostProtocolTimestamp(options.now(), method)
+    const now = yield* currentTimeMillis(options.now)
+    const timestamp = yield* validateHostProtocolTimestamp(now, method)
     const traceId = yield* validateHostProtocolNonEmptyString(
       "traceId",
       options.nextTraceId(),
@@ -784,11 +807,15 @@ const makeRequest = (
 const resolveOptions = (options: BridgeClientOptions): ResolvedBridgeClientOptions => ({
   nextRequestId: options.nextRequestId ?? (() => `request-${globalThis.crypto.randomUUID()}`),
   nextTraceId: options.nextTraceId ?? (() => `trace-${globalThis.crypto.randomUUID()}`),
-  now: options.now ?? Date.now,
+  now: options.now,
   windowId: options.windowId,
   originToken: options.originToken,
-  inspector: options.inspector
+  inspector: options.inspector,
+  normalizeRequest: options.normalizeRequest ?? ((request) => request)
 })
+
+const currentTimeMillis = (now: (() => number) | undefined): Effect.Effect<number, never, never> =>
+  now === undefined ? Clock.currentTimeMillis : Effect.sync(now)
 
 const methodName = (tag: string, method: string): string => `${tag}.${method}`
 const eventName = (tag: string, event: string): string => `${tag}.${event}`
@@ -819,7 +846,7 @@ const emitBridgeFrame = (
 const emitDecodeFailure = (
   inspector: BridgeInspector | undefined,
   operation: string,
-  envelope: HostProtocolEnvelope | undefined,
+  envelope: HostProtocolEnvelope,
   error: HostProtocolError,
   frameKind: string,
   payload: unknown
@@ -831,15 +858,10 @@ const emitDecodeFailure = (
       boundary: "bridge",
       direction: "inbound",
       method: operation,
-      requestId: envelope === undefined ? undefined : "id" in envelope ? envelope.id : undefined,
-      resourceId:
-        envelope === undefined
-          ? undefined
-          : "resourceId" in envelope
-            ? envelope.resourceId
-            : undefined,
-      traceId: envelope?.traceId,
-      timestamp: envelope?.timestamp ?? Date.now(),
+      requestId: "id" in envelope ? envelope.id : undefined,
+      resourceId: "resourceId" in envelope ? envelope.resourceId : undefined,
+      traceId: envelope.traceId,
+      timestamp: envelope.timestamp,
       frameKind,
       errorTag: hostProtocolErrorTag(error),
       payload

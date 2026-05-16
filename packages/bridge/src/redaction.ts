@@ -1,4 +1,4 @@
-import { Effect, Redacted } from "effect"
+import { Effect, Redacted, Schema } from "effect"
 
 export type SecretBytes = Redacted.Redacted<Uint8Array>
 export type SecretString = Redacted.Redacted<string>
@@ -204,7 +204,7 @@ const redactedJsonString = (value: Redacted.Redacted<unknown>): string => {
   if (encoded === undefined) {
     return "<redacted>"
   }
-  const decoded: unknown = JSON.parse(encoded)
+  const decoded = Schema.decodeUnknownSync(Schema.UnknownFromJsonString)(encoded)
   return typeof decoded === "string" ? decoded : "<redacted>"
 }
 

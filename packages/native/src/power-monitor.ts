@@ -1,15 +1,21 @@
 import {
   type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeHandlerRuntime,
+  type BridgeHandlerRuntimeOptions,
+  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
+  makeUnaryDesktopTransportFromBridgeClientExchange,
+  RpcClient,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
-import { subscribeNativeEvent } from "./event-stream.js"
 import { NativeSurface } from "./native-surface.js"
+import { subscribeNativeEvent } from "./event-stream.js"
 import {
   PowerMonitorIsSupportedInput,
   type PowerMonitorMethod,
@@ -35,7 +41,7 @@ export const PowerMonitorRpcEvents = Object.freeze({
   Resume: { payload: PowerMonitorResumeEvent },
   Shutdown: { payload: PowerMonitorShutdownEvent },
   PowerSourceChanged: { payload: PowerMonitorSourceChangedEvent }
-}) satisfies Record<string, { readonly payload: Schema.Codec<unknown, unknown, never, never> }>
+})
 
 export type PowerMonitorRpcEvents = typeof PowerMonitorRpcEvents
 
@@ -96,6 +102,17 @@ export const makePowerMonitorServiceLayer = (
   client: PowerMonitorClientApi
 ): Layer.Layer<PowerMonitor> => Layer.provide(PowerMonitorLive, makePowerMonitorClientLayer(client))
 
+export const makePowerMonitorBridgeClientLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
+): Layer.Layer<PowerMonitorClient> =>
+  Layer.effect(
+    PowerMonitorClient,
+    RpcClient.make(PowerMonitorRpcGroup).pipe(
+      Effect.map((client) => powerMonitorClientFromRpcClient(client, exchange))
+    )
+  ).pipe(Layer.provide(makePowerMonitorBridgeProtocolLayer(exchange, options)))
+
 export type PowerMonitorRpc = RpcGroup.Rpcs<typeof PowerMonitorRpcGroup>
 
 export type PowerMonitorRpcHandlers = RpcGroup.HandlersFrom<PowerMonitorRpc>
@@ -112,9 +129,14 @@ export const PowerMonitorHandlersLive = PowerMonitorRpcGroup.toLayer({
 export const PowerMonitorSurface = NativeSurface.make("PowerMonitor", PowerMonitorRpcGroup, {
   service: PowerMonitorClient,
   handlers: PowerMonitorHandlersLive,
-  bridgeClient: (client, exchange) => powerMonitorClientFromRpcClient(client, exchange),
   client: (client) => powerMonitorClientFromRpcClient(client, undefined)
 })
+
+export const makeHostPowerMonitorRpcRuntime = (
+  handlers: PowerMonitorRpcHandlers,
+  runtimeOptions: BridgeHandlerRuntimeOptions = {}
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  PowerMonitorSurface.hostRuntime(handlers, runtimeOptions)
 
 const powerMonitorClientFromRpcClient = (
   client: DesktopRpcClient<PowerMonitorRpc>,
@@ -122,12 +144,13 @@ const powerMonitorClientFromRpcClient = (
 ): PowerMonitorClientApi => {
   return Object.freeze({
     onSuspend: () =>
-      subscribeNativeEvent(exchange, "PowerMonitor.Suspend", PowerMonitorSuspendEvent),
-    onResume: () => subscribeNativeEvent(exchange, "PowerMonitor.Resume", PowerMonitorResumeEvent),
+      subscribePowerMonitorEvent(exchange, "PowerMonitor.Suspend", PowerMonitorSuspendEvent),
+    onResume: () =>
+      subscribePowerMonitorEvent(exchange, "PowerMonitor.Resume", PowerMonitorResumeEvent),
     onShutdown: () =>
-      subscribeNativeEvent(exchange, "PowerMonitor.Shutdown", PowerMonitorShutdownEvent),
+      subscribePowerMonitorEvent(exchange, "PowerMonitor.Shutdown", PowerMonitorShutdownEvent),
     onPowerSourceChanged: () =>
-      subscribeNativeEvent(
+      subscribePowerMonitorEvent(
         exchange,
         "PowerMonitor.PowerSourceChanged",
         PowerMonitorSourceChangedEvent
@@ -139,6 +162,22 @@ const powerMonitorClientFromRpcClient = (
       )
   } satisfies PowerMonitorClientApi)
 }
+
+const makePowerMonitorBridgeProtocolLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
+): Layer.Layer<RpcClient.Protocol> =>
+  Layer.effect(RpcClient.Protocol)(
+    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
+      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
+    )
+  )
+
+const subscribePowerMonitorEvent = <A>(
+  exchange: BridgeClientExchange | undefined,
+  method: string,
+  schema: Schema.Codec<A, unknown, never, never>
+): Stream.Stream<A, PowerMonitorError, never> => subscribeNativeEvent(exchange, method, schema)
 
 const runPowerMonitorRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

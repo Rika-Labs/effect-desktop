@@ -158,7 +158,7 @@ interface SolidDesktopContextValue {
 interface SolidDesktopRuntime {
   readonly clients: DesktopRendererRpcClientMap
   readonly runtime: FrameworkRuntime<RendererRpcClients, MissingDesktopRpcClientError>
-  readonly dispose: () => Promise<void>
+  readonly disposeEffect: Effect.Effect<void, never, never>
 }
 
 const SolidDesktopContext = createContext<SolidDesktopContextValue>()
@@ -168,7 +168,7 @@ export const SolidDesktop = Object.freeze({
     const DesktopRoot = (props: SolidDesktopRootProps): JSX.Element => {
       const runtime = makeSolidDesktopRuntime(app, props.transport, props.rpcs)
       onCleanup(() => {
-        void runtime.dispose()
+        void Effect.runCallback(runtime.disposeEffect)
       })
       return createComponent(SolidDesktopContext.Provider, {
         value: { clients: runtime.clients, runtime: runtime.runtime },
@@ -270,17 +270,14 @@ const makeSolidDesktopRuntime = (
   try {
     clients = runtime.runSync(Effect.service(RendererRpcClients)).clients
   } catch (error) {
-    void runtime.dispose()
+    void Effect.runCallback(runtime.disposeEffect)
     throw error
   }
   const frameworkRuntime = makeFrameworkRuntime(runtime)
   return Object.freeze({
     clients,
     runtime: frameworkRuntime,
-    dispose: async () => {
-      await frameworkRuntime.dispose()
-      await runtime.dispose()
-    }
+    disposeEffect: frameworkRuntime.disposeEffect.pipe(Effect.andThen(runtime.disposeEffect))
   })
 }
 

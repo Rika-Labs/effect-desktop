@@ -579,16 +579,18 @@ const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\
 const readJson = <A>(path: string): Effect.Effect<A, ReleaseGateFileError, never> =>
   Effect.gen(function* () {
     const body = yield* readText(path)
-    return yield* Effect.try({
-      try: () => JSON.parse(body) as A,
-      catch: (cause) =>
-        new ReleaseGateFileError({
-          operation: "parse",
-          path,
-          message: `failed to parse ${path}`,
-          cause
-        })
-    })
+    return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(body).pipe(
+      Effect.map((value) => value as A),
+      Effect.mapError(
+        (cause) =>
+          new ReleaseGateFileError({
+            operation: "parse",
+            path,
+            message: `failed to parse ${path}`,
+            cause
+          })
+      )
+    )
   })
 
 const readText = (path: string): Effect.Effect<string, ReleaseGateFileError, never> =>

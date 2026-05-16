@@ -1,15 +1,23 @@
 import {
   type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeHandlerRuntime,
+  type BridgeHandlerRuntimeOptions,
+  makeDesktopClientProtocol,
+  makeHostProtocolInternalError,
+  makeHostProtocolInvalidArgumentError,
+  makeHostProtocolInvalidOutputError,
+  makeUnaryDesktopTransportFromBridgeClientExchange,
+  RpcClient,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { P, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
-import { subscribeNativeEvent } from "./event-stream.js"
 import { NativeSurface } from "./native-surface.js"
-import { decodeNativeInput, runNativeRpc } from "./native-client.js"
+import { subscribeNativeEvent } from "./event-stream.js"
 export * from "./contracts/app.js"
 import {
   AppBeforeQuitEvent,
@@ -29,6 +37,8 @@ import {
   AppSingleInstanceResult,
   AppOpenUrlEvent
 } from "./contracts/app.js"
+
+const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export const AppGetInfo = appRpc("getInfo", Schema.Void, AppInfo, { kind: "none" })
 export const AppGetCommandLine = appRpc("getCommandLine", Schema.Void, AppCommandLine, {
@@ -153,6 +163,17 @@ export const makeAppClientLayer = (client: AppClientApi): Layer.Layer<AppClient>
 export const makeAppServiceLayer = (client: AppClientApi): Layer.Layer<App> =>
   Layer.provide(AppLive, makeAppClientLayer(client))
 
+export const makeAppBridgeClientLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
+): Layer.Layer<AppClient> =>
+  Layer.effect(
+    AppClient,
+    RpcClient.make(AppRpcGroup).pipe(
+      Effect.map((client) => appClientFromRpcClient(client, exchange))
+    )
+  ).pipe(Layer.provide(makeAppBridgeProtocolLayer(exchange, options)))
+
 export type AppRpc = RpcGroup.Rpcs<typeof AppRpcGroup>
 
 export type AppRpcHandlers = RpcGroup.HandlersFrom<AppRpc>
@@ -204,9 +225,13 @@ export const AppSurface = NativeSurface.make("App", AppRpcGroup, {
   service: AppClient,
   capabilities: AppCapabilityMethods,
   handlers: AppHandlersLive,
-  bridgeClient: (client, exchange) => appClientFromRpcClient(client, exchange),
   client: (client) => appClientFromRpcClient(client, undefined)
 })
+
+export const makeHostAppRpcRuntime = (
+  handlers: AppRpcHandlers,
+  runtimeOptions: BridgeHandlerRuntimeOptions = {}
+): BridgeHandlerRuntime<PermissionRegistry> => AppSurface.hostRuntime(handlers, runtimeOptions)
 
 const makeAppService = (client: AppClientApi): AppServiceApi => {
   const service: AppServiceApi = {
@@ -261,34 +286,61 @@ const appClientFromRpcClient = (
         )
       ),
     onSecondInstance: () =>
-      subscribeNativeEvent(exchange, "App.onSecondInstance", AppSecondInstanceEvent),
-    onOpenFile: () => subscribeNativeEvent(exchange, "App.onOpenFile", AppOpenFileEvent),
-    onOpenUrl: () => subscribeNativeEvent(exchange, "App.onOpenUrl", AppOpenUrlEvent),
-    onBeforeQuit: () => subscribeNativeEvent(exchange, "App.onBeforeQuit", AppBeforeQuitEvent)
+      subscribeAppEvent(exchange, "App.onSecondInstance", AppSecondInstanceEvent),
+    onOpenFile: () => subscribeAppEvent(exchange, "App.onOpenFile", AppOpenFileEvent),
+    onOpenUrl: () => subscribeAppEvent(exchange, "App.onOpenUrl", AppOpenUrlEvent),
+    onBeforeQuit: () => subscribeAppEvent(exchange, "App.onBeforeQuit", AppBeforeQuitEvent)
   }
 
   return Object.freeze(appClient)
 }
 
+const makeAppBridgeProtocolLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
+): Layer.Layer<RpcClient.Protocol> =>
+  Layer.effect(RpcClient.Protocol)(
+    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
+      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
+    )
+  )
+
+const subscribeAppEvent = <A>(
+  exchange: BridgeClientExchange | undefined,
+  method: "App.onSecondInstance" | "App.onOpenFile" | "App.onOpenUrl" | "App.onBeforeQuit",
+  schema: Schema.Codec<A, unknown, never, never>
+): Stream.Stream<A, AppError, never> => subscribeNativeEvent(exchange, method, schema)
+
 const decodeAppQuitInput = (
   input: unknown
 ): Effect.Effect<AppQuitInput, HostProtocolError, never> =>
-  decodeNativeInput(AppQuitInput, input, "App.quit")
+  decodeInput(AppQuitInput, input, "App.quit")
 
 const decodeAppRestartInput = (
   input: unknown
 ): Effect.Effect<AppRestartInput, HostProtocolError, never> =>
-  decodeNativeInput(AppRestartInput, input, "App.restart")
+  decodeInput(AppRestartInput, input, "App.restart")
 
 const decodeAppOpenAtLoginInput = (
   input: unknown
 ): Effect.Effect<AppOpenAtLoginInput, HostProtocolError, never> =>
-  decodeNativeInput(AppOpenAtLoginInput, input, "App.setOpenAtLogin")
+  decodeInput(AppOpenAtLoginInput, input, "App.setOpenAtLogin")
 
 const decodeAppProtocolInput = (
   input: unknown
 ): Effect.Effect<AppProtocolInput, HostProtocolError, never> =>
-  decodeNativeInput(AppProtocolInput, input, "App.registerProtocol")
+  decodeInput(AppProtocolInput, input, "App.registerProtocol")
+
+const decodeInput = <A>(
+  schema: Schema.Codec<A, unknown, never, never>,
+  input: unknown,
+  operation: string
+): Effect.Effect<A, HostProtocolError, never> =>
+  Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
 
 function appRpc<
   const Method extends string,
@@ -307,4 +359,28 @@ function appRpc<
 const runAppRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
-): Effect.Effect<A, AppError, never> => runNativeRpc(effect, operation, "App")
+): Effect.Effect<A, AppError, never> =>
+  effect.pipe(
+    Effect.mapError(mapAppRpcClientError),
+    Effect.catchDefect((defect) =>
+      Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
+    )
+  )
+
+const mapAppRpcClientError = (error: unknown): AppError =>
+  isAppError(error) ? error : makeHostProtocolInternalError("App RPC client failed", "App")
+
+const isAppError = (error: unknown): error is AppError =>
+  typeof error === "object" &&
+  error !== null &&
+  "tag" in error &&
+  "operation" in error &&
+  "recoverable" in error
+
+const formatUnknownError = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  return String(error)
+}

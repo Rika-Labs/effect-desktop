@@ -1,4 +1,6 @@
 import {
+  type BridgeClientExchange,
+  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostWindowClientOptions,
@@ -17,8 +19,8 @@ import {
   P,
   PermissionRegistry,
   ResourceRegistry,
-  type DesktopRpcClient,
-  type ResourceId
+  makeResourceId,
+  type DesktopRpcClient
 } from "@effect-desktop/core"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 
@@ -61,6 +63,8 @@ export type WindowSupportedRpc = WindowRpcUnion
 
 export const WindowSupportedRpcs: RpcGroup.RpcGroup<WindowSupportedRpc> = WindowRpcs
 
+export type WindowBridgeClientOptions = Omit<BridgeClientOptions, "nextRequestId">
+
 type WindowRpcClient = DesktopRpcClient<WindowSupportedRpc>
 
 export const WindowMethodNames = Object.freeze(["create", "close"] as const)
@@ -94,6 +98,11 @@ export const makeWindowClientLayer = (client: WindowClientApi): Layer.Layer<Wind
 
 export const makeWindowServiceLayer = (client: WindowClientApi): Layer.Layer<Window> =>
   Layer.provide(WindowLive, makeWindowClientLayer(client))
+
+export const makeWindowBridgeClientLayer = (
+  exchange: BridgeClientExchange,
+  options: WindowBridgeClientOptions = {}
+): Layer.Layer<WindowClient> => WindowSurface.bridgeClientLayer(exchange, options)
 
 export type WindowRpcHandlers = ReturnType<typeof makeHostWindowHandlers>
 
@@ -236,7 +245,7 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
         const handle = yield* registry
           .register({
             kind: "window",
-            id: created.windowId as ResourceId,
+            id: makeResourceId(created.windowId),
             ownerScope,
             state: "open"
           })

@@ -3,7 +3,6 @@ export {
   interruptFrameworkFiber,
   makeFrameworkScopedOperation,
   runFrameworkEffect,
-  runFrameworkPromiseExit,
   isDesktopStreamOptions,
   makeFrameworkRuntime,
   observeFrameworkFiber,

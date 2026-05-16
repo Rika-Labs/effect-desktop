@@ -2,28 +2,36 @@ import {
   P,
   type DesktopRpcClient,
   CommandRegistry,
+  makeResourceId,
   PermissionActor,
   PermissionContext,
   type CommandRegistryError,
+  type PermissionRegistry,
   type ResourceHandle,
   type ResourceId,
   type ResourceRegistry
 } from "@effect-desktop/core"
 import {
   type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeHandlerRuntime,
+  type BridgeHandlerRuntimeOptions,
   HostProtocolAlreadyExistsError,
   HostProtocolUnsupportedError,
+  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
+  makeUnaryDesktopTransportFromBridgeClientExchange,
+  RpcClient,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
-import { subscribeNativeEvent } from "./event-stream.js"
 import { NativeSurface } from "./native-surface.js"
+import { subscribeNativeEvent } from "./event-stream.js"
 import { bindScopedCommand } from "./command-binding.js"
 import {
   GlobalShortcutAcceleratorInput,
@@ -219,14 +227,15 @@ const invokeGlobalShortcutCommand = (
     )
     .pipe(
       Effect.asVoid,
-      Effect.catch((error: CommandRegistryError) =>
+      Effect.tapError((error: CommandRegistryError) =>
         Effect.logWarning("GlobalShortcut command invocation failed", {
           accelerator,
           commandId,
           error: commandBindingWarningError(error),
           windowId
         })
-      )
+      ),
+      Effect.ignore
     )
 
 const logGlobalShortcutCleanupFailure =
@@ -235,16 +244,17 @@ const logGlobalShortcutCleanupFailure =
     phase: "scope-dispose"
   ): (<A>(
     effect: Effect.Effect<A, GlobalShortcutError, never>
-  ) => Effect.Effect<A | void, never, never>) =>
+  ) => Effect.Effect<void, never, never>) =>
   (effect) =>
     effect.pipe(
-      Effect.catch((error: GlobalShortcutError) =>
+      Effect.tapError((error: GlobalShortcutError) =>
         Effect.logWarning("GlobalShortcut cleanup failed", {
           accelerator,
           error: commandBindingWarningError(error),
           phase
         })
-      )
+      ),
+      Effect.ignore
     )
 
 export const makeGlobalShortcutClientLayer = (
@@ -255,6 +265,17 @@ export const makeGlobalShortcutServiceLayer = (
   client: GlobalShortcutClientApi
 ): Layer.Layer<GlobalShortcut> =>
   Layer.provide(GlobalShortcutLive, makeGlobalShortcutClientLayer(client))
+
+export const makeGlobalShortcutBridgeClientLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
+): Layer.Layer<GlobalShortcutClient> =>
+  Layer.effect(
+    GlobalShortcutClient,
+    RpcClient.make(GlobalShortcutRpcGroup).pipe(
+      Effect.map((client) => globalShortcutClientFromRpcClient(client, exchange))
+    )
+  ).pipe(Layer.provide(makeGlobalShortcutBridgeProtocolLayer(exchange, options)))
 
 export type GlobalShortcutRpc = RpcGroup.Rpcs<typeof GlobalShortcutRpcGroup>
 
@@ -293,9 +314,14 @@ export const GlobalShortcutSurface = NativeSurface.make("GlobalShortcut", Global
   service: GlobalShortcutClient,
   capabilities: GlobalShortcutCapabilityMethods,
   handlers: GlobalShortcutHandlersLive,
-  bridgeClient: (client, exchange) => globalShortcutClientFromRpcClient(client, exchange),
   client: (client) => globalShortcutClientFromRpcClient(client, undefined)
 })
+
+export const makeHostGlobalShortcutRpcRuntime = (
+  handlers: GlobalShortcutRpcHandlers,
+  runtimeOptions: BridgeHandlerRuntimeOptions = {}
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  GlobalShortcutSurface.hostRuntime(handlers, runtimeOptions)
 
 const globalShortcutClientFromRpcClient = (
   client: DesktopRpcClient<GlobalShortcutRpc>,
@@ -342,10 +368,25 @@ const globalShortcutClientFromRpcClient = (
         client["GlobalShortcut.isSupported"](undefined),
         "GlobalShortcut.isSupported"
       ),
-    onPressed: () =>
-      subscribeNativeEvent(exchange, "GlobalShortcut.Pressed", GlobalShortcutPressedEvent)
+    onPressed: () => subscribeGlobalShortcutEvent(exchange, "GlobalShortcut.Pressed")
   } satisfies GlobalShortcutClientApi)
 }
+
+const makeGlobalShortcutBridgeProtocolLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
+): Layer.Layer<RpcClient.Protocol> =>
+  Layer.effect(RpcClient.Protocol)(
+    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
+      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
+    )
+  )
+
+const subscribeGlobalShortcutEvent = (
+  exchange: BridgeClientExchange | undefined,
+  method: "GlobalShortcut.Pressed"
+): Stream.Stream<GlobalShortcutPressedEvent, GlobalShortcutError, never> =>
+  subscribeNativeEvent(exchange, method, GlobalShortcutPressedEvent)
 
 export const makeLinuxGlobalShortcutClient = (
   sessionType = process.env["XDG_SESSION_TYPE"]
@@ -410,7 +451,7 @@ const linuxGlobalShortcutSupport = (
 }
 
 const globalShortcutCommandResourceId = (windowId: string, accelerator: string): ResourceId =>
-  `global-shortcut-command:${windowId}:${accelerator}` as ResourceId
+  makeResourceId(`global-shortcut-command:${windowId}:${accelerator}`)
 
 const toWindowHandle = (handle: GlobalShortcutWindowHandle): GlobalShortcutWindowHandle =>
   Object.freeze({
@@ -419,7 +460,7 @@ const toWindowHandle = (handle: GlobalShortcutWindowHandle): GlobalShortcutWindo
     generation: handle.generation,
     ownerScope: handle.ownerScope,
     state: handle.state
-  }) as GlobalShortcutWindowHandle
+  })
 
 const decodeGlobalShortcutRegisterInput = (
   input: unknown

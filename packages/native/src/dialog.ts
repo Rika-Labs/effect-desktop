@@ -1,9 +1,13 @@
 import {
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeHandlerRuntime,
+  type BridgeHandlerRuntimeOptions,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { P, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -130,6 +134,11 @@ export const makeDialogClientLayer = (client: DialogClientApi): Layer.Layer<Dial
 export const makeDialogServiceLayer = (client: DialogClientApi): Layer.Layer<Dialog> =>
   Layer.provide(DialogLive, makeDialogClientLayer(client))
 
+export const makeDialogBridgeClientLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
+): Layer.Layer<DialogClient> => DialogSurface.bridgeClientLayer(exchange, options)
+
 export type DialogRpcHandlers = RpcGroup.HandlersFrom<DialogRpc>
 
 export const DialogHandlersLive = DialogRpcGroup.toLayer({
@@ -170,6 +179,11 @@ export const DialogSurface = NativeSurface.make("Dialog", DialogRpcGroup, {
   handlers: DialogHandlersLive,
   client: (client) => dialogClientFromRpcClient(client)
 })
+
+export const makeHostDialogRpcRuntime = (
+  handlers: DialogRpcHandlers,
+  runtimeOptions: BridgeHandlerRuntimeOptions = {}
+): BridgeHandlerRuntime<PermissionRegistry> => DialogSurface.hostRuntime(handlers, runtimeOptions)
 
 const makeDialogService = (client: DialogClientApi): DialogServiceApi => {
   const service: DialogServiceApi = {

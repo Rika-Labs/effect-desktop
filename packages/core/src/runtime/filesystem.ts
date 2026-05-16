@@ -11,6 +11,7 @@ import {
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import {
+  Clock,
   Context,
   Effect,
   Exit,
@@ -155,7 +156,8 @@ export const makeFilesystem = (
     const fileSystem = yield* EffectFileSystem.FileSystem
     const permissions = options.permissions ?? EMPTY_FILESYSTEM_PERMISSIONS
     const inspector = options.inspector ?? disabledFilesystemInspectorCollector
-    const now = options.now ?? Date.now
+    const clock = yield* Clock.Clock
+    const now = options.now ?? (() => clock.currentTimeMillisUnsafe())
 
     return Object.freeze({
       read: (path: string) =>
@@ -528,7 +530,7 @@ const statFilesystemPath = (
   path: string
 ): Effect.Effect<FilesystemStatResult, FilesystemError, never> =>
   Effect.gen(function* () {
-    const isSymlink = yield* pathIsSymlink(fileSystem, path)
+    const isSymlink = yield* pathIsSymlink(fileSystem, path, "Filesystem.stat")
     if (isSymlink) {
       return new FilesystemStatResult({
         path,
@@ -702,7 +704,7 @@ const denyEscapingHardLink = (
   operation: string
 ): Effect.Effect<void, FilesystemError, never> =>
   Effect.gen(function* () {
-    if (yield* pathIsSymlink(fileSystem, canonicalPath)) {
+    if (yield* pathIsSymlink(fileSystem, canonicalPath, operation)) {
       return
     }
 
@@ -957,11 +959,16 @@ const statKind = (stats: EffectFileSystem.File.Info): FilesystemEntryKind => {
 
 const pathIsSymlink = (
   fileSystem: EffectFileSystem.FileSystem,
-  path: string
-): Effect.Effect<boolean, never, never> =>
+  path: string,
+  operation: string
+): Effect.Effect<boolean, FilesystemError, never> =>
   fileSystem.readLink(path).pipe(
     Effect.as(true),
-    Effect.catch(() => Effect.succeed(false))
+    Effect.catch((error) =>
+      isNotSymlinkPlatformError(error)
+        ? Effect.succeed(false)
+        : Effect.fail(mapFilesystemError(error, path, operation))
+    )
   )
 
 const modifiedAtMs = (stats: EffectFileSystem.File.Info): number =>
@@ -1112,6 +1119,18 @@ const isPlatformError = (error: unknown): error is PlatformError =>
 
 const isNotFoundPlatformError = (error: unknown): boolean =>
   isPlatformError(error) && error.reason._tag === "NotFound"
+
+const isNotSymlinkPlatformError = (error: unknown): boolean => {
+  if (!isPlatformError(error)) {
+    return false
+  }
+
+  if (error.reason._tag === "NotFound") {
+    return true
+  }
+
+  return "cause" in error.reason && nodeErrorCode(error.reason.cause) === "EINVAL"
+}
 
 const isPermissionDeniedPlatformError = (error: unknown): boolean =>
   isPlatformError(error) && error.reason._tag === "PermissionDenied"

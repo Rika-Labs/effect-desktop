@@ -1269,6 +1269,11 @@
       "signature": "export class Screen extends Context.Service<Screen, ScreenServiceApi>()( \"@effect-desktop/native/Screen\" ) {}"
     },
     {
+      "name": "ScreenBridgeClientOptions",
+      "kind": "type",
+      "signature": "export type ScreenBridgeClientOptions = Omit<BridgeClientOptions, \"nextRequestId\">"
+    },
+    {
       "name": "ScreenClient",
       "kind": "class",
       "signature": "export class ScreenClient extends Context.Service<ScreenClient, ScreenClientApi>()( \"@effect-desktop/native/ScreenClient\" ) {}"
@@ -1682,6 +1687,11 @@
       "name": "Window",
       "kind": "class",
       "signature": "export class Window extends Context.Service<Window, WindowServiceApi>()( \"@effect-desktop/native/Window\" ) {}"
+    },
+    {
+      "name": "WindowBridgeClientOptions",
+      "kind": "type",
+      "signature": "export type WindowBridgeClientOptions = Omit<BridgeClientOptions, \"nextRequestId\">"
     },
     {
       "name": "WindowClient",

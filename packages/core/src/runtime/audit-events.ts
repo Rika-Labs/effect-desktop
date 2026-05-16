@@ -225,7 +225,7 @@ export const AuditReactivityLayer = EventLog.groupReactivity(AuditGroup, ["audit
 
 export class AuditEvents extends Context.Service<AuditEvents, AuditEventsApi>()("AuditEvents", {
   make: Effect.succeed({
-    emit: () => Effect.void as Effect.Effect<void, EventJournal.EventJournalError, never>,
+    emit: () => Effect.void,
     observe: () => Stream.empty
   } satisfies AuditEventsApi)
 }) {}

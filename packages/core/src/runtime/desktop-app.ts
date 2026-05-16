@@ -301,6 +301,7 @@ export class DesktopConfigError extends Data.TaggedError("DesktopConfigError")<{
   readonly provider?: string
   readonly providerKind?: ProviderKind
   readonly windowId?: string
+  readonly cause?: unknown
 }> {}
 
 const NormalizedCapabilityKinds = new Set<NormalizedCapability["kind"]>([
@@ -392,7 +393,7 @@ export interface DesktopRuntimeProviderDescriptor extends RegistryProvider<
   readonly budget: DesktopProviderBudget
   readonly layer: Effect.Effect<
     Layer.Layer<DesktopRuntimeProviderServices, Config.ConfigError, never>,
-    never,
+    DesktopConfigError,
     never
   >
 }
@@ -476,7 +477,7 @@ const lazyRuntimeProvider = (options: {
   readonly budget: DesktopProviderBudget
   readonly layer: Effect.Effect<
     Layer.Layer<DesktopRuntimeProviderServices, Config.ConfigError, never>,
-    never,
+    DesktopConfigError,
     never
   >
   readonly label: string
@@ -528,25 +529,28 @@ const RuntimeProviders = [
   lazyRuntimeProvider({
     id: "bun" as const,
     budget: providerBudget("bun", "@effect/platform-bun", "@effect-desktop/core/providers/bun"),
-    layer: Effect.promise(() =>
-      import("../providers/bun.js").then((module) => module.BunRuntimeProviderLayer)
-    ),
+    layer: Effect.tryPromise({
+      try: async () => (await import("../providers/bun.js")).BunRuntimeProviderLayer,
+      catch: (cause) => runtimeProviderLoadError("bun", cause)
+    }),
     label: "Bun runtime provider"
   }),
   lazyRuntimeProvider({
     id: "node" as const,
     budget: providerBudget("node", "@effect/platform-node", "@effect-desktop/core/providers/node"),
-    layer: Effect.promise(() =>
-      import("../providers/node.js").then((module) => module.NodeRuntimeProviderLayer)
-    ),
+    layer: Effect.tryPromise({
+      try: async () => (await import("../providers/node.js")).NodeRuntimeProviderLayer,
+      catch: (cause) => runtimeProviderLoadError("node", cause)
+    }),
     label: "Node runtime provider"
   }),
   lazyRuntimeProvider({
     id: "test" as const,
     budget: providerBudget("test", "@effect-desktop/core", "@effect-desktop/core/providers/test"),
-    layer: Effect.promise(() =>
-      import("../providers/test.js").then((module) => module.TestRuntimeProviderLayer)
-    ),
+    layer: Effect.tryPromise({
+      try: async () => (await import("../providers/test.js")).TestRuntimeProviderLayer,
+      catch: (cause) => runtimeProviderLoadError("test", cause)
+    }),
     label: "Test runtime provider"
   })
 ] as const satisfies readonly DesktopRuntimeProviderDescriptor[]
@@ -764,9 +768,8 @@ export const manifest = <RIn = never, E = never>(
  * as `rpcs:` to `Desktop.make`.
  *
  * The resulting declaration layer builds synchronously and requires only
- * `DesktopRpcRegistry`. The handler's service requirements (`R`) are stored in
- * the registration and re-applied at `bindRegistration` time inside the runtime
- * spine.
+ * `DesktopRpcRegistry`. The handler's service requirements (`R`) are captured
+ * in a prebound server layer while the concrete `Rpcs` type is still available.
  *
  * **Sync-only constraint.** The body of this layer is `Effect.sync` (it only
  * calls `registry.register(...)`). `Desktop.manifest(...)` runs the user's
@@ -799,7 +802,8 @@ export const rpc = <Rpcs extends Rpc.Any, E, R>(
         const registry = yield* DesktopRpcRegistry
         yield* registry.register({
           group,
-          handlers: handlers as unknown as Layer.Layer<unknown, unknown, unknown>
+          handlers,
+          serverLayer: bindRpcGroup(group, handlers)
         })
       })
     )
@@ -826,7 +830,7 @@ export const desktopWindow = <RIn = never>(
         yield* registry.register({
           id,
           spec,
-          services: services as unknown as Layer.Layer<never, unknown, unknown> | undefined
+          services
         })
       })
     )
@@ -858,7 +862,7 @@ export const workflow = <RIn = never, E = never>(
     Layer.effectDiscard(
       Effect.gen(function* () {
         const registry = yield* DesktopWorkflowRegistry
-        yield* registry.register(layer as unknown as AnyDesktopWorkflowRegistration)
+        yield* registry.register(layer)
       })
     )
   )
@@ -1149,15 +1153,10 @@ const snapshotProvidersSync = (
 export const app = <RIn = never, E = never>(
   config: DesktopConfig<RIn, E>
 ): Layer.Layer<
-  DesktopApp,
+  DesktopRuntimeServices,
   DesktopConfigError | E,
   Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
-> =>
-  runtime(config) as Layer.Layer<
-    DesktopApp,
-    DesktopConfigError | E,
-    Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
-  >
+> => runtime(config)
 
 export const runtime = <RIn = never, E = never>(
   config: DesktopConfig<RIn, E>
@@ -1704,27 +1703,15 @@ const mergeLayerArray = <E, R>(
     : Layer.mergeAll(firstLayer, ...remainingLayers)
 }
 
+const bindRpcGroup = <Rpcs extends Rpc.Any, E, R>(
+  group: RpcGroup.RpcGroup<Rpcs>,
+  handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
+): Layer.Layer<never, unknown, unknown> =>
+  Layer.provide(RpcServer.layer(group.middleware(PermissionInterceptor)), handlers)
+
 const bindRegistration = (
   registration: AnyDesktopRpcRegistration
-): Layer.Layer<never, unknown, unknown> =>
-  Layer.provide(
-    RpcServer.layer(
-      // Cast invariant: DesktopRpcRegistration.group widens its Rpc-union to
-      // RpcGroup.Any so the registry can hold heterogeneous groups together.
-      // RpcServer.layer accepts any RpcGroup; widening to Rpc.Any here keeps
-      // its type parameter satisfiable without losing runtime behavior.
-      (registration.group as RpcGroup.RpcGroup<Rpc.Any>).middleware(PermissionInterceptor)
-    ),
-    // Cast invariant: handlers' Rpc.ToHandler<Rpcs> output context is widened
-    // to `any` so it satisfies whatever RpcServer.layer needs from its Rpcs
-    // type parameter. The handler layer's R requirement is preserved as
-    // Layer.provide's environment requirement and bubbles up through the spine.
-    registration.handlers
-    // Cast invariant: Layer.provide of an unknown-typed handler returns
-    // Layer<never, unknown, unknown>; we restate it here so the binder's
-    // return type is callable without forcing every caller to thread the
-    // specific Rpc union — bindRegistration is the type-erasure boundary.
-  )
+): Layer.Layer<never, unknown, unknown> => registration.serverLayer
 
 function graphNode(
   id: string,
@@ -1754,5 +1741,19 @@ function providerBudget(
     importPath,
     startupBudgetMs: 25,
     bundleBudgetKb: 64
+  })
+}
+
+function runtimeProviderLoadError(
+  provider: DesktopRuntimeProviderId,
+  cause: unknown
+): DesktopConfigError {
+  return new DesktopConfigError({
+    appId: "provider-loader",
+    reason: "missing-provider",
+    provider,
+    providerKind: "runtime",
+    message: `Runtime provider "${provider}" failed to load`,
+    cause
   })
 }

@@ -36,11 +36,11 @@ import {
 } from "./runtime/desktop-workflow-registry.js"
 import { snapshotDeclarationLayerSync } from "./runtime/desktop-declaration.js"
 import type {
-  DesktopApp,
   DesktopConfig,
   DesktopConfigError,
   DesktopPermissionsLayer,
   DesktopRuntimeProviderServices,
+  DesktopRuntimeServices,
   DesktopWorkflowLayer,
   DesktopWorkflowsLayer
 } from "./runtime/desktop-app.js"
@@ -186,7 +186,7 @@ function app(): Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>
 function app<RIn = never, E = never>(
   config: DesktopConfig<RIn, E>
 ): Layer.Layer<
-  DesktopApp,
+  DesktopRuntimeServices,
   DesktopConfigError | E,
   Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
 >
@@ -203,7 +203,7 @@ function app<RIn = never, E = never>(
   | Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn>
   | Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn | PermissionRegistry>
   | Layer.Layer<
-      DesktopApp,
+      DesktopRuntimeServices,
       DesktopConfigError | E,
       Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
     > {
