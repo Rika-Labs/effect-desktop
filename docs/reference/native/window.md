@@ -13,19 +13,13 @@ Native window lifecycle. The runtime calls `Window.create` to open windows; the 
 ## Import
 
 ```ts
+import { Desktop } from "@effect-desktop/core"
 import {
   Window,
-  WindowClient,
   WindowRpcs,
   WindowSupportedRpcs,
   WindowMethodNames,
-  WindowSurface,
-  WindowLive,
-  WindowHandlersLive,
-  makeWindowClientLayer,
-  makeWindowServiceLayer,
   Native,
-  type WindowClientApi,
   type WindowServiceApi,
   type WindowCreateOptions,
   type WindowHandle,
@@ -50,12 +44,22 @@ import {
 
 ## Layer composition
 
-- `WindowLive` — service implementation (depends on `WindowClient`).
-- `WindowHandlersLive` — runtime handler layer.
-- `makeWindowClientLayer(client)` — substitute the client (tests).
-- `makeWindowServiceLayer(client)` — service backed by a client.
+App code selects the capability through the native composition layer:
+
+```ts
+Desktop.make({
+  id: "com.acme.windows",
+  windows: Desktop.window("main", { title: "Windows" }),
+  native: Desktop.native(Native.window),
+  permissions: Native.permissions(...Native.Permissions.window.all)
+})
+```
+
 - `Native.window` — app-composition layer for `Desktop.native(...)`.
-- `WindowSurface.bridgeClientLayer(exchange, options)` — bridge client artifact used by adapters and tests.
+- `Native.Permissions.window.*` — authority data derived from the same surface metadata.
+- `WindowLive` and `WindowHandlersLive` — runtime layers behind `Native.window`.
+- `WindowSurface.bridgeClientLayer(exchange, options)` — bridge adapter artifact used by renderer adapters and tests.
+- `makeWindowClientLayer(client)` and `makeWindowServiceLayer(client)` — deterministic test seams, not app-composition API.
 
 ## Surface
 
