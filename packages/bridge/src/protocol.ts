@@ -1160,6 +1160,19 @@ const hostProtocolErrorToRpcClientError = (
     })
   })
 
+export const hostProtocolErrorFromRpcClientError = (
+  error: unknown
+): HostProtocolError | undefined => {
+  if (!(error instanceof RpcClientError.RpcClientError)) {
+    return undefined
+  }
+  const reason = error.reason
+  if (!(reason instanceof RpcClientError.RpcClientDefect) || !isHostProtocolError(reason.cause)) {
+    return undefined
+  }
+  return decodeUnknownHostProtocolError(reason.cause, StrictParseOptions)
+}
+
 export const makeDesktopClientProtocol = (
   transport: DesktopTransportSend & DesktopTransportRun,
   options: DesktopProtocolOptions = {}

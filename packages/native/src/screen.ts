@@ -7,6 +7,7 @@ import {
   makeUnaryDesktopTransportFromBridgeClientExchange,
   RpcClient,
   RpcGroup,
+  hostProtocolErrorFromRpcClientError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   HostProtocolRequestEnvelope,
@@ -219,7 +220,10 @@ const runScreenRpc = <A, E>(
 ): Effect.Effect<A, ScreenError, never> => effect.pipe(Effect.mapError(mapScreenRpcClientError))
 
 const mapScreenRpcClientError = (error: unknown): ScreenError =>
-  isScreenError(error) ? error : makeHostProtocolInternalError("Screen RPC client failed", "Screen")
+  isScreenError(error)
+    ? error
+    : (hostProtocolErrorFromRpcClientError(error) ??
+      makeHostProtocolInternalError("Screen RPC client failed", "Screen"))
 
 const isScreenError = (error: unknown): error is ScreenError =>
   typeof error === "object" &&

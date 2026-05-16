@@ -459,6 +459,11 @@
       "signature": "const HostProtocolError: Schema.Union<readonly [typeof HostProtocolFileNotFoundError, typeof HostProtocolPermissionDeniedError, typeof HostProtocolTimeoutError, typeof HostProtocolCancelledError, typeof HostProtocolUnsupportedError, typeof HostProtocolInvalidArgumentError, typeof HostProtocolResourceBusyError, typeof HostProtocolDiskFullError, typeof HostProtocolRateLimitedError, typeof HostProtocolFrameTooLargeError, typeof HostProtocolOriginInvalidError, typeof HostProtocolStaleHandleError, typeof HostProtocolCrossScopeHandleError, typeof HostProtocolBackpressureOverflowError, typeof HostProtocolRendererDisconnectedError, typeof HostProtocolRuntimeRestartedError, typeof HostProtocolRuntimeUnavailableError, typeof HostProtocolHostUnavailableError, typeof HostProtocolMethodNotFoundError, typeof HostProtocolInvalidOutputError, typeof HostProtocolPermissionRevokedError, typeof HostProtocolStreamClosedError, typeof HostProtocolBinaryDecodeError, typeof HostProtocolReconnectBackfillExhaustedError, typeof HostProtocolPanicInNativeCodeError, typeof HostProtocolNetworkError, typeof HostProtocolNotFoundError, typeof HostProtocolAlreadyExistsError, typeof HostProtocolInvalidStateError, typeof HostProtocolSymlinkEscapesRootError, typeof HostProtocolEventLogFullError, typeof HostProtocolUpdateDowngradeRefusedError, typeof HostProtocolUpdateDownloadTruncatedError, typeof HostProtocolUpdateStaleNotarizationError, typeof HostProtocolSettingsMigrationFailedError, typeof HostProtocolSettingsRecoveredFromBackupError, typeof HostProtocolEventLogSegmentCorruptError, typeof HostProtocolPtyForceKillTimeoutError, typeof HostProtocolInternalError]>"
     },
     {
+      "name": "hostProtocolErrorFromRpcClientError",
+      "kind": "value",
+      "signature": "const hostProtocolErrorFromRpcClientError: (error: unknown) => HostProtocolError | undefined"
+    },
+    {
       "name": "hostProtocolErrorRecoverableDefault",
       "kind": "value",
       "signature": "const hostProtocolErrorRecoverableDefault: (tag: HostProtocolErrorTag) => boolean"
